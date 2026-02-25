@@ -10,6 +10,9 @@ keywords = ["matrix", "chat", "slint"]
 categories = ["network-programming"]
 
 [dependencies]
+thiserror = "2"
+slint-interpreter = "1.15"
+tokio = { version = "1.49", features = ["rt-multi-thread", "macros", "sync", "time"] }
 
 [lints.clippy]
 all = { level = "deny", priority = -1 }
