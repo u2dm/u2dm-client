@@ -2,7 +2,9 @@ use std::io::{self, Write as _};
 use std::process::ExitCode;
 
 use error::{AppError, Result};
-use slint_interpreter::{Compiler, ComponentHandle, ComponentInstance, PlatformError};
+use slint_interpreter::{
+    Compiler, ComponentHandle, ComponentInstance, PlatformError, SharedString, Value,
+};
 use tokio::runtime::Runtime;
 
 mod error;
@@ -34,6 +36,29 @@ fn run() -> Result<()> {
         Ok(def.create()?)
     });
     let instance = compiled?;
+
+    let weak = instance.as_weak();
+    instance
+        .set_callback("check-server", move |args: &[Value]| -> Value {
+            let _homeserver = args
+                .first()
+                .and_then(|v| match v {
+                    Value::String(s) => Some(s.to_string()),
+                    _ => None,
+                })
+                .unwrap_or_default();
+
+            if let Some(inst) = weak.upgrade() {
+                let _r = inst.set_property(
+                    "login-status",
+                    Value::String(SharedString::from("Checking server...")),
+                );
+                let _r = inst.set_property("login-error", Value::String(SharedString::default()));
+            }
+
+            Value::Void
+        })
+        .map_err(|e| AppError::Ui(format!("{e:?}")))?;
 
     instance.run()?;
     Ok(())

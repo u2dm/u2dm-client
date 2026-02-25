@@ -1,6 +1,80 @@
+import { Button, LineEdit, VerticalBox } from "std-widgets.slint";
+
 export component AppWindow inherits Window {
     title: "U2DM Matrix Client";
     width: 900px;
     height: 640px;
-    background: black;
+
+    in-out property <string> input-homeserver: "matrix.org";
+    in-out property <string> login-status: "";
+    in-out property <string> login-error: "";
+    in-out property <string> login-step: "homeserver";
+    in-out property <string> login-method: "";
+
+    callback check-server(string);
+
+    if root.login-step == "homeserver": VerticalLayout {
+        alignment: center;
+        padding: 24px;
+
+        HorizontalLayout {
+            alignment: center;
+
+            Text {
+                text: "U2DM";
+                font-size: 32px;
+                horizontal-alignment: center;
+            }
+        }
+
+        Rectangle { height: 32px; }
+
+        HorizontalLayout {
+            alignment: center;
+
+            LineEdit {
+                text <=> root.input-homeserver;
+                placeholder-text: "Homeserver";
+                horizontal-stretch: 0;
+                width: 320px;
+            }
+        }
+
+        Rectangle { height: 12px; }
+
+        HorizontalLayout {
+            alignment: center;
+
+            Button {
+                text: "Continue";
+                width: 320px;
+                clicked => {
+                    root.check-server(root.input-homeserver);
+                }
+            }
+        }
+
+        Rectangle { height: 12px; }
+
+        if root.login-status != "": HorizontalLayout {
+            alignment: center;
+
+            Text {
+                text: root.login-status;
+                font-size: 13px;
+                horizontal-alignment: center;
+            }
+        }
+
+        if root.login-error != "": HorizontalLayout {
+            alignment: center;
+
+            Text {
+                text: root.login-error;
+                color: red;
+                font-size: 13px;
+                horizontal-alignment: center;
+            }
+        }
+    }
 }
