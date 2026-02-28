@@ -2,8 +2,8 @@ import { Button, LineEdit, VerticalBox } from "std-widgets.slint";
 
 export component AppWindow inherits Window {
     title: "U2DM Matrix Client";
-    preferred-width: 900px;
-    preferred-height: 640px;
+    preferred-width: root.width;
+    preferred-height: root.height;
 
     in-out property <string> input-homeserver: "matrix.org";
     in-out property <string> login-status: "";
@@ -11,8 +11,12 @@ export component AppWindow inherits Window {
     in-out property <string> login-step: "homeserver";
     in-out property <string> login-method: "";
     in-out property <string> resolved-homeserver: "";
+    in-out property <string> input-username: "";
+    in-out property <string> input-password: "";
 
     callback check-server(string);
+    callback login-password(string, string, string);
+    callback login-oauth(string);
 
     if root.login-step == "homeserver": VerticalLayout {
         alignment: center;
@@ -79,10 +83,54 @@ export component AppWindow inherits Window {
             horizontal-alignment: center;
         }
 
-        Text {
-            text: root.login-method == "password" ? "Password login available" : root.login-method == "oauth" ? "OAuth login available" : root.login-method == "both" ? "Password and OAuth login available" : "No login methods available";
-            font-size: 13px;
-            horizontal-alignment: center;
+        if root.login-method == "password" || root.login-method == "both": VerticalLayout {
+            spacing: 8px;
+
+            HorizontalLayout {
+                alignment: center;
+
+                LineEdit {
+                    text <=> root.input-username;
+                    placeholder-text: "Username";
+                    horizontal-stretch: 0;
+                    max-width: root.width;
+                }
+            }
+
+            HorizontalLayout {
+                alignment: center;
+
+                LineEdit {
+                    text <=> root.input-password;
+                    placeholder-text: "Password";
+                    input-type: password;
+                    horizontal-stretch: 0;
+                    max-width: root.width;
+                }
+            }
+
+            HorizontalLayout {
+                alignment: center;
+
+                Button {
+                    text: "Log in";
+                    max-width: root.width;
+                    clicked => {
+                        root.login-password(root.resolved-homeserver, root.input-username, root.input-password);
+                    }
+                }
+            }
+        }
+
+        if root.login-method == "oauth" || root.login-method == "both": HorizontalLayout {
+            alignment: center;
+
+            Button {
+                text: "Log in with browser";
+                clicked => {
+                    root.login-oauth(root.resolved-homeserver);
+                }
+            }
         }
 
         HorizontalLayout {
