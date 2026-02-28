@@ -9,6 +9,9 @@ pub enum AppError {
 
     #[error("{0}")]
     Io(#[from] io::Error),
+
+    #[error("{0}")]
+    Matrix(String),
 }
 
 pub type Result<T> = result::Result<T, AppError>;

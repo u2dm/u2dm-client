@@ -2,32 +2,28 @@ import { Button, LineEdit, VerticalBox } from "std-widgets.slint";
 
 export component AppWindow inherits Window {
     title: "U2DM Matrix Client";
-    width: 900px;
-    height: 640px;
+    preferred-width: 900px;
+    preferred-height: 640px;
 
     in-out property <string> input-homeserver: "matrix.org";
     in-out property <string> login-status: "";
     in-out property <string> login-error: "";
     in-out property <string> login-step: "homeserver";
     in-out property <string> login-method: "";
+    in-out property <string> resolved-homeserver: "";
 
     callback check-server(string);
 
     if root.login-step == "homeserver": VerticalLayout {
         alignment: center;
         padding: 24px;
+        spacing: 12px;
 
-        HorizontalLayout {
-            alignment: center;
-
-            Text {
-                text: "U2DM";
-                font-size: 32px;
-                horizontal-alignment: center;
-            }
+        Text {
+            text: "U2DM";
+            font-size: 32px;
+            horizontal-alignment: center;
         }
-
-        Rectangle { height: 32px; }
 
         HorizontalLayout {
             alignment: center;
@@ -36,45 +32,83 @@ export component AppWindow inherits Window {
                 text <=> root.input-homeserver;
                 placeholder-text: "Homeserver";
                 horizontal-stretch: 0;
-                width: 320px;
+                max-width: 320px;
             }
         }
-
-        Rectangle { height: 12px; }
 
         HorizontalLayout {
             alignment: center;
 
             Button {
                 text: "Continue";
-                width: 320px;
+                max-width: 320px;
                 clicked => {
                     root.check-server(root.input-homeserver);
                 }
             }
         }
 
-        Rectangle { height: 12px; }
+        if root.login-status != "": Text {
+            text: root.login-status;
+            font-size: 13px;
+            horizontal-alignment: center;
+        }
 
-        if root.login-status != "": HorizontalLayout {
+        if root.login-error != "": Text {
+            text: root.login-error;
+            color: red;
+            font-size: 13px;
+            horizontal-alignment: center;
+        }
+    }
+
+    if root.login-step == "credentials": VerticalLayout {
+        alignment: center;
+        padding: 24px;
+        spacing: 8px;
+
+        Text {
+            text: "U2DM";
+            font-size: 32px;
+            horizontal-alignment: center;
+        }
+
+        Text {
+            text: "Server: " + root.resolved-homeserver;
+            font-size: 14px;
+            horizontal-alignment: center;
+        }
+
+        Text {
+            text: root.login-method == "password" ? "Password login available" : root.login-method == "oauth" ? "OAuth login available" : root.login-method == "both" ? "Password and OAuth login available" : "No login methods available";
+            font-size: 13px;
+            horizontal-alignment: center;
+        }
+
+        HorizontalLayout {
             alignment: center;
 
-            Text {
-                text: root.login-status;
-                font-size: 13px;
-                horizontal-alignment: center;
+            Button {
+                text: "Back";
+                clicked => {
+                    root.login-step = "homeserver";
+                    root.login-error = "";
+                    root.login-status = "";
+                }
             }
         }
 
-        if root.login-error != "": HorizontalLayout {
-            alignment: center;
+        if root.login-status != "": Text {
+            text: root.login-status;
+            font-size: 13px;
+            horizontal-alignment: center;
+        }
 
-            Text {
-                text: root.login-error;
-                color: red;
-                font-size: 13px;
-                horizontal-alignment: center;
-            }
+        if root.login-error != "": Text {
+            text: root.login-error;
+            color: red;
+            font-size: 13px;
+            horizontal-alignment: center;
         }
     }
 }

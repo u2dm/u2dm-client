@@ -10,9 +10,21 @@ keywords = ["matrix", "chat", "slint"]
 categories = ["network-programming"]
 
 [dependencies]
+async-trait = "0.1.89"
+matrix-sdk = { version = "0.16", default-features = false, features = [
+    "e2e-encryption",
+    "sqlite",
+    "rustls-tls",
+] }
+slint = "1.15.1"
+slint-interpreter = "1.15.1"
 thiserror = "2"
-slint-interpreter = "1.15"
-tokio = { version = "1.49", features = ["rt-multi-thread", "macros", "sync", "time"] }
+tokio = { version = "1.49", features = [
+    "rt-multi-thread",
+    "macros",
+    "sync",
+    "time",
+] }
 
 [lints.clippy]
 all = { level = "deny", priority = -1 }
