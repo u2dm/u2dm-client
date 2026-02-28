@@ -1,5 +1,11 @@
 import { Button, LineEdit, VerticalBox } from "std-widgets.slint";
 
+struct LoginRequest {
+    homeserver: string,
+    username: string,
+    password: string,
+}
+
 export component AppWindow inherits Window {
     title: "U2DM Matrix Client";
     preferred-width: root.width;
@@ -13,9 +19,10 @@ export component AppWindow inherits Window {
     in-out property <string> resolved-homeserver: "";
     in-out property <string> input-username: "";
     in-out property <string> input-password: "";
+    in-out property <string> user-id: "";
 
     callback check-server(string);
-    callback login-password(string, string, string);
+    callback login-password(LoginRequest);
     callback login-oauth(string);
 
     if root.login-step == "homeserver": VerticalLayout {
@@ -116,7 +123,11 @@ export component AppWindow inherits Window {
                     text: "Log in";
                     max-width: root.width;
                     clicked => {
-                        root.login-password(root.resolved-homeserver, root.input-username, root.input-password);
+                        root.login-password({
+                        homeserver: root.resolved-homeserver,
+                        username: root.input-username,
+                        password: root.input-password,
+                    });
                     }
                 }
             }
@@ -156,6 +167,24 @@ export component AppWindow inherits Window {
             text: root.login-error;
             color: red;
             font-size: 13px;
+            horizontal-alignment: center;
+        }
+    }
+
+    if root.login-step == "logged-in": VerticalLayout {
+        alignment: center;
+        padding: 24px;
+        spacing: 12px;
+
+        Text {
+            text: "U2DM";
+            font-size: 32px;
+            horizontal-alignment: center;
+        }
+
+        Text {
+            text: "Logged in as " + root.user-id;
+            font-size: 16px;
             horizontal-alignment: center;
         }
     }

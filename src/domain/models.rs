@@ -49,3 +49,19 @@ pub struct ServerInfo {
     pub auth_methods: Vec<AuthMethod>,
     pub homeserver_url: String,
 }
+
+#[derive(Debug, Clone)]
+#[allow(dead_code)]
+pub struct LoginCredentials {
+    pub homeserver: String,
+    pub username: String,
+    pub password: String,
+}
+
+#[derive(Debug, Clone)]
+#[allow(dead_code)]
+pub struct Session {
+    pub user_id: String,
+    pub device_id: String,
+    pub homeserver: String,
+}

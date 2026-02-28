@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use adapters::matrix::MatrixAdapter;
 use commands::UiCommand;
-use domain::models::{LoginMethod, ServerInfo};
+use domain::models::{LoginCredentials, LoginMethod, ServerInfo};
 use error::{AppError, Result};
 use ports::matrix::MatrixPort;
 use slint_interpreter::{
@@ -88,6 +88,42 @@ fn register_callbacks(
         })
         .map_err(|e| AppError::Ui(format!("{e:?}")))?;
 
+    let tx = cmd_tx.clone();
+    let weak = instance.as_weak();
+    instance
+        .set_callback("login-password", move |args: &[Value]| -> Value {
+            let creds = match args.first() {
+                Some(Value::Struct(s)) => {
+                    let field = |name: &str| -> String {
+                        s.get_field(name)
+                            .and_then(|v| match v {
+                                Value::String(s) => Some(s.to_string()),
+                                _ => None,
+                            })
+                            .unwrap_or_default()
+                    };
+                    LoginCredentials {
+                        homeserver: field("homeserver"),
+                        username: field("username"),
+                        password: field("password"),
+                    }
+                }
+                _ => return Value::Void,
+            };
+
+            if let Some(inst) = weak.upgrade() {
+                let _r = inst.set_property(
+                    "login-status",
+                    Value::String(SharedString::from("Logging in...")),
+                );
+                let _r = inst.set_property("login-error", Value::String(SharedString::default()));
+            }
+
+            drop(tx.try_send(UiCommand::LoginPassword(creds)));
+            Value::Void
+        })
+        .map_err(|e| AppError::Ui(format!("{e:?}")))?;
+
     Ok(())
 }
 
@@ -117,6 +153,20 @@ fn spawn_command_handler(
                     })
                     .ok();
                 }
+                UiCommand::LoginPassword(creds) => {
+                    let result = matrix.login_password(creds).await;
+                    let weak = weak.clone();
+                    slint::invoke_from_event_loop(move || {
+                        let Some(inst) = weak.upgrade() else {
+                            return;
+                        };
+                        match result {
+                            Ok(session) => apply_login_success(&inst, &session.user_id),
+                            Err(e) => apply_error(&inst, &e.to_string()),
+                        }
+                    })
+                    .ok();
+                }
             }
         }
     });
@@ -136,6 +186,12 @@ fn apply_server_info(inst: &ComponentInstance, info: &ServerInfo) {
         "login-step",
         Value::String(SharedString::from("credentials")),
     );
+    let _r = inst.set_property("login-status", Value::String(SharedString::default()));
+}
+
+fn apply_login_success(inst: &ComponentInstance, user_id: &str) {
+    let _r = inst.set_property("user-id", Value::String(SharedString::from(user_id)));
+    let _r = inst.set_property("login-step", Value::String(SharedString::from("logged-in")));
     let _r = inst.set_property("login-status", Value::String(SharedString::default()));
 }
 
