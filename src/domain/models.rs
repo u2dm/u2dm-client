@@ -51,6 +51,7 @@ pub struct ServerInfo {
 }
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct LoginCredentials {
     pub homeserver: String,
     pub username: String,
@@ -63,8 +64,21 @@ pub struct OAuthLoginData {
 }
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct Session {
     pub user_id: String,
     pub device_id: String,
     pub homeserver: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RoomId(pub String);
+
+#[derive(Debug, Clone)]
+#[allow(dead_code)]
+pub struct Room {
+    pub id: RoomId,
+    pub display_name: String,
+    pub is_direct: bool,
+    pub unread_count: u64,
 }

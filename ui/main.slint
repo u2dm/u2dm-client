@@ -1,9 +1,15 @@
-import { Button, LineEdit, VerticalBox } from "std-widgets.slint";
+import { Button, LineEdit, ListView, VerticalBox } from "std-widgets.slint";
 
 struct LoginRequest {
     homeserver: string,
     username: string,
     password: string,
+}
+
+struct RoomEntry {
+    id: string,
+    name: string,
+    unread: int,
 }
 
 export component AppWindow inherits Window {
@@ -20,10 +26,12 @@ export component AppWindow inherits Window {
     in-out property <string> input-username: "";
     in-out property <string> input-password: "";
     in-out property <string> user-id: "";
+    in-out property <[RoomEntry]> rooms: [];
 
     callback check-server(string);
     callback login-password(LoginRequest);
     callback login-oauth(string);
+    callback select-room(string);
 
     if root.login-step == "homeserver": VerticalLayout {
         alignment: center;
@@ -172,20 +180,45 @@ export component AppWindow inherits Window {
     }
 
     if root.login-step == "logged-in": VerticalLayout {
-        alignment: center;
-        padding: 24px;
-        spacing: 12px;
-
-        Text {
-            text: "U2DM";
-            font-size: 32px;
-            horizontal-alignment: center;
-        }
+        padding: 12px;
+        spacing: 8px;
 
         Text {
             text: "Logged in as " + root.user-id;
-            font-size: 16px;
+            font-size: 14px;
             horizontal-alignment: center;
+        }
+
+        ListView {
+            for room in root.rooms: Rectangle {
+                height: 48px;
+
+                TouchArea {
+                    clicked => {
+                        root.select-room(room.id);
+                    }
+                }
+
+                HorizontalLayout {
+                    padding-left: 16px;
+                    padding-right: 16px;
+                    spacing: 8px;
+
+                    Text {
+                        text: room.name;
+                        font-size: 14px;
+                        vertical-alignment: center;
+                        overflow: elide;
+                    }
+
+                    if room.unread > 0: Text {
+                        text: "(" + room.unread + ")";
+                        font-size: 12px;
+                        vertical-alignment: center;
+                        color: #888888;
+                    }
+                }
+            }
         }
     }
 }

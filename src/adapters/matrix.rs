@@ -7,12 +7,15 @@ use matrix_sdk::authentication::oauth::UrlOrQuery;
 use matrix_sdk::authentication::oauth::registration::{
     ApplicationType, ClientMetadata, Localized, OAuthGrantType,
 };
+use matrix_sdk::config::SyncSettings;
 use matrix_sdk::ruma::serde::Raw;
 use matrix_sdk::utils::local_server::{LocalServerBuilder, LocalServerRedirectHandle};
 use tokio::sync::Mutex;
 use url::Url;
 
-use crate::domain::models::{AuthMethod, LoginCredentials, OAuthLoginData, ServerInfo, Session};
+use crate::domain::models::{
+    AuthMethod, LoginCredentials, OAuthLoginData, Room as DomainRoom, RoomId, ServerInfo, Session,
+};
 use crate::error::{AppError, Result};
 use crate::ports::matrix::MatrixPort;
 
@@ -192,5 +195,39 @@ impl MatrixPort for MatrixAdapter {
             device_id,
             homeserver,
         })
+    }
+
+    async fn rooms(&self) -> Result<Vec<DomainRoom>> {
+        let guard = self.client.lock().await;
+        let client = guard
+            .as_ref()
+            .ok_or_else(|| AppError::Matrix("No client".into()))?;
+
+        client
+            .sync_once(SyncSettings::default())
+            .await
+            .map_err(|e| AppError::Matrix(e.to_string()))?;
+
+        let joined_rooms = client.joined_rooms();
+        drop(guard);
+
+        let mut rooms = Vec::new();
+        for room in joined_rooms {
+            let display_name = room
+                .display_name()
+                .await
+                .map(|dn| dn.to_string())
+                .unwrap_or_default();
+            let unread = room.unread_notification_counts().notification_count;
+            let is_direct = room.is_direct().await.unwrap_or_default();
+            rooms.push(DomainRoom {
+                id: RoomId(room.room_id().to_string()),
+                display_name,
+                is_direct,
+                unread_count: unread,
+            });
+        }
+
+        Ok(rooms)
     }
 }

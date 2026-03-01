@@ -5,11 +5,12 @@ use std::sync::Arc;
 
 use adapters::matrix::MatrixAdapter;
 use commands::UiCommand;
-use domain::models::{LoginCredentials, LoginMethod, ServerInfo};
+use domain::models::{LoginCredentials, LoginMethod, Room, ServerInfo};
 use error::{AppError, Result};
 use ports::matrix::MatrixPort;
+use slint::{ModelRc, VecModel};
 use slint_interpreter::{
-    Compiler, ComponentHandle, ComponentInstance, PlatformError, SharedString, Value,
+    Compiler, ComponentHandle, ComponentInstance, PlatformError, SharedString, Struct, Value,
 };
 use tokio::runtime::Runtime;
 use tokio::sync::mpsc;
@@ -43,7 +44,7 @@ fn run() -> Result<()> {
     let (cmd_tx, cmd_rx) = mpsc::channel::<UiCommand>(8);
 
     register_callbacks(&instance, &cmd_tx)?;
-    spawn_command_handler(&rt, cmd_rx, instance.as_weak());
+    spawn_command_handler(&rt, cmd_tx, cmd_rx, instance.as_weak());
 
     instance.run()?;
     Ok(())
@@ -154,6 +155,7 @@ fn register_callbacks(
 
 fn spawn_command_handler(
     rt: &Runtime,
+    cmd_tx: mpsc::Sender<UiCommand>,
     mut cmd_rx: mpsc::Receiver<UiCommand>,
     weak: slint_interpreter::Weak<ComponentInstance>,
 ) {
@@ -180,31 +182,53 @@ fn spawn_command_handler(
                 }
                 UiCommand::LoginOAuth(_homeserver) => {
                     let result = handle_oauth_login(&matrix, &weak).await;
-                    if let Err(e) = result {
-                        let weak = weak.clone();
-                        let msg = e.to_string();
-                        slint::invoke_from_event_loop(move || {
-                            let Some(inst) = weak.upgrade() else {
-                                return;
-                            };
-                            apply_error(&inst, &msg);
-                        })
-                        .ok();
+                    match result {
+                        Ok(()) => {
+                            drop(cmd_tx.send(UiCommand::FetchRooms).await);
+                        }
+                        Err(e) => {
+                            let weak = weak.clone();
+                            let msg = e.to_string();
+                            slint::invoke_from_event_loop(move || {
+                                let Some(inst) = weak.upgrade() else {
+                                    return;
+                                };
+                                apply_error(&inst, &msg);
+                            })
+                            .ok();
+                        }
                     }
                 }
                 UiCommand::LoginPassword(creds) => {
                     let result = matrix.login_password(creds).await;
-                    let weak = weak.clone();
-                    slint::invoke_from_event_loop(move || {
-                        let Some(inst) = weak.upgrade() else {
-                            return;
-                        };
-                        match result {
-                            Ok(session) => apply_login_success(&inst, &session.user_id),
-                            Err(e) => apply_error(&inst, &e.to_string()),
+                    match &result {
+                        Ok(session) => {
+                            let weak2 = weak.clone();
+                            let user_id = session.user_id.clone();
+                            slint::invoke_from_event_loop(move || {
+                                let Some(inst) = weak2.upgrade() else {
+                                    return;
+                                };
+                                apply_login_success(&inst, &user_id);
+                            })
+                            .ok();
+                            drop(cmd_tx.send(UiCommand::FetchRooms).await);
                         }
-                    })
-                    .ok();
+                        Err(e) => {
+                            let weak2 = weak.clone();
+                            let msg = e.to_string();
+                            slint::invoke_from_event_loop(move || {
+                                let Some(inst) = weak2.upgrade() else {
+                                    return;
+                                };
+                                apply_error(&inst, &msg);
+                            })
+                            .ok();
+                        }
+                    }
+                }
+                UiCommand::FetchRooms => {
+                    fetch_and_apply_rooms(&matrix, &weak).await;
                 }
             }
         }
@@ -237,6 +261,43 @@ fn apply_login_success(inst: &ComponentInstance, user_id: &str) {
 fn apply_error(inst: &ComponentInstance, msg: &str) {
     let _r = inst.set_property("login-error", Value::String(SharedString::from(msg)));
     let _r = inst.set_property("login-status", Value::String(SharedString::default()));
+}
+
+async fn fetch_and_apply_rooms(
+    matrix: &Arc<dyn MatrixPort>,
+    weak: &slint_interpreter::Weak<ComponentInstance>,
+) {
+    let result = matrix.rooms().await;
+    let weak = weak.clone();
+    slint::invoke_from_event_loop(move || {
+        let Some(inst) = weak.upgrade() else {
+            return;
+        };
+        match result {
+            Ok(rooms) => apply_rooms(&inst, &rooms),
+            Err(e) => apply_error(&inst, &e.to_string()),
+        }
+    })
+    .ok();
+}
+
+fn apply_rooms(inst: &ComponentInstance, rooms: &[Room]) {
+    let entries: Vec<Value> = rooms
+        .iter()
+        .map(|r| {
+            Value::Struct(Struct::from_iter([
+                ("id".to_string(), Value::String(SharedString::from(&r.id.0))),
+                (
+                    "name".to_string(),
+                    Value::String(SharedString::from(&r.display_name)),
+                ),
+                #[allow(clippy::cast_precision_loss)]
+                ("unread".to_string(), Value::Number(r.unread_count as f64)),
+            ]))
+        })
+        .collect();
+    let model = Value::Model(ModelRc::new(VecModel::from(entries)));
+    let _r = inst.set_property("rooms", model);
 }
 
 async fn handle_oauth_login(
