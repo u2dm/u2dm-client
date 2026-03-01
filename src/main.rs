@@ -124,6 +124,31 @@ fn register_callbacks(
         })
         .map_err(|e| AppError::Ui(format!("{e:?}")))?;
 
+    let tx = cmd_tx.clone();
+    let weak = instance.as_weak();
+    instance
+        .set_callback("login-oauth", move |args: &[Value]| -> Value {
+            let homeserver = args
+                .first()
+                .and_then(|v| match v {
+                    Value::String(s) => Some(s.to_string()),
+                    _ => None,
+                })
+                .unwrap_or_default();
+
+            if let Some(inst) = weak.upgrade() {
+                let _r = inst.set_property(
+                    "login-status",
+                    Value::String(SharedString::from("Opening browser...")),
+                );
+                let _r = inst.set_property("login-error", Value::String(SharedString::default()));
+            }
+
+            drop(tx.try_send(UiCommand::LoginOAuth(homeserver)));
+            Value::Void
+        })
+        .map_err(|e| AppError::Ui(format!("{e:?}")))?;
+
     Ok(())
 }
 
@@ -152,6 +177,20 @@ fn spawn_command_handler(
                         }
                     })
                     .ok();
+                }
+                UiCommand::LoginOAuth(_homeserver) => {
+                    let result = handle_oauth_login(&matrix, &weak).await;
+                    if let Err(e) = result {
+                        let weak = weak.clone();
+                        let msg = e.to_string();
+                        slint::invoke_from_event_loop(move || {
+                            let Some(inst) = weak.upgrade() else {
+                                return;
+                            };
+                            apply_error(&inst, &msg);
+                        })
+                        .ok();
+                    }
                 }
                 UiCommand::LoginPassword(creds) => {
                     let result = matrix.login_password(creds).await;
@@ -198,4 +237,39 @@ fn apply_login_success(inst: &ComponentInstance, user_id: &str) {
 fn apply_error(inst: &ComponentInstance, msg: &str) {
     let _r = inst.set_property("login-error", Value::String(SharedString::from(msg)));
     let _r = inst.set_property("login-status", Value::String(SharedString::default()));
+}
+
+async fn handle_oauth_login(
+    matrix: &Arc<dyn MatrixPort>,
+    weak: &slint_interpreter::Weak<ComponentInstance>,
+) -> Result<()> {
+    let oauth_data = matrix.login_oauth_start().await?;
+
+    open::that_in_background(&oauth_data.auth_url);
+
+    let weak2 = weak.clone();
+    slint::invoke_from_event_loop(move || {
+        let Some(inst) = weak2.upgrade() else {
+            return;
+        };
+        let _r = inst.set_property(
+            "login-status",
+            Value::String(SharedString::from("Waiting for authentication...")),
+        );
+    })
+    .ok();
+
+    let session = matrix.login_oauth_finish().await?;
+
+    let weak2 = weak.clone();
+    let user_id = session.user_id;
+    slint::invoke_from_event_loop(move || {
+        let Some(inst) = weak2.upgrade() else {
+            return;
+        };
+        apply_login_success(&inst, &user_id);
+    })
+    .ok();
+
+    Ok(())
 }

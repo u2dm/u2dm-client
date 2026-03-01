@@ -15,7 +15,9 @@ matrix-sdk = { version = "0.16", default-features = false, features = [
     "e2e-encryption",
     "sqlite",
     "rustls-tls",
+    "local-server",
 ] }
+open = "5"
 slint = "1.15.1"
 slint-interpreter = "1.15.1"
 thiserror = "2"
@@ -25,6 +27,7 @@ tokio = { version = "1.49", features = [
     "sync",
     "time",
 ] }
+url = "2"
 
 [lints.clippy]
 all = { level = "deny", priority = -1 }
