@@ -87,3 +87,26 @@ pub struct Room {
 pub struct SyncSnapshot {
     pub rooms: Vec<Room>,
 }
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EventId(pub String);
+
+#[derive(Debug, Clone)]
+pub enum MessageBody {
+    Text(String),
+    Notice(String),
+    Emote(String),
+    Image(String),
+    File(String),
+    Unknown(String),
+}
+
+#[derive(Debug, Clone)]
+#[allow(dead_code)]
+pub struct TimelineMessage {
+    pub event_id: EventId,
+    pub sender: String,
+    pub sender_display_name: Option<String>,
+    pub body: MessageBody,
+    pub timestamp: u64,
+}

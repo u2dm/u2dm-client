@@ -14,12 +14,19 @@ use matrix_sdk::utils::local_server::{LocalServerBuilder, LocalServerRedirectHan
 use tokio::sync::{Mutex, mpsc};
 use url::Url;
 
+use std::sync::Arc;
+
 use crate::domain::models::{
-    AuthMethod, LoginCredentials, OAuthLoginData, Room as DomainRoom, RoomId, ServerInfo, Session,
-    SyncSnapshot,
+    AuthMethod, EventId, LoginCredentials, MessageBody, OAuthLoginData, Room as DomainRoom, RoomId,
+    ServerInfo, Session, SyncSnapshot, TimelineMessage,
 };
 use crate::error::{AppError, Result};
 use crate::ports::matrix::MatrixPort;
+
+use matrix_sdk::ruma::events::room::message::MessageType;
+use matrix_sdk::ruma::{IdParseError, OwnedRoomId};
+use matrix_sdk_ui::eyeball_im::VectorDiff;
+use matrix_sdk_ui::timeline::{EventTimelineItem, RoomExt, TimelineDetails, TimelineItem};
 
 pub struct MatrixAdapter {
     data_dir: PathBuf,
@@ -55,6 +62,79 @@ async fn build_room_list(client: &Client) -> Vec<DomainRoom> {
         });
     }
     rooms
+}
+
+fn convert_event_item(event: &EventTimelineItem) -> Option<TimelineMessage> {
+    let message = event.content().as_message()?;
+
+    let body = match message.msgtype() {
+        MessageType::Text(t) => MessageBody::Text(t.body.clone()),
+        MessageType::Notice(n) => MessageBody::Notice(n.body.clone()),
+        MessageType::Emote(e) => MessageBody::Emote(e.body.clone()),
+        MessageType::Image(i) => MessageBody::Image(i.body.clone()),
+        MessageType::File(f) => MessageBody::File(f.body.clone()),
+        other => MessageBody::Unknown(other.body().to_string()),
+    };
+
+    let sender_display_name = match event.sender_profile() {
+        TimelineDetails::Ready(profile) => profile.display_name.clone(),
+        _ => None,
+    };
+
+    let event_id = event
+        .event_id()
+        .map(ToString::to_string)
+        .unwrap_or_default();
+    let ts: u64 = event.timestamp().0.into();
+
+    Some(TimelineMessage {
+        event_id: EventId(event_id),
+        sender: event.sender().to_string(),
+        sender_display_name,
+        body,
+        timestamp: ts,
+    })
+}
+
+fn convert_timeline_items(items: &[Arc<TimelineItem>]) -> Vec<TimelineMessage> {
+    items
+        .iter()
+        .filter_map(|item| convert_event_item(item.as_event()?))
+        .collect()
+}
+
+fn apply_timeline_diff(items: &mut Vec<Arc<TimelineItem>>, diff: VectorDiff<Arc<TimelineItem>>) {
+    match diff {
+        VectorDiff::Append { values } => items.extend(values),
+        VectorDiff::Clear => items.clear(),
+        VectorDiff::PushFront { value } => items.insert(0, value),
+        VectorDiff::PushBack { value } => items.push(value),
+        VectorDiff::PopFront => {
+            if !items.is_empty() {
+                items.remove(0);
+            }
+        }
+        VectorDiff::PopBack => {
+            items.pop();
+        }
+        VectorDiff::Insert { index, value } => {
+            if index <= items.len() {
+                items.insert(index, value);
+            }
+        }
+        VectorDiff::Set { index, value } => {
+            if let Some(slot) = items.get_mut(index) {
+                *slot = value;
+            }
+        }
+        VectorDiff::Remove { index } => {
+            if index < items.len() {
+                items.remove(index);
+            }
+        }
+        VectorDiff::Truncate { length } => items.truncate(length),
+        VectorDiff::Reset { values } => *items = values.into_iter().collect(),
+    }
 }
 
 fn client_metadata() -> Result<Raw<ClientMetadata>> {
@@ -234,6 +314,56 @@ impl MatrixPort for MatrixAdapter {
         drop(guard);
 
         Ok(rooms)
+    }
+
+    async fn subscribe_timeline(
+        &self,
+        room_id: &RoomId,
+        timeline_tx: mpsc::Sender<Vec<TimelineMessage>>,
+    ) -> Result<()> {
+        let guard = self.client.lock().await;
+        let client = guard
+            .as_ref()
+            .ok_or_else(|| AppError::Matrix("No client".into()))?;
+
+        let room_id_parsed: OwnedRoomId = room_id
+            .0
+            .as_str()
+            .try_into()
+            .map_err(|e: IdParseError| AppError::Matrix(e.to_string()))?;
+
+        let room = client
+            .get_room(&room_id_parsed)
+            .ok_or_else(|| AppError::Matrix("Room not found".into()))?;
+
+        drop(guard);
+
+        let timeline = room
+            .timeline()
+            .await
+            .map_err(|e| AppError::Matrix(e.to_string()))?;
+
+        drop(timeline.paginate_backwards(50).await);
+
+        let (initial_items, mut stream) = timeline.subscribe().await;
+
+        let mut items: Vec<Arc<TimelineItem>> = initial_items.into_iter().collect();
+        let messages = convert_timeline_items(&items);
+        if timeline_tx.send(messages).await.is_err() {
+            return Ok(());
+        }
+
+        while let Some(diffs) = stream.next().await {
+            for diff in diffs {
+                apply_timeline_diff(&mut items, diff);
+            }
+            let messages = convert_timeline_items(&items);
+            if timeline_tx.send(messages).await.is_err() {
+                break;
+            }
+        }
+
+        Ok(())
     }
 
     async fn start_sync(&self, state_tx: mpsc::Sender<SyncSnapshot>) -> Result<()> {

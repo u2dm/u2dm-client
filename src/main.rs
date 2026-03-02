@@ -5,7 +5,10 @@ use std::sync::Arc;
 
 use adapters::matrix::MatrixAdapter;
 use commands::UiCommand;
-use domain::models::{LoginCredentials, LoginMethod, Room, ServerInfo, SyncSnapshot};
+use domain::models::{
+    LoginCredentials, LoginMethod, MessageBody, Room, RoomId, ServerInfo, SyncSnapshot,
+    TimelineMessage,
+};
 use error::{AppError, Result};
 use ports::matrix::MatrixPort;
 use slint::{ModelRc, VecModel};
@@ -14,6 +17,7 @@ use slint_interpreter::{
 };
 use tokio::runtime::Runtime;
 use tokio::sync::mpsc;
+use tokio::task::JoinHandle;
 
 mod adapters;
 mod commands;
@@ -150,6 +154,22 @@ fn register_callbacks(
         })
         .map_err(|e| AppError::Ui(format!("{e:?}")))?;
 
+    let tx = cmd_tx.clone();
+    instance
+        .set_callback("select-room", move |args: &[Value]| -> Value {
+            let room_id = args
+                .first()
+                .and_then(|v| match v {
+                    Value::String(s) => Some(s.to_string()),
+                    _ => None,
+                })
+                .unwrap_or_default();
+
+            drop(tx.try_send(UiCommand::SelectRoom(RoomId(room_id))));
+            Value::Void
+        })
+        .map_err(|e| AppError::Ui(format!("{e:?}")))?;
+
     Ok(())
 }
 
@@ -164,6 +184,8 @@ fn spawn_command_handler(
 
     let _guard = rt.enter();
     tokio::spawn(async move {
+        let mut timeline_handle: Option<JoinHandle<()>> = None;
+
         while let Some(cmd) = cmd_rx.recv().await {
             match cmd {
                 UiCommand::CheckServer(homeserver) => {
@@ -227,6 +249,12 @@ fn spawn_command_handler(
                         }
                     }
                 }
+                UiCommand::SelectRoom(room_id) => {
+                    if let Some(handle) = timeline_handle.take() {
+                        handle.abort();
+                    }
+                    timeline_handle = Some(spawn_timeline_subscription(&matrix, &weak, room_id));
+                }
                 UiCommand::FetchRooms => {
                     fetch_and_apply_rooms(&matrix, &weak).await;
 
@@ -282,6 +310,33 @@ fn apply_error(inst: &ComponentInstance, msg: &str) {
     let _r = inst.set_property("login-status", Value::String(SharedString::default()));
 }
 
+fn spawn_timeline_subscription(
+    matrix: &Arc<dyn MatrixPort>,
+    weak: &slint_interpreter::Weak<ComponentInstance>,
+    room_id: RoomId,
+) -> JoinHandle<()> {
+    let (tl_tx, mut tl_rx) = mpsc::channel::<Vec<TimelineMessage>>(16);
+    let matrix_tl = Arc::clone(matrix);
+
+    tokio::spawn(async move {
+        let _r = matrix_tl.subscribe_timeline(&room_id, tl_tx).await;
+    });
+
+    let weak_tl = weak.clone();
+    tokio::spawn(async move {
+        while let Some(messages) = tl_rx.recv().await {
+            let weak = weak_tl.clone();
+            slint::invoke_from_event_loop(move || {
+                let Some(inst) = weak.upgrade() else {
+                    return;
+                };
+                apply_timeline(&inst, &messages);
+            })
+            .ok();
+        }
+    })
+}
+
 async fn fetch_and_apply_rooms(
     matrix: &Arc<dyn MatrixPort>,
     weak: &slint_interpreter::Weak<ComponentInstance>,
@@ -298,6 +353,48 @@ async fn fetch_and_apply_rooms(
         }
     })
     .ok();
+}
+
+fn apply_timeline(inst: &ComponentInstance, messages: &[TimelineMessage]) {
+    let entries: Vec<Value> = messages
+        .iter()
+        .map(|m| {
+            let body_text = match &m.body {
+                MessageBody::Text(s)
+                | MessageBody::Notice(s)
+                | MessageBody::Emote(s)
+                | MessageBody::Image(s)
+                | MessageBody::File(s)
+                | MessageBody::Unknown(s) => s.clone(),
+            };
+            let sender = m
+                .sender_display_name
+                .as_deref()
+                .unwrap_or(&m.sender)
+                .to_string();
+            let ts_secs = m.timestamp / 1000;
+            let hrs = (ts_secs / 3600) % 24;
+            let mins = (ts_secs / 60) % 60;
+            let timestamp = format!("{hrs:02}:{mins:02}");
+
+            Value::Struct(Struct::from_iter([
+                (
+                    "sender".to_string(),
+                    Value::String(SharedString::from(&sender)),
+                ),
+                (
+                    "body".to_string(),
+                    Value::String(SharedString::from(&body_text)),
+                ),
+                (
+                    "timestamp".to_string(),
+                    Value::String(SharedString::from(&timestamp)),
+                ),
+            ]))
+        })
+        .collect();
+    let model = Value::Model(ModelRc::new(VecModel::from(entries)));
+    let _r = inst.set_property("timeline", model);
 }
 
 fn apply_rooms(inst: &ComponentInstance, rooms: &[Room]) {

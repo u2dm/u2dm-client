@@ -1,4 +1,10 @@
-import { Button, LineEdit, ListView, VerticalBox } from "std-widgets.slint";
+import {
+    Button,
+    LineEdit,
+    ListView,
+    Palette,
+    VerticalBox,
+} from "std-widgets.slint";
 
 struct LoginRequest {
     homeserver: string,
@@ -10,6 +16,12 @@ struct RoomEntry {
     id: string,
     name: string,
     unread: int,
+}
+
+struct MessageEntry {
+    sender: string,
+    body: string,
+    timestamp: string,
 }
 
 export component AppWindow inherits Window {
@@ -27,6 +39,9 @@ export component AppWindow inherits Window {
     in-out property <string> input-password: "";
     in-out property <string> user-id: "";
     in-out property <[RoomEntry]> rooms: [];
+    in-out property <[MessageEntry]> timeline: [];
+    in-out property <string> selected-room-name: "";
+    in-out property <string> selected-room-id: "";
 
     callback check-server(string);
     callback login-password(LoginRequest);
@@ -132,10 +147,10 @@ export component AppWindow inherits Window {
                     max-width: root.width;
                     clicked => {
                         root.login-password({
-                        homeserver: root.resolved-homeserver,
-                        username: root.input-username,
-                        password: root.input-password,
-                    });
+                            homeserver: root.resolved-homeserver,
+                            username: root.input-username,
+                            password: root.input-password,
+                        });
                     }
                 }
             }
@@ -179,43 +194,107 @@ export component AppWindow inherits Window {
         }
     }
 
-    if root.login-step == "logged-in": VerticalLayout {
-        padding: 12px;
-        spacing: 8px;
+    if root.login-step == "logged-in": HorizontalLayout {
+        // room list
+        VerticalLayout {
+            width: 260px;
+            padding: 8px;
+            spacing: 4px;
 
-        Text {
-            text: "Logged in as " + root.user-id;
-            font-size: 14px;
-            horizontal-alignment: center;
-        }
+            Text {
+                text: root.user-id;
+                font-size: 12px;
+                horizontal-alignment: center;
+                color: Palette.foreground.transparentize(0.5);
+            }
 
-        ListView {
-            for room in root.rooms: Rectangle {
-                height: 48px;
+            ListView {
+                for room in root.rooms: Rectangle {
+                    height: 44px;
+                    background: room.id == root.selected-room-id ? Palette.alternate-background : transparent;
+                    border-radius: 4px;
 
-                TouchArea {
-                    clicked => {
-                        root.select-room(room.id);
+                    TouchArea {
+                        clicked => {
+                            root.selected-room-name = room.name;
+                            root.selected-room-id = room.id;
+                            root.select-room(room.id);
+                        }
+                    }
+
+                    HorizontalLayout {
+                        padding-left: 12px;
+                        padding-right: 12px;
+                        spacing: 8px;
+
+                        Text {
+                            text: room.name;
+                            font-size: 14px;
+                            vertical-alignment: center;
+                            overflow: elide;
+                        }
+
+                        if room.unread > 0: Text {
+                            text: "(" + room.unread + ")";
+                            font-size: 12px;
+                            vertical-alignment: center;
+                            color: Palette.foreground.transparentize(0.5);
+                        }
                     }
                 }
+            }
+        }
 
-                HorizontalLayout {
-                    padding-left: 16px;
-                    padding-right: 16px;
-                    spacing: 8px;
+        // timeline
+        VerticalLayout {
+            padding: 12px;
+            spacing: 8px;
 
-                    Text {
-                        text: room.name;
-                        font-size: 14px;
-                        vertical-alignment: center;
-                        overflow: elide;
-                    }
+            if root.selected-room-name != "": Text {
+                text: root.selected-room-name;
+                font-size: 18px;
+                font-weight: 700;
+            }
 
-                    if room.unread > 0: Text {
-                        text: "(" + room.unread + ")";
-                        font-size: 12px;
-                        vertical-alignment: center;
-                        color: #888888;
+            if root.selected-room-name == "": Text {
+                text: "Select a room";
+                font-size: 16px;
+                color: Palette.foreground.transparentize(0.5);
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
+
+            if root.selected-room-name != "": ListView {
+                for msg in root.timeline: Rectangle {
+                    height: 48px;
+
+                    VerticalLayout {
+                        padding-left: 8px;
+                        padding-right: 8px;
+                        spacing: 2px;
+
+                        HorizontalLayout {
+                            spacing: 8px;
+
+                            Text {
+                                text: msg.sender;
+                                font-size: 13px;
+                                font-weight: 600;
+                            }
+
+                            Text {
+                                text: msg.timestamp;
+                                font-size: 11px;
+                                color: Palette.foreground.transparentize(0.5);
+                                vertical-alignment: center;
+                            }
+                        }
+
+                        Text {
+                            text: msg.body;
+                            font-size: 14px;
+                            overflow: elide;
+                        }
                     }
                 }
             }
