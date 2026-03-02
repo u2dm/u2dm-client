@@ -1,6 +1,6 @@
-use std::io::{self, Write as _};
 use std::process::ExitCode;
 use std::sync::Arc;
+use std::time::Duration;
 
 use adapters::matrix::MatrixAdapter;
 use adapters::storage::JsonFileStorage;
@@ -22,13 +22,23 @@ mod error;
 mod ports;
 
 fn main() -> ExitCode {
+    init_tracing();
     match run() {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) => {
-            writeln!(io::stderr(), "Error: {e}").ok();
+            tracing::error!("Error: {e}");
             ExitCode::FAILURE
         }
     }
+}
+
+fn init_tracing() {
+    use tracing_subscriber::EnvFilter;
+    drop(
+        tracing_subscriber::fmt()
+            .with_env_filter(EnvFilter::from_default_env())
+            .try_init(),
+    );
 }
 
 fn run() -> Result<()> {
@@ -44,6 +54,7 @@ fn run() -> Result<()> {
     let matrix: Arc<dyn MatrixPort> = Arc::new(MatrixAdapter::new(cfg.data_dir.clone()));
     let storage: Arc<dyn StoragePort> = Arc::new(JsonFileStorage::new(&cfg.data_dir));
 
+    let cmd_tx_quit = cmd_tx.clone();
     {
         let _guard = rt.enter();
         ui.spawn_event_handler(ui_rx);
@@ -54,5 +65,9 @@ fn run() -> Result<()> {
         });
     }
 
-    ui.run()
+    ui.run()?;
+
+    drop(cmd_tx_quit.try_send(UiCommand::Quit));
+    rt.shutdown_timeout(Duration::from_secs(5));
+    Ok(())
 }

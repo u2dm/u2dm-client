@@ -11,6 +11,7 @@ pub enum UiCommand {
     SelectRoom(RoomId),
     SendMessage { room_id: RoomId, body: String },
     Logout,
+    Quit,
 }
 
 pub enum UiEvent {

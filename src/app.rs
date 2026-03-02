@@ -65,6 +65,10 @@ impl AppService {
                 UiCommand::Logout => {
                     self.handle_logout().await;
                 }
+                UiCommand::Quit => {
+                    self.handle_quit();
+                    break;
+                }
             }
         }
     }
@@ -148,6 +152,12 @@ impl AppService {
 
     async fn save_session(&self, session: &Session) {
         drop(self.storage.save_session(session).await);
+    }
+
+    fn handle_quit(&mut self) {
+        if let Some(handle) = self.timeline_handle.take() {
+            handle.abort();
+        }
     }
 
     async fn handle_logout(&mut self) {
