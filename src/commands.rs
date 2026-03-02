@@ -1,6 +1,7 @@
 use crate::domain::models::{LoginCredentials, Room, RoomId, ServerInfo, TimelineMessage};
 
 pub enum UiCommand {
+    RestoreSession,
     CheckServer(String),
     LoginPassword(LoginCredentials),
     LoginOAuth(String),

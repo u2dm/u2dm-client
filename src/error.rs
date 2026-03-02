@@ -14,6 +14,12 @@ pub enum AppError {
     Matrix(String),
 
     #[error("{0}")]
+    Storage(String),
+
+    #[error("{0}")]
+    Serde(String),
+
+    #[error("{0}")]
     Other(String),
 }
 

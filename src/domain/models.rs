@@ -63,12 +63,17 @@ pub struct OAuthLoginData {
     pub auth_url: String,
 }
 
-#[derive(Debug, Clone)]
-#[allow(dead_code)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct Session {
     pub user_id: String,
     pub device_id: String,
     pub homeserver: String,
+    pub access_token: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub refresh_token: Option<String>,
+    /// oauth client id present only for oauth sessions.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub client_id: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

@@ -21,4 +21,5 @@ pub trait MatrixPort: Send + Sync {
     ) -> Result<()>;
     async fn start_sync(&self, state_tx: mpsc::Sender<SyncSnapshot>) -> Result<()>;
     async fn send_text(&self, room_id: &RoomId, body: &str) -> Result<()>;
+    async fn restore_session(&self, session: &Session) -> Result<()>;
 }

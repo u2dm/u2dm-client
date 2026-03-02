@@ -1,21 +1,27 @@
+use std::io::ErrorKind;
 use std::net::{Ipv4Addr, Ipv6Addr};
 use std::path::PathBuf;
 use std::sync::Arc;
 
 use async_trait::async_trait;
 use futures_util::StreamExt;
-use matrix_sdk::Client;
-use matrix_sdk::authentication::oauth::UrlOrQuery;
+use matrix_sdk::authentication::SessionTokens;
+use matrix_sdk::authentication::matrix::MatrixSession;
 use matrix_sdk::authentication::oauth::registration::{
     ApplicationType, ClientMetadata, Localized, OAuthGrantType,
 };
+use matrix_sdk::authentication::oauth::{ClientId, OAuthSession, UrlOrQuery, UserSession};
 use matrix_sdk::config::SyncSettings;
 use matrix_sdk::ruma::events::room::message::{MessageType, RoomMessageEventContent};
 use matrix_sdk::ruma::serde::Raw;
-use matrix_sdk::ruma::{IdParseError, OwnedRoomId};
+use matrix_sdk::ruma::{IdParseError, OwnedDeviceId, OwnedRoomId, OwnedUserId};
 use matrix_sdk::utils::local_server::{LocalServerBuilder, LocalServerRedirectHandle};
+use matrix_sdk::{Client, SessionMeta};
 use matrix_sdk_ui::eyeball_im::VectorDiff;
 use matrix_sdk_ui::timeline::{EventTimelineItem, RoomExt, TimelineDetails, TimelineItem};
+use rand::RngExt;
+use rand::distr::Alphanumeric;
+use tokio::fs;
 use tokio::sync::{Mutex, mpsc};
 use url::Url;
 
@@ -40,6 +46,32 @@ impl MatrixAdapter {
             redirect_handle: Mutex::new(None),
         }
     }
+
+    async fn get_or_create_passphrase(&self) -> Result<String> {
+        let path = self.data_dir.join("db_passphrase");
+        match fs::read_to_string(&path).await {
+            Ok(passphrase) => Ok(passphrase),
+            Err(e) if e.kind() == ErrorKind::NotFound => {
+                let passphrase = generate_passphrase();
+                fs::create_dir_all(&self.data_dir)
+                    .await
+                    .map_err(|e| AppError::Storage(e.to_string()))?;
+                fs::write(&path, &passphrase)
+                    .await
+                    .map_err(|e| AppError::Storage(e.to_string()))?;
+                Ok(passphrase)
+            }
+            Err(e) => Err(AppError::Storage(e.to_string())),
+        }
+    }
+}
+
+fn generate_passphrase() -> String {
+    (&mut rand::rng())
+        .sample_iter(Alphanumeric)
+        .take(32)
+        .map(char::from)
+        .collect()
 }
 
 async fn build_room_list(client: &Client) -> Vec<DomainRoom> {
@@ -164,10 +196,11 @@ fn client_metadata() -> Result<Raw<ClientMetadata>> {
 #[async_trait]
 impl MatrixPort for MatrixAdapter {
     async fn discover_auth(&self, homeserver: &str) -> Result<ServerInfo> {
+        let passphrase = self.get_or_create_passphrase().await?;
         let client = Client::builder()
             .server_name_or_homeserver_url(homeserver)
             .handle_refresh_tokens()
-            .sqlite_store(self.data_dir.join("matrix-store"), None)
+            .sqlite_store(self.data_dir.join("matrix-store"), Some(&passphrase))
             .build()
             .await
             .map_err(|e| AppError::Matrix(e.to_string()))?;
@@ -209,22 +242,21 @@ impl MatrixPort for MatrixAdapter {
             .await
             .map_err(|e| AppError::Matrix(e.to_string()))?;
 
-        let user_id = client
-            .user_id()
-            .ok_or_else(|| AppError::Matrix("No user ID after login".into()))?
-            .to_string();
-        let device_id = client
-            .device_id()
-            .ok_or_else(|| AppError::Matrix("No device ID after login".into()))?
-            .to_string();
+        let sdk_session = client
+            .matrix_auth()
+            .session()
+            .ok_or_else(|| AppError::Matrix("No session after login".into()))?;
         let homeserver = client.homeserver().to_string();
 
         drop(guard);
 
         Ok(Session {
-            user_id,
-            device_id,
+            user_id: sdk_session.meta.user_id.to_string(),
+            device_id: sdk_session.meta.device_id.to_string(),
             homeserver,
+            access_token: sdk_session.tokens.access_token,
+            refresh_token: sdk_session.tokens.refresh_token,
+            client_id: None,
         })
     }
 
@@ -278,22 +310,21 @@ impl MatrixPort for MatrixAdapter {
             .await
             .map_err(|e| AppError::Matrix(e.to_string()))?;
 
-        let user_id = client
-            .user_id()
-            .ok_or_else(|| AppError::Matrix("No user ID after OAuth login".into()))?
-            .to_string();
-        let device_id = client
-            .device_id()
-            .ok_or_else(|| AppError::Matrix("No device ID after OAuth login".into()))?
-            .to_string();
+        let sdk_session = client
+            .oauth()
+            .full_session()
+            .ok_or_else(|| AppError::Matrix("No session after OAuth login".into()))?;
         let homeserver = client.homeserver().to_string();
 
         drop(guard);
 
         Ok(Session {
-            user_id,
-            device_id,
+            user_id: sdk_session.user.meta.user_id.to_string(),
+            device_id: sdk_session.user.meta.device_id.to_string(),
             homeserver,
+            access_token: sdk_session.user.tokens.access_token,
+            refresh_token: sdk_session.user.tokens.refresh_token,
+            client_id: Some(sdk_session.client_id.to_string()),
         })
     }
 
@@ -385,6 +416,49 @@ impl MatrixPort for MatrixAdapter {
             }
         }
 
+        Ok(())
+    }
+
+    async fn restore_session(&self, session: &Session) -> Result<()> {
+        let passphrase = self.get_or_create_passphrase().await?;
+        let client = Client::builder()
+            .homeserver_url(&session.homeserver)
+            .handle_refresh_tokens()
+            .sqlite_store(self.data_dir.join("matrix-store"), Some(&passphrase))
+            .build()
+            .await
+            .map_err(|e| AppError::Matrix(e.to_string()))?;
+
+        let user_id: OwnedUserId = session
+            .user_id
+            .as_str()
+            .try_into()
+            .map_err(|e: IdParseError| AppError::Matrix(e.to_string()))?;
+        let device_id: OwnedDeviceId = session.device_id.as_str().into();
+        let meta = SessionMeta { user_id, device_id };
+        let tokens = SessionTokens {
+            access_token: session.access_token.clone(),
+            refresh_token: session.refresh_token.clone(),
+        };
+
+        if let Some(client_id) = &session.client_id {
+            let oauth_session = OAuthSession {
+                client_id: ClientId::new(client_id.clone()),
+                user: UserSession { meta, tokens },
+            };
+            client
+                .restore_session(oauth_session)
+                .await
+                .map_err(|e| AppError::Matrix(e.to_string()))?;
+        } else {
+            let matrix_session = MatrixSession { meta, tokens };
+            client
+                .restore_session(matrix_session)
+                .await
+                .map_err(|e| AppError::Matrix(e.to_string()))?;
+        }
+
+        *self.client.lock().await = Some(client);
         Ok(())
     }
 
