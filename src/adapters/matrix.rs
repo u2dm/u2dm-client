@@ -12,6 +12,7 @@ use matrix_sdk::authentication::oauth::registration::{
 };
 use matrix_sdk::authentication::oauth::{ClientId, OAuthSession, UrlOrQuery, UserSession};
 use matrix_sdk::config::SyncSettings;
+use matrix_sdk::ruma::api::client::error::ErrorKind as RumaErrorKind;
 use matrix_sdk::ruma::events::room::message::{MessageType, RoomMessageEventContent};
 use matrix_sdk::ruma::serde::Raw;
 use matrix_sdk::ruma::{IdParseError, OwnedDeviceId, OwnedRoomId, OwnedUserId};
@@ -175,8 +176,15 @@ fn apply_timeline_diff(items: &mut Vec<Arc<TimelineItem>>, diff: VectorDiff<Arc<
     }
 }
 
-fn is_auth_error(err: &str) -> bool {
-    err.contains("invalid_grant")
+fn is_auth_error(err: &matrix_sdk::Error) -> bool {
+    matches!(
+        err.client_api_error_kind(),
+        Some(
+            RumaErrorKind::Unauthorized
+                | RumaErrorKind::Forbidden { .. }
+                | RumaErrorKind::UnknownToken { .. }
+        )
+    )
 }
 
 fn client_metadata() -> Result<Raw<ClientMetadata>> {
@@ -390,14 +398,13 @@ impl MatrixPort for MatrixAdapter {
                     connection_status: ConnectionStatus::Connected,
                 },
                 Err(e) => {
-                    let err_msg = e.to_string();
-                    if is_auth_error(&err_msg) {
+                    if is_auth_error(&e) {
                         tracing::warn!("unrecoverable auth error in sync loop, stopping");
                         return Err(e.into());
                     }
                     SyncSnapshot {
                         rooms: Vec::new(),
-                        connection_status: ConnectionStatus::Error(err_msg),
+                        connection_status: ConnectionStatus::Error(e.to_string()),
                     }
                 }
             };
