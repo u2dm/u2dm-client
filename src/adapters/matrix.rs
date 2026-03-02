@@ -22,7 +22,7 @@ use matrix_sdk_ui::timeline::{EventTimelineItem, RoomExt, TimelineDetails, Timel
 use rand::RngExt;
 use rand::distr::Alphanumeric;
 use tokio::fs;
-use tokio::sync::{Mutex, mpsc};
+use tokio::sync::{Mutex, RwLock, mpsc};
 use url::Url;
 
 use crate::domain::models::{
@@ -34,7 +34,7 @@ use crate::ports::matrix::MatrixPort;
 
 pub struct MatrixAdapter {
     data_dir: PathBuf,
-    client: Mutex<Option<Client>>,
+    client: RwLock<Option<Client>>,
     redirect_handle: Mutex<Option<LocalServerRedirectHandle>>,
 }
 
@@ -42,9 +42,17 @@ impl MatrixAdapter {
     pub fn new(data_dir: PathBuf) -> Self {
         Self {
             data_dir,
-            client: Mutex::new(None),
+            client: RwLock::new(None),
             redirect_handle: Mutex::new(None),
         }
+    }
+
+    async fn get_client(&self) -> Result<Client> {
+        self.client
+            .read()
+            .await
+            .clone()
+            .ok_or_else(|| AppError::Other("No client, run server discovery first".into()))
     }
 
     async fn get_or_create_passphrase(&self) -> Result<String> {
@@ -225,7 +233,7 @@ impl MatrixPort for MatrixAdapter {
         }
 
         let homeserver_url = client.homeserver().to_string();
-        *self.client.lock().await = Some(client);
+        *self.client.write().await = Some(client);
 
         Ok(ServerInfo {
             auth_methods: methods,
@@ -234,10 +242,7 @@ impl MatrixPort for MatrixAdapter {
     }
 
     async fn login_password(&self, creds: LoginCredentials) -> Result<Session> {
-        let guard = self.client.lock().await;
-        let client = guard
-            .as_ref()
-            .ok_or_else(|| AppError::Other("No client, run server discovery first".into()))?;
+        let client = self.get_client().await?;
 
         client
             .matrix_auth()
@@ -251,8 +256,6 @@ impl MatrixPort for MatrixAdapter {
             .ok_or_else(|| AppError::Other("No session after login".into()))?;
         let homeserver = client.homeserver().to_string();
 
-        drop(guard);
-
         Ok(Session {
             user_id: sdk_session.meta.user_id.to_string(),
             device_id: sdk_session.meta.device_id.to_string(),
@@ -264,10 +267,7 @@ impl MatrixPort for MatrixAdapter {
     }
 
     async fn login_oauth_start(&self) -> Result<OAuthLoginData> {
-        let guard = self.client.lock().await;
-        let client = guard
-            .as_ref()
-            .ok_or_else(|| AppError::Other("No client, run server discovery first".into()))?;
+        let client = self.get_client().await?;
 
         let (redirect_uri, server_handle) = LocalServerBuilder::new()
             .spawn()
@@ -282,7 +282,6 @@ impl MatrixPort for MatrixAdapter {
             .await
             .map_err(|e| AppError::Other(e.to_string()))?;
 
-        drop(guard);
         *self.redirect_handle.lock().await = Some(server_handle);
 
         Ok(OAuthLoginData {
@@ -302,10 +301,7 @@ impl MatrixPort for MatrixAdapter {
             .await
             .ok_or_else(|| AppError::Other("No callback received from browser".into()))?;
 
-        let guard = self.client.lock().await;
-        let client = guard
-            .as_ref()
-            .ok_or_else(|| AppError::Other("No client, run server discovery first".into()))?;
+        let client = self.get_client().await?;
 
         client
             .oauth()
@@ -318,8 +314,6 @@ impl MatrixPort for MatrixAdapter {
             .ok_or_else(|| AppError::Other("No session after OAuth login".into()))?;
         let homeserver = client.homeserver().to_string();
 
-        drop(guard);
-
         Ok(Session {
             user_id: sdk_session.user.meta.user_id.to_string(),
             device_id: sdk_session.user.meta.device_id.to_string(),
@@ -331,17 +325,9 @@ impl MatrixPort for MatrixAdapter {
     }
 
     async fn rooms(&self) -> Result<Vec<DomainRoom>> {
-        let guard = self.client.lock().await;
-        let client = guard
-            .as_ref()
-            .ok_or_else(|| AppError::Other("No client".into()))?;
-
+        let client = self.get_client().await?;
         client.sync_once(SyncSettings::default()).await?;
-
-        let rooms = build_room_list(client).await;
-        drop(guard);
-
-        Ok(rooms)
+        Ok(build_room_list(&client).await)
     }
 
     async fn subscribe_timeline(
@@ -349,10 +335,7 @@ impl MatrixPort for MatrixAdapter {
         room_id: &RoomId,
         timeline_tx: mpsc::Sender<Vec<TimelineMessage>>,
     ) -> Result<()> {
-        let guard = self.client.lock().await;
-        let client = guard
-            .as_ref()
-            .ok_or_else(|| AppError::Other("No client".into()))?;
+        let client = self.get_client().await?;
 
         let room_id_parsed: OwnedRoomId = room_id
             .0
@@ -363,8 +346,6 @@ impl MatrixPort for MatrixAdapter {
         let room = client
             .get_room(&room_id_parsed)
             .ok_or_else(|| AppError::Other("Room not found".into()))?;
-
-        drop(guard);
 
         let timeline = room
             .timeline()
@@ -397,13 +378,7 @@ impl MatrixPort for MatrixAdapter {
     }
 
     async fn start_sync(&self, state_tx: mpsc::Sender<SyncSnapshot>) -> Result<()> {
-        let client = {
-            let guard = self.client.lock().await;
-            guard
-                .as_ref()
-                .ok_or_else(|| AppError::Other("No client".into()))?
-                .clone()
-        };
+        let client = self.get_client().await?;
 
         let stream = client.sync_stream(SyncSettings::default()).await;
         tokio::pin!(stream);
@@ -467,12 +442,12 @@ impl MatrixPort for MatrixAdapter {
             client.restore_session(matrix_session).await?;
         }
 
-        *self.client.lock().await = Some(client);
+        *self.client.write().await = Some(client);
         Ok(())
     }
 
     async fn logout(&self) -> Result<()> {
-        let mut guard = self.client.lock().await;
+        let mut guard = self.client.write().await;
         if let Some(client) = guard.as_ref()
             && let Err(e) = client.matrix_auth().logout().await
         {
@@ -483,7 +458,7 @@ impl MatrixPort for MatrixAdapter {
     }
 
     async fn clear_store(&self) -> Result<()> {
-        *self.client.lock().await = None;
+        *self.client.write().await = None;
         let store_path = self.data_dir.join("matrix-store");
         if store_path.exists() {
             fs::remove_dir_all(&store_path)
@@ -494,10 +469,7 @@ impl MatrixPort for MatrixAdapter {
     }
 
     async fn send_text(&self, room_id: &RoomId, body: &str) -> Result<()> {
-        let guard = self.client.lock().await;
-        let client = guard
-            .as_ref()
-            .ok_or_else(|| AppError::Other("No client".into()))?;
+        let client = self.get_client().await?;
 
         let room_id_parsed: OwnedRoomId = room_id
             .0
@@ -508,8 +480,6 @@ impl MatrixPort for MatrixAdapter {
         let room = client
             .get_room(&room_id_parsed)
             .ok_or_else(|| AppError::Other("Room not found".into()))?;
-
-        drop(guard);
 
         room.send(RoomMessageEventContent::text_plain(body)).await?;
 
