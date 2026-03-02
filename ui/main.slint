@@ -47,6 +47,7 @@ export component AppWindow inherits Window {
     in-out property <[MessageEntry]> timeline: [];
     in-out property <string> selected-room-name: "";
     in-out property <string> selected-room-id: "";
+    in-out property <string> connection-status: "disconnected";
 
     callback check-server(string);
     callback login-password(LoginRequest);
@@ -56,6 +57,19 @@ export component AppWindow inherits Window {
     callback logout();
 
     in-out property <string> input-message: "";
+
+    pure function status-indicator-color(status: string) -> color {
+        if status == "connected" {
+            return Palette.accent-background;
+        }
+        if status == "connecting" {
+            return Palette.accent-background.transparentize(0.5);
+        }
+        if status == "error" {
+            return Palette.foreground.mix(Colors.red, 0.6);
+        }
+        return Palette.border;
+    }
 
     if root.login-step == "homeserver": VerticalLayout {
         alignment: center;
@@ -214,6 +228,13 @@ export component AppWindow inherits Window {
                 spacing: 8px;
                 padding-left: 8px;
                 padding-right: 8px;
+
+                Rectangle {
+                    width: 10px;
+                    height: 10px;
+                    border-radius: 5px;
+                    background: root.status-indicator-color(root.connection-status);
+                }
 
                 Text {
                     text: root.user-id;

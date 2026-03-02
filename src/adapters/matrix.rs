@@ -26,8 +26,8 @@ use tokio::sync::{Mutex, mpsc};
 use url::Url;
 
 use crate::domain::models::{
-    AuthMethod, EventId, LoginCredentials, MessageBody, OAuthLoginData, Room as DomainRoom, RoomId,
-    ServerInfo, Session, SyncSnapshot, TimelineMessage,
+    AuthMethod, ConnectionStatus, EventId, LoginCredentials, MessageBody, OAuthLoginData,
+    Room as DomainRoom, RoomId, ServerInfo, Session, SyncSnapshot, TimelineMessage,
 };
 use crate::error::{AppError, Result};
 use crate::ports::matrix::MatrixPort;
@@ -408,11 +408,18 @@ impl MatrixPort for MatrixAdapter {
         tokio::pin!(stream);
 
         while let Some(result) = stream.next().await {
-            if result.is_ok() {
-                let rooms = build_room_list(&client).await;
-                if state_tx.send(SyncSnapshot { rooms }).await.is_err() {
-                    break;
-                }
+            let snapshot = match result {
+                Ok(_) => SyncSnapshot {
+                    rooms: build_room_list(&client).await,
+                    connection_status: ConnectionStatus::Connected,
+                },
+                Err(e) => SyncSnapshot {
+                    rooms: Vec::new(),
+                    connection_status: ConnectionStatus::Error(e.to_string()),
+                },
+            };
+            if state_tx.send(snapshot).await.is_err() {
+                break;
             }
         }
 

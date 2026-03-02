@@ -4,7 +4,9 @@ use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 
 use crate::commands::{UiCommand, UiEvent};
-use crate::domain::models::{LoginCredentials, RoomId, Session, SyncSnapshot, TimelineMessage};
+use crate::domain::models::{
+    ConnectionStatus, LoginCredentials, RoomId, Session, SyncSnapshot, TimelineMessage,
+};
 use crate::error::Result;
 use crate::ports::matrix::MatrixPort;
 use crate::ports::storage::StoragePort;
@@ -154,6 +156,8 @@ impl AppService {
         }
         drop(self.matrix.logout().await);
         drop(self.storage.clear_session().await);
+        self.emit(UiEvent::ConnectionStatus(ConnectionStatus::Disconnected))
+            .await;
         self.emit(UiEvent::LoggedOut).await;
     }
 
@@ -176,9 +180,22 @@ impl AppService {
     }
 
     async fn handle_fetch_rooms(&self) {
+        self.emit(UiEvent::ConnectionStatus(ConnectionStatus::Connecting))
+            .await;
+
         match self.matrix.rooms().await {
-            Ok(rooms) => self.emit(UiEvent::Rooms(rooms)).await,
-            Err(e) => self.emit(UiEvent::Error(e.to_string())).await,
+            Ok(rooms) => {
+                self.emit(UiEvent::Rooms(rooms)).await;
+                self.emit(UiEvent::ConnectionStatus(ConnectionStatus::Connected))
+                    .await;
+            }
+            Err(e) => {
+                self.emit(UiEvent::Error(e.to_string())).await;
+                self.emit(UiEvent::ConnectionStatus(ConnectionStatus::Error(
+                    e.to_string(),
+                )))
+                .await;
+            }
         }
 
         let (snapshot_tx, mut snapshot_rx) = mpsc::channel::<SyncSnapshot>(16);
@@ -190,7 +207,16 @@ impl AppService {
         let ui_tx = self.ui_tx.clone();
         tokio::spawn(async move {
             while let Some(snapshot) = snapshot_rx.recv().await {
-                drop(ui_tx.send(UiEvent::Rooms(snapshot.rooms)).await);
+                drop(
+                    ui_tx
+                        .send(UiEvent::ConnectionStatus(
+                            snapshot.connection_status.clone(),
+                        ))
+                        .await,
+                );
+                if matches!(snapshot.connection_status, ConnectionStatus::Connected) {
+                    drop(ui_tx.send(UiEvent::Rooms(snapshot.rooms)).await);
+                }
             }
         });
     }

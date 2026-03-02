@@ -1,4 +1,6 @@
-use crate::domain::models::{LoginCredentials, Room, RoomId, ServerInfo, TimelineMessage};
+use crate::domain::models::{
+    ConnectionStatus, LoginCredentials, Room, RoomId, ServerInfo, TimelineMessage,
+};
 
 pub enum UiCommand {
     RestoreSession,
@@ -18,5 +20,6 @@ pub enum UiEvent {
     Status(String),
     Rooms(Vec<Room>),
     Timeline(Vec<TimelineMessage>),
+    ConnectionStatus(ConnectionStatus),
     LoggedOut,
 }

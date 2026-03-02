@@ -7,7 +7,8 @@ use tokio::sync::mpsc;
 
 use crate::commands::{UiCommand, UiEvent};
 use crate::domain::models::{
-    LoginCredentials, LoginMethod, MessageBody, Room, RoomId, ServerInfo, TimelineMessage,
+    ConnectionStatus, LoginCredentials, LoginMethod, MessageBody, Room, RoomId, ServerInfo,
+    TimelineMessage,
 };
 use crate::error::{AppError, Result};
 
@@ -208,6 +209,7 @@ fn dispatch_ui_event(inst: &ComponentInstance, event: UiEvent) {
         UiEvent::Status(msg) => apply_status(inst, &msg),
         UiEvent::Rooms(rooms) => apply_rooms(inst, &rooms),
         UiEvent::Timeline(messages) => apply_timeline(inst, &messages),
+        UiEvent::ConnectionStatus(status) => apply_connection_status(inst, &status),
         UiEvent::LoggedOut => apply_logged_out(inst),
     }
 }
@@ -286,6 +288,13 @@ fn apply_timeline(inst: &ComponentInstance, messages: &[TimelineMessage]) {
     let _r = inst.set_property("timeline", model);
 }
 
+fn apply_connection_status(inst: &ComponentInstance, status: &ConnectionStatus) {
+    let _r = inst.set_property(
+        "connection-status",
+        Value::String(SharedString::from(status.as_str())),
+    );
+}
+
 fn apply_logged_out(inst: &ComponentInstance) {
     let _r = inst.set_property(
         "login-step",
@@ -303,6 +312,10 @@ fn apply_logged_out(inst: &ComponentInstance) {
     let _r = inst.set_property("selected-room-id", Value::String(SharedString::default()));
     let _r = inst.set_property("input-username", Value::String(SharedString::default()));
     let _r = inst.set_property("input-password", Value::String(SharedString::default()));
+    let _r = inst.set_property(
+        "connection-status",
+        Value::String(SharedString::from("disconnected")),
+    );
     let empty_model = Value::Model(ModelRc::new(VecModel::<Value>::default()));
     let _r = inst.set_property("rooms", empty_model.clone());
     let _r = inst.set_property("timeline", empty_model);

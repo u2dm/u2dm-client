@@ -89,8 +89,29 @@ pub struct Room {
 }
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
+pub enum ConnectionStatus {
+    Disconnected,
+    Connecting,
+    Connected,
+    Error(String),
+}
+
+impl ConnectionStatus {
+    pub fn as_str(&self) -> &str {
+        match self {
+            Self::Disconnected => "disconnected",
+            Self::Connecting => "connecting",
+            Self::Connected => "connected",
+            Self::Error(_) => "error",
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
 pub struct SyncSnapshot {
     pub rooms: Vec<Room>,
+    pub connection_status: ConnectionStatus,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
