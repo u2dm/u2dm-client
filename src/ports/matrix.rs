@@ -23,4 +23,5 @@ pub trait MatrixPort: Send + Sync {
     async fn send_text(&self, room_id: &RoomId, body: &str) -> Result<()>;
     async fn restore_session(&self, session: &Session) -> Result<()>;
     async fn logout(&self) -> Result<()>;
+    async fn clear_store(&self) -> Result<()>;
 }

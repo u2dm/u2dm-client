@@ -10,6 +10,7 @@ pub enum UiCommand {
     FetchRooms,
     SelectRoom(RoomId),
     SendMessage { room_id: RoomId, body: String },
+    SessionExpired,
     Logout,
     Quit,
 }

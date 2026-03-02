@@ -62,6 +62,9 @@ impl AppService {
                 UiCommand::SendMessage { room_id, body } => {
                     self.handle_send_message(room_id, body);
                 }
+                UiCommand::SessionExpired => {
+                    self.handle_session_expired().await;
+                }
                 UiCommand::Logout => {
                     self.handle_logout().await;
                 }
@@ -80,7 +83,10 @@ impl AppService {
     async fn handle_restore_session(&self) {
         let session = match self.storage.load_session().await {
             Ok(Some(session)) => session,
-            Ok(None) => return,
+            Ok(None) => {
+                drop(self.matrix.clear_store().await);
+                return;
+            }
             Err(e) => {
                 self.emit(UiEvent::Error(e.to_string())).await;
                 return;
@@ -99,8 +105,9 @@ impl AppService {
                 drop(self.cmd_tx.send(UiCommand::FetchRooms).await);
             }
             Err(e) => {
-                // session is stale, clear it and let user log in again
+                // session is stale, clear it and crypto store so next login is clean
                 drop(self.storage.clear_session().await);
+                drop(self.matrix.clear_store().await);
                 self.emit(UiEvent::Error(e.to_string())).await;
             }
         }
@@ -160,12 +167,27 @@ impl AppService {
         }
     }
 
+    async fn handle_session_expired(&mut self) {
+        tracing::info!("session expired, clearing local state");
+        if let Some(handle) = self.timeline_handle.take() {
+            handle.abort();
+        }
+        drop(self.storage.clear_session().await);
+        drop(self.matrix.clear_store().await);
+        self.emit(UiEvent::LoggedOut).await;
+        self.emit(UiEvent::Error(
+            "Session expired. Please log in again.".into(),
+        ))
+        .await;
+    }
+
     async fn handle_logout(&mut self) {
         if let Some(handle) = self.timeline_handle.take() {
             handle.abort();
         }
         drop(self.matrix.logout().await);
         drop(self.storage.clear_session().await);
+        drop(self.matrix.clear_store().await);
         self.emit(UiEvent::ConnectionStatus(ConnectionStatus::Disconnected))
             .await;
         self.emit(UiEvent::LoggedOut).await;
@@ -210,8 +232,12 @@ impl AppService {
 
         let (snapshot_tx, mut snapshot_rx) = mpsc::channel::<SyncSnapshot>(16);
         let matrix_sync = Arc::clone(&self.matrix);
+        let cmd_tx = self.cmd_tx.clone();
         tokio::spawn(async move {
-            let _r = matrix_sync.start_sync(snapshot_tx).await;
+            if let Err(e) = matrix_sync.start_sync(snapshot_tx).await {
+                tracing::error!("sync loop ended with error: {e}");
+                drop(cmd_tx.send(UiCommand::SessionExpired).await);
+            }
         });
 
         let ui_tx = self.ui_tx.clone();

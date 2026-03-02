@@ -167,6 +167,10 @@ fn apply_timeline_diff(items: &mut Vec<Arc<TimelineItem>>, diff: VectorDiff<Arc<
     }
 }
 
+fn is_auth_error(err: &str) -> bool {
+    err.contains("invalid_grant")
+}
+
 fn client_metadata() -> Result<Raw<ClientMetadata>> {
     let ipv4_uri: Url = format!("http://{}/", Ipv4Addr::LOCALHOST)
         .parse()
@@ -413,10 +417,17 @@ impl MatrixPort for MatrixAdapter {
                     rooms: build_room_list(&client).await,
                     connection_status: ConnectionStatus::Connected,
                 },
-                Err(e) => SyncSnapshot {
-                    rooms: Vec::new(),
-                    connection_status: ConnectionStatus::Error(e.to_string()),
-                },
+                Err(e) => {
+                    let err_str = e.to_string();
+                    if is_auth_error(&err_str) {
+                        tracing::warn!("unrecoverable auth error in sync loop, stopping");
+                        return Err(AppError::Matrix(err_str));
+                    }
+                    SyncSnapshot {
+                        rooms: Vec::new(),
+                        connection_status: ConnectionStatus::Error(err_str),
+                    }
+                }
             };
             if state_tx.send(snapshot).await.is_err() {
                 break;
@@ -475,6 +486,17 @@ impl MatrixPort for MatrixAdapter {
             drop(client.matrix_auth().logout().await);
         }
         *guard = None;
+        Ok(())
+    }
+
+    async fn clear_store(&self) -> Result<()> {
+        *self.client.lock().await = None;
+        let store_path = self.data_dir.join("matrix-store");
+        if store_path.exists() {
+            fs::remove_dir_all(&store_path)
+                .await
+                .map_err(|e| AppError::Storage(e.to_string()))?;
+        }
         Ok(())
     }
 
