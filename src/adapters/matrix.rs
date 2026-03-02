@@ -1,5 +1,6 @@
 use std::net::{Ipv4Addr, Ipv6Addr};
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use async_trait::async_trait;
 use futures_util::StreamExt;
@@ -9,12 +10,14 @@ use matrix_sdk::authentication::oauth::registration::{
     ApplicationType, ClientMetadata, Localized, OAuthGrantType,
 };
 use matrix_sdk::config::SyncSettings;
+use matrix_sdk::ruma::events::room::message::{MessageType, RoomMessageEventContent};
 use matrix_sdk::ruma::serde::Raw;
+use matrix_sdk::ruma::{IdParseError, OwnedRoomId};
 use matrix_sdk::utils::local_server::{LocalServerBuilder, LocalServerRedirectHandle};
+use matrix_sdk_ui::eyeball_im::VectorDiff;
+use matrix_sdk_ui::timeline::{EventTimelineItem, RoomExt, TimelineDetails, TimelineItem};
 use tokio::sync::{Mutex, mpsc};
 use url::Url;
-
-use std::sync::Arc;
 
 use crate::domain::models::{
     AuthMethod, EventId, LoginCredentials, MessageBody, OAuthLoginData, Room as DomainRoom, RoomId,
@@ -22,11 +25,6 @@ use crate::domain::models::{
 };
 use crate::error::{AppError, Result};
 use crate::ports::matrix::MatrixPort;
-
-use matrix_sdk::ruma::events::room::message::{MessageType, RoomMessageEventContent};
-use matrix_sdk::ruma::{IdParseError, OwnedRoomId};
-use matrix_sdk_ui::eyeball_im::VectorDiff;
-use matrix_sdk_ui::timeline::{EventTimelineItem, RoomExt, TimelineDetails, TimelineItem};
 
 pub struct MatrixAdapter {
     data_dir: PathBuf,

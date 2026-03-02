@@ -12,6 +12,9 @@ pub enum AppError {
 
     #[error("{0}")]
     Matrix(String),
+
+    #[error("{0}")]
+    Other(String),
 }
 
 pub type Result<T> = result::Result<T, AppError>;
