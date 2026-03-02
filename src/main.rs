@@ -58,7 +58,9 @@ fn run() -> Result<()> {
     {
         let _guard = rt.enter();
         ui.spawn_event_handler(ui_rx);
-        drop(cmd_tx.try_send(UiCommand::RestoreSession));
+        if let Err(e) = cmd_tx.try_send(UiCommand::RestoreSession) {
+            tracing::warn!("failed to send RestoreSession command: {e}");
+        }
         let mut service = AppService::new(matrix, storage, cmd_rx, cmd_tx, ui_tx);
         tokio::spawn(async move {
             service.run().await;
@@ -67,7 +69,9 @@ fn run() -> Result<()> {
 
     ui.run()?;
 
-    drop(cmd_tx_quit.try_send(UiCommand::Quit));
+    if let Err(e) = cmd_tx_quit.try_send(UiCommand::Quit) {
+        tracing::debug!("failed to send Quit command: {e}");
+    }
     rt.shutdown_timeout(Duration::from_secs(5));
     Ok(())
 }

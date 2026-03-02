@@ -77,14 +77,33 @@ impl AppService {
     }
 
     async fn emit(&self, event: UiEvent) {
-        drop(self.ui_tx.send(event).await);
+        if let Err(e) = self.ui_tx.send(event).await {
+            tracing::debug!("failed to send UI event: {e}");
+        }
+    }
+
+    async fn send_cmd(&self, cmd: UiCommand) {
+        if let Err(e) = self.cmd_tx.send(cmd).await {
+            tracing::debug!("failed to send command: {e}");
+        }
+    }
+
+    async fn clear_local_state(&self) {
+        if let Err(e) = self.storage.clear_session().await {
+            tracing::warn!("failed to clear session: {e}");
+        }
+        if let Err(e) = self.matrix.clear_store().await {
+            tracing::warn!("failed to clear store: {e}");
+        }
     }
 
     async fn handle_restore_session(&self) {
         let session = match self.storage.load_session().await {
             Ok(Some(session)) => session,
             Ok(None) => {
-                drop(self.matrix.clear_store().await);
+                if let Err(e) = self.matrix.clear_store().await {
+                    tracing::warn!("failed to clear store on missing session: {e}");
+                }
                 return;
             }
             Err(e) => {
@@ -102,12 +121,10 @@ impl AppService {
                     user_id: session.user_id,
                 })
                 .await;
-                drop(self.cmd_tx.send(UiCommand::FetchRooms).await);
+                self.send_cmd(UiCommand::FetchRooms).await;
             }
             Err(e) => {
-                // session is stale, clear it and crypto store so next login is clean
-                drop(self.storage.clear_session().await);
-                drop(self.matrix.clear_store().await);
+                self.clear_local_state().await;
                 self.emit(UiEvent::Error(e.to_string())).await;
             }
         }
@@ -128,7 +145,7 @@ impl AppService {
                     user_id: session.user_id,
                 })
                 .await;
-                drop(self.cmd_tx.send(UiCommand::FetchRooms).await);
+                self.send_cmd(UiCommand::FetchRooms).await;
             }
             Err(e) => self.emit(UiEvent::Error(e.to_string())).await,
         }
@@ -137,7 +154,7 @@ impl AppService {
     async fn handle_login_oauth(&self) {
         match self.run_oauth_flow().await {
             Ok(()) => {
-                drop(self.cmd_tx.send(UiCommand::FetchRooms).await);
+                self.send_cmd(UiCommand::FetchRooms).await;
             }
             Err(e) => self.emit(UiEvent::Error(e.to_string())).await,
         }
@@ -158,7 +175,9 @@ impl AppService {
     }
 
     async fn save_session(&self, session: &Session) {
-        drop(self.storage.save_session(session).await);
+        if let Err(e) = self.storage.save_session(session).await {
+            tracing::warn!("failed to save session: {e}");
+        }
     }
 
     fn handle_quit(&mut self) {
@@ -172,8 +191,7 @@ impl AppService {
         if let Some(handle) = self.timeline_handle.take() {
             handle.abort();
         }
-        drop(self.storage.clear_session().await);
-        drop(self.matrix.clear_store().await);
+        self.clear_local_state().await;
         self.emit(UiEvent::LoggedOut).await;
         self.emit(UiEvent::Error(
             "Session expired. Please log in again.".into(),
@@ -185,9 +203,10 @@ impl AppService {
         if let Some(handle) = self.timeline_handle.take() {
             handle.abort();
         }
-        drop(self.matrix.logout().await);
-        drop(self.storage.clear_session().await);
-        drop(self.matrix.clear_store().await);
+        if let Err(e) = self.matrix.logout().await {
+            tracing::warn!("failed to logout from server: {e}");
+        }
+        self.clear_local_state().await;
         self.emit(UiEvent::ConnectionStatus(ConnectionStatus::Disconnected))
             .await;
         self.emit(UiEvent::LoggedOut).await;
@@ -207,7 +226,9 @@ impl AppService {
     fn handle_send_message(&self, room_id: RoomId, body: String) {
         let matrix = Arc::clone(&self.matrix);
         tokio::spawn(async move {
-            let _r = matrix.send_text(&room_id, &body).await;
+            if let Err(e) = matrix.send_text(&room_id, &body).await {
+                tracing::warn!("failed to send message: {e}");
+            }
         });
     }
 
@@ -236,22 +257,27 @@ impl AppService {
         tokio::spawn(async move {
             if let Err(e) = matrix_sync.start_sync(snapshot_tx).await {
                 tracing::error!("sync loop ended with error: {e}");
-                drop(cmd_tx.send(UiCommand::SessionExpired).await);
+                if let Err(e) = cmd_tx.send(UiCommand::SessionExpired).await {
+                    tracing::debug!("failed to send SessionExpired command: {e}");
+                }
             }
         });
 
         let ui_tx = self.ui_tx.clone();
         tokio::spawn(async move {
             while let Some(snapshot) = snapshot_rx.recv().await {
-                drop(
-                    ui_tx
-                        .send(UiEvent::ConnectionStatus(
-                            snapshot.connection_status.clone(),
-                        ))
-                        .await,
-                );
-                if matches!(snapshot.connection_status, ConnectionStatus::Connected) {
-                    drop(ui_tx.send(UiEvent::Rooms(snapshot.rooms)).await);
+                if let Err(e) = ui_tx
+                    .send(UiEvent::ConnectionStatus(
+                        snapshot.connection_status.clone(),
+                    ))
+                    .await
+                {
+                    tracing::debug!("failed to send ConnectionStatus event: {e}");
+                }
+                if matches!(snapshot.connection_status, ConnectionStatus::Connected)
+                    && let Err(e) = ui_tx.send(UiEvent::Rooms(snapshot.rooms)).await
+                {
+                    tracing::debug!("failed to send Rooms event: {e}");
                 }
             }
         });
@@ -266,13 +292,17 @@ impl AppService {
         let matrix_tl = Arc::clone(matrix);
 
         tokio::spawn(async move {
-            let _r = matrix_tl.subscribe_timeline(&room_id, tl_tx).await;
+            if let Err(e) = matrix_tl.subscribe_timeline(&room_id, tl_tx).await {
+                tracing::warn!("timeline subscription failed: {e}");
+            }
         });
 
         let ui_tx = ui_tx.clone();
         tokio::spawn(async move {
             while let Some(messages) = tl_rx.recv().await {
-                drop(ui_tx.send(UiEvent::Timeline(messages)).await);
+                if let Err(e) = ui_tx.send(UiEvent::Timeline(messages)).await {
+                    tracing::debug!("failed to send Timeline event: {e}");
+                }
             }
         })
     }

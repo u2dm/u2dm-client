@@ -4,20 +4,20 @@ use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum AppError {
-    #[error("{0}")]
+    #[error("UI: {0}")]
     Ui(String),
 
-    #[error("{0}")]
+    #[error(transparent)]
     Io(#[from] io::Error),
 
-    #[error("{0}")]
-    Matrix(String),
+    #[error(transparent)]
+    Matrix(#[from] matrix_sdk::Error),
 
-    #[error("{0}")]
+    #[error("Storage: {0}")]
     Storage(String),
 
-    #[error("{0}")]
-    Serde(String),
+    #[error(transparent)]
+    Serde(#[from] serde_json::Error),
 
     #[error("{0}")]
     Other(String),

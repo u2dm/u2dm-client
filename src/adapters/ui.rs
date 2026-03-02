@@ -58,7 +58,9 @@ impl SlintUiAdapter {
                         inst.set_property("login-error", Value::String(SharedString::default()));
                 }
 
-                drop(tx.try_send(UiCommand::CheckServer(homeserver)));
+                if let Err(e) = tx.try_send(UiCommand::CheckServer(homeserver)) {
+                    tracing::debug!("failed to send CheckServer command: {e}");
+                }
                 Value::Void
             })
             .map_err(|e| AppError::Ui(format!("{e:?}")))?;
@@ -95,7 +97,9 @@ impl SlintUiAdapter {
                         inst.set_property("login-error", Value::String(SharedString::default()));
                 }
 
-                drop(tx.try_send(UiCommand::LoginPassword(creds)));
+                if let Err(e) = tx.try_send(UiCommand::LoginPassword(creds)) {
+                    tracing::debug!("failed to send LoginPassword command: {e}");
+                }
                 Value::Void
             })
             .map_err(|e| AppError::Ui(format!("{e:?}")))?;
@@ -121,7 +125,9 @@ impl SlintUiAdapter {
                         inst.set_property("login-error", Value::String(SharedString::default()));
                 }
 
-                drop(tx.try_send(UiCommand::LoginOAuth(homeserver)));
+                if let Err(e) = tx.try_send(UiCommand::LoginOAuth(homeserver)) {
+                    tracing::debug!("failed to send LoginOAuth command: {e}");
+                }
                 Value::Void
             })
             .map_err(|e| AppError::Ui(format!("{e:?}")))?;
@@ -137,7 +143,9 @@ impl SlintUiAdapter {
                     })
                     .unwrap_or_default();
 
-                drop(tx.try_send(UiCommand::SelectRoom(RoomId(room_id))));
+                if let Err(e) = tx.try_send(UiCommand::SelectRoom(RoomId(room_id))) {
+                    tracing::debug!("failed to send SelectRoom command: {e}");
+                }
                 Value::Void
             })
             .map_err(|e| AppError::Ui(format!("{e:?}")))?;
@@ -145,7 +153,9 @@ impl SlintUiAdapter {
         let tx = cmd_tx.clone();
         self.instance
             .set_callback("logout", move |_args: &[Value]| -> Value {
-                drop(tx.try_send(UiCommand::Logout));
+                if let Err(e) = tx.try_send(UiCommand::Logout) {
+                    tracing::debug!("failed to send Logout command: {e}");
+                }
                 Value::Void
             })
             .map_err(|e| AppError::Ui(format!("{e:?}")))?;
@@ -166,11 +176,14 @@ impl SlintUiAdapter {
                 };
                 let room_id = field("room-id");
                 let body = field("body");
-                if !room_id.is_empty() && !body.is_empty() {
-                    drop(tx.try_send(UiCommand::SendMessage {
+                if !room_id.is_empty()
+                    && !body.is_empty()
+                    && let Err(e) = tx.try_send(UiCommand::SendMessage {
                         room_id: RoomId(room_id),
                         body,
-                    }));
+                    })
+                {
+                    tracing::debug!("failed to send SendMessage command: {e}");
                 }
                 Value::Void
             })

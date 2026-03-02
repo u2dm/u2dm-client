@@ -28,8 +28,7 @@ impl StoragePort for JsonFileStorage {
                 .await
                 .map_err(|e| AppError::Storage(e.to_string()))?;
         }
-        let json =
-            serde_json::to_string_pretty(session).map_err(|e| AppError::Serde(e.to_string()))?;
+        let json = serde_json::to_string_pretty(session)?;
         fs::write(&self.session_path, json)
             .await
             .map_err(|e| AppError::Storage(e.to_string()))?;
@@ -39,8 +38,7 @@ impl StoragePort for JsonFileStorage {
     async fn load_session(&self) -> Result<Option<Session>> {
         match fs::read_to_string(&self.session_path).await {
             Ok(contents) => {
-                let session: Session =
-                    serde_json::from_str(&contents).map_err(|e| AppError::Serde(e.to_string()))?;
+                let session: Session = serde_json::from_str(&contents)?;
                 Ok(Some(session))
             }
             Err(e) if e.kind() == ErrorKind::NotFound => Ok(None),

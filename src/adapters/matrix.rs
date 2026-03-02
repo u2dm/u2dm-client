@@ -174,13 +174,13 @@ fn is_auth_error(err: &str) -> bool {
 fn client_metadata() -> Result<Raw<ClientMetadata>> {
     let ipv4_uri: Url = format!("http://{}/", Ipv4Addr::LOCALHOST)
         .parse()
-        .map_err(|e: url::ParseError| AppError::Matrix(e.to_string()))?;
+        .map_err(|e: url::ParseError| AppError::Other(e.to_string()))?;
     let ipv6_uri: Url = format!("http://[{}]/", Ipv6Addr::LOCALHOST)
         .parse()
-        .map_err(|e: url::ParseError| AppError::Matrix(e.to_string()))?;
+        .map_err(|e: url::ParseError| AppError::Other(e.to_string()))?;
     let client_uri: Url = "https://github.com/drendog/U2DM"
         .parse()
-        .map_err(|e: url::ParseError| AppError::Matrix(e.to_string()))?;
+        .map_err(|e: url::ParseError| AppError::Other(e.to_string()))?;
 
     let client_uri = Localized::new(client_uri, []);
     let metadata = ClientMetadata {
@@ -194,7 +194,7 @@ fn client_metadata() -> Result<Raw<ClientMetadata>> {
         )
     };
 
-    Raw::new(&metadata).map_err(|e| AppError::Matrix(e.to_string()))
+    Ok(Raw::new(&metadata)?)
 }
 
 #[async_trait]
@@ -207,7 +207,7 @@ impl MatrixPort for MatrixAdapter {
             .sqlite_store(self.data_dir.join("matrix-store"), Some(&passphrase))
             .build()
             .await
-            .map_err(|e| AppError::Matrix(e.to_string()))?;
+            .map_err(|e| AppError::Other(e.to_string()))?;
 
         let mut methods = Vec::new();
 
@@ -237,19 +237,18 @@ impl MatrixPort for MatrixAdapter {
         let guard = self.client.lock().await;
         let client = guard
             .as_ref()
-            .ok_or_else(|| AppError::Matrix("No client, run server discovery first".into()))?;
+            .ok_or_else(|| AppError::Other("No client, run server discovery first".into()))?;
 
         client
             .matrix_auth()
             .login_username(&creds.username, &creds.password)
             .initial_device_display_name("U2DM")
-            .await
-            .map_err(|e| AppError::Matrix(e.to_string()))?;
+            .await?;
 
         let sdk_session = client
             .matrix_auth()
             .session()
-            .ok_or_else(|| AppError::Matrix("No session after login".into()))?;
+            .ok_or_else(|| AppError::Other("No session after login".into()))?;
         let homeserver = client.homeserver().to_string();
 
         drop(guard);
@@ -268,12 +267,12 @@ impl MatrixPort for MatrixAdapter {
         let guard = self.client.lock().await;
         let client = guard
             .as_ref()
-            .ok_or_else(|| AppError::Matrix("No client, run server discovery first".into()))?;
+            .ok_or_else(|| AppError::Other("No client, run server discovery first".into()))?;
 
         let (redirect_uri, server_handle) = LocalServerBuilder::new()
             .spawn()
             .await
-            .map_err(|e| AppError::Matrix(format!("Failed to start local callback server: {e}")))?;
+            .map_err(|e| AppError::Other(format!("Failed to start local callback server: {e}")))?;
 
         let metadata = client_metadata()?;
         let auth_data = client
@@ -281,7 +280,7 @@ impl MatrixPort for MatrixAdapter {
             .login(redirect_uri, None, Some(metadata.into()), None)
             .build()
             .await
-            .map_err(|e| AppError::Matrix(e.to_string()))?;
+            .map_err(|e| AppError::Other(e.to_string()))?;
 
         drop(guard);
         *self.redirect_handle.lock().await = Some(server_handle);
@@ -297,27 +296,26 @@ impl MatrixPort for MatrixAdapter {
             .lock()
             .await
             .take()
-            .ok_or_else(|| AppError::Matrix("No pending OAuth login".into()))?;
+            .ok_or_else(|| AppError::Other("No pending OAuth login".into()))?;
 
         let query_string = handle
             .await
-            .ok_or_else(|| AppError::Matrix("No callback received from browser".into()))?;
+            .ok_or_else(|| AppError::Other("No callback received from browser".into()))?;
 
         let guard = self.client.lock().await;
         let client = guard
             .as_ref()
-            .ok_or_else(|| AppError::Matrix("No client, run server discovery first".into()))?;
+            .ok_or_else(|| AppError::Other("No client, run server discovery first".into()))?;
 
         client
             .oauth()
             .finish_login(UrlOrQuery::Query(query_string.0))
-            .await
-            .map_err(|e| AppError::Matrix(e.to_string()))?;
+            .await?;
 
         let sdk_session = client
             .oauth()
             .full_session()
-            .ok_or_else(|| AppError::Matrix("No session after OAuth login".into()))?;
+            .ok_or_else(|| AppError::Other("No session after OAuth login".into()))?;
         let homeserver = client.homeserver().to_string();
 
         drop(guard);
@@ -336,12 +334,9 @@ impl MatrixPort for MatrixAdapter {
         let guard = self.client.lock().await;
         let client = guard
             .as_ref()
-            .ok_or_else(|| AppError::Matrix("No client".into()))?;
+            .ok_or_else(|| AppError::Other("No client".into()))?;
 
-        client
-            .sync_once(SyncSettings::default())
-            .await
-            .map_err(|e| AppError::Matrix(e.to_string()))?;
+        client.sync_once(SyncSettings::default()).await?;
 
         let rooms = build_room_list(client).await;
         drop(guard);
@@ -357,26 +352,28 @@ impl MatrixPort for MatrixAdapter {
         let guard = self.client.lock().await;
         let client = guard
             .as_ref()
-            .ok_or_else(|| AppError::Matrix("No client".into()))?;
+            .ok_or_else(|| AppError::Other("No client".into()))?;
 
         let room_id_parsed: OwnedRoomId = room_id
             .0
             .as_str()
             .try_into()
-            .map_err(|e: IdParseError| AppError::Matrix(e.to_string()))?;
+            .map_err(|e: IdParseError| AppError::Other(e.to_string()))?;
 
         let room = client
             .get_room(&room_id_parsed)
-            .ok_or_else(|| AppError::Matrix("Room not found".into()))?;
+            .ok_or_else(|| AppError::Other("Room not found".into()))?;
 
         drop(guard);
 
         let timeline = room
             .timeline()
             .await
-            .map_err(|e| AppError::Matrix(e.to_string()))?;
+            .map_err(|e| AppError::Other(e.to_string()))?;
 
-        drop(timeline.paginate_backwards(50).await);
+        if let Err(e) = timeline.paginate_backwards(50).await {
+            tracing::warn!("failed to paginate timeline backwards: {e}");
+        }
 
         let (initial_items, mut stream) = timeline.subscribe().await;
 
@@ -404,7 +401,7 @@ impl MatrixPort for MatrixAdapter {
             let guard = self.client.lock().await;
             guard
                 .as_ref()
-                .ok_or_else(|| AppError::Matrix("No client".into()))?
+                .ok_or_else(|| AppError::Other("No client".into()))?
                 .clone()
         };
 
@@ -418,14 +415,14 @@ impl MatrixPort for MatrixAdapter {
                     connection_status: ConnectionStatus::Connected,
                 },
                 Err(e) => {
-                    let err_str = e.to_string();
-                    if is_auth_error(&err_str) {
+                    let err_msg = e.to_string();
+                    if is_auth_error(&err_msg) {
                         tracing::warn!("unrecoverable auth error in sync loop, stopping");
-                        return Err(AppError::Matrix(err_str));
+                        return Err(e.into());
                     }
                     SyncSnapshot {
                         rooms: Vec::new(),
-                        connection_status: ConnectionStatus::Error(err_str),
+                        connection_status: ConnectionStatus::Error(err_msg),
                     }
                 }
             };
@@ -445,13 +442,13 @@ impl MatrixPort for MatrixAdapter {
             .sqlite_store(self.data_dir.join("matrix-store"), Some(&passphrase))
             .build()
             .await
-            .map_err(|e| AppError::Matrix(e.to_string()))?;
+            .map_err(|e| AppError::Other(e.to_string()))?;
 
         let user_id: OwnedUserId = session
             .user_id
             .as_str()
             .try_into()
-            .map_err(|e: IdParseError| AppError::Matrix(e.to_string()))?;
+            .map_err(|e: IdParseError| AppError::Other(e.to_string()))?;
         let device_id: OwnedDeviceId = session.device_id.as_str().into();
         let meta = SessionMeta { user_id, device_id };
         let tokens = SessionTokens {
@@ -464,16 +461,10 @@ impl MatrixPort for MatrixAdapter {
                 client_id: ClientId::new(client_id.clone()),
                 user: UserSession { meta, tokens },
             };
-            client
-                .restore_session(oauth_session)
-                .await
-                .map_err(|e| AppError::Matrix(e.to_string()))?;
+            client.restore_session(oauth_session).await?;
         } else {
             let matrix_session = MatrixSession { meta, tokens };
-            client
-                .restore_session(matrix_session)
-                .await
-                .map_err(|e| AppError::Matrix(e.to_string()))?;
+            client.restore_session(matrix_session).await?;
         }
 
         *self.client.lock().await = Some(client);
@@ -482,8 +473,10 @@ impl MatrixPort for MatrixAdapter {
 
     async fn logout(&self) -> Result<()> {
         let mut guard = self.client.lock().await;
-        if let Some(client) = guard.as_ref() {
-            drop(client.matrix_auth().logout().await);
+        if let Some(client) = guard.as_ref()
+            && let Err(e) = client.matrix_auth().logout().await
+        {
+            tracing::warn!("failed to logout from server: {e}");
         }
         *guard = None;
         Ok(())
@@ -504,23 +497,21 @@ impl MatrixPort for MatrixAdapter {
         let guard = self.client.lock().await;
         let client = guard
             .as_ref()
-            .ok_or_else(|| AppError::Matrix("No client".into()))?;
+            .ok_or_else(|| AppError::Other("No client".into()))?;
 
         let room_id_parsed: OwnedRoomId = room_id
             .0
             .as_str()
             .try_into()
-            .map_err(|e: IdParseError| AppError::Matrix(e.to_string()))?;
+            .map_err(|e: IdParseError| AppError::Other(e.to_string()))?;
 
         let room = client
             .get_room(&room_id_parsed)
-            .ok_or_else(|| AppError::Matrix("Room not found".into()))?;
+            .ok_or_else(|| AppError::Other("Room not found".into()))?;
 
         drop(guard);
 
-        room.send(RoomMessageEventContent::text_plain(body))
-            .await
-            .map_err(|e| AppError::Matrix(e.to_string()))?;
+        room.send(RoomMessageEventContent::text_plain(body)).await?;
 
         Ok(())
     }
