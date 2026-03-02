@@ -225,9 +225,16 @@ impl AppService {
 
     fn handle_send_message(&self, room_id: RoomId, body: String) {
         let matrix = Arc::clone(&self.matrix);
+        let ui_tx = self.ui_tx.clone();
         tokio::spawn(async move {
             if let Err(e) = matrix.send_text(&room_id, &body).await {
                 tracing::warn!("failed to send message: {e}");
+                if let Err(send_err) = ui_tx
+                    .send(UiEvent::Error(format!("Failed to send message: {e}")))
+                    .await
+                {
+                    tracing::debug!("failed to send Error event: {send_err}");
+                }
             }
         });
     }
