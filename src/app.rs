@@ -313,18 +313,27 @@ impl AppService {
     ) -> JoinHandle<()> {
         let (tl_tx, mut tl_rx) = mpsc::channel::<Vec<TimelineMessage>>(16);
         let matrix_tl = Arc::clone(matrix);
-
-        tokio::spawn(async move {
-            if let Err(e) = matrix_tl.subscribe_timeline(&room_id, tl_tx).await {
-                tracing::warn!("timeline subscription failed: {e}");
-            }
-        });
-
         let ui_tx = ui_tx.clone();
+
         tokio::spawn(async move {
-            while let Some(messages) = tl_rx.recv().await {
-                if let Err(e) = ui_tx.send(UiEvent::Timeline(messages)).await {
-                    tracing::debug!("failed to send Timeline event: {e}");
+            let subscribe = matrix_tl.subscribe_timeline(&room_id, tl_tx);
+            let forward = async {
+                while let Some(messages) = tl_rx.recv().await {
+                    if let Err(e) = ui_tx.send(UiEvent::Timeline(messages)).await {
+                        tracing::debug!("failed to send Timeline event: {e}");
+                        break;
+                    }
+                }
+            };
+
+            tokio::select! {
+                result = subscribe => {
+                    if let Err(e) = result {
+                        tracing::warn!("timeline subscription failed: {e}");
+                    }
+                }
+                () = forward => {
+                    tracing::debug!("timeline forwarder stopped");
                 }
             }
         })
