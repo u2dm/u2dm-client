@@ -12,6 +12,12 @@ use crate::domain::models::{
 };
 use crate::error::{AppError, Result};
 
+fn set_prop(inst: &ComponentInstance, name: &str, value: Value) {
+    if let Err(e) = inst.set_property(name, value) {
+        tracing::warn!("failed to set property '{name}': {e:?}");
+    }
+}
+
 impl From<PlatformError> for AppError {
     fn from(err: PlatformError) -> Self {
         Self::Ui(err.to_string())
@@ -50,12 +56,12 @@ impl SlintUiAdapter {
                     .unwrap_or_default();
 
                 if let Some(inst) = weak.upgrade() {
-                    let _r = inst.set_property(
+                    set_prop(
+                        &inst,
                         "login-status",
                         Value::String(SharedString::from("Checking server...")),
                     );
-                    let _r =
-                        inst.set_property("login-error", Value::String(SharedString::default()));
+                    set_prop(&inst, "login-error", Value::String(SharedString::default()));
                 }
 
                 if let Err(e) = tx.try_send(UiCommand::CheckServer(homeserver)) {
@@ -89,12 +95,12 @@ impl SlintUiAdapter {
                 };
 
                 if let Some(inst) = weak.upgrade() {
-                    let _r = inst.set_property(
+                    set_prop(
+                        &inst,
                         "login-status",
                         Value::String(SharedString::from("Logging in...")),
                     );
-                    let _r =
-                        inst.set_property("login-error", Value::String(SharedString::default()));
+                    set_prop(&inst, "login-error", Value::String(SharedString::default()));
                 }
 
                 if let Err(e) = tx.try_send(UiCommand::LoginPassword(creds)) {
@@ -117,12 +123,12 @@ impl SlintUiAdapter {
                     .unwrap_or_default();
 
                 if let Some(inst) = weak.upgrade() {
-                    let _r = inst.set_property(
+                    set_prop(
+                        &inst,
                         "login-status",
                         Value::String(SharedString::from("Opening browser...")),
                     );
-                    let _r =
-                        inst.set_property("login-error", Value::String(SharedString::default()));
+                    set_prop(&inst, "login-error", Value::String(SharedString::default()));
                 }
 
                 if let Err(e) = tx.try_send(UiCommand::LoginOAuth(homeserver)) {
@@ -229,34 +235,41 @@ fn dispatch_ui_event(inst: &ComponentInstance, event: UiEvent) {
 
 fn apply_server_info(inst: &ComponentInstance, info: &ServerInfo) {
     let method = LoginMethod::from_auth_methods(&info.auth_methods);
-    let _r = inst.set_property(
+    set_prop(
+        inst,
         "login-method",
         Value::String(SharedString::from(method.as_str())),
     );
-    let _r = inst.set_property(
+    set_prop(
+        inst,
         "resolved-homeserver",
         Value::String(SharedString::from(&info.homeserver_url)),
     );
-    let _r = inst.set_property(
+    set_prop(
+        inst,
         "login-step",
         Value::String(SharedString::from("credentials")),
     );
-    let _r = inst.set_property("login-status", Value::String(SharedString::default()));
+    set_prop(inst, "login-status", Value::String(SharedString::default()));
 }
 
 fn apply_login_success(inst: &ComponentInstance, user_id: &str) {
-    let _r = inst.set_property("user-id", Value::String(SharedString::from(user_id)));
-    let _r = inst.set_property("login-step", Value::String(SharedString::from("logged-in")));
-    let _r = inst.set_property("login-status", Value::String(SharedString::default()));
+    set_prop(inst, "user-id", Value::String(SharedString::from(user_id)));
+    set_prop(
+        inst,
+        "login-step",
+        Value::String(SharedString::from("logged-in")),
+    );
+    set_prop(inst, "login-status", Value::String(SharedString::default()));
 }
 
 fn apply_error(inst: &ComponentInstance, msg: &str) {
-    let _r = inst.set_property("login-error", Value::String(SharedString::from(msg)));
-    let _r = inst.set_property("login-status", Value::String(SharedString::default()));
+    set_prop(inst, "login-error", Value::String(SharedString::from(msg)));
+    set_prop(inst, "login-status", Value::String(SharedString::default()));
 }
 
 fn apply_status(inst: &ComponentInstance, msg: &str) {
-    let _r = inst.set_property("login-status", Value::String(SharedString::from(msg)));
+    set_prop(inst, "login-status", Value::String(SharedString::from(msg)));
 }
 
 fn apply_timeline(inst: &ComponentInstance, messages: &[TimelineMessage]) {
@@ -301,40 +314,60 @@ fn apply_timeline(inst: &ComponentInstance, messages: &[TimelineMessage]) {
         })
         .collect();
     let model = Value::Model(ModelRc::new(VecModel::from(entries)));
-    let _r = inst.set_property("timeline", model);
+    set_prop(inst, "timeline", model);
 }
 
 fn apply_connection_status(inst: &ComponentInstance, status: &ConnectionStatus) {
-    let _r = inst.set_property(
+    set_prop(
+        inst,
         "connection-status",
         Value::String(SharedString::from(status.as_str())),
     );
 }
 
 fn apply_logged_out(inst: &ComponentInstance) {
-    let _r = inst.set_property(
+    set_prop(
+        inst,
         "login-step",
         Value::String(SharedString::from("homeserver")),
     );
-    let _r = inst.set_property("user-id", Value::String(SharedString::default()));
-    let _r = inst.set_property("login-status", Value::String(SharedString::default()));
-    let _r = inst.set_property("login-error", Value::String(SharedString::default()));
-    let _r = inst.set_property("login-method", Value::String(SharedString::default()));
-    let _r = inst.set_property(
+    set_prop(inst, "user-id", Value::String(SharedString::default()));
+    set_prop(inst, "login-status", Value::String(SharedString::default()));
+    set_prop(inst, "login-error", Value::String(SharedString::default()));
+    set_prop(inst, "login-method", Value::String(SharedString::default()));
+    set_prop(
+        inst,
         "resolved-homeserver",
         Value::String(SharedString::default()),
     );
-    let _r = inst.set_property("selected-room-name", Value::String(SharedString::default()));
-    let _r = inst.set_property("selected-room-id", Value::String(SharedString::default()));
-    let _r = inst.set_property("input-username", Value::String(SharedString::default()));
-    let _r = inst.set_property("input-password", Value::String(SharedString::default()));
-    let _r = inst.set_property(
+    set_prop(
+        inst,
+        "selected-room-name",
+        Value::String(SharedString::default()),
+    );
+    set_prop(
+        inst,
+        "selected-room-id",
+        Value::String(SharedString::default()),
+    );
+    set_prop(
+        inst,
+        "input-username",
+        Value::String(SharedString::default()),
+    );
+    set_prop(
+        inst,
+        "input-password",
+        Value::String(SharedString::default()),
+    );
+    set_prop(
+        inst,
         "connection-status",
         Value::String(SharedString::from("disconnected")),
     );
     let empty_model = Value::Model(ModelRc::new(VecModel::<Value>::default()));
-    let _r = inst.set_property("rooms", empty_model.clone());
-    let _r = inst.set_property("timeline", empty_model);
+    set_prop(inst, "rooms", empty_model.clone());
+    set_prop(inst, "timeline", empty_model);
 }
 
 fn apply_rooms(inst: &ComponentInstance, rooms: &[Room]) {
@@ -353,5 +386,5 @@ fn apply_rooms(inst: &ComponentInstance, rooms: &[Room]) {
         })
         .collect();
     let model = Value::Model(ModelRc::new(VecModel::from(entries)));
-    let _r = inst.set_property("rooms", model);
+    set_prop(inst, "rooms", model);
 }
