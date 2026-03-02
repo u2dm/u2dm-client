@@ -276,10 +276,13 @@ fn apply_timeline(inst: &ComponentInstance, messages: &[TimelineMessage]) {
                 .as_deref()
                 .unwrap_or(&m.sender)
                 .to_string();
-            let ts_secs = m.timestamp / 1000;
-            let hrs = (ts_secs / 3600) % 24;
-            let mins = (ts_secs / 60) % 60;
-            let timestamp = format!("{hrs:02}:{mins:02}");
+            let timestamp = chrono::DateTime::from_timestamp((m.timestamp / 1000).cast_signed(), 0)
+                .map(|utc| {
+                    utc.with_timezone(&chrono::Local)
+                        .format("%H:%M")
+                        .to_string()
+                })
+                .unwrap_or_default();
 
             Value::Struct(Struct::from_iter([
                 (
