@@ -60,6 +60,9 @@ impl AppService {
                 UiCommand::SendMessage { room_id, body } => {
                     self.handle_send_message(room_id, body);
                 }
+                UiCommand::Logout => {
+                    self.handle_logout().await;
+                }
             }
         }
     }
@@ -143,6 +146,15 @@ impl AppService {
 
     async fn save_session(&self, session: &Session) {
         drop(self.storage.save_session(session).await);
+    }
+
+    async fn handle_logout(&mut self) {
+        if let Some(handle) = self.timeline_handle.take() {
+            handle.abort();
+        }
+        drop(self.matrix.logout().await);
+        drop(self.storage.clear_session().await);
+        self.emit(UiEvent::LoggedOut).await;
     }
 
     fn handle_select_room(&mut self, room_id: RoomId) {

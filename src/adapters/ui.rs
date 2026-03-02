@@ -143,6 +143,14 @@ impl SlintUiAdapter {
 
         let tx = cmd_tx.clone();
         self.instance
+            .set_callback("logout", move |_args: &[Value]| -> Value {
+                drop(tx.try_send(UiCommand::Logout));
+                Value::Void
+            })
+            .map_err(|e| AppError::Ui(format!("{e:?}")))?;
+
+        let tx = cmd_tx.clone();
+        self.instance
             .set_callback("send-message", move |args: &[Value]| -> Value {
                 let Some(Value::Struct(s)) = args.first() else {
                     return Value::Void;
@@ -200,6 +208,7 @@ fn dispatch_ui_event(inst: &ComponentInstance, event: UiEvent) {
         UiEvent::Status(msg) => apply_status(inst, &msg),
         UiEvent::Rooms(rooms) => apply_rooms(inst, &rooms),
         UiEvent::Timeline(messages) => apply_timeline(inst, &messages),
+        UiEvent::LoggedOut => apply_logged_out(inst),
     }
 }
 
@@ -275,6 +284,28 @@ fn apply_timeline(inst: &ComponentInstance, messages: &[TimelineMessage]) {
         .collect();
     let model = Value::Model(ModelRc::new(VecModel::from(entries)));
     let _r = inst.set_property("timeline", model);
+}
+
+fn apply_logged_out(inst: &ComponentInstance) {
+    let _r = inst.set_property(
+        "login-step",
+        Value::String(SharedString::from("homeserver")),
+    );
+    let _r = inst.set_property("user-id", Value::String(SharedString::default()));
+    let _r = inst.set_property("login-status", Value::String(SharedString::default()));
+    let _r = inst.set_property("login-error", Value::String(SharedString::default()));
+    let _r = inst.set_property("login-method", Value::String(SharedString::default()));
+    let _r = inst.set_property(
+        "resolved-homeserver",
+        Value::String(SharedString::default()),
+    );
+    let _r = inst.set_property("selected-room-name", Value::String(SharedString::default()));
+    let _r = inst.set_property("selected-room-id", Value::String(SharedString::default()));
+    let _r = inst.set_property("input-username", Value::String(SharedString::default()));
+    let _r = inst.set_property("input-password", Value::String(SharedString::default()));
+    let empty_model = Value::Model(ModelRc::new(VecModel::<Value>::default()));
+    let _r = inst.set_property("rooms", empty_model.clone());
+    let _r = inst.set_property("timeline", empty_model);
 }
 
 fn apply_rooms(inst: &ComponentInstance, rooms: &[Room]) {

@@ -53,6 +53,7 @@ export component AppWindow inherits Window {
     callback login-oauth(string);
     callback select-room(string);
     callback send-message(SendMessageRequest);
+    callback logout();
 
     in-out property <string> input-message: "";
 
@@ -209,11 +210,25 @@ export component AppWindow inherits Window {
             padding: 8px;
             spacing: 4px;
 
-            Text {
-                text: root.user-id;
-                font-size: 12px;
-                horizontal-alignment: center;
-                color: Palette.foreground.transparentize(0.5);
+            HorizontalLayout {
+                spacing: 8px;
+                padding-left: 8px;
+                padding-right: 8px;
+
+                Text {
+                    text: root.user-id;
+                    font-size: 12px;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                    color: Palette.foreground.transparentize(0.5);
+                }
+
+                Button {
+                    text: "Logout";
+                    clicked => {
+                        root.logout();
+                    }
+                }
             }
 
             ListView {

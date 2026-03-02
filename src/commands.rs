@@ -8,6 +8,7 @@ pub enum UiCommand {
     FetchRooms,
     SelectRoom(RoomId),
     SendMessage { room_id: RoomId, body: String },
+    Logout,
 }
 
 pub enum UiEvent {
@@ -17,4 +18,5 @@ pub enum UiEvent {
     Status(String),
     Rooms(Vec<Room>),
     Timeline(Vec<TimelineMessage>),
+    LoggedOut,
 }

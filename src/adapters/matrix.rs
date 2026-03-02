@@ -462,6 +462,15 @@ impl MatrixPort for MatrixAdapter {
         Ok(())
     }
 
+    async fn logout(&self) -> Result<()> {
+        let mut guard = self.client.lock().await;
+        if let Some(client) = guard.as_ref() {
+            drop(client.matrix_auth().logout().await);
+        }
+        *guard = None;
+        Ok(())
+    }
+
     async fn send_text(&self, room_id: &RoomId, body: &str) -> Result<()> {
         let guard = self.client.lock().await;
         let client = guard
