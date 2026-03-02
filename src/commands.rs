@@ -1,5 +1,6 @@
 use crate::domain::models::{
     ConnectionStatus, LoginCredentials, Room, RoomId, ServerInfo, TimelineMessage,
+    VerificationEvent,
 };
 
 pub enum UiCommand {
@@ -11,6 +12,9 @@ pub enum UiCommand {
     SelectRoom(RoomId),
     SendMessage { room_id: RoomId, body: String },
     SessionExpired,
+    AcceptVerification,
+    RejectVerification,
+    ConfirmVerification,
     Logout,
     Quit,
 }
@@ -23,5 +27,6 @@ pub enum UiEvent {
     Rooms(Vec<Room>),
     Timeline(Vec<TimelineMessage>),
     ConnectionStatus(ConnectionStatus),
+    Verification(VerificationEvent),
     LoggedOut,
 }

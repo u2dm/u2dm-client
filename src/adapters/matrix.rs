@@ -12,8 +12,14 @@ use matrix_sdk::authentication::oauth::registration::{
 };
 use matrix_sdk::authentication::oauth::{ClientId, OAuthSession, UrlOrQuery, UserSession};
 use matrix_sdk::config::SyncSettings;
+use matrix_sdk::encryption::verification::{
+    SasState, SasVerification, Verification, VerificationRequest, VerificationRequestState,
+};
 use matrix_sdk::ruma::api::client::error::ErrorKind as RumaErrorKind;
-use matrix_sdk::ruma::events::room::message::{MessageType, RoomMessageEventContent};
+use matrix_sdk::ruma::events::key::verification::request::ToDeviceKeyVerificationRequestEvent;
+use matrix_sdk::ruma::events::room::message::{
+    MessageType, OriginalSyncRoomMessageEvent, RoomMessageEventContent,
+};
 use matrix_sdk::ruma::serde::Raw;
 use matrix_sdk::ruma::{IdParseError, OwnedDeviceId, OwnedRoomId, OwnedUserId};
 use matrix_sdk::utils::local_server::{LocalServerBuilder, LocalServerRedirectHandle};
@@ -29,6 +35,7 @@ use url::Url;
 use crate::domain::models::{
     AuthMethod, ConnectionStatus, EventId, LoginCredentials, MessageBody, OAuthLoginData,
     Room as DomainRoom, RoomId, ServerInfo, Session, SyncSnapshot, TimelineMessage,
+    VerificationEmoji, VerificationEvent,
 };
 use crate::error::{AppError, Result};
 use crate::ports::matrix::MatrixPort;
@@ -37,6 +44,8 @@ pub struct MatrixAdapter {
     data_dir: PathBuf,
     client: RwLock<Option<Client>>,
     redirect_handle: Mutex<Option<LocalServerRedirectHandle>>,
+    verification_request: Mutex<Option<VerificationRequest>>,
+    sas_verification: Mutex<Option<SasVerification>>,
 }
 
 impl MatrixAdapter {
@@ -45,6 +54,8 @@ impl MatrixAdapter {
             data_dir,
             client: RwLock::new(None),
             redirect_handle: Mutex::new(None),
+            verification_request: Mutex::new(None),
+            sas_verification: Mutex::new(None),
         }
     }
 
@@ -192,6 +203,81 @@ fn is_auth_error(err: &matrix_sdk::Error) -> bool {
         err,
         matrix_sdk::Error::Http(http_err) if matches!(http_err.as_ref(), matrix_sdk::HttpError::RefreshToken(_))
     )
+}
+
+async fn handle_verification_request(
+    request: VerificationRequest,
+    sas_mutex: &Mutex<Option<SasVerification>>,
+    tx: &mpsc::Sender<VerificationEvent>,
+) {
+    let mut stream = request.changes();
+
+    while let Some(state) = stream.next().await {
+        match state {
+            VerificationRequestState::Transitioned { verification } => {
+                if let Verification::SasV1(sas) = verification {
+                    *sas_mutex.lock().await = Some(sas.clone());
+                    handle_sas_verification(sas, tx).await;
+                }
+                break;
+            }
+            VerificationRequestState::Done => {
+                tx.send(VerificationEvent::Done).await.ok();
+                break;
+            }
+            VerificationRequestState::Cancelled(info) => {
+                tx.send(VerificationEvent::Cancelled(info.reason().to_string()))
+                    .await
+                    .ok();
+                break;
+            }
+            _ => {}
+        }
+    }
+}
+
+async fn handle_sas_verification(sas: SasVerification, tx: &mpsc::Sender<VerificationEvent>) {
+    if let Err(e) = sas.accept().await {
+        tx.send(VerificationEvent::Cancelled(format!(
+            "Failed to accept SAS: {e}"
+        )))
+        .await
+        .ok();
+        return;
+    }
+
+    let mut stream = sas.changes();
+
+    while let Some(state) = stream.next().await {
+        match state {
+            SasState::KeysExchanged { .. } => {
+                if let Some(emojis) = sas.emoji() {
+                    let domain_emojis: Vec<VerificationEmoji> = emojis
+                        .iter()
+                        .map(|e| VerificationEmoji {
+                            symbol: e.symbol.to_string(),
+                            description: e.description.to_string(),
+                        })
+                        .collect();
+                    tx.send(VerificationEvent::Emojis(domain_emojis)).await.ok();
+                }
+            }
+            SasState::Confirmed => {
+                tx.send(VerificationEvent::Confirming).await.ok();
+            }
+            SasState::Done { .. } => {
+                tx.send(VerificationEvent::Done).await.ok();
+                break;
+            }
+            SasState::Cancelled(info) => {
+                tx.send(VerificationEvent::Cancelled(info.reason().to_string()))
+                    .await
+                    .ok();
+                break;
+            }
+            _ => {}
+        }
+    }
 }
 
 fn client_metadata() -> Result<Raw<ClientMetadata>> {
@@ -478,6 +564,93 @@ impl MatrixPort for MatrixAdapter {
             fs::remove_dir_all(&store_path)
                 .await
                 .map_err(|e| AppError::Storage(e.to_string()))?;
+        }
+        Ok(())
+    }
+
+    async fn listen_for_verification(
+        &self,
+        verification_tx: mpsc::Sender<VerificationEvent>,
+    ) -> Result<()> {
+        let client = self.get_client().await?;
+        let (req_tx, mut req_rx) = mpsc::channel::<VerificationRequest>(8);
+
+        client.add_event_handler({
+            let req_tx = req_tx.clone();
+            move |ev: ToDeviceKeyVerificationRequestEvent, client: Client| {
+                let req_tx = req_tx.clone();
+                async move {
+                    if let Some(request) = client
+                        .encryption()
+                        .get_verification_request(&ev.sender, &ev.content.transaction_id)
+                        .await
+                    {
+                        req_tx.send(request).await.ok();
+                    }
+                }
+            }
+        });
+
+        client.add_event_handler({
+            let req_tx = req_tx.clone();
+            move |ev: OriginalSyncRoomMessageEvent, client: Client| {
+                let req_tx = req_tx.clone();
+                async move {
+                    if let MessageType::VerificationRequest(_) = &ev.content.msgtype
+                        && let Some(request) = client
+                            .encryption()
+                            .get_verification_request(&ev.sender, &ev.event_id)
+                            .await
+                    {
+                        req_tx.send(request).await.ok();
+                    }
+                }
+            }
+        });
+
+        while let Some(request) = req_rx.recv().await {
+            *self.verification_request.lock().await = Some(request.clone());
+
+            verification_tx
+                .send(VerificationEvent::Requested {
+                    sender: request.other_user_id().to_string(),
+                    is_self: request.is_self_verification(),
+                })
+                .await
+                .ok();
+
+            handle_verification_request(request, &self.sas_verification, &verification_tx).await;
+
+            *self.verification_request.lock().await = None;
+            *self.sas_verification.lock().await = None;
+        }
+
+        Ok(())
+    }
+
+    async fn accept_verification(&self) -> Result<()> {
+        let guard = self.verification_request.lock().await;
+        let request = guard
+            .as_ref()
+            .ok_or_else(|| AppError::Other("No pending verification request".into()))?;
+        request.accept().await?;
+        Ok(())
+    }
+
+    async fn confirm_verification(&self) -> Result<()> {
+        let guard = self.sas_verification.lock().await;
+        let sas = guard
+            .as_ref()
+            .ok_or_else(|| AppError::Other("No active SAS verification".into()))?;
+        sas.confirm().await?;
+        Ok(())
+    }
+
+    async fn reject_verification(&self) -> Result<()> {
+        if let Some(sas) = self.sas_verification.lock().await.take() {
+            sas.mismatch().await?;
+        } else if let Some(request) = self.verification_request.lock().await.take() {
+            request.cancel().await?;
         }
         Ok(())
     }

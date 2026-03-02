@@ -136,3 +136,18 @@ pub struct TimelineMessage {
     pub body: MessageBody,
     pub timestamp: u64,
 }
+
+#[derive(Debug, Clone)]
+pub struct VerificationEmoji {
+    pub symbol: String,
+    pub description: String,
+}
+
+#[derive(Debug, Clone)]
+pub enum VerificationEvent {
+    Requested { sender: String, is_self: bool },
+    Emojis(Vec<VerificationEmoji>),
+    Confirming,
+    Done,
+    Cancelled(String),
+}

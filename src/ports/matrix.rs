@@ -3,7 +3,7 @@ use tokio::sync::mpsc;
 
 use crate::domain::models::{
     LoginCredentials, OAuthLoginData, Room, RoomId, ServerInfo, Session, SyncSnapshot,
-    TimelineMessage,
+    TimelineMessage, VerificationEvent,
 };
 use crate::error::Result;
 
@@ -24,4 +24,8 @@ pub trait MatrixPort: Send + Sync {
     async fn restore_session(&self, session: &Session) -> Result<()>;
     async fn logout(&self) -> Result<()>;
     async fn clear_store(&self) -> Result<()>;
+    async fn listen_for_verification(&self, tx: mpsc::Sender<VerificationEvent>) -> Result<()>;
+    async fn accept_verification(&self) -> Result<()>;
+    async fn confirm_verification(&self) -> Result<()>;
+    async fn reject_verification(&self) -> Result<()>;
 }

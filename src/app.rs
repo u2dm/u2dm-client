@@ -6,6 +6,7 @@ use tokio::task::JoinHandle;
 use crate::commands::{UiCommand, UiEvent};
 use crate::domain::models::{
     ConnectionStatus, LoginCredentials, RoomId, Session, SyncSnapshot, TimelineMessage,
+    VerificationEvent,
 };
 use crate::error::Result;
 use crate::ports::matrix::MatrixPort;
@@ -19,6 +20,7 @@ pub struct AppService {
     ui_tx: mpsc::Sender<UiEvent>,
     timeline_handle: Option<JoinHandle<()>>,
     sync_handle: Option<(JoinHandle<()>, JoinHandle<()>)>,
+    verification_handle: Option<JoinHandle<()>>,
 }
 
 impl AppService {
@@ -37,6 +39,7 @@ impl AppService {
             ui_tx,
             timeline_handle: None,
             sync_handle: None,
+            verification_handle: None,
         }
     }
 
@@ -63,6 +66,15 @@ impl AppService {
                 }
                 UiCommand::SendMessage { room_id, body } => {
                     self.handle_send_message(room_id, body);
+                }
+                UiCommand::AcceptVerification => {
+                    self.handle_accept_verification().await;
+                }
+                UiCommand::RejectVerification => {
+                    self.handle_reject_verification().await;
+                }
+                UiCommand::ConfirmVerification => {
+                    self.handle_confirm_verification().await;
                 }
                 UiCommand::SessionExpired => {
                     self.handle_session_expired().await;
@@ -189,11 +201,18 @@ impl AppService {
         }
     }
 
+    fn abort_verification(&mut self) {
+        if let Some(handle) = self.verification_handle.take() {
+            handle.abort();
+        }
+    }
+
     fn handle_quit(&mut self) {
         if let Some(handle) = self.timeline_handle.take() {
             handle.abort();
         }
         self.abort_sync();
+        self.abort_verification();
     }
 
     async fn handle_session_expired(&mut self) {
@@ -202,6 +221,7 @@ impl AppService {
             handle.abort();
         }
         self.abort_sync();
+        self.abort_verification();
         self.clear_local_state().await;
         self.emit(UiEvent::LoggedOut).await;
         self.emit(UiEvent::Error(
@@ -215,6 +235,7 @@ impl AppService {
             handle.abort();
         }
         self.abort_sync();
+        self.abort_verification();
         if let Err(e) = self.matrix.logout().await {
             tracing::warn!("failed to logout from server: {e}");
         }
@@ -249,6 +270,27 @@ impl AppService {
                 }
             }
         });
+    }
+
+    async fn handle_accept_verification(&self) {
+        if let Err(e) = self.matrix.accept_verification().await {
+            self.emit(UiEvent::Error(format!("Verification accept failed: {e}")))
+                .await;
+        }
+    }
+
+    async fn handle_reject_verification(&self) {
+        if let Err(e) = self.matrix.reject_verification().await {
+            self.emit(UiEvent::Error(format!("Verification reject failed: {e}")))
+                .await;
+        }
+    }
+
+    async fn handle_confirm_verification(&self) {
+        if let Err(e) = self.matrix.confirm_verification().await {
+            self.emit(UiEvent::Error(format!("Verification confirm failed: {e}")))
+                .await;
+        }
     }
 
     async fn handle_fetch_rooms(&mut self) {
@@ -305,6 +347,42 @@ impl AppService {
         });
 
         self.sync_handle = Some((sync_task, receiver_task));
+
+        self.abort_verification();
+        self.verification_handle =
+            Some(Self::spawn_verification_listener(&self.matrix, &self.ui_tx));
+    }
+
+    fn spawn_verification_listener(
+        matrix: &Arc<dyn MatrixPort>,
+        ui_tx: &mpsc::Sender<UiEvent>,
+    ) -> JoinHandle<()> {
+        let (verif_tx, mut verif_rx) = mpsc::channel::<VerificationEvent>(8);
+        let matrix_verif = Arc::clone(matrix);
+        let ui_tx = ui_tx.clone();
+
+        tokio::spawn(async move {
+            let listen = matrix_verif.listen_for_verification(verif_tx);
+            let forward = async {
+                while let Some(event) = verif_rx.recv().await {
+                    if let Err(e) = ui_tx.send(UiEvent::Verification(event)).await {
+                        tracing::debug!("failed to send Verification event: {e}");
+                        break;
+                    }
+                }
+            };
+
+            tokio::select! {
+                result = listen => {
+                    if let Err(e) = result {
+                        tracing::warn!("verification listener ended: {e}");
+                    }
+                }
+                () = forward => {
+                    tracing::debug!("verification forwarder stopped");
+                }
+            }
+        })
     }
 
     fn spawn_timeline_subscription(

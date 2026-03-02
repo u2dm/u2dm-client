@@ -8,7 +8,7 @@ use tokio::sync::mpsc;
 use crate::commands::{UiCommand, UiEvent};
 use crate::domain::models::{
     ConnectionStatus, LoginCredentials, LoginMethod, MessageBody, Room, RoomId, ServerInfo,
-    TimelineMessage,
+    TimelineMessage, VerificationEvent,
 };
 use crate::error::{AppError, Result};
 
@@ -195,6 +195,36 @@ impl SlintUiAdapter {
             })
             .map_err(|e| AppError::Ui(format!("{e:?}")))?;
 
+        let tx = cmd_tx.clone();
+        self.instance
+            .set_callback("accept-verification", move |_args: &[Value]| -> Value {
+                if let Err(e) = tx.send(UiCommand::AcceptVerification) {
+                    tracing::debug!("failed to send AcceptVerification command: {e}");
+                }
+                Value::Void
+            })
+            .map_err(|e| AppError::Ui(format!("{e:?}")))?;
+
+        let tx = cmd_tx.clone();
+        self.instance
+            .set_callback("confirm-verification", move |_args: &[Value]| -> Value {
+                if let Err(e) = tx.send(UiCommand::ConfirmVerification) {
+                    tracing::debug!("failed to send ConfirmVerification command: {e}");
+                }
+                Value::Void
+            })
+            .map_err(|e| AppError::Ui(format!("{e:?}")))?;
+
+        let tx = cmd_tx.clone();
+        self.instance
+            .set_callback("reject-verification", move |_args: &[Value]| -> Value {
+                if let Err(e) = tx.send(UiCommand::RejectVerification) {
+                    tracing::debug!("failed to send RejectVerification command: {e}");
+                }
+                Value::Void
+            })
+            .map_err(|e| AppError::Ui(format!("{e:?}")))?;
+
         Ok(())
     }
 
@@ -229,6 +259,7 @@ fn dispatch_ui_event(inst: &ComponentInstance, event: UiEvent) {
         UiEvent::Rooms(rooms) => apply_rooms(inst, &rooms),
         UiEvent::Timeline(messages) => apply_timeline(inst, &messages),
         UiEvent::ConnectionStatus(status) => apply_connection_status(inst, &status),
+        UiEvent::Verification(event) => apply_verification(inst, &event),
         UiEvent::LoggedOut => apply_logged_out(inst),
     }
 }
@@ -325,6 +356,80 @@ fn apply_connection_status(inst: &ComponentInstance, status: &ConnectionStatus) 
     );
 }
 
+fn apply_verification(inst: &ComponentInstance, event: &VerificationEvent) {
+    match event {
+        VerificationEvent::Requested { sender, is_self } => {
+            set_prop(inst, "verification-visible", Value::Bool(true));
+            set_prop(
+                inst,
+                "verification-step",
+                Value::String(SharedString::from("requested")),
+            );
+            set_prop(
+                inst,
+                "verification-sender",
+                Value::String(SharedString::from(sender.as_str())),
+            );
+            set_prop(inst, "verification-is-self", Value::Bool(*is_self));
+            set_prop(
+                inst,
+                "verification-error",
+                Value::String(SharedString::default()),
+            );
+        }
+        VerificationEvent::Emojis(emojis) => {
+            set_prop(
+                inst,
+                "verification-step",
+                Value::String(SharedString::from("emojis")),
+            );
+            let entries: Vec<Value> = emojis
+                .iter()
+                .map(|e| {
+                    Value::Struct(Struct::from_iter([
+                        (
+                            "symbol".to_string(),
+                            Value::String(SharedString::from(&e.symbol)),
+                        ),
+                        (
+                            "description".to_string(),
+                            Value::String(SharedString::from(&e.description)),
+                        ),
+                    ]))
+                })
+                .collect();
+            let model = Value::Model(ModelRc::new(VecModel::from(entries)));
+            set_prop(inst, "verification-emojis", model);
+        }
+        VerificationEvent::Confirming => {
+            set_prop(
+                inst,
+                "verification-step",
+                Value::String(SharedString::from("confirming")),
+            );
+        }
+        VerificationEvent::Done => {
+            set_prop(
+                inst,
+                "verification-step",
+                Value::String(SharedString::from("done")),
+            );
+        }
+        VerificationEvent::Cancelled(reason) => {
+            set_prop(
+                inst,
+                "verification-step",
+                Value::String(SharedString::from("cancelled")),
+            );
+            set_prop(
+                inst,
+                "verification-error",
+                Value::String(SharedString::from(reason.as_str())),
+            );
+        }
+    }
+}
+
 fn apply_logged_out(inst: &ComponentInstance) {
     set_prop(
         inst,
@@ -365,9 +470,27 @@ fn apply_logged_out(inst: &ComponentInstance) {
         "connection-status",
         Value::String(SharedString::from("disconnected")),
     );
+    set_prop(inst, "verification-visible", Value::Bool(false));
+    set_prop(
+        inst,
+        "verification-step",
+        Value::String(SharedString::default()),
+    );
+    set_prop(
+        inst,
+        "verification-sender",
+        Value::String(SharedString::default()),
+    );
+    set_prop(inst, "verification-is-self", Value::Bool(false));
+    set_prop(
+        inst,
+        "verification-error",
+        Value::String(SharedString::default()),
+    );
     let empty_model = Value::Model(ModelRc::new(VecModel::<Value>::default()));
     set_prop(inst, "rooms", empty_model.clone());
-    set_prop(inst, "timeline", empty_model);
+    set_prop(inst, "timeline", empty_model.clone());
+    set_prop(inst, "verification-emojis", empty_model);
 }
 
 fn apply_rooms(inst: &ComponentInstance, rooms: &[Room]) {
