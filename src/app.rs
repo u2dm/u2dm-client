@@ -274,17 +274,14 @@ impl AppService {
 
         let (snapshot_tx, mut snapshot_rx) = mpsc::channel::<SyncSnapshot>(16);
         let matrix_sync = Arc::clone(&self.matrix);
-        let cmd_tx = self.cmd_tx.clone();
         let sync_task = tokio::spawn(async move {
             if let Err(e) = matrix_sync.start_sync(snapshot_tx).await {
                 tracing::error!("sync loop ended with error: {e}");
-                if let Err(e) = cmd_tx.send(UiCommand::SessionExpired).await {
-                    tracing::debug!("failed to send SessionExpired command: {e}");
-                }
             }
         });
 
         let ui_tx = self.ui_tx.clone();
+        let cmd_tx = self.cmd_tx.clone();
         let receiver_task = tokio::spawn(async move {
             while let Some(snapshot) = snapshot_rx.recv().await {
                 if let Err(e) = ui_tx
@@ -300,6 +297,10 @@ impl AppService {
                 {
                     tracing::debug!("failed to send Rooms event: {e}");
                 }
+            }
+
+            if let Err(e) = cmd_tx.send(UiCommand::SessionExpired).await {
+                tracing::debug!("failed to send SessionExpired command: {e}");
             }
         });
 
