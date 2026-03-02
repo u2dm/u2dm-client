@@ -177,13 +177,20 @@ fn apply_timeline_diff(items: &mut Vec<Arc<TimelineItem>>, diff: VectorDiff<Arc<
 }
 
 fn is_auth_error(err: &matrix_sdk::Error) -> bool {
-    matches!(
+    if matches!(
         err.client_api_error_kind(),
         Some(
             RumaErrorKind::Unauthorized
                 | RumaErrorKind::Forbidden { .. }
                 | RumaErrorKind::UnknownToken { .. }
         )
+    ) {
+        return true;
+    }
+
+    matches!(
+        err,
+        matrix_sdk::Error::Http(http_err) if matches!(http_err.as_ref(), matrix_sdk::HttpError::RefreshToken(_))
     )
 }
 
