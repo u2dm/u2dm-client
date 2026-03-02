@@ -18,6 +18,7 @@ pub struct AppService {
     cmd_tx: mpsc::Sender<UiCommand>,
     ui_tx: mpsc::Sender<UiEvent>,
     timeline_handle: Option<JoinHandle<()>>,
+    sync_handle: Option<(JoinHandle<()>, JoinHandle<()>)>,
 }
 
 impl AppService {
@@ -35,6 +36,7 @@ impl AppService {
             cmd_tx,
             ui_tx,
             timeline_handle: None,
+            sync_handle: None,
         }
     }
 
@@ -180,10 +182,18 @@ impl AppService {
         }
     }
 
+    fn abort_sync(&mut self) {
+        if let Some((sync_task, receiver_task)) = self.sync_handle.take() {
+            sync_task.abort();
+            receiver_task.abort();
+        }
+    }
+
     fn handle_quit(&mut self) {
         if let Some(handle) = self.timeline_handle.take() {
             handle.abort();
         }
+        self.abort_sync();
     }
 
     async fn handle_session_expired(&mut self) {
@@ -191,6 +201,7 @@ impl AppService {
         if let Some(handle) = self.timeline_handle.take() {
             handle.abort();
         }
+        self.abort_sync();
         self.clear_local_state().await;
         self.emit(UiEvent::LoggedOut).await;
         self.emit(UiEvent::Error(
@@ -203,6 +214,7 @@ impl AppService {
         if let Some(handle) = self.timeline_handle.take() {
             handle.abort();
         }
+        self.abort_sync();
         if let Err(e) = self.matrix.logout().await {
             tracing::warn!("failed to logout from server: {e}");
         }
@@ -239,7 +251,9 @@ impl AppService {
         });
     }
 
-    async fn handle_fetch_rooms(&self) {
+    async fn handle_fetch_rooms(&mut self) {
+        self.abort_sync();
+
         self.emit(UiEvent::ConnectionStatus(ConnectionStatus::Connecting))
             .await;
 
@@ -261,7 +275,7 @@ impl AppService {
         let (snapshot_tx, mut snapshot_rx) = mpsc::channel::<SyncSnapshot>(16);
         let matrix_sync = Arc::clone(&self.matrix);
         let cmd_tx = self.cmd_tx.clone();
-        tokio::spawn(async move {
+        let sync_task = tokio::spawn(async move {
             if let Err(e) = matrix_sync.start_sync(snapshot_tx).await {
                 tracing::error!("sync loop ended with error: {e}");
                 if let Err(e) = cmd_tx.send(UiCommand::SessionExpired).await {
@@ -271,7 +285,7 @@ impl AppService {
         });
 
         let ui_tx = self.ui_tx.clone();
-        tokio::spawn(async move {
+        let receiver_task = tokio::spawn(async move {
             while let Some(snapshot) = snapshot_rx.recv().await {
                 if let Err(e) = ui_tx
                     .send(UiEvent::ConnectionStatus(
@@ -288,6 +302,8 @@ impl AppService {
                 }
             }
         });
+
+        self.sync_handle = Some((sync_task, receiver_task));
     }
 
     fn spawn_timeline_subscription(
