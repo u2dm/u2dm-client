@@ -46,7 +46,7 @@ fn run() -> Result<()> {
     let cfg = config::AppConfig::from_env()?;
     let ui = SlintUiAdapter::compile(&rt)?;
 
-    let (cmd_tx, cmd_rx) = mpsc::channel::<UiCommand>(8);
+    let (cmd_tx, cmd_rx) = mpsc::unbounded_channel::<UiCommand>();
     let (ui_tx, ui_rx) = mpsc::channel::<UiEvent>(32);
 
     ui.register_callbacks(&cmd_tx)?;
@@ -58,7 +58,7 @@ fn run() -> Result<()> {
     {
         let _guard = rt.enter();
         ui.spawn_event_handler(ui_rx);
-        if let Err(e) = cmd_tx.try_send(UiCommand::RestoreSession) {
+        if let Err(e) = cmd_tx.send(UiCommand::RestoreSession) {
             tracing::warn!("failed to send RestoreSession command: {e}");
         }
         let mut service = AppService::new(matrix, storage, cmd_rx, cmd_tx, ui_tx);
@@ -69,7 +69,7 @@ fn run() -> Result<()> {
 
     ui.run()?;
 
-    if let Err(e) = cmd_tx_quit.try_send(UiCommand::Quit) {
+    if let Err(e) = cmd_tx_quit.send(UiCommand::Quit) {
         tracing::debug!("failed to send Quit command: {e}");
     }
     rt.shutdown_timeout(Duration::from_secs(5));

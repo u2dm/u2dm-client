@@ -14,8 +14,8 @@ use crate::ports::storage::StoragePort;
 pub struct AppService {
     matrix: Arc<dyn MatrixPort>,
     storage: Arc<dyn StoragePort>,
-    cmd_rx: mpsc::Receiver<UiCommand>,
-    cmd_tx: mpsc::Sender<UiCommand>,
+    cmd_rx: mpsc::UnboundedReceiver<UiCommand>,
+    cmd_tx: mpsc::UnboundedSender<UiCommand>,
     ui_tx: mpsc::Sender<UiEvent>,
     timeline_handle: Option<JoinHandle<()>>,
     sync_handle: Option<(JoinHandle<()>, JoinHandle<()>)>,
@@ -25,8 +25,8 @@ impl AppService {
     pub fn new(
         matrix: Arc<dyn MatrixPort>,
         storage: Arc<dyn StoragePort>,
-        cmd_rx: mpsc::Receiver<UiCommand>,
-        cmd_tx: mpsc::Sender<UiCommand>,
+        cmd_rx: mpsc::UnboundedReceiver<UiCommand>,
+        cmd_tx: mpsc::UnboundedSender<UiCommand>,
         ui_tx: mpsc::Sender<UiEvent>,
     ) -> Self {
         Self {
@@ -84,8 +84,8 @@ impl AppService {
         }
     }
 
-    async fn send_cmd(&self, cmd: UiCommand) {
-        if let Err(e) = self.cmd_tx.send(cmd).await {
+    fn send_cmd(&self, cmd: UiCommand) {
+        if let Err(e) = self.cmd_tx.send(cmd) {
             tracing::debug!("failed to send command: {e}");
         }
     }
@@ -123,7 +123,7 @@ impl AppService {
                     user_id: session.user_id,
                 })
                 .await;
-                self.send_cmd(UiCommand::FetchRooms).await;
+                self.send_cmd(UiCommand::FetchRooms);
             }
             Err(e) => {
                 self.clear_local_state().await;
@@ -147,7 +147,7 @@ impl AppService {
                     user_id: session.user_id,
                 })
                 .await;
-                self.send_cmd(UiCommand::FetchRooms).await;
+                self.send_cmd(UiCommand::FetchRooms);
             }
             Err(e) => self.emit(UiEvent::Error(e.to_string())).await,
         }
@@ -156,7 +156,7 @@ impl AppService {
     async fn handle_login_oauth(&self) {
         match self.run_oauth_flow().await {
             Ok(()) => {
-                self.send_cmd(UiCommand::FetchRooms).await;
+                self.send_cmd(UiCommand::FetchRooms);
             }
             Err(e) => self.emit(UiEvent::Error(e.to_string())).await,
         }
@@ -299,7 +299,7 @@ impl AppService {
                 }
             }
 
-            if let Err(e) = cmd_tx.send(UiCommand::SessionExpired).await {
+            if let Err(e) = cmd_tx.send(UiCommand::SessionExpired) {
                 tracing::debug!("failed to send SessionExpired command: {e}");
             }
         });
