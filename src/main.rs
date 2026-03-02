@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use adapters::matrix::MatrixAdapter;
 use commands::UiCommand;
-use domain::models::{LoginCredentials, LoginMethod, Room, ServerInfo};
+use domain::models::{LoginCredentials, LoginMethod, Room, ServerInfo, SyncSnapshot};
 use error::{AppError, Result};
 use ports::matrix::MatrixPort;
 use slint::{ModelRc, VecModel};
@@ -229,6 +229,25 @@ fn spawn_command_handler(
                 }
                 UiCommand::FetchRooms => {
                     fetch_and_apply_rooms(&matrix, &weak).await;
+
+                    let (snapshot_tx, mut snapshot_rx) = mpsc::channel::<SyncSnapshot>(16);
+                    let matrix_sync = Arc::clone(&matrix);
+                    tokio::spawn(async move {
+                        let _r = matrix_sync.start_sync(snapshot_tx).await;
+                    });
+                    let weak_sync = weak.clone();
+                    tokio::spawn(async move {
+                        while let Some(snapshot) = snapshot_rx.recv().await {
+                            let weak = weak_sync.clone();
+                            slint::invoke_from_event_loop(move || {
+                                let Some(inst) = weak.upgrade() else {
+                                    return;
+                                };
+                                apply_rooms(&inst, &snapshot.rooms);
+                            })
+                            .ok();
+                        }
+                    });
                 }
             }
         }

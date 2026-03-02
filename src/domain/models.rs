@@ -82,3 +82,8 @@ pub struct Room {
     pub is_direct: bool,
     pub unread_count: u64,
 }
+
+#[derive(Debug, Clone)]
+pub struct SyncSnapshot {
+    pub rooms: Vec<Room>,
+}
