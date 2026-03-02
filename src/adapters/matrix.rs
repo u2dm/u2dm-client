@@ -23,7 +23,7 @@ use crate::domain::models::{
 use crate::error::{AppError, Result};
 use crate::ports::matrix::MatrixPort;
 
-use matrix_sdk::ruma::events::room::message::MessageType;
+use matrix_sdk::ruma::events::room::message::{MessageType, RoomMessageEventContent};
 use matrix_sdk::ruma::{IdParseError, OwnedRoomId};
 use matrix_sdk_ui::eyeball_im::VectorDiff;
 use matrix_sdk_ui::timeline::{EventTimelineItem, RoomExt, TimelineDetails, TimelineItem};
@@ -386,6 +386,31 @@ impl MatrixPort for MatrixAdapter {
                 }
             }
         }
+
+        Ok(())
+    }
+
+    async fn send_text(&self, room_id: &RoomId, body: &str) -> Result<()> {
+        let guard = self.client.lock().await;
+        let client = guard
+            .as_ref()
+            .ok_or_else(|| AppError::Matrix("No client".into()))?;
+
+        let room_id_parsed: OwnedRoomId = room_id
+            .0
+            .as_str()
+            .try_into()
+            .map_err(|e: IdParseError| AppError::Matrix(e.to_string()))?;
+
+        let room = client
+            .get_room(&room_id_parsed)
+            .ok_or_else(|| AppError::Matrix("Room not found".into()))?;
+
+        drop(guard);
+
+        room.send(RoomMessageEventContent::text_plain(body))
+            .await
+            .map_err(|e| AppError::Matrix(e.to_string()))?;
 
         Ok(())
     }

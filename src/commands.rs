@@ -6,4 +6,5 @@ pub enum UiCommand {
     LoginOAuth(String),
     FetchRooms,
     SelectRoom(RoomId),
+    SendMessage { room_id: RoomId, body: String },
 }

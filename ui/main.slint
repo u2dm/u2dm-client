@@ -24,6 +24,11 @@ struct MessageEntry {
     timestamp: string,
 }
 
+struct SendMessageRequest {
+    room-id: string,
+    body: string,
+}
+
 export component AppWindow inherits Window {
     title: "U2DM Matrix Client";
     preferred-width: root.width;
@@ -47,6 +52,9 @@ export component AppWindow inherits Window {
     callback login-password(LoginRequest);
     callback login-oauth(string);
     callback select-room(string);
+    callback send-message(SendMessageRequest);
+
+    in-out property <string> input-message: "";
 
     if root.login-step == "homeserver": VerticalLayout {
         alignment: center;
@@ -294,6 +302,32 @@ export component AppWindow inherits Window {
                             text: msg.body;
                             font-size: 14px;
                             overflow: elide;
+                        }
+                    }
+                }
+            }
+
+            if root.selected-room-name != "": HorizontalLayout {
+                spacing: 8px;
+
+                LineEdit {
+                    text <=> root.input-message;
+                    placeholder-text: "Send a message...";
+                    accepted => {
+                        if root.input-message != "" {
+                            root.send-message({ room-id: root.selected-room-id, body: root.input-message });
+                            root.input-message = "";
+                        }
+                    }
+                }
+
+                Button {
+                    text: "Send";
+                    max-width: 80px;
+                    clicked => {
+                        if root.input-message != "" {
+                            root.send-message({ room-id: root.selected-room-id, body: root.input-message });
+                            root.input-message = "";
                         }
                     }
                 }

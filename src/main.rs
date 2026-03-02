@@ -64,6 +64,7 @@ fn compile_ui(rt: &Runtime) -> Result<ComponentInstance> {
     })
 }
 
+#[allow(clippy::too_many_lines)]
 fn register_callbacks(
     instance: &ComponentInstance,
     cmd_tx: &mpsc::Sender<UiCommand>,
@@ -170,9 +171,36 @@ fn register_callbacks(
         })
         .map_err(|e| AppError::Ui(format!("{e:?}")))?;
 
+    let tx = cmd_tx.clone();
+    instance
+        .set_callback("send-message", move |args: &[Value]| -> Value {
+            let Some(Value::Struct(s)) = args.first() else {
+                return Value::Void;
+            };
+            let field = |name: &str| -> String {
+                s.get_field(name)
+                    .and_then(|v| match v {
+                        Value::String(s) => Some(s.to_string()),
+                        _ => None,
+                    })
+                    .unwrap_or_default()
+            };
+            let room_id = field("room-id");
+            let body = field("body");
+            if !room_id.is_empty() && !body.is_empty() {
+                drop(tx.try_send(UiCommand::SendMessage {
+                    room_id: RoomId(room_id),
+                    body,
+                }));
+            }
+            Value::Void
+        })
+        .map_err(|e| AppError::Ui(format!("{e:?}")))?;
+
     Ok(())
 }
 
+#[allow(clippy::too_many_lines)]
 fn spawn_command_handler(
     rt: &Runtime,
     cmd_tx: mpsc::Sender<UiCommand>,
@@ -254,6 +282,12 @@ fn spawn_command_handler(
                         handle.abort();
                     }
                     timeline_handle = Some(spawn_timeline_subscription(&matrix, &weak, room_id));
+                }
+                UiCommand::SendMessage { room_id, body } => {
+                    let matrix_send = Arc::clone(&matrix);
+                    tokio::spawn(async move {
+                        let _r = matrix_send.send_text(&room_id, &body).await;
+                    });
                 }
                 UiCommand::FetchRooms => {
                     fetch_and_apply_rooms(&matrix, &weak).await;

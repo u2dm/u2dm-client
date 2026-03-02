@@ -20,4 +20,5 @@ pub trait MatrixPort: Send + Sync {
         timeline_tx: mpsc::Sender<Vec<TimelineMessage>>,
     ) -> Result<()>;
     async fn start_sync(&self, state_tx: mpsc::Sender<SyncSnapshot>) -> Result<()>;
+    async fn send_text(&self, room_id: &RoomId, body: &str) -> Result<()>;
 }
