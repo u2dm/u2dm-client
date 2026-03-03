@@ -28,4 +28,8 @@ pub trait MatrixPort: Send + Sync {
     async fn accept_verification(&self) -> Result<()>;
     async fn confirm_verification(&self) -> Result<()>;
     async fn reject_verification(&self) -> Result<()>;
+    async fn subscribe_session_changes(
+        &self,
+        session_tx: mpsc::UnboundedSender<Session>,
+    ) -> Result<()>;
 }

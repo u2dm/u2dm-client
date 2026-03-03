@@ -23,7 +23,7 @@ use matrix_sdk::ruma::events::room::message::{
 use matrix_sdk::ruma::serde::Raw;
 use matrix_sdk::ruma::{IdParseError, OwnedDeviceId, OwnedRoomId, OwnedUserId};
 use matrix_sdk::utils::local_server::{LocalServerBuilder, LocalServerRedirectHandle};
-use matrix_sdk::{Client, SessionMeta};
+use matrix_sdk::{Client, SessionChange, SessionMeta};
 use matrix_sdk_ui::eyeball_im::VectorDiff;
 use matrix_sdk_ui::timeline::{EventTimelineItem, RoomExt, TimelineDetails, TimelineItem};
 use rand::RngExt;
@@ -278,6 +278,34 @@ async fn handle_sas_verification(sas: SasVerification, tx: &mpsc::Sender<Verific
             _ => {}
         }
     }
+}
+
+fn extract_current_session(client: &Client) -> Option<Session> {
+    let homeserver = client.homeserver().to_string();
+
+    if let Some(oauth) = client.oauth().full_session() {
+        return Some(Session {
+            user_id: oauth.user.meta.user_id.to_string(),
+            device_id: oauth.user.meta.device_id.to_string(),
+            homeserver,
+            access_token: oauth.user.tokens.access_token,
+            refresh_token: oauth.user.tokens.refresh_token,
+            client_id: Some(oauth.client_id.to_string()),
+        });
+    }
+
+    if let Some(matrix) = client.matrix_auth().session() {
+        return Some(Session {
+            user_id: matrix.meta.user_id.to_string(),
+            device_id: matrix.meta.device_id.to_string(),
+            homeserver,
+            access_token: matrix.tokens.access_token,
+            refresh_token: matrix.tokens.refresh_token,
+            client_id: None,
+        });
+    }
+
+    None
 }
 
 fn client_metadata() -> Result<Raw<ClientMetadata>> {
@@ -674,6 +702,25 @@ impl MatrixPort for MatrixAdapter {
             .ok_or_else(|| AppError::Other("Room not found".into()))?;
 
         room.send(RoomMessageEventContent::text_plain(body)).await?;
+
+        Ok(())
+    }
+
+    async fn subscribe_session_changes(
+        &self,
+        session_tx: mpsc::UnboundedSender<Session>,
+    ) -> Result<()> {
+        let client = self.get_client().await?;
+        let mut rx = client.subscribe_to_session_changes();
+
+        while let Ok(change) = rx.recv().await {
+            if change == SessionChange::TokensRefreshed
+                && let Some(session) = extract_current_session(&client)
+                && session_tx.send(session).is_err()
+            {
+                break;
+            }
+        }
 
         Ok(())
     }

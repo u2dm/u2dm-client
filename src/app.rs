@@ -8,6 +8,7 @@ use crate::domain::models::{
     ConnectionStatus, LoginCredentials, RoomId, Session, SyncSnapshot, TimelineMessage,
     VerificationEvent,
 };
+
 use crate::error::{AppError, Result};
 use crate::ports::matrix::MatrixPort;
 use crate::ports::storage::StoragePort;
@@ -21,6 +22,7 @@ pub struct AppService {
     timeline_handle: Option<JoinHandle<()>>,
     sync_handle: Option<(JoinHandle<()>, JoinHandle<()>)>,
     verification_handle: Option<JoinHandle<()>>,
+    session_change_handle: Option<JoinHandle<()>>,
 }
 
 impl AppService {
@@ -40,6 +42,7 @@ impl AppService {
             timeline_handle: None,
             sync_handle: None,
             verification_handle: None,
+            session_change_handle: None,
         }
     }
 
@@ -207,12 +210,19 @@ impl AppService {
         }
     }
 
+    fn abort_session_changes(&mut self) {
+        if let Some(handle) = self.session_change_handle.take() {
+            handle.abort();
+        }
+    }
+
     fn handle_quit(&mut self) {
         if let Some(handle) = self.timeline_handle.take() {
             handle.abort();
         }
         self.abort_sync();
         self.abort_verification();
+        self.abort_session_changes();
     }
 
     async fn handle_session_expired(&mut self) {
@@ -222,6 +232,7 @@ impl AppService {
         }
         self.abort_sync();
         self.abort_verification();
+        self.abort_session_changes();
         self.clear_local_state().await;
         self.emit(UiEvent::LoggedOut).await;
         self.emit(UiEvent::Error(
@@ -236,6 +247,7 @@ impl AppService {
         }
         self.abort_sync();
         self.abort_verification();
+        self.abort_session_changes();
         if let Err(e) = self.matrix.logout().await {
             tracing::warn!("failed to logout from server: {e}");
         }
@@ -355,6 +367,12 @@ impl AppService {
         self.abort_verification();
         self.verification_handle =
             Some(Self::spawn_verification_listener(&self.matrix, &self.ui_tx));
+
+        self.abort_session_changes();
+        self.session_change_handle = Some(Self::spawn_session_change_listener(
+            &self.matrix,
+            &self.storage,
+        ));
     }
 
     fn spawn_verification_listener(
@@ -384,6 +402,39 @@ impl AppService {
                 }
                 () = forward => {
                     tracing::debug!("verification forwarder stopped");
+                }
+            }
+        })
+    }
+
+    fn spawn_session_change_listener(
+        matrix: &Arc<dyn MatrixPort>,
+        storage: &Arc<dyn StoragePort>,
+    ) -> JoinHandle<()> {
+        let (session_tx, mut session_rx) = mpsc::unbounded_channel::<Session>();
+        let matrix = Arc::clone(matrix);
+        let storage = Arc::clone(storage);
+
+        tokio::spawn(async move {
+            let subscribe = matrix.subscribe_session_changes(session_tx);
+            let persist = async {
+                while let Some(session) = session_rx.recv().await {
+                    if let Err(e) = storage.save_session(&session).await {
+                        tracing::warn!("failed to persist refreshed session: {e}");
+                    } else {
+                        tracing::info!("persisted refreshed session tokens");
+                    }
+                }
+            };
+
+            tokio::select! {
+                result = subscribe => {
+                    if let Err(e) = result {
+                        tracing::warn!("session change listener ended: {e}");
+                    }
+                }
+                () = persist => {
+                    tracing::debug!("session change persister stopped");
                 }
             }
         })
