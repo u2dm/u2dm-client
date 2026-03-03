@@ -1,38 +1,15 @@
+import { LoginRequest } from "screens/credentials/types.slint";
 import {
-    Button,
-    LineEdit,
-    ListView,
-    Palette,
-    VerticalBox,
-} from "std-widgets.slint";
+    RoomEntry,
+    MessageEntry,
+    SendMessageRequest,
+} from "screens/chat/components/types.slint";
+import { VerificationEmoji } from "components/types.slint";
 
-struct LoginRequest {
-    homeserver: string,
-    username: string,
-    password: string,
-}
-
-struct RoomEntry {
-    id: string,
-    name: string,
-    unread: int,
-}
-
-struct MessageEntry {
-    sender: string,
-    body: string,
-    timestamp: string,
-}
-
-struct SendMessageRequest {
-    room-id: string,
-    body: string,
-}
-
-struct VerificationEmoji {
-    symbol: string,
-    description: string,
-}
+import { HomeserverScreen } from "screens/homeserver/homeserver.slint";
+import { CredentialsScreen } from "screens/credentials/credentials.slint";
+import { ChatScreen } from "screens/chat/chat.slint";
+import { VerificationDialog } from "components/verification.slint";
 
 export component AppWindow inherits Window {
     title: "U2DM Matrix Client";
@@ -73,495 +50,71 @@ export component AppWindow inherits Window {
 
     in-out property <string> input-message: "";
 
-    pure function status-indicator-color(status: string) -> color {
-        if status == "connected" {
-            return Palette.accent-background;
-        }
-        if status == "connecting" {
-            return Palette.accent-background.transparentize(0.5);
-        }
-        if status == "error" {
-            return Palette.foreground.mix(Colors.red, 0.6);
-        }
-        return Palette.border;
-    }
-
-    if root.login-step == "homeserver": VerticalLayout {
-        alignment: center;
-        padding: 24px;
-        spacing: 12px;
-
-        Text {
-            text: "U2DM";
-            font-size: 32px;
-            horizontal-alignment: center;
-        }
-
-        HorizontalLayout {
-            alignment: center;
-
-            LineEdit {
-                text <=> root.input-homeserver;
-                placeholder-text: "Homeserver";
-                horizontal-stretch: 0;
-                max-width: 320px;
-            }
-        }
-
-        HorizontalLayout {
-            alignment: center;
-
-            Button {
-                text: "Continue";
-                max-width: 320px;
-                clicked => {
-                    root.check-server(root.input-homeserver);
-                }
-            }
-        }
-
-        if root.login-status != "": Text {
-            text: root.login-status;
-            font-size: 13px;
-            horizontal-alignment: center;
-        }
-
-        if root.login-error != "": Text {
-            text: root.login-error;
-            color: red;
-            font-size: 13px;
-            horizontal-alignment: center;
+    if root.login-step == "homeserver": HomeserverScreen {
+        input-homeserver <=> root.input-homeserver;
+        login-status: root.login-status;
+        login-error: root.login-error;
+        check-server(hs) => {
+            root.check-server(hs);
         }
     }
 
-    if root.login-step == "credentials": VerticalLayout {
-        alignment: center;
-        padding: 24px;
-        spacing: 8px;
-
-        Text {
-            text: "U2DM";
-            font-size: 32px;
-            horizontal-alignment: center;
+    if root.login-step == "credentials": CredentialsScreen {
+        resolved-homeserver: root.resolved-homeserver;
+        login-method: root.login-method;
+        login-status: root.login-status;
+        login-error: root.login-error;
+        input-username <=> root.input-username;
+        input-password <=> root.input-password;
+        login-password(req) => {
+            root.login-password(req);
         }
-
-        Text {
-            text: "Server: " + root.resolved-homeserver;
-            font-size: 14px;
-            horizontal-alignment: center;
+        login-oauth(hs) => {
+            root.login-oauth(hs);
         }
-
-        if root.login-method == "password" || root.login-method == "both": VerticalLayout {
-            spacing: 8px;
-
-            HorizontalLayout {
-                alignment: center;
-
-                LineEdit {
-                    text <=> root.input-username;
-                    placeholder-text: "Username";
-                    horizontal-stretch: 0;
-                    max-width: root.width;
-                }
-            }
-
-            HorizontalLayout {
-                alignment: center;
-
-                LineEdit {
-                    text <=> root.input-password;
-                    placeholder-text: "Password";
-                    input-type: password;
-                    horizontal-stretch: 0;
-                    max-width: root.width;
-                }
-            }
-
-            HorizontalLayout {
-                alignment: center;
-
-                Button {
-                    text: "Log in";
-                    max-width: root.width;
-                    clicked => {
-                        root.login-password({
-                            homeserver: root.resolved-homeserver,
-                            username: root.input-username,
-                            password: root.input-password,
-                        });
-                    }
-                }
-            }
-        }
-
-        if root.login-method == "oauth" || root.login-method == "both": HorizontalLayout {
-            alignment: center;
-
-            Button {
-                text: "Log in with browser";
-                clicked => {
-                    root.login-oauth(root.resolved-homeserver);
-                }
-            }
-        }
-
-        HorizontalLayout {
-            alignment: center;
-
-            Button {
-                text: "Back";
-                clicked => {
-                    root.login-step = "homeserver";
-                    root.login-error = "";
-                    root.login-status = "";
-                }
-            }
-        }
-
-        if root.login-status != "": Text {
-            text: root.login-status;
-            font-size: 13px;
-            horizontal-alignment: center;
-        }
-
-        if root.login-error != "": Text {
-            text: root.login-error;
-            color: red;
-            font-size: 13px;
-            horizontal-alignment: center;
+        back => {
+            root.login-step = "homeserver";
+            root.login-error = "";
+            root.login-status = "";
         }
     }
 
-    if root.login-step == "logged-in": HorizontalLayout {
-        // room list
-        VerticalLayout {
-            width: 260px;
-            padding: 8px;
-            spacing: 4px;
-
-            HorizontalLayout {
-                spacing: 8px;
-                padding-left: 8px;
-                padding-right: 8px;
-
-                Rectangle {
-                    width: 10px;
-                    height: 10px;
-                    border-radius: 5px;
-                    background: root.status-indicator-color(root.connection-status);
-                }
-
-                Text {
-                    text: root.user-id;
-                    font-size: 12px;
-                    horizontal-alignment: center;
-                    vertical-alignment: center;
-                    color: Palette.foreground.transparentize(0.5);
-                }
-
-                Button {
-                    text: "Logout";
-                    clicked => {
-                        root.logout();
-                    }
-                }
-            }
-
-            ListView {
-                for room in root.rooms: Rectangle {
-                    height: 44px;
-                    background: room.id == root.selected-room-id ? Palette.alternate-background : transparent;
-                    border-radius: 4px;
-
-                    TouchArea {
-                        clicked => {
-                            root.selected-room-name = room.name;
-                            root.selected-room-id = room.id;
-                            root.select-room(room.id);
-                        }
-                    }
-
-                    HorizontalLayout {
-                        padding-left: 12px;
-                        padding-right: 12px;
-                        spacing: 8px;
-
-                        Text {
-                            text: room.name;
-                            font-size: 14px;
-                            vertical-alignment: center;
-                            overflow: elide;
-                        }
-
-                        if room.unread > 0: Text {
-                            text: "(" + room.unread + ")";
-                            font-size: 12px;
-                            vertical-alignment: center;
-                            color: Palette.foreground.transparentize(0.5);
-                        }
-                    }
-                }
-            }
+    if root.login-step == "logged-in": ChatScreen {
+        user-id: root.user-id;
+        connection-status: root.connection-status;
+        rooms: root.rooms;
+        timeline: root.timeline;
+        selected-room-id <=> root.selected-room-id;
+        selected-room-name <=> root.selected-room-name;
+        input-message <=> root.input-message;
+        select-room(id) => {
+            root.select-room(id);
         }
-
-        // timeline
-        VerticalLayout {
-            padding: 12px;
-            spacing: 8px;
-
-            if root.selected-room-name != "": Text {
-                text: root.selected-room-name;
-                font-size: 18px;
-                font-weight: 700;
-            }
-
-            if root.selected-room-name == "": Text {
-                text: "Select a room";
-                font-size: 16px;
-                color: Palette.foreground.transparentize(0.5);
-                horizontal-alignment: center;
-                vertical-alignment: center;
-            }
-
-            if root.selected-room-name != "": ListView {
-                for msg in root.timeline: Rectangle {
-                    height: 48px;
-
-                    VerticalLayout {
-                        padding-left: 8px;
-                        padding-right: 8px;
-                        spacing: 2px;
-
-                        HorizontalLayout {
-                            spacing: 8px;
-
-                            Text {
-                                text: msg.sender;
-                                font-size: 13px;
-                                font-weight: 600;
-                            }
-
-                            Text {
-                                text: msg.timestamp;
-                                font-size: 11px;
-                                color: Palette.foreground.transparentize(0.5);
-                                vertical-alignment: center;
-                            }
-                        }
-
-                        Text {
-                            text: msg.body;
-                            font-size: 14px;
-                            overflow: elide;
-                        }
-                    }
-                }
-            }
-
-            if root.selected-room-name != "": HorizontalLayout {
-                spacing: 8px;
-
-                LineEdit {
-                    text <=> root.input-message;
-                    placeholder-text: "Send a message...";
-                    accepted => {
-                        if root.input-message != "" {
-                            root.send-message({ room-id: root.selected-room-id, body: root.input-message });
-                            root.input-message = "";
-                        }
-                    }
-                }
-
-                Button {
-                    text: "Send";
-                    max-width: 80px;
-                    clicked => {
-                        if root.input-message != "" {
-                            root.send-message({ room-id: root.selected-room-id, body: root.input-message });
-                            root.input-message = "";
-                        }
-                    }
-                }
-            }
+        logout => {
+            root.logout();
+        }
+        send-message(req) => {
+            root.send-message(req);
         }
     }
 
-    // verification overlay
-    if root.verification-visible && root.login-step == "logged-in": Rectangle {
-        background: Colors.black.transparentize(0.4);
-
-        HorizontalLayout {
-            alignment: center;
-
-            VerticalLayout {
-                alignment: center;
-
-                Rectangle {
-                    max-width: 480px;
-                    background: Palette.alternate-background;
-                    border-radius: 8px;
-
-                    VerticalLayout {
-                        padding: 24px;
-                        spacing: 16px;
-
-                        Text {
-                            text: "Device Verification";
-                            font-size: 20px;
-                            font-weight: 700;
-                            horizontal-alignment: center;
-                        }
-
-                        if root.verification-step == "requested": VerticalLayout {
-                            spacing: 12px;
-
-                            Text {
-                                text: root.verification-is-self ? "Verify this session from your other device" : "Verification request from " + root.verification-sender;
-                                font-size: 14px;
-                                horizontal-alignment: center;
-                                wrap: word-wrap;
-                            }
-
-                            HorizontalLayout {
-                                alignment: center;
-                                spacing: 12px;
-
-                                Button {
-                                    text: "Accept";
-                                    clicked => {
-                                        root.accept-verification();
-                                    }
-                                }
-
-                                Button {
-                                    text: "Decline";
-                                    clicked => {
-                                        root.reject-verification();
-                                        root.verification-visible = false;
-                                    }
-                                }
-                            }
-                        }
-
-                        if root.verification-step == "emojis": VerticalLayout {
-                            spacing: 12px;
-
-                            Text {
-                                text: "Confirm the emojis below match the other device:";
-                                font-size: 14px;
-                                horizontal-alignment: center;
-                                wrap: word-wrap;
-                            }
-
-                            HorizontalLayout {
-                                alignment: center;
-                                spacing: 4px;
-
-                                for emoji in root.verification-emojis: VerticalLayout {
-                                    width: 56px;
-                                    spacing: 4px;
-
-                                    Text {
-                                        text: emoji.symbol;
-                                        font-size: 28px;
-                                        horizontal-alignment: center;
-                                    }
-
-                                    Text {
-                                        text: emoji.description;
-                                        font-size: 10px;
-                                        horizontal-alignment: center;
-                                        color: Palette.foreground.transparentize(0.4);
-                                    }
-                                }
-                            }
-
-                            HorizontalLayout {
-                                alignment: center;
-                                spacing: 12px;
-
-                                Button {
-                                    text: "They match";
-                                    clicked => {
-                                        root.confirm-verification();
-                                    }
-                                }
-
-                                Button {
-                                    text: "They don't match";
-                                    clicked => {
-                                        root.reject-verification();
-                                        root.verification-visible = false;
-                                    }
-                                }
-                            }
-                        }
-
-                        if root.verification-step == "confirming": VerticalLayout {
-                            spacing: 12px;
-
-                            Text {
-                                text: "Waiting for the other device to confirm...";
-                                font-size: 14px;
-                                horizontal-alignment: center;
-                            }
-                        }
-
-                        if root.verification-step == "done": VerticalLayout {
-                            spacing: 12px;
-
-                            Text {
-                                text: "Verification successful!";
-                                font-size: 16px;
-                                font-weight: 600;
-                                horizontal-alignment: center;
-                                color: Colors.green;
-                            }
-
-                            HorizontalLayout {
-                                alignment: center;
-
-                                Button {
-                                    text: "Done";
-                                    clicked => {
-                                        root.verification-visible = false;
-                                    }
-                                }
-                            }
-                        }
-
-                        if root.verification-step == "cancelled": VerticalLayout {
-                            spacing: 12px;
-
-                            Text {
-                                text: "Verification cancelled";
-                                font-size: 16px;
-                                font-weight: 600;
-                                horizontal-alignment: center;
-                                color: Colors.red;
-                            }
-
-                            if root.verification-error != "": Text {
-                                text: root.verification-error;
-                                font-size: 13px;
-                                horizontal-alignment: center;
-                                color: Palette.foreground.transparentize(0.4);
-                            }
-
-                            HorizontalLayout {
-                                alignment: center;
-
-                                Button {
-                                    text: "Dismiss";
-                                    clicked => {
-                                        root.verification-visible = false;
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
+    if root.verification-visible && root.login-step == "logged-in": VerificationDialog {
+        verification-step: root.verification-step;
+        verification-sender: root.verification-sender;
+        verification-is-self: root.verification-is-self;
+        verification-emojis: root.verification-emojis;
+        verification-error: root.verification-error;
+        accept-verification => {
+            root.accept-verification();
+        }
+        confirm-verification => {
+            root.confirm-verification();
+        }
+        reject-verification => {
+            root.reject-verification();
+        }
+        dismissed => {
+            root.verification-visible = false;
         }
     }
 }

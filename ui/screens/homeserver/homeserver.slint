@@ -1,0 +1,58 @@
+import {
+    Button,
+    LineEdit,
+} from "std-widgets.slint";
+
+export component HomeserverScreen inherits VerticalLayout {
+    alignment: center;
+    padding: 24px;
+    spacing: 12px;
+
+    in-out property <string> input-homeserver: "matrix.org";
+    in property <string> login-status: "";
+    in property <string> login-error: "";
+
+    callback check-server(string);
+
+    Text {
+        text: "U2DM";
+        font-size: 32px;
+        horizontal-alignment: center;
+    }
+
+    HorizontalLayout {
+        alignment: center;
+
+        LineEdit {
+            text <=> root.input-homeserver;
+            placeholder-text: "Homeserver";
+            horizontal-stretch: 0;
+            max-width: 320px;
+        }
+    }
+
+    HorizontalLayout {
+        alignment: center;
+
+        Button {
+            text: "Continue";
+            max-width: 320px;
+            clicked => {
+                root.check-server(root.input-homeserver);
+            }
+        }
+    }
+
+    if root.login-status != "": Text {
+        text: root.login-status;
+        font-size: 13px;
+        horizontal-alignment: center;
+    }
+
+    if root.login-error != "": Text {
+        text: root.login-error;
+        color: red;
+        font-size: 13px;
+        horizontal-alignment: center;
+    }
+}

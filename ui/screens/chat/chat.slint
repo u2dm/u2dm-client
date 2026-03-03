@@ -1,0 +1,45 @@
+import {
+    RoomEntry,
+    MessageEntry,
+    SendMessageRequest,
+} from "components/types.slint";
+import { Sidebar } from "components/sidebar.slint";
+import { TimelineView } from "components/timeline.slint";
+
+export component ChatScreen inherits HorizontalLayout {
+    in property <string> user-id: "";
+    in property <string> connection-status: "disconnected";
+    in property <[RoomEntry]> rooms: [];
+    in property <[MessageEntry]> timeline: [];
+    in-out property <string> selected-room-id: "";
+    in-out property <string> selected-room-name: "";
+    in-out property <string> input-message: "";
+
+    callback select-room(string);
+    callback logout();
+    callback send-message(SendMessageRequest);
+
+    Sidebar {
+        user-id: root.user-id;
+        connection-status: root.connection-status;
+        rooms: root.rooms;
+        selected-room-id <=> root.selected-room-id;
+        selected-room-name <=> root.selected-room-name;
+        select-room(id) => {
+            root.select-room(id);
+        }
+        logout => {
+            root.logout();
+        }
+    }
+
+    TimelineView {
+        selected-room-name: root.selected-room-name;
+        selected-room-id: root.selected-room-id;
+        timeline: root.timeline;
+        input-message <=> root.input-message;
+        send-message(req) => {
+            root.send-message(req);
+        }
+    }
+}

@@ -1,0 +1,195 @@
+import {
+    Button,
+    Palette,
+} from "std-widgets.slint";
+
+import { VerificationEmoji } from "./types.slint";
+
+export component VerificationDialog inherits Rectangle {
+    background: Colors.black.transparentize(0.4);
+
+    in property <string> verification-step: "";
+    in property <string> verification-sender: "";
+    in property <bool> verification-is-self: false;
+    in property <[VerificationEmoji]> verification-emojis: [];
+    in property <string> verification-error: "";
+
+    callback accept-verification();
+    callback confirm-verification();
+    callback reject-verification();
+    callback dismissed();
+
+    HorizontalLayout {
+        alignment: center;
+
+        VerticalLayout {
+            alignment: center;
+
+            Rectangle {
+                max-width: 480px;
+                background: Palette.alternate-background;
+                border-radius: 8px;
+
+                VerticalLayout {
+                    padding: 24px;
+                    spacing: 16px;
+
+                    Text {
+                        text: "Device Verification";
+                        font-size: 20px;
+                        font-weight: 700;
+                        horizontal-alignment: center;
+                    }
+
+                    if root.verification-step == "requested": VerticalLayout {
+                        spacing: 12px;
+
+                        Text {
+                            text: root.verification-is-self ? "Verify this session from your other device" : "Verification request from " + root.verification-sender;
+                            font-size: 14px;
+                            horizontal-alignment: center;
+                            wrap: word-wrap;
+                        }
+
+                        HorizontalLayout {
+                            alignment: center;
+                            spacing: 12px;
+
+                            Button {
+                                text: "Accept";
+                                clicked => {
+                                    root.accept-verification();
+                                }
+                            }
+
+                            Button {
+                                text: "Decline";
+                                clicked => {
+                                    root.reject-verification();
+                                    root.dismissed();
+                                }
+                            }
+                        }
+                    }
+
+                    if root.verification-step == "emojis": VerticalLayout {
+                        spacing: 12px;
+
+                        Text {
+                            text: "Confirm the emojis below match the other device:";
+                            font-size: 14px;
+                            horizontal-alignment: center;
+                            wrap: word-wrap;
+                        }
+
+                        HorizontalLayout {
+                            alignment: center;
+                            spacing: 4px;
+
+                            for emoji in root.verification-emojis: VerticalLayout {
+                                width: 56px;
+                                spacing: 4px;
+
+                                Text {
+                                    text: emoji.symbol;
+                                    font-size: 28px;
+                                    horizontal-alignment: center;
+                                }
+
+                                Text {
+                                    text: emoji.description;
+                                    font-size: 10px;
+                                    horizontal-alignment: center;
+                                    color: Palette.foreground.transparentize(0.4);
+                                }
+                            }
+                        }
+
+                        HorizontalLayout {
+                            alignment: center;
+                            spacing: 12px;
+
+                            Button {
+                                text: "They match";
+                                clicked => {
+                                    root.confirm-verification();
+                                }
+                            }
+
+                            Button {
+                                text: "They don't match";
+                                clicked => {
+                                    root.reject-verification();
+                                    root.dismissed();
+                                }
+                            }
+                        }
+                    }
+
+                    if root.verification-step == "confirming": VerticalLayout {
+                        spacing: 12px;
+
+                        Text {
+                            text: "Waiting for the other device to confirm...";
+                            font-size: 14px;
+                            horizontal-alignment: center;
+                        }
+                    }
+
+                    if root.verification-step == "done": VerticalLayout {
+                        spacing: 12px;
+
+                        Text {
+                            text: "Verification successful!";
+                            font-size: 16px;
+                            font-weight: 600;
+                            horizontal-alignment: center;
+                            color: Colors.green;
+                        }
+
+                        HorizontalLayout {
+                            alignment: center;
+
+                            Button {
+                                text: "Done";
+                                clicked => {
+                                    root.dismissed();
+                                }
+                            }
+                        }
+                    }
+
+                    if root.verification-step == "cancelled": VerticalLayout {
+                        spacing: 12px;
+
+                        Text {
+                            text: "Verification cancelled";
+                            font-size: 16px;
+                            font-weight: 600;
+                            horizontal-alignment: center;
+                            color: Colors.red;
+                        }
+
+                        if root.verification-error != "": Text {
+                            text: root.verification-error;
+                            font-size: 13px;
+                            horizontal-alignment: center;
+                            color: Palette.foreground.transparentize(0.4);
+                        }
+
+                        HorizontalLayout {
+                            alignment: center;
+
+                            Button {
+                                text: "Dismiss";
+                                clicked => {
+                                    root.dismissed();
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

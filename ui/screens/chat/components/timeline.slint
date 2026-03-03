@@ -1,0 +1,94 @@
+import {
+    Button,
+    LineEdit,
+    ListView,
+    Palette,
+} from "std-widgets.slint";
+
+import { MessageEntry, SendMessageRequest } from "./types.slint";
+
+export component TimelineView inherits VerticalLayout {
+    padding: 12px;
+    spacing: 8px;
+
+    in property <string> selected-room-name: "";
+    in property <string> selected-room-id: "";
+    in property <[MessageEntry]> timeline: [];
+    in-out property <string> input-message: "";
+
+    callback send-message(SendMessageRequest);
+
+    if root.selected-room-name != "": Text {
+        text: root.selected-room-name;
+        font-size: 18px;
+        font-weight: 700;
+    }
+
+    if root.selected-room-name == "": Text {
+        text: "Select a room";
+        font-size: 16px;
+        color: Palette.foreground.transparentize(0.5);
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+
+    if root.selected-room-name != "": ListView {
+        for msg in root.timeline: Rectangle {
+            height: 48px;
+
+            VerticalLayout {
+                padding-left: 8px;
+                padding-right: 8px;
+                spacing: 2px;
+
+                HorizontalLayout {
+                    spacing: 8px;
+
+                    Text {
+                        text: msg.sender;
+                        font-size: 13px;
+                        font-weight: 600;
+                    }
+
+                    Text {
+                        text: msg.timestamp;
+                        font-size: 11px;
+                        color: Palette.foreground.transparentize(0.5);
+                        vertical-alignment: center;
+                    }
+                }
+
+                Text {
+                    text: msg.body;
+                    font-size: 14px;
+                    overflow: elide;
+                }
+            }
+        }
+    }
+
+    if root.selected-room-name != "": HorizontalLayout {
+        spacing: 8px;
+
+        LineEdit {
+            text <=> root.input-message;
+            placeholder-text: "Send a message...";
+            accepted => {
+                if root.input-message != "" {
+                    root.send-message({ room-id: root.selected-room-id, body: root.input-message });
+                    root.input-message = "";
+                }
+            }
+        }
+
+        Button {
+            text: "Send";
+            clicked => {
+                if root.input-message != "" {
+                    root.send-message({ room-id: root.selected-room-id, body: root.input-message });
+                    root.input-message = "";
+                }
+            }
+        }
+    }
+}

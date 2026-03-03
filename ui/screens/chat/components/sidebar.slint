@@ -1,0 +1,99 @@
+import {
+    Button,
+    ListView,
+    Palette,
+} from "std-widgets.slint";
+
+import { RoomEntry } from "./types.slint";
+
+export component Sidebar inherits VerticalLayout {
+    width: 260px;
+    padding: 8px;
+    spacing: 4px;
+
+    in property <string> user-id: "";
+    in property <string> connection-status: "disconnected";
+    in property <[RoomEntry]> rooms: [];
+    in-out property <string> selected-room-id: "";
+    in-out property <string> selected-room-name: "";
+
+    callback select-room(string);
+    callback logout();
+
+    pure function status-indicator-color(status: string) -> color {
+        if status == "connected" {
+            return Palette.accent-background;
+        }
+        if status == "connecting" {
+            return Palette.accent-background.transparentize(0.5);
+        }
+        if status == "error" {
+            return Palette.foreground.mix(Colors.red, 0.6);
+        }
+        return Palette.border;
+    }
+
+    HorizontalLayout {
+        spacing: 8px;
+        padding-left: 8px;
+        padding-right: 8px;
+
+        Rectangle {
+            width: 10px;
+            height: 10px;
+            border-radius: 5px;
+            background: root.status-indicator-color(root.connection-status);
+        }
+
+        Text {
+            text: root.user-id;
+            font-size: 12px;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+            color: Palette.foreground.transparentize(0.5);
+        }
+
+        Button {
+            text: "Logout";
+            clicked => {
+                root.logout();
+            }
+        }
+    }
+
+    ListView {
+        for room in root.rooms: Rectangle {
+            height: 44px;
+            background: room.id == root.selected-room-id ? Palette.alternate-background : transparent;
+            border-radius: 4px;
+
+            TouchArea {
+                clicked => {
+                    root.selected-room-name = room.name;
+                    root.selected-room-id = room.id;
+                    root.select-room(room.id);
+                }
+            }
+
+            HorizontalLayout {
+                padding-left: 12px;
+                padding-right: 12px;
+                spacing: 8px;
+
+                Text {
+                    text: room.name;
+                    font-size: 14px;
+                    vertical-alignment: center;
+                    overflow: elide;
+                }
+
+                if room.unread > 0: Text {
+                    text: "(" + room.unread + ")";
+                    font-size: 12px;
+                    vertical-alignment: center;
+                    color: Palette.foreground.transparentize(0.5);
+                }
+            }
+        }
+    }
+}

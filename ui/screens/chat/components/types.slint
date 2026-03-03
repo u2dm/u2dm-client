@@ -1,0 +1,16 @@
+export struct RoomEntry {
+    id: string,
+    name: string,
+    unread: int,
+}
+
+export struct MessageEntry {
+    sender: string,
+    body: string,
+    timestamp: string,
+}
+
+export struct SendMessageRequest {
+    room-id: string,
+    body: string,
+}
