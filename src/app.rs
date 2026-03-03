@@ -8,7 +8,7 @@ use crate::domain::models::{
     ConnectionStatus, LoginCredentials, RoomId, Session, SyncSnapshot, TimelineMessage,
     VerificationEvent,
 };
-use crate::error::Result;
+use crate::error::{AppError, Result};
 use crate::ports::matrix::MatrixPort;
 use crate::ports::storage::StoragePort;
 
@@ -304,6 +304,10 @@ impl AppService {
                 self.emit(UiEvent::Rooms(rooms)).await;
                 self.emit(UiEvent::ConnectionStatus(ConnectionStatus::Connected))
                     .await;
+            }
+            Err(AppError::SessionExpired) => {
+                self.handle_session_expired().await;
+                return;
             }
             Err(e) => {
                 self.emit(UiEvent::Error(e.to_string())).await;

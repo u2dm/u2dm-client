@@ -427,7 +427,12 @@ impl MatrixPort for MatrixAdapter {
 
     async fn rooms(&self) -> Result<Vec<DomainRoom>> {
         let client = self.get_client().await?;
-        client.sync_once(SyncSettings::default()).await?;
+        if let Err(e) = client.sync_once(SyncSettings::default()).await {
+            if is_auth_error(&e) {
+                return Err(AppError::SessionExpired);
+            }
+            return Err(e.into());
+        }
         Ok(build_room_list(&client).await)
     }
 
@@ -493,7 +498,7 @@ impl MatrixPort for MatrixAdapter {
                 Err(e) => {
                     if is_auth_error(&e) {
                         tracing::warn!("unrecoverable auth error in sync loop, stopping");
-                        return Err(e.into());
+                        return Err(AppError::SessionExpired);
                     }
                     SyncSnapshot {
                         rooms: Vec::new(),

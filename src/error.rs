@@ -19,6 +19,9 @@ pub enum AppError {
     #[error(transparent)]
     Serde(#[from] serde_json::Error),
 
+    #[error("Session expired")]
+    SessionExpired,
+
     #[error("{0}")]
     Other(String),
 }
