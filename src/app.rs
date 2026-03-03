@@ -308,6 +308,12 @@ impl AppService {
     async fn handle_fetch_rooms(&mut self) {
         self.abort_sync();
 
+        self.abort_session_changes();
+        self.session_change_handle = Some(Self::spawn_session_change_listener(
+            &self.matrix,
+            &self.storage,
+        ));
+
         self.emit(UiEvent::ConnectionStatus(ConnectionStatus::Connecting))
             .await;
 
@@ -367,12 +373,6 @@ impl AppService {
         self.abort_verification();
         self.verification_handle =
             Some(Self::spawn_verification_listener(&self.matrix, &self.ui_tx));
-
-        self.abort_session_changes();
-        self.session_change_handle = Some(Self::spawn_session_change_listener(
-            &self.matrix,
-            &self.storage,
-        ));
     }
 
     fn spawn_verification_listener(
