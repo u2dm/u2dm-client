@@ -228,7 +228,7 @@ impl SlintUiAdapter {
         Ok(())
     }
 
-    pub fn spawn_event_handler(&self, mut ui_rx: mpsc::Receiver<UiEvent>) {
+    pub fn spawn_event_handler(&self, mut ui_rx: mpsc::UnboundedReceiver<UiEvent>) {
         let weak = self.instance.as_weak();
         tokio::spawn(async move {
             while let Some(event) = ui_rx.recv().await {

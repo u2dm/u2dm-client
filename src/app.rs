@@ -18,7 +18,7 @@ pub struct AppService {
     storage: Arc<dyn StoragePort>,
     cmd_rx: mpsc::UnboundedReceiver<UiCommand>,
     cmd_tx: mpsc::UnboundedSender<UiCommand>,
-    ui_tx: mpsc::Sender<UiEvent>,
+    ui_tx: mpsc::UnboundedSender<UiEvent>,
     timeline_handle: Option<JoinHandle<()>>,
     sync_handle: Option<(JoinHandle<()>, JoinHandle<()>)>,
     verification_handle: Option<JoinHandle<()>>,
@@ -31,7 +31,7 @@ impl AppService {
         storage: Arc<dyn StoragePort>,
         cmd_rx: mpsc::UnboundedReceiver<UiCommand>,
         cmd_tx: mpsc::UnboundedSender<UiCommand>,
-        ui_tx: mpsc::Sender<UiEvent>,
+        ui_tx: mpsc::UnboundedSender<UiEvent>,
     ) -> Self {
         Self {
             matrix,
@@ -93,8 +93,8 @@ impl AppService {
         }
     }
 
-    async fn emit(&self, event: UiEvent) {
-        if let Err(e) = self.ui_tx.send(event).await {
+    fn emit(&self, event: UiEvent) {
+        if let Err(e) = self.ui_tx.send(event) {
             tracing::debug!("failed to send UI event: {e}");
         }
     }
@@ -124,33 +124,31 @@ impl AppService {
                 return;
             }
             Err(e) => {
-                self.emit(UiEvent::Error(e.to_string())).await;
+                self.emit(UiEvent::Error(e.to_string()));
                 return;
             }
         };
 
-        self.emit(UiEvent::Status("Restoring session...".into()))
-            .await;
+        self.emit(UiEvent::Status("Restoring session...".into()));
 
         match self.matrix.restore_session(&session).await {
             Ok(()) => {
                 self.emit(UiEvent::LoginSuccess {
                     user_id: session.user_id,
-                })
-                .await;
+                });
                 self.send_cmd(UiCommand::FetchRooms);
             }
             Err(e) => {
                 self.clear_local_state().await;
-                self.emit(UiEvent::Error(e.to_string())).await;
+                self.emit(UiEvent::Error(e.to_string()));
             }
         }
     }
 
     async fn handle_check_server(&self, homeserver: &str) {
         match self.matrix.discover_auth(homeserver).await {
-            Ok(info) => self.emit(UiEvent::ServerInfo(info)).await,
-            Err(e) => self.emit(UiEvent::Error(e.to_string())).await,
+            Ok(info) => self.emit(UiEvent::ServerInfo(info)),
+            Err(e) => self.emit(UiEvent::Error(e.to_string())),
         }
     }
 
@@ -160,11 +158,10 @@ impl AppService {
                 self.save_session(&session).await;
                 self.emit(UiEvent::LoginSuccess {
                     user_id: session.user_id,
-                })
-                .await;
+                });
                 self.send_cmd(UiCommand::FetchRooms);
             }
-            Err(e) => self.emit(UiEvent::Error(e.to_string())).await,
+            Err(e) => self.emit(UiEvent::Error(e.to_string())),
         }
     }
 
@@ -173,21 +170,19 @@ impl AppService {
             Ok(()) => {
                 self.send_cmd(UiCommand::FetchRooms);
             }
-            Err(e) => self.emit(UiEvent::Error(e.to_string())).await,
+            Err(e) => self.emit(UiEvent::Error(e.to_string())),
         }
     }
 
     async fn run_oauth_flow(&self) -> Result<()> {
         let oauth_data = self.matrix.login_oauth_start().await?;
         open::that_in_background(&oauth_data.auth_url);
-        self.emit(UiEvent::Status("Waiting for authentication...".into()))
-            .await;
+        self.emit(UiEvent::Status("Waiting for authentication...".into()));
         let session = self.matrix.login_oauth_finish().await?;
         self.save_session(&session).await;
         self.emit(UiEvent::LoginSuccess {
             user_id: session.user_id,
-        })
-        .await;
+        });
         Ok(())
     }
 
@@ -234,11 +229,10 @@ impl AppService {
         self.abort_verification();
         self.abort_session_changes();
         self.clear_local_state().await;
-        self.emit(UiEvent::LoggedOut).await;
+        self.emit(UiEvent::LoggedOut);
         self.emit(UiEvent::Error(
             "Session expired. Please log in again.".into(),
-        ))
-        .await;
+        ));
     }
 
     async fn handle_logout(&mut self) {
@@ -252,9 +246,8 @@ impl AppService {
             tracing::warn!("failed to logout from server: {e}");
         }
         self.clear_local_state().await;
-        self.emit(UiEvent::ConnectionStatus(ConnectionStatus::Disconnected))
-            .await;
-        self.emit(UiEvent::LoggedOut).await;
+        self.emit(UiEvent::ConnectionStatus(ConnectionStatus::Disconnected));
+        self.emit(UiEvent::LoggedOut);
     }
 
     fn handle_select_room(&mut self, room_id: RoomId) {
@@ -274,9 +267,8 @@ impl AppService {
         tokio::spawn(async move {
             if let Err(e) = matrix.send_text(&room_id, &body).await {
                 tracing::warn!("failed to send message: {e}");
-                if let Err(send_err) = ui_tx
-                    .send(UiEvent::Error(format!("Failed to send message: {e}")))
-                    .await
+                if let Err(send_err) =
+                    ui_tx.send(UiEvent::Error(format!("Failed to send message: {e}")))
                 {
                     tracing::debug!("failed to send Error event: {send_err}");
                 }
@@ -286,22 +278,19 @@ impl AppService {
 
     async fn handle_accept_verification(&self) {
         if let Err(e) = self.matrix.accept_verification().await {
-            self.emit(UiEvent::Error(format!("Verification accept failed: {e}")))
-                .await;
+            self.emit(UiEvent::Error(format!("Verification accept failed: {e}")));
         }
     }
 
     async fn handle_reject_verification(&self) {
         if let Err(e) = self.matrix.reject_verification().await {
-            self.emit(UiEvent::Error(format!("Verification reject failed: {e}")))
-                .await;
+            self.emit(UiEvent::Error(format!("Verification reject failed: {e}")));
         }
     }
 
     async fn handle_confirm_verification(&self) {
         if let Err(e) = self.matrix.confirm_verification().await {
-            self.emit(UiEvent::Error(format!("Verification confirm failed: {e}")))
-                .await;
+            self.emit(UiEvent::Error(format!("Verification confirm failed: {e}")));
         }
     }
 
@@ -314,29 +303,26 @@ impl AppService {
             &self.storage,
         ));
 
-        self.emit(UiEvent::ConnectionStatus(ConnectionStatus::Connecting))
-            .await;
+        self.emit(UiEvent::ConnectionStatus(ConnectionStatus::Connecting));
 
         match self.matrix.rooms().await {
             Ok(rooms) => {
-                self.emit(UiEvent::Rooms(rooms)).await;
-                self.emit(UiEvent::ConnectionStatus(ConnectionStatus::Connected))
-                    .await;
+                self.emit(UiEvent::Rooms(rooms));
+                self.emit(UiEvent::ConnectionStatus(ConnectionStatus::Connected));
             }
             Err(AppError::SessionExpired) => {
                 self.handle_session_expired().await;
                 return;
             }
             Err(e) => {
-                self.emit(UiEvent::Error(e.to_string())).await;
+                self.emit(UiEvent::Error(e.to_string()));
                 self.emit(UiEvent::ConnectionStatus(ConnectionStatus::Error(
                     e.to_string(),
-                )))
-                .await;
+                )));
             }
         }
 
-        let (snapshot_tx, mut snapshot_rx) = mpsc::channel::<SyncSnapshot>(16);
+        let (snapshot_tx, mut snapshot_rx) = mpsc::unbounded_channel::<SyncSnapshot>();
         let matrix_sync = Arc::clone(&self.matrix);
         let sync_task = tokio::spawn(async move {
             if let Err(e) = matrix_sync.start_sync(snapshot_tx).await {
@@ -348,16 +334,13 @@ impl AppService {
         let cmd_tx = self.cmd_tx.clone();
         let receiver_task = tokio::spawn(async move {
             while let Some(snapshot) = snapshot_rx.recv().await {
-                if let Err(e) = ui_tx
-                    .send(UiEvent::ConnectionStatus(
-                        snapshot.connection_status.clone(),
-                    ))
-                    .await
-                {
+                if let Err(e) = ui_tx.send(UiEvent::ConnectionStatus(
+                    snapshot.connection_status.clone(),
+                )) {
                     tracing::debug!("failed to send ConnectionStatus event: {e}");
                 }
                 if matches!(snapshot.connection_status, ConnectionStatus::Connected)
-                    && let Err(e) = ui_tx.send(UiEvent::Rooms(snapshot.rooms)).await
+                    && let Err(e) = ui_tx.send(UiEvent::Rooms(snapshot.rooms))
                 {
                     tracing::debug!("failed to send Rooms event: {e}");
                 }
@@ -377,9 +360,9 @@ impl AppService {
 
     fn spawn_verification_listener(
         matrix: &Arc<dyn MatrixPort>,
-        ui_tx: &mpsc::Sender<UiEvent>,
+        ui_tx: &mpsc::UnboundedSender<UiEvent>,
     ) -> JoinHandle<()> {
-        let (verif_tx, mut verif_rx) = mpsc::channel::<VerificationEvent>(8);
+        let (verif_tx, mut verif_rx) = mpsc::unbounded_channel::<VerificationEvent>();
         let matrix_verif = Arc::clone(matrix);
         let ui_tx = ui_tx.clone();
 
@@ -387,7 +370,7 @@ impl AppService {
             let listen = matrix_verif.listen_for_verification(verif_tx);
             let forward = async {
                 while let Some(event) = verif_rx.recv().await {
-                    if let Err(e) = ui_tx.send(UiEvent::Verification(event)).await {
+                    if let Err(e) = ui_tx.send(UiEvent::Verification(event)) {
                         tracing::debug!("failed to send Verification event: {e}");
                         break;
                     }
@@ -442,10 +425,10 @@ impl AppService {
 
     fn spawn_timeline_subscription(
         matrix: &Arc<dyn MatrixPort>,
-        ui_tx: &mpsc::Sender<UiEvent>,
+        ui_tx: &mpsc::UnboundedSender<UiEvent>,
         room_id: RoomId,
     ) -> JoinHandle<()> {
-        let (tl_tx, mut tl_rx) = mpsc::channel::<Vec<TimelineMessage>>(16);
+        let (tl_tx, mut tl_rx) = mpsc::unbounded_channel::<Vec<TimelineMessage>>();
         let matrix_tl = Arc::clone(matrix);
         let ui_tx = ui_tx.clone();
 
@@ -453,7 +436,7 @@ impl AppService {
             let subscribe = matrix_tl.subscribe_timeline(&room_id, tl_tx);
             let forward = async {
                 while let Some(messages) = tl_rx.recv().await {
-                    if let Err(e) = ui_tx.send(UiEvent::Timeline(messages)).await {
+                    if let Err(e) = ui_tx.send(UiEvent::Timeline(messages)) {
                         tracing::debug!("failed to send Timeline event: {e}");
                         break;
                     }

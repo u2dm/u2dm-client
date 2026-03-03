@@ -47,7 +47,7 @@ fn run() -> Result<()> {
     let ui = SlintUiAdapter::compile(&rt)?;
 
     let (cmd_tx, cmd_rx) = mpsc::unbounded_channel::<UiCommand>();
-    let (ui_tx, ui_rx) = mpsc::channel::<UiEvent>(32);
+    let (ui_tx, ui_rx) = mpsc::unbounded_channel::<UiEvent>();
 
     ui.register_callbacks(&cmd_tx)?;
 

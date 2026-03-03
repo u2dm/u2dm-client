@@ -17,14 +17,17 @@ pub trait MatrixPort: Send + Sync {
     async fn subscribe_timeline(
         &self,
         room_id: &RoomId,
-        timeline_tx: mpsc::Sender<Vec<TimelineMessage>>,
+        timeline_tx: mpsc::UnboundedSender<Vec<TimelineMessage>>,
     ) -> Result<()>;
-    async fn start_sync(&self, state_tx: mpsc::Sender<SyncSnapshot>) -> Result<()>;
+    async fn start_sync(&self, state_tx: mpsc::UnboundedSender<SyncSnapshot>) -> Result<()>;
     async fn send_text(&self, room_id: &RoomId, body: &str) -> Result<()>;
     async fn restore_session(&self, session: &Session) -> Result<()>;
     async fn logout(&self) -> Result<()>;
     async fn clear_store(&self) -> Result<()>;
-    async fn listen_for_verification(&self, tx: mpsc::Sender<VerificationEvent>) -> Result<()>;
+    async fn listen_for_verification(
+        &self,
+        tx: mpsc::UnboundedSender<VerificationEvent>,
+    ) -> Result<()>;
     async fn accept_verification(&self) -> Result<()>;
     async fn confirm_verification(&self) -> Result<()>;
     async fn reject_verification(&self) -> Result<()>;

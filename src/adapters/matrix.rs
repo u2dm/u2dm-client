@@ -208,7 +208,7 @@ fn is_auth_error(err: &matrix_sdk::Error) -> bool {
 async fn handle_verification_request(
     request: VerificationRequest,
     sas_mutex: &Mutex<Option<SasVerification>>,
-    tx: &mpsc::Sender<VerificationEvent>,
+    tx: &mpsc::UnboundedSender<VerificationEvent>,
 ) {
     let mut stream = request.changes();
 
@@ -222,12 +222,11 @@ async fn handle_verification_request(
                 break;
             }
             VerificationRequestState::Done => {
-                tx.send(VerificationEvent::Done).await.ok();
+                tx.send(VerificationEvent::Done).ok();
                 break;
             }
             VerificationRequestState::Cancelled(info) => {
                 tx.send(VerificationEvent::Cancelled(info.reason().to_string()))
-                    .await
                     .ok();
                 break;
             }
@@ -236,12 +235,14 @@ async fn handle_verification_request(
     }
 }
 
-async fn handle_sas_verification(sas: SasVerification, tx: &mpsc::Sender<VerificationEvent>) {
+async fn handle_sas_verification(
+    sas: SasVerification,
+    tx: &mpsc::UnboundedSender<VerificationEvent>,
+) {
     if let Err(e) = sas.accept().await {
         tx.send(VerificationEvent::Cancelled(format!(
             "Failed to accept SAS: {e}"
         )))
-        .await
         .ok();
         return;
     }
@@ -259,19 +260,18 @@ async fn handle_sas_verification(sas: SasVerification, tx: &mpsc::Sender<Verific
                             description: e.description.to_string(),
                         })
                         .collect();
-                    tx.send(VerificationEvent::Emojis(domain_emojis)).await.ok();
+                    tx.send(VerificationEvent::Emojis(domain_emojis)).ok();
                 }
             }
             SasState::Confirmed => {
-                tx.send(VerificationEvent::Confirming).await.ok();
+                tx.send(VerificationEvent::Confirming).ok();
             }
             SasState::Done { .. } => {
-                tx.send(VerificationEvent::Done).await.ok();
+                tx.send(VerificationEvent::Done).ok();
                 break;
             }
             SasState::Cancelled(info) => {
                 tx.send(VerificationEvent::Cancelled(info.reason().to_string()))
-                    .await
                     .ok();
                 break;
             }
@@ -467,7 +467,7 @@ impl MatrixPort for MatrixAdapter {
     async fn subscribe_timeline(
         &self,
         room_id: &RoomId,
-        timeline_tx: mpsc::Sender<Vec<TimelineMessage>>,
+        timeline_tx: mpsc::UnboundedSender<Vec<TimelineMessage>>,
     ) -> Result<()> {
         let client = self.get_client().await?;
 
@@ -494,7 +494,7 @@ impl MatrixPort for MatrixAdapter {
 
         let mut items: Vec<Arc<TimelineItem>> = initial_items.into_iter().collect();
         let messages = convert_timeline_items(&items);
-        if timeline_tx.send(messages).await.is_err() {
+        if timeline_tx.send(messages).is_err() {
             return Ok(());
         }
 
@@ -503,7 +503,7 @@ impl MatrixPort for MatrixAdapter {
                 apply_timeline_diff(&mut items, diff);
             }
             let messages = convert_timeline_items(&items);
-            if timeline_tx.send(messages).await.is_err() {
+            if timeline_tx.send(messages).is_err() {
                 break;
             }
         }
@@ -511,7 +511,7 @@ impl MatrixPort for MatrixAdapter {
         Ok(())
     }
 
-    async fn start_sync(&self, state_tx: mpsc::Sender<SyncSnapshot>) -> Result<()> {
+    async fn start_sync(&self, state_tx: mpsc::UnboundedSender<SyncSnapshot>) -> Result<()> {
         let client = self.get_client().await?;
 
         let stream = client.sync_stream(SyncSettings::default()).await;
@@ -534,7 +534,7 @@ impl MatrixPort for MatrixAdapter {
                     }
                 }
             };
-            if state_tx.send(snapshot).await.is_err() {
+            if state_tx.send(snapshot).is_err() {
                 break;
             }
         }
@@ -603,10 +603,10 @@ impl MatrixPort for MatrixAdapter {
 
     async fn listen_for_verification(
         &self,
-        verification_tx: mpsc::Sender<VerificationEvent>,
+        verification_tx: mpsc::UnboundedSender<VerificationEvent>,
     ) -> Result<()> {
         let client = self.get_client().await?;
-        let (req_tx, mut req_rx) = mpsc::channel::<VerificationRequest>(8);
+        let (req_tx, mut req_rx) = mpsc::unbounded_channel::<VerificationRequest>();
 
         client.add_event_handler({
             let req_tx = req_tx.clone();
@@ -618,7 +618,7 @@ impl MatrixPort for MatrixAdapter {
                         .get_verification_request(&ev.sender, &ev.content.transaction_id)
                         .await
                     {
-                        req_tx.send(request).await.ok();
+                        req_tx.send(request).ok();
                     }
                 }
             }
@@ -635,7 +635,7 @@ impl MatrixPort for MatrixAdapter {
                             .get_verification_request(&ev.sender, &ev.event_id)
                             .await
                     {
-                        req_tx.send(request).await.ok();
+                        req_tx.send(request).ok();
                     }
                 }
             }
@@ -649,7 +649,6 @@ impl MatrixPort for MatrixAdapter {
                     sender: request.other_user_id().to_string(),
                     is_self: request.is_self_verification(),
                 })
-                .await
                 .ok();
 
             handle_verification_request(request, &self.sas_verification, &verification_tx).await;
