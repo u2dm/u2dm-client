@@ -114,7 +114,7 @@ impl AppService {
         }
     }
 
-    async fn handle_restore_session(&self) {
+    async fn handle_restore_session(&mut self) {
         let session = match self.storage.load_session().await {
             Ok(Some(session)) => session,
             Ok(None) => {
@@ -145,14 +145,14 @@ impl AppService {
         }
     }
 
-    async fn handle_check_server(&self, homeserver: &str) {
+    async fn handle_check_server(&mut self, homeserver: &str) {
         match self.matrix.discover_auth(homeserver).await {
             Ok(info) => self.emit(UiEvent::ServerInfo(info)),
             Err(e) => self.emit(UiEvent::Error(e.to_string())),
         }
     }
 
-    async fn handle_login_password(&self, creds: LoginCredentials) {
+    async fn handle_login_password(&mut self, creds: LoginCredentials) {
         match self.matrix.login_password(creds).await {
             Ok(session) => {
                 self.save_session(&session).await;
@@ -165,7 +165,7 @@ impl AppService {
         }
     }
 
-    async fn handle_login_oauth(&self) {
+    async fn handle_login_oauth(&mut self) {
         match self.run_oauth_flow().await {
             Ok(()) => {
                 self.send_cmd(UiCommand::FetchRooms);
@@ -174,7 +174,7 @@ impl AppService {
         }
     }
 
-    async fn run_oauth_flow(&self) -> Result<()> {
+    async fn run_oauth_flow(&mut self) -> Result<()> {
         let oauth_data = self.matrix.login_oauth_start().await?;
         open::that_in_background(&oauth_data.auth_url);
         self.emit(UiEvent::Status("Waiting for authentication...".into()));
@@ -261,7 +261,7 @@ impl AppService {
         ));
     }
 
-    fn handle_send_message(&self, room_id: RoomId, body: String) {
+    fn handle_send_message(&mut self, room_id: RoomId, body: String) {
         let matrix = Arc::clone(&self.matrix);
         let ui_tx = self.ui_tx.clone();
         tokio::spawn(async move {
@@ -276,32 +276,26 @@ impl AppService {
         });
     }
 
-    async fn handle_accept_verification(&self) {
+    async fn handle_accept_verification(&mut self) {
         if let Err(e) = self.matrix.accept_verification().await {
             self.emit(UiEvent::Error(format!("Verification accept failed: {e}")));
         }
     }
 
-    async fn handle_reject_verification(&self) {
+    async fn handle_reject_verification(&mut self) {
         if let Err(e) = self.matrix.reject_verification().await {
             self.emit(UiEvent::Error(format!("Verification reject failed: {e}")));
         }
     }
 
-    async fn handle_confirm_verification(&self) {
+    async fn handle_confirm_verification(&mut self) {
         if let Err(e) = self.matrix.confirm_verification().await {
             self.emit(UiEvent::Error(format!("Verification confirm failed: {e}")));
         }
     }
 
     async fn handle_fetch_rooms(&mut self) {
-        self.abort_sync();
-
-        self.abort_session_changes();
-        self.session_change_handle = Some(Self::spawn_session_change_listener(
-            &self.matrix,
-            &self.storage,
-        ));
+        self.start_background_listeners();
 
         self.emit(UiEvent::ConnectionStatus(ConnectionStatus::Connecting));
 
@@ -322,6 +316,24 @@ impl AppService {
             }
         }
 
+        self.start_sync_pipeline();
+    }
+
+    fn start_background_listeners(&mut self) {
+        self.abort_sync();
+
+        self.abort_session_changes();
+        self.session_change_handle = Some(Self::spawn_session_change_listener(
+            &self.matrix,
+            &self.storage,
+        ));
+
+        self.abort_verification();
+        self.verification_handle =
+            Some(Self::spawn_verification_listener(&self.matrix, &self.ui_tx));
+    }
+
+    fn start_sync_pipeline(&mut self) {
         let (snapshot_tx, mut snapshot_rx) = mpsc::unbounded_channel::<SyncSnapshot>();
         let matrix_sync = Arc::clone(&self.matrix);
         let sync_task = tokio::spawn(async move {
@@ -352,10 +364,6 @@ impl AppService {
         });
 
         self.sync_handle = Some((sync_task, receiver_task));
-
-        self.abort_verification();
-        self.verification_handle =
-            Some(Self::spawn_verification_listener(&self.matrix, &self.ui_tx));
     }
 
     fn spawn_verification_listener(
