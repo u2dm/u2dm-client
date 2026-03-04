@@ -104,13 +104,23 @@ async fn build_room_list(client: &Client) -> Vec<DomainRoom> {
             .unwrap_or_default();
         let unread = room.unread_notification_counts().notification_count;
         let is_direct = room.is_direct().await.unwrap_or_default();
+        let last_activity_ts: u64 = room
+            .new_latest_event_timestamp()
+            .map_or(0, |ts| ts.0.into());
         rooms.push(DomainRoom {
             id: RoomId(room.room_id().to_string()),
             display_name,
             is_direct,
             unread_count: unread,
+            last_activity_ts,
         });
     }
+    rooms.sort_by(|a, b| {
+        b.unread_count
+            .min(1)
+            .cmp(&a.unread_count.min(1))
+            .then(b.last_activity_ts.cmp(&a.last_activity_ts))
+    });
     rooms
 }
 

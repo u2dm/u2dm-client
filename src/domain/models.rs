@@ -86,6 +86,7 @@ pub struct Room {
     pub display_name: String,
     pub is_direct: bool,
     pub unread_count: u64,
+    pub last_activity_ts: u64,
 }
 
 #[derive(Debug, Clone)]
