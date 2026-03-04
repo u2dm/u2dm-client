@@ -3,10 +3,11 @@ import {
     MessageEntry,
     SendMessageRequest,
 } from "components/types.slint";
+import { Palette } from "std-widgets.slint";
 import { Sidebar } from "components/sidebar.slint";
 import { TimelineView } from "components/timeline.slint";
 
-export component ChatScreen inherits HorizontalLayout {
+export component ChatScreen inherits Rectangle {
     in property <string> user-id: "";
     in property <string> connection-status: "disconnected";
     in property <[RoomEntry]> rooms: [];
@@ -19,7 +20,16 @@ export component ChatScreen inherits HorizontalLayout {
     callback logout();
     callback send-message(SendMessageRequest);
 
+    property <length> sidebar-width: 260px;
+    property <length> divider-width: 4px;
+    property <length> min-sidebar-width: 150px;
+    property <length> max-sidebar-width: 500px;
+
     Sidebar {
+        x: 0;
+        y: 0;
+        width: root.sidebar-width;
+        height: root.height;
         user-id: root.user-id;
         connection-status: root.connection-status;
         rooms: root.rooms;
@@ -33,7 +43,26 @@ export component ChatScreen inherits HorizontalLayout {
         }
     }
 
+    TouchArea {
+        x: root.sidebar-width;
+        y: 0;
+        width: root.divider-width;
+        height: root.height;
+        mouse-cursor: col-resize;
+        moved => {
+            root.sidebar-width = clamp(
+                    root.sidebar-width + self.mouse-x - self.pressed-x,
+                    root.min-sidebar-width,
+                    root.max-sidebar-width,
+                );
+        }
+    }
+
     TimelineView {
+        x: root.sidebar-width + root.divider-width;
+        y: 0;
+        width: root.width - root.sidebar-width - root.divider-width;
+        height: root.height;
         selected-room-name: root.selected-room-name;
         selected-room-id: root.selected-room-id;
         timeline: root.timeline;
