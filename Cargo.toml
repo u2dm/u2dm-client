@@ -25,8 +25,19 @@ open = "5"
 rand = "0.10.0"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-slint = "1.15.1"
-slint-interpreter = "1.15.1"
+slint = { version = "1.15.1", default-features = false, features = [
+    "std",
+    "compat-1-2",
+    "backend-winit",
+    "renderer-skia",
+    "accessibility",
+] }
+slint-interpreter = { version = "1.15.1", default-features = false, features = [
+    "compat-1-2",
+    "backend-winit",
+    "renderer-skia",
+    "accessibility",
+] }
 thiserror = "2"
 tokio = { version = "1.49", features = [
     "rt-multi-thread",
