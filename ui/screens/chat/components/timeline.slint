@@ -1,12 +1,13 @@
 import {
     Button,
-    LineEdit,
     Palette,
 } from "std-widgets.slint";
 
 import { MessageEntry, SendMessageRequest } from "./types.slint";
 
 export component TimelineView inherits Rectangle {
+    background: Palette.background;
+
     in property <string> selected-room-name: "";
     in property <string> selected-room-id: "";
     in property <[MessageEntry]> timeline: [];
@@ -14,7 +15,7 @@ export component TimelineView inherits Rectangle {
 
     callback send-message(SendMessageRequest);
 
-    property <length> header-height: 32px;
+    property <length> header-height: 40px;
     property <length> input-height: 40px;
     property <length> spacing: 8px;
 
@@ -26,14 +27,19 @@ export component TimelineView inherits Rectangle {
         vertical-alignment: center;
     }
 
-    if root.selected-room-name != "": Text {
+    if root.selected-room-name != "": Rectangle {
         x: 0;
         y: 0;
         width: root.width;
         height: root.header-height;
-        text: root.selected-room-name;
-        font-size: 18px;
-        font-weight: 700;
+        background: Palette.alternate-background;
+
+        Text {
+            text: root.selected-room-name;
+            font-size: 18px;
+            font-weight: 700;
+            vertical-alignment: center;
+        }
     }
 
     if root.selected-room-name != "": Flickable {
@@ -79,30 +85,51 @@ export component TimelineView inherits Rectangle {
         }
     }
 
-    if root.selected-room-name != "": HorizontalLayout {
+    if root.selected-room-name != "": Rectangle {
         x: 0;
         y: root.height - root.input-height;
         width: root.width;
         height: root.input-height;
-        spacing: 8px;
+        background: Palette.alternate-background;
 
-        LineEdit {
-            text <=> root.input-message;
-            placeholder-text: "Send a message...";
-            accepted => {
-                if root.input-message != "" {
-                    root.send-message({ room-id: root.selected-room-id, body: root.input-message });
-                    root.input-message = "";
+        HorizontalLayout {
+
+            Rectangle {
+                horizontal-stretch: 1;
+
+                TextInput {
+                    text <=> root.input-message;
+                    color: Palette.foreground;
+                    font-size: 14px;
+                    vertical-alignment: center;
+                    accepted => {
+                        if root.input-message != "" {
+                            root.send-message({ room-id: root.selected-room-id, body: root.input-message });
+                            root.input-message = "";
+                        }
+                    }
+                }
+
+                if root.input-message == "": Text {
+                    x: 0;
+                    y: 0;
+                    width: parent.width;
+                    height: parent.height;
+                    text: "Send a message...";
+                    color: Palette.foreground.transparentize(0.5);
+                    font-size: 14px;
+                    vertical-alignment: center;
+                    horizontal-alignment: left;
                 }
             }
-        }
 
-        Button {
-            text: "Send";
-            clicked => {
-                if root.input-message != "" {
-                    root.send-message({ room-id: root.selected-room-id, body: root.input-message });
-                    root.input-message = "";
+            Button {
+                text: "Send";
+                clicked => {
+                    if root.input-message != "" {
+                        root.send-message({ room-id: root.selected-room-id, body: root.input-message });
+                        root.input-message = "";
+                    }
                 }
             }
         }

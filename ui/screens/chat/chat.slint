@@ -43,8 +43,22 @@ export component ChatScreen inherits Rectangle {
         }
     }
 
-    TouchArea {
+    TimelineView {
         x: root.sidebar-width;
+        y: 0;
+        width: root.width - root.sidebar-width;
+        height: root.height;
+        selected-room-name: root.selected-room-name;
+        selected-room-id: root.selected-room-id;
+        timeline: root.timeline;
+        input-message <=> root.input-message;
+        send-message(req) => {
+            root.send-message(req);
+        }
+    }
+
+    TouchArea {
+        x: root.sidebar-width - root.divider-width / 2;
         y: 0;
         width: root.divider-width;
         height: root.height;
@@ -55,20 +69,6 @@ export component ChatScreen inherits Rectangle {
                     root.min-sidebar-width,
                     root.max-sidebar-width,
                 );
-        }
-    }
-
-    TimelineView {
-        x: root.sidebar-width + root.divider-width;
-        y: 0;
-        width: root.width - root.sidebar-width - root.divider-width;
-        height: root.height;
-        selected-room-name: root.selected-room-name;
-        selected-room-id: root.selected-room-id;
-        timeline: root.timeline;
-        input-message <=> root.input-message;
-        send-message(req) => {
-            root.send-message(req);
         }
     }
 }

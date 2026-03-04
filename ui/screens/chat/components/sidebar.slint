@@ -6,6 +6,8 @@ import {
 import { RoomEntry } from "./types.slint";
 
 export component Sidebar inherits Rectangle {
+    background: Palette.alternate-background;
+
     in property <string> user-id: "";
     in property <string> connection-status: "disconnected";
     in property <[RoomEntry]> rooms: [];
@@ -73,8 +75,7 @@ export component Sidebar inherits Rectangle {
         VerticalLayout {
             for room in root.rooms: Rectangle {
                 height: 44px;
-                background: room.id == root.selected-room-id ? Palette.alternate-background : transparent;
-                border-radius: 4px;
+                background: room.id == root.selected-room-id ? Palette.background : transparent;
 
                 TouchArea {
                     clicked => {
