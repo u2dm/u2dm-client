@@ -1,15 +1,12 @@
 import {
     Button,
     LineEdit,
-    ListView,
     Palette,
 } from "std-widgets.slint";
 
 import { MessageEntry, SendMessageRequest } from "./types.slint";
 
-export component TimelineView inherits VerticalLayout {
-    spacing: 8px;
-
+export component TimelineView inherits Rectangle {
     in property <string> selected-room-name: "";
     in property <string> selected-room-id: "";
     in property <[MessageEntry]> timeline: [];
@@ -17,11 +14,9 @@ export component TimelineView inherits VerticalLayout {
 
     callback send-message(SendMessageRequest);
 
-    if root.selected-room-name != "": Text {
-        text: root.selected-room-name;
-        font-size: 18px;
-        font-weight: 700;
-    }
+    property <length> header-height: 32px;
+    property <length> input-height: 40px;
+    property <length> spacing: 8px;
 
     if root.selected-room-name == "": Text {
         text: "Select a room";
@@ -31,42 +26,64 @@ export component TimelineView inherits VerticalLayout {
         vertical-alignment: center;
     }
 
-    if root.selected-room-name != "": ListView {
-        for msg in root.timeline: Rectangle {
-            height: 48px;
+    if root.selected-room-name != "": Text {
+        x: 0;
+        y: 0;
+        width: root.width;
+        height: root.header-height;
+        text: root.selected-room-name;
+        font-size: 18px;
+        font-weight: 700;
+    }
 
-            VerticalLayout {
-                padding-left: 8px;
-                padding-right: 8px;
-                spacing: 2px;
+    if root.selected-room-name != "": Flickable {
+        x: 0;
+        y: root.header-height + root.spacing;
+        width: root.width;
+        height: root.height - root.header-height - root.input-height - root.spacing * 2;
+        viewport-height: root.timeline.length * 48px;
 
-                HorizontalLayout {
-                    spacing: 8px;
+        VerticalLayout {
+            for msg in root.timeline: Rectangle {
+                height: 48px;
 
-                    Text {
-                        text: msg.sender;
-                        font-size: 13px;
-                        font-weight: 600;
+                VerticalLayout {
+                    padding-left: 8px;
+                    padding-right: 8px;
+                    spacing: 2px;
+
+                    HorizontalLayout {
+                        spacing: 8px;
+
+                        Text {
+                            text: msg.sender;
+                            font-size: 13px;
+                            font-weight: 600;
+                        }
+
+                        Text {
+                            text: msg.timestamp;
+                            font-size: 11px;
+                            color: Palette.foreground.transparentize(0.5);
+                            vertical-alignment: center;
+                        }
                     }
 
                     Text {
-                        text: msg.timestamp;
-                        font-size: 11px;
-                        color: Palette.foreground.transparentize(0.5);
-                        vertical-alignment: center;
+                        text: msg.body;
+                        font-size: 14px;
+                        overflow: elide;
                     }
-                }
-
-                Text {
-                    text: msg.body;
-                    font-size: 14px;
-                    overflow: elide;
                 }
             }
         }
     }
 
     if root.selected-room-name != "": HorizontalLayout {
+        x: 0;
+        y: root.height - root.input-height;
+        width: root.width;
+        height: root.input-height;
         spacing: 8px;
 
         LineEdit {

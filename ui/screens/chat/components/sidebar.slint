@@ -1,14 +1,11 @@
 import {
     Button,
-    ListView,
     Palette,
 } from "std-widgets.slint";
 
 import { RoomEntry } from "./types.slint";
 
-export component Sidebar inherits VerticalLayout {
-    spacing: 4px;
-
+export component Sidebar inherits Rectangle {
     in property <string> user-id: "";
     in property <string> connection-status: "disconnected";
     in property <[RoomEntry]> rooms: [];
@@ -31,7 +28,14 @@ export component Sidebar inherits VerticalLayout {
         return Palette.border;
     }
 
+    property <length> header-height: 40px;
+    property <length> spacing: 4px;
+
     HorizontalLayout {
+        x: 0;
+        y: 0;
+        width: root.width;
+        height: root.header-height;
         spacing: 8px;
         padding-left: 8px;
         padding-right: 8px;
@@ -59,37 +63,45 @@ export component Sidebar inherits VerticalLayout {
         }
     }
 
-    ListView {
-        for room in root.rooms: Rectangle {
-            height: 44px;
-            background: room.id == root.selected-room-id ? Palette.alternate-background : transparent;
-            border-radius: 4px;
+    Flickable {
+        x: 0;
+        y: root.header-height + root.spacing;
+        width: root.width;
+        height: root.height - root.header-height - root.spacing;
+        viewport-height: root.rooms.length * 44px;
 
-            TouchArea {
-                clicked => {
-                    root.selected-room-name = room.name;
-                    root.selected-room-id = room.id;
-                    root.select-room(room.id);
-                }
-            }
+        VerticalLayout {
+            for room in root.rooms: Rectangle {
+                height: 44px;
+                background: room.id == root.selected-room-id ? Palette.alternate-background : transparent;
+                border-radius: 4px;
 
-            HorizontalLayout {
-                padding-left: 12px;
-                padding-right: 12px;
-                spacing: 8px;
-
-                Text {
-                    text: room.name;
-                    font-size: 14px;
-                    vertical-alignment: center;
-                    overflow: elide;
+                TouchArea {
+                    clicked => {
+                        root.selected-room-name = room.name;
+                        root.selected-room-id = room.id;
+                        root.select-room(room.id);
+                    }
                 }
 
-                if room.unread > 0: Text {
-                    text: "(" + room.unread + ")";
-                    font-size: 12px;
-                    vertical-alignment: center;
-                    color: Palette.foreground.transparentize(0.5);
+                HorizontalLayout {
+                    padding-left: 12px;
+                    padding-right: 12px;
+                    spacing: 8px;
+
+                    Text {
+                        text: room.name;
+                        font-size: 14px;
+                        vertical-alignment: center;
+                        overflow: elide;
+                    }
+
+                    if room.unread > 0: Text {
+                        text: "(" + room.unread + ")";
+                        font-size: 12px;
+                        vertical-alignment: center;
+                        color: Palette.foreground.transparentize(0.5);
+                    }
                 }
             }
         }
