@@ -47,15 +47,32 @@ export component TimelineView inherits Rectangle {
         y: root.header-height + root.spacing;
         width: root.width;
         height: root.height - root.header-height - root.input-height - root.spacing * 2;
-        viewport-height: root.timeline.length * 48px;
+
+        property <bool> auto-scroll: true;
+
+        flicked => {
+            if self.viewport-y <= -(self.viewport-height - self.height - 20px) {
+                self.auto-scroll = true;
+            } else {
+                self.auto-scroll = false;
+            }
+        }
+
+        changed viewport-height => {
+            if self.auto-scroll && self.viewport-height > self.height {
+                self.viewport-y = -(self.viewport-height - self.height);
+            }
+        }
 
         VerticalLayout {
-            for msg in root.timeline: Rectangle {
-                height: 48px;
+            alignment: end;
 
+            for msg in root.timeline: Rectangle {
                 VerticalLayout {
                     padding-left: 8px;
                     padding-right: 8px;
+                    padding-top: 4px;
+                    padding-bottom: 4px;
                     spacing: 2px;
 
                     HorizontalLayout {
@@ -78,7 +95,7 @@ export component TimelineView inherits Rectangle {
                     Text {
                         text: msg.body;
                         font-size: 14px;
-                        overflow: elide;
+                        wrap: word-wrap;
                     }
                 }
             }
