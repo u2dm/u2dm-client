@@ -53,7 +53,7 @@ impl StoragePort for SecureStorage {
         let contents = match fs::read_to_string(&self.session_path).await {
             Ok(c) => c,
             Err(e) if e.kind() == ErrorKind::NotFound => return Ok(None),
-            Err(e) => return Err(AppError::Storage(e.to_string())),
+            Err(e) => return Err(e.into()),
         };
 
         let metadata: SessionMetadata = serde_json::from_str(&contents)?;
@@ -92,7 +92,7 @@ impl StoragePort for SecureStorage {
         match fs::remove_file(&self.session_path).await {
             Ok(()) => {}
             Err(e) if e.kind() == ErrorKind::NotFound => {}
-            Err(e) => return Err(AppError::Storage(e.to_string())),
+            Err(e) => return Err(e.into()),
         }
 
         for key in ["access-token", "refresh-token"] {
@@ -116,11 +116,13 @@ impl StoragePort for SecureStorage {
 async fn keyring_set(key: &str, secret: String) -> Result<()> {
     let key = key.to_owned();
     spawn_blocking(move || {
-        let entry = keyring::Entry::new(KEYRING_SERVICE, &key)
-            .map_err(|e| AppError::Keyring(format!("{key}: {e}")))?;
+        let entry = keyring::Entry::new(KEYRING_SERVICE, &key).map_err(|e| AppError::Keyring {
+            key: key.clone(),
+            source: e,
+        })?;
         entry
             .set_password(&secret)
-            .map_err(|e| AppError::Keyring(format!("{key}: {e}")))
+            .map_err(|e| AppError::Keyring { key, source: e })
     })
     .await
     .map_err(|e| AppError::Other(e.to_string()))?
@@ -129,12 +131,14 @@ async fn keyring_set(key: &str, secret: String) -> Result<()> {
 async fn keyring_get(key: &str) -> Result<Option<String>> {
     let key = key.to_owned();
     spawn_blocking(move || {
-        let entry = keyring::Entry::new(KEYRING_SERVICE, &key)
-            .map_err(|e| AppError::Keyring(format!("{key}: {e}")))?;
+        let entry = keyring::Entry::new(KEYRING_SERVICE, &key).map_err(|e| AppError::Keyring {
+            key: key.clone(),
+            source: e,
+        })?;
         match entry.get_password() {
             Ok(pw) => Ok(Some(pw)),
             Err(keyring::Error::NoEntry) => Ok(None),
-            Err(e) => Err(AppError::Keyring(format!("{key}: {e}"))),
+            Err(e) => Err(AppError::Keyring { key, source: e }),
         }
     })
     .await
@@ -144,11 +148,13 @@ async fn keyring_get(key: &str) -> Result<Option<String>> {
 async fn keyring_delete(key: &str) -> Result<()> {
     let key = key.to_owned();
     spawn_blocking(move || {
-        let entry = keyring::Entry::new(KEYRING_SERVICE, &key)
-            .map_err(|e| AppError::Keyring(format!("{key}: {e}")))?;
+        let entry = keyring::Entry::new(KEYRING_SERVICE, &key).map_err(|e| AppError::Keyring {
+            key: key.clone(),
+            source: e,
+        })?;
         match entry.delete_credential() {
             Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
-            Err(e) => Err(AppError::Keyring(format!("{key}: {e}"))),
+            Err(e) => Err(AppError::Keyring { key, source: e }),
         }
     })
     .await
@@ -157,30 +163,22 @@ async fn keyring_delete(key: &str) -> Result<()> {
 
 async fn write_metadata(path: &Path, metadata: &SessionMetadata) -> Result<()> {
     if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent)
-            .await
-            .map_err(|e| AppError::Storage(e.to_string()))?;
+        fs::create_dir_all(parent).await?;
     }
 
     let json = serde_json::to_string_pretty(metadata)?;
     let tmp_path = path.with_extension("tmp");
 
-    fs::write(&tmp_path, json.as_bytes())
-        .await
-        .map_err(|e| AppError::Storage(e.to_string()))?;
+    fs::write(&tmp_path, json.as_bytes()).await?;
 
     #[cfg(unix)]
     {
         use std::fs::Permissions;
         use std::os::unix::fs::PermissionsExt;
-        fs::set_permissions(&tmp_path, Permissions::from_mode(0o600))
-            .await
-            .map_err(|e| AppError::Storage(e.to_string()))?;
+        fs::set_permissions(&tmp_path, Permissions::from_mode(0o600)).await?;
     }
 
-    fs::rename(&tmp_path, path)
-        .await
-        .map_err(|e| AppError::Storage(e.to_string()))?;
+    fs::rename(&tmp_path, path).await?;
 
     Ok(())
 }

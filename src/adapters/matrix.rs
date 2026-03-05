@@ -378,10 +378,7 @@ impl MatrixPort for MatrixAdapter {
     async fn login_oauth_start(&self) -> Result<OAuthLoginData> {
         let client = self.get_client().await?;
 
-        let (redirect_uri, server_handle) = LocalServerBuilder::new()
-            .spawn()
-            .await
-            .map_err(|e| AppError::Other(format!("Failed to start local callback server: {e}")))?;
+        let (redirect_uri, server_handle) = LocalServerBuilder::new().spawn().await?;
 
         let metadata = client_metadata()?;
         let auth_data = client
@@ -573,9 +570,7 @@ impl MatrixPort for MatrixAdapter {
         *self.client.write().await = None;
         let store_path = self.data_dir.join("matrix-store");
         if store_path.exists() {
-            fs::remove_dir_all(&store_path)
-                .await
-                .map_err(|e| AppError::Storage(e.to_string()))?;
+            fs::remove_dir_all(&store_path).await?;
         }
         Ok(())
     }

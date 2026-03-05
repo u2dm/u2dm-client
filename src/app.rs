@@ -9,7 +9,7 @@ use rand::distr::Alphanumeric;
 use crate::commands::{UiCommand, UiEvent};
 use crate::domain::models::{
     ConnectionStatus, LoginCredentials, RoomId, Session, SyncSnapshot, TimelineMessage,
-    VerificationEvent,
+    UiErrorKind, VerificationEvent,
 };
 
 use crate::error::{AppError, Result};
@@ -106,6 +106,14 @@ impl AppService {
         }
     }
 
+    fn emit_error(&self, err: &AppError) {
+        let kind = err.ui_error_kind();
+        self.emit(UiEvent::Error {
+            message: err.to_string(),
+            kind,
+        });
+    }
+
     fn send_cmd(&self, cmd: UiCommand) {
         if let Err(e) = self.cmd_tx.send(cmd) {
             tracing::debug!("failed to send command: {e}");
@@ -140,7 +148,7 @@ impl AppService {
                 return;
             }
             Err(e) => {
-                self.emit(UiEvent::Error(e.to_string()));
+                self.emit_error(&e);
                 return;
             }
         };
@@ -150,7 +158,7 @@ impl AppService {
         let passphrase = match self.get_or_create_passphrase().await {
             Ok(p) => p,
             Err(e) => {
-                self.emit(UiEvent::Error(e.to_string()));
+                self.emit_error(&e);
                 return;
             }
         };
@@ -164,7 +172,7 @@ impl AppService {
             }
             Err(e) => {
                 self.clear_local_state().await;
-                self.emit(UiEvent::Error(e.to_string()));
+                self.emit_error(&e);
             }
         }
     }
@@ -173,13 +181,13 @@ impl AppService {
         let passphrase = match self.get_or_create_passphrase().await {
             Ok(p) => p,
             Err(e) => {
-                self.emit(UiEvent::Error(e.to_string()));
+                self.emit_error(&e);
                 return;
             }
         };
         match self.matrix.discover_auth(homeserver, &passphrase).await {
             Ok(info) => self.emit(UiEvent::ServerInfo(info)),
-            Err(e) => self.emit(UiEvent::Error(e.to_string())),
+            Err(e) => self.emit_error(&e),
         }
     }
 
@@ -192,7 +200,7 @@ impl AppService {
                 });
                 self.send_cmd(UiCommand::FetchRooms);
             }
-            Err(e) => self.emit(UiEvent::Error(e.to_string())),
+            Err(e) => self.emit_error(&e),
         }
     }
 
@@ -201,7 +209,7 @@ impl AppService {
             Ok(()) => {
                 self.send_cmd(UiCommand::FetchRooms);
             }
-            Err(e) => self.emit(UiEvent::Error(e.to_string())),
+            Err(e) => self.emit_error(&e),
         }
     }
 
@@ -239,9 +247,10 @@ impl AppService {
         self.shutdown_all_tasks();
         self.clear_local_state().await;
         self.emit(UiEvent::LoggedOut);
-        self.emit(UiEvent::Error(
-            "Session expired. Please log in again.".into(),
-        ));
+        self.emit(UiEvent::Error {
+            message: "Session expired. Please log in again.".into(),
+            kind: UiErrorKind::Authentication,
+        });
     }
 
     async fn handle_logout(&mut self) {
@@ -271,9 +280,10 @@ impl AppService {
         tokio::spawn(async move {
             if let Err(e) = matrix.send_text(&room_id, &body).await {
                 tracing::warn!("failed to send message: {e}");
-                if let Err(send_err) =
-                    ui_tx.send(UiEvent::Error(format!("Failed to send message: {e}")))
-                {
+                if let Err(send_err) = ui_tx.send(UiEvent::Error {
+                    message: format!("Failed to send message: {e}"),
+                    kind: UiErrorKind::Other,
+                }) {
                     tracing::debug!("failed to send Error event: {send_err}");
                 }
             }
@@ -282,19 +292,28 @@ impl AppService {
 
     async fn handle_accept_verification(&mut self) {
         if let Err(e) = self.matrix.accept_verification().await {
-            self.emit(UiEvent::Error(format!("Verification accept failed: {e}")));
+            self.emit(UiEvent::Error {
+                message: format!("Verification accept failed: {e}"),
+                kind: UiErrorKind::Other,
+            });
         }
     }
 
     async fn handle_reject_verification(&mut self) {
         if let Err(e) = self.matrix.reject_verification().await {
-            self.emit(UiEvent::Error(format!("Verification reject failed: {e}")));
+            self.emit(UiEvent::Error {
+                message: format!("Verification reject failed: {e}"),
+                kind: UiErrorKind::Other,
+            });
         }
     }
 
     async fn handle_confirm_verification(&mut self) {
         if let Err(e) = self.matrix.confirm_verification().await {
-            self.emit(UiEvent::Error(format!("Verification confirm failed: {e}")));
+            self.emit(UiEvent::Error {
+                message: format!("Verification confirm failed: {e}"),
+                kind: UiErrorKind::Other,
+            });
         }
     }
 
@@ -313,7 +332,6 @@ impl AppService {
                 return;
             }
             Err(e) => {
-                self.emit(UiEvent::Error(e.to_string()));
                 self.emit(UiEvent::ConnectionStatus(ConnectionStatus::Error(
                     e.to_string(),
                 )));

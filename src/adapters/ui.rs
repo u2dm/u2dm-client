@@ -8,7 +8,7 @@ use tokio::sync::mpsc;
 use crate::commands::{UiCommand, UiEvent};
 use crate::domain::models::{
     ConnectionStatus, LoginCredentials, LoginMethod, MessageBody, Room, RoomId, ServerInfo,
-    TimelineMessage, VerificationEvent,
+    TimelineMessage, UiErrorKind, VerificationEvent,
 };
 use crate::error::{AppError, Result};
 
@@ -254,7 +254,7 @@ fn dispatch_ui_event(inst: &ComponentInstance, event: UiEvent) {
     match event {
         UiEvent::ServerInfo(info) => apply_server_info(inst, &info),
         UiEvent::LoginSuccess { user_id } => apply_login_success(inst, &user_id),
-        UiEvent::Error(msg) => apply_error(inst, &msg),
+        UiEvent::Error { message, kind } => apply_error(inst, &message, &kind),
         UiEvent::Status(msg) => apply_status(inst, &msg),
         UiEvent::Rooms(rooms) => apply_rooms(inst, &rooms),
         UiEvent::Timeline(messages) => apply_timeline(inst, &messages),
@@ -294,7 +294,7 @@ fn apply_login_success(inst: &ComponentInstance, user_id: &str) {
     set_prop(inst, "login-status", Value::String(SharedString::default()));
 }
 
-fn apply_error(inst: &ComponentInstance, msg: &str) {
+fn apply_error(inst: &ComponentInstance, msg: &str, _kind: &UiErrorKind) {
     set_prop(inst, "login-error", Value::String(SharedString::from(msg)));
     set_prop(inst, "login-status", Value::String(SharedString::default()));
 }

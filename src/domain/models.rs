@@ -1,6 +1,14 @@
 use std::fmt;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub enum UiErrorKind {
+    Authentication,
+    Network,
+    Storage,
+    Other,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AuthMethod {
     Password,
     OAuth,
