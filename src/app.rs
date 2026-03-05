@@ -439,7 +439,9 @@ impl AppService {
                 }
             }
 
-            if let Err(e) = cmd_tx.send(UiCommand::SessionExpired) {
+            if !token.is_cancelled()
+                && let Err(e) = cmd_tx.send(UiCommand::SessionExpired)
+            {
                 tracing::debug!("failed to send SessionExpired command: {e}");
             }
         });
