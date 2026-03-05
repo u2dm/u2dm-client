@@ -1,7 +1,12 @@
 use std::sync::Arc;
+use std::time::Duration;
 
 use tokio::sync::mpsc;
+use tokio::task::JoinHandle;
+use tokio::time;
 use tokio_util::sync::CancellationToken;
+
+use futures_util::future;
 
 use rand::RngExt;
 use rand::distr::Alphanumeric;
@@ -24,14 +29,41 @@ fn generate_passphrase() -> String {
         .collect()
 }
 
+struct ResettableToken {
+    token: CancellationToken,
+}
+
+impl ResettableToken {
+    fn new() -> Self {
+        Self {
+            token: CancellationToken::new(),
+        }
+    }
+
+    fn reset(&mut self) -> CancellationToken {
+        self.token.cancel();
+        self.token = CancellationToken::new();
+        self.token.clone()
+    }
+
+    fn clone_token(&self) -> CancellationToken {
+        self.token.clone()
+    }
+
+    fn cancel(&self) {
+        self.token.cancel();
+    }
+}
+
 pub struct AppService {
     matrix: Arc<dyn MatrixPort>,
     storage: Arc<dyn StoragePort>,
     cmd_rx: mpsc::UnboundedReceiver<UiCommand>,
     cmd_tx: mpsc::UnboundedSender<UiCommand>,
     ui_tx: mpsc::UnboundedSender<UiEvent>,
-    background_token: CancellationToken,
-    timeline_token: CancellationToken,
+    background_token: ResettableToken,
+    timeline_token: ResettableToken,
+    send_handles: Vec<JoinHandle<()>>,
 }
 
 impl AppService {
@@ -48,8 +80,9 @@ impl AppService {
             cmd_rx,
             cmd_tx,
             ui_tx,
-            background_token: CancellationToken::new(),
-            timeline_token: CancellationToken::new(),
+            background_token: ResettableToken::new(),
+            timeline_token: ResettableToken::new(),
+            send_handles: Vec::new(),
         }
     }
 
@@ -93,7 +126,7 @@ impl AppService {
                     self.handle_logout().await;
                 }
                 UiCommand::Quit => {
-                    self.handle_quit();
+                    self.handle_quit().await;
                     break;
                 }
             }
@@ -233,13 +266,30 @@ impl AppService {
 
     fn shutdown_all_tasks(&mut self) {
         self.background_token.cancel();
-        self.background_token = CancellationToken::new();
         self.timeline_token.cancel();
-        self.timeline_token = CancellationToken::new();
     }
 
-    fn handle_quit(&mut self) {
+    async fn handle_quit(&mut self) {
         self.shutdown_all_tasks();
+        self.drain_send_handles().await;
+    }
+
+    async fn drain_send_handles(&mut self) {
+        let handles: Vec<_> = self.send_handles.drain(..).collect();
+        if handles.is_empty() {
+            return;
+        }
+        let count = handles.len();
+        tracing::debug!("waiting for {count} in-flight message(s)");
+        let Ok(results) = time::timeout(Duration::from_secs(3), future::join_all(handles)).await
+        else {
+            tracing::warn!("timed out waiting for in-flight messages, abandoning");
+            return;
+        };
+        let failed = results.iter().filter(|r| r.is_err()).count();
+        if failed > 0 {
+            tracing::warn!("{failed} send task(s) panicked during shutdown");
+        }
     }
 
     async fn handle_session_expired(&mut self) {
@@ -264,20 +314,16 @@ impl AppService {
     }
 
     fn handle_select_room(&mut self, room_id: RoomId) {
-        self.timeline_token.cancel();
-        self.timeline_token = CancellationToken::new();
-        Self::spawn_timeline_subscription(
-            &self.matrix,
-            &self.ui_tx,
-            room_id,
-            self.timeline_token.clone(),
-        );
+        let token = self.timeline_token.reset();
+        Self::spawn_timeline_subscription(&self.matrix, &self.ui_tx, room_id, token);
     }
 
     fn handle_send_message(&mut self, room_id: RoomId, body: String) {
+        self.send_handles.retain(|h| !h.is_finished());
+
         let matrix = Arc::clone(&self.matrix);
         let ui_tx = self.ui_tx.clone();
-        tokio::spawn(async move {
+        let handle = tokio::spawn(async move {
             if let Err(e) = matrix.send_text(&room_id, &body).await {
                 tracing::warn!("failed to send message: {e}");
                 if let Err(send_err) = ui_tx.send(UiEvent::Error {
@@ -288,6 +334,7 @@ impl AppService {
                 }
             }
         });
+        self.send_handles.push(handle);
     }
 
     async fn handle_accept_verification(&mut self) {
@@ -342,22 +389,17 @@ impl AppService {
     }
 
     fn start_background_listeners(&mut self) {
-        self.background_token.cancel();
-        self.background_token = CancellationToken::new();
+        let token = self.background_token.reset();
 
-        Self::spawn_session_change_listener(
-            &self.matrix,
-            &self.storage,
-            self.background_token.clone(),
-        );
+        Self::spawn_session_change_listener(&self.matrix, &self.storage, token.clone());
 
-        Self::spawn_verification_listener(&self.matrix, &self.ui_tx, self.background_token.clone());
+        Self::spawn_verification_listener(&self.matrix, &self.ui_tx, token);
     }
 
     fn start_sync_pipeline(&mut self) {
         let (snapshot_tx, mut snapshot_rx) = mpsc::unbounded_channel::<SyncSnapshot>();
         let matrix_sync = Arc::clone(&self.matrix);
-        let token = self.background_token.clone();
+        let token = self.background_token.clone_token();
         tokio::spawn(async move {
             tokio::select! {
                 result = matrix_sync.start_sync(snapshot_tx) => {
@@ -373,7 +415,7 @@ impl AppService {
 
         let ui_tx = self.ui_tx.clone();
         let cmd_tx = self.cmd_tx.clone();
-        let token = self.background_token.clone();
+        let token = self.background_token.clone_token();
         tokio::spawn(async move {
             loop {
                 tokio::select! {
