@@ -3,6 +3,9 @@ use std::sync::Arc;
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 
+use rand::RngExt;
+use rand::distr::Alphanumeric;
+
 use crate::commands::{UiCommand, UiEvent};
 use crate::domain::models::{
     ConnectionStatus, LoginCredentials, RoomId, Session, SyncSnapshot, TimelineMessage,
@@ -12,6 +15,14 @@ use crate::domain::models::{
 use crate::error::{AppError, Result};
 use crate::ports::matrix::MatrixPort;
 use crate::ports::storage::StoragePort;
+
+fn generate_passphrase() -> String {
+    (&mut rand::rng())
+        .sample_iter(Alphanumeric)
+        .take(32)
+        .map(char::from)
+        .collect()
+}
 
 pub struct AppService {
     matrix: Arc<dyn MatrixPort>,
@@ -101,6 +112,15 @@ impl AppService {
         }
     }
 
+    async fn get_or_create_passphrase(&self) -> Result<String> {
+        if let Some(passphrase) = self.storage.load_passphrase().await? {
+            return Ok(passphrase);
+        }
+        let passphrase = generate_passphrase();
+        self.storage.save_passphrase(&passphrase).await?;
+        Ok(passphrase)
+    }
+
     async fn clear_local_state(&self) {
         if let Err(e) = self.storage.clear_session().await {
             tracing::warn!("failed to clear session: {e}");
@@ -127,7 +147,15 @@ impl AppService {
 
         self.emit(UiEvent::Status("Restoring session...".into()));
 
-        match self.matrix.restore_session(&session).await {
+        let passphrase = match self.get_or_create_passphrase().await {
+            Ok(p) => p,
+            Err(e) => {
+                self.emit(UiEvent::Error(e.to_string()));
+                return;
+            }
+        };
+
+        match self.matrix.restore_session(&session, &passphrase).await {
             Ok(()) => {
                 self.emit(UiEvent::LoginSuccess {
                     user_id: session.user_id,
@@ -142,7 +170,14 @@ impl AppService {
     }
 
     async fn handle_check_server(&mut self, homeserver: &str) {
-        match self.matrix.discover_auth(homeserver).await {
+        let passphrase = match self.get_or_create_passphrase().await {
+            Ok(p) => p,
+            Err(e) => {
+                self.emit(UiEvent::Error(e.to_string()));
+                return;
+            }
+        };
+        match self.matrix.discover_auth(homeserver, &passphrase).await {
             Ok(info) => self.emit(UiEvent::ServerInfo(info)),
             Err(e) => self.emit(UiEvent::Error(e.to_string())),
         }

@@ -1,3 +1,5 @@
+use std::fmt;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AuthMethod {
     Password,
@@ -63,17 +65,52 @@ pub struct OAuthLoginData {
     pub auth_url: String,
 }
 
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Clone)]
 pub struct Session {
     pub user_id: String,
     pub device_id: String,
     pub homeserver: String,
     pub access_token: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub refresh_token: Option<String>,
     /// oauth client id present only for oauth sessions.
+    pub client_id: Option<String>,
+}
+
+impl fmt::Debug for Session {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Session")
+            .field("user_id", &self.user_id)
+            .field("device_id", &self.device_id)
+            .field("homeserver", &self.homeserver)
+            .field("access_token", &"[REDACTED]")
+            .field(
+                "refresh_token",
+                &self.refresh_token.as_ref().map(|_| "[REDACTED]"),
+            )
+            .field("client_id", &self.client_id)
+            .finish()
+    }
+}
+
+/// non-secret session metadata safe for disk storage.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct SessionMetadata {
+    pub user_id: String,
+    pub device_id: String,
+    pub homeserver: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub client_id: Option<String>,
+}
+
+impl Session {
+    pub fn metadata(&self) -> SessionMetadata {
+        SessionMetadata {
+            user_id: self.user_id.clone(),
+            device_id: self.device_id.clone(),
+            homeserver: self.homeserver.clone(),
+            client_id: self.client_id.clone(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

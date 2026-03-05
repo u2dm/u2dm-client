@@ -3,7 +3,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use adapters::matrix::MatrixAdapter;
-use adapters::storage::JsonFileStorage;
+use adapters::storage::SecureStorage;
 use adapters::ui::SlintUiAdapter;
 use app::AppService;
 use commands::{UiCommand, UiEvent};
@@ -52,7 +52,7 @@ fn run() -> Result<()> {
     ui.register_callbacks(&cmd_tx)?;
 
     let matrix: Arc<dyn MatrixPort> = Arc::new(MatrixAdapter::new(cfg.data_dir.clone()));
-    let storage: Arc<dyn StoragePort> = Arc::new(JsonFileStorage::new(&cfg.data_dir));
+    let storage: Arc<dyn StoragePort> = Arc::new(SecureStorage::new(&cfg.data_dir));
 
     let cmd_tx_quit = cmd_tx.clone();
     {

@@ -1,4 +1,3 @@
-use std::io::ErrorKind;
 use std::net::{Ipv4Addr, Ipv6Addr};
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -26,8 +25,6 @@ use matrix_sdk::utils::local_server::{LocalServerBuilder, LocalServerRedirectHan
 use matrix_sdk::{Client, SessionChange, SessionMeta};
 use matrix_sdk_ui::eyeball_im::VectorDiff;
 use matrix_sdk_ui::timeline::{EventTimelineItem, RoomExt, TimelineDetails, TimelineItem};
-use rand::RngExt;
-use rand::distr::Alphanumeric;
 use tokio::fs;
 use tokio::sync::{Mutex, RwLock, mpsc};
 use url::Url;
@@ -66,32 +63,6 @@ impl MatrixAdapter {
             .clone()
             .ok_or_else(|| AppError::Other("No client, run server discovery first".into()))
     }
-
-    async fn get_or_create_passphrase(&self) -> Result<String> {
-        let path = self.data_dir.join("db_passphrase");
-        match fs::read_to_string(&path).await {
-            Ok(passphrase) => Ok(passphrase),
-            Err(e) if e.kind() == ErrorKind::NotFound => {
-                let passphrase = generate_passphrase();
-                fs::create_dir_all(&self.data_dir)
-                    .await
-                    .map_err(|e| AppError::Storage(e.to_string()))?;
-                fs::write(&path, &passphrase)
-                    .await
-                    .map_err(|e| AppError::Storage(e.to_string()))?;
-                Ok(passphrase)
-            }
-            Err(e) => Err(AppError::Storage(e.to_string())),
-        }
-    }
-}
-
-fn generate_passphrase() -> String {
-    (&mut rand::rng())
-        .sample_iter(Alphanumeric)
-        .take(32)
-        .map(char::from)
-        .collect()
 }
 
 async fn build_room_list(client: &Client) -> Vec<DomainRoom> {
@@ -346,12 +317,11 @@ fn client_metadata() -> Result<Raw<ClientMetadata>> {
 
 #[async_trait]
 impl MatrixPort for MatrixAdapter {
-    async fn discover_auth(&self, homeserver: &str) -> Result<ServerInfo> {
-        let passphrase = self.get_or_create_passphrase().await?;
+    async fn discover_auth(&self, homeserver: &str, passphrase: &str) -> Result<ServerInfo> {
         let client = Client::builder()
             .server_name_or_homeserver_url(homeserver)
             .handle_refresh_tokens()
-            .sqlite_store(self.data_dir.join("matrix-store"), Some(&passphrase))
+            .sqlite_store(self.data_dir.join("matrix-store"), Some(passphrase))
             .build()
             .await
             .map_err(|e| AppError::Other(e.to_string()))?;
@@ -552,12 +522,11 @@ impl MatrixPort for MatrixAdapter {
         Ok(())
     }
 
-    async fn restore_session(&self, session: &Session) -> Result<()> {
-        let passphrase = self.get_or_create_passphrase().await?;
+    async fn restore_session(&self, session: &Session, passphrase: &str) -> Result<()> {
         let client = Client::builder()
             .homeserver_url(&session.homeserver)
             .handle_refresh_tokens()
-            .sqlite_store(self.data_dir.join("matrix-store"), Some(&passphrase))
+            .sqlite_store(self.data_dir.join("matrix-store"), Some(passphrase))
             .build()
             .await
             .map_err(|e| AppError::Other(e.to_string()))?;

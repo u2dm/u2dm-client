@@ -16,6 +16,9 @@ pub enum AppError {
     #[error("Storage: {0}")]
     Storage(String),
 
+    #[error("Keyring: {0}")]
+    Keyring(String),
+
     #[error(transparent)]
     Serde(#[from] serde_json::Error),
 
