@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use tokio::sync::mpsc;
-use tokio::task::JoinHandle;
+use tokio_util::sync::CancellationToken;
 
 use crate::commands::{UiCommand, UiEvent};
 use crate::domain::models::{
@@ -19,10 +19,8 @@ pub struct AppService {
     cmd_rx: mpsc::UnboundedReceiver<UiCommand>,
     cmd_tx: mpsc::UnboundedSender<UiCommand>,
     ui_tx: mpsc::UnboundedSender<UiEvent>,
-    timeline_handle: Option<JoinHandle<()>>,
-    sync_handle: Option<(JoinHandle<()>, JoinHandle<()>)>,
-    verification_handle: Option<JoinHandle<()>>,
-    session_change_handle: Option<JoinHandle<()>>,
+    background_token: CancellationToken,
+    timeline_token: CancellationToken,
 }
 
 impl AppService {
@@ -39,10 +37,8 @@ impl AppService {
             cmd_rx,
             cmd_tx,
             ui_tx,
-            timeline_handle: None,
-            sync_handle: None,
-            verification_handle: None,
-            session_change_handle: None,
+            background_token: CancellationToken::new(),
+            timeline_token: CancellationToken::new(),
         }
     }
 
@@ -192,42 +188,20 @@ impl AppService {
         }
     }
 
-    fn abort_sync(&mut self) {
-        if let Some((sync_task, receiver_task)) = self.sync_handle.take() {
-            sync_task.abort();
-            receiver_task.abort();
-        }
-    }
-
-    fn abort_verification(&mut self) {
-        if let Some(handle) = self.verification_handle.take() {
-            handle.abort();
-        }
-    }
-
-    fn abort_session_changes(&mut self) {
-        if let Some(handle) = self.session_change_handle.take() {
-            handle.abort();
-        }
+    fn shutdown_all_tasks(&mut self) {
+        self.background_token.cancel();
+        self.background_token = CancellationToken::new();
+        self.timeline_token.cancel();
+        self.timeline_token = CancellationToken::new();
     }
 
     fn handle_quit(&mut self) {
-        if let Some(handle) = self.timeline_handle.take() {
-            handle.abort();
-        }
-        self.abort_sync();
-        self.abort_verification();
-        self.abort_session_changes();
+        self.shutdown_all_tasks();
     }
 
     async fn handle_session_expired(&mut self) {
         tracing::info!("session expired, clearing local state");
-        if let Some(handle) = self.timeline_handle.take() {
-            handle.abort();
-        }
-        self.abort_sync();
-        self.abort_verification();
-        self.abort_session_changes();
+        self.shutdown_all_tasks();
         self.clear_local_state().await;
         self.emit(UiEvent::LoggedOut);
         self.emit(UiEvent::Error(
@@ -236,12 +210,7 @@ impl AppService {
     }
 
     async fn handle_logout(&mut self) {
-        if let Some(handle) = self.timeline_handle.take() {
-            handle.abort();
-        }
-        self.abort_sync();
-        self.abort_verification();
-        self.abort_session_changes();
+        self.shutdown_all_tasks();
         if let Err(e) = self.matrix.logout().await {
             tracing::warn!("failed to logout from server: {e}");
         }
@@ -251,14 +220,14 @@ impl AppService {
     }
 
     fn handle_select_room(&mut self, room_id: RoomId) {
-        if let Some(handle) = self.timeline_handle.take() {
-            handle.abort();
-        }
-        self.timeline_handle = Some(Self::spawn_timeline_subscription(
+        self.timeline_token.cancel();
+        self.timeline_token = CancellationToken::new();
+        Self::spawn_timeline_subscription(
             &self.matrix,
             &self.ui_tx,
             room_id,
-        ));
+            self.timeline_token.clone(),
+        );
     }
 
     fn handle_send_message(&mut self, room_id: RoomId, body: String) {
@@ -320,41 +289,58 @@ impl AppService {
     }
 
     fn start_background_listeners(&mut self) {
-        self.abort_sync();
+        self.background_token.cancel();
+        self.background_token = CancellationToken::new();
 
-        self.abort_session_changes();
-        self.session_change_handle = Some(Self::spawn_session_change_listener(
+        Self::spawn_session_change_listener(
             &self.matrix,
             &self.storage,
-        ));
+            self.background_token.clone(),
+        );
 
-        self.abort_verification();
-        self.verification_handle =
-            Some(Self::spawn_verification_listener(&self.matrix, &self.ui_tx));
+        Self::spawn_verification_listener(&self.matrix, &self.ui_tx, self.background_token.clone());
     }
 
     fn start_sync_pipeline(&mut self) {
         let (snapshot_tx, mut snapshot_rx) = mpsc::unbounded_channel::<SyncSnapshot>();
         let matrix_sync = Arc::clone(&self.matrix);
-        let sync_task = tokio::spawn(async move {
-            if let Err(e) = matrix_sync.start_sync(snapshot_tx).await {
-                tracing::error!("sync loop ended with error: {e}");
+        let token = self.background_token.clone();
+        tokio::spawn(async move {
+            tokio::select! {
+                result = matrix_sync.start_sync(snapshot_tx) => {
+                    if let Err(e) = result {
+                        tracing::error!("sync loop ended with error: {e}");
+                    }
+                }
+                () = token.cancelled() => {
+                    tracing::debug!("sync task cancelled");
+                }
             }
         });
 
         let ui_tx = self.ui_tx.clone();
         let cmd_tx = self.cmd_tx.clone();
-        let receiver_task = tokio::spawn(async move {
-            while let Some(snapshot) = snapshot_rx.recv().await {
-                if let Err(e) = ui_tx.send(UiEvent::ConnectionStatus(
-                    snapshot.connection_status.clone(),
-                )) {
-                    tracing::debug!("failed to send ConnectionStatus event: {e}");
-                }
-                if matches!(snapshot.connection_status, ConnectionStatus::Connected)
-                    && let Err(e) = ui_tx.send(UiEvent::Rooms(snapshot.rooms))
-                {
-                    tracing::debug!("failed to send Rooms event: {e}");
+        let token = self.background_token.clone();
+        tokio::spawn(async move {
+            loop {
+                tokio::select! {
+                    snapshot = snapshot_rx.recv() => {
+                        let Some(snapshot) = snapshot else { break };
+                        if let Err(e) = ui_tx.send(UiEvent::ConnectionStatus(
+                            snapshot.connection_status.clone(),
+                        )) {
+                            tracing::debug!("failed to send ConnectionStatus event: {e}");
+                        }
+                        if matches!(snapshot.connection_status, ConnectionStatus::Connected)
+                            && let Err(e) = ui_tx.send(UiEvent::Rooms(snapshot.rooms))
+                        {
+                            tracing::debug!("failed to send Rooms event: {e}");
+                        }
+                    }
+                    () = token.cancelled() => {
+                        tracing::debug!("sync receiver cancelled");
+                        return;
+                    }
                 }
             }
 
@@ -362,14 +348,13 @@ impl AppService {
                 tracing::debug!("failed to send SessionExpired command: {e}");
             }
         });
-
-        self.sync_handle = Some((sync_task, receiver_task));
     }
 
     fn spawn_verification_listener(
         matrix: &Arc<dyn MatrixPort>,
         ui_tx: &mpsc::UnboundedSender<UiEvent>,
-    ) -> JoinHandle<()> {
+        token: CancellationToken,
+    ) {
         let (verif_tx, mut verif_rx) = mpsc::unbounded_channel::<VerificationEvent>();
         let matrix_verif = Arc::clone(matrix);
         let ui_tx = ui_tx.clone();
@@ -394,14 +379,18 @@ impl AppService {
                 () = forward => {
                     tracing::debug!("verification forwarder stopped");
                 }
+                () = token.cancelled() => {
+                    tracing::debug!("verification listener cancelled");
+                }
             }
-        })
+        });
     }
 
     fn spawn_session_change_listener(
         matrix: &Arc<dyn MatrixPort>,
         storage: &Arc<dyn StoragePort>,
-    ) -> JoinHandle<()> {
+        token: CancellationToken,
+    ) {
         let (session_tx, mut session_rx) = mpsc::unbounded_channel::<Session>();
         let matrix = Arc::clone(matrix);
         let storage = Arc::clone(storage);
@@ -427,15 +416,19 @@ impl AppService {
                 () = persist => {
                     tracing::debug!("session change persister stopped");
                 }
+                () = token.cancelled() => {
+                    tracing::debug!("session change listener cancelled");
+                }
             }
-        })
+        });
     }
 
     fn spawn_timeline_subscription(
         matrix: &Arc<dyn MatrixPort>,
         ui_tx: &mpsc::UnboundedSender<UiEvent>,
         room_id: RoomId,
-    ) -> JoinHandle<()> {
+        token: CancellationToken,
+    ) {
         let (tl_tx, mut tl_rx) = mpsc::unbounded_channel::<Vec<TimelineMessage>>();
         let matrix_tl = Arc::clone(matrix);
         let ui_tx = ui_tx.clone();
@@ -460,7 +453,10 @@ impl AppService {
                 () = forward => {
                     tracing::debug!("timeline forwarder stopped");
                 }
+                () = token.cancelled() => {
+                    tracing::debug!("timeline subscription cancelled");
+                }
             }
-        })
+        });
     }
 }
