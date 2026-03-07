@@ -388,13 +388,23 @@ fn apply_status(inst: &ComponentInstance, msg: &str) {
 }
 
 fn message_to_value(m: &TimelineMessage) -> Value {
-    let body_text = m.body.body_text().to_string();
+    let body_text = match &m.body {
+        MessageBody::Unsupported { kind, fallback } => {
+            if fallback.is_empty() {
+                format!("Unsupported message type: {kind}")
+            } else {
+                format!("Unsupported message type: {kind}\n{fallback}")
+            }
+        }
+        other => other.body_text().to_string(),
+    };
     let message_type = match &m.body {
         MessageBody::Notice(_) => "notice",
         MessageBody::Emote(_) => "emote",
         MessageBody::Image { .. } => "image",
         MessageBody::File { .. } => "file",
-        MessageBody::Unknown(_) => "utd",
+        MessageBody::UnableToDecrypt => "utd",
+        MessageBody::Unsupported { .. } => "unsupported",
         MessageBody::Text(_) => "text",
     };
     let sender = m

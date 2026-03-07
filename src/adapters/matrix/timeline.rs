@@ -48,7 +48,7 @@ pub(super) fn convert_event_item(
                 sender_display_name,
                 sender_avatar_url,
                 sender_avatar_path: None,
-                body: MessageBody::Unknown("Unable to decrypt message.".into()),
+                body: MessageBody::UnableToDecrypt,
                 timestamp: ts,
                 is_own,
             });
@@ -111,7 +111,10 @@ pub(super) fn convert_event_item(
                 },
             }
         }
-        other => MessageBody::Unknown(other.body().to_string()),
+        other => MessageBody::Unsupported {
+            kind: other.msgtype().to_string(),
+            fallback: other.body().to_string(),
+        },
     };
 
     let (sender_display_name, sender_avatar_url) = match event.sender_profile() {

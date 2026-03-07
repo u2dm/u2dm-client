@@ -189,15 +189,18 @@ pub enum MessageBody {
     Emote(String),
     Image { alt_text: String, meta: ImageMeta },
     File { meta: FileMeta },
-    Unknown(String),
+    UnableToDecrypt,
+    Unsupported { kind: String, fallback: String },
 }
 
 impl MessageBody {
     pub fn body_text(&self) -> &str {
         match self {
-            Self::Text(s) | Self::Notice(s) | Self::Emote(s) | Self::Unknown(s) => s,
+            Self::Text(s) | Self::Notice(s) | Self::Emote(s) => s,
             Self::Image { alt_text, .. } => alt_text,
             Self::File { meta, .. } => &meta.filename,
+            Self::UnableToDecrypt => "Unable to decrypt message",
+            Self::Unsupported { fallback, .. } => fallback,
         }
     }
 }

@@ -1,0 +1,32 @@
+import { Palette } from "std-widgets.slint";
+
+export component UnsupportedMessage inherits Rectangle {
+    in property <string> body;
+
+    height: layout.preferred-height;
+    border-radius: 4px;
+    background: Palette.foreground.transparentize(0.92);
+
+    layout := HorizontalLayout {
+        padding: 6px;
+        padding-left: 8px;
+        padding-right: 8px;
+        spacing: 6px;
+        alignment: start;
+
+        Text {
+            text: "\u{2753}";
+            font-size: 13px;
+            vertical-alignment: center;
+        }
+
+        Text {
+            text: body;
+            font-size: 13px;
+            font-italic: true;
+            color: Palette.foreground.transparentize(0.4);
+            vertical-alignment: center;
+            wrap: word-wrap;
+        }
+    }
+}

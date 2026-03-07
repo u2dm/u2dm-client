@@ -13,6 +13,7 @@ import { TextMessage } from "./messages/text-message.slint";
 import { ImageMessage } from "./messages/image-message.slint";
 import { FileMessage } from "./messages/file-message.slint";
 import { UtdMessage } from "./messages/utd-message.slint";
+import { UnsupportedMessage } from "./messages/unsupported-message.slint";
 
 component MessageBubble inherits Rectangle {
     in property <bool> is-own;
@@ -104,7 +105,11 @@ component MessageBubble inherits Rectangle {
 
                 if msg.message-type == "utd": UtdMessage { }
 
-                if msg.message-type != "image" && msg.message-type != "file" && msg.message-type != "utd": TextMessage {
+                if msg.message-type == "unsupported": UnsupportedMessage {
+                    body: msg.body;
+                }
+
+                if msg.message-type != "image" && msg.message-type != "file" && msg.message-type != "utd" && msg.message-type != "unsupported": TextMessage {
                     text: msg.body;
                 }
 
