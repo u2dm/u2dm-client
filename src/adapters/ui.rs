@@ -360,7 +360,8 @@ fn apply_timeline(inst: &ComponentInstance, messages: &[TimelineMessage]) {
                 MessageBody::Emote(_) => "emote",
                 MessageBody::Image { .. } => "image",
                 MessageBody::File { .. } => "file",
-                MessageBody::Text(_) | MessageBody::Unknown(_) => "text",
+                MessageBody::Unknown(_) => "utd",
+                MessageBody::Text(_) => "text",
             };
             let sender = m
                 .sender_display_name

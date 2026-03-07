@@ -12,6 +12,7 @@ import {
 import { TextMessage } from "./messages/text-message.slint";
 import { ImageMessage } from "./messages/image-message.slint";
 import { FileMessage } from "./messages/file-message.slint";
+import { UtdMessage } from "./messages/utd-message.slint";
 
 export component TimelineView inherits Rectangle {
     background: Palette.background;
@@ -116,7 +117,9 @@ export component TimelineView inherits Rectangle {
                         save-file(req) => { root.save-file(req); }
                     }
 
-                    if msg.message-type != "image" && msg.message-type != "file": TextMessage {
+                    if msg.message-type == "utd": UtdMessage { }
+
+                    if msg.message-type != "image" && msg.message-type != "file" && msg.message-type != "utd": TextMessage {
                         text: msg.body;
                     }
                 }

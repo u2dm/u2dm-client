@@ -106,12 +106,35 @@ fn convert_event_item(
     event: &EventTimelineItem,
     media_sources: &StdMutex<HashMap<String, MediaSource>>,
 ) -> Option<TimelineMessage> {
-    let message = event.content().as_message()?;
-
     let event_id_str = event
         .event_id()
         .map(ToString::to_string)
         .unwrap_or_default();
+
+    let content = event.content();
+
+    let Some(message) = content.as_message() else {
+        if content.as_unable_to_decrypt().is_some() {
+            let sender_display_name = match event.sender_profile() {
+                TimelineDetails::Ready(profile) => profile.display_name.clone(),
+                _ => None,
+            };
+            let ts: u64 = event.timestamp().0.into();
+            return Some(TimelineMessage {
+                event_id: EventId(event_id_str),
+                sender: event.sender().to_string(),
+                sender_display_name,
+                body: MessageBody::Unknown("Unable to decrypt message.".into()),
+                timestamp: ts,
+            });
+        }
+        tracing::debug!(
+            event_id = event_id_str,
+            sender = %event.sender(),
+            "skipping non-message event"
+        );
+        return None;
+    };
 
     let body = match message.msgtype() {
         MessageType::Text(t) => MessageBody::Text(t.body.clone()),
@@ -589,6 +612,10 @@ impl MatrixPort for MatrixAdapter {
 
     async fn rooms(&self) -> Result<Vec<DomainRoom>> {
         let client = self.get_client().await?;
+        client
+            .event_cache()
+            .subscribe()
+            .map_err(|e| AppError::Other(e.to_string()))?;
         if let Err(e) = client.sync_once(SyncSettings::default()).await {
             if is_auth_error(&e) {
                 return Err(AppError::SessionExpired);
@@ -630,11 +657,25 @@ impl MatrixPort for MatrixAdapter {
         let cache_dir = self.data_dir.join("media-cache");
 
         let mut items: Vec<Arc<TimelineItem>> = initial_items.into_iter().collect();
+
         let mut messages = convert_timeline_items(&items, &media_sources);
         download_thumbnails(&client, &cache_dir, &media_sources, &mut messages).await;
         if timeline_tx.send(messages).is_err() {
             return Ok(());
         }
+
+        let backup_client = client.clone();
+        let backup_room_id = room_id_parsed.clone();
+        tokio::spawn(async move {
+            if let Err(e) = backup_client
+                .encryption()
+                .backups()
+                .download_room_keys_for_room(&backup_room_id)
+                .await
+            {
+                tracing::debug!("backup key download for {backup_room_id}: {e}");
+            }
+        });
 
         while let Some(diffs) = stream.next().await {
             for diff in diffs {
