@@ -32,6 +32,9 @@ impl SlintUiAdapter {
     pub fn compile(rt: &Runtime) -> Result<Self> {
         let instance = rt.block_on(async {
             let result = Compiler::new().build_from_path("ui/main.slint").await;
+            for diag in result.diagnostics() {
+                tracing::error!("slint: {diag}");
+            }
             let def = result
                 .component("AppWindow")
                 .ok_or_else(|| AppError::Ui("failed to load ui/main.slint".into()))?;
@@ -417,6 +420,7 @@ fn apply_timeline(inst: &ComponentInstance, messages: &[TimelineMessage]) {
                 has_avatar = true;
             }
             fields.push(("has-avatar".to_string(), Value::Bool(has_avatar)));
+            fields.push(("is-own".to_string(), Value::Bool(m.is_own)));
 
             Value::Struct(Struct::from_iter(fields))
         })

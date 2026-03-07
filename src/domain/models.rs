@@ -211,6 +211,7 @@ pub struct TimelineMessage {
     pub sender_avatar_path: Option<PathBuf>,
     pub body: MessageBody,
     pub timestamp: u64,
+    pub is_own: bool,
 }
 
 #[derive(Debug, Clone)]

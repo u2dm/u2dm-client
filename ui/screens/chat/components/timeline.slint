@@ -14,6 +14,118 @@ import { ImageMessage } from "./messages/image-message.slint";
 import { FileMessage } from "./messages/file-message.slint";
 import { UtdMessage } from "./messages/utd-message.slint";
 
+component MessageBubble inherits Rectangle {
+    in property <bool> is-own;
+    in property <MessageEntry> msg;
+    in property <length> available-width;
+
+    callback open-media(string);
+    callback save-file(SaveFileRequest);
+
+    property <color> own-bubble-color: Palette.accent-background.transparentize(0.4);
+    property <color> other-bubble-color: Palette.alternate-background;
+    property <length> bubble-max-width: available-width * 0.7;
+
+    HorizontalLayout {
+        alignment: is-own ? end : start;
+        padding-left: is-own ? 0 : 8px;
+        padding-right: is-own ? 8px : 0;
+        padding-top: 2px;
+        padding-bottom: 2px;
+
+        if !is-own: Rectangle {
+            width: 32px;
+            height: 32px;
+            border-radius: 16px;
+            clip: true;
+            background: Palette.foreground.transparentize(0.85);
+
+            if msg.has-avatar: Image {
+                source: msg.avatar;
+                width: 32px;
+                height: 32px;
+                image-fit: cover;
+            }
+
+            if !msg.has-avatar: Text {
+                width: 32px;
+                height: 32px;
+                text: msg.sender;
+                font-size: 14px;
+                font-weight: 600;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+                color: Palette.foreground.transparentize(0.3);
+                overflow: clip;
+            }
+        }
+
+        if !is-own: Rectangle {
+            width: 6px;
+        }
+
+        Rectangle {
+            max-width: bubble-max-width;
+            height: bubble-content.preferred-height;
+            background: is-own ? own-bubble-color : other-bubble-color;
+            border-radius: 12px;
+
+            bubble-content := VerticalLayout {
+                padding: 4px;
+                padding-left: 10px;
+                padding-right: 10px;
+
+                if !is-own: HorizontalLayout {
+                    Text {
+                        text: msg.sender;
+                        font-size: 12px;
+                        font-weight: 700;
+                        color: Palette.accent-background;
+                    }
+                }
+
+                if msg.message-type == "image": ImageMessage {
+                    thumbnail: msg.thumbnail;
+                    has-thumbnail: msg.has-thumbnail;
+                    body: msg.body;
+                    event-id: msg.event-id;
+                    open-media(id) => {
+                        root.open-media(id);
+                    }
+                }
+
+                if msg.message-type == "file": FileMessage {
+                    body: msg.body;
+                    event-id: msg.event-id;
+                    save-file(req) => {
+                        root.save-file(req);
+                    }
+                }
+
+                if msg.message-type == "utd": UtdMessage { }
+
+                if msg.message-type != "image" && msg.message-type != "file" && msg.message-type != "utd": TextMessage {
+                    text: msg.body;
+                }
+
+                HorizontalLayout {
+                    alignment: end;
+                    VerticalLayout {
+                        alignment: end;
+
+                        Text {
+                            text: msg.timestamp;
+                            font-size: 12px;
+                            color: Palette.foreground.transparentize(0.5);
+                            horizontal-alignment: right;
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 export component TimelineView inherits Rectangle {
     background: Palette.background;
 
@@ -60,6 +172,7 @@ export component TimelineView inherits Rectangle {
         height: root.height - root.header-height - root.input-height - root.spacing * 2;
 
         property <bool> auto-scroll: true;
+        property <float> scroll-multiplier: 3.0;
 
         flicked => {
             if self.viewport-y <= -(self.viewport-height - self.height - 20px) {
@@ -75,89 +188,35 @@ export component TimelineView inherits Rectangle {
             }
         }
 
+        TouchArea {
+            scroll-event(ev) => {
+                parent.viewport-y = clamp(
+                    parent.viewport-y + ev.delta-y * parent.scroll-multiplier,
+                    -(parent.viewport-height - parent.height),
+                    0);
+
+                if parent.viewport-y <= -(parent.viewport-height - parent.height - 20px) {
+                    parent.auto-scroll = true;
+                } else {
+                    parent.auto-scroll = false;
+                }
+
+                return accept;
+            }
+        }
+
         VerticalLayout {
             alignment: end;
 
-            for msg in root.timeline: Rectangle {
-                HorizontalLayout {
-                    padding-left: 8px;
-                    padding-right: 8px;
-                    padding-top: 4px;
-                    padding-bottom: 4px;
-                    spacing: 8px;
-                    alignment: start;
-
-                    Rectangle {
-                        width: 32px;
-                        height: 32px;
-                        border-radius: 16px;
-                        clip: true;
-                        background: Palette.foreground.transparentize(0.85);
-
-                        if msg.has-avatar: Image {
-                            source: msg.avatar;
-                            width: 32px;
-                            height: 32px;
-                            image-fit: cover;
-                        }
-
-                        if !msg.has-avatar: Text {
-                            width: 32px;
-                            height: 32px;
-                            text: msg.sender;
-                            font-size: 14px;
-                            font-weight: 600;
-                            horizontal-alignment: center;
-                            vertical-alignment: center;
-                            color: Palette.foreground.transparentize(0.3);
-                            overflow: clip;
-                        }
-                    }
-
-                    VerticalLayout {
-                        spacing: 2px;
-
-                        HorizontalLayout {
-                            spacing: 8px;
-
-                            Text {
-                                text: msg.sender;
-                                font-size: 13px;
-                                font-weight: 600;
-                            }
-
-                            Text {
-                                text: msg.timestamp;
-                                font-size: 11px;
-                                color: Palette.foreground.transparentize(0.5);
-                                vertical-alignment: center;
-                            }
-                        }
-
-                        if msg.message-type == "image": ImageMessage {
-                            thumbnail: msg.thumbnail;
-                            has-thumbnail: msg.has-thumbnail;
-                            body: msg.body;
-                            event-id: msg.event-id;
-                            open-media(id) => {
-                                root.open-media(id);
-                            }
-                        }
-
-                        if msg.message-type == "file": FileMessage {
-                            body: msg.body;
-                            event-id: msg.event-id;
-                            save-file(req) => {
-                                root.save-file(req);
-                            }
-                        }
-
-                        if msg.message-type == "utd": UtdMessage { }
-
-                        if msg.message-type != "image" && msg.message-type != "file" && msg.message-type != "utd": TextMessage {
-                            text: msg.body;
-                        }
-                    }
+            for msg in root.timeline: MessageBubble {
+                is-own: msg.is-own;
+                msg: msg;
+                available-width: root.width;
+                open-media(id) => {
+                    root.open-media(id);
+                }
+                save-file(req) => {
+                    root.save-file(req);
                 }
             }
         }

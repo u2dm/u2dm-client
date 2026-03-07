@@ -107,6 +107,7 @@ async fn build_room_list(client: &Client) -> Vec<DomainRoom> {
 fn convert_event_item(
     event: &EventTimelineItem,
     media_sources: &StdMutex<HashMap<String, MediaSource>>,
+    own_user_id: Option<&str>,
 ) -> Option<TimelineMessage> {
     let event_id_str = event
         .event_id()
@@ -125,14 +126,17 @@ fn convert_event_item(
                 _ => (None, None),
             };
             let ts: u64 = event.timestamp().0.into();
+            let sender_str = event.sender().to_string();
+            let is_own = own_user_id.is_some_and(|uid| uid == sender_str);
             return Some(TimelineMessage {
                 event_id: EventId(event_id_str),
-                sender: event.sender().to_string(),
+                sender: sender_str,
                 sender_display_name,
                 sender_avatar_url,
                 sender_avatar_path: None,
                 body: MessageBody::Unknown("Unable to decrypt message.".into()),
                 timestamp: ts,
+                is_own,
             });
         }
         tracing::debug!(
@@ -206,24 +210,29 @@ fn convert_event_item(
 
     let ts: u64 = event.timestamp().0.into();
 
+    let sender_str = event.sender().to_string();
+    let is_own = own_user_id.is_some_and(|uid| uid == sender_str);
+
     Some(TimelineMessage {
         event_id: EventId(event_id_str),
-        sender: event.sender().to_string(),
+        sender: sender_str,
         sender_display_name,
         sender_avatar_url,
         sender_avatar_path: None,
         body,
         timestamp: ts,
+        is_own,
     })
 }
 
 fn convert_timeline_items(
     items: &[Arc<TimelineItem>],
     media_sources: &StdMutex<HashMap<String, MediaSource>>,
+    own_user_id: Option<&str>,
 ) -> Vec<TimelineMessage> {
     items
         .iter()
-        .filter_map(|item| convert_event_item(item.as_event()?, media_sources))
+        .filter_map(|item| convert_event_item(item.as_event()?, media_sources, own_user_id))
         .collect()
 }
 
@@ -691,10 +700,11 @@ impl MatrixPort for MatrixAdapter {
 
         let media_sources = Arc::clone(&self.media_sources);
         let cache_dir = self.data_dir.join("media-cache");
+        let own_user_id = client.user_id().map(ToString::to_string);
 
         let mut items: Vec<Arc<TimelineItem>> = initial_items.into_iter().collect();
 
-        let mut messages = convert_timeline_items(&items, &media_sources);
+        let mut messages = convert_timeline_items(&items, &media_sources, own_user_id.as_deref());
         download_thumbnails(&client, &cache_dir, &media_sources, &mut messages).await;
         download_avatars(&client, &cache_dir, &mut messages).await;
         if timeline_tx.send(messages).is_err() {
@@ -718,7 +728,8 @@ impl MatrixPort for MatrixAdapter {
             for diff in diffs {
                 apply_timeline_diff(&mut items, diff);
             }
-            let mut messages = convert_timeline_items(&items, &media_sources);
+            let mut messages =
+                convert_timeline_items(&items, &media_sources, own_user_id.as_deref());
             download_thumbnails(&client, &cache_dir, &media_sources, &mut messages).await;
             download_avatars(&client, &cache_dir, &mut messages).await;
             if timeline_tx.send(messages).is_err() {
