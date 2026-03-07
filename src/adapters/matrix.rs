@@ -50,6 +50,7 @@ pub struct MatrixAdapter {
     verification_request: Mutex<Option<VerificationRequest>>,
     sas_verification: Mutex<Option<SasVerification>>,
     media_sources: Arc<StdMutex<HashMap<String, MediaSource>>>,
+    verification_req_rx: Mutex<Option<mpsc::UnboundedReceiver<VerificationRequest>>>,
 }
 
 impl MatrixAdapter {
@@ -61,6 +62,7 @@ impl MatrixAdapter {
             verification_request: Mutex::new(None),
             sas_verification: Mutex::new(None),
             media_sources: Arc::new(StdMutex::new(HashMap::new())),
+            verification_req_rx: Mutex::new(None),
         }
     }
 
@@ -70,6 +72,51 @@ impl MatrixAdapter {
             .await
             .clone()
             .ok_or_else(|| AppError::Other("No client, run server discovery first".into()))
+    }
+
+    async fn ensure_verification_handlers(&self) -> Result<()> {
+        if self.verification_req_rx.lock().await.is_some() {
+            return Ok(());
+        }
+
+        let client = self.get_client().await?;
+        let (req_tx, rx) = mpsc::unbounded_channel::<VerificationRequest>();
+
+        client.add_event_handler({
+            let req_tx = req_tx.clone();
+            move |ev: ToDeviceKeyVerificationRequestEvent, client: Client| {
+                let req_tx = req_tx.clone();
+                async move {
+                    if let Some(request) = client
+                        .encryption()
+                        .get_verification_request(&ev.sender, &ev.content.transaction_id)
+                        .await
+                    {
+                        req_tx.send(request).ok();
+                    }
+                }
+            }
+        });
+
+        client.add_event_handler({
+            let req_tx = req_tx.clone();
+            move |ev: OriginalSyncRoomMessageEvent, client: Client| {
+                let req_tx = req_tx.clone();
+                async move {
+                    if let MessageType::VerificationRequest(_) = &ev.content.msgtype
+                        && let Some(request) = client
+                            .encryption()
+                            .get_verification_request(&ev.sender, &ev.event_id)
+                            .await
+                    {
+                        req_tx.send(request).ok();
+                    }
+                }
+            }
+        });
+
+        *self.verification_req_rx.lock().await = Some(rx);
+        Ok(())
     }
 }
 
@@ -815,6 +862,8 @@ impl MatrixPort for MatrixAdapter {
             tracing::warn!("failed to logout from server: {e}");
         }
         *guard = None;
+        drop(guard);
+        *self.verification_req_rx.lock().await = None;
         Ok(())
     }
 
@@ -824,6 +873,7 @@ impl MatrixPort for MatrixAdapter {
         if store_path.exists() {
             fs::remove_dir_all(&store_path).await?;
         }
+        *self.verification_req_rx.lock().await = None;
         Ok(())
     }
 
@@ -831,43 +881,14 @@ impl MatrixPort for MatrixAdapter {
         &self,
         verification_tx: mpsc::UnboundedSender<VerificationEvent>,
     ) -> Result<()> {
-        let client = self.get_client().await?;
-        let (req_tx, mut req_rx) = mpsc::unbounded_channel::<VerificationRequest>();
+        self.ensure_verification_handlers().await?;
 
-        client.add_event_handler({
-            let req_tx = req_tx.clone();
-            move |ev: ToDeviceKeyVerificationRequestEvent, client: Client| {
-                let req_tx = req_tx.clone();
-                async move {
-                    if let Some(request) = client
-                        .encryption()
-                        .get_verification_request(&ev.sender, &ev.content.transaction_id)
-                        .await
-                    {
-                        req_tx.send(request).ok();
-                    }
-                }
-            }
-        });
+        let mut rx_guard = self.verification_req_rx.lock().await;
+        let rx = rx_guard
+            .as_mut()
+            .ok_or_else(|| AppError::Other("verification channel not initialized".into()))?;
 
-        client.add_event_handler({
-            let req_tx = req_tx.clone();
-            move |ev: OriginalSyncRoomMessageEvent, client: Client| {
-                let req_tx = req_tx.clone();
-                async move {
-                    if let MessageType::VerificationRequest(_) = &ev.content.msgtype
-                        && let Some(request) = client
-                            .encryption()
-                            .get_verification_request(&ev.sender, &ev.event_id)
-                            .await
-                    {
-                        req_tx.send(request).ok();
-                    }
-                }
-            }
-        });
-
-        while let Some(request) = req_rx.recv().await {
+        while let Some(request) = rx.recv().await {
             *self.verification_request.lock().await = Some(request.clone());
 
             verification_tx

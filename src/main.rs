@@ -55,17 +55,15 @@ fn run() -> Result<()> {
     let storage: Arc<dyn StoragePort> = Arc::new(SecureStorage::new(&cfg.data_dir));
 
     let cmd_tx_quit = cmd_tx.clone();
-    {
-        let _guard = rt.enter();
-        ui.spawn_event_handler(ui_rx);
-        if let Err(e) = cmd_tx.send(UiCommand::RestoreSession) {
-            tracing::warn!("failed to send RestoreSession command: {e}");
-        }
-        let mut service = AppService::new(matrix, storage, cfg, cmd_rx, cmd_tx, ui_tx);
-        tokio::spawn(async move {
-            service.run().await;
-        });
+    let _guard = rt.enter();
+    ui.spawn_event_handler(ui_rx);
+    if let Err(e) = cmd_tx.send(UiCommand::RestoreSession) {
+        tracing::warn!("failed to send RestoreSession command: {e}");
     }
+    let mut service = AppService::new(matrix, storage, cfg, cmd_rx, cmd_tx, ui_tx);
+    tokio::spawn(async move {
+        service.run().await;
+    });
 
     ui.run()?;
 
