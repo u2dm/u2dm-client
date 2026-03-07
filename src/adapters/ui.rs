@@ -13,7 +13,7 @@ use tokio::sync::mpsc;
 use crate::commands::{UiCommand, UiEvent};
 use crate::domain::models::{
     ConnectionStatus, LoginCredentials, LoginMethod, MessageBody, Room, RoomId, ServerInfo,
-    TimelineMessage, TimelinePatch, UiErrorKind, VerificationEvent,
+    TimelineMessage, TimelinePatch, VerificationEvent,
 };
 use crate::error::{AppError, Result};
 
@@ -323,7 +323,8 @@ fn dispatch_ui_event(
     match event {
         UiEvent::ServerInfo(info) => apply_server_info(inst, &info),
         UiEvent::LoginSuccess { user_id } => apply_login_success(inst, &user_id),
-        UiEvent::Error { message, kind } => apply_error(inst, &message, &kind),
+        UiEvent::LoginError(message) => apply_login_error(inst, &message),
+        UiEvent::ToastError(message) => apply_toast_error(inst, &message),
         UiEvent::Status(msg) => apply_status(inst, &msg),
         UiEvent::Rooms(rooms) => apply_rooms(inst, &rooms),
         UiEvent::Timeline(patch) => apply_timeline_patch(timeline_model, patch),
@@ -369,9 +370,17 @@ fn apply_login_success(inst: &ComponentInstance, user_id: &str) {
     set_prop(inst, "login-status", Value::String(SharedString::default()));
 }
 
-fn apply_error(inst: &ComponentInstance, msg: &str, _kind: &UiErrorKind) {
+fn apply_login_error(inst: &ComponentInstance, msg: &str) {
     set_prop(inst, "login-error", Value::String(SharedString::from(msg)));
     set_prop(inst, "login-status", Value::String(SharedString::default()));
+}
+
+fn apply_toast_error(inst: &ComponentInstance, msg: &str) {
+    set_prop(
+        inst,
+        "toast-message",
+        Value::String(SharedString::from(msg)),
+    );
 }
 
 fn apply_status(inst: &ComponentInstance, msg: &str) {
@@ -637,6 +646,11 @@ fn apply_logged_out(inst: &ComponentInstance) {
     set_prop(
         inst,
         "verification-error",
+        Value::String(SharedString::default()),
+    );
+    set_prop(
+        inst,
+        "toast-message",
         Value::String(SharedString::default()),
     );
     let empty_model = Value::Model(ModelRc::new(VecModel::<Value>::default()));

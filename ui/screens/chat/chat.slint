@@ -13,6 +13,7 @@ export component ChatScreen inherits Rectangle {
     in property <string> connection-status: "disconnected";
     in property <[RoomEntry]> rooms: [];
     in property <[MessageEntry]> timeline: [];
+    in property <string> toast-message: "";
     in-out property <string> selected-room-id: "";
     in-out property <string> selected-room-name: "";
     in-out property <string> input-message: "";
@@ -22,6 +23,7 @@ export component ChatScreen inherits Rectangle {
     callback send-message(SendMessageRequest);
     callback open-media(string);
     callback save-file(SaveFileRequest);
+    callback dismiss-toast();
 
     property <length> sidebar-width: 260px;
     property <length> divider-width: 4px;
@@ -78,6 +80,46 @@ export component ChatScreen inherits Rectangle {
                     root.min-sidebar-width,
                     root.max-sidebar-width,
                 );
+        }
+    }
+
+    if root.toast-message != "": Rectangle {
+        x: root.sidebar-width + (root.width - root.sidebar-width - self.width) / 2;
+        y: root.height - self.height - 16px;
+        width: min(root.width - root.sidebar-width - 32px, 500px);
+        height: toast-layout.preferred-height;
+        border-radius: 8px;
+        background: Palette.alternate-background;
+        drop-shadow-blur: 8px;
+        drop-shadow-color: Palette.foreground.transparentize(0.8);
+        drop-shadow-offset-y: 2px;
+
+        toast-layout := HorizontalLayout {
+            padding: 12px;
+            spacing: 8px;
+            alignment: space-between;
+
+            Text {
+                text: root.toast-message;
+                color: Colors.tomato.mix(Palette.foreground, 60%);
+                wrap: word-wrap;
+                vertical-alignment: center;
+            }
+
+            TouchArea {
+                width: 24px;
+                height: 24px;
+                mouse-cursor: pointer;
+                clicked => {
+                    root.dismiss-toast();
+                }
+                Text {
+                    text: "✕";
+                    color: Palette.foreground.transparentize(0.4);
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+            }
         }
     }
 }

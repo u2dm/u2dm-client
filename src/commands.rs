@@ -1,6 +1,5 @@
 use crate::domain::models::{
-    ConnectionStatus, LoginCredentials, Room, RoomId, ServerInfo, TimelinePatch, UiErrorKind,
-    VerificationEvent,
+    ConnectionStatus, LoginCredentials, Room, RoomId, ServerInfo, TimelinePatch, VerificationEvent,
 };
 
 pub enum UiCommand {
@@ -24,7 +23,8 @@ pub enum UiCommand {
 pub enum UiEvent {
     ServerInfo(ServerInfo),
     LoginSuccess { user_id: String },
-    Error { message: String, kind: UiErrorKind },
+    LoginError(String),
+    ToastError(String),
     Status(String),
     Rooms(Vec<Room>),
     Timeline(TimelinePatch),

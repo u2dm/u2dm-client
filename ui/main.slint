@@ -38,6 +38,7 @@ export component AppWindow inherits Window {
     in-out property <bool> verification-is-self: false;
     in-out property <[VerificationEmoji]> verification-emojis: [];
     in-out property <string> verification-error: "";
+    in-out property <string> toast-message: "";
 
     callback check-server(string);
     callback login-password(LoginRequest);
@@ -87,6 +88,7 @@ export component AppWindow inherits Window {
         connection-status: root.connection-status;
         rooms: root.rooms;
         timeline: root.timeline;
+        toast-message: root.toast-message;
         selected-room-id <=> root.selected-room-id;
         selected-room-name <=> root.selected-room-name;
         input-message <=> root.input-message;
@@ -104,6 +106,9 @@ export component AppWindow inherits Window {
         }
         save-file(req) => {
             root.save-file(req);
+        }
+        dismiss-toast => {
+            root.toast-message = "";
         }
     }
 
