@@ -409,6 +409,15 @@ fn apply_timeline(inst: &ComponentInstance, messages: &[TimelineMessage]) {
             }
             fields.push(("has-thumbnail".to_string(), Value::Bool(has_thumbnail)));
 
+            let mut has_avatar = false;
+            if let Some(avatar_path) = &m.sender_avatar_path
+                && let Ok(img) = slint::Image::load_from_path(avatar_path)
+            {
+                fields.push(("avatar".to_string(), Value::Image(img)));
+                has_avatar = true;
+            }
+            fields.push(("has-avatar".to_string(), Value::Bool(has_avatar)));
+
             Value::Struct(Struct::from_iter(fields))
         })
         .collect();

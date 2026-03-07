@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::fs as fs_std;
 use std::net::{Ipv4Addr, Ipv6Addr};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex as StdMutex};
@@ -24,7 +25,7 @@ use matrix_sdk::ruma::events::room::message::{
     MessageType, OriginalSyncRoomMessageEvent, RoomMessageEventContent,
 };
 use matrix_sdk::ruma::serde::Raw;
-use matrix_sdk::ruma::{IdParseError, OwnedDeviceId, OwnedRoomId, OwnedUserId};
+use matrix_sdk::ruma::{IdParseError, OwnedDeviceId, OwnedMxcUri, OwnedRoomId, OwnedUserId};
 use matrix_sdk::utils::local_server::{LocalServerBuilder, LocalServerRedirectHandle};
 use matrix_sdk::{Client, SessionChange, SessionMeta};
 use matrix_sdk_ui::eyeball_im::VectorDiff;
@@ -102,6 +103,7 @@ async fn build_room_list(client: &Client) -> Vec<DomainRoom> {
     rooms
 }
 
+#[allow(clippy::too_many_lines)]
 fn convert_event_item(
     event: &EventTimelineItem,
     media_sources: &StdMutex<HashMap<String, MediaSource>>,
@@ -115,15 +117,20 @@ fn convert_event_item(
 
     let Some(message) = content.as_message() else {
         if content.as_unable_to_decrypt().is_some() {
-            let sender_display_name = match event.sender_profile() {
-                TimelineDetails::Ready(profile) => profile.display_name.clone(),
-                _ => None,
+            let (sender_display_name, sender_avatar_url) = match event.sender_profile() {
+                TimelineDetails::Ready(profile) => (
+                    profile.display_name.clone(),
+                    profile.avatar_url.as_ref().map(ToString::to_string),
+                ),
+                _ => (None, None),
             };
             let ts: u64 = event.timestamp().0.into();
             return Some(TimelineMessage {
                 event_id: EventId(event_id_str),
                 sender: event.sender().to_string(),
                 sender_display_name,
+                sender_avatar_url,
+                sender_avatar_path: None,
                 body: MessageBody::Unknown("Unable to decrypt message.".into()),
                 timestamp: ts,
             });
@@ -189,9 +196,12 @@ fn convert_event_item(
         other => MessageBody::Unknown(other.body().to_string()),
     };
 
-    let sender_display_name = match event.sender_profile() {
-        TimelineDetails::Ready(profile) => profile.display_name.clone(),
-        _ => None,
+    let (sender_display_name, sender_avatar_url) = match event.sender_profile() {
+        TimelineDetails::Ready(profile) => (
+            profile.display_name.clone(),
+            profile.avatar_url.as_ref().map(ToString::to_string),
+        ),
+        _ => (None, None),
     };
 
     let ts: u64 = event.timestamp().0.into();
@@ -200,6 +210,8 @@ fn convert_event_item(
         event_id: EventId(event_id_str),
         sender: event.sender().to_string(),
         sender_display_name,
+        sender_avatar_url,
+        sender_avatar_path: None,
         body,
         timestamp: ts,
     })
@@ -262,18 +274,17 @@ fn lookup_media_source(
     })
 }
 
-fn image_ext_from_magic(data: &[u8]) -> &'static str {
-    if data.starts_with(b"\x89PNG") {
-        "png"
-    } else if data.starts_with(b"\xFF\xD8\xFF") {
-        "jpg"
-    } else if data.starts_with(b"GIF8") {
-        "gif"
-    } else if data.starts_with(b"RIFF") && data.get(8..12) == Some(b"WEBP") {
-        "webp"
-    } else {
-        "png"
-    }
+fn ext_from_magic(data: &[u8]) -> &'static str {
+    infer::get(data).map_or("png", |t| t.extension())
+}
+
+fn find_cached(stem: &Path) -> Option<PathBuf> {
+    let parent = stem.parent()?;
+    let file_stem = stem.file_name()?;
+    fs_std::read_dir(parent).ok()?.find_map(|entry| {
+        let path = entry.ok()?.path();
+        (path.file_stem() == Some(file_stem)).then_some(path)
+    })
 }
 
 async fn fetch_single_thumbnail(
@@ -299,8 +310,7 @@ async fn fetch_single_thumbnail(
         }
     };
 
-    let ext = image_ext_from_magic(&data);
-    let cache_path = cache_stem.with_extension(ext);
+    let cache_path = cache_stem.with_extension(ext_from_magic(&data));
 
     if let Err(e) = fs::write(&cache_path, &data).await {
         tracing::warn!("failed to cache thumbnail: {e}");
@@ -328,11 +338,7 @@ async fn download_thumbnails(
         let sanitized = event_id.replace(':', "_");
         let cache_stem = cache_dir.join(&sanitized);
 
-        // Check for existing cached file with any known extension
-        let cached = ["png", "jpg", "gif", "webp"]
-            .iter()
-            .map(|ext| cache_stem.with_extension(ext))
-            .find(|p| p.exists());
+        let cached = find_cached(&cache_stem);
         if let Some(path) = cached {
             meta.thumbnail_path = Some(path);
             continue;
@@ -344,6 +350,36 @@ async fn download_thumbnails(
 
         if let Some(path) = fetch_single_thumbnail(client, &cache_stem, source, event_id).await {
             meta.thumbnail_path = Some(path);
+        }
+    }
+}
+
+async fn download_avatars(client: &Client, cache_dir: &Path, messages: &mut [TimelineMessage]) {
+    let avatar_dir = cache_dir.join("avatars");
+    if let Err(e) = fs::create_dir_all(&avatar_dir).await {
+        tracing::warn!("failed to create avatar cache dir: {e}");
+        return;
+    }
+
+    for msg in messages.iter_mut() {
+        let Some(mxc_url) = &msg.sender_avatar_url else {
+            continue;
+        };
+
+        let sanitized = msg.sender.replace(':', "_").replace('@', "");
+        let cache_stem = avatar_dir.join(&sanitized);
+
+        let cached = find_cached(&cache_stem);
+        if let Some(path) = cached {
+            msg.sender_avatar_path = Some(path);
+            continue;
+        }
+
+        let avatar_mxc: OwnedMxcUri = mxc_url.as_str().into();
+        let source = MediaSource::Plain(avatar_mxc);
+
+        if let Some(path) = fetch_single_thumbnail(client, &cache_stem, source, &msg.sender).await {
+            msg.sender_avatar_path = Some(path);
         }
     }
 }
@@ -660,6 +696,7 @@ impl MatrixPort for MatrixAdapter {
 
         let mut messages = convert_timeline_items(&items, &media_sources);
         download_thumbnails(&client, &cache_dir, &media_sources, &mut messages).await;
+        download_avatars(&client, &cache_dir, &mut messages).await;
         if timeline_tx.send(messages).is_err() {
             return Ok(());
         }
@@ -683,6 +720,7 @@ impl MatrixPort for MatrixAdapter {
             }
             let mut messages = convert_timeline_items(&items, &media_sources);
             download_thumbnails(&client, &cache_dir, &media_sources, &mut messages).await;
+            download_avatars(&client, &cache_dir, &mut messages).await;
             if timeline_tx.send(messages).is_err() {
                 break;
             }

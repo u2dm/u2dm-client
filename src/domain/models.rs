@@ -207,6 +207,8 @@ pub struct TimelineMessage {
     pub event_id: EventId,
     pub sender: String,
     pub sender_display_name: Option<String>,
+    pub sender_avatar_url: Option<String>,
+    pub sender_avatar_path: Option<PathBuf>,
     pub body: MessageBody,
     pub timestamp: u64,
 }
