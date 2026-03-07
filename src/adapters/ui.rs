@@ -1,4 +1,9 @@
-use slint::{ModelRc, VecModel};
+use std::cell::RefCell;
+use std::mem;
+use std::rc::Rc;
+use std::time::Duration;
+
+use slint::{Model, ModelRc, VecModel};
 use slint_interpreter::{
     Compiler, ComponentHandle, ComponentInstance, PlatformError, SharedString, Struct, Value,
 };
@@ -8,7 +13,7 @@ use tokio::sync::mpsc;
 use crate::commands::{UiCommand, UiEvent};
 use crate::domain::models::{
     ConnectionStatus, LoginCredentials, LoginMethod, MessageBody, Room, RoomId, ServerInfo,
-    TimelineMessage, UiErrorKind, VerificationEvent,
+    TimelineMessage, TimelinePatch, UiErrorKind, VerificationEvent,
 };
 use crate::error::{AppError, Result};
 
@@ -275,20 +280,33 @@ impl SlintUiAdapter {
         Ok(())
     }
 
-    pub fn spawn_event_handler(&self, mut ui_rx: mpsc::UnboundedReceiver<UiEvent>) {
+    pub fn spawn_event_handler(&self, ui_rx: mpsc::UnboundedReceiver<UiEvent>) {
         let weak = self.instance.as_weak();
-        tokio::spawn(async move {
-            while let Some(event) = ui_rx.recv().await {
-                let weak = weak.clone();
-                slint::invoke_from_event_loop(move || {
-                    let Some(inst) = weak.upgrade() else {
-                        return;
-                    };
-                    dispatch_ui_event(&inst, event);
-                })
-                .ok();
-            }
-        });
+        let ui_rx = Rc::new(RefCell::new(ui_rx));
+        let timeline_model: Rc<VecModel<Value>> = Rc::new(VecModel::default());
+
+        set_prop(
+            &self.instance,
+            "timeline",
+            Value::Model(ModelRc::from(Rc::clone(&timeline_model))),
+        );
+
+        let timer = slint::Timer::default();
+        timer.start(
+            slint::TimerMode::Repeated,
+            Duration::from_millis(16),
+            move || {
+                let Some(inst) = weak.upgrade() else {
+                    return;
+                };
+                let mut rx = ui_rx.borrow_mut();
+                while let Ok(event) = rx.try_recv() {
+                    dispatch_ui_event(&inst, event, &timeline_model);
+                }
+            },
+        );
+
+        mem::forget(timer);
     }
 
     pub fn run(&self) -> Result<()> {
@@ -297,20 +315,27 @@ impl SlintUiAdapter {
     }
 }
 
-fn dispatch_ui_event(inst: &ComponentInstance, event: UiEvent) {
+fn dispatch_ui_event(
+    inst: &ComponentInstance,
+    event: UiEvent,
+    timeline_model: &Rc<VecModel<Value>>,
+) {
     match event {
         UiEvent::ServerInfo(info) => apply_server_info(inst, &info),
         UiEvent::LoginSuccess { user_id } => apply_login_success(inst, &user_id),
         UiEvent::Error { message, kind } => apply_error(inst, &message, &kind),
         UiEvent::Status(msg) => apply_status(inst, &msg),
         UiEvent::Rooms(rooms) => apply_rooms(inst, &rooms),
-        UiEvent::Timeline(messages) => apply_timeline(inst, &messages),
+        UiEvent::Timeline(patch) => apply_timeline_patch(timeline_model, patch),
         UiEvent::ConnectionStatus(status) => apply_connection_status(inst, &status),
         UiEvent::Verification(event) => apply_verification(inst, &event),
         UiEvent::FileSaved { path } => {
             apply_status(inst, &format!("File saved to {path}"));
         }
-        UiEvent::LoggedOut => apply_logged_out(inst),
+        UiEvent::LoggedOut => {
+            timeline_model.set_vec(Vec::new());
+            apply_logged_out(inst);
+        }
     }
 }
 
@@ -353,80 +378,126 @@ fn apply_status(inst: &ComponentInstance, msg: &str) {
     set_prop(inst, "login-status", Value::String(SharedString::from(msg)));
 }
 
-fn apply_timeline(inst: &ComponentInstance, messages: &[TimelineMessage]) {
-    let entries: Vec<Value> = messages
-        .iter()
-        .map(|m| {
-            let body_text = m.body.body_text().to_string();
-            let message_type = match &m.body {
-                MessageBody::Notice(_) => "notice",
-                MessageBody::Emote(_) => "emote",
-                MessageBody::Image { .. } => "image",
-                MessageBody::File { .. } => "file",
-                MessageBody::Unknown(_) => "utd",
-                MessageBody::Text(_) => "text",
-            };
-            let sender = m
-                .sender_display_name
-                .as_deref()
-                .unwrap_or(&m.sender)
-                .to_string();
-            let timestamp = chrono::DateTime::from_timestamp((m.timestamp / 1000).cast_signed(), 0)
-                .map(|utc| {
-                    utc.with_timezone(&chrono::Local)
-                        .format("%H:%M")
-                        .to_string()
-                })
-                .unwrap_or_default();
-
-            let mut fields = vec![
-                (
-                    "sender".to_string(),
-                    Value::String(SharedString::from(&sender)),
-                ),
-                (
-                    "body".to_string(),
-                    Value::String(SharedString::from(&body_text)),
-                ),
-                (
-                    "timestamp".to_string(),
-                    Value::String(SharedString::from(&timestamp)),
-                ),
-                (
-                    "message-type".to_string(),
-                    Value::String(SharedString::from(message_type)),
-                ),
-                (
-                    "event-id".to_string(),
-                    Value::String(SharedString::from(&m.event_id.0)),
-                ),
-            ];
-
-            let mut has_thumbnail = false;
-            if let MessageBody::Image { meta, .. } = &m.body
-                && let Some(thumb_path) = &meta.thumbnail_path
-                && let Ok(img) = slint::Image::load_from_path(thumb_path)
-            {
-                fields.push(("thumbnail".to_string(), Value::Image(img)));
-                has_thumbnail = true;
-            }
-            fields.push(("has-thumbnail".to_string(), Value::Bool(has_thumbnail)));
-
-            let mut has_avatar = false;
-            if let Some(avatar_path) = &m.sender_avatar_path
-                && let Ok(img) = slint::Image::load_from_path(avatar_path)
-            {
-                fields.push(("avatar".to_string(), Value::Image(img)));
-                has_avatar = true;
-            }
-            fields.push(("has-avatar".to_string(), Value::Bool(has_avatar)));
-            fields.push(("is-own".to_string(), Value::Bool(m.is_own)));
-
-            Value::Struct(Struct::from_iter(fields))
+fn message_to_value(m: &TimelineMessage) -> Value {
+    let body_text = m.body.body_text().to_string();
+    let message_type = match &m.body {
+        MessageBody::Notice(_) => "notice",
+        MessageBody::Emote(_) => "emote",
+        MessageBody::Image { .. } => "image",
+        MessageBody::File { .. } => "file",
+        MessageBody::Unknown(_) => "utd",
+        MessageBody::Text(_) => "text",
+    };
+    let sender = m
+        .sender_display_name
+        .as_deref()
+        .unwrap_or(&m.sender)
+        .to_string();
+    let timestamp = chrono::DateTime::from_timestamp((m.timestamp / 1000).cast_signed(), 0)
+        .map(|utc| {
+            utc.with_timezone(&chrono::Local)
+                .format("%H:%M")
+                .to_string()
         })
-        .collect();
-    let model = Value::Model(ModelRc::new(VecModel::from(entries)));
-    set_prop(inst, "timeline", model);
+        .unwrap_or_default();
+
+    let mut fields = vec![
+        (
+            "sender".to_string(),
+            Value::String(SharedString::from(&sender)),
+        ),
+        (
+            "body".to_string(),
+            Value::String(SharedString::from(&body_text)),
+        ),
+        (
+            "timestamp".to_string(),
+            Value::String(SharedString::from(&timestamp)),
+        ),
+        (
+            "message-type".to_string(),
+            Value::String(SharedString::from(message_type)),
+        ),
+        (
+            "event-id".to_string(),
+            Value::String(SharedString::from(&m.event_id.0)),
+        ),
+    ];
+
+    let mut has_thumbnail = false;
+    if let MessageBody::Image { meta, .. } = &m.body
+        && let Some(thumb_path) = &meta.thumbnail_path
+        && let Ok(img) = slint::Image::load_from_path(thumb_path)
+    {
+        fields.push(("thumbnail".to_string(), Value::Image(img)));
+        has_thumbnail = true;
+    }
+    fields.push(("has-thumbnail".to_string(), Value::Bool(has_thumbnail)));
+
+    let mut has_avatar = false;
+    if let Some(avatar_path) = &m.sender_avatar_path
+        && let Ok(img) = slint::Image::load_from_path(avatar_path)
+    {
+        fields.push(("avatar".to_string(), Value::Image(img)));
+        has_avatar = true;
+    }
+    fields.push(("has-avatar".to_string(), Value::Bool(has_avatar)));
+    fields.push(("is-own".to_string(), Value::Bool(m.is_own)));
+
+    Value::Struct(Struct::from_iter(fields))
+}
+
+fn apply_timeline_patch(model: &VecModel<Value>, patch: TimelinePatch) {
+    match patch {
+        TimelinePatch::Reset(messages) => {
+            let entries: Vec<Value> = messages.iter().map(message_to_value).collect();
+            model.set_vec(entries);
+        }
+        TimelinePatch::Append(messages) => {
+            for m in &messages {
+                model.push(message_to_value(m));
+            }
+        }
+        TimelinePatch::PushFront(m) => {
+            model.insert(0, message_to_value(&m));
+        }
+        TimelinePatch::PushBack(m) => {
+            model.push(message_to_value(&m));
+        }
+        TimelinePatch::Insert { index, message } => {
+            let idx = index.min(model.row_count());
+            model.insert(idx, message_to_value(&message));
+        }
+        TimelinePatch::Set { index, message } => {
+            if index < model.row_count() {
+                model.set_row_data(index, message_to_value(&message));
+            }
+        }
+        TimelinePatch::Remove { index } => {
+            if index < model.row_count() {
+                model.remove(index);
+            }
+        }
+        TimelinePatch::PopFront => {
+            if model.row_count() > 0 {
+                model.remove(0);
+            }
+        }
+        TimelinePatch::PopBack => {
+            let count = model.row_count();
+            if count > 0 {
+                model.remove(count - 1);
+            }
+        }
+        TimelinePatch::Truncate { length } => {
+            while model.row_count() > length {
+                model.remove(model.row_count() - 1);
+            }
+        }
+        TimelinePatch::Clear => {
+            model.set_vec(Vec::new());
+        }
+    }
 }
 
 fn apply_connection_status(inst: &ComponentInstance, status: &ConnectionStatus) {
@@ -570,7 +641,6 @@ fn apply_logged_out(inst: &ComponentInstance) {
     );
     let empty_model = Value::Model(ModelRc::new(VecModel::<Value>::default()));
     set_prop(inst, "rooms", empty_model.clone());
-    set_prop(inst, "timeline", empty_model.clone());
     set_prop(inst, "verification-emojis", empty_model);
 }
 

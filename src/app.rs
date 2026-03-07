@@ -12,7 +12,7 @@ use tokio_util::sync::CancellationToken;
 use crate::commands::{UiCommand, UiEvent};
 use crate::config::AppConfig;
 use crate::domain::models::{
-    ConnectionStatus, LoginCredentials, RoomId, Session, SyncEvent, TimelineMessage, UiErrorKind,
+    ConnectionStatus, LoginCredentials, RoomId, Session, SyncEvent, TimelinePatch, UiErrorKind,
     VerificationEvent,
 };
 use crate::error::{AppError, Result};
@@ -330,7 +330,7 @@ impl AppService {
     async fn handle_select_room(&mut self, room_id: RoomId) {
         self.timeline.reset().await;
 
-        let (tl_tx, mut tl_rx) = mpsc::unbounded_channel::<Vec<TimelineMessage>>();
+        let (tl_tx, mut tl_rx) = mpsc::unbounded_channel::<TimelinePatch>();
         let matrix_tl = Arc::clone(&self.matrix);
         let ui_tx = self.ui_tx.clone();
         let token = self.timeline.token();
@@ -338,8 +338,8 @@ impl AppService {
         self.timeline.spawn(async move {
             let subscribe = matrix_tl.subscribe_timeline(&room_id, tl_tx);
             let forward = async {
-                while let Some(messages) = tl_rx.recv().await {
-                    if let Err(e) = ui_tx.send(UiEvent::Timeline(messages)) {
+                while let Some(patch) = tl_rx.recv().await {
+                    if let Err(e) = ui_tx.send(UiEvent::Timeline(patch)) {
                         tracing::debug!("failed to send Timeline event: {e}");
                         break;
                     }

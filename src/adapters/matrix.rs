@@ -38,7 +38,7 @@ use url::Url;
 use crate::domain::models::{
     AuthMethod, ConnectionStatus, EventId, FileMeta, ImageMeta, LoginCredentials, MessageBody,
     OAuthLoginData, Room as DomainRoom, RoomId, ServerInfo, Session, SyncEvent, SyncSnapshot,
-    TimelineMessage, VerificationEmoji, VerificationEvent,
+    TimelineMessage, TimelinePatch, VerificationEmoji, VerificationEvent,
 };
 use crate::error::{AppError, Result};
 use crate::ports::matrix::MatrixPort;
@@ -117,6 +117,93 @@ impl MatrixAdapter {
 
         *self.verification_req_rx.lock().await = Some(rx);
         Ok(())
+    }
+}
+
+impl MatrixAdapter {
+    async fn convert_and_enrich(
+        &self,
+        item: &Arc<TimelineItem>,
+        client: &Client,
+        cache_dir: &Path,
+        own_user_id: Option<&str>,
+    ) -> Option<TimelineMessage> {
+        let event = item.as_event()?;
+        let mut msg = convert_event_item(event, &self.media_sources, own_user_id)?;
+        enrich_message(client, cache_dir, &self.media_sources, &mut msg).await;
+        Some(msg)
+    }
+
+    async fn diff_to_patch(
+        &self,
+        diff: VectorDiff<Arc<TimelineItem>>,
+        client: &Client,
+        cache_dir: &Path,
+        media_sources: &StdMutex<HashMap<String, MediaSource>>,
+        own_user_id: Option<&str>,
+    ) -> Option<TimelinePatch> {
+        match diff {
+            VectorDiff::Append { values } => {
+                let mut msgs: Vec<TimelineMessage> = values
+                    .iter()
+                    .filter_map(|item| {
+                        let event = item.as_event()?;
+                        convert_event_item(event, media_sources, own_user_id)
+                    })
+                    .collect();
+                enrich_messages(client, cache_dir, media_sources, &mut msgs).await;
+                if msgs.is_empty() {
+                    return None;
+                }
+                Some(TimelinePatch::Append(msgs))
+            }
+            VectorDiff::Clear => Some(TimelinePatch::Clear),
+            VectorDiff::PushFront { value } => {
+                let msg = self
+                    .convert_and_enrich(&value, client, cache_dir, own_user_id)
+                    .await?;
+                Some(TimelinePatch::PushFront(msg))
+            }
+            VectorDiff::PushBack { value } => {
+                let msg = self
+                    .convert_and_enrich(&value, client, cache_dir, own_user_id)
+                    .await?;
+                Some(TimelinePatch::PushBack(msg))
+            }
+            VectorDiff::PopFront => Some(TimelinePatch::PopFront),
+            VectorDiff::PopBack => Some(TimelinePatch::PopBack),
+            VectorDiff::Insert { index, value } => {
+                let msg = self
+                    .convert_and_enrich(&value, client, cache_dir, own_user_id)
+                    .await?;
+                Some(TimelinePatch::Insert {
+                    index,
+                    message: msg,
+                })
+            }
+            VectorDiff::Set { index, value } => {
+                let msg = self
+                    .convert_and_enrich(&value, client, cache_dir, own_user_id)
+                    .await?;
+                Some(TimelinePatch::Set {
+                    index,
+                    message: msg,
+                })
+            }
+            VectorDiff::Remove { index } => Some(TimelinePatch::Remove { index }),
+            VectorDiff::Truncate { length } => Some(TimelinePatch::Truncate { length }),
+            VectorDiff::Reset { values } => {
+                let mut msgs: Vec<TimelineMessage> = values
+                    .iter()
+                    .filter_map(|item| {
+                        let event = item.as_event()?;
+                        convert_event_item(event, media_sources, own_user_id)
+                    })
+                    .collect();
+                enrich_messages(client, cache_dir, media_sources, &mut msgs).await;
+                Some(TimelinePatch::Reset(msgs))
+            }
+        }
     }
 }
 
@@ -283,40 +370,6 @@ fn convert_timeline_items(
         .collect()
 }
 
-fn apply_timeline_diff(items: &mut Vec<Arc<TimelineItem>>, diff: VectorDiff<Arc<TimelineItem>>) {
-    match diff {
-        VectorDiff::Append { values } => items.extend(values),
-        VectorDiff::Clear => items.clear(),
-        VectorDiff::PushFront { value } => items.insert(0, value),
-        VectorDiff::PushBack { value } => items.push(value),
-        VectorDiff::PopFront => {
-            if !items.is_empty() {
-                items.remove(0);
-            }
-        }
-        VectorDiff::PopBack => {
-            items.pop();
-        }
-        VectorDiff::Insert { index, value } => {
-            if index <= items.len() {
-                items.insert(index, value);
-            }
-        }
-        VectorDiff::Set { index, value } => {
-            if let Some(slot) = items.get_mut(index) {
-                *slot = value;
-            }
-        }
-        VectorDiff::Remove { index } => {
-            if index < items.len() {
-                items.remove(index);
-            }
-        }
-        VectorDiff::Truncate { length } => items.truncate(length),
-        VectorDiff::Reset { values } => *items = values.into_iter().collect(),
-    }
-}
-
 fn lookup_media_source(
     media_sources: &StdMutex<HashMap<String, MediaSource>>,
     event_id: &str,
@@ -375,7 +428,46 @@ async fn fetch_single_thumbnail(
     Some(cache_path)
 }
 
-async fn download_thumbnails(
+async fn enrich_message(
+    client: &Client,
+    cache_dir: &Path,
+    media_sources: &StdMutex<HashMap<String, MediaSource>>,
+    msg: &mut TimelineMessage,
+) {
+    if let MessageBody::Image { meta, .. } = &mut msg.body {
+        let event_id = &msg.event_id.0;
+        let sanitized = event_id.replace(':', "_");
+        let cache_stem = cache_dir.join(&sanitized);
+
+        if let Some(path) = find_cached(&cache_stem) {
+            meta.thumbnail_path = Some(path);
+        } else if let Some(source) = lookup_media_source(media_sources, event_id)
+            && let Some(path) = fetch_single_thumbnail(client, &cache_stem, source, event_id).await
+        {
+            meta.thumbnail_path = Some(path);
+        }
+    }
+
+    if let Some(mxc_url) = &msg.sender_avatar_url {
+        let avatar_dir = cache_dir.join("avatars");
+        let sanitized = msg.sender.replace(':', "_").replace('@', "");
+        let cache_stem = avatar_dir.join(&sanitized);
+
+        if let Some(path) = find_cached(&cache_stem) {
+            msg.sender_avatar_path = Some(path);
+        } else {
+            let avatar_mxc: OwnedMxcUri = mxc_url.as_str().into();
+            let source = MediaSource::Plain(avatar_mxc);
+            if let Some(path) =
+                fetch_single_thumbnail(client, &cache_stem, source, &msg.sender).await
+            {
+                msg.sender_avatar_path = Some(path);
+            }
+        }
+    }
+}
+
+async fn enrich_messages(
     client: &Client,
     cache_dir: &Path,
     media_sources: &StdMutex<HashMap<String, MediaSource>>,
@@ -385,32 +477,6 @@ async fn download_thumbnails(
         tracing::warn!("failed to create media cache dir: {e}");
         return;
     }
-
-    for msg in messages.iter_mut() {
-        let MessageBody::Image { meta, .. } = &mut msg.body else {
-            continue;
-        };
-        let event_id = &msg.event_id.0;
-        let sanitized = event_id.replace(':', "_");
-        let cache_stem = cache_dir.join(&sanitized);
-
-        let cached = find_cached(&cache_stem);
-        if let Some(path) = cached {
-            meta.thumbnail_path = Some(path);
-            continue;
-        }
-
-        let Some(source) = lookup_media_source(media_sources, event_id) else {
-            continue;
-        };
-
-        if let Some(path) = fetch_single_thumbnail(client, &cache_stem, source, event_id).await {
-            meta.thumbnail_path = Some(path);
-        }
-    }
-}
-
-async fn download_avatars(client: &Client, cache_dir: &Path, messages: &mut [TimelineMessage]) {
     let avatar_dir = cache_dir.join("avatars");
     if let Err(e) = fs::create_dir_all(&avatar_dir).await {
         tracing::warn!("failed to create avatar cache dir: {e}");
@@ -418,25 +484,7 @@ async fn download_avatars(client: &Client, cache_dir: &Path, messages: &mut [Tim
     }
 
     for msg in messages.iter_mut() {
-        let Some(mxc_url) = &msg.sender_avatar_url else {
-            continue;
-        };
-
-        let sanitized = msg.sender.replace(':', "_").replace('@', "");
-        let cache_stem = avatar_dir.join(&sanitized);
-
-        let cached = find_cached(&cache_stem);
-        if let Some(path) = cached {
-            msg.sender_avatar_path = Some(path);
-            continue;
-        }
-
-        let avatar_mxc: OwnedMxcUri = mxc_url.as_str().into();
-        let source = MediaSource::Plain(avatar_mxc);
-
-        if let Some(path) = fetch_single_thumbnail(client, &cache_stem, source, &msg.sender).await {
-            msg.sender_avatar_path = Some(path);
-        }
+        enrich_message(client, cache_dir, media_sources, msg).await;
     }
 }
 
@@ -720,7 +768,7 @@ impl MatrixPort for MatrixAdapter {
     async fn subscribe_timeline(
         &self,
         room_id: &RoomId,
-        timeline_tx: mpsc::UnboundedSender<Vec<TimelineMessage>>,
+        timeline_tx: mpsc::UnboundedSender<TimelinePatch>,
     ) -> Result<()> {
         let client = self.get_client().await?;
 
@@ -749,12 +797,11 @@ impl MatrixPort for MatrixAdapter {
         let cache_dir = self.data_dir.join("media-cache");
         let own_user_id = client.user_id().map(ToString::to_string);
 
-        let mut items: Vec<Arc<TimelineItem>> = initial_items.into_iter().collect();
-
-        let mut messages = convert_timeline_items(&items, &media_sources, own_user_id.as_deref());
-        download_thumbnails(&client, &cache_dir, &media_sources, &mut messages).await;
-        download_avatars(&client, &cache_dir, &mut messages).await;
-        if timeline_tx.send(messages).is_err() {
+        let initial_vec: Vec<Arc<TimelineItem>> = initial_items.into_iter().collect();
+        let mut messages =
+            convert_timeline_items(&initial_vec, &media_sources, own_user_id.as_deref());
+        enrich_messages(&client, &cache_dir, &media_sources, &mut messages).await;
+        if timeline_tx.send(TimelinePatch::Reset(messages)).is_err() {
             return Ok(());
         }
 
@@ -773,14 +820,20 @@ impl MatrixPort for MatrixAdapter {
 
         while let Some(diffs) = stream.next().await {
             for diff in diffs {
-                apply_timeline_diff(&mut items, diff);
-            }
-            let mut messages =
-                convert_timeline_items(&items, &media_sources, own_user_id.as_deref());
-            download_thumbnails(&client, &cache_dir, &media_sources, &mut messages).await;
-            download_avatars(&client, &cache_dir, &mut messages).await;
-            if timeline_tx.send(messages).is_err() {
-                break;
+                let patch = self
+                    .diff_to_patch(
+                        diff,
+                        &client,
+                        &cache_dir,
+                        &media_sources,
+                        own_user_id.as_deref(),
+                    )
+                    .await;
+                if let Some(patch) = patch
+                    && timeline_tx.send(patch).is_err()
+                {
+                    return Ok(());
+                }
             }
         }
 

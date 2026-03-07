@@ -224,6 +224,31 @@ pub struct TimelineMessage {
 }
 
 #[derive(Debug, Clone)]
+pub enum TimelinePatch {
+    Reset(Vec<TimelineMessage>),
+    Append(Vec<TimelineMessage>),
+    PushFront(TimelineMessage),
+    PushBack(TimelineMessage),
+    Insert {
+        index: usize,
+        message: TimelineMessage,
+    },
+    Set {
+        index: usize,
+        message: TimelineMessage,
+    },
+    Remove {
+        index: usize,
+    },
+    PopFront,
+    PopBack,
+    Truncate {
+        length: usize,
+    },
+    Clear,
+}
+
+#[derive(Debug, Clone)]
 pub struct VerificationEmoji {
     pub symbol: String,
     pub description: String,

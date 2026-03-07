@@ -1,5 +1,5 @@
 use crate::domain::models::{
-    ConnectionStatus, LoginCredentials, Room, RoomId, ServerInfo, TimelineMessage, UiErrorKind,
+    ConnectionStatus, LoginCredentials, Room, RoomId, ServerInfo, TimelinePatch, UiErrorKind,
     VerificationEvent,
 };
 
@@ -27,7 +27,7 @@ pub enum UiEvent {
     Error { message: String, kind: UiErrorKind },
     Status(String),
     Rooms(Vec<Room>),
-    Timeline(Vec<TimelineMessage>),
+    Timeline(TimelinePatch),
     ConnectionStatus(ConnectionStatus),
     Verification(VerificationEvent),
     FileSaved { path: String },
