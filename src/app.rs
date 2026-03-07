@@ -277,6 +277,9 @@ impl AppService {
     async fn save_session(&self, session: &Session) {
         if let Err(e) = self.storage.save_session(session).await {
             tracing::warn!("failed to save session: {e}");
+            self.emit_toast_error(format!(
+                "Session not saved. You may need to log in again after restart: {e}"
+            ));
         }
     }
 
@@ -490,7 +493,12 @@ impl AppService {
 
     async fn start_background_listeners(&mut self) {
         self.background.reset().await;
-        Self::spawn_session_persister(&mut self.background, &self.matrix, &self.storage);
+        Self::spawn_session_persister(
+            &mut self.background,
+            &self.matrix,
+            &self.storage,
+            &self.ui_tx,
+        );
         Self::spawn_verification_forwarder(&mut self.background, &self.matrix, &self.ui_tx);
     }
 
@@ -498,9 +506,11 @@ impl AppService {
         group: &mut TaskGroup,
         matrix: &Arc<dyn MatrixPort>,
         storage: &Arc<dyn StoragePort>,
+        ui_tx: &mpsc::UnboundedSender<UiEvent>,
     ) {
         let matrix = Arc::clone(matrix);
         let storage = Arc::clone(storage);
+        let ui_tx = ui_tx.clone();
         let token = group.token();
         group.spawn(async move {
             let (session_tx, mut session_rx) = mpsc::unbounded_channel::<Session>();
@@ -509,6 +519,11 @@ impl AppService {
                 while let Some(session) = session_rx.recv().await {
                     if let Err(e) = storage.save_session(&session).await {
                         tracing::warn!("failed to persist refreshed session: {e}");
+                        ui_tx
+                            .send(UiEvent::ToastError(format!(
+                                "Failed to save refreshed session: {e}"
+                            )))
+                            .ok();
                     } else {
                         tracing::info!("persisted refreshed session tokens");
                     }
