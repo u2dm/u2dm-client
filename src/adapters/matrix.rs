@@ -37,8 +37,8 @@ use url::Url;
 
 use crate::domain::models::{
     AuthMethod, ConnectionStatus, EventId, FileMeta, ImageMeta, LoginCredentials, MessageBody,
-    OAuthLoginData, Room as DomainRoom, RoomId, ServerInfo, Session, SyncSnapshot, TimelineMessage,
-    VerificationEmoji, VerificationEvent,
+    OAuthLoginData, Room as DomainRoom, RoomId, ServerInfo, Session, SyncEvent, SyncSnapshot,
+    TimelineMessage, VerificationEmoji, VerificationEvent,
 };
 use crate::error::{AppError, Result};
 use crate::ports::matrix::MatrixPort;
@@ -787,34 +787,36 @@ impl MatrixPort for MatrixAdapter {
         Ok(())
     }
 
-    async fn start_sync(&self, state_tx: mpsc::UnboundedSender<SyncSnapshot>) -> Result<()> {
+    async fn start_sync(&self, state_tx: mpsc::UnboundedSender<SyncEvent>) -> Result<()> {
         let client = self.get_client().await?;
 
         let stream = client.sync_stream(SyncSettings::default()).await;
         tokio::pin!(stream);
 
         while let Some(result) = stream.next().await {
-            let snapshot = match result {
-                Ok(_) => SyncSnapshot {
+            let event = match result {
+                Ok(_) => SyncEvent::Snapshot(SyncSnapshot {
                     rooms: build_room_list(&client).await,
                     connection_status: ConnectionStatus::Connected,
-                },
+                }),
                 Err(e) => {
                     if is_auth_error(&e) {
                         tracing::warn!("unrecoverable auth error in sync loop, stopping");
-                        return Err(AppError::SessionExpired);
+                        state_tx.send(SyncEvent::SessionExpired).ok();
+                        return Ok(());
                     }
-                    SyncSnapshot {
+                    SyncEvent::Snapshot(SyncSnapshot {
                         rooms: Vec::new(),
                         connection_status: ConnectionStatus::Error(e.to_string()),
-                    }
+                    })
                 }
             };
-            if state_tx.send(snapshot).is_err() {
+            if state_tx.send(event).is_err() {
                 break;
             }
         }
 
+        state_tx.send(SyncEvent::Ended).ok();
         Ok(())
     }
 

@@ -161,6 +161,15 @@ pub struct SyncSnapshot {
     pub connection_status: ConnectionStatus,
 }
 
+#[derive(Debug)]
+#[allow(dead_code)]
+pub enum SyncEvent {
+    Snapshot(SyncSnapshot),
+    SessionExpired,
+    Fatal(String),
+    Ended,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EventId(pub String);
 

@@ -12,8 +12,8 @@ use tokio_util::sync::CancellationToken;
 use crate::commands::{UiCommand, UiEvent};
 use crate::config::AppConfig;
 use crate::domain::models::{
-    ConnectionStatus, LoginCredentials, RoomId, Session, SyncSnapshot, TimelineMessage,
-    UiErrorKind, VerificationEvent,
+    ConnectionStatus, LoginCredentials, RoomId, Session, SyncEvent, TimelineMessage, UiErrorKind,
+    VerificationEvent,
 };
 use crate::error::{AppError, Result};
 use crate::ports::matrix::MatrixPort;
@@ -586,13 +586,13 @@ impl AppService {
     }
 
     fn start_sync_pipeline(&mut self) {
-        let (snapshot_tx, mut snapshot_rx) = mpsc::unbounded_channel::<SyncSnapshot>();
+        let (sync_tx, mut sync_rx) = mpsc::unbounded_channel::<SyncEvent>();
 
         let matrix_sync = Arc::clone(&self.matrix);
         let token = self.background.token();
         self.background.spawn(async move {
             tokio::select! {
-                result = matrix_sync.start_sync(snapshot_tx) => {
+                result = matrix_sync.start_sync(sync_tx) => {
                     if let Err(e) = result {
                         tracing::error!("sync loop ended with error: {e}");
                     }
@@ -609,17 +609,40 @@ impl AppService {
         self.background.spawn(async move {
             loop {
                 tokio::select! {
-                    snapshot = snapshot_rx.recv() => {
-                        let Some(snapshot) = snapshot else { break };
-                        if let Err(e) = ui_tx.send(UiEvent::ConnectionStatus(
-                            snapshot.connection_status.clone(),
-                        )) {
-                            tracing::debug!("failed to send ConnectionStatus event: {e}");
-                        }
-                        if matches!(snapshot.connection_status, ConnectionStatus::Connected)
-                            && let Err(e) = ui_tx.send(UiEvent::Rooms(snapshot.rooms))
-                        {
-                            tracing::debug!("failed to send Rooms event: {e}");
+                    event = sync_rx.recv() => {
+                        let Some(event) = event else {
+                            tracing::debug!("sync channel closed unexpectedly");
+                            break;
+                        };
+                        match event {
+                            SyncEvent::Snapshot(snapshot) => {
+                                if let Err(e) = ui_tx.send(UiEvent::ConnectionStatus(
+                                    snapshot.connection_status.clone(),
+                                )) {
+                                    tracing::debug!("failed to send ConnectionStatus event: {e}");
+                                }
+                                if matches!(snapshot.connection_status, ConnectionStatus::Connected)
+                                    && let Err(e) = ui_tx.send(UiEvent::Rooms(snapshot.rooms))
+                                {
+                                    tracing::debug!("failed to send Rooms event: {e}");
+                                }
+                            }
+                            SyncEvent::SessionExpired => {
+                                cmd_tx.send(UiCommand::SessionExpired).ok();
+                                return;
+                            }
+                            SyncEvent::Fatal(msg) => {
+                                tracing::error!("sync fatal error: {msg}");
+                                if let Err(e) = ui_tx.send(UiEvent::ConnectionStatus(
+                                    ConnectionStatus::Error(msg),
+                                )) {
+                                    tracing::debug!("failed to send ConnectionStatus event: {e}");
+                                }
+                            }
+                            SyncEvent::Ended => {
+                                tracing::info!("sync stream ended normally");
+                                break;
+                            }
                         }
                     }
                     () = token.cancelled() => {
@@ -627,12 +650,6 @@ impl AppService {
                         return;
                     }
                 }
-            }
-
-            if !token.is_cancelled()
-                && let Err(e) = cmd_tx.send(UiCommand::SessionExpired)
-            {
-                tracing::debug!("failed to send SessionExpired command: {e}");
             }
         });
     }
