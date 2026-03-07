@@ -8,9 +8,18 @@ export struct MessageEntry {
     sender: string,
     body: string,
     timestamp: string,
+    message-type: string,
+    has-thumbnail: bool,
+    thumbnail: image,
+    event-id: string,
 }
 
 export struct SendMessageRequest {
     room-id: string,
     body: string,
+}
+
+export struct SaveFileRequest {
+    event-id: string,
+    filename: string,
 }

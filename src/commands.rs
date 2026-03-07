@@ -15,6 +15,8 @@ pub enum UiCommand {
     AcceptVerification,
     RejectVerification,
     ConfirmVerification,
+    OpenMedia { event_id: String },
+    SaveFile { event_id: String, filename: String },
     Logout,
     Quit,
 }
@@ -28,5 +30,6 @@ pub enum UiEvent {
     Timeline(Vec<TimelineMessage>),
     ConnectionStatus(ConnectionStatus),
     Verification(VerificationEvent),
+    FileSaved { path: String },
     LoggedOut,
 }

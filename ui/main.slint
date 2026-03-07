@@ -3,6 +3,7 @@ import {
     RoomEntry,
     MessageEntry,
     SendMessageRequest,
+    SaveFileRequest,
 } from "screens/chat/components/types.slint";
 import { VerificationEmoji } from "components/types.slint";
 
@@ -43,6 +44,8 @@ export component AppWindow inherits Window {
     callback login-oauth(string);
     callback select-room(string);
     callback send-message(SendMessageRequest);
+    callback open-media(string);
+    callback save-file(SaveFileRequest);
     callback logout();
     callback accept-verification();
     callback confirm-verification();
@@ -95,6 +98,12 @@ export component AppWindow inherits Window {
         }
         send-message(req) => {
             root.send-message(req);
+        }
+        open-media(id) => {
+            root.open-media(id);
+        }
+        save-file(req) => {
+            root.save-file(req);
         }
     }
 

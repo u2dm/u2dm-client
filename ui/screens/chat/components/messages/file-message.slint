@@ -1,0 +1,25 @@
+import { Button, Palette } from "std-widgets.slint";
+import { SaveFileRequest } from "../types.slint";
+
+export component FileMessage inherits HorizontalLayout {
+    in property <string> body;
+    in property <string> event-id;
+
+    callback save-file(SaveFileRequest);
+
+    spacing: 8px;
+    alignment: start;
+
+    Text {
+        text: "📎 " + root.body;
+        font-size: 14px;
+        vertical-alignment: center;
+    }
+
+    Button {
+        text: "Save";
+        clicked => {
+            root.save-file({ event-id: root.event-id, filename: root.body });
+        }
+    }
+}

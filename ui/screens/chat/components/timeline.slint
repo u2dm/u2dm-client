@@ -3,7 +3,15 @@ import {
     Palette,
 } from "std-widgets.slint";
 
-import { MessageEntry, SendMessageRequest } from "./types.slint";
+import {
+    MessageEntry,
+    SendMessageRequest,
+    SaveFileRequest,
+} from "./types.slint";
+
+import { TextMessage } from "./messages/text-message.slint";
+import { ImageMessage } from "./messages/image-message.slint";
+import { FileMessage } from "./messages/file-message.slint";
 
 export component TimelineView inherits Rectangle {
     background: Palette.background;
@@ -14,6 +22,8 @@ export component TimelineView inherits Rectangle {
     in-out property <string> input-message: "";
 
     callback send-message(SendMessageRequest);
+    callback open-media(string);
+    callback save-file(SaveFileRequest);
 
     property <length> header-height: 40px;
     property <length> input-height: 40px;
@@ -92,10 +102,22 @@ export component TimelineView inherits Rectangle {
                         }
                     }
 
-                    Text {
+                    if msg.message-type == "image": ImageMessage {
+                        thumbnail: msg.thumbnail;
+                        has-thumbnail: msg.has-thumbnail;
+                        body: msg.body;
+                        event-id: msg.event-id;
+                        open-media(id) => { root.open-media(id); }
+                    }
+
+                    if msg.message-type == "file": FileMessage {
+                        body: msg.body;
+                        event-id: msg.event-id;
+                        save-file(req) => { root.save-file(req); }
+                    }
+
+                    if msg.message-type != "image" && msg.message-type != "file": TextMessage {
                         text: msg.body;
-                        font-size: 14px;
-                        wrap: word-wrap;
                     }
                 }
             }

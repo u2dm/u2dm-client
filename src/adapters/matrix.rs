@@ -1,6 +1,8 @@
+use std::collections::HashMap;
 use std::net::{Ipv4Addr, Ipv6Addr};
-use std::path::PathBuf;
-use std::sync::Arc;
+use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex as StdMutex};
+use std::time::Duration;
 
 use async_trait::async_trait;
 use futures_util::StreamExt;
@@ -14,8 +16,10 @@ use matrix_sdk::config::SyncSettings;
 use matrix_sdk::encryption::verification::{
     SasState, SasVerification, Verification, VerificationRequest, VerificationRequestState,
 };
+use matrix_sdk::media::{MediaFormat, MediaRequestParameters, MediaThumbnailSettings};
 use matrix_sdk::ruma::api::client::error::ErrorKind as RumaErrorKind;
 use matrix_sdk::ruma::events::key::verification::request::ToDeviceKeyVerificationRequestEvent;
+use matrix_sdk::ruma::events::room::MediaSource;
 use matrix_sdk::ruma::events::room::message::{
     MessageType, OriginalSyncRoomMessageEvent, RoomMessageEventContent,
 };
@@ -27,11 +31,12 @@ use matrix_sdk_ui::eyeball_im::VectorDiff;
 use matrix_sdk_ui::timeline::{EventTimelineItem, RoomExt, TimelineDetails, TimelineItem};
 use tokio::fs;
 use tokio::sync::{Mutex, RwLock, mpsc};
+use tokio::time::timeout;
 use url::Url;
 
 use crate::domain::models::{
-    AuthMethod, ConnectionStatus, EventId, LoginCredentials, MessageBody, OAuthLoginData,
-    Room as DomainRoom, RoomId, ServerInfo, Session, SyncSnapshot, TimelineMessage,
+    AuthMethod, ConnectionStatus, EventId, FileMeta, ImageMeta, LoginCredentials, MessageBody,
+    OAuthLoginData, Room as DomainRoom, RoomId, ServerInfo, Session, SyncSnapshot, TimelineMessage,
     VerificationEmoji, VerificationEvent,
 };
 use crate::error::{AppError, Result};
@@ -43,6 +48,7 @@ pub struct MatrixAdapter {
     redirect_handle: Mutex<Option<LocalServerRedirectHandle>>,
     verification_request: Mutex<Option<VerificationRequest>>,
     sas_verification: Mutex<Option<SasVerification>>,
+    media_sources: Arc<StdMutex<HashMap<String, MediaSource>>>,
 }
 
 impl MatrixAdapter {
@@ -53,6 +59,7 @@ impl MatrixAdapter {
             redirect_handle: Mutex::new(None),
             verification_request: Mutex::new(None),
             sas_verification: Mutex::new(None),
+            media_sources: Arc::new(StdMutex::new(HashMap::new())),
         }
     }
 
@@ -95,15 +102,67 @@ async fn build_room_list(client: &Client) -> Vec<DomainRoom> {
     rooms
 }
 
-fn convert_event_item(event: &EventTimelineItem) -> Option<TimelineMessage> {
+fn convert_event_item(
+    event: &EventTimelineItem,
+    media_sources: &StdMutex<HashMap<String, MediaSource>>,
+) -> Option<TimelineMessage> {
     let message = event.content().as_message()?;
+
+    let event_id_str = event
+        .event_id()
+        .map(ToString::to_string)
+        .unwrap_or_default();
 
     let body = match message.msgtype() {
         MessageType::Text(t) => MessageBody::Text(t.body.clone()),
         MessageType::Notice(n) => MessageBody::Notice(n.body.clone()),
         MessageType::Emote(e) => MessageBody::Emote(e.body.clone()),
-        MessageType::Image(i) => MessageBody::Image(i.body.clone()),
-        MessageType::File(f) => MessageBody::File(f.body.clone()),
+        MessageType::Image(i) => {
+            if let Ok(mut sources) = media_sources.lock() {
+                sources.insert(event_id_str.clone(), i.source.clone());
+                if let Some(info) = &i.info
+                    && let Some(ref thumb_source) = info.thumbnail_source
+                {
+                    sources.insert(format!("{event_id_str}:thumb"), thumb_source.clone());
+                }
+            }
+            #[allow(clippy::cast_possible_truncation)]
+            let (width, height, mimetype) = i.info.as_ref().map_or((None, None, None), |info| {
+                let w = info.width.map(|v| {
+                    let n: u64 = v.into();
+                    n as u32
+                });
+                let h = info.height.map(|v| {
+                    let n: u64 = v.into();
+                    n as u32
+                });
+                (w, h, info.mimetype.clone())
+            });
+            MessageBody::Image {
+                alt_text: i.body.clone(),
+                meta: ImageMeta {
+                    width,
+                    height,
+                    mimetype,
+                    thumbnail_path: None,
+                },
+            }
+        }
+        MessageType::File(f) => {
+            if let Ok(mut sources) = media_sources.lock() {
+                sources.insert(event_id_str.clone(), f.source.clone());
+            }
+            let (mimetype, size) = f.info.as_ref().map_or((None, None), |info| {
+                (info.mimetype.clone(), info.size.map(Into::into))
+            });
+            MessageBody::File {
+                meta: FileMeta {
+                    filename: f.filename.clone().unwrap_or_else(|| f.body.clone()),
+                    mimetype,
+                    size,
+                },
+            }
+        }
         other => MessageBody::Unknown(other.body().to_string()),
     };
 
@@ -112,14 +171,10 @@ fn convert_event_item(event: &EventTimelineItem) -> Option<TimelineMessage> {
         _ => None,
     };
 
-    let event_id = event
-        .event_id()
-        .map(ToString::to_string)
-        .unwrap_or_default();
     let ts: u64 = event.timestamp().0.into();
 
     Some(TimelineMessage {
-        event_id: EventId(event_id),
+        event_id: EventId(event_id_str),
         sender: event.sender().to_string(),
         sender_display_name,
         body,
@@ -127,10 +182,13 @@ fn convert_event_item(event: &EventTimelineItem) -> Option<TimelineMessage> {
     })
 }
 
-fn convert_timeline_items(items: &[Arc<TimelineItem>]) -> Vec<TimelineMessage> {
+fn convert_timeline_items(
+    items: &[Arc<TimelineItem>],
+    media_sources: &StdMutex<HashMap<String, MediaSource>>,
+) -> Vec<TimelineMessage> {
     items
         .iter()
-        .filter_map(|item| convert_event_item(item.as_event()?))
+        .filter_map(|item| convert_event_item(item.as_event()?, media_sources))
         .collect()
 }
 
@@ -165,6 +223,105 @@ fn apply_timeline_diff(items: &mut Vec<Arc<TimelineItem>>, diff: VectorDiff<Arc<
         }
         VectorDiff::Truncate { length } => items.truncate(length),
         VectorDiff::Reset { values } => *items = values.into_iter().collect(),
+    }
+}
+
+fn lookup_media_source(
+    media_sources: &StdMutex<HashMap<String, MediaSource>>,
+    event_id: &str,
+) -> Option<MediaSource> {
+    let thumb_key = format!("{event_id}:thumb");
+    media_sources.lock().ok().and_then(|sources| {
+        sources
+            .get(&thumb_key)
+            .or_else(|| sources.get(event_id))
+            .cloned()
+    })
+}
+
+fn image_ext_from_magic(data: &[u8]) -> &'static str {
+    if data.starts_with(b"\x89PNG") {
+        "png"
+    } else if data.starts_with(b"\xFF\xD8\xFF") {
+        "jpg"
+    } else if data.starts_with(b"GIF8") {
+        "gif"
+    } else if data.starts_with(b"RIFF") && data.get(8..12) == Some(b"WEBP") {
+        "webp"
+    } else {
+        "png"
+    }
+}
+
+async fn fetch_single_thumbnail(
+    client: &Client,
+    cache_stem: &Path,
+    source: MediaSource,
+    event_id: &str,
+) -> Option<PathBuf> {
+    let format = MediaFormat::Thumbnail(MediaThumbnailSettings::new(400u32.into(), 400u32.into()));
+    let request = MediaRequestParameters { source, format };
+
+    let media = client.media();
+    let download = media.get_media_content(&request, true);
+    let data = match timeout(Duration::from_secs(5), download).await {
+        Ok(Ok(data)) => data,
+        Ok(Err(e)) => {
+            tracing::debug!("thumbnail download failed for {event_id}: {e}");
+            return None;
+        }
+        Err(_) => {
+            tracing::debug!("thumbnail download timed out for {event_id}");
+            return None;
+        }
+    };
+
+    let ext = image_ext_from_magic(&data);
+    let cache_path = cache_stem.with_extension(ext);
+
+    if let Err(e) = fs::write(&cache_path, &data).await {
+        tracing::warn!("failed to cache thumbnail: {e}");
+        return None;
+    }
+    Some(cache_path)
+}
+
+async fn download_thumbnails(
+    client: &Client,
+    cache_dir: &Path,
+    media_sources: &StdMutex<HashMap<String, MediaSource>>,
+    messages: &mut [TimelineMessage],
+) {
+    if let Err(e) = fs::create_dir_all(cache_dir).await {
+        tracing::warn!("failed to create media cache dir: {e}");
+        return;
+    }
+
+    for msg in messages.iter_mut() {
+        let MessageBody::Image { meta, .. } = &mut msg.body else {
+            continue;
+        };
+        let event_id = &msg.event_id.0;
+        let sanitized = event_id.replace(':', "_");
+        let cache_stem = cache_dir.join(&sanitized);
+
+        // Check for existing cached file with any known extension
+        let cached = ["png", "jpg", "gif", "webp"]
+            .iter()
+            .map(|ext| cache_stem.with_extension(ext))
+            .find(|p| p.exists());
+        if let Some(path) = cached {
+            meta.thumbnail_path = Some(path);
+            continue;
+        }
+
+        let Some(source) = lookup_media_source(media_sources, event_id) else {
+            continue;
+        };
+
+        if let Some(path) = fetch_single_thumbnail(client, &cache_stem, source, event_id).await {
+            meta.thumbnail_path = Some(path);
+        }
     }
 }
 
@@ -469,8 +626,12 @@ impl MatrixPort for MatrixAdapter {
 
         let (initial_items, mut stream) = timeline.subscribe().await;
 
+        let media_sources = Arc::clone(&self.media_sources);
+        let cache_dir = self.data_dir.join("media-cache");
+
         let mut items: Vec<Arc<TimelineItem>> = initial_items.into_iter().collect();
-        let messages = convert_timeline_items(&items);
+        let mut messages = convert_timeline_items(&items, &media_sources);
+        download_thumbnails(&client, &cache_dir, &media_sources, &mut messages).await;
         if timeline_tx.send(messages).is_err() {
             return Ok(());
         }
@@ -479,7 +640,8 @@ impl MatrixPort for MatrixAdapter {
             for diff in diffs {
                 apply_timeline_diff(&mut items, diff);
             }
-            let messages = convert_timeline_items(&items);
+            let mut messages = convert_timeline_items(&items, &media_sources);
+            download_thumbnails(&client, &cache_dir, &media_sources, &mut messages).await;
             if timeline_tx.send(messages).is_err() {
                 break;
             }
@@ -677,6 +839,46 @@ impl MatrixPort for MatrixAdapter {
         room.send(RoomMessageEventContent::text_plain(body)).await?;
 
         Ok(())
+    }
+
+    async fn download_media(&self, event_id: &str, thumbnail: bool) -> Result<Vec<u8>> {
+        let client = self.get_client().await?;
+
+        let key = if thumbnail {
+            format!("{event_id}:thumb")
+        } else {
+            event_id.to_string()
+        };
+
+        let source = self
+            .media_sources
+            .lock()
+            .map_err(|e| AppError::Other(format!("media source lock poisoned: {e}")))?
+            .get(&key)
+            .cloned()
+            .or_else(|| {
+                if thumbnail {
+                    self.media_sources.lock().ok()?.get(event_id).cloned()
+                } else {
+                    None
+                }
+            })
+            .ok_or_else(|| AppError::Other(format!("no media source for event {event_id}")))?;
+
+        let format = if thumbnail {
+            MediaFormat::Thumbnail(MediaThumbnailSettings::new(400u32.into(), 400u32.into()))
+        } else {
+            MediaFormat::File
+        };
+
+        let request = MediaRequestParameters { source, format };
+        let data = client
+            .media()
+            .get_media_content(&request, true)
+            .await
+            .map_err(|e| AppError::Other(format!("media download failed: {e}")))?;
+
+        Ok(data)
     }
 
     async fn subscribe_session_changes(

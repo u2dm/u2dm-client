@@ -61,7 +61,7 @@ fn run() -> Result<()> {
         if let Err(e) = cmd_tx.send(UiCommand::RestoreSession) {
             tracing::warn!("failed to send RestoreSession command: {e}");
         }
-        let mut service = AppService::new(matrix, storage, cmd_rx, cmd_tx, ui_tx);
+        let mut service = AppService::new(matrix, storage, cfg, cmd_rx, cmd_tx, ui_tx);
         tokio::spawn(async move {
             service.run().await;
         });

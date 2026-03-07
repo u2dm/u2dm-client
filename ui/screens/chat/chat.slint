@@ -2,6 +2,7 @@ import {
     RoomEntry,
     MessageEntry,
     SendMessageRequest,
+    SaveFileRequest,
 } from "components/types.slint";
 import { Palette } from "std-widgets.slint";
 import { Sidebar } from "components/sidebar.slint";
@@ -19,6 +20,8 @@ export component ChatScreen inherits Rectangle {
     callback select-room(string);
     callback logout();
     callback send-message(SendMessageRequest);
+    callback open-media(string);
+    callback save-file(SaveFileRequest);
 
     property <length> sidebar-width: 260px;
     property <length> divider-width: 4px;
@@ -54,6 +57,12 @@ export component ChatScreen inherits Rectangle {
         input-message <=> root.input-message;
         send-message(req) => {
             root.send-message(req);
+        }
+        open-media(id) => {
+            root.open-media(id);
+        }
+        save-file(req) => {
+            root.save-file(req);
         }
     }
 

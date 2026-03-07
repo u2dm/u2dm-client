@@ -1,22 +1,20 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use tokio::sync::mpsc;
-use tokio::task::JoinHandle;
-use tokio::time;
-use tokio_util::sync::CancellationToken;
-
 use futures_util::future;
-
 use rand::RngExt;
 use rand::distr::Alphanumeric;
+use tokio::sync::mpsc;
+use tokio::task::JoinHandle;
+use tokio::{fs, time};
+use tokio_util::sync::CancellationToken;
 
 use crate::commands::{UiCommand, UiEvent};
+use crate::config::AppConfig;
 use crate::domain::models::{
     ConnectionStatus, LoginCredentials, RoomId, Session, SyncSnapshot, TimelineMessage,
     UiErrorKind, VerificationEvent,
 };
-
 use crate::error::{AppError, Result};
 use crate::ports::matrix::MatrixPort;
 use crate::ports::storage::StoragePort;
@@ -58,6 +56,7 @@ impl ResettableToken {
 pub struct AppService {
     matrix: Arc<dyn MatrixPort>,
     storage: Arc<dyn StoragePort>,
+    config: AppConfig,
     cmd_rx: mpsc::UnboundedReceiver<UiCommand>,
     cmd_tx: mpsc::UnboundedSender<UiCommand>,
     ui_tx: mpsc::UnboundedSender<UiEvent>,
@@ -70,6 +69,7 @@ impl AppService {
     pub fn new(
         matrix: Arc<dyn MatrixPort>,
         storage: Arc<dyn StoragePort>,
+        config: AppConfig,
         cmd_rx: mpsc::UnboundedReceiver<UiCommand>,
         cmd_tx: mpsc::UnboundedSender<UiCommand>,
         ui_tx: mpsc::UnboundedSender<UiEvent>,
@@ -77,6 +77,7 @@ impl AppService {
         Self {
             matrix,
             storage,
+            config,
             cmd_rx,
             cmd_tx,
             ui_tx,
@@ -109,6 +110,12 @@ impl AppService {
                 }
                 UiCommand::SendMessage { room_id, body } => {
                     self.handle_send_message(room_id, body);
+                }
+                UiCommand::OpenMedia { event_id } => {
+                    self.handle_open_media(event_id);
+                }
+                UiCommand::SaveFile { event_id, filename } => {
+                    self.handle_save_file(event_id, filename);
                 }
                 UiCommand::AcceptVerification => {
                     self.handle_accept_verification().await;
@@ -331,6 +338,79 @@ impl AppService {
                     kind: UiErrorKind::Other,
                 }) {
                     tracing::debug!("failed to send Error event: {send_err}");
+                }
+            }
+        });
+        self.send_handles.push(handle);
+    }
+
+    fn handle_open_media(&mut self, event_id: String) {
+        self.send_handles.retain(|h| !h.is_finished());
+
+        let matrix = Arc::clone(&self.matrix);
+        let ui_tx = self.ui_tx.clone();
+        let cache_dir = self.config.data_dir.join("media-cache");
+        let handle = tokio::spawn(async move {
+            match matrix.download_media(&event_id, false).await {
+                Ok(data) => {
+                    let cache_path = cache_dir.join(event_id.replace(':', "_"));
+                    if let Err(e) = fs::create_dir_all(&cache_dir).await {
+                        tracing::warn!("failed to create media cache dir: {e}");
+                        return;
+                    }
+                    if let Err(e) = fs::write(&cache_path, &data).await {
+                        tracing::warn!("failed to write media file: {e}");
+                        return;
+                    }
+                    open::that_in_background(&cache_path);
+                }
+                Err(e) => {
+                    ui_tx
+                        .send(UiEvent::Error {
+                            message: format!("Failed to download media: {e}"),
+                            kind: UiErrorKind::Other,
+                        })
+                        .ok();
+                }
+            }
+        });
+        self.send_handles.push(handle);
+    }
+
+    fn handle_save_file(&mut self, event_id: String, filename: String) {
+        self.send_handles.retain(|h| !h.is_finished());
+
+        let matrix = Arc::clone(&self.matrix);
+        let ui_tx = self.ui_tx.clone();
+        let handle = tokio::spawn(async move {
+            let dialog = rfd::AsyncFileDialog::new().set_file_name(&filename);
+            let Some(file_handle) = dialog.save_file().await else {
+                return;
+            };
+            match matrix.download_media(&event_id, false).await {
+                Ok(data) => {
+                    if let Err(e) = file_handle.write(&data).await {
+                        ui_tx
+                            .send(UiEvent::Error {
+                                message: format!("Failed to save file: {e}"),
+                                kind: UiErrorKind::Other,
+                            })
+                            .ok();
+                    } else {
+                        ui_tx
+                            .send(UiEvent::FileSaved {
+                                path: file_handle.path().display().to_string(),
+                            })
+                            .ok();
+                    }
+                }
+                Err(e) => {
+                    ui_tx
+                        .send(UiEvent::Error {
+                            message: format!("Failed to download file: {e}"),
+                            kind: UiErrorKind::Other,
+                        })
+                        .ok();
                 }
             }
         });

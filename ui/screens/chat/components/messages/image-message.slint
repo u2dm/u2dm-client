@@ -1,0 +1,34 @@
+import { Palette } from "std-widgets.slint";
+
+export component ImageMessage inherits VerticalLayout {
+    in property <image> thumbnail;
+    in property <bool> has-thumbnail;
+    in property <string> body;
+    in property <string> event-id;
+
+    callback open-media(string);
+
+    if has-thumbnail: TouchArea {
+        mouse-cursor: pointer;
+        width: thumb-img.width;
+        height: thumb-img.height;
+        clicked => {
+            root.open-media(root.event-id);
+        }
+
+        thumb-img := Image {
+            source: root.thumbnail;
+            property <float> aspect: self.source.width / max(self.source.height, 1);
+            width: min(400px, max(267px, 400px * aspect));
+            height: min(400px, self.width / max(aspect, 0.01));
+            image-fit: ImageFit.contain;
+        }
+    }
+
+    if !has-thumbnail: Text {
+        text: "Image without thumbnail: " + root.body;
+        font-size: 14px;
+        color: Palette.foreground.transparentize(0.3);
+        wrap: word-wrap;
+    }
+}

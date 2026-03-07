@@ -225,6 +225,50 @@ impl SlintUiAdapter {
             })
             .map_err(|e| AppError::Ui(format!("{e:?}")))?;
 
+        let tx = cmd_tx.clone();
+        self.instance
+            .set_callback("open-media", move |args: &[Value]| -> Value {
+                let event_id = args
+                    .first()
+                    .and_then(|v| match v {
+                        Value::String(s) => Some(s.to_string()),
+                        _ => None,
+                    })
+                    .unwrap_or_default();
+                if !event_id.is_empty()
+                    && let Err(e) = tx.send(UiCommand::OpenMedia { event_id })
+                {
+                    tracing::debug!("failed to send OpenMedia command: {e}");
+                }
+                Value::Void
+            })
+            .map_err(|e| AppError::Ui(format!("{e:?}")))?;
+
+        let tx = cmd_tx.clone();
+        self.instance
+            .set_callback("save-file", move |args: &[Value]| -> Value {
+                let Some(Value::Struct(s)) = args.first() else {
+                    return Value::Void;
+                };
+                let field = |name: &str| -> String {
+                    s.get_field(name)
+                        .and_then(|v| match v {
+                            Value::String(s) => Some(s.to_string()),
+                            _ => None,
+                        })
+                        .unwrap_or_default()
+                };
+                let event_id = field("event-id");
+                let filename = field("filename");
+                if !event_id.is_empty()
+                    && let Err(e) = tx.send(UiCommand::SaveFile { event_id, filename })
+                {
+                    tracing::debug!("failed to send SaveFile command: {e}");
+                }
+                Value::Void
+            })
+            .map_err(|e| AppError::Ui(format!("{e:?}")))?;
+
         Ok(())
     }
 
@@ -260,6 +304,9 @@ fn dispatch_ui_event(inst: &ComponentInstance, event: UiEvent) {
         UiEvent::Timeline(messages) => apply_timeline(inst, &messages),
         UiEvent::ConnectionStatus(status) => apply_connection_status(inst, &status),
         UiEvent::Verification(event) => apply_verification(inst, &event),
+        UiEvent::FileSaved { path } => {
+            apply_status(inst, &format!("File saved to {path}"));
+        }
         UiEvent::LoggedOut => apply_logged_out(inst),
     }
 }
@@ -307,13 +354,13 @@ fn apply_timeline(inst: &ComponentInstance, messages: &[TimelineMessage]) {
     let entries: Vec<Value> = messages
         .iter()
         .map(|m| {
-            let body_text = match &m.body {
-                MessageBody::Text(s)
-                | MessageBody::Notice(s)
-                | MessageBody::Emote(s)
-                | MessageBody::Image(s)
-                | MessageBody::File(s)
-                | MessageBody::Unknown(s) => s.clone(),
+            let body_text = m.body.body_text().to_string();
+            let message_type = match &m.body {
+                MessageBody::Notice(_) => "notice",
+                MessageBody::Emote(_) => "emote",
+                MessageBody::Image { .. } => "image",
+                MessageBody::File { .. } => "file",
+                MessageBody::Text(_) | MessageBody::Unknown(_) => "text",
             };
             let sender = m
                 .sender_display_name
@@ -328,7 +375,7 @@ fn apply_timeline(inst: &ComponentInstance, messages: &[TimelineMessage]) {
                 })
                 .unwrap_or_default();
 
-            Value::Struct(Struct::from_iter([
+            let mut fields = vec![
                 (
                     "sender".to_string(),
                     Value::String(SharedString::from(&sender)),
@@ -341,7 +388,27 @@ fn apply_timeline(inst: &ComponentInstance, messages: &[TimelineMessage]) {
                     "timestamp".to_string(),
                     Value::String(SharedString::from(&timestamp)),
                 ),
-            ]))
+                (
+                    "message-type".to_string(),
+                    Value::String(SharedString::from(message_type)),
+                ),
+                (
+                    "event-id".to_string(),
+                    Value::String(SharedString::from(&m.event_id.0)),
+                ),
+            ];
+
+            let mut has_thumbnail = false;
+            if let MessageBody::Image { meta, .. } = &m.body
+                && let Some(thumb_path) = &meta.thumbnail_path
+                && let Ok(img) = slint::Image::load_from_path(thumb_path)
+            {
+                fields.push(("thumbnail".to_string(), Value::Image(img)));
+                has_thumbnail = true;
+            }
+            fields.push(("has-thumbnail".to_string(), Value::Bool(has_thumbnail)));
+
+            Value::Struct(Struct::from_iter(fields))
         })
         .collect();
     let model = Value::Model(ModelRc::new(VecModel::from(entries)));

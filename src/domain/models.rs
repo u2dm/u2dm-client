@@ -1,4 +1,5 @@
 use std::fmt;
+use std::path::PathBuf;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum UiErrorKind {
@@ -164,13 +165,40 @@ pub struct SyncSnapshot {
 pub struct EventId(pub String);
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
+pub struct ImageMeta {
+    pub width: Option<u32>,
+    pub height: Option<u32>,
+    pub mimetype: Option<String>,
+    pub thumbnail_path: Option<PathBuf>,
+}
+
+#[derive(Debug, Clone)]
+#[allow(dead_code)]
+pub struct FileMeta {
+    pub filename: String,
+    pub mimetype: Option<String>,
+    pub size: Option<u64>,
+}
+
+#[derive(Debug, Clone)]
 pub enum MessageBody {
     Text(String),
     Notice(String),
     Emote(String),
-    Image(String),
-    File(String),
+    Image { alt_text: String, meta: ImageMeta },
+    File { meta: FileMeta },
     Unknown(String),
+}
+
+impl MessageBody {
+    pub fn body_text(&self) -> &str {
+        match self {
+            Self::Text(s) | Self::Notice(s) | Self::Emote(s) | Self::Unknown(s) => s,
+            Self::Image { alt_text, .. } => alt_text,
+            Self::File { meta, .. } => &meta.filename,
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
