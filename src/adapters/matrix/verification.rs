@@ -66,9 +66,10 @@ pub(super) async fn listen_for_verification(
 ) -> Result<()> {
     ensure_verification_handlers(client, verification_req_rx).await?;
 
-    let mut rx_guard = verification_req_rx.lock().await;
-    let rx = rx_guard
-        .as_mut()
+    let mut rx = verification_req_rx
+        .lock()
+        .await
+        .take()
         .ok_or_else(|| AppError::Other("verification channel not initialized".into()))?;
 
     while let Some(request) = rx.recv().await {
@@ -86,6 +87,9 @@ pub(super) async fn listen_for_verification(
         *verification_request.lock().await = None;
         *sas_verification.lock().await = None;
     }
+
+    // Put the receiver back (channel is exhausted but keeps the slot consistent)
+    *verification_req_rx.lock().await = Some(rx);
 
     Ok(())
 }
@@ -168,10 +172,12 @@ async fn handle_sas_verification(
 pub(super) async fn accept_verification(
     verification_request: &Mutex<Option<VerificationRequest>>,
 ) -> Result<()> {
-    let guard = verification_request.lock().await;
-    let request = guard
-        .as_ref()
-        .ok_or_else(|| AppError::Other("No pending verification request".into()))?;
+    let request = {
+        let guard = verification_request.lock().await;
+        guard
+            .clone()
+            .ok_or_else(|| AppError::Other("No pending verification request".into()))?
+    };
     request.accept().await?;
     Ok(())
 }
@@ -179,10 +185,12 @@ pub(super) async fn accept_verification(
 pub(super) async fn confirm_verification(
     sas_verification: &Mutex<Option<SasVerification>>,
 ) -> Result<()> {
-    let guard = sas_verification.lock().await;
-    let sas = guard
-        .as_ref()
-        .ok_or_else(|| AppError::Other("No active SAS verification".into()))?;
+    let sas = {
+        let guard = sas_verification.lock().await;
+        guard
+            .clone()
+            .ok_or_else(|| AppError::Other("No active SAS verification".into()))?
+    };
     sas.confirm().await?;
     Ok(())
 }
@@ -191,9 +199,15 @@ pub(super) async fn reject_verification(
     sas_verification: &Mutex<Option<SasVerification>>,
     verification_request: &Mutex<Option<VerificationRequest>>,
 ) -> Result<()> {
-    if let Some(sas) = sas_verification.lock().await.take() {
+    let sas = sas_verification.lock().await.take();
+    let request = if sas.is_none() {
+        verification_request.lock().await.take()
+    } else {
+        None
+    };
+    if let Some(sas) = sas {
         sas.mismatch().await?;
-    } else if let Some(request) = verification_request.lock().await.take() {
+    } else if let Some(request) = request {
         request.cancel().await?;
     }
     Ok(())
