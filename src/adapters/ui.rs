@@ -1,7 +1,5 @@
 use std::cell::RefCell;
-use std::mem;
 use std::rc::Rc;
-use std::time::Duration;
 
 use slint::{Model, ModelRc, VecModel};
 use slint_interpreter::{
@@ -9,6 +7,10 @@ use slint_interpreter::{
 };
 use tokio::runtime::Runtime;
 use tokio::sync::mpsc;
+
+thread_local! {
+    static TIMELINE_MODEL: RefCell<Option<Rc<VecModel<Value>>>> = const { RefCell::new(None) };
+}
 
 use crate::commands::{UiCommand, UiEvent};
 use crate::domain::models::{
@@ -280,9 +282,8 @@ impl SlintUiAdapter {
         Ok(())
     }
 
-    pub fn spawn_event_handler(&self, ui_rx: mpsc::UnboundedReceiver<UiEvent>) {
+    pub fn spawn_event_handler(&self, mut ui_rx: mpsc::UnboundedReceiver<UiEvent>) {
         let weak = self.instance.as_weak();
-        let ui_rx = Rc::new(RefCell::new(ui_rx));
         let timeline_model: Rc<VecModel<Value>> = Rc::new(VecModel::default());
 
         set_prop(
@@ -291,22 +292,24 @@ impl SlintUiAdapter {
             Value::Model(ModelRc::from(Rc::clone(&timeline_model))),
         );
 
-        let timer = slint::Timer::default();
-        timer.start(
-            slint::TimerMode::Repeated,
-            Duration::from_millis(16),
-            move || {
-                let Some(inst) = weak.upgrade() else {
-                    return;
-                };
-                let mut rx = ui_rx.borrow_mut();
-                while let Ok(event) = rx.try_recv() {
-                    dispatch_ui_event(&inst, event, &timeline_model);
-                }
-            },
-        );
+        TIMELINE_MODEL.with(|cell| *cell.borrow_mut() = Some(timeline_model));
 
-        mem::forget(timer);
+        tokio::spawn(async move {
+            while let Some(event) = ui_rx.recv().await {
+                let weak = weak.clone();
+                slint::invoke_from_event_loop(move || {
+                    let Some(inst) = weak.upgrade() else {
+                        return;
+                    };
+                    TIMELINE_MODEL.with(|cell| {
+                        if let Some(model) = cell.borrow().as_ref() {
+                            dispatch_ui_event(&inst, event, model);
+                        }
+                    });
+                })
+                .ok();
+            }
+        });
     }
 
     pub fn run(&self) -> Result<()> {
@@ -315,11 +318,7 @@ impl SlintUiAdapter {
     }
 }
 
-fn dispatch_ui_event(
-    inst: &ComponentInstance,
-    event: UiEvent,
-    timeline_model: &Rc<VecModel<Value>>,
-) {
+fn dispatch_ui_event(inst: &ComponentInstance, event: UiEvent, timeline_model: &VecModel<Value>) {
     match event {
         UiEvent::ServerInfo(info) => apply_server_info(inst, &info),
         UiEvent::LoginSuccess { user_id } => apply_login_success(inst, &user_id),
