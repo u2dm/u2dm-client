@@ -1,3 +1,4 @@
+use std::fmt::Write;
 use std::future::Future;
 use std::sync::Arc;
 use std::time::Duration;
@@ -16,7 +17,6 @@ use crate::domain::models::{
 use crate::error::{AppError, Result};
 use crate::ports::matrix::MatrixPort;
 use crate::ports::storage::StoragePort;
-use std::fmt::Write;
 
 #[allow(clippy::let_underscore_must_use)]
 fn generate_passphrase() -> String {
@@ -574,69 +574,37 @@ impl AppService {
     }
 
     fn start_sync_pipeline(&mut self) {
-        let (sync_tx, mut sync_rx) = mpsc::unbounded_channel::<SyncEvent>();
-
-        let matrix_sync = Arc::clone(&self.matrix);
+        let matrix = Arc::clone(&self.matrix);
+        let ui_tx = self.ui_tx.clone();
+        let cmd_tx = self.cmd_tx.clone();
         let token = self.background.token();
+
+        let on_sync: Box<dyn Fn(SyncEvent) + Send + Sync> = Box::new(move |event| match event {
+            SyncEvent::Rooms(rooms) => {
+                ui_tx
+                    .send(UiEvent::ConnectionStatus(ConnectionStatus::Connected))
+                    .ok();
+                ui_tx.send(UiEvent::Rooms(rooms)).ok();
+            }
+            SyncEvent::ConnectionError(msg) => {
+                ui_tx
+                    .send(UiEvent::ConnectionStatus(ConnectionStatus::Error(msg)))
+                    .ok();
+            }
+            SyncEvent::SessionExpired => {
+                cmd_tx.send(UiCommand::SessionExpired).ok();
+            }
+        });
+
         self.background.spawn(async move {
             tokio::select! {
-                result = matrix_sync.start_sync(sync_tx) => {
+                result = matrix.start_sync(on_sync) => {
                     if let Err(e) = result {
                         tracing::error!("sync loop ended with error: {e}");
                     }
                 }
                 () = token.cancelled() => {
                     tracing::debug!("sync task cancelled");
-                }
-            }
-        });
-
-        let ui_tx = self.ui_tx.clone();
-        let cmd_tx = self.cmd_tx.clone();
-        let token = self.background.token();
-        self.background.spawn(async move {
-            loop {
-                tokio::select! {
-                    event = sync_rx.recv() => {
-                        let Some(event) = event else {
-                            tracing::debug!("sync channel closed unexpectedly");
-                            break;
-                        };
-                        match event {
-                            SyncEvent::Snapshot(snapshot) => {
-                                if let Err(e) = ui_tx.send(UiEvent::ConnectionStatus(
-                                    snapshot.connection_status.clone(),
-                                )) {
-                                    tracing::debug!("failed to send ConnectionStatus event: {e}");
-                                }
-                                if matches!(snapshot.connection_status, ConnectionStatus::Connected)
-                                    && let Err(e) = ui_tx.send(UiEvent::Rooms(snapshot.rooms))
-                                {
-                                    tracing::debug!("failed to send Rooms event: {e}");
-                                }
-                            }
-                            SyncEvent::SessionExpired => {
-                                cmd_tx.send(UiCommand::SessionExpired).ok();
-                                return;
-                            }
-                            SyncEvent::Fatal(msg) => {
-                                tracing::error!("sync fatal error: {msg}");
-                                if let Err(e) = ui_tx.send(UiEvent::ConnectionStatus(
-                                    ConnectionStatus::Error(msg),
-                                )) {
-                                    tracing::debug!("failed to send ConnectionStatus event: {e}");
-                                }
-                            }
-                            SyncEvent::Ended => {
-                                tracing::info!("sync stream ended normally");
-                                break;
-                            }
-                        }
-                    }
-                    () = token.cancelled() => {
-                        tracing::debug!("sync receiver cancelled");
-                        return;
-                    }
                 }
             }
         });

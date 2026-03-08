@@ -147,19 +147,11 @@ impl ConnectionStatus {
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct SyncSnapshot {
-    pub rooms: Vec<Room>,
-    pub connection_status: ConnectionStatus,
-}
-
 #[derive(Debug)]
-#[allow(dead_code)]
 pub enum SyncEvent {
-    Snapshot(SyncSnapshot),
+    Rooms(Vec<Room>),
+    ConnectionError(String),
     SessionExpired,
-    Fatal(String),
-    Ended,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

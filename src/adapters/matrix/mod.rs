@@ -106,9 +106,9 @@ impl MatrixPort for MatrixAdapter {
         result
     }
 
-    async fn start_sync(&self, state_tx: mpsc::UnboundedSender<SyncEvent>) -> Result<()> {
+    async fn start_sync(&self, on_sync: Box<dyn Fn(SyncEvent) + Send + Sync>) -> Result<()> {
         let client = self.get_client().await?;
-        rooms::start_sync(&client, state_tx).await
+        rooms::start_sync(&client, on_sync.into()).await
     }
 
     async fn restore_session(&self, session: &Session, passphrase: &str) -> Result<()> {
@@ -166,7 +166,7 @@ impl MatrixPort for MatrixAdapter {
         let tl = self.active_timeline.lock().await;
         let timeline = tl
             .as_ref()
-            .ok_or_else(|| AppError::Other("No active timeline — select a room first".into()))?;
+            .ok_or_else(|| AppError::Other("No active timeline. Select a room first".into()))?;
         let content = RoomMessageEventContent::text_plain(body);
         timeline
             .send(content.into())

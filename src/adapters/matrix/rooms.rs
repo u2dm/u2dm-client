@@ -1,12 +1,11 @@
-use futures_util::StreamExt;
-use matrix_sdk::Client;
+use std::sync::Arc;
+use std::time::Duration;
+
 use matrix_sdk::config::SyncSettings;
 use matrix_sdk::ruma::api::client::error::ErrorKind as RumaErrorKind;
-use tokio::sync::mpsc;
+use matrix_sdk::{Client, LoopCtrl};
 
-use crate::domain::models::{
-    ConnectionStatus, Room as DomainRoom, RoomId, SyncEvent, SyncSnapshot,
-};
+use crate::domain::models::{Room as DomainRoom, RoomId, SyncEvent};
 use crate::error::{AppError, Result};
 
 pub(super) async fn build_room_list(client: &Client) -> Vec<DomainRoom> {
@@ -73,34 +72,36 @@ pub(super) async fn fetch_rooms(client: &Client) -> Result<Vec<DomainRoom>> {
 
 pub(super) async fn start_sync(
     client: &Client,
-    state_tx: mpsc::UnboundedSender<SyncEvent>,
+    on_sync: Arc<dyn Fn(SyncEvent) + Send + Sync>,
 ) -> Result<()> {
-    let stream = client.sync_stream(SyncSettings::default()).await;
-    tokio::pin!(stream);
+    let settings = SyncSettings::default().timeout(Duration::from_secs(30));
+    let sync_client = client.clone();
 
-    while let Some(result) = stream.next().await {
-        let event = match result {
-            Ok(_) => SyncEvent::Snapshot(SyncSnapshot {
-                rooms: build_room_list(client).await,
-                connection_status: ConnectionStatus::Connected,
-            }),
-            Err(e) => {
-                if is_auth_error(&e) {
-                    tracing::warn!("unrecoverable auth error in sync loop, stopping");
-                    state_tx.send(SyncEvent::SessionExpired).ok();
-                    return Ok(());
+    client
+        .sync_with_result_callback(settings, move |result| {
+            let on_sync = Arc::clone(&on_sync);
+            let client = sync_client.clone();
+            async move {
+                match result {
+                    Ok(_) => {
+                        let rooms = build_room_list(&client).await;
+                        on_sync(SyncEvent::Rooms(rooms));
+                        Ok(LoopCtrl::Continue)
+                    }
+                    Err(e) => {
+                        if is_auth_error(&e) {
+                            tracing::warn!("unrecoverable auth error in sync loop, stopping");
+                            on_sync(SyncEvent::SessionExpired);
+                            Ok(LoopCtrl::Break)
+                        } else {
+                            on_sync(SyncEvent::ConnectionError(e.to_string()));
+                            Ok(LoopCtrl::Continue)
+                        }
+                    }
                 }
-                SyncEvent::Snapshot(SyncSnapshot {
-                    rooms: Vec::new(),
-                    connection_status: ConnectionStatus::Error(e.to_string()),
-                })
             }
-        };
-        if state_tx.send(event).is_err() {
-            break;
-        }
-    }
+        })
+        .await?;
 
-    state_tx.send(SyncEvent::Ended).ok();
     Ok(())
 }
