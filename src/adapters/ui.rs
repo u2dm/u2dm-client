@@ -10,7 +10,10 @@ use tokio::sync::mpsc;
 
 thread_local! {
     static TIMELINE_MODEL: RefCell<Option<Rc<VecModel<Value>>>> = const { RefCell::new(None) };
+    static ROOMS_MODEL: RefCell<Option<Rc<VecModel<Value>>>> = const { RefCell::new(None) };
 }
+
+use std::collections::HashMap;
 
 use crate::commands::{UiCommand, UiEvent};
 use crate::domain::models::{
@@ -277,21 +280,32 @@ impl SlintUiAdapter {
     pub fn spawn_event_handler(&self, mut ui_rx: mpsc::UnboundedReceiver<UiEvent>) {
         let weak = self.instance.as_weak();
         let timeline_model: Rc<VecModel<Value>> = Rc::new(VecModel::default());
+        let rooms_model: Rc<VecModel<Value>> = Rc::new(VecModel::default());
 
         set_prop(
             &self.instance,
             "timeline",
             Value::Model(ModelRc::from(Rc::clone(&timeline_model))),
         );
+        set_prop(
+            &self.instance,
+            "rooms",
+            Value::Model(ModelRc::from(Rc::clone(&rooms_model))),
+        );
 
         TIMELINE_MODEL.with(|cell| *cell.borrow_mut() = Some(timeline_model));
+        ROOMS_MODEL.with(|cell| *cell.borrow_mut() = Some(rooms_model));
 
         tokio::spawn(async move {
             while let Some(event) = ui_rx.recv().await {
                 weak.upgrade_in_event_loop(move |inst| {
                     TIMELINE_MODEL.with(|cell| {
-                        if let Some(model) = cell.borrow().as_ref() {
-                            dispatch_ui_event(&inst, event, model);
+                        if let Some(tl) = cell.borrow().as_ref() {
+                            ROOMS_MODEL.with(|rc| {
+                                if let Some(rm) = rc.borrow().as_ref() {
+                                    dispatch_ui_event(&inst, event, tl, rm);
+                                }
+                            });
                         }
                     });
                 })
@@ -306,14 +320,19 @@ impl SlintUiAdapter {
     }
 }
 
-fn dispatch_ui_event(inst: &ComponentInstance, event: UiEvent, timeline_model: &VecModel<Value>) {
+fn dispatch_ui_event(
+    inst: &ComponentInstance,
+    event: UiEvent,
+    timeline_model: &VecModel<Value>,
+    rooms_model: &VecModel<Value>,
+) {
     match event {
         UiEvent::ServerInfo(info) => apply_server_info(inst, &info),
         UiEvent::LoginSuccess { user_id } => apply_login_success(inst, &user_id),
         UiEvent::LoginError(message) => apply_login_error(inst, &message),
         UiEvent::ToastError(message) => apply_toast_error(inst, &message),
         UiEvent::Status(msg) => apply_status(inst, &msg),
-        UiEvent::Rooms(rooms) => apply_rooms(inst, &rooms),
+        UiEvent::Rooms(rooms) => apply_rooms(rooms_model, &rooms),
         UiEvent::Timeline(patch) => apply_timeline_patch(timeline_model, patch),
         UiEvent::ConnectionStatus(status) => apply_connection_status(inst, &status),
         UiEvent::Verification(event) => apply_verification(inst, &event),
@@ -322,6 +341,7 @@ fn dispatch_ui_event(inst: &ComponentInstance, event: UiEvent, timeline_model: &
         }
         UiEvent::LoggedOut => {
             timeline_model.set_vec(Vec::new());
+            rooms_model.set_vec(Vec::new());
             apply_logged_out(inst);
         }
     }
@@ -656,30 +676,83 @@ fn apply_logged_out(inst: &ComponentInstance) {
         Value::String(SharedString::default()),
     );
     let empty_model = Value::Model(ModelRc::new(VecModel::<Value>::default()));
-    set_prop(inst, "rooms", empty_model.clone());
     set_prop(inst, "verification-emojis", empty_model);
 }
 
-fn apply_rooms(inst: &ComponentInstance, rooms: &[Room]) {
-    let entries: Vec<Value> = rooms
+fn room_to_value(r: &Room) -> Value {
+    Value::Struct(Struct::from_iter([
+        ("id".to_string(), Value::String(SharedString::from(&r.id.0))),
+        (
+            "name".to_string(),
+            Value::String(SharedString::from(&r.display_name)),
+        ),
+        #[allow(clippy::cast_precision_loss)]
+        ("unread".to_string(), Value::Number(r.unread_count as f64)),
+        #[allow(clippy::cast_precision_loss)]
+        (
+            "mentions".to_string(),
+            Value::Number(r.mention_count as f64),
+        ),
+    ]))
+}
+
+fn room_id_from_value(val: &Value) -> Option<&SharedString> {
+    if let Value::Struct(s) = val
+        && let Some(Value::String(id)) = s.get_field("id")
+    {
+        Some(id)
+    } else {
+        None
+    }
+}
+
+fn apply_rooms(model: &VecModel<Value>, rooms: &[Room]) {
+    let new_by_id: HashMap<&str, (usize, &Room)> = rooms
         .iter()
-        .map(|r| {
-            Value::Struct(Struct::from_iter([
-                ("id".to_string(), Value::String(SharedString::from(&r.id.0))),
-                (
-                    "name".to_string(),
-                    Value::String(SharedString::from(&r.display_name)),
-                ),
-                #[allow(clippy::cast_precision_loss)]
-                ("unread".to_string(), Value::Number(r.unread_count as f64)),
-                #[allow(clippy::cast_precision_loss)]
-                (
-                    "mentions".to_string(),
-                    Value::Number(r.mention_count as f64),
-                ),
-            ]))
-        })
+        .enumerate()
+        .map(|(i, r)| (r.id.0.as_str(), (i, r)))
         .collect();
-    let model = Value::Model(ModelRc::new(VecModel::from(entries)));
-    set_prop(inst, "rooms", model);
+
+    let mut i = 0;
+    while i < model.row_count() {
+        let existing = model.row_data(i);
+        let keep = existing
+            .as_ref()
+            .and_then(room_id_from_value)
+            .is_some_and(|id| new_by_id.contains_key(id.as_str()));
+
+        if keep {
+            i += 1;
+        } else {
+            model.remove(i);
+        }
+    }
+
+    for idx in 0..rooms.len() {
+        let room = rooms.get(idx);
+        let Some(room) = room else { continue };
+        let new_val = room_to_value(room);
+
+        if idx < model.row_count() {
+            let existing = model.row_data(idx);
+            let same_id = existing
+                .as_ref()
+                .and_then(room_id_from_value)
+                .is_some_and(|id| id.as_str() == room.id.0);
+
+            if same_id {
+                if existing.as_ref() != Some(&new_val) {
+                    model.set_row_data(idx, new_val);
+                }
+            } else {
+                model.insert(idx, new_val);
+            }
+        } else {
+            model.push(new_val);
+        }
+    }
+
+    while model.row_count() > rooms.len() {
+        model.remove(model.row_count() - 1);
+    }
 }
