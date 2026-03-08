@@ -64,7 +64,14 @@ impl MatrixAdapter {
 #[async_trait]
 impl MatrixPort for MatrixAdapter {
     async fn discover_auth(&self, homeserver: &str, passphrase: &str) -> Result<ServerInfo> {
-        auth::discover_auth(&self.client, &self.data_dir, homeserver, passphrase).await
+        auth::discover_auth(
+            &self.client,
+            &self.data_dir,
+            &self.cache_dir,
+            homeserver,
+            passphrase,
+        )
+        .await
     }
 
     async fn login_password(&self, creds: LoginCredentials) -> Result<Session> {
@@ -109,7 +116,14 @@ impl MatrixPort for MatrixAdapter {
     }
 
     async fn restore_session(&self, session: &Session, passphrase: &str) -> Result<()> {
-        auth::restore_session(&self.client, &self.data_dir, session, passphrase).await
+        auth::restore_session(
+            &self.client,
+            &self.data_dir,
+            &self.cache_dir,
+            session,
+            passphrase,
+        )
+        .await
     }
 
     async fn logout(&self) -> Result<()> {
@@ -125,6 +139,7 @@ impl MatrixPort for MatrixAdapter {
         auth::clear_store(
             &self.client,
             &self.data_dir,
+            &self.cache_dir,
             &self.verification_req_rx,
             &self.verification_handler_guards,
         )

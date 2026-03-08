@@ -23,13 +23,19 @@ use crate::error::{AppError, Result};
 pub(super) async fn discover_auth(
     client_lock: &RwLock<Option<Client>>,
     data_dir: &Path,
+    cache_dir: &Path,
     homeserver: &str,
     passphrase: &str,
 ) -> Result<ServerInfo> {
     let client = Client::builder()
         .server_name_or_homeserver_url(homeserver)
         .handle_refresh_tokens()
-        .sqlite_store(data_dir.join("matrix-store"), Some(passphrase))
+        .respect_login_well_known(true)
+        .sqlite_store_with_cache_path(
+            data_dir.join("matrix-store"),
+            cache_dir.join("matrix-store"),
+            Some(passphrase),
+        )
         .build()
         .await
         .map_err(|e| AppError::Other(e.to_string()))?;
@@ -140,13 +146,19 @@ pub(super) async fn login_oauth_finish(
 pub(super) async fn restore_session(
     client_lock: &RwLock<Option<Client>>,
     data_dir: &Path,
+    cache_dir: &Path,
     session: &Session,
     passphrase: &str,
 ) -> Result<()> {
     let client = Client::builder()
         .homeserver_url(&session.homeserver)
         .handle_refresh_tokens()
-        .sqlite_store(data_dir.join("matrix-store"), Some(passphrase))
+        .respect_login_well_known(true)
+        .sqlite_store_with_cache_path(
+            data_dir.join("matrix-store"),
+            cache_dir.join("matrix-store"),
+            Some(passphrase),
+        )
         .build()
         .await
         .map_err(|e| AppError::Other(e.to_string()))?;
@@ -199,6 +211,7 @@ pub(super) async fn logout(
 pub(super) async fn clear_store(
     client_lock: &RwLock<Option<Client>>,
     data_dir: &Path,
+    cache_dir: &Path,
     verification_req_rx: &Mutex<Option<mpsc::UnboundedReceiver<VerificationRequest>>>,
     verification_handler_guards: &Mutex<Vec<EventHandlerDropGuard>>,
 ) -> Result<()> {
@@ -207,6 +220,10 @@ pub(super) async fn clear_store(
     let store_path = data_dir.join("matrix-store");
     if store_path.exists() {
         fs::remove_dir_all(&store_path).await?;
+    }
+    let cache_path = cache_dir.join("matrix-store");
+    if cache_path.exists() {
+        fs::remove_dir_all(&cache_path).await?;
     }
     *verification_req_rx.lock().await = None;
     Ok(())
