@@ -17,7 +17,6 @@ use matrix_sdk::ruma::OwnedRoomId;
 use matrix_sdk::ruma::events::room::MediaSource;
 use matrix_sdk::ruma::events::room::message::RoomMessageEventContent;
 use matrix_sdk::utils::local_server::LocalServerRedirectHandle;
-use matrix_sdk_ui::timeline::Timeline;
 use tokio::sync::{Mutex, RwLock, mpsc};
 
 use crate::domain::models::{
@@ -34,7 +33,6 @@ pub struct MatrixAdapter {
     verification_request: Mutex<Option<VerificationRequest>>,
     sas_verification: Mutex<Option<SasVerification>>,
     media_sources: Arc<StdMutex<HashMap<String, MediaSource>>>,
-    active_timeline: Mutex<Option<Timeline>>,
     verification_req_rx: Mutex<Option<mpsc::UnboundedReceiver<VerificationRequest>>>,
     verification_handler_guards: Mutex<Vec<EventHandlerDropGuard>>,
 }
@@ -48,7 +46,6 @@ impl MatrixAdapter {
             verification_request: Mutex::new(None),
             sas_verification: Mutex::new(None),
             media_sources: Arc::new(StdMutex::new(HashMap::new())),
-            active_timeline: Mutex::new(None),
             verification_req_rx: Mutex::new(None),
             verification_handler_guards: Mutex::new(Vec::new()),
         }
@@ -95,17 +92,14 @@ impl MatrixPort for MatrixAdapter {
         timeline_tx: mpsc::UnboundedSender<TimelinePatch>,
     ) -> Result<()> {
         let client = self.get_client().await?;
-        let result = timeline::subscribe_timeline(
+        timeline::subscribe_timeline(
             &client,
             &self.data_dir,
             &self.media_sources,
             room_id,
             timeline_tx,
-            &self.active_timeline,
         )
-        .await;
-        *self.active_timeline.lock().await = None;
-        result
+        .await
     }
 
     async fn start_sync(&self, on_sync: Box<dyn Fn(SyncEvent) + Send + Sync>) -> Result<()> {
