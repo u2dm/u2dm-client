@@ -383,9 +383,13 @@ impl AppService {
         let ui_tx = self.ui_tx.clone();
         let cache_dir = self.config.data_dir.join("media-cache");
         self.fire_and_forget.spawn(async move {
+            let cache_path = cache_dir.join(event_id.replace(':', "_"));
+            if cache_path.exists() {
+                open::that_in_background(&cache_path);
+                return;
+            }
             match matrix.download_media(&event_id, false).await {
                 Ok(data) => {
-                    let cache_path = cache_dir.join(event_id.replace(':', "_"));
                     if let Err(e) = fs::create_dir_all(&cache_dir).await {
                         tracing::warn!("failed to create media cache dir: {e}");
                         return;
