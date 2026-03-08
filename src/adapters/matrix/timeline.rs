@@ -344,17 +344,22 @@ pub(super) async fn subscribe_timeline(
         .get_room(&room_id_parsed)
         .ok_or_else(|| AppError::Other("Room not found".into()))?;
 
-    let timeline = room
-        .timeline()
-        .await
-        .map_err(|e| AppError::Other(e.to_string()))?;
+    let timeline = Arc::new(
+        room.timeline()
+            .await
+            .map_err(|e| AppError::Other(e.to_string()))?,
+    );
 
     if let Err(e) = timeline.paginate_backwards(50).await {
         tracing::warn!("failed to paginate timeline backwards: {e}");
     }
 
     let (initial_items, mut stream) = timeline.subscribe().await;
-    let _keep_alive = timeline;
+
+    tokio::spawn({
+        let timeline = Arc::clone(&timeline);
+        async move { timeline.fetch_members().await }
+    });
 
     let media_sources = Arc::clone(media_sources);
     let cache_dir = cache_dir.join("media-cache");
@@ -367,8 +372,15 @@ pub(super) async fn subscribe_timeline(
         return Ok(());
     }
 
+    let mut key_stream = std::pin::pin!(
+        client
+            .encryption()
+            .backups()
+            .room_keys_for_room_stream(&room_id_parsed)
+    );
+
     let backup_client = client.clone();
-    let backup_room_id = room_id_parsed.clone();
+    let backup_room_id = room_id_parsed;
     tokio::spawn(async move {
         if let Err(e) = backup_client
             .encryption()
@@ -380,29 +392,44 @@ pub(super) async fn subscribe_timeline(
         }
     });
 
-    while let Some(diffs) = stream.next().await {
-        let mut batch = Vec::new();
-        for diff in diffs {
-            let patch = diff_to_patch(
-                &mut items,
-                diff,
-                client,
-                &cache_dir,
-                &media_sources,
-                own_user_id.as_deref(),
-            )
-            .await;
-            if let Some(patch) = patch {
-                batch.push(patch);
+    loop {
+        tokio::select! {
+            biased;
+            diffs = stream.next() => {
+                let Some(diffs) = diffs else { break };
+                let mut batch = Vec::new();
+                for diff in diffs {
+                    let patch = diff_to_patch(
+                        &mut items,
+                        diff,
+                        client,
+                        &cache_dir,
+                        &media_sources,
+                        own_user_id.as_deref(),
+                    )
+                    .await;
+                    if let Some(patch) = patch {
+                        batch.push(patch);
+                    }
+                }
+                let patch = match batch.len() {
+                    0 => continue,
+                    1 => batch.remove(0),
+                    _ => TimelinePatch::Batch(batch),
+                };
+                if timeline_tx.send(patch).is_err() {
+                    return Ok(());
+                }
             }
-        }
-        let patch = match batch.len() {
-            0 => continue,
-            1 => batch.remove(0),
-            _ => TimelinePatch::Batch(batch),
-        };
-        if timeline_tx.send(patch).is_err() {
-            return Ok(());
+            result = key_stream.next() => {
+                if let Some(Ok(keys)) = result {
+                    let session_ids: Vec<String> =
+                        keys.into_values().flatten().collect();
+                    if !session_ids.is_empty() {
+                        timeline.retry_decryption(session_ids).await;
+                    }
+                }
+            }
         }
     }
 
