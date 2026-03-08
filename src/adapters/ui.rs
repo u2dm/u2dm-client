@@ -288,11 +288,7 @@ impl SlintUiAdapter {
 
         tokio::spawn(async move {
             while let Some(event) = ui_rx.recv().await {
-                let weak = weak.clone();
-                slint::invoke_from_event_loop(move || {
-                    let Some(inst) = weak.upgrade() else {
-                        return;
-                    };
+                weak.upgrade_in_event_loop(move |inst| {
                     TIMELINE_MODEL.with(|cell| {
                         if let Some(model) = cell.borrow().as_ref() {
                             dispatch_ui_event(&inst, event, model);
