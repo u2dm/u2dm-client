@@ -11,6 +11,7 @@ use std::sync::{Arc, Mutex as StdMutex};
 use async_trait::async_trait;
 use matrix_sdk::Client;
 use matrix_sdk::encryption::verification::{SasVerification, VerificationRequest};
+use matrix_sdk::event_handler::EventHandlerDropGuard;
 use matrix_sdk::ruma::events::room::MediaSource;
 use matrix_sdk::utils::local_server::LocalServerRedirectHandle;
 use tokio::sync::{Mutex, RwLock, mpsc};
@@ -30,6 +31,7 @@ pub struct MatrixAdapter {
     sas_verification: Mutex<Option<SasVerification>>,
     media_sources: Arc<StdMutex<HashMap<String, MediaSource>>>,
     verification_req_rx: Mutex<Option<mpsc::UnboundedReceiver<VerificationRequest>>>,
+    verification_handler_guards: Mutex<Vec<EventHandlerDropGuard>>,
 }
 
 impl MatrixAdapter {
@@ -42,6 +44,7 @@ impl MatrixAdapter {
             sas_verification: Mutex::new(None),
             media_sources: Arc::new(StdMutex::new(HashMap::new())),
             verification_req_rx: Mutex::new(None),
+            verification_handler_guards: Mutex::new(Vec::new()),
         }
     }
 
@@ -106,11 +109,22 @@ impl MatrixPort for MatrixAdapter {
     }
 
     async fn logout(&self) -> Result<()> {
-        auth::logout(&self.client, &self.verification_req_rx).await
+        auth::logout(
+            &self.client,
+            &self.verification_req_rx,
+            &self.verification_handler_guards,
+        )
+        .await
     }
 
     async fn clear_store(&self) -> Result<()> {
-        auth::clear_store(&self.client, &self.data_dir, &self.verification_req_rx).await
+        auth::clear_store(
+            &self.client,
+            &self.data_dir,
+            &self.verification_req_rx,
+            &self.verification_handler_guards,
+        )
+        .await
     }
 
     async fn listen_for_verification(
@@ -121,6 +135,7 @@ impl MatrixPort for MatrixAdapter {
         verification::listen_for_verification(
             &client,
             &self.verification_req_rx,
+            &self.verification_handler_guards,
             &self.verification_request,
             &self.sas_verification,
             verification_tx,

@@ -3,6 +3,7 @@ use matrix_sdk::Client;
 use matrix_sdk::encryption::verification::{
     SasState, SasVerification, Verification, VerificationRequest, VerificationRequestState,
 };
+use matrix_sdk::event_handler::EventHandlerDropGuard;
 use matrix_sdk::ruma::events::key::verification::request::ToDeviceKeyVerificationRequestEvent;
 use matrix_sdk::ruma::events::room::message::{MessageType, OriginalSyncRoomMessageEvent};
 use tokio::sync::{Mutex, mpsc};
@@ -10,17 +11,17 @@ use tokio::sync::{Mutex, mpsc};
 use crate::domain::models::{VerificationEmoji, VerificationEvent};
 use crate::error::{AppError, Result};
 
-pub(super) async fn ensure_verification_handlers(
+fn setup_verification_handlers(
     client: &Client,
-    verification_req_rx: &Mutex<Option<mpsc::UnboundedReceiver<VerificationRequest>>>,
-) -> Result<()> {
-    if verification_req_rx.lock().await.is_some() {
-        return Ok(());
-    }
+    verification_req_rx: &mut Option<mpsc::UnboundedReceiver<VerificationRequest>>,
+    handler_guards: &mut Vec<EventHandlerDropGuard>,
+) {
+    handler_guards.clear();
+    *verification_req_rx = None;
 
     let (req_tx, rx) = mpsc::unbounded_channel::<VerificationRequest>();
 
-    client.add_event_handler({
+    let to_device_handle = client.add_event_handler({
         let req_tx = req_tx.clone();
         move |ev: ToDeviceKeyVerificationRequestEvent, client: Client| {
             let req_tx = req_tx.clone();
@@ -36,8 +37,7 @@ pub(super) async fn ensure_verification_handlers(
         }
     });
 
-    client.add_event_handler({
-        let req_tx = req_tx.clone();
+    let in_room_handle = client.add_event_handler({
         move |ev: OriginalSyncRoomMessageEvent, client: Client| {
             let req_tx = req_tx.clone();
             async move {
@@ -53,24 +53,28 @@ pub(super) async fn ensure_verification_handlers(
         }
     });
 
-    *verification_req_rx.lock().await = Some(rx);
-    Ok(())
+    handler_guards.push(client.event_handler_drop_guard(to_device_handle));
+    handler_guards.push(client.event_handler_drop_guard(in_room_handle));
+    *verification_req_rx = Some(rx);
 }
 
 pub(super) async fn listen_for_verification(
     client: &Client,
     verification_req_rx: &Mutex<Option<mpsc::UnboundedReceiver<VerificationRequest>>>,
+    handler_guards: &Mutex<Vec<EventHandlerDropGuard>>,
     verification_request: &Mutex<Option<VerificationRequest>>,
     sas_verification: &Mutex<Option<SasVerification>>,
     verification_tx: mpsc::UnboundedSender<VerificationEvent>,
 ) -> Result<()> {
-    ensure_verification_handlers(client, verification_req_rx).await?;
+    let mut rx_guard = verification_req_rx.lock().await;
+    let mut guards = handler_guards.lock().await;
+    setup_verification_handlers(client, &mut rx_guard, &mut guards);
+    drop(guards);
 
-    let mut rx = verification_req_rx
-        .lock()
-        .await
+    let mut rx = rx_guard
         .take()
         .ok_or_else(|| AppError::Other("verification channel not initialized".into()))?;
+    drop(rx_guard);
 
     while let Some(request) = rx.recv().await {
         *verification_request.lock().await = Some(request.clone());
@@ -87,9 +91,6 @@ pub(super) async fn listen_for_verification(
         *verification_request.lock().await = None;
         *sas_verification.lock().await = None;
     }
-
-    // Put the receiver back (channel is exhausted but keeps the slot consistent)
-    *verification_req_rx.lock().await = Some(rx);
 
     Ok(())
 }

@@ -8,6 +8,7 @@ use matrix_sdk::authentication::oauth::registration::{
 };
 use matrix_sdk::authentication::oauth::{ClientId, OAuthSession, UrlOrQuery, UserSession};
 use matrix_sdk::encryption::verification::VerificationRequest;
+use matrix_sdk::event_handler::EventHandlerDropGuard;
 use matrix_sdk::ruma::serde::Raw;
 use matrix_sdk::ruma::{IdParseError, OwnedDeviceId, OwnedUserId};
 use matrix_sdk::utils::local_server::{LocalServerBuilder, LocalServerRedirectHandle};
@@ -180,7 +181,9 @@ pub(super) async fn restore_session(
 pub(super) async fn logout(
     client_lock: &RwLock<Option<Client>>,
     verification_req_rx: &Mutex<Option<mpsc::UnboundedReceiver<VerificationRequest>>>,
+    verification_handler_guards: &Mutex<Vec<EventHandlerDropGuard>>,
 ) -> Result<()> {
+    verification_handler_guards.lock().await.clear();
     let mut guard = client_lock.write().await;
     if let Some(client) = guard.as_ref()
         && let Err(e) = client.matrix_auth().logout().await
@@ -197,7 +200,9 @@ pub(super) async fn clear_store(
     client_lock: &RwLock<Option<Client>>,
     data_dir: &Path,
     verification_req_rx: &Mutex<Option<mpsc::UnboundedReceiver<VerificationRequest>>>,
+    verification_handler_guards: &Mutex<Vec<EventHandlerDropGuard>>,
 ) -> Result<()> {
+    verification_handler_guards.lock().await.clear();
     *client_lock.write().await = None;
     let store_path = data_dir.join("matrix-store");
     if store_path.exists() {
