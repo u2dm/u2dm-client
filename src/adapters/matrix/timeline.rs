@@ -176,7 +176,11 @@ fn msg_index_at(items: &[Arc<TimelineItem>], raw_index: usize) -> usize {
 }
 
 fn is_renderable(item: &TimelineItem) -> bool {
-    item.as_event().is_some()
+    let Some(event) = item.as_event() else {
+        return false;
+    };
+    let content = event.content();
+    content.as_message().is_some() || content.as_unable_to_decrypt().is_some()
 }
 
 #[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
