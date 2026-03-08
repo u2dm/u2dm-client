@@ -51,7 +51,10 @@ fn run() -> Result<()> {
 
     ui.register_callbacks(&cmd_tx)?;
 
-    let matrix: Arc<dyn MatrixPort> = Arc::new(MatrixAdapter::new(cfg.data_dir.clone()));
+    let matrix: Arc<dyn MatrixPort> = Arc::new(MatrixAdapter::new(
+        cfg.data_dir.clone(),
+        cfg.cache_dir.clone(),
+    ));
     let storage: Arc<dyn StoragePort> = Arc::new(SecureStorage::new(&cfg.data_dir));
 
     let cmd_tx_quit = cmd_tx.clone();

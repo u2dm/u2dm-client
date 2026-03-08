@@ -325,7 +325,7 @@ async fn diff_to_patch(
 
 pub(super) async fn subscribe_timeline(
     client: &Client,
-    data_dir: &Path,
+    cache_dir: &Path,
     media_sources: &Arc<StdMutex<HashMap<String, MediaSource>>>,
     room_id: &RoomId,
     timeline_tx: mpsc::UnboundedSender<TimelinePatch>,
@@ -353,7 +353,7 @@ pub(super) async fn subscribe_timeline(
     let _keep_alive = timeline;
 
     let media_sources = Arc::clone(media_sources);
-    let cache_dir = data_dir.join("media-cache");
+    let cache_dir = cache_dir.join("media-cache");
     let own_user_id = client.user_id().map(ToString::to_string);
 
     let mut items: Vec<Arc<TimelineItem>> = initial_items.into_iter().collect();

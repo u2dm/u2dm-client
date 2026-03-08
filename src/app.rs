@@ -381,7 +381,7 @@ impl AppService {
 
         let matrix = Arc::clone(&self.matrix);
         let ui_tx = self.ui_tx.clone();
-        let cache_dir = self.config.data_dir.join("media-cache");
+        let cache_dir = self.config.cache_dir.join("media-cache");
         self.fire_and_forget.spawn(async move {
             let cache_path = cache_dir.join(event_id.replace(':', "_"));
             if cache_path.exists() {

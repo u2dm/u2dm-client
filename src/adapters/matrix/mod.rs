@@ -27,6 +27,7 @@ use crate::ports::matrix::MatrixPort;
 
 pub struct MatrixAdapter {
     data_dir: PathBuf,
+    cache_dir: PathBuf,
     client: RwLock<Option<Client>>,
     redirect_handle: Mutex<Option<LocalServerRedirectHandle>>,
     verification_request: Mutex<Option<VerificationRequest>>,
@@ -37,9 +38,10 @@ pub struct MatrixAdapter {
 }
 
 impl MatrixAdapter {
-    pub fn new(data_dir: PathBuf) -> Self {
+    pub fn new(data_dir: PathBuf, cache_dir: PathBuf) -> Self {
         Self {
             data_dir,
+            cache_dir,
             client: RwLock::new(None),
             redirect_handle: Mutex::new(None),
             verification_request: Mutex::new(None),
@@ -93,7 +95,7 @@ impl MatrixPort for MatrixAdapter {
         let client = self.get_client().await?;
         timeline::subscribe_timeline(
             &client,
-            &self.data_dir,
+            &self.cache_dir,
             &self.media_sources,
             room_id,
             timeline_tx,
