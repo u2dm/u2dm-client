@@ -12,28 +12,6 @@ use crate::error::{AppError, Result};
 
 async fn build_single_room(room: &Room) -> DomainRoom {
     let display_name = room
-        .display_name()
-        .await
-        .map(|dn| dn.to_string())
-        .unwrap_or_default();
-    let unread = room.num_unread_notifications();
-    let mentions = room.num_unread_mentions();
-    let is_direct = room.is_direct().await.unwrap_or_default();
-    let last_activity_ts: u64 = room
-        .new_latest_event_timestamp()
-        .map_or(0, |ts| ts.0.into());
-    DomainRoom {
-        id: RoomId(room.room_id().to_string()),
-        display_name,
-        is_direct,
-        unread_count: unread,
-        mention_count: mentions,
-        last_activity_ts,
-    }
-}
-
-async fn build_single_room_fast(room: &Room) -> DomainRoom {
-    let display_name = room
         .cached_display_name()
         .map(|dn| dn.to_string())
         .unwrap_or_default();
@@ -110,7 +88,7 @@ pub(super) async fn start_sync(
     let mut room_updates_rx = client.subscribe_to_all_room_updates();
     let mut room_cache: HashMap<String, DomainRoom> = HashMap::new();
     for room in client.joined_rooms() {
-        let dr = build_single_room_fast(&room).await;
+        let dr = build_single_room(&room).await;
         room_cache.insert(dr.id.0.clone(), dr);
     }
 
@@ -161,7 +139,7 @@ pub(super) async fn start_sync(
 
                 for room_id in updates.joined.keys() {
                     if let Some(room) = client.get_room(room_id) {
-                        let dr = build_single_room_fast(&room).await;
+                        let dr = build_single_room(&room).await;
                         room_cache.insert(dr.id.0.clone(), dr);
                     }
                 }
@@ -174,7 +152,7 @@ pub(super) async fn start_sync(
                 tracing::warn!("room updates lagged by {n} messages, full rebuild");
                 room_cache.clear();
                 for room in client.joined_rooms() {
-                    let dr = build_single_room_fast(&room).await;
+                    let dr = build_single_room(&room).await;
                     room_cache.insert(dr.id.0.clone(), dr);
                 }
                 let mut rooms: Vec<DomainRoom> = room_cache.values().cloned().collect();
