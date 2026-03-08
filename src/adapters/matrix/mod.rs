@@ -13,7 +13,9 @@ use matrix_sdk::Client;
 use matrix_sdk::encryption::verification::{SasVerification, VerificationRequest};
 use matrix_sdk::event_handler::EventHandlerDropGuard;
 use matrix_sdk::ruma::events::room::MediaSource;
+use matrix_sdk::ruma::events::room::message::RoomMessageEventContent;
 use matrix_sdk::utils::local_server::LocalServerRedirectHandle;
+use matrix_sdk_ui::timeline::Timeline;
 use tokio::sync::{Mutex, RwLock, mpsc};
 
 use crate::domain::models::{
@@ -30,6 +32,7 @@ pub struct MatrixAdapter {
     verification_request: Mutex<Option<VerificationRequest>>,
     sas_verification: Mutex<Option<SasVerification>>,
     media_sources: Arc<StdMutex<HashMap<String, MediaSource>>>,
+    active_timeline: Mutex<Option<Timeline>>,
     verification_req_rx: Mutex<Option<mpsc::UnboundedReceiver<VerificationRequest>>>,
     verification_handler_guards: Mutex<Vec<EventHandlerDropGuard>>,
 }
@@ -43,6 +46,7 @@ impl MatrixAdapter {
             verification_request: Mutex::new(None),
             sas_verification: Mutex::new(None),
             media_sources: Arc::new(StdMutex::new(HashMap::new())),
+            active_timeline: Mutex::new(None),
             verification_req_rx: Mutex::new(None),
             verification_handler_guards: Mutex::new(Vec::new()),
         }
@@ -89,14 +93,17 @@ impl MatrixPort for MatrixAdapter {
         timeline_tx: mpsc::UnboundedSender<TimelinePatch>,
     ) -> Result<()> {
         let client = self.get_client().await?;
-        timeline::subscribe_timeline(
+        let result = timeline::subscribe_timeline(
             &client,
             &self.data_dir,
             &self.media_sources,
             room_id,
             timeline_tx,
+            &self.active_timeline,
         )
-        .await
+        .await;
+        *self.active_timeline.lock().await = None;
+        result
     }
 
     async fn start_sync(&self, state_tx: mpsc::UnboundedSender<SyncEvent>) -> Result<()> {
@@ -155,9 +162,17 @@ impl MatrixPort for MatrixAdapter {
         verification::reject_verification(&self.sas_verification, &self.verification_request).await
     }
 
-    async fn send_text(&self, room_id: &RoomId, body: &str) -> Result<()> {
-        let client = self.get_client().await?;
-        rooms::send_text(&client, room_id, body).await
+    async fn send_text(&self, _room_id: &RoomId, body: &str) -> Result<()> {
+        let tl = self.active_timeline.lock().await;
+        let timeline = tl
+            .as_ref()
+            .ok_or_else(|| AppError::Other("No active timeline — select a room first".into()))?;
+        let content = RoomMessageEventContent::text_plain(body);
+        timeline
+            .send(content.into())
+            .await
+            .map_err(|e| AppError::Other(e.to_string()))?;
+        Ok(())
     }
 
     async fn download_media(&self, event_id: &str, thumbnail: bool) -> Result<Vec<u8>> {

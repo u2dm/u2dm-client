@@ -2,9 +2,6 @@ use futures_util::StreamExt;
 use matrix_sdk::Client;
 use matrix_sdk::config::SyncSettings;
 use matrix_sdk::ruma::api::client::error::ErrorKind as RumaErrorKind;
-use matrix_sdk::ruma::events::AnyMessageLikeEventContent;
-use matrix_sdk::ruma::events::room::message::RoomMessageEventContent;
-use matrix_sdk::ruma::{IdParseError, OwnedRoomId};
 use tokio::sync::mpsc;
 
 use crate::domain::models::{
@@ -105,25 +102,5 @@ pub(super) async fn start_sync(
     }
 
     state_tx.send(SyncEvent::Ended).ok();
-    Ok(())
-}
-
-pub(super) async fn send_text(client: &Client, room_id: &RoomId, body: &str) -> Result<()> {
-    let room_id_parsed: OwnedRoomId = room_id
-        .0
-        .as_str()
-        .try_into()
-        .map_err(|e: IdParseError| AppError::Other(e.to_string()))?;
-
-    let room = client
-        .get_room(&room_id_parsed)
-        .ok_or_else(|| AppError::Other("Room not found".into()))?;
-
-    let content: AnyMessageLikeEventContent = RoomMessageEventContent::text_plain(body).into();
-    room.send_queue()
-        .send(content)
-        .await
-        .map_err(|e| AppError::Other(e.to_string()))?;
-
     Ok(())
 }

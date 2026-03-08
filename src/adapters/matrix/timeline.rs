@@ -8,8 +8,10 @@ use matrix_sdk::ruma::events::room::MediaSource;
 use matrix_sdk::ruma::events::room::message::MessageType;
 use matrix_sdk::ruma::{IdParseError, OwnedRoomId};
 use matrix_sdk_ui::eyeball_im::VectorDiff;
-use matrix_sdk_ui::timeline::{EventTimelineItem, RoomExt, TimelineDetails, TimelineItem};
-use tokio::sync::mpsc;
+use matrix_sdk_ui::timeline::{
+    EventTimelineItem, RoomExt, Timeline, TimelineDetails, TimelineItem,
+};
+use tokio::sync::{Mutex, mpsc};
 
 use super::media::{enrich_message, enrich_messages};
 use crate::domain::models::{
@@ -329,6 +331,7 @@ pub(super) async fn subscribe_timeline(
     media_sources: &Arc<StdMutex<HashMap<String, MediaSource>>>,
     room_id: &RoomId,
     timeline_tx: mpsc::UnboundedSender<TimelinePatch>,
+    active_timeline: &Mutex<Option<Timeline>>,
 ) -> Result<()> {
     let room_id_parsed: OwnedRoomId = room_id
         .0
@@ -350,6 +353,8 @@ pub(super) async fn subscribe_timeline(
     }
 
     let (initial_items, mut stream) = timeline.subscribe().await;
+
+    *active_timeline.lock().await = Some(timeline);
 
     let media_sources = Arc::clone(media_sources);
     let cache_dir = data_dir.join("media-cache");
