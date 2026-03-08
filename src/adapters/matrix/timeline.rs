@@ -166,7 +166,22 @@ async fn convert_and_enrich(
     Some(msg)
 }
 
+fn msg_index_at(items: &[Arc<TimelineItem>], raw_index: usize) -> usize {
+    items
+        .get(..raw_index)
+        .unwrap_or(items)
+        .iter()
+        .filter(|i| is_renderable(i))
+        .count()
+}
+
+fn is_renderable(item: &TimelineItem) -> bool {
+    item.as_event().is_some()
+}
+
+#[allow(clippy::too_many_lines, clippy::cognitive_complexity)]
 async fn diff_to_patch(
+    items: &mut Vec<Arc<TimelineItem>>,
     diff: VectorDiff<Arc<TimelineItem>>,
     client: &Client,
     cache_dir: &Path,
@@ -183,50 +198,125 @@ async fn diff_to_patch(
                 })
                 .collect();
             enrich_messages(client, cache_dir, media_sources, &mut msgs).await;
+            items.extend(values);
             if msgs.is_empty() {
                 return None;
             }
             Some(TimelinePatch::Append(msgs))
         }
-        VectorDiff::Clear => Some(TimelinePatch::Clear),
+        VectorDiff::Clear => {
+            items.clear();
+            Some(TimelinePatch::Clear)
+        }
         VectorDiff::PushFront { value } => {
             let msg =
-                convert_and_enrich(&value, client, cache_dir, media_sources, own_user_id).await?;
-            Some(TimelinePatch::PushFront(msg))
+                convert_and_enrich(&value, client, cache_dir, media_sources, own_user_id).await;
+            items.insert(0, value);
+            Some(TimelinePatch::PushFront(msg?))
         }
         VectorDiff::PushBack { value } => {
             let msg =
-                convert_and_enrich(&value, client, cache_dir, media_sources, own_user_id).await?;
-            Some(TimelinePatch::PushBack(msg))
+                convert_and_enrich(&value, client, cache_dir, media_sources, own_user_id).await;
+            items.push(value);
+            Some(TimelinePatch::PushBack(msg?))
         }
-        VectorDiff::PopFront => Some(TimelinePatch::PopFront),
-        VectorDiff::PopBack => Some(TimelinePatch::PopBack),
+        VectorDiff::PopFront => {
+            let was_event = items.first().is_some_and(|i| is_renderable(i));
+            if !items.is_empty() {
+                items.remove(0);
+            }
+            if was_event {
+                Some(TimelinePatch::PopFront)
+            } else {
+                None
+            }
+        }
+        VectorDiff::PopBack => {
+            let was_event = items.last().is_some_and(|i| is_renderable(i));
+            items.pop();
+            if was_event {
+                Some(TimelinePatch::PopBack)
+            } else {
+                None
+            }
+        }
         VectorDiff::Insert { index, value } => {
             let msg =
-                convert_and_enrich(&value, client, cache_dir, media_sources, own_user_id).await?;
+                convert_and_enrich(&value, client, cache_dir, media_sources, own_user_id).await;
+            items.insert(index, value);
+            let msg = msg?;
+            let mi = msg_index_at(items, index);
             Some(TimelinePatch::Insert {
-                index,
+                index: mi,
                 message: msg,
             })
         }
         VectorDiff::Set { index, value } => {
-            let msg =
-                convert_and_enrich(&value, client, cache_dir, media_sources, own_user_id).await?;
-            Some(TimelinePatch::Set {
-                index,
-                message: msg,
-            })
+            let old_raw = items
+                .get(index)
+                .and_then(|i| i.as_event())
+                .and_then(|e| convert_event_item(e, media_sources, own_user_id));
+            let old_mi = if old_raw.is_some() {
+                msg_index_at(items, index)
+            } else {
+                0
+            };
+
+            let new_raw = value
+                .as_event()
+                .and_then(|e| convert_event_item(e, media_sources, own_user_id));
+
+            if let Some(slot) = items.get_mut(index) {
+                *slot = Arc::clone(&value);
+            }
+
+            match (&old_raw, &new_raw) {
+                (Some(old), Some(new)) if old.visually_eq(new) => None,
+                (Some(_), Some(_)) => {
+                    let new_msg =
+                        convert_and_enrich(&value, client, cache_dir, media_sources, own_user_id)
+                            .await;
+                    Some(TimelinePatch::Set {
+                        index: old_mi,
+                        message: new_msg?,
+                    })
+                }
+                (Some(_), None) => Some(TimelinePatch::Remove { index: old_mi }),
+                (None, Some(_)) => {
+                    let mi = msg_index_at(items, index);
+                    let new_msg =
+                        convert_and_enrich(&value, client, cache_dir, media_sources, own_user_id)
+                            .await;
+                    Some(TimelinePatch::Insert {
+                        index: mi,
+                        message: new_msg?,
+                    })
+                }
+                (None, None) => None,
+            }
         }
-        VectorDiff::Remove { index } => Some(TimelinePatch::Remove { index }),
-        VectorDiff::Truncate { length } => Some(TimelinePatch::Truncate { length }),
+        VectorDiff::Remove { index } => {
+            let was_event = items.get(index).is_some_and(|i| is_renderable(i));
+            let mi = if was_event {
+                msg_index_at(items, index)
+            } else {
+                0
+            };
+            items.remove(index);
+            if was_event {
+                Some(TimelinePatch::Remove { index: mi })
+            } else {
+                None
+            }
+        }
+        VectorDiff::Truncate { length } => {
+            let msg_length = msg_index_at(items, length);
+            items.truncate(length);
+            Some(TimelinePatch::Truncate { length: msg_length })
+        }
         VectorDiff::Reset { values } => {
-            let mut msgs: Vec<TimelineMessage> = values
-                .iter()
-                .filter_map(|item| {
-                    let event = item.as_event()?;
-                    convert_event_item(event, media_sources, own_user_id)
-                })
-                .collect();
+            *items = values.into_iter().collect();
+            let mut msgs = convert_timeline_items(items, media_sources, own_user_id);
             enrich_messages(client, cache_dir, media_sources, &mut msgs).await;
             Some(TimelinePatch::Reset(msgs))
         }
@@ -265,8 +355,8 @@ pub(super) async fn subscribe_timeline(
     let cache_dir = data_dir.join("media-cache");
     let own_user_id = client.user_id().map(ToString::to_string);
 
-    let initial_vec: Vec<Arc<TimelineItem>> = initial_items.into_iter().collect();
-    let mut messages = convert_timeline_items(&initial_vec, &media_sources, own_user_id.as_deref());
+    let mut items: Vec<Arc<TimelineItem>> = initial_items.into_iter().collect();
+    let mut messages = convert_timeline_items(&items, &media_sources, own_user_id.as_deref());
     enrich_messages(client, &cache_dir, &media_sources, &mut messages).await;
     if timeline_tx.send(TimelinePatch::Reset(messages)).is_err() {
         return Ok(());
@@ -286,8 +376,10 @@ pub(super) async fn subscribe_timeline(
     });
 
     while let Some(diffs) = stream.next().await {
+        let mut batch = Vec::new();
         for diff in diffs {
             let patch = diff_to_patch(
+                &mut items,
                 diff,
                 client,
                 &cache_dir,
@@ -295,11 +387,17 @@ pub(super) async fn subscribe_timeline(
                 own_user_id.as_deref(),
             )
             .await;
-            if let Some(patch) = patch
-                && timeline_tx.send(patch).is_err()
-            {
-                return Ok(());
+            if let Some(patch) = patch {
+                batch.push(patch);
             }
+        }
+        let patch = match batch.len() {
+            0 => continue,
+            1 => batch.remove(0),
+            _ => TimelinePatch::Batch(batch),
+        };
+        if timeline_tx.send(patch).is_err() {
+            return Ok(());
         }
     }
 

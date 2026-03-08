@@ -515,6 +515,11 @@ fn apply_timeline_patch(model: &VecModel<Value>, patch: TimelinePatch) {
         TimelinePatch::Clear => {
             model.set_vec(Vec::new());
         }
+        TimelinePatch::Batch(patches) => {
+            for p in patches {
+                apply_timeline_patch(model, p);
+            }
+        }
     }
 }
 

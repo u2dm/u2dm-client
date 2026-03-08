@@ -119,7 +119,7 @@ impl AppService {
                     self.handle_select_room(room_id).await;
                 }
                 UiCommand::SendMessage { room_id, body } => {
-                    self.handle_send_message(room_id, body);
+                    self.handle_send_message(room_id, body).await;
                 }
                 UiCommand::OpenMedia { event_id } => {
                     self.handle_open_media(event_id);
@@ -369,21 +369,11 @@ impl AppService {
         while self.fire_and_forget.try_join_next().is_some() {}
     }
 
-    fn handle_send_message(&mut self, room_id: RoomId, body: String) {
-        self.reap_finished();
-
-        let matrix = Arc::clone(&self.matrix);
-        let ui_tx = self.ui_tx.clone();
-        self.fire_and_forget.spawn(async move {
-            if let Err(e) = matrix.send_text(&room_id, &body).await {
-                tracing::warn!("failed to send message: {e}");
-                if let Err(send_err) =
-                    ui_tx.send(UiEvent::ToastError(format!("Failed to send message: {e}")))
-                {
-                    tracing::debug!("failed to send ToastError event: {send_err}");
-                }
-            }
-        });
+    async fn handle_send_message(&mut self, room_id: RoomId, body: String) {
+        if let Err(e) = self.matrix.send_text(&room_id, &body).await {
+            tracing::warn!("failed to enqueue message: {e}");
+            self.emit_toast_error(format!("Failed to send message: {e}"));
+        }
     }
 
     fn handle_open_media(&mut self, event_id: String) {

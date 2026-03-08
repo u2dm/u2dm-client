@@ -165,7 +165,7 @@ pub enum SyncEvent {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EventId(pub String);
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 #[allow(dead_code)]
 pub struct ImageMeta {
     pub width: Option<u32>,
@@ -174,7 +174,7 @@ pub struct ImageMeta {
     pub thumbnail_path: Option<PathBuf>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 #[allow(dead_code)]
 pub struct FileMeta {
     pub filename: String,
@@ -182,7 +182,7 @@ pub struct FileMeta {
     pub size: Option<u64>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum MessageBody {
     Text(String),
     Notice(String),
@@ -218,6 +218,17 @@ pub struct TimelineMessage {
     pub is_own: bool,
 }
 
+impl TimelineMessage {
+    pub fn visually_eq(&self, other: &Self) -> bool {
+        self.sender == other.sender
+            && self.sender_display_name == other.sender_display_name
+            && self.sender_avatar_path == other.sender_avatar_path
+            && self.body == other.body
+            && self.timestamp == other.timestamp
+            && self.is_own == other.is_own
+    }
+}
+
 #[derive(Debug, Clone)]
 pub enum TimelinePatch {
     Reset(Vec<TimelineMessage>),
@@ -241,6 +252,7 @@ pub enum TimelinePatch {
         length: usize,
     },
     Clear,
+    Batch(Vec<TimelinePatch>),
 }
 
 #[derive(Debug, Clone)]
