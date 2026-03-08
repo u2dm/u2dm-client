@@ -22,14 +22,21 @@ pub enum UiCommand {
 
 pub enum UiEvent {
     ServerInfo(ServerInfo),
-    LoginSuccess { user_id: String },
+    LoginSuccess {
+        user_id: String,
+    },
     LoginError(String),
     ToastError(String),
     Status(String),
     Rooms(Vec<Room>),
-    Timeline(TimelinePatch),
+    Timeline {
+        room_id: RoomId,
+        patch: Box<TimelinePatch>,
+    },
     ConnectionStatus(ConnectionStatus),
     Verification(VerificationEvent),
-    FileSaved { path: String },
+    FileSaved {
+        path: String,
+    },
     LoggedOut,
 }

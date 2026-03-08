@@ -333,7 +333,18 @@ fn dispatch_ui_event(
         UiEvent::ToastError(message) => apply_toast_error(inst, &message),
         UiEvent::Status(msg) => apply_status(inst, &msg),
         UiEvent::Rooms(rooms) => apply_rooms(rooms_model, &rooms),
-        UiEvent::Timeline(patch) => apply_timeline_patch(timeline_model, patch),
+        UiEvent::Timeline { room_id, patch } => {
+            let selected = inst
+                .get_property("selected-room-id")
+                .ok()
+                .and_then(|v| match v {
+                    Value::String(s) => Some(s),
+                    _ => None,
+                });
+            if selected.as_ref().is_some_and(|s| s.as_str() == room_id.0) {
+                apply_timeline_patch(timeline_model, *patch);
+            }
+        }
         UiEvent::ConnectionStatus(status) => apply_connection_status(inst, &status),
         UiEvent::Verification(event) => apply_verification(inst, &event),
         UiEvent::FileSaved { path } => {
