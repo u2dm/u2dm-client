@@ -149,6 +149,7 @@ impl ConnectionStatus {
 
 #[derive(Debug)]
 pub enum SyncEvent {
+    Connected,
     Rooms(Vec<Room>),
     ConnectionError(String),
     SessionExpired,

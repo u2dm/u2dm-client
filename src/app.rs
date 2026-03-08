@@ -584,10 +584,12 @@ impl AppService {
         let token = self.background.token();
 
         let on_sync: Box<dyn Fn(SyncEvent) + Send + Sync> = Box::new(move |event| match event {
-            SyncEvent::Rooms(rooms) => {
+            SyncEvent::Connected => {
                 ui_tx
                     .send(UiEvent::ConnectionStatus(ConnectionStatus::Connected))
                     .ok();
+            }
+            SyncEvent::Rooms(rooms) => {
                 ui_tx.send(UiEvent::Rooms(rooms)).ok();
             }
             SyncEvent::ConnectionError(msg) => {
