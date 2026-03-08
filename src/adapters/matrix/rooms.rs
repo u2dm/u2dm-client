@@ -16,7 +16,8 @@ async fn build_single_room(room: &Room) -> DomainRoom {
         .await
         .map(|dn| dn.to_string())
         .unwrap_or_default();
-    let unread = room.unread_notification_counts().notification_count;
+    let unread = room.num_unread_notifications();
+    let mentions = room.num_unread_mentions();
     let is_direct = room.is_direct().await.unwrap_or_default();
     let last_activity_ts: u64 = room
         .new_latest_event_timestamp()
@@ -26,6 +27,7 @@ async fn build_single_room(room: &Room) -> DomainRoom {
         display_name,
         is_direct,
         unread_count: unread,
+        mention_count: mentions,
         last_activity_ts,
     }
 }

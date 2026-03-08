@@ -672,6 +672,11 @@ fn apply_rooms(inst: &ComponentInstance, rooms: &[Room]) {
                 ),
                 #[allow(clippy::cast_precision_loss)]
                 ("unread".to_string(), Value::Number(r.unread_count as f64)),
+                #[allow(clippy::cast_precision_loss)]
+                (
+                    "mentions".to_string(),
+                    Value::Number(r.mention_count as f64),
+                ),
             ]))
         })
         .collect();

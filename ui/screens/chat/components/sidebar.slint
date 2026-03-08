@@ -97,6 +97,14 @@ export component Sidebar inherits Rectangle {
                         overflow: elide;
                     }
 
+                    if room.mentions > 0: Text {
+                        text: "@";
+                        font-size: 12px;
+                        font-weight: 700;
+                        vertical-alignment: center;
+                        color: Palette.accent-background;
+                    }
+
                     if room.unread > 0: Text {
                         text: "(" + room.unread + ")";
                         font-size: 12px;

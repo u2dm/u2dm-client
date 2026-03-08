@@ -12,10 +12,9 @@ use async_trait::async_trait;
 use matrix_sdk::Client;
 use matrix_sdk::encryption::verification::{SasVerification, VerificationRequest};
 use matrix_sdk::event_handler::EventHandlerDropGuard;
-use matrix_sdk::ruma::IdParseError;
-use matrix_sdk::ruma::OwnedRoomId;
 use matrix_sdk::ruma::events::room::MediaSource;
 use matrix_sdk::ruma::events::room::message::RoomMessageEventContent;
+use matrix_sdk::ruma::{IdParseError, OwnedRoomId};
 use matrix_sdk::utils::local_server::LocalServerRedirectHandle;
 use tokio::sync::{Mutex, RwLock, mpsc};
 
