@@ -26,25 +26,15 @@ impl SecureStorage {
 #[async_trait]
 impl StoragePort for SecureStorage {
     async fn save_session(&self, session: &Session) -> Result<()> {
-        let metadata = session.metadata();
-        write_metadata(&self.session_path, &metadata).await?;
-
-        if let Err(e) = keyring_set("access-token", session.access_token.clone()).await {
-            tracing::warn!("failed to store access token in keyring: {e}");
-        }
+        keyring_set("access-token", session.access_token.clone()).await?;
 
         match &session.refresh_token {
-            Some(token) => {
-                if let Err(e) = keyring_set("refresh-token", token.clone()).await {
-                    tracing::warn!("failed to store refresh token in keyring: {e}");
-                }
-            }
-            None => {
-                if let Err(e) = keyring_delete("refresh-token").await {
-                    tracing::warn!("failed to clear refresh token from keyring: {e}");
-                }
-            }
+            Some(token) => keyring_set("refresh-token", token.clone()).await?,
+            None => keyring_delete("refresh-token").await?,
         }
+
+        let metadata = session.metadata();
+        write_metadata(&self.session_path, &metadata).await?;
 
         Ok(())
     }

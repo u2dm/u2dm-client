@@ -2,8 +2,6 @@ use std::future::Future;
 use std::sync::Arc;
 use std::time::Duration;
 
-use rand::RngExt;
-use rand::distr::Alphanumeric;
 use tokio::sync::mpsc;
 use tokio::task::JoinSet;
 use tokio::{fs, time};
@@ -18,13 +16,16 @@ use crate::domain::models::{
 use crate::error::{AppError, Result};
 use crate::ports::matrix::MatrixPort;
 use crate::ports::storage::StoragePort;
+use std::fmt::Write;
 
+#[allow(clippy::let_underscore_must_use)]
 fn generate_passphrase() -> String {
-    (&mut rand::rng())
-        .sample_iter(Alphanumeric)
-        .take(32)
-        .map(char::from)
-        .collect()
+    let mut bytes = [0u8; 32];
+    rand::fill(&mut bytes);
+    bytes.iter().fold(String::with_capacity(64), |mut s, b| {
+        let _ = write!(s, "{b:02x}");
+        s
+    })
 }
 
 struct TaskGroup {
