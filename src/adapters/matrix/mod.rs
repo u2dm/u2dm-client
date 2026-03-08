@@ -12,6 +12,8 @@ use async_trait::async_trait;
 use matrix_sdk::Client;
 use matrix_sdk::encryption::verification::{SasVerification, VerificationRequest};
 use matrix_sdk::event_handler::EventHandlerDropGuard;
+use matrix_sdk::ruma::IdParseError;
+use matrix_sdk::ruma::OwnedRoomId;
 use matrix_sdk::ruma::events::room::MediaSource;
 use matrix_sdk::ruma::events::room::message::RoomMessageEventContent;
 use matrix_sdk::utils::local_server::LocalServerRedirectHandle;
@@ -162,14 +164,18 @@ impl MatrixPort for MatrixAdapter {
         verification::reject_verification(&self.sas_verification, &self.verification_request).await
     }
 
-    async fn send_text(&self, _room_id: &RoomId, body: &str) -> Result<()> {
-        let tl = self.active_timeline.lock().await;
-        let timeline = tl
-            .as_ref()
-            .ok_or_else(|| AppError::Other("No active timeline. Select a room first".into()))?;
+    async fn send_text(&self, room_id: &RoomId, body: &str) -> Result<()> {
+        let client = self.get_client().await?;
+        let room_id_parsed: OwnedRoomId = room_id
+            .0
+            .as_str()
+            .try_into()
+            .map_err(|e: IdParseError| AppError::Other(e.to_string()))?;
+        let room = client
+            .get_room(&room_id_parsed)
+            .ok_or_else(|| AppError::Other("Room not found".into()))?;
         let content = RoomMessageEventContent::text_plain(body);
-        timeline
-            .send(content.into())
+        room.send(content)
             .await
             .map_err(|e| AppError::Other(e.to_string()))?;
         Ok(())
