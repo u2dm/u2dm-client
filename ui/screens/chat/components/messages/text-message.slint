@@ -1,6 +1,9 @@
 import { Palette } from "std-widgets.slint";
 
-export component TextMessage inherits Text {
+export component TextMessage inherits TextInput {
     font-size: 14px;
     wrap: word-wrap;
+    read-only: true;
+    single-line: false;
+    color: Palette.foreground;
 }
