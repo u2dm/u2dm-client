@@ -186,7 +186,7 @@ pub(super) async fn logout(
     verification_handler_guards.lock().await.clear();
     let mut guard = client_lock.write().await;
     if let Some(client) = guard.as_ref()
-        && let Err(e) = client.matrix_auth().logout().await
+        && let Err(e) = client.logout().await
     {
         tracing::warn!("failed to logout from server: {e}");
     }
