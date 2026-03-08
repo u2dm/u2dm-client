@@ -109,7 +109,7 @@ impl AppService {
                 UiCommand::LoginPassword(creds) => {
                     self.handle_login_password(creds).await;
                 }
-                UiCommand::LoginOAuth(_homeserver) => {
+                UiCommand::LoginOAuth => {
                     self.handle_login_oauth().await;
                 }
                 UiCommand::FetchRooms => {

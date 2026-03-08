@@ -123,15 +123,7 @@ impl SlintUiAdapter {
         let tx = cmd_tx.clone();
         let weak = self.instance.as_weak();
         self.instance
-            .set_callback("login-oauth", move |args: &[Value]| -> Value {
-                let homeserver = args
-                    .first()
-                    .and_then(|v| match v {
-                        Value::String(s) => Some(s.to_string()),
-                        _ => None,
-                    })
-                    .unwrap_or_default();
-
+            .set_callback("login-oauth", move |_args: &[Value]| -> Value {
                 if let Some(inst) = weak.upgrade() {
                     set_prop(
                         &inst,
@@ -141,7 +133,7 @@ impl SlintUiAdapter {
                     set_prop(&inst, "login-error", Value::String(SharedString::default()));
                 }
 
-                if let Err(e) = tx.send(UiCommand::LoginOAuth(homeserver)) {
+                if let Err(e) = tx.send(UiCommand::LoginOAuth) {
                     tracing::debug!("failed to send LoginOAuth command: {e}");
                 }
                 Value::Void

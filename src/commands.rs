@@ -6,7 +6,7 @@ pub enum UiCommand {
     RestoreSession,
     CheckServer(String),
     LoginPassword(LoginCredentials),
-    LoginOAuth(String),
+    LoginOAuth,
     FetchRooms,
     SelectRoom(RoomId),
     SendMessage { room_id: RoomId, body: String },
