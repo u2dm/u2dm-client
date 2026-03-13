@@ -144,6 +144,7 @@ impl SlintUiAdapter {
             .map_err(|e| AppError::Ui(format!("{e:?}")))?;
 
         let tx = cmd_tx.clone();
+        let weak = self.instance.as_weak();
         self.instance
             .set_callback("select-room", move |args: &[Value]| -> Value {
                 let room_id = args
@@ -153,6 +154,10 @@ impl SlintUiAdapter {
                         _ => None,
                     })
                     .unwrap_or_default();
+
+                if let Some(inst) = weak.upgrade() {
+                    set_prop(&inst, "timeline-loading", Value::Bool(true));
+                }
 
                 if let Err(e) = tx.send(UiCommand::SelectRoom(RoomId(room_id))) {
                     tracing::debug!("failed to send SelectRoom command: {e}");
@@ -328,6 +333,7 @@ fn dispatch_ui_event(
 ) {
     match event {
         UiEvent::ServerInfo(info) => apply_server_info(inst, &info),
+        UiEvent::ShowLogin => apply_show_login(inst),
         UiEvent::LoginSuccess { user_id } => apply_login_success(inst, &user_id),
         UiEvent::LoginError(message) => apply_login_error(inst, &message),
         UiEvent::ToastError(message) => apply_toast_error(inst, &message),
@@ -342,6 +348,7 @@ fn dispatch_ui_event(
                     _ => None,
                 });
             if selected.as_ref().is_some_and(|s| s.as_str() == room_id.0) {
+                set_prop(inst, "timeline-loading", Value::Bool(false));
                 apply_timeline_patch(timeline_model, *patch);
             }
         }
@@ -374,6 +381,15 @@ fn apply_server_info(inst: &ComponentInstance, info: &ServerInfo) {
         inst,
         "login-step",
         Value::String(SharedString::from("credentials")),
+    );
+    set_prop(inst, "login-status", Value::String(SharedString::default()));
+}
+
+fn apply_show_login(inst: &ComponentInstance) {
+    set_prop(
+        inst,
+        "login-step",
+        Value::String(SharedString::from("homeserver")),
     );
     set_prop(inst, "login-status", Value::String(SharedString::default()));
 }

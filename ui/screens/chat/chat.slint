@@ -14,6 +14,7 @@ export component ChatScreen inherits Rectangle {
     in property <[RoomEntry]> rooms: [];
     in property <[MessageEntry]> timeline: [];
     in property <string> toast-message: "";
+    in property <bool> timeline-loading: false;
     in-out property <string> selected-room-id: "";
     in-out property <string> selected-room-name: "";
     in-out property <string> input-message: "";
@@ -56,6 +57,7 @@ export component ChatScreen inherits Rectangle {
         selected-room-name: root.selected-room-name;
         selected-room-id: root.selected-room-id;
         timeline: root.timeline;
+        timeline-loading: root.timeline-loading;
         input-message <=> root.input-message;
         send-message(req) => {
             root.send-message(req);

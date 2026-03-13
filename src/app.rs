@@ -156,6 +156,10 @@ impl AppService {
         }
     }
 
+    fn emit_show_login(&self) {
+        self.emit(UiEvent::ShowLogin);
+    }
+
     fn emit_login_error(&self, err: &AppError) {
         self.emit(UiEvent::LoginError(err.to_string()));
     }
@@ -189,42 +193,75 @@ impl AppService {
     }
 
     async fn handle_restore_session(&mut self) {
+        self.emit(UiEvent::Status("Loading saved session...".into()));
+
         let session = match self.storage.load_session().await {
             Ok(Some(session)) => session,
             Ok(None) => {
                 if let Err(e) = self.matrix.clear_store().await {
                     tracing::warn!("failed to clear store on missing session: {e}");
                 }
+                self.emit_show_login();
                 return;
             }
             Err(e) => {
+                self.emit_show_login();
                 self.emit_login_error(&e);
                 return;
             }
         };
 
-        self.emit(UiEvent::Status("Restoring session...".into()));
+        self.emit(UiEvent::Status("Opening encrypted store...".into()));
 
         let passphrase = match self.get_or_create_passphrase().await {
             Ok(p) => p,
             Err(e) => {
+                self.emit_show_login();
                 self.emit_login_error(&e);
                 return;
             }
         };
 
-        match self.matrix.restore_session(&session, &passphrase).await {
-            Ok(()) => {
-                self.emit(UiEvent::LoginSuccess {
-                    user_id: session.user_id,
-                });
-                self.send_cmd(UiCommand::FetchRooms);
+        let ui_tx = self.ui_tx.clone();
+        let on_progress = Box::new(move |msg| {
+            drop(ui_tx.send(UiEvent::Status(msg)));
+        });
+
+        if let Err(e) = self
+            .matrix
+            .restore_session(&session, &passphrase, on_progress)
+            .await
+        {
+            self.clear_local_state().await;
+            self.emit_show_login();
+            self.emit_login_error(&e);
+            return;
+        }
+
+        self.emit(UiEvent::Status("Loading rooms...".into()));
+        self.start_background_listeners().await;
+        self.emit(UiEvent::ConnectionStatus(ConnectionStatus::Connecting));
+
+        match self.matrix.rooms().await {
+            Ok(rooms) => {
+                self.emit(UiEvent::Rooms(rooms));
+                self.emit(UiEvent::ConnectionStatus(ConnectionStatus::Connected));
+            }
+            Err(AppError::SessionExpired) => {
+                self.handle_session_expired().await;
+                return;
             }
             Err(e) => {
-                self.clear_local_state().await;
-                self.emit_login_error(&e);
+                self.emit(UiEvent::ConnectionStatus(ConnectionStatus::Error(
+                    e.to_string(),
+                )));
             }
         }
+
+        self.emit(UiEvent::LoginSuccess {
+            user_id: session.user_id,
+        });
+        self.start_sync_pipeline();
     }
 
     async fn handle_check_server(&mut self, homeserver: &str) {
@@ -473,6 +510,7 @@ impl AppService {
     }
 
     async fn handle_fetch_rooms(&mut self) {
+        self.emit(UiEvent::Status("Syncing rooms...".into()));
         self.start_background_listeners().await;
 
         self.emit(UiEvent::ConnectionStatus(ConnectionStatus::Connecting));

@@ -7,6 +7,7 @@ import {
 } from "screens/chat/components/types.slint";
 import { VerificationEmoji } from "components/types.slint";
 
+import { LoadingScreen } from "screens/loading.slint";
 import { HomeserverScreen } from "screens/homeserver/homeserver.slint";
 import { CredentialsScreen } from "screens/credentials/credentials.slint";
 import { ChatScreen } from "screens/chat/chat.slint";
@@ -20,7 +21,7 @@ export component AppWindow inherits Window {
     in-out property <string> input-homeserver: "matrix.org";
     in-out property <string> login-status: "";
     in-out property <string> login-error: "";
-    in-out property <string> login-step: "homeserver";
+    in-out property <string> login-step: "loading";
     in-out property <string> login-method: "";
     in-out property <string> resolved-homeserver: "";
     in-out property <string> input-username: "";
@@ -39,6 +40,7 @@ export component AppWindow inherits Window {
     in-out property <[VerificationEmoji]> verification-emojis: [];
     in-out property <string> verification-error: "";
     in-out property <string> toast-message: "";
+    in-out property <bool> timeline-loading: false;
 
     callback check-server(string);
     callback login-password(LoginRequest);
@@ -53,6 +55,11 @@ export component AppWindow inherits Window {
     callback reject-verification();
 
     in-out property <string> input-message: "";
+
+    if root.login-step == "loading": LoadingScreen {
+        loading-status: root.login-status;
+        loading-error: root.login-error;
+    }
 
     if root.login-step == "homeserver": HomeserverScreen {
         input-homeserver <=> root.input-homeserver;
@@ -88,6 +95,7 @@ export component AppWindow inherits Window {
         connection-status: root.connection-status;
         rooms: root.rooms;
         timeline: root.timeline;
+        timeline-loading: root.timeline-loading;
         toast-message: root.toast-message;
         selected-room-id <=> root.selected-room-id;
         selected-room-name <=> root.selected-room-name;

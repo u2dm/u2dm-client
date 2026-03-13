@@ -137,6 +137,7 @@ export component TimelineView inherits Rectangle {
     in property <string> selected-room-name: "";
     in property <string> selected-room-id: "";
     in property <[MessageEntry]> timeline: [];
+    in property <bool> timeline-loading: false;
     in-out property <string> input-message: "";
 
     callback send-message(SendMessageRequest);
@@ -168,6 +169,18 @@ export component TimelineView inherits Rectangle {
             font-weight: 700;
             vertical-alignment: center;
         }
+    }
+
+    if root.selected-room-name != "" && root.timeline-loading && root.timeline.length == 0: Text {
+        x: 0;
+        y: root.header-height;
+        width: root.width;
+        height: root.height - root.header-height - root.input-height;
+        text: "Loading messages...";
+        font-size: 14px;
+        color: Palette.foreground.transparentize(0.5);
+        horizontal-alignment: center;
+        vertical-alignment: center;
     }
 
     if root.selected-room-name != "": Flickable {

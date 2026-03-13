@@ -149,7 +149,10 @@ pub(super) async fn restore_session(
     cache_dir: &Path,
     session: &Session,
     passphrase: &str,
+    on_progress: Box<dyn Fn(String) + Send + Sync>,
 ) -> Result<()> {
+    on_progress("Connecting to homeserver...".into());
+
     let client = Client::builder()
         .homeserver_url(&session.homeserver)
         .handle_refresh_tokens()
@@ -162,6 +165,8 @@ pub(super) async fn restore_session(
         .build()
         .await
         .map_err(|e| AppError::Other(e.to_string()))?;
+
+    on_progress("Restoring authentication...".into());
 
     let user_id: OwnedUserId = session
         .user_id

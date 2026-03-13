@@ -115,13 +115,19 @@ impl MatrixPort for MatrixAdapter {
         rooms::start_sync(&client, on_sync.into()).await
     }
 
-    async fn restore_session(&self, session: &Session, passphrase: &str) -> Result<()> {
+    async fn restore_session(
+        &self,
+        session: &Session,
+        passphrase: &str,
+        on_progress: Box<dyn Fn(String) + Send + Sync>,
+    ) -> Result<()> {
         auth::restore_session(
             &self.client,
             &self.data_dir,
             &self.cache_dir,
             session,
             passphrase,
+            on_progress,
         )
         .await
     }

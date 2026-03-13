@@ -22,6 +22,7 @@ pub enum UiCommand {
 
 pub enum UiEvent {
     ServerInfo(ServerInfo),
+    ShowLogin,
     LoginSuccess {
         user_id: String,
     },
