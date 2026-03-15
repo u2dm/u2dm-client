@@ -67,20 +67,26 @@ pub(super) fn is_auth_error(err: &matrix_sdk::Error) -> bool {
     )
 }
 
+#[allow(clippy::cognitive_complexity)]
 pub(super) async fn fetch_rooms(client: &Client) -> Result<Vec<DomainRoom>> {
     client
         .event_cache()
         .subscribe()
         .map_err(|e| AppError::Other(e.to_string()))?;
+    tracing::debug!("performing initial sync_once");
     if let Err(e) = client.sync_once(SyncSettings::default()).await {
         if is_auth_error(&e) {
+            tracing::warn!("auth error during initial sync");
             return Err(AppError::SessionExpired);
         }
+        tracing::warn!("initial sync failed: {e}");
         return Err(e.into());
     }
+    tracing::debug!("initial sync complete, building room list");
     Ok(build_room_list(client).await)
 }
 
+#[allow(clippy::cognitive_complexity)]
 pub(super) async fn start_sync(
     client: &Client,
     on_sync: Arc<dyn Fn(SyncEvent) + Send + Sync>,
@@ -92,6 +98,10 @@ pub(super) async fn start_sync(
         room_cache.insert(dr.id.0.clone(), dr);
     }
 
+    tracing::info!(
+        initial_rooms = room_cache.len(),
+        "starting continuous sync loop"
+    );
     let sync_client = client.clone();
     let on_sync_errors = Arc::clone(&on_sync);
     let sync_task = tokio::spawn(async move {
@@ -131,6 +141,12 @@ pub(super) async fn start_sync(
                 if !has_joins && !has_leaves {
                     continue;
                 }
+
+                tracing::debug!(
+                    joined = updates.joined.len(),
+                    left = updates.left.len(),
+                    "processing room updates"
+                );
 
                 for room_id in updates.left.keys() {
                     let key = room_id.to_string();

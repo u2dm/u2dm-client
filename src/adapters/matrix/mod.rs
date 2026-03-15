@@ -90,8 +90,11 @@ impl MatrixPort for MatrixAdapter {
     }
 
     async fn rooms(&self) -> Result<Vec<DomainRoom>> {
+        tracing::info!("fetching rooms (initial sync)");
         let client = self.get_client().await?;
-        rooms::fetch_rooms(&client).await
+        let rooms = rooms::fetch_rooms(&client).await?;
+        tracing::info!(count = rooms.len(), "fetched rooms");
+        Ok(rooms)
     }
 
     async fn subscribe_timeline(
@@ -99,6 +102,7 @@ impl MatrixPort for MatrixAdapter {
         room_id: &RoomId,
         timeline_tx: mpsc::UnboundedSender<TimelinePatch>,
     ) -> Result<()> {
+        tracing::info!(room_id = %room_id.0, "subscribing to timeline");
         let client = self.get_client().await?;
         timeline::subscribe_timeline(
             &client,
@@ -111,6 +115,7 @@ impl MatrixPort for MatrixAdapter {
     }
 
     async fn start_sync(&self, on_sync: Box<dyn Fn(SyncEvent) + Send + Sync>) -> Result<()> {
+        tracing::info!("starting continuous sync loop");
         let client = self.get_client().await?;
         rooms::start_sync(&client, on_sync.into()).await
     }

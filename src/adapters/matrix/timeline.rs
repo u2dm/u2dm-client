@@ -327,6 +327,7 @@ async fn diff_to_patch(
     }
 }
 
+#[allow(clippy::cognitive_complexity)]
 pub(super) async fn subscribe_timeline(
     client: &Client,
     cache_dir: &Path,
@@ -367,6 +368,12 @@ pub(super) async fn subscribe_timeline(
 
     let mut items: Vec<Arc<TimelineItem>> = initial_items.into_iter().collect();
     let mut messages = convert_timeline_items(&items, &media_sources, own_user_id.as_deref());
+    tracing::info!(
+        raw_items = items.len(),
+        messages = messages.len(),
+        room_id = %room_id.0,
+        "timeline loaded"
+    );
     enrich_messages(client, &cache_dir, &media_sources, &mut messages).await;
     if timeline_tx.send(TimelinePatch::Reset(messages)).is_err() {
         return Ok(());

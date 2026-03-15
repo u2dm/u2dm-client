@@ -56,6 +56,7 @@ pub(super) async fn discover_auth(
     }
 
     let homeserver_url = client.homeserver().to_string();
+    tracing::info!(homeserver = %homeserver_url, methods = ?methods, "server discovery complete");
     *client_lock.write().await = Some(client);
 
     Ok(ServerInfo {
@@ -65,6 +66,7 @@ pub(super) async fn discover_auth(
 }
 
 pub(super) async fn login_password(client: &Client, creds: LoginCredentials) -> Result<Session> {
+    tracing::info!(user = %creds.username, "logging in with password");
     client
         .matrix_auth()
         .login_username(&creds.username, &creds.password)
@@ -76,6 +78,11 @@ pub(super) async fn login_password(client: &Client, creds: LoginCredentials) -> 
         .session()
         .ok_or_else(|| AppError::Other("No session after login".into()))?;
     let homeserver = client.homeserver().to_string();
+    tracing::info!(
+        user_id = %sdk_session.meta.user_id,
+        device_id = %sdk_session.meta.device_id,
+        "password login successful"
+    );
 
     Ok(Session {
         user_id: sdk_session.meta.user_id.to_string(),
@@ -91,6 +98,7 @@ pub(super) async fn login_oauth_start(
     client: &Client,
     redirect_handle: &Mutex<Option<LocalServerRedirectHandle>>,
 ) -> Result<OAuthLoginData> {
+    tracing::info!("starting OAuth login flow");
     let (redirect_uri, server_handle) = LocalServerBuilder::new().spawn().await?;
 
     let metadata = client_metadata()?;
@@ -132,6 +140,11 @@ pub(super) async fn login_oauth_finish(
         .full_session()
         .ok_or_else(|| AppError::Other("No session after OAuth login".into()))?;
     let homeserver = client.homeserver().to_string();
+    tracing::info!(
+        user_id = %sdk_session.user.meta.user_id,
+        device_id = %sdk_session.user.meta.device_id,
+        "OAuth login successful"
+    );
 
     Ok(Session {
         user_id: sdk_session.user.meta.user_id.to_string(),
@@ -180,6 +193,18 @@ pub(super) async fn restore_session(
         refresh_token: session.refresh_token.clone(),
     };
 
+    let auth_type = if session.client_id.is_some() {
+        "OAuth"
+    } else {
+        "password"
+    };
+    tracing::info!(
+        user_id = %session.user_id,
+        device_id = %session.device_id,
+        auth_type,
+        "restoring session"
+    );
+
     if let Some(client_id) = &session.client_id {
         let oauth_session = OAuthSession {
             client_id: ClientId::new(client_id.clone()),
@@ -191,6 +216,7 @@ pub(super) async fn restore_session(
         client.restore_session(matrix_session).await?;
     }
 
+    tracing::info!("session restored successfully");
     *client_lock.write().await = Some(client);
     Ok(())
 }
@@ -200,6 +226,7 @@ pub(super) async fn logout(
     verification_req_rx: &Mutex<Option<mpsc::UnboundedReceiver<VerificationRequest>>>,
     verification_handler_guards: &Mutex<Vec<EventHandlerDropGuard>>,
 ) -> Result<()> {
+    tracing::info!("logging out");
     verification_handler_guards.lock().await.clear();
     let mut guard = client_lock.write().await;
     if let Some(client) = guard.as_ref()
@@ -220,6 +247,7 @@ pub(super) async fn clear_store(
     verification_req_rx: &Mutex<Option<mpsc::UnboundedReceiver<VerificationRequest>>>,
     verification_handler_guards: &Mutex<Vec<EventHandlerDropGuard>>,
 ) -> Result<()> {
+    tracing::info!("clearing matrix store");
     verification_handler_guards.lock().await.clear();
     *client_lock.write().await = None;
     let store_path = data_dir.join("matrix-store");
@@ -231,6 +259,7 @@ pub(super) async fn clear_store(
         fs::remove_dir_all(&cache_path).await?;
     }
     *verification_req_rx.lock().await = None;
+    tracing::debug!("matrix store cleared");
     Ok(())
 }
 

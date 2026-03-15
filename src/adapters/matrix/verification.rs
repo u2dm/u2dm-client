@@ -77,13 +77,13 @@ pub(super) async fn listen_for_verification(
     drop(rx_guard);
 
     while let Some(request) = rx.recv().await {
+        let sender = request.other_user_id().to_string();
+        let is_self = request.is_self_verification();
+        tracing::info!(sender = %sender, is_self, "verification request received");
         *verification_request.lock().await = Some(request.clone());
 
         verification_tx
-            .send(VerificationEvent::Requested {
-                sender: request.other_user_id().to_string(),
-                is_self: request.is_self_verification(),
-            })
+            .send(VerificationEvent::Requested { sender, is_self })
             .ok();
 
         handle_verification_request(request, sas_verification, &verification_tx).await;
@@ -95,6 +95,7 @@ pub(super) async fn listen_for_verification(
     Ok(())
 }
 
+#[allow(clippy::cognitive_complexity)]
 async fn handle_verification_request(
     request: VerificationRequest,
     sas_mutex: &Mutex<Option<SasVerification>>,
@@ -106,16 +107,19 @@ async fn handle_verification_request(
         match state {
             VerificationRequestState::Transitioned { verification } => {
                 if let Verification::SasV1(sas) = verification {
+                    tracing::info!("verification transitioned to SAS");
                     *sas_mutex.lock().await = Some(sas.clone());
                     handle_sas_verification(sas, tx).await;
                 }
                 break;
             }
             VerificationRequestState::Done => {
+                tracing::info!("verification completed");
                 tx.send(VerificationEvent::Done).ok();
                 break;
             }
             VerificationRequestState::Cancelled(info) => {
+                tracing::info!(reason = %info.reason(), "verification cancelled");
                 tx.send(VerificationEvent::Cancelled(info.reason().to_string()))
                     .ok();
                 break;
@@ -125,6 +129,7 @@ async fn handle_verification_request(
     }
 }
 
+#[allow(clippy::cognitive_complexity)]
 async fn handle_sas_verification(
     sas: SasVerification,
     tx: &mpsc::UnboundedSender<VerificationEvent>,
@@ -142,6 +147,7 @@ async fn handle_sas_verification(
     while let Some(state) = stream.next().await {
         match state {
             SasState::KeysExchanged { .. } => {
+                tracing::debug!("SAS keys exchanged, presenting emojis");
                 if let Some(emojis) = sas.emoji() {
                     let domain_emojis: Vec<VerificationEmoji> = emojis
                         .iter()
@@ -154,13 +160,16 @@ async fn handle_sas_verification(
                 }
             }
             SasState::Confirmed => {
+                tracing::debug!("SAS confirmed, waiting for other side");
                 tx.send(VerificationEvent::Confirming).ok();
             }
             SasState::Done { .. } => {
+                tracing::info!("SAS verification done");
                 tx.send(VerificationEvent::Done).ok();
                 break;
             }
             SasState::Cancelled(info) => {
+                tracing::info!(reason = %info.reason(), "SAS verification cancelled");
                 tx.send(VerificationEvent::Cancelled(info.reason().to_string()))
                     .ok();
                 break;

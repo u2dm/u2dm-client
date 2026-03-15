@@ -1,21 +1,38 @@
+use strum::Display as StrumDisplay;
+
 use crate::domain::models::{
     ConnectionStatus, LoginCredentials, Room, RoomId, ServerInfo, TimelinePatch, VerificationEvent,
 };
 
+#[derive(StrumDisplay)]
 pub enum UiCommand {
     RestoreSession,
+    #[strum(to_string = "CheckServer({0})")]
     CheckServer(String),
+    #[strum(to_string = "LoginPassword(...)")]
     LoginPassword(LoginCredentials),
     LoginOAuth,
     FetchRooms,
+    #[strum(to_string = "SelectRoom({0})")]
     SelectRoom(RoomId),
-    SendMessage { room_id: RoomId, body: String },
+    #[strum(to_string = "SendMessage({room_id})")]
+    SendMessage {
+        room_id: RoomId,
+        body: String,
+    },
     SessionExpired,
     AcceptVerification,
     RejectVerification,
     ConfirmVerification,
-    OpenMedia { event_id: String },
-    SaveFile { event_id: String, filename: String },
+    #[strum(to_string = "OpenMedia({event_id})")]
+    OpenMedia {
+        event_id: String,
+    },
+    #[strum(to_string = "SaveFile({filename})")]
+    SaveFile {
+        event_id: String,
+        filename: String,
+    },
     Logout,
     Quit,
 }

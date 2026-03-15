@@ -99,6 +99,7 @@ impl AppService {
 
     pub async fn run(&mut self) {
         while let Some(cmd) = self.cmd_rx.recv().await {
+            tracing::info!(command = %cmd, "handling command");
             match cmd {
                 UiCommand::RestoreSession => {
                     self.handle_restore_session().await;
@@ -192,12 +193,17 @@ impl AppService {
         }
     }
 
+    #[allow(clippy::cognitive_complexity)]
     async fn handle_restore_session(&mut self) {
         self.emit(UiEvent::Status("Loading saved session...".into()));
 
         let session = match self.storage.load_session().await {
-            Ok(Some(session)) => session,
+            Ok(Some(session)) => {
+                tracing::info!(user_id = %session.user_id, "found saved session");
+                session
+            }
             Ok(None) => {
+                tracing::info!("no saved session found, showing login");
                 if let Err(e) = self.matrix.clear_store().await {
                     tracing::warn!("failed to clear store on missing session: {e}");
                 }
@@ -205,6 +211,7 @@ impl AppService {
                 return;
             }
             Err(e) => {
+                tracing::warn!("failed to load session: {e}");
                 self.emit_show_login();
                 self.emit_login_error(&e);
                 return;
@@ -232,6 +239,7 @@ impl AppService {
             .restore_session(&session, &passphrase, on_progress)
             .await
         {
+            tracing::warn!("session restore failed: {e}");
             self.clear_local_state().await;
             self.emit_show_login();
             self.emit_login_error(&e);
@@ -244,6 +252,7 @@ impl AppService {
 
         match self.matrix.rooms().await {
             Ok(rooms) => {
+                tracing::info!(count = rooms.len(), "rooms loaded after session restore");
                 self.emit(UiEvent::Rooms(rooms));
                 self.emit(UiEvent::ConnectionStatus(ConnectionStatus::Connected));
             }
@@ -252,42 +261,54 @@ impl AppService {
                 return;
             }
             Err(e) => {
+                tracing::warn!("failed to fetch rooms after restore: {e}");
                 self.emit(UiEvent::ConnectionStatus(ConnectionStatus::Error(
                     e.to_string(),
                 )));
             }
         }
 
+        tracing::info!(user_id = %session.user_id, "session restore complete");
         self.emit(UiEvent::LoginSuccess {
             user_id: session.user_id,
         });
         self.start_sync_pipeline();
     }
 
+    #[allow(clippy::cognitive_complexity)]
     async fn handle_check_server(&mut self, homeserver: &str) {
+        tracing::info!(homeserver, "checking server");
         let passphrase = match self.get_or_create_passphrase().await {
             Ok(p) => p,
             Err(e) => {
+                tracing::warn!("failed to get passphrase: {e}");
                 self.emit_login_error(&e);
                 return;
             }
         };
         match self.matrix.discover_auth(homeserver, &passphrase).await {
             Ok(info) => self.emit(UiEvent::ServerInfo(info)),
-            Err(e) => self.emit_login_error(&e),
+            Err(e) => {
+                tracing::warn!(homeserver, "server discovery failed: {e}");
+                self.emit_login_error(&e);
+            }
         }
     }
 
     async fn handle_login_password(&mut self, creds: LoginCredentials) {
         match self.matrix.login_password(creds).await {
             Ok(session) => {
+                tracing::info!(user_id = %session.user_id, "password login succeeded");
                 self.save_session(&session).await;
                 self.emit(UiEvent::LoginSuccess {
                     user_id: session.user_id,
                 });
                 self.send_cmd(UiCommand::FetchRooms);
             }
-            Err(e) => self.emit_login_error(&e),
+            Err(e) => {
+                tracing::warn!("password login failed: {e}");
+                self.emit_login_error(&e);
+            }
         }
     }
 
@@ -296,7 +317,10 @@ impl AppService {
             Ok(()) => {
                 self.send_cmd(UiCommand::FetchRooms);
             }
-            Err(e) => self.emit_login_error(&e),
+            Err(e) => {
+                tracing::warn!("OAuth login failed: {e}");
+                self.emit_login_error(&e);
+            }
         }
     }
 
@@ -357,17 +381,21 @@ impl AppService {
         ));
     }
 
+    #[allow(clippy::cognitive_complexity)]
     async fn handle_logout(&mut self) {
+        tracing::info!("user initiated logout");
         self.shutdown_all_tasks().await;
         if let Err(e) = self.matrix.logout().await {
             tracing::warn!("failed to logout from server: {e}");
         }
         self.clear_local_state().await;
+        tracing::info!("logout complete");
         self.emit(UiEvent::ConnectionStatus(ConnectionStatus::Disconnected));
         self.emit(UiEvent::LoggedOut);
     }
 
     async fn handle_select_room(&mut self, room_id: RoomId) {
+        tracing::info!(room_id = %room_id.0, "switching room");
         self.timeline.reset().await;
 
         self.emit(UiEvent::Timeline {
@@ -493,18 +521,21 @@ impl AppService {
 
     async fn handle_accept_verification(&mut self) {
         if let Err(e) = self.matrix.accept_verification().await {
+            tracing::warn!("verification accept failed: {e}");
             self.emit_toast_error(format!("Verification accept failed: {e}"));
         }
     }
 
     async fn handle_reject_verification(&mut self) {
         if let Err(e) = self.matrix.reject_verification().await {
+            tracing::warn!("verification reject failed: {e}");
             self.emit_toast_error(format!("Verification reject failed: {e}"));
         }
     }
 
     async fn handle_confirm_verification(&mut self) {
         if let Err(e) = self.matrix.confirm_verification().await {
+            tracing::warn!("verification confirm failed: {e}");
             self.emit_toast_error(format!("Verification confirm failed: {e}"));
         }
     }
@@ -517,6 +548,7 @@ impl AppService {
 
         match self.matrix.rooms().await {
             Ok(rooms) => {
+                tracing::info!(count = rooms.len(), "initial room sync complete");
                 self.emit(UiEvent::Rooms(rooms));
                 self.emit(UiEvent::ConnectionStatus(ConnectionStatus::Connected));
             }
@@ -525,6 +557,7 @@ impl AppService {
                 return;
             }
             Err(e) => {
+                tracing::warn!("failed to fetch rooms: {e}");
                 self.emit(UiEvent::ConnectionStatus(ConnectionStatus::Error(
                     e.to_string(),
                 )));

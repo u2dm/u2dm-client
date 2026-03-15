@@ -117,6 +117,12 @@ impl Session {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RoomId(pub String);
 
+impl fmt::Display for RoomId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
 #[derive(Debug, Clone)]
 #[allow(dead_code)]
 pub struct Room {

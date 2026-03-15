@@ -26,6 +26,7 @@ impl SecureStorage {
 #[async_trait]
 impl StoragePort for SecureStorage {
     async fn save_session(&self, session: &Session) -> Result<()> {
+        tracing::debug!(user_id = %session.user_id, "saving session");
         keyring_set("access-token", session.access_token.clone()).await?;
 
         match &session.refresh_token {
@@ -35,6 +36,7 @@ impl StoragePort for SecureStorage {
 
         let metadata = session.metadata();
         write_metadata(&self.session_path, &metadata).await?;
+        tracing::debug!("session saved");
 
         Ok(())
     }
@@ -79,6 +81,7 @@ impl StoragePort for SecureStorage {
     }
 
     async fn clear_session(&self) -> Result<()> {
+        tracing::debug!("clearing stored session");
         match fs::remove_file(&self.session_path).await {
             Ok(()) => {}
             Err(e) if e.kind() == ErrorKind::NotFound => {}

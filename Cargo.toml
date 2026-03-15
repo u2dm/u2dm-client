@@ -45,6 +45,7 @@ slint-interpreter = { version = "1.15.1", default-features = false, features = [
     "renderer-skia",
     "accessibility",
 ] }
+strum = { version = "0.28.0", features = ["derive"] }
 thiserror = "2"
 tokio = { version = "1.50.0", features = [
     "rt-multi-thread",
@@ -54,7 +55,7 @@ tokio = { version = "1.50.0", features = [
 ] }
 tokio-util = { version = "0.7", features = ["rt"] }
 tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
 url = "2"
 
 [lints.clippy]

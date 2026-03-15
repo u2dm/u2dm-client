@@ -44,6 +44,7 @@ fn init_tracing() {
 fn run() -> Result<()> {
     let rt = Runtime::new()?;
     let cfg = config::AppConfig::from_env()?;
+    tracing::info!(data_dir = %cfg.data_dir.display(), cache_dir = %cfg.cache_dir.display(), "starting U2DM");
     let ui = SlintUiAdapter::compile(&rt)?;
 
     let (cmd_tx, cmd_rx) = mpsc::unbounded_channel::<UiCommand>();
