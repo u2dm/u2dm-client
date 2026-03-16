@@ -19,8 +19,8 @@ use matrix_sdk::utils::local_server::LocalServerRedirectHandle;
 use tokio::sync::{Mutex, RwLock, mpsc};
 
 use crate::domain::models::{
-    LoginCredentials, OAuthLoginData, Room as DomainRoom, RoomId, ServerInfo, Session, SyncEvent,
-    TimelinePatch, VerificationEvent,
+    LoginCredentials, OAuthLoginData, RoomId, ServerInfo, Session, SyncEvent, TimelinePatch,
+    VerificationEvent,
 };
 use crate::error::{AppError, Result};
 use crate::ports::matrix::MatrixPort;
@@ -87,14 +87,6 @@ impl MatrixPort for MatrixAdapter {
     async fn login_oauth_finish(&self) -> Result<Session> {
         let client = self.get_client().await?;
         auth::login_oauth_finish(&client, &self.redirect_handle).await
-    }
-
-    async fn rooms(&self) -> Result<Vec<DomainRoom>> {
-        tracing::info!("fetching rooms (initial sync)");
-        let client = self.get_client().await?;
-        let rooms = rooms::fetch_rooms(&client).await?;
-        tracing::info!(count = rooms.len(), "fetched rooms");
-        Ok(rooms)
     }
 
     async fn subscribe_timeline(

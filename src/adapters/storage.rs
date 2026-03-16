@@ -1,4 +1,8 @@
+#[cfg(unix)]
+use std::fs::Permissions;
 use std::io::ErrorKind;
+#[cfg(unix)]
+use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 
 use async_trait::async_trait;
@@ -166,8 +170,6 @@ async fn write_metadata(path: &Path, metadata: &SessionMetadata) -> Result<()> {
 
     #[cfg(unix)]
     {
-        use std::fs::Permissions;
-        use std::os::unix::fs::PermissionsExt;
         fs::set_permissions(&tmp_path, Permissions::from_mode(0o600)).await?;
     }
 

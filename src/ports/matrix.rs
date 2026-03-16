@@ -2,7 +2,7 @@ use async_trait::async_trait;
 use tokio::sync::mpsc;
 
 use crate::domain::models::{
-    LoginCredentials, OAuthLoginData, Room, RoomId, ServerInfo, Session, SyncEvent, TimelinePatch,
+    LoginCredentials, OAuthLoginData, RoomId, ServerInfo, Session, SyncEvent, TimelinePatch,
     VerificationEvent,
 };
 use crate::error::Result;
@@ -13,7 +13,6 @@ pub trait MatrixPort: Send + Sync {
     async fn login_password(&self, creds: LoginCredentials) -> Result<Session>;
     async fn login_oauth_start(&self) -> Result<OAuthLoginData>;
     async fn login_oauth_finish(&self) -> Result<Session>;
-    async fn rooms(&self) -> Result<Vec<Room>>;
     async fn subscribe_timeline(
         &self,
         room_id: &RoomId,

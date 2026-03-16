@@ -246,33 +246,11 @@ impl AppService {
             return;
         }
 
-        self.emit(UiEvent::Status("Loading rooms...".into()));
-        self.start_background_listeners().await;
-        self.emit(UiEvent::ConnectionStatus(ConnectionStatus::Connecting));
-
-        match self.matrix.rooms().await {
-            Ok(rooms) => {
-                tracing::info!(count = rooms.len(), "rooms loaded after session restore");
-                self.emit(UiEvent::Rooms(rooms));
-                self.emit(UiEvent::ConnectionStatus(ConnectionStatus::Connected));
-            }
-            Err(AppError::SessionExpired) => {
-                self.handle_session_expired().await;
-                return;
-            }
-            Err(e) => {
-                tracing::warn!("failed to fetch rooms after restore: {e}");
-                self.emit(UiEvent::ConnectionStatus(ConnectionStatus::Error(
-                    e.to_string(),
-                )));
-            }
-        }
-
         tracing::info!(user_id = %session.user_id, "session restore complete");
         self.emit(UiEvent::LoginSuccess {
             user_id: session.user_id,
         });
-        self.start_sync_pipeline();
+        self.send_cmd(UiCommand::FetchRooms);
     }
 
     #[allow(clippy::cognitive_complexity)]
@@ -543,27 +521,7 @@ impl AppService {
     async fn handle_fetch_rooms(&mut self) {
         self.emit(UiEvent::Status("Syncing rooms...".into()));
         self.start_background_listeners().await;
-
         self.emit(UiEvent::ConnectionStatus(ConnectionStatus::Connecting));
-
-        match self.matrix.rooms().await {
-            Ok(rooms) => {
-                tracing::info!(count = rooms.len(), "initial room sync complete");
-                self.emit(UiEvent::Rooms(rooms));
-                self.emit(UiEvent::ConnectionStatus(ConnectionStatus::Connected));
-            }
-            Err(AppError::SessionExpired) => {
-                self.handle_session_expired().await;
-                return;
-            }
-            Err(e) => {
-                tracing::warn!("failed to fetch rooms: {e}");
-                self.emit(UiEvent::ConnectionStatus(ConnectionStatus::Error(
-                    e.to_string(),
-                )));
-            }
-        }
-
         self.start_sync_pipeline();
     }
 

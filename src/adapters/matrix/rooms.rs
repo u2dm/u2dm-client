@@ -1,14 +1,17 @@
 use std::collections::HashMap;
 use std::sync::Arc;
-use std::time::Duration;
 
-use matrix_sdk::config::SyncSettings;
-use matrix_sdk::ruma::api::client::error::ErrorKind as RumaErrorKind;
-use matrix_sdk::{Client, LoopCtrl, Room};
+use matrix_sdk::ruma::api::client::error::ErrorKind;
+use matrix_sdk::sync::RoomUpdates;
+use matrix_sdk::{Client, Room};
+use matrix_sdk_ui::encryption_sync_service::Error as EncryptionSyncError;
+use matrix_sdk_ui::room_list_service::Error as RoomListError;
+use matrix_sdk_ui::sync_service::{Error as SyncServiceError, State as SyncState, SyncService};
+use tokio::sync::broadcast::Receiver;
 use tokio::sync::broadcast::error::RecvError;
 
 use crate::domain::models::{Room as DomainRoom, RoomId, SyncEvent};
-use crate::error::{AppError, Result};
+use crate::error::{AppError, Result as AppResult};
 
 async fn build_single_room(room: &Room) -> DomainRoom {
     let display_name = room
@@ -40,145 +43,195 @@ fn sort_rooms(rooms: &mut [DomainRoom]) {
     });
 }
 
-pub(super) async fn build_room_list(client: &Client) -> Vec<DomainRoom> {
-    let mut rooms = Vec::new();
-    for room in client.joined_rooms() {
-        rooms.push(build_single_room(&room).await);
-    }
+fn emit_room_update(
+    room_cache: &HashMap<String, DomainRoom>,
+    on_sync: &Arc<dyn Fn(SyncEvent) + Send + Sync>,
+) {
+    let mut rooms: Vec<DomainRoom> = room_cache.values().cloned().collect();
     sort_rooms(&mut rooms);
-    rooms
+    on_sync(SyncEvent::Rooms(rooms));
 }
 
-pub(super) fn is_auth_error(err: &matrix_sdk::Error) -> bool {
-    if matches!(
-        err.client_api_error_kind(),
-        Some(
-            RumaErrorKind::Unauthorized
-                | RumaErrorKind::Forbidden { .. }
-                | RumaErrorKind::UnknownToken { .. }
-        )
-    ) {
-        return true;
-    }
-
-    matches!(
-        err,
-        matrix_sdk::Error::Http(http_err) if matches!(http_err.as_ref(), matrix_sdk::HttpError::RefreshToken(_))
-    )
-}
-
-#[allow(clippy::cognitive_complexity)]
-pub(super) async fn fetch_rooms(client: &Client) -> Result<Vec<DomainRoom>> {
+async fn build_sync_service(client: &Client) -> AppResult<SyncService> {
     client
         .event_cache()
         .subscribe()
         .map_err(|e| AppError::Other(e.to_string()))?;
-    tracing::debug!("performing initial sync_once");
-    if let Err(e) = client.sync_once(SyncSettings::default()).await {
-        if is_auth_error(&e) {
-            tracing::warn!("auth error during initial sync");
-            return Err(AppError::SessionExpired);
-        }
-        tracing::warn!("initial sync failed: {e}");
-        return Err(e.into());
-    }
-    tracing::debug!("initial sync complete, building room list");
-    Ok(build_room_list(client).await)
+
+    SyncService::builder(client.clone())
+        .build()
+        .await
+        .map_err(|e| AppError::Other(e.to_string()))
 }
 
-#[allow(clippy::cognitive_complexity)]
-pub(super) async fn start_sync(
-    client: &Client,
-    on_sync: Arc<dyn Fn(SyncEvent) + Send + Sync>,
-) -> Result<()> {
-    let mut room_updates_rx = client.subscribe_to_all_room_updates();
-    let mut room_cache: HashMap<String, DomainRoom> = HashMap::new();
+async fn seed_room_cache(client: &Client, room_cache: &mut HashMap<String, DomainRoom>) {
     for room in client.joined_rooms() {
         let dr = build_single_room(&room).await;
         room_cache.insert(dr.id.0.clone(), dr);
     }
+}
 
-    tracing::info!(
-        initial_rooms = room_cache.len(),
-        "starting continuous sync loop"
-    );
-    let sync_client = client.clone();
-    let on_sync_errors = Arc::clone(&on_sync);
-    let sync_task = tokio::spawn(async move {
-        let settings = SyncSettings::default().timeout(Duration::from_secs(30));
-        #[allow(clippy::let_underscore_must_use)]
-        let _ = sync_client
-            .sync_with_result_callback(settings, move |result| {
-                let on_sync = Arc::clone(&on_sync_errors);
-                async move {
-                    match result {
-                        Ok(_) => {
-                            on_sync(SyncEvent::Connected);
-                            Ok(LoopCtrl::Continue)
-                        }
-                        Err(e) => {
-                            if is_auth_error(&e) {
-                                tracing::warn!("unrecoverable auth error in sync loop, stopping");
-                                on_sync(SyncEvent::SessionExpired);
-                                Ok(LoopCtrl::Break)
-                            } else {
-                                on_sync(SyncEvent::ConnectionError(e.to_string()));
-                                Ok(LoopCtrl::Continue)
-                            }
-                        }
-                    }
-                }
-            })
-            .await;
-    });
-
-    loop {
-        match room_updates_rx.recv().await {
-            Ok(updates) => {
-                let has_joins = !updates.joined.is_empty();
-                let has_leaves = !updates.left.is_empty();
-
-                if !has_joins && !has_leaves {
-                    continue;
-                }
-
-                tracing::debug!(
-                    joined = updates.joined.len(),
-                    left = updates.left.len(),
-                    "processing room updates"
-                );
-
-                for room_id in updates.left.keys() {
-                    let key = room_id.to_string();
-                    room_cache.remove(&key);
-                }
-
-                for room_id in updates.joined.keys() {
-                    if let Some(room) = client.get_room(room_id) {
-                        let dr = build_single_room(&room).await;
-                        room_cache.insert(dr.id.0.clone(), dr);
-                    }
-                }
-
-                let mut rooms: Vec<DomainRoom> = room_cache.values().cloned().collect();
-                sort_rooms(&mut rooms);
-                on_sync(SyncEvent::Rooms(rooms));
-            }
-            Err(RecvError::Lagged(n)) => {
-                tracing::warn!("room updates lagged by {n} messages, full rebuild");
-                room_cache.clear();
-                for room in client.joined_rooms() {
-                    let dr = build_single_room(&room).await;
-                    room_cache.insert(dr.id.0.clone(), dr);
-                }
-                let mut rooms: Vec<DomainRoom> = room_cache.values().cloned().collect();
-                sort_rooms(&mut rooms);
-                on_sync(SyncEvent::Rooms(rooms));
-            }
-            Err(RecvError::Closed) => break,
+async fn apply_room_updates(
+    client: &Client,
+    updates: &RoomUpdates,
+    room_cache: &mut HashMap<String, DomainRoom>,
+) {
+    for room_id in updates.left.keys() {
+        let key = room_id.to_string();
+        room_cache.remove(&key);
+    }
+    for room_id in updates.joined.keys() {
+        if let Some(room) = client.get_room(room_id) {
+            let dr = build_single_room(&room).await;
+            room_cache.insert(dr.id.0.clone(), dr);
         }
     }
+}
 
-    sync_task.abort();
+fn extract_sdk_error(err: &SyncServiceError) -> Option<&matrix_sdk::Error> {
+    match err {
+        SyncServiceError::RoomList(RoomListError::SlidingSync(e))
+        | SyncServiceError::EncryptionSync(EncryptionSyncError::SlidingSync(e)) => Some(e),
+        _ => None,
+    }
+}
+
+fn is_auth_error(err: &SyncServiceError) -> bool {
+    extract_sdk_error(err).is_some_and(|e| {
+        matches!(
+            e.client_api_error_kind(),
+            Some(
+                ErrorKind::UnknownToken { .. }
+                    | ErrorKind::Unauthorized
+                    | ErrorKind::Forbidden { .. }
+            )
+        )
+    })
+}
+
+enum LoopAction {
+    Continue,
+    Break,
+}
+
+async fn handle_room_update(
+    client: &Client,
+    update: Result<RoomUpdates, RecvError>,
+    room_cache: &mut HashMap<String, DomainRoom>,
+    on_sync: &Arc<dyn Fn(SyncEvent) + Send + Sync>,
+) -> LoopAction {
+    match update {
+        Ok(updates) => {
+            if updates.joined.is_empty() && updates.left.is_empty() {
+                return LoopAction::Continue;
+            }
+            tracing::debug!(
+                joined = updates.joined.len(),
+                left = updates.left.len(),
+                "processing room updates"
+            );
+            apply_room_updates(client, &updates, room_cache).await;
+            emit_room_update(room_cache, on_sync);
+            LoopAction::Continue
+        }
+        Err(RecvError::Lagged(n)) => {
+            tracing::warn!("room updates lagged by {n} messages, full rebuild");
+            room_cache.clear();
+            seed_room_cache(client, room_cache).await;
+            emit_room_update(room_cache, on_sync);
+            LoopAction::Continue
+        }
+        Err(RecvError::Closed) => LoopAction::Break,
+    }
+}
+
+#[allow(clippy::cognitive_complexity)]
+async fn handle_sync_state(
+    client: &Client,
+    state: SyncState,
+    sync_service: &SyncService,
+    room_cache: &mut HashMap<String, DomainRoom>,
+    on_sync: &Arc<dyn Fn(SyncEvent) + Send + Sync>,
+) -> LoopAction {
+    match state {
+        SyncState::Running => {
+            tracing::info!("sliding sync running");
+            seed_room_cache(client, room_cache).await;
+            if !room_cache.is_empty() {
+                emit_room_update(room_cache, on_sync);
+            }
+            on_sync(SyncEvent::Connected);
+            LoopAction::Continue
+        }
+        SyncState::Error(err) => {
+            let msg = err.to_string();
+            tracing::warn!("sliding sync error: {msg}");
+            if is_auth_error(&err) {
+                on_sync(SyncEvent::SessionExpired);
+                return LoopAction::Break;
+            }
+            on_sync(SyncEvent::ConnectionError(msg));
+            sync_service.start().await;
+            LoopAction::Continue
+        }
+        SyncState::Terminated => {
+            tracing::info!("sliding sync terminated");
+            LoopAction::Break
+        }
+        SyncState::Idle | SyncState::Offline => LoopAction::Continue,
+    }
+}
+
+async fn run_sync_loop(
+    client: &Client,
+    sync_service: &SyncService,
+    room_updates_rx: &mut Receiver<RoomUpdates>,
+    on_sync: &Arc<dyn Fn(SyncEvent) + Send + Sync>,
+) {
+    let mut room_cache: HashMap<String, DomainRoom> = HashMap::new();
+    let mut state_stream = sync_service.state();
+
+    seed_room_cache(client, &mut room_cache).await;
+    if !room_cache.is_empty() {
+        emit_room_update(&room_cache, on_sync);
+    }
+    on_sync(SyncEvent::Connected);
+
+    loop {
+        tokio::select! {
+            biased;
+            update = room_updates_rx.recv() => {
+                if matches!(
+                    handle_room_update(client, update, &mut room_cache, on_sync).await,
+                    LoopAction::Break
+                ) {
+                    break;
+                }
+            }
+            Some(state) = state_stream.next() => {
+                if matches!(
+                    handle_sync_state(client, state, sync_service, &mut room_cache, on_sync).await,
+                    LoopAction::Break
+                ) {
+                    break;
+                }
+            }
+        }
+    }
+}
+
+pub(super) async fn start_sync(
+    client: &Client,
+    on_sync: Arc<dyn Fn(SyncEvent) + Send + Sync>,
+) -> AppResult<()> {
+    let sync_service = build_sync_service(client).await?;
+    let mut room_updates_rx = client.subscribe_to_all_room_updates();
+
+    sync_service.start().await;
+    tracing::info!("sliding sync service started");
+
+    run_sync_loop(client, &sync_service, &mut room_updates_rx, &on_sync).await;
+
+    sync_service.stop().await;
     Ok(())
 }

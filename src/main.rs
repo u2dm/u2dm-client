@@ -12,6 +12,7 @@ use ports::matrix::MatrixPort;
 use ports::storage::StoragePort;
 use tokio::runtime::Runtime;
 use tokio::sync::mpsc;
+use tracing_subscriber::EnvFilter;
 
 mod adapters;
 mod app;
@@ -33,7 +34,6 @@ fn main() -> ExitCode {
 }
 
 fn init_tracing() {
-    use tracing_subscriber::EnvFilter;
     drop(
         tracing_subscriber::fmt()
             .with_env_filter(EnvFilter::from_default_env())
