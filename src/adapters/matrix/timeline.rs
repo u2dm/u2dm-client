@@ -336,8 +336,7 @@ pub(super) async fn subscribe_timeline(
     timeline_tx: mpsc::UnboundedSender<TimelinePatch>,
 ) -> Result<()> {
     let room_id_parsed: OwnedRoomId = room_id
-        .0
-        .as_str()
+        .as_ref()
         .try_into()
         .map_err(|e: IdParseError| AppError::Other(e.to_string()))?;
 
@@ -371,7 +370,7 @@ pub(super) async fn subscribe_timeline(
     tracing::info!(
         raw_items = items.len(),
         messages = messages.len(),
-        room_id = %room_id.0,
+        %room_id,
         "timeline loaded"
     );
     enrich_messages(client, &cache_dir, &media_sources, &mut messages).await;

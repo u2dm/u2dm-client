@@ -159,7 +159,7 @@ impl SlintUiAdapter {
                     set_prop(&inst, "timeline-loading", Value::Bool(true));
                 }
 
-                if let Err(e) = tx.send(UiCommand::SelectRoom(RoomId(room_id))) {
+                if let Err(e) = tx.send(UiCommand::SelectRoom(RoomId::new(room_id))) {
                     tracing::debug!("failed to send SelectRoom command: {e}");
                 }
                 Value::Void
@@ -195,7 +195,7 @@ impl SlintUiAdapter {
                 if !room_id.is_empty()
                     && !body.is_empty()
                     && let Err(e) = tx.send(UiCommand::SendMessage {
-                        room_id: RoomId(room_id),
+                        room_id: RoomId::new(room_id),
                         body,
                     })
                 {
@@ -347,7 +347,10 @@ fn dispatch_ui_event(
                     Value::String(s) => Some(s),
                     _ => None,
                 });
-            if selected.as_ref().is_some_and(|s| s.as_str() == room_id.0) {
+            if selected
+                .as_ref()
+                .is_some_and(|s| s.as_str() == room_id.as_ref())
+            {
                 set_prop(inst, "timeline-loading", Value::Bool(false));
                 apply_timeline_patch(timeline_model, *patch);
             }
@@ -708,7 +711,10 @@ fn apply_logged_out(inst: &ComponentInstance) {
 
 fn room_to_value(r: &Room) -> Value {
     Value::Struct(Struct::from_iter([
-        ("id".to_string(), Value::String(SharedString::from(&r.id.0))),
+        (
+            "id".to_string(),
+            Value::String(SharedString::from(r.id.as_ref())),
+        ),
         (
             "name".to_string(),
             Value::String(SharedString::from(&r.display_name)),
@@ -737,7 +743,7 @@ fn apply_rooms(model: &VecModel<Value>, rooms: &[Room]) {
     let new_by_id: HashMap<&str, (usize, &Room)> = rooms
         .iter()
         .enumerate()
-        .map(|(i, r)| (r.id.0.as_str(), (i, r)))
+        .map(|(i, r)| (r.id.as_ref(), (i, r)))
         .collect();
 
     let mut i = 0;
@@ -765,7 +771,7 @@ fn apply_rooms(model: &VecModel<Value>, rooms: &[Room]) {
             let same_id = existing
                 .as_ref()
                 .and_then(room_id_from_value)
-                .is_some_and(|id| id.as_str() == room.id.0);
+                .is_some_and(|id| id.as_str() == &*room.id);
 
             if same_id {
                 if existing.as_ref() != Some(&new_val) {

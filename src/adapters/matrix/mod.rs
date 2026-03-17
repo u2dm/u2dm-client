@@ -94,7 +94,7 @@ impl MatrixPort for MatrixAdapter {
         room_id: &RoomId,
         timeline_tx: mpsc::UnboundedSender<TimelinePatch>,
     ) -> Result<()> {
-        tracing::info!(room_id = %room_id.0, "subscribing to timeline");
+        tracing::info!(%room_id, "subscribing to timeline");
         let client = self.get_client().await?;
         timeline::subscribe_timeline(
             &client,
@@ -180,8 +180,7 @@ impl MatrixPort for MatrixAdapter {
     async fn send_text(&self, room_id: &RoomId, body: &str) -> Result<()> {
         let client = self.get_client().await?;
         let room_id_parsed: OwnedRoomId = room_id
-            .0
-            .as_str()
+            .as_ref()
             .try_into()
             .map_err(|e: IdParseError| AppError::Other(e.to_string()))?;
         let room = client

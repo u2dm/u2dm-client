@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use matrix_sdk::ruma::api::client::error::ErrorKind;
 use matrix_sdk::sync::RoomUpdates;
-use matrix_sdk::{Client, Room};
+use matrix_sdk::{Client, HttpError, Room};
 use matrix_sdk_ui::encryption_sync_service::Error as EncryptionSyncError;
 use matrix_sdk_ui::room_list_service::Error as RoomListError;
 use matrix_sdk_ui::sync_service::{Error as SyncServiceError, State as SyncState, SyncService};
@@ -25,7 +25,7 @@ async fn build_single_room(room: &Room) -> DomainRoom {
         .new_latest_event_timestamp()
         .map_or(0, |ts| ts.0.into());
     DomainRoom {
-        id: RoomId(room.room_id().to_string()),
+        id: RoomId::new(room.room_id().to_string()),
         display_name,
         is_direct,
         unread_count: unread,
@@ -67,7 +67,7 @@ async fn build_sync_service(client: &Client) -> AppResult<SyncService> {
 async fn seed_room_cache(client: &Client, room_cache: &mut HashMap<String, DomainRoom>) {
     for room in client.joined_rooms() {
         let dr = build_single_room(&room).await;
-        room_cache.insert(dr.id.0.clone(), dr);
+        room_cache.insert(dr.id.to_string(), dr);
     }
 }
 
@@ -83,7 +83,7 @@ async fn apply_room_updates(
     for room_id in updates.joined.keys() {
         if let Some(room) = client.get_room(room_id) {
             let dr = build_single_room(&room).await;
-            room_cache.insert(dr.id.0.clone(), dr);
+            room_cache.insert(dr.id.to_string(), dr);
         }
     }
 }
@@ -96,16 +96,26 @@ fn extract_sdk_error(err: &SyncServiceError) -> Option<&matrix_sdk::Error> {
     }
 }
 
+fn is_refresh_token_error(err: &matrix_sdk::Error) -> bool {
+    matches!(
+        err,
+        matrix_sdk::Error::Http(http) if matches!(http.as_ref(), HttpError::RefreshToken(_))
+    )
+}
+
 fn is_auth_error(err: &SyncServiceError) -> bool {
     extract_sdk_error(err).is_some_and(|e| {
-        matches!(
+        if matches!(
             e.client_api_error_kind(),
             Some(
                 ErrorKind::UnknownToken { .. }
                     | ErrorKind::Unauthorized
                     | ErrorKind::Forbidden { .. }
             )
-        )
+        ) {
+            return true;
+        }
+        is_refresh_token_error(e)
     })
 }
 

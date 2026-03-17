@@ -373,7 +373,7 @@ impl AppService {
     }
 
     async fn handle_select_room(&mut self, room_id: RoomId) {
-        tracing::info!(room_id = %room_id.0, "switching room");
+        tracing::info!(%room_id, "switching room");
         self.timeline.reset().await;
 
         self.emit(UiEvent::Timeline {

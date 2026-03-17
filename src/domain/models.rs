@@ -1,5 +1,5 @@
-use std::fmt;
 use std::path::PathBuf;
+use std::{fmt, ops};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AuthMethod {
@@ -115,7 +115,27 @@ impl Session {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct RoomId(pub String);
+pub struct RoomId(String);
+
+impl RoomId {
+    pub fn new(id: impl Into<String>) -> Self {
+        Self(id.into())
+    }
+}
+
+impl ops::Deref for RoomId {
+    type Target = str;
+
+    fn deref(&self) -> &str {
+        &self.0
+    }
+}
+
+impl AsRef<str> for RoomId {
+    fn as_ref(&self) -> &str {
+        &self.0
+    }
+}
 
 impl fmt::Display for RoomId {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
