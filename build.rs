@@ -1,7 +1,12 @@
 #![allow(clippy::panic)]
 
 use std::fs;
+use std::path::Path;
 use std::process::Command;
+
+const LANG_DIR: &str = "lang";
+const UI_DIR: &str = "ui";
+const POT_FILE: &str = "lang/u2dm.pot";
 
 fn main() {
     #[cfg(not(feature = "interpreted"))]
@@ -12,7 +17,27 @@ fn main() {
     update_translations();
 }
 
-fn collect_slint_files(dir: &str) -> Vec<String> {
+fn update_translations() {
+    let slint_files = collect_files_recursive(UI_DIR, "slint");
+    if slint_files.is_empty() {
+        return;
+    }
+
+    if !extract_translatable_strings(&slint_files) {
+        return;
+    }
+
+    strip_pot_creation_date(POT_FILE);
+
+    for po_path in collect_files_recursive(LANG_DIR, "po") {
+        merge_translations(&po_path);
+        compile_translations(&po_path);
+    }
+
+    println!("cargo::rerun-if-changed={UI_DIR}/");
+}
+
+fn collect_files_recursive(dir: &str, extension: &str) -> Vec<String> {
     let mut files = Vec::new();
     let Ok(entries) = fs::read_dir(dir) else {
         return files;
@@ -20,76 +45,31 @@ fn collect_slint_files(dir: &str) -> Vec<String> {
     for entry in entries.flatten() {
         let path = entry.path();
         if path.is_dir() {
-            files.extend(collect_slint_files(&path.to_string_lossy()));
-        } else if path.extension().is_some_and(|ext| ext == "slint") {
+            files.extend(collect_files_recursive(&path.to_string_lossy(), extension));
+        } else if path.extension().is_some_and(|ext| ext == extension) {
             files.push(path.to_string_lossy().to_string());
         }
     }
     files
 }
 
-fn update_translations() {
-    let lang_dir = "lang";
-    let pot_file = format!("{lang_dir}/u2dm.pot");
-
-    let slint_files = collect_slint_files("ui");
-    if slint_files.is_empty() {
-        return;
-    }
-
+fn extract_translatable_strings(slint_files: &[String]) -> bool {
     let Ok(status) = Command::new("slint-tr-extractor")
         .arg("-o")
-        .arg(&pot_file)
-        .args(&slint_files)
+        .arg(POT_FILE)
+        .args(slint_files)
         .status()
     else {
         println!("cargo::warning=slint-tr-extractor not found, skipping translation extraction");
-        return;
+        return false;
     };
 
     if !status.success() {
         println!("cargo::warning=slint-tr-extractor failed");
-        return;
+        return false;
     }
 
-    strip_pot_creation_date(&pot_file);
-
-    let Ok(entries) = fs::read_dir(lang_dir) else {
-        return;
-    };
-
-    for entry in entries.flatten() {
-        let path = entry.path();
-        let is_po = path.extension().is_some_and(|ext| ext == "po");
-        let Some(lang) = path.file_stem().map(|s| s.to_string_lossy().to_string()) else {
-            continue;
-        };
-        if is_po {
-            let po_path = path.to_string_lossy().to_string();
-            let mo_dir = format!("{lang_dir}/{lang}/LC_MESSAGES");
-            drop(fs::create_dir_all(&mo_dir));
-
-            drop(
-                Command::new("msgmerge")
-                    .args([
-                        "--update",
-                        "--no-fuzzy-matching",
-                        "--backup=none",
-                        &po_path,
-                        &pot_file,
-                    ])
-                    .status(),
-            );
-
-            drop(
-                Command::new("msgfmt")
-                    .args([&po_path, "-o", &format!("{mo_dir}/U2DM.mo")])
-                    .status(),
-            );
-        }
-    }
-
-    println!("cargo::rerun-if-changed=ui/");
+    true
 }
 
 fn strip_pot_creation_date(path: &str) {
@@ -102,4 +82,33 @@ fn strip_pot_creation_date(path: &str) {
         .collect::<Vec<_>>()
         .join("\n");
     drop(fs::write(path, stripped));
+}
+
+fn merge_translations(po_path: &str) {
+    drop(
+        Command::new("msgmerge")
+            .args([
+                "--update",
+                "--no-fuzzy-matching",
+                "--backup=none",
+                po_path,
+                POT_FILE,
+            ])
+            .status(),
+    );
+}
+
+fn compile_translations(po_path: &str) {
+    let Some(lang) = Path::new(po_path).file_stem().map(|s| s.to_string_lossy()) else {
+        return;
+    };
+
+    let mo_dir = format!("{LANG_DIR}/{lang}/LC_MESSAGES");
+    drop(fs::create_dir_all(&mo_dir));
+
+    drop(
+        Command::new("msgfmt")
+            .args([po_path, "-o", &format!("{mo_dir}/U2DM.mo")])
+            .status(),
+    );
 }
