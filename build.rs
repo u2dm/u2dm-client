@@ -52,6 +52,8 @@ fn update_translations() {
         return;
     }
 
+    strip_pot_creation_date(&pot_file);
+
     let Ok(entries) = fs::read_dir(lang_dir) else {
         return;
     };
@@ -88,4 +90,16 @@ fn update_translations() {
     }
 
     println!("cargo::rerun-if-changed=ui/");
+}
+
+fn strip_pot_creation_date(path: &str) {
+    let Ok(content) = fs::read_to_string(path) else {
+        return;
+    };
+    let stripped: String = content
+        .lines()
+        .filter(|line| !line.contains("POT-Creation-Date"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    drop(fs::write(path, stripped));
 }
