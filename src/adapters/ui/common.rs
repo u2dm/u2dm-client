@@ -1,8 +1,79 @@
 use std::collections::HashMap;
 
-use slint::{Model, VecModel};
+use slint::{Model, SharedString, VecModel};
 
-use crate::domain::models::{Room, TimelineMessage, TimelinePatch};
+use crate::commands::UiEvent;
+use crate::domain::models::{
+    ConnectionStatus, LoginMethod, Room, ServerInfo, TimelineMessage, TimelinePatch,
+    VerificationEmoji as DomainVerificationEmoji, VerificationEvent as DomainVerificationEvent,
+};
+
+pub enum StringProp {
+    LoginStep,
+    LoginStatus,
+    LoginError,
+    LoginMethod,
+    ResolvedHomeserver,
+    UserId,
+    ToastMessage,
+    ConnectionStatus,
+    VerificationStep,
+    VerificationSender,
+    VerificationError,
+    SavedFilePath,
+    SelectedRoomName,
+    SelectedRoomId,
+    InputUsername,
+    InputPassword,
+}
+
+impl StringProp {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::LoginStep => "login-step",
+            Self::LoginStatus => "login-status",
+            Self::LoginError => "login-error",
+            Self::LoginMethod => "login-method",
+            Self::ResolvedHomeserver => "resolved-homeserver",
+            Self::UserId => "user-id",
+            Self::ToastMessage => "toast-message",
+            Self::ConnectionStatus => "connection-status",
+            Self::VerificationStep => "verification-step",
+            Self::VerificationSender => "verification-sender",
+            Self::VerificationError => "verification-error",
+            Self::SavedFilePath => "saved-file-path",
+            Self::SelectedRoomName => "selected-room-name",
+            Self::SelectedRoomId => "selected-room-id",
+            Self::InputUsername => "input-username",
+            Self::InputPassword => "input-password",
+        }
+    }
+}
+
+pub enum BoolProp {
+    VerificationVisible,
+    VerificationIsSelf,
+    TimelineLoading,
+}
+
+impl BoolProp {
+    #[cfg(feature = "interpreted")]
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::VerificationVisible => "verification-visible",
+            Self::VerificationIsSelf => "verification-is-self",
+            Self::TimelineLoading => "timeline-loading",
+        }
+    }
+}
+
+pub trait UiProps {
+    fn set_string(&self, prop: StringProp, value: SharedString);
+    fn set_bool(&self, prop: BoolProp, value: bool);
+    fn get_string(&self, prop: StringProp) -> SharedString;
+    fn apply_emoji_model(&self, emojis: &[DomainVerificationEmoji]);
+    fn clear_emoji_model(&self);
+}
 
 pub enum Status {
     CheckingServer,
@@ -56,6 +127,179 @@ impl VerifyStep {
             Self::Cancelled => "cancelled",
         }
     }
+}
+
+#[allow(clippy::too_many_lines)]
+pub fn dispatch_ui_event<T, R>(
+    w: &impl UiProps,
+    event: UiEvent,
+    timeline_model: &VecModel<T>,
+    rooms_model: &VecModel<R>,
+    convert_message: &dyn Fn(&TimelineMessage) -> T,
+    convert_room: &dyn Fn(&Room) -> R,
+    room_entry_id: &dyn Fn(&R) -> &str,
+) where
+    T: Clone + 'static,
+    R: Clone + PartialEq + 'static,
+{
+    match event {
+        UiEvent::ServerInfo(info) => apply_server_info(w, &info),
+        UiEvent::ShowLogin => apply_show_login(w),
+        UiEvent::LoginSuccess { user_id } => apply_login_success(w, &user_id),
+        UiEvent::LoginError(message) => apply_login_error(w, &message),
+        UiEvent::ToastError(message) => apply_toast_error(w, &message),
+        UiEvent::Status(msg) => apply_status(w, &msg),
+        UiEvent::Rooms(rooms) => {
+            apply_rooms(rooms_model, &rooms, convert_room, room_entry_id);
+        }
+        UiEvent::Timeline { room_id, patch } => {
+            let selected = w.get_string(StringProp::SelectedRoomId);
+            if selected.as_str() == room_id.as_ref() {
+                w.set_bool(BoolProp::TimelineLoading, false);
+                apply_timeline_patch(timeline_model, *patch, convert_message);
+            }
+        }
+        UiEvent::ConnectionStatus(status) => apply_connection_status(w, &status),
+        UiEvent::Verification(event) => apply_verification(w, &event),
+        UiEvent::FileSaved { path } => {
+            w.set_string(StringProp::SavedFilePath, SharedString::from(&path));
+            w.set_string(
+                StringProp::ToastMessage,
+                SharedString::from(Status::FileSaved.as_str()),
+            );
+        }
+        UiEvent::LoggedOut => {
+            timeline_model.set_vec(Vec::new());
+            rooms_model.set_vec(Vec::new());
+            apply_logged_out(w);
+        }
+    }
+}
+
+fn apply_server_info(w: &impl UiProps, info: &ServerInfo) {
+    let method = LoginMethod::from_auth_methods(&info.auth_methods);
+    w.set_string(StringProp::LoginMethod, SharedString::from(method.as_str()));
+    w.set_string(
+        StringProp::ResolvedHomeserver,
+        SharedString::from(&info.homeserver_url),
+    );
+    w.set_string(
+        StringProp::LoginStep,
+        SharedString::from(LoginStep::Credentials.as_str()),
+    );
+    w.set_string(StringProp::LoginStatus, SharedString::default());
+}
+
+fn apply_show_login(w: &impl UiProps) {
+    w.set_string(
+        StringProp::LoginStep,
+        SharedString::from(LoginStep::Homeserver.as_str()),
+    );
+    w.set_string(StringProp::LoginStatus, SharedString::default());
+}
+
+fn apply_login_success(w: &impl UiProps, user_id: &str) {
+    w.set_string(StringProp::UserId, SharedString::from(user_id));
+    w.set_string(
+        StringProp::LoginStep,
+        SharedString::from(LoginStep::LoggedIn.as_str()),
+    );
+    w.set_string(StringProp::LoginStatus, SharedString::default());
+}
+
+fn apply_login_error(w: &impl UiProps, msg: &str) {
+    w.set_string(StringProp::LoginError, SharedString::from(msg));
+    w.set_string(StringProp::LoginStatus, SharedString::default());
+}
+
+fn apply_toast_error(w: &impl UiProps, msg: &str) {
+    w.set_string(StringProp::ToastMessage, SharedString::from(msg));
+}
+
+fn apply_status(w: &impl UiProps, msg: &str) {
+    w.set_string(StringProp::LoginStatus, SharedString::from(msg));
+}
+
+fn apply_connection_status(w: &impl UiProps, status: &ConnectionStatus) {
+    w.set_string(
+        StringProp::ConnectionStatus,
+        SharedString::from(status.as_str()),
+    );
+}
+
+fn apply_verification(w: &impl UiProps, event: &DomainVerificationEvent) {
+    match event {
+        DomainVerificationEvent::Requested { sender, is_self } => {
+            w.set_bool(BoolProp::VerificationVisible, true);
+            w.set_string(
+                StringProp::VerificationStep,
+                SharedString::from(VerifyStep::Requested.as_str()),
+            );
+            w.set_string(
+                StringProp::VerificationSender,
+                SharedString::from(sender.as_str()),
+            );
+            w.set_bool(BoolProp::VerificationIsSelf, *is_self);
+            w.set_string(StringProp::VerificationError, SharedString::default());
+        }
+        DomainVerificationEvent::Emojis(emojis) => {
+            w.set_string(
+                StringProp::VerificationStep,
+                SharedString::from(VerifyStep::Emojis.as_str()),
+            );
+            w.apply_emoji_model(emojis);
+        }
+        DomainVerificationEvent::Confirming => {
+            w.set_string(
+                StringProp::VerificationStep,
+                SharedString::from(VerifyStep::Confirming.as_str()),
+            );
+        }
+        DomainVerificationEvent::Done => {
+            w.set_string(
+                StringProp::VerificationStep,
+                SharedString::from(VerifyStep::Done.as_str()),
+            );
+        }
+        DomainVerificationEvent::Cancelled(reason) => {
+            w.set_string(
+                StringProp::VerificationStep,
+                SharedString::from(VerifyStep::Cancelled.as_str()),
+            );
+            w.set_string(
+                StringProp::VerificationError,
+                SharedString::from(reason.as_str()),
+            );
+        }
+    }
+}
+
+fn apply_logged_out(w: &impl UiProps) {
+    w.set_string(
+        StringProp::LoginStep,
+        SharedString::from(LoginStep::Homeserver.as_str()),
+    );
+    w.set_string(StringProp::UserId, SharedString::default());
+    w.set_string(StringProp::LoginStatus, SharedString::default());
+    w.set_string(StringProp::LoginError, SharedString::default());
+    w.set_string(StringProp::LoginMethod, SharedString::default());
+    w.set_string(StringProp::ResolvedHomeserver, SharedString::default());
+    w.set_string(StringProp::SelectedRoomName, SharedString::default());
+    w.set_string(StringProp::SelectedRoomId, SharedString::default());
+    w.set_string(StringProp::InputUsername, SharedString::default());
+    w.set_string(StringProp::InputPassword, SharedString::default());
+    w.set_string(
+        StringProp::ConnectionStatus,
+        SharedString::from(ConnectionStatus::Disconnected.as_str()),
+    );
+    w.set_bool(BoolProp::VerificationVisible, false);
+    w.set_string(StringProp::VerificationStep, SharedString::default());
+    w.set_string(StringProp::VerificationSender, SharedString::default());
+    w.set_bool(BoolProp::VerificationIsSelf, false);
+    w.set_string(StringProp::VerificationError, SharedString::default());
+    w.set_string(StringProp::ToastMessage, SharedString::default());
+    w.set_string(StringProp::SavedFilePath, SharedString::default());
+    w.clear_emoji_model();
 }
 
 pub fn apply_timeline_patch<T: Clone + 'static>(

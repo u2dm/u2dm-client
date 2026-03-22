@@ -13,17 +13,68 @@ thread_local! {
     static ROOMS_MODEL: RefCell<Option<Rc<VecModel<Value>>>> = const { RefCell::new(None) };
 }
 
-use super::common::{LoginStep, Status, VerifyStep, apply_rooms, apply_timeline_patch};
+use super::common::{BoolProp, Status, StringProp, UiProps, dispatch_ui_event};
 use crate::commands::{UiCommand, UiEvent};
 use crate::domain::models::{
-    ConnectionStatus, LoginCredentials, LoginMethod, MessageBody, Room, RoomId, ServerInfo,
-    TimelineMessage, VerificationEvent,
+    LoginCredentials, MessageBody, Room, RoomId, TimelineMessage,
+    VerificationEmoji as DomainVerificationEmoji,
 };
 use crate::error::{AppError, Result};
 
 fn set_prop(inst: &ComponentInstance, name: &str, value: Value) {
     if let Err(e) = inst.set_property(name, value) {
         tracing::warn!("failed to set property '{name}': {e:?}");
+    }
+}
+
+impl UiProps for ComponentInstance {
+    fn set_string(&self, prop: StringProp, value: SharedString) {
+        set_prop(self, prop.as_str(), Value::String(value));
+    }
+
+    fn set_bool(&self, prop: BoolProp, value: bool) {
+        set_prop(self, prop.as_str(), Value::Bool(value));
+    }
+
+    fn get_string(&self, prop: StringProp) -> SharedString {
+        self.get_property(prop.as_str())
+            .ok()
+            .and_then(|v| match v {
+                Value::String(s) => Some(s),
+                _ => None,
+            })
+            .unwrap_or_default()
+    }
+
+    fn apply_emoji_model(&self, emojis: &[DomainVerificationEmoji]) {
+        let entries: Vec<Value> = emojis
+            .iter()
+            .map(|e| {
+                Value::Struct(Struct::from_iter([
+                    (
+                        "symbol".to_string(),
+                        Value::String(SharedString::from(&e.symbol)),
+                    ),
+                    (
+                        "description".to_string(),
+                        Value::String(SharedString::from(&e.description)),
+                    ),
+                ]))
+            })
+            .collect();
+        set_prop(
+            self,
+            "verification-emojis",
+            Value::Model(ModelRc::new(VecModel::from(entries))),
+        );
+    }
+
+    fn clear_emoji_model(&self) {
+        set_prop(
+            self,
+            "verification-emojis",
+            Value::Model(ModelRc::new(VecModel::<Value>::default())),
+        );
     }
 }
 
@@ -301,7 +352,15 @@ impl SlintUiAdapter {
                         if let Some(tl) = cell.borrow().as_ref() {
                             ROOMS_MODEL.with(|rc| {
                                 if let Some(rm) = rc.borrow().as_ref() {
-                                    dispatch_ui_event(&inst, event, tl, rm);
+                                    dispatch_ui_event(
+                                        &inst,
+                                        event,
+                                        tl,
+                                        rm,
+                                        &message_to_value,
+                                        &room_to_value,
+                                        &|v| room_id_from_value(v).map_or("", SharedString::as_str),
+                                    );
                                 }
                             });
                         }
@@ -316,118 +375,6 @@ impl SlintUiAdapter {
         self.instance.run()?;
         Ok(())
     }
-}
-
-fn dispatch_ui_event(
-    inst: &ComponentInstance,
-    event: UiEvent,
-    timeline_model: &VecModel<Value>,
-    rooms_model: &VecModel<Value>,
-) {
-    match event {
-        UiEvent::ServerInfo(info) => apply_server_info(inst, &info),
-        UiEvent::ShowLogin => apply_show_login(inst),
-        UiEvent::LoginSuccess { user_id } => apply_login_success(inst, &user_id),
-        UiEvent::LoginError(message) => apply_login_error(inst, &message),
-        UiEvent::ToastError(message) => apply_toast_error(inst, &message),
-        UiEvent::Status(msg) => apply_status(inst, &msg),
-        UiEvent::Rooms(rooms) => {
-            apply_rooms(rooms_model, &rooms, &room_to_value, &|v| {
-                room_id_from_value(v).map_or("", |s| s.as_str())
-            });
-        }
-        UiEvent::Timeline { room_id, patch } => {
-            let selected = inst
-                .get_property("selected-room-id")
-                .ok()
-                .and_then(|v| match v {
-                    Value::String(s) => Some(s),
-                    _ => None,
-                });
-            if selected
-                .as_ref()
-                .is_some_and(|s| s.as_str() == room_id.as_ref())
-            {
-                set_prop(inst, "timeline-loading", Value::Bool(false));
-                apply_timeline_patch(timeline_model, *patch, &message_to_value);
-            }
-        }
-        UiEvent::ConnectionStatus(status) => apply_connection_status(inst, &status),
-        UiEvent::Verification(event) => apply_verification(inst, &event),
-        UiEvent::FileSaved { path } => {
-            set_prop(
-                inst,
-                "saved-file-path",
-                Value::String(SharedString::from(&path)),
-            );
-            set_prop(
-                inst,
-                "toast-message",
-                Value::String(SharedString::from(Status::FileSaved.as_str())),
-            );
-        }
-        UiEvent::LoggedOut => {
-            timeline_model.set_vec(Vec::new());
-            rooms_model.set_vec(Vec::new());
-            apply_logged_out(inst);
-        }
-    }
-}
-
-fn apply_server_info(inst: &ComponentInstance, info: &ServerInfo) {
-    let method = LoginMethod::from_auth_methods(&info.auth_methods);
-    set_prop(
-        inst,
-        "login-method",
-        Value::String(SharedString::from(method.as_str())),
-    );
-    set_prop(
-        inst,
-        "resolved-homeserver",
-        Value::String(SharedString::from(&info.homeserver_url)),
-    );
-    set_prop(
-        inst,
-        "login-step",
-        Value::String(SharedString::from(LoginStep::Credentials.as_str())),
-    );
-    set_prop(inst, "login-status", Value::String(SharedString::default()));
-}
-
-fn apply_show_login(inst: &ComponentInstance) {
-    set_prop(
-        inst,
-        "login-step",
-        Value::String(SharedString::from(LoginStep::Homeserver.as_str())),
-    );
-    set_prop(inst, "login-status", Value::String(SharedString::default()));
-}
-
-fn apply_login_success(inst: &ComponentInstance, user_id: &str) {
-    set_prop(inst, "user-id", Value::String(SharedString::from(user_id)));
-    set_prop(
-        inst,
-        "login-step",
-        Value::String(SharedString::from(LoginStep::LoggedIn.as_str())),
-    );
-    set_prop(inst, "login-status", Value::String(SharedString::default()));
-}
-
-fn apply_login_error(inst: &ComponentInstance, msg: &str) {
-    set_prop(inst, "login-error", Value::String(SharedString::from(msg)));
-    set_prop(inst, "login-status", Value::String(SharedString::default()));
-}
-
-fn apply_toast_error(inst: &ComponentInstance, msg: &str) {
-    set_prop(
-        inst,
-        "toast-message",
-        Value::String(SharedString::from(msg)),
-    );
-}
-
-fn apply_status(inst: &ComponentInstance, msg: &str) {
-    set_prop(inst, "login-status", Value::String(SharedString::from(msg)));
 }
 
 fn message_to_value(m: &TimelineMessage) -> Value {
@@ -475,159 +422,6 @@ fn message_to_value(m: &TimelineMessage) -> Value {
     fields.push(("is-own".to_string(), Value::Bool(m.is_own)));
 
     Value::Struct(Struct::from_iter(fields))
-}
-
-fn apply_connection_status(inst: &ComponentInstance, status: &ConnectionStatus) {
-    set_prop(
-        inst,
-        "connection-status",
-        Value::String(SharedString::from(status.as_str())),
-    );
-}
-
-fn apply_verification(inst: &ComponentInstance, event: &VerificationEvent) {
-    match event {
-        VerificationEvent::Requested { sender, is_self } => {
-            set_prop(inst, "verification-visible", Value::Bool(true));
-            set_prop(
-                inst,
-                "verification-step",
-                Value::String(SharedString::from(VerifyStep::Requested.as_str())),
-            );
-            set_prop(
-                inst,
-                "verification-sender",
-                Value::String(SharedString::from(sender.as_str())),
-            );
-            set_prop(inst, "verification-is-self", Value::Bool(*is_self));
-            set_prop(
-                inst,
-                "verification-error",
-                Value::String(SharedString::default()),
-            );
-        }
-        VerificationEvent::Emojis(emojis) => {
-            set_prop(
-                inst,
-                "verification-step",
-                Value::String(SharedString::from(VerifyStep::Emojis.as_str())),
-            );
-            let entries: Vec<Value> = emojis
-                .iter()
-                .map(|e| {
-                    Value::Struct(Struct::from_iter([
-                        (
-                            "symbol".to_string(),
-                            Value::String(SharedString::from(&e.symbol)),
-                        ),
-                        (
-                            "description".to_string(),
-                            Value::String(SharedString::from(&e.description)),
-                        ),
-                    ]))
-                })
-                .collect();
-            let model = Value::Model(ModelRc::new(VecModel::from(entries)));
-            set_prop(inst, "verification-emojis", model);
-        }
-        VerificationEvent::Confirming => {
-            set_prop(
-                inst,
-                "verification-step",
-                Value::String(SharedString::from(VerifyStep::Confirming.as_str())),
-            );
-        }
-        VerificationEvent::Done => {
-            set_prop(
-                inst,
-                "verification-step",
-                Value::String(SharedString::from(VerifyStep::Done.as_str())),
-            );
-        }
-        VerificationEvent::Cancelled(reason) => {
-            set_prop(
-                inst,
-                "verification-step",
-                Value::String(SharedString::from(VerifyStep::Cancelled.as_str())),
-            );
-            set_prop(
-                inst,
-                "verification-error",
-                Value::String(SharedString::from(reason.as_str())),
-            );
-        }
-    }
-}
-
-fn apply_logged_out(inst: &ComponentInstance) {
-    set_prop(
-        inst,
-        "login-step",
-        Value::String(SharedString::from(LoginStep::Homeserver.as_str())),
-    );
-    set_prop(inst, "user-id", Value::String(SharedString::default()));
-    set_prop(inst, "login-status", Value::String(SharedString::default()));
-    set_prop(inst, "login-error", Value::String(SharedString::default()));
-    set_prop(inst, "login-method", Value::String(SharedString::default()));
-    set_prop(
-        inst,
-        "resolved-homeserver",
-        Value::String(SharedString::default()),
-    );
-    set_prop(
-        inst,
-        "selected-room-name",
-        Value::String(SharedString::default()),
-    );
-    set_prop(
-        inst,
-        "selected-room-id",
-        Value::String(SharedString::default()),
-    );
-    set_prop(
-        inst,
-        "input-username",
-        Value::String(SharedString::default()),
-    );
-    set_prop(
-        inst,
-        "input-password",
-        Value::String(SharedString::default()),
-    );
-    set_prop(
-        inst,
-        "connection-status",
-        Value::String(SharedString::from(ConnectionStatus::Disconnected.as_str())),
-    );
-    set_prop(inst, "verification-visible", Value::Bool(false));
-    set_prop(
-        inst,
-        "verification-step",
-        Value::String(SharedString::default()),
-    );
-    set_prop(
-        inst,
-        "verification-sender",
-        Value::String(SharedString::default()),
-    );
-    set_prop(inst, "verification-is-self", Value::Bool(false));
-    set_prop(
-        inst,
-        "verification-error",
-        Value::String(SharedString::default()),
-    );
-    set_prop(
-        inst,
-        "toast-message",
-        Value::String(SharedString::default()),
-    );
-    set_prop(
-        inst,
-        "saved-file-path",
-        Value::String(SharedString::default()),
-    );
-    let empty_model = Value::Model(ModelRc::new(VecModel::<Value>::default()));
-    set_prop(inst, "verification-emojis", empty_model);
 }
 
 fn room_to_value(r: &Room) -> Value {

@@ -5,11 +5,11 @@ use slint::{ComponentHandle, ModelRc, SharedString, VecModel};
 use tokio::runtime::Runtime;
 use tokio::sync::mpsc;
 
-use super::common::{LoginStep, Status, VerifyStep, apply_rooms, apply_timeline_patch};
+use super::common::{BoolProp, Status, StringProp, UiProps, dispatch_ui_event};
 use crate::commands::{UiCommand, UiEvent};
 use crate::domain::models::{
-    ConnectionStatus, LoginCredentials, LoginMethod, Room, RoomId, ServerInfo, TimelineMessage,
-    VerificationEvent as DomainVerificationEvent,
+    LoginCredentials, MessageBody, Room, RoomId, TimelineMessage,
+    VerificationEmoji as DomainVerificationEmoji,
 };
 use crate::error::Result;
 
@@ -22,6 +22,62 @@ use generated::{AppWindow, MessageEntry, RoomEntry, VerificationEmoji};
 thread_local! {
     static TIMELINE_MODEL: RefCell<Option<Rc<VecModel<MessageEntry>>>> = const { RefCell::new(None) };
     static ROOMS_MODEL: RefCell<Option<Rc<VecModel<RoomEntry>>>> = const { RefCell::new(None) };
+}
+
+impl UiProps for AppWindow {
+    fn set_string(&self, prop: StringProp, value: SharedString) {
+        match prop {
+            StringProp::LoginStep => self.set_login_step(value),
+            StringProp::LoginStatus => self.set_login_status(value),
+            StringProp::LoginError => self.set_login_error(value),
+            StringProp::LoginMethod => self.set_login_method(value),
+            StringProp::ResolvedHomeserver => self.set_resolved_homeserver(value),
+            StringProp::UserId => self.set_user_id(value),
+            StringProp::ToastMessage => self.set_toast_message(value),
+            StringProp::ConnectionStatus => self.set_connection_status(value),
+            StringProp::VerificationStep => self.set_verification_step(value),
+            StringProp::VerificationSender => self.set_verification_sender(value),
+            StringProp::VerificationError => self.set_verification_error(value),
+            StringProp::SavedFilePath => self.set_saved_file_path(value),
+            StringProp::SelectedRoomName => self.set_selected_room_name(value),
+            StringProp::SelectedRoomId => self.set_selected_room_id(value),
+            StringProp::InputUsername => self.set_input_username(value),
+            StringProp::InputPassword => self.set_input_password(value),
+        }
+    }
+
+    fn set_bool(&self, prop: BoolProp, value: bool) {
+        match prop {
+            BoolProp::VerificationVisible => self.set_verification_visible(value),
+            BoolProp::VerificationIsSelf => self.set_verification_is_self(value),
+            BoolProp::TimelineLoading => self.set_timeline_loading(value),
+        }
+    }
+
+    fn get_string(&self, prop: StringProp) -> SharedString {
+        match prop {
+            StringProp::SelectedRoomId => self.get_selected_room_id(),
+            other => {
+                tracing::warn!("unexpected get for property: {}", other.as_str());
+                SharedString::default()
+            }
+        }
+    }
+
+    fn apply_emoji_model(&self, emojis: &[DomainVerificationEmoji]) {
+        let entries: Vec<VerificationEmoji> = emojis
+            .iter()
+            .map(|e| VerificationEmoji {
+                symbol: SharedString::from(&e.symbol),
+                description: SharedString::from(&e.description),
+            })
+            .collect();
+        self.set_verification_emojis(ModelRc::new(VecModel::from(entries)));
+    }
+
+    fn clear_emoji_model(&self) {
+        self.set_verification_emojis(ModelRc::new(VecModel::<VerificationEmoji>::default()));
+    }
 }
 
 pub struct SlintUiAdapter {
@@ -175,7 +231,15 @@ impl SlintUiAdapter {
                         if let Some(tl) = cell.borrow().as_ref() {
                             ROOMS_MODEL.with(|rc| {
                                 if let Some(rm) = rc.borrow().as_ref() {
-                                    dispatch_ui_event(&w, event, tl, rm);
+                                    dispatch_ui_event(
+                                        &w,
+                                        event,
+                                        tl,
+                                        rm,
+                                        &message_to_entry,
+                                        &room_to_entry,
+                                        &|e| e.id.as_str(),
+                                    );
                                 }
                             });
                         }
@@ -192,78 +256,7 @@ impl SlintUiAdapter {
     }
 }
 
-fn dispatch_ui_event(
-    w: &AppWindow,
-    event: UiEvent,
-    timeline_model: &VecModel<MessageEntry>,
-    rooms_model: &VecModel<RoomEntry>,
-) {
-    match event {
-        UiEvent::ServerInfo(info) => apply_server_info(w, &info),
-        UiEvent::ShowLogin => apply_show_login(w),
-        UiEvent::LoginSuccess { user_id } => apply_login_success(w, &user_id),
-        UiEvent::LoginError(message) => apply_login_error(w, &message),
-        UiEvent::ToastError(message) => apply_toast_error(w, &message),
-        UiEvent::Status(msg) => apply_status(w, &msg),
-        UiEvent::Rooms(rooms) => {
-            apply_rooms(rooms_model, &rooms, &room_to_entry, &|e| e.id.as_str());
-        }
-        UiEvent::Timeline { room_id, patch } => {
-            let selected = w.get_selected_room_id();
-            if selected.as_str() == room_id.as_ref() {
-                w.set_timeline_loading(false);
-                apply_timeline_patch(timeline_model, *patch, &message_to_entry);
-            }
-        }
-        UiEvent::ConnectionStatus(status) => apply_connection_status(w, &status),
-        UiEvent::Verification(event) => apply_verification(w, &event),
-        UiEvent::FileSaved { path } => {
-            w.set_saved_file_path(SharedString::from(&path));
-            w.set_toast_message(SharedString::from(Status::FileSaved.as_str()));
-        }
-        UiEvent::LoggedOut => {
-            timeline_model.set_vec(Vec::new());
-            rooms_model.set_vec(Vec::new());
-            apply_logged_out(w);
-        }
-    }
-}
-
-fn apply_server_info(w: &AppWindow, info: &ServerInfo) {
-    let method = LoginMethod::from_auth_methods(&info.auth_methods);
-    w.set_login_method(SharedString::from(method.as_str()));
-    w.set_resolved_homeserver(SharedString::from(&info.homeserver_url));
-    w.set_login_step(SharedString::from(LoginStep::Credentials.as_str()));
-    w.set_login_status(SharedString::default());
-}
-
-fn apply_show_login(w: &AppWindow) {
-    w.set_login_step(SharedString::from(LoginStep::Homeserver.as_str()));
-    w.set_login_status(SharedString::default());
-}
-
-fn apply_login_success(w: &AppWindow, user_id: &str) {
-    w.set_user_id(SharedString::from(user_id));
-    w.set_login_step(SharedString::from(LoginStep::LoggedIn.as_str()));
-    w.set_login_status(SharedString::default());
-}
-
-fn apply_login_error(w: &AppWindow, msg: &str) {
-    w.set_login_error(SharedString::from(msg));
-    w.set_login_status(SharedString::default());
-}
-
-fn apply_toast_error(w: &AppWindow, msg: &str) {
-    w.set_toast_message(SharedString::from(msg));
-}
-
-fn apply_status(w: &AppWindow, msg: &str) {
-    w.set_login_status(SharedString::from(msg));
-}
-
 fn message_to_entry(m: &TimelineMessage) -> MessageEntry {
-    use crate::domain::models::MessageBody;
-
     let mut entry = MessageEntry {
         sender: SharedString::from(m.display_sender()),
         body: SharedString::from(&m.body.display_text()),
@@ -290,65 +283,6 @@ fn message_to_entry(m: &TimelineMessage) -> MessageEntry {
     }
 
     entry
-}
-
-fn apply_connection_status(w: &AppWindow, status: &ConnectionStatus) {
-    w.set_connection_status(SharedString::from(status.as_str()));
-}
-
-fn apply_verification(w: &AppWindow, event: &DomainVerificationEvent) {
-    match event {
-        DomainVerificationEvent::Requested { sender, is_self } => {
-            w.set_verification_visible(true);
-            w.set_verification_step(SharedString::from(VerifyStep::Requested.as_str()));
-            w.set_verification_sender(SharedString::from(sender.as_str()));
-            w.set_verification_is_self(*is_self);
-            w.set_verification_error(SharedString::default());
-        }
-        DomainVerificationEvent::Emojis(emojis) => {
-            w.set_verification_step(SharedString::from(VerifyStep::Emojis.as_str()));
-            let entries: Vec<VerificationEmoji> = emojis
-                .iter()
-                .map(|e| VerificationEmoji {
-                    symbol: SharedString::from(&e.symbol),
-                    description: SharedString::from(&e.description),
-                })
-                .collect();
-            w.set_verification_emojis(ModelRc::new(VecModel::from(entries)));
-        }
-        DomainVerificationEvent::Confirming => {
-            w.set_verification_step(SharedString::from(VerifyStep::Confirming.as_str()));
-        }
-        DomainVerificationEvent::Done => {
-            w.set_verification_step(SharedString::from(VerifyStep::Done.as_str()));
-        }
-        DomainVerificationEvent::Cancelled(reason) => {
-            w.set_verification_step(SharedString::from(VerifyStep::Cancelled.as_str()));
-            w.set_verification_error(SharedString::from(reason.as_str()));
-        }
-    }
-}
-
-fn apply_logged_out(w: &AppWindow) {
-    w.set_login_step(SharedString::from(LoginStep::Homeserver.as_str()));
-    w.set_user_id(SharedString::default());
-    w.set_login_status(SharedString::default());
-    w.set_login_error(SharedString::default());
-    w.set_login_method(SharedString::default());
-    w.set_resolved_homeserver(SharedString::default());
-    w.set_selected_room_name(SharedString::default());
-    w.set_selected_room_id(SharedString::default());
-    w.set_input_username(SharedString::default());
-    w.set_input_password(SharedString::default());
-    w.set_connection_status(SharedString::from(ConnectionStatus::Disconnected.as_str()));
-    w.set_verification_visible(false);
-    w.set_verification_step(SharedString::default());
-    w.set_verification_sender(SharedString::default());
-    w.set_verification_is_self(false);
-    w.set_verification_error(SharedString::default());
-    w.set_toast_message(SharedString::default());
-    w.set_saved_file_path(SharedString::default());
-    w.set_verification_emojis(ModelRc::new(VecModel::<VerificationEmoji>::default()));
 }
 
 fn room_to_entry(r: &Room) -> RoomEntry {
