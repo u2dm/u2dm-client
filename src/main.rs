@@ -21,6 +21,7 @@ mod config;
 mod domain;
 mod error;
 mod ports;
+mod util;
 
 fn main() -> ExitCode {
     init_tracing();

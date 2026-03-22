@@ -17,6 +17,7 @@ use crate::domain::models::{
 use crate::error::{AppError, Result};
 use crate::ports::matrix::MatrixPort;
 use crate::ports::storage::StoragePort;
+use crate::util::hex_encode_id;
 
 #[allow(clippy::let_underscore_must_use)]
 fn generate_passphrase() -> String {
@@ -654,12 +655,4 @@ impl AppService {
             }
         });
     }
-}
-
-fn hex_encode_id(s: &str) -> String {
-    let mut out = String::with_capacity(s.len() * 2);
-    for b in s.bytes() {
-        write!(out, "{b:02x}").ok();
-    }
-    out
 }

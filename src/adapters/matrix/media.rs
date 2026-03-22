@@ -13,6 +13,7 @@ use tokio::time::timeout;
 
 use crate::domain::models::{MessageBody, TimelineMessage};
 use crate::error::{AppError, Result};
+use crate::util::hex_encode_id;
 
 pub(super) fn lookup_media_source(
     media_sources: &StdMutex<HashMap<String, MediaSource>>,
@@ -170,13 +171,4 @@ pub(super) async fn download_media(
         .map_err(|e| AppError::Other(format!("media download failed: {e}")))?;
 
     Ok(data)
-}
-
-fn hex_encode_id(s: &str) -> String {
-    use std::fmt::Write;
-    let mut out = String::with_capacity(s.len() * 2);
-    for b in s.bytes() {
-        write!(out, "{b:02x}").ok();
-    }
-    out
 }
