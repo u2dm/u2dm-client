@@ -35,7 +35,7 @@ export component VerificationDialog inherits Rectangle {
                     spacing: 16px;
 
                     Text {
-                        text: "Device Verification";
+                        text: @tr("Device Verification");
                         font-size: 20px;
                         font-weight: 700;
                         horizontal-alignment: center;
@@ -45,7 +45,7 @@ export component VerificationDialog inherits Rectangle {
                         spacing: 12px;
 
                         Text {
-                            text: root.verification-is-self ? "Verify this session from your other device" : "Verification request from " + root.verification-sender;
+                            text: root.verification-is-self ? @tr("Verify this session from your other device") : @tr("Verification request from {}", root.verification-sender);
                             font-size: 14px;
                             horizontal-alignment: center;
                             wrap: word-wrap;
@@ -56,14 +56,14 @@ export component VerificationDialog inherits Rectangle {
                             spacing: 12px;
 
                             Button {
-                                text: "Accept";
+                                text: @tr("Accept");
                                 clicked => {
                                     root.accept-verification();
                                 }
                             }
 
                             Button {
-                                text: "Decline";
+                                text: @tr("Decline");
                                 clicked => {
                                     root.reject-verification();
                                     root.dismissed();
@@ -76,7 +76,7 @@ export component VerificationDialog inherits Rectangle {
                         spacing: 12px;
 
                         Text {
-                            text: "Confirm the emojis below match the other device:";
+                            text: @tr("Confirm the emojis below match the other device:");
                             font-size: 14px;
                             horizontal-alignment: center;
                             wrap: word-wrap;
@@ -110,14 +110,14 @@ export component VerificationDialog inherits Rectangle {
                             spacing: 12px;
 
                             Button {
-                                text: "They match";
+                                text: @tr("They match");
                                 clicked => {
                                     root.confirm-verification();
                                 }
                             }
 
                             Button {
-                                text: "They don't match";
+                                text: @tr("They don't match");
                                 clicked => {
                                     root.reject-verification();
                                     root.dismissed();
@@ -130,7 +130,7 @@ export component VerificationDialog inherits Rectangle {
                         spacing: 12px;
 
                         Text {
-                            text: "Waiting for the other device to confirm...";
+                            text: @tr("Waiting for the other device to confirm...");
                             font-size: 14px;
                             horizontal-alignment: center;
                         }
@@ -140,7 +140,7 @@ export component VerificationDialog inherits Rectangle {
                         spacing: 12px;
 
                         Text {
-                            text: "Verification successful!";
+                            text: @tr("Verification successful!");
                             font-size: 16px;
                             font-weight: 600;
                             horizontal-alignment: center;
@@ -151,7 +151,7 @@ export component VerificationDialog inherits Rectangle {
                             alignment: center;
 
                             Button {
-                                text: "Done";
+                                text: @tr("Done");
                                 clicked => {
                                     root.dismissed();
                                 }
@@ -163,7 +163,7 @@ export component VerificationDialog inherits Rectangle {
                         spacing: 12px;
 
                         Text {
-                            text: "Verification cancelled";
+                            text: @tr("Verification cancelled");
                             font-size: 16px;
                             font-weight: 600;
                             horizontal-alignment: center;
@@ -181,7 +181,7 @@ export component VerificationDialog inherits Rectangle {
                             alignment: center;
 
                             Button {
-                                text: "Dismiss";
+                                text: @tr("Dismiss");
                                 clicked => {
                                     root.dismissed();
                                 }

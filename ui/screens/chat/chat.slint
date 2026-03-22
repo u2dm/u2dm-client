@@ -14,6 +14,7 @@ export component ChatScreen inherits Rectangle {
     in property <[RoomEntry]> rooms: [];
     in property <[MessageEntry]> timeline: [];
     in property <string> toast-message: "";
+    in property <string> saved-file-path: "";
     in property <bool> timeline-loading: false;
     in-out property <string> selected-room-id: "";
     in-out property <string> selected-room-name: "";
@@ -102,8 +103,12 @@ export component ChatScreen inherits Rectangle {
             alignment: space-between;
 
             Text {
-                text: root.toast-message;
-                color: Colors.tomato.mix(Palette.foreground, 60%);
+                text: root.toast-message == "file-saved"
+                    ? @tr("File saved to {}", root.saved-file-path)
+                    : root.toast-message;
+                color: root.toast-message == "file-saved"
+                    ? Palette.foreground
+                    : Colors.tomato.mix(Palette.foreground, 60%);
                 wrap: word-wrap;
                 vertical-alignment: center;
             }

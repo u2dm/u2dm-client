@@ -149,7 +149,7 @@ export component TimelineView inherits Rectangle {
     property <length> spacing: 8px;
 
     if root.selected-room-name == "": Text {
-        text: "Select a room";
+        text: @tr("Select a room");
         font-size: 16px;
         color: Palette.foreground.transparentize(0.5);
         horizontal-alignment: center;
@@ -176,7 +176,7 @@ export component TimelineView inherits Rectangle {
         y: root.header-height;
         width: root.width;
         height: root.height - root.header-height - root.input-height;
-        text: "Loading messages...";
+        text: @tr("Loading messages...");
         font-size: 14px;
         color: Palette.foreground.transparentize(0.5);
         horizontal-alignment: center;
@@ -270,7 +270,7 @@ export component TimelineView inherits Rectangle {
                     y: 0;
                     width: parent.width;
                     height: parent.height;
-                    text: "Send a message...";
+                    text: @tr("Send a message...");
                     color: Palette.foreground.transparentize(0.5);
                     font-size: 14px;
                     vertical-alignment: center;
@@ -279,7 +279,7 @@ export component TimelineView inherits Rectangle {
             }
 
             Button {
-                text: "Send";
+                text: @tr("Send");
                 clicked => {
                     if root.input-message != "" {
                         root.send-message({ room-id: root.selected-room-id, body: root.input-message });

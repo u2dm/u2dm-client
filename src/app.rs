@@ -195,7 +195,7 @@ impl AppService {
 
     #[allow(clippy::cognitive_complexity)]
     async fn handle_restore_session(&mut self) {
-        self.emit(UiEvent::Status("Loading saved session...".into()));
+        self.emit(UiEvent::Status("loading-session".into()));
 
         let session = match self.storage.load_session().await {
             Ok(Some(session)) => {
@@ -218,7 +218,7 @@ impl AppService {
             }
         };
 
-        self.emit(UiEvent::Status("Opening encrypted store...".into()));
+        self.emit(UiEvent::Status("opening-store".into()));
 
         let passphrase = match self.get_or_create_passphrase().await {
             Ok(p) => p,
@@ -305,7 +305,7 @@ impl AppService {
     async fn run_oauth_flow(&mut self) -> Result<()> {
         let oauth_data = self.matrix.login_oauth_start().await?;
         open::that_in_background(&oauth_data.auth_url);
-        self.emit(UiEvent::Status("Waiting for authentication...".into()));
+        self.emit(UiEvent::Status("waiting-auth".into()));
         let session = self.matrix.login_oauth_finish().await?;
         self.save_session(&session).await;
         self.emit(UiEvent::LoginSuccess {
@@ -519,7 +519,7 @@ impl AppService {
     }
 
     async fn handle_fetch_rooms(&mut self) {
-        self.emit(UiEvent::Status("Syncing rooms...".into()));
+        self.emit(UiEvent::Status("syncing".into()));
         self.start_background_listeners().await;
         self.emit(UiEvent::ConnectionStatus(ConnectionStatus::Connecting));
         self.start_sync_pipeline();

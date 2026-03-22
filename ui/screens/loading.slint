@@ -8,14 +8,23 @@ export component LoadingScreen inherits VerticalLayout {
     in property <string> loading-status: "";
     in property <string> loading-error: "";
 
+    function status-text(id: string) -> string {
+        if (id == "loading-session") { return @tr("Loading saved session..."); }
+        if (id == "opening-store") { return @tr("Opening encrypted store..."); }
+        if (id == "connecting") { return @tr("Connecting to homeserver..."); }
+        if (id == "restoring-auth") { return @tr("Restoring authentication..."); }
+        if (id == "syncing") { return @tr("Syncing rooms..."); }
+        return id;
+    }
+
     Text {
-        text: "U2DM";
+        text: @tr("U2DM");
         font-size: 32px;
         horizontal-alignment: center;
     }
 
     if root.loading-status != "": Text {
-        text: root.loading-status;
+        text: root.status-text(root.loading-status);
         font-size: 13px;
         horizontal-alignment: center;
         color: Palette.foreground.transparentize(0.3);

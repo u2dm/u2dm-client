@@ -1,0 +1,233 @@
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"POT-Creation-Date: 2026-03-22 18:39+0000\n"
+"PO-Revision-Date: 2026-03-22 00:00+0000\n"
+"Last-Translator: \n"
+"Language-Team: Italian\n"
+"Language: it\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+#: ui/components/verification.slint:38
+msgctxt "VerificationDialog"
+msgid "Device Verification"
+msgstr "Verifica del dispositivo"
+
+#: ui/components/verification.slint:48
+msgctxt "VerificationDialog"
+msgid "Verify this session from your other device"
+msgstr "Verifica questa sessione dall'altro dispositivo"
+
+#: ui/components/verification.slint:48
+msgctxt "VerificationDialog"
+msgid "Verification request from {}"
+msgstr "Richiesta di verifica da {}"
+
+#: ui/components/verification.slint:59
+msgctxt "VerificationDialog"
+msgid "Accept"
+msgstr "Accetta"
+
+#: ui/components/verification.slint:66
+msgctxt "VerificationDialog"
+msgid "Decline"
+msgstr "Rifiuta"
+
+#: ui/components/verification.slint:79
+msgctxt "VerificationDialog"
+msgid "Confirm the emojis below match the other device:"
+msgstr "Conferma che le emoji corrispondano all'altro dispositivo:"
+
+#: ui/components/verification.slint:113
+msgctxt "VerificationDialog"
+msgid "They match"
+msgstr "Corrispondono"
+
+#: ui/components/verification.slint:120
+msgctxt "VerificationDialog"
+msgid "They don't match"
+msgstr "Non corrispondono"
+
+#: ui/components/verification.slint:133
+msgctxt "VerificationDialog"
+msgid "Waiting for the other device to confirm..."
+msgstr "In attesa della conferma dall'altro dispositivo..."
+
+#: ui/components/verification.slint:143
+msgctxt "VerificationDialog"
+msgid "Verification successful!"
+msgstr "Verifica riuscita!"
+
+#: ui/components/verification.slint:154
+msgctxt "VerificationDialog"
+msgid "Done"
+msgstr "Fatto"
+
+#: ui/components/verification.slint:166
+msgctxt "VerificationDialog"
+msgid "Verification cancelled"
+msgstr "Verifica annullata"
+
+#: ui/components/verification.slint:184
+msgctxt "VerificationDialog"
+msgid "Dismiss"
+msgstr "Chiudi"
+
+#: ui/main.slint:17
+msgctxt "AppWindow"
+msgid "U2DM Matrix Client"
+msgstr "U2DM Client Matrix"
+
+#: ui/screens/homeserver/homeserver.slint:18
+msgctxt "HomeserverScreen"
+msgid "Checking server..."
+msgstr "Verifica del server..."
+
+#: ui/screens/homeserver/homeserver.slint:23
+msgctxt "HomeserverScreen"
+msgid "U2DM"
+msgstr "U2DM"
+
+#: ui/screens/homeserver/homeserver.slint:33
+msgctxt "HomeserverScreen"
+msgid "Homeserver"
+msgstr "Homeserver"
+
+#: ui/screens/homeserver/homeserver.slint:43
+msgctxt "HomeserverScreen"
+msgid "Continue"
+msgstr "Continua"
+
+#: ui/screens/chat/chat.slint:107
+msgctxt "ChatScreen"
+msgid "File saved to {}"
+msgstr "File salvato in {}"
+
+#: ui/screens/chat/components/timeline.slint:152
+msgctxt "TimelineView"
+msgid "Select a room"
+msgstr "Seleziona una stanza"
+
+#: ui/screens/chat/components/timeline.slint:179
+msgctxt "TimelineView"
+msgid "Loading messages..."
+msgstr "Caricamento messaggi..."
+
+#: ui/screens/chat/components/timeline.slint:273
+msgctxt "TimelineView"
+msgid "Send a message..."
+msgstr "Scrivi un messaggio..."
+
+#: ui/screens/chat/components/timeline.slint:282
+msgctxt "TimelineView"
+msgid "Send"
+msgstr "Invia"
+
+#: ui/screens/chat/components/messages/image-message.slint:29
+msgctxt "ImageMessage"
+msgid "Image without thumbnail: {}"
+msgstr "Immagine senza anteprima: {}"
+
+#: ui/screens/chat/components/messages/utd-message.slint:22
+msgctxt "UtdMessage"
+msgid "Unable to decrypt message"
+msgstr "Impossibile decifrare il messaggio"
+
+#: ui/screens/chat/components/messages/file-message.slint:14
+msgctxt "FileMessage"
+msgid "📎 {}"
+msgstr "📎 {}"
+
+#: ui/screens/chat/components/messages/file-message.slint:20
+msgctxt "FileMessage"
+msgid "Save"
+msgstr "Salva"
+
+#: ui/screens/chat/components/sidebar.slint:61
+msgctxt "Sidebar"
+msgid "Logout"
+msgstr "Esci"
+
+#: ui/screens/credentials/credentials.slint:25
+msgctxt "CredentialsScreen"
+msgid "Logging in..."
+msgstr "Accesso in corso..."
+
+#: ui/screens/credentials/credentials.slint:26
+msgctxt "CredentialsScreen"
+msgid "Opening browser..."
+msgstr "Apertura del browser..."
+
+#: ui/screens/credentials/credentials.slint:27
+msgctxt "CredentialsScreen"
+msgid "Waiting for authentication..."
+msgstr "In attesa dell'autenticazione..."
+
+#: ui/screens/credentials/credentials.slint:32
+msgctxt "CredentialsScreen"
+msgid "U2DM"
+msgstr "U2DM"
+
+#: ui/screens/credentials/credentials.slint:38
+msgctxt "CredentialsScreen"
+msgid "Server: {}"
+msgstr "Server: {}"
+
+#: ui/screens/credentials/credentials.slint:51
+msgctxt "CredentialsScreen"
+msgid "Username"
+msgstr "Nome utente"
+
+#: ui/screens/credentials/credentials.slint:62
+msgctxt "CredentialsScreen"
+msgid "Password"
+msgstr "Password"
+
+#: ui/screens/credentials/credentials.slint:73
+msgctxt "CredentialsScreen"
+msgid "Log in"
+msgstr "Accedi"
+
+#: ui/screens/credentials/credentials.slint:90
+msgctxt "CredentialsScreen"
+msgid "Log in with browser"
+msgstr "Accedi con il browser"
+
+#: ui/screens/credentials/credentials.slint:101
+msgctxt "CredentialsScreen"
+msgid "Back"
+msgstr "Indietro"
+
+#: ui/screens/loading.slint:12
+msgctxt "LoadingScreen"
+msgid "Loading saved session..."
+msgstr "Caricamento sessione salvata..."
+
+#: ui/screens/loading.slint:13
+msgctxt "LoadingScreen"
+msgid "Opening encrypted store..."
+msgstr "Apertura archivio cifrato..."
+
+#: ui/screens/loading.slint:14
+msgctxt "LoadingScreen"
+msgid "Connecting to homeserver..."
+msgstr "Connessione all'homeserver..."
+
+#: ui/screens/loading.slint:15
+msgctxt "LoadingScreen"
+msgid "Restoring authentication..."
+msgstr "Ripristino dell'autenticazione..."
+
+#: ui/screens/loading.slint:16
+msgctxt "LoadingScreen"
+msgid "Syncing rooms..."
+msgstr "Sincronizzazione stanze..."
+
+#: ui/screens/loading.slint:21
+msgctxt "LoadingScreen"
+msgid "U2DM"
+msgstr "U2DM"

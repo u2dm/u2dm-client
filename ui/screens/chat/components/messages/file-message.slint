@@ -11,13 +11,13 @@ export component FileMessage inherits HorizontalLayout {
     alignment: start;
 
     Text {
-        text: "📎 " + root.body;
+        text: @tr("📎 {}", root.body);
         font-size: 14px;
         vertical-alignment: center;
     }
 
     Button {
-        text: "Save";
+        text: @tr("Save");
         clicked => {
             root.save-file({ event-id: root.event-id, filename: root.body });
         }

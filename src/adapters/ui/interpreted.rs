@@ -1,9 +1,9 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use slint::{Model, ModelRc, VecModel};
+use slint::{ModelRc, VecModel};
 use slint_interpreter::{
-    Compiler, ComponentHandle, ComponentInstance, PlatformError, SharedString, Struct, Value,
+    Compiler, ComponentHandle, ComponentInstance, SharedString, Struct, Value,
 };
 use tokio::runtime::Runtime;
 use tokio::sync::mpsc;
@@ -13,24 +13,17 @@ thread_local! {
     static ROOMS_MODEL: RefCell<Option<Rc<VecModel<Value>>>> = const { RefCell::new(None) };
 }
 
-use std::collections::HashMap;
-
+use super::common::{LoginStep, Status, VerifyStep, apply_rooms, apply_timeline_patch};
 use crate::commands::{UiCommand, UiEvent};
 use crate::domain::models::{
     ConnectionStatus, LoginCredentials, LoginMethod, MessageBody, Room, RoomId, ServerInfo,
-    TimelineMessage, TimelinePatch, VerificationEvent,
+    TimelineMessage, VerificationEvent,
 };
 use crate::error::{AppError, Result};
 
 fn set_prop(inst: &ComponentInstance, name: &str, value: Value) {
     if let Err(e) = inst.set_property(name, value) {
         tracing::warn!("failed to set property '{name}': {e:?}");
-    }
-}
-
-impl From<PlatformError> for AppError {
-    fn from(err: PlatformError) -> Self {
-        Self::Ui(err.to_string())
     }
 }
 
@@ -72,7 +65,7 @@ impl SlintUiAdapter {
                     set_prop(
                         &inst,
                         "login-status",
-                        Value::String(SharedString::from("Checking server...")),
+                        Value::String(SharedString::from(Status::CheckingServer.as_str())),
                     );
                     set_prop(&inst, "login-error", Value::String(SharedString::default()));
                 }
@@ -111,7 +104,7 @@ impl SlintUiAdapter {
                     set_prop(
                         &inst,
                         "login-status",
-                        Value::String(SharedString::from("Logging in...")),
+                        Value::String(SharedString::from(Status::LoggingIn.as_str())),
                     );
                     set_prop(&inst, "login-error", Value::String(SharedString::default()));
                 }
@@ -131,7 +124,7 @@ impl SlintUiAdapter {
                     set_prop(
                         &inst,
                         "login-status",
-                        Value::String(SharedString::from("Opening browser...")),
+                        Value::String(SharedString::from(Status::OpeningBrowser.as_str())),
                     );
                     set_prop(&inst, "login-error", Value::String(SharedString::default()));
                 }
@@ -338,7 +331,11 @@ fn dispatch_ui_event(
         UiEvent::LoginError(message) => apply_login_error(inst, &message),
         UiEvent::ToastError(message) => apply_toast_error(inst, &message),
         UiEvent::Status(msg) => apply_status(inst, &msg),
-        UiEvent::Rooms(rooms) => apply_rooms(rooms_model, &rooms),
+        UiEvent::Rooms(rooms) => {
+            apply_rooms(rooms_model, &rooms, &room_to_value, &|v| {
+                room_id_from_value(v).map_or("", |s| s.as_str())
+            });
+        }
         UiEvent::Timeline { room_id, patch } => {
             let selected = inst
                 .get_property("selected-room-id")
@@ -352,13 +349,22 @@ fn dispatch_ui_event(
                 .is_some_and(|s| s.as_str() == room_id.as_ref())
             {
                 set_prop(inst, "timeline-loading", Value::Bool(false));
-                apply_timeline_patch(timeline_model, *patch);
+                apply_timeline_patch(timeline_model, *patch, &message_to_value);
             }
         }
         UiEvent::ConnectionStatus(status) => apply_connection_status(inst, &status),
         UiEvent::Verification(event) => apply_verification(inst, &event),
         UiEvent::FileSaved { path } => {
-            apply_status(inst, &format!("File saved to {path}"));
+            set_prop(
+                inst,
+                "saved-file-path",
+                Value::String(SharedString::from(&path)),
+            );
+            set_prop(
+                inst,
+                "toast-message",
+                Value::String(SharedString::from(Status::FileSaved.as_str())),
+            );
         }
         UiEvent::LoggedOut => {
             timeline_model.set_vec(Vec::new());
@@ -383,7 +389,7 @@ fn apply_server_info(inst: &ComponentInstance, info: &ServerInfo) {
     set_prop(
         inst,
         "login-step",
-        Value::String(SharedString::from("credentials")),
+        Value::String(SharedString::from(LoginStep::Credentials.as_str())),
     );
     set_prop(inst, "login-status", Value::String(SharedString::default()));
 }
@@ -392,7 +398,7 @@ fn apply_show_login(inst: &ComponentInstance) {
     set_prop(
         inst,
         "login-step",
-        Value::String(SharedString::from("homeserver")),
+        Value::String(SharedString::from(LoginStep::Homeserver.as_str())),
     );
     set_prop(inst, "login-status", Value::String(SharedString::default()));
 }
@@ -402,7 +408,7 @@ fn apply_login_success(inst: &ComponentInstance, user_id: &str) {
     set_prop(
         inst,
         "login-step",
-        Value::String(SharedString::from("logged-in")),
+        Value::String(SharedString::from(LoginStep::LoggedIn.as_str())),
     );
     set_prop(inst, "login-status", Value::String(SharedString::default()));
 }
@@ -425,54 +431,22 @@ fn apply_status(inst: &ComponentInstance, msg: &str) {
 }
 
 fn message_to_value(m: &TimelineMessage) -> Value {
-    let body_text = match &m.body {
-        MessageBody::Unsupported { kind, fallback } => {
-            if fallback.is_empty() {
-                format!("Unsupported message type: {kind}")
-            } else {
-                format!("Unsupported message type: {kind}\n{fallback}")
-            }
-        }
-        other => other.body_text().to_string(),
-    };
-    let message_type = match &m.body {
-        MessageBody::Notice(_) => "notice",
-        MessageBody::Emote(_) => "emote",
-        MessageBody::Image { .. } => "image",
-        MessageBody::File { .. } => "file",
-        MessageBody::UnableToDecrypt => "utd",
-        MessageBody::Unsupported { .. } => "unsupported",
-        MessageBody::Text(_) => "text",
-    };
-    let sender = m
-        .sender_display_name
-        .as_deref()
-        .unwrap_or(&m.sender)
-        .to_string();
-    let timestamp = chrono::DateTime::from_timestamp((m.timestamp / 1000).cast_signed(), 0)
-        .map(|utc| {
-            utc.with_timezone(&chrono::Local)
-                .format("%H:%M")
-                .to_string()
-        })
-        .unwrap_or_default();
-
     let mut fields = vec![
         (
             "sender".to_string(),
-            Value::String(SharedString::from(&sender)),
+            Value::String(SharedString::from(m.display_sender())),
         ),
         (
             "body".to_string(),
-            Value::String(SharedString::from(&body_text)),
+            Value::String(SharedString::from(&m.body.display_text())),
         ),
         (
             "timestamp".to_string(),
-            Value::String(SharedString::from(&timestamp)),
+            Value::String(SharedString::from(&m.display_timestamp())),
         ),
         (
             "message-type".to_string(),
-            Value::String(SharedString::from(message_type)),
+            Value::String(SharedString::from(m.body.type_str())),
         ),
         (
             "event-id".to_string(),
@@ -503,64 +477,6 @@ fn message_to_value(m: &TimelineMessage) -> Value {
     Value::Struct(Struct::from_iter(fields))
 }
 
-fn apply_timeline_patch(model: &VecModel<Value>, patch: TimelinePatch) {
-    match patch {
-        TimelinePatch::Reset(messages) => {
-            let entries: Vec<Value> = messages.iter().map(message_to_value).collect();
-            model.set_vec(entries);
-        }
-        TimelinePatch::Append(messages) => {
-            for m in &messages {
-                model.push(message_to_value(m));
-            }
-        }
-        TimelinePatch::PushFront(m) => {
-            model.insert(0, message_to_value(&m));
-        }
-        TimelinePatch::PushBack(m) => {
-            model.push(message_to_value(&m));
-        }
-        TimelinePatch::Insert { index, message } => {
-            let idx = index.min(model.row_count());
-            model.insert(idx, message_to_value(&message));
-        }
-        TimelinePatch::Set { index, message } => {
-            if index < model.row_count() {
-                model.set_row_data(index, message_to_value(&message));
-            }
-        }
-        TimelinePatch::Remove { index } => {
-            if index < model.row_count() {
-                model.remove(index);
-            }
-        }
-        TimelinePatch::PopFront => {
-            if model.row_count() > 0 {
-                model.remove(0);
-            }
-        }
-        TimelinePatch::PopBack => {
-            let count = model.row_count();
-            if count > 0 {
-                model.remove(count - 1);
-            }
-        }
-        TimelinePatch::Truncate { length } => {
-            while model.row_count() > length {
-                model.remove(model.row_count() - 1);
-            }
-        }
-        TimelinePatch::Clear => {
-            model.set_vec(Vec::new());
-        }
-        TimelinePatch::Batch(patches) => {
-            for p in patches {
-                apply_timeline_patch(model, p);
-            }
-        }
-    }
-}
-
 fn apply_connection_status(inst: &ComponentInstance, status: &ConnectionStatus) {
     set_prop(
         inst,
@@ -576,7 +492,7 @@ fn apply_verification(inst: &ComponentInstance, event: &VerificationEvent) {
             set_prop(
                 inst,
                 "verification-step",
-                Value::String(SharedString::from("requested")),
+                Value::String(SharedString::from(VerifyStep::Requested.as_str())),
             );
             set_prop(
                 inst,
@@ -594,7 +510,7 @@ fn apply_verification(inst: &ComponentInstance, event: &VerificationEvent) {
             set_prop(
                 inst,
                 "verification-step",
-                Value::String(SharedString::from("emojis")),
+                Value::String(SharedString::from(VerifyStep::Emojis.as_str())),
             );
             let entries: Vec<Value> = emojis
                 .iter()
@@ -618,21 +534,21 @@ fn apply_verification(inst: &ComponentInstance, event: &VerificationEvent) {
             set_prop(
                 inst,
                 "verification-step",
-                Value::String(SharedString::from("confirming")),
+                Value::String(SharedString::from(VerifyStep::Confirming.as_str())),
             );
         }
         VerificationEvent::Done => {
             set_prop(
                 inst,
                 "verification-step",
-                Value::String(SharedString::from("done")),
+                Value::String(SharedString::from(VerifyStep::Done.as_str())),
             );
         }
         VerificationEvent::Cancelled(reason) => {
             set_prop(
                 inst,
                 "verification-step",
-                Value::String(SharedString::from("cancelled")),
+                Value::String(SharedString::from(VerifyStep::Cancelled.as_str())),
             );
             set_prop(
                 inst,
@@ -647,7 +563,7 @@ fn apply_logged_out(inst: &ComponentInstance) {
     set_prop(
         inst,
         "login-step",
-        Value::String(SharedString::from("homeserver")),
+        Value::String(SharedString::from(LoginStep::Homeserver.as_str())),
     );
     set_prop(inst, "user-id", Value::String(SharedString::default()));
     set_prop(inst, "login-status", Value::String(SharedString::default()));
@@ -681,7 +597,7 @@ fn apply_logged_out(inst: &ComponentInstance) {
     set_prop(
         inst,
         "connection-status",
-        Value::String(SharedString::from("disconnected")),
+        Value::String(SharedString::from(ConnectionStatus::Disconnected.as_str())),
     );
     set_prop(inst, "verification-visible", Value::Bool(false));
     set_prop(
@@ -703,6 +619,11 @@ fn apply_logged_out(inst: &ComponentInstance) {
     set_prop(
         inst,
         "toast-message",
+        Value::String(SharedString::default()),
+    );
+    set_prop(
+        inst,
+        "saved-file-path",
         Value::String(SharedString::default()),
     );
     let empty_model = Value::Model(ModelRc::new(VecModel::<Value>::default()));
@@ -736,56 +657,5 @@ fn room_id_from_value(val: &Value) -> Option<&SharedString> {
         Some(id)
     } else {
         None
-    }
-}
-
-fn apply_rooms(model: &VecModel<Value>, rooms: &[Room]) {
-    let new_by_id: HashMap<&str, (usize, &Room)> = rooms
-        .iter()
-        .enumerate()
-        .map(|(i, r)| (r.id.as_ref(), (i, r)))
-        .collect();
-
-    let mut i = 0;
-    while i < model.row_count() {
-        let existing = model.row_data(i);
-        let keep = existing
-            .as_ref()
-            .and_then(room_id_from_value)
-            .is_some_and(|id| new_by_id.contains_key(id.as_str()));
-
-        if keep {
-            i += 1;
-        } else {
-            model.remove(i);
-        }
-    }
-
-    for idx in 0..rooms.len() {
-        let room = rooms.get(idx);
-        let Some(room) = room else { continue };
-        let new_val = room_to_value(room);
-
-        if idx < model.row_count() {
-            let existing = model.row_data(idx);
-            let same_id = existing
-                .as_ref()
-                .and_then(room_id_from_value)
-                .is_some_and(|id| id.as_str() == &*room.id);
-
-            if same_id {
-                if existing.as_ref() != Some(&new_val) {
-                    model.set_row_data(idx, new_val);
-                }
-            } else {
-                model.insert(idx, new_val);
-            }
-        } else {
-            model.push(new_val);
-        }
-    }
-
-    while model.row_count() > rooms.len() {
-        model.remove(model.row_count() - 1);
     }
 }

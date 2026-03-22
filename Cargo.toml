@@ -9,6 +9,10 @@ readme = "README.md"
 keywords = ["matrix", "chat", "slint"]
 categories = ["network-programming"]
 
+[features]
+default = []
+interpreted = ["dep:slint-interpreter"]
+
 [dependencies]
 async-trait = "0.1.89"
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
@@ -38,8 +42,9 @@ slint = { version = "1.15.1", default-features = false, features = [
     "backend-winit",
     "renderer-skia",
     "accessibility",
+    "gettext",
 ] }
-slint-interpreter = { version = "1.15.1", default-features = false, features = [
+slint-interpreter = { version = "1.15.1", optional = true, default-features = false, features = [
     "compat-1-2",
     "backend-winit",
     "renderer-skia",
@@ -87,3 +92,6 @@ missing_errors_doc = "allow"
 missing_panics_doc = "allow"
 must_use_candidate = "allow"
 uninlined_format_args = "allow"
+
+[build-dependencies]
+slint-build = "1.15.1"

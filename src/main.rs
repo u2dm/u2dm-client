@@ -42,6 +42,7 @@ fn init_tracing() {
 }
 
 fn run() -> Result<()> {
+    slint::init_translations!(concat!(env!("CARGO_MANIFEST_DIR"), "/lang/"));
     let rt = Runtime::new()?;
     let cfg = config::AppConfig::from_env()?;
     tracing::info!(data_dir = %cfg.data_dir.display(), cache_dir = %cfg.cache_dir.display(), "starting U2DM");

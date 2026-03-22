@@ -223,6 +223,31 @@ impl MessageBody {
             Self::Unsupported { fallback, .. } => fallback,
         }
     }
+
+    pub fn display_text(&self) -> String {
+        match self {
+            Self::Unsupported { kind, fallback } => {
+                if fallback.is_empty() {
+                    format!("Unsupported message type: {kind}")
+                } else {
+                    format!("Unsupported message type: {kind}\n{fallback}")
+                }
+            }
+            other => other.body_text().to_string(),
+        }
+    }
+
+    pub fn type_str(&self) -> &'static str {
+        match self {
+            Self::Text(_) => "text",
+            Self::Notice(_) => "notice",
+            Self::Emote(_) => "emote",
+            Self::Image { .. } => "image",
+            Self::File { .. } => "file",
+            Self::UnableToDecrypt => "utd",
+            Self::Unsupported { .. } => "unsupported",
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -246,6 +271,20 @@ impl TimelineMessage {
             && self.body == other.body
             && self.timestamp == other.timestamp
             && self.is_own == other.is_own
+    }
+
+    pub fn display_sender(&self) -> &str {
+        self.sender_display_name.as_deref().unwrap_or(&self.sender)
+    }
+
+    pub fn display_timestamp(&self) -> String {
+        chrono::DateTime::from_timestamp((self.timestamp / 1000).cast_signed(), 0)
+            .map(|utc| {
+                utc.with_timezone(&chrono::Local)
+                    .format("%H:%M")
+                    .to_string()
+            })
+            .unwrap_or_default()
     }
 }
 

@@ -14,7 +14,7 @@ import { ChatScreen } from "screens/chat/chat.slint";
 import { VerificationDialog } from "components/verification.slint";
 
 export component AppWindow inherits Window {
-    title: "U2DM Matrix Client";
+    title: @tr("U2DM Matrix Client");
     preferred-width: root.width;
     preferred-height: root.height;
 
@@ -40,6 +40,7 @@ export component AppWindow inherits Window {
     in-out property <[VerificationEmoji]> verification-emojis: [];
     in-out property <string> verification-error: "";
     in-out property <string> toast-message: "";
+    in-out property <string> saved-file-path: "";
     in-out property <bool> timeline-loading: false;
 
     callback check-server(string);
@@ -97,6 +98,7 @@ export component AppWindow inherits Window {
         timeline: root.timeline;
         timeline-loading: root.timeline-loading;
         toast-message: root.toast-message;
+        saved-file-path: root.saved-file-path;
         selected-room-id <=> root.selected-room-id;
         selected-room-name <=> root.selected-room-name;
         input-message <=> root.input-message;
