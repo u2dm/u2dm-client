@@ -436,7 +436,7 @@ impl AppService {
         let ui_tx = self.ui_tx.clone();
         let cache_dir = self.config.cache_dir.join("media-cache");
         self.fire_and_forget.spawn(async move {
-            let cache_path = cache_dir.join(event_id.replace(':', "_"));
+            let cache_path = cache_dir.join(hex_encode_id(&event_id));
             if cache_path.exists() {
                 open::that_in_background(&cache_path);
                 return;
@@ -654,4 +654,12 @@ impl AppService {
             }
         });
     }
+}
+
+fn hex_encode_id(s: &str) -> String {
+    let mut out = String::with_capacity(s.len() * 2);
+    for b in s.bytes() {
+        write!(out, "{b:02x}").ok();
+    }
+    out
 }

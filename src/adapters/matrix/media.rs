@@ -80,8 +80,7 @@ pub(super) async fn enrich_message(
 ) {
     if let MessageBody::Image { meta, .. } = &mut msg.body {
         let event_id = &msg.event_id.0;
-        let sanitized = event_id.replace(':', "_");
-        let cache_stem = cache_dir.join(&sanitized);
+        let cache_stem = cache_dir.join(hex_encode_id(event_id));
 
         if let Some(path) = find_cached(&cache_stem) {
             meta.thumbnail_path = Some(path);
@@ -94,8 +93,7 @@ pub(super) async fn enrich_message(
 
     if let Some(mxc_url) = &msg.sender_avatar_url {
         let avatar_dir = cache_dir.join("avatars");
-        let sanitized = msg.sender.replace(':', "_").replace('@', "");
-        let cache_stem = avatar_dir.join(&sanitized);
+        let cache_stem = avatar_dir.join(hex_encode_id(&msg.sender));
 
         if let Some(path) = find_cached(&cache_stem) {
             msg.sender_avatar_path = Some(path);
@@ -172,4 +170,13 @@ pub(super) async fn download_media(
         .map_err(|e| AppError::Other(format!("media download failed: {e}")))?;
 
     Ok(data)
+}
+
+fn hex_encode_id(s: &str) -> String {
+    use std::fmt::Write;
+    let mut out = String::with_capacity(s.len() * 2);
+    for b in s.bytes() {
+        write!(out, "{b:02x}").ok();
+    }
+    out
 }
