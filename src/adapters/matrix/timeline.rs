@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex as StdMutex};
 
 use futures_util::StreamExt;
@@ -156,13 +156,14 @@ fn convert_timeline_items(
 async fn convert_and_enrich(
     item: &Arc<TimelineItem>,
     client: &Client,
-    cache_dir: &Path,
+    media_dir: &Path,
     media_sources: &StdMutex<HashMap<String, MediaSource>>,
+    materialized: &StdMutex<HashMap<String, PathBuf>>,
     own_user_id: Option<&str>,
 ) -> Option<TimelineMessage> {
     let event = item.as_event()?;
     let mut msg = convert_event_item(event, media_sources, own_user_id)?;
-    enrich_message(client, cache_dir, media_sources, &mut msg).await;
+    enrich_message(client, media_dir, media_sources, materialized, &mut msg).await;
     Some(msg)
 }
 
@@ -188,8 +189,9 @@ async fn diff_to_patch(
     items: &mut Vec<Arc<TimelineItem>>,
     diff: VectorDiff<Arc<TimelineItem>>,
     client: &Client,
-    cache_dir: &Path,
+    media_dir: &Path,
     media_sources: &StdMutex<HashMap<String, MediaSource>>,
+    materialized: &StdMutex<HashMap<String, PathBuf>>,
     own_user_id: Option<&str>,
 ) -> Option<TimelinePatch> {
     match diff {
@@ -201,7 +203,7 @@ async fn diff_to_patch(
                     convert_event_item(event, media_sources, own_user_id)
                 })
                 .collect();
-            enrich_messages(client, cache_dir, media_sources, &mut msgs).await;
+            enrich_messages(client, media_dir, media_sources, materialized, &mut msgs).await;
             items.extend(values);
             if msgs.is_empty() {
                 return None;
@@ -213,14 +215,28 @@ async fn diff_to_patch(
             Some(TimelinePatch::Clear)
         }
         VectorDiff::PushFront { value } => {
-            let msg =
-                convert_and_enrich(&value, client, cache_dir, media_sources, own_user_id).await;
+            let msg = convert_and_enrich(
+                &value,
+                client,
+                media_dir,
+                media_sources,
+                materialized,
+                own_user_id,
+            )
+            .await;
             items.insert(0, value);
             Some(TimelinePatch::PushFront(msg?))
         }
         VectorDiff::PushBack { value } => {
-            let msg =
-                convert_and_enrich(&value, client, cache_dir, media_sources, own_user_id).await;
+            let msg = convert_and_enrich(
+                &value,
+                client,
+                media_dir,
+                media_sources,
+                materialized,
+                own_user_id,
+            )
+            .await;
             items.push(value);
             Some(TimelinePatch::PushBack(msg?))
         }
@@ -245,8 +261,15 @@ async fn diff_to_patch(
             }
         }
         VectorDiff::Insert { index, value } => {
-            let msg =
-                convert_and_enrich(&value, client, cache_dir, media_sources, own_user_id).await;
+            let msg = convert_and_enrich(
+                &value,
+                client,
+                media_dir,
+                media_sources,
+                materialized,
+                own_user_id,
+            )
+            .await;
             items.insert(index, value);
             let msg = msg?;
             let mi = msg_index_at(items, index);
@@ -277,9 +300,15 @@ async fn diff_to_patch(
             match (&old_raw, &new_raw) {
                 (Some(old), Some(new)) if old.visually_eq(new) => None,
                 (Some(_), Some(_)) => {
-                    let new_msg =
-                        convert_and_enrich(&value, client, cache_dir, media_sources, own_user_id)
-                            .await;
+                    let new_msg = convert_and_enrich(
+                        &value,
+                        client,
+                        media_dir,
+                        media_sources,
+                        materialized,
+                        own_user_id,
+                    )
+                    .await;
                     Some(TimelinePatch::Set {
                         index: old_mi,
                         message: new_msg?,
@@ -288,9 +317,15 @@ async fn diff_to_patch(
                 (Some(_), None) => Some(TimelinePatch::Remove { index: old_mi }),
                 (None, Some(_)) => {
                     let mi = msg_index_at(items, index);
-                    let new_msg =
-                        convert_and_enrich(&value, client, cache_dir, media_sources, own_user_id)
-                            .await;
+                    let new_msg = convert_and_enrich(
+                        &value,
+                        client,
+                        media_dir,
+                        media_sources,
+                        materialized,
+                        own_user_id,
+                    )
+                    .await;
                     Some(TimelinePatch::Insert {
                         index: mi,
                         message: new_msg?,
@@ -321,17 +356,18 @@ async fn diff_to_patch(
         VectorDiff::Reset { values } => {
             *items = values.into_iter().collect();
             let mut msgs = convert_timeline_items(items, media_sources, own_user_id);
-            enrich_messages(client, cache_dir, media_sources, &mut msgs).await;
+            enrich_messages(client, media_dir, media_sources, materialized, &mut msgs).await;
             Some(TimelinePatch::Reset(msgs))
         }
     }
 }
 
-#[allow(clippy::cognitive_complexity)]
+#[allow(clippy::cognitive_complexity, clippy::too_many_lines)]
 pub(super) async fn subscribe_timeline(
     client: &Client,
-    cache_dir: &Path,
+    media_dir: &Path,
     media_sources: &Arc<StdMutex<HashMap<String, MediaSource>>>,
+    materialized: &Arc<StdMutex<HashMap<String, PathBuf>>>,
     room_id: &RoomId,
     timeline_tx: mpsc::UnboundedSender<TimelinePatch>,
 ) -> Result<()> {
@@ -362,7 +398,8 @@ pub(super) async fn subscribe_timeline(
     });
 
     let media_sources = Arc::clone(media_sources);
-    let cache_dir = cache_dir.join("media-cache");
+    let materialized = Arc::clone(materialized);
+    let media_dir = media_dir.to_path_buf();
     let own_user_id = client.user_id().map(ToString::to_string);
 
     let mut items: Vec<Arc<TimelineItem>> = initial_items.into_iter().collect();
@@ -373,7 +410,14 @@ pub(super) async fn subscribe_timeline(
         %room_id,
         "timeline loaded"
     );
-    enrich_messages(client, &cache_dir, &media_sources, &mut messages).await;
+    enrich_messages(
+        client,
+        &media_dir,
+        &media_sources,
+        &materialized,
+        &mut messages,
+    )
+    .await;
     if timeline_tx.send(TimelinePatch::Reset(messages)).is_err() {
         return Ok(());
     }
@@ -409,8 +453,9 @@ pub(super) async fn subscribe_timeline(
                         &mut items,
                         diff,
                         client,
-                        &cache_dir,
+                        &media_dir,
                         &media_sources,
+                        &materialized,
                         own_user_id.as_deref(),
                     )
                     .await;

@@ -5,6 +5,7 @@ mod timeline;
 mod verification;
 
 use std::collections::HashMap;
+use std::fs;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex as StdMutex};
 
@@ -33,6 +34,7 @@ pub struct MatrixAdapter {
     verification_request: Mutex<Option<VerificationRequest>>,
     sas_verification: Mutex<Option<SasVerification>>,
     media_sources: Arc<StdMutex<HashMap<String, MediaSource>>>,
+    materialized: Arc<StdMutex<HashMap<String, PathBuf>>>,
     verification_req_rx: Mutex<Option<mpsc::UnboundedReceiver<VerificationRequest>>>,
     verification_handler_guards: Mutex<Vec<EventHandlerDropGuard>>,
 }
@@ -47,6 +49,7 @@ impl MatrixAdapter {
             verification_request: Mutex::new(None),
             sas_verification: Mutex::new(None),
             media_sources: Arc::new(StdMutex::new(HashMap::new())),
+            materialized: Arc::new(StdMutex::new(HashMap::new())),
             verification_req_rx: Mutex::new(None),
             verification_handler_guards: Mutex::new(Vec::new()),
         }
@@ -58,6 +61,19 @@ impl MatrixAdapter {
             .await
             .clone()
             .ok_or_else(|| AppError::Other("No client, run server discovery first".into()))
+    }
+
+    fn media_dir(&self) -> PathBuf {
+        self.cache_dir.join("media-cache")
+    }
+
+    pub fn clean_media_cache(&self) {
+        let dir = self.media_dir();
+        if dir.exists()
+            && let Err(e) = fs::remove_dir_all(&dir)
+        {
+            tracing::warn!("failed to clean media cache: {e}");
+        }
     }
 }
 
@@ -98,8 +114,9 @@ impl MatrixPort for MatrixAdapter {
         let client = self.get_client().await?;
         timeline::subscribe_timeline(
             &client,
-            &self.cache_dir,
+            &self.media_dir(),
             &self.media_sources,
+            &self.materialized,
             room_id,
             timeline_tx,
         )

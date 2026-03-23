@@ -9,6 +9,7 @@ use matrix_sdk::authentication::oauth::registration::{
 use matrix_sdk::authentication::oauth::{ClientId, OAuthSession, UrlOrQuery, UserSession};
 use matrix_sdk::encryption::verification::VerificationRequest;
 use matrix_sdk::event_handler::EventHandlerDropGuard;
+use matrix_sdk::media::MediaRetentionPolicy;
 use matrix_sdk::ruma::serde::Raw;
 use matrix_sdk::ruma::{IdParseError, OwnedDeviceId, OwnedUserId};
 use matrix_sdk::utils::local_server::{LocalServerBuilder, LocalServerRedirectHandle};
@@ -37,6 +38,12 @@ pub(super) async fn discover_auth(
             Some(passphrase),
         )
         .build()
+        .await
+        .map_err(|e| AppError::Other(e.to_string()))?;
+
+    client
+        .media()
+        .set_media_retention_policy(MediaRetentionPolicy::new())
         .await
         .map_err(|e| AppError::Other(e.to_string()))?;
 
@@ -176,6 +183,12 @@ pub(super) async fn restore_session(
             Some(passphrase),
         )
         .build()
+        .await
+        .map_err(|e| AppError::Other(e.to_string()))?;
+
+    client
+        .media()
+        .set_media_retention_policy(MediaRetentionPolicy::new())
         .await
         .map_err(|e| AppError::Other(e.to_string()))?;
 

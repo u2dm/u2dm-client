@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-use std::fs as fs_std;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex as StdMutex;
 use std::time::Duration;
@@ -32,20 +31,25 @@ fn ext_from_magic(data: &[u8]) -> &'static str {
     infer::get(data).map_or("png", |t| t.extension())
 }
 
-pub(super) fn find_cached(stem: &Path) -> Option<PathBuf> {
-    let parent = stem.parent()?;
-    let file_stem = stem.file_name()?;
-    fs_std::read_dir(parent).ok()?.find_map(|entry| {
-        let path = entry.ok()?.path();
-        (path.file_stem() == Some(file_stem)).then_some(path)
-    })
+fn lookup_materialized(
+    materialized: &StdMutex<HashMap<String, PathBuf>>,
+    key: &str,
+) -> Option<PathBuf> {
+    materialized.lock().ok()?.get(key).cloned()
 }
 
-pub(super) async fn fetch_single_thumbnail(
+fn record_materialized(materialized: &StdMutex<HashMap<String, PathBuf>>, key: &str, path: &Path) {
+    if let Ok(mut map) = materialized.lock() {
+        map.insert(key.to_string(), path.to_path_buf());
+    }
+}
+
+async fn fetch_and_materialize(
     client: &Client,
+    materialized: &StdMutex<HashMap<String, PathBuf>>,
     cache_stem: &Path,
     source: MediaSource,
-    event_id: &str,
+    cache_key: &str,
 ) -> Option<PathBuf> {
     let format = MediaFormat::Thumbnail(MediaThumbnailSettings::new(400u32.into(), 400u32.into()));
     let request = MediaRequestParameters { source, format };
@@ -55,11 +59,11 @@ pub(super) async fn fetch_single_thumbnail(
     let data = match timeout(Duration::from_secs(5), download).await {
         Ok(Ok(data)) => data,
         Ok(Err(e)) => {
-            tracing::debug!("thumbnail download failed for {event_id}: {e}");
+            tracing::debug!("thumbnail download failed for {cache_key}: {e}");
             return None;
         }
         Err(_) => {
-            tracing::debug!("thumbnail download timed out for {event_id}");
+            tracing::debug!("thumbnail download timed out for {cache_key}");
             return None;
         }
     };
@@ -67,42 +71,49 @@ pub(super) async fn fetch_single_thumbnail(
     let cache_path = cache_stem.with_extension(ext_from_magic(&data));
 
     if let Err(e) = fs::write(&cache_path, &data).await {
-        tracing::warn!("failed to cache thumbnail: {e}");
+        tracing::warn!("failed to write materialized media: {e}");
         return None;
     }
+
+    record_materialized(materialized, cache_key, &cache_path);
     Some(cache_path)
 }
 
 pub(super) async fn enrich_message(
     client: &Client,
-    cache_dir: &Path,
+    media_dir: &Path,
     media_sources: &StdMutex<HashMap<String, MediaSource>>,
+    materialized: &StdMutex<HashMap<String, PathBuf>>,
     msg: &mut TimelineMessage,
 ) {
     if let MessageBody::Image { meta, .. } = &mut msg.body {
         let event_id = &msg.event_id.0;
-        let cache_stem = cache_dir.join(hex_encode_id(event_id));
+        let cache_key = format!("thumb:{event_id}");
 
-        if let Some(path) = find_cached(&cache_stem) {
+        if let Some(path) = lookup_materialized(materialized, &cache_key) {
             meta.thumbnail_path = Some(path);
-        } else if let Some(source) = lookup_media_source(media_sources, event_id)
-            && let Some(path) = fetch_single_thumbnail(client, &cache_stem, source, event_id).await
-        {
-            meta.thumbnail_path = Some(path);
+        } else if let Some(source) = lookup_media_source(media_sources, event_id) {
+            let cache_stem = media_dir.join(hex_encode_id(event_id));
+            if let Some(path) =
+                fetch_and_materialize(client, materialized, &cache_stem, source, &cache_key).await
+            {
+                meta.thumbnail_path = Some(path);
+            }
         }
     }
 
     if let Some(mxc_url) = &msg.sender_avatar_url {
-        let avatar_dir = cache_dir.join("avatars");
-        let cache_stem = avatar_dir.join(hex_encode_id(&msg.sender));
+        let avatar_key = format!("avatar:{}", msg.sender);
 
-        if let Some(path) = find_cached(&cache_stem) {
+        if let Some(path) = lookup_materialized(materialized, &avatar_key) {
             msg.sender_avatar_path = Some(path);
         } else {
+            let avatar_dir = media_dir.join("avatars");
+            let cache_stem = avatar_dir.join(hex_encode_id(&msg.sender));
             let avatar_mxc: OwnedMxcUri = mxc_url.as_str().into();
             let source = MediaSource::Plain(avatar_mxc);
             if let Some(path) =
-                fetch_single_thumbnail(client, &cache_stem, source, &msg.sender).await
+                fetch_and_materialize(client, materialized, &cache_stem, source, &avatar_key).await
             {
                 msg.sender_avatar_path = Some(path);
             }
@@ -112,22 +123,23 @@ pub(super) async fn enrich_message(
 
 pub(super) async fn enrich_messages(
     client: &Client,
-    cache_dir: &Path,
+    media_dir: &Path,
     media_sources: &StdMutex<HashMap<String, MediaSource>>,
+    materialized: &StdMutex<HashMap<String, PathBuf>>,
     messages: &mut [TimelineMessage],
 ) {
-    if let Err(e) = fs::create_dir_all(cache_dir).await {
-        tracing::warn!("failed to create media cache dir: {e}");
+    if let Err(e) = fs::create_dir_all(media_dir).await {
+        tracing::warn!("failed to create media dir: {e}");
         return;
     }
-    let avatar_dir = cache_dir.join("avatars");
+    let avatar_dir = media_dir.join("avatars");
     if let Err(e) = fs::create_dir_all(&avatar_dir).await {
-        tracing::warn!("failed to create avatar cache dir: {e}");
+        tracing::warn!("failed to create avatar dir: {e}");
         return;
     }
 
     for msg in messages.iter_mut() {
-        enrich_message(client, cache_dir, media_sources, msg).await;
+        enrich_message(client, media_dir, media_sources, materialized, msg).await;
     }
 }
 

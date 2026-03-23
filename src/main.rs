@@ -54,10 +54,9 @@ fn run() -> Result<()> {
 
     ui.register_callbacks(&cmd_tx)?;
 
-    let matrix: Arc<dyn MatrixPort> = Arc::new(MatrixAdapter::new(
-        cfg.data_dir.clone(),
-        cfg.cache_dir.clone(),
-    ));
+    let matrix_adapter = MatrixAdapter::new(cfg.data_dir.clone(), cfg.cache_dir.clone());
+    matrix_adapter.clean_media_cache();
+    let matrix: Arc<dyn MatrixPort> = Arc::new(matrix_adapter);
     let storage: Arc<dyn StoragePort> = Arc::new(SecureStorage::new(&cfg.data_dir));
 
     let cmd_tx_quit = cmd_tx.clone();
@@ -66,7 +65,7 @@ fn run() -> Result<()> {
     if let Err(e) = cmd_tx.send(UiCommand::RestoreSession) {
         tracing::warn!("failed to send RestoreSession command: {e}");
     }
-    let mut service = AppService::new(matrix, storage, cfg, cmd_rx, cmd_tx, ui_tx);
+    let mut service = AppService::new(matrix, storage, cmd_rx, cmd_tx, ui_tx);
     tokio::spawn(async move {
         service.run().await;
     });

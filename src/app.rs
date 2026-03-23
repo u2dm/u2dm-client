@@ -1,3 +1,4 @@
+use std::env;
 use std::fmt::Write;
 use std::future::Future;
 use std::sync::Arc;
@@ -9,7 +10,6 @@ use tokio::{fs, time};
 use tokio_util::sync::CancellationToken;
 
 use crate::commands::{UiCommand, UiEvent};
-use crate::config::AppConfig;
 use crate::domain::models::{
     ConnectionStatus, LoginCredentials, RoomId, Session, SyncEvent, TimelinePatch,
     VerificationEvent,
@@ -67,7 +67,6 @@ impl TaskGroup {
 pub struct AppService {
     matrix: Arc<dyn MatrixPort>,
     storage: Arc<dyn StoragePort>,
-    config: AppConfig,
     cmd_rx: mpsc::UnboundedReceiver<UiCommand>,
     cmd_tx: mpsc::UnboundedSender<UiCommand>,
     ui_tx: mpsc::UnboundedSender<UiEvent>,
@@ -80,7 +79,6 @@ impl AppService {
     pub fn new(
         matrix: Arc<dyn MatrixPort>,
         storage: Arc<dyn StoragePort>,
-        config: AppConfig,
         cmd_rx: mpsc::UnboundedReceiver<UiCommand>,
         cmd_tx: mpsc::UnboundedSender<UiCommand>,
         ui_tx: mpsc::UnboundedSender<UiEvent>,
@@ -88,7 +86,6 @@ impl AppService {
         Self {
             matrix,
             storage,
-            config,
             cmd_rx,
             cmd_tx,
             ui_tx,
@@ -435,24 +432,21 @@ impl AppService {
 
         let matrix = Arc::clone(&self.matrix);
         let ui_tx = self.ui_tx.clone();
-        let cache_dir = self.config.cache_dir.join("media-cache");
         self.fire_and_forget.spawn(async move {
-            let cache_path = cache_dir.join(hex_encode_id(&event_id));
-            if cache_path.exists() {
-                open::that_in_background(&cache_path);
-                return;
-            }
             match matrix.download_media(&event_id, false).await {
                 Ok(data) => {
-                    if let Err(e) = fs::create_dir_all(&cache_dir).await {
-                        tracing::warn!("failed to create media cache dir: {e}");
+                    let ext = infer::get(&data).map_or("bin", |t| t.extension());
+                    let dir = env::temp_dir().join("u2dm-media");
+                    if let Err(e) = fs::create_dir_all(&dir).await {
+                        tracing::warn!("failed to create temp media dir: {e}");
                         return;
                     }
-                    if let Err(e) = fs::write(&cache_path, &data).await {
-                        tracing::warn!("failed to write media file: {e}");
+                    let path = dir.join(format!("{}.{ext}", hex_encode_id(&event_id)));
+                    if let Err(e) = fs::write(&path, &data).await {
+                        tracing::warn!("failed to write temp media file: {e}");
                         return;
                     }
-                    open::that_in_background(&cache_path);
+                    open::that_in_background(&path);
                 }
                 Err(e) => {
                     ui_tx
