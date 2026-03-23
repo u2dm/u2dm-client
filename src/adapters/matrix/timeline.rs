@@ -10,6 +10,7 @@ use matrix_sdk::ruma::{IdParseError, OwnedRoomId};
 use matrix_sdk_ui::eyeball_im::VectorDiff;
 use matrix_sdk_ui::timeline::{EventTimelineItem, RoomExt, TimelineDetails, TimelineItem};
 use tokio::sync::mpsc;
+use tokio::task::JoinSet;
 
 use super::media::{enrich_message, enrich_messages};
 use crate::domain::models::{
@@ -392,7 +393,8 @@ pub(super) async fn subscribe_timeline(
 
     let (initial_items, mut stream) = timeline.subscribe().await;
 
-    tokio::spawn({
+    let mut side_tasks = JoinSet::new();
+    side_tasks.spawn({
         let timeline = Arc::clone(&timeline);
         async move { timeline.fetch_members().await }
     });
@@ -429,16 +431,18 @@ pub(super) async fn subscribe_timeline(
             .room_keys_for_room_stream(&room_id_parsed)
     );
 
-    let backup_client = client.clone();
-    let backup_room_id = room_id_parsed;
-    tokio::spawn(async move {
-        if let Err(e) = backup_client
-            .encryption()
-            .backups()
-            .download_room_keys_for_room(&backup_room_id)
-            .await
-        {
-            tracing::debug!("backup key download for {backup_room_id}: {e}");
+    side_tasks.spawn({
+        let backup_client = client.clone();
+        let backup_room_id = room_id_parsed.clone();
+        async move {
+            if let Err(e) = backup_client
+                .encryption()
+                .backups()
+                .download_room_keys_for_room(&backup_room_id)
+                .await
+            {
+                tracing::debug!("backup key download for {backup_room_id}: {e}");
+            }
         }
     });
 
