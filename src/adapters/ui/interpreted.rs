@@ -13,7 +13,7 @@ thread_local! {
     static ROOMS_MODEL: RefCell<Option<Rc<VecModel<Value>>>> = const { RefCell::new(None) };
 }
 
-use super::common::{BoolProp, Status, StringProp, UiProps, dispatch_ui_event};
+use super::common::{BoolProp, Status, StringProp, UiProps, dispatch_ui_event, load_image_cached};
 use crate::commands::{UiCommand, UiEvent};
 use crate::domain::models::{
     LoginCredentials, MessageBody, Room, RoomId, TimelineMessage,
@@ -409,7 +409,7 @@ fn message_to_value(m: &TimelineMessage) -> Value {
         image_width = meta.width.unwrap_or(0).cast_signed();
         image_height = meta.height.unwrap_or(0).cast_signed();
         if let Some(thumb_path) = &meta.thumbnail_path
-            && let Ok(img) = slint::Image::load_from_path(thumb_path)
+            && let Some(img) = load_image_cached(thumb_path)
         {
             fields.push(("thumbnail".to_string(), Value::Image(img)));
             has_thumbnail = true;
@@ -427,7 +427,7 @@ fn message_to_value(m: &TimelineMessage) -> Value {
 
     let mut has_avatar = false;
     if let Some(avatar_path) = &m.sender_avatar_path
-        && let Ok(img) = slint::Image::load_from_path(avatar_path)
+        && let Some(img) = load_image_cached(avatar_path)
     {
         fields.push(("avatar".to_string(), Value::Image(img)));
         has_avatar = true;

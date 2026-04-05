@@ -1,6 +1,24 @@
+use std::cell::RefCell;
 use std::collections::HashMap;
+use std::path::{Path, PathBuf};
 
-use slint::{Model, SharedString, VecModel};
+use slint::{Image, Model, SharedString, VecModel};
+
+thread_local! {
+    static IMAGE_CACHE: RefCell<HashMap<PathBuf, Image>> = RefCell::new(HashMap::new());
+}
+
+pub fn load_image_cached(path: &Path) -> Option<Image> {
+    let cached = IMAGE_CACHE.with_borrow(|cache| cache.get(path).cloned());
+    if let Some(img) = cached {
+        return Some(img);
+    }
+    let img = Image::load_from_path(path).ok()?;
+    IMAGE_CACHE.with_borrow_mut(|cache| {
+        cache.insert(path.to_path_buf(), img.clone());
+    });
+    Some(img)
+}
 
 use crate::commands::UiEvent;
 use crate::domain::models::{
@@ -155,7 +173,15 @@ pub fn dispatch_ui_event<T, R>(
         }
         UiEvent::Timeline { room_id, patch } => {
             let selected = w.get_string(StringProp::SelectedRoomId);
-            if selected.as_str() == room_id.as_ref() {
+            let matches = selected.as_str() == room_id.as_ref();
+            tracing::debug!(
+                patch = patch.label(),
+                %room_id,
+                %selected,
+                matches,
+                "dispatch_ui_event received Timeline event"
+            );
+            if matches {
                 w.set_bool(BoolProp::TimelineLoading, false);
                 apply_timeline_patch(
                     timeline_model,
@@ -314,6 +340,12 @@ pub fn apply_timeline_patch<T: Clone + 'static>(
     convert: &dyn Fn(&TimelineMessage) -> T,
     entry_event_id: &dyn Fn(&T) -> String,
 ) {
+    let before = model.row_count();
+    tracing::debug!(
+        patch = patch.label(),
+        model_rows_before = before,
+        "apply_timeline_patch"
+    );
     match patch {
         TimelinePatch::Reset(messages) => {
             let entries: Vec<T> = messages.iter().map(convert).collect();
@@ -364,9 +396,7 @@ pub fn apply_timeline_patch<T: Clone + 'static>(
             model.set_vec(Vec::new());
         }
         TimelinePatch::Batch(patches) => {
-            for p in patches {
-                apply_timeline_patch(model, p, convert, entry_event_id);
-            }
+            apply_batch(model, patches, convert, entry_event_id);
         }
         TimelinePatch::UpdateMedia { event_id, message } => {
             let target = event_id.0;
@@ -378,6 +408,43 @@ pub fn apply_timeline_patch<T: Clone + 'static>(
                     break;
                 }
             }
+        }
+    }
+    tracing::debug!(
+        model_rows_after = model.row_count(),
+        "apply_timeline_patch done"
+    );
+}
+
+fn apply_batch<T: Clone + 'static>(
+    model: &VecModel<T>,
+    patches: Vec<TimelinePatch>,
+    convert: &dyn Fn(&TimelineMessage) -> T,
+    entry_event_id: &dyn Fn(&T) -> String,
+) {
+    let all_media = !patches.is_empty()
+        && patches
+            .iter()
+            .all(|p| matches!(p, TimelinePatch::UpdateMedia { .. }));
+
+    if all_media {
+        let mut updates: HashMap<&str, &TimelineMessage> = HashMap::new();
+        for p in &patches {
+            if let TimelinePatch::UpdateMedia { event_id, message } = p {
+                updates.insert(&event_id.0, message);
+            }
+        }
+        for i in 0..model.row_count() {
+            if let Some(entry) = model.row_data(i) {
+                let eid = entry_event_id(&entry);
+                if let Some(msg) = updates.get(eid.as_str()) {
+                    model.set_row_data(i, convert(msg));
+                }
+            }
+        }
+    } else {
+        for p in patches {
+            apply_timeline_patch(model, p, convert, entry_event_id);
         }
     }
 }

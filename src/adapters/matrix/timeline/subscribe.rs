@@ -74,9 +74,15 @@ fn send_initial_timeline(
         "timeline loaded"
     );
     try_enrich_from_cache(ctx.materialized, &mut messages);
+    tracing::debug!(
+        messages = messages.len(),
+        %room_id,
+        "sending initial Reset patch to timeline channel"
+    );
     let sent = timeline_tx
         .send(TimelinePatch::Reset(messages.clone()))
         .is_ok();
+    tracing::debug!(sent, %room_id, "initial Reset patch send result");
     if sent {
         spawn_enrichment_for_messages(&messages, ctx);
     }
@@ -88,17 +94,25 @@ fn process_diffs(
     diffs: Vec<VectorDiff<Arc<TimelineItem>>>,
     ctx: &TimelineContext<'_>,
 ) -> Option<TimelinePatch> {
+    tracing::debug!(num_diffs = diffs.len(), "processing incoming diffs");
     let mut batch = Vec::new();
     for diff in diffs {
         if let Some(patch) = diff_to_patch(items, diff, ctx) {
+            tracing::debug!(patch = patch.label(), "diff produced patch");
             batch.push(patch);
         }
     }
-    match batch.len() {
+    let result = match batch.len() {
         0 => None,
         1 => Some(batch.remove(0)),
         _ => Some(TimelinePatch::Batch(batch)),
-    }
+    };
+    tracing::debug!(
+        produced = result.is_some(),
+        label = result.as_ref().map(TimelinePatch::label),
+        "process_diffs result"
+    );
+    result
 }
 
 fn spawn_backup_key_download(

@@ -389,6 +389,11 @@ impl AppService {
             let subscribe = matrix_tl.subscribe_timeline(&room_id, tl_tx);
             let forward = async {
                 while let Some(patch) = tl_rx.recv().await {
+                    tracing::debug!(
+                        patch = patch.label(),
+                        %rid,
+                        "forwarding timeline patch as UiEvent"
+                    );
                     let event = UiEvent::Timeline {
                         room_id: rid.clone(),
                         patch: Box::new(patch),

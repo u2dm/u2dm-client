@@ -288,7 +288,7 @@ impl TimelineMessage {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, strum::IntoStaticStr)]
 pub enum TimelinePatch {
     Reset(Vec<TimelineMessage>),
     Append(Vec<TimelineMessage>),
@@ -316,6 +316,12 @@ pub enum TimelinePatch {
         event_id: EventId,
         message: TimelineMessage,
     },
+}
+
+impl TimelinePatch {
+    pub fn label(&self) -> &'static str {
+        self.into()
+    }
 }
 
 #[derive(Debug, Clone)]

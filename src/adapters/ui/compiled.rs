@@ -5,7 +5,7 @@ use slint::{ComponentHandle, ModelRc, SharedString, VecModel};
 use tokio::runtime::Runtime;
 use tokio::sync::mpsc;
 
-use super::common::{BoolProp, Status, StringProp, UiProps, dispatch_ui_event};
+use super::common::{BoolProp, Status, StringProp, UiProps, dispatch_ui_event, load_image_cached};
 use crate::commands::{UiCommand, UiEvent};
 use crate::domain::models::{
     LoginCredentials, MessageBody, Room, RoomId, TimelineMessage,
@@ -272,7 +272,7 @@ fn message_to_entry(m: &TimelineMessage) -> MessageEntry {
         entry.image_width = meta.width.unwrap_or(0).cast_signed();
         entry.image_height = meta.height.unwrap_or(0).cast_signed();
         if let Some(thumb_path) = &meta.thumbnail_path
-            && let Ok(img) = slint::Image::load_from_path(thumb_path)
+            && let Some(img) = load_image_cached(thumb_path)
         {
             entry.thumbnail = img;
             entry.has_thumbnail = true;
@@ -280,7 +280,7 @@ fn message_to_entry(m: &TimelineMessage) -> MessageEntry {
     }
 
     if let Some(avatar_path) = &m.sender_avatar_path
-        && let Ok(img) = slint::Image::load_from_path(avatar_path)
+        && let Some(img) = load_image_cached(avatar_path)
     {
         entry.avatar = img;
         entry.has_avatar = true;
