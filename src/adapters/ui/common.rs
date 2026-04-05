@@ -129,7 +129,7 @@ impl VerifyStep {
     }
 }
 
-#[allow(clippy::too_many_lines)]
+#[allow(clippy::too_many_lines, clippy::too_many_arguments)]
 pub fn dispatch_ui_event<T, R>(
     w: &impl UiProps,
     event: UiEvent,
@@ -138,6 +138,7 @@ pub fn dispatch_ui_event<T, R>(
     convert_message: &dyn Fn(&TimelineMessage) -> T,
     convert_room: &dyn Fn(&Room) -> R,
     room_entry_id: &dyn Fn(&R) -> &str,
+    message_entry_event_id: &dyn Fn(&T) -> String,
 ) where
     T: Clone + 'static,
     R: Clone + PartialEq + 'static,
@@ -156,7 +157,12 @@ pub fn dispatch_ui_event<T, R>(
             let selected = w.get_string(StringProp::SelectedRoomId);
             if selected.as_str() == room_id.as_ref() {
                 w.set_bool(BoolProp::TimelineLoading, false);
-                apply_timeline_patch(timeline_model, *patch, convert_message);
+                apply_timeline_patch(
+                    timeline_model,
+                    *patch,
+                    convert_message,
+                    message_entry_event_id,
+                );
             }
         }
         UiEvent::ConnectionStatus(status) => apply_connection_status(w, &status),
@@ -306,6 +312,7 @@ pub fn apply_timeline_patch<T: Clone + 'static>(
     model: &VecModel<T>,
     patch: TimelinePatch,
     convert: &dyn Fn(&TimelineMessage) -> T,
+    entry_event_id: &dyn Fn(&T) -> String,
 ) {
     match patch {
         TimelinePatch::Reset(messages) => {
@@ -358,7 +365,18 @@ pub fn apply_timeline_patch<T: Clone + 'static>(
         }
         TimelinePatch::Batch(patches) => {
             for p in patches {
-                apply_timeline_patch(model, p, convert);
+                apply_timeline_patch(model, p, convert, entry_event_id);
+            }
+        }
+        TimelinePatch::UpdateMedia { event_id, message } => {
+            let target = event_id.0;
+            for i in 0..model.row_count() {
+                if let Some(entry) = model.row_data(i)
+                    && entry_event_id(&entry) == target
+                {
+                    model.set_row_data(i, convert(&message));
+                    break;
+                }
             }
         }
     }

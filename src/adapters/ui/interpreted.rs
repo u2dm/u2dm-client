@@ -360,6 +360,7 @@ impl SlintUiAdapter {
                                         &message_to_value,
                                         &room_to_value,
                                         &|v| room_id_from_value(v).map_or("", SharedString::as_str),
+                                        &event_id_from_value,
                                     );
                                 }
                             });
@@ -402,14 +403,27 @@ fn message_to_value(m: &TimelineMessage) -> Value {
     ];
 
     let mut has_thumbnail = false;
-    if let MessageBody::Image { meta, .. } = &m.body
-        && let Some(thumb_path) = &meta.thumbnail_path
-        && let Ok(img) = slint::Image::load_from_path(thumb_path)
-    {
-        fields.push(("thumbnail".to_string(), Value::Image(img)));
-        has_thumbnail = true;
+    let mut image_width: i32 = 0;
+    let mut image_height: i32 = 0;
+    if let MessageBody::Image { meta, .. } = &m.body {
+        image_width = meta.width.unwrap_or(0).cast_signed();
+        image_height = meta.height.unwrap_or(0).cast_signed();
+        if let Some(thumb_path) = &meta.thumbnail_path
+            && let Ok(img) = slint::Image::load_from_path(thumb_path)
+        {
+            fields.push(("thumbnail".to_string(), Value::Image(img)));
+            has_thumbnail = true;
+        }
     }
     fields.push(("has-thumbnail".to_string(), Value::Bool(has_thumbnail)));
+    fields.push((
+        "image-width".to_string(),
+        Value::Number(f64::from(image_width)),
+    ));
+    fields.push((
+        "image-height".to_string(),
+        Value::Number(f64::from(image_height)),
+    ));
 
     let mut has_avatar = false;
     if let Some(avatar_path) = &m.sender_avatar_path
@@ -442,6 +456,16 @@ fn room_to_value(r: &Room) -> Value {
             Value::Number(r.mention_count as f64),
         ),
     ]))
+}
+
+fn event_id_from_value(val: &Value) -> String {
+    if let Value::Struct(s) = val
+        && let Some(Value::String(id)) = s.get_field("event-id")
+    {
+        id.to_string()
+    } else {
+        String::new()
+    }
 }
 
 fn room_id_from_value(val: &Value) -> Option<&SharedString> {

@@ -106,27 +106,27 @@ msgctxt "ChatScreen"
 msgid "File saved to {}"
 msgstr ""
 
-#: ui/screens/chat/components/timeline.slint:152
+#: ui/screens/chat/components/timeline.slint:154
 msgctxt "TimelineView"
 msgid "Select a room"
 msgstr ""
 
-#: ui/screens/chat/components/timeline.slint:179
+#: ui/screens/chat/components/timeline.slint:181
 msgctxt "TimelineView"
 msgid "Loading messages..."
 msgstr ""
 
-#: ui/screens/chat/components/timeline.slint:273
+#: ui/screens/chat/components/timeline.slint:275
 msgctxt "TimelineView"
 msgid "Send a message..."
 msgstr ""
 
-#: ui/screens/chat/components/timeline.slint:282
+#: ui/screens/chat/components/timeline.slint:284
 msgctxt "TimelineView"
 msgid "Send"
 msgstr ""
 
-#: ui/screens/chat/components/messages/image-message.slint:29
+#: ui/screens/chat/components/messages/image-message.slint:45
 msgctxt "ImageMessage"
 msgid "Image without thumbnail: {}"
 msgstr ""

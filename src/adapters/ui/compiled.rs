@@ -239,6 +239,7 @@ impl SlintUiAdapter {
                                         &message_to_entry,
                                         &room_to_entry,
                                         &|e| e.id.as_str(),
+                                        &|e: &MessageEntry| e.event_id.to_string(),
                                     );
                                 }
                             });
@@ -267,12 +268,15 @@ fn message_to_entry(m: &TimelineMessage) -> MessageEntry {
         ..Default::default()
     };
 
-    if let MessageBody::Image { meta, .. } = &m.body
-        && let Some(thumb_path) = &meta.thumbnail_path
-        && let Ok(img) = slint::Image::load_from_path(thumb_path)
-    {
-        entry.thumbnail = img;
-        entry.has_thumbnail = true;
+    if let MessageBody::Image { meta, .. } = &m.body {
+        entry.image_width = meta.width.unwrap_or(0).cast_signed();
+        entry.image_height = meta.height.unwrap_or(0).cast_signed();
+        if let Some(thumb_path) = &meta.thumbnail_path
+            && let Ok(img) = slint::Image::load_from_path(thumb_path)
+        {
+            entry.thumbnail = img;
+            entry.has_thumbnail = true;
+        }
     }
 
     if let Some(avatar_path) = &m.sender_avatar_path

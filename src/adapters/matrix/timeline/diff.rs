@@ -1,3 +1,4 @@
+use std::slice;
 use std::sync::Arc;
 
 use matrix_sdk_ui::eyeball_im::VectorDiff;
@@ -5,11 +6,18 @@ use matrix_sdk_ui::timeline::TimelineItem;
 
 use super::TimelineContext;
 use super::convert::convert_event_item;
-use super::filter::{convert_and_enrich, convert_timeline_items, is_renderable, msg_index_at};
-use crate::adapters::matrix::media::enrich_messages;
+use super::filter::{
+    convert_and_enrich_from_cache, convert_timeline_items, is_renderable, msg_index_at,
+};
+use super::subscribe::spawn_enrichment_for_messages;
+use crate::adapters::matrix::media::try_enrich_from_cache;
 use crate::domain::models::{TimelineMessage, TimelinePatch};
 
-async fn apply_append(
+fn spawn_if_needed(msg: &TimelineMessage, ctx: &TimelineContext<'_>) {
+    spawn_enrichment_for_messages(slice::from_ref(msg), ctx);
+}
+
+fn apply_append(
     items: &mut Vec<Arc<TimelineItem>>,
     values: Vec<Arc<TimelineItem>>,
     ctx: &TimelineContext<'_>,
@@ -21,39 +29,37 @@ async fn apply_append(
             convert_event_item(event, ctx.media_sources, ctx.own_user_id)
         })
         .collect();
-    enrich_messages(
-        ctx.client,
-        ctx.media_dir,
-        ctx.media_sources,
-        ctx.materialized,
-        &mut msgs,
-    )
-    .await;
+    try_enrich_from_cache(ctx.materialized, &mut msgs);
     items.extend(values);
     if msgs.is_empty() {
         return None;
     }
+    spawn_enrichment_for_messages(&msgs, ctx);
     Some(TimelinePatch::Append(msgs))
 }
 
-async fn apply_push_front(
+fn apply_push_front(
     items: &mut Vec<Arc<TimelineItem>>,
     value: Arc<TimelineItem>,
     ctx: &TimelineContext<'_>,
 ) -> Option<TimelinePatch> {
-    let msg = convert_and_enrich(&value, ctx).await;
+    let msg = convert_and_enrich_from_cache(&value, ctx);
     items.insert(0, value);
-    Some(TimelinePatch::PushFront(msg?))
+    let msg = msg?;
+    spawn_if_needed(&msg, ctx);
+    Some(TimelinePatch::PushFront(msg))
 }
 
-async fn apply_push_back(
+fn apply_push_back(
     items: &mut Vec<Arc<TimelineItem>>,
     value: Arc<TimelineItem>,
     ctx: &TimelineContext<'_>,
 ) -> Option<TimelinePatch> {
-    let msg = convert_and_enrich(&value, ctx).await;
+    let msg = convert_and_enrich_from_cache(&value, ctx);
     items.push(value);
-    Some(TimelinePatch::PushBack(msg?))
+    let msg = msg?;
+    spawn_if_needed(&msg, ctx);
+    Some(TimelinePatch::PushBack(msg))
 }
 
 fn apply_pop_front(items: &mut Vec<Arc<TimelineItem>>) -> Option<TimelinePatch> {
@@ -70,26 +76,27 @@ fn apply_pop_back(items: &mut Vec<Arc<TimelineItem>>) -> Option<TimelinePatch> {
     was_renderable.then_some(TimelinePatch::PopBack)
 }
 
-async fn apply_insert(
+fn apply_insert(
     items: &mut Vec<Arc<TimelineItem>>,
     index: usize,
     value: Arc<TimelineItem>,
     ctx: &TimelineContext<'_>,
 ) -> Option<TimelinePatch> {
-    let msg = convert_and_enrich(&value, ctx).await;
+    let msg = convert_and_enrich_from_cache(&value, ctx);
     items.insert(index, value);
     let msg = msg?;
     let mi = msg_index_at(items, index);
+    spawn_if_needed(&msg, ctx);
     Some(TimelinePatch::Insert {
         index: mi,
         message: msg,
     })
 }
 
-async fn apply_set(
+fn apply_set(
     items: &mut [Arc<TimelineItem>],
     index: usize,
-    value: Arc<TimelineItem>,
+    value: &Arc<TimelineItem>,
     ctx: &TimelineContext<'_>,
 ) -> Option<TimelinePatch> {
     let old_msg = items
@@ -107,25 +114,27 @@ async fn apply_set(
         .and_then(|e| convert_event_item(e, ctx.media_sources, ctx.own_user_id));
 
     if let Some(slot) = items.get_mut(index) {
-        *slot = Arc::clone(&value);
+        *slot = Arc::clone(value);
     }
 
     match (&old_msg, &new_msg) {
         (Some(old), Some(new)) if old.visually_eq(new) => None,
         (Some(_), Some(_)) => {
-            let enriched = convert_and_enrich(&value, ctx).await;
+            let enriched = convert_and_enrich_from_cache(value, ctx)?;
+            spawn_if_needed(&enriched, ctx);
             Some(TimelinePatch::Set {
                 index: old_mi,
-                message: enriched?,
+                message: enriched,
             })
         }
         (Some(_), None) => Some(TimelinePatch::Remove { index: old_mi }),
         (None, Some(_)) => {
             let mi = msg_index_at(items, index);
-            let enriched = convert_and_enrich(&value, ctx).await;
+            let enriched = convert_and_enrich_from_cache(value, ctx)?;
+            spawn_if_needed(&enriched, ctx);
             Some(TimelinePatch::Insert {
                 index: mi,
-                message: enriched?,
+                message: enriched,
             })
         }
         (None, None) => None,
@@ -149,25 +158,19 @@ fn apply_truncate(items: &mut Vec<Arc<TimelineItem>>, length: usize) -> Timeline
     TimelinePatch::Truncate { length: msg_length }
 }
 
-async fn apply_reset(
+fn apply_reset(
     items: &mut Vec<Arc<TimelineItem>>,
     values: Vec<Arc<TimelineItem>>,
     ctx: &TimelineContext<'_>,
-) -> Option<TimelinePatch> {
+) -> TimelinePatch {
     *items = values;
     let mut msgs = convert_timeline_items(items, ctx);
-    enrich_messages(
-        ctx.client,
-        ctx.media_dir,
-        ctx.media_sources,
-        ctx.materialized,
-        &mut msgs,
-    )
-    .await;
-    Some(TimelinePatch::Reset(msgs))
+    try_enrich_from_cache(ctx.materialized, &mut msgs);
+    spawn_enrichment_for_messages(&msgs, ctx);
+    TimelinePatch::Reset(msgs)
 }
 
-pub(crate) async fn diff_to_patch(
+pub(crate) fn diff_to_patch(
     items: &mut Vec<Arc<TimelineItem>>,
     diff: VectorDiff<Arc<TimelineItem>>,
     ctx: &TimelineContext<'_>,
@@ -175,23 +178,23 @@ pub(crate) async fn diff_to_patch(
     match diff {
         VectorDiff::Append { values } => {
             let values: Vec<Arc<TimelineItem>> = values.into_iter().collect();
-            apply_append(items, values, ctx).await
+            apply_append(items, values, ctx)
         }
         VectorDiff::Clear => {
             items.clear();
             Some(TimelinePatch::Clear)
         }
-        VectorDiff::PushFront { value } => apply_push_front(items, value, ctx).await,
-        VectorDiff::PushBack { value } => apply_push_back(items, value, ctx).await,
+        VectorDiff::PushFront { value } => apply_push_front(items, value, ctx),
+        VectorDiff::PushBack { value } => apply_push_back(items, value, ctx),
         VectorDiff::PopFront => apply_pop_front(items),
         VectorDiff::PopBack => apply_pop_back(items),
-        VectorDiff::Insert { index, value } => apply_insert(items, index, value, ctx).await,
-        VectorDiff::Set { index, value } => apply_set(items, index, value, ctx).await,
+        VectorDiff::Insert { index, value } => apply_insert(items, index, value, ctx),
+        VectorDiff::Set { index, value } => apply_set(items, index, &value, ctx),
         VectorDiff::Remove { index } => apply_remove(items, index),
         VectorDiff::Truncate { length } => Some(apply_truncate(items, length)),
         VectorDiff::Reset { values } => {
             let values: Vec<Arc<TimelineItem>> = values.into_iter().collect();
-            apply_reset(items, values, ctx).await
+            Some(apply_reset(items, values, ctx))
         }
     }
 }

@@ -1,10 +1,11 @@
+use std::slice;
 use std::sync::Arc;
 
 use matrix_sdk_ui::timeline::TimelineItem;
 
 use super::TimelineContext;
 use super::convert::convert_event_item;
-use crate::adapters::matrix::media::enrich_message;
+use crate::adapters::matrix::media::try_enrich_from_cache;
 use crate::domain::models::TimelineMessage;
 
 pub(super) fn is_renderable(item: &TimelineItem) -> bool {
@@ -34,19 +35,12 @@ pub(super) fn convert_timeline_items(
         .collect()
 }
 
-pub(super) async fn convert_and_enrich(
+pub(super) fn convert_and_enrich_from_cache(
     item: &Arc<TimelineItem>,
     ctx: &TimelineContext<'_>,
 ) -> Option<TimelineMessage> {
     let event = item.as_event()?;
     let mut msg = convert_event_item(event, ctx.media_sources, ctx.own_user_id)?;
-    enrich_message(
-        ctx.client,
-        ctx.media_dir,
-        ctx.media_sources,
-        ctx.materialized,
-        &mut msg,
-    )
-    .await;
+    try_enrich_from_cache(ctx.materialized, slice::from_mut(&mut msg));
     Some(msg)
 }

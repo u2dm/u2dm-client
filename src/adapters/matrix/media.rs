@@ -56,7 +56,7 @@ async fn fetch_and_materialize(
 
     let media = client.media();
     let download = media.get_media_content(&request, true);
-    let data = match timeout(Duration::from_secs(5), download).await {
+    let data = match timeout(Duration::from_secs(60), download).await {
         Ok(Ok(data)) => data,
         Ok(Err(e)) => {
             tracing::debug!("thumbnail download failed for {cache_key}: {e}");
@@ -77,6 +77,35 @@ async fn fetch_and_materialize(
 
     record_materialized(materialized, cache_key, &cache_path);
     Some(cache_path)
+}
+
+pub(super) fn try_enrich_from_cache(
+    materialized: &StdMutex<HashMap<String, PathBuf>>,
+    messages: &mut [TimelineMessage],
+) {
+    for msg in messages.iter_mut() {
+        if let MessageBody::Image { meta, .. } = &mut msg.body
+            && meta.thumbnail_path.is_none()
+        {
+            let cache_key = format!("thumb:{}", msg.event_id.0);
+            if let Some(path) = lookup_materialized(materialized, &cache_key) {
+                meta.thumbnail_path = Some(path);
+            }
+        }
+        if msg.sender_avatar_path.is_none() && msg.sender_avatar_url.is_some() {
+            let avatar_key = format!("avatar:{}", msg.sender);
+            if let Some(path) = lookup_materialized(materialized, &avatar_key) {
+                msg.sender_avatar_path = Some(path);
+            }
+        }
+    }
+}
+
+pub(super) fn needs_media_download(msg: &TimelineMessage) -> bool {
+    let needs_thumbnail =
+        matches!(&msg.body, MessageBody::Image { meta, .. } if meta.thumbnail_path.is_none());
+    let needs_avatar = msg.sender_avatar_url.is_some() && msg.sender_avatar_path.is_none();
+    needs_thumbnail || needs_avatar
 }
 
 pub(super) async fn enrich_message(
@@ -118,28 +147,6 @@ pub(super) async fn enrich_message(
                 msg.sender_avatar_path = Some(path);
             }
         }
-    }
-}
-
-pub(super) async fn enrich_messages(
-    client: &Client,
-    media_dir: &Path,
-    media_sources: &StdMutex<HashMap<String, MediaSource>>,
-    materialized: &StdMutex<HashMap<String, PathBuf>>,
-    messages: &mut [TimelineMessage],
-) {
-    if let Err(e) = fs::create_dir_all(media_dir).await {
-        tracing::warn!("failed to create media dir: {e}");
-        return;
-    }
-    let avatar_dir = media_dir.join("avatars");
-    if let Err(e) = fs::create_dir_all(&avatar_dir).await {
-        tracing::warn!("failed to create avatar dir: {e}");
-        return;
-    }
-
-    for msg in messages.iter_mut() {
-        enrich_message(client, media_dir, media_sources, materialized, msg).await;
     }
 }
 

@@ -88,6 +88,8 @@ component MessageBubble inherits Rectangle {
                 if msg.message-type == "image": ImageMessage {
                     thumbnail: msg.thumbnail;
                     has-thumbnail: msg.has-thumbnail;
+                    image-width: msg.image-width;
+                    image-height: msg.image-height;
                     body: msg.body;
                     event-id: msg.event-id;
                     open-media(id) => {

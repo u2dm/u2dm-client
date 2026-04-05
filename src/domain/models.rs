@@ -312,6 +312,10 @@ pub enum TimelinePatch {
     },
     Clear,
     Batch(Vec<TimelinePatch>),
+    UpdateMedia {
+        event_id: EventId,
+        message: TimelineMessage,
+    },
 }
 
 #[derive(Debug, Clone)]

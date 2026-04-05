@@ -1,10 +1,15 @@
-import { Palette } from "std-widgets.slint";
+import { Palette, Spinner } from "std-widgets.slint";
 
 export component ImageMessage inherits VerticalLayout {
     in property <image> thumbnail;
     in property <bool> has-thumbnail;
+    in property <int> image-width;
+    in property <int> image-height;
     in property <string> body;
     in property <string> event-id;
+
+    property <bool> has-dimensions: root.image-width > 0 && root.image-height > 0;
+    property <bool> is-loading: !root.has-thumbnail && root.has-dimensions;
 
     callback open-media(string);
 
@@ -25,7 +30,18 @@ export component ImageMessage inherits VerticalLayout {
         }
     }
 
-    if !has-thumbnail: Text {
+    if is-loading: Rectangle {
+        property <float> aspect: root.image-width / max(root.image-height, 1);
+        width: min(400px, max(267px, 400px * aspect));
+        height: min(400px, self.width / max(aspect, 0.01));
+        background: Palette.alternate-background;
+        border-radius: 4px;
+        Spinner {
+            indeterminate: true;
+        }
+    }
+
+    if !has-thumbnail && !has-dimensions: Text {
         text: @tr("Image without thumbnail: {}", root.body);
         font-size: 14px;
         color: Palette.foreground.transparentize(0.3);

@@ -7,18 +7,60 @@ use matrix_sdk::Client;
 use matrix_sdk::ruma::events::room::MediaSource;
 use matrix_sdk::ruma::{IdParseError, OwnedRoomId};
 use matrix_sdk_ui::eyeball_im::VectorDiff;
-use matrix_sdk_ui::timeline::{RoomExt, TimelineItem};
+use matrix_sdk_ui::timeline::{RoomExt as _, TimelineItem};
+use tokio::fs;
 use tokio::sync::mpsc;
 use tokio::task::JoinSet;
 
 use super::TimelineContext;
 use super::diff::diff_to_patch;
 use super::filter::convert_timeline_items;
-use crate::adapters::matrix::media::enrich_messages;
-use crate::domain::models::{RoomId, TimelinePatch};
+use crate::adapters::matrix::media::{enrich_message, needs_media_download, try_enrich_from_cache};
+use crate::domain::models::{RoomId, TimelineMessage, TimelinePatch};
 use crate::error::{AppError, Result};
 
-async fn send_initial_timeline(
+fn spawn_media_enrichment(
+    client: &Client,
+    media_dir: &Path,
+    media_sources: &Arc<StdMutex<HashMap<String, MediaSource>>>,
+    materialized: &Arc<StdMutex<HashMap<String, PathBuf>>>,
+    timeline_tx: &mpsc::UnboundedSender<TimelinePatch>,
+    msg: &TimelineMessage,
+) {
+    let mut msg = msg.clone();
+    let client = client.clone();
+    let media_dir = media_dir.to_path_buf();
+    let media_sources = Arc::clone(media_sources);
+    let materialized = Arc::clone(materialized);
+    let tx = timeline_tx.clone();
+    tokio::spawn(async move {
+        enrich_message(&client, &media_dir, &media_sources, &materialized, &mut msg).await;
+        drop(tx.send(TimelinePatch::UpdateMedia {
+            event_id: msg.event_id.clone(),
+            message: msg,
+        }));
+    });
+}
+
+pub(super) fn spawn_enrichment_for_messages(
+    messages: &[TimelineMessage],
+    ctx: &TimelineContext<'_>,
+) {
+    for msg in messages {
+        if needs_media_download(msg) {
+            spawn_media_enrichment(
+                ctx.client,
+                ctx.media_dir,
+                ctx.media_sources,
+                ctx.materialized,
+                ctx.timeline_tx,
+                msg,
+            );
+        }
+    }
+}
+
+fn send_initial_timeline(
     items: &[Arc<TimelineItem>],
     ctx: &TimelineContext<'_>,
     room_id: &RoomId,
@@ -31,25 +73,24 @@ async fn send_initial_timeline(
         %room_id,
         "timeline loaded"
     );
-    enrich_messages(
-        ctx.client,
-        ctx.media_dir,
-        ctx.media_sources,
-        ctx.materialized,
-        &mut messages,
-    )
-    .await;
-    timeline_tx.send(TimelinePatch::Reset(messages)).is_ok()
+    try_enrich_from_cache(ctx.materialized, &mut messages);
+    let sent = timeline_tx
+        .send(TimelinePatch::Reset(messages.clone()))
+        .is_ok();
+    if sent {
+        spawn_enrichment_for_messages(&messages, ctx);
+    }
+    sent
 }
 
-async fn process_diffs(
+fn process_diffs(
     items: &mut Vec<Arc<TimelineItem>>,
     diffs: Vec<VectorDiff<Arc<TimelineItem>>>,
     ctx: &TimelineContext<'_>,
 ) -> Option<TimelinePatch> {
     let mut batch = Vec::new();
     for diff in diffs {
-        if let Some(patch) = diff_to_patch(items, diff, ctx).await {
+        if let Some(patch) = diff_to_patch(items, diff, ctx) {
             batch.push(patch);
         }
     }
@@ -79,6 +120,16 @@ fn spawn_backup_key_download(
     });
 }
 
+async fn ensure_media_dirs(media_dir: &Path) {
+    if let Err(e) = fs::create_dir_all(media_dir).await {
+        tracing::warn!("failed to create media dir: {e}");
+    }
+    let avatar_dir = media_dir.join("avatars");
+    if let Err(e) = fs::create_dir_all(&avatar_dir).await {
+        tracing::warn!("failed to create avatar dir: {e}");
+    }
+}
+
 pub(crate) async fn subscribe_timeline(
     client: &Client,
     media_dir: &Path,
@@ -106,6 +157,8 @@ pub(crate) async fn subscribe_timeline(
         tracing::warn!("failed to paginate timeline backwards: {e}");
     }
 
+    ensure_media_dirs(media_dir).await;
+
     let (initial_items, mut stream) = timeline.subscribe().await;
 
     let mut side_tasks = JoinSet::new();
@@ -121,10 +174,11 @@ pub(crate) async fn subscribe_timeline(
         media_sources,
         materialized,
         own_user_id: own_user_id.as_deref(),
+        timeline_tx: &timeline_tx,
     };
 
     let mut items: Vec<Arc<TimelineItem>> = initial_items.into_iter().collect();
-    if !send_initial_timeline(&items, &ctx, room_id, &timeline_tx).await {
+    if !send_initial_timeline(&items, &ctx, room_id, &timeline_tx) {
         return Ok(());
     }
 
@@ -141,7 +195,7 @@ pub(crate) async fn subscribe_timeline(
             biased;
             diffs = stream.next() => {
                 let Some(diffs) = diffs else { break };
-                if let Some(patch) = process_diffs(&mut items, diffs, &ctx).await
+                if let Some(patch) = process_diffs(&mut items, diffs, &ctx)
                     && timeline_tx.send(patch).is_err()
                 {
                     return Ok(());
