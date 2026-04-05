@@ -42,9 +42,15 @@ export component ImageMessage inherits VerticalLayout {
     }
 
     if !has-thumbnail && !has-dimensions: Text {
-        text: @tr("Image without thumbnail: {}", root.body);
+        text: root.body != "" ? @tr("Image: {}", root.body) : @tr("Image");
         font-size: 14px;
         color: Palette.foreground.transparentize(0.3);
+        wrap: word-wrap;
+    }
+
+    if (has-thumbnail || is-loading) && root.body != "": Text {
+        text: root.body;
+        font-size: 14px;
         wrap: word-wrap;
     }
 }

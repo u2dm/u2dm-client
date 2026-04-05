@@ -128,7 +128,12 @@ msgstr ""
 
 #: ui/screens/chat/components/messages/image-message.slint:45
 msgctxt "ImageMessage"
-msgid "Image without thumbnail: {}"
+msgid "Image: {}"
+msgstr ""
+
+#: ui/screens/chat/components/messages/image-message.slint:45
+msgctxt "ImageMessage"
+msgid "Image"
 msgstr ""
 
 #: ui/screens/chat/components/messages/utd-message.slint:22

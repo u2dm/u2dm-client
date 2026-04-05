@@ -129,8 +129,13 @@ msgstr "Invia"
 
 #: ui/screens/chat/components/messages/image-message.slint:45
 msgctxt "ImageMessage"
-msgid "Image without thumbnail: {}"
-msgstr "Immagine senza anteprima: {}"
+msgid "Image: {}"
+msgstr ""
+
+#: ui/screens/chat/components/messages/image-message.slint:45
+msgctxt "ImageMessage"
+msgid "Image"
+msgstr ""
 
 #: ui/screens/chat/components/messages/utd-message.slint:22
 msgctxt "UtdMessage"
@@ -231,3 +236,7 @@ msgstr "Sincronizzazione stanze..."
 msgctxt "LoadingScreen"
 msgid "U2DM"
 msgstr "U2DM"
+
+#~ msgctxt "ImageMessage"
+#~ msgid "Image without thumbnail: {}"
+#~ msgstr "Immagine senza anteprima: {}"

@@ -207,17 +207,25 @@ pub enum MessageBody {
     Text(String),
     Notice(String),
     Emote(String),
-    Image { alt_text: String, meta: ImageMeta },
-    File { meta: FileMeta },
+    Image {
+        caption: Option<String>,
+        meta: ImageMeta,
+    },
+    File {
+        meta: FileMeta,
+    },
     UnableToDecrypt,
-    Unsupported { kind: String, fallback: String },
+    Unsupported {
+        kind: String,
+        fallback: String,
+    },
 }
 
 impl MessageBody {
     pub fn body_text(&self) -> &str {
         match self {
             Self::Text(s) | Self::Notice(s) | Self::Emote(s) => s,
-            Self::Image { alt_text, .. } => alt_text,
+            Self::Image { caption, .. } => caption.as_deref().unwrap_or_default(),
             Self::File { meta, .. } => &meta.filename,
             Self::UnableToDecrypt => "Unable to decrypt message",
             Self::Unsupported { fallback, .. } => fallback,

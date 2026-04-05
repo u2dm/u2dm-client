@@ -66,7 +66,7 @@ fn extract_image_body(
         (w, h, info.mimetype.clone())
     });
     MessageBody::Image {
-        alt_text: image.body.clone(),
+        caption: image.caption().map(String::from),
         meta: ImageMeta {
             width,
             height,
