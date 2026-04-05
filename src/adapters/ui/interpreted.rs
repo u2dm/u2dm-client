@@ -13,7 +13,9 @@ thread_local! {
     static ROOMS_MODEL: RefCell<Option<Rc<VecModel<Value>>>> = const { RefCell::new(None) };
 }
 
-use super::common::{BoolProp, Status, StringProp, UiProps, dispatch_ui_event, load_image_cached};
+use super::common::{
+    BoolProp, Status, StringProp, UiProps, dispatch_ui_event, load_image_cached, sender_initial,
+};
 use crate::commands::{UiCommand, UiEvent};
 use crate::domain::models::{
     LoginCredentials, MessageBody, Room, RoomId, TimelineMessage,
@@ -433,6 +435,10 @@ fn message_to_value(m: &TimelineMessage) -> Value {
         has_avatar = true;
     }
     fields.push(("has-avatar".to_string(), Value::Bool(has_avatar)));
+    fields.push((
+        "sender-initial".to_string(),
+        Value::String(SharedString::from(sender_initial(m.display_sender()))),
+    ));
     fields.push(("is-own".to_string(), Value::Bool(m.is_own)));
 
     Value::Struct(Struct::from_iter(fields))

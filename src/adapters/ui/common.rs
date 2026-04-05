@@ -20,6 +20,13 @@ pub fn load_image_cached(path: &Path) -> Option<Image> {
     Some(img)
 }
 
+pub fn sender_initial(name: &str) -> &str {
+    match name.chars().next() {
+        Some(c) => &name[..c.len_utf8()],
+        None => "",
+    }
+}
+
 use crate::commands::UiEvent;
 use crate::domain::models::{
     ConnectionStatus, LoginMethod, Room, ServerInfo, TimelineMessage, TimelinePatch,

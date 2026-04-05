@@ -5,7 +5,9 @@ use slint::{ComponentHandle, ModelRc, SharedString, VecModel};
 use tokio::runtime::Runtime;
 use tokio::sync::mpsc;
 
-use super::common::{BoolProp, Status, StringProp, UiProps, dispatch_ui_event, load_image_cached};
+use super::common::{
+    BoolProp, Status, StringProp, UiProps, dispatch_ui_event, load_image_cached, sender_initial,
+};
 use crate::commands::{UiCommand, UiEvent};
 use crate::domain::models::{
     LoginCredentials, MessageBody, Room, RoomId, TimelineMessage,
@@ -264,6 +266,7 @@ fn message_to_entry(m: &TimelineMessage) -> MessageEntry {
         timestamp: SharedString::from(&m.display_timestamp()),
         message_type: SharedString::from(m.body.type_str()),
         event_id: SharedString::from(&m.event_id.0),
+        sender_initial: SharedString::from(sender_initial(m.display_sender())),
         is_own: m.is_own,
         ..Default::default()
     };
