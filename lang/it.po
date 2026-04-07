@@ -82,22 +82,32 @@ msgctxt "AppWindow"
 msgid "U2DM Matrix Client"
 msgstr "U2DM Client Matrix"
 
-#: ui/screens/homeserver/homeserver.slint:18
+#: ui/screens/homeserver/homeserver.slint:27
 msgctxt "HomeserverScreen"
 msgid "Checking server..."
 msgstr "Verifica del server..."
 
-#: ui/screens/homeserver/homeserver.slint:23
+#: ui/screens/homeserver/homeserver.slint:32
 msgctxt "HomeserverScreen"
 msgid "U2DM"
 msgstr "U2DM"
 
-#: ui/screens/homeserver/homeserver.slint:33
+#: ui/screens/homeserver/homeserver.slint:38
 msgctxt "HomeserverScreen"
-msgid "Homeserver"
-msgstr "Homeserver"
+msgid "Enter your homeserver address"
+msgstr ""
 
-#: ui/screens/homeserver/homeserver.slint:43
+#: ui/screens/homeserver/homeserver.slint:53
+msgctxt "HomeserverScreen"
+msgid "Homeserver (e.g. matrix.org)"
+msgstr ""
+
+#: ui/screens/homeserver/homeserver.slint:61
+msgctxt "HomeserverScreen"
+msgid "Checking..."
+msgstr ""
+
+#: ui/screens/homeserver/homeserver.slint:61
 msgctxt "HomeserverScreen"
 msgid "Continue"
 msgstr "Continua"
@@ -162,52 +172,52 @@ msgctxt "Sidebar"
 msgid "Logout"
 msgstr "Esci"
 
-#: ui/screens/credentials/credentials.slint:25
+#: ui/screens/credentials/credentials.slint:38
 msgctxt "CredentialsScreen"
 msgid "Logging in..."
 msgstr "Accesso in corso..."
 
-#: ui/screens/credentials/credentials.slint:26
+#: ui/screens/credentials/credentials.slint:39
 msgctxt "CredentialsScreen"
 msgid "Opening browser..."
 msgstr "Apertura del browser..."
 
-#: ui/screens/credentials/credentials.slint:27
+#: ui/screens/credentials/credentials.slint:40
 msgctxt "CredentialsScreen"
 msgid "Waiting for authentication..."
 msgstr "In attesa dell'autenticazione..."
 
-#: ui/screens/credentials/credentials.slint:32
+#: ui/screens/credentials/credentials.slint:45
 msgctxt "CredentialsScreen"
 msgid "U2DM"
 msgstr "U2DM"
 
-#: ui/screens/credentials/credentials.slint:38
+#: ui/screens/credentials/credentials.slint:51
 msgctxt "CredentialsScreen"
 msgid "Server: {}"
 msgstr "Server: {}"
 
-#: ui/screens/credentials/credentials.slint:51
+#: ui/screens/credentials/credentials.slint:65
 msgctxt "CredentialsScreen"
 msgid "Username"
 msgstr "Nome utente"
 
-#: ui/screens/credentials/credentials.slint:62
+#: ui/screens/credentials/credentials.slint:80
 msgctxt "CredentialsScreen"
 msgid "Password"
 msgstr "Password"
 
-#: ui/screens/credentials/credentials.slint:73
+#: ui/screens/credentials/credentials.slint:95
 msgctxt "CredentialsScreen"
 msgid "Log in"
 msgstr "Accedi"
 
-#: ui/screens/credentials/credentials.slint:90
+#: ui/screens/credentials/credentials.slint:109
 msgctxt "CredentialsScreen"
 msgid "Log in with browser"
 msgstr "Accedi con il browser"
 
-#: ui/screens/credentials/credentials.slint:101
+#: ui/screens/credentials/credentials.slint:121
 msgctxt "CredentialsScreen"
 msgid "Back"
 msgstr "Indietro"
@@ -241,6 +251,10 @@ msgstr "Sincronizzazione stanze..."
 msgctxt "LoadingScreen"
 msgid "U2DM"
 msgstr "U2DM"
+
+#~ msgctxt "HomeserverScreen"
+#~ msgid "Homeserver"
+#~ msgstr "Homeserver"
 
 #~ msgctxt "ImageMessage"
 #~ msgid "Image without thumbnail: {}"

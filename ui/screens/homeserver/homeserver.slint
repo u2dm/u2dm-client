@@ -1,6 +1,7 @@
 import {
     Button,
     LineEdit,
+    Palette,
 } from "std-widgets.slint";
 
 export component HomeserverScreen inherits VerticalLayout {
@@ -12,7 +13,15 @@ export component HomeserverScreen inherits VerticalLayout {
     in property <string> login-status: "";
     in property <string> login-error: "";
 
+    private property <bool> is-checking: root.login-status == "checking-server";
+
     callback check-server(string);
+
+    function submit() {
+        if (!root.is-checking && root.input-homeserver != "") {
+            root.check-server(root.input-homeserver);
+        }
+    }
 
     function status-text(id: string) -> string {
         if (id == "checking-server") { return @tr("Checking server..."); }
@@ -25,25 +34,35 @@ export component HomeserverScreen inherits VerticalLayout {
         horizontal-alignment: center;
     }
 
-    HorizontalLayout {
-        alignment: center;
-
-        LineEdit {
-            text <=> root.input-homeserver;
-            placeholder-text: @tr("Homeserver");
-            horizontal-stretch: 0;
-            max-width: 320px;
-        }
+    Text {
+        text: @tr("Enter your homeserver address");
+        font-size: 14px;
+        horizontal-alignment: center;
+        color: Palette.foreground.transparentize(0.3);
     }
 
     HorizontalLayout {
         alignment: center;
 
-        Button {
-            text: @tr("Continue");
+        VerticalLayout {
+            spacing: 12px;
             max-width: 320px;
-            clicked => {
-                root.check-server(root.input-homeserver);
+
+            LineEdit {
+                text <=> root.input-homeserver;
+                placeholder-text: @tr("Homeserver (e.g. matrix.org)");
+                enabled: !root.is-checking;
+                accepted => {
+                    root.submit();
+                }
+            }
+
+            Button {
+                text: root.is-checking ? @tr("Checking...") : @tr("Continue");
+                enabled: !root.is-checking && root.input-homeserver != "";
+                clicked => {
+                    root.submit();
+                }
             }
         }
     }
@@ -52,6 +71,7 @@ export component HomeserverScreen inherits VerticalLayout {
         text: root.status-text(root.login-status);
         font-size: 13px;
         horizontal-alignment: center;
+        color: Palette.foreground.transparentize(0.3);
     }
 
     if root.login-error != "": Text {
