@@ -126,7 +126,7 @@ msgctxt "MessageInput"
 msgid "Send"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/timeline-content.slint:35
+#: ui/screens/chat/components/timeline/timeline-content.slint:33
 msgctxt "TimelineContent"
 msgid "Loading older messages..."
 msgstr ""

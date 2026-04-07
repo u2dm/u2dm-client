@@ -23,8 +23,6 @@ export component TimelineContent inherits Rectangle {
 
     clip: true;
 
-    property <float> scroll-multiplier: 4.5;
-
     if root.backwards-loading: HorizontalLayout {
         x: 0;
         y: 0;
@@ -118,23 +116,6 @@ export component TimelineContent inherits Rectangle {
             save-file(req) => {
                 root.save-file(req);
             }
-        }
-    }
-
-    TouchArea {
-        width: parent.width;
-        height: parent.height;
-
-        scroll-event(event) => {
-            if flickable.viewport-height > flickable.visible-height {
-                flickable.programmatic-scroll = true;
-                flickable.viewport-y = clamp(
-                    flickable.viewport-y + event.delta_y * root.scroll-multiplier,
-                    -(flickable.viewport-height - flickable.visible-height),
-                    0,
-                );
-            }
-            accept
         }
     }
 
