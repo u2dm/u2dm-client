@@ -43,6 +43,7 @@ export component TimelineContent inherits Rectangle {
         property <length> scroll-threshold: 40px;
         property <bool> auto-scroll: true;
         property <bool> programmatic-scroll: false;
+        property <bool> settling: false;
 
         property <bool> was-at-top: false;
         property <bool> was-at-bottom: true;
@@ -63,11 +64,18 @@ export component TimelineContent inherits Rectangle {
         property <bool> items-added:
             self.item-count > self.prev-count;
 
+        changed viewport-height => {
+            if self.settling && self.scrollable {
+                self.scroll-to-bottom();
+            }
+        }
+
         changed viewport-y => {
             if self.programmatic-scroll {
                 self.programmatic-scroll = false;
             } else {
                 self.prepend-pending = false;
+                self.settling = false;
             }
 
             if self.scrollable {
@@ -83,6 +91,7 @@ export component TimelineContent inherits Rectangle {
         changed item-count => {
             if self.scrollable {
                 if self.auto-scroll {
+                    self.settling = true;
                     self.scroll-to-bottom();
                 } else if self.items-added {
                     self.anchor-scroll();
