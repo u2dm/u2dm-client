@@ -26,6 +26,7 @@ fn apply_append(
         .iter()
         .filter_map(|item| convert_timeline_item(item, ctx.media_sources, ctx.own_user_id))
         .collect();
+    msgs.sort_by_key(|m| m.timestamp);
     try_enrich_from_cache(ctx.materialized, &mut msgs);
     items.extend(values);
     if msgs.is_empty() {
