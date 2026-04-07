@@ -79,6 +79,7 @@ pub enum BoolProp {
     VerificationVisible,
     VerificationIsSelf,
     TimelineLoading,
+    BackwardsLoading,
 }
 
 impl BoolProp {
@@ -88,6 +89,20 @@ impl BoolProp {
             Self::VerificationVisible => "verification-visible",
             Self::VerificationIsSelf => "verification-is-self",
             Self::TimelineLoading => "timeline-loading",
+            Self::BackwardsLoading => "backwards-loading",
+        }
+    }
+}
+
+pub enum IntProp {
+    NewMessagesCount,
+}
+
+impl IntProp {
+    #[cfg(feature = "interpreted")]
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::NewMessagesCount => "new-messages-count",
         }
     }
 }
@@ -95,6 +110,7 @@ impl BoolProp {
 pub trait UiProps {
     fn set_string(&self, prop: StringProp, value: SharedString);
     fn set_bool(&self, prop: BoolProp, value: bool);
+    fn set_int(&self, prop: IntProp, value: i32);
     fn get_string(&self, prop: StringProp) -> SharedString;
     fn apply_emoji_model(&self, emojis: &[DomainVerificationEmoji]);
     fn clear_emoji_model(&self);
@@ -196,6 +212,27 @@ pub fn dispatch_ui_event<T, R>(
                     convert_message,
                     message_entry_event_id,
                 );
+            }
+        }
+        UiEvent::PaginationState { room_id, state } => {
+            let selected = w.get_string(StringProp::SelectedRoomId);
+            if selected.as_str() == room_id.as_ref() {
+                w.set_bool(BoolProp::BackwardsLoading, state.backwards_loading);
+            }
+        }
+        UiEvent::NewMessagesBadge { room_id, count } => {
+            let selected = w.get_string(StringProp::SelectedRoomId);
+            if selected.as_str() == room_id.as_ref() {
+                w.set_int(
+                    IntProp::NewMessagesCount,
+                    count.min(i32::MAX as u32).cast_signed(),
+                );
+            }
+        }
+        UiEvent::ScrollToBottom { room_id } => {
+            let selected = w.get_string(StringProp::SelectedRoomId);
+            if selected.as_str() == room_id.as_ref() {
+                w.set_int(IntProp::NewMessagesCount, 0);
             }
         }
         UiEvent::ConnectionStatus(status) => apply_connection_status(w, &status),
@@ -338,6 +375,8 @@ fn apply_logged_out(w: &impl UiProps) {
     w.set_string(StringProp::VerificationError, SharedString::default());
     w.set_string(StringProp::ToastMessage, SharedString::default());
     w.set_string(StringProp::SavedFilePath, SharedString::default());
+    w.set_bool(BoolProp::BackwardsLoading, false);
+    w.set_int(IntProp::NewMessagesCount, 0);
     w.clear_emoji_model();
 }
 

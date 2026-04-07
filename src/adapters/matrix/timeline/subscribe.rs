@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex as StdMutex};
 
@@ -7,7 +7,7 @@ use matrix_sdk::Client;
 use matrix_sdk::ruma::events::room::MediaSource;
 use matrix_sdk::ruma::{IdParseError, OwnedRoomId};
 use matrix_sdk_ui::eyeball_im::VectorDiff;
-use matrix_sdk_ui::timeline::{RoomExt as _, TimelineItem};
+use matrix_sdk_ui::timeline::{RoomExt as _, Timeline, TimelineItem};
 use tokio::fs;
 use tokio::sync::mpsc;
 use tokio::task::JoinSet;
@@ -16,7 +16,8 @@ use super::TimelineContext;
 use super::diff::diff_to_patch;
 use super::filter::convert_timeline_items;
 use crate::adapters::matrix::media::{enrich_message, needs_media_download, try_enrich_from_cache};
-use crate::domain::models::{RoomId, TimelineMessage, TimelinePatch};
+use crate::domain::models::{RoomId, TimelineCommand, TimelineMessage, TimelinePatch};
+use crate::domain::viewport::PAGINATION_BATCH_SIZE;
 use crate::error::{AppError, Result};
 
 fn spawn_media_enrichment(
@@ -144,14 +145,28 @@ async fn ensure_media_dirs(media_dir: &Path) {
     }
 }
 
-pub(crate) async fn subscribe_timeline(
-    client: &Client,
-    media_dir: &Path,
-    media_sources: &Arc<StdMutex<HashMap<String, MediaSource>>>,
-    materialized: &Arc<StdMutex<HashMap<String, PathBuf>>>,
-    room_id: &RoomId,
-    timeline_tx: mpsc::UnboundedSender<TimelinePatch>,
-) -> Result<()> {
+async fn handle_timeline_command(cmd: TimelineCommand, timeline: &Timeline) {
+    match cmd {
+        TimelineCommand::PaginateBackwards => paginate_backwards(timeline).await,
+        TimelineCommand::PaginateForwards => paginate_forwards(timeline).await,
+    }
+}
+
+async fn paginate_backwards(timeline: &Timeline) {
+    tracing::debug!("paginating backwards");
+    if let Err(e) = timeline.paginate_backwards(PAGINATION_BATCH_SIZE).await {
+        tracing::warn!("backward pagination failed: {e}");
+    }
+}
+
+async fn paginate_forwards(timeline: &Timeline) {
+    tracing::debug!("paginating forwards");
+    if let Err(e) = timeline.paginate_forwards(PAGINATION_BATCH_SIZE).await {
+        tracing::warn!("forward pagination failed: {e}");
+    }
+}
+
+async fn setup_timeline(client: &Client, room_id: &RoomId) -> Result<(Arc<Timeline>, OwnedRoomId)> {
     let room_id_parsed: OwnedRoomId = room_id
         .as_ref()
         .try_into()
@@ -167,9 +182,31 @@ pub(crate) async fn subscribe_timeline(
             .map_err(|e| AppError::Other(e.to_string()))?,
     );
 
-    if let Err(e) = timeline.paginate_backwards(50).await {
+    if let Err(e) = timeline.paginate_backwards(PAGINATION_BATCH_SIZE).await {
         tracing::warn!("failed to paginate timeline backwards: {e}");
     }
+
+    Ok((timeline, room_id_parsed))
+}
+
+async fn handle_room_keys(timeline: &Timeline, keys: BTreeMap<String, BTreeSet<String>>) {
+    let session_ids: Vec<String> = keys.into_values().flatten().collect();
+    if !session_ids.is_empty() {
+        timeline.retry_decryption(session_ids).await;
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(crate) async fn subscribe_timeline(
+    client: &Client,
+    media_dir: &Path,
+    media_sources: &Arc<StdMutex<HashMap<String, MediaSource>>>,
+    materialized: &Arc<StdMutex<HashMap<String, PathBuf>>>,
+    room_id: &RoomId,
+    timeline_tx: mpsc::UnboundedSender<TimelinePatch>,
+    mut cmd_rx: mpsc::UnboundedReceiver<TimelineCommand>,
+) -> Result<()> {
+    let (timeline, room_id_parsed) = setup_timeline(client, room_id).await?;
 
     ensure_media_dirs(media_dir).await;
 
@@ -217,12 +254,12 @@ pub(crate) async fn subscribe_timeline(
             }
             result = key_stream.next() => {
                 if let Some(Ok(keys)) = result {
-                    let session_ids: Vec<String> =
-                        keys.into_values().flatten().collect();
-                    if !session_ids.is_empty() {
-                        timeline.retry_decryption(session_ids).await;
-                    }
+                    handle_room_keys(&timeline, keys).await;
                 }
+            }
+            cmd = cmd_rx.recv() => {
+                let Some(cmd) = cmd else { break };
+                handle_timeline_command(cmd, &timeline).await;
             }
         }
     }

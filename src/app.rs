@@ -2,6 +2,7 @@ use std::env;
 use std::fmt::Write;
 use std::future::Future;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::time::Duration;
 
 use tokio::sync::mpsc;
@@ -11,9 +12,10 @@ use tokio_util::sync::CancellationToken;
 
 use crate::commands::{UiCommand, UiEvent};
 use crate::domain::models::{
-    ConnectionStatus, LoginCredentials, RoomId, Session, SyncEvent, TimelinePatch,
-    VerificationEvent,
+    ConnectionStatus, LoginCredentials, RoomId, ScrollMode, Session, SyncEvent, TimelineCommand,
+    TimelinePatch, VerificationEvent,
 };
+use crate::domain::viewport::ViewportController;
 use crate::error::{AppError, Result};
 use crate::ports::matrix::MatrixPort;
 use crate::ports::storage::StoragePort;
@@ -73,6 +75,11 @@ pub struct AppService {
     background: TaskGroup,
     timeline: TaskGroup,
     fire_and_forget: JoinSet<()>,
+    viewport: ViewportController,
+    timeline_cmd_tx: Option<mpsc::UnboundedSender<TimelineCommand>>,
+    active_room_id: Option<RoomId>,
+    at_bottom: Arc<AtomicBool>,
+    new_messages_counter: Arc<AtomicU32>,
 }
 
 impl AppService {
@@ -92,6 +99,11 @@ impl AppService {
             background: TaskGroup::new(),
             timeline: TaskGroup::new(),
             fire_and_forget: JoinSet::new(),
+            viewport: ViewportController::new(),
+            timeline_cmd_tx: None,
+            active_room_id: None,
+            at_bottom: Arc::new(AtomicBool::new(true)),
+            new_messages_counter: Arc::new(AtomicU32::new(0)),
         }
     }
 
@@ -119,6 +131,18 @@ impl AppService {
                 }
                 UiCommand::SendMessage { room_id, body } => {
                     self.handle_send_message(room_id, body).await;
+                }
+                UiCommand::PaginateBackwards { room_id } => {
+                    self.handle_paginate_backwards(&room_id);
+                }
+                UiCommand::PaginateForwards { room_id } => {
+                    self.handle_paginate_forwards(&room_id);
+                }
+                UiCommand::JumpToLatest { room_id } => {
+                    self.handle_jump_to_latest(&room_id);
+                }
+                UiCommand::ScrollPositionChanged { at_top, at_bottom } => {
+                    self.handle_scroll_position_changed(at_top, at_bottom);
                 }
                 UiCommand::OpenMedia { event_id } => {
                     self.handle_open_media(event_id);
@@ -374,19 +398,29 @@ impl AppService {
         tracing::info!(%room_id, "switching room");
         self.timeline.reset().await;
 
+        self.viewport = ViewportController::new();
+        self.active_room_id = Some(room_id.clone());
+        self.at_bottom.store(true, Ordering::Relaxed);
+        self.new_messages_counter.store(0, Ordering::Relaxed);
+
         self.emit(UiEvent::Timeline {
             room_id: room_id.clone(),
             patch: Box::new(TimelinePatch::Clear),
         });
 
         let (tl_tx, mut tl_rx) = mpsc::unbounded_channel::<TimelinePatch>();
+        let (tl_cmd_tx, tl_cmd_rx) = mpsc::unbounded_channel::<TimelineCommand>();
+        self.timeline_cmd_tx = Some(tl_cmd_tx);
+
         let matrix_tl = Arc::clone(&self.matrix);
         let ui_tx = self.ui_tx.clone();
         let token = self.timeline.token();
         let rid = room_id.clone();
+        let at_bottom = Arc::clone(&self.at_bottom);
+        let new_msgs = Arc::clone(&self.new_messages_counter);
 
         self.timeline.spawn(async move {
-            let subscribe = matrix_tl.subscribe_timeline(&room_id, tl_tx);
+            let subscribe = matrix_tl.subscribe_timeline(&room_id, tl_tx, tl_cmd_rx);
             let forward = async {
                 while let Some(patch) = tl_rx.recv().await {
                     tracing::debug!(
@@ -394,6 +428,21 @@ impl AppService {
                         %rid,
                         "forwarding timeline patch as UiEvent"
                     );
+
+                    if !at_bottom.load(Ordering::Relaxed) {
+                        let added = count_appended(&patch);
+                        if added > 0 {
+                            let prev = new_msgs.fetch_add(added, Ordering::Relaxed);
+                            let total = prev.saturating_add(added);
+                            ui_tx
+                                .send(UiEvent::NewMessagesBadge {
+                                    room_id: rid.clone(),
+                                    count: total,
+                                })
+                                .ok();
+                        }
+                    }
+
                     let event = UiEvent::Timeline {
                         room_id: rid.clone(),
                         patch: Box::new(patch),
@@ -423,6 +472,71 @@ impl AppService {
 
     fn reap_finished(&mut self) {
         while self.fire_and_forget.try_join_next().is_some() {}
+    }
+
+    fn handle_paginate_backwards(&mut self, room_id: &RoomId) {
+        if self.active_room_id.as_ref() != Some(room_id) {
+            return;
+        }
+        if !self.viewport.should_paginate_backwards(true) {
+            return;
+        }
+        self.viewport.set_backwards_loading(true);
+        if let Some(tx) = &self.timeline_cmd_tx
+            && tx.send(TimelineCommand::PaginateBackwards).is_err()
+        {
+            tracing::debug!("timeline command channel closed");
+        }
+    }
+
+    fn handle_paginate_forwards(&mut self, room_id: &RoomId) {
+        if self.active_room_id.as_ref() != Some(room_id) {
+            return;
+        }
+        if !self.viewport.should_paginate_forwards(true) {
+            return;
+        }
+        self.viewport.set_forwards_loading(true);
+        if let Some(tx) = &self.timeline_cmd_tx
+            && tx.send(TimelineCommand::PaginateForwards).is_err()
+        {
+            tracing::debug!("timeline command channel closed");
+        }
+    }
+
+    fn handle_jump_to_latest(&mut self, room_id: &RoomId) {
+        if self.active_room_id.as_ref() != Some(room_id) {
+            return;
+        }
+        self.viewport.jump_to_latest();
+        self.at_bottom.store(true, Ordering::Relaxed);
+        self.new_messages_counter.store(0, Ordering::Relaxed);
+        self.emit(UiEvent::ScrollToBottom {
+            room_id: room_id.clone(),
+        });
+        self.emit(UiEvent::NewMessagesBadge {
+            room_id: room_id.clone(),
+            count: 0,
+        });
+    }
+
+    fn handle_scroll_position_changed(&mut self, at_top: bool, at_bottom: bool) {
+        let mode_changed = self.viewport.update_scroll_position(at_top, at_bottom);
+
+        self.at_bottom.store(at_bottom, Ordering::Relaxed);
+
+        let Some(room_id) = self.active_room_id.clone() else {
+            return;
+        };
+
+        if at_top {
+            self.handle_paginate_backwards(&room_id);
+        }
+
+        if mode_changed && self.viewport.mode() == ScrollMode::FollowLive {
+            self.new_messages_counter.store(0, Ordering::Relaxed);
+            self.emit(UiEvent::NewMessagesBadge { room_id, count: 0 });
+        }
     }
 
     async fn handle_send_message(&mut self, room_id: RoomId, body: String) {
@@ -653,5 +767,14 @@ impl AppService {
                 }
             }
         });
+    }
+}
+
+fn count_appended(patch: &TimelinePatch) -> u32 {
+    match patch {
+        TimelinePatch::Append(msgs) => msgs.len().try_into().unwrap_or(u32::MAX),
+        TimelinePatch::PushBack(_) => 1,
+        TimelinePatch::Batch(patches) => patches.iter().map(count_appended).sum(),
+        _ => 0,
     }
 }

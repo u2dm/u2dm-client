@@ -6,7 +6,8 @@ use tokio::runtime::Runtime;
 use tokio::sync::mpsc;
 
 use super::common::{
-    BoolProp, Status, StringProp, UiProps, dispatch_ui_event, load_image_cached, sender_initial,
+    BoolProp, IntProp, Status, StringProp, UiProps, dispatch_ui_event, load_image_cached,
+    sender_initial,
 };
 use crate::commands::{UiCommand, UiEvent};
 use crate::domain::models::{
@@ -53,6 +54,13 @@ impl UiProps for AppWindow {
             BoolProp::VerificationVisible => self.set_verification_visible(value),
             BoolProp::VerificationIsSelf => self.set_verification_is_self(value),
             BoolProp::TimelineLoading => self.set_timeline_loading(value),
+            BoolProp::BackwardsLoading => self.set_backwards_loading(value),
+        }
+    }
+
+    fn set_int(&self, prop: IntProp, value: i32) {
+        match prop {
+            IntProp::NewMessagesCount => self.set_new_messages_count(value),
         }
     }
 
@@ -210,6 +218,46 @@ impl SlintUiAdapter {
             }
         });
 
+        let tx = cmd_tx.clone();
+        self.window
+            .on_scroll_position_changed(move |at_top, at_bottom| {
+                if let Err(e) = tx.send(UiCommand::ScrollPositionChanged { at_top, at_bottom }) {
+                    tracing::debug!("failed to send ScrollPositionChanged command: {e}");
+                }
+            });
+
+        let tx = cmd_tx.clone();
+        let weak = self.window.as_weak();
+        self.window.on_paginate_backwards(move || {
+            let room_id = weak
+                .upgrade()
+                .map(|w| w.get_selected_room_id().to_string())
+                .unwrap_or_default();
+            if !room_id.is_empty()
+                && let Err(e) = tx.send(UiCommand::PaginateBackwards {
+                    room_id: RoomId::new(room_id),
+                })
+            {
+                tracing::debug!("failed to send PaginateBackwards command: {e}");
+            }
+        });
+
+        let tx = cmd_tx.clone();
+        let weak = self.window.as_weak();
+        self.window.on_jump_to_latest(move || {
+            let room_id = weak
+                .upgrade()
+                .map(|w| w.get_selected_room_id().to_string())
+                .unwrap_or_default();
+            if !room_id.is_empty()
+                && let Err(e) = tx.send(UiCommand::JumpToLatest {
+                    room_id: RoomId::new(room_id),
+                })
+            {
+                tracing::debug!("failed to send JumpToLatest command: {e}");
+            }
+        });
+
         Ok(())
     }
 
@@ -261,6 +309,7 @@ impl SlintUiAdapter {
 
 fn message_to_entry(m: &TimelineMessage) -> MessageEntry {
     let mut entry = MessageEntry {
+        unique_id: SharedString::from(&m.unique_id),
         sender: SharedString::from(m.display_sender()),
         body: SharedString::from(&m.body.display_text()),
         timestamp: SharedString::from(&m.display_timestamp()),

@@ -261,6 +261,7 @@ impl MessageBody {
 #[derive(Debug, Clone)]
 #[allow(dead_code)]
 pub struct TimelineMessage {
+    pub unique_id: String,
     pub event_id: EventId,
     pub sender: String,
     pub sender_display_name: Option<String>,
@@ -273,7 +274,8 @@ pub struct TimelineMessage {
 
 impl TimelineMessage {
     pub fn visually_eq(&self, other: &Self) -> bool {
-        self.sender == other.sender
+        self.unique_id == other.unique_id
+            && self.sender == other.sender
             && self.sender_display_name == other.sender_display_name
             && self.sender_avatar_path == other.sender_avatar_path
             && self.body == other.body
@@ -330,6 +332,28 @@ impl TimelinePatch {
     pub fn label(&self) -> &'static str {
         self.into()
     }
+}
+
+#[derive(Debug)]
+pub enum TimelineCommand {
+    PaginateBackwards,
+    PaginateForwards,
+}
+
+#[derive(Debug, Clone, Default)]
+#[allow(clippy::struct_excessive_bools, dead_code)]
+pub struct PaginationState {
+    pub backwards_ended: bool,
+    pub forwards_ended: bool,
+    pub backwards_loading: bool,
+    pub forwards_loading: bool,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum ScrollMode {
+    #[default]
+    FollowLive,
+    PreserveAnchor,
 }
 
 #[derive(Debug, Clone)]

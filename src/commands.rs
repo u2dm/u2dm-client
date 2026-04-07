@@ -1,7 +1,8 @@
 use strum::Display as StrumDisplay;
 
 use crate::domain::models::{
-    ConnectionStatus, LoginCredentials, Room, RoomId, ServerInfo, TimelinePatch, VerificationEvent,
+    ConnectionStatus, LoginCredentials, PaginationState, Room, RoomId, ServerInfo, TimelinePatch,
+    VerificationEvent,
 };
 
 #[derive(StrumDisplay)]
@@ -19,6 +20,24 @@ pub enum UiCommand {
     SendMessage {
         room_id: RoomId,
         body: String,
+    },
+    #[strum(to_string = "PaginateBackwards({room_id})")]
+    PaginateBackwards {
+        room_id: RoomId,
+    },
+    #[allow(dead_code)]
+    #[strum(to_string = "PaginateForwards({room_id})")]
+    PaginateForwards {
+        room_id: RoomId,
+    },
+    #[strum(to_string = "JumpToLatest({room_id})")]
+    JumpToLatest {
+        room_id: RoomId,
+    },
+    #[strum(to_string = "ScrollPositionChanged")]
+    ScrollPositionChanged {
+        at_top: bool,
+        at_bottom: bool,
     },
     SessionExpired,
     AcceptVerification,
@@ -50,6 +69,18 @@ pub enum UiEvent {
     Timeline {
         room_id: RoomId,
         patch: Box<TimelinePatch>,
+    },
+    #[allow(dead_code)]
+    PaginationState {
+        room_id: RoomId,
+        state: PaginationState,
+    },
+    NewMessagesBadge {
+        room_id: RoomId,
+        count: u32,
+    },
+    ScrollToBottom {
+        room_id: RoomId,
     },
     ConnectionStatus(ConnectionStatus),
     Verification(VerificationEvent),

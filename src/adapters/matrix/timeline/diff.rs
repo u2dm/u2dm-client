@@ -5,7 +5,7 @@ use matrix_sdk_ui::eyeball_im::VectorDiff;
 use matrix_sdk_ui::timeline::TimelineItem;
 
 use super::TimelineContext;
-use super::convert::convert_event_item;
+use super::convert::convert_timeline_item;
 use super::filter::{
     convert_and_enrich_from_cache, convert_timeline_items, is_renderable, msg_index_at,
 };
@@ -24,10 +24,7 @@ fn apply_append(
 ) -> Option<TimelinePatch> {
     let mut msgs: Vec<TimelineMessage> = values
         .iter()
-        .filter_map(|item| {
-            let event = item.as_event()?;
-            convert_event_item(event, ctx.media_sources, ctx.own_user_id)
-        })
+        .filter_map(|item| convert_timeline_item(item, ctx.media_sources, ctx.own_user_id))
         .collect();
     try_enrich_from_cache(ctx.materialized, &mut msgs);
     items.extend(values);
@@ -101,17 +98,14 @@ fn apply_set(
 ) -> Option<TimelinePatch> {
     let old_msg = items
         .get(index)
-        .and_then(|i| i.as_event())
-        .and_then(|e| convert_event_item(e, ctx.media_sources, ctx.own_user_id));
+        .and_then(|i| convert_timeline_item(i, ctx.media_sources, ctx.own_user_id));
     let old_mi = if old_msg.is_some() {
         msg_index_at(items, index)
     } else {
         0
     };
 
-    let new_msg = value
-        .as_event()
-        .and_then(|e| convert_event_item(e, ctx.media_sources, ctx.own_user_id));
+    let new_msg = convert_timeline_item(value, ctx.media_sources, ctx.own_user_id);
 
     if let Some(slot) = items.get_mut(index) {
         *slot = Arc::clone(value);

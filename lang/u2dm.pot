@@ -101,27 +101,32 @@ msgctxt "HomeserverScreen"
 msgid "Continue"
 msgstr ""
 
-#: ui/screens/chat/chat.slint:107
+#: ui/screens/chat/chat.slint:123
 msgctxt "ChatScreen"
 msgid "File saved to {}"
 msgstr ""
 
-#: ui/screens/chat/components/timeline.slint:154
+#: ui/screens/chat/components/timeline.slint:157
+msgctxt "TimelineContent"
+msgid "Loading older messages..."
+msgstr ""
+
+#: ui/screens/chat/components/timeline.slint:315
 msgctxt "TimelineView"
 msgid "Select a room"
 msgstr ""
 
-#: ui/screens/chat/components/timeline.slint:181
+#: ui/screens/chat/components/timeline.slint:342
 msgctxt "TimelineView"
 msgid "Loading messages..."
 msgstr ""
 
-#: ui/screens/chat/components/timeline.slint:275
+#: ui/screens/chat/components/timeline.slint:402
 msgctxt "TimelineView"
 msgid "Send a message..."
 msgstr ""
 
-#: ui/screens/chat/components/timeline.slint:284
+#: ui/screens/chat/components/timeline.slint:411
 msgctxt "TimelineView"
 msgid "Send"
 msgstr ""

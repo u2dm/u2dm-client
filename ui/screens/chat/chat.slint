@@ -16,6 +16,8 @@ export component ChatScreen inherits Rectangle {
     in property <string> toast-message: "";
     in property <string> saved-file-path: "";
     in property <bool> timeline-loading: false;
+    in property <int> new-messages-count: 0;
+    in property <bool> backwards-loading: false;
     in-out property <string> selected-room-id: "";
     in-out property <string> selected-room-name: "";
     in-out property <string> input-message: "";
@@ -26,6 +28,9 @@ export component ChatScreen inherits Rectangle {
     callback open-media(string);
     callback save-file(SaveFileRequest);
     callback dismiss-toast();
+    callback scroll-position-changed(bool, bool);
+    callback paginate-backwards();
+    callback jump-to-latest();
 
     property <length> sidebar-width: 260px;
     property <length> divider-width: 4px;
@@ -59,6 +64,8 @@ export component ChatScreen inherits Rectangle {
         selected-room-id: root.selected-room-id;
         timeline: root.timeline;
         timeline-loading: root.timeline-loading;
+        new-messages-count: root.new-messages-count;
+        backwards-loading: root.backwards-loading;
         input-message <=> root.input-message;
         send-message(req) => {
             root.send-message(req);
@@ -68,6 +75,15 @@ export component ChatScreen inherits Rectangle {
         }
         save-file(req) => {
             root.save-file(req);
+        }
+        scroll-position-changed(at-top, at-bottom) => {
+            root.scroll-position-changed(at-top, at-bottom);
+        }
+        paginate-backwards => {
+            root.paginate-backwards();
+        }
+        jump-to-latest => {
+            root.jump-to-latest();
         }
     }
 

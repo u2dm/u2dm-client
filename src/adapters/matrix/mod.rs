@@ -20,8 +20,8 @@ use matrix_sdk::utils::local_server::LocalServerRedirectHandle;
 use tokio::sync::{Mutex, RwLock, mpsc};
 
 use crate::domain::models::{
-    LoginCredentials, OAuthLoginData, RoomId, ServerInfo, Session, SyncEvent, TimelinePatch,
-    VerificationEvent,
+    LoginCredentials, OAuthLoginData, RoomId, ServerInfo, Session, SyncEvent, TimelineCommand,
+    TimelinePatch, VerificationEvent,
 };
 use crate::error::{AppError, Result};
 use crate::ports::matrix::MatrixPort;
@@ -109,6 +109,7 @@ impl MatrixPort for MatrixAdapter {
         &self,
         room_id: &RoomId,
         timeline_tx: mpsc::UnboundedSender<TimelinePatch>,
+        cmd_rx: mpsc::UnboundedReceiver<TimelineCommand>,
     ) -> Result<()> {
         tracing::info!(%room_id, "subscribing to timeline");
         let client = self.get_client().await?;
@@ -119,6 +120,7 @@ impl MatrixPort for MatrixAdapter {
             &self.materialized,
             room_id,
             timeline_tx,
+            cmd_rx,
         )
         .await
     }
