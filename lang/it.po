@@ -117,55 +117,55 @@ msgctxt "ChatScreen"
 msgid "File saved to {}"
 msgstr "File salvato in {}"
 
-#: ui/screens/chat/components/timeline.slint:157
+#: ui/screens/chat/components/timeline/message-input.slint:39
+msgctxt "MessageInput"
+msgid "Send a message..."
+msgstr ""
+
+#: ui/screens/chat/components/timeline/message-input.slint:48
+msgctxt "MessageInput"
+msgid "Send"
+msgstr ""
+
+#: ui/screens/chat/components/timeline/timeline-content.slint:35
 msgctxt "TimelineContent"
 msgid "Loading older messages..."
 msgstr ""
 
-#: ui/screens/chat/components/timeline.slint:315
-msgctxt "TimelineView"
-msgid "Select a room"
-msgstr "Seleziona una stanza"
-
-#: ui/screens/chat/components/timeline.slint:342
-msgctxt "TimelineView"
-msgid "Loading messages..."
-msgstr "Caricamento messaggi..."
-
-#: ui/screens/chat/components/timeline.slint:402
-msgctxt "TimelineView"
-msgid "Send a message..."
-msgstr "Scrivi un messaggio..."
-
-#: ui/screens/chat/components/timeline.slint:411
-msgctxt "TimelineView"
-msgid "Send"
-msgstr "Invia"
-
-#: ui/screens/chat/components/messages/image-message.slint:45
+#: ui/screens/chat/components/timeline/messages/image-message.slint:45
 msgctxt "ImageMessage"
 msgid "Image: {}"
 msgstr ""
 
-#: ui/screens/chat/components/messages/image-message.slint:45
+#: ui/screens/chat/components/timeline/messages/image-message.slint:45
 msgctxt "ImageMessage"
 msgid "Image"
 msgstr ""
 
-#: ui/screens/chat/components/messages/utd-message.slint:22
+#: ui/screens/chat/components/timeline/messages/utd-message.slint:22
 msgctxt "UtdMessage"
 msgid "Unable to decrypt message"
 msgstr "Impossibile decifrare il messaggio"
 
-#: ui/screens/chat/components/messages/file-message.slint:14
+#: ui/screens/chat/components/timeline/messages/file-message.slint:14
 msgctxt "FileMessage"
 msgid "📎 {}"
 msgstr "📎 {}"
 
-#: ui/screens/chat/components/messages/file-message.slint:20
+#: ui/screens/chat/components/timeline/messages/file-message.slint:20
 msgctxt "FileMessage"
 msgid "Save"
 msgstr "Salva"
+
+#: ui/screens/chat/components/timeline/timeline-view.slint:35
+msgctxt "TimelineView"
+msgid "Select a room"
+msgstr "Seleziona una stanza"
+
+#: ui/screens/chat/components/timeline/timeline-view.slint:62
+msgctxt "TimelineView"
+msgid "Loading messages..."
+msgstr "Caricamento messaggi..."
 
 #: ui/screens/chat/components/sidebar.slint:61
 msgctxt "Sidebar"
@@ -251,6 +251,14 @@ msgstr "Sincronizzazione stanze..."
 msgctxt "LoadingScreen"
 msgid "U2DM"
 msgstr "U2DM"
+
+#~ msgctxt "TimelineView"
+#~ msgid "Send a message..."
+#~ msgstr "Scrivi un messaggio..."
+
+#~ msgctxt "TimelineView"
+#~ msgid "Send"
+#~ msgstr "Invia"
 
 #~ msgctxt "HomeserverScreen"
 #~ msgid "Homeserver"

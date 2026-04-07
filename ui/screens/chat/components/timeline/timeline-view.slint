@@ -1,0 +1,103 @@
+import { Palette } from "std-widgets.slint";
+
+import {
+    MessageEntry,
+    SendMessageRequest,
+    SaveFileRequest,
+} from "../types.slint";
+
+import { TimelineContent } from "./timeline-content.slint";
+import { MessageInput } from "./message-input.slint";
+
+export component TimelineView inherits Rectangle {
+    background: Palette.background;
+
+    in property <string> selected-room-name: "";
+    in property <string> selected-room-id: "";
+    in property <[MessageEntry]> timeline: [];
+    in property <bool> timeline-loading: false;
+    in property <int> new-messages-count: 0;
+    in property <bool> backwards-loading: false;
+    in-out property <string> input-message: "";
+
+    callback send-message(SendMessageRequest);
+    callback open-media(string);
+    callback save-file(SaveFileRequest);
+    callback scroll-position-changed(bool, bool);
+    callback paginate-backwards();
+    callback jump-to-latest();
+
+    property <length> header-height: 40px;
+    property <length> input-height: 40px;
+    property <length> spacing: 8px;
+
+    if root.selected-room-name == "": Text {
+        text: @tr("Select a room");
+        font-size: 16px;
+        color: Palette.foreground.transparentize(0.5);
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+
+    if root.selected-room-name != "": Rectangle {
+        x: 0;
+        y: 0;
+        width: root.width;
+        height: root.header-height;
+        background: Palette.alternate-background;
+
+        Text {
+            text: root.selected-room-name;
+            font-size: 18px;
+            font-weight: 700;
+            vertical-alignment: center;
+        }
+    }
+
+    if root.selected-room-name != "" && root.timeline-loading && root.timeline.length == 0: Text {
+        x: 0;
+        y: root.header-height;
+        width: root.width;
+        height: root.height - root.header-height - root.input-height;
+        text: @tr("Loading messages...");
+        font-size: 14px;
+        color: Palette.foreground.transparentize(0.5);
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+
+    if root.selected-room-name != "": TimelineContent {
+        x: 0;
+        y: root.header-height + root.spacing;
+        width: root.width;
+        height: root.height - root.header-height - root.input-height - root.spacing * 2;
+        timeline: root.timeline;
+        backwards-loading: root.backwards-loading;
+        new-messages-count: root.new-messages-count;
+        available-width: root.width;
+        open-media(id) => {
+            root.open-media(id);
+        }
+        save-file(req) => {
+            root.save-file(req);
+        }
+        scroll-position-changed(at-top, at-bottom) => {
+            root.scroll-position-changed(at-top, at-bottom);
+        }
+        jump-to-latest => {
+            root.jump-to-latest();
+        }
+    }
+
+    if root.selected-room-name != "": MessageInput {
+        x: 0;
+        y: root.height - root.input-height;
+        width: root.width;
+        height: root.input-height;
+        room-id: root.selected-room-id;
+        message <=> root.input-message;
+        send-message(req) => {
+            root.send-message(req);
+        }
+    }
+}

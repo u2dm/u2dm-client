@@ -1,0 +1,57 @@
+import {
+    Button,
+    Palette,
+} from "std-widgets.slint";
+
+import { SendMessageRequest } from "../types.slint";
+
+export component MessageInput inherits Rectangle {
+    in property <string> room-id;
+    in-out property <string> message: "";
+
+    callback send-message(SendMessageRequest);
+
+    background: Palette.alternate-background;
+
+    HorizontalLayout {
+
+        Rectangle {
+            horizontal-stretch: 1;
+
+            TextInput {
+                text <=> root.message;
+                color: Palette.foreground;
+                font-size: 14px;
+                vertical-alignment: center;
+                accepted => {
+                    if root.message != "" {
+                        root.send-message({ room-id: root.room-id, body: root.message });
+                        root.message = "";
+                    }
+                }
+            }
+
+            if root.message == "": Text {
+                x: 0;
+                y: 0;
+                width: parent.width;
+                height: parent.height;
+                text: @tr("Send a message...");
+                color: Palette.foreground.transparentize(0.5);
+                font-size: 14px;
+                vertical-alignment: center;
+                horizontal-alignment: left;
+            }
+        }
+
+        Button {
+            text: @tr("Send");
+            clicked => {
+                if root.message != "" {
+                    root.send-message({ room-id: root.room-id, body: root.message });
+                    root.message = "";
+                }
+            }
+        }
+    }
+}
