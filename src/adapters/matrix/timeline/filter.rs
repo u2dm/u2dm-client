@@ -29,10 +29,12 @@ pub(super) fn convert_timeline_items(
     items: &[Arc<TimelineItem>],
     ctx: &TimelineContext<'_>,
 ) -> Vec<TimelineMessage> {
-    items
+    let mut messages: Vec<TimelineMessage> = items
         .iter()
         .filter_map(|item| convert_timeline_item(item, ctx.media_sources, ctx.own_user_id))
-        .collect()
+        .collect();
+    messages.sort_by_key(|m| m.timestamp);
+    messages
 }
 
 pub(super) fn convert_and_enrich_from_cache(
