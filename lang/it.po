@@ -167,10 +167,50 @@ msgctxt "TimelineView"
 msgid "Loading messages..."
 msgstr "Caricamento messaggi..."
 
-#: ui/screens/chat/components/sidebar.slint:61
+#: ui/screens/chat/components/sidebar.slint:35
+msgctxt "Sidebar"
+msgid "📷 Photo"
+msgstr ""
+
+#: ui/screens/chat/components/sidebar.slint:38
+msgctxt "Sidebar"
+msgid "🎬 Video"
+msgstr ""
+
+#: ui/screens/chat/components/sidebar.slint:41
+msgctxt "Sidebar"
+msgid "🎵 Audio"
+msgstr ""
+
+#: ui/screens/chat/components/sidebar.slint:44
+msgctxt "Sidebar"
+msgid "📎 {}"
+msgstr ""
+
+#: ui/screens/chat/components/sidebar.slint:47
+msgctxt "Sidebar"
+msgid "📍 Location"
+msgstr ""
+
+#: ui/screens/chat/components/sidebar.slint:50
+msgctxt "Sidebar"
+msgid "🔒 Encrypted message"
+msgstr ""
+
+#: ui/screens/chat/components/sidebar.slint:53
+msgctxt "Sidebar"
+msgid "Sticker"
+msgstr ""
+
+#: ui/screens/chat/components/sidebar.slint:87
 msgctxt "Sidebar"
 msgid "Logout"
 msgstr "Esci"
+
+#: ui/screens/chat/components/sidebar.slint:110
+msgctxt "Sidebar"
+msgid "You"
+msgstr ""
 
 #: ui/screens/credentials/credentials.slint:38
 msgctxt "CredentialsScreen"

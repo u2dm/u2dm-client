@@ -461,6 +461,28 @@ fn room_to_value(r: &Room) -> Value {
             "mentions".to_string(),
             Value::Number(r.mention_count as f64),
         ),
+        (
+            "last-message-sender".to_string(),
+            Value::String(SharedString::from(
+                r.last_message_sender.as_deref().unwrap_or_default(),
+            )),
+        ),
+        (
+            "last-message-kind".to_string(),
+            Value::String(SharedString::from(&r.last_message_kind)),
+        ),
+        (
+            "last-message-body".to_string(),
+            Value::String(SharedString::from(&r.last_message_body)),
+        ),
+        (
+            "last-message-is-own".to_string(),
+            Value::Bool(r.last_message_is_own),
+        ),
+        (
+            "last-message-time".to_string(),
+            Value::String(SharedString::from(&r.last_activity_label())),
+        ),
     ]))
 }
 

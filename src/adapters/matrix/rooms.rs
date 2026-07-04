@@ -1,7 +1,13 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use matrix_sdk::latest_events::LatestEventValue;
 use matrix_sdk::ruma::api::error::ErrorKind;
+use matrix_sdk::ruma::events::room::message::MessageType;
+use matrix_sdk::ruma::events::{
+    AnyMessageLikeEventContent, AnySyncMessageLikeEvent, AnySyncTimelineEvent, SyncMessageLikeEvent,
+};
+use matrix_sdk::ruma::{OwnedUserId, UserId};
 use matrix_sdk::sync::RoomUpdates;
 use matrix_sdk::{Client, HttpError, Room};
 use matrix_sdk_ui::encryption_sync_service::Error as EncryptionSyncError;
@@ -22,6 +28,7 @@ async fn build_single_room(room: &Room) -> DomainRoom {
     let mentions = room.num_unread_mentions();
     let is_direct = room.is_direct().await.unwrap_or_default();
     let last_activity_ts: u64 = room.latest_event_timestamp().map_or(0, |ts| ts.0.into());
+    let last_message = build_last_message(room, is_direct).await;
     DomainRoom {
         id: RoomId::new(room.room_id().to_string()),
         display_name,
@@ -29,6 +36,124 @@ async fn build_single_room(room: &Room) -> DomainRoom {
         unread_count: unread,
         mention_count: mentions,
         last_activity_ts,
+        last_message_sender: last_message.sender,
+        last_message_kind: last_message.kind,
+        last_message_body: last_message.body,
+        last_message_is_own: last_message.is_own,
+    }
+}
+
+#[derive(Default)]
+struct LastMessage {
+    sender: Option<String>,
+    kind: String,
+    body: String,
+    is_own: bool,
+}
+
+async fn build_last_message(room: &Room, is_direct: bool) -> LastMessage {
+    let Some((preview, sender_id)) = latest_message_preview(&room.latest_event()) else {
+        return LastMessage::default();
+    };
+
+    let is_own = sender_id
+        .as_ref()
+        .is_none_or(|sender| sender == room.own_user_id());
+
+    let sender = if is_own || is_direct {
+        None
+    } else {
+        match &sender_id {
+            Some(sender) => Some(resolve_sender_name(room, sender).await),
+            None => None,
+        }
+    };
+
+    LastMessage {
+        sender,
+        kind: preview.kind.to_owned(),
+        body: preview.body,
+        is_own,
+    }
+}
+
+async fn resolve_sender_name(room: &Room, user_id: &UserId) -> String {
+    if let Ok(Some(member)) = room.get_member_no_sync(user_id).await
+        && let Some(name) = member.display_name()
+    {
+        return name.to_owned();
+    }
+    user_id.localpart().to_owned()
+}
+
+/// Preview of a room's latest event: a `kind` discriminator the UI turns into a
+/// (translatable) label, plus the dynamic `body` text (message text or filename).
+struct MessagePreview {
+    kind: &'static str,
+    body: String,
+}
+
+impl MessagePreview {
+    fn labelled(kind: &'static str) -> Self {
+        Self {
+            kind,
+            body: String::new(),
+        }
+    }
+}
+
+fn latest_message_preview(
+    value: &LatestEventValue,
+) -> Option<(MessagePreview, Option<OwnedUserId>)> {
+    match value {
+        LatestEventValue::Remote(event) => {
+            let preview = preview_from_event(&event.raw().deserialize().ok()?)?;
+            Some((preview, event.sender()))
+        }
+        LatestEventValue::LocalIsSending(local)
+        | LatestEventValue::LocalHasBeenSent { value: local, .. }
+        | LatestEventValue::LocalCannotBeSent(local) => match local.content.deserialize().ok()? {
+            AnyMessageLikeEventContent::RoomMessage(message) => {
+                Some((message_preview(&message.msgtype), None))
+            }
+            _ => None,
+        },
+        LatestEventValue::None | LatestEventValue::RemoteInvite { .. } => None,
+    }
+}
+
+fn preview_from_event(event: &AnySyncTimelineEvent) -> Option<MessagePreview> {
+    match event {
+        AnySyncTimelineEvent::MessageLike(AnySyncMessageLikeEvent::RoomMessage(
+            SyncMessageLikeEvent::Original(message),
+        )) => Some(message_preview(&message.content.msgtype)),
+        AnySyncTimelineEvent::MessageLike(AnySyncMessageLikeEvent::RoomEncrypted(_)) => {
+            Some(MessagePreview::labelled("encrypted"))
+        }
+        AnySyncTimelineEvent::MessageLike(AnySyncMessageLikeEvent::Sticker(_)) => {
+            Some(MessagePreview::labelled("sticker"))
+        }
+        _ => None,
+    }
+}
+
+fn message_preview(msgtype: &MessageType) -> MessagePreview {
+    let (kind, body) = match msgtype {
+        MessageType::Text(content) => ("text", content.body.as_str()),
+        MessageType::Notice(content) => ("text", content.body.as_str()),
+        MessageType::Emote(content) => ("text", content.body.as_str()),
+        MessageType::Image(_) => return MessagePreview::labelled("image"),
+        MessageType::Video(_) => return MessagePreview::labelled("video"),
+        MessageType::Audio(_) => return MessagePreview::labelled("audio"),
+        MessageType::File(content) => {
+            ("file", content.filename.as_deref().unwrap_or(&content.body))
+        }
+        MessageType::Location(_) => return MessagePreview::labelled("location"),
+        other => ("text", other.body()),
+    };
+    MessagePreview {
+        kind,
+        body: body.split_whitespace().collect::<Vec<_>>().join(" "),
     }
 }
 

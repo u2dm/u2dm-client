@@ -152,6 +152,35 @@ pub struct Room {
     pub unread_count: u64,
     pub mention_count: u64,
     pub last_activity_ts: u64,
+    pub last_message_sender: Option<String>,
+    pub last_message_kind: String,
+    pub last_message_body: String,
+    pub last_message_is_own: bool,
+}
+
+impl Room {
+    pub fn last_activity_label(&self) -> String {
+        if self.last_activity_ts == 0 {
+            return String::new();
+        }
+        let Some(utc) =
+            chrono::DateTime::from_timestamp((self.last_activity_ts / 1000).cast_signed(), 0)
+        else {
+            return String::new();
+        };
+        let local = utc.with_timezone(&chrono::Local);
+        let days = chrono::Local::now()
+            .date_naive()
+            .signed_duration_since(local.date_naive())
+            .num_days();
+        if days <= 0 {
+            local.format("%H:%M").to_string()
+        } else if days < 7 {
+            local.format("%a").to_string()
+        } else {
+            local.format("%d/%m/%y").to_string()
+        }
+    }
 }
 
 #[derive(Debug, Clone)]

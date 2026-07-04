@@ -349,5 +349,12 @@ fn room_to_entry(r: &Room) -> RoomEntry {
         unread: r.unread_count as i32,
         #[allow(clippy::cast_possible_truncation)]
         mentions: r.mention_count as i32,
+        last_message_sender: SharedString::from(
+            r.last_message_sender.as_deref().unwrap_or_default(),
+        ),
+        last_message_kind: SharedString::from(&r.last_message_kind),
+        last_message_body: SharedString::from(&r.last_message_body),
+        last_message_is_own: r.last_message_is_own,
+        last_message_time: SharedString::from(&r.last_activity_label()),
     }
 }

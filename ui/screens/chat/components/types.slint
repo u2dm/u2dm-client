@@ -3,6 +3,11 @@ export struct RoomEntry {
     name: string,
     unread: int,
     mentions: int,
+    last-message-sender: string,
+    last-message-kind: string,
+    last-message-body: string,
+    last-message-is-own: bool,
+    last-message-time: string,
 }
 
 export struct MessageEntry {

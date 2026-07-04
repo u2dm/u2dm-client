@@ -30,8 +30,34 @@ export component Sidebar inherits Rectangle {
         return Palette.border;
     }
 
+    pure function preview-label(kind: string, body: string) -> string {
+        if kind == "image" {
+            return @tr("📷 Photo");
+        }
+        if kind == "video" {
+            return @tr("🎬 Video");
+        }
+        if kind == "audio" {
+            return @tr("🎵 Audio");
+        }
+        if kind == "file" {
+            return @tr("📎 {}", body);
+        }
+        if kind == "location" {
+            return @tr("📍 Location");
+        }
+        if kind == "encrypted" {
+            return @tr("🔒 Encrypted message");
+        }
+        if kind == "sticker" {
+            return @tr("Sticker");
+        }
+        return body;
+    }
+
     property <length> header-height: 40px;
     property <length> spacing: 4px;
+    property <length> row-height: 60px;
 
     HorizontalLayout {
         x: 0;
@@ -70,14 +96,21 @@ export component Sidebar inherits Rectangle {
         y: root.header-height + root.spacing;
         width: root.width;
         height: root.height - root.header-height - root.spacing;
-        viewport-height: root.rooms.length * 44px;
+        viewport-height: root.rooms.length * root.row-height;
 
         VerticalLayout {
             for room in root.rooms: Rectangle {
-                height: 44px;
-                background: room.id == root.selected-room-id ? Palette.background : transparent;
+                height: root.row-height;
+                clip: true;
+                background: room.id == root.selected-room-id
+                    ? Palette.background
+                    : (touch.has-hover ? Palette.background.transparentize(0.5) : transparent);
 
-                TouchArea {
+                property <string> sender-label: room.last-message-is-own
+                    ? @tr("You")
+                    : room.last-message-sender;
+
+                touch := TouchArea {
                     clicked => {
                         root.selected-room-name = room.name;
                         root.selected-room-id = room.id;
@@ -88,28 +121,95 @@ export component Sidebar inherits Rectangle {
                 HorizontalLayout {
                     padding-left: 12px;
                     padding-right: 12px;
-                    spacing: 8px;
+                    spacing: 10px;
 
-                    Text {
-                        text: room.name;
-                        font-size: 14px;
-                        vertical-alignment: center;
-                        overflow: elide;
-                    }
+                    VerticalLayout {
+                        alignment: center;
+                        spacing: 3px;
 
-                    if room.mentions > 0: Text {
-                        text: "@";
-                        font-size: 12px;
-                        font-weight: 700;
-                        vertical-alignment: center;
-                        color: Palette.accent-background;
-                    }
+                        HorizontalLayout {
+                            spacing: 6px;
 
-                    if room.unread > 0: Text {
-                        text: "(" + room.unread + ")";
-                        font-size: 12px;
-                        vertical-alignment: center;
-                        color: Palette.foreground.transparentize(0.5);
+                            Text {
+                                horizontal-stretch: 1;
+                                text: room.name;
+                                font-size: 14px;
+                                font-weight: 600;
+                                vertical-alignment: center;
+                                overflow: elide;
+                            }
+
+                            if room.last-message-time != "": Text {
+                                text: room.last-message-time;
+                                font-size: 11px;
+                                vertical-alignment: center;
+                                color: Palette.foreground.transparentize(0.55);
+                            }
+                        }
+
+                        HorizontalLayout {
+                            spacing: 6px;
+
+                            HorizontalLayout {
+                                horizontal-stretch: 1;
+
+                                if sender-label != "": Text {
+                                    text: sender-label + ": ";
+                                    font-size: 12px;
+                                    vertical-alignment: center;
+                                    color: Palette.accent-background;
+                                    overflow: elide;
+                                }
+
+                                Text {
+                                    horizontal-stretch: 1;
+                                    text: root.preview-label(room.last-message-kind, room.last-message-body);
+                                    font-size: 12px;
+                                    vertical-alignment: center;
+                                    overflow: elide;
+                                    color: Palette.foreground.transparentize(0.4);
+                                }
+                            }
+
+                            if room.mentions > 0: Rectangle {
+                                y: (parent.height - self.height) / 2;
+                                width: 18px;
+                                height: 18px;
+                                border-radius: 9px;
+                                background: Palette.accent-background;
+
+                                Text {
+                                    text: "@";
+                                    font-size: 11px;
+                                    font-weight: 700;
+                                    horizontal-alignment: center;
+                                    vertical-alignment: center;
+                                    color: Palette.accent-foreground;
+                                }
+                            }
+
+                            if room.unread > 0: Rectangle {
+                                y: (parent.height - self.height) / 2;
+                                height: 18px;
+                                min-width: 18px;
+                                border-radius: 9px;
+                                background: Palette.accent-background;
+
+                                HorizontalLayout {
+                                    padding-left: 5px;
+                                    padding-right: 5px;
+
+                                    Text {
+                                        text: room.unread;
+                                        font-size: 11px;
+                                        font-weight: 700;
+                                        horizontal-alignment: center;
+                                        vertical-alignment: center;
+                                        color: Palette.accent-foreground;
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }
