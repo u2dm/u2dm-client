@@ -14,7 +14,10 @@ pub enum AppError {
     Matrix(#[from] matrix_sdk::Error),
 
     #[error("Keyring ({key}): {source}")]
-    Keyring { key: String, source: keyring::Error },
+    Keyring {
+        key: String,
+        source: keyring_core::Error,
+    },
 
     #[error(transparent)]
     Serde(#[from] serde_json::Error),

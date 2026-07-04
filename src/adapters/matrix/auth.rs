@@ -6,12 +6,13 @@ use matrix_sdk::authentication::matrix::MatrixSession;
 use matrix_sdk::authentication::oauth::registration::{
     ApplicationType, ClientMetadata, Localized, OAuthGrantType,
 };
-use matrix_sdk::authentication::oauth::{ClientId, OAuthSession, UrlOrQuery, UserSession};
+use matrix_sdk::authentication::oauth::{ClientId, OAuthSession, UserSession};
 use matrix_sdk::encryption::verification::VerificationRequest;
 use matrix_sdk::event_handler::EventHandlerDropGuard;
 use matrix_sdk::media::MediaRetentionPolicy;
 use matrix_sdk::ruma::serde::Raw;
 use matrix_sdk::ruma::{IdParseError, OwnedDeviceId, OwnedUserId};
+use matrix_sdk::utils::UrlOrQuery;
 use matrix_sdk::utils::local_server::{LocalServerBuilder, LocalServerRedirectHandle};
 use matrix_sdk::{Client, SessionChange, SessionMeta};
 use tokio::fs;

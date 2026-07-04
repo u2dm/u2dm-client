@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use matrix_sdk::ruma::api::client::error::ErrorKind;
+use matrix_sdk::ruma::api::error::ErrorKind;
 use matrix_sdk::sync::RoomUpdates;
 use matrix_sdk::{Client, HttpError, Room};
 use matrix_sdk_ui::encryption_sync_service::Error as EncryptionSyncError;
@@ -21,9 +21,7 @@ async fn build_single_room(room: &Room) -> DomainRoom {
     let unread = room.num_unread_notifications();
     let mentions = room.num_unread_mentions();
     let is_direct = room.is_direct().await.unwrap_or_default();
-    let last_activity_ts: u64 = room
-        .new_latest_event_timestamp()
-        .map_or(0, |ts| ts.0.into());
+    let last_activity_ts: u64 = room.latest_event_timestamp().map_or(0, |ts| ts.0.into());
     DomainRoom {
         id: RoomId::new(room.room_id().to_string()),
         display_name,
@@ -107,11 +105,7 @@ fn is_auth_error(err: &SyncServiceError) -> bool {
     extract_sdk_error(err).is_some_and(|e| {
         if matches!(
             e.client_api_error_kind(),
-            Some(
-                ErrorKind::UnknownToken { .. }
-                    | ErrorKind::Unauthorized
-                    | ErrorKind::Forbidden { .. }
-            )
+            Some(ErrorKind::UnknownToken { .. } | ErrorKind::Unauthorized | ErrorKind::Forbidden)
         ) {
             return true;
         }

@@ -113,13 +113,10 @@ impl StoragePort for SecureStorage {
 async fn keyring_set(key: &str, secret: String) -> Result<()> {
     let key = key.to_owned();
     spawn_blocking(move || {
-        let entry = keyring::Entry::new(KEYRING_SERVICE, &key).map_err(|e| AppError::Keyring {
-            key: key.clone(),
-            source: e,
-        })?;
+        let entry = open_entry(&key)?;
         entry
             .set_password(&secret)
-            .map_err(|e| AppError::Keyring { key, source: e })
+            .map_err(|source| AppError::Keyring { key, source })
     })
     .await
     .map_err(|e| AppError::Other(e.to_string()))?
@@ -128,14 +125,11 @@ async fn keyring_set(key: &str, secret: String) -> Result<()> {
 async fn keyring_get(key: &str) -> Result<Option<String>> {
     let key = key.to_owned();
     spawn_blocking(move || {
-        let entry = keyring::Entry::new(KEYRING_SERVICE, &key).map_err(|e| AppError::Keyring {
-            key: key.clone(),
-            source: e,
-        })?;
+        let entry = open_entry(&key)?;
         match entry.get_password() {
             Ok(pw) => Ok(Some(pw)),
-            Err(keyring::Error::NoEntry) => Ok(None),
-            Err(e) => Err(AppError::Keyring { key, source: e }),
+            Err(keyring_core::Error::NoEntry) => Ok(None),
+            Err(source) => Err(AppError::Keyring { key, source }),
         }
     })
     .await
@@ -145,17 +139,68 @@ async fn keyring_get(key: &str) -> Result<Option<String>> {
 async fn keyring_delete(key: &str) -> Result<()> {
     let key = key.to_owned();
     spawn_blocking(move || {
-        let entry = keyring::Entry::new(KEYRING_SERVICE, &key).map_err(|e| AppError::Keyring {
-            key: key.clone(),
-            source: e,
-        })?;
+        let entry = open_entry(&key)?;
         match entry.delete_credential() {
-            Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
-            Err(e) => Err(AppError::Keyring { key, source: e }),
+            Ok(()) | Err(keyring_core::Error::NoEntry) => Ok(()),
+            Err(source) => Err(AppError::Keyring { key, source }),
         }
     })
     .await
     .map_err(|e| AppError::Other(e.to_string()))?
+}
+
+fn open_entry(key: &str) -> Result<keyring_core::Entry> {
+    ensure_default_store();
+    keyring_core::Entry::new(KEYRING_SERVICE, key).map_err(|source| AppError::Keyring {
+        key: key.to_owned(),
+        source,
+    })
+}
+
+fn ensure_default_store() {
+    if keyring_core::get_default_store().is_some() {
+        return;
+    }
+    if let Err(e) = register_default_store() {
+        tracing::warn!("failed to initialize keyring credential store: {e}");
+    }
+}
+
+fn register_default_store() -> Result<()> {
+    #[cfg(target_os = "macos")]
+    {
+        let store = apple_native_keyring_store::keychain::Store::new().map_err(store_error)?;
+        keyring_core::set_default_store(store);
+    }
+    #[cfg(target_os = "windows")]
+    {
+        let store = windows_native_keyring_store::Store::new().map_err(store_error)?;
+        keyring_core::set_default_store(store);
+    }
+    #[cfg(all(
+        unix,
+        not(any(target_os = "macos", target_os = "ios", target_os = "android"))
+    ))]
+    {
+        let store = zbus_secret_service_keyring_store::Store::new().map_err(store_error)?;
+        keyring_core::set_default_store(store);
+    }
+    Ok(())
+}
+
+#[cfg(any(
+    target_os = "macos",
+    target_os = "windows",
+    all(
+        unix,
+        not(any(target_os = "macos", target_os = "ios", target_os = "android"))
+    )
+))]
+fn store_error(source: keyring_core::Error) -> AppError {
+    AppError::Keyring {
+        key: "<default-store>".to_owned(),
+        source,
+    }
 }
 
 async fn write_metadata(path: &Path, metadata: &SessionMetadata) -> Result<()> {
