@@ -46,7 +46,7 @@ fn run() -> Result<()> {
     slint::init_translations!(concat!(env!("CARGO_MANIFEST_DIR"), "/lang/"));
     let rt = Runtime::new()?;
     let cfg = config::AppConfig::from_env()?;
-    tracing::info!(data_dir = %cfg.data_dir.display(), cache_dir = %cfg.cache_dir.display(), "starting U2DM");
+    tracing::info!(data_dir = %cfg.data_dir.display(), cache_dir = %cfg.cache_dir.display(), "starting UTDM");
     let ui = SlintUiAdapter::compile(&rt)?;
 
     let (cmd_tx, cmd_rx) = mpsc::unbounded_channel::<UiCommand>();

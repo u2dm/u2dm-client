@@ -555,7 +555,7 @@ impl AppService {
             match matrix.download_media(&event_id, false).await {
                 Ok(data) => {
                     let ext = infer::get(&data).map_or("bin", |t| t.extension());
-                    let dir = env::temp_dir().join("u2dm-media");
+                    let dir = env::temp_dir().join("utdm-media");
                     if let Err(e) = fs::create_dir_all(&dir).await {
                         tracing::warn!("failed to create temp media dir: {e}");
                         return;

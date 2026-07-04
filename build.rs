@@ -1,12 +1,12 @@
 #![allow(clippy::panic)]
 
-use std::fs;
 use std::path::Path;
 use std::process::Command;
+use std::{env, fs};
 
 const LANG_DIR: &str = "lang";
 const UI_DIR: &str = "ui";
-const POT_FILE: &str = "lang/u2dm.pot";
+const POT_FILE: &str = "lang/utdm.pot";
 
 fn main() {
     #[cfg(not(feature = "interpreted"))]
@@ -29,9 +29,10 @@ fn update_translations() {
 
     strip_pot_creation_date(POT_FILE);
 
+    let pkg_name = env::var("CARGO_PKG_NAME").unwrap_or_default();
     for po_path in collect_files_recursive(LANG_DIR, "po") {
         merge_translations(&po_path);
-        compile_translations(&po_path);
+        compile_translations(&po_path, &pkg_name);
     }
 
     println!("cargo::rerun-if-changed={UI_DIR}/");
@@ -98,7 +99,7 @@ fn merge_translations(po_path: &str) {
     );
 }
 
-fn compile_translations(po_path: &str) {
+fn compile_translations(po_path: &str, pkg_name: &str) {
     let Some(lang) = Path::new(po_path).file_stem().map(|s| s.to_string_lossy()) else {
         return;
     };
@@ -108,7 +109,7 @@ fn compile_translations(po_path: &str) {
 
     drop(
         Command::new("msgfmt")
-            .args([po_path, "-o", &format!("{mo_dir}/U2DM.mo")])
+            .args([po_path, "-o", &format!("{mo_dir}/{pkg_name}.mo")])
             .status(),
     );
 }

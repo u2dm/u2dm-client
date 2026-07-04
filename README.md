@@ -1,5 +1,3 @@
-# U2MD
+# UTDM
 
-Unable to decrypt message.
-
-A Matrix chat client using Slint and matrix-sdk.
+Unable to Decrypt Message: a Matrix chat client using Slint UI.

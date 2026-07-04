@@ -3,38 +3,6 @@
 version = 4
 
 [[package]]
-name = "U2DM"
-version = "0.1.0"
-dependencies = [
- "apple-native-keyring-store",
- "async-trait",
- "chrono",
- "directories",
- "futures-util",
- "infer",
- "keyring-core",
- "matrix-sdk",
- "matrix-sdk-ui",
- "open",
- "rand 0.10.2",
- "rfd",
- "serde",
- "serde_json",
- "slint",
- "slint-build",
- "slint-interpreter",
- "strum",
- "thiserror 2.0.18",
- "tokio",
- "tokio-util",
- "tracing",
- "tracing-subscriber",
- "url",
- "windows-native-keyring-store",
- "zbus-secret-service-keyring-store",
-]
-
-[[package]]
 name = "accesskit"
 version = "0.24.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7737,6 +7705,38 @@ dependencies = [
  "unicode-script",
  "unicode-vo",
  "xmlwriter",
+]
+
+[[package]]
+name = "utdm"
+version = "0.1.0"
+dependencies = [
+ "apple-native-keyring-store",
+ "async-trait",
+ "chrono",
+ "directories",
+ "futures-util",
+ "infer",
+ "keyring-core",
+ "matrix-sdk",
+ "matrix-sdk-ui",
+ "open",
+ "rand 0.10.2",
+ "rfd",
+ "serde",
+ "serde_json",
+ "slint",
+ "slint-build",
+ "slint-interpreter",
+ "strum",
+ "thiserror 2.0.18",
+ "tokio",
+ "tokio-util",
+ "tracing",
+ "tracing-subscriber",
+ "url",
+ "windows-native-keyring-store",
+ "zbus-secret-service-keyring-store",
 ]
 
 [[package]]

@@ -11,7 +11,7 @@ pub struct AppConfig {
 
 impl AppConfig {
     pub fn from_env() -> Result<Self> {
-        let dirs = ProjectDirs::from("", "", "U2DM")
+        let dirs = ProjectDirs::from("", "", "UTDM")
             .ok_or_else(|| AppError::Config("Failed to determine data directory".into()))?;
         Ok(Self {
             data_dir: dirs.data_dir().to_path_buf(),

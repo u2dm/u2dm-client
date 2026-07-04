@@ -78,7 +78,7 @@ msgstr ""
 
 #: ui/main.slint:17
 msgctxt "AppWindow"
-msgid "U2DM Matrix Client"
+msgid "UTDM Matrix Client"
 msgstr ""
 
 #: ui/screens/homeserver/homeserver.slint:27
@@ -88,7 +88,7 @@ msgstr ""
 
 #: ui/screens/homeserver/homeserver.slint:32
 msgctxt "HomeserverScreen"
-msgid "U2DM"
+msgid "UTDM"
 msgstr ""
 
 #: ui/screens/homeserver/homeserver.slint:38
@@ -189,7 +189,7 @@ msgstr ""
 
 #: ui/screens/credentials/credentials.slint:45
 msgctxt "CredentialsScreen"
-msgid "U2DM"
+msgid "UTDM"
 msgstr ""
 
 #: ui/screens/credentials/credentials.slint:51
@@ -249,5 +249,5 @@ msgstr ""
 
 #: ui/screens/loading.slint:21
 msgctxt "LoadingScreen"
-msgid "U2DM"
+msgid "UTDM"
 msgstr ""

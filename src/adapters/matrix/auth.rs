@@ -78,7 +78,7 @@ pub(super) async fn login_password(client: &Client, creds: LoginCredentials) -> 
     client
         .matrix_auth()
         .login_username(&creds.username, &creds.password)
-        .initial_device_display_name("U2DM")
+        .initial_device_display_name("UTDM")
         .await?;
 
     let sdk_session = client
@@ -330,13 +330,13 @@ fn client_metadata() -> Result<Raw<ClientMetadata>> {
     let ipv6_uri: Url = format!("http://[{}]/", Ipv6Addr::LOCALHOST)
         .parse()
         .map_err(|e: url::ParseError| AppError::Other(e.to_string()))?;
-    let client_uri: Url = "https://github.com/drendog/U2DM"
+    let client_uri: Url = "https://github.com/drendog/utdm"
         .parse()
         .map_err(|e: url::ParseError| AppError::Other(e.to_string()))?;
 
     let client_uri = Localized::new(client_uri, []);
     let metadata = ClientMetadata {
-        client_name: Some(Localized::new("U2DM".to_owned(), [])),
+        client_name: Some(Localized::new("UTDM".to_owned(), [])),
         ..ClientMetadata::new(
             ApplicationType::Native,
             vec![OAuthGrantType::AuthorizationCode {

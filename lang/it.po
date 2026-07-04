@@ -79,8 +79,8 @@ msgstr "Chiudi"
 
 #: ui/main.slint:17
 msgctxt "AppWindow"
-msgid "U2DM Matrix Client"
-msgstr "U2DM Client Matrix"
+msgid "UTDM Matrix Client"
+msgstr "UTDM Client Matrix"
 
 #: ui/screens/homeserver/homeserver.slint:27
 msgctxt "HomeserverScreen"
@@ -89,8 +89,8 @@ msgstr "Verifica del server..."
 
 #: ui/screens/homeserver/homeserver.slint:32
 msgctxt "HomeserverScreen"
-msgid "U2DM"
-msgstr "U2DM"
+msgid "UTDM"
+msgstr "UTDM"
 
 #: ui/screens/homeserver/homeserver.slint:38
 msgctxt "HomeserverScreen"
@@ -189,8 +189,8 @@ msgstr "In attesa dell'autenticazione..."
 
 #: ui/screens/credentials/credentials.slint:45
 msgctxt "CredentialsScreen"
-msgid "U2DM"
-msgstr "U2DM"
+msgid "UTDM"
+msgstr "UTDM"
 
 #: ui/screens/credentials/credentials.slint:51
 msgctxt "CredentialsScreen"
@@ -249,8 +249,8 @@ msgstr "Sincronizzazione stanze..."
 
 #: ui/screens/loading.slint:21
 msgctxt "LoadingScreen"
-msgid "U2DM"
-msgstr "U2DM"
+msgid "UTDM"
+msgstr "UTDM"
 
 #~ msgctxt "TimelineView"
 #~ msgid "Send a message..."
