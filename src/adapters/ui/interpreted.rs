@@ -1,4 +1,6 @@
 use std::cell::RefCell;
+use std::collections::HashMap;
+use std::path::PathBuf;
 use std::rc::Rc;
 
 use slint::{Model, ModelRc, VecModel};
@@ -88,7 +90,12 @@ pub struct SlintUiAdapter {
 impl SlintUiAdapter {
     pub fn compile(rt: &Runtime) -> Result<Self> {
         let instance = rt.block_on(async {
-            let result = Compiler::new().build_from_path("ui/main.slint").await;
+            let mut compiler = Compiler::new();
+            compiler.set_library_paths(HashMap::from([(
+                "lucide".to_string(),
+                PathBuf::from(lucide_slint::lib()),
+            )]));
+            let result = compiler.build_from_path("ui/main.slint").await;
             for diag in result.diagnostics() {
                 tracing::error!("slint: {diag}");
             }

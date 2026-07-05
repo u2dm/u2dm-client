@@ -1,7 +1,7 @@
 import {
-    Button,
     Palette,
 } from "std-widgets.slint";
+import { IconDisplay, IconSet } from "@lucide";
 
 import { SendMessageRequest } from "../types.slint";
 
@@ -44,13 +44,26 @@ export component MessageInput inherits Rectangle {
             }
         }
 
-        Button {
-            text: @tr("Send");
+        send-touch := TouchArea {
+            width: 44px;
+            mouse-cursor: root.message != "" ? pointer : default;
+            accessible-role: button;
+            accessible-label: @tr("Send");
             clicked => {
                 if root.message != "" {
                     root.send-message({ room-id: root.room-id, body: root.message });
                     root.message = "";
                 }
+            }
+
+            IconDisplay {
+                x: (parent.width - self.width) / 2;
+                y: (parent.height - self.height) / 2;
+                icon: IconSet.SendHorizontal;
+                size: 20px;
+                stroke: root.message != ""
+                    ? Palette.accent-background
+                    : Palette.foreground.transparentize(0.6);
             }
         }
     }

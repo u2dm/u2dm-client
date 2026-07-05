@@ -2,6 +2,7 @@ import {
     ListView,
     Palette,
 } from "std-widgets.slint";
+import { IconDisplay, IconSet } from "@lucide";
 
 import {
     MessageEntry,
@@ -136,13 +137,12 @@ export component TimelineContent inherits Rectangle {
         border-radius: 20px;
         background: Palette.alternate-background;
 
-        Text {
-            text: "∨";
-            font-size: 18px;
-            font-weight: 700;
-            color: Palette.alternate-foreground;
-            horizontal-alignment: center;
-            vertical-alignment: center;
+        IconDisplay {
+            x: (parent.width - self.width) / 2;
+            y: (parent.height - self.height) / 2;
+            icon: IconSet.ChevronDown;
+            size: 22px;
+            stroke: Palette.alternate-foreground;
         }
 
         TouchArea {

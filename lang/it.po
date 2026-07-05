@@ -112,7 +112,7 @@ msgctxt "HomeserverScreen"
 msgid "Continue"
 msgstr "Continua"
 
-#: ui/screens/chat/chat.slint:136
+#: ui/screens/chat/chat.slint:137
 msgctxt "ChatScreen"
 msgid "File saved to {}"
 msgstr "File salvato in {}"
@@ -122,12 +122,12 @@ msgctxt "MessageInput"
 msgid "Send a message..."
 msgstr ""
 
-#: ui/screens/chat/components/timeline/message-input.slint:48
+#: ui/screens/chat/components/timeline/message-input.slint:51
 msgctxt "MessageInput"
 msgid "Send"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/timeline-content.slint:33
+#: ui/screens/chat/components/timeline/timeline-content.slint:34
 msgctxt "TimelineContent"
 msgid "Loading older messages..."
 msgstr ""
@@ -142,17 +142,12 @@ msgctxt "ImageMessage"
 msgid "Image"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/messages/utd-message.slint:22
+#: ui/screens/chat/components/timeline/messages/utd-message.slint:23
 msgctxt "UtdMessage"
 msgid "Unable to decrypt message"
 msgstr "Impossibile decifrare il messaggio"
 
-#: ui/screens/chat/components/timeline/messages/file-message.slint:14
-msgctxt "FileMessage"
-msgid "📎 {}"
-msgstr "📎 {}"
-
-#: ui/screens/chat/components/timeline/messages/file-message.slint:20
+#: ui/screens/chat/components/timeline/messages/file-message.slint:27
 msgctxt "FileMessage"
 msgid "Save"
 msgstr "Salva"
@@ -212,12 +207,12 @@ msgctxt "Sidebar"
 msgid "Sticker"
 msgstr ""
 
-#: ui/screens/chat/components/sidebar.slint:107
+#: ui/screens/chat/components/sidebar.slint:110
 msgctxt "Sidebar"
 msgid "Logout"
 msgstr "Esci"
 
-#: ui/screens/chat/components/sidebar.slint:130
+#: ui/screens/chat/components/sidebar.slint:146
 msgctxt "Sidebar"
 msgid "You"
 msgstr ""
@@ -301,6 +296,10 @@ msgstr "Sincronizzazione stanze..."
 msgctxt "LoadingScreen"
 msgid "UTDM"
 msgstr "UTDM"
+
+#~ msgctxt "FileMessage"
+#~ msgid "📎 {}"
+#~ msgstr "📎 {}"
 
 #~ msgctxt "TimelineView"
 #~ msgid "Send a message..."

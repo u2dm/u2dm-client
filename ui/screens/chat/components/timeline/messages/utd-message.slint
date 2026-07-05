@@ -1,4 +1,5 @@
 import { Palette } from "std-widgets.slint";
+import { IconDisplay, IconSet } from "@lucide";
 
 export component UtdMessage inherits Rectangle {
     height: layout.preferred-height;
@@ -12,10 +13,10 @@ export component UtdMessage inherits Rectangle {
         spacing: 6px;
         alignment: start;
 
-        Text {
-            text: "\u{1F512}";
-            font-size: 13px;
-            vertical-alignment: center;
+        IconDisplay {
+            icon: IconSet.LockKeyhole;
+            size: 15px;
+            stroke: Palette.foreground.transparentize(0.4);
         }
 
         Text {

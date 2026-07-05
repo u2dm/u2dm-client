@@ -1,20 +1,52 @@
 #![allow(clippy::panic)]
 
-use std::path::Path;
+#[cfg(not(feature = "interpreted"))]
+use std::collections::HashMap;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::{env, fs};
 
 const LANG_DIR: &str = "lang";
 const UI_DIR: &str = "ui";
 const POT_FILE: &str = "lang/utdm.pot";
+const LUCIDE_LSP_LIB: &str = ".lucide/lib.slint";
 
 fn main() {
+    sync_lucide_lsp_lib();
+
     #[cfg(not(feature = "interpreted"))]
-    if let Err(e) = slint_build::compile("ui/main.slint") {
-        panic!("Failed to compile Slint UI: {e}");
+    {
+        let library = HashMap::from([("lucide".to_string(), PathBuf::from(lucide_slint::lib()))]);
+        let config = slint_build::CompilerConfiguration::new().with_library_paths(library);
+        if let Err(e) = slint_build::compile_with_config("ui/main.slint", config) {
+            panic!("Failed to compile Slint UI: {e}");
+        }
     }
 
     update_translations();
+}
+
+fn sync_lucide_lsp_lib() {
+    let Ok(manifest_dir) = env::var("CARGO_MANIFEST_DIR") else {
+        return;
+    };
+    let src = PathBuf::from(lucide_slint::lib());
+    let dest = Path::new(&manifest_dir).join(LUCIDE_LSP_LIB);
+
+    let up_to_date = fs::metadata(&dest)
+        .ok()
+        .zip(fs::metadata(&src).ok())
+        .is_some_and(|(d, s)| d.len() == s.len());
+    if up_to_date {
+        return;
+    }
+
+    if let Some(parent) = dest.parent()
+        && fs::create_dir_all(parent).is_err()
+    {
+        return;
+    }
+    drop(fs::copy(&src, &dest));
 }
 
 fn update_translations() {

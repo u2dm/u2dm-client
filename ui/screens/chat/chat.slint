@@ -6,6 +6,7 @@ import {
     SaveFileRequest,
 } from "components/types.slint";
 import { Palette } from "std-widgets.slint";
+import { IconDisplay, IconSet } from "@lucide";
 import { Sidebar } from "components/sidebar.slint";
 import { TimelineView } from "components/timeline/timeline-view.slint";
 
@@ -149,11 +150,12 @@ export component ChatScreen inherits Rectangle {
                 clicked => {
                     root.dismiss-toast();
                 }
-                Text {
-                    text: "✕";
-                    color: Palette.foreground.transparentize(0.4);
-                    horizontal-alignment: center;
-                    vertical-alignment: center;
+                IconDisplay {
+                    x: (parent.width - self.width) / 2;
+                    y: (parent.height - self.height) / 2;
+                    icon: IconSet.X;
+                    size: 16px;
+                    stroke: Palette.foreground.transparentize(0.4);
                 }
             }
         }

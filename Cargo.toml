@@ -11,7 +11,7 @@ categories = ["network-programming"]
 
 [features]
 default = []
-interpreted = ["dep:slint-interpreter"]
+interpreted = ["dep:slint-interpreter", "dep:lucide-slint"]
 
 [dependencies]
 async-trait = "0.1.89"
@@ -20,6 +20,7 @@ directories = "6"
 futures-util = "0.3.32"
 infer = "0.19"
 keyring-core = "1"
+lucide-slint = { version = "1", optional = true }
 matrix-sdk = { version = "0.18.0", default-features = false, features = [
     "e2e-encryption",
     "sqlite",
@@ -98,4 +99,5 @@ must_use_candidate = "allow"
 uninlined_format_args = "allow"
 
 [build-dependencies]
+lucide-slint = "1"
 slint-build = "1.15.1"

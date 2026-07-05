@@ -1,7 +1,7 @@
 import {
-    Button,
     Palette,
 } from "std-widgets.slint";
+import { IconDisplay, IconSet } from "@lucide";
 
 import { RoomEntry, SpaceEntry } from "./types.slint";
 import { SpaceRail } from "./space-rail.slint";
@@ -103,10 +103,26 @@ export component Sidebar inherits Rectangle {
                     color: Palette.foreground.transparentize(0.5);
                 }
 
-                Button {
-                    text: @tr("Logout");
+                logout-touch := TouchArea {
+                    width: 28px;
+                    mouse-cursor: pointer;
+                    accessible-role: button;
+                    accessible-label: @tr("Logout");
                     clicked => {
                         root.logout();
+                    }
+
+                    Rectangle {
+                        width: 28px;
+                        height: 28px;
+                        border-radius: 6px;
+                        background: logout-touch.has-hover ? Palette.foreground.transparentize(0.9) : transparent;
+
+                        IconDisplay {
+                            icon: IconSet.LogOut;
+                            size: 16px;
+                            stroke: Palette.foreground.transparentize(0.35);
+                        }
                     }
                 }
             }
@@ -198,13 +214,12 @@ export component Sidebar inherits Rectangle {
                                         border-radius: 9px;
                                         background: Palette.accent-background;
 
-                                        Text {
-                                            text: "@";
-                                            font-size: 11px;
-                                            font-weight: 700;
-                                            horizontal-alignment: center;
-                                            vertical-alignment: center;
-                                            color: Palette.accent-foreground;
+                                        IconDisplay {
+                                            x: (parent.width - self.width) / 2;
+                                            y: (parent.height - self.height) / 2;
+                                            icon: IconSet.AtSign;
+                                            size: 12px;
+                                            stroke: Palette.accent-foreground;
                                         }
                                     }
 

@@ -3830,6 +3830,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "112b39cec0b298b6c1999fee3e31427f74f676e4cb9879ed1a121b43661a4154"
 
 [[package]]
+name = "lucide-slint"
+version = "1.23.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "be75611ac0c5fbecd750f1e64ec280170d3464d5d2d7e931bafb22148e415edd"
+
+[[package]]
 name = "lyon_algorithms"
 version = "1.0.16"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7718,6 +7724,7 @@ dependencies = [
  "futures-util",
  "infer",
  "keyring-core",
+ "lucide-slint",
  "matrix-sdk",
  "matrix-sdk-ui",
  "open",
