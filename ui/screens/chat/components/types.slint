@@ -10,6 +10,16 @@ export struct RoomEntry {
     last-message-time: string,
 }
 
+export struct SpaceEntry {
+    id: string,
+    name: string,
+    unread: int,
+    mentions: int,
+    initial: string,
+    avatar: image,
+    has-avatar: bool,
+}
+
 export struct MessageEntry {
     unique-id: string,
     sender: string,

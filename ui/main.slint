@@ -1,6 +1,7 @@
 import { LoginRequest } from "screens/credentials/types.slint";
 import {
     RoomEntry,
+    SpaceEntry,
     MessageEntry,
     SendMessageRequest,
     SaveFileRequest,
@@ -28,9 +29,11 @@ export component AppWindow inherits Window {
     in-out property <string> input-password: "";
     in-out property <string> user-id: "";
     in-out property <[RoomEntry]> rooms: [];
+    in-out property <[SpaceEntry]> spaces: [];
     in-out property <[MessageEntry]> timeline: [];
     in-out property <string> selected-room-name: "";
     in-out property <string> selected-room-id: "";
+    in-out property <string> selected-space-id: "";
     in-out property <string> connection-status: "disconnected";
 
     in-out property <bool> verification-visible: false;
@@ -49,6 +52,7 @@ export component AppWindow inherits Window {
     callback login-password(LoginRequest);
     callback login-oauth();
     callback select-room(string);
+    callback select-space(string);
     callback send-message(SendMessageRequest);
     callback open-media(string);
     callback save-file(SaveFileRequest);
@@ -100,6 +104,7 @@ export component AppWindow inherits Window {
         user-id: root.user-id;
         connection-status: root.connection-status;
         rooms: root.rooms;
+        spaces: root.spaces;
         timeline: root.timeline;
         timeline-loading: root.timeline-loading;
         new-messages-count: root.new-messages-count;
@@ -108,9 +113,13 @@ export component AppWindow inherits Window {
         saved-file-path: root.saved-file-path;
         selected-room-id <=> root.selected-room-id;
         selected-room-name <=> root.selected-room-name;
+        selected-space-id <=> root.selected-space-id;
         input-message <=> root.input-message;
         select-room(id) => {
             root.select-room(id);
+        }
+        select-space(id) => {
+            root.select-space(id);
         }
         logout => {
             root.logout();

@@ -184,6 +184,16 @@ impl Room {
 }
 
 #[derive(Debug, Clone)]
+pub struct Space {
+    pub id: String,
+    pub name: String,
+    pub avatar_path: Option<PathBuf>,
+    pub child_room_ids: Vec<String>,
+    pub unread: u64,
+    pub mentions: u64,
+}
+
+#[derive(Debug, Clone)]
 #[allow(dead_code)]
 pub enum ConnectionStatus {
     Disconnected,
@@ -207,6 +217,7 @@ impl ConnectionStatus {
 pub enum SyncEvent {
     Connected,
     Rooms(Vec<Room>),
+    Spaces(Vec<Space>),
     ConnectionError(String),
     SessionExpired,
 }

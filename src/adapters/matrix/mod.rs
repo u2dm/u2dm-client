@@ -128,7 +128,13 @@ impl MatrixPort for MatrixAdapter {
     async fn start_sync(&self, on_sync: Box<dyn Fn(SyncEvent) + Send + Sync>) -> Result<()> {
         tracing::info!("starting continuous sync loop");
         let client = self.get_client().await?;
-        rooms::start_sync(&client, on_sync.into()).await
+        rooms::start_sync(
+            &client,
+            self.media_dir(),
+            Arc::clone(&self.materialized),
+            on_sync.into(),
+        )
+        .await
     }
 
     async fn restore_session(

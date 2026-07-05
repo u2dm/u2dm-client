@@ -11,6 +11,7 @@ use tokio::sync::mpsc;
 thread_local! {
     static TIMELINE_MODEL: RefCell<Option<Rc<VecModel<Value>>>> = const { RefCell::new(None) };
     static ROOMS_MODEL: RefCell<Option<Rc<VecModel<Value>>>> = const { RefCell::new(None) };
+    static SPACES_MODEL: RefCell<Option<Rc<VecModel<Value>>>> = const { RefCell::new(None) };
 }
 
 use super::common::{
@@ -18,7 +19,7 @@ use super::common::{
 };
 use crate::commands::{UiCommand, UiEvent};
 use crate::domain::models::{
-    LoginCredentials, MessageBody, Room, RoomId, TimelineMessage,
+    LoginCredentials, MessageBody, Room, RoomId, Space, TimelineMessage,
     VerificationEmoji as DomainVerificationEmoji,
 };
 use crate::error::{AppError, Result};
@@ -214,6 +215,28 @@ impl SlintUiAdapter {
 
         let tx = cmd_tx.clone();
         self.instance
+            .set_callback("select-space", move |args: &[Value]| -> Value {
+                let space_id = args
+                    .first()
+                    .and_then(|v| match v {
+                        Value::String(s) => Some(s.to_string()),
+                        _ => None,
+                    })
+                    .unwrap_or_default();
+                let selected = if space_id.is_empty() {
+                    None
+                } else {
+                    Some(RoomId::new(space_id))
+                };
+                if let Err(e) = tx.send(UiCommand::SelectSpace(selected)) {
+                    tracing::debug!("failed to send SelectSpace command: {e}");
+                }
+                Value::Void
+            })
+            .map_err(|e| AppError::Ui(format!("{e:?}")))?;
+
+        let tx = cmd_tx.clone();
+        self.instance
             .set_callback("logout", move |_args: &[Value]| -> Value {
                 if let Err(e) = tx.send(UiCommand::Logout) {
                     tracing::debug!("failed to send Logout command: {e}");
@@ -332,6 +355,7 @@ impl SlintUiAdapter {
         let weak = self.instance.as_weak();
         let timeline_model: Rc<VecModel<Value>> = Rc::new(VecModel::default());
         let rooms_model: Rc<VecModel<Value>> = Rc::new(VecModel::default());
+        let spaces_model: Rc<VecModel<Value>> = Rc::new(VecModel::default());
 
         set_prop(
             &self.instance,
@@ -343,31 +367,37 @@ impl SlintUiAdapter {
             "rooms",
             Value::Model(ModelRc::from(Rc::clone(&rooms_model))),
         );
+        set_prop(
+            &self.instance,
+            "spaces",
+            Value::Model(ModelRc::from(Rc::clone(&spaces_model))),
+        );
 
         TIMELINE_MODEL.with(|cell| *cell.borrow_mut() = Some(timeline_model));
         ROOMS_MODEL.with(|cell| *cell.borrow_mut() = Some(rooms_model));
+        SPACES_MODEL.with(|cell| *cell.borrow_mut() = Some(spaces_model));
 
         tokio::spawn(async move {
             while let Some(event) = ui_rx.recv().await {
                 weak.upgrade_in_event_loop(move |inst| {
-                    TIMELINE_MODEL.with(|cell| {
-                        if let Some(tl) = cell.borrow().as_ref() {
-                            ROOMS_MODEL.with(|rc| {
-                                if let Some(rm) = rc.borrow().as_ref() {
-                                    dispatch_ui_event(
-                                        &inst,
-                                        event,
-                                        tl,
-                                        rm,
-                                        &message_to_value,
-                                        &room_to_value,
-                                        &|v| room_id_from_value(v).map_or("", SharedString::as_str),
-                                        &event_id_from_value,
-                                    );
-                                }
-                            });
-                        }
-                    });
+                    let timeline = TIMELINE_MODEL.with(|cell| cell.borrow().clone());
+                    let rooms = ROOMS_MODEL.with(|cell| cell.borrow().clone());
+                    let spaces = SPACES_MODEL.with(|cell| cell.borrow().clone());
+                    if let (Some(tl), Some(rm), Some(sm)) = (timeline, rooms, spaces) {
+                        dispatch_ui_event(
+                            &inst,
+                            event,
+                            &tl,
+                            &rm,
+                            &sm,
+                            &message_to_value,
+                            &room_to_value,
+                            &space_to_value,
+                            &|v| room_id_from_value(v).map_or("", SharedString::as_str),
+                            &|v| room_id_from_value(v).map_or("", SharedString::as_str),
+                            &event_id_from_value,
+                        );
+                    }
                 })
                 .ok();
             }
@@ -484,6 +514,35 @@ fn room_to_value(r: &Room) -> Value {
             Value::String(SharedString::from(&r.last_activity_label())),
         ),
     ]))
+}
+
+fn space_to_value(s: &Space) -> Value {
+    let mut fields = vec![
+        ("id".to_string(), Value::String(SharedString::from(&s.id))),
+        (
+            "name".to_string(),
+            Value::String(SharedString::from(&s.name)),
+        ),
+        #[allow(clippy::cast_precision_loss)]
+        ("unread".to_string(), Value::Number(s.unread as f64)),
+        #[allow(clippy::cast_precision_loss)]
+        ("mentions".to_string(), Value::Number(s.mentions as f64)),
+        (
+            "initial".to_string(),
+            Value::String(SharedString::from(sender_initial(&s.name))),
+        ),
+    ];
+
+    let mut has_avatar = false;
+    if let Some(avatar_path) = &s.avatar_path
+        && let Some(img) = load_image_cached(avatar_path)
+    {
+        fields.push(("avatar".to_string(), Value::Image(img)));
+        has_avatar = true;
+    }
+    fields.push(("has-avatar".to_string(), Value::Bool(has_avatar)));
+
+    Value::Struct(Struct::from_iter(fields))
 }
 
 fn event_id_from_value(val: &Value) -> String {

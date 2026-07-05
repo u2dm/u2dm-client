@@ -1,8 +1,8 @@
 use strum::Display as StrumDisplay;
 
 use crate::domain::models::{
-    ConnectionStatus, LoginCredentials, PaginationState, Room, RoomId, ServerInfo, TimelinePatch,
-    VerificationEvent,
+    ConnectionStatus, LoginCredentials, PaginationState, Room, RoomId, ServerInfo, Space,
+    TimelinePatch, VerificationEvent,
 };
 
 #[derive(StrumDisplay)]
@@ -14,6 +14,12 @@ pub enum UiCommand {
     LoginPassword(LoginCredentials),
     LoginOAuth,
     FetchRooms,
+    #[strum(to_string = "RoomsUpdated")]
+    RoomsUpdated(Vec<Room>),
+    #[strum(to_string = "SpacesUpdated")]
+    SpacesUpdated(Vec<Space>),
+    #[strum(to_string = "SelectSpace")]
+    SelectSpace(Option<RoomId>),
     #[strum(to_string = "SelectRoom({0})")]
     SelectRoom(RoomId),
     #[strum(to_string = "SendMessage({room_id})")]
@@ -66,6 +72,7 @@ pub enum UiEvent {
     ToastError(String),
     Status(String),
     Rooms(Vec<Room>),
+    Spaces(Vec<Space>),
     Timeline {
         room_id: RoomId,
         patch: Box<TimelinePatch>,

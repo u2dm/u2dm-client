@@ -1,0 +1,153 @@
+import { Palette } from "std-widgets.slint";
+
+import { SpaceEntry } from "./types.slint";
+
+component SpaceTile inherits Rectangle {
+    in property <string> label;
+    in property <string> initial;
+    in property <length> initial-font-size: 18px;
+    in property <bool> has-avatar;
+    in property <image> avatar;
+    in property <int> unread;
+    in property <int> mentions;
+    in property <bool> selected;
+
+    callback clicked();
+
+    height: 68px;
+    background: touch.has-hover ? Palette.foreground.transparentize(0.93) : transparent;
+
+    Rectangle {
+        x: 0;
+        width: 3px;
+        height: root.selected ? 36px : 0;
+        y: (parent.height - self.height) / 2;
+        border-radius: 1.5px;
+        background: Palette.accent-background;
+        animate height { duration: 150ms; easing: ease-out; }
+    }
+
+    avatar-circle := Rectangle {
+        width: 44px;
+        height: 44px;
+        x: (parent.width - self.width) / 2;
+        y: 5px;
+        border-radius: root.selected ? 13px : self.width / 2;
+        background: root.selected
+            ? Palette.accent-background
+            : Palette.accent-background.transparentize(0.85);
+        clip: true;
+        animate border-radius { duration: 150ms; easing: ease-out; }
+
+        if root.has-avatar: Image {
+            width: 100%;
+            height: 100%;
+            source: root.avatar;
+            image-fit: cover;
+        }
+
+        if !root.has-avatar: Text {
+            width: 100%;
+            height: 100%;
+            text: root.initial;
+            font-size: root.initial-font-size;
+            font-weight: 700;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+            overflow: clip;
+            color: root.selected ? Palette.accent-foreground : Palette.accent-background;
+        }
+    }
+
+    Text {
+        x: 3px;
+        y: avatar-circle.y + avatar-circle.height + 2px;
+        width: parent.width - 6px;
+        text: root.label;
+        font-size: 9px;
+        horizontal-alignment: center;
+        overflow: elide;
+        color: root.selected
+            ? Palette.foreground
+            : Palette.foreground.transparentize(0.45);
+    }
+
+    if root.unread > 0 || root.mentions > 0: Rectangle {
+        x: avatar-circle.x + avatar-circle.width - self.width + 4px;
+        y: avatar-circle.y - 3px;
+        height: 18px;
+        min-width: 18px;
+        border-radius: 9px;
+        background: Palette.accent-background;
+        border-width: 2px;
+        border-color: Palette.alternate-background;
+
+        HorizontalLayout {
+            padding-left: 5px;
+            padding-right: 5px;
+
+            Text {
+                text: root.unread > 0 ? root.unread : root.mentions;
+                font-size: 10px;
+                font-weight: 700;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+                color: Palette.accent-foreground;
+            }
+        }
+    }
+
+    touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => {
+            root.clicked();
+        }
+    }
+}
+
+export component SpaceRail inherits Rectangle {
+    in property <[SpaceEntry]> spaces: [];
+    in-out property <string> selected-space-id: "";
+
+    callback select-space(string);
+
+    property <length> row-height: 68px;
+
+    background: Palette.alternate-background.mix(Palette.background, 0.35);
+
+    Flickable {
+        width: root.width;
+        height: root.height;
+        viewport-width: root.width;
+        viewport-height: (root.spaces.length + 1) * root.row-height;
+
+        VerticalLayout {
+            SpaceTile {
+                height: root.row-height;
+                label: @tr("All Rooms");
+                initial: @tr("All");
+                initial-font-size: 13px;
+                selected: root.selected-space-id == "";
+                clicked => {
+                    root.selected-space-id = "";
+                    root.select-space("");
+                }
+            }
+
+            for space in root.spaces: SpaceTile {
+                height: root.row-height;
+                label: space.name;
+                initial: space.initial;
+                has-avatar: space.has-avatar;
+                avatar: space.avatar;
+                unread: space.unread;
+                mentions: space.mentions;
+                selected: root.selected-space-id == space.id;
+                clicked => {
+                    root.selected-space-id = space.id;
+                    root.select-space(space.id);
+                }
+            }
+        }
+    }
+}

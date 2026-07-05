@@ -29,7 +29,7 @@ pub fn sender_initial(name: &str) -> &str {
 
 use crate::commands::UiEvent;
 use crate::domain::models::{
-    ConnectionStatus, LoginMethod, Room, ServerInfo, TimelineMessage, TimelinePatch,
+    ConnectionStatus, LoginMethod, Room, ServerInfo, Space, TimelineMessage, TimelinePatch,
     VerificationEmoji as DomainVerificationEmoji, VerificationEvent as DomainVerificationEvent,
 };
 
@@ -48,6 +48,7 @@ pub enum StringProp {
     SavedFilePath,
     SelectedRoomName,
     SelectedRoomId,
+    SelectedSpaceId,
     InputUsername,
     InputPassword,
 }
@@ -69,6 +70,7 @@ impl StringProp {
             Self::SavedFilePath => "saved-file-path",
             Self::SelectedRoomName => "selected-room-name",
             Self::SelectedRoomId => "selected-room-id",
+            Self::SelectedSpaceId => "selected-space-id",
             Self::InputUsername => "input-username",
             Self::InputPassword => "input-password",
         }
@@ -171,18 +173,22 @@ impl VerifyStep {
 }
 
 #[allow(clippy::too_many_lines, clippy::too_many_arguments)]
-pub fn dispatch_ui_event<T, R>(
+pub fn dispatch_ui_event<T, R, S>(
     w: &impl UiProps,
     event: UiEvent,
     timeline_model: &VecModel<T>,
     rooms_model: &VecModel<R>,
+    spaces_model: &VecModel<S>,
     convert_message: &dyn Fn(&TimelineMessage) -> T,
     convert_room: &dyn Fn(&Room) -> R,
+    convert_space: &dyn Fn(&Space) -> S,
     room_entry_id: &dyn Fn(&R) -> &str,
+    space_entry_id: &dyn Fn(&S) -> &str,
     message_entry_event_id: &dyn Fn(&T) -> String,
 ) where
     T: Clone + 'static,
     R: Clone + PartialEq + 'static,
+    S: Clone + PartialEq + 'static,
 {
     match event {
         UiEvent::ServerInfo(info) => apply_server_info(w, &info),
@@ -193,6 +199,15 @@ pub fn dispatch_ui_event<T, R>(
         UiEvent::Status(msg) => apply_status(w, &msg),
         UiEvent::Rooms(rooms) => {
             apply_rooms(rooms_model, &rooms, convert_room, room_entry_id);
+        }
+        UiEvent::Spaces(spaces) => {
+            apply_reconcile(
+                spaces_model,
+                &spaces,
+                &|s| s.id.as_str(),
+                convert_space,
+                space_entry_id,
+            );
         }
         UiEvent::Timeline { room_id, patch } => {
             let selected = w.get_string(StringProp::SelectedRoomId);
@@ -247,6 +262,7 @@ pub fn dispatch_ui_event<T, R>(
         UiEvent::LoggedOut => {
             timeline_model.set_vec(Vec::new());
             rooms_model.set_vec(Vec::new());
+            spaces_model.set_vec(Vec::new());
             apply_logged_out(w);
         }
     }
@@ -362,6 +378,7 @@ fn apply_logged_out(w: &impl UiProps) {
     w.set_string(StringProp::ResolvedHomeserver, SharedString::default());
     w.set_string(StringProp::SelectedRoomName, SharedString::default());
     w.set_string(StringProp::SelectedRoomId, SharedString::default());
+    w.set_string(StringProp::SelectedSpaceId, SharedString::default());
     w.set_string(StringProp::InputUsername, SharedString::default());
     w.set_string(StringProp::InputPassword, SharedString::default());
     w.set_string(
@@ -501,17 +518,27 @@ pub fn apply_rooms<T: Clone + PartialEq + 'static>(
     convert: &dyn Fn(&Room) -> T,
     get_id: &dyn Fn(&T) -> &str,
 ) {
-    let new_by_id: HashMap<&str, (usize, &Room)> = rooms
+    apply_reconcile(model, rooms, &|r| r.id.as_ref(), convert, get_id);
+}
+
+pub fn apply_reconcile<S, T: Clone + PartialEq + 'static>(
+    model: &VecModel<T>,
+    items: &[S],
+    source_id: &dyn Fn(&S) -> &str,
+    convert: &dyn Fn(&S) -> T,
+    get_id: &dyn Fn(&T) -> &str,
+) {
+    let new_ids: HashMap<&str, usize> = items
         .iter()
         .enumerate()
-        .map(|(i, r)| (r.id.as_ref(), (i, r)))
+        .map(|(i, item)| (source_id(item), i))
         .collect();
 
     let mut i = 0;
     while i < model.row_count() {
         let keep = model
             .row_data(i)
-            .is_some_and(|entry| new_by_id.contains_key(get_id(&entry)));
+            .is_some_and(|entry| new_ids.contains_key(get_id(&entry)));
 
         if keep {
             i += 1;
@@ -520,14 +547,14 @@ pub fn apply_rooms<T: Clone + PartialEq + 'static>(
         }
     }
 
-    for idx in 0..rooms.len() {
-        let Some(room) = rooms.get(idx) else { continue };
-        let new_entry = convert(room);
+    for idx in 0..items.len() {
+        let Some(item) = items.get(idx) else { continue };
+        let new_entry = convert(item);
 
         if idx < model.row_count() {
             let same_id = model
                 .row_data(idx)
-                .is_some_and(|entry| get_id(&entry) == &*room.id);
+                .is_some_and(|entry| get_id(&entry) == source_id(item));
 
             if same_id {
                 if model.row_data(idx).as_ref() != Some(&new_entry) {
@@ -541,7 +568,7 @@ pub fn apply_rooms<T: Clone + PartialEq + 'static>(
         }
     }
 
-    while model.row_count() > rooms.len() {
+    while model.row_count() > items.len() {
         model.remove(model.row_count() - 1);
     }
 }

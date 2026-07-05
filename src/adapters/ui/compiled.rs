@@ -11,7 +11,7 @@ use super::common::{
 };
 use crate::commands::{UiCommand, UiEvent};
 use crate::domain::models::{
-    LoginCredentials, MessageBody, Room, RoomId, TimelineMessage,
+    LoginCredentials, MessageBody, Room, RoomId, Space, TimelineMessage,
     VerificationEmoji as DomainVerificationEmoji,
 };
 use crate::error::Result;
@@ -20,11 +20,12 @@ use crate::error::Result;
 mod generated {
     slint::include_modules!();
 }
-use generated::{AppWindow, MessageEntry, RoomEntry, VerificationEmoji};
+use generated::{AppWindow, MessageEntry, RoomEntry, SpaceEntry, VerificationEmoji};
 
 thread_local! {
     static TIMELINE_MODEL: RefCell<Option<Rc<VecModel<MessageEntry>>>> = const { RefCell::new(None) };
     static ROOMS_MODEL: RefCell<Option<Rc<VecModel<RoomEntry>>>> = const { RefCell::new(None) };
+    static SPACES_MODEL: RefCell<Option<Rc<VecModel<SpaceEntry>>>> = const { RefCell::new(None) };
 }
 
 impl UiProps for AppWindow {
@@ -44,6 +45,7 @@ impl UiProps for AppWindow {
             StringProp::SavedFilePath => self.set_saved_file_path(value),
             StringProp::SelectedRoomName => self.set_selected_room_name(value),
             StringProp::SelectedRoomId => self.set_selected_room_id(value),
+            StringProp::SelectedSpaceId => self.set_selected_space_id(value),
             StringProp::InputUsername => self.set_input_username(value),
             StringProp::InputPassword => self.set_input_password(value),
         }
@@ -151,6 +153,19 @@ impl SlintUiAdapter {
             }
             if let Err(e) = tx.send(UiCommand::SelectRoom(RoomId::new(room_id.to_string()))) {
                 tracing::debug!("failed to send SelectRoom command: {e}");
+            }
+        });
+
+        let tx = cmd_tx.clone();
+        self.window.on_select_space(move |space_id| {
+            let space_id = space_id.to_string();
+            let selected = if space_id.is_empty() {
+                None
+            } else {
+                Some(RoomId::new(space_id))
+            };
+            if let Err(e) = tx.send(UiCommand::SelectSpace(selected)) {
+                tracing::debug!("failed to send SelectSpace command: {e}");
             }
         });
 
@@ -265,36 +280,40 @@ impl SlintUiAdapter {
         let weak = self.window.as_weak();
         let timeline_model: Rc<VecModel<MessageEntry>> = Rc::new(VecModel::default());
         let rooms_model: Rc<VecModel<RoomEntry>> = Rc::new(VecModel::default());
+        let spaces_model: Rc<VecModel<SpaceEntry>> = Rc::new(VecModel::default());
 
         self.window
             .set_timeline(ModelRc::from(Rc::clone(&timeline_model)));
         self.window
             .set_rooms(ModelRc::from(Rc::clone(&rooms_model)));
+        self.window
+            .set_spaces(ModelRc::from(Rc::clone(&spaces_model)));
 
         TIMELINE_MODEL.with(|cell| *cell.borrow_mut() = Some(timeline_model));
         ROOMS_MODEL.with(|cell| *cell.borrow_mut() = Some(rooms_model));
+        SPACES_MODEL.with(|cell| *cell.borrow_mut() = Some(spaces_model));
 
         tokio::spawn(async move {
             while let Some(event) = ui_rx.recv().await {
                 weak.upgrade_in_event_loop(move |w| {
-                    TIMELINE_MODEL.with(|cell| {
-                        if let Some(tl) = cell.borrow().as_ref() {
-                            ROOMS_MODEL.with(|rc| {
-                                if let Some(rm) = rc.borrow().as_ref() {
-                                    dispatch_ui_event(
-                                        &w,
-                                        event,
-                                        tl,
-                                        rm,
-                                        &message_to_entry,
-                                        &room_to_entry,
-                                        &|e| e.id.as_str(),
-                                        &|e: &MessageEntry| e.event_id.to_string(),
-                                    );
-                                }
-                            });
-                        }
-                    });
+                    let timeline = TIMELINE_MODEL.with(|cell| cell.borrow().clone());
+                    let rooms = ROOMS_MODEL.with(|cell| cell.borrow().clone());
+                    let spaces = SPACES_MODEL.with(|cell| cell.borrow().clone());
+                    if let (Some(tl), Some(rm), Some(sm)) = (timeline, rooms, spaces) {
+                        dispatch_ui_event(
+                            &w,
+                            event,
+                            &tl,
+                            &rm,
+                            &sm,
+                            &message_to_entry,
+                            &room_to_entry,
+                            &space_to_entry,
+                            &|e| e.id.as_str(),
+                            &|e: &SpaceEntry| e.id.as_str(),
+                            &|e: &MessageEntry| e.event_id.to_string(),
+                        );
+                    }
                 })
                 .ok();
             }
@@ -357,4 +376,26 @@ fn room_to_entry(r: &Room) -> RoomEntry {
         last_message_is_own: r.last_message_is_own,
         last_message_time: SharedString::from(&r.last_activity_label()),
     }
+}
+
+fn space_to_entry(s: &Space) -> SpaceEntry {
+    let mut entry = SpaceEntry {
+        id: SharedString::from(&s.id),
+        name: SharedString::from(&s.name),
+        #[allow(clippy::cast_possible_truncation)]
+        unread: s.unread as i32,
+        #[allow(clippy::cast_possible_truncation)]
+        mentions: s.mentions as i32,
+        initial: SharedString::from(sender_initial(&s.name)),
+        ..Default::default()
+    };
+
+    if let Some(avatar_path) = &s.avatar_path
+        && let Some(img) = load_image_cached(avatar_path)
+    {
+        entry.avatar = img;
+        entry.has_avatar = true;
+    }
+
+    entry
 }

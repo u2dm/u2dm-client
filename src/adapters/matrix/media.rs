@@ -31,7 +31,7 @@ fn ext_from_magic(data: &[u8]) -> &'static str {
     infer::get(data).map_or("png", |t| t.extension())
 }
 
-fn lookup_materialized(
+pub(super) fn lookup_materialized(
     materialized: &StdMutex<HashMap<String, PathBuf>>,
     key: &str,
 ) -> Option<PathBuf> {
@@ -44,7 +44,7 @@ fn record_materialized(materialized: &StdMutex<HashMap<String, PathBuf>>, key: &
     }
 }
 
-async fn fetch_and_materialize(
+pub(super) async fn fetch_and_materialize(
     client: &Client,
     materialized: &StdMutex<HashMap<String, PathBuf>>,
     cache_stem: &Path,

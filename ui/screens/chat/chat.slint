@@ -1,5 +1,6 @@
 import {
     RoomEntry,
+    SpaceEntry,
     MessageEntry,
     SendMessageRequest,
     SaveFileRequest,
@@ -12,6 +13,7 @@ export component ChatScreen inherits Rectangle {
     in property <string> user-id: "";
     in property <string> connection-status: "disconnected";
     in property <[RoomEntry]> rooms: [];
+    in property <[SpaceEntry]> spaces: [];
     in property <[MessageEntry]> timeline: [];
     in property <string> toast-message: "";
     in property <string> saved-file-path: "";
@@ -20,9 +22,11 @@ export component ChatScreen inherits Rectangle {
     in property <bool> backwards-loading: false;
     in-out property <string> selected-room-id: "";
     in-out property <string> selected-room-name: "";
+    in-out property <string> selected-space-id: "";
     in-out property <string> input-message: "";
 
     callback select-room(string);
+    callback select-space(string);
     callback logout();
     callback send-message(SendMessageRequest);
     callback open-media(string);
@@ -45,10 +49,15 @@ export component ChatScreen inherits Rectangle {
         user-id: root.user-id;
         connection-status: root.connection-status;
         rooms: root.rooms;
+        spaces: root.spaces;
         selected-room-id <=> root.selected-room-id;
         selected-room-name <=> root.selected-room-name;
+        selected-space-id <=> root.selected-space-id;
         select-room(id) => {
             root.select-room(id);
+        }
+        select-space(id) => {
+            root.select-space(id);
         }
         logout => {
             root.logout();

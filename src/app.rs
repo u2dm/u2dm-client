@@ -1,3 +1,4 @@
+use std::collections::{HashMap, HashSet};
 use std::env;
 use std::fmt::Write;
 use std::future::Future;
@@ -12,8 +13,8 @@ use tokio_util::sync::CancellationToken;
 
 use crate::commands::{UiCommand, UiEvent};
 use crate::domain::models::{
-    ConnectionStatus, LoginCredentials, RoomId, ScrollMode, Session, SyncEvent, TimelineCommand,
-    TimelinePatch, VerificationEvent,
+    ConnectionStatus, LoginCredentials, Room, RoomId, ScrollMode, Session, Space, SyncEvent,
+    TimelineCommand, TimelinePatch, VerificationEvent,
 };
 use crate::domain::viewport::ViewportController;
 use crate::error::{AppError, Result};
@@ -80,6 +81,11 @@ pub struct AppService {
     active_room_id: Option<RoomId>,
     at_bottom: Arc<AtomicBool>,
     new_messages_counter: Arc<AtomicU32>,
+    all_rooms: Vec<Room>,
+    spaces: Vec<Space>,
+    space_children: HashMap<String, HashSet<String>>,
+    selected_space: Option<RoomId>,
+    connected: bool,
 }
 
 impl AppService {
@@ -104,12 +110,17 @@ impl AppService {
             active_room_id: None,
             at_bottom: Arc::new(AtomicBool::new(true)),
             new_messages_counter: Arc::new(AtomicU32::new(0)),
+            all_rooms: Vec::new(),
+            spaces: Vec::new(),
+            space_children: HashMap::new(),
+            selected_space: None,
+            connected: false,
         }
     }
 
     pub async fn run(&mut self) {
         while let Some(cmd) = self.cmd_rx.recv().await {
-            tracing::info!(command = %cmd, "handling command");
+            Self::log_command(&cmd);
             match cmd {
                 UiCommand::RestoreSession => {
                     self.handle_restore_session().await;
@@ -125,6 +136,15 @@ impl AppService {
                 }
                 UiCommand::FetchRooms => {
                     self.handle_fetch_rooms().await;
+                }
+                UiCommand::RoomsUpdated(rooms) => {
+                    self.handle_rooms_updated(rooms);
+                }
+                UiCommand::SpacesUpdated(spaces) => {
+                    self.handle_spaces_updated(spaces);
+                }
+                UiCommand::SelectSpace(space) => {
+                    self.handle_select_space(space);
                 }
                 UiCommand::SelectRoom(room_id) => {
                     self.handle_select_room(room_id).await;
@@ -170,6 +190,17 @@ impl AppService {
                     break;
                 }
             }
+        }
+    }
+
+    fn log_command(cmd: &UiCommand) {
+        if matches!(
+            cmd,
+            UiCommand::RoomsUpdated(_) | UiCommand::SpacesUpdated(_)
+        ) {
+            tracing::debug!(command = %cmd, "handling command");
+        } else {
+            tracing::info!(command = %cmd, "handling command");
         }
     }
 
@@ -374,6 +405,7 @@ impl AppService {
     async fn handle_session_expired(&mut self) {
         tracing::info!("session expired, clearing local state");
         self.shutdown_all_tasks().await;
+        self.reset_room_state();
         self.clear_local_state().await;
         self.emit(UiEvent::LoggedOut);
         self.emit(UiEvent::LoginError(
@@ -385,6 +417,7 @@ impl AppService {
     async fn handle_logout(&mut self) {
         tracing::info!("user initiated logout");
         self.shutdown_all_tasks().await;
+        self.reset_room_state();
         if let Err(e) = self.matrix.logout().await {
             tracing::warn!("failed to logout from server: {e}");
         }
@@ -633,10 +666,72 @@ impl AppService {
     }
 
     async fn handle_fetch_rooms(&mut self) {
+        self.connected = true;
         self.emit(UiEvent::Status("syncing".into()));
         self.start_background_listeners().await;
         self.emit(UiEvent::ConnectionStatus(ConnectionStatus::Connecting));
         self.start_sync_pipeline();
+    }
+
+    fn handle_rooms_updated(&mut self, rooms: Vec<Room>) {
+        if !self.connected {
+            return;
+        }
+        self.all_rooms = rooms;
+        self.emit_filtered_rooms();
+        self.emit_spaces();
+    }
+
+    fn handle_spaces_updated(&mut self, spaces: Vec<Space>) {
+        if !self.connected {
+            return;
+        }
+        self.space_children = spaces
+            .iter()
+            .map(|s| {
+                let children: HashSet<String> = s.child_room_ids.iter().cloned().collect();
+                (s.id.clone(), children)
+            })
+            .collect();
+        self.spaces = spaces;
+
+        let selection_gone = self
+            .selected_space
+            .as_ref()
+            .is_some_and(|s| !self.space_children.contains_key(s.as_ref()));
+        if selection_gone {
+            self.selected_space = None;
+        }
+
+        self.emit_spaces();
+        self.emit_filtered_rooms();
+    }
+
+    fn handle_select_space(&mut self, space: Option<RoomId>) {
+        self.selected_space = space.filter(|id| !id.is_empty());
+        self.emit_filtered_rooms();
+    }
+
+    fn emit_filtered_rooms(&self) {
+        let filtered = filter_rooms(
+            &self.all_rooms,
+            &self.space_children,
+            self.selected_space.as_deref(),
+        );
+        self.emit(UiEvent::Rooms(filtered));
+    }
+
+    fn emit_spaces(&self) {
+        let spaces = aggregate_space_counts(&self.spaces, &self.space_children, &self.all_rooms);
+        self.emit(UiEvent::Spaces(spaces));
+    }
+
+    fn reset_room_state(&mut self) {
+        self.connected = false;
+        self.all_rooms.clear();
+        self.spaces.clear();
+        self.space_children.clear();
+        self.selected_space = None;
     }
 
     async fn start_background_listeners(&mut self) {
@@ -743,7 +838,10 @@ impl AppService {
                     .ok();
             }
             SyncEvent::Rooms(rooms) => {
-                ui_tx.send(UiEvent::Rooms(rooms)).ok();
+                cmd_tx.send(UiCommand::RoomsUpdated(rooms)).ok();
+            }
+            SyncEvent::Spaces(spaces) => {
+                cmd_tx.send(UiCommand::SpacesUpdated(spaces)).ok();
             }
             SyncEvent::ConnectionError(msg) => {
                 ui_tx
@@ -777,4 +875,48 @@ fn count_appended(patch: &TimelinePatch) -> u32 {
         TimelinePatch::Batch(patches) => patches.iter().map(count_appended).sum(),
         _ => 0,
     }
+}
+
+fn filter_rooms(
+    all_rooms: &[Room],
+    space_children: &HashMap<String, HashSet<String>>,
+    selected: Option<&str>,
+) -> Vec<Room> {
+    match selected {
+        None => all_rooms.to_vec(),
+        Some(space_id) => match space_children.get(space_id) {
+            Some(children) => all_rooms
+                .iter()
+                .filter(|r| children.contains(&*r.id))
+                .cloned()
+                .collect(),
+            None => Vec::new(),
+        },
+    }
+}
+
+fn aggregate_space_counts(
+    spaces: &[Space],
+    space_children: &HashMap<String, HashSet<String>>,
+    all_rooms: &[Room],
+) -> Vec<Space> {
+    spaces
+        .iter()
+        .map(|space| {
+            let (unread, mentions) = match space_children.get(&space.id) {
+                Some(children) => all_rooms
+                    .iter()
+                    .filter(|r| children.contains(&*r.id))
+                    .fold((0u64, 0u64), |(unread, mentions), r| {
+                        (unread + r.unread_count, mentions + r.mention_count)
+                    }),
+                None => (0, 0),
+            };
+            Space {
+                unread,
+                mentions,
+                ..space.clone()
+            }
+        })
+        .collect()
 }
