@@ -27,6 +27,7 @@ export component ChatScreen inherits Rectangle {
 
     callback select-room(string);
     callback select-space(string);
+    callback move-space(int, int);
     callback logout();
     callback send-message(SendMessageRequest);
     callback open-media(string);
@@ -58,6 +59,9 @@ export component ChatScreen inherits Rectangle {
         }
         select-space(id) => {
             root.select-space(id);
+        }
+        move-space(from, to) => {
+            root.move-space(from, to);
         }
         logout => {
             root.logout();

@@ -19,6 +19,7 @@ export component Sidebar inherits Rectangle {
 
     callback select-room(string);
     callback select-space(string);
+    callback move-space(int, int);
     callback logout();
 
     pure function status-indicator-color(status: string) -> color {
@@ -71,6 +72,9 @@ export component Sidebar inherits Rectangle {
             selected-space-id <=> root.selected-space-id;
             select-space(id) => {
                 root.select-space(id);
+            }
+            move-space(from, to) => {
+                root.move-space(from, to);
             }
         }
 

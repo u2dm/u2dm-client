@@ -1,7 +1,7 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use slint::{ModelRc, VecModel};
+use slint::{Model, ModelRc, VecModel};
 use slint_interpreter::{
     Compiler, ComponentHandle, ComponentInstance, SharedString, Struct, Value,
 };
@@ -230,6 +230,35 @@ impl SlintUiAdapter {
                 };
                 if let Err(e) = tx.send(UiCommand::SelectSpace(selected)) {
                     tracing::debug!("failed to send SelectSpace command: {e}");
+                }
+                Value::Void
+            })
+            .map_err(|e| AppError::Ui(format!("{e:?}")))?;
+
+        let tx = cmd_tx.clone();
+        self.instance
+            .set_callback("move-space", move |args: &[Value]| -> Value {
+                let index = |i: usize| -> Option<usize> {
+                    match args.get(i) {
+                        Some(Value::Number(n)) if *n >= 0.0 => usize::try_from(*n as i64).ok(),
+                        _ => None,
+                    }
+                };
+                if let (Some(from), Some(to)) = (index(0), index(1))
+                    && from != to
+                {
+                    SPACES_MODEL.with(|cell| {
+                        if let Some(model) = cell.borrow().as_ref()
+                            && from < model.row_count()
+                            && to < model.row_count()
+                        {
+                            let entry = model.remove(from);
+                            model.insert(to, entry);
+                        }
+                    });
+                    if let Err(e) = tx.send(UiCommand::MoveSpace { from, to }) {
+                        tracing::debug!("failed to send MoveSpace command: {e}");
+                    }
                 }
                 Value::Void
             })

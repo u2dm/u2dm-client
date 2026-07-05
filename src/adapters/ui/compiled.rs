@@ -1,7 +1,7 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use slint::{ComponentHandle, ModelRc, SharedString, VecModel};
+use slint::{ComponentHandle, Model, ModelRc, SharedString, VecModel};
 use tokio::runtime::Runtime;
 use tokio::sync::mpsc;
 
@@ -166,6 +166,31 @@ impl SlintUiAdapter {
             };
             if let Err(e) = tx.send(UiCommand::SelectSpace(selected)) {
                 tracing::debug!("failed to send SelectSpace command: {e}");
+            }
+        });
+
+        let tx = cmd_tx.clone();
+        self.window.on_move_space(move |from, to| {
+            let Ok(from) = usize::try_from(from) else {
+                return;
+            };
+            let Ok(to) = usize::try_from(to) else {
+                return;
+            };
+            if from == to {
+                return;
+            }
+            SPACES_MODEL.with(|cell| {
+                if let Some(model) = cell.borrow().as_ref()
+                    && from < model.row_count()
+                    && to < model.row_count()
+                {
+                    let entry = model.remove(from);
+                    model.insert(to, entry);
+                }
+            });
+            if let Err(e) = tx.send(UiCommand::MoveSpace { from, to }) {
+                tracing::debug!("failed to send MoveSpace command: {e}");
             }
         });
 

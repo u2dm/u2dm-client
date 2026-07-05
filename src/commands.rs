@@ -20,6 +20,11 @@ pub enum UiCommand {
     SpacesUpdated(Vec<Space>),
     #[strum(to_string = "SelectSpace")]
     SelectSpace(Option<RoomId>),
+    #[strum(to_string = "MoveSpace({from},{to})")]
+    MoveSpace {
+        from: usize,
+        to: usize,
+    },
     #[strum(to_string = "SelectRoom({0})")]
     SelectRoom(RoomId),
     #[strum(to_string = "SendMessage({room_id})")]

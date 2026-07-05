@@ -53,6 +53,7 @@ export component AppWindow inherits Window {
     callback login-oauth();
     callback select-room(string);
     callback select-space(string);
+    callback move-space(int, int);
     callback send-message(SendMessageRequest);
     callback open-media(string);
     callback save-file(SaveFileRequest);
@@ -120,6 +121,9 @@ export component AppWindow inherits Window {
         }
         select-space(id) => {
             root.select-space(id);
+        }
+        move-space(from, to) => {
+            root.move-space(from, to);
         }
         logout => {
             root.logout();

@@ -84,6 +84,7 @@ pub struct AppService {
     all_rooms: Vec<Room>,
     spaces: Vec<Space>,
     space_children: HashMap<String, HashSet<String>>,
+    space_order: Vec<String>,
     selected_space: Option<RoomId>,
     connected: bool,
 }
@@ -113,6 +114,7 @@ impl AppService {
             all_rooms: Vec::new(),
             spaces: Vec::new(),
             space_children: HashMap::new(),
+            space_order: Vec::new(),
             selected_space: None,
             connected: false,
         }
@@ -145,6 +147,9 @@ impl AppService {
                 }
                 UiCommand::SelectSpace(space) => {
                     self.handle_select_space(space);
+                }
+                UiCommand::MoveSpace { from, to } => {
+                    self.handle_move_space(from, to);
                 }
                 UiCommand::SelectRoom(room_id) => {
                     self.handle_select_room(room_id).await;
@@ -667,6 +672,7 @@ impl AppService {
 
     async fn handle_fetch_rooms(&mut self) {
         self.connected = true;
+        self.space_order = self.storage.load_space_order().await.unwrap_or_default();
         self.emit(UiEvent::Status("syncing".into()));
         self.start_background_listeners().await;
         self.emit(UiEvent::ConnectionStatus(ConnectionStatus::Connecting));
@@ -712,6 +718,32 @@ impl AppService {
         self.emit_filtered_rooms();
     }
 
+    fn handle_move_space(&mut self, from: usize, to: usize) {
+        let mut order: Vec<String> = order_spaces(&self.spaces, &self.space_order)
+            .into_iter()
+            .map(|s| s.id)
+            .collect();
+        if from >= order.len() || to >= order.len() || from == to {
+            return;
+        }
+        let id = order.remove(from);
+        order.insert(to, id);
+        self.space_order = order;
+        self.emit_spaces();
+        self.persist_space_order();
+    }
+
+    fn persist_space_order(&mut self) {
+        self.reap_finished();
+        let storage = Arc::clone(&self.storage);
+        let order = self.space_order.clone();
+        self.fire_and_forget.spawn(async move {
+            if let Err(e) = storage.save_space_order(&order).await {
+                tracing::warn!("failed to persist space order: {e}");
+            }
+        });
+    }
+
     fn emit_filtered_rooms(&self) {
         let filtered = filter_rooms(
             &self.all_rooms,
@@ -722,7 +754,8 @@ impl AppService {
     }
 
     fn emit_spaces(&self) {
-        let spaces = aggregate_space_counts(&self.spaces, &self.space_children, &self.all_rooms);
+        let ordered = order_spaces(&self.spaces, &self.space_order);
+        let spaces = aggregate_space_counts(&ordered, &self.space_children, &self.all_rooms);
         self.emit(UiEvent::Spaces(spaces));
     }
 
@@ -731,6 +764,7 @@ impl AppService {
         self.all_rooms.clear();
         self.spaces.clear();
         self.space_children.clear();
+        self.space_order.clear();
         self.selected_space = None;
     }
 
@@ -893,6 +927,17 @@ fn filter_rooms(
             None => Vec::new(),
         },
     }
+}
+
+fn order_spaces(spaces: &[Space], order: &[String]) -> Vec<Space> {
+    let position: HashMap<&str, usize> = order
+        .iter()
+        .enumerate()
+        .map(|(i, id)| (id.as_str(), i))
+        .collect();
+    let mut ordered = spaces.to_vec();
+    ordered.sort_by_key(|s| position.get(s.id.as_str()).copied().unwrap_or(usize::MAX));
+    ordered
 }
 
 fn aggregate_space_counts(
