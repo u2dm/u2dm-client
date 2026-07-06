@@ -17,19 +17,44 @@ thread_local! {
 }
 
 use super::common::{
-    BoolProp, Status, StringProp, UiProps, dispatch_ui_event, load_image_cached, sender_initial,
+    BoolProp, IntProp, Status, StringProp, UiProps, dispatch_ui_event, load_image_cached,
+    sender_initial,
 };
 use crate::commands::{UiCommand, UiEvent};
 use crate::domain::models::{
     LoginCredentials, MessageBody, Room, RoomId, Space, TimelineMessage,
     VerificationEmoji as DomainVerificationEmoji,
 };
+use crate::emoji;
 use crate::error::{AppError, Result};
 
 fn set_prop(inst: &ComponentInstance, name: &str, value: Value) {
     if let Err(e) = inst.set_property(name, value) {
         tracing::warn!("failed to set property '{name}': {e:?}");
     }
+}
+
+fn set_global_prop(inst: &ComponentInstance, global: &str, name: &str, value: Value) -> Result<()> {
+    inst.set_global_property(global, name, value)
+        .map_err(|e| AppError::Ui(format!("{e:?}")))
+}
+
+fn string_arg(args: &[Value], index: usize) -> String {
+    args.get(index)
+        .and_then(|v| match v {
+            Value::String(s) => Some(s.to_string()),
+            _ => None,
+        })
+        .unwrap_or_default()
+}
+
+fn bool_arg(args: &[Value], index: usize) -> bool {
+    args.get(index)
+        .and_then(|v| match v {
+            Value::Bool(b) => Some(*b),
+            _ => None,
+        })
+        .unwrap_or_default()
 }
 
 impl UiProps for ComponentInstance {
@@ -39,6 +64,10 @@ impl UiProps for ComponentInstance {
 
     fn set_bool(&self, prop: BoolProp, value: bool) {
         set_prop(self, prop.as_str(), Value::Bool(value));
+    }
+
+    fn set_int(&self, prop: IntProp, value: i32) {
+        set_prop(self, prop.as_str(), Value::Number(value.into()));
     }
 
     fn get_string(&self, prop: StringProp) -> SharedString {
@@ -120,6 +149,8 @@ impl SlintUiAdapter {
 
     #[allow(clippy::too_many_lines)]
     pub fn register_callbacks(&self, cmd_tx: &mpsc::UnboundedSender<UiCommand>) -> Result<()> {
+        setup_emoji_store(&self.instance)?;
+
         let tx = cmd_tx.clone();
         let weak = self.instance.as_weak();
         self.instance
@@ -257,7 +288,14 @@ impl SlintUiAdapter {
             .set_callback("move-space", move |args: &[Value]| -> Value {
                 let index = |i: usize| -> Option<usize> {
                     match args.get(i) {
-                        Some(Value::Number(n)) if *n >= 0.0 => usize::try_from(*n as i64).ok(),
+                        Some(Value::Number(n))
+                            if n.is_finite()
+                                && n.fract() == 0.0
+                                && *n >= 0.0
+                                && *n <= u32::MAX.into() =>
+                        {
+                            n.to_string().parse().ok()
+                        }
                         _ => None,
                     }
                 };
@@ -396,6 +434,57 @@ impl SlintUiAdapter {
             })
             .map_err(|e| AppError::Ui(format!("{e:?}")))?;
 
+        let tx = cmd_tx.clone();
+        self.instance
+            .set_callback("scroll-position-changed", move |args: &[Value]| -> Value {
+                if let Err(e) = tx.send(UiCommand::ScrollPositionChanged {
+                    at_top: bool_arg(args, 0),
+                    at_bottom: bool_arg(args, 1),
+                }) {
+                    tracing::debug!("failed to send ScrollPositionChanged command: {e}");
+                }
+                Value::Void
+            })
+            .map_err(|e| AppError::Ui(format!("{e:?}")))?;
+
+        let tx = cmd_tx.clone();
+        let weak = self.instance.as_weak();
+        self.instance
+            .set_callback("paginate-backwards", move |_args: &[Value]| -> Value {
+                let room_id = weak
+                    .upgrade()
+                    .map(|inst| inst.get_string(StringProp::SelectedRoomId).to_string())
+                    .unwrap_or_default();
+                if !room_id.is_empty()
+                    && let Err(e) = tx.send(UiCommand::PaginateBackwards {
+                        room_id: RoomId::new(room_id),
+                    })
+                {
+                    tracing::debug!("failed to send PaginateBackwards command: {e}");
+                }
+                Value::Void
+            })
+            .map_err(|e| AppError::Ui(format!("{e:?}")))?;
+
+        let tx = cmd_tx.clone();
+        let weak = self.instance.as_weak();
+        self.instance
+            .set_callback("jump-to-latest", move |_args: &[Value]| -> Value {
+                let room_id = weak
+                    .upgrade()
+                    .map(|inst| inst.get_string(StringProp::SelectedRoomId).to_string())
+                    .unwrap_or_default();
+                if !room_id.is_empty()
+                    && let Err(e) = tx.send(UiCommand::JumpToLatest {
+                        room_id: RoomId::new(room_id),
+                    })
+                {
+                    tracing::debug!("failed to send JumpToLatest command: {e}");
+                }
+                Value::Void
+            })
+            .map_err(|e| AppError::Ui(format!("{e:?}")))?;
+
         Ok(())
     }
 
@@ -458,8 +547,107 @@ impl SlintUiAdapter {
     }
 }
 
+fn emoji_entry_to_value(e: &emoji::EmojiEntry) -> Value {
+    let tones: Vec<Value> = e
+        .tones
+        .iter()
+        .map(|t| Value::String(SharedString::from(t.as_str())))
+        .collect();
+
+    Value::Struct(Struct::from_iter([
+        (
+            "base".to_string(),
+            Value::String(SharedString::from(&e.base)),
+        ),
+        (
+            "tones".to_string(),
+            Value::Model(ModelRc::new(VecModel::from(tones))),
+        ),
+        (
+            "name".to_string(),
+            Value::String(SharedString::from(&e.name)),
+        ),
+    ]))
+}
+
+fn emoji_groups_to_value() -> Value {
+    let groups: Vec<Value> = emoji::groups()
+        .iter()
+        .map(|items| {
+            let entries: Vec<Value> = items.iter().map(emoji_entry_to_value).collect();
+            Value::Struct(Struct::from_iter([(
+                "items".to_string(),
+                Value::Model(ModelRc::new(VecModel::from(entries))),
+            )]))
+        })
+        .collect();
+
+    Value::Model(ModelRc::new(VecModel::from(groups)))
+}
+
+fn emoji_search_results_to_value(query: &str) -> Value {
+    let results: Vec<Value> = emoji::search(query)
+        .iter()
+        .map(emoji_entry_to_value)
+        .collect();
+    Value::Model(ModelRc::new(VecModel::from(results)))
+}
+
+fn setup_emoji_store(inst: &ComponentInstance) -> Result<()> {
+    set_global_prop(inst, "EmojiStore", "groups", emoji_groups_to_value())?;
+
+    let weak = inst.as_weak();
+    inst.set_global_callback("EmojiStore", "search", move |args: &[Value]| -> Value {
+        if let Some(inst) = weak.upgrade()
+            && let Err(e) = inst.set_global_property(
+                "EmojiStore",
+                "results",
+                emoji_search_results_to_value(&string_arg(args, 0)),
+            )
+        {
+            tracing::warn!("failed to set EmojiStore.results: {e:?}");
+        }
+        Value::Void
+    })
+    .map_err(|e| AppError::Ui(format!("{e:?}")))?;
+
+    inst.set_global_callback("EmojiStore", "insert", move |args: &[Value]| -> Value {
+        let text = string_arg(args, 0);
+        let offset = args
+            .get(1)
+            .and_then(|v| match v {
+                Value::Number(n)
+                    if n.is_finite()
+                        && n.fract() == 0.0
+                        && *n >= f64::from(i32::MIN)
+                        && *n <= f64::from(i32::MAX) =>
+                {
+                    n.to_string().parse().ok()
+                }
+                _ => None,
+            })
+            .unwrap_or_default();
+        let glyph = string_arg(args, 2);
+        let (inserted, caret) = emoji::insert_at(&text, offset, &glyph);
+        Value::Struct(Struct::from_iter([
+            (
+                "text".to_string(),
+                Value::String(SharedString::from(inserted)),
+            ),
+            ("caret".to_string(), Value::Number(f64::from(caret))),
+        ]))
+    })
+    .map_err(|e| AppError::Ui(format!("{e:?}")))?;
+
+    Ok(())
+}
+
 fn message_to_value(m: &TimelineMessage) -> Value {
     let mut fields = vec![
+        (
+            "unique-id".to_string(),
+            Value::String(SharedString::from(&m.unique_id)),
+        ),
         (
             "sender".to_string(),
             Value::String(SharedString::from(m.display_sender())),
