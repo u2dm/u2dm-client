@@ -1,6 +1,7 @@
 #![allow(clippy::pub_use)]
 
 mod common;
+mod emoji;
 mod output;
 
 use slint::PlatformError;

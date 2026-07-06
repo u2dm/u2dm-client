@@ -20,12 +20,12 @@ use super::common::{
     BoolProp, IntProp, Status, StringProp, UiProps, dispatch_ui_event, load_image_cached,
     sender_initial,
 };
+use super::emoji;
 use crate::commands::{UiCommand, UiEvent};
 use crate::domain::models::{
     LoginCredentials, MessageBody, Room, RoomId, Space, TimelineMessage,
     VerificationEmoji as DomainVerificationEmoji,
 };
-use crate::emoji;
 use crate::error::{AppError, Result};
 
 fn set_prop(inst: &ComponentInstance, name: &str, value: Value) {

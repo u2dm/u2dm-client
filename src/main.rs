@@ -24,7 +24,6 @@ mod app;
 mod commands;
 mod config;
 mod domain;
-mod emoji;
 mod error;
 mod ports;
 mod util;
