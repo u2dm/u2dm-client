@@ -154,8 +154,12 @@ impl AppService {
                 UiCommand::SelectRoom(room_id) => {
                     self.handle_select_room(room_id).await;
                 }
-                UiCommand::SendMessage { room_id, body } => {
-                    self.handle_send_message(room_id, body).await;
+                UiCommand::SendMessage {
+                    room_id,
+                    body,
+                    reply_to,
+                } => {
+                    self.handle_send_message(room_id, body, reply_to).await;
                 }
                 UiCommand::PaginateBackwards { room_id } => {
                     self.handle_paginate_backwards(&room_id);
@@ -577,8 +581,17 @@ impl AppService {
         }
     }
 
-    async fn handle_send_message(&mut self, room_id: RoomId, body: String) {
-        if let Err(e) = self.matrix.send_text(&room_id, &body).await {
+    async fn handle_send_message(
+        &mut self,
+        room_id: RoomId,
+        body: String,
+        reply_to: Option<String>,
+    ) {
+        let result = match reply_to {
+            Some(event_id) => self.matrix.send_reply(&room_id, &body, &event_id).await,
+            None => self.matrix.send_text(&room_id, &body).await,
+        };
+        if let Err(e) = result {
             tracing::warn!("failed to enqueue message: {e}");
             self.emit_toast_error(format!("Failed to send message: {e}"));
         }

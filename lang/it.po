@@ -117,22 +117,52 @@ msgctxt "ChatScreen"
 msgid "File saved to {}"
 msgstr "File salvato in {}"
 
-#: ui/screens/chat/components/timeline/message-input.slint:86
+#: ui/screens/chat/components/timeline/message-input.slint:97
+msgctxt "MessageInput"
+msgid "Reply to {}"
+msgstr ""
+
+#: ui/screens/chat/components/timeline/message-input.slint:117
+msgctxt "MessageInput"
+msgid "Cancel reply"
+msgstr ""
+
+#: ui/screens/chat/components/timeline/message-input.slint:163
 msgctxt "MessageInput"
 msgid "Send a message..."
 msgstr ""
 
-#: ui/screens/chat/components/timeline/message-input.slint:98
+#: ui/screens/chat/components/timeline/message-input.slint:175
 msgctxt "MessageInput"
 msgid "Emoji"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/message-input.slint:118
+#: ui/screens/chat/components/timeline/message-input.slint:195
 msgctxt "MessageInput"
 msgid "Send"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/timeline-content.slint:34
+#: ui/screens/chat/components/timeline/message-bubble.slint:33
+msgctxt "MessageBubble"
+msgid "📷 Photo"
+msgstr ""
+
+#: ui/screens/chat/components/timeline/message-bubble.slint:36
+msgctxt "MessageBubble"
+msgid "📎 {}"
+msgstr ""
+
+#: ui/screens/chat/components/timeline/message-bubble.slint:39
+msgctxt "MessageBubble"
+msgid "🔒 Encrypted message"
+msgstr ""
+
+#: ui/screens/chat/components/timeline/message-bubble.slint:227
+msgctxt "MessageBubble"
+msgid "Reply"
+msgstr ""
+
+#: ui/screens/chat/components/timeline/timeline-content.slint:35
 msgctxt "TimelineContent"
 msgid "Loading older messages..."
 msgstr ""
@@ -167,12 +197,12 @@ msgctxt "EmojiPicker"
 msgid "No emoji found"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/timeline-view.slint:36
+#: ui/screens/chat/components/timeline/timeline-view.slint:39
 msgctxt "TimelineView"
 msgid "Select a room"
 msgstr "Seleziona una stanza"
 
-#: ui/screens/chat/components/timeline/timeline-view.slint:64
+#: ui/screens/chat/components/timeline/timeline-view.slint:67
 msgctxt "TimelineView"
 msgid "Loading messages..."
 msgstr "Caricamento messaggi..."

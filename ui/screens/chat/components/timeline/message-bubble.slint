@@ -1,6 +1,7 @@
 import {
     Palette,
 } from "std-widgets.slint";
+import { IconDisplay, IconSet } from "@lucide";
 
 import {
     MessageEntry,
@@ -12,6 +13,7 @@ import { ImageMessage } from "./messages/image-message.slint";
 import { FileMessage } from "./messages/file-message.slint";
 import { UtdMessage } from "./messages/utd-message.slint";
 import { UnsupportedMessage } from "./messages/unsupported-message.slint";
+import { Fonts } from "../../../../theme.slint";
 
 export component MessageBubble inherits Rectangle {
     in property <bool> is-own;
@@ -20,10 +22,24 @@ export component MessageBubble inherits Rectangle {
 
     callback open-media(string);
     callback save-file(SaveFileRequest);
+    callback reply(string, string, string);
 
     property <color> own-bubble-color: Palette.accent-background.transparentize(0.4);
     property <color> other-bubble-color: Palette.alternate-background;
     property <length> bubble-max-width: available-width * 0.7;
+
+    pure function reply-preview() -> string {
+        if msg.message-type == "image" {
+            return @tr("📷 Photo");
+        }
+        if msg.message-type == "file" {
+            return @tr("📎 {}", msg.body);
+        }
+        if msg.message-type == "utd" {
+            return @tr("🔒 Encrypted message");
+        }
+        return msg.body;
+    }
 
     HorizontalLayout {
         alignment: is-own ? end : start;
@@ -69,6 +85,11 @@ export component MessageBubble inherits Rectangle {
             background: is-own ? own-bubble-color : other-bubble-color;
             border-radius: 12px;
 
+            hover-bg := TouchArea {
+                width: 100%;
+                height: 100%;
+            }
+
             bubble-content := VerticalLayout {
                 padding: 4px;
                 padding-left: 10px;
@@ -80,6 +101,46 @@ export component MessageBubble inherits Rectangle {
                         font-size: 12px;
                         font-weight: 700;
                         color: Palette.accent-background;
+                    }
+                }
+
+                if msg.has-reply: Rectangle {
+                    height: reply-quote.preferred-height + 8px;
+                    border-radius: 4px;
+                    background: is-own
+                        ? Palette.accent-background.transparentize(0.7)
+                        : Palette.foreground.transparentize(0.92);
+
+                    HorizontalLayout {
+                        padding: 4px;
+                        spacing: 6px;
+
+                        Rectangle {
+                            width: 3px;
+                            border-radius: 1.5px;
+                            background: Palette.accent-background;
+                        }
+
+                        reply-quote := VerticalLayout {
+                            spacing: 1px;
+                            alignment: center;
+
+                            Text {
+                                text: msg.reply-sender;
+                                font-size: 12px;
+                                font-weight: 700;
+                                color: Palette.accent-background;
+                                overflow: elide;
+                            }
+
+                            Text {
+                                text: msg.reply-body;
+                                font-family: Fonts.emoji;
+                                font-size: 12px;
+                                color: Palette.foreground.transparentize(0.35);
+                                overflow: elide;
+                            }
+                        }
                     }
                 }
 
@@ -123,6 +184,51 @@ export component MessageBubble inherits Rectangle {
                             font-size: 12px;
                             color: Palette.foreground.transparentize(0.5);
                             horizontal-alignment: right;
+                        }
+                    }
+                }
+            }
+
+            reply-btn := TouchArea {
+                x: parent.width - self.width - 6px;
+                y: 4px;
+                width: reply-pill.width;
+                height: reply-pill.height;
+                mouse-cursor: pointer;
+                visible: hover-bg.has-hover || self.has-hover;
+                clicked => {
+                    root.reply(msg.event-id, msg.sender, root.reply-preview());
+                }
+
+                reply-pill := Rectangle {
+                    width: reply-row.preferred-width;
+                    height: 22px;
+                    border-radius: 11px;
+                    background: Palette.accent-background;
+                    drop-shadow-blur: 4px;
+                    drop-shadow-color: Palette.foreground.transparentize(0.7);
+
+                    reply-row := HorizontalLayout {
+                        alignment: center;
+                        spacing: 4px;
+                        padding-left: 8px;
+                        padding-right: 8px;
+
+                        IconDisplay {
+                            width: 13px;
+                            height: 13px;
+                            y: (parent.height - self.height) / 2;
+                            icon: IconSet.Reply;
+                            size: 13px;
+                            stroke: Palette.accent-foreground;
+                        }
+
+                        Text {
+                            text: @tr("Reply");
+                            font-size: 12px;
+                            font-weight: 600;
+                            vertical-alignment: center;
+                            color: Palette.accent-foreground;
                         }
                     }
                 }

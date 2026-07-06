@@ -1,11 +1,11 @@
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex as StdMutex};
 
 use futures_util::StreamExt;
 use matrix_sdk::Client;
 use matrix_sdk::ruma::events::room::MediaSource;
-use matrix_sdk::ruma::{IdParseError, OwnedRoomId};
+use matrix_sdk::ruma::{IdParseError, OwnedEventId, OwnedRoomId};
 use matrix_sdk_ui::eyeball_im::VectorDiff;
 use matrix_sdk_ui::timeline::{RoomExt as _, Timeline, TimelineItem};
 use tokio::fs;
@@ -189,6 +189,40 @@ async fn setup_timeline(client: &Client, room_id: &RoomId) -> Result<(Arc<Timeli
     Ok((timeline, room_id_parsed))
 }
 
+fn spawn_reply_detail_fetches(
+    items: &[Arc<TimelineItem>],
+    timeline: &Arc<Timeline>,
+    fetched: &mut HashSet<String>,
+    side_tasks: &mut JoinSet<()>,
+) {
+    for item in items {
+        let Some(event) = item.as_event() else {
+            continue;
+        };
+        let Some(details) = event.content().in_reply_to() else {
+            continue;
+        };
+        if !details.event.is_unavailable() {
+            continue;
+        }
+        let Some(event_id) = event.event_id().map(ToString::to_string) else {
+            continue;
+        };
+        if !fetched.insert(event_id.clone()) {
+            continue;
+        }
+        let timeline = Arc::clone(timeline);
+        side_tasks.spawn(async move {
+            let Ok(id) = OwnedEventId::try_from(event_id.as_str()) else {
+                return;
+            };
+            if let Err(e) = timeline.fetch_details_for_event(&id).await {
+                tracing::debug!("failed to fetch reply details: {e}");
+            }
+        });
+    }
+}
+
 async fn handle_room_keys(timeline: &Timeline, keys: BTreeMap<String, BTreeSet<String>>) {
     let session_ids: Vec<String> = keys.into_values().flatten().collect();
     if !session_ids.is_empty() {
@@ -233,6 +267,14 @@ pub(crate) async fn subscribe_timeline(
         return Ok(());
     }
 
+    let mut fetched_reply_details: HashSet<String> = HashSet::new();
+    spawn_reply_detail_fetches(
+        &items,
+        &timeline,
+        &mut fetched_reply_details,
+        &mut side_tasks,
+    );
+
     let mut key_stream = std::pin::pin!(
         client
             .encryption()
@@ -251,6 +293,7 @@ pub(crate) async fn subscribe_timeline(
                 {
                     return Ok(());
                 }
+                spawn_reply_detail_fetches(&items, &timeline, &mut fetched_reply_details, &mut side_tasks);
             }
             result = key_stream.next() => {
                 if let Some(Ok(keys)) = result {

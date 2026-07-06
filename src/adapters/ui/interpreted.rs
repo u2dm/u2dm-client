@@ -307,11 +307,13 @@ impl SlintUiAdapter {
                 };
                 let room_id = field("room-id");
                 let body = field("body");
+                let reply_to = field("reply-to");
                 if !room_id.is_empty()
                     && !body.is_empty()
                     && let Err(e) = tx.send(UiCommand::SendMessage {
                         room_id: RoomId::new(room_id),
                         body,
+                        reply_to: (!reply_to.is_empty()).then_some(reply_to),
                     })
                 {
                     tracing::debug!("failed to send SendMessage command: {e}");
@@ -516,6 +518,19 @@ fn message_to_value(m: &TimelineMessage) -> Value {
         Value::String(SharedString::from(sender_initial(m.display_sender()))),
     ));
     fields.push(("is-own".to_string(), Value::Bool(m.is_own)));
+    fields.push(("has-reply".to_string(), Value::Bool(m.reply.is_some())));
+    fields.push((
+        "reply-sender".to_string(),
+        Value::String(SharedString::from(
+            m.reply.as_ref().map_or("", |r| r.sender.as_str()),
+        )),
+    ));
+    fields.push((
+        "reply-body".to_string(),
+        Value::String(SharedString::from(
+            m.reply.as_ref().map_or("", |r| r.preview.as_str()),
+        )),
+    ));
 
     Value::Struct(Struct::from_iter(fields))
 }

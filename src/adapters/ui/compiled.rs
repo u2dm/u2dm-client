@@ -222,11 +222,13 @@ impl SlintUiAdapter {
         self.window.on_send_message(move |req| {
             let room_id = req.room_id.to_string();
             let body = req.body.to_string();
+            let reply_to = req.reply_to.to_string();
             if !room_id.is_empty()
                 && !body.is_empty()
                 && let Err(e) = tx.send(UiCommand::SendMessage {
                     room_id: RoomId::new(room_id),
                     body,
+                    reply_to: (!reply_to.is_empty()).then_some(reply_to),
                 })
             {
                 tracing::debug!("failed to send SendMessage command: {e}");
@@ -426,6 +428,9 @@ fn message_to_entry(m: &TimelineMessage) -> MessageEntry {
         event_id: SharedString::from(&m.event_id.0),
         sender_initial: SharedString::from(sender_initial(m.display_sender())),
         is_own: m.is_own,
+        has_reply: m.reply.is_some(),
+        reply_sender: SharedString::from(m.reply.as_ref().map_or("", |r| r.sender.as_str())),
+        reply_body: SharedString::from(m.reply.as_ref().map_or("", |r| r.preview.as_str())),
         ..Default::default()
     };
 

@@ -20,6 +20,9 @@ export component TimelineView inherits Rectangle {
     in property <int> new-messages-count: 0;
     in property <bool> backwards-loading: false;
     in-out property <string> input-message: "";
+    in-out property <string> reply-event-id: "";
+    in-out property <string> reply-sender: "";
+    in-out property <string> reply-preview: "";
 
     callback send-message(SendMessageRequest);
     callback open-media(string);
@@ -83,6 +86,11 @@ export component TimelineView inherits Rectangle {
         save-file(req) => {
             root.save-file(req);
         }
+        reply(id, sender, preview) => {
+            root.reply-event-id = id;
+            root.reply-sender = sender;
+            root.reply-preview = preview;
+        }
         scroll-position-changed(at-top, at-bottom) => {
             root.scroll-position-changed(at-top, at-bottom);
         }
@@ -93,11 +101,13 @@ export component TimelineView inherits Rectangle {
 
     if root.selected-room-name != "": MessageInput {
         x: 0;
-        y: root.height - root.input-height;
+        y: root.height - self.height;
         width: root.width;
-        height: root.input-height;
         room-id: root.selected-room-id;
         message <=> root.input-message;
+        reply-event-id <=> root.reply-event-id;
+        reply-sender <=> root.reply-sender;
+        reply-preview <=> root.reply-preview;
         send-message(req) => {
             root.send-message(req);
         }

@@ -5,9 +5,13 @@ use matrix_sdk::ruma::events::room::MediaSource;
 use matrix_sdk::ruma::events::room::message::{
     FileMessageEventContent, ImageMessageEventContent, MessageType,
 };
-use matrix_sdk_ui::timeline::{EventTimelineItem, TimelineDetails, TimelineItem};
+use matrix_sdk_ui::timeline::{
+    EventTimelineItem, TimelineDetails, TimelineItem, TimelineItemContent,
+};
 
-use crate::domain::models::{EventId, FileMeta, ImageMeta, MessageBody, TimelineMessage};
+use crate::domain::models::{
+    EventId, FileMeta, ImageMeta, MessageBody, ReplyInfo, TimelineMessage,
+};
 
 fn extract_sender_profile(event: &EventTimelineItem) -> (Option<String>, Option<String>) {
     match event.sender_profile() {
@@ -24,6 +28,7 @@ fn build_utd_message(
     event: &EventTimelineItem,
     event_id_str: String,
     own_user_id: Option<&str>,
+    reply: Option<ReplyInfo>,
 ) -> TimelineMessage {
     let (sender_display_name, sender_avatar_url) = extract_sender_profile(event);
     let ts: u64 = event.timestamp().0.into();
@@ -39,7 +44,48 @@ fn build_utd_message(
         body: MessageBody::UnableToDecrypt,
         timestamp: ts,
         is_own,
+        reply,
     }
+}
+
+fn reply_preview_from_content(content: &TimelineItemContent) -> String {
+    if let Some(message) = content.as_message() {
+        return match message.msgtype() {
+            MessageType::Image(_) => "📷 Photo".to_owned(),
+            MessageType::Video(_) => "🎬 Video".to_owned(),
+            MessageType::Audio(_) => "🎵 Audio".to_owned(),
+            MessageType::Location(_) => "📍 Location".to_owned(),
+            MessageType::File(f) => {
+                format!(
+                    "📎 {}",
+                    f.filename.clone().unwrap_or_else(|| f.body.clone())
+                )
+            }
+            other => other.body().to_owned(),
+        };
+    }
+    if content.as_unable_to_decrypt().is_some() {
+        return "🔒 Encrypted message".to_owned();
+    }
+    String::new()
+}
+
+fn extract_reply(content: &TimelineItemContent) -> Option<ReplyInfo> {
+    let details = content.in_reply_to()?;
+    let TimelineDetails::Ready(embedded) = details.event else {
+        return None;
+    };
+    let sender = match &embedded.sender_profile {
+        TimelineDetails::Ready(profile) => profile
+            .display_name
+            .clone()
+            .unwrap_or_else(|| embedded.sender.to_string()),
+        _ => embedded.sender.to_string(),
+    };
+    Some(ReplyInfo {
+        sender,
+        preview: reply_preview_from_content(&embedded.content),
+    })
 }
 
 fn extract_image_body(
@@ -138,6 +184,7 @@ pub(super) fn convert_event_item_with_uid(
         .unwrap_or_default();
 
     let content = event.content();
+    let reply = extract_reply(content);
 
     let Some(message) = content.as_message() else {
         if content.as_unable_to_decrypt().is_some() {
@@ -146,6 +193,7 @@ pub(super) fn convert_event_item_with_uid(
                 event,
                 event_id_str,
                 own_user_id,
+                reply,
             ));
         }
         tracing::debug!(
@@ -172,5 +220,6 @@ pub(super) fn convert_event_item_with_uid(
         body,
         timestamp: ts,
         is_own,
+        reply,
     })
 }

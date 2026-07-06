@@ -35,6 +35,9 @@ export struct MessageEntry {
     avatar: image,
     sender-initial: string,
     is-own: bool,
+    has-reply: bool,
+    reply-sender: string,
+    reply-body: string,
 }
 
 export struct EmojiEntry {
@@ -55,6 +58,7 @@ export struct EmojiInsert {
 export struct SendMessageRequest {
     room-id: string,
     body: string,
+    reply-to: string,
 }
 
 export struct SaveFileRequest {

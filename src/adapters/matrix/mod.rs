@@ -13,9 +13,12 @@ use async_trait::async_trait;
 use matrix_sdk::Client;
 use matrix_sdk::encryption::verification::{SasVerification, VerificationRequest};
 use matrix_sdk::event_handler::EventHandlerDropGuard;
+use matrix_sdk::room::reply::{EnforceThread, Reply};
 use matrix_sdk::ruma::events::room::MediaSource;
-use matrix_sdk::ruma::events::room::message::RoomMessageEventContent;
-use matrix_sdk::ruma::{IdParseError, OwnedRoomId};
+use matrix_sdk::ruma::events::room::message::{
+    AddMentions, RoomMessageEventContent, RoomMessageEventContentWithoutRelation,
+};
+use matrix_sdk::ruma::{IdParseError, OwnedEventId, OwnedRoomId};
 use matrix_sdk::utils::local_server::LocalServerRedirectHandle;
 use tokio::sync::{Mutex, RwLock, mpsc};
 
@@ -212,6 +215,34 @@ impl MatrixPort for MatrixAdapter {
             .get_room(&room_id_parsed)
             .ok_or_else(|| AppError::Other("Room not found".into()))?;
         let content = RoomMessageEventContent::text_plain(body);
+        room.send(content)
+            .await
+            .map_err(|e| AppError::Other(e.to_string()))?;
+        Ok(())
+    }
+
+    async fn send_reply(&self, room_id: &RoomId, body: &str, in_reply_to: &str) -> Result<()> {
+        let client = self.get_client().await?;
+        let room_id_parsed: OwnedRoomId = room_id
+            .as_ref()
+            .try_into()
+            .map_err(|e: IdParseError| AppError::Other(e.to_string()))?;
+        let room = client
+            .get_room(&room_id_parsed)
+            .ok_or_else(|| AppError::Other("Room not found".into()))?;
+        let event_id: OwnedEventId = in_reply_to
+            .try_into()
+            .map_err(|e: IdParseError| AppError::Other(e.to_string()))?;
+        let content = RoomMessageEventContentWithoutRelation::text_plain(body);
+        let reply = Reply {
+            event_id,
+            enforce_thread: EnforceThread::MaybeThreaded,
+            add_mentions: AddMentions::Yes,
+        };
+        let content = room
+            .make_reply_event(content, reply)
+            .await
+            .map_err(|e| AppError::Other(e.to_string()))?;
         room.send(content)
             .await
             .map_err(|e| AppError::Other(e.to_string()))?;

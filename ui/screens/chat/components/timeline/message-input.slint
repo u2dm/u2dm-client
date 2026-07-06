@@ -10,20 +10,36 @@ import { Fonts } from "../../../../theme.slint";
 export component MessageInput inherits Rectangle {
     in property <string> room-id;
     in-out property <string> message: "";
+    in-out property <string> reply-event-id: "";
+    in-out property <string> reply-sender: "";
+    in-out property <string> reply-preview: "";
 
     callback send-message(SendMessageRequest);
 
     property <bool> picker-open: false;
     property <int> caret: 0;
     property <EmojiInsert> pending-insert;
+    property <length> input-row-height: 40px;
 
     background: Palette.alternate-background;
+    height: layout.preferred-height;
 
     function submit() {
         if root.message != "" {
-            root.send-message({ room-id: root.room-id, body: root.message });
+            root.send-message({
+                room-id: root.room-id,
+                body: root.message,
+                reply-to: root.reply-event-id,
+            });
             root.message = "";
+            root.clear-reply();
         }
+    }
+
+    function clear-reply() {
+        root.reply-event-id = "";
+        root.reply-sender = "";
+        root.reply-preview = "";
     }
 
     if root.picker-open: TouchArea {
@@ -54,7 +70,68 @@ export component MessageInput inherits Rectangle {
         text-input.set-selection-offsets(root.pending-insert.caret, root.pending-insert.caret);
     }
 
-    HorizontalLayout {
+    layout := VerticalLayout {
+        if root.reply-event-id != "": Rectangle {
+            height: 44px;
+            background: Palette.background.transparentize(0.3);
+
+            HorizontalLayout {
+                padding-left: 12px;
+                padding-right: 8px;
+                padding-top: 6px;
+                padding-bottom: 6px;
+                spacing: 8px;
+
+                Rectangle {
+                    width: 3px;
+                    background: Palette.accent-background;
+                    border-radius: 1.5px;
+                }
+
+                VerticalLayout {
+                    horizontal-stretch: 1;
+                    alignment: center;
+                    spacing: 1px;
+
+                    Text {
+                        text: @tr("Reply to {}", root.reply-sender);
+                        font-size: 12px;
+                        font-weight: 700;
+                        color: Palette.accent-background;
+                        overflow: elide;
+                    }
+
+                    Text {
+                        text: root.reply-preview;
+                        font-family: Fonts.emoji;
+                        font-size: 12px;
+                        color: Palette.foreground.transparentize(0.4);
+                        overflow: elide;
+                    }
+                }
+
+                cancel-reply-touch := TouchArea {
+                    width: 28px;
+                    mouse-cursor: pointer;
+                    accessible-role: button;
+                    accessible-label: @tr("Cancel reply");
+                    clicked => {
+                        root.clear-reply();
+                    }
+
+                    IconDisplay {
+                        x: (parent.width - self.width) / 2;
+                        y: (parent.height - self.height) / 2;
+                        icon: IconSet.X;
+                        size: 16px;
+                        stroke: Palette.foreground.transparentize(0.4);
+                    }
+                }
+            }
+        }
+
+        HorizontalLayout {
+        height: root.input-row-height;
         padding-left: 12px;
         padding-right: 12px;
 
@@ -129,6 +206,7 @@ export component MessageInput inherits Rectangle {
                     ? Palette.accent-background
                     : Palette.foreground.transparentize(0.6);
             }
+        }
         }
     }
 }

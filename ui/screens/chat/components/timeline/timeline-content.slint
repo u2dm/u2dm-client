@@ -19,6 +19,7 @@ export component TimelineContent inherits Rectangle {
 
     callback open-media(string);
     callback save-file(SaveFileRequest);
+    callback reply(string, string, string);
     callback scroll-position-changed(bool, bool);
     callback jump-to-latest();
 
@@ -125,6 +126,9 @@ export component TimelineContent inherits Rectangle {
             }
             save-file(req) => {
                 root.save-file(req);
+            }
+            reply(id, sender, preview) => {
+                root.reply(id, sender, preview);
             }
         }
     }

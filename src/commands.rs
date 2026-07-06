@@ -33,6 +33,7 @@ pub enum UiCommand {
     SendMessage {
         room_id: RoomId,
         body: String,
+        reply_to: Option<String>,
     },
     #[strum(to_string = "PaginateBackwards({room_id})")]
     PaginateBackwards {

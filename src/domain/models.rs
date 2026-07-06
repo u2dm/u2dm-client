@@ -298,6 +298,12 @@ impl MessageBody {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ReplyInfo {
+    pub sender: String,
+    pub preview: String,
+}
+
 #[derive(Debug, Clone)]
 #[allow(dead_code)]
 pub struct TimelineMessage {
@@ -310,6 +316,7 @@ pub struct TimelineMessage {
     pub body: MessageBody,
     pub timestamp: u64,
     pub is_own: bool,
+    pub reply: Option<ReplyInfo>,
 }
 
 impl TimelineMessage {
@@ -321,6 +328,7 @@ impl TimelineMessage {
             && self.body == other.body
             && self.timestamp == other.timestamp
             && self.is_own == other.is_own
+            && self.reply == other.reply
     }
 
     pub fn display_sender(&self) -> &str {
