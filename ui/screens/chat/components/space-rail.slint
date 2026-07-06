@@ -98,24 +98,19 @@ component SpaceTile inherits Rectangle {
             x: avatar-circle.x + avatar-circle.width - self.width + 4px;
             y: avatar-circle.y - 3px;
             height: 18px;
-            min-width: 18px;
+            width: max(18px, badge-text.preferred-width + 10px);
             border-radius: 9px;
             background: Palette.accent-background;
             border-width: 2px;
             border-color: Palette.alternate-background;
 
-            HorizontalLayout {
-                padding-left: 5px;
-                padding-right: 5px;
-
-                Text {
-                    text: root.unread > 0 ? root.unread : root.mentions;
-                    font-size: 10px;
-                    font-weight: 700;
-                    horizontal-alignment: center;
-                    vertical-alignment: center;
-                    color: Palette.accent-foreground;
-                }
+            badge-text := Text {
+                text: root.unread > 99 ? "99+" : (root.unread > 0 ? root.unread : root.mentions);
+                font-size: 10px;
+                font-weight: 700;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+                color: Palette.accent-foreground;
             }
         }
     }

@@ -176,12 +176,12 @@ msgctxt "TimelineView"
 msgid "Loading messages..."
 msgstr ""
 
-#: ui/screens/chat/components/space-rail.slint:231
+#: ui/screens/chat/components/space-rail.slint:226
 msgctxt "SpaceRail"
 msgid "All Rooms"
 msgstr ""
 
-#: ui/screens/chat/components/space-rail.slint:232
+#: ui/screens/chat/components/space-rail.slint:227
 msgctxt "SpaceRail"
 msgid "All"
 msgstr ""
