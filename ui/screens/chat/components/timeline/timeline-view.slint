@@ -15,6 +15,7 @@ export component TimelineView inherits Rectangle {
 
     in property <string> selected-room-name: "";
     in property <string> selected-room-id: "";
+    in property <int> selected-room-members: 0;
     in property <[MessageEntry]> timeline: [];
     in property <bool> timeline-loading: false;
     in property <int> new-messages-count: 0;
@@ -33,7 +34,7 @@ export component TimelineView inherits Rectangle {
     callback paginate-forwards();
     callback jump-to-latest();
 
-    property <length> header-height: 40px;
+    property <length> header-height: 52px;
     property <length> input-height: 40px;
     property <length> spacing: 8px;
 
@@ -52,12 +53,26 @@ export component TimelineView inherits Rectangle {
         height: root.header-height;
         background: Palette.alternate-background;
 
-        Text {
-            text: root.selected-room-name;
-            font-family: Fonts.emoji;
-            font-size: 18px;
-            font-weight: 700;
-            vertical-alignment: center;
+        VerticalLayout {
+            x: 12px;
+            width: parent.width - 24px;
+            alignment: center;
+            spacing: 1px;
+
+            Text {
+                text: root.selected-room-name;
+                font-family: Fonts.emoji;
+                font-size: 16px;
+                font-weight: 700;
+                overflow: elide;
+            }
+
+            if root.selected-room-members > 0: Text {
+                text: @tr("{n} member" | "{n} members" % root.selected-room-members);
+                font-size: 12px;
+                color: Palette.foreground.transparentize(0.45);
+                overflow: elide;
+            }
         }
     }
 

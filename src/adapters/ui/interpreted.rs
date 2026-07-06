@@ -762,6 +762,11 @@ fn room_to_value(r: &Room) -> Value {
             Value::String(SharedString::from(&r.display_name)),
         ),
         #[allow(clippy::cast_precision_loss)]
+        (
+            "members".to_string(),
+            Value::Number(if r.is_direct { 0 } else { r.member_count } as f64),
+        ),
+        #[allow(clippy::cast_precision_loss)]
         ("unread".to_string(), Value::Number(r.unread_count as f64)),
         #[allow(clippy::cast_precision_loss)]
         (

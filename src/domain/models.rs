@@ -151,6 +151,7 @@ pub struct Room {
     pub id: RoomId,
     pub display_name: String,
     pub is_direct: bool,
+    pub member_count: u64,
     pub unread_count: u64,
     pub mention_count: u64,
     pub last_activity_ts: u64,

@@ -14,6 +14,7 @@ export component Sidebar inherits Rectangle {
     in property <[SpaceEntry]> spaces: [];
     in-out property <string> selected-room-id: "";
     in-out property <string> selected-room-name: "";
+    in-out property <int> selected-room-members: 0;
     in-out property <string> selected-space-id: "";
 
     callback select-room(string);
@@ -129,6 +130,7 @@ export component Sidebar inherits Rectangle {
                         touch := TouchArea {
                             clicked => {
                                 root.selected-room-name = room.name;
+                                root.selected-room-members = room.members;
                                 root.selected-room-id = room.id;
                                 root.select-room(room.id);
                             }

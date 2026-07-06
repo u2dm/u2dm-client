@@ -28,6 +28,7 @@ export component ChatScreen inherits Rectangle {
     in property <bool> forwards-loading: false;
     in-out property <string> selected-room-id: "";
     in-out property <string> selected-room-name: "";
+    in-out property <int> selected-room-members: 0;
     in-out property <string> selected-space-id: "";
     in-out property <string> input-message: "";
 
@@ -59,6 +60,7 @@ export component ChatScreen inherits Rectangle {
         spaces: root.spaces;
         selected-room-id <=> root.selected-room-id;
         selected-room-name <=> root.selected-room-name;
+        selected-room-members <=> root.selected-room-members;
         selected-space-id <=> root.selected-space-id;
         select-room(id) => {
             root.select-room(id);
@@ -81,6 +83,7 @@ export component ChatScreen inherits Rectangle {
         height: root.height;
         selected-room-name: root.selected-room-name;
         selected-room-id: root.selected-room-id;
+        selected-room-members: root.selected-room-members;
         timeline: root.timeline;
         timeline-loading: root.timeline-loading;
         new-messages-count: root.new-messages-count;

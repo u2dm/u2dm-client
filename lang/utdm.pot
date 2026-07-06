@@ -111,7 +111,7 @@ msgctxt "HomeserverScreen"
 msgid "Continue"
 msgstr ""
 
-#: ui/screens/chat/chat.slint:146
+#: ui/screens/chat/chat.slint:149
 msgctxt "ChatScreen"
 msgid "File saved to {}"
 msgstr ""
@@ -201,12 +201,19 @@ msgctxt "EmojiPicker"
 msgid "No emoji found"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/timeline-view.slint:41
+#: ui/screens/chat/components/timeline/timeline-view.slint:42
 msgctxt "TimelineView"
 msgid "Select a room"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/timeline-view.slint:69
+#: ui/screens/chat/components/timeline/timeline-view.slint:71
+msgctxt "TimelineView"
+msgid "{n} member"
+msgid_plural "{n} members"
+msgstr[0] ""
+msgstr[1] ""
+
+#: ui/screens/chat/components/timeline/timeline-view.slint:84
 msgctxt "TimelineView"
 msgid "Loading messages..."
 msgstr ""
@@ -226,47 +233,47 @@ msgctxt "SpaceRail"
 msgid "All"
 msgstr ""
 
-#: ui/screens/chat/components/sidebar.slint:26
+#: ui/screens/chat/components/sidebar.slint:27
 msgctxt "Sidebar"
 msgid "📷 Photo"
 msgstr ""
 
-#: ui/screens/chat/components/sidebar.slint:29
+#: ui/screens/chat/components/sidebar.slint:30
 msgctxt "Sidebar"
 msgid "🎬 Video"
 msgstr ""
 
-#: ui/screens/chat/components/sidebar.slint:32
+#: ui/screens/chat/components/sidebar.slint:33
 msgctxt "Sidebar"
 msgid "🎵 Audio"
 msgstr ""
 
-#: ui/screens/chat/components/sidebar.slint:35
+#: ui/screens/chat/components/sidebar.slint:36
 msgctxt "Sidebar"
 msgid "📎 {}"
 msgstr ""
 
-#: ui/screens/chat/components/sidebar.slint:38
+#: ui/screens/chat/components/sidebar.slint:39
 msgctxt "Sidebar"
 msgid "📍 Location"
 msgstr ""
 
-#: ui/screens/chat/components/sidebar.slint:41
+#: ui/screens/chat/components/sidebar.slint:42
 msgctxt "Sidebar"
 msgid "🔒 Encrypted message"
 msgstr ""
 
-#: ui/screens/chat/components/sidebar.slint:44
+#: ui/screens/chat/components/sidebar.slint:45
 msgctxt "Sidebar"
 msgid "Sticker"
 msgstr ""
 
-#: ui/screens/chat/components/sidebar.slint:88
+#: ui/screens/chat/components/sidebar.slint:89
 msgctxt "Sidebar"
 msgid "Search"
 msgstr ""
 
-#: ui/screens/chat/components/sidebar.slint:126
+#: ui/screens/chat/components/sidebar.slint:127
 msgctxt "Sidebar"
 msgid "You"
 msgstr ""

@@ -486,6 +486,12 @@ fn room_to_entry(r: &Room) -> RoomEntry {
         id: SharedString::from(r.id.as_ref()),
         name: SharedString::from(&r.display_name),
         #[allow(clippy::cast_possible_truncation)]
+        members: if r.is_direct {
+            0
+        } else {
+            r.member_count as i32
+        },
+        #[allow(clippy::cast_possible_truncation)]
         unread: r.unread_count as i32,
         #[allow(clippy::cast_possible_truncation)]
         mentions: r.mention_count as i32,

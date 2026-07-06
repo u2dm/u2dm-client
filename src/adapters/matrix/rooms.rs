@@ -39,12 +39,14 @@ async fn build_single_room(room: &Room) -> DomainRoom {
     let unread = room.num_unread_notifications();
     let mentions = room.num_unread_mentions();
     let is_direct = room.is_direct().await.unwrap_or_default();
+    let member_count = room.joined_members_count();
     let last_activity_ts: u64 = room.latest_event_timestamp().map_or(0, |ts| ts.0.into());
     let last_message = build_last_message(room, is_direct).await;
     DomainRoom {
         id: RoomId::new(room.room_id().to_string()),
         display_name,
         is_direct,
+        member_count,
         unread_count: unread,
         mention_count: mentions,
         last_activity_ts,
