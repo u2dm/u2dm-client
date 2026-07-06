@@ -111,7 +111,7 @@ msgctxt "HomeserverScreen"
 msgid "Continue"
 msgstr ""
 
-#: ui/screens/chat/chat.slint:140
+#: ui/screens/chat/chat.slint:146
 msgctxt "ChatScreen"
 msgid "File saved to {}"
 msgstr ""
@@ -161,9 +161,14 @@ msgctxt "MessageBubble"
 msgid "Reply"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/timeline-content.slint:35
+#: ui/screens/chat/components/timeline/timeline-content.slint:38
 msgctxt "TimelineContent"
 msgid "Loading older messages..."
+msgstr ""
+
+#: ui/screens/chat/components/timeline/timeline-content.slint:51
+msgctxt "TimelineContent"
+msgid "Loading newer messages..."
 msgstr ""
 
 #: ui/screens/chat/components/timeline/messages/image-message.slint:45
@@ -196,12 +201,12 @@ msgctxt "EmojiPicker"
 msgid "No emoji found"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/timeline-view.slint:39
+#: ui/screens/chat/components/timeline/timeline-view.slint:41
 msgctxt "TimelineView"
 msgid "Select a room"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/timeline-view.slint:67
+#: ui/screens/chat/components/timeline/timeline-view.slint:69
 msgctxt "TimelineView"
 msgid "Loading messages..."
 msgstr ""

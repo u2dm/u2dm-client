@@ -55,6 +55,7 @@ export component AppWindow inherits Window {
     in-out property <bool> timeline-loading: false;
     in-out property <int> new-messages-count: 0;
     in-out property <bool> backwards-loading: false;
+    in-out property <bool> forwards-loading: false;
 
     callback check-server(string);
     callback login-password(LoginRequest);
@@ -71,6 +72,7 @@ export component AppWindow inherits Window {
     callback reject-verification();
     callback scroll-position-changed(bool, bool);
     callback paginate-backwards();
+    callback paginate-forwards();
     callback jump-to-latest();
 
     in-out property <string> input-message: "";
@@ -121,6 +123,7 @@ export component AppWindow inherits Window {
         timeline-loading: root.timeline-loading;
         new-messages-count: root.new-messages-count;
         backwards-loading: root.backwards-loading;
+        forwards-loading: root.forwards-loading;
         toast-message: root.toast-message;
         saved-file-path: root.saved-file-path;
         selected-room-id <=> root.selected-room-id;
@@ -156,6 +159,9 @@ export component AppWindow inherits Window {
         }
         paginate-backwards => {
             root.paginate-backwards();
+        }
+        paginate-forwards => {
+            root.paginate-forwards();
         }
         jump-to-latest => {
             root.jump-to-latest();

@@ -14,6 +14,7 @@ import { MessageBubble } from "./message-bubble.slint";
 export component TimelineContent inherits Rectangle {
     in property <[MessageEntry]> timeline: [];
     in property <bool> backwards-loading: false;
+    in property <bool> forwards-loading: false;
     in property <int> new-messages-count: 0;
     in property <length> available-width;
 
@@ -21,6 +22,8 @@ export component TimelineContent inherits Rectangle {
     callback save-file(SaveFileRequest);
     callback reply(string, string, string);
     callback scroll-position-changed(bool, bool);
+    callback paginate-backwards();
+    callback paginate-forwards();
     callback jump-to-latest();
 
     clip: true;
@@ -33,6 +36,19 @@ export component TimelineContent inherits Rectangle {
         alignment: center;
         Text {
             text: @tr("Loading older messages...");
+            font-size: 12px;
+            color: Palette.foreground.transparentize(0.5);
+        }
+    }
+
+    if root.forwards-loading: HorizontalLayout {
+        x: 0;
+        y: parent.height - self.height;
+        width: parent.width;
+        height: 32px;
+        alignment: center;
+        Text {
+            text: @tr("Loading newer messages...");
             font-size: 12px;
             color: Palette.foreground.transparentize(0.5);
         }
@@ -78,6 +94,12 @@ export component TimelineContent inherits Rectangle {
             } else {
                 self.prepend-pending = false;
                 self.settling = false;
+                if self.at-top && !self.was-at-top && !root.backwards-loading {
+                    root.paginate-backwards();
+                }
+                if self.at-bottom && !self.was-at-bottom && !root.forwards-loading {
+                    root.paginate-forwards();
+                }
             }
 
             if self.scrollable {
@@ -152,7 +174,7 @@ export component TimelineContent inherits Rectangle {
         TouchArea {
             mouse-cursor: pointer;
             clicked => {
-                flickable.viewport-y = -(flickable.viewport-height - flickable.visible-height);
+                flickable.scroll-to-bottom();
                 flickable.auto-scroll = true;
                 root.jump-to-latest();
             }

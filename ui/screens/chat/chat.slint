@@ -25,6 +25,7 @@ export component ChatScreen inherits Rectangle {
     in property <bool> timeline-loading: false;
     in property <int> new-messages-count: 0;
     in property <bool> backwards-loading: false;
+    in property <bool> forwards-loading: false;
     in-out property <string> selected-room-id: "";
     in-out property <string> selected-room-name: "";
     in-out property <string> selected-space-id: "";
@@ -40,6 +41,7 @@ export component ChatScreen inherits Rectangle {
     callback dismiss-toast();
     callback scroll-position-changed(bool, bool);
     callback paginate-backwards();
+    callback paginate-forwards();
     callback jump-to-latest();
 
     property <length> sidebar-width: 260px;
@@ -83,6 +85,7 @@ export component ChatScreen inherits Rectangle {
         timeline-loading: root.timeline-loading;
         new-messages-count: root.new-messages-count;
         backwards-loading: root.backwards-loading;
+        forwards-loading: root.forwards-loading;
         input-message <=> root.input-message;
         send-message(req) => {
             root.send-message(req);
@@ -98,6 +101,9 @@ export component ChatScreen inherits Rectangle {
         }
         paginate-backwards => {
             root.paginate-backwards();
+        }
+        paginate-forwards => {
+            root.paginate-forwards();
         }
         jump-to-latest => {
             root.jump-to-latest();

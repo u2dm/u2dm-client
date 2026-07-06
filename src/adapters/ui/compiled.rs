@@ -62,6 +62,7 @@ impl UiProps for AppWindow {
             BoolProp::VerificationIsSelf => self.set_verification_is_self(value),
             BoolProp::TimelineLoading => self.set_timeline_loading(value),
             BoolProp::BackwardsLoading => self.set_backwards_loading(value),
+            BoolProp::ForwardsLoading => self.set_forwards_loading(value),
         }
     }
 
@@ -298,6 +299,22 @@ impl SlintUiAdapter {
                 })
             {
                 tracing::debug!("failed to send PaginateBackwards command: {e}");
+            }
+        });
+
+        let tx = cmd_tx.clone();
+        let weak = self.window.as_weak();
+        self.window.on_paginate_forwards(move || {
+            let room_id = weak
+                .upgrade()
+                .map(|w| w.get_selected_room_id().to_string())
+                .unwrap_or_default();
+            if !room_id.is_empty()
+                && let Err(e) = tx.send(UiCommand::PaginateForwards {
+                    room_id: RoomId::new(room_id),
+                })
+            {
+                tracing::debug!("failed to send PaginateForwards command: {e}");
             }
         });
 

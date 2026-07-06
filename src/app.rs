@@ -13,8 +13,8 @@ use tokio_util::sync::CancellationToken;
 
 use crate::commands::{UiCommand, UiEvent};
 use crate::domain::models::{
-    ConnectionStatus, LoginCredentials, Room, RoomId, ScrollMode, Session, Space, SyncEvent,
-    TimelineCommand, TimelinePatch, VerificationEvent,
+    ConnectionStatus, LoginCredentials, PaginationDirection, Room, RoomId, ScrollMode, Session,
+    Space, SyncEvent, TimelineCommand, TimelinePatch, TimelineUpdate, VerificationEvent,
 };
 use crate::domain::viewport::ViewportController;
 use crate::error::{AppError, Result};
@@ -167,6 +167,13 @@ impl AppService {
                 UiCommand::PaginateForwards { room_id } => {
                     self.handle_paginate_forwards(&room_id);
                 }
+                UiCommand::TimelinePaginationCompleted {
+                    room_id,
+                    direction,
+                    hit_end,
+                } => {
+                    self.handle_timeline_pagination_completed(&room_id, direction, hit_end);
+                }
                 UiCommand::JumpToLatest { room_id } => {
                     self.handle_jump_to_latest(&room_id);
                 }
@@ -217,6 +224,13 @@ impl AppService {
         if let Err(e) = self.ui_tx.send(event) {
             tracing::debug!("failed to send UI event: {e}");
         }
+    }
+
+    fn emit_pagination_state(&self, room_id: &RoomId) {
+        self.emit(UiEvent::PaginationState {
+            room_id: room_id.clone(),
+            state: self.viewport.state(),
+        });
     }
 
     fn emit_show_login(&self) {
@@ -444,18 +458,20 @@ impl AppService {
         self.active_room_id = Some(room_id.clone());
         self.at_bottom.store(true, Ordering::Relaxed);
         self.new_messages_counter.store(0, Ordering::Relaxed);
+        self.emit_pagination_state(&room_id);
 
         self.emit(UiEvent::Timeline {
             room_id: room_id.clone(),
             patch: Box::new(TimelinePatch::Clear),
         });
 
-        let (tl_tx, mut tl_rx) = mpsc::unbounded_channel::<TimelinePatch>();
+        let (tl_tx, mut tl_rx) = mpsc::unbounded_channel::<TimelineUpdate>();
         let (tl_cmd_tx, tl_cmd_rx) = mpsc::unbounded_channel::<TimelineCommand>();
         self.timeline_cmd_tx = Some(tl_cmd_tx);
 
         let matrix_tl = Arc::clone(&self.matrix);
         let ui_tx = self.ui_tx.clone();
+        let cmd_tx = self.cmd_tx.clone();
         let token = self.timeline.token();
         let rid = room_id.clone();
         let at_bottom = Arc::clone(&self.at_bottom);
@@ -464,34 +480,50 @@ impl AppService {
         self.timeline.spawn(async move {
             let subscribe = matrix_tl.subscribe_timeline(&room_id, tl_tx, tl_cmd_rx);
             let forward = async {
-                while let Some(patch) = tl_rx.recv().await {
+                while let Some(update) = tl_rx.recv().await {
                     tracing::debug!(
-                        patch = patch.label(),
+                        update = update.label(),
                         %rid,
-                        "forwarding timeline patch as UiEvent"
+                        "forwarding timeline update"
                     );
 
-                    if !at_bottom.load(Ordering::Relaxed) {
-                        let added = count_appended(&patch);
-                        if added > 0 {
-                            let prev = new_msgs.fetch_add(added, Ordering::Relaxed);
-                            let total = prev.saturating_add(added);
-                            ui_tx
-                                .send(UiEvent::NewMessagesBadge {
-                                    room_id: rid.clone(),
-                                    count: total,
-                                })
-                                .ok();
-                        }
-                    }
+                    match update {
+                        TimelineUpdate::Patch(patch) => {
+                            if !at_bottom.load(Ordering::Relaxed) {
+                                let added = count_appended(&patch);
+                                if added > 0 {
+                                    let prev = new_msgs.fetch_add(added, Ordering::Relaxed);
+                                    let total = prev.saturating_add(added);
+                                    ui_tx
+                                        .send(UiEvent::NewMessagesBadge {
+                                            room_id: rid.clone(),
+                                            count: total,
+                                        })
+                                        .ok();
+                                }
+                            }
 
-                    let event = UiEvent::Timeline {
-                        room_id: rid.clone(),
-                        patch: Box::new(patch),
-                    };
-                    if let Err(e) = ui_tx.send(event) {
-                        tracing::debug!("failed to send Timeline event: {e}");
-                        break;
+                            let event = UiEvent::Timeline {
+                                room_id: rid.clone(),
+                                patch: Box::new(patch),
+                            };
+                            if let Err(e) = ui_tx.send(event) {
+                                tracing::debug!("failed to send Timeline event: {e}");
+                                break;
+                            }
+                        }
+                        TimelineUpdate::Pagination { direction, hit_end } => {
+                            if let Err(e) = cmd_tx.send(UiCommand::TimelinePaginationCompleted {
+                                room_id: rid.clone(),
+                                direction,
+                                hit_end,
+                            }) {
+                                tracing::debug!(
+                                    "failed to send TimelinePaginationCompleted command: {e}"
+                                );
+                                break;
+                            }
+                        }
                     }
                 }
             };
@@ -523,12 +555,15 @@ impl AppService {
         if !self.viewport.should_paginate_backwards(true) {
             return;
         }
+        let Some(tx) = &self.timeline_cmd_tx else {
+            return;
+        };
         self.viewport.set_backwards_loading(true);
-        if let Some(tx) = &self.timeline_cmd_tx
-            && tx.send(TimelineCommand::PaginateBackwards).is_err()
-        {
+        if tx.send(TimelineCommand::PaginateBackwards).is_err() {
             tracing::debug!("timeline command channel closed");
+            self.viewport.set_backwards_loading(false);
         }
+        self.emit_pagination_state(room_id);
     }
 
     fn handle_paginate_forwards(&mut self, room_id: &RoomId) {
@@ -538,11 +573,39 @@ impl AppService {
         if !self.viewport.should_paginate_forwards(true) {
             return;
         }
+        let Some(tx) = &self.timeline_cmd_tx else {
+            return;
+        };
         self.viewport.set_forwards_loading(true);
-        if let Some(tx) = &self.timeline_cmd_tx
-            && tx.send(TimelineCommand::PaginateForwards).is_err()
-        {
+        if tx.send(TimelineCommand::PaginateForwards).is_err() {
             tracing::debug!("timeline command channel closed");
+            self.viewport.set_forwards_loading(false);
+        }
+        self.emit_pagination_state(room_id);
+    }
+
+    fn handle_timeline_pagination_completed(
+        &mut self,
+        room_id: &RoomId,
+        direction: PaginationDirection,
+        hit_end: bool,
+    ) {
+        if self.active_room_id.as_ref() != Some(room_id) {
+            return;
+        }
+
+        self.viewport.complete_pagination(direction, hit_end);
+        self.emit_pagination_state(room_id);
+
+        if matches!(direction, PaginationDirection::Forwards)
+            && hit_end
+            && self.at_bottom.load(Ordering::Relaxed)
+        {
+            self.new_messages_counter.store(0, Ordering::Relaxed);
+            self.emit(UiEvent::NewMessagesBadge {
+                room_id: room_id.clone(),
+                count: 0,
+            });
         }
     }
 
@@ -560,6 +623,7 @@ impl AppService {
             room_id: room_id.clone(),
             count: 0,
         });
+        self.emit_pagination_state(room_id);
     }
 
     fn handle_scroll_position_changed(&mut self, at_top: bool, at_bottom: bool) {
@@ -570,10 +634,6 @@ impl AppService {
         let Some(room_id) = self.active_room_id.clone() else {
             return;
         };
-
-        if at_top {
-            self.handle_paginate_backwards(&room_id);
-        }
 
         if mode_changed && self.viewport.mode() == ScrollMode::FollowLive {
             self.new_messages_counter.store(0, Ordering::Relaxed);

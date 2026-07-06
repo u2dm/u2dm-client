@@ -3,8 +3,8 @@ use std::path::PathBuf;
 use strum::Display as StrumDisplay;
 
 use crate::domain::models::{
-    ConnectionStatus, LoginCredentials, PaginationState, Room, RoomId, ServerInfo, Space,
-    TimelinePatch, VerificationEvent,
+    ConnectionStatus, LoginCredentials, PaginationDirection, PaginationState, Room, RoomId,
+    ServerInfo, Space, TimelinePatch, VerificationEvent,
 };
 
 #[derive(StrumDisplay)]
@@ -39,10 +39,15 @@ pub enum UiCommand {
     PaginateBackwards {
         room_id: RoomId,
     },
-    #[allow(dead_code)]
     #[strum(to_string = "PaginateForwards({room_id})")]
     PaginateForwards {
         room_id: RoomId,
+    },
+    #[strum(to_string = "TimelinePaginationCompleted({room_id})")]
+    TimelinePaginationCompleted {
+        room_id: RoomId,
+        direction: PaginationDirection,
+        hit_end: bool,
     },
     #[strum(to_string = "JumpToLatest({room_id})")]
     JumpToLatest {
@@ -86,7 +91,6 @@ pub enum UiEvent {
         room_id: RoomId,
         patch: Box<TimelinePatch>,
     },
-    #[allow(dead_code)]
     PaginationState {
         room_id: RoomId,
         state: PaginationState,

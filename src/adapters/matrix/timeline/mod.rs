@@ -12,7 +12,7 @@ use matrix_sdk::ruma::events::room::MediaSource;
 pub(super) use subscribe::subscribe_timeline;
 use tokio::sync::mpsc;
 
-use crate::domain::models::TimelinePatch;
+use crate::domain::models::TimelineUpdate;
 
 pub(super) struct TimelineContext<'a> {
     pub(super) client: &'a Client,
@@ -20,5 +20,5 @@ pub(super) struct TimelineContext<'a> {
     pub(super) media_sources: &'a Arc<StdMutex<HashMap<String, MediaSource>>>,
     pub(super) materialized: &'a Arc<StdMutex<HashMap<String, PathBuf>>>,
     pub(super) own_user_id: Option<&'a str>,
-    pub(super) timeline_tx: &'a mpsc::UnboundedSender<TimelinePatch>,
+    pub(super) timeline_tx: &'a mpsc::UnboundedSender<TimelineUpdate>,
 }

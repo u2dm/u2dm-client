@@ -388,6 +388,12 @@ pub enum TimelineCommand {
     PaginateForwards,
 }
 
+#[derive(Debug, Clone, Copy)]
+pub enum PaginationDirection {
+    Backwards,
+    Forwards,
+}
+
 #[derive(Debug, Clone, Default)]
 #[allow(clippy::struct_excessive_bools, dead_code)]
 pub struct PaginationState {
@@ -395,6 +401,24 @@ pub struct PaginationState {
     pub forwards_ended: bool,
     pub backwards_loading: bool,
     pub forwards_loading: bool,
+}
+
+#[derive(Debug, Clone)]
+pub enum TimelineUpdate {
+    Patch(TimelinePatch),
+    Pagination {
+        direction: PaginationDirection,
+        hit_end: bool,
+    },
+}
+
+impl TimelineUpdate {
+    pub fn label(&self) -> &'static str {
+        match self {
+            Self::Patch(patch) => patch.label(),
+            Self::Pagination { .. } => "Pagination",
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]

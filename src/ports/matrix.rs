@@ -5,7 +5,7 @@ use tokio::sync::mpsc;
 
 use crate::domain::models::{
     LoginCredentials, OAuthLoginData, RoomId, ServerInfo, Session, SyncEvent, TimelineCommand,
-    TimelinePatch, VerificationEvent,
+    TimelineUpdate, VerificationEvent,
 };
 use crate::error::Result;
 
@@ -18,7 +18,7 @@ pub trait MatrixPort: Send + Sync {
     async fn subscribe_timeline(
         &self,
         room_id: &RoomId,
-        timeline_tx: mpsc::UnboundedSender<TimelinePatch>,
+        timeline_tx: mpsc::UnboundedSender<TimelineUpdate>,
         cmd_rx: mpsc::UnboundedReceiver<TimelineCommand>,
     ) -> Result<()>;
     async fn start_sync(&self, on_sync: Box<dyn Fn(SyncEvent) + Send + Sync>) -> Result<()>;

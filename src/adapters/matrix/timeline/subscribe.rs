@@ -16,7 +16,9 @@ use super::TimelineContext;
 use super::diff::diff_to_patch;
 use super::filter::convert_timeline_items;
 use crate::adapters::matrix::media::{enrich_message, needs_media_download, try_enrich_from_cache};
-use crate::domain::models::{RoomId, TimelineCommand, TimelineMessage, TimelinePatch};
+use crate::domain::models::{
+    PaginationDirection, RoomId, TimelineCommand, TimelineMessage, TimelinePatch, TimelineUpdate,
+};
 use crate::domain::viewport::PAGINATION_BATCH_SIZE;
 use crate::error::{AppError, Result};
 
@@ -25,7 +27,7 @@ fn spawn_media_enrichment(
     media_dir: &Path,
     media_sources: &Arc<StdMutex<HashMap<String, MediaSource>>>,
     materialized: &Arc<StdMutex<HashMap<String, PathBuf>>>,
-    timeline_tx: &mpsc::UnboundedSender<TimelinePatch>,
+    timeline_tx: &mpsc::UnboundedSender<TimelineUpdate>,
     msg: &TimelineMessage,
 ) {
     let mut msg = msg.clone();
@@ -36,10 +38,10 @@ fn spawn_media_enrichment(
     let tx = timeline_tx.clone();
     tokio::spawn(async move {
         enrich_message(&client, &media_dir, &media_sources, &materialized, &mut msg).await;
-        drop(tx.send(TimelinePatch::UpdateMedia {
+        drop(tx.send(TimelineUpdate::Patch(TimelinePatch::UpdateMedia {
             event_id: msg.event_id.clone(),
             message: msg,
-        }));
+        })));
     });
 }
 
@@ -65,7 +67,7 @@ fn send_initial_timeline(
     items: &[Arc<TimelineItem>],
     ctx: &TimelineContext<'_>,
     room_id: &RoomId,
-    timeline_tx: &mpsc::UnboundedSender<TimelinePatch>,
+    timeline_tx: &mpsc::UnboundedSender<TimelineUpdate>,
 ) -> bool {
     let mut messages = convert_timeline_items(items, ctx);
     tracing::info!(
@@ -81,7 +83,9 @@ fn send_initial_timeline(
         "sending initial Reset patch to timeline channel"
     );
     let sent = timeline_tx
-        .send(TimelinePatch::Reset(messages.clone()))
+        .send(TimelineUpdate::Patch(TimelinePatch::Reset(
+            messages.clone(),
+        )))
         .is_ok();
     tracing::debug!(sent, %room_id, "initial Reset patch send result");
     if sent {
@@ -145,28 +149,56 @@ async fn ensure_media_dirs(media_dir: &Path) {
     }
 }
 
-async fn handle_timeline_command(cmd: TimelineCommand, timeline: &Timeline) {
-    match cmd {
-        TimelineCommand::PaginateBackwards => paginate_backwards(timeline).await,
-        TimelineCommand::PaginateForwards => paginate_forwards(timeline).await,
+async fn handle_timeline_command(
+    cmd: TimelineCommand,
+    timeline: &Timeline,
+    timeline_tx: &mpsc::UnboundedSender<TimelineUpdate>,
+) {
+    let (direction, hit_end) = match cmd {
+        TimelineCommand::PaginateBackwards => (
+            PaginationDirection::Backwards,
+            paginate_backwards(timeline).await,
+        ),
+        TimelineCommand::PaginateForwards => (
+            PaginationDirection::Forwards,
+            paginate_forwards(timeline).await,
+        ),
+    };
+
+    if timeline_tx
+        .send(TimelineUpdate::Pagination { direction, hit_end })
+        .is_err()
+    {
+        tracing::debug!("timeline update channel closed");
     }
 }
 
-async fn paginate_backwards(timeline: &Timeline) {
+async fn paginate_backwards(timeline: &Timeline) -> bool {
     tracing::debug!("paginating backwards");
-    if let Err(e) = timeline.paginate_backwards(PAGINATION_BATCH_SIZE).await {
-        tracing::warn!("backward pagination failed: {e}");
+    match timeline.paginate_backwards(PAGINATION_BATCH_SIZE).await {
+        Ok(hit_start) => hit_start,
+        Err(e) => {
+            tracing::warn!("backward pagination failed: {e}");
+            false
+        }
     }
 }
 
-async fn paginate_forwards(timeline: &Timeline) {
+async fn paginate_forwards(timeline: &Timeline) -> bool {
     tracing::debug!("paginating forwards");
-    if let Err(e) = timeline.paginate_forwards(PAGINATION_BATCH_SIZE).await {
-        tracing::warn!("forward pagination failed: {e}");
+    match timeline.paginate_forwards(PAGINATION_BATCH_SIZE).await {
+        Ok(hit_end) => hit_end,
+        Err(e) => {
+            tracing::warn!("forward pagination failed: {e}");
+            false
+        }
     }
 }
 
-async fn setup_timeline(client: &Client, room_id: &RoomId) -> Result<(Arc<Timeline>, OwnedRoomId)> {
+async fn setup_timeline(
+    client: &Client,
+    room_id: &RoomId,
+) -> Result<(Arc<Timeline>, OwnedRoomId, bool)> {
     let room_id_parsed: OwnedRoomId = room_id
         .as_ref()
         .try_into()
@@ -182,11 +214,9 @@ async fn setup_timeline(client: &Client, room_id: &RoomId) -> Result<(Arc<Timeli
             .map_err(|e| AppError::Other(e.to_string()))?,
     );
 
-    if let Err(e) = timeline.paginate_backwards(PAGINATION_BATCH_SIZE).await {
-        tracing::warn!("failed to paginate timeline backwards: {e}");
-    }
+    let backwards_ended = paginate_backwards(&timeline).await;
 
-    Ok((timeline, room_id_parsed))
+    Ok((timeline, room_id_parsed, backwards_ended))
 }
 
 fn spawn_reply_detail_fetches(
@@ -237,10 +267,10 @@ pub(crate) async fn subscribe_timeline(
     media_sources: &Arc<StdMutex<HashMap<String, MediaSource>>>,
     materialized: &Arc<StdMutex<HashMap<String, PathBuf>>>,
     room_id: &RoomId,
-    timeline_tx: mpsc::UnboundedSender<TimelinePatch>,
+    timeline_tx: mpsc::UnboundedSender<TimelineUpdate>,
     mut cmd_rx: mpsc::UnboundedReceiver<TimelineCommand>,
 ) -> Result<()> {
-    let (timeline, room_id_parsed) = setup_timeline(client, room_id).await?;
+    let (timeline, room_id_parsed, backwards_ended) = setup_timeline(client, room_id).await?;
 
     ensure_media_dirs(media_dir).await;
 
@@ -266,6 +296,15 @@ pub(crate) async fn subscribe_timeline(
     if !send_initial_timeline(&items, &ctx, room_id, &timeline_tx) {
         return Ok(());
     }
+    if timeline_tx
+        .send(TimelineUpdate::Pagination {
+            direction: PaginationDirection::Backwards,
+            hit_end: backwards_ended,
+        })
+        .is_err()
+    {
+        return Ok(());
+    }
 
     let mut fetched_reply_details: HashSet<String> = HashSet::new();
     spawn_reply_detail_fetches(
@@ -289,7 +328,7 @@ pub(crate) async fn subscribe_timeline(
             diffs = stream.next() => {
                 let Some(diffs) = diffs else { break };
                 if let Some(patch) = process_diffs(&mut items, diffs, &ctx)
-                    && timeline_tx.send(patch).is_err()
+                    && timeline_tx.send(TimelineUpdate::Patch(patch)).is_err()
                 {
                     return Ok(());
                 }
@@ -302,7 +341,7 @@ pub(crate) async fn subscribe_timeline(
             }
             cmd = cmd_rx.recv() => {
                 let Some(cmd) = cmd else { break };
-                handle_timeline_command(cmd, &timeline).await;
+                handle_timeline_command(cmd, &timeline, &timeline_tx).await;
             }
         }
     }

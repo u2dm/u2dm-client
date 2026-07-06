@@ -19,6 +19,7 @@ export component TimelineView inherits Rectangle {
     in property <bool> timeline-loading: false;
     in property <int> new-messages-count: 0;
     in property <bool> backwards-loading: false;
+    in property <bool> forwards-loading: false;
     in-out property <string> input-message: "";
     in-out property <string> reply-event-id: "";
     in-out property <string> reply-sender: "";
@@ -29,6 +30,7 @@ export component TimelineView inherits Rectangle {
     callback save-file(SaveFileRequest);
     callback scroll-position-changed(bool, bool);
     callback paginate-backwards();
+    callback paginate-forwards();
     callback jump-to-latest();
 
     property <length> header-height: 40px;
@@ -78,6 +80,7 @@ export component TimelineView inherits Rectangle {
         height: root.height - root.header-height - root.input-height - root.spacing * 2;
         timeline: root.timeline;
         backwards-loading: root.backwards-loading;
+        forwards-loading: root.forwards-loading;
         new-messages-count: root.new-messages-count;
         available-width: root.width;
         open-media(id) => {
@@ -93,6 +96,12 @@ export component TimelineView inherits Rectangle {
         }
         scroll-position-changed(at-top, at-bottom) => {
             root.scroll-position-changed(at-top, at-bottom);
+        }
+        paginate-backwards => {
+            root.paginate-backwards();
+        }
+        paginate-forwards => {
+            root.paginate-forwards();
         }
         jump-to-latest => {
             root.jump-to-latest();

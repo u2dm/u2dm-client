@@ -24,7 +24,7 @@ use tokio::sync::{Mutex, RwLock, mpsc};
 
 use crate::domain::models::{
     LoginCredentials, OAuthLoginData, RoomId, ServerInfo, Session, SyncEvent, TimelineCommand,
-    TimelinePatch, VerificationEvent,
+    TimelineUpdate, VerificationEvent,
 };
 use crate::error::{AppError, Result};
 use crate::ports::matrix::MatrixPort;
@@ -111,7 +111,7 @@ impl MatrixPort for MatrixAdapter {
     async fn subscribe_timeline(
         &self,
         room_id: &RoomId,
-        timeline_tx: mpsc::UnboundedSender<TimelinePatch>,
+        timeline_tx: mpsc::UnboundedSender<TimelineUpdate>,
         cmd_rx: mpsc::UnboundedReceiver<TimelineCommand>,
     ) -> Result<()> {
         tracing::info!(%room_id, "subscribing to timeline");

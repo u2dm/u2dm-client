@@ -469,6 +469,25 @@ impl SlintUiAdapter {
         let tx = cmd_tx.clone();
         let weak = self.instance.as_weak();
         self.instance
+            .set_callback("paginate-forwards", move |_args: &[Value]| -> Value {
+                let room_id = weak
+                    .upgrade()
+                    .map(|inst| inst.get_string(StringProp::SelectedRoomId).to_string())
+                    .unwrap_or_default();
+                if !room_id.is_empty()
+                    && let Err(e) = tx.send(UiCommand::PaginateForwards {
+                        room_id: RoomId::new(room_id),
+                    })
+                {
+                    tracing::debug!("failed to send PaginateForwards command: {e}");
+                }
+                Value::Void
+            })
+            .map_err(|e| AppError::Ui(format!("{e:?}")))?;
+
+        let tx = cmd_tx.clone();
+        let weak = self.instance.as_weak();
+        self.instance
             .set_callback("jump-to-latest", move |_args: &[Value]| -> Value {
                 let room_id = weak
                     .upgrade()

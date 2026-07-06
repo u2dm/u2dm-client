@@ -92,6 +92,7 @@ pub enum BoolProp {
     VerificationIsSelf,
     TimelineLoading,
     BackwardsLoading,
+    ForwardsLoading,
 }
 
 impl BoolProp {
@@ -102,6 +103,7 @@ impl BoolProp {
             Self::VerificationIsSelf => "verification-is-self",
             Self::TimelineLoading => "timeline-loading",
             Self::BackwardsLoading => "backwards-loading",
+            Self::ForwardsLoading => "forwards-loading",
         }
     }
 }
@@ -247,6 +249,7 @@ pub fn dispatch_ui_event<T, R, S>(
             let selected = w.get_string(StringProp::SelectedRoomId);
             if selected.as_str() == room_id.as_ref() {
                 w.set_bool(BoolProp::BackwardsLoading, state.backwards_loading);
+                w.set_bool(BoolProp::ForwardsLoading, state.forwards_loading);
             }
         }
         UiEvent::NewMessagesBadge { room_id, count } => {
@@ -412,6 +415,7 @@ fn apply_logged_out(w: &impl UiProps) {
     w.set_string(StringProp::ToastMessage, SharedString::default());
     w.set_string(StringProp::SavedFilePath, SharedString::default());
     w.set_bool(BoolProp::BackwardsLoading, false);
+    w.set_bool(BoolProp::ForwardsLoading, false);
     w.set_int(IntProp::NewMessagesCount, 0);
     w.apply_user_avatar(None);
     w.clear_emoji_model();
