@@ -38,10 +38,12 @@ fn spawn_media_enrichment(
     let tx = timeline_tx.clone();
     tokio::spawn(async move {
         enrich_message(&client, &media_dir, &media_sources, &materialized, &mut msg).await;
-        drop(tx.send(TimelineUpdate::Patch(TimelinePatch::UpdateMedia {
-            event_id: msg.event_id.clone(),
-            message: msg,
-        })));
+        drop(tx.send(TimelineUpdate::Patch(Box::new(
+            TimelinePatch::UpdateMedia {
+                event_id: msg.event_id.clone(),
+                message: msg,
+            },
+        ))));
     });
 }
 
@@ -83,9 +85,9 @@ fn send_initial_timeline(
         "sending initial Reset patch to timeline channel"
     );
     let sent = timeline_tx
-        .send(TimelineUpdate::Patch(TimelinePatch::Reset(
+        .send(TimelineUpdate::Patch(Box::new(TimelinePatch::Reset(
             messages.clone(),
-        )))
+        ))))
         .is_ok();
     tracing::debug!(sent, %room_id, "initial Reset patch send result");
     if sent {
@@ -328,7 +330,9 @@ pub(crate) async fn subscribe_timeline(
             diffs = stream.next() => {
                 let Some(diffs) = diffs else { break };
                 if let Some(patch) = process_diffs(&mut items, diffs, &ctx)
-                    && timeline_tx.send(TimelineUpdate::Patch(patch)).is_err()
+                    && timeline_tx
+                        .send(TimelineUpdate::Patch(Box::new(patch)))
+                        .is_err()
                 {
                     return Ok(());
                 }

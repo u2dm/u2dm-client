@@ -1,0 +1,312 @@
+use std::fmt::Write;
+use std::sync::Arc;
+
+use tokio::sync::mpsc;
+
+use super::task_group::TaskGroup;
+use crate::commands::UiCommand;
+use crate::domain::models::{ConnectionStatus, LoginCredentials, Session};
+use crate::error::{AppError, Result};
+use crate::ports::browser::BrowserPort;
+use crate::ports::matrix::MatrixPort;
+use crate::ports::output::AppOutputPort;
+use crate::ports::storage::StoragePort;
+
+#[allow(clippy::let_underscore_must_use)]
+fn generate_passphrase() -> String {
+    let mut bytes = [0u8; 32];
+    rand::fill(&mut bytes);
+    bytes.iter().fold(String::with_capacity(64), |mut s, b| {
+        let _ = write!(s, "{b:02x}");
+        s
+    })
+}
+
+pub(super) struct SessionController {
+    matrix: Arc<dyn MatrixPort>,
+    storage: Arc<dyn StoragePort>,
+    browser: Arc<dyn BrowserPort>,
+    cmd_tx: mpsc::UnboundedSender<UiCommand>,
+    output: Arc<dyn AppOutputPort>,
+}
+
+impl SessionController {
+    pub(super) fn new(
+        matrix: Arc<dyn MatrixPort>,
+        storage: Arc<dyn StoragePort>,
+        browser: Arc<dyn BrowserPort>,
+        cmd_tx: mpsc::UnboundedSender<UiCommand>,
+        output: Arc<dyn AppOutputPort>,
+    ) -> Self {
+        Self {
+            matrix,
+            storage,
+            browser,
+            cmd_tx,
+            output,
+        }
+    }
+
+    pub(super) async fn restore_session(&self) {
+        self.output.status("loading-session".into());
+
+        let Some(session) = self.load_saved_session().await else {
+            return;
+        };
+
+        self.output.status("opening-store".into());
+
+        let Some(passphrase) = self.passphrase_or_login_error().await else {
+            return;
+        };
+
+        if let Err(e) = self.restore_matrix_session(&session, &passphrase).await {
+            tracing::warn!("session restore failed: {e}");
+            self.clear_local_state().await;
+            self.emit_show_login();
+            self.emit_login_error(&e);
+            return;
+        }
+
+        tracing::info!(user_id = %session.user_id, "session restore complete");
+        self.output.login_success(session.user_id);
+        self.send_cmd(UiCommand::FetchRooms);
+    }
+
+    pub(super) async fn check_server(&self, homeserver: &str) {
+        tracing::info!(homeserver, "checking server");
+
+        let Some(passphrase) = self.passphrase_or_discovery_error().await else {
+            return;
+        };
+
+        self.discover_server(homeserver, passphrase.as_str()).await;
+    }
+
+    async fn discover_server(&self, homeserver: &str, passphrase: &str) {
+        match self.matrix.discover_auth(homeserver, passphrase).await {
+            Ok(info) => self.output.server_info(info),
+            Err(e) => {
+                tracing::warn!(homeserver, "server discovery failed: {e}");
+                self.emit_login_error(&e);
+            }
+        }
+    }
+
+    async fn load_saved_session(&self) -> Option<Session> {
+        match self.storage.load_session().await {
+            Ok(Some(session)) => {
+                tracing::info!(user_id = %session.user_id, "found saved session");
+                Some(session)
+            }
+            unavailable => {
+                self.handle_unavailable_session(unavailable).await;
+                None
+            }
+        }
+    }
+
+    async fn handle_unavailable_session(&self, result: Result<Option<Session>>) {
+        match result {
+            Ok(None) => self.handle_missing_session().await,
+            Err(e) => self.handle_session_load_error(&e),
+            Ok(Some(_)) => {}
+        }
+    }
+
+    async fn handle_missing_session(&self) {
+        tracing::info!("no saved session found, showing login");
+        if let Err(e) = self.matrix.clear_store().await {
+            tracing::warn!("failed to clear store on missing session: {e}");
+        }
+        self.emit_show_login();
+    }
+
+    fn handle_session_load_error(&self, err: &AppError) {
+        tracing::warn!("failed to load session: {err}");
+        self.emit_show_login();
+        self.emit_login_error(err);
+    }
+
+    async fn passphrase_or_login_error(&self) -> Option<String> {
+        match self.get_or_create_passphrase().await {
+            Ok(passphrase) => Some(passphrase),
+            Err(e) => {
+                self.emit_show_login();
+                self.emit_login_error(&e);
+                None
+            }
+        }
+    }
+
+    async fn passphrase_or_discovery_error(&self) -> Option<String> {
+        match self.get_or_create_passphrase().await {
+            Ok(passphrase) => Some(passphrase),
+            Err(e) => {
+                tracing::warn!("failed to get passphrase: {e}");
+                self.emit_login_error(&e);
+                None
+            }
+        }
+    }
+
+    async fn restore_matrix_session(&self, session: &Session, passphrase: &str) -> Result<()> {
+        let output = Arc::clone(&self.output);
+        let on_progress = Box::new(move |msg| {
+            output.status(msg);
+        });
+
+        self.matrix
+            .restore_session(session, passphrase, on_progress)
+            .await
+    }
+
+    pub(super) async fn login_password(&self, creds: LoginCredentials) {
+        match self.matrix.login_password(creds).await {
+            Ok(session) => {
+                tracing::info!(user_id = %session.user_id, "password login succeeded");
+                self.save_session(&session).await;
+                self.output.login_success(session.user_id);
+                self.send_cmd(UiCommand::FetchRooms);
+            }
+            Err(e) => {
+                tracing::warn!("password login failed: {e}");
+                self.emit_login_error(&e);
+            }
+        }
+    }
+
+    pub(super) async fn login_oauth(&self) {
+        match self.run_oauth_flow().await {
+            Ok(()) => {
+                self.send_cmd(UiCommand::FetchRooms);
+            }
+            Err(e) => {
+                tracing::warn!("OAuth login failed: {e}");
+                self.emit_login_error(&e);
+            }
+        }
+    }
+
+    pub(super) async fn expire_session(&self) {
+        self.clear_local_state().await;
+        self.output.logged_out();
+        self.output
+            .login_error("Session expired. Please log in again.".into());
+    }
+
+    pub(super) async fn logout(&self) {
+        tracing::info!("user initiated logout");
+        if let Err(e) = self.matrix.logout().await {
+            tracing::warn!("failed to logout from server: {e}");
+        }
+        self.clear_local_state().await;
+        tracing::info!("logout complete");
+        self.output
+            .connection_status(ConnectionStatus::Disconnected);
+        self.output.logged_out();
+    }
+
+    pub(super) fn spawn_session_persister(&self, group: &mut TaskGroup) {
+        let matrix = Arc::clone(&self.matrix);
+        let storage = Arc::clone(&self.storage);
+        let output = Arc::clone(&self.output);
+        let token = group.token();
+        group.spawn(async move {
+            let (session_tx, mut session_rx) = mpsc::unbounded_channel::<Session>();
+            let subscribe = matrix.subscribe_session_changes(session_tx);
+            let persist = async {
+                while let Some(session) = session_rx.recv().await {
+                    if let Err(e) = storage.save_session(&session).await {
+                        tracing::warn!("failed to persist refreshed session: {e}");
+                        output.notify_error(format!("Failed to save refreshed session: {e}"));
+                    } else {
+                        tracing::info!("persisted refreshed session tokens");
+                    }
+                }
+            };
+
+            tokio::select! {
+                result = subscribe => {
+                    if let Err(e) = result {
+                        tracing::warn!("session change listener ended: {e}");
+                    }
+                }
+                () = persist => {
+                    tracing::debug!("session change persister stopped");
+                }
+                () = token.cancelled() => {
+                    tracing::debug!("session change listener cancelled");
+                }
+            }
+        });
+    }
+
+    pub(super) fn spawn_user_avatar_fetch(&self, group: &mut TaskGroup) {
+        let matrix = Arc::clone(&self.matrix);
+        let output = Arc::clone(&self.output);
+        group.spawn(async move {
+            match matrix.fetch_user_avatar().await {
+                Ok(path) => {
+                    output.user_avatar(path);
+                }
+                Err(e) => tracing::debug!("user avatar fetch failed: {e}"),
+            }
+        });
+    }
+
+    async fn run_oauth_flow(&self) -> Result<()> {
+        let oauth_data = self.matrix.login_oauth_start().await?;
+        self.browser.open_url(&oauth_data.auth_url);
+        self.output.status("waiting-auth".into());
+        let session = self.matrix.login_oauth_finish().await?;
+        self.save_session(&session).await;
+        self.output.login_success(session.user_id);
+        Ok(())
+    }
+
+    async fn get_or_create_passphrase(&self) -> Result<String> {
+        if let Some(passphrase) = self.storage.load_passphrase().await? {
+            return Ok(passphrase);
+        }
+        let passphrase = generate_passphrase();
+        self.storage.save_passphrase(&passphrase).await?;
+        Ok(passphrase)
+    }
+
+    async fn save_session(&self, session: &Session) {
+        if let Err(e) = self.storage.save_session(session).await {
+            tracing::warn!("failed to save session: {e}");
+            self.notify_error(format!(
+                "Session not saved. You may need to log in again after restart: {e}"
+            ));
+        }
+    }
+
+    async fn clear_local_state(&self) {
+        if let Err(e) = self.storage.clear_session().await {
+            tracing::warn!("failed to clear session: {e}");
+        }
+        if let Err(e) = self.matrix.clear_store().await {
+            tracing::warn!("failed to clear store: {e}");
+        }
+    }
+
+    fn emit_show_login(&self) {
+        self.output.show_login();
+    }
+
+    fn emit_login_error(&self, err: &AppError) {
+        self.output.login_error(err.to_string());
+    }
+
+    fn notify_error(&self, msg: impl Into<String>) {
+        self.output.notify_error(msg.into());
+    }
+
+    fn send_cmd(&self, cmd: UiCommand) {
+        if let Err(e) = self.cmd_tx.send(cmd) {
+            tracing::debug!("failed to send command: {e}");
+        }
+    }
+}

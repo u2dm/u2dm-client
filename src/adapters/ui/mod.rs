@@ -1,10 +1,13 @@
 #![allow(clippy::pub_use)]
 
 mod common;
+mod output;
 
 use slint::PlatformError;
 
 use crate::error::AppError;
+
+pub use output::UiEventOutput;
 
 impl From<PlatformError> for AppError {
     fn from(err: PlatformError) -> Self {

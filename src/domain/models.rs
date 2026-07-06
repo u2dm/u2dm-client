@@ -405,7 +405,7 @@ pub struct PaginationState {
 
 #[derive(Debug, Clone)]
 pub enum TimelineUpdate {
-    Patch(TimelinePatch),
+    Patch(Box<TimelinePatch>),
     Pagination {
         direction: PaginationDirection,
         hit_end: bool,

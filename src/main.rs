@@ -2,13 +2,18 @@ use std::process::ExitCode;
 use std::sync::Arc;
 use std::time::Duration;
 
+use adapters::browser::DesktopBrowser;
 use adapters::matrix::MatrixAdapter;
+use adapters::media::DesktopMediaFiles;
 use adapters::storage::SecureStorage;
-use adapters::ui::SlintUiAdapter;
+use adapters::ui::{SlintUiAdapter, UiEventOutput};
 use app::AppService;
 use commands::{UiCommand, UiEvent};
 use error::Result;
+use ports::browser::BrowserPort;
 use ports::matrix::MatrixPort;
+use ports::media::MediaFilePort;
+use ports::output::AppOutputPort;
 use ports::storage::StoragePort;
 use tokio::runtime::Runtime;
 use tokio::sync::mpsc;
@@ -59,6 +64,9 @@ fn run() -> Result<()> {
     matrix_adapter.clean_media_cache();
     let matrix: Arc<dyn MatrixPort> = Arc::new(matrix_adapter);
     let storage: Arc<dyn StoragePort> = Arc::new(SecureStorage::new(&cfg.data_dir));
+    let media_files: Arc<dyn MediaFilePort> = Arc::new(DesktopMediaFiles::new());
+    let browser: Arc<dyn BrowserPort> = Arc::new(DesktopBrowser::new());
+    let output: Arc<dyn AppOutputPort> = Arc::new(UiEventOutput::new(ui_tx));
 
     let cmd_tx_quit = cmd_tx.clone();
     let _guard = rt.enter();
@@ -66,7 +74,15 @@ fn run() -> Result<()> {
     if let Err(e) = cmd_tx.send(UiCommand::RestoreSession) {
         tracing::warn!("failed to send RestoreSession command: {e}");
     }
-    let mut service = AppService::new(matrix, storage, cmd_rx, cmd_tx, ui_tx);
+    let mut service = AppService::new(
+        matrix,
+        storage,
+        media_files,
+        browser,
+        cmd_rx,
+        cmd_tx,
+        output,
+    );
     tokio::spawn(async move {
         service.run().await;
     });
