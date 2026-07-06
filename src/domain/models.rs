@@ -145,7 +145,7 @@ pub enum LastMessageKind {
     Sticker,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 #[allow(dead_code)]
 pub struct Room {
     pub id: RoomId,

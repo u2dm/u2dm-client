@@ -12,9 +12,10 @@ use matrix_sdk::ruma::events::{
     AnyMessageLikeEventContent, AnySyncMessageLikeEvent, AnySyncTimelineEvent,
     SyncMessageLikeEvent, SyncStateEvent,
 };
-use matrix_sdk::ruma::{OwnedMxcUri, OwnedUserId, UserId};
+use matrix_sdk::ruma::{OwnedMxcUri, OwnedUserId, RoomId as MatrixRoomId, UserId};
 use matrix_sdk::sync::RoomUpdates;
 use matrix_sdk::{Client, HttpError, Room};
+use matrix_sdk_base::RoomInfoNotableUpdate;
 use matrix_sdk_ui::encryption_sync_service::Error as EncryptionSyncError;
 use matrix_sdk_ui::room_list_service::Error as RoomListError;
 use matrix_sdk_ui::sync_service::{Error as SyncServiceError, State as SyncState, SyncService};
@@ -326,6 +327,54 @@ async fn apply_room_updates(
     }
 }
 
+async fn refresh_room(
+    client: &Client,
+    room_id: &MatrixRoomId,
+    room_cache: &mut HashMap<String, DomainRoom>,
+) -> bool {
+    let key = room_id.as_str();
+    if !room_cache.contains_key(key) {
+        return false;
+    }
+    let Some(room) = client.get_room(room_id) else {
+        return false;
+    };
+    if room.is_space() {
+        return false;
+    }
+    let updated = build_single_room(&room).await;
+    if room_cache.get(key) == Some(&updated) {
+        return false;
+    }
+    room_cache.insert(key.to_owned(), updated);
+    true
+}
+
+async fn handle_room_info_update(
+    client: &Client,
+    update: Result<RoomInfoNotableUpdate, RecvError>,
+    room_cache: &mut HashMap<String, DomainRoom>,
+    on_sync: &Arc<dyn Fn(SyncEvent) + Send + Sync>,
+) -> LoopAction {
+    match update {
+        Ok(update) => {
+            if refresh_room(client, &update.room_id, room_cache).await {
+                tracing::debug!(room = %update.room_id, "refreshed room preview from notable update");
+                emit_room_update(room_cache, on_sync);
+            }
+            LoopAction::Continue
+        }
+        Err(RecvError::Lagged(n)) => {
+            tracing::warn!("room info updates lagged by {n} messages, full rebuild");
+            room_cache.clear();
+            seed_room_cache(client, room_cache).await;
+            emit_room_update(room_cache, on_sync);
+            LoopAction::Continue
+        }
+        Err(RecvError::Closed) => LoopAction::Break,
+    }
+}
+
 fn extract_sdk_error(err: &SyncServiceError) -> Option<&matrix_sdk::Error> {
     match err {
         SyncServiceError::RoomList(RoomListError::SlidingSync(e))
@@ -440,6 +489,7 @@ async fn run_sync_loop(
 ) {
     let mut room_cache: HashMap<String, DomainRoom> = HashMap::new();
     let mut state_stream = sync_service.state();
+    let mut room_info_rx = client.room_info_notable_update_receiver();
 
     seed_room_cache(client, &mut room_cache).await;
     if !room_cache.is_empty() {
@@ -462,6 +512,14 @@ async fn run_sync_loop(
             Some(state) = state_stream.next() => {
                 if matches!(
                     handle_sync_state(client, state, sync_service, &mut room_cache, on_sync, space_builder).await,
+                    LoopAction::Break
+                ) {
+                    break;
+                }
+            }
+            info = room_info_rx.recv() => {
+                if matches!(
+                    handle_room_info_update(client, info, &mut room_cache, on_sync).await,
                     LoopAction::Break
                 ) {
                     break;

@@ -7907,6 +7907,7 @@ dependencies = [
  "keyring-core",
  "lucide-slint",
  "matrix-sdk",
+ "matrix-sdk-base",
  "matrix-sdk-ui",
  "open",
  "rand 0.10.2",
