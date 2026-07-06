@@ -168,12 +168,7 @@ fn message_preview(msgtype: &MessageType) -> MessagePreview {
 }
 
 fn sort_rooms(rooms: &mut [DomainRoom]) {
-    rooms.sort_by(|a, b| {
-        b.unread_count
-            .min(1)
-            .cmp(&a.unread_count.min(1))
-            .then(b.last_activity_ts.cmp(&a.last_activity_ts))
-    });
+    rooms.sort_by(|a, b| b.last_activity_ts.cmp(&a.last_activity_ts));
 }
 
 fn emit_room_update(
