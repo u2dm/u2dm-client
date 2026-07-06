@@ -2,7 +2,7 @@
 name = "utdm"
 version = "0.1.0"
 edition = "2024"
-description = "Unable to decrypt message. A Matrix chat client using Slint and matrix-sdk"
+description = "Unable to decrypt message. A Matrix chat client built with Slint UI"
 license = "AGPL-3.0-or-later"
 #repository = ""
 readme = "README.md"
