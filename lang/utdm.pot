@@ -116,17 +116,17 @@ msgctxt "ChatScreen"
 msgid "File saved to {}"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/message-input.slint:84
+#: ui/screens/chat/components/timeline/message-input.slint:86
 msgctxt "MessageInput"
 msgid "Send a message..."
 msgstr ""
 
-#: ui/screens/chat/components/timeline/message-input.slint:96
+#: ui/screens/chat/components/timeline/message-input.slint:98
 msgctxt "MessageInput"
 msgid "Emoji"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/message-input.slint:116
+#: ui/screens/chat/components/timeline/message-input.slint:118
 msgctxt "MessageInput"
 msgid "Send"
 msgstr ""
@@ -226,7 +226,12 @@ msgctxt "Sidebar"
 msgid "Sticker"
 msgstr ""
 
-#: ui/screens/chat/components/sidebar.slint:85
+#: ui/screens/chat/components/sidebar.slint:88
+msgctxt "Sidebar"
+msgid "Search"
+msgstr ""
+
+#: ui/screens/chat/components/sidebar.slint:126
 msgctxt "Sidebar"
 msgid "You"
 msgstr ""

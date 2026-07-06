@@ -66,14 +66,55 @@ export component Sidebar inherits Rectangle {
         }
 
         room-column := Rectangle {
-            Flickable {
-                x: 0;
-                y: 0;
-                width: parent.width;
-                height: parent.height;
-                viewport-height: root.rooms.length * root.row-height;
+            VerticalLayout {
+                Rectangle {
+                    height: 52px;
 
-                VerticalLayout {
+                    search-field := Rectangle {
+                        x: 8px;
+                        y: (parent.height - self.height) / 2;
+                        width: parent.width - 16px;
+                        height: 36px;
+                        background: transparent;
+
+                        Rectangle {
+                            x: 14px;
+                            width: parent.width - 28px;
+                            height: parent.height;
+
+                            if search-input.text == "": Text {
+                                x: 0;
+                                width: 100%;
+                                text: @tr("Search");
+                                font-size: 14px;
+                                vertical-alignment: center;
+                                color: Palette.foreground.transparentize(0.5);
+                            }
+
+                            search-input := TextInput {
+                                width: 100%;
+                                height: 100%;
+                                font-size: 14px;
+                                vertical-alignment: center;
+                                single-line: true;
+                                color: Palette.foreground;
+                                text: "";
+                            }
+                        }
+
+                        search-touch := TouchArea {
+                            mouse-cursor: text;
+                            clicked => {
+                                search-input.focus();
+                            }
+                        }
+                    }
+                }
+
+                Flickable {
+                    viewport-height: root.rooms.length * root.row-height;
+
+                    VerticalLayout {
                     for room in root.rooms: Rectangle {
                         height: root.row-height;
                         clip: true;
@@ -191,6 +232,7 @@ export component Sidebar inherits Rectangle {
                     }
                 }
             }
+        }
         }
     }
 }
