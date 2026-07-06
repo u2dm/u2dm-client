@@ -51,6 +51,16 @@ impl UiProps for ComponentInstance {
             .unwrap_or_default()
     }
 
+    fn apply_user_avatar(&self, avatar: Option<slint::Image>) {
+        match avatar {
+            Some(img) => {
+                set_prop(self, "user-avatar", Value::Image(img));
+                set_prop(self, "user-has-avatar", Value::Bool(true));
+            }
+            None => set_prop(self, "user-has-avatar", Value::Bool(false)),
+        }
+    }
+
     fn apply_emoji_model(&self, emojis: &[DomainVerificationEmoji]) {
         let entries: Vec<Value> = emojis
             .iter()

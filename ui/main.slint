@@ -33,6 +33,9 @@ export component AppWindow inherits Window {
     in-out property <string> input-username: "";
     in-out property <string> input-password: "";
     in-out property <string> user-id: "";
+    in-out property <string> user-initial: "";
+    in-out property <image> user-avatar;
+    in-out property <bool> user-has-avatar: false;
     in-out property <[RoomEntry]> rooms: [];
     in-out property <[SpaceEntry]> spaces: [];
     in-out property <[MessageEntry]> timeline: [];
@@ -108,6 +111,9 @@ export component AppWindow inherits Window {
 
     if root.login-step == "logged-in": ChatScreen {
         user-id: root.user-id;
+        user-initial: root.user-initial;
+        user-avatar: root.user-avatar;
+        user-has-avatar: root.user-has-avatar;
         connection-status: root.connection-status;
         rooms: root.rooms;
         spaces: root.spaces;

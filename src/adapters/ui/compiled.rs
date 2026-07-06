@@ -1,7 +1,7 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use slint::{ComponentHandle, Model, ModelRc, SharedString, VecModel};
+use slint::{ComponentHandle, Image, Model, ModelRc, SharedString, VecModel};
 use tokio::runtime::Runtime;
 use tokio::sync::mpsc;
 
@@ -41,6 +41,7 @@ impl UiProps for AppWindow {
             StringProp::LoginMethod => self.set_login_method(value),
             StringProp::ResolvedHomeserver => self.set_resolved_homeserver(value),
             StringProp::UserId => self.set_user_id(value),
+            StringProp::UserInitial => self.set_user_initial(value),
             StringProp::ToastMessage => self.set_toast_message(value),
             StringProp::ConnectionStatus => self.set_connection_status(value),
             StringProp::VerificationStep => self.set_verification_step(value),
@@ -77,6 +78,16 @@ impl UiProps for AppWindow {
                 tracing::warn!("unexpected get for property: {}", other.as_str());
                 SharedString::default()
             }
+        }
+    }
+
+    fn apply_user_avatar(&self, avatar: Option<Image>) {
+        match avatar {
+            Some(img) => {
+                self.set_user_avatar(img);
+                self.set_user_has_avatar(true);
+            }
+            None => self.set_user_has_avatar(false),
         }
     }
 

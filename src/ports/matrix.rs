@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use async_trait::async_trait;
 use tokio::sync::mpsc;
 
@@ -22,6 +24,7 @@ pub trait MatrixPort: Send + Sync {
     async fn start_sync(&self, on_sync: Box<dyn Fn(SyncEvent) + Send + Sync>) -> Result<()>;
     async fn send_text(&self, room_id: &RoomId, body: &str) -> Result<()>;
     async fn download_media(&self, event_id: &str, thumbnail: bool) -> Result<Vec<u8>>;
+    async fn fetch_user_avatar(&self) -> Result<Option<PathBuf>>;
     async fn restore_session(
         &self,
         session: &Session,

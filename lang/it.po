@@ -112,7 +112,7 @@ msgctxt "HomeserverScreen"
 msgid "Continue"
 msgstr "Continua"
 
-#: ui/screens/chat/chat.slint:137
+#: ui/screens/chat/chat.slint:140
 msgctxt "ChatScreen"
 msgid "File saved to {}"
 msgstr "File salvato in {}"
@@ -177,59 +177,94 @@ msgctxt "TimelineView"
 msgid "Loading messages..."
 msgstr "Caricamento messaggi..."
 
-#: ui/screens/chat/components/space-rail.slint:226
+#: ui/screens/chat/components/space-rail.slint:223
+msgctxt "SpaceRail"
+msgid "Menu"
+msgstr ""
+
+#: ui/screens/chat/components/space-rail.slint:259
 msgctxt "SpaceRail"
 msgid "All Rooms"
 msgstr ""
 
-#: ui/screens/chat/components/space-rail.slint:227
+#: ui/screens/chat/components/space-rail.slint:260
 msgctxt "SpaceRail"
 msgid "All"
 msgstr ""
 
-#: ui/screens/chat/components/sidebar.slint:41
+#: ui/screens/chat/components/sidebar.slint:26
 msgctxt "Sidebar"
 msgid "📷 Photo"
 msgstr ""
 
-#: ui/screens/chat/components/sidebar.slint:44
+#: ui/screens/chat/components/sidebar.slint:29
 msgctxt "Sidebar"
 msgid "🎬 Video"
 msgstr ""
 
-#: ui/screens/chat/components/sidebar.slint:47
+#: ui/screens/chat/components/sidebar.slint:32
 msgctxt "Sidebar"
 msgid "🎵 Audio"
 msgstr ""
 
-#: ui/screens/chat/components/sidebar.slint:50
+#: ui/screens/chat/components/sidebar.slint:35
 msgctxt "Sidebar"
 msgid "📎 {}"
 msgstr ""
 
-#: ui/screens/chat/components/sidebar.slint:53
+#: ui/screens/chat/components/sidebar.slint:38
 msgctxt "Sidebar"
 msgid "📍 Location"
 msgstr ""
 
-#: ui/screens/chat/components/sidebar.slint:56
+#: ui/screens/chat/components/sidebar.slint:41
 msgctxt "Sidebar"
 msgid "🔒 Encrypted message"
 msgstr ""
 
-#: ui/screens/chat/components/sidebar.slint:59
+#: ui/screens/chat/components/sidebar.slint:44
 msgctxt "Sidebar"
 msgid "Sticker"
 msgstr ""
 
-#: ui/screens/chat/components/sidebar.slint:111
-msgctxt "Sidebar"
-msgid "Logout"
-msgstr "Esci"
-
-#: ui/screens/chat/components/sidebar.slint:147
+#: ui/screens/chat/components/sidebar.slint:85
 msgctxt "Sidebar"
 msgid "You"
+msgstr ""
+
+#: ui/screens/chat/components/drawer.slint:76
+msgctxt "Drawer"
+msgid "Online"
+msgstr ""
+
+#: ui/screens/chat/components/drawer.slint:79
+msgctxt "Drawer"
+msgid "Connecting…"
+msgstr ""
+
+#: ui/screens/chat/components/drawer.slint:82
+msgctxt "Drawer"
+msgid "Connection error"
+msgstr ""
+
+#: ui/screens/chat/components/drawer.slint:84
+msgctxt "Drawer"
+msgid "Offline"
+msgstr ""
+
+#: ui/screens/chat/components/drawer.slint:227
+msgctxt "Drawer"
+msgid "No other accounts"
+msgstr ""
+
+#: ui/screens/chat/components/drawer.slint:237
+msgctxt "Drawer"
+msgid "Add Account"
+msgstr ""
+
+#: ui/screens/chat/components/drawer.slint:250
+msgctxt "Drawer"
+msgid "Log Out"
 msgstr ""
 
 #: ui/screens/credentials/credentials.slint:38
@@ -311,6 +346,10 @@ msgstr "Sincronizzazione stanze..."
 msgctxt "LoadingScreen"
 msgid "UTDM"
 msgstr "UTDM"
+
+#~ msgctxt "Sidebar"
+#~ msgid "Logout"
+#~ msgstr "Esci"
 
 #~ msgctxt "FileMessage"
 #~ msgid "📎 {}"

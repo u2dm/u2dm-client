@@ -27,6 +27,14 @@ pub fn sender_initial(name: &str) -> &str {
     }
 }
 
+pub fn user_initial(user_id: &str) -> String {
+    let name = user_id.strip_prefix('@').unwrap_or(user_id);
+    name.chars()
+        .next()
+        .map(|c| c.to_uppercase().to_string())
+        .unwrap_or_default()
+}
+
 use crate::commands::UiEvent;
 use crate::domain::models::{
     ConnectionStatus, LoginMethod, Room, ServerInfo, Space, TimelineMessage, TimelinePatch,
@@ -40,6 +48,7 @@ pub enum StringProp {
     LoginMethod,
     ResolvedHomeserver,
     UserId,
+    UserInitial,
     ToastMessage,
     ConnectionStatus,
     VerificationStep,
@@ -62,6 +71,7 @@ impl StringProp {
             Self::LoginMethod => "login-method",
             Self::ResolvedHomeserver => "resolved-homeserver",
             Self::UserId => "user-id",
+            Self::UserInitial => "user-initial",
             Self::ToastMessage => "toast-message",
             Self::ConnectionStatus => "connection-status",
             Self::VerificationStep => "verification-step",
@@ -114,6 +124,7 @@ pub trait UiProps {
     fn set_bool(&self, prop: BoolProp, value: bool);
     fn set_int(&self, prop: IntProp, value: i32);
     fn get_string(&self, prop: StringProp) -> SharedString;
+    fn apply_user_avatar(&self, avatar: Option<Image>);
     fn apply_emoji_model(&self, emojis: &[DomainVerificationEmoji]);
     fn clear_emoji_model(&self);
 }
@@ -194,6 +205,9 @@ pub fn dispatch_ui_event<T, R, S>(
         UiEvent::ServerInfo(info) => apply_server_info(w, &info),
         UiEvent::ShowLogin => apply_show_login(w),
         UiEvent::LoginSuccess { user_id } => apply_login_success(w, &user_id),
+        UiEvent::UserAvatar(path) => {
+            w.apply_user_avatar(path.as_deref().and_then(load_image_cached));
+        }
         UiEvent::LoginError(message) => apply_login_error(w, &message),
         UiEvent::ToastError(message) => apply_toast_error(w, &message),
         UiEvent::Status(msg) => apply_status(w, &msg),
@@ -293,6 +307,10 @@ fn apply_show_login(w: &impl UiProps) {
 fn apply_login_success(w: &impl UiProps, user_id: &str) {
     w.set_string(StringProp::UserId, SharedString::from(user_id));
     w.set_string(
+        StringProp::UserInitial,
+        SharedString::from(user_initial(user_id)),
+    );
+    w.set_string(
         StringProp::LoginStep,
         SharedString::from(LoginStep::LoggedIn.as_str()),
     );
@@ -372,6 +390,7 @@ fn apply_logged_out(w: &impl UiProps) {
         SharedString::from(LoginStep::Homeserver.as_str()),
     );
     w.set_string(StringProp::UserId, SharedString::default());
+    w.set_string(StringProp::UserInitial, SharedString::default());
     w.set_string(StringProp::LoginStatus, SharedString::default());
     w.set_string(StringProp::LoginError, SharedString::default());
     w.set_string(StringProp::LoginMethod, SharedString::default());
@@ -394,6 +413,7 @@ fn apply_logged_out(w: &impl UiProps) {
     w.set_string(StringProp::SavedFilePath, SharedString::default());
     w.set_bool(BoolProp::BackwardsLoading, false);
     w.set_int(IntProp::NewMessagesCount, 0);
+    w.apply_user_avatar(None);
     w.clear_emoji_model();
 }
 

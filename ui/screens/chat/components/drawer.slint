@@ -1,0 +1,258 @@
+import { Palette } from "std-widgets.slint";
+import { IconDisplay, IconSet, Icon } from "@lucide";
+
+component DrawerRow inherits Rectangle {
+    in property <Icon> icon;
+    in property <string> label;
+    in property <color> tint: Palette.foreground;
+
+    callback clicked();
+
+    height: 48px;
+    background: touch.has-hover ? Palette.foreground.transparentize(0.93) : transparent;
+
+    touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => {
+            root.clicked();
+        }
+    }
+
+    HorizontalLayout {
+        padding-left: 18px;
+        padding-right: 18px;
+        spacing: 14px;
+
+        VerticalLayout {
+            alignment: center;
+            IconDisplay {
+                icon: root.icon;
+                size: 20px;
+                stroke: root.tint;
+            }
+        }
+
+        Text {
+            text: root.label;
+            font-size: 14px;
+            vertical-alignment: center;
+            horizontal-stretch: 1;
+            color: root.tint;
+        }
+    }
+}
+
+export component Drawer inherits Rectangle {
+    in property <string> user-id: "";
+    in property <string> user-initial: "";
+    in property <image> user-avatar;
+    in property <bool> user-has-avatar: false;
+    in property <string> connection-status: "disconnected";
+    in-out property <bool> open: false;
+
+    callback add-account();
+    callback logout();
+
+    property <length> panel-width: 300px;
+    property <length> header-height: 148px;
+    property <bool> accounts-expanded: false;
+    property <length> accounts-height: root.accounts-expanded ? 84px : 0;
+
+    pure function status-color(status: string) -> color {
+        if status == "connected" {
+            return Colors.mediumseagreen;
+        }
+        if status == "connecting" {
+            return Colors.goldenrod;
+        }
+        if status == "error" {
+            return Colors.tomato;
+        }
+        return Palette.border;
+    }
+
+    pure function status-label(status: string) -> string {
+        if status == "connected" {
+            return @tr("Online");
+        }
+        if status == "connecting" {
+            return @tr("Connecting…");
+        }
+        if status == "error" {
+            return @tr("Connection error");
+        }
+        return @tr("Offline");
+    }
+
+    scrim := Rectangle {
+        background: #000000;
+        opacity: root.open ? 0.45 : 0;
+        animate opacity {
+            duration: 200ms;
+            easing: ease-out;
+        }
+
+        TouchArea {
+            enabled: root.open;
+            clicked => {
+                root.open = false;
+            }
+        }
+    }
+
+    panel := Rectangle {
+        width: root.panel-width;
+        height: 100%;
+        x: root.open ? 0 : -root.panel-width - 24px;
+        background: Palette.alternate-background;
+        clip: true;
+        drop-shadow-blur: 24px;
+        drop-shadow-color: #00000077;
+        animate x {
+            duration: 240ms;
+            easing: ease-in-out;
+        }
+
+        TouchArea { }
+
+        header := Rectangle {
+            x: 0;
+            y: 0;
+            width: 100%;
+            height: root.header-height;
+            background: Palette.accent-background;
+
+            avatar := Rectangle {
+                x: 20px;
+                y: 22px;
+                width: 60px;
+                height: 60px;
+                border-radius: self.width / 2;
+                background: Palette.background;
+                clip: true;
+
+                if root.user-has-avatar: Image {
+                    width: 100%;
+                    height: 100%;
+                    source: root.user-avatar;
+                    image-fit: cover;
+                }
+
+                if !root.user-has-avatar: Text {
+                    width: 100%;
+                    height: 100%;
+                    text: root.user-initial;
+                    font-size: 26px;
+                    font-weight: 700;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                    color: Palette.accent-background;
+                }
+            }
+
+            status-dot := Rectangle {
+                x: avatar.x + avatar.width - self.width;
+                y: avatar.y + avatar.height - self.height;
+                width: 16px;
+                height: 16px;
+                border-radius: self.width / 2;
+                background: root.status-color(root.connection-status);
+                border-width: 3px;
+                border-color: Palette.accent-background;
+            }
+
+            expand-touch := TouchArea {
+                x: parent.width - 52px;
+                y: 20px;
+                width: 40px;
+                height: 40px;
+                mouse-cursor: pointer;
+                clicked => {
+                    root.accounts-expanded = !root.accounts-expanded;
+                }
+
+                Rectangle {
+                    width: 36px;
+                    height: 36px;
+                    border-radius: 8px;
+                    background: expand-touch.has-hover
+                        ? Palette.accent-foreground.transparentize(0.85)
+                        : transparent;
+
+                    IconDisplay {
+                        icon: root.accounts-expanded ? IconSet.ChevronDown : IconSet.ChevronRight;
+                        size: 20px;
+                        stroke: Palette.accent-foreground;
+                    }
+                }
+            }
+
+            Text {
+                x: 20px;
+                y: avatar.y + avatar.height + 12px;
+                width: parent.width - 40px;
+                text: root.user-id;
+                font-size: 16px;
+                font-weight: 700;
+                overflow: elide;
+                color: Palette.accent-foreground;
+            }
+
+            Text {
+                x: 20px;
+                y: avatar.y + avatar.height + 34px;
+                width: parent.width - 40px;
+                text: root.status-label(root.connection-status);
+                font-size: 12px;
+                overflow: elide;
+                color: Palette.accent-foreground.transparentize(0.25);
+            }
+        }
+
+        accounts := Rectangle {
+            x: 0;
+            y: header.y + header.height;
+            width: 100%;
+            height: root.accounts-height;
+            clip: true;
+            background: Palette.background.transparentize(0.4);
+            animate height {
+                duration: 200ms;
+                easing: ease-in-out;
+            }
+
+            Text {
+                x: 18px;
+                y: 12px;
+                text: @tr("No other accounts");
+                font-size: 12px;
+                color: Palette.foreground.transparentize(0.55);
+            }
+
+            DrawerRow {
+                x: 0;
+                y: 36px;
+                width: 100%;
+                icon: IconSet.UserRoundPlus;
+                label: @tr("Add Account");
+                tint: Palette.accent-background;
+                clicked => {
+                    root.add-account();
+                }
+            }
+        }
+
+        DrawerRow {
+            x: 0;
+            y: parent.height - self.height;
+            width: 100%;
+            icon: IconSet.LogOut;
+            label: @tr("Log Out");
+            tint: Colors.tomato.mix(Palette.foreground, 0.55);
+            clicked => {
+                root.open = false;
+                root.logout();
+            }
+        }
+    }
+}

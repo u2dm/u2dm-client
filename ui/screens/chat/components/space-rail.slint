@@ -1,4 +1,5 @@
 import { Palette } from "std-widgets.slint";
+import { IconDisplay, IconSet } from "@lucide";
 
 import { SpaceEntry } from "./types.slint";
 
@@ -142,7 +143,9 @@ export component SpaceRail inherits Rectangle {
 
     callback select-space(string);
     callback move-space(int, int);
+    callback menu-clicked();
 
+    property <length> menu-height: 52px;
     property <length> row-height: 68px;
     property <length> drag-threshold: 6px;
     property <bool> dragging: false;
@@ -210,9 +213,39 @@ export component SpaceRail inherits Rectangle {
             : root.drag-rank(idx) + 1;
     }
 
-    Flickable {
+    menu-touch := TouchArea {
+        x: 0;
+        y: 0;
         width: root.width;
-        height: root.height;
+        height: root.menu-height;
+        mouse-cursor: pointer;
+        accessible-role: button;
+        accessible-label: @tr("Menu");
+        clicked => {
+            root.menu-clicked();
+        }
+
+        Rectangle {
+            width: 40px;
+            height: 40px;
+            border-radius: 10px;
+            background: menu-touch.has-hover
+                ? Palette.foreground.transparentize(0.9)
+                : transparent;
+
+            IconDisplay {
+                icon: IconSet.Menu;
+                size: 22px;
+                stroke: Palette.foreground.transparentize(0.3);
+            }
+        }
+    }
+
+    Flickable {
+        x: 0;
+        y: root.menu-height;
+        width: root.width;
+        height: root.height - root.menu-height;
         interactive: !root.dragging;
         viewport-width: root.width;
         viewport-height: (root.spaces.length + 1) * root.row-height;

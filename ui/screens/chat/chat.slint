@@ -8,10 +8,14 @@ import {
 import { Palette } from "std-widgets.slint";
 import { IconDisplay, IconSet } from "@lucide";
 import { Sidebar } from "components/sidebar.slint";
+import { Drawer } from "components/drawer.slint";
 import { TimelineView } from "components/timeline/timeline-view.slint";
 
 export component ChatScreen inherits Rectangle {
     in property <string> user-id: "";
+    in property <string> user-initial: "";
+    in property <image> user-avatar;
+    in property <bool> user-has-avatar: false;
     in property <string> connection-status: "disconnected";
     in property <[RoomEntry]> rooms: [];
     in property <[SpaceEntry]> spaces: [];
@@ -42,14 +46,13 @@ export component ChatScreen inherits Rectangle {
     property <length> divider-width: 4px;
     property <length> min-sidebar-width: 150px;
     property <length> max-sidebar-width: 500px;
+    property <bool> drawer-open: false;
 
     Sidebar {
         x: 0;
         y: 0;
         width: root.sidebar-width;
         height: root.height;
-        user-id: root.user-id;
-        connection-status: root.connection-status;
         rooms: root.rooms;
         spaces: root.spaces;
         selected-room-id <=> root.selected-room-id;
@@ -64,8 +67,8 @@ export component ChatScreen inherits Rectangle {
         move-space(from, to) => {
             root.move-space(from, to);
         }
-        logout => {
-            root.logout();
+        menu-clicked => {
+            root.drawer-open = true;
         }
     }
 
@@ -158,6 +161,24 @@ export component ChatScreen inherits Rectangle {
                     stroke: Palette.foreground.transparentize(0.4);
                 }
             }
+        }
+    }
+
+    Drawer {
+        x: 0;
+        y: 0;
+        width: root.width;
+        height: root.height;
+        user-id: root.user-id;
+        user-initial: root.user-initial;
+        user-avatar: root.user-avatar;
+        user-has-avatar: root.user-has-avatar;
+        connection-status: root.connection-status;
+        open <=> root.drawer-open;
+        add-account => {
+        }
+        logout => {
+            root.logout();
         }
     }
 }

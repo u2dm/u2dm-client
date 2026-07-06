@@ -677,6 +677,20 @@ impl AppService {
         self.start_background_listeners().await;
         self.emit(UiEvent::ConnectionStatus(ConnectionStatus::Connecting));
         self.start_sync_pipeline();
+        self.spawn_user_avatar_fetch();
+    }
+
+    fn spawn_user_avatar_fetch(&mut self) {
+        let matrix = Arc::clone(&self.matrix);
+        let ui_tx = self.ui_tx.clone();
+        self.fire_and_forget.spawn(async move {
+            match matrix.fetch_user_avatar().await {
+                Ok(path) => {
+                    ui_tx.send(UiEvent::UserAvatar(path)).ok();
+                }
+                Err(e) => tracing::debug!("user avatar fetch failed: {e}"),
+            }
+        });
     }
 
     fn handle_rooms_updated(&mut self, rooms: Vec<Room>) {

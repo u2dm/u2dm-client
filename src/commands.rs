@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use strum::Display as StrumDisplay;
 
 use crate::domain::models::{
@@ -73,6 +75,7 @@ pub enum UiEvent {
     LoginSuccess {
         user_id: String,
     },
+    UserAvatar(Option<PathBuf>),
     LoginError(String),
     ToastError(String),
     Status(String),

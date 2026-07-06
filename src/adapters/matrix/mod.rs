@@ -223,6 +223,11 @@ impl MatrixPort for MatrixAdapter {
         media::download_media(&client, &self.media_sources, event_id, thumbnail).await
     }
 
+    async fn fetch_user_avatar(&self) -> Result<Option<PathBuf>> {
+        let client = self.get_client().await?;
+        Ok(media::fetch_user_avatar(&client, &self.media_dir(), &self.materialized).await)
+    }
+
     async fn subscribe_session_changes(
         &self,
         session_tx: mpsc::UnboundedSender<Session>,

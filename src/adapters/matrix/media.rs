@@ -150,6 +150,40 @@ pub(super) async fn enrich_message(
     }
 }
 
+pub(super) async fn fetch_user_avatar(
+    client: &Client,
+    media_dir: &Path,
+    materialized: &StdMutex<HashMap<String, PathBuf>>,
+) -> Option<PathBuf> {
+    let cached = client.account().get_cached_avatar_url().await;
+    let mxc = match cached {
+        Ok(Some(mxc)) => mxc,
+        _ => match client.account().get_avatar_url().await {
+            Ok(Some(mxc)) => mxc,
+            Ok(None) => return None,
+            Err(e) => {
+                tracing::debug!("failed to fetch user avatar url: {e}");
+                return None;
+            }
+        },
+    };
+
+    let key = format!("user-avatar:{mxc}");
+    if let Some(path) = lookup_materialized(materialized, &key) {
+        return Some(path);
+    }
+
+    let avatar_dir = media_dir.join("avatars");
+    if let Err(e) = fs::create_dir_all(&avatar_dir).await {
+        tracing::warn!("failed to create avatar dir: {e}");
+        return None;
+    }
+
+    let cache_stem = avatar_dir.join(hex_encode_id(mxc.as_str()));
+    let source = MediaSource::Plain(mxc);
+    fetch_and_materialize(client, materialized, &cache_stem, source, &key).await
+}
+
 pub(super) async fn download_media(
     client: &Client,
     media_sources: &StdMutex<HashMap<String, MediaSource>>,
