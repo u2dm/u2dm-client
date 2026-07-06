@@ -1,4 +1,3 @@
-use std::path::PathBuf;
 use std::{fmt, ops};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -25,15 +24,6 @@ pub enum LoginMethod {
 }
 
 impl LoginMethod {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::Password => "password",
-            Self::OAuth => "oauth",
-            Self::Both => "both",
-            Self::None => "",
-        }
-    }
-
     pub fn from_auth_methods(methods: &[AuthMethod]) -> Self {
         match (
             methods.contains(&AuthMethod::Password),
@@ -73,7 +63,6 @@ pub struct Session {
     pub homeserver: String,
     pub access_token: String,
     pub refresh_token: Option<String>,
-    /// oauth client id present only for oauth sessions.
     pub client_id: Option<String>,
 }
 
@@ -93,7 +82,6 @@ impl fmt::Debug for Session {
     }
 }
 
-/// non-secret session metadata safe for disk storage.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct SessionMetadata {
     pub user_id: String,
@@ -143,6 +131,20 @@ impl fmt::Display for RoomId {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum LastMessageKind {
+    #[default]
+    None,
+    Text,
+    Image,
+    Video,
+    Audio,
+    File,
+    Location,
+    Encrypted,
+    Sticker,
+}
+
 #[derive(Debug, Clone)]
 #[allow(dead_code)]
 pub struct Room {
@@ -153,41 +155,16 @@ pub struct Room {
     pub mention_count: u64,
     pub last_activity_ts: u64,
     pub last_message_sender: Option<String>,
-    pub last_message_kind: String,
+    pub last_message_kind: LastMessageKind,
     pub last_message_body: String,
     pub last_message_is_own: bool,
-}
-
-impl Room {
-    pub fn last_activity_label(&self) -> String {
-        if self.last_activity_ts == 0 {
-            return String::new();
-        }
-        let Some(utc) =
-            chrono::DateTime::from_timestamp((self.last_activity_ts / 1000).cast_signed(), 0)
-        else {
-            return String::new();
-        };
-        let local = utc.with_timezone(&chrono::Local);
-        let days = chrono::Local::now()
-            .date_naive()
-            .signed_duration_since(local.date_naive())
-            .num_days();
-        if days <= 0 {
-            local.format("%H:%M").to_string()
-        } else if days < 7 {
-            local.format("%a").to_string()
-        } else {
-            local.format("%d/%m/%y").to_string()
-        }
-    }
 }
 
 #[derive(Debug, Clone)]
 pub struct Space {
     pub id: String,
     pub name: String,
-    pub avatar_path: Option<PathBuf>,
+    pub avatar_mxc: Option<String>,
     pub child_room_ids: Vec<String>,
     pub unread: u64,
     pub mentions: u64,
@@ -200,17 +177,6 @@ pub enum ConnectionStatus {
     Connecting,
     Connected,
     Error(String),
-}
-
-impl ConnectionStatus {
-    pub fn as_str(&self) -> &str {
-        match self {
-            Self::Disconnected => "disconnected",
-            Self::Connecting => "connecting",
-            Self::Connected => "connected",
-            Self::Error(_) => "error",
-        }
-    }
 }
 
 #[derive(Debug)]
@@ -231,7 +197,6 @@ pub struct ImageMeta {
     pub width: Option<u32>,
     pub height: Option<u32>,
     pub mimetype: Option<String>,
-    pub thumbnail_path: Option<PathBuf>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -261,43 +226,6 @@ pub enum MessageBody {
     },
 }
 
-impl MessageBody {
-    pub fn body_text(&self) -> &str {
-        match self {
-            Self::Text(s) | Self::Notice(s) | Self::Emote(s) => s,
-            Self::Image { caption, .. } => caption.as_deref().unwrap_or_default(),
-            Self::File { meta, .. } => &meta.filename,
-            Self::UnableToDecrypt => "Unable to decrypt message",
-            Self::Unsupported { fallback, .. } => fallback,
-        }
-    }
-
-    pub fn display_text(&self) -> String {
-        match self {
-            Self::Unsupported { kind, fallback } => {
-                if fallback.is_empty() {
-                    format!("Unsupported message type: {kind}")
-                } else {
-                    format!("Unsupported message type: {kind}\n{fallback}")
-                }
-            }
-            other => other.body_text().to_string(),
-        }
-    }
-
-    pub fn type_str(&self) -> &'static str {
-        match self {
-            Self::Text(_) => "text",
-            Self::Notice(_) => "notice",
-            Self::Emote(_) => "emote",
-            Self::Image { .. } => "image",
-            Self::File { .. } => "file",
-            Self::UnableToDecrypt => "utd",
-            Self::Unsupported { .. } => "unsupported",
-        }
-    }
-}
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ReplyInfo {
     pub sender: String,
@@ -312,7 +240,6 @@ pub struct TimelineMessage {
     pub sender: String,
     pub sender_display_name: Option<String>,
     pub sender_avatar_url: Option<String>,
-    pub sender_avatar_path: Option<PathBuf>,
     pub body: MessageBody,
     pub timestamp: u64,
     pub is_own: bool,
@@ -324,25 +251,11 @@ impl TimelineMessage {
         self.unique_id == other.unique_id
             && self.sender == other.sender
             && self.sender_display_name == other.sender_display_name
-            && self.sender_avatar_path == other.sender_avatar_path
+            && self.sender_avatar_url == other.sender_avatar_url
             && self.body == other.body
             && self.timestamp == other.timestamp
             && self.is_own == other.is_own
             && self.reply == other.reply
-    }
-
-    pub fn display_sender(&self) -> &str {
-        self.sender_display_name.as_deref().unwrap_or(&self.sender)
-    }
-
-    pub fn display_timestamp(&self) -> String {
-        chrono::DateTime::from_timestamp((self.timestamp / 1000).cast_signed(), 0)
-            .map(|utc| {
-                utc.with_timezone(&chrono::Local)
-                    .format("%H:%M")
-                    .to_string()
-            })
-            .unwrap_or_default()
     }
 }
 

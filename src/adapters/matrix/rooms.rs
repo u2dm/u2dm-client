@@ -23,8 +23,10 @@ use tokio::sync::broadcast::Receiver;
 use tokio::sync::broadcast::error::RecvError;
 use tokio::task::JoinSet;
 
-use super::media::{fetch_and_materialize, lookup_materialized};
-use crate::domain::models::{Room as DomainRoom, RoomId, Space as DomainSpace, SyncEvent};
+use super::media::{fetch_and_materialize, lookup_materialized, space_avatar_key};
+use crate::domain::models::{
+    LastMessageKind, Room as DomainRoom, RoomId, Space as DomainSpace, SyncEvent,
+};
 use crate::error::{AppError, Result as AppResult};
 use crate::util::hex_encode_id;
 
@@ -55,7 +57,7 @@ async fn build_single_room(room: &Room) -> DomainRoom {
 #[derive(Default)]
 struct LastMessage {
     sender: Option<String>,
-    kind: String,
+    kind: LastMessageKind,
     body: String,
     is_own: bool,
 }
@@ -80,7 +82,7 @@ async fn build_last_message(room: &Room, is_direct: bool) -> LastMessage {
 
     LastMessage {
         sender,
-        kind: preview.kind.to_owned(),
+        kind: preview.kind,
         body: preview.body,
         is_own,
     }
@@ -96,12 +98,12 @@ async fn resolve_sender_name(room: &Room, user_id: &UserId) -> String {
 }
 
 struct MessagePreview {
-    kind: &'static str,
+    kind: LastMessageKind,
     body: String,
 }
 
 impl MessagePreview {
-    fn labelled(kind: &'static str) -> Self {
+    fn labelled(kind: LastMessageKind) -> Self {
         Self {
             kind,
             body: String::new(),
@@ -135,10 +137,10 @@ fn preview_from_event(event: &AnySyncTimelineEvent) -> Option<MessagePreview> {
             SyncMessageLikeEvent::Original(message),
         )) => Some(message_preview(&message.content.msgtype)),
         AnySyncTimelineEvent::MessageLike(AnySyncMessageLikeEvent::RoomEncrypted(_)) => {
-            Some(MessagePreview::labelled("encrypted"))
+            Some(MessagePreview::labelled(LastMessageKind::Encrypted))
         }
         AnySyncTimelineEvent::MessageLike(AnySyncMessageLikeEvent::Sticker(_)) => {
-            Some(MessagePreview::labelled("sticker"))
+            Some(MessagePreview::labelled(LastMessageKind::Sticker))
         }
         _ => None,
     }
@@ -146,17 +148,18 @@ fn preview_from_event(event: &AnySyncTimelineEvent) -> Option<MessagePreview> {
 
 fn message_preview(msgtype: &MessageType) -> MessagePreview {
     let (kind, body) = match msgtype {
-        MessageType::Text(content) => ("text", content.body.as_str()),
-        MessageType::Notice(content) => ("text", content.body.as_str()),
-        MessageType::Emote(content) => ("text", content.body.as_str()),
-        MessageType::Image(_) => return MessagePreview::labelled("image"),
-        MessageType::Video(_) => return MessagePreview::labelled("video"),
-        MessageType::Audio(_) => return MessagePreview::labelled("audio"),
-        MessageType::File(content) => {
-            ("file", content.filename.as_deref().unwrap_or(&content.body))
-        }
-        MessageType::Location(_) => return MessagePreview::labelled("location"),
-        other => ("text", other.body()),
+        MessageType::Text(content) => (LastMessageKind::Text, content.body.as_str()),
+        MessageType::Notice(content) => (LastMessageKind::Text, content.body.as_str()),
+        MessageType::Emote(content) => (LastMessageKind::Text, content.body.as_str()),
+        MessageType::Image(_) => return MessagePreview::labelled(LastMessageKind::Image),
+        MessageType::Video(_) => return MessagePreview::labelled(LastMessageKind::Video),
+        MessageType::Audio(_) => return MessagePreview::labelled(LastMessageKind::Audio),
+        MessageType::File(content) => (
+            LastMessageKind::File,
+            content.filename.as_deref().unwrap_or(&content.body),
+        ),
+        MessageType::Location(_) => return MessagePreview::labelled(LastMessageKind::Location),
+        other => (LastMessageKind::Text, other.body()),
     };
     MessagePreview {
         kind,
@@ -182,10 +185,6 @@ fn emit_room_update(
     on_sync(SyncEvent::Rooms(rooms));
 }
 
-fn space_avatar_key(mxc: &OwnedMxcUri) -> String {
-    format!("space-avatar:{mxc}")
-}
-
 async fn space_child_ids(space: &Room) -> Vec<String> {
     let events = match space
         .get_state_events_static::<SpaceChildEventContent>()
@@ -208,10 +207,7 @@ async fn space_child_ids(space: &Room) -> Vec<String> {
         .collect()
 }
 
-async fn build_spaces_meta(
-    client: &Client,
-    materialized: &StdMutex<HashMap<String, PathBuf>>,
-) -> Vec<DomainSpace> {
+async fn build_spaces_meta(client: &Client) -> Vec<DomainSpace> {
     let mut spaces = Vec::new();
     for space in client.joined_space_rooms() {
         let name = space
@@ -219,13 +215,11 @@ async fn build_spaces_meta(
             .map(|dn| dn.to_string())
             .unwrap_or_default();
         let child_room_ids = space_child_ids(&space).await;
-        let avatar_path = space
-            .avatar_url()
-            .and_then(|mxc| lookup_materialized(materialized, &space_avatar_key(&mxc)));
+        let avatar_mxc = space.avatar_url().map(|mxc| mxc.to_string());
         spaces.push(DomainSpace {
             id: space.room_id().to_string(),
             name,
-            avatar_path,
+            avatar_mxc,
             child_room_ids,
             unread: 0,
             mentions: 0,
@@ -252,10 +246,11 @@ impl SpaceBuilder {
     }
 
     async fn emit(&mut self, client: &Client, on_sync: &Arc<dyn Fn(SyncEvent) + Send + Sync>) {
-        let spaces = build_spaces_meta(client, &self.materialized).await;
+        let spaces = build_spaces_meta(client).await;
         for space in client.joined_space_rooms() {
             if let Some(mxc) = space.avatar_url()
-                && lookup_materialized(&self.materialized, &space_avatar_key(&mxc)).is_none()
+                && lookup_materialized(&self.materialized, &space_avatar_key(mxc.as_str()))
+                    .is_none()
             {
                 self.spawn_avatar_fetch(client, mxc, on_sync);
             }
@@ -269,7 +264,7 @@ impl SpaceBuilder {
         mxc: OwnedMxcUri,
         on_sync: &Arc<dyn Fn(SyncEvent) + Send + Sync>,
     ) {
-        let key = space_avatar_key(&mxc);
+        let key = space_avatar_key(mxc.as_str());
         if !self.avatars_fetched.insert(key.clone()) {
             return;
         }
@@ -289,9 +284,7 @@ impl SpaceBuilder {
                 .await
                 .is_some()
             {
-                on_sync(SyncEvent::Spaces(
-                    build_spaces_meta(&client, &materialized).await,
-                ));
+                on_sync(SyncEvent::Spaces(build_spaces_meta(&client).await));
             }
         });
     }

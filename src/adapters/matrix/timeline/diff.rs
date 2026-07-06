@@ -6,11 +6,8 @@ use matrix_sdk_ui::timeline::TimelineItem;
 
 use super::TimelineContext;
 use super::convert::convert_timeline_item;
-use super::filter::{
-    convert_and_enrich_from_cache, convert_timeline_items, is_renderable, msg_index_at,
-};
+use super::filter::{convert_timeline_items, is_renderable, msg_index_at};
 use super::subscribe::spawn_enrichment_for_messages;
-use crate::adapters::matrix::media::try_enrich_from_cache;
 use crate::domain::models::{TimelineMessage, TimelinePatch};
 
 fn spawn_if_needed(msg: &TimelineMessage, ctx: &TimelineContext<'_>) {
@@ -27,7 +24,6 @@ fn apply_append(
         .filter_map(|item| convert_timeline_item(item, ctx.media_sources, ctx.own_user_id))
         .collect();
     msgs.sort_by_key(|m| m.timestamp);
-    try_enrich_from_cache(ctx.materialized, &mut msgs);
     items.extend(values);
     if msgs.is_empty() {
         return None;
@@ -41,7 +37,7 @@ fn apply_push_front(
     value: Arc<TimelineItem>,
     ctx: &TimelineContext<'_>,
 ) -> Option<TimelinePatch> {
-    let msg = convert_and_enrich_from_cache(&value, ctx);
+    let msg = convert_timeline_item(&value, ctx.media_sources, ctx.own_user_id);
     items.insert(0, value);
     let msg = msg?;
     spawn_if_needed(&msg, ctx);
@@ -53,7 +49,7 @@ fn apply_push_back(
     value: Arc<TimelineItem>,
     ctx: &TimelineContext<'_>,
 ) -> Option<TimelinePatch> {
-    let msg = convert_and_enrich_from_cache(&value, ctx);
+    let msg = convert_timeline_item(&value, ctx.media_sources, ctx.own_user_id);
     items.push(value);
     let msg = msg?;
     spawn_if_needed(&msg, ctx);
@@ -80,7 +76,7 @@ fn apply_insert(
     value: Arc<TimelineItem>,
     ctx: &TimelineContext<'_>,
 ) -> Option<TimelinePatch> {
-    let msg = convert_and_enrich_from_cache(&value, ctx);
+    let msg = convert_timeline_item(&value, ctx.media_sources, ctx.own_user_id);
     items.insert(index, value);
     let msg = msg?;
     let mi = msg_index_at(items, index);
@@ -115,7 +111,7 @@ fn apply_set(
     match (&old_msg, &new_msg) {
         (Some(old), Some(new)) if old.visually_eq(new) => None,
         (Some(_), Some(_)) => {
-            let enriched = convert_and_enrich_from_cache(value, ctx)?;
+            let enriched = convert_timeline_item(value, ctx.media_sources, ctx.own_user_id)?;
             spawn_if_needed(&enriched, ctx);
             Some(TimelinePatch::Set {
                 index: old_mi,
@@ -125,7 +121,7 @@ fn apply_set(
         (Some(_), None) => Some(TimelinePatch::Remove { index: old_mi }),
         (None, Some(_)) => {
             let mi = msg_index_at(items, index);
-            let enriched = convert_and_enrich_from_cache(value, ctx)?;
+            let enriched = convert_timeline_item(value, ctx.media_sources, ctx.own_user_id)?;
             spawn_if_needed(&enriched, ctx);
             Some(TimelinePatch::Insert {
                 index: mi,
@@ -159,8 +155,7 @@ fn apply_reset(
     ctx: &TimelineContext<'_>,
 ) -> TimelinePatch {
     *items = values;
-    let mut msgs = convert_timeline_items(items, ctx);
-    try_enrich_from_cache(ctx.materialized, &mut msgs);
+    let msgs = convert_timeline_items(items, ctx);
     spawn_enrichment_for_messages(&msgs, ctx);
     TimelinePatch::Reset(msgs)
 }

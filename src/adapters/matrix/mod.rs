@@ -28,6 +28,7 @@ use crate::domain::models::{
 };
 use crate::error::{AppError, Result};
 use crate::ports::matrix::MatrixPort;
+use crate::ports::media::MediaCache;
 
 pub struct MatrixAdapter {
     data_dir: PathBuf,
@@ -68,6 +69,12 @@ impl MatrixAdapter {
 
     fn media_dir(&self) -> PathBuf {
         self.cache_dir.join("media-cache")
+    }
+
+    pub fn media_cache(&self) -> Arc<dyn MediaCache> {
+        Arc::new(media::MaterializedMedia::new(Arc::clone(
+            &self.materialized,
+        )))
     }
 
     pub fn clean_media_cache(&self) {

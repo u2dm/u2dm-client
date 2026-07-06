@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::sync::Mutex as StdMutex;
+use std::sync::{Arc, Mutex as StdMutex};
 use std::time::Duration;
 
 use matrix_sdk::Client;
@@ -12,7 +12,44 @@ use tokio::time::timeout;
 
 use crate::domain::models::{MessageBody, TimelineMessage};
 use crate::error::{AppError, Result};
+use crate::ports::media::MediaCache;
 use crate::util::hex_encode_id;
+
+pub(super) fn thumb_key(event_id: &str) -> String {
+    format!("thumb:{event_id}")
+}
+
+pub(super) fn avatar_key(sender: &str) -> String {
+    format!("avatar:{sender}")
+}
+
+pub(super) fn space_avatar_key(mxc: &str) -> String {
+    format!("space-avatar:{mxc}")
+}
+
+pub(super) struct MaterializedMedia {
+    materialized: Arc<StdMutex<HashMap<String, PathBuf>>>,
+}
+
+impl MaterializedMedia {
+    pub(super) fn new(materialized: Arc<StdMutex<HashMap<String, PathBuf>>>) -> Self {
+        Self { materialized }
+    }
+}
+
+impl MediaCache for MaterializedMedia {
+    fn thumbnail_path(&self, event_id: &str) -> Option<PathBuf> {
+        lookup_materialized(&self.materialized, &thumb_key(event_id))
+    }
+
+    fn avatar_path(&self, sender: &str) -> Option<PathBuf> {
+        lookup_materialized(&self.materialized, &avatar_key(sender))
+    }
+
+    fn space_avatar_path(&self, mxc: &str) -> Option<PathBuf> {
+        lookup_materialized(&self.materialized, &space_avatar_key(mxc))
+    }
+}
 
 pub(super) fn lookup_media_source(
     media_sources: &StdMutex<HashMap<String, MediaSource>>,
@@ -79,32 +116,14 @@ pub(super) async fn fetch_and_materialize(
     Some(cache_path)
 }
 
-pub(super) fn try_enrich_from_cache(
+pub(super) fn needs_media_download(
+    msg: &TimelineMessage,
     materialized: &StdMutex<HashMap<String, PathBuf>>,
-    messages: &mut [TimelineMessage],
-) {
-    for msg in messages.iter_mut() {
-        if let MessageBody::Image { meta, .. } = &mut msg.body
-            && meta.thumbnail_path.is_none()
-        {
-            let cache_key = format!("thumb:{}", msg.event_id.0);
-            if let Some(path) = lookup_materialized(materialized, &cache_key) {
-                meta.thumbnail_path = Some(path);
-            }
-        }
-        if msg.sender_avatar_path.is_none() && msg.sender_avatar_url.is_some() {
-            let avatar_key = format!("avatar:{}", msg.sender);
-            if let Some(path) = lookup_materialized(materialized, &avatar_key) {
-                msg.sender_avatar_path = Some(path);
-            }
-        }
-    }
-}
-
-pub(super) fn needs_media_download(msg: &TimelineMessage) -> bool {
-    let needs_thumbnail =
-        matches!(&msg.body, MessageBody::Image { meta, .. } if meta.thumbnail_path.is_none());
-    let needs_avatar = msg.sender_avatar_url.is_some() && msg.sender_avatar_path.is_none();
+) -> bool {
+    let needs_thumbnail = matches!(&msg.body, MessageBody::Image { .. })
+        && lookup_materialized(materialized, &thumb_key(&msg.event_id.0)).is_none();
+    let needs_avatar = msg.sender_avatar_url.is_some()
+        && lookup_materialized(materialized, &avatar_key(&msg.sender)).is_none();
     needs_thumbnail || needs_avatar
 }
 
@@ -113,39 +132,29 @@ pub(super) async fn enrich_message(
     media_dir: &Path,
     media_sources: &StdMutex<HashMap<String, MediaSource>>,
     materialized: &StdMutex<HashMap<String, PathBuf>>,
-    msg: &mut TimelineMessage,
+    msg: &TimelineMessage,
 ) {
-    if let MessageBody::Image { meta, .. } = &mut msg.body {
+    if matches!(&msg.body, MessageBody::Image { .. }) {
         let event_id = &msg.event_id.0;
-        let cache_key = format!("thumb:{event_id}");
+        let cache_key = thumb_key(event_id);
 
-        if let Some(path) = lookup_materialized(materialized, &cache_key) {
-            meta.thumbnail_path = Some(path);
-        } else if let Some(source) = lookup_media_source(media_sources, event_id) {
+        if lookup_materialized(materialized, &cache_key).is_none()
+            && let Some(source) = lookup_media_source(media_sources, event_id)
+        {
             let cache_stem = media_dir.join(hex_encode_id(event_id));
-            if let Some(path) =
-                fetch_and_materialize(client, materialized, &cache_stem, source, &cache_key).await
-            {
-                meta.thumbnail_path = Some(path);
-            }
+            fetch_and_materialize(client, materialized, &cache_stem, source, &cache_key).await;
         }
     }
 
     if let Some(mxc_url) = &msg.sender_avatar_url {
-        let avatar_key = format!("avatar:{}", msg.sender);
+        let avatar_key = avatar_key(&msg.sender);
 
-        if let Some(path) = lookup_materialized(materialized, &avatar_key) {
-            msg.sender_avatar_path = Some(path);
-        } else {
+        if lookup_materialized(materialized, &avatar_key).is_none() {
             let avatar_dir = media_dir.join("avatars");
             let cache_stem = avatar_dir.join(hex_encode_id(&msg.sender));
             let avatar_mxc: OwnedMxcUri = mxc_url.as_str().into();
             let source = MediaSource::Plain(avatar_mxc);
-            if let Some(path) =
-                fetch_and_materialize(client, materialized, &cache_stem, source, &avatar_key).await
-            {
-                msg.sender_avatar_path = Some(path);
-            }
+            fetch_and_materialize(client, materialized, &cache_stem, source, &avatar_key).await;
         }
     }
 }

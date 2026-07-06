@@ -61,6 +61,7 @@ fn run() -> Result<()> {
 
     let matrix_adapter = MatrixAdapter::new(cfg.data_dir.clone(), cfg.cache_dir.clone());
     matrix_adapter.clean_media_cache();
+    let media_cache = matrix_adapter.media_cache();
     let matrix: Arc<dyn MatrixPort> = Arc::new(matrix_adapter);
     let storage: Arc<dyn StoragePort> = Arc::new(SecureStorage::new(&cfg.data_dir));
     let media_files: Arc<dyn MediaFilePort> = Arc::new(DesktopMediaFiles::new());
@@ -69,7 +70,7 @@ fn run() -> Result<()> {
 
     let cmd_tx_quit = cmd_tx.clone();
     let _guard = rt.enter();
-    ui.spawn_event_handler(ui_rx);
+    ui.spawn_event_handler(ui_rx, media_cache);
     if let Err(e) = cmd_tx.send(UiCommand::RestoreSession) {
         tracing::warn!("failed to send RestoreSession command: {e}");
     }

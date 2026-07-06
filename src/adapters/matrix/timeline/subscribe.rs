@@ -15,7 +15,7 @@ use tokio::task::JoinSet;
 use super::TimelineContext;
 use super::diff::diff_to_patch;
 use super::filter::convert_timeline_items;
-use crate::adapters::matrix::media::{enrich_message, needs_media_download, try_enrich_from_cache};
+use crate::adapters::matrix::media::{enrich_message, needs_media_download};
 use crate::domain::models::{
     PaginationDirection, RoomId, TimelineCommand, TimelineMessage, TimelinePatch, TimelineUpdate,
 };
@@ -30,14 +30,14 @@ fn spawn_media_enrichment(
     timeline_tx: &mpsc::UnboundedSender<TimelineUpdate>,
     msg: &TimelineMessage,
 ) {
-    let mut msg = msg.clone();
+    let msg = msg.clone();
     let client = client.clone();
     let media_dir = media_dir.to_path_buf();
     let media_sources = Arc::clone(media_sources);
     let materialized = Arc::clone(materialized);
     let tx = timeline_tx.clone();
     tokio::spawn(async move {
-        enrich_message(&client, &media_dir, &media_sources, &materialized, &mut msg).await;
+        enrich_message(&client, &media_dir, &media_sources, &materialized, &msg).await;
         drop(tx.send(TimelineUpdate::Patch(Box::new(
             TimelinePatch::UpdateMedia {
                 event_id: msg.event_id.clone(),
@@ -52,7 +52,7 @@ pub(super) fn spawn_enrichment_for_messages(
     ctx: &TimelineContext<'_>,
 ) {
     for msg in messages {
-        if needs_media_download(msg) {
+        if needs_media_download(msg, ctx.materialized) {
             spawn_media_enrichment(
                 ctx.client,
                 ctx.media_dir,
@@ -71,14 +71,13 @@ fn send_initial_timeline(
     room_id: &RoomId,
     timeline_tx: &mpsc::UnboundedSender<TimelineUpdate>,
 ) -> bool {
-    let mut messages = convert_timeline_items(items, ctx);
+    let messages = convert_timeline_items(items, ctx);
     tracing::info!(
         raw_items = items.len(),
         messages = messages.len(),
         %room_id,
         "timeline loaded"
     );
-    try_enrich_from_cache(ctx.materialized, &mut messages);
     tracing::debug!(
         messages = messages.len(),
         %room_id,

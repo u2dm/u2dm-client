@@ -2,6 +2,7 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::rc::Rc;
+use std::sync::Arc;
 
 use slint::{Model, ModelRc, VecModel};
 use slint_interpreter::{
@@ -17,8 +18,9 @@ thread_local! {
 }
 
 use super::common::{
-    BoolProp, IntProp, Status, StringProp, UiProps, dispatch_ui_event, load_image_cached,
-    sender_initial,
+    BoolProp, IntProp, Status, StringProp, UiProps, dispatch_ui_event, last_message_kind_token,
+    load_image_cached, message_body_text, message_sender_label, message_timestamp_label,
+    message_type_token, room_activity_label, sender_initial,
 };
 use super::emoji;
 use crate::commands::{UiCommand, UiEvent};
@@ -27,6 +29,7 @@ use crate::domain::models::{
     VerificationEmoji as DomainVerificationEmoji,
 };
 use crate::error::{AppError, Result};
+use crate::ports::media::MediaCache;
 
 fn set_prop(inst: &ComponentInstance, name: &str, value: Value) {
     if let Err(e) = inst.set_property(name, value) {
@@ -507,7 +510,11 @@ impl SlintUiAdapter {
         Ok(())
     }
 
-    pub fn spawn_event_handler(&self, mut ui_rx: mpsc::UnboundedReceiver<UiEvent>) {
+    pub fn spawn_event_handler(
+        &self,
+        mut ui_rx: mpsc::UnboundedReceiver<UiEvent>,
+        media_cache: Arc<dyn MediaCache>,
+    ) {
         let weak = self.instance.as_weak();
         let timeline_model: Rc<VecModel<Value>> = Rc::new(VecModel::default());
         let rooms_model: Rc<VecModel<Value>> = Rc::new(VecModel::default());
@@ -535,6 +542,7 @@ impl SlintUiAdapter {
 
         tokio::spawn(async move {
             while let Some(event) = ui_rx.recv().await {
+                let media_cache = Arc::clone(&media_cache);
                 weak.upgrade_in_event_loop(move |inst| {
                     let timeline = TIMELINE_MODEL.with(|cell| cell.borrow().clone());
                     let rooms = ROOMS_MODEL.with(|cell| cell.borrow().clone());
@@ -546,9 +554,9 @@ impl SlintUiAdapter {
                             &tl,
                             &rm,
                             &sm,
-                            &message_to_value,
+                            &|m| message_to_value(m, media_cache.as_ref()),
                             &room_to_value,
-                            &space_to_value,
+                            &|s| space_to_value(s, media_cache.as_ref()),
                             &|v| room_id_from_value(v).map_or("", SharedString::as_str),
                             &|v| room_id_from_value(v).map_or("", SharedString::as_str),
                             &event_id_from_value,
@@ -661,7 +669,7 @@ fn setup_emoji_store(inst: &ComponentInstance) -> Result<()> {
     Ok(())
 }
 
-fn message_to_value(m: &TimelineMessage) -> Value {
+fn message_to_value(m: &TimelineMessage, media: &dyn MediaCache) -> Value {
     let mut fields = vec![
         (
             "unique-id".to_string(),
@@ -669,19 +677,19 @@ fn message_to_value(m: &TimelineMessage) -> Value {
         ),
         (
             "sender".to_string(),
-            Value::String(SharedString::from(m.display_sender())),
+            Value::String(SharedString::from(message_sender_label(m))),
         ),
         (
             "body".to_string(),
-            Value::String(SharedString::from(&m.body.display_text())),
+            Value::String(SharedString::from(&message_body_text(&m.body))),
         ),
         (
             "timestamp".to_string(),
-            Value::String(SharedString::from(&m.display_timestamp())),
+            Value::String(SharedString::from(&message_timestamp_label(m.timestamp))),
         ),
         (
             "message-type".to_string(),
-            Value::String(SharedString::from(m.body.type_str())),
+            Value::String(SharedString::from(message_type_token(&m.body))),
         ),
         (
             "event-id".to_string(),
@@ -695,8 +703,8 @@ fn message_to_value(m: &TimelineMessage) -> Value {
     if let MessageBody::Image { meta, .. } = &m.body {
         image_width = meta.width.unwrap_or(0).cast_signed();
         image_height = meta.height.unwrap_or(0).cast_signed();
-        if let Some(thumb_path) = &meta.thumbnail_path
-            && let Some(img) = load_image_cached(thumb_path)
+        if let Some(thumb_path) = media.thumbnail_path(&m.event_id.0)
+            && let Some(img) = load_image_cached(&thumb_path)
         {
             fields.push(("thumbnail".to_string(), Value::Image(img)));
             has_thumbnail = true;
@@ -713,8 +721,8 @@ fn message_to_value(m: &TimelineMessage) -> Value {
     ));
 
     let mut has_avatar = false;
-    if let Some(avatar_path) = &m.sender_avatar_path
-        && let Some(img) = load_image_cached(avatar_path)
+    if let Some(avatar_path) = media.avatar_path(&m.sender)
+        && let Some(img) = load_image_cached(&avatar_path)
     {
         fields.push(("avatar".to_string(), Value::Image(img)));
         has_avatar = true;
@@ -722,7 +730,7 @@ fn message_to_value(m: &TimelineMessage) -> Value {
     fields.push(("has-avatar".to_string(), Value::Bool(has_avatar)));
     fields.push((
         "sender-initial".to_string(),
-        Value::String(SharedString::from(sender_initial(m.display_sender()))),
+        Value::String(SharedString::from(sender_initial(message_sender_label(m)))),
     ));
     fields.push(("is-own".to_string(), Value::Bool(m.is_own)));
     fields.push(("has-reply".to_string(), Value::Bool(m.reply.is_some())));
@@ -767,7 +775,9 @@ fn room_to_value(r: &Room) -> Value {
         ),
         (
             "last-message-kind".to_string(),
-            Value::String(SharedString::from(&r.last_message_kind)),
+            Value::String(SharedString::from(last_message_kind_token(
+                r.last_message_kind,
+            ))),
         ),
         (
             "last-message-body".to_string(),
@@ -779,12 +789,12 @@ fn room_to_value(r: &Room) -> Value {
         ),
         (
             "last-message-time".to_string(),
-            Value::String(SharedString::from(&r.last_activity_label())),
+            Value::String(SharedString::from(&room_activity_label(r.last_activity_ts))),
         ),
     ]))
 }
 
-fn space_to_value(s: &Space) -> Value {
+fn space_to_value(s: &Space, media: &dyn MediaCache) -> Value {
     let mut fields = vec![
         ("id".to_string(), Value::String(SharedString::from(&s.id))),
         (
@@ -802,8 +812,9 @@ fn space_to_value(s: &Space) -> Value {
     ];
 
     let mut has_avatar = false;
-    if let Some(avatar_path) = &s.avatar_path
-        && let Some(img) = load_image_cached(avatar_path)
+    if let Some(mxc) = &s.avatar_mxc
+        && let Some(avatar_path) = media.space_avatar_path(mxc)
+        && let Some(img) = load_image_cached(&avatar_path)
     {
         fields.push(("avatar".to_string(), Value::Image(img)));
         has_avatar = true;

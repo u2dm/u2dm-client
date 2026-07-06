@@ -1,13 +1,15 @@
 use std::cell::RefCell;
 use std::rc::Rc;
+use std::sync::Arc;
 
 use slint::{ComponentHandle, Image, Model, ModelRc, SharedString, VecModel};
 use tokio::runtime::Runtime;
 use tokio::sync::mpsc;
 
 use super::common::{
-    BoolProp, IntProp, Status, StringProp, UiProps, dispatch_ui_event, load_image_cached,
-    sender_initial,
+    BoolProp, IntProp, Status, StringProp, UiProps, dispatch_ui_event, last_message_kind_token,
+    load_image_cached, message_body_text, message_sender_label, message_timestamp_label,
+    message_type_token, room_activity_label, sender_initial,
 };
 use super::emoji;
 use crate::commands::{UiCommand, UiEvent};
@@ -16,6 +18,7 @@ use crate::domain::models::{
     VerificationEmoji as DomainVerificationEmoji,
 };
 use crate::error::Result;
+use crate::ports::media::MediaCache;
 
 #[allow(clippy::all, clippy::pedantic, clippy::restriction, clippy::nursery)]
 mod generated {
@@ -337,7 +340,11 @@ impl SlintUiAdapter {
         Ok(())
     }
 
-    pub fn spawn_event_handler(&self, mut ui_rx: mpsc::UnboundedReceiver<UiEvent>) {
+    pub fn spawn_event_handler(
+        &self,
+        mut ui_rx: mpsc::UnboundedReceiver<UiEvent>,
+        media_cache: Arc<dyn MediaCache>,
+    ) {
         let weak = self.window.as_weak();
         let timeline_model: Rc<VecModel<MessageEntry>> = Rc::new(VecModel::default());
         let rooms_model: Rc<VecModel<RoomEntry>> = Rc::new(VecModel::default());
@@ -356,6 +363,7 @@ impl SlintUiAdapter {
 
         tokio::spawn(async move {
             while let Some(event) = ui_rx.recv().await {
+                let media_cache = Arc::clone(&media_cache);
                 weak.upgrade_in_event_loop(move |w| {
                     let timeline = TIMELINE_MODEL.with(|cell| cell.borrow().clone());
                     let rooms = ROOMS_MODEL.with(|cell| cell.borrow().clone());
@@ -367,9 +375,9 @@ impl SlintUiAdapter {
                             &tl,
                             &rm,
                             &sm,
-                            &message_to_entry,
+                            &|m| message_to_entry(m, media_cache.as_ref()),
                             &room_to_entry,
-                            &space_to_entry,
+                            &|s| space_to_entry(s, media_cache.as_ref()),
                             &|e| e.id.as_str(),
                             &|e: &SpaceEntry| e.id.as_str(),
                             &|e: &MessageEntry| e.event_id.to_string(),
@@ -435,15 +443,15 @@ fn setup_emoji_store(window: &AppWindow) {
     });
 }
 
-fn message_to_entry(m: &TimelineMessage) -> MessageEntry {
+fn message_to_entry(m: &TimelineMessage, media: &dyn MediaCache) -> MessageEntry {
     let mut entry = MessageEntry {
         unique_id: SharedString::from(&m.unique_id),
-        sender: SharedString::from(m.display_sender()),
-        body: SharedString::from(&m.body.display_text()),
-        timestamp: SharedString::from(&m.display_timestamp()),
-        message_type: SharedString::from(m.body.type_str()),
+        sender: SharedString::from(message_sender_label(m)),
+        body: SharedString::from(&message_body_text(&m.body)),
+        timestamp: SharedString::from(&message_timestamp_label(m.timestamp)),
+        message_type: SharedString::from(message_type_token(&m.body)),
         event_id: SharedString::from(&m.event_id.0),
-        sender_initial: SharedString::from(sender_initial(m.display_sender())),
+        sender_initial: SharedString::from(sender_initial(message_sender_label(m))),
         is_own: m.is_own,
         has_reply: m.reply.is_some(),
         reply_sender: SharedString::from(m.reply.as_ref().map_or("", |r| r.sender.as_str())),
@@ -454,16 +462,16 @@ fn message_to_entry(m: &TimelineMessage) -> MessageEntry {
     if let MessageBody::Image { meta, .. } = &m.body {
         entry.image_width = meta.width.unwrap_or(0).cast_signed();
         entry.image_height = meta.height.unwrap_or(0).cast_signed();
-        if let Some(thumb_path) = &meta.thumbnail_path
-            && let Some(img) = load_image_cached(thumb_path)
+        if let Some(thumb_path) = media.thumbnail_path(&m.event_id.0)
+            && let Some(img) = load_image_cached(&thumb_path)
         {
             entry.thumbnail = img;
             entry.has_thumbnail = true;
         }
     }
 
-    if let Some(avatar_path) = &m.sender_avatar_path
-        && let Some(img) = load_image_cached(avatar_path)
+    if let Some(avatar_path) = media.avatar_path(&m.sender)
+        && let Some(img) = load_image_cached(&avatar_path)
     {
         entry.avatar = img;
         entry.has_avatar = true;
@@ -483,14 +491,14 @@ fn room_to_entry(r: &Room) -> RoomEntry {
         last_message_sender: SharedString::from(
             r.last_message_sender.as_deref().unwrap_or_default(),
         ),
-        last_message_kind: SharedString::from(&r.last_message_kind),
+        last_message_kind: SharedString::from(last_message_kind_token(r.last_message_kind)),
         last_message_body: SharedString::from(&r.last_message_body),
         last_message_is_own: r.last_message_is_own,
-        last_message_time: SharedString::from(&r.last_activity_label()),
+        last_message_time: SharedString::from(&room_activity_label(r.last_activity_ts)),
     }
 }
 
-fn space_to_entry(s: &Space) -> SpaceEntry {
+fn space_to_entry(s: &Space, media: &dyn MediaCache) -> SpaceEntry {
     let mut entry = SpaceEntry {
         id: SharedString::from(&s.id),
         name: SharedString::from(&s.name),
@@ -502,8 +510,9 @@ fn space_to_entry(s: &Space) -> SpaceEntry {
         ..Default::default()
     };
 
-    if let Some(avatar_path) = &s.avatar_path
-        && let Some(img) = load_image_cached(avatar_path)
+    if let Some(mxc) = &s.avatar_mxc
+        && let Some(avatar_path) = media.space_avatar_path(mxc)
+        && let Some(img) = load_image_cached(&avatar_path)
     {
         entry.avatar = img;
         entry.has_avatar = true;

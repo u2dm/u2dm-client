@@ -35,10 +35,114 @@ pub fn user_initial(user_id: &str) -> String {
         .unwrap_or_default()
 }
 
+pub fn message_sender_label(m: &TimelineMessage) -> &str {
+    m.sender_display_name.as_deref().unwrap_or(&m.sender)
+}
+
+pub fn message_timestamp_label(timestamp: u64) -> String {
+    chrono::DateTime::from_timestamp((timestamp / 1000).cast_signed(), 0)
+        .map(|utc| {
+            utc.with_timezone(&chrono::Local)
+                .format("%H:%M")
+                .to_string()
+        })
+        .unwrap_or_default()
+}
+
+pub fn room_activity_label(last_activity_ts: u64) -> String {
+    if last_activity_ts == 0 {
+        return String::new();
+    }
+    let Some(utc) = chrono::DateTime::from_timestamp((last_activity_ts / 1000).cast_signed(), 0)
+    else {
+        return String::new();
+    };
+    let local = utc.with_timezone(&chrono::Local);
+    let days = chrono::Local::now()
+        .date_naive()
+        .signed_duration_since(local.date_naive())
+        .num_days();
+    if days <= 0 {
+        local.format("%H:%M").to_string()
+    } else if days < 7 {
+        local.format("%a").to_string()
+    } else {
+        local.format("%d/%m/%y").to_string()
+    }
+}
+
+fn message_body_raw(body: &MessageBody) -> &str {
+    match body {
+        MessageBody::Text(s) | MessageBody::Notice(s) | MessageBody::Emote(s) => s,
+        MessageBody::Image { caption, .. } => caption.as_deref().unwrap_or_default(),
+        MessageBody::File { meta, .. } => &meta.filename,
+        MessageBody::UnableToDecrypt => "Unable to decrypt message",
+        MessageBody::Unsupported { fallback, .. } => fallback,
+    }
+}
+
+pub fn message_body_text(body: &MessageBody) -> String {
+    match body {
+        MessageBody::Unsupported { kind, fallback } => {
+            if fallback.is_empty() {
+                format!("Unsupported message type: {kind}")
+            } else {
+                format!("Unsupported message type: {kind}\n{fallback}")
+            }
+        }
+        other => message_body_raw(other).to_string(),
+    }
+}
+
+pub fn message_type_token(body: &MessageBody) -> &'static str {
+    match body {
+        MessageBody::Text(_) => "text",
+        MessageBody::Notice(_) => "notice",
+        MessageBody::Emote(_) => "emote",
+        MessageBody::Image { .. } => "image",
+        MessageBody::File { .. } => "file",
+        MessageBody::UnableToDecrypt => "utd",
+        MessageBody::Unsupported { .. } => "unsupported",
+    }
+}
+
+pub fn last_message_kind_token(kind: LastMessageKind) -> &'static str {
+    match kind {
+        LastMessageKind::None => "",
+        LastMessageKind::Text => "text",
+        LastMessageKind::Image => "image",
+        LastMessageKind::Video => "video",
+        LastMessageKind::Audio => "audio",
+        LastMessageKind::File => "file",
+        LastMessageKind::Location => "location",
+        LastMessageKind::Encrypted => "encrypted",
+        LastMessageKind::Sticker => "sticker",
+    }
+}
+
+pub fn login_method_token(method: LoginMethod) -> &'static str {
+    match method {
+        LoginMethod::Password => "password",
+        LoginMethod::OAuth => "oauth",
+        LoginMethod::Both => "both",
+        LoginMethod::None => "",
+    }
+}
+
+pub fn connection_status_token(status: &ConnectionStatus) -> &'static str {
+    match status {
+        ConnectionStatus::Disconnected => "disconnected",
+        ConnectionStatus::Connecting => "connecting",
+        ConnectionStatus::Connected => "connected",
+        ConnectionStatus::Error(_) => "error",
+    }
+}
+
 use crate::commands::UiEvent;
 use crate::domain::models::{
-    ConnectionStatus, LoginMethod, Room, ServerInfo, Space, TimelineMessage, TimelinePatch,
-    VerificationEmoji as DomainVerificationEmoji, VerificationEvent as DomainVerificationEvent,
+    ConnectionStatus, LastMessageKind, LoginMethod, MessageBody, Room, ServerInfo, Space,
+    TimelineMessage, TimelinePatch, VerificationEmoji as DomainVerificationEmoji,
+    VerificationEvent as DomainVerificationEvent,
 };
 
 pub enum StringProp {
@@ -287,7 +391,10 @@ pub fn dispatch_ui_event<T, R, S>(
 
 fn apply_server_info(w: &impl UiProps, info: &ServerInfo) {
     let method = LoginMethod::from_auth_methods(&info.auth_methods);
-    w.set_string(StringProp::LoginMethod, SharedString::from(method.as_str()));
+    w.set_string(
+        StringProp::LoginMethod,
+        SharedString::from(login_method_token(method)),
+    );
     w.set_string(
         StringProp::ResolvedHomeserver,
         SharedString::from(&info.homeserver_url),
@@ -336,7 +443,7 @@ fn apply_status(w: &impl UiProps, msg: &str) {
 fn apply_connection_status(w: &impl UiProps, status: &ConnectionStatus) {
     w.set_string(
         StringProp::ConnectionStatus,
-        SharedString::from(status.as_str()),
+        SharedString::from(connection_status_token(status)),
     );
 }
 
@@ -405,7 +512,7 @@ fn apply_logged_out(w: &impl UiProps) {
     w.set_string(StringProp::InputPassword, SharedString::default());
     w.set_string(
         StringProp::ConnectionStatus,
-        SharedString::from(ConnectionStatus::Disconnected.as_str()),
+        SharedString::from(connection_status_token(&ConnectionStatus::Disconnected)),
     );
     w.set_bool(BoolProp::VerificationVisible, false);
     w.set_string(StringProp::VerificationStep, SharedString::default());

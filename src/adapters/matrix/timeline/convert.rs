@@ -40,7 +40,6 @@ fn build_utd_message(
         sender: sender_str,
         sender_display_name,
         sender_avatar_url,
-        sender_avatar_path: None,
         body: MessageBody::UnableToDecrypt,
         timestamp: ts,
         is_own,
@@ -119,7 +118,6 @@ fn extract_image_body(
             width,
             height,
             mimetype,
-            thumbnail_path: None,
         },
     }
 }
@@ -216,7 +214,6 @@ pub(super) fn convert_event_item_with_uid(
         sender: sender_str,
         sender_display_name,
         sender_avatar_url,
-        sender_avatar_path: None,
         body,
         timestamp: ts,
         is_own,
