@@ -19,7 +19,7 @@ impl DesktopMediaFiles {
 impl MediaFilePort for DesktopMediaFiles {
     async fn open_media(&self, event_id: &str, data: &[u8]) -> Result<()> {
         let ext = infer::get(data).map_or("bin", |kind| kind.extension());
-        let dir = env::temp_dir().join("utdm-media");
+        let dir = env::temp_dir().join("u2dm-media");
         fs::create_dir_all(&dir).await?;
         let path = dir.join(format!("{}.{ext}", hex_encode_id(event_id)));
         fs::write(&path, data).await?;

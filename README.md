@@ -1,4 +1,4 @@
-# UTDM
+# U2DM
 
 Unable to Decrypt Message: a Matrix chat client built with Slint UI.
 

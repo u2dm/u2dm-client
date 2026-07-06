@@ -8,7 +8,7 @@ use std::{env, fs};
 
 const LANG_DIR: &str = "lang";
 const UI_DIR: &str = "ui";
-const POT_FILE: &str = "lang/utdm.pot";
+const POT_FILE: &str = "lang/u2dm.pot";
 const LUCIDE_LSP_LIB: &str = ".lucide/lib.slint";
 const TWEMOJI_FONT: &str = "ui/fonts/Twemoji.ttf";
 const FONT_REPO: &str = "u2dm/twemoji";

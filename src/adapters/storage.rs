@@ -13,7 +13,7 @@ use crate::domain::models::{Session, SessionMetadata};
 use crate::error::{AppError, Result};
 use crate::ports::storage::StoragePort;
 
-const KEYRING_SERVICE: &str = "utdm";
+const KEYRING_SERVICE: &str = "u2dm";
 
 pub struct SecureStorage {
     session_path: PathBuf,

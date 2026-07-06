@@ -1,6 +1,6 @@
 # Third-Party Licenses
 
-UTDM bundles third-party assets whose licenses require attribution. Rust crate
+U2DM bundles third-party assets whose licenses require attribution. Rust crate
 dependencies are covered by their own manifests (`cargo`). This file lists
 non-crate assets embedded into the application binary.
 

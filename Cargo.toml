@@ -1,5 +1,5 @@
 [package]
-name = "utdm"
+name = "u2dm"
 version = "0.1.0"
 edition = "2024"
 description = "Unable to decrypt message. A Matrix chat client built with Slint UI"
