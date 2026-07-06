@@ -5,6 +5,7 @@ import { IconDisplay, IconSet } from "@lucide";
 
 import { RoomEntry, SpaceEntry } from "./types.slint";
 import { SpaceRail } from "./space-rail.slint";
+import { Fonts } from "../../../theme.slint";
 
 export component Sidebar inherits Rectangle {
     background: Palette.alternate-background;
@@ -169,6 +170,7 @@ export component Sidebar inherits Rectangle {
                                     Text {
                                         horizontal-stretch: 1;
                                         text: room.name;
+                                        font-family: Fonts.emoji;
                                         font-size: 14px;
                                         font-weight: 600;
                                         vertical-alignment: center;
@@ -200,6 +202,7 @@ export component Sidebar inherits Rectangle {
                                         Text {
                                             horizontal-stretch: 1;
                                             text: root.preview-label(room.last-message-kind, room.last-message-body);
+                                            font-family: Fonts.emoji;
                                             font-size: 12px;
                                             vertical-alignment: center;
                                             overflow: elide;

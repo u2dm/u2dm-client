@@ -14,13 +14,17 @@ use crate::domain::models::{
     LoginCredentials, MessageBody, Room, RoomId, Space, TimelineMessage,
     VerificationEmoji as DomainVerificationEmoji,
 };
+use crate::emoji;
 use crate::error::Result;
 
 #[allow(clippy::all, clippy::pedantic, clippy::restriction, clippy::nursery)]
 mod generated {
     slint::include_modules!();
 }
-use generated::{AppWindow, MessageEntry, RoomEntry, SpaceEntry, VerificationEmoji};
+use generated::{
+    AppWindow, EmojiEntry, EmojiGroup, EmojiInsert, EmojiStore, MessageEntry, RoomEntry,
+    SpaceEntry, VerificationEmoji,
+};
 
 thread_local! {
     static TIMELINE_MODEL: RefCell<Option<Rc<VecModel<MessageEntry>>>> = const { RefCell::new(None) };
@@ -104,6 +108,8 @@ impl SlintUiAdapter {
 
     #[allow(clippy::too_many_lines, clippy::unnecessary_wraps)]
     pub fn register_callbacks(&self, cmd_tx: &mpsc::UnboundedSender<UiCommand>) -> Result<()> {
+        setup_emoji_store(&self.window);
+
         let tx = cmd_tx.clone();
         let weak = self.window.as_weak();
         self.window.on_check_server(move |homeserver| {
@@ -349,6 +355,54 @@ impl SlintUiAdapter {
         self.window.run()?;
         Ok(())
     }
+}
+
+fn emoji_entry_to_ui(e: &emoji::EmojiEntry) -> EmojiEntry {
+    let tones: Vec<SharedString> = e
+        .tones
+        .iter()
+        .map(|t| SharedString::from(t.as_str()))
+        .collect();
+    EmojiEntry {
+        base: SharedString::from(&e.base),
+        tones: ModelRc::new(VecModel::from(tones)),
+        name: SharedString::from(&e.name),
+    }
+}
+
+fn setup_emoji_store(window: &AppWindow) {
+    let store = window.global::<EmojiStore>();
+    let groups: Vec<EmojiGroup> = emoji::groups()
+        .iter()
+        .map(|items| {
+            let entries: Vec<EmojiEntry> = items.iter().map(emoji_entry_to_ui).collect();
+            EmojiGroup {
+                items: ModelRc::new(VecModel::from(entries)),
+            }
+        })
+        .collect();
+    store.set_groups(ModelRc::new(VecModel::from(groups)));
+
+    let weak = window.as_weak();
+    store.on_search(move |query| {
+        let Some(w) = weak.upgrade() else {
+            return;
+        };
+        let results: Vec<EmojiEntry> = emoji::search(&query)
+            .iter()
+            .map(emoji_entry_to_ui)
+            .collect();
+        w.global::<EmojiStore>()
+            .set_results(ModelRc::new(VecModel::from(results)));
+    });
+
+    store.on_insert(|text, offset, glyph| {
+        let (inserted, caret) = emoji::insert_at(text.as_str(), offset, glyph.as_str());
+        EmojiInsert {
+            text: SharedString::from(inserted),
+            caret,
+        }
+    });
 }
 
 fn message_to_entry(m: &TimelineMessage) -> MessageEntry {

@@ -1,0 +1,197 @@
+import { Palette, LineEdit } from "std-widgets.slint";
+import { IconDisplay, IconSet, Icon } from "@lucide";
+
+import { EmojiEntry, EmojiGroup, EmojiInsert } from "../types.slint";
+import { Fonts } from "../../../../theme.slint";
+
+export global EmojiStore {
+    in property <[EmojiGroup]> groups: [];
+    in property <[EmojiEntry]> results: [];
+    in-out property <int> tone: 0;
+    callback search(string);
+    pure callback insert(string, int, string) -> EmojiInsert;
+}
+
+component ToneSwatch inherits Rectangle {
+    in property <color> swatch;
+    in property <bool> selected;
+    callback clicked();
+
+    width: 18px;
+    height: 18px;
+    border-radius: self.width / 2;
+    background: root.swatch;
+    border-width: root.selected ? 2px : 1px;
+    border-color: root.selected
+        ? Palette.accent-background
+        : Palette.foreground.transparentize(0.7);
+
+    TouchArea {
+        mouse-cursor: pointer;
+        clicked => {
+            root.clicked();
+        }
+    }
+}
+
+component CategoryTab inherits Rectangle {
+    in property <Icon> icon;
+    in property <bool> selected;
+    callback clicked();
+
+    horizontal-stretch: 1;
+    height: 30px;
+    border-radius: 6px;
+    background: root.selected
+        ? Palette.accent-background.transparentize(0.82)
+        : (touch.has-hover ? Palette.foreground.transparentize(0.92) : transparent);
+
+    touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => {
+            root.clicked();
+        }
+        IconDisplay {
+            x: (parent.width - self.width) / 2;
+            y: (parent.height - self.height) / 2;
+            icon: root.icon;
+            size: 18px;
+            stroke: root.selected
+                ? Palette.accent-background
+                : Palette.foreground.transparentize(0.35);
+        }
+    }
+}
+
+export component EmojiPicker inherits Rectangle {
+    callback picked(string);
+
+    in-out property <int> category: 0;
+    in-out property <string> query: "";
+
+    property <length> cell: 34px;
+    property <int> columns: max(1, floor((root.width - 16px) / root.cell));
+    property <[EmojiEntry]> current-items: root.query != ""
+        ? EmojiStore.results
+        : (EmojiStore.groups.length > root.category
+        ? EmojiStore.groups[root.category].items
+        : []);
+
+    property <[Icon]> category-icons: [
+        IconSet.Smile,
+        IconSet.Users,
+        IconSet.Cat,
+        IconSet.Coffee,
+        IconSet.Car,
+        IconSet.Trophy,
+        IconSet.Lightbulb,
+        IconSet.Hash,
+        IconSet.Flag,
+    ];
+    property <[color]> tone-colors: [
+        #FFCC4D,
+        #F7DECE,
+        #F3D2A2,
+        #D5AB88,
+        #AF7E57,
+        #7C533E,
+    ];
+
+    background: Palette.alternate-background;
+    border-radius: 10px;
+    border-width: 1px;
+    border-color: Palette.foreground.transparentize(0.85);
+    drop-shadow-blur: 16px;
+    drop-shadow-color: Palette.foreground.transparentize(0.75);
+    drop-shadow-offset-y: 4px;
+
+    VerticalLayout {
+        padding: 8px;
+        spacing: 6px;
+
+        HorizontalLayout {
+            height: 30px;
+            spacing: 8px;
+
+            search-input := LineEdit {
+                horizontal-stretch: 1;
+                placeholder-text: @tr("Search emoji");
+                text <=> root.query;
+                edited(text) => {
+                    EmojiStore.search(text);
+                }
+            }
+
+            HorizontalLayout {
+                spacing: 4px;
+                alignment: center;
+                for swatch[idx] in root.tone-colors: ToneSwatch {
+                    swatch: swatch;
+                    selected: idx == EmojiStore.tone;
+                    clicked => {
+                        EmojiStore.tone = idx;
+                    }
+                }
+            }
+        }
+
+        if root.query == "": HorizontalLayout {
+            height: 30px;
+            spacing: 2px;
+            for icon[idx] in root.category-icons: CategoryTab {
+                icon: icon;
+                selected: idx == root.category;
+                clicked => {
+                    root.category = idx;
+                }
+            }
+        }
+
+        Rectangle {
+            vertical-stretch: 1;
+
+            grid := Flickable {
+                viewport-height: max(self.height, ceil(root.current-items.length / root.columns) * root.cell);
+
+                for entry[idx] in root.current-items: TouchArea {
+                    x: mod(idx, root.columns) * root.cell;
+                    y: floor(idx / root.columns) * root.cell;
+                    width: root.cell;
+                    height: root.cell;
+                    mouse-cursor: pointer;
+                    accessible-role: button;
+                    accessible-label: entry.name;
+                    clicked => {
+                        root.picked(entry.tones.length > 0 ? entry.tones[EmojiStore.tone] : entry.base);
+                    }
+
+                    hover := Rectangle {
+                        width: root.cell - 4px;
+                        height: root.cell - 4px;
+                        border-radius: 6px;
+                        background: parent.has-hover
+                            ? Palette.foreground.transparentize(0.9)
+                            : transparent;
+                    }
+
+                    Text {
+                        text: entry.tones.length > 0
+                            ? entry.tones[EmojiStore.tone]
+                            : entry.base;
+                        font-family: Fonts.emoji;
+                        font-size: 22px;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                    }
+                }
+            }
+
+            if root.query != "" && root.current-items.length == 0: Text {
+                text: @tr("No emoji found");
+                color: Palette.foreground.transparentize(0.5);
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
+        }
+    }
+}

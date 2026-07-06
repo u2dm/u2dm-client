@@ -10,9 +10,12 @@ const LANG_DIR: &str = "lang";
 const UI_DIR: &str = "ui";
 const POT_FILE: &str = "lang/utdm.pot";
 const LUCIDE_LSP_LIB: &str = ".lucide/lib.slint";
+const TWEMOJI_FONT: &str = "ui/fonts/Twemoji.ttf";
+const FONT_REPO: &str = "u2dm/twemoji";
 
 fn main() {
     sync_lucide_lsp_lib();
+    ensure_twemoji_font();
 
     #[cfg(not(feature = "interpreted"))]
     {
@@ -24,6 +27,53 @@ fn main() {
     }
 
     update_translations();
+}
+
+fn ensure_twemoji_font() {
+    println!("cargo::rerun-if-changed={TWEMOJI_FONT}");
+
+    if Path::new(TWEMOJI_FONT).exists() {
+        return;
+    }
+
+    if let Some(parent) = Path::new(TWEMOJI_FONT).parent()
+        && fs::create_dir_all(parent).is_err()
+    {
+        panic!(
+            "failed to create the {} directory for the emoji font",
+            parent.display()
+        );
+    }
+
+    // hardcoded for now
+    let url = format!("https://github.com/{FONT_REPO}/releases/latest/download/Twemoji.ttf");
+    println!("cargo::warning={TWEMOJI_FONT} is missing; downloading it from {url}");
+
+    let tmp = format!("{TWEMOJI_FONT}.download");
+    match Command::new("curl")
+        .args([
+            "--fail",
+            "--location",
+            "--silent",
+            "--show-error",
+            "--output",
+            &tmp,
+            &url,
+        ])
+        .status()
+    {
+        Ok(status) if status.success() => {}
+        Ok(_) => panic!(
+            "failed to download {url}. Confirm a release exists at \
+             https://github.com/{FONT_REPO}/releases."
+        ),
+        Err(e) => panic!("failed to run curl to download {url}: {e}. Install curl."),
+    }
+
+    if let Err(e) = fs::rename(&tmp, TWEMOJI_FONT) {
+        drop(fs::remove_file(&tmp));
+        panic!("failed to move downloaded emoji font into place: {e}");
+    }
 }
 
 fn sync_lucide_lsp_lib() {

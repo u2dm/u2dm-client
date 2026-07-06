@@ -77,7 +77,7 @@ msgctxt "VerificationDialog"
 msgid "Dismiss"
 msgstr "Chiudi"
 
-#: ui/main.slint:18
+#: ui/main.slint:23
 msgctxt "AppWindow"
 msgid "UTDM Matrix Client"
 msgstr "UTDM Client Matrix"
@@ -117,12 +117,17 @@ msgctxt "ChatScreen"
 msgid "File saved to {}"
 msgstr "File salvato in {}"
 
-#: ui/screens/chat/components/timeline/message-input.slint:39
+#: ui/screens/chat/components/timeline/message-input.slint:84
 msgctxt "MessageInput"
 msgid "Send a message..."
 msgstr ""
 
-#: ui/screens/chat/components/timeline/message-input.slint:51
+#: ui/screens/chat/components/timeline/message-input.slint:96
+msgctxt "MessageInput"
+msgid "Emoji"
+msgstr ""
+
+#: ui/screens/chat/components/timeline/message-input.slint:116
 msgctxt "MessageInput"
 msgid "Send"
 msgstr ""
@@ -152,67 +157,77 @@ msgctxt "FileMessage"
 msgid "Save"
 msgstr "Salva"
 
-#: ui/screens/chat/components/timeline/timeline-view.slint:35
+#: ui/screens/chat/components/timeline/emoji-picker.slint:118
+msgctxt "EmojiPicker"
+msgid "Search emoji"
+msgstr ""
+
+#: ui/screens/chat/components/timeline/emoji-picker.slint:190
+msgctxt "EmojiPicker"
+msgid "No emoji found"
+msgstr ""
+
+#: ui/screens/chat/components/timeline/timeline-view.slint:36
 msgctxt "TimelineView"
 msgid "Select a room"
 msgstr "Seleziona una stanza"
 
-#: ui/screens/chat/components/timeline/timeline-view.slint:62
+#: ui/screens/chat/components/timeline/timeline-view.slint:64
 msgctxt "TimelineView"
 msgid "Loading messages..."
 msgstr "Caricamento messaggi..."
 
-#: ui/screens/chat/components/space-rail.slint:225
+#: ui/screens/chat/components/space-rail.slint:231
 msgctxt "SpaceRail"
 msgid "All Rooms"
 msgstr ""
 
-#: ui/screens/chat/components/space-rail.slint:226
+#: ui/screens/chat/components/space-rail.slint:232
 msgctxt "SpaceRail"
 msgid "All"
 msgstr ""
 
-#: ui/screens/chat/components/sidebar.slint:40
+#: ui/screens/chat/components/sidebar.slint:41
 msgctxt "Sidebar"
 msgid "📷 Photo"
 msgstr ""
 
-#: ui/screens/chat/components/sidebar.slint:43
+#: ui/screens/chat/components/sidebar.slint:44
 msgctxt "Sidebar"
 msgid "🎬 Video"
 msgstr ""
 
-#: ui/screens/chat/components/sidebar.slint:46
+#: ui/screens/chat/components/sidebar.slint:47
 msgctxt "Sidebar"
 msgid "🎵 Audio"
 msgstr ""
 
-#: ui/screens/chat/components/sidebar.slint:49
+#: ui/screens/chat/components/sidebar.slint:50
 msgctxt "Sidebar"
 msgid "📎 {}"
 msgstr ""
 
-#: ui/screens/chat/components/sidebar.slint:52
+#: ui/screens/chat/components/sidebar.slint:53
 msgctxt "Sidebar"
 msgid "📍 Location"
 msgstr ""
 
-#: ui/screens/chat/components/sidebar.slint:55
+#: ui/screens/chat/components/sidebar.slint:56
 msgctxt "Sidebar"
 msgid "🔒 Encrypted message"
 msgstr ""
 
-#: ui/screens/chat/components/sidebar.slint:58
+#: ui/screens/chat/components/sidebar.slint:59
 msgctxt "Sidebar"
 msgid "Sticker"
 msgstr ""
 
-#: ui/screens/chat/components/sidebar.slint:110
+#: ui/screens/chat/components/sidebar.slint:111
 msgctxt "Sidebar"
 msgid "Logout"
 msgstr "Esci"
 
-#: ui/screens/chat/components/sidebar.slint:146
+#: ui/screens/chat/components/sidebar.slint:147
 msgctxt "Sidebar"
 msgid "You"
 msgstr ""

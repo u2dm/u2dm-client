@@ -1,3 +1,6 @@
 /target
 *.mo
 /.lucide/
+
+/ui/fonts/Twemoji.ttf
+.vscode

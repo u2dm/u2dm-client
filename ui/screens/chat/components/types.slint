@@ -37,6 +37,21 @@ export struct MessageEntry {
     is-own: bool,
 }
 
+export struct EmojiEntry {
+    base: string,
+    tones: [string],
+    name: string,
+}
+
+export struct EmojiGroup {
+    items: [EmojiEntry],
+}
+
+export struct EmojiInsert {
+    text: string,
+    caret: int,
+}
+
 export struct SendMessageRequest {
     room-id: string,
     body: string,

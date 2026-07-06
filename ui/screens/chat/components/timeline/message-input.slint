@@ -3,7 +3,9 @@ import {
 } from "std-widgets.slint";
 import { IconDisplay, IconSet } from "@lucide";
 
-import { SendMessageRequest } from "../types.slint";
+import { SendMessageRequest, EmojiInsert } from "../types.slint";
+import { EmojiPicker, EmojiStore } from "./emoji-picker.slint";
+import { Fonts } from "../../../../theme.slint";
 
 export component MessageInput inherits Rectangle {
     in property <string> room-id;
@@ -11,23 +13,66 @@ export component MessageInput inherits Rectangle {
 
     callback send-message(SendMessageRequest);
 
+    property <bool> picker-open: false;
+    property <int> caret: 0;
+    property <EmojiInsert> pending-insert;
+
     background: Palette.alternate-background;
+
+    function submit() {
+        if root.message != "" {
+            root.send-message({ room-id: root.room-id, body: root.message });
+            root.message = "";
+        }
+    }
+
+    if root.picker-open: TouchArea {
+        x: 0;
+        y: -1200px;
+        width: root.width;
+        height: 1200px;
+        clicked => {
+            root.picker-open = false;
+        }
+    }
+
+    if root.picker-open: EmojiPicker {
+        width: min(root.width - 16px, 360px);
+        x: root.width - self.width - 8px;
+        y: -self.height - 8px;
+        height: 380px;
+        picked(glyph) => {
+            root.insert-at-caret(glyph);
+        }
+    }
+
+    function insert-at-caret(glyph: string) {
+        root.pending-insert = EmojiStore.insert(root.message, root.caret, glyph);
+        root.message = root.pending-insert.text;
+        root.caret = root.pending-insert.caret;
+        text-input.focus();
+        text-input.set-selection-offsets(root.pending-insert.caret, root.pending-insert.caret);
+    }
 
     HorizontalLayout {
 
         Rectangle {
             horizontal-stretch: 1;
 
-            TextInput {
+            text-input := TextInput {
                 text <=> root.message;
                 color: Palette.foreground;
+                font-family: Fonts.emoji;
                 font-size: 14px;
                 vertical-alignment: center;
                 accepted => {
-                    if root.message != "" {
-                        root.send-message({ room-id: root.room-id, body: root.message });
-                        root.message = "";
-                    }
+                    root.submit();
+                }
+                edited => {
+                    root.caret = self.cursor-position-byte-offset;
+                }
+                cursor-position-changed(pos) => {
+                    root.caret = self.cursor-position-byte-offset;
                 }
             }
 
@@ -44,16 +89,33 @@ export component MessageInput inherits Rectangle {
             }
         }
 
+        emoji-touch := TouchArea {
+            width: 44px;
+            mouse-cursor: pointer;
+            accessible-role: button;
+            accessible-label: @tr("Emoji");
+            clicked => {
+                root.picker-open = !root.picker-open;
+            }
+
+            IconDisplay {
+                x: (parent.width - self.width) / 2;
+                y: (parent.height - self.height) / 2;
+                icon: IconSet.Smile;
+                size: 20px;
+                stroke: root.picker-open
+                    ? Palette.accent-background
+                    : Palette.foreground.transparentize(0.4);
+            }
+        }
+
         send-touch := TouchArea {
             width: 44px;
             mouse-cursor: root.message != "" ? pointer : default;
             accessible-role: button;
             accessible-label: @tr("Send");
             clicked => {
-                if root.message != "" {
-                    root.send-message({ room-id: root.room-id, body: root.message });
-                    root.message = "";
-                }
+                root.submit();
             }
 
             IconDisplay {

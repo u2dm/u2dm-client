@@ -8,6 +8,7 @@ import {
 
 import { TimelineContent } from "./timeline-content.slint";
 import { MessageInput } from "./message-input.slint";
+import { Fonts } from "../../../../theme.slint";
 
 export component TimelineView inherits Rectangle {
     background: Palette.background;
@@ -48,6 +49,7 @@ export component TimelineView inherits Rectangle {
 
         Text {
             text: root.selected-room-name;
+            font-family: Fonts.emoji;
             font-size: 18px;
             font-weight: 700;
             vertical-alignment: center;

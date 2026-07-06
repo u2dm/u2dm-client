@@ -1,3 +1,5 @@
+import "fonts/Twemoji.ttf";
+
 import { LoginRequest } from "screens/credentials/types.slint";
 import {
     RoomEntry,
@@ -7,7 +9,10 @@ import {
     SaveFileRequest,
 } from "screens/chat/components/types.slint";
 import { VerificationEmoji } from "components/types.slint";
-
+import {
+    EmojiStore,
+} from "screens/chat/components/timeline/emoji-picker.slint";
+export { EmojiStore }
 import { LoadingScreen } from "screens/loading.slint";
 import { HomeserverScreen } from "screens/homeserver/homeserver.slint";
 import { CredentialsScreen } from "screens/credentials/credentials.slint";

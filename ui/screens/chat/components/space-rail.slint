@@ -38,7 +38,10 @@ component SpaceTile inherits Rectangle {
             y: (parent.height - self.height) / 2;
             border-radius: 1.5px;
             background: Palette.accent-background;
-            animate height { duration: 150ms; easing: ease-out; }
+            animate height {
+                duration: 150ms;
+                easing: ease-out;
+            }
         }
 
         avatar-circle := Rectangle {
@@ -53,7 +56,10 @@ component SpaceTile inherits Rectangle {
             clip: true;
             drop-shadow-blur: root.elevated ? 12px : 0;
             drop-shadow-color: Palette.foreground.transparentize(0.45);
-            animate border-radius { duration: 150ms; easing: ease-out; }
+            animate border-radius {
+                duration: 150ms;
+                easing: ease-out;
+            }
 
             if root.has-avatar: Image {
                 width: 100%;
@@ -251,7 +257,10 @@ export component SpaceRail inherits Rectangle {
             unread: space.unread;
             mentions: space.mentions;
             selected: root.selected-space-id == space.id;
-            animate y { duration: 120ms; easing: ease-out; }
+            animate y {
+                duration: 120ms;
+                easing: ease-out;
+            }
             pressed-down => {
                 root.begin-drag(idx, space, root.selected-space-id == space.id);
             }
