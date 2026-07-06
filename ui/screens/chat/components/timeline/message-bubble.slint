@@ -176,15 +176,21 @@ export component MessageBubble inherits Rectangle {
 
                 HorizontalLayout {
                     alignment: end;
-                    VerticalLayout {
-                        alignment: end;
+                    spacing: 3px;
 
-                        Text {
-                            text: msg.timestamp;
-                            font-size: 12px;
-                            color: Palette.foreground.transparentize(0.5);
-                            horizontal-alignment: right;
-                        }
+                    if msg.edited: IconDisplay {
+                        y: (parent.height - self.height) / 2;
+                        icon: IconSet.Pencil;
+                        size: 11px;
+                        stroke: Palette.foreground.transparentize(0.5);
+                    }
+
+                    Text {
+                        text: msg.timestamp;
+                        font-size: 12px;
+                        color: Palette.foreground.transparentize(0.5);
+                        horizontal-alignment: right;
+                        vertical-alignment: center;
                     }
                 }
             }

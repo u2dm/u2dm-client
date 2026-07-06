@@ -7,6 +7,7 @@ export struct RoomEntry {
     last-message-kind: string,
     last-message-body: string,
     last-message-is-own: bool,
+    last-message-edited: bool,
     last-message-time: string,
 }
 
@@ -35,6 +36,7 @@ export struct MessageEntry {
     avatar: image,
     sender-initial: string,
     is-own: bool,
+    edited: bool,
     has-reply: bool,
     reply-sender: string,
     reply-body: string,

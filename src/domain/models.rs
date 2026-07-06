@@ -158,6 +158,7 @@ pub struct Room {
     pub last_message_kind: LastMessageKind,
     pub last_message_body: String,
     pub last_message_is_own: bool,
+    pub last_message_edited: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -244,6 +245,7 @@ pub struct TimelineMessage {
     pub timestamp: u64,
     pub is_own: bool,
     pub reply: Option<ReplyInfo>,
+    pub edited: bool,
 }
 
 impl TimelineMessage {
@@ -256,6 +258,7 @@ impl TimelineMessage {
             && self.timestamp == other.timestamp
             && self.is_own == other.is_own
             && self.reply == other.reply
+            && self.edited == other.edited
     }
 }
 

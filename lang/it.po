@@ -157,7 +157,7 @@ msgctxt "MessageBubble"
 msgid "🔒 Encrypted message"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/message-bubble.slint:227
+#: ui/screens/chat/components/timeline/message-bubble.slint:233
 msgctxt "MessageBubble"
 msgid "Reply"
 msgstr ""

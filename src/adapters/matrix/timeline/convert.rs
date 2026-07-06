@@ -44,6 +44,7 @@ fn build_utd_message(
         timestamp: ts,
         is_own,
         reply,
+        edited: false,
     }
 }
 
@@ -218,5 +219,6 @@ pub(super) fn convert_event_item_with_uid(
         timestamp: ts,
         is_own,
         reply,
+        edited: message.is_edited(),
     })
 }

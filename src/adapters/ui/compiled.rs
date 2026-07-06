@@ -453,6 +453,7 @@ fn message_to_entry(m: &TimelineMessage, media: &dyn MediaCache) -> MessageEntry
         event_id: SharedString::from(&m.event_id.0),
         sender_initial: SharedString::from(sender_initial(message_sender_label(m))),
         is_own: m.is_own,
+        edited: m.edited,
         has_reply: m.reply.is_some(),
         reply_sender: SharedString::from(m.reply.as_ref().map_or("", |r| r.sender.as_str())),
         reply_body: SharedString::from(m.reply.as_ref().map_or("", |r| r.preview.as_str())),
@@ -494,6 +495,7 @@ fn room_to_entry(r: &Room) -> RoomEntry {
         last_message_kind: SharedString::from(last_message_kind_token(r.last_message_kind)),
         last_message_body: SharedString::from(&r.last_message_body),
         last_message_is_own: r.last_message_is_own,
+        last_message_edited: r.last_message_edited,
         last_message_time: SharedString::from(&room_activity_label(r.last_activity_ts)),
     }
 }

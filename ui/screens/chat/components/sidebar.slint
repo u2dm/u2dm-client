@@ -178,6 +178,18 @@ export component Sidebar inherits Rectangle {
                                             overflow: elide;
                                         }
 
+                                        if room.last-message-edited: Rectangle {
+                                            width: 16px;
+
+                                            IconDisplay {
+                                                x: 0;
+                                                y: (parent.height - self.height) / 2;
+                                                icon: IconSet.Pencil;
+                                                size: 12px;
+                                                stroke: Palette.foreground.transparentize(0.4);
+                                            }
+                                        }
+
                                         Text {
                                             horizontal-stretch: 1;
                                             text: root.preview-label(room.last-message-kind, room.last-message-body);

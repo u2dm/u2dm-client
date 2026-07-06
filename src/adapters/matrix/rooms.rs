@@ -6,7 +6,7 @@ use matrix_sdk::deserialized_responses::SyncOrStrippedState;
 use matrix_sdk::latest_events::LatestEventValue;
 use matrix_sdk::ruma::api::error::ErrorKind;
 use matrix_sdk::ruma::events::room::MediaSource;
-use matrix_sdk::ruma::events::room::message::MessageType;
+use matrix_sdk::ruma::events::room::message::{MessageType, Relation, RoomMessageEventContent};
 use matrix_sdk::ruma::events::space::child::SpaceChildEventContent;
 use matrix_sdk::ruma::events::{
     AnyMessageLikeEventContent, AnySyncMessageLikeEvent, AnySyncTimelineEvent,
@@ -52,6 +52,7 @@ async fn build_single_room(room: &Room) -> DomainRoom {
         last_message_kind: last_message.kind,
         last_message_body: last_message.body,
         last_message_is_own: last_message.is_own,
+        last_message_edited: last_message.edited,
     }
 }
 
@@ -61,6 +62,7 @@ struct LastMessage {
     kind: LastMessageKind,
     body: String,
     is_own: bool,
+    edited: bool,
 }
 
 async fn build_last_message(room: &Room, is_direct: bool) -> LastMessage {
@@ -86,6 +88,7 @@ async fn build_last_message(room: &Room, is_direct: bool) -> LastMessage {
         kind: preview.kind,
         body: preview.body,
         is_own,
+        edited: preview.edited,
     }
 }
 
@@ -101,6 +104,7 @@ async fn resolve_sender_name(room: &Room, user_id: &UserId) -> String {
 struct MessagePreview {
     kind: LastMessageKind,
     body: String,
+    edited: bool,
 }
 
 impl MessagePreview {
@@ -108,6 +112,7 @@ impl MessagePreview {
         Self {
             kind,
             body: String::new(),
+            edited: false,
         }
     }
 }
@@ -124,7 +129,7 @@ fn latest_message_preview(
         | LatestEventValue::LocalHasBeenSent { value: local, .. }
         | LatestEventValue::LocalCannotBeSent(local) => match local.content.deserialize().ok()? {
             AnyMessageLikeEventContent::RoomMessage(message) => {
-                Some((message_preview(&message.msgtype), None))
+                Some((preview_from_message_content(&message), None))
             }
             _ => None,
         },
@@ -136,7 +141,7 @@ fn preview_from_event(event: &AnySyncTimelineEvent) -> Option<MessagePreview> {
     match event {
         AnySyncTimelineEvent::MessageLike(AnySyncMessageLikeEvent::RoomMessage(
             SyncMessageLikeEvent::Original(message),
-        )) => Some(message_preview(&message.content.msgtype)),
+        )) => Some(preview_from_message_content(&message.content)),
         AnySyncTimelineEvent::MessageLike(AnySyncMessageLikeEvent::RoomEncrypted(_)) => {
             Some(MessagePreview::labelled(LastMessageKind::Encrypted))
         }
@@ -144,6 +149,16 @@ fn preview_from_event(event: &AnySyncTimelineEvent) -> Option<MessagePreview> {
             Some(MessagePreview::labelled(LastMessageKind::Sticker))
         }
         _ => None,
+    }
+}
+
+fn preview_from_message_content(content: &RoomMessageEventContent) -> MessagePreview {
+    if let Some(Relation::Replacement(replacement)) = &content.relates_to {
+        let mut preview = message_preview(&replacement.new_content.msgtype);
+        preview.edited = true;
+        preview
+    } else {
+        message_preview(&content.msgtype)
     }
 }
 
@@ -165,6 +180,7 @@ fn message_preview(msgtype: &MessageType) -> MessagePreview {
     MessagePreview {
         kind,
         body: body.split_whitespace().collect::<Vec<_>>().join(" "),
+        edited: false,
     }
 }
 

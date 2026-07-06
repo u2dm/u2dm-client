@@ -733,6 +733,7 @@ fn message_to_value(m: &TimelineMessage, media: &dyn MediaCache) -> Value {
         Value::String(SharedString::from(sender_initial(message_sender_label(m)))),
     ));
     fields.push(("is-own".to_string(), Value::Bool(m.is_own)));
+    fields.push(("edited".to_string(), Value::Bool(m.edited)));
     fields.push(("has-reply".to_string(), Value::Bool(m.reply.is_some())));
     fields.push((
         "reply-sender".to_string(),
@@ -786,6 +787,10 @@ fn room_to_value(r: &Room) -> Value {
         (
             "last-message-is-own".to_string(),
             Value::Bool(r.last_message_is_own),
+        ),
+        (
+            "last-message-edited".to_string(),
+            Value::Bool(r.last_message_edited),
         ),
         (
             "last-message-time".to_string(),
