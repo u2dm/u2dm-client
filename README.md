@@ -2,6 +2,8 @@
 
 Unable to Decrypt Message: a Matrix chat client built with Slint UI.
 
+![U2DM chat window showing](docs/screenshot.png)
+
 ## Status
 
 Early development. Expect incomplete features, rough edges, and breaking changes.
