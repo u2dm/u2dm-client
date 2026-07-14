@@ -27,6 +27,30 @@ pub fn sender_initial(name: &str) -> &str {
     }
 }
 
+const AVATAR_COLORS: u32 = 7;
+
+pub fn avatar_initials(name: &str) -> String {
+    let initials: String = name
+        .split_whitespace()
+        .filter_map(|word| word.chars().next())
+        .filter(|c| c.is_alphanumeric())
+        .take(2)
+        .flat_map(char::to_uppercase)
+        .collect();
+
+    if initials.is_empty() {
+        return sender_initial(name.trim()).to_owned();
+    }
+    initials
+}
+
+pub fn avatar_color_index(id: &str) -> i32 {
+    let hash = id.bytes().fold(0_u32, |acc, byte| {
+        acc.wrapping_mul(31).wrapping_add(u32::from(byte))
+    });
+    i32::try_from(hash % AVATAR_COLORS).unwrap_or_default()
+}
+
 pub fn user_initial(user_id: &str) -> String {
     let name = user_id.strip_prefix('@').unwrap_or(user_id);
     name.chars()

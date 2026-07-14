@@ -150,6 +150,7 @@ pub enum LastMessageKind {
 pub struct Room {
     pub id: RoomId,
     pub display_name: String,
+    pub avatar_mxc: Option<String>,
     pub is_direct: bool,
     pub member_count: u64,
     pub unread_count: u64,

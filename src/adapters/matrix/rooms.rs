@@ -22,14 +22,28 @@ use matrix_sdk_ui::sync_service::{Error as SyncServiceError, State as SyncState,
 use tokio::fs;
 use tokio::sync::broadcast::Receiver;
 use tokio::sync::broadcast::error::RecvError;
+use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender, unbounded_channel};
 use tokio::task::JoinSet;
 
-use super::media::{fetch_and_materialize, lookup_materialized, space_avatar_key};
+use super::media::{fetch_and_materialize, lookup_materialized, mxc_avatar_key};
 use crate::domain::models::{
     LastMessageKind, Room as DomainRoom, RoomId, Space as DomainSpace, SyncEvent,
 };
 use crate::error::{AppError, Result as AppResult};
 use crate::util::hex_encode_id;
+
+fn room_avatar_mxc(room: &Room, is_direct: bool) -> Option<String> {
+    if let Some(mxc) = room.avatar_url() {
+        return Some(mxc.to_string());
+    }
+    if !is_direct {
+        return None;
+    }
+    room.heroes()
+        .first()
+        .and_then(|hero| hero.avatar_url.as_ref())
+        .map(ToString::to_string)
+}
 
 async fn build_single_room(room: &Room) -> DomainRoom {
     let display_name = room
@@ -45,6 +59,7 @@ async fn build_single_room(room: &Room) -> DomainRoom {
     DomainRoom {
         id: RoomId::new(room.room_id().to_string()),
         display_name,
+        avatar_mxc: room_avatar_mxc(room, is_direct),
         is_direct,
         member_count,
         unread_count: unread,
@@ -190,13 +205,41 @@ fn sort_rooms(rooms: &mut [DomainRoom]) {
     rooms.sort_by(|a, b| b.last_activity_ts.cmp(&a.last_activity_ts));
 }
 
-fn emit_room_update(
+fn emit_rooms(
+    client: &Client,
     room_cache: &HashMap<String, DomainRoom>,
     on_sync: &Arc<dyn Fn(SyncEvent) + Send + Sync>,
+    avatars: &mut AvatarFetcher,
 ) {
     let mut rooms: Vec<DomainRoom> = room_cache.values().cloned().collect();
     sort_rooms(&mut rooms);
+    avatars.request(
+        client,
+        AvatarKind::Room,
+        avatar_uris(&rooms, |room| room.avatar_mxc.as_deref()),
+    );
     on_sync(SyncEvent::Rooms(rooms));
+}
+
+async fn emit_spaces(
+    client: &Client,
+    on_sync: &Arc<dyn Fn(SyncEvent) + Send + Sync>,
+    avatars: &mut AvatarFetcher,
+) {
+    let spaces = build_spaces_meta(client).await;
+    avatars.request(
+        client,
+        AvatarKind::Space,
+        avatar_uris(&spaces, |space| space.avatar_mxc.as_deref()),
+    );
+    on_sync(SyncEvent::Spaces(spaces));
+}
+
+fn avatar_uris<T>(items: &[T], mxc_of: impl Fn(&T) -> Option<&str>) -> Vec<OwnedMxcUri> {
+    items
+        .iter()
+        .filter_map(|item| mxc_of(item).map(OwnedMxcUri::from))
+        .collect()
 }
 
 async fn space_child_ids(space: &Room) -> Vec<String> {
@@ -242,54 +285,56 @@ async fn build_spaces_meta(client: &Client) -> Vec<DomainSpace> {
     spaces
 }
 
-struct SpaceBuilder {
-    media_dir: PathBuf,
-    materialized: Arc<StdMutex<HashMap<String, PathBuf>>>,
-    avatar_tasks: JoinSet<()>,
-    avatars_fetched: HashSet<String>,
+#[derive(Clone, Copy)]
+enum AvatarKind {
+    Room,
+    Space,
 }
 
-impl SpaceBuilder {
-    fn new(media_dir: PathBuf, materialized: Arc<StdMutex<HashMap<String, PathBuf>>>) -> Self {
+struct AvatarFetcher {
+    media_dir: PathBuf,
+    materialized: Arc<StdMutex<HashMap<String, PathBuf>>>,
+    tasks: JoinSet<()>,
+    requested: HashSet<String>,
+    ready_tx: UnboundedSender<AvatarKind>,
+}
+
+impl AvatarFetcher {
+    fn new(
+        media_dir: PathBuf,
+        materialized: Arc<StdMutex<HashMap<String, PathBuf>>>,
+        ready_tx: UnboundedSender<AvatarKind>,
+    ) -> Self {
         Self {
             media_dir,
             materialized,
-            avatar_tasks: JoinSet::new(),
-            avatars_fetched: HashSet::new(),
+            tasks: JoinSet::new(),
+            requested: HashSet::new(),
+            ready_tx,
         }
     }
 
-    async fn emit(&mut self, client: &Client, on_sync: &Arc<dyn Fn(SyncEvent) + Send + Sync>) {
-        let spaces = build_spaces_meta(client).await;
-        for space in client.joined_space_rooms() {
-            if let Some(mxc) = space.avatar_url()
-                && lookup_materialized(&self.materialized, &space_avatar_key(mxc.as_str()))
-                    .is_none()
+    fn request(&mut self, client: &Client, kind: AvatarKind, uris: Vec<OwnedMxcUri>) {
+        for mxc in uris {
+            let key = mxc_avatar_key(mxc.as_str());
+            if lookup_materialized(&self.materialized, &key).is_some()
+                || !self.requested.insert(key.clone())
             {
-                self.spawn_avatar_fetch(client, mxc, on_sync);
+                continue;
             }
+            self.spawn_fetch(client, kind, mxc, key);
         }
-        on_sync(SyncEvent::Spaces(spaces));
     }
 
-    fn spawn_avatar_fetch(
-        &mut self,
-        client: &Client,
-        mxc: OwnedMxcUri,
-        on_sync: &Arc<dyn Fn(SyncEvent) + Send + Sync>,
-    ) {
-        let key = space_avatar_key(mxc.as_str());
-        if !self.avatars_fetched.insert(key.clone()) {
-            return;
-        }
+    fn spawn_fetch(&mut self, client: &Client, kind: AvatarKind, mxc: OwnedMxcUri, key: String) {
         let client = client.clone();
         let media_dir = self.media_dir.clone();
         let materialized = Arc::clone(&self.materialized);
-        let on_sync = Arc::clone(on_sync);
-        self.avatar_tasks.spawn(async move {
+        let ready_tx = self.ready_tx.clone();
+        self.tasks.spawn(async move {
             let avatar_dir = media_dir.join("avatars");
             if let Err(e) = fs::create_dir_all(&avatar_dir).await {
-                tracing::warn!("failed to create space avatar dir: {e}");
+                tracing::warn!("failed to create avatar dir: {e}");
                 return;
             }
             let cache_stem = avatar_dir.join(hex_encode_id(mxc.as_str()));
@@ -298,7 +343,7 @@ impl SpaceBuilder {
                 .await
                 .is_some()
             {
-                on_sync(SyncEvent::Spaces(build_spaces_meta(&client).await));
+                ready_tx.send(kind).ok();
             }
         });
     }
@@ -373,12 +418,13 @@ async fn handle_room_info_update(
     update: Result<RoomInfoNotableUpdate, RecvError>,
     room_cache: &mut HashMap<String, DomainRoom>,
     on_sync: &Arc<dyn Fn(SyncEvent) + Send + Sync>,
+    avatars: &mut AvatarFetcher,
 ) -> LoopAction {
     match update {
         Ok(update) => {
             if refresh_room(client, &update.room_id, room_cache).await {
                 tracing::debug!(room = %update.room_id, "refreshed room preview from notable update");
-                emit_room_update(room_cache, on_sync);
+                emit_rooms(client, room_cache, on_sync, avatars);
             }
             LoopAction::Continue
         }
@@ -386,10 +432,38 @@ async fn handle_room_info_update(
             tracing::warn!("room info updates lagged by {n} messages, full rebuild");
             room_cache.clear();
             seed_room_cache(client, room_cache).await;
-            emit_room_update(room_cache, on_sync);
+            emit_rooms(client, room_cache, on_sync, avatars);
             LoopAction::Continue
         }
         Err(RecvError::Closed) => LoopAction::Break,
+    }
+}
+
+async fn handle_avatar_ready(
+    client: &Client,
+    first: AvatarKind,
+    ready_rx: &mut UnboundedReceiver<AvatarKind>,
+    room_cache: &HashMap<String, DomainRoom>,
+    on_sync: &Arc<dyn Fn(SyncEvent) + Send + Sync>,
+    avatars: &mut AvatarFetcher,
+) {
+    let mut rooms_ready = false;
+    let mut spaces_ready = false;
+    let mut mark = |kind| match kind {
+        AvatarKind::Room => rooms_ready = true,
+        AvatarKind::Space => spaces_ready = true,
+    };
+
+    mark(first);
+    while let Ok(kind) = ready_rx.try_recv() {
+        mark(kind);
+    }
+
+    if rooms_ready {
+        emit_rooms(client, room_cache, on_sync, avatars);
+    }
+    if spaces_ready {
+        emit_spaces(client, on_sync, avatars).await;
     }
 }
 
@@ -430,7 +504,7 @@ async fn handle_room_update(
     update: Result<RoomUpdates, RecvError>,
     room_cache: &mut HashMap<String, DomainRoom>,
     on_sync: &Arc<dyn Fn(SyncEvent) + Send + Sync>,
-    space_builder: &mut SpaceBuilder,
+    avatars: &mut AvatarFetcher,
 ) -> LoopAction {
     match update {
         Ok(updates) => {
@@ -443,16 +517,16 @@ async fn handle_room_update(
                 "processing room updates"
             );
             apply_room_updates(client, &updates, room_cache).await;
-            emit_room_update(room_cache, on_sync);
-            space_builder.emit(client, on_sync).await;
+            emit_rooms(client, room_cache, on_sync, avatars);
+            emit_spaces(client, on_sync, avatars).await;
             LoopAction::Continue
         }
         Err(RecvError::Lagged(n)) => {
             tracing::warn!("room updates lagged by {n} messages, full rebuild");
             room_cache.clear();
             seed_room_cache(client, room_cache).await;
-            emit_room_update(room_cache, on_sync);
-            space_builder.emit(client, on_sync).await;
+            emit_rooms(client, room_cache, on_sync, avatars);
+            emit_spaces(client, on_sync, avatars).await;
             LoopAction::Continue
         }
         Err(RecvError::Closed) => LoopAction::Break,
@@ -466,16 +540,16 @@ async fn handle_sync_state(
     sync_service: &SyncService,
     room_cache: &mut HashMap<String, DomainRoom>,
     on_sync: &Arc<dyn Fn(SyncEvent) + Send + Sync>,
-    space_builder: &mut SpaceBuilder,
+    avatars: &mut AvatarFetcher,
 ) -> LoopAction {
     match state {
         SyncState::Running => {
             tracing::info!("sliding sync running");
             seed_room_cache(client, room_cache).await;
             if !room_cache.is_empty() {
-                emit_room_update(room_cache, on_sync);
+                emit_rooms(client, room_cache, on_sync, avatars);
             }
-            space_builder.emit(client, on_sync).await;
+            emit_spaces(client, on_sync, avatars).await;
             on_sync(SyncEvent::Connected);
             LoopAction::Continue
         }
@@ -503,7 +577,8 @@ async fn run_sync_loop(
     sync_service: &SyncService,
     room_updates_rx: &mut Receiver<RoomUpdates>,
     on_sync: &Arc<dyn Fn(SyncEvent) + Send + Sync>,
-    space_builder: &mut SpaceBuilder,
+    avatars: &mut AvatarFetcher,
+    ready_rx: &mut UnboundedReceiver<AvatarKind>,
 ) {
     let mut room_cache: HashMap<String, DomainRoom> = HashMap::new();
     let mut state_stream = sync_service.state();
@@ -511,9 +586,9 @@ async fn run_sync_loop(
 
     seed_room_cache(client, &mut room_cache).await;
     if !room_cache.is_empty() {
-        emit_room_update(&room_cache, on_sync);
+        emit_rooms(client, &room_cache, on_sync, avatars);
     }
-    space_builder.emit(client, on_sync).await;
+    emit_spaces(client, on_sync, avatars).await;
     on_sync(SyncEvent::Connected);
 
     loop {
@@ -521,7 +596,7 @@ async fn run_sync_loop(
             biased;
             update = room_updates_rx.recv() => {
                 if matches!(
-                    handle_room_update(client, update, &mut room_cache, on_sync, space_builder).await,
+                    handle_room_update(client, update, &mut room_cache, on_sync, avatars).await,
                     LoopAction::Break
                 ) {
                     break;
@@ -529,7 +604,7 @@ async fn run_sync_loop(
             }
             Some(state) = state_stream.next() => {
                 if matches!(
-                    handle_sync_state(client, state, sync_service, &mut room_cache, on_sync, space_builder).await,
+                    handle_sync_state(client, state, sync_service, &mut room_cache, on_sync, avatars).await,
                     LoopAction::Break
                 ) {
                     break;
@@ -537,11 +612,14 @@ async fn run_sync_loop(
             }
             info = room_info_rx.recv() => {
                 if matches!(
-                    handle_room_info_update(client, info, &mut room_cache, on_sync).await,
+                    handle_room_info_update(client, info, &mut room_cache, on_sync, avatars).await,
                     LoopAction::Break
                 ) {
                     break;
                 }
+            }
+            Some(kind) = ready_rx.recv() => {
+                handle_avatar_ready(client, kind, ready_rx, &room_cache, on_sync, avatars).await;
             }
         }
     }
@@ -555,7 +633,8 @@ pub(super) async fn start_sync(
 ) -> AppResult<()> {
     let sync_service = build_sync_service(client).await?;
     let mut room_updates_rx = client.subscribe_to_all_room_updates();
-    let mut space_builder = SpaceBuilder::new(media_dir, materialized);
+    let (ready_tx, mut ready_rx) = unbounded_channel();
+    let mut avatars = AvatarFetcher::new(media_dir, materialized, ready_tx);
 
     sync_service.start().await;
     tracing::info!("sliding sync service started");
@@ -565,7 +644,8 @@ pub(super) async fn start_sync(
         &sync_service,
         &mut room_updates_rx,
         &on_sync,
-        &mut space_builder,
+        &mut avatars,
+        &mut ready_rx,
     )
     .await;
 

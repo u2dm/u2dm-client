@@ -29,6 +29,7 @@ pub struct SessionDto {
 pub struct RoomDto {
     pub id: String,
     name: String,
+    avatar: Option<String>,
     #[serde(default)]
     direct: bool,
     #[serde(default)]
@@ -130,6 +131,7 @@ impl RoomDto {
         Room {
             id: RoomId::new(&self.id),
             display_name: self.name.clone(),
+            avatar_mxc: self.avatar.clone(),
             is_direct: self.direct,
             member_count: self.members,
             unread_count: self.unread,

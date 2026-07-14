@@ -23,8 +23,8 @@ pub(super) fn avatar_key(sender: &str) -> String {
     format!("avatar:{sender}")
 }
 
-pub(super) fn space_avatar_key(mxc: &str) -> String {
-    format!("space-avatar:{mxc}")
+pub(super) fn mxc_avatar_key(mxc: &str) -> String {
+    format!("mxc-avatar:{mxc}")
 }
 
 pub(super) struct MaterializedMedia {
@@ -46,8 +46,12 @@ impl MediaCache for MaterializedMedia {
         lookup_materialized(&self.materialized, &avatar_key(sender))
     }
 
+    fn room_avatar_path(&self, mxc: &str) -> Option<PathBuf> {
+        lookup_materialized(&self.materialized, &mxc_avatar_key(mxc))
+    }
+
     fn space_avatar_path(&self, mxc: &str) -> Option<PathBuf> {
-        lookup_materialized(&self.materialized, &space_avatar_key(mxc))
+        lookup_materialized(&self.materialized, &mxc_avatar_key(mxc))
     }
 }
 

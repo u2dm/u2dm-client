@@ -1,6 +1,10 @@
 export struct RoomEntry {
     id: string,
     name: string,
+    initial: string,
+    avatar: image,
+    has-avatar: bool,
+    color-index: int,
     members: int,
     unread: int,
     mentions: int,
@@ -36,6 +40,7 @@ export struct MessageEntry {
     has-avatar: bool,
     avatar: image,
     sender-initial: string,
+    color-index: int,
     is-own: bool,
     edited: bool,
     has-reply: bool,

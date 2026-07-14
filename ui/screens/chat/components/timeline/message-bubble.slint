@@ -13,7 +13,7 @@ import { ImageMessage } from "./messages/image-message.slint";
 import { FileMessage } from "./messages/file-message.slint";
 import { UtdMessage } from "./messages/utd-message.slint";
 import { UnsupportedMessage } from "./messages/unsupported-message.slint";
-import { Fonts } from "../../../../theme.slint";
+import { Avatars, Fonts } from "../../../../theme.slint";
 
 export component MessageBubble inherits Rectangle {
     in property <bool> is-own;
@@ -53,7 +53,7 @@ export component MessageBubble inherits Rectangle {
             height: 32px;
             border-radius: 16px;
             clip: true;
-            background: Palette.foreground.transparentize(0.85);
+            background: Avatars.color(msg.color-index);
 
             if msg.has-avatar: Image {
                 source: msg.avatar;
@@ -66,11 +66,12 @@ export component MessageBubble inherits Rectangle {
                 width: 32px;
                 height: 32px;
                 text: msg.sender-initial;
-                font-size: 14px;
+                font-family: Fonts.emoji;
+                font-size: 13px;
                 font-weight: 600;
                 horizontal-alignment: center;
                 vertical-alignment: center;
-                color: Palette.foreground.transparentize(0.3);
+                color: white;
                 overflow: clip;
             }
         }

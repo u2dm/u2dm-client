@@ -7,9 +7,10 @@ use tokio::runtime::Runtime;
 use tokio::sync::mpsc;
 
 use super::common::{
-    BoolProp, IntProp, Status, StringProp, UiProps, dispatch_ui_event, last_message_kind_token,
-    load_image_cached, message_body_text, message_sender_label, message_timestamp_label,
-    message_type_token, room_activity_label, sender_initial,
+    BoolProp, IntProp, Status, StringProp, UiProps, avatar_color_index, avatar_initials,
+    dispatch_ui_event, last_message_kind_token, load_image_cached, message_body_text,
+    message_sender_label, message_timestamp_label, message_type_token, room_activity_label,
+    sender_initial,
 };
 use super::emoji;
 use crate::commands::{UiCommand, UiEvent};
@@ -376,7 +377,7 @@ impl SlintUiAdapter {
                             &rm,
                             &sm,
                             &|m| message_to_entry(m, media_cache.as_ref()),
-                            &room_to_entry,
+                            &|r| room_to_entry(r, media_cache.as_ref()),
                             &|s| space_to_entry(s, media_cache.as_ref()),
                             &|e| e.id.as_str(),
                             &|e: &SpaceEntry| e.id.as_str(),
@@ -458,7 +459,8 @@ fn message_to_entry(m: &TimelineMessage, media: &dyn MediaCache) -> MessageEntry
         timestamp: SharedString::from(&message_timestamp_label(m.timestamp)),
         message_type: SharedString::from(message_type_token(&m.body)),
         event_id: SharedString::from(&m.event_id.0),
-        sender_initial: SharedString::from(sender_initial(message_sender_label(m))),
+        sender_initial: SharedString::from(avatar_initials(message_sender_label(m))),
+        color_index: avatar_color_index(&m.sender),
         is_own: m.is_own,
         edited: m.edited,
         has_reply: m.reply.is_some(),
@@ -488,10 +490,12 @@ fn message_to_entry(m: &TimelineMessage, media: &dyn MediaCache) -> MessageEntry
     entry
 }
 
-fn room_to_entry(r: &Room) -> RoomEntry {
-    RoomEntry {
+fn room_to_entry(r: &Room, media: &dyn MediaCache) -> RoomEntry {
+    let mut entry = RoomEntry {
         id: SharedString::from(r.id.as_ref()),
         name: SharedString::from(&r.display_name),
+        initial: SharedString::from(avatar_initials(&r.display_name)),
+        color_index: avatar_color_index(r.id.as_ref()),
         #[allow(clippy::cast_possible_truncation)]
         members: if r.is_direct {
             0
@@ -510,7 +514,18 @@ fn room_to_entry(r: &Room) -> RoomEntry {
         last_message_is_own: r.last_message_is_own,
         last_message_edited: r.last_message_edited,
         last_message_time: SharedString::from(&room_activity_label(r.last_activity_ts)),
+        ..Default::default()
+    };
+
+    if let Some(mxc) = &r.avatar_mxc
+        && let Some(avatar_path) = media.room_avatar_path(mxc)
+        && let Some(img) = load_image_cached(&avatar_path)
+    {
+        entry.avatar = img;
+        entry.has_avatar = true;
     }
+
+    entry
 }
 
 fn space_to_entry(s: &Space, media: &dyn MediaCache) -> SpaceEntry {

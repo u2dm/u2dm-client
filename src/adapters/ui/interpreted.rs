@@ -18,9 +18,10 @@ thread_local! {
 }
 
 use super::common::{
-    BoolProp, IntProp, Status, StringProp, UiProps, dispatch_ui_event, last_message_kind_token,
-    load_image_cached, message_body_text, message_sender_label, message_timestamp_label,
-    message_type_token, room_activity_label, sender_initial,
+    BoolProp, IntProp, Status, StringProp, UiProps, avatar_color_index, avatar_initials,
+    dispatch_ui_event, last_message_kind_token, load_image_cached, message_body_text,
+    message_sender_label, message_timestamp_label, message_type_token, room_activity_label,
+    sender_initial,
 };
 use super::emoji;
 use crate::commands::{UiCommand, UiEvent};
@@ -555,7 +556,7 @@ impl SlintUiAdapter {
                             &rm,
                             &sm,
                             &|m| message_to_value(m, media_cache.as_ref()),
-                            &room_to_value,
+                            &|r| room_to_value(r, media_cache.as_ref()),
                             &|s| space_to_value(s, media_cache.as_ref()),
                             &|v| room_id_from_value(v).map_or("", SharedString::as_str),
                             &|v| room_id_from_value(v).map_or("", SharedString::as_str),
@@ -737,7 +738,11 @@ fn message_to_value(m: &TimelineMessage, media: &dyn MediaCache) -> Value {
     fields.push(("has-avatar".to_string(), Value::Bool(has_avatar)));
     fields.push((
         "sender-initial".to_string(),
-        Value::String(SharedString::from(sender_initial(message_sender_label(m)))),
+        Value::String(SharedString::from(avatar_initials(message_sender_label(m)))),
+    ));
+    fields.push((
+        "color-index".to_string(),
+        Value::Number(f64::from(avatar_color_index(&m.sender))),
     ));
     fields.push(("is-own".to_string(), Value::Bool(m.is_own)));
     fields.push(("edited".to_string(), Value::Bool(m.edited)));
@@ -758,8 +763,8 @@ fn message_to_value(m: &TimelineMessage, media: &dyn MediaCache) -> Value {
     Value::Struct(Struct::from_iter(fields))
 }
 
-fn room_to_value(r: &Room) -> Value {
-    Value::Struct(Struct::from_iter([
+fn room_to_value(r: &Room, media: &dyn MediaCache) -> Value {
+    let mut fields = vec![
         (
             "id".to_string(),
             Value::String(SharedString::from(r.id.as_ref())),
@@ -767,6 +772,14 @@ fn room_to_value(r: &Room) -> Value {
         (
             "name".to_string(),
             Value::String(SharedString::from(&r.display_name)),
+        ),
+        (
+            "initial".to_string(),
+            Value::String(SharedString::from(avatar_initials(&r.display_name))),
+        ),
+        (
+            "color-index".to_string(),
+            Value::Number(f64::from(avatar_color_index(r.id.as_ref()))),
         ),
         #[allow(clippy::cast_precision_loss)]
         (
@@ -808,7 +821,19 @@ fn room_to_value(r: &Room) -> Value {
             "last-message-time".to_string(),
             Value::String(SharedString::from(&room_activity_label(r.last_activity_ts))),
         ),
-    ]))
+    ];
+
+    let mut has_avatar = false;
+    if let Some(mxc) = &r.avatar_mxc
+        && let Some(avatar_path) = media.room_avatar_path(mxc)
+        && let Some(img) = load_image_cached(&avatar_path)
+    {
+        fields.push(("avatar".to_string(), Value::Image(img)));
+        has_avatar = true;
+    }
+    fields.push(("has-avatar".to_string(), Value::Bool(has_avatar)));
+
+    Value::Struct(Struct::from_iter(fields))
 }
 
 fn space_to_value(s: &Space, media: &dyn MediaCache) -> Value {

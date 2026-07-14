@@ -9,6 +9,7 @@
     {
       "id": "!rust:demo.local",
       "name": "Rust Programming",
+      "avatar": "rust-programming",
       "members": 1243,
       "minutes_ago": 3,
       "last_message": {
@@ -20,6 +21,7 @@
     {
       "id": "!matrixhq:demo.local",
       "name": "Matrix HQ",
+      "avatar": "matrix-hq",
       "members": 892,
       "minutes_ago": 18,
       "last_message": { "body": "based 🗿", "own": true }
@@ -27,6 +29,7 @@
     {
       "id": "!sarah:demo.local",
       "name": "Sarah Chen",
+      "avatar": "@sarah:matrix.org",
       "direct": true,
       "members": 2,
       "unread": 2,
@@ -40,6 +43,7 @@
     {
       "id": "!design:demo.local",
       "name": "Design Team",
+      "avatar": "design-team",
       "members": 34,
       "mentions": 1,
       "days_ago": 1,
@@ -53,6 +57,7 @@
     {
       "id": "!trip:demo.local",
       "name": "weekend-trip 🏔️",
+      "avatar": "weekend-trip",
       "members": 6,
       "unread": 5,
       "days_ago": 1,
@@ -76,6 +81,7 @@
     {
       "id": "!frontend:demo.local",
       "name": "Frontend Guild",
+      "avatar": "frontend-guild",
       "members": 210,
       "days_ago": 2,
       "last_message": { "sender": "Nadia", "body": "shipped it 🚀" }
@@ -83,6 +89,7 @@
     {
       "id": "!elena:demo.local",
       "name": "Elena Fischer",
+      "avatar": "@elena:matrix.org",
       "direct": true,
       "members": 2,
       "days_ago": 3,
@@ -103,6 +110,7 @@
     {
       "id": "!book:demo.local",
       "name": "Book Club 📚",
+      "avatar": "book-club",
       "members": 12,
       "days_ago": 4,
       "last_message": {
@@ -122,6 +130,7 @@
     {
       "id": "!devops:demo.local",
       "name": "devops on-call",
+      "avatar": "devops",
       "members": 19,
       "days_ago": 6,
       "last_message": { "body": "restarted it 🗿", "own": true }

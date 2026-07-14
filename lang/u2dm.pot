@@ -156,7 +156,7 @@ msgctxt "MessageBubble"
 msgid "🔒 Encrypted message"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/message-bubble.slint:233
+#: ui/screens/chat/components/timeline/message-bubble.slint:234
 msgctxt "MessageBubble"
 msgid "Reply"
 msgstr ""
@@ -268,12 +268,12 @@ msgctxt "Sidebar"
 msgid "Sticker"
 msgstr ""
 
-#: ui/screens/chat/components/sidebar.slint:89
+#: ui/screens/chat/components/sidebar.slint:90
 msgctxt "Sidebar"
 msgid "Search"
 msgstr ""
 
-#: ui/screens/chat/components/sidebar.slint:127
+#: ui/screens/chat/components/sidebar.slint:128
 msgctxt "Sidebar"
 msgid "You"
 msgstr ""

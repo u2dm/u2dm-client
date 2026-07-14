@@ -82,7 +82,12 @@ photo_url() {
 
 user_ids() {
   jq -r '[.session.user_id] + [.rooms[].last_message.sender_id // empty]
+         + [.rooms[].avatar // empty | select(startswith("@"))]
          + [.timelines[][].sender] | unique | .[]' "$data"
+}
+
+room_avatars() {
+  jq -r '.rooms[] | .avatar // empty | select(startswith("@") | not)' "$data"
 }
 
 space_avatars() {
@@ -124,6 +129,13 @@ fetch_avatars() {
   done < <(user_ids)
 }
 
+fetch_room_tiles() {
+  local room
+  while read -r room; do
+    fetch "$(photo_url "$room" "$AVATAR_SIZE" "$AVATAR_SIZE")" "$assets/room-$room.png"
+  done < <(room_avatars)
+}
+
 fetch_space_tiles() {
   local space
   while read -r space; do
@@ -150,6 +162,7 @@ report() {
 require_tools
 echo "fetching demo images into $assets"
 fetch_avatars
+fetch_room_tiles
 fetch_space_tiles
 fetch_photos
 report

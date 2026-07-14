@@ -5,7 +5,7 @@ import { IconDisplay, IconSet } from "@lucide";
 
 import { RoomEntry, SpaceEntry } from "./types.slint";
 import { SpaceRail } from "./space-rail.slint";
-import { Fonts } from "../../../theme.slint";
+import { Avatars, Fonts } from "../../../theme.slint";
 
 export component Sidebar inherits Rectangle {
     background: Palette.alternate-background;
@@ -47,8 +47,9 @@ export component Sidebar inherits Rectangle {
         return body;
     }
 
-    property <length> row-height: 60px;
+    property <length> row-height: 64px;
     property <length> rail-width: 72px;
+    property <length> avatar-size: 48px;
 
     HorizontalLayout {
         SpaceRail {
@@ -140,6 +141,35 @@ export component Sidebar inherits Rectangle {
                             padding-left: 12px;
                             padding-right: 12px;
                             spacing: 10px;
+
+                            VerticalLayout {
+                                alignment: center;
+
+                                Rectangle {
+                                    width: root.avatar-size;
+                                    height: root.avatar-size;
+                                    border-radius: self.width / 2;
+                                    background: Avatars.color(room.color-index);
+                                    clip: true;
+
+                                    if room.has-avatar: Image {
+                                        width: 100%;
+                                        height: 100%;
+                                        source: room.avatar;
+                                        image-fit: cover;
+                                    }
+
+                                    if !room.has-avatar: Text {
+                                        text: room.initial;
+                                        font-family: Fonts.emoji;
+                                        font-size: 17px;
+                                        font-weight: 600;
+                                        horizontal-alignment: center;
+                                        vertical-alignment: center;
+                                        color: white;
+                                    }
+                                }
+                            }
 
                             VerticalLayout {
                                 alignment: center;

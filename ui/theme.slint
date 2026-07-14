@@ -1,3 +1,20 @@
+import { Palette } from "std-widgets.slint";
+
 export global Fonts {
     in property <string> emoji: "Twemoji";
+}
+
+export global Avatars {
+    out property <[float]> hues: [357, 25, 253, 106, 181, 204, 333];
+    out property <bool> dark: Palette.color-scheme == ColorScheme.dark;
+    out property <float> saturation: root.dark ? 0.5 : 0.62;
+    out property <float> brightness: root.dark ? 0.88 : 0.78;
+
+    public pure function color(index: int) -> color {
+        return Colors.hsv(
+            self.hues[clamp(index, 0, self.hues.length - 1)],
+            self.saturation,
+            self.brightness,
+        );
+    }
 }
