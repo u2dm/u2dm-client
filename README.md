@@ -14,6 +14,7 @@ Early development. Expect incomplete features, rough edges, and breaking changes
 - Room list with message previews and unread and mention badges
 - Spaces shown as a reorderable rail that filters the room list
 - Message timeline
+- Pronoun badges next to sender names (MSC4247 profile field)
 - Emoji picker
 - Media showing and download
 - SAS device verification for encrypted rooms

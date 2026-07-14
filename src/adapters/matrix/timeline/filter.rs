@@ -29,7 +29,7 @@ pub(super) fn convert_timeline_items(
 ) -> Vec<TimelineMessage> {
     let mut messages: Vec<TimelineMessage> = items
         .iter()
-        .filter_map(|item| convert_timeline_item(item, ctx.media_sources, ctx.own_user_id))
+        .filter_map(|item| convert_timeline_item(item, ctx))
         .collect();
     messages.sort_by_key(|m| m.timestamp);
     messages

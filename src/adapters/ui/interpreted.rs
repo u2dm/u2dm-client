@@ -21,8 +21,8 @@ thread_local! {
 use super::common::{
     BoolProp, IntProp, Status, StringProp, UiProps, avatar_color_index, avatar_initials,
     dispatch_ui_event, load_image_cached, message_body_text, message_preview_kind_token,
-    message_sender_label, message_timestamp_label, message_type_token, room_activity_label,
-    sender_initial, unsupported_kind,
+    message_sender_label, message_timestamp_label, message_type_token, pronoun_labels,
+    room_activity_label, sender_initial, unsupported_kind,
 };
 use super::emoji;
 use crate::commands::{UiCommand, UiEvent};
@@ -782,31 +782,45 @@ fn message_to_value(m: &TimelineMessage, media: &dyn MediaCache) -> Value {
         "color-index".to_string(),
         Value::Number(f64::from(avatar_color_index(&m.sender))),
     ));
+    let pronouns: Vec<Value> = pronoun_labels(&m.sender_pronouns)
+        .into_iter()
+        .map(|set| Value::String(SharedString::from(set)))
+        .collect();
+    fields.push((
+        "pronouns".to_string(),
+        Value::Model(ModelRc::new(VecModel::from(pronouns))),
+    ));
     fields.push(("is-own".to_string(), Value::Bool(m.is_own)));
     fields.push(("edited".to_string(), Value::Bool(m.edited)));
-    fields.push(("has-reply".to_string(), Value::Bool(m.reply.is_some())));
-    fields.push((
-        "reply-sender".to_string(),
-        Value::String(SharedString::from(
-            m.reply.as_ref().map_or("", |r| r.sender.as_str()),
-        )),
-    ));
-    fields.push((
-        "reply-kind".to_string(),
-        Value::String(SharedString::from(
-            m.reply
-                .as_ref()
-                .map_or("", |r| message_preview_kind_token(r.kind)),
-        )),
-    ));
-    fields.push((
-        "reply-body".to_string(),
-        Value::String(SharedString::from(
-            m.reply.as_ref().map_or("", |r| r.body.as_str()),
-        )),
-    ));
+    fields.extend(reply_fields(m));
 
     Value::Struct(Struct::from_iter(fields))
+}
+
+fn reply_fields(m: &TimelineMessage) -> Vec<(String, Value)> {
+    vec![
+        ("has-reply".to_string(), Value::Bool(m.reply.is_some())),
+        (
+            "reply-sender".to_string(),
+            Value::String(SharedString::from(
+                m.reply.as_ref().map_or("", |r| r.sender.as_str()),
+            )),
+        ),
+        (
+            "reply-kind".to_string(),
+            Value::String(SharedString::from(
+                m.reply
+                    .as_ref()
+                    .map_or("", |r| message_preview_kind_token(r.kind)),
+            )),
+        ),
+        (
+            "reply-body".to_string(),
+            Value::String(SharedString::from(
+                m.reply.as_ref().map_or("", |r| r.body.as_str()),
+            )),
+        ),
+    ]
 }
 
 fn room_to_value(r: &Room, media: &dyn MediaCache) -> Value {

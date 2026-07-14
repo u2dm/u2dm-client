@@ -16,28 +16,30 @@ use super::TimelineContext;
 use super::diff::diff_to_patch;
 use super::filter::convert_timeline_items;
 use crate::adapters::matrix::media::{enrich_message, needs_media_download};
+use crate::adapters::matrix::profile::PronounCache;
 use crate::domain::models::{
     PaginationDirection, RoomId, TimelineCommand, TimelineMessage, TimelinePatch, TimelineUpdate,
 };
 use crate::domain::viewport::PAGINATION_BATCH_SIZE;
 use crate::error::{AppError, Result};
 
-fn spawn_media_enrichment(
-    client: &Client,
-    media_dir: &Path,
-    media_sources: &Arc<StdMutex<HashMap<String, MediaSource>>>,
-    materialized: &Arc<StdMutex<HashMap<String, PathBuf>>>,
-    timeline_tx: &mpsc::UnboundedSender<TimelineUpdate>,
-    msg: &TimelineMessage,
-) {
-    let msg = msg.clone();
-    let client = client.clone();
-    let media_dir = media_dir.to_path_buf();
-    let media_sources = Arc::clone(media_sources);
-    let materialized = Arc::clone(materialized);
-    let tx = timeline_tx.clone();
+fn needs_pronouns(msg: &TimelineMessage, pronouns: &PronounCache) -> bool {
+    !msg.is_own && !pronouns.is_resolved(&msg.sender)
+}
+
+fn spawn_enrichment(ctx: &TimelineContext<'_>, msg: &TimelineMessage) {
+    let mut msg = msg.clone();
+    let client = ctx.client.clone();
+    let media_dir = ctx.media_dir.to_path_buf();
+    let media_sources = Arc::clone(ctx.media_sources);
+    let materialized = Arc::clone(ctx.materialized);
+    let pronouns = Arc::clone(ctx.pronouns);
+    let tx = ctx.timeline_tx.clone();
     tokio::spawn(async move {
         enrich_message(&client, &media_dir, &media_sources, &materialized, &msg).await;
+        if !msg.is_own {
+            msg.sender_pronouns = pronouns.resolve(&client, &msg.sender).await;
+        }
         drop(tx.send(TimelineUpdate::Patch(Box::new(
             TimelinePatch::UpdateMedia {
                 event_id: msg.event_id.clone(),
@@ -52,15 +54,8 @@ pub(super) fn spawn_enrichment_for_messages(
     ctx: &TimelineContext<'_>,
 ) {
     for msg in messages {
-        if needs_media_download(msg, ctx.materialized) {
-            spawn_media_enrichment(
-                ctx.client,
-                ctx.media_dir,
-                ctx.media_sources,
-                ctx.materialized,
-                ctx.timeline_tx,
-                msg,
-            );
+        if needs_media_download(msg, ctx.materialized) || needs_pronouns(msg, ctx.pronouns) {
+            spawn_enrichment(ctx, msg);
         }
     }
 }
@@ -267,6 +262,7 @@ pub(crate) async fn subscribe_timeline(
     media_dir: &Path,
     media_sources: &Arc<StdMutex<HashMap<String, MediaSource>>>,
     materialized: &Arc<StdMutex<HashMap<String, PathBuf>>>,
+    pronouns: &Arc<PronounCache>,
     room_id: &RoomId,
     timeline_tx: mpsc::UnboundedSender<TimelineUpdate>,
     mut cmd_rx: mpsc::UnboundedReceiver<TimelineCommand>,
@@ -289,6 +285,7 @@ pub(crate) async fn subscribe_timeline(
         media_dir,
         media_sources,
         materialized,
+        pronouns,
         own_user_id: own_user_id.as_deref(),
         timeline_tx: &timeline_tx,
     };

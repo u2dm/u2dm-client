@@ -16,6 +16,8 @@ pub struct DemoData {
     pub spaces: Vec<SpaceDto>,
     #[serde(default)]
     pub timelines: HashMap<String, Vec<MessageDto>>,
+    #[serde(default)]
+    pub pronouns: HashMap<String, Vec<String>>,
 }
 
 #[derive(Deserialize, Default)]
@@ -170,6 +172,7 @@ impl MessageDto {
         TimelineMessage {
             unique_id: self.id.clone(),
             event_id: EventId(self.id.clone()),
+            sender_pronouns: super::data::pronouns(&self.sender),
             sender: self.sender.clone(),
             sender_display_name: Some(self.name.clone()),
             sender_avatar_url: None,

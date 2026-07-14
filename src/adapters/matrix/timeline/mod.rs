@@ -12,6 +12,7 @@ use matrix_sdk::ruma::events::room::MediaSource;
 pub(super) use subscribe::subscribe_timeline;
 use tokio::sync::mpsc;
 
+use super::profile::PronounCache;
 use crate::domain::models::TimelineUpdate;
 
 pub(super) struct TimelineContext<'a> {
@@ -19,6 +20,7 @@ pub(super) struct TimelineContext<'a> {
     pub(super) media_dir: &'a Path,
     pub(super) media_sources: &'a Arc<StdMutex<HashMap<String, MediaSource>>>,
     pub(super) materialized: &'a Arc<StdMutex<HashMap<String, PathBuf>>>,
+    pub(super) pronouns: &'a Arc<PronounCache>,
     pub(super) own_user_id: Option<&'a str>,
     pub(super) timeline_tx: &'a mpsc::UnboundedSender<TimelineUpdate>,
 }

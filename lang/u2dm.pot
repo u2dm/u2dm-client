@@ -141,7 +141,7 @@ msgctxt "MessageInput"
 msgid "Send"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/message-bubble.slint:223
+#: ui/screens/chat/components/timeline/message-bubble.slint:249
 msgctxt "MessageBubble"
 msgid "Reply"
 msgstr ""

@@ -21,7 +21,7 @@ fn apply_append(
 ) -> Option<TimelinePatch> {
     let mut msgs: Vec<TimelineMessage> = values
         .iter()
-        .filter_map(|item| convert_timeline_item(item, ctx.media_sources, ctx.own_user_id))
+        .filter_map(|item| convert_timeline_item(item, ctx))
         .collect();
     msgs.sort_by_key(|m| m.timestamp);
     items.extend(values);
@@ -37,7 +37,7 @@ fn apply_push_front(
     value: Arc<TimelineItem>,
     ctx: &TimelineContext<'_>,
 ) -> Option<TimelinePatch> {
-    let msg = convert_timeline_item(&value, ctx.media_sources, ctx.own_user_id);
+    let msg = convert_timeline_item(&value, ctx);
     items.insert(0, value);
     let msg = msg?;
     spawn_if_needed(&msg, ctx);
@@ -49,7 +49,7 @@ fn apply_push_back(
     value: Arc<TimelineItem>,
     ctx: &TimelineContext<'_>,
 ) -> Option<TimelinePatch> {
-    let msg = convert_timeline_item(&value, ctx.media_sources, ctx.own_user_id);
+    let msg = convert_timeline_item(&value, ctx);
     items.push(value);
     let msg = msg?;
     spawn_if_needed(&msg, ctx);
@@ -76,7 +76,7 @@ fn apply_insert(
     value: Arc<TimelineItem>,
     ctx: &TimelineContext<'_>,
 ) -> Option<TimelinePatch> {
-    let msg = convert_timeline_item(&value, ctx.media_sources, ctx.own_user_id);
+    let msg = convert_timeline_item(&value, ctx);
     items.insert(index, value);
     let msg = msg?;
     let mi = msg_index_at(items, index);
@@ -93,16 +93,14 @@ fn apply_set(
     value: &Arc<TimelineItem>,
     ctx: &TimelineContext<'_>,
 ) -> Option<TimelinePatch> {
-    let old_msg = items
-        .get(index)
-        .and_then(|i| convert_timeline_item(i, ctx.media_sources, ctx.own_user_id));
+    let old_msg = items.get(index).and_then(|i| convert_timeline_item(i, ctx));
     let old_mi = if old_msg.is_some() {
         msg_index_at(items, index)
     } else {
         0
     };
 
-    let new_msg = convert_timeline_item(value, ctx.media_sources, ctx.own_user_id);
+    let new_msg = convert_timeline_item(value, ctx);
 
     if let Some(slot) = items.get_mut(index) {
         *slot = Arc::clone(value);
@@ -111,7 +109,7 @@ fn apply_set(
     match (&old_msg, &new_msg) {
         (Some(old), Some(new)) if old.visually_eq(new) => None,
         (Some(_), Some(_)) => {
-            let enriched = convert_timeline_item(value, ctx.media_sources, ctx.own_user_id)?;
+            let enriched = convert_timeline_item(value, ctx)?;
             spawn_if_needed(&enriched, ctx);
             Some(TimelinePatch::Set {
                 index: old_mi,
@@ -121,7 +119,7 @@ fn apply_set(
         (Some(_), None) => Some(TimelinePatch::Remove { index: old_mi }),
         (None, Some(_)) => {
             let mi = msg_index_at(items, index);
-            let enriched = convert_timeline_item(value, ctx.media_sources, ctx.own_user_id)?;
+            let enriched = convert_timeline_item(value, ctx)?;
             spawn_if_needed(&enriched, ctx);
             Some(TimelinePatch::Insert {
                 index: mi,

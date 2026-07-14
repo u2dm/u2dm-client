@@ -63,6 +63,26 @@ pub fn message_sender_label(m: &TimelineMessage) -> &str {
     m.sender_display_name.as_deref().unwrap_or(&m.sender)
 }
 
+const PRONOUNS_SHOWN: usize = 3;
+const PRONOUNS_MAX_LEN: usize = 16;
+
+pub fn pronoun_labels(pronouns: &[String]) -> Vec<String> {
+    pronouns
+        .iter()
+        .map(|set| set.trim())
+        .filter(|set| !set.is_empty())
+        .take(PRONOUNS_SHOWN)
+        .map(|set| truncate_chars(set, PRONOUNS_MAX_LEN).to_lowercase())
+        .collect()
+}
+
+fn truncate_chars(text: &str, max: usize) -> &str {
+    match text.char_indices().nth(max) {
+        Some((cut, _)) => text.get(..cut).unwrap_or(text),
+        None => text,
+    }
+}
+
 pub fn message_timestamp_label(timestamp: u64) -> String {
     chrono::DateTime::from_timestamp((timestamp / 1000).cast_signed(), 0)
         .map(|utc| {

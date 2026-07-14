@@ -62,11 +62,16 @@ pub fn messages(room_id: &RoomId) -> Vec<TimelineMessage> {
     }
 }
 
+pub fn pronouns(user_id: &str) -> Vec<String> {
+    data().pronouns.get(user_id).cloned().unwrap_or_default()
+}
+
 pub fn own_message(sequence: u64, body: &str, reply: Option<ReplyInfo>) -> TimelineMessage {
     let id = format!("demo-sent-{sequence}");
     TimelineMessage {
         unique_id: id.clone(),
         event_id: EventId(id),
+        sender_pronouns: Vec::new(),
         sender: own_user().to_owned(),
         sender_display_name: Some("You".to_owned()),
         sender_avatar_url: None,
@@ -125,6 +130,7 @@ fn synthesized_message(dto: &RoomDto, room: &Room) -> TimelineMessage {
     TimelineMessage {
         unique_id: id.clone(),
         event_id: EventId(id),
+        sender_pronouns: pronouns(&sender),
         sender,
         sender_display_name: Some(display_name),
         sender_avatar_url: None,

@@ -1,6 +1,7 @@
 mod auth;
 mod media;
 mod preview;
+mod profile;
 mod rooms;
 mod timeline;
 mod verification;
@@ -23,6 +24,7 @@ use matrix_sdk::ruma::{IdParseError, OwnedEventId, OwnedRoomId};
 use matrix_sdk::utils::local_server::LocalServerRedirectHandle;
 use tokio::sync::{Mutex, RwLock, mpsc};
 
+use self::profile::PronounCache;
 use crate::domain::models::{
     LoginCredentials, OAuthLoginData, RoomId, ServerInfo, Session, SyncEvent, TimelineCommand,
     TimelineUpdate, VerificationEvent,
@@ -40,6 +42,7 @@ pub struct MatrixAdapter {
     sas_verification: Mutex<Option<SasVerification>>,
     media_sources: Arc<StdMutex<HashMap<String, MediaSource>>>,
     materialized: Arc<StdMutex<HashMap<String, PathBuf>>>,
+    pronouns: Arc<PronounCache>,
     verification_req_rx: Mutex<Option<mpsc::UnboundedReceiver<VerificationRequest>>>,
     verification_handler_guards: Mutex<Vec<EventHandlerDropGuard>>,
 }
@@ -55,6 +58,7 @@ impl MatrixAdapter {
             sas_verification: Mutex::new(None),
             media_sources: Arc::new(StdMutex::new(HashMap::new())),
             materialized: Arc::new(StdMutex::new(HashMap::new())),
+            pronouns: Arc::new(PronounCache::default()),
             verification_req_rx: Mutex::new(None),
             verification_handler_guards: Mutex::new(Vec::new()),
         }
@@ -129,6 +133,7 @@ impl MatrixPort for MatrixAdapter {
             &self.media_dir(),
             &self.media_sources,
             &self.materialized,
+            &self.pronouns,
             room_id,
             timeline_tx,
             cmd_rx,

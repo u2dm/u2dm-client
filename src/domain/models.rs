@@ -258,6 +258,7 @@ pub struct TimelineMessage {
     pub sender: String,
     pub sender_display_name: Option<String>,
     pub sender_avatar_url: Option<String>,
+    pub sender_pronouns: Vec<String>,
     pub body: MessageBody,
     pub timestamp: u64,
     pub is_own: bool,
@@ -271,6 +272,7 @@ impl TimelineMessage {
             && self.sender == other.sender
             && self.sender_display_name == other.sender_display_name
             && self.sender_avatar_url == other.sender_avatar_url
+            && self.sender_pronouns == other.sender_pronouns
             && self.body == other.body
             && self.timestamp == other.timestamp
             && self.is_own == other.is_own

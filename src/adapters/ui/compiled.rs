@@ -9,8 +9,8 @@ use tokio::sync::mpsc;
 use super::common::{
     BoolProp, IntProp, Status, StringProp, UiProps, avatar_color_index, avatar_initials,
     dispatch_ui_event, load_image_cached, message_body_text, message_preview_kind_token,
-    message_sender_label, message_timestamp_label, message_type_token, room_activity_label,
-    sender_initial, unsupported_kind,
+    message_sender_label, message_timestamp_label, message_type_token, pronoun_labels,
+    room_activity_label, sender_initial, unsupported_kind,
 };
 use super::emoji;
 use crate::commands::{UiCommand, UiEvent};
@@ -475,9 +475,14 @@ fn setup_emoji_store(window: &AppWindow) {
 }
 
 fn message_to_entry(m: &TimelineMessage, media: &dyn MediaCache) -> MessageEntry {
+    let pronouns: Vec<SharedString> = pronoun_labels(&m.sender_pronouns)
+        .into_iter()
+        .map(SharedString::from)
+        .collect();
     let mut entry = MessageEntry {
         unique_id: SharedString::from(&m.unique_id),
         sender: SharedString::from(message_sender_label(m)),
+        pronouns: ModelRc::new(VecModel::from(pronouns)),
         body: SharedString::from(message_body_text(&m.body)),
         timestamp: SharedString::from(&message_timestamp_label(m.timestamp)),
         message_type: SharedString::from(message_type_token(&m.body)),

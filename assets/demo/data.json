@@ -5,6 +5,12 @@
     "homeserver": "https://matrix.org"
   },
 
+  "pronouns": {
+    "@sarah:matrix.org": ["she/her"],
+    "@marcus:matrix.org": ["he/him"],
+    "@priya:matrix.org": ["they/them", "raka/makafon"]
+  },
+
   "rooms": [
     {
       "id": "!rust:demo.local",

@@ -85,49 +85,75 @@ export component MessageBubble inherits Rectangle {
                 padding-right: 10px;
 
                 if !is-own: HorizontalLayout {
+                    alignment: start;
+                    spacing: 4px;
+
                     Text {
                         text: msg.sender;
                         font-size: 12px;
                         font-weight: 700;
                         color: Palette.accent-background;
+                        vertical-alignment: center;
+                        overflow: elide;
+                    }
+
+                    for pronoun in msg.pronouns: Rectangle {
+                        y: (parent.height - self.height) / 2;
+                        width: pronoun-text.preferred-width + 10px;
+                        height: pronoun-text.preferred-height + 2px;
+                        border-radius: self.height / 2;
+                        background: Palette.foreground.transparentize(0.92);
+
+                        pronoun-text := Text {
+                            text: pronoun;
+                            font-size: 10px;
+                            color: Palette.accent-background.transparentize(0.2);
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                            overflow: elide;
+                        }
                     }
                 }
 
-                if msg.has-reply: Rectangle {
-                    height: reply-quote.preferred-height + 8px;
-                    border-radius: 4px;
-                    background: is-own
-                        ? Palette.accent-background.transparentize(0.7)
-                        : Palette.foreground.transparentize(0.92);
+                if msg.has-reply: VerticalLayout {
+                    padding-top: is-own ? 0 : 4px;
 
-                    HorizontalLayout {
-                        padding: 4px;
-                        spacing: 6px;
+                    Rectangle {
+                        height: reply-quote.preferred-height + 8px;
+                        border-radius: 4px;
+                        background: is-own
+                            ? Palette.accent-background.transparentize(0.7)
+                            : Palette.foreground.transparentize(0.92);
 
-                        Rectangle {
-                            width: 3px;
-                            border-radius: 1.5px;
-                            background: Palette.accent-background;
-                        }
+                        HorizontalLayout {
+                            padding: 4px;
+                            spacing: 6px;
 
-                        reply-quote := VerticalLayout {
-                            spacing: 1px;
-                            alignment: center;
-
-                            Text {
-                                text: msg.reply-sender;
-                                font-size: 12px;
-                                font-weight: 700;
-                                color: Palette.accent-background;
-                                overflow: elide;
+                            Rectangle {
+                                width: 3px;
+                                border-radius: 1.5px;
+                                background: Palette.accent-background;
                             }
 
-                            Text {
-                                text: MessagePreview.label(msg.reply-kind, msg.reply-body);
-                                font-family: Fonts.emoji;
-                                font-size: 12px;
-                                color: Palette.foreground.transparentize(0.35);
-                                overflow: elide;
+                            reply-quote := VerticalLayout {
+                                spacing: 1px;
+                                alignment: center;
+
+                                Text {
+                                    text: msg.reply-sender;
+                                    font-size: 12px;
+                                    font-weight: 700;
+                                    color: Palette.accent-background;
+                                    overflow: elide;
+                                }
+
+                                Text {
+                                    text: MessagePreview.label(msg.reply-kind, msg.reply-body);
+                                    font-family: Fonts.emoji;
+                                    font-size: 12px;
+                                    color: Palette.foreground.transparentize(0.35);
+                                    overflow: elide;
+                                }
                             }
                         }
                     }

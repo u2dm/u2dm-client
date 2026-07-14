@@ -9,6 +9,7 @@ use matrix_sdk_ui::timeline::{
     EventTimelineItem, TimelineDetails, TimelineItem, TimelineItemContent,
 };
 
+use super::TimelineContext;
 use crate::adapters::matrix::preview;
 use crate::domain::models::{
     EventId, FileMeta, ImageMeta, MessageBody, MessagePreviewKind, ReplyInfo, TimelineMessage,
@@ -28,16 +29,17 @@ fn build_utd_message(
     unique_id: String,
     event: &EventTimelineItem,
     event_id_str: String,
-    own_user_id: Option<&str>,
+    ctx: &TimelineContext<'_>,
     reply: Option<ReplyInfo>,
 ) -> TimelineMessage {
     let (sender_display_name, sender_avatar_url) = extract_sender_profile(event);
     let ts: u64 = event.timestamp().0.into();
     let sender_str = event.sender().to_string();
-    let is_own = own_user_id.is_some_and(|uid| uid == sender_str);
+    let is_own = ctx.own_user_id.is_some_and(|uid| uid == sender_str);
     TimelineMessage {
         unique_id,
         event_id: EventId(event_id_str),
+        sender_pronouns: ctx.pronouns.resolved(&sender_str),
         sender: sender_str,
         sender_display_name,
         sender_avatar_url,
@@ -151,19 +153,17 @@ fn message_type_to_body(
 
 pub(super) fn convert_timeline_item(
     item: &TimelineItem,
-    media_sources: &StdMutex<HashMap<String, MediaSource>>,
-    own_user_id: Option<&str>,
+    ctx: &TimelineContext<'_>,
 ) -> Option<TimelineMessage> {
     let event = item.as_event()?;
     let unique_id = item.unique_id().0.clone();
-    convert_event_item_with_uid(unique_id, event, media_sources, own_user_id)
+    convert_event_item_with_uid(unique_id, event, ctx)
 }
 
 pub(super) fn convert_event_item_with_uid(
     unique_id: String,
     event: &EventTimelineItem,
-    media_sources: &StdMutex<HashMap<String, MediaSource>>,
-    own_user_id: Option<&str>,
+    ctx: &TimelineContext<'_>,
 ) -> Option<TimelineMessage> {
     let event_id_str = event
         .event_id()
@@ -179,7 +179,7 @@ pub(super) fn convert_event_item_with_uid(
                 unique_id,
                 event,
                 event_id_str,
-                own_user_id,
+                ctx,
                 reply,
             ));
         }
@@ -191,15 +191,16 @@ pub(super) fn convert_event_item_with_uid(
         return None;
     };
 
-    let body = message_type_to_body(message.msgtype(), &event_id_str, media_sources);
+    let body = message_type_to_body(message.msgtype(), &event_id_str, ctx.media_sources);
     let (sender_display_name, sender_avatar_url) = extract_sender_profile(event);
     let ts: u64 = event.timestamp().0.into();
     let sender_str = event.sender().to_string();
-    let is_own = own_user_id.is_some_and(|uid| uid == sender_str);
+    let is_own = ctx.own_user_id.is_some_and(|uid| uid == sender_str);
 
     Some(TimelineMessage {
         unique_id,
         event_id: EventId(event_id_str),
+        sender_pronouns: ctx.pronouns.resolved(&sender_str),
         sender: sender_str,
         sender_display_name,
         sender_avatar_url,
