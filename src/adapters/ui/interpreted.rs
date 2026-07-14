@@ -19,9 +19,9 @@ thread_local! {
 
 use super::common::{
     BoolProp, IntProp, Status, StringProp, UiProps, avatar_color_index, avatar_initials,
-    dispatch_ui_event, last_message_kind_token, load_image_cached, message_body_text,
+    dispatch_ui_event, load_image_cached, message_body_text, message_preview_kind_token,
     message_sender_label, message_timestamp_label, message_type_token, room_activity_label,
-    sender_initial,
+    sender_initial, unsupported_kind,
 };
 use super::emoji;
 use crate::commands::{UiCommand, UiEvent};
@@ -689,7 +689,7 @@ fn message_to_value(m: &TimelineMessage, media: &dyn MediaCache) -> Value {
         ),
         (
             "body".to_string(),
-            Value::String(SharedString::from(&message_body_text(&m.body))),
+            Value::String(SharedString::from(message_body_text(&m.body))),
         ),
         (
             "timestamp".to_string(),
@@ -698,6 +698,16 @@ fn message_to_value(m: &TimelineMessage, media: &dyn MediaCache) -> Value {
         (
             "message-type".to_string(),
             Value::String(SharedString::from(message_type_token(&m.body))),
+        ),
+        (
+            "preview-kind".to_string(),
+            Value::String(SharedString::from(message_preview_kind_token(
+                m.body.preview_kind(),
+            ))),
+        ),
+        (
+            "unsupported-kind".to_string(),
+            Value::String(SharedString::from(unsupported_kind(&m.body))),
         ),
         (
             "event-id".to_string(),
@@ -754,9 +764,17 @@ fn message_to_value(m: &TimelineMessage, media: &dyn MediaCache) -> Value {
         )),
     ));
     fields.push((
+        "reply-kind".to_string(),
+        Value::String(SharedString::from(
+            m.reply
+                .as_ref()
+                .map_or("", |r| message_preview_kind_token(r.kind)),
+        )),
+    ));
+    fields.push((
         "reply-body".to_string(),
         Value::String(SharedString::from(
-            m.reply.as_ref().map_or("", |r| r.preview.as_str()),
+            m.reply.as_ref().map_or("", |r| r.body.as_str()),
         )),
     ));
 
@@ -801,7 +819,7 @@ fn room_to_value(r: &Room, media: &dyn MediaCache) -> Value {
         ),
         (
             "last-message-kind".to_string(),
-            Value::String(SharedString::from(last_message_kind_token(
+            Value::String(SharedString::from(message_preview_kind_token(
                 r.last_message_kind,
             ))),
         ),

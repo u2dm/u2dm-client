@@ -83,9 +83,9 @@ pub fn body_preview(body: &MessageBody) -> String {
         MessageBody::Text(text) | MessageBody::Notice(text) | MessageBody::Emote(text) => {
             text.clone()
         }
-        MessageBody::Image { caption, .. } => caption.clone().unwrap_or_else(|| "Photo".to_owned()),
+        MessageBody::Image { caption, .. } => caption.clone().unwrap_or_default(),
         MessageBody::File { meta } => meta.filename.clone(),
-        MessageBody::UnableToDecrypt => "Unable to decrypt message".to_owned(),
+        MessageBody::UnableToDecrypt => String::new(),
         MessageBody::Unsupported { fallback, .. } => fallback.clone(),
     }
 }

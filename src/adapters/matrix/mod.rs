@@ -1,5 +1,6 @@
 mod auth;
 mod media;
+mod preview;
 mod rooms;
 mod timeline;
 mod verification;

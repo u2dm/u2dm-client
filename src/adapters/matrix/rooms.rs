@@ -6,7 +6,7 @@ use matrix_sdk::deserialized_responses::SyncOrStrippedState;
 use matrix_sdk::latest_events::LatestEventValue;
 use matrix_sdk::ruma::api::error::ErrorKind;
 use matrix_sdk::ruma::events::room::MediaSource;
-use matrix_sdk::ruma::events::room::message::{MessageType, Relation, RoomMessageEventContent};
+use matrix_sdk::ruma::events::room::message::{Relation, RoomMessageEventContent};
 use matrix_sdk::ruma::events::space::child::SpaceChildEventContent;
 use matrix_sdk::ruma::events::{
     AnyMessageLikeEventContent, AnySyncMessageLikeEvent, AnySyncTimelineEvent,
@@ -26,8 +26,9 @@ use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender, unbounded_channel};
 use tokio::task::JoinSet;
 
 use super::media::{fetch_and_materialize, lookup_materialized, mxc_avatar_key};
+use super::preview::{self, MessagePreview};
 use crate::domain::models::{
-    LastMessageKind, Room as DomainRoom, RoomId, Space as DomainSpace, SyncEvent,
+    MessagePreviewKind, Room as DomainRoom, RoomId, Space as DomainSpace, SyncEvent,
 };
 use crate::error::{AppError, Result as AppResult};
 use crate::util::hex_encode_id;
@@ -76,7 +77,7 @@ async fn build_single_room(room: &Room) -> DomainRoom {
 #[derive(Default)]
 struct LastMessage {
     sender: Option<String>,
-    kind: LastMessageKind,
+    kind: MessagePreviewKind,
     body: String,
     is_own: bool,
     edited: bool,
@@ -118,22 +119,6 @@ async fn resolve_sender_name(room: &Room, user_id: &UserId) -> String {
     user_id.localpart().to_owned()
 }
 
-struct MessagePreview {
-    kind: LastMessageKind,
-    body: String,
-    edited: bool,
-}
-
-impl MessagePreview {
-    fn labelled(kind: LastMessageKind) -> Self {
-        Self {
-            kind,
-            body: String::new(),
-            edited: false,
-        }
-    }
-}
-
 fn latest_message_preview(
     value: &LatestEventValue,
 ) -> Option<(MessagePreview, Option<OwnedUserId>)> {
@@ -160,10 +145,10 @@ fn preview_from_event(event: &AnySyncTimelineEvent) -> Option<MessagePreview> {
             SyncMessageLikeEvent::Original(message),
         )) => Some(preview_from_message_content(&message.content)),
         AnySyncTimelineEvent::MessageLike(AnySyncMessageLikeEvent::RoomEncrypted(_)) => {
-            Some(MessagePreview::labelled(LastMessageKind::Encrypted))
+            Some(MessagePreview::labelled(MessagePreviewKind::Encrypted))
         }
         AnySyncTimelineEvent::MessageLike(AnySyncMessageLikeEvent::Sticker(_)) => {
-            Some(MessagePreview::labelled(LastMessageKind::Sticker))
+            Some(MessagePreview::labelled(MessagePreviewKind::Sticker))
         }
         _ => None,
     }
@@ -171,33 +156,11 @@ fn preview_from_event(event: &AnySyncTimelineEvent) -> Option<MessagePreview> {
 
 fn preview_from_message_content(content: &RoomMessageEventContent) -> MessagePreview {
     if let Some(Relation::Replacement(replacement)) = &content.relates_to {
-        let mut preview = message_preview(&replacement.new_content.msgtype);
+        let mut preview = preview::from_msgtype(&replacement.new_content.msgtype);
         preview.edited = true;
         preview
     } else {
-        message_preview(&content.msgtype)
-    }
-}
-
-fn message_preview(msgtype: &MessageType) -> MessagePreview {
-    let (kind, body) = match msgtype {
-        MessageType::Text(content) => (LastMessageKind::Text, content.body.as_str()),
-        MessageType::Notice(content) => (LastMessageKind::Text, content.body.as_str()),
-        MessageType::Emote(content) => (LastMessageKind::Text, content.body.as_str()),
-        MessageType::Image(_) => return MessagePreview::labelled(LastMessageKind::Image),
-        MessageType::Video(_) => return MessagePreview::labelled(LastMessageKind::Video),
-        MessageType::Audio(_) => return MessagePreview::labelled(LastMessageKind::Audio),
-        MessageType::File(content) => (
-            LastMessageKind::File,
-            content.filename.as_deref().unwrap_or(&content.body),
-        ),
-        MessageType::Location(_) => return MessagePreview::labelled(LastMessageKind::Location),
-        other => (LastMessageKind::Text, other.body()),
-    };
-    MessagePreview {
-        kind,
-        body: body.split_whitespace().collect::<Vec<_>>().join(" "),
-        edited: false,
+        preview::from_msgtype(&content.msgtype)
     }
 }
 

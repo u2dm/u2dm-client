@@ -1,0 +1,26 @@
+export global MessagePreview {
+    public pure function label(kind: string, body: string) -> string {
+        if kind == "image" {
+            return @tr("📷 Photo");
+        }
+        if kind == "video" {
+            return @tr("🎬 Video");
+        }
+        if kind == "audio" {
+            return @tr("🎵 Audio");
+        }
+        if kind == "file" {
+            return @tr("📎 {}", body);
+        }
+        if kind == "location" {
+            return @tr("📍 Location");
+        }
+        if kind == "encrypted" {
+            return @tr("🔒 Encrypted message");
+        }
+        if kind == "sticker" {
+            return @tr("Sticker");
+        }
+        return body;
+    }
+}

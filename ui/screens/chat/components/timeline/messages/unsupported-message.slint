@@ -1,6 +1,7 @@
 import { Palette } from "std-widgets.slint";
 
 export component UnsupportedMessage inherits Rectangle {
+    in property <string> kind;
     in property <string> body;
 
     height: layout.preferred-height;
@@ -20,13 +21,26 @@ export component UnsupportedMessage inherits Rectangle {
             vertical-alignment: center;
         }
 
-        Text {
-            text: body;
-            font-size: 13px;
-            font-italic: true;
-            color: Palette.foreground.transparentize(0.4);
-            vertical-alignment: center;
-            wrap: word-wrap;
+        VerticalLayout {
+            spacing: 2px;
+
+            Text {
+                text: @tr("Unsupported message type: {}", root.kind);
+                font-size: 13px;
+                font-italic: true;
+                color: Palette.foreground.transparentize(0.4);
+                vertical-alignment: center;
+                wrap: word-wrap;
+            }
+
+            if root.body != "": Text {
+                text: root.body;
+                font-size: 13px;
+                font-italic: true;
+                color: Palette.foreground.transparentize(0.4);
+                vertical-alignment: center;
+                wrap: word-wrap;
+            }
         }
     }
 }

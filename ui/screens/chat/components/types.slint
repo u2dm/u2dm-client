@@ -32,6 +32,8 @@ export struct MessageEntry {
     body: string,
     timestamp: string,
     message-type: string,
+    preview-kind: string,
+    unsupported-kind: string,
     has-thumbnail: bool,
     thumbnail: image,
     image-width: int,
@@ -45,6 +47,7 @@ export struct MessageEntry {
     edited: bool,
     has-reply: bool,
     reply-sender: string,
+    reply-kind: string,
     reply-body: string,
 }
 

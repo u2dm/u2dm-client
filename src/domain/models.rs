@@ -132,7 +132,7 @@ impl fmt::Display for RoomId {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum LastMessageKind {
+pub enum MessagePreviewKind {
     #[default]
     None,
     Text,
@@ -157,7 +157,7 @@ pub struct Room {
     pub mention_count: u64,
     pub last_activity_ts: u64,
     pub last_message_sender: Option<String>,
-    pub last_message_kind: LastMessageKind,
+    pub last_message_kind: MessagePreviewKind,
     pub last_message_body: String,
     pub last_message_is_own: bool,
     pub last_message_edited: bool,
@@ -229,10 +229,24 @@ pub enum MessageBody {
     },
 }
 
+impl MessageBody {
+    pub fn preview_kind(&self) -> MessagePreviewKind {
+        match self {
+            Self::Text(_) | Self::Notice(_) | Self::Emote(_) | Self::Unsupported { .. } => {
+                MessagePreviewKind::Text
+            }
+            Self::Image { .. } => MessagePreviewKind::Image,
+            Self::File { .. } => MessagePreviewKind::File,
+            Self::UnableToDecrypt => MessagePreviewKind::Encrypted,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ReplyInfo {
     pub sender: String,
-    pub preview: String,
+    pub kind: MessagePreviewKind,
+    pub body: String,
 }
 
 #[derive(Debug, Clone)]

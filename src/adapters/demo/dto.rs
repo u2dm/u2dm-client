@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use serde::Deserialize;
 
 use crate::domain::models::{
-    EventId, ImageMeta, LastMessageKind, MessageBody, ReplyInfo, Room, RoomId, Session, Space,
+    EventId, ImageMeta, MessageBody, MessagePreviewKind, ReplyInfo, Room, RoomId, Session, Space,
     TimelineMessage,
 };
 
@@ -110,7 +110,10 @@ struct ImageDto {
 #[derive(Deserialize)]
 struct ReplyDto {
     sender: String,
-    preview: String,
+    #[serde(default)]
+    kind: KindDto,
+    #[serde(default)]
+    body: String,
 }
 
 impl SessionDto {
@@ -172,7 +175,8 @@ impl MessageDto {
             is_own: self.sender == own_user,
             reply: self.reply.as_ref().map(|reply| ReplyInfo {
                 sender: reply.sender.clone(),
-                preview: reply.preview.clone(),
+                kind: reply.kind.to_kind(),
+                body: reply.body.clone(),
             }),
             edited: self.edited,
         }
@@ -194,17 +198,17 @@ impl MessageDto {
 }
 
 impl KindDto {
-    fn to_kind(self) -> LastMessageKind {
+    fn to_kind(self) -> MessagePreviewKind {
         match self {
-            Self::Text => LastMessageKind::Text,
-            Self::Image => LastMessageKind::Image,
-            Self::Video => LastMessageKind::Video,
-            Self::Audio => LastMessageKind::Audio,
-            Self::File => LastMessageKind::File,
-            Self::Location => LastMessageKind::Location,
-            Self::Encrypted => LastMessageKind::Encrypted,
-            Self::Sticker => LastMessageKind::Sticker,
-            Self::None => LastMessageKind::None,
+            Self::Text => MessagePreviewKind::Text,
+            Self::Image => MessagePreviewKind::Image,
+            Self::Video => MessagePreviewKind::Video,
+            Self::Audio => MessagePreviewKind::Audio,
+            Self::File => MessagePreviewKind::File,
+            Self::Location => MessagePreviewKind::Location,
+            Self::Encrypted => MessagePreviewKind::Encrypted,
+            Self::Sticker => MessagePreviewKind::Sticker,
+            Self::None => MessagePreviewKind::None,
         }
     }
 }

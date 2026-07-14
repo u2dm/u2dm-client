@@ -180,7 +180,8 @@ fn reply_info(messages: &[TimelineMessage], event_id: &str) -> Option<ReplyInfo>
         .find(|message| message.event_id.0 == event_id)
         .map(|message| ReplyInfo {
             sender: data::sender_label(message),
-            preview: data::body_preview(&message.body),
+            kind: message.body.preview_kind(),
+            body: data::body_preview(&message.body),
         })
 }
 
@@ -197,7 +198,7 @@ fn unavailable(action: &str) -> AppError {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::models::MessageBody;
+    use crate::domain::models::{MessageBody, MessagePreviewKind};
 
     fn patch(update: Option<TimelineUpdate>) -> Option<TimelinePatch> {
         match update {
@@ -256,7 +257,8 @@ mod tests {
                 assert_eq!(message.body, MessageBody::Text("same".to_owned()));
                 let reply = message.reply.unwrap_or(ReplyInfo {
                     sender: String::new(),
-                    preview: String::new(),
+                    kind: MessagePreviewKind::None,
+                    body: String::new(),
                 });
                 assert_eq!(reply.sender, "Sarah Chen");
             }

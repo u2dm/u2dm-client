@@ -95,26 +95,13 @@ pub fn room_activity_label(last_activity_ts: u64) -> String {
     }
 }
 
-fn message_body_raw(body: &MessageBody) -> &str {
+pub fn message_body_text(body: &MessageBody) -> &str {
     match body {
         MessageBody::Text(s) | MessageBody::Notice(s) | MessageBody::Emote(s) => s,
         MessageBody::Image { caption, .. } => caption.as_deref().unwrap_or_default(),
         MessageBody::File { meta, .. } => &meta.filename,
-        MessageBody::UnableToDecrypt => "Unable to decrypt message",
+        MessageBody::UnableToDecrypt => "",
         MessageBody::Unsupported { fallback, .. } => fallback,
-    }
-}
-
-pub fn message_body_text(body: &MessageBody) -> String {
-    match body {
-        MessageBody::Unsupported { kind, fallback } => {
-            if fallback.is_empty() {
-                format!("Unsupported message type: {kind}")
-            } else {
-                format!("Unsupported message type: {kind}\n{fallback}")
-            }
-        }
-        other => message_body_raw(other).to_string(),
     }
 }
 
@@ -130,17 +117,24 @@ pub fn message_type_token(body: &MessageBody) -> &'static str {
     }
 }
 
-pub fn last_message_kind_token(kind: LastMessageKind) -> &'static str {
+pub fn unsupported_kind(body: &MessageBody) -> &str {
+    match body {
+        MessageBody::Unsupported { kind, .. } => kind,
+        _ => "",
+    }
+}
+
+pub fn message_preview_kind_token(kind: MessagePreviewKind) -> &'static str {
     match kind {
-        LastMessageKind::None => "",
-        LastMessageKind::Text => "text",
-        LastMessageKind::Image => "image",
-        LastMessageKind::Video => "video",
-        LastMessageKind::Audio => "audio",
-        LastMessageKind::File => "file",
-        LastMessageKind::Location => "location",
-        LastMessageKind::Encrypted => "encrypted",
-        LastMessageKind::Sticker => "sticker",
+        MessagePreviewKind::None => "",
+        MessagePreviewKind::Text => "text",
+        MessagePreviewKind::Image => "image",
+        MessagePreviewKind::Video => "video",
+        MessagePreviewKind::Audio => "audio",
+        MessagePreviewKind::File => "file",
+        MessagePreviewKind::Location => "location",
+        MessagePreviewKind::Encrypted => "encrypted",
+        MessagePreviewKind::Sticker => "sticker",
     }
 }
 
@@ -164,7 +158,7 @@ pub fn connection_status_token(status: &ConnectionStatus) -> &'static str {
 
 use crate::commands::UiEvent;
 use crate::domain::models::{
-    ConnectionStatus, LastMessageKind, LoginMethod, MessageBody, Room, ServerInfo, Space,
+    ConnectionStatus, LoginMethod, MessageBody, MessagePreviewKind, Room, ServerInfo, Space,
     TimelineMessage, TimelinePatch, VerificationEmoji as DomainVerificationEmoji,
     VerificationEvent as DomainVerificationEvent,
 };

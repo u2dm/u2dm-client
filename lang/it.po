@@ -142,22 +142,7 @@ msgctxt "MessageInput"
 msgid "Send"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/message-bubble.slint:33
-msgctxt "MessageBubble"
-msgid "📷 Photo"
-msgstr ""
-
-#: ui/screens/chat/components/timeline/message-bubble.slint:36
-msgctxt "MessageBubble"
-msgid "📎 {}"
-msgstr ""
-
-#: ui/screens/chat/components/timeline/message-bubble.slint:39
-msgctxt "MessageBubble"
-msgid "🔒 Encrypted message"
-msgstr ""
-
-#: ui/screens/chat/components/timeline/message-bubble.slint:234
+#: ui/screens/chat/components/timeline/message-bubble.slint:223
 msgctxt "MessageBubble"
 msgid "Reply"
 msgstr ""
@@ -186,6 +171,11 @@ msgstr ""
 msgctxt "UtdMessage"
 msgid "Unable to decrypt message"
 msgstr "Impossibile decifrare il messaggio"
+
+#: ui/screens/chat/components/timeline/messages/unsupported-message.slint:28
+msgctxt "UnsupportedMessage"
+msgid "Unsupported message type: {}"
+msgstr ""
 
 #: ui/screens/chat/components/timeline/messages/file-message.slint:27
 msgctxt "FileMessage"
@@ -234,49 +224,49 @@ msgctxt "SpaceRail"
 msgid "All"
 msgstr ""
 
-#: ui/screens/chat/components/sidebar.slint:27
-msgctxt "Sidebar"
-msgid "📷 Photo"
-msgstr ""
-
-#: ui/screens/chat/components/sidebar.slint:30
-msgctxt "Sidebar"
-msgid "🎬 Video"
-msgstr ""
-
-#: ui/screens/chat/components/sidebar.slint:33
-msgctxt "Sidebar"
-msgid "🎵 Audio"
-msgstr ""
-
-#: ui/screens/chat/components/sidebar.slint:36
-msgctxt "Sidebar"
-msgid "📎 {}"
-msgstr ""
-
-#: ui/screens/chat/components/sidebar.slint:39
-msgctxt "Sidebar"
-msgid "📍 Location"
-msgstr ""
-
-#: ui/screens/chat/components/sidebar.slint:42
-msgctxt "Sidebar"
-msgid "🔒 Encrypted message"
-msgstr ""
-
-#: ui/screens/chat/components/sidebar.slint:45
-msgctxt "Sidebar"
-msgid "Sticker"
-msgstr ""
-
-#: ui/screens/chat/components/sidebar.slint:90
+#: ui/screens/chat/components/sidebar.slint:66
 msgctxt "Sidebar"
 msgid "Search"
 msgstr ""
 
-#: ui/screens/chat/components/sidebar.slint:128
+#: ui/screens/chat/components/sidebar.slint:104
 msgctxt "Sidebar"
 msgid "You"
+msgstr ""
+
+#: ui/screens/chat/components/message-preview.slint:4
+msgctxt "MessagePreview"
+msgid "📷 Photo"
+msgstr ""
+
+#: ui/screens/chat/components/message-preview.slint:7
+msgctxt "MessagePreview"
+msgid "🎬 Video"
+msgstr ""
+
+#: ui/screens/chat/components/message-preview.slint:10
+msgctxt "MessagePreview"
+msgid "🎵 Audio"
+msgstr ""
+
+#: ui/screens/chat/components/message-preview.slint:13
+msgctxt "MessagePreview"
+msgid "📎 {}"
+msgstr ""
+
+#: ui/screens/chat/components/message-preview.slint:16
+msgctxt "MessagePreview"
+msgid "📍 Location"
+msgstr ""
+
+#: ui/screens/chat/components/message-preview.slint:19
+msgctxt "MessagePreview"
+msgid "🔒 Encrypted message"
+msgstr ""
+
+#: ui/screens/chat/components/message-preview.slint:22
+msgctxt "MessagePreview"
+msgid "Sticker"
 msgstr ""
 
 #: ui/screens/chat/components/drawer.slint:76

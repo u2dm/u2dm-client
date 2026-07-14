@@ -9,8 +9,9 @@ use matrix_sdk_ui::timeline::{
     EventTimelineItem, TimelineDetails, TimelineItem, TimelineItemContent,
 };
 
+use crate::adapters::matrix::preview;
 use crate::domain::models::{
-    EventId, FileMeta, ImageMeta, MessageBody, ReplyInfo, TimelineMessage,
+    EventId, FileMeta, ImageMeta, MessageBody, MessagePreviewKind, ReplyInfo, TimelineMessage,
 };
 
 fn extract_sender_profile(event: &EventTimelineItem) -> (Option<String>, Option<String>) {
@@ -48,26 +49,15 @@ fn build_utd_message(
     }
 }
 
-fn reply_preview_from_content(content: &TimelineItemContent) -> String {
+fn reply_preview_from_content(content: &TimelineItemContent) -> (MessagePreviewKind, String) {
     if let Some(message) = content.as_message() {
-        return match message.msgtype() {
-            MessageType::Image(_) => "📷 Photo".to_owned(),
-            MessageType::Video(_) => "🎬 Video".to_owned(),
-            MessageType::Audio(_) => "🎵 Audio".to_owned(),
-            MessageType::Location(_) => "📍 Location".to_owned(),
-            MessageType::File(f) => {
-                format!(
-                    "📎 {}",
-                    f.filename.clone().unwrap_or_else(|| f.body.clone())
-                )
-            }
-            other => other.body().to_owned(),
-        };
+        let preview = preview::from_msgtype(message.msgtype());
+        return (preview.kind, preview.body);
     }
     if content.as_unable_to_decrypt().is_some() {
-        return "🔒 Encrypted message".to_owned();
+        return (MessagePreviewKind::Encrypted, String::new());
     }
-    String::new()
+    (MessagePreviewKind::None, String::new())
 }
 
 fn extract_reply(content: &TimelineItemContent) -> Option<ReplyInfo> {
@@ -82,10 +72,8 @@ fn extract_reply(content: &TimelineItemContent) -> Option<ReplyInfo> {
             .unwrap_or_else(|| embedded.sender.to_string()),
         _ => embedded.sender.to_string(),
     };
-    Some(ReplyInfo {
-        sender,
-        preview: reply_preview_from_content(&embedded.content),
-    })
+    let (kind, body) = reply_preview_from_content(&embedded.content);
+    Some(ReplyInfo { sender, kind, body })
 }
 
 fn extract_image_body(

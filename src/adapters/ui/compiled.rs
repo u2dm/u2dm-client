@@ -8,9 +8,9 @@ use tokio::sync::mpsc;
 
 use super::common::{
     BoolProp, IntProp, Status, StringProp, UiProps, avatar_color_index, avatar_initials,
-    dispatch_ui_event, last_message_kind_token, load_image_cached, message_body_text,
+    dispatch_ui_event, load_image_cached, message_body_text, message_preview_kind_token,
     message_sender_label, message_timestamp_label, message_type_token, room_activity_label,
-    sender_initial,
+    sender_initial, unsupported_kind,
 };
 use super::emoji;
 use crate::commands::{UiCommand, UiEvent};
@@ -455,9 +455,11 @@ fn message_to_entry(m: &TimelineMessage, media: &dyn MediaCache) -> MessageEntry
     let mut entry = MessageEntry {
         unique_id: SharedString::from(&m.unique_id),
         sender: SharedString::from(message_sender_label(m)),
-        body: SharedString::from(&message_body_text(&m.body)),
+        body: SharedString::from(message_body_text(&m.body)),
         timestamp: SharedString::from(&message_timestamp_label(m.timestamp)),
         message_type: SharedString::from(message_type_token(&m.body)),
+        preview_kind: SharedString::from(message_preview_kind_token(m.body.preview_kind())),
+        unsupported_kind: SharedString::from(unsupported_kind(&m.body)),
         event_id: SharedString::from(&m.event_id.0),
         sender_initial: SharedString::from(avatar_initials(message_sender_label(m))),
         color_index: avatar_color_index(&m.sender),
@@ -465,7 +467,12 @@ fn message_to_entry(m: &TimelineMessage, media: &dyn MediaCache) -> MessageEntry
         edited: m.edited,
         has_reply: m.reply.is_some(),
         reply_sender: SharedString::from(m.reply.as_ref().map_or("", |r| r.sender.as_str())),
-        reply_body: SharedString::from(m.reply.as_ref().map_or("", |r| r.preview.as_str())),
+        reply_kind: SharedString::from(
+            m.reply
+                .as_ref()
+                .map_or("", |r| message_preview_kind_token(r.kind)),
+        ),
+        reply_body: SharedString::from(m.reply.as_ref().map_or("", |r| r.body.as_str())),
         ..Default::default()
     };
 
@@ -509,7 +516,7 @@ fn room_to_entry(r: &Room, media: &dyn MediaCache) -> RoomEntry {
         last_message_sender: SharedString::from(
             r.last_message_sender.as_deref().unwrap_or_default(),
         ),
-        last_message_kind: SharedString::from(last_message_kind_token(r.last_message_kind)),
+        last_message_kind: SharedString::from(message_preview_kind_token(r.last_message_kind)),
         last_message_body: SharedString::from(&r.last_message_body),
         last_message_is_own: r.last_message_is_own,
         last_message_edited: r.last_message_edited,

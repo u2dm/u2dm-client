@@ -8,6 +8,7 @@ import {
     SaveFileRequest,
 } from "../types.slint";
 
+import { MessagePreview } from "../message-preview.slint";
 import { TextMessage } from "./messages/text-message.slint";
 import { ImageMessage } from "./messages/image-message.slint";
 import { FileMessage } from "./messages/file-message.slint";
@@ -27,19 +28,6 @@ export component MessageBubble inherits Rectangle {
     property <color> own-bubble-color: Palette.accent-background.transparentize(0.4);
     property <color> other-bubble-color: Palette.alternate-background;
     property <length> bubble-max-width: available-width * 0.7;
-
-    pure function reply-preview() -> string {
-        if msg.message-type == "image" {
-            return @tr("📷 Photo");
-        }
-        if msg.message-type == "file" {
-            return @tr("📎 {}", msg.body);
-        }
-        if msg.message-type == "utd" {
-            return @tr("🔒 Encrypted message");
-        }
-        return msg.body;
-    }
 
     HorizontalLayout {
         alignment: is-own ? end : start;
@@ -135,7 +123,7 @@ export component MessageBubble inherits Rectangle {
                             }
 
                             Text {
-                                text: msg.reply-body;
+                                text: MessagePreview.label(msg.reply-kind, msg.reply-body);
                                 font-family: Fonts.emoji;
                                 font-size: 12px;
                                 color: Palette.foreground.transparentize(0.35);
@@ -168,6 +156,7 @@ export component MessageBubble inherits Rectangle {
                 if msg.message-type == "utd": UtdMessage { }
 
                 if msg.message-type == "unsupported": UnsupportedMessage {
+                    kind: msg.unsupported-kind;
                     body: msg.body;
                 }
 
@@ -204,7 +193,7 @@ export component MessageBubble inherits Rectangle {
                 mouse-cursor: pointer;
                 visible: hover-bg.has-hover || self.has-hover;
                 clicked => {
-                    root.reply(msg.event-id, msg.sender, root.reply-preview());
+                    root.reply(msg.event-id, msg.sender, MessagePreview.label(msg.preview-kind, msg.body));
                 }
 
                 reply-pill := Rectangle {

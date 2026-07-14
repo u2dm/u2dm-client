@@ -188,7 +188,7 @@
         "minutes_ago": 13,
         "reply": {
           "sender": "You",
-          "preview": "ngl this feature got that rizz 🔥"
+          "body": "ngl this feature got that rizz 🔥"
         }
       },
       {
@@ -204,7 +204,11 @@
         "sender": "@alex:matrix.org",
         "name": "You",
         "body": "67 💀",
-        "minutes_ago": 7
+        "minutes_ago": 7,
+        "reply": {
+          "sender": "Priya",
+          "kind": "image"
+        }
       },
       {
         "id": "demo-rust-6",
