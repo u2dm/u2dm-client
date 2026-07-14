@@ -6,9 +6,16 @@
   },
 
   "pronouns": {
+    "@alex:matrix.org": ["he/they"],
     "@sarah:matrix.org": ["she/her"],
     "@marcus:matrix.org": ["he/him"],
-    "@priya:matrix.org": ["they/them", "raka/makafon"]
+    "@priya:matrix.org": ["they/them", "raka/makafon"],
+    "@jordan:matrix.org": ["they/them"],
+    "@vera:matrix.org": ["she/her"],
+    "@kai:matrix.org": ["he/they"],
+    "@nadia:matrix.org": ["she/her"],
+    "@nina:matrix.org": ["she/they"],
+    "@leo:matrix.org": ["he/him"]
   },
 
   "rooms": [
@@ -21,7 +28,7 @@
       "last_message": {
         "sender": "Sarah",
         "sender_id": "@sarah:matrix.org",
-        "body": "L + ratio + you fell off 💀🗿"
+        "body": "ci ran for 67 minutes to tell me clippy is not happy 🫃🫃🫃"
       }
     },
     {
@@ -29,8 +36,13 @@
       "name": "Matrix HQ",
       "avatar": "matrix-hq",
       "members": 892,
+      "unread": 4,
       "minutes_ago": 18,
-      "last_message": { "body": "based 🗿", "own": true }
+      "last_message": {
+        "sender": "Vera 🏳️‍⚧️",
+        "sender_id": "@vera:matrix.org",
+        "body": "we are shipping it anyway and i will not be taking questions"
+      }
     },
     {
       "id": "!sarah:demo.local",
@@ -47,6 +59,19 @@
       }
     },
     {
+      "id": "!linux:demo.local",
+      "name": "linux ricing",
+      "avatar": "linux-ricing",
+      "members": 78,
+      "unread": 1,
+      "minutes_ago": 95,
+      "last_message": {
+        "sender": "Kai",
+        "sender_id": "@kai:matrix.org",
+        "body": "spent six hours on my status bar to avoid one assignment"
+      }
+    },
+    {
       "id": "!design:demo.local",
       "name": "Design Team",
       "avatar": "design-team",
@@ -56,7 +81,7 @@
       "last_message": {
         "sender": "Jordan",
         "sender_id": "@jordan:matrix.org",
-        "body": "is this the skibidi mockup 💀",
+        "body": "is this the mockup or a cry for help",
         "edited": true
       }
     },
@@ -70,18 +95,30 @@
       "last_message": {
         "sender": "Marcus",
         "sender_id": "@marcus:matrix.org",
-        "body": "who's driving 💀"
+        "body": "so nobody is driving. we are simply manifesting the mountain"
+      }
+    },
+    {
+      "id": "!cats:demo.local",
+      "name": "cat tax 🐈",
+      "avatar": "cat-tax",
+      "members": 51,
+      "days_ago": 1,
+      "last_message": {
+        "sender": "Priya",
+        "sender_id": "@priya:matrix.org",
+        "body": "she walked across my keyboard and the test suite went green"
       }
     },
     {
       "id": "!ohio:demo.local",
-      "name": "ohio gang 💀",
+      "name": "ohio gang",
       "members": 42,
       "days_ago": 2,
       "last_message": {
         "sender": "Marcus",
         "sender_id": "@marcus:matrix.org",
-        "body": "67 67 67 🔥"
+        "body": "it's not about geography, it's about vibes"
       }
     },
     {
@@ -90,16 +127,33 @@
       "avatar": "frontend-guild",
       "members": 210,
       "days_ago": 2,
-      "last_message": { "sender": "Nadia", "body": "shipped it 🚀" }
+      "last_message": {
+        "sender": "Nadia",
+        "sender_id": "@nadia:matrix.org",
+        "body": "shipped it 🚀"
+      }
     },
     {
-      "id": "!elena:demo.local",
-      "name": "Elena Fischer",
-      "avatar": "@elena:matrix.org",
+      "id": "!priya:demo.local",
+      "name": "Priya Raman",
+      "avatar": "@priya:matrix.org",
+      "direct": true,
+      "members": 2,
+      "days_ago": 2,
+      "last_message": {
+        "sender": "Priya",
+        "sender_id": "@priya:matrix.org",
+        "body": "ok but hear me out"
+      }
+    },
+    {
+      "id": "!nina:demo.local",
+      "name": "Nina Kowalski",
+      "avatar": "@nina:matrix.org",
       "direct": true,
       "members": 2,
       "days_ago": 3,
-      "last_message": { "body": "you're so cooked 😭", "own": true }
+      "last_message": { "body": "you are so unbelievably cooked", "own": true }
     },
     {
       "id": "!gym:demo.local",
@@ -110,7 +164,18 @@
       "last_message": {
         "sender": "Marcus",
         "sender_id": "@marcus:matrix.org",
-        "body": "leg day nooo 😭"
+        "body": "leg day is a psyop and i am the only one talking about it"
+      }
+    },
+    {
+      "id": "!jobs:demo.local",
+      "name": "job hunt crashout",
+      "members": 23,
+      "days_ago": 3,
+      "last_message": {
+        "sender": "Nina",
+        "sender_id": "@nina:matrix.org",
+        "body": "fourth round and now they want a take home 😭"
       }
     },
     {
@@ -122,7 +187,7 @@
       "last_message": {
         "sender": "Priya",
         "sender_id": "@priya:matrix.org",
-        "body": "chapter 7 was skibidi 💀"
+        "body": "chapter 7 was a full crashout and i mean that as praise"
       }
     },
     {
@@ -131,7 +196,11 @@
       "members": 64,
       "unread": 1,
       "days_ago": 5,
-      "last_message": { "sender": "Leo", "body": "this one slaps" }
+      "last_message": {
+        "sender": "Leo",
+        "sender_id": "@leo:matrix.org",
+        "body": "no skips on this one, i checked"
+      }
     },
     {
       "id": "!devops:demo.local",
@@ -139,7 +208,10 @@
       "avatar": "devops",
       "members": 19,
       "days_ago": 6,
-      "last_message": { "body": "restarted it 🗿", "own": true }
+      "last_message": {
+        "body": "restarted it. we do not talk about why",
+        "own": true
+      }
     }
   ],
 
@@ -160,7 +232,7 @@
     {
       "id": "!space-rust-infra:demo.local",
       "name": "Infra",
-      "rooms": ["!devops:demo.local"]
+      "rooms": ["!devops:demo.local", "!linux:demo.local"]
     },
     {
       "id": "!space-matrix:demo.local",
@@ -172,6 +244,19 @@
       "name": "Design",
       "avatar": "design",
       "rooms": ["!design:demo.local", "!book:demo.local"]
+    },
+    {
+      "id": "!space-social:demo.local",
+      "name": "Social",
+      "avatar": "social",
+      "rooms": [
+        "!trip:demo.local",
+        "!ohio:demo.local",
+        "!gym:demo.local",
+        "!music:demo.local",
+        "!cats:demo.local",
+        "!jobs:demo.local"
+      ]
     }
   ],
 
@@ -181,47 +266,180 @@
         "id": "demo-rust-1",
         "sender": "@sarah:matrix.org",
         "name": "Sarah Chen",
-        "body": "yo did u peep the new async closures update 💀",
-        "minutes_ago": 16
+        "body": "the coreutils discourse is back on r/rust and i am not emotionally equipped for it",
+        "minutes_ago": 30
       },
       {
         "id": "demo-rust-2",
         "sender": "@marcus:matrix.org",
         "name": "Marcus",
-        "body": "skibidi update fr, lowkey based 🗿🔥",
-        "minutes_ago": 15
+        "body": "we are NOT doing gpl versus mit tonight",
+        "minutes_ago": 29
+      },
+      {
+        "id": "demo-rust-26",
+        "sender": "@kai:matrix.org",
+        "name": "Kai",
+        "body": "/g/ has had a thread up since tuesday. 400 posts, zero lines of code between them",
+        "minutes_ago": 28
       },
       {
         "id": "demo-rust-3",
-        "sender": "@alex:matrix.org",
-        "name": "You",
-        "body": "ngl this feature got that rizz 🔥",
-        "minutes_ago": 14
+        "sender": "@kai:matrix.org",
+        "name": "Kai",
+        "body": "rewriting coreutils in rust is fine. relicensing the entire userland on the way past is 6 7 behaviour",
+        "minutes_ago": 27
       },
       {
         "id": "demo-rust-4",
-        "sender": "@sarah:matrix.org",
-        "name": "Sarah Chen",
-        "body": "bro really said rizz 😭 he's so cooked",
-        "minutes_ago": 13,
-        "reply": {
-          "sender": "You",
-          "body": "ngl this feature got that rizz 🔥"
-        }
-      },
-      {
-        "id": "demo-rust-chart",
         "sender": "@priya:matrix.org",
         "name": "Priya",
-        "body": "the cafe i'm coding in rn, peak aura 🔥",
-        "minutes_ago": 8,
-        "image": { "width": 1040, "height": 660 }
+        "body": "half of that thread has never written c or rust. they are purely there for the blood",
+        "minutes_ago": 26
       },
       {
         "id": "demo-rust-5",
         "sender": "@alex:matrix.org",
         "name": "You",
-        "body": "67 💀",
+        "body": "i read 400 replies of it and learned nothing. i would do it again tonight",
+        "minutes_ago": 25
+      },
+      {
+        "id": "demo-rust-6",
+        "sender": "@sarah:matrix.org",
+        "name": "Sarah Chen",
+        "body": "none of it matters until it breaks one shell script written in 1994 and then it is the only thing that matters",
+        "minutes_ago": 24,
+        "reply": {
+          "sender": "Kai",
+          "body": "rewriting coreutils in rust is fine. relicensing the entire userland on the way past is 6 7 behaviour"
+        }
+      },
+      {
+        "id": "demo-rust-7",
+        "sender": "@marcus:matrix.org",
+        "name": "Marcus",
+        "body": "speaking of things living rent free in my head. the serde blob",
+        "minutes_ago": 23
+      },
+      {
+        "id": "demo-rust-8",
+        "sender": "@kai:matrix.org",
+        "name": "Kai",
+        "body": "a build script shipping a prebuilt binary was genuinely insane",
+        "minutes_ago": 22
+      },
+      {
+        "id": "demo-rust-9",
+        "sender": "@alex:matrix.org",
+        "name": "You",
+        "body": "and every one of us ran cargo update within the hour anyway",
+        "minutes_ago": 21
+      },
+      {
+        "id": "demo-rust-10",
+        "sender": "@priya:matrix.org",
+        "name": "Priya",
+        "body": "supply chain talk on the conference stage, cargo update in the terminal. we are not a serious people",
+        "minutes_ago": 20
+      },
+      {
+        "id": "demo-rust-11",
+        "sender": "@sarah:matrix.org",
+        "name": "Sarah Chen",
+        "body": "someone told me yesterday that unsafe is fine as long as you are careful",
+        "minutes_ago": 18
+      },
+      {
+        "id": "demo-rust-12",
+        "sender": "@marcus:matrix.org",
+        "name": "Marcus",
+        "body": "that exact sentence has ended more programs than the borrow checker has ever saved",
+        "minutes_ago": 17
+      },
+      {
+        "id": "demo-rust-13",
+        "sender": "@kai:matrix.org",
+        "name": "Kai",
+        "body": "hot take while we are all here: tokio is not a runtime, it is a personality",
+        "minutes_ago": 16
+      },
+      {
+        "id": "demo-rust-14",
+        "sender": "@priya:matrix.org",
+        "name": "Priya",
+        "body": "you cannot name a runtime in this room without someone rewriting it in a different executor by friday",
+        "minutes_ago": 15
+      },
+      {
+        "id": "demo-rust-15",
+        "sender": "@marcus:matrix.org",
+        "name": "Marcus",
+        "body": "async traits took a decade and people are still out here writing Box::pin(async move {}) like animals",
+        "minutes_ago": 14
+      },
+      {
+        "id": "demo-rust-16",
+        "sender": "@alex:matrix.org",
+        "name": "You",
+        "body": "i am the animal. i wrote that yesterday",
+        "minutes_ago": 13
+      },
+      {
+        "id": "demo-rust-17",
+        "sender": "@sarah:matrix.org",
+        "name": "Sarah Chen",
+        "body": "the way you typed that with your whole chest 😭",
+        "minutes_ago": 12,
+        "reply": {
+          "sender": "You",
+          "body": "i am the animal. i wrote that yesterday"
+        }
+      },
+      {
+        "id": "demo-rust-18",
+        "sender": "@kai:matrix.org",
+        "name": "Kai",
+        "body": "meanwhile the kernel thread is 600 replies from people who write neither rust nor kernels",
+        "minutes_ago": 11
+      },
+      {
+        "id": "demo-rust-19",
+        "sender": "@priya:matrix.org",
+        "name": "Priya",
+        "body": "one of them proposed rewriting the scheduler. in a comment. with no code attached",
+        "minutes_ago": 10
+      },
+      {
+        "id": "demo-rust-27",
+        "sender": "@sarah:matrix.org",
+        "name": "Sarah Chen",
+        "body": "and the top reply is some chud who read the code of conduct once and has been recovering ever since",
+        "minutes_ago": 10
+      },
+      {
+        "id": "demo-rust-20",
+        "sender": "@marcus:matrix.org",
+        "name": "Marcus",
+        "body": "chud behaviour honestly",
+        "minutes_ago": 9
+      },
+      {
+        "id": "demo-rust-chart",
+        "sender": "@priya:matrix.org",
+        "name": "Priya",
+        "body": "took a clean build to a cafe so it would have somewhere nice to fail. still compiling",
+        "minutes_ago": 8,
+        "image": {
+          "width": 1040,
+          "height": 660
+        }
+      },
+      {
+        "id": "demo-rust-21",
+        "sender": "@alex:matrix.org",
+        "name": "You",
+        "body": "the real controversy was compile times all along",
         "minutes_ago": 7,
         "reply": {
           "sender": "Priya",
@@ -229,26 +447,709 @@
         }
       },
       {
-        "id": "demo-rust-6",
-        "sender": "@marcus:matrix.org",
-        "name": "Marcus",
-        "body": "nah not the 6 7 😭😭 stop",
-        "minutes_ago": 6
+        "id": "demo-rust-23",
+        "sender": "@priya:matrix.org",
+        "name": "Priya",
+        "body": "i have carried this crate since 1.0 and my thanks is an issue titled \"why slow\" 🫃",
+        "minutes_ago": 5
       },
       {
-        "id": "demo-rust-7",
+        "id": "demo-rust-24",
         "sender": "@alex:matrix.org",
         "name": "You",
-        "body": "who let bro cook 🔥",
+        "body": "let them cook. the build is red for artistic reasons 🫃🫃",
         "minutes_ago": 4,
         "edited": true
       },
       {
-        "id": "demo-rust-8",
+        "id": "demo-rust-25",
         "sender": "@sarah:matrix.org",
         "name": "Sarah Chen",
-        "body": "L + ratio + you fell off 💀🗿",
+        "body": "ci ran for 67 minutes to tell me clippy is not happy 🫃🫃🫃",
         "minutes_ago": 3
+      }
+    ],
+
+    "!matrixhq:demo.local": [
+      {
+        "id": "demo-matrixhq-1",
+        "sender": "@nadia:matrix.org",
+        "name": "Nadia",
+        "body": "the sidebar rewrite is up, someone look at it before i lose my nerve",
+        "minutes_ago": 44
+      },
+      {
+        "id": "demo-matrixhq-2",
+        "sender": "@alex:matrix.org",
+        "name": "You",
+        "body": "6 7 files changed and i reviewed two of them. merging",
+        "minutes_ago": 41
+      },
+      {
+        "id": "demo-matrixhq-3",
+        "sender": "@marcus:matrix.org",
+        "name": "Marcus",
+        "body": "committed to the bit and to the main branch",
+        "minutes_ago": 39
+      },
+      {
+        "id": "demo-matrixhq-4",
+        "sender": "@kai:matrix.org",
+        "name": "Kai",
+        "body": "nadia solo carried this entire release 🫃",
+        "minutes_ago": 31
+      },
+      {
+        "id": "demo-matrixhq-5",
+        "sender": "@priya:matrix.org",
+        "name": "Priya",
+        "body": "she has been cooking for three sprints and we have been eating",
+        "minutes_ago": 29,
+        "reply": {
+          "sender": "Kai",
+          "body": "nadia solo carried this entire release 🫃"
+        }
+      },
+      {
+        "id": "demo-matrixhq-6",
+        "sender": "@vera:matrix.org",
+        "name": "Vera 🏳️‍⚧️",
+        "body": "i left one comment that said \"nice\" and logged off",
+        "minutes_ago": 24
+      },
+      {
+        "id": "demo-matrixhq-7",
+        "sender": "@alex:matrix.org",
+        "name": "You",
+        "body": "aura check failed, catastrophically",
+        "minutes_ago": 22
+      },
+      {
+        "id": "demo-matrixhq-10",
+        "sender": "@kai:matrix.org",
+        "name": "Kai",
+        "body": "someone put our release on r/programming and the top comment is \"why not just use electron\"",
+        "minutes_ago": 21
+      },
+      {
+        "id": "demo-matrixhq-8",
+        "sender": "@nadia:matrix.org",
+        "name": "Nadia",
+        "body": "i am in this channel by the way. i can see all of this",
+        "minutes_ago": 20
+      },
+      {
+        "id": "demo-matrixhq-9",
+        "sender": "@vera:matrix.org",
+        "name": "Vera 🏳️‍⚧️",
+        "body": "we are shipping it anyway and i will not be taking questions",
+        "minutes_ago": 18
+      }
+    ],
+
+    "!sarah:demo.local": [
+      {
+        "id": "demo-sarah-1",
+        "sender": "@alex:matrix.org",
+        "name": "You",
+        "body": "how is the new place treating you",
+        "minutes_ago": 58
+      },
+      {
+        "id": "demo-sarah-2",
+        "sender": "@sarah:matrix.org",
+        "name": "Sarah Chen",
+        "body": "one sec, taking a picture before the light goes",
+        "minutes_ago": 55
+      },
+      {
+        "id": "demo-sarah-3",
+        "sender": "@sarah:matrix.org",
+        "name": "Sarah Chen",
+        "body": "this is what i stare at while pretending to read stack traces",
+        "minutes_ago": 52
+      },
+      {
+        "id": "demo-sarah-desk",
+        "sender": "@sarah:matrix.org",
+        "name": "Sarah Chen",
+        "minutes_ago": 43,
+        "image": { "width": 1040, "height": 780 }
+      }
+    ],
+
+    "!design:demo.local": [
+      {
+        "id": "demo-design-1",
+        "sender": "@nadia:matrix.org",
+        "name": "Nadia",
+        "body": "v3 of the onboarding flow is up, be gentle",
+        "days_ago": 1,
+        "minutes_ago": 30
+      },
+      {
+        "id": "demo-design-2",
+        "sender": "@alex:matrix.org",
+        "name": "You",
+        "body": "the spacing is skibidi and i mean that as a compliment",
+        "days_ago": 1,
+        "minutes_ago": 25
+      },
+      {
+        "id": "demo-design-3",
+        "sender": "@priya:matrix.org",
+        "name": "Priya",
+        "body": "the drop shadow is fighting for its life and losing",
+        "days_ago": 1,
+        "minutes_ago": 15
+      },
+      {
+        "id": "demo-design-5",
+        "sender": "@nadia:matrix.org",
+        "name": "Nadia",
+        "body": "that drop shadow is load bearing. remove it and the whole screen collapses",
+        "days_ago": 1,
+        "minutes_ago": 10
+      },
+      {
+        "id": "demo-design-4",
+        "sender": "@jordan:matrix.org",
+        "name": "Jordan",
+        "body": "is this the mockup or a cry for help",
+        "days_ago": 1,
+        "edited": true,
+        "reply": {
+          "sender": "Nadia",
+          "body": "v3 of the onboarding flow is up, be gentle"
+        }
+      }
+    ],
+
+    "!ohio:demo.local": [
+      {
+        "id": "demo-ohio-1",
+        "sender": "@sarah:matrix.org",
+        "name": "Sarah Chen",
+        "body": "genuine question, why is this chat called ohio gang. we all live in berlin",
+        "days_ago": 2,
+        "minutes_ago": 50
+      },
+      {
+        "id": "demo-ohio-2",
+        "sender": "@alex:matrix.org",
+        "name": "You",
+        "body": "marcus named his wifi network 6 7 skibidi ohio and now we are all paying for it",
+        "days_ago": 2,
+        "minutes_ago": 45
+      },
+      {
+        "id": "demo-ohio-3",
+        "sender": "@priya:matrix.org",
+        "name": "Priya",
+        "body": "my mother connected to it at the barbecue and asked me what it meant",
+        "days_ago": 2,
+        "minutes_ago": 40
+      },
+      {
+        "id": "demo-ohio-5",
+        "sender": "@sarah:matrix.org",
+        "name": "Sarah Chen",
+        "body": "and what did you tell her",
+        "days_ago": 2,
+        "minutes_ago": 38
+      },
+      {
+        "id": "demo-ohio-6",
+        "sender": "@priya:matrix.org",
+        "name": "Priya",
+        "body": "i said it was the brand of the router",
+        "days_ago": 2,
+        "minutes_ago": 36
+      },
+      {
+        "id": "demo-ohio-4",
+        "sender": "@marcus:matrix.org",
+        "name": "Marcus",
+        "body": "it's not about geography, it's about vibes",
+        "days_ago": 2
+      }
+    ],
+
+    "!linux:demo.local": [
+      {
+        "id": "demo-linux-1",
+        "sender": "@kai:matrix.org",
+        "name": "Kai",
+        "body": "new colorscheme. thoughts",
+        "minutes_ago": 140
+      },
+      {
+        "id": "demo-linux-2",
+        "sender": "@sarah:matrix.org",
+        "name": "Sarah Chen",
+        "body": "this is the same colorscheme",
+        "minutes_ago": 132
+      },
+      {
+        "id": "demo-linux-3",
+        "sender": "@kai:matrix.org",
+        "name": "Kai",
+        "body": "the comments are 2% warmer",
+        "minutes_ago": 126
+      },
+      {
+        "id": "demo-linux-4",
+        "sender": "@vera:matrix.org",
+        "name": "Vera 🏳️‍⚧️",
+        "body": "he is right. i can see it. i wish i could not",
+        "minutes_ago": 122
+      },
+      {
+        "id": "demo-linux-6",
+        "sender": "@kai:matrix.org",
+        "name": "Kai",
+        "body": "posted it to r/unixporn. 12 upvotes and one comment that just says \"source?\"",
+        "minutes_ago": 116
+      },
+      {
+        "id": "demo-linux-7",
+        "sender": "@vera:matrix.org",
+        "name": "Vera 🏳️‍⚧️",
+        "body": "do not post it to /g/, they will tell you it looks like a chromebook",
+        "minutes_ago": 112
+      },
+      {
+        "id": "demo-linux-8",
+        "sender": "@kai:matrix.org",
+        "name": "Kai",
+        "body": "posted it to /g/",
+        "minutes_ago": 108
+      },
+      {
+        "id": "demo-linux-9",
+        "sender": "@kai:matrix.org",
+        "name": "Kai",
+        "body": "it looks like a chromebook apparently",
+        "minutes_ago": 104
+      },
+      {
+        "id": "demo-linux-5",
+        "sender": "@kai:matrix.org",
+        "name": "Kai",
+        "body": "spent six hours on my status bar to avoid one assignment",
+        "minutes_ago": 95
+      }
+    ],
+
+    "!trip:demo.local": [
+      {
+        "id": "demo-trip-1",
+        "sender": "@nadia:matrix.org",
+        "name": "Nadia",
+        "body": "ok who is renting the car",
+        "days_ago": 1,
+        "minutes_ago": 60
+      },
+      {
+        "id": "demo-trip-2",
+        "sender": "@kai:matrix.org",
+        "name": "Kai",
+        "body": "cannot drive",
+        "days_ago": 1,
+        "minutes_ago": 55
+      },
+      {
+        "id": "demo-trip-3",
+        "sender": "@priya:matrix.org",
+        "name": "Priya",
+        "body": "i can drive, just not that",
+        "days_ago": 1,
+        "minutes_ago": 50
+      },
+      {
+        "id": "demo-trip-4",
+        "sender": "@sarah:matrix.org",
+        "name": "Sarah Chen",
+        "body": "i have a license photo but no license",
+        "days_ago": 1,
+        "minutes_ago": 44
+      },
+      {
+        "id": "demo-trip-5",
+        "sender": "@alex:matrix.org",
+        "name": "You",
+        "body": "we are four adults",
+        "days_ago": 1,
+        "minutes_ago": 30
+      },
+      {
+        "id": "demo-trip-6",
+        "sender": "@marcus:matrix.org",
+        "name": "Marcus",
+        "body": "so nobody is driving. we are simply manifesting the mountain",
+        "days_ago": 1
+      }
+    ],
+
+    "!cats:demo.local": [
+      {
+        "id": "demo-cats-1",
+        "sender": "@sarah:matrix.org",
+        "name": "Sarah Chen",
+        "body": "cat tax. everyone. now",
+        "days_ago": 1,
+        "minutes_ago": 40
+      },
+      {
+        "id": "demo-cats-2",
+        "sender": "@marcus:matrix.org",
+        "name": "Marcus",
+        "body": "i do not have a cat",
+        "days_ago": 1,
+        "minutes_ago": 34
+      },
+      {
+        "id": "demo-cats-3",
+        "sender": "@sarah:matrix.org",
+        "name": "Sarah Chen",
+        "body": "then why have you been in here for two years",
+        "days_ago": 1,
+        "minutes_ago": 30
+      },
+      {
+        "id": "demo-cats-4",
+        "sender": "@marcus:matrix.org",
+        "name": "Marcus",
+        "body": "moral support",
+        "days_ago": 1,
+        "minutes_ago": 25
+      },
+      {
+        "id": "demo-cats-5",
+        "sender": "@priya:matrix.org",
+        "name": "Priya",
+        "body": "she walked across my keyboard and the test suite went green",
+        "days_ago": 1
+      }
+    ],
+
+    "!gym:demo.local": [
+      {
+        "id": "demo-gym-1",
+        "sender": "@marcus:matrix.org",
+        "name": "Marcus",
+        "body": "gym at 6am tomorrow. who is in",
+        "days_ago": 3,
+        "minutes_ago": 60
+      },
+      {
+        "id": "demo-gym-2",
+        "sender": "@kai:matrix.org",
+        "name": "Kai",
+        "body": "in",
+        "days_ago": 3,
+        "minutes_ago": 56
+      },
+      {
+        "id": "demo-gym-3",
+        "sender": "@leo:matrix.org",
+        "name": "Leo",
+        "body": "in",
+        "days_ago": 3,
+        "minutes_ago": 52
+      },
+      {
+        "id": "demo-gym-4",
+        "sender": "@alex:matrix.org",
+        "name": "You",
+        "body": "in",
+        "days_ago": 3,
+        "minutes_ago": 48
+      },
+      {
+        "id": "demo-gym-5",
+        "sender": "@marcus:matrix.org",
+        "name": "Marcus",
+        "body": "nobody came",
+        "days_ago": 3,
+        "minutes_ago": 12
+      },
+      {
+        "id": "demo-gym-6",
+        "sender": "@marcus:matrix.org",
+        "name": "Marcus",
+        "body": "leg day is a psyop and i am the only one talking about it",
+        "days_ago": 3
+      }
+    ],
+
+    "!book:demo.local": [
+      {
+        "id": "demo-book-1",
+        "sender": "@nina:matrix.org",
+        "name": "Nina",
+        "body": "did everyone finish chapter 7",
+        "days_ago": 4,
+        "minutes_ago": 40
+      },
+      {
+        "id": "demo-book-2",
+        "sender": "@marcus:matrix.org",
+        "name": "Marcus",
+        "body": "yes",
+        "days_ago": 4,
+        "minutes_ago": 36
+      },
+      {
+        "id": "demo-book-3",
+        "sender": "@nina:matrix.org",
+        "name": "Nina",
+        "body": "what happens in chapter 7",
+        "days_ago": 4,
+        "minutes_ago": 30
+      },
+      {
+        "id": "demo-book-4",
+        "sender": "@marcus:matrix.org",
+        "name": "Marcus",
+        "body": "things",
+        "days_ago": 4,
+        "minutes_ago": 22
+      },
+      {
+        "id": "demo-book-5",
+        "sender": "@priya:matrix.org",
+        "name": "Priya",
+        "body": "chapter 7 was a full crashout and i mean that as praise",
+        "days_ago": 4
+      }
+    ],
+
+    "!music:demo.local": [
+      {
+        "id": "demo-music-1",
+        "sender": "@leo:matrix.org",
+        "name": "Leo",
+        "body": "album of the year. no skips",
+        "days_ago": 5,
+        "minutes_ago": 40
+      },
+      {
+        "id": "demo-music-2",
+        "sender": "@priya:matrix.org",
+        "name": "Priya",
+        "body": "track 4 is a skip",
+        "days_ago": 5,
+        "minutes_ago": 35
+      },
+      {
+        "id": "demo-music-3",
+        "sender": "@leo:matrix.org",
+        "name": "Leo",
+        "body": "track 4 is an interlude",
+        "days_ago": 5,
+        "minutes_ago": 30
+      },
+      {
+        "id": "demo-music-4",
+        "sender": "@priya:matrix.org",
+        "name": "Priya",
+        "body": "it is six minutes long",
+        "days_ago": 5,
+        "minutes_ago": 26
+      },
+      {
+        "id": "demo-music-5",
+        "sender": "@leo:matrix.org",
+        "name": "Leo",
+        "body": "no skips on this one, i checked",
+        "days_ago": 5
+      }
+    ],
+
+    "!devops:demo.local": [
+      {
+        "id": "demo-devops-1",
+        "sender": "@kai:matrix.org",
+        "name": "Kai",
+        "body": "got paged at 3am and the alert body was literally \":(\"",
+        "days_ago": 6,
+        "minutes_ago": 50
+      },
+      {
+        "id": "demo-devops-2",
+        "sender": "@alex:matrix.org",
+        "name": "You",
+        "body": "what did you do",
+        "days_ago": 6,
+        "minutes_ago": 45
+      },
+      {
+        "id": "demo-devops-3",
+        "sender": "@kai:matrix.org",
+        "name": "Kai",
+        "body": "i looked at it. then i looked away",
+        "days_ago": 6,
+        "minutes_ago": 40
+      },
+      {
+        "id": "demo-devops-4",
+        "sender": "@marcus:matrix.org",
+        "name": "Marcus",
+        "body": "the graph came back up on its own. we won",
+        "days_ago": 6,
+        "minutes_ago": 20
+      },
+      {
+        "id": "demo-devops-5",
+        "sender": "@alex:matrix.org",
+        "name": "You",
+        "body": "restarted it. we do not talk about why",
+        "days_ago": 6
+      }
+    ],
+
+    "!jobs:demo.local": [
+      {
+        "id": "demo-jobs-1",
+        "sender": "@nina:matrix.org",
+        "name": "Nina",
+        "body": "recruiter described the process as lightweight",
+        "days_ago": 3,
+        "minutes_ago": 50
+      },
+      {
+        "id": "demo-jobs-2",
+        "sender": "@vera:matrix.org",
+        "name": "Vera 🏳️‍⚧️",
+        "body": "how many rounds",
+        "days_ago": 3,
+        "minutes_ago": 44
+      },
+      {
+        "id": "demo-jobs-3",
+        "sender": "@nina:matrix.org",
+        "name": "Nina",
+        "body": "four. so far",
+        "days_ago": 3,
+        "minutes_ago": 40
+      },
+      {
+        "id": "demo-jobs-4",
+        "sender": "@vera:matrix.org",
+        "name": "Vera 🏳️‍⚧️",
+        "body": "that is not a process, that is a full time job with extra steps",
+        "days_ago": 3,
+        "minutes_ago": 32
+      },
+      {
+        "id": "demo-jobs-6",
+        "sender": "@nina:matrix.org",
+        "name": "Nina",
+        "body": "the hiring manager found my reddit account. eleven years of posts about cats and compilers",
+        "days_ago": 3,
+        "minutes_ago": 20
+      },
+      {
+        "id": "demo-jobs-7",
+        "sender": "@vera:matrix.org",
+        "name": "Vera 🏳️‍⚧️",
+        "body": "honestly that is a stronger portfolio than the take home",
+        "days_ago": 3,
+        "minutes_ago": 14
+      },
+      {
+        "id": "demo-jobs-5",
+        "sender": "@nina:matrix.org",
+        "name": "Nina",
+        "body": "fourth round and now they want a take home 😭",
+        "days_ago": 3
+      }
+    ],
+
+    "!nina:demo.local": [
+      {
+        "id": "demo-nina-1",
+        "sender": "@nina:matrix.org",
+        "name": "Nina Kowalski",
+        "body": "i told my manager i would circle back and then i simply did not",
+        "days_ago": 3,
+        "minutes_ago": 40
+      },
+      {
+        "id": "demo-nina-2",
+        "sender": "@nina:matrix.org",
+        "name": "Nina Kowalski",
+        "body": "that was in march",
+        "days_ago": 3,
+        "minutes_ago": 36
+      },
+      {
+        "id": "demo-nina-3",
+        "sender": "@alex:matrix.org",
+        "name": "You",
+        "body": "you are so unbelievably cooked",
+        "days_ago": 3
+      }
+    ],
+
+    "!priya:demo.local": [
+      {
+        "id": "demo-priya-1",
+        "sender": "@priya:matrix.org",
+        "name": "Priya Raman",
+        "body": "are you awake",
+        "days_ago": 2,
+        "minutes_ago": 30
+      },
+      {
+        "id": "demo-priya-2",
+        "sender": "@alex:matrix.org",
+        "name": "You",
+        "body": "no",
+        "days_ago": 2,
+        "minutes_ago": 20
+      },
+      {
+        "id": "demo-priya-3",
+        "sender": "@priya:matrix.org",
+        "name": "Priya Raman",
+        "body": "ok but hear me out",
+        "days_ago": 2
+      }
+    ],
+
+    "!frontend:demo.local": [
+      {
+        "id": "demo-frontend-1",
+        "sender": "@jordan:matrix.org",
+        "name": "Jordan",
+        "body": "the site is down",
+        "days_ago": 2,
+        "minutes_ago": 30
+      },
+      {
+        "id": "demo-frontend-2",
+        "sender": "@nadia:matrix.org",
+        "name": "Nadia",
+        "body": "on it",
+        "days_ago": 2,
+        "minutes_ago": 26
+      },
+      {
+        "id": "demo-frontend-3",
+        "sender": "@jordan:matrix.org",
+        "name": "Jordan",
+        "body": "how is it down, you have not deployed anything today",
+        "days_ago": 2,
+        "minutes_ago": 20
+      },
+      {
+        "id": "demo-frontend-4",
+        "sender": "@nadia:matrix.org",
+        "name": "Nadia",
+        "body": "shipped it 🚀",
+        "days_ago": 2
       }
     ]
   }
