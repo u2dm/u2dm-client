@@ -12,6 +12,7 @@ categories = ["network-programming"]
 [features]
 default = []
 interpreted = ["dep:slint-interpreter", "dep:lucide-slint"]
+demo = []
 
 [dependencies]
 async-trait = "0.1.89"

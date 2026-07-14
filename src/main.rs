@@ -3,18 +3,17 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use adapters::browser::DesktopBrowser;
-use adapters::matrix::MatrixAdapter;
+#[cfg(feature = "demo")]
+use adapters::demo;
 use adapters::media::DesktopMediaFiles;
-use adapters::storage::SecureStorage;
 use adapters::ui::{SlintUiAdapter, UiEventOutput};
 use app::AppService;
 use commands::{UiCommand, UiEvent};
+use composition::Backend;
 use error::Result;
 use ports::browser::BrowserPort;
-use ports::matrix::MatrixPort;
 use ports::media::MediaFilePort;
 use ports::output::AppOutputPort;
-use ports::storage::StoragePort;
 use tokio::runtime::Runtime;
 use tokio::sync::mpsc;
 use tracing_subscriber::EnvFilter;
@@ -22,6 +21,7 @@ use tracing_subscriber::EnvFilter;
 mod adapters;
 mod app;
 mod commands;
+mod composition;
 mod config;
 mod domain;
 mod error;
@@ -58,25 +58,23 @@ fn run() -> Result<()> {
     let (ui_tx, ui_rx) = mpsc::unbounded_channel::<UiEvent>();
 
     ui.register_callbacks(&cmd_tx)?;
+    #[cfg(feature = "demo")]
+    demo::size_window_for_screenshots(&ui);
 
-    let matrix_adapter = MatrixAdapter::new(cfg.data_dir.clone(), cfg.cache_dir.clone());
-    matrix_adapter.clean_media_cache();
-    let media_cache = matrix_adapter.media_cache();
-    let matrix: Arc<dyn MatrixPort> = Arc::new(matrix_adapter);
-    let storage: Arc<dyn StoragePort> = Arc::new(SecureStorage::new(&cfg.data_dir));
+    let backend = Backend::select(&cfg);
     let media_files: Arc<dyn MediaFilePort> = Arc::new(DesktopMediaFiles::new());
     let browser: Arc<dyn BrowserPort> = Arc::new(DesktopBrowser::new());
     let output: Arc<dyn AppOutputPort> = Arc::new(UiEventOutput::new(ui_tx));
 
     let cmd_tx_quit = cmd_tx.clone();
     let _guard = rt.enter();
-    ui.spawn_event_handler(ui_rx, media_cache);
+    ui.spawn_event_handler(ui_rx, backend.media_cache);
     if let Err(e) = cmd_tx.send(UiCommand::RestoreSession) {
         tracing::warn!("failed to send RestoreSession command: {e}");
     }
     let mut service = AppService::new(
-        matrix,
-        storage,
+        backend.matrix,
+        backend.storage,
         media_files,
         browser,
         cmd_rx,

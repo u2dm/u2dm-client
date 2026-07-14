@@ -393,6 +393,13 @@ impl SlintUiAdapter {
         self.window.run()?;
         Ok(())
     }
+
+    #[cfg(feature = "demo")]
+    pub fn set_window_size(&self, width: f32, height: f32) {
+        self.window
+            .window()
+            .set_size(slint::LogicalSize::new(width, height));
+    }
 }
 
 fn emoji_entry_to_ui(e: &emoji::EmojiEntry) -> EmojiEntry {

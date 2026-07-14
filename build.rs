@@ -12,10 +12,17 @@ const POT_FILE: &str = "lang/u2dm.pot";
 const LUCIDE_LSP_LIB: &str = ".lucide/lib.slint";
 const TWEMOJI_FONT: &str = "ui/fonts/Twemoji.ttf";
 const FONT_REPO: &str = "u2dm/twemoji";
+#[cfg(feature = "demo")]
+const DEMO_ASSETS_SCRIPT: &str = "scripts/gen-demo-assets.sh";
+#[cfg(feature = "demo")]
+const DEMO_DATA: &str = "assets/demo/data.json";
 
 fn main() {
     sync_lucide_lsp_lib();
     ensure_twemoji_font();
+
+    #[cfg(feature = "demo")]
+    fetch_demo_assets();
 
     #[cfg(not(feature = "interpreted"))]
     {
@@ -73,6 +80,29 @@ fn ensure_twemoji_font() {
     if let Err(e) = fs::rename(&tmp, TWEMOJI_FONT) {
         drop(fs::remove_file(&tmp));
         panic!("failed to move downloaded emoji font into place: {e}");
+    }
+}
+
+#[cfg(feature = "demo")]
+fn fetch_demo_assets() {
+    println!("cargo::rerun-if-changed={DEMO_ASSETS_SCRIPT}");
+    println!("cargo::rerun-if-changed={DEMO_DATA}");
+
+    let output = match Command::new("bash").arg(DEMO_ASSETS_SCRIPT).output() {
+        Ok(output) => output,
+        Err(e) => {
+            println!("cargo::warning=could not run {DEMO_ASSETS_SCRIPT}: {e}");
+            return;
+        }
+    };
+
+    if !output.status.success() {
+        let reason = String::from_utf8_lossy(&output.stderr);
+        let reason = reason.trim().replace('\n', "; ");
+        println!(
+            "cargo::warning={DEMO_ASSETS_SCRIPT} failed ({reason}). The demo runs without images, \
+             falling back to initials."
+        );
     }
 }
 

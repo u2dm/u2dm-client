@@ -1,0 +1,224 @@
+{
+  "session": {
+    "user_id": "@alex:matrix.org",
+    "device_id": "DEMODEVICE",
+    "homeserver": "https://matrix.org"
+  },
+
+  "rooms": [
+    {
+      "id": "!rust:demo.local",
+      "name": "Rust Programming",
+      "members": 1243,
+      "minutes_ago": 3,
+      "last_message": {
+        "sender": "Sarah",
+        "sender_id": "@sarah:matrix.org",
+        "body": "L + ratio + you fell off 💀🗿"
+      }
+    },
+    {
+      "id": "!matrixhq:demo.local",
+      "name": "Matrix HQ",
+      "members": 892,
+      "minutes_ago": 18,
+      "last_message": { "body": "based 🗿", "own": true }
+    },
+    {
+      "id": "!sarah:demo.local",
+      "name": "Sarah Chen",
+      "direct": true,
+      "members": 2,
+      "unread": 2,
+      "minutes_ago": 43,
+      "last_message": {
+        "sender": "Sarah",
+        "sender_id": "@sarah:matrix.org",
+        "kind": "image"
+      }
+    },
+    {
+      "id": "!design:demo.local",
+      "name": "Design Team",
+      "members": 34,
+      "mentions": 1,
+      "days_ago": 1,
+      "last_message": {
+        "sender": "Jordan",
+        "sender_id": "@jordan:matrix.org",
+        "body": "is this the skibidi mockup 💀",
+        "edited": true
+      }
+    },
+    {
+      "id": "!trip:demo.local",
+      "name": "weekend-trip 🏔️",
+      "members": 6,
+      "unread": 5,
+      "days_ago": 1,
+      "last_message": {
+        "sender": "Marcus",
+        "sender_id": "@marcus:matrix.org",
+        "body": "who's driving 💀"
+      }
+    },
+    {
+      "id": "!ohio:demo.local",
+      "name": "ohio gang 💀",
+      "members": 42,
+      "days_ago": 2,
+      "last_message": {
+        "sender": "Marcus",
+        "sender_id": "@marcus:matrix.org",
+        "body": "67 67 67 🔥"
+      }
+    },
+    {
+      "id": "!frontend:demo.local",
+      "name": "Frontend Guild",
+      "members": 210,
+      "days_ago": 2,
+      "last_message": { "sender": "Nadia", "body": "shipped it 🚀" }
+    },
+    {
+      "id": "!elena:demo.local",
+      "name": "Elena Fischer",
+      "direct": true,
+      "members": 2,
+      "days_ago": 3,
+      "last_message": { "body": "you're so cooked 😭", "own": true }
+    },
+    {
+      "id": "!gym:demo.local",
+      "name": "gym bros 💪",
+      "members": 15,
+      "unread": 3,
+      "days_ago": 3,
+      "last_message": {
+        "sender": "Marcus",
+        "sender_id": "@marcus:matrix.org",
+        "body": "leg day nooo 😭"
+      }
+    },
+    {
+      "id": "!book:demo.local",
+      "name": "Book Club 📚",
+      "members": 12,
+      "days_ago": 4,
+      "last_message": {
+        "sender": "Priya",
+        "sender_id": "@priya:matrix.org",
+        "body": "chapter 7 was skibidi 💀"
+      }
+    },
+    {
+      "id": "!music:demo.local",
+      "name": "music 🎵",
+      "members": 64,
+      "unread": 1,
+      "days_ago": 5,
+      "last_message": { "sender": "Leo", "body": "this one slaps" }
+    },
+    {
+      "id": "!devops:demo.local",
+      "name": "devops on-call",
+      "members": 19,
+      "days_ago": 6,
+      "last_message": { "body": "restarted it 🗿", "own": true }
+    }
+  ],
+
+  "spaces": [
+    {
+      "id": "!space-rust:demo.local",
+      "name": "Rust",
+      "avatar": "rust",
+      "rooms": ["!rust:demo.local", "!frontend:demo.local"]
+    },
+    {
+      "id": "!space-matrix:demo.local",
+      "name": "Matrix",
+      "rooms": ["!matrixhq:demo.local", "!devops:demo.local"]
+    },
+    {
+      "id": "!space-design:demo.local",
+      "name": "Design",
+      "avatar": "design",
+      "rooms": ["!design:demo.local", "!book:demo.local"]
+    }
+  ],
+
+  "timelines": {
+    "!rust:demo.local": [
+      {
+        "id": "demo-rust-1",
+        "sender": "@sarah:matrix.org",
+        "name": "Sarah Chen",
+        "body": "yo did u peep the new async closures update 💀",
+        "minutes_ago": 16
+      },
+      {
+        "id": "demo-rust-2",
+        "sender": "@marcus:matrix.org",
+        "name": "Marcus",
+        "body": "skibidi update fr, lowkey based 🗿🔥",
+        "minutes_ago": 15
+      },
+      {
+        "id": "demo-rust-3",
+        "sender": "@alex:matrix.org",
+        "name": "You",
+        "body": "ngl this feature got that rizz 🔥",
+        "minutes_ago": 14
+      },
+      {
+        "id": "demo-rust-4",
+        "sender": "@sarah:matrix.org",
+        "name": "Sarah Chen",
+        "body": "bro really said rizz 😭 he's so cooked",
+        "minutes_ago": 13,
+        "reply": {
+          "sender": "You",
+          "preview": "ngl this feature got that rizz 🔥"
+        }
+      },
+      {
+        "id": "demo-rust-chart",
+        "sender": "@priya:matrix.org",
+        "name": "Priya",
+        "body": "the cafe i'm coding in rn, peak aura 🔥",
+        "minutes_ago": 8,
+        "image": { "width": 1040, "height": 660 }
+      },
+      {
+        "id": "demo-rust-5",
+        "sender": "@alex:matrix.org",
+        "name": "You",
+        "body": "67 💀",
+        "minutes_ago": 7
+      },
+      {
+        "id": "demo-rust-6",
+        "sender": "@marcus:matrix.org",
+        "name": "Marcus",
+        "body": "nah not the 6 7 😭😭 stop",
+        "minutes_ago": 6
+      },
+      {
+        "id": "demo-rust-7",
+        "sender": "@alex:matrix.org",
+        "name": "You",
+        "body": "who let bro cook 🔥",
+        "minutes_ago": 4,
+        "edited": true
+      },
+      {
+        "id": "demo-rust-8",
+        "sender": "@sarah:matrix.org",
+        "name": "Sarah Chen",
+        "body": "L + ratio + you fell off 💀🗿",
+        "minutes_ago": 3
+      }
+    ]
+  }
+}
