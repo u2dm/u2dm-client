@@ -93,6 +93,7 @@ export component TimelineView inherits Rectangle {
         y: root.header-height + root.spacing;
         width: root.width;
         height: root.height - root.header-height - root.input-height - root.spacing * 2;
+        room-id: root.selected-room-id;
         timeline: root.timeline;
         backwards-loading: root.backwards-loading;
         forwards-loading: root.forwards-loading;

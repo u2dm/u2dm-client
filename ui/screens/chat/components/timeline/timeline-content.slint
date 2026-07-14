@@ -12,6 +12,7 @@ import {
 import { MessageBubble } from "./message-bubble.slint";
 
 export component TimelineContent inherits Rectangle {
+    in property <string> room-id: "";
     in property <[MessageEntry]> timeline: [];
     in property <bool> backwards-loading: false;
     in property <bool> forwards-loading: false;
@@ -27,6 +28,12 @@ export component TimelineContent inherits Rectangle {
     callback jump-to-latest();
 
     clip: true;
+
+    property <length> content-height: 0;
+
+    changed room-id => {
+        flickable.reset-scroll();
+    }
 
     if root.backwards-loading: HorizontalLayout {
         x: 0;
@@ -56,7 +63,8 @@ export component TimelineContent inherits Rectangle {
 
     flickable := ListView {
         width: parent.width;
-        height: parent.height;
+        height: root.content-height > 0 ? min(parent.height, root.content-height) : parent.height;
+        y: parent.height - self.height;
 
         property <length> scroll-threshold: 40px;
         property <bool> auto-scroll: true;
@@ -83,7 +91,8 @@ export component TimelineContent inherits Rectangle {
             self.item-count > self.prev-count;
 
         changed viewport-height => {
-            if self.settling && self.scrollable {
+            root.content-height = self.viewport-height;
+            if (self.settling || self.auto-scroll) && self.scrollable {
                 self.scroll-to-bottom();
             }
         }
@@ -113,20 +122,28 @@ export component TimelineContent inherits Rectangle {
         }
 
         changed item-count => {
-            if self.scrollable {
-                if self.auto-scroll {
-                    self.settling = true;
-                    self.scroll-to-bottom();
-                } else if self.items-added {
-                    self.anchor-scroll();
-                }
+            if self.auto-scroll {
+                self.settling = true;
+                self.scroll-to-bottom();
+            } else if self.items-added && self.scrollable {
+                self.anchor-scroll();
             }
             self.prev-count = self.item-count;
         }
 
+        function reset-scroll() {
+            self.auto-scroll = true;
+            self.settling = true;
+            self.prepend-pending = false;
+            self.prev-count = 0;
+            self.saved-count = 0;
+            self.saved-viewport-y = 0;
+            self.scroll-to-bottom();
+        }
+
         function scroll-to-bottom() {
             self.programmatic-scroll = true;
-            self.viewport-y = -self.max-scroll-y;
+            self.viewport-y = -max(self.max-scroll-y, 0px);
         }
 
         function anchor-scroll() {

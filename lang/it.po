@@ -147,12 +147,12 @@ msgctxt "MessageBubble"
 msgid "Reply"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/timeline-content.slint:38
+#: ui/screens/chat/components/timeline/timeline-content.slint:45
 msgctxt "TimelineContent"
 msgid "Loading older messages..."
 msgstr ""
 
-#: ui/screens/chat/components/timeline/timeline-content.slint:51
+#: ui/screens/chat/components/timeline/timeline-content.slint:58
 msgctxt "TimelineContent"
 msgid "Loading newer messages..."
 msgstr ""
