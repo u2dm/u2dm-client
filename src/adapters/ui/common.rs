@@ -180,6 +180,7 @@ pub enum StringProp {
     SelectedRoomName,
     SelectedRoomId,
     SelectedSpaceId,
+    SelectedSubspaceId,
     InputUsername,
     InputPassword,
 }
@@ -203,6 +204,7 @@ impl StringProp {
             Self::SelectedRoomName => "selected-room-name",
             Self::SelectedRoomId => "selected-room-id",
             Self::SelectedSpaceId => "selected-space-id",
+            Self::SelectedSubspaceId => "selected-subspace-id",
             Self::InputUsername => "input-username",
             Self::InputPassword => "input-password",
         }
@@ -314,6 +316,7 @@ pub fn dispatch_ui_event<T, R, S>(
     timeline_model: &VecModel<T>,
     rooms_model: &VecModel<R>,
     spaces_model: &VecModel<S>,
+    subspaces_model: &VecModel<S>,
     convert_message: &dyn Fn(&TimelineMessage) -> T,
     convert_room: &dyn Fn(&Room) -> R,
     convert_space: &dyn Fn(&Space) -> S,
@@ -341,6 +344,15 @@ pub fn dispatch_ui_event<T, R, S>(
         UiEvent::Spaces(spaces) => {
             apply_reconcile(
                 spaces_model,
+                &spaces,
+                &|s| s.id.as_str(),
+                convert_space,
+                space_entry_id,
+            );
+        }
+        UiEvent::Subspaces(spaces) => {
+            apply_reconcile(
+                subspaces_model,
                 &spaces,
                 &|s| s.id.as_str(),
                 convert_space,
@@ -402,6 +414,7 @@ pub fn dispatch_ui_event<T, R, S>(
             timeline_model.set_vec(Vec::new());
             rooms_model.set_vec(Vec::new());
             spaces_model.set_vec(Vec::new());
+            subspaces_model.set_vec(Vec::new());
             apply_logged_out(w);
         }
     }
@@ -526,6 +539,7 @@ fn apply_logged_out(w: &impl UiProps) {
     w.set_string(StringProp::SelectedRoomName, SharedString::default());
     w.set_string(StringProp::SelectedRoomId, SharedString::default());
     w.set_string(StringProp::SelectedSpaceId, SharedString::default());
+    w.set_string(StringProp::SelectedSubspaceId, SharedString::default());
     w.set_string(StringProp::InputUsername, SharedString::default());
     w.set_string(StringProp::InputPassword, SharedString::default());
     w.set_string(

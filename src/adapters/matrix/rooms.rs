@@ -228,19 +228,29 @@ async fn space_child_ids(space: &Room) -> Vec<String> {
 }
 
 async fn build_spaces_meta(client: &Client) -> Vec<DomainSpace> {
+    let joined_spaces = client.joined_space_rooms();
+    let space_ids: HashSet<String> = joined_spaces
+        .iter()
+        .map(|space| space.room_id().to_string())
+        .collect();
+
     let mut spaces = Vec::new();
-    for space in client.joined_space_rooms() {
+    for space in joined_spaces {
         let name = space
             .cached_display_name()
             .map(|dn| dn.to_string())
             .unwrap_or_default();
-        let child_room_ids = space_child_ids(&space).await;
+        let (child_space_ids, child_room_ids) = space_child_ids(&space)
+            .await
+            .into_iter()
+            .partition(|child| space_ids.contains(child));
         let avatar_mxc = space.avatar_url().map(|mxc| mxc.to_string());
         spaces.push(DomainSpace {
             id: space.room_id().to_string(),
             name,
             avatar_mxc,
             child_room_ids,
+            child_space_ids,
             unread: 0,
             mentions: 0,
         });

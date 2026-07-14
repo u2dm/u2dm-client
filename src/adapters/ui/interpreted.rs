@@ -15,6 +15,7 @@ thread_local! {
     static TIMELINE_MODEL: RefCell<Option<Rc<VecModel<Value>>>> = const { RefCell::new(None) };
     static ROOMS_MODEL: RefCell<Option<Rc<VecModel<Value>>>> = const { RefCell::new(None) };
     static SPACES_MODEL: RefCell<Option<Rc<VecModel<Value>>>> = const { RefCell::new(None) };
+    static SUBSPACES_MODEL: RefCell<Option<Rc<VecModel<Value>>>> = const { RefCell::new(None) };
 }
 
 use super::common::{
@@ -289,6 +290,22 @@ impl SlintUiAdapter {
 
         let tx = cmd_tx.clone();
         self.instance
+            .set_callback("select-subspace", move |args: &[Value]| -> Value {
+                let space_id = string_arg(args, 0);
+                let selected = if space_id.is_empty() {
+                    None
+                } else {
+                    Some(RoomId::new(space_id))
+                };
+                if let Err(e) = tx.send(UiCommand::SelectSubspace(selected)) {
+                    tracing::debug!("failed to send SelectSubspace command: {e}");
+                }
+                Value::Void
+            })
+            .map_err(|e| AppError::Ui(format!("{e:?}")))?;
+
+        let tx = cmd_tx.clone();
+        self.instance
             .set_callback("move-space", move |args: &[Value]| -> Value {
                 let index = |i: usize| -> Option<usize> {
                     match args.get(i) {
@@ -520,6 +537,7 @@ impl SlintUiAdapter {
         let timeline_model: Rc<VecModel<Value>> = Rc::new(VecModel::default());
         let rooms_model: Rc<VecModel<Value>> = Rc::new(VecModel::default());
         let spaces_model: Rc<VecModel<Value>> = Rc::new(VecModel::default());
+        let subspaces_model: Rc<VecModel<Value>> = Rc::new(VecModel::default());
 
         set_prop(
             &self.instance,
@@ -536,10 +554,16 @@ impl SlintUiAdapter {
             "spaces",
             Value::Model(ModelRc::from(Rc::clone(&spaces_model))),
         );
+        set_prop(
+            &self.instance,
+            "subspaces",
+            Value::Model(ModelRc::from(Rc::clone(&subspaces_model))),
+        );
 
         TIMELINE_MODEL.with(|cell| *cell.borrow_mut() = Some(timeline_model));
         ROOMS_MODEL.with(|cell| *cell.borrow_mut() = Some(rooms_model));
         SPACES_MODEL.with(|cell| *cell.borrow_mut() = Some(spaces_model));
+        SUBSPACES_MODEL.with(|cell| *cell.borrow_mut() = Some(subspaces_model));
 
         tokio::spawn(async move {
             while let Some(event) = ui_rx.recv().await {
@@ -548,13 +572,17 @@ impl SlintUiAdapter {
                     let timeline = TIMELINE_MODEL.with(|cell| cell.borrow().clone());
                     let rooms = ROOMS_MODEL.with(|cell| cell.borrow().clone());
                     let spaces = SPACES_MODEL.with(|cell| cell.borrow().clone());
-                    if let (Some(tl), Some(rm), Some(sm)) = (timeline, rooms, spaces) {
+                    let subspaces = SUBSPACES_MODEL.with(|cell| cell.borrow().clone());
+                    if let (Some(tl), Some(rm), Some(sm), Some(ssm)) =
+                        (timeline, rooms, spaces, subspaces)
+                    {
                         dispatch_ui_event(
                             &inst,
                             event,
                             &tl,
                             &rm,
                             &sm,
+                            &ssm,
                             &|m| message_to_value(m, media_cache.as_ref()),
                             &|r| room_to_value(r, media_cache.as_ref()),
                             &|s| space_to_value(s, media_cache.as_ref()),

@@ -1,5 +1,5 @@
 import { Palette } from "std-widgets.slint";
-import { IconDisplay, IconSet } from "@lucide";
+import { Icon, IconDisplay, IconSet } from "@lucide";
 
 import { SpaceEntry } from "./types.slint";
 
@@ -9,6 +9,8 @@ component SpaceTile inherits Rectangle {
     in property <length> initial-font-size: 18px;
     in property <bool> has-avatar;
     in property <image> avatar;
+    in property <bool> has-icon;
+    in property <Icon> icon;
     in property <int> unread;
     in property <int> mentions;
     in property <bool> selected;
@@ -69,7 +71,15 @@ component SpaceTile inherits Rectangle {
                 image-fit: cover;
             }
 
-            if !root.has-avatar: Text {
+            if root.has-icon && !root.has-avatar: IconDisplay {
+                x: (parent.width - self.width) / 2;
+                y: (parent.height - self.height) / 2;
+                icon: root.icon;
+                size: 21px;
+                stroke: root.selected ? Palette.accent-foreground : Palette.accent-background;
+            }
+
+            if !root.has-avatar && !root.has-icon: Text {
                 width: 100%;
                 height: 100%;
                 text: root.initial;
@@ -257,8 +267,8 @@ export component SpaceRail inherits Rectangle {
             height: root.row-height;
             draggable: false;
             label: @tr("All Rooms");
-            initial: @tr("All");
-            initial-font-size: 13px;
+            has-icon: true;
+            icon: IconSet.MessagesSquare;
             selected: root.selected-space-id == "";
             pressed-down => {
                 root.did-drag = false;

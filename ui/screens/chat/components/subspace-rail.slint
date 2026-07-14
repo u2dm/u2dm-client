@@ -1,0 +1,171 @@
+import { Palette } from "std-widgets.slint";
+import { Icon, IconDisplay, IconSet } from "@lucide";
+
+import { SpaceEntry } from "./types.slint";
+import { Fonts } from "../../../theme.slint";
+
+component SubspaceTile inherits Rectangle {
+    in property <string> label;
+    in property <string> initial;
+    in property <bool> has-avatar;
+    in property <image> avatar;
+    in property <bool> has-icon;
+    in property <Icon> icon;
+    in property <int> unread;
+    in property <int> mentions;
+    in property <bool> selected;
+
+    callback clicked();
+
+    height: 68px;
+
+    highlight := Rectangle {
+        x: 4px;
+        y: 2px;
+        width: parent.width - 8px;
+        height: parent.height - 4px;
+        border-radius: 10px;
+        background: root.selected
+            ? Palette.accent-background.transparentize(0.85)
+            : (touch.has-hover ? Palette.foreground.transparentize(0.94) : transparent);
+    }
+
+    tile := Rectangle {
+        width: 42px;
+        height: 42px;
+        x: (parent.width - self.width) / 2;
+        y: 6px;
+        border-radius: 12px;
+        background: root.selected
+            ? Palette.accent-background
+            : Palette.accent-background.transparentize(0.88);
+        clip: true;
+
+        if root.has-avatar: Image {
+            width: 100%;
+            height: 100%;
+            source: root.avatar;
+            image-fit: cover;
+        }
+
+        if root.has-icon && !root.has-avatar: IconDisplay {
+            x: (parent.width - self.width) / 2;
+            y: (parent.height - self.height) / 2;
+            icon: root.icon;
+            size: 20px;
+            stroke: root.selected ? Palette.accent-foreground : Palette.accent-background;
+        }
+
+        if !root.has-avatar && !root.has-icon: Text {
+            width: 100%;
+            height: 100%;
+            text: root.initial;
+            font-family: Fonts.emoji;
+            font-size: 16px;
+            font-weight: 700;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+            overflow: clip;
+            color: root.selected ? Palette.accent-foreground : Palette.accent-background;
+        }
+    }
+
+    Text {
+        x: 3px;
+        y: tile.y + tile.height + 3px;
+        width: parent.width - 6px;
+        text: root.label;
+        font-family: Fonts.emoji;
+        font-size: 9px;
+        font-weight: root.selected ? 700 : 400;
+        horizontal-alignment: center;
+        overflow: elide;
+        color: root.selected
+            ? Palette.foreground
+            : Palette.foreground.transparentize(0.4);
+    }
+
+    if root.unread > 0 || root.mentions > 0: Rectangle {
+        x: tile.x + tile.width - self.width + 5px;
+        y: tile.y - 4px;
+        height: 17px;
+        width: max(17px, badge-text.preferred-width + 10px);
+        border-radius: 8.5px;
+        background: Palette.accent-background;
+        border-width: 2px;
+        border-color: Palette.alternate-background;
+
+        badge-text := Text {
+            text: root.unread > 99 ? "99+" : (root.unread > 0 ? root.unread : root.mentions);
+            font-size: 10px;
+            font-weight: 700;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+            color: Palette.accent-foreground;
+        }
+    }
+
+    touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => {
+            root.clicked();
+        }
+    }
+}
+
+export component SubspaceRail inherits Rectangle {
+    in property <[SpaceEntry]> subspaces: [];
+    in-out property <string> selected-subspace-id: "";
+
+    callback select-subspace(string);
+
+    property <length> row-height: 68px;
+    property <length> top-padding: 8px;
+
+    background: Palette.alternate-background;
+
+    Rectangle {
+        x: parent.width - 1px;
+        width: 1px;
+        background: Palette.foreground.transparentize(0.92);
+    }
+
+    Flickable {
+        width: root.width;
+        height: root.height;
+        viewport-width: root.width;
+        viewport-height: (root.subspaces.length + 1) * root.row-height + root.top-padding;
+
+        VerticalLayout {
+            alignment: start;
+            padding-top: root.top-padding;
+
+            SubspaceTile {
+                height: root.row-height;
+                label: @tr("All");
+                has-icon: true;
+                icon: IconSet.MessagesSquare;
+                selected: root.selected-subspace-id == "";
+                clicked => {
+                    root.selected-subspace-id = "";
+                    root.select-subspace("");
+                }
+            }
+
+            for subspace in root.subspaces: SubspaceTile {
+                height: root.row-height;
+                label: subspace.name;
+                initial: subspace.initial;
+                has-avatar: subspace.has-avatar;
+                avatar: subspace.avatar;
+                unread: subspace.unread;
+                mentions: subspace.mentions;
+                selected: root.selected-subspace-id == subspace.id;
+                clicked => {
+                    root.selected-subspace-id = subspace.id;
+                    root.select-subspace(subspace.id);
+                }
+            }
+        }
+    }
+}

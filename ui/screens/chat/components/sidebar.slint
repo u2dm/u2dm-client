@@ -5,6 +5,7 @@ import { IconDisplay, IconSet } from "@lucide";
 
 import { RoomEntry, SpaceEntry } from "./types.slint";
 import { SpaceRail } from "./space-rail.slint";
+import { SubspaceRail } from "./subspace-rail.slint";
 import { MessagePreview } from "./message-preview.slint";
 import { Avatars, Fonts } from "../../../theme.slint";
 
@@ -13,15 +14,20 @@ export component Sidebar inherits Rectangle {
 
     in property <[RoomEntry]> rooms: [];
     in property <[SpaceEntry]> spaces: [];
+    in property <[SpaceEntry]> subspaces: [];
     in-out property <string> selected-room-id: "";
     in-out property <string> selected-room-name: "";
     in-out property <int> selected-room-members: 0;
     in-out property <string> selected-space-id: "";
+    in-out property <string> selected-subspace-id: "";
 
     callback select-room(string);
     callback select-space(string);
+    callback select-subspace(string);
     callback move-space(int, int);
     callback menu-clicked();
+
+    in property <length> subrail-width: 68px;
 
     property <length> row-height: 64px;
     property <length> rail-width: 72px;
@@ -40,6 +46,15 @@ export component Sidebar inherits Rectangle {
             }
             menu-clicked => {
                 root.menu-clicked();
+            }
+        }
+
+        if root.subspaces.length > 0: SubspaceRail {
+            width: root.subrail-width;
+            subspaces: root.subspaces;
+            selected-subspace-id <=> root.selected-subspace-id;
+            select-subspace(id) => {
+                root.select-subspace(id);
             }
         }
 

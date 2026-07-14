@@ -82,6 +82,8 @@ pub struct SpaceDto {
     avatar: Option<String>,
     #[serde(default)]
     rooms: Vec<String>,
+    #[serde(default)]
+    spaces: Vec<String>,
 }
 
 #[derive(Deserialize)]
@@ -156,6 +158,7 @@ impl SpaceDto {
             name: self.name.clone(),
             avatar_mxc: self.avatar.clone(),
             child_room_ids: self.rooms.clone(),
+            child_space_ids: self.spaces.clone(),
             unread: 0,
             mentions: 0,
         }

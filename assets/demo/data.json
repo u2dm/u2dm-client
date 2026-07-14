@@ -142,7 +142,19 @@
       "id": "!space-rust:demo.local",
       "name": "Rust",
       "avatar": "rust",
-      "rooms": ["!rust:demo.local", "!frontend:demo.local"]
+      "rooms": ["!rust:demo.local"],
+      "spaces": ["!space-rust-web:demo.local", "!space-rust-infra:demo.local"]
+    },
+    {
+      "id": "!space-rust-web:demo.local",
+      "name": "Web",
+      "avatar": "rust-web",
+      "rooms": ["!frontend:demo.local", "!design:demo.local"]
+    },
+    {
+      "id": "!space-rust-infra:demo.local",
+      "name": "Infra",
+      "rooms": ["!devops:demo.local"]
     },
     {
       "id": "!space-matrix:demo.local",

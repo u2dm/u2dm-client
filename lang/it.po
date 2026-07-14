@@ -112,7 +112,7 @@ msgctxt "HomeserverScreen"
 msgid "Continue"
 msgstr "Continua"
 
-#: ui/screens/chat/chat.slint:149
+#: ui/screens/chat/chat.slint:161
 msgctxt "ChatScreen"
 msgid "File saved to {}"
 msgstr "File salvato in {}"
@@ -209,29 +209,29 @@ msgctxt "TimelineView"
 msgid "Loading messages..."
 msgstr "Caricamento messaggi..."
 
-#: ui/screens/chat/components/space-rail.slint:223
+#: ui/screens/chat/components/space-rail.slint:233
 msgctxt "SpaceRail"
 msgid "Menu"
 msgstr ""
 
-#: ui/screens/chat/components/space-rail.slint:259
+#: ui/screens/chat/components/space-rail.slint:269
 msgctxt "SpaceRail"
 msgid "All Rooms"
 msgstr ""
 
-#: ui/screens/chat/components/space-rail.slint:260
-msgctxt "SpaceRail"
-msgid "All"
-msgstr ""
-
-#: ui/screens/chat/components/sidebar.slint:66
+#: ui/screens/chat/components/sidebar.slint:81
 msgctxt "Sidebar"
 msgid "Search"
 msgstr ""
 
-#: ui/screens/chat/components/sidebar.slint:104
+#: ui/screens/chat/components/sidebar.slint:119
 msgctxt "Sidebar"
 msgid "You"
+msgstr ""
+
+#: ui/screens/chat/components/subspace-rail.slint:145
+msgctxt "SubspaceRail"
+msgid "All"
 msgstr ""
 
 #: ui/screens/chat/components/message-preview.slint:4

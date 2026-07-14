@@ -62,6 +62,10 @@ impl AppOutputPort for UiEventOutput {
         self.emit(UiEvent::Spaces(spaces));
     }
 
+    fn subspaces(&self, spaces: Vec<Space>) {
+        self.emit(UiEvent::Subspaces(spaces));
+    }
+
     fn timeline(&self, room_id: RoomId, patch: Box<TimelinePatch>) {
         self.emit(UiEvent::Timeline { room_id, patch });
     }

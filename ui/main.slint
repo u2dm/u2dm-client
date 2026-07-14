@@ -38,10 +38,12 @@ export component AppWindow inherits Window {
     in-out property <bool> user-has-avatar: false;
     in-out property <[RoomEntry]> rooms: [];
     in-out property <[SpaceEntry]> spaces: [];
+    in-out property <[SpaceEntry]> subspaces: [];
     in-out property <[MessageEntry]> timeline: [];
     in-out property <string> selected-room-name: "";
     in-out property <string> selected-room-id: "";
     in-out property <string> selected-space-id: "";
+    in-out property <string> selected-subspace-id: "";
     in-out property <string> connection-status: "disconnected";
 
     in-out property <bool> verification-visible: false;
@@ -62,6 +64,7 @@ export component AppWindow inherits Window {
     callback login-oauth();
     callback select-room(string);
     callback select-space(string);
+    callback select-subspace(string);
     callback move-space(int, int);
     callback send-message(SendMessageRequest);
     callback open-media(string);
@@ -119,6 +122,7 @@ export component AppWindow inherits Window {
         connection-status: root.connection-status;
         rooms: root.rooms;
         spaces: root.spaces;
+        subspaces: root.subspaces;
         timeline: root.timeline;
         timeline-loading: root.timeline-loading;
         new-messages-count: root.new-messages-count;
@@ -129,12 +133,16 @@ export component AppWindow inherits Window {
         selected-room-id <=> root.selected-room-id;
         selected-room-name <=> root.selected-room-name;
         selected-space-id <=> root.selected-space-id;
+        selected-subspace-id <=> root.selected-subspace-id;
         input-message <=> root.input-message;
         select-room(id) => {
             root.select-room(id);
         }
         select-space(id) => {
             root.select-space(id);
+        }
+        select-subspace(id) => {
+            root.select-subspace(id);
         }
         move-space(from, to) => {
             root.move-space(from, to);

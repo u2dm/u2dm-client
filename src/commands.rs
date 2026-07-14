@@ -22,6 +22,8 @@ pub enum UiCommand {
     SpacesUpdated(Vec<Space>),
     #[strum(to_string = "SelectSpace")]
     SelectSpace(Option<RoomId>),
+    #[strum(to_string = "SelectSubspace")]
+    SelectSubspace(Option<RoomId>),
     #[strum(to_string = "MoveSpace({from},{to})")]
     MoveSpace {
         from: usize,
@@ -87,6 +89,7 @@ pub enum UiEvent {
     Status(String),
     Rooms(Vec<Room>),
     Spaces(Vec<Space>),
+    Subspaces(Vec<Space>),
     Timeline {
         room_id: RoomId,
         patch: Box<TimelinePatch>,

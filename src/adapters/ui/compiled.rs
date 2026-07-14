@@ -34,6 +34,7 @@ thread_local! {
     static TIMELINE_MODEL: RefCell<Option<Rc<VecModel<MessageEntry>>>> = const { RefCell::new(None) };
     static ROOMS_MODEL: RefCell<Option<Rc<VecModel<RoomEntry>>>> = const { RefCell::new(None) };
     static SPACES_MODEL: RefCell<Option<Rc<VecModel<SpaceEntry>>>> = const { RefCell::new(None) };
+    static SUBSPACES_MODEL: RefCell<Option<Rc<VecModel<SpaceEntry>>>> = const { RefCell::new(None) };
 }
 
 impl UiProps for AppWindow {
@@ -55,6 +56,7 @@ impl UiProps for AppWindow {
             StringProp::SelectedRoomName => self.set_selected_room_name(value),
             StringProp::SelectedRoomId => self.set_selected_room_id(value),
             StringProp::SelectedSpaceId => self.set_selected_space_id(value),
+            StringProp::SelectedSubspaceId => self.set_selected_subspace_id(value),
             StringProp::InputUsername => self.set_input_username(value),
             StringProp::InputPassword => self.set_input_password(value),
         }
@@ -188,6 +190,19 @@ impl SlintUiAdapter {
             };
             if let Err(e) = tx.send(UiCommand::SelectSpace(selected)) {
                 tracing::debug!("failed to send SelectSpace command: {e}");
+            }
+        });
+
+        let tx = cmd_tx.clone();
+        self.window.on_select_subspace(move |space_id| {
+            let space_id = space_id.to_string();
+            let selected = if space_id.is_empty() {
+                None
+            } else {
+                Some(RoomId::new(space_id))
+            };
+            if let Err(e) = tx.send(UiCommand::SelectSubspace(selected)) {
+                tracing::debug!("failed to send SelectSubspace command: {e}");
             }
         });
 
@@ -350,6 +365,7 @@ impl SlintUiAdapter {
         let timeline_model: Rc<VecModel<MessageEntry>> = Rc::new(VecModel::default());
         let rooms_model: Rc<VecModel<RoomEntry>> = Rc::new(VecModel::default());
         let spaces_model: Rc<VecModel<SpaceEntry>> = Rc::new(VecModel::default());
+        let subspaces_model: Rc<VecModel<SpaceEntry>> = Rc::new(VecModel::default());
 
         self.window
             .set_timeline(ModelRc::from(Rc::clone(&timeline_model)));
@@ -357,10 +373,13 @@ impl SlintUiAdapter {
             .set_rooms(ModelRc::from(Rc::clone(&rooms_model)));
         self.window
             .set_spaces(ModelRc::from(Rc::clone(&spaces_model)));
+        self.window
+            .set_subspaces(ModelRc::from(Rc::clone(&subspaces_model)));
 
         TIMELINE_MODEL.with(|cell| *cell.borrow_mut() = Some(timeline_model));
         ROOMS_MODEL.with(|cell| *cell.borrow_mut() = Some(rooms_model));
         SPACES_MODEL.with(|cell| *cell.borrow_mut() = Some(spaces_model));
+        SUBSPACES_MODEL.with(|cell| *cell.borrow_mut() = Some(subspaces_model));
 
         tokio::spawn(async move {
             while let Some(event) = ui_rx.recv().await {
@@ -369,13 +388,17 @@ impl SlintUiAdapter {
                     let timeline = TIMELINE_MODEL.with(|cell| cell.borrow().clone());
                     let rooms = ROOMS_MODEL.with(|cell| cell.borrow().clone());
                     let spaces = SPACES_MODEL.with(|cell| cell.borrow().clone());
-                    if let (Some(tl), Some(rm), Some(sm)) = (timeline, rooms, spaces) {
+                    let subspaces = SUBSPACES_MODEL.with(|cell| cell.borrow().clone());
+                    if let (Some(tl), Some(rm), Some(sm), Some(ssm)) =
+                        (timeline, rooms, spaces, subspaces)
+                    {
                         dispatch_ui_event(
                             &w,
                             event,
                             &tl,
                             &rm,
                             &sm,
+                            &ssm,
                             &|m| message_to_entry(m, media_cache.as_ref()),
                             &|r| room_to_entry(r, media_cache.as_ref()),
                             &|s| space_to_entry(s, media_cache.as_ref()),

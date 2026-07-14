@@ -100,6 +100,9 @@ impl AppService {
                 UiCommand::SelectSpace(space) => {
                     self.room_directory.select_space(space);
                 }
+                UiCommand::SelectSubspace(subspace) => {
+                    self.room_directory.select_subspace(subspace);
+                }
                 UiCommand::MoveSpace { from, to } => {
                     self.room_directory
                         .move_space(from, to, self.storage.as_ref())
