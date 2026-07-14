@@ -27,6 +27,22 @@ cargo run
 
 The first build downloads the bundled color emoji font from the [`u2dm/twemoji`](https://github.com/u2dm/twemoji) release. It is cached at `ui/fonts/Twemoji.ttf` afterwards.
 
+## Feature flags
+
+Both are off by default, so a plain `cargo run` gives you the compiled UI talking to a real homeserver.
+
+- `interpreted` load the `.slint` files at runtime instead of compiling them into the binary. Edit the UI and relaunch without a rebuild, at the cost of a slower start.
+
+  ```sh
+  cargo run --features interpreted
+  ```
+
+- `demo` run against fake rooms, spaces and timelines instead of a real account, useful for screenshots and UI work. The data lives in `assets/demo/data.json` and is read at runtime. Avatars and thumbnails are fetched on first build and fall back to initials if unavailable.
+
+  ```sh
+  cargo run --features demo
+  ```
+
 ## Licenses
 
 - Code: **AGPL-3.0-or-later**.
