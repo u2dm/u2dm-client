@@ -1,8 +1,17 @@
-# U2DM
+<div align="center">
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://u2dm.github.io/logo/logo-dark.svg">
+  <img alt="U2DM logo" src="https://u2dm.github.io/logo/logo.svg" width="120">
+</picture>
+
+# u2dm
 
 Unable to Decrypt Message: a Matrix chat client built with Slint UI.
 
-![U2DM chat window showing](docs/screenshot.png)
+</div>
+
+![u2dm chat window showing](docs/screenshot.png)
 
 ## Status
 
