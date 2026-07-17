@@ -7,6 +7,7 @@ import { RoomEntry, SpaceEntry } from "./types.slint";
 import { SpaceRail } from "./space-rail.slint";
 import { SubspaceRail } from "./subspace-rail.slint";
 import { MessagePreview } from "./message-preview.slint";
+import { ServiceLabel } from "./timeline/messages/service-message.slint";
 import { Avatars, Fonts } from "../../../theme.slint";
 
 export component Sidebar inherits Rectangle {
@@ -118,6 +119,7 @@ export component Sidebar inherits Rectangle {
                         property <string> sender-label: room.last-message-is-own
                             ? @tr("You")
                             : room.last-message-sender;
+                        property <bool> is-service: room.last-message-service-kind != "";
 
                         touch := TouchArea {
                             clicked => {
@@ -193,7 +195,7 @@ export component Sidebar inherits Rectangle {
                                     HorizontalLayout {
                                         horizontal-stretch: 1;
 
-                                        if sender-label != "": Text {
+                                        if !is-service && sender-label != "": Text {
                                             text: sender-label + ": ";
                                             font-size: 12px;
                                             vertical-alignment: center;
@@ -201,7 +203,7 @@ export component Sidebar inherits Rectangle {
                                             overflow: elide;
                                         }
 
-                                        if room.last-message-edited: Rectangle {
+                                        if !is-service && room.last-message-edited: Rectangle {
                                             width: 16px;
 
                                             IconDisplay {
@@ -215,7 +217,9 @@ export component Sidebar inherits Rectangle {
 
                                         Text {
                                             horizontal-stretch: 1;
-                                            text: MessagePreview.label(room.last-message-kind, room.last-message-body);
+                                            text: is-service
+                                                ? ServiceLabel.label(room.last-message-service-kind, sender-label, room.last-message-service-target)
+                                                : MessagePreview.label(room.last-message-kind, room.last-message-body);
                                             font-family: Fonts.emoji;
                                             font-size: 12px;
                                             vertical-alignment: center;

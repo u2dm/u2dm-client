@@ -6,10 +6,11 @@ use matrix_sdk::deserialized_responses::SyncOrStrippedState;
 use matrix_sdk::latest_events::LatestEventValue;
 use matrix_sdk::ruma::api::error::ErrorKind;
 use matrix_sdk::ruma::events::room::MediaSource;
+use matrix_sdk::ruma::events::room::member::MembershipState;
 use matrix_sdk::ruma::events::room::message::{Relation, RoomMessageEventContent};
 use matrix_sdk::ruma::events::space::child::SpaceChildEventContent;
 use matrix_sdk::ruma::events::{
-    AnyMessageLikeEventContent, AnySyncMessageLikeEvent, AnySyncTimelineEvent,
+    AnyMessageLikeEventContent, AnySyncMessageLikeEvent, AnySyncStateEvent, AnySyncTimelineEvent,
     SyncMessageLikeEvent, SyncStateEvent,
 };
 use matrix_sdk::ruma::{OwnedMxcUri, OwnedUserId, RoomId as MatrixRoomId, UserId};
@@ -28,7 +29,7 @@ use tokio::task::JoinSet;
 use super::media::{fetch_and_materialize, lookup_materialized, mxc_avatar_key};
 use super::preview::{self, MessagePreview};
 use crate::domain::models::{
-    MessagePreviewKind, Room as DomainRoom, RoomId, Space as DomainSpace, SyncEvent,
+    MessagePreviewKind, Room as DomainRoom, RoomId, ServiceEvent, Space as DomainSpace, SyncEvent,
 };
 use crate::error::{AppError, Result as AppResult};
 use crate::util::hex_encode_id;
@@ -69,6 +70,7 @@ async fn build_single_room(room: &Room) -> DomainRoom {
         last_message_sender: last_message.sender,
         last_message_kind: last_message.kind,
         last_message_body: last_message.body,
+        last_message_service: last_message.service,
         last_message_is_own: last_message.is_own,
         last_message_edited: last_message.edited,
     }
@@ -79,6 +81,7 @@ struct LastMessage {
     sender: Option<String>,
     kind: MessagePreviewKind,
     body: String,
+    service: Option<ServiceEvent>,
     is_own: bool,
     edited: bool,
 }
@@ -92,7 +95,8 @@ async fn build_last_message(room: &Room, is_direct: bool) -> LastMessage {
         .as_ref()
         .is_none_or(|sender| sender == room.own_user_id());
 
-    let sender = if is_own || is_direct {
+    let is_service = preview.service.is_some();
+    let sender = if is_own || (is_direct && !is_service) {
         None
     } else {
         match &sender_id {
@@ -105,6 +109,7 @@ async fn build_last_message(room: &Room, is_direct: bool) -> LastMessage {
         sender,
         kind: preview.kind,
         body: preview.body,
+        service: preview.service,
         is_own,
         edited: preview.edited,
     }
@@ -149,6 +154,17 @@ fn preview_from_event(event: &AnySyncTimelineEvent) -> Option<MessagePreview> {
         }
         AnySyncTimelineEvent::MessageLike(AnySyncMessageLikeEvent::Sticker(_)) => {
             Some(MessagePreview::labelled(MessagePreviewKind::Sticker))
+        }
+        AnySyncTimelineEvent::MessageLike(AnySyncMessageLikeEvent::CallInvite(_)) => {
+            Some(MessagePreview::service(ServiceEvent::CallStarted))
+        }
+        AnySyncTimelineEvent::MessageLike(AnySyncMessageLikeEvent::RtcNotification(_)) => {
+            Some(MessagePreview::service(ServiceEvent::CallNotification))
+        }
+        AnySyncTimelineEvent::State(AnySyncStateEvent::RoomMember(member))
+            if matches!(member.membership(), MembershipState::Knock) =>
+        {
+            Some(MessagePreview::service(ServiceEvent::Knocked))
         }
         _ => None,
     }

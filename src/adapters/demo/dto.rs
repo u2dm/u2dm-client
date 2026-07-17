@@ -56,6 +56,7 @@ pub struct LastMessageDto {
     kind: KindDto,
     #[serde(default)]
     pub body: String,
+    service: Option<ServiceDto>,
     #[serde(default)]
     pub own: bool,
     #[serde(default)]
@@ -213,6 +214,7 @@ impl RoomDto {
             last_message_sender: self.last_message.sender.clone(),
             last_message_kind: self.last_message.kind.to_kind(),
             last_message_body: self.last_message.body.clone(),
+            last_message_service: self.last_message.service.as_ref().map(ServiceDto::to_event),
             last_message_is_own: self.last_message.own,
             last_message_edited: self.last_message.edited,
         }

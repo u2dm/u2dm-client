@@ -329,12 +329,12 @@ msgctxt "SpaceRail"
 msgid "All Rooms"
 msgstr ""
 
-#: ui/screens/chat/components/sidebar.slint:81
+#: ui/screens/chat/components/sidebar.slint:82
 msgctxt "Sidebar"
 msgid "Search"
 msgstr ""
 
-#: ui/screens/chat/components/sidebar.slint:119
+#: ui/screens/chat/components/sidebar.slint:120
 msgctxt "Sidebar"
 msgid "You"
 msgstr ""

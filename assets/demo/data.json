@@ -55,7 +55,7 @@
       "last_message": {
         "sender": "Sarah",
         "sender_id": "@sarah:matrix.org",
-        "kind": "image"
+        "service": { "kind": "call-started" }
       }
     },
     {

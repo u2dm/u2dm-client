@@ -1,10 +1,11 @@
 use matrix_sdk::ruma::events::room::message::MessageType;
 
-use crate::domain::models::MessagePreviewKind;
+use crate::domain::models::{MessagePreviewKind, ServiceEvent};
 
 pub(super) struct MessagePreview {
     pub kind: MessagePreviewKind,
     pub body: String,
+    pub service: Option<ServiceEvent>,
     pub edited: bool,
 }
 
@@ -13,6 +14,16 @@ impl MessagePreview {
         Self {
             kind,
             body: String::new(),
+            service: None,
+            edited: false,
+        }
+    }
+
+    pub(super) fn service(event: ServiceEvent) -> Self {
+        Self {
+            kind: MessagePreviewKind::Text,
+            body: String::new(),
+            service: Some(event),
             edited: false,
         }
     }
@@ -36,6 +47,7 @@ pub(super) fn from_msgtype(msgtype: &MessageType) -> MessagePreview {
     MessagePreview {
         kind,
         body: body.split_whitespace().collect::<Vec<_>>().join(" "),
+        service: None,
         edited: false,
     }
 }

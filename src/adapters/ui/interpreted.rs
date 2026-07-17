@@ -795,11 +795,15 @@ fn message_to_value(m: &TimelineMessage, media: &dyn MediaCache) -> Value {
     fields.extend(reply_fields(m));
     fields.push((
         "service-kind".to_string(),
-        Value::String(SharedString::from(service_kind_token(&m.body))),
+        Value::String(SharedString::from(
+            m.body.service().map_or("", service_kind_token),
+        )),
     ));
     fields.push((
         "service-target".to_string(),
-        Value::String(SharedString::from(service_target(&m.body))),
+        Value::String(SharedString::from(
+            m.body.service().map_or("", service_target),
+        )),
     ));
 
     Value::Struct(Struct::from_iter(fields))
@@ -876,6 +880,20 @@ fn room_to_value(r: &Room, media: &dyn MediaCache) -> Value {
         (
             "last-message-body".to_string(),
             Value::String(SharedString::from(&r.last_message_body)),
+        ),
+        (
+            "last-message-service-kind".to_string(),
+            Value::String(SharedString::from(
+                r.last_message_service
+                    .as_ref()
+                    .map_or("", service_kind_token),
+            )),
+        ),
+        (
+            "last-message-service-target".to_string(),
+            Value::String(SharedString::from(
+                r.last_message_service.as_ref().map_or("", service_target),
+            )),
         ),
         (
             "last-message-is-own".to_string(),

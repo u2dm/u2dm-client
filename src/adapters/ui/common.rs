@@ -138,10 +138,7 @@ pub fn message_type_token(body: &MessageBody) -> &'static str {
     }
 }
 
-pub fn service_kind_token(body: &MessageBody) -> &'static str {
-    let MessageBody::Service(event) = body else {
-        return "";
-    };
+pub fn service_kind_token(event: &ServiceEvent) -> &'static str {
     match event {
         ServiceEvent::Joined => "joined",
         ServiceEvent::Left => "left",
@@ -168,10 +165,7 @@ pub fn service_kind_token(body: &MessageBody) -> &'static str {
     }
 }
 
-pub fn service_target(body: &MessageBody) -> &str {
-    let MessageBody::Service(event) = body else {
-        return "";
-    };
+pub fn service_target(event: &ServiceEvent) -> &str {
     match event {
         ServiceEvent::Invited { target }
         | ServiceEvent::InvitationRevoked { target }

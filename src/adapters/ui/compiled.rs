@@ -501,8 +501,8 @@ fn message_to_entry(m: &TimelineMessage, media: &dyn MediaCache) -> MessageEntry
                 .map_or("", |r| message_preview_kind_token(r.kind)),
         ),
         reply_body: SharedString::from(m.reply.as_ref().map_or("", |r| r.body.as_str())),
-        service_kind: SharedString::from(service_kind_token(&m.body)),
-        service_target: SharedString::from(service_target(&m.body)),
+        service_kind: SharedString::from(m.body.service().map_or("", service_kind_token)),
+        service_target: SharedString::from(m.body.service().map_or("", service_target)),
         ..Default::default()
     };
 
@@ -548,6 +548,14 @@ fn room_to_entry(r: &Room, media: &dyn MediaCache) -> RoomEntry {
         ),
         last_message_kind: SharedString::from(message_preview_kind_token(r.last_message_kind)),
         last_message_body: SharedString::from(&r.last_message_body),
+        last_message_service_kind: SharedString::from(
+            r.last_message_service
+                .as_ref()
+                .map_or("", service_kind_token),
+        ),
+        last_message_service_target: SharedString::from(
+            r.last_message_service.as_ref().map_or("", service_target),
+        ),
         last_message_is_own: r.last_message_is_own,
         last_message_edited: r.last_message_edited,
         last_message_time: SharedString::from(&room_activity_label(r.last_activity_ts)),

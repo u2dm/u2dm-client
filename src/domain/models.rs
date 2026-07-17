@@ -159,6 +159,7 @@ pub struct Room {
     pub last_message_sender: Option<String>,
     pub last_message_kind: MessagePreviewKind,
     pub last_message_body: String,
+    pub last_message_service: Option<ServiceEvent>,
     pub last_message_is_own: bool,
     pub last_message_edited: bool,
 }
@@ -258,6 +259,13 @@ pub enum MessageBody {
 }
 
 impl MessageBody {
+    pub fn service(&self) -> Option<&ServiceEvent> {
+        match self {
+            Self::Service(event) => Some(event),
+            _ => None,
+        }
+    }
+
     pub fn preview_kind(&self) -> MessagePreviewKind {
         match self {
             Self::Text(_)
