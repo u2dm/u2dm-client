@@ -1,18 +1,22 @@
 use std::collections::HashMap;
 use std::sync::Mutex as StdMutex;
 
+use matrix_sdk::ruma::events::StateEventContentChange;
 use matrix_sdk::ruma::events::room::MediaSource;
 use matrix_sdk::ruma::events::room::message::{
     FileMessageEventContent, ImageMessageEventContent, MessageType,
 };
+use matrix_sdk::ruma::events::room::name::RoomNameEventContent;
 use matrix_sdk_ui::timeline::{
-    EventTimelineItem, TimelineDetails, TimelineItem, TimelineItemContent,
+    AnyOtherStateEventContentChange, EventTimelineItem, MemberProfileChange, MembershipChange,
+    RoomMembershipChange, TimelineDetails, TimelineItem, TimelineItemContent,
 };
 
 use super::TimelineContext;
 use crate::adapters::matrix::preview;
 use crate::domain::models::{
-    EventId, FileMeta, ImageMeta, MessageBody, MessagePreviewKind, ReplyInfo, TimelineMessage,
+    EventId, FileMeta, ImageMeta, MessageBody, MessagePreviewKind, ReplyInfo, ServiceEvent,
+    TimelineMessage,
 };
 
 fn extract_sender_profile(event: &EventTimelineItem) -> (Option<String>, Option<String>) {
@@ -48,6 +52,112 @@ fn build_utd_message(
         is_own,
         reply,
         edited: false,
+    }
+}
+
+fn build_service_message(
+    unique_id: String,
+    event: &EventTimelineItem,
+    event_id_str: String,
+    ctx: &TimelineContext<'_>,
+    service: ServiceEvent,
+) -> TimelineMessage {
+    let (sender_display_name, sender_avatar_url) = extract_sender_profile(event);
+    let ts: u64 = event.timestamp().0.into();
+    let sender_str = event.sender().to_string();
+    let is_own = ctx.own_user_id.is_some_and(|uid| uid == sender_str);
+    TimelineMessage {
+        unique_id,
+        event_id: EventId(event_id_str),
+        sender_pronouns: Vec::new(),
+        sender: sender_str,
+        sender_display_name,
+        sender_avatar_url,
+        body: MessageBody::Service(service),
+        timestamp: ts,
+        is_own,
+        reply: None,
+        edited: false,
+    }
+}
+
+fn membership_target(change: &RoomMembershipChange) -> Option<String> {
+    change.display_name().or_else(|| {
+        let user_id = change.user_id();
+        let local = user_id.localpart();
+        (!local.is_empty()).then(|| local.to_owned())
+    })
+}
+
+fn membership_to_service(change: &RoomMembershipChange) -> Option<ServiceEvent> {
+    let target = membership_target(change);
+    Some(match change.change()? {
+        MembershipChange::Joined => ServiceEvent::Joined,
+        MembershipChange::Left => ServiceEvent::Left,
+        MembershipChange::Invited => ServiceEvent::Invited { target },
+        MembershipChange::InvitationAccepted => ServiceEvent::InvitationAccepted,
+        MembershipChange::InvitationRejected => ServiceEvent::InvitationRejected,
+        MembershipChange::InvitationRevoked => ServiceEvent::InvitationRevoked { target },
+        MembershipChange::Kicked => ServiceEvent::Kicked { target },
+        MembershipChange::Banned | MembershipChange::KickedAndBanned => {
+            ServiceEvent::Banned { target }
+        }
+        MembershipChange::Unbanned => ServiceEvent::Unbanned { target },
+        MembershipChange::Knocked => ServiceEvent::Knocked,
+        MembershipChange::KnockAccepted => ServiceEvent::KnockAccepted { target },
+        MembershipChange::None
+        | MembershipChange::Error
+        | MembershipChange::KnockRetracted
+        | MembershipChange::KnockDenied
+        | MembershipChange::NotImplemented => return None,
+    })
+}
+
+fn profile_to_service(change: &MemberProfileChange) -> Option<ServiceEvent> {
+    if let Some(name_change) = change.displayname_change() {
+        return Some(match (&name_change.old, &name_change.new) {
+            (_, Some(new)) if name_change.old.is_some() => {
+                ServiceEvent::DisplayNameChanged { name: new.clone() }
+            }
+            (_, Some(new)) => ServiceEvent::DisplayNameSet { name: new.clone() },
+            (Some(_), None) => ServiceEvent::DisplayNameRemoved,
+            (None, None) => return None,
+        });
+    }
+    if change.avatar_url_change().is_some() {
+        return Some(ServiceEvent::AvatarChanged);
+    }
+    None
+}
+
+fn room_name_from_change(change: &StateEventContentChange<RoomNameEventContent>) -> String {
+    match change {
+        StateEventContentChange::Original { content, .. } => content.name.clone(),
+        StateEventContentChange::Redacted(_) => String::new(),
+    }
+}
+
+fn other_state_to_service(state: &AnyOtherStateEventContentChange) -> Option<ServiceEvent> {
+    Some(match state {
+        AnyOtherStateEventContentChange::RoomName(change) => ServiceEvent::RoomNameChanged {
+            name: room_name_from_change(change),
+        },
+        AnyOtherStateEventContentChange::RoomTopic(_) => ServiceEvent::RoomTopicChanged,
+        AnyOtherStateEventContentChange::RoomAvatar(_) => ServiceEvent::RoomAvatarChanged,
+        AnyOtherStateEventContentChange::RoomCreate(_) => ServiceEvent::RoomCreated,
+        AnyOtherStateEventContentChange::RoomEncryption(_) => ServiceEvent::EncryptionEnabled,
+        _ => return None,
+    })
+}
+
+pub(super) fn service_event_from_content(content: &TimelineItemContent) -> Option<ServiceEvent> {
+    match content {
+        TimelineItemContent::MembershipChange(change) => membership_to_service(change),
+        TimelineItemContent::ProfileChange(change) => profile_to_service(change),
+        TimelineItemContent::OtherState(state) => other_state_to_service(state.content()),
+        TimelineItemContent::CallInvite => Some(ServiceEvent::CallStarted),
+        TimelineItemContent::RtcNotification { .. } => Some(ServiceEvent::CallNotification),
+        _ => None,
     }
 }
 
@@ -181,6 +291,15 @@ pub(super) fn convert_event_item_with_uid(
                 event_id_str,
                 ctx,
                 reply,
+            ));
+        }
+        if let Some(service) = service_event_from_content(content) {
+            return Some(build_service_message(
+                unique_id,
+                event,
+                event_id_str,
+                ctx,
+                service,
             ));
         }
         tracing::debug!(

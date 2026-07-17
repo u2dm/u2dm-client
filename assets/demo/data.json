@@ -263,6 +263,48 @@
   "timelines": {
     "!rust:demo.local": [
       {
+        "id": "demo-rust-svc-created",
+        "sender": "@sarah:matrix.org",
+        "name": "Sarah Chen",
+        "minutes_ago": 36,
+        "service": { "kind": "room-created" }
+      },
+      {
+        "id": "demo-rust-svc-enc",
+        "sender": "@sarah:matrix.org",
+        "name": "Sarah Chen",
+        "minutes_ago": 35,
+        "service": { "kind": "encryption" }
+      },
+      {
+        "id": "demo-rust-svc-join-marcus",
+        "sender": "@marcus:matrix.org",
+        "name": "Marcus",
+        "minutes_ago": 34,
+        "service": { "kind": "joined" }
+      },
+      {
+        "id": "demo-rust-svc-join-kai",
+        "sender": "@kai:matrix.org",
+        "name": "Kai",
+        "minutes_ago": 33,
+        "service": { "kind": "joined" }
+      },
+      {
+        "id": "demo-rust-svc-name",
+        "sender": "@kai:matrix.org",
+        "name": "Kai",
+        "minutes_ago": 18,
+        "service": { "kind": "name-changed", "target": "kai (afk)" }
+      },
+      {
+        "id": "demo-rust-svc-call",
+        "sender": "@sarah:matrix.org",
+        "name": "Sarah Chen",
+        "minutes_ago": 6,
+        "service": { "kind": "call-started" }
+      },
+      {
         "id": "demo-rust-1",
         "sender": "@sarah:matrix.org",
         "name": "Sarah Chen",

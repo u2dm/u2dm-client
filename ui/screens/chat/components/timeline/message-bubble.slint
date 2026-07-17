@@ -9,6 +9,7 @@ import {
 } from "../types.slint";
 
 import { MessagePreview } from "../message-preview.slint";
+import { ServiceMessage } from "./messages/service-message.slint";
 import { TextMessage } from "./messages/text-message.slint";
 import { ImageMessage } from "./messages/image-message.slint";
 import { FileMessage } from "./messages/file-message.slint";
@@ -16,7 +17,7 @@ import { UtdMessage } from "./messages/utd-message.slint";
 import { UnsupportedMessage } from "./messages/unsupported-message.slint";
 import { Avatars, Fonts } from "../../../../theme.slint";
 
-export component MessageBubble inherits Rectangle {
+export component MessageBubble inherits VerticalLayout {
     in property <bool> is-own;
     in property <MessageEntry> msg;
     in property <length> available-width;
@@ -29,7 +30,13 @@ export component MessageBubble inherits Rectangle {
     property <color> other-bubble-color: Palette.alternate-background;
     property <length> bubble-max-width: available-width * 0.7;
 
-    HorizontalLayout {
+    if msg.message-type == "service": ServiceMessage {
+        kind: msg.service-kind;
+        actor: msg.sender;
+        target: msg.service-target;
+    }
+
+    if msg.message-type != "service": HorizontalLayout {
         alignment: is-own ? end : start;
         padding-left: is-own ? 0 : 8px;
         padding-right: is-own ? 8px : 0;

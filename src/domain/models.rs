@@ -211,6 +211,32 @@ pub struct FileMeta {
     pub size: Option<u64>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ServiceEvent {
+    Joined,
+    Left,
+    Invited { target: Option<String> },
+    InvitationAccepted,
+    InvitationRejected,
+    InvitationRevoked { target: Option<String> },
+    Kicked { target: Option<String> },
+    Banned { target: Option<String> },
+    Unbanned { target: Option<String> },
+    Knocked,
+    KnockAccepted { target: Option<String> },
+    DisplayNameSet { name: String },
+    DisplayNameChanged { name: String },
+    DisplayNameRemoved,
+    AvatarChanged,
+    RoomNameChanged { name: String },
+    RoomTopicChanged,
+    RoomAvatarChanged,
+    RoomCreated,
+    EncryptionEnabled,
+    CallStarted,
+    CallNotification,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum MessageBody {
     Text(String),
@@ -223,6 +249,7 @@ pub enum MessageBody {
     File {
         meta: FileMeta,
     },
+    Service(ServiceEvent),
     UnableToDecrypt,
     Unsupported {
         kind: String,
@@ -233,9 +260,11 @@ pub enum MessageBody {
 impl MessageBody {
     pub fn preview_kind(&self) -> MessagePreviewKind {
         match self {
-            Self::Text(_) | Self::Notice(_) | Self::Emote(_) | Self::Unsupported { .. } => {
-                MessagePreviewKind::Text
-            }
+            Self::Text(_)
+            | Self::Notice(_)
+            | Self::Emote(_)
+            | Self::Service(_)
+            | Self::Unsupported { .. } => MessagePreviewKind::Text,
             Self::Image { .. } => MessagePreviewKind::Image,
             Self::File { .. } => MessagePreviewKind::File,
             Self::UnableToDecrypt => MessagePreviewKind::Encrypted,

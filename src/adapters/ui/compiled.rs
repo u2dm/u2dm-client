@@ -10,7 +10,7 @@ use super::common::{
     BoolProp, IntProp, Status, StringProp, UiProps, avatar_color_index, avatar_initials,
     dispatch_ui_event, load_image_cached, message_body_text, message_preview_kind_token,
     message_sender_label, message_timestamp_label, message_type_token, pronoun_labels,
-    room_activity_label, sender_initial, unsupported_kind,
+    room_activity_label, sender_initial, service_kind_token, service_target, unsupported_kind,
 };
 use super::emoji;
 use crate::commands::{UiCommand, UiEvent};
@@ -501,6 +501,8 @@ fn message_to_entry(m: &TimelineMessage, media: &dyn MediaCache) -> MessageEntry
                 .map_or("", |r| message_preview_kind_token(r.kind)),
         ),
         reply_body: SharedString::from(m.reply.as_ref().map_or("", |r| r.body.as_str())),
+        service_kind: SharedString::from(service_kind_token(&m.body)),
+        service_target: SharedString::from(service_target(&m.body)),
         ..Default::default()
     };
 

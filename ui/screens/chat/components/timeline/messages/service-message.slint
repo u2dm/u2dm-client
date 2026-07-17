@@ -1,0 +1,104 @@
+import { Palette } from "std-widgets.slint";
+import { Fonts } from "../../../../../theme.slint";
+
+export global ServiceLabel {
+    public pure function label(kind: string, actor: string, target: string) -> string {
+        if kind == "joined" {
+            return @tr("{} joined the room", actor);
+        }
+        if kind == "left" {
+            return @tr("{} left the room", actor);
+        }
+        if kind == "invited" {
+            return @tr("{} invited {}", actor, target);
+        }
+        if kind == "invitation-accepted" {
+            return @tr("{} accepted the invitation", actor);
+        }
+        if kind == "invitation-rejected" {
+            return @tr("{} rejected the invitation", actor);
+        }
+        if kind == "invitation-revoked" {
+            return @tr("{} revoked the invitation for {}", actor, target);
+        }
+        if kind == "kicked" {
+            return @tr("{} removed {}", actor, target);
+        }
+        if kind == "banned" {
+            return @tr("{} banned {}", actor, target);
+        }
+        if kind == "unbanned" {
+            return @tr("{} unbanned {}", actor, target);
+        }
+        if kind == "knocked" {
+            return @tr("{} requested to join", actor);
+        }
+        if kind == "knock-accepted" {
+            return @tr("{} allowed {} to join", actor, target);
+        }
+        if kind == "name-set" {
+            return @tr("{} set their name to {}", actor, target);
+        }
+        if kind == "name-changed" {
+            return @tr("{} changed their name to {}", actor, target);
+        }
+        if kind == "name-removed" {
+            return @tr("{} removed their name", actor);
+        }
+        if kind == "avatar-changed" {
+            return @tr("{} changed their avatar", actor);
+        }
+        if kind == "room-name" {
+            return @tr("{} changed the room name to {}", actor, target);
+        }
+        if kind == "room-topic" {
+            return @tr("{} changed the room topic", actor);
+        }
+        if kind == "room-avatar" {
+            return @tr("{} changed the room avatar", actor);
+        }
+        if kind == "room-created" {
+            return @tr("{} created the room", actor);
+        }
+        if kind == "encryption" {
+            return @tr("{} enabled end-to-end encryption", actor);
+        }
+        if kind == "call-started" {
+            return @tr("{} started a call", actor);
+        }
+        if kind == "call-notification" {
+            return @tr("{} is calling", actor);
+        }
+        if target != "" {
+            return target;
+        }
+        return actor;
+    }
+}
+
+export component ServiceMessage inherits HorizontalLayout {
+    in property <string> kind;
+    in property <string> actor;
+    in property <string> target;
+
+    alignment: center;
+    padding-top: 4px;
+    padding-bottom: 4px;
+
+    Rectangle {
+        width: label.preferred-width + 20px;
+        height: label.preferred-height + 8px;
+        border-radius: self.height / 2;
+        background: Palette.foreground.transparentize(0.9);
+
+        label := Text {
+            text: ServiceLabel.label(root.kind, root.actor, root.target);
+            font-family: Fonts.emoji;
+            font-size: 12px;
+            color: Palette.foreground.transparentize(0.35);
+            horizontal-alignment: center;
+            vertical-alignment: center;
+            wrap: word-wrap;
+        }
+    }
+}

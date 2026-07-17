@@ -3,8 +3,8 @@ use std::collections::HashMap;
 use serde::Deserialize;
 
 use crate::domain::models::{
-    EventId, ImageMeta, MessageBody, MessagePreviewKind, ReplyInfo, Room, RoomId, Session, Space,
-    TimelineMessage,
+    EventId, ImageMeta, MessageBody, MessagePreviewKind, ReplyInfo, Room, RoomId, ServiceEvent,
+    Session, Space, TimelineMessage,
 };
 
 #[derive(Deserialize, Default)]
@@ -103,12 +103,78 @@ pub struct MessageDto {
     edited: bool,
     image: Option<ImageDto>,
     reply: Option<ReplyDto>,
+    service: Option<ServiceDto>,
 }
 
 #[derive(Deserialize)]
 struct ImageDto {
     width: u32,
     height: u32,
+}
+
+#[derive(Deserialize)]
+#[serde(tag = "kind", rename_all = "kebab-case")]
+enum ServiceDto {
+    Joined,
+    Left,
+    Invited {
+        #[serde(default)]
+        target: String,
+    },
+    Kicked {
+        #[serde(default)]
+        target: String,
+    },
+    Banned {
+        #[serde(default)]
+        target: String,
+    },
+    NameChanged {
+        #[serde(default)]
+        target: String,
+    },
+    AvatarChanged,
+    RoomName {
+        #[serde(default)]
+        target: String,
+    },
+    RoomAvatar,
+    RoomCreated,
+    Encryption,
+    CallStarted,
+}
+
+impl ServiceDto {
+    fn to_event(&self) -> ServiceEvent {
+        match self {
+            Self::Joined => ServiceEvent::Joined,
+            Self::Left => ServiceEvent::Left,
+            Self::Invited { target } => ServiceEvent::Invited {
+                target: optional(target),
+            },
+            Self::Kicked { target } => ServiceEvent::Kicked {
+                target: optional(target),
+            },
+            Self::Banned { target } => ServiceEvent::Banned {
+                target: optional(target),
+            },
+            Self::NameChanged { target } => ServiceEvent::DisplayNameChanged {
+                name: target.clone(),
+            },
+            Self::AvatarChanged => ServiceEvent::AvatarChanged,
+            Self::RoomName { target } => ServiceEvent::RoomNameChanged {
+                name: target.clone(),
+            },
+            Self::RoomAvatar => ServiceEvent::RoomAvatarChanged,
+            Self::RoomCreated => ServiceEvent::RoomCreated,
+            Self::Encryption => ServiceEvent::EncryptionEnabled,
+            Self::CallStarted => ServiceEvent::CallStarted,
+        }
+    }
+}
+
+fn optional(value: &str) -> Option<String> {
+    (!value.is_empty()).then(|| value.to_owned())
 }
 
 #[derive(Deserialize)]
@@ -189,6 +255,9 @@ impl MessageDto {
     }
 
     fn to_body(&self) -> MessageBody {
+        if let Some(service) = &self.service {
+            return MessageBody::Service(service.to_event());
+        }
         match &self.image {
             Some(image) => MessageBody::Image {
                 caption: (!self.body.is_empty()).then(|| self.body.clone()),

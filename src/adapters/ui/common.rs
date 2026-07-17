@@ -120,7 +120,7 @@ pub fn message_body_text(body: &MessageBody) -> &str {
         MessageBody::Text(s) | MessageBody::Notice(s) | MessageBody::Emote(s) => s,
         MessageBody::Image { caption, .. } => caption.as_deref().unwrap_or_default(),
         MessageBody::File { meta, .. } => &meta.filename,
-        MessageBody::UnableToDecrypt => "",
+        MessageBody::Service(_) | MessageBody::UnableToDecrypt => "",
         MessageBody::Unsupported { fallback, .. } => fallback,
     }
 }
@@ -132,8 +132,57 @@ pub fn message_type_token(body: &MessageBody) -> &'static str {
         MessageBody::Emote(_) => "emote",
         MessageBody::Image { .. } => "image",
         MessageBody::File { .. } => "file",
+        MessageBody::Service(_) => "service",
         MessageBody::UnableToDecrypt => "utd",
         MessageBody::Unsupported { .. } => "unsupported",
+    }
+}
+
+pub fn service_kind_token(body: &MessageBody) -> &'static str {
+    let MessageBody::Service(event) = body else {
+        return "";
+    };
+    match event {
+        ServiceEvent::Joined => "joined",
+        ServiceEvent::Left => "left",
+        ServiceEvent::Invited { .. } => "invited",
+        ServiceEvent::InvitationAccepted => "invitation-accepted",
+        ServiceEvent::InvitationRejected => "invitation-rejected",
+        ServiceEvent::InvitationRevoked { .. } => "invitation-revoked",
+        ServiceEvent::Kicked { .. } => "kicked",
+        ServiceEvent::Banned { .. } => "banned",
+        ServiceEvent::Unbanned { .. } => "unbanned",
+        ServiceEvent::Knocked => "knocked",
+        ServiceEvent::KnockAccepted { .. } => "knock-accepted",
+        ServiceEvent::DisplayNameSet { .. } => "name-set",
+        ServiceEvent::DisplayNameChanged { .. } => "name-changed",
+        ServiceEvent::DisplayNameRemoved => "name-removed",
+        ServiceEvent::AvatarChanged => "avatar-changed",
+        ServiceEvent::RoomNameChanged { .. } => "room-name",
+        ServiceEvent::RoomTopicChanged => "room-topic",
+        ServiceEvent::RoomAvatarChanged => "room-avatar",
+        ServiceEvent::RoomCreated => "room-created",
+        ServiceEvent::EncryptionEnabled => "encryption",
+        ServiceEvent::CallStarted => "call-started",
+        ServiceEvent::CallNotification => "call-notification",
+    }
+}
+
+pub fn service_target(body: &MessageBody) -> &str {
+    let MessageBody::Service(event) = body else {
+        return "";
+    };
+    match event {
+        ServiceEvent::Invited { target }
+        | ServiceEvent::InvitationRevoked { target }
+        | ServiceEvent::Kicked { target }
+        | ServiceEvent::Banned { target }
+        | ServiceEvent::Unbanned { target }
+        | ServiceEvent::KnockAccepted { target } => target.as_deref().unwrap_or_default(),
+        ServiceEvent::DisplayNameSet { name }
+        | ServiceEvent::DisplayNameChanged { name }
+        | ServiceEvent::RoomNameChanged { name } => name,
+        _ => "",
     }
 }
 
@@ -178,8 +227,8 @@ pub fn connection_status_token(status: &ConnectionStatus) -> &'static str {
 
 use crate::commands::UiEvent;
 use crate::domain::models::{
-    ConnectionStatus, LoginMethod, MessageBody, MessagePreviewKind, Room, ServerInfo, Space,
-    TimelineMessage, TimelinePatch, VerificationEmoji as DomainVerificationEmoji,
+    ConnectionStatus, LoginMethod, MessageBody, MessagePreviewKind, Room, ServerInfo, ServiceEvent,
+    Space, TimelineMessage, TimelinePatch, VerificationEmoji as DomainVerificationEmoji,
     VerificationEvent as DomainVerificationEvent,
 };
 

@@ -90,7 +90,7 @@ pub fn body_preview(body: &MessageBody) -> String {
         }
         MessageBody::Image { caption, .. } => caption.clone().unwrap_or_default(),
         MessageBody::File { meta } => meta.filename.clone(),
-        MessageBody::UnableToDecrypt => String::new(),
+        MessageBody::Service(_) | MessageBody::UnableToDecrypt => String::new(),
         MessageBody::Unsupported { fallback, .. } => fallback.clone(),
     }
 }

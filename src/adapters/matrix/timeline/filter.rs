@@ -3,7 +3,7 @@ use std::sync::Arc;
 use matrix_sdk_ui::timeline::TimelineItem;
 
 use super::TimelineContext;
-use super::convert::convert_timeline_item;
+use super::convert::{convert_timeline_item, service_event_from_content};
 use crate::domain::models::TimelineMessage;
 
 pub(super) fn is_renderable(item: &TimelineItem) -> bool {
@@ -11,7 +11,9 @@ pub(super) fn is_renderable(item: &TimelineItem) -> bool {
         return false;
     };
     let content = event.content();
-    content.as_message().is_some() || content.as_unable_to_decrypt().is_some()
+    content.as_message().is_some()
+        || content.as_unable_to_decrypt().is_some()
+        || service_event_from_content(content).is_some()
 }
 
 pub(super) fn msg_index_at(items: &[Arc<TimelineItem>], raw_index: usize) -> usize {

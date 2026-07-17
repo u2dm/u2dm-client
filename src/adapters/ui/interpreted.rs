@@ -22,7 +22,7 @@ use super::common::{
     BoolProp, IntProp, Status, StringProp, UiProps, avatar_color_index, avatar_initials,
     dispatch_ui_event, load_image_cached, message_body_text, message_preview_kind_token,
     message_sender_label, message_timestamp_label, message_type_token, pronoun_labels,
-    room_activity_label, sender_initial, unsupported_kind,
+    room_activity_label, sender_initial, service_kind_token, service_target, unsupported_kind,
 };
 use super::emoji;
 use crate::commands::{UiCommand, UiEvent};
@@ -793,6 +793,14 @@ fn message_to_value(m: &TimelineMessage, media: &dyn MediaCache) -> Value {
     fields.push(("is-own".to_string(), Value::Bool(m.is_own)));
     fields.push(("edited".to_string(), Value::Bool(m.edited)));
     fields.extend(reply_fields(m));
+    fields.push((
+        "service-kind".to_string(),
+        Value::String(SharedString::from(service_kind_token(&m.body))),
+    ));
+    fields.push((
+        "service-target".to_string(),
+        Value::String(SharedString::from(service_target(&m.body))),
+    ));
 
     Value::Struct(Struct::from_iter(fields))
 }

@@ -141,7 +141,7 @@ msgctxt "MessageInput"
 msgid "Send"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/message-bubble.slint:249
+#: ui/screens/chat/components/timeline/message-bubble.slint:256
 msgctxt "MessageBubble"
 msgid "Reply"
 msgstr ""
@@ -164,6 +164,116 @@ msgstr ""
 #: ui/screens/chat/components/timeline/messages/image-message.slint:45
 msgctxt "ImageMessage"
 msgid "Image"
+msgstr ""
+
+#: ui/screens/chat/components/timeline/messages/service-message.slint:7
+msgctxt "ServiceLabel"
+msgid "{} joined the room"
+msgstr ""
+
+#: ui/screens/chat/components/timeline/messages/service-message.slint:10
+msgctxt "ServiceLabel"
+msgid "{} left the room"
+msgstr ""
+
+#: ui/screens/chat/components/timeline/messages/service-message.slint:13
+msgctxt "ServiceLabel"
+msgid "{} invited {}"
+msgstr ""
+
+#: ui/screens/chat/components/timeline/messages/service-message.slint:16
+msgctxt "ServiceLabel"
+msgid "{} accepted the invitation"
+msgstr ""
+
+#: ui/screens/chat/components/timeline/messages/service-message.slint:19
+msgctxt "ServiceLabel"
+msgid "{} rejected the invitation"
+msgstr ""
+
+#: ui/screens/chat/components/timeline/messages/service-message.slint:22
+msgctxt "ServiceLabel"
+msgid "{} revoked the invitation for {}"
+msgstr ""
+
+#: ui/screens/chat/components/timeline/messages/service-message.slint:25
+msgctxt "ServiceLabel"
+msgid "{} removed {}"
+msgstr ""
+
+#: ui/screens/chat/components/timeline/messages/service-message.slint:28
+msgctxt "ServiceLabel"
+msgid "{} banned {}"
+msgstr ""
+
+#: ui/screens/chat/components/timeline/messages/service-message.slint:31
+msgctxt "ServiceLabel"
+msgid "{} unbanned {}"
+msgstr ""
+
+#: ui/screens/chat/components/timeline/messages/service-message.slint:34
+msgctxt "ServiceLabel"
+msgid "{} requested to join"
+msgstr ""
+
+#: ui/screens/chat/components/timeline/messages/service-message.slint:37
+msgctxt "ServiceLabel"
+msgid "{} allowed {} to join"
+msgstr ""
+
+#: ui/screens/chat/components/timeline/messages/service-message.slint:40
+msgctxt "ServiceLabel"
+msgid "{} set their name to {}"
+msgstr ""
+
+#: ui/screens/chat/components/timeline/messages/service-message.slint:43
+msgctxt "ServiceLabel"
+msgid "{} changed their name to {}"
+msgstr ""
+
+#: ui/screens/chat/components/timeline/messages/service-message.slint:46
+msgctxt "ServiceLabel"
+msgid "{} removed their name"
+msgstr ""
+
+#: ui/screens/chat/components/timeline/messages/service-message.slint:49
+msgctxt "ServiceLabel"
+msgid "{} changed their avatar"
+msgstr ""
+
+#: ui/screens/chat/components/timeline/messages/service-message.slint:52
+msgctxt "ServiceLabel"
+msgid "{} changed the room name to {}"
+msgstr ""
+
+#: ui/screens/chat/components/timeline/messages/service-message.slint:55
+msgctxt "ServiceLabel"
+msgid "{} changed the room topic"
+msgstr ""
+
+#: ui/screens/chat/components/timeline/messages/service-message.slint:58
+msgctxt "ServiceLabel"
+msgid "{} changed the room avatar"
+msgstr ""
+
+#: ui/screens/chat/components/timeline/messages/service-message.slint:61
+msgctxt "ServiceLabel"
+msgid "{} created the room"
+msgstr ""
+
+#: ui/screens/chat/components/timeline/messages/service-message.slint:64
+msgctxt "ServiceLabel"
+msgid "{} enabled end-to-end encryption"
+msgstr ""
+
+#: ui/screens/chat/components/timeline/messages/service-message.slint:67
+msgctxt "ServiceLabel"
+msgid "{} started a call"
+msgstr ""
+
+#: ui/screens/chat/components/timeline/messages/service-message.slint:70
+msgctxt "ServiceLabel"
+msgid "{} is calling"
 msgstr ""
 
 #: ui/screens/chat/components/timeline/messages/utd-message.slint:23
