@@ -19,11 +19,10 @@ fn apply_append(
     values: Vec<Arc<TimelineItem>>,
     ctx: &TimelineContext<'_>,
 ) -> Option<TimelinePatch> {
-    let mut msgs: Vec<TimelineMessage> = values
+    let msgs: Vec<TimelineMessage> = values
         .iter()
         .filter_map(|item| convert_timeline_item(item, ctx))
         .collect();
-    msgs.sort_by_key(|m| m.timestamp);
     items.extend(values);
     if msgs.is_empty() {
         return None;
