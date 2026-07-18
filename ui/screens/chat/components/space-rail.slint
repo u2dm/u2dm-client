@@ -3,6 +3,7 @@ import { Icon, IconDisplay, IconSet } from "@lucide";
 
 import { SpaceEntry } from "./types.slint";
 import { TileGlyph, CountBadge } from "./tile.slint";
+import { ClickArea, FocusRing } from "../../../components/a11y.slint";
 
 component SpaceTile inherits Rectangle {
     in property <string> label;
@@ -10,7 +11,6 @@ component SpaceTile inherits Rectangle {
     in property <bool> has-avatar;
     in property <image> avatar;
     in property <bool> has-icon;
-    in property <Icon> icon;
     in property <int> unread;
     in property <int> mentions;
     in property <bool> selected;
@@ -18,6 +18,8 @@ component SpaceTile inherits Rectangle {
     in property <bool> elevated;
     in property <bool> hidden;
     in property <bool> interactive: true;
+    in property <Icon> icon;
+    in property <int> index: -1;
 
     callback clicked();
     callback pressed-down();
@@ -25,6 +27,32 @@ component SpaceTile inherits Rectangle {
     callback moved(length);
 
     height: 68px;
+
+    accessible-role: list-item;
+    accessible-enabled: root.interactive;
+    accessible-label: root.label;
+    accessible-item-selectable: true;
+    accessible-item-selected: root.selected;
+    accessible-item-index: root.index;
+    accessible-action-default => {
+        if (root.interactive) {
+            root.clicked();
+        }
+    }
+    forward-focus: fs;
+
+    fs := FocusScope {
+        x: 0;
+        width: 0;
+        enabled: root.interactive;
+        key-pressed(event) => {
+            if (root.interactive && (event.text == " " || event.text == "\n")) {
+                root.clicked();
+                return accept;
+            }
+            return reject;
+        }
+    }
 
     content := Rectangle {
         width: 100%;
@@ -119,6 +147,14 @@ component SpaceTile inherits Rectangle {
             root.clicked();
         }
     }
+
+    if fs.has-focus: FocusRing {
+        x: 4px;
+        y: 2px;
+        width: parent.width - 8px;
+        height: parent.height - 4px;
+        border-radius: 13px;
+    }
 }
 
 export component SpaceRail inherits Rectangle {
@@ -197,14 +233,13 @@ export component SpaceRail inherits Rectangle {
             : root.drag-rank(idx) + 1;
     }
 
-    menu-touch := TouchArea {
+    menu-touch := ClickArea {
         x: 0;
         y: 0;
         width: root.width;
         height: root.menu-height;
-        mouse-cursor: pointer;
-        accessible-role: button;
-        accessible-label: @tr("Menu");
+        ring-radius: 10px;
+        label: @tr("Menu");
         clicked => {
             root.menu-clicked();
         }
@@ -233,6 +268,9 @@ export component SpaceRail inherits Rectangle {
         interactive: !root.dragging;
         viewport-width: root.width;
         viewport-height: (root.spaces.length + 1) * root.row-height;
+        accessible-role: list;
+        accessible-label: @tr("Spaces");
+        accessible-item-count: root.spaces.length + 1;
 
         SpaceTile {
             x: 0;
@@ -240,6 +278,7 @@ export component SpaceRail inherits Rectangle {
             width: root.width;
             height: root.row-height;
             draggable: false;
+            index: 0;
             label: @tr("All Rooms");
             has-icon: true;
             icon: IconSet.MessagesSquare;
@@ -261,6 +300,7 @@ export component SpaceRail inherits Rectangle {
             width: root.width;
             height: root.row-height;
             draggable: true;
+            index: idx + 1;
             hidden: root.dragging && idx == root.drag-from;
             label: space.name;
             initial: space.initial;

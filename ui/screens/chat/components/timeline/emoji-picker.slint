@@ -3,6 +3,7 @@ import { IconDisplay, IconSet, Icon } from "@lucide";
 
 import { EmojiEntry, EmojiGroup, EmojiInsert } from "../types.slint";
 import { Fonts } from "../../../../theme.slint";
+import { ClickArea } from "../../../../components/a11y.slint";
 
 export global EmojiStore {
     in property <[EmojiGroup]> groups: [];
@@ -15,6 +16,7 @@ export global EmojiStore {
 component ToneSwatch inherits Rectangle {
     in property <color> swatch;
     in property <bool> selected;
+    in property <string> label;
     callback clicked();
 
     width: 18px;
@@ -26,8 +28,9 @@ component ToneSwatch inherits Rectangle {
         ? Palette.accent-background
         : Palette.foreground.transparentize(0.7);
 
-    TouchArea {
-        mouse-cursor: pointer;
+    ClickArea {
+        label: root.label;
+        ring-radius: 11px;
         clicked => {
             root.clicked();
         }
@@ -37,6 +40,7 @@ component ToneSwatch inherits Rectangle {
 component CategoryTab inherits Rectangle {
     in property <Icon> icon;
     in property <bool> selected;
+    in property <string> label;
     callback clicked();
 
     horizontal-stretch: 1;
@@ -46,8 +50,9 @@ component CategoryTab inherits Rectangle {
         ? Palette.accent-background.transparentize(0.82)
         : (touch.has-hover ? Palette.foreground.transparentize(0.92) : transparent);
 
-    touch := TouchArea {
-        mouse-cursor: pointer;
+    touch := ClickArea {
+        label: root.label;
+        ring-radius: 6px;
         clicked => {
             root.clicked();
         }
@@ -87,6 +92,17 @@ export component EmojiPicker inherits Rectangle {
         IconSet.Lightbulb,
         IconSet.Hash,
         IconSet.Flag,
+    ];
+    property <[string]> category-labels: [
+        @tr("Smileys & emotion"),
+        @tr("People & body"),
+        @tr("Animals & nature"),
+        @tr("Food & drink"),
+        @tr("Travel & places"),
+        @tr("Activities"),
+        @tr("Objects"),
+        @tr("Symbols"),
+        @tr("Flags"),
     ];
     property <[color]> tone-colors: [
         #FFCC4D,
@@ -128,6 +144,7 @@ export component EmojiPicker inherits Rectangle {
                 for swatch[idx] in root.tone-colors: ToneSwatch {
                     swatch: swatch;
                     selected: idx == EmojiStore.tone;
+                    label: @tr("Skin tone {}", idx + 1);
                     clicked => {
                         EmojiStore.tone = idx;
                     }
@@ -141,6 +158,7 @@ export component EmojiPicker inherits Rectangle {
             for icon[idx] in root.category-icons: CategoryTab {
                 icon: icon;
                 selected: idx == root.category;
+                label: root.category-labels[idx];
                 clicked => {
                     root.category = idx;
                 }
@@ -153,14 +171,13 @@ export component EmojiPicker inherits Rectangle {
             grid := Flickable {
                 viewport-height: max(self.height, ceil(root.current-items.length / root.columns) * root.cell);
 
-                for entry[idx] in root.current-items: TouchArea {
+                for entry[idx] in root.current-items: ClickArea {
                     x: mod(idx, root.columns) * root.cell;
                     y: floor(idx / root.columns) * root.cell;
                     width: root.cell;
                     height: root.cell;
-                    mouse-cursor: pointer;
-                    accessible-role: button;
-                    accessible-label: entry.name;
+                    ring-radius: 6px;
+                    label: entry.name;
                     clicked => {
                         root.picked(entry.tones.length > 0 ? entry.tones[EmojiStore.tone] : entry.base);
                     }

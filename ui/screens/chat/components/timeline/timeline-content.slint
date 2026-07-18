@@ -10,6 +10,7 @@ import {
 } from "../types.slint";
 
 import { MessageBubble } from "./message-bubble.slint";
+import { ClickArea } from "../../../../components/a11y.slint";
 
 export component TimelineContent inherits Rectangle {
     in property <string> room-id: "";
@@ -172,13 +173,20 @@ export component TimelineContent inherits Rectangle {
         }
     }
 
-    if !flickable.auto-scroll && root.timeline.length > 0: Rectangle {
+    if !flickable.auto-scroll && root.timeline.length > 0: ClickArea {
         x: parent.width - self.width - 16px;
         y: parent.height - self.height - 16px;
         width: 40px;
         height: 40px;
         border-radius: 20px;
+        ring-radius: 20px;
         background: Palette.alternate-background;
+        label: @tr("Jump to latest messages");
+        clicked => {
+            flickable.scroll-to-bottom();
+            flickable.auto-scroll = true;
+            root.jump-to-latest();
+        }
 
         IconDisplay {
             x: (parent.width - self.width) / 2;
@@ -186,15 +194,6 @@ export component TimelineContent inherits Rectangle {
             icon: IconSet.ChevronDown;
             size: 22px;
             stroke: Palette.alternate-foreground;
-        }
-
-        TouchArea {
-            mouse-cursor: pointer;
-            clicked => {
-                flickable.scroll-to-bottom();
-                flickable.auto-scroll = true;
-                root.jump-to-latest();
-            }
         }
 
         if root.new-messages-count > 0: Rectangle {

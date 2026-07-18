@@ -9,6 +9,7 @@ import { SubspaceRail } from "./subspace-rail.slint";
 import { MessagePreview } from "./message-preview.slint";
 import { ServiceLabel } from "./timeline/messages/service-message.slint";
 import { Avatar } from "../../../components/avatar.slint";
+import { ListItemArea } from "../../../components/a11y.slint";
 import { Avatars, Fonts } from "../../../theme.slint";
 
 export component Sidebar inherits Rectangle {
@@ -110,26 +111,32 @@ export component Sidebar inherits Rectangle {
                     viewport-height: root.rooms.length * root.row-height;
 
                     VerticalLayout {
-                    for room in root.rooms: Rectangle {
+                    accessible-role: list;
+                    accessible-label: @tr("Rooms");
+                    accessible-item-count: root.rooms.length;
+                    for room[idx] in root.rooms: ListItemArea {
                         height: root.row-height;
                         clip: true;
+                        index: idx;
+                        selected: room.id == root.selected-room-id;
+                        label: room.unread > 0
+                            ? @tr("{}, {} unread", room.name, room.unread)
+                            : room.name;
+                        ring-inset: 2px;
                         background: room.id == root.selected-room-id
                             ? Palette.background
-                            : (touch.has-hover ? Palette.background.transparentize(0.5) : transparent);
+                            : (self.has-hover ? Palette.background.transparentize(0.5) : transparent);
+                        clicked => {
+                            root.selected-room-name = room.name;
+                            root.selected-room-members = room.members;
+                            root.selected-room-id = room.id;
+                            root.select-room(room.id);
+                        }
 
                         property <string> sender-label: room.last-message-is-own
                             ? @tr("You")
                             : room.last-message-sender;
                         property <bool> is-service: room.last-message-service-kind != "";
-
-                        touch := TouchArea {
-                            clicked => {
-                                root.selected-room-name = room.name;
-                                root.selected-room-members = room.members;
-                                root.selected-room-id = room.id;
-                                root.select-room(room.id);
-                            }
-                        }
 
                         HorizontalLayout {
                             padding-left: 12px;

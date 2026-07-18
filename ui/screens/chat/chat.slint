@@ -10,6 +10,7 @@ import { IconDisplay, IconSet } from "@lucide";
 import { Sidebar } from "components/sidebar.slint";
 import { Drawer } from "components/drawer.slint";
 import { TimelineView } from "components/timeline/timeline-view.slint";
+import { ClickArea } from "../../components/a11y.slint";
 
 export component ChatScreen inherits Rectangle {
     in property <string> user-id: "";
@@ -169,10 +170,11 @@ export component ChatScreen inherits Rectangle {
                 vertical-alignment: center;
             }
 
-            TouchArea {
+            ClickArea {
                 width: 24px;
                 height: 24px;
-                mouse-cursor: pointer;
+                ring-radius: 6px;
+                label: @tr("Dismiss");
                 clicked => {
                     root.dismiss-toast();
                 }

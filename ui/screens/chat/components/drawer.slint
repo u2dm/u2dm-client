@@ -2,6 +2,7 @@ import { Palette } from "std-widgets.slint";
 import { IconDisplay, IconSet, Icon } from "@lucide";
 
 import { Avatar } from "../../../components/avatar.slint";
+import { ClickArea } from "../../../components/a11y.slint";
 
 component DrawerRow inherits Rectangle {
     in property <Icon> icon;
@@ -13,8 +14,9 @@ component DrawerRow inherits Rectangle {
     height: 48px;
     background: touch.has-hover ? Palette.foreground.transparentize(0.93) : transparent;
 
-    touch := TouchArea {
-        mouse-cursor: pointer;
+    touch := ClickArea {
+        label: root.label;
+        ring-radius: 0;
         clicked => {
             root.clicked();
         }
@@ -150,12 +152,13 @@ export component Drawer inherits Rectangle {
                 border-color: Palette.accent-background;
             }
 
-            expand-touch := TouchArea {
+            expand-touch := ClickArea {
                 x: parent.width - 52px;
                 y: 20px;
                 width: 40px;
                 height: 40px;
-                mouse-cursor: pointer;
+                ring-radius: 8px;
+                label: @tr("Toggle account list");
                 clicked => {
                     root.accounts-expanded = !root.accounts-expanded;
                 }

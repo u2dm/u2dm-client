@@ -4,6 +4,7 @@ import { Icon, IconSet } from "@lucide";
 import { SpaceEntry } from "./types.slint";
 import { TileGlyph, CountBadge } from "./tile.slint";
 import { Fonts } from "../../../theme.slint";
+import { FocusRing } from "../../../components/a11y.slint";
 
 component SubspaceTile inherits Rectangle {
     in property <string> label;
@@ -15,10 +16,33 @@ component SubspaceTile inherits Rectangle {
     in property <int> unread;
     in property <int> mentions;
     in property <bool> selected;
+    in property <int> index: -1;
 
     callback clicked();
 
     height: 68px;
+
+    accessible-role: list-item;
+    accessible-label: root.label;
+    accessible-item-selectable: true;
+    accessible-item-selected: root.selected;
+    accessible-item-index: root.index;
+    accessible-action-default => {
+        root.clicked();
+    }
+    forward-focus: fs;
+
+    fs := FocusScope {
+        x: 0;
+        width: 0;
+        key-pressed(event) => {
+            if (event.text == " " || event.text == "\n") {
+                root.clicked();
+                return accept;
+            }
+            return reject;
+        }
+    }
 
     highlight := Rectangle {
         x: 4px;
@@ -83,6 +107,14 @@ component SubspaceTile inherits Rectangle {
             root.clicked();
         }
     }
+
+    if fs.has-focus: FocusRing {
+        x: 4px;
+        y: 2px;
+        width: parent.width - 8px;
+        height: parent.height - 4px;
+        border-radius: 10px;
+    }
 }
 
 export component SubspaceRail inherits Rectangle {
@@ -111,9 +143,13 @@ export component SubspaceRail inherits Rectangle {
         VerticalLayout {
             alignment: start;
             padding-top: root.top-padding;
+            accessible-role: list;
+            accessible-label: @tr("Topics");
+            accessible-item-count: root.subspaces.length + 1;
 
             SubspaceTile {
                 height: root.row-height;
+                index: 0;
                 label: @tr("All");
                 has-icon: true;
                 icon: IconSet.MessagesSquare;
@@ -124,8 +160,9 @@ export component SubspaceRail inherits Rectangle {
                 }
             }
 
-            for subspace in root.subspaces: SubspaceTile {
+            for subspace[idx] in root.subspaces: SubspaceTile {
                 height: root.row-height;
+                index: idx + 1;
                 label: subspace.name;
                 initial: subspace.initial;
                 has-avatar: subspace.has-avatar;

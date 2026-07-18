@@ -6,6 +6,7 @@ import { IconDisplay, IconSet } from "@lucide";
 import { SendMessageRequest, EmojiInsert } from "../types.slint";
 import { EmojiPicker, EmojiStore } from "./emoji-picker.slint";
 import { Fonts } from "../../../../theme.slint";
+import { ClickArea } from "../../../../components/a11y.slint";
 
 export component MessageInput inherits Rectangle {
     in property <string> room-id;
@@ -110,11 +111,10 @@ export component MessageInput inherits Rectangle {
                     }
                 }
 
-                cancel-reply-touch := TouchArea {
+                cancel-reply-touch := ClickArea {
                     width: 28px;
-                    mouse-cursor: pointer;
-                    accessible-role: button;
-                    accessible-label: @tr("Cancel reply");
+                    ring-radius: 8px;
+                    label: @tr("Cancel reply");
                     clicked => {
                         root.clear-reply();
                     }
@@ -168,11 +168,10 @@ export component MessageInput inherits Rectangle {
             }
         }
 
-        emoji-touch := TouchArea {
+        emoji-touch := ClickArea {
             width: 44px;
-            mouse-cursor: pointer;
-            accessible-role: button;
-            accessible-label: @tr("Emoji");
+            ring-radius: 8px;
+            label: @tr("Emoji");
             clicked => {
                 root.picker-open = !root.picker-open;
             }
@@ -188,11 +187,11 @@ export component MessageInput inherits Rectangle {
             }
         }
 
-        send-touch := TouchArea {
+        send-touch := ClickArea {
             width: 44px;
-            mouse-cursor: root.message != "" ? pointer : default;
-            accessible-role: button;
-            accessible-label: @tr("Send");
+            ring-radius: 8px;
+            enabled: root.message != "";
+            label: @tr("Send");
             clicked => {
                 root.submit();
             }

@@ -1,5 +1,6 @@
 import { Palette, Spinner } from "std-widgets.slint";
 import { IconDisplay, IconSet } from "@lucide";
+import { ClickArea } from "../../../../../components/a11y.slint";
 
 export component ImageMessage inherits VerticalLayout {
     in property <image> thumbnail;
@@ -15,9 +16,10 @@ export component ImageMessage inherits VerticalLayout {
 
     callback open-media(string);
 
-    if has-thumbnail: TouchArea {
+    if has-thumbnail: ClickArea {
         enabled: root.event-id != "";
-        mouse-cursor: self.enabled ? pointer : default;
+        label: root.body != "" ? @tr("Open image: {}", root.body) : @tr("Open image");
+        ring-radius: 4px;
         width: thumb-img.width;
         height: thumb-img.height;
         clicked => {

@@ -16,6 +16,7 @@ import { FileMessage } from "./messages/file-message.slint";
 import { UtdMessage } from "./messages/utd-message.slint";
 import { UnsupportedMessage } from "./messages/unsupported-message.slint";
 import { Avatar } from "../../../../components/avatar.slint";
+import { ClickArea } from "../../../../components/a11y.slint";
 import { Avatars, Fonts } from "../../../../theme.slint";
 
 export component MessageBubble inherits VerticalLayout {
@@ -202,13 +203,15 @@ export component MessageBubble inherits VerticalLayout {
                 }
             }
 
-            reply-btn := TouchArea {
+            reply-btn := ClickArea {
                 x: parent.width - self.width - 6px;
                 y: 4px;
                 width: reply-pill.width;
                 height: reply-pill.height;
-                mouse-cursor: pointer;
-                visible: (hover-bg.has-hover || self.has-hover) && msg.event-id != "";
+                ring-radius: 11px;
+                label: @tr("Reply to {}", msg.sender);
+                enabled: msg.event-id != "";
+                opacity: (hover-bg.has-hover || self.has-hover || self.has-focus) && msg.event-id != "" ? 1 : 0;
                 clicked => {
                     root.reply(msg.event-id, msg.sender, MessagePreview.label(msg.preview-kind, msg.body));
                 }
