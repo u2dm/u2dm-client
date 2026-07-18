@@ -29,6 +29,10 @@ fn extract_sender_profile(event: &EventTimelineItem) -> (Option<String>, Option<
     }
 }
 
+fn event_id_from_str(event_id_str: String) -> Option<EventId> {
+    (!event_id_str.is_empty()).then_some(EventId(event_id_str))
+}
+
 fn build_utd_message(
     unique_id: String,
     event: &EventTimelineItem,
@@ -42,7 +46,7 @@ fn build_utd_message(
     let is_own = ctx.own_user_id.is_some_and(|uid| uid == sender_str);
     TimelineMessage {
         unique_id,
-        event_id: EventId(event_id_str),
+        event_id: event_id_from_str(event_id_str),
         sender_pronouns: ctx.pronouns.resolved(&sender_str),
         sender: sender_str,
         sender_display_name,
@@ -68,7 +72,7 @@ fn build_service_message(
     let is_own = ctx.own_user_id.is_some_and(|uid| uid == sender_str);
     TimelineMessage {
         unique_id,
-        event_id: EventId(event_id_str),
+        event_id: event_id_from_str(event_id_str),
         sender_pronouns: Vec::new(),
         sender: sender_str,
         sender_display_name,
@@ -318,7 +322,7 @@ pub(super) fn convert_event_item_with_uid(
 
     Some(TimelineMessage {
         unique_id,
-        event_id: EventId(event_id_str),
+        event_id: event_id_from_str(event_id_str),
         sender_pronouns: ctx.pronouns.resolved(&sender_str),
         sender: sender_str,
         sender_display_name,

@@ -239,7 +239,7 @@ impl MessageDto {
     pub fn to_message(&self, own_user: &str, now_ms: u64) -> TimelineMessage {
         TimelineMessage {
             unique_id: self.id.clone(),
-            event_id: EventId(self.id.clone()),
+            event_id: Some(EventId(self.id.clone())),
             sender_pronouns: super::data::pronouns(&self.sender),
             sender: self.sender.clone(),
             sender_display_name: Some(self.name.clone()),

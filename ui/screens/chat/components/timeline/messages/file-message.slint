@@ -25,6 +25,7 @@ export component FileMessage inherits HorizontalLayout {
 
     Button {
         text: @tr("Save");
+        enabled: root.event-id != "";
         clicked => {
             root.save-file({ event-id: root.event-id, filename: root.body });
         }

@@ -51,7 +51,7 @@ fn spawn_enrichment(ctx: &TimelineContext<'_>, msg: &TimelineMessage) {
         }
         drop(tx.send(TimelineUpdate::Patch(Box::new(
             TimelinePatch::UpdateMedia {
-                event_id: msg.event_id.clone(),
+                unique_id: msg.unique_id.clone(),
                 message: msg,
             },
         ))));

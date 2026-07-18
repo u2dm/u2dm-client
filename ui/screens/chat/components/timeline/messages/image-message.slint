@@ -16,7 +16,8 @@ export component ImageMessage inherits VerticalLayout {
     callback open-media(string);
 
     if has-thumbnail: TouchArea {
-        mouse-cursor: pointer;
+        enabled: root.event-id != "";
+        mouse-cursor: self.enabled ? pointer : default;
         width: thumb-img.width;
         height: thumb-img.height;
         clicked => {

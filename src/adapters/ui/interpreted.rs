@@ -568,7 +568,7 @@ impl SlintUiAdapter {
 
         set_animation_tick(|| {
             if let Some(timeline) = TIMELINE_MODEL.with(|cell| cell.borrow().clone()) {
-                advance_animations(&timeline, &event_id_from_value, &|value, frame| {
+                advance_animations(&timeline, &entry_id_from_value, &|value, frame| {
                     if let Value::Struct(entry) = value {
                         entry.set_field("thumbnail".to_string(), Value::Image(frame));
                     }
@@ -599,7 +599,7 @@ impl SlintUiAdapter {
                             &|s| space_to_value(s, media_cache.as_ref()),
                             &|v| room_id_from_value(v).map_or("", SharedString::as_str),
                             &|v| room_id_from_value(v).map_or("", SharedString::as_str),
-                            &event_id_from_value,
+                            &entry_id_from_value,
                         );
                     }
                 })
@@ -750,7 +750,9 @@ fn message_to_value(m: &TimelineMessage, media: &dyn MediaCache) -> Value {
         ),
         (
             "event-id".to_string(),
-            Value::String(SharedString::from(&m.event_id.0)),
+            Value::String(SharedString::from(
+                m.event_id.as_ref().map_or("", |e| e.0.as_str()),
+            )),
         ),
     ];
 
@@ -808,15 +810,17 @@ fn image_fields(m: &TimelineMessage, media: &dyn MediaCache) -> Vec<(String, Val
     if let MessageBody::Image { meta, .. } = &m.body {
         image_width = meta.width.unwrap_or(0).cast_signed();
         image_height = meta.height.unwrap_or(0).cast_signed();
-        if let Some(thumb_path) = media.thumbnail_path(&m.event_id.0) {
-            if let Some(img) = load_thumbnail(&thumb_path, &m.event_id.0) {
-                thumbnail = Some(img);
-                has_thumbnail = true;
+        if let Some(event_id) = m.event_id.as_ref() {
+            if let Some(thumb_path) = media.thumbnail_path(&event_id.0) {
+                if let Some(img) = load_thumbnail(&thumb_path, &m.unique_id) {
+                    thumbnail = Some(img);
+                    has_thumbnail = true;
+                } else {
+                    media_failed = true;
+                }
             } else {
-                media_failed = true;
+                media_failed = media.thumbnail_failed(&event_id.0);
             }
-        } else {
-            media_failed = media.thumbnail_failed(&m.event_id.0);
         }
     }
 
@@ -981,9 +985,9 @@ fn space_to_value(s: &Space, media: &dyn MediaCache) -> Value {
     Value::Struct(Struct::from_iter(fields))
 }
 
-fn event_id_from_value(val: &Value) -> String {
+fn entry_id_from_value(val: &Value) -> String {
     if let Value::Struct(s) = val
-        && let Some(Value::String(id)) = s.get_field("event-id")
+        && let Some(Value::String(id)) = s.get_field("unique-id")
     {
         id.to_string()
     } else {

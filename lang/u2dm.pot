@@ -156,17 +156,17 @@ msgctxt "TimelineContent"
 msgid "Loading newer messages..."
 msgstr ""
 
-#: ui/screens/chat/components/timeline/messages/image-message.slint:68
+#: ui/screens/chat/components/timeline/messages/image-message.slint:69
 msgctxt "ImageMessage"
 msgid "Image unavailable"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/messages/image-message.slint:77
+#: ui/screens/chat/components/timeline/messages/image-message.slint:78
 msgctxt "ImageMessage"
 msgid "Image: {}"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/messages/image-message.slint:77
+#: ui/screens/chat/components/timeline/messages/image-message.slint:78
 msgctxt "ImageMessage"
 msgid "Image"
 msgstr ""

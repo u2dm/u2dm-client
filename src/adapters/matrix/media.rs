@@ -164,8 +164,10 @@ pub(super) fn needs_media_download(
     failed: &StdMutex<HashSet<String>>,
 ) -> bool {
     let needs_thumbnail = matches!(&msg.body, MessageBody::Image { .. })
-        && lookup_materialized(materialized, &thumb_key(&msg.event_id.0)).is_none()
-        && !is_media_failed(failed, &msg.event_id.0);
+        && msg.event_id.as_ref().is_some_and(|event_id| {
+            lookup_materialized(materialized, &thumb_key(&event_id.0)).is_none()
+                && !is_media_failed(failed, &event_id.0)
+        });
     let needs_avatar = msg.sender_avatar_url.is_some()
         && lookup_materialized(materialized, &avatar_key(&msg.sender)).is_none();
     needs_thumbnail || needs_avatar
@@ -179,8 +181,10 @@ pub(super) async fn enrich_message(
     failed: &StdMutex<HashSet<String>>,
     msg: &TimelineMessage,
 ) {
-    if let MessageBody::Image { meta, .. } = &msg.body {
-        let event_id = &msg.event_id.0;
+    if let MessageBody::Image { meta, .. } = &msg.body
+        && let Some(event_id) = msg.event_id.as_ref()
+    {
+        let event_id = &event_id.0;
         let cache_key = thumb_key(event_id);
 
         if lookup_materialized(materialized, &cache_key).is_none() {

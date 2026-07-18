@@ -70,7 +70,7 @@ pub fn own_message(sequence: u64, body: &str, reply: Option<ReplyInfo>) -> Timel
     let id = format!("demo-sent-{sequence}");
     TimelineMessage {
         unique_id: id.clone(),
-        event_id: EventId(id),
+        event_id: Some(EventId(id)),
         sender_pronouns: Vec::new(),
         sender: own_user().to_owned(),
         sender_display_name: Some("You".to_owned()),
@@ -129,7 +129,7 @@ fn synthesized_message(dto: &RoomDto, room: &Room) -> TimelineMessage {
 
     TimelineMessage {
         unique_id: id.clone(),
-        event_id: EventId(id),
+        event_id: Some(EventId(id)),
         sender_pronouns: pronouns(&sender),
         sender,
         sender_display_name: Some(display_name),

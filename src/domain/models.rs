@@ -291,7 +291,7 @@ pub struct ReplyInfo {
 #[allow(dead_code)]
 pub struct TimelineMessage {
     pub unique_id: String,
-    pub event_id: EventId,
+    pub event_id: Option<EventId>,
     pub sender: String,
     pub sender_display_name: Option<String>,
     pub sender_avatar_url: Option<String>,
@@ -306,6 +306,7 @@ pub struct TimelineMessage {
 impl TimelineMessage {
     pub fn visually_eq(&self, other: &Self) -> bool {
         self.unique_id == other.unique_id
+            && self.event_id == other.event_id
             && self.sender == other.sender
             && self.sender_display_name == other.sender_display_name
             && self.sender_avatar_url == other.sender_avatar_url
@@ -343,7 +344,7 @@ pub enum TimelinePatch {
     Clear,
     Batch(Vec<TimelinePatch>),
     UpdateMedia {
-        event_id: EventId,
+        unique_id: String,
         message: TimelineMessage,
     },
 }

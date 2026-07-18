@@ -177,7 +177,7 @@ impl MatrixPort for DemoMatrix {
 fn reply_info(messages: &[TimelineMessage], event_id: &str) -> Option<ReplyInfo> {
     messages
         .iter()
-        .find(|message| message.event_id.0 == event_id)
+        .find(|message| message.event_id.as_ref().is_some_and(|id| id.0 == event_id))
         .map(|message| ReplyInfo {
             sender: data::sender_label(message),
             kind: message.body.preview_kind(),

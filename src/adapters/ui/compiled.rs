@@ -384,7 +384,7 @@ impl SlintUiAdapter {
             if let Some(timeline) = TIMELINE_MODEL.with(|cell| cell.borrow().clone()) {
                 advance_animations(
                     &timeline,
-                    &|e: &MessageEntry| e.event_id.to_string(),
+                    &|e: &MessageEntry| e.unique_id.to_string(),
                     &|e: &mut MessageEntry, frame| e.thumbnail = frame,
                 );
             }
@@ -416,7 +416,7 @@ impl SlintUiAdapter {
                             &|s| space_to_entry(s, media_cache.as_ref()),
                             &|e| e.id.as_str(),
                             &|e: &SpaceEntry| e.id.as_str(),
-                            &|e: &MessageEntry| e.event_id.to_string(),
+                            &|e: &MessageEntry| e.unique_id.to_string(),
                         );
                     }
                 })
@@ -500,7 +500,7 @@ fn message_to_entry(m: &TimelineMessage, media: &dyn MediaCache) -> MessageEntry
         message_type: SharedString::from(message_type_token(&m.body)),
         preview_kind: SharedString::from(message_preview_kind_token(m.body.preview_kind())),
         unsupported_kind: SharedString::from(unsupported_kind(&m.body)),
-        event_id: SharedString::from(&m.event_id.0),
+        event_id: SharedString::from(m.event_id.as_ref().map_or("", |e| e.0.as_str())),
         sender_initial: SharedString::from(avatar_initials(message_sender_label(m))),
         color_index: avatar_color_index(&m.sender),
         is_own: m.is_own,
@@ -521,15 +521,17 @@ fn message_to_entry(m: &TimelineMessage, media: &dyn MediaCache) -> MessageEntry
     if let MessageBody::Image { meta, .. } = &m.body {
         entry.image_width = meta.width.unwrap_or(0).cast_signed();
         entry.image_height = meta.height.unwrap_or(0).cast_signed();
-        if let Some(thumb_path) = media.thumbnail_path(&m.event_id.0) {
-            if let Some(img) = load_thumbnail(&thumb_path, &m.event_id.0) {
-                entry.thumbnail = img;
-                entry.has_thumbnail = true;
+        if let Some(event_id) = m.event_id.as_ref() {
+            if let Some(thumb_path) = media.thumbnail_path(&event_id.0) {
+                if let Some(img) = load_thumbnail(&thumb_path, &m.unique_id) {
+                    entry.thumbnail = img;
+                    entry.has_thumbnail = true;
+                } else {
+                    entry.media_failed = true;
+                }
             } else {
-                entry.media_failed = true;
+                entry.media_failed = media.thumbnail_failed(&event_id.0);
             }
-        } else {
-            entry.media_failed = media.thumbnail_failed(&m.event_id.0);
         }
     }
 

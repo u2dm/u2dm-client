@@ -163,7 +163,7 @@ fn animation_cached(path: &Path) -> Option<Rc<Animation>> {
     decoded
 }
 
-pub fn load_thumbnail(path: &Path, event_id: &str) -> Option<Image> {
+pub fn load_thumbnail(path: &Path, playback_key: &str) -> Option<Image> {
     if !is_animatable(path) {
         return load_image_cached(path);
     }
@@ -173,7 +173,7 @@ pub fn load_thumbnail(path: &Path, event_id: &str) -> Option<Image> {
 
     let (frame, is_new) = PLAYBACKS.with_borrow_mut(|playbacks| {
         let mut is_new = false;
-        let playback = playbacks.entry(event_id.to_owned()).or_insert_with(|| {
+        let playback = playbacks.entry(playback_key.to_owned()).or_insert_with(|| {
             is_new = true;
             Playback {
                 path: path.to_path_buf(),
@@ -227,7 +227,7 @@ fn forget_animations_outside(live_event_ids: &HashSet<String>) {
 
 pub fn advance_animations<T: Clone + 'static>(
     timeline_model: &VecModel<T>,
-    entry_event_id: &dyn Fn(&T) -> String,
+    entry_id: &dyn Fn(&T) -> String,
     set_thumbnail: &dyn Fn(&mut T, Image),
 ) {
     let due = due_frames(Instant::now());
@@ -240,7 +240,7 @@ pub fn advance_animations<T: Clone + 'static>(
         let Some(entry) = timeline_model.row_data(row) else {
             continue;
         };
-        let event_id = entry_event_id(&entry);
+        let event_id = entry_id(&entry);
         if let Some((_, frame)) = due.iter().find(|(id, _)| *id == event_id) {
             let mut updated = entry;
             set_thumbnail(&mut updated, frame.clone());
@@ -647,7 +647,7 @@ pub fn dispatch_ui_event<T, R, S>(
     convert_space: &dyn Fn(&Space) -> S,
     room_entry_id: &dyn Fn(&R) -> &str,
     space_entry_id: &dyn Fn(&S) -> &str,
-    message_entry_event_id: &dyn Fn(&T) -> String,
+    message_entry_id: &dyn Fn(&T) -> String,
 ) where
     T: Clone + 'static,
     R: Clone + PartialEq + 'static,
@@ -696,12 +696,7 @@ pub fn dispatch_ui_event<T, R, S>(
             );
             if matches {
                 w.set_bool(BoolProp::TimelineLoading, false);
-                apply_timeline_patch(
-                    timeline_model,
-                    *patch,
-                    convert_message,
-                    message_entry_event_id,
-                );
+                apply_timeline_patch(timeline_model, *patch, convert_message, message_entry_id);
             }
         }
         UiEvent::PaginationState { room_id, state } => {
@@ -889,7 +884,7 @@ pub fn apply_timeline_patch<T: Clone + 'static>(
     model: &VecModel<T>,
     patch: TimelinePatch,
     convert: &dyn Fn(&TimelineMessage) -> T,
-    entry_event_id: &dyn Fn(&T) -> String,
+    entry_id: &dyn Fn(&T) -> String,
 ) {
     let before = model.row_count();
     tracing::debug!(
@@ -947,13 +942,13 @@ pub fn apply_timeline_patch<T: Clone + 'static>(
             model.set_vec(Vec::new());
         }
         TimelinePatch::Batch(patches) => {
-            apply_batch(model, patches, convert, entry_event_id);
+            apply_batch(model, patches, convert, entry_id);
         }
-        TimelinePatch::UpdateMedia { event_id, message } => {
-            let target = event_id.0;
+        TimelinePatch::UpdateMedia { unique_id, message } => {
+            let target = unique_id;
             for i in 0..model.row_count() {
                 if let Some(entry) = model.row_data(i)
-                    && entry_event_id(&entry) == target
+                    && entry_id(&entry) == target
                 {
                     model.set_row_data(i, convert(&message));
                     break;
@@ -971,7 +966,7 @@ fn apply_batch<T: Clone + 'static>(
     model: &VecModel<T>,
     patches: Vec<TimelinePatch>,
     convert: &dyn Fn(&TimelineMessage) -> T,
-    entry_event_id: &dyn Fn(&T) -> String,
+    entry_id: &dyn Fn(&T) -> String,
 ) {
     let all_media = !patches.is_empty()
         && patches
@@ -981,13 +976,13 @@ fn apply_batch<T: Clone + 'static>(
     if all_media {
         let mut updates: HashMap<&str, &TimelineMessage> = HashMap::new();
         for p in &patches {
-            if let TimelinePatch::UpdateMedia { event_id, message } = p {
-                updates.insert(&event_id.0, message);
+            if let TimelinePatch::UpdateMedia { unique_id, message } = p {
+                updates.insert(unique_id.as_str(), message);
             }
         }
         for i in 0..model.row_count() {
             if let Some(entry) = model.row_data(i) {
-                let eid = entry_event_id(&entry);
+                let eid = entry_id(&entry);
                 if let Some(msg) = updates.get(eid.as_str()) {
                     model.set_row_data(i, convert(msg));
                 }
@@ -995,7 +990,7 @@ fn apply_batch<T: Clone + 'static>(
         }
     } else {
         for p in patches {
-            apply_timeline_patch(model, p, convert, entry_event_id);
+            apply_timeline_patch(model, p, convert, entry_id);
         }
     }
 }

@@ -225,7 +225,7 @@ export component MessageBubble inherits VerticalLayout {
                 width: reply-pill.width;
                 height: reply-pill.height;
                 mouse-cursor: pointer;
-                visible: hover-bg.has-hover || self.has-hover;
+                visible: (hover-bg.has-hover || self.has-hover) && msg.event-id != "";
                 clicked => {
                     root.reply(msg.event-id, msg.sender, MessagePreview.label(msg.preview-kind, msg.body));
                 }
