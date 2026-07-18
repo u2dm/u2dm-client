@@ -29,7 +29,7 @@ thread_local! {
     static PLAYBACKS: RefCell<HashMap<String, Playback>> = RefCell::new(HashMap::new());
     static ANIMATION_TIMER: Timer = Timer::default();
     static ANIMATION_TICK_FN: RefCell<Option<Rc<dyn Fn()>>> = const { RefCell::new(None) };
-    static DECODE_TX: RefCell<Option<mpsc::Sender<PathBuf>>> = const { RefCell::new(None) };
+    static DECODE_TX: RefCell<Option<mpsc::Sender<DecodeJob>>> = const { RefCell::new(None) };
     static IN_FLIGHT: RefCell<HashMap<PathBuf, Vec<String>>> = RefCell::new(HashMap::new());
     static IMAGE_READY_FN: RefCell<Option<ImageReadyFn>> = const { RefCell::new(None) };
 }
@@ -125,12 +125,17 @@ pub fn load_image_cached(path: &Path) -> Option<Image> {
     Some(img)
 }
 
+enum DecodeJob {
+    Static(PathBuf),
+    Animation(PathBuf),
+}
+
 fn ensure_workers() {
     DECODE_TX.with_borrow_mut(|slot| {
         if slot.is_some() {
             return;
         }
-        let (tx, rx) = mpsc::channel::<PathBuf>();
+        let (tx, rx) = mpsc::channel::<DecodeJob>();
         if let Err(e) = thread::Builder::new()
             .name("u2dm-image-decode".to_owned())
             .spawn(move || decode_loop(&rx))
@@ -142,13 +147,25 @@ fn ensure_workers() {
     });
 }
 
-fn decode_loop(rx: &mpsc::Receiver<PathBuf>) {
-    while let Ok(path) = rx.recv() {
-        let decoded = decode_rgba(&path);
-        drop(slint::invoke_from_event_loop(move || match decoded {
-            Some((bytes, width, height)) => on_thumbnail_decoded(&path, &bytes, width, height),
-            None => on_thumbnail_ready(&path, None),
-        }));
+fn decode_loop(rx: &mpsc::Receiver<DecodeJob>) {
+    while let Ok(job) = rx.recv() {
+        match job {
+            DecodeJob::Static(path) => {
+                let decoded = decode_rgba(&path);
+                drop(slint::invoke_from_event_loop(move || match decoded {
+                    Some((bytes, width, height)) => {
+                        on_thumbnail_decoded(&path, &bytes, width, height);
+                    }
+                    None => on_thumbnail_ready(&path, None),
+                }));
+            }
+            DecodeJob::Animation(path) => {
+                let decoded = decode_raw_animation(&path);
+                drop(slint::invoke_from_event_loop(move || {
+                    on_animation_decoded(&path, decoded);
+                }));
+            }
+        }
     }
 }
 
@@ -161,18 +178,21 @@ fn on_thumbnail_decoded(path: &Path, bytes: &[u8], width: u32, height: u32) {
 
 fn on_thumbnail_ready(path: &Path, image: Option<&Image>) {
     let waiting = IN_FLIGHT.with_borrow_mut(|inflight| inflight.remove(path));
-    let Some(unique_ids) = waiting else {
-        return;
-    };
+    if let Some(unique_ids) = waiting {
+        notify_ready(&unique_ids, image);
+    }
+}
+
+fn notify_ready(unique_ids: &[String], image: Option<&Image>) {
     let Some(ready) = IMAGE_READY_FN.with_borrow(Clone::clone) else {
         return;
     };
     for unique_id in unique_ids {
-        ready(&unique_id, image);
+        ready(unique_id, image);
     }
 }
 
-fn enqueue_thumbnail(path: &Path, unique_id: &str) {
+fn enqueue_decode(path: &Path, unique_id: &str, make_job: impl FnOnce(PathBuf) -> DecodeJob) {
     let should_dispatch = IN_FLIGHT.with_borrow_mut(|inflight| {
         let is_new = !inflight.contains_key(path);
         let waiting = inflight.entry(path.to_path_buf()).or_default();
@@ -185,7 +205,7 @@ fn enqueue_thumbnail(path: &Path, unique_id: &str) {
         ensure_workers();
         DECODE_TX.with_borrow(|slot| {
             if let Some(tx) = slot.as_ref() {
-                drop(tx.send(path.to_path_buf()));
+                drop(tx.send(make_job(path.to_path_buf())));
             }
         });
     }
@@ -228,6 +248,33 @@ impl Animation {
     }
 }
 
+struct RawFrame {
+    rgba: Vec<u8>,
+    width: u32,
+    height: u32,
+}
+
+struct RawAnimation {
+    frames: Vec<RawFrame>,
+    delays: Vec<Duration>,
+    bytes: usize,
+}
+
+impl RawAnimation {
+    fn into_animation(self) -> Animation {
+        let frames = self
+            .frames
+            .iter()
+            .map(|frame| image_from_rgba(&frame.rgba, frame.width, frame.height))
+            .collect();
+        Animation {
+            frames,
+            delays: self.delays,
+            bytes: self.bytes,
+        }
+    }
+}
+
 struct Playback {
     path: PathBuf,
     frame: usize,
@@ -267,13 +314,7 @@ fn frames_of(path: &Path) -> Option<Frames<'static>> {
     }
 }
 
-fn frame_to_image(frame: image::Frame) -> Image {
-    let buffer = frame.into_buffer();
-    let (width, height) = buffer.dimensions();
-    image_from_rgba(buffer.as_raw(), width, height)
-}
-
-fn decode_animation(path: &Path, budget: usize) -> Option<Animation> {
+fn decode_raw_animation(path: &Path) -> Option<RawAnimation> {
     let mut frames = Vec::new();
     let mut delays = Vec::new();
     let mut bytes: usize = 0;
@@ -284,10 +325,9 @@ fn decode_animation(path: &Path, budget: usize) -> Option<Animation> {
         }
         let Ok(frame) = frame else { break };
         let delay = frame_delay(Duration::from(frame.delay()));
-        let image = frame_to_image(frame);
+        let buffer = frame.into_buffer();
+        let (width, height) = buffer.dimensions();
 
-        let width = image.size().width;
-        let height = image.size().height;
         if width > ANIM_MAX_DIMENSION || height > ANIM_MAX_DIMENSION {
             tracing::debug!(
                 "animation at {} exceeds the {ANIM_MAX_DIMENSION}px dimension cap, showing a still",
@@ -297,19 +337,23 @@ fn decode_animation(path: &Path, budget: usize) -> Option<Animation> {
         }
 
         bytes = bytes.saturating_add(width as usize * height as usize * 4);
-        if bytes > budget {
+        if bytes > ANIM_PER_ITEM_BUDGET {
             tracing::debug!(
-                "animation at {} exceeds the animation budget, showing a still",
+                "animation at {} exceeds the per-item budget, showing a still",
                 path.display()
             );
             return None;
         }
 
-        frames.push(image);
+        frames.push(RawFrame {
+            rgba: buffer.into_raw(),
+            width,
+            height,
+        });
         delays.push(delay);
     }
 
-    (frames.len() > 1).then_some(Animation {
+    (frames.len() > 1).then_some(RawAnimation {
         frames,
         delays,
         bytes,
@@ -326,25 +370,57 @@ fn cached_animation_bytes() -> usize {
     })
 }
 
-fn animation_cached(path: &Path) -> Option<Rc<Animation>> {
-    if let Some(cached) = ANIMATION_CACHE.with_borrow(|cache| cache.get(path).cloned()) {
-        return cached;
-    }
+fn cached_animation(path: &Path) -> Option<Rc<Animation>> {
+    ANIMATION_CACHE.with_borrow(|cache| cache.get(path).cloned().flatten())
+}
+
+fn on_animation_decoded(path: &Path, decoded: Option<RawAnimation>) {
     let remaining = ANIMATION_MEMORY_BUDGET.saturating_sub(cached_animation_bytes());
-    let budget = remaining.min(ANIM_PER_ITEM_BUDGET);
-    let decoded = decode_animation(path, budget).map(Rc::new);
+    let animation = decoded
+        .filter(|raw| raw.bytes <= remaining)
+        .map(|raw| Rc::new(raw.into_animation()));
     ANIMATION_CACHE.with_borrow_mut(|cache| {
-        cache.insert(path.to_path_buf(), decoded.clone());
+        cache.insert(path.to_path_buf(), animation.clone());
     });
-    decoded
+
+    let waiting = IN_FLIGHT
+        .with_borrow_mut(|inflight| inflight.remove(path))
+        .unwrap_or_default();
+
+    let Some(animation) = animation else {
+        for unique_id in &waiting {
+            enqueue_decode(path, unique_id, DecodeJob::Static);
+        }
+        return;
+    };
+
+    let now = Instant::now();
+    PLAYBACKS.with_borrow_mut(|playbacks| {
+        for unique_id in &waiting {
+            playbacks
+                .entry(unique_id.clone())
+                .or_insert_with(|| Playback {
+                    path: path.to_path_buf(),
+                    frame: 0,
+                    next_at: now + animation.delay(0),
+                });
+        }
+    });
+    reschedule_animations();
+    notify_ready(&waiting, animation.frame(0));
 }
 
 pub fn load_thumbnail(path: &Path, playback_key: &str) -> Option<Image> {
     if !is_animatable(path) {
         return request_thumbnail(path, playback_key);
     }
-    let Some(animation) = animation_cached(path) else {
-        return request_thumbnail(path, playback_key);
+    let animation = match ANIMATION_CACHE.with_borrow(|cache| cache.get(path).cloned()) {
+        Some(Some(animation)) => animation,
+        Some(None) => return request_thumbnail(path, playback_key),
+        None => {
+            enqueue_decode(path, playback_key, DecodeJob::Animation);
+            return None;
+        }
     };
 
     let (frame, is_new) = PLAYBACKS.with_borrow_mut(|playbacks| {
@@ -371,7 +447,7 @@ fn request_thumbnail(path: &Path, unique_id: &str) -> Option<Image> {
     if let Some(img) = IMAGE_CACHE.with_borrow_mut(|cache| cache.get(path)) {
         return Some(img);
     }
-    enqueue_thumbnail(path, unique_id);
+    enqueue_decode(path, unique_id, DecodeJob::Static);
     None
 }
 
@@ -382,7 +458,7 @@ fn due_frames(now: Instant) -> Vec<(String, Image)> {
             if playback.next_at > now {
                 continue;
             }
-            let Some(animation) = animation_cached(&playback.path) else {
+            let Some(animation) = cached_animation(&playback.path) else {
                 continue;
             };
             playback.frame = (playback.frame + 1) % animation.frames.len();

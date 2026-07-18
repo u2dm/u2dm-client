@@ -309,6 +309,10 @@ pub(crate) async fn subscribe_timeline(
 ) -> Result<()> {
     let (timeline, room_id_parsed, backwards_ended) = setup_timeline(client, room_id).await?;
 
+    if let Ok(mut sources) = media_sources.lock() {
+        sources.clear();
+    }
+
     ensure_media_dirs(media.media_dir()).await;
 
     let (initial_items, mut stream) = timeline.subscribe().await;

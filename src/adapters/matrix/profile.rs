@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::sync::{Arc, Mutex as StdMutex};
 
 use matrix_sdk::Client;
@@ -9,6 +9,7 @@ use tokio::sync::OnceCell;
 
 const PRONOUNS_FIELD: &str = "m.pronouns";
 const PRONOUNS_FIELD_UNSTABLE: &str = "io.fsky.nyx.pronouns";
+const MAX_CACHED_SENDERS: usize = 512;
 
 #[derive(Deserialize)]
 struct PronounSet {
@@ -16,25 +17,35 @@ struct PronounSet {
 }
 
 #[derive(Default)]
+struct PronounStore {
+    senders: HashMap<String, Arc<OnceCell<Vec<String>>>>,
+    order: VecDeque<String>,
+}
+
+#[derive(Default)]
 pub(super) struct PronounCache {
-    senders: StdMutex<HashMap<String, Arc<OnceCell<Vec<String>>>>>,
+    store: StdMutex<PronounStore>,
 }
 
 impl PronounCache {
     pub(super) fn resolved(&self, sender: &str) -> Vec<String> {
-        let Ok(senders) = self.senders.lock() else {
+        let Ok(store) = self.store.lock() else {
             return Vec::new();
         };
-        senders
+        store
+            .senders
             .get(sender)
             .and_then(|cell| cell.get().cloned())
             .unwrap_or_default()
     }
 
     pub(super) fn is_resolved(&self, sender: &str) -> bool {
-        self.senders
-            .lock()
-            .is_ok_and(|senders| senders.get(sender).is_some_and(|cell| cell.initialized()))
+        self.store.lock().is_ok_and(|store| {
+            store
+                .senders
+                .get(sender)
+                .is_some_and(|cell| cell.initialized())
+        })
     }
 
     pub(super) async fn resolve(&self, client: &Client, sender: &str) -> Vec<String> {
@@ -47,8 +58,19 @@ impl PronounCache {
     }
 
     fn cell(&self, sender: &str) -> Option<Arc<OnceCell<Vec<String>>>> {
-        let mut senders = self.senders.lock().ok()?;
-        Some(Arc::clone(senders.entry(sender.to_owned()).or_default()))
+        let mut store = self.store.lock().ok()?;
+        if let Some(cell) = store.senders.get(sender) {
+            return Some(Arc::clone(cell));
+        }
+        let cell = Arc::new(OnceCell::new());
+        store.senders.insert(sender.to_owned(), Arc::clone(&cell));
+        store.order.push_back(sender.to_owned());
+        while store.order.len() > MAX_CACHED_SENDERS {
+            if let Some(evicted) = store.order.pop_front() {
+                store.senders.remove(&evicted);
+            }
+        }
+        Some(cell)
     }
 }
 

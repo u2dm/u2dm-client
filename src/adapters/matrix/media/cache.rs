@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 
 const MAX_CACHE_BYTES: u64 = 512 * 1024 * 1024;
 const MAX_AGE: Duration = Duration::from_secs(14 * 24 * 60 * 60);
+const ACCESS_PERSIST_INTERVAL: Duration = Duration::from_secs(60);
 
 const RETRY_MAX_ATTEMPTS: u32 = 3;
 const FAILURE_COOLDOWN: Duration = Duration::from_secs(5 * 60);
@@ -29,6 +30,7 @@ pub(super) struct DiskCache {
     index_path: PathBuf,
     entries: HashMap<String, CacheEntry>,
     total_bytes: u64,
+    last_access_persist: SystemTime,
 }
 
 impl DiskCache {
@@ -38,6 +40,7 @@ impl DiskCache {
             index_path,
             entries: HashMap::new(),
             total_bytes: 0,
+            last_access_persist: SystemTime::now(),
         };
         cache.read_index();
         let changed = cache.prune_aged() | cache.evict_to_budget();
@@ -82,8 +85,17 @@ impl DiskCache {
             self.total_bytes = self.total_bytes.saturating_sub(bytes);
             return None;
         }
-        entry.last_access = SystemTime::now();
-        Some(entry.path.clone())
+        let now = SystemTime::now();
+        entry.last_access = now;
+        let path = entry.path.clone();
+        if now
+            .duration_since(self.last_access_persist)
+            .is_ok_and(|elapsed| elapsed >= ACCESS_PERSIST_INTERVAL)
+        {
+            self.last_access_persist = now;
+            self.persist();
+        }
+        Some(path)
     }
 
     pub(super) fn insert(&mut self, key: &str, path: PathBuf, bytes: u64) {
@@ -100,6 +112,7 @@ impl DiskCache {
             },
         );
         self.evict_to_budget();
+        self.last_access_persist = SystemTime::now();
         self.persist();
     }
 

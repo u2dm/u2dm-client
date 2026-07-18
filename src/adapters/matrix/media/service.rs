@@ -20,9 +20,11 @@ use crate::util::hex_encode_id;
 
 const MAX_CONCURRENT_DOWNLOADS: usize = 6;
 const DOWNLOAD_TIMEOUT: Duration = Duration::from_secs(30);
+const FULL_DOWNLOAD_TIMEOUT: Duration = Duration::from_secs(120);
 const RETRY_MAX_ATTEMPTS: u32 = 3;
 const RETRY_BACKOFF_BASE: Duration = Duration::from_millis(500);
 const MAX_MEDIA_BYTES: usize = 20 * 1024 * 1024;
+const MAX_FULL_MEDIA_BYTES: usize = 100 * 1024 * 1024;
 
 pub(crate) struct MediaService {
     media_dir: PathBuf,
@@ -87,15 +89,21 @@ impl MediaService {
         }
     }
 
-    async fn download(&self, client: &Client, request: &MediaRequestParameters) -> Option<Vec<u8>> {
+    async fn download(
+        &self,
+        client: &Client,
+        request: &MediaRequestParameters,
+        download_timeout: Duration,
+        max_bytes: usize,
+    ) -> Option<Vec<u8>> {
         let _permit = self.semaphore.acquire().await.ok()?;
 
         let mut backoff = RETRY_BACKOFF_BASE;
         for attempt in 1..=RETRY_MAX_ATTEMPTS {
-            if let Some(data) = attempt_download(client, request, attempt).await {
-                if data.len() > MAX_MEDIA_BYTES {
+            if let Some(data) = attempt_download(client, request, attempt, download_timeout).await {
+                if data.len() > max_bytes {
                     tracing::debug!(
-                        "media payload {} bytes exceeds the {MAX_MEDIA_BYTES} byte limit",
+                        "media payload {} bytes exceeds the {max_bytes} byte limit",
                         data.len()
                     );
                     return None;
@@ -123,7 +131,10 @@ impl MediaService {
         }
 
         let request = MediaRequestParameters { source, format };
-        let Some(data) = self.download(client, &request).await else {
+        let Some(data) = self
+            .download(client, &request, DOWNLOAD_TIMEOUT, MAX_MEDIA_BYTES)
+            .await
+        else {
             self.record_failure(cache_key);
             return None;
         };
@@ -270,23 +281,24 @@ impl MediaService {
             })
             .ok_or_else(|| AppError::Other(format!("no media source for event {event_id}")))?;
 
-        let format = if thumbnail {
-            thumbnail_format()
+        let (format, download_timeout, max_bytes) = if thumbnail {
+            (thumbnail_format(), DOWNLOAD_TIMEOUT, MAX_MEDIA_BYTES)
         } else {
-            MediaFormat::File
+            (
+                MediaFormat::File,
+                FULL_DOWNLOAD_TIMEOUT,
+                MAX_FULL_MEDIA_BYTES,
+            )
         };
 
         let request = MediaRequestParameters { source, format };
-        let _permit = self
-            .semaphore
-            .acquire()
+        self.download(client, &request, download_timeout, max_bytes)
             .await
-            .map_err(|e| AppError::Other(e.to_string()))?;
-        client
-            .media()
-            .get_media_content(&request, true)
-            .await
-            .map_err(|e| AppError::Other(format!("media download failed: {e}")))
+            .ok_or_else(|| {
+                AppError::Other(format!(
+                    "media download failed or exceeded the {max_bytes} byte limit for event {event_id}"
+                ))
+            })
     }
 
     pub(crate) fn needs_media_download(&self, msg: &TimelineMessage) -> bool {
@@ -311,9 +323,10 @@ async fn attempt_download(
     client: &Client,
     request: &MediaRequestParameters,
     attempt: u32,
+    download_timeout: Duration,
 ) -> Option<Vec<u8>> {
     match timeout(
-        DOWNLOAD_TIMEOUT,
+        download_timeout,
         client.media().get_media_content(request, true),
     )
     .await
