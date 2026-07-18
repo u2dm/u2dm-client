@@ -19,6 +19,7 @@ export component TimelineView inherits Rectangle {
     in property <[MessageEntry]> timeline: [];
     in property <bool> timeline-loading: false;
     in property <int> new-messages-count: 0;
+    in property <int> prepend-token: 0;
     in property <bool> backwards-loading: false;
     in property <bool> forwards-loading: false;
     in-out property <string> input-message: "";
@@ -35,7 +36,11 @@ export component TimelineView inherits Rectangle {
     callback jump-to-latest();
 
     property <length> header-height: 52px;
-    property <length> input-height: 40px;
+    property <length> message-input-height: 40px;
+    property <length> reply-bar-height: 44px;
+    property <length> input-height: root.reply-event-id != ""
+        ? root.message-input-height + root.reply-bar-height
+        : root.message-input-height;
     property <length> spacing: 8px;
 
     if root.selected-room-name == "": Text {
@@ -98,6 +103,7 @@ export component TimelineView inherits Rectangle {
         backwards-loading: root.backwards-loading;
         forwards-loading: root.forwards-loading;
         new-messages-count: root.new-messages-count;
+        prepend-token: root.prepend-token;
         available-width: root.width;
         open-media(id) => {
             root.open-media(id);

@@ -17,6 +17,7 @@ export component TimelineContent inherits Rectangle {
     in property <bool> backwards-loading: false;
     in property <bool> forwards-loading: false;
     in property <int> new-messages-count: 0;
+    in property <int> prepend-token: 0;
     in property <length> available-width;
 
     callback open-media(string);
@@ -33,6 +34,10 @@ export component TimelineContent inherits Rectangle {
 
     changed room-id => {
         flickable.reset-scroll();
+    }
+
+    changed prepend-token => {
+        flickable.begin-anchor();
     }
 
     if root.backwards-loading: HorizontalLayout {
@@ -77,22 +82,23 @@ export component TimelineContent inherits Rectangle {
         property <bool> at-bottom:
             self.viewport-y <= -(self.max-scroll-y - self.scroll-threshold);
 
-        property <int> prev-count: 0;
-        property <bool> prepend-pending: false;
+        property <bool> anchor-pending: false;
         property <length> saved-viewport-y: 0;
-        property <int> saved-count: 0;
+        property <length> saved-viewport-height: 0;
 
         property <length> max-scroll-y:
             self.viewport-height - self.visible-height;
         property <bool> scrollable:
             self.viewport-height > self.visible-height;
         property <int> item-count: root.timeline.length;
-        property <bool> items-added:
-            self.item-count > self.prev-count;
 
         changed viewport-height => {
             root.content-height = self.viewport-height;
-            if (self.settling || self.auto-scroll) && self.scrollable {
+            if self.anchor-pending {
+                self.programmatic-scroll = true;
+                self.viewport-y = self.saved-viewport-y - (self.viewport-height - self.saved-viewport-height);
+                self.anchor-pending = false;
+            } else if (self.settling || self.auto-scroll) && self.scrollable {
                 self.scroll-to-bottom();
             }
         }
@@ -101,7 +107,7 @@ export component TimelineContent inherits Rectangle {
             if self.programmatic-scroll {
                 self.programmatic-scroll = false;
             } else {
-                self.prepend-pending = false;
+                self.anchor-pending = false;
                 self.settling = false;
                 if self.at-top && !self.was-at-top && !root.backwards-loading {
                     root.paginate-backwards();
@@ -125,19 +131,15 @@ export component TimelineContent inherits Rectangle {
             if self.auto-scroll {
                 self.settling = true;
                 self.scroll-to-bottom();
-            } else if self.items-added && self.scrollable {
-                self.anchor-scroll();
             }
-            self.prev-count = self.item-count;
         }
 
         function reset-scroll() {
             self.auto-scroll = true;
             self.settling = true;
-            self.prepend-pending = false;
-            self.prev-count = 0;
-            self.saved-count = 0;
+            self.anchor-pending = false;
             self.saved-viewport-y = 0;
+            self.saved-viewport-height = 0;
             self.scroll-to-bottom();
         }
 
@@ -146,14 +148,12 @@ export component TimelineContent inherits Rectangle {
             self.viewport-y = -max(self.max-scroll-y, 0px);
         }
 
-        function anchor-scroll() {
-            if !self.prepend-pending {
+        function begin-anchor() {
+            if !self.anchor-pending && !self.auto-scroll {
                 self.saved-viewport-y = self.viewport-y;
-                self.saved-count = self.prev-count;
-                self.prepend-pending = true;
+                self.saved-viewport-height = self.viewport-height;
+                self.anchor-pending = true;
             }
-            self.programmatic-scroll = true;
-            self.viewport-y = self.saved-viewport-y - self.viewport-height * (self.item-count - self.saved-count) / self.item-count;
         }
 
         for msg in root.timeline: MessageBubble {

@@ -1,4 +1,4 @@
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, HashSet};
 use std::fs::File;
 use std::io::BufReader;
@@ -19,6 +19,7 @@ thread_local! {
     static PLAYBACKS: RefCell<HashMap<String, Playback>> = RefCell::new(HashMap::new());
     static ANIMATION_TIMER: Timer = Timer::default();
     static ANIMATION_TICK_FN: RefCell<Option<Rc<dyn Fn()>>> = const { RefCell::new(None) };
+    static PREPEND_TOKEN: Cell<i32> = const { Cell::new(0) };
 }
 
 fn rgba_to_image(rgba: &image::RgbaImage) -> Image {
@@ -559,6 +560,7 @@ impl BoolProp {
 
 pub enum IntProp {
     NewMessagesCount,
+    PrependToken,
 }
 
 impl IntProp {
@@ -566,6 +568,7 @@ impl IntProp {
     pub fn as_str(&self) -> &'static str {
         match self {
             Self::NewMessagesCount => "new-messages-count",
+            Self::PrependToken => "prepend-token",
         }
     }
 }
@@ -697,6 +700,14 @@ pub fn dispatch_ui_event<T, R, S>(
             );
             if matches {
                 w.set_bool(BoolProp::TimelineLoading, false);
+                if patch.is_prepend() {
+                    let next = PREPEND_TOKEN.with(|t| {
+                        let next = t.get().wrapping_add(1);
+                        t.set(next);
+                        next
+                    });
+                    w.set_int(IntProp::PrependToken, next);
+                }
                 apply_timeline_patch(
                     timeline_model,
                     *patch,

@@ -25,6 +25,7 @@ export component ChatScreen inherits Rectangle {
     in property <string> saved-file-path: "";
     in property <bool> timeline-loading: false;
     in property <int> new-messages-count: 0;
+    in property <int> prepend-token: 0;
     in property <bool> backwards-loading: false;
     in property <bool> forwards-loading: false;
     in-out property <string> selected-room-id: "";
@@ -99,6 +100,7 @@ export component ChatScreen inherits Rectangle {
         timeline: root.timeline;
         timeline-loading: root.timeline-loading;
         new-messages-count: root.new-messages-count;
+        prepend-token: root.prepend-token;
         backwards-loading: root.backwards-loading;
         forwards-loading: root.forwards-loading;
         input-message <=> root.input-message;

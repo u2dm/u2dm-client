@@ -76,6 +76,7 @@ impl UiProps for AppWindow {
     fn set_int(&self, prop: IntProp, value: i32) {
         match prop {
             IntProp::NewMessagesCount => self.set_new_messages_count(value),
+            IntProp::PrependToken => self.set_prepend_token(value),
         }
     }
 

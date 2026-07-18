@@ -375,6 +375,17 @@ impl TimelinePatch {
     pub fn label(&self) -> &'static str {
         self.into()
     }
+
+    pub fn is_prepend(&self) -> bool {
+        match self {
+            Self::PushFront(_) => true,
+            Self::Insert { index, .. } => *index == 0,
+            Self::Batch(patches) => {
+                !patches.is_empty() && patches.iter().all(TimelinePatch::is_prepend)
+            }
+            _ => false,
+        }
+    }
 }
 
 #[derive(Debug)]

@@ -56,6 +56,7 @@ export component AppWindow inherits Window {
     in-out property <string> saved-file-path: "";
     in-out property <bool> timeline-loading: false;
     in-out property <int> new-messages-count: 0;
+    in-out property <int> prepend-token: 0;
     in-out property <bool> backwards-loading: false;
     in-out property <bool> forwards-loading: false;
 
@@ -126,6 +127,7 @@ export component AppWindow inherits Window {
         timeline: root.timeline;
         timeline-loading: root.timeline-loading;
         new-messages-count: root.new-messages-count;
+        prepend-token: root.prepend-token;
         backwards-loading: root.backwards-loading;
         forwards-loading: root.forwards-loading;
         toast-message: root.toast-message;
