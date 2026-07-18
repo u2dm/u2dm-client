@@ -18,11 +18,9 @@ export component Sidebar inherits Rectangle {
     in property <[RoomEntry]> rooms: [];
     in property <[SpaceEntry]> spaces: [];
     in property <[SpaceEntry]> subspaces: [];
-    in-out property <string> selected-room-id: "";
-    in-out property <string> selected-room-name: "";
-    in-out property <int> selected-room-members: 0;
-    in-out property <string> selected-space-id: "";
-    in-out property <string> selected-subspace-id: "";
+    in property <string> selected-room-id: "";
+    in property <string> selected-space-id: "";
+    in property <string> selected-subspace-id: "";
 
     callback select-room(string);
     callback select-space(string);
@@ -40,7 +38,7 @@ export component Sidebar inherits Rectangle {
         SpaceRail {
             width: root.rail-width;
             spaces: root.spaces;
-            selected-space-id <=> root.selected-space-id;
+            selected-space-id: root.selected-space-id;
             select-space(id) => {
                 root.select-space(id);
             }
@@ -55,7 +53,7 @@ export component Sidebar inherits Rectangle {
         if root.subspaces.length > 0: SubspaceRail {
             width: root.subrail-width;
             subspaces: root.subspaces;
-            selected-subspace-id <=> root.selected-subspace-id;
+            selected-subspace-id: root.selected-subspace-id;
             select-subspace(id) => {
                 root.select-subspace(id);
             }
@@ -127,9 +125,6 @@ export component Sidebar inherits Rectangle {
                             ? Palette.background
                             : (self.has-hover ? Palette.background.transparentize(0.5) : transparent);
                         clicked => {
-                            root.selected-room-name = room.name;
-                            root.selected-room-members = room.members;
-                            root.selected-room-id = room.id;
                             root.select-room(room.id);
                         }
 

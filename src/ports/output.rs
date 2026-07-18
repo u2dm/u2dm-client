@@ -16,6 +16,9 @@ pub trait AppOutputPort: Send + Sync {
     fn rooms(&self, rooms: Vec<Room>);
     fn spaces(&self, spaces: Vec<Space>);
     fn subspaces(&self, spaces: Vec<Space>);
+    fn selected_room(&self, id: RoomId, name: String, member_count: u64);
+    fn selected_space(&self, id: String);
+    fn selected_subspace(&self, id: String);
     fn timeline(&self, room_id: RoomId, patch: Box<TimelinePatch>);
     fn timeline_status(&self, room_id: RoomId, status: TimelineStatus);
     fn pagination_state(&self, room_id: RoomId, state: PaginationState);

@@ -82,12 +82,12 @@ msgctxt "AppWindow"
 msgid "U2DM Matrix Client"
 msgstr "U2DM Client Matrix"
 
-#: ui/screens/chat/chat.slint:169
+#: ui/screens/chat/chat.slint:168
 msgctxt "ChatScreen"
 msgid "File saved to {}"
 msgstr "File salvato in {}"
 
-#: ui/screens/chat/chat.slint:182
+#: ui/screens/chat/chat.slint:181
 msgctxt "ChatScreen"
 msgid "Dismiss"
 msgstr ""
@@ -399,22 +399,22 @@ msgctxt "SpaceRail"
 msgid "All Rooms"
 msgstr ""
 
-#: ui/screens/chat/components/sidebar.slint:84
+#: ui/screens/chat/components/sidebar.slint:82
 msgctxt "Sidebar"
 msgid "Search"
 msgstr ""
 
-#: ui/screens/chat/components/sidebar.slint:115
+#: ui/screens/chat/components/sidebar.slint:113
 msgctxt "Sidebar"
 msgid "Rooms"
 msgstr ""
 
-#: ui/screens/chat/components/sidebar.slint:123
+#: ui/screens/chat/components/sidebar.slint:121
 msgctxt "Sidebar"
 msgid "{}, {} unread"
 msgstr ""
 
-#: ui/screens/chat/components/sidebar.slint:137
+#: ui/screens/chat/components/sidebar.slint:132
 msgctxt "Sidebar"
 msgid "You"
 msgstr ""

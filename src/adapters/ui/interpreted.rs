@@ -248,7 +248,6 @@ impl SlintUiAdapter {
             .map_err(|e| AppError::Ui(format!("{e:?}")))?;
 
         let tx = cmd_tx.clone();
-        let weak = self.instance.as_weak();
         self.instance
             .set_callback("select-room", move |args: &[Value]| -> Value {
                 let room_id = args
@@ -258,10 +257,6 @@ impl SlintUiAdapter {
                         _ => None,
                     })
                     .unwrap_or_default();
-
-                if let Some(inst) = weak.upgrade() {
-                    set_prop(&inst, "timeline-status", Value::String("loading".into()));
-                }
 
                 if let Err(e) = tx.send(UiCommand::SelectRoom(RoomId::new(room_id))) {
                     tracing::debug!("failed to send SelectRoom command: {e}");
@@ -524,6 +519,16 @@ impl SlintUiAdapter {
                     })
                 {
                     tracing::debug!("failed to send JumpToLatest command: {e}");
+                }
+                Value::Void
+            })
+            .map_err(|e| AppError::Ui(format!("{e:?}")))?;
+
+        let tx = cmd_tx.clone();
+        self.instance
+            .set_callback("retry-timeline", move |_args: &[Value]| -> Value {
+                if let Err(e) = tx.send(UiCommand::RetryTimeline) {
+                    tracing::debug!("failed to send RetryTimeline command: {e}");
                 }
                 Value::Void
             })

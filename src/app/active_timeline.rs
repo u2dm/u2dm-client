@@ -139,6 +139,13 @@ impl ActiveTimeline {
         });
     }
 
+    pub(super) async fn retry(&mut self) {
+        let Some(room_id) = self.active_room_id.clone() else {
+            return;
+        };
+        self.select_room(room_id).await;
+    }
+
     pub(super) async fn send_message(
         &self,
         room_id: RoomId,

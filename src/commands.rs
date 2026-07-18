@@ -55,6 +55,7 @@ pub enum UiCommand {
     JumpToLatest {
         room_id: RoomId,
     },
+    RetryTimeline,
     #[strum(to_string = "ScrollPositionChanged")]
     ScrollPositionChanged {
         at_top: bool,
@@ -90,6 +91,13 @@ pub enum UiEvent {
     Rooms(Vec<Room>),
     Spaces(Vec<Space>),
     Subspaces(Vec<Space>),
+    SelectedRoom {
+        id: RoomId,
+        name: String,
+        member_count: u64,
+    },
+    SelectedSpace(String),
+    SelectedSubspace(String),
     Timeline {
         room_id: RoomId,
         patch: Box<TimelinePatch>,

@@ -3,20 +3,30 @@ use std::sync::Arc;
 
 use tokio::sync::mpsc;
 
+use super::selection::Selection;
 use super::task_group::TaskGroup;
 use crate::commands::UiCommand;
-use crate::domain::models::{ConnectionStatus, Room, RoomId, Space, SyncEvent};
+use crate::domain::models::{ConnectionStatus, Room, Space, SyncEvent};
 use crate::ports::matrix::MatrixPort;
 use crate::ports::output::AppOutputPort;
 use crate::ports::storage::StoragePort;
+
+pub(super) struct RoomMeta {
+    pub(super) name: String,
+    pub(super) member_count: u64,
+}
+
+#[derive(Default)]
+pub(super) struct ReconcileOutcome {
+    pub(super) space_dropped: bool,
+    pub(super) subspace_dropped: bool,
+}
 
 pub(super) struct RoomDirectory {
     output: Arc<dyn AppOutputPort>,
     all_rooms: Vec<Room>,
     spaces: Vec<Space>,
     space_order: Vec<String>,
-    selected_space: Option<RoomId>,
-    selected_subspace: Option<RoomId>,
     connected: bool,
 }
 
@@ -27,8 +37,6 @@ impl RoomDirectory {
             all_rooms: Vec::new(),
             spaces: Vec::new(),
             space_order: Vec::new(),
-            selected_space: None,
-            selected_subspace: None,
             connected: false,
         }
     }
@@ -44,40 +52,20 @@ impl RoomDirectory {
         };
     }
 
-    pub(super) fn update_rooms(&mut self, rooms: Vec<Room>) {
+    pub(super) fn store_rooms(&mut self, rooms: Vec<Room>) -> bool {
         if !self.connected {
-            return;
+            return false;
         }
-
         self.all_rooms = rooms;
-        self.emit_rooms();
-        self.emit_spaces();
-        self.emit_subspaces();
+        true
     }
 
-    pub(super) fn update_spaces(&mut self, spaces: Vec<Space>) {
+    pub(super) fn store_spaces(&mut self, spaces: Vec<Space>) -> bool {
         if !self.connected {
-            return;
+            return false;
         }
-
         self.spaces = spaces;
-        self.drop_stale_selection();
-
-        self.emit_spaces();
-        self.emit_subspaces();
-        self.emit_rooms();
-    }
-
-    pub(super) fn select_space(&mut self, space: Option<RoomId>) {
-        self.selected_space = space.filter(|id| !id.is_empty());
-        self.selected_subspace = None;
-        self.emit_subspaces();
-        self.emit_rooms();
-    }
-
-    pub(super) fn select_subspace(&mut self, subspace: Option<RoomId>) {
-        self.selected_subspace = subspace.filter(|id| !id.is_empty());
-        self.emit_rooms();
+        true
     }
 
     pub(super) async fn move_space(&mut self, from: usize, to: usize, storage: &dyn StoragePort) {
@@ -105,8 +93,6 @@ impl RoomDirectory {
         self.all_rooms.clear();
         self.spaces.clear();
         self.space_order.clear();
-        self.selected_space = None;
-        self.selected_subspace = None;
     }
 
     pub(super) fn spawn_sync_pipeline(
@@ -148,20 +134,22 @@ impl RoomDirectory {
         });
     }
 
-    fn drop_stale_selection(&mut self) {
-        let space_gone = self
-            .selected_space
+    pub(super) fn reconcile(&self, sel: &mut Selection) -> ReconcileOutcome {
+        let space_gone = sel
+            .space
             .as_ref()
             .is_some_and(|id| find_space(&self.spaces, id).is_none());
         if space_gone {
-            self.selected_space = None;
-            self.selected_subspace = None;
-            return;
+            sel.space = None;
+            sel.subspace = None;
+            return ReconcileOutcome {
+                space_dropped: true,
+                subspace_dropped: true,
+            };
         }
 
-        let subspace_gone = self.selected_subspace.as_ref().is_some_and(|id| {
-            !self
-                .selected_space
+        let subspace_gone = sel.subspace.as_ref().is_some_and(|id| {
+            !sel.space
                 .as_ref()
                 .and_then(|parent| find_space(&self.spaces, parent))
                 .is_some_and(|parent| {
@@ -172,27 +160,44 @@ impl RoomDirectory {
                 })
         });
         if subspace_gone {
-            self.selected_subspace = None;
+            sel.subspace = None;
+        }
+
+        ReconcileOutcome {
+            space_dropped: false,
+            subspace_dropped: subspace_gone,
         }
     }
 
-    fn emit_rooms(&self) {
-        let selected = self
-            .selected_subspace
-            .as_deref()
-            .or(self.selected_space.as_deref());
+    pub(super) fn selected_room_meta(&self, sel: &Selection) -> Option<RoomMeta> {
+        let id = sel.room.as_ref()?;
+        let room = self.all_rooms.iter().find(|room| &room.id == id)?;
+        Some(RoomMeta {
+            name: room.display_name.clone(),
+            member_count: if room.is_direct { 0 } else { room.member_count },
+        })
+    }
+
+    pub(super) fn emit_directory(&self, sel: &Selection) {
+        self.emit_spaces();
+        self.emit_subspaces(sel);
+        self.emit_rooms(sel);
+    }
+
+    pub(super) fn emit_rooms(&self, sel: &Selection) {
+        let selected = sel.active_filter().map(AsRef::as_ref);
         self.output
             .rooms(filter_rooms(&self.all_rooms, &self.spaces, selected));
     }
 
-    fn emit_spaces(&self) {
+    pub(super) fn emit_spaces(&self) {
         let ordered = order_spaces(&root_spaces(&self.spaces), &self.space_order);
         self.output.spaces(self.with_counts(&ordered));
     }
 
-    fn emit_subspaces(&self) {
-        let subspaces: Vec<Space> = self
-            .selected_space
+    pub(super) fn emit_subspaces(&self, sel: &Selection) {
+        let subspaces: Vec<Space> = sel
+            .space
             .as_deref()
             .and_then(|id| find_space(&self.spaces, id))
             .map(|space| {

@@ -81,6 +81,7 @@ impl UiProps for AppWindow {
         match prop {
             IntProp::NewMessagesCount => self.set_new_messages_count(value),
             IntProp::PrependToken => self.set_prepend_token(value),
+            IntProp::SelectedRoomMembers => self.set_selected_room_members(value),
         }
     }
 
@@ -176,11 +177,7 @@ impl SlintUiAdapter {
         });
 
         let tx = cmd_tx.clone();
-        let weak = self.window.as_weak();
         self.window.on_select_room(move |room_id| {
-            if let Some(w) = weak.upgrade() {
-                w.set_timeline_status(SharedString::from("loading"));
-            }
             if let Err(e) = tx.send(UiCommand::SelectRoom(RoomId::new(room_id.to_string()))) {
                 tracing::debug!("failed to send SelectRoom command: {e}");
             }
@@ -356,6 +353,13 @@ impl SlintUiAdapter {
                 })
             {
                 tracing::debug!("failed to send JumpToLatest command: {e}");
+            }
+        });
+
+        let tx = cmd_tx.clone();
+        self.window.on_retry_timeline(move || {
+            if let Err(e) = tx.send(UiCommand::RetryTimeline) {
+                tracing::debug!("failed to send RetryTimeline command: {e}");
             }
         });
 

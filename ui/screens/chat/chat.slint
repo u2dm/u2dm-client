@@ -30,11 +30,11 @@ export component ChatScreen inherits Rectangle {
     in property <int> prepend-token: 0;
     in property <bool> backwards-loading: false;
     in property <bool> forwards-loading: false;
-    in-out property <string> selected-room-id: "";
-    in-out property <string> selected-room-name: "";
-    in-out property <int> selected-room-members: 0;
-    in-out property <string> selected-space-id: "";
-    in-out property <string> selected-subspace-id: "";
+    in property <string> selected-room-id: "";
+    in property <string> selected-room-name: "";
+    in property <int> selected-room-members: 0;
+    in property <string> selected-space-id: "";
+    in property <string> selected-subspace-id: "";
     in-out property <string> input-message: "";
 
     callback select-room(string);
@@ -50,6 +50,7 @@ export component ChatScreen inherits Rectangle {
     callback paginate-backwards();
     callback paginate-forwards();
     callback jump-to-latest();
+    callback retry-timeline();
 
     property <length> sidebar-width: 340px;
     property <length> divider-width: 4px;
@@ -69,11 +70,9 @@ export component ChatScreen inherits Rectangle {
         rooms: root.rooms;
         spaces: root.spaces;
         subspaces: root.subspaces;
-        selected-room-id <=> root.selected-room-id;
-        selected-room-name <=> root.selected-room-name;
-        selected-room-members <=> root.selected-room-members;
-        selected-space-id <=> root.selected-space-id;
-        selected-subspace-id <=> root.selected-subspace-id;
+        selected-room-id: root.selected-room-id;
+        selected-space-id: root.selected-space-id;
+        selected-subspace-id: root.selected-subspace-id;
         select-room(id) => {
             root.select-room(id);
         }
@@ -129,7 +128,7 @@ export component ChatScreen inherits Rectangle {
             root.jump-to-latest();
         }
         retry => {
-            root.select-room(root.selected-room-id);
+            root.retry-timeline();
         }
     }
 

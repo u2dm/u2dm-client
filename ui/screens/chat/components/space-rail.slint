@@ -159,7 +159,7 @@ component SpaceTile inherits Rectangle {
 
 export component SpaceRail inherits Rectangle {
     in property <[SpaceEntry]> spaces: [];
-    in-out property <string> selected-space-id: "";
+    in property <string> selected-space-id: "";
 
     callback select-space(string);
     callback move-space(int, int);
@@ -288,7 +288,6 @@ export component SpaceRail inherits Rectangle {
             }
             clicked => {
                 if (!root.did-drag) {
-                    root.selected-space-id = "";
                     root.select-space("");
                 }
             }
@@ -324,7 +323,6 @@ export component SpaceRail inherits Rectangle {
             }
             clicked => {
                 if (!root.did-drag) {
-                    root.selected-space-id = space.id;
                     root.select-space(space.id);
                 }
             }

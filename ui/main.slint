@@ -42,6 +42,7 @@ export component AppWindow inherits Window {
     in-out property <[MessageEntry]> timeline: [];
     in-out property <string> selected-room-name: "";
     in-out property <string> selected-room-id: "";
+    in-out property <int> selected-room-members: 0;
     in-out property <string> selected-space-id: "";
     in-out property <string> selected-subspace-id: "";
     in-out property <string> connection-status: "disconnected";
@@ -79,6 +80,7 @@ export component AppWindow inherits Window {
     callback paginate-backwards();
     callback paginate-forwards();
     callback jump-to-latest();
+    callback retry-timeline();
 
     in-out property <string> input-message: "";
 
@@ -134,10 +136,11 @@ export component AppWindow inherits Window {
         forwards-loading: root.forwards-loading;
         toast-message: root.toast-message;
         saved-file-path: root.saved-file-path;
-        selected-room-id <=> root.selected-room-id;
-        selected-room-name <=> root.selected-room-name;
-        selected-space-id <=> root.selected-space-id;
-        selected-subspace-id <=> root.selected-subspace-id;
+        selected-room-id: root.selected-room-id;
+        selected-room-name: root.selected-room-name;
+        selected-room-members: root.selected-room-members;
+        selected-space-id: root.selected-space-id;
+        selected-subspace-id: root.selected-subspace-id;
         input-message <=> root.input-message;
         select-room(id) => {
             root.select-room(id);
@@ -177,6 +180,9 @@ export component AppWindow inherits Window {
         }
         jump-to-latest => {
             root.jump-to-latest();
+        }
+        retry-timeline => {
+            root.retry-timeline();
         }
     }
 

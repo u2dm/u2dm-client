@@ -1,6 +1,7 @@
 mod active_timeline;
 mod media;
 mod room_directory;
+mod selection;
 mod session;
 mod task_group;
 mod verification;
@@ -10,13 +11,14 @@ use std::sync::Arc;
 use active_timeline::ActiveTimeline;
 use media::MediaActions;
 use room_directory::RoomDirectory;
+use selection::Selection;
 use session::SessionController;
 use task_group::TaskGroup;
 use tokio::sync::mpsc;
 use verification::VerificationController;
 
 use crate::commands::UiCommand;
-use crate::domain::models::ConnectionStatus;
+use crate::domain::models::{ConnectionStatus, Room, RoomId, Space};
 use crate::ports::browser::BrowserPort;
 use crate::ports::matrix::MatrixPort;
 use crate::ports::media::MediaFilePort;
@@ -35,6 +37,7 @@ pub struct AppService {
     active_timeline: ActiveTimeline,
     verification: VerificationController,
     media: MediaActions,
+    selection: Selection,
 }
 
 impl AppService {
@@ -69,6 +72,7 @@ impl AppService {
             cmd_tx,
             output,
             background: TaskGroup::new(),
+            selection: Selection::default(),
         }
     }
 
@@ -92,16 +96,16 @@ impl AppService {
                     self.handle_fetch_rooms().await;
                 }
                 UiCommand::RoomsUpdated(rooms) => {
-                    self.room_directory.update_rooms(rooms);
+                    self.handle_rooms_updated(rooms);
                 }
                 UiCommand::SpacesUpdated(spaces) => {
-                    self.room_directory.update_spaces(spaces);
+                    self.handle_spaces_updated(spaces);
                 }
                 UiCommand::SelectSpace(space) => {
-                    self.room_directory.select_space(space);
+                    self.handle_select_space(space);
                 }
                 UiCommand::SelectSubspace(subspace) => {
-                    self.room_directory.select_subspace(subspace);
+                    self.handle_select_subspace(subspace);
                 }
                 UiCommand::MoveSpace { from, to } => {
                     self.room_directory
@@ -109,7 +113,10 @@ impl AppService {
                         .await;
                 }
                 UiCommand::SelectRoom(room_id) => {
-                    self.active_timeline.select_room(room_id).await;
+                    self.select_room(room_id).await;
+                }
+                UiCommand::RetryTimeline => {
+                    self.active_timeline.retry().await;
                 }
                 UiCommand::SendMessage {
                     room_id,
@@ -181,6 +188,67 @@ impl AppService {
         }
     }
 
+    fn handle_rooms_updated(&mut self, rooms: Vec<Room>) {
+        if self.room_directory.store_rooms(rooms) {
+            self.refresh_selected_room();
+            self.room_directory.emit_directory(&self.selection);
+        }
+    }
+
+    fn handle_spaces_updated(&mut self, spaces: Vec<Space>) {
+        if self.room_directory.store_spaces(spaces) {
+            let outcome = self.room_directory.reconcile(&mut self.selection);
+            if outcome.space_dropped {
+                self.output.selected_space(String::new());
+                self.output.selected_subspace(String::new());
+            } else if outcome.subspace_dropped {
+                self.output.selected_subspace(String::new());
+            }
+            self.room_directory.emit_directory(&self.selection);
+        }
+    }
+
+    fn handle_select_space(&mut self, space: Option<RoomId>) {
+        self.selection.set_space(space);
+        self.output.selected_space(self.selection.space_id_str());
+        self.output
+            .selected_subspace(self.selection.subspace_id_str());
+        self.room_directory.emit_subspaces(&self.selection);
+        self.room_directory.emit_rooms(&self.selection);
+    }
+
+    fn handle_select_subspace(&mut self, subspace: Option<RoomId>) {
+        self.selection.set_subspace(subspace);
+        self.output
+            .selected_subspace(self.selection.subspace_id_str());
+        self.room_directory.emit_rooms(&self.selection);
+    }
+
+    async fn select_room(&mut self, room_id: RoomId) {
+        self.selection.room = Some(room_id.clone());
+        let (name, member_count) = self
+            .room_directory
+            .selected_room_meta(&self.selection)
+            .map_or_else(|| (String::new(), 0), |m| (m.name, m.member_count));
+        self.output
+            .selected_room(room_id.clone(), name, member_count);
+        self.active_timeline.select_room(room_id).await;
+    }
+
+    fn refresh_selected_room(&mut self) {
+        let Some(room_id) = self.selection.room.clone() else {
+            return;
+        };
+        if let Some(meta) = self.room_directory.selected_room_meta(&self.selection) {
+            self.output
+                .selected_room(room_id, meta.name, meta.member_count);
+        } else {
+            self.selection.room = None;
+            self.output
+                .selected_room(RoomId::new(String::new()), String::new(), 0);
+        }
+    }
+
     async fn handle_fetch_rooms(&mut self) {
         self.room_directory.connect(self.storage.as_ref()).await;
         self.output.status("syncing".into());
@@ -210,12 +278,14 @@ impl AppService {
         tracing::info!("session expired, clearing local state");
         self.shutdown_all_tasks().await;
         self.room_directory.reset();
+        self.selection = Selection::default();
         self.session.expire_session().await;
     }
 
     async fn handle_logout(&mut self) {
         self.shutdown_all_tasks().await;
         self.room_directory.reset();
+        self.selection = Selection::default();
         self.session.logout().await;
     }
 

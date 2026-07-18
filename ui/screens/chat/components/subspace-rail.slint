@@ -119,7 +119,7 @@ component SubspaceTile inherits Rectangle {
 
 export component SubspaceRail inherits Rectangle {
     in property <[SpaceEntry]> subspaces: [];
-    in-out property <string> selected-subspace-id: "";
+    in property <string> selected-subspace-id: "";
 
     callback select-subspace(string);
 
@@ -155,7 +155,6 @@ export component SubspaceRail inherits Rectangle {
                 icon: IconSet.MessagesSquare;
                 selected: root.selected-subspace-id == "";
                 clicked => {
-                    root.selected-subspace-id = "";
                     root.select-subspace("");
                 }
             }
@@ -171,7 +170,6 @@ export component SubspaceRail inherits Rectangle {
                 mentions: subspace.mentions;
                 selected: root.selected-subspace-id == subspace.id;
                 clicked => {
-                    root.selected-subspace-id = subspace.id;
                     root.select-subspace(subspace.id);
                 }
             }

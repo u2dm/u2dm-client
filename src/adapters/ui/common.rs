@@ -289,6 +289,7 @@ impl BoolProp {
 pub enum IntProp {
     NewMessagesCount,
     PrependToken,
+    SelectedRoomMembers,
 }
 
 impl IntProp {
@@ -297,6 +298,7 @@ impl IntProp {
         match self {
             Self::NewMessagesCount => "new-messages-count",
             Self::PrependToken => "prepend-token",
+            Self::SelectedRoomMembers => "selected-room-members",
         }
     }
 }
@@ -415,6 +417,24 @@ pub fn dispatch_ui_event<T, R, S>(
                 convert_space,
                 space_entry_id,
             );
+        }
+        UiEvent::SelectedRoom {
+            id,
+            name,
+            member_count,
+        } => {
+            w.set_string(StringProp::SelectedRoomId, SharedString::from(id.as_ref()));
+            w.set_string(StringProp::SelectedRoomName, SharedString::from(&name));
+            w.set_int(
+                IntProp::SelectedRoomMembers,
+                i32::try_from(member_count).unwrap_or(i32::MAX),
+            );
+        }
+        UiEvent::SelectedSpace(id) => {
+            w.set_string(StringProp::SelectedSpaceId, SharedString::from(&id));
+        }
+        UiEvent::SelectedSubspace(id) => {
+            w.set_string(StringProp::SelectedSubspaceId, SharedString::from(&id));
         }
         UiEvent::Timeline { room_id, patch } => {
             let selected = w.get_string(StringProp::SelectedRoomId);
@@ -650,6 +670,7 @@ fn apply_logged_out(w: &impl UiProps) {
     w.set_bool(BoolProp::BackwardsLoading, false);
     w.set_bool(BoolProp::ForwardsLoading, false);
     w.set_int(IntProp::NewMessagesCount, 0);
+    w.set_int(IntProp::SelectedRoomMembers, 0);
     w.apply_user_avatar(None);
     w.clear_emoji_model();
 }

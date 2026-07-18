@@ -66,6 +66,22 @@ impl AppOutputPort for UiEventOutput {
         self.emit(UiEvent::Subspaces(spaces));
     }
 
+    fn selected_room(&self, id: RoomId, name: String, member_count: u64) {
+        self.emit(UiEvent::SelectedRoom {
+            id,
+            name,
+            member_count,
+        });
+    }
+
+    fn selected_space(&self, id: String) {
+        self.emit(UiEvent::SelectedSpace(id));
+    }
+
+    fn selected_subspace(&self, id: String) {
+        self.emit(UiEvent::SelectedSubspace(id));
+    }
+
     fn timeline(&self, room_id: RoomId, patch: Box<TimelinePatch>) {
         self.emit(UiEvent::Timeline { room_id, patch });
     }
