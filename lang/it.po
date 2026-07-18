@@ -82,36 +82,6 @@ msgctxt "AppWindow"
 msgid "U2DM Matrix Client"
 msgstr "U2DM Client Matrix"
 
-#: ui/screens/homeserver/homeserver.slint:27
-msgctxt "HomeserverScreen"
-msgid "Checking server..."
-msgstr "Verifica del server..."
-
-#: ui/screens/homeserver/homeserver.slint:32
-msgctxt "HomeserverScreen"
-msgid "U2DM"
-msgstr "U2DM"
-
-#: ui/screens/homeserver/homeserver.slint:38
-msgctxt "HomeserverScreen"
-msgid "Enter your homeserver address"
-msgstr ""
-
-#: ui/screens/homeserver/homeserver.slint:53
-msgctxt "HomeserverScreen"
-msgid "Homeserver (e.g. matrix.org)"
-msgstr ""
-
-#: ui/screens/homeserver/homeserver.slint:61
-msgctxt "HomeserverScreen"
-msgid "Checking..."
-msgstr ""
-
-#: ui/screens/homeserver/homeserver.slint:61
-msgctxt "HomeserverScreen"
-msgid "Continue"
-msgstr "Continua"
-
 #: ui/screens/chat/chat.slint:163
 msgctxt "ChatScreen"
 msgid "File saved to {}"
@@ -142,7 +112,7 @@ msgctxt "MessageInput"
 msgid "Send"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/message-bubble.slint:257
+#: ui/screens/chat/components/timeline/message-bubble.slint:240
 msgctxt "MessageBubble"
 msgid "Reply"
 msgstr ""
@@ -324,27 +294,27 @@ msgctxt "TimelineView"
 msgid "Loading messages..."
 msgstr "Caricamento messaggi..."
 
-#: ui/screens/chat/components/space-rail.slint:233
+#: ui/screens/chat/components/space-rail.slint:207
 msgctxt "SpaceRail"
 msgid "Menu"
 msgstr ""
 
-#: ui/screens/chat/components/space-rail.slint:269
+#: ui/screens/chat/components/space-rail.slint:243
 msgctxt "SpaceRail"
 msgid "All Rooms"
 msgstr ""
 
-#: ui/screens/chat/components/sidebar.slint:82
+#: ui/screens/chat/components/sidebar.slint:83
 msgctxt "Sidebar"
 msgid "Search"
 msgstr ""
 
-#: ui/screens/chat/components/sidebar.slint:120
+#: ui/screens/chat/components/sidebar.slint:121
 msgctxt "Sidebar"
 msgid "You"
 msgstr ""
 
-#: ui/screens/chat/components/subspace-rail.slint:145
+#: ui/screens/chat/components/subspace-rail.slint:117
 msgctxt "SubspaceRail"
 msgid "All"
 msgstr ""
@@ -384,120 +354,189 @@ msgctxt "MessagePreview"
 msgid "Sticker"
 msgstr ""
 
-#: ui/screens/chat/components/drawer.slint:76
+#: ui/screens/chat/components/drawer.slint:78
 msgctxt "Drawer"
 msgid "Online"
 msgstr ""
 
-#: ui/screens/chat/components/drawer.slint:79
+#: ui/screens/chat/components/drawer.slint:81
 msgctxt "Drawer"
 msgid "Connecting…"
 msgstr ""
 
-#: ui/screens/chat/components/drawer.slint:82
+#: ui/screens/chat/components/drawer.slint:84
 msgctxt "Drawer"
 msgid "Connection error"
 msgstr ""
 
-#: ui/screens/chat/components/drawer.slint:84
+#: ui/screens/chat/components/drawer.slint:86
 msgctxt "Drawer"
 msgid "Offline"
 msgstr ""
 
-#: ui/screens/chat/components/drawer.slint:227
+#: ui/screens/chat/components/drawer.slint:216
 msgctxt "Drawer"
 msgid "No other accounts"
 msgstr ""
 
-#: ui/screens/chat/components/drawer.slint:237
+#: ui/screens/chat/components/drawer.slint:226
 msgctxt "Drawer"
 msgid "Add Account"
 msgstr ""
 
-#: ui/screens/chat/components/drawer.slint:250
+#: ui/screens/chat/components/drawer.slint:239
 msgctxt "Drawer"
 msgid "Log Out"
 msgstr ""
 
-#: ui/screens/credentials/credentials.slint:38
-msgctxt "CredentialsScreen"
-msgid "Logging in..."
-msgstr "Accesso in corso..."
-
-#: ui/screens/credentials/credentials.slint:39
-msgctxt "CredentialsScreen"
-msgid "Opening browser..."
-msgstr "Apertura del browser..."
-
-#: ui/screens/credentials/credentials.slint:40
-msgctxt "CredentialsScreen"
-msgid "Waiting for authentication..."
-msgstr "In attesa dell'autenticazione..."
-
-#: ui/screens/credentials/credentials.slint:45
-msgctxt "CredentialsScreen"
-msgid "U2DM"
-msgstr "U2DM"
-
-#: ui/screens/credentials/credentials.slint:51
+#: ui/screens/login/credentials.slint:41
 msgctxt "CredentialsScreen"
 msgid "Server: {}"
 msgstr "Server: {}"
 
-#: ui/screens/credentials/credentials.slint:65
+#: ui/screens/login/credentials.slint:55
 msgctxt "CredentialsScreen"
 msgid "Username"
 msgstr "Nome utente"
 
-#: ui/screens/credentials/credentials.slint:80
+#: ui/screens/login/credentials.slint:70
 msgctxt "CredentialsScreen"
 msgid "Password"
 msgstr "Password"
 
-#: ui/screens/credentials/credentials.slint:95
+#: ui/screens/login/credentials.slint:85
+msgctxt "CredentialsScreen"
+msgid "Logging in..."
+msgstr "Accesso in corso..."
+
+#: ui/screens/login/credentials.slint:85
 msgctxt "CredentialsScreen"
 msgid "Log in"
 msgstr "Accedi"
 
-#: ui/screens/credentials/credentials.slint:109
+#: ui/screens/login/credentials.slint:99
 msgctxt "CredentialsScreen"
 msgid "Log in with browser"
 msgstr "Accedi con il browser"
 
-#: ui/screens/credentials/credentials.slint:121
+#: ui/screens/login/credentials.slint:111
 msgctxt "CredentialsScreen"
 msgid "Back"
 msgstr "Indietro"
 
-#: ui/screens/loading.slint:12
-msgctxt "LoadingScreen"
+#: ui/screens/login/homeserver.slint:31
+msgctxt "HomeserverScreen"
+msgid "Enter your homeserver address"
+msgstr ""
+
+#: ui/screens/login/homeserver.slint:46
+msgctxt "HomeserverScreen"
+msgid "Homeserver (e.g. matrix.org)"
+msgstr ""
+
+#: ui/screens/login/homeserver.slint:54
+msgctxt "HomeserverScreen"
+msgid "Checking..."
+msgstr ""
+
+#: ui/screens/login/homeserver.slint:54
+msgctxt "HomeserverScreen"
+msgid "Continue"
+msgstr "Continua"
+
+#: ui/screens/login/common.slint:6
+msgctxt "LoginStatus"
 msgid "Loading saved session..."
-msgstr "Caricamento sessione salvata..."
+msgstr ""
 
-#: ui/screens/loading.slint:13
-msgctxt "LoadingScreen"
+#: ui/screens/login/common.slint:9
+msgctxt "LoginStatus"
 msgid "Opening encrypted store..."
-msgstr "Apertura archivio cifrato..."
+msgstr ""
 
-#: ui/screens/loading.slint:14
-msgctxt "LoadingScreen"
+#: ui/screens/login/common.slint:12
+msgctxt "LoginStatus"
 msgid "Connecting to homeserver..."
-msgstr "Connessione all'homeserver..."
+msgstr ""
 
-#: ui/screens/loading.slint:15
-msgctxt "LoadingScreen"
+#: ui/screens/login/common.slint:15
+msgctxt "LoginStatus"
 msgid "Restoring authentication..."
-msgstr "Ripristino dell'autenticazione..."
+msgstr ""
 
-#: ui/screens/loading.slint:16
-msgctxt "LoadingScreen"
+#: ui/screens/login/common.slint:18
+msgctxt "LoginStatus"
 msgid "Syncing rooms..."
-msgstr "Sincronizzazione stanze..."
+msgstr ""
 
-#: ui/screens/loading.slint:21
-msgctxt "LoadingScreen"
+#: ui/screens/login/common.slint:21
+msgctxt "LoginStatus"
+msgid "Checking server..."
+msgstr ""
+
+#: ui/screens/login/common.slint:24
+msgctxt "LoginStatus"
+msgid "Logging in..."
+msgstr ""
+
+#: ui/screens/login/common.slint:27
+msgctxt "LoginStatus"
+msgid "Opening browser..."
+msgstr ""
+
+#: ui/screens/login/common.slint:30
+msgctxt "LoginStatus"
+msgid "Waiting for authentication..."
+msgstr ""
+
+#: ui/screens/login/common.slint:37
+msgctxt "BrandTitle"
 msgid "U2DM"
-msgstr "U2DM"
+msgstr ""
+
+#~ msgctxt "HomeserverScreen"
+#~ msgid "Checking server..."
+#~ msgstr "Verifica del server..."
+
+#~ msgctxt "HomeserverScreen"
+#~ msgid "U2DM"
+#~ msgstr "U2DM"
+
+#~ msgctxt "CredentialsScreen"
+#~ msgid "Opening browser..."
+#~ msgstr "Apertura del browser..."
+
+#~ msgctxt "CredentialsScreen"
+#~ msgid "Waiting for authentication..."
+#~ msgstr "In attesa dell'autenticazione..."
+
+#~ msgctxt "CredentialsScreen"
+#~ msgid "U2DM"
+#~ msgstr "U2DM"
+
+#~ msgctxt "LoadingScreen"
+#~ msgid "Loading saved session..."
+#~ msgstr "Caricamento sessione salvata..."
+
+#~ msgctxt "LoadingScreen"
+#~ msgid "Opening encrypted store..."
+#~ msgstr "Apertura archivio cifrato..."
+
+#~ msgctxt "LoadingScreen"
+#~ msgid "Connecting to homeserver..."
+#~ msgstr "Connessione all'homeserver..."
+
+#~ msgctxt "LoadingScreen"
+#~ msgid "Restoring authentication..."
+#~ msgstr "Ripristino dell'autenticazione..."
+
+#~ msgctxt "LoadingScreen"
+#~ msgid "Syncing rooms..."
+#~ msgstr "Sincronizzazione stanze..."
+
+#~ msgctxt "LoadingScreen"
+#~ msgid "U2DM"
+#~ msgstr "U2DM"
 
 #~ msgctxt "Sidebar"
 #~ msgid "Logout"

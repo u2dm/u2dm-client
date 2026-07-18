@@ -1,0 +1,34 @@
+import { Fonts } from "../theme.slint";
+
+export component Avatar inherits Rectangle {
+    in property <bool> has-image;
+    in property <image> image;
+    in property <string> initial;
+    in property <color> initial-color: white;
+    in property <length> initial-size: 17px;
+    in property <int> initial-weight: 600;
+    in property <string> initial-font-family: Fonts.emoji;
+
+    border-radius: self.width / 2;
+    clip: true;
+
+    if root.has-image: Image {
+        width: 100%;
+        height: 100%;
+        source: root.image;
+        image-fit: cover;
+    }
+
+    if !root.has-image: Text {
+        width: 100%;
+        height: 100%;
+        text: root.initial;
+        font-family: root.initial-font-family;
+        font-size: root.initial-size;
+        font-weight: root.initial-weight;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+        overflow: clip;
+        color: root.initial-color;
+    }
+}

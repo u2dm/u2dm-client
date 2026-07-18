@@ -1,0 +1,69 @@
+import { Palette } from "std-widgets.slint";
+import { Icon, IconDisplay } from "@lucide";
+
+import { Fonts } from "../../../theme.slint";
+
+export component TileGlyph inherits Rectangle {
+    in property <bool> has-avatar;
+    in property <image> avatar;
+    in property <bool> has-icon;
+    in property <Icon> icon;
+    in property <string> initial;
+    in property <color> foreground;
+    in property <length> icon-size: 20px;
+    in property <length> initial-size: 16px;
+    in property <int> initial-weight: 700;
+    in property <string> initial-font-family: Fonts.emoji;
+
+    clip: true;
+
+    if root.has-avatar: Image {
+        width: 100%;
+        height: 100%;
+        source: root.avatar;
+        image-fit: cover;
+    }
+
+    if root.has-icon && !root.has-avatar: IconDisplay {
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+        icon: root.icon;
+        size: root.icon-size;
+        stroke: root.foreground;
+    }
+
+    if !root.has-avatar && !root.has-icon: Text {
+        width: 100%;
+        height: 100%;
+        text: root.initial;
+        font-family: root.initial-font-family;
+        font-size: root.initial-size;
+        font-weight: root.initial-weight;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+        overflow: clip;
+        color: root.foreground;
+    }
+}
+
+export component CountBadge inherits Rectangle {
+    in property <int> unread;
+    in property <int> mentions;
+    in property <length> diameter: 18px;
+
+    height: root.diameter;
+    width: max(root.diameter, label.preferred-width + 10px);
+    border-radius: root.diameter / 2;
+    background: Palette.accent-background;
+    border-width: 2px;
+    border-color: Palette.alternate-background;
+
+    label := Text {
+        text: root.unread > 99 ? "99+" : (root.unread > 0 ? root.unread : root.mentions);
+        font-size: 10px;
+        font-weight: 700;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+        color: Palette.accent-foreground;
+    }
+}

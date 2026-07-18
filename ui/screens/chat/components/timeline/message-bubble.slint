@@ -15,6 +15,7 @@ import { ImageMessage } from "./messages/image-message.slint";
 import { FileMessage } from "./messages/file-message.slint";
 import { UtdMessage } from "./messages/utd-message.slint";
 import { UnsupportedMessage } from "./messages/unsupported-message.slint";
+import { Avatar } from "../../../../components/avatar.slint";
 import { Avatars, Fonts } from "../../../../theme.slint";
 
 export component MessageBubble inherits VerticalLayout {
@@ -43,32 +44,14 @@ export component MessageBubble inherits VerticalLayout {
         padding-top: 2px;
         padding-bottom: 2px;
 
-        if !is-own: Rectangle {
+        if !is-own: Avatar {
             width: 32px;
             height: 32px;
-            border-radius: 16px;
-            clip: true;
             background: Avatars.color(msg.color-index);
-
-            if msg.has-avatar: Image {
-                source: msg.avatar;
-                width: 32px;
-                height: 32px;
-                image-fit: cover;
-            }
-
-            if !msg.has-avatar: Text {
-                width: 32px;
-                height: 32px;
-                text: msg.sender-initial;
-                font-family: Fonts.emoji;
-                font-size: 13px;
-                font-weight: 600;
-                horizontal-alignment: center;
-                vertical-alignment: center;
-                color: white;
-                overflow: clip;
-            }
+            has-image: msg.has-avatar;
+            image: msg.avatar;
+            initial: msg.sender-initial;
+            initial-size: 13px;
         }
 
         if !is-own: Rectangle {

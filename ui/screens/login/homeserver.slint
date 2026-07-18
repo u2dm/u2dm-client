@@ -4,6 +4,8 @@ import {
     Palette,
 } from "std-widgets.slint";
 
+import { BrandTitle, StatusText, ErrorText, LoginStatus } from "./common.slint";
+
 export component HomeserverScreen inherits VerticalLayout {
     alignment: center;
     padding: 24px;
@@ -23,16 +25,7 @@ export component HomeserverScreen inherits VerticalLayout {
         }
     }
 
-    function status-text(id: string) -> string {
-        if (id == "checking-server") { return @tr("Checking server..."); }
-        return id;
-    }
-
-    Text {
-        text: @tr("U2DM");
-        font-size: 32px;
-        horizontal-alignment: center;
-    }
+    BrandTitle { }
 
     Text {
         text: @tr("Enter your homeserver address");
@@ -67,17 +60,11 @@ export component HomeserverScreen inherits VerticalLayout {
         }
     }
 
-    if root.login-status != "": Text {
-        text: root.status-text(root.login-status);
-        font-size: 13px;
-        horizontal-alignment: center;
-        color: Palette.foreground.transparentize(0.3);
+    if root.login-status != "": StatusText {
+        text: LoginStatus.label(root.login-status);
     }
 
-    if root.login-error != "": Text {
+    if root.login-error != "": ErrorText {
         text: root.login-error;
-        color: red;
-        font-size: 13px;
-        horizontal-alignment: center;
     }
 }

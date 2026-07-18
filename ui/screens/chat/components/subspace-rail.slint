@@ -1,7 +1,8 @@
 import { Palette } from "std-widgets.slint";
-import { Icon, IconDisplay, IconSet } from "@lucide";
+import { Icon, IconSet } from "@lucide";
 
 import { SpaceEntry } from "./types.slint";
+import { TileGlyph, CountBadge } from "./tile.slint";
 import { Fonts } from "../../../theme.slint";
 
 component SubspaceTile inherits Rectangle {
@@ -41,32 +42,15 @@ component SubspaceTile inherits Rectangle {
             : Palette.accent-background.transparentize(0.88);
         clip: true;
 
-        if root.has-avatar: Image {
+        TileGlyph {
             width: 100%;
             height: 100%;
-            source: root.avatar;
-            image-fit: cover;
-        }
-
-        if root.has-icon && !root.has-avatar: IconDisplay {
-            x: (parent.width - self.width) / 2;
-            y: (parent.height - self.height) / 2;
+            has-avatar: root.has-avatar;
+            avatar: root.avatar;
+            has-icon: root.has-icon;
             icon: root.icon;
-            size: 20px;
-            stroke: root.selected ? Palette.accent-foreground : Palette.accent-background;
-        }
-
-        if !root.has-avatar && !root.has-icon: Text {
-            width: 100%;
-            height: 100%;
-            text: root.initial;
-            font-family: Fonts.emoji;
-            font-size: 16px;
-            font-weight: 700;
-            horizontal-alignment: center;
-            vertical-alignment: center;
-            overflow: clip;
-            color: root.selected ? Palette.accent-foreground : Palette.accent-background;
+            initial: root.initial;
+            foreground: root.selected ? Palette.accent-foreground : Palette.accent-background;
         }
     }
 
@@ -85,24 +69,12 @@ component SubspaceTile inherits Rectangle {
             : Palette.foreground.transparentize(0.4);
     }
 
-    if root.unread > 0 || root.mentions > 0: Rectangle {
+    if root.unread > 0 || root.mentions > 0: CountBadge {
         x: tile.x + tile.width - self.width + 5px;
         y: tile.y - 4px;
-        height: 17px;
-        width: max(17px, badge-text.preferred-width + 10px);
-        border-radius: 8.5px;
-        background: Palette.accent-background;
-        border-width: 2px;
-        border-color: Palette.alternate-background;
-
-        badge-text := Text {
-            text: root.unread > 99 ? "99+" : (root.unread > 0 ? root.unread : root.mentions);
-            font-size: 10px;
-            font-weight: 700;
-            horizontal-alignment: center;
-            vertical-alignment: center;
-            color: Palette.accent-foreground;
-        }
+        diameter: 17px;
+        unread: root.unread;
+        mentions: root.mentions;
     }
 
     touch := TouchArea {

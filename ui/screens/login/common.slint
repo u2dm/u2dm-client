@@ -1,0 +1,52 @@
+import { Palette } from "std-widgets.slint";
+
+export global LoginStatus {
+    public pure function label(id: string) -> string {
+        if id == "loading-session" {
+            return @tr("Loading saved session...");
+        }
+        if id == "opening-store" {
+            return @tr("Opening encrypted store...");
+        }
+        if id == "connecting" {
+            return @tr("Connecting to homeserver...");
+        }
+        if id == "restoring-auth" {
+            return @tr("Restoring authentication...");
+        }
+        if id == "syncing" {
+            return @tr("Syncing rooms...");
+        }
+        if id == "checking-server" {
+            return @tr("Checking server...");
+        }
+        if id == "logging-in" {
+            return @tr("Logging in...");
+        }
+        if id == "opening-browser" {
+            return @tr("Opening browser...");
+        }
+        if id == "waiting-auth" {
+            return @tr("Waiting for authentication...");
+        }
+        return id;
+    }
+}
+
+export component BrandTitle inherits Text {
+    text: @tr("U2DM");
+    font-size: 32px;
+    horizontal-alignment: center;
+}
+
+export component StatusText inherits Text {
+    font-size: 13px;
+    horizontal-alignment: center;
+    color: Palette.foreground.transparentize(0.3);
+}
+
+export component ErrorText inherits Text {
+    color: red;
+    font-size: 13px;
+    horizontal-alignment: center;
+}
