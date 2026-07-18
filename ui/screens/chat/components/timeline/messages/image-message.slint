@@ -1,15 +1,17 @@
 import { Palette, Spinner } from "std-widgets.slint";
+import { IconDisplay, IconSet } from "@lucide";
 
 export component ImageMessage inherits VerticalLayout {
     in property <image> thumbnail;
     in property <bool> has-thumbnail;
+    in property <bool> media-failed;
     in property <int> image-width;
     in property <int> image-height;
     in property <string> body;
     in property <string> event-id;
 
     property <bool> has-dimensions: root.image-width > 0 && root.image-height > 0;
-    property <bool> is-loading: !root.has-thumbnail && root.has-dimensions;
+    property <bool> is-loading: !root.has-thumbnail && !root.media-failed && root.has-dimensions;
 
     callback open-media(string);
 
@@ -41,14 +43,44 @@ export component ImageMessage inherits VerticalLayout {
         }
     }
 
-    if !has-thumbnail && !has-dimensions: Text {
+    if !has-thumbnail && media-failed: Rectangle {
+        property <float> aspect: root.has-dimensions ? root.image-width / max(root.image-height, 1) : 1.5;
+        width: min(400px, max(267px, 400px * aspect));
+        height: min(400px, self.width / max(aspect, 0.01));
+        background: Palette.alternate-background;
+        border-radius: 4px;
+
+        VerticalLayout {
+            alignment: center;
+            spacing: 8px;
+
+            HorizontalLayout {
+                alignment: center;
+
+                IconDisplay {
+                    icon: IconSet.ImageOff;
+                    size: 32px;
+                    stroke: Palette.foreground.transparentize(0.5);
+                }
+            }
+
+            Text {
+                text: @tr("Image unavailable");
+                font-size: 13px;
+                color: Palette.foreground.transparentize(0.4);
+                horizontal-alignment: center;
+            }
+        }
+    }
+
+    if !has-thumbnail && !media-failed && !has-dimensions: Text {
         text: root.body != "" ? @tr("Image: {}", root.body) : @tr("Image");
         font-size: 14px;
         color: Palette.foreground.transparentize(0.3);
         wrap: word-wrap;
     }
 
-    if (has-thumbnail || is-loading) && root.body != "": Text {
+    if (has-thumbnail || is-loading || media-failed) && root.body != "": Text {
         text: root.body;
         font-size: 14px;
         wrap: word-wrap;

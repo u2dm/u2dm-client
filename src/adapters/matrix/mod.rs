@@ -6,7 +6,7 @@ mod rooms;
 mod timeline;
 mod verification;
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex as StdMutex};
@@ -42,6 +42,7 @@ pub struct MatrixAdapter {
     sas_verification: Mutex<Option<SasVerification>>,
     media_sources: Arc<StdMutex<HashMap<String, MediaSource>>>,
     materialized: Arc<StdMutex<HashMap<String, PathBuf>>>,
+    failed_media: Arc<StdMutex<HashSet<String>>>,
     pronouns: Arc<PronounCache>,
     verification_req_rx: Mutex<Option<mpsc::UnboundedReceiver<VerificationRequest>>>,
     verification_handler_guards: Mutex<Vec<EventHandlerDropGuard>>,
@@ -58,6 +59,7 @@ impl MatrixAdapter {
             sas_verification: Mutex::new(None),
             media_sources: Arc::new(StdMutex::new(HashMap::new())),
             materialized: Arc::new(StdMutex::new(HashMap::new())),
+            failed_media: Arc::new(StdMutex::new(HashSet::new())),
             pronouns: Arc::new(PronounCache::default()),
             verification_req_rx: Mutex::new(None),
             verification_handler_guards: Mutex::new(Vec::new()),
@@ -77,9 +79,10 @@ impl MatrixAdapter {
     }
 
     pub fn media_cache(&self) -> Arc<dyn MediaCache> {
-        Arc::new(media::MaterializedMedia::new(Arc::clone(
-            &self.materialized,
-        )))
+        Arc::new(media::MaterializedMedia::new(
+            Arc::clone(&self.materialized),
+            Arc::clone(&self.failed_media),
+        ))
     }
 
     pub fn clean_media_cache(&self) {
@@ -133,6 +136,7 @@ impl MatrixPort for MatrixAdapter {
             &self.media_dir(),
             &self.media_sources,
             &self.materialized,
+            &self.failed_media,
             &self.pronouns,
             room_id,
             timeline_tx,

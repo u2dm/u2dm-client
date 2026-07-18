@@ -7,7 +7,13 @@ pub struct DemoMediaCache;
 
 impl MediaCache for DemoMediaCache {
     fn thumbnail_path(&self, event_id: &str) -> Option<PathBuf> {
-        asset(&format!("thumbnail-{event_id}.png"))
+        asset(&format!("thumbnail-{event_id}.gif"))
+            .or_else(|| asset(&format!("thumbnail-{event_id}.webp")))
+            .or_else(|| asset(&format!("thumbnail-{event_id}.png")))
+    }
+
+    fn thumbnail_failed(&self, _event_id: &str) -> bool {
+        false
     }
 
     fn avatar_path(&self, sender: &str) -> Option<PathBuf> {

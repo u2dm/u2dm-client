@@ -141,7 +141,7 @@ msgctxt "MessageInput"
 msgid "Send"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/message-bubble.slint:256
+#: ui/screens/chat/components/timeline/message-bubble.slint:257
 msgctxt "MessageBubble"
 msgid "Reply"
 msgstr ""
@@ -156,12 +156,17 @@ msgctxt "TimelineContent"
 msgid "Loading newer messages..."
 msgstr ""
 
-#: ui/screens/chat/components/timeline/messages/image-message.slint:45
+#: ui/screens/chat/components/timeline/messages/image-message.slint:68
+msgctxt "ImageMessage"
+msgid "Image unavailable"
+msgstr ""
+
+#: ui/screens/chat/components/timeline/messages/image-message.slint:77
 msgctxt "ImageMessage"
 msgid "Image: {}"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/messages/image-message.slint:45
+#: ui/screens/chat/components/timeline/messages/image-message.slint:77
 msgctxt "ImageMessage"
 msgid "Image"
 msgstr ""

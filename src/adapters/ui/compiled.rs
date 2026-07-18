@@ -7,10 +7,11 @@ use tokio::runtime::Runtime;
 use tokio::sync::mpsc;
 
 use super::common::{
-    BoolProp, IntProp, Status, StringProp, UiProps, avatar_color_index, avatar_initials,
-    dispatch_ui_event, load_image_cached, message_body_text, message_preview_kind_token,
-    message_sender_label, message_timestamp_label, message_type_token, pronoun_labels,
-    room_activity_label, sender_initial, service_kind_token, service_target, unsupported_kind,
+    BoolProp, IntProp, Status, StringProp, UiProps, advance_animations, avatar_color_index,
+    avatar_initials, dispatch_ui_event, load_image_cached, load_thumbnail, message_body_text,
+    message_preview_kind_token, message_sender_label, message_timestamp_label, message_type_token,
+    pronoun_labels, room_activity_label, sender_initial, service_kind_token, service_target,
+    set_animation_tick, unsupported_kind,
 };
 use super::emoji;
 use crate::commands::{UiCommand, UiEvent};
@@ -378,6 +379,17 @@ impl SlintUiAdapter {
 
         TIMELINE_MODEL.with(|cell| *cell.borrow_mut() = Some(timeline_model));
         ROOMS_MODEL.with(|cell| *cell.borrow_mut() = Some(rooms_model));
+
+        set_animation_tick(|| {
+            if let Some(timeline) = TIMELINE_MODEL.with(|cell| cell.borrow().clone()) {
+                advance_animations(
+                    &timeline,
+                    &|e: &MessageEntry| e.event_id.to_string(),
+                    &|e: &mut MessageEntry, frame| e.thumbnail = frame,
+                );
+            }
+        });
+
         SPACES_MODEL.with(|cell| *cell.borrow_mut() = Some(spaces_model));
         SUBSPACES_MODEL.with(|cell| *cell.borrow_mut() = Some(subspaces_model));
 
@@ -509,11 +521,15 @@ fn message_to_entry(m: &TimelineMessage, media: &dyn MediaCache) -> MessageEntry
     if let MessageBody::Image { meta, .. } = &m.body {
         entry.image_width = meta.width.unwrap_or(0).cast_signed();
         entry.image_height = meta.height.unwrap_or(0).cast_signed();
-        if let Some(thumb_path) = media.thumbnail_path(&m.event_id.0)
-            && let Some(img) = load_image_cached(&thumb_path)
-        {
-            entry.thumbnail = img;
-            entry.has_thumbnail = true;
+        if let Some(thumb_path) = media.thumbnail_path(&m.event_id.0) {
+            if let Some(img) = load_thumbnail(&thumb_path, &m.event_id.0) {
+                entry.thumbnail = img;
+                entry.has_thumbnail = true;
+            } else {
+                entry.media_failed = true;
+            }
+        } else {
+            entry.media_failed = media.thumbnail_failed(&m.event_id.0);
         }
     }
 

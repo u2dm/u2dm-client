@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex as StdMutex};
 use std::time::Duration;
@@ -29,17 +29,28 @@ pub(super) fn mxc_avatar_key(mxc: &str) -> String {
 
 pub(super) struct MaterializedMedia {
     materialized: Arc<StdMutex<HashMap<String, PathBuf>>>,
+    failed: Arc<StdMutex<HashSet<String>>>,
 }
 
 impl MaterializedMedia {
-    pub(super) fn new(materialized: Arc<StdMutex<HashMap<String, PathBuf>>>) -> Self {
-        Self { materialized }
+    pub(super) fn new(
+        materialized: Arc<StdMutex<HashMap<String, PathBuf>>>,
+        failed: Arc<StdMutex<HashSet<String>>>,
+    ) -> Self {
+        Self {
+            materialized,
+            failed,
+        }
     }
 }
 
 impl MediaCache for MaterializedMedia {
     fn thumbnail_path(&self, event_id: &str) -> Option<PathBuf> {
         lookup_materialized(&self.materialized, &thumb_key(event_id))
+    }
+
+    fn thumbnail_failed(&self, event_id: &str) -> bool {
+        is_media_failed(&self.failed, event_id)
     }
 
     fn avatar_path(&self, sender: &str) -> Option<PathBuf> {
@@ -68,6 +79,23 @@ pub(super) fn lookup_media_source(
     })
 }
 
+pub(super) fn lookup_full_media_source(
+    media_sources: &StdMutex<HashMap<String, MediaSource>>,
+    event_id: &str,
+) -> Option<MediaSource> {
+    media_sources.lock().ok()?.get(event_id).cloned()
+}
+
+fn is_animated_mime(mimetype: Option<&str>) -> bool {
+    mimetype.is_some_and(|mime| {
+        mime.eq_ignore_ascii_case("image/gif") || mime.eq_ignore_ascii_case("image/webp")
+    })
+}
+
+pub(super) fn thumbnail_format() -> MediaFormat {
+    MediaFormat::Thumbnail(MediaThumbnailSettings::new(400u32.into(), 400u32.into()))
+}
+
 fn ext_from_magic(data: &[u8]) -> &'static str {
     infer::get(data).map_or("png", |t| t.extension())
 }
@@ -85,14 +113,24 @@ fn record_materialized(materialized: &StdMutex<HashMap<String, PathBuf>>, key: &
     }
 }
 
+pub(super) fn is_media_failed(failed: &StdMutex<HashSet<String>>, event_id: &str) -> bool {
+    failed.lock().is_ok_and(|set| set.contains(event_id))
+}
+
+fn record_media_failed(failed: &StdMutex<HashSet<String>>, event_id: &str) {
+    if let Ok(mut set) = failed.lock() {
+        set.insert(event_id.to_string());
+    }
+}
+
 pub(super) async fn fetch_and_materialize(
     client: &Client,
     materialized: &StdMutex<HashMap<String, PathBuf>>,
     cache_stem: &Path,
     source: MediaSource,
     cache_key: &str,
+    format: MediaFormat,
 ) -> Option<PathBuf> {
-    let format = MediaFormat::Thumbnail(MediaThumbnailSettings::new(400u32.into(), 400u32.into()));
     let request = MediaRequestParameters { source, format };
 
     let media = client.media();
@@ -123,9 +161,11 @@ pub(super) async fn fetch_and_materialize(
 pub(super) fn needs_media_download(
     msg: &TimelineMessage,
     materialized: &StdMutex<HashMap<String, PathBuf>>,
+    failed: &StdMutex<HashSet<String>>,
 ) -> bool {
     let needs_thumbnail = matches!(&msg.body, MessageBody::Image { .. })
-        && lookup_materialized(materialized, &thumb_key(&msg.event_id.0)).is_none();
+        && lookup_materialized(materialized, &thumb_key(&msg.event_id.0)).is_none()
+        && !is_media_failed(failed, &msg.event_id.0);
     let needs_avatar = msg.sender_avatar_url.is_some()
         && lookup_materialized(materialized, &avatar_key(&msg.sender)).is_none();
     needs_thumbnail || needs_avatar
@@ -136,17 +176,44 @@ pub(super) async fn enrich_message(
     media_dir: &Path,
     media_sources: &StdMutex<HashMap<String, MediaSource>>,
     materialized: &StdMutex<HashMap<String, PathBuf>>,
+    failed: &StdMutex<HashSet<String>>,
     msg: &TimelineMessage,
 ) {
-    if matches!(&msg.body, MessageBody::Image { .. }) {
+    if let MessageBody::Image { meta, .. } = &msg.body {
         let event_id = &msg.event_id.0;
         let cache_key = thumb_key(event_id);
 
-        if lookup_materialized(materialized, &cache_key).is_none()
-            && let Some(source) = lookup_media_source(media_sources, event_id)
-        {
-            let cache_stem = media_dir.join(hex_encode_id(event_id));
-            fetch_and_materialize(client, materialized, &cache_stem, source, &cache_key).await;
+        if lookup_materialized(materialized, &cache_key).is_none() {
+            let animated = is_animated_mime(meta.mimetype.as_deref());
+            let source = if animated {
+                lookup_full_media_source(media_sources, event_id)
+            } else {
+                lookup_media_source(media_sources, event_id)
+            };
+
+            let materialized_path = if let Some(source) = source {
+                let format = if animated {
+                    MediaFormat::File
+                } else {
+                    thumbnail_format()
+                };
+                let cache_stem = media_dir.join(hex_encode_id(event_id));
+                fetch_and_materialize(
+                    client,
+                    materialized,
+                    &cache_stem,
+                    source,
+                    &cache_key,
+                    format,
+                )
+                .await
+            } else {
+                None
+            };
+
+            if materialized_path.is_none() {
+                record_media_failed(failed, event_id);
+            }
         }
     }
 
@@ -158,7 +225,15 @@ pub(super) async fn enrich_message(
             let cache_stem = avatar_dir.join(hex_encode_id(&msg.sender));
             let avatar_mxc: OwnedMxcUri = mxc_url.as_str().into();
             let source = MediaSource::Plain(avatar_mxc);
-            fetch_and_materialize(client, materialized, &cache_stem, source, &avatar_key).await;
+            fetch_and_materialize(
+                client,
+                materialized,
+                &cache_stem,
+                source,
+                &avatar_key,
+                thumbnail_format(),
+            )
+            .await;
         }
     }
 }
@@ -194,7 +269,15 @@ pub(super) async fn fetch_user_avatar(
 
     let cache_stem = avatar_dir.join(hex_encode_id(mxc.as_str()));
     let source = MediaSource::Plain(mxc);
-    fetch_and_materialize(client, materialized, &cache_stem, source, &key).await
+    fetch_and_materialize(
+        client,
+        materialized,
+        &cache_stem,
+        source,
+        &key,
+        thumbnail_format(),
+    )
+    .await
 }
 
 pub(super) async fn download_media(
@@ -224,7 +307,7 @@ pub(super) async fn download_media(
         .ok_or_else(|| AppError::Other(format!("no media source for event {event_id}")))?;
 
     let format = if thumbnail {
-        MediaFormat::Thumbnail(MediaThumbnailSettings::new(400u32.into(), 400u32.into()))
+        thumbnail_format()
     } else {
         MediaFormat::File
     };

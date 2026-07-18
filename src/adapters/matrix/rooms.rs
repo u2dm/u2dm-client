@@ -26,7 +26,7 @@ use tokio::sync::broadcast::error::RecvError;
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender, unbounded_channel};
 use tokio::task::JoinSet;
 
-use super::media::{fetch_and_materialize, lookup_materialized, mxc_avatar_key};
+use super::media::{fetch_and_materialize, lookup_materialized, mxc_avatar_key, thumbnail_format};
 use super::preview::{self, MessagePreview};
 use crate::domain::models::{
     MessagePreviewKind, Room as DomainRoom, RoomId, ServiceEvent, Space as DomainSpace, SyncEvent,
@@ -328,9 +328,16 @@ impl AvatarFetcher {
             }
             let cache_stem = avatar_dir.join(hex_encode_id(mxc.as_str()));
             let source = MediaSource::Plain(mxc);
-            if fetch_and_materialize(&client, &materialized, &cache_stem, source, &key)
-                .await
-                .is_some()
+            if fetch_and_materialize(
+                &client,
+                &materialized,
+                &cache_stem,
+                source,
+                &key,
+                thumbnail_format(),
+            )
+            .await
+            .is_some()
             {
                 ready_tx.send(kind).ok();
             }

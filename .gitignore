@@ -6,3 +6,5 @@
 .vscode
 
 /assets/demo/*.png
+/assets/demo/*.gif
+/assets/demo/*.webp

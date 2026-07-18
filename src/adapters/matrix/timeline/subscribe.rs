@@ -33,10 +33,19 @@ fn spawn_enrichment(ctx: &TimelineContext<'_>, msg: &TimelineMessage) {
     let media_dir = ctx.media_dir.to_path_buf();
     let media_sources = Arc::clone(ctx.media_sources);
     let materialized = Arc::clone(ctx.materialized);
+    let failed_media = Arc::clone(ctx.failed_media);
     let pronouns = Arc::clone(ctx.pronouns);
     let tx = ctx.timeline_tx.clone();
     tokio::spawn(async move {
-        enrich_message(&client, &media_dir, &media_sources, &materialized, &msg).await;
+        enrich_message(
+            &client,
+            &media_dir,
+            &media_sources,
+            &materialized,
+            &failed_media,
+            &msg,
+        )
+        .await;
         if !msg.is_own {
             msg.sender_pronouns = pronouns.resolve(&client, &msg.sender).await;
         }
@@ -54,7 +63,9 @@ pub(super) fn spawn_enrichment_for_messages(
     ctx: &TimelineContext<'_>,
 ) {
     for msg in messages {
-        if needs_media_download(msg, ctx.materialized) || needs_pronouns(msg, ctx.pronouns) {
+        if needs_media_download(msg, ctx.materialized, ctx.failed_media)
+            || needs_pronouns(msg, ctx.pronouns)
+        {
             spawn_enrichment(ctx, msg);
         }
     }
@@ -262,6 +273,7 @@ pub(crate) async fn subscribe_timeline(
     media_dir: &Path,
     media_sources: &Arc<StdMutex<HashMap<String, MediaSource>>>,
     materialized: &Arc<StdMutex<HashMap<String, PathBuf>>>,
+    failed_media: &Arc<StdMutex<HashSet<String>>>,
     pronouns: &Arc<PronounCache>,
     room_id: &RoomId,
     timeline_tx: mpsc::UnboundedSender<TimelineUpdate>,
@@ -285,6 +297,7 @@ pub(crate) async fn subscribe_timeline(
         media_dir,
         media_sources,
         materialized,
+        failed_media,
         pronouns,
         own_user_id: own_user_id.as_deref(),
         timeline_tx: &timeline_tx,

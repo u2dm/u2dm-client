@@ -19,10 +19,11 @@ thread_local! {
 }
 
 use super::common::{
-    BoolProp, IntProp, Status, StringProp, UiProps, avatar_color_index, avatar_initials,
-    dispatch_ui_event, load_image_cached, message_body_text, message_preview_kind_token,
-    message_sender_label, message_timestamp_label, message_type_token, pronoun_labels,
-    room_activity_label, sender_initial, service_kind_token, service_target, unsupported_kind,
+    BoolProp, IntProp, Status, StringProp, UiProps, advance_animations, avatar_color_index,
+    avatar_initials, dispatch_ui_event, load_image_cached, load_thumbnail, message_body_text,
+    message_preview_kind_token, message_sender_label, message_timestamp_label, message_type_token,
+    pronoun_labels, room_activity_label, sender_initial, service_kind_token, service_target,
+    set_animation_tick, unsupported_kind,
 };
 use super::emoji;
 use crate::commands::{UiCommand, UiEvent};
@@ -565,6 +566,16 @@ impl SlintUiAdapter {
         SPACES_MODEL.with(|cell| *cell.borrow_mut() = Some(spaces_model));
         SUBSPACES_MODEL.with(|cell| *cell.borrow_mut() = Some(subspaces_model));
 
+        set_animation_tick(|| {
+            if let Some(timeline) = TIMELINE_MODEL.with(|cell| cell.borrow().clone()) {
+                advance_animations(&timeline, &event_id_from_value, &|value, frame| {
+                    if let Value::Struct(entry) = value {
+                        entry.set_field("thumbnail".to_string(), Value::Image(frame));
+                    }
+                });
+            }
+        });
+
         tokio::spawn(async move {
             while let Some(event) = ui_rx.recv().await {
                 let media_cache = Arc::clone(&media_cache);
@@ -743,28 +754,7 @@ fn message_to_value(m: &TimelineMessage, media: &dyn MediaCache) -> Value {
         ),
     ];
 
-    let mut has_thumbnail = false;
-    let mut image_width: i32 = 0;
-    let mut image_height: i32 = 0;
-    if let MessageBody::Image { meta, .. } = &m.body {
-        image_width = meta.width.unwrap_or(0).cast_signed();
-        image_height = meta.height.unwrap_or(0).cast_signed();
-        if let Some(thumb_path) = media.thumbnail_path(&m.event_id.0)
-            && let Some(img) = load_image_cached(&thumb_path)
-        {
-            fields.push(("thumbnail".to_string(), Value::Image(img)));
-            has_thumbnail = true;
-        }
-    }
-    fields.push(("has-thumbnail".to_string(), Value::Bool(has_thumbnail)));
-    fields.push((
-        "image-width".to_string(),
-        Value::Number(f64::from(image_width)),
-    ));
-    fields.push((
-        "image-height".to_string(),
-        Value::Number(f64::from(image_height)),
-    ));
+    fields.extend(image_fields(m, media));
 
     let mut has_avatar = false;
     if let Some(avatar_path) = media.avatar_path(&m.sender)
@@ -807,6 +797,45 @@ fn message_to_value(m: &TimelineMessage, media: &dyn MediaCache) -> Value {
     ));
 
     Value::Struct(Struct::from_iter(fields))
+}
+
+fn image_fields(m: &TimelineMessage, media: &dyn MediaCache) -> Vec<(String, Value)> {
+    let mut has_thumbnail = false;
+    let mut media_failed = false;
+    let mut image_width: i32 = 0;
+    let mut image_height: i32 = 0;
+    let mut thumbnail = None;
+    if let MessageBody::Image { meta, .. } = &m.body {
+        image_width = meta.width.unwrap_or(0).cast_signed();
+        image_height = meta.height.unwrap_or(0).cast_signed();
+        if let Some(thumb_path) = media.thumbnail_path(&m.event_id.0) {
+            if let Some(img) = load_thumbnail(&thumb_path, &m.event_id.0) {
+                thumbnail = Some(img);
+                has_thumbnail = true;
+            } else {
+                media_failed = true;
+            }
+        } else {
+            media_failed = media.thumbnail_failed(&m.event_id.0);
+        }
+    }
+
+    let mut fields = vec![
+        ("has-thumbnail".to_string(), Value::Bool(has_thumbnail)),
+        ("media-failed".to_string(), Value::Bool(media_failed)),
+        (
+            "image-width".to_string(),
+            Value::Number(f64::from(image_width)),
+        ),
+        (
+            "image-height".to_string(),
+            Value::Number(f64::from(image_height)),
+        ),
+    ];
+    if let Some(img) = thumbnail {
+        fields.push(("thumbnail".to_string(), Value::Image(img)));
+    }
+    fields
 }
 
 fn reply_fields(m: &TimelineMessage) -> Vec<(String, Value)> {

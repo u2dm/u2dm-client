@@ -12,6 +12,7 @@ pub trait MediaFilePort: Send + Sync {
 
 pub trait MediaCache: Send + Sync {
     fn thumbnail_path(&self, event_id: &str) -> Option<PathBuf>;
+    fn thumbnail_failed(&self, event_id: &str) -> bool;
     fn avatar_path(&self, sender: &str) -> Option<PathBuf>;
     fn room_avatar_path(&self, mxc: &str) -> Option<PathBuf>;
     fn space_avatar_path(&self, mxc: &str) -> Option<PathBuf>;
