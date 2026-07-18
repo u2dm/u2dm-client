@@ -276,19 +276,19 @@ msgctxt "EmojiPicker"
 msgid "No emoji found"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/timeline-view.slint:47
+#: ui/screens/chat/components/timeline/timeline-view.slint:54
 msgctxt "TimelineView"
 msgid "Select a room"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/timeline-view.slint:76
+#: ui/screens/chat/components/timeline/timeline-view.slint:83
 msgctxt "TimelineView"
 msgid "{n} member"
 msgid_plural "{n} members"
 msgstr[0] ""
 msgstr[1] ""
 
-#: ui/screens/chat/components/timeline/timeline-view.slint:89
+#: ui/screens/chat/components/timeline/timeline-view.slint:96
 msgctxt "TimelineView"
 msgid "Loading messages..."
 msgstr ""

@@ -43,6 +43,13 @@ export component TimelineView inherits Rectangle {
         : root.message-input-height;
     property <length> spacing: 8px;
 
+    changed selected-room-id => {
+        root.input-message = "";
+        root.reply-event-id = "";
+        root.reply-sender = "";
+        root.reply-preview = "";
+    }
+
     if root.selected-room-name == "": Text {
         text: @tr("Select a room");
         font-size: 16px;
