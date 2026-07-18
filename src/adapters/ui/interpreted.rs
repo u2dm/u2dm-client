@@ -28,8 +28,8 @@ use super::common::{
 use super::emoji;
 use crate::commands::{UiCommand, UiEvent};
 use crate::domain::models::{
-    LoginCredentials, MessageBody, Room, RoomId, Space, TimelineMessage,
-    VerificationEmoji as DomainVerificationEmoji,
+    EnrichmentDelta, LoginCredentials, MessageBody, Room, RoomId, Space, ThumbnailOutcome,
+    TimelineMessage, VerificationEmoji as DomainVerificationEmoji,
 };
 use crate::error::{AppError, Result};
 use crate::ports::media::MediaCache;
@@ -595,6 +595,7 @@ impl SlintUiAdapter {
                             &sm,
                             &ssm,
                             &|m| message_to_value(m, media_cache.as_ref()),
+                            &|v, d| enrich_value(v, d, media_cache.as_ref()),
                             &|r| room_to_value(r, media_cache.as_ref()),
                             &|s| space_to_value(s, media_cache.as_ref()),
                             &|v| room_id_from_value(v).map_or("", SharedString::as_str),
@@ -799,6 +800,51 @@ fn message_to_value(m: &TimelineMessage, media: &dyn MediaCache) -> Value {
     ));
 
     Value::Struct(Struct::from_iter(fields))
+}
+
+fn enrich_value(value: &mut Value, delta: &EnrichmentDelta, media: &dyn MediaCache) {
+    let Value::Struct(entry) = value else {
+        return;
+    };
+
+    match delta.thumbnail {
+        ThumbnailOutcome::Ready => {
+            if let Some(event_id) = delta.event_id.as_ref()
+                && let Some(thumb_path) = media.thumbnail_path(&event_id.0)
+            {
+                if let Some(img) = load_thumbnail(&thumb_path, &delta.unique_id) {
+                    entry.set_field("thumbnail".to_string(), Value::Image(img));
+                    entry.set_field("has-thumbnail".to_string(), Value::Bool(true));
+                    entry.set_field("media-failed".to_string(), Value::Bool(false));
+                } else {
+                    entry.set_field("media-failed".to_string(), Value::Bool(true));
+                }
+            }
+        }
+        ThumbnailOutcome::Failed => {
+            entry.set_field("media-failed".to_string(), Value::Bool(true));
+        }
+        ThumbnailOutcome::Unchanged => {}
+    }
+
+    if delta.avatar_ready
+        && let Some(avatar_path) = media.avatar_path(&delta.sender)
+        && let Some(img) = load_image_cached(&avatar_path)
+    {
+        entry.set_field("avatar".to_string(), Value::Image(img));
+        entry.set_field("has-avatar".to_string(), Value::Bool(true));
+    }
+
+    if let Some(pronouns) = &delta.pronouns {
+        let labels: Vec<Value> = pronoun_labels(pronouns)
+            .into_iter()
+            .map(|set| Value::String(SharedString::from(set)))
+            .collect();
+        entry.set_field(
+            "pronouns".to_string(),
+            Value::Model(ModelRc::new(VecModel::from(labels))),
+        );
+    }
 }
 
 fn image_fields(m: &TimelineMessage, media: &dyn MediaCache) -> Vec<(String, Value)> {

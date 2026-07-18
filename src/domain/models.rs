@@ -343,10 +343,32 @@ pub enum TimelinePatch {
     },
     Clear,
     Batch(Vec<TimelinePatch>),
-    UpdateMedia {
-        unique_id: String,
-        message: TimelineMessage,
-    },
+    Enrich(EnrichmentDelta),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ThumbnailOutcome {
+    Unchanged,
+    Ready,
+    Failed,
+}
+
+#[derive(Debug, Clone)]
+pub struct EnrichmentDelta {
+    pub unique_id: String,
+    pub event_id: Option<EventId>,
+    pub sender: String,
+    pub thumbnail: ThumbnailOutcome,
+    pub avatar_ready: bool,
+    pub pronouns: Option<Vec<String>>,
+}
+
+impl EnrichmentDelta {
+    pub fn is_noop(&self) -> bool {
+        matches!(self.thumbnail, ThumbnailOutcome::Unchanged)
+            && !self.avatar_ready
+            && self.pronouns.is_none()
+    }
 }
 
 impl TimelinePatch {

@@ -12,13 +12,14 @@ use tokio::fs;
 use tokio::sync::mpsc;
 use tokio::task::JoinSet;
 
-use super::TimelineContext;
 use super::diff::diff_to_patch;
 use super::filter::convert_timeline_items;
-use crate::adapters::matrix::media::{enrich_message, needs_media_download};
+use super::{EnrichmentPool, TimelineContext};
+use crate::adapters::matrix::media::{enrich_avatar, enrich_thumbnail, needs_media_download};
 use crate::adapters::matrix::profile::PronounCache;
 use crate::domain::models::{
-    PaginationDirection, RoomId, TimelineCommand, TimelineMessage, TimelinePatch, TimelineUpdate,
+    EnrichmentDelta, PaginationDirection, RoomId, TimelineCommand, TimelineMessage, TimelinePatch,
+    TimelineUpdate,
 };
 use crate::domain::viewport::PAGINATION_BATCH_SIZE;
 use crate::error::{AppError, Result};
@@ -28,33 +29,70 @@ fn needs_pronouns(msg: &TimelineMessage, pronouns: &PronounCache) -> bool {
 }
 
 fn spawn_enrichment(ctx: &TimelineContext<'_>, msg: &TimelineMessage) {
-    let mut msg = msg.clone();
+    let unique_id = msg.unique_id.clone();
+    if let Ok(mut inflight) = ctx.enrich.inflight.lock() {
+        if !inflight.insert(unique_id.clone()) {
+            return;
+        }
+    } else {
+        return;
+    }
+
+    let msg = msg.clone();
+    let resolve_pronouns = needs_pronouns(&msg, ctx.pronouns);
     let client = ctx.client.clone();
     let media_dir = ctx.media_dir.to_path_buf();
     let media_sources = Arc::clone(ctx.media_sources);
     let materialized = Arc::clone(ctx.materialized);
     let failed_media = Arc::clone(ctx.failed_media);
     let pronouns = Arc::clone(ctx.pronouns);
+    let inflight = Arc::clone(&ctx.enrich.inflight);
+    let token = ctx.enrich.token.clone();
     let tx = ctx.timeline_tx.clone();
-    tokio::spawn(async move {
-        enrich_message(
-            &client,
-            &media_dir,
-            &media_sources,
-            &materialized,
-            &failed_media,
-            &msg,
-        )
-        .await;
-        if !msg.is_own {
-            msg.sender_pronouns = pronouns.resolve(&client, &msg.sender).await;
-        }
-        drop(tx.send(TimelineUpdate::Patch(Box::new(
-            TimelinePatch::UpdateMedia {
+
+    ctx.enrich.tracker.spawn(async move {
+        let work = async {
+            let thumbnail = enrich_thumbnail(
+                &client,
+                &media_dir,
+                &media_sources,
+                &materialized,
+                &failed_media,
+                &msg,
+            )
+            .await;
+            let avatar_ready = enrich_avatar(&client, &media_dir, &materialized, &msg).await;
+            let pronouns = if resolve_pronouns {
+                let resolved = pronouns.resolve(&client, &msg.sender).await;
+                (!resolved.is_empty()).then_some(resolved)
+            } else {
+                None
+            };
+            EnrichmentDelta {
                 unique_id: msg.unique_id.clone(),
-                message: msg,
-            },
-        ))));
+                event_id: msg.event_id.clone(),
+                sender: msg.sender.clone(),
+                thumbnail,
+                avatar_ready,
+                pronouns,
+            }
+        };
+
+        let delta = token.run_until_cancelled(work).await;
+
+        if let Ok(mut inflight) = inflight.lock() {
+            inflight.remove(&unique_id);
+        }
+
+        if let Some(delta) = delta
+            && !delta.is_noop()
+        {
+            drop(
+                tx.send(TimelineUpdate::Patch(Box::new(TimelinePatch::Enrich(
+                    delta,
+                )))),
+            );
+        }
     });
 }
 
@@ -292,6 +330,7 @@ pub(crate) async fn subscribe_timeline(
     });
 
     let own_user_id = client.user_id().map(ToString::to_string);
+    let enrich = EnrichmentPool::new();
     let ctx = TimelineContext {
         client,
         media_dir,
@@ -301,6 +340,7 @@ pub(crate) async fn subscribe_timeline(
         pronouns,
         own_user_id: own_user_id.as_deref(),
         timeline_tx: &timeline_tx,
+        enrich: &enrich,
     };
 
     let mut items: Vec<Arc<TimelineItem>> = initial_items.into_iter().collect();

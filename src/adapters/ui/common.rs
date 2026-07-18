@@ -483,9 +483,9 @@ pub fn connection_status_token(status: &ConnectionStatus) -> &'static str {
 
 use crate::commands::UiEvent;
 use crate::domain::models::{
-    ConnectionStatus, LoginMethod, MessageBody, MessagePreviewKind, Room, ServerInfo, ServiceEvent,
-    Space, TimelineMessage, TimelinePatch, VerificationEmoji as DomainVerificationEmoji,
-    VerificationEvent as DomainVerificationEvent,
+    ConnectionStatus, EnrichmentDelta, LoginMethod, MessageBody, MessagePreviewKind, Room,
+    ServerInfo, ServiceEvent, Space, TimelineMessage, TimelinePatch,
+    VerificationEmoji as DomainVerificationEmoji, VerificationEvent as DomainVerificationEvent,
 };
 
 pub enum StringProp {
@@ -643,6 +643,7 @@ pub fn dispatch_ui_event<T, R, S>(
     spaces_model: &VecModel<S>,
     subspaces_model: &VecModel<S>,
     convert_message: &dyn Fn(&TimelineMessage) -> T,
+    enrich_message: &dyn Fn(&mut T, &EnrichmentDelta),
     convert_room: &dyn Fn(&Room) -> R,
     convert_space: &dyn Fn(&Space) -> S,
     room_entry_id: &dyn Fn(&R) -> &str,
@@ -696,7 +697,13 @@ pub fn dispatch_ui_event<T, R, S>(
             );
             if matches {
                 w.set_bool(BoolProp::TimelineLoading, false);
-                apply_timeline_patch(timeline_model, *patch, convert_message, message_entry_id);
+                apply_timeline_patch(
+                    timeline_model,
+                    *patch,
+                    convert_message,
+                    enrich_message,
+                    message_entry_id,
+                );
             }
         }
         UiEvent::PaginationState { room_id, state } => {
@@ -884,6 +891,7 @@ pub fn apply_timeline_patch<T: Clone + 'static>(
     model: &VecModel<T>,
     patch: TimelinePatch,
     convert: &dyn Fn(&TimelineMessage) -> T,
+    enrich: &dyn Fn(&mut T, &EnrichmentDelta),
     entry_id: &dyn Fn(&T) -> String,
 ) {
     let before = model.row_count();
@@ -942,15 +950,16 @@ pub fn apply_timeline_patch<T: Clone + 'static>(
             model.set_vec(Vec::new());
         }
         TimelinePatch::Batch(patches) => {
-            apply_batch(model, patches, convert, entry_id);
+            apply_batch(model, patches, convert, enrich, entry_id);
         }
-        TimelinePatch::UpdateMedia { unique_id, message } => {
-            let target = unique_id;
+        TimelinePatch::Enrich(delta) => {
             for i in 0..model.row_count() {
                 if let Some(entry) = model.row_data(i)
-                    && entry_id(&entry) == target
+                    && entry_id(&entry) == delta.unique_id
                 {
-                    model.set_row_data(i, convert(&message));
+                    let mut updated = entry;
+                    enrich(&mut updated, &delta);
+                    model.set_row_data(i, updated);
                     break;
                 }
             }
@@ -966,32 +975,11 @@ fn apply_batch<T: Clone + 'static>(
     model: &VecModel<T>,
     patches: Vec<TimelinePatch>,
     convert: &dyn Fn(&TimelineMessage) -> T,
+    enrich: &dyn Fn(&mut T, &EnrichmentDelta),
     entry_id: &dyn Fn(&T) -> String,
 ) {
-    let all_media = !patches.is_empty()
-        && patches
-            .iter()
-            .all(|p| matches!(p, TimelinePatch::UpdateMedia { .. }));
-
-    if all_media {
-        let mut updates: HashMap<&str, &TimelineMessage> = HashMap::new();
-        for p in &patches {
-            if let TimelinePatch::UpdateMedia { unique_id, message } = p {
-                updates.insert(unique_id.as_str(), message);
-            }
-        }
-        for i in 0..model.row_count() {
-            if let Some(entry) = model.row_data(i) {
-                let eid = entry_id(&entry);
-                if let Some(msg) = updates.get(eid.as_str()) {
-                    model.set_row_data(i, convert(msg));
-                }
-            }
-        }
-    } else {
-        for p in patches {
-            apply_timeline_patch(model, p, convert, entry_id);
-        }
+    for p in patches {
+        apply_timeline_patch(model, p, convert, enrich, entry_id);
     }
 }
 

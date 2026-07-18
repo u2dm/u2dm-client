@@ -16,8 +16,8 @@ use super::common::{
 use super::emoji;
 use crate::commands::{UiCommand, UiEvent};
 use crate::domain::models::{
-    LoginCredentials, MessageBody, Room, RoomId, Space, TimelineMessage,
-    VerificationEmoji as DomainVerificationEmoji,
+    EnrichmentDelta, LoginCredentials, MessageBody, Room, RoomId, Space, ThumbnailOutcome,
+    TimelineMessage, VerificationEmoji as DomainVerificationEmoji,
 };
 use crate::error::Result;
 use crate::ports::media::MediaCache;
@@ -412,6 +412,7 @@ impl SlintUiAdapter {
                             &sm,
                             &ssm,
                             &|m| message_to_entry(m, media_cache.as_ref()),
+                            &|e, d| enrich_entry(e, d, media_cache.as_ref()),
                             &|r| room_to_entry(r, media_cache.as_ref()),
                             &|s| space_to_entry(s, media_cache.as_ref()),
                             &|e| e.id.as_str(),
@@ -543,6 +544,42 @@ fn message_to_entry(m: &TimelineMessage, media: &dyn MediaCache) -> MessageEntry
     }
 
     entry
+}
+
+fn enrich_entry(entry: &mut MessageEntry, delta: &EnrichmentDelta, media: &dyn MediaCache) {
+    match delta.thumbnail {
+        ThumbnailOutcome::Ready => {
+            if let Some(event_id) = delta.event_id.as_ref()
+                && let Some(thumb_path) = media.thumbnail_path(&event_id.0)
+            {
+                if let Some(img) = load_thumbnail(&thumb_path, &delta.unique_id) {
+                    entry.thumbnail = img;
+                    entry.has_thumbnail = true;
+                    entry.media_failed = false;
+                } else {
+                    entry.media_failed = true;
+                }
+            }
+        }
+        ThumbnailOutcome::Failed => entry.media_failed = true,
+        ThumbnailOutcome::Unchanged => {}
+    }
+
+    if delta.avatar_ready
+        && let Some(avatar_path) = media.avatar_path(&delta.sender)
+        && let Some(img) = load_image_cached(&avatar_path)
+    {
+        entry.avatar = img;
+        entry.has_avatar = true;
+    }
+
+    if let Some(pronouns) = &delta.pronouns {
+        let labels: Vec<SharedString> = pronoun_labels(pronouns)
+            .into_iter()
+            .map(SharedString::from)
+            .collect();
+        entry.pronouns = ModelRc::new(VecModel::from(labels));
+    }
 }
 
 fn room_to_entry(r: &Room, media: &dyn MediaCache) -> RoomEntry {

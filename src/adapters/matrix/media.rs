@@ -10,7 +10,7 @@ use matrix_sdk::ruma::events::room::MediaSource;
 use tokio::fs;
 use tokio::time::timeout;
 
-use crate::domain::models::{MessageBody, TimelineMessage};
+use crate::domain::models::{MessageBody, ThumbnailOutcome, TimelineMessage};
 use crate::error::{AppError, Result};
 use crate::ports::media::MediaCache;
 use crate::util::hex_encode_id;
@@ -173,73 +173,91 @@ pub(super) fn needs_media_download(
     needs_thumbnail || needs_avatar
 }
 
-pub(super) async fn enrich_message(
+pub(super) async fn enrich_thumbnail(
     client: &Client,
     media_dir: &Path,
     media_sources: &StdMutex<HashMap<String, MediaSource>>,
     materialized: &StdMutex<HashMap<String, PathBuf>>,
     failed: &StdMutex<HashSet<String>>,
     msg: &TimelineMessage,
-) {
-    if let MessageBody::Image { meta, .. } = &msg.body
-        && let Some(event_id) = msg.event_id.as_ref()
-    {
-        let event_id = &event_id.0;
-        let cache_key = thumb_key(event_id);
+) -> ThumbnailOutcome {
+    let MessageBody::Image { meta, .. } = &msg.body else {
+        return ThumbnailOutcome::Unchanged;
+    };
+    let Some(event_id) = msg.event_id.as_ref() else {
+        return ThumbnailOutcome::Unchanged;
+    };
+    let event_id = &event_id.0;
+    let cache_key = thumb_key(event_id);
 
-        if lookup_materialized(materialized, &cache_key).is_none() {
-            let animated = is_animated_mime(meta.mimetype.as_deref());
-            let source = if animated {
-                lookup_full_media_source(media_sources, event_id)
-            } else {
-                lookup_media_source(media_sources, event_id)
-            };
-
-            let materialized_path = if let Some(source) = source {
-                let format = if animated {
-                    MediaFormat::File
-                } else {
-                    thumbnail_format()
-                };
-                let cache_stem = media_dir.join(hex_encode_id(event_id));
-                fetch_and_materialize(
-                    client,
-                    materialized,
-                    &cache_stem,
-                    source,
-                    &cache_key,
-                    format,
-                )
-                .await
-            } else {
-                None
-            };
-
-            if materialized_path.is_none() {
-                record_media_failed(failed, event_id);
-            }
-        }
+    if lookup_materialized(materialized, &cache_key).is_some() {
+        return ThumbnailOutcome::Unchanged;
     }
 
-    if let Some(mxc_url) = &msg.sender_avatar_url {
-        let avatar_key = avatar_key(&msg.sender);
+    let animated = is_animated_mime(meta.mimetype.as_deref());
+    let source = if animated {
+        lookup_full_media_source(media_sources, event_id)
+    } else {
+        lookup_media_source(media_sources, event_id)
+    };
 
-        if lookup_materialized(materialized, &avatar_key).is_none() {
-            let avatar_dir = media_dir.join("avatars");
-            let cache_stem = avatar_dir.join(hex_encode_id(&msg.sender));
-            let avatar_mxc: OwnedMxcUri = mxc_url.as_str().into();
-            let source = MediaSource::Plain(avatar_mxc);
-            fetch_and_materialize(
-                client,
-                materialized,
-                &cache_stem,
-                source,
-                &avatar_key,
-                thumbnail_format(),
-            )
-            .await;
-        }
+    let materialized_path = if let Some(source) = source {
+        let format = if animated {
+            MediaFormat::File
+        } else {
+            thumbnail_format()
+        };
+        let cache_stem = media_dir.join(hex_encode_id(event_id));
+        fetch_and_materialize(
+            client,
+            materialized,
+            &cache_stem,
+            source,
+            &cache_key,
+            format,
+        )
+        .await
+    } else {
+        None
+    };
+
+    if materialized_path.is_some() {
+        ThumbnailOutcome::Ready
+    } else {
+        record_media_failed(failed, event_id);
+        ThumbnailOutcome::Failed
     }
+}
+
+pub(super) async fn enrich_avatar(
+    client: &Client,
+    media_dir: &Path,
+    materialized: &StdMutex<HashMap<String, PathBuf>>,
+    msg: &TimelineMessage,
+) -> bool {
+    let Some(mxc_url) = &msg.sender_avatar_url else {
+        return false;
+    };
+    let avatar_key = avatar_key(&msg.sender);
+
+    if lookup_materialized(materialized, &avatar_key).is_some() {
+        return false;
+    }
+
+    let avatar_dir = media_dir.join("avatars");
+    let cache_stem = avatar_dir.join(hex_encode_id(&msg.sender));
+    let avatar_mxc: OwnedMxcUri = mxc_url.as_str().into();
+    let source = MediaSource::Plain(avatar_mxc);
+    fetch_and_materialize(
+        client,
+        materialized,
+        &cache_stem,
+        source,
+        &avatar_key,
+        thumbnail_format(),
+    )
+    .await
+    .is_some()
 }
 
 pub(super) async fn fetch_user_avatar(
