@@ -129,10 +129,10 @@ impl AppService {
                 UiCommand::TimelinePaginationCompleted {
                     room_id,
                     direction,
-                    hit_end,
+                    outcome,
                 } => {
                     self.active_timeline
-                        .complete_pagination(&room_id, direction, hit_end);
+                        .complete_pagination(&room_id, direction, outcome);
                 }
                 UiCommand::JumpToLatest { room_id } => {
                     self.active_timeline.jump_to_latest(&room_id);

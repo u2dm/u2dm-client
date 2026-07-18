@@ -8,9 +8,9 @@ use tokio::sync::mpsc;
 
 use super::{data, media};
 use crate::domain::models::{
-    AuthMethod, LoginCredentials, OAuthLoginData, PaginationDirection, ReplyInfo, RoomId,
-    ServerInfo, Session, SyncEvent, TimelineCommand, TimelineMessage, TimelinePatch,
-    TimelineUpdate, VerificationEvent,
+    AuthMethod, LoginCredentials, OAuthLoginData, PaginationDirection, PaginationOutcome,
+    ReplyInfo, RoomId, ServerInfo, Session, SyncEvent, TimelineCommand, TimelineMessage,
+    TimelinePatch, TimelineUpdate, VerificationEvent,
 };
 use crate::error::{AppError, Result};
 use crate::ports::matrix::MatrixPort;
@@ -92,7 +92,7 @@ impl MatrixPort for DemoMatrix {
             };
             let update = TimelineUpdate::Pagination {
                 direction,
-                hit_end: true,
+                outcome: PaginationOutcome::Completed { hit_end: true },
             };
             if timeline_tx.send(update).is_err() {
                 break;

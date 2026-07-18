@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use crate::domain::models::{
     ConnectionStatus, PaginationState, Room, RoomId, ServerInfo, Space, TimelinePatch,
-    VerificationEvent,
+    TimelineStatus, VerificationEvent,
 };
 
 pub trait AppOutputPort: Send + Sync {
@@ -17,6 +17,7 @@ pub trait AppOutputPort: Send + Sync {
     fn spaces(&self, spaces: Vec<Space>);
     fn subspaces(&self, spaces: Vec<Space>);
     fn timeline(&self, room_id: RoomId, patch: Box<TimelinePatch>);
+    fn timeline_status(&self, room_id: RoomId, status: TimelineStatus);
     fn pagination_state(&self, room_id: RoomId, state: PaginationState);
     fn new_messages_badge(&self, room_id: RoomId, count: u32);
     fn scroll_to_bottom(&self, room_id: RoomId);

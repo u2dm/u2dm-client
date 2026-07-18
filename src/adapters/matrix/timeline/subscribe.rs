@@ -18,8 +18,8 @@ use super::{EnrichmentPool, TimelineContext};
 use crate::adapters::matrix::media::MediaService;
 use crate::adapters::matrix::profile::PronounCache;
 use crate::domain::models::{
-    EnrichmentDelta, PaginationDirection, RoomId, TimelineCommand, TimelineMessage, TimelinePatch,
-    TimelineUpdate,
+    EnrichmentDelta, PaginationDirection, PaginationOutcome, RoomId, TimelineCommand,
+    TimelineMessage, TimelinePatch, TimelineUpdate,
 };
 use crate::domain::viewport::PAGINATION_BATCH_SIZE;
 use crate::error::{AppError, Result};
@@ -191,7 +191,7 @@ async fn handle_timeline_command(
     timeline: &Timeline,
     timeline_tx: &mpsc::UnboundedSender<TimelineUpdate>,
 ) {
-    let (direction, hit_end) = match cmd {
+    let (direction, outcome) = match cmd {
         TimelineCommand::PaginateBackwards => (
             PaginationDirection::Backwards,
             paginate_backwards(timeline).await,
@@ -203,31 +203,31 @@ async fn handle_timeline_command(
     };
 
     if timeline_tx
-        .send(TimelineUpdate::Pagination { direction, hit_end })
+        .send(TimelineUpdate::Pagination { direction, outcome })
         .is_err()
     {
         tracing::debug!("timeline update channel closed");
     }
 }
 
-async fn paginate_backwards(timeline: &Timeline) -> bool {
+async fn paginate_backwards(timeline: &Timeline) -> PaginationOutcome {
     tracing::debug!("paginating backwards");
     match timeline.paginate_backwards(PAGINATION_BATCH_SIZE).await {
-        Ok(hit_start) => hit_start,
+        Ok(hit_start) => PaginationOutcome::Completed { hit_end: hit_start },
         Err(e) => {
             tracing::warn!("backward pagination failed: {e}");
-            false
+            PaginationOutcome::Failed
         }
     }
 }
 
-async fn paginate_forwards(timeline: &Timeline) -> bool {
+async fn paginate_forwards(timeline: &Timeline) -> PaginationOutcome {
     tracing::debug!("paginating forwards");
     match timeline.paginate_forwards(PAGINATION_BATCH_SIZE).await {
-        Ok(hit_end) => hit_end,
+        Ok(hit_end) => PaginationOutcome::Completed { hit_end },
         Err(e) => {
             tracing::warn!("forward pagination failed: {e}");
-            false
+            PaginationOutcome::Failed
         }
     }
 }
@@ -235,7 +235,7 @@ async fn paginate_forwards(timeline: &Timeline) -> bool {
 async fn setup_timeline(
     client: &Client,
     room_id: &RoomId,
-) -> Result<(Arc<Timeline>, OwnedRoomId, bool)> {
+) -> Result<(Arc<Timeline>, OwnedRoomId, PaginationOutcome)> {
     let room_id_parsed: OwnedRoomId = room_id
         .as_ref()
         .try_into()
@@ -251,9 +251,9 @@ async fn setup_timeline(
             .map_err(|e| AppError::Other(e.to_string()))?,
     );
 
-    let backwards_ended = paginate_backwards(&timeline).await;
+    let backwards_outcome = paginate_backwards(&timeline).await;
 
-    Ok((timeline, room_id_parsed, backwards_ended))
+    Ok((timeline, room_id_parsed, backwards_outcome))
 }
 
 fn spawn_reply_detail_fetches(
@@ -307,7 +307,7 @@ pub(crate) async fn subscribe_timeline(
     timeline_tx: mpsc::UnboundedSender<TimelineUpdate>,
     mut cmd_rx: mpsc::UnboundedReceiver<TimelineCommand>,
 ) -> Result<()> {
-    let (timeline, room_id_parsed, backwards_ended) = setup_timeline(client, room_id).await?;
+    let (timeline, room_id_parsed, backwards_outcome) = setup_timeline(client, room_id).await?;
 
     if let Ok(mut sources) = media_sources.lock() {
         sources.clear();
@@ -342,7 +342,7 @@ pub(crate) async fn subscribe_timeline(
     if timeline_tx
         .send(TimelineUpdate::Pagination {
             direction: PaginationDirection::Backwards,
-            hit_end: backwards_ended,
+            outcome: backwards_outcome,
         })
         .is_err()
     {

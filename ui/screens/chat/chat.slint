@@ -24,7 +24,8 @@ export component ChatScreen inherits Rectangle {
     in property <[MessageEntry]> timeline: [];
     in property <string> toast-message: "";
     in property <string> saved-file-path: "";
-    in property <bool> timeline-loading: false;
+    in property <string> timeline-status: "";
+    in property <bool> timeline-retryable: false;
     in property <int> new-messages-count: 0;
     in property <int> prepend-token: 0;
     in property <bool> backwards-loading: false;
@@ -99,7 +100,8 @@ export component ChatScreen inherits Rectangle {
         selected-room-id: root.selected-room-id;
         selected-room-members: root.selected-room-members;
         timeline: root.timeline;
-        timeline-loading: root.timeline-loading;
+        timeline-status: root.timeline-status;
+        timeline-retryable: root.timeline-retryable;
         new-messages-count: root.new-messages-count;
         prepend-token: root.prepend-token;
         backwards-loading: root.backwards-loading;
@@ -125,6 +127,9 @@ export component ChatScreen inherits Rectangle {
         }
         jump-to-latest => {
             root.jump-to-latest();
+        }
+        retry => {
+            root.select-room(root.selected-room-id);
         }
     }
 

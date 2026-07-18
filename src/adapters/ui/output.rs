@@ -5,7 +5,7 @@ use tokio::sync::mpsc;
 use crate::commands::UiEvent;
 use crate::domain::models::{
     ConnectionStatus, PaginationState, Room, RoomId, ServerInfo, Space, TimelinePatch,
-    VerificationEvent,
+    TimelineStatus, VerificationEvent,
 };
 use crate::ports::output::AppOutputPort;
 
@@ -68,6 +68,10 @@ impl AppOutputPort for UiEventOutput {
 
     fn timeline(&self, room_id: RoomId, patch: Box<TimelinePatch>) {
         self.emit(UiEvent::Timeline { room_id, patch });
+    }
+
+    fn timeline_status(&self, room_id: RoomId, status: TimelineStatus) {
+        self.emit(UiEvent::TimelineStatus { room_id, status });
     }
 
     fn pagination_state(&self, room_id: RoomId, state: PaginationState) {

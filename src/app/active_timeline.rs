@@ -6,7 +6,8 @@ use tokio::sync::mpsc;
 use super::task_group::TaskGroup;
 use crate::commands::UiCommand;
 use crate::domain::models::{
-    PaginationDirection, RoomId, ScrollMode, TimelineCommand, TimelinePatch, TimelineUpdate,
+    PaginationDirection, PaginationOutcome, RoomId, ScrollMode, TimelineCommand, TimelinePatch,
+    TimelineStatus, TimelineUpdate,
 };
 use crate::domain::viewport::ViewportController;
 use crate::ports::matrix::MatrixPort;
@@ -59,6 +60,8 @@ impl ActiveTimeline {
         self.emit_pagination_state(&room_id);
 
         self.output
+            .timeline_status(room_id.clone(), TimelineStatus::Loading);
+        self.output
             .timeline(room_id.clone(), Box::new(TimelinePatch::Clear));
 
         let (tl_tx, mut tl_rx) = mpsc::unbounded_channel::<TimelineUpdate>();
@@ -97,11 +100,11 @@ impl ActiveTimeline {
 
                             output.timeline(rid.clone(), patch);
                         }
-                        TimelineUpdate::Pagination { direction, hit_end } => {
+                        TimelineUpdate::Pagination { direction, outcome } => {
                             if let Err(e) = cmd_tx.send(UiCommand::TimelinePaginationCompleted {
                                 room_id: rid.clone(),
                                 direction,
-                                hit_end,
+                                outcome,
                             }) {
                                 tracing::debug!(
                                     "failed to send TimelinePaginationCompleted command: {e}"
@@ -117,6 +120,13 @@ impl ActiveTimeline {
                 result = subscribe => {
                     if let Err(e) = result {
                         tracing::warn!("timeline subscription failed: {e}");
+                        output.timeline_status(
+                            rid.clone(),
+                            TimelineStatus::Failed { retryable: true },
+                        );
+                    } else {
+                        tracing::debug!("timeline subscription ended");
+                        output.timeline_status(rid.clone(), TimelineStatus::Disconnected);
                     }
                 }
                 () = forward => {
@@ -186,13 +196,24 @@ impl ActiveTimeline {
         &mut self,
         room_id: &RoomId,
         direction: PaginationDirection,
-        hit_end: bool,
+        outcome: PaginationOutcome,
     ) {
         if self.active_room_id.as_ref() != Some(room_id) {
             return;
         }
 
-        self.viewport.complete_pagination(direction, hit_end);
+        let hit_end = match outcome {
+            PaginationOutcome::Completed { hit_end } => {
+                self.viewport.complete_pagination(direction, hit_end);
+                hit_end
+            }
+            PaginationOutcome::Failed => {
+                self.viewport.fail_pagination(direction);
+                self.output
+                    .notify_error("Failed to load more messages".to_owned());
+                false
+            }
+        };
         self.emit_pagination_state(room_id);
 
         if matches!(direction, PaginationDirection::Forwards)

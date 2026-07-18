@@ -400,6 +400,20 @@ pub enum PaginationDirection {
     Forwards,
 }
 
+#[derive(Debug, Clone, Copy)]
+pub enum PaginationOutcome {
+    Completed { hit_end: bool },
+    Failed,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TimelineStatus {
+    Loading,
+    Ready,
+    Failed { retryable: bool },
+    Disconnected,
+}
+
 #[derive(Debug, Clone, Default)]
 #[allow(clippy::struct_excessive_bools, dead_code)]
 pub struct PaginationState {
@@ -414,7 +428,7 @@ pub enum TimelineUpdate {
     Patch(Box<TimelinePatch>),
     Pagination {
         direction: PaginationDirection,
-        hit_end: bool,
+        outcome: PaginationOutcome,
     },
 }
 

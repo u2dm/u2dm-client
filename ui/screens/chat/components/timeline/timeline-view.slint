@@ -1,4 +1,4 @@
-import { Palette } from "std-widgets.slint";
+import { Palette, Button } from "std-widgets.slint";
 
 import {
     MessageEntry,
@@ -17,7 +17,8 @@ export component TimelineView inherits Rectangle {
     in property <string> selected-room-id: "";
     in property <int> selected-room-members: 0;
     in property <[MessageEntry]> timeline: [];
-    in property <bool> timeline-loading: false;
+    in property <string> timeline-status: "";
+    in property <bool> timeline-retryable: false;
     in property <int> new-messages-count: 0;
     in property <int> prepend-token: 0;
     in property <bool> backwards-loading: false;
@@ -34,6 +35,7 @@ export component TimelineView inherits Rectangle {
     callback paginate-backwards();
     callback paginate-forwards();
     callback jump-to-latest();
+    callback retry();
 
     property <length> header-height: 52px;
     property <length> message-input-height: 40px;
@@ -88,16 +90,42 @@ export component TimelineView inherits Rectangle {
         }
     }
 
-    if root.selected-room-name != "" && root.timeline-loading && root.timeline.length == 0: Text {
+    if root.selected-room-name != "" && root.timeline.length == 0
+        && (root.timeline-status == "loading"
+            || root.timeline-status == "failed"
+            || root.timeline-status == "disconnected"): Rectangle {
         x: 0;
         y: root.header-height;
         width: root.width;
         height: root.height - root.header-height - root.input-height;
-        text: @tr("Loading messages...");
-        font-size: 14px;
-        color: Palette.foreground.transparentize(0.5);
-        horizontal-alignment: center;
-        vertical-alignment: center;
+
+        VerticalLayout {
+            alignment: center;
+            spacing: 12px;
+
+            Text {
+                text: root.timeline-status == "loading"
+                    ? @tr("Loading messages...")
+                    : root.timeline-status == "disconnected"
+                        ? @tr("Connection lost")
+                        : @tr("Couldn't load messages");
+                font-size: 14px;
+                color: Palette.foreground.transparentize(0.5);
+                horizontal-alignment: center;
+            }
+
+            if (root.timeline-status == "failed" && root.timeline-retryable)
+                || root.timeline-status == "disconnected": HorizontalLayout {
+                alignment: center;
+
+                Button {
+                    text: @tr("Retry");
+                    clicked => {
+                        root.retry();
+                    }
+                }
+            }
+        }
     }
 
     if root.selected-room-name != "": TimelineContent {

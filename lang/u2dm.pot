@@ -81,12 +81,12 @@ msgctxt "AppWindow"
 msgid "U2DM Matrix Client"
 msgstr ""
 
-#: ui/screens/chat/chat.slint:164
+#: ui/screens/chat/chat.slint:169
 msgctxt "ChatScreen"
 msgid "File saved to {}"
 msgstr ""
 
-#: ui/screens/chat/chat.slint:177
+#: ui/screens/chat/chat.slint:182
 msgctxt "ChatScreen"
 msgid "Dismiss"
 msgstr ""
@@ -351,21 +351,36 @@ msgctxt "EmojiPicker"
 msgid "No emoji found"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/timeline-view.slint:54
+#: ui/screens/chat/components/timeline/timeline-view.slint:56
 msgctxt "TimelineView"
 msgid "Select a room"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/timeline-view.slint:83
+#: ui/screens/chat/components/timeline/timeline-view.slint:85
 msgctxt "TimelineView"
 msgid "{n} member"
 msgid_plural "{n} members"
 msgstr[0] ""
 msgstr[1] ""
 
-#: ui/screens/chat/components/timeline/timeline-view.slint:96
+#: ui/screens/chat/components/timeline/timeline-view.slint:108
 msgctxt "TimelineView"
 msgid "Loading messages..."
+msgstr ""
+
+#: ui/screens/chat/components/timeline/timeline-view.slint:110
+msgctxt "TimelineView"
+msgid "Connection lost"
+msgstr ""
+
+#: ui/screens/chat/components/timeline/timeline-view.slint:111
+msgctxt "TimelineView"
+msgid "Couldn't load messages"
+msgstr ""
+
+#: ui/screens/chat/components/timeline/timeline-view.slint:122
+msgctxt "TimelineView"
+msgid "Retry"
 msgstr ""
 
 #: ui/screens/chat/components/space-rail.slint:242

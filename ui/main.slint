@@ -54,7 +54,8 @@ export component AppWindow inherits Window {
     in-out property <string> verification-error: "";
     in-out property <string> toast-message: "";
     in-out property <string> saved-file-path: "";
-    in-out property <bool> timeline-loading: false;
+    in-out property <string> timeline-status: "";
+    in-out property <bool> timeline-retryable: false;
     in-out property <int> new-messages-count: 0;
     in-out property <int> prepend-token: 0;
     in-out property <bool> backwards-loading: false;
@@ -125,7 +126,8 @@ export component AppWindow inherits Window {
         spaces: root.spaces;
         subspaces: root.subspaces;
         timeline: root.timeline;
-        timeline-loading: root.timeline-loading;
+        timeline-status: root.timeline-status;
+        timeline-retryable: root.timeline-retryable;
         new-messages-count: root.new-messages-count;
         prepend-token: root.prepend-token;
         backwards-loading: root.backwards-loading;

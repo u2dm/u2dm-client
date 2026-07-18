@@ -61,6 +61,7 @@ impl UiProps for AppWindow {
             StringProp::SelectedRoomId => self.set_selected_room_id(value),
             StringProp::SelectedSpaceId => self.set_selected_space_id(value),
             StringProp::SelectedSubspaceId => self.set_selected_subspace_id(value),
+            StringProp::TimelineStatus => self.set_timeline_status(value),
             StringProp::InputUsername => self.set_input_username(value),
             StringProp::InputPassword => self.set_input_password(value),
         }
@@ -70,7 +71,7 @@ impl UiProps for AppWindow {
         match prop {
             BoolProp::VerificationVisible => self.set_verification_visible(value),
             BoolProp::VerificationIsSelf => self.set_verification_is_self(value),
-            BoolProp::TimelineLoading => self.set_timeline_loading(value),
+            BoolProp::TimelineRetryable => self.set_timeline_retryable(value),
             BoolProp::BackwardsLoading => self.set_backwards_loading(value),
             BoolProp::ForwardsLoading => self.set_forwards_loading(value),
         }
@@ -178,7 +179,7 @@ impl SlintUiAdapter {
         let weak = self.window.as_weak();
         self.window.on_select_room(move |room_id| {
             if let Some(w) = weak.upgrade() {
-                w.set_timeline_loading(true);
+                w.set_timeline_status(SharedString::from("loading"));
             }
             if let Err(e) = tx.send(UiCommand::SelectRoom(RoomId::new(room_id.to_string()))) {
                 tracing::debug!("failed to send SelectRoom command: {e}");

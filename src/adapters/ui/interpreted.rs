@@ -260,7 +260,7 @@ impl SlintUiAdapter {
                     .unwrap_or_default();
 
                 if let Some(inst) = weak.upgrade() {
-                    set_prop(&inst, "timeline-loading", Value::Bool(true));
+                    set_prop(&inst, "timeline-status", Value::String("loading".into()));
                 }
 
                 if let Err(e) = tx.send(UiCommand::SelectRoom(RoomId::new(room_id))) {

@@ -211,7 +211,7 @@ pub fn connection_status_token(status: &ConnectionStatus) -> &'static str {
 use crate::commands::UiEvent;
 use crate::domain::models::{
     ConnectionStatus, EnrichmentDelta, LoginMethod, MessageBody, MessagePreviewKind, Room,
-    ServerInfo, ServiceEvent, Space, TimelineMessage, TimelinePatch,
+    ServerInfo, ServiceEvent, Space, TimelineMessage, TimelinePatch, TimelineStatus,
     VerificationEmoji as DomainVerificationEmoji, VerificationEvent as DomainVerificationEvent,
 };
 
@@ -233,6 +233,7 @@ pub enum StringProp {
     SelectedRoomId,
     SelectedSpaceId,
     SelectedSubspaceId,
+    TimelineStatus,
     InputUsername,
     InputPassword,
 }
@@ -257,6 +258,7 @@ impl StringProp {
             Self::SelectedRoomId => "selected-room-id",
             Self::SelectedSpaceId => "selected-space-id",
             Self::SelectedSubspaceId => "selected-subspace-id",
+            Self::TimelineStatus => "timeline-status",
             Self::InputUsername => "input-username",
             Self::InputPassword => "input-password",
         }
@@ -266,7 +268,7 @@ impl StringProp {
 pub enum BoolProp {
     VerificationVisible,
     VerificationIsSelf,
-    TimelineLoading,
+    TimelineRetryable,
     BackwardsLoading,
     ForwardsLoading,
 }
@@ -277,7 +279,7 @@ impl BoolProp {
         match self {
             Self::VerificationVisible => "verification-visible",
             Self::VerificationIsSelf => "verification-is-self",
-            Self::TimelineLoading => "timeline-loading",
+            Self::TimelineRetryable => "timeline-retryable",
             Self::BackwardsLoading => "backwards-loading",
             Self::ForwardsLoading => "forwards-loading",
         }
@@ -425,7 +427,9 @@ pub fn dispatch_ui_event<T, R, S>(
                 "dispatch_ui_event received Timeline event"
             );
             if matches {
-                w.set_bool(BoolProp::TimelineLoading, false);
+                if matches!(patch.as_ref(), TimelinePatch::Reset(_)) {
+                    apply_timeline_status(w, TimelineStatus::Ready);
+                }
                 if patch.is_prepend() {
                     let next = PREPEND_TOKEN.with(|t| {
                         let next = t.get().wrapping_add(1);
@@ -441,6 +445,12 @@ pub fn dispatch_ui_event<T, R, S>(
                     enrich_message,
                     message_entry_id,
                 );
+            }
+        }
+        UiEvent::TimelineStatus { room_id, status } => {
+            let selected = w.get_string(StringProp::SelectedRoomId);
+            if selected.as_str() == room_id.as_ref() {
+                apply_timeline_status(w, status);
             }
         }
         UiEvent::PaginationState { room_id, state } => {
@@ -539,6 +549,26 @@ fn apply_connection_status(w: &impl UiProps, status: &ConnectionStatus) {
     w.set_string(
         StringProp::ConnectionStatus,
         SharedString::from(connection_status_token(status)),
+    );
+}
+
+fn timeline_status_token(status: TimelineStatus) -> &'static str {
+    match status {
+        TimelineStatus::Loading => "loading",
+        TimelineStatus::Ready => "ready",
+        TimelineStatus::Failed { .. } => "failed",
+        TimelineStatus::Disconnected => "disconnected",
+    }
+}
+
+fn apply_timeline_status(w: &impl UiProps, status: TimelineStatus) {
+    w.set_bool(
+        BoolProp::TimelineRetryable,
+        matches!(status, TimelineStatus::Failed { retryable: true }),
+    );
+    w.set_string(
+        StringProp::TimelineStatus,
+        SharedString::from(timeline_status_token(status)),
     );
 }
 

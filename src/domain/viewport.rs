@@ -80,6 +80,13 @@ impl ViewportController {
         }
     }
 
+    pub fn fail_pagination(&mut self, direction: PaginationDirection) {
+        match direction {
+            PaginationDirection::Backwards => self.backwards_loading = false,
+            PaginationDirection::Forwards => self.forwards_loading = false,
+        }
+    }
+
     pub fn state(&self) -> PaginationState {
         PaginationState {
             backwards_ended: self.backwards_ended,
