@@ -19,11 +19,14 @@ thread_local! {
 }
 
 use super::common::{
-    BoolProp, IntProp, Status, StringProp, UiProps, advance_animations, avatar_color_index,
-    avatar_initials, dispatch_ui_event, load_image_cached, load_thumbnail, message_body_text,
-    message_preview_kind_token, message_sender_label, message_timestamp_label, message_type_token,
-    pronoun_labels, room_activity_label, sender_initial, service_kind_token, service_target,
-    set_animation_tick, unsupported_kind,
+    BoolProp, IntProp, Status, StringProp, UiProps, avatar_color_index, avatar_initials,
+    dispatch_ui_event, message_body_text, message_preview_kind_token, message_sender_label,
+    message_timestamp_label, message_type_token, pronoun_labels, room_activity_label,
+    sender_initial, service_kind_token, service_target, unsupported_kind,
+};
+use super::decode::{
+    advance_animations, load_image_cached, load_thumbnail, patch_rows, set_animation_tick,
+    set_image_ready,
 };
 use super::emoji;
 use crate::commands::{UiCommand, UiEvent};
@@ -576,6 +579,16 @@ impl SlintUiAdapter {
             }
         });
 
+        set_image_ready({
+            let weak = self.instance.as_weak();
+            move |unique_id, image| {
+                apply_thumbnail_ready(unique_id, image);
+                if let Some(instance) = weak.upgrade() {
+                    instance.window().request_redraw();
+                }
+            }
+        });
+
         tokio::spawn(async move {
             while let Some(event) = ui_rx.recv().await {
                 let media_cache = Arc::clone(&media_cache);
@@ -802,6 +815,30 @@ fn message_to_value(m: &TimelineMessage, media: &dyn MediaCache) -> Value {
     Value::Struct(Struct::from_iter(fields))
 }
 
+fn apply_thumbnail_ready(unique_id: &str, image: Option<&slint::Image>) {
+    let Some(timeline) = TIMELINE_MODEL.with(|cell| cell.borrow().clone()) else {
+        return;
+    };
+    patch_rows(
+        &timeline,
+        |value: &Value| entry_id_from_value(value) == unique_id,
+        |value: &mut Value| {
+            if let Value::Struct(entry) = value {
+                match image {
+                    Some(img) => {
+                        entry.set_field("thumbnail".to_string(), Value::Image(img.clone()));
+                        entry.set_field("has-thumbnail".to_string(), Value::Bool(true));
+                        entry.set_field("media-failed".to_string(), Value::Bool(false));
+                    }
+                    None => {
+                        entry.set_field("media-failed".to_string(), Value::Bool(true));
+                    }
+                }
+            }
+        },
+    );
+}
+
 fn enrich_value(value: &mut Value, delta: &EnrichmentDelta, media: &dyn MediaCache) {
     let Value::Struct(entry) = value else {
         return;
@@ -811,14 +848,11 @@ fn enrich_value(value: &mut Value, delta: &EnrichmentDelta, media: &dyn MediaCac
         ThumbnailOutcome::Ready => {
             if let Some(event_id) = delta.event_id.as_ref()
                 && let Some(thumb_path) = media.thumbnail_path(&event_id.0)
+                && let Some(img) = load_thumbnail(&thumb_path, &delta.unique_id)
             {
-                if let Some(img) = load_thumbnail(&thumb_path, &delta.unique_id) {
-                    entry.set_field("thumbnail".to_string(), Value::Image(img));
-                    entry.set_field("has-thumbnail".to_string(), Value::Bool(true));
-                    entry.set_field("media-failed".to_string(), Value::Bool(false));
-                } else {
-                    entry.set_field("media-failed".to_string(), Value::Bool(true));
-                }
+                entry.set_field("thumbnail".to_string(), Value::Image(img));
+                entry.set_field("has-thumbnail".to_string(), Value::Bool(true));
+                entry.set_field("media-failed".to_string(), Value::Bool(false));
             }
         }
         ThumbnailOutcome::Failed => {
@@ -861,8 +895,6 @@ fn image_fields(m: &TimelineMessage, media: &dyn MediaCache) -> Vec<(String, Val
                 if let Some(img) = load_thumbnail(&thumb_path, &m.unique_id) {
                     thumbnail = Some(img);
                     has_thumbnail = true;
-                } else {
-                    media_failed = true;
                 }
             } else {
                 media_failed = media.thumbnail_failed(&event_id.0);

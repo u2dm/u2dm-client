@@ -1,11 +1,9 @@
 use std::collections::{HashMap, HashSet};
-use std::path::PathBuf;
-use std::sync::{Arc, Mutex as StdMutex};
+use std::sync::Arc;
 
 use matrix_sdk::deserialized_responses::SyncOrStrippedState;
 use matrix_sdk::latest_events::LatestEventValue;
 use matrix_sdk::ruma::api::error::ErrorKind;
-use matrix_sdk::ruma::events::room::MediaSource;
 use matrix_sdk::ruma::events::room::member::MembershipState;
 use matrix_sdk::ruma::events::room::message::{Relation, RoomMessageEventContent};
 use matrix_sdk::ruma::events::space::child::SpaceChildEventContent;
@@ -20,19 +18,17 @@ use matrix_sdk_base::RoomInfoNotableUpdate;
 use matrix_sdk_ui::encryption_sync_service::Error as EncryptionSyncError;
 use matrix_sdk_ui::room_list_service::Error as RoomListError;
 use matrix_sdk_ui::sync_service::{Error as SyncServiceError, State as SyncState, SyncService};
-use tokio::fs;
 use tokio::sync::broadcast::Receiver;
 use tokio::sync::broadcast::error::RecvError;
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender, unbounded_channel};
 use tokio::task::JoinSet;
 
-use super::media::{fetch_and_materialize, lookup_materialized, mxc_avatar_key, thumbnail_format};
+use super::media::{MediaService, mxc_avatar_key};
 use super::preview::{self, MessagePreview};
 use crate::domain::models::{
     MessagePreviewKind, Room as DomainRoom, RoomId, ServiceEvent, Space as DomainSpace, SyncEvent,
 };
 use crate::error::{AppError, Result as AppResult};
-use crate::util::hex_encode_id;
 
 fn room_avatar_mxc(room: &Room, is_direct: bool) -> Option<String> {
     if let Some(mxc) = room.avatar_url() {
@@ -281,22 +277,16 @@ enum AvatarKind {
 }
 
 struct AvatarFetcher {
-    media_dir: PathBuf,
-    materialized: Arc<StdMutex<HashMap<String, PathBuf>>>,
+    media: Arc<MediaService>,
     tasks: JoinSet<()>,
     requested: HashSet<String>,
     ready_tx: UnboundedSender<AvatarKind>,
 }
 
 impl AvatarFetcher {
-    fn new(
-        media_dir: PathBuf,
-        materialized: Arc<StdMutex<HashMap<String, PathBuf>>>,
-        ready_tx: UnboundedSender<AvatarKind>,
-    ) -> Self {
+    fn new(media: Arc<MediaService>, ready_tx: UnboundedSender<AvatarKind>) -> Self {
         Self {
-            media_dir,
-            materialized,
+            media,
             tasks: JoinSet::new(),
             requested: HashSet::new(),
             ready_tx,
@@ -306,9 +296,7 @@ impl AvatarFetcher {
     fn request(&mut self, client: &Client, kind: AvatarKind, uris: Vec<OwnedMxcUri>) {
         for mxc in uris {
             let key = mxc_avatar_key(mxc.as_str());
-            if lookup_materialized(&self.materialized, &key).is_some()
-                || !self.requested.insert(key.clone())
-            {
+            if self.media.cache_get(&key).is_some() || !self.requested.insert(key.clone()) {
                 continue;
             }
             self.spawn_fetch(client, kind, mxc, key);
@@ -317,31 +305,21 @@ impl AvatarFetcher {
 
     fn spawn_fetch(&mut self, client: &Client, kind: AvatarKind, mxc: OwnedMxcUri, key: String) {
         let client = client.clone();
-        let media_dir = self.media_dir.clone();
-        let materialized = Arc::clone(&self.materialized);
+        let media = Arc::clone(&self.media);
         let ready_tx = self.ready_tx.clone();
         self.tasks.spawn(async move {
-            let avatar_dir = media_dir.join("avatars");
-            if let Err(e) = fs::create_dir_all(&avatar_dir).await {
-                tracing::warn!("failed to create avatar dir: {e}");
-                return;
-            }
-            let cache_stem = avatar_dir.join(hex_encode_id(mxc.as_str()));
-            let source = MediaSource::Plain(mxc);
-            if fetch_and_materialize(
-                &client,
-                &materialized,
-                &cache_stem,
-                source,
-                &key,
-                thumbnail_format(),
-            )
-            .await
-            .is_some()
+            if media
+                .fetch_avatar_by_mxc(&client, &key, mxc)
+                .await
+                .is_some()
             {
                 ready_tx.send(kind).ok();
             }
         });
+    }
+
+    fn reap(&mut self) {
+        while self.tasks.try_join_next().is_some() {}
     }
 }
 
@@ -617,20 +595,22 @@ async fn run_sync_loop(
             Some(kind) = ready_rx.recv() => {
                 handle_avatar_ready(client, kind, ready_rx, &room_cache, on_sync, avatars).await;
             }
+            Some(_) = avatars.tasks.join_next() => {
+                avatars.reap();
+            }
         }
     }
 }
 
 pub(super) async fn start_sync(
     client: &Client,
-    media_dir: PathBuf,
-    materialized: Arc<StdMutex<HashMap<String, PathBuf>>>,
+    media: Arc<MediaService>,
     on_sync: Arc<dyn Fn(SyncEvent) + Send + Sync>,
 ) -> AppResult<()> {
     let sync_service = build_sync_service(client).await?;
     let mut room_updates_rx = client.subscribe_to_all_room_updates();
     let (ready_tx, mut ready_rx) = unbounded_channel();
-    let mut avatars = AvatarFetcher::new(media_dir, materialized, ready_tx);
+    let mut avatars = AvatarFetcher::new(media, ready_tx);
 
     sync_service.start().await;
     tracing::info!("sliding sync service started");

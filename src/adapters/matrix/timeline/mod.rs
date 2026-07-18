@@ -4,7 +4,6 @@ mod filter;
 mod subscribe;
 
 use std::collections::{HashMap, HashSet};
-use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex as StdMutex};
 
 use matrix_sdk::Client;
@@ -14,15 +13,14 @@ use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
 
+use super::media::MediaService;
 use super::profile::PronounCache;
 use crate::domain::models::TimelineUpdate;
 
 pub(super) struct TimelineContext<'a> {
     pub(super) client: &'a Client,
-    pub(super) media_dir: &'a Path,
+    pub(super) media: &'a Arc<MediaService>,
     pub(super) media_sources: &'a Arc<StdMutex<HashMap<String, MediaSource>>>,
-    pub(super) materialized: &'a Arc<StdMutex<HashMap<String, PathBuf>>>,
-    pub(super) failed_media: &'a Arc<StdMutex<HashSet<String>>>,
     pub(super) pronouns: &'a Arc<PronounCache>,
     pub(super) own_user_id: Option<&'a str>,
     pub(super) timeline_tx: &'a mpsc::UnboundedSender<TimelineUpdate>,

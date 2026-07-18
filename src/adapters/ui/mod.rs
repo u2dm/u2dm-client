@@ -1,6 +1,7 @@
 #![allow(clippy::pub_use)]
 
 mod common;
+mod decode;
 mod emoji;
 mod output;
 

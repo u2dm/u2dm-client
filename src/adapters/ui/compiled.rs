@@ -7,11 +7,14 @@ use tokio::runtime::Runtime;
 use tokio::sync::mpsc;
 
 use super::common::{
-    BoolProp, IntProp, Status, StringProp, UiProps, advance_animations, avatar_color_index,
-    avatar_initials, dispatch_ui_event, load_image_cached, load_thumbnail, message_body_text,
-    message_preview_kind_token, message_sender_label, message_timestamp_label, message_type_token,
-    pronoun_labels, room_activity_label, sender_initial, service_kind_token, service_target,
-    set_animation_tick, unsupported_kind,
+    BoolProp, IntProp, Status, StringProp, UiProps, avatar_color_index, avatar_initials,
+    dispatch_ui_event, message_body_text, message_preview_kind_token, message_sender_label,
+    message_timestamp_label, message_type_token, pronoun_labels, room_activity_label,
+    sender_initial, service_kind_token, service_target, unsupported_kind,
+};
+use super::decode::{
+    advance_animations, load_image_cached, load_thumbnail, patch_rows, set_animation_tick,
+    set_image_ready,
 };
 use super::emoji;
 use crate::commands::{UiCommand, UiEvent};
@@ -391,6 +394,16 @@ impl SlintUiAdapter {
             }
         });
 
+        set_image_ready({
+            let weak = self.window.as_weak();
+            move |unique_id, image| {
+                apply_thumbnail_ready(unique_id, image);
+                if let Some(window) = weak.upgrade() {
+                    window.window().request_redraw();
+                }
+            }
+        });
+
         SPACES_MODEL.with(|cell| *cell.borrow_mut() = Some(spaces_model));
         SUBSPACES_MODEL.with(|cell| *cell.borrow_mut() = Some(subspaces_model));
 
@@ -528,8 +541,6 @@ fn message_to_entry(m: &TimelineMessage, media: &dyn MediaCache) -> MessageEntry
                 if let Some(img) = load_thumbnail(&thumb_path, &m.unique_id) {
                     entry.thumbnail = img;
                     entry.has_thumbnail = true;
-                } else {
-                    entry.media_failed = true;
                 }
             } else {
                 entry.media_failed = media.thumbnail_failed(&event_id.0);
@@ -547,19 +558,34 @@ fn message_to_entry(m: &TimelineMessage, media: &dyn MediaCache) -> MessageEntry
     entry
 }
 
+fn apply_thumbnail_ready(unique_id: &str, image: Option<&Image>) {
+    let Some(timeline) = TIMELINE_MODEL.with(|cell| cell.borrow().clone()) else {
+        return;
+    };
+    patch_rows(
+        &timeline,
+        |e: &MessageEntry| e.unique_id == unique_id,
+        |e: &mut MessageEntry| match image {
+            Some(img) => {
+                e.thumbnail = img.clone();
+                e.has_thumbnail = true;
+                e.media_failed = false;
+            }
+            None => e.media_failed = true,
+        },
+    );
+}
+
 fn enrich_entry(entry: &mut MessageEntry, delta: &EnrichmentDelta, media: &dyn MediaCache) {
     match delta.thumbnail {
         ThumbnailOutcome::Ready => {
             if let Some(event_id) = delta.event_id.as_ref()
                 && let Some(thumb_path) = media.thumbnail_path(&event_id.0)
+                && let Some(img) = load_thumbnail(&thumb_path, &delta.unique_id)
             {
-                if let Some(img) = load_thumbnail(&thumb_path, &delta.unique_id) {
-                    entry.thumbnail = img;
-                    entry.has_thumbnail = true;
-                    entry.media_failed = false;
-                } else {
-                    entry.media_failed = true;
-                }
+                entry.thumbnail = img;
+                entry.has_thumbnail = true;
+                entry.media_failed = false;
             }
         }
         ThumbnailOutcome::Failed => entry.media_failed = true,

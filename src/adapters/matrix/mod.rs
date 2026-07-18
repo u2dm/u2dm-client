@@ -6,8 +6,7 @@ mod rooms;
 mod timeline;
 mod verification;
 
-use std::collections::{HashMap, HashSet};
-use std::fs;
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex as StdMutex};
 
@@ -24,6 +23,7 @@ use matrix_sdk::ruma::{IdParseError, OwnedEventId, OwnedRoomId};
 use matrix_sdk::utils::local_server::LocalServerRedirectHandle;
 use tokio::sync::{Mutex, RwLock, mpsc};
 
+use self::media::MediaService;
 use self::profile::PronounCache;
 use crate::domain::models::{
     LoginCredentials, OAuthLoginData, RoomId, ServerInfo, Session, SyncEvent, TimelineCommand,
@@ -41,8 +41,7 @@ pub struct MatrixAdapter {
     verification_request: Mutex<Option<VerificationRequest>>,
     sas_verification: Mutex<Option<SasVerification>>,
     media_sources: Arc<StdMutex<HashMap<String, MediaSource>>>,
-    materialized: Arc<StdMutex<HashMap<String, PathBuf>>>,
-    failed_media: Arc<StdMutex<HashSet<String>>>,
+    media: Arc<MediaService>,
     pronouns: Arc<PronounCache>,
     verification_req_rx: Mutex<Option<mpsc::UnboundedReceiver<VerificationRequest>>>,
     verification_handler_guards: Mutex<Vec<EventHandlerDropGuard>>,
@@ -50,6 +49,7 @@ pub struct MatrixAdapter {
 
 impl MatrixAdapter {
     pub fn new(data_dir: PathBuf, cache_dir: PathBuf) -> Self {
+        let media = MediaService::new(&cache_dir);
         Self {
             data_dir,
             cache_dir,
@@ -58,8 +58,7 @@ impl MatrixAdapter {
             verification_request: Mutex::new(None),
             sas_verification: Mutex::new(None),
             media_sources: Arc::new(StdMutex::new(HashMap::new())),
-            materialized: Arc::new(StdMutex::new(HashMap::new())),
-            failed_media: Arc::new(StdMutex::new(HashSet::new())),
+            media,
             pronouns: Arc::new(PronounCache::default()),
             verification_req_rx: Mutex::new(None),
             verification_handler_guards: Mutex::new(Vec::new()),
@@ -74,24 +73,8 @@ impl MatrixAdapter {
             .ok_or_else(|| AppError::Other("No client, run server discovery first".into()))
     }
 
-    fn media_dir(&self) -> PathBuf {
-        self.cache_dir.join("media-cache")
-    }
-
     pub fn media_cache(&self) -> Arc<dyn MediaCache> {
-        Arc::new(media::MaterializedMedia::new(
-            Arc::clone(&self.materialized),
-            Arc::clone(&self.failed_media),
-        ))
-    }
-
-    pub fn clean_media_cache(&self) {
-        let dir = self.media_dir();
-        if dir.exists()
-            && let Err(e) = fs::remove_dir_all(&dir)
-        {
-            tracing::warn!("failed to clean media cache: {e}");
-        }
+        Arc::new(media::MaterializedMedia::new(Arc::clone(&self.media)))
     }
 }
 
@@ -133,10 +116,8 @@ impl MatrixPort for MatrixAdapter {
         let client = self.get_client().await?;
         timeline::subscribe_timeline(
             &client,
-            &self.media_dir(),
+            &self.media,
             &self.media_sources,
-            &self.materialized,
-            &self.failed_media,
             &self.pronouns,
             room_id,
             timeline_tx,
@@ -148,13 +129,7 @@ impl MatrixPort for MatrixAdapter {
     async fn start_sync(&self, on_sync: Box<dyn Fn(SyncEvent) + Send + Sync>) -> Result<()> {
         tracing::info!("starting continuous sync loop");
         let client = self.get_client().await?;
-        rooms::start_sync(
-            &client,
-            self.media_dir(),
-            Arc::clone(&self.materialized),
-            on_sync.into(),
-        )
-        .await
+        rooms::start_sync(&client, Arc::clone(&self.media), on_sync.into()).await
     }
 
     async fn restore_session(
@@ -175,6 +150,7 @@ impl MatrixPort for MatrixAdapter {
     }
 
     async fn logout(&self) -> Result<()> {
+        self.media.clear().await;
         auth::logout(
             &self.client,
             &self.verification_req_rx,
@@ -184,6 +160,7 @@ impl MatrixPort for MatrixAdapter {
     }
 
     async fn clear_store(&self) -> Result<()> {
+        self.media.clear().await;
         auth::clear_store(
             &self.client,
             &self.data_dir,
@@ -268,12 +245,14 @@ impl MatrixPort for MatrixAdapter {
 
     async fn download_media(&self, event_id: &str, thumbnail: bool) -> Result<Vec<u8>> {
         let client = self.get_client().await?;
-        media::download_media(&client, &self.media_sources, event_id, thumbnail).await
+        self.media
+            .download_media(&client, &self.media_sources, event_id, thumbnail)
+            .await
     }
 
     async fn fetch_user_avatar(&self) -> Result<Option<PathBuf>> {
         let client = self.get_client().await?;
-        Ok(media::fetch_user_avatar(&client, &self.media_dir(), &self.materialized).await)
+        Ok(self.media.fetch_user_avatar(&client).await)
     }
 
     async fn subscribe_session_changes(

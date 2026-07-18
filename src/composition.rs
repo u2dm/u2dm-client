@@ -38,7 +38,6 @@ impl Backend {
 
     fn production(cfg: &AppConfig) -> Self {
         let adapter = MatrixAdapter::new(cfg.data_dir.clone(), cfg.cache_dir.clone());
-        adapter.clean_media_cache();
         let media_cache = adapter.media_cache();
         Self {
             matrix: Arc::new(adapter),

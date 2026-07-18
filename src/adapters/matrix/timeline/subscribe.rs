@@ -1,5 +1,5 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::{Arc, Mutex as StdMutex};
 
 use futures_util::StreamExt;
@@ -15,7 +15,7 @@ use tokio::task::JoinSet;
 use super::diff::diff_to_patch;
 use super::filter::convert_timeline_items;
 use super::{EnrichmentPool, TimelineContext};
-use crate::adapters::matrix::media::{enrich_avatar, enrich_thumbnail, needs_media_download};
+use crate::adapters::matrix::media::MediaService;
 use crate::adapters::matrix::profile::PronounCache;
 use crate::domain::models::{
     EnrichmentDelta, PaginationDirection, RoomId, TimelineCommand, TimelineMessage, TimelinePatch,
@@ -41,10 +41,8 @@ fn spawn_enrichment(ctx: &TimelineContext<'_>, msg: &TimelineMessage) {
     let msg = msg.clone();
     let resolve_pronouns = needs_pronouns(&msg, ctx.pronouns);
     let client = ctx.client.clone();
-    let media_dir = ctx.media_dir.to_path_buf();
+    let media = Arc::clone(ctx.media);
     let media_sources = Arc::clone(ctx.media_sources);
-    let materialized = Arc::clone(ctx.materialized);
-    let failed_media = Arc::clone(ctx.failed_media);
     let pronouns = Arc::clone(ctx.pronouns);
     let inflight = Arc::clone(&ctx.enrich.inflight);
     let token = ctx.enrich.token.clone();
@@ -52,22 +50,18 @@ fn spawn_enrichment(ctx: &TimelineContext<'_>, msg: &TimelineMessage) {
 
     ctx.enrich.tracker.spawn(async move {
         let work = async {
-            let thumbnail = enrich_thumbnail(
-                &client,
-                &media_dir,
-                &media_sources,
-                &materialized,
-                &failed_media,
-                &msg,
-            )
-            .await;
-            let avatar_ready = enrich_avatar(&client, &media_dir, &materialized, &msg).await;
-            let pronouns = if resolve_pronouns {
-                let resolved = pronouns.resolve(&client, &msg.sender).await;
-                (!resolved.is_empty()).then_some(resolved)
-            } else {
-                None
-            };
+            let (thumbnail, avatar_ready, pronouns) = tokio::join!(
+                media.enrich_thumbnail(&client, &media_sources, &msg),
+                media.enrich_avatar(&client, &msg),
+                async {
+                    if resolve_pronouns {
+                        let resolved = pronouns.resolve(&client, &msg.sender).await;
+                        (!resolved.is_empty()).then_some(resolved)
+                    } else {
+                        None
+                    }
+                },
+            );
             EnrichmentDelta {
                 unique_id: msg.unique_id.clone(),
                 event_id: msg.event_id.clone(),
@@ -101,9 +95,7 @@ pub(super) fn spawn_enrichment_for_messages(
     ctx: &TimelineContext<'_>,
 ) {
     for msg in messages {
-        if needs_media_download(msg, ctx.materialized, ctx.failed_media)
-            || needs_pronouns(msg, ctx.pronouns)
-        {
+        if ctx.media.needs_media_download(msg) || needs_pronouns(msg, ctx.pronouns) {
             spawn_enrichment(ctx, msg);
         }
     }
@@ -308,10 +300,8 @@ async fn handle_room_keys(timeline: &Timeline, keys: BTreeMap<String, BTreeSet<S
 #[allow(clippy::too_many_arguments)]
 pub(crate) async fn subscribe_timeline(
     client: &Client,
-    media_dir: &Path,
+    media: &Arc<MediaService>,
     media_sources: &Arc<StdMutex<HashMap<String, MediaSource>>>,
-    materialized: &Arc<StdMutex<HashMap<String, PathBuf>>>,
-    failed_media: &Arc<StdMutex<HashSet<String>>>,
     pronouns: &Arc<PronounCache>,
     room_id: &RoomId,
     timeline_tx: mpsc::UnboundedSender<TimelineUpdate>,
@@ -319,7 +309,7 @@ pub(crate) async fn subscribe_timeline(
 ) -> Result<()> {
     let (timeline, room_id_parsed, backwards_ended) = setup_timeline(client, room_id).await?;
 
-    ensure_media_dirs(media_dir).await;
+    ensure_media_dirs(media.media_dir()).await;
 
     let (initial_items, mut stream) = timeline.subscribe().await;
 
@@ -333,10 +323,8 @@ pub(crate) async fn subscribe_timeline(
     let enrich = EnrichmentPool::new();
     let ctx = TimelineContext {
         client,
-        media_dir,
+        media,
         media_sources,
-        materialized,
-        failed_media,
         pronouns,
         own_user_id: own_user_id.as_deref(),
         timeline_tx: &timeline_tx,
@@ -396,6 +384,7 @@ pub(crate) async fn subscribe_timeline(
                 let Some(cmd) = cmd else { break };
                 handle_timeline_command(cmd, &timeline, &timeline_tx).await;
             }
+            Some(_) = side_tasks.join_next(), if !side_tasks.is_empty() => {}
         }
     }
 
