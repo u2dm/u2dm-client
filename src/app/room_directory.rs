@@ -96,7 +96,7 @@ impl RoomDirectory {
         group: &mut TaskGroup,
         matrix: Arc<dyn MatrixPort>,
         output: Arc<dyn AppOutputPort>,
-        cmd_tx: mpsc::Sender<UiCommand>,
+        cmd_tx: mpsc::UnboundedSender<UiCommand>,
         rooms_in_tx: watch::Sender<Vec<Room>>,
         spaces_in_tx: watch::Sender<Vec<Space>>,
     ) {
@@ -115,7 +115,7 @@ impl RoomDirectory {
                 output.connection_status(ConnectionStatus::Error(msg));
             }
             SyncEvent::SessionExpired => {
-                drop(cmd_tx.try_send(UiCommand::SessionExpired));
+                drop(cmd_tx.send(UiCommand::SessionExpired));
             }
         });
 

@@ -17,7 +17,7 @@ const TIMELINE_CHANNEL_CAP: usize = 256;
 
 pub(super) struct ActiveTimeline {
     matrix: Arc<dyn MatrixPort>,
-    cmd_tx: mpsc::Sender<UiCommand>,
+    cmd_tx: mpsc::UnboundedSender<UiCommand>,
     output: Arc<dyn AppOutputPort>,
     tasks: TaskGroup,
     viewport: ViewportController,
@@ -30,7 +30,7 @@ pub(super) struct ActiveTimeline {
 impl ActiveTimeline {
     pub(super) fn new(
         matrix: Arc<dyn MatrixPort>,
-        cmd_tx: mpsc::Sender<UiCommand>,
+        cmd_tx: mpsc::UnboundedSender<UiCommand>,
         output: Arc<dyn AppOutputPort>,
     ) -> Self {
         Self {
@@ -105,14 +105,11 @@ impl ActiveTimeline {
                             output.timeline(rid.clone(), patch).await;
                         }
                         TimelineUpdate::Pagination { direction, outcome } => {
-                            if let Err(e) = cmd_tx
-                                .send(UiCommand::TimelinePaginationCompleted {
-                                    room_id: rid.clone(),
-                                    direction,
-                                    outcome,
-                                })
-                                .await
-                            {
+                            if let Err(e) = cmd_tx.send(UiCommand::TimelinePaginationCompleted {
+                                room_id: rid.clone(),
+                                direction,
+                                outcome,
+                            }) {
                                 tracing::debug!(
                                     "failed to send TimelinePaginationCompleted command: {e}"
                                 );

@@ -160,7 +160,7 @@ impl SlintUiAdapter {
     #[allow(clippy::too_many_lines)]
     pub fn register_callbacks(
         &self,
-        cmd_tx: &mpsc::Sender<UiCommand>,
+        cmd_tx: &mpsc::UnboundedSender<UiCommand>,
         scroll_tx: &watch::Sender<(bool, bool)>,
     ) -> Result<()> {
         setup_emoji_store(&self.instance)?;

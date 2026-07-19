@@ -27,7 +27,7 @@ pub(super) struct SessionController {
     matrix: Arc<dyn MatrixPort>,
     storage: Arc<dyn StoragePort>,
     browser: Arc<dyn BrowserPort>,
-    cmd_tx: mpsc::Sender<UiCommand>,
+    cmd_tx: mpsc::UnboundedSender<UiCommand>,
     output: Arc<dyn AppOutputPort>,
 }
 
@@ -36,7 +36,7 @@ impl SessionController {
         matrix: Arc<dyn MatrixPort>,
         storage: Arc<dyn StoragePort>,
         browser: Arc<dyn BrowserPort>,
-        cmd_tx: mpsc::Sender<UiCommand>,
+        cmd_tx: mpsc::UnboundedSender<UiCommand>,
         output: Arc<dyn AppOutputPort>,
     ) -> Self {
         Self {
@@ -101,7 +101,7 @@ impl SessionController {
 
         tracing::info!(user_id = %session.user_id, "session restore complete");
         self.output.login_success(session.user_id).await;
-        self.send_cmd(UiCommand::FetchRooms).await;
+        self.send_cmd(UiCommand::FetchRooms);
     }
 
     async fn check_server(&self, homeserver: &str) {
@@ -198,7 +198,7 @@ impl SessionController {
                 tracing::info!(user_id = %session.user_id, "password login succeeded");
                 self.save_session(&session).await;
                 self.output.login_success(session.user_id).await;
-                self.send_cmd(UiCommand::FetchRooms).await;
+                self.send_cmd(UiCommand::FetchRooms);
             }
             Err(e) => {
                 tracing::warn!("password login failed: {e}");
@@ -210,7 +210,7 @@ impl SessionController {
     async fn login_oauth(&self) {
         match self.run_oauth_flow().await {
             Ok(()) => {
-                self.send_cmd(UiCommand::FetchRooms).await;
+                self.send_cmd(UiCommand::FetchRooms);
             }
             Err(e) => {
                 tracing::warn!("OAuth login failed: {e}");
@@ -340,8 +340,8 @@ impl SessionController {
         self.output.notify_error(msg.into()).await;
     }
 
-    async fn send_cmd(&self, cmd: UiCommand) {
-        if let Err(e) = self.cmd_tx.send(cmd).await {
+    fn send_cmd(&self, cmd: UiCommand) {
+        if let Err(e) = self.cmd_tx.send(cmd) {
             tracing::debug!("failed to send command: {e}");
         }
     }

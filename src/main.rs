@@ -19,7 +19,6 @@ use tokio::runtime::Runtime;
 use tokio::sync::{mpsc, watch};
 use tracing_subscriber::EnvFilter;
 
-const COMMAND_CHANNEL_CAP: usize = 128;
 const UI_EVENT_CHANNEL_CAP: usize = 256;
 
 mod adapters;
@@ -58,7 +57,7 @@ fn run() -> Result<()> {
     tracing::info!(data_dir = %cfg.data_dir.display(), cache_dir = %cfg.cache_dir.display(), "starting U2DM");
     let ui = SlintUiAdapter::compile(&rt)?;
 
-    let (cmd_tx, cmd_rx) = mpsc::channel::<UiCommand>(COMMAND_CHANNEL_CAP);
+    let (cmd_tx, cmd_rx) = mpsc::unbounded_channel::<UiCommand>();
     let (ui_tx, ui_rx) = mpsc::channel::<UiEvent>(UI_EVENT_CHANNEL_CAP);
 
     let (rooms_out_tx, rooms_out_rx) = watch::channel::<Vec<Room>>(Vec::new());
@@ -99,7 +98,7 @@ fn run() -> Result<()> {
         status_out_rx,
         backend.media_cache,
     );
-    if let Err(e) = cmd_tx.try_send(UiCommand::RestoreSession) {
+    if let Err(e) = cmd_tx.send(UiCommand::RestoreSession) {
         tracing::warn!("failed to send RestoreSession command: {e}");
     }
     let mut service = AppService::new(
@@ -120,7 +119,7 @@ fn run() -> Result<()> {
 
     ui.run()?;
 
-    if let Err(e) = cmd_tx_quit.try_send(UiCommand::Quit) {
+    if let Err(e) = cmd_tx_quit.send(UiCommand::Quit) {
         tracing::debug!("failed to send Quit command: {e}");
     }
     rt.shutdown_timeout(Duration::from_secs(5));

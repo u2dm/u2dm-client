@@ -28,7 +28,7 @@ use crate::ports::storage::StoragePort;
 pub struct AppService {
     matrix: Arc<dyn MatrixPort>,
     storage: Arc<dyn StoragePort>,
-    cmd_tx: mpsc::Sender<UiCommand>,
+    cmd_tx: mpsc::UnboundedSender<UiCommand>,
     rooms_in_tx: watch::Sender<Vec<Room>>,
     spaces_in_tx: watch::Sender<Vec<Space>>,
     output: Arc<dyn AppOutputPort>,
@@ -49,7 +49,7 @@ impl AppService {
         storage: Arc<dyn StoragePort>,
         media_files: Arc<dyn MediaFilePort>,
         browser: Arc<dyn BrowserPort>,
-        cmd_tx: mpsc::Sender<UiCommand>,
+        cmd_tx: mpsc::UnboundedSender<UiCommand>,
         rooms_in_tx: watch::Sender<Vec<Room>>,
         spaces_in_tx: watch::Sender<Vec<Space>>,
         output: Arc<dyn AppOutputPort>,
@@ -84,7 +84,7 @@ impl AppService {
 
     pub async fn run(
         &mut self,
-        mut cmd_rx: mpsc::Receiver<UiCommand>,
+        mut cmd_rx: mpsc::UnboundedReceiver<UiCommand>,
         mut rooms_in_rx: watch::Receiver<Vec<Room>>,
         mut spaces_in_rx: watch::Receiver<Vec<Space>>,
         mut scroll_in_rx: watch::Receiver<(bool, bool)>,

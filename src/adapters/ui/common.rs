@@ -8,15 +8,9 @@ use super::decode::load_image_cached;
 
 pub const SLINT_INFLIGHT: usize = 32;
 
-pub fn send_command(tx: &mpsc::Sender<UiCommand>, cmd: UiCommand) {
-    match tx.try_send(cmd) {
-        Ok(()) => {}
-        Err(mpsc::error::TrySendError::Full(cmd)) => {
-            tracing::warn!(command = %cmd, "command queue full; dropping command (UI overloaded)");
-        }
-        Err(mpsc::error::TrySendError::Closed(cmd)) => {
-            tracing::debug!(command = %cmd, "command channel closed; dropping command");
-        }
+pub fn send_command(tx: &mpsc::UnboundedSender<UiCommand>, cmd: UiCommand) {
+    if let Err(mpsc::error::SendError(cmd)) = tx.send(cmd) {
+        tracing::debug!(command = %cmd, "command channel closed; dropping command");
     }
 }
 
