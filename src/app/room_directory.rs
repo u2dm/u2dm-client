@@ -68,24 +68,21 @@ impl RoomDirectory {
         true
     }
 
-    pub(super) async fn move_space(&mut self, from: usize, to: usize, storage: &dyn StoragePort) {
+    pub(super) fn move_space(&mut self, from: usize, to: usize) -> Option<Vec<String>> {
         let mut order: Vec<String> = order_spaces(&root_spaces(&self.spaces), &self.space_order)
             .into_iter()
             .map(|space| space.id)
             .collect();
         if from >= order.len() || to >= order.len() || from == to {
-            return;
+            return None;
         }
 
         let id = order.remove(from);
         order.insert(to, id);
         self.space_order = order;
 
-        if let Err(e) = storage.save_space_order(&self.space_order).await {
-            tracing::warn!("failed to persist space order: {e}");
-        }
-
         self.emit_spaces();
+        Some(self.space_order.clone())
     }
 
     pub(super) fn reset(&mut self) {

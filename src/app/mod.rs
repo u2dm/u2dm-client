@@ -119,9 +119,9 @@ impl AppService {
                 self.handle_select_subspace(subspace);
             }
             UiCommand::MoveSpace { from, to } => {
-                self.room_directory
-                    .move_space(from, to, self.storage.as_ref())
-                    .await;
+                if let Some(order) = self.room_directory.move_space(from, to) {
+                    self.spawn_persist_space_order(order);
+                }
             }
             UiCommand::SelectRoom(room_id) => {
                 self.select_room(room_id).await;
@@ -185,6 +185,15 @@ impl AppService {
             }
         }
         false
+    }
+
+    fn spawn_persist_space_order(&mut self, order: Vec<String>) {
+        let storage = Arc::clone(&self.storage);
+        self.operations.spawn(async move {
+            if let Err(e) = storage.save_space_order(&order).await {
+                tracing::warn!("failed to persist space order: {e}");
+            }
+        });
     }
 
     fn log_command(cmd: &UiCommand) {
