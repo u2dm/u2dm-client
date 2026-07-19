@@ -69,8 +69,8 @@ impl MediaService {
         }
     }
 
-    fn store(&self, key: &str, path: PathBuf, bytes: u64) {
-        self.cache.insert(key, path, bytes);
+    async fn store(&self, key: &str, path: PathBuf, bytes: u64) {
+        self.cache.insert(key, path, bytes).await;
     }
 
     pub(crate) async fn clear(&self) {
@@ -142,7 +142,8 @@ impl MediaService {
             return None;
         }
 
-        self.store(cache_key, cache_path.clone(), data.len() as u64);
+        self.store(cache_key, cache_path.clone(), data.len() as u64)
+            .await;
         self.record_success(cache_key);
         Some(cache_path)
     }

@@ -41,6 +41,7 @@ enum CacheCommand {
         key: String,
         path: PathBuf,
         bytes: u64,
+        ack: oneshot::Sender<()>,
     },
     Clear(oneshot::Sender<()>),
 }
@@ -67,17 +68,23 @@ impl CacheHandle {
         Some(path)
     }
 
-    pub(super) fn insert(&self, key: &str, path: PathBuf, bytes: u64) {
+    pub(super) async fn insert(&self, key: &str, path: PathBuf, bytes: u64) {
+        let (ack_tx, ack_rx) = oneshot::channel();
         if self
             .tx
             .send(CacheCommand::Insert {
                 key: key.to_owned(),
                 path,
                 bytes,
+                ack: ack_tx,
             })
             .is_err()
         {
             tracing::debug!("media cache actor stopped; insert dropped");
+            return;
+        }
+        if ack_rx.await.is_err() {
+            tracing::trace!("media cache actor dropped insert before publishing");
         }
     }
 
@@ -193,9 +200,17 @@ impl CacheActor {
                     self.dirty = true;
                 }
             }
-            CacheCommand::Insert { key, path, bytes } => {
+            CacheCommand::Insert {
+                key,
+                path,
+                bytes,
+                ack,
+            } => {
                 let victims = self.insert(&key, path, bytes);
                 self.publish(shared);
+                if ack.send(()).is_err() {
+                    tracing::trace!("media cache insert requester dropped before ack");
+                }
                 self.delete_files(&victims).await;
                 self.dirty = true;
             }
