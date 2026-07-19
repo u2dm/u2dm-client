@@ -146,21 +146,25 @@ impl ActiveTimeline {
         self.select_room(room_id).await;
     }
 
-    pub(super) async fn send_message(
+    pub(super) fn spawn_send(
         &self,
+        group: &mut TaskGroup,
         room_id: RoomId,
         body: String,
         reply_to: Option<String>,
     ) {
-        let result = match reply_to {
-            Some(event_id) => self.matrix.send_reply(&room_id, &body, &event_id).await,
-            None => self.matrix.send_text(&room_id, &body).await,
-        };
-        if let Err(e) = result {
-            tracing::warn!("failed to enqueue message: {e}");
-            self.output
-                .notify_error(format!("Failed to send message: {e}"));
-        }
+        let matrix = Arc::clone(&self.matrix);
+        let output = Arc::clone(&self.output);
+        group.spawn(async move {
+            let result = match reply_to {
+                Some(event_id) => matrix.send_reply(&room_id, &body, &event_id).await,
+                None => matrix.send_text(&room_id, &body).await,
+            };
+            if let Err(e) = result {
+                tracing::warn!("failed to enqueue message: {e}");
+                output.notify_error(format!("Failed to send message: {e}"));
+            }
+        });
     }
 
     pub(super) fn paginate_backwards(&mut self, room_id: &RoomId) {

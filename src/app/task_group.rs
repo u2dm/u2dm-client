@@ -34,6 +34,7 @@ impl TaskGroup {
     }
 
     pub(super) fn spawn(&mut self, future: impl Future<Output = ()> + Send + 'static) {
+        while self.tasks.try_join_next().is_some() {}
         self.tasks.spawn(future);
     }
 }

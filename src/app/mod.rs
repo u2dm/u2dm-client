@@ -32,6 +32,7 @@ pub struct AppService {
     cmd_tx: mpsc::UnboundedSender<UiCommand>,
     output: Arc<dyn AppOutputPort>,
     background: TaskGroup,
+    operations: TaskGroup,
     session: SessionController,
     room_directory: RoomDirectory,
     active_timeline: ActiveTimeline,
@@ -72,6 +73,7 @@ impl AppService {
             cmd_tx,
             output,
             background: TaskGroup::new(),
+            operations: TaskGroup::new(),
             selection: Selection::default(),
         }
     }
@@ -79,102 +81,110 @@ impl AppService {
     pub async fn run(&mut self) {
         while let Some(cmd) = self.cmd_rx.recv().await {
             Self::log_command(&cmd);
-            match cmd {
-                UiCommand::RestoreSession => {
-                    self.session.restore_session().await;
-                }
-                UiCommand::CheckServer(homeserver) => {
-                    self.session.check_server(&homeserver).await;
-                }
-                UiCommand::LoginPassword(creds) => {
-                    self.session.login_password(creds).await;
-                }
-                UiCommand::LoginOAuth => {
-                    self.session.login_oauth().await;
-                }
-                UiCommand::FetchRooms => {
-                    self.handle_fetch_rooms().await;
-                }
-                UiCommand::RoomsUpdated(rooms) => {
-                    self.handle_rooms_updated(rooms);
-                }
-                UiCommand::SpacesUpdated(spaces) => {
-                    self.handle_spaces_updated(spaces);
-                }
-                UiCommand::SelectSpace(space) => {
-                    self.handle_select_space(space);
-                }
-                UiCommand::SelectSubspace(subspace) => {
-                    self.handle_select_subspace(subspace);
-                }
-                UiCommand::MoveSpace { from, to } => {
-                    self.room_directory
-                        .move_space(from, to, self.storage.as_ref())
-                        .await;
-                }
-                UiCommand::SelectRoom(room_id) => {
-                    self.select_room(room_id).await;
-                }
-                UiCommand::RetryTimeline => {
-                    self.active_timeline.retry().await;
-                }
-                UiCommand::SendMessage {
-                    room_id,
-                    body,
-                    reply_to,
-                } => {
-                    self.active_timeline
-                        .send_message(room_id, body, reply_to)
-                        .await;
-                }
-                UiCommand::PaginateBackwards { room_id } => {
-                    self.active_timeline.paginate_backwards(&room_id);
-                }
-                UiCommand::PaginateForwards { room_id } => {
-                    self.active_timeline.paginate_forwards(&room_id);
-                }
-                UiCommand::TimelinePaginationCompleted {
-                    room_id,
-                    direction,
-                    outcome,
-                } => {
-                    self.active_timeline
-                        .complete_pagination(&room_id, direction, outcome);
-                }
-                UiCommand::JumpToLatest { room_id } => {
-                    self.active_timeline.jump_to_latest(&room_id);
-                }
-                UiCommand::ScrollPositionChanged { at_top, at_bottom } => {
-                    self.active_timeline
-                        .scroll_position_changed(at_top, at_bottom);
-                }
-                UiCommand::OpenMedia { event_id } => {
-                    self.media.open_media(event_id);
-                }
-                UiCommand::SaveFile { event_id, filename } => {
-                    self.media.save_file(event_id, filename);
-                }
-                UiCommand::AcceptVerification => {
-                    self.verification.accept().await;
-                }
-                UiCommand::RejectVerification => {
-                    self.verification.reject().await;
-                }
-                UiCommand::ConfirmVerification => {
-                    self.verification.confirm().await;
-                }
-                UiCommand::SessionExpired => {
-                    self.handle_session_expired().await;
-                }
-                UiCommand::Logout => {
-                    self.handle_logout().await;
-                }
-                UiCommand::Quit => {
-                    self.handle_quit().await;
-                    break;
-                }
+            if self.dispatch(cmd).await {
+                break;
             }
         }
+    }
+
+    async fn dispatch(&mut self, cmd: UiCommand) -> bool {
+        match cmd {
+            UiCommand::RestoreSession => {
+                self.session.spawn_restore_session(&mut self.operations);
+            }
+            UiCommand::CheckServer(homeserver) => {
+                self.session
+                    .spawn_check_server(&mut self.operations, homeserver);
+            }
+            UiCommand::LoginPassword(creds) => {
+                self.session
+                    .spawn_login_password(&mut self.operations, creds);
+            }
+            UiCommand::LoginOAuth => {
+                self.session.spawn_login_oauth(&mut self.operations);
+            }
+            UiCommand::FetchRooms => {
+                self.handle_fetch_rooms().await;
+            }
+            UiCommand::RoomsUpdated(rooms) => {
+                self.handle_rooms_updated(rooms);
+            }
+            UiCommand::SpacesUpdated(spaces) => {
+                self.handle_spaces_updated(spaces);
+            }
+            UiCommand::SelectSpace(space) => {
+                self.handle_select_space(space);
+            }
+            UiCommand::SelectSubspace(subspace) => {
+                self.handle_select_subspace(subspace);
+            }
+            UiCommand::MoveSpace { from, to } => {
+                self.room_directory
+                    .move_space(from, to, self.storage.as_ref())
+                    .await;
+            }
+            UiCommand::SelectRoom(room_id) => {
+                self.select_room(room_id).await;
+            }
+            UiCommand::RetryTimeline => {
+                self.active_timeline.retry().await;
+            }
+            UiCommand::SendMessage {
+                room_id,
+                body,
+                reply_to,
+            } => {
+                self.active_timeline
+                    .spawn_send(&mut self.operations, room_id, body, reply_to);
+            }
+            UiCommand::PaginateBackwards { room_id } => {
+                self.active_timeline.paginate_backwards(&room_id);
+            }
+            UiCommand::PaginateForwards { room_id } => {
+                self.active_timeline.paginate_forwards(&room_id);
+            }
+            UiCommand::TimelinePaginationCompleted {
+                room_id,
+                direction,
+                outcome,
+            } => {
+                self.active_timeline
+                    .complete_pagination(&room_id, direction, outcome);
+            }
+            UiCommand::JumpToLatest { room_id } => {
+                self.active_timeline.jump_to_latest(&room_id);
+            }
+            UiCommand::ScrollPositionChanged { at_top, at_bottom } => {
+                self.active_timeline
+                    .scroll_position_changed(at_top, at_bottom);
+            }
+            UiCommand::OpenMedia { event_id } => {
+                self.media.open_media(event_id);
+            }
+            UiCommand::SaveFile { event_id, filename } => {
+                self.media.save_file(event_id, filename);
+            }
+            UiCommand::AcceptVerification => {
+                self.verification.spawn_accept(&mut self.operations);
+            }
+            UiCommand::RejectVerification => {
+                self.verification.spawn_reject(&mut self.operations);
+            }
+            UiCommand::ConfirmVerification => {
+                self.verification.spawn_confirm(&mut self.operations);
+            }
+            UiCommand::SessionExpired => {
+                self.handle_session_expired().await;
+            }
+            UiCommand::Logout => {
+                self.handle_logout().await;
+            }
+            UiCommand::Quit => {
+                self.handle_quit().await;
+                return true;
+            }
+        }
+        false
     }
 
     fn log_command(cmd: &UiCommand) {
@@ -272,6 +282,7 @@ impl AppService {
     async fn shutdown_all_tasks(&mut self) {
         self.background.shutdown().await;
         self.active_timeline.shutdown().await;
+        self.operations.reset().await;
     }
 
     async fn handle_session_expired(&mut self) {
@@ -279,14 +290,14 @@ impl AppService {
         self.shutdown_all_tasks().await;
         self.room_directory.reset();
         self.selection = Selection::default();
-        self.session.expire_session().await;
+        self.session.spawn_expire_session(&mut self.operations);
     }
 
     async fn handle_logout(&mut self) {
         self.shutdown_all_tasks().await;
         self.room_directory.reset();
         self.selection = Selection::default();
-        self.session.logout().await;
+        self.session.spawn_logout(&mut self.operations);
     }
 
     async fn handle_quit(&mut self) {

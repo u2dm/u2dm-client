@@ -7,6 +7,7 @@ use crate::domain::models::VerificationEvent;
 use crate::ports::matrix::MatrixPort;
 use crate::ports::output::AppOutputPort;
 
+#[derive(Clone)]
 pub(super) struct VerificationController {
     matrix: Arc<dyn MatrixPort>,
     output: Arc<dyn AppOutputPort>,
@@ -46,21 +47,36 @@ impl VerificationController {
         });
     }
 
-    pub(super) async fn accept(&self) {
+    pub(super) fn spawn_accept(&self, group: &mut TaskGroup) {
+        let this = self.clone();
+        group.spawn(async move { this.accept().await });
+    }
+
+    pub(super) fn spawn_reject(&self, group: &mut TaskGroup) {
+        let this = self.clone();
+        group.spawn(async move { this.reject().await });
+    }
+
+    pub(super) fn spawn_confirm(&self, group: &mut TaskGroup) {
+        let this = self.clone();
+        group.spawn(async move { this.confirm().await });
+    }
+
+    async fn accept(&self) {
         if let Err(e) = self.matrix.accept_verification().await {
             tracing::warn!("verification accept failed: {e}");
             self.notify_error(format!("Verification accept failed: {e}"));
         }
     }
 
-    pub(super) async fn reject(&self) {
+    async fn reject(&self) {
         if let Err(e) = self.matrix.reject_verification().await {
             tracing::warn!("verification reject failed: {e}");
             self.notify_error(format!("Verification reject failed: {e}"));
         }
     }
 
-    pub(super) async fn confirm(&self) {
+    async fn confirm(&self) {
         if let Err(e) = self.matrix.confirm_verification().await {
             tracing::warn!("verification confirm failed: {e}");
             self.notify_error(format!("Verification confirm failed: {e}"));

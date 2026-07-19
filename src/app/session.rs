@@ -22,6 +22,7 @@ fn generate_passphrase() -> String {
     })
 }
 
+#[derive(Clone)]
 pub(super) struct SessionController {
     matrix: Arc<dyn MatrixPort>,
     storage: Arc<dyn StoragePort>,
@@ -47,7 +48,37 @@ impl SessionController {
         }
     }
 
-    pub(super) async fn restore_session(&self) {
+    pub(super) fn spawn_restore_session(&self, group: &mut TaskGroup) {
+        let this = self.clone();
+        group.spawn(async move { this.restore_session().await });
+    }
+
+    pub(super) fn spawn_check_server(&self, group: &mut TaskGroup, homeserver: String) {
+        let this = self.clone();
+        group.spawn(async move { this.check_server(&homeserver).await });
+    }
+
+    pub(super) fn spawn_login_password(&self, group: &mut TaskGroup, creds: LoginCredentials) {
+        let this = self.clone();
+        group.spawn(async move { this.login_password(creds).await });
+    }
+
+    pub(super) fn spawn_login_oauth(&self, group: &mut TaskGroup) {
+        let this = self.clone();
+        group.spawn(async move { this.login_oauth().await });
+    }
+
+    pub(super) fn spawn_logout(&self, group: &mut TaskGroup) {
+        let this = self.clone();
+        group.spawn(async move { this.logout().await });
+    }
+
+    pub(super) fn spawn_expire_session(&self, group: &mut TaskGroup) {
+        let this = self.clone();
+        group.spawn(async move { this.expire_session().await });
+    }
+
+    async fn restore_session(&self) {
         self.output.status("loading-session".into());
 
         let Some(session) = self.load_saved_session().await else {
@@ -73,7 +104,7 @@ impl SessionController {
         self.send_cmd(UiCommand::FetchRooms);
     }
 
-    pub(super) async fn check_server(&self, homeserver: &str) {
+    async fn check_server(&self, homeserver: &str) {
         tracing::info!(homeserver, "checking server");
 
         let Some(passphrase) = self.passphrase_or_discovery_error().await else {
@@ -161,7 +192,7 @@ impl SessionController {
             .await
     }
 
-    pub(super) async fn login_password(&self, creds: LoginCredentials) {
+    async fn login_password(&self, creds: LoginCredentials) {
         match self.matrix.login_password(creds).await {
             Ok(session) => {
                 tracing::info!(user_id = %session.user_id, "password login succeeded");
@@ -176,7 +207,7 @@ impl SessionController {
         }
     }
 
-    pub(super) async fn login_oauth(&self) {
+    async fn login_oauth(&self) {
         match self.run_oauth_flow().await {
             Ok(()) => {
                 self.send_cmd(UiCommand::FetchRooms);
@@ -188,14 +219,14 @@ impl SessionController {
         }
     }
 
-    pub(super) async fn expire_session(&self) {
+    async fn expire_session(&self) {
         self.clear_local_state().await;
         self.output.logged_out();
         self.output
             .login_error("Session expired. Please log in again.".into());
     }
 
-    pub(super) async fn logout(&self) {
+    async fn logout(&self) {
         tracing::info!("user initiated logout");
         if let Err(e) = self.matrix.logout().await {
             tracing::warn!("failed to logout from server: {e}");
