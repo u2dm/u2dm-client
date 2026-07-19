@@ -628,25 +628,9 @@ async fn run_sync_loop(
         };
         tokio::select! {
             biased;
-            update = room_updates_rx.recv() => {
-                if matches!(
-                    handle_room_update(client, update, &mut dir).await,
-                    LoopAction::Break
-                ) {
-                    break;
-                }
-            }
             Some(state) = state_stream.next() => {
                 if matches!(
                     handle_sync_state(client, state, sync_service, &mut dir, on_sync).await,
-                    LoopAction::Break
-                ) {
-                    break;
-                }
-            }
-            info = room_info_rx.recv() => {
-                if matches!(
-                    handle_room_info_update(client, info, &mut dir).await,
                     LoopAction::Break
                 ) {
                     break;
@@ -660,6 +644,22 @@ async fn run_sync_loop(
             }
             Some(_) = avatars.tasks.join_next() => {
                 avatars.pump(client);
+            }
+            update = room_updates_rx.recv() => {
+                if matches!(
+                    handle_room_update(client, update, &mut dir).await,
+                    LoopAction::Break
+                ) {
+                    break;
+                }
+            }
+            info = room_info_rx.recv() => {
+                if matches!(
+                    handle_room_info_update(client, info, &mut dir).await,
+                    LoopAction::Break
+                ) {
+                    break;
+                }
             }
         }
     }

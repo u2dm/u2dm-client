@@ -372,6 +372,16 @@ pub(crate) async fn subscribe_timeline(
     loop {
         tokio::select! {
             biased;
+            cmd = cmd_rx.recv() => {
+                let Some(cmd) = cmd else { break };
+                handle_timeline_command(cmd, &timeline, &timeline_tx).await;
+            }
+            result = key_stream.next() => {
+                if let Some(Ok(keys)) = result {
+                    handle_room_keys(&timeline, keys).await;
+                }
+            }
+            Some(_) = side_tasks.join_next(), if !side_tasks.is_empty() => {}
             diffs = stream.next() => {
                 let Some(diffs) = diffs else { break };
                 if let Some(patch) = process_diffs(&mut items, diffs, &ctx)
@@ -384,16 +394,6 @@ pub(crate) async fn subscribe_timeline(
                 }
                 spawn_reply_detail_fetches(&items, &timeline, &mut fetched_reply_details, &mut side_tasks);
             }
-            result = key_stream.next() => {
-                if let Some(Ok(keys)) = result {
-                    handle_room_keys(&timeline, keys).await;
-                }
-            }
-            cmd = cmd_rx.recv() => {
-                let Some(cmd) = cmd else { break };
-                handle_timeline_command(cmd, &timeline, &timeline_tx).await;
-            }
-            Some(_) = side_tasks.join_next(), if !side_tasks.is_empty() => {}
         }
     }
 
