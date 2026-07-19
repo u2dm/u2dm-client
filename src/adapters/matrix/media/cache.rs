@@ -1,13 +1,20 @@
-use std::collections::HashMap;
-use std::fs;
+use std::collections::{HashMap, HashSet};
+use std::fs as std_fs;
+use std::io::{self, ErrorKind};
 use std::path::{Path, PathBuf};
+use std::sync::{Arc, RwLock};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
+use tokio::fs;
+use tokio::sync::{mpsc, oneshot};
+use tokio::time::{MissedTickBehavior, interval};
+
+use crate::util::unique_tmp_path;
 
 const MAX_CACHE_BYTES: u64 = 512 * 1024 * 1024;
 const MAX_AGE: Duration = Duration::from_secs(14 * 24 * 60 * 60);
-const ACCESS_PERSIST_INTERVAL: Duration = Duration::from_secs(60);
+const FLUSH_INTERVAL: Duration = Duration::from_secs(60);
 
 const RETRY_MAX_ATTEMPTS: u32 = 3;
 const FAILURE_COOLDOWN: Duration = Duration::from_secs(5 * 60);
@@ -26,32 +33,95 @@ struct CacheEntry {
     last_access: SystemTime,
 }
 
-pub(super) struct DiskCache {
-    index_path: PathBuf,
-    entries: HashMap<String, CacheEntry>,
-    total_bytes: u64,
-    last_access_persist: SystemTime,
+type Snapshot = Arc<HashMap<String, PathBuf>>;
+
+enum CacheCommand {
+    Touch(String),
+    Insert {
+        key: String,
+        path: PathBuf,
+        bytes: u64,
+    },
+    Clear(oneshot::Sender<()>),
 }
 
-impl DiskCache {
-    pub(super) fn load(media_dir: &Path) -> Self {
+pub(super) struct CacheHandle {
+    snapshot: Arc<RwLock<Snapshot>>,
+    tx: mpsc::UnboundedSender<CacheCommand>,
+}
+
+impl CacheHandle {
+    pub(super) fn spawn(media_dir: PathBuf) -> Self {
+        let actor = CacheActor::load(media_dir);
+        let snapshot = Arc::new(RwLock::new(actor.snapshot()));
+        let (tx, rx) = mpsc::unbounded_channel();
+        tokio::spawn(actor.run(rx, Arc::clone(&snapshot)));
+        Self { snapshot, tx }
+    }
+
+    pub(super) fn get(&self, key: &str) -> Option<PathBuf> {
+        let path = self.snapshot.read().ok()?.get(key).cloned()?;
+        if self.tx.send(CacheCommand::Touch(key.to_owned())).is_err() {
+            tracing::trace!("media cache actor stopped; access not recorded");
+        }
+        Some(path)
+    }
+
+    pub(super) fn insert(&self, key: &str, path: PathBuf, bytes: u64) {
+        if self
+            .tx
+            .send(CacheCommand::Insert {
+                key: key.to_owned(),
+                path,
+                bytes,
+            })
+            .is_err()
+        {
+            tracing::debug!("media cache actor stopped; insert dropped");
+        }
+    }
+
+    pub(super) async fn clear(&self) {
+        let (ack_tx, ack_rx) = oneshot::channel();
+        if self.tx.send(CacheCommand::Clear(ack_tx)).is_ok() {
+            ack_rx.await.ok();
+        }
+    }
+}
+
+struct CacheActor {
+    index_path: PathBuf,
+    media_dir: PathBuf,
+    entries: HashMap<String, CacheEntry>,
+    total_bytes: u64,
+    dirty: bool,
+}
+
+impl CacheActor {
+    fn load(media_dir: PathBuf) -> Self {
         let index_path = media_dir.join("index.json");
-        let mut cache = Self {
+        let mut actor = Self {
             index_path,
+            media_dir,
             entries: HashMap::new(),
             total_bytes: 0,
-            last_access_persist: SystemTime::now(),
+            dirty: false,
         };
-        cache.read_index();
-        let changed = cache.prune_aged() | cache.evict_to_budget();
-        if changed {
-            cache.persist();
+        actor.read_index();
+        let mut victims = actor.prune_aged();
+        victims.extend(actor.evict_to_budget());
+        for path in &victims {
+            if let Err(e) = std_fs::remove_file(path) {
+                tracing::debug!("failed to evict cached media {}: {e}", path.display());
+            }
         }
-        cache
+        actor.dirty = !victims.is_empty();
+        actor.reconcile_orphans();
+        actor
     }
 
     fn read_index(&mut self) {
-        let Ok(contents) = fs::read_to_string(&self.index_path) else {
+        let Ok(contents) = std_fs::read_to_string(&self.index_path) else {
             return;
         };
         let stored: Vec<StoredEntry> = match serde_json::from_str(&contents) {
@@ -77,28 +147,77 @@ impl DiskCache {
         }
     }
 
-    pub(super) fn get(&mut self, key: &str) -> Option<PathBuf> {
-        let entry = self.entries.get_mut(key)?;
-        if !entry.path.exists() {
-            let bytes = entry.bytes;
-            self.entries.remove(key);
-            self.total_bytes = self.total_bytes.saturating_sub(bytes);
-            return None;
-        }
-        let now = SystemTime::now();
-        entry.last_access = now;
-        let path = entry.path.clone();
-        if now
-            .duration_since(self.last_access_persist)
-            .is_ok_and(|elapsed| elapsed >= ACCESS_PERSIST_INTERVAL)
-        {
-            self.last_access_persist = now;
-            self.persist();
-        }
-        Some(path)
+    fn snapshot(&self) -> Snapshot {
+        Arc::new(
+            self.entries
+                .iter()
+                .map(|(key, entry)| (key.clone(), entry.path.clone()))
+                .collect(),
+        )
     }
 
-    pub(super) fn insert(&mut self, key: &str, path: PathBuf, bytes: u64) {
+    async fn run(
+        mut self,
+        mut rx: mpsc::UnboundedReceiver<CacheCommand>,
+        shared: Arc<RwLock<Snapshot>>,
+    ) {
+        if self.dirty {
+            self.flush().await;
+        }
+        let mut ticker = interval(FLUSH_INTERVAL);
+        ticker.set_missed_tick_behavior(MissedTickBehavior::Delay);
+        ticker.tick().await;
+        loop {
+            tokio::select! {
+                maybe = rx.recv() => {
+                    let Some(cmd) = maybe else { break };
+                    self.handle(cmd, &shared).await;
+                }
+                _ = ticker.tick() => {
+                    if self.dirty {
+                        self.flush().await;
+                    }
+                }
+            }
+        }
+        if self.dirty {
+            self.flush().await;
+        }
+    }
+
+    async fn handle(&mut self, cmd: CacheCommand, shared: &RwLock<Snapshot>) {
+        match cmd {
+            CacheCommand::Touch(key) => {
+                if let Some(entry) = self.entries.get_mut(&key) {
+                    entry.last_access = SystemTime::now();
+                    self.dirty = true;
+                }
+            }
+            CacheCommand::Insert { key, path, bytes } => {
+                let victims = self.insert(&key, path, bytes);
+                self.publish(shared);
+                self.delete_files(&victims).await;
+                self.dirty = true;
+            }
+            CacheCommand::Clear(ack) => {
+                self.entries.clear();
+                self.total_bytes = 0;
+                self.publish(shared);
+                self.flush().await;
+                if ack.send(()).is_err() {
+                    tracing::trace!("media cache clear requester dropped before ack");
+                }
+            }
+        }
+    }
+
+    fn publish(&self, shared: &RwLock<Snapshot>) {
+        if let Ok(mut guard) = shared.write() {
+            *guard = self.snapshot();
+        }
+    }
+
+    fn insert(&mut self, key: &str, path: PathBuf, bytes: u64) -> Vec<PathBuf> {
         if let Some(previous) = self.entries.remove(key) {
             self.total_bytes = self.total_bytes.saturating_sub(previous.bytes);
         }
@@ -111,12 +230,10 @@ impl DiskCache {
                 last_access: SystemTime::now(),
             },
         );
-        self.evict_to_budget();
-        self.last_access_persist = SystemTime::now();
-        self.persist();
+        self.evict_to_budget()
     }
 
-    fn prune_aged(&mut self) -> bool {
+    fn prune_aged(&mut self) -> Vec<PathBuf> {
         let now = SystemTime::now();
         let stale: Vec<String> = self
             .entries
@@ -127,16 +244,17 @@ impl DiskCache {
             })
             .map(|(key, _)| key.clone())
             .collect();
-        let mut changed = false;
+        let mut victims = Vec::new();
         for key in stale {
-            self.remove_entry(&key);
-            changed = true;
+            if let Some(path) = self.remove_entry(&key) {
+                victims.push(path);
+            }
         }
-        changed
+        victims
     }
 
-    fn evict_to_budget(&mut self) -> bool {
-        let mut changed = false;
+    fn evict_to_budget(&mut self) -> Vec<PathBuf> {
+        let mut victims = Vec::new();
         while self.total_bytes > MAX_CACHE_BYTES {
             let Some(victim) = self
                 .entries
@@ -146,22 +264,39 @@ impl DiskCache {
             else {
                 break;
             };
-            self.remove_entry(&victim);
-            changed = true;
+            if let Some(path) = self.remove_entry(&victim) {
+                victims.push(path);
+            }
         }
-        changed
+        victims
     }
 
-    fn remove_entry(&mut self, key: &str) {
-        if let Some(entry) = self.entries.remove(key) {
-            self.total_bytes = self.total_bytes.saturating_sub(entry.bytes);
-            if let Err(e) = fs::remove_file(&entry.path) {
-                tracing::debug!("failed to evict cached media {}: {e}", entry.path.display());
+    fn remove_entry(&mut self, key: &str) -> Option<PathBuf> {
+        let entry = self.entries.remove(key)?;
+        self.total_bytes = self.total_bytes.saturating_sub(entry.bytes);
+        Some(entry.path)
+    }
+
+    async fn delete_files(&self, paths: &[PathBuf]) {
+        for path in paths {
+            if let Err(e) = fs::remove_file(path).await
+                && e.kind() != ErrorKind::NotFound
+            {
+                tracing::debug!("failed to evict cached media {}: {e}", path.display());
             }
         }
     }
 
-    fn persist(&self) {
+    async fn flush(&mut self) {
+        let Some(json) = self.serialize_index() else {
+            return;
+        };
+        if self.write_index(&json).await {
+            self.dirty = false;
+        }
+    }
+
+    fn serialize_index(&self) -> Option<String> {
         let stored: Vec<StoredEntry> = self
             .entries
             .iter()
@@ -177,27 +312,74 @@ impl DiskCache {
             })
             .collect();
 
-        let json = match serde_json::to_string(&stored) {
-            Ok(json) => json,
+        match serde_json::to_string(&stored) {
+            Ok(json) => Some(json),
             Err(e) => {
                 tracing::warn!("failed to serialize media cache index: {e}");
-                return;
+                None
             }
-        };
-        let tmp = self.index_path.with_extension("tmp");
-        if let Err(e) = fs::write(&tmp, json.as_bytes()) {
-            tracing::warn!("failed to write media cache index: {e}");
-            return;
-        }
-        if let Err(e) = fs::rename(&tmp, &self.index_path) {
-            tracing::warn!("failed to commit media cache index: {e}");
         }
     }
 
-    pub(super) fn clear(&mut self) {
-        self.entries.clear();
-        self.total_bytes = 0;
-        self.persist();
+    async fn write_index(&self, json: &str) -> bool {
+        match self.try_write_index(json).await {
+            Ok(()) => true,
+            Err(e) => {
+                tracing::warn!("failed to persist media cache index: {e}");
+                false
+            }
+        }
+    }
+
+    async fn try_write_index(&self, json: &str) -> io::Result<()> {
+        if let Some(parent) = self.index_path.parent() {
+            fs::create_dir_all(parent).await?;
+        }
+        let tmp = unique_tmp_path(&self.index_path);
+        fs::write(&tmp, json.as_bytes()).await?;
+        if let Err(e) = fs::rename(&tmp, &self.index_path).await {
+            if let Err(cleanup_err) = fs::remove_file(&tmp).await {
+                tracing::debug!("failed to remove stale media index temp: {cleanup_err}");
+            }
+            return Err(e);
+        }
+        Ok(())
+    }
+
+    fn reconcile_orphans(&self) {
+        let referenced: HashSet<&Path> = self
+            .entries
+            .values()
+            .map(|entry| entry.path.as_path())
+            .collect();
+        self.sweep(&self.media_dir, &referenced);
+        self.sweep(&self.media_dir.join("avatars"), &referenced);
+    }
+
+    fn sweep(&self, dir: &Path, referenced: &HashSet<&Path>) {
+        let Ok(read_dir) = std_fs::read_dir(dir) else {
+            return;
+        };
+        for entry in read_dir.flatten() {
+            let path = entry.path();
+            if path == self.index_path {
+                continue;
+            }
+            let Ok(file_type) = entry.file_type() else {
+                continue;
+            };
+            if file_type.is_dir() {
+                continue;
+            }
+            if !referenced.contains(path.as_path())
+                && let Err(e) = std_fs::remove_file(&path)
+            {
+                tracing::debug!(
+                    "failed to remove orphaned cache file {}: {e}",
+                    path.display()
+                );
+            }
+        }
     }
 }
 

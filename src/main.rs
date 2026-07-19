@@ -76,6 +76,7 @@ fn run() -> Result<()> {
     #[cfg(feature = "demo")]
     demo::size_window_for_screenshots(&ui);
 
+    let _guard = rt.enter();
     let backend = Backend::select(&cfg);
     let media_files: Arc<dyn MediaFilePort> = Arc::new(DesktopMediaFiles::new());
     let browser: Arc<dyn BrowserPort> = Arc::new(DesktopBrowser::new());
@@ -89,7 +90,6 @@ fn run() -> Result<()> {
     ));
 
     let cmd_tx_quit = cmd_tx.clone();
-    let _guard = rt.enter();
     ui.spawn_event_handler(
         ui_rx,
         rooms_out_rx,

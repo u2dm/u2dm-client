@@ -12,6 +12,7 @@ use tokio::task::spawn_blocking;
 use crate::domain::models::{Session, SessionMetadata};
 use crate::error::{AppError, Result};
 use crate::ports::storage::{StoragePort, StoredSession};
+use crate::util::unique_tmp_path;
 
 const KEYRING_SERVICE: &str = "u2dm";
 
@@ -229,7 +230,7 @@ async fn write_json<T: serde::Serialize + Sync + ?Sized>(path: &Path, value: &T)
     }
 
     let json = serde_json::to_string_pretty(value)?;
-    let tmp_path = path.with_extension("tmp");
+    let tmp_path = unique_tmp_path(path);
 
     fs::write(&tmp_path, json.as_bytes()).await?;
 
@@ -238,7 +239,12 @@ async fn write_json<T: serde::Serialize + Sync + ?Sized>(path: &Path, value: &T)
         fs::set_permissions(&tmp_path, Permissions::from_mode(0o600)).await?;
     }
 
-    fs::rename(&tmp_path, path).await?;
+    if let Err(e) = fs::rename(&tmp_path, path).await {
+        if let Err(cleanup_err) = fs::remove_file(&tmp_path).await {
+            tracing::debug!("failed to remove staged temp file: {cleanup_err}");
+        }
+        return Err(e.into());
+    }
 
     Ok(())
 }

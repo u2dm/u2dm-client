@@ -7,6 +7,7 @@ mod task_group;
 mod verification;
 
 use std::sync::Arc;
+use std::time::Duration;
 
 use active_timeline::ActiveTimeline;
 use media::MediaActions;
@@ -15,6 +16,7 @@ use selection::Selection;
 use session::SessionController;
 use task_group::TaskGroup;
 use tokio::sync::{mpsc, watch};
+use tokio::time::sleep;
 use verification::VerificationController;
 
 use crate::commands::{UiCommand, ViewportChanged};
@@ -40,7 +42,10 @@ pub struct AppService {
     verification: VerificationController,
     media: MediaActions,
     selection: Selection,
+    space_order_tx: watch::Sender<Option<Vec<String>>>,
 }
+
+const SPACE_ORDER_DEBOUNCE: Duration = Duration::from_millis(500);
 
 impl AppService {
     #[allow(clippy::too_many_arguments)]
@@ -54,6 +59,11 @@ impl AppService {
         spaces_in_tx: watch::Sender<Arc<[Space]>>,
         output: Arc<dyn AppOutputPort>,
     ) -> Self {
+        let (space_order_tx, space_order_rx) = watch::channel::<Option<Vec<String>>>(None);
+        tokio::spawn(persist_space_order_task(
+            Arc::clone(&storage),
+            space_order_rx,
+        ));
         Self {
             session: SessionController::new(
                 Arc::clone(&matrix),
@@ -79,6 +89,7 @@ impl AppService {
             background: TaskGroup::new(),
             operations: TaskGroup::new(),
             selection: Selection::default(),
+            space_order_tx,
         }
     }
 
@@ -167,7 +178,7 @@ impl AppService {
             }
             UiCommand::MoveSpace { from, to } => {
                 if let Some(order) = self.room_directory.move_space(from, to) {
-                    self.spawn_persist_space_order(order);
+                    self.persist_space_order(order);
                 }
             }
             UiCommand::SelectRoom(room_id) => {
@@ -247,13 +258,10 @@ impl AppService {
         false
     }
 
-    fn spawn_persist_space_order(&mut self, order: Vec<String>) {
-        let storage = Arc::clone(&self.storage);
-        self.operations.spawn(async move {
-            if let Err(e) = storage.save_space_order(&order).await {
-                tracing::warn!("failed to persist space order: {e}");
-            }
-        });
+    fn persist_space_order(&self, order: Vec<String>) {
+        if self.space_order_tx.send(Some(order)).is_err() {
+            tracing::warn!("space order persister stopped; order not saved");
+        }
     }
 
     fn log_command(cmd: &UiCommand) {
@@ -376,5 +384,29 @@ impl AppService {
     async fn handle_quit(&mut self) {
         self.shutdown_all_tasks().await;
         self.media.drain().await;
+    }
+}
+
+async fn persist_space_order_task(
+    storage: Arc<dyn StoragePort>,
+    mut rx: watch::Receiver<Option<Vec<String>>>,
+) {
+    loop {
+        if rx.changed().await.is_err() {
+            let pending = rx.borrow().clone();
+            save_space_order(&storage, pending).await;
+            break;
+        }
+        sleep(SPACE_ORDER_DEBOUNCE).await;
+        let order = rx.borrow_and_update().clone();
+        save_space_order(&storage, order).await;
+    }
+}
+
+async fn save_space_order(storage: &Arc<dyn StoragePort>, order: Option<Vec<String>>) {
+    if let Some(order) = order
+        && let Err(e) = storage.save_space_order(&order).await
+    {
+        tracing::warn!("failed to persist space order: {e}");
     }
 }

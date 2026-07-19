@@ -12,7 +12,7 @@ use tokio::fs;
 use tokio::sync::Semaphore;
 use tokio::time::{sleep, timeout};
 
-use super::cache::{DiskCache, FailureTracker};
+use super::cache::{CacheHandle, FailureTracker};
 use super::{avatar_key, thumb_key, thumbnail_format};
 use crate::domain::models::{MessageBody, ThumbnailOutcome, TimelineMessage};
 use crate::error::{AppError, Result};
@@ -29,18 +29,18 @@ const MAX_FULL_MEDIA_BYTES: usize = 100 * 1024 * 1024;
 pub(crate) struct MediaService {
     media_dir: PathBuf,
     semaphore: Semaphore,
-    cache: StdMutex<DiskCache>,
+    cache: CacheHandle,
     failures: StdMutex<FailureTracker>,
 }
 
 impl MediaService {
     pub(crate) fn new(cache_dir: &Path) -> Arc<Self> {
         let media_dir = cache_dir.join("media-cache");
-        let cache = DiskCache::load(&media_dir);
+        let cache = CacheHandle::spawn(media_dir.clone());
         Arc::new(Self {
             media_dir,
             semaphore: Semaphore::new(MAX_CONCURRENT_DOWNLOADS),
-            cache: StdMutex::new(cache),
+            cache,
             failures: StdMutex::new(FailureTracker::default()),
         })
     }
@@ -50,7 +50,7 @@ impl MediaService {
     }
 
     pub(crate) fn cache_get(&self, key: &str) -> Option<PathBuf> {
-        self.cache.lock().ok()?.get(key)
+        self.cache.get(key)
     }
 
     pub(crate) fn is_failed(&self, key: &str) -> bool {
@@ -70,15 +70,11 @@ impl MediaService {
     }
 
     fn store(&self, key: &str, path: PathBuf, bytes: u64) {
-        if let Ok(mut cache) = self.cache.lock() {
-            cache.insert(key, path, bytes);
-        }
+        self.cache.insert(key, path, bytes);
     }
 
     pub(crate) async fn clear(&self) {
-        if let Ok(mut cache) = self.cache.lock() {
-            cache.clear();
-        }
+        self.cache.clear().await;
         if let Ok(mut failures) = self.failures.lock() {
             failures.clear();
         }
