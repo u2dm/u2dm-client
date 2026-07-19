@@ -26,8 +26,8 @@ use super::common::{
     unsupported_kind,
 };
 use super::decode::{
-    advance_animations, load_image_cached, load_thumbnail, patch_rows, set_animation_tick,
-    set_image_ready,
+    AvatarSlot, advance_animations, load_avatar_async, load_thumbnail, patch_rows,
+    set_animation_tick, set_avatar_ready, set_image_ready,
 };
 use super::emoji;
 use crate::commands::{UiCommand, UiEvent};
@@ -580,6 +580,16 @@ impl SlintUiAdapter {
             }
         });
 
+        set_avatar_ready({
+            let weak = self.instance.as_weak();
+            move |slots, image| {
+                apply_avatar_ready(&weak, slots, image);
+                if let Some(instance) = weak.upgrade() {
+                    instance.window().request_redraw();
+                }
+            }
+        });
+
         tokio::spawn(async move {
             let sem = Arc::new(Semaphore::new(SLINT_INFLIGHT));
             let mut rooms_done = false;
@@ -826,7 +836,7 @@ fn message_to_value(m: &TimelineMessage, media: &dyn MediaCache) -> Value {
 
     let mut has_avatar = false;
     if let Some(avatar_path) = media.avatar_path(&m.sender)
-        && let Some(img) = load_image_cached(&avatar_path)
+        && let Some(img) = load_avatar_async(&avatar_path, AvatarSlot::Message(m.unique_id.clone()))
     {
         fields.push(("avatar".to_string(), Value::Image(img)));
         has_avatar = true;
@@ -891,6 +901,70 @@ fn apply_thumbnail_ready(unique_id: &str, image: Option<&slint::Image>) {
     );
 }
 
+fn set_avatar_on_rows(
+    model: &VecModel<Value>,
+    matches: impl Fn(&Value) -> bool,
+    image: &slint::Image,
+) {
+    patch_rows(model, matches, |value: &mut Value| {
+        if let Value::Struct(entry) = value {
+            entry.set_field("avatar".to_string(), Value::Image(image.clone()));
+            entry.set_field("has-avatar".to_string(), Value::Bool(true));
+        }
+    });
+}
+
+fn apply_avatar_ready(
+    weak: &slint::Weak<ComponentInstance>,
+    slots: &[AvatarSlot],
+    image: Option<&slint::Image>,
+) {
+    let Some(image) = image else {
+        return;
+    };
+    for slot in slots {
+        match slot {
+            AvatarSlot::Message(unique_id) => {
+                if let Some(model) = TIMELINE_MODEL.with(|cell| cell.borrow().clone()) {
+                    set_avatar_on_rows(
+                        &model,
+                        |v| entry_id_from_value(v) == unique_id.as_str(),
+                        image,
+                    );
+                }
+            }
+            AvatarSlot::Room(id) => {
+                if let Some(model) = ROOMS_MODEL.with(|cell| cell.borrow().clone()) {
+                    set_avatar_on_rows(
+                        &model,
+                        |v| room_id_from_value(v).is_some_and(|rid| rid.as_str() == id.as_str()),
+                        image,
+                    );
+                }
+            }
+            AvatarSlot::Space(id) => {
+                for cell in [&SPACES_MODEL, &SUBSPACES_MODEL] {
+                    if let Some(model) = cell.with(|slot| slot.borrow().clone()) {
+                        set_avatar_on_rows(
+                            &model,
+                            |v| {
+                                room_id_from_value(v).is_some_and(|rid| rid.as_str() == id.as_str())
+                            },
+                            image,
+                        );
+                    }
+                }
+            }
+            AvatarSlot::User => {
+                if let Some(inst) = weak.upgrade() {
+                    set_prop(&inst, "user-avatar", Value::Image(image.clone()));
+                    set_prop(&inst, "user-has-avatar", Value::Bool(true));
+                }
+            }
+        }
+    }
+}
+
 fn enrich_value(value: &mut Value, delta: &EnrichmentDelta, media: &dyn MediaCache) {
     let Value::Struct(entry) = value else {
         return;
@@ -915,7 +989,8 @@ fn enrich_value(value: &mut Value, delta: &EnrichmentDelta, media: &dyn MediaCac
 
     if delta.avatar_ready
         && let Some(avatar_path) = media.avatar_path(&delta.sender)
-        && let Some(img) = load_image_cached(&avatar_path)
+        && let Some(img) =
+            load_avatar_async(&avatar_path, AvatarSlot::Message(delta.unique_id.clone()))
     {
         entry.set_field("avatar".to_string(), Value::Image(img));
         entry.set_field("has-avatar".to_string(), Value::Bool(true));
@@ -1075,7 +1150,8 @@ fn room_to_value(r: &Room, media: &dyn MediaCache) -> Value {
     let mut has_avatar = false;
     if let Some(mxc) = &r.avatar_mxc
         && let Some(avatar_path) = media.room_avatar_path(mxc)
-        && let Some(img) = load_image_cached(&avatar_path)
+        && let Some(img) =
+            load_avatar_async(&avatar_path, AvatarSlot::Room(r.id.as_ref().to_owned()))
     {
         fields.push(("avatar".to_string(), Value::Image(img)));
         has_avatar = true;
@@ -1105,7 +1181,7 @@ fn space_to_value(s: &Space, media: &dyn MediaCache) -> Value {
     let mut has_avatar = false;
     if let Some(mxc) = &s.avatar_mxc
         && let Some(avatar_path) = media.space_avatar_path(mxc)
-        && let Some(img) = load_image_cached(&avatar_path)
+        && let Some(img) = load_avatar_async(&avatar_path, AvatarSlot::Space(s.id.clone()))
     {
         fields.push(("avatar".to_string(), Value::Image(img)));
         has_avatar = true;

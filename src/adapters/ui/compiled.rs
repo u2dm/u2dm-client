@@ -14,8 +14,8 @@ use super::common::{
     unsupported_kind,
 };
 use super::decode::{
-    advance_animations, load_image_cached, load_thumbnail, patch_rows, set_animation_tick,
-    set_image_ready,
+    AvatarSlot, advance_animations, load_avatar_async, load_thumbnail, patch_rows,
+    set_animation_tick, set_avatar_ready, set_image_ready,
 };
 use super::emoji;
 use crate::commands::{UiCommand, UiEvent};
@@ -385,15 +385,7 @@ impl SlintUiAdapter {
             }
         });
 
-        set_image_ready({
-            let weak = self.window.as_weak();
-            move |unique_id, image| {
-                apply_thumbnail_ready(unique_id, image);
-                if let Some(window) = weak.upgrade() {
-                    window.window().request_redraw();
-                }
-            }
-        });
+        register_image_callbacks(&self.window.as_weak());
 
         SPACES_MODEL.with(|cell| *cell.borrow_mut() = Some(spaces_model));
         SUBSPACES_MODEL.with(|cell| *cell.borrow_mut() = Some(subspaces_model));
@@ -601,13 +593,89 @@ fn message_to_entry(m: &TimelineMessage, media: &dyn MediaCache) -> MessageEntry
     }
 
     if let Some(avatar_path) = media.avatar_path(&m.sender)
-        && let Some(img) = load_image_cached(&avatar_path)
+        && let Some(img) = load_avatar_async(&avatar_path, AvatarSlot::Message(m.unique_id.clone()))
     {
         entry.avatar = img;
         entry.has_avatar = true;
     }
 
     entry
+}
+
+fn register_image_callbacks(weak: &slint::Weak<AppWindow>) {
+    set_image_ready({
+        let weak = weak.clone();
+        move |unique_id, image| {
+            apply_thumbnail_ready(unique_id, image);
+            if let Some(window) = weak.upgrade() {
+                window.window().request_redraw();
+            }
+        }
+    });
+
+    set_avatar_ready({
+        let weak = weak.clone();
+        move |slots, image| {
+            apply_avatar_ready(&weak, slots, image);
+            if let Some(window) = weak.upgrade() {
+                window.window().request_redraw();
+            }
+        }
+    });
+}
+
+fn apply_avatar_ready(weak: &slint::Weak<AppWindow>, slots: &[AvatarSlot], image: Option<&Image>) {
+    let Some(image) = image else {
+        return;
+    };
+    for slot in slots {
+        match slot {
+            AvatarSlot::Message(unique_id) => {
+                if let Some(timeline) = TIMELINE_MODEL.with(|cell| cell.borrow().clone()) {
+                    patch_rows(
+                        &timeline,
+                        |e: &MessageEntry| e.unique_id == unique_id.as_str(),
+                        |e: &mut MessageEntry| {
+                            e.avatar = image.clone();
+                            e.has_avatar = true;
+                        },
+                    );
+                }
+            }
+            AvatarSlot::Room(id) => {
+                if let Some(rooms) = ROOMS_MODEL.with(|cell| cell.borrow().clone()) {
+                    patch_rows(
+                        &rooms,
+                        |e: &RoomEntry| e.id == id.as_str(),
+                        |e: &mut RoomEntry| {
+                            e.avatar = image.clone();
+                            e.has_avatar = true;
+                        },
+                    );
+                }
+            }
+            AvatarSlot::Space(id) => {
+                for cell in [&SPACES_MODEL, &SUBSPACES_MODEL] {
+                    if let Some(spaces) = cell.with(|cell| cell.borrow().clone()) {
+                        patch_rows(
+                            &spaces,
+                            |e: &SpaceEntry| e.id == id.as_str(),
+                            |e: &mut SpaceEntry| {
+                                e.avatar = image.clone();
+                                e.has_avatar = true;
+                            },
+                        );
+                    }
+                }
+            }
+            AvatarSlot::User => {
+                if let Some(window) = weak.upgrade() {
+                    window.set_user_avatar(image.clone());
+                    window.set_user_has_avatar(true);
+                }
+            }
+        }
+    }
 }
 
 fn apply_thumbnail_ready(unique_id: &str, image: Option<&Image>) {
@@ -646,7 +714,8 @@ fn enrich_entry(entry: &mut MessageEntry, delta: &EnrichmentDelta, media: &dyn M
 
     if delta.avatar_ready
         && let Some(avatar_path) = media.avatar_path(&delta.sender)
-        && let Some(img) = load_image_cached(&avatar_path)
+        && let Some(img) =
+            load_avatar_async(&avatar_path, AvatarSlot::Message(delta.unique_id.clone()))
     {
         entry.avatar = img;
         entry.has_avatar = true;
@@ -698,7 +767,8 @@ fn room_to_entry(r: &Room, media: &dyn MediaCache) -> RoomEntry {
 
     if let Some(mxc) = &r.avatar_mxc
         && let Some(avatar_path) = media.room_avatar_path(mxc)
-        && let Some(img) = load_image_cached(&avatar_path)
+        && let Some(img) =
+            load_avatar_async(&avatar_path, AvatarSlot::Room(r.id.as_ref().to_owned()))
     {
         entry.avatar = img;
         entry.has_avatar = true;
@@ -721,7 +791,7 @@ fn space_to_entry(s: &Space, media: &dyn MediaCache) -> SpaceEntry {
 
     if let Some(mxc) = &s.avatar_mxc
         && let Some(avatar_path) = media.space_avatar_path(mxc)
-        && let Some(img) = load_image_cached(&avatar_path)
+        && let Some(img) = load_avatar_async(&avatar_path, AvatarSlot::Space(s.id.clone()))
     {
         entry.avatar = img;
         entry.has_avatar = true;

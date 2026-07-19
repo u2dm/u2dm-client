@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use slint::{Image, Model, SharedString, VecModel};
 use tokio::sync::mpsc;
 
-use super::decode::load_image_cached;
+use super::decode::{AvatarSlot, load_avatar_async};
 
 pub const SLINT_INFLIGHT: usize = 32;
 
@@ -401,7 +401,10 @@ pub fn dispatch_ui_event<T, R, S>(
         UiEvent::ShowLogin => apply_show_login(w),
         UiEvent::LoginSuccess { user_id } => apply_login_success(w, &user_id),
         UiEvent::UserAvatar(path) => {
-            w.apply_user_avatar(path.as_deref().and_then(load_image_cached));
+            let avatar = path
+                .as_deref()
+                .and_then(|p| load_avatar_async(p, AvatarSlot::User));
+            w.apply_user_avatar(avatar);
         }
         UiEvent::LoginError(message) => apply_login_error(w, &message),
         UiEvent::ToastError(message) => apply_toast_error(w, &message),

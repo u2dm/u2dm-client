@@ -20,6 +20,10 @@ const ANIM_PER_ITEM_BUDGET: usize = 64 * 1024 * 1024;
 const ANIM_MAX_DIMENSION: u32 = 2048;
 const ANIM_MAX_FRAMES: usize = 600;
 
+const DECODE_MAX_DIMENSION: u32 = 4096;
+const DECODE_MAX_ALLOC: u64 = 4 * DECODE_MAX_DIMENSION as u64 * DECODE_MAX_DIMENSION as u64;
+const DISPLAY_MAX_DIMENSION: u32 = 512;
+
 const GIF_INSTANT_DELAY: Duration = Duration::from_millis(10);
 const GIF_DEFAULT_DELAY: Duration = Duration::from_millis(100);
 
@@ -31,10 +35,22 @@ thread_local! {
     static ANIMATION_TICK_FN: RefCell<Option<Rc<dyn Fn()>>> = const { RefCell::new(None) };
     static DECODE_TX: RefCell<Option<mpsc::Sender<DecodeJob>>> = const { RefCell::new(None) };
     static IN_FLIGHT: RefCell<HashMap<PathBuf, Vec<String>>> = RefCell::new(HashMap::new());
+    static AVATAR_WAITERS: RefCell<HashMap<PathBuf, Vec<AvatarSlot>>> = RefCell::new(HashMap::new());
     static IMAGE_READY_FN: RefCell<Option<ImageReadyFn>> = const { RefCell::new(None) };
+    static AVATAR_READY_FN: RefCell<Option<AvatarReadyFn>> = const { RefCell::new(None) };
 }
 
 type ImageReadyFn = Rc<dyn Fn(&str, Option<&Image>)>;
+type AvatarReadyFn = Rc<dyn Fn(&[AvatarSlot], Option<&Image>)>;
+
+/// Identifies which UI row an off-thread avatar decode should patch once it lands.
+#[derive(Clone)]
+pub enum AvatarSlot {
+    Message(String),
+    Room(String),
+    Space(String),
+    User,
+}
 
 struct CachedImage {
     image: Image,
@@ -103,26 +119,36 @@ fn image_from_rgba(rgba: &[u8], width: u32, height: u32) -> Image {
     Image::from_rgba8(pixels)
 }
 
-fn decode_rgba(path: &Path) -> Option<(Vec<u8>, u32, u32)> {
-    let decoded = image::ImageReader::open(path)
-        .ok()?
-        .with_guessed_format()
-        .ok()?
-        .decode()
-        .ok()?
-        .to_rgba8();
-    let (width, height) = decoded.dimensions();
-    Some((decoded.into_raw(), width, height))
+fn decode_limits() -> image::Limits {
+    let mut limits = image::Limits::no_limits();
+    limits.max_image_width = Some(DECODE_MAX_DIMENSION);
+    limits.max_image_height = Some(DECODE_MAX_DIMENSION);
+    limits.max_alloc = Some(DECODE_MAX_ALLOC);
+    limits
 }
 
-pub fn load_image_cached(path: &Path) -> Option<Image> {
-    if let Some(img) = IMAGE_CACHE.with_borrow_mut(|cache| cache.get(path)) {
-        return Some(img);
-    }
-    let (bytes, width, height) = decode_rgba(path)?;
-    let img = image_from_rgba(&bytes, width, height);
-    IMAGE_CACHE.with_borrow_mut(|cache| cache.insert(path.to_path_buf(), img.clone(), bytes.len()));
-    Some(img)
+fn decode_rgba(path: &Path) -> Option<(Vec<u8>, u32, u32)> {
+    let mut reader = image::ImageReader::open(path)
+        .ok()?
+        .with_guessed_format()
+        .ok()?;
+    reader.limits(decode_limits());
+    let decoded = reader.decode().ok()?;
+
+    let decoded =
+        if decoded.width() > DISPLAY_MAX_DIMENSION || decoded.height() > DISPLAY_MAX_DIMENSION {
+            decoded.thumbnail(DISPLAY_MAX_DIMENSION, DISPLAY_MAX_DIMENSION)
+        } else {
+            decoded
+        };
+
+    let rgba = decoded.to_rgba8();
+    let (width, height) = (rgba.width(), rgba.height());
+    let expected_len = (width as usize)
+        .checked_mul(height as usize)
+        .and_then(|pixels| pixels.checked_mul(4))?;
+    let raw = rgba.into_raw();
+    (raw.len() == expected_len).then_some((raw, width, height))
 }
 
 enum DecodeJob {
@@ -152,11 +178,8 @@ fn decode_loop(rx: &mpsc::Receiver<DecodeJob>) {
         match job {
             DecodeJob::Static(path) => {
                 let decoded = decode_rgba(&path);
-                drop(slint::invoke_from_event_loop(move || match decoded {
-                    Some((bytes, width, height)) => {
-                        on_thumbnail_decoded(&path, &bytes, width, height);
-                    }
-                    None => on_thumbnail_ready(&path, None),
+                drop(slint::invoke_from_event_loop(move || {
+                    on_static_decoded(&path, decoded);
                 }));
             }
             DecodeJob::Animation(path) => {
@@ -169,17 +192,19 @@ fn decode_loop(rx: &mpsc::Receiver<DecodeJob>) {
     }
 }
 
-fn on_thumbnail_decoded(path: &Path, bytes: &[u8], width: u32, height: u32) {
-    let image = image_from_rgba(bytes, width, height);
-    IMAGE_CACHE
-        .with_borrow_mut(|cache| cache.insert(path.to_path_buf(), image.clone(), bytes.len()));
-    on_thumbnail_ready(path, Some(&image));
-}
+fn on_static_decoded(path: &Path, decoded: Option<(Vec<u8>, u32, u32)>) {
+    let image = decoded.map(|(bytes, width, height)| {
+        let image = image_from_rgba(&bytes, width, height);
+        IMAGE_CACHE
+            .with_borrow_mut(|cache| cache.insert(path.to_path_buf(), image.clone(), bytes.len()));
+        image
+    });
 
-fn on_thumbnail_ready(path: &Path, image: Option<&Image>) {
-    let waiting = IN_FLIGHT.with_borrow_mut(|inflight| inflight.remove(path));
-    if let Some(unique_ids) = waiting {
-        notify_ready(&unique_ids, image);
+    if let Some(unique_ids) = IN_FLIGHT.with_borrow_mut(|inflight| inflight.remove(path)) {
+        notify_ready(&unique_ids, image.as_ref());
+    }
+    if let Some(slots) = AVATAR_WAITERS.with_borrow_mut(|waiters| waiters.remove(path)) {
+        notify_avatar_ready(&slots, image.as_ref());
     }
 }
 
@@ -192,6 +217,21 @@ fn notify_ready(unique_ids: &[String], image: Option<&Image>) {
     }
 }
 
+fn notify_avatar_ready(slots: &[AvatarSlot], image: Option<&Image>) {
+    if let Some(ready) = AVATAR_READY_FN.with_borrow(Clone::clone) {
+        ready(slots, image);
+    }
+}
+
+fn send_job(job: DecodeJob) {
+    ensure_workers();
+    DECODE_TX.with_borrow(|slot| {
+        if let Some(tx) = slot.as_ref() {
+            drop(tx.send(job));
+        }
+    });
+}
+
 fn enqueue_decode(path: &Path, unique_id: &str, make_job: impl FnOnce(PathBuf) -> DecodeJob) {
     let should_dispatch = IN_FLIGHT.with_borrow_mut(|inflight| {
         let is_new = !inflight.contains_key(path);
@@ -202,17 +242,31 @@ fn enqueue_decode(path: &Path, unique_id: &str, make_job: impl FnOnce(PathBuf) -
         is_new
     });
     if should_dispatch {
-        ensure_workers();
-        DECODE_TX.with_borrow(|slot| {
-            if let Some(tx) = slot.as_ref() {
-                drop(tx.send(make_job(path.to_path_buf())));
-            }
-        });
+        send_job(make_job(path.to_path_buf()));
     }
+}
+
+pub fn load_avatar_async(path: &Path, slot: AvatarSlot) -> Option<Image> {
+    if let Some(img) = IMAGE_CACHE.with_borrow_mut(|cache| cache.get(path)) {
+        return Some(img);
+    }
+    let should_dispatch = AVATAR_WAITERS.with_borrow_mut(|waiters| {
+        let is_new = !waiters.contains_key(path);
+        waiters.entry(path.to_path_buf()).or_default().push(slot);
+        is_new
+    });
+    if should_dispatch {
+        send_job(DecodeJob::Static(path.to_path_buf()));
+    }
+    None
 }
 
 pub fn set_image_ready(ready: impl Fn(&str, Option<&Image>) + 'static) {
     IMAGE_READY_FN.with_borrow_mut(|slot| *slot = Some(Rc::new(ready)));
+}
+
+pub fn set_avatar_ready(ready: impl Fn(&[AvatarSlot], Option<&Image>) + 'static) {
+    AVATAR_READY_FN.with_borrow_mut(|slot| *slot = Some(Rc::new(ready)));
 }
 
 pub fn patch_rows<T: Clone + 'static>(
