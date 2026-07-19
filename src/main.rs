@@ -60,15 +60,16 @@ fn run() -> Result<()> {
     let (cmd_tx, cmd_rx) = mpsc::unbounded_channel::<UiCommand>();
     let (ui_tx, ui_rx) = mpsc::channel::<UiEvent>(UI_EVENT_CHANNEL_CAP);
 
-    let (rooms_out_tx, rooms_out_rx) = watch::channel::<Vec<Room>>(Vec::new());
-    let (spaces_out_tx, spaces_out_rx) = watch::channel::<Vec<Space>>(Vec::new());
-    let (subspaces_out_tx, subspaces_out_rx) = watch::channel::<Vec<Space>>(Vec::new());
+    let (rooms_out_tx, rooms_out_rx) = watch::channel::<Arc<[Room]>>(Arc::from(Vec::new()));
+    let (spaces_out_tx, spaces_out_rx) = watch::channel::<Arc<[Space]>>(Arc::from(Vec::new()));
+    let (subspaces_out_tx, subspaces_out_rx) =
+        watch::channel::<Arc<[Space]>>(Arc::from(Vec::new()));
     let (connection_out_tx, connection_out_rx) =
         watch::channel::<ConnectionStatus>(ConnectionStatus::Disconnected);
     let (status_out_tx, status_out_rx) = watch::channel::<String>(String::new());
 
-    let (rooms_in_tx, rooms_in_rx) = watch::channel::<Vec<Room>>(Vec::new());
-    let (spaces_in_tx, spaces_in_rx) = watch::channel::<Vec<Space>>(Vec::new());
+    let (rooms_in_tx, rooms_in_rx) = watch::channel::<Arc<[Room]>>(Arc::from(Vec::new()));
+    let (spaces_in_tx, spaces_in_rx) = watch::channel::<Arc<[Space]>>(Arc::from(Vec::new()));
     let (scroll_tx, scroll_rx) = watch::channel::<(bool, bool)>((false, true));
 
     ui.register_callbacks(&cmd_tx, &scroll_tx)?;

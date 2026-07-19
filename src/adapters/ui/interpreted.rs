@@ -521,9 +521,9 @@ impl SlintUiAdapter {
     pub fn spawn_event_handler(
         &self,
         mut ui_rx: mpsc::Receiver<UiEvent>,
-        mut rooms_rx: watch::Receiver<Vec<Room>>,
-        mut spaces_rx: watch::Receiver<Vec<Space>>,
-        mut subspaces_rx: watch::Receiver<Vec<Space>>,
+        mut rooms_rx: watch::Receiver<Arc<[Room]>>,
+        mut spaces_rx: watch::Receiver<Arc<[Space]>>,
+        mut subspaces_rx: watch::Receiver<Arc<[Space]>>,
         mut connection_rx: watch::Receiver<ConnectionStatus>,
         mut status_rx: watch::Receiver<String>,
         media_cache: Arc<dyn MediaCache>,

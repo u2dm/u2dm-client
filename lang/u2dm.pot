@@ -398,22 +398,22 @@ msgctxt "SpaceRail"
 msgid "All Rooms"
 msgstr ""
 
-#: ui/screens/chat/components/sidebar.slint:82
+#: ui/screens/chat/components/sidebar.slint:83
 msgctxt "Sidebar"
 msgid "Search"
 msgstr ""
 
-#: ui/screens/chat/components/sidebar.slint:113
+#: ui/screens/chat/components/sidebar.slint:111
 msgctxt "Sidebar"
 msgid "Rooms"
 msgstr ""
 
-#: ui/screens/chat/components/sidebar.slint:121
+#: ui/screens/chat/components/sidebar.slint:119
 msgctxt "Sidebar"
 msgid "{}, {} unread"
 msgstr ""
 
-#: ui/screens/chat/components/sidebar.slint:132
+#: ui/screens/chat/components/sidebar.slint:130
 msgctxt "Sidebar"
 msgid "You"
 msgstr ""

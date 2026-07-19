@@ -1,4 +1,5 @@
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use strum::Display as StrumDisplay;
 
@@ -79,9 +80,9 @@ pub enum UiEvent {
     LoginError(String),
     ToastError(String),
     Status(String),
-    Rooms(Vec<Room>),
-    Spaces(Vec<Space>),
-    Subspaces(Vec<Space>),
+    Rooms(Arc<[Room]>),
+    Spaces(Arc<[Space]>),
+    Subspaces(Arc<[Space]>),
     SelectedRoom {
         id: RoomId,
         name: String,

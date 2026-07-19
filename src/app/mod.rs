@@ -29,8 +29,8 @@ pub struct AppService {
     matrix: Arc<dyn MatrixPort>,
     storage: Arc<dyn StoragePort>,
     cmd_tx: mpsc::UnboundedSender<UiCommand>,
-    rooms_in_tx: watch::Sender<Vec<Room>>,
-    spaces_in_tx: watch::Sender<Vec<Space>>,
+    rooms_in_tx: watch::Sender<Arc<[Room]>>,
+    spaces_in_tx: watch::Sender<Arc<[Space]>>,
     output: Arc<dyn AppOutputPort>,
     background: TaskGroup,
     operations: TaskGroup,
@@ -50,8 +50,8 @@ impl AppService {
         media_files: Arc<dyn MediaFilePort>,
         browser: Arc<dyn BrowserPort>,
         cmd_tx: mpsc::UnboundedSender<UiCommand>,
-        rooms_in_tx: watch::Sender<Vec<Room>>,
-        spaces_in_tx: watch::Sender<Vec<Space>>,
+        rooms_in_tx: watch::Sender<Arc<[Room]>>,
+        spaces_in_tx: watch::Sender<Arc<[Space]>>,
         output: Arc<dyn AppOutputPort>,
     ) -> Self {
         Self {
@@ -85,8 +85,8 @@ impl AppService {
     pub async fn run(
         &mut self,
         mut cmd_rx: mpsc::UnboundedReceiver<UiCommand>,
-        mut rooms_in_rx: watch::Receiver<Vec<Room>>,
-        mut spaces_in_rx: watch::Receiver<Vec<Space>>,
+        mut rooms_in_rx: watch::Receiver<Arc<[Room]>>,
+        mut spaces_in_rx: watch::Receiver<Arc<[Space]>>,
         mut scroll_in_rx: watch::Receiver<(bool, bool)>,
     ) {
         let mut rooms_done = false;
@@ -235,14 +235,14 @@ impl AppService {
         tracing::info!(command = %cmd, "handling command");
     }
 
-    async fn handle_rooms_updated(&mut self, rooms: Vec<Room>) {
+    async fn handle_rooms_updated(&mut self, rooms: Arc<[Room]>) {
         if self.room_directory.store_rooms(rooms) {
             self.refresh_selected_room().await;
             self.room_directory.emit_directory(&self.selection);
         }
     }
 
-    async fn handle_spaces_updated(&mut self, spaces: Vec<Space>) {
+    async fn handle_spaces_updated(&mut self, spaces: Arc<[Space]>) {
         if self.room_directory.store_spaces(spaces) {
             let outcome = self.room_directory.reconcile(&mut self.selection);
             if outcome.space_dropped {

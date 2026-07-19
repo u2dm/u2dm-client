@@ -108,8 +108,8 @@ impl MatrixPort for DemoMatrix {
 
     async fn start_sync(&self, on_sync: Box<dyn Fn(SyncEvent) + Send + Sync>) -> Result<()> {
         on_sync(SyncEvent::Connected);
-        on_sync(SyncEvent::Rooms(data::rooms()));
-        on_sync(SyncEvent::Spaces(data::spaces()));
+        on_sync(SyncEvent::Rooms(data::rooms().into()));
+        on_sync(SyncEvent::Spaces(data::spaces().into()));
         Ok(())
     }
 

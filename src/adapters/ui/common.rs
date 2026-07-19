@@ -407,12 +407,12 @@ pub fn dispatch_ui_event<T, R, S>(
         UiEvent::ToastError(message) => apply_toast_error(w, &message),
         UiEvent::Status(msg) => apply_status(w, &msg),
         UiEvent::Rooms(rooms) => {
-            apply_rooms(rooms_model, &rooms, convert_room, room_entry_id);
+            apply_rooms(rooms_model, rooms.as_ref(), convert_room, room_entry_id);
         }
         UiEvent::Spaces(spaces) => {
             apply_reconcile(
                 spaces_model,
-                &spaces,
+                spaces.as_ref(),
                 &|s| s.id.as_str(),
                 convert_space,
                 space_entry_id,
@@ -421,7 +421,7 @@ pub fn dispatch_ui_event<T, R, S>(
         UiEvent::Subspaces(spaces) => {
             apply_reconcile(
                 subspaces_model,
-                &spaces,
+                spaces.as_ref(),
                 &|s| s.id.as_str(),
                 convert_space,
                 space_entry_id,

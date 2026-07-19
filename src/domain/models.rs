@@ -1,3 +1,4 @@
+use std::sync::Arc;
 use std::{fmt, ops};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -187,8 +188,8 @@ pub enum ConnectionStatus {
 #[derive(Debug)]
 pub enum SyncEvent {
     Connected,
-    Rooms(Vec<Room>),
-    Spaces(Vec<Space>),
+    Rooms(Arc<[Room]>),
+    Spaces(Arc<[Space]>),
     ConnectionError(String),
     SessionExpired,
 }

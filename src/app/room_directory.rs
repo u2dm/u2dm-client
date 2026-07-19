@@ -24,8 +24,12 @@ pub(super) struct ReconcileOutcome {
 
 pub(super) struct RoomDirectory {
     output: Arc<dyn AppOutputPort>,
-    all_rooms: Vec<Room>,
-    spaces: Vec<Space>,
+    all_rooms: Arc<[Room]>,
+    room_index: HashMap<String, usize>,
+    spaces: Arc<[Space]>,
+    space_index: HashMap<String, usize>,
+    root_space_ids: Vec<String>,
+    space_counts: HashMap<String, (u64, u64)>,
     space_order: Vec<String>,
     connected: bool,
 }
@@ -34,8 +38,12 @@ impl RoomDirectory {
     pub(super) fn new(output: Arc<dyn AppOutputPort>) -> Self {
         Self {
             output,
-            all_rooms: Vec::new(),
-            spaces: Vec::new(),
+            all_rooms: Arc::from(Vec::new()),
+            room_index: HashMap::new(),
+            spaces: Arc::from(Vec::new()),
+            space_index: HashMap::new(),
+            root_space_ids: Vec::new(),
+            space_counts: HashMap::new(),
             space_order: Vec::new(),
             connected: false,
         }
@@ -52,27 +60,28 @@ impl RoomDirectory {
         };
     }
 
-    pub(super) fn store_rooms(&mut self, rooms: Vec<Room>) -> bool {
+    pub(super) fn store_rooms(&mut self, rooms: Arc<[Room]>) -> bool {
         if !self.connected {
             return false;
         }
         self.all_rooms = rooms;
+        self.rebuild_room_index();
+        self.rebuild_space_counts();
         true
     }
 
-    pub(super) fn store_spaces(&mut self, spaces: Vec<Space>) -> bool {
+    pub(super) fn store_spaces(&mut self, spaces: Arc<[Space]>) -> bool {
         if !self.connected {
             return false;
         }
         self.spaces = spaces;
+        self.rebuild_space_index();
+        self.rebuild_space_counts();
         true
     }
 
     pub(super) fn move_space(&mut self, from: usize, to: usize) -> Option<Vec<String>> {
-        let mut order: Vec<String> = order_spaces(&root_spaces(&self.spaces), &self.space_order)
-            .into_iter()
-            .map(|space| space.id)
-            .collect();
+        let mut order = self.ordered_root_ids();
         if from >= order.len() || to >= order.len() || from == to {
             return None;
         }
@@ -87,8 +96,12 @@ impl RoomDirectory {
 
     pub(super) fn reset(&mut self) {
         self.connected = false;
-        self.all_rooms.clear();
-        self.spaces.clear();
+        self.all_rooms = Arc::from(Vec::new());
+        self.room_index.clear();
+        self.spaces = Arc::from(Vec::new());
+        self.space_index.clear();
+        self.root_space_ids.clear();
+        self.space_counts.clear();
         self.space_order.clear();
     }
 
@@ -97,8 +110,8 @@ impl RoomDirectory {
         matrix: Arc<dyn MatrixPort>,
         output: Arc<dyn AppOutputPort>,
         cmd_tx: mpsc::UnboundedSender<UiCommand>,
-        rooms_in_tx: watch::Sender<Vec<Room>>,
-        spaces_in_tx: watch::Sender<Vec<Space>>,
+        rooms_in_tx: watch::Sender<Arc<[Room]>>,
+        spaces_in_tx: watch::Sender<Arc<[Space]>>,
     ) {
         let token = group.token();
         let on_sync: Box<dyn Fn(SyncEvent) + Send + Sync> = Box::new(move |event| match event {
@@ -137,7 +150,7 @@ impl RoomDirectory {
         let space_gone = sel
             .space
             .as_ref()
-            .is_some_and(|id| find_space(&self.spaces, id).is_none());
+            .is_some_and(|id| self.space(id).is_none());
         if space_gone {
             sel.space = None;
             sel.subspace = None;
@@ -150,7 +163,7 @@ impl RoomDirectory {
         let subspace_gone = sel.subspace.as_ref().is_some_and(|id| {
             !sel.space
                 .as_ref()
-                .and_then(|parent| find_space(&self.spaces, parent))
+                .and_then(|parent| self.space(parent))
                 .is_some_and(|parent| {
                     parent
                         .child_space_ids
@@ -170,7 +183,7 @@ impl RoomDirectory {
 
     pub(super) fn selected_room_meta(&self, sel: &Selection) -> Option<RoomMeta> {
         let id = sel.room.as_ref()?;
-        let room = self.all_rooms.iter().find(|room| &room.id == id)?;
+        let room = self.room(id)?;
         Some(RoomMeta {
             name: room.display_name.clone(),
             member_count: if room.is_direct { 0 } else { room.member_count },
@@ -184,113 +197,139 @@ impl RoomDirectory {
     }
 
     pub(super) fn emit_rooms(&self, sel: &Selection) {
-        let selected = sel.active_filter().map(AsRef::as_ref);
-        self.output
-            .rooms(filter_rooms(&self.all_rooms, &self.spaces, selected));
+        let rooms = match sel.active_filter().map(AsRef::as_ref) {
+            None => Arc::clone(&self.all_rooms),
+            Some(space_id) => {
+                let children = self.descendant_rooms(space_id);
+                self.all_rooms
+                    .iter()
+                    .filter(|room| children.contains(room.id.as_ref()))
+                    .cloned()
+                    .collect::<Vec<Room>>()
+                    .into()
+            }
+        };
+        self.output.rooms(rooms);
     }
 
     pub(super) fn emit_spaces(&self) {
-        let ordered = order_spaces(&root_spaces(&self.spaces), &self.space_order);
-        self.output.spaces(self.with_counts(&ordered));
+        let spaces: Vec<Space> = self
+            .ordered_root_ids()
+            .iter()
+            .filter_map(|id| self.space(id))
+            .map(|space| self.with_counts(space))
+            .collect();
+        self.output.spaces(spaces.into());
     }
 
     pub(super) fn emit_subspaces(&self, sel: &Selection) {
         let subspaces: Vec<Space> = sel
             .space
             .as_deref()
-            .and_then(|id| find_space(&self.spaces, id))
+            .and_then(|id| self.space(id))
             .map(|space| {
                 space
                     .child_space_ids
                     .iter()
-                    .filter_map(|child| find_space(&self.spaces, child))
-                    .cloned()
+                    .filter_map(|child| self.space(child))
+                    .map(|child| self.with_counts(child))
                     .collect()
             })
             .unwrap_or_default();
-        self.output.subspaces(self.with_counts(&subspaces));
+        self.output.subspaces(subspaces.into());
     }
 
-    fn with_counts(&self, spaces: &[Space]) -> Vec<Space> {
-        spaces
+    fn with_counts(&self, space: &Space) -> Space {
+        let (unread, mentions) = self.space_counts.get(&space.id).copied().unwrap_or((0, 0));
+        Space {
+            unread,
+            mentions,
+            ..space.clone()
+        }
+    }
+
+    fn room(&self, id: &str) -> Option<&Room> {
+        self.room_index.get(id).and_then(|&i| self.all_rooms.get(i))
+    }
+
+    fn space(&self, id: &str) -> Option<&Space> {
+        self.space_index.get(id).and_then(|&i| self.spaces.get(i))
+    }
+
+    fn rebuild_room_index(&mut self) {
+        self.room_index = self
+            .all_rooms
+            .iter()
+            .enumerate()
+            .map(|(i, room)| (room.id.to_string(), i))
+            .collect();
+    }
+
+    fn rebuild_space_index(&mut self) {
+        self.space_index = self
+            .spaces
+            .iter()
+            .enumerate()
+            .map(|(i, space)| (space.id.clone(), i))
+            .collect();
+        let nested: HashSet<&str> = self
+            .spaces
+            .iter()
+            .flat_map(|space| space.child_space_ids.iter().map(String::as_str))
+            .collect();
+        self.root_space_ids = self
+            .spaces
+            .iter()
+            .filter(|space| !nested.contains(space.id.as_str()))
+            .map(|space| space.id.clone())
+            .collect();
+    }
+
+    fn rebuild_space_counts(&mut self) {
+        let counts: HashMap<String, (u64, u64)> = self
+            .spaces
             .iter()
             .map(|space| {
-                let rooms = descendant_rooms(&self.spaces, &space.id);
-                let (unread, mentions) = self
-                    .all_rooms
+                let aggregate = self
+                    .descendant_rooms(&space.id)
                     .iter()
-                    .filter(|room| rooms.contains(room.id.as_ref()))
+                    .filter_map(|room_id| self.room(room_id))
                     .fold((0_u64, 0_u64), |(unread, mentions), room| {
                         (unread + room.unread_count, mentions + room.mention_count)
                     });
-                Space {
-                    unread,
-                    mentions,
-                    ..space.clone()
-                }
+                (space.id.clone(), aggregate)
             })
-            .collect()
+            .collect();
+        self.space_counts = counts;
     }
-}
 
-fn find_space<'a>(spaces: &'a [Space], id: &str) -> Option<&'a Space> {
-    spaces.iter().find(|space| space.id == id)
-}
+    fn descendant_rooms<'a>(&'a self, root: &'a str) -> HashSet<&'a str> {
+        let mut rooms = HashSet::new();
+        let mut visited = HashSet::new();
+        let mut pending = vec![root];
 
-fn root_spaces(spaces: &[Space]) -> Vec<Space> {
-    let nested: HashSet<&str> = spaces
-        .iter()
-        .flat_map(|space| space.child_space_ids.iter().map(String::as_str))
-        .collect();
-    spaces
-        .iter()
-        .filter(|space| !nested.contains(space.id.as_str()))
-        .cloned()
-        .collect()
-}
-
-fn descendant_rooms<'a>(spaces: &'a [Space], root: &'a str) -> HashSet<&'a str> {
-    let mut rooms = HashSet::new();
-    let mut visited = HashSet::new();
-    let mut pending = vec![root];
-
-    while let Some(id) = pending.pop() {
-        if !visited.insert(id) {
-            continue;
+        while let Some(id) = pending.pop() {
+            if !visited.insert(id) {
+                continue;
+            }
+            let Some(space) = self.space(id) else {
+                continue;
+            };
+            rooms.extend(space.child_room_ids.iter().map(String::as_str));
+            pending.extend(space.child_space_ids.iter().map(String::as_str));
         }
-        let Some(space) = find_space(spaces, id) else {
-            continue;
-        };
-        rooms.extend(space.child_room_ids.iter().map(String::as_str));
-        pending.extend(space.child_space_ids.iter().map(String::as_str));
+        rooms
     }
-    rooms
-}
 
-fn filter_rooms(all_rooms: &[Room], spaces: &[Space], selected: Option<&str>) -> Vec<Room> {
-    let Some(space_id) = selected else {
-        return all_rooms.to_vec();
-    };
-    let children = descendant_rooms(spaces, space_id);
-    all_rooms
-        .iter()
-        .filter(|room| children.contains(room.id.as_ref()))
-        .cloned()
-        .collect()
-}
-
-fn order_spaces(spaces: &[Space], order: &[String]) -> Vec<Space> {
-    let position: HashMap<&str, usize> = order
-        .iter()
-        .enumerate()
-        .map(|(i, id)| (id.as_str(), i))
-        .collect();
-    let mut ordered = spaces.to_vec();
-    ordered.sort_by_key(|space| {
-        position
-            .get(space.id.as_str())
-            .copied()
-            .unwrap_or(usize::MAX)
-    });
-    ordered
+    fn ordered_root_ids(&self) -> Vec<String> {
+        let position: HashMap<&str, usize> = self
+            .space_order
+            .iter()
+            .enumerate()
+            .map(|(i, id)| (id.as_str(), i))
+            .collect();
+        let mut ids = self.root_space_ids.clone();
+        ids.sort_by_key(|id| position.get(id.as_str()).copied().unwrap_or(usize::MAX));
+        ids
+    }
 }

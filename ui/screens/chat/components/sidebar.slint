@@ -1,4 +1,5 @@
 import {
+    ListView,
     Palette,
 } from "std-widgets.slint";
 import { IconDisplay, IconSet } from "@lucide";
@@ -105,10 +106,7 @@ export component Sidebar inherits Rectangle {
                     }
                 }
 
-                Flickable {
-                    viewport-height: root.rooms.length * root.row-height;
-
-                    VerticalLayout {
+                ListView {
                     accessible-role: list;
                     accessible-label: @tr("Rooms");
                     accessible-item-count: root.rooms.length;
@@ -257,7 +255,6 @@ export component Sidebar inherits Rectangle {
                         }
                     }
                 }
-            }
         }
         }
     }

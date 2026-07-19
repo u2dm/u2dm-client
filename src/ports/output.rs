@@ -1,4 +1,5 @@
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use async_trait::async_trait;
 
@@ -27,9 +28,9 @@ pub trait AppOutputPort: Send + Sync {
     async fn file_saved(&self, path: String);
     async fn logged_out(&self);
 
-    fn rooms(&self, rooms: Vec<Room>);
-    fn spaces(&self, spaces: Vec<Space>);
-    fn subspaces(&self, spaces: Vec<Space>);
+    fn rooms(&self, rooms: Arc<[Room]>);
+    fn spaces(&self, spaces: Arc<[Space]>);
+    fn subspaces(&self, spaces: Arc<[Space]>);
     fn connection_status(&self, status: ConnectionStatus);
     fn status(&self, message: String);
 }

@@ -1,4 +1,5 @@
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use async_trait::async_trait;
 use tokio::sync::{mpsc, watch};
@@ -13,9 +14,9 @@ use crate::ports::output::AppOutputPort;
 #[allow(clippy::struct_field_names)]
 pub struct UiEventOutput {
     ui_tx: mpsc::Sender<UiEvent>,
-    rooms_tx: watch::Sender<Vec<Room>>,
-    spaces_tx: watch::Sender<Vec<Space>>,
-    subspaces_tx: watch::Sender<Vec<Space>>,
+    rooms_tx: watch::Sender<Arc<[Room]>>,
+    spaces_tx: watch::Sender<Arc<[Space]>>,
+    subspaces_tx: watch::Sender<Arc<[Space]>>,
     connection_tx: watch::Sender<ConnectionStatus>,
     status_tx: watch::Sender<String>,
 }
@@ -23,9 +24,9 @@ pub struct UiEventOutput {
 impl UiEventOutput {
     pub fn new(
         ui_tx: mpsc::Sender<UiEvent>,
-        rooms_tx: watch::Sender<Vec<Room>>,
-        spaces_tx: watch::Sender<Vec<Space>>,
-        subspaces_tx: watch::Sender<Vec<Space>>,
+        rooms_tx: watch::Sender<Arc<[Room]>>,
+        spaces_tx: watch::Sender<Arc<[Space]>>,
+        subspaces_tx: watch::Sender<Arc<[Space]>>,
         connection_tx: watch::Sender<ConnectionStatus>,
         status_tx: watch::Sender<String>,
     ) -> Self {
@@ -122,15 +123,15 @@ impl AppOutputPort for UiEventOutput {
         self.emit(UiEvent::LoggedOut).await;
     }
 
-    fn rooms(&self, rooms: Vec<Room>) {
+    fn rooms(&self, rooms: Arc<[Room]>) {
         drop(self.rooms_tx.send(rooms));
     }
 
-    fn spaces(&self, spaces: Vec<Space>) {
+    fn spaces(&self, spaces: Arc<[Space]>) {
         drop(self.spaces_tx.send(spaces));
     }
 
-    fn subspaces(&self, spaces: Vec<Space>) {
+    fn subspaces(&self, spaces: Arc<[Space]>) {
         drop(self.subspaces_tx.send(spaces));
     }
 
