@@ -45,6 +45,7 @@ export component ChatScreen inherits Rectangle {
     callback send-message(SendMessageRequest);
     callback open-media(string);
     callback save-file(SaveFileRequest);
+    callback request-media(string);
     callback dismiss-toast();
     callback scroll-position-changed(bool, bool);
     callback paginate-backwards();
@@ -114,6 +115,9 @@ export component ChatScreen inherits Rectangle {
         }
         save-file(req) => {
             root.save-file(req);
+        }
+        request-media(id) => {
+            root.request-media(id);
         }
         scroll-position-changed(at-top, at-bottom) => {
             root.scroll-position-changed(at-top, at-bottom);

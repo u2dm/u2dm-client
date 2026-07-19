@@ -5,7 +5,9 @@ use super::common::{
     message_sender_label, message_timestamp_label, message_type_token, pronoun_labels,
     room_activity_label, sender_initial, service_kind_token, service_target, unsupported_kind,
 };
-use super::decode::{AvatarSlot, load_avatar_async, load_thumbnail};
+use super::decode::{
+    AvatarSlot, load_avatar_async, load_thumbnail, peek_avatar, peek_thumbnail, record_media_need,
+};
 use crate::domain::models::{
     EnrichmentDelta, MessageBody, Room, Space, ThumbnailOutcome, TimelineMessage,
 };
@@ -125,28 +127,32 @@ pub fn message_to_dto(m: &TimelineMessage, media: &dyn MediaCache) -> MessageDto
         has_avatar: false,
     };
 
+    let mut thumbnail_path = None;
     if let MessageBody::Image { meta, .. } = &m.body {
         dto.image_width = meta.width.unwrap_or(0).cast_signed();
         dto.image_height = meta.height.unwrap_or(0).cast_signed();
         if let Some(event_id) = m.event_id.as_ref() {
-            if let Some(thumb_path) = media.thumbnail_path(&event_id.0) {
-                if let Some(img) = load_thumbnail(&thumb_path, &m.unique_id) {
+            if let Some(path) = media.thumbnail_path(&event_id.0) {
+                if let Some(img) = peek_thumbnail(&path) {
                     dto.thumbnail = Some(img);
                     dto.has_thumbnail = true;
                 }
+                thumbnail_path = Some(path);
             } else {
                 dto.media_failed = media.thumbnail_failed(&event_id.0);
             }
         }
     }
 
-    if let Some(avatar_path) = media.avatar_path(&m.sender)
-        && let Some(img) = load_avatar_async(&avatar_path, AvatarSlot::Message(m.unique_id.clone()))
+    let avatar_path = media.avatar_path(&m.sender);
+    if let Some(path) = &avatar_path
+        && let Some(img) = peek_avatar(path)
     {
         dto.avatar = Some(img);
         dto.has_avatar = true;
     }
 
+    record_media_need(&m.unique_id, thumbnail_path, avatar_path);
     dto
 }
 

@@ -82,12 +82,12 @@ msgctxt "AppWindow"
 msgid "U2DM Matrix Client"
 msgstr "U2DM Client Matrix"
 
-#: ui/screens/chat/chat.slint:168
+#: ui/screens/chat/chat.slint:172
 msgctxt "ChatScreen"
 msgid "File saved to {}"
 msgstr "File salvato in {}"
 
-#: ui/screens/chat/chat.slint:181
+#: ui/screens/chat/chat.slint:185
 msgctxt "ChatScreen"
 msgid "Dismiss"
 msgstr ""
@@ -127,17 +127,17 @@ msgctxt "MessageBubble"
 msgid "Reply"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/timeline-content.slint:47
+#: ui/screens/chat/components/timeline/timeline-content.slint:48
 msgctxt "TimelineContent"
 msgid "Loading older messages..."
 msgstr ""
 
-#: ui/screens/chat/components/timeline/timeline-content.slint:60
+#: ui/screens/chat/components/timeline/timeline-content.slint:61
 msgctxt "TimelineContent"
 msgid "Loading newer messages..."
 msgstr ""
 
-#: ui/screens/chat/components/timeline/timeline-content.slint:183
+#: ui/screens/chat/components/timeline/timeline-content.slint:190
 msgctxt "TimelineContent"
 msgid "Jump to latest messages"
 msgstr ""
@@ -352,34 +352,34 @@ msgctxt "EmojiPicker"
 msgid "No emoji found"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/timeline-view.slint:56
+#: ui/screens/chat/components/timeline/timeline-view.slint:57
 msgctxt "TimelineView"
 msgid "Select a room"
 msgstr "Seleziona una stanza"
 
-#: ui/screens/chat/components/timeline/timeline-view.slint:85
+#: ui/screens/chat/components/timeline/timeline-view.slint:86
 msgctxt "TimelineView"
 msgid "{n} member"
 msgid_plural "{n} members"
 msgstr[0] ""
 msgstr[1] ""
 
-#: ui/screens/chat/components/timeline/timeline-view.slint:108
+#: ui/screens/chat/components/timeline/timeline-view.slint:109
 msgctxt "TimelineView"
 msgid "Loading messages..."
 msgstr "Caricamento messaggi..."
 
-#: ui/screens/chat/components/timeline/timeline-view.slint:110
+#: ui/screens/chat/components/timeline/timeline-view.slint:111
 msgctxt "TimelineView"
 msgid "Connection lost"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/timeline-view.slint:111
+#: ui/screens/chat/components/timeline/timeline-view.slint:112
 msgctxt "TimelineView"
 msgid "Couldn't load messages"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/timeline-view.slint:122
+#: ui/screens/chat/components/timeline/timeline-view.slint:123
 msgctxt "TimelineView"
 msgid "Retry"
 msgstr ""

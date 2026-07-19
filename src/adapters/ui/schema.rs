@@ -59,6 +59,7 @@ pub mod callback {
     pub const REJECT_VERIFICATION: &str = "reject-verification";
     pub const OPEN_MEDIA: &str = "open-media";
     pub const SAVE_FILE: &str = "save-file";
+    pub const REQUEST_MEDIA: &str = "request-media";
     pub const SCROLL_POSITION_CHANGED: &str = "scroll-position-changed";
     pub const PAGINATE_BACKWARDS: &str = "paginate-backwards";
     pub const PAGINATE_FORWARDS: &str = "paginate-forwards";

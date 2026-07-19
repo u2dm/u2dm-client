@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use slint::{Image, Model, SharedString, VecModel};
 use tokio::sync::mpsc;
 
-use super::decode::{AvatarSlot, load_avatar_async};
+use super::decode::{AvatarSlot, forget_all_media_needs, load_avatar_async};
 use super::schema::prop;
 
 pub const SLINT_INFLIGHT: usize = 32;
@@ -708,6 +708,7 @@ pub fn apply_timeline_patch<T: Clone + 'static>(
     );
     match patch {
         TimelinePatch::Reset(messages) => {
+            forget_all_media_needs();
             let entries: Vec<T> = messages.iter().map(convert).collect();
             model.set_vec(entries);
         }
@@ -753,6 +754,7 @@ pub fn apply_timeline_patch<T: Clone + 'static>(
             }
         }
         TimelinePatch::Clear => {
+            forget_all_media_needs();
             model.set_vec(Vec::new());
         }
         TimelinePatch::Batch(patches) => {

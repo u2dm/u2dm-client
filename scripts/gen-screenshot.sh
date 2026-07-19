@@ -73,7 +73,7 @@ window_handle() {
 
 room_rows() {
   tool_payload find_elements_by_id \
-    "$(jq -cn --argjson window "$1" '{windowHandle: $window, elementsId: "Sidebar::touch"}')" |
+    "$(jq -cn --argjson window "$1" '{windowHandle: $window, elementsId: "ListItemArea::touch"}')" |
     jq -c '.elementHandles // []'
 }
 

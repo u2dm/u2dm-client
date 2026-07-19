@@ -20,8 +20,8 @@ thread_local! {
 
 use super::common::{BoolProp, IntProp, StringProp, UiProps, dispatch_ui_event, reorder_rows};
 use super::decode::{
-    AvatarSlot, advance_animations, patch_rows, set_animation_tick, set_avatar_ready,
-    set_image_ready,
+    AvatarSlot, advance_animations, patch_rows, request_media, set_animation_tick,
+    set_avatar_ready, set_image_ready,
 };
 use super::dto::{ThumbUpdate, enrich_to_update, message_to_dto, room_to_dto, space_to_dto};
 use super::multiplex::spawn_event_multiplexer;
@@ -343,6 +343,11 @@ impl SlintUiAdapter {
         let tx = cmd_tx.clone();
         bind(&self.instance, callback::OPEN_MEDIA, move |args| {
             router::open_media(&tx, string_arg(args, 0));
+            Value::Void
+        })?;
+
+        bind(&self.instance, callback::REQUEST_MEDIA, move |args| {
+            request_media(&string_arg(args, 0));
             Value::Void
         })?;
 

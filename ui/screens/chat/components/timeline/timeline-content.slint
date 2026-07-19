@@ -24,6 +24,7 @@ export component TimelineContent inherits Rectangle {
     callback open-media(string);
     callback save-file(SaveFileRequest);
     callback reply(string, string, string);
+    callback request-media(string);
     callback scroll-position-changed(bool, bool);
     callback paginate-backwards();
     callback paginate-forwards();
@@ -160,6 +161,12 @@ export component TimelineContent inherits Rectangle {
             is-own: msg.is-own;
             msg: msg;
             available-width: root.available-width;
+            init => {
+                if (msg.message-type == "image" && !msg.has-thumbnail)
+                    || (!msg.is-own && !msg.has-avatar) {
+                    root.request-media(msg.unique-id);
+                }
+            }
             open-media(id) => {
                 root.open-media(id);
             }

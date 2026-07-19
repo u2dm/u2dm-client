@@ -31,6 +31,7 @@ export component TimelineView inherits Rectangle {
     callback send-message(SendMessageRequest);
     callback open-media(string);
     callback save-file(SaveFileRequest);
+    callback request-media(string);
     callback scroll-position-changed(bool, bool);
     callback paginate-backwards();
     callback paginate-forwards();
@@ -145,6 +146,9 @@ export component TimelineView inherits Rectangle {
         }
         save-file(req) => {
             root.save-file(req);
+        }
+        request-media(id) => {
+            root.request-media(id);
         }
         reply(id, sender, preview) => {
             root.reply-event-id = id;

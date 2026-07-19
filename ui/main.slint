@@ -74,6 +74,7 @@ export component AppWindow inherits Window {
     callback send-message(SendMessageRequest);
     callback open-media(string);
     callback save-file(SaveFileRequest);
+    callback request-media(string);
     callback logout();
     callback accept-verification();
     callback confirm-verification();
@@ -170,6 +171,9 @@ export component AppWindow inherits Window {
         }
         save-file(req) => {
             root.save-file(req);
+        }
+        request-media(id) => {
+            root.request-media(id);
         }
         dismiss-toast => {
             root.toast-message = "";
