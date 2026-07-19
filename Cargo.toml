@@ -82,6 +82,10 @@ apple-native-keyring-store = { version = "1.0.1", features = ["keychain"] }
 [target.'cfg(target_os = "windows")'.dependencies]
 windows-native-keyring-store = "1.1"
 
+[build-dependencies]
+lucide-slint = "1.24.0"
+slint-build = "1.17.1"
+
 [lints.clippy]
 all = { level = "deny", priority = -1 }
 pedantic = { level = "deny", priority = -1 }
@@ -112,6 +116,9 @@ missing_panics_doc = "allow"
 must_use_candidate = "allow"
 uninlined_format_args = "allow"
 
-[build-dependencies]
-lucide-slint = "1.24.0"
-slint-build = "1.17.1"
+
+[profile.dev]
+opt-level = 1
+
+[profile.dev.package."*"]
+opt-level = 3
