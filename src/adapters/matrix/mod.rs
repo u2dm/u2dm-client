@@ -107,6 +107,13 @@ impl MatrixPort for MatrixAdapter {
         auth::login_oauth_finish(&client, &self.redirect_handle).await
     }
 
+    async fn cancel_oauth(&self) {
+        let pending = self.redirect_handle.lock().await.take();
+        if pending.is_some() {
+            tracing::debug!("shutting down pending OAuth redirect server");
+        }
+    }
+
     async fn subscribe_timeline(
         &self,
         room_id: &RoomId,

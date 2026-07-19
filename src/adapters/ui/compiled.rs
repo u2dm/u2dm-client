@@ -177,6 +177,11 @@ impl SlintUiAdapter {
         });
 
         let tx = cmd_tx.clone();
+        self.window.on_cancel_oauth(move || {
+            send_command(&tx, UiCommand::CancelOAuth);
+        });
+
+        let tx = cmd_tx.clone();
         self.window.on_select_room(move |room_id| {
             send_command(&tx, UiCommand::SelectRoom(RoomId::new(room_id.to_string())));
         });

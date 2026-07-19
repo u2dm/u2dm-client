@@ -153,6 +153,9 @@ impl AppService {
             UiCommand::LoginOAuth => {
                 self.session.spawn_login_oauth(&mut self.operations);
             }
+            UiCommand::CancelOAuth => {
+                self.session.cancel_oauth();
+            }
             UiCommand::FetchRooms => {
                 self.handle_fetch_rooms().await;
             }

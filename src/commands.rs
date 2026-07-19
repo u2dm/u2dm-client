@@ -16,6 +16,7 @@ pub enum UiCommand {
     #[strum(to_string = "LoginPassword(...)")]
     LoginPassword(LoginCredentials),
     LoginOAuth,
+    CancelOAuth,
     FetchRooms,
     #[strum(to_string = "SelectSpace")]
     SelectSpace(Option<RoomId>),

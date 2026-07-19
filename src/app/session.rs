@@ -1,7 +1,10 @@
 use std::fmt::Write;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex as StdMutex};
+use std::time::Duration;
 
 use tokio::sync::mpsc;
+use tokio::time::timeout;
+use tokio_util::sync::CancellationToken;
 
 use super::task_group::TaskGroup;
 use crate::commands::UiCommand;
@@ -11,6 +14,8 @@ use crate::ports::browser::BrowserPort;
 use crate::ports::matrix::MatrixPort;
 use crate::ports::output::AppOutputPort;
 use crate::ports::storage::{StoragePort, StoredSession};
+
+const OAUTH_CALLBACK_TIMEOUT: Duration = Duration::from_secs(300);
 
 #[allow(clippy::let_underscore_must_use)]
 fn generate_passphrase() -> String {
@@ -39,6 +44,7 @@ pub(super) struct SessionController {
     browser: Arc<dyn BrowserPort>,
     cmd_tx: mpsc::UnboundedSender<UiCommand>,
     output: Arc<dyn AppOutputPort>,
+    oauth_cancel: Arc<StdMutex<Option<CancellationToken>>>,
 }
 
 impl SessionController {
@@ -55,6 +61,7 @@ impl SessionController {
             browser,
             cmd_tx,
             output,
+            oauth_cancel: Arc::new(StdMutex::new(None)),
         }
     }
 
@@ -74,8 +81,19 @@ impl SessionController {
     }
 
     pub(super) fn spawn_login_oauth(&self, group: &mut TaskGroup) {
+        let cancel = self.begin_oauth();
         let this = self.clone();
-        group.spawn(async move { this.login_oauth().await });
+        group.spawn(async move { this.login_oauth(cancel).await });
+    }
+
+    pub(super) fn cancel_oauth(&self) {
+        let Ok(mut guard) = self.oauth_cancel.lock() else {
+            return;
+        };
+        if let Some(token) = guard.take() {
+            tracing::info!("cancelling OAuth login");
+            token.cancel();
+        }
     }
 
     pub(super) fn spawn_logout(&self, group: &mut TaskGroup) {
@@ -208,16 +226,27 @@ impl SessionController {
         }
     }
 
-    async fn login_oauth(&self) {
-        match self.run_oauth_flow().await {
-            Ok(()) => {
-                self.send_cmd(UiCommand::FetchRooms);
+    async fn login_oauth(&self, cancel: CancellationToken) {
+        let result = self.run_oauth_flow(&cancel).await;
+        self.end_oauth().await;
+        match result {
+            Ok(Some(session)) => self.complete_oauth_login(session).await,
+            Ok(None) => {
+                tracing::info!("OAuth login cancelled");
+                self.output.status(String::new());
             }
             Err(e) => {
                 tracing::warn!("OAuth login failed: {e}");
                 self.emit_login_error(&e).await;
             }
         }
+    }
+
+    async fn complete_oauth_login(&self, session: Session) {
+        tracing::info!(user_id = %session.user_id, "OAuth login succeeded");
+        self.save_session(&session).await;
+        self.output.login_success(session.user_id).await;
+        self.send_cmd(UiCommand::FetchRooms);
     }
 
     async fn expire_session(&self) {
@@ -291,14 +320,38 @@ impl SessionController {
         });
     }
 
-    async fn run_oauth_flow(&self) -> Result<()> {
+    async fn run_oauth_flow(&self, cancel: &CancellationToken) -> Result<Option<Session>> {
+        tokio::select! {
+            biased;
+            () = cancel.cancelled() => Ok(None),
+            result = self.oauth_login_steps() => result.map(Some),
+        }
+    }
+
+    async fn oauth_login_steps(&self) -> Result<Session> {
         let oauth_data = self.matrix.login_oauth_start().await?;
-        self.browser.open_url(&oauth_data.auth_url);
+        self.browser.open_url(&oauth_data.auth_url).await?;
         self.output.status("waiting-auth".into());
-        let session = self.matrix.login_oauth_finish().await?;
-        self.save_session(&session).await;
-        self.output.login_success(session.user_id).await;
-        Ok(())
+        timeout(OAUTH_CALLBACK_TIMEOUT, self.matrix.login_oauth_finish())
+            .await
+            .map_err(|_| AppError::Other("Timed out waiting for browser sign-in.".into()))?
+    }
+
+    fn begin_oauth(&self) -> CancellationToken {
+        let token = CancellationToken::new();
+        if let Ok(mut guard) = self.oauth_cancel.lock()
+            && let Some(previous) = guard.replace(token.clone())
+        {
+            previous.cancel();
+        }
+        token
+    }
+
+    async fn end_oauth(&self) {
+        if let Ok(mut guard) = self.oauth_cancel.lock() {
+            *guard = None;
+        }
+        self.matrix.cancel_oauth().await;
     }
 
     async fn get_or_create_passphrase(&self) -> Result<String> {

@@ -73,6 +73,8 @@ impl MatrixPort for DemoMatrix {
         Err(unavailable("OAuth login"))
     }
 
+    async fn cancel_oauth(&self) {}
+
     async fn subscribe_timeline(
         &self,
         room_id: &RoomId,

@@ -504,37 +504,42 @@ msgctxt "Drawer"
 msgid "Log Out"
 msgstr ""
 
-#: ui/screens/login/credentials.slint:41
+#: ui/screens/login/credentials.slint:43
 msgctxt "CredentialsScreen"
 msgid "Server: {}"
 msgstr "Server: {}"
 
-#: ui/screens/login/credentials.slint:55
+#: ui/screens/login/credentials.slint:57
 msgctxt "CredentialsScreen"
 msgid "Username"
 msgstr "Nome utente"
 
-#: ui/screens/login/credentials.slint:70
+#: ui/screens/login/credentials.slint:72
 msgctxt "CredentialsScreen"
 msgid "Password"
 msgstr "Password"
 
-#: ui/screens/login/credentials.slint:85
+#: ui/screens/login/credentials.slint:87
 msgctxt "CredentialsScreen"
 msgid "Logging in..."
 msgstr "Accesso in corso..."
 
-#: ui/screens/login/credentials.slint:85
+#: ui/screens/login/credentials.slint:87
 msgctxt "CredentialsScreen"
 msgid "Log in"
 msgstr "Accedi"
 
-#: ui/screens/login/credentials.slint:99
+#: ui/screens/login/credentials.slint:101
 msgctxt "CredentialsScreen"
 msgid "Log in with browser"
 msgstr "Accedi con il browser"
 
-#: ui/screens/login/credentials.slint:111
+#: ui/screens/login/credentials.slint:113
+msgctxt "CredentialsScreen"
+msgid "Cancel"
+msgstr ""
+
+#: ui/screens/login/credentials.slint:124
 msgctxt "CredentialsScreen"
 msgid "Back"
 msgstr "Indietro"

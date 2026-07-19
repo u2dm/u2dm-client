@@ -16,6 +16,7 @@ pub trait MatrixPort: Send + Sync {
     async fn login_password(&self, creds: LoginCredentials) -> Result<Session>;
     async fn login_oauth_start(&self) -> Result<OAuthLoginData>;
     async fn login_oauth_finish(&self) -> Result<Session>;
+    async fn cancel_oauth(&self);
     async fn subscribe_timeline(
         &self,
         room_id: &RoomId,

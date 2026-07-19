@@ -263,6 +263,14 @@ impl SlintUiAdapter {
 
         let tx = cmd_tx.clone();
         self.instance
+            .set_callback("cancel-oauth", move |_args: &[Value]| -> Value {
+                send_command(&tx, UiCommand::CancelOAuth);
+                Value::Void
+            })
+            .map_err(|e| AppError::Ui(format!("{e:?}")))?;
+
+        let tx = cmd_tx.clone();
+        self.instance
             .set_callback("select-room", move |args: &[Value]| -> Value {
                 let room_id = args
                     .first()
