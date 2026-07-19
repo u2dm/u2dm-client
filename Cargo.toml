@@ -15,11 +15,11 @@ interpreted = ["dep:slint-interpreter", "dep:lucide-slint"]
 demo = []
 
 [dependencies]
-async-trait = "0.1.89"
+async-trait = "0.1.91"
 chrono = { version = "0.4.45", default-features = false, features = ["clock"] }
 directories = "6"
 emojis = "0.9.0"
-futures-util = "0.3.32"
+futures-util = "0.3.33"
 image = { version = "0.25.10", default-features = false, features = [
     "png",
     "jpeg",
@@ -29,9 +29,9 @@ image = { version = "0.25.10", default-features = false, features = [
     "ico",
     "tiff",
 ] }
-infer = "0.19"
+infer = "0.22.0"
 keyring-core = "1"
-lucide-slint = { version = "1.24.0", optional = true }
+lucide-slint = { version = "1.25.0", optional = true }
 matrix-sdk = { version = "0.18.0", default-features = false, features = [
     "e2e-encryption",
     "sqlite",
@@ -42,7 +42,7 @@ matrix-sdk-ui = { version = "0.18.0", default-features = false }
 open = "5.4.0"
 rand = "0.10.2"
 rfd = "0.17.2"
-serde = { version = "1", features = ["derive"] }
+serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.150"
 slint = { version = "1.17.1", default-features = false, features = [
     "std",
@@ -59,8 +59,8 @@ slint-interpreter = { version = "1.17.1", optional = true, default-features = fa
     "accessibility",
 ] }
 strum = { version = "0.28.0", features = ["derive"] }
-thiserror = "2"
-tokio = { version = "1.52.3", features = [
+thiserror = "2.0.19"
+tokio = { version = "1.53.0", features = [
     "rt-multi-thread",
     "macros",
     "sync",
