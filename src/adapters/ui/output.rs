@@ -73,11 +73,12 @@ impl AppOutputPort for UiEventOutput {
         self.emit(UiEvent::ToastError(message)).await;
     }
 
-    async fn selected_room(&self, id: RoomId, name: String, member_count: u64) {
+    async fn selected_room(&self, id: RoomId, name: String, member_count: u64, generation: i32) {
         self.emit(UiEvent::SelectedRoom {
             id,
             name,
             member_count,
+            generation,
         })
         .await;
     }

@@ -23,6 +23,7 @@ pub(super) struct ActiveTimeline {
     viewport: ViewportController,
     timeline_cmd_tx: Option<mpsc::UnboundedSender<TimelineCommand>>,
     active_room_id: Option<RoomId>,
+    generation: i32,
     at_bottom: Arc<AtomicBool>,
     new_messages_counter: Arc<AtomicU32>,
 }
@@ -41,6 +42,7 @@ impl ActiveTimeline {
             viewport: ViewportController::new(),
             timeline_cmd_tx: None,
             active_room_id: None,
+            generation: 0,
             at_bottom: Arc::new(AtomicBool::new(true)),
             new_messages_counter: Arc::new(AtomicU32::new(0)),
         }
@@ -51,12 +53,13 @@ impl ActiveTimeline {
         self.reset_state();
     }
 
-    pub(super) async fn select_room(&mut self, room_id: RoomId) {
-        tracing::info!(%room_id, "switching room");
+    pub(super) async fn select_room(&mut self, room_id: RoomId, generation: i32) {
+        tracing::info!(%room_id, generation, "switching room");
         self.tasks.reset().await;
 
         self.viewport = ViewportController::new();
         self.active_room_id = Some(room_id.clone());
+        self.generation = generation;
         self.at_bottom.store(true, Ordering::Relaxed);
         self.new_messages_counter.store(0, Ordering::Relaxed);
         self.emit_pagination_state(&room_id).await;
@@ -107,6 +110,7 @@ impl ActiveTimeline {
                         TimelineUpdate::Pagination { direction, outcome } => {
                             if let Err(e) = cmd_tx.send(UiCommand::TimelinePaginationCompleted {
                                 room_id: rid.clone(),
+                                generation,
                                 direction,
                                 outcome,
                             }) {
@@ -147,7 +151,8 @@ impl ActiveTimeline {
         let Some(room_id) = self.active_room_id.clone() else {
             return;
         };
-        self.select_room(room_id).await;
+        let generation = self.generation;
+        self.select_room(room_id, generation).await;
     }
 
     pub(super) fn spawn_send(
@@ -173,8 +178,12 @@ impl ActiveTimeline {
         });
     }
 
-    pub(super) async fn paginate_backwards(&mut self, room_id: &RoomId) {
-        if self.active_room_id.as_ref() != Some(room_id) {
+    fn is_current(&self, room_id: &RoomId, generation: i32) -> bool {
+        self.generation == generation && self.active_room_id.as_ref() == Some(room_id)
+    }
+
+    pub(super) async fn paginate_backwards(&mut self, room_id: &RoomId, generation: i32) {
+        if !self.is_current(room_id, generation) {
             return;
         }
         if !self.viewport.should_paginate_backwards(true) {
@@ -191,8 +200,8 @@ impl ActiveTimeline {
         self.emit_pagination_state(room_id).await;
     }
 
-    pub(super) async fn paginate_forwards(&mut self, room_id: &RoomId) {
-        if self.active_room_id.as_ref() != Some(room_id) {
+    pub(super) async fn paginate_forwards(&mut self, room_id: &RoomId, generation: i32) {
+        if !self.is_current(room_id, generation) {
             return;
         }
         if !self.viewport.should_paginate_forwards(true) {
@@ -212,10 +221,11 @@ impl ActiveTimeline {
     pub(super) async fn complete_pagination(
         &mut self,
         room_id: &RoomId,
+        generation: i32,
         direction: PaginationDirection,
         outcome: PaginationOutcome,
     ) {
-        if self.active_room_id.as_ref() != Some(room_id) {
+        if !self.is_current(room_id, generation) {
             return;
         }
 
@@ -243,8 +253,8 @@ impl ActiveTimeline {
         }
     }
 
-    pub(super) async fn jump_to_latest(&mut self, room_id: &RoomId) {
-        if self.active_room_id.as_ref() != Some(room_id) {
+    pub(super) async fn jump_to_latest(&mut self, room_id: &RoomId, generation: i32) {
+        if !self.is_current(room_id, generation) {
             return;
         }
         self.viewport.jump_to_latest();
@@ -255,18 +265,24 @@ impl ActiveTimeline {
         self.emit_pagination_state(room_id).await;
     }
 
-    pub(super) async fn scroll_position_changed(&mut self, at_top: bool, at_bottom: bool) {
+    pub(super) async fn scroll_position_changed(
+        &mut self,
+        room_id: &RoomId,
+        generation: i32,
+        at_top: bool,
+        at_bottom: bool,
+    ) {
+        if !self.is_current(room_id, generation) {
+            return;
+        }
+
         let mode_changed = self.viewport.update_scroll_position(at_top, at_bottom);
 
         self.at_bottom.store(at_bottom, Ordering::Relaxed);
 
-        let Some(room_id) = self.active_room_id.clone() else {
-            return;
-        };
-
         if mode_changed && self.viewport.mode() == ScrollMode::FollowLive {
             self.new_messages_counter.store(0, Ordering::Relaxed);
-            self.output.new_messages_badge(room_id, 0).await;
+            self.output.new_messages_badge(room_id.clone(), 0).await;
         }
     }
 
@@ -274,6 +290,7 @@ impl ActiveTimeline {
         self.viewport = ViewportController::new();
         self.timeline_cmd_tx = None;
         self.active_room_id = None;
+        self.generation = 0;
         self.at_bottom.store(true, Ordering::Relaxed);
         self.new_messages_counter.store(0, Ordering::Relaxed);
     }

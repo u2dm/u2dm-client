@@ -37,20 +37,24 @@ pub enum UiCommand {
     #[strum(to_string = "PaginateBackwards({room_id})")]
     PaginateBackwards {
         room_id: RoomId,
+        generation: i32,
     },
     #[strum(to_string = "PaginateForwards({room_id})")]
     PaginateForwards {
         room_id: RoomId,
+        generation: i32,
     },
     #[strum(to_string = "TimelinePaginationCompleted({room_id})")]
     TimelinePaginationCompleted {
         room_id: RoomId,
+        generation: i32,
         direction: PaginationDirection,
         outcome: PaginationOutcome,
     },
     #[strum(to_string = "JumpToLatest({room_id})")]
     JumpToLatest {
         room_id: RoomId,
+        generation: i32,
     },
     RetryTimeline,
     SessionExpired,
@@ -87,6 +91,7 @@ pub enum UiEvent {
         id: RoomId,
         name: String,
         member_count: u64,
+        generation: i32,
     },
     SelectedSpace(String),
     SelectedSubspace(String),
@@ -115,4 +120,23 @@ pub enum UiEvent {
         path: String,
     },
     LoggedOut,
+}
+
+#[derive(Clone)]
+pub struct ViewportChanged {
+    pub room_id: RoomId,
+    pub generation: i32,
+    pub at_top: bool,
+    pub at_bottom: bool,
+}
+
+impl ViewportChanged {
+    pub fn initial() -> Self {
+        Self {
+            room_id: RoomId::new(String::new()),
+            generation: 0,
+            at_top: false,
+            at_bottom: true,
+        }
+    }
 }

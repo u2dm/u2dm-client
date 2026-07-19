@@ -299,6 +299,7 @@ pub enum IntProp {
     NewMessagesCount,
     PrependToken,
     SelectedRoomMembers,
+    SelectedGeneration,
 }
 
 impl IntProp {
@@ -308,6 +309,7 @@ impl IntProp {
             Self::NewMessagesCount => "new-messages-count",
             Self::PrependToken => "prepend-token",
             Self::SelectedRoomMembers => "selected-room-members",
+            Self::SelectedGeneration => "selected-generation",
         }
     }
 }
@@ -434,7 +436,9 @@ pub fn dispatch_ui_event<T, R, S>(
             id,
             name,
             member_count,
+            generation,
         } => {
+            w.set_int(IntProp::SelectedGeneration, generation);
             w.set_string(StringProp::SelectedRoomId, SharedString::from(id.as_ref()));
             w.set_string(StringProp::SelectedRoomName, SharedString::from(&name));
             w.set_int(
@@ -683,6 +687,7 @@ fn apply_logged_out(w: &impl UiProps) {
     w.set_bool(BoolProp::ForwardsLoading, false);
     w.set_int(IntProp::NewMessagesCount, 0);
     w.set_int(IntProp::SelectedRoomMembers, 0);
+    w.set_int(IntProp::SelectedGeneration, 0);
     w.apply_user_avatar(None);
     w.clear_emoji_model();
 }

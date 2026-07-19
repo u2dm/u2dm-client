@@ -8,7 +8,7 @@ use adapters::demo;
 use adapters::media::DesktopMediaFiles;
 use adapters::ui::{SlintUiAdapter, UiEventOutput};
 use app::AppService;
-use commands::{UiCommand, UiEvent};
+use commands::{UiCommand, UiEvent, ViewportChanged};
 use composition::Backend;
 use domain::models::{ConnectionStatus, Room, Space};
 use error::Result;
@@ -70,7 +70,7 @@ fn run() -> Result<()> {
 
     let (rooms_in_tx, rooms_in_rx) = watch::channel::<Arc<[Room]>>(Arc::from(Vec::new()));
     let (spaces_in_tx, spaces_in_rx) = watch::channel::<Arc<[Space]>>(Arc::from(Vec::new()));
-    let (scroll_tx, scroll_rx) = watch::channel::<(bool, bool)>((false, true));
+    let (scroll_tx, scroll_rx) = watch::channel::<ViewportChanged>(ViewportChanged::initial());
 
     ui.register_callbacks(&cmd_tx, &scroll_tx)?;
     #[cfg(feature = "demo")]

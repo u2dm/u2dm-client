@@ -16,7 +16,7 @@ pub trait AppOutputPort: Send + Sync {
     async fn user_avatar(&self, path: Option<PathBuf>);
     async fn login_error(&self, message: String);
     async fn notify_error(&self, message: String);
-    async fn selected_room(&self, id: RoomId, name: String, member_count: u64);
+    async fn selected_room(&self, id: RoomId, name: String, member_count: u64, generation: i32);
     async fn selected_space(&self, id: String);
     async fn selected_subspace(&self, id: String);
     async fn timeline(&self, room_id: RoomId, patch: Box<TimelinePatch>);

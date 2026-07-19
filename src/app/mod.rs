@@ -17,7 +17,7 @@ use task_group::TaskGroup;
 use tokio::sync::{mpsc, watch};
 use verification::VerificationController;
 
-use crate::commands::UiCommand;
+use crate::commands::{UiCommand, ViewportChanged};
 use crate::domain::models::{ConnectionStatus, Room, RoomId, Space};
 use crate::ports::browser::BrowserPort;
 use crate::ports::matrix::MatrixPort;
@@ -87,7 +87,7 @@ impl AppService {
         mut cmd_rx: mpsc::UnboundedReceiver<UiCommand>,
         mut rooms_in_rx: watch::Receiver<Arc<[Room]>>,
         mut spaces_in_rx: watch::Receiver<Arc<[Space]>>,
-        mut scroll_in_rx: watch::Receiver<(bool, bool)>,
+        mut scroll_in_rx: watch::Receiver<ViewportChanged>,
     ) {
         let mut rooms_done = false;
         let mut spaces_done = false;
@@ -121,9 +121,14 @@ impl AppService {
                     if changed.is_err() {
                         scroll_done = true;
                     } else {
-                        let (at_top, at_bottom) = *scroll_in_rx.borrow_and_update();
+                        let viewport = scroll_in_rx.borrow_and_update().clone();
                         self.active_timeline
-                            .scroll_position_changed(at_top, at_bottom)
+                            .scroll_position_changed(
+                                &viewport.room_id,
+                                viewport.generation,
+                                viewport.at_top,
+                                viewport.at_bottom,
+                            )
                             .await;
                     }
                 }
@@ -131,6 +136,7 @@ impl AppService {
         }
     }
 
+    #[allow(clippy::too_many_lines)]
     async fn dispatch(&mut self, cmd: UiCommand) -> bool {
         match cmd {
             UiCommand::RestoreSession => {
@@ -175,23 +181,39 @@ impl AppService {
                 self.active_timeline
                     .spawn_send(&mut self.operations, room_id, body, reply_to);
             }
-            UiCommand::PaginateBackwards { room_id } => {
-                self.active_timeline.paginate_backwards(&room_id).await;
+            UiCommand::PaginateBackwards {
+                room_id,
+                generation,
+            } => {
+                self.active_timeline
+                    .paginate_backwards(&room_id, generation)
+                    .await;
             }
-            UiCommand::PaginateForwards { room_id } => {
-                self.active_timeline.paginate_forwards(&room_id).await;
+            UiCommand::PaginateForwards {
+                room_id,
+                generation,
+            } => {
+                self.active_timeline
+                    .paginate_forwards(&room_id, generation)
+                    .await;
             }
             UiCommand::TimelinePaginationCompleted {
                 room_id,
+                generation,
                 direction,
                 outcome,
             } => {
                 self.active_timeline
-                    .complete_pagination(&room_id, direction, outcome)
+                    .complete_pagination(&room_id, generation, direction, outcome)
                     .await;
             }
-            UiCommand::JumpToLatest { room_id } => {
-                self.active_timeline.jump_to_latest(&room_id).await;
+            UiCommand::JumpToLatest {
+                room_id,
+                generation,
+            } => {
+                self.active_timeline
+                    .jump_to_latest(&room_id, generation)
+                    .await;
             }
             UiCommand::OpenMedia { event_id } => {
                 self.media.open_media(event_id);
@@ -277,28 +299,30 @@ impl AppService {
 
     async fn select_room(&mut self, room_id: RoomId) {
         self.selection.room = Some(room_id.clone());
+        let generation = self.selection.next_generation();
         let (name, member_count) = self
             .room_directory
             .selected_room_meta(&self.selection)
             .map_or_else(|| (String::new(), 0), |m| (m.name, m.member_count));
         self.output
-            .selected_room(room_id.clone(), name, member_count)
+            .selected_room(room_id.clone(), name, member_count, generation)
             .await;
-        self.active_timeline.select_room(room_id).await;
+        self.active_timeline.select_room(room_id, generation).await;
     }
 
     async fn refresh_selected_room(&mut self) {
         let Some(room_id) = self.selection.room.clone() else {
             return;
         };
+        let generation = self.selection.generation;
         if let Some(meta) = self.room_directory.selected_room_meta(&self.selection) {
             self.output
-                .selected_room(room_id, meta.name, meta.member_count)
+                .selected_room(room_id, meta.name, meta.member_count, generation)
                 .await;
         } else {
             self.selection.room = None;
             self.output
-                .selected_room(RoomId::new(String::new()), String::new(), 0)
+                .selected_room(RoomId::new(String::new()), String::new(), 0, generation)
                 .await;
         }
     }

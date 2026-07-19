@@ -5,9 +5,15 @@ pub(super) struct Selection {
     pub(super) space: Option<RoomId>,
     pub(super) subspace: Option<RoomId>,
     pub(super) room: Option<RoomId>,
+    pub(super) generation: i32,
 }
 
 impl Selection {
+    pub(super) fn next_generation(&mut self) -> i32 {
+        self.generation = self.generation.wrapping_add(1);
+        self.generation
+    }
+
     pub(super) fn set_space(&mut self, space: Option<RoomId>) {
         self.space = space.filter(|id| !id.is_empty());
         self.subspace = None;

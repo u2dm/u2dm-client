@@ -30,7 +30,7 @@ use super::decode::{
     set_animation_tick, set_avatar_ready, set_image_ready,
 };
 use super::emoji;
-use crate::commands::{UiCommand, UiEvent};
+use crate::commands::{UiCommand, UiEvent, ViewportChanged};
 use crate::domain::models::{
     ConnectionStatus, EnrichmentDelta, LoginCredentials, MessageBody, Room, RoomId, Space,
     ThumbnailOutcome, TimelineMessage, VerificationEmoji as DomainVerificationEmoji,
@@ -47,6 +47,21 @@ fn set_prop(inst: &ComponentInstance, name: &str, value: Value) {
 fn set_global_prop(inst: &ComponentInstance, global: &str, name: &str, value: Value) -> Result<()> {
     inst.set_global_property(global, name, value)
         .map_err(|e| AppError::Ui(format!("{e:?}")))
+}
+
+fn selected_room_key(weak: &slint::Weak<ComponentInstance>) -> Option<(RoomId, i32)> {
+    let inst = weak.upgrade()?;
+    let room_id = inst.get_string(StringProp::SelectedRoomId).to_string();
+    if room_id.is_empty() {
+        return None;
+    }
+    let generation = match inst.get_property("selected-generation") {
+        Ok(Value::Number(n)) if n.is_finite() && n.fract() == 0.0 => {
+            n.to_string().parse().unwrap_or_default()
+        }
+        _ => 0,
+    };
+    Some((RoomId::new(room_id), generation))
 }
 
 fn string_arg(args: &[Value], index: usize) -> String {
@@ -161,7 +176,7 @@ impl SlintUiAdapter {
     pub fn register_callbacks(
         &self,
         cmd_tx: &mpsc::UnboundedSender<UiCommand>,
-        scroll_tx: &watch::Sender<(bool, bool)>,
+        scroll_tx: &watch::Sender<ViewportChanged>,
     ) -> Result<()> {
         setup_emoji_store(&self.instance)?;
 
@@ -434,12 +449,19 @@ impl SlintUiAdapter {
             .map_err(|e| AppError::Ui(format!("{e:?}")))?;
 
         let scroll_tx = scroll_tx.clone();
+        let weak = self.instance.as_weak();
         self.instance
             .set_callback("scroll-position-changed", move |args: &[Value]| -> Value {
-                if scroll_tx
-                    .send((bool_arg(args, 0), bool_arg(args, 1)))
-                    .is_err()
-                {
+                let Some((room_id, generation)) = selected_room_key(&weak) else {
+                    return Value::Void;
+                };
+                let update = ViewportChanged {
+                    room_id,
+                    generation,
+                    at_top: bool_arg(args, 0),
+                    at_bottom: bool_arg(args, 1),
+                };
+                if scroll_tx.send(update).is_err() {
                     tracing::debug!("scroll position receiver closed");
                 }
                 Value::Void
@@ -450,15 +472,12 @@ impl SlintUiAdapter {
         let weak = self.instance.as_weak();
         self.instance
             .set_callback("paginate-backwards", move |_args: &[Value]| -> Value {
-                let room_id = weak
-                    .upgrade()
-                    .map(|inst| inst.get_string(StringProp::SelectedRoomId).to_string())
-                    .unwrap_or_default();
-                if !room_id.is_empty() {
+                if let Some((room_id, generation)) = selected_room_key(&weak) {
                     send_command(
                         &tx,
                         UiCommand::PaginateBackwards {
-                            room_id: RoomId::new(room_id),
+                            room_id,
+                            generation,
                         },
                     );
                 }
@@ -470,15 +489,12 @@ impl SlintUiAdapter {
         let weak = self.instance.as_weak();
         self.instance
             .set_callback("paginate-forwards", move |_args: &[Value]| -> Value {
-                let room_id = weak
-                    .upgrade()
-                    .map(|inst| inst.get_string(StringProp::SelectedRoomId).to_string())
-                    .unwrap_or_default();
-                if !room_id.is_empty() {
+                if let Some((room_id, generation)) = selected_room_key(&weak) {
                     send_command(
                         &tx,
                         UiCommand::PaginateForwards {
-                            room_id: RoomId::new(room_id),
+                            room_id,
+                            generation,
                         },
                     );
                 }
@@ -490,15 +506,12 @@ impl SlintUiAdapter {
         let weak = self.instance.as_weak();
         self.instance
             .set_callback("jump-to-latest", move |_args: &[Value]| -> Value {
-                let room_id = weak
-                    .upgrade()
-                    .map(|inst| inst.get_string(StringProp::SelectedRoomId).to_string())
-                    .unwrap_or_default();
-                if !room_id.is_empty() {
+                if let Some((room_id, generation)) = selected_room_key(&weak) {
                     send_command(
                         &tx,
                         UiCommand::JumpToLatest {
-                            room_id: RoomId::new(room_id),
+                            room_id,
+                            generation,
                         },
                     );
                 }

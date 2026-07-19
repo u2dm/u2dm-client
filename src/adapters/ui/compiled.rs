@@ -18,7 +18,7 @@ use super::decode::{
     set_animation_tick, set_avatar_ready, set_image_ready,
 };
 use super::emoji;
-use crate::commands::{UiCommand, UiEvent};
+use crate::commands::{UiCommand, UiEvent, ViewportChanged};
 use crate::domain::models::{
     ConnectionStatus, EnrichmentDelta, LoginCredentials, MessageBody, Room, RoomId, Space,
     ThumbnailOutcome, TimelineMessage, VerificationEmoji as DomainVerificationEmoji,
@@ -83,6 +83,7 @@ impl UiProps for AppWindow {
             IntProp::NewMessagesCount => self.set_new_messages_count(value),
             IntProp::PrependToken => self.set_prepend_token(value),
             IntProp::SelectedRoomMembers => self.set_selected_room_members(value),
+            IntProp::SelectedGeneration => self.set_selected_generation(value),
         }
     }
 
@@ -136,7 +137,7 @@ impl SlintUiAdapter {
     pub fn register_callbacks(
         &self,
         cmd_tx: &mpsc::UnboundedSender<UiCommand>,
-        scroll_tx: &watch::Sender<(bool, bool)>,
+        scroll_tx: &watch::Sender<ViewportChanged>,
     ) -> Result<()> {
         setup_emoji_store(&self.window);
 
@@ -280,9 +281,23 @@ impl SlintUiAdapter {
         });
 
         let scroll_tx = scroll_tx.clone();
+        let weak = self.window.as_weak();
         self.window
             .on_scroll_position_changed(move |at_top, at_bottom| {
-                if scroll_tx.send((at_top, at_bottom)).is_err() {
+                let Some(w) = weak.upgrade() else {
+                    return;
+                };
+                let room_id = w.get_selected_room_id().to_string();
+                if room_id.is_empty() {
+                    return;
+                }
+                let update = ViewportChanged {
+                    room_id: RoomId::new(room_id),
+                    generation: w.get_selected_generation(),
+                    at_top,
+                    at_bottom,
+                };
+                if scroll_tx.send(update).is_err() {
                     tracing::debug!("scroll position receiver closed");
                 }
             });
@@ -290,15 +305,12 @@ impl SlintUiAdapter {
         let tx = cmd_tx.clone();
         let weak = self.window.as_weak();
         self.window.on_paginate_backwards(move || {
-            let room_id = weak
-                .upgrade()
-                .map(|w| w.get_selected_room_id().to_string())
-                .unwrap_or_default();
-            if !room_id.is_empty() {
+            if let Some((room_id, generation)) = selected_room_key(&weak) {
                 send_command(
                     &tx,
                     UiCommand::PaginateBackwards {
-                        room_id: RoomId::new(room_id),
+                        room_id,
+                        generation,
                     },
                 );
             }
@@ -307,15 +319,12 @@ impl SlintUiAdapter {
         let tx = cmd_tx.clone();
         let weak = self.window.as_weak();
         self.window.on_paginate_forwards(move || {
-            let room_id = weak
-                .upgrade()
-                .map(|w| w.get_selected_room_id().to_string())
-                .unwrap_or_default();
-            if !room_id.is_empty() {
+            if let Some((room_id, generation)) = selected_room_key(&weak) {
                 send_command(
                     &tx,
                     UiCommand::PaginateForwards {
-                        room_id: RoomId::new(room_id),
+                        room_id,
+                        generation,
                     },
                 );
             }
@@ -324,15 +333,12 @@ impl SlintUiAdapter {
         let tx = cmd_tx.clone();
         let weak = self.window.as_weak();
         self.window.on_jump_to_latest(move || {
-            let room_id = weak
-                .upgrade()
-                .map(|w| w.get_selected_room_id().to_string())
-                .unwrap_or_default();
-            if !room_id.is_empty() {
+            if let Some((room_id, generation)) = selected_room_key(&weak) {
                 send_command(
                     &tx,
                     UiCommand::JumpToLatest {
-                        room_id: RoomId::new(room_id),
+                        room_id,
+                        generation,
                     },
                 );
             }
@@ -462,6 +468,15 @@ impl SlintUiAdapter {
             .window()
             .set_size(slint::LogicalSize::new(width, height));
     }
+}
+
+fn selected_room_key(weak: &slint::Weak<AppWindow>) -> Option<(RoomId, i32)> {
+    let w = weak.upgrade()?;
+    let room_id = w.get_selected_room_id().to_string();
+    if room_id.is_empty() {
+        return None;
+    }
+    Some((RoomId::new(room_id), w.get_selected_generation()))
 }
 
 fn emoji_entry_to_ui(e: &emoji::EmojiEntry) -> EmojiEntry {
