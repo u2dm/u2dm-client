@@ -3,6 +3,7 @@ use std::time::Duration;
 
 use tokio::task::JoinSet;
 use tokio::time;
+use tokio_util::sync::CancellationToken;
 
 use crate::ports::matrix::MatrixPort;
 use crate::ports::media::MediaFilePort;
@@ -13,6 +14,7 @@ pub(super) struct MediaActions {
     media_files: Arc<dyn MediaFilePort>,
     output: Arc<dyn AppOutputPort>,
     tasks: JoinSet<()>,
+    cancel: CancellationToken,
 }
 
 impl MediaActions {
@@ -26,6 +28,7 @@ impl MediaActions {
             media_files,
             output,
             tasks: JoinSet::new(),
+            cancel: CancellationToken::new(),
         }
     }
 
@@ -35,21 +38,28 @@ impl MediaActions {
         let matrix = Arc::clone(&self.matrix);
         let media_files = Arc::clone(&self.media_files);
         let output = Arc::clone(&self.output);
+        let cancel = self.cancel.clone();
         self.tasks.spawn(async move {
-            match matrix.download_media(&event_id, false).await {
-                Ok(data) => {
-                    if let Err(e) = media_files.open_media(&event_id, &data).await {
-                        tracing::warn!("failed to open media: {e}");
+            let work = async move {
+                match matrix.download_media(&event_id, false).await {
+                    Ok(data) => {
+                        if let Err(e) = media_files.open_media(&event_id, &data).await {
+                            tracing::warn!("failed to open media: {e}");
+                            output
+                                .notify_error(format!("Failed to open media: {e}"))
+                                .await;
+                        }
+                    }
+                    Err(e) => {
                         output
-                            .notify_error(format!("Failed to open media: {e}"))
+                            .notify_error(format!("Failed to download media: {e}"))
                             .await;
                     }
                 }
-                Err(e) => {
-                    output
-                        .notify_error(format!("Failed to download media: {e}"))
-                        .await;
-                }
+            };
+            tokio::select! {
+                () = cancel.cancelled() => {}
+                () = work => {}
             }
         });
     }
@@ -60,24 +70,37 @@ impl MediaActions {
         let matrix = Arc::clone(&self.matrix);
         let media_files = Arc::clone(&self.media_files);
         let output = Arc::clone(&self.output);
+        let cancel = self.cancel.clone();
         self.tasks.spawn(async move {
-            match matrix.download_media(&event_id, false).await {
-                Ok(data) => match media_files.save_file(&filename, &data).await {
-                    Ok(Some(path)) => output.file_saved(path).await,
-                    Ok(None) => {}
+            let work = async move {
+                match matrix.download_media(&event_id, false).await {
+                    Ok(data) => match media_files.save_file(&filename, &data).await {
+                        Ok(Some(path)) => output.file_saved(path).await,
+                        Ok(None) => {}
+                        Err(e) => {
+                            output
+                                .notify_error(format!("Failed to save file: {e}"))
+                                .await;
+                        }
+                    },
                     Err(e) => {
                         output
-                            .notify_error(format!("Failed to save file: {e}"))
+                            .notify_error(format!("Failed to download file: {e}"))
                             .await;
                     }
-                },
-                Err(e) => {
-                    output
-                        .notify_error(format!("Failed to download file: {e}"))
-                        .await;
                 }
+            };
+            tokio::select! {
+                () = cancel.cancelled() => {}
+                () = work => {}
             }
         });
+    }
+
+    pub(super) async fn cancel_and_drain(&mut self) {
+        self.cancel.cancel();
+        self.drain().await;
+        self.cancel = CancellationToken::new();
     }
 
     pub(super) async fn drain(&mut self) {

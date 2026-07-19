@@ -77,6 +77,12 @@ impl MatrixAdapter {
     pub fn media_cache(&self) -> Arc<dyn MediaCache> {
         Arc::new(media::MaterializedMedia::new(Arc::clone(&self.media)))
     }
+
+    fn clear_media_sources(&self) {
+        if let Ok(mut sources) = self.media_sources.lock() {
+            sources.clear();
+        }
+    }
 }
 
 #[async_trait]
@@ -163,6 +169,7 @@ impl MatrixPort for MatrixAdapter {
 
     async fn logout(&self) -> Result<()> {
         self.media.clear().await;
+        self.clear_media_sources();
         auth::logout(
             &self.client,
             &self.verification_req_rx,
@@ -173,6 +180,7 @@ impl MatrixPort for MatrixAdapter {
 
     async fn clear_store(&self) -> Result<()> {
         self.media.clear().await;
+        self.clear_media_sources();
         auth::clear_store(
             &self.client,
             &self.data_dir,

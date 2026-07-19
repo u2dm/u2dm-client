@@ -373,6 +373,7 @@ impl AppService {
         self.background.shutdown().await;
         self.active_timeline.shutdown().await;
         self.operations.reset().await;
+        self.media.cancel_and_drain().await;
     }
 
     async fn handle_session_expired(&mut self) {
