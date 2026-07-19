@@ -377,12 +377,22 @@ impl TimelinePatch {
     }
 
     pub fn is_prepend(&self) -> bool {
+        self.adds_at_front() && !self.adds_at_back()
+    }
+
+    fn adds_at_front(&self) -> bool {
         match self {
             Self::PushFront(_) => true,
             Self::Insert { index, .. } => *index == 0,
-            Self::Batch(patches) => {
-                !patches.is_empty() && patches.iter().all(TimelinePatch::is_prepend)
-            }
+            Self::Batch(patches) => patches.iter().any(TimelinePatch::adds_at_front),
+            _ => false,
+        }
+    }
+
+    fn adds_at_back(&self) -> bool {
+        match self {
+            Self::Append(_) | Self::PushBack(_) => true,
+            Self::Batch(patches) => patches.iter().any(TimelinePatch::adds_at_back),
             _ => false,
         }
     }
