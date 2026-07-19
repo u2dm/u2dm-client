@@ -17,9 +17,13 @@ use ports::media::MediaFilePort;
 use ports::output::AppOutputPort;
 use tokio::runtime::Runtime;
 use tokio::sync::{mpsc, watch};
+use tokio::task::JoinHandle;
+use tokio::time::timeout;
 use tracing_subscriber::EnvFilter;
 
 const UI_EVENT_CHANNEL_CAP: usize = 256;
+const SHUTDOWN_WAIT: Duration = Duration::from_secs(6);
+const SHUTDOWN_BACKSTOP: Duration = Duration::from_secs(1);
 
 mod adapters;
 mod app;
@@ -76,7 +80,7 @@ fn run() -> Result<()> {
     #[cfg(feature = "demo")]
     demo::size_window_for_screenshots(&ui);
 
-    let _guard = rt.enter();
+    let enter_guard = rt.enter();
     let backend = Backend::select(&cfg);
     let media_files: Arc<dyn MediaFilePort> = Arc::new(DesktopMediaFiles::new());
     let browser: Arc<dyn BrowserPort> = Arc::new(DesktopBrowser::new());
@@ -112,17 +116,32 @@ fn run() -> Result<()> {
         spaces_in_tx,
         output,
     );
-    tokio::spawn(async move {
+    let service_handle = tokio::spawn(async move {
         service
             .run(cmd_rx, rooms_in_rx, spaces_in_rx, scroll_rx)
             .await;
     });
 
     ui.run()?;
+    drop(enter_guard);
 
+    shutdown(rt, &cmd_tx_quit, service_handle);
+    Ok(())
+}
+
+fn shutdown(
+    rt: Runtime,
+    cmd_tx_quit: &mpsc::UnboundedSender<UiCommand>,
+    service_handle: JoinHandle<()>,
+) {
     if let Err(e) = cmd_tx_quit.send(UiCommand::Quit) {
         tracing::debug!("failed to send Quit command: {e}");
     }
-    rt.shutdown_timeout(Duration::from_secs(5));
-    Ok(())
+    let cleaned_up = rt
+        .block_on(async { timeout(SHUTDOWN_WAIT, service_handle).await })
+        .is_ok();
+    if !cleaned_up {
+        tracing::warn!("service cleanup did not finish before deadline; forcing shutdown");
+    }
+    rt.shutdown_timeout(SHUTDOWN_BACKSTOP);
 }

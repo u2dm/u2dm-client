@@ -16,7 +16,9 @@ use selection::Selection;
 use session::SessionController;
 use task_group::TaskGroup;
 use tokio::sync::{mpsc, watch};
-use tokio::time::sleep;
+use tokio::task::JoinHandle;
+use tokio::time::{sleep, timeout};
+use tokio_util::sync::CancellationToken;
 use verification::VerificationController;
 
 use crate::commands::{UiCommand, ViewportChanged};
@@ -43,9 +45,12 @@ pub struct AppService {
     media: MediaActions,
     selection: Selection,
     space_order_tx: watch::Sender<Option<Vec<String>>>,
+    space_order_cancel: CancellationToken,
+    space_order_handle: Option<JoinHandle<()>>,
 }
 
 const SPACE_ORDER_DEBOUNCE: Duration = Duration::from_millis(500);
+const SPACE_ORDER_FLUSH_TIMEOUT: Duration = Duration::from_secs(2);
 
 impl AppService {
     #[allow(clippy::too_many_arguments)]
@@ -60,9 +65,11 @@ impl AppService {
         output: Arc<dyn AppOutputPort>,
     ) -> Self {
         let (space_order_tx, space_order_rx) = watch::channel::<Option<Vec<String>>>(None);
-        tokio::spawn(persist_space_order_task(
+        let space_order_cancel = CancellationToken::new();
+        let space_order_handle = tokio::spawn(persist_space_order_task(
             Arc::clone(&storage),
             space_order_rx,
+            space_order_cancel.clone(),
         ));
         Self {
             session: SessionController::new(
@@ -90,6 +97,8 @@ impl AppService {
             operations: TaskGroup::new(),
             selection: Selection::default(),
             space_order_tx,
+            space_order_cancel,
+            space_order_handle: Some(space_order_handle),
         }
     }
 
@@ -382,25 +391,54 @@ impl AppService {
     }
 
     async fn handle_quit(&mut self) {
-        self.shutdown_all_tasks().await;
-        self.media.drain().await;
+        tokio::join!(
+            self.background.shutdown(),
+            self.active_timeline.shutdown(),
+            self.operations.reset(),
+            self.media.drain(),
+        );
+        self.flush_space_order().await;
+    }
+
+    async fn flush_space_order(&mut self) {
+        self.space_order_cancel.cancel();
+        let Some(handle) = self.space_order_handle.take() else {
+            return;
+        };
+        if timeout(SPACE_ORDER_FLUSH_TIMEOUT, handle).await.is_err() {
+            tracing::warn!("timed out flushing space order on quit");
+        }
     }
 }
 
 async fn persist_space_order_task(
     storage: Arc<dyn StoragePort>,
     mut rx: watch::Receiver<Option<Vec<String>>>,
+    cancel: CancellationToken,
 ) {
     loop {
-        if rx.changed().await.is_err() {
-            let pending = rx.borrow().clone();
-            save_space_order(&storage, pending).await;
-            break;
+        tokio::select! {
+            biased;
+            () = cancel.cancelled() => break,
+            changed = rx.changed() => {
+                if changed.is_err() {
+                    break;
+                }
+            }
         }
-        sleep(SPACE_ORDER_DEBOUNCE).await;
+
+        tokio::select! {
+            biased;
+            () = cancel.cancelled() => break,
+            () = sleep(SPACE_ORDER_DEBOUNCE) => {}
+        }
+
         let order = rx.borrow_and_update().clone();
         save_space_order(&storage, order).await;
     }
+
+    let pending = rx.borrow().clone();
+    save_space_order(&storage, pending).await;
 }
 
 async fn save_space_order(storage: &Arc<dyn StoragePort>, order: Option<Vec<String>>) {
