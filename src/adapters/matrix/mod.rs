@@ -22,6 +22,7 @@ use matrix_sdk::ruma::events::room::message::{
 use matrix_sdk::ruma::{IdParseError, OwnedEventId, OwnedRoomId};
 use matrix_sdk::utils::local_server::LocalServerRedirectHandle;
 use tokio::sync::{Mutex, RwLock, mpsc};
+use tokio_util::sync::CancellationToken;
 
 use self::media::MediaService;
 use self::profile::PronounCache;
@@ -126,10 +127,14 @@ impl MatrixPort for MatrixAdapter {
         .await
     }
 
-    async fn start_sync(&self, on_sync: Box<dyn Fn(SyncEvent) + Send + Sync>) -> Result<()> {
+    async fn start_sync(
+        &self,
+        on_sync: Box<dyn Fn(SyncEvent) + Send + Sync>,
+        cancel: CancellationToken,
+    ) -> Result<()> {
         tracing::info!("starting continuous sync loop");
         let client = self.get_client().await?;
-        rooms::start_sync(&client, Arc::clone(&self.media), on_sync.into()).await
+        rooms::start_sync(&client, Arc::clone(&self.media), on_sync.into(), cancel).await
     }
 
     async fn restore_session(

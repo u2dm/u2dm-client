@@ -2,6 +2,7 @@ use std::path::PathBuf;
 
 use async_trait::async_trait;
 use tokio::sync::mpsc;
+use tokio_util::sync::CancellationToken;
 
 use crate::domain::models::{
     LoginCredentials, OAuthLoginData, RoomId, ServerInfo, Session, SyncEvent, TimelineCommand,
@@ -21,7 +22,11 @@ pub trait MatrixPort: Send + Sync {
         timeline_tx: mpsc::Sender<TimelineUpdate>,
         cmd_rx: mpsc::UnboundedReceiver<TimelineCommand>,
     ) -> Result<()>;
-    async fn start_sync(&self, on_sync: Box<dyn Fn(SyncEvent) + Send + Sync>) -> Result<()>;
+    async fn start_sync(
+        &self,
+        on_sync: Box<dyn Fn(SyncEvent) + Send + Sync>,
+        cancel: CancellationToken,
+    ) -> Result<()>;
     async fn send_text(&self, room_id: &RoomId, body: &str) -> Result<()>;
     async fn send_reply(&self, room_id: &RoomId, body: &str, in_reply_to: &str) -> Result<()>;
     async fn download_media(&self, event_id: &str, thumbnail: bool) -> Result<Vec<u8>>;

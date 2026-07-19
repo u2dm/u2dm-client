@@ -5,6 +5,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use async_trait::async_trait;
 use tokio::sync::mpsc;
+use tokio_util::sync::CancellationToken;
 
 use super::{data, media};
 use crate::domain::models::{
@@ -106,7 +107,11 @@ impl MatrixPort for DemoMatrix {
         Ok(())
     }
 
-    async fn start_sync(&self, on_sync: Box<dyn Fn(SyncEvent) + Send + Sync>) -> Result<()> {
+    async fn start_sync(
+        &self,
+        on_sync: Box<dyn Fn(SyncEvent) + Send + Sync>,
+        _cancel: CancellationToken,
+    ) -> Result<()> {
         on_sync(SyncEvent::Connected);
         on_sync(SyncEvent::Rooms(data::rooms().into()));
         on_sync(SyncEvent::Spaces(data::spaces().into()));

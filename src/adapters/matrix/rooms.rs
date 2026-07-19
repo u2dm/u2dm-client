@@ -25,6 +25,7 @@ use tokio::sync::broadcast::error::RecvError;
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender, unbounded_channel};
 use tokio::task::JoinSet;
 use tokio::time::{Instant, sleep_until};
+use tokio_util::sync::CancellationToken;
 
 use super::media::{MediaService, mxc_avatar_key};
 use super::preview::{self, MessagePreview};
@@ -668,6 +669,7 @@ pub(super) async fn start_sync(
     client: &Client,
     media: Arc<MediaService>,
     on_sync: OnSync,
+    cancel: CancellationToken,
 ) -> AppResult<()> {
     let sync_service = build_sync_service(client).await?;
     let mut room_updates_rx = client.subscribe_to_all_room_updates();
@@ -677,15 +679,19 @@ pub(super) async fn start_sync(
     sync_service.start().await;
     tracing::info!("sliding sync service started");
 
-    run_sync_loop(
-        client,
-        &sync_service,
-        &mut room_updates_rx,
-        &on_sync,
-        &mut avatars,
-        &mut ready_rx,
-    )
-    .await;
+    tokio::select! {
+        () = run_sync_loop(
+            client,
+            &sync_service,
+            &mut room_updates_rx,
+            &on_sync,
+            &mut avatars,
+            &mut ready_rx,
+        ) => {}
+        () = cancel.cancelled() => {
+            tracing::debug!("sync cancelled, stopping sync service");
+        }
+    }
 
     sync_service.stop().await;
     Ok(())

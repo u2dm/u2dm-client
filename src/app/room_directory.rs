@@ -133,15 +133,8 @@ impl RoomDirectory {
         });
 
         group.spawn(async move {
-            tokio::select! {
-                result = matrix.start_sync(on_sync) => {
-                    if let Err(e) = result {
-                        tracing::error!("sync loop ended with error: {e}");
-                    }
-                }
-                () = token.cancelled() => {
-                    tracing::debug!("sync task cancelled");
-                }
+            if let Err(e) = matrix.start_sync(on_sync, token).await {
+                tracing::error!("sync loop ended with error: {e}");
             }
         });
     }
