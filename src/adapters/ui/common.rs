@@ -5,6 +5,7 @@ use slint::{Image, Model, SharedString, VecModel};
 use tokio::sync::mpsc;
 
 use super::decode::{AvatarSlot, load_avatar_async};
+use super::schema::prop;
 
 pub const SLINT_INFLIGHT: usize = 32;
 
@@ -250,26 +251,26 @@ pub enum StringProp {
 impl StringProp {
     pub fn as_str(&self) -> &'static str {
         match self {
-            Self::LoginStep => "login-step",
-            Self::LoginStatus => "login-status",
-            Self::LoginError => "login-error",
-            Self::LoginMethod => "login-method",
-            Self::ResolvedHomeserver => "resolved-homeserver",
-            Self::UserId => "user-id",
-            Self::UserInitial => "user-initial",
-            Self::ToastMessage => "toast-message",
-            Self::ConnectionStatus => "connection-status",
-            Self::VerificationStep => "verification-step",
-            Self::VerificationSender => "verification-sender",
-            Self::VerificationError => "verification-error",
-            Self::SavedFilePath => "saved-file-path",
-            Self::SelectedRoomName => "selected-room-name",
-            Self::SelectedRoomId => "selected-room-id",
-            Self::SelectedSpaceId => "selected-space-id",
-            Self::SelectedSubspaceId => "selected-subspace-id",
-            Self::TimelineStatus => "timeline-status",
-            Self::InputUsername => "input-username",
-            Self::InputPassword => "input-password",
+            Self::LoginStep => prop::LOGIN_STEP,
+            Self::LoginStatus => prop::LOGIN_STATUS,
+            Self::LoginError => prop::LOGIN_ERROR,
+            Self::LoginMethod => prop::LOGIN_METHOD,
+            Self::ResolvedHomeserver => prop::RESOLVED_HOMESERVER,
+            Self::UserId => prop::USER_ID,
+            Self::UserInitial => prop::USER_INITIAL,
+            Self::ToastMessage => prop::TOAST_MESSAGE,
+            Self::ConnectionStatus => prop::CONNECTION_STATUS,
+            Self::VerificationStep => prop::VERIFICATION_STEP,
+            Self::VerificationSender => prop::VERIFICATION_SENDER,
+            Self::VerificationError => prop::VERIFICATION_ERROR,
+            Self::SavedFilePath => prop::SAVED_FILE_PATH,
+            Self::SelectedRoomName => prop::SELECTED_ROOM_NAME,
+            Self::SelectedRoomId => prop::SELECTED_ROOM_ID,
+            Self::SelectedSpaceId => prop::SELECTED_SPACE_ID,
+            Self::SelectedSubspaceId => prop::SELECTED_SUBSPACE_ID,
+            Self::TimelineStatus => prop::TIMELINE_STATUS,
+            Self::InputUsername => prop::INPUT_USERNAME,
+            Self::InputPassword => prop::INPUT_PASSWORD,
         }
     }
 }
@@ -286,11 +287,11 @@ impl BoolProp {
     #[cfg(feature = "interpreted")]
     pub fn as_str(&self) -> &'static str {
         match self {
-            Self::VerificationVisible => "verification-visible",
-            Self::VerificationIsSelf => "verification-is-self",
-            Self::TimelineRetryable => "timeline-retryable",
-            Self::BackwardsLoading => "backwards-loading",
-            Self::ForwardsLoading => "forwards-loading",
+            Self::VerificationVisible => prop::VERIFICATION_VISIBLE,
+            Self::VerificationIsSelf => prop::VERIFICATION_IS_SELF,
+            Self::TimelineRetryable => prop::TIMELINE_RETRYABLE,
+            Self::BackwardsLoading => prop::BACKWARDS_LOADING,
+            Self::ForwardsLoading => prop::FORWARDS_LOADING,
         }
     }
 }
@@ -306,10 +307,10 @@ impl IntProp {
     #[cfg(feature = "interpreted")]
     pub fn as_str(&self) -> &'static str {
         match self {
-            Self::NewMessagesCount => "new-messages-count",
-            Self::PrependToken => "prepend-token",
-            Self::SelectedRoomMembers => "selected-room-members",
-            Self::SelectedGeneration => "selected-generation",
+            Self::NewMessagesCount => prop::NEW_MESSAGES_COUNT,
+            Self::PrependToken => prop::PREPEND_TOKEN,
+            Self::SelectedRoomMembers => prop::SELECTED_ROOM_MEMBERS,
+            Self::SelectedGeneration => prop::SELECTED_GENERATION,
         }
     }
 }
@@ -785,6 +786,13 @@ fn apply_batch<T: Clone + 'static>(
 ) {
     for p in patches {
         apply_timeline_patch(model, p, convert, enrich, entry_id);
+    }
+}
+
+pub fn reorder_rows<T: Clone + 'static>(model: &VecModel<T>, from: usize, to: usize) {
+    if from < model.row_count() && to < model.row_count() {
+        let entry = model.remove(from);
+        model.insert(to, entry);
     }
 }
 

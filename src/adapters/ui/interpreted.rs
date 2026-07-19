@@ -4,12 +4,12 @@ use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
 
-use slint::{Model, ModelRc, VecModel};
+use slint::{ModelRc, VecModel};
 use slint_interpreter::{
     Compiler, ComponentHandle, ComponentInstance, SharedString, Struct, Value,
 };
 use tokio::runtime::Runtime;
-use tokio::sync::{OwnedSemaphorePermit, Semaphore, mpsc, watch};
+use tokio::sync::{OwnedSemaphorePermit, mpsc, watch};
 
 thread_local! {
     static TIMELINE_MODEL: RefCell<Option<Rc<VecModel<Value>>>> = const { RefCell::new(None) };
@@ -18,22 +18,22 @@ thread_local! {
     static SUBSPACES_MODEL: RefCell<Option<Rc<VecModel<Value>>>> = const { RefCell::new(None) };
 }
 
-use super::common::{
-    BoolProp, IntProp, SLINT_INFLIGHT, Status, StringProp, UiProps, avatar_color_index,
-    avatar_initials, dispatch_ui_event, message_body_text, message_preview_kind_token,
-    message_sender_label, message_timestamp_label, message_type_token, pronoun_labels,
-    room_activity_label, send_command, sender_initial, service_kind_token, service_target,
-    unsupported_kind,
-};
+use super::common::{BoolProp, IntProp, StringProp, UiProps, dispatch_ui_event, reorder_rows};
 use super::decode::{
-    AvatarSlot, advance_animations, load_avatar_async, load_thumbnail, patch_rows,
-    set_animation_tick, set_avatar_ready, set_image_ready,
+    AvatarSlot, advance_animations, patch_rows, set_animation_tick, set_avatar_ready,
+    set_image_ready,
 };
-use super::emoji;
+use super::dto::{ThumbUpdate, enrich_to_update, message_to_dto, room_to_dto, space_to_dto};
+use super::multiplex::spawn_event_multiplexer;
+use super::schema::{
+    callback, emoji_entry, emoji_group, emoji_insert, emoji_store, login_request, message, prop,
+    room, save_file_request, send_message_request, space, verification_emoji,
+};
+use super::{emoji, router};
 use crate::commands::{UiCommand, UiEvent, ViewportChanged};
 use crate::domain::models::{
-    ConnectionStatus, EnrichmentDelta, LoginCredentials, MessageBody, Room, RoomId, Space,
-    ThumbnailOutcome, TimelineMessage, VerificationEmoji as DomainVerificationEmoji,
+    ConnectionStatus, EnrichmentDelta, LoginCredentials, Room, RoomId, Space, TimelineMessage,
+    VerificationEmoji as DomainVerificationEmoji,
 };
 use crate::error::{AppError, Result};
 use crate::ports::media::MediaCache;
@@ -55,7 +55,7 @@ fn selected_room_key(weak: &slint::Weak<ComponentInstance>) -> Option<(RoomId, i
     if room_id.is_empty() {
         return None;
     }
-    let generation = match inst.get_property("selected-generation") {
+    let generation = match inst.get_property(prop::SELECTED_GENERATION) {
         Ok(Value::Number(n)) if n.is_finite() && n.fract() == 0.0 => {
             n.to_string().parse().unwrap_or_default()
         }
@@ -80,6 +80,46 @@ fn bool_arg(args: &[Value], index: usize) -> bool {
             _ => None,
         })
         .unwrap_or_default()
+}
+
+fn usize_arg(args: &[Value], index: usize) -> Option<usize> {
+    match args.get(index) {
+        Some(Value::Number(n))
+            if n.is_finite() && n.fract() == 0.0 && *n >= 0.0 && *n <= u32::MAX.into() =>
+        {
+            n.to_string().parse().ok()
+        }
+        _ => None,
+    }
+}
+
+fn struct_arg(args: &[Value], index: usize) -> Option<&Struct> {
+    match args.get(index) {
+        Some(Value::Struct(s)) => Some(s),
+        _ => None,
+    }
+}
+
+fn field(s: &Struct, name: &str) -> String {
+    s.get_field(name)
+        .and_then(|v| match v {
+            Value::String(s) => Some(s.to_string()),
+            _ => None,
+        })
+        .unwrap_or_default()
+}
+
+fn props(inst: Option<&ComponentInstance>) -> Option<&dyn UiProps> {
+    inst.map(|inst| inst as &dyn UiProps)
+}
+
+fn bind(
+    inst: &ComponentInstance,
+    name: &str,
+    callback: impl Fn(&[Value]) -> Value + 'static,
+) -> Result<()> {
+    inst.set_callback(name, callback)
+        .map_err(|e| AppError::Ui(format!("{e:?}")))
 }
 
 impl UiProps for ComponentInstance {
@@ -108,10 +148,10 @@ impl UiProps for ComponentInstance {
     fn apply_user_avatar(&self, avatar: Option<slint::Image>) {
         match avatar {
             Some(img) => {
-                set_prop(self, "user-avatar", Value::Image(img));
-                set_prop(self, "user-has-avatar", Value::Bool(true));
+                set_prop(self, prop::USER_AVATAR, Value::Image(img));
+                set_prop(self, prop::USER_HAS_AVATAR, Value::Bool(true));
             }
-            None => set_prop(self, "user-has-avatar", Value::Bool(false)),
+            None => set_prop(self, prop::USER_HAS_AVATAR, Value::Bool(false)),
         }
     }
 
@@ -121,11 +161,11 @@ impl UiProps for ComponentInstance {
             .map(|e| {
                 Value::Struct(Struct::from_iter([
                     (
-                        "symbol".to_string(),
+                        verification_emoji::SYMBOL.to_string(),
                         Value::String(SharedString::from(&e.symbol)),
                     ),
                     (
-                        "description".to_string(),
+                        verification_emoji::DESCRIPTION.to_string(),
                         Value::String(SharedString::from(&e.description)),
                     ),
                 ]))
@@ -133,7 +173,7 @@ impl UiProps for ComponentInstance {
             .collect();
         set_prop(
             self,
-            "verification-emojis",
+            prop::VERIFICATION_EMOJIS,
             Value::Model(ModelRc::new(VecModel::from(entries))),
         );
     }
@@ -141,7 +181,7 @@ impl UiProps for ComponentInstance {
     fn clear_emoji_model(&self) {
         set_prop(
             self,
-            "verification-emojis",
+            prop::VERIFICATION_EMOJIS,
             Value::Model(ModelRc::new(VecModel::<Value>::default())),
         );
     }
@@ -182,358 +222,185 @@ impl SlintUiAdapter {
 
         let tx = cmd_tx.clone();
         let weak = self.instance.as_weak();
-        self.instance
-            .set_callback("check-server", move |args: &[Value]| -> Value {
-                let homeserver = args
-                    .first()
-                    .and_then(|v| match v {
-                        Value::String(s) => Some(s.to_string()),
-                        _ => None,
-                    })
-                    .unwrap_or_default();
-
-                if let Some(inst) = weak.upgrade() {
-                    set_prop(
-                        &inst,
-                        "login-status",
-                        Value::String(SharedString::from(Status::CheckingServer.as_str())),
-                    );
-                    set_prop(&inst, "login-error", Value::String(SharedString::default()));
-                }
-
-                send_command(&tx, UiCommand::CheckServer(homeserver));
-                Value::Void
-            })
-            .map_err(|e| AppError::Ui(format!("{e:?}")))?;
+        bind(&self.instance, callback::CHECK_SERVER, move |args| {
+            let inst = weak.upgrade();
+            router::check_server(props(inst.as_ref()), &tx, string_arg(args, 0));
+            Value::Void
+        })?;
 
         let tx = cmd_tx.clone();
         let weak = self.instance.as_weak();
-        self.instance
-            .set_callback("login-password", move |args: &[Value]| -> Value {
-                let creds = match args.first() {
-                    Some(Value::Struct(s)) => {
-                        let field = |name: &str| -> String {
-                            s.get_field(name)
-                                .and_then(|v| match v {
-                                    Value::String(s) => Some(s.to_string()),
-                                    _ => None,
-                                })
-                                .unwrap_or_default()
-                        };
-                        LoginCredentials {
-                            homeserver: field("homeserver"),
-                            username: field("username"),
-                            password: field("password"),
-                        }
-                    }
-                    _ => return Value::Void,
-                };
-
-                if let Some(inst) = weak.upgrade() {
-                    set_prop(
-                        &inst,
-                        "login-status",
-                        Value::String(SharedString::from(Status::LoggingIn.as_str())),
-                    );
-                    set_prop(&inst, "login-error", Value::String(SharedString::default()));
-                }
-
-                send_command(&tx, UiCommand::LoginPassword(creds));
-                Value::Void
-            })
-            .map_err(|e| AppError::Ui(format!("{e:?}")))?;
+        bind(&self.instance, callback::LOGIN_PASSWORD, move |args| {
+            let Some(s) = struct_arg(args, 0) else {
+                return Value::Void;
+            };
+            let creds = LoginCredentials {
+                homeserver: field(s, login_request::HOMESERVER),
+                username: field(s, login_request::USERNAME),
+                password: field(s, login_request::PASSWORD),
+            };
+            let inst = weak.upgrade();
+            router::login_password(props(inst.as_ref()), &tx, creds);
+            Value::Void
+        })?;
 
         let tx = cmd_tx.clone();
         let weak = self.instance.as_weak();
-        self.instance
-            .set_callback("login-oauth", move |_args: &[Value]| -> Value {
-                if let Some(inst) = weak.upgrade() {
-                    set_prop(
-                        &inst,
-                        "login-status",
-                        Value::String(SharedString::from(Status::OpeningBrowser.as_str())),
-                    );
-                    set_prop(&inst, "login-error", Value::String(SharedString::default()));
-                }
-
-                send_command(&tx, UiCommand::LoginOAuth);
-                Value::Void
-            })
-            .map_err(|e| AppError::Ui(format!("{e:?}")))?;
+        bind(&self.instance, callback::LOGIN_OAUTH, move |_args| {
+            let inst = weak.upgrade();
+            router::login_oauth(props(inst.as_ref()), &tx);
+            Value::Void
+        })?;
 
         let tx = cmd_tx.clone();
-        self.instance
-            .set_callback("cancel-oauth", move |_args: &[Value]| -> Value {
-                send_command(&tx, UiCommand::CancelOAuth);
-                Value::Void
-            })
-            .map_err(|e| AppError::Ui(format!("{e:?}")))?;
+        bind(&self.instance, callback::CANCEL_OAUTH, move |_args| {
+            router::cancel_oauth(&tx);
+            Value::Void
+        })?;
 
         let tx = cmd_tx.clone();
-        self.instance
-            .set_callback("select-room", move |args: &[Value]| -> Value {
-                let room_id = args
-                    .first()
-                    .and_then(|v| match v {
-                        Value::String(s) => Some(s.to_string()),
-                        _ => None,
-                    })
-                    .unwrap_or_default();
-
-                send_command(&tx, UiCommand::SelectRoom(RoomId::new(room_id)));
-                Value::Void
-            })
-            .map_err(|e| AppError::Ui(format!("{e:?}")))?;
+        bind(&self.instance, callback::SELECT_ROOM, move |args| {
+            router::select_room(&tx, string_arg(args, 0));
+            Value::Void
+        })?;
 
         let tx = cmd_tx.clone();
-        self.instance
-            .set_callback("select-space", move |args: &[Value]| -> Value {
-                let space_id = args
-                    .first()
-                    .and_then(|v| match v {
-                        Value::String(s) => Some(s.to_string()),
-                        _ => None,
-                    })
-                    .unwrap_or_default();
-                let selected = if space_id.is_empty() {
-                    None
-                } else {
-                    Some(RoomId::new(space_id))
-                };
-                send_command(&tx, UiCommand::SelectSpace(selected));
-                Value::Void
-            })
-            .map_err(|e| AppError::Ui(format!("{e:?}")))?;
+        bind(&self.instance, callback::SELECT_SPACE, move |args| {
+            router::select_space(&tx, string_arg(args, 0));
+            Value::Void
+        })?;
 
         let tx = cmd_tx.clone();
-        self.instance
-            .set_callback("select-subspace", move |args: &[Value]| -> Value {
-                let space_id = string_arg(args, 0);
-                let selected = if space_id.is_empty() {
-                    None
-                } else {
-                    Some(RoomId::new(space_id))
-                };
-                send_command(&tx, UiCommand::SelectSubspace(selected));
-                Value::Void
-            })
-            .map_err(|e| AppError::Ui(format!("{e:?}")))?;
+        bind(&self.instance, callback::SELECT_SUBSPACE, move |args| {
+            router::select_subspace(&tx, string_arg(args, 0));
+            Value::Void
+        })?;
 
         let tx = cmd_tx.clone();
-        self.instance
-            .set_callback("move-space", move |args: &[Value]| -> Value {
-                let index = |i: usize| -> Option<usize> {
-                    match args.get(i) {
-                        Some(Value::Number(n))
-                            if n.is_finite()
-                                && n.fract() == 0.0
-                                && *n >= 0.0
-                                && *n <= u32::MAX.into() =>
-                        {
-                            n.to_string().parse().ok()
-                        }
-                        _ => None,
-                    }
-                };
-                if let (Some(from), Some(to)) = (index(0), index(1))
-                    && from != to
-                {
+        bind(&self.instance, callback::MOVE_SPACE, move |args| {
+            if let (Some(from), Some(to)) = (usize_arg(args, 0), usize_arg(args, 1)) {
+                router::move_space(&tx, from, to, |from, to| {
                     SPACES_MODEL.with(|cell| {
-                        if let Some(model) = cell.borrow().as_ref()
-                            && from < model.row_count()
-                            && to < model.row_count()
-                        {
-                            let entry = model.remove(from);
-                            model.insert(to, entry);
+                        if let Some(model) = cell.borrow().as_ref() {
+                            reorder_rows(model, from, to);
                         }
                     });
-                    send_command(&tx, UiCommand::MoveSpace { from, to });
-                }
-                Value::Void
-            })
-            .map_err(|e| AppError::Ui(format!("{e:?}")))?;
+                });
+            }
+            Value::Void
+        })?;
 
         let tx = cmd_tx.clone();
-        self.instance
-            .set_callback("logout", move |_args: &[Value]| -> Value {
-                send_command(&tx, UiCommand::Logout);
-                Value::Void
-            })
-            .map_err(|e| AppError::Ui(format!("{e:?}")))?;
+        bind(&self.instance, callback::LOGOUT, move |_args| {
+            router::logout(&tx);
+            Value::Void
+        })?;
 
         let tx = cmd_tx.clone();
-        self.instance
-            .set_callback("send-message", move |args: &[Value]| -> Value {
-                let Some(Value::Struct(s)) = args.first() else {
-                    return Value::Void;
-                };
-                let field = |name: &str| -> String {
-                    s.get_field(name)
-                        .and_then(|v| match v {
-                            Value::String(s) => Some(s.to_string()),
-                            _ => None,
-                        })
-                        .unwrap_or_default()
-                };
-                let room_id = field("room-id");
-                let body = field("body");
-                let reply_to = field("reply-to");
-                if !room_id.is_empty() && !body.is_empty() {
-                    send_command(
-                        &tx,
-                        UiCommand::SendMessage {
-                            room_id: RoomId::new(room_id),
-                            body,
-                            reply_to: (!reply_to.is_empty()).then_some(reply_to),
-                        },
-                    );
-                }
-                Value::Void
-            })
-            .map_err(|e| AppError::Ui(format!("{e:?}")))?;
+        bind(&self.instance, callback::SEND_MESSAGE, move |args| {
+            let Some(s) = struct_arg(args, 0) else {
+                return Value::Void;
+            };
+            router::send_message(
+                &tx,
+                field(s, send_message_request::ROOM_ID),
+                field(s, send_message_request::BODY),
+                field(s, send_message_request::REPLY_TO),
+            );
+            Value::Void
+        })?;
 
         let tx = cmd_tx.clone();
-        self.instance
-            .set_callback("accept-verification", move |_args: &[Value]| -> Value {
-                send_command(&tx, UiCommand::AcceptVerification);
+        bind(
+            &self.instance,
+            callback::ACCEPT_VERIFICATION,
+            move |_args| {
+                router::accept_verification(&tx);
                 Value::Void
-            })
-            .map_err(|e| AppError::Ui(format!("{e:?}")))?;
+            },
+        )?;
 
         let tx = cmd_tx.clone();
-        self.instance
-            .set_callback("confirm-verification", move |_args: &[Value]| -> Value {
-                send_command(&tx, UiCommand::ConfirmVerification);
+        bind(
+            &self.instance,
+            callback::CONFIRM_VERIFICATION,
+            move |_args| {
+                router::confirm_verification(&tx);
                 Value::Void
-            })
-            .map_err(|e| AppError::Ui(format!("{e:?}")))?;
+            },
+        )?;
 
         let tx = cmd_tx.clone();
-        self.instance
-            .set_callback("reject-verification", move |_args: &[Value]| -> Value {
-                send_command(&tx, UiCommand::RejectVerification);
+        bind(
+            &self.instance,
+            callback::REJECT_VERIFICATION,
+            move |_args| {
+                router::reject_verification(&tx);
                 Value::Void
-            })
-            .map_err(|e| AppError::Ui(format!("{e:?}")))?;
+            },
+        )?;
 
         let tx = cmd_tx.clone();
-        self.instance
-            .set_callback("open-media", move |args: &[Value]| -> Value {
-                let event_id = args
-                    .first()
-                    .and_then(|v| match v {
-                        Value::String(s) => Some(s.to_string()),
-                        _ => None,
-                    })
-                    .unwrap_or_default();
-                if !event_id.is_empty() {
-                    send_command(&tx, UiCommand::OpenMedia { event_id });
-                }
-                Value::Void
-            })
-            .map_err(|e| AppError::Ui(format!("{e:?}")))?;
+        bind(&self.instance, callback::OPEN_MEDIA, move |args| {
+            router::open_media(&tx, string_arg(args, 0));
+            Value::Void
+        })?;
 
         let tx = cmd_tx.clone();
-        self.instance
-            .set_callback("save-file", move |args: &[Value]| -> Value {
-                let Some(Value::Struct(s)) = args.first() else {
-                    return Value::Void;
-                };
-                let field = |name: &str| -> String {
-                    s.get_field(name)
-                        .and_then(|v| match v {
-                            Value::String(s) => Some(s.to_string()),
-                            _ => None,
-                        })
-                        .unwrap_or_default()
-                };
-                let event_id = field("event-id");
-                let filename = field("filename");
-                if !event_id.is_empty() {
-                    send_command(&tx, UiCommand::SaveFile { event_id, filename });
-                }
-                Value::Void
-            })
-            .map_err(|e| AppError::Ui(format!("{e:?}")))?;
+        bind(&self.instance, callback::SAVE_FILE, move |args| {
+            let Some(s) = struct_arg(args, 0) else {
+                return Value::Void;
+            };
+            router::save_file(
+                &tx,
+                field(s, save_file_request::EVENT_ID),
+                field(s, save_file_request::FILENAME),
+            );
+            Value::Void
+        })?;
 
         let scroll_tx = scroll_tx.clone();
         let weak = self.instance.as_weak();
-        self.instance
-            .set_callback("scroll-position-changed", move |args: &[Value]| -> Value {
-                let Some((room_id, generation)) = selected_room_key(&weak) else {
-                    return Value::Void;
-                };
-                let update = ViewportChanged {
-                    room_id,
-                    generation,
-                    at_top: bool_arg(args, 0),
-                    at_bottom: bool_arg(args, 1),
-                };
-                if scroll_tx.send(update).is_err() {
-                    tracing::debug!("scroll position receiver closed");
-                }
+        bind(
+            &self.instance,
+            callback::SCROLL_POSITION_CHANGED,
+            move |args| {
+                router::scroll_position(
+                    &scroll_tx,
+                    selected_room_key(&weak),
+                    bool_arg(args, 0),
+                    bool_arg(args, 1),
+                );
                 Value::Void
-            })
-            .map_err(|e| AppError::Ui(format!("{e:?}")))?;
+            },
+        )?;
 
         let tx = cmd_tx.clone();
         let weak = self.instance.as_weak();
-        self.instance
-            .set_callback("paginate-backwards", move |_args: &[Value]| -> Value {
-                if let Some((room_id, generation)) = selected_room_key(&weak) {
-                    send_command(
-                        &tx,
-                        UiCommand::PaginateBackwards {
-                            room_id,
-                            generation,
-                        },
-                    );
-                }
-                Value::Void
-            })
-            .map_err(|e| AppError::Ui(format!("{e:?}")))?;
+        bind(&self.instance, callback::PAGINATE_BACKWARDS, move |_args| {
+            router::paginate_backwards(&tx, selected_room_key(&weak));
+            Value::Void
+        })?;
 
         let tx = cmd_tx.clone();
         let weak = self.instance.as_weak();
-        self.instance
-            .set_callback("paginate-forwards", move |_args: &[Value]| -> Value {
-                if let Some((room_id, generation)) = selected_room_key(&weak) {
-                    send_command(
-                        &tx,
-                        UiCommand::PaginateForwards {
-                            room_id,
-                            generation,
-                        },
-                    );
-                }
-                Value::Void
-            })
-            .map_err(|e| AppError::Ui(format!("{e:?}")))?;
+        bind(&self.instance, callback::PAGINATE_FORWARDS, move |_args| {
+            router::paginate_forwards(&tx, selected_room_key(&weak));
+            Value::Void
+        })?;
 
         let tx = cmd_tx.clone();
         let weak = self.instance.as_weak();
-        self.instance
-            .set_callback("jump-to-latest", move |_args: &[Value]| -> Value {
-                if let Some((room_id, generation)) = selected_room_key(&weak) {
-                    send_command(
-                        &tx,
-                        UiCommand::JumpToLatest {
-                            room_id,
-                            generation,
-                        },
-                    );
-                }
-                Value::Void
-            })
-            .map_err(|e| AppError::Ui(format!("{e:?}")))?;
+        bind(&self.instance, callback::JUMP_TO_LATEST, move |_args| {
+            router::jump_to_latest(&tx, selected_room_key(&weak));
+            Value::Void
+        })?;
 
         let tx = cmd_tx.clone();
-        self.instance
-            .set_callback("retry-timeline", move |_args: &[Value]| -> Value {
-                send_command(&tx, UiCommand::RetryTimeline);
-                Value::Void
-            })
-            .map_err(|e| AppError::Ui(format!("{e:?}")))?;
+        bind(&self.instance, callback::RETRY_TIMELINE, move |_args| {
+            router::retry_timeline(&tx);
+            Value::Void
+        })?;
 
         Ok(())
     }
@@ -541,12 +408,12 @@ impl SlintUiAdapter {
     #[allow(clippy::too_many_arguments, clippy::too_many_lines)]
     pub fn spawn_event_handler(
         &self,
-        mut ui_rx: mpsc::Receiver<UiEvent>,
-        mut rooms_rx: watch::Receiver<Arc<[Room]>>,
-        mut spaces_rx: watch::Receiver<Arc<[Space]>>,
-        mut subspaces_rx: watch::Receiver<Arc<[Space]>>,
-        mut connection_rx: watch::Receiver<ConnectionStatus>,
-        mut status_rx: watch::Receiver<String>,
+        ui_rx: mpsc::Receiver<UiEvent>,
+        rooms_rx: watch::Receiver<Arc<[Room]>>,
+        spaces_rx: watch::Receiver<Arc<[Space]>>,
+        subspaces_rx: watch::Receiver<Arc<[Space]>>,
+        connection_rx: watch::Receiver<ConnectionStatus>,
+        status_rx: watch::Receiver<String>,
         media_cache: Arc<dyn MediaCache>,
     ) {
         let weak = self.instance.as_weak();
@@ -557,22 +424,22 @@ impl SlintUiAdapter {
 
         set_prop(
             &self.instance,
-            "timeline",
+            prop::TIMELINE,
             Value::Model(ModelRc::from(Rc::clone(&timeline_model))),
         );
         set_prop(
             &self.instance,
-            "rooms",
+            prop::ROOMS,
             Value::Model(ModelRc::from(Rc::clone(&rooms_model))),
         );
         set_prop(
             &self.instance,
-            "spaces",
+            prop::SPACES,
             Value::Model(ModelRc::from(Rc::clone(&spaces_model))),
         );
         set_prop(
             &self.instance,
-            "subspaces",
+            prop::SUBSPACES,
             Value::Model(ModelRc::from(Rc::clone(&subspaces_model))),
         );
 
@@ -585,7 +452,7 @@ impl SlintUiAdapter {
             if let Some(timeline) = TIMELINE_MODEL.with(|cell| cell.borrow().clone()) {
                 advance_animations(&timeline, &entry_id_from_value, &|value, frame| {
                     if let Value::Struct(entry) = value {
-                        entry.set_field("thumbnail".to_string(), Value::Image(frame));
+                        entry.set_field(message::THUMBNAIL.to_string(), Value::Image(frame));
                     }
                 });
             }
@@ -611,65 +478,16 @@ impl SlintUiAdapter {
             }
         });
 
-        tokio::spawn(async move {
-            let sem = Arc::new(Semaphore::new(SLINT_INFLIGHT));
-            let mut rooms_done = false;
-            let mut spaces_done = false;
-            let mut subspaces_done = false;
-            let mut connection_done = false;
-            let mut status_done = false;
-            loop {
-                let Ok(permit) = Arc::clone(&sem).acquire_owned().await else {
-                    break;
-                };
-                tokio::select! {
-                    maybe = ui_rx.recv() => {
-                        let Some(event) = maybe else { break };
-                        post_ui_event(&weak, Arc::clone(&media_cache), event, permit);
-                    }
-                    changed = rooms_rx.changed(), if !rooms_done => {
-                        if changed.is_err() {
-                            rooms_done = true;
-                        } else {
-                            let rooms = rooms_rx.borrow_and_update().clone();
-                            post_ui_event(&weak, Arc::clone(&media_cache), UiEvent::Rooms(rooms), permit);
-                        }
-                    }
-                    changed = spaces_rx.changed(), if !spaces_done => {
-                        if changed.is_err() {
-                            spaces_done = true;
-                        } else {
-                            let spaces = spaces_rx.borrow_and_update().clone();
-                            post_ui_event(&weak, Arc::clone(&media_cache), UiEvent::Spaces(spaces), permit);
-                        }
-                    }
-                    changed = subspaces_rx.changed(), if !subspaces_done => {
-                        if changed.is_err() {
-                            subspaces_done = true;
-                        } else {
-                            let subspaces = subspaces_rx.borrow_and_update().clone();
-                            post_ui_event(&weak, Arc::clone(&media_cache), UiEvent::Subspaces(subspaces), permit);
-                        }
-                    }
-                    changed = connection_rx.changed(), if !connection_done => {
-                        if changed.is_err() {
-                            connection_done = true;
-                        } else {
-                            let status = connection_rx.borrow_and_update().clone();
-                            post_ui_event(&weak, Arc::clone(&media_cache), UiEvent::ConnectionStatus(status), permit);
-                        }
-                    }
-                    changed = status_rx.changed(), if !status_done => {
-                        if changed.is_err() {
-                            status_done = true;
-                        } else {
-                            let message = status_rx.borrow_and_update().clone();
-                            post_ui_event(&weak, Arc::clone(&media_cache), UiEvent::Status(message), permit);
-                        }
-                    }
-                }
-            }
-        });
+        spawn_event_multiplexer(
+            ui_rx,
+            rooms_rx,
+            spaces_rx,
+            subspaces_rx,
+            connection_rx,
+            status_rx,
+            media_cache,
+            move |event, media, permit| post_ui_event(&weak, media, event, permit),
+        );
     }
 
     pub fn run(&self) -> Result<()> {
@@ -727,15 +545,15 @@ fn emoji_entry_to_value(e: &emoji::EmojiEntry) -> Value {
 
     Value::Struct(Struct::from_iter([
         (
-            "base".to_string(),
+            emoji_entry::BASE.to_string(),
             Value::String(SharedString::from(&e.base)),
         ),
         (
-            "tones".to_string(),
+            emoji_entry::TONES.to_string(),
             Value::Model(ModelRc::new(VecModel::from(tones))),
         ),
         (
-            "name".to_string(),
+            emoji_entry::NAME.to_string(),
             Value::String(SharedString::from(&e.name)),
         ),
     ]))
@@ -747,7 +565,7 @@ fn emoji_groups_to_value() -> Value {
         .map(|items| {
             let entries: Vec<Value> = items.iter().map(emoji_entry_to_value).collect();
             Value::Struct(Struct::from_iter([(
-                "items".to_string(),
+                emoji_group::ITEMS.to_string(),
                 Value::Model(ModelRc::new(VecModel::from(entries))),
             )]))
         })
@@ -765,136 +583,140 @@ fn emoji_search_results_to_value(query: &str) -> Value {
 }
 
 fn setup_emoji_store(inst: &ComponentInstance) -> Result<()> {
-    set_global_prop(inst, "EmojiStore", "groups", emoji_groups_to_value())?;
+    set_global_prop(
+        inst,
+        emoji_store::NAME,
+        emoji_store::GROUPS,
+        emoji_groups_to_value(),
+    )?;
 
     let weak = inst.as_weak();
-    inst.set_global_callback("EmojiStore", "search", move |args: &[Value]| -> Value {
-        if let Some(inst) = weak.upgrade()
-            && let Err(e) = inst.set_global_property(
-                "EmojiStore",
-                "results",
-                emoji_search_results_to_value(&string_arg(args, 0)),
-            )
-        {
-            tracing::warn!("failed to set EmojiStore.results: {e:?}");
-        }
-        Value::Void
-    })
+    inst.set_global_callback(
+        emoji_store::NAME,
+        emoji_store::SEARCH,
+        move |args: &[Value]| {
+            if let Some(inst) = weak.upgrade()
+                && let Err(e) = inst.set_global_property(
+                    emoji_store::NAME,
+                    emoji_store::RESULTS,
+                    emoji_search_results_to_value(&string_arg(args, 0)),
+                )
+            {
+                tracing::warn!("failed to set EmojiStore.results: {e:?}");
+            }
+            Value::Void
+        },
+    )
     .map_err(|e| AppError::Ui(format!("{e:?}")))?;
 
-    inst.set_global_callback("EmojiStore", "insert", move |args: &[Value]| -> Value {
-        let text = string_arg(args, 0);
-        let offset = args
-            .get(1)
-            .and_then(|v| match v {
-                Value::Number(n)
-                    if n.is_finite()
-                        && n.fract() == 0.0
-                        && *n >= f64::from(i32::MIN)
-                        && *n <= f64::from(i32::MAX) =>
-                {
-                    n.to_string().parse().ok()
-                }
-                _ => None,
-            })
-            .unwrap_or_default();
-        let glyph = string_arg(args, 2);
-        let (inserted, caret) = emoji::insert_at(&text, offset, &glyph);
-        Value::Struct(Struct::from_iter([
-            (
-                "text".to_string(),
-                Value::String(SharedString::from(inserted)),
-            ),
-            ("caret".to_string(), Value::Number(f64::from(caret))),
-        ]))
-    })
+    inst.set_global_callback(
+        emoji_store::NAME,
+        emoji_store::INSERT,
+        move |args: &[Value]| {
+            let text = string_arg(args, 0);
+            let offset = args
+                .get(1)
+                .and_then(|v| match v {
+                    Value::Number(n)
+                        if n.is_finite()
+                            && n.fract() == 0.0
+                            && *n >= f64::from(i32::MIN)
+                            && *n <= f64::from(i32::MAX) =>
+                    {
+                        n.to_string().parse().ok()
+                    }
+                    _ => None,
+                })
+                .unwrap_or_default();
+            let glyph = string_arg(args, 2);
+            let (inserted, caret) = emoji::insert_at(&text, offset, &glyph);
+            Value::Struct(Struct::from_iter([
+                (
+                    emoji_insert::TEXT.to_string(),
+                    Value::String(SharedString::from(inserted)),
+                ),
+                (
+                    emoji_insert::CARET.to_string(),
+                    Value::Number(f64::from(caret)),
+                ),
+            ]))
+        },
+    )
     .map_err(|e| AppError::Ui(format!("{e:?}")))?;
 
     Ok(())
 }
 
+fn num(value: i32) -> Value {
+    Value::Number(f64::from(value))
+}
+
+fn string_list(items: Vec<SharedString>) -> Value {
+    let values: Vec<Value> = items.into_iter().map(Value::String).collect();
+    Value::Model(ModelRc::new(VecModel::from(values)))
+}
+
 fn message_to_value(m: &TimelineMessage, media: &dyn MediaCache) -> Value {
+    let d = message_to_dto(m, media);
     let mut fields = vec![
+        (message::UNIQUE_ID.to_string(), Value::String(d.unique_id)),
+        (message::SENDER.to_string(), Value::String(d.sender)),
+        (message::PRONOUNS.to_string(), string_list(d.pronouns)),
+        (message::BODY.to_string(), Value::String(d.body)),
+        (message::TIMESTAMP.to_string(), Value::String(d.timestamp)),
         (
-            "unique-id".to_string(),
-            Value::String(SharedString::from(&m.unique_id)),
+            message::MESSAGE_TYPE.to_string(),
+            Value::String(d.message_type),
         ),
         (
-            "sender".to_string(),
-            Value::String(SharedString::from(message_sender_label(m))),
+            message::PREVIEW_KIND.to_string(),
+            Value::String(d.preview_kind),
         ),
         (
-            "body".to_string(),
-            Value::String(SharedString::from(message_body_text(&m.body))),
+            message::UNSUPPORTED_KIND.to_string(),
+            Value::String(d.unsupported_kind),
+        ),
+        (message::EVENT_ID.to_string(), Value::String(d.event_id)),
+        (
+            message::SENDER_INITIAL.to_string(),
+            Value::String(d.sender_initial),
+        ),
+        (message::COLOR_INDEX.to_string(), num(d.color_index)),
+        (message::IS_OWN.to_string(), Value::Bool(d.is_own)),
+        (message::EDITED.to_string(), Value::Bool(d.edited)),
+        (message::HAS_REPLY.to_string(), Value::Bool(d.has_reply)),
+        (
+            message::REPLY_SENDER.to_string(),
+            Value::String(d.reply_sender),
+        ),
+        (message::REPLY_KIND.to_string(), Value::String(d.reply_kind)),
+        (message::REPLY_BODY.to_string(), Value::String(d.reply_body)),
+        (
+            message::SERVICE_KIND.to_string(),
+            Value::String(d.service_kind),
         ),
         (
-            "timestamp".to_string(),
-            Value::String(SharedString::from(&message_timestamp_label(m.timestamp))),
+            message::SERVICE_TARGET.to_string(),
+            Value::String(d.service_target),
         ),
         (
-            "message-type".to_string(),
-            Value::String(SharedString::from(message_type_token(&m.body))),
+            message::HAS_THUMBNAIL.to_string(),
+            Value::Bool(d.has_thumbnail),
         ),
         (
-            "preview-kind".to_string(),
-            Value::String(SharedString::from(message_preview_kind_token(
-                m.body.preview_kind(),
-            ))),
+            message::MEDIA_FAILED.to_string(),
+            Value::Bool(d.media_failed),
         ),
-        (
-            "unsupported-kind".to_string(),
-            Value::String(SharedString::from(unsupported_kind(&m.body))),
-        ),
-        (
-            "event-id".to_string(),
-            Value::String(SharedString::from(
-                m.event_id.as_ref().map_or("", |e| e.0.as_str()),
-            )),
-        ),
+        (message::IMAGE_WIDTH.to_string(), num(d.image_width)),
+        (message::IMAGE_HEIGHT.to_string(), num(d.image_height)),
+        (message::HAS_AVATAR.to_string(), Value::Bool(d.has_avatar)),
     ];
-
-    fields.extend(image_fields(m, media));
-
-    let mut has_avatar = false;
-    if let Some(avatar_path) = media.avatar_path(&m.sender)
-        && let Some(img) = load_avatar_async(&avatar_path, AvatarSlot::Message(m.unique_id.clone()))
-    {
-        fields.push(("avatar".to_string(), Value::Image(img)));
-        has_avatar = true;
+    if let Some(img) = d.thumbnail {
+        fields.push((message::THUMBNAIL.to_string(), Value::Image(img)));
     }
-    fields.push(("has-avatar".to_string(), Value::Bool(has_avatar)));
-    fields.push((
-        "sender-initial".to_string(),
-        Value::String(SharedString::from(avatar_initials(message_sender_label(m)))),
-    ));
-    fields.push((
-        "color-index".to_string(),
-        Value::Number(f64::from(avatar_color_index(&m.sender))),
-    ));
-    let pronouns: Vec<Value> = pronoun_labels(&m.sender_pronouns)
-        .into_iter()
-        .map(|set| Value::String(SharedString::from(set)))
-        .collect();
-    fields.push((
-        "pronouns".to_string(),
-        Value::Model(ModelRc::new(VecModel::from(pronouns))),
-    ));
-    fields.push(("is-own".to_string(), Value::Bool(m.is_own)));
-    fields.push(("edited".to_string(), Value::Bool(m.edited)));
-    fields.extend(reply_fields(m));
-    fields.push((
-        "service-kind".to_string(),
-        Value::String(SharedString::from(
-            m.body.service().map_or("", service_kind_token),
-        )),
-    ));
-    fields.push((
-        "service-target".to_string(),
-        Value::String(SharedString::from(
-            m.body.service().map_or("", service_target),
-        )),
-    ));
-
+    if let Some(img) = d.avatar {
+        fields.push((message::AVATAR.to_string(), Value::Image(img)));
+    }
     Value::Struct(Struct::from_iter(fields))
 }
 
@@ -909,12 +731,12 @@ fn apply_thumbnail_ready(unique_id: &str, image: Option<&slint::Image>) {
             if let Value::Struct(entry) = value {
                 match image {
                     Some(img) => {
-                        entry.set_field("thumbnail".to_string(), Value::Image(img.clone()));
-                        entry.set_field("has-thumbnail".to_string(), Value::Bool(true));
-                        entry.set_field("media-failed".to_string(), Value::Bool(false));
+                        entry.set_field(message::THUMBNAIL.to_string(), Value::Image(img.clone()));
+                        entry.set_field(message::HAS_THUMBNAIL.to_string(), Value::Bool(true));
+                        entry.set_field(message::MEDIA_FAILED.to_string(), Value::Bool(false));
                     }
                     None => {
-                        entry.set_field("media-failed".to_string(), Value::Bool(true));
+                        entry.set_field(message::MEDIA_FAILED.to_string(), Value::Bool(true));
                     }
                 }
             }
@@ -924,13 +746,15 @@ fn apply_thumbnail_ready(unique_id: &str, image: Option<&slint::Image>) {
 
 fn set_avatar_on_rows(
     model: &VecModel<Value>,
+    avatar_field: &str,
+    has_avatar_field: &str,
     matches: impl Fn(&Value) -> bool,
     image: &slint::Image,
 ) {
     patch_rows(model, matches, |value: &mut Value| {
         if let Value::Struct(entry) = value {
-            entry.set_field("avatar".to_string(), Value::Image(image.clone()));
-            entry.set_field("has-avatar".to_string(), Value::Bool(true));
+            entry.set_field(avatar_field.to_string(), Value::Image(image.clone()));
+            entry.set_field(has_avatar_field.to_string(), Value::Bool(true));
         }
     });
 }
@@ -949,6 +773,8 @@ fn apply_avatar_ready(
                 if let Some(model) = TIMELINE_MODEL.with(|cell| cell.borrow().clone()) {
                     set_avatar_on_rows(
                         &model,
+                        message::AVATAR,
+                        message::HAS_AVATAR,
                         |v| entry_id_from_value(v) == unique_id.as_str(),
                         image,
                     );
@@ -958,6 +784,8 @@ fn apply_avatar_ready(
                 if let Some(model) = ROOMS_MODEL.with(|cell| cell.borrow().clone()) {
                     set_avatar_on_rows(
                         &model,
+                        room::AVATAR,
+                        room::HAS_AVATAR,
                         |v| room_id_from_value(v).is_some_and(|rid| rid.as_str() == id.as_str()),
                         image,
                     );
@@ -968,6 +796,8 @@ fn apply_avatar_ready(
                     if let Some(model) = cell.with(|slot| slot.borrow().clone()) {
                         set_avatar_on_rows(
                             &model,
+                            space::AVATAR,
+                            space::HAS_AVATAR,
                             |v| {
                                 room_id_from_value(v).is_some_and(|rid| rid.as_str() == id.as_str())
                             },
@@ -978,8 +808,8 @@ fn apply_avatar_ready(
             }
             AvatarSlot::User => {
                 if let Some(inst) = weak.upgrade() {
-                    set_prop(&inst, "user-avatar", Value::Image(image.clone()));
-                    set_prop(&inst, "user-has-avatar", Value::Bool(true));
+                    set_prop(&inst, prop::USER_AVATAR, Value::Image(image.clone()));
+                    set_prop(&inst, prop::USER_HAS_AVATAR, Value::Bool(true));
                 }
             }
         }
@@ -990,231 +820,96 @@ fn enrich_value(value: &mut Value, delta: &EnrichmentDelta, media: &dyn MediaCac
     let Value::Struct(entry) = value else {
         return;
     };
-
-    match delta.thumbnail {
-        ThumbnailOutcome::Ready => {
-            if let Some(event_id) = delta.event_id.as_ref()
-                && let Some(thumb_path) = media.thumbnail_path(&event_id.0)
-                && let Some(img) = load_thumbnail(&thumb_path, &delta.unique_id)
-            {
-                entry.set_field("thumbnail".to_string(), Value::Image(img));
-                entry.set_field("has-thumbnail".to_string(), Value::Bool(true));
-                entry.set_field("media-failed".to_string(), Value::Bool(false));
-            }
+    let update = enrich_to_update(delta, media);
+    match update.thumbnail {
+        ThumbUpdate::Ready(img) => {
+            entry.set_field(message::THUMBNAIL.to_string(), Value::Image(img));
+            entry.set_field(message::HAS_THUMBNAIL.to_string(), Value::Bool(true));
+            entry.set_field(message::MEDIA_FAILED.to_string(), Value::Bool(false));
         }
-        ThumbnailOutcome::Failed => {
-            entry.set_field("media-failed".to_string(), Value::Bool(true));
+        ThumbUpdate::Failed => {
+            entry.set_field(message::MEDIA_FAILED.to_string(), Value::Bool(true));
         }
-        ThumbnailOutcome::Unchanged => {}
+        ThumbUpdate::Unchanged => {}
     }
-
-    if delta.avatar_ready
-        && let Some(avatar_path) = media.avatar_path(&delta.sender)
-        && let Some(img) =
-            load_avatar_async(&avatar_path, AvatarSlot::Message(delta.unique_id.clone()))
-    {
-        entry.set_field("avatar".to_string(), Value::Image(img));
-        entry.set_field("has-avatar".to_string(), Value::Bool(true));
+    if let Some(img) = update.avatar {
+        entry.set_field(message::AVATAR.to_string(), Value::Image(img));
+        entry.set_field(message::HAS_AVATAR.to_string(), Value::Bool(true));
     }
-
-    if let Some(pronouns) = &delta.pronouns {
-        let labels: Vec<Value> = pronoun_labels(pronouns)
-            .into_iter()
-            .map(|set| Value::String(SharedString::from(set)))
-            .collect();
-        entry.set_field(
-            "pronouns".to_string(),
-            Value::Model(ModelRc::new(VecModel::from(labels))),
-        );
+    if let Some(pronouns) = update.pronouns {
+        entry.set_field(message::PRONOUNS.to_string(), string_list(pronouns));
     }
-}
-
-fn image_fields(m: &TimelineMessage, media: &dyn MediaCache) -> Vec<(String, Value)> {
-    let mut has_thumbnail = false;
-    let mut media_failed = false;
-    let mut image_width: i32 = 0;
-    let mut image_height: i32 = 0;
-    let mut thumbnail = None;
-    if let MessageBody::Image { meta, .. } = &m.body {
-        image_width = meta.width.unwrap_or(0).cast_signed();
-        image_height = meta.height.unwrap_or(0).cast_signed();
-        if let Some(event_id) = m.event_id.as_ref() {
-            if let Some(thumb_path) = media.thumbnail_path(&event_id.0) {
-                if let Some(img) = load_thumbnail(&thumb_path, &m.unique_id) {
-                    thumbnail = Some(img);
-                    has_thumbnail = true;
-                }
-            } else {
-                media_failed = media.thumbnail_failed(&event_id.0);
-            }
-        }
-    }
-
-    let mut fields = vec![
-        ("has-thumbnail".to_string(), Value::Bool(has_thumbnail)),
-        ("media-failed".to_string(), Value::Bool(media_failed)),
-        (
-            "image-width".to_string(),
-            Value::Number(f64::from(image_width)),
-        ),
-        (
-            "image-height".to_string(),
-            Value::Number(f64::from(image_height)),
-        ),
-    ];
-    if let Some(img) = thumbnail {
-        fields.push(("thumbnail".to_string(), Value::Image(img)));
-    }
-    fields
-}
-
-fn reply_fields(m: &TimelineMessage) -> Vec<(String, Value)> {
-    vec![
-        ("has-reply".to_string(), Value::Bool(m.reply.is_some())),
-        (
-            "reply-sender".to_string(),
-            Value::String(SharedString::from(
-                m.reply.as_ref().map_or("", |r| r.sender.as_str()),
-            )),
-        ),
-        (
-            "reply-kind".to_string(),
-            Value::String(SharedString::from(
-                m.reply
-                    .as_ref()
-                    .map_or("", |r| message_preview_kind_token(r.kind)),
-            )),
-        ),
-        (
-            "reply-body".to_string(),
-            Value::String(SharedString::from(
-                m.reply.as_ref().map_or("", |r| r.body.as_str()),
-            )),
-        ),
-    ]
 }
 
 fn room_to_value(r: &Room, media: &dyn MediaCache) -> Value {
+    let d = room_to_dto(r, media);
     let mut fields = vec![
+        (room::ID.to_string(), Value::String(d.id)),
+        (room::NAME.to_string(), Value::String(d.name)),
+        (room::INITIAL.to_string(), Value::String(d.initial)),
+        (room::COLOR_INDEX.to_string(), num(d.color_index)),
+        (room::MEMBERS.to_string(), num(d.members)),
+        (room::UNREAD.to_string(), num(d.unread)),
+        (room::MENTIONS.to_string(), num(d.mentions)),
         (
-            "id".to_string(),
-            Value::String(SharedString::from(r.id.as_ref())),
+            room::LAST_MESSAGE_SENDER.to_string(),
+            Value::String(d.last_message_sender),
         ),
         (
-            "name".to_string(),
-            Value::String(SharedString::from(&r.display_name)),
+            room::LAST_MESSAGE_KIND.to_string(),
+            Value::String(d.last_message_kind),
         ),
         (
-            "initial".to_string(),
-            Value::String(SharedString::from(avatar_initials(&r.display_name))),
+            room::LAST_MESSAGE_BODY.to_string(),
+            Value::String(d.last_message_body),
         ),
         (
-            "color-index".to_string(),
-            Value::Number(f64::from(avatar_color_index(r.id.as_ref()))),
-        ),
-        #[allow(clippy::cast_precision_loss)]
-        (
-            "members".to_string(),
-            Value::Number(if r.is_direct { 0 } else { r.member_count } as f64),
-        ),
-        #[allow(clippy::cast_precision_loss)]
-        ("unread".to_string(), Value::Number(r.unread_count as f64)),
-        #[allow(clippy::cast_precision_loss)]
-        (
-            "mentions".to_string(),
-            Value::Number(r.mention_count as f64),
+            room::LAST_MESSAGE_SERVICE_KIND.to_string(),
+            Value::String(d.last_message_service_kind),
         ),
         (
-            "last-message-sender".to_string(),
-            Value::String(SharedString::from(
-                r.last_message_sender.as_deref().unwrap_or_default(),
-            )),
+            room::LAST_MESSAGE_SERVICE_TARGET.to_string(),
+            Value::String(d.last_message_service_target),
         ),
         (
-            "last-message-kind".to_string(),
-            Value::String(SharedString::from(message_preview_kind_token(
-                r.last_message_kind,
-            ))),
+            room::LAST_MESSAGE_IS_OWN.to_string(),
+            Value::Bool(d.last_message_is_own),
         ),
         (
-            "last-message-body".to_string(),
-            Value::String(SharedString::from(&r.last_message_body)),
+            room::LAST_MESSAGE_EDITED.to_string(),
+            Value::Bool(d.last_message_edited),
         ),
         (
-            "last-message-service-kind".to_string(),
-            Value::String(SharedString::from(
-                r.last_message_service
-                    .as_ref()
-                    .map_or("", service_kind_token),
-            )),
+            room::LAST_MESSAGE_TIME.to_string(),
+            Value::String(d.last_message_time),
         ),
-        (
-            "last-message-service-target".to_string(),
-            Value::String(SharedString::from(
-                r.last_message_service.as_ref().map_or("", service_target),
-            )),
-        ),
-        (
-            "last-message-is-own".to_string(),
-            Value::Bool(r.last_message_is_own),
-        ),
-        (
-            "last-message-edited".to_string(),
-            Value::Bool(r.last_message_edited),
-        ),
-        (
-            "last-message-time".to_string(),
-            Value::String(SharedString::from(&room_activity_label(r.last_activity_ts))),
-        ),
+        (room::HAS_AVATAR.to_string(), Value::Bool(d.has_avatar)),
     ];
-
-    let mut has_avatar = false;
-    if let Some(mxc) = &r.avatar_mxc
-        && let Some(avatar_path) = media.room_avatar_path(mxc)
-        && let Some(img) =
-            load_avatar_async(&avatar_path, AvatarSlot::Room(r.id.as_ref().to_owned()))
-    {
-        fields.push(("avatar".to_string(), Value::Image(img)));
-        has_avatar = true;
+    if let Some(img) = d.avatar {
+        fields.push((room::AVATAR.to_string(), Value::Image(img)));
     }
-    fields.push(("has-avatar".to_string(), Value::Bool(has_avatar)));
-
     Value::Struct(Struct::from_iter(fields))
 }
 
 fn space_to_value(s: &Space, media: &dyn MediaCache) -> Value {
+    let d = space_to_dto(s, media);
     let mut fields = vec![
-        ("id".to_string(), Value::String(SharedString::from(&s.id))),
-        (
-            "name".to_string(),
-            Value::String(SharedString::from(&s.name)),
-        ),
-        #[allow(clippy::cast_precision_loss)]
-        ("unread".to_string(), Value::Number(s.unread as f64)),
-        #[allow(clippy::cast_precision_loss)]
-        ("mentions".to_string(), Value::Number(s.mentions as f64)),
-        (
-            "initial".to_string(),
-            Value::String(SharedString::from(sender_initial(&s.name))),
-        ),
+        (space::ID.to_string(), Value::String(d.id)),
+        (space::NAME.to_string(), Value::String(d.name)),
+        (space::UNREAD.to_string(), num(d.unread)),
+        (space::MENTIONS.to_string(), num(d.mentions)),
+        (space::INITIAL.to_string(), Value::String(d.initial)),
+        (space::HAS_AVATAR.to_string(), Value::Bool(d.has_avatar)),
     ];
-
-    let mut has_avatar = false;
-    if let Some(mxc) = &s.avatar_mxc
-        && let Some(avatar_path) = media.space_avatar_path(mxc)
-        && let Some(img) = load_avatar_async(&avatar_path, AvatarSlot::Space(s.id.clone()))
-    {
-        fields.push(("avatar".to_string(), Value::Image(img)));
-        has_avatar = true;
+    if let Some(img) = d.avatar {
+        fields.push((space::AVATAR.to_string(), Value::Image(img)));
     }
-    fields.push(("has-avatar".to_string(), Value::Bool(has_avatar)));
-
     Value::Struct(Struct::from_iter(fields))
 }
 
 fn entry_id_from_value(val: &Value) -> String {
     if let Value::Struct(s) = val
-        && let Some(Value::String(id)) = s.get_field("unique-id")
+        && let Some(Value::String(id)) = s.get_field(message::UNIQUE_ID)
     {
         id.to_string()
     } else {
@@ -1224,7 +919,7 @@ fn entry_id_from_value(val: &Value) -> String {
 
 fn room_id_from_value(val: &Value) -> Option<&SharedString> {
     if let Value::Struct(s) = val
-        && let Some(Value::String(id)) = s.get_field("id")
+        && let Some(Value::String(id)) = s.get_field(room::ID)
     {
         Some(id)
     } else {

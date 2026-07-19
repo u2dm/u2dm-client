@@ -2,26 +2,22 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::Arc;
 
-use slint::{ComponentHandle, Image, Model, ModelRc, SharedString, VecModel};
+use slint::{ComponentHandle, Image, ModelRc, SharedString, VecModel};
 use tokio::runtime::Runtime;
-use tokio::sync::{OwnedSemaphorePermit, Semaphore, mpsc, watch};
+use tokio::sync::{OwnedSemaphorePermit, mpsc, watch};
 
-use super::common::{
-    BoolProp, IntProp, SLINT_INFLIGHT, Status, StringProp, UiProps, avatar_color_index,
-    avatar_initials, dispatch_ui_event, message_body_text, message_preview_kind_token,
-    message_sender_label, message_timestamp_label, message_type_token, pronoun_labels,
-    room_activity_label, send_command, sender_initial, service_kind_token, service_target,
-    unsupported_kind,
-};
+use super::common::{BoolProp, IntProp, StringProp, UiProps, dispatch_ui_event, reorder_rows};
 use super::decode::{
-    AvatarSlot, advance_animations, load_avatar_async, load_thumbnail, patch_rows,
-    set_animation_tick, set_avatar_ready, set_image_ready,
+    AvatarSlot, advance_animations, patch_rows, set_animation_tick, set_avatar_ready,
+    set_image_ready,
 };
-use super::emoji;
+use super::dto::{ThumbUpdate, enrich_to_update, message_to_dto, room_to_dto, space_to_dto};
+use super::multiplex::spawn_event_multiplexer;
+use super::{emoji, router};
 use crate::commands::{UiCommand, UiEvent, ViewportChanged};
 use crate::domain::models::{
-    ConnectionStatus, EnrichmentDelta, LoginCredentials, MessageBody, Room, RoomId, Space,
-    ThumbnailOutcome, TimelineMessage, VerificationEmoji as DomainVerificationEmoji,
+    ConnectionStatus, EnrichmentDelta, LoginCredentials, Room, RoomId, Space, TimelineMessage,
+    VerificationEmoji as DomainVerificationEmoji,
 };
 use crate::error::Result;
 use crate::ports::media::MediaCache;
@@ -144,11 +140,8 @@ impl SlintUiAdapter {
         let tx = cmd_tx.clone();
         let weak = self.window.as_weak();
         self.window.on_check_server(move |homeserver| {
-            if let Some(w) = weak.upgrade() {
-                w.set_login_status(SharedString::from(Status::CheckingServer.as_str()));
-                w.set_login_error(SharedString::default());
-            }
-            send_command(&tx, UiCommand::CheckServer(homeserver.to_string()));
+            let w = weak.upgrade();
+            router::check_server(props(w.as_ref()), &tx, homeserver.to_string());
         });
 
         let tx = cmd_tx.clone();
@@ -159,200 +152,107 @@ impl SlintUiAdapter {
                 username: req.username.to_string(),
                 password: req.password.to_string(),
             };
-            if let Some(w) = weak.upgrade() {
-                w.set_login_status(SharedString::from(Status::LoggingIn.as_str()));
-                w.set_login_error(SharedString::default());
-            }
-            send_command(&tx, UiCommand::LoginPassword(creds));
+            let w = weak.upgrade();
+            router::login_password(props(w.as_ref()), &tx, creds);
         });
 
         let tx = cmd_tx.clone();
         let weak = self.window.as_weak();
         self.window.on_login_oauth(move || {
-            if let Some(w) = weak.upgrade() {
-                w.set_login_status(SharedString::from(Status::OpeningBrowser.as_str()));
-                w.set_login_error(SharedString::default());
-            }
-            send_command(&tx, UiCommand::LoginOAuth);
+            let w = weak.upgrade();
+            router::login_oauth(props(w.as_ref()), &tx);
         });
 
         let tx = cmd_tx.clone();
-        self.window.on_cancel_oauth(move || {
-            send_command(&tx, UiCommand::CancelOAuth);
-        });
+        self.window
+            .on_cancel_oauth(move || router::cancel_oauth(&tx));
 
         let tx = cmd_tx.clone();
-        self.window.on_select_room(move |room_id| {
-            send_command(&tx, UiCommand::SelectRoom(RoomId::new(room_id.to_string())));
-        });
+        self.window
+            .on_select_room(move |room_id| router::select_room(&tx, room_id.to_string()));
 
         let tx = cmd_tx.clone();
-        self.window.on_select_space(move |space_id| {
-            let space_id = space_id.to_string();
-            let selected = if space_id.is_empty() {
-                None
-            } else {
-                Some(RoomId::new(space_id))
-            };
-            send_command(&tx, UiCommand::SelectSpace(selected));
-        });
+        self.window
+            .on_select_space(move |space_id| router::select_space(&tx, space_id.to_string()));
 
         let tx = cmd_tx.clone();
-        self.window.on_select_subspace(move |space_id| {
-            let space_id = space_id.to_string();
-            let selected = if space_id.is_empty() {
-                None
-            } else {
-                Some(RoomId::new(space_id))
-            };
-            send_command(&tx, UiCommand::SelectSubspace(selected));
-        });
+        self.window
+            .on_select_subspace(move |space_id| router::select_subspace(&tx, space_id.to_string()));
 
         let tx = cmd_tx.clone();
         self.window.on_move_space(move |from, to| {
-            let Ok(from) = usize::try_from(from) else {
+            let (Ok(from), Ok(to)) = (usize::try_from(from), usize::try_from(to)) else {
                 return;
             };
-            let Ok(to) = usize::try_from(to) else {
-                return;
-            };
-            if from == to {
-                return;
-            }
-            SPACES_MODEL.with(|cell| {
-                if let Some(model) = cell.borrow().as_ref()
-                    && from < model.row_count()
-                    && to < model.row_count()
-                {
-                    let entry = model.remove(from);
-                    model.insert(to, entry);
-                }
+            router::move_space(&tx, from, to, |from, to| {
+                SPACES_MODEL.with(|cell| {
+                    if let Some(model) = cell.borrow().as_ref() {
+                        reorder_rows(model, from, to);
+                    }
+                });
             });
-            send_command(&tx, UiCommand::MoveSpace { from, to });
         });
 
         let tx = cmd_tx.clone();
-        self.window.on_logout(move || {
-            send_command(&tx, UiCommand::Logout);
-        });
+        self.window.on_logout(move || router::logout(&tx));
 
         let tx = cmd_tx.clone();
         self.window.on_send_message(move |req| {
-            let room_id = req.room_id.to_string();
-            let body = req.body.to_string();
-            let reply_to = req.reply_to.to_string();
-            if !room_id.is_empty() && !body.is_empty() {
-                send_command(
-                    &tx,
-                    UiCommand::SendMessage {
-                        room_id: RoomId::new(room_id),
-                        body,
-                        reply_to: (!reply_to.is_empty()).then_some(reply_to),
-                    },
-                );
-            }
+            router::send_message(
+                &tx,
+                req.room_id.to_string(),
+                req.body.to_string(),
+                req.reply_to.to_string(),
+            );
         });
 
         let tx = cmd_tx.clone();
-        self.window.on_accept_verification(move || {
-            send_command(&tx, UiCommand::AcceptVerification);
-        });
+        self.window
+            .on_accept_verification(move || router::accept_verification(&tx));
 
         let tx = cmd_tx.clone();
-        self.window.on_confirm_verification(move || {
-            send_command(&tx, UiCommand::ConfirmVerification);
-        });
+        self.window
+            .on_confirm_verification(move || router::confirm_verification(&tx));
 
         let tx = cmd_tx.clone();
-        self.window.on_reject_verification(move || {
-            send_command(&tx, UiCommand::RejectVerification);
-        });
+        self.window
+            .on_reject_verification(move || router::reject_verification(&tx));
 
         let tx = cmd_tx.clone();
-        self.window.on_open_media(move |event_id| {
-            let event_id = event_id.to_string();
-            if !event_id.is_empty() {
-                send_command(&tx, UiCommand::OpenMedia { event_id });
-            }
-        });
+        self.window
+            .on_open_media(move |event_id| router::open_media(&tx, event_id.to_string()));
 
         let tx = cmd_tx.clone();
         self.window.on_save_file(move |req| {
-            let event_id = req.event_id.to_string();
-            let filename = req.filename.to_string();
-            if !event_id.is_empty() {
-                send_command(&tx, UiCommand::SaveFile { event_id, filename });
-            }
+            router::save_file(&tx, req.event_id.to_string(), req.filename.to_string());
         });
 
         let scroll_tx = scroll_tx.clone();
         let weak = self.window.as_weak();
         self.window
             .on_scroll_position_changed(move |at_top, at_bottom| {
-                let Some(w) = weak.upgrade() else {
-                    return;
-                };
-                let room_id = w.get_selected_room_id().to_string();
-                if room_id.is_empty() {
-                    return;
-                }
-                let update = ViewportChanged {
-                    room_id: RoomId::new(room_id),
-                    generation: w.get_selected_generation(),
-                    at_top,
-                    at_bottom,
-                };
-                if scroll_tx.send(update).is_err() {
-                    tracing::debug!("scroll position receiver closed");
-                }
+                router::scroll_position(&scroll_tx, selected_room_key(&weak), at_top, at_bottom);
             });
 
         let tx = cmd_tx.clone();
         let weak = self.window.as_weak();
         self.window.on_paginate_backwards(move || {
-            if let Some((room_id, generation)) = selected_room_key(&weak) {
-                send_command(
-                    &tx,
-                    UiCommand::PaginateBackwards {
-                        room_id,
-                        generation,
-                    },
-                );
-            }
+            router::paginate_backwards(&tx, selected_room_key(&weak));
         });
 
         let tx = cmd_tx.clone();
         let weak = self.window.as_weak();
-        self.window.on_paginate_forwards(move || {
-            if let Some((room_id, generation)) = selected_room_key(&weak) {
-                send_command(
-                    &tx,
-                    UiCommand::PaginateForwards {
-                        room_id,
-                        generation,
-                    },
-                );
-            }
-        });
+        self.window
+            .on_paginate_forwards(move || router::paginate_forwards(&tx, selected_room_key(&weak)));
 
         let tx = cmd_tx.clone();
         let weak = self.window.as_weak();
-        self.window.on_jump_to_latest(move || {
-            if let Some((room_id, generation)) = selected_room_key(&weak) {
-                send_command(
-                    &tx,
-                    UiCommand::JumpToLatest {
-                        room_id,
-                        generation,
-                    },
-                );
-            }
-        });
+        self.window
+            .on_jump_to_latest(move || router::jump_to_latest(&tx, selected_room_key(&weak)));
 
         let tx = cmd_tx.clone();
-        self.window.on_retry_timeline(move || {
-            send_command(&tx, UiCommand::RetryTimeline);
-        });
+        self.window
+            .on_retry_timeline(move || router::retry_timeline(&tx));
 
         Ok(())
     }
@@ -360,12 +260,12 @@ impl SlintUiAdapter {
     #[allow(clippy::too_many_arguments)]
     pub fn spawn_event_handler(
         &self,
-        mut ui_rx: mpsc::Receiver<UiEvent>,
-        mut rooms_rx: watch::Receiver<Arc<[Room]>>,
-        mut spaces_rx: watch::Receiver<Arc<[Space]>>,
-        mut subspaces_rx: watch::Receiver<Arc<[Space]>>,
-        mut connection_rx: watch::Receiver<ConnectionStatus>,
-        mut status_rx: watch::Receiver<String>,
+        ui_rx: mpsc::Receiver<UiEvent>,
+        rooms_rx: watch::Receiver<Arc<[Room]>>,
+        spaces_rx: watch::Receiver<Arc<[Space]>>,
+        subspaces_rx: watch::Receiver<Arc<[Space]>>,
+        connection_rx: watch::Receiver<ConnectionStatus>,
+        status_rx: watch::Receiver<String>,
         media_cache: Arc<dyn MediaCache>,
     ) {
         let weak = self.window.as_weak();
@@ -401,65 +301,16 @@ impl SlintUiAdapter {
         SPACES_MODEL.with(|cell| *cell.borrow_mut() = Some(spaces_model));
         SUBSPACES_MODEL.with(|cell| *cell.borrow_mut() = Some(subspaces_model));
 
-        tokio::spawn(async move {
-            let sem = Arc::new(Semaphore::new(SLINT_INFLIGHT));
-            let mut rooms_done = false;
-            let mut spaces_done = false;
-            let mut subspaces_done = false;
-            let mut connection_done = false;
-            let mut status_done = false;
-            loop {
-                let Ok(permit) = Arc::clone(&sem).acquire_owned().await else {
-                    break;
-                };
-                tokio::select! {
-                    maybe = ui_rx.recv() => {
-                        let Some(event) = maybe else { break };
-                        post_ui_event(&weak, Arc::clone(&media_cache), event, permit);
-                    }
-                    changed = rooms_rx.changed(), if !rooms_done => {
-                        if changed.is_err() {
-                            rooms_done = true;
-                        } else {
-                            let rooms = rooms_rx.borrow_and_update().clone();
-                            post_ui_event(&weak, Arc::clone(&media_cache), UiEvent::Rooms(rooms), permit);
-                        }
-                    }
-                    changed = spaces_rx.changed(), if !spaces_done => {
-                        if changed.is_err() {
-                            spaces_done = true;
-                        } else {
-                            let spaces = spaces_rx.borrow_and_update().clone();
-                            post_ui_event(&weak, Arc::clone(&media_cache), UiEvent::Spaces(spaces), permit);
-                        }
-                    }
-                    changed = subspaces_rx.changed(), if !subspaces_done => {
-                        if changed.is_err() {
-                            subspaces_done = true;
-                        } else {
-                            let subspaces = subspaces_rx.borrow_and_update().clone();
-                            post_ui_event(&weak, Arc::clone(&media_cache), UiEvent::Subspaces(subspaces), permit);
-                        }
-                    }
-                    changed = connection_rx.changed(), if !connection_done => {
-                        if changed.is_err() {
-                            connection_done = true;
-                        } else {
-                            let status = connection_rx.borrow_and_update().clone();
-                            post_ui_event(&weak, Arc::clone(&media_cache), UiEvent::ConnectionStatus(status), permit);
-                        }
-                    }
-                    changed = status_rx.changed(), if !status_done => {
-                        if changed.is_err() {
-                            status_done = true;
-                        } else {
-                            let message = status_rx.borrow_and_update().clone();
-                            post_ui_event(&weak, Arc::clone(&media_cache), UiEvent::Status(message), permit);
-                        }
-                    }
-                }
-            }
-        });
+        spawn_event_multiplexer(
+            ui_rx,
+            rooms_rx,
+            spaces_rx,
+            subspaces_rx,
+            connection_rx,
+            status_rx,
+            media_cache,
+            move |event, media, permit| post_ui_event(&weak, media, event, permit),
+        );
     }
 
     pub fn run(&self) -> Result<()> {
@@ -473,6 +324,10 @@ impl SlintUiAdapter {
             .window()
             .set_size(slint::LogicalSize::new(width, height));
     }
+}
+
+fn props(window: Option<&AppWindow>) -> Option<&dyn UiProps> {
+    window.map(|w| w as &dyn UiProps)
 }
 
 fn selected_room_key(weak: &slint::Weak<AppWindow>) -> Option<(RoomId, i32)> {
@@ -565,61 +420,40 @@ fn post_ui_event(
     .ok();
 }
 
+fn string_model(items: Vec<SharedString>) -> ModelRc<SharedString> {
+    ModelRc::new(VecModel::from(items))
+}
+
 fn message_to_entry(m: &TimelineMessage, media: &dyn MediaCache) -> MessageEntry {
-    let pronouns: Vec<SharedString> = pronoun_labels(&m.sender_pronouns)
-        .into_iter()
-        .map(SharedString::from)
-        .collect();
-    let mut entry = MessageEntry {
-        unique_id: SharedString::from(&m.unique_id),
-        sender: SharedString::from(message_sender_label(m)),
-        pronouns: ModelRc::new(VecModel::from(pronouns)),
-        body: SharedString::from(message_body_text(&m.body)),
-        timestamp: SharedString::from(&message_timestamp_label(m.timestamp)),
-        message_type: SharedString::from(message_type_token(&m.body)),
-        preview_kind: SharedString::from(message_preview_kind_token(m.body.preview_kind())),
-        unsupported_kind: SharedString::from(unsupported_kind(&m.body)),
-        event_id: SharedString::from(m.event_id.as_ref().map_or("", |e| e.0.as_str())),
-        sender_initial: SharedString::from(avatar_initials(message_sender_label(m))),
-        color_index: avatar_color_index(&m.sender),
-        is_own: m.is_own,
-        edited: m.edited,
-        has_reply: m.reply.is_some(),
-        reply_sender: SharedString::from(m.reply.as_ref().map_or("", |r| r.sender.as_str())),
-        reply_kind: SharedString::from(
-            m.reply
-                .as_ref()
-                .map_or("", |r| message_preview_kind_token(r.kind)),
-        ),
-        reply_body: SharedString::from(m.reply.as_ref().map_or("", |r| r.body.as_str())),
-        service_kind: SharedString::from(m.body.service().map_or("", service_kind_token)),
-        service_target: SharedString::from(m.body.service().map_or("", service_target)),
-        ..Default::default()
-    };
-
-    if let MessageBody::Image { meta, .. } = &m.body {
-        entry.image_width = meta.width.unwrap_or(0).cast_signed();
-        entry.image_height = meta.height.unwrap_or(0).cast_signed();
-        if let Some(event_id) = m.event_id.as_ref() {
-            if let Some(thumb_path) = media.thumbnail_path(&event_id.0) {
-                if let Some(img) = load_thumbnail(&thumb_path, &m.unique_id) {
-                    entry.thumbnail = img;
-                    entry.has_thumbnail = true;
-                }
-            } else {
-                entry.media_failed = media.thumbnail_failed(&event_id.0);
-            }
-        }
+    let d = message_to_dto(m, media);
+    MessageEntry {
+        unique_id: d.unique_id,
+        sender: d.sender,
+        pronouns: string_model(d.pronouns),
+        body: d.body,
+        timestamp: d.timestamp,
+        message_type: d.message_type,
+        preview_kind: d.preview_kind,
+        unsupported_kind: d.unsupported_kind,
+        has_thumbnail: d.has_thumbnail,
+        thumbnail: d.thumbnail.unwrap_or_default(),
+        media_failed: d.media_failed,
+        image_width: d.image_width,
+        image_height: d.image_height,
+        event_id: d.event_id,
+        has_avatar: d.has_avatar,
+        avatar: d.avatar.unwrap_or_default(),
+        sender_initial: d.sender_initial,
+        color_index: d.color_index,
+        is_own: d.is_own,
+        edited: d.edited,
+        has_reply: d.has_reply,
+        reply_sender: d.reply_sender,
+        reply_kind: d.reply_kind,
+        reply_body: d.reply_body,
+        service_kind: d.service_kind,
+        service_target: d.service_target,
     }
-
-    if let Some(avatar_path) = media.avatar_path(&m.sender)
-        && let Some(img) = load_avatar_async(&avatar_path, AvatarSlot::Message(m.unique_id.clone()))
-    {
-        entry.avatar = img;
-        entry.has_avatar = true;
-    }
-
-    entry
 }
 
 fn register_image_callbacks(weak: &slint::Weak<AppWindow>) {
@@ -717,105 +551,57 @@ fn apply_thumbnail_ready(unique_id: &str, image: Option<&Image>) {
 }
 
 fn enrich_entry(entry: &mut MessageEntry, delta: &EnrichmentDelta, media: &dyn MediaCache) {
-    match delta.thumbnail {
-        ThumbnailOutcome::Ready => {
-            if let Some(event_id) = delta.event_id.as_ref()
-                && let Some(thumb_path) = media.thumbnail_path(&event_id.0)
-                && let Some(img) = load_thumbnail(&thumb_path, &delta.unique_id)
-            {
-                entry.thumbnail = img;
-                entry.has_thumbnail = true;
-                entry.media_failed = false;
-            }
+    let update = enrich_to_update(delta, media);
+    match update.thumbnail {
+        ThumbUpdate::Ready(img) => {
+            entry.thumbnail = img;
+            entry.has_thumbnail = true;
+            entry.media_failed = false;
         }
-        ThumbnailOutcome::Failed => entry.media_failed = true,
-        ThumbnailOutcome::Unchanged => {}
+        ThumbUpdate::Failed => entry.media_failed = true,
+        ThumbUpdate::Unchanged => {}
     }
-
-    if delta.avatar_ready
-        && let Some(avatar_path) = media.avatar_path(&delta.sender)
-        && let Some(img) =
-            load_avatar_async(&avatar_path, AvatarSlot::Message(delta.unique_id.clone()))
-    {
+    if let Some(img) = update.avatar {
         entry.avatar = img;
         entry.has_avatar = true;
     }
-
-    if let Some(pronouns) = &delta.pronouns {
-        let labels: Vec<SharedString> = pronoun_labels(pronouns)
-            .into_iter()
-            .map(SharedString::from)
-            .collect();
-        entry.pronouns = ModelRc::new(VecModel::from(labels));
+    if let Some(pronouns) = update.pronouns {
+        entry.pronouns = string_model(pronouns);
     }
 }
 
 fn room_to_entry(r: &Room, media: &dyn MediaCache) -> RoomEntry {
-    let mut entry = RoomEntry {
-        id: SharedString::from(r.id.as_ref()),
-        name: SharedString::from(&r.display_name),
-        initial: SharedString::from(avatar_initials(&r.display_name)),
-        color_index: avatar_color_index(r.id.as_ref()),
-        #[allow(clippy::cast_possible_truncation)]
-        members: if r.is_direct {
-            0
-        } else {
-            r.member_count as i32
-        },
-        #[allow(clippy::cast_possible_truncation)]
-        unread: r.unread_count as i32,
-        #[allow(clippy::cast_possible_truncation)]
-        mentions: r.mention_count as i32,
-        last_message_sender: SharedString::from(
-            r.last_message_sender.as_deref().unwrap_or_default(),
-        ),
-        last_message_kind: SharedString::from(message_preview_kind_token(r.last_message_kind)),
-        last_message_body: SharedString::from(&r.last_message_body),
-        last_message_service_kind: SharedString::from(
-            r.last_message_service
-                .as_ref()
-                .map_or("", service_kind_token),
-        ),
-        last_message_service_target: SharedString::from(
-            r.last_message_service.as_ref().map_or("", service_target),
-        ),
-        last_message_is_own: r.last_message_is_own,
-        last_message_edited: r.last_message_edited,
-        last_message_time: SharedString::from(&room_activity_label(r.last_activity_ts)),
-        ..Default::default()
-    };
-
-    if let Some(mxc) = &r.avatar_mxc
-        && let Some(avatar_path) = media.room_avatar_path(mxc)
-        && let Some(img) =
-            load_avatar_async(&avatar_path, AvatarSlot::Room(r.id.as_ref().to_owned()))
-    {
-        entry.avatar = img;
-        entry.has_avatar = true;
+    let d = room_to_dto(r, media);
+    RoomEntry {
+        id: d.id,
+        name: d.name,
+        initial: d.initial,
+        avatar: d.avatar.unwrap_or_default(),
+        has_avatar: d.has_avatar,
+        color_index: d.color_index,
+        members: d.members,
+        unread: d.unread,
+        mentions: d.mentions,
+        last_message_sender: d.last_message_sender,
+        last_message_kind: d.last_message_kind,
+        last_message_body: d.last_message_body,
+        last_message_service_kind: d.last_message_service_kind,
+        last_message_service_target: d.last_message_service_target,
+        last_message_is_own: d.last_message_is_own,
+        last_message_edited: d.last_message_edited,
+        last_message_time: d.last_message_time,
     }
-
-    entry
 }
 
 fn space_to_entry(s: &Space, media: &dyn MediaCache) -> SpaceEntry {
-    let mut entry = SpaceEntry {
-        id: SharedString::from(&s.id),
-        name: SharedString::from(&s.name),
-        #[allow(clippy::cast_possible_truncation)]
-        unread: s.unread as i32,
-        #[allow(clippy::cast_possible_truncation)]
-        mentions: s.mentions as i32,
-        initial: SharedString::from(sender_initial(&s.name)),
-        ..Default::default()
-    };
-
-    if let Some(mxc) = &s.avatar_mxc
-        && let Some(avatar_path) = media.space_avatar_path(mxc)
-        && let Some(img) = load_avatar_async(&avatar_path, AvatarSlot::Space(s.id.clone()))
-    {
-        entry.avatar = img;
-        entry.has_avatar = true;
+    let d = space_to_dto(s, media);
+    SpaceEntry {
+        id: d.id,
+        name: d.name,
+        unread: d.unread,
+        mentions: d.mentions,
+        initial: d.initial,
+        avatar: d.avatar.unwrap_or_default(),
+        has_avatar: d.has_avatar,
     }
-
-    entry
 }

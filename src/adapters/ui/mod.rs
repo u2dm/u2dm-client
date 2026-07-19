@@ -2,8 +2,12 @@
 
 mod common;
 mod decode;
+mod dto;
 mod emoji;
+mod multiplex;
 mod output;
+mod router;
+mod schema;
 
 pub use output::UiEventOutput;
 use slint::PlatformError;
