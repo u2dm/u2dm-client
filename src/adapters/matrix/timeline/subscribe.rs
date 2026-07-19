@@ -380,6 +380,8 @@ pub(crate) async fn subscribe_timeline(
     );
     spawn_backup_key_download(&mut side_tasks, client, &room_id_parsed);
 
+    let mut key_stream_done = false;
+
     loop {
         tokio::select! {
             biased;
@@ -387,9 +389,11 @@ pub(crate) async fn subscribe_timeline(
                 let Some(cmd) = cmd else { break };
                 handle_timeline_command(cmd, &timeline, &timeline_tx).await;
             }
-            result = key_stream.next() => {
-                if let Some(Ok(keys)) = result {
-                    handle_room_keys(&timeline, keys).await;
+            result = key_stream.next(), if !key_stream_done => {
+                match result {
+                    Some(Ok(keys)) => handle_room_keys(&timeline, keys).await,
+                    Some(Err(error)) => tracing::warn!(%error, "room key stream lagged"),
+                    None => key_stream_done = true,
                 }
             }
             Some(_) = side_tasks.join_next(), if !side_tasks.is_empty() => {}
