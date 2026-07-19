@@ -109,7 +109,7 @@ impl MatrixPort for MatrixAdapter {
     async fn subscribe_timeline(
         &self,
         room_id: &RoomId,
-        timeline_tx: mpsc::UnboundedSender<TimelineUpdate>,
+        timeline_tx: mpsc::Sender<TimelineUpdate>,
         cmd_rx: mpsc::UnboundedReceiver<TimelineCommand>,
     ) -> Result<()> {
         tracing::info!(%room_id, "subscribing to timeline");

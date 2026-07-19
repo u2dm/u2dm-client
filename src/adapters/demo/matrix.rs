@@ -18,7 +18,7 @@ use crate::ports::media::MediaCache;
 
 struct ActiveRoom {
     room_id: RoomId,
-    timeline_tx: mpsc::UnboundedSender<TimelineUpdate>,
+    timeline_tx: mpsc::Sender<TimelineUpdate>,
     messages: Vec<TimelineMessage>,
 }
 
@@ -29,21 +29,25 @@ pub struct DemoMatrix {
 }
 
 impl DemoMatrix {
-    fn append_own_message(&self, room_id: &RoomId, body: &str, in_reply_to: Option<&str>) {
-        let Ok(mut guard) = self.active.lock() else {
-            return;
-        };
-        let Some(active) = guard.as_mut() else {
-            return;
-        };
-        if &active.room_id != room_id {
-            return;
-        }
+    async fn append_own_message(&self, room_id: &RoomId, body: &str, in_reply_to: Option<&str>) {
+        let prepared = {
+            let Ok(mut guard) = self.active.lock() else {
+                return;
+            };
+            let Some(active) = guard.as_mut() else {
+                return;
+            };
+            if &active.room_id != room_id {
+                return;
+            }
 
-        let reply = in_reply_to.and_then(|event_id| reply_info(&active.messages, event_id));
-        let message = data::own_message(self.sent.fetch_add(1, Ordering::Relaxed), body, reply);
-        active.messages.push(message.clone());
-        send_patch(&active.timeline_tx, TimelinePatch::PushBack(message));
+            let reply = in_reply_to.and_then(|event_id| reply_info(&active.messages, event_id));
+            let message = data::own_message(self.sent.fetch_add(1, Ordering::Relaxed), body, reply);
+            active.messages.push(message.clone());
+            (active.timeline_tx.clone(), message)
+        };
+        let (timeline_tx, message) = prepared;
+        send_patch(&timeline_tx, TimelinePatch::PushBack(message)).await;
     }
 }
 
@@ -71,11 +75,11 @@ impl MatrixPort for DemoMatrix {
     async fn subscribe_timeline(
         &self,
         room_id: &RoomId,
-        timeline_tx: mpsc::UnboundedSender<TimelineUpdate>,
+        timeline_tx: mpsc::Sender<TimelineUpdate>,
         mut cmd_rx: mpsc::UnboundedReceiver<TimelineCommand>,
     ) -> Result<()> {
         let messages = data::messages(room_id);
-        send_patch(&timeline_tx, TimelinePatch::Reset(messages.clone()));
+        send_patch(&timeline_tx, TimelinePatch::Reset(messages.clone())).await;
 
         if let Ok(mut active) = self.active.lock() {
             *active = Some(ActiveRoom {
@@ -94,7 +98,7 @@ impl MatrixPort for DemoMatrix {
                 direction,
                 outcome: PaginationOutcome::Completed { hit_end: true },
             };
-            if timeline_tx.send(update).is_err() {
+            if timeline_tx.send(update).await.is_err() {
                 break;
             }
         }
@@ -110,12 +114,13 @@ impl MatrixPort for DemoMatrix {
     }
 
     async fn send_text(&self, room_id: &RoomId, body: &str) -> Result<()> {
-        self.append_own_message(room_id, body, None);
+        self.append_own_message(room_id, body, None).await;
         Ok(())
     }
 
     async fn send_reply(&self, room_id: &RoomId, body: &str, in_reply_to: &str) -> Result<()> {
-        self.append_own_message(room_id, body, Some(in_reply_to));
+        self.append_own_message(room_id, body, Some(in_reply_to))
+            .await;
         Ok(())
     }
 
@@ -185,8 +190,11 @@ fn reply_info(messages: &[TimelineMessage], event_id: &str) -> Option<ReplyInfo>
         })
 }
 
-fn send_patch(timeline_tx: &mpsc::UnboundedSender<TimelineUpdate>, patch: TimelinePatch) {
-    if let Err(e) = timeline_tx.send(TimelineUpdate::Patch(Box::new(patch))) {
+async fn send_patch(timeline_tx: &mpsc::Sender<TimelineUpdate>, patch: TimelinePatch) {
+    if let Err(e) = timeline_tx
+        .send(TimelineUpdate::Patch(Box::new(patch)))
+        .await
+    {
         tracing::debug!("demo timeline receiver closed: {e}");
     }
 }

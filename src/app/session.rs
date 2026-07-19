@@ -27,7 +27,7 @@ pub(super) struct SessionController {
     matrix: Arc<dyn MatrixPort>,
     storage: Arc<dyn StoragePort>,
     browser: Arc<dyn BrowserPort>,
-    cmd_tx: mpsc::UnboundedSender<UiCommand>,
+    cmd_tx: mpsc::Sender<UiCommand>,
     output: Arc<dyn AppOutputPort>,
 }
 
@@ -36,7 +36,7 @@ impl SessionController {
         matrix: Arc<dyn MatrixPort>,
         storage: Arc<dyn StoragePort>,
         browser: Arc<dyn BrowserPort>,
-        cmd_tx: mpsc::UnboundedSender<UiCommand>,
+        cmd_tx: mpsc::Sender<UiCommand>,
         output: Arc<dyn AppOutputPort>,
     ) -> Self {
         Self {
@@ -94,14 +94,14 @@ impl SessionController {
         if let Err(e) = self.restore_matrix_session(&session, &passphrase).await {
             tracing::warn!("session restore failed: {e}");
             self.clear_local_state().await;
-            self.emit_show_login();
-            self.emit_login_error(&e);
+            self.emit_show_login().await;
+            self.emit_login_error(&e).await;
             return;
         }
 
         tracing::info!(user_id = %session.user_id, "session restore complete");
-        self.output.login_success(session.user_id);
-        self.send_cmd(UiCommand::FetchRooms);
+        self.output.login_success(session.user_id).await;
+        self.send_cmd(UiCommand::FetchRooms).await;
     }
 
     async fn check_server(&self, homeserver: &str) {
@@ -116,10 +116,10 @@ impl SessionController {
 
     async fn discover_server(&self, homeserver: &str, passphrase: &str) {
         match self.matrix.discover_auth(homeserver, passphrase).await {
-            Ok(info) => self.output.server_info(info),
+            Ok(info) => self.output.server_info(info).await,
             Err(e) => {
                 tracing::warn!(homeserver, "server discovery failed: {e}");
-                self.emit_login_error(&e);
+                self.emit_login_error(&e).await;
             }
         }
     }
@@ -140,7 +140,7 @@ impl SessionController {
     async fn handle_unavailable_session(&self, result: Result<Option<Session>>) {
         match result {
             Ok(None) => self.handle_missing_session().await,
-            Err(e) => self.handle_session_load_error(&e),
+            Err(e) => self.handle_session_load_error(&e).await,
             Ok(Some(_)) => {}
         }
     }
@@ -150,21 +150,21 @@ impl SessionController {
         if let Err(e) = self.matrix.clear_store().await {
             tracing::warn!("failed to clear store on missing session: {e}");
         }
-        self.emit_show_login();
+        self.emit_show_login().await;
     }
 
-    fn handle_session_load_error(&self, err: &AppError) {
+    async fn handle_session_load_error(&self, err: &AppError) {
         tracing::warn!("failed to load session: {err}");
-        self.emit_show_login();
-        self.emit_login_error(err);
+        self.emit_show_login().await;
+        self.emit_login_error(err).await;
     }
 
     async fn passphrase_or_login_error(&self) -> Option<String> {
         match self.get_or_create_passphrase().await {
             Ok(passphrase) => Some(passphrase),
             Err(e) => {
-                self.emit_show_login();
-                self.emit_login_error(&e);
+                self.emit_show_login().await;
+                self.emit_login_error(&e).await;
                 None
             }
         }
@@ -175,7 +175,7 @@ impl SessionController {
             Ok(passphrase) => Some(passphrase),
             Err(e) => {
                 tracing::warn!("failed to get passphrase: {e}");
-                self.emit_login_error(&e);
+                self.emit_login_error(&e).await;
                 None
             }
         }
@@ -197,12 +197,12 @@ impl SessionController {
             Ok(session) => {
                 tracing::info!(user_id = %session.user_id, "password login succeeded");
                 self.save_session(&session).await;
-                self.output.login_success(session.user_id);
-                self.send_cmd(UiCommand::FetchRooms);
+                self.output.login_success(session.user_id).await;
+                self.send_cmd(UiCommand::FetchRooms).await;
             }
             Err(e) => {
                 tracing::warn!("password login failed: {e}");
-                self.emit_login_error(&e);
+                self.emit_login_error(&e).await;
             }
         }
     }
@@ -210,22 +210,24 @@ impl SessionController {
     async fn login_oauth(&self) {
         match self.run_oauth_flow().await {
             Ok(()) => {
-                self.send_cmd(UiCommand::FetchRooms);
+                self.send_cmd(UiCommand::FetchRooms).await;
             }
             Err(e) => {
                 tracing::warn!("OAuth login failed: {e}");
-                self.emit_login_error(&e);
+                self.emit_login_error(&e).await;
             }
         }
     }
 
     async fn expire_session(&self) {
         self.clear_local_state().await;
-        self.output.logged_out();
+        self.output.logged_out().await;
         self.output
-            .login_error("Session expired. Please log in again.".into());
+            .login_error("Session expired. Please log in again.".into())
+            .await;
     }
 
+    #[allow(clippy::cognitive_complexity)]
     async fn logout(&self) {
         tracing::info!("user initiated logout");
         if let Err(e) = self.matrix.logout().await {
@@ -235,7 +237,7 @@ impl SessionController {
         tracing::info!("logout complete");
         self.output
             .connection_status(ConnectionStatus::Disconnected);
-        self.output.logged_out();
+        self.output.logged_out().await;
     }
 
     pub(super) fn spawn_session_persister(&self, group: &mut TaskGroup) {
@@ -250,7 +252,9 @@ impl SessionController {
                 while let Some(session) = session_rx.recv().await {
                     if let Err(e) = storage.save_session(&session).await {
                         tracing::warn!("failed to persist refreshed session: {e}");
-                        output.notify_error(format!("Failed to save refreshed session: {e}"));
+                        output
+                            .notify_error(format!("Failed to save refreshed session: {e}"))
+                            .await;
                     } else {
                         tracing::info!("persisted refreshed session tokens");
                     }
@@ -279,7 +283,7 @@ impl SessionController {
         group.spawn(async move {
             match matrix.fetch_user_avatar().await {
                 Ok(path) => {
-                    output.user_avatar(path);
+                    output.user_avatar(path).await;
                 }
                 Err(e) => tracing::debug!("user avatar fetch failed: {e}"),
             }
@@ -292,7 +296,7 @@ impl SessionController {
         self.output.status("waiting-auth".into());
         let session = self.matrix.login_oauth_finish().await?;
         self.save_session(&session).await;
-        self.output.login_success(session.user_id);
+        self.output.login_success(session.user_id).await;
         Ok(())
     }
 
@@ -310,7 +314,8 @@ impl SessionController {
             tracing::warn!("failed to save session: {e}");
             self.notify_error(format!(
                 "Session not saved. You may need to log in again after restart: {e}"
-            ));
+            ))
+            .await;
         }
     }
 
@@ -323,20 +328,20 @@ impl SessionController {
         }
     }
 
-    fn emit_show_login(&self) {
-        self.output.show_login();
+    async fn emit_show_login(&self) {
+        self.output.show_login().await;
     }
 
-    fn emit_login_error(&self, err: &AppError) {
-        self.output.login_error(err.to_string());
+    async fn emit_login_error(&self, err: &AppError) {
+        self.output.login_error(err.to_string()).await;
     }
 
-    fn notify_error(&self, msg: impl Into<String>) {
-        self.output.notify_error(msg.into());
+    async fn notify_error(&self, msg: impl Into<String> + Send) {
+        self.output.notify_error(msg.into()).await;
     }
 
-    fn send_cmd(&self, cmd: UiCommand) {
-        if let Err(e) = self.cmd_tx.send(cmd) {
+    async fn send_cmd(&self, cmd: UiCommand) {
+        if let Err(e) = self.cmd_tx.send(cmd).await {
             tracing::debug!("failed to send command: {e}");
         }
     }

@@ -9,7 +9,7 @@ use slint_interpreter::{
     Compiler, ComponentHandle, ComponentInstance, SharedString, Struct, Value,
 };
 use tokio::runtime::Runtime;
-use tokio::sync::mpsc;
+use tokio::sync::{OwnedSemaphorePermit, Semaphore, mpsc, watch};
 
 thread_local! {
     static TIMELINE_MODEL: RefCell<Option<Rc<VecModel<Value>>>> = const { RefCell::new(None) };
@@ -19,10 +19,11 @@ thread_local! {
 }
 
 use super::common::{
-    BoolProp, IntProp, Status, StringProp, UiProps, avatar_color_index, avatar_initials,
-    dispatch_ui_event, message_body_text, message_preview_kind_token, message_sender_label,
-    message_timestamp_label, message_type_token, pronoun_labels, room_activity_label,
-    sender_initial, service_kind_token, service_target, unsupported_kind,
+    BoolProp, IntProp, SLINT_INFLIGHT, Status, StringProp, UiProps, avatar_color_index,
+    avatar_initials, dispatch_ui_event, message_body_text, message_preview_kind_token,
+    message_sender_label, message_timestamp_label, message_type_token, pronoun_labels,
+    room_activity_label, send_command, sender_initial, service_kind_token, service_target,
+    unsupported_kind,
 };
 use super::decode::{
     advance_animations, load_image_cached, load_thumbnail, patch_rows, set_animation_tick,
@@ -31,8 +32,8 @@ use super::decode::{
 use super::emoji;
 use crate::commands::{UiCommand, UiEvent};
 use crate::domain::models::{
-    EnrichmentDelta, LoginCredentials, MessageBody, Room, RoomId, Space, ThumbnailOutcome,
-    TimelineMessage, VerificationEmoji as DomainVerificationEmoji,
+    ConnectionStatus, EnrichmentDelta, LoginCredentials, MessageBody, Room, RoomId, Space,
+    ThumbnailOutcome, TimelineMessage, VerificationEmoji as DomainVerificationEmoji,
 };
 use crate::error::{AppError, Result};
 use crate::ports::media::MediaCache;
@@ -157,7 +158,11 @@ impl SlintUiAdapter {
     }
 
     #[allow(clippy::too_many_lines)]
-    pub fn register_callbacks(&self, cmd_tx: &mpsc::UnboundedSender<UiCommand>) -> Result<()> {
+    pub fn register_callbacks(
+        &self,
+        cmd_tx: &mpsc::Sender<UiCommand>,
+        scroll_tx: &watch::Sender<(bool, bool)>,
+    ) -> Result<()> {
         setup_emoji_store(&self.instance)?;
 
         let tx = cmd_tx.clone();
@@ -181,9 +186,7 @@ impl SlintUiAdapter {
                     set_prop(&inst, "login-error", Value::String(SharedString::default()));
                 }
 
-                if let Err(e) = tx.send(UiCommand::CheckServer(homeserver)) {
-                    tracing::debug!("failed to send CheckServer command: {e}");
-                }
+                send_command(&tx, UiCommand::CheckServer(homeserver));
                 Value::Void
             })
             .map_err(|e| AppError::Ui(format!("{e:?}")))?;
@@ -220,9 +223,7 @@ impl SlintUiAdapter {
                     set_prop(&inst, "login-error", Value::String(SharedString::default()));
                 }
 
-                if let Err(e) = tx.send(UiCommand::LoginPassword(creds)) {
-                    tracing::debug!("failed to send LoginPassword command: {e}");
-                }
+                send_command(&tx, UiCommand::LoginPassword(creds));
                 Value::Void
             })
             .map_err(|e| AppError::Ui(format!("{e:?}")))?;
@@ -240,9 +241,7 @@ impl SlintUiAdapter {
                     set_prop(&inst, "login-error", Value::String(SharedString::default()));
                 }
 
-                if let Err(e) = tx.send(UiCommand::LoginOAuth) {
-                    tracing::debug!("failed to send LoginOAuth command: {e}");
-                }
+                send_command(&tx, UiCommand::LoginOAuth);
                 Value::Void
             })
             .map_err(|e| AppError::Ui(format!("{e:?}")))?;
@@ -258,9 +257,7 @@ impl SlintUiAdapter {
                     })
                     .unwrap_or_default();
 
-                if let Err(e) = tx.send(UiCommand::SelectRoom(RoomId::new(room_id))) {
-                    tracing::debug!("failed to send SelectRoom command: {e}");
-                }
+                send_command(&tx, UiCommand::SelectRoom(RoomId::new(room_id)));
                 Value::Void
             })
             .map_err(|e| AppError::Ui(format!("{e:?}")))?;
@@ -280,9 +277,7 @@ impl SlintUiAdapter {
                 } else {
                     Some(RoomId::new(space_id))
                 };
-                if let Err(e) = tx.send(UiCommand::SelectSpace(selected)) {
-                    tracing::debug!("failed to send SelectSpace command: {e}");
-                }
+                send_command(&tx, UiCommand::SelectSpace(selected));
                 Value::Void
             })
             .map_err(|e| AppError::Ui(format!("{e:?}")))?;
@@ -296,9 +291,7 @@ impl SlintUiAdapter {
                 } else {
                     Some(RoomId::new(space_id))
                 };
-                if let Err(e) = tx.send(UiCommand::SelectSubspace(selected)) {
-                    tracing::debug!("failed to send SelectSubspace command: {e}");
-                }
+                send_command(&tx, UiCommand::SelectSubspace(selected));
                 Value::Void
             })
             .map_err(|e| AppError::Ui(format!("{e:?}")))?;
@@ -331,9 +324,7 @@ impl SlintUiAdapter {
                             model.insert(to, entry);
                         }
                     });
-                    if let Err(e) = tx.send(UiCommand::MoveSpace { from, to }) {
-                        tracing::debug!("failed to send MoveSpace command: {e}");
-                    }
+                    send_command(&tx, UiCommand::MoveSpace { from, to });
                 }
                 Value::Void
             })
@@ -342,9 +333,7 @@ impl SlintUiAdapter {
         let tx = cmd_tx.clone();
         self.instance
             .set_callback("logout", move |_args: &[Value]| -> Value {
-                if let Err(e) = tx.send(UiCommand::Logout) {
-                    tracing::debug!("failed to send Logout command: {e}");
-                }
+                send_command(&tx, UiCommand::Logout);
                 Value::Void
             })
             .map_err(|e| AppError::Ui(format!("{e:?}")))?;
@@ -366,15 +355,15 @@ impl SlintUiAdapter {
                 let room_id = field("room-id");
                 let body = field("body");
                 let reply_to = field("reply-to");
-                if !room_id.is_empty()
-                    && !body.is_empty()
-                    && let Err(e) = tx.send(UiCommand::SendMessage {
-                        room_id: RoomId::new(room_id),
-                        body,
-                        reply_to: (!reply_to.is_empty()).then_some(reply_to),
-                    })
-                {
-                    tracing::debug!("failed to send SendMessage command: {e}");
+                if !room_id.is_empty() && !body.is_empty() {
+                    send_command(
+                        &tx,
+                        UiCommand::SendMessage {
+                            room_id: RoomId::new(room_id),
+                            body,
+                            reply_to: (!reply_to.is_empty()).then_some(reply_to),
+                        },
+                    );
                 }
                 Value::Void
             })
@@ -383,9 +372,7 @@ impl SlintUiAdapter {
         let tx = cmd_tx.clone();
         self.instance
             .set_callback("accept-verification", move |_args: &[Value]| -> Value {
-                if let Err(e) = tx.send(UiCommand::AcceptVerification) {
-                    tracing::debug!("failed to send AcceptVerification command: {e}");
-                }
+                send_command(&tx, UiCommand::AcceptVerification);
                 Value::Void
             })
             .map_err(|e| AppError::Ui(format!("{e:?}")))?;
@@ -393,9 +380,7 @@ impl SlintUiAdapter {
         let tx = cmd_tx.clone();
         self.instance
             .set_callback("confirm-verification", move |_args: &[Value]| -> Value {
-                if let Err(e) = tx.send(UiCommand::ConfirmVerification) {
-                    tracing::debug!("failed to send ConfirmVerification command: {e}");
-                }
+                send_command(&tx, UiCommand::ConfirmVerification);
                 Value::Void
             })
             .map_err(|e| AppError::Ui(format!("{e:?}")))?;
@@ -403,9 +388,7 @@ impl SlintUiAdapter {
         let tx = cmd_tx.clone();
         self.instance
             .set_callback("reject-verification", move |_args: &[Value]| -> Value {
-                if let Err(e) = tx.send(UiCommand::RejectVerification) {
-                    tracing::debug!("failed to send RejectVerification command: {e}");
-                }
+                send_command(&tx, UiCommand::RejectVerification);
                 Value::Void
             })
             .map_err(|e| AppError::Ui(format!("{e:?}")))?;
@@ -420,10 +403,8 @@ impl SlintUiAdapter {
                         _ => None,
                     })
                     .unwrap_or_default();
-                if !event_id.is_empty()
-                    && let Err(e) = tx.send(UiCommand::OpenMedia { event_id })
-                {
-                    tracing::debug!("failed to send OpenMedia command: {e}");
+                if !event_id.is_empty() {
+                    send_command(&tx, UiCommand::OpenMedia { event_id });
                 }
                 Value::Void
             })
@@ -445,23 +426,21 @@ impl SlintUiAdapter {
                 };
                 let event_id = field("event-id");
                 let filename = field("filename");
-                if !event_id.is_empty()
-                    && let Err(e) = tx.send(UiCommand::SaveFile { event_id, filename })
-                {
-                    tracing::debug!("failed to send SaveFile command: {e}");
+                if !event_id.is_empty() {
+                    send_command(&tx, UiCommand::SaveFile { event_id, filename });
                 }
                 Value::Void
             })
             .map_err(|e| AppError::Ui(format!("{e:?}")))?;
 
-        let tx = cmd_tx.clone();
+        let scroll_tx = scroll_tx.clone();
         self.instance
             .set_callback("scroll-position-changed", move |args: &[Value]| -> Value {
-                if let Err(e) = tx.send(UiCommand::ScrollPositionChanged {
-                    at_top: bool_arg(args, 0),
-                    at_bottom: bool_arg(args, 1),
-                }) {
-                    tracing::debug!("failed to send ScrollPositionChanged command: {e}");
+                if scroll_tx
+                    .send((bool_arg(args, 0), bool_arg(args, 1)))
+                    .is_err()
+                {
+                    tracing::debug!("scroll position receiver closed");
                 }
                 Value::Void
             })
@@ -475,12 +454,13 @@ impl SlintUiAdapter {
                     .upgrade()
                     .map(|inst| inst.get_string(StringProp::SelectedRoomId).to_string())
                     .unwrap_or_default();
-                if !room_id.is_empty()
-                    && let Err(e) = tx.send(UiCommand::PaginateBackwards {
-                        room_id: RoomId::new(room_id),
-                    })
-                {
-                    tracing::debug!("failed to send PaginateBackwards command: {e}");
+                if !room_id.is_empty() {
+                    send_command(
+                        &tx,
+                        UiCommand::PaginateBackwards {
+                            room_id: RoomId::new(room_id),
+                        },
+                    );
                 }
                 Value::Void
             })
@@ -494,12 +474,13 @@ impl SlintUiAdapter {
                     .upgrade()
                     .map(|inst| inst.get_string(StringProp::SelectedRoomId).to_string())
                     .unwrap_or_default();
-                if !room_id.is_empty()
-                    && let Err(e) = tx.send(UiCommand::PaginateForwards {
-                        room_id: RoomId::new(room_id),
-                    })
-                {
-                    tracing::debug!("failed to send PaginateForwards command: {e}");
+                if !room_id.is_empty() {
+                    send_command(
+                        &tx,
+                        UiCommand::PaginateForwards {
+                            room_id: RoomId::new(room_id),
+                        },
+                    );
                 }
                 Value::Void
             })
@@ -513,12 +494,13 @@ impl SlintUiAdapter {
                     .upgrade()
                     .map(|inst| inst.get_string(StringProp::SelectedRoomId).to_string())
                     .unwrap_or_default();
-                if !room_id.is_empty()
-                    && let Err(e) = tx.send(UiCommand::JumpToLatest {
-                        room_id: RoomId::new(room_id),
-                    })
-                {
-                    tracing::debug!("failed to send JumpToLatest command: {e}");
+                if !room_id.is_empty() {
+                    send_command(
+                        &tx,
+                        UiCommand::JumpToLatest {
+                            room_id: RoomId::new(room_id),
+                        },
+                    );
                 }
                 Value::Void
             })
@@ -527,9 +509,7 @@ impl SlintUiAdapter {
         let tx = cmd_tx.clone();
         self.instance
             .set_callback("retry-timeline", move |_args: &[Value]| -> Value {
-                if let Err(e) = tx.send(UiCommand::RetryTimeline) {
-                    tracing::debug!("failed to send RetryTimeline command: {e}");
-                }
+                send_command(&tx, UiCommand::RetryTimeline);
                 Value::Void
             })
             .map_err(|e| AppError::Ui(format!("{e:?}")))?;
@@ -537,9 +517,15 @@ impl SlintUiAdapter {
         Ok(())
     }
 
+    #[allow(clippy::too_many_arguments, clippy::too_many_lines)]
     pub fn spawn_event_handler(
         &self,
-        mut ui_rx: mpsc::UnboundedReceiver<UiEvent>,
+        mut ui_rx: mpsc::Receiver<UiEvent>,
+        mut rooms_rx: watch::Receiver<Vec<Room>>,
+        mut spaces_rx: watch::Receiver<Vec<Space>>,
+        mut subspaces_rx: watch::Receiver<Vec<Space>>,
+        mut connection_rx: watch::Receiver<ConnectionStatus>,
+        mut status_rx: watch::Receiver<String>,
         media_cache: Arc<dyn MediaCache>,
     ) {
         let weak = self.instance.as_weak();
@@ -595,34 +581,62 @@ impl SlintUiAdapter {
         });
 
         tokio::spawn(async move {
-            while let Some(event) = ui_rx.recv().await {
-                let media_cache = Arc::clone(&media_cache);
-                weak.upgrade_in_event_loop(move |inst| {
-                    let timeline = TIMELINE_MODEL.with(|cell| cell.borrow().clone());
-                    let rooms = ROOMS_MODEL.with(|cell| cell.borrow().clone());
-                    let spaces = SPACES_MODEL.with(|cell| cell.borrow().clone());
-                    let subspaces = SUBSPACES_MODEL.with(|cell| cell.borrow().clone());
-                    if let (Some(tl), Some(rm), Some(sm), Some(ssm)) =
-                        (timeline, rooms, spaces, subspaces)
-                    {
-                        dispatch_ui_event(
-                            &inst,
-                            event,
-                            &tl,
-                            &rm,
-                            &sm,
-                            &ssm,
-                            &|m| message_to_value(m, media_cache.as_ref()),
-                            &|v, d| enrich_value(v, d, media_cache.as_ref()),
-                            &|r| room_to_value(r, media_cache.as_ref()),
-                            &|s| space_to_value(s, media_cache.as_ref()),
-                            &|v| room_id_from_value(v).map_or("", SharedString::as_str),
-                            &|v| room_id_from_value(v).map_or("", SharedString::as_str),
-                            &entry_id_from_value,
-                        );
+            let sem = Arc::new(Semaphore::new(SLINT_INFLIGHT));
+            let mut rooms_done = false;
+            let mut spaces_done = false;
+            let mut subspaces_done = false;
+            let mut connection_done = false;
+            let mut status_done = false;
+            loop {
+                let Ok(permit) = Arc::clone(&sem).acquire_owned().await else {
+                    break;
+                };
+                tokio::select! {
+                    maybe = ui_rx.recv() => {
+                        let Some(event) = maybe else { break };
+                        post_ui_event(&weak, Arc::clone(&media_cache), event, permit);
                     }
-                })
-                .ok();
+                    changed = rooms_rx.changed(), if !rooms_done => {
+                        if changed.is_err() {
+                            rooms_done = true;
+                        } else {
+                            let rooms = rooms_rx.borrow_and_update().clone();
+                            post_ui_event(&weak, Arc::clone(&media_cache), UiEvent::Rooms(rooms), permit);
+                        }
+                    }
+                    changed = spaces_rx.changed(), if !spaces_done => {
+                        if changed.is_err() {
+                            spaces_done = true;
+                        } else {
+                            let spaces = spaces_rx.borrow_and_update().clone();
+                            post_ui_event(&weak, Arc::clone(&media_cache), UiEvent::Spaces(spaces), permit);
+                        }
+                    }
+                    changed = subspaces_rx.changed(), if !subspaces_done => {
+                        if changed.is_err() {
+                            subspaces_done = true;
+                        } else {
+                            let subspaces = subspaces_rx.borrow_and_update().clone();
+                            post_ui_event(&weak, Arc::clone(&media_cache), UiEvent::Subspaces(subspaces), permit);
+                        }
+                    }
+                    changed = connection_rx.changed(), if !connection_done => {
+                        if changed.is_err() {
+                            connection_done = true;
+                        } else {
+                            let status = connection_rx.borrow_and_update().clone();
+                            post_ui_event(&weak, Arc::clone(&media_cache), UiEvent::ConnectionStatus(status), permit);
+                        }
+                    }
+                    changed = status_rx.changed(), if !status_done => {
+                        if changed.is_err() {
+                            status_done = true;
+                        } else {
+                            let message = status_rx.borrow_and_update().clone();
+                            post_ui_event(&weak, Arc::clone(&media_cache), UiEvent::Status(message), permit);
+                        }
+                    }
+                }
             }
         });
     }
@@ -638,6 +652,39 @@ impl SlintUiAdapter {
             .window()
             .set_size(slint::LogicalSize::new(width, height));
     }
+}
+
+fn post_ui_event(
+    weak: &slint::Weak<ComponentInstance>,
+    media_cache: Arc<dyn MediaCache>,
+    event: UiEvent,
+    permit: OwnedSemaphorePermit,
+) {
+    weak.upgrade_in_event_loop(move |inst| {
+        let timeline = TIMELINE_MODEL.with(|cell| cell.borrow().clone());
+        let rooms = ROOMS_MODEL.with(|cell| cell.borrow().clone());
+        let spaces = SPACES_MODEL.with(|cell| cell.borrow().clone());
+        let subspaces = SUBSPACES_MODEL.with(|cell| cell.borrow().clone());
+        if let (Some(tl), Some(rm), Some(sm), Some(ssm)) = (timeline, rooms, spaces, subspaces) {
+            dispatch_ui_event(
+                &inst,
+                event,
+                &tl,
+                &rm,
+                &sm,
+                &ssm,
+                &|m| message_to_value(m, media_cache.as_ref()),
+                &|v, d| enrich_value(v, d, media_cache.as_ref()),
+                &|r| room_to_value(r, media_cache.as_ref()),
+                &|s| space_to_value(s, media_cache.as_ref()),
+                &|v| room_id_from_value(v).map_or("", SharedString::as_str),
+                &|v| room_id_from_value(v).map_or("", SharedString::as_str),
+                &entry_id_from_value,
+            );
+        }
+        drop(permit);
+    })
+    .ok();
 }
 
 fn emoji_entry_to_value(e: &emoji::EmojiEntry) -> Value {

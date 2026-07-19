@@ -27,7 +27,7 @@ impl VerificationController {
             let listen = matrix.listen_for_verification(verif_tx);
             let forward = async {
                 while let Some(event) = verif_rx.recv().await {
-                    output.verification(event);
+                    output.verification(event).await;
                 }
             };
 
@@ -65,25 +65,28 @@ impl VerificationController {
     async fn accept(&self) {
         if let Err(e) = self.matrix.accept_verification().await {
             tracing::warn!("verification accept failed: {e}");
-            self.notify_error(format!("Verification accept failed: {e}"));
+            self.notify_error(format!("Verification accept failed: {e}"))
+                .await;
         }
     }
 
     async fn reject(&self) {
         if let Err(e) = self.matrix.reject_verification().await {
             tracing::warn!("verification reject failed: {e}");
-            self.notify_error(format!("Verification reject failed: {e}"));
+            self.notify_error(format!("Verification reject failed: {e}"))
+                .await;
         }
     }
 
     async fn confirm(&self) {
         if let Err(e) = self.matrix.confirm_verification().await {
             tracing::warn!("verification confirm failed: {e}");
-            self.notify_error(format!("Verification confirm failed: {e}"));
+            self.notify_error(format!("Verification confirm failed: {e}"))
+                .await;
         }
     }
 
-    fn notify_error(&self, msg: impl Into<String>) {
-        self.output.notify_error(msg.into());
+    async fn notify_error(&self, msg: impl Into<String> + Send) {
+        self.output.notify_error(msg.into()).await;
     }
 }

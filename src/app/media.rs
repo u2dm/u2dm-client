@@ -40,11 +40,15 @@ impl MediaActions {
                 Ok(data) => {
                     if let Err(e) = media_files.open_media(&event_id, &data).await {
                         tracing::warn!("failed to open media: {e}");
-                        output.notify_error(format!("Failed to open media: {e}"));
+                        output
+                            .notify_error(format!("Failed to open media: {e}"))
+                            .await;
                     }
                 }
                 Err(e) => {
-                    output.notify_error(format!("Failed to download media: {e}"));
+                    output
+                        .notify_error(format!("Failed to download media: {e}"))
+                        .await;
                 }
             }
         });
@@ -59,14 +63,18 @@ impl MediaActions {
         self.tasks.spawn(async move {
             match matrix.download_media(&event_id, false).await {
                 Ok(data) => match media_files.save_file(&filename, &data).await {
-                    Ok(Some(path)) => output.file_saved(path),
+                    Ok(Some(path)) => output.file_saved(path).await,
                     Ok(None) => {}
                     Err(e) => {
-                        output.notify_error(format!("Failed to save file: {e}"));
+                        output
+                            .notify_error(format!("Failed to save file: {e}"))
+                            .await;
                     }
                 },
                 Err(e) => {
-                    output.notify_error(format!("Failed to download file: {e}"));
+                    output
+                        .notify_error(format!("Failed to download file: {e}"))
+                        .await;
                 }
             }
         });

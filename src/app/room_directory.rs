@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, watch};
 
 use super::selection::Selection;
 use super::task_group::TaskGroup;
@@ -96,7 +96,9 @@ impl RoomDirectory {
         group: &mut TaskGroup,
         matrix: Arc<dyn MatrixPort>,
         output: Arc<dyn AppOutputPort>,
-        cmd_tx: mpsc::UnboundedSender<UiCommand>,
+        cmd_tx: mpsc::Sender<UiCommand>,
+        rooms_in_tx: watch::Sender<Vec<Room>>,
+        spaces_in_tx: watch::Sender<Vec<Space>>,
     ) {
         let token = group.token();
         let on_sync: Box<dyn Fn(SyncEvent) + Send + Sync> = Box::new(move |event| match event {
@@ -104,16 +106,16 @@ impl RoomDirectory {
                 output.connection_status(ConnectionStatus::Connected);
             }
             SyncEvent::Rooms(rooms) => {
-                cmd_tx.send(UiCommand::RoomsUpdated(rooms)).ok();
+                drop(rooms_in_tx.send(rooms));
             }
             SyncEvent::Spaces(spaces) => {
-                cmd_tx.send(UiCommand::SpacesUpdated(spaces)).ok();
+                drop(spaces_in_tx.send(spaces));
             }
             SyncEvent::ConnectionError(msg) => {
                 output.connection_status(ConnectionStatus::Error(msg));
             }
             SyncEvent::SessionExpired => {
-                cmd_tx.send(UiCommand::SessionExpired).ok();
+                drop(cmd_tx.try_send(UiCommand::SessionExpired));
             }
         });
 

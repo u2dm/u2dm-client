@@ -16,10 +16,6 @@ pub enum UiCommand {
     LoginPassword(LoginCredentials),
     LoginOAuth,
     FetchRooms,
-    #[strum(to_string = "RoomsUpdated")]
-    RoomsUpdated(Vec<Room>),
-    #[strum(to_string = "SpacesUpdated")]
-    SpacesUpdated(Vec<Space>),
     #[strum(to_string = "SelectSpace")]
     SelectSpace(Option<RoomId>),
     #[strum(to_string = "SelectSubspace")]
@@ -56,11 +52,6 @@ pub enum UiCommand {
         room_id: RoomId,
     },
     RetryTimeline,
-    #[strum(to_string = "ScrollPositionChanged")]
-    ScrollPositionChanged {
-        at_top: bool,
-        at_bottom: bool,
-    },
     SessionExpired,
     AcceptVerification,
     RejectVerification,

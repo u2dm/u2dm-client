@@ -84,7 +84,8 @@ fn spawn_enrichment(ctx: &TimelineContext<'_>, msg: &TimelineMessage) {
             drop(
                 tx.send(TimelineUpdate::Patch(Box::new(TimelinePatch::Enrich(
                     delta,
-                )))),
+                ))))
+                .await,
             );
         }
     });
@@ -101,11 +102,11 @@ pub(super) fn spawn_enrichment_for_messages(
     }
 }
 
-fn send_initial_timeline(
+async fn send_initial_timeline(
     items: &[Arc<TimelineItem>],
     ctx: &TimelineContext<'_>,
     room_id: &RoomId,
-    timeline_tx: &mpsc::UnboundedSender<TimelineUpdate>,
+    timeline_tx: &mpsc::Sender<TimelineUpdate>,
 ) -> bool {
     let messages = convert_timeline_items(items, ctx);
     tracing::info!(
@@ -123,6 +124,7 @@ fn send_initial_timeline(
         .send(TimelineUpdate::Patch(Box::new(TimelinePatch::Reset(
             messages.clone(),
         ))))
+        .await
         .is_ok();
     tracing::debug!(sent, %room_id, "initial Reset patch send result");
     if sent {
@@ -189,7 +191,7 @@ async fn ensure_media_dirs(media_dir: &Path) {
 async fn handle_timeline_command(
     cmd: TimelineCommand,
     timeline: &Timeline,
-    timeline_tx: &mpsc::UnboundedSender<TimelineUpdate>,
+    timeline_tx: &mpsc::Sender<TimelineUpdate>,
 ) {
     let (direction, outcome) = match cmd {
         TimelineCommand::PaginateBackwards => (
@@ -204,6 +206,7 @@ async fn handle_timeline_command(
 
     if timeline_tx
         .send(TimelineUpdate::Pagination { direction, outcome })
+        .await
         .is_err()
     {
         tracing::debug!("timeline update channel closed");
@@ -304,7 +307,7 @@ pub(crate) async fn subscribe_timeline(
     media_sources: &Arc<StdMutex<HashMap<String, MediaSource>>>,
     pronouns: &Arc<PronounCache>,
     room_id: &RoomId,
-    timeline_tx: mpsc::UnboundedSender<TimelineUpdate>,
+    timeline_tx: mpsc::Sender<TimelineUpdate>,
     mut cmd_rx: mpsc::UnboundedReceiver<TimelineCommand>,
 ) -> Result<()> {
     let (timeline, room_id_parsed, backwards_outcome) = setup_timeline(client, room_id).await?;
@@ -336,7 +339,7 @@ pub(crate) async fn subscribe_timeline(
     };
 
     let mut items: Vec<Arc<TimelineItem>> = initial_items.into_iter().collect();
-    if !send_initial_timeline(&items, &ctx, room_id, &timeline_tx) {
+    if !send_initial_timeline(&items, &ctx, room_id, &timeline_tx).await {
         return Ok(());
     }
     if timeline_tx
@@ -344,6 +347,7 @@ pub(crate) async fn subscribe_timeline(
             direction: PaginationDirection::Backwards,
             outcome: backwards_outcome,
         })
+        .await
         .is_err()
     {
         return Ok(());
@@ -373,6 +377,7 @@ pub(crate) async fn subscribe_timeline(
                 if let Some(patch) = process_diffs(&mut items, diffs, &ctx)
                     && timeline_tx
                         .send(TimelineUpdate::Patch(Box::new(patch)))
+                        .await
                         .is_err()
                 {
                     return Ok(());

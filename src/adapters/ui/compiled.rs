@@ -4,13 +4,14 @@ use std::sync::Arc;
 
 use slint::{ComponentHandle, Image, Model, ModelRc, SharedString, VecModel};
 use tokio::runtime::Runtime;
-use tokio::sync::mpsc;
+use tokio::sync::{OwnedSemaphorePermit, Semaphore, mpsc, watch};
 
 use super::common::{
-    BoolProp, IntProp, Status, StringProp, UiProps, avatar_color_index, avatar_initials,
-    dispatch_ui_event, message_body_text, message_preview_kind_token, message_sender_label,
-    message_timestamp_label, message_type_token, pronoun_labels, room_activity_label,
-    sender_initial, service_kind_token, service_target, unsupported_kind,
+    BoolProp, IntProp, SLINT_INFLIGHT, Status, StringProp, UiProps, avatar_color_index,
+    avatar_initials, dispatch_ui_event, message_body_text, message_preview_kind_token,
+    message_sender_label, message_timestamp_label, message_type_token, pronoun_labels,
+    room_activity_label, send_command, sender_initial, service_kind_token, service_target,
+    unsupported_kind,
 };
 use super::decode::{
     advance_animations, load_image_cached, load_thumbnail, patch_rows, set_animation_tick,
@@ -19,8 +20,8 @@ use super::decode::{
 use super::emoji;
 use crate::commands::{UiCommand, UiEvent};
 use crate::domain::models::{
-    EnrichmentDelta, LoginCredentials, MessageBody, Room, RoomId, Space, ThumbnailOutcome,
-    TimelineMessage, VerificationEmoji as DomainVerificationEmoji,
+    ConnectionStatus, EnrichmentDelta, LoginCredentials, MessageBody, Room, RoomId, Space,
+    ThumbnailOutcome, TimelineMessage, VerificationEmoji as DomainVerificationEmoji,
 };
 use crate::error::Result;
 use crate::ports::media::MediaCache;
@@ -132,7 +133,11 @@ impl SlintUiAdapter {
     }
 
     #[allow(clippy::too_many_lines, clippy::unnecessary_wraps)]
-    pub fn register_callbacks(&self, cmd_tx: &mpsc::UnboundedSender<UiCommand>) -> Result<()> {
+    pub fn register_callbacks(
+        &self,
+        cmd_tx: &mpsc::Sender<UiCommand>,
+        scroll_tx: &watch::Sender<(bool, bool)>,
+    ) -> Result<()> {
         setup_emoji_store(&self.window);
 
         let tx = cmd_tx.clone();
@@ -142,9 +147,7 @@ impl SlintUiAdapter {
                 w.set_login_status(SharedString::from(Status::CheckingServer.as_str()));
                 w.set_login_error(SharedString::default());
             }
-            if let Err(e) = tx.send(UiCommand::CheckServer(homeserver.to_string())) {
-                tracing::debug!("failed to send CheckServer command: {e}");
-            }
+            send_command(&tx, UiCommand::CheckServer(homeserver.to_string()));
         });
 
         let tx = cmd_tx.clone();
@@ -159,9 +162,7 @@ impl SlintUiAdapter {
                 w.set_login_status(SharedString::from(Status::LoggingIn.as_str()));
                 w.set_login_error(SharedString::default());
             }
-            if let Err(e) = tx.send(UiCommand::LoginPassword(creds)) {
-                tracing::debug!("failed to send LoginPassword command: {e}");
-            }
+            send_command(&tx, UiCommand::LoginPassword(creds));
         });
 
         let tx = cmd_tx.clone();
@@ -171,16 +172,12 @@ impl SlintUiAdapter {
                 w.set_login_status(SharedString::from(Status::OpeningBrowser.as_str()));
                 w.set_login_error(SharedString::default());
             }
-            if let Err(e) = tx.send(UiCommand::LoginOAuth) {
-                tracing::debug!("failed to send LoginOAuth command: {e}");
-            }
+            send_command(&tx, UiCommand::LoginOAuth);
         });
 
         let tx = cmd_tx.clone();
         self.window.on_select_room(move |room_id| {
-            if let Err(e) = tx.send(UiCommand::SelectRoom(RoomId::new(room_id.to_string()))) {
-                tracing::debug!("failed to send SelectRoom command: {e}");
-            }
+            send_command(&tx, UiCommand::SelectRoom(RoomId::new(room_id.to_string())));
         });
 
         let tx = cmd_tx.clone();
@@ -191,9 +188,7 @@ impl SlintUiAdapter {
             } else {
                 Some(RoomId::new(space_id))
             };
-            if let Err(e) = tx.send(UiCommand::SelectSpace(selected)) {
-                tracing::debug!("failed to send SelectSpace command: {e}");
-            }
+            send_command(&tx, UiCommand::SelectSpace(selected));
         });
 
         let tx = cmd_tx.clone();
@@ -204,9 +199,7 @@ impl SlintUiAdapter {
             } else {
                 Some(RoomId::new(space_id))
             };
-            if let Err(e) = tx.send(UiCommand::SelectSubspace(selected)) {
-                tracing::debug!("failed to send SelectSubspace command: {e}");
-            }
+            send_command(&tx, UiCommand::SelectSubspace(selected));
         });
 
         let tx = cmd_tx.clone();
@@ -229,16 +222,12 @@ impl SlintUiAdapter {
                     model.insert(to, entry);
                 }
             });
-            if let Err(e) = tx.send(UiCommand::MoveSpace { from, to }) {
-                tracing::debug!("failed to send MoveSpace command: {e}");
-            }
+            send_command(&tx, UiCommand::MoveSpace { from, to });
         });
 
         let tx = cmd_tx.clone();
         self.window.on_logout(move || {
-            if let Err(e) = tx.send(UiCommand::Logout) {
-                tracing::debug!("failed to send Logout command: {e}");
-            }
+            send_command(&tx, UiCommand::Logout);
         });
 
         let tx = cmd_tx.clone();
@@ -246,46 +235,38 @@ impl SlintUiAdapter {
             let room_id = req.room_id.to_string();
             let body = req.body.to_string();
             let reply_to = req.reply_to.to_string();
-            if !room_id.is_empty()
-                && !body.is_empty()
-                && let Err(e) = tx.send(UiCommand::SendMessage {
-                    room_id: RoomId::new(room_id),
-                    body,
-                    reply_to: (!reply_to.is_empty()).then_some(reply_to),
-                })
-            {
-                tracing::debug!("failed to send SendMessage command: {e}");
+            if !room_id.is_empty() && !body.is_empty() {
+                send_command(
+                    &tx,
+                    UiCommand::SendMessage {
+                        room_id: RoomId::new(room_id),
+                        body,
+                        reply_to: (!reply_to.is_empty()).then_some(reply_to),
+                    },
+                );
             }
         });
 
         let tx = cmd_tx.clone();
         self.window.on_accept_verification(move || {
-            if let Err(e) = tx.send(UiCommand::AcceptVerification) {
-                tracing::debug!("failed to send AcceptVerification command: {e}");
-            }
+            send_command(&tx, UiCommand::AcceptVerification);
         });
 
         let tx = cmd_tx.clone();
         self.window.on_confirm_verification(move || {
-            if let Err(e) = tx.send(UiCommand::ConfirmVerification) {
-                tracing::debug!("failed to send ConfirmVerification command: {e}");
-            }
+            send_command(&tx, UiCommand::ConfirmVerification);
         });
 
         let tx = cmd_tx.clone();
         self.window.on_reject_verification(move || {
-            if let Err(e) = tx.send(UiCommand::RejectVerification) {
-                tracing::debug!("failed to send RejectVerification command: {e}");
-            }
+            send_command(&tx, UiCommand::RejectVerification);
         });
 
         let tx = cmd_tx.clone();
         self.window.on_open_media(move |event_id| {
             let event_id = event_id.to_string();
-            if !event_id.is_empty()
-                && let Err(e) = tx.send(UiCommand::OpenMedia { event_id })
-            {
-                tracing::debug!("failed to send OpenMedia command: {e}");
+            if !event_id.is_empty() {
+                send_command(&tx, UiCommand::OpenMedia { event_id });
             }
         });
 
@@ -293,18 +274,16 @@ impl SlintUiAdapter {
         self.window.on_save_file(move |req| {
             let event_id = req.event_id.to_string();
             let filename = req.filename.to_string();
-            if !event_id.is_empty()
-                && let Err(e) = tx.send(UiCommand::SaveFile { event_id, filename })
-            {
-                tracing::debug!("failed to send SaveFile command: {e}");
+            if !event_id.is_empty() {
+                send_command(&tx, UiCommand::SaveFile { event_id, filename });
             }
         });
 
-        let tx = cmd_tx.clone();
+        let scroll_tx = scroll_tx.clone();
         self.window
             .on_scroll_position_changed(move |at_top, at_bottom| {
-                if let Err(e) = tx.send(UiCommand::ScrollPositionChanged { at_top, at_bottom }) {
-                    tracing::debug!("failed to send ScrollPositionChanged command: {e}");
+                if scroll_tx.send((at_top, at_bottom)).is_err() {
+                    tracing::debug!("scroll position receiver closed");
                 }
             });
 
@@ -315,12 +294,13 @@ impl SlintUiAdapter {
                 .upgrade()
                 .map(|w| w.get_selected_room_id().to_string())
                 .unwrap_or_default();
-            if !room_id.is_empty()
-                && let Err(e) = tx.send(UiCommand::PaginateBackwards {
-                    room_id: RoomId::new(room_id),
-                })
-            {
-                tracing::debug!("failed to send PaginateBackwards command: {e}");
+            if !room_id.is_empty() {
+                send_command(
+                    &tx,
+                    UiCommand::PaginateBackwards {
+                        room_id: RoomId::new(room_id),
+                    },
+                );
             }
         });
 
@@ -331,12 +311,13 @@ impl SlintUiAdapter {
                 .upgrade()
                 .map(|w| w.get_selected_room_id().to_string())
                 .unwrap_or_default();
-            if !room_id.is_empty()
-                && let Err(e) = tx.send(UiCommand::PaginateForwards {
-                    room_id: RoomId::new(room_id),
-                })
-            {
-                tracing::debug!("failed to send PaginateForwards command: {e}");
+            if !room_id.is_empty() {
+                send_command(
+                    &tx,
+                    UiCommand::PaginateForwards {
+                        room_id: RoomId::new(room_id),
+                    },
+                );
             }
         });
 
@@ -347,28 +328,33 @@ impl SlintUiAdapter {
                 .upgrade()
                 .map(|w| w.get_selected_room_id().to_string())
                 .unwrap_or_default();
-            if !room_id.is_empty()
-                && let Err(e) = tx.send(UiCommand::JumpToLatest {
-                    room_id: RoomId::new(room_id),
-                })
-            {
-                tracing::debug!("failed to send JumpToLatest command: {e}");
+            if !room_id.is_empty() {
+                send_command(
+                    &tx,
+                    UiCommand::JumpToLatest {
+                        room_id: RoomId::new(room_id),
+                    },
+                );
             }
         });
 
         let tx = cmd_tx.clone();
         self.window.on_retry_timeline(move || {
-            if let Err(e) = tx.send(UiCommand::RetryTimeline) {
-                tracing::debug!("failed to send RetryTimeline command: {e}");
-            }
+            send_command(&tx, UiCommand::RetryTimeline);
         });
 
         Ok(())
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn spawn_event_handler(
         &self,
-        mut ui_rx: mpsc::UnboundedReceiver<UiEvent>,
+        mut ui_rx: mpsc::Receiver<UiEvent>,
+        mut rooms_rx: watch::Receiver<Vec<Room>>,
+        mut spaces_rx: watch::Receiver<Vec<Space>>,
+        mut subspaces_rx: watch::Receiver<Vec<Space>>,
+        mut connection_rx: watch::Receiver<ConnectionStatus>,
+        mut status_rx: watch::Receiver<String>,
         media_cache: Arc<dyn MediaCache>,
     ) {
         let weak = self.window.as_weak();
@@ -413,34 +399,62 @@ impl SlintUiAdapter {
         SUBSPACES_MODEL.with(|cell| *cell.borrow_mut() = Some(subspaces_model));
 
         tokio::spawn(async move {
-            while let Some(event) = ui_rx.recv().await {
-                let media_cache = Arc::clone(&media_cache);
-                weak.upgrade_in_event_loop(move |w| {
-                    let timeline = TIMELINE_MODEL.with(|cell| cell.borrow().clone());
-                    let rooms = ROOMS_MODEL.with(|cell| cell.borrow().clone());
-                    let spaces = SPACES_MODEL.with(|cell| cell.borrow().clone());
-                    let subspaces = SUBSPACES_MODEL.with(|cell| cell.borrow().clone());
-                    if let (Some(tl), Some(rm), Some(sm), Some(ssm)) =
-                        (timeline, rooms, spaces, subspaces)
-                    {
-                        dispatch_ui_event(
-                            &w,
-                            event,
-                            &tl,
-                            &rm,
-                            &sm,
-                            &ssm,
-                            &|m| message_to_entry(m, media_cache.as_ref()),
-                            &|e, d| enrich_entry(e, d, media_cache.as_ref()),
-                            &|r| room_to_entry(r, media_cache.as_ref()),
-                            &|s| space_to_entry(s, media_cache.as_ref()),
-                            &|e| e.id.as_str(),
-                            &|e: &SpaceEntry| e.id.as_str(),
-                            &|e: &MessageEntry| e.unique_id.to_string(),
-                        );
+            let sem = Arc::new(Semaphore::new(SLINT_INFLIGHT));
+            let mut rooms_done = false;
+            let mut spaces_done = false;
+            let mut subspaces_done = false;
+            let mut connection_done = false;
+            let mut status_done = false;
+            loop {
+                let Ok(permit) = Arc::clone(&sem).acquire_owned().await else {
+                    break;
+                };
+                tokio::select! {
+                    maybe = ui_rx.recv() => {
+                        let Some(event) = maybe else { break };
+                        post_ui_event(&weak, Arc::clone(&media_cache), event, permit);
                     }
-                })
-                .ok();
+                    changed = rooms_rx.changed(), if !rooms_done => {
+                        if changed.is_err() {
+                            rooms_done = true;
+                        } else {
+                            let rooms = rooms_rx.borrow_and_update().clone();
+                            post_ui_event(&weak, Arc::clone(&media_cache), UiEvent::Rooms(rooms), permit);
+                        }
+                    }
+                    changed = spaces_rx.changed(), if !spaces_done => {
+                        if changed.is_err() {
+                            spaces_done = true;
+                        } else {
+                            let spaces = spaces_rx.borrow_and_update().clone();
+                            post_ui_event(&weak, Arc::clone(&media_cache), UiEvent::Spaces(spaces), permit);
+                        }
+                    }
+                    changed = subspaces_rx.changed(), if !subspaces_done => {
+                        if changed.is_err() {
+                            subspaces_done = true;
+                        } else {
+                            let subspaces = subspaces_rx.borrow_and_update().clone();
+                            post_ui_event(&weak, Arc::clone(&media_cache), UiEvent::Subspaces(subspaces), permit);
+                        }
+                    }
+                    changed = connection_rx.changed(), if !connection_done => {
+                        if changed.is_err() {
+                            connection_done = true;
+                        } else {
+                            let status = connection_rx.borrow_and_update().clone();
+                            post_ui_event(&weak, Arc::clone(&media_cache), UiEvent::ConnectionStatus(status), permit);
+                        }
+                    }
+                    changed = status_rx.changed(), if !status_done => {
+                        if changed.is_err() {
+                            status_done = true;
+                        } else {
+                            let message = status_rx.borrow_and_update().clone();
+                            post_ui_event(&weak, Arc::clone(&media_cache), UiEvent::Status(message), permit);
+                        }
+                    }
+                }
             }
         });
     }
@@ -504,6 +518,39 @@ fn setup_emoji_store(window: &AppWindow) {
             caret,
         }
     });
+}
+
+fn post_ui_event(
+    weak: &slint::Weak<AppWindow>,
+    media_cache: Arc<dyn MediaCache>,
+    event: UiEvent,
+    permit: OwnedSemaphorePermit,
+) {
+    weak.upgrade_in_event_loop(move |w| {
+        let timeline = TIMELINE_MODEL.with(|cell| cell.borrow().clone());
+        let rooms = ROOMS_MODEL.with(|cell| cell.borrow().clone());
+        let spaces = SPACES_MODEL.with(|cell| cell.borrow().clone());
+        let subspaces = SUBSPACES_MODEL.with(|cell| cell.borrow().clone());
+        if let (Some(tl), Some(rm), Some(sm), Some(ssm)) = (timeline, rooms, spaces, subspaces) {
+            dispatch_ui_event(
+                &w,
+                event,
+                &tl,
+                &rm,
+                &sm,
+                &ssm,
+                &|m| message_to_entry(m, media_cache.as_ref()),
+                &|e, d| enrich_entry(e, d, media_cache.as_ref()),
+                &|r| room_to_entry(r, media_cache.as_ref()),
+                &|s| space_to_entry(s, media_cache.as_ref()),
+                &|e| e.id.as_str(),
+                &|e: &SpaceEntry| e.id.as_str(),
+                &|e: &MessageEntry| e.unique_id.to_string(),
+            );
+        }
+        drop(permit);
+    })
+    .ok();
 }
 
 fn message_to_entry(m: &TimelineMessage, media: &dyn MediaCache) -> MessageEntry {

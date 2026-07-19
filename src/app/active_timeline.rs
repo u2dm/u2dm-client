@@ -13,9 +13,11 @@ use crate::domain::viewport::ViewportController;
 use crate::ports::matrix::MatrixPort;
 use crate::ports::output::AppOutputPort;
 
+const TIMELINE_CHANNEL_CAP: usize = 256;
+
 pub(super) struct ActiveTimeline {
     matrix: Arc<dyn MatrixPort>,
-    cmd_tx: mpsc::UnboundedSender<UiCommand>,
+    cmd_tx: mpsc::Sender<UiCommand>,
     output: Arc<dyn AppOutputPort>,
     tasks: TaskGroup,
     viewport: ViewportController,
@@ -28,7 +30,7 @@ pub(super) struct ActiveTimeline {
 impl ActiveTimeline {
     pub(super) fn new(
         matrix: Arc<dyn MatrixPort>,
-        cmd_tx: mpsc::UnboundedSender<UiCommand>,
+        cmd_tx: mpsc::Sender<UiCommand>,
         output: Arc<dyn AppOutputPort>,
     ) -> Self {
         Self {
@@ -57,14 +59,16 @@ impl ActiveTimeline {
         self.active_room_id = Some(room_id.clone());
         self.at_bottom.store(true, Ordering::Relaxed);
         self.new_messages_counter.store(0, Ordering::Relaxed);
-        self.emit_pagination_state(&room_id);
+        self.emit_pagination_state(&room_id).await;
 
         self.output
-            .timeline_status(room_id.clone(), TimelineStatus::Loading);
+            .timeline_status(room_id.clone(), TimelineStatus::Loading)
+            .await;
         self.output
-            .timeline(room_id.clone(), Box::new(TimelinePatch::Clear));
+            .timeline(room_id.clone(), Box::new(TimelinePatch::Clear))
+            .await;
 
-        let (tl_tx, mut tl_rx) = mpsc::unbounded_channel::<TimelineUpdate>();
+        let (tl_tx, mut tl_rx) = mpsc::channel::<TimelineUpdate>(TIMELINE_CHANNEL_CAP);
         let (tl_cmd_tx, tl_cmd_rx) = mpsc::unbounded_channel::<TimelineCommand>();
         self.timeline_cmd_tx = Some(tl_cmd_tx);
 
@@ -94,18 +98,21 @@ impl ActiveTimeline {
                                     let prev =
                                         new_messages_counter.fetch_add(added, Ordering::Relaxed);
                                     let total = prev.saturating_add(added);
-                                    output.new_messages_badge(rid.clone(), total);
+                                    output.new_messages_badge(rid.clone(), total).await;
                                 }
                             }
 
-                            output.timeline(rid.clone(), patch);
+                            output.timeline(rid.clone(), patch).await;
                         }
                         TimelineUpdate::Pagination { direction, outcome } => {
-                            if let Err(e) = cmd_tx.send(UiCommand::TimelinePaginationCompleted {
-                                room_id: rid.clone(),
-                                direction,
-                                outcome,
-                            }) {
+                            if let Err(e) = cmd_tx
+                                .send(UiCommand::TimelinePaginationCompleted {
+                                    room_id: rid.clone(),
+                                    direction,
+                                    outcome,
+                                })
+                                .await
+                            {
                                 tracing::debug!(
                                     "failed to send TimelinePaginationCompleted command: {e}"
                                 );
@@ -123,10 +130,10 @@ impl ActiveTimeline {
                         output.timeline_status(
                             rid.clone(),
                             TimelineStatus::Failed { retryable: true },
-                        );
+                        ).await;
                     } else {
                         tracing::debug!("timeline subscription ended");
-                        output.timeline_status(rid.clone(), TimelineStatus::Disconnected);
+                        output.timeline_status(rid.clone(), TimelineStatus::Disconnected).await;
                     }
                 }
                 () = forward => {
@@ -162,12 +169,14 @@ impl ActiveTimeline {
             };
             if let Err(e) = result {
                 tracing::warn!("failed to enqueue message: {e}");
-                output.notify_error(format!("Failed to send message: {e}"));
+                output
+                    .notify_error(format!("Failed to send message: {e}"))
+                    .await;
             }
         });
     }
 
-    pub(super) fn paginate_backwards(&mut self, room_id: &RoomId) {
+    pub(super) async fn paginate_backwards(&mut self, room_id: &RoomId) {
         if self.active_room_id.as_ref() != Some(room_id) {
             return;
         }
@@ -182,10 +191,10 @@ impl ActiveTimeline {
             tracing::debug!("timeline command channel closed");
             self.viewport.set_backwards_loading(false);
         }
-        self.emit_pagination_state(room_id);
+        self.emit_pagination_state(room_id).await;
     }
 
-    pub(super) fn paginate_forwards(&mut self, room_id: &RoomId) {
+    pub(super) async fn paginate_forwards(&mut self, room_id: &RoomId) {
         if self.active_room_id.as_ref() != Some(room_id) {
             return;
         }
@@ -200,10 +209,10 @@ impl ActiveTimeline {
             tracing::debug!("timeline command channel closed");
             self.viewport.set_forwards_loading(false);
         }
-        self.emit_pagination_state(room_id);
+        self.emit_pagination_state(room_id).await;
     }
 
-    pub(super) fn complete_pagination(
+    pub(super) async fn complete_pagination(
         &mut self,
         room_id: &RoomId,
         direction: PaginationDirection,
@@ -221,34 +230,35 @@ impl ActiveTimeline {
             PaginationOutcome::Failed => {
                 self.viewport.fail_pagination(direction);
                 self.output
-                    .notify_error("Failed to load more messages".to_owned());
+                    .notify_error("Failed to load more messages".to_owned())
+                    .await;
                 false
             }
         };
-        self.emit_pagination_state(room_id);
+        self.emit_pagination_state(room_id).await;
 
         if matches!(direction, PaginationDirection::Forwards)
             && hit_end
             && self.at_bottom.load(Ordering::Relaxed)
         {
             self.new_messages_counter.store(0, Ordering::Relaxed);
-            self.output.new_messages_badge(room_id.clone(), 0);
+            self.output.new_messages_badge(room_id.clone(), 0).await;
         }
     }
 
-    pub(super) fn jump_to_latest(&mut self, room_id: &RoomId) {
+    pub(super) async fn jump_to_latest(&mut self, room_id: &RoomId) {
         if self.active_room_id.as_ref() != Some(room_id) {
             return;
         }
         self.viewport.jump_to_latest();
         self.at_bottom.store(true, Ordering::Relaxed);
         self.new_messages_counter.store(0, Ordering::Relaxed);
-        self.output.scroll_to_bottom(room_id.clone());
-        self.output.new_messages_badge(room_id.clone(), 0);
-        self.emit_pagination_state(room_id);
+        self.output.scroll_to_bottom(room_id.clone()).await;
+        self.output.new_messages_badge(room_id.clone(), 0).await;
+        self.emit_pagination_state(room_id).await;
     }
 
-    pub(super) fn scroll_position_changed(&mut self, at_top: bool, at_bottom: bool) {
+    pub(super) async fn scroll_position_changed(&mut self, at_top: bool, at_bottom: bool) {
         let mode_changed = self.viewport.update_scroll_position(at_top, at_bottom);
 
         self.at_bottom.store(at_bottom, Ordering::Relaxed);
@@ -259,7 +269,7 @@ impl ActiveTimeline {
 
         if mode_changed && self.viewport.mode() == ScrollMode::FollowLive {
             self.new_messages_counter.store(0, Ordering::Relaxed);
-            self.output.new_messages_badge(room_id, 0);
+            self.output.new_messages_badge(room_id, 0).await;
         }
     }
 
@@ -271,9 +281,10 @@ impl ActiveTimeline {
         self.new_messages_counter.store(0, Ordering::Relaxed);
     }
 
-    fn emit_pagination_state(&self, room_id: &RoomId) {
+    async fn emit_pagination_state(&self, room_id: &RoomId) {
         self.output
-            .pagination_state(room_id.clone(), self.viewport.state());
+            .pagination_state(room_id.clone(), self.viewport.state())
+            .await;
     }
 }
 
