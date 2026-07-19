@@ -44,7 +44,7 @@ pub struct MatrixAdapter {
     media_sources: Arc<StdMutex<HashMap<String, MediaSource>>>,
     media: Arc<MediaService>,
     pronouns: Arc<PronounCache>,
-    verification_req_rx: Mutex<Option<mpsc::UnboundedReceiver<VerificationRequest>>>,
+    verification_req_rx: Mutex<Option<mpsc::Receiver<VerificationRequest>>>,
     verification_handler_guards: Mutex<Vec<EventHandlerDropGuard>>,
 }
 

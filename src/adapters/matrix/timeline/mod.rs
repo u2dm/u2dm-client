@@ -9,13 +9,15 @@ use std::sync::{Arc, Mutex as StdMutex};
 use matrix_sdk::Client;
 use matrix_sdk::ruma::events::room::MediaSource;
 pub(super) use subscribe::subscribe_timeline;
-use tokio::sync::mpsc;
+use tokio::sync::{Semaphore, mpsc};
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
 
 use super::media::MediaService;
 use super::profile::PronounCache;
 use crate::domain::models::TimelineUpdate;
+
+const ENRICH_INFLIGHT: usize = 8;
 
 pub(super) struct TimelineContext<'a> {
     pub(super) client: &'a Client,
@@ -31,6 +33,7 @@ pub(super) struct EnrichmentPool {
     pub(super) tracker: TaskTracker,
     pub(super) token: CancellationToken,
     pub(super) inflight: Arc<StdMutex<HashSet<String>>>,
+    pub(super) semaphore: Arc<Semaphore>,
 }
 
 impl EnrichmentPool {
@@ -39,6 +42,7 @@ impl EnrichmentPool {
             tracker: TaskTracker::new(),
             token: CancellationToken::new(),
             inflight: Arc::new(StdMutex::new(HashSet::new())),
+            semaphore: Arc::new(Semaphore::new(ENRICH_INFLIGHT)),
         }
     }
 }

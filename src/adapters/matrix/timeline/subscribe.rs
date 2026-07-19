@@ -9,7 +9,7 @@ use matrix_sdk::ruma::{IdParseError, OwnedEventId, OwnedRoomId};
 use matrix_sdk_ui::eyeball_im::VectorDiff;
 use matrix_sdk_ui::timeline::{RoomExt as _, Timeline, TimelineItem};
 use tokio::fs;
-use tokio::sync::mpsc;
+use tokio::sync::{Semaphore, mpsc};
 use tokio::task::JoinSet;
 
 use super::diff::diff_to_patch;
@@ -23,6 +23,8 @@ use crate::domain::models::{
 };
 use crate::domain::viewport::PAGINATION_BATCH_SIZE;
 use crate::error::{AppError, Result};
+
+const REPLY_FETCH_INFLIGHT: usize = 4;
 
 fn needs_pronouns(msg: &TimelineMessage, pronouns: &PronounCache) -> bool {
     !msg.is_own && !pronouns.is_resolved(&msg.sender)
@@ -45,11 +47,13 @@ fn spawn_enrichment(ctx: &TimelineContext<'_>, msg: &TimelineMessage) {
     let media_sources = Arc::clone(ctx.media_sources);
     let pronouns = Arc::clone(ctx.pronouns);
     let inflight = Arc::clone(&ctx.enrich.inflight);
+    let semaphore = Arc::clone(&ctx.enrich.semaphore);
     let token = ctx.enrich.token.clone();
     let tx = ctx.timeline_tx.clone();
 
     ctx.enrich.tracker.spawn(async move {
         let work = async {
+            let _permit = semaphore.acquire().await.ok()?;
             let (thumbnail, avatar_ready, pronouns) = tokio::join!(
                 media.enrich_thumbnail(&client, &media_sources, &msg),
                 media.enrich_avatar(&client, &msg),
@@ -62,17 +66,17 @@ fn spawn_enrichment(ctx: &TimelineContext<'_>, msg: &TimelineMessage) {
                     }
                 },
             );
-            EnrichmentDelta {
+            Some(EnrichmentDelta {
                 unique_id: msg.unique_id.clone(),
                 event_id: msg.event_id.clone(),
                 sender: msg.sender.clone(),
                 thumbnail,
                 avatar_ready,
                 pronouns,
-            }
+            })
         };
 
-        let delta = token.run_until_cancelled(work).await;
+        let delta = token.run_until_cancelled(work).await.flatten();
 
         if let Ok(mut inflight) = inflight.lock() {
             inflight.remove(&unique_id);
@@ -263,6 +267,7 @@ fn spawn_reply_detail_fetches(
     items: &[Arc<TimelineItem>],
     timeline: &Arc<Timeline>,
     fetched: &mut HashSet<String>,
+    reply_limit: &Arc<Semaphore>,
     side_tasks: &mut JoinSet<()>,
 ) {
     for item in items {
@@ -282,7 +287,11 @@ fn spawn_reply_detail_fetches(
             continue;
         }
         let timeline = Arc::clone(timeline);
+        let reply_limit = Arc::clone(reply_limit);
         side_tasks.spawn(async move {
+            let Ok(_permit) = reply_limit.acquire().await else {
+                return;
+            };
             let Ok(id) = OwnedEventId::try_from(event_id.as_str()) else {
                 return;
             };
@@ -354,10 +363,12 @@ pub(crate) async fn subscribe_timeline(
     }
 
     let mut fetched_reply_details: HashSet<String> = HashSet::new();
+    let reply_limit = Arc::new(Semaphore::new(REPLY_FETCH_INFLIGHT));
     spawn_reply_detail_fetches(
         &items,
         &timeline,
         &mut fetched_reply_details,
+        &reply_limit,
         &mut side_tasks,
     );
 
@@ -392,7 +403,7 @@ pub(crate) async fn subscribe_timeline(
                 {
                     return Ok(());
                 }
-                spawn_reply_detail_fetches(&items, &timeline, &mut fetched_reply_details, &mut side_tasks);
+                spawn_reply_detail_fetches(&items, &timeline, &mut fetched_reply_details, &reply_limit, &mut side_tasks);
             }
         }
     }

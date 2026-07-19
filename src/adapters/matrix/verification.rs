@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use futures_util::StreamExt;
 use matrix_sdk::Client;
 use matrix_sdk::encryption::verification::{
@@ -7,19 +9,30 @@ use matrix_sdk::event_handler::EventHandlerDropGuard;
 use matrix_sdk::ruma::events::key::verification::request::ToDeviceKeyVerificationRequestEvent;
 use matrix_sdk::ruma::events::room::message::{MessageType, OriginalSyncRoomMessageEvent};
 use tokio::sync::{Mutex, mpsc};
+use tokio::time::timeout;
 
 use crate::domain::models::{VerificationEmoji, VerificationEvent};
 use crate::error::{AppError, Result};
 
+const VERIFICATION_QUEUE: usize = 8;
+const VERIFICATION_TIMEOUT: Duration = Duration::from_secs(300);
+
+async fn enqueue_or_reject(tx: &mpsc::Sender<VerificationRequest>, request: VerificationRequest) {
+    if let Err(mpsc::error::TrySendError::Full(request)) = tx.try_send(request) {
+        tracing::warn!("verification request queue full; rejecting incoming request");
+        request.cancel().await.ok();
+    }
+}
+
 fn setup_verification_handlers(
     client: &Client,
-    verification_req_rx: &mut Option<mpsc::UnboundedReceiver<VerificationRequest>>,
+    verification_req_rx: &mut Option<mpsc::Receiver<VerificationRequest>>,
     handler_guards: &mut Vec<EventHandlerDropGuard>,
 ) {
     handler_guards.clear();
     *verification_req_rx = None;
 
-    let (req_tx, rx) = mpsc::unbounded_channel::<VerificationRequest>();
+    let (req_tx, rx) = mpsc::channel::<VerificationRequest>(VERIFICATION_QUEUE);
 
     let to_device_handle = client.add_event_handler({
         let req_tx = req_tx.clone();
@@ -31,7 +44,7 @@ fn setup_verification_handlers(
                     .get_verification_request(&ev.sender, &ev.content.transaction_id)
                     .await
                 {
-                    req_tx.send(request).ok();
+                    enqueue_or_reject(&req_tx, request).await;
                 }
             }
         }
@@ -47,7 +60,7 @@ fn setup_verification_handlers(
                         .get_verification_request(&ev.sender, &ev.event_id)
                         .await
                 {
-                    req_tx.send(request).ok();
+                    enqueue_or_reject(&req_tx, request).await;
                 }
             }
         }
@@ -60,7 +73,7 @@ fn setup_verification_handlers(
 
 pub(super) async fn listen_for_verification(
     client: &Client,
-    verification_req_rx: &Mutex<Option<mpsc::UnboundedReceiver<VerificationRequest>>>,
+    verification_req_rx: &Mutex<Option<mpsc::Receiver<VerificationRequest>>>,
     handler_guards: &Mutex<Vec<EventHandlerDropGuard>>,
     verification_request: &Mutex<Option<VerificationRequest>>,
     sas_verification: &Mutex<Option<SasVerification>>,
@@ -79,6 +92,7 @@ pub(super) async fn listen_for_verification(
     while let Some(request) = rx.recv().await {
         let sender = request.other_user_id().to_string();
         let is_self = request.is_self_verification();
+        let flow_id = request.flow_id().to_string();
         tracing::info!(sender = %sender, is_self, "verification request received");
         *verification_request.lock().await = Some(request.clone());
 
@@ -86,13 +100,79 @@ pub(super) async fn listen_for_verification(
             .send(VerificationEvent::Requested { sender, is_self })
             .ok();
 
-        handle_verification_request(request, sas_verification, &verification_tx).await;
+        run_verification(
+            request,
+            &flow_id,
+            &mut rx,
+            sas_verification,
+            verification_request,
+            &verification_tx,
+        )
+        .await;
 
         *verification_request.lock().await = None;
         *sas_verification.lock().await = None;
     }
 
     Ok(())
+}
+
+async fn run_verification(
+    request: VerificationRequest,
+    flow_id: &str,
+    rx: &mut mpsc::Receiver<VerificationRequest>,
+    sas_verification: &Mutex<Option<SasVerification>>,
+    verification_request: &Mutex<Option<VerificationRequest>>,
+    tx: &mpsc::UnboundedSender<VerificationEvent>,
+) {
+    let handle = timeout(
+        VERIFICATION_TIMEOUT,
+        handle_verification_request(request, sas_verification, tx),
+    );
+    tokio::pin!(handle);
+
+    let mut channel_open = true;
+    loop {
+        tokio::select! {
+            biased;
+            result = &mut handle => {
+                if result.is_err() {
+                    tracing::warn!("verification timed out; cancelling");
+                    cancel_active_verification(sas_verification, verification_request, tx).await;
+                }
+                break;
+            }
+            incoming = rx.recv(), if channel_open => {
+                match incoming {
+                    Some(other) if other.flow_id() != flow_id => {
+                        tracing::info!("busy with a verification; rejecting incoming request");
+                        other.cancel().await.ok();
+                    }
+                    Some(_) => {}
+                    None => channel_open = false,
+                }
+            }
+        }
+    }
+}
+
+async fn cancel_active_verification(
+    sas_verification: &Mutex<Option<SasVerification>>,
+    verification_request: &Mutex<Option<VerificationRequest>>,
+    tx: &mpsc::UnboundedSender<VerificationEvent>,
+) {
+    let sas = sas_verification.lock().await.take();
+    let request = verification_request.lock().await.take();
+    if let Some(sas) = sas {
+        sas.cancel().await.ok();
+    }
+    if let Some(request) = request {
+        request.cancel().await.ok();
+    }
+    tx.send(VerificationEvent::Cancelled(
+        "Verification timed out".to_owned(),
+    ))
+    .ok();
 }
 
 #[allow(clippy::cognitive_complexity)]

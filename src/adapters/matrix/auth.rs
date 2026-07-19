@@ -237,7 +237,7 @@ pub(super) async fn restore_session(
 
 pub(super) async fn logout(
     client_lock: &RwLock<Option<Client>>,
-    verification_req_rx: &Mutex<Option<mpsc::UnboundedReceiver<VerificationRequest>>>,
+    verification_req_rx: &Mutex<Option<mpsc::Receiver<VerificationRequest>>>,
     verification_handler_guards: &Mutex<Vec<EventHandlerDropGuard>>,
 ) -> Result<()> {
     tracing::info!("logging out");
@@ -258,7 +258,7 @@ pub(super) async fn clear_store(
     client_lock: &RwLock<Option<Client>>,
     data_dir: &Path,
     cache_dir: &Path,
-    verification_req_rx: &Mutex<Option<mpsc::UnboundedReceiver<VerificationRequest>>>,
+    verification_req_rx: &Mutex<Option<mpsc::Receiver<VerificationRequest>>>,
     verification_handler_guards: &Mutex<Vec<EventHandlerDropGuard>>,
 ) -> Result<()> {
     tracing::info!("clearing matrix store");
