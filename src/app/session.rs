@@ -10,7 +10,7 @@ use crate::error::{AppError, Result};
 use crate::ports::browser::BrowserPort;
 use crate::ports::matrix::MatrixPort;
 use crate::ports::output::AppOutputPort;
-use crate::ports::storage::StoragePort;
+use crate::ports::storage::{StoragePort, StoredSession};
 
 #[allow(clippy::let_underscore_must_use)]
 fn generate_passphrase() -> String {
@@ -20,6 +20,16 @@ fn generate_passphrase() -> String {
         let _ = write!(s, "{b:02x}");
         s
     })
+}
+
+fn classify_unusable_session(loaded: Result<StoredSession>) -> (&'static str, Option<AppError>) {
+    match loaded {
+        Ok(StoredSession::Absent) => ("no saved session found", None),
+        Ok(StoredSession::Incomplete) => ("saved session incomplete, re-login required", None),
+        Ok(StoredSession::CredentialsUnavailable(e)) => ("credential store unavailable", Some(e)),
+        Err(e) => ("failed to load session", Some(e)),
+        Ok(StoredSession::Present(_)) => ("session present", None),
+    }
 }
 
 #[derive(Clone)]
@@ -92,8 +102,7 @@ impl SessionController {
         };
 
         if let Err(e) = self.restore_matrix_session(&session, &passphrase).await {
-            tracing::warn!("session restore failed: {e}");
-            self.clear_local_state().await;
+            tracing::warn!("session restore failed, preserving local data: {e}");
             self.emit_show_login().await;
             self.emit_login_error(&e).await;
             return;
@@ -126,37 +135,29 @@ impl SessionController {
 
     async fn load_saved_session(&self) -> Option<Session> {
         match self.storage.load_session().await {
-            Ok(Some(session)) => {
+            Ok(StoredSession::Present(session)) => {
                 tracing::info!(user_id = %session.user_id, "found saved session");
                 Some(session)
             }
-            unavailable => {
-                self.handle_unavailable_session(unavailable).await;
+            unusable => {
+                self.report_unusable_session(unusable).await;
                 None
             }
         }
     }
 
-    async fn handle_unavailable_session(&self, result: Result<Option<Session>>) {
-        match result {
-            Ok(None) => self.handle_missing_session().await,
-            Err(e) => self.handle_session_load_error(&e).await,
-            Ok(Some(_)) => {}
+    async fn report_unusable_session(&self, loaded: Result<StoredSession>) {
+        let (reason, error) = classify_unusable_session(loaded);
+        if let Some(e) = &error {
+            tracing::warn!("{reason}, preserving local data: {e}");
+        } else {
+            tracing::info!("{reason}, showing login");
         }
-    }
 
-    async fn handle_missing_session(&self) {
-        tracing::info!("no saved session found, showing login");
-        if let Err(e) = self.matrix.clear_store().await {
-            tracing::warn!("failed to clear store on missing session: {e}");
+        self.emit_show_login().await;
+        if let Some(e) = error {
+            self.emit_login_error(&e).await;
         }
-        self.emit_show_login().await;
-    }
-
-    async fn handle_session_load_error(&self, err: &AppError) {
-        tracing::warn!("failed to load session: {err}");
-        self.emit_show_login().await;
-        self.emit_login_error(err).await;
     }
 
     async fn passphrase_or_login_error(&self) -> Option<String> {
@@ -220,7 +221,7 @@ impl SessionController {
     }
 
     async fn expire_session(&self) {
-        self.clear_local_state().await;
+        self.clear_credentials().await;
         self.output.logged_out().await;
         self.output
             .login_error("Session expired. Please log in again.".into())
@@ -319,10 +320,14 @@ impl SessionController {
         }
     }
 
-    async fn clear_local_state(&self) {
+    async fn clear_credentials(&self) {
         if let Err(e) = self.storage.clear_session().await {
             tracing::warn!("failed to clear session: {e}");
         }
+    }
+
+    async fn clear_local_state(&self) {
+        self.clear_credentials().await;
         if let Err(e) = self.matrix.clear_store().await {
             tracing::warn!("failed to clear store: {e}");
         }

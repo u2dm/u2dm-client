@@ -5,7 +5,7 @@ use async_trait::async_trait;
 use super::data;
 use crate::domain::models::Session;
 use crate::error::Result;
-use crate::ports::storage::StoragePort;
+use crate::ports::storage::{StoragePort, StoredSession};
 
 #[derive(Default)]
 pub struct DemoStorage {
@@ -18,8 +18,8 @@ impl StoragePort for DemoStorage {
         Ok(())
     }
 
-    async fn load_session(&self) -> Result<Option<Session>> {
-        Ok(Some(data::session()))
+    async fn load_session(&self) -> Result<StoredSession> {
+        Ok(StoredSession::Present(data::session()))
     }
 
     async fn clear_session(&self) -> Result<()> {

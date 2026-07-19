@@ -11,7 +11,7 @@ use tokio::task::spawn_blocking;
 
 use crate::domain::models::{Session, SessionMetadata};
 use crate::error::{AppError, Result};
-use crate::ports::storage::StoragePort;
+use crate::ports::storage::{StoragePort, StoredSession};
 
 const KEYRING_SERVICE: &str = "u2dm";
 
@@ -47,10 +47,10 @@ impl StoragePort for SecureStorage {
         Ok(())
     }
 
-    async fn load_session(&self) -> Result<Option<Session>> {
+    async fn load_session(&self) -> Result<StoredSession> {
         let contents = match fs::read_to_string(&self.session_path).await {
             Ok(c) => c,
-            Err(e) if e.kind() == ErrorKind::NotFound => return Ok(None),
+            Err(e) if e.kind() == ErrorKind::NotFound => return Ok(StoredSession::Absent),
             Err(e) => return Err(e.into()),
         };
 
@@ -59,12 +59,12 @@ impl StoragePort for SecureStorage {
         let access_token = match keyring_get("access-token").await {
             Ok(Some(token)) => token,
             Ok(None) => {
-                tracing::info!("no access token in keyring, re-login required");
-                return Ok(None);
+                tracing::info!("session metadata present but no access token in keyring");
+                return Ok(StoredSession::Incomplete);
             }
             Err(e) => {
-                tracing::warn!("keyring unavailable, re-login required: {e}");
-                return Ok(None);
+                tracing::warn!("keyring unavailable while loading session: {e}");
+                return Ok(StoredSession::CredentialsUnavailable(e));
             }
         };
 
@@ -76,7 +76,7 @@ impl StoragePort for SecureStorage {
             }
         };
 
-        Ok(Some(Session {
+        Ok(StoredSession::Present(Session {
             user_id: metadata.user_id,
             device_id: metadata.device_id,
             homeserver: metadata.homeserver,
