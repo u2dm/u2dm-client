@@ -1,4 +1,5 @@
 mod active_timeline;
+mod lifecycle;
 mod media;
 mod room_directory;
 mod selection;
@@ -10,6 +11,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use active_timeline::ActiveTimeline;
+use lifecycle::Lifecycle;
 use media::MediaActions;
 use room_directory::RoomDirectory;
 use selection::Selection;
@@ -44,6 +46,7 @@ pub struct AppService {
     verification: VerificationController,
     media: MediaActions,
     selection: Selection,
+    lifecycle: Lifecycle,
     space_order_tx: watch::Sender<Option<Vec<String>>>,
     space_order_cancel: CancellationToken,
     space_order_handle: Option<JoinHandle<()>>,
@@ -71,6 +74,7 @@ impl AppService {
             space_order_rx,
             space_order_cancel.clone(),
         ));
+        let lifecycle = Lifecycle::new();
         Self {
             session: SessionController::new(
                 Arc::clone(&matrix),
@@ -78,6 +82,7 @@ impl AppService {
                 browser,
                 cmd_tx.clone(),
                 Arc::clone(&output),
+                lifecycle.clone(),
             ),
             room_directory: RoomDirectory::new(Arc::clone(&output)),
             active_timeline: ActiveTimeline::new(
@@ -96,6 +101,7 @@ impl AppService {
             background: TaskGroup::new("background"),
             operations: TaskGroup::new("operations"),
             selection: Selection::default(),
+            lifecycle,
             space_order_tx,
             space_order_cancel,
             space_order_handle: Some(space_order_handle),
@@ -158,23 +164,34 @@ impl AppService {
 
     #[allow(clippy::too_many_lines)]
     async fn dispatch(&mut self, cmd: UiCommand) -> bool {
+        let phase = self.lifecycle.phase();
+        if !lifecycle::command_allowed(phase, &cmd) {
+            tracing::debug!(?phase, command = %cmd, "rejecting command illegal in current phase");
+            return false;
+        }
         match cmd {
             UiCommand::RestoreSession => {
                 self.session.spawn_restore_session(&mut self.operations);
             }
             UiCommand::CheckServer(homeserver) => {
+                let attempt = self.lifecycle.begin_auth();
                 self.session
-                    .spawn_check_server(&mut self.operations, homeserver);
+                    .spawn_check_server(&mut self.operations, homeserver, attempt);
             }
             UiCommand::LoginPassword(creds) => {
+                let attempt = self.lifecycle.begin_auth();
                 self.session
-                    .spawn_login_password(&mut self.operations, creds);
+                    .spawn_login_password(&mut self.operations, creds, attempt);
             }
             UiCommand::LoginOAuth => {
-                self.session.spawn_login_oauth(&mut self.operations);
+                let attempt = self.lifecycle.begin_auth();
+                self.session
+                    .spawn_login_oauth(&mut self.operations, attempt);
             }
             UiCommand::CancelOAuth => {
-                self.session.cancel_oauth();
+                if self.lifecycle.cancel_auth() {
+                    self.session.cancel_oauth();
+                }
             }
             UiCommand::FetchRooms => {
                 self.handle_fetch_rooms().await;
@@ -386,18 +403,31 @@ impl AppService {
     }
 
     async fn handle_session_expired(&mut self) {
+        let Some(session) = self.lifecycle.begin_logout() else {
+            return;
+        };
         tracing::info!("session expired, clearing local state");
+        self.output
+            .connection_status(ConnectionStatus::Disconnected);
+        self.output.logged_out().await;
         self.shutdown_all_tasks().await;
         self.room_directory.reset();
         self.selection = Selection::default();
-        self.session.spawn_expire_session(&mut self.operations);
+        self.session
+            .spawn_expire_session(&mut self.operations, session);
     }
 
     async fn handle_logout(&mut self) {
+        let Some(session) = self.lifecycle.begin_logout() else {
+            return;
+        };
+        self.output
+            .connection_status(ConnectionStatus::Disconnected);
+        self.output.logged_out().await;
         self.shutdown_all_tasks().await;
         self.room_directory.reset();
         self.selection = Selection::default();
-        self.session.spawn_logout(&mut self.operations);
+        self.session.spawn_logout(&mut self.operations, session);
     }
 
     async fn handle_quit(&mut self) {
