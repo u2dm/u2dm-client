@@ -3,6 +3,7 @@ use std::future;
 use std::sync::Arc;
 use std::time::Duration;
 
+use futures_util::{StreamExt, stream};
 use matrix_sdk::deserialized_responses::SyncOrStrippedState;
 use matrix_sdk::latest_events::LatestEventValue;
 use matrix_sdk::ruma::api::error::ErrorKind;
@@ -38,6 +39,7 @@ type OnSync = Arc<dyn Fn(SyncEvent) + Send + Sync>;
 
 const EMIT_DEBOUNCE: Duration = Duration::from_millis(50);
 const AVATAR_INFLIGHT: usize = 8;
+const SEED_INFLIGHT: usize = 16;
 
 fn room_avatar_mxc(room: &Room, is_direct: bool) -> Option<String> {
     if let Some(mxc) = room.avatar_url() {
@@ -185,8 +187,17 @@ fn preview_from_message_content(content: &RoomMessageEventContent) -> MessagePre
     }
 }
 
-fn sort_rooms(rooms: &mut [DomainRoom]) {
-    rooms.sort_by(|a, b| b.last_activity_ts.cmp(&a.last_activity_ts));
+async fn build_rooms(client: &Client) -> HashMap<String, DomainRoom> {
+    let joined = client
+        .joined_rooms()
+        .into_iter()
+        .filter(|room| !room.is_space());
+    stream::iter(joined)
+        .map(|room| async move { build_single_room(&room).await })
+        .buffer_unordered(SEED_INFLIGHT)
+        .map(|room| (room.id.to_string(), room))
+        .collect()
+        .await
 }
 
 fn avatar_uris<T>(items: &[T], mxc_of: impl Fn(&T) -> Option<&str>) -> Vec<OwnedMxcUri> {
@@ -225,28 +236,31 @@ async fn build_spaces_meta(client: &Client) -> Vec<DomainSpace> {
         .map(|space| space.room_id().to_string())
         .collect();
 
-    let mut spaces = Vec::new();
-    for space in joined_spaces {
-        let name = space
-            .cached_display_name()
-            .map(|dn| dn.to_string())
-            .unwrap_or_default();
-        let (child_space_ids, child_room_ids) = space_child_ids(&space)
-            .await
-            .into_iter()
-            .partition(|child| space_ids.contains(child));
-        let avatar_mxc = space.avatar_url().map(|mxc| mxc.to_string());
-        spaces.push(DomainSpace {
-            id: space.room_id().to_string(),
-            name,
-            avatar_mxc,
-            child_room_ids,
-            child_space_ids,
-            unread: 0,
-            mentions: 0,
-        });
-    }
-    spaces
+    let space_ids = &space_ids;
+    stream::iter(joined_spaces)
+        .map(|space| async move {
+            let name = space
+                .cached_display_name()
+                .map(|dn| dn.to_string())
+                .unwrap_or_default();
+            let (child_space_ids, child_room_ids) = space_child_ids(&space)
+                .await
+                .into_iter()
+                .partition(|child| space_ids.contains(child));
+            let avatar_mxc = space.avatar_url().map(|mxc| mxc.to_string());
+            DomainSpace {
+                id: space.room_id().to_string(),
+                name,
+                avatar_mxc,
+                child_room_ids,
+                child_space_ids,
+                unread: 0,
+                mentions: 0,
+            }
+        })
+        .buffered(SEED_INFLIGHT)
+        .collect()
+        .await
 }
 
 #[derive(Clone, Copy)]
@@ -328,10 +342,13 @@ async fn build_sync_service(client: &Client) -> AppResult<SyncService> {
         .map_err(|e| AppError::Other(e.to_string()))
 }
 
+#[allow(clippy::struct_excessive_bools)]
 struct Directory {
     rooms: HashMap<String, DomainRoom>,
+    order: Vec<String>,
     spaces: Vec<DomainSpace>,
     rooms_dirty: bool,
+    order_dirty: bool,
     spaces_dirty: bool,
     spaces_structural_dirty: bool,
     flush_at: Option<Instant>,
@@ -341,8 +358,10 @@ impl Directory {
     fn new() -> Self {
         Self {
             rooms: HashMap::new(),
+            order: Vec::new(),
             spaces: Vec::new(),
             rooms_dirty: false,
+            order_dirty: false,
             spaces_dirty: false,
             spaces_structural_dirty: false,
             flush_at: None,
@@ -378,23 +397,38 @@ impl Directory {
     }
 
     async fn seed(&mut self, client: &Client) {
-        self.rooms.clear();
-        for room in client.joined_rooms() {
-            if room.is_space() {
-                continue;
-            }
-            let dr = build_single_room(&room).await;
-            self.rooms.insert(dr.id.to_string(), dr);
-        }
+        self.rooms = build_rooms(client).await;
         self.spaces = build_spaces_meta(client).await;
+        self.order_dirty = true;
+    }
+
+    fn upsert_room(&mut self, room: DomainRoom) {
+        let key = room.id.to_string();
+        match self.rooms.get(&key) {
+            Some(current) if *current == room => return,
+            Some(current) => {
+                if current.last_activity_ts != room.last_activity_ts {
+                    self.order_dirty = true;
+                }
+            }
+            None => self.order_dirty = true,
+        }
+        self.rooms.insert(key, room);
+        self.mark_rooms();
+    }
+
+    fn remove_room(&mut self, room_id: &str) {
+        if self.rooms.remove(room_id).is_none() {
+            return;
+        }
+        self.order_dirty = true;
+        self.mark_rooms();
     }
 
     async fn apply_room_updates(&mut self, client: &Client, updates: &RoomUpdates) {
         for room_id in updates.left.keys() {
-            let key = room_id.to_string();
-            if self.rooms.remove(&key).is_some() {
-                self.mark_rooms();
-            }
+            let key = room_id.as_str();
+            self.remove_room(key);
             if self.spaces.iter().any(|space| space.id == key) {
                 self.mark_spaces_structural();
             }
@@ -406,9 +440,7 @@ impl Directory {
             if room.is_space() {
                 self.mark_spaces_structural();
             } else {
-                let dr = build_single_room(&room).await;
-                self.rooms.insert(dr.id.to_string(), dr);
-                self.mark_rooms();
+                self.upsert_room(build_single_room(&room).await);
             }
         }
     }
@@ -421,16 +453,27 @@ impl Directory {
             self.mark_spaces_structural();
             return;
         }
-        let key = room_id.as_str();
-        if !self.rooms.contains_key(key) {
+        if !self.rooms.contains_key(room_id.as_str()) {
             return;
         }
-        let updated = build_single_room(&room).await;
-        if self.rooms.get(key) == Some(&updated) {
+        self.upsert_room(build_single_room(&room).await);
+    }
+
+    fn refresh_order(&mut self) {
+        if !self.order_dirty {
             return;
         }
-        self.rooms.insert(key.to_owned(), updated);
-        self.mark_rooms();
+        self.order = self.rooms.keys().cloned().collect();
+        let rooms = &self.rooms;
+        self.order.sort_by(|a, b| {
+            let activity = |id| {
+                rooms
+                    .get(id)
+                    .map_or(0, |room: &DomainRoom| room.last_activity_ts)
+            };
+            activity(b).cmp(&activity(a)).then_with(|| a.cmp(b))
+        });
+        self.order_dirty = false;
     }
 
     async fn flush(&mut self, client: &Client, on_sync: &OnSync, avatars: &mut AvatarFetcher) {
@@ -450,9 +493,14 @@ impl Directory {
         }
     }
 
-    fn emit_rooms(&self, client: &Client, on_sync: &OnSync, avatars: &mut AvatarFetcher) {
-        let mut rooms: Vec<DomainRoom> = self.rooms.values().cloned().collect();
-        sort_rooms(&mut rooms);
+    fn emit_rooms(&mut self, client: &Client, on_sync: &OnSync, avatars: &mut AvatarFetcher) {
+        self.refresh_order();
+        let rooms: Vec<DomainRoom> = self
+            .order
+            .iter()
+            .filter_map(|id| self.rooms.get(id))
+            .cloned()
+            .collect();
         avatars.request(
             client,
             AvatarKind::Room,
@@ -503,6 +551,12 @@ enum LoopAction {
     Break,
 }
 
+async fn resync(client: &Client, dir: &mut Directory) {
+    dir.seed(client).await;
+    dir.mark_rooms();
+    dir.mark_spaces();
+}
+
 async fn handle_room_update(
     client: &Client,
     update: Result<RoomUpdates, RecvError>,
@@ -523,9 +577,7 @@ async fn handle_room_update(
         }
         Err(RecvError::Lagged(n)) => {
             tracing::warn!("room updates lagged by {n} messages, full rebuild");
-            dir.seed(client).await;
-            dir.mark_rooms();
-            dir.mark_spaces();
+            resync(client, dir).await;
             LoopAction::Continue
         }
         Err(RecvError::Closed) => LoopAction::Break,
@@ -544,9 +596,7 @@ async fn handle_room_info_update(
         }
         Err(RecvError::Lagged(n)) => {
             tracing::warn!("room info updates lagged by {n} messages, full rebuild");
-            dir.seed(client).await;
-            dir.mark_rooms();
-            dir.mark_spaces();
+            resync(client, dir).await;
             LoopAction::Continue
         }
         Err(RecvError::Closed) => LoopAction::Break,
@@ -574,10 +624,8 @@ async fn handle_sync_state(
 ) -> LoopAction {
     match state {
         SyncState::Running => {
-            tracing::info!("sliding sync running");
-            dir.seed(client).await;
-            dir.mark_rooms();
-            dir.mark_spaces();
+            tracing::info!("sliding sync reconnected");
+            resync(client, dir).await;
             on_sync(SyncEvent::Connected);
             LoopAction::Continue
         }
@@ -612,9 +660,7 @@ async fn run_sync_loop(
     let mut state_stream = sync_service.state();
     let mut room_info_rx = client.room_info_notable_update_receiver();
 
-    dir.seed(client).await;
-    dir.mark_rooms();
-    dir.mark_spaces();
+    resync(client, &mut dir).await;
     dir.flush(client, on_sync, avatars).await;
     on_sync(SyncEvent::Connected);
 
