@@ -83,7 +83,7 @@ apple-native-keyring-store = { version = "1.0.1", features = ["keychain"] }
 windows-native-keyring-store = "1.1"
 
 [build-dependencies]
-lucide-slint = "1.24.0"
+lucide-slint = "1.25.0"
 slint-build = "1.17.1"
 
 [lints.clippy]
