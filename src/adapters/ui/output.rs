@@ -91,25 +91,48 @@ impl AppOutputPort for UiEventOutput {
         self.emit(UiEvent::SelectedSubspace(id)).await;
     }
 
-    async fn timeline(&self, room_id: RoomId, patch: Box<TimelinePatch>) {
-        self.emit(UiEvent::Timeline { room_id, patch }).await;
+    async fn timeline(&self, room_id: RoomId, generation: i32, patch: Box<TimelinePatch>) {
+        self.emit(UiEvent::Timeline {
+            room_id,
+            generation,
+            patch,
+        })
+        .await;
     }
 
-    async fn timeline_status(&self, room_id: RoomId, status: TimelineStatus) {
-        self.emit(UiEvent::TimelineStatus { room_id, status }).await;
+    async fn timeline_status(&self, room_id: RoomId, generation: i32, status: TimelineStatus) {
+        self.emit(UiEvent::TimelineStatus {
+            room_id,
+            generation,
+            status,
+        })
+        .await;
     }
 
-    async fn pagination_state(&self, room_id: RoomId, state: PaginationState) {
-        self.emit(UiEvent::PaginationState { room_id, state }).await;
+    async fn pagination_state(&self, room_id: RoomId, generation: i32, state: PaginationState) {
+        self.emit(UiEvent::PaginationState {
+            room_id,
+            generation,
+            state,
+        })
+        .await;
     }
 
-    async fn new_messages_badge(&self, room_id: RoomId, count: u32) {
-        self.emit(UiEvent::NewMessagesBadge { room_id, count })
-            .await;
+    async fn new_messages_badge(&self, room_id: RoomId, generation: i32, count: u32) {
+        self.emit(UiEvent::NewMessagesBadge {
+            room_id,
+            generation,
+            count,
+        })
+        .await;
     }
 
-    async fn scroll_to_bottom(&self, room_id: RoomId) {
-        self.emit(UiEvent::ScrollToBottom { room_id }).await;
+    async fn scroll_to_bottom(&self, room_id: RoomId, generation: i32) {
+        self.emit(UiEvent::ScrollToBottom {
+            room_id,
+            generation,
+        })
+        .await;
     }
 
     async fn verification(&self, event: VerificationEvent) {

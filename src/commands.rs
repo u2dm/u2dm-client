@@ -98,22 +98,27 @@ pub enum UiEvent {
     SelectedSubspace(String),
     Timeline {
         room_id: RoomId,
+        generation: i32,
         patch: Box<TimelinePatch>,
     },
     TimelineStatus {
         room_id: RoomId,
+        generation: i32,
         status: TimelineStatus,
     },
     PaginationState {
         room_id: RoomId,
+        generation: i32,
         state: PaginationState,
     },
     NewMessagesBadge {
         room_id: RoomId,
+        generation: i32,
         count: u32,
     },
     ScrollToBottom {
         room_id: RoomId,
+        generation: i32,
     },
     ConnectionStatus(ConnectionStatus),
     Verification(VerificationEvent),

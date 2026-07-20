@@ -17,6 +17,7 @@ pub fn send_command(tx: &mpsc::UnboundedSender<UiCommand>, cmd: UiCommand) {
 
 thread_local! {
     static PREPEND_TOKEN: Cell<i32> = const { Cell::new(0) };
+    static ACTIVE_GENERATION: Cell<i32> = const { Cell::new(0) };
 }
 
 pub fn sender_initial(name: &str) -> &str {
@@ -220,7 +221,7 @@ pub fn connection_status_token(status: &ConnectionStatus) -> &'static str {
 
 use crate::commands::{UiCommand, UiEvent};
 use crate::domain::models::{
-    ConnectionStatus, EnrichmentDelta, LoginMethod, MessageBody, MessagePreviewKind, Room,
+    ConnectionStatus, EnrichmentDelta, LoginMethod, MessageBody, MessagePreviewKind, Room, RoomId,
     ServerInfo, ServiceEvent, Space, TimelineMessage, TimelinePatch, TimelineStatus,
     VerificationEmoji as DomainVerificationEmoji, VerificationEvent as DomainVerificationEvent,
 };
@@ -439,6 +440,7 @@ pub fn dispatch_ui_event<T, R, S>(
             member_count,
             generation,
         } => {
+            ACTIVE_GENERATION.with(|g| g.set(generation));
             w.set_int(IntProp::SelectedGeneration, generation);
             w.set_string(StringProp::SelectedRoomId, SharedString::from(id.as_ref()));
             w.set_string(StringProp::SelectedRoomName, SharedString::from(&name));
@@ -453,12 +455,17 @@ pub fn dispatch_ui_event<T, R, S>(
         UiEvent::SelectedSubspace(id) => {
             w.set_string(StringProp::SelectedSubspaceId, SharedString::from(&id));
         }
-        UiEvent::Timeline { room_id, patch } => {
+        UiEvent::Timeline {
+            room_id,
+            generation,
+            patch,
+        } => {
             let selected = w.get_string(StringProp::SelectedRoomId);
-            let matches = selected.as_str() == room_id.as_ref();
+            let matches = is_active(w, &room_id, generation);
             tracing::debug!(
                 patch = patch.label(),
                 %room_id,
+                generation,
                 %selected,
                 matches,
                 "dispatch_ui_event received Timeline event"
@@ -484,31 +491,42 @@ pub fn dispatch_ui_event<T, R, S>(
                 );
             }
         }
-        UiEvent::TimelineStatus { room_id, status } => {
-            let selected = w.get_string(StringProp::SelectedRoomId);
-            if selected.as_str() == room_id.as_ref() {
+        UiEvent::TimelineStatus {
+            room_id,
+            generation,
+            status,
+        } => {
+            if is_active(w, &room_id, generation) {
                 apply_timeline_status(w, status);
             }
         }
-        UiEvent::PaginationState { room_id, state } => {
-            let selected = w.get_string(StringProp::SelectedRoomId);
-            if selected.as_str() == room_id.as_ref() {
+        UiEvent::PaginationState {
+            room_id,
+            generation,
+            state,
+        } => {
+            if is_active(w, &room_id, generation) {
                 w.set_bool(BoolProp::BackwardsLoading, state.backwards_loading);
                 w.set_bool(BoolProp::ForwardsLoading, state.forwards_loading);
             }
         }
-        UiEvent::NewMessagesBadge { room_id, count } => {
-            let selected = w.get_string(StringProp::SelectedRoomId);
-            if selected.as_str() == room_id.as_ref() {
+        UiEvent::NewMessagesBadge {
+            room_id,
+            generation,
+            count,
+        } => {
+            if is_active(w, &room_id, generation) {
                 w.set_int(
                     IntProp::NewMessagesCount,
                     count.min(i32::MAX as u32).cast_signed(),
                 );
             }
         }
-        UiEvent::ScrollToBottom { room_id } => {
-            let selected = w.get_string(StringProp::SelectedRoomId);
-            if selected.as_str() == room_id.as_ref() {
+        UiEvent::ScrollToBottom {
+            room_id,
+            generation,
+        } => {
+            if is_active(w, &room_id, generation) {
                 w.set_int(IntProp::NewMessagesCount, 0);
             }
         }
@@ -587,6 +605,11 @@ fn apply_connection_status(w: &impl UiProps, status: &ConnectionStatus) {
         StringProp::ConnectionStatus,
         SharedString::from(connection_status_token(status)),
     );
+}
+
+fn is_active(w: &impl UiProps, room_id: &RoomId, generation: i32) -> bool {
+    w.get_string(StringProp::SelectedRoomId).as_str() == room_id.as_ref()
+        && ACTIVE_GENERATION.with(Cell::get) == generation
 }
 
 fn timeline_status_token(status: TimelineStatus) -> &'static str {

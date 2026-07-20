@@ -19,11 +19,11 @@ pub trait AppOutputPort: Send + Sync {
     async fn selected_room(&self, id: RoomId, name: String, member_count: u64, generation: i32);
     async fn selected_space(&self, id: String);
     async fn selected_subspace(&self, id: String);
-    async fn timeline(&self, room_id: RoomId, patch: Box<TimelinePatch>);
-    async fn timeline_status(&self, room_id: RoomId, status: TimelineStatus);
-    async fn pagination_state(&self, room_id: RoomId, state: PaginationState);
-    async fn new_messages_badge(&self, room_id: RoomId, count: u32);
-    async fn scroll_to_bottom(&self, room_id: RoomId);
+    async fn timeline(&self, room_id: RoomId, generation: i32, patch: Box<TimelinePatch>);
+    async fn timeline_status(&self, room_id: RoomId, generation: i32, status: TimelineStatus);
+    async fn pagination_state(&self, room_id: RoomId, generation: i32, state: PaginationState);
+    async fn new_messages_badge(&self, room_id: RoomId, generation: i32, count: u32);
+    async fn scroll_to_bottom(&self, room_id: RoomId, generation: i32);
     async fn verification(&self, event: VerificationEvent);
     async fn file_saved(&self, path: String);
     async fn logged_out(&self);

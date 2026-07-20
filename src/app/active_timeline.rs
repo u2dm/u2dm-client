@@ -15,6 +15,39 @@ use crate::ports::output::AppOutputPort;
 
 const TIMELINE_CHANNEL_CAP: usize = 256;
 
+#[derive(Clone)]
+struct GenerationCounters {
+    at_bottom: Arc<AtomicBool>,
+    new_messages: Arc<AtomicU32>,
+}
+
+impl GenerationCounters {
+    fn new() -> Self {
+        Self {
+            at_bottom: Arc::new(AtomicBool::new(true)),
+            new_messages: Arc::new(AtomicU32::new(0)),
+        }
+    }
+
+    fn is_at_bottom(&self) -> bool {
+        self.at_bottom.load(Ordering::Relaxed)
+    }
+
+    fn set_at_bottom(&self, at_bottom: bool) {
+        self.at_bottom.store(at_bottom, Ordering::Relaxed);
+    }
+
+    fn add_new_messages(&self, count: u32) -> u32 {
+        self.new_messages
+            .fetch_add(count, Ordering::Relaxed)
+            .saturating_add(count)
+    }
+
+    fn clear_new_messages(&self) {
+        self.new_messages.store(0, Ordering::Relaxed);
+    }
+}
+
 pub(super) struct ActiveTimeline {
     matrix: Arc<dyn MatrixPort>,
     cmd_tx: mpsc::UnboundedSender<UiCommand>,
@@ -24,8 +57,7 @@ pub(super) struct ActiveTimeline {
     timeline_cmd_tx: Option<mpsc::UnboundedSender<TimelineCommand>>,
     active_room_id: Option<RoomId>,
     generation: i32,
-    at_bottom: Arc<AtomicBool>,
-    new_messages_counter: Arc<AtomicU32>,
+    counters: GenerationCounters,
 }
 
 impl ActiveTimeline {
@@ -38,13 +70,12 @@ impl ActiveTimeline {
             matrix,
             cmd_tx,
             output,
-            tasks: TaskGroup::new(),
+            tasks: TaskGroup::new("timeline"),
             viewport: ViewportController::new(),
             timeline_cmd_tx: None,
             active_room_id: None,
             generation: 0,
-            at_bottom: Arc::new(AtomicBool::new(true)),
-            new_messages_counter: Arc::new(AtomicU32::new(0)),
+            counters: GenerationCounters::new(),
         }
     }
 
@@ -55,20 +86,19 @@ impl ActiveTimeline {
 
     pub(super) async fn select_room(&mut self, room_id: RoomId, generation: i32) {
         tracing::info!(%room_id, generation, "switching room");
-        self.tasks.reset().await;
+        self.tasks.cancel_and_detach();
 
         self.viewport = ViewportController::new();
         self.active_room_id = Some(room_id.clone());
         self.generation = generation;
-        self.at_bottom.store(true, Ordering::Relaxed);
-        self.new_messages_counter.store(0, Ordering::Relaxed);
+        self.counters = GenerationCounters::new();
         self.emit_pagination_state(&room_id).await;
 
         self.output
-            .timeline_status(room_id.clone(), TimelineStatus::Loading)
+            .timeline_status(room_id.clone(), generation, TimelineStatus::Loading)
             .await;
         self.output
-            .timeline(room_id.clone(), Box::new(TimelinePatch::Clear))
+            .timeline(room_id.clone(), generation, Box::new(TimelinePatch::Clear))
             .await;
 
         let (tl_tx, mut tl_rx) = mpsc::channel::<TimelineUpdate>(TIMELINE_CHANNEL_CAP);
@@ -80,8 +110,7 @@ impl ActiveTimeline {
         let cmd_tx = self.cmd_tx.clone();
         let token = self.tasks.token();
         let rid = room_id.clone();
-        let at_bottom = Arc::clone(&self.at_bottom);
-        let new_messages_counter = Arc::clone(&self.new_messages_counter);
+        let counters = self.counters.clone();
 
         self.tasks.spawn(async move {
             let subscribe = matrix.subscribe_timeline(&room_id, tl_tx, tl_cmd_rx);
@@ -95,17 +124,17 @@ impl ActiveTimeline {
 
                     match update {
                         TimelineUpdate::Patch(patch) => {
-                            if !at_bottom.load(Ordering::Relaxed) {
+                            if !counters.is_at_bottom() {
                                 let added = count_appended(patch.as_ref());
                                 if added > 0 {
-                                    let prev =
-                                        new_messages_counter.fetch_add(added, Ordering::Relaxed);
-                                    let total = prev.saturating_add(added);
-                                    output.new_messages_badge(rid.clone(), total).await;
+                                    let total = counters.add_new_messages(added);
+                                    output
+                                        .new_messages_badge(rid.clone(), generation, total)
+                                        .await;
                                 }
                             }
 
-                            output.timeline(rid.clone(), patch).await;
+                            output.timeline(rid.clone(), generation, patch).await;
                         }
                         TimelineUpdate::Pagination { direction, outcome } => {
                             if let Err(e) = cmd_tx.send(UiCommand::TimelinePaginationCompleted {
@@ -130,11 +159,14 @@ impl ActiveTimeline {
                         tracing::warn!("timeline subscription failed: {e}");
                         output.timeline_status(
                             rid.clone(),
+                            generation,
                             TimelineStatus::Failed { retryable: true },
                         ).await;
                     } else {
                         tracing::debug!("timeline subscription ended");
-                        output.timeline_status(rid.clone(), TimelineStatus::Disconnected).await;
+                        output
+                            .timeline_status(rid.clone(), generation, TimelineStatus::Disconnected)
+                            .await;
                     }
                 }
                 () = forward => {
@@ -145,14 +177,6 @@ impl ActiveTimeline {
                 }
             }
         });
-    }
-
-    pub(super) async fn retry(&mut self) {
-        let Some(room_id) = self.active_room_id.clone() else {
-            return;
-        };
-        let generation = self.generation;
-        self.select_room(room_id, generation).await;
     }
 
     pub(super) fn spawn_send(
@@ -246,10 +270,12 @@ impl ActiveTimeline {
 
         if matches!(direction, PaginationDirection::Forwards)
             && hit_end
-            && self.at_bottom.load(Ordering::Relaxed)
+            && self.counters.is_at_bottom()
         {
-            self.new_messages_counter.store(0, Ordering::Relaxed);
-            self.output.new_messages_badge(room_id.clone(), 0).await;
+            self.counters.clear_new_messages();
+            self.output
+                .new_messages_badge(room_id.clone(), generation, 0)
+                .await;
         }
     }
 
@@ -258,10 +284,14 @@ impl ActiveTimeline {
             return;
         }
         self.viewport.jump_to_latest();
-        self.at_bottom.store(true, Ordering::Relaxed);
-        self.new_messages_counter.store(0, Ordering::Relaxed);
-        self.output.scroll_to_bottom(room_id.clone()).await;
-        self.output.new_messages_badge(room_id.clone(), 0).await;
+        self.counters.set_at_bottom(true);
+        self.counters.clear_new_messages();
+        self.output
+            .scroll_to_bottom(room_id.clone(), generation)
+            .await;
+        self.output
+            .new_messages_badge(room_id.clone(), generation, 0)
+            .await;
         self.emit_pagination_state(room_id).await;
     }
 
@@ -278,11 +308,13 @@ impl ActiveTimeline {
 
         let mode_changed = self.viewport.update_scroll_position(at_top, at_bottom);
 
-        self.at_bottom.store(at_bottom, Ordering::Relaxed);
+        self.counters.set_at_bottom(at_bottom);
 
         if mode_changed && self.viewport.mode() == ScrollMode::FollowLive {
-            self.new_messages_counter.store(0, Ordering::Relaxed);
-            self.output.new_messages_badge(room_id.clone(), 0).await;
+            self.counters.clear_new_messages();
+            self.output
+                .new_messages_badge(room_id.clone(), generation, 0)
+                .await;
         }
     }
 
@@ -291,13 +323,12 @@ impl ActiveTimeline {
         self.timeline_cmd_tx = None;
         self.active_room_id = None;
         self.generation = 0;
-        self.at_bottom.store(true, Ordering::Relaxed);
-        self.new_messages_counter.store(0, Ordering::Relaxed);
+        self.counters = GenerationCounters::new();
     }
 
     async fn emit_pagination_state(&self, room_id: &RoomId) {
         self.output
-            .pagination_state(room_id.clone(), self.viewport.state())
+            .pagination_state(room_id.clone(), self.generation, self.viewport.state())
             .await;
     }
 }

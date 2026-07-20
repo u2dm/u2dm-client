@@ -242,15 +242,15 @@ pub(super) async fn logout(
 ) -> Result<()> {
     tracing::info!("logging out");
     verification_handler_guards.lock().await.clear();
-    let mut guard = client_lock.write().await;
-    if let Some(client) = guard.as_ref()
+
+    let client = client_lock.write().await.take();
+    *verification_req_rx.lock().await = None;
+
+    if let Some(client) = client
         && let Err(e) = client.logout().await
     {
         tracing::warn!("failed to logout from server: {e}");
     }
-    *guard = None;
-    drop(guard);
-    *verification_req_rx.lock().await = None;
     Ok(())
 }
 

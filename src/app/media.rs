@@ -5,9 +5,12 @@ use tokio::task::JoinSet;
 use tokio::time;
 use tokio_util::sync::CancellationToken;
 
+use super::task_group::record_join;
 use crate::ports::matrix::MatrixPort;
 use crate::ports::media::MediaFilePort;
 use crate::ports::output::AppOutputPort;
+
+const GROUP: &str = "media";
 
 pub(super) struct MediaActions {
     matrix: Arc<dyn MatrixPort>,
@@ -111,16 +114,27 @@ impl MediaActions {
         let count = self.tasks.len();
         tracing::debug!("waiting for {count} in-flight task(s)");
         let result = time::timeout(Duration::from_secs(3), async {
-            while self.tasks.join_next().await.is_some() {}
+            while let Some(joined) = self.tasks.join_next().await {
+                record_join(GROUP, joined);
+            }
         })
         .await;
         if result.is_err() {
-            tracing::warn!("timed out waiting for in-flight tasks, abandoning");
+            tracing::warn!(
+                group = GROUP,
+                stragglers = self.tasks.len(),
+                "timed out waiting for in-flight tasks, aborting"
+            );
             self.tasks.abort_all();
+            while let Some(joined) = self.tasks.join_next().await {
+                record_join(GROUP, joined);
+            }
         }
     }
 
     fn reap_finished(&mut self) {
-        while self.tasks.try_join_next().is_some() {}
+        while let Some(joined) = self.tasks.try_join_next() {
+            record_join(GROUP, joined);
+        }
     }
 }

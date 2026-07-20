@@ -93,8 +93,8 @@ impl AppService {
             rooms_in_tx,
             spaces_in_tx,
             output,
-            background: TaskGroup::new(),
-            operations: TaskGroup::new(),
+            background: TaskGroup::new("background"),
+            operations: TaskGroup::new("operations"),
             selection: Selection::default(),
             space_order_tx,
             space_order_cancel,
@@ -194,7 +194,7 @@ impl AppService {
                 self.select_room(room_id).await;
             }
             UiCommand::RetryTimeline => {
-                self.active_timeline.retry().await;
+                self.retry_timeline().await;
             }
             UiCommand::SendMessage {
                 room_id,
@@ -330,6 +330,13 @@ impl AppService {
         self.active_timeline.select_room(room_id, generation).await;
     }
 
+    async fn retry_timeline(&mut self) {
+        let Some(room_id) = self.selection.room.clone() else {
+            return;
+        };
+        self.select_room(room_id).await;
+    }
+
     async fn refresh_selected_room(&mut self) {
         let Some(room_id) = self.selection.room.clone() else {
             return;
@@ -364,16 +371,18 @@ impl AppService {
     }
 
     async fn start_background_tasks(&mut self) {
-        self.background.reset().await;
+        self.background.restart().await;
         self.session.spawn_session_persister(&mut self.background);
         self.verification.spawn_forwarder(&mut self.background);
     }
 
     async fn shutdown_all_tasks(&mut self) {
-        self.background.shutdown().await;
-        self.active_timeline.shutdown().await;
-        self.operations.reset().await;
-        self.media.cancel_and_drain().await;
+        tokio::join!(
+            self.background.shutdown(),
+            self.active_timeline.shutdown(),
+            self.operations.restart(),
+            self.media.cancel_and_drain(),
+        );
     }
 
     async fn handle_session_expired(&mut self) {
@@ -395,7 +404,7 @@ impl AppService {
         tokio::join!(
             self.background.shutdown(),
             self.active_timeline.shutdown(),
-            self.operations.reset(),
+            self.operations.shutdown(),
             self.media.drain(),
         );
         self.flush_space_order().await;
