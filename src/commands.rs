@@ -4,9 +4,14 @@ use std::sync::Arc;
 use strum::Display as StrumDisplay;
 
 use crate::domain::models::{
-    ConnectionStatus, LoginCredentials, PaginationDirection, PaginationOutcome, PaginationState,
-    Room, RoomId, ServerInfo, Space, TimelinePatch, TimelineStatus, VerificationEvent,
+    ConnectionStatus, LoginCredentials, LoginMethod, PaginationDirection, PaginationOutcome, Room,
+    RoomId, Space, TimelinePatch, TimelineStatus, VerificationEvent,
 };
+
+pub enum DirectoryUpdate {
+    Rooms(Arc<[Room]>),
+    Spaces(Arc<[Space]>),
+}
 
 #[derive(StrumDisplay)]
 pub enum UiCommand {
@@ -75,27 +80,17 @@ pub enum UiCommand {
     Quit,
 }
 
-pub enum UiEvent {
-    ServerInfo(ServerInfo),
-    ShowLogin,
-    LoginSuccess {
-        user_id: String,
-    },
-    UserAvatar(Option<PathBuf>),
+pub enum Effect {
+    Snapshot(Arc<AppViewState>),
     LoginError(String),
-    ToastError(String),
+    Toast(String),
     Status(String),
-    Rooms(Arc<[Room]>),
-    Spaces(Arc<[Space]>),
-    Subspaces(Arc<[Space]>),
     SelectedRoom {
         id: RoomId,
         name: String,
         member_count: u64,
         generation: i32,
     },
-    SelectedSpace(String),
-    SelectedSubspace(String),
     Timeline {
         room_id: RoomId,
         generation: i32,
@@ -106,21 +101,6 @@ pub enum UiEvent {
         generation: i32,
         status: TimelineStatus,
     },
-    PaginationState {
-        room_id: RoomId,
-        generation: i32,
-        state: PaginationState,
-    },
-    NewMessagesBadge {
-        room_id: RoomId,
-        generation: i32,
-        count: u32,
-    },
-    ScrollToBottom {
-        room_id: RoomId,
-        generation: i32,
-    },
-    ConnectionStatus(ConnectionStatus),
     Verification(VerificationEvent),
     FileSaved {
         path: String,
@@ -143,6 +123,71 @@ impl ViewportChanged {
             generation: 0,
             at_top: false,
             at_bottom: true,
+        }
+    }
+}
+
+#[derive(Clone, Default)]
+pub struct AppViewState {
+    pub lifecycle: LifecycleView,
+    pub connection: ConnectionStatus,
+    pub directory: DirectoryView,
+    pub pagination: PaginationView,
+}
+
+#[derive(Clone, Copy, Default, PartialEq, Eq)]
+pub struct PaginationView {
+    pub generation: i32,
+    pub backwards_loading: bool,
+    pub forwards_loading: bool,
+    pub new_messages: u32,
+}
+
+impl PaginationView {
+    pub fn retarget(&mut self, generation: i32) {
+        if self.generation != generation {
+            *self = Self {
+                generation,
+                ..Self::default()
+            };
+        }
+    }
+}
+
+#[derive(Clone, Default)]
+pub struct LifecycleView {
+    pub step: LoginStep,
+    pub method: LoginMethod,
+    pub resolved_homeserver: String,
+    pub user_id: String,
+    pub avatar_path: Option<PathBuf>,
+}
+
+#[derive(Clone, Copy, Default, PartialEq, Eq)]
+pub enum LoginStep {
+    #[default]
+    Homeserver,
+    Credentials,
+    LoggedIn,
+}
+
+#[derive(Clone)]
+pub struct DirectoryView {
+    pub rooms: Arc<[Room]>,
+    pub spaces: Arc<[Space]>,
+    pub subspaces: Arc<[Space]>,
+    pub space_id: String,
+    pub subspace_id: String,
+}
+
+impl Default for DirectoryView {
+    fn default() -> Self {
+        Self {
+            rooms: Arc::from(Vec::new()),
+            spaces: Arc::from(Vec::new()),
+            subspaces: Arc::from(Vec::new()),
+            space_id: String::new(),
+            subspace_id: String::new(),
         }
     }
 }

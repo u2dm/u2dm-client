@@ -2,11 +2,11 @@ use std::collections::{HashMap, HashSet};
 use std::mem;
 use std::sync::Arc;
 
-use tokio::sync::{mpsc, watch};
+use tokio::sync::mpsc;
 
 use super::selection::Selection;
 use super::task_group::TaskGroup;
-use crate::commands::UiCommand;
+use crate::commands::{DirectoryUpdate, UiCommand};
 use crate::domain::models::{ConnectionStatus, Room, Space, SyncEvent};
 use crate::ports::matrix::SyncPort;
 use crate::ports::output::AppOutputPort;
@@ -193,8 +193,7 @@ impl RoomDirectory {
         sync: Arc<dyn SyncPort>,
         output: Arc<dyn AppOutputPort>,
         cmd_tx: mpsc::UnboundedSender<UiCommand>,
-        rooms_in_tx: watch::Sender<Arc<[Room]>>,
-        spaces_in_tx: watch::Sender<Arc<[Space]>>,
+        dir_in_tx: mpsc::UnboundedSender<DirectoryUpdate>,
     ) {
         let token = group.token();
         let on_sync: Box<dyn Fn(SyncEvent) + Send + Sync> = Box::new(move |event| match event {
@@ -202,10 +201,10 @@ impl RoomDirectory {
                 output.connection_status(ConnectionStatus::Connected);
             }
             SyncEvent::Rooms(rooms) => {
-                drop(rooms_in_tx.send(rooms));
+                drop(dir_in_tx.send(DirectoryUpdate::Rooms(rooms)));
             }
             SyncEvent::Spaces(spaces) => {
-                drop(spaces_in_tx.send(spaces));
+                drop(dir_in_tx.send(DirectoryUpdate::Spaces(spaces)));
             }
             SyncEvent::ConnectionError(msg) => {
                 output.connection_status(ConnectionStatus::Error(msg));

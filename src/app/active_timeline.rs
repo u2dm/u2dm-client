@@ -94,7 +94,7 @@ impl ActiveTimeline {
         self.active_room_id = Some(room_id.clone());
         self.generation = generation;
         self.counters = GenerationCounters::new();
-        self.emit_pagination_state(&room_id).await;
+        self.emit_pagination_state();
 
         self.output
             .timeline_status(room_id.clone(), generation, TimelineStatus::Loading)
@@ -129,9 +129,7 @@ impl ActiveTimeline {
                                 let added = count_appended(patch.as_ref());
                                 if added > 0 {
                                     let total = counters.add_new_messages(added);
-                                    output
-                                        .new_messages_badge(rid.clone(), generation, total)
-                                        .await;
+                                    output.new_messages_badge(generation, total);
                                 }
                             }
 
@@ -207,7 +205,7 @@ impl ActiveTimeline {
         self.generation == generation && self.active_room_id.as_ref() == Some(room_id)
     }
 
-    pub(super) async fn paginate_backwards(&mut self, room_id: &RoomId, generation: i32) {
+    pub(super) fn paginate_backwards(&mut self, room_id: &RoomId, generation: i32) {
         if !self.is_current(room_id, generation) {
             return;
         }
@@ -222,10 +220,10 @@ impl ActiveTimeline {
             tracing::debug!("timeline command channel closed");
             self.viewport.set_backwards_loading(false);
         }
-        self.emit_pagination_state(room_id).await;
+        self.emit_pagination_state();
     }
 
-    pub(super) async fn paginate_forwards(&mut self, room_id: &RoomId, generation: i32) {
+    pub(super) fn paginate_forwards(&mut self, room_id: &RoomId, generation: i32) {
         if !self.is_current(room_id, generation) {
             return;
         }
@@ -240,7 +238,7 @@ impl ActiveTimeline {
             tracing::debug!("timeline command channel closed");
             self.viewport.set_forwards_loading(false);
         }
-        self.emit_pagination_state(room_id).await;
+        self.emit_pagination_state();
     }
 
     pub(super) async fn complete_pagination(
@@ -267,36 +265,30 @@ impl ActiveTimeline {
                 false
             }
         };
-        self.emit_pagination_state(room_id).await;
+        self.emit_pagination_state();
 
         if matches!(direction, PaginationDirection::Forwards)
             && hit_end
             && self.counters.is_at_bottom()
         {
             self.counters.clear_new_messages();
-            self.output
-                .new_messages_badge(room_id.clone(), generation, 0)
-                .await;
+            self.output.new_messages_badge(generation, 0);
         }
     }
 
-    pub(super) async fn jump_to_latest(&mut self, room_id: &RoomId, generation: i32) {
+    pub(super) fn jump_to_latest(&mut self, room_id: &RoomId, generation: i32) {
         if !self.is_current(room_id, generation) {
             return;
         }
         self.viewport.jump_to_latest();
         self.counters.set_at_bottom(true);
         self.counters.clear_new_messages();
-        self.output
-            .scroll_to_bottom(room_id.clone(), generation)
-            .await;
-        self.output
-            .new_messages_badge(room_id.clone(), generation, 0)
-            .await;
-        self.emit_pagination_state(room_id).await;
+        self.output.scroll_to_bottom(generation);
+        self.output.new_messages_badge(generation, 0);
+        self.emit_pagination_state();
     }
 
-    pub(super) async fn scroll_position_changed(
+    pub(super) fn scroll_position_changed(
         &mut self,
         room_id: &RoomId,
         generation: i32,
@@ -313,9 +305,7 @@ impl ActiveTimeline {
 
         if mode_changed && self.viewport.mode() == ScrollMode::FollowLive {
             self.counters.clear_new_messages();
-            self.output
-                .new_messages_badge(room_id.clone(), generation, 0)
-                .await;
+            self.output.new_messages_badge(generation, 0);
         }
     }
 
@@ -327,10 +317,9 @@ impl ActiveTimeline {
         self.counters = GenerationCounters::new();
     }
 
-    async fn emit_pagination_state(&self, room_id: &RoomId) {
+    fn emit_pagination_state(&self) {
         self.output
-            .pagination_state(room_id.clone(), self.generation, self.viewport.state())
-            .await;
+            .pagination_state(self.generation, self.viewport.state());
     }
 }
 

@@ -8,9 +8,8 @@ use adapters::demo;
 use adapters::media::DesktopMediaFiles;
 use adapters::ui::{SlintUiAdapter, UiEventOutput};
 use app::AppService;
-use commands::{UiCommand, UiEvent, ViewportChanged};
+use commands::{AppViewState, DirectoryUpdate, Effect, UiCommand, ViewportChanged};
 use composition::Backend;
-use domain::models::{ConnectionStatus, Room, Space};
 use error::Result;
 use ports::browser::BrowserPort;
 use ports::media::MediaFilePort;
@@ -62,18 +61,12 @@ fn run() -> Result<()> {
     let ui = SlintUiAdapter::compile(&rt)?;
 
     let (cmd_tx, cmd_rx) = mpsc::unbounded_channel::<UiCommand>();
-    let (ui_tx, ui_rx) = mpsc::channel::<UiEvent>(UI_EVENT_CHANNEL_CAP);
+    let (ui_tx, ui_rx) = mpsc::channel::<Effect>(UI_EVENT_CHANNEL_CAP);
 
-    let (rooms_out_tx, rooms_out_rx) = watch::channel::<Arc<[Room]>>(Arc::from(Vec::new()));
-    let (spaces_out_tx, spaces_out_rx) = watch::channel::<Arc<[Space]>>(Arc::from(Vec::new()));
-    let (subspaces_out_tx, subspaces_out_rx) =
-        watch::channel::<Arc<[Space]>>(Arc::from(Vec::new()));
-    let (connection_out_tx, connection_out_rx) =
-        watch::channel::<ConnectionStatus>(ConnectionStatus::Disconnected);
-    let (status_out_tx, status_out_rx) = watch::channel::<String>(String::new());
+    let (view_out_tx, view_out_rx) =
+        watch::channel::<Arc<AppViewState>>(Arc::new(AppViewState::default()));
 
-    let (rooms_in_tx, rooms_in_rx) = watch::channel::<Arc<[Room]>>(Arc::from(Vec::new()));
-    let (spaces_in_tx, spaces_in_rx) = watch::channel::<Arc<[Space]>>(Arc::from(Vec::new()));
+    let (dir_in_tx, dir_in_rx) = mpsc::unbounded_channel::<DirectoryUpdate>();
     let (scroll_tx, scroll_rx) = watch::channel::<ViewportChanged>(ViewportChanged::initial());
 
     ui.register_callbacks(&cmd_tx, &scroll_tx)?;
@@ -84,25 +77,10 @@ fn run() -> Result<()> {
     let backend = Backend::select(&cfg);
     let media_files: Arc<dyn MediaFilePort> = Arc::new(DesktopMediaFiles::new());
     let browser: Arc<dyn BrowserPort> = Arc::new(DesktopBrowser::new());
-    let output: Arc<dyn AppOutputPort> = Arc::new(UiEventOutput::new(
-        ui_tx,
-        rooms_out_tx,
-        spaces_out_tx,
-        subspaces_out_tx,
-        connection_out_tx,
-        status_out_tx,
-    ));
+    let output: Arc<dyn AppOutputPort> = Arc::new(UiEventOutput::new(ui_tx, view_out_tx));
 
     let cmd_tx_quit = cmd_tx.clone();
-    ui.spawn_event_handler(
-        ui_rx,
-        rooms_out_rx,
-        spaces_out_rx,
-        subspaces_out_rx,
-        connection_out_rx,
-        status_out_rx,
-        backend.media_cache,
-    );
+    ui.spawn_event_handler(ui_rx, view_out_rx, backend.media_cache);
     if let Err(e) = cmd_tx.send(UiCommand::RestoreSession) {
         tracing::warn!("failed to send RestoreSession command: {e}");
     }
@@ -112,14 +90,11 @@ fn run() -> Result<()> {
         media_files,
         browser,
         cmd_tx,
-        rooms_in_tx,
-        spaces_in_tx,
+        dir_in_tx,
         output,
     );
     let service_handle = tokio::spawn(async move {
-        service
-            .run(cmd_rx, rooms_in_rx, spaces_in_rx, scroll_rx)
-            .await;
+        service.run(cmd_rx, dir_in_rx, scroll_rx).await;
     });
 
     ui.run()?;

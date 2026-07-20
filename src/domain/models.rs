@@ -16,11 +16,12 @@ impl AuthMethod {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum LoginMethod {
     Password,
     OAuth,
     Both,
+    #[default]
     None,
 }
 
@@ -176,9 +177,10 @@ pub struct Space {
     pub mentions: u64,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 #[allow(dead_code)]
 pub enum ConnectionStatus {
+    #[default]
     Disconnected,
     Connecting,
     Connected,

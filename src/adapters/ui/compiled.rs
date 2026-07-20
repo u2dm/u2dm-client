@@ -6,7 +6,7 @@ use slint::{ComponentHandle, Image, ModelRc, SharedString, VecModel};
 use tokio::runtime::Runtime;
 use tokio::sync::{OwnedSemaphorePermit, mpsc, watch};
 
-use super::common::{BoolProp, IntProp, StringProp, UiProps, dispatch_ui_event, reorder_rows};
+use super::common::{BoolProp, IntProp, StringProp, UiProps, dispatch_effect, reorder_rows};
 use super::decode::{
     AvatarSlot, DecodeOutcome, advance_animations, patch_rows, request_avatar, request_media,
     set_animation_tick, set_avatar_ready, set_image_ready,
@@ -14,9 +14,9 @@ use super::decode::{
 use super::dto::{ThumbUpdate, enrich_to_update, message_to_dto, room_to_dto, space_to_dto};
 use super::multiplex::spawn_event_multiplexer;
 use super::{emoji, router};
-use crate::commands::{UiCommand, UiEvent, ViewportChanged};
+use crate::commands::{AppViewState, Effect, UiCommand, ViewportChanged};
 use crate::domain::models::{
-    ConnectionStatus, EnrichmentDelta, LoginCredentials, Room, RoomId, Space, TimelineMessage,
+    EnrichmentDelta, LoginCredentials, Room, RoomId, Space, TimelineMessage,
     VerificationEmoji as DomainVerificationEmoji,
 };
 use crate::error::Result;
@@ -264,15 +264,10 @@ impl SlintUiAdapter {
         Ok(())
     }
 
-    #[allow(clippy::too_many_arguments)]
     pub fn spawn_event_handler(
         &self,
-        ui_rx: mpsc::Receiver<UiEvent>,
-        rooms_rx: watch::Receiver<Arc<[Room]>>,
-        spaces_rx: watch::Receiver<Arc<[Space]>>,
-        subspaces_rx: watch::Receiver<Arc<[Space]>>,
-        connection_rx: watch::Receiver<ConnectionStatus>,
-        status_rx: watch::Receiver<String>,
+        ui_rx: mpsc::Receiver<Effect>,
+        view_rx: watch::Receiver<Arc<AppViewState>>,
         media_cache: Arc<dyn MediaCache>,
     ) {
         let weak = self.window.as_weak();
@@ -308,16 +303,9 @@ impl SlintUiAdapter {
         SPACES_MODEL.with(|cell| *cell.borrow_mut() = Some(spaces_model));
         SUBSPACES_MODEL.with(|cell| *cell.borrow_mut() = Some(subspaces_model));
 
-        spawn_event_multiplexer(
-            ui_rx,
-            rooms_rx,
-            spaces_rx,
-            subspaces_rx,
-            connection_rx,
-            status_rx,
-            media_cache,
-            move |event, media, permit| post_ui_event(&weak, media, event, permit),
-        );
+        spawn_event_multiplexer(ui_rx, view_rx, media_cache, move |event, media, permit| {
+            post_effect(&weak, media, event, permit);
+        });
     }
 
     pub fn run(&self) -> Result<()> {
@@ -394,10 +382,10 @@ fn setup_emoji_store(window: &AppWindow) {
     });
 }
 
-fn post_ui_event(
+fn post_effect(
     weak: &slint::Weak<AppWindow>,
     media_cache: Arc<dyn MediaCache>,
-    event: UiEvent,
+    event: Effect,
     permit: OwnedSemaphorePermit,
 ) {
     weak.upgrade_in_event_loop(move |w| {
@@ -406,7 +394,7 @@ fn post_ui_event(
         let spaces = SPACES_MODEL.with(|cell| cell.borrow().clone());
         let subspaces = SUBSPACES_MODEL.with(|cell| cell.borrow().clone());
         if let (Some(tl), Some(rm), Some(sm), Some(ssm)) = (timeline, rooms, spaces, subspaces) {
-            dispatch_ui_event(
+            dispatch_effect(
                 &w,
                 event,
                 &tl,

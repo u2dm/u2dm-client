@@ -1,5 +1,6 @@
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use slint::{Image, Model, SharedString, VecModel};
 use tokio::sync::mpsc;
@@ -18,6 +19,8 @@ pub fn send_command(tx: &mpsc::UnboundedSender<UiCommand>, cmd: UiCommand) {
 thread_local! {
     static PREPEND_TOKEN: Cell<i32> = const { Cell::new(0) };
     static ACTIVE_GENERATION: Cell<i32> = const { Cell::new(0) };
+    static LATEST_SNAPSHOT: RefCell<Arc<AppViewState>> =
+        RefCell::new(Arc::new(AppViewState::default()));
 }
 
 pub fn sender_initial(name: &str) -> &str {
@@ -219,10 +222,10 @@ pub fn connection_status_token(status: &ConnectionStatus) -> &'static str {
     }
 }
 
-use crate::commands::{UiCommand, UiEvent};
+use crate::commands::{AppViewState, Effect, LifecycleView, LoginStep, PaginationView, UiCommand};
 use crate::domain::models::{
     ConnectionStatus, EnrichmentDelta, LoginMethod, MessageBody, MessagePreviewKind, Room, RoomId,
-    ServerInfo, ServiceEvent, Space, TimelineMessage, TimelinePatch, TimelineStatus,
+    ServiceEvent, Space, TimelineMessage, TimelinePatch, TimelineStatus,
     VerificationEmoji as DomainVerificationEmoji, VerificationEvent as DomainVerificationEvent,
 };
 
@@ -344,22 +347,6 @@ impl Status {
     }
 }
 
-pub enum LoginStep {
-    Homeserver,
-    Credentials,
-    LoggedIn,
-}
-
-impl LoginStep {
-    pub fn as_str(&self) -> &'static str {
-        match self {
-            Self::Homeserver => "homeserver",
-            Self::Credentials => "credentials",
-            Self::LoggedIn => "logged-in",
-        }
-    }
-}
-
 pub enum VerifyStep {
     Requested,
     Emojis,
@@ -381,9 +368,9 @@ impl VerifyStep {
 }
 
 #[allow(clippy::too_many_lines, clippy::too_many_arguments)]
-pub fn dispatch_ui_event<T, R, S>(
+pub fn dispatch_effect<T, R, S>(
     w: &impl UiProps,
-    event: UiEvent,
+    event: Effect,
     timeline_model: &VecModel<T>,
     rooms_model: &VecModel<R>,
     spaces_model: &VecModel<S>,
@@ -401,40 +388,21 @@ pub fn dispatch_ui_event<T, R, S>(
     S: Clone + PartialEq + 'static,
 {
     match event {
-        UiEvent::ServerInfo(info) => apply_server_info(w, &info),
-        UiEvent::ShowLogin => apply_show_login(w),
-        UiEvent::LoginSuccess { user_id } => apply_login_success(w, &user_id),
-        UiEvent::UserAvatar(path) => {
-            let avatar = path
-                .as_deref()
-                .and_then(|p| load_avatar_async(p, AvatarSlot::User));
-            w.apply_user_avatar(avatar);
-        }
-        UiEvent::LoginError(message) => apply_login_error(w, &message),
-        UiEvent::ToastError(message) => apply_toast_error(w, &message),
-        UiEvent::Status(msg) => apply_status(w, &msg),
-        UiEvent::Rooms(rooms) => {
-            apply_rooms(rooms_model, rooms.as_ref(), convert_room, room_entry_id);
-        }
-        UiEvent::Spaces(spaces) => {
-            apply_reconcile(
-                spaces_model,
-                spaces.as_ref(),
-                &|s| s.id.as_str(),
-                convert_space,
-                space_entry_id,
-            );
-        }
-        UiEvent::Subspaces(spaces) => {
-            apply_reconcile(
-                subspaces_model,
-                spaces.as_ref(),
-                &|s| s.id.as_str(),
-                convert_space,
-                space_entry_id,
-            );
-        }
-        UiEvent::SelectedRoom {
+        Effect::LoginError(message) => apply_login_error(w, &message),
+        Effect::Toast(message) => apply_toast_error(w, &message),
+        Effect::Status(msg) => apply_status(w, &msg),
+        Effect::Snapshot(view) => apply_snapshot(
+            w,
+            &view,
+            rooms_model,
+            spaces_model,
+            subspaces_model,
+            convert_room,
+            convert_space,
+            room_entry_id,
+            space_entry_id,
+        ),
+        Effect::SelectedRoom {
             id,
             name,
             member_count,
@@ -448,14 +416,9 @@ pub fn dispatch_ui_event<T, R, S>(
                 IntProp::SelectedRoomMembers,
                 i32::try_from(member_count).unwrap_or(i32::MAX),
             );
+            LATEST_SNAPSHOT.with(|cell| sync_timeline_chrome(w, &cell.borrow().pagination));
         }
-        UiEvent::SelectedSpace(id) => {
-            w.set_string(StringProp::SelectedSpaceId, SharedString::from(&id));
-        }
-        UiEvent::SelectedSubspace(id) => {
-            w.set_string(StringProp::SelectedSubspaceId, SharedString::from(&id));
-        }
-        UiEvent::Timeline {
+        Effect::Timeline {
             room_id,
             generation,
             patch,
@@ -468,7 +431,7 @@ pub fn dispatch_ui_event<T, R, S>(
                 generation,
                 %selected,
                 matches,
-                "dispatch_ui_event received Timeline event"
+                "dispatch_effect received Timeline event"
             );
             if matches {
                 if matches!(patch.as_ref(), TimelinePatch::Reset(_)) {
@@ -491,7 +454,7 @@ pub fn dispatch_ui_event<T, R, S>(
                 );
             }
         }
-        UiEvent::TimelineStatus {
+        Effect::TimelineStatus {
             room_id,
             generation,
             status,
@@ -500,91 +463,149 @@ pub fn dispatch_ui_event<T, R, S>(
                 apply_timeline_status(w, status);
             }
         }
-        UiEvent::PaginationState {
-            room_id,
-            generation,
-            state,
-        } => {
-            if is_active(w, &room_id, generation) {
-                w.set_bool(BoolProp::BackwardsLoading, state.backwards_loading);
-                w.set_bool(BoolProp::ForwardsLoading, state.forwards_loading);
-            }
-        }
-        UiEvent::NewMessagesBadge {
-            room_id,
-            generation,
-            count,
-        } => {
-            if is_active(w, &room_id, generation) {
-                w.set_int(
-                    IntProp::NewMessagesCount,
-                    count.min(i32::MAX as u32).cast_signed(),
-                );
-            }
-        }
-        UiEvent::ScrollToBottom {
-            room_id,
-            generation,
-        } => {
-            if is_active(w, &room_id, generation) {
-                w.set_int(IntProp::NewMessagesCount, 0);
-            }
-        }
-        UiEvent::ConnectionStatus(status) => apply_connection_status(w, &status),
-        UiEvent::Verification(event) => apply_verification(w, &event),
-        UiEvent::FileSaved { path } => {
+        Effect::Verification(event) => apply_verification(w, &event),
+        Effect::FileSaved { path } => {
             w.set_string(StringProp::SavedFilePath, SharedString::from(&path));
             w.set_string(
                 StringProp::ToastMessage,
                 SharedString::from(Status::FileSaved.as_str()),
             );
         }
-        UiEvent::LoggedOut => {
+        Effect::LoggedOut => {
             timeline_model.set_vec(Vec::new());
             rooms_model.set_vec(Vec::new());
             spaces_model.set_vec(Vec::new());
             subspaces_model.set_vec(Vec::new());
+            LATEST_SNAPSHOT.with(|cell| *cell.borrow_mut() = Arc::new(AppViewState::default()));
             apply_logged_out(w);
         }
     }
 }
 
-fn apply_server_info(w: &impl UiProps, info: &ServerInfo) {
-    let method = LoginMethod::from_auth_methods(&info.auth_methods);
-    w.set_string(
-        StringProp::LoginMethod,
-        SharedString::from(login_method_token(method)),
-    );
-    w.set_string(
-        StringProp::ResolvedHomeserver,
-        SharedString::from(&info.homeserver_url),
-    );
-    w.set_string(
-        StringProp::LoginStep,
-        SharedString::from(LoginStep::Credentials.as_str()),
-    );
-    w.set_string(StringProp::LoginStatus, SharedString::default());
+#[allow(clippy::too_many_arguments)]
+fn apply_snapshot<R, S>(
+    w: &impl UiProps,
+    view: &Arc<AppViewState>,
+    rooms_model: &VecModel<R>,
+    spaces_model: &VecModel<S>,
+    subspaces_model: &VecModel<S>,
+    convert_room: &dyn Fn(&Room) -> R,
+    convert_space: &dyn Fn(&Space) -> S,
+    room_entry_id: &dyn Fn(&R) -> &str,
+    space_entry_id: &dyn Fn(&S) -> &str,
+) where
+    R: Clone + PartialEq + 'static,
+    S: Clone + PartialEq + 'static,
+{
+    let last = LATEST_SNAPSHOT.with(|cell| Arc::clone(&cell.borrow()));
+    apply_lifecycle(w, &last.lifecycle, &view.lifecycle);
+    if last.connection != view.connection {
+        apply_connection_status(w, &view.connection);
+    }
+    if !Arc::ptr_eq(&last.directory.rooms, &view.directory.rooms) {
+        apply_rooms(
+            rooms_model,
+            view.directory.rooms.as_ref(),
+            convert_room,
+            room_entry_id,
+        );
+    }
+    if !Arc::ptr_eq(&last.directory.spaces, &view.directory.spaces) {
+        apply_reconcile(
+            spaces_model,
+            view.directory.spaces.as_ref(),
+            &|s| s.id.as_str(),
+            convert_space,
+            space_entry_id,
+        );
+    }
+    if !Arc::ptr_eq(&last.directory.subspaces, &view.directory.subspaces) {
+        apply_reconcile(
+            subspaces_model,
+            view.directory.subspaces.as_ref(),
+            &|s| s.id.as_str(),
+            convert_space,
+            space_entry_id,
+        );
+    }
+    if last.directory.space_id != view.directory.space_id {
+        w.set_string(
+            StringProp::SelectedSpaceId,
+            SharedString::from(&view.directory.space_id),
+        );
+    }
+    if last.directory.subspace_id != view.directory.subspace_id {
+        w.set_string(
+            StringProp::SelectedSubspaceId,
+            SharedString::from(&view.directory.subspace_id),
+        );
+    }
+    if last.pagination != view.pagination {
+        sync_timeline_chrome(w, &view.pagination);
+    }
+    LATEST_SNAPSHOT.with(|cell| *cell.borrow_mut() = Arc::clone(view));
 }
 
-fn apply_show_login(w: &impl UiProps) {
-    w.set_string(
-        StringProp::LoginStep,
-        SharedString::from(LoginStep::Homeserver.as_str()),
+fn sync_timeline_chrome(w: &impl UiProps, pagination: &PaginationView) {
+    let active = ACTIVE_GENERATION.with(Cell::get);
+    let (backwards, forwards, badge) = if pagination.generation == active {
+        (
+            pagination.backwards_loading,
+            pagination.forwards_loading,
+            pagination.new_messages,
+        )
+    } else {
+        (false, false, 0)
+    };
+    w.set_bool(BoolProp::BackwardsLoading, backwards);
+    w.set_bool(BoolProp::ForwardsLoading, forwards);
+    w.set_int(
+        IntProp::NewMessagesCount,
+        i32::try_from(badge).unwrap_or(i32::MAX),
     );
-    w.set_string(StringProp::LoginStatus, SharedString::default());
 }
 
-fn apply_login_success(w: &impl UiProps, user_id: &str) {
-    w.set_string(StringProp::UserId, SharedString::from(user_id));
-    w.set_string(
-        StringProp::UserInitial,
-        SharedString::from(user_initial(user_id)),
-    );
-    w.set_string(
-        StringProp::LoginStep,
-        SharedString::from(LoginStep::LoggedIn.as_str()),
-    );
-    w.set_string(StringProp::LoginStatus, SharedString::default());
+fn apply_lifecycle(w: &impl UiProps, last: &LifecycleView, next: &LifecycleView) {
+    if last.step != next.step {
+        w.set_string(
+            StringProp::LoginStep,
+            SharedString::from(login_step_token(next.step)),
+        );
+    }
+    if last.method != next.method {
+        w.set_string(
+            StringProp::LoginMethod,
+            SharedString::from(login_method_token(next.method)),
+        );
+    }
+    if last.resolved_homeserver != next.resolved_homeserver {
+        w.set_string(
+            StringProp::ResolvedHomeserver,
+            SharedString::from(&next.resolved_homeserver),
+        );
+    }
+    if last.user_id != next.user_id {
+        w.set_string(StringProp::UserId, SharedString::from(&next.user_id));
+        w.set_string(
+            StringProp::UserInitial,
+            SharedString::from(user_initial(&next.user_id)),
+        );
+    }
+    if last.avatar_path != next.avatar_path {
+        let avatar = next
+            .avatar_path
+            .as_deref()
+            .and_then(|p| load_avatar_async(p, AvatarSlot::User));
+        w.apply_user_avatar(avatar);
+    }
+}
+
+fn login_step_token(step: LoginStep) -> &'static str {
+    match step {
+        LoginStep::Homeserver => "homeserver",
+        LoginStep::Credentials => "credentials",
+        LoginStep::LoggedIn => "logged-in",
+    }
 }
 
 fn apply_login_error(w: &impl UiProps, msg: &str) {
@@ -682,7 +703,7 @@ fn apply_verification(w: &impl UiProps, event: &DomainVerificationEvent) {
 fn apply_logged_out(w: &impl UiProps) {
     w.set_string(
         StringProp::LoginStep,
-        SharedString::from(LoginStep::Homeserver.as_str()),
+        SharedString::from(login_step_token(LoginStep::Homeserver)),
     );
     w.set_string(StringProp::UserId, SharedString::default());
     w.set_string(StringProp::UserInitial, SharedString::default());

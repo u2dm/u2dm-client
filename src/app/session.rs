@@ -151,7 +151,7 @@ impl SessionController {
             Ok(capability) => Some(capability),
             Err(e) => {
                 tracing::warn!("session restore failed, preserving local data: {e}");
-                self.emit_show_login().await;
+                self.emit_show_login();
                 self.emit_login_error(&e).await;
                 None
             }
@@ -173,7 +173,7 @@ impl SessionController {
         match self.auth.discover_auth(homeserver, passphrase).await {
             Ok(info) => {
                 if self.lifecycle.settle_auth(attempt) {
-                    self.output.server_info(info).await;
+                    self.output.server_info(info);
                 }
             }
             Err(e) => {
@@ -204,7 +204,7 @@ impl SessionController {
             tracing::info!("{reason}, showing login");
         }
 
-        self.emit_show_login().await;
+        self.emit_show_login();
         if let Some(e) = error {
             self.emit_login_error(&e).await;
         }
@@ -214,7 +214,7 @@ impl SessionController {
         match self.get_or_create_passphrase().await {
             Ok(passphrase) => Some(passphrase),
             Err(e) => {
-                self.emit_show_login().await;
+                self.emit_show_login();
                 self.emit_login_error(&e).await;
                 None
             }
@@ -354,7 +354,7 @@ impl SessionController {
         group.spawn(async move {
             match lifecycle_port.fetch_user_avatar().await {
                 Ok(path) => {
-                    output.user_avatar(path).await;
+                    output.user_avatar(path);
                 }
                 Err(e) => tracing::debug!("user avatar fetch failed: {e}"),
             }
@@ -434,8 +434,8 @@ impl SessionController {
         }
     }
 
-    async fn emit_show_login(&self) {
-        self.output.show_login().await;
+    fn emit_show_login(&self) {
+        self.output.show_login();
     }
 
     async fn emit_login_error(&self, err: &AppError) {

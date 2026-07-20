@@ -23,7 +23,7 @@ use tokio::time::{sleep, timeout};
 use tokio_util::sync::CancellationToken;
 use verification::VerificationController;
 
-use crate::commands::{UiCommand, ViewportChanged};
+use crate::commands::{DirectoryUpdate, UiCommand, ViewportChanged};
 use crate::domain::models::{ConnectionStatus, Room, RoomId, Space};
 use crate::ports::browser::BrowserPort;
 use crate::ports::matrix::{AuthPort, AuthenticatedSession};
@@ -34,8 +34,7 @@ use crate::ports::storage::StoragePort;
 pub struct AppService {
     storage: Arc<dyn StoragePort>,
     cmd_tx: mpsc::UnboundedSender<UiCommand>,
-    rooms_in_tx: watch::Sender<Arc<[Room]>>,
-    spaces_in_tx: watch::Sender<Arc<[Space]>>,
+    dir_in_tx: mpsc::UnboundedSender<DirectoryUpdate>,
     output: Arc<dyn AppOutputPort>,
     background: TaskGroup,
     operations: TaskGroup,
@@ -64,8 +63,7 @@ impl AppService {
         media_files: Arc<dyn MediaFilePort>,
         browser: Arc<dyn BrowserPort>,
         cmd_tx: mpsc::UnboundedSender<UiCommand>,
-        rooms_in_tx: watch::Sender<Arc<[Room]>>,
-        spaces_in_tx: watch::Sender<Arc<[Space]>>,
+        dir_in_tx: mpsc::UnboundedSender<DirectoryUpdate>,
         output: Arc<dyn AppOutputPort>,
     ) -> Self {
         let (space_order_tx, space_order_rx) = watch::channel::<Option<Vec<String>>>(None);
@@ -92,8 +90,7 @@ impl AppService {
             media: MediaActions::new(media_files, Arc::clone(&output)),
             storage,
             cmd_tx,
-            rooms_in_tx,
-            spaces_in_tx,
+            dir_in_tx,
             output,
             background: TaskGroup::new("background"),
             operations: TaskGroup::new("operations"),
@@ -110,15 +107,13 @@ impl AppService {
     pub async fn run(
         &mut self,
         mut cmd_rx: mpsc::UnboundedReceiver<UiCommand>,
-        mut rooms_in_rx: watch::Receiver<Arc<[Room]>>,
-        mut spaces_in_rx: watch::Receiver<Arc<[Space]>>,
+        mut dir_in_rx: mpsc::UnboundedReceiver<DirectoryUpdate>,
         mut scroll_in_rx: watch::Receiver<ViewportChanged>,
     ) {
         let Some(mut auth_rx) = self.auth_rx.take() else {
             return;
         };
-        let mut rooms_done = false;
-        let mut spaces_done = false;
+        let mut dir_done = false;
         let mut scroll_done = false;
         let mut auth_done = false;
         loop {
@@ -136,20 +131,15 @@ impl AppService {
                         None => auth_done = true,
                     }
                 }
-                changed = rooms_in_rx.changed(), if !rooms_done => {
-                    if changed.is_err() {
-                        rooms_done = true;
-                    } else {
-                        let rooms = rooms_in_rx.borrow_and_update().clone();
-                        self.handle_rooms_updated(rooms).await;
-                    }
-                }
-                changed = spaces_in_rx.changed(), if !spaces_done => {
-                    if changed.is_err() {
-                        spaces_done = true;
-                    } else {
-                        let spaces = spaces_in_rx.borrow_and_update().clone();
-                        self.handle_spaces_updated(spaces).await;
+                maybe_dir = dir_in_rx.recv(), if !dir_done => {
+                    match maybe_dir {
+                        Some(DirectoryUpdate::Rooms(rooms)) => {
+                            self.handle_rooms_updated(rooms).await;
+                        }
+                        Some(DirectoryUpdate::Spaces(spaces)) => {
+                            self.handle_spaces_updated(spaces);
+                        }
+                        None => dir_done = true,
                     }
                 }
                 changed = scroll_in_rx.changed(), if !scroll_done => {
@@ -157,14 +147,12 @@ impl AppService {
                         scroll_done = true;
                     } else {
                         let viewport = scroll_in_rx.borrow_and_update().clone();
-                        self.active_timeline
-                            .scroll_position_changed(
-                                &viewport.room_id,
-                                viewport.generation,
-                                viewport.at_top,
-                                viewport.at_bottom,
-                            )
-                            .await;
+                        self.active_timeline.scroll_position_changed(
+                            &viewport.room_id,
+                            viewport.generation,
+                            viewport.at_top,
+                            viewport.at_bottom,
+                        );
                     }
                 }
             }
@@ -206,10 +194,10 @@ impl AppService {
                 self.handle_fetch_rooms().await;
             }
             UiCommand::SelectSpace(space) => {
-                self.handle_select_space(space).await;
+                self.handle_select_space(space);
             }
             UiCommand::SelectSubspace(subspace) => {
-                self.handle_select_subspace(subspace).await;
+                self.handle_select_subspace(subspace);
             }
             UiCommand::MoveSpace { from, to } => {
                 if let Some(order) = self.room_directory.move_space(from, to) {
@@ -234,16 +222,13 @@ impl AppService {
                 generation,
             } => {
                 self.active_timeline
-                    .paginate_backwards(&room_id, generation)
-                    .await;
+                    .paginate_backwards(&room_id, generation);
             }
             UiCommand::PaginateForwards {
                 room_id,
                 generation,
             } => {
-                self.active_timeline
-                    .paginate_forwards(&room_id, generation)
-                    .await;
+                self.active_timeline.paginate_forwards(&room_id, generation);
             }
             UiCommand::TimelinePaginationCompleted {
                 room_id,
@@ -259,9 +244,7 @@ impl AppService {
                 room_id,
                 generation,
             } => {
-                self.active_timeline
-                    .jump_to_latest(&room_id, generation)
-                    .await;
+                self.active_timeline.jump_to_latest(&room_id, generation);
             }
             UiCommand::OpenMedia { event_id } => {
                 self.open_media(event_id);
@@ -309,36 +292,32 @@ impl AppService {
         }
     }
 
-    async fn handle_spaces_updated(&mut self, spaces: Arc<[Space]>) {
+    fn handle_spaces_updated(&mut self, spaces: Arc<[Space]>) {
         if self.room_directory.store_spaces(spaces) {
             let outcome = self.room_directory.reconcile(&mut self.selection);
             if outcome.space_dropped {
-                self.output.selected_space(String::new()).await;
-                self.output.selected_subspace(String::new()).await;
+                self.output.selected_space(String::new());
+                self.output.selected_subspace(String::new());
             } else if outcome.subspace_dropped {
-                self.output.selected_subspace(String::new()).await;
+                self.output.selected_subspace(String::new());
             }
             self.room_directory.emit_directory(&self.selection);
         }
     }
 
-    async fn handle_select_space(&mut self, space: Option<RoomId>) {
+    fn handle_select_space(&mut self, space: Option<RoomId>) {
         self.selection.set_space(space);
+        self.output.selected_space(self.selection.space_id_str());
         self.output
-            .selected_space(self.selection.space_id_str())
-            .await;
-        self.output
-            .selected_subspace(self.selection.subspace_id_str())
-            .await;
+            .selected_subspace(self.selection.subspace_id_str());
         self.room_directory.emit_subspaces(&self.selection);
         self.room_directory.emit_rooms(&self.selection);
     }
 
-    async fn handle_select_subspace(&mut self, subspace: Option<RoomId>) {
+    fn handle_select_subspace(&mut self, subspace: Option<RoomId>) {
         self.selection.set_subspace(subspace);
         self.output
-            .selected_subspace(self.selection.subspace_id_str())
-            .await;
+            .selected_subspace(self.selection.subspace_id_str());
         self.room_directory.emit_rooms(&self.selection);
     }
 
@@ -350,7 +329,7 @@ impl AppService {
         let user_id = capability.session.user_id.clone();
         tracing::info!(%user_id, "authenticated");
         self.active = Some(capability);
-        self.output.login_success(user_id).await;
+        self.output.login_success(user_id);
         if let Err(e) = self.cmd_tx.send(UiCommand::FetchRooms) {
             tracing::warn!("failed to trigger room fetch: {e}");
         }
@@ -477,8 +456,7 @@ impl AppService {
             sync,
             Arc::clone(&self.output),
             self.cmd_tx.clone(),
-            self.rooms_in_tx.clone(),
-            self.spaces_in_tx.clone(),
+            self.dir_in_tx.clone(),
         );
         self.session
             .spawn_user_avatar_fetch(&mut self.background, lifecycle_port);
