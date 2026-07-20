@@ -8,7 +8,7 @@ use super::selection::Selection;
 use super::task_group::TaskGroup;
 use crate::commands::UiCommand;
 use crate::domain::models::{ConnectionStatus, Room, Space, SyncEvent};
-use crate::ports::matrix::MatrixPort;
+use crate::ports::matrix::SyncPort;
 use crate::ports::output::AppOutputPort;
 use crate::ports::storage::StoragePort;
 
@@ -190,7 +190,7 @@ impl RoomDirectory {
 
     pub(super) fn spawn_sync_pipeline(
         group: &mut TaskGroup,
-        matrix: Arc<dyn MatrixPort>,
+        sync: Arc<dyn SyncPort>,
         output: Arc<dyn AppOutputPort>,
         cmd_tx: mpsc::UnboundedSender<UiCommand>,
         rooms_in_tx: watch::Sender<Arc<[Room]>>,
@@ -216,7 +216,7 @@ impl RoomDirectory {
         });
 
         group.spawn(async move {
-            if let Err(e) = matrix.start_sync(on_sync, token).await {
+            if let Err(e) = sync.start_sync(on_sync, token).await {
                 tracing::error!("sync loop ended with error: {e}");
             }
         });

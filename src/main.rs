@@ -107,7 +107,7 @@ fn run() -> Result<()> {
         tracing::warn!("failed to send RestoreSession command: {e}");
     }
     let mut service = AppService::new(
-        backend.matrix,
+        backend.auth,
         backend.storage,
         media_files,
         browser,

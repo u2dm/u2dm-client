@@ -10,7 +10,7 @@ use crate::domain::models::{
     TimelineStatus, TimelineUpdate,
 };
 use crate::domain::viewport::ViewportController;
-use crate::ports::matrix::MatrixPort;
+use crate::ports::matrix::TimelinePort;
 use crate::ports::output::AppOutputPort;
 
 const TIMELINE_CHANNEL_CAP: usize = 256;
@@ -49,7 +49,6 @@ impl GenerationCounters {
 }
 
 pub(super) struct ActiveTimeline {
-    matrix: Arc<dyn MatrixPort>,
     cmd_tx: mpsc::UnboundedSender<UiCommand>,
     output: Arc<dyn AppOutputPort>,
     tasks: TaskGroup,
@@ -62,12 +61,10 @@ pub(super) struct ActiveTimeline {
 
 impl ActiveTimeline {
     pub(super) fn new(
-        matrix: Arc<dyn MatrixPort>,
         cmd_tx: mpsc::UnboundedSender<UiCommand>,
         output: Arc<dyn AppOutputPort>,
     ) -> Self {
         Self {
-            matrix,
             cmd_tx,
             output,
             tasks: TaskGroup::new("timeline"),
@@ -84,7 +81,12 @@ impl ActiveTimeline {
         self.reset_state();
     }
 
-    pub(super) async fn select_room(&mut self, room_id: RoomId, generation: i32) {
+    pub(super) async fn select_room(
+        &mut self,
+        timeline: Arc<dyn TimelinePort>,
+        room_id: RoomId,
+        generation: i32,
+    ) {
         tracing::info!(%room_id, generation, "switching room");
         self.tasks.cancel_and_detach();
 
@@ -105,7 +107,6 @@ impl ActiveTimeline {
         let (tl_cmd_tx, tl_cmd_rx) = mpsc::unbounded_channel::<TimelineCommand>();
         self.timeline_cmd_tx = Some(tl_cmd_tx);
 
-        let matrix = Arc::clone(&self.matrix);
         let output = Arc::clone(&self.output);
         let cmd_tx = self.cmd_tx.clone();
         let token = self.tasks.token();
@@ -113,7 +114,7 @@ impl ActiveTimeline {
         let counters = self.counters.clone();
 
         self.tasks.spawn(async move {
-            let subscribe = matrix.subscribe_timeline(&room_id, tl_tx, tl_cmd_rx);
+            let subscribe = timeline.subscribe_timeline(&room_id, tl_tx, tl_cmd_rx);
             let forward = async {
                 while let Some(update) = tl_rx.recv().await {
                     tracing::debug!(
@@ -182,16 +183,16 @@ impl ActiveTimeline {
     pub(super) fn spawn_send(
         &self,
         group: &mut TaskGroup,
+        timeline: Arc<dyn TimelinePort>,
         room_id: RoomId,
         body: String,
         reply_to: Option<String>,
     ) {
-        let matrix = Arc::clone(&self.matrix);
         let output = Arc::clone(&self.output);
         group.spawn(async move {
             let result = match reply_to {
-                Some(event_id) => matrix.send_reply(&room_id, &body, &event_id).await,
-                None => matrix.send_text(&room_id, &body).await,
+                Some(event_id) => timeline.send_reply(&room_id, &body, &event_id).await,
+                None => timeline.send_text(&room_id, &body).await,
             };
             if let Err(e) = result {
                 tracing::warn!("failed to enqueue message: {e}");

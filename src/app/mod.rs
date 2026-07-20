@@ -15,7 +15,7 @@ use lifecycle::Lifecycle;
 use media::MediaActions;
 use room_directory::RoomDirectory;
 use selection::Selection;
-use session::SessionController;
+use session::{AuthOutcome, SessionController};
 use task_group::TaskGroup;
 use tokio::sync::{mpsc, watch};
 use tokio::task::JoinHandle;
@@ -26,13 +26,12 @@ use verification::VerificationController;
 use crate::commands::{UiCommand, ViewportChanged};
 use crate::domain::models::{ConnectionStatus, Room, RoomId, Space};
 use crate::ports::browser::BrowserPort;
-use crate::ports::matrix::MatrixPort;
+use crate::ports::matrix::{AuthPort, AuthenticatedSession};
 use crate::ports::media::MediaFilePort;
 use crate::ports::output::AppOutputPort;
 use crate::ports::storage::StoragePort;
 
 pub struct AppService {
-    matrix: Arc<dyn MatrixPort>,
     storage: Arc<dyn StoragePort>,
     cmd_tx: mpsc::UnboundedSender<UiCommand>,
     rooms_in_tx: watch::Sender<Arc<[Room]>>,
@@ -47,6 +46,8 @@ pub struct AppService {
     media: MediaActions,
     selection: Selection,
     lifecycle: Lifecycle,
+    active: Option<AuthenticatedSession>,
+    auth_rx: Option<mpsc::UnboundedReceiver<AuthOutcome>>,
     space_order_tx: watch::Sender<Option<Vec<String>>>,
     space_order_cancel: CancellationToken,
     space_order_handle: Option<JoinHandle<()>>,
@@ -58,7 +59,7 @@ const SPACE_ORDER_FLUSH_TIMEOUT: Duration = Duration::from_secs(2);
 impl AppService {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
-        matrix: Arc<dyn MatrixPort>,
+        auth: Arc<dyn AuthPort>,
         storage: Arc<dyn StoragePort>,
         media_files: Arc<dyn MediaFilePort>,
         browser: Arc<dyn BrowserPort>,
@@ -75,24 +76,20 @@ impl AppService {
             space_order_cancel.clone(),
         ));
         let lifecycle = Lifecycle::new();
+        let (auth_tx, auth_rx) = mpsc::unbounded_channel::<AuthOutcome>();
         Self {
             session: SessionController::new(
-                Arc::clone(&matrix),
+                auth,
                 Arc::clone(&storage),
                 browser,
-                cmd_tx.clone(),
                 Arc::clone(&output),
                 lifecycle.clone(),
+                auth_tx,
             ),
             room_directory: RoomDirectory::new(Arc::clone(&output)),
-            active_timeline: ActiveTimeline::new(
-                Arc::clone(&matrix),
-                cmd_tx.clone(),
-                Arc::clone(&output),
-            ),
-            verification: VerificationController::new(Arc::clone(&matrix), Arc::clone(&output)),
-            media: MediaActions::new(Arc::clone(&matrix), media_files, Arc::clone(&output)),
-            matrix,
+            active_timeline: ActiveTimeline::new(cmd_tx.clone(), Arc::clone(&output)),
+            verification: VerificationController::new(Arc::clone(&output)),
+            media: MediaActions::new(media_files, Arc::clone(&output)),
             storage,
             cmd_tx,
             rooms_in_tx,
@@ -102,6 +99,8 @@ impl AppService {
             operations: TaskGroup::new("operations"),
             selection: Selection::default(),
             lifecycle,
+            active: None,
+            auth_rx: Some(auth_rx),
             space_order_tx,
             space_order_cancel,
             space_order_handle: Some(space_order_handle),
@@ -115,9 +114,13 @@ impl AppService {
         mut spaces_in_rx: watch::Receiver<Arc<[Space]>>,
         mut scroll_in_rx: watch::Receiver<ViewportChanged>,
     ) {
+        let Some(mut auth_rx) = self.auth_rx.take() else {
+            return;
+        };
         let mut rooms_done = false;
         let mut spaces_done = false;
         let mut scroll_done = false;
+        let mut auth_done = false;
         loop {
             tokio::select! {
                 maybe_cmd = cmd_rx.recv() => {
@@ -125,6 +128,12 @@ impl AppService {
                     Self::log_command(&cmd);
                     if self.dispatch(cmd).await {
                         break;
+                    }
+                }
+                maybe_outcome = auth_rx.recv(), if !auth_done => {
+                    match maybe_outcome {
+                        Some(outcome) => self.complete_auth(outcome).await,
+                        None => auth_done = true,
                     }
                 }
                 changed = rooms_in_rx.changed(), if !rooms_done => {
@@ -218,8 +227,7 @@ impl AppService {
                 body,
                 reply_to,
             } => {
-                self.active_timeline
-                    .spawn_send(&mut self.operations, room_id, body, reply_to);
+                self.send_message(room_id, body, reply_to);
             }
             UiCommand::PaginateBackwards {
                 room_id,
@@ -256,19 +264,19 @@ impl AppService {
                     .await;
             }
             UiCommand::OpenMedia { event_id } => {
-                self.media.open_media(event_id);
+                self.open_media(event_id);
             }
             UiCommand::SaveFile { event_id, filename } => {
-                self.media.save_file(event_id, filename);
+                self.save_file(event_id, filename);
             }
             UiCommand::AcceptVerification => {
-                self.verification.spawn_accept(&mut self.operations);
+                self.accept_verification();
             }
             UiCommand::RejectVerification => {
-                self.verification.spawn_reject(&mut self.operations);
+                self.reject_verification();
             }
             UiCommand::ConfirmVerification => {
-                self.verification.spawn_confirm(&mut self.operations);
+                self.confirm_verification();
             }
             UiCommand::SessionExpired => {
                 self.handle_session_expired().await;
@@ -334,6 +342,75 @@ impl AppService {
         self.room_directory.emit_rooms(&self.selection);
     }
 
+    async fn complete_auth(&mut self, outcome: AuthOutcome) {
+        let Some(capability) = self.settle_auth_outcome(outcome).await else {
+            tracing::info!("authentication superseded, dropping session");
+            return;
+        };
+        let user_id = capability.session.user_id.clone();
+        tracing::info!(%user_id, "authenticated");
+        self.active = Some(capability);
+        self.output.login_success(user_id).await;
+        if let Err(e) = self.cmd_tx.send(UiCommand::FetchRooms) {
+            tracing::warn!("failed to trigger room fetch: {e}");
+        }
+    }
+
+    async fn settle_auth_outcome(&mut self, outcome: AuthOutcome) -> Option<AuthenticatedSession> {
+        match outcome {
+            AuthOutcome::Login { attempt, session } => {
+                self.lifecycle.promote_to_syncing(attempt)?;
+                self.session.save_session(&session.session).await;
+                Some(session)
+            }
+            AuthOutcome::Restore(session) => {
+                self.lifecycle.restore_succeeded()?;
+                Some(session)
+            }
+        }
+    }
+
+    fn send_message(&mut self, room_id: RoomId, body: String, reply_to: Option<String>) {
+        let Some(timeline) = self.active.as_ref().map(|a| Arc::clone(&a.timeline)) else {
+            return;
+        };
+        self.active_timeline
+            .spawn_send(&mut self.operations, timeline, room_id, body, reply_to);
+    }
+
+    fn open_media(&mut self, event_id: String) {
+        if let Some(media) = self.active.as_ref().map(|a| Arc::clone(&a.media)) {
+            self.media.open_media(media, event_id);
+        }
+    }
+
+    fn save_file(&mut self, event_id: String, filename: String) {
+        if let Some(media) = self.active.as_ref().map(|a| Arc::clone(&a.media)) {
+            self.media.save_file(media, event_id, filename);
+        }
+    }
+
+    fn accept_verification(&mut self) {
+        if let Some(verification) = self.active.as_ref().map(|a| Arc::clone(&a.verification)) {
+            self.verification
+                .spawn_accept(&mut self.operations, verification);
+        }
+    }
+
+    fn reject_verification(&mut self) {
+        if let Some(verification) = self.active.as_ref().map(|a| Arc::clone(&a.verification)) {
+            self.verification
+                .spawn_reject(&mut self.operations, verification);
+        }
+    }
+
+    fn confirm_verification(&mut self) {
+        if let Some(verification) = self.active.as_ref().map(|a| Arc::clone(&a.verification)) {
+            self.verification
+                .spawn_confirm(&mut self.operations, verification);
+        }
+    }
+
     async fn select_room(&mut self, room_id: RoomId) {
         self.selection.room = Some(room_id.clone());
         let generation = self.selection.next_generation();
@@ -344,7 +421,12 @@ impl AppService {
         self.output
             .selected_room(room_id.clone(), name, member_count, generation)
             .await;
-        self.active_timeline.select_room(room_id, generation).await;
+        let Some(timeline) = self.active.as_ref().map(|a| Arc::clone(&a.timeline)) else {
+            return;
+        };
+        self.active_timeline
+            .select_room(timeline, room_id, generation)
+            .await;
     }
 
     async fn retry_timeline(&mut self) {
@@ -372,25 +454,34 @@ impl AppService {
     }
 
     async fn handle_fetch_rooms(&mut self) {
+        let Some((sync, verification, lifecycle_port)) = self.active.as_ref().map(|a| {
+            (
+                Arc::clone(&a.sync),
+                Arc::clone(&a.verification),
+                Arc::clone(&a.lifecycle),
+            )
+        }) else {
+            tracing::debug!("fetch rooms without an authenticated session, ignoring");
+            return;
+        };
         self.room_directory.connect(self.storage.as_ref()).await;
         self.output.status("syncing".into());
-        self.start_background_tasks().await;
+        self.background.restart().await;
+        self.session
+            .spawn_session_persister(&mut self.background, Arc::clone(&lifecycle_port));
+        self.verification
+            .spawn_forwarder(&mut self.background, verification);
         self.output.connection_status(ConnectionStatus::Connecting);
         RoomDirectory::spawn_sync_pipeline(
             &mut self.background,
-            Arc::clone(&self.matrix),
+            sync,
             Arc::clone(&self.output),
             self.cmd_tx.clone(),
             self.rooms_in_tx.clone(),
             self.spaces_in_tx.clone(),
         );
-        self.session.spawn_user_avatar_fetch(&mut self.background);
-    }
-
-    async fn start_background_tasks(&mut self) {
-        self.background.restart().await;
-        self.session.spawn_session_persister(&mut self.background);
-        self.verification.spawn_forwarder(&mut self.background);
+        self.session
+            .spawn_user_avatar_fetch(&mut self.background, lifecycle_port);
     }
 
     async fn shutdown_all_tasks(&mut self) {
@@ -413,6 +504,7 @@ impl AppService {
         self.shutdown_all_tasks().await;
         self.room_directory.reset();
         self.selection = Selection::default();
+        self.active = None;
         self.session
             .spawn_expire_session(&mut self.operations, session);
     }
@@ -421,13 +513,22 @@ impl AppService {
         let Some(session) = self.lifecycle.begin_logout() else {
             return;
         };
+        let lifecycle_port = self.active.as_ref().map(|a| Arc::clone(&a.lifecycle));
         self.output
             .connection_status(ConnectionStatus::Disconnected);
         self.output.logged_out().await;
         self.shutdown_all_tasks().await;
         self.room_directory.reset();
         self.selection = Selection::default();
-        self.session.spawn_logout(&mut self.operations, session);
+        self.active = None;
+        match lifecycle_port {
+            Some(port) => self
+                .session
+                .spawn_logout(&mut self.operations, session, port),
+            None => {
+                self.lifecycle.finish_logout(session);
+            }
+        }
     }
 
     async fn handle_quit(&mut self) {

@@ -6,14 +6,13 @@ use tokio::time;
 use tokio_util::sync::CancellationToken;
 
 use super::task_group::record_join;
-use crate::ports::matrix::MatrixPort;
+use crate::ports::matrix::MediaPort;
 use crate::ports::media::MediaFilePort;
 use crate::ports::output::AppOutputPort;
 
 const GROUP: &str = "media";
 
 pub(super) struct MediaActions {
-    matrix: Arc<dyn MatrixPort>,
     media_files: Arc<dyn MediaFilePort>,
     output: Arc<dyn AppOutputPort>,
     tasks: JoinSet<()>,
@@ -21,13 +20,8 @@ pub(super) struct MediaActions {
 }
 
 impl MediaActions {
-    pub(super) fn new(
-        matrix: Arc<dyn MatrixPort>,
-        media_files: Arc<dyn MediaFilePort>,
-        output: Arc<dyn AppOutputPort>,
-    ) -> Self {
+    pub(super) fn new(media_files: Arc<dyn MediaFilePort>, output: Arc<dyn AppOutputPort>) -> Self {
         Self {
-            matrix,
             media_files,
             output,
             tasks: JoinSet::new(),
@@ -35,16 +29,15 @@ impl MediaActions {
         }
     }
 
-    pub(super) fn open_media(&mut self, event_id: String) {
+    pub(super) fn open_media(&mut self, media: Arc<dyn MediaPort>, event_id: String) {
         self.reap_finished();
 
-        let matrix = Arc::clone(&self.matrix);
         let media_files = Arc::clone(&self.media_files);
         let output = Arc::clone(&self.output);
         let cancel = self.cancel.clone();
         self.tasks.spawn(async move {
             let work = async move {
-                match matrix.download_media(&event_id, false).await {
+                match media.download_media(&event_id, false).await {
                     Ok(data) => {
                         if let Err(e) = media_files.open_media(&event_id, &data).await {
                             tracing::warn!("failed to open media: {e}");
@@ -67,16 +60,20 @@ impl MediaActions {
         });
     }
 
-    pub(super) fn save_file(&mut self, event_id: String, filename: String) {
+    pub(super) fn save_file(
+        &mut self,
+        media: Arc<dyn MediaPort>,
+        event_id: String,
+        filename: String,
+    ) {
         self.reap_finished();
 
-        let matrix = Arc::clone(&self.matrix);
         let media_files = Arc::clone(&self.media_files);
         let output = Arc::clone(&self.output);
         let cancel = self.cancel.clone();
         self.tasks.spawn(async move {
             let work = async move {
-                match matrix.download_media(&event_id, false).await {
+                match media.download_media(&event_id, false).await {
                     Ok(data) => match media_files.save_file(&filename, &data).await {
                         Ok(Some(path)) => output.file_saved(path).await,
                         Ok(None) => {}

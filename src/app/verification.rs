@@ -4,27 +4,29 @@ use tokio::sync::mpsc;
 
 use super::task_group::TaskGroup;
 use crate::domain::models::VerificationEvent;
-use crate::ports::matrix::MatrixPort;
+use crate::ports::matrix::VerificationPort;
 use crate::ports::output::AppOutputPort;
 
 #[derive(Clone)]
 pub(super) struct VerificationController {
-    matrix: Arc<dyn MatrixPort>,
     output: Arc<dyn AppOutputPort>,
 }
 
 impl VerificationController {
-    pub(super) fn new(matrix: Arc<dyn MatrixPort>, output: Arc<dyn AppOutputPort>) -> Self {
-        Self { matrix, output }
+    pub(super) fn new(output: Arc<dyn AppOutputPort>) -> Self {
+        Self { output }
     }
 
-    pub(super) fn spawn_forwarder(&self, group: &mut TaskGroup) {
-        let matrix = Arc::clone(&self.matrix);
+    pub(super) fn spawn_forwarder(
+        &self,
+        group: &mut TaskGroup,
+        verification: Arc<dyn VerificationPort>,
+    ) {
         let output = Arc::clone(&self.output);
         let token = group.token();
         group.spawn(async move {
             let (verif_tx, mut verif_rx) = mpsc::unbounded_channel::<VerificationEvent>();
-            let listen = matrix.listen_for_verification(verif_tx);
+            let listen = verification.listen_for_verification(verif_tx);
             let forward = async {
                 while let Some(event) = verif_rx.recv().await {
                     output.verification(event).await;
@@ -47,46 +49,51 @@ impl VerificationController {
         });
     }
 
-    pub(super) fn spawn_accept(&self, group: &mut TaskGroup) {
-        let this = self.clone();
-        group.spawn(async move { this.accept().await });
+    pub(super) fn spawn_accept(
+        &self,
+        group: &mut TaskGroup,
+        verification: Arc<dyn VerificationPort>,
+    ) {
+        let output = Arc::clone(&self.output);
+        group.spawn(async move {
+            if let Err(e) = verification.accept_verification().await {
+                tracing::warn!("verification accept failed: {e}");
+                output
+                    .notify_error(format!("Verification accept failed: {e}"))
+                    .await;
+            }
+        });
     }
 
-    pub(super) fn spawn_reject(&self, group: &mut TaskGroup) {
-        let this = self.clone();
-        group.spawn(async move { this.reject().await });
+    pub(super) fn spawn_reject(
+        &self,
+        group: &mut TaskGroup,
+        verification: Arc<dyn VerificationPort>,
+    ) {
+        let output = Arc::clone(&self.output);
+        group.spawn(async move {
+            if let Err(e) = verification.reject_verification().await {
+                tracing::warn!("verification reject failed: {e}");
+                output
+                    .notify_error(format!("Verification reject failed: {e}"))
+                    .await;
+            }
+        });
     }
 
-    pub(super) fn spawn_confirm(&self, group: &mut TaskGroup) {
-        let this = self.clone();
-        group.spawn(async move { this.confirm().await });
-    }
-
-    async fn accept(&self) {
-        if let Err(e) = self.matrix.accept_verification().await {
-            tracing::warn!("verification accept failed: {e}");
-            self.notify_error(format!("Verification accept failed: {e}"))
-                .await;
-        }
-    }
-
-    async fn reject(&self) {
-        if let Err(e) = self.matrix.reject_verification().await {
-            tracing::warn!("verification reject failed: {e}");
-            self.notify_error(format!("Verification reject failed: {e}"))
-                .await;
-        }
-    }
-
-    async fn confirm(&self) {
-        if let Err(e) = self.matrix.confirm_verification().await {
-            tracing::warn!("verification confirm failed: {e}");
-            self.notify_error(format!("Verification confirm failed: {e}"))
-                .await;
-        }
-    }
-
-    async fn notify_error(&self, msg: impl Into<String> + Send) {
-        self.output.notify_error(msg.into()).await;
+    pub(super) fn spawn_confirm(
+        &self,
+        group: &mut TaskGroup,
+        verification: Arc<dyn VerificationPort>,
+    ) {
+        let output = Arc::clone(&self.output);
+        group.spawn(async move {
+            if let Err(e) = verification.confirm_verification().await {
+                tracing::warn!("verification confirm failed: {e}");
+                output
+                    .notify_error(format!("Verification confirm failed: {e}"))
+                    .await;
+            }
+        });
     }
 }

@@ -7,14 +7,14 @@ mod storage;
 use std::sync::Arc;
 
 use super::ui::SlintUiAdapter;
-use crate::ports::matrix::MatrixPort;
+use crate::ports::matrix::AuthPort;
 use crate::ports::media::MediaCache;
 use crate::ports::storage::StoragePort;
 
 const WINDOW_SIZE: (f32, f32) = (860.0, 1000.0);
 
-pub fn matrix() -> Arc<dyn MatrixPort> {
-    Arc::new(matrix::DemoMatrix::default())
+pub fn matrix() -> Arc<dyn AuthPort> {
+    Arc::new(matrix::DemoMatrix)
 }
 
 pub fn storage() -> Arc<dyn StoragePort> {

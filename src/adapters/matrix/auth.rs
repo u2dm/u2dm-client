@@ -7,15 +7,12 @@ use matrix_sdk::authentication::oauth::registration::{
     ApplicationType, ClientMetadata, Localized, OAuthGrantType,
 };
 use matrix_sdk::authentication::oauth::{ClientId, OAuthSession, UserSession};
-use matrix_sdk::encryption::verification::VerificationRequest;
-use matrix_sdk::event_handler::EventHandlerDropGuard;
 use matrix_sdk::media::MediaRetentionPolicy;
 use matrix_sdk::ruma::serde::Raw;
 use matrix_sdk::ruma::{IdParseError, OwnedDeviceId, OwnedUserId};
 use matrix_sdk::utils::UrlOrQuery;
 use matrix_sdk::utils::local_server::{LocalServerBuilder, LocalServerRedirectHandle};
 use matrix_sdk::{Client, SessionChange, SessionMeta};
-use tokio::fs;
 use tokio::sync::{Mutex, RwLock, mpsc};
 use url::Url;
 
@@ -232,48 +229,6 @@ pub(super) async fn restore_session(
 
     tracing::info!("session restored successfully");
     *client_lock.write().await = Some(client);
-    Ok(())
-}
-
-pub(super) async fn logout(
-    client_lock: &RwLock<Option<Client>>,
-    verification_req_rx: &Mutex<Option<mpsc::Receiver<VerificationRequest>>>,
-    verification_handler_guards: &Mutex<Vec<EventHandlerDropGuard>>,
-) -> Result<()> {
-    tracing::info!("logging out");
-    verification_handler_guards.lock().await.clear();
-
-    let client = client_lock.write().await.take();
-    *verification_req_rx.lock().await = None;
-
-    if let Some(client) = client
-        && let Err(e) = client.logout().await
-    {
-        tracing::warn!("failed to logout from server: {e}");
-    }
-    Ok(())
-}
-
-pub(super) async fn clear_store(
-    client_lock: &RwLock<Option<Client>>,
-    data_dir: &Path,
-    cache_dir: &Path,
-    verification_req_rx: &Mutex<Option<mpsc::Receiver<VerificationRequest>>>,
-    verification_handler_guards: &Mutex<Vec<EventHandlerDropGuard>>,
-) -> Result<()> {
-    tracing::info!("clearing matrix store");
-    verification_handler_guards.lock().await.clear();
-    *client_lock.write().await = None;
-    let store_path = data_dir.join("matrix-store");
-    if store_path.exists() {
-        fs::remove_dir_all(&store_path).await?;
-    }
-    let cache_path = cache_dir.join("matrix-store");
-    if cache_path.exists() {
-        fs::remove_dir_all(&cache_path).await?;
-    }
-    *verification_req_rx.lock().await = None;
-    tracing::debug!("matrix store cleared");
     Ok(())
 }
 

@@ -8,15 +8,22 @@ use tokio_util::sync::CancellationToken;
 
 use super::lifecycle::Lifecycle;
 use super::task_group::TaskGroup;
-use crate::commands::UiCommand;
 use crate::domain::models::{LoginCredentials, Session};
 use crate::error::{AppError, Result};
 use crate::ports::browser::BrowserPort;
-use crate::ports::matrix::MatrixPort;
+use crate::ports::matrix::{AuthPort, AuthenticatedSession, SessionPort};
 use crate::ports::output::AppOutputPort;
 use crate::ports::storage::{StoragePort, StoredSession};
 
 const OAUTH_CALLBACK_TIMEOUT: Duration = Duration::from_secs(300);
+
+pub(super) enum AuthOutcome {
+    Login {
+        attempt: u64,
+        session: AuthenticatedSession,
+    },
+    Restore(AuthenticatedSession),
+}
 
 #[allow(clippy::let_underscore_must_use)]
 fn generate_passphrase() -> String {
@@ -40,31 +47,31 @@ fn classify_unusable_session(loaded: Result<StoredSession>) -> (&'static str, Op
 
 #[derive(Clone)]
 pub(super) struct SessionController {
-    matrix: Arc<dyn MatrixPort>,
+    auth: Arc<dyn AuthPort>,
     storage: Arc<dyn StoragePort>,
     browser: Arc<dyn BrowserPort>,
-    cmd_tx: mpsc::UnboundedSender<UiCommand>,
     output: Arc<dyn AppOutputPort>,
     lifecycle: Lifecycle,
+    auth_tx: mpsc::UnboundedSender<AuthOutcome>,
     oauth_cancel: Arc<StdMutex<Option<CancellationToken>>>,
 }
 
 impl SessionController {
     pub(super) fn new(
-        matrix: Arc<dyn MatrixPort>,
+        auth: Arc<dyn AuthPort>,
         storage: Arc<dyn StoragePort>,
         browser: Arc<dyn BrowserPort>,
-        cmd_tx: mpsc::UnboundedSender<UiCommand>,
         output: Arc<dyn AppOutputPort>,
         lifecycle: Lifecycle,
+        auth_tx: mpsc::UnboundedSender<AuthOutcome>,
     ) -> Self {
         Self {
-            matrix,
+            auth,
             storage,
             browser,
-            cmd_tx,
             output,
             lifecycle,
+            auth_tx,
             oauth_cancel: Arc::new(StdMutex::new(None)),
         }
     }
@@ -110,9 +117,14 @@ impl SessionController {
         }
     }
 
-    pub(super) fn spawn_logout(&self, group: &mut TaskGroup, session: u64) {
+    pub(super) fn spawn_logout(
+        &self,
+        group: &mut TaskGroup,
+        session: u64,
+        lifecycle_port: Arc<dyn SessionPort>,
+    ) {
         let this = self.clone();
-        group.spawn(async move { this.logout(session).await });
+        group.spawn(async move { this.logout(session, lifecycle_port).await });
     }
 
     pub(super) fn spawn_expire_session(&self, group: &mut TaskGroup, session: u64) {
@@ -121,35 +133,29 @@ impl SessionController {
     }
 
     async fn restore_session(&self) {
-        let Some(session) = self.try_restore_session().await else {
+        let Some(capability) = self.try_restore_session().await else {
             self.lifecycle.restore_failed();
             return;
         };
-
-        if self.lifecycle.restore_succeeded().is_none() {
-            tracing::info!("session restore superseded, dropping result");
-            return;
-        }
-
-        tracing::info!(user_id = %session.user_id, "session restore complete");
-        self.output.login_success(session.user_id).await;
-        self.send_cmd(UiCommand::FetchRooms);
+        self.send_auth(AuthOutcome::Restore(capability));
     }
 
-    async fn try_restore_session(&self) -> Option<Session> {
+    async fn try_restore_session(&self) -> Option<AuthenticatedSession> {
         self.output.status("loading-session".into());
         let session = self.load_saved_session().await?;
 
         self.output.status("opening-store".into());
         let passphrase = self.passphrase_or_login_error().await?;
 
-        if let Err(e) = self.restore_matrix_session(&session, &passphrase).await {
-            tracing::warn!("session restore failed, preserving local data: {e}");
-            self.emit_show_login().await;
-            self.emit_login_error(&e).await;
-            return None;
+        match self.restore_matrix_session(&session, &passphrase).await {
+            Ok(capability) => Some(capability),
+            Err(e) => {
+                tracing::warn!("session restore failed, preserving local data: {e}");
+                self.emit_show_login().await;
+                self.emit_login_error(&e).await;
+                None
+            }
         }
-        Some(session)
     }
 
     async fn check_server(&self, homeserver: &str, attempt: u64) {
@@ -164,7 +170,7 @@ impl SessionController {
     }
 
     async fn discover_server(&self, homeserver: &str, passphrase: &str, attempt: u64) {
-        match self.matrix.discover_auth(homeserver, passphrase).await {
+        match self.auth.discover_auth(homeserver, passphrase).await {
             Ok(info) => {
                 if self.lifecycle.settle_auth(attempt) {
                     self.output.server_info(info).await;
@@ -234,31 +240,27 @@ impl SessionController {
         }
     }
 
-    async fn complete_login(&self, session: Session, attempt: u64) {
-        if self.lifecycle.promote_to_syncing(attempt).is_none() {
-            tracing::info!("login superseded, dropping success");
-            return;
-        }
-        tracing::info!(user_id = %session.user_id, "login succeeded");
-        self.save_session(&session).await;
-        self.output.login_success(session.user_id).await;
-        self.send_cmd(UiCommand::FetchRooms);
-    }
-
-    async fn restore_matrix_session(&self, session: &Session, passphrase: &str) -> Result<()> {
+    async fn restore_matrix_session(
+        &self,
+        session: &Session,
+        passphrase: &str,
+    ) -> Result<AuthenticatedSession> {
         let output = Arc::clone(&self.output);
         let on_progress = Box::new(move |msg| {
             output.status(msg);
         });
 
-        self.matrix
+        self.auth
             .restore_session(session, passphrase, on_progress)
             .await
     }
 
     async fn login_password(&self, creds: LoginCredentials, attempt: u64) {
-        match self.matrix.login_password(creds).await {
-            Ok(session) => self.complete_login(session, attempt).await,
+        match self.auth.login_password(creds).await {
+            Ok(capability) => self.send_auth(AuthOutcome::Login {
+                attempt,
+                session: capability,
+            }),
             Err(e) => {
                 tracing::warn!("password login failed: {e}");
                 self.fail_auth(attempt, &e).await;
@@ -270,7 +272,10 @@ impl SessionController {
         let result = self.run_oauth_flow(&cancel).await;
         self.end_oauth().await;
         match result {
-            Ok(Some(session)) => self.complete_login(session, attempt).await,
+            Ok(Some(capability)) => self.send_auth(AuthOutcome::Login {
+                attempt,
+                session: capability,
+            }),
             Ok(None) => {
                 tracing::info!("OAuth login cancelled");
                 self.output.status(String::new());
@@ -290,24 +295,27 @@ impl SessionController {
             .await;
     }
 
-    async fn logout(&self, session: u64) {
+    async fn logout(&self, session: u64, lifecycle_port: Arc<dyn SessionPort>) {
         tracing::info!("user initiated logout");
-        if let Err(e) = self.matrix.logout().await {
+        if let Err(e) = lifecycle_port.logout().await {
             tracing::warn!("failed to logout from server: {e}");
         }
-        self.clear_local_state().await;
+        self.clear_local_state(lifecycle_port.as_ref()).await;
         self.lifecycle.finish_logout(session);
         tracing::info!("logout complete");
     }
 
-    pub(super) fn spawn_session_persister(&self, group: &mut TaskGroup) {
-        let matrix = Arc::clone(&self.matrix);
+    pub(super) fn spawn_session_persister(
+        &self,
+        group: &mut TaskGroup,
+        lifecycle_port: Arc<dyn SessionPort>,
+    ) {
         let storage = Arc::clone(&self.storage);
         let output = Arc::clone(&self.output);
         let token = group.token();
         group.spawn(async move {
             let (session_tx, mut session_rx) = mpsc::unbounded_channel::<Session>();
-            let subscribe = matrix.subscribe_session_changes(session_tx);
+            let subscribe = lifecycle_port.subscribe_session_changes(session_tx);
             let persist = async {
                 while let Some(session) = session_rx.recv().await {
                     if let Err(e) = storage.save_session(&session).await {
@@ -337,11 +345,14 @@ impl SessionController {
         });
     }
 
-    pub(super) fn spawn_user_avatar_fetch(&self, group: &mut TaskGroup) {
-        let matrix = Arc::clone(&self.matrix);
+    pub(super) fn spawn_user_avatar_fetch(
+        &self,
+        group: &mut TaskGroup,
+        lifecycle_port: Arc<dyn SessionPort>,
+    ) {
         let output = Arc::clone(&self.output);
         group.spawn(async move {
-            match matrix.fetch_user_avatar().await {
+            match lifecycle_port.fetch_user_avatar().await {
                 Ok(path) => {
                     output.user_avatar(path).await;
                 }
@@ -350,7 +361,10 @@ impl SessionController {
         });
     }
 
-    async fn run_oauth_flow(&self, cancel: &CancellationToken) -> Result<Option<Session>> {
+    async fn run_oauth_flow(
+        &self,
+        cancel: &CancellationToken,
+    ) -> Result<Option<AuthenticatedSession>> {
         tokio::select! {
             biased;
             () = cancel.cancelled() => Ok(None),
@@ -358,11 +372,11 @@ impl SessionController {
         }
     }
 
-    async fn oauth_login_steps(&self) -> Result<Session> {
-        let oauth_data = self.matrix.login_oauth_start().await?;
+    async fn oauth_login_steps(&self) -> Result<AuthenticatedSession> {
+        let oauth_data = self.auth.login_oauth_start().await?;
         self.browser.open_url(&oauth_data.auth_url).await?;
         self.output.status("waiting-auth".into());
-        timeout(OAUTH_CALLBACK_TIMEOUT, self.matrix.login_oauth_finish())
+        timeout(OAUTH_CALLBACK_TIMEOUT, self.auth.login_oauth_finish())
             .await
             .map_err(|_| AppError::Other("Timed out waiting for browser sign-in.".into()))?
     }
@@ -379,7 +393,7 @@ impl SessionController {
         if let Ok(mut guard) = self.oauth_cancel.lock() {
             *guard = None;
         }
-        self.matrix.cancel_oauth().await;
+        self.auth.cancel_oauth().await;
     }
 
     async fn get_or_create_passphrase(&self) -> Result<String> {
@@ -391,7 +405,7 @@ impl SessionController {
         Ok(passphrase)
     }
 
-    async fn save_session(&self, session: &Session) {
+    pub(super) async fn save_session(&self, session: &Session) {
         if let Err(e) = self.storage.save_session(session).await {
             tracing::warn!("failed to save session: {e}");
             self.notify_error(format!(
@@ -407,10 +421,16 @@ impl SessionController {
         }
     }
 
-    async fn clear_local_state(&self) {
+    async fn clear_local_state(&self, lifecycle_port: &dyn SessionPort) {
         self.clear_credentials().await;
-        if let Err(e) = self.matrix.clear_store().await {
+        if let Err(e) = lifecycle_port.clear_store().await {
             tracing::warn!("failed to clear store: {e}");
+        }
+    }
+
+    fn send_auth(&self, outcome: AuthOutcome) {
+        if self.auth_tx.send(outcome).is_err() {
+            tracing::debug!("auth outcome receiver gone; dropping authenticated session");
         }
     }
 
@@ -424,11 +444,5 @@ impl SessionController {
 
     async fn notify_error(&self, msg: impl Into<String> + Send) {
         self.output.notify_error(msg.into()).await;
-    }
-
-    fn send_cmd(&self, cmd: UiCommand) {
-        if let Err(e) = self.cmd_tx.send(cmd) {
-            tracing::debug!("failed to send command: {e}");
-        }
     }
 }

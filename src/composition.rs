@@ -5,12 +5,12 @@ use crate::adapters::demo;
 use crate::adapters::matrix::MatrixAdapter;
 use crate::adapters::storage::SecureStorage;
 use crate::config::AppConfig;
-use crate::ports::matrix::MatrixPort;
+use crate::ports::matrix::AuthPort;
 use crate::ports::media::MediaCache;
 use crate::ports::storage::StoragePort;
 
 pub struct Backend {
-    pub matrix: Arc<dyn MatrixPort>,
+    pub auth: Arc<dyn AuthPort>,
     pub storage: Arc<dyn StoragePort>,
     pub media_cache: Arc<dyn MediaCache>,
 }
@@ -25,7 +25,7 @@ impl Backend {
     fn demo() -> Option<Self> {
         tracing::info!("demo mode: serving fake rooms, spaces and timeline");
         Some(Self {
-            matrix: demo::matrix(),
+            auth: demo::matrix(),
             storage: demo::storage(),
             media_cache: demo::media_cache(),
         })
@@ -40,7 +40,7 @@ impl Backend {
         let adapter = MatrixAdapter::new(cfg.data_dir.clone(), cfg.cache_dir.clone());
         let media_cache = adapter.media_cache();
         Self {
-            matrix: Arc::new(adapter),
+            auth: Arc::new(adapter),
             storage: Arc::new(SecureStorage::new(&cfg.data_dir)),
             media_cache,
         }
