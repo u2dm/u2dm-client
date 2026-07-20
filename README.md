@@ -37,6 +37,12 @@ cargo run
 
 The first build downloads the bundled color emoji font from the [`u2dm/twemoji`](https://github.com/u2dm/twemoji) release. It is cached at `ui/fonts/Twemoji.ttf` afterwards.
 
+### Optional: `just`
+
+The [`justfile`](justfile) wraps the common commands and gives each feature combination its own target directory, so builds stop piling up in `target/`. Needs [`just`](https://github.com/casey/just).
+
+Plain `cargo` works the same as always.
+
 ## Feature flags
 
 Both are off by default, so a plain `cargo run` gives you the compiled UI talking to a real homeserver.
@@ -52,6 +58,8 @@ Both are off by default, so a plain `cargo run` gives you the compiled UI talkin
   ```sh
   cargo run --features demo
   ```
+
+`just run-interpreted` and `just demo` run these with isolated build directories.
 
 ## Licenses
 
