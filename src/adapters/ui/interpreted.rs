@@ -20,8 +20,8 @@ thread_local! {
 
 use super::common::{BoolProp, IntProp, StringProp, UiProps, dispatch_ui_event, reorder_rows};
 use super::decode::{
-    AvatarSlot, advance_animations, patch_rows, request_media, set_animation_tick,
-    set_avatar_ready, set_image_ready,
+    AvatarSlot, DecodeOutcome, advance_animations, patch_rows, request_avatar, request_media,
+    set_animation_tick, set_avatar_ready, set_image_ready,
 };
 use super::dto::{ThumbUpdate, enrich_to_update, message_to_dto, room_to_dto, space_to_dto};
 use super::multiplex::spawn_event_multiplexer;
@@ -351,6 +351,11 @@ impl SlintUiAdapter {
             Value::Void
         })?;
 
+        bind(&self.instance, callback::REQUEST_ROOM_AVATAR, move |args| {
+            request_avatar(&AvatarSlot::Room(string_arg(args, 0)));
+            Value::Void
+        })?;
+
         let tx = cmd_tx.clone();
         bind(&self.instance, callback::SAVE_FILE, move |args| {
             let Some(s) = struct_arg(args, 0) else {
@@ -465,8 +470,8 @@ impl SlintUiAdapter {
 
         set_image_ready({
             let weak = self.instance.as_weak();
-            move |unique_id, image| {
-                apply_thumbnail_ready(unique_id, image);
+            move |unique_id, outcome| {
+                apply_thumbnail_ready(unique_id, outcome);
                 if let Some(instance) = weak.upgrade() {
                     instance.window().request_redraw();
                 }
@@ -475,8 +480,8 @@ impl SlintUiAdapter {
 
         set_avatar_ready({
             let weak = self.instance.as_weak();
-            move |slots, image| {
-                apply_avatar_ready(&weak, slots, image);
+            move |slots, outcome| {
+                apply_avatar_ready(&weak, slots, outcome);
                 if let Some(instance) = weak.upgrade() {
                     instance.window().request_redraw();
                 }
@@ -725,7 +730,10 @@ fn message_to_value(m: &TimelineMessage, media: &dyn MediaCache) -> Value {
     Value::Struct(Struct::from_iter(fields))
 }
 
-fn apply_thumbnail_ready(unique_id: &str, image: Option<&slint::Image>) {
+fn apply_thumbnail_ready(unique_id: &str, outcome: DecodeOutcome<'_>) {
+    if matches!(outcome, DecodeOutcome::Deferred) {
+        return;
+    }
     let Some(timeline) = TIMELINE_MODEL.with(|cell| cell.borrow().clone()) else {
         return;
     };
@@ -734,15 +742,16 @@ fn apply_thumbnail_ready(unique_id: &str, image: Option<&slint::Image>) {
         |value: &Value| entry_id_from_value(value) == unique_id,
         |value: &mut Value| {
             if let Value::Struct(entry) = value {
-                match image {
-                    Some(img) => {
+                match outcome {
+                    DecodeOutcome::Ready(img) => {
                         entry.set_field(message::THUMBNAIL.to_string(), Value::Image(img.clone()));
                         entry.set_field(message::HAS_THUMBNAIL.to_string(), Value::Bool(true));
                         entry.set_field(message::MEDIA_FAILED.to_string(), Value::Bool(false));
                     }
-                    None => {
+                    DecodeOutcome::Failed => {
                         entry.set_field(message::MEDIA_FAILED.to_string(), Value::Bool(true));
                     }
+                    DecodeOutcome::Deferred => {}
                 }
             }
         },
@@ -767,9 +776,9 @@ fn set_avatar_on_rows(
 fn apply_avatar_ready(
     weak: &slint::Weak<ComponentInstance>,
     slots: &[AvatarSlot],
-    image: Option<&slint::Image>,
+    outcome: DecodeOutcome<'_>,
 ) {
-    let Some(image) = image else {
+    let DecodeOutcome::Ready(image) = outcome else {
         return;
     };
     for slot in slots {

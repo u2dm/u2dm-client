@@ -38,6 +38,7 @@ export component ChatScreen inherits Rectangle {
     in-out property <string> input-message: "";
 
     callback select-room(string);
+    callback request-room-avatar(string);
     callback select-space(string);
     callback select-subspace(string);
     callback move-space(int, int);
@@ -76,6 +77,9 @@ export component ChatScreen inherits Rectangle {
         selected-subspace-id: root.selected-subspace-id;
         select-room(id) => {
             root.select-room(id);
+        }
+        request-room-avatar(id) => {
+            root.request-room-avatar(id);
         }
         select-space(id) => {
             root.select-space(id);

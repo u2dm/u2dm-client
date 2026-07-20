@@ -28,6 +28,7 @@ export component Sidebar inherits Rectangle {
     callback select-subspace(string);
     callback move-space(int, int);
     callback menu-clicked();
+    callback request-room-avatar(string);
 
     in property <length> subrail-width: 68px;
 
@@ -124,6 +125,11 @@ export component Sidebar inherits Rectangle {
                             : (self.has-hover ? Palette.background.transparentize(0.5) : transparent);
                         clicked => {
                             root.select-room(room.id);
+                        }
+                        init => {
+                            if (!room.has-avatar) {
+                                root.request-room-avatar(room.id);
+                            }
                         }
 
                         property <string> sender-label: room.last-message-is-own

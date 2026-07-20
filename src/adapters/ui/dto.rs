@@ -6,7 +6,8 @@ use super::common::{
     room_activity_label, sender_initial, service_kind_token, service_target, unsupported_kind,
 };
 use super::decode::{
-    AvatarSlot, load_avatar_async, load_thumbnail, peek_avatar, peek_thumbnail, record_media_need,
+    AvatarSlot, load_avatar_async, load_thumbnail, peek_avatar, peek_thumbnail, record_avatar_need,
+    record_media_need,
 };
 use crate::domain::models::{
     EnrichmentDelta, MessageBody, Room, Space, ThumbnailOutcome, TimelineMessage,
@@ -225,11 +226,12 @@ pub fn room_to_dto(r: &Room, media: &dyn MediaCache) -> RoomDto {
 
     if let Some(mxc) = &r.avatar_mxc
         && let Some(avatar_path) = media.room_avatar_path(mxc)
-        && let Some(img) =
-            load_avatar_async(&avatar_path, AvatarSlot::Room(r.id.as_ref().to_owned()))
     {
-        dto.avatar = Some(img);
-        dto.has_avatar = true;
+        if let Some(img) = peek_avatar(&avatar_path) {
+            dto.avatar = Some(img);
+            dto.has_avatar = true;
+        }
+        record_avatar_need(AvatarSlot::Room(r.id.as_ref().to_owned()), avatar_path);
     }
 
     dto

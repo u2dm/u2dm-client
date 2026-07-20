@@ -8,8 +8,8 @@ use tokio::sync::{OwnedSemaphorePermit, mpsc, watch};
 
 use super::common::{BoolProp, IntProp, StringProp, UiProps, dispatch_ui_event, reorder_rows};
 use super::decode::{
-    AvatarSlot, advance_animations, patch_rows, request_media, set_animation_tick,
-    set_avatar_ready, set_image_ready,
+    AvatarSlot, DecodeOutcome, advance_animations, patch_rows, request_avatar, request_media,
+    set_animation_tick, set_avatar_ready, set_image_ready,
 };
 use super::dto::{ThumbUpdate, enrich_to_update, message_to_dto, room_to_dto, space_to_dto};
 use super::multiplex::spawn_event_multiplexer;
@@ -224,6 +224,10 @@ impl SlintUiAdapter {
 
         self.window
             .on_request_media(move |unique_id| request_media(&unique_id));
+
+        self.window.on_request_room_avatar(move |room_id| {
+            request_avatar(&AvatarSlot::Room(room_id.to_string()));
+        });
 
         let tx = cmd_tx.clone();
         self.window.on_save_file(move |req| {
@@ -462,8 +466,8 @@ fn message_to_entry(m: &TimelineMessage, media: &dyn MediaCache) -> MessageEntry
 fn register_image_callbacks(weak: &slint::Weak<AppWindow>) {
     set_image_ready({
         let weak = weak.clone();
-        move |unique_id, image| {
-            apply_thumbnail_ready(unique_id, image);
+        move |unique_id, outcome| {
+            apply_thumbnail_ready(unique_id, outcome);
             if let Some(window) = weak.upgrade() {
                 window.window().request_redraw();
             }
@@ -472,8 +476,8 @@ fn register_image_callbacks(weak: &slint::Weak<AppWindow>) {
 
     set_avatar_ready({
         let weak = weak.clone();
-        move |slots, image| {
-            apply_avatar_ready(&weak, slots, image);
+        move |slots, outcome| {
+            apply_avatar_ready(&weak, slots, outcome);
             if let Some(window) = weak.upgrade() {
                 window.window().request_redraw();
             }
@@ -481,8 +485,12 @@ fn register_image_callbacks(weak: &slint::Weak<AppWindow>) {
     });
 }
 
-fn apply_avatar_ready(weak: &slint::Weak<AppWindow>, slots: &[AvatarSlot], image: Option<&Image>) {
-    let Some(image) = image else {
+fn apply_avatar_ready(
+    weak: &slint::Weak<AppWindow>,
+    slots: &[AvatarSlot],
+    outcome: DecodeOutcome<'_>,
+) {
+    let DecodeOutcome::Ready(image) = outcome else {
         return;
     };
     for slot in slots {
@@ -535,20 +543,24 @@ fn apply_avatar_ready(weak: &slint::Weak<AppWindow>, slots: &[AvatarSlot], image
     }
 }
 
-fn apply_thumbnail_ready(unique_id: &str, image: Option<&Image>) {
+fn apply_thumbnail_ready(unique_id: &str, outcome: DecodeOutcome<'_>) {
+    if matches!(outcome, DecodeOutcome::Deferred) {
+        return;
+    }
     let Some(timeline) = TIMELINE_MODEL.with(|cell| cell.borrow().clone()) else {
         return;
     };
     patch_rows(
         &timeline,
         |e: &MessageEntry| e.unique_id == unique_id,
-        |e: &mut MessageEntry| match image {
-            Some(img) => {
+        |e: &mut MessageEntry| match outcome {
+            DecodeOutcome::Ready(img) => {
                 e.thumbnail = img.clone();
                 e.has_thumbnail = true;
                 e.media_failed = false;
             }
-            None => e.media_failed = true,
+            DecodeOutcome::Failed => e.media_failed = true,
+            DecodeOutcome::Deferred => {}
         },
     );
 }

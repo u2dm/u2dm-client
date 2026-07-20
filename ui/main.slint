@@ -75,6 +75,7 @@ export component AppWindow inherits Window {
     callback open-media(string);
     callback save-file(SaveFileRequest);
     callback request-media(string);
+    callback request-room-avatar(string);
     callback logout();
     callback accept-verification();
     callback confirm-verification();
@@ -150,6 +151,9 @@ export component AppWindow inherits Window {
         input-message <=> root.input-message;
         select-room(id) => {
             root.select-room(id);
+        }
+        request-room-avatar(id) => {
+            root.request-room-avatar(id);
         }
         select-space(id) => {
             root.select-space(id);

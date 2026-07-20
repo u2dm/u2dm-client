@@ -5,18 +5,18 @@ use std::io::BufReader;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::sync::{Arc, Condvar, Mutex, MutexGuard, PoisonError};
-use std::thread;
 use std::time::{Duration, Instant};
+use std::{slice, thread};
 
 use image::codecs::gif::GifDecoder;
 use image::codecs::webp::WebPDecoder;
-use image::{AnimationDecoder, Frames};
+use image::{AnimationDecoder, DynamicImage, Frames};
 use slint::{Image, Model, Rgba8Pixel, SharedPixelBuffer, Timer, TimerMode, VecModel};
 
-const IMAGE_CACHE_MAX_BYTES: usize = 128 * 1024 * 1024;
+const IMAGE_CACHE_MAX_BYTES: usize = 64 * 1024 * 1024;
 
-const ANIMATION_MEMORY_BUDGET: usize = 256 * 1024 * 1024;
-const ANIM_PER_ITEM_BUDGET: usize = 64 * 1024 * 1024;
+const ANIMATION_MEMORY_BUDGET: usize = 128 * 1024 * 1024;
+const ANIM_PER_ITEM_BUDGET: usize = 32 * 1024 * 1024;
 const ANIM_MAX_DIMENSION: u32 = 2048;
 const ANIM_MAX_FRAMES: usize = 600;
 const MAX_ACTIVE_ANIMATIONS: usize = 16;
@@ -25,10 +25,7 @@ const DECODE_MAX_DIMENSION: u32 = 4096;
 const DECODE_MAX_ALLOC: u64 = 4 * DECODE_MAX_DIMENSION as u64 * DECODE_MAX_DIMENSION as u64;
 const DISPLAY_MAX_DIMENSION: u32 = 512;
 
-const DECODE_INFLIGHT_BUDGET: usize = 384 * 1024 * 1024;
-const STATIC_DECODE_DEFAULT_RESERVE: usize = 16 * 1024 * 1024;
-const ANIM_DECODE_RESERVE: usize = ANIM_PER_ITEM_BUDGET;
-const DECODE_LANE_CAP: usize = 256;
+const DECODE_LANE_CAP: usize = 1024;
 const MAX_DECODE_WORKERS: usize = 3;
 
 const GIF_INSTANT_DELAY: Duration = Duration::from_millis(10);
@@ -44,15 +41,23 @@ thread_local! {
     static IN_FLIGHT: RefCell<HashMap<PathBuf, Vec<String>>> = RefCell::new(HashMap::new());
     static AVATAR_WAITERS: RefCell<HashMap<PathBuf, Vec<AvatarSlot>>> = RefCell::new(HashMap::new());
     static MEDIA_NEEDS: RefCell<HashMap<String, MediaNeed>> = RefCell::new(HashMap::new());
+    static AVATAR_NEEDS: RefCell<HashMap<AvatarSlot, PathBuf>> = RefCell::new(HashMap::new());
     static IMAGE_READY_FN: RefCell<Option<ImageReadyFn>> = const { RefCell::new(None) };
     static AVATAR_READY_FN: RefCell<Option<AvatarReadyFn>> = const { RefCell::new(None) };
 }
 
-type ImageReadyFn = Rc<dyn Fn(&str, Option<&Image>)>;
-type AvatarReadyFn = Rc<dyn Fn(&[AvatarSlot], Option<&Image>)>;
+type ImageReadyFn = Rc<dyn Fn(&str, DecodeOutcome<'_>)>;
+type AvatarReadyFn = Rc<dyn Fn(&[AvatarSlot], DecodeOutcome<'_>)>;
+
+#[derive(Clone, Copy)]
+pub enum DecodeOutcome<'a> {
+    Ready(&'a Image),
+    Failed,
+    Deferred,
+}
 
 /// Identifies which UI row an off-thread avatar decode should patch once it lands.
-#[derive(Clone)]
+#[derive(Clone, PartialEq, Eq, Hash)]
 pub enum AvatarSlot {
     Message(String),
     Room(String),
@@ -66,8 +71,14 @@ struct MediaNeed {
     avatar: Option<PathBuf>,
 }
 
+enum Lookup {
+    Hit(Image),
+    Failed,
+    Miss,
+}
+
 struct CachedImage {
-    image: Image,
+    image: Option<Image>,
     bytes: usize,
     tick: u64,
 }
@@ -87,15 +98,20 @@ impl ImageCache {
         }
     }
 
-    fn get(&mut self, path: &Path) -> Option<Image> {
+    fn lookup(&mut self, path: &Path) -> Lookup {
         self.tick = self.tick.wrapping_add(1);
         let tick = self.tick;
-        let entry = self.entries.get_mut(path)?;
+        let Some(entry) = self.entries.get_mut(path) else {
+            return Lookup::Miss;
+        };
         entry.tick = tick;
-        Some(entry.image.clone())
+        match &entry.image {
+            Some(image) => Lookup::Hit(image.clone()),
+            None => Lookup::Failed,
+        }
     }
 
-    fn insert(&mut self, path: PathBuf, image: Image, bytes: usize) {
+    fn insert(&mut self, path: PathBuf, image: Option<Image>, bytes: usize) {
         self.tick = self.tick.wrapping_add(1);
         if let Some(previous) = self.entries.insert(
             path,
@@ -172,17 +188,10 @@ enum Lane {
     Animation,
 }
 
-struct Job {
-    lane: Lane,
-    path: PathBuf,
-    reserved: usize,
-}
-
 struct QueueInner {
     avatar: VecDeque<PathBuf>,
     static_img: VecDeque<PathBuf>,
     animation: VecDeque<PathBuf>,
-    reserved_bytes: usize,
 }
 
 impl QueueInner {
@@ -191,7 +200,6 @@ impl QueueInner {
             avatar: VecDeque::new(),
             static_img: VecDeque::new(),
             animation: VecDeque::new(),
-            reserved_bytes: 0,
         }
     }
 
@@ -261,66 +269,21 @@ fn ensure_workers() {
 
 fn decode_worker(queue: &Arc<DecodeQueue>) {
     loop {
-        let job = next_job(queue);
-        run_job(job.lane, &job.path);
-        {
-            let mut inner = lock(&queue.inner);
-            inner.reserved_bytes = inner.reserved_bytes.saturating_sub(job.reserved);
-        }
-        queue.signal.notify_all();
+        let (lane, path) = next_job(queue);
+        run_job(lane, &path);
     }
 }
 
-fn next_job(queue: &Arc<DecodeQueue>) -> Job {
+fn next_job(queue: &Arc<DecodeQueue>) -> (Lane, PathBuf) {
+    let mut inner = lock(&queue.inner);
     loop {
-        let (lane, path) = {
-            let mut inner = lock(&queue.inner);
-            loop {
-                if let Some(picked) = inner.take_front() {
-                    break picked;
-                }
-                inner = queue
-                    .signal
-                    .wait(inner)
-                    .unwrap_or_else(PoisonError::into_inner);
-            }
-        };
-
-        let reserved = estimate_reserve(lane, &path);
-        let mut inner = lock(&queue.inner);
-        if inner.reserved_bytes == 0
-            || inner.reserved_bytes.saturating_add(reserved) <= DECODE_INFLIGHT_BUDGET
-        {
-            inner.reserved_bytes = inner.reserved_bytes.saturating_add(reserved);
-            return Job {
-                lane,
-                path,
-                reserved,
-            };
+        if let Some(picked) = inner.take_front() {
+            return picked;
         }
-        inner.lane_mut(lane).push_front(path);
-        drop(
-            queue
-                .signal
-                .wait(inner)
-                .unwrap_or_else(PoisonError::into_inner),
-        );
-    }
-}
-
-fn estimate_reserve(lane: Lane, path: &Path) -> usize {
-    match lane {
-        Lane::Animation => ANIM_DECODE_RESERVE,
-        Lane::Avatar | Lane::Static => image::ImageReader::open(path)
-            .ok()
-            .and_then(|reader| reader.with_guessed_format().ok())
-            .and_then(|reader| reader.into_dimensions().ok())
-            .map_or(STATIC_DECODE_DEFAULT_RESERVE, |(width, height)| {
-                (width as usize)
-                    .saturating_mul(height as usize)
-                    .saturating_mul(4)
-                    .min(usize::try_from(DECODE_MAX_ALLOC).unwrap_or(usize::MAX))
-            }),
+        inner = queue
+            .signal
+            .wait(inner)
+            .unwrap_or_else(PoisonError::into_inner);
     }
 }
 
@@ -343,64 +306,71 @@ fn run_job(lane: Lane, path: &Path) {
 }
 
 fn on_static_decoded(path: &Path, decoded: Option<(Vec<u8>, u32, u32)>) {
-    let image = decoded.map(|(bytes, width, height)| {
-        let image = image_from_rgba(&bytes, width, height);
-        IMAGE_CACHE
-            .with_borrow_mut(|cache| cache.insert(path.to_path_buf(), image.clone(), bytes.len()));
-        image
+    let decoded = decoded.map(|(bytes, width, height)| {
+        let len = bytes.len();
+        (image_from_rgba(&bytes, width, height), len)
     });
+    let bytes = decoded.as_ref().map_or(0, |(_, len)| *len);
+    let image = decoded.map(|(image, _)| image);
+    IMAGE_CACHE.with_borrow_mut(|cache| cache.insert(path.to_path_buf(), image.clone(), bytes));
 
+    let outcome = image
+        .as_ref()
+        .map_or(DecodeOutcome::Failed, DecodeOutcome::Ready);
     if let Some(unique_ids) = IN_FLIGHT.with_borrow_mut(|inflight| inflight.remove(path)) {
-        notify_ready(&unique_ids, image.as_ref());
+        notify_ready(&unique_ids, outcome);
     }
     if let Some(slots) = AVATAR_WAITERS.with_borrow_mut(|waiters| waiters.remove(path)) {
-        notify_avatar_ready(&slots, image.as_ref());
+        notify_avatar_ready(&slots, outcome);
     }
 }
 
-fn notify_ready(unique_ids: &[String], image: Option<&Image>) {
+fn notify_ready(unique_ids: &[String], outcome: DecodeOutcome<'_>) {
     let Some(ready) = IMAGE_READY_FN.with_borrow(Clone::clone) else {
         return;
     };
     for unique_id in unique_ids {
-        ready(unique_id, image);
+        ready(unique_id, outcome);
     }
 }
 
-fn notify_avatar_ready(slots: &[AvatarSlot], image: Option<&Image>) {
+fn notify_avatar_ready(slots: &[AvatarSlot], outcome: DecodeOutcome<'_>) {
     if let Some(ready) = AVATAR_READY_FN.with_borrow(Clone::clone) {
-        ready(slots, image);
+        ready(slots, outcome);
     }
 }
 
 fn send_job(lane: Lane, path: PathBuf) {
     ensure_workers();
-    DECODE_QUEUE.with_borrow(|slot| {
-        let Some(queue) = slot.as_ref() else {
-            return;
-        };
+    let dropped = DECODE_QUEUE.with_borrow(|slot| {
+        let queue = slot.as_ref()?;
         let dropped = {
             let mut inner = lock(&queue.inner);
             inner.push_back_bounded(lane, path)
         };
         queue.signal.notify_all();
-        if let Some(dropped) = dropped {
-            discard_inflight(lane, &dropped);
-            tracing::debug!(
-                "decode lane full, dropped oldest queued {}",
-                dropped.display()
-            );
-        }
+        dropped
     });
+    if let Some(dropped) = dropped {
+        defer_dropped(lane, &dropped);
+    }
 }
 
-fn discard_inflight(lane: Lane, path: &Path) {
+fn defer_dropped(lane: Lane, path: &Path) {
+    tracing::warn!(
+        "decode lane at capacity, deferred {}; it will be re-requested",
+        path.display()
+    );
     match lane {
         Lane::Avatar => {
-            AVATAR_WAITERS.with_borrow_mut(|waiters| waiters.remove(path));
+            if let Some(slots) = AVATAR_WAITERS.with_borrow_mut(|waiters| waiters.remove(path)) {
+                notify_avatar_ready(&slots, DecodeOutcome::Deferred);
+            }
         }
         Lane::Static | Lane::Animation => {
-            IN_FLIGHT.with_borrow_mut(|inflight| inflight.remove(path));
+            if let Some(unique_ids) = IN_FLIGHT.with_borrow_mut(|inflight| inflight.remove(path)) {
+                notify_ready(&unique_ids, DecodeOutcome::Deferred);
+            }
         }
     }
 }
@@ -420,12 +390,17 @@ fn enqueue_decode(path: &Path, unique_id: &str, lane: Lane) {
 }
 
 pub fn load_avatar_async(path: &Path, slot: AvatarSlot) -> Option<Image> {
-    if let Some(img) = IMAGE_CACHE.with_borrow_mut(|cache| cache.get(path)) {
-        return Some(img);
+    match IMAGE_CACHE.with_borrow_mut(|cache| cache.lookup(path)) {
+        Lookup::Hit(image) => return Some(image),
+        Lookup::Failed => return None,
+        Lookup::Miss => {}
     }
     let should_dispatch = AVATAR_WAITERS.with_borrow_mut(|waiters| {
         let is_new = !waiters.contains_key(path);
-        waiters.entry(path.to_path_buf()).or_default().push(slot);
+        let slots = waiters.entry(path.to_path_buf()).or_default();
+        if !slots.contains(&slot) {
+            slots.push(slot);
+        }
         is_new
     });
     if should_dispatch {
@@ -434,16 +409,23 @@ pub fn load_avatar_async(path: &Path, slot: AvatarSlot) -> Option<Image> {
     None
 }
 
+fn cached_image(path: &Path) -> Option<Image> {
+    match IMAGE_CACHE.with_borrow_mut(|cache| cache.lookup(path)) {
+        Lookup::Hit(image) => Some(image),
+        Lookup::Failed | Lookup::Miss => None,
+    }
+}
+
 pub fn peek_thumbnail(path: &Path) -> Option<Image> {
     if is_animatable(path) {
         None
     } else {
-        IMAGE_CACHE.with_borrow_mut(|cache| cache.get(path))
+        cached_image(path)
     }
 }
 
 pub fn peek_avatar(path: &Path) -> Option<Image> {
-    IMAGE_CACHE.with_borrow_mut(|cache| cache.get(path))
+    cached_image(path)
 }
 
 pub fn record_media_need(unique_id: &str, thumbnail: Option<PathBuf>, avatar: Option<PathBuf>) {
@@ -460,6 +442,19 @@ pub fn forget_all_media_needs() {
     MEDIA_NEEDS.with_borrow_mut(HashMap::clear);
 }
 
+pub fn record_avatar_need(slot: AvatarSlot, path: PathBuf) {
+    AVATAR_NEEDS.with_borrow_mut(|needs| needs.insert(slot, path));
+}
+
+pub fn request_avatar(slot: &AvatarSlot) {
+    let Some(path) = AVATAR_NEEDS.with_borrow(|needs| needs.get(slot).cloned()) else {
+        return;
+    };
+    if let Some(image) = load_avatar_async(&path, slot.clone()) {
+        notify_avatar_ready(slice::from_ref(slot), DecodeOutcome::Ready(&image));
+    }
+}
+
 pub fn request_media(unique_id: &str) {
     let Some(need) = MEDIA_NEEDS.with_borrow(|needs| needs.get(unique_id).cloned()) else {
         return;
@@ -467,21 +462,21 @@ pub fn request_media(unique_id: &str) {
     if let Some(thumbnail) = &need.thumbnail
         && let Some(img) = load_thumbnail(thumbnail, unique_id)
     {
-        notify_ready(&[unique_id.to_owned()], Some(&img));
+        notify_ready(&[unique_id.to_owned()], DecodeOutcome::Ready(&img));
     }
     if let Some(avatar) = &need.avatar {
         let slot = AvatarSlot::Message(unique_id.to_owned());
         if let Some(img) = load_avatar_async(avatar, slot.clone()) {
-            notify_avatar_ready(&[slot], Some(&img));
+            notify_avatar_ready(&[slot], DecodeOutcome::Ready(&img));
         }
     }
 }
 
-pub fn set_image_ready(ready: impl Fn(&str, Option<&Image>) + 'static) {
+pub fn set_image_ready(ready: impl Fn(&str, DecodeOutcome<'_>) + 'static) {
     IMAGE_READY_FN.with_borrow_mut(|slot| *slot = Some(Rc::new(ready)));
 }
 
-pub fn set_avatar_ready(ready: impl Fn(&[AvatarSlot], Option<&Image>) + 'static) {
+pub fn set_avatar_ready(ready: impl Fn(&[AvatarSlot], DecodeOutcome<'_>) + 'static) {
     AVATAR_READY_FN.with_borrow_mut(|slot| *slot = Some(Rc::new(ready)));
 }
 
@@ -532,15 +527,19 @@ struct RawAnimation {
 
 impl RawAnimation {
     fn into_animation(self) -> Animation {
-        let frames = self
-            .frames
-            .iter()
-            .map(|frame| image_from_rgba(&frame.rgba, frame.width, frame.height))
-            .collect();
+        let Self {
+            frames: raw,
+            delays,
+            bytes,
+        } = self;
+        let mut frames = Vec::with_capacity(raw.len());
+        for frame in raw {
+            frames.push(image_from_rgba(&frame.rgba, frame.width, frame.height));
+        }
         Animation {
             frames,
-            delays: self.delays,
-            bytes: self.bytes,
+            delays,
+            bytes,
         }
     }
 }
@@ -549,6 +548,13 @@ struct Playback {
     path: PathBuf,
     frame: usize,
     next_at: Instant,
+    row_hint: usize,
+}
+
+struct DueFrame {
+    unique_id: String,
+    image: Image,
+    row_hint: usize,
 }
 
 fn frame_delay(declared: Duration) -> Duration {
@@ -596,15 +602,25 @@ fn decode_raw_animation(path: &Path) -> Option<RawAnimation> {
         let Ok(frame) = frame else { break };
         let delay = frame_delay(Duration::from(frame.delay()));
         let buffer = frame.into_buffer();
-        let (width, height) = buffer.dimensions();
+        let (source_width, source_height) = buffer.dimensions();
 
-        if width > ANIM_MAX_DIMENSION || height > ANIM_MAX_DIMENSION {
+        if source_width > ANIM_MAX_DIMENSION || source_height > ANIM_MAX_DIMENSION {
             tracing::debug!(
                 "animation at {} exceeds the {ANIM_MAX_DIMENSION}px dimension cap, showing a still",
                 path.display()
             );
             return None;
         }
+
+        let buffer =
+            if source_width > DISPLAY_MAX_DIMENSION || source_height > DISPLAY_MAX_DIMENSION {
+                DynamicImage::ImageRgba8(buffer)
+                    .thumbnail(DISPLAY_MAX_DIMENSION, DISPLAY_MAX_DIMENSION)
+                    .into_rgba8()
+            } else {
+                buffer
+            };
+        let (width, height) = buffer.dimensions();
 
         bytes = bytes.saturating_add(width as usize * height as usize * 4);
         if bytes > ANIM_PER_ITEM_BUDGET {
@@ -679,12 +695,16 @@ fn on_animation_decoded(path: &Path, decoded: Option<RawAnimation>) {
                     path: path.to_path_buf(),
                     frame: 0,
                     next_at: now + animation.delay(0),
+                    row_hint: 0,
                 },
             );
         }
     });
     reschedule_animations();
-    notify_ready(&waiting, animation.frame(0));
+    let first = animation
+        .frame(0)
+        .map_or(DecodeOutcome::Failed, DecodeOutcome::Ready);
+    notify_ready(&waiting, first);
 }
 
 pub fn load_thumbnail(path: &Path, playback_key: &str) -> Option<Image> {
@@ -713,6 +733,7 @@ pub fn load_thumbnail(path: &Path, playback_key: &str) -> Option<Image> {
                 path: path.to_path_buf(),
                 frame: 0,
                 next_at: Instant::now() + animation.delay(0),
+                row_hint: 0,
             },
         );
         (0, true)
@@ -726,17 +747,20 @@ pub fn load_thumbnail(path: &Path, playback_key: &str) -> Option<Image> {
 }
 
 fn request_thumbnail(path: &Path, unique_id: &str) -> Option<Image> {
-    if let Some(img) = IMAGE_CACHE.with_borrow_mut(|cache| cache.get(path)) {
-        return Some(img);
+    match IMAGE_CACHE.with_borrow_mut(|cache| cache.lookup(path)) {
+        Lookup::Hit(image) => Some(image),
+        Lookup::Failed => None,
+        Lookup::Miss => {
+            enqueue_decode(path, unique_id, Lane::Static);
+            None
+        }
     }
-    enqueue_decode(path, unique_id, Lane::Static);
-    None
 }
 
-fn due_frames(now: Instant) -> HashMap<String, Image> {
+fn due_frames(now: Instant) -> Vec<DueFrame> {
     PLAYBACKS.with_borrow_mut(|playbacks| {
-        let mut due = HashMap::new();
-        for (event_id, playback) in playbacks.iter_mut() {
+        let mut due = Vec::new();
+        for (unique_id, playback) in playbacks.iter_mut() {
             if playback.next_at > now {
                 continue;
             }
@@ -746,16 +770,43 @@ fn due_frames(now: Instant) -> HashMap<String, Image> {
             playback.frame = (playback.frame + 1) % animation.frames.len();
             playback.next_at = now + animation.delay(playback.frame);
             if let Some(frame) = animation.frame(playback.frame) {
-                due.insert(event_id.clone(), frame.clone());
+                due.push(DueFrame {
+                    unique_id: unique_id.clone(),
+                    image: frame.clone(),
+                    row_hint: playback.row_hint,
+                });
             }
         }
         due
     })
 }
 
-fn forget_animations_outside(live_event_ids: &HashSet<String>) {
+fn locate_row<T: Clone + 'static>(
+    model: &VecModel<T>,
+    entry_id: &dyn Fn(&T) -> String,
+    unique_id: &str,
+    hint: usize,
+) -> Option<usize> {
+    if let Some(entry) = model.row_data(hint)
+        && entry_id(&entry) == unique_id
+    {
+        return Some(hint);
+    }
+    (0..model.row_count()).find(|&row| {
+        model
+            .row_data(row)
+            .is_some_and(|e| entry_id(&e) == unique_id)
+    })
+}
+
+fn forget_playbacks(gone: &[String]) {
+    if gone.is_empty() {
+        return;
+    }
     let live_paths = PLAYBACKS.with_borrow_mut(|playbacks| {
-        playbacks.retain(|event_id, _| live_event_ids.contains(event_id));
+        for unique_id in gone {
+            playbacks.remove(unique_id);
+        }
         playbacks
             .values()
             .map(|playback| playback.path.clone())
@@ -774,21 +825,29 @@ pub fn advance_animations<T: Clone + 'static>(
         return;
     }
 
-    let mut live_event_ids = HashSet::new();
-    for row in 0..timeline_model.row_count() {
-        let Some(entry) = timeline_model.row_data(row) else {
+    let mut located = Vec::new();
+    let mut gone = Vec::new();
+    for item in due {
+        let Some(row) = locate_row(timeline_model, entry_id, &item.unique_id, item.row_hint) else {
+            gone.push(item.unique_id);
             continue;
         };
-        let event_id = entry_id(&entry);
-        if let Some(frame) = due.get(&event_id) {
+        if let Some(entry) = timeline_model.row_data(row) {
             let mut updated = entry;
-            set_thumbnail(&mut updated, frame.clone());
+            set_thumbnail(&mut updated, item.image);
             timeline_model.set_row_data(row, updated);
         }
-        live_event_ids.insert(event_id);
+        located.push((item.unique_id, row));
     }
 
-    forget_animations_outside(&live_event_ids);
+    PLAYBACKS.with_borrow_mut(|playbacks| {
+        for (unique_id, row) in located {
+            if let Some(playback) = playbacks.get_mut(&unique_id) {
+                playback.row_hint = row;
+            }
+        }
+    });
+    forget_playbacks(&gone);
 }
 
 fn next_deadline() -> Option<Instant> {
