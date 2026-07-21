@@ -3,6 +3,7 @@ use std::sync::Arc;
 use tokio::sync::mpsc;
 
 use super::task_group::TaskGroup;
+use crate::commands::Effect;
 use crate::domain::models::VerificationEvent;
 use crate::ports::matrix::VerificationPort;
 use crate::ports::output::AppOutputPort;
@@ -29,7 +30,7 @@ impl VerificationController {
             let listen = verification.listen_for_verification(verif_tx);
             let forward = async {
                 while let Some(event) = verif_rx.recv().await {
-                    output.verification(event).await;
+                    output.emit(Effect::Verification(event)).await;
                 }
             };
 
@@ -59,7 +60,7 @@ impl VerificationController {
             if let Err(e) = verification.accept_verification().await {
                 tracing::warn!("verification accept failed: {e}");
                 output
-                    .notify_error(format!("Verification accept failed: {e}"))
+                    .emit(Effect::Toast(format!("Verification accept failed: {e}")))
                     .await;
             }
         });
@@ -75,7 +76,7 @@ impl VerificationController {
             if let Err(e) = verification.reject_verification().await {
                 tracing::warn!("verification reject failed: {e}");
                 output
-                    .notify_error(format!("Verification reject failed: {e}"))
+                    .emit(Effect::Toast(format!("Verification reject failed: {e}")))
                     .await;
             }
         });
@@ -91,7 +92,7 @@ impl VerificationController {
             if let Err(e) = verification.confirm_verification().await {
                 tracing::warn!("verification confirm failed: {e}");
                 output
-                    .notify_error(format!("Verification confirm failed: {e}"))
+                    .emit(Effect::Toast(format!("Verification confirm failed: {e}")))
                     .await;
             }
         });

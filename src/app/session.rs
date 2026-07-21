@@ -8,7 +8,8 @@ use tokio_util::sync::CancellationToken;
 
 use super::lifecycle::Lifecycle;
 use super::task_group::TaskGroup;
-use crate::domain::models::{LoginCredentials, Session};
+use crate::commands::{Effect, LoginStep};
+use crate::domain::models::{LoginCredentials, LoginMethod, ServerInfo, Session};
 use crate::error::{AppError, Result};
 use crate::ports::browser::BrowserPort;
 use crate::ports::matrix::{AuthPort, AuthenticatedSession, SessionPort};
@@ -141,10 +142,11 @@ impl SessionController {
     }
 
     async fn try_restore_session(&self) -> Option<AuthenticatedSession> {
-        self.output.status("loading-session".into());
+        self.output
+            .emit_now(Effect::Status("loading-session".into()));
         let session = self.load_saved_session().await?;
 
-        self.output.status("opening-store".into());
+        self.output.emit_now(Effect::Status("opening-store".into()));
         let passphrase = self.passphrase_or_login_error().await?;
 
         match self.restore_matrix_session(&session, &passphrase).await {
@@ -173,7 +175,7 @@ impl SessionController {
         match self.auth.discover_auth(homeserver, passphrase).await {
             Ok(info) => {
                 if self.lifecycle.settle_auth(attempt) {
-                    self.output.server_info(info);
+                    self.emit_server_info(info);
                 }
             }
             Err(e) => {
@@ -247,7 +249,7 @@ impl SessionController {
     ) -> Result<AuthenticatedSession> {
         let output = Arc::clone(&self.output);
         let on_progress = Box::new(move |msg| {
-            output.status(msg);
+            output.emit_now(Effect::Status(msg));
         });
 
         self.auth
@@ -278,7 +280,7 @@ impl SessionController {
             }),
             Ok(None) => {
                 tracing::info!("OAuth login cancelled");
-                self.output.status(String::new());
+                self.output.emit_now(Effect::Status(String::new()));
             }
             Err(e) => {
                 tracing::warn!("OAuth login failed: {e}");
@@ -291,7 +293,9 @@ impl SessionController {
         self.clear_credentials().await;
         self.lifecycle.finish_logout(session);
         self.output
-            .login_error("Session expired. Please log in again.".into())
+            .emit(Effect::LoginError(
+                "Session expired. Please log in again.".into(),
+            ))
             .await;
     }
 
@@ -321,7 +325,9 @@ impl SessionController {
                     if let Err(e) = storage.save_session(&session).await {
                         tracing::warn!("failed to persist refreshed session: {e}");
                         output
-                            .notify_error(format!("Failed to save refreshed session: {e}"))
+                            .emit(Effect::Toast(format!(
+                                "Failed to save refreshed session: {e}"
+                            )))
                             .await;
                     } else {
                         tracing::info!("persisted refreshed session tokens");
@@ -354,7 +360,7 @@ impl SessionController {
         group.spawn(async move {
             match lifecycle_port.fetch_user_avatar().await {
                 Ok(path) => {
-                    output.user_avatar(path);
+                    output.publish(Box::new(move |view| view.lifecycle.avatar_path = path));
                 }
                 Err(e) => tracing::debug!("user avatar fetch failed: {e}"),
             }
@@ -375,7 +381,7 @@ impl SessionController {
     async fn oauth_login_steps(&self) -> Result<AuthenticatedSession> {
         let oauth_data = self.auth.login_oauth_start().await?;
         self.browser.open_url(&oauth_data.auth_url).await?;
-        self.output.status("waiting-auth".into());
+        self.output.emit_now(Effect::Status("waiting-auth".into()));
         timeout(OAUTH_CALLBACK_TIMEOUT, self.auth.login_oauth_finish())
             .await
             .map_err(|_| AppError::Other("Timed out waiting for browser sign-in.".into()))?
@@ -434,15 +440,27 @@ impl SessionController {
         }
     }
 
+    fn emit_server_info(&self, info: ServerInfo) {
+        let method = LoginMethod::from_auth_methods(&info.auth_methods);
+        self.output.publish(Box::new(move |view| {
+            view.lifecycle.method = method;
+            view.lifecycle.resolved_homeserver = info.homeserver_url;
+            view.lifecycle.step = LoginStep::Credentials;
+        }));
+        self.output.emit_now(Effect::Status(String::new()));
+    }
+
     fn emit_show_login(&self) {
-        self.output.show_login();
+        self.output
+            .publish(Box::new(|view| view.lifecycle.step = LoginStep::Homeserver));
+        self.output.emit_now(Effect::Status(String::new()));
     }
 
     async fn emit_login_error(&self, err: &AppError) {
-        self.output.login_error(err.to_string()).await;
+        self.output.emit(Effect::LoginError(err.to_string())).await;
     }
 
     async fn notify_error(&self, msg: impl Into<String> + Send) {
-        self.output.notify_error(msg.into()).await;
+        self.output.emit(Effect::Toast(msg.into())).await;
     }
 }

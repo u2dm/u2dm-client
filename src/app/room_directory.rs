@@ -198,7 +198,9 @@ impl RoomDirectory {
         let token = group.token();
         let on_sync: Box<dyn Fn(SyncEvent) + Send + Sync> = Box::new(move |event| match event {
             SyncEvent::Connected => {
-                output.connection_status(ConnectionStatus::Connected);
+                output.publish(Box::new(|view| {
+                    view.connection = ConnectionStatus::Connected;
+                }));
             }
             SyncEvent::Rooms(rooms) => {
                 drop(dir_in_tx.send(DirectoryUpdate::Rooms(rooms)));
@@ -207,7 +209,9 @@ impl RoomDirectory {
                 drop(dir_in_tx.send(DirectoryUpdate::Spaces(spaces)));
             }
             SyncEvent::ConnectionError(msg) => {
-                output.connection_status(ConnectionStatus::Error(msg));
+                output.publish(Box::new(move |view| {
+                    view.connection = ConnectionStatus::Error(msg);
+                }));
             }
             SyncEvent::SessionExpired => {
                 drop(cmd_tx.send(UiCommand::SessionExpired));
@@ -287,7 +291,8 @@ impl RoomDirectory {
                 None => Arc::from(Vec::new()),
             },
         };
-        self.output.rooms(rooms);
+        self.output
+            .publish(Box::new(move |view| view.directory.rooms = rooms));
     }
 
     pub(super) fn emit_spaces(&self) {
@@ -296,7 +301,9 @@ impl RoomDirectory {
             .into_iter()
             .filter_map(|i| self.space_with_counts(i))
             .collect();
-        self.output.spaces(spaces.into());
+        let spaces: Arc<[Space]> = spaces.into();
+        self.output
+            .publish(Box::new(move |view| view.directory.spaces = spaces));
     }
 
     pub(super) fn emit_subspaces(&self, sel: &Selection) {
@@ -313,7 +320,9 @@ impl RoomDirectory {
                     .collect()
             })
             .unwrap_or_default();
-        self.output.subspaces(subspaces.into());
+        let subspaces: Arc<[Space]> = subspaces.into();
+        self.output
+            .publish(Box::new(move |view| view.directory.subspaces = subspaces));
     }
 
     fn space_with_counts(&self, space_index: usize) -> Option<Space> {

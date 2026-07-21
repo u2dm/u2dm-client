@@ -23,7 +23,7 @@ use tokio::time::{sleep, timeout};
 use tokio_util::sync::CancellationToken;
 use verification::VerificationController;
 
-use crate::commands::{DirectoryUpdate, UiCommand, ViewportChanged};
+use crate::commands::{DirectoryUpdate, Effect, LoginStep, UiCommand, ViewportChanged};
 use crate::domain::models::{ConnectionStatus, Room, RoomId, Space};
 use crate::ports::browser::BrowserPort;
 use crate::ports::matrix::{AuthPort, AuthenticatedSession};
@@ -275,6 +275,46 @@ impl AppService {
         false
     }
 
+    fn set_selected_space(&self, id: String) {
+        self.output
+            .publish(Box::new(move |view| view.directory.space_id = id));
+    }
+
+    fn set_selected_subspace(&self, id: String) {
+        self.output
+            .publish(Box::new(move |view| view.directory.subspace_id = id));
+    }
+
+    fn set_connection(&self, status: ConnectionStatus) {
+        self.output
+            .publish(Box::new(move |view| view.connection = status));
+    }
+
+    fn emit_login_success(&self, user_id: String) {
+        self.output.publish(Box::new(move |view| {
+            view.lifecycle.user_id = user_id;
+            view.lifecycle.step = LoginStep::LoggedIn;
+        }));
+        self.output.emit_now(Effect::Status(String::new()));
+    }
+
+    async fn emit_selected_room(
+        &self,
+        id: RoomId,
+        name: String,
+        member_count: u64,
+        generation: i32,
+    ) {
+        self.output
+            .emit(Effect::SelectedRoom {
+                id,
+                name,
+                member_count,
+                generation,
+            })
+            .await;
+    }
+
     fn persist_space_order(&self, order: Vec<String>) {
         if self.space_order_tx.send(Some(order)).is_err() {
             tracing::warn!("space order persister stopped; order not saved");
@@ -296,10 +336,10 @@ impl AppService {
         if self.room_directory.store_spaces(spaces) {
             let outcome = self.room_directory.reconcile(&mut self.selection);
             if outcome.space_dropped {
-                self.output.selected_space(String::new());
-                self.output.selected_subspace(String::new());
+                self.set_selected_space(String::new());
+                self.set_selected_subspace(String::new());
             } else if outcome.subspace_dropped {
-                self.output.selected_subspace(String::new());
+                self.set_selected_subspace(String::new());
             }
             self.room_directory.emit_directory(&self.selection);
         }
@@ -307,17 +347,15 @@ impl AppService {
 
     fn handle_select_space(&mut self, space: Option<RoomId>) {
         self.selection.set_space(space);
-        self.output.selected_space(self.selection.space_id_str());
-        self.output
-            .selected_subspace(self.selection.subspace_id_str());
+        self.set_selected_space(self.selection.space_id_str());
+        self.set_selected_subspace(self.selection.subspace_id_str());
         self.room_directory.emit_subspaces(&self.selection);
         self.room_directory.emit_rooms(&self.selection);
     }
 
     fn handle_select_subspace(&mut self, subspace: Option<RoomId>) {
         self.selection.set_subspace(subspace);
-        self.output
-            .selected_subspace(self.selection.subspace_id_str());
+        self.set_selected_subspace(self.selection.subspace_id_str());
         self.room_directory.emit_rooms(&self.selection);
     }
 
@@ -329,7 +367,7 @@ impl AppService {
         let user_id = capability.session.user_id.clone();
         tracing::info!(%user_id, "authenticated");
         self.active = Some(capability);
-        self.output.login_success(user_id);
+        self.emit_login_success(user_id);
         if let Err(e) = self.cmd_tx.send(UiCommand::FetchRooms) {
             tracing::warn!("failed to trigger room fetch: {e}");
         }
@@ -397,8 +435,7 @@ impl AppService {
             .room_directory
             .selected_room_meta(&self.selection)
             .map_or_else(|| (String::new(), 0), |m| (m.name, m.member_count));
-        self.output
-            .selected_room(room_id.clone(), name, member_count, generation)
+        self.emit_selected_room(room_id.clone(), name, member_count, generation)
             .await;
         let Some(timeline) = self.active.as_ref().map(|a| Arc::clone(&a.timeline)) else {
             return;
@@ -421,13 +458,11 @@ impl AppService {
         };
         let generation = self.selection.generation;
         if let Some(meta) = self.room_directory.selected_room_meta(&self.selection) {
-            self.output
-                .selected_room(room_id, meta.name, meta.member_count, generation)
+            self.emit_selected_room(room_id, meta.name, meta.member_count, generation)
                 .await;
         } else {
             self.selection.room = None;
-            self.output
-                .selected_room(RoomId::new(String::new()), String::new(), 0, generation)
+            self.emit_selected_room(RoomId::new(String::new()), String::new(), 0, generation)
                 .await;
         }
     }
@@ -444,13 +479,13 @@ impl AppService {
             return;
         };
         self.room_directory.connect(self.storage.as_ref()).await;
-        self.output.status("syncing".into());
+        self.output.emit_now(Effect::Status("syncing".into()));
         self.background.restart().await;
         self.session
             .spawn_session_persister(&mut self.background, Arc::clone(&lifecycle_port));
         self.verification
             .spawn_forwarder(&mut self.background, verification);
-        self.output.connection_status(ConnectionStatus::Connecting);
+        self.set_connection(ConnectionStatus::Connecting);
         RoomDirectory::spawn_sync_pipeline(
             &mut self.background,
             sync,
@@ -476,9 +511,8 @@ impl AppService {
             return;
         };
         tracing::info!("session expired, clearing local state");
-        self.output
-            .connection_status(ConnectionStatus::Disconnected);
-        self.output.logged_out().await;
+        self.set_connection(ConnectionStatus::Disconnected);
+        self.output.emit(Effect::LoggedOut).await;
         self.shutdown_all_tasks().await;
         self.room_directory.reset();
         self.selection = Selection::default();
@@ -492,9 +526,8 @@ impl AppService {
             return;
         };
         let lifecycle_port = self.active.as_ref().map(|a| Arc::clone(&a.lifecycle));
-        self.output
-            .connection_status(ConnectionStatus::Disconnected);
-        self.output.logged_out().await;
+        self.set_connection(ConnectionStatus::Disconnected);
+        self.output.emit(Effect::LoggedOut).await;
         self.shutdown_all_tasks().await;
         self.room_directory.reset();
         self.selection = Selection::default();

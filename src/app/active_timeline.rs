@@ -4,7 +4,7 @@ use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use tokio::sync::mpsc;
 
 use super::task_group::TaskGroup;
-use crate::commands::UiCommand;
+use crate::commands::{Effect, UiCommand};
 use crate::domain::models::{
     PaginationDirection, PaginationOutcome, RoomId, ScrollMode, TimelineCommand, TimelinePatch,
     TimelineStatus, TimelineUpdate,
@@ -96,12 +96,7 @@ impl ActiveTimeline {
         self.counters = GenerationCounters::new();
         self.emit_pagination_state();
 
-        self.output
-            .timeline_status(room_id.clone(), generation, TimelineStatus::Loading)
-            .await;
-        self.output
-            .timeline(room_id.clone(), generation, Box::new(TimelinePatch::Clear))
-            .await;
+        self.emit_reset(room_id.clone(), generation).await;
 
         let (tl_tx, mut tl_rx) = mpsc::channel::<TimelineUpdate>(TIMELINE_CHANNEL_CAP);
         let (tl_cmd_tx, tl_cmd_rx) = mpsc::unbounded_channel::<TimelineCommand>();
@@ -129,11 +124,20 @@ impl ActiveTimeline {
                                 let added = count_appended(patch.as_ref());
                                 if added > 0 {
                                     let total = counters.add_new_messages(added);
-                                    output.new_messages_badge(generation, total);
+                                    output.publish(Box::new(move |view| {
+                                        view.pagination.retarget(generation);
+                                        view.pagination.new_messages = total;
+                                    }));
                                 }
                             }
 
-                            output.timeline(rid.clone(), generation, patch).await;
+                            output
+                                .emit(Effect::Timeline {
+                                    room_id: rid.clone(),
+                                    generation,
+                                    patch,
+                                })
+                                .await;
                         }
                         TimelineUpdate::Pagination { direction, outcome } => {
                             if let Err(e) = cmd_tx.send(UiCommand::TimelinePaginationCompleted {
@@ -156,15 +160,19 @@ impl ActiveTimeline {
                 result = subscribe => {
                     if let Err(e) = result {
                         tracing::warn!("timeline subscription failed: {e}");
-                        output.timeline_status(
-                            rid.clone(),
+                        output.emit(Effect::TimelineStatus {
+                            room_id: rid.clone(),
                             generation,
-                            TimelineStatus::Failed { retryable: true },
-                        ).await;
+                            status: TimelineStatus::Failed { retryable: true },
+                        }).await;
                     } else {
                         tracing::debug!("timeline subscription ended");
                         output
-                            .timeline_status(rid.clone(), generation, TimelineStatus::Disconnected)
+                            .emit(Effect::TimelineStatus {
+                                room_id: rid.clone(),
+                                generation,
+                                status: TimelineStatus::Disconnected,
+                            })
                             .await;
                     }
                 }
@@ -195,7 +203,7 @@ impl ActiveTimeline {
             if let Err(e) = result {
                 tracing::warn!("failed to enqueue message: {e}");
                 output
-                    .notify_error(format!("Failed to send message: {e}"))
+                    .emit(Effect::Toast(format!("Failed to send message: {e}")))
                     .await;
             }
         });
@@ -260,7 +268,7 @@ impl ActiveTimeline {
             PaginationOutcome::Failed => {
                 self.viewport.fail_pagination(direction);
                 self.output
-                    .notify_error("Failed to load more messages".to_owned())
+                    .emit(Effect::Toast("Failed to load more messages".to_owned()))
                     .await;
                 false
             }
@@ -272,7 +280,7 @@ impl ActiveTimeline {
             && self.counters.is_at_bottom()
         {
             self.counters.clear_new_messages();
-            self.output.new_messages_badge(generation, 0);
+            self.emit_new_messages(generation, 0);
         }
     }
 
@@ -283,8 +291,7 @@ impl ActiveTimeline {
         self.viewport.jump_to_latest();
         self.counters.set_at_bottom(true);
         self.counters.clear_new_messages();
-        self.output.scroll_to_bottom(generation);
-        self.output.new_messages_badge(generation, 0);
+        self.emit_new_messages(generation, 0);
         self.emit_pagination_state();
     }
 
@@ -305,7 +312,7 @@ impl ActiveTimeline {
 
         if mode_changed && self.viewport.mode() == ScrollMode::FollowLive {
             self.counters.clear_new_messages();
-            self.output.new_messages_badge(generation, 0);
+            self.emit_new_messages(generation, 0);
         }
     }
 
@@ -318,8 +325,37 @@ impl ActiveTimeline {
     }
 
     fn emit_pagination_state(&self) {
+        let generation = self.generation;
+        let state = self.viewport.state();
+        self.output.publish(Box::new(move |view| {
+            view.pagination.retarget(generation);
+            view.pagination.backwards_loading = state.backwards_loading;
+            view.pagination.forwards_loading = state.forwards_loading;
+        }));
+    }
+
+    async fn emit_reset(&self, room_id: RoomId, generation: i32) {
         self.output
-            .pagination_state(self.generation, self.viewport.state());
+            .emit(Effect::TimelineStatus {
+                room_id: room_id.clone(),
+                generation,
+                status: TimelineStatus::Loading,
+            })
+            .await;
+        self.output
+            .emit(Effect::Timeline {
+                room_id,
+                generation,
+                patch: Box::new(TimelinePatch::Clear),
+            })
+            .await;
+    }
+
+    fn emit_new_messages(&self, generation: i32, count: u32) {
+        self.output.publish(Box::new(move |view| {
+            view.pagination.retarget(generation);
+            view.pagination.new_messages = count;
+        }));
     }
 }
 
