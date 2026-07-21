@@ -186,6 +186,22 @@ impl ActiveTimeline {
         });
     }
 
+    pub(super) async fn clear_room(&mut self, generation: i32) {
+        tracing::info!(generation, "clearing active room");
+        self.tasks.cancel_and_detach();
+        self.reset_state();
+        self.generation = generation;
+        self.emit_pagination_state();
+
+        self.output
+            .emit(Effect::Timeline {
+                room_id: RoomId::new(String::new()),
+                generation,
+                patch: Box::new(TimelinePatch::Clear),
+            })
+            .await;
+    }
+
     pub(super) fn spawn_send(
         &self,
         group: &mut TaskGroup,

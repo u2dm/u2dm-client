@@ -464,14 +464,16 @@ impl AppService {
         let Some(room_id) = self.selection.room.clone() else {
             return;
         };
-        let generation = self.selection.generation;
         if let Some(meta) = self.room_directory.selected_room_meta(&self.selection) {
+            let generation = self.selection.generation;
             self.emit_selected_room(room_id, meta.name, meta.member_count, generation)
                 .await;
         } else {
             self.selection.room = None;
+            let generation = self.selection.next_generation();
             self.emit_selected_room(RoomId::new(String::new()), String::new(), 0, generation)
                 .await;
+            self.active_timeline.clear_room(generation).await;
         }
     }
 
