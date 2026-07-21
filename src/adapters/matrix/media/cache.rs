@@ -2,19 +2,20 @@ use std::collections::{HashMap, HashSet};
 use std::fs as std_fs;
 use std::io::{self, ErrorKind};
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc, Mutex as StdMutex, RwLock};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
-use tokio::fs;
 use tokio::sync::{mpsc, oneshot};
 use tokio::time::{MissedTickBehavior, interval};
+use tokio::{fs, task};
 
 use crate::util::unique_tmp_path;
 
 const MAX_CACHE_BYTES: u64 = 512 * 1024 * 1024;
 const MAX_AGE: Duration = Duration::from_secs(14 * 24 * 60 * 60);
 const FLUSH_INTERVAL: Duration = Duration::from_secs(60);
+const TOUCH_COALESCE: Duration = Duration::from_secs(60);
 
 const RETRY_MAX_ATTEMPTS: u32 = 3;
 const FAILURE_COOLDOWN: Duration = Duration::from_secs(5 * 60);
@@ -33,7 +34,13 @@ struct CacheEntry {
     last_access: SystemTime,
 }
 
-type Snapshot = Arc<HashMap<String, PathBuf>>;
+#[derive(Default)]
+struct Mutation {
+    evicted_keys: Vec<String>,
+    removed_files: Vec<PathBuf>,
+}
+
+type Index = HashMap<String, PathBuf>;
 
 enum CacheCommand {
     Touch(String),
@@ -47,25 +54,44 @@ enum CacheCommand {
 }
 
 pub(super) struct CacheHandle {
-    snapshot: Arc<RwLock<Snapshot>>,
+    snapshot: Arc<RwLock<Index>>,
     tx: mpsc::UnboundedSender<CacheCommand>,
+    last_touch: StdMutex<HashMap<String, Instant>>,
 }
 
 impl CacheHandle {
     pub(super) fn spawn(media_dir: PathBuf) -> Self {
-        let actor = CacheActor::load(media_dir);
-        let snapshot = Arc::new(RwLock::new(actor.snapshot()));
+        let snapshot = Arc::new(RwLock::new(Index::new()));
         let (tx, rx) = mpsc::unbounded_channel();
-        tokio::spawn(actor.run(rx, Arc::clone(&snapshot)));
-        Self { snapshot, tx }
+        tokio::spawn(CacheActor::bootstrap(media_dir, rx, Arc::clone(&snapshot)));
+        Self {
+            snapshot,
+            tx,
+            last_touch: StdMutex::new(HashMap::new()),
+        }
     }
 
     pub(super) fn get(&self, key: &str) -> Option<PathBuf> {
         let path = self.snapshot.read().ok()?.get(key).cloned()?;
-        if self.tx.send(CacheCommand::Touch(key.to_owned())).is_err() {
+        if self.should_send_touch(key) && self.tx.send(CacheCommand::Touch(key.to_owned())).is_err()
+        {
             tracing::trace!("media cache actor stopped; access not recorded");
         }
         Some(path)
+    }
+
+    fn should_send_touch(&self, key: &str) -> bool {
+        let Ok(mut last) = self.last_touch.lock() else {
+            return true;
+        };
+        let now = Instant::now();
+        match last.get(key) {
+            Some(sent) if now.duration_since(*sent) < TOUCH_COALESCE => false,
+            _ => {
+                last.insert(key.to_owned(), now);
+                true
+            }
+        }
     }
 
     pub(super) async fn insert(&self, key: &str, path: PathBuf, bytes: u64) {
@@ -89,6 +115,9 @@ impl CacheHandle {
     }
 
     pub(super) async fn clear(&self) {
+        if let Ok(mut last) = self.last_touch.lock() {
+            last.clear();
+        }
         let (ack_tx, ack_rx) = oneshot::channel();
         if self.tx.send(CacheCommand::Clear(ack_tx)).is_ok() {
             ack_rx.await.ok();
@@ -105,6 +134,24 @@ struct CacheActor {
 }
 
 impl CacheActor {
+    async fn bootstrap(
+        media_dir: PathBuf,
+        rx: mpsc::UnboundedReceiver<CacheCommand>,
+        shared: Arc<RwLock<Index>>,
+    ) {
+        let actor = match task::spawn_blocking(move || CacheActor::load(media_dir)).await {
+            Ok(actor) => actor,
+            Err(e) => {
+                tracing::error!("media cache index load task failed: {e}");
+                return;
+            }
+        };
+        if let Ok(mut guard) = shared.write() {
+            *guard = actor.snapshot();
+        }
+        actor.run(rx, shared).await;
+    }
+
     fn load(media_dir: PathBuf) -> Self {
         let index_path = media_dir.join("index.json");
         let mut actor = Self {
@@ -117,7 +164,7 @@ impl CacheActor {
         actor.read_index();
         let mut victims = actor.prune_aged();
         victims.extend(actor.evict_to_budget());
-        for path in &victims {
+        for (_, path) in &victims {
             if let Err(e) = std_fs::remove_file(path) {
                 tracing::debug!("failed to evict cached media {}: {e}", path.display());
             }
@@ -154,19 +201,17 @@ impl CacheActor {
         }
     }
 
-    fn snapshot(&self) -> Snapshot {
-        Arc::new(
-            self.entries
-                .iter()
-                .map(|(key, entry)| (key.clone(), entry.path.clone()))
-                .collect(),
-        )
+    fn snapshot(&self) -> Index {
+        self.entries
+            .iter()
+            .map(|(key, entry)| (key.clone(), entry.path.clone()))
+            .collect()
     }
 
     async fn run(
         mut self,
         mut rx: mpsc::UnboundedReceiver<CacheCommand>,
-        shared: Arc<RwLock<Snapshot>>,
+        shared: Arc<RwLock<Index>>,
     ) {
         if self.dirty {
             self.flush().await;
@@ -192,7 +237,7 @@ impl CacheActor {
         }
     }
 
-    async fn handle(&mut self, cmd: CacheCommand, shared: &RwLock<Snapshot>) {
+    async fn handle(&mut self, cmd: CacheCommand, shared: &RwLock<Index>) {
         match cmd {
             CacheCommand::Touch(key) => {
                 if let Some(entry) = self.entries.get_mut(&key) {
@@ -206,18 +251,25 @@ impl CacheActor {
                 bytes,
                 ack,
             } => {
-                let victims = self.insert(&key, path, bytes);
-                self.publish(shared);
+                let mutation = self.insert(&key, path.clone(), bytes);
+                if let Ok(mut guard) = shared.write() {
+                    guard.insert(key, path);
+                    for evicted in &mutation.evicted_keys {
+                        guard.remove(evicted);
+                    }
+                }
                 if ack.send(()).is_err() {
                     tracing::trace!("media cache insert requester dropped before ack");
                 }
-                self.delete_files(&victims).await;
+                self.delete_files(&mutation.removed_files).await;
                 self.dirty = true;
             }
             CacheCommand::Clear(ack) => {
                 self.entries.clear();
                 self.total_bytes = 0;
-                self.publish(shared);
+                if let Ok(mut guard) = shared.write() {
+                    guard.clear();
+                }
                 self.flush().await;
                 if ack.send(()).is_err() {
                     tracing::trace!("media cache clear requester dropped before ack");
@@ -226,15 +278,13 @@ impl CacheActor {
         }
     }
 
-    fn publish(&self, shared: &RwLock<Snapshot>) {
-        if let Ok(mut guard) = shared.write() {
-            *guard = self.snapshot();
-        }
-    }
-
-    fn insert(&mut self, key: &str, path: PathBuf, bytes: u64) -> Vec<PathBuf> {
+    fn insert(&mut self, key: &str, path: PathBuf, bytes: u64) -> Mutation {
+        let mut mutation = Mutation::default();
         if let Some(previous) = self.entries.remove(key) {
             self.total_bytes = self.total_bytes.saturating_sub(previous.bytes);
+            if previous.path != path {
+                mutation.removed_files.push(previous.path);
+            }
         }
         self.total_bytes = self.total_bytes.saturating_add(bytes);
         self.entries.insert(
@@ -245,10 +295,14 @@ impl CacheActor {
                 last_access: SystemTime::now(),
             },
         );
-        self.evict_to_budget()
+        for (evicted_key, evicted_path) in self.evict_to_budget() {
+            mutation.evicted_keys.push(evicted_key);
+            mutation.removed_files.push(evicted_path);
+        }
+        mutation
     }
 
-    fn prune_aged(&mut self) -> Vec<PathBuf> {
+    fn prune_aged(&mut self) -> Vec<(String, PathBuf)> {
         let now = SystemTime::now();
         let stale: Vec<String> = self
             .entries
@@ -262,13 +316,13 @@ impl CacheActor {
         let mut victims = Vec::new();
         for key in stale {
             if let Some(path) = self.remove_entry(&key) {
-                victims.push(path);
+                victims.push((key, path));
             }
         }
         victims
     }
 
-    fn evict_to_budget(&mut self) -> Vec<PathBuf> {
+    fn evict_to_budget(&mut self) -> Vec<(String, PathBuf)> {
         let mut victims = Vec::new();
         while self.total_bytes > MAX_CACHE_BYTES {
             let Some(victim) = self
@@ -280,7 +334,7 @@ impl CacheActor {
                 break;
             };
             if let Some(path) = self.remove_entry(&victim) {
-                victims.push(path);
+                victims.push((victim, path));
             }
         }
         victims

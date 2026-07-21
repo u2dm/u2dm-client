@@ -19,6 +19,7 @@ use crate::error::{AppError, Result};
 use crate::util::hex_encode_id;
 
 const MAX_CONCURRENT_DOWNLOADS: usize = 6;
+const MAX_CONCURRENT_FULL_DOWNLOADS: usize = 2;
 const DOWNLOAD_TIMEOUT: Duration = Duration::from_secs(30);
 const FULL_DOWNLOAD_TIMEOUT: Duration = Duration::from_secs(120);
 const RETRY_MAX_ATTEMPTS: u32 = 3;
@@ -29,6 +30,7 @@ const MAX_FULL_MEDIA_BYTES: usize = 100 * 1024 * 1024;
 pub(crate) struct MediaService {
     media_dir: PathBuf,
     semaphore: Semaphore,
+    full_semaphore: Semaphore,
     cache: CacheHandle,
     failures: StdMutex<FailureTracker>,
 }
@@ -40,6 +42,7 @@ impl MediaService {
         Arc::new(Self {
             media_dir,
             semaphore: Semaphore::new(MAX_CONCURRENT_DOWNLOADS),
+            full_semaphore: Semaphore::new(MAX_CONCURRENT_FULL_DOWNLOADS),
             cache,
             failures: StdMutex::new(FailureTracker::default()),
         })
@@ -91,8 +94,14 @@ impl MediaService {
         request: &MediaRequestParameters,
         download_timeout: Duration,
         max_bytes: usize,
+        full: bool,
     ) -> Option<Vec<u8>> {
-        let _permit = self.semaphore.acquire().await.ok()?;
+        let semaphore = if full {
+            &self.full_semaphore
+        } else {
+            &self.semaphore
+        };
+        let _permit = semaphore.acquire().await.ok()?;
 
         let mut backoff = RETRY_BACKOFF_BASE;
         for attempt in 1..=RETRY_MAX_ATTEMPTS {
@@ -128,7 +137,7 @@ impl MediaService {
 
         let request = MediaRequestParameters { source, format };
         let Some(data) = self
-            .download(client, &request, DOWNLOAD_TIMEOUT, MAX_MEDIA_BYTES)
+            .download(client, &request, DOWNLOAD_TIMEOUT, MAX_MEDIA_BYTES, false)
             .await
         else {
             self.record_failure(cache_key);
@@ -289,7 +298,7 @@ impl MediaService {
         };
 
         let request = MediaRequestParameters { source, format };
-        self.download(client, &request, download_timeout, max_bytes)
+        self.download(client, &request, download_timeout, max_bytes, !thumbnail)
             .await
             .ok_or_else(|| {
                 AppError::Other(format!(
