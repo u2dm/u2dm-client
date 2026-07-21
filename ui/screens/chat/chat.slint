@@ -11,20 +11,21 @@ import { Sidebar } from "components/sidebar.slint";
 import { Drawer } from "components/drawer.slint";
 import { TimelineView } from "components/timeline/timeline-view.slint";
 import { ClickArea } from "../../components/a11y.slint";
+import { ConnectionState, TimelineState } from "../../enums.slint";
 
 export component ChatScreen inherits Rectangle {
     in property <string> user-id: "";
     in property <string> user-initial: "";
     in property <image> user-avatar;
     in property <bool> user-has-avatar: false;
-    in property <string> connection-status: "disconnected";
+    in property <ConnectionState> connection-status: ConnectionState.disconnected;
     in property <[RoomEntry]> rooms: [];
     in property <[SpaceEntry]> spaces: [];
     in property <[SpaceEntry]> subspaces: [];
     in property <[MessageEntry]> timeline: [];
     in property <string> toast-message: "";
     in property <string> saved-file-path: "";
-    in property <string> timeline-status: "";
+    in property <TimelineState> timeline-status: TimelineState.none;
     in property <bool> timeline-retryable: false;
     in property <int> new-messages-count: 0;
     in property <int> prepend-token: 0;

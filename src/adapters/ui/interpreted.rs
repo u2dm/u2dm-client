@@ -4,12 +4,12 @@ use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
 
-use slint::{ModelRc, VecModel};
+use slint::{Image, ModelRc, VecModel};
 use slint_interpreter::{
     Compiler, ComponentHandle, ComponentInstance, SharedString, Struct, Value,
 };
 use tokio::runtime::Runtime;
-use tokio::sync::{OwnedSemaphorePermit, mpsc, watch};
+use tokio::sync::{mpsc, watch};
 
 thread_local! {
     static TIMELINE_MODEL: RefCell<Option<Rc<VecModel<Value>>>> = const { RefCell::new(None) };
@@ -18,22 +18,23 @@ thread_local! {
     static SUBSPACES_MODEL: RefCell<Option<Rc<VecModel<Value>>>> = const { RefCell::new(None) };
 }
 
-use super::common::{BoolProp, IntProp, StringProp, UiProps, dispatch_effect, reorder_rows};
-use super::decode::{
-    AvatarSlot, DecodeOutcome, advance_animations, patch_rows, request_avatar, request_media,
-    set_animation_tick, set_avatar_ready, set_image_ready,
-};
+use super::backend::{UiBackend, install_render_hooks, post_effect, selected_room_key};
+use super::decode::{AvatarSlot, request_avatar, request_media};
 use super::dto::{ThumbUpdate, enrich_to_update, message_to_dto, room_to_dto, space_to_dto};
 use super::multiplex::spawn_event_multiplexer;
+use super::present::VerifyStep;
+use super::props::{BoolProp, IntProp, StringProp, UiProps};
+use super::reconcile::reorder_rows;
 use super::schema::{
-    callback, emoji_entry, emoji_group, emoji_insert, emoji_store, login_request, message, prop,
-    room, save_file_request, send_message_request, space, verification_emoji,
+    callback, emoji_entry, emoji_group, emoji_insert, emoji_store, login_request, message,
+    message_fields, prop, room, room_fields, save_file_request, send_message_request, space,
+    space_fields, verification_emoji,
 };
 use super::{emoji, router};
-use crate::commands::{AppViewState, Effect, UiCommand, ViewportChanged};
+use crate::commands::{AppViewState, Effect, LoginStep, UiCommand, ViewportChanged};
 use crate::domain::models::{
-    EnrichmentDelta, LoginCredentials, Room, RoomId, Space, TimelineMessage,
-    VerificationEmoji as DomainVerificationEmoji,
+    ConnectionStatus, EnrichmentDelta, LoginCredentials, Room, Space, TimelineMessage,
+    TimelineStatus, VerificationEmoji as DomainVerificationEmoji,
 };
 use crate::error::{AppError, Result};
 use crate::ports::media::MediaCache;
@@ -49,19 +50,45 @@ fn set_global_prop(inst: &ComponentInstance, global: &str, name: &str, value: Va
         .map_err(|e| AppError::Ui(format!("{e:?}")))
 }
 
-fn selected_room_key(weak: &slint::Weak<ComponentInstance>) -> Option<(RoomId, i32)> {
-    let inst = weak.upgrade()?;
-    let room_id = inst.get_string(StringProp::SelectedRoomId).to_string();
-    if room_id.is_empty() {
-        return None;
+fn enum_value(enumeration: &str, value: &str) -> Value {
+    Value::EnumerationValue(enumeration.to_string(), value.to_string())
+}
+
+fn login_phase_value(step: LoginStep) -> &'static str {
+    match step {
+        LoginStep::Homeserver => "homeserver",
+        LoginStep::Credentials => "credentials",
+        LoginStep::LoggedIn => "logged-in",
     }
-    let generation = match inst.get_property(prop::SELECTED_GENERATION) {
-        Ok(Value::Number(n)) if n.is_finite() && n.fract() == 0.0 => {
-            n.to_string().parse().unwrap_or_default()
-        }
-        _ => 0,
-    };
-    Some((RoomId::new(room_id), generation))
+}
+
+fn connection_state_value(status: &ConnectionStatus) -> &'static str {
+    match status {
+        ConnectionStatus::Disconnected => "disconnected",
+        ConnectionStatus::Connecting => "connecting",
+        ConnectionStatus::Connected => "connected",
+        ConnectionStatus::Error(_) => "error",
+    }
+}
+
+fn timeline_state_value(status: TimelineStatus) -> &'static str {
+    match status {
+        TimelineStatus::Loading => "loading",
+        TimelineStatus::Ready => "ready",
+        TimelineStatus::Failed { .. } => "failed",
+        TimelineStatus::Disconnected => "disconnected",
+    }
+}
+
+fn verification_phase_value(phase: VerifyStep) -> &'static str {
+    match phase {
+        VerifyStep::None => "none",
+        VerifyStep::Requested => "requested",
+        VerifyStep::Emojis => "emojis",
+        VerifyStep::Confirming => "confirming",
+        VerifyStep::Done => "done",
+        VerifyStep::Cancelled => "cancelled",
+    }
 }
 
 fn string_arg(args: &[Value], index: usize) -> String {
@@ -135,6 +162,38 @@ impl UiProps for ComponentInstance {
         set_prop(self, prop.as_str(), Value::Number(value.into()));
     }
 
+    fn set_login_phase(&self, step: LoginStep) {
+        set_prop(
+            self,
+            prop::LOGIN_STEP,
+            enum_value("LoginPhase", login_phase_value(step)),
+        );
+    }
+
+    fn set_connection_state(&self, status: &ConnectionStatus) {
+        set_prop(
+            self,
+            prop::CONNECTION_STATUS,
+            enum_value("ConnectionState", connection_state_value(status)),
+        );
+    }
+
+    fn set_timeline_state(&self, status: TimelineStatus) {
+        set_prop(
+            self,
+            prop::TIMELINE_STATUS,
+            enum_value("TimelineState", timeline_state_value(status)),
+        );
+    }
+
+    fn set_verification_phase(&self, phase: VerifyStep) {
+        set_prop(
+            self,
+            prop::VERIFICATION_STEP,
+            enum_value("VerificationPhase", verification_phase_value(phase)),
+        );
+    }
+
     fn get_string(&self, prop: StringProp) -> SharedString {
         self.get_property(prop.as_str())
             .ok()
@@ -143,6 +202,15 @@ impl UiProps for ComponentInstance {
                 _ => None,
             })
             .unwrap_or_default()
+    }
+
+    fn get_int(&self, prop: IntProp) -> i32 {
+        match self.get_property(prop.as_str()) {
+            Ok(Value::Number(n)) if n.is_finite() && n.fract() == 0.0 => {
+                n.to_string().parse().unwrap_or_default()
+            }
+            _ => 0,
+        }
     }
 
     fn apply_user_avatar(&self, avatar: Option<slint::Image>) {
@@ -184,6 +252,97 @@ impl UiProps for ComponentInstance {
             prop::VERIFICATION_EMOJIS,
             Value::Model(ModelRc::new(VecModel::<Value>::default())),
         );
+    }
+}
+
+fn set_value_avatar(entry: &mut Value, avatar_field: &str, has_field: &str, image: &Image) {
+    if let Value::Struct(s) = entry {
+        s.set_field(avatar_field.to_string(), Value::Image(image.clone()));
+        s.set_field(has_field.to_string(), Value::Bool(true));
+    }
+}
+
+pub struct InterpretedBackend;
+
+impl UiBackend for InterpretedBackend {
+    type Window = ComponentInstance;
+    type Message = Value;
+    type Room = Value;
+    type Space = Value;
+
+    fn convert_message(message: &TimelineMessage, media: &dyn MediaCache) -> Value {
+        message_to_value(message, media)
+    }
+
+    fn enrich_message(entry: &mut Value, delta: &EnrichmentDelta, media: &dyn MediaCache) {
+        enrich_value(entry, delta, media);
+    }
+
+    fn convert_room(room: &Room, media: &dyn MediaCache) -> Value {
+        room_to_value(room, media)
+    }
+
+    fn convert_space(space: &Space, media: &dyn MediaCache) -> Value {
+        space_to_value(space, media)
+    }
+
+    fn message_id(entry: &Value) -> String {
+        entry_id_from_value(entry)
+    }
+
+    fn room_id(entry: &Value) -> &str {
+        room_id_from_value(entry).map_or("", SharedString::as_str)
+    }
+
+    fn space_id(entry: &Value) -> &str {
+        room_id_from_value(entry).map_or("", SharedString::as_str)
+    }
+
+    fn set_message_avatar(entry: &mut Value, image: &Image) {
+        set_value_avatar(entry, message::AVATAR, message::HAS_AVATAR, image);
+    }
+
+    fn set_room_avatar(entry: &mut Value, image: &Image) {
+        set_value_avatar(entry, room::AVATAR, room::HAS_AVATAR, image);
+    }
+
+    fn set_space_avatar(entry: &mut Value, image: &Image) {
+        set_value_avatar(entry, space::AVATAR, space::HAS_AVATAR, image);
+    }
+
+    fn set_message_thumbnail(entry: &mut Value, image: &Image) {
+        if let Value::Struct(s) = entry {
+            s.set_field(message::THUMBNAIL.to_string(), Value::Image(image.clone()));
+            s.set_field(message::HAS_THUMBNAIL.to_string(), Value::Bool(true));
+            s.set_field(message::MEDIA_FAILED.to_string(), Value::Bool(false));
+        }
+    }
+
+    fn set_message_media_failed(entry: &mut Value) {
+        if let Value::Struct(s) = entry {
+            s.set_field(message::MEDIA_FAILED.to_string(), Value::Bool(true));
+        }
+    }
+
+    fn set_message_frame(entry: &mut Value, image: Image) {
+        if let Value::Struct(s) = entry {
+            s.set_field(message::THUMBNAIL.to_string(), Value::Image(image));
+        }
+    }
+
+    fn with_models<R>(
+        f: impl FnOnce(&VecModel<Value>, &VecModel<Value>, &VecModel<Value>, &VecModel<Value>) -> R,
+    ) -> Option<R> {
+        let timeline = TIMELINE_MODEL.with(|cell| cell.borrow().clone())?;
+        let rooms = ROOMS_MODEL.with(|cell| cell.borrow().clone())?;
+        let spaces = SPACES_MODEL.with(|cell| cell.borrow().clone())?;
+        let subspaces = SUBSPACES_MODEL.with(|cell| cell.borrow().clone())?;
+        Some(f(&timeline, &rooms, &spaces, &subspaces))
+    }
+
+    fn with_timeline<R>(f: impl FnOnce(&VecModel<Value>) -> R) -> Option<R> {
+        let timeline = TIMELINE_MODEL.with(|cell| cell.borrow().clone())?;
+        Some(f(&timeline))
     }
 }
 
@@ -377,7 +536,7 @@ impl SlintUiAdapter {
             move |args| {
                 router::scroll_position(
                     &scroll_tx,
-                    selected_room_key(&weak),
+                    selected_room_key::<InterpretedBackend>(&weak),
                     bool_arg(args, 0),
                     bool_arg(args, 1),
                 );
@@ -388,21 +547,21 @@ impl SlintUiAdapter {
         let tx = cmd_tx.clone();
         let weak = self.instance.as_weak();
         bind(&self.instance, callback::PAGINATE_BACKWARDS, move |_args| {
-            router::paginate_backwards(&tx, selected_room_key(&weak));
+            router::paginate_backwards(&tx, selected_room_key::<InterpretedBackend>(&weak));
             Value::Void
         })?;
 
         let tx = cmd_tx.clone();
         let weak = self.instance.as_weak();
         bind(&self.instance, callback::PAGINATE_FORWARDS, move |_args| {
-            router::paginate_forwards(&tx, selected_room_key(&weak));
+            router::paginate_forwards(&tx, selected_room_key::<InterpretedBackend>(&weak));
             Value::Void
         })?;
 
         let tx = cmd_tx.clone();
         let weak = self.instance.as_weak();
         bind(&self.instance, callback::JUMP_TO_LATEST, move |_args| {
-            router::jump_to_latest(&tx, selected_room_key(&weak));
+            router::jump_to_latest(&tx, selected_room_key::<InterpretedBackend>(&weak));
             Value::Void
         })?;
 
@@ -415,7 +574,6 @@ impl SlintUiAdapter {
         Ok(())
     }
 
-    #[allow(clippy::too_many_lines)]
     pub fn spawn_event_handler(
         &self,
         ui_rx: mpsc::Receiver<Effect>,
@@ -454,38 +612,10 @@ impl SlintUiAdapter {
         SPACES_MODEL.with(|cell| *cell.borrow_mut() = Some(spaces_model));
         SUBSPACES_MODEL.with(|cell| *cell.borrow_mut() = Some(subspaces_model));
 
-        set_animation_tick(|| {
-            if let Some(timeline) = TIMELINE_MODEL.with(|cell| cell.borrow().clone()) {
-                advance_animations(&timeline, &entry_id_from_value, &|value, frame| {
-                    if let Value::Struct(entry) = value {
-                        entry.set_field(message::THUMBNAIL.to_string(), Value::Image(frame));
-                    }
-                });
-            }
-        });
-
-        set_image_ready({
-            let weak = self.instance.as_weak();
-            move |unique_id, outcome| {
-                apply_thumbnail_ready(unique_id, outcome);
-                if let Some(instance) = weak.upgrade() {
-                    instance.window().request_redraw();
-                }
-            }
-        });
-
-        set_avatar_ready({
-            let weak = self.instance.as_weak();
-            move |slots, outcome| {
-                apply_avatar_ready(&weak, slots, outcome);
-                if let Some(instance) = weak.upgrade() {
-                    instance.window().request_redraw();
-                }
-            }
-        });
+        install_render_hooks::<InterpretedBackend>(self.instance.as_weak());
 
         spawn_event_multiplexer(ui_rx, view_rx, media_cache, move |event, media, permit| {
-            post_effect(&weak, media, event, permit);
+            post_effect::<InterpretedBackend>(&weak, media, event, permit);
         });
     }
 
@@ -500,39 +630,6 @@ impl SlintUiAdapter {
             .window()
             .set_size(slint::LogicalSize::new(width, height));
     }
-}
-
-fn post_effect(
-    weak: &slint::Weak<ComponentInstance>,
-    media_cache: Arc<dyn MediaCache>,
-    event: Effect,
-    permit: OwnedSemaphorePermit,
-) {
-    weak.upgrade_in_event_loop(move |inst| {
-        let timeline = TIMELINE_MODEL.with(|cell| cell.borrow().clone());
-        let rooms = ROOMS_MODEL.with(|cell| cell.borrow().clone());
-        let spaces = SPACES_MODEL.with(|cell| cell.borrow().clone());
-        let subspaces = SUBSPACES_MODEL.with(|cell| cell.borrow().clone());
-        if let (Some(tl), Some(rm), Some(sm), Some(ssm)) = (timeline, rooms, spaces, subspaces) {
-            dispatch_effect(
-                &inst,
-                event,
-                &tl,
-                &rm,
-                &sm,
-                &ssm,
-                &|m| message_to_value(m, media_cache.as_ref()),
-                &|v, d| enrich_value(v, d, media_cache.as_ref()),
-                &|r| room_to_value(r, media_cache.as_ref()),
-                &|s| space_to_value(s, media_cache.as_ref()),
-                &|v| room_id_from_value(v).map_or("", SharedString::as_str),
-                &|v| room_id_from_value(v).map_or("", SharedString::as_str),
-                &entry_id_from_value,
-            );
-        }
-        drop(permit);
-    })
-    .ok();
 }
 
 fn emoji_entry_to_value(e: &emoji::EmojiEntry) -> Value {
@@ -655,169 +752,38 @@ fn string_list(items: Vec<SharedString>) -> Value {
     Value::Model(ModelRc::new(VecModel::from(values)))
 }
 
-fn message_to_value(m: &TimelineMessage, media: &dyn MediaCache) -> Value {
-    let d = message_to_dto(m, media);
-    let mut fields = vec![
-        (message::UNIQUE_ID.to_string(), Value::String(d.unique_id)),
-        (message::SENDER.to_string(), Value::String(d.sender)),
-        (message::PRONOUNS.to_string(), string_list(d.pronouns)),
-        (message::BODY.to_string(), Value::String(d.body)),
-        (message::TIMESTAMP.to_string(), Value::String(d.timestamp)),
-        (
-            message::MESSAGE_TYPE.to_string(),
-            Value::String(d.message_type),
-        ),
-        (
-            message::PREVIEW_KIND.to_string(),
-            Value::String(d.preview_kind),
-        ),
-        (
-            message::UNSUPPORTED_KIND.to_string(),
-            Value::String(d.unsupported_kind),
-        ),
-        (message::EVENT_ID.to_string(), Value::String(d.event_id)),
-        (
-            message::SENDER_INITIAL.to_string(),
-            Value::String(d.sender_initial),
-        ),
-        (message::COLOR_INDEX.to_string(), num(d.color_index)),
-        (message::IS_OWN.to_string(), Value::Bool(d.is_own)),
-        (message::EDITED.to_string(), Value::Bool(d.edited)),
-        (message::HAS_REPLY.to_string(), Value::Bool(d.has_reply)),
-        (
-            message::REPLY_SENDER.to_string(),
-            Value::String(d.reply_sender),
-        ),
-        (message::REPLY_KIND.to_string(), Value::String(d.reply_kind)),
-        (message::REPLY_BODY.to_string(), Value::String(d.reply_body)),
-        (
-            message::SERVICE_KIND.to_string(),
-            Value::String(d.service_kind),
-        ),
-        (
-            message::SERVICE_TARGET.to_string(),
-            Value::String(d.service_target),
-        ),
-        (
-            message::HAS_THUMBNAIL.to_string(),
-            Value::Bool(d.has_thumbnail),
-        ),
-        (
-            message::MEDIA_FAILED.to_string(),
-            Value::Bool(d.media_failed),
-        ),
-        (message::IMAGE_WIDTH.to_string(), num(d.image_width)),
-        (message::IMAGE_HEIGHT.to_string(), num(d.image_height)),
-        (message::HAS_AVATAR.to_string(), Value::Bool(d.has_avatar)),
-    ];
-    if let Some(img) = d.thumbnail {
-        fields.push((message::THUMBNAIL.to_string(), Value::Image(img)));
-    }
-    if let Some(img) = d.avatar {
-        fields.push((message::AVATAR.to_string(), Value::Image(img)));
-    }
-    Value::Struct(Struct::from_iter(fields))
-}
-
-fn apply_thumbnail_ready(unique_id: &str, outcome: DecodeOutcome<'_>) {
-    if matches!(outcome, DecodeOutcome::Deferred) {
-        return;
-    }
-    let Some(timeline) = TIMELINE_MODEL.with(|cell| cell.borrow().clone()) else {
-        return;
+macro_rules! field_value {
+    ($s:ident, $lit:literal, $val:expr, text) => {
+        $s.set_field($lit.to_string(), Value::String($val));
     };
-    patch_rows(
-        &timeline,
-        |value: &Value| entry_id_from_value(value) == unique_id,
-        |value: &mut Value| {
-            if let Value::Struct(entry) = value {
-                match outcome {
-                    DecodeOutcome::Ready(img) => {
-                        entry.set_field(message::THUMBNAIL.to_string(), Value::Image(img.clone()));
-                        entry.set_field(message::HAS_THUMBNAIL.to_string(), Value::Bool(true));
-                        entry.set_field(message::MEDIA_FAILED.to_string(), Value::Bool(false));
-                    }
-                    DecodeOutcome::Failed => {
-                        entry.set_field(message::MEDIA_FAILED.to_string(), Value::Bool(true));
-                    }
-                    DecodeOutcome::Deferred => {}
-                }
-            }
-        },
-    );
-}
-
-fn set_avatar_on_rows(
-    model: &VecModel<Value>,
-    avatar_field: &str,
-    has_avatar_field: &str,
-    matches: impl Fn(&Value) -> bool,
-    image: &slint::Image,
-) {
-    patch_rows(model, matches, |value: &mut Value| {
-        if let Value::Struct(entry) = value {
-            entry.set_field(avatar_field.to_string(), Value::Image(image.clone()));
-            entry.set_field(has_avatar_field.to_string(), Value::Bool(true));
-        }
-    });
-}
-
-fn apply_avatar_ready(
-    weak: &slint::Weak<ComponentInstance>,
-    slots: &[AvatarSlot],
-    outcome: DecodeOutcome<'_>,
-) {
-    let DecodeOutcome::Ready(image) = outcome else {
-        return;
+    ($s:ident, $lit:literal, $val:expr, int) => {
+        $s.set_field($lit.to_string(), num($val));
     };
-    for slot in slots {
-        match slot {
-            AvatarSlot::Message(unique_id) => {
-                if let Some(model) = TIMELINE_MODEL.with(|cell| cell.borrow().clone()) {
-                    set_avatar_on_rows(
-                        &model,
-                        message::AVATAR,
-                        message::HAS_AVATAR,
-                        |v| entry_id_from_value(v) == unique_id.as_str(),
-                        image,
-                    );
-                }
-            }
-            AvatarSlot::Room(id) => {
-                if let Some(model) = ROOMS_MODEL.with(|cell| cell.borrow().clone()) {
-                    set_avatar_on_rows(
-                        &model,
-                        room::AVATAR,
-                        room::HAS_AVATAR,
-                        |v| room_id_from_value(v).is_some_and(|rid| rid.as_str() == id.as_str()),
-                        image,
-                    );
-                }
-            }
-            AvatarSlot::Space(id) => {
-                for cell in [&SPACES_MODEL, &SUBSPACES_MODEL] {
-                    if let Some(model) = cell.with(|slot| slot.borrow().clone()) {
-                        set_avatar_on_rows(
-                            &model,
-                            space::AVATAR,
-                            space::HAS_AVATAR,
-                            |v| {
-                                room_id_from_value(v).is_some_and(|rid| rid.as_str() == id.as_str())
-                            },
-                            image,
-                        );
-                    }
-                }
-            }
-            AvatarSlot::User => {
-                if let Some(inst) = weak.upgrade() {
-                    set_prop(&inst, prop::USER_AVATAR, Value::Image(image.clone()));
-                    set_prop(&inst, prop::USER_HAS_AVATAR, Value::Bool(true));
-                }
-            }
+    ($s:ident, $lit:literal, $val:expr, flag) => {
+        $s.set_field($lit.to_string(), Value::Bool($val));
+    };
+    ($s:ident, $lit:literal, $val:expr, list) => {
+        $s.set_field($lit.to_string(), string_list($val));
+    };
+    ($s:ident, $lit:literal, $val:expr, image) => {
+        if let Some(img) = $val {
+            $s.set_field($lit.to_string(), Value::Image(img));
         }
-    }
+    };
 }
+
+macro_rules! gen_to_value {
+    ($fn:ident $ty:ident $dto:ident $($f:ident $c:ident $lit:literal $k:ident;)*) => {
+        fn $fn(src: &$ty, media: &dyn MediaCache) -> Value {
+            let d = $dto(src, media);
+            let mut fields = Struct::default();
+            $( field_value!(fields, $lit, d.$f, $k); )*
+            Value::Struct(fields)
+        }
+    };
+}
+
+message_fields!(gen_to_value message_to_value TimelineMessage message_to_dto);
 
 fn enrich_value(value: &mut Value, delta: &EnrichmentDelta, media: &dyn MediaCache) {
     let Value::Struct(entry) = value else {
@@ -844,71 +810,9 @@ fn enrich_value(value: &mut Value, delta: &EnrichmentDelta, media: &dyn MediaCac
     }
 }
 
-fn room_to_value(r: &Room, media: &dyn MediaCache) -> Value {
-    let d = room_to_dto(r, media);
-    let mut fields = vec![
-        (room::ID.to_string(), Value::String(d.id)),
-        (room::NAME.to_string(), Value::String(d.name)),
-        (room::INITIAL.to_string(), Value::String(d.initial)),
-        (room::COLOR_INDEX.to_string(), num(d.color_index)),
-        (room::MEMBERS.to_string(), num(d.members)),
-        (room::UNREAD.to_string(), num(d.unread)),
-        (room::MENTIONS.to_string(), num(d.mentions)),
-        (
-            room::LAST_MESSAGE_SENDER.to_string(),
-            Value::String(d.last_message_sender),
-        ),
-        (
-            room::LAST_MESSAGE_KIND.to_string(),
-            Value::String(d.last_message_kind),
-        ),
-        (
-            room::LAST_MESSAGE_BODY.to_string(),
-            Value::String(d.last_message_body),
-        ),
-        (
-            room::LAST_MESSAGE_SERVICE_KIND.to_string(),
-            Value::String(d.last_message_service_kind),
-        ),
-        (
-            room::LAST_MESSAGE_SERVICE_TARGET.to_string(),
-            Value::String(d.last_message_service_target),
-        ),
-        (
-            room::LAST_MESSAGE_IS_OWN.to_string(),
-            Value::Bool(d.last_message_is_own),
-        ),
-        (
-            room::LAST_MESSAGE_EDITED.to_string(),
-            Value::Bool(d.last_message_edited),
-        ),
-        (
-            room::LAST_MESSAGE_TIME.to_string(),
-            Value::String(d.last_message_time),
-        ),
-        (room::HAS_AVATAR.to_string(), Value::Bool(d.has_avatar)),
-    ];
-    if let Some(img) = d.avatar {
-        fields.push((room::AVATAR.to_string(), Value::Image(img)));
-    }
-    Value::Struct(Struct::from_iter(fields))
-}
+room_fields!(gen_to_value room_to_value Room room_to_dto);
 
-fn space_to_value(s: &Space, media: &dyn MediaCache) -> Value {
-    let d = space_to_dto(s, media);
-    let mut fields = vec![
-        (space::ID.to_string(), Value::String(d.id)),
-        (space::NAME.to_string(), Value::String(d.name)),
-        (space::UNREAD.to_string(), num(d.unread)),
-        (space::MENTIONS.to_string(), num(d.mentions)),
-        (space::INITIAL.to_string(), Value::String(d.initial)),
-        (space::HAS_AVATAR.to_string(), Value::Bool(d.has_avatar)),
-    ];
-    if let Some(img) = d.avatar {
-        fields.push((space::AVATAR.to_string(), Value::Image(img)));
-    }
-    Value::Struct(Struct::from_iter(fields))
-}
+space_fields!(gen_to_value space_to_value Space space_to_dto);
 
 fn entry_id_from_value(val: &Value) -> String {
     if let Value::Struct(s) = val

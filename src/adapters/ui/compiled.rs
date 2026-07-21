@@ -4,20 +4,21 @@ use std::sync::Arc;
 
 use slint::{ComponentHandle, Image, ModelRc, SharedString, VecModel};
 use tokio::runtime::Runtime;
-use tokio::sync::{OwnedSemaphorePermit, mpsc, watch};
+use tokio::sync::{mpsc, watch};
 
-use super::common::{BoolProp, IntProp, StringProp, UiProps, dispatch_effect, reorder_rows};
-use super::decode::{
-    AvatarSlot, DecodeOutcome, advance_animations, patch_rows, request_avatar, request_media,
-    set_animation_tick, set_avatar_ready, set_image_ready,
-};
+use super::backend::{UiBackend, install_render_hooks, post_effect, selected_room_key};
+use super::decode::{AvatarSlot, request_avatar, request_media};
 use super::dto::{ThumbUpdate, enrich_to_update, message_to_dto, room_to_dto, space_to_dto};
 use super::multiplex::spawn_event_multiplexer;
+use super::present::VerifyStep;
+use super::props::{BoolProp, IntProp, StringProp, UiProps};
+use super::reconcile::reorder_rows;
+use super::schema::{bool_props, int_props, string_props};
 use super::{emoji, router};
-use crate::commands::{AppViewState, Effect, UiCommand, ViewportChanged};
+use crate::commands::{AppViewState, Effect, LoginStep, UiCommand, ViewportChanged};
 use crate::domain::models::{
-    EnrichmentDelta, LoginCredentials, Room, RoomId, Space, TimelineMessage,
-    VerificationEmoji as DomainVerificationEmoji,
+    ConnectionStatus, EnrichmentDelta, LoginCredentials, Room, Space, TimelineMessage,
+    TimelineStatus, VerificationEmoji as DomainVerificationEmoji,
 };
 use crate::error::Result;
 use crate::ports::media::MediaCache;
@@ -27,8 +28,8 @@ mod generated {
     slint::include_modules!();
 }
 use generated::{
-    AppWindow, EmojiEntry, EmojiGroup, EmojiInsert, EmojiStore, MessageEntry, RoomEntry,
-    SpaceEntry, VerificationEmoji,
+    AppWindow, ConnectionState, EmojiEntry, EmojiGroup, EmojiInsert, EmojiStore, LoginPhase,
+    MessageEntry, RoomEntry, SpaceEntry, TimelineState, VerificationEmoji, VerificationPhase,
 };
 
 thread_local! {
@@ -38,49 +39,33 @@ thread_local! {
     static SUBSPACES_MODEL: RefCell<Option<Rc<VecModel<SpaceEntry>>>> = const { RefCell::new(None) };
 }
 
+macro_rules! impl_prop_setter {
+    ($fn:ident $enum:ident $ty:ty; $($v:ident $c:ident $lit:literal $s:ident;)*) => {
+        fn $fn(&self, prop: $enum, value: $ty) {
+            match prop { $($enum::$v => self.$s(value),)* }
+        }
+    };
+}
+
 impl UiProps for AppWindow {
-    fn set_string(&self, prop: StringProp, value: SharedString) {
-        match prop {
-            StringProp::LoginStep => self.set_login_step(value),
-            StringProp::LoginStatus => self.set_login_status(value),
-            StringProp::LoginError => self.set_login_error(value),
-            StringProp::LoginMethod => self.set_login_method(value),
-            StringProp::ResolvedHomeserver => self.set_resolved_homeserver(value),
-            StringProp::UserId => self.set_user_id(value),
-            StringProp::UserInitial => self.set_user_initial(value),
-            StringProp::ToastMessage => self.set_toast_message(value),
-            StringProp::ConnectionStatus => self.set_connection_status(value),
-            StringProp::VerificationStep => self.set_verification_step(value),
-            StringProp::VerificationSender => self.set_verification_sender(value),
-            StringProp::VerificationError => self.set_verification_error(value),
-            StringProp::SavedFilePath => self.set_saved_file_path(value),
-            StringProp::SelectedRoomName => self.set_selected_room_name(value),
-            StringProp::SelectedRoomId => self.set_selected_room_id(value),
-            StringProp::SelectedSpaceId => self.set_selected_space_id(value),
-            StringProp::SelectedSubspaceId => self.set_selected_subspace_id(value),
-            StringProp::TimelineStatus => self.set_timeline_status(value),
-            StringProp::InputUsername => self.set_input_username(value),
-            StringProp::InputPassword => self.set_input_password(value),
-        }
+    string_props!(impl_prop_setter set_string StringProp SharedString;);
+    bool_props!(impl_prop_setter set_bool BoolProp bool;);
+    int_props!(impl_prop_setter set_int IntProp i32;);
+
+    fn set_login_phase(&self, step: LoginStep) {
+        self.set_login_step(to_login_phase(step));
     }
 
-    fn set_bool(&self, prop: BoolProp, value: bool) {
-        match prop {
-            BoolProp::VerificationVisible => self.set_verification_visible(value),
-            BoolProp::VerificationIsSelf => self.set_verification_is_self(value),
-            BoolProp::TimelineRetryable => self.set_timeline_retryable(value),
-            BoolProp::BackwardsLoading => self.set_backwards_loading(value),
-            BoolProp::ForwardsLoading => self.set_forwards_loading(value),
-        }
+    fn set_connection_state(&self, status: &ConnectionStatus) {
+        self.set_connection_status(to_connection_state(status));
     }
 
-    fn set_int(&self, prop: IntProp, value: i32) {
-        match prop {
-            IntProp::NewMessagesCount => self.set_new_messages_count(value),
-            IntProp::PrependToken => self.set_prepend_token(value),
-            IntProp::SelectedRoomMembers => self.set_selected_room_members(value),
-            IntProp::SelectedGeneration => self.set_selected_generation(value),
-        }
+    fn set_timeline_state(&self, status: TimelineStatus) {
+        self.set_timeline_status(to_timeline_state(status));
+    }
+
+    fn set_verification_phase(&self, phase: VerifyStep) {
+        self.set_verification_step(to_verification_phase(phase));
     }
 
     fn get_string(&self, prop: StringProp) -> SharedString {
@@ -89,6 +74,16 @@ impl UiProps for AppWindow {
             other => {
                 tracing::warn!("unexpected get for property: {}", other.as_str());
                 SharedString::default()
+            }
+        }
+    }
+
+    fn get_int(&self, prop: IntProp) -> i32 {
+        match prop {
+            IntProp::SelectedGeneration => self.get_selected_generation(),
+            other => {
+                tracing::warn!("unexpected get for property: {}", other.as_str());
+                0
             }
         }
     }
@@ -116,6 +111,129 @@ impl UiProps for AppWindow {
 
     fn clear_emoji_model(&self) {
         self.set_verification_emojis(ModelRc::new(VecModel::<VerificationEmoji>::default()));
+    }
+}
+
+fn to_login_phase(step: LoginStep) -> LoginPhase {
+    match step {
+        LoginStep::Homeserver => LoginPhase::Homeserver,
+        LoginStep::Credentials => LoginPhase::Credentials,
+        LoginStep::LoggedIn => LoginPhase::LoggedIn,
+    }
+}
+
+fn to_connection_state(status: &ConnectionStatus) -> ConnectionState {
+    match status {
+        ConnectionStatus::Disconnected => ConnectionState::Disconnected,
+        ConnectionStatus::Connecting => ConnectionState::Connecting,
+        ConnectionStatus::Connected => ConnectionState::Connected,
+        ConnectionStatus::Error(_) => ConnectionState::Error,
+    }
+}
+
+fn to_timeline_state(status: TimelineStatus) -> TimelineState {
+    match status {
+        TimelineStatus::Loading => TimelineState::Loading,
+        TimelineStatus::Ready => TimelineState::Ready,
+        TimelineStatus::Failed { .. } => TimelineState::Failed,
+        TimelineStatus::Disconnected => TimelineState::Disconnected,
+    }
+}
+
+fn to_verification_phase(phase: VerifyStep) -> VerificationPhase {
+    match phase {
+        VerifyStep::None => VerificationPhase::None,
+        VerifyStep::Requested => VerificationPhase::Requested,
+        VerifyStep::Emojis => VerificationPhase::Emojis,
+        VerifyStep::Confirming => VerificationPhase::Confirming,
+        VerifyStep::Done => VerificationPhase::Done,
+        VerifyStep::Cancelled => VerificationPhase::Cancelled,
+    }
+}
+
+pub struct CompiledBackend;
+
+impl UiBackend for CompiledBackend {
+    type Window = AppWindow;
+    type Message = MessageEntry;
+    type Room = RoomEntry;
+    type Space = SpaceEntry;
+
+    fn convert_message(message: &TimelineMessage, media: &dyn MediaCache) -> MessageEntry {
+        message_to_entry(message, media)
+    }
+
+    fn enrich_message(entry: &mut MessageEntry, delta: &EnrichmentDelta, media: &dyn MediaCache) {
+        enrich_entry(entry, delta, media);
+    }
+
+    fn convert_room(room: &Room, media: &dyn MediaCache) -> RoomEntry {
+        room_to_entry(room, media)
+    }
+
+    fn convert_space(space: &Space, media: &dyn MediaCache) -> SpaceEntry {
+        space_to_entry(space, media)
+    }
+
+    fn message_id(entry: &MessageEntry) -> String {
+        entry.unique_id.to_string()
+    }
+
+    fn room_id(entry: &RoomEntry) -> &str {
+        entry.id.as_str()
+    }
+
+    fn space_id(entry: &SpaceEntry) -> &str {
+        entry.id.as_str()
+    }
+
+    fn set_message_avatar(entry: &mut MessageEntry, image: &Image) {
+        entry.avatar = image.clone();
+        entry.has_avatar = true;
+    }
+
+    fn set_room_avatar(entry: &mut RoomEntry, image: &Image) {
+        entry.avatar = image.clone();
+        entry.has_avatar = true;
+    }
+
+    fn set_space_avatar(entry: &mut SpaceEntry, image: &Image) {
+        entry.avatar = image.clone();
+        entry.has_avatar = true;
+    }
+
+    fn set_message_thumbnail(entry: &mut MessageEntry, image: &Image) {
+        entry.thumbnail = image.clone();
+        entry.has_thumbnail = true;
+        entry.media_failed = false;
+    }
+
+    fn set_message_media_failed(entry: &mut MessageEntry) {
+        entry.media_failed = true;
+    }
+
+    fn set_message_frame(entry: &mut MessageEntry, image: Image) {
+        entry.thumbnail = image;
+    }
+
+    fn with_models<R>(
+        f: impl FnOnce(
+            &VecModel<MessageEntry>,
+            &VecModel<RoomEntry>,
+            &VecModel<SpaceEntry>,
+            &VecModel<SpaceEntry>,
+        ) -> R,
+    ) -> Option<R> {
+        let timeline = TIMELINE_MODEL.with(|cell| cell.borrow().clone())?;
+        let rooms = ROOMS_MODEL.with(|cell| cell.borrow().clone())?;
+        let spaces = SPACES_MODEL.with(|cell| cell.borrow().clone())?;
+        let subspaces = SUBSPACES_MODEL.with(|cell| cell.borrow().clone())?;
+        Some(f(&timeline, &rooms, &spaces, &subspaces))
+    }
+
+    fn with_timeline<R>(f: impl FnOnce(&VecModel<MessageEntry>) -> R) -> Option<R> {
+        let timeline = TIMELINE_MODEL.with(|cell| cell.borrow().clone())?;
+        Some(f(&timeline))
     }
 }
 
@@ -238,24 +356,31 @@ impl SlintUiAdapter {
         let weak = self.window.as_weak();
         self.window
             .on_scroll_position_changed(move |at_top, at_bottom| {
-                router::scroll_position(&scroll_tx, selected_room_key(&weak), at_top, at_bottom);
+                router::scroll_position(
+                    &scroll_tx,
+                    selected_room_key::<CompiledBackend>(&weak),
+                    at_top,
+                    at_bottom,
+                );
             });
 
         let tx = cmd_tx.clone();
         let weak = self.window.as_weak();
         self.window.on_paginate_backwards(move || {
-            router::paginate_backwards(&tx, selected_room_key(&weak));
+            router::paginate_backwards(&tx, selected_room_key::<CompiledBackend>(&weak));
         });
 
         let tx = cmd_tx.clone();
         let weak = self.window.as_weak();
-        self.window
-            .on_paginate_forwards(move || router::paginate_forwards(&tx, selected_room_key(&weak)));
+        self.window.on_paginate_forwards(move || {
+            router::paginate_forwards(&tx, selected_room_key::<CompiledBackend>(&weak));
+        });
 
         let tx = cmd_tx.clone();
         let weak = self.window.as_weak();
-        self.window
-            .on_jump_to_latest(move || router::jump_to_latest(&tx, selected_room_key(&weak)));
+        self.window.on_jump_to_latest(move || {
+            router::jump_to_latest(&tx, selected_room_key::<CompiledBackend>(&weak));
+        });
 
         let tx = cmd_tx.clone();
         self.window
@@ -287,24 +412,13 @@ impl SlintUiAdapter {
 
         TIMELINE_MODEL.with(|cell| *cell.borrow_mut() = Some(timeline_model));
         ROOMS_MODEL.with(|cell| *cell.borrow_mut() = Some(rooms_model));
-
-        set_animation_tick(|| {
-            if let Some(timeline) = TIMELINE_MODEL.with(|cell| cell.borrow().clone()) {
-                advance_animations(
-                    &timeline,
-                    &|e: &MessageEntry| e.unique_id.to_string(),
-                    &|e: &mut MessageEntry, frame| e.thumbnail = frame,
-                );
-            }
-        });
-
-        register_image_callbacks(&self.window.as_weak());
-
         SPACES_MODEL.with(|cell| *cell.borrow_mut() = Some(spaces_model));
         SUBSPACES_MODEL.with(|cell| *cell.borrow_mut() = Some(subspaces_model));
 
+        install_render_hooks::<CompiledBackend>(self.window.as_weak());
+
         spawn_event_multiplexer(ui_rx, view_rx, media_cache, move |event, media, permit| {
-            post_effect(&weak, media, event, permit);
+            post_effect::<CompiledBackend>(&weak, media, event, permit);
         });
     }
 
@@ -323,15 +437,6 @@ impl SlintUiAdapter {
 
 fn props(window: Option<&AppWindow>) -> Option<&dyn UiProps> {
     window.map(|w| w as &dyn UiProps)
-}
-
-fn selected_room_key(weak: &slint::Weak<AppWindow>) -> Option<(RoomId, i32)> {
-    let w = weak.upgrade()?;
-    let room_id = w.get_selected_room_id().to_string();
-    if room_id.is_empty() {
-        return None;
-    }
-    Some((RoomId::new(room_id), w.get_selected_generation()))
 }
 
 fn emoji_entry_to_ui(e: &emoji::EmojiEntry) -> EmojiEntry {
@@ -382,39 +487,6 @@ fn setup_emoji_store(window: &AppWindow) {
     });
 }
 
-fn post_effect(
-    weak: &slint::Weak<AppWindow>,
-    media_cache: Arc<dyn MediaCache>,
-    event: Effect,
-    permit: OwnedSemaphorePermit,
-) {
-    weak.upgrade_in_event_loop(move |w| {
-        let timeline = TIMELINE_MODEL.with(|cell| cell.borrow().clone());
-        let rooms = ROOMS_MODEL.with(|cell| cell.borrow().clone());
-        let spaces = SPACES_MODEL.with(|cell| cell.borrow().clone());
-        let subspaces = SUBSPACES_MODEL.with(|cell| cell.borrow().clone());
-        if let (Some(tl), Some(rm), Some(sm), Some(ssm)) = (timeline, rooms, spaces, subspaces) {
-            dispatch_effect(
-                &w,
-                event,
-                &tl,
-                &rm,
-                &sm,
-                &ssm,
-                &|m| message_to_entry(m, media_cache.as_ref()),
-                &|e, d| enrich_entry(e, d, media_cache.as_ref()),
-                &|r| room_to_entry(r, media_cache.as_ref()),
-                &|s| space_to_entry(s, media_cache.as_ref()),
-                &|e| e.id.as_str(),
-                &|e: &SpaceEntry| e.id.as_str(),
-                &|e: &MessageEntry| e.unique_id.to_string(),
-            );
-        }
-        drop(permit);
-    })
-    .ok();
-}
-
 fn string_model(items: Vec<SharedString>) -> ModelRc<SharedString> {
     ModelRc::new(VecModel::from(items))
 }
@@ -449,108 +521,6 @@ fn message_to_entry(m: &TimelineMessage, media: &dyn MediaCache) -> MessageEntry
         service_kind: d.service_kind,
         service_target: d.service_target,
     }
-}
-
-fn register_image_callbacks(weak: &slint::Weak<AppWindow>) {
-    set_image_ready({
-        let weak = weak.clone();
-        move |unique_id, outcome| {
-            apply_thumbnail_ready(unique_id, outcome);
-            if let Some(window) = weak.upgrade() {
-                window.window().request_redraw();
-            }
-        }
-    });
-
-    set_avatar_ready({
-        let weak = weak.clone();
-        move |slots, outcome| {
-            apply_avatar_ready(&weak, slots, outcome);
-            if let Some(window) = weak.upgrade() {
-                window.window().request_redraw();
-            }
-        }
-    });
-}
-
-fn apply_avatar_ready(
-    weak: &slint::Weak<AppWindow>,
-    slots: &[AvatarSlot],
-    outcome: DecodeOutcome<'_>,
-) {
-    let DecodeOutcome::Ready(image) = outcome else {
-        return;
-    };
-    for slot in slots {
-        match slot {
-            AvatarSlot::Message(unique_id) => {
-                if let Some(timeline) = TIMELINE_MODEL.with(|cell| cell.borrow().clone()) {
-                    patch_rows(
-                        &timeline,
-                        |e: &MessageEntry| e.unique_id == unique_id.as_str(),
-                        |e: &mut MessageEntry| {
-                            e.avatar = image.clone();
-                            e.has_avatar = true;
-                        },
-                    );
-                }
-            }
-            AvatarSlot::Room(id) => {
-                if let Some(rooms) = ROOMS_MODEL.with(|cell| cell.borrow().clone()) {
-                    patch_rows(
-                        &rooms,
-                        |e: &RoomEntry| e.id == id.as_str(),
-                        |e: &mut RoomEntry| {
-                            e.avatar = image.clone();
-                            e.has_avatar = true;
-                        },
-                    );
-                }
-            }
-            AvatarSlot::Space(id) => {
-                for cell in [&SPACES_MODEL, &SUBSPACES_MODEL] {
-                    if let Some(spaces) = cell.with(|cell| cell.borrow().clone()) {
-                        patch_rows(
-                            &spaces,
-                            |e: &SpaceEntry| e.id == id.as_str(),
-                            |e: &mut SpaceEntry| {
-                                e.avatar = image.clone();
-                                e.has_avatar = true;
-                            },
-                        );
-                    }
-                }
-            }
-            AvatarSlot::User => {
-                if let Some(window) = weak.upgrade() {
-                    window.set_user_avatar(image.clone());
-                    window.set_user_has_avatar(true);
-                }
-            }
-        }
-    }
-}
-
-fn apply_thumbnail_ready(unique_id: &str, outcome: DecodeOutcome<'_>) {
-    if matches!(outcome, DecodeOutcome::Deferred) {
-        return;
-    }
-    let Some(timeline) = TIMELINE_MODEL.with(|cell| cell.borrow().clone()) else {
-        return;
-    };
-    patch_rows(
-        &timeline,
-        |e: &MessageEntry| e.unique_id == unique_id,
-        |e: &mut MessageEntry| match outcome {
-            DecodeOutcome::Ready(img) => {
-                e.thumbnail = img.clone();
-                e.has_thumbnail = true;
-                e.media_failed = false;
-            }
-            DecodeOutcome::Failed => e.media_failed = true,
-            DecodeOutcome::Deferred => {}
-        },
-    );
 }
 
 fn enrich_entry(entry: &mut MessageEntry, delta: &EnrichmentDelta, media: &dyn MediaCache) {

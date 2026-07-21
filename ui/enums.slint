@@ -1,0 +1,30 @@
+export enum LoginPhase {
+    loading,
+    homeserver,
+    credentials,
+    logged-in,
+}
+
+export enum ConnectionState {
+    disconnected,
+    connecting,
+    connected,
+    error,
+}
+
+export enum TimelineState {
+    none,
+    loading,
+    ready,
+    failed,
+    disconnected,
+}
+
+export enum VerificationPhase {
+    none,
+    requested,
+    emojis,
+    confirming,
+    done,
+    cancelled,
+}

@@ -1,11 +1,15 @@
 #![allow(clippy::pub_use)]
 
-mod common;
+mod backend;
 mod decode;
 mod dto;
 mod emoji;
 mod multiplex;
 mod output;
+mod present;
+mod props;
+mod reconcile;
+mod reduce;
 mod router;
 mod schema;
 

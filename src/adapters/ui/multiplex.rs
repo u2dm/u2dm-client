@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use tokio::sync::{OwnedSemaphorePermit, Semaphore, mpsc, watch};
 
-use super::common::SLINT_INFLIGHT;
+use super::props::SLINT_INFLIGHT;
 use crate::commands::{AppViewState, Effect};
 use crate::ports::media::MediaCache;
 

@@ -9,10 +9,12 @@ import {
     SaveFileRequest,
 } from "screens/chat/components/types.slint";
 import { VerificationEmoji } from "components/types.slint";
+import { LoginPhase, ConnectionState, TimelineState, VerificationPhase } from "enums.slint";
 import {
     EmojiStore,
 } from "screens/chat/components/timeline/emoji-picker.slint";
 export { EmojiStore }
+export { LoginPhase, ConnectionState, TimelineState, VerificationPhase }
 import { LoadingScreen } from "screens/login/loading.slint";
 import { HomeserverScreen } from "screens/login/homeserver.slint";
 import { CredentialsScreen } from "screens/login/credentials.slint";
@@ -27,7 +29,7 @@ export component AppWindow inherits Window {
     in-out property <string> input-homeserver: "matrix.org";
     in-out property <string> login-status: "";
     in-out property <string> login-error: "";
-    in-out property <string> login-step: "loading";
+    in-out property <LoginPhase> login-step: LoginPhase.loading;
     in-out property <string> login-method: "";
     in-out property <string> resolved-homeserver: "";
     in-out property <string> input-username: "";
@@ -46,17 +48,17 @@ export component AppWindow inherits Window {
     in-out property <int> selected-room-members: 0;
     in-out property <string> selected-space-id: "";
     in-out property <string> selected-subspace-id: "";
-    in-out property <string> connection-status: "disconnected";
+    in-out property <ConnectionState> connection-status: ConnectionState.disconnected;
 
     in-out property <bool> verification-visible: false;
-    in-out property <string> verification-step: "";
+    in-out property <VerificationPhase> verification-step: VerificationPhase.none;
     in-out property <string> verification-sender: "";
     in-out property <bool> verification-is-self: false;
     in-out property <[VerificationEmoji]> verification-emojis: [];
     in-out property <string> verification-error: "";
     in-out property <string> toast-message: "";
     in-out property <string> saved-file-path: "";
-    in-out property <string> timeline-status: "";
+    in-out property <TimelineState> timeline-status: TimelineState.none;
     in-out property <bool> timeline-retryable: false;
     in-out property <int> new-messages-count: 0;
     in-out property <int> prepend-token: 0;
@@ -88,12 +90,12 @@ export component AppWindow inherits Window {
 
     in-out property <string> input-message: "";
 
-    if root.login-step == "loading": LoadingScreen {
+    if root.login-step == LoginPhase.loading: LoadingScreen {
         loading-status: root.login-status;
         loading-error: root.login-error;
     }
 
-    if root.login-step == "homeserver": HomeserverScreen {
+    if root.login-step == LoginPhase.homeserver: HomeserverScreen {
         input-homeserver <=> root.input-homeserver;
         login-status: root.login-status;
         login-error: root.login-error;
@@ -102,7 +104,7 @@ export component AppWindow inherits Window {
         }
     }
 
-    if root.login-step == "credentials": CredentialsScreen {
+    if root.login-step == LoginPhase.credentials: CredentialsScreen {
         resolved-homeserver: root.resolved-homeserver;
         login-method: root.login-method;
         login-status: root.login-status;
@@ -119,13 +121,13 @@ export component AppWindow inherits Window {
             root.cancel-oauth();
         }
         back => {
-            root.login-step = "homeserver";
+            root.login-step = LoginPhase.homeserver;
             root.login-error = "";
             root.login-status = "";
         }
     }
 
-    if root.login-step == "logged-in": ChatScreen {
+    if root.login-step == LoginPhase.logged-in: ChatScreen {
         user-id: root.user-id;
         user-initial: root.user-initial;
         user-avatar: root.user-avatar;
@@ -199,7 +201,7 @@ export component AppWindow inherits Window {
         }
     }
 
-    if root.verification-visible && root.login-step == "logged-in": VerificationDialog {
+    if root.verification-visible && root.login-step == LoginPhase.logged-in: VerificationDialog {
         verification-step: root.verification-step;
         verification-sender: root.verification-sender;
         verification-is-self: root.verification-is-self;

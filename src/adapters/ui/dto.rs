@@ -1,13 +1,13 @@
 use slint::{Image, SharedString};
 
-use super::common::{
-    avatar_color_index, avatar_initials, message_body_text, message_preview_kind_token,
-    message_sender_label, message_timestamp_label, message_type_token, pronoun_labels,
-    room_activity_label, sender_initial, service_kind_token, service_target, unsupported_kind,
-};
 use super::decode::{
     AvatarSlot, load_avatar_async, load_thumbnail, peek_avatar, peek_thumbnail, record_avatar_need,
     record_media_need,
+};
+use super::present::{
+    avatar_color_index, avatar_initials, message_body_text, message_preview_kind_token,
+    message_sender_label, message_timestamp_label, message_type_token, pronoun_labels,
+    room_activity_label, sender_initial, service_kind_token, service_target, unsupported_kind,
 };
 use crate::domain::models::{
     EnrichmentDelta, MessageBody, Room, Space, ThumbnailOutcome, TimelineMessage,

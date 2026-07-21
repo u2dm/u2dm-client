@@ -1,7 +1,8 @@
 use slint::SharedString;
 use tokio::sync::{mpsc, watch};
 
-use super::common::{Status, StringProp, UiProps, send_command};
+use super::present::Status;
+use super::props::{StringProp, UiProps, send_command};
 use crate::commands::{UiCommand, ViewportChanged};
 use crate::domain::models::{LoginCredentials, RoomId};
 

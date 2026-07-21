@@ -4,11 +4,12 @@ import {
 } from "std-widgets.slint";
 
 import { VerificationEmoji } from "./types.slint";
+import { VerificationPhase } from "../enums.slint";
 
 export component VerificationDialog inherits Rectangle {
     background: Colors.black.transparentize(0.4);
 
-    in property <string> verification-step: "";
+    in property <VerificationPhase> verification-step: VerificationPhase.none;
     in property <string> verification-sender: "";
     in property <bool> verification-is-self: false;
     in property <[VerificationEmoji]> verification-emojis: [];
@@ -41,7 +42,7 @@ export component VerificationDialog inherits Rectangle {
                         horizontal-alignment: center;
                     }
 
-                    if root.verification-step == "requested": VerticalLayout {
+                    if root.verification-step == VerificationPhase.requested: VerticalLayout {
                         spacing: 12px;
 
                         Text {
@@ -72,7 +73,7 @@ export component VerificationDialog inherits Rectangle {
                         }
                     }
 
-                    if root.verification-step == "emojis": VerticalLayout {
+                    if root.verification-step == VerificationPhase.emojis: VerticalLayout {
                         spacing: 12px;
 
                         Text {
@@ -126,7 +127,7 @@ export component VerificationDialog inherits Rectangle {
                         }
                     }
 
-                    if root.verification-step == "confirming": VerticalLayout {
+                    if root.verification-step == VerificationPhase.confirming: VerticalLayout {
                         spacing: 12px;
 
                         Text {
@@ -136,7 +137,7 @@ export component VerificationDialog inherits Rectangle {
                         }
                     }
 
-                    if root.verification-step == "done": VerticalLayout {
+                    if root.verification-step == VerificationPhase.done: VerticalLayout {
                         spacing: 12px;
 
                         Text {
@@ -159,7 +160,7 @@ export component VerificationDialog inherits Rectangle {
                         }
                     }
 
-                    if root.verification-step == "cancelled": VerticalLayout {
+                    if root.verification-step == VerificationPhase.cancelled: VerticalLayout {
                         spacing: 12px;
 
                         Text {

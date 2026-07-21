@@ -1,37 +1,134 @@
 #![allow(dead_code)]
 
+macro_rules! gen_consts {
+    ($($a:ident $c:ident $lit:literal $d:ident;)*) => {
+        $( pub const $c: &str = $lit; )*
+    };
+}
+
+macro_rules! string_props {
+    ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
+        LoginStatus LOGIN_STATUS "login-status" set_login_status;
+        LoginError LOGIN_ERROR "login-error" set_login_error;
+        LoginMethod LOGIN_METHOD "login-method" set_login_method;
+        ResolvedHomeserver RESOLVED_HOMESERVER "resolved-homeserver" set_resolved_homeserver;
+        UserId USER_ID "user-id" set_user_id;
+        UserInitial USER_INITIAL "user-initial" set_user_initial;
+        ToastMessage TOAST_MESSAGE "toast-message" set_toast_message;
+        VerificationSender VERIFICATION_SENDER "verification-sender" set_verification_sender;
+        VerificationError VERIFICATION_ERROR "verification-error" set_verification_error;
+        SavedFilePath SAVED_FILE_PATH "saved-file-path" set_saved_file_path;
+        SelectedRoomName SELECTED_ROOM_NAME "selected-room-name" set_selected_room_name;
+        SelectedRoomId SELECTED_ROOM_ID "selected-room-id" set_selected_room_id;
+        SelectedSpaceId SELECTED_SPACE_ID "selected-space-id" set_selected_space_id;
+        SelectedSubspaceId SELECTED_SUBSPACE_ID "selected-subspace-id" set_selected_subspace_id;
+        InputUsername INPUT_USERNAME "input-username" set_input_username;
+        InputPassword INPUT_PASSWORD "input-password" set_input_password;
+    } };
+}
+pub(crate) use string_props;
+
+macro_rules! bool_props {
+    ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
+        VerificationVisible VERIFICATION_VISIBLE "verification-visible" set_verification_visible;
+        VerificationIsSelf VERIFICATION_IS_SELF "verification-is-self" set_verification_is_self;
+        TimelineRetryable TIMELINE_RETRYABLE "timeline-retryable" set_timeline_retryable;
+        BackwardsLoading BACKWARDS_LOADING "backwards-loading" set_backwards_loading;
+        ForwardsLoading FORWARDS_LOADING "forwards-loading" set_forwards_loading;
+    } };
+}
+pub(crate) use bool_props;
+
+macro_rules! int_props {
+    ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
+        NewMessagesCount NEW_MESSAGES_COUNT "new-messages-count" set_new_messages_count;
+        PrependToken PREPEND_TOKEN "prepend-token" set_prepend_token;
+        SelectedRoomMembers SELECTED_ROOM_MEMBERS "selected-room-members" set_selected_room_members;
+        SelectedGeneration SELECTED_GENERATION "selected-generation" set_selected_generation;
+    } };
+}
+pub(crate) use int_props;
+
+macro_rules! message_fields {
+    ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
+        unique_id UNIQUE_ID "unique-id" text;
+        sender SENDER "sender" text;
+        pronouns PRONOUNS "pronouns" list;
+        body BODY "body" text;
+        timestamp TIMESTAMP "timestamp" text;
+        message_type MESSAGE_TYPE "message-type" text;
+        preview_kind PREVIEW_KIND "preview-kind" text;
+        unsupported_kind UNSUPPORTED_KIND "unsupported-kind" text;
+        event_id EVENT_ID "event-id" text;
+        sender_initial SENDER_INITIAL "sender-initial" text;
+        color_index COLOR_INDEX "color-index" int;
+        is_own IS_OWN "is-own" flag;
+        edited EDITED "edited" flag;
+        has_reply HAS_REPLY "has-reply" flag;
+        reply_sender REPLY_SENDER "reply-sender" text;
+        reply_kind REPLY_KIND "reply-kind" text;
+        reply_body REPLY_BODY "reply-body" text;
+        service_kind SERVICE_KIND "service-kind" text;
+        service_target SERVICE_TARGET "service-target" text;
+        has_thumbnail HAS_THUMBNAIL "has-thumbnail" flag;
+        media_failed MEDIA_FAILED "media-failed" flag;
+        image_width IMAGE_WIDTH "image-width" int;
+        image_height IMAGE_HEIGHT "image-height" int;
+        has_avatar HAS_AVATAR "has-avatar" flag;
+        thumbnail THUMBNAIL "thumbnail" image;
+        avatar AVATAR "avatar" image;
+    } };
+}
+#[cfg(feature = "interpreted")]
+pub(crate) use message_fields;
+
+macro_rules! room_fields {
+    ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
+        id ID "id" text;
+        name NAME "name" text;
+        initial INITIAL "initial" text;
+        color_index COLOR_INDEX "color-index" int;
+        members MEMBERS "members" int;
+        unread UNREAD "unread" int;
+        mentions MENTIONS "mentions" int;
+        last_message_sender LAST_MESSAGE_SENDER "last-message-sender" text;
+        last_message_kind LAST_MESSAGE_KIND "last-message-kind" text;
+        last_message_body LAST_MESSAGE_BODY "last-message-body" text;
+        last_message_service_kind LAST_MESSAGE_SERVICE_KIND "last-message-service-kind" text;
+        last_message_service_target LAST_MESSAGE_SERVICE_TARGET "last-message-service-target" text;
+        last_message_is_own LAST_MESSAGE_IS_OWN "last-message-is-own" flag;
+        last_message_edited LAST_MESSAGE_EDITED "last-message-edited" flag;
+        last_message_time LAST_MESSAGE_TIME "last-message-time" text;
+        has_avatar HAS_AVATAR "has-avatar" flag;
+        avatar AVATAR "avatar" image;
+    } };
+}
+#[cfg(feature = "interpreted")]
+pub(crate) use room_fields;
+
+macro_rules! space_fields {
+    ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
+        id ID "id" text;
+        name NAME "name" text;
+        unread UNREAD "unread" int;
+        mentions MENTIONS "mentions" int;
+        initial INITIAL "initial" text;
+        has_avatar HAS_AVATAR "has-avatar" flag;
+        avatar AVATAR "avatar" image;
+    } };
+}
+#[cfg(feature = "interpreted")]
+pub(crate) use space_fields;
+
 pub mod prop {
+    string_props!(gen_consts);
+    bool_props!(gen_consts);
+    int_props!(gen_consts);
+
     pub const LOGIN_STEP: &str = "login-step";
-    pub const LOGIN_STATUS: &str = "login-status";
-    pub const LOGIN_ERROR: &str = "login-error";
-    pub const LOGIN_METHOD: &str = "login-method";
-    pub const RESOLVED_HOMESERVER: &str = "resolved-homeserver";
-    pub const USER_ID: &str = "user-id";
-    pub const USER_INITIAL: &str = "user-initial";
-    pub const TOAST_MESSAGE: &str = "toast-message";
     pub const CONNECTION_STATUS: &str = "connection-status";
     pub const VERIFICATION_STEP: &str = "verification-step";
-    pub const VERIFICATION_SENDER: &str = "verification-sender";
-    pub const VERIFICATION_ERROR: &str = "verification-error";
-    pub const SAVED_FILE_PATH: &str = "saved-file-path";
-    pub const SELECTED_ROOM_NAME: &str = "selected-room-name";
-    pub const SELECTED_ROOM_ID: &str = "selected-room-id";
-    pub const SELECTED_SPACE_ID: &str = "selected-space-id";
-    pub const SELECTED_SUBSPACE_ID: &str = "selected-subspace-id";
     pub const TIMELINE_STATUS: &str = "timeline-status";
-    pub const INPUT_USERNAME: &str = "input-username";
-    pub const INPUT_PASSWORD: &str = "input-password";
-
-    pub const VERIFICATION_VISIBLE: &str = "verification-visible";
-    pub const VERIFICATION_IS_SELF: &str = "verification-is-self";
-    pub const TIMELINE_RETRYABLE: &str = "timeline-retryable";
-    pub const BACKWARDS_LOADING: &str = "backwards-loading";
-    pub const FORWARDS_LOADING: &str = "forwards-loading";
-
-    pub const NEW_MESSAGES_COUNT: &str = "new-messages-count";
-    pub const PREPEND_TOKEN: &str = "prepend-token";
-    pub const SELECTED_ROOM_MEMBERS: &str = "selected-room-members";
-    pub const SELECTED_GENERATION: &str = "selected-generation";
 
     pub const USER_AVATAR: &str = "user-avatar";
     pub const USER_HAS_AVATAR: &str = "user-has-avatar";
@@ -77,62 +174,15 @@ pub mod emoji_store {
 }
 
 pub mod message {
-    pub const UNIQUE_ID: &str = "unique-id";
-    pub const SENDER: &str = "sender";
-    pub const PRONOUNS: &str = "pronouns";
-    pub const BODY: &str = "body";
-    pub const TIMESTAMP: &str = "timestamp";
-    pub const MESSAGE_TYPE: &str = "message-type";
-    pub const PREVIEW_KIND: &str = "preview-kind";
-    pub const UNSUPPORTED_KIND: &str = "unsupported-kind";
-    pub const HAS_THUMBNAIL: &str = "has-thumbnail";
-    pub const THUMBNAIL: &str = "thumbnail";
-    pub const MEDIA_FAILED: &str = "media-failed";
-    pub const IMAGE_WIDTH: &str = "image-width";
-    pub const IMAGE_HEIGHT: &str = "image-height";
-    pub const EVENT_ID: &str = "event-id";
-    pub const HAS_AVATAR: &str = "has-avatar";
-    pub const AVATAR: &str = "avatar";
-    pub const SENDER_INITIAL: &str = "sender-initial";
-    pub const COLOR_INDEX: &str = "color-index";
-    pub const IS_OWN: &str = "is-own";
-    pub const EDITED: &str = "edited";
-    pub const HAS_REPLY: &str = "has-reply";
-    pub const REPLY_SENDER: &str = "reply-sender";
-    pub const REPLY_KIND: &str = "reply-kind";
-    pub const REPLY_BODY: &str = "reply-body";
-    pub const SERVICE_KIND: &str = "service-kind";
-    pub const SERVICE_TARGET: &str = "service-target";
+    message_fields!(gen_consts);
 }
 
 pub mod room {
-    pub const ID: &str = "id";
-    pub const NAME: &str = "name";
-    pub const INITIAL: &str = "initial";
-    pub const AVATAR: &str = "avatar";
-    pub const HAS_AVATAR: &str = "has-avatar";
-    pub const COLOR_INDEX: &str = "color-index";
-    pub const MEMBERS: &str = "members";
-    pub const UNREAD: &str = "unread";
-    pub const MENTIONS: &str = "mentions";
-    pub const LAST_MESSAGE_SENDER: &str = "last-message-sender";
-    pub const LAST_MESSAGE_KIND: &str = "last-message-kind";
-    pub const LAST_MESSAGE_BODY: &str = "last-message-body";
-    pub const LAST_MESSAGE_SERVICE_KIND: &str = "last-message-service-kind";
-    pub const LAST_MESSAGE_SERVICE_TARGET: &str = "last-message-service-target";
-    pub const LAST_MESSAGE_IS_OWN: &str = "last-message-is-own";
-    pub const LAST_MESSAGE_EDITED: &str = "last-message-edited";
-    pub const LAST_MESSAGE_TIME: &str = "last-message-time";
+    room_fields!(gen_consts);
 }
 
 pub mod space {
-    pub const ID: &str = "id";
-    pub const NAME: &str = "name";
-    pub const UNREAD: &str = "unread";
-    pub const MENTIONS: &str = "mentions";
-    pub const INITIAL: &str = "initial";
-    pub const AVATAR: &str = "avatar";
-    pub const HAS_AVATAR: &str = "has-avatar";
+    space_fields!(gen_consts);
 }
 
 pub mod emoji_entry {

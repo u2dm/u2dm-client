@@ -3,6 +3,7 @@ import { IconDisplay, IconSet, Icon } from "@lucide";
 
 import { Avatar } from "../../../components/avatar.slint";
 import { ClickArea } from "../../../components/a11y.slint";
+import { ConnectionState } from "../../../enums.slint";
 
 component DrawerRow inherits Rectangle {
     in property <Icon> icon;
@@ -51,7 +52,7 @@ export component Drawer inherits Rectangle {
     in property <string> user-initial: "";
     in property <image> user-avatar;
     in property <bool> user-has-avatar: false;
-    in property <string> connection-status: "disconnected";
+    in property <ConnectionState> connection-status: ConnectionState.disconnected;
     in-out property <bool> open: false;
 
     callback add-account();
@@ -62,27 +63,27 @@ export component Drawer inherits Rectangle {
     property <bool> accounts-expanded: false;
     property <length> accounts-height: root.accounts-expanded ? 84px : 0;
 
-    pure function status-color(status: string) -> color {
-        if status == "connected" {
+    pure function status-color(status: ConnectionState) -> color {
+        if status == ConnectionState.connected {
             return Colors.mediumseagreen;
         }
-        if status == "connecting" {
+        if status == ConnectionState.connecting {
             return Colors.goldenrod;
         }
-        if status == "error" {
+        if status == ConnectionState.error {
             return Colors.tomato;
         }
         return Palette.border;
     }
 
-    pure function status-label(status: string) -> string {
-        if status == "connected" {
+    pure function status-label(status: ConnectionState) -> string {
+        if status == ConnectionState.connected {
             return @tr("Online");
         }
-        if status == "connecting" {
+        if status == ConnectionState.connecting {
             return @tr("Connecting…");
         }
-        if status == "error" {
+        if status == ConnectionState.error {
             return @tr("Connection error");
         }
         return @tr("Offline");

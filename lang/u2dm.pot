@@ -11,82 +11,82 @@ msgstr ""
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: \n"
 
-#: ui/components/verification.slint:38
+#: ui/components/verification.slint:39
 msgctxt "VerificationDialog"
 msgid "Device Verification"
 msgstr ""
 
-#: ui/components/verification.slint:48
+#: ui/components/verification.slint:49
 msgctxt "VerificationDialog"
 msgid "Verify this session from your other device"
 msgstr ""
 
-#: ui/components/verification.slint:48
+#: ui/components/verification.slint:49
 msgctxt "VerificationDialog"
 msgid "Verification request from {}"
 msgstr ""
 
-#: ui/components/verification.slint:59
+#: ui/components/verification.slint:60
 msgctxt "VerificationDialog"
 msgid "Accept"
 msgstr ""
 
-#: ui/components/verification.slint:66
+#: ui/components/verification.slint:67
 msgctxt "VerificationDialog"
 msgid "Decline"
 msgstr ""
 
-#: ui/components/verification.slint:79
+#: ui/components/verification.slint:80
 msgctxt "VerificationDialog"
 msgid "Confirm the emojis below match the other device:"
 msgstr ""
 
-#: ui/components/verification.slint:113
+#: ui/components/verification.slint:114
 msgctxt "VerificationDialog"
 msgid "They match"
 msgstr ""
 
-#: ui/components/verification.slint:120
+#: ui/components/verification.slint:121
 msgctxt "VerificationDialog"
 msgid "They don't match"
 msgstr ""
 
-#: ui/components/verification.slint:133
+#: ui/components/verification.slint:134
 msgctxt "VerificationDialog"
 msgid "Waiting for the other device to confirm..."
 msgstr ""
 
-#: ui/components/verification.slint:143
+#: ui/components/verification.slint:144
 msgctxt "VerificationDialog"
 msgid "Verification successful!"
 msgstr ""
 
-#: ui/components/verification.slint:154
+#: ui/components/verification.slint:155
 msgctxt "VerificationDialog"
 msgid "Done"
 msgstr ""
 
-#: ui/components/verification.slint:166
+#: ui/components/verification.slint:167
 msgctxt "VerificationDialog"
 msgid "Verification cancelled"
 msgstr ""
 
-#: ui/components/verification.slint:184
+#: ui/components/verification.slint:185
 msgctxt "VerificationDialog"
 msgid "Dismiss"
 msgstr ""
 
-#: ui/main.slint:23
+#: ui/main.slint:25
 msgctxt "AppWindow"
 msgid "U2DM Matrix Client"
 msgstr ""
 
-#: ui/screens/chat/chat.slint:176
+#: ui/screens/chat/chat.slint:177
 msgctxt "ChatScreen"
 msgid "File saved to {}"
 msgstr ""
 
-#: ui/screens/chat/chat.slint:189
+#: ui/screens/chat/chat.slint:190
 msgctxt "ChatScreen"
 msgid "Dismiss"
 msgstr ""
@@ -351,34 +351,34 @@ msgctxt "EmojiPicker"
 msgid "No emoji found"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/timeline-view.slint:57
+#: ui/screens/chat/components/timeline/timeline-view.slint:58
 msgctxt "TimelineView"
 msgid "Select a room"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/timeline-view.slint:86
+#: ui/screens/chat/components/timeline/timeline-view.slint:87
 msgctxt "TimelineView"
 msgid "{n} member"
 msgid_plural "{n} members"
 msgstr[0] ""
 msgstr[1] ""
 
-#: ui/screens/chat/components/timeline/timeline-view.slint:109
+#: ui/screens/chat/components/timeline/timeline-view.slint:110
 msgctxt "TimelineView"
 msgid "Loading messages..."
 msgstr ""
 
-#: ui/screens/chat/components/timeline/timeline-view.slint:111
+#: ui/screens/chat/components/timeline/timeline-view.slint:112
 msgctxt "TimelineView"
 msgid "Connection lost"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/timeline-view.slint:112
+#: ui/screens/chat/components/timeline/timeline-view.slint:113
 msgctxt "TimelineView"
 msgid "Couldn't load messages"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/timeline-view.slint:123
+#: ui/screens/chat/components/timeline/timeline-view.slint:124
 msgctxt "TimelineView"
 msgid "Retry"
 msgstr ""
@@ -463,42 +463,42 @@ msgctxt "MessagePreview"
 msgid "Sticker"
 msgstr ""
 
-#: ui/screens/chat/components/drawer.slint:80
+#: ui/screens/chat/components/drawer.slint:81
 msgctxt "Drawer"
 msgid "Online"
 msgstr ""
 
-#: ui/screens/chat/components/drawer.slint:83
+#: ui/screens/chat/components/drawer.slint:84
 msgctxt "Drawer"
 msgid "Connecting…"
 msgstr ""
 
-#: ui/screens/chat/components/drawer.slint:86
+#: ui/screens/chat/components/drawer.slint:87
 msgctxt "Drawer"
 msgid "Connection error"
 msgstr ""
 
-#: ui/screens/chat/components/drawer.slint:88
+#: ui/screens/chat/components/drawer.slint:89
 msgctxt "Drawer"
 msgid "Offline"
 msgstr ""
 
-#: ui/screens/chat/components/drawer.slint:161
+#: ui/screens/chat/components/drawer.slint:162
 msgctxt "Drawer"
 msgid "Toggle account list"
 msgstr ""
 
-#: ui/screens/chat/components/drawer.slint:219
+#: ui/screens/chat/components/drawer.slint:220
 msgctxt "Drawer"
 msgid "No other accounts"
 msgstr ""
 
-#: ui/screens/chat/components/drawer.slint:229
+#: ui/screens/chat/components/drawer.slint:230
 msgctxt "Drawer"
 msgid "Add Account"
 msgstr ""
 
-#: ui/screens/chat/components/drawer.slint:242
+#: ui/screens/chat/components/drawer.slint:243
 msgctxt "Drawer"
 msgid "Log Out"
 msgstr ""
