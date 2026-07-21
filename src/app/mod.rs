@@ -23,7 +23,9 @@ use tokio::time::{sleep, timeout};
 use tokio_util::sync::CancellationToken;
 use verification::VerificationController;
 
-use crate::commands::{DirectoryUpdate, Effect, LoginStep, UiCommand, ViewportChanged};
+use crate::commands::{
+    AppViewState, DirectoryUpdate, Effect, LoginStep, UiCommand, ViewportChanged,
+};
 use crate::domain::models::{ConnectionStatus, Room, RoomId, Space};
 use crate::ports::browser::BrowserPort;
 use crate::ports::matrix::{AuthPort, AuthenticatedSession};
@@ -326,6 +328,9 @@ impl AppService {
     }
 
     async fn handle_rooms_updated(&mut self, rooms: Arc<[Room]>) {
+        if self.active.is_none() {
+            return;
+        }
         if self.room_directory.store_rooms(rooms) {
             self.refresh_selected_room().await;
             self.room_directory.emit_directory(&self.selection);
@@ -333,6 +338,9 @@ impl AppService {
     }
 
     fn handle_spaces_updated(&mut self, spaces: Arc<[Space]>) {
+        if self.active.is_none() {
+            return;
+        }
         if self.room_directory.store_spaces(spaces) {
             let outcome = self.room_directory.reconcile(&mut self.selection);
             if outcome.space_dropped {
@@ -511,7 +519,7 @@ impl AppService {
             return;
         };
         tracing::info!("session expired, clearing local state");
-        self.set_connection(ConnectionStatus::Disconnected);
+        self.output.replace(AppViewState::logged_out());
         self.output.emit(Effect::LoggedOut).await;
         self.shutdown_all_tasks().await;
         self.room_directory.reset();
@@ -526,7 +534,7 @@ impl AppService {
             return;
         };
         let lifecycle_port = self.active.as_ref().map(|a| Arc::clone(&a.lifecycle));
-        self.set_connection(ConnectionStatus::Disconnected);
+        self.output.replace(AppViewState::logged_out());
         self.output.emit(Effect::LoggedOut).await;
         self.shutdown_all_tasks().await;
         self.room_directory.reset();

@@ -135,6 +135,12 @@ pub struct AppViewState {
     pub pagination: PaginationView,
 }
 
+impl AppViewState {
+    pub fn logged_out() -> Self {
+        Self::default()
+    }
+}
+
 #[derive(Clone, Copy, Default, PartialEq, Eq)]
 pub struct PaginationView {
     pub generation: i32,

@@ -27,6 +27,10 @@ impl AppOutputPort for UiEventOutput {
         });
     }
 
+    fn replace(&self, state: AppViewState) {
+        self.view_tx.send_replace(Arc::new(state));
+    }
+
     async fn emit(&self, effect: Effect) {
         if let Err(e) = self.ui_tx.send(effect).await {
             tracing::debug!("failed to send UI effect: {e}");
