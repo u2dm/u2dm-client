@@ -4,7 +4,7 @@ use std::sync::Arc;
 use slint::SharedString;
 
 use super::backend::{UiBackend, UiEventContext};
-use super::decode::{AvatarSlot, load_avatar_async};
+use super::decode::{AvatarSlot, clear_session_media, load_avatar_async};
 use super::present::{Status, VerifyStep, login_method_token, user_initial};
 use super::props::{BoolProp, IntProp, StringProp, UiProps};
 use super::reconcile::{apply_reconcile, apply_rooms, apply_timeline_patch};
@@ -98,6 +98,7 @@ pub fn dispatch_effect<B: UiBackend>(w: &B::Window, event: Effect, ctx: &UiEvent
             );
         }
         Effect::LoggedOut => {
+            clear_session_media();
             ctx.timeline.set_vec(Vec::new());
             ctx.rooms.set_vec(Vec::new());
             ctx.spaces.set_vec(Vec::new());

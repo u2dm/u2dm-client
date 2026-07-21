@@ -12,6 +12,16 @@ pub fn hex_encode_id(s: &str) -> String {
     out
 }
 
+pub fn random_hex(bytes: usize) -> String {
+    let mut buf = vec![0u8; bytes];
+    rand::fill(buf.as_mut_slice());
+    let mut out = String::with_capacity(bytes * 2);
+    for b in &buf {
+        write!(out, "{b:02x}").ok();
+    }
+    out
+}
+
 pub fn unique_tmp_path(path: &Path) -> PathBuf {
     static COUNTER: AtomicU64 = AtomicU64::new(0);
     let seq = COUNTER.fetch_add(1, Ordering::Relaxed);

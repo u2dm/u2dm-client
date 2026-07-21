@@ -104,6 +104,10 @@ impl MediaActions {
         self.cancel = CancellationToken::new();
     }
 
+    pub(super) async fn clear_session(&self) {
+        self.media_files.clear_session().await;
+    }
+
     pub(super) async fn drain(&mut self) {
         if self.tasks.is_empty() {
             return;

@@ -1,4 +1,4 @@
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::fs::File;
 use std::io::BufReader;
@@ -44,6 +44,7 @@ thread_local! {
     static AVATAR_NEEDS: RefCell<HashMap<AvatarSlot, PathBuf>> = RefCell::new(HashMap::new());
     static IMAGE_READY_FN: RefCell<Option<ImageReadyFn>> = const { RefCell::new(None) };
     static AVATAR_READY_FN: RefCell<Option<AvatarReadyFn>> = const { RefCell::new(None) };
+    static SESSION_EPOCH: Cell<u64> = const { Cell::new(0) };
 }
 
 type ImageReadyFn = Rc<dyn Fn(&str, DecodeOutcome<'_>)>;
@@ -188,10 +189,15 @@ enum Lane {
     Animation,
 }
 
+struct Job {
+    path: PathBuf,
+    epoch: u64,
+}
+
 struct QueueInner {
-    avatar: VecDeque<PathBuf>,
-    static_img: VecDeque<PathBuf>,
-    animation: VecDeque<PathBuf>,
+    avatar: VecDeque<Job>,
+    static_img: VecDeque<Job>,
+    animation: VecDeque<Job>,
 }
 
 impl QueueInner {
@@ -203,7 +209,7 @@ impl QueueInner {
         }
     }
 
-    fn lane_mut(&mut self, lane: Lane) -> &mut VecDeque<PathBuf> {
+    fn lane_mut(&mut self, lane: Lane) -> &mut VecDeque<Job> {
         match lane {
             Lane::Avatar => &mut self.avatar,
             Lane::Static => &mut self.static_img,
@@ -211,21 +217,27 @@ impl QueueInner {
         }
     }
 
-    fn take_front(&mut self) -> Option<(Lane, PathBuf)> {
+    fn take_front(&mut self) -> Option<(Lane, Job)> {
         for lane in [Lane::Avatar, Lane::Static, Lane::Animation] {
-            if let Some(path) = self.lane_mut(lane).pop_front() {
-                return Some((lane, path));
+            if let Some(job) = self.lane_mut(lane).pop_front() {
+                return Some((lane, job));
             }
         }
         None
     }
 
-    fn push_back_bounded(&mut self, lane: Lane, path: PathBuf) -> Option<PathBuf> {
+    fn push_back_bounded(&mut self, lane: Lane, job: Job) -> Option<Job> {
         let queue = self.lane_mut(lane);
-        queue.push_back(path);
+        queue.push_back(job);
         (queue.len() > DECODE_LANE_CAP)
             .then(|| queue.pop_front())
             .flatten()
+    }
+
+    fn clear(&mut self) {
+        self.avatar.clear();
+        self.static_img.clear();
+        self.animation.clear();
     }
 }
 
@@ -269,12 +281,12 @@ fn ensure_workers() {
 
 fn decode_worker(queue: &Arc<DecodeQueue>) {
     loop {
-        let (lane, path) = next_job(queue);
-        run_job(lane, &path);
+        let (lane, job) = next_job(queue);
+        run_job(lane, job);
     }
 }
 
-fn next_job(queue: &Arc<DecodeQueue>) -> (Lane, PathBuf) {
+fn next_job(queue: &Arc<DecodeQueue>) -> (Lane, Job) {
     let mut inner = lock(&queue.inner);
     loop {
         if let Some(picked) = inner.take_front() {
@@ -287,25 +299,28 @@ fn next_job(queue: &Arc<DecodeQueue>) -> (Lane, PathBuf) {
     }
 }
 
-fn run_job(lane: Lane, path: &Path) {
-    let path = path.to_path_buf();
+fn run_job(lane: Lane, job: Job) {
+    let Job { path, epoch } = job;
     match lane {
         Lane::Avatar | Lane::Static => {
             let decoded = decode_rgba(&path);
             drop(slint::invoke_from_event_loop(move || {
-                on_static_decoded(&path, decoded);
+                on_static_decoded(&path, decoded, epoch);
             }));
         }
         Lane::Animation => {
             let decoded = decode_raw_animation(&path);
             drop(slint::invoke_from_event_loop(move || {
-                on_animation_decoded(&path, decoded);
+                on_animation_decoded(&path, decoded, epoch);
             }));
         }
     }
 }
 
-fn on_static_decoded(path: &Path, decoded: Option<(Vec<u8>, u32, u32)>) {
+fn on_static_decoded(path: &Path, decoded: Option<(Vec<u8>, u32, u32)>, epoch: u64) {
+    if epoch != SESSION_EPOCH.with(Cell::get) {
+        return;
+    }
     let decoded = decoded.map(|(bytes, width, height)| {
         let len = bytes.len();
         (image_from_rgba(&bytes, width, height), len)
@@ -342,17 +357,18 @@ fn notify_avatar_ready(slots: &[AvatarSlot], outcome: DecodeOutcome<'_>) {
 
 fn send_job(lane: Lane, path: PathBuf) {
     ensure_workers();
+    let epoch = SESSION_EPOCH.with(Cell::get);
     let dropped = DECODE_QUEUE.with_borrow(|slot| {
         let queue = slot.as_ref()?;
         let dropped = {
             let mut inner = lock(&queue.inner);
-            inner.push_back_bounded(lane, path)
+            inner.push_back_bounded(lane, Job { path, epoch })
         };
         queue.signal.notify_all();
         dropped
     });
     if let Some(dropped) = dropped {
-        defer_dropped(lane, &dropped);
+        defer_dropped(lane, &dropped.path);
     }
 }
 
@@ -440,6 +456,23 @@ pub fn record_media_need(unique_id: &str, thumbnail: Option<PathBuf>, avatar: Op
 
 pub fn forget_all_media_needs() {
     MEDIA_NEEDS.with_borrow_mut(HashMap::clear);
+}
+
+pub fn clear_session_media() {
+    SESSION_EPOCH.with(|epoch| epoch.set(epoch.get().wrapping_add(1)));
+    IMAGE_CACHE.with_borrow_mut(|cache| *cache = ImageCache::new());
+    ANIMATION_CACHE.with_borrow_mut(HashMap::clear);
+    PLAYBACKS.with_borrow_mut(HashMap::clear);
+    IN_FLIGHT.with_borrow_mut(HashMap::clear);
+    AVATAR_WAITERS.with_borrow_mut(HashMap::clear);
+    MEDIA_NEEDS.with_borrow_mut(HashMap::clear);
+    AVATAR_NEEDS.with_borrow_mut(HashMap::clear);
+    ANIMATION_TIMER.with(Timer::stop);
+    DECODE_QUEUE.with_borrow(|slot| {
+        if let Some(queue) = slot.as_ref() {
+            lock(&queue.inner).clear();
+        }
+    });
 }
 
 pub fn record_avatar_need(slot: AvatarSlot, path: PathBuf) {
@@ -660,7 +693,10 @@ fn cached_animation(path: &Path) -> Option<Rc<Animation>> {
     ANIMATION_CACHE.with_borrow(|cache| cache.get(path).cloned().flatten())
 }
 
-fn on_animation_decoded(path: &Path, decoded: Option<RawAnimation>) {
+fn on_animation_decoded(path: &Path, decoded: Option<RawAnimation>, epoch: u64) {
+    if epoch != SESSION_EPOCH.with(Cell::get) {
+        return;
+    }
     let remaining = ANIMATION_MEMORY_BUDGET.saturating_sub(cached_animation_bytes());
     let animation = decoded
         .filter(|raw| raw.bytes <= remaining)

@@ -128,9 +128,14 @@ impl SessionController {
         group.spawn(async move { this.logout(session, lifecycle_port).await });
     }
 
-    pub(super) fn spawn_expire_session(&self, group: &mut TaskGroup, session: u64) {
+    pub(super) fn spawn_expire_session(
+        &self,
+        group: &mut TaskGroup,
+        session: u64,
+        lifecycle_port: Arc<dyn SessionPort>,
+    ) {
         let this = self.clone();
-        group.spawn(async move { this.expire_session(session).await });
+        group.spawn(async move { this.expire_session(session, lifecycle_port).await });
     }
 
     async fn restore_session(&self) {
@@ -289,8 +294,8 @@ impl SessionController {
         }
     }
 
-    async fn expire_session(&self, session: u64) {
-        self.clear_credentials().await;
+    async fn expire_session(&self, session: u64, lifecycle_port: Arc<dyn SessionPort>) {
+        self.clear_local_state(lifecycle_port.as_ref()).await;
         self.lifecycle.finish_logout(session);
         self.output
             .emit(Effect::LoginError(

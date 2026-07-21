@@ -519,14 +519,23 @@ impl AppService {
             return;
         };
         tracing::info!("session expired, clearing local state");
+        let lifecycle_port = self.active.as_ref().map(|a| Arc::clone(&a.lifecycle));
         self.output.replace(AppViewState::logged_out());
         self.output.emit(Effect::LoggedOut).await;
         self.shutdown_all_tasks().await;
+        self.media.clear_session().await;
         self.room_directory.reset();
         self.selection = Selection::default();
         self.active = None;
-        self.session
-            .spawn_expire_session(&mut self.operations, session);
+        match lifecycle_port {
+            Some(port) => {
+                self.session
+                    .spawn_expire_session(&mut self.operations, session, port);
+            }
+            None => {
+                self.lifecycle.finish_logout(session);
+            }
+        }
     }
 
     async fn handle_logout(&mut self) {
@@ -537,6 +546,7 @@ impl AppService {
         self.output.replace(AppViewState::logged_out());
         self.output.emit(Effect::LoggedOut).await;
         self.shutdown_all_tasks().await;
+        self.media.clear_session().await;
         self.room_directory.reset();
         self.selection = Selection::default();
         self.active = None;
