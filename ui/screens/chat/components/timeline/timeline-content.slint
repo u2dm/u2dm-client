@@ -76,6 +76,7 @@ export component TimelineContent inherits Rectangle {
 
         property <int> seen-prepend-token: 0;
         property <length> prev-viewport-height: 0;
+        property <length> prev-viewport-y: 0;
         property <int> prev-item-count: 0;
 
         property <length> max-scroll-y:
@@ -86,7 +87,8 @@ export component TimelineContent inherits Rectangle {
 
         changed viewport-height => {
             root.content-height = self.viewport-height;
-            if (self.settling || self.auto-scroll) && self.scrollable {
+            if (self.settling || self.auto-scroll) && self.scrollable
+                && self.viewport-y <= self.prev-viewport-y {
                 self.scroll-to-bottom();
             } else if RoomView.prepend-token != self.seen-prepend-token
                 && self.scrollable
@@ -112,11 +114,17 @@ export component TimelineContent inherits Rectangle {
                 if self.at-bottom && !self.was-at-bottom && !RoomView.forwards-loading {
                     root.paginate-forwards();
                 }
+                if self.scrollable {
+                    if self.viewport-y > self.prev-viewport-y {
+                        self.auto-scroll = false;
+                    } else if self.at-bottom {
+                        self.auto-scroll = true;
+                    }
+                }
             }
 
-            if self.scrollable {
-                self.auto-scroll = self.viewport-y <= -(self.max-scroll-y - self.scroll-threshold);
-            }
+            self.prev-viewport-y = self.viewport-y;
+
             if (self.at-top != self.was-at-top) || (self.at-bottom != self.was-at-bottom) {
                 self.was-at-top = self.at-top;
                 self.was-at-bottom = self.at-bottom;
@@ -136,6 +144,7 @@ export component TimelineContent inherits Rectangle {
             self.settling = true;
             self.seen-prepend-token = RoomView.prepend-token;
             self.prev-viewport-height = 0;
+            self.prev-viewport-y = 0;
             self.prev-item-count = 0;
             self.scroll-to-bottom();
         }

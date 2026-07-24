@@ -137,7 +137,7 @@ msgctxt "TimelineContent"
 msgid "Loading newer messages..."
 msgstr ""
 
-#: ui/screens/chat/components/timeline/timeline-content.slint:184
+#: ui/screens/chat/components/timeline/timeline-content.slint:193
 msgctxt "TimelineContent"
 msgid "Jump to latest messages"
 msgstr ""
