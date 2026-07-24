@@ -1,4 +1,4 @@
-import { Palette, Button } from "std-widgets.slint";
+import { Palette } from "std-widgets.slint";
 
 import { SendMessageRequest, SaveFileRequest } from "../types.slint";
 
@@ -7,6 +7,7 @@ import { MessageInput } from "./message-input.slint";
 import { Fonts } from "../../../../theme.slint";
 import { TimelineState } from "../../../../enums.slint";
 import { DirectoryView, RoomView } from "../../../../views.slint";
+import { StatusPill } from "./status-pill.slint";
 
 export component TimelineView inherits Rectangle {
     background: Palette.background;
@@ -41,7 +42,7 @@ export component TimelineView inherits Rectangle {
     property <bool> is-blocking-status: RoomView.timeline-status == TimelineState.loading
         || RoomView.timeline-status == TimelineState.failed
         || RoomView.timeline-status == TimelineState.disconnected;
-    property <bool> show-status-panel: root.has-room && RoomView.timeline.length == 0 && root.is-blocking-status;
+    property <bool> show-status-pill: root.has-room && root.is-blocking-status;
     property <bool> can-retry: (RoomView.timeline-status == TimelineState.failed && RoomView.timeline-retryable)
         || RoomView.timeline-status == TimelineState.disconnected;
     pure function status-message(status: TimelineState) -> string {
@@ -99,36 +100,6 @@ export component TimelineView inherits Rectangle {
         }
     }
 
-    if show-status-panel: Rectangle {
-        x: 0;
-        y: root.header-height;
-        width: root.width;
-        height: root.height - root.header-height - root.input-height;
-
-        VerticalLayout {
-            alignment: center;
-            spacing: 12px;
-
-            Text {
-                text: root.status-message(RoomView.timeline-status);
-                font-size: 14px;
-                color: Palette.foreground.transparentize(0.5);
-                horizontal-alignment: center;
-            }
-
-            if can-retry: HorizontalLayout {
-                alignment: center;
-
-                Button {
-                    text: @tr("Retry");
-                    clicked => {
-                        root.retry();
-                    }
-                }
-            }
-        }
-    }
-
     if has-room: TimelineContent {
         x: 0;
         y: root.header-height + root.spacing;
@@ -161,6 +132,17 @@ export component TimelineView inherits Rectangle {
         }
         jump-to-latest => {
             root.jump-to-latest();
+        }
+    }
+
+    if show-status-pill: StatusPill {
+        x: 16px;
+        y: root.height - root.input-height - root.spacing - self.height - 16px;
+        text: root.status-message(RoomView.timeline-status);
+        loading: RoomView.timeline-status == TimelineState.loading;
+        show-retry: root.can-retry;
+        retry => {
+            root.retry();
         }
     }
 

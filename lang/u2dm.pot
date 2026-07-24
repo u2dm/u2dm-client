@@ -126,17 +126,17 @@ msgctxt "MessageBubble"
 msgid "Reply"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/timeline-content.slint:52
+#: ui/screens/chat/components/timeline/timeline-content.slint:163
 msgctxt "TimelineContent"
 msgid "Loading older messages..."
 msgstr ""
 
-#: ui/screens/chat/components/timeline/timeline-content.slint:59
+#: ui/screens/chat/components/timeline/timeline-content.slint:170
 msgctxt "TimelineContent"
 msgid "Loading newer messages..."
 msgstr ""
 
-#: ui/screens/chat/components/timeline/timeline-content.slint:194
+#: ui/screens/chat/components/timeline/timeline-content.slint:182
 msgctxt "TimelineContent"
 msgid "Jump to latest messages"
 msgstr ""
@@ -351,35 +351,40 @@ msgctxt "EmojiPicker"
 msgid "No emoji found"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/timeline-view.slint:49
+#: ui/screens/chat/components/timeline/timeline-view.slint:50
 msgctxt "TimelineView"
 msgid "Loading messages..."
 msgstr ""
 
-#: ui/screens/chat/components/timeline/timeline-view.slint:52
+#: ui/screens/chat/components/timeline/timeline-view.slint:53
 msgctxt "TimelineView"
 msgid "Connection lost"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/timeline-view.slint:54
+#: ui/screens/chat/components/timeline/timeline-view.slint:55
 msgctxt "TimelineView"
 msgid "Couldn't load messages"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/timeline-view.slint:65
+#: ui/screens/chat/components/timeline/timeline-view.slint:66
 msgctxt "TimelineView"
 msgid "Select a room"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/timeline-view.slint:94
+#: ui/screens/chat/components/timeline/timeline-view.slint:95
 msgctxt "TimelineView"
 msgid "{n} member"
 msgid_plural "{n} members"
 msgstr[0] ""
 msgstr[1] ""
 
-#: ui/screens/chat/components/timeline/timeline-view.slint:123
-msgctxt "TimelineView"
+#: ui/screens/chat/components/timeline/status-pill.slint:42
+msgctxt "StatusPill"
+msgid "Retry loading messages"
+msgstr ""
+
+#: ui/screens/chat/components/timeline/status-pill.slint:49
+msgctxt "StatusPill"
 msgid "Retry"
 msgstr ""
 

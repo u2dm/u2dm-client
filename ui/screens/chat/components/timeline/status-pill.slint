@@ -1,0 +1,57 @@
+import { Palette, Spinner } from "std-widgets.slint";
+import { ClickArea } from "../../../../components/a11y.slint";
+
+export component StatusPill inherits Rectangle {
+    in property <string> text;
+    in property <bool> loading;
+    in property <bool> show-retry;
+
+    callback retry();
+
+    width: pill-layout.preferred-width;
+    height: pill-layout.preferred-height;
+    border-radius: self.height / 2;
+    background: Palette.alternate-background;
+    drop-shadow-blur: 12px;
+    drop-shadow-color: Palette.foreground.transparentize(0.82);
+    drop-shadow-offset-y: 2px;
+
+    pill-layout := HorizontalLayout {
+        padding-left: 14px;
+        padding-right: root.show-retry ? 8px : 14px;
+        padding-top: 8px;
+        padding-bottom: 8px;
+        spacing: 8px;
+
+        if root.loading: Spinner {
+            width: 16px;
+            height: 16px;
+            indeterminate: true;
+        }
+
+        Text {
+            text: root.text;
+            font-size: 13px;
+            color: Palette.foreground.transparentize(0.15);
+            vertical-alignment: center;
+        }
+
+        if root.show-retry: ClickArea {
+            width: retry-label.preferred-width + 12px;
+            ring-radius: 8px;
+            label: @tr("Retry loading messages");
+            clicked => {
+                root.retry();
+            }
+
+            retry-label := Text {
+                x: (parent.width - self.width) / 2;
+                text: @tr("Retry");
+                font-size: 13px;
+                font-weight: 600;
+                color: Palette.accent-background;
+                vertical-alignment: center;
+            }
+        }
+    }
+}
