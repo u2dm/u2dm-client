@@ -12,14 +12,14 @@ import { MessagePreview } from "../message-preview.slint";
 import { ReplyQuote } from "../reply-quote.slint";
 import { ServiceMessage } from "./messages/service-message.slint";
 import { TextMessage } from "./messages/text-message.slint";
-import { ImageMessage } from "./messages/image-message.slint";
+import { ImageMessage, ImagePlaceholder } from "./messages/image-message.slint";
 import { FileMessage } from "./messages/file-message.slint";
 import { UtdMessage } from "./messages/utd-message.slint";
 import { UnsupportedMessage } from "./messages/unsupported-message.slint";
 import { Avatar } from "../../../../components/avatar.slint";
 import { ClickArea } from "../../../../components/a11y.slint";
 import { Avatars } from "../../../../theme.slint";
-import { MessageKind } from "../../../../enums.slint";
+import { MediaState, MessageKind } from "../../../../enums.slint";
 
 component PronounBadge inherits Rectangle {
     in property <string> text;
@@ -36,6 +36,28 @@ component PronounBadge inherits Rectangle {
         horizontal-alignment: center;
         vertical-alignment: center;
         overflow: elide;
+    }
+}
+
+component SenderLine inherits HorizontalLayout {
+    in property <string> sender;
+    in property <[string]> pronouns;
+
+    alignment: start;
+    spacing: 4px;
+
+    Text {
+        text: root.sender;
+        font-size: 12px;
+        font-weight: 700;
+        color: Palette.accent-background;
+        vertical-alignment: center;
+        overflow: elide;
+    }
+
+    for pronoun in root.pronouns: PronounBadge {
+        y: (parent.height - self.height) / 2;
+        text: pronoun;
     }
 }
 
@@ -58,6 +80,13 @@ export component MessageBubble inherits VerticalLayout {
         && msg.message-type != MessageKind.utd
         && msg.message-type != MessageKind.unsupported;
     property <bool> has-remote-id: msg.event-id != "";
+
+    property <bool> is-image: msg.message-type == MessageKind.image;
+    property <bool> has-caption: msg.body != "";
+    property <bool> has-photo: root.is-image
+        && (msg.media-state != MediaState.idle || (msg.image-width > 0 && msg.image-height > 0));
+    property <bool> is-photo-only: root.has-photo && !root.has-caption;
+    property <length> photo-row-padding: root.has-photo ? 10px : 0px;
 
     if is-service: ServiceMessage {
         kind: msg.service-kind;
@@ -91,6 +120,7 @@ export component MessageBubble inherits VerticalLayout {
             height: bubble-content.preferred-height;
             background: is-own ? own-bubble-color : other-bubble-color;
             border-radius: 12px;
+            clip: true;
 
             hover-bg := TouchArea {
                 width: 100%;
@@ -98,31 +128,28 @@ export component MessageBubble inherits VerticalLayout {
             }
 
             bubble-content := VerticalLayout {
-                padding: 4px;
-                padding-left: 10px;
-                padding-right: 10px;
+                padding-top: root.has-photo ? 0 : 4px;
+                padding-bottom: root.is-photo-only ? 0 : 4px;
+                padding-left: root.has-photo ? 0 : 10px;
+                padding-right: root.has-photo ? 0 : 10px;
 
                 if !is-own: HorizontalLayout {
-                    alignment: start;
-                    spacing: 4px;
+                    padding-left: root.photo-row-padding;
+                    padding-right: root.photo-row-padding;
+                    padding-top: root.has-photo ? 5px : 0;
+                    padding-bottom: root.has-photo ? 3px : 0;
 
-                    Text {
-                        text: msg.sender;
-                        font-size: 12px;
-                        font-weight: 700;
-                        color: Palette.accent-background;
-                        vertical-alignment: center;
-                        overflow: elide;
-                    }
-
-                    for pronoun in msg.pronouns: PronounBadge {
-                        y: (parent.height - self.height) / 2;
-                        text: pronoun;
+                    SenderLine {
+                        sender: msg.sender;
+                        pronouns: msg.pronouns;
                     }
                 }
 
                 if msg.has-reply: VerticalLayout {
                     padding-top: is-own ? 0 : 4px;
+                    padding-bottom: root.has-photo ? 4px : 0;
+                    padding-left: root.photo-row-padding;
+                    padding-right: root.photo-row-padding;
 
                     Rectangle {
                         height: reply-quote.preferred-height;
@@ -139,16 +166,25 @@ export component MessageBubble inherits VerticalLayout {
                     }
                 }
 
-                if msg.message-type == MessageKind.image: ImageMessage {
+                if root.has-photo: ImageMessage {
                     thumbnail: msg.thumbnail;
                     media-state: msg.media-state;
                     image-width: msg.image-width;
                     image-height: msg.image-height;
                     body: msg.body;
                     event-id: msg.event-id;
+                    frame-limit: root.bubble-max-width;
+                    timestamp: msg.timestamp;
+                    edited: msg.edited;
+                    show-timestamp: root.is-photo-only;
+                    bubble-hovered: hover-bg.has-hover || reply-btn.has-hover;
                     open-media(id) => {
                         root.open-media(id);
                     }
+                }
+
+                if root.is-image && !root.has-photo: ImagePlaceholder {
+                    body: msg.body;
                 }
 
                 if msg.message-type == MessageKind.file: FileMessage {
@@ -170,9 +206,11 @@ export component MessageBubble inherits VerticalLayout {
                     text: msg.body;
                 }
 
-                HorizontalLayout {
+                if !root.is-photo-only: HorizontalLayout {
                     alignment: end;
                     spacing: 3px;
+                    padding-left: root.photo-row-padding;
+                    padding-right: root.photo-row-padding;
 
                     if msg.edited: IconDisplay {
                         y: (parent.height - self.height) / 2;

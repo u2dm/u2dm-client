@@ -2,15 +2,7 @@ import { Palette, Spinner } from "std-widgets.slint";
 import { IconDisplay, IconSet } from "@lucide";
 import { ClickArea } from "../../../../../components/a11y.slint";
 import { MediaState } from "../../../../../enums.slint";
-
-component MediaFrame inherits Rectangle {
-    in property <float> aspect;
-
-    width: min(400px, max(267px, 400px * self.aspect));
-    height: min(400px, self.width / max(self.aspect, 0.01));
-    background: Palette.alternate-background;
-    border-radius: 4px;
-}
+import { Fonts } from "../../../../../theme.slint";
 
 export component ImageMessage inherits VerticalLayout {
     in property <image> thumbnail;
@@ -19,80 +11,146 @@ export component ImageMessage inherits VerticalLayout {
     in property <int> image-height;
     in property <string> body;
     in property <string> event-id;
+    in property <length> frame-limit: 400px;
+    in property <string> timestamp;
+    in property <bool> edited;
+    in property <bool> show-timestamp;
+    in property <bool> bubble-hovered;
 
-    property <bool> has-dimensions: root.image-width > 0 && root.image-height > 0;
+    out property <length> display-width: min(root.width-limit, max(140px, root.height-limit * root.aspect));
+    out property <length> display-height: min(root.height-limit, max(80px, root.display-width / max(root.aspect, 0.01)));
+
+    property <length> width-limit: min(root.frame-limit, 400px);
+    property <length> height-limit: 380px;
     property <bool> is-ready: root.media-state == MediaState.ready;
     property <bool> is-failed: root.media-state == MediaState.failed;
-    property <bool> is-loading: root.media-state == MediaState.idle && root.has-dimensions;
-    property <bool> has-frame: root.is-ready || root.is-loading || root.is-failed;
-    property <bool> is-text-only: root.media-state == MediaState.idle && !root.has-dimensions;
-    property <float> frame-aspect: root.image-width / max(root.image-height, 1);
     property <bool> has-caption: root.body != "";
+    property <bool> is-decoded: root.thumbnail.width > 0 && root.thumbnail.height > 0;
+    property <bool> has-dimensions: root.image-width > 0 && root.image-height > 0;
+    property <float> aspect: root.is-ready && root.is-decoded
+        ? root.thumbnail.width / max(root.thumbnail.height, 1)
+        : (root.has-dimensions ? root.image-width / max(root.image-height, 1) : 1.5);
 
     callback open-media(string);
 
-    if is-ready: ClickArea {
-        enabled: root.event-id != "";
-        label: root.has-caption ? @tr("Open image: {}", root.body) : @tr("Open image");
-        ring-radius: 4px;
-        width: thumb-img.width;
-        height: thumb-img.height;
-        clicked => {
-            root.open-media(root.event-id);
-        }
+    HorizontalLayout {
+        alignment: start;
 
-        thumb-img := Image {
-            source: root.thumbnail;
-            property <float> aspect: self.source.width / max(self.source.height, 1);
-            width: min(400px, max(267px, 400px * aspect));
-            height: min(400px, self.width / max(aspect, 0.01));
-            image-fit: ImageFit.contain;
-        }
-    }
+        Rectangle {
+            width: root.display-width;
+            height: root.display-height;
+            background: root.is-ready ? transparent : Palette.alternate-background;
+            clip: true;
 
-    if is-loading: MediaFrame {
-        aspect: root.frame-aspect;
-        Spinner {
-            indeterminate: true;
-        }
-    }
+            media-click := ClickArea {
+                enabled: root.is-ready && root.event-id != "";
+                label: root.has-caption ? @tr("Open image: {}", root.body) : @tr("Open image");
+                ring-radius: 4px;
+                width: 100%;
+                height: 100%;
+                clicked => {
+                    root.open-media(root.event-id);
+                }
 
-    if is-failed: MediaFrame {
-        aspect: root.has-dimensions ? root.frame-aspect : 1.5;
-
-        VerticalLayout {
-            alignment: center;
-            spacing: 8px;
-
-            HorizontalLayout {
-                alignment: center;
-
-                IconDisplay {
-                    icon: IconSet.ImageOff;
-                    size: 32px;
-                    stroke: Palette.foreground.transparentize(0.5);
+                if root.is-ready: Image {
+                    width: 100%;
+                    height: 100%;
+                    source: root.thumbnail;
+                    image-fit: ImageFit.cover;
                 }
             }
 
-            Text {
-                text: @tr("Image unavailable");
-                font-size: 13px;
-                color: Palette.foreground.transparentize(0.4);
-                horizontal-alignment: center;
+            if !root.is-ready && !root.is-failed: Spinner {
+                x: (parent.width - self.width) / 2;
+                y: (parent.height - self.height) / 2;
+                indeterminate: true;
+            }
+
+            if root.is-failed: VerticalLayout {
+                width: 100%;
+                height: 100%;
+                alignment: center;
+                spacing: 8px;
+
+                HorizontalLayout {
+                    alignment: center;
+
+                    IconDisplay {
+                        icon: IconSet.ImageOff;
+                        size: 32px;
+                        stroke: Palette.foreground.transparentize(0.5);
+                    }
+                }
+
+                Text {
+                    text: @tr("Image unavailable");
+                    font-size: 13px;
+                    color: Palette.foreground.transparentize(0.4);
+                    horizontal-alignment: center;
+                }
+            }
+
+            if root.show-timestamp: Rectangle {
+                x: parent.width - self.width - 8px;
+                y: parent.height - self.height - 8px;
+                width: timestamp-row.preferred-width + 16px;
+                height: timestamp-row.preferred-height + 6px;
+                border-radius: self.height / 2;
+                background: Palette.background.transparentize(0.3);
+                opacity: media-click.has-hover || root.bubble-hovered ? 1 : 0;
+
+                animate opacity {
+                    duration: 120ms;
+                    easing: ease-out;
+                }
+
+                timestamp-row := HorizontalLayout {
+                    x: 8px;
+                    y: (parent.height - self.height) / 2;
+                    width: self.preferred-width;
+                    height: self.preferred-height;
+                    spacing: 3px;
+
+                    if root.edited: IconDisplay {
+                        y: (parent.height - self.height) / 2;
+                        icon: IconSet.Pencil;
+                        size: 11px;
+                        stroke: Palette.foreground;
+                    }
+
+                    Text {
+                        text: root.timestamp;
+                        font-size: 12px;
+                        color: Palette.foreground;
+                        vertical-alignment: center;
+                    }
+                }
             }
         }
     }
 
-    if is-text-only: Text {
-        text: root.has-caption ? @tr("Image: {}", root.body) : @tr("Image");
-        font-size: 14px;
-        color: Palette.foreground.transparentize(0.3);
-        wrap: word-wrap;
-    }
+    if root.has-caption: HorizontalLayout {
+        alignment: start;
+        padding-left: 10px;
+        padding-right: 10px;
+        padding-top: 5px;
 
-    if has-frame && has-caption: Text {
-        text: root.body;
-        font-size: 14px;
-        wrap: word-wrap;
+        Text {
+            width: root.display-width - 20px;
+            text: root.body;
+            font-family: Fonts.emoji;
+            font-size: 14px;
+            color: Palette.foreground;
+            wrap: word-wrap;
+        }
     }
+}
+
+export component ImagePlaceholder inherits Text {
+    in property <string> body;
+
+    text: root.body != "" ? @tr("Image: {}", root.body) : @tr("Image");
+    font-size: 14px;
+    color: Palette.foreground.transparentize(0.3);
+    wrap: word-wrap;
 }

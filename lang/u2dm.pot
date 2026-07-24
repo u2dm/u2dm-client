@@ -116,12 +116,12 @@ msgctxt "MessageInput"
 msgid "Send"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/message-bubble.slint:200
+#: ui/screens/chat/components/timeline/message-bubble.slint:238
 msgctxt "MessageBubble"
 msgid "Reply to {}"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/message-bubble.slint:231
+#: ui/screens/chat/components/timeline/message-bubble.slint:269
 msgctxt "MessageBubble"
 msgid "Reply"
 msgstr ""
@@ -141,28 +141,28 @@ msgctxt "TimelineContent"
 msgid "Jump to latest messages"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/messages/image-message.slint:36
+#: ui/screens/chat/components/timeline/messages/image-message.slint:47
 msgctxt "ImageMessage"
 msgid "Open image: {}"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/messages/image-message.slint:36
+#: ui/screens/chat/components/timeline/messages/image-message.slint:47
 msgctxt "ImageMessage"
 msgid "Open image"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/messages/image-message.slint:78
+#: ui/screens/chat/components/timeline/messages/image-message.slint:86
 msgctxt "ImageMessage"
 msgid "Image unavailable"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/messages/image-message.slint:87
-msgctxt "ImageMessage"
+#: ui/screens/chat/components/timeline/messages/image-message.slint:152
+msgctxt "ImagePlaceholder"
 msgid "Image: {}"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/messages/image-message.slint:87
-msgctxt "ImageMessage"
+#: ui/screens/chat/components/timeline/messages/image-message.slint:152
+msgctxt "ImagePlaceholder"
 msgid "Image"
 msgstr ""
 
