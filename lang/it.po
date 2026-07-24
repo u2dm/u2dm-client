@@ -342,12 +342,12 @@ msgctxt "EmojiPicker"
 msgid "Search emoji"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/emoji-picker.slint:152
+#: ui/screens/chat/components/timeline/emoji-picker.slint:155
 msgctxt "EmojiPicker"
 msgid "Skin tone {}"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/emoji-picker.slint:210
+#: ui/screens/chat/components/timeline/emoji-picker.slint:214
 msgctxt "EmojiPicker"
 msgid "No emoji found"
 msgstr ""

@@ -143,15 +143,19 @@ export component EmojiPicker inherits Rectangle {
                 }
             }
 
-            HorizontalLayout {
-                spacing: 4px;
+            VerticalLayout {
                 alignment: center;
-                for swatch[idx] in root.tone-colors: ToneSwatch {
-                    swatch: swatch;
-                    selected: idx == EmojiStore.tone;
-                    label: @tr("Skin tone {}", idx + 1);
-                    clicked => {
-                        EmojiStore.tone = idx;
+
+                HorizontalLayout {
+                    spacing: 4px;
+                    alignment: center;
+                    for swatch[idx] in root.tone-colors: ToneSwatch {
+                        swatch: swatch;
+                        selected: idx == EmojiStore.tone;
+                        label: @tr("Skin tone {}", idx + 1);
+                        clicked => {
+                            EmojiStore.tone = idx;
+                        }
                     }
                 }
             }
