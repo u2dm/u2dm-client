@@ -5,6 +5,7 @@ import { IconDisplay, IconSet } from "@lucide";
 
 import { SendMessageRequest, EmojiInsert } from "../types.slint";
 import { EmojiPicker, EmojiStore } from "./emoji-picker.slint";
+import { ReplyQuote } from "../reply-quote.slint";
 import { Fonts } from "../../../../theme.slint";
 import { ClickArea } from "../../../../components/a11y.slint";
 
@@ -18,6 +19,8 @@ export component MessageInput inherits Rectangle {
     callback send-message(SendMessageRequest);
 
     property <bool> picker-open: false;
+    property <bool> is-replying: root.reply-event-id != "";
+    property <bool> has-text: root.message != "";
     property <int> caret: 0;
     property <EmojiInsert> pending-insert;
     property <length> input-row-height: 40px;
@@ -26,7 +29,7 @@ export component MessageInput inherits Rectangle {
     height: layout.preferred-height;
 
     function submit() {
-        if root.message != "" {
+        if root.has-text {
             root.send-message({
                 room-id: root.room-id,
                 body: root.message,
@@ -72,7 +75,7 @@ export component MessageInput inherits Rectangle {
     }
 
     layout := VerticalLayout {
-        if root.reply-event-id != "": Rectangle {
+        if root.is-replying: Rectangle {
             height: 44px;
             background: Palette.background.transparentize(0.3);
 
@@ -83,32 +86,10 @@ export component MessageInput inherits Rectangle {
                 padding-bottom: 6px;
                 spacing: 8px;
 
-                Rectangle {
-                    width: 3px;
-                    background: Palette.accent-background;
-                    border-radius: 1.5px;
-                }
-
-                VerticalLayout {
+                ReplyQuote {
                     horizontal-stretch: 1;
-                    alignment: center;
-                    spacing: 1px;
-
-                    Text {
-                        text: @tr("Reply to {}", root.reply-sender);
-                        font-size: 12px;
-                        font-weight: 700;
-                        color: Palette.accent-background;
-                        overflow: elide;
-                    }
-
-                    Text {
-                        text: root.reply-preview;
-                        font-family: Fonts.emoji;
-                        font-size: 12px;
-                        color: Palette.foreground.transparentize(0.4);
-                        overflow: elide;
-                    }
+                    sender: @tr("Reply to {}", root.reply-sender);
+                    preview: root.reply-preview;
                 }
 
                 cancel-reply-touch := ClickArea {
@@ -155,7 +136,7 @@ export component MessageInput inherits Rectangle {
                 }
             }
 
-            if root.message == "": Text {
+            if !root.has-text: Text {
                 x: 0;
                 y: 0;
                 width: parent.width;
@@ -190,7 +171,7 @@ export component MessageInput inherits Rectangle {
         send-touch := ClickArea {
             width: 44px;
             ring-radius: 8px;
-            enabled: root.message != "";
+            enabled: root.has-text;
             label: @tr("Send");
             clicked => {
                 root.submit();
@@ -201,7 +182,7 @@ export component MessageInput inherits Rectangle {
                 y: (parent.height - self.height) / 2;
                 icon: IconSet.SendHorizontal;
                 size: 20px;
-                stroke: root.message != ""
+                stroke: root.has-text
                     ? Palette.accent-background
                     : Palette.foreground.transparentize(0.6);
             }

@@ -9,6 +9,7 @@ import {
 } from "../types.slint";
 
 import { MessagePreview } from "../message-preview.slint";
+import { ReplyQuote } from "../reply-quote.slint";
 import { ServiceMessage } from "./messages/service-message.slint";
 import { TextMessage } from "./messages/text-message.slint";
 import { ImageMessage } from "./messages/image-message.slint";
@@ -17,8 +18,26 @@ import { UtdMessage } from "./messages/utd-message.slint";
 import { UnsupportedMessage } from "./messages/unsupported-message.slint";
 import { Avatar } from "../../../../components/avatar.slint";
 import { ClickArea } from "../../../../components/a11y.slint";
-import { Avatars, Fonts } from "../../../../theme.slint";
+import { Avatars } from "../../../../theme.slint";
 import { MessageKind } from "../../../../enums.slint";
+
+component PronounBadge inherits Rectangle {
+    in property <string> text;
+
+    width: pronoun-text.preferred-width + 10px;
+    height: pronoun-text.preferred-height + 2px;
+    border-radius: self.height / 2;
+    background: Palette.foreground.transparentize(0.92);
+
+    pronoun-text := Text {
+        text: root.text;
+        font-size: 10px;
+        color: Palette.accent-background.transparentize(0.2);
+        horizontal-alignment: center;
+        vertical-alignment: center;
+        overflow: elide;
+    }
+}
 
 export component MessageBubble inherits VerticalLayout {
     in property <bool> is-own;
@@ -33,13 +52,20 @@ export component MessageBubble inherits VerticalLayout {
     property <color> other-bubble-color: Palette.alternate-background;
     property <length> bubble-max-width: available-width * 0.7;
 
-    if msg.message-type == MessageKind.service: ServiceMessage {
+    property <bool> is-service: msg.message-type == MessageKind.service;
+    property <bool> is-plain-text: msg.message-type != MessageKind.image
+        && msg.message-type != MessageKind.file
+        && msg.message-type != MessageKind.utd
+        && msg.message-type != MessageKind.unsupported;
+    property <bool> has-remote-id: msg.event-id != "";
+
+    if is-service: ServiceMessage {
         kind: msg.service-kind;
         actor: msg.sender;
         target: msg.service-target;
     }
 
-    if msg.message-type != MessageKind.service: HorizontalLayout {
+    if !is-service: HorizontalLayout {
         alignment: is-own ? end : start;
         padding-left: is-own ? 0 : 8px;
         padding-right: is-own ? 8px : 0;
@@ -89,21 +115,9 @@ export component MessageBubble inherits VerticalLayout {
                         overflow: elide;
                     }
 
-                    for pronoun in msg.pronouns: Rectangle {
+                    for pronoun in msg.pronouns: PronounBadge {
                         y: (parent.height - self.height) / 2;
-                        width: pronoun-text.preferred-width + 10px;
-                        height: pronoun-text.preferred-height + 2px;
-                        border-radius: self.height / 2;
-                        background: Palette.foreground.transparentize(0.92);
-
-                        pronoun-text := Text {
-                            text: pronoun;
-                            font-size: 10px;
-                            color: Palette.accent-background.transparentize(0.2);
-                            horizontal-alignment: center;
-                            vertical-alignment: center;
-                            overflow: elide;
-                        }
+                        text: pronoun;
                     }
                 }
 
@@ -111,42 +125,16 @@ export component MessageBubble inherits VerticalLayout {
                     padding-top: is-own ? 0 : 4px;
 
                     Rectangle {
-                        height: reply-quote.preferred-height + 8px;
+                        height: reply-quote.preferred-height;
                         border-radius: 4px;
                         background: is-own
                             ? Palette.accent-background.transparentize(0.7)
                             : Palette.foreground.transparentize(0.92);
 
-                        HorizontalLayout {
+                        reply-quote := ReplyQuote {
                             padding: 4px;
-                            spacing: 6px;
-
-                            Rectangle {
-                                width: 3px;
-                                border-radius: 1.5px;
-                                background: Palette.accent-background;
-                            }
-
-                            reply-quote := VerticalLayout {
-                                spacing: 1px;
-                                alignment: center;
-
-                                Text {
-                                    text: msg.reply-sender;
-                                    font-size: 12px;
-                                    font-weight: 700;
-                                    color: Palette.accent-background;
-                                    overflow: elide;
-                                }
-
-                                Text {
-                                    text: MessagePreview.label(msg.reply-kind, msg.reply-body);
-                                    font-family: Fonts.emoji;
-                                    font-size: 12px;
-                                    color: Palette.foreground.transparentize(0.35);
-                                    overflow: elide;
-                                }
-                            }
+                            sender: msg.reply-sender;
+                            preview: MessagePreview.label(msg.reply-kind, msg.reply-body);
                         }
                     }
                 }
@@ -178,7 +166,7 @@ export component MessageBubble inherits VerticalLayout {
                     body: msg.body;
                 }
 
-                if msg.message-type != MessageKind.image && msg.message-type != MessageKind.file && msg.message-type != MessageKind.utd && msg.message-type != MessageKind.unsupported: TextMessage {
+                if is-plain-text: TextMessage {
                     text: msg.body;
                 }
 
@@ -210,8 +198,8 @@ export component MessageBubble inherits VerticalLayout {
                 height: reply-pill.height;
                 ring-radius: 11px;
                 label: @tr("Reply to {}", msg.sender);
-                enabled: msg.event-id != "";
-                opacity: (hover-bg.has-hover || self.has-hover || self.has-focus) && msg.event-id != "" ? 1 : 0;
+                enabled: root.has-remote-id;
+                opacity: root.has-remote-id && (hover-bg.has-hover || self.has-hover || self.has-focus) ? 1 : 0;
                 clicked => {
                     root.reply(msg.event-id, msg.sender, MessagePreview.label(msg.preview-kind, msg.body));
                 }

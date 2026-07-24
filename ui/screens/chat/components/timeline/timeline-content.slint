@@ -11,6 +11,19 @@ import { MediaState, MessageKind } from "../../../../enums.slint";
 import { ClickArea } from "../../../../components/a11y.slint";
 import { RoomView } from "../../../../views.slint";
 
+component LoadingBanner inherits HorizontalLayout {
+    in property <string> text;
+
+    height: 32px;
+    alignment: center;
+
+    Text {
+        text: root.text;
+        font-size: 12px;
+        color: Palette.foreground.transparentize(0.5);
+    }
+}
+
 export component TimelineContent inherits Rectangle {
     in property <string> room-id: "";
     in property <length> available-width;
@@ -32,30 +45,18 @@ export component TimelineContent inherits Rectangle {
         flickable.reset-scroll();
     }
 
-    if RoomView.backwards-loading: HorizontalLayout {
+    if RoomView.backwards-loading: LoadingBanner {
         x: 0;
         y: 0;
         width: parent.width;
-        height: 32px;
-        alignment: center;
-        Text {
-            text: @tr("Loading older messages...");
-            font-size: 12px;
-            color: Palette.foreground.transparentize(0.5);
-        }
+        text: @tr("Loading older messages...");
     }
 
-    if RoomView.forwards-loading: HorizontalLayout {
+    if RoomView.forwards-loading: LoadingBanner {
         x: 0;
         y: parent.height - self.height;
         width: parent.width;
-        height: 32px;
-        alignment: center;
-        Text {
-            text: @tr("Loading newer messages...");
-            font-size: 12px;
-            color: Palette.foreground.transparentize(0.5);
-        }
+        text: @tr("Loading newer messages...");
     }
 
     flickable := ListView {

@@ -176,12 +176,7 @@ export component SpaceRail inherits Rectangle {
         DirectoryView.spaces.length - 1,
     );
 
-    property <string> drag-name;
-    property <string> drag-initial;
-    property <image> drag-avatar;
-    property <bool> drag-has-avatar;
-    property <int> drag-unread;
-    property <int> drag-mentions;
+    property <SpaceEntry> drag-entry;
     property <bool> drag-selected;
 
     background: Palette.alternate-background.mix(Palette.background, 0.35);
@@ -190,12 +185,7 @@ export component SpaceRail inherits Rectangle {
         root.drag-from = idx;
         root.drag-dy = 0;
         root.did-drag = false;
-        root.drag-name = entry.name;
-        root.drag-initial = entry.initial;
-        root.drag-avatar = entry.avatar;
-        root.drag-has-avatar = entry.has-avatar;
-        root.drag-unread = entry.unread;
-        root.drag-mentions = entry.mentions;
+        root.drag-entry = entry;
         root.drag-selected = selected;
         root.dragging = true;
     }
@@ -333,12 +323,12 @@ export component SpaceRail inherits Rectangle {
             height: root.row-height;
             interactive: false;
             elevated: true;
-            label: root.drag-name;
-            initial: root.drag-initial;
-            has-avatar: root.drag-has-avatar;
-            avatar: root.drag-avatar;
-            unread: root.drag-unread;
-            mentions: root.drag-mentions;
+            label: root.drag-entry.name;
+            initial: root.drag-entry.initial;
+            has-avatar: root.drag-entry.has-avatar;
+            avatar: root.drag-entry.avatar;
+            unread: root.drag-entry.unread;
+            mentions: root.drag-entry.mentions;
             selected: root.drag-selected;
         }
     }

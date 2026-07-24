@@ -81,87 +81,87 @@ msgctxt "AppWindow"
 msgid "U2DM Matrix Client"
 msgstr ""
 
-#: ui/screens/chat/chat.slint:132
+#: ui/screens/chat/chat.slint:135
 msgctxt "ChatScreen"
 msgid "File saved to {}"
 msgstr ""
 
-#: ui/screens/chat/chat.slint:145
+#: ui/screens/chat/chat.slint:148
 msgctxt "ChatScreen"
 msgid "Dismiss"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/message-input.slint:98
+#: ui/screens/chat/components/timeline/message-input.slint:91
 msgctxt "MessageInput"
 msgid "Reply to {}"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/message-input.slint:117
+#: ui/screens/chat/components/timeline/message-input.slint:98
 msgctxt "MessageInput"
 msgid "Cancel reply"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/message-input.slint:163
+#: ui/screens/chat/components/timeline/message-input.slint:144
 msgctxt "MessageInput"
 msgid "Send a message..."
 msgstr ""
 
-#: ui/screens/chat/components/timeline/message-input.slint:174
+#: ui/screens/chat/components/timeline/message-input.slint:155
 msgctxt "MessageInput"
 msgid "Emoji"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/message-input.slint:194
+#: ui/screens/chat/components/timeline/message-input.slint:175
 msgctxt "MessageInput"
 msgid "Send"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/message-bubble.slint:212
+#: ui/screens/chat/components/timeline/message-bubble.slint:200
 msgctxt "MessageBubble"
 msgid "Reply to {}"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/message-bubble.slint:243
+#: ui/screens/chat/components/timeline/message-bubble.slint:231
 msgctxt "MessageBubble"
 msgid "Reply"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/timeline-content.slint:42
+#: ui/screens/chat/components/timeline/timeline-content.slint:52
 msgctxt "TimelineContent"
 msgid "Loading older messages..."
 msgstr ""
 
-#: ui/screens/chat/components/timeline/timeline-content.slint:55
+#: ui/screens/chat/components/timeline/timeline-content.slint:59
 msgctxt "TimelineContent"
 msgid "Loading newer messages..."
 msgstr ""
 
-#: ui/screens/chat/components/timeline/timeline-content.slint:193
+#: ui/screens/chat/components/timeline/timeline-content.slint:194
 msgctxt "TimelineContent"
 msgid "Jump to latest messages"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/messages/image-message.slint:23
+#: ui/screens/chat/components/timeline/messages/image-message.slint:36
 msgctxt "ImageMessage"
 msgid "Open image: {}"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/messages/image-message.slint:23
+#: ui/screens/chat/components/timeline/messages/image-message.slint:36
 msgctxt "ImageMessage"
 msgid "Open image"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/messages/image-message.slint:73
+#: ui/screens/chat/components/timeline/messages/image-message.slint:78
 msgctxt "ImageMessage"
 msgid "Image unavailable"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/messages/image-message.slint:82
+#: ui/screens/chat/components/timeline/messages/image-message.slint:87
 msgctxt "ImageMessage"
 msgid "Image: {}"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/messages/image-message.slint:82
+#: ui/screens/chat/components/timeline/messages/image-message.slint:87
 msgctxt "ImageMessage"
 msgid "Image"
 msgstr ""
@@ -291,129 +291,129 @@ msgctxt "FileMessage"
 msgid "Save"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/emoji-picker.slint:97
+#: ui/screens/chat/components/timeline/emoji-picker.slint:102
 msgctxt "EmojiPicker"
 msgid "Smileys & emotion"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/emoji-picker.slint:98
+#: ui/screens/chat/components/timeline/emoji-picker.slint:103
 msgctxt "EmojiPicker"
 msgid "People & body"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/emoji-picker.slint:99
+#: ui/screens/chat/components/timeline/emoji-picker.slint:104
 msgctxt "EmojiPicker"
 msgid "Animals & nature"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/emoji-picker.slint:100
+#: ui/screens/chat/components/timeline/emoji-picker.slint:105
 msgctxt "EmojiPicker"
 msgid "Food & drink"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/emoji-picker.slint:101
+#: ui/screens/chat/components/timeline/emoji-picker.slint:106
 msgctxt "EmojiPicker"
 msgid "Travel & places"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/emoji-picker.slint:102
+#: ui/screens/chat/components/timeline/emoji-picker.slint:107
 msgctxt "EmojiPicker"
 msgid "Activities"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/emoji-picker.slint:103
+#: ui/screens/chat/components/timeline/emoji-picker.slint:108
 msgctxt "EmojiPicker"
 msgid "Objects"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/emoji-picker.slint:104
+#: ui/screens/chat/components/timeline/emoji-picker.slint:109
 msgctxt "EmojiPicker"
 msgid "Symbols"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/emoji-picker.slint:105
+#: ui/screens/chat/components/timeline/emoji-picker.slint:110
 msgctxt "EmojiPicker"
 msgid "Flags"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/emoji-picker.slint:134
+#: ui/screens/chat/components/timeline/emoji-picker.slint:139
 msgctxt "EmojiPicker"
 msgid "Search emoji"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/emoji-picker.slint:147
+#: ui/screens/chat/components/timeline/emoji-picker.slint:152
 msgctxt "EmojiPicker"
 msgid "Skin tone {}"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/emoji-picker.slint:207
+#: ui/screens/chat/components/timeline/emoji-picker.slint:210
 msgctxt "EmojiPicker"
 msgid "No emoji found"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/timeline-view.slint:47
+#: ui/screens/chat/components/timeline/timeline-view.slint:49
+msgctxt "TimelineView"
+msgid "Loading messages..."
+msgstr ""
+
+#: ui/screens/chat/components/timeline/timeline-view.slint:52
+msgctxt "TimelineView"
+msgid "Connection lost"
+msgstr ""
+
+#: ui/screens/chat/components/timeline/timeline-view.slint:54
+msgctxt "TimelineView"
+msgid "Couldn't load messages"
+msgstr ""
+
+#: ui/screens/chat/components/timeline/timeline-view.slint:65
 msgctxt "TimelineView"
 msgid "Select a room"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/timeline-view.slint:76
+#: ui/screens/chat/components/timeline/timeline-view.slint:94
 msgctxt "TimelineView"
 msgid "{n} member"
 msgid_plural "{n} members"
 msgstr[0] ""
 msgstr[1] ""
 
-#: ui/screens/chat/components/timeline/timeline-view.slint:99
-msgctxt "TimelineView"
-msgid "Loading messages..."
-msgstr ""
-
-#: ui/screens/chat/components/timeline/timeline-view.slint:101
-msgctxt "TimelineView"
-msgid "Connection lost"
-msgstr ""
-
-#: ui/screens/chat/components/timeline/timeline-view.slint:102
-msgctxt "TimelineView"
-msgid "Couldn't load messages"
-msgstr ""
-
-#: ui/screens/chat/components/timeline/timeline-view.slint:113
+#: ui/screens/chat/components/timeline/timeline-view.slint:123
 msgctxt "TimelineView"
 msgid "Retry"
 msgstr ""
 
-#: ui/screens/chat/components/space-rail.slint:240
+#: ui/screens/chat/components/space-rail.slint:230
 msgctxt "SpaceRail"
 msgid "Menu"
 msgstr ""
 
-#: ui/screens/chat/components/space-rail.slint:270
+#: ui/screens/chat/components/space-rail.slint:260
 msgctxt "SpaceRail"
 msgid "Spaces"
 msgstr ""
 
-#: ui/screens/chat/components/space-rail.slint:280
+#: ui/screens/chat/components/space-rail.slint:270
 msgctxt "SpaceRail"
 msgid "All Rooms"
 msgstr ""
 
-#: ui/screens/chat/components/sidebar.slint:74
+#: ui/screens/chat/components/sidebar.slint:84
 msgctxt "Sidebar"
 msgid "Search"
 msgstr ""
 
-#: ui/screens/chat/components/sidebar.slint:102
+#: ui/screens/chat/components/sidebar.slint:112
 msgctxt "Sidebar"
 msgid "Rooms"
 msgstr ""
 
-#: ui/screens/chat/components/sidebar.slint:110
+#: ui/screens/chat/components/sidebar.slint:120
 msgctxt "Sidebar"
 msgid "{}, {} unread"
 msgstr ""
 
-#: ui/screens/chat/components/sidebar.slint:126
+#: ui/screens/chat/components/sidebar.slint:134
 msgctxt "Sidebar"
 msgid "You"
 msgstr ""

@@ -31,10 +31,28 @@ export component TimelineView inherits Rectangle {
     property <length> header-height: 52px;
     property <length> message-input-height: 40px;
     property <length> reply-bar-height: 44px;
-    property <length> input-height: root.reply-event-id != ""
+    property <length> spacing: 8px;
+
+    property <bool> has-room: RoomView.selected-room-name != "";
+    property <bool> is-replying: root.reply-event-id != "";
+    property <length> input-height: root.is-replying
         ? root.message-input-height + root.reply-bar-height
         : root.message-input-height;
-    property <length> spacing: 8px;
+    property <bool> is-blocking-status: RoomView.timeline-status == TimelineState.loading
+        || RoomView.timeline-status == TimelineState.failed
+        || RoomView.timeline-status == TimelineState.disconnected;
+    property <bool> show-status-panel: root.has-room && RoomView.timeline.length == 0 && root.is-blocking-status;
+    property <bool> can-retry: (RoomView.timeline-status == TimelineState.failed && RoomView.timeline-retryable)
+        || RoomView.timeline-status == TimelineState.disconnected;
+    pure function status-message(status: TimelineState) -> string {
+        if status == TimelineState.loading {
+            return @tr("Loading messages...");
+        }
+        if status == TimelineState.disconnected {
+            return @tr("Connection lost");
+        }
+        return @tr("Couldn't load messages");
+    }
 
     changed room-id => {
         root.input-message = "";
@@ -43,7 +61,7 @@ export component TimelineView inherits Rectangle {
         root.reply-preview = "";
     }
 
-    if RoomView.selected-room-name == "": Text {
+    if !has-room: Text {
         text: @tr("Select a room");
         font-size: 16px;
         color: Palette.foreground.transparentize(0.5);
@@ -51,7 +69,7 @@ export component TimelineView inherits Rectangle {
         vertical-alignment: center;
     }
 
-    if RoomView.selected-room-name != "": Rectangle {
+    if has-room: Rectangle {
         x: 0;
         y: 0;
         width: root.width;
@@ -81,10 +99,7 @@ export component TimelineView inherits Rectangle {
         }
     }
 
-    if RoomView.selected-room-name != "" && RoomView.timeline.length == 0
-        && (RoomView.timeline-status == TimelineState.loading
-            || RoomView.timeline-status == TimelineState.failed
-            || RoomView.timeline-status == TimelineState.disconnected): Rectangle {
+    if show-status-panel: Rectangle {
         x: 0;
         y: root.header-height;
         width: root.width;
@@ -95,18 +110,13 @@ export component TimelineView inherits Rectangle {
             spacing: 12px;
 
             Text {
-                text: RoomView.timeline-status == TimelineState.loading
-                    ? @tr("Loading messages...")
-                    : RoomView.timeline-status == TimelineState.disconnected
-                        ? @tr("Connection lost")
-                        : @tr("Couldn't load messages");
+                text: root.status-message(RoomView.timeline-status);
                 font-size: 14px;
                 color: Palette.foreground.transparentize(0.5);
                 horizontal-alignment: center;
             }
 
-            if (RoomView.timeline-status == TimelineState.failed && RoomView.timeline-retryable)
-                || RoomView.timeline-status == TimelineState.disconnected: HorizontalLayout {
+            if can-retry: HorizontalLayout {
                 alignment: center;
 
                 Button {
@@ -119,7 +129,7 @@ export component TimelineView inherits Rectangle {
         }
     }
 
-    if RoomView.selected-room-name != "": TimelineContent {
+    if has-room: TimelineContent {
         x: 0;
         y: root.header-height + root.spacing;
         width: root.width;
@@ -154,7 +164,7 @@ export component TimelineView inherits Rectangle {
         }
     }
 
-    if RoomView.selected-room-name != "": MessageInput {
+    if has-room: MessageInput {
         x: 0;
         y: root.height - self.height;
         width: root.width;

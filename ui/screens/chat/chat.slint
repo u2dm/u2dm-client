@@ -31,9 +31,12 @@ export component ChatScreen inherits Rectangle {
     property <length> min-sidebar-width: 260px;
     property <length> max-sidebar-width: 500px;
     property <length> subrail-width: 68px;
+    property <bool> has-subspaces: DirectoryView.subspaces.length > 0;
     property <length> total-sidebar-width: root.sidebar-width
-        + (DirectoryView.subspaces.length > 0 ? root.subrail-width : 0);
+        + (root.has-subspaces ? root.subrail-width : 0);
     property <bool> drawer-open: false;
+    property <bool> has-toast: RoomView.toast-message != "";
+    property <bool> is-file-saved-toast: RoomView.toast-message == "file-saved";
 
     Sidebar {
         x: 0;
@@ -111,7 +114,7 @@ export component ChatScreen inherits Rectangle {
         }
     }
 
-    if RoomView.toast-message != "": Rectangle {
+    if has-toast: Rectangle {
         x: root.total-sidebar-width + (root.width - root.total-sidebar-width - self.width) / 2;
         y: root.height - self.height - 16px;
         width: min(root.width - root.total-sidebar-width - 32px, 500px);
@@ -128,10 +131,10 @@ export component ChatScreen inherits Rectangle {
             alignment: space-between;
 
             Text {
-                text: RoomView.toast-message == "file-saved"
+                text: root.is-file-saved-toast
                     ? @tr("File saved to {}", RoomView.saved-file-path)
                     : RoomView.toast-message;
-                color: RoomView.toast-message == "file-saved"
+                color: root.is-file-saved-toast
                     ? Palette.foreground
                     : Colors.tomato.mix(Palette.foreground, 60%);
                 wrap: word-wrap;

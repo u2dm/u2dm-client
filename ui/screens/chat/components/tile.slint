@@ -58,8 +58,18 @@ export component CountBadge inherits Rectangle {
     border-width: 2px;
     border-color: Palette.alternate-background;
 
+    pure function badge-text(unread: int, mentions: int) -> string {
+        if unread > 99 {
+            return "99+";
+        }
+        if unread > 0 {
+            return "\{unread}";
+        }
+        return "\{mentions}";
+    }
+
     label := Text {
-        text: root.unread > 99 ? "99+" : (root.unread > 0 ? root.unread : root.mentions);
+        text: root.badge-text(root.unread, root.mentions);
         font-size: 10px;
         font-weight: 700;
         horizontal-alignment: center;

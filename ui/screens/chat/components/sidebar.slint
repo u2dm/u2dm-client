@@ -30,6 +30,16 @@ export component Sidebar inherits Rectangle {
     property <length> rail-width: 72px;
     property <length> avatar-size: 48px;
 
+    pure function row-background(selected: bool, hovered: bool) -> color {
+        if selected {
+            return Palette.background;
+        }
+        if hovered {
+            return Palette.background.transparentize(0.5);
+        }
+        return transparent;
+    }
+
     HorizontalLayout {
         SpaceRail {
             width: root.rail-width;
@@ -110,9 +120,7 @@ export component Sidebar inherits Rectangle {
                             ? @tr("{}, {} unread", room.name, room.unread)
                             : room.name;
                         ring-inset: 2px;
-                        background: room.id == DirectoryView.selected-room-id
-                            ? Palette.background
-                            : (self.has-hover ? Palette.background.transparentize(0.5) : transparent);
+                        background: root.row-background(self.selected, self.has-hover);
                         clicked => {
                             root.select-room(room.id);
                         }

@@ -76,11 +76,16 @@ export component EmojiPicker inherits Rectangle {
 
     property <length> cell: 34px;
     property <int> columns: max(1, floor((root.width - 16px) / root.cell));
-    property <[EmojiEntry]> current-items: root.query != ""
+    property <bool> is-searching: root.query != "";
+    property <[EmojiEntry]> current-items: root.is-searching
         ? EmojiStore.results
         : (EmojiStore.groups.length > root.category
         ? EmojiStore.groups[root.category].items
         : []);
+
+    pure function tone-glyph(entry: EmojiEntry) -> string {
+        return entry.tones.length > 0 ? entry.tones[EmojiStore.tone] : entry.base;
+    }
 
     property <[Icon]> category-icons: [
         IconSet.Smile,
@@ -152,7 +157,7 @@ export component EmojiPicker inherits Rectangle {
             }
         }
 
-        if root.query == "": HorizontalLayout {
+        if !root.is-searching: HorizontalLayout {
             height: 30px;
             spacing: 2px;
             for icon[idx] in root.category-icons: CategoryTab {
@@ -179,7 +184,7 @@ export component EmojiPicker inherits Rectangle {
                     ring-radius: 6px;
                     label: entry.name;
                     clicked => {
-                        root.picked(entry.tones.length > 0 ? entry.tones[EmojiStore.tone] : entry.base);
+                        root.picked(root.tone-glyph(entry));
                     }
 
                     hover := Rectangle {
@@ -192,9 +197,7 @@ export component EmojiPicker inherits Rectangle {
                     }
 
                     Text {
-                        text: entry.tones.length > 0
-                            ? entry.tones[EmojiStore.tone]
-                            : entry.base;
+                        text: root.tone-glyph(entry);
                         font-family: Fonts.emoji;
                         font-size: 22px;
                         horizontal-alignment: center;
@@ -203,7 +206,7 @@ export component EmojiPicker inherits Rectangle {
                 }
             }
 
-            if root.query != "" && root.current-items.length == 0: Text {
+            if root.is-searching && root.current-items.length == 0: Text {
                 text: @tr("No emoji found");
                 color: Palette.foreground.transparentize(0.5);
                 horizontal-alignment: center;

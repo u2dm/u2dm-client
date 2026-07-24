@@ -1,0 +1,37 @@
+import { Palette } from "std-widgets.slint";
+import { Fonts } from "../../../theme.slint";
+
+export component ReplyQuote inherits HorizontalLayout {
+    in property <string> sender;
+    in property <string> preview;
+
+    spacing: 6px;
+
+    Rectangle {
+        width: 3px;
+        border-radius: 1.5px;
+        background: Palette.accent-background;
+    }
+
+    VerticalLayout {
+        horizontal-stretch: 1;
+        alignment: center;
+        spacing: 1px;
+
+        Text {
+            text: root.sender;
+            font-size: 12px;
+            font-weight: 700;
+            color: Palette.accent-background;
+            overflow: elide;
+        }
+
+        Text {
+            text: root.preview;
+            font-family: Fonts.emoji;
+            font-size: 12px;
+            color: Palette.foreground.transparentize(0.4);
+            overflow: elide;
+        }
+    }
+}

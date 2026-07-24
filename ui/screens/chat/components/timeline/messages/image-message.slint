@@ -3,6 +3,15 @@ import { IconDisplay, IconSet } from "@lucide";
 import { ClickArea } from "../../../../../components/a11y.slint";
 import { MediaState } from "../../../../../enums.slint";
 
+component MediaFrame inherits Rectangle {
+    in property <float> aspect;
+
+    width: min(400px, max(267px, 400px * self.aspect));
+    height: min(400px, self.width / max(self.aspect, 0.01));
+    background: Palette.alternate-background;
+    border-radius: 4px;
+}
+
 export component ImageMessage inherits VerticalLayout {
     in property <image> thumbnail;
     in property <MediaState> media-state;
@@ -15,12 +24,16 @@ export component ImageMessage inherits VerticalLayout {
     property <bool> is-ready: root.media-state == MediaState.ready;
     property <bool> is-failed: root.media-state == MediaState.failed;
     property <bool> is-loading: root.media-state == MediaState.idle && root.has-dimensions;
+    property <bool> has-frame: root.is-ready || root.is-loading || root.is-failed;
+    property <bool> is-text-only: root.media-state == MediaState.idle && !root.has-dimensions;
+    property <float> frame-aspect: root.image-width / max(root.image-height, 1);
+    property <bool> has-caption: root.body != "";
 
     callback open-media(string);
 
     if is-ready: ClickArea {
         enabled: root.event-id != "";
-        label: root.body != "" ? @tr("Open image: {}", root.body) : @tr("Open image");
+        label: root.has-caption ? @tr("Open image: {}", root.body) : @tr("Open image");
         ring-radius: 4px;
         width: thumb-img.width;
         height: thumb-img.height;
@@ -37,23 +50,15 @@ export component ImageMessage inherits VerticalLayout {
         }
     }
 
-    if is-loading: Rectangle {
-        property <float> aspect: root.image-width / max(root.image-height, 1);
-        width: min(400px, max(267px, 400px * aspect));
-        height: min(400px, self.width / max(aspect, 0.01));
-        background: Palette.alternate-background;
-        border-radius: 4px;
+    if is-loading: MediaFrame {
+        aspect: root.frame-aspect;
         Spinner {
             indeterminate: true;
         }
     }
 
-    if is-failed: Rectangle {
-        property <float> aspect: root.has-dimensions ? root.image-width / max(root.image-height, 1) : 1.5;
-        width: min(400px, max(267px, 400px * aspect));
-        height: min(400px, self.width / max(aspect, 0.01));
-        background: Palette.alternate-background;
-        border-radius: 4px;
+    if is-failed: MediaFrame {
+        aspect: root.has-dimensions ? root.frame-aspect : 1.5;
 
         VerticalLayout {
             alignment: center;
@@ -78,14 +83,14 @@ export component ImageMessage inherits VerticalLayout {
         }
     }
 
-    if root.media-state == MediaState.idle && !has-dimensions: Text {
-        text: root.body != "" ? @tr("Image: {}", root.body) : @tr("Image");
+    if is-text-only: Text {
+        text: root.has-caption ? @tr("Image: {}", root.body) : @tr("Image");
         font-size: 14px;
         color: Palette.foreground.transparentize(0.3);
         wrap: word-wrap;
     }
 
-    if (is-ready || is-loading || is-failed) && root.body != "": Text {
+    if has-frame && has-caption: Text {
         text: root.body;
         font-size: 14px;
         wrap: word-wrap;
