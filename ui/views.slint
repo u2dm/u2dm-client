@@ -9,9 +9,9 @@ import {
 } from "enums.slint";
 
 export global LoginView {
-    in-out property <LoginPhase> step: LoginPhase.loading;
-    in-out property <string> status;
-    in-out property <string> error;
+    in property <LoginPhase> step: LoginPhase.loading;
+    in property <string> status;
+    in property <string> error;
     in property <LoginMethodKind> method: LoginMethodKind.none;
     in property <string> resolved-homeserver;
 }

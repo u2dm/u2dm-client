@@ -22,6 +22,7 @@ pub enum UiCommand {
     LoginPassword(LoginCredentials),
     LoginOAuth,
     CancelOAuth,
+    BackToHomeserver,
     FetchRooms,
     #[strum(to_string = "SelectSpace")]
     SelectSpace(Option<RoomId>),
@@ -137,7 +138,13 @@ pub struct AppViewState {
 
 impl AppViewState {
     pub fn logged_out() -> Self {
-        Self::default()
+        Self {
+            lifecycle: LifecycleView {
+                step: LoginStep::Homeserver,
+                ..LifecycleView::default()
+            },
+            ..Self::default()
+        }
     }
 }
 
@@ -172,6 +179,7 @@ pub struct LifecycleView {
 #[derive(Clone, Copy, Default, PartialEq, Eq)]
 pub enum LoginStep {
     #[default]
+    Loading,
     Homeserver,
     Credentials,
     LoggedIn,

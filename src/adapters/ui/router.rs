@@ -40,6 +40,10 @@ pub fn cancel_oauth(tx: &Tx) {
     send_command(tx, UiCommand::CancelOAuth);
 }
 
+pub fn back_to_homeserver(tx: &Tx) {
+    send_command(tx, UiCommand::BackToHomeserver);
+}
+
 pub fn select_room(tx: &Tx, room_id: String) {
     send_command(tx, UiCommand::SelectRoom(RoomId::new(room_id)));
 }

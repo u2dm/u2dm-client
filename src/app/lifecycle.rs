@@ -125,9 +125,10 @@ pub(super) fn command_allowed(phase: AppPhase, cmd: &UiCommand) -> bool {
     match cmd {
         UiCommand::Quit => true,
         UiCommand::RestoreSession => phase == AppPhase::Restoring,
-        UiCommand::CheckServer(_) | UiCommand::LoginPassword(_) | UiCommand::LoginOAuth => {
-            phase == AppPhase::LoggedOut
-        }
+        UiCommand::CheckServer(_)
+        | UiCommand::LoginPassword(_)
+        | UiCommand::LoginOAuth
+        | UiCommand::BackToHomeserver => phase == AppPhase::LoggedOut,
         UiCommand::CancelOAuth => phase == AppPhase::Authenticating,
         _ => phase == AppPhase::Syncing,
     }

@@ -17,8 +17,7 @@ use crate::domain::models::{
 thread_local! {
     static PREPEND_TOKEN: Cell<i32> = const { Cell::new(0) };
     static ACTIVE_GENERATION: Cell<i32> = const { Cell::new(0) };
-    static LATEST_SNAPSHOT: RefCell<Arc<AppViewState>> =
-        RefCell::new(Arc::new(AppViewState::default()));
+    static LATEST_SNAPSHOT: RefCell<Option<Arc<AppViewState>>> = const { RefCell::new(None) };
 }
 
 #[allow(clippy::too_many_lines)]
@@ -42,7 +41,10 @@ pub fn dispatch_effect<B: UiBackend>(w: &B::Window, event: Effect, ctx: &UiEvent
                 IntProp::SelectedRoomMembers,
                 i32::try_from(member_count).unwrap_or(i32::MAX),
             );
-            LATEST_SNAPSHOT.with(|cell| sync_timeline_chrome(w, &cell.borrow().pagination));
+            let pagination = LATEST_SNAPSHOT
+                .with(|cell| cell.borrow().as_ref().map(|view| view.pagination))
+                .unwrap_or_default();
+            sync_timeline_chrome(w, &pagination);
         }
         Effect::Timeline {
             room_id,
@@ -103,7 +105,8 @@ pub fn dispatch_effect<B: UiBackend>(w: &B::Window, event: Effect, ctx: &UiEvent
             ctx.rooms.set_vec(Vec::new());
             ctx.spaces.set_vec(Vec::new());
             ctx.subspaces.set_vec(Vec::new());
-            LATEST_SNAPSHOT.with(|cell| *cell.borrow_mut() = Arc::new(AppViewState::default()));
+            LATEST_SNAPSHOT
+                .with(|cell| *cell.borrow_mut() = Some(Arc::new(AppViewState::logged_out())));
             apply_logged_out(w);
         }
     }
@@ -114,12 +117,13 @@ fn apply_snapshot<B: UiBackend>(
     view: &Arc<AppViewState>,
     ctx: &UiEventContext<'_, B>,
 ) {
-    let last = LATEST_SNAPSHOT.with(|cell| Arc::clone(&cell.borrow()));
-    apply_lifecycle(w, &last.lifecycle, &view.lifecycle);
-    if last.connection != view.connection {
+    let previous = LATEST_SNAPSHOT.with(|cell| cell.borrow().clone());
+    let last = previous.as_deref();
+    apply_lifecycle(w, last.map(|l| &l.lifecycle), &view.lifecycle);
+    if last.is_none_or(|l| l.connection != view.connection) {
         w.set_connection_state(&view.connection);
     }
-    if !Arc::ptr_eq(&last.directory.rooms, &view.directory.rooms) {
+    if last.is_none_or(|l| !Arc::ptr_eq(&l.directory.rooms, &view.directory.rooms)) {
         apply_rooms(
             ctx.rooms,
             view.directory.rooms.as_ref(),
@@ -127,7 +131,7 @@ fn apply_snapshot<B: UiBackend>(
             &|entry| B::room_id(entry),
         );
     }
-    if !Arc::ptr_eq(&last.directory.spaces, &view.directory.spaces) {
+    if last.is_none_or(|l| !Arc::ptr_eq(&l.directory.spaces, &view.directory.spaces)) {
         apply_reconcile(
             ctx.spaces,
             view.directory.spaces.as_ref(),
@@ -136,7 +140,7 @@ fn apply_snapshot<B: UiBackend>(
             &|entry| B::space_id(entry),
         );
     }
-    if !Arc::ptr_eq(&last.directory.subspaces, &view.directory.subspaces) {
+    if last.is_none_or(|l| !Arc::ptr_eq(&l.directory.subspaces, &view.directory.subspaces)) {
         apply_reconcile(
             ctx.subspaces,
             view.directory.subspaces.as_ref(),
@@ -145,22 +149,22 @@ fn apply_snapshot<B: UiBackend>(
             &|entry| B::space_id(entry),
         );
     }
-    if last.directory.space_id != view.directory.space_id {
+    if last.is_none_or(|l| l.directory.space_id != view.directory.space_id) {
         w.set_string(
             StringProp::SelectedSpaceId,
             SharedString::from(&view.directory.space_id),
         );
     }
-    if last.directory.subspace_id != view.directory.subspace_id {
+    if last.is_none_or(|l| l.directory.subspace_id != view.directory.subspace_id) {
         w.set_string(
             StringProp::SelectedSubspaceId,
             SharedString::from(&view.directory.subspace_id),
         );
     }
-    if last.pagination != view.pagination {
+    if last.is_none_or(|l| l.pagination != view.pagination) {
         sync_timeline_chrome(w, &view.pagination);
     }
-    LATEST_SNAPSHOT.with(|cell| *cell.borrow_mut() = Arc::clone(view));
+    LATEST_SNAPSHOT.with(|cell| *cell.borrow_mut() = Some(Arc::clone(view)));
 }
 
 fn sync_timeline_chrome(w: &impl UiProps, pagination: &PaginationView) {
@@ -182,27 +186,27 @@ fn sync_timeline_chrome(w: &impl UiProps, pagination: &PaginationView) {
     );
 }
 
-fn apply_lifecycle(w: &impl UiProps, last: &LifecycleView, next: &LifecycleView) {
-    if last.step != next.step {
+fn apply_lifecycle(w: &impl UiProps, last: Option<&LifecycleView>, next: &LifecycleView) {
+    if last.is_none_or(|l| l.step != next.step) {
         w.set_login_phase(next.step);
     }
-    if last.method != next.method {
+    if last.is_none_or(|l| l.method != next.method) {
         w.set_login_method_kind(login_method_kind(next.method));
     }
-    if last.resolved_homeserver != next.resolved_homeserver {
+    if last.is_none_or(|l| l.resolved_homeserver != next.resolved_homeserver) {
         w.set_string(
             StringProp::ResolvedHomeserver,
             SharedString::from(&next.resolved_homeserver),
         );
     }
-    if last.user_id != next.user_id {
+    if last.is_none_or(|l| l.user_id != next.user_id) {
         w.set_string(StringProp::UserId, SharedString::from(&next.user_id));
         w.set_string(
             StringProp::UserInitial,
             SharedString::from(user_initial(&next.user_id)),
         );
     }
-    if last.avatar_path != next.avatar_path {
+    if last.is_none_or(|l| l.avatar_path != next.avatar_path) {
         let avatar = next
             .avatar_path
             .as_deref()

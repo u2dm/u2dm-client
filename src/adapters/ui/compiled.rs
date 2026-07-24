@@ -151,6 +151,7 @@ impl UiProps for AppWindow {
 
 fn to_login_phase(step: LoginStep) -> LoginPhase {
     match step {
+        LoginStep::Loading => LoginPhase::Loading,
         LoginStep::Homeserver => LoginPhase::Homeserver,
         LoginStep::Credentials => LoginPhase::Credentials,
         LoginStep::LoggedIn => LoginPhase::LoggedIn,

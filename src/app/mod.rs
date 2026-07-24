@@ -192,6 +192,9 @@ impl AppService {
                     self.session.cancel_oauth();
                 }
             }
+            UiCommand::BackToHomeserver => {
+                self.session.back_to_homeserver().await;
+            }
             UiCommand::FetchRooms => {
                 self.handle_fetch_rooms().await;
             }

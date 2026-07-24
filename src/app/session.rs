@@ -108,6 +108,13 @@ impl SessionController {
         group.spawn(async move { this.login_oauth(cancel, attempt).await });
     }
 
+    pub(super) async fn back_to_homeserver(&self) {
+        self.output
+            .publish(Box::new(|view| view.lifecycle.step = LoginStep::Homeserver));
+        self.output.emit(Effect::Status(String::new())).await;
+        self.output.emit(Effect::LoginError(String::new())).await;
+    }
+
     pub(super) fn cancel_oauth(&self) {
         let Ok(mut guard) = self.oauth_cancel.lock() else {
             return;

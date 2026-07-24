@@ -148,6 +148,7 @@ fn media_state_value(state: MediaState) -> Value {
 
 fn login_phase_value(step: LoginStep) -> &'static str {
     match step {
+        LoginStep::Loading => "loading",
         LoginStep::Homeserver => "homeserver",
         LoginStep::Credentials => "credentials",
         LoginStep::LoggedIn => "logged-in",

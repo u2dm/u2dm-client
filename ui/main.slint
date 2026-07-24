@@ -47,6 +47,7 @@ export component AppWindow inherits Window {
     callback login-password(LoginRequest);
     callback login-oauth();
     callback cancel-oauth();
+    callback back-to-homeserver();
     callback select-room(string);
     callback select-space(string);
     callback select-subspace(string);
@@ -88,9 +89,7 @@ export component AppWindow inherits Window {
             root.cancel-oauth();
         }
         back => {
-            LoginView.step = LoginPhase.homeserver;
-            LoginView.error = "";
-            LoginView.status = "";
+            root.back-to-homeserver();
         }
     }
 

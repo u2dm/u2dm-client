@@ -31,6 +31,7 @@ pub(crate) use string_props;
 macro_rules! simple_callbacks {
     ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
         on_cancel_oauth "cancel-oauth" cancel_oauth unit;
+        on_back_to_homeserver "back-to-homeserver" back_to_homeserver unit;
         on_logout "logout" logout unit;
         on_accept_verification "accept-verification" accept_verification unit;
         on_confirm_verification "confirm-verification" confirm_verification unit;
