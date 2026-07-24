@@ -4,6 +4,7 @@ import { IconDisplay, IconSet, Icon } from "@lucide";
 import { Avatar } from "../../../components/avatar.slint";
 import { ClickArea } from "../../../components/a11y.slint";
 import { ConnectionState } from "../../../enums.slint";
+import { SessionView } from "../../../views.slint";
 
 component DrawerRow inherits Rectangle {
     in property <Icon> icon;
@@ -48,11 +49,6 @@ component DrawerRow inherits Rectangle {
 }
 
 export component Drawer inherits Rectangle {
-    in property <string> user-id: "";
-    in property <string> user-initial: "";
-    in property <image> user-avatar;
-    in property <bool> user-has-avatar: false;
-    in property <ConnectionState> connection-status: ConnectionState.disconnected;
     in-out property <bool> open: false;
 
     callback add-account();
@@ -133,9 +129,9 @@ export component Drawer inherits Rectangle {
                 width: 60px;
                 height: 60px;
                 background: Palette.background;
-                has-image: root.user-has-avatar;
-                image: root.user-avatar;
-                initial: root.user-initial;
+                has-image: SessionView.user-has-avatar;
+                image: SessionView.user-avatar;
+                initial: SessionView.user-initial;
                 initial-color: Palette.accent-background;
                 initial-size: 26px;
                 initial-weight: 700;
@@ -148,7 +144,7 @@ export component Drawer inherits Rectangle {
                 width: 16px;
                 height: 16px;
                 border-radius: self.width / 2;
-                background: root.status-color(root.connection-status);
+                background: root.status-color(SessionView.connection-status);
                 border-width: 3px;
                 border-color: Palette.accent-background;
             }
@@ -184,7 +180,7 @@ export component Drawer inherits Rectangle {
                 x: 20px;
                 y: avatar.y + avatar.height + 12px;
                 width: parent.width - 40px;
-                text: root.user-id;
+                text: SessionView.user-id;
                 font-size: 16px;
                 font-weight: 700;
                 overflow: elide;
@@ -195,7 +191,7 @@ export component Drawer inherits Rectangle {
                 x: 20px;
                 y: avatar.y + avatar.height + 34px;
                 width: parent.width - 40px;
-                text: root.status-label(root.connection-status);
+                text: root.status-label(SessionView.connection-status);
                 font-size: 12px;
                 overflow: elide;
                 color: Palette.accent-foreground.transparentize(0.25);

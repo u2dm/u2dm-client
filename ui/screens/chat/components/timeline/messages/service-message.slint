@@ -1,72 +1,73 @@
 import { Palette } from "std-widgets.slint";
 import { Fonts } from "../../../../../theme.slint";
+import { ServiceKind } from "../../../../../enums.slint";
 
 export global ServiceLabel {
-    public pure function label(kind: string, actor: string, target: string) -> string {
-        if kind == "joined" {
+    public pure function label(kind: ServiceKind, actor: string, target: string) -> string {
+        if kind == ServiceKind.joined {
             return @tr("{} joined the room", actor);
         }
-        if kind == "left" {
+        if kind == ServiceKind.left {
             return @tr("{} left the room", actor);
         }
-        if kind == "invited" {
+        if kind == ServiceKind.invited {
             return @tr("{} invited {}", actor, target);
         }
-        if kind == "invitation-accepted" {
+        if kind == ServiceKind.invitation-accepted {
             return @tr("{} accepted the invitation", actor);
         }
-        if kind == "invitation-rejected" {
+        if kind == ServiceKind.invitation-rejected {
             return @tr("{} rejected the invitation", actor);
         }
-        if kind == "invitation-revoked" {
+        if kind == ServiceKind.invitation-revoked {
             return @tr("{} revoked the invitation for {}", actor, target);
         }
-        if kind == "kicked" {
+        if kind == ServiceKind.kicked {
             return @tr("{} removed {}", actor, target);
         }
-        if kind == "banned" {
+        if kind == ServiceKind.banned {
             return @tr("{} banned {}", actor, target);
         }
-        if kind == "unbanned" {
+        if kind == ServiceKind.unbanned {
             return @tr("{} unbanned {}", actor, target);
         }
-        if kind == "knocked" {
+        if kind == ServiceKind.knocked {
             return @tr("{} requested to join", actor);
         }
-        if kind == "knock-accepted" {
+        if kind == ServiceKind.knock-accepted {
             return @tr("{} allowed {} to join", actor, target);
         }
-        if kind == "name-set" {
+        if kind == ServiceKind.name-set {
             return @tr("{} set their name to {}", actor, target);
         }
-        if kind == "name-changed" {
+        if kind == ServiceKind.name-changed {
             return @tr("{} changed their name to {}", actor, target);
         }
-        if kind == "name-removed" {
+        if kind == ServiceKind.name-removed {
             return @tr("{} removed their name", actor);
         }
-        if kind == "avatar-changed" {
+        if kind == ServiceKind.avatar-changed {
             return @tr("{} changed their avatar", actor);
         }
-        if kind == "room-name" {
+        if kind == ServiceKind.room-name {
             return @tr("{} changed the room name to {}", actor, target);
         }
-        if kind == "room-topic" {
+        if kind == ServiceKind.room-topic {
             return @tr("{} changed the room topic", actor);
         }
-        if kind == "room-avatar" {
+        if kind == ServiceKind.room-avatar {
             return @tr("{} changed the room avatar", actor);
         }
-        if kind == "room-created" {
+        if kind == ServiceKind.room-created {
             return @tr("{} created the room", actor);
         }
-        if kind == "encryption" {
+        if kind == ServiceKind.encryption {
             return @tr("{} enabled end-to-end encryption", actor);
         }
-        if kind == "call-started" {
+        if kind == ServiceKind.call-started {
             return @tr("{} started a call", actor);
         }
-        if kind == "call-notification" {
+        if kind == ServiceKind.call-notification {
             return @tr("{} is calling", actor);
         }
         if target != "" {
@@ -77,7 +78,7 @@ export global ServiceLabel {
 }
 
 export component ServiceMessage inherits HorizontalLayout {
-    in property <string> kind;
+    in property <ServiceKind> kind;
     in property <string> actor;
     in property <string> target;
 

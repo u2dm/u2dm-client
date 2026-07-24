@@ -8,12 +8,14 @@ use tokio::sync::{mpsc, watch};
 
 use super::backend::{UiBackend, install_render_hooks, post_effect, selected_room_key};
 use super::decode::{AvatarSlot, request_avatar, request_media};
-use super::dto::{ThumbUpdate, enrich_to_update, message_to_dto, room_to_dto, space_to_dto};
+use super::dto::{
+    MediaState, ThumbUpdate, enrich_to_update, message_to_dto, room_to_dto, space_to_dto,
+};
 use super::multiplex::spawn_event_multiplexer;
-use super::present::VerifyStep;
+use super::present::{LoginMethodKind, MessageKind, PreviewKind, ServiceKind, VerifyStep};
 use super::props::{BoolProp, IntProp, StringProp, UiProps};
 use super::reconcile::reorder_rows;
-use super::schema::{bool_props, int_props, string_props};
+use super::schema::{bool_props, int_props, simple_callbacks, string_props};
 use super::{emoji, router};
 use crate::commands::{AppViewState, Effect, LoginStep, UiCommand, ViewportChanged};
 use crate::domain::models::{
@@ -28,8 +30,11 @@ mod generated {
     slint::include_modules!();
 }
 use generated::{
-    AppWindow, ConnectionState, EmojiEntry, EmojiGroup, EmojiInsert, EmojiStore, LoginPhase,
-    MessageEntry, RoomEntry, SpaceEntry, TimelineState, VerificationEmoji, VerificationPhase,
+    AppWindow, ConnectionState, DirectoryView, EmojiEntry, EmojiGroup, EmojiInsert, EmojiStore,
+    LoginMethodKind as UiLoginMethodKind, LoginPhase, LoginView, MediaState as UiMediaState,
+    MessageEntry, MessageKind as UiMessageKind, PreviewKind as UiPreviewKind, RoomEntry, RoomView,
+    ServiceKind as UiServiceKind, SessionView, SpaceEntry, TimelineState, VerificationEmoji,
+    VerificationPhase, VerificationView,
 };
 
 thread_local! {
@@ -40,11 +45,25 @@ thread_local! {
 }
 
 macro_rules! impl_prop_setter {
-    ($fn:ident $enum:ident $ty:ty; $($v:ident $c:ident $lit:literal $s:ident;)*) => {
+    ($fn:ident $enum:ident $ty:ty; $($v:ident $g:ident $gname:literal $lit:literal $s:ident;)*) => {
         fn $fn(&self, prop: $enum, value: $ty) {
-            match prop { $($enum::$v => self.$s(value),)* }
+            match prop { $($enum::$v => self.global::<$g>().$s(value),)* }
         }
     };
+}
+
+macro_rules! bind_compiled_callbacks {
+    ($win:ident $tx:ident; $($on:ident $lit:literal $fn:ident $shape:ident;)*) => {
+        $( bind_compiled_callbacks!(@one $win $tx $on $fn $shape); )*
+    };
+    (@one $win:ident $tx:ident $on:ident $fn:ident unit) => {{
+        let tx = $tx.clone();
+        $win.$on(move || router::$fn(&tx));
+    }};
+    (@one $win:ident $tx:ident $on:ident $fn:ident string) => {{
+        let tx = $tx.clone();
+        $win.$on(move |arg| router::$fn(&tx, arg.to_string()));
+    }};
 }
 
 impl UiProps for AppWindow {
@@ -53,24 +72,32 @@ impl UiProps for AppWindow {
     int_props!(impl_prop_setter set_int IntProp i32;);
 
     fn set_login_phase(&self, step: LoginStep) {
-        self.set_login_step(to_login_phase(step));
+        self.global::<LoginView>().set_step(to_login_phase(step));
+    }
+
+    fn set_login_method_kind(&self, method: LoginMethodKind) {
+        self.global::<LoginView>()
+            .set_method(to_login_method(method));
     }
 
     fn set_connection_state(&self, status: &ConnectionStatus) {
-        self.set_connection_status(to_connection_state(status));
+        self.global::<SessionView>()
+            .set_connection_status(to_connection_state(status));
     }
 
     fn set_timeline_state(&self, status: TimelineStatus) {
-        self.set_timeline_status(to_timeline_state(status));
+        self.global::<RoomView>()
+            .set_timeline_status(to_timeline_state(status));
     }
 
     fn set_verification_phase(&self, phase: VerifyStep) {
-        self.set_verification_step(to_verification_phase(phase));
+        self.global::<VerificationView>()
+            .set_step(to_verification_phase(phase));
     }
 
     fn get_string(&self, prop: StringProp) -> SharedString {
         match prop {
-            StringProp::SelectedRoomId => self.get_selected_room_id(),
+            StringProp::SelectedRoomId => self.global::<DirectoryView>().get_selected_room_id(),
             other => {
                 tracing::warn!("unexpected get for property: {}", other.as_str());
                 SharedString::default()
@@ -80,7 +107,7 @@ impl UiProps for AppWindow {
 
     fn get_int(&self, prop: IntProp) -> i32 {
         match prop {
-            IntProp::SelectedGeneration => self.get_selected_generation(),
+            IntProp::SelectedGeneration => self.global::<DirectoryView>().get_selected_generation(),
             other => {
                 tracing::warn!("unexpected get for property: {}", other.as_str());
                 0
@@ -89,12 +116,13 @@ impl UiProps for AppWindow {
     }
 
     fn apply_user_avatar(&self, avatar: Option<Image>) {
+        let session = self.global::<SessionView>();
         match avatar {
             Some(img) => {
-                self.set_user_avatar(img);
-                self.set_user_has_avatar(true);
+                session.set_user_avatar(img);
+                session.set_user_has_avatar(true);
             }
-            None => self.set_user_has_avatar(false),
+            None => session.set_user_has_avatar(false),
         }
     }
 
@@ -106,11 +134,18 @@ impl UiProps for AppWindow {
                 description: SharedString::from(&e.description),
             })
             .collect();
-        self.set_verification_emojis(ModelRc::new(VecModel::from(entries)));
+        self.global::<VerificationView>()
+            .set_emojis(ModelRc::new(VecModel::from(entries)));
     }
 
     fn clear_emoji_model(&self) {
-        self.set_verification_emojis(ModelRc::new(VecModel::<VerificationEmoji>::default()));
+        self.global::<VerificationView>()
+            .set_emojis(ModelRc::new(VecModel::<VerificationEmoji>::default()));
+    }
+
+    fn clear_text_inputs(&self) {
+        self.set_input_username(SharedString::default());
+        self.set_input_password(SharedString::default());
     }
 }
 
@@ -137,6 +172,78 @@ fn to_timeline_state(status: TimelineStatus) -> TimelineState {
         TimelineStatus::Ready => TimelineState::Ready,
         TimelineStatus::Failed { .. } => TimelineState::Failed,
         TimelineStatus::Disconnected => TimelineState::Disconnected,
+    }
+}
+
+fn to_login_method(method: LoginMethodKind) -> UiLoginMethodKind {
+    match method {
+        LoginMethodKind::None => UiLoginMethodKind::None,
+        LoginMethodKind::Password => UiLoginMethodKind::Password,
+        LoginMethodKind::OAuth => UiLoginMethodKind::Oauth,
+        LoginMethodKind::Both => UiLoginMethodKind::Both,
+    }
+}
+
+fn to_media_state(state: MediaState) -> UiMediaState {
+    match state {
+        MediaState::Idle => UiMediaState::Idle,
+        MediaState::Ready => UiMediaState::Ready,
+        MediaState::Failed => UiMediaState::Failed,
+    }
+}
+
+fn to_message_kind(kind: MessageKind) -> UiMessageKind {
+    match kind {
+        MessageKind::Text => UiMessageKind::Text,
+        MessageKind::Notice => UiMessageKind::Notice,
+        MessageKind::Emote => UiMessageKind::Emote,
+        MessageKind::Image => UiMessageKind::Image,
+        MessageKind::File => UiMessageKind::File,
+        MessageKind::Service => UiMessageKind::Service,
+        MessageKind::Utd => UiMessageKind::Utd,
+        MessageKind::Unsupported => UiMessageKind::Unsupported,
+    }
+}
+
+fn to_preview_kind(kind: PreviewKind) -> UiPreviewKind {
+    match kind {
+        PreviewKind::None => UiPreviewKind::None,
+        PreviewKind::Text => UiPreviewKind::Text,
+        PreviewKind::Image => UiPreviewKind::Image,
+        PreviewKind::Video => UiPreviewKind::Video,
+        PreviewKind::Audio => UiPreviewKind::Audio,
+        PreviewKind::File => UiPreviewKind::File,
+        PreviewKind::Location => UiPreviewKind::Location,
+        PreviewKind::Encrypted => UiPreviewKind::Encrypted,
+        PreviewKind::Sticker => UiPreviewKind::Sticker,
+    }
+}
+
+fn to_service_kind(kind: ServiceKind) -> UiServiceKind {
+    match kind {
+        ServiceKind::None => UiServiceKind::None,
+        ServiceKind::Joined => UiServiceKind::Joined,
+        ServiceKind::Left => UiServiceKind::Left,
+        ServiceKind::Invited => UiServiceKind::Invited,
+        ServiceKind::InvitationAccepted => UiServiceKind::InvitationAccepted,
+        ServiceKind::InvitationRejected => UiServiceKind::InvitationRejected,
+        ServiceKind::InvitationRevoked => UiServiceKind::InvitationRevoked,
+        ServiceKind::Kicked => UiServiceKind::Kicked,
+        ServiceKind::Banned => UiServiceKind::Banned,
+        ServiceKind::Unbanned => UiServiceKind::Unbanned,
+        ServiceKind::Knocked => UiServiceKind::Knocked,
+        ServiceKind::KnockAccepted => UiServiceKind::KnockAccepted,
+        ServiceKind::NameSet => UiServiceKind::NameSet,
+        ServiceKind::NameChanged => UiServiceKind::NameChanged,
+        ServiceKind::NameRemoved => UiServiceKind::NameRemoved,
+        ServiceKind::AvatarChanged => UiServiceKind::AvatarChanged,
+        ServiceKind::RoomName => UiServiceKind::RoomName,
+        ServiceKind::RoomTopic => UiServiceKind::RoomTopic,
+        ServiceKind::RoomAvatar => UiServiceKind::RoomAvatar,
+        ServiceKind::RoomCreated => UiServiceKind::RoomCreated,
+        ServiceKind::Encryption => UiServiceKind::Encryption,
+        ServiceKind::CallStarted => UiServiceKind::CallStarted,
+        ServiceKind::CallNotification => UiServiceKind::CallNotification,
     }
 }
 
@@ -204,12 +311,11 @@ impl UiBackend for CompiledBackend {
 
     fn set_message_thumbnail(entry: &mut MessageEntry, image: &Image) {
         entry.thumbnail = image.clone();
-        entry.has_thumbnail = true;
-        entry.media_failed = false;
+        entry.media_state = UiMediaState::Ready;
     }
 
     fn set_message_media_failed(entry: &mut MessageEntry) {
-        entry.media_failed = true;
+        entry.media_state = UiMediaState::Failed;
     }
 
     fn set_message_frame(entry: &mut MessageEntry, image: Image) {
@@ -255,6 +361,9 @@ impl SlintUiAdapter {
     ) -> Result<()> {
         setup_emoji_store(&self.window);
 
+        let win = &self.window;
+        simple_callbacks!(bind_compiled_callbacks win cmd_tx;);
+
         let tx = cmd_tx.clone();
         let weak = self.window.as_weak();
         self.window.on_check_server(move |homeserver| {
@@ -282,22 +391,6 @@ impl SlintUiAdapter {
         });
 
         let tx = cmd_tx.clone();
-        self.window
-            .on_cancel_oauth(move || router::cancel_oauth(&tx));
-
-        let tx = cmd_tx.clone();
-        self.window
-            .on_select_room(move |room_id| router::select_room(&tx, room_id.to_string()));
-
-        let tx = cmd_tx.clone();
-        self.window
-            .on_select_space(move |space_id| router::select_space(&tx, space_id.to_string()));
-
-        let tx = cmd_tx.clone();
-        self.window
-            .on_select_subspace(move |space_id| router::select_subspace(&tx, space_id.to_string()));
-
-        let tx = cmd_tx.clone();
         self.window.on_move_space(move |from, to| {
             let (Ok(from), Ok(to)) = (usize::try_from(from), usize::try_from(to)) else {
                 return;
@@ -312,9 +405,6 @@ impl SlintUiAdapter {
         });
 
         let tx = cmd_tx.clone();
-        self.window.on_logout(move || router::logout(&tx));
-
-        let tx = cmd_tx.clone();
         self.window.on_send_message(move |req| {
             router::send_message(
                 &tx,
@@ -323,22 +413,6 @@ impl SlintUiAdapter {
                 req.reply_to.to_string(),
             );
         });
-
-        let tx = cmd_tx.clone();
-        self.window
-            .on_accept_verification(move || router::accept_verification(&tx));
-
-        let tx = cmd_tx.clone();
-        self.window
-            .on_confirm_verification(move || router::confirm_verification(&tx));
-
-        let tx = cmd_tx.clone();
-        self.window
-            .on_reject_verification(move || router::reject_verification(&tx));
-
-        let tx = cmd_tx.clone();
-        self.window
-            .on_open_media(move |event_id| router::open_media(&tx, event_id.to_string()));
 
         self.window
             .on_request_media(move |unique_id| request_media(&unique_id));
@@ -382,10 +456,6 @@ impl SlintUiAdapter {
             router::jump_to_latest(&tx, selected_room_key::<CompiledBackend>(&weak));
         });
 
-        let tx = cmd_tx.clone();
-        self.window
-            .on_retry_timeline(move || router::retry_timeline(&tx));
-
         Ok(())
     }
 
@@ -402,12 +472,16 @@ impl SlintUiAdapter {
         let subspaces_model: Rc<VecModel<SpaceEntry>> = Rc::new(VecModel::default());
 
         self.window
+            .global::<RoomView>()
             .set_timeline(ModelRc::from(Rc::clone(&timeline_model)));
         self.window
+            .global::<DirectoryView>()
             .set_rooms(ModelRc::from(Rc::clone(&rooms_model)));
         self.window
+            .global::<DirectoryView>()
             .set_spaces(ModelRc::from(Rc::clone(&spaces_model)));
         self.window
+            .global::<DirectoryView>()
             .set_subspaces(ModelRc::from(Rc::clone(&subspaces_model)));
 
         TIMELINE_MODEL.with(|cell| *cell.borrow_mut() = Some(timeline_model));
@@ -499,12 +573,11 @@ fn message_to_entry(m: &TimelineMessage, media: &dyn MediaCache) -> MessageEntry
         pronouns: string_model(d.pronouns),
         body: d.body,
         timestamp: d.timestamp,
-        message_type: d.message_type,
-        preview_kind: d.preview_kind,
+        message_type: to_message_kind(d.message_type),
+        preview_kind: to_preview_kind(d.preview_kind),
         unsupported_kind: d.unsupported_kind,
-        has_thumbnail: d.has_thumbnail,
         thumbnail: d.thumbnail.unwrap_or_default(),
-        media_failed: d.media_failed,
+        media_state: to_media_state(d.media_state),
         image_width: d.image_width,
         image_height: d.image_height,
         event_id: d.event_id,
@@ -516,9 +589,9 @@ fn message_to_entry(m: &TimelineMessage, media: &dyn MediaCache) -> MessageEntry
         edited: d.edited,
         has_reply: d.has_reply,
         reply_sender: d.reply_sender,
-        reply_kind: d.reply_kind,
+        reply_kind: to_preview_kind(d.reply_kind),
         reply_body: d.reply_body,
-        service_kind: d.service_kind,
+        service_kind: to_service_kind(d.service_kind),
         service_target: d.service_target,
     }
 }
@@ -528,10 +601,9 @@ fn enrich_entry(entry: &mut MessageEntry, delta: &EnrichmentDelta, media: &dyn M
     match update.thumbnail {
         ThumbUpdate::Ready(img) => {
             entry.thumbnail = img;
-            entry.has_thumbnail = true;
-            entry.media_failed = false;
+            entry.media_state = UiMediaState::Ready;
         }
-        ThumbUpdate::Failed => entry.media_failed = true,
+        ThumbUpdate::Failed => entry.media_state = UiMediaState::Failed,
         ThumbUpdate::Unchanged => {}
     }
     if let Some(img) = update.avatar {
@@ -556,9 +628,9 @@ fn room_to_entry(r: &Room, media: &dyn MediaCache) -> RoomEntry {
         unread: d.unread,
         mentions: d.mentions,
         last_message_sender: d.last_message_sender,
-        last_message_kind: d.last_message_kind,
+        last_message_kind: to_preview_kind(d.last_message_kind),
         last_message_body: d.last_message_body,
-        last_message_service_kind: d.last_message_service_kind,
+        last_message_service_kind: to_service_kind(d.last_message_service_kind),
         last_message_service_target: d.last_message_service_target,
         last_message_is_own: d.last_message_is_own,
         last_message_edited: d.last_message_edited,

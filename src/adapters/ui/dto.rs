@@ -5,14 +5,32 @@ use super::decode::{
     record_media_need,
 };
 use super::present::{
-    avatar_color_index, avatar_initials, message_body_text, message_preview_kind_token,
-    message_sender_label, message_timestamp_label, message_type_token, pronoun_labels,
-    room_activity_label, sender_initial, service_kind_token, service_target, unsupported_kind,
+    MessageKind, PreviewKind, ServiceKind, avatar_color_index, avatar_initials, message_body_text,
+    message_kind, message_sender_label, message_timestamp_label, preview_kind, pronoun_labels,
+    room_activity_label, sender_initial, service_kind, service_target, unsupported_kind,
 };
 use crate::domain::models::{
     EnrichmentDelta, MessageBody, Room, Space, ThumbnailOutcome, TimelineMessage,
 };
 use crate::ports::media::MediaCache;
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum MediaState {
+    Idle,
+    Ready,
+    Failed,
+}
+
+#[cfg(feature = "interpreted")]
+impl MediaState {
+    pub fn slint(self) -> (&'static str, &'static str) {
+        match self {
+            Self::Idle => ("MediaState", "idle"),
+            Self::Ready => ("MediaState", "ready"),
+            Self::Failed => ("MediaState", "failed"),
+        }
+    }
+}
 
 #[allow(clippy::struct_excessive_bools)]
 pub struct MessageDto {
@@ -21,8 +39,8 @@ pub struct MessageDto {
     pub pronouns: Vec<SharedString>,
     pub body: SharedString,
     pub timestamp: SharedString,
-    pub message_type: SharedString,
-    pub preview_kind: SharedString,
+    pub message_type: MessageKind,
+    pub preview_kind: PreviewKind,
     pub unsupported_kind: SharedString,
     pub event_id: SharedString,
     pub sender_initial: SharedString,
@@ -31,15 +49,14 @@ pub struct MessageDto {
     pub edited: bool,
     pub has_reply: bool,
     pub reply_sender: SharedString,
-    pub reply_kind: SharedString,
+    pub reply_kind: PreviewKind,
     pub reply_body: SharedString,
-    pub service_kind: SharedString,
+    pub service_kind: ServiceKind,
     pub service_target: SharedString,
     pub image_width: i32,
     pub image_height: i32,
     pub thumbnail: Option<Image>,
-    pub has_thumbnail: bool,
-    pub media_failed: bool,
+    pub media_state: MediaState,
     pub avatar: Option<Image>,
     pub has_avatar: bool,
 }
@@ -53,9 +70,9 @@ pub struct RoomDto {
     pub unread: i32,
     pub mentions: i32,
     pub last_message_sender: SharedString,
-    pub last_message_kind: SharedString,
+    pub last_message_kind: PreviewKind,
     pub last_message_body: SharedString,
-    pub last_message_service_kind: SharedString,
+    pub last_message_service_kind: ServiceKind,
     pub last_message_service_target: SharedString,
     pub last_message_is_own: bool,
     pub last_message_edited: bool,
@@ -101,8 +118,8 @@ pub fn message_to_dto(m: &TimelineMessage, media: &dyn MediaCache) -> MessageDto
             .collect(),
         body: SharedString::from(message_body_text(&m.body)),
         timestamp: SharedString::from(&message_timestamp_label(m.timestamp)),
-        message_type: SharedString::from(message_type_token(&m.body)),
-        preview_kind: SharedString::from(message_preview_kind_token(m.body.preview_kind())),
+        message_type: message_kind(&m.body),
+        preview_kind: preview_kind(m.body.preview_kind()),
         unsupported_kind: SharedString::from(unsupported_kind(&m.body)),
         event_id: SharedString::from(m.event_id.as_ref().map_or("", |e| e.0.as_str())),
         sender_initial: SharedString::from(avatar_initials(sender_label)),
@@ -111,19 +128,17 @@ pub fn message_to_dto(m: &TimelineMessage, media: &dyn MediaCache) -> MessageDto
         edited: m.edited,
         has_reply: m.reply.is_some(),
         reply_sender: SharedString::from(m.reply.as_ref().map_or("", |r| r.sender.as_str())),
-        reply_kind: SharedString::from(
-            m.reply
-                .as_ref()
-                .map_or("", |r| message_preview_kind_token(r.kind)),
-        ),
+        reply_kind: m
+            .reply
+            .as_ref()
+            .map_or(PreviewKind::None, |r| preview_kind(r.kind)),
         reply_body: SharedString::from(m.reply.as_ref().map_or("", |r| r.body.as_str())),
-        service_kind: SharedString::from(m.body.service().map_or("", service_kind_token)),
+        service_kind: m.body.service().map_or(ServiceKind::None, service_kind),
         service_target: SharedString::from(m.body.service().map_or("", service_target)),
         image_width: 0,
         image_height: 0,
         thumbnail: None,
-        has_thumbnail: false,
-        media_failed: false,
+        media_state: MediaState::Idle,
         avatar: None,
         has_avatar: false,
     };
@@ -136,11 +151,11 @@ pub fn message_to_dto(m: &TimelineMessage, media: &dyn MediaCache) -> MessageDto
             if let Some(path) = media.thumbnail_path(&event_id.0) {
                 if let Some(img) = peek_thumbnail(&path) {
                     dto.thumbnail = Some(img);
-                    dto.has_thumbnail = true;
+                    dto.media_state = MediaState::Ready;
                 }
                 thumbnail_path = Some(path);
-            } else {
-                dto.media_failed = media.thumbnail_failed(&event_id.0);
+            } else if media.thumbnail_failed(&event_id.0) {
+                dto.media_state = MediaState::Failed;
             }
         }
     }
@@ -207,13 +222,12 @@ pub fn room_to_dto(r: &Room, media: &dyn MediaCache) -> RoomDto {
         last_message_sender: SharedString::from(
             r.last_message_sender.as_deref().unwrap_or_default(),
         ),
-        last_message_kind: SharedString::from(message_preview_kind_token(r.last_message_kind)),
+        last_message_kind: preview_kind(r.last_message_kind),
         last_message_body: SharedString::from(&r.last_message_body),
-        last_message_service_kind: SharedString::from(
-            r.last_message_service
-                .as_ref()
-                .map_or("", service_kind_token),
-        ),
+        last_message_service_kind: r
+            .last_message_service
+            .as_ref()
+            .map_or(ServiceKind::None, service_kind),
         last_message_service_target: SharedString::from(
             r.last_message_service.as_ref().map_or("", service_target),
         ),

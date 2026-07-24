@@ -5,6 +5,7 @@ import {
 } from "std-widgets.slint";
 
 import { BrandTitle, StatusText, ErrorText, LoginStatus } from "./common.slint";
+import { LoginView } from "../../views.slint";
 
 export component HomeserverScreen inherits VerticalLayout {
     alignment: center;
@@ -12,10 +13,8 @@ export component HomeserverScreen inherits VerticalLayout {
     spacing: 12px;
 
     in-out property <string> input-homeserver: "matrix.org";
-    in property <string> login-status: "";
-    in property <string> login-error: "";
 
-    private property <bool> is-checking: root.login-status == "checking-server";
+    private property <bool> is-checking: LoginView.status == "checking-server";
 
     callback check-server(string);
 
@@ -60,11 +59,11 @@ export component HomeserverScreen inherits VerticalLayout {
         }
     }
 
-    if root.login-status != "": StatusText {
-        text: LoginStatus.label(root.login-status);
+    if LoginView.status != "": StatusText {
+        text: LoginStatus.label(LoginView.status);
     }
 
-    if root.login-error != "": ErrorText {
-        text: root.login-error;
+    if LoginView.error != "": ErrorText {
+        text: LoginView.error;
     }
 }

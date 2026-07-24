@@ -28,3 +28,65 @@ export enum VerificationPhase {
     done,
     cancelled,
 }
+
+export enum MediaState {
+    idle,
+    ready,
+    failed,
+}
+
+export enum MessageKind {
+    text,
+    notice,
+    emote,
+    image,
+    file,
+    service,
+    utd,
+    unsupported,
+}
+
+export enum PreviewKind {
+    none,
+    text,
+    image,
+    video,
+    audio,
+    file,
+    location,
+    encrypted,
+    sticker,
+}
+
+export enum ServiceKind {
+    none,
+    joined,
+    left,
+    invited,
+    invitation-accepted,
+    invitation-rejected,
+    invitation-revoked,
+    kicked,
+    banned,
+    unbanned,
+    knocked,
+    knock-accepted,
+    name-set,
+    name-changed,
+    name-removed,
+    avatar-changed,
+    room-name,
+    room-topic,
+    room-avatar,
+    room-created,
+    encryption,
+    call-started,
+    call-notification,
+}
+
+export enum LoginMethodKind {
+    none,
+    password,
+    oauth,
+    both,
+}

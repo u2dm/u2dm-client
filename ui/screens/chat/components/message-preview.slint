@@ -1,24 +1,26 @@
+import { PreviewKind } from "../../../enums.slint";
+
 export global MessagePreview {
-    public pure function label(kind: string, body: string) -> string {
-        if kind == "image" {
+    public pure function label(kind: PreviewKind, body: string) -> string {
+        if kind == PreviewKind.image {
             return @tr("📷 Photo");
         }
-        if kind == "video" {
+        if kind == PreviewKind.video {
             return @tr("🎬 Video");
         }
-        if kind == "audio" {
+        if kind == PreviewKind.audio {
             return @tr("🎵 Audio");
         }
-        if kind == "file" {
+        if kind == PreviewKind.file {
             return @tr("📎 {}", body);
         }
-        if kind == "location" {
+        if kind == PreviewKind.location {
             return @tr("📍 Location");
         }
-        if kind == "encrypted" {
+        if kind == PreviewKind.encrypted {
             return @tr("🔒 Encrypted message");
         }
-        if kind == "sticker" {
+        if kind == PreviewKind.sticker {
             return @tr("Sticker");
         }
         return body;

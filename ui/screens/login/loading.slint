@@ -1,20 +1,18 @@
 import { BrandTitle, StatusText, ErrorText, LoginStatus } from "./common.slint";
+import { LoginView } from "../../views.slint";
 
 export component LoadingScreen inherits VerticalLayout {
     alignment: center;
     padding: 24px;
     spacing: 16px;
 
-    in property <string> loading-status: "";
-    in property <string> loading-error: "";
-
     BrandTitle { }
 
-    if root.loading-status != "": StatusText {
-        text: LoginStatus.label(root.loading-status);
+    if LoginView.status != "": StatusText {
+        text: LoginStatus.label(LoginView.status);
     }
 
-    if root.loading-error != "": ErrorText {
-        text: root.loading-error;
+    if LoginView.error != "": ErrorText {
+        text: LoginView.error;
     }
 }

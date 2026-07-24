@@ -1,20 +1,32 @@
 import "fonts/Twemoji.ttf";
 
 import { LoginRequest } from "screens/login/types.slint";
+import { SendMessageRequest, SaveFileRequest } from "screens/chat/components/types.slint";
 import {
-    RoomEntry,
-    SpaceEntry,
-    MessageEntry,
-    SendMessageRequest,
-    SaveFileRequest,
-} from "screens/chat/components/types.slint";
-import { VerificationEmoji } from "components/types.slint";
-import { LoginPhase, ConnectionState, TimelineState, VerificationPhase } from "enums.slint";
+    LoginPhase,
+    ConnectionState,
+    TimelineState,
+    VerificationPhase,
+    MediaState,
+    MessageKind,
+    PreviewKind,
+    ServiceKind,
+    LoginMethodKind,
+} from "enums.slint";
+import {
+    LoginView,
+    SessionView,
+    DirectoryView,
+    RoomView,
+    VerificationView,
+} from "views.slint";
 import {
     EmojiStore,
 } from "screens/chat/components/timeline/emoji-picker.slint";
 export { EmojiStore }
-export { LoginPhase, ConnectionState, TimelineState, VerificationPhase }
+export { LoginPhase, ConnectionState, TimelineState, VerificationPhase, MediaState }
+export { MessageKind, PreviewKind, ServiceKind, LoginMethodKind }
+export { LoginView, SessionView, DirectoryView, RoomView, VerificationView }
 import { LoadingScreen } from "screens/login/loading.slint";
 import { HomeserverScreen } from "screens/login/homeserver.slint";
 import { CredentialsScreen } from "screens/login/credentials.slint";
@@ -27,43 +39,9 @@ export component AppWindow inherits Window {
     preferred-height: root.height;
 
     in-out property <string> input-homeserver: "matrix.org";
-    in-out property <string> login-status: "";
-    in-out property <string> login-error: "";
-    in-out property <LoginPhase> login-step: LoginPhase.loading;
-    in-out property <string> login-method: "";
-    in-out property <string> resolved-homeserver: "";
     in-out property <string> input-username: "";
     in-out property <string> input-password: "";
-    in-out property <string> user-id: "";
-    in-out property <string> user-initial: "";
-    in-out property <image> user-avatar;
-    in-out property <bool> user-has-avatar: false;
-    in-out property <[RoomEntry]> rooms: [];
-    in-out property <[SpaceEntry]> spaces: [];
-    in-out property <[SpaceEntry]> subspaces: [];
-    in-out property <[MessageEntry]> timeline: [];
-    in-out property <string> selected-room-name: "";
-    in-out property <string> selected-room-id: "";
-    in-out property <int> selected-generation: 0;
-    in-out property <int> selected-room-members: 0;
-    in-out property <string> selected-space-id: "";
-    in-out property <string> selected-subspace-id: "";
-    in-out property <ConnectionState> connection-status: ConnectionState.disconnected;
-
-    in-out property <bool> verification-visible: false;
-    in-out property <VerificationPhase> verification-step: VerificationPhase.none;
-    in-out property <string> verification-sender: "";
-    in-out property <bool> verification-is-self: false;
-    in-out property <[VerificationEmoji]> verification-emojis: [];
-    in-out property <string> verification-error: "";
-    in-out property <string> toast-message: "";
-    in-out property <string> saved-file-path: "";
-    in-out property <TimelineState> timeline-status: TimelineState.none;
-    in-out property <bool> timeline-retryable: false;
-    in-out property <int> new-messages-count: 0;
-    in-out property <int> prepend-token: 0;
-    in-out property <bool> backwards-loading: false;
-    in-out property <bool> forwards-loading: false;
+    in-out property <string> input-message: "";
 
     callback check-server(string);
     callback login-password(LoginRequest);
@@ -88,27 +66,16 @@ export component AppWindow inherits Window {
     callback jump-to-latest();
     callback retry-timeline();
 
-    in-out property <string> input-message: "";
+    if LoginView.step == LoginPhase.loading: LoadingScreen { }
 
-    if root.login-step == LoginPhase.loading: LoadingScreen {
-        loading-status: root.login-status;
-        loading-error: root.login-error;
-    }
-
-    if root.login-step == LoginPhase.homeserver: HomeserverScreen {
+    if LoginView.step == LoginPhase.homeserver: HomeserverScreen {
         input-homeserver <=> root.input-homeserver;
-        login-status: root.login-status;
-        login-error: root.login-error;
         check-server(hs) => {
             root.check-server(hs);
         }
     }
 
-    if root.login-step == LoginPhase.credentials: CredentialsScreen {
-        resolved-homeserver: root.resolved-homeserver;
-        login-method: root.login-method;
-        login-status: root.login-status;
-        login-error: root.login-error;
+    if LoginView.step == LoginPhase.credentials: CredentialsScreen {
         input-username <=> root.input-username;
         input-password <=> root.input-password;
         login-password(req) => {
@@ -121,35 +88,13 @@ export component AppWindow inherits Window {
             root.cancel-oauth();
         }
         back => {
-            root.login-step = LoginPhase.homeserver;
-            root.login-error = "";
-            root.login-status = "";
+            LoginView.step = LoginPhase.homeserver;
+            LoginView.error = "";
+            LoginView.status = "";
         }
     }
 
-    if root.login-step == LoginPhase.logged-in: ChatScreen {
-        user-id: root.user-id;
-        user-initial: root.user-initial;
-        user-avatar: root.user-avatar;
-        user-has-avatar: root.user-has-avatar;
-        connection-status: root.connection-status;
-        rooms: root.rooms;
-        spaces: root.spaces;
-        subspaces: root.subspaces;
-        timeline: root.timeline;
-        timeline-status: root.timeline-status;
-        timeline-retryable: root.timeline-retryable;
-        new-messages-count: root.new-messages-count;
-        prepend-token: root.prepend-token;
-        backwards-loading: root.backwards-loading;
-        forwards-loading: root.forwards-loading;
-        toast-message: root.toast-message;
-        saved-file-path: root.saved-file-path;
-        selected-room-id: root.selected-room-id;
-        selected-room-name: root.selected-room-name;
-        selected-room-members: root.selected-room-members;
-        selected-space-id: root.selected-space-id;
-        selected-subspace-id: root.selected-subspace-id;
+    if LoginView.step == LoginPhase.logged-in: ChatScreen {
         input-message <=> root.input-message;
         select-room(id) => {
             root.select-room(id);
@@ -181,9 +126,6 @@ export component AppWindow inherits Window {
         request-media(id) => {
             root.request-media(id);
         }
-        dismiss-toast => {
-            root.toast-message = "";
-        }
         scroll-position-changed(at-top, at-bottom) => {
             root.scroll-position-changed(at-top, at-bottom);
         }
@@ -201,12 +143,7 @@ export component AppWindow inherits Window {
         }
     }
 
-    if root.verification-visible && root.login-step == LoginPhase.logged-in: VerificationDialog {
-        verification-step: root.verification-step;
-        verification-sender: root.verification-sender;
-        verification-is-self: root.verification-is-self;
-        verification-emojis: root.verification-emojis;
-        verification-error: root.verification-error;
+    if VerificationView.visible && LoginView.step == LoginPhase.logged-in: VerificationDialog {
         accept-verification => {
             root.accept-verification();
         }
@@ -217,7 +154,7 @@ export component AppWindow inherits Window {
             root.reject-verification();
         }
         dismissed => {
-            root.verification-visible = false;
+            VerificationView.visible = false;
         }
     }
 }

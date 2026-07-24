@@ -4,21 +4,15 @@ import {
 } from "std-widgets.slint";
 import { IconDisplay, IconSet } from "@lucide";
 
-import {
-    MessageEntry,
-    SaveFileRequest,
-} from "../types.slint";
+import { SaveFileRequest } from "../types.slint";
 
 import { MessageBubble } from "./message-bubble.slint";
+import { MediaState, MessageKind } from "../../../../enums.slint";
 import { ClickArea } from "../../../../components/a11y.slint";
+import { RoomView } from "../../../../views.slint";
 
 export component TimelineContent inherits Rectangle {
     in property <string> room-id: "";
-    in property <[MessageEntry]> timeline: [];
-    in property <bool> backwards-loading: false;
-    in property <bool> forwards-loading: false;
-    in property <int> new-messages-count: 0;
-    in property <int> prepend-token: 0;
     in property <length> available-width;
 
     callback open-media(string);
@@ -38,7 +32,7 @@ export component TimelineContent inherits Rectangle {
         flickable.reset-scroll();
     }
 
-    if root.backwards-loading: HorizontalLayout {
+    if RoomView.backwards-loading: HorizontalLayout {
         x: 0;
         y: 0;
         width: parent.width;
@@ -51,7 +45,7 @@ export component TimelineContent inherits Rectangle {
         }
     }
 
-    if root.forwards-loading: HorizontalLayout {
+    if RoomView.forwards-loading: HorizontalLayout {
         x: 0;
         y: parent.height - self.height;
         width: parent.width;
@@ -88,13 +82,13 @@ export component TimelineContent inherits Rectangle {
             self.viewport-height - self.visible-height;
         property <bool> scrollable:
             self.viewport-height > self.visible-height;
-        property <int> item-count: root.timeline.length;
+        property <int> item-count: RoomView.timeline.length;
 
         changed viewport-height => {
             root.content-height = self.viewport-height;
             if (self.settling || self.auto-scroll) && self.scrollable {
                 self.scroll-to-bottom();
-            } else if root.prepend-token != self.seen-prepend-token
+            } else if RoomView.prepend-token != self.seen-prepend-token
                 && self.scrollable
                 && self.prev-viewport-height > 0
                 && self.prev-item-count > 0
@@ -102,7 +96,7 @@ export component TimelineContent inherits Rectangle {
                 self.programmatic-scroll = true;
                 self.viewport-y = self.anchor-viewport-y();
             }
-            self.seen-prepend-token = root.prepend-token;
+            self.seen-prepend-token = RoomView.prepend-token;
             self.prev-viewport-height = self.viewport-height;
             self.prev-item-count = self.item-count;
         }
@@ -112,10 +106,10 @@ export component TimelineContent inherits Rectangle {
                 self.programmatic-scroll = false;
             } else {
                 self.settling = false;
-                if self.at-top && !self.was-at-top && !root.backwards-loading {
+                if self.at-top && !self.was-at-top && !RoomView.backwards-loading {
                     root.paginate-backwards();
                 }
-                if self.at-bottom && !self.was-at-bottom && !root.forwards-loading {
+                if self.at-bottom && !self.was-at-bottom && !RoomView.forwards-loading {
                     root.paginate-forwards();
                 }
             }
@@ -140,7 +134,7 @@ export component TimelineContent inherits Rectangle {
         function reset-scroll() {
             self.auto-scroll = true;
             self.settling = true;
-            self.seen-prepend-token = root.prepend-token;
+            self.seen-prepend-token = RoomView.prepend-token;
             self.prev-viewport-height = 0;
             self.prev-item-count = 0;
             self.scroll-to-bottom();
@@ -157,12 +151,12 @@ export component TimelineContent inherits Rectangle {
                 * (self.viewport-height / self.item-count)
         }
 
-        for msg in root.timeline: MessageBubble {
+        for msg in RoomView.timeline: MessageBubble {
             is-own: msg.is-own;
             msg: msg;
             available-width: root.available-width;
             init => {
-                if (msg.message-type == "image" && !msg.has-thumbnail)
+                if (msg.message-type == MessageKind.image && msg.media-state != MediaState.ready)
                     || (!msg.is-own && !msg.has-avatar) {
                     root.request-media(msg.unique-id);
                 }
@@ -179,7 +173,7 @@ export component TimelineContent inherits Rectangle {
         }
     }
 
-    if !flickable.auto-scroll && root.timeline.length > 0: ClickArea {
+    if !flickable.auto-scroll && RoomView.timeline.length > 0: ClickArea {
         x: parent.width - self.width - 16px;
         y: parent.height - self.height - 16px;
         width: 40px;
@@ -202,7 +196,7 @@ export component TimelineContent inherits Rectangle {
             stroke: Palette.alternate-foreground;
         }
 
-        if root.new-messages-count > 0: Rectangle {
+        if RoomView.new-messages-count > 0: Rectangle {
             x: parent.width - self.width / 2 - 2px;
             y: -self.height / 2 + 2px;
             width: Math.max(18px, badge-text.preferred-width + 8px);
@@ -211,7 +205,7 @@ export component TimelineContent inherits Rectangle {
             background: Palette.accent-background;
 
             badge-text := Text {
-                text: root.new-messages-count;
+                text: RoomView.new-messages-count;
                 font-size: 10px;
                 font-weight: 700;
                 color: Palette.accent-foreground;

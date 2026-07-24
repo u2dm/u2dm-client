@@ -1,22 +1,24 @@
 import { Palette, Spinner } from "std-widgets.slint";
 import { IconDisplay, IconSet } from "@lucide";
 import { ClickArea } from "../../../../../components/a11y.slint";
+import { MediaState } from "../../../../../enums.slint";
 
 export component ImageMessage inherits VerticalLayout {
     in property <image> thumbnail;
-    in property <bool> has-thumbnail;
-    in property <bool> media-failed;
+    in property <MediaState> media-state;
     in property <int> image-width;
     in property <int> image-height;
     in property <string> body;
     in property <string> event-id;
 
     property <bool> has-dimensions: root.image-width > 0 && root.image-height > 0;
-    property <bool> is-loading: !root.has-thumbnail && !root.media-failed && root.has-dimensions;
+    property <bool> is-ready: root.media-state == MediaState.ready;
+    property <bool> is-failed: root.media-state == MediaState.failed;
+    property <bool> is-loading: root.media-state == MediaState.idle && root.has-dimensions;
 
     callback open-media(string);
 
-    if has-thumbnail: ClickArea {
+    if is-ready: ClickArea {
         enabled: root.event-id != "";
         label: root.body != "" ? @tr("Open image: {}", root.body) : @tr("Open image");
         ring-radius: 4px;
@@ -46,7 +48,7 @@ export component ImageMessage inherits VerticalLayout {
         }
     }
 
-    if !has-thumbnail && media-failed: Rectangle {
+    if is-failed: Rectangle {
         property <float> aspect: root.has-dimensions ? root.image-width / max(root.image-height, 1) : 1.5;
         width: min(400px, max(267px, 400px * aspect));
         height: min(400px, self.width / max(aspect, 0.01));
@@ -76,14 +78,14 @@ export component ImageMessage inherits VerticalLayout {
         }
     }
 
-    if !has-thumbnail && !media-failed && !has-dimensions: Text {
+    if root.media-state == MediaState.idle && !has-dimensions: Text {
         text: root.body != "" ? @tr("Image: {}", root.body) : @tr("Image");
         font-size: 14px;
         color: Palette.foreground.transparentize(0.3);
         wrap: word-wrap;
     }
 
-    if (has-thumbnail || is-loading || media-failed) && root.body != "": Text {
+    if (is-ready || is-loading || is-failed) && root.body != "": Text {
         text: root.body;
         font-size: 14px;
         wrap: word-wrap;

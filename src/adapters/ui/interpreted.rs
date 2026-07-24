@@ -18,18 +18,21 @@ thread_local! {
     static SUBSPACES_MODEL: RefCell<Option<Rc<VecModel<Value>>>> = const { RefCell::new(None) };
 }
 
+use names::{
+    callback, emoji_entry, emoji_group, emoji_insert, emoji_store, login_request, message, room,
+    save_file_request, send_message_request, space, verification_emoji,
+};
+
 use super::backend::{UiBackend, install_render_hooks, post_effect, selected_room_key};
 use super::decode::{AvatarSlot, request_avatar, request_media};
-use super::dto::{ThumbUpdate, enrich_to_update, message_to_dto, room_to_dto, space_to_dto};
+use super::dto::{
+    MediaState, ThumbUpdate, enrich_to_update, message_to_dto, room_to_dto, space_to_dto,
+};
 use super::multiplex::spawn_event_multiplexer;
-use super::present::VerifyStep;
+use super::present::{LoginMethodKind, VerifyStep};
 use super::props::{BoolProp, IntProp, StringProp, UiProps};
 use super::reconcile::reorder_rows;
-use super::schema::{
-    callback, emoji_entry, emoji_group, emoji_insert, emoji_store, login_request, message,
-    message_fields, prop, room, room_fields, save_file_request, send_message_request, space,
-    space_fields, verification_emoji,
-};
+use super::schema::{message_fields, room_fields, simple_callbacks, space_fields};
 use super::{emoji, router};
 use crate::commands::{AppViewState, Effect, LoginStep, UiCommand, ViewportChanged};
 use crate::domain::models::{
@@ -38,6 +41,84 @@ use crate::domain::models::{
 };
 use crate::error::{AppError, Result};
 use crate::ports::media::MediaCache;
+
+#[allow(dead_code)]
+mod names {
+    pub mod callback {
+        pub const CHECK_SERVER: &str = "check-server";
+        pub const LOGIN_PASSWORD: &str = "login-password";
+        pub const LOGIN_OAUTH: &str = "login-oauth";
+        pub const MOVE_SPACE: &str = "move-space";
+        pub const SEND_MESSAGE: &str = "send-message";
+        pub const SAVE_FILE: &str = "save-file";
+        pub const REQUEST_MEDIA: &str = "request-media";
+        pub const REQUEST_ROOM_AVATAR: &str = "request-room-avatar";
+        pub const SCROLL_POSITION_CHANGED: &str = "scroll-position-changed";
+        pub const PAGINATE_BACKWARDS: &str = "paginate-backwards";
+        pub const PAGINATE_FORWARDS: &str = "paginate-forwards";
+        pub const JUMP_TO_LATEST: &str = "jump-to-latest";
+    }
+
+    pub mod emoji_store {
+        pub const NAME: &str = "EmojiStore";
+        pub const GROUPS: &str = "groups";
+        pub const RESULTS: &str = "results";
+        pub const SEARCH: &str = "search";
+        pub const INSERT: &str = "insert";
+    }
+
+    pub mod message {
+        use crate::adapters::ui::schema::{gen_consts, message_fields};
+        message_fields!(gen_consts);
+    }
+
+    pub mod room {
+        use crate::adapters::ui::schema::{gen_consts, room_fields};
+        room_fields!(gen_consts);
+    }
+
+    pub mod space {
+        use crate::adapters::ui::schema::{gen_consts, space_fields};
+        space_fields!(gen_consts);
+    }
+
+    pub mod emoji_entry {
+        pub const BASE: &str = "base";
+        pub const TONES: &str = "tones";
+        pub const NAME: &str = "name";
+    }
+
+    pub mod emoji_group {
+        pub const ITEMS: &str = "items";
+    }
+
+    pub mod emoji_insert {
+        pub const TEXT: &str = "text";
+        pub const CARET: &str = "caret";
+    }
+
+    pub mod verification_emoji {
+        pub const SYMBOL: &str = "symbol";
+        pub const DESCRIPTION: &str = "description";
+    }
+
+    pub mod login_request {
+        pub const HOMESERVER: &str = "homeserver";
+        pub const USERNAME: &str = "username";
+        pub const PASSWORD: &str = "password";
+    }
+
+    pub mod send_message_request {
+        pub const ROOM_ID: &str = "room-id";
+        pub const BODY: &str = "body";
+        pub const REPLY_TO: &str = "reply-to";
+    }
+
+    pub mod save_file_request {
+        pub const EVENT_ID: &str = "event-id";
+        pub const FILENAME: &str = "filename";
+    }
+}
 
 fn set_prop(inst: &ComponentInstance, name: &str, value: Value) {
     if let Err(e) = inst.set_property(name, value) {
@@ -50,8 +131,19 @@ fn set_global_prop(inst: &ComponentInstance, global: &str, name: &str, value: Va
         .map_err(|e| AppError::Ui(format!("{e:?}")))
 }
 
+fn set_global(inst: &ComponentInstance, global: &str, name: &str, value: Value) {
+    if let Err(e) = inst.set_global_property(global, name, value) {
+        tracing::warn!("failed to set property '{global}.{name}': {e:?}");
+    }
+}
+
 fn enum_value(enumeration: &str, value: &str) -> Value {
     Value::EnumerationValue(enumeration.to_string(), value.to_string())
+}
+
+fn media_state_value(state: MediaState) -> Value {
+    let (name, variant) = state.slint();
+    enum_value(name, variant)
 }
 
 fn login_phase_value(step: LoginStep) -> &'static str {
@@ -149,53 +241,84 @@ fn bind(
         .map_err(|e| AppError::Ui(format!("{e:?}")))
 }
 
+macro_rules! bind_interpreted_callbacks {
+    ($inst:expr, $tx:ident; $($on:ident $lit:literal $fn:ident $shape:ident;)*) => {
+        $( bind_interpreted_callbacks!(@one $inst, $tx, $lit, $fn, $shape)?; )*
+    };
+    (@one $inst:expr, $tx:ident, $lit:literal, $fn:ident, unit) => {{
+        let tx = $tx.clone();
+        bind($inst, $lit, move |_args| { router::$fn(&tx); Value::Void })
+    }};
+    (@one $inst:expr, $tx:ident, $lit:literal, $fn:ident, string) => {{
+        let tx = $tx.clone();
+        bind($inst, $lit, move |args| {
+            router::$fn(&tx, string_arg(args, 0));
+            Value::Void
+        })
+    }};
+}
+
 impl UiProps for ComponentInstance {
     fn set_string(&self, prop: StringProp, value: SharedString) {
-        set_prop(self, prop.as_str(), Value::String(value));
+        set_global(self, prop.global(), prop.as_str(), Value::String(value));
     }
 
     fn set_bool(&self, prop: BoolProp, value: bool) {
-        set_prop(self, prop.as_str(), Value::Bool(value));
+        set_global(self, prop.global(), prop.as_str(), Value::Bool(value));
     }
 
     fn set_int(&self, prop: IntProp, value: i32) {
-        set_prop(self, prop.as_str(), Value::Number(value.into()));
+        set_global(
+            self,
+            prop.global(),
+            prop.as_str(),
+            Value::Number(value.into()),
+        );
     }
 
     fn set_login_phase(&self, step: LoginStep) {
-        set_prop(
+        set_global(
             self,
-            prop::LOGIN_STEP,
+            "LoginView",
+            "step",
             enum_value("LoginPhase", login_phase_value(step)),
         );
     }
 
+    fn set_login_method_kind(&self, method: LoginMethodKind) {
+        let (name, variant) = method.slint();
+        set_global(self, "LoginView", "method", enum_value(name, variant));
+    }
+
     fn set_connection_state(&self, status: &ConnectionStatus) {
-        set_prop(
+        set_global(
             self,
-            prop::CONNECTION_STATUS,
+            "SessionView",
+            "connection-status",
             enum_value("ConnectionState", connection_state_value(status)),
         );
     }
 
     fn set_timeline_state(&self, status: TimelineStatus) {
-        set_prop(
+        set_global(
             self,
-            prop::TIMELINE_STATUS,
+            "RoomView",
+            "timeline-status",
             enum_value("TimelineState", timeline_state_value(status)),
         );
     }
 
     fn set_verification_phase(&self, phase: VerifyStep) {
-        set_prop(
+        set_global(
             self,
-            prop::VERIFICATION_STEP,
+            "VerificationView",
+            "step",
             enum_value("VerificationPhase", verification_phase_value(phase)),
         );
     }
 
     fn get_string(&self, prop: StringProp) -> SharedString {
-        self.get_property(prop.as_str())
+        self.get_global_property(prop.global(), prop.as_str())
             .ok()
             .and_then(|v| match v {
                 Value::String(s) => Some(s),
@@ -205,7 +328,7 @@ impl UiProps for ComponentInstance {
     }
 
     fn get_int(&self, prop: IntProp) -> i32 {
-        match self.get_property(prop.as_str()) {
+        match self.get_global_property(prop.global(), prop.as_str()) {
             Ok(Value::Number(n)) if n.is_finite() && n.fract() == 0.0 => {
                 n.to_string().parse().unwrap_or_default()
             }
@@ -216,10 +339,10 @@ impl UiProps for ComponentInstance {
     fn apply_user_avatar(&self, avatar: Option<slint::Image>) {
         match avatar {
             Some(img) => {
-                set_prop(self, prop::USER_AVATAR, Value::Image(img));
-                set_prop(self, prop::USER_HAS_AVATAR, Value::Bool(true));
+                set_global(self, "SessionView", "user-avatar", Value::Image(img));
+                set_global(self, "SessionView", "user-has-avatar", Value::Bool(true));
             }
-            None => set_prop(self, prop::USER_HAS_AVATAR, Value::Bool(false)),
+            None => set_global(self, "SessionView", "user-has-avatar", Value::Bool(false)),
         }
     }
 
@@ -239,18 +362,33 @@ impl UiProps for ComponentInstance {
                 ]))
             })
             .collect();
-        set_prop(
+        set_global(
             self,
-            prop::VERIFICATION_EMOJIS,
+            "VerificationView",
+            "emojis",
             Value::Model(ModelRc::new(VecModel::from(entries))),
         );
     }
 
     fn clear_emoji_model(&self) {
+        set_global(
+            self,
+            "VerificationView",
+            "emojis",
+            Value::Model(ModelRc::new(VecModel::<Value>::default())),
+        );
+    }
+
+    fn clear_text_inputs(&self) {
         set_prop(
             self,
-            prop::VERIFICATION_EMOJIS,
-            Value::Model(ModelRc::new(VecModel::<Value>::default())),
+            "input-username",
+            Value::String(SharedString::default()),
+        );
+        set_prop(
+            self,
+            "input-password",
+            Value::String(SharedString::default()),
         );
     }
 }
@@ -313,14 +451,19 @@ impl UiBackend for InterpretedBackend {
     fn set_message_thumbnail(entry: &mut Value, image: &Image) {
         if let Value::Struct(s) = entry {
             s.set_field(message::THUMBNAIL.to_string(), Value::Image(image.clone()));
-            s.set_field(message::HAS_THUMBNAIL.to_string(), Value::Bool(true));
-            s.set_field(message::MEDIA_FAILED.to_string(), Value::Bool(false));
+            s.set_field(
+                message::MEDIA_STATE.to_string(),
+                media_state_value(MediaState::Ready),
+            );
         }
     }
 
     fn set_message_media_failed(entry: &mut Value) {
         if let Value::Struct(s) = entry {
-            s.set_field(message::MEDIA_FAILED.to_string(), Value::Bool(true));
+            s.set_field(
+                message::MEDIA_STATE.to_string(),
+                media_state_value(MediaState::Failed),
+            );
         }
     }
 
@@ -379,6 +522,8 @@ impl SlintUiAdapter {
     ) -> Result<()> {
         setup_emoji_store(&self.instance)?;
 
+        simple_callbacks!(bind_interpreted_callbacks &self.instance, cmd_tx;);
+
         let tx = cmd_tx.clone();
         let weak = self.instance.as_weak();
         bind(&self.instance, callback::CHECK_SERVER, move |args| {
@@ -412,30 +557,6 @@ impl SlintUiAdapter {
         })?;
 
         let tx = cmd_tx.clone();
-        bind(&self.instance, callback::CANCEL_OAUTH, move |_args| {
-            router::cancel_oauth(&tx);
-            Value::Void
-        })?;
-
-        let tx = cmd_tx.clone();
-        bind(&self.instance, callback::SELECT_ROOM, move |args| {
-            router::select_room(&tx, string_arg(args, 0));
-            Value::Void
-        })?;
-
-        let tx = cmd_tx.clone();
-        bind(&self.instance, callback::SELECT_SPACE, move |args| {
-            router::select_space(&tx, string_arg(args, 0));
-            Value::Void
-        })?;
-
-        let tx = cmd_tx.clone();
-        bind(&self.instance, callback::SELECT_SUBSPACE, move |args| {
-            router::select_subspace(&tx, string_arg(args, 0));
-            Value::Void
-        })?;
-
-        let tx = cmd_tx.clone();
         bind(&self.instance, callback::MOVE_SPACE, move |args| {
             if let (Some(from), Some(to)) = (usize_arg(args, 0), usize_arg(args, 1)) {
                 router::move_space(&tx, from, to, |from, to| {
@@ -450,12 +571,6 @@ impl SlintUiAdapter {
         })?;
 
         let tx = cmd_tx.clone();
-        bind(&self.instance, callback::LOGOUT, move |_args| {
-            router::logout(&tx);
-            Value::Void
-        })?;
-
-        let tx = cmd_tx.clone();
         bind(&self.instance, callback::SEND_MESSAGE, move |args| {
             let Some(s) = struct_arg(args, 0) else {
                 return Value::Void;
@@ -466,42 +581,6 @@ impl SlintUiAdapter {
                 field(s, send_message_request::BODY),
                 field(s, send_message_request::REPLY_TO),
             );
-            Value::Void
-        })?;
-
-        let tx = cmd_tx.clone();
-        bind(
-            &self.instance,
-            callback::ACCEPT_VERIFICATION,
-            move |_args| {
-                router::accept_verification(&tx);
-                Value::Void
-            },
-        )?;
-
-        let tx = cmd_tx.clone();
-        bind(
-            &self.instance,
-            callback::CONFIRM_VERIFICATION,
-            move |_args| {
-                router::confirm_verification(&tx);
-                Value::Void
-            },
-        )?;
-
-        let tx = cmd_tx.clone();
-        bind(
-            &self.instance,
-            callback::REJECT_VERIFICATION,
-            move |_args| {
-                router::reject_verification(&tx);
-                Value::Void
-            },
-        )?;
-
-        let tx = cmd_tx.clone();
-        bind(&self.instance, callback::OPEN_MEDIA, move |args| {
-            router::open_media(&tx, string_arg(args, 0));
             Value::Void
         })?;
 
@@ -565,12 +644,6 @@ impl SlintUiAdapter {
             Value::Void
         })?;
 
-        let tx = cmd_tx.clone();
-        bind(&self.instance, callback::RETRY_TIMELINE, move |_args| {
-            router::retry_timeline(&tx);
-            Value::Void
-        })?;
-
         Ok(())
     }
 
@@ -586,24 +659,28 @@ impl SlintUiAdapter {
         let spaces_model: Rc<VecModel<Value>> = Rc::new(VecModel::default());
         let subspaces_model: Rc<VecModel<Value>> = Rc::new(VecModel::default());
 
-        set_prop(
+        set_global(
             &self.instance,
-            prop::TIMELINE,
+            "RoomView",
+            "timeline",
             Value::Model(ModelRc::from(Rc::clone(&timeline_model))),
         );
-        set_prop(
+        set_global(
             &self.instance,
-            prop::ROOMS,
+            "DirectoryView",
+            "rooms",
             Value::Model(ModelRc::from(Rc::clone(&rooms_model))),
         );
-        set_prop(
+        set_global(
             &self.instance,
-            prop::SPACES,
+            "DirectoryView",
+            "spaces",
             Value::Model(ModelRc::from(Rc::clone(&spaces_model))),
         );
-        set_prop(
+        set_global(
             &self.instance,
-            prop::SUBSPACES,
+            "DirectoryView",
+            "subspaces",
             Value::Model(ModelRc::from(Rc::clone(&subspaces_model))),
         );
 
@@ -770,6 +847,10 @@ macro_rules! field_value {
             $s.set_field($lit.to_string(), Value::Image(img));
         }
     };
+    ($s:ident, $lit:literal, $val:expr, enumk) => {{
+        let (name, variant) = $val.slint();
+        $s.set_field($lit.to_string(), enum_value(name, variant));
+    }};
 }
 
 macro_rules! gen_to_value {
@@ -793,11 +874,16 @@ fn enrich_value(value: &mut Value, delta: &EnrichmentDelta, media: &dyn MediaCac
     match update.thumbnail {
         ThumbUpdate::Ready(img) => {
             entry.set_field(message::THUMBNAIL.to_string(), Value::Image(img));
-            entry.set_field(message::HAS_THUMBNAIL.to_string(), Value::Bool(true));
-            entry.set_field(message::MEDIA_FAILED.to_string(), Value::Bool(false));
+            entry.set_field(
+                message::MEDIA_STATE.to_string(),
+                media_state_value(MediaState::Ready),
+            );
         }
         ThumbUpdate::Failed => {
-            entry.set_field(message::MEDIA_FAILED.to_string(), Value::Bool(true));
+            entry.set_field(
+                message::MEDIA_STATE.to_string(),
+                media_state_value(MediaState::Failed),
+            );
         }
         ThumbUpdate::Unchanged => {}
     }

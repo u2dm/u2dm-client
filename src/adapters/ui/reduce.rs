@@ -5,7 +5,7 @@ use slint::SharedString;
 
 use super::backend::{UiBackend, UiEventContext};
 use super::decode::{AvatarSlot, clear_session_media, load_avatar_async};
-use super::present::{Status, VerifyStep, login_method_token, user_initial};
+use super::present::{LoginMethodKind, Status, VerifyStep, login_method_kind, user_initial};
 use super::props::{BoolProp, IntProp, StringProp, UiProps};
 use super::reconcile::{apply_reconcile, apply_rooms, apply_timeline_patch};
 use crate::commands::{AppViewState, Effect, LifecycleView, LoginStep, PaginationView};
@@ -187,10 +187,7 @@ fn apply_lifecycle(w: &impl UiProps, last: &LifecycleView, next: &LifecycleView)
         w.set_login_phase(next.step);
     }
     if last.method != next.method {
-        w.set_string(
-            StringProp::LoginMethod,
-            SharedString::from(login_method_token(next.method)),
-        );
+        w.set_login_method_kind(login_method_kind(next.method));
     }
     if last.resolved_homeserver != next.resolved_homeserver {
         w.set_string(
@@ -278,14 +275,13 @@ fn apply_logged_out(w: &impl UiProps) {
     w.set_string(StringProp::UserInitial, SharedString::default());
     w.set_string(StringProp::LoginStatus, SharedString::default());
     w.set_string(StringProp::LoginError, SharedString::default());
-    w.set_string(StringProp::LoginMethod, SharedString::default());
+    w.set_login_method_kind(LoginMethodKind::None);
     w.set_string(StringProp::ResolvedHomeserver, SharedString::default());
     w.set_string(StringProp::SelectedRoomName, SharedString::default());
     w.set_string(StringProp::SelectedRoomId, SharedString::default());
     w.set_string(StringProp::SelectedSpaceId, SharedString::default());
     w.set_string(StringProp::SelectedSubspaceId, SharedString::default());
-    w.set_string(StringProp::InputUsername, SharedString::default());
-    w.set_string(StringProp::InputPassword, SharedString::default());
+    w.clear_text_inputs();
     w.set_connection_state(&ConnectionStatus::Disconnected);
     w.set_bool(BoolProp::VerificationVisible, false);
     w.set_verification_phase(VerifyStep::None);

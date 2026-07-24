@@ -3,17 +3,11 @@ import {
     Palette,
 } from "std-widgets.slint";
 
-import { VerificationEmoji } from "./types.slint";
 import { VerificationPhase } from "../enums.slint";
+import { VerificationView } from "../views.slint";
 
 export component VerificationDialog inherits Rectangle {
     background: Colors.black.transparentize(0.4);
-
-    in property <VerificationPhase> verification-step: VerificationPhase.none;
-    in property <string> verification-sender: "";
-    in property <bool> verification-is-self: false;
-    in property <[VerificationEmoji]> verification-emojis: [];
-    in property <string> verification-error: "";
 
     callback accept-verification();
     callback confirm-verification();
@@ -42,11 +36,11 @@ export component VerificationDialog inherits Rectangle {
                         horizontal-alignment: center;
                     }
 
-                    if root.verification-step == VerificationPhase.requested: VerticalLayout {
+                    if VerificationView.step == VerificationPhase.requested: VerticalLayout {
                         spacing: 12px;
 
                         Text {
-                            text: root.verification-is-self ? @tr("Verify this session from your other device") : @tr("Verification request from {}", root.verification-sender);
+                            text: VerificationView.is-self ? @tr("Verify this session from your other device") : @tr("Verification request from {}", VerificationView.sender);
                             font-size: 14px;
                             horizontal-alignment: center;
                             wrap: word-wrap;
@@ -73,7 +67,7 @@ export component VerificationDialog inherits Rectangle {
                         }
                     }
 
-                    if root.verification-step == VerificationPhase.emojis: VerticalLayout {
+                    if VerificationView.step == VerificationPhase.emojis: VerticalLayout {
                         spacing: 12px;
 
                         Text {
@@ -87,7 +81,7 @@ export component VerificationDialog inherits Rectangle {
                             alignment: center;
                             spacing: 4px;
 
-                            for emoji in root.verification-emojis: VerticalLayout {
+                            for emoji in VerificationView.emojis: VerticalLayout {
                                 width: 56px;
                                 spacing: 4px;
 
@@ -127,7 +121,7 @@ export component VerificationDialog inherits Rectangle {
                         }
                     }
 
-                    if root.verification-step == VerificationPhase.confirming: VerticalLayout {
+                    if VerificationView.step == VerificationPhase.confirming: VerticalLayout {
                         spacing: 12px;
 
                         Text {
@@ -137,7 +131,7 @@ export component VerificationDialog inherits Rectangle {
                         }
                     }
 
-                    if root.verification-step == VerificationPhase.done: VerticalLayout {
+                    if VerificationView.step == VerificationPhase.done: VerticalLayout {
                         spacing: 12px;
 
                         Text {
@@ -160,7 +154,7 @@ export component VerificationDialog inherits Rectangle {
                         }
                     }
 
-                    if root.verification-step == VerificationPhase.cancelled: VerticalLayout {
+                    if VerificationView.step == VerificationPhase.cancelled: VerticalLayout {
                         spacing: 12px;
 
                         Text {
@@ -171,8 +165,8 @@ export component VerificationDialog inherits Rectangle {
                             color: Colors.red;
                         }
 
-                        if root.verification-error != "": Text {
-                            text: root.verification-error;
+                        if VerificationView.error != "": Text {
+                            text: VerificationView.error;
                             font-size: 13px;
                             horizontal-alignment: center;
                             color: Palette.foreground.transparentize(0.4);

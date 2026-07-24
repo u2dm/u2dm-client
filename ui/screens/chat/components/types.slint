@@ -1,3 +1,5 @@
+import { MediaState, MessageKind, PreviewKind, ServiceKind } from "../../../enums.slint";
+
 export struct RoomEntry {
     id: string,
     name: string,
@@ -9,9 +11,9 @@ export struct RoomEntry {
     unread: int,
     mentions: int,
     last-message-sender: string,
-    last-message-kind: string,
+    last-message-kind: PreviewKind,
     last-message-body: string,
-    last-message-service-kind: string,
+    last-message-service-kind: ServiceKind,
     last-message-service-target: string,
     last-message-is-own: bool,
     last-message-edited: bool,
@@ -34,12 +36,11 @@ export struct MessageEntry {
     pronouns: [string],
     body: string,
     timestamp: string,
-    message-type: string,
-    preview-kind: string,
+    message-type: MessageKind,
+    preview-kind: PreviewKind,
     unsupported-kind: string,
-    has-thumbnail: bool,
     thumbnail: image,
-    media-failed: bool,
+    media-state: MediaState,
     image-width: int,
     image-height: int,
     event-id: string,
@@ -51,9 +52,9 @@ export struct MessageEntry {
     edited: bool,
     has-reply: bool,
     reply-sender: string,
-    reply-kind: string,
+    reply-kind: PreviewKind,
     reply-body: string,
-    service-kind: string,
+    service-kind: ServiceKind,
     service-target: string,
 }
 

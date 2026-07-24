@@ -1,41 +1,13 @@
-import {
-    RoomEntry,
-    SpaceEntry,
-    MessageEntry,
-    SendMessageRequest,
-    SaveFileRequest,
-} from "components/types.slint";
+import { SendMessageRequest, SaveFileRequest } from "components/types.slint";
 import { Palette } from "std-widgets.slint";
 import { IconDisplay, IconSet } from "@lucide";
 import { Sidebar } from "components/sidebar.slint";
 import { Drawer } from "components/drawer.slint";
 import { TimelineView } from "components/timeline/timeline-view.slint";
 import { ClickArea } from "../../components/a11y.slint";
-import { ConnectionState, TimelineState } from "../../enums.slint";
+import { DirectoryView, RoomView } from "../../views.slint";
 
 export component ChatScreen inherits Rectangle {
-    in property <string> user-id: "";
-    in property <string> user-initial: "";
-    in property <image> user-avatar;
-    in property <bool> user-has-avatar: false;
-    in property <ConnectionState> connection-status: ConnectionState.disconnected;
-    in property <[RoomEntry]> rooms: [];
-    in property <[SpaceEntry]> spaces: [];
-    in property <[SpaceEntry]> subspaces: [];
-    in property <[MessageEntry]> timeline: [];
-    in property <string> toast-message: "";
-    in property <string> saved-file-path: "";
-    in property <TimelineState> timeline-status: TimelineState.none;
-    in property <bool> timeline-retryable: false;
-    in property <int> new-messages-count: 0;
-    in property <int> prepend-token: 0;
-    in property <bool> backwards-loading: false;
-    in property <bool> forwards-loading: false;
-    in property <string> selected-room-id: "";
-    in property <string> selected-room-name: "";
-    in property <int> selected-room-members: 0;
-    in property <string> selected-space-id: "";
-    in property <string> selected-subspace-id: "";
     in-out property <string> input-message: "";
 
     callback select-room(string);
@@ -48,7 +20,6 @@ export component ChatScreen inherits Rectangle {
     callback open-media(string);
     callback save-file(SaveFileRequest);
     callback request-media(string);
-    callback dismiss-toast();
     callback scroll-position-changed(bool, bool);
     callback paginate-backwards();
     callback paginate-forwards();
@@ -61,7 +32,7 @@ export component ChatScreen inherits Rectangle {
     property <length> max-sidebar-width: 500px;
     property <length> subrail-width: 68px;
     property <length> total-sidebar-width: root.sidebar-width
-        + (root.subspaces.length > 0 ? root.subrail-width : 0);
+        + (DirectoryView.subspaces.length > 0 ? root.subrail-width : 0);
     property <bool> drawer-open: false;
 
     Sidebar {
@@ -70,12 +41,6 @@ export component ChatScreen inherits Rectangle {
         width: root.total-sidebar-width;
         height: root.height;
         subrail-width: root.subrail-width;
-        rooms: root.rooms;
-        spaces: root.spaces;
-        subspaces: root.subspaces;
-        selected-room-id: root.selected-room-id;
-        selected-space-id: root.selected-space-id;
-        selected-subspace-id: root.selected-subspace-id;
         select-room(id) => {
             root.select-room(id);
         }
@@ -101,16 +66,6 @@ export component ChatScreen inherits Rectangle {
         y: 0;
         width: root.width - root.total-sidebar-width;
         height: root.height;
-        selected-room-name: root.selected-room-name;
-        selected-room-id: root.selected-room-id;
-        selected-room-members: root.selected-room-members;
-        timeline: root.timeline;
-        timeline-status: root.timeline-status;
-        timeline-retryable: root.timeline-retryable;
-        new-messages-count: root.new-messages-count;
-        prepend-token: root.prepend-token;
-        backwards-loading: root.backwards-loading;
-        forwards-loading: root.forwards-loading;
         input-message <=> root.input-message;
         send-message(req) => {
             root.send-message(req);
@@ -156,7 +111,7 @@ export component ChatScreen inherits Rectangle {
         }
     }
 
-    if root.toast-message != "": Rectangle {
+    if RoomView.toast-message != "": Rectangle {
         x: root.total-sidebar-width + (root.width - root.total-sidebar-width - self.width) / 2;
         y: root.height - self.height - 16px;
         width: min(root.width - root.total-sidebar-width - 32px, 500px);
@@ -173,10 +128,10 @@ export component ChatScreen inherits Rectangle {
             alignment: space-between;
 
             Text {
-                text: root.toast-message == "file-saved"
-                    ? @tr("File saved to {}", root.saved-file-path)
-                    : root.toast-message;
-                color: root.toast-message == "file-saved"
+                text: RoomView.toast-message == "file-saved"
+                    ? @tr("File saved to {}", RoomView.saved-file-path)
+                    : RoomView.toast-message;
+                color: RoomView.toast-message == "file-saved"
                     ? Palette.foreground
                     : Colors.tomato.mix(Palette.foreground, 60%);
                 wrap: word-wrap;
@@ -189,7 +144,7 @@ export component ChatScreen inherits Rectangle {
                 ring-radius: 6px;
                 label: @tr("Dismiss");
                 clicked => {
-                    root.dismiss-toast();
+                    RoomView.toast-message = "";
                 }
                 IconDisplay {
                     x: (parent.width - self.width) / 2;
@@ -207,11 +162,6 @@ export component ChatScreen inherits Rectangle {
         y: 0;
         width: root.width;
         height: root.height;
-        user-id: root.user-id;
-        user-initial: root.user-initial;
-        user-avatar: root.user-avatar;
-        user-has-avatar: root.user-has-avatar;
-        connection-status: root.connection-status;
         open <=> root.drawer-open;
         add-account => {
         }

@@ -1,0 +1,58 @@
+import { RoomEntry, SpaceEntry, MessageEntry } from "screens/chat/components/types.slint";
+import { VerificationEmoji } from "components/types.slint";
+import {
+    LoginPhase,
+    ConnectionState,
+    TimelineState,
+    VerificationPhase,
+    LoginMethodKind,
+} from "enums.slint";
+
+export global LoginView {
+    in-out property <LoginPhase> step: LoginPhase.loading;
+    in-out property <string> status;
+    in-out property <string> error;
+    in property <LoginMethodKind> method: LoginMethodKind.none;
+    in property <string> resolved-homeserver;
+}
+
+export global SessionView {
+    in property <string> user-id;
+    in property <string> user-initial;
+    in property <image> user-avatar;
+    in property <bool> user-has-avatar;
+    in property <ConnectionState> connection-status: ConnectionState.disconnected;
+}
+
+export global DirectoryView {
+    in property <[RoomEntry]> rooms;
+    in property <[SpaceEntry]> spaces;
+    in property <[SpaceEntry]> subspaces;
+    in property <string> selected-room-id;
+    in property <string> selected-space-id;
+    in property <string> selected-subspace-id;
+    in property <int> selected-generation;
+}
+
+export global RoomView {
+    in property <string> selected-room-name;
+    in property <int> selected-room-members;
+    in property <[MessageEntry]> timeline;
+    in property <TimelineState> timeline-status: TimelineState.none;
+    in property <bool> timeline-retryable;
+    in property <int> new-messages-count;
+    in property <int> prepend-token;
+    in property <bool> backwards-loading;
+    in property <bool> forwards-loading;
+    in-out property <string> toast-message;
+    in property <string> saved-file-path;
+}
+
+export global VerificationView {
+    in-out property <bool> visible;
+    in property <VerificationPhase> step: VerificationPhase.none;
+    in property <string> sender;
+    in property <bool> is-self;
+    in property <[VerificationEmoji]> emojis;
+    in property <string> error;
+}

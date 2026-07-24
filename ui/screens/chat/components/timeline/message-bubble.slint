@@ -18,6 +18,7 @@ import { UnsupportedMessage } from "./messages/unsupported-message.slint";
 import { Avatar } from "../../../../components/avatar.slint";
 import { ClickArea } from "../../../../components/a11y.slint";
 import { Avatars, Fonts } from "../../../../theme.slint";
+import { MessageKind } from "../../../../enums.slint";
 
 export component MessageBubble inherits VerticalLayout {
     in property <bool> is-own;
@@ -32,13 +33,13 @@ export component MessageBubble inherits VerticalLayout {
     property <color> other-bubble-color: Palette.alternate-background;
     property <length> bubble-max-width: available-width * 0.7;
 
-    if msg.message-type == "service": ServiceMessage {
+    if msg.message-type == MessageKind.service: ServiceMessage {
         kind: msg.service-kind;
         actor: msg.sender;
         target: msg.service-target;
     }
 
-    if msg.message-type != "service": HorizontalLayout {
+    if msg.message-type != MessageKind.service: HorizontalLayout {
         alignment: is-own ? end : start;
         padding-left: is-own ? 0 : 8px;
         padding-right: is-own ? 8px : 0;
@@ -150,10 +151,9 @@ export component MessageBubble inherits VerticalLayout {
                     }
                 }
 
-                if msg.message-type == "image": ImageMessage {
+                if msg.message-type == MessageKind.image: ImageMessage {
                     thumbnail: msg.thumbnail;
-                    has-thumbnail: msg.has-thumbnail;
-                    media-failed: msg.media-failed;
+                    media-state: msg.media-state;
                     image-width: msg.image-width;
                     image-height: msg.image-height;
                     body: msg.body;
@@ -163,7 +163,7 @@ export component MessageBubble inherits VerticalLayout {
                     }
                 }
 
-                if msg.message-type == "file": FileMessage {
+                if msg.message-type == MessageKind.file: FileMessage {
                     body: msg.body;
                     event-id: msg.event-id;
                     save-file(req) => {
@@ -171,14 +171,14 @@ export component MessageBubble inherits VerticalLayout {
                     }
                 }
 
-                if msg.message-type == "utd": UtdMessage { }
+                if msg.message-type == MessageKind.utd: UtdMessage { }
 
-                if msg.message-type == "unsupported": UnsupportedMessage {
+                if msg.message-type == MessageKind.unsupported: UnsupportedMessage {
                     kind: msg.unsupported-kind;
                     body: msg.body;
                 }
 
-                if msg.message-type != "image" && msg.message-type != "file" && msg.message-type != "utd" && msg.message-type != "unsupported": TextMessage {
+                if msg.message-type != MessageKind.image && msg.message-type != MessageKind.file && msg.message-type != MessageKind.utd && msg.message-type != MessageKind.unsupported: TextMessage {
                     text: msg.body;
                 }
 

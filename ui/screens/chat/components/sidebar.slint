@@ -4,7 +4,6 @@ import {
 } from "std-widgets.slint";
 import { IconDisplay, IconSet } from "@lucide";
 
-import { RoomEntry, SpaceEntry } from "./types.slint";
 import { SpaceRail } from "./space-rail.slint";
 import { SubspaceRail } from "./subspace-rail.slint";
 import { MessagePreview } from "./message-preview.slint";
@@ -12,16 +11,11 @@ import { ServiceLabel } from "./timeline/messages/service-message.slint";
 import { Avatar } from "../../../components/avatar.slint";
 import { ListItemArea } from "../../../components/a11y.slint";
 import { Avatars, Fonts } from "../../../theme.slint";
+import { ServiceKind } from "../../../enums.slint";
+import { DirectoryView } from "../../../views.slint";
 
 export component Sidebar inherits Rectangle {
     background: Palette.alternate-background;
-
-    in property <[RoomEntry]> rooms: [];
-    in property <[SpaceEntry]> spaces: [];
-    in property <[SpaceEntry]> subspaces: [];
-    in property <string> selected-room-id: "";
-    in property <string> selected-space-id: "";
-    in property <string> selected-subspace-id: "";
 
     callback select-room(string);
     callback select-space(string);
@@ -39,8 +33,6 @@ export component Sidebar inherits Rectangle {
     HorizontalLayout {
         SpaceRail {
             width: root.rail-width;
-            spaces: root.spaces;
-            selected-space-id: root.selected-space-id;
             select-space(id) => {
                 root.select-space(id);
             }
@@ -52,10 +44,8 @@ export component Sidebar inherits Rectangle {
             }
         }
 
-        if root.subspaces.length > 0: SubspaceRail {
+        if DirectoryView.subspaces.length > 0: SubspaceRail {
             width: root.subrail-width;
-            subspaces: root.subspaces;
-            selected-subspace-id: root.selected-subspace-id;
             select-subspace(id) => {
                 root.select-subspace(id);
             }
@@ -110,17 +100,17 @@ export component Sidebar inherits Rectangle {
                 ListView {
                     accessible-role: list;
                     accessible-label: @tr("Rooms");
-                    accessible-item-count: root.rooms.length;
-                    for room[idx] in root.rooms: ListItemArea {
+                    accessible-item-count: DirectoryView.rooms.length;
+                    for room[idx] in DirectoryView.rooms: ListItemArea {
                         height: root.row-height;
                         clip: true;
                         index: idx;
-                        selected: room.id == root.selected-room-id;
+                        selected: room.id == DirectoryView.selected-room-id;
                         label: room.unread > 0
                             ? @tr("{}, {} unread", room.name, room.unread)
                             : room.name;
                         ring-inset: 2px;
-                        background: room.id == root.selected-room-id
+                        background: room.id == DirectoryView.selected-room-id
                             ? Palette.background
                             : (self.has-hover ? Palette.background.transparentize(0.5) : transparent);
                         clicked => {
@@ -135,7 +125,7 @@ export component Sidebar inherits Rectangle {
                         property <string> sender-label: room.last-message-is-own
                             ? @tr("You")
                             : room.last-message-sender;
-                        property <bool> is-service: room.last-message-service-kind != "";
+                        property <bool> is-service: room.last-message-service-kind != ServiceKind.none;
 
                         HorizontalLayout {
                             padding-left: 12px;

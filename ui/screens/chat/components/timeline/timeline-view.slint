@@ -1,29 +1,18 @@
 import { Palette, Button } from "std-widgets.slint";
 
-import {
-    MessageEntry,
-    SendMessageRequest,
-    SaveFileRequest,
-} from "../types.slint";
+import { SendMessageRequest, SaveFileRequest } from "../types.slint";
 
 import { TimelineContent } from "./timeline-content.slint";
 import { MessageInput } from "./message-input.slint";
 import { Fonts } from "../../../../theme.slint";
 import { TimelineState } from "../../../../enums.slint";
+import { DirectoryView, RoomView } from "../../../../views.slint";
 
 export component TimelineView inherits Rectangle {
     background: Palette.background;
 
-    in property <string> selected-room-name: "";
-    in property <string> selected-room-id: "";
-    in property <int> selected-room-members: 0;
-    in property <[MessageEntry]> timeline: [];
-    in property <TimelineState> timeline-status: TimelineState.none;
-    in property <bool> timeline-retryable: false;
-    in property <int> new-messages-count: 0;
-    in property <int> prepend-token: 0;
-    in property <bool> backwards-loading: false;
-    in property <bool> forwards-loading: false;
+    property <string> room-id: DirectoryView.selected-room-id;
+
     in-out property <string> input-message: "";
     in-out property <string> reply-event-id: "";
     in-out property <string> reply-sender: "";
@@ -47,14 +36,14 @@ export component TimelineView inherits Rectangle {
         : root.message-input-height;
     property <length> spacing: 8px;
 
-    changed selected-room-id => {
+    changed room-id => {
         root.input-message = "";
         root.reply-event-id = "";
         root.reply-sender = "";
         root.reply-preview = "";
     }
 
-    if root.selected-room-name == "": Text {
+    if RoomView.selected-room-name == "": Text {
         text: @tr("Select a room");
         font-size: 16px;
         color: Palette.foreground.transparentize(0.5);
@@ -62,7 +51,7 @@ export component TimelineView inherits Rectangle {
         vertical-alignment: center;
     }
 
-    if root.selected-room-name != "": Rectangle {
+    if RoomView.selected-room-name != "": Rectangle {
         x: 0;
         y: 0;
         width: root.width;
@@ -76,15 +65,15 @@ export component TimelineView inherits Rectangle {
             spacing: 1px;
 
             Text {
-                text: root.selected-room-name;
+                text: RoomView.selected-room-name;
                 font-family: Fonts.emoji;
                 font-size: 16px;
                 font-weight: 700;
                 overflow: elide;
             }
 
-            if root.selected-room-members > 0: Text {
-                text: @tr("{n} member" | "{n} members" % root.selected-room-members);
+            if RoomView.selected-room-members > 0: Text {
+                text: @tr("{n} member" | "{n} members" % RoomView.selected-room-members);
                 font-size: 12px;
                 color: Palette.foreground.transparentize(0.45);
                 overflow: elide;
@@ -92,10 +81,10 @@ export component TimelineView inherits Rectangle {
         }
     }
 
-    if root.selected-room-name != "" && root.timeline.length == 0
-        && (root.timeline-status == TimelineState.loading
-            || root.timeline-status == TimelineState.failed
-            || root.timeline-status == TimelineState.disconnected): Rectangle {
+    if RoomView.selected-room-name != "" && RoomView.timeline.length == 0
+        && (RoomView.timeline-status == TimelineState.loading
+            || RoomView.timeline-status == TimelineState.failed
+            || RoomView.timeline-status == TimelineState.disconnected): Rectangle {
         x: 0;
         y: root.header-height;
         width: root.width;
@@ -106,9 +95,9 @@ export component TimelineView inherits Rectangle {
             spacing: 12px;
 
             Text {
-                text: root.timeline-status == TimelineState.loading
+                text: RoomView.timeline-status == TimelineState.loading
                     ? @tr("Loading messages...")
-                    : root.timeline-status == TimelineState.disconnected
+                    : RoomView.timeline-status == TimelineState.disconnected
                         ? @tr("Connection lost")
                         : @tr("Couldn't load messages");
                 font-size: 14px;
@@ -116,8 +105,8 @@ export component TimelineView inherits Rectangle {
                 horizontal-alignment: center;
             }
 
-            if (root.timeline-status == TimelineState.failed && root.timeline-retryable)
-                || root.timeline-status == TimelineState.disconnected: HorizontalLayout {
+            if (RoomView.timeline-status == TimelineState.failed && RoomView.timeline-retryable)
+                || RoomView.timeline-status == TimelineState.disconnected: HorizontalLayout {
                 alignment: center;
 
                 Button {
@@ -130,17 +119,12 @@ export component TimelineView inherits Rectangle {
         }
     }
 
-    if root.selected-room-name != "": TimelineContent {
+    if RoomView.selected-room-name != "": TimelineContent {
         x: 0;
         y: root.header-height + root.spacing;
         width: root.width;
         height: root.height - root.header-height - root.input-height - root.spacing * 2;
-        room-id: root.selected-room-id;
-        timeline: root.timeline;
-        backwards-loading: root.backwards-loading;
-        forwards-loading: root.forwards-loading;
-        new-messages-count: root.new-messages-count;
-        prepend-token: root.prepend-token;
+        room-id: root.room-id;
         available-width: root.width;
         open-media(id) => {
             root.open-media(id);
@@ -170,11 +154,11 @@ export component TimelineView inherits Rectangle {
         }
     }
 
-    if root.selected-room-name != "": MessageInput {
+    if RoomView.selected-room-name != "": MessageInput {
         x: 0;
         y: root.height - self.height;
         width: root.width;
-        room-id: root.selected-room-id;
+        room-id: root.room-id;
         message <=> root.input-message;
         reply-event-id <=> root.reply-event-id;
         reply-sender <=> root.reply-sender;

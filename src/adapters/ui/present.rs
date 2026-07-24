@@ -107,43 +107,131 @@ pub fn message_body_text(body: &MessageBody) -> &str {
     }
 }
 
-pub fn message_type_token(body: &MessageBody) -> &'static str {
-    match body {
-        MessageBody::Text(_) => "text",
-        MessageBody::Notice(_) => "notice",
-        MessageBody::Emote(_) => "emote",
-        MessageBody::Image { .. } => "image",
-        MessageBody::File { .. } => "file",
-        MessageBody::Service(_) => "service",
-        MessageBody::UnableToDecrypt => "utd",
-        MessageBody::Unsupported { .. } => "unsupported",
+#[derive(Clone, Copy)]
+pub enum MessageKind {
+    Text,
+    Notice,
+    Emote,
+    Image,
+    File,
+    Service,
+    Utd,
+    Unsupported,
+}
+
+impl MessageKind {
+    #[cfg(feature = "interpreted")]
+    pub fn slint(self) -> (&'static str, &'static str) {
+        let variant = match self {
+            Self::Text => "text",
+            Self::Notice => "notice",
+            Self::Emote => "emote",
+            Self::Image => "image",
+            Self::File => "file",
+            Self::Service => "service",
+            Self::Utd => "utd",
+            Self::Unsupported => "unsupported",
+        };
+        ("MessageKind", variant)
     }
 }
 
-pub fn service_kind_token(event: &ServiceEvent) -> &'static str {
+pub fn message_kind(body: &MessageBody) -> MessageKind {
+    match body {
+        MessageBody::Text(_) => MessageKind::Text,
+        MessageBody::Notice(_) => MessageKind::Notice,
+        MessageBody::Emote(_) => MessageKind::Emote,
+        MessageBody::Image { .. } => MessageKind::Image,
+        MessageBody::File { .. } => MessageKind::File,
+        MessageBody::Service(_) => MessageKind::Service,
+        MessageBody::UnableToDecrypt => MessageKind::Utd,
+        MessageBody::Unsupported { .. } => MessageKind::Unsupported,
+    }
+}
+
+#[derive(Clone, Copy)]
+pub enum ServiceKind {
+    None,
+    Joined,
+    Left,
+    Invited,
+    InvitationAccepted,
+    InvitationRejected,
+    InvitationRevoked,
+    Kicked,
+    Banned,
+    Unbanned,
+    Knocked,
+    KnockAccepted,
+    NameSet,
+    NameChanged,
+    NameRemoved,
+    AvatarChanged,
+    RoomName,
+    RoomTopic,
+    RoomAvatar,
+    RoomCreated,
+    Encryption,
+    CallStarted,
+    CallNotification,
+}
+
+impl ServiceKind {
+    #[cfg(feature = "interpreted")]
+    pub fn slint(self) -> (&'static str, &'static str) {
+        let variant = match self {
+            Self::None => "none",
+            Self::Joined => "joined",
+            Self::Left => "left",
+            Self::Invited => "invited",
+            Self::InvitationAccepted => "invitation-accepted",
+            Self::InvitationRejected => "invitation-rejected",
+            Self::InvitationRevoked => "invitation-revoked",
+            Self::Kicked => "kicked",
+            Self::Banned => "banned",
+            Self::Unbanned => "unbanned",
+            Self::Knocked => "knocked",
+            Self::KnockAccepted => "knock-accepted",
+            Self::NameSet => "name-set",
+            Self::NameChanged => "name-changed",
+            Self::NameRemoved => "name-removed",
+            Self::AvatarChanged => "avatar-changed",
+            Self::RoomName => "room-name",
+            Self::RoomTopic => "room-topic",
+            Self::RoomAvatar => "room-avatar",
+            Self::RoomCreated => "room-created",
+            Self::Encryption => "encryption",
+            Self::CallStarted => "call-started",
+            Self::CallNotification => "call-notification",
+        };
+        ("ServiceKind", variant)
+    }
+}
+
+pub fn service_kind(event: &ServiceEvent) -> ServiceKind {
     match event {
-        ServiceEvent::Joined => "joined",
-        ServiceEvent::Left => "left",
-        ServiceEvent::Invited { .. } => "invited",
-        ServiceEvent::InvitationAccepted => "invitation-accepted",
-        ServiceEvent::InvitationRejected => "invitation-rejected",
-        ServiceEvent::InvitationRevoked { .. } => "invitation-revoked",
-        ServiceEvent::Kicked { .. } => "kicked",
-        ServiceEvent::Banned { .. } => "banned",
-        ServiceEvent::Unbanned { .. } => "unbanned",
-        ServiceEvent::Knocked => "knocked",
-        ServiceEvent::KnockAccepted { .. } => "knock-accepted",
-        ServiceEvent::DisplayNameSet { .. } => "name-set",
-        ServiceEvent::DisplayNameChanged { .. } => "name-changed",
-        ServiceEvent::DisplayNameRemoved => "name-removed",
-        ServiceEvent::AvatarChanged => "avatar-changed",
-        ServiceEvent::RoomNameChanged { .. } => "room-name",
-        ServiceEvent::RoomTopicChanged => "room-topic",
-        ServiceEvent::RoomAvatarChanged => "room-avatar",
-        ServiceEvent::RoomCreated => "room-created",
-        ServiceEvent::EncryptionEnabled => "encryption",
-        ServiceEvent::CallStarted => "call-started",
-        ServiceEvent::CallNotification => "call-notification",
+        ServiceEvent::Joined => ServiceKind::Joined,
+        ServiceEvent::Left => ServiceKind::Left,
+        ServiceEvent::Invited { .. } => ServiceKind::Invited,
+        ServiceEvent::InvitationAccepted => ServiceKind::InvitationAccepted,
+        ServiceEvent::InvitationRejected => ServiceKind::InvitationRejected,
+        ServiceEvent::InvitationRevoked { .. } => ServiceKind::InvitationRevoked,
+        ServiceEvent::Kicked { .. } => ServiceKind::Kicked,
+        ServiceEvent::Banned { .. } => ServiceKind::Banned,
+        ServiceEvent::Unbanned { .. } => ServiceKind::Unbanned,
+        ServiceEvent::Knocked => ServiceKind::Knocked,
+        ServiceEvent::KnockAccepted { .. } => ServiceKind::KnockAccepted,
+        ServiceEvent::DisplayNameSet { .. } => ServiceKind::NameSet,
+        ServiceEvent::DisplayNameChanged { .. } => ServiceKind::NameChanged,
+        ServiceEvent::DisplayNameRemoved => ServiceKind::NameRemoved,
+        ServiceEvent::AvatarChanged => ServiceKind::AvatarChanged,
+        ServiceEvent::RoomNameChanged { .. } => ServiceKind::RoomName,
+        ServiceEvent::RoomTopicChanged => ServiceKind::RoomTopic,
+        ServiceEvent::RoomAvatarChanged => ServiceKind::RoomAvatar,
+        ServiceEvent::RoomCreated => ServiceKind::RoomCreated,
+        ServiceEvent::EncryptionEnabled => ServiceKind::Encryption,
+        ServiceEvent::CallStarted => ServiceKind::CallStarted,
+        ServiceEvent::CallNotification => ServiceKind::CallNotification,
     }
 }
 
@@ -169,26 +257,78 @@ pub fn unsupported_kind(body: &MessageBody) -> &str {
     }
 }
 
-pub fn message_preview_kind_token(kind: MessagePreviewKind) -> &'static str {
-    match kind {
-        MessagePreviewKind::None => "",
-        MessagePreviewKind::Text => "text",
-        MessagePreviewKind::Image => "image",
-        MessagePreviewKind::Video => "video",
-        MessagePreviewKind::Audio => "audio",
-        MessagePreviewKind::File => "file",
-        MessagePreviewKind::Location => "location",
-        MessagePreviewKind::Encrypted => "encrypted",
-        MessagePreviewKind::Sticker => "sticker",
+#[derive(Clone, Copy)]
+pub enum PreviewKind {
+    None,
+    Text,
+    Image,
+    Video,
+    Audio,
+    File,
+    Location,
+    Encrypted,
+    Sticker,
+}
+
+impl PreviewKind {
+    #[cfg(feature = "interpreted")]
+    pub fn slint(self) -> (&'static str, &'static str) {
+        let variant = match self {
+            Self::None => "none",
+            Self::Text => "text",
+            Self::Image => "image",
+            Self::Video => "video",
+            Self::Audio => "audio",
+            Self::File => "file",
+            Self::Location => "location",
+            Self::Encrypted => "encrypted",
+            Self::Sticker => "sticker",
+        };
+        ("PreviewKind", variant)
     }
 }
 
-pub fn login_method_token(method: LoginMethod) -> &'static str {
+pub fn preview_kind(kind: MessagePreviewKind) -> PreviewKind {
+    match kind {
+        MessagePreviewKind::None => PreviewKind::None,
+        MessagePreviewKind::Text => PreviewKind::Text,
+        MessagePreviewKind::Image => PreviewKind::Image,
+        MessagePreviewKind::Video => PreviewKind::Video,
+        MessagePreviewKind::Audio => PreviewKind::Audio,
+        MessagePreviewKind::File => PreviewKind::File,
+        MessagePreviewKind::Location => PreviewKind::Location,
+        MessagePreviewKind::Encrypted => PreviewKind::Encrypted,
+        MessagePreviewKind::Sticker => PreviewKind::Sticker,
+    }
+}
+
+#[derive(Clone, Copy)]
+pub enum LoginMethodKind {
+    None,
+    Password,
+    OAuth,
+    Both,
+}
+
+impl LoginMethodKind {
+    #[cfg(feature = "interpreted")]
+    pub fn slint(self) -> (&'static str, &'static str) {
+        let variant = match self {
+            Self::None => "none",
+            Self::Password => "password",
+            Self::OAuth => "oauth",
+            Self::Both => "both",
+        };
+        ("LoginMethodKind", variant)
+    }
+}
+
+pub fn login_method_kind(method: LoginMethod) -> LoginMethodKind {
     match method {
-        LoginMethod::Password => "password",
-        LoginMethod::OAuth => "oauth",
-        LoginMethod::Both => "both",
-        LoginMethod::None => "",
+        LoginMethod::Password => LoginMethodKind::Password,
+        LoginMethod::OAuth => LoginMethodKind::OAuth,
+        LoginMethod::Both => LoginMethodKind::Both,
+        LoginMethod::None => LoginMethodKind::None,
     }
 }
 

@@ -5,6 +5,7 @@ import { SpaceEntry } from "./types.slint";
 import { TileGlyph, CountBadge } from "./tile.slint";
 import { Fonts } from "../../../theme.slint";
 import { FocusRing } from "../../../components/a11y.slint";
+import { DirectoryView } from "../../../views.slint";
 
 component SubspaceTile inherits Rectangle {
     in property <string> label;
@@ -118,9 +119,6 @@ component SubspaceTile inherits Rectangle {
 }
 
 export component SubspaceRail inherits Rectangle {
-    in property <[SpaceEntry]> subspaces: [];
-    in property <string> selected-subspace-id: "";
-
     callback select-subspace(string);
 
     property <length> row-height: 68px;
@@ -138,14 +136,14 @@ export component SubspaceRail inherits Rectangle {
         width: root.width;
         height: root.height;
         viewport-width: root.width;
-        viewport-height: (root.subspaces.length + 1) * root.row-height + root.top-padding;
+        viewport-height: (DirectoryView.subspaces.length + 1) * root.row-height + root.top-padding;
 
         VerticalLayout {
             alignment: start;
             padding-top: root.top-padding;
             accessible-role: list;
             accessible-label: @tr("Topics");
-            accessible-item-count: root.subspaces.length + 1;
+            accessible-item-count: DirectoryView.subspaces.length + 1;
 
             SubspaceTile {
                 height: root.row-height;
@@ -153,13 +151,13 @@ export component SubspaceRail inherits Rectangle {
                 label: @tr("All");
                 has-icon: true;
                 icon: IconSet.MessagesSquare;
-                selected: root.selected-subspace-id == "";
+                selected: DirectoryView.selected-subspace-id == "";
                 clicked => {
                     root.select-subspace("");
                 }
             }
 
-            for subspace[idx] in root.subspaces: SubspaceTile {
+            for subspace[idx] in DirectoryView.subspaces: SubspaceTile {
                 height: root.row-height;
                 index: idx + 1;
                 label: subspace.name;
@@ -168,7 +166,7 @@ export component SubspaceRail inherits Rectangle {
                 avatar: subspace.avatar;
                 unread: subspace.unread;
                 mentions: subspace.mentions;
-                selected: root.selected-subspace-id == subspace.id;
+                selected: DirectoryView.selected-subspace-id == subspace.id;
                 clicked => {
                     root.select-subspace(subspace.id);
                 }
