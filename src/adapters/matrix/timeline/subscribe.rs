@@ -27,7 +27,7 @@ use crate::error::{AppError, Result};
 const REPLY_FETCH_INFLIGHT: usize = 4;
 
 fn needs_pronouns(msg: &TimelineMessage, pronouns: &PronounCache) -> bool {
-    !msg.is_own && !pronouns.is_resolved(&msg.sender)
+    !msg.is_own && pronouns.needs_fetch(&msg.sender)
 }
 
 fn spawn_enrichment(ctx: &TimelineContext<'_>, msg: &TimelineMessage) {
