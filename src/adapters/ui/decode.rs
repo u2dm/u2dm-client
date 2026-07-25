@@ -10,7 +10,7 @@ use std::{slice, thread};
 
 use image::codecs::gif::GifDecoder;
 use image::codecs::webp::WebPDecoder;
-use image::{AnimationDecoder, DynamicImage, Frames};
+use image::{AnimationDecoder, DynamicImage, Frames, ImageDecoder, RgbaImage};
 use slint::{Image, Model, Rgba8Pixel, SharedPixelBuffer, Timer, TimerMode, VecModel};
 
 const IMAGE_CACHE_MAX_BYTES: usize = 64 * 1024 * 1024;
@@ -19,6 +19,10 @@ const ANIMATION_MEMORY_BUDGET: usize = 128 * 1024 * 1024;
 const ANIM_PER_ITEM_BUDGET: usize = 32 * 1024 * 1024;
 const ANIM_MAX_DIMENSION: u32 = 2048;
 const ANIM_MAX_FRAMES: usize = 600;
+const ANIM_MAX_SOURCE_PIXELS: u64 = 128 * 1024 * 1024;
+const ANIM_CANVAS_BYTES: u64 = 4 * ANIM_MAX_DIMENSION as u64 * ANIM_MAX_DIMENSION as u64;
+const ANIM_CONCURRENT_CANVASES: u64 = 4;
+const ANIM_MAX_ALLOC: u64 = ANIM_CONCURRENT_CANVASES * ANIM_CANVAS_BYTES;
 const MAX_ACTIVE_ANIMATIONS: usize = 16;
 
 const DECODE_MAX_DIMENSION: u32 = 4096;
@@ -615,33 +619,50 @@ fn is_animatable(path: &Path) -> bool {
     animated_format(path).is_some()
 }
 
+fn animation_limits() -> image::Limits {
+    let mut limits = image::Limits::no_limits();
+    limits.max_image_width = Some(ANIM_MAX_DIMENSION);
+    limits.max_image_height = Some(ANIM_MAX_DIMENSION);
+    limits.max_alloc = Some(ANIM_MAX_ALLOC);
+    limits
+}
+
+fn bounded_frames<'a, D>(mut decoder: D) -> Option<Frames<'a>>
+where
+    D: ImageDecoder + AnimationDecoder<'a>,
+{
+    let (width, height) = decoder.dimensions();
+    if width > ANIM_MAX_DIMENSION || height > ANIM_MAX_DIMENSION {
+        return None;
+    }
+    decoder.set_limits(animation_limits()).ok()?;
+    Some(decoder.into_frames())
+}
+
 fn frames_of(path: &Path) -> Option<Frames<'static>> {
     let reader = BufReader::new(File::open(path).ok()?);
     match animated_format(path)? {
-        AnimatedFormat::Gif => Some(GifDecoder::new(reader).ok()?.into_frames()),
-        AnimatedFormat::WebP => Some(WebPDecoder::new(reader).ok()?.into_frames()),
+        AnimatedFormat::Gif => bounded_frames(GifDecoder::new(reader).ok()?),
+        AnimatedFormat::WebP => bounded_frames(WebPDecoder::new(reader).ok()?),
     }
 }
 
-fn decode_raw_animation(path: &Path) -> Option<RawAnimation> {
-    let mut frames = Vec::new();
-    let mut delays = Vec::new();
-    let mut bytes: usize = 0;
+#[derive(Default)]
+struct AnimationBudget {
+    source_pixels: u64,
+    retained_bytes: usize,
+}
 
-    for frame in frames_of(path)? {
-        if frames.len() >= ANIM_MAX_FRAMES {
-            break;
-        }
-        let Ok(frame) = frame else { break };
-        let delay = frame_delay(Duration::from(frame.delay()));
-        let buffer = frame.into_buffer();
+impl AnimationBudget {
+    fn admit(&mut self, buffer: RgbaImage) -> Option<RawFrame> {
         let (source_width, source_height) = buffer.dimensions();
-
         if source_width > ANIM_MAX_DIMENSION || source_height > ANIM_MAX_DIMENSION {
-            tracing::debug!(
-                "animation at {} exceeds the {ANIM_MAX_DIMENSION}px dimension cap, showing a still",
-                path.display()
-            );
+            return None;
+        }
+        self.source_pixels = self
+            .source_pixels
+            .saturating_add(u64::from(source_width) * u64::from(source_height));
+        if self.source_pixels > ANIM_MAX_SOURCE_PIXELS {
             return None;
         }
 
@@ -655,27 +676,48 @@ fn decode_raw_animation(path: &Path) -> Option<RawAnimation> {
             };
         let (width, height) = buffer.dimensions();
 
-        bytes = bytes.saturating_add(width as usize * height as usize * 4);
-        if bytes > ANIM_PER_ITEM_BUDGET {
-            tracing::debug!(
-                "animation at {} exceeds the per-item budget, showing a still",
-                path.display()
-            );
+        self.retained_bytes = self
+            .retained_bytes
+            .saturating_add(width as usize * height as usize * 4);
+        if self.retained_bytes > ANIM_PER_ITEM_BUDGET {
             return None;
         }
 
-        frames.push(RawFrame {
+        Some(RawFrame {
             rgba: buffer.into_raw(),
             width,
             height,
-        });
+        })
+    }
+}
+
+fn decode_raw_animation(path: &Path) -> Option<RawAnimation> {
+    let mut frames = Vec::new();
+    let mut delays = Vec::new();
+    let mut budget = AnimationBudget::default();
+
+    for frame in frames_of(path)? {
+        if frames.len() >= ANIM_MAX_FRAMES {
+            break;
+        }
+        let Ok(frame) = frame else { break };
+        let delay = frame_delay(Duration::from(frame.delay()));
+        let Some(raw) = budget.admit(frame.into_buffer()) else {
+            tracing::debug!(
+                "animation at {} exceeds the decode budget, showing a still",
+                path.display()
+            );
+            return None;
+        };
+
+        frames.push(raw);
         delays.push(delay);
     }
 
     (frames.len() > 1).then_some(RawAnimation {
         frames,
         delays,
-        bytes,
+        bytes: budget.retained_bytes,
     })
 }
 
