@@ -28,12 +28,12 @@ use tokio_util::sync::CancellationToken;
 use self::media::MediaService;
 use self::profile::PronounCache;
 use crate::domain::models::{
-    LoginCredentials, OAuthLoginData, RoomId, ServerInfo, Session, SyncEvent, TimelineCommand,
+    LoginCredentials, OAuthLoginData, RoomId, ServerInfo, Session, SyncOutcome, TimelineCommand,
     TimelineUpdate, VerificationEvent,
 };
 use crate::error::{AppError, Result};
 use crate::ports::matrix::{
-    AuthPort, AuthenticatedSession, MediaPort, SessionPort, SyncPort, TimelinePort,
+    AuthPort, AuthenticatedSession, MediaPort, SessionPort, SyncPort, SyncSink, TimelinePort,
     VerificationPort,
 };
 use crate::ports::media::MediaCache;
@@ -191,19 +191,9 @@ impl AuthedMatrix {
 
 #[async_trait]
 impl SyncPort for AuthedMatrix {
-    async fn start_sync(
-        &self,
-        on_sync: Box<dyn Fn(SyncEvent) + Send + Sync>,
-        cancel: CancellationToken,
-    ) -> Result<()> {
+    async fn start_sync(&self, on_sync: SyncSink, cancel: CancellationToken) -> SyncOutcome {
         tracing::info!("starting continuous sync loop");
-        rooms::start_sync(
-            &self.client,
-            Arc::clone(&self.media),
-            on_sync.into(),
-            cancel,
-        )
-        .await
+        rooms::start_sync(&self.client, Arc::clone(&self.media), on_sync, cancel).await
     }
 }
 

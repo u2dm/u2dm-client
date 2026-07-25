@@ -1,16 +1,23 @@
 use std::collections::{HashMap, HashSet};
 use std::mem;
 use std::sync::Arc;
+use std::time::Duration;
 
 use tokio::sync::mpsc;
+use tokio::time::{Instant, sleep};
+use tokio_util::sync::CancellationToken;
 
 use super::selection::Selection;
 use super::task_group::TaskGroup;
 use crate::commands::{DirectoryUpdate, UiCommand};
-use crate::domain::models::{ConnectionStatus, Room, Space, SyncEvent};
-use crate::ports::matrix::SyncPort;
+use crate::domain::models::{ConnectionStatus, Room, Space, SyncEvent, SyncOutcome};
+use crate::ports::matrix::{SyncPort, SyncSink};
 use crate::ports::output::AppOutputPort;
 use crate::ports::storage::StoragePort;
+
+const BACKOFF_START: Duration = Duration::from_secs(1);
+const BACKOFF_MAX: Duration = Duration::from_secs(60);
+const BACKOFF_RESET_AFTER: Duration = Duration::from_secs(60);
 
 pub(super) struct RoomMeta {
     pub(super) name: String,
@@ -196,9 +203,10 @@ impl RoomDirectory {
         dir_in_tx: mpsc::UnboundedSender<DirectoryUpdate>,
     ) {
         let token = group.token();
-        let on_sync: Box<dyn Fn(SyncEvent) + Send + Sync> = Box::new(move |event| match event {
+        let sink_output = Arc::clone(&output);
+        let on_sync: SyncSink = Arc::new(move |event| match event {
             SyncEvent::Connected => {
-                output.publish(Box::new(|view| {
+                sink_output.publish(Box::new(|view| {
                     view.connection = ConnectionStatus::Connected;
                 }));
             }
@@ -209,20 +217,13 @@ impl RoomDirectory {
                 drop(dir_in_tx.send(DirectoryUpdate::Spaces(spaces)));
             }
             SyncEvent::ConnectionError(msg) => {
-                output.publish(Box::new(move |view| {
+                sink_output.publish(Box::new(move |view| {
                     view.connection = ConnectionStatus::Error(msg);
                 }));
             }
-            SyncEvent::SessionExpired => {
-                drop(cmd_tx.send(UiCommand::SessionExpired));
-            }
         });
 
-        group.spawn(async move {
-            if let Err(e) = sync.start_sync(on_sync, token).await {
-                tracing::error!("sync loop ended with error: {e}");
-            }
-        });
+        group.spawn(supervise_sync(sync, output, cmd_tx, on_sync, token));
     }
 
     pub(super) fn reconcile(&self, sel: &mut Selection) -> ReconcileOutcome {
@@ -382,5 +383,46 @@ impl RoomDirectory {
             .filter_map(|i| self.spaces.get(i))
             .map(|space| space.id.clone())
             .collect()
+    }
+}
+
+fn publish_connection(output: &Arc<dyn AppOutputPort>, status: ConnectionStatus) {
+    output.publish(Box::new(move |view| view.connection = status));
+}
+
+async fn supervise_sync(
+    sync: Arc<dyn SyncPort>,
+    output: Arc<dyn AppOutputPort>,
+    cmd_tx: mpsc::UnboundedSender<UiCommand>,
+    on_sync: SyncSink,
+    token: CancellationToken,
+) {
+    let mut backoff = BACKOFF_START;
+    loop {
+        let started = Instant::now();
+        match sync.start_sync(Arc::clone(&on_sync), token.clone()).await {
+            SyncOutcome::Cancelled => return,
+            SyncOutcome::SessionExpired => {
+                drop(cmd_tx.send(UiCommand::SessionExpired));
+                return;
+            }
+            SyncOutcome::Fatal(msg) => {
+                tracing::error!("sync failed unrecoverably: {msg}");
+                publish_connection(&output, ConnectionStatus::Error(msg));
+                return;
+            }
+            SyncOutcome::Recoverable(msg) => {
+                if started.elapsed() >= BACKOFF_RESET_AFTER {
+                    backoff = BACKOFF_START;
+                }
+                tracing::warn!("sync ended, retrying in {backoff:?}: {msg}");
+                publish_connection(&output, ConnectionStatus::Error(msg));
+                tokio::select! {
+                    () = token.cancelled() => return,
+                    () = sleep(backoff) => {}
+                }
+                backoff = backoff.saturating_mul(2).min(BACKOFF_MAX);
+            }
+        }
     }
 }

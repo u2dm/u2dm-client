@@ -193,7 +193,14 @@ pub enum SyncEvent {
     Rooms(Arc<[Room]>),
     Spaces(Arc<[Space]>),
     ConnectionError(String),
+}
+
+#[derive(Debug)]
+pub enum SyncOutcome {
+    Cancelled,
+    Recoverable(String),
     SessionExpired,
+    Fatal(String),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

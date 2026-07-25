@@ -32,10 +32,10 @@ use super::media::{MediaService, mxc_avatar_key};
 use super::preview::{self, MessagePreview};
 use crate::domain::models::{
     MessagePreviewKind, Room as DomainRoom, RoomId, ServiceEvent, Space as DomainSpace, SyncEvent,
+    SyncOutcome,
 };
 use crate::error::{AppError, Result as AppResult};
-
-type OnSync = Arc<dyn Fn(SyncEvent) + Send + Sync>;
+use crate::ports::matrix::SyncSink as OnSync;
 
 const EMIT_DEBOUNCE: Duration = Duration::from_millis(50);
 const AVATAR_INFLIGHT: usize = 8;
@@ -528,10 +528,10 @@ fn extract_sdk_error(err: &SyncServiceError) -> Option<&matrix_sdk::Error> {
 }
 
 fn is_refresh_token_error(err: &matrix_sdk::Error) -> bool {
-    matches!(
-        err,
-        matrix_sdk::Error::Http(http) if matches!(http.as_ref(), HttpError::RefreshToken(_))
-    )
+    match err {
+        matrix_sdk::Error::Http(http) => matches!(http.as_ref(), HttpError::RefreshToken(_)),
+        _ => false,
+    }
 }
 
 fn is_auth_error(err: &SyncServiceError) -> bool {
@@ -548,7 +548,7 @@ fn is_auth_error(err: &SyncServiceError) -> bool {
 
 enum LoopAction {
     Continue,
-    Break,
+    Terminal(SyncOutcome),
 }
 
 async fn resync(client: &Client, dir: &mut Directory) {
@@ -580,7 +580,9 @@ async fn handle_room_update(
             resync(client, dir).await;
             LoopAction::Continue
         }
-        Err(RecvError::Closed) => LoopAction::Break,
+        Err(RecvError::Closed) => LoopAction::Terminal(SyncOutcome::Recoverable(
+            "room updates channel closed".into(),
+        )),
     }
 }
 
@@ -599,7 +601,9 @@ async fn handle_room_info_update(
             resync(client, dir).await;
             LoopAction::Continue
         }
-        Err(RecvError::Closed) => LoopAction::Break,
+        Err(RecvError::Closed) => {
+            LoopAction::Terminal(SyncOutcome::Recoverable("room info channel closed".into()))
+        }
     }
 }
 
@@ -633,8 +637,7 @@ async fn handle_sync_state(
             let msg = err.to_string();
             tracing::warn!("sliding sync error: {msg}");
             if is_auth_error(&err) {
-                on_sync(SyncEvent::SessionExpired);
-                return LoopAction::Break;
+                return LoopAction::Terminal(SyncOutcome::SessionExpired);
             }
             on_sync(SyncEvent::ConnectionError(msg));
             sync_service.start().await;
@@ -642,7 +645,7 @@ async fn handle_sync_state(
         }
         SyncState::Terminated => {
             tracing::info!("sliding sync terminated");
-            LoopAction::Break
+            LoopAction::Terminal(SyncOutcome::Recoverable("sliding sync terminated".into()))
         }
         SyncState::Idle | SyncState::Offline => LoopAction::Continue,
     }
@@ -655,7 +658,7 @@ async fn run_sync_loop(
     on_sync: &OnSync,
     avatars: &mut AvatarFetcher,
     ready_rx: &mut UnboundedReceiver<AvatarKind>,
-) {
+) -> SyncOutcome {
     let mut dir = Directory::new();
     let mut state_stream = sync_service.state();
     let mut room_info_rx = client.room_info_notable_update_receiver();
@@ -672,41 +675,33 @@ async fn run_sync_loop(
                 None => future::pending::<()>().await,
             }
         };
-        tokio::select! {
+        let action = tokio::select! {
             biased;
-            Some(state) = state_stream.next() => {
-                if matches!(
-                    handle_sync_state(client, state, sync_service, &mut dir, on_sync).await,
-                    LoopAction::Break
-                ) {
-                    break;
-                }
-            }
+            state = state_stream.next() => match state {
+                Some(state) => handle_sync_state(client, state, sync_service, &mut dir, on_sync).await,
+                None => LoopAction::Terminal(SyncOutcome::Recoverable("sync state stream ended".into())),
+            },
             () = flush_fut => {
                 dir.flush(client, on_sync, avatars).await;
+                LoopAction::Continue
             }
             Some(kind) = ready_rx.recv() => {
                 handle_avatar_ready(kind, ready_rx, &mut dir);
+                LoopAction::Continue
             }
             Some(_) = avatars.tasks.join_next() => {
                 avatars.pump(client);
+                LoopAction::Continue
             }
             update = room_updates_rx.recv() => {
-                if matches!(
-                    handle_room_update(client, update, &mut dir).await,
-                    LoopAction::Break
-                ) {
-                    break;
-                }
+                handle_room_update(client, update, &mut dir).await
             }
             info = room_info_rx.recv() => {
-                if matches!(
-                    handle_room_info_update(client, info, &mut dir).await,
-                    LoopAction::Break
-                ) {
-                    break;
-                }
+                handle_room_info_update(client, info, &mut dir).await
             }
+        };
+        if let LoopAction::Terminal(outcome) = action {
+            return outcome;
         }
     }
 }
@@ -716,8 +711,11 @@ pub(super) async fn start_sync(
     media: Arc<MediaService>,
     on_sync: OnSync,
     cancel: CancellationToken,
-) -> AppResult<()> {
-    let sync_service = build_sync_service(client).await?;
+) -> SyncOutcome {
+    let sync_service = match build_sync_service(client).await {
+        Ok(service) => service,
+        Err(e) => return SyncOutcome::Fatal(format!("failed to build sync service: {e}")),
+    };
     let mut room_updates_rx = client.subscribe_to_all_room_updates();
     let (ready_tx, mut ready_rx) = unbounded_channel();
     let mut avatars = AvatarFetcher::new(media, ready_tx);
@@ -725,20 +723,21 @@ pub(super) async fn start_sync(
     sync_service.start().await;
     tracing::info!("sliding sync service started");
 
-    tokio::select! {
-        () = run_sync_loop(
+    let outcome = tokio::select! {
+        outcome = run_sync_loop(
             client,
             &sync_service,
             &mut room_updates_rx,
             &on_sync,
             &mut avatars,
             &mut ready_rx,
-        ) => {}
+        ) => outcome,
         () = cancel.cancelled() => {
             tracing::debug!("sync cancelled, stopping sync service");
+            SyncOutcome::Cancelled
         }
-    }
+    };
 
     sync_service.stop().await;
-    Ok(())
+    outcome
 }

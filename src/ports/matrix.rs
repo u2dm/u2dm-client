@@ -6,10 +6,12 @@ use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 
 use crate::domain::models::{
-    LoginCredentials, OAuthLoginData, RoomId, ServerInfo, Session, SyncEvent, TimelineCommand,
-    TimelineUpdate, VerificationEvent,
+    LoginCredentials, OAuthLoginData, RoomId, ServerInfo, Session, SyncEvent, SyncOutcome,
+    TimelineCommand, TimelineUpdate, VerificationEvent,
 };
 use crate::error::Result;
+
+pub type SyncSink = Arc<dyn Fn(SyncEvent) + Send + Sync>;
 
 pub struct AuthenticatedSession {
     pub session: Session,
@@ -37,11 +39,7 @@ pub trait AuthPort: Send + Sync {
 
 #[async_trait]
 pub trait SyncPort: Send + Sync {
-    async fn start_sync(
-        &self,
-        on_sync: Box<dyn Fn(SyncEvent) + Send + Sync>,
-        cancel: CancellationToken,
-    ) -> Result<()>;
+    async fn start_sync(&self, on_sync: SyncSink, cancel: CancellationToken) -> SyncOutcome;
 }
 
 #[async_trait]

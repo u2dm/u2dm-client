@@ -10,12 +10,12 @@ use tokio_util::sync::CancellationToken;
 use super::{data, media};
 use crate::domain::models::{
     AuthMethod, LoginCredentials, OAuthLoginData, PaginationDirection, PaginationOutcome,
-    ReplyInfo, RoomId, ServerInfo, Session, SyncEvent, TimelineCommand, TimelineMessage,
-    TimelinePatch, TimelineUpdate, VerificationEvent,
+    ReplyInfo, RoomId, ServerInfo, Session, SyncEvent, SyncOutcome, TimelineCommand,
+    TimelineMessage, TimelinePatch, TimelineUpdate, VerificationEvent,
 };
 use crate::error::{AppError, Result};
 use crate::ports::matrix::{
-    AuthPort, AuthenticatedSession, MediaPort, SessionPort, SyncPort, TimelinePort,
+    AuthPort, AuthenticatedSession, MediaPort, SessionPort, SyncPort, SyncSink, TimelinePort,
     VerificationPort,
 };
 use crate::ports::media::MediaCache;
@@ -108,15 +108,12 @@ impl DemoAuthed {
 
 #[async_trait]
 impl SyncPort for DemoAuthed {
-    async fn start_sync(
-        &self,
-        on_sync: Box<dyn Fn(SyncEvent) + Send + Sync>,
-        _cancel: CancellationToken,
-    ) -> Result<()> {
+    async fn start_sync(&self, on_sync: SyncSink, cancel: CancellationToken) -> SyncOutcome {
         on_sync(SyncEvent::Connected);
         on_sync(SyncEvent::Rooms(data::rooms().into()));
         on_sync(SyncEvent::Spaces(data::spaces().into()));
-        Ok(())
+        cancel.cancelled().await;
+        SyncOutcome::Cancelled
     }
 }
 
