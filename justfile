@@ -32,7 +32,10 @@ test *ARGS:
 
 disk:
     @du -sh target/ 2>/dev/null || echo "target/ does not exist"
-    @du -sh target/debug target/inspect {{ MODES }}/* 2>/dev/null | sort -rh || true
+    @echo "default (cargo build/run, kept by clean-isolated):"
+    @du -sh target/debug target/release 2>/dev/null | sort -rh || true
+    @echo "isolated mode/feature artifacts (dropped by clean-isolated):"
+    @du -sh target/inspect {{ MODES }}/* 2>/dev/null | sort -rh || true
     @echo "incremental dirs (one per configuration ever built):"
     @find target -name incremental -type d -exec sh -c 'printf "  %3s  %s\n" "$(ls "$1" | wc -l)" "$1"' _ {} \; 2>/dev/null || true
 
@@ -41,6 +44,8 @@ clean-modes:
 
 clean-inspect:
     rm -rf target/inspect
+
+clean-isolated: clean-modes clean-inspect
 
 clean-all:
     cargo clean
