@@ -10,7 +10,7 @@ use super::props::{BoolProp, IntProp, StringProp, UiProps};
 use super::reconcile::{apply_reconcile, apply_rooms, apply_timeline_patch};
 use crate::commands::{AppViewState, Effect, LifecycleView, LoginStep, PaginationView};
 use crate::domain::models::{
-    ConnectionStatus, RoomId, TimelinePatch, TimelineStatus,
+    ConnectionStatus, Room, RoomId, TimelinePatch, TimelineStatus,
     VerificationEvent as DomainVerificationEvent,
 };
 
@@ -18,6 +18,14 @@ thread_local! {
     static PREPEND_TOKEN: Cell<i32> = const { Cell::new(0) };
     static ACTIVE_GENERATION: Cell<i32> = const { Cell::new(0) };
     static LATEST_SNAPSHOT: RefCell<Option<Arc<AppViewState>>> = const { RefCell::new(None) };
+}
+
+pub(super) fn latest_rooms() -> Option<Arc<[Room]>> {
+    LATEST_SNAPSHOT.with(|cell| {
+        cell.borrow()
+            .as_ref()
+            .map(|view| Arc::clone(&view.directory.rooms))
+    })
 }
 
 #[allow(clippy::too_many_lines)]

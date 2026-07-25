@@ -7,6 +7,7 @@ use tokio::runtime::Runtime;
 use tokio::sync::{mpsc, watch};
 
 use super::backend::{UiBackend, install_render_hooks, post_effect, selected_room_key};
+use super::clock::install_clock_invalidation;
 use super::decode::{AvatarSlot, request_avatar, request_media};
 use super::dto::{
     MediaState, ThumbUpdate, enrich_to_update, message_to_dto, room_to_dto, space_to_dto,
@@ -491,6 +492,7 @@ impl SlintUiAdapter {
         SUBSPACES_MODEL.with(|cell| *cell.borrow_mut() = Some(subspaces_model));
 
         install_render_hooks::<CompiledBackend>(self.window.as_weak());
+        install_clock_invalidation::<CompiledBackend>(Arc::clone(&media_cache));
 
         spawn_event_multiplexer(ui_rx, view_rx, media_cache, move |event, media, permit| {
             post_effect::<CompiledBackend>(&weak, media, event, permit);

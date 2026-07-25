@@ -1,6 +1,7 @@
 #![allow(clippy::pub_use)]
 
 mod backend;
+mod clock;
 mod decode;
 mod dto;
 mod emoji;

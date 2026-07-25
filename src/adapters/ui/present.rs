@@ -1,3 +1,9 @@
+use std::env;
+use std::sync::OnceLock;
+
+use chrono::{Locale, Timelike};
+use pure_rust_locales::locale_match;
+
 use crate::domain::models::{
     LoginMethod, MessageBody, MessagePreviewKind, ServiceEvent, TimelineMessage,
 };
@@ -65,13 +71,66 @@ fn truncate_chars(text: &str, max: usize) -> &str {
     }
 }
 
+fn active_locale() -> Locale {
+    static LOCALE: OnceLock<Locale> = OnceLock::new();
+    *LOCALE.get_or_init(|| {
+        lc_time_locale()
+            .or_else(sys_locale::get_locale)
+            .as_deref()
+            .and_then(parse_locale)
+            .unwrap_or(Locale::POSIX)
+    })
+}
+
+fn lc_time_locale() -> Option<String> {
+    ["LC_ALL", "LC_TIME", "LANG"]
+        .into_iter()
+        .find_map(|key| env::var(key).ok().filter(|value| !value.is_empty()))
+}
+
+fn parse_locale(tag: &str) -> Option<Locale> {
+    let core = tag
+        .split(['.', '@'])
+        .next()
+        .unwrap_or(tag)
+        .replace('-', "_");
+    let mut candidate: &str = &core;
+    loop {
+        if let Ok(locale) = Locale::try_from(candidate) {
+            return Some(locale);
+        }
+        let cut = candidate.rfind('_')?;
+        candidate = candidate.get(..cut)?;
+    }
+}
+
+fn uses_12h_clock(locale: Locale) -> bool {
+    let time_format = locale_match!(locale => LC_TIME::T_FMT);
+    ["%p", "%r", "%I", "%l"]
+        .iter()
+        .any(|token| time_format.contains(token))
+}
+
+fn to_local(timestamp_ms: u64) -> Option<chrono::DateTime<chrono::Local>> {
+    chrono::DateTime::from_timestamp((timestamp_ms / 1000).cast_signed(), 0)
+        .map(|utc| utc.with_timezone(&chrono::Local))
+}
+
+fn short_time(local: &chrono::DateTime<chrono::Local>, locale: Locale) -> String {
+    let minute = local.minute();
+    if uses_12h_clock(locale) {
+        let (_, hour) = local.hour12();
+        let period = local.format_localized("%p", locale).to_string();
+        format!("{hour}:{minute:02} {period}")
+    } else {
+        let hour = local.hour();
+        format!("{hour:02}:{minute:02}")
+    }
+}
+
 pub fn message_timestamp_label(timestamp: u64) -> String {
-    chrono::DateTime::from_timestamp((timestamp / 1000).cast_signed(), 0)
-        .map(|utc| {
-            utc.with_timezone(&chrono::Local)
-                .format("%H:%M")
-                .to_string()
-        })
+    to_local(timestamp)
+        .map(|local| short_time(&local, active_locale()))
         .unwrap_or_default()
 }
 
@@ -79,21 +138,20 @@ pub fn room_activity_label(last_activity_ts: u64) -> String {
     if last_activity_ts == 0 {
         return String::new();
     }
-    let Some(utc) = chrono::DateTime::from_timestamp((last_activity_ts / 1000).cast_signed(), 0)
-    else {
+    let Some(local) = to_local(last_activity_ts) else {
         return String::new();
     };
-    let local = utc.with_timezone(&chrono::Local);
+    let locale = active_locale();
     let days = chrono::Local::now()
         .date_naive()
         .signed_duration_since(local.date_naive())
         .num_days();
     if days <= 0 {
-        local.format("%H:%M").to_string()
+        short_time(&local, locale)
     } else if days < 7 {
-        local.format("%a").to_string()
+        local.format_localized("%a", locale).to_string()
     } else {
-        local.format("%d/%m/%y").to_string()
+        local.format_localized("%x", locale).to_string()
     }
 }
 
