@@ -75,10 +75,8 @@ impl MediaService {
         self.sweep(Some(account)).await;
 
         let media_dir = self.account_dir(account);
-        let session = Arc::new(MediaSession {
-            cache: CacheHandle::spawn(media_dir.clone()),
-            media_dir,
-        });
+        let cache = CacheHandle::spawn(media_dir.clone()).await;
+        let session = Arc::new(MediaSession { media_dir, cache });
         if let Ok(mut guard) = self.session.write() {
             *guard = Some(session);
         }

@@ -50,6 +50,10 @@ enum CacheCommand {
         bytes: u64,
         ack: oneshot::Sender<()>,
     },
+    Forget {
+        key: String,
+        path: PathBuf,
+    },
     Clear(oneshot::Sender<()>),
 }
 
@@ -60,10 +64,18 @@ pub(super) struct CacheHandle {
 }
 
 impl CacheHandle {
-    pub(super) fn spawn(media_dir: PathBuf) -> Self {
+    pub(super) async fn spawn(media_dir: PathBuf) -> Self {
         let snapshot = Arc::new(RwLock::new(Index::new()));
         let (tx, rx) = mpsc::unbounded_channel();
-        tokio::spawn(CacheActor::bootstrap(media_dir, rx, Arc::clone(&snapshot)));
+        match task::spawn_blocking(move || CacheActor::load(media_dir)).await {
+            Ok(actor) => {
+                if let Ok(mut guard) = snapshot.write() {
+                    *guard = actor.snapshot();
+                }
+                tokio::spawn(actor.run(rx, Arc::clone(&snapshot)));
+            }
+            Err(e) => tracing::error!("media cache index load failed, running uncached: {e}"),
+        }
         Self {
             snapshot,
             tx,
@@ -73,11 +85,41 @@ impl CacheHandle {
 
     pub(super) fn get(&self, key: &str) -> Option<PathBuf> {
         let path = self.snapshot.read().ok()?.get(key).cloned()?;
+        if !path.exists() {
+            self.forget(key, &path);
+            return None;
+        }
         if self.should_send_touch(key) && self.tx.send(CacheCommand::Touch(key.to_owned())).is_err()
         {
             tracing::trace!("media cache actor stopped; access not recorded");
         }
         Some(path)
+    }
+
+    fn forget(&self, key: &str, path: &Path) {
+        tracing::debug!(
+            path = %path.display(),
+            "cached media file is gone, dropping its index entry"
+        );
+        if let Ok(mut guard) = self.snapshot.write() {
+            let unchanged = guard.get(key).is_some_and(|current| current == path);
+            if unchanged {
+                guard.remove(key);
+            }
+        }
+        if let Ok(mut last) = self.last_touch.lock() {
+            last.remove(key);
+        }
+        if self
+            .tx
+            .send(CacheCommand::Forget {
+                key: key.to_owned(),
+                path: path.to_path_buf(),
+            })
+            .is_err()
+        {
+            tracing::trace!("media cache actor stopped; missing entry left in the index");
+        }
     }
 
     fn should_send_touch(&self, key: &str) -> bool {
@@ -134,24 +176,6 @@ struct CacheActor {
 }
 
 impl CacheActor {
-    async fn bootstrap(
-        media_dir: PathBuf,
-        rx: mpsc::UnboundedReceiver<CacheCommand>,
-        shared: Arc<RwLock<Index>>,
-    ) {
-        let actor = match task::spawn_blocking(move || CacheActor::load(media_dir)).await {
-            Ok(actor) => actor,
-            Err(e) => {
-                tracing::error!("media cache index load task failed: {e}");
-                return;
-            }
-        };
-        if let Ok(mut guard) = shared.write() {
-            *guard = actor.snapshot();
-        }
-        actor.run(rx, shared).await;
-    }
-
     fn load(media_dir: PathBuf) -> Self {
         let index_path = media_dir.join("index.json");
         let mut actor = Self {
@@ -250,20 +274,8 @@ impl CacheActor {
                 path,
                 bytes,
                 ack,
-            } => {
-                let mutation = self.insert(&key, path.clone(), bytes);
-                if let Ok(mut guard) = shared.write() {
-                    guard.insert(key, path);
-                    for evicted in &mutation.evicted_keys {
-                        guard.remove(evicted);
-                    }
-                }
-                if ack.send(()).is_err() {
-                    tracing::trace!("media cache insert requester dropped before ack");
-                }
-                self.delete_files(&mutation.removed_files).await;
-                self.dirty = true;
-            }
+            } => self.publish_insert(key, path, bytes, ack, shared).await,
+            CacheCommand::Forget { key, path } => self.forget(&key, &path, shared),
             CacheCommand::Clear(ack) => {
                 self.entries.clear();
                 self.total_bytes = 0;
@@ -276,6 +288,43 @@ impl CacheActor {
                 }
             }
         }
+    }
+
+    async fn publish_insert(
+        &mut self,
+        key: String,
+        path: PathBuf,
+        bytes: u64,
+        ack: oneshot::Sender<()>,
+        shared: &RwLock<Index>,
+    ) {
+        let mutation = self.insert(&key, path.clone(), bytes);
+        if let Ok(mut guard) = shared.write() {
+            guard.insert(key, path);
+            for evicted in &mutation.evicted_keys {
+                guard.remove(evicted);
+            }
+        }
+        if ack.send(()).is_err() {
+            tracing::trace!("media cache insert requester dropped before ack");
+        }
+        self.delete_files(&mutation.removed_files).await;
+        self.dirty = true;
+    }
+
+    fn forget(&mut self, key: &str, path: &Path, shared: &RwLock<Index>) {
+        let stale = self
+            .entries
+            .get(key)
+            .is_some_and(|entry| entry.path == path);
+        if !stale {
+            return;
+        }
+        self.remove_entry(key);
+        if let Ok(mut guard) = shared.write() {
+            guard.remove(key);
+        }
+        self.dirty = true;
     }
 
     fn insert(&mut self, key: &str, path: PathBuf, bytes: u64) -> Mutation {
