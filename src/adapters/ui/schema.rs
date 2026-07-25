@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 #[cfg(feature = "interpreted")]
 macro_rules! gen_consts {
     ($($a:ident $c:ident $lit:literal $d:ident;)*) => {

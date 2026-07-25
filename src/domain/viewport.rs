@@ -89,8 +89,6 @@ impl ViewportController {
 
     pub fn state(&self) -> PaginationState {
         PaginationState {
-            backwards_ended: self.backwards_ended,
-            forwards_ended: self.forwards_ended,
             backwards_loading: self.backwards_loading,
             forwards_loading: self.forwards_loading,
         }

@@ -46,9 +46,7 @@ pub struct ServerInfo {
 }
 
 #[derive(Debug, Clone)]
-#[allow(dead_code)]
 pub struct LoginCredentials {
-    pub homeserver: String,
     pub username: String,
     pub password: String,
 }
@@ -148,7 +146,6 @@ pub enum MessagePreviewKind {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-#[allow(dead_code)]
 pub struct Room {
     pub id: RoomId,
     pub display_name: String,
@@ -178,7 +175,6 @@ pub struct Space {
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
-#[allow(dead_code)]
 pub enum ConnectionStatus {
     #[default]
     Disconnected,
@@ -207,7 +203,6 @@ pub enum SyncOutcome {
 pub struct EventId(pub String);
 
 #[derive(Debug, Clone, PartialEq)]
-#[allow(dead_code)]
 pub struct ImageMeta {
     pub width: Option<u32>,
     pub height: Option<u32>,
@@ -215,7 +210,6 @@ pub struct ImageMeta {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-#[allow(dead_code)]
 pub struct FileMeta {
     pub filename: String,
     pub mimetype: Option<String>,
@@ -298,7 +292,6 @@ pub struct ReplyInfo {
 }
 
 #[derive(Debug, Clone)]
-#[allow(dead_code)]
 pub struct TimelineMessage {
     pub unique_id: String,
     pub event_id: Option<EventId>,
@@ -435,10 +428,7 @@ pub enum TimelineStatus {
 }
 
 #[derive(Debug, Clone, Default)]
-#[allow(clippy::struct_excessive_bools, dead_code)]
 pub struct PaginationState {
-    pub backwards_ended: bool,
-    pub forwards_ended: bool,
     pub backwards_loading: bool,
     pub forwards_loading: bool,
 }

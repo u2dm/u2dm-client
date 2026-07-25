@@ -541,7 +541,6 @@ impl SlintUiAdapter {
                 return Value::Void;
             };
             let creds = LoginCredentials {
-                homeserver: field(s, login_request::HOMESERVER),
                 username: field(s, login_request::USERNAME),
                 password: field(s, login_request::PASSWORD),
             };

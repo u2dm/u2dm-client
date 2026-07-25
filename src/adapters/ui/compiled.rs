@@ -377,7 +377,6 @@ impl SlintUiAdapter {
         let weak = self.window.as_weak();
         self.window.on_login_password(move |req| {
             let creds = LoginCredentials {
-                homeserver: req.homeserver.to_string(),
                 username: req.username.to_string(),
                 password: req.password.to_string(),
             };
