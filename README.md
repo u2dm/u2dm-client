@@ -39,7 +39,7 @@ The first build downloads the bundled color emoji font from the [`u2dm/twemoji`]
 
 ### Optional: `just`
 
-The [`justfile`](justfile) wraps the common commands and gives each feature combination its own target directory, so builds stop piling up in `target/`. Needs [`just`](https://github.com/casey/just).
+The [`justfile`](justfile) wraps the common commands and routes each feature combination to its own directory under `target/modes/`, keeping them out of the default `target/debug` so they can be wiped wholesale (`just clean-modes`) without disturbing the `cargo run` loop. Needs [`just`](https://github.com/casey/just).
 
 Plain `cargo` works the same as always.
 
