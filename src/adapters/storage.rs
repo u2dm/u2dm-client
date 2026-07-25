@@ -16,6 +16,17 @@ use crate::ports::storage::{StoragePort, StoredSession};
 use crate::util::unique_tmp_path;
 
 const KEYRING_SERVICE: &str = "u2dm";
+const CREDENTIALS_KEY: &str = "session-credentials";
+const CREDENTIALS_VERSION: u8 = 1;
+
+#[derive(serde::Serialize, serde::Deserialize)]
+struct StoredCredentials {
+    version: u8,
+    user_id: String,
+    access_token: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    refresh_token: Option<String>,
+}
 
 fn passphrase_key(account: &AccountScope) -> String {
     format!("db-passphrase-{}", account.id())
@@ -48,12 +59,13 @@ impl SecureStorage {
 impl StoragePort for SecureStorage {
     async fn save_session(&self, session: &Session) -> Result<()> {
         tracing::debug!(user_id = %session.user_id, "saving session");
-        keyring_set("access-token", session.access_token.clone()).await?;
-
-        match &session.refresh_token {
-            Some(token) => keyring_set("refresh-token", token.clone()).await?,
-            None => keyring_delete("refresh-token").await?,
-        }
+        write_credentials(&StoredCredentials {
+            version: CREDENTIALS_VERSION,
+            user_id: session.user_id.clone(),
+            access_token: session.access_token.clone(),
+            refresh_token: session.refresh_token.clone(),
+        })
+        .await?;
 
         let metadata = session.metadata();
         write_json(&self.session_path, &metadata).await?;
@@ -71,10 +83,10 @@ impl StoragePort for SecureStorage {
 
         let metadata: SessionMetadata = serde_json::from_str(&contents)?;
 
-        let access_token = match keyring_get("access-token").await {
-            Ok(Some(token)) => token,
+        let credentials = match load_credentials(&metadata.user_id).await {
+            Ok(Some(credentials)) => credentials,
             Ok(None) => {
-                tracing::info!("session metadata present but no access token in keyring");
+                tracing::info!("session metadata present but no usable credentials in keyring");
                 return Ok(StoredSession::Incomplete);
             }
             Err(e) => {
@@ -83,20 +95,12 @@ impl StoragePort for SecureStorage {
             }
         };
 
-        let refresh_token = match keyring_get("refresh-token").await {
-            Ok(token) => token,
-            Err(e) => {
-                tracing::warn!("failed to load refresh token from keyring: {e}");
-                None
-            }
-        };
-
         Ok(StoredSession::Present(Session {
             user_id: metadata.user_id,
             device_id: metadata.device_id,
             homeserver: metadata.homeserver,
-            access_token,
-            refresh_token,
+            access_token: credentials.access_token,
+            refresh_token: credentials.refresh_token,
             client_id: metadata.client_id,
         }))
     }
@@ -111,10 +115,8 @@ impl StoragePort for SecureStorage {
             Err(e) => failures.push(format!("{} ({e})", self.session_path.display())),
         }
 
-        for key in ["access-token", "refresh-token"] {
-            if let Err(e) = keyring_delete(key).await {
-                failures.push(format!("{key} ({e})"));
-            }
+        if let Err(e) = keyring_delete(CREDENTIALS_KEY).await {
+            failures.push(format!("{CREDENTIALS_KEY} ({e})"));
         }
 
         combine("stored credentials could not be removed", &failures)
@@ -131,6 +133,41 @@ impl StoragePort for SecureStorage {
     async fn clear_passphrase(&self, account: &AccountScope) -> Result<()> {
         keyring_delete(&passphrase_key(account)).await
     }
+}
+
+async fn write_credentials(record: &StoredCredentials) -> Result<()> {
+    keyring_set(CREDENTIALS_KEY, serde_json::to_string(record)?).await
+}
+
+async fn load_credentials(user_id: &str) -> Result<Option<StoredCredentials>> {
+    Ok(keyring_get(CREDENTIALS_KEY)
+        .await?
+        .and_then(|raw| decode_credentials(&raw, user_id)))
+}
+
+fn decode_credentials(raw: &str, user_id: &str) -> Option<StoredCredentials> {
+    let record: StoredCredentials = match serde_json::from_str(raw) {
+        Ok(record) => record,
+        Err(e) => {
+            tracing::warn!("stored credentials are unreadable, re-login required: {e}");
+            return None;
+        }
+    };
+
+    if record.version != CREDENTIALS_VERSION {
+        tracing::warn!(
+            version = record.version,
+            "stored credentials use an unsupported layout, re-login required"
+        );
+        return None;
+    }
+
+    if record.user_id != user_id {
+        tracing::warn!("stored credentials belong to a different account, re-login required");
+        return None;
+    }
+
+    Some(record)
 }
 
 async fn keyring_set(key: &str, secret: String) -> Result<()> {
