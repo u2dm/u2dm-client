@@ -45,7 +45,7 @@ enum Acquire {
 #[derive(Default)]
 struct PronounStore {
     senders: HashMap<String, SenderEntry>,
-    order: VecDeque<String>,
+    insertion_order: VecDeque<String>,
 }
 
 #[derive(Default)]
@@ -112,9 +112,9 @@ impl PronounCache {
                 failed_at: None,
             },
         );
-        store.order.push_back(sender.to_owned());
-        while store.order.len() > MAX_CACHED_SENDERS {
-            if let Some(evicted) = store.order.pop_front() {
+        store.insertion_order.push_back(sender.to_owned());
+        while store.insertion_order.len() > MAX_CACHED_SENDERS {
+            if let Some(evicted) = store.insertion_order.pop_front() {
                 store.senders.remove(&evicted);
             }
         }
