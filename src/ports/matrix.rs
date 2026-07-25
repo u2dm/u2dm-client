@@ -13,6 +13,41 @@ use crate::error::Result;
 
 pub type SyncSink = Arc<dyn Fn(SyncEvent) + Send + Sync>;
 
+#[derive(Debug, Default)]
+pub struct CleanupReport {
+    pub quarantined: Vec<PathBuf>,
+    pub failures: Vec<String>,
+}
+
+impl CleanupReport {
+    pub fn is_clean(&self) -> bool {
+        self.quarantined.is_empty() && self.failures.is_empty()
+    }
+
+    pub fn is_quarantined_only(&self) -> bool {
+        self.failures.is_empty() && !self.quarantined.is_empty()
+    }
+
+    pub fn fail(&mut self, detail: impl Into<String>) {
+        self.failures.push(detail.into());
+    }
+
+    pub fn merge(&mut self, other: Self) {
+        self.quarantined.extend(other.quarantined);
+        self.failures.extend(other.failures);
+    }
+
+    pub fn summary(&self) -> String {
+        let mut parts = self.failures.clone();
+        parts.extend(
+            self.quarantined
+                .iter()
+                .map(|p| format!("{} could not be deleted", p.display())),
+        );
+        parts.join("; ")
+    }
+}
+
 pub struct AuthenticatedSession {
     pub session: Session,
     pub sync: Arc<dyn SyncPort>,
@@ -26,10 +61,15 @@ pub struct AuthenticatedSession {
 #[async_trait]
 pub trait AuthPort: Send + Sync {
     async fn discover_auth(&self, homeserver: &str, passphrase: &str) -> Result<ServerInfo>;
-    async fn login_password(&self, creds: LoginCredentials) -> Result<AuthenticatedSession>;
+    async fn login_password(&self, creds: LoginCredentials) -> Result<Session>;
     async fn login_oauth_start(&self) -> Result<OAuthLoginData>;
-    async fn login_oauth_finish(&self) -> Result<AuthenticatedSession>;
+    async fn login_oauth_finish(&self) -> Result<Session>;
     async fn cancel_oauth(&self);
+    async fn adopt_session(
+        &self,
+        session: &Session,
+        passphrase: &str,
+    ) -> Result<AuthenticatedSession>;
     async fn restore_session(
         &self,
         session: &Session,
@@ -84,5 +124,5 @@ pub trait SessionPort: Send + Sync {
     ) -> Result<()>;
     async fn fetch_user_avatar(&self) -> Result<Option<PathBuf>>;
     async fn logout(&self) -> Result<()>;
-    async fn clear_store(&self) -> Result<()>;
+    async fn clear_store(&self) -> CleanupReport;
 }

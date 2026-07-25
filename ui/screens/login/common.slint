@@ -29,6 +29,9 @@ export global LoginStatus {
         if id == "waiting-auth" {
             return @tr("Waiting for authentication...");
         }
+        if id == "cleaning-up" {
+            return @tr("Erasing local account data...");
+        }
         return id;
     }
 }

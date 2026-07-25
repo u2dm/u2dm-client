@@ -9,12 +9,28 @@ use async_trait::async_trait;
 use tokio::fs;
 use tokio::task::spawn_blocking;
 
+use crate::domain::account::AccountScope;
 use crate::domain::models::{Session, SessionMetadata};
 use crate::error::{AppError, Result};
 use crate::ports::storage::{StoragePort, StoredSession};
 use crate::util::unique_tmp_path;
 
 const KEYRING_SERVICE: &str = "u2dm";
+
+fn passphrase_key(account: &AccountScope) -> String {
+    format!("db-passphrase-{}", account.id())
+}
+
+fn combine(operation: &str, failures: &[String]) -> Result<()> {
+    if failures.is_empty() {
+        Ok(())
+    } else {
+        Err(AppError::Other(format!(
+            "{operation}: {}",
+            failures.join("; ")
+        )))
+    }
+}
 
 pub struct SecureStorage {
     session_path: PathBuf,
@@ -87,27 +103,33 @@ impl StoragePort for SecureStorage {
 
     async fn clear_session(&self) -> Result<()> {
         tracing::debug!("clearing stored session");
+        let mut failures = Vec::new();
+
         match fs::remove_file(&self.session_path).await {
             Ok(()) => {}
             Err(e) if e.kind() == ErrorKind::NotFound => {}
-            Err(e) => return Err(e.into()),
+            Err(e) => failures.push(format!("{} ({e})", self.session_path.display())),
         }
 
         for key in ["access-token", "refresh-token"] {
             if let Err(e) = keyring_delete(key).await {
-                tracing::warn!("failed to clear {key} from keyring: {e}");
+                failures.push(format!("{key} ({e})"));
             }
         }
 
-        Ok(())
+        combine("stored credentials could not be removed", &failures)
     }
 
-    async fn save_passphrase(&self, passphrase: &str) -> Result<()> {
-        keyring_set("db-passphrase", passphrase.to_owned()).await
+    async fn save_passphrase(&self, account: &AccountScope, passphrase: &str) -> Result<()> {
+        keyring_set(&passphrase_key(account), passphrase.to_owned()).await
     }
 
-    async fn load_passphrase(&self) -> Result<Option<String>> {
-        keyring_get("db-passphrase").await
+    async fn load_passphrase(&self, account: &AccountScope) -> Result<Option<String>> {
+        keyring_get(&passphrase_key(account)).await
+    }
+
+    async fn clear_passphrase(&self, account: &AccountScope) -> Result<()> {
+        keyring_delete(&passphrase_key(account)).await
     }
 }
 

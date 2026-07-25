@@ -3,11 +3,13 @@ mod media;
 mod preview;
 mod profile;
 mod rooms;
+mod store;
 mod timeline;
 mod verification;
 
 use std::collections::HashMap;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex as StdMutex};
 
 use async_trait::async_trait;
@@ -22,40 +24,43 @@ use matrix_sdk::ruma::events::room::message::{
 use matrix_sdk::ruma::events::space_order::SpaceOrderEventContent;
 use matrix_sdk::ruma::{IdParseError, OwnedEventId, OwnedRoomId, SpaceChildOrder};
 use matrix_sdk::utils::local_server::LocalServerRedirectHandle;
-use tokio::fs;
 use tokio::sync::{Mutex, RwLock, mpsc};
 use tokio_util::sync::CancellationToken;
 
 use self::media::MediaService;
 use self::profile::PronounCache;
+use self::store::{StoreLayout, StorePaths};
+use crate::domain::account::AccountScope;
 use crate::domain::models::{
     LoginCredentials, OAuthLoginData, RoomId, ServerInfo, Session, SyncOutcome, TimelineCommand,
     TimelineUpdate, VerificationEvent,
 };
 use crate::error::{AppError, Result};
 use crate::ports::matrix::{
-    AuthPort, AuthenticatedSession, MediaPort, SessionPort, SpaceOrderPort, SyncPort, SyncSink,
-    TimelinePort, VerificationPort,
+    AuthPort, AuthenticatedSession, CleanupReport, MediaPort, SessionPort, SpaceOrderPort,
+    SyncPort, SyncSink, TimelinePort, VerificationPort,
 };
 use crate::ports::media::MediaCache;
 
 pub struct MatrixAdapter {
-    data_dir: PathBuf,
-    cache_dir: PathBuf,
+    layout: StoreLayout,
     client: RwLock<Option<Client>>,
+    pending_store: Mutex<Option<StorePaths>>,
     redirect_handle: Mutex<Option<LocalServerRedirectHandle>>,
     media: Arc<MediaService>,
+    swept: AtomicBool,
 }
 
 impl MatrixAdapter {
     pub fn new(data_dir: PathBuf, cache_dir: PathBuf) -> Self {
         let media = MediaService::new(&cache_dir);
         Self {
-            data_dir,
-            cache_dir,
+            layout: StoreLayout::new(data_dir, cache_dir),
             client: RwLock::new(None),
+            pending_store: Mutex::new(None),
             redirect_handle: Mutex::new(None),
             media,
+            swept: AtomicBool::new(false),
         }
     }
 
@@ -71,11 +76,43 @@ impl MatrixAdapter {
         Arc::new(media::MaterializedMedia::new(Arc::clone(&self.media)))
     }
 
-    fn authenticate(&self, client: Client, session: Session) -> AuthenticatedSession {
+    async fn sweep_stale_once(&self, keep: Option<&AccountScope>) {
+        if self.swept.swap(true, Ordering::Relaxed) {
+            return;
+        }
+        self.layout.sweep_stale().await;
+        self.media.sweep(keep).await;
+    }
+
+    async fn discard_pending_store(&self) {
+        drop(self.client.write().await.take());
+        let Some(paths) = self.pending_store.lock().await.take() else {
+            return;
+        };
+        self.purge_login_scratch(&paths).await;
+    }
+
+    async fn purge_login_scratch(&self, paths: &StorePaths) {
+        let report = self.layout.purge(paths).await;
+        if !report.is_clean() {
+            tracing::warn!(
+                "login scratch store not fully removed: {}",
+                report.summary()
+            );
+        }
+    }
+
+    async fn authenticate(
+        &self,
+        client: Client,
+        session: Session,
+        account: AccountScope,
+    ) -> AuthenticatedSession {
+        self.media.open(&account).await;
         let authed = Arc::new(AuthedMatrix {
-            client,
-            data_dir: self.data_dir.clone(),
-            cache_dir: self.cache_dir.clone(),
+            client: RwLock::new(Some(client)),
+            layout: self.layout.clone(),
+            account,
             media: Arc::clone(&self.media),
             media_sources: Arc::new(StdMutex::new(HashMap::new())),
             pronouns: Arc::new(PronounCache::default()),
@@ -104,21 +141,26 @@ impl MatrixAdapter {
 #[async_trait]
 impl AuthPort for MatrixAdapter {
     async fn discover_auth(&self, homeserver: &str, passphrase: &str) -> Result<ServerInfo> {
-        auth::discover_auth(
-            &self.client,
-            &self.data_dir,
-            &self.cache_dir,
-            homeserver,
-            passphrase,
-        )
-        .await
+        self.sweep_stale_once(None).await;
+        self.discard_pending_store().await;
+
+        let paths = self.layout.pending();
+        let (client, info) = match auth::discover_auth(&paths, homeserver, passphrase).await {
+            Ok(discovered) => discovered,
+            Err(e) => {
+                self.purge_login_scratch(&paths).await;
+                return Err(e);
+            }
+        };
+
+        *self.pending_store.lock().await = Some(paths);
+        *self.client.write().await = Some(client);
+        Ok(info)
     }
 
-    async fn login_password(&self, creds: LoginCredentials) -> Result<AuthenticatedSession> {
+    async fn login_password(&self, creds: LoginCredentials) -> Result<Session> {
         let client = self.get_client().await?;
-        let session = auth::login_password(&client, creds).await?;
-        drop(self.client.write().await.take());
-        Ok(self.authenticate(client, session))
+        auth::login_password(&client, creds).await
     }
 
     async fn login_oauth_start(&self) -> Result<OAuthLoginData> {
@@ -126,11 +168,9 @@ impl AuthPort for MatrixAdapter {
         auth::login_oauth_start(&client, &self.redirect_handle).await
     }
 
-    async fn login_oauth_finish(&self) -> Result<AuthenticatedSession> {
+    async fn login_oauth_finish(&self) -> Result<Session> {
         let client = self.get_client().await?;
-        let session = auth::login_oauth_finish(&client, &self.redirect_handle).await?;
-        drop(self.client.write().await.take());
-        Ok(self.authenticate(client, session))
+        auth::login_oauth_finish(&client, &self.redirect_handle).await
     }
 
     async fn cancel_oauth(&self) {
@@ -140,31 +180,49 @@ impl AuthPort for MatrixAdapter {
         }
     }
 
+    async fn adopt_session(
+        &self,
+        session: &Session,
+        passphrase: &str,
+    ) -> Result<AuthenticatedSession> {
+        let account = AccountScope::from_session(session);
+
+        drop(self.client.write().await.take());
+        let pending = self.pending_store.lock().await.take().ok_or_else(|| {
+            AppError::Other("No login store to adopt, run server discovery first".into())
+        })?;
+
+        let paths = match self.layout.adopt(&pending, &account).await {
+            Ok(paths) => paths,
+            Err(e) => {
+                self.purge_login_scratch(&pending).await;
+                return Err(e);
+            }
+        };
+
+        let client = auth::open_session(&paths, session, passphrase, &|_| {}).await?;
+        Ok(self.authenticate(client, session.clone(), account).await)
+    }
+
     async fn restore_session(
         &self,
         session: &Session,
         passphrase: &str,
         on_progress: Box<dyn Fn(String) + Send + Sync>,
     ) -> Result<AuthenticatedSession> {
-        auth::restore_session(
-            &self.client,
-            &self.data_dir,
-            &self.cache_dir,
-            session,
-            passphrase,
-            on_progress,
-        )
-        .await?;
-        let client = self.get_client().await?;
-        drop(self.client.write().await.take());
-        Ok(self.authenticate(client, session.clone()))
+        let account = AccountScope::from_session(session);
+        self.sweep_stale_once(Some(&account)).await;
+
+        let paths = self.layout.account(&account);
+        let client = auth::open_session(&paths, session, passphrase, on_progress.as_ref()).await?;
+        Ok(self.authenticate(client, session.clone(), account).await)
     }
 }
 
 struct AuthedMatrix {
-    client: Client,
-    data_dir: PathBuf,
-    cache_dir: PathBuf,
+    client: RwLock<Option<Client>>,
+    layout: StoreLayout,
+    account: AccountScope,
     media: Arc<MediaService>,
     media_sources: Arc<StdMutex<HashMap<String, MediaSource>>>,
     pronouns: Arc<PronounCache>,
@@ -175,20 +233,35 @@ struct AuthedMatrix {
 }
 
 impl AuthedMatrix {
+    async fn client(&self) -> Result<Client> {
+        self.client
+            .read()
+            .await
+            .clone()
+            .ok_or_else(|| AppError::Other("The session has been closed".into()))
+    }
+
     fn clear_media_sources(&self) {
         if let Ok(mut sources) = self.media_sources.lock() {
             sources.clear();
         }
     }
 
-    fn room(&self, room_id: &RoomId) -> Result<matrix_sdk::Room> {
+    async fn room(&self, room_id: &RoomId) -> Result<matrix_sdk::Room> {
         let room_id_parsed: OwnedRoomId = room_id
             .as_ref()
             .try_into()
             .map_err(|e: IdParseError| AppError::Other(e.to_string()))?;
-        self.client
+        self.client()
+            .await?
             .get_room(&room_id_parsed)
             .ok_or_else(|| AppError::Other("Room not found".into()))
+    }
+
+    async fn release_session_resources(&self) {
+        self.clear_media_sources();
+        self.verification_handler_guards.lock().await.clear();
+        *self.verification_req_rx.lock().await = None;
     }
 }
 
@@ -196,14 +269,18 @@ impl AuthedMatrix {
 impl SyncPort for AuthedMatrix {
     async fn start_sync(&self, on_sync: SyncSink, cancel: CancellationToken) -> SyncOutcome {
         tracing::info!("starting continuous sync loop");
-        rooms::start_sync(&self.client, Arc::clone(&self.media), on_sync, cancel).await
+        let client = match self.client().await {
+            Ok(client) => client,
+            Err(e) => return SyncOutcome::Fatal(e.to_string()),
+        };
+        rooms::start_sync(&client, Arc::clone(&self.media), on_sync, cancel).await
     }
 }
 
 #[async_trait]
 impl SpaceOrderPort for AuthedMatrix {
     async fn set_space_order(&self, space_id: &RoomId, order: &str) -> Result<()> {
-        let room = self.room(space_id)?;
+        let room = self.room(space_id).await?;
         let order = SpaceChildOrder::parse(order).map_err(|e| AppError::Other(e.to_string()))?;
         room.set_account_data(SpaceOrderEventContent::new(order))
             .await
@@ -222,7 +299,7 @@ impl TimelinePort for AuthedMatrix {
     ) -> Result<()> {
         tracing::info!(%room_id, "subscribing to timeline");
         timeline::subscribe_timeline(
-            &self.client,
+            &self.client().await?,
             &self.media,
             &self.media_sources,
             &self.pronouns,
@@ -234,7 +311,7 @@ impl TimelinePort for AuthedMatrix {
     }
 
     async fn send_text(&self, room_id: &RoomId, body: &str) -> Result<()> {
-        let room = self.room(room_id)?;
+        let room = self.room(room_id).await?;
         let content = RoomMessageEventContent::text_plain(body);
         room.send(content)
             .await
@@ -243,7 +320,7 @@ impl TimelinePort for AuthedMatrix {
     }
 
     async fn send_reply(&self, room_id: &RoomId, body: &str, in_reply_to: &str) -> Result<()> {
-        let room = self.room(room_id)?;
+        let room = self.room(room_id).await?;
         let event_id: OwnedEventId = in_reply_to
             .try_into()
             .map_err(|e: IdParseError| AppError::Other(e.to_string()))?;
@@ -268,7 +345,12 @@ impl TimelinePort for AuthedMatrix {
 impl MediaPort for AuthedMatrix {
     async fn download_media(&self, event_id: &str, thumbnail: bool) -> Result<Vec<u8>> {
         self.media
-            .download_media(&self.client, &self.media_sources, event_id, thumbnail)
+            .download_media(
+                &self.client().await?,
+                &self.media_sources,
+                event_id,
+                thumbnail,
+            )
             .await
     }
 }
@@ -280,7 +362,7 @@ impl VerificationPort for AuthedMatrix {
         verification_tx: mpsc::UnboundedSender<VerificationEvent>,
     ) -> Result<()> {
         verification::listen_for_verification(
-            &self.client,
+            &self.client().await?,
             &self.verification_req_rx,
             &self.verification_handler_guards,
             &self.verification_request,
@@ -309,40 +391,36 @@ impl SessionPort for AuthedMatrix {
         &self,
         session_tx: mpsc::UnboundedSender<Session>,
     ) -> Result<()> {
-        auth::subscribe_session_changes(&self.client, session_tx).await
+        auth::subscribe_session_changes(&self.client().await?, session_tx).await
     }
 
     async fn fetch_user_avatar(&self) -> Result<Option<PathBuf>> {
-        Ok(self.media.fetch_user_avatar(&self.client).await)
+        Ok(self.media.fetch_user_avatar(&self.client().await?).await)
     }
 
     async fn logout(&self) -> Result<()> {
         tracing::info!("logging out");
-        self.media.clear().await;
-        self.clear_media_sources();
-        self.verification_handler_guards.lock().await.clear();
-        *self.verification_req_rx.lock().await = None;
-        if let Err(e) = self.client.logout().await {
+        self.release_session_resources().await;
+        if let Err(e) = self.client().await?.logout().await {
             tracing::warn!("failed to logout from server: {e}");
         }
         Ok(())
     }
 
-    async fn clear_store(&self) -> Result<()> {
-        tracing::info!("clearing matrix store");
-        self.media.clear().await;
-        self.clear_media_sources();
-        self.verification_handler_guards.lock().await.clear();
-        *self.verification_req_rx.lock().await = None;
-        let store_path = self.data_dir.join("matrix-store");
-        if store_path.exists() {
-            fs::remove_dir_all(&store_path).await?;
+    async fn clear_store(&self) -> CleanupReport {
+        tracing::info!("clearing local account data");
+        self.release_session_resources().await;
+
+        let mut report = self.media.close(&self.account).await;
+
+        drop(self.client.write().await.take());
+        report.merge(self.layout.purge_account(&self.account).await);
+
+        if report.is_clean() {
+            tracing::info!("local account data cleared");
+        } else {
+            tracing::warn!("local account data not fully cleared: {}", report.summary());
         }
-        let cache_path = self.cache_dir.join("matrix-store");
-        if cache_path.exists() {
-            fs::remove_dir_all(&cache_path).await?;
-        }
-        tracing::debug!("matrix store cleared");
-        Ok(())
+        report
     }
 }

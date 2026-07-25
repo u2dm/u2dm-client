@@ -1,6 +1,7 @@
 use async_trait::async_trait;
 
 use super::data;
+use crate::domain::account::AccountScope;
 use crate::domain::models::Session;
 use crate::error::Result;
 use crate::ports::storage::{StoragePort, StoredSession};
@@ -21,11 +22,15 @@ impl StoragePort for DemoStorage {
         Ok(())
     }
 
-    async fn save_passphrase(&self, _passphrase: &str) -> Result<()> {
+    async fn save_passphrase(&self, _account: &AccountScope, _passphrase: &str) -> Result<()> {
         Ok(())
     }
 
-    async fn load_passphrase(&self) -> Result<Option<String>> {
+    async fn load_passphrase(&self, _account: &AccountScope) -> Result<Option<String>> {
         Ok(Some("demo-passphrase".to_owned()))
+    }
+
+    async fn clear_passphrase(&self, _account: &AccountScope) -> Result<()> {
+        Ok(())
     }
 }

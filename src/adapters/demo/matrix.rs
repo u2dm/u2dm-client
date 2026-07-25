@@ -15,8 +15,8 @@ use crate::domain::models::{
 };
 use crate::error::{AppError, Result};
 use crate::ports::matrix::{
-    AuthPort, AuthenticatedSession, MediaPort, SessionPort, SpaceOrderPort, SyncPort, SyncSink,
-    TimelinePort, VerificationPort,
+    AuthPort, AuthenticatedSession, CleanupReport, MediaPort, SessionPort, SpaceOrderPort,
+    SyncPort, SyncSink, TimelinePort, VerificationPort,
 };
 use crate::ports::media::MediaCache;
 
@@ -31,16 +31,24 @@ impl AuthPort for DemoMatrix {
         })
     }
 
-    async fn login_password(&self, _creds: LoginCredentials) -> Result<AuthenticatedSession> {
-        Ok(authenticated(data::session()))
+    async fn login_password(&self, _creds: LoginCredentials) -> Result<Session> {
+        Ok(data::session())
     }
 
     async fn login_oauth_start(&self) -> Result<OAuthLoginData> {
         Err(unavailable("OAuth login"))
     }
 
-    async fn login_oauth_finish(&self) -> Result<AuthenticatedSession> {
+    async fn login_oauth_finish(&self) -> Result<Session> {
         Err(unavailable("OAuth login"))
+    }
+
+    async fn adopt_session(
+        &self,
+        session: &Session,
+        _passphrase: &str,
+    ) -> Result<AuthenticatedSession> {
+        Ok(authenticated(session.clone()))
     }
 
     async fn cancel_oauth(&self) {}
@@ -224,8 +232,8 @@ impl SessionPort for DemoAuthed {
         Ok(())
     }
 
-    async fn clear_store(&self) -> Result<()> {
-        Ok(())
+    async fn clear_store(&self) -> CleanupReport {
+        CleanupReport::default()
     }
 }
 

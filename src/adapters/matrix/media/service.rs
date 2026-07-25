@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex as StdMutex};
+use std::sync::{Arc, Mutex as StdMutex, RwLock as StdRwLock};
 use std::time::Duration;
 
 use matrix_sdk::Client;
@@ -14,8 +14,11 @@ use tokio::time::{sleep, timeout};
 
 use super::cache::{CacheHandle, FailureTracker};
 use super::{avatar_key, thumb_key, thumbnail_format};
+use crate::adapters::matrix::store::purge_dir;
+use crate::domain::account::AccountScope;
 use crate::domain::models::{MessageBody, ThumbnailOutcome, TimelineMessage};
 use crate::error::{AppError, Result};
+use crate::ports::matrix::CleanupReport;
 use crate::util::hex_encode_id;
 
 const MAX_CONCURRENT_DOWNLOADS: usize = 6;
@@ -27,33 +30,104 @@ const RETRY_BACKOFF_BASE: Duration = Duration::from_millis(500);
 const MAX_MEDIA_BYTES: usize = 20 * 1024 * 1024;
 const MAX_FULL_MEDIA_BYTES: usize = 100 * 1024 * 1024;
 
-pub(crate) struct MediaService {
+const MEDIA_CACHE_DIR: &str = "media-cache";
+const LAYOUT_VERSION: &str = "v1";
+const AVATARS_DIR: &str = "avatars";
+
+struct MediaSession {
     media_dir: PathBuf,
+    cache: CacheHandle,
+}
+
+pub(crate) struct MediaService {
+    root: PathBuf,
+    session: StdRwLock<Option<Arc<MediaSession>>>,
     semaphore: Semaphore,
     full_semaphore: Semaphore,
-    cache: CacheHandle,
     failures: StdMutex<FailureTracker>,
 }
 
 impl MediaService {
     pub(crate) fn new(cache_dir: &Path) -> Arc<Self> {
-        let media_dir = cache_dir.join("media-cache");
-        let cache = CacheHandle::spawn(media_dir.clone());
         Arc::new(Self {
-            media_dir,
+            root: cache_dir.join(MEDIA_CACHE_DIR),
+            session: StdRwLock::new(None),
             semaphore: Semaphore::new(MAX_CONCURRENT_DOWNLOADS),
             full_semaphore: Semaphore::new(MAX_CONCURRENT_FULL_DOWNLOADS),
-            cache,
             failures: StdMutex::new(FailureTracker::default()),
         })
     }
 
-    pub(crate) fn media_dir(&self) -> &Path {
-        &self.media_dir
+    fn versioned_root(&self) -> PathBuf {
+        self.root.join(LAYOUT_VERSION)
+    }
+
+    fn account_dir(&self, account: &AccountScope) -> PathBuf {
+        self.versioned_root().join(account.id())
+    }
+
+    fn session(&self) -> Option<Arc<MediaSession>> {
+        self.session.read().ok()?.clone()
+    }
+
+    pub(crate) async fn open(&self, account: &AccountScope) {
+        self.detach().await;
+        self.sweep(Some(account)).await;
+
+        let media_dir = self.account_dir(account);
+        let session = Arc::new(MediaSession {
+            cache: CacheHandle::spawn(media_dir.clone()),
+            media_dir,
+        });
+        if let Ok(mut guard) = self.session.write() {
+            *guard = Some(session);
+        }
+    }
+
+    pub(crate) async fn close(&self, account: &AccountScope) -> CleanupReport {
+        self.detach().await;
+        let mut report = CleanupReport::default();
+        purge_dir(
+            &self.versioned_root(),
+            &self.account_dir(account),
+            &mut report,
+        )
+        .await;
+        report
+    }
+
+    async fn detach(&self) {
+        if let Ok(mut failures) = self.failures.lock() {
+            failures.clear();
+        }
+        let previous = self.session.write().ok().and_then(|mut guard| guard.take());
+        let Some(session) = previous else {
+            return;
+        };
+        session.cache.clear().await;
+    }
+
+    pub(crate) async fn sweep(&self, keep: Option<&AccountScope>) {
+        remove_all_except(&self.root, Some(LAYOUT_VERSION)).await;
+        remove_all_except(&self.versioned_root(), keep.map(AccountScope::id)).await;
+    }
+
+    pub(crate) async fn ensure_dirs(&self) {
+        let Some(session) = self.session() else {
+            return;
+        };
+        for dir in [
+            session.media_dir.clone(),
+            session.media_dir.join(AVATARS_DIR),
+        ] {
+            if let Err(e) = fs::create_dir_all(&dir).await {
+                tracing::warn!(path = %dir.display(), "failed to create media dir: {e}");
+            }
+        }
     }
 
     pub(crate) fn cache_get(&self, key: &str) -> Option<PathBuf> {
-        self.cache.get(key)
+        self.session()?.cache.get(key)
     }
 
     pub(crate) fn is_failed(&self, key: &str) -> bool {
@@ -73,18 +147,8 @@ impl MediaService {
     }
 
     async fn store(&self, key: &str, path: PathBuf, bytes: u64) {
-        self.cache.insert(key, path, bytes).await;
-    }
-
-    pub(crate) async fn clear(&self) {
-        self.cache.clear().await;
-        if let Ok(mut failures) = self.failures.lock() {
-            failures.clear();
-        }
-        if let Err(e) = fs::remove_dir_all(&self.media_dir).await
-            && e.kind() != ErrorKind::NotFound
-        {
-            tracing::warn!("failed to clear media cache dir: {e}");
+        if let Some(session) = self.session() {
+            session.cache.insert(key, path, bytes).await;
         }
     }
 
@@ -183,17 +247,18 @@ impl MediaService {
             super::lookup_media_source(media_sources, event_id)
         };
 
-        let materialized_path = if let Some(source) = source {
-            let format = if animated {
-                MediaFormat::File
-            } else {
-                thumbnail_format()
-            };
-            let cache_stem = self.media_dir.join(hex_encode_id(event_id));
-            self.fetch_and_materialize(client, source, &cache_key, &cache_stem, format)
-                .await
-        } else {
-            None
+        let materialized_path = match (source, self.session()) {
+            (Some(source), Some(session)) => {
+                let format = if animated {
+                    MediaFormat::File
+                } else {
+                    thumbnail_format()
+                };
+                let cache_stem = session.media_dir.join(hex_encode_id(event_id));
+                self.fetch_and_materialize(client, source, &cache_key, &cache_stem, format)
+                    .await
+            }
+            _ => None,
         };
 
         if materialized_path.is_some() {
@@ -213,7 +278,10 @@ impl MediaService {
             return false;
         }
 
-        let cache_stem = self.avatars_dir().join(hex_encode_id(&msg.sender));
+        let Some(avatars) = self.avatars_dir() else {
+            return false;
+        };
+        let cache_stem = avatars.join(hex_encode_id(&msg.sender));
         let source = MediaSource::Plain(mxc_url.as_str().into());
         self.fetch_and_materialize(client, source, &cache_key, &cache_stem, thumbnail_format())
             .await
@@ -229,11 +297,12 @@ impl MediaService {
         if self.cache_get(cache_key).is_some() {
             return None;
         }
-        if let Err(e) = fs::create_dir_all(self.avatars_dir()).await {
+        let avatars = self.avatars_dir()?;
+        if let Err(e) = fs::create_dir_all(&avatars).await {
             tracing::warn!("failed to create avatar dir: {e}");
             return None;
         }
-        let cache_stem = self.avatars_dir().join(hex_encode_id(mxc.as_str()));
+        let cache_stem = avatars.join(hex_encode_id(mxc.as_str()));
         let source = MediaSource::Plain(mxc);
         self.fetch_and_materialize(client, source, cache_key, &cache_stem, thumbnail_format())
             .await
@@ -320,8 +389,32 @@ impl MediaService {
         needs_thumbnail || needs_avatar
     }
 
-    fn avatars_dir(&self) -> PathBuf {
-        self.media_dir.join("avatars")
+    fn avatars_dir(&self) -> Option<PathBuf> {
+        Some(self.session()?.media_dir.join(AVATARS_DIR))
+    }
+}
+
+async fn remove_all_except(dir: &Path, keep: Option<&str>) {
+    let Ok(mut entries) = fs::read_dir(dir).await else {
+        return;
+    };
+    while let Ok(Some(entry)) = entries.next_entry().await {
+        if entry.file_name().to_str() != keep {
+            remove_entry(&entry).await;
+        }
+    }
+}
+
+async fn remove_entry(entry: &fs::DirEntry) {
+    let path = entry.path();
+    let removed = match entry.file_type().await {
+        Ok(file_type) if file_type.is_dir() => fs::remove_dir_all(&path).await,
+        _ => fs::remove_file(&path).await,
+    };
+    match removed {
+        Ok(()) => tracing::info!(path = %path.display(), "removed cached media"),
+        Err(e) if e.kind() == ErrorKind::NotFound => {}
+        Err(e) => tracing::warn!(path = %path.display(), "cached media remains: {e}"),
     }
 }
 

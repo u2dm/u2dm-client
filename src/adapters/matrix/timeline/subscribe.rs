@@ -1,5 +1,4 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
-use std::path::Path;
 use std::sync::{Arc, Mutex as StdMutex};
 
 use futures_util::StreamExt;
@@ -8,7 +7,6 @@ use matrix_sdk::ruma::events::room::MediaSource;
 use matrix_sdk::ruma::{IdParseError, OwnedEventId, OwnedRoomId};
 use matrix_sdk_ui::eyeball_im::VectorDiff;
 use matrix_sdk_ui::timeline::{RoomExt as _, Timeline, TimelineItem};
-use tokio::fs;
 use tokio::sync::{Semaphore, mpsc};
 use tokio::task::JoinSet;
 
@@ -182,16 +180,6 @@ fn spawn_backup_key_download(
     });
 }
 
-async fn ensure_media_dirs(media_dir: &Path) {
-    if let Err(e) = fs::create_dir_all(media_dir).await {
-        tracing::warn!("failed to create media dir: {e}");
-    }
-    let avatar_dir = media_dir.join("avatars");
-    if let Err(e) = fs::create_dir_all(&avatar_dir).await {
-        tracing::warn!("failed to create avatar dir: {e}");
-    }
-}
-
 async fn handle_timeline_command(
     cmd: TimelineCommand,
     timeline: &Timeline,
@@ -325,7 +313,7 @@ pub(crate) async fn subscribe_timeline(
         sources.clear();
     }
 
-    ensure_media_dirs(media.media_dir()).await;
+    media.ensure_dirs().await;
 
     let (initial_items, mut stream) = timeline.subscribe().await;
 

@@ -9,6 +9,7 @@ pub(super) enum AppPhase {
     Authenticating,
     Syncing,
     LoggingOut,
+    CleaningUp,
 }
 
 struct Inner {
@@ -110,9 +111,20 @@ impl Lifecycle {
         }
     }
 
-    pub(super) fn finish_logout(&self, session: u64) -> bool {
+    pub(super) fn begin_cleanup(&self, session: u64) -> bool {
         let mut inner = self.guard();
         if inner.phase == AppPhase::LoggingOut && inner.session == session {
+            inner.phase = AppPhase::CleaningUp;
+            true
+        } else {
+            false
+        }
+    }
+
+    pub(super) fn finish_logout(&self, session: u64) -> bool {
+        let mut inner = self.guard();
+        let ending = inner.phase == AppPhase::LoggingOut || inner.phase == AppPhase::CleaningUp;
+        if ending && inner.session == session {
             inner.phase = AppPhase::LoggedOut;
             true
         } else {

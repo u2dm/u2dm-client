@@ -23,9 +23,10 @@ use verification::VerificationController;
 use crate::commands::{
     AppViewState, DirectoryUpdate, Effect, LoginStep, UiCommand, ViewportChanged,
 };
+use crate::domain::account::AccountScope;
 use crate::domain::models::{ConnectionStatus, Room, RoomId, Space};
 use crate::ports::browser::BrowserPort;
-use crate::ports::matrix::{AuthPort, AuthenticatedSession};
+use crate::ports::matrix::{AuthPort, AuthenticatedSession, SessionPort};
 use crate::ports::media::MediaFilePort;
 use crate::ports::output::AppOutputPort;
 use crate::ports::storage::StoragePort;
@@ -497,6 +498,15 @@ impl AppService {
             .spawn_user_avatar_fetch(&mut self.background, lifecycle_port);
     }
 
+    fn ending_session(&self) -> Option<(AccountScope, Arc<dyn SessionPort>)> {
+        self.active.as_ref().map(|a| {
+            (
+                AccountScope::from_session(&a.session),
+                Arc::clone(&a.lifecycle),
+            )
+        })
+    }
+
     async fn shutdown_all_tasks(&mut self) {
         tokio::join!(
             self.background.shutdown(),
@@ -511,7 +521,7 @@ impl AppService {
             return;
         };
         tracing::info!("session expired, clearing local state");
-        let lifecycle_port = self.active.as_ref().map(|a| Arc::clone(&a.lifecycle));
+        let ending = self.ending_session();
         self.output.replace(AppViewState::logged_out());
         self.output.emit(Effect::LoggedOut).await;
         self.shutdown_all_tasks().await;
@@ -519,10 +529,10 @@ impl AppService {
         self.room_directory.reset();
         self.selection = Selection::default();
         self.active = None;
-        match lifecycle_port {
-            Some(port) => {
+        match ending {
+            Some((account, port)) => {
                 self.session
-                    .spawn_expire_session(&mut self.operations, session, port);
+                    .spawn_expire_session(&mut self.operations, session, account, port);
             }
             None => {
                 self.lifecycle.finish_logout(session);
@@ -534,7 +544,7 @@ impl AppService {
         let Some(session) = self.lifecycle.begin_logout() else {
             return;
         };
-        let lifecycle_port = self.active.as_ref().map(|a| Arc::clone(&a.lifecycle));
+        let ending = self.ending_session();
         self.output.replace(AppViewState::logged_out());
         self.output.emit(Effect::LoggedOut).await;
         self.shutdown_all_tasks().await;
@@ -542,10 +552,11 @@ impl AppService {
         self.room_directory.reset();
         self.selection = Selection::default();
         self.active = None;
-        match lifecycle_port {
-            Some(port) => self
-                .session
-                .spawn_logout(&mut self.operations, session, port),
+        match ending {
+            Some((account, port)) => {
+                self.session
+                    .spawn_logout(&mut self.operations, session, account, port);
+            }
             None => {
                 self.lifecycle.finish_logout(session);
             }

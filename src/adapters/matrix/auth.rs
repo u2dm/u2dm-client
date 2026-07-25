@@ -1,5 +1,4 @@
 use std::net::{Ipv4Addr, Ipv6Addr};
-use std::path::Path;
 
 use matrix_sdk::authentication::SessionTokens;
 use matrix_sdk::authentication::matrix::MatrixSession;
@@ -12,29 +11,23 @@ use matrix_sdk::ruma::serde::Raw;
 use matrix_sdk::ruma::{IdParseError, OwnedDeviceId, OwnedUserId};
 use matrix_sdk::utils::UrlOrQuery;
 use matrix_sdk::utils::local_server::{LocalServerBuilder, LocalServerRedirectHandle};
-use matrix_sdk::{Client, SessionChange, SessionMeta};
-use tokio::sync::{Mutex, RwLock, mpsc};
+use matrix_sdk::{Client, ClientBuilder, SessionChange, SessionMeta};
+use tokio::sync::{Mutex, mpsc};
 use url::Url;
 
+use super::store::StorePaths;
 use crate::domain::models::{AuthMethod, LoginCredentials, OAuthLoginData, ServerInfo, Session};
 use crate::error::{AppError, Result};
 
-pub(super) async fn discover_auth(
-    client_lock: &RwLock<Option<Client>>,
-    data_dir: &Path,
-    cache_dir: &Path,
-    homeserver: &str,
+async fn open_store(
+    builder: ClientBuilder,
+    paths: &StorePaths,
     passphrase: &str,
-) -> Result<ServerInfo> {
-    let client = Client::builder()
-        .server_name_or_homeserver_url(homeserver)
+) -> Result<Client> {
+    let client = builder
         .handle_refresh_tokens()
         .respect_login_well_known(true)
-        .sqlite_store_with_cache_path(
-            data_dir.join("matrix-store"),
-            cache_dir.join("matrix-store"),
-            Some(passphrase),
-        )
+        .sqlite_store_with_cache_path(&paths.data, &paths.cache, Some(passphrase))
         .build()
         .await
         .map_err(|e| AppError::Other(e.to_string()))?;
@@ -44,6 +37,21 @@ pub(super) async fn discover_auth(
         .set_media_retention_policy(MediaRetentionPolicy::new())
         .await
         .map_err(|e| AppError::Other(e.to_string()))?;
+
+    Ok(client)
+}
+
+pub(super) async fn discover_auth(
+    paths: &StorePaths,
+    homeserver: &str,
+    passphrase: &str,
+) -> Result<(Client, ServerInfo)> {
+    let client = open_store(
+        Client::builder().server_name_or_homeserver_url(homeserver),
+        paths,
+        passphrase,
+    )
+    .await?;
 
     let mut methods = Vec::new();
 
@@ -62,12 +70,14 @@ pub(super) async fn discover_auth(
 
     let homeserver_url = client.homeserver().to_string();
     tracing::info!(homeserver = %homeserver_url, methods = ?methods, "server discovery complete");
-    *client_lock.write().await = Some(client);
 
-    Ok(ServerInfo {
-        auth_methods: methods,
-        homeserver_url,
-    })
+    Ok((
+        client,
+        ServerInfo {
+            auth_methods: methods,
+            homeserver_url,
+        },
+    ))
 }
 
 pub(super) async fn login_password(client: &Client, creds: LoginCredentials) -> Result<Session> {
@@ -161,34 +171,20 @@ pub(super) async fn login_oauth_finish(
     })
 }
 
-pub(super) async fn restore_session(
-    client_lock: &RwLock<Option<Client>>,
-    data_dir: &Path,
-    cache_dir: &Path,
+pub(super) async fn open_session(
+    paths: &StorePaths,
     session: &Session,
     passphrase: &str,
-    on_progress: Box<dyn Fn(String) + Send + Sync>,
-) -> Result<()> {
+    on_progress: &(dyn Fn(String) + Send + Sync),
+) -> Result<Client> {
     on_progress("connecting".into());
 
-    let client = Client::builder()
-        .homeserver_url(&session.homeserver)
-        .handle_refresh_tokens()
-        .respect_login_well_known(true)
-        .sqlite_store_with_cache_path(
-            data_dir.join("matrix-store"),
-            cache_dir.join("matrix-store"),
-            Some(passphrase),
-        )
-        .build()
-        .await
-        .map_err(|e| AppError::Other(e.to_string()))?;
-
-    client
-        .media()
-        .set_media_retention_policy(MediaRetentionPolicy::new())
-        .await
-        .map_err(|e| AppError::Other(e.to_string()))?;
+    let client = open_store(
+        Client::builder().homeserver_url(&session.homeserver),
+        paths,
+        passphrase,
+    )
+    .await?;
 
     on_progress("restoring-auth".into());
 
@@ -228,8 +224,7 @@ pub(super) async fn restore_session(
     }
 
     tracing::info!("session restored successfully");
-    *client_lock.write().await = Some(client);
-    Ok(())
+    Ok(client)
 }
 
 pub(super) fn extract_current_session(client: &Client) -> Option<Session> {

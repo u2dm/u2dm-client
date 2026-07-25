@@ -613,7 +613,12 @@ msgctxt "LoginStatus"
 msgid "Waiting for authentication..."
 msgstr ""
 
-#: ui/screens/login/common.slint:37
+#: ui/screens/login/common.slint:33
+msgctxt "LoginStatus"
+msgid "Erasing local account data..."
+msgstr ""
+
+#: ui/screens/login/common.slint:40
 msgctxt "BrandTitle"
 msgid "U2DM"
 msgstr ""

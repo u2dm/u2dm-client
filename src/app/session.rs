@@ -1,4 +1,3 @@
-use std::fmt::Write;
 use std::sync::{Arc, Mutex as StdMutex};
 use std::time::Duration;
 
@@ -9,12 +8,14 @@ use tokio_util::sync::CancellationToken;
 use super::lifecycle::Lifecycle;
 use super::task_group::TaskGroup;
 use crate::commands::{Effect, LoginStep};
+use crate::domain::account::AccountScope;
 use crate::domain::models::{LoginCredentials, LoginMethod, ServerInfo, Session};
 use crate::error::{AppError, Result};
 use crate::ports::browser::BrowserPort;
-use crate::ports::matrix::{AuthPort, AuthenticatedSession, SessionPort};
+use crate::ports::matrix::{AuthPort, AuthenticatedSession, CleanupReport, SessionPort};
 use crate::ports::output::AppOutputPort;
 use crate::ports::storage::{StoragePort, StoredSession};
+use crate::util::random_hex;
 
 const OAUTH_CALLBACK_TIMEOUT: Duration = Duration::from_mins(5);
 
@@ -26,14 +27,29 @@ pub(super) enum AuthOutcome {
     Restore(AuthenticatedSession),
 }
 
-#[allow(clippy::let_underscore_must_use)]
 fn generate_passphrase() -> String {
-    let mut bytes = [0u8; 32];
-    rand::fill(&mut bytes);
-    bytes.iter().fold(String::with_capacity(64), |mut s, b| {
-        let _ = write!(s, "{b:02x}");
-        s
+    random_hex(32)
+}
+
+fn cleanup_problem(report: &CleanupReport) -> Option<String> {
+    if report.is_clean() {
+        return None;
+    }
+    let detail = report.summary();
+    tracing::warn!("local account data was not fully erased: {detail}");
+    Some(if report.is_quarantined_only() {
+        format!(
+            "Some local data could not be deleted, but its key was destroyed, so it is unreadable. It will be removed on the next start. ({detail})"
+        )
+    } else {
+        format!("Some local account data could not be erased: {detail}")
     })
+}
+
+async fn end_server_session(lifecycle_port: &dyn SessionPort) {
+    if let Err(e) = lifecycle_port.logout().await {
+        tracing::warn!("failed to logout from server: {e}");
+    }
 }
 
 fn classify_unusable_session(loaded: Result<StoredSession>) -> (&'static str, Option<AppError>) {
@@ -55,6 +71,7 @@ pub(super) struct SessionController {
     lifecycle: Lifecycle,
     auth_tx: mpsc::UnboundedSender<AuthOutcome>,
     oauth_cancel: Arc<StdMutex<Option<CancellationToken>>>,
+    pending_passphrase: Arc<StdMutex<Option<String>>>,
 }
 
 impl SessionController {
@@ -74,6 +91,7 @@ impl SessionController {
             lifecycle,
             auth_tx,
             oauth_cancel: Arc::new(StdMutex::new(None)),
+            pending_passphrase: Arc::new(StdMutex::new(None)),
         }
     }
 
@@ -129,20 +147,22 @@ impl SessionController {
         &self,
         group: &mut TaskGroup,
         session: u64,
+        account: AccountScope,
         lifecycle_port: Arc<dyn SessionPort>,
     ) {
         let this = self.clone();
-        group.spawn(async move { this.logout(session, lifecycle_port).await });
+        group.spawn(async move { this.logout(session, &account, lifecycle_port).await });
     }
 
     pub(super) fn spawn_expire_session(
         &self,
         group: &mut TaskGroup,
         session: u64,
+        account: AccountScope,
         lifecycle_port: Arc<dyn SessionPort>,
     ) {
         let this = self.clone();
-        group.spawn(async move { this.expire_session(session, lifecycle_port).await });
+        group.spawn(async move { this.expire_session(session, &account, lifecycle_port).await });
     }
 
     async fn restore_session(&self) {
@@ -157,9 +177,10 @@ impl SessionController {
         self.output
             .emit_now(Effect::Status("loading-session".into()));
         let session = self.load_saved_session().await?;
+        let account = AccountScope::from_session(&session);
 
         self.output.emit_now(Effect::Status("opening-store".into()));
-        let passphrase = self.passphrase_or_login_error().await?;
+        let passphrase = self.stored_passphrase(&account).await?;
 
         match self.restore_matrix_session(&session, &passphrase).await {
             Ok(capability) => Some(capability),
@@ -172,15 +193,51 @@ impl SessionController {
         }
     }
 
+    async fn stored_passphrase(&self, account: &AccountScope) -> Option<String> {
+        match self.storage.load_passphrase(account).await {
+            Ok(Some(passphrase)) => Some(passphrase),
+            Ok(None) => {
+                tracing::warn!("no store key for the saved session, preserving local data");
+                self.emit_show_login();
+                self.emit_login_error(&AppError::Other(
+                    "The key to the local store is missing. Please log in again.".into(),
+                ))
+                .await;
+                None
+            }
+            Err(e) => {
+                tracing::warn!("failed to read the store key: {e}");
+                self.emit_show_login();
+                self.emit_login_error(&e).await;
+                None
+            }
+        }
+    }
+
     async fn check_server(&self, homeserver: &str, attempt: u64) {
         tracing::info!(homeserver, "checking server");
 
-        let Some(passphrase) = self.passphrase_or_discovery_error(attempt).await else {
-            return;
-        };
+        let passphrase = generate_passphrase();
+        self.stash_pending_passphrase(passphrase.clone());
 
         self.discover_server(homeserver, passphrase.as_str(), attempt)
             .await;
+    }
+
+    fn stash_pending_passphrase(&self, passphrase: String) {
+        if let Ok(mut guard) = self.pending_passphrase.lock() {
+            *guard = Some(passphrase);
+        }
+    }
+
+    fn pending_passphrase(&self) -> Option<String> {
+        self.pending_passphrase.lock().ok()?.clone()
+    }
+
+    fn forget_pending_passphrase(&self) {
+        if let Ok(mut guard) = self.pending_passphrase.lock() {
+            *guard = None;
+        }
     }
 
     async fn discover_server(&self, homeserver: &str, passphrase: &str, attempt: u64) {
@@ -224,28 +281,6 @@ impl SessionController {
         }
     }
 
-    async fn passphrase_or_login_error(&self) -> Option<String> {
-        match self.get_or_create_passphrase().await {
-            Ok(passphrase) => Some(passphrase),
-            Err(e) => {
-                self.emit_show_login();
-                self.emit_login_error(&e).await;
-                None
-            }
-        }
-    }
-
-    async fn passphrase_or_discovery_error(&self, attempt: u64) -> Option<String> {
-        match self.get_or_create_passphrase().await {
-            Ok(passphrase) => Some(passphrase),
-            Err(e) => {
-                tracing::warn!("failed to get passphrase: {e}");
-                self.fail_auth(attempt, &e).await;
-                None
-            }
-        }
-    }
-
     async fn fail_auth(&self, attempt: u64, err: &AppError) {
         if self.lifecycle.settle_auth(attempt) {
             self.emit_login_error(err).await;
@@ -270,7 +305,11 @@ impl SessionController {
     }
 
     async fn login_password(&self, creds: LoginCredentials, attempt: u64) {
-        match self.auth.login_password(creds).await {
+        let outcome = match self.auth.login_password(creds).await {
+            Ok(session) => self.adopt_session(session).await,
+            Err(e) => Err(e),
+        };
+        match outcome {
             Ok(capability) => self.send_auth(AuthOutcome::Login {
                 attempt,
                 session: capability,
@@ -280,6 +319,30 @@ impl SessionController {
                 self.fail_auth(attempt, &e).await;
             }
         }
+    }
+
+    async fn adopt_session(&self, session: Session) -> Result<AuthenticatedSession> {
+        let passphrase = self.pending_passphrase().ok_or_else(|| {
+            AppError::Other("No login store was prepared. Please start again.".into())
+        })?;
+
+        let account = AccountScope::from_session(&session);
+        let capability = self.auth.adopt_session(&session, &passphrase).await?;
+        self.persist_store_key(&account, &passphrase).await?;
+
+        self.forget_pending_passphrase();
+        Ok(capability)
+    }
+
+    async fn persist_store_key(&self, account: &AccountScope, passphrase: &str) -> Result<()> {
+        self.storage
+            .save_passphrase(account, passphrase)
+            .await
+            .map_err(|e| {
+                AppError::Other(format!(
+                    "The key to the local store could not be saved, so the session would not survive a restart: {e}"
+                ))
+            })
     }
 
     async fn login_oauth(&self, cancel: CancellationToken, attempt: u64) {
@@ -301,24 +364,53 @@ impl SessionController {
         }
     }
 
-    async fn expire_session(&self, session: u64, lifecycle_port: Arc<dyn SessionPort>) {
-        self.clear_local_state(lifecycle_port.as_ref()).await;
-        self.lifecycle.finish_logout(session);
-        self.output
-            .emit(Effect::LoginError(
-                "Session expired. Please log in again.".into(),
-            ))
+    async fn expire_session(
+        &self,
+        session: u64,
+        account: &AccountScope,
+        lifecycle_port: Arc<dyn SessionPort>,
+    ) {
+        let report = self
+            .clear_local_state(session, account, lifecycle_port.as_ref())
             .await;
+        let mut message = "Session expired. Please log in again.".to_owned();
+        if let Some(problem) = cleanup_problem(&report) {
+            message.push(' ');
+            message.push_str(&problem);
+        }
+        self.output.emit(Effect::LoginError(message)).await;
     }
 
-    async fn logout(&self, session: u64, lifecycle_port: Arc<dyn SessionPort>) {
+    async fn logout(
+        &self,
+        session: u64,
+        account: &AccountScope,
+        lifecycle_port: Arc<dyn SessionPort>,
+    ) {
         tracing::info!("user initiated logout");
-        if let Err(e) = lifecycle_port.logout().await {
-            tracing::warn!("failed to logout from server: {e}");
+        end_server_session(lifecycle_port.as_ref()).await;
+        let report = self
+            .clear_local_state(session, account, lifecycle_port.as_ref())
+            .await;
+        self.emit_cleanup_problem(&report).await;
+    }
+
+    async fn destroy_store_key(&self, account: &AccountScope, report: &mut CleanupReport) {
+        if let Err(e) = self.storage.clear_passphrase(account).await {
+            report.fail(format!("the local store key could not be destroyed ({e})"));
         }
-        self.clear_local_state(lifecycle_port.as_ref()).await;
-        self.lifecycle.finish_logout(session);
-        tracing::info!("logout complete");
+    }
+
+    async fn clear_credentials(&self, report: &mut CleanupReport) {
+        if let Err(e) = self.storage.clear_session().await {
+            report.fail(e.to_string());
+        }
+    }
+
+    async fn emit_cleanup_problem(&self, report: &CleanupReport) {
+        if let Some(problem) = cleanup_problem(report) {
+            self.output.emit(Effect::LoginError(problem)).await;
+        }
     }
 
     pub(super) fn spawn_session_persister(
@@ -394,9 +486,10 @@ impl SessionController {
         let oauth_data = self.auth.login_oauth_start().await?;
         self.browser.open_url(&oauth_data.auth_url).await?;
         self.output.emit_now(Effect::Status("waiting-auth".into()));
-        timeout(OAUTH_CALLBACK_TIMEOUT, self.auth.login_oauth_finish())
+        let session = timeout(OAUTH_CALLBACK_TIMEOUT, self.auth.login_oauth_finish())
             .await
-            .map_err(|_| AppError::Other("Timed out waiting for browser sign-in.".into()))?
+            .map_err(|_| AppError::Other("Timed out waiting for browser sign-in.".into()))??;
+        self.adopt_session(session).await
     }
 
     fn begin_oauth(&self) -> CancellationToken {
@@ -414,15 +507,6 @@ impl SessionController {
         self.auth.cancel_oauth().await;
     }
 
-    async fn get_or_create_passphrase(&self) -> Result<String> {
-        if let Some(passphrase) = self.storage.load_passphrase().await? {
-            return Ok(passphrase);
-        }
-        let passphrase = generate_passphrase();
-        self.storage.save_passphrase(&passphrase).await?;
-        Ok(passphrase)
-    }
-
     pub(super) async fn save_session(&self, session: &Session) {
         if let Err(e) = self.storage.save_session(session).await {
             tracing::warn!("failed to save session: {e}");
@@ -433,17 +517,26 @@ impl SessionController {
         }
     }
 
-    async fn clear_credentials(&self) {
-        if let Err(e) = self.storage.clear_session().await {
-            tracing::warn!("failed to clear session: {e}");
+    async fn clear_local_state(
+        &self,
+        session: u64,
+        account: &AccountScope,
+        lifecycle_port: &dyn SessionPort,
+    ) -> CleanupReport {
+        if !self.lifecycle.begin_cleanup(session) {
+            tracing::debug!("cleanup requested for a superseded session, skipping");
+            return CleanupReport::default();
         }
-    }
+        self.output.emit(Effect::Status("cleaning-up".into())).await;
 
-    async fn clear_local_state(&self, lifecycle_port: &dyn SessionPort) {
-        self.clear_credentials().await;
-        if let Err(e) = lifecycle_port.clear_store().await {
-            tracing::warn!("failed to clear store: {e}");
-        }
+        let mut report = CleanupReport::default();
+        self.destroy_store_key(account, &mut report).await;
+        self.clear_credentials(&mut report).await;
+        report.merge(lifecycle_port.clear_store().await);
+
+        self.lifecycle.finish_logout(session);
+        self.output.emit(Effect::Status(String::new())).await;
+        report
     }
 
     fn send_auth(&self, outcome: AuthOutcome) {
