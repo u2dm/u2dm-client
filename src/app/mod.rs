@@ -246,6 +246,9 @@ impl AppService {
             UiCommand::ConfirmVerification => {
                 self.confirm_verification();
             }
+            UiCommand::DismissVerification => {
+                self.dismiss_verification();
+            }
             UiCommand::SessionExpired => {
                 self.handle_session_expired().await;
             }
@@ -425,6 +428,12 @@ impl AppService {
             self.verification
                 .spawn_confirm(&mut self.operations, verification);
         }
+    }
+
+    fn dismiss_verification(&mut self) {
+        let verification = self.active.as_ref().map(|a| Arc::clone(&a.verification));
+        self.verification
+            .spawn_dismiss(&mut self.operations, verification);
     }
 
     async fn select_room(&mut self, room_id: RoomId) {

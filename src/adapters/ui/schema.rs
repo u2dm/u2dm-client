@@ -34,6 +34,7 @@ macro_rules! simple_callbacks {
         on_accept_verification "accept-verification" accept_verification unit;
         on_confirm_verification "confirm-verification" confirm_verification unit;
         on_reject_verification "reject-verification" reject_verification unit;
+        on_dismiss_verification "dismiss-verification" dismiss_verification unit;
         on_retry_timeline "retry-timeline" retry_timeline unit;
         on_select_room "select-room" select_room string;
         on_select_space "select-space" select_space string;
@@ -46,6 +47,7 @@ pub(crate) use simple_callbacks;
 macro_rules! bool_props {
     ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
         VerificationVisible VerificationView "VerificationView" "visible" set_visible;
+        VerificationBusy VerificationView "VerificationView" "busy" set_busy;
         VerificationIsSelf VerificationView "VerificationView" "is-self" set_is_self;
         TimelineRetryable RoomView "RoomView" "timeline-retryable" set_timeline_retryable;
         BackwardsLoading RoomView "RoomView" "backwards-loading" set_backwards_loading;

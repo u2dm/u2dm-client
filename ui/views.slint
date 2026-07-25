@@ -49,7 +49,8 @@ export global RoomView {
 }
 
 export global VerificationView {
-    in-out property <bool> visible;
+    in property <bool> visible;
+    in property <bool> busy;
     in property <VerificationPhase> step: VerificationPhase.none;
     in property <string> sender;
     in property <bool> is-self;

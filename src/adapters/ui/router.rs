@@ -94,6 +94,10 @@ pub fn reject_verification(tx: &Tx) {
     send_command(tx, UiCommand::RejectVerification);
 }
 
+pub fn dismiss_verification(tx: &Tx) {
+    send_command(tx, UiCommand::DismissVerification);
+}
+
 pub fn open_media(tx: &Tx, event_id: String) {
     if event_id.is_empty() {
         return;

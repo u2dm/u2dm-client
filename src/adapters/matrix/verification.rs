@@ -289,16 +289,14 @@ pub(super) async fn reject_verification(
     sas_verification: &Mutex<Option<SasVerification>>,
     verification_request: &Mutex<Option<VerificationRequest>>,
 ) -> Result<()> {
-    let sas = sas_verification.lock().await.take();
-    let request = if sas.is_none() {
-        verification_request.lock().await.take()
-    } else {
-        None
-    };
+    let sas = sas_verification.lock().await.clone();
     if let Some(sas) = sas {
         sas.mismatch().await?;
-    } else if let Some(request) = request {
-        request.cancel().await?;
+        return Ok(());
     }
+    let request = verification_request.lock().await.clone();
+    let request =
+        request.ok_or_else(|| AppError::Other("No pending verification request".into()))?;
+    request.cancel().await?;
     Ok(())
 }

@@ -8,7 +8,9 @@ use super::decode::{AvatarSlot, clear_session_media, load_avatar_async};
 use super::present::{LoginMethodKind, Status, VerifyStep, login_method_kind, user_initial};
 use super::props::{BoolProp, IntProp, StringProp, UiProps};
 use super::reconcile::{apply_reconcile, apply_rooms, apply_timeline_patch};
-use crate::commands::{AppViewState, Effect, LifecycleView, LoginStep, PaginationView};
+use crate::commands::{
+    AppViewState, Effect, LifecycleView, LoginStep, PaginationView, VerificationUpdate,
+};
 use crate::domain::models::{
     ConnectionStatus, Room, RoomId, TimelinePatch, TimelineStatus,
     VerificationEvent as DomainVerificationEvent,
@@ -99,7 +101,7 @@ pub fn dispatch_effect<B: UiBackend>(w: &B::Window, event: Effect, ctx: &UiEvent
                 apply_timeline_status(w, status);
             }
         }
-        Effect::Verification(event) => apply_verification(w, &event),
+        Effect::Verification(update) => apply_verification(w, &update),
         Effect::FileSaved { path } => {
             w.set_string(StringProp::SavedFilePath, SharedString::from(&path));
             w.set_string(
@@ -249,7 +251,23 @@ fn apply_timeline_status(w: &impl UiProps, status: TimelineStatus) {
     w.set_timeline_state(status);
 }
 
-fn apply_verification(w: &impl UiProps, event: &DomainVerificationEvent) {
+fn apply_verification(w: &impl UiProps, update: &VerificationUpdate) {
+    match update {
+        VerificationUpdate::Flow(event) => apply_verification_flow(w, event),
+        VerificationUpdate::Rejecting => w.set_bool(BoolProp::VerificationBusy, true),
+        VerificationUpdate::RejectFailed(reason) => {
+            w.set_bool(BoolProp::VerificationBusy, false);
+            w.set_string(
+                StringProp::VerificationError,
+                SharedString::from(reason.as_str()),
+            );
+        }
+        VerificationUpdate::Dismissed => reset_verification(w),
+    }
+}
+
+fn apply_verification_flow(w: &impl UiProps, event: &DomainVerificationEvent) {
+    w.set_bool(BoolProp::VerificationBusy, false);
     match event {
         DomainVerificationEvent::Requested { sender, is_self } => {
             w.set_bool(BoolProp::VerificationVisible, true);
@@ -281,6 +299,16 @@ fn apply_verification(w: &impl UiProps, event: &DomainVerificationEvent) {
     }
 }
 
+fn reset_verification(w: &impl UiProps) {
+    w.set_bool(BoolProp::VerificationVisible, false);
+    w.set_bool(BoolProp::VerificationBusy, false);
+    w.set_verification_phase(VerifyStep::None);
+    w.set_string(StringProp::VerificationSender, SharedString::default());
+    w.set_bool(BoolProp::VerificationIsSelf, false);
+    w.set_string(StringProp::VerificationError, SharedString::default());
+    w.clear_emoji_model();
+}
+
 fn apply_logged_out(w: &impl UiProps) {
     w.set_login_phase(LoginStep::Homeserver);
     w.set_string(StringProp::UserId, SharedString::default());
@@ -295,11 +323,7 @@ fn apply_logged_out(w: &impl UiProps) {
     w.set_string(StringProp::SelectedSubspaceId, SharedString::default());
     w.clear_text_inputs();
     w.set_connection_state(&ConnectionStatus::Disconnected);
-    w.set_bool(BoolProp::VerificationVisible, false);
-    w.set_verification_phase(VerifyStep::None);
-    w.set_string(StringProp::VerificationSender, SharedString::default());
-    w.set_bool(BoolProp::VerificationIsSelf, false);
-    w.set_string(StringProp::VerificationError, SharedString::default());
+    reset_verification(w);
     w.set_string(StringProp::ToastMessage, SharedString::default());
     w.set_string(StringProp::SavedFilePath, SharedString::default());
     w.set_bool(BoolProp::BackwardsLoading, false);
@@ -308,5 +332,4 @@ fn apply_logged_out(w: &impl UiProps) {
     w.set_int(IntProp::SelectedRoomMembers, 0);
     w.set_int(IntProp::SelectedGeneration, 0);
     w.apply_user_avatar(None);
-    w.clear_emoji_model();
 }

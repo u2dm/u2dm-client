@@ -61,6 +61,7 @@ export component AppWindow inherits Window {
     callback accept-verification();
     callback confirm-verification();
     callback reject-verification();
+    callback dismiss-verification();
     callback scroll-position-changed(bool, bool);
     callback paginate-backwards();
     callback paginate-forwards();
@@ -152,8 +153,8 @@ export component AppWindow inherits Window {
         reject-verification => {
             root.reject-verification();
         }
-        dismissed => {
-            VerificationView.visible = false;
+        dismiss => {
+            root.dismiss-verification();
         }
     }
 }

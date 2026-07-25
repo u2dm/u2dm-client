@@ -6,13 +6,20 @@ import {
 import { VerificationPhase } from "../enums.slint";
 import { VerificationView } from "../views.slint";
 
+component DialogNote inherits Text {
+    font-size: 13px;
+    horizontal-alignment: center;
+    wrap: word-wrap;
+    color: Palette.foreground.transparentize(0.4);
+}
+
 export component VerificationDialog inherits Rectangle {
     background: Colors.black.transparentize(0.4);
 
     callback accept-verification();
     callback confirm-verification();
     callback reject-verification();
-    callback dismissed();
+    callback dismiss();
 
     HorizontalLayout {
         alignment: center;
@@ -52,6 +59,7 @@ export component VerificationDialog inherits Rectangle {
 
                             Button {
                                 text: @tr("Accept");
+                                enabled: !VerificationView.busy;
                                 clicked => {
                                     root.accept-verification();
                                 }
@@ -59,11 +67,19 @@ export component VerificationDialog inherits Rectangle {
 
                             Button {
                                 text: @tr("Decline");
+                                enabled: !VerificationView.busy;
                                 clicked => {
                                     root.reject-verification();
-                                    root.dismissed();
                                 }
                             }
+                        }
+
+                        if VerificationView.busy: DialogNote {
+                            text: @tr("Declining...");
+                        }
+
+                        if !VerificationView.busy && VerificationView.error != "": DialogNote {
+                            text: VerificationView.error;
                         }
                     }
 
@@ -106,6 +122,7 @@ export component VerificationDialog inherits Rectangle {
 
                             Button {
                                 text: @tr("They match");
+                                enabled: !VerificationView.busy;
                                 clicked => {
                                     root.confirm-verification();
                                 }
@@ -113,11 +130,19 @@ export component VerificationDialog inherits Rectangle {
 
                             Button {
                                 text: @tr("They don't match");
+                                enabled: !VerificationView.busy;
                                 clicked => {
                                     root.reject-verification();
-                                    root.dismissed();
                                 }
                             }
+                        }
+
+                        if VerificationView.busy: DialogNote {
+                            text: @tr("Cancelling the verification...");
+                        }
+
+                        if !VerificationView.busy && VerificationView.error != "": DialogNote {
+                            text: VerificationView.error;
                         }
                     }
 
@@ -148,7 +173,7 @@ export component VerificationDialog inherits Rectangle {
                             Button {
                                 text: @tr("Done");
                                 clicked => {
-                                    root.dismissed();
+                                    root.dismiss();
                                 }
                             }
                         }
@@ -165,11 +190,8 @@ export component VerificationDialog inherits Rectangle {
                             color: Colors.red;
                         }
 
-                        if VerificationView.error != "": Text {
+                        if VerificationView.error != "": DialogNote {
                             text: VerificationView.error;
-                            font-size: 13px;
-                            horizontal-alignment: center;
-                            color: Palette.foreground.transparentize(0.4);
                         }
 
                         HorizontalLayout {
@@ -178,7 +200,7 @@ export component VerificationDialog inherits Rectangle {
                             Button {
                                 text: @tr("Dismiss");
                                 clicked => {
-                                    root.dismissed();
+                                    root.dismiss();
                                 }
                             }
                         }

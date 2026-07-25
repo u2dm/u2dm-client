@@ -12,67 +12,77 @@ msgstr ""
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=2; plural=(n != 1);\n"
 
-#: ui/components/verification.slint:33
+#: ui/components/verification.slint:40
 msgctxt "VerificationDialog"
 msgid "Device Verification"
 msgstr "Verifica del dispositivo"
 
-#: ui/components/verification.slint:43
+#: ui/components/verification.slint:50
 msgctxt "VerificationDialog"
 msgid "Verify this session from your other device"
 msgstr "Verifica questa sessione dall'altro dispositivo"
 
-#: ui/components/verification.slint:43
+#: ui/components/verification.slint:50
 msgctxt "VerificationDialog"
 msgid "Verification request from {}"
 msgstr "Richiesta di verifica da {}"
 
-#: ui/components/verification.slint:54
+#: ui/components/verification.slint:61
 msgctxt "VerificationDialog"
 msgid "Accept"
 msgstr "Accetta"
 
-#: ui/components/verification.slint:61
+#: ui/components/verification.slint:69
 msgctxt "VerificationDialog"
 msgid "Decline"
 msgstr "Rifiuta"
 
-#: ui/components/verification.slint:74
+#: ui/components/verification.slint:78
+msgctxt "VerificationDialog"
+msgid "Declining..."
+msgstr ""
+
+#: ui/components/verification.slint:90
 msgctxt "VerificationDialog"
 msgid "Confirm the emojis below match the other device:"
 msgstr "Conferma che le emoji corrispondano all'altro dispositivo:"
 
-#: ui/components/verification.slint:108
+#: ui/components/verification.slint:124
 msgctxt "VerificationDialog"
 msgid "They match"
 msgstr "Corrispondono"
 
-#: ui/components/verification.slint:115
+#: ui/components/verification.slint:132
 msgctxt "VerificationDialog"
 msgid "They don't match"
 msgstr "Non corrispondono"
 
-#: ui/components/verification.slint:128
+#: ui/components/verification.slint:141
+msgctxt "VerificationDialog"
+msgid "Cancelling the verification..."
+msgstr ""
+
+#: ui/components/verification.slint:153
 msgctxt "VerificationDialog"
 msgid "Waiting for the other device to confirm..."
 msgstr "In attesa della conferma dall'altro dispositivo..."
 
-#: ui/components/verification.slint:138
+#: ui/components/verification.slint:163
 msgctxt "VerificationDialog"
 msgid "Verification successful!"
 msgstr "Verifica riuscita!"
 
-#: ui/components/verification.slint:149
+#: ui/components/verification.slint:174
 msgctxt "VerificationDialog"
 msgid "Done"
 msgstr "Fatto"
 
-#: ui/components/verification.slint:161
+#: ui/components/verification.slint:186
 msgctxt "VerificationDialog"
 msgid "Verification cancelled"
 msgstr "Verifica annullata"
 
-#: ui/components/verification.slint:179
+#: ui/components/verification.slint:201
 msgctxt "VerificationDialog"
 msgid "Dismiss"
 msgstr "Chiudi"

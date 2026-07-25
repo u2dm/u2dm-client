@@ -68,6 +68,7 @@ pub enum UiCommand {
     AcceptVerification,
     RejectVerification,
     ConfirmVerification,
+    DismissVerification,
     #[strum(to_string = "OpenMedia({event_id})")]
     OpenMedia {
         event_id: String,
@@ -102,11 +103,18 @@ pub enum Effect {
         generation: i32,
         status: TimelineStatus,
     },
-    Verification(VerificationEvent),
+    Verification(VerificationUpdate),
     FileSaved {
         path: String,
     },
     LoggedOut,
+}
+
+pub enum VerificationUpdate {
+    Flow(VerificationEvent),
+    Rejecting,
+    RejectFailed(String),
+    Dismissed,
 }
 
 #[derive(Clone)]
