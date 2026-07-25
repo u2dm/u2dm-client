@@ -8,12 +8,12 @@ use tokio::time::{Instant, sleep};
 use tokio_util::sync::CancellationToken;
 
 use super::selection::Selection;
+use super::space_order;
 use super::task_group::TaskGroup;
 use crate::commands::{DirectoryUpdate, UiCommand};
 use crate::domain::models::{ConnectionStatus, Room, Space, SyncEvent, SyncOutcome};
 use crate::ports::matrix::{SyncPort, SyncSink};
 use crate::ports::output::AppOutputPort;
-use crate::ports::storage::StoragePort;
 
 const BACKOFF_START: Duration = Duration::from_secs(1);
 const BACKOFF_MAX: Duration = Duration::from_mins(1);
@@ -154,7 +154,8 @@ pub(super) struct RoomDirectory {
     graph: SpaceGraph,
     counts: Vec<SpaceCounts>,
     spaces_dirty: bool,
-    space_order: Vec<String>,
+    orders: HashMap<String, String>,
+    pending_orders: HashMap<String, String>,
     connected: bool,
 }
 
@@ -167,20 +168,14 @@ impl RoomDirectory {
             graph: SpaceGraph::default(),
             counts: Vec::new(),
             spaces_dirty: false,
-            space_order: Vec::new(),
+            orders: HashMap::new(),
+            pending_orders: HashMap::new(),
             connected: false,
         }
     }
 
-    pub(super) async fn connect(&mut self, storage: &dyn StoragePort) {
+    pub(super) fn connect(&mut self) {
         self.connected = true;
-        self.space_order = match storage.load_space_order().await {
-            Ok(order) => order,
-            Err(e) => {
-                tracing::warn!("failed to load space order: {e}");
-                Vec::new()
-            }
-        };
     }
 
     pub(super) fn store_rooms(&mut self, rooms: Arc<[Room]>) -> bool {
@@ -197,24 +192,89 @@ impl RoomDirectory {
             return false;
         }
         self.spaces = spaces;
+        self.reconcile_orders();
         self.graph = SpaceGraph::build(&self.spaces);
         self.recompute_counts();
         self.spaces_dirty = true;
         true
     }
 
-    pub(super) fn move_space(&mut self, from: usize, to: usize) -> Option<Vec<String>> {
-        let mut order = self.ordered_root_ids();
-        if from >= order.len() || to >= order.len() || from == to {
+    pub(super) fn move_space(&mut self, from: usize, to: usize) -> Option<Vec<(String, String)>> {
+        let mut target = self.ordered_root_ids();
+        if from >= target.len() || to >= target.len() || from == to {
             return None;
         }
 
-        let id = order.remove(from);
-        order.insert(to, id);
-        self.space_order = order;
+        let id = target.remove(from);
+        target.insert(to, id);
+
+        let assignments = self.assign_orders(&target, to);
+        for (id, order) in &assignments {
+            self.orders.insert(id.clone(), order.clone());
+            self.pending_orders.insert(id.clone(), order.clone());
+        }
 
         self.emit_spaces();
-        Some(self.space_order.clone())
+        Some(assignments)
+    }
+
+    fn reconcile_orders(&mut self) {
+        let len = self.spaces.len();
+        for i in 0..len {
+            let Some((id, server)) = self
+                .spaces
+                .get(i)
+                .map(|space| (space.id.clone(), space.order.clone()))
+            else {
+                continue;
+            };
+            match (self.pending_orders.get(&id).cloned(), server) {
+                (Some(local), server) => {
+                    if server.as_ref() == Some(&local) {
+                        self.pending_orders.remove(&id);
+                    }
+                    self.orders.insert(id, local);
+                }
+                (None, Some(server)) => {
+                    self.orders.insert(id, server);
+                }
+                (None, None) => {
+                    self.orders.remove(&id);
+                }
+            }
+        }
+    }
+
+    fn assign_orders(&self, target: &[String], moved: usize) -> Vec<(String, String)> {
+        let all_ordered = target.iter().all(|id| self.orders.contains_key(id));
+        if all_ordered {
+            let left = moved
+                .checked_sub(1)
+                .and_then(|i| target.get(i))
+                .and_then(|id| self.orders.get(id))
+                .map(String::as_str);
+            let right = target
+                .get(moved + 1)
+                .and_then(|id| self.orders.get(id))
+                .map(String::as_str);
+            if let Some(order) = space_order::between(left, right)
+                && let Some(id) = target.get(moved)
+            {
+                return vec![(id.clone(), order)];
+            }
+        }
+        self.rebalance(target)
+    }
+
+    fn rebalance(&self, target: &[String]) -> Vec<(String, String)> {
+        let orders = space_order::even_orders(target.len());
+        let mut changed = Vec::new();
+        for (id, order) in target.iter().zip(orders) {
+            if self.orders.get(id) != Some(&order) {
+                changed.push((id.clone(), order));
+            }
+        }
+        changed
     }
 
     pub(super) fn reset(&mut self) {
@@ -224,7 +284,8 @@ impl RoomDirectory {
         self.graph = SpaceGraph::default();
         self.counts.clear();
         self.spaces_dirty = false;
-        self.space_order.clear();
+        self.orders.clear();
+        self.pending_orders.clear();
     }
 
     pub(super) fn spawn_sync_pipeline(
@@ -393,20 +454,19 @@ impl RoomDirectory {
     }
 
     fn ordered_root_indices(&self) -> Vec<usize> {
-        let position: HashMap<&str, usize> = self
-            .space_order
-            .iter()
-            .enumerate()
-            .map(|(i, id)| (id.as_str(), i))
-            .collect();
         let mut indices = self.graph.root_indices.clone();
-        indices.sort_by_key(|&i| {
-            self.spaces
-                .get(i)
-                .and_then(|space| position.get(space.id.as_str()).copied())
-                .unwrap_or(usize::MAX)
-        });
+        indices.sort_by(|&a, &b| self.order_key(a).cmp(&self.order_key(b)));
         indices
+    }
+
+    fn order_key(&self, index: usize) -> (bool, Option<&str>, &str) {
+        let id = self
+            .spaces
+            .get(index)
+            .map(|space| space.id.as_str())
+            .unwrap_or_default();
+        let order = self.orders.get(id).map(String::as_str);
+        (order.is_none(), order, id)
     }
 
     fn ordered_root_ids(&self) -> Vec<String> {

@@ -4,11 +4,11 @@ mod media;
 mod room_directory;
 mod selection;
 mod session;
+mod space_order;
 mod task_group;
 mod verification;
 
 use std::sync::Arc;
-use std::time::Duration;
 
 use active_timeline::ActiveTimeline;
 use lifecycle::Lifecycle;
@@ -18,9 +18,6 @@ use selection::Selection;
 use session::{AuthOutcome, SessionController};
 use task_group::TaskGroup;
 use tokio::sync::{mpsc, watch};
-use tokio::task::JoinHandle;
-use tokio::time::{sleep, timeout};
-use tokio_util::sync::CancellationToken;
 use verification::VerificationController;
 
 use crate::commands::{
@@ -34,7 +31,6 @@ use crate::ports::output::AppOutputPort;
 use crate::ports::storage::StoragePort;
 
 pub struct AppService {
-    storage: Arc<dyn StoragePort>,
     cmd_tx: mpsc::UnboundedSender<UiCommand>,
     dir_in_tx: mpsc::UnboundedSender<DirectoryUpdate>,
     output: Arc<dyn AppOutputPort>,
@@ -49,13 +45,7 @@ pub struct AppService {
     lifecycle: Lifecycle,
     active: Option<AuthenticatedSession>,
     auth_rx: Option<mpsc::UnboundedReceiver<AuthOutcome>>,
-    space_order_tx: watch::Sender<Option<Vec<String>>>,
-    space_order_cancel: CancellationToken,
-    space_order_handle: Option<JoinHandle<()>>,
 }
-
-const SPACE_ORDER_DEBOUNCE: Duration = Duration::from_millis(500);
-const SPACE_ORDER_FLUSH_TIMEOUT: Duration = Duration::from_secs(2);
 
 impl AppService {
     #[allow(clippy::too_many_arguments)]
@@ -68,19 +58,12 @@ impl AppService {
         dir_in_tx: mpsc::UnboundedSender<DirectoryUpdate>,
         output: Arc<dyn AppOutputPort>,
     ) -> Self {
-        let (space_order_tx, space_order_rx) = watch::channel::<Option<Vec<String>>>(None);
-        let space_order_cancel = CancellationToken::new();
-        let space_order_handle = tokio::spawn(persist_space_order_task(
-            Arc::clone(&storage),
-            space_order_rx,
-            space_order_cancel.clone(),
-        ));
         let lifecycle = Lifecycle::new();
         let (auth_tx, auth_rx) = mpsc::unbounded_channel::<AuthOutcome>();
         Self {
             session: SessionController::new(
                 auth,
-                Arc::clone(&storage),
+                storage,
                 browser,
                 Arc::clone(&output),
                 lifecycle.clone(),
@@ -90,7 +73,6 @@ impl AppService {
             active_timeline: ActiveTimeline::new(cmd_tx.clone(), Arc::clone(&output)),
             verification: VerificationController::new(Arc::clone(&output)),
             media: MediaActions::new(media_files, Arc::clone(&output)),
-            storage,
             cmd_tx,
             dir_in_tx,
             output,
@@ -100,9 +82,6 @@ impl AppService {
             lifecycle,
             active: None,
             auth_rx: Some(auth_rx),
-            space_order_tx,
-            space_order_cancel,
-            space_order_handle: Some(space_order_handle),
         }
     }
 
@@ -205,8 +184,8 @@ impl AppService {
                 self.handle_select_subspace(subspace);
             }
             UiCommand::MoveSpace { from, to } => {
-                if let Some(order) = self.room_directory.move_space(from, to) {
-                    self.persist_space_order(order);
+                if let Some(assignments) = self.room_directory.move_space(from, to) {
+                    self.write_space_orders(assignments);
                 }
             }
             UiCommand::SelectRoom(room_id) => {
@@ -320,10 +299,18 @@ impl AppService {
             .await;
     }
 
-    fn persist_space_order(&self, order: Vec<String>) {
-        if self.space_order_tx.send(Some(order)).is_err() {
-            tracing::warn!("space order persister stopped; order not saved");
-        }
+    fn write_space_orders(&mut self, assignments: Vec<(String, String)>) {
+        let Some(space_order) = self.active.as_ref().map(|a| Arc::clone(&a.space_order)) else {
+            return;
+        };
+        self.operations.spawn(async move {
+            for (space_id, order) in assignments {
+                let room_id = RoomId::new(space_id);
+                if let Err(e) = space_order.set_space_order(&room_id, &order).await {
+                    tracing::warn!(%room_id, "failed to write space order: {e}");
+                }
+            }
+        });
     }
 
     fn log_command(cmd: &UiCommand) {
@@ -491,7 +478,7 @@ impl AppService {
             tracing::debug!("fetch rooms without an authenticated session, ignoring");
             return;
         };
-        self.room_directory.connect(self.storage.as_ref()).await;
+        self.room_directory.connect();
         self.output.emit_now(Effect::Status("syncing".into()));
         self.background.restart().await;
         self.session
@@ -572,54 +559,5 @@ impl AppService {
             self.operations.shutdown(),
             self.media.drain(),
         );
-        self.flush_space_order().await;
-    }
-
-    async fn flush_space_order(&mut self) {
-        self.space_order_cancel.cancel();
-        let Some(handle) = self.space_order_handle.take() else {
-            return;
-        };
-        if timeout(SPACE_ORDER_FLUSH_TIMEOUT, handle).await.is_err() {
-            tracing::warn!("timed out flushing space order on quit");
-        }
-    }
-}
-
-async fn persist_space_order_task(
-    storage: Arc<dyn StoragePort>,
-    mut rx: watch::Receiver<Option<Vec<String>>>,
-    cancel: CancellationToken,
-) {
-    loop {
-        tokio::select! {
-            biased;
-            () = cancel.cancelled() => break,
-            changed = rx.changed() => {
-                if changed.is_err() {
-                    break;
-                }
-            }
-        }
-
-        tokio::select! {
-            biased;
-            () = cancel.cancelled() => break,
-            () = sleep(SPACE_ORDER_DEBOUNCE) => {}
-        }
-
-        let order = rx.borrow_and_update().clone();
-        save_space_order(&storage, order).await;
-    }
-
-    let pending = rx.borrow().clone();
-    save_space_order(&storage, pending).await;
-}
-
-async fn save_space_order(storage: &Arc<dyn StoragePort>, order: Option<Vec<String>>) {
-    if let Some(order) = order
-        && let Err(e) = storage.save_space_order(&order).await
-    {
-        tracing::warn!("failed to persist space order: {e}");
     }
 }

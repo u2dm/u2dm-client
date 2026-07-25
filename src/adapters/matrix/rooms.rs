@@ -10,6 +10,7 @@ use matrix_sdk::ruma::api::error::ErrorKind;
 use matrix_sdk::ruma::events::room::member::MembershipState;
 use matrix_sdk::ruma::events::room::message::{Relation, RoomMessageEventContent};
 use matrix_sdk::ruma::events::space::child::SpaceChildEventContent;
+use matrix_sdk::ruma::events::space_order::SpaceOrderEventContent;
 use matrix_sdk::ruma::events::{
     AnyMessageLikeEventContent, AnySyncMessageLikeEvent, AnySyncStateEvent, AnySyncTimelineEvent,
     SyncMessageLikeEvent, SyncStateEvent,
@@ -229,6 +230,15 @@ async fn space_child_ids(space: &Room) -> Vec<String> {
         .collect()
 }
 
+async fn space_order(space: &Room) -> Option<String> {
+    let raw = space
+        .account_data_static::<SpaceOrderEventContent>()
+        .await
+        .ok()??;
+    let event = raw.deserialize().ok()?;
+    Some(event.content.order.to_string())
+}
+
 async fn build_spaces_meta(client: &Client) -> Vec<DomainSpace> {
     let joined_spaces = client.joined_space_rooms();
     let space_ids: HashSet<String> = joined_spaces
@@ -248,12 +258,14 @@ async fn build_spaces_meta(client: &Client) -> Vec<DomainSpace> {
                 .into_iter()
                 .partition(|child| space_ids.contains(child));
             let avatar_mxc = space.avatar_url().map(|mxc| mxc.to_string());
+            let order = space_order(&space).await;
             DomainSpace {
                 id: space.room_id().to_string(),
                 name,
                 avatar_mxc,
                 child_room_ids,
                 child_space_ids,
+                order,
                 unread: 0,
                 mentions: 0,
             }

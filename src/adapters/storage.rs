@@ -18,14 +18,12 @@ const KEYRING_SERVICE: &str = "u2dm";
 
 pub struct SecureStorage {
     session_path: PathBuf,
-    space_order_path: PathBuf,
 }
 
 impl SecureStorage {
     pub fn new(data_dir: &Path) -> Self {
         Self {
             session_path: data_dir.join("session.json"),
-            space_order_path: data_dir.join("space-order.json"),
         }
     }
 }
@@ -95,12 +93,6 @@ impl StoragePort for SecureStorage {
             Err(e) => return Err(e.into()),
         }
 
-        match fs::remove_file(&self.space_order_path).await {
-            Ok(()) => {}
-            Err(e) if e.kind() == ErrorKind::NotFound => {}
-            Err(e) => return Err(e.into()),
-        }
-
         for key in ["access-token", "refresh-token"] {
             if let Err(e) = keyring_delete(key).await {
                 tracing::warn!("failed to clear {key} from keyring: {e}");
@@ -116,18 +108,6 @@ impl StoragePort for SecureStorage {
 
     async fn load_passphrase(&self) -> Result<Option<String>> {
         keyring_get("db-passphrase").await
-    }
-
-    async fn save_space_order(&self, order: &[String]) -> Result<()> {
-        write_json(&self.space_order_path, order).await
-    }
-
-    async fn load_space_order(&self) -> Result<Vec<String>> {
-        match fs::read_to_string(&self.space_order_path).await {
-            Ok(contents) => Ok(serde_json::from_str(&contents)?),
-            Err(e) if e.kind() == ErrorKind::NotFound => Ok(Vec::new()),
-            Err(e) => Err(e.into()),
-        }
     }
 }
 

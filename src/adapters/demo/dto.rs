@@ -229,6 +229,7 @@ impl SpaceDto {
             avatar_mxc: self.avatar.clone(),
             child_room_ids: self.rooms.clone(),
             child_space_ids: self.spaces.clone(),
+            order: None,
             unread: 0,
             mentions: 0,
         }

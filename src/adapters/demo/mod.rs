@@ -18,7 +18,7 @@ pub fn matrix() -> Arc<dyn AuthPort> {
 }
 
 pub fn storage() -> Arc<dyn StoragePort> {
-    Arc::new(storage::DemoStorage::default())
+    Arc::new(storage::DemoStorage)
 }
 
 pub fn media_cache() -> Arc<dyn MediaCache> {

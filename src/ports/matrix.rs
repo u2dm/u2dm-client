@@ -19,6 +19,7 @@ pub struct AuthenticatedSession {
     pub timeline: Arc<dyn TimelinePort>,
     pub media: Arc<dyn MediaPort>,
     pub verification: Arc<dyn VerificationPort>,
+    pub space_order: Arc<dyn SpaceOrderPort>,
     pub lifecycle: Arc<dyn SessionPort>,
 }
 
@@ -40,6 +41,11 @@ pub trait AuthPort: Send + Sync {
 #[async_trait]
 pub trait SyncPort: Send + Sync {
     async fn start_sync(&self, on_sync: SyncSink, cancel: CancellationToken) -> SyncOutcome;
+}
+
+#[async_trait]
+pub trait SpaceOrderPort: Send + Sync {
+    async fn set_space_order(&self, space_id: &RoomId, order: &str) -> Result<()>;
 }
 
 #[async_trait]

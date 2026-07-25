@@ -15,8 +15,8 @@ use crate::domain::models::{
 };
 use crate::error::{AppError, Result};
 use crate::ports::matrix::{
-    AuthPort, AuthenticatedSession, MediaPort, SessionPort, SyncPort, SyncSink, TimelinePort,
-    VerificationPort,
+    AuthPort, AuthenticatedSession, MediaPort, SessionPort, SpaceOrderPort, SyncPort, SyncSink,
+    TimelinePort, VerificationPort,
 };
 use crate::ports::media::MediaCache;
 
@@ -61,12 +61,14 @@ fn authenticated(session: Session) -> AuthenticatedSession {
     let timeline = Arc::clone(&authed);
     let media = Arc::clone(&authed);
     let verification = Arc::clone(&authed);
+    let space_order = Arc::clone(&authed);
     AuthenticatedSession {
         session,
         sync,
         timeline,
         media,
         verification,
+        space_order,
         lifecycle: authed,
     }
 }
@@ -114,6 +116,14 @@ impl SyncPort for DemoAuthed {
         on_sync(SyncEvent::Spaces(data::spaces().into()));
         cancel.cancelled().await;
         SyncOutcome::Cancelled
+    }
+}
+
+#[async_trait]
+impl SpaceOrderPort for DemoAuthed {
+    async fn set_space_order(&self, space_id: &RoomId, order: &str) -> Result<()> {
+        tracing::debug!(%space_id, order, "demo: ignoring space order write");
+        Ok(())
     }
 }
 

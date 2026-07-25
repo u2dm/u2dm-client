@@ -170,6 +170,7 @@ pub struct Space {
     pub avatar_mxc: Option<String>,
     pub child_room_ids: Vec<String>,
     pub child_space_ids: Vec<String>,
+    pub order: Option<String>,
     pub unread: u64,
     pub mentions: u64,
 }

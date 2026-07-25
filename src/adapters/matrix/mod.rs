@@ -19,7 +19,8 @@ use matrix_sdk::ruma::events::room::MediaSource;
 use matrix_sdk::ruma::events::room::message::{
     AddMentions, RoomMessageEventContent, RoomMessageEventContentWithoutRelation,
 };
-use matrix_sdk::ruma::{IdParseError, OwnedEventId, OwnedRoomId};
+use matrix_sdk::ruma::events::space_order::SpaceOrderEventContent;
+use matrix_sdk::ruma::{IdParseError, OwnedEventId, OwnedRoomId, SpaceChildOrder};
 use matrix_sdk::utils::local_server::LocalServerRedirectHandle;
 use tokio::fs;
 use tokio::sync::{Mutex, RwLock, mpsc};
@@ -33,8 +34,8 @@ use crate::domain::models::{
 };
 use crate::error::{AppError, Result};
 use crate::ports::matrix::{
-    AuthPort, AuthenticatedSession, MediaPort, SessionPort, SyncPort, SyncSink, TimelinePort,
-    VerificationPort,
+    AuthPort, AuthenticatedSession, MediaPort, SessionPort, SpaceOrderPort, SyncPort, SyncSink,
+    TimelinePort, VerificationPort,
 };
 use crate::ports::media::MediaCache;
 
@@ -87,12 +88,14 @@ impl MatrixAdapter {
         let timeline = Arc::clone(&authed);
         let media = Arc::clone(&authed);
         let verification = Arc::clone(&authed);
+        let space_order = Arc::clone(&authed);
         AuthenticatedSession {
             session,
             sync,
             timeline,
             media,
             verification,
+            space_order,
             lifecycle: authed,
         }
     }
@@ -194,6 +197,18 @@ impl SyncPort for AuthedMatrix {
     async fn start_sync(&self, on_sync: SyncSink, cancel: CancellationToken) -> SyncOutcome {
         tracing::info!("starting continuous sync loop");
         rooms::start_sync(&self.client, Arc::clone(&self.media), on_sync, cancel).await
+    }
+}
+
+#[async_trait]
+impl SpaceOrderPort for AuthedMatrix {
+    async fn set_space_order(&self, space_id: &RoomId, order: &str) -> Result<()> {
+        let room = self.room(space_id)?;
+        let order = SpaceChildOrder::parse(order).map_err(|e| AppError::Other(e.to_string()))?;
+        room.set_account_data(SpaceOrderEventContent::new(order))
+            .await
+            .map_err(|e| AppError::Other(e.to_string()))?;
+        Ok(())
     }
 }
 
