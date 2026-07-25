@@ -52,7 +52,7 @@ fn spawn_enrichment(ctx: &TimelineContext<'_>, msg: &TimelineMessage) {
     ctx.enrich.tracker.spawn(async move {
         let work = async {
             let _permit = semaphore.acquire().await.ok()?;
-            let (thumbnail, avatar_ready, pronouns) = tokio::join!(
+            let (thumbnail, avatar_mxc, pronouns) = tokio::join!(
                 media.enrich_thumbnail(&client, &media_sources, &msg),
                 media.enrich_avatar(&client, &msg),
                 async {
@@ -67,9 +67,8 @@ fn spawn_enrichment(ctx: &TimelineContext<'_>, msg: &TimelineMessage) {
             Some(EnrichmentDelta {
                 unique_id: msg.unique_id.clone(),
                 event_id: msg.event_id.clone(),
-                sender: msg.sender.clone(),
                 thumbnail,
-                avatar_ready,
+                avatar_mxc,
                 pronouns,
             })
         };

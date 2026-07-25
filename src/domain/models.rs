@@ -361,16 +361,15 @@ pub enum ThumbnailOutcome {
 pub struct EnrichmentDelta {
     pub unique_id: String,
     pub event_id: Option<EventId>,
-    pub sender: String,
     pub thumbnail: ThumbnailOutcome,
-    pub avatar_ready: bool,
+    pub avatar_mxc: Option<String>,
     pub pronouns: Option<Vec<String>>,
 }
 
 impl EnrichmentDelta {
     pub fn is_noop(&self) -> bool {
         matches!(self.thumbnail, ThumbnailOutcome::Unchanged)
-            && !self.avatar_ready
+            && self.avatar_mxc.is_none()
             && self.pronouns.is_none()
     }
 }

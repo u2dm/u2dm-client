@@ -160,7 +160,10 @@ pub fn message_to_dto(m: &TimelineMessage, media: &dyn MediaCache) -> MessageDto
         }
     }
 
-    let avatar_path = media.avatar_path(&m.sender);
+    let avatar_path = m
+        .sender_avatar_url
+        .as_deref()
+        .and_then(|mxc| media.user_avatar_path(mxc));
     if let Some(path) = &avatar_path
         && let Some(img) = peek_avatar(path)
     {
@@ -184,13 +187,13 @@ pub fn enrich_to_update(delta: &EnrichmentDelta, media: &dyn MediaCache) -> Enri
         ThumbnailOutcome::Unchanged => ThumbUpdate::Unchanged,
     };
 
-    let avatar = if delta.avatar_ready {
-        media.avatar_path(&delta.sender).and_then(|avatar_path| {
+    let avatar = delta
+        .avatar_mxc
+        .as_deref()
+        .and_then(|mxc| media.user_avatar_path(mxc))
+        .and_then(|avatar_path| {
             load_avatar_async(&avatar_path, AvatarSlot::Message(delta.unique_id.clone()))
-        })
-    } else {
-        None
-    };
+        });
 
     let pronouns = delta.pronouns.as_ref().map(|pronouns| {
         pronoun_labels(pronouns)

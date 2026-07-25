@@ -24,8 +24,7 @@ use matrix_sdk_ui::room_list_service::Error as RoomListError;
 use matrix_sdk_ui::sync_service::{Error as SyncServiceError, State as SyncState, SyncService};
 use tokio::sync::broadcast::Receiver;
 use tokio::sync::broadcast::error::RecvError;
-use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender, unbounded_channel};
-use tokio::task::JoinSet;
+use tokio::task::{JoinError, JoinSet};
 use tokio::time::{Instant, sleep_until};
 use tokio_util::sync::CancellationToken;
 
@@ -40,6 +39,7 @@ use crate::ports::matrix::SyncSink as OnSync;
 
 const EMIT_DEBOUNCE: Duration = Duration::from_millis(50);
 const AVATAR_INFLIGHT: usize = 8;
+const AVATAR_RETRY_COOLDOWN: Duration = Duration::from_mins(1);
 const SEED_INFLIGHT: usize = 16;
 
 fn room_avatar_mxc(room: &Room, is_direct: bool) -> Option<String> {
@@ -281,64 +281,162 @@ enum AvatarKind {
     Space,
 }
 
-struct PendingAvatar {
+enum AvatarState {
+    Queued,
+    InFlight,
+    Failed { retry_at: Instant },
+}
+
+struct TrackedAvatar {
     kind: AvatarKind,
     mxc: OwnedMxcUri,
+    state: AvatarState,
+}
+
+impl TrackedAvatar {
+    fn retry_due(&self) -> bool {
+        matches!(self.state, AvatarState::Failed { retry_at } if retry_at <= Instant::now())
+    }
+}
+
+struct FetchedAvatar {
     key: String,
+    kind: AvatarKind,
+    fetched: bool,
 }
 
 struct AvatarFetcher {
     media: Arc<MediaService>,
-    tasks: JoinSet<()>,
-    requested: HashSet<String>,
-    queue: VecDeque<PendingAvatar>,
-    ready_tx: UnboundedSender<AvatarKind>,
+    tasks: JoinSet<FetchedAvatar>,
+    tracked: HashMap<String, TrackedAvatar>,
+    queue: VecDeque<String>,
 }
 
 impl AvatarFetcher {
-    fn new(media: Arc<MediaService>, ready_tx: UnboundedSender<AvatarKind>) -> Self {
+    fn new(media: Arc<MediaService>) -> Self {
         Self {
             media,
             tasks: JoinSet::new(),
-            requested: HashSet::new(),
+            tracked: HashMap::new(),
             queue: VecDeque::new(),
-            ready_tx,
         }
     }
 
     fn request(&mut self, client: &Client, kind: AvatarKind, uris: Vec<OwnedMxcUri>) {
         for mxc in uris {
             let key = mxc_avatar_key(mxc.as_str());
-            if self.media.cache_get(&key).is_some() || !self.requested.insert(key.clone()) {
+            if self
+                .tracked
+                .get(&key)
+                .is_some_and(|tracked| !tracked.retry_due())
+            {
                 continue;
             }
-            self.queue.push_back(PendingAvatar { kind, mxc, key });
+            self.arm(key, kind, mxc);
+        }
+        self.pump(client);
+    }
+
+    fn arm(&mut self, key: String, kind: AvatarKind, mxc: OwnedMxcUri) {
+        if self.media.cache_get(&key).is_some() {
+            self.tracked.remove(&key);
+            return;
+        }
+        let state = if self.media.is_failed(&key) {
+            AvatarState::Failed {
+                retry_at: Instant::now() + AVATAR_RETRY_COOLDOWN,
+            }
+        } else {
+            self.queue.push_back(key.clone());
+            AvatarState::Queued
+        };
+        self.tracked.insert(key, TrackedAvatar { kind, mxc, state });
+    }
+
+    fn retry_at(&self) -> Option<Instant> {
+        self.tracked
+            .values()
+            .filter_map(|tracked| match tracked.state {
+                AvatarState::Failed { retry_at } => Some(retry_at),
+                AvatarState::Queued | AvatarState::InFlight => None,
+            })
+            .min()
+    }
+
+    fn retry_failed(&mut self, client: &Client) {
+        let due: Vec<String> = self
+            .tracked
+            .iter()
+            .filter(|(_, tracked)| tracked.retry_due())
+            .map(|(key, _)| key.clone())
+            .collect();
+        for key in due {
+            let Some(tracked) = self.tracked.get(&key) else {
+                continue;
+            };
+            let (kind, mxc) = (tracked.kind, tracked.mxc.clone());
+            self.arm(key, kind, mxc);
         }
         self.pump(client);
     }
 
     fn pump(&mut self, client: &Client) {
         while self.tasks.len() < AVATAR_INFLIGHT {
-            let Some(pending) = self.queue.pop_front() else {
+            let Some(key) = self.queue.pop_front() else {
                 break;
             };
-            self.spawn_fetch(client, pending.kind, pending.mxc, pending.key);
+            let Some(tracked) = self.tracked.get_mut(&key) else {
+                continue;
+            };
+            if !matches!(tracked.state, AvatarState::Queued) {
+                continue;
+            }
+            tracked.state = AvatarState::InFlight;
+            let (kind, mxc) = (tracked.kind, tracked.mxc.clone());
+            self.spawn_fetch(client, key, kind, mxc);
         }
     }
 
-    fn spawn_fetch(&mut self, client: &Client, kind: AvatarKind, mxc: OwnedMxcUri, key: String) {
+    fn spawn_fetch(&mut self, client: &Client, key: String, kind: AvatarKind, mxc: OwnedMxcUri) {
         let client = client.clone();
         let media = Arc::clone(&self.media);
-        let ready_tx = self.ready_tx.clone();
         self.tasks.spawn(async move {
-            if media
+            let fetched = media
                 .fetch_avatar_by_mxc(&client, &key, mxc)
                 .await
-                .is_some()
-            {
-                ready_tx.send(kind).ok();
-            }
+                .is_some();
+            FetchedAvatar { key, kind, fetched }
         });
+    }
+
+    fn finish(
+        &mut self,
+        client: &Client,
+        joined: Result<FetchedAvatar, JoinError>,
+    ) -> Option<AvatarKind> {
+        let ready = self.record(joined);
+        self.pump(client);
+        ready
+    }
+
+    fn record(&mut self, joined: Result<FetchedAvatar, JoinError>) -> Option<AvatarKind> {
+        let done = match joined {
+            Ok(done) => done,
+            Err(e) => {
+                tracing::warn!("avatar fetch task did not complete: {e}");
+                return None;
+            }
+        };
+        if done.fetched {
+            self.tracked.remove(&done.key);
+            return Some(done.kind);
+        }
+        if let Some(tracked) = self.tracked.get_mut(&done.key) {
+            tracked.state = AvatarState::Failed {
+                retry_at: Instant::now() + AVATAR_RETRY_COOLDOWN,
+            };
+        }
+        None
     }
 }
 
@@ -619,17 +717,6 @@ async fn handle_room_info_update(
     }
 }
 
-fn handle_avatar_ready(
-    first: AvatarKind,
-    ready_rx: &mut UnboundedReceiver<AvatarKind>,
-    dir: &mut Directory,
-) {
-    dir.mark_kind(first);
-    while let Ok(kind) = ready_rx.try_recv() {
-        dir.mark_kind(kind);
-    }
-}
-
 #[allow(clippy::cognitive_complexity)]
 async fn handle_sync_state(
     client: &Client,
@@ -669,7 +756,6 @@ async fn run_sync_loop(
     room_updates_rx: &mut Receiver<RoomUpdates>,
     on_sync: &OnSync,
     avatars: &mut AvatarFetcher,
-    ready_rx: &mut UnboundedReceiver<AvatarKind>,
 ) -> SyncOutcome {
     let mut dir = Directory::new();
     let mut state_stream = sync_service.state();
@@ -687,6 +773,13 @@ async fn run_sync_loop(
                 None => future::pending::<()>().await,
             }
         };
+        let retry_at = avatars.retry_at();
+        let retry_fut = async move {
+            match retry_at {
+                Some(at) => sleep_until(at).await,
+                None => future::pending::<()>().await,
+            }
+        };
         let action = tokio::select! {
             biased;
             state = state_stream.next() => match state {
@@ -697,12 +790,14 @@ async fn run_sync_loop(
                 dir.flush(client, on_sync, avatars).await;
                 LoopAction::Continue
             }
-            Some(kind) = ready_rx.recv() => {
-                handle_avatar_ready(kind, ready_rx, &mut dir);
+            () = retry_fut => {
+                avatars.retry_failed(client);
                 LoopAction::Continue
             }
-            Some(_) = avatars.tasks.join_next() => {
-                avatars.pump(client);
+            Some(joined) = avatars.tasks.join_next() => {
+                if let Some(kind) = avatars.finish(client, joined) {
+                    dir.mark_kind(kind);
+                }
                 LoopAction::Continue
             }
             update = room_updates_rx.recv() => {
@@ -729,8 +824,7 @@ pub(super) async fn start_sync(
         Err(e) => return SyncOutcome::Fatal(format!("failed to build sync service: {e}")),
     };
     let mut room_updates_rx = client.subscribe_to_all_room_updates();
-    let (ready_tx, mut ready_rx) = unbounded_channel();
-    let mut avatars = AvatarFetcher::new(media, ready_tx);
+    let mut avatars = AvatarFetcher::new(media);
 
     sync_service.start().await;
     tracing::info!("sliding sync service started");
@@ -742,7 +836,6 @@ pub(super) async fn start_sync(
             &mut room_updates_rx,
             &on_sync,
             &mut avatars,
-            &mut ready_rx,
         ) => outcome,
         () = cancel.cancelled() => {
             tracing::debug!("sync cancelled, stopping sync service");

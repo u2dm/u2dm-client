@@ -15,10 +15,6 @@ pub(super) fn thumb_key(event_id: &str) -> String {
     format!("thumb:{event_id}")
 }
 
-pub(super) fn avatar_key(sender: &str) -> String {
-    format!("avatar:{sender}")
-}
-
 pub(super) fn mxc_avatar_key(mxc: &str) -> String {
     format!("mxc-avatar:{mxc}")
 }
@@ -42,8 +38,8 @@ impl MediaCache for MaterializedMedia {
         self.service.is_failed(&thumb_key(event_id))
     }
 
-    fn avatar_path(&self, sender: &str) -> Option<PathBuf> {
-        self.service.cache_get(&avatar_key(sender))
+    fn user_avatar_path(&self, mxc: &str) -> Option<PathBuf> {
+        self.service.cache_get(&mxc_avatar_key(mxc))
     }
 
     fn room_avatar_path(&self, mxc: &str) -> Option<PathBuf> {

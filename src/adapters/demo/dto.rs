@@ -244,7 +244,7 @@ impl MessageDto {
             sender_pronouns: super::data::pronouns(&self.sender),
             sender: self.sender.clone(),
             sender_display_name: Some(self.name.clone()),
-            sender_avatar_url: None,
+            sender_avatar_url: Some(self.sender.clone()),
             body: self.to_body(),
             timestamp: ago_ms(now_ms, self.minutes_ago, self.days_ago),
             is_own: self.sender == own_user,

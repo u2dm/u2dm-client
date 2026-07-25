@@ -16,13 +16,13 @@ impl MediaCache for DemoMediaCache {
         false
     }
 
-    fn avatar_path(&self, sender: &str) -> Option<PathBuf> {
-        asset(&format!("avatar-{}.png", localpart(sender)))
+    fn user_avatar_path(&self, mxc: &str) -> Option<PathBuf> {
+        asset(&format!("avatar-{}.png", localpart(mxc)))
     }
 
     fn room_avatar_path(&self, mxc: &str) -> Option<PathBuf> {
         if mxc.starts_with('@') {
-            return self.avatar_path(mxc);
+            return self.user_avatar_path(mxc);
         }
         asset(&format!("room-{mxc}.png"))
     }

@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::io::ErrorKind;
+use std::io::{self, ErrorKind};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex as StdMutex, RwLock as StdRwLock};
 use std::time::Duration;
@@ -13,13 +13,13 @@ use tokio::sync::Semaphore;
 use tokio::time::{sleep, timeout};
 
 use super::cache::{CacheHandle, FailureTracker};
-use super::{avatar_key, thumb_key, thumbnail_format};
+use super::{mxc_avatar_key, thumb_key, thumbnail_format};
 use crate::adapters::matrix::store::purge_dir;
 use crate::domain::account::AccountScope;
 use crate::domain::models::{MessageBody, ThumbnailOutcome, TimelineMessage};
 use crate::error::{AppError, Result};
 use crate::ports::matrix::CleanupReport;
-use crate::util::hex_encode_id;
+use crate::util::{hex_encode_id, unique_tmp_path};
 
 const MAX_CONCURRENT_DOWNLOADS: usize = 6;
 const MAX_CONCURRENT_FULL_DOWNLOADS: usize = 2;
@@ -209,7 +209,7 @@ impl MediaService {
         };
 
         let cache_path = cache_stem.with_extension(ext_from_magic(&data));
-        if let Err(e) = fs::write(&cache_path, &data).await {
+        if let Err(e) = write_atomically(&cache_path, &data).await {
             tracing::warn!("failed to write materialized media: {e}");
             self.record_failure(cache_key);
             return None;
@@ -268,24 +268,19 @@ impl MediaService {
         }
     }
 
-    pub(crate) async fn enrich_avatar(&self, client: &Client, msg: &TimelineMessage) -> bool {
-        let Some(mxc_url) = &msg.sender_avatar_url else {
-            return false;
-        };
-        let cache_key = avatar_key(&msg.sender);
-
+    pub(crate) async fn enrich_avatar(
+        &self,
+        client: &Client,
+        msg: &TimelineMessage,
+    ) -> Option<String> {
+        let mxc = msg.sender_avatar_url.as_deref()?;
+        let cache_key = mxc_avatar_key(mxc);
         if self.cache_get(&cache_key).is_some() {
-            return false;
+            return None;
         }
-
-        let Some(avatars) = self.avatars_dir() else {
-            return false;
-        };
-        let cache_stem = avatars.join(hex_encode_id(&msg.sender));
-        let source = MediaSource::Plain(mxc_url.as_str().into());
-        self.fetch_and_materialize(client, source, &cache_key, &cache_stem, thumbnail_format())
+        self.fetch_avatar_by_mxc(client, &cache_key, mxc.into())
             .await
-            .is_some()
+            .map(|_| mxc.to_owned())
     }
 
     pub(crate) async fn fetch_avatar_by_mxc(
@@ -294,8 +289,8 @@ impl MediaService {
         cache_key: &str,
         mxc: OwnedMxcUri,
     ) -> Option<PathBuf> {
-        if self.cache_get(cache_key).is_some() {
-            return None;
+        if let Some(cached) = self.cache_get(cache_key) {
+            return Some(cached);
         }
         let avatars = self.avatars_dir()?;
         if let Err(e) = fs::create_dir_all(&avatars).await {
@@ -322,10 +317,7 @@ impl MediaService {
             },
         };
 
-        let key = format!("user-avatar:{mxc}");
-        if let Some(path) = self.cache_get(&key) {
-            return Some(path);
-        }
+        let key = mxc_avatar_key(mxc.as_str());
         self.fetch_avatar_by_mxc(client, &key, mxc).await
     }
 
@@ -382,16 +374,28 @@ impl MediaService {
                 let key = thumb_key(&event_id.0);
                 self.cache_get(&key).is_none() && !self.is_failed(&key)
             });
-        let needs_avatar = msg.sender_avatar_url.is_some() && {
-            let key = avatar_key(&msg.sender);
+        let needs_avatar = msg.sender_avatar_url.as_deref().is_some_and(|mxc| {
+            let key = mxc_avatar_key(mxc);
             self.cache_get(&key).is_none() && !self.is_failed(&key)
-        };
+        });
         needs_thumbnail || needs_avatar
     }
 
     fn avatars_dir(&self) -> Option<PathBuf> {
         Some(self.session()?.media_dir.join(AVATARS_DIR))
     }
+}
+
+async fn write_atomically(path: &Path, data: &[u8]) -> io::Result<()> {
+    let tmp = unique_tmp_path(path);
+    fs::write(&tmp, data).await?;
+    if let Err(e) = fs::rename(&tmp, path).await {
+        if let Err(cleanup_err) = fs::remove_file(&tmp).await {
+            tracing::debug!("failed to remove stale media temp: {cleanup_err}");
+        }
+        return Err(e);
+    }
+    Ok(())
 }
 
 async fn remove_all_except(dir: &Path, keep: Option<&str>) {
