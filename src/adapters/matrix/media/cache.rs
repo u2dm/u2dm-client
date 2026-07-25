@@ -13,12 +13,12 @@ use tokio::{fs, task};
 use crate::util::unique_tmp_path;
 
 const MAX_CACHE_BYTES: u64 = 512 * 1024 * 1024;
-const MAX_AGE: Duration = Duration::from_secs(14 * 24 * 60 * 60);
-const FLUSH_INTERVAL: Duration = Duration::from_secs(60);
-const TOUCH_COALESCE: Duration = Duration::from_secs(60);
+const MAX_AGE: Duration = Duration::from_hours(14 * 24);
+const FLUSH_INTERVAL: Duration = Duration::from_mins(1);
+const TOUCH_COALESCE: Duration = Duration::from_mins(1);
 
 const RETRY_MAX_ATTEMPTS: u32 = 3;
-const FAILURE_COOLDOWN: Duration = Duration::from_secs(5 * 60);
+const FAILURE_COOLDOWN: Duration = Duration::from_mins(5);
 
 #[derive(Serialize, Deserialize)]
 struct StoredEntry {

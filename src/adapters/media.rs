@@ -12,7 +12,7 @@ use crate::ports::media::MediaFilePort;
 use crate::util::random_hex;
 
 const MEDIA_DIR: &str = "u2dm-media";
-const MEDIA_RETENTION: Duration = Duration::from_secs(24 * 60 * 60);
+const MEDIA_RETENTION: Duration = Duration::from_hours(24);
 const SESSION_TOKEN_BYTES: usize = 8;
 const FILE_TOKEN_BYTES: usize = 16;
 

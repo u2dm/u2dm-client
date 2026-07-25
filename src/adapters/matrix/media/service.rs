@@ -21,7 +21,7 @@ use crate::util::hex_encode_id;
 const MAX_CONCURRENT_DOWNLOADS: usize = 6;
 const MAX_CONCURRENT_FULL_DOWNLOADS: usize = 2;
 const DOWNLOAD_TIMEOUT: Duration = Duration::from_secs(30);
-const FULL_DOWNLOAD_TIMEOUT: Duration = Duration::from_secs(120);
+const FULL_DOWNLOAD_TIMEOUT: Duration = Duration::from_mins(2);
 const RETRY_MAX_ATTEMPTS: u32 = 3;
 const RETRY_BACKOFF_BASE: Duration = Duration::from_millis(500);
 const MAX_MEDIA_BYTES: usize = 20 * 1024 * 1024;

@@ -16,8 +16,8 @@ use crate::ports::output::AppOutputPort;
 use crate::ports::storage::StoragePort;
 
 const BACKOFF_START: Duration = Duration::from_secs(1);
-const BACKOFF_MAX: Duration = Duration::from_secs(60);
-const BACKOFF_RESET_AFTER: Duration = Duration::from_secs(60);
+const BACKOFF_MAX: Duration = Duration::from_mins(1);
+const BACKOFF_RESET_AFTER: Duration = Duration::from_mins(1);
 
 pub(super) struct RoomMeta {
     pub(super) name: String,
@@ -55,12 +55,22 @@ impl SpaceGraph {
             .iter()
             .flat_map(|space| space.child_space_ids.iter().map(String::as_str))
             .collect();
-        let root_indices = spaces
+        let mut root_indices: Vec<usize> = spaces
             .iter()
             .enumerate()
             .filter(|(_, space)| !nested.contains(space.id.as_str()))
             .map(|(i, _)| i)
             .collect();
+
+        let mut reachable: HashSet<usize> = HashSet::new();
+        mark_reachable(spaces, &index, root_indices.iter().copied(), &mut reachable);
+        for i in 0..spaces.len() {
+            if reachable.contains(&i) {
+                continue;
+            }
+            root_indices.push(i);
+            mark_reachable(spaces, &index, [i], &mut reachable);
+        }
 
         let mut room_ancestors: HashMap<String, Vec<usize>> = HashMap::new();
         for (i, space) in spaces.iter().enumerate() {
@@ -87,6 +97,28 @@ impl SpaceGraph {
 
     fn contains_room(&self, space_index: usize, room_id: &str) -> bool {
         self.ancestors_of(room_id).contains(&space_index)
+    }
+}
+
+fn mark_reachable(
+    spaces: &[Space],
+    index: &HashMap<String, usize>,
+    seeds: impl IntoIterator<Item = usize>,
+    reachable: &mut HashSet<usize>,
+) {
+    let mut stack: Vec<usize> = seeds.into_iter().collect();
+    while let Some(i) = stack.pop() {
+        if !reachable.insert(i) {
+            continue;
+        }
+        if let Some(space) = spaces.get(i) {
+            stack.extend(
+                space
+                    .child_space_ids
+                    .iter()
+                    .filter_map(|id| index.get(id).copied()),
+            );
+        }
     }
 }
 

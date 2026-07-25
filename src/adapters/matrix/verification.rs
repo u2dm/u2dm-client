@@ -15,7 +15,7 @@ use crate::domain::models::{VerificationEmoji, VerificationEvent};
 use crate::error::{AppError, Result};
 
 const VERIFICATION_QUEUE: usize = 8;
-const VERIFICATION_TIMEOUT: Duration = Duration::from_secs(300);
+const VERIFICATION_TIMEOUT: Duration = Duration::from_mins(5);
 
 async fn enqueue_or_reject(tx: &mpsc::Sender<VerificationRequest>, request: VerificationRequest) {
     if let Err(mpsc::error::TrySendError::Full(request)) = tx.try_send(request) {

@@ -16,7 +16,7 @@ use crate::ports::matrix::{AuthPort, AuthenticatedSession, SessionPort};
 use crate::ports::output::AppOutputPort;
 use crate::ports::storage::{StoragePort, StoredSession};
 
-const OAUTH_CALLBACK_TIMEOUT: Duration = Duration::from_secs(300);
+const OAUTH_CALLBACK_TIMEOUT: Duration = Duration::from_mins(5);
 
 pub(super) enum AuthOutcome {
     Login {
