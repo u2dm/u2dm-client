@@ -33,6 +33,12 @@ pub enum UiCommand {
         from: usize,
         to: usize,
     },
+    #[strum(to_string = "SpaceOrderWriteFailed({op})")]
+    SpaceOrderWriteFailed {
+        op: u64,
+        spaces: Vec<String>,
+        error: String,
+    },
     #[strum(to_string = "SelectRoom({0})")]
     SelectRoom(RoomId),
     #[strum(to_string = "SendMessage({room_id})")]

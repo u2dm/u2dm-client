@@ -1,9 +1,10 @@
 use std::collections::{HashMap, HashSet};
 use std::mem;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
-use tokio::sync::mpsc;
+use tokio::sync::{Mutex, MutexGuard, mpsc};
 use tokio::time::{Instant, sleep};
 use tokio_util::sync::CancellationToken;
 
@@ -11,13 +12,15 @@ use super::selection::Selection;
 use super::space_order;
 use super::task_group::TaskGroup;
 use crate::commands::{DirectoryUpdate, UiCommand};
-use crate::domain::models::{ConnectionStatus, Room, Space, SyncEvent, SyncOutcome};
-use crate::ports::matrix::{SyncPort, SyncSink};
+use crate::domain::models::{ConnectionStatus, Room, RoomId, Space, SyncEvent, SyncOutcome};
+use crate::ports::matrix::{SpaceOrderPort, SyncPort, SyncSink};
 use crate::ports::output::AppOutputPort;
 
 const BACKOFF_START: Duration = Duration::from_secs(1);
 const BACKOFF_MAX: Duration = Duration::from_mins(1);
 const BACKOFF_RESET_AFTER: Duration = Duration::from_mins(1);
+const ORDER_WRITE_ATTEMPTS: u32 = 3;
+const ORDER_WRITE_BACKOFF: Duration = Duration::from_millis(400);
 
 pub(super) struct RoomMeta {
     pub(super) name: String,
@@ -147,6 +150,41 @@ fn descendant_rooms<'a>(
     rooms
 }
 
+struct PendingOrder {
+    op: u64,
+    order: String,
+}
+
+#[derive(Default)]
+struct OrderWrites {
+    latest_op: AtomicU64,
+    in_flight: Mutex<()>,
+}
+
+pub(super) struct SpaceOrderWrite {
+    op: u64,
+    writes: Arc<OrderWrites>,
+    assignments: Vec<(String, String)>,
+}
+
+struct OrderWriteGuard {
+    op: u64,
+    writes: Arc<OrderWrites>,
+    token: CancellationToken,
+}
+
+impl OrderWriteGuard {
+    fn is_current(&self) -> bool {
+        self.writes.latest_op.load(Ordering::Relaxed) == self.op && !self.token.is_cancelled()
+    }
+}
+
+enum OrderWriteStep {
+    Written,
+    Superseded,
+    Failed(String),
+}
+
 pub(super) struct RoomDirectory {
     output: Arc<dyn AppOutputPort>,
     all_rooms: Arc<[Room]>,
@@ -155,7 +193,8 @@ pub(super) struct RoomDirectory {
     counts: Vec<SpaceCounts>,
     spaces_dirty: bool,
     orders: HashMap<String, String>,
-    pending_orders: HashMap<String, String>,
+    pending_orders: HashMap<String, PendingOrder>,
+    order_writes: Arc<OrderWrites>,
     connected: bool,
 }
 
@@ -170,6 +209,7 @@ impl RoomDirectory {
             spaces_dirty: false,
             orders: HashMap::new(),
             pending_orders: HashMap::new(),
+            order_writes: Arc::default(),
             connected: false,
         }
     }
@@ -199,7 +239,7 @@ impl RoomDirectory {
         true
     }
 
-    pub(super) fn move_space(&mut self, from: usize, to: usize) -> Option<Vec<(String, String)>> {
+    pub(super) fn move_space(&mut self, from: usize, to: usize) -> Option<SpaceOrderWrite> {
         let mut target = self.ordered_root_ids();
         if from >= target.len() || to >= target.len() || from == to {
             return None;
@@ -209,13 +249,51 @@ impl RoomDirectory {
         target.insert(to, id);
 
         let assignments = self.assign_orders(&target, to);
+        if assignments.is_empty() {
+            return None;
+        }
+
+        let op = self
+            .order_writes
+            .latest_op
+            .fetch_add(1, Ordering::Relaxed)
+            .saturating_add(1);
         for (id, order) in &assignments {
             self.orders.insert(id.clone(), order.clone());
-            self.pending_orders.insert(id.clone(), order.clone());
+            self.pending_orders.insert(
+                id.clone(),
+                PendingOrder {
+                    op,
+                    order: order.clone(),
+                },
+            );
         }
 
         self.emit_spaces();
-        Some(assignments)
+        Some(SpaceOrderWrite {
+            op,
+            writes: Arc::clone(&self.order_writes),
+            assignments,
+        })
+    }
+
+    pub(super) fn rollback_space_orders(&mut self, op: u64, spaces: &[String]) -> bool {
+        let mut reverted = false;
+        for id in spaces {
+            if self
+                .pending_orders
+                .get(id)
+                .is_some_and(|pending| pending.op == op)
+            {
+                self.pending_orders.remove(id);
+                reverted = true;
+            }
+        }
+        if reverted {
+            self.reconcile_orders();
+            self.emit_spaces();
+        }
+        reverted
     }
 
     fn reconcile_orders(&mut self) {
@@ -228,7 +306,11 @@ impl RoomDirectory {
             else {
                 continue;
             };
-            match (self.pending_orders.get(&id).cloned(), server) {
+            let pending = self
+                .pending_orders
+                .get(&id)
+                .map(|pending| pending.order.clone());
+            match (pending, server) {
                 (Some(local), server) => {
                     if server.as_ref() == Some(&local) {
                         self.pending_orders.remove(&id);
@@ -286,6 +368,56 @@ impl RoomDirectory {
         self.spaces_dirty = false;
         self.orders.clear();
         self.pending_orders.clear();
+        self.order_writes.latest_op.fetch_add(1, Ordering::Relaxed);
+    }
+
+    pub(super) fn spawn_order_write(
+        group: &mut TaskGroup,
+        port: Arc<dyn SpaceOrderPort>,
+        write: SpaceOrderWrite,
+        cmd_tx: mpsc::UnboundedSender<UiCommand>,
+    ) {
+        let token = group.token();
+        group.spawn(async move {
+            let SpaceOrderWrite {
+                op,
+                writes,
+                assignments,
+            } = write;
+            let guard = OrderWriteGuard {
+                op,
+                writes: Arc::clone(&writes),
+                token,
+            };
+            let Some(_in_flight) = acquire_write_lane(&writes, &guard).await else {
+                return;
+            };
+
+            let mut failed = Vec::new();
+            let mut error = String::new();
+            for (space_id, order) in assignments {
+                match write_space_order(&port, &space_id, &order, &guard).await {
+                    OrderWriteStep::Written => {}
+                    OrderWriteStep::Superseded => {
+                        tracing::debug!(op, "space order write superseded, abandoning");
+                        return;
+                    }
+                    OrderWriteStep::Failed(e) => {
+                        tracing::warn!(%space_id, "giving up on space order write: {e}");
+                        error = e;
+                        failed.push(space_id);
+                    }
+                }
+            }
+
+            if !failed.is_empty() {
+                drop(cmd_tx.send(UiCommand::SpaceOrderWriteFailed {
+                    op,
+                    spaces: failed,
+                    error,
+                }));
+            }
+        });
     }
 
     pub(super) fn spawn_sync_pipeline(
@@ -475,6 +607,45 @@ impl RoomDirectory {
             .filter_map(|i| self.spaces.get(i))
             .map(|space| space.id.clone())
             .collect()
+    }
+}
+
+async fn acquire_write_lane<'a>(
+    writes: &'a OrderWrites,
+    guard: &OrderWriteGuard,
+) -> Option<MutexGuard<'a, ()>> {
+    tokio::select! {
+        () = guard.token.cancelled() => None,
+        lane = writes.in_flight.lock() => guard.is_current().then_some(lane),
+    }
+}
+
+async fn write_space_order(
+    port: &Arc<dyn SpaceOrderPort>,
+    space_id: &str,
+    order: &str,
+    guard: &OrderWriteGuard,
+) -> OrderWriteStep {
+    let room_id = RoomId::new(space_id.to_owned());
+    let mut backoff = ORDER_WRITE_BACKOFF;
+    let mut attempt = 1;
+    loop {
+        if !guard.is_current() {
+            return OrderWriteStep::Superseded;
+        }
+        let Err(e) = port.set_space_order(&room_id, order).await else {
+            return OrderWriteStep::Written;
+        };
+        if attempt >= ORDER_WRITE_ATTEMPTS {
+            return OrderWriteStep::Failed(e.to_string());
+        }
+        tracing::debug!(%room_id, attempt, "space order write failed, retrying: {e}");
+        tokio::select! {
+            () = guard.token.cancelled() => return OrderWriteStep::Superseded,
+            () = sleep(backoff) => {}
+        }
+        backoff = backoff.saturating_mul(2);
+        attempt = attempt.saturating_add(1);
     }
 }
 

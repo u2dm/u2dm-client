@@ -185,9 +185,10 @@ impl AppService {
                 self.handle_select_subspace(subspace);
             }
             UiCommand::MoveSpace { from, to } => {
-                if let Some(assignments) = self.room_directory.move_space(from, to) {
-                    self.write_space_orders(assignments);
-                }
+                self.move_space(from, to);
+            }
+            UiCommand::SpaceOrderWriteFailed { op, spaces, error } => {
+                self.revert_space_orders(op, &spaces, &error).await;
             }
             UiCommand::SelectRoom(room_id) => {
                 self.select_room(room_id).await;
@@ -303,18 +304,30 @@ impl AppService {
             .await;
     }
 
-    fn write_space_orders(&mut self, assignments: Vec<(String, String)>) {
+    fn move_space(&mut self, from: usize, to: usize) {
         let Some(space_order) = self.active.as_ref().map(|a| Arc::clone(&a.space_order)) else {
             return;
         };
-        self.operations.spawn(async move {
-            for (space_id, order) in assignments {
-                let room_id = RoomId::new(space_id);
-                if let Err(e) = space_order.set_space_order(&room_id, &order).await {
-                    tracing::warn!(%room_id, "failed to write space order: {e}");
-                }
-            }
-        });
+        if let Some(write) = self.room_directory.move_space(from, to) {
+            RoomDirectory::spawn_order_write(
+                &mut self.operations,
+                space_order,
+                write,
+                self.cmd_tx.clone(),
+            );
+        }
+    }
+
+    async fn revert_space_orders(&mut self, op: u64, spaces: &[String], error: &str) {
+        if !self.room_directory.rollback_space_orders(op, spaces) {
+            return;
+        }
+        tracing::warn!(op, "reverting optimistic space order: {error}");
+        self.output
+            .emit(Effect::Toast(format!(
+                "Failed to save space order: {error}"
+            )))
+            .await;
     }
 
     fn log_command(cmd: &UiCommand) {
