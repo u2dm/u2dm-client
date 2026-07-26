@@ -5,8 +5,9 @@ use tokio::task::JoinSet;
 use tokio::time;
 use tokio_util::sync::CancellationToken;
 
+use super::show_toast;
 use super::task_group::record_join;
-use crate::commands::Effect;
+use crate::commands::Toast;
 use crate::ports::matrix::MediaPort;
 use crate::ports::media::MediaFilePort;
 use crate::ports::output::AppOutputPort;
@@ -42,15 +43,17 @@ impl MediaActions {
                     Ok(data) => {
                         if let Err(e) = media_files.open_media(&event_id, &data).await {
                             tracing::warn!("failed to open media: {e}");
-                            output
-                                .emit(Effect::Toast(format!("Failed to open media: {e}")))
-                                .await;
+                            show_toast(
+                                output.as_ref(),
+                                Toast::Error(format!("Failed to open media: {e}")),
+                            );
                         }
                     }
                     Err(e) => {
-                        output
-                            .emit(Effect::Toast(format!("Failed to download media: {e}")))
-                            .await;
+                        show_toast(
+                            output.as_ref(),
+                            Toast::Error(format!("Failed to download media: {e}")),
+                        );
                     }
                 }
             };
@@ -76,18 +79,20 @@ impl MediaActions {
             let work = async move {
                 match media.download_media(&event_id, false).await {
                     Ok(data) => match media_files.save_file(&filename, &data).await {
-                        Ok(Some(path)) => output.emit(Effect::FileSaved { path }).await,
+                        Ok(Some(path)) => show_toast(output.as_ref(), Toast::FileSaved(path)),
                         Ok(None) => {}
                         Err(e) => {
-                            output
-                                .emit(Effect::Toast(format!("Failed to save file: {e}")))
-                                .await;
+                            show_toast(
+                                output.as_ref(),
+                                Toast::Error(format!("Failed to save file: {e}")),
+                            );
                         }
                     },
                     Err(e) => {
-                        output
-                            .emit(Effect::Toast(format!("Failed to download file: {e}")))
-                            .await;
+                        show_toast(
+                            output.as_ref(),
+                            Toast::Error(format!("Failed to download file: {e}")),
+                        );
                     }
                 }
             };

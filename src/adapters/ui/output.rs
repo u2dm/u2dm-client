@@ -36,10 +36,4 @@ impl AppOutputPort for UiEventOutput {
             tracing::debug!("failed to send UI effect: {e}");
         }
     }
-
-    fn emit_now(&self, effect: Effect) {
-        if let Err(e) = self.ui_tx.try_send(effect) {
-            tracing::debug!("failed to send UI effect: {e}");
-        }
-    }
 }

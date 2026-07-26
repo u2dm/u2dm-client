@@ -5,6 +5,7 @@ use async_trait::async_trait;
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 
+use crate::commands::LoginStatus;
 use crate::domain::models::{
     LoginCredentials, OAuthLoginData, RoomId, ServerInfo, Session, SyncEvent, SyncOutcome,
     TimelineCommand, TimelineUpdate, VerificationEvent,
@@ -12,6 +13,7 @@ use crate::domain::models::{
 use crate::error::Result;
 
 pub type SyncSink = Arc<dyn Fn(SyncEvent) + Send + Sync>;
+pub type ProgressSink = Box<dyn Fn(LoginStatus) + Send + Sync>;
 
 #[derive(Debug, Default)]
 pub struct CleanupReport {
@@ -74,7 +76,7 @@ pub trait AuthPort: Send + Sync {
         &self,
         session: &Session,
         passphrase: &str,
-        on_progress: Box<dyn Fn(String) + Send + Sync>,
+        on_progress: ProgressSink,
     ) -> Result<AuthenticatedSession>;
 }
 

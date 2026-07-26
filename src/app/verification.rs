@@ -3,7 +3,7 @@ use std::sync::{Arc, Mutex as StdMutex, PoisonError};
 use tokio::sync::mpsc;
 
 use super::task_group::TaskGroup;
-use crate::commands::{Effect, VerificationUpdate};
+use crate::commands::{Effect, Toast, VerificationUpdate};
 use crate::domain::models::VerificationEvent;
 use crate::ports::matrix::VerificationPort;
 use crate::ports::output::AppOutputPort;
@@ -104,9 +104,10 @@ impl VerificationController {
         group.spawn(async move {
             if let Err(e) = verification.accept_verification().await {
                 tracing::warn!("verification accept failed: {e}");
-                output
-                    .emit(Effect::Toast(format!("Verification accept failed: {e}")))
-                    .await;
+                super::show_toast(
+                    output.as_ref(),
+                    Toast::Error(format!("Verification accept failed: {e}")),
+                );
             }
         });
     }
@@ -141,9 +142,10 @@ impl VerificationController {
         group.spawn(async move {
             if let Err(e) = verification.confirm_verification().await {
                 tracing::warn!("verification confirm failed: {e}");
-                output
-                    .emit(Effect::Toast(format!("Verification confirm failed: {e}")))
-                    .await;
+                super::show_toast(
+                    output.as_ref(),
+                    Toast::Error(format!("Verification confirm failed: {e}")),
+                );
             }
         });
     }

@@ -84,15 +84,13 @@ pub enum UiCommand {
         event_id: String,
         filename: String,
     },
+    DismissToast,
     Logout,
     Quit,
 }
 
 pub enum Effect {
     Snapshot(Arc<AppViewState>),
-    LoginError(String),
-    Toast(String),
-    Status(String),
     SelectedRoom {
         id: RoomId,
         name: String,
@@ -110,9 +108,6 @@ pub enum Effect {
         status: TimelineStatus,
     },
     Verification(VerificationUpdate),
-    FileSaved {
-        path: String,
-    },
     LoggedOut,
 }
 
@@ -148,6 +143,7 @@ pub struct AppViewState {
     pub connection: ConnectionStatus,
     pub directory: DirectoryView,
     pub pagination: PaginationView,
+    pub toast: Toast,
 }
 
 impl AppViewState {
@@ -160,6 +156,14 @@ impl AppViewState {
             ..Self::default()
         }
     }
+}
+
+#[derive(Clone, Default, PartialEq, Eq)]
+pub enum Toast {
+    #[default]
+    None,
+    Error(String),
+    FileSaved(String),
 }
 
 #[derive(Clone, Copy, Default, PartialEq, Eq)]
@@ -184,6 +188,8 @@ impl PaginationView {
 #[derive(Clone, Default)]
 pub struct LifecycleView {
     pub step: LoginStep,
+    pub status: LoginStatus,
+    pub error: String,
     pub method: LoginMethod,
     pub resolved_homeserver: String,
     pub user_id: String,
@@ -197,6 +203,22 @@ pub enum LoginStep {
     Homeserver,
     Credentials,
     LoggedIn,
+}
+
+#[derive(Clone, Copy, Default, PartialEq, Eq)]
+pub enum LoginStatus {
+    #[default]
+    Idle,
+    LoadingSession,
+    OpeningStore,
+    Connecting,
+    RestoringAuth,
+    CheckingServer,
+    LoggingIn,
+    OpeningBrowser,
+    WaitingAuth,
+    Syncing,
+    CleaningUp,
 }
 
 #[derive(Clone)]

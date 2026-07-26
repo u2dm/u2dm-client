@@ -23,7 +23,8 @@ use tokio::sync::{mpsc, watch};
 use verification::VerificationController;
 
 use crate::commands::{
-    AppViewState, DirectoryUpdate, Effect, LoginStep, UiCommand, ViewportChanged,
+    AppViewState, DirectoryUpdate, Effect, LoginStatus, LoginStep, Toast, UiCommand,
+    ViewportChanged,
 };
 use crate::domain::account::AccountScope;
 use crate::domain::models::{ConnectionStatus, Room, RoomId, Space};
@@ -32,6 +33,10 @@ use crate::ports::matrix::{AuthPort, AuthenticatedSession, SessionPort};
 use crate::ports::media::MediaFilePort;
 use crate::ports::output::AppOutputPort;
 use crate::ports::storage::StoragePort;
+
+pub(super) fn show_toast(output: &dyn AppOutputPort, toast: Toast) {
+    output.publish(Box::new(move |view| view.toast = toast));
+}
 
 async fn undo_superseded_login(established: EstablishedSession) {
     tracing::info!("authentication superseded, undoing the login");
@@ -183,7 +188,7 @@ impl AppService {
                 }
             }
             UiCommand::BackToHomeserver => {
-                self.session.back_to_homeserver().await;
+                self.session.back_to_homeserver();
             }
             UiCommand::FetchRooms => {
                 self.handle_fetch_rooms().await;
@@ -198,7 +203,7 @@ impl AppService {
                 self.move_space(from, to);
             }
             UiCommand::SpaceOrderWriteFailed { op, spaces, error } => {
-                self.revert_space_orders(op, &spaces, &error).await;
+                self.revert_space_orders(op, &spaces, &error);
             }
             UiCommand::SelectRoom(room_id) => {
                 self.select_room(room_id).await;
@@ -233,8 +238,7 @@ impl AppService {
                 outcome,
             } => {
                 self.active_timeline
-                    .complete_pagination(&room_id, generation, direction, outcome)
-                    .await;
+                    .complete_pagination(&room_id, generation, direction, outcome);
             }
             UiCommand::JumpToLatest {
                 room_id,
@@ -247,6 +251,9 @@ impl AppService {
             }
             UiCommand::SaveFile { event_id, filename } => {
                 self.save_file(event_id, filename);
+            }
+            UiCommand::DismissToast => {
+                show_toast(self.output.as_ref(), Toast::None);
             }
             UiCommand::AcceptVerification => {
                 self.accept_verification();
@@ -293,8 +300,8 @@ impl AppService {
         self.output.publish(Box::new(move |view| {
             view.lifecycle.user_id = user_id;
             view.lifecycle.step = LoginStep::LoggedIn;
+            view.lifecycle.status = LoginStatus::Idle;
         }));
-        self.output.emit_now(Effect::Status(String::new()));
     }
 
     async fn emit_selected_room(
@@ -328,16 +335,15 @@ impl AppService {
         }
     }
 
-    async fn revert_space_orders(&mut self, op: u64, spaces: &[String], error: &str) {
+    fn revert_space_orders(&mut self, op: u64, spaces: &[String], error: &str) {
         if !self.room_directory.rollback_space_orders(op, spaces) {
             return;
         }
         tracing::warn!(op, "reverting optimistic space order: {error}");
-        self.output
-            .emit(Effect::Toast(format!(
-                "Failed to save space order: {error}"
-            )))
-            .await;
+        show_toast(
+            self.output.as_ref(),
+            Toast::Error(format!("Failed to save space order: {error}")),
+        );
     }
 
     fn log_command(cmd: &UiCommand) {
@@ -519,7 +525,9 @@ impl AppService {
             return;
         };
         self.room_directory.connect();
-        self.output.emit_now(Effect::Status("syncing".into()));
+        self.output.publish(Box::new(|view| {
+            view.lifecycle.status = LoginStatus::Syncing;
+        }));
         self.background.restart().await;
         self.session
             .spawn_session_persister(&mut self.background, Arc::clone(&lifecycle_port));

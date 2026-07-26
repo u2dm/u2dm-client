@@ -17,6 +17,7 @@ use url::Url;
 
 use super::store::StorePaths;
 use crate::adapters::private_fs;
+use crate::commands::LoginStatus;
 use crate::domain::models::{AuthMethod, LoginCredentials, OAuthLoginData, ServerInfo, Session};
 use crate::error::{AppError, Result};
 
@@ -179,9 +180,9 @@ pub(super) async fn open_session(
     paths: &StorePaths,
     session: &Session,
     passphrase: &str,
-    on_progress: &(dyn Fn(String) + Send + Sync),
+    on_progress: &(dyn Fn(LoginStatus) + Send + Sync),
 ) -> Result<Client> {
-    on_progress("connecting".into());
+    on_progress(LoginStatus::Connecting);
 
     let client = open_store(
         Client::builder().homeserver_url(&session.homeserver),
@@ -190,7 +191,7 @@ pub(super) async fn open_session(
     )
     .await?;
 
-    on_progress("restoring-auth".into());
+    on_progress(LoginStatus::RestoringAuth);
 
     let user_id: OwnedUserId = session
         .user_id

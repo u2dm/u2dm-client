@@ -25,6 +25,7 @@ export component ChatScreen inherits Rectangle {
     callback paginate-forwards();
     callback jump-to-latest();
     callback retry-timeline();
+    callback dismiss-toast();
 
     property <length> sidebar-width: 340px;
     property <length> divider-width: 4px;
@@ -147,7 +148,7 @@ export component ChatScreen inherits Rectangle {
                 ring-radius: 6px;
                 label: @tr("Dismiss");
                 clicked => {
-                    RoomView.toast-message = "";
+                    root.dismiss-toast();
                 }
                 IconDisplay {
                     x: (parent.width - self.width) / 2;

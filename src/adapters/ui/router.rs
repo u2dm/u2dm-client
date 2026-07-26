@@ -1,8 +1,6 @@
-use slint::SharedString;
 use tokio::sync::{mpsc, watch};
 
-use super::present::Status;
-use super::props::{StringProp, UiProps, send_command};
+use super::props::send_command;
 use crate::commands::{UiCommand, ViewportChanged};
 use crate::domain::models::{LoginCredentials, RoomId};
 
@@ -10,29 +8,19 @@ type Tx = mpsc::UnboundedSender<UiCommand>;
 
 pub type RoomKey = Option<(RoomId, i32)>;
 
-fn begin_login(props: Option<&dyn UiProps>, status: &Status) {
-    if let Some(props) = props {
-        props.set_string(StringProp::LoginStatus, SharedString::from(status.as_str()));
-        props.set_string(StringProp::LoginError, SharedString::default());
-    }
-}
-
 fn optional_room(id: String) -> Option<RoomId> {
     (!id.is_empty()).then(|| RoomId::new(id))
 }
 
-pub fn check_server(props: Option<&dyn UiProps>, tx: &Tx, homeserver: String) {
-    begin_login(props, &Status::CheckingServer);
+pub fn check_server(tx: &Tx, homeserver: String) {
     send_command(tx, UiCommand::CheckServer(homeserver));
 }
 
-pub fn login_password(props: Option<&dyn UiProps>, tx: &Tx, creds: LoginCredentials) {
-    begin_login(props, &Status::LoggingIn);
+pub fn login_password(tx: &Tx, creds: LoginCredentials) {
     send_command(tx, UiCommand::LoginPassword(creds));
 }
 
-pub fn login_oauth(props: Option<&dyn UiProps>, tx: &Tx) {
-    begin_login(props, &Status::OpeningBrowser);
+pub fn login_oauth(tx: &Tx) {
     send_command(tx, UiCommand::LoginOAuth);
 }
 
@@ -66,6 +54,10 @@ pub fn move_space(tx: &Tx, from: usize, to: usize, reorder: impl FnOnce(usize, u
 
 pub fn logout(tx: &Tx) {
     send_command(tx, UiCommand::Logout);
+}
+
+pub fn dismiss_toast(tx: &Tx) {
+    send_command(tx, UiCommand::DismissToast);
 }
 
 pub fn send_message(tx: &Tx, room_id: String, body: String, reply_to: String) {

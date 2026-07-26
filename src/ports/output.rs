@@ -9,5 +9,4 @@ pub trait AppOutputPort: Send + Sync {
     fn publish(&self, mutate: ViewMutation);
     fn replace(&self, state: AppViewState);
     async fn emit(&self, effect: Effect);
-    fn emit_now(&self, effect: Effect);
 }

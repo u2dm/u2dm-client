@@ -92,12 +92,12 @@ msgctxt "AppWindow"
 msgid "U2DM Matrix Client"
 msgstr "U2DM Client Matrix"
 
-#: ui/screens/chat/chat.slint:135
+#: ui/screens/chat/chat.slint:136
 msgctxt "ChatScreen"
 msgid "File saved to {}"
 msgstr "File salvato in {}"
 
-#: ui/screens/chat/chat.slint:148
+#: ui/screens/chat/chat.slint:149
 msgctxt "ChatScreen"
 msgid "Dismiss"
 msgstr ""

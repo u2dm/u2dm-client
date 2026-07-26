@@ -4,7 +4,7 @@ use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use tokio::sync::mpsc;
 
 use super::task_group::TaskGroup;
-use crate::commands::{Effect, UiCommand};
+use crate::commands::{Effect, Toast, UiCommand};
 use crate::domain::models::{
     PaginationDirection, PaginationOutcome, RoomId, ScrollMode, TimelineCommand, TimelinePatch,
     TimelineStatus, TimelineUpdate,
@@ -218,9 +218,10 @@ impl ActiveTimeline {
             };
             if let Err(e) = result {
                 tracing::warn!("failed to enqueue message: {e}");
-                output
-                    .emit(Effect::Toast(format!("Failed to send message: {e}")))
-                    .await;
+                super::show_toast(
+                    output.as_ref(),
+                    Toast::Error(format!("Failed to send message: {e}")),
+                );
             }
         });
     }
@@ -265,7 +266,7 @@ impl ActiveTimeline {
         self.emit_pagination_state();
     }
 
-    pub(super) async fn complete_pagination(
+    pub(super) fn complete_pagination(
         &mut self,
         room_id: &RoomId,
         generation: i32,
@@ -283,9 +284,10 @@ impl ActiveTimeline {
             }
             PaginationOutcome::Failed => {
                 self.viewport.fail_pagination(direction);
-                self.output
-                    .emit(Effect::Toast("Failed to load more messages".to_owned()))
-                    .await;
+                super::show_toast(
+                    self.output.as_ref(),
+                    Toast::Error("Failed to load more messages".to_owned()),
+                );
                 false
             }
         };

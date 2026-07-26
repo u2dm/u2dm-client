@@ -67,6 +67,7 @@ export component AppWindow inherits Window {
     callback paginate-forwards();
     callback jump-to-latest();
     callback retry-timeline();
+    callback dismiss-toast();
 
     if LoginView.step == LoginPhase.loading: LoadingScreen { }
 
@@ -140,6 +141,9 @@ export component AppWindow inherits Window {
         }
         retry-timeline => {
             root.retry-timeline();
+        }
+        dismiss-toast => {
+            root.dismiss-toast();
         }
     }
 

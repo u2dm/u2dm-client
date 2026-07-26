@@ -46,9 +46,7 @@ use crate::ports::media::MediaCache;
 #[allow(dead_code)]
 mod names {
     pub mod callback {
-        pub const CHECK_SERVER: &str = "check-server";
         pub const LOGIN_PASSWORD: &str = "login-password";
-        pub const LOGIN_OAUTH: &str = "login-oauth";
         pub const MOVE_SPACE: &str = "move-space";
         pub const SEND_MESSAGE: &str = "send-message";
         pub const SAVE_FILE: &str = "save-file";
@@ -228,10 +226,6 @@ fn field(s: &Struct, name: &str) -> String {
             _ => None,
         })
         .unwrap_or_default()
-}
-
-fn props(inst: Option<&ComponentInstance>) -> Option<&dyn UiProps> {
-    inst.map(|inst| inst as &dyn UiProps)
 }
 
 fn bind(
@@ -516,7 +510,6 @@ impl SlintUiAdapter {
         Ok(Self { instance })
     }
 
-    #[allow(clippy::too_many_lines)]
     pub fn register_callbacks(
         &self,
         cmd_tx: &mpsc::UnboundedSender<UiCommand>,
@@ -527,33 +520,17 @@ impl SlintUiAdapter {
         simple_callbacks!(bind_interpreted_callbacks &self.instance, cmd_tx;);
 
         let tx = cmd_tx.clone();
-        let weak = self.instance.as_weak();
-        bind(&self.instance, callback::CHECK_SERVER, move |args| {
-            let inst = weak.upgrade();
-            router::check_server(props(inst.as_ref()), &tx, string_arg(args, 0));
-            Value::Void
-        })?;
-
-        let tx = cmd_tx.clone();
-        let weak = self.instance.as_weak();
         bind(&self.instance, callback::LOGIN_PASSWORD, move |args| {
             let Some(s) = struct_arg(args, 0) else {
                 return Value::Void;
             };
-            let creds = LoginCredentials {
-                username: field(s, login_request::USERNAME),
-                password: field(s, login_request::PASSWORD),
-            };
-            let inst = weak.upgrade();
-            router::login_password(props(inst.as_ref()), &tx, creds);
-            Value::Void
-        })?;
-
-        let tx = cmd_tx.clone();
-        let weak = self.instance.as_weak();
-        bind(&self.instance, callback::LOGIN_OAUTH, move |_args| {
-            let inst = weak.upgrade();
-            router::login_oauth(props(inst.as_ref()), &tx);
+            router::login_password(
+                &tx,
+                LoginCredentials {
+                    username: field(s, login_request::USERNAME),
+                    password: field(s, login_request::PASSWORD),
+                },
+            );
             Value::Void
         })?;
 

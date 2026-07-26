@@ -37,8 +37,8 @@ use crate::domain::models::{
 };
 use crate::error::{AppError, Result};
 use crate::ports::matrix::{
-    AuthPort, AuthenticatedSession, CleanupReport, MediaPort, SessionPort, SpaceOrderPort,
-    StoreAdoption, SyncPort, SyncSink, TimelinePort, VerificationPort,
+    AuthPort, AuthenticatedSession, CleanupReport, MediaPort, ProgressSink, SessionPort,
+    SpaceOrderPort, StoreAdoption, SyncPort, SyncSink, TimelinePort, VerificationPort,
 };
 use crate::ports::media::MediaCache;
 
@@ -285,7 +285,7 @@ impl AuthPort for MatrixAdapter {
         &self,
         session: &Session,
         passphrase: &str,
-        on_progress: Box<dyn Fn(String) + Send + Sync>,
+        on_progress: ProgressSink,
     ) -> Result<AuthenticatedSession> {
         let account = AccountScope::from_session(session);
         self.sweep_stale_once(Some(&account)).await;

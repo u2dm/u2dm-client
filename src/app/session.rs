@@ -8,7 +8,7 @@ use tokio_util::sync::CancellationToken;
 use super::establish::EstablishedSession;
 use super::lifecycle::Lifecycle;
 use super::task_group::TaskGroup;
-use crate::commands::{Effect, LoginStep};
+use crate::commands::{LoginStatus, LoginStep, Toast};
 use crate::domain::account::AccountScope;
 use crate::domain::models::{LoginCredentials, LoginMethod, ServerInfo, Session};
 use crate::error::{AppError, Result};
@@ -107,6 +107,7 @@ impl SessionController {
         homeserver: String,
         attempt: u64,
     ) {
+        self.begin_login(LoginStatus::CheckingServer);
         let this = self.clone();
         group.spawn(async move { this.check_server(&homeserver, attempt).await });
     }
@@ -117,21 +118,24 @@ impl SessionController {
         creds: LoginCredentials,
         attempt: u64,
     ) {
+        self.begin_login(LoginStatus::LoggingIn);
         let this = self.clone();
         group.spawn(async move { this.login_password(creds, attempt).await });
     }
 
     pub(super) fn spawn_login_oauth(&self, group: &mut TaskGroup, attempt: u64) {
+        self.begin_login(LoginStatus::OpeningBrowser);
         let cancel = self.begin_oauth();
         let this = self.clone();
         group.spawn(async move { this.login_oauth(cancel, attempt).await });
     }
 
-    pub(super) async fn back_to_homeserver(&self) {
-        self.output
-            .publish(Box::new(|view| view.lifecycle.step = LoginStep::Homeserver));
-        self.output.emit(Effect::Status(String::new())).await;
-        self.output.emit(Effect::LoginError(String::new())).await;
+    pub(super) fn back_to_homeserver(&self) {
+        self.output.publish(Box::new(|view| {
+            view.lifecycle.step = LoginStep::Homeserver;
+            view.lifecycle.status = LoginStatus::Idle;
+            view.lifecycle.error = String::new();
+        }));
     }
 
     pub(super) fn cancel_oauth(&self) {
@@ -175,12 +179,11 @@ impl SessionController {
     }
 
     async fn try_restore_session(&self) -> Option<AuthenticatedSession> {
-        self.output
-            .emit_now(Effect::Status("loading-session".into()));
+        self.set_status(LoginStatus::LoadingSession);
         let session = self.load_saved_session().await?;
         let account = AccountScope::from_session(&session);
 
-        self.output.emit_now(Effect::Status("opening-store".into()));
+        self.set_status(LoginStatus::OpeningStore);
         let passphrase = self.stored_passphrase(&account).await?;
 
         match self.restore_matrix_session(&session, &passphrase).await {
@@ -188,7 +191,7 @@ impl SessionController {
             Err(e) => {
                 tracing::warn!("session restore failed, preserving local data: {e}");
                 self.emit_show_login();
-                self.emit_login_error(&e).await;
+                self.emit_login_error(&e);
                 None
             }
         }
@@ -202,14 +205,13 @@ impl SessionController {
                 self.emit_show_login();
                 self.emit_login_error(&AppError::Other(
                     "The key to the local store is missing. Please log in again.".into(),
-                ))
-                .await;
+                ));
                 None
             }
             Err(e) => {
                 tracing::warn!("failed to read the store key: {e}");
                 self.emit_show_login();
-                self.emit_login_error(&e).await;
+                self.emit_login_error(&e);
                 None
             }
         }
@@ -250,7 +252,7 @@ impl SessionController {
             }
             Err(e) => {
                 tracing::warn!(homeserver, "server discovery failed: {e}");
-                self.fail_auth(attempt, &e).await;
+                self.fail_auth(attempt, &e);
             }
         }
     }
@@ -262,13 +264,13 @@ impl SessionController {
                 Some(session)
             }
             unusable => {
-                self.report_unusable_session(unusable).await;
+                self.report_unusable_session(unusable);
                 None
             }
         }
     }
 
-    async fn report_unusable_session(&self, loaded: Result<StoredSession>) {
+    fn report_unusable_session(&self, loaded: Result<StoredSession>) {
         let (reason, error) = classify_unusable_session(loaded);
         if let Some(e) = &error {
             tracing::warn!("{reason}, preserving local data: {e}");
@@ -278,13 +280,13 @@ impl SessionController {
 
         self.emit_show_login();
         if let Some(e) = error {
-            self.emit_login_error(&e).await;
+            self.emit_login_error(&e);
         }
     }
 
-    async fn fail_auth(&self, attempt: u64, err: &AppError) {
+    fn fail_auth(&self, attempt: u64, err: &AppError) {
         if self.lifecycle.settle_auth(attempt) {
-            self.emit_login_error(err).await;
+            self.emit_login_error(err);
         } else {
             tracing::debug!("auth failure for superseded attempt, dropping");
         }
@@ -296,8 +298,8 @@ impl SessionController {
         passphrase: &str,
     ) -> Result<AuthenticatedSession> {
         let output = Arc::clone(&self.output);
-        let on_progress = Box::new(move |msg| {
-            output.emit_now(Effect::Status(msg));
+        let on_progress = Box::new(move |status| {
+            output.publish(Box::new(move |view| view.lifecycle.status = status));
         });
 
         self.auth
@@ -317,7 +319,7 @@ impl SessionController {
             }),
             Err(e) => {
                 tracing::warn!("password login failed: {e}");
-                self.fail_auth(attempt, &e).await;
+                self.fail_auth(attempt, &e);
             }
         }
     }
@@ -352,11 +354,11 @@ impl SessionController {
             }),
             Ok(None) => {
                 tracing::info!("OAuth login cancelled");
-                self.output.emit_now(Effect::Status(String::new()));
+                self.set_status(LoginStatus::Idle);
             }
             Err(e) => {
                 tracing::warn!("OAuth login failed: {e}");
-                self.fail_auth(attempt, &e).await;
+                self.fail_auth(attempt, &e);
             }
         }
     }
@@ -375,7 +377,7 @@ impl SessionController {
             message.push(' ');
             message.push_str(&problem);
         }
-        self.output.emit(Effect::LoginError(message)).await;
+        self.fail_login(message);
     }
 
     async fn logout(
@@ -389,7 +391,7 @@ impl SessionController {
         let report = self
             .clear_local_state(session, account, lifecycle_port.as_ref())
             .await;
-        self.emit_cleanup_problem(&report).await;
+        self.emit_cleanup_problem(&report);
     }
 
     async fn destroy_store_key(&self, account: &AccountScope, report: &mut CleanupReport) {
@@ -404,9 +406,9 @@ impl SessionController {
         }
     }
 
-    async fn emit_cleanup_problem(&self, report: &CleanupReport) {
+    fn emit_cleanup_problem(&self, report: &CleanupReport) {
         if let Some(problem) = cleanup_problem(report) {
-            self.output.emit(Effect::LoginError(problem)).await;
+            self.fail_login(problem);
         }
     }
 
@@ -425,11 +427,10 @@ impl SessionController {
                 while let Some(session) = session_rx.recv().await {
                     if let Err(e) = storage.save_session(&session).await {
                         tracing::warn!("failed to persist refreshed session: {e}");
-                        output
-                            .emit(Effect::Toast(format!(
-                                "Failed to save refreshed session: {e}"
-                            )))
-                            .await;
+                        super::show_toast(
+                            output.as_ref(),
+                            Toast::Error(format!("Failed to save refreshed session: {e}")),
+                        );
                     } else {
                         tracing::info!("persisted refreshed session tokens");
                     }
@@ -482,7 +483,7 @@ impl SessionController {
     async fn oauth_login_steps(&self) -> Result<EstablishedSession> {
         let oauth_data = self.auth.login_oauth_start().await?;
         self.browser.open_url(&oauth_data.auth_url).await?;
-        self.output.emit_now(Effect::Status("waiting-auth".into()));
+        self.set_status(LoginStatus::WaitingAuth);
         let session = timeout(OAUTH_CALLBACK_TIMEOUT, self.auth.login_oauth_finish())
             .await
             .map_err(|_| AppError::Other("Timed out waiting for browser sign-in.".into()))??;
@@ -514,7 +515,7 @@ impl SessionController {
             tracing::debug!("cleanup requested for a superseded session, skipping");
             return CleanupReport::default();
         }
-        self.output.emit(Effect::Status("cleaning-up".into())).await;
+        self.set_status(LoginStatus::CleaningUp);
 
         let mut report = CleanupReport::default();
         self.destroy_store_key(account, &mut report).await;
@@ -522,7 +523,7 @@ impl SessionController {
         report.merge(lifecycle_port.clear_store().await);
 
         self.lifecycle.finish_logout(session);
-        self.output.emit(Effect::Status(String::new())).await;
+        self.set_status(LoginStatus::Idle);
         report
     }
 
@@ -538,17 +539,37 @@ impl SessionController {
             view.lifecycle.method = method;
             view.lifecycle.resolved_homeserver = info.homeserver_url;
             view.lifecycle.step = LoginStep::Credentials;
+            view.lifecycle.status = LoginStatus::Idle;
         }));
-        self.output.emit_now(Effect::Status(String::new()));
     }
 
     fn emit_show_login(&self) {
-        self.output
-            .publish(Box::new(|view| view.lifecycle.step = LoginStep::Homeserver));
-        self.output.emit_now(Effect::Status(String::new()));
+        self.output.publish(Box::new(|view| {
+            view.lifecycle.step = LoginStep::Homeserver;
+            view.lifecycle.status = LoginStatus::Idle;
+        }));
     }
 
-    async fn emit_login_error(&self, err: &AppError) {
-        self.output.emit(Effect::LoginError(err.to_string())).await;
+    fn emit_login_error(&self, err: &AppError) {
+        self.fail_login(err.to_string());
+    }
+
+    fn set_status(&self, status: LoginStatus) {
+        self.output
+            .publish(Box::new(move |view| view.lifecycle.status = status));
+    }
+
+    fn begin_login(&self, status: LoginStatus) {
+        self.output.publish(Box::new(move |view| {
+            view.lifecycle.status = status;
+            view.lifecycle.error = String::new();
+        }));
+    }
+
+    fn fail_login(&self, message: String) {
+        self.output.publish(Box::new(move |view| {
+            view.lifecycle.status = LoginStatus::Idle;
+            view.lifecycle.error = message;
+        }));
     }
 }

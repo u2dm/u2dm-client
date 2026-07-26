@@ -5,15 +5,16 @@ use slint::SharedString;
 
 use super::backend::{UiBackend, UiEventContext};
 use super::decode::{AvatarSlot, clear_session_media, load_avatar_async};
-use super::present::{LoginMethodKind, Status, VerifyStep, login_method_kind, user_initial};
+use super::present::{
+    FILE_SAVED_TOAST, VerifyStep, login_method_kind, login_status_token, user_initial,
+};
 use super::props::{BoolProp, IntProp, StringProp, UiProps};
 use super::reconcile::{apply_reconcile, apply_rooms, apply_timeline_patch};
 use crate::commands::{
-    AppViewState, Effect, LifecycleView, LoginStep, PaginationView, VerificationUpdate,
+    AppViewState, Effect, LifecycleView, PaginationView, Toast, VerificationUpdate,
 };
 use crate::domain::models::{
-    ConnectionStatus, Room, RoomId, TimelinePatch, TimelineStatus,
-    VerificationEvent as DomainVerificationEvent,
+    Room, RoomId, TimelinePatch, TimelineStatus, VerificationEvent as DomainVerificationEvent,
 };
 
 thread_local! {
@@ -30,12 +31,8 @@ pub(super) fn latest_rooms() -> Option<Arc<[Room]>> {
     })
 }
 
-#[allow(clippy::too_many_lines)]
 pub fn dispatch_effect<B: UiBackend>(w: &B::Window, event: Effect, ctx: &UiEventContext<'_, B>) {
     match event {
-        Effect::LoginError(message) => apply_login_error(w, &message),
-        Effect::Toast(message) => apply_toast_error(w, &message),
-        Effect::Status(msg) => apply_status(w, &msg),
         Effect::Snapshot(view) => apply_snapshot::<B>(w, &view, ctx),
         Effect::SelectedRoom {
             id,
@@ -102,22 +99,13 @@ pub fn dispatch_effect<B: UiBackend>(w: &B::Window, event: Effect, ctx: &UiEvent
             }
         }
         Effect::Verification(update) => apply_verification(w, &update),
-        Effect::FileSaved { path } => {
-            w.set_string(StringProp::SavedFilePath, SharedString::from(&path));
-            w.set_string(
-                StringProp::ToastMessage,
-                SharedString::from(Status::FileSaved.as_str()),
-            );
-        }
         Effect::LoggedOut => {
             clear_session_media();
             ctx.timeline.set_vec(Vec::new());
-            ctx.rooms.set_vec(Vec::new());
-            ctx.spaces.set_vec(Vec::new());
-            ctx.subspaces.set_vec(Vec::new());
-            LATEST_SNAPSHOT
-                .with(|cell| *cell.borrow_mut() = Some(Arc::new(AppViewState::logged_out())));
-            apply_logged_out(w);
+            apply_snapshot::<B>(w, &Arc::new(AppViewState::logged_out()), ctx);
+            clear_selected_room(w);
+            reset_verification(w);
+            w.clear_text_inputs();
         }
     }
 }
@@ -174,6 +162,9 @@ fn apply_snapshot<B: UiBackend>(
     if last.is_none_or(|l| l.pagination != view.pagination) {
         sync_timeline_chrome(w, &view.pagination);
     }
+    if last.is_none_or(|l| l.toast != view.toast) {
+        apply_toast(w, &view.toast);
+    }
     LATEST_SNAPSHOT.with(|cell| *cell.borrow_mut() = Some(Arc::clone(view)));
 }
 
@@ -200,6 +191,15 @@ fn apply_lifecycle(w: &impl UiProps, last: Option<&LifecycleView>, next: &Lifecy
     if last.is_none_or(|l| l.step != next.step) {
         w.set_login_phase(next.step);
     }
+    if last.is_none_or(|l| l.status != next.status) {
+        w.set_string(
+            StringProp::LoginStatus,
+            SharedString::from(login_status_token(next.status)),
+        );
+    }
+    if last.is_none_or(|l| l.error != next.error) {
+        w.set_string(StringProp::LoginError, SharedString::from(&next.error));
+    }
     if last.is_none_or(|l| l.method != next.method) {
         w.set_login_method_kind(login_method_kind(next.method));
     }
@@ -225,17 +225,14 @@ fn apply_lifecycle(w: &impl UiProps, last: Option<&LifecycleView>, next: &Lifecy
     }
 }
 
-fn apply_login_error(w: &impl UiProps, msg: &str) {
-    w.set_string(StringProp::LoginError, SharedString::from(msg));
-    w.set_string(StringProp::LoginStatus, SharedString::default());
-}
-
-fn apply_toast_error(w: &impl UiProps, msg: &str) {
-    w.set_string(StringProp::ToastMessage, SharedString::from(msg));
-}
-
-fn apply_status(w: &impl UiProps, msg: &str) {
-    w.set_string(StringProp::LoginStatus, SharedString::from(msg));
+fn apply_toast(w: &impl UiProps, toast: &Toast) {
+    let (message, path) = match toast {
+        Toast::None => ("", ""),
+        Toast::Error(message) => (message.as_str(), ""),
+        Toast::FileSaved(path) => (FILE_SAVED_TOAST, path.as_str()),
+    };
+    w.set_string(StringProp::ToastMessage, SharedString::from(message));
+    w.set_string(StringProp::SavedFilePath, SharedString::from(path));
 }
 
 fn is_active(w: &impl UiProps, room_id: &RoomId, generation: i32) -> bool {
@@ -309,27 +306,9 @@ fn reset_verification(w: &impl UiProps) {
     w.clear_emoji_model();
 }
 
-fn apply_logged_out(w: &impl UiProps) {
-    w.set_login_phase(LoginStep::Homeserver);
-    w.set_string(StringProp::UserId, SharedString::default());
-    w.set_string(StringProp::UserInitial, SharedString::default());
-    w.set_string(StringProp::LoginStatus, SharedString::default());
-    w.set_string(StringProp::LoginError, SharedString::default());
-    w.set_login_method_kind(LoginMethodKind::None);
-    w.set_string(StringProp::ResolvedHomeserver, SharedString::default());
-    w.set_string(StringProp::SelectedRoomName, SharedString::default());
+fn clear_selected_room(w: &impl UiProps) {
     w.set_string(StringProp::SelectedRoomId, SharedString::default());
-    w.set_string(StringProp::SelectedSpaceId, SharedString::default());
-    w.set_string(StringProp::SelectedSubspaceId, SharedString::default());
-    w.clear_text_inputs();
-    w.set_connection_state(&ConnectionStatus::Disconnected);
-    reset_verification(w);
-    w.set_string(StringProp::ToastMessage, SharedString::default());
-    w.set_string(StringProp::SavedFilePath, SharedString::default());
-    w.set_bool(BoolProp::BackwardsLoading, false);
-    w.set_bool(BoolProp::ForwardsLoading, false);
-    w.set_int(IntProp::NewMessagesCount, 0);
+    w.set_string(StringProp::SelectedRoomName, SharedString::default());
     w.set_int(IntProp::SelectedRoomMembers, 0);
     w.set_int(IntProp::SelectedGeneration, 0);
-    w.apply_user_avatar(None);
 }

@@ -355,7 +355,7 @@ impl SlintUiAdapter {
         Ok(Self { window })
     }
 
-    #[allow(clippy::too_many_lines, clippy::unnecessary_wraps)]
+    #[allow(clippy::unnecessary_wraps)]
     pub fn register_callbacks(
         &self,
         cmd_tx: &mpsc::UnboundedSender<UiCommand>,
@@ -367,28 +367,14 @@ impl SlintUiAdapter {
         simple_callbacks!(bind_compiled_callbacks win cmd_tx;);
 
         let tx = cmd_tx.clone();
-        let weak = self.window.as_weak();
-        self.window.on_check_server(move |homeserver| {
-            let w = weak.upgrade();
-            router::check_server(props(w.as_ref()), &tx, homeserver.to_string());
-        });
-
-        let tx = cmd_tx.clone();
-        let weak = self.window.as_weak();
         self.window.on_login_password(move |req| {
-            let creds = LoginCredentials {
-                username: req.username.to_string(),
-                password: req.password.to_string(),
-            };
-            let w = weak.upgrade();
-            router::login_password(props(w.as_ref()), &tx, creds);
-        });
-
-        let tx = cmd_tx.clone();
-        let weak = self.window.as_weak();
-        self.window.on_login_oauth(move || {
-            let w = weak.upgrade();
-            router::login_oauth(props(w.as_ref()), &tx);
+            router::login_password(
+                &tx,
+                LoginCredentials {
+                    username: req.username.to_string(),
+                    password: req.password.to_string(),
+                },
+            );
         });
 
         let tx = cmd_tx.clone();
@@ -509,10 +495,6 @@ impl SlintUiAdapter {
             .window()
             .set_size(slint::LogicalSize::new(width, height));
     }
-}
-
-fn props(window: Option<&AppWindow>) -> Option<&dyn UiProps> {
-    window.map(|w| w as &dyn UiProps)
 }
 
 fn emoji_entry_to_ui(e: &emoji::EmojiEntry) -> EmojiEntry {

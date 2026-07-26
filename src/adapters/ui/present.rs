@@ -4,6 +4,7 @@ use std::sync::OnceLock;
 use chrono::{Locale, Timelike};
 use pure_rust_locales::locale_match;
 
+use crate::commands::LoginStatus;
 use crate::domain::models::{
     LoginMethod, MessageBody, MessagePreviewKind, ServiceEvent, TimelineMessage,
 };
@@ -390,21 +391,21 @@ pub fn login_method_kind(method: LoginMethod) -> LoginMethodKind {
     }
 }
 
-pub enum Status {
-    CheckingServer,
-    LoggingIn,
-    OpeningBrowser,
-    FileSaved,
-}
+pub const FILE_SAVED_TOAST: &str = "file-saved";
 
-impl Status {
-    pub fn as_str(&self) -> &'static str {
-        match self {
-            Self::CheckingServer => "checking-server",
-            Self::LoggingIn => "logging-in",
-            Self::OpeningBrowser => "opening-browser",
-            Self::FileSaved => "file-saved",
-        }
+pub fn login_status_token(status: LoginStatus) -> &'static str {
+    match status {
+        LoginStatus::Idle => "",
+        LoginStatus::LoadingSession => "loading-session",
+        LoginStatus::OpeningStore => "opening-store",
+        LoginStatus::Connecting => "connecting",
+        LoginStatus::RestoringAuth => "restoring-auth",
+        LoginStatus::CheckingServer => "checking-server",
+        LoginStatus::LoggingIn => "logging-in",
+        LoginStatus::OpeningBrowser => "opening-browser",
+        LoginStatus::WaitingAuth => "waiting-auth",
+        LoginStatus::Syncing => "syncing",
+        LoginStatus::CleaningUp => "cleaning-up",
     }
 }
 
