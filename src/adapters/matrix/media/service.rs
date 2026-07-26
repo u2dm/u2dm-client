@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::io::{self, ErrorKind};
+use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex as StdMutex, RwLock as StdRwLock};
 use std::time::Duration;
@@ -15,11 +15,12 @@ use tokio::time::{sleep, timeout};
 use super::cache::{CacheHandle, FailureTracker};
 use super::{mxc_avatar_key, thumb_key, thumbnail_format};
 use crate::adapters::matrix::store::purge_dir;
+use crate::adapters::private_fs;
 use crate::domain::account::AccountScope;
 use crate::domain::models::{MessageBody, ThumbnailOutcome, TimelineMessage};
 use crate::error::{AppError, Result};
 use crate::ports::matrix::CleanupReport;
-use crate::util::{hex_encode_id, unique_tmp_path};
+use crate::util::hex_encode_id;
 
 const MAX_CONCURRENT_DOWNLOADS: usize = 6;
 const MAX_CONCURRENT_FULL_DOWNLOADS: usize = 2;
@@ -73,6 +74,7 @@ impl MediaService {
     pub(crate) async fn open(&self, account: &AccountScope) {
         self.detach().await;
         self.sweep(Some(account)).await;
+        private_fs::restrict_existing(&self.root).await;
 
         let media_dir = self.account_dir(account);
         let cache = CacheHandle::spawn(media_dir.clone()).await;
@@ -118,7 +120,7 @@ impl MediaService {
             session.media_dir.clone(),
             session.media_dir.join(AVATARS_DIR),
         ] {
-            if let Err(e) = fs::create_dir_all(&dir).await {
+            if let Err(e) = private_fs::create_dir(&dir).await {
                 tracing::warn!(path = %dir.display(), "failed to create media dir: {e}");
             }
         }
@@ -207,7 +209,7 @@ impl MediaService {
         };
 
         let cache_path = cache_stem.with_extension(ext_from_magic(&data));
-        if let Err(e) = write_atomically(&cache_path, &data).await {
+        if let Err(e) = private_fs::write_atomically(&cache_path, &data).await {
             tracing::warn!("failed to write materialized media: {e}");
             self.record_failure(cache_key);
             return None;
@@ -291,7 +293,7 @@ impl MediaService {
             return Some(cached);
         }
         let avatars = self.avatars_dir()?;
-        if let Err(e) = fs::create_dir_all(&avatars).await {
+        if let Err(e) = private_fs::create_dir(&avatars).await {
             tracing::warn!("failed to create avatar dir: {e}");
             return None;
         }
@@ -382,18 +384,6 @@ impl MediaService {
     fn avatars_dir(&self) -> Option<PathBuf> {
         Some(self.session()?.media_dir.join(AVATARS_DIR))
     }
-}
-
-async fn write_atomically(path: &Path, data: &[u8]) -> io::Result<()> {
-    let tmp = unique_tmp_path(path);
-    fs::write(&tmp, data).await?;
-    if let Err(e) = fs::rename(&tmp, path).await {
-        if let Err(cleanup_err) = fs::remove_file(&tmp).await {
-            tracing::debug!("failed to remove stale media temp: {cleanup_err}");
-        }
-        return Err(e);
-    }
-    Ok(())
 }
 
 async fn remove_all_except(dir: &Path, keep: Option<&str>) {

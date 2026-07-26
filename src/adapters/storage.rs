@@ -1,19 +1,15 @@
-#[cfg(unix)]
-use std::fs::Permissions;
 use std::io::ErrorKind;
-#[cfg(unix)]
-use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 
 use async_trait::async_trait;
 use tokio::fs;
 use tokio::task::spawn_blocking;
 
+use crate::adapters::private_fs;
 use crate::domain::account::AccountScope;
 use crate::domain::models::{Session, SessionMetadata};
 use crate::error::{AppError, Result};
 use crate::ports::storage::{StoragePort, StoredSession};
-use crate::util::unique_tmp_path;
 
 const KEYRING_SERVICE: &str = "u2dm";
 const CREDENTIALS_KEY: &str = "session-credentials";
@@ -265,25 +261,11 @@ fn store_error(source: keyring_core::Error) -> AppError {
 
 async fn write_json<T: serde::Serialize + Sync + ?Sized>(path: &Path, value: &T) -> Result<()> {
     if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent).await?;
+        private_fs::create_dir(parent).await?;
     }
 
     let json = serde_json::to_string_pretty(value)?;
-    let tmp_path = unique_tmp_path(path);
-
-    fs::write(&tmp_path, json.as_bytes()).await?;
-
-    #[cfg(unix)]
-    {
-        fs::set_permissions(&tmp_path, Permissions::from_mode(0o600)).await?;
-    }
-
-    if let Err(e) = fs::rename(&tmp_path, path).await {
-        if let Err(cleanup_err) = fs::remove_file(&tmp_path).await {
-            tracing::debug!("failed to remove staged temp file: {cleanup_err}");
-        }
-        return Err(e.into());
-    }
+    private_fs::write_atomically(path, json.as_bytes()).await?;
 
     Ok(())
 }

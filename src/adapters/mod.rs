@@ -3,5 +3,6 @@ pub mod browser;
 pub mod demo;
 pub mod matrix;
 pub mod media;
+pub mod private_fs;
 pub mod storage;
 pub mod ui;

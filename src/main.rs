@@ -8,6 +8,7 @@ use adapters::browser::DesktopBrowser;
 #[cfg(feature = "demo")]
 use adapters::demo;
 use adapters::media::DesktopMediaFiles;
+use adapters::private_fs;
 use adapters::ui::{SlintUiAdapter, UiEventOutput};
 use app::AppService;
 use commands::{AppViewState, DirectoryUpdate, Effect, UiCommand, ViewportChanged};
@@ -60,6 +61,10 @@ fn run() -> Result<()> {
     let rt = Runtime::new()?;
     let cfg = config::AppConfig::from_env()?;
     tracing::info!(data_dir = %cfg.data_dir.display(), cache_dir = %cfg.cache_dir.display(), "starting U2DM");
+    rt.block_on(async {
+        private_fs::restrict_existing(&cfg.data_dir).await;
+        private_fs::restrict_existing(&cfg.cache_dir).await;
+    });
     let ui = SlintUiAdapter::compile(&rt)?;
 
     let (cmd_tx, cmd_rx) = mpsc::unbounded_channel::<UiCommand>();

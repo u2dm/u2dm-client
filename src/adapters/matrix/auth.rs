@@ -16,6 +16,7 @@ use tokio::sync::{Mutex, mpsc};
 use url::Url;
 
 use super::store::StorePaths;
+use crate::adapters::private_fs;
 use crate::domain::models::{AuthMethod, LoginCredentials, OAuthLoginData, ServerInfo, Session};
 use crate::error::{AppError, Result};
 
@@ -24,6 +25,9 @@ async fn open_store(
     paths: &StorePaths,
     passphrase: &str,
 ) -> Result<Client> {
+    private_fs::create_dir(&paths.data).await?;
+    private_fs::create_dir(&paths.cache).await?;
+
     let client = builder
         .handle_refresh_tokens()
         .respect_login_well_known(true)

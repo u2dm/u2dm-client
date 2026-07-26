@@ -5,8 +5,8 @@ use std::{env, fs, process};
 
 use async_trait::async_trait;
 use tokio::fs as async_fs;
-use tokio::io::AsyncWriteExt;
 
+use crate::adapters::private_fs;
 use crate::error::Result;
 use crate::ports::media::MediaFilePort;
 use crate::util::random_hex;
@@ -39,11 +39,11 @@ impl DesktopMediaFiles {
 impl MediaFilePort for DesktopMediaFiles {
     async fn open_media(&self, _event_id: &str, data: &[u8]) -> Result<()> {
         let ext = infer::get(data).map_or("bin", |kind| kind.extension());
-        async_fs::create_dir_all(&self.session_dir).await?;
+        private_fs::create_dir(&self.session_dir).await?;
         let path = self
             .session_dir
             .join(format!("{}.{ext}", random_hex(FILE_TOKEN_BYTES)));
-        write_private(&path, data).await?;
+        private_fs::write_private(&path, data).await?;
         open::that_in_background(&path);
         Ok(())
     }
@@ -64,30 +64,16 @@ impl MediaFilePort for DesktopMediaFiles {
             Err(e) if e.kind() == ErrorKind::NotFound => {}
             Err(e) => tracing::warn!("failed to clear session media directory: {e}"),
         }
-        if let Err(e) = async_fs::create_dir_all(&self.session_dir).await {
+        if let Err(e) = private_fs::create_dir(&self.session_dir).await {
             tracing::debug!("failed to recreate session media directory: {e}");
-            return;
         }
-        set_private_async(&self.session_dir).await;
     }
-}
-
-async fn write_private(path: &Path, data: &[u8]) -> Result<()> {
-    let mut options = async_fs::OpenOptions::new();
-    options.write(true).create(true).truncate(true);
-    #[cfg(unix)]
-    options.mode(0o600);
-    let mut file = options.open(path).await?;
-    file.write_all(data).await?;
-    Ok(())
 }
 
 fn prepare_dir_blocking(dir: &Path) {
-    if let Err(e) = fs::create_dir_all(dir) {
+    if let Err(e) = private_fs::create_dir_blocking(dir) {
         tracing::debug!("failed to create media directory {}: {e}", dir.display());
-        return;
     }
-    set_private_blocking(dir);
 }
 
 fn sweep_stale(base_dir: &Path) {
@@ -123,25 +109,3 @@ fn remove_entry(path: &Path) {
         tracing::debug!("failed to remove stale media entry {}: {e}", path.display());
     }
 }
-
-#[cfg(unix)]
-fn set_private_blocking(dir: &Path) {
-    use std::os::unix::fs::PermissionsExt;
-    if let Err(e) = fs::set_permissions(dir, fs::Permissions::from_mode(0o700)) {
-        tracing::debug!("failed to set permissions on {}: {e}", dir.display());
-    }
-}
-
-#[cfg(not(unix))]
-fn set_private_blocking(_dir: &Path) {}
-
-#[cfg(unix)]
-async fn set_private_async(dir: &Path) {
-    use std::os::unix::fs::PermissionsExt;
-    if let Err(e) = async_fs::set_permissions(dir, fs::Permissions::from_mode(0o700)).await {
-        tracing::debug!("failed to set permissions on {}: {e}", dir.display());
-    }
-}
-
-#[cfg(not(unix))]
-async fn set_private_async(_dir: &Path) {}

@@ -10,7 +10,7 @@ use tokio::sync::{mpsc, oneshot};
 use tokio::time::{MissedTickBehavior, interval};
 use tokio::{fs, task};
 
-use crate::util::unique_tmp_path;
+use crate::adapters::private_fs;
 
 const MAX_CACHE_BYTES: u64 = 512 * 1024 * 1024;
 const MAX_AGE: Duration = Duration::from_hours(14 * 24);
@@ -451,17 +451,9 @@ impl CacheActor {
 
     async fn try_write_index(&self, json: &str) -> io::Result<()> {
         if let Some(parent) = self.index_path.parent() {
-            fs::create_dir_all(parent).await?;
+            private_fs::create_dir(parent).await?;
         }
-        let tmp = unique_tmp_path(&self.index_path);
-        fs::write(&tmp, json.as_bytes()).await?;
-        if let Err(e) = fs::rename(&tmp, &self.index_path).await {
-            if let Err(cleanup_err) = fs::remove_file(&tmp).await {
-                tracing::debug!("failed to remove stale media index temp: {cleanup_err}");
-            }
-            return Err(e);
-        }
-        Ok(())
+        private_fs::write_atomically(&self.index_path, json.as_bytes()).await
     }
 
     fn reconcile_orphans(&self) {

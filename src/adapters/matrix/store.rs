@@ -4,6 +4,7 @@ use std::time::{Duration, SystemTime};
 
 use tokio::fs;
 
+use crate::adapters::private_fs;
 use crate::domain::account::AccountScope;
 use crate::error::{AppError, Result};
 use crate::ports::matrix::CleanupReport;
@@ -196,7 +197,7 @@ async fn move_cache_or_start_empty(from: &Path, to: &Path) {
 
 async fn move_dir(from: &Path, to: &Path) -> Result<()> {
     if let Some(parent) = to.parent() {
-        fs::create_dir_all(parent).await?;
+        private_fs::create_dir(parent).await?;
     }
     fs::rename(from, to).await?;
     Ok(())
@@ -211,7 +212,7 @@ pub(super) async fn purge_dir(root: &Path, dir: &Path, report: &mut CleanupRepor
 }
 
 async fn quarantine_dir(root: &Path, dir: &Path, report: &mut CleanupReport) {
-    if let Err(e) = fs::create_dir_all(root).await {
+    if let Err(e) = private_fs::create_dir(root).await {
         report.fail(format!(
             "{} could not be deleted, and {} is unavailable to move it into ({e})",
             dir.display(),
