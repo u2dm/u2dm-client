@@ -61,7 +61,6 @@ pub enum DecodeOutcome<'a> {
     Deferred,
 }
 
-/// Identifies which UI row an off-thread avatar decode should patch once it lands.
 #[derive(Clone, PartialEq, Eq, Hash)]
 pub enum AvatarSlot {
     Message(String),

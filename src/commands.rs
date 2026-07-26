@@ -188,7 +188,7 @@ impl PaginationView {
 #[derive(Clone, Default)]
 pub struct LifecycleView {
     pub step: LoginStep,
-    pub status: LoginStatus,
+    pub activity: LoginActivity,
     pub error: String,
     pub method: LoginMethod,
     pub resolved_homeserver: String,
@@ -206,7 +206,7 @@ pub enum LoginStep {
 }
 
 #[derive(Clone, Copy, Default, PartialEq, Eq)]
-pub enum LoginStatus {
+pub enum LoginActivity {
     #[default]
     Idle,
     LoadingSession,

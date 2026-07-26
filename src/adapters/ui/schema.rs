@@ -9,7 +9,6 @@ pub(crate) use gen_consts;
 
 macro_rules! string_props {
     ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
-        LoginStatus LoginView "LoginView" "status" set_status;
         LoginError LoginView "LoginView" "error" set_error;
         ResolvedHomeserver LoginView "LoginView" "resolved-homeserver" set_resolved_homeserver;
         UserId SessionView "SessionView" "user-id" set_user_id;

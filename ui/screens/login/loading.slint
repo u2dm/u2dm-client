@@ -4,17 +4,18 @@ import {
     StatusRow,
     ErrorBanner,
 } from "./common.slint";
+import { LoginActivity } from "../../enums.slint";
 import { LoginView } from "../../views.slint";
 
 export component LoadingScreen inherits LoginPage {
     BrandHeader {
-        subtitle: LoginView.status == "" && LoginView.error == ""
+        subtitle: LoginView.activity == LoginActivity.idle && LoginView.error == ""
             ? @tr("Starting up...")
             : "";
     }
 
-    if LoginView.status != "": StatusRow {
-        status: LoginView.status;
+    if LoginView.activity != LoginActivity.idle: StatusRow {
+        activity: LoginView.activity;
         spinner: true;
     }
 

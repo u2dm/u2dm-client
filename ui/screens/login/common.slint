@@ -1,5 +1,6 @@
 import { Palette, Spinner } from "std-widgets.slint";
 import { IconDisplay, IconSet, Icon } from "@lucide";
+import { LoginActivity } from "../../enums.slint";
 
 export global LoginStyle {
     out property <bool> dark: Palette.color-scheme == ColorScheme.dark;
@@ -15,76 +16,6 @@ export global LoginStyle {
     out property <color> danger: Colors.tomato.mix(Palette.foreground, 0.8);
     out property <color> danger-surface: Colors.tomato.transparentize(0.9);
     out property <color> success: Colors.mediumseagreen.mix(Palette.foreground, 0.8);
-}
-
-export global LoginStatus {
-    public pure function label(id: string) -> string {
-        if id == "loading-session" {
-            return @tr("Loading saved session...");
-        }
-        if id == "opening-store" {
-            return @tr("Opening encrypted store...");
-        }
-        if id == "connecting" {
-            return @tr("Connecting to homeserver...");
-        }
-        if id == "restoring-auth" {
-            return @tr("Restoring authentication...");
-        }
-        if id == "syncing" {
-            return @tr("Syncing rooms...");
-        }
-        if id == "checking-server" {
-            return @tr("Checking server...");
-        }
-        if id == "logging-in" {
-            return @tr("Logging in...");
-        }
-        if id == "opening-browser" {
-            return @tr("Opening browser...");
-        }
-        if id == "waiting-auth" {
-            return @tr("Waiting for authentication...");
-        }
-        if id == "cleaning-up" {
-            return @tr("Erasing local account data...");
-        }
-        return id;
-    }
-
-    public pure function icon(id: string) -> Icon {
-        if id == "loading-session" {
-            return IconSet.History;
-        }
-        if id == "opening-store" {
-            return IconSet.LockKeyhole;
-        }
-        if id == "connecting" {
-            return IconSet.Globe;
-        }
-        if id == "restoring-auth" {
-            return IconSet.KeyRound;
-        }
-        if id == "syncing" {
-            return IconSet.RefreshCw;
-        }
-        if id == "checking-server" {
-            return IconSet.Server;
-        }
-        if id == "logging-in" {
-            return IconSet.LogIn;
-        }
-        if id == "opening-browser" {
-            return IconSet.ExternalLink;
-        }
-        if id == "waiting-auth" {
-            return IconSet.Hourglass;
-        }
-        if id == "cleaning-up" {
-            return IconSet.Trash2;
-        }
-        return IconSet.Loader;
-    }
 }
 
 export component DotPulse inherits HorizontalLayout {
@@ -233,8 +164,76 @@ export component StepDots inherits HorizontalLayout {
 }
 
 export component StatusRow inherits HorizontalLayout {
-    in property <string> status;
+    in property <LoginActivity> activity;
     in property <bool> spinner: false;
+
+    pure function label() -> string {
+        if root.activity == LoginActivity.loading-session {
+            return @tr("Loading saved session...");
+        }
+        if root.activity == LoginActivity.opening-store {
+            return @tr("Opening encrypted store...");
+        }
+        if root.activity == LoginActivity.connecting {
+            return @tr("Connecting to homeserver...");
+        }
+        if root.activity == LoginActivity.restoring-auth {
+            return @tr("Restoring authentication...");
+        }
+        if root.activity == LoginActivity.syncing {
+            return @tr("Syncing rooms...");
+        }
+        if root.activity == LoginActivity.checking-server {
+            return @tr("Checking server...");
+        }
+        if root.activity == LoginActivity.logging-in {
+            return @tr("Logging in...");
+        }
+        if root.activity == LoginActivity.opening-browser {
+            return @tr("Opening browser...");
+        }
+        if root.activity == LoginActivity.waiting-auth {
+            return @tr("Waiting for authentication...");
+        }
+        if root.activity == LoginActivity.cleaning-up {
+            return @tr("Erasing local account data...");
+        }
+        return "";
+    }
+
+    pure function icon() -> Icon {
+        if root.activity == LoginActivity.loading-session {
+            return IconSet.History;
+        }
+        if root.activity == LoginActivity.opening-store {
+            return IconSet.LockKeyhole;
+        }
+        if root.activity == LoginActivity.connecting {
+            return IconSet.Globe;
+        }
+        if root.activity == LoginActivity.restoring-auth {
+            return IconSet.KeyRound;
+        }
+        if root.activity == LoginActivity.syncing {
+            return IconSet.RefreshCw;
+        }
+        if root.activity == LoginActivity.checking-server {
+            return IconSet.Server;
+        }
+        if root.activity == LoginActivity.logging-in {
+            return IconSet.LogIn;
+        }
+        if root.activity == LoginActivity.opening-browser {
+            return IconSet.ExternalLink;
+        }
+        if root.activity == LoginActivity.waiting-auth {
+            return IconSet.Hourglass;
+        }
+        if root.activity == LoginActivity.cleaning-up {
+            return IconSet.Trash2;
+        }
+        return IconSet.Loader;
+    }
 
     alignment: center;
     spacing: 8px;
@@ -253,14 +252,14 @@ export component StatusRow inherits HorizontalLayout {
         alignment: center;
 
         IconDisplay {
-            icon: LoginStatus.icon(root.status);
+            icon: root.icon();
             size: 14px;
             stroke: LoginStyle.faint;
         }
     }
 
     Text {
-        text: LoginStatus.label(root.status);
+        text: root.label();
         font-size: 13px;
         vertical-alignment: center;
         color: LoginStyle.muted;

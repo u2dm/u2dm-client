@@ -5,9 +5,7 @@ use slint::SharedString;
 
 use super::backend::{UiBackend, UiEventContext};
 use super::decode::{AvatarSlot, clear_session_media, load_avatar_async};
-use super::present::{
-    FILE_SAVED_TOAST, VerifyStep, login_method_kind, login_status_token, user_initial,
-};
+use super::present::{VerifyStep, login_method_kind, toast_kind, user_initial};
 use super::props::{BoolProp, IntProp, StringProp, UiProps};
 use super::reconcile::{apply_reconcile, apply_rooms, apply_timeline_patch};
 use crate::commands::{
@@ -191,11 +189,8 @@ fn apply_lifecycle(w: &impl UiProps, last: Option<&LifecycleView>, next: &Lifecy
     if last.is_none_or(|l| l.step != next.step) {
         w.set_login_phase(next.step);
     }
-    if last.is_none_or(|l| l.status != next.status) {
-        w.set_string(
-            StringProp::LoginStatus,
-            SharedString::from(login_status_token(next.status)),
-        );
+    if last.is_none_or(|l| l.activity != next.activity) {
+        w.set_login_activity(next.activity);
     }
     if last.is_none_or(|l| l.error != next.error) {
         w.set_string(StringProp::LoginError, SharedString::from(&next.error));
@@ -229,8 +224,9 @@ fn apply_toast(w: &impl UiProps, toast: &Toast) {
     let (message, path) = match toast {
         Toast::None => ("", ""),
         Toast::Error(message) => (message.as_str(), ""),
-        Toast::FileSaved(path) => (FILE_SAVED_TOAST, path.as_str()),
+        Toast::FileSaved(path) => ("", path.as_str()),
     };
+    w.set_toast_kind(toast_kind(toast));
     w.set_string(StringProp::ToastMessage, SharedString::from(message));
     w.set_string(StringProp::SavedFilePath, SharedString::from(path));
 }

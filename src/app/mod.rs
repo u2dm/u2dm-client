@@ -23,7 +23,7 @@ use tokio::sync::{mpsc, watch};
 use verification::VerificationController;
 
 use crate::commands::{
-    AppViewState, DirectoryUpdate, Effect, LoginStatus, LoginStep, Toast, UiCommand,
+    AppViewState, DirectoryUpdate, Effect, LoginActivity, LoginStep, Toast, UiCommand,
     ViewportChanged,
 };
 use crate::domain::account::AccountScope;
@@ -300,7 +300,7 @@ impl AppService {
         self.output.publish(Box::new(move |view| {
             view.lifecycle.user_id = user_id;
             view.lifecycle.step = LoginStep::LoggedIn;
-            view.lifecycle.status = LoginStatus::Idle;
+            view.lifecycle.activity = LoginActivity::Idle;
         }));
     }
 
@@ -526,7 +526,7 @@ impl AppService {
         };
         self.room_directory.connect();
         self.output.publish(Box::new(|view| {
-            view.lifecycle.status = LoginStatus::Syncing;
+            view.lifecycle.activity = LoginActivity::Syncing;
         }));
         self.background.restart().await;
         self.session

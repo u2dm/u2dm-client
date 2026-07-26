@@ -2,15 +2,17 @@ import { RoomEntry, SpaceEntry, MessageEntry } from "screens/chat/components/typ
 import { VerificationEmoji } from "components/types.slint";
 import {
     LoginPhase,
+    LoginActivity,
     ConnectionState,
     TimelineState,
+    ToastKind,
     VerificationPhase,
     LoginMethodKind,
 } from "enums.slint";
 
 export global LoginView {
     in property <LoginPhase> step: LoginPhase.loading;
-    in property <string> status;
+    in property <LoginActivity> activity: LoginActivity.idle;
     in property <string> error;
     in property <LoginMethodKind> method: LoginMethodKind.none;
     in property <string> resolved-homeserver;
@@ -44,6 +46,7 @@ export global RoomView {
     in property <int> prepend-token;
     in property <bool> backwards-loading;
     in property <bool> forwards-loading;
+    in property <ToastKind> toast-kind: ToastKind.none;
     in property <string> toast-message;
     in property <string> saved-file-path;
 }

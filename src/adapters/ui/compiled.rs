@@ -13,12 +13,14 @@ use super::dto::{
     MediaState, ThumbUpdate, enrich_to_update, message_to_dto, room_to_dto, space_to_dto,
 };
 use super::multiplex::spawn_event_multiplexer;
-use super::present::{LoginMethodKind, MessageKind, PreviewKind, ServiceKind, VerifyStep};
+use super::present::{
+    LoginMethodKind, MessageKind, PreviewKind, ServiceKind, ToastKind, VerifyStep,
+};
 use super::props::{BoolProp, IntProp, StringProp, UiProps};
 use super::reconcile::reorder_rows;
 use super::schema::{bool_props, int_props, simple_callbacks, string_props};
 use super::{emoji, router};
-use crate::commands::{AppViewState, Effect, LoginStep, UiCommand, ViewportChanged};
+use crate::commands::{AppViewState, Effect, LoginActivity, LoginStep, UiCommand, ViewportChanged};
 use crate::domain::models::{
     ConnectionStatus, EnrichmentDelta, LoginCredentials, Room, Space, TimelineMessage,
     TimelineStatus, VerificationEmoji as DomainVerificationEmoji,
@@ -32,10 +34,11 @@ mod generated {
 }
 use generated::{
     AppWindow, ConnectionState, DirectoryView, EmojiEntry, EmojiGroup, EmojiInsert, EmojiStore,
-    LoginMethodKind as UiLoginMethodKind, LoginPhase, LoginView, MediaState as UiMediaState,
-    MessageEntry, MessageKind as UiMessageKind, PreviewKind as UiPreviewKind, RoomEntry, RoomView,
-    ServiceKind as UiServiceKind, SessionView, SpaceEntry, TimelineState, VerificationEmoji,
-    VerificationPhase, VerificationView,
+    LoginActivity as UiLoginActivity, LoginMethodKind as UiLoginMethodKind, LoginPhase, LoginView,
+    MediaState as UiMediaState, MessageEntry, MessageKind as UiMessageKind,
+    PreviewKind as UiPreviewKind, RoomEntry, RoomView, ServiceKind as UiServiceKind, SessionView,
+    SpaceEntry, TimelineState, ToastKind as UiToastKind, VerificationEmoji, VerificationPhase,
+    VerificationView,
 };
 
 thread_local! {
@@ -76,9 +79,19 @@ impl UiProps for AppWindow {
         self.global::<LoginView>().set_step(to_login_phase(step));
     }
 
+    fn set_login_activity(&self, activity: LoginActivity) {
+        self.global::<LoginView>()
+            .set_activity(to_login_activity(activity));
+    }
+
     fn set_login_method_kind(&self, method: LoginMethodKind) {
         self.global::<LoginView>()
             .set_method(to_login_method(method));
+    }
+
+    fn set_toast_kind(&self, kind: ToastKind) {
+        self.global::<RoomView>()
+            .set_toast_kind(to_toast_kind(kind));
     }
 
     fn set_connection_state(&self, status: &ConnectionStatus) {
@@ -156,6 +169,30 @@ fn to_login_phase(step: LoginStep) -> LoginPhase {
         LoginStep::Homeserver => LoginPhase::Homeserver,
         LoginStep::Credentials => LoginPhase::Credentials,
         LoginStep::LoggedIn => LoginPhase::LoggedIn,
+    }
+}
+
+fn to_login_activity(activity: LoginActivity) -> UiLoginActivity {
+    match activity {
+        LoginActivity::Idle => UiLoginActivity::Idle,
+        LoginActivity::LoadingSession => UiLoginActivity::LoadingSession,
+        LoginActivity::OpeningStore => UiLoginActivity::OpeningStore,
+        LoginActivity::Connecting => UiLoginActivity::Connecting,
+        LoginActivity::RestoringAuth => UiLoginActivity::RestoringAuth,
+        LoginActivity::CheckingServer => UiLoginActivity::CheckingServer,
+        LoginActivity::LoggingIn => UiLoginActivity::LoggingIn,
+        LoginActivity::OpeningBrowser => UiLoginActivity::OpeningBrowser,
+        LoginActivity::WaitingAuth => UiLoginActivity::WaitingAuth,
+        LoginActivity::Syncing => UiLoginActivity::Syncing,
+        LoginActivity::CleaningUp => UiLoginActivity::CleaningUp,
+    }
+}
+
+fn to_toast_kind(kind: ToastKind) -> UiToastKind {
+    match kind {
+        ToastKind::None => UiToastKind::None,
+        ToastKind::Error => UiToastKind::Error,
+        ToastKind::FileSaved => UiToastKind::FileSaved,
     }
 }
 

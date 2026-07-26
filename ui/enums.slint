@@ -5,6 +5,20 @@ export enum LoginPhase {
     logged-in,
 }
 
+export enum LoginActivity {
+    idle,
+    loading-session,
+    opening-store,
+    connecting,
+    restoring-auth,
+    checking-server,
+    logging-in,
+    opening-browser,
+    waiting-auth,
+    syncing,
+    cleaning-up,
+}
+
 export enum ConnectionState {
     disconnected,
     connecting,
@@ -27,6 +41,12 @@ export enum VerificationPhase {
     confirming,
     done,
     cancelled,
+}
+
+export enum ToastKind {
+    none,
+    error,
+    file-saved,
 }
 
 export enum MediaState {

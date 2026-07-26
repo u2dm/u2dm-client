@@ -91,12 +91,12 @@ msgctxt "AppWindow"
 msgid "U2DM Matrix Client"
 msgstr ""
 
-#: ui/screens/chat/chat.slint:136
+#: ui/screens/chat/chat.slint:137
 msgctxt "ChatScreen"
 msgid "File saved to {}"
 msgstr ""
 
-#: ui/screens/chat/chat.slint:149
+#: ui/screens/chat/chat.slint:150
 msgctxt "ChatScreen"
 msgid "Dismiss"
 msgstr ""
@@ -518,52 +518,52 @@ msgctxt "Drawer"
 msgid "Log Out"
 msgstr ""
 
-#: ui/screens/login/credentials.slint:56
+#: ui/screens/login/credentials.slint:57
 msgctxt "CredentialsScreen"
 msgid "Enter your credentials to continue"
 msgstr ""
 
-#: ui/screens/login/credentials.slint:70
+#: ui/screens/login/credentials.slint:71
 msgctxt "CredentialsScreen"
 msgid "USERNAME"
 msgstr ""
 
-#: ui/screens/login/credentials.slint:75
+#: ui/screens/login/credentials.slint:76
 msgctxt "CredentialsScreen"
 msgid "Username"
 msgstr ""
 
-#: ui/screens/login/credentials.slint:76
+#: ui/screens/login/credentials.slint:77
 msgctxt "CredentialsScreen"
 msgid "username"
 msgstr ""
 
-#: ui/screens/login/credentials.slint:89
+#: ui/screens/login/credentials.slint:90
 msgctxt "CredentialsScreen"
 msgid "PASSWORD"
 msgstr ""
 
-#: ui/screens/login/credentials.slint:94
+#: ui/screens/login/credentials.slint:95
 msgctxt "CredentialsScreen"
 msgid "Password"
 msgstr ""
 
-#: ui/screens/login/credentials.slint:95
+#: ui/screens/login/credentials.slint:96
 msgctxt "CredentialsScreen"
 msgid "password"
 msgstr ""
 
-#: ui/screens/login/credentials.slint:106
+#: ui/screens/login/credentials.slint:107
 msgctxt "CredentialsScreen"
 msgid "Log in"
 msgstr ""
 
-#: ui/screens/login/credentials.slint:119
+#: ui/screens/login/credentials.slint:120
 msgctxt "CredentialsScreen"
 msgid "Continue with browser"
 msgstr ""
 
-#: ui/screens/login/credentials.slint:130
+#: ui/screens/login/credentials.slint:131
 msgctxt "CredentialsScreen"
 msgid "Cancel"
 msgstr ""
@@ -573,87 +573,87 @@ msgctxt "BackButton"
 msgid "Back to the homeserver step"
 msgstr ""
 
-#: ui/screens/login/homeserver.slint:30
+#: ui/screens/login/homeserver.slint:31
 msgctxt "HomeserverScreen"
 msgid "Sign in to your Matrix account"
 msgstr ""
 
-#: ui/screens/login/homeserver.slint:37
+#: ui/screens/login/homeserver.slint:38
 msgctxt "HomeserverScreen"
 msgid "HOMESERVER"
 msgstr ""
 
-#: ui/screens/login/homeserver.slint:42
+#: ui/screens/login/homeserver.slint:43
 msgctxt "HomeserverScreen"
 msgid "Homeserver"
 msgstr ""
 
-#: ui/screens/login/homeserver.slint:52
+#: ui/screens/login/homeserver.slint:53
 msgctxt "HomeserverScreen"
 msgid "The server that stores your account and messages."
 msgstr ""
 
-#: ui/screens/login/homeserver.slint:60
+#: ui/screens/login/homeserver.slint:61
 msgctxt "HomeserverScreen"
 msgid "Continue"
 msgstr ""
 
-#: ui/screens/login/common.slint:23
-msgctxt "LoginStatus"
-msgid "Loading saved session..."
-msgstr ""
-
-#: ui/screens/login/common.slint:26
-msgctxt "LoginStatus"
-msgid "Opening encrypted store..."
-msgstr ""
-
-#: ui/screens/login/common.slint:29
-msgctxt "LoginStatus"
-msgid "Connecting to homeserver..."
-msgstr ""
-
-#: ui/screens/login/common.slint:32
-msgctxt "LoginStatus"
-msgid "Restoring authentication..."
-msgstr ""
-
-#: ui/screens/login/common.slint:35
-msgctxt "LoginStatus"
-msgid "Syncing rooms..."
-msgstr ""
-
-#: ui/screens/login/common.slint:38
-msgctxt "LoginStatus"
-msgid "Checking server..."
-msgstr ""
-
-#: ui/screens/login/common.slint:41
-msgctxt "LoginStatus"
-msgid "Logging in..."
-msgstr ""
-
-#: ui/screens/login/common.slint:44
-msgctxt "LoginStatus"
-msgid "Opening browser..."
-msgstr ""
-
-#: ui/screens/login/common.slint:47
-msgctxt "LoginStatus"
-msgid "Waiting for authentication..."
-msgstr ""
-
-#: ui/screens/login/common.slint:50
-msgctxt "LoginStatus"
-msgid "Erasing local account data..."
-msgstr ""
-
-#: ui/screens/login/common.slint:191
+#: ui/screens/login/common.slint:122
 msgctxt "BrandHeader"
 msgid "U2DM"
 msgstr ""
 
-#: ui/screens/login/common.slint:363
+#: ui/screens/login/common.slint:172
+msgctxt "StatusRow"
+msgid "Loading saved session..."
+msgstr ""
+
+#: ui/screens/login/common.slint:175
+msgctxt "StatusRow"
+msgid "Opening encrypted store..."
+msgstr ""
+
+#: ui/screens/login/common.slint:178
+msgctxt "StatusRow"
+msgid "Connecting to homeserver..."
+msgstr ""
+
+#: ui/screens/login/common.slint:181
+msgctxt "StatusRow"
+msgid "Restoring authentication..."
+msgstr ""
+
+#: ui/screens/login/common.slint:184
+msgctxt "StatusRow"
+msgid "Syncing rooms..."
+msgstr ""
+
+#: ui/screens/login/common.slint:187
+msgctxt "StatusRow"
+msgid "Checking server..."
+msgstr ""
+
+#: ui/screens/login/common.slint:190
+msgctxt "StatusRow"
+msgid "Logging in..."
+msgstr ""
+
+#: ui/screens/login/common.slint:193
+msgctxt "StatusRow"
+msgid "Opening browser..."
+msgstr ""
+
+#: ui/screens/login/common.slint:196
+msgctxt "StatusRow"
+msgid "Waiting for authentication..."
+msgstr ""
+
+#: ui/screens/login/common.slint:199
+msgctxt "StatusRow"
+msgid "Erasing local account data..."
+msgstr ""
+
+#: ui/screens/login/common.slint:362
 msgctxt "OrDivider"
 msgid "or"
 msgstr ""
@@ -668,7 +668,7 @@ msgctxt "LoginField"
 msgid "Show password"
 msgstr ""
 
-#: ui/screens/login/loading.slint:12
+#: ui/screens/login/loading.slint:13
 msgctxt "LoadingScreen"
 msgid "Starting up..."
 msgstr ""

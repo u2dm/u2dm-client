@@ -8,7 +8,6 @@ use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 
 use super::{data, login, media};
-use crate::commands::LoginStatus;
 use crate::domain::models::{
     AuthMethod, LoginCredentials, OAuthLoginData, PaginationDirection, PaginationOutcome,
     ReplyInfo, RoomId, ServerInfo, Session, SyncEvent, SyncOutcome, TimelineCommand,
@@ -16,8 +15,8 @@ use crate::domain::models::{
 };
 use crate::error::{AppError, Result};
 use crate::ports::matrix::{
-    AuthPort, AuthenticatedSession, CleanupReport, MediaPort, ProgressSink, SessionPort,
-    SpaceOrderPort, StoreAdoption, SyncPort, SyncSink, TimelinePort, VerificationPort,
+    AuthPort, AuthenticatedSession, CleanupReport, MediaPort, ProgressSink, RestoreStep,
+    SessionPort, SpaceOrderPort, StoreAdoption, SyncPort, SyncSink, TimelinePort, VerificationPort,
 };
 use crate::ports::media::MediaCache;
 
@@ -64,7 +63,7 @@ impl AuthPort for DemoMatrix {
         _passphrase: &str,
         on_progress: ProgressSink,
     ) -> Result<AuthenticatedSession> {
-        for step in [LoginStatus::Connecting, LoginStatus::RestoringAuth] {
+        for step in [RestoreStep::Connecting, RestoreStep::RestoringAuth] {
             on_progress(step);
             login::pause().await;
         }

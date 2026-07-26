@@ -5,6 +5,7 @@ import { Sidebar } from "components/sidebar.slint";
 import { Drawer } from "components/drawer.slint";
 import { TimelineView } from "components/timeline/timeline-view.slint";
 import { ClickArea } from "../../components/a11y.slint";
+import { ToastKind } from "../../enums.slint";
 import { DirectoryView, RoomView } from "../../views.slint";
 
 export component ChatScreen inherits Rectangle {
@@ -36,8 +37,8 @@ export component ChatScreen inherits Rectangle {
     property <length> total-sidebar-width: root.sidebar-width
         + (root.has-subspaces ? root.subrail-width : 0);
     property <bool> drawer-open: false;
-    property <bool> has-toast: RoomView.toast-message != "";
-    property <bool> is-file-saved-toast: RoomView.toast-message == "file-saved";
+    property <bool> has-toast: RoomView.toast-kind != ToastKind.none;
+    property <bool> is-file-saved-toast: RoomView.toast-kind == ToastKind.file-saved;
 
     Sidebar {
         x: 0;

@@ -30,12 +30,12 @@ use super::dto::{
     MediaState, ThumbUpdate, enrich_to_update, message_to_dto, room_to_dto, space_to_dto,
 };
 use super::multiplex::spawn_event_multiplexer;
-use super::present::{LoginMethodKind, VerifyStep};
+use super::present::{LoginMethodKind, ToastKind, VerifyStep};
 use super::props::{BoolProp, IntProp, StringProp, UiProps};
 use super::reconcile::reorder_rows;
 use super::schema::{message_fields, room_fields, simple_callbacks, space_fields};
 use super::{emoji, router};
-use crate::commands::{AppViewState, Effect, LoginStep, UiCommand, ViewportChanged};
+use crate::commands::{AppViewState, Effect, LoginActivity, LoginStep, UiCommand, ViewportChanged};
 use crate::domain::models::{
     ConnectionStatus, EnrichmentDelta, LoginCredentials, Room, Space, TimelineMessage,
     TimelineStatus, VerificationEmoji as DomainVerificationEmoji,
@@ -151,6 +151,22 @@ fn login_phase_value(step: LoginStep) -> &'static str {
         LoginStep::Homeserver => "homeserver",
         LoginStep::Credentials => "credentials",
         LoginStep::LoggedIn => "logged-in",
+    }
+}
+
+fn login_activity_value(activity: LoginActivity) -> &'static str {
+    match activity {
+        LoginActivity::Idle => "idle",
+        LoginActivity::LoadingSession => "loading-session",
+        LoginActivity::OpeningStore => "opening-store",
+        LoginActivity::Connecting => "connecting",
+        LoginActivity::RestoringAuth => "restoring-auth",
+        LoginActivity::CheckingServer => "checking-server",
+        LoginActivity::LoggingIn => "logging-in",
+        LoginActivity::OpeningBrowser => "opening-browser",
+        LoginActivity::WaitingAuth => "waiting-auth",
+        LoginActivity::Syncing => "syncing",
+        LoginActivity::CleaningUp => "cleaning-up",
     }
 }
 
@@ -281,9 +297,23 @@ impl UiProps for ComponentInstance {
         );
     }
 
+    fn set_login_activity(&self, activity: LoginActivity) {
+        set_global(
+            self,
+            "LoginView",
+            "activity",
+            enum_value("LoginActivity", login_activity_value(activity)),
+        );
+    }
+
     fn set_login_method_kind(&self, method: LoginMethodKind) {
         let (name, variant) = method.slint();
         set_global(self, "LoginView", "method", enum_value(name, variant));
+    }
+
+    fn set_toast_kind(&self, kind: ToastKind) {
+        let (name, variant) = kind.slint();
+        set_global(self, "RoomView", "toast-kind", enum_value(name, variant));
     }
 
     fn set_connection_state(&self, status: &ConnectionStatus) {

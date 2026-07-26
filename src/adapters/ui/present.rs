@@ -4,7 +4,7 @@ use std::sync::OnceLock;
 use chrono::{Locale, Timelike};
 use pure_rust_locales::locale_match;
 
-use crate::commands::LoginStatus;
+use crate::commands::Toast;
 use crate::domain::models::{
     LoginMethod, MessageBody, MessagePreviewKind, ServiceEvent, TimelineMessage,
 };
@@ -391,21 +391,30 @@ pub fn login_method_kind(method: LoginMethod) -> LoginMethodKind {
     }
 }
 
-pub const FILE_SAVED_TOAST: &str = "file-saved";
+#[derive(Clone, Copy)]
+pub enum ToastKind {
+    None,
+    Error,
+    FileSaved,
+}
 
-pub fn login_status_token(status: LoginStatus) -> &'static str {
-    match status {
-        LoginStatus::Idle => "",
-        LoginStatus::LoadingSession => "loading-session",
-        LoginStatus::OpeningStore => "opening-store",
-        LoginStatus::Connecting => "connecting",
-        LoginStatus::RestoringAuth => "restoring-auth",
-        LoginStatus::CheckingServer => "checking-server",
-        LoginStatus::LoggingIn => "logging-in",
-        LoginStatus::OpeningBrowser => "opening-browser",
-        LoginStatus::WaitingAuth => "waiting-auth",
-        LoginStatus::Syncing => "syncing",
-        LoginStatus::CleaningUp => "cleaning-up",
+impl ToastKind {
+    #[cfg(feature = "interpreted")]
+    pub fn slint(self) -> (&'static str, &'static str) {
+        let variant = match self {
+            Self::None => "none",
+            Self::Error => "error",
+            Self::FileSaved => "file-saved",
+        };
+        ("ToastKind", variant)
+    }
+}
+
+pub fn toast_kind(toast: &Toast) -> ToastKind {
+    match toast {
+        Toast::None => ToastKind::None,
+        Toast::Error(_) => ToastKind::Error,
+        Toast::FileSaved(_) => ToastKind::FileSaved,
     }
 }
 

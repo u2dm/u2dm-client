@@ -8,12 +8,14 @@ use tokio_util::sync::CancellationToken;
 use super::establish::EstablishedSession;
 use super::lifecycle::Lifecycle;
 use super::task_group::TaskGroup;
-use crate::commands::{LoginStatus, LoginStep, Toast};
+use crate::commands::{LoginActivity, LoginStep, Toast};
 use crate::domain::account::AccountScope;
 use crate::domain::models::{LoginCredentials, LoginMethod, ServerInfo, Session};
 use crate::error::{AppError, Result};
 use crate::ports::browser::BrowserPort;
-use crate::ports::matrix::{AuthPort, AuthenticatedSession, CleanupReport, SessionPort};
+use crate::ports::matrix::{
+    AuthPort, AuthenticatedSession, CleanupReport, RestoreStep, SessionPort,
+};
 use crate::ports::output::AppOutputPort;
 use crate::ports::storage::{StoragePort, StoredSession};
 use crate::util::random_hex;
@@ -45,6 +47,13 @@ fn cleanup_problem(report: &CleanupReport) -> Option<String> {
     } else {
         format!("Some local account data could not be erased: {detail}")
     })
+}
+
+fn restore_activity(step: RestoreStep) -> LoginActivity {
+    match step {
+        RestoreStep::Connecting => LoginActivity::Connecting,
+        RestoreStep::RestoringAuth => LoginActivity::RestoringAuth,
+    }
 }
 
 async fn end_server_session(lifecycle_port: &dyn SessionPort) {
@@ -107,7 +116,7 @@ impl SessionController {
         homeserver: String,
         attempt: u64,
     ) {
-        self.begin_login(LoginStatus::CheckingServer);
+        self.begin_login(LoginActivity::CheckingServer);
         let this = self.clone();
         group.spawn(async move { this.check_server(&homeserver, attempt).await });
     }
@@ -118,13 +127,13 @@ impl SessionController {
         creds: LoginCredentials,
         attempt: u64,
     ) {
-        self.begin_login(LoginStatus::LoggingIn);
+        self.begin_login(LoginActivity::LoggingIn);
         let this = self.clone();
         group.spawn(async move { this.login_password(creds, attempt).await });
     }
 
     pub(super) fn spawn_login_oauth(&self, group: &mut TaskGroup, attempt: u64) {
-        self.begin_login(LoginStatus::OpeningBrowser);
+        self.begin_login(LoginActivity::OpeningBrowser);
         let cancel = self.begin_oauth();
         let this = self.clone();
         group.spawn(async move { this.login_oauth(cancel, attempt).await });
@@ -133,7 +142,7 @@ impl SessionController {
     pub(super) fn back_to_homeserver(&self) {
         self.output.publish(Box::new(|view| {
             view.lifecycle.step = LoginStep::Homeserver;
-            view.lifecycle.status = LoginStatus::Idle;
+            view.lifecycle.activity = LoginActivity::Idle;
             view.lifecycle.error = String::new();
         }));
     }
@@ -179,11 +188,11 @@ impl SessionController {
     }
 
     async fn try_restore_session(&self) -> Option<AuthenticatedSession> {
-        self.set_status(LoginStatus::LoadingSession);
+        self.set_activity(LoginActivity::LoadingSession);
         let session = self.load_saved_session().await?;
         let account = AccountScope::from_session(&session);
 
-        self.set_status(LoginStatus::OpeningStore);
+        self.set_activity(LoginActivity::OpeningStore);
         let passphrase = self.stored_passphrase(&account).await?;
 
         match self.restore_matrix_session(&session, &passphrase).await {
@@ -298,8 +307,9 @@ impl SessionController {
         passphrase: &str,
     ) -> Result<AuthenticatedSession> {
         let output = Arc::clone(&self.output);
-        let on_progress = Box::new(move |status| {
-            output.publish(Box::new(move |view| view.lifecycle.status = status));
+        let on_progress = Box::new(move |step| {
+            let activity = restore_activity(step);
+            output.publish(Box::new(move |view| view.lifecycle.activity = activity));
         });
 
         self.auth
@@ -354,7 +364,7 @@ impl SessionController {
             }),
             Ok(None) => {
                 tracing::info!("OAuth login cancelled");
-                self.set_status(LoginStatus::Idle);
+                self.set_activity(LoginActivity::Idle);
             }
             Err(e) => {
                 tracing::warn!("OAuth login failed: {e}");
@@ -483,7 +493,7 @@ impl SessionController {
     async fn oauth_login_steps(&self) -> Result<EstablishedSession> {
         let oauth_data = self.auth.login_oauth_start().await?;
         self.browser.open_url(&oauth_data.auth_url).await?;
-        self.set_status(LoginStatus::WaitingAuth);
+        self.set_activity(LoginActivity::WaitingAuth);
         let session = timeout(OAUTH_CALLBACK_TIMEOUT, self.auth.login_oauth_finish())
             .await
             .map_err(|_| AppError::Other("Timed out waiting for browser sign-in.".into()))??;
@@ -515,7 +525,7 @@ impl SessionController {
             tracing::debug!("cleanup requested for a superseded session, skipping");
             return CleanupReport::default();
         }
-        self.set_status(LoginStatus::CleaningUp);
+        self.set_activity(LoginActivity::CleaningUp);
 
         let mut report = CleanupReport::default();
         self.destroy_store_key(account, &mut report).await;
@@ -523,7 +533,7 @@ impl SessionController {
         report.merge(lifecycle_port.clear_store().await);
 
         self.lifecycle.finish_logout(session);
-        self.set_status(LoginStatus::Idle);
+        self.set_activity(LoginActivity::Idle);
         report
     }
 
@@ -539,14 +549,14 @@ impl SessionController {
             view.lifecycle.method = method;
             view.lifecycle.resolved_homeserver = info.homeserver_url;
             view.lifecycle.step = LoginStep::Credentials;
-            view.lifecycle.status = LoginStatus::Idle;
+            view.lifecycle.activity = LoginActivity::Idle;
         }));
     }
 
     fn emit_show_login(&self) {
         self.output.publish(Box::new(|view| {
             view.lifecycle.step = LoginStep::Homeserver;
-            view.lifecycle.status = LoginStatus::Idle;
+            view.lifecycle.activity = LoginActivity::Idle;
         }));
     }
 
@@ -554,21 +564,21 @@ impl SessionController {
         self.fail_login(err.to_string());
     }
 
-    fn set_status(&self, status: LoginStatus) {
+    fn set_activity(&self, activity: LoginActivity) {
         self.output
-            .publish(Box::new(move |view| view.lifecycle.status = status));
+            .publish(Box::new(move |view| view.lifecycle.activity = activity));
     }
 
-    fn begin_login(&self, status: LoginStatus) {
+    fn begin_login(&self, activity: LoginActivity) {
         self.output.publish(Box::new(move |view| {
-            view.lifecycle.status = status;
+            view.lifecycle.activity = activity;
             view.lifecycle.error = String::new();
         }));
     }
 
     fn fail_login(&self, message: String) {
         self.output.publish(Box::new(move |view| {
-            view.lifecycle.status = LoginStatus::Idle;
+            view.lifecycle.activity = LoginActivity::Idle;
             view.lifecycle.error = message;
         }));
     }
