@@ -2,9 +2,11 @@ use std::ffi::OsString;
 use std::fs as std_fs;
 use std::io::{self, ErrorKind};
 #[cfg(unix)]
-use std::os::unix::fs::{DirBuilderExt, PermissionsExt};
+use std::os::unix::fs::{DirBuilderExt, MetadataExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 
+#[cfg(unix)]
+use rustix::process::geteuid;
 use tokio::fs;
 use tokio::io::AsyncWriteExt;
 
@@ -26,12 +28,37 @@ pub(crate) async fn create_dir(dir: &Path) -> io::Result<()> {
     builder.create(dir).await
 }
 
-pub(crate) fn create_dir_blocking(dir: &Path) -> io::Result<()> {
+pub(crate) fn create_dir_exclusive_blocking(dir: &Path) -> io::Result<()> {
     let mut builder = std_fs::DirBuilder::new();
-    builder.recursive(true);
     #[cfg(unix)]
     builder.mode(OWNER_ONLY_DIR);
     builder.create(dir)
+}
+
+pub(crate) fn is_private_dir(path: &Path) -> bool {
+    std_fs::symlink_metadata(path).is_ok_and(|metadata| {
+        metadata.is_dir() && is_owned_by_current_user(&metadata) && !is_exposed(&metadata)
+    })
+}
+
+#[cfg(unix)]
+pub(crate) fn is_owned_by_current_user(metadata: &std_fs::Metadata) -> bool {
+    metadata.uid() == geteuid().as_raw()
+}
+
+#[cfg(not(unix))]
+pub(crate) fn is_owned_by_current_user(_metadata: &std_fs::Metadata) -> bool {
+    true
+}
+
+#[cfg(unix)]
+fn is_exposed(metadata: &std_fs::Metadata) -> bool {
+    metadata.permissions().mode() & EXPOSED_TO_OTHERS != 0
+}
+
+#[cfg(not(unix))]
+fn is_exposed(_metadata: &std_fs::Metadata) -> bool {
+    false
 }
 
 pub(crate) async fn write_private(path: &Path, data: &[u8]) -> io::Result<()> {
