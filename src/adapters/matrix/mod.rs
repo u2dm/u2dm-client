@@ -29,7 +29,7 @@ use tokio_util::sync::CancellationToken;
 
 use self::media::MediaService;
 use self::profile::PronounCache;
-use self::store::{StoreLayout, StorePaths};
+use self::store::{AdoptedStore, StoreLayout, StorePaths};
 use crate::domain::account::AccountScope;
 use crate::domain::models::{
     LoginCredentials, OAuthLoginData, RoomId, ServerInfo, Session, SyncOutcome, TimelineCommand,
@@ -38,7 +38,7 @@ use crate::domain::models::{
 use crate::error::{AppError, Result};
 use crate::ports::matrix::{
     AuthPort, AuthenticatedSession, CleanupReport, MediaPort, SessionPort, SpaceOrderPort,
-    SyncPort, SyncSink, TimelinePort, VerificationPort,
+    StoreAdoption, SyncPort, SyncSink, TimelinePort, VerificationPort,
 };
 use crate::ports::media::MediaCache;
 
@@ -92,6 +92,16 @@ impl MatrixAdapter {
         self.purge_login_scratch(&paths).await;
     }
 
+    async fn abandon_adoption(&self, adopted: AdoptedStore) {
+        let report = self.layout.roll_back_adoption(adopted).await;
+        if !report.is_clean() {
+            tracing::warn!(
+                "previous store not restored after a failed adoption: {}",
+                report.summary()
+            );
+        }
+    }
+
     async fn purge_login_scratch(&self, paths: &StorePaths) {
         let report = self.layout.purge(paths).await;
         if !report.is_clean() {
@@ -108,33 +118,86 @@ impl MatrixAdapter {
         session: Session,
         account: AccountScope,
     ) -> AuthenticatedSession {
-        self.media.open(&account).await;
-        let authed = Arc::new(AuthedMatrix {
-            client: RwLock::new(Some(client)),
-            layout: self.layout.clone(),
-            account,
-            media: Arc::clone(&self.media),
-            media_sources: Arc::new(StdMutex::new(HashMap::new())),
-            pronouns: Arc::new(PronounCache::default()),
-            verification_request: Mutex::new(None),
-            sas_verification: Mutex::new(None),
-            verification_req_rx: Mutex::new(None),
-            verification_handler_guards: Mutex::new(Vec::new()),
-        });
-        let sync = Arc::clone(&authed);
-        let timeline = Arc::clone(&authed);
-        let media = Arc::clone(&authed);
-        let verification = Arc::clone(&authed);
-        let space_order = Arc::clone(&authed);
-        AuthenticatedSession {
+        authenticate(
+            self.layout.clone(),
+            Arc::clone(&self.media),
+            client,
             session,
-            sync,
-            timeline,
+            account,
+        )
+        .await
+    }
+}
+
+async fn authenticate(
+    layout: StoreLayout,
+    media: Arc<MediaService>,
+    client: Client,
+    session: Session,
+    account: AccountScope,
+) -> AuthenticatedSession {
+    media.open(&account).await;
+    let authed = Arc::new(AuthedMatrix {
+        client: RwLock::new(Some(client)),
+        layout,
+        account,
+        media,
+        media_sources: Arc::new(StdMutex::new(HashMap::new())),
+        pronouns: Arc::new(PronounCache::default()),
+        verification_request: Mutex::new(None),
+        sas_verification: Mutex::new(None),
+        verification_req_rx: Mutex::new(None),
+        verification_handler_guards: Mutex::new(Vec::new()),
+    });
+    let sync = Arc::clone(&authed);
+    let timeline = Arc::clone(&authed);
+    let media = Arc::clone(&authed);
+    let verification = Arc::clone(&authed);
+    let space_order = Arc::clone(&authed);
+    AuthenticatedSession {
+        session,
+        sync,
+        timeline,
+        media,
+        verification,
+        space_order,
+        lifecycle: authed,
+    }
+}
+
+struct UncommittedAdoption {
+    layout: StoreLayout,
+    media: Arc<MediaService>,
+    adopted: AdoptedStore,
+    client: Client,
+    session: Session,
+    account: AccountScope,
+}
+
+#[async_trait]
+impl StoreAdoption for UncommittedAdoption {
+    async fn commit(self: Box<Self>) -> AuthenticatedSession {
+        let Self {
+            layout,
             media,
-            verification,
-            space_order,
-            lifecycle: authed,
-        }
+            adopted,
+            client,
+            session,
+            account,
+        } = *self;
+        layout.commit_adoption(adopted).await;
+        authenticate(layout, media, client, session, account).await
+    }
+
+    async fn roll_back(self: Box<Self>) -> CleanupReport {
+        let Self {
+            layout,
+            adopted,
+            client,
+            ..
+        } = *self;
+        drop(client);
+        layout.roll_back_adoption(adopted).await
     }
 }
 
@@ -184,7 +247,7 @@ impl AuthPort for MatrixAdapter {
         &self,
         session: &Session,
         passphrase: &str,
-    ) -> Result<AuthenticatedSession> {
+    ) -> Result<Box<dyn StoreAdoption>> {
         let account = AccountScope::from_session(session);
 
         drop(self.client.write().await.take());
@@ -192,16 +255,30 @@ impl AuthPort for MatrixAdapter {
             AppError::Other("No login store to adopt, run server discovery first".into())
         })?;
 
-        let paths = match self.layout.adopt(&pending, &account).await {
-            Ok(paths) => paths,
+        let adopted = match self.layout.adopt(&pending, &account).await {
+            Ok(adopted) => adopted,
             Err(e) => {
                 self.purge_login_scratch(&pending).await;
                 return Err(e);
             }
         };
 
-        let client = auth::open_session(&paths, session, passphrase, &|_| {}).await?;
-        Ok(self.authenticate(client, session.clone(), account).await)
+        let client = match auth::open_session(&adopted.paths, session, passphrase, &|_| {}).await {
+            Ok(client) => client,
+            Err(e) => {
+                self.abandon_adoption(adopted).await;
+                return Err(e);
+            }
+        };
+
+        Ok(Box::new(UncommittedAdoption {
+            layout: self.layout.clone(),
+            media: Arc::clone(&self.media),
+            adopted,
+            client,
+            session: session.clone(),
+            account,
+        }))
     }
 
     async fn restore_session(

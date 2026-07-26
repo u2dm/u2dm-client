@@ -5,6 +5,7 @@ use tokio::sync::mpsc;
 use tokio::time::timeout;
 use tokio_util::sync::CancellationToken;
 
+use super::establish::EstablishedSession;
 use super::lifecycle::Lifecycle;
 use super::task_group::TaskGroup;
 use crate::commands::{Effect, LoginStep};
@@ -22,7 +23,7 @@ const OAUTH_CALLBACK_TIMEOUT: Duration = Duration::from_mins(5);
 pub(super) enum AuthOutcome {
     Login {
         attempt: u64,
-        session: AuthenticatedSession,
+        established: EstablishedSession,
     },
     Restore(AuthenticatedSession),
 }
@@ -306,13 +307,13 @@ impl SessionController {
 
     async fn login_password(&self, creds: LoginCredentials, attempt: u64) {
         let outcome = match self.auth.login_password(creds).await {
-            Ok(session) => self.adopt_session(session).await,
+            Ok(session) => self.establish_session(session).await,
             Err(e) => Err(e),
         };
         match outcome {
-            Ok(capability) => self.send_auth(AuthOutcome::Login {
+            Ok(established) => self.send_auth(AuthOutcome::Login {
                 attempt,
-                session: capability,
+                established,
             }),
             Err(e) => {
                 tracing::warn!("password login failed: {e}");
@@ -321,37 +322,33 @@ impl SessionController {
         }
     }
 
-    async fn adopt_session(&self, session: Session) -> Result<AuthenticatedSession> {
+    async fn establish_session(&self, session: Session) -> Result<EstablishedSession> {
         let passphrase = self.pending_passphrase().ok_or_else(|| {
             AppError::Other("No login store was prepared. Please start again.".into())
         })?;
 
         let account = AccountScope::from_session(&session);
-        let capability = self.auth.adopt_session(&session, &passphrase).await?;
-        self.persist_store_key(&account, &passphrase).await?;
+        let adoption = self.auth.adopt_session(&session, &passphrase).await?;
+        let established = EstablishedSession::record_or_roll_back(
+            adoption,
+            Arc::clone(&self.storage),
+            account,
+            &session,
+            &passphrase,
+        )
+        .await?;
 
         self.forget_pending_passphrase();
-        Ok(capability)
-    }
-
-    async fn persist_store_key(&self, account: &AccountScope, passphrase: &str) -> Result<()> {
-        self.storage
-            .save_passphrase(account, passphrase)
-            .await
-            .map_err(|e| {
-                AppError::Other(format!(
-                    "The key to the local store could not be saved, so the session would not survive a restart: {e}"
-                ))
-            })
+        Ok(established)
     }
 
     async fn login_oauth(&self, cancel: CancellationToken, attempt: u64) {
         let result = self.run_oauth_flow(&cancel).await;
         self.end_oauth().await;
         match result {
-            Ok(Some(capability)) => self.send_auth(AuthOutcome::Login {
+            Ok(Some(established)) => self.send_auth(AuthOutcome::Login {
                 attempt,
-                session: capability,
+                established,
             }),
             Ok(None) => {
                 tracing::info!("OAuth login cancelled");
@@ -474,7 +471,7 @@ impl SessionController {
     async fn run_oauth_flow(
         &self,
         cancel: &CancellationToken,
-    ) -> Result<Option<AuthenticatedSession>> {
+    ) -> Result<Option<EstablishedSession>> {
         tokio::select! {
             biased;
             () = cancel.cancelled() => Ok(None),
@@ -482,14 +479,14 @@ impl SessionController {
         }
     }
 
-    async fn oauth_login_steps(&self) -> Result<AuthenticatedSession> {
+    async fn oauth_login_steps(&self) -> Result<EstablishedSession> {
         let oauth_data = self.auth.login_oauth_start().await?;
         self.browser.open_url(&oauth_data.auth_url).await?;
         self.output.emit_now(Effect::Status("waiting-auth".into()));
         let session = timeout(OAUTH_CALLBACK_TIMEOUT, self.auth.login_oauth_finish())
             .await
             .map_err(|_| AppError::Other("Timed out waiting for browser sign-in.".into()))??;
-        self.adopt_session(session).await
+        self.establish_session(session).await
     }
 
     fn begin_oauth(&self) -> CancellationToken {
@@ -505,16 +502,6 @@ impl SessionController {
             *guard = None;
         }
         self.auth.cancel_oauth().await;
-    }
-
-    pub(super) async fn save_session(&self, session: &Session) {
-        if let Err(e) = self.storage.save_session(session).await {
-            tracing::warn!("failed to save session: {e}");
-            self.notify_error(format!(
-                "Session not saved. You may need to log in again after restart: {e}"
-            ))
-            .await;
-        }
     }
 
     async fn clear_local_state(
@@ -563,9 +550,5 @@ impl SessionController {
 
     async fn emit_login_error(&self, err: &AppError) {
         self.output.emit(Effect::LoginError(err.to_string())).await;
-    }
-
-    async fn notify_error(&self, msg: impl Into<String> + Send) {
-        self.output.emit(Effect::Toast(msg.into())).await;
     }
 }

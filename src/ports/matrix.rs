@@ -69,13 +69,19 @@ pub trait AuthPort: Send + Sync {
         &self,
         session: &Session,
         passphrase: &str,
-    ) -> Result<AuthenticatedSession>;
+    ) -> Result<Box<dyn StoreAdoption>>;
     async fn restore_session(
         &self,
         session: &Session,
         passphrase: &str,
         on_progress: Box<dyn Fn(String) + Send + Sync>,
     ) -> Result<AuthenticatedSession>;
+}
+
+#[async_trait]
+pub trait StoreAdoption: Send + Sync {
+    async fn commit(self: Box<Self>) -> AuthenticatedSession;
+    async fn roll_back(self: Box<Self>) -> CleanupReport;
 }
 
 #[async_trait]

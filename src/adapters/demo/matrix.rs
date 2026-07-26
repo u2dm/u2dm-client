@@ -16,7 +16,7 @@ use crate::domain::models::{
 use crate::error::{AppError, Result};
 use crate::ports::matrix::{
     AuthPort, AuthenticatedSession, CleanupReport, MediaPort, SessionPort, SpaceOrderPort,
-    SyncPort, SyncSink, TimelinePort, VerificationPort,
+    StoreAdoption, SyncPort, SyncSink, TimelinePort, VerificationPort,
 };
 use crate::ports::media::MediaCache;
 
@@ -47,8 +47,8 @@ impl AuthPort for DemoMatrix {
         &self,
         session: &Session,
         _passphrase: &str,
-    ) -> Result<AuthenticatedSession> {
-        Ok(authenticated(session.clone()))
+    ) -> Result<Box<dyn StoreAdoption>> {
+        Ok(Box::new(DemoAdoption(session.clone())))
     }
 
     async fn cancel_oauth(&self) {}
@@ -60,6 +60,19 @@ impl AuthPort for DemoMatrix {
         _on_progress: Box<dyn Fn(String) + Send + Sync>,
     ) -> Result<AuthenticatedSession> {
         Ok(authenticated(session.clone()))
+    }
+}
+
+struct DemoAdoption(Session);
+
+#[async_trait]
+impl StoreAdoption for DemoAdoption {
+    async fn commit(self: Box<Self>) -> AuthenticatedSession {
+        authenticated(self.0)
+    }
+
+    async fn roll_back(self: Box<Self>) -> CleanupReport {
+        CleanupReport::default()
     }
 }
 

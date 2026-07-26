@@ -12,13 +12,19 @@ use crate::util::random_hex;
 const STORES_DIR: &str = "stores";
 const LAYOUT_VERSION: &str = "v1";
 const PENDING_PREFIX: &str = "pending-";
+const BACKUP_PREFIX: &str = "backup-";
 const QUARANTINE_PREFIX: &str = "quarantine-";
-const ABANDONED_PENDING_AGE: Duration = Duration::from_hours(24);
+const ABANDONED_STORE_AGE: Duration = Duration::from_hours(24);
 
 #[derive(Clone, Debug)]
 pub(super) struct StorePaths {
     pub(super) data: PathBuf,
     pub(super) cache: PathBuf,
+}
+
+pub(super) struct AdoptedStore {
+    pub(super) paths: StorePaths,
+    held_aside: Option<StorePaths>,
 }
 
 #[derive(Clone)]
@@ -47,15 +53,57 @@ impl StoreLayout {
         &self,
         pending: &StorePaths,
         account: &AccountScope,
-    ) -> Result<StorePaths> {
+    ) -> Result<AdoptedStore> {
         let target = self.account(account);
-        self.discard_superseded_store(&target).await?;
+        let held_aside = self.hold_aside(&target).await?;
+        let adopted = AdoptedStore {
+            paths: target,
+            held_aside,
+        };
 
-        move_dir(&pending.data, &target.data).await?;
-        move_cache_or_start_empty(&pending.cache, &target.cache).await;
+        if let Err(e) = install(pending, &adopted.paths).await {
+            let report = self.roll_back_adoption(adopted).await;
+            if !report.is_clean() {
+                tracing::warn!(
+                    "previous store not restored after a failed adoption: {}",
+                    report.summary()
+                );
+            }
+            return Err(e);
+        }
 
-        tracing::info!(store = %target.data.display(), "adopted login store for account");
-        Ok(target)
+        tracing::info!(store = %adopted.paths.data.display(), "adopted login store for account");
+        Ok(adopted)
+    }
+
+    pub(super) async fn commit_adoption(&self, adopted: AdoptedStore) {
+        let Some(held_aside) = adopted.held_aside else {
+            return;
+        };
+        let report = self.purge(&held_aside).await;
+        if report.is_clean() {
+            tracing::info!("previous store for this account discarded after adoption");
+        } else {
+            tracing::warn!(
+                "previous store not fully removed after adoption: {}",
+                report.summary()
+            );
+        }
+    }
+
+    pub(super) async fn roll_back_adoption(&self, adopted: AdoptedStore) -> CleanupReport {
+        let mut report = self.purge(&adopted.paths).await;
+        let Some(held_aside) = adopted.held_aside else {
+            return report;
+        };
+        match put_back(&held_aside, &adopted.paths).await {
+            Ok(()) => tracing::info!("previous store for this account put back"),
+            Err(e) => report.fail(format!(
+                "the previous store for this account is held at {} and could not be put back ({e})",
+                held_aside.data.display()
+            )),
+        }
+        report
     }
 
     pub(super) async fn purge(&self, paths: &StorePaths) -> CleanupReport {
@@ -76,15 +124,22 @@ impl StoreLayout {
         sweep_root(&roots.cache).await;
     }
 
-    async fn discard_superseded_store(&self, target: &StorePaths) -> Result<()> {
-        let report = self.purge(target).await;
-        if report.is_clean() {
-            return Ok(());
+    async fn hold_aside(&self, target: &StorePaths) -> Result<Option<StorePaths>> {
+        let aside = self.child(&format!("{BACKUP_PREFIX}{}", random_hex(8)));
+        let data_held = move_existing(&target.data, &aside.data).await?;
+
+        match move_existing(&target.cache, &aside.cache).await {
+            Ok(cache_held) => Ok((data_held || cache_held).then_some(aside)),
+            Err(e) if !data_held => Err(e),
+            Err(e) => match move_dir(&aside.data, &target.data).await {
+                Ok(()) => Err(e),
+                Err(undo) => Err(AppError::Other(format!(
+                    "the previous store for this account could not be held aside ({e}), and it is now at {} instead of {} ({undo})",
+                    aside.data.display(),
+                    target.data.display()
+                ))),
+            },
         }
-        Err(AppError::Other(format!(
-            "could not clear the previous store for this account: {}",
-            report.summary()
-        )))
     }
 
     fn roots(&self) -> StorePaths {
@@ -101,6 +156,26 @@ impl StoreLayout {
             cache: roots.cache.join(name),
         }
     }
+}
+
+async fn install(pending: &StorePaths, target: &StorePaths) -> Result<()> {
+    move_dir(&pending.data, &target.data).await?;
+    move_cache_or_start_empty(&pending.cache, &target.cache).await;
+    Ok(())
+}
+
+async fn put_back(held_aside: &StorePaths, target: &StorePaths) -> Result<()> {
+    move_existing(&held_aside.data, &target.data).await?;
+    move_existing(&held_aside.cache, &target.cache).await?;
+    Ok(())
+}
+
+async fn move_existing(from: &Path, to: &Path) -> Result<bool> {
+    if !dir_exists(from).await {
+        return Ok(false);
+    }
+    move_dir(from, to).await?;
+    Ok(true)
 }
 
 async fn move_cache_or_start_empty(from: &Path, to: &Path) {
@@ -191,7 +266,8 @@ async fn is_sweepable(entry: &fs::DirEntry) -> bool {
     if name.starts_with(QUARANTINE_PREFIX) {
         return true;
     }
-    name.starts_with(PENDING_PREFIX) && is_older_than(entry, ABANDONED_PENDING_AGE).await
+    let abandonable = name.starts_with(PENDING_PREFIX) || name.starts_with(BACKUP_PREFIX);
+    abandonable && is_older_than(entry, ABANDONED_STORE_AGE).await
 }
 
 async fn sweep(path: &Path) {

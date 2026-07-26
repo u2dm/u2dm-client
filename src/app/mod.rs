@@ -1,4 +1,5 @@
 mod active_timeline;
+mod establish;
 mod lifecycle;
 mod media;
 mod room_directory;
@@ -11,6 +12,7 @@ mod verification;
 use std::sync::Arc;
 
 use active_timeline::ActiveTimeline;
+use establish::EstablishedSession;
 use lifecycle::Lifecycle;
 use media::MediaActions;
 use room_directory::RoomDirectory;
@@ -30,6 +32,14 @@ use crate::ports::matrix::{AuthPort, AuthenticatedSession, SessionPort};
 use crate::ports::media::MediaFilePort;
 use crate::ports::output::AppOutputPort;
 use crate::ports::storage::StoragePort;
+
+async fn undo_superseded_login(established: EstablishedSession) {
+    tracing::info!("authentication superseded, undoing the login");
+    let report = established.roll_back().await;
+    if !report.is_clean() {
+        tracing::warn!("superseded login not fully undone: {}", report.summary());
+    }
+}
 
 pub struct AppService {
     cmd_tx: mpsc::UnboundedSender<UiCommand>,
@@ -376,7 +386,6 @@ impl AppService {
 
     async fn complete_auth(&mut self, outcome: AuthOutcome) {
         let Some(capability) = self.settle_auth_outcome(outcome).await else {
-            tracing::info!("authentication superseded, dropping session");
             return;
         };
         let user_id = capability.session.user_id.clone();
@@ -390,13 +399,21 @@ impl AppService {
 
     async fn settle_auth_outcome(&mut self, outcome: AuthOutcome) -> Option<AuthenticatedSession> {
         match outcome {
-            AuthOutcome::Login { attempt, session } => {
-                self.lifecycle.promote_to_syncing(attempt)?;
-                self.session.save_session(&session.session).await;
-                Some(session)
+            AuthOutcome::Login {
+                attempt,
+                established,
+            } => {
+                if self.lifecycle.promote_to_syncing(attempt).is_none() {
+                    undo_superseded_login(established).await;
+                    return None;
+                }
+                Some(established.commit().await)
             }
             AuthOutcome::Restore(session) => {
-                self.lifecycle.restore_succeeded()?;
+                if self.lifecycle.restore_succeeded().is_none() {
+                    tracing::info!("restore superseded, dropping session");
+                    return None;
+                }
                 Some(session)
             }
         }
