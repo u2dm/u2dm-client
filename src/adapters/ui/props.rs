@@ -1,11 +1,11 @@
 use slint::{Image, SharedString};
 use tokio::sync::mpsc;
 
-use super::present::{LoginMethodKind, ToastKind, VerifyStep};
+use super::present::{ToastKind, VerifyStep};
 use super::schema::{bool_props, int_props, string_props};
 use crate::commands::{LoginActivity, LoginStep, UiCommand};
 use crate::domain::models::{
-    ConnectionStatus, TimelineStatus, VerificationEmoji as DomainVerificationEmoji,
+    ConnectionStatus, LoginMethod, TimelineStatus, VerificationEmoji as DomainVerificationEmoji,
 };
 
 pub const SLINT_INFLIGHT: usize = 32;
@@ -42,7 +42,7 @@ pub trait UiProps {
     fn set_int(&self, prop: IntProp, value: i32);
     fn set_login_phase(&self, step: LoginStep);
     fn set_login_activity(&self, activity: LoginActivity);
-    fn set_login_method_kind(&self, method: LoginMethodKind);
+    fn set_login_method_kind(&self, method: LoginMethod);
     fn set_toast_kind(&self, kind: ToastKind);
     fn set_connection_state(&self, status: &ConnectionStatus);
     fn set_timeline_state(&self, status: TimelineStatus);

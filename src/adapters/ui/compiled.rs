@@ -13,17 +13,19 @@ use super::dto::{
     MediaState, ThumbUpdate, enrich_to_update, message_to_dto, room_to_dto, space_to_dto,
 };
 use super::multiplex::spawn_event_multiplexer;
-use super::present::{
-    LoginMethodKind, MessageKind, PreviewKind, ServiceKind, ToastKind, VerifyStep,
-};
+use super::present::{MessageKind, ServiceKind, ToastKind, VerifyStep};
 use super::props::{BoolProp, IntProp, StringProp, UiProps};
 use super::reconcile::reorder_rows;
-use super::schema::{bool_props, int_props, simple_callbacks, string_props};
+use super::schema::{
+    bool_props, connection_states, int_props, login_activities, login_methods, login_phases,
+    media_states, message_kinds, preview_kinds, service_kinds, simple_callbacks, string_props,
+    timeline_states, toast_kinds, verification_phases,
+};
 use super::{emoji, router};
 use crate::commands::{AppViewState, Effect, LoginActivity, LoginStep, UiCommand, ViewportChanged};
 use crate::domain::models::{
-    ConnectionStatus, EnrichmentDelta, LoginCredentials, Room, Space, TimelineMessage,
-    TimelineStatus, VerificationEmoji as DomainVerificationEmoji,
+    ConnectionStatus, EnrichmentDelta, LoginCredentials, LoginMethod, MessagePreviewKind, Room,
+    Space, TimelineMessage, TimelineStatus, VerificationEmoji as DomainVerificationEmoji,
 };
 use crate::error::Result;
 use crate::ports::media::MediaCache;
@@ -84,7 +86,7 @@ impl UiProps for AppWindow {
             .set_activity(to_login_activity(activity));
     }
 
-    fn set_login_method_kind(&self, method: LoginMethodKind) {
+    fn set_login_method_kind(&self, method: LoginMethod) {
         self.global::<LoginView>()
             .set_method(to_login_method(method));
     }
@@ -163,139 +165,30 @@ impl UiProps for AppWindow {
     }
 }
 
-fn to_login_phase(step: LoginStep) -> LoginPhase {
-    match step {
-        LoginStep::Loading => LoginPhase::Loading,
-        LoginStep::Homeserver => LoginPhase::Homeserver,
-        LoginStep::Credentials => LoginPhase::Credentials,
-        LoginStep::LoggedIn => LoginPhase::LoggedIn,
-    }
+macro_rules! to_slint_enum {
+    (val $fn:ident $src:ident $dst:ident; $($rows:tt)*) => {
+        fn $fn(value: $src) -> $dst { to_slint_enum!(@arms value, $src, $dst, $($rows)*) }
+    };
+    (ref $fn:ident $src:ident $dst:ident; $($rows:tt)*) => {
+        fn $fn(value: &$src) -> $dst { to_slint_enum!(@arms value, $src, $dst, $($rows)*) }
+    };
+    (@arms $v:ident, $src:ident, $dst:ident,
+        $($rust:ident $(($($p:tt)*))? $({$($b:tt)*})? $ui:ident $lit:literal;)*) => {
+        match $v { $($src::$rust $(($($p)*))? $({$($b)*})? => $dst::$ui,)* }
+    };
 }
 
-fn to_login_activity(activity: LoginActivity) -> UiLoginActivity {
-    match activity {
-        LoginActivity::Idle => UiLoginActivity::Idle,
-        LoginActivity::LoadingSession => UiLoginActivity::LoadingSession,
-        LoginActivity::OpeningStore => UiLoginActivity::OpeningStore,
-        LoginActivity::Connecting => UiLoginActivity::Connecting,
-        LoginActivity::RestoringAuth => UiLoginActivity::RestoringAuth,
-        LoginActivity::CheckingServer => UiLoginActivity::CheckingServer,
-        LoginActivity::LoggingIn => UiLoginActivity::LoggingIn,
-        LoginActivity::OpeningBrowser => UiLoginActivity::OpeningBrowser,
-        LoginActivity::WaitingAuth => UiLoginActivity::WaitingAuth,
-        LoginActivity::Syncing => UiLoginActivity::Syncing,
-        LoginActivity::CleaningUp => UiLoginActivity::CleaningUp,
-    }
-}
-
-fn to_toast_kind(kind: ToastKind) -> UiToastKind {
-    match kind {
-        ToastKind::None => UiToastKind::None,
-        ToastKind::Error => UiToastKind::Error,
-        ToastKind::FileSaved => UiToastKind::FileSaved,
-    }
-}
-
-fn to_connection_state(status: &ConnectionStatus) -> ConnectionState {
-    match status {
-        ConnectionStatus::Disconnected => ConnectionState::Disconnected,
-        ConnectionStatus::Connecting => ConnectionState::Connecting,
-        ConnectionStatus::Connected => ConnectionState::Connected,
-        ConnectionStatus::Error(_) => ConnectionState::Error,
-    }
-}
-
-fn to_timeline_state(status: TimelineStatus) -> TimelineState {
-    match status {
-        TimelineStatus::Loading => TimelineState::Loading,
-        TimelineStatus::Ready => TimelineState::Ready,
-        TimelineStatus::Failed { .. } => TimelineState::Failed,
-        TimelineStatus::Disconnected => TimelineState::Disconnected,
-    }
-}
-
-fn to_login_method(method: LoginMethodKind) -> UiLoginMethodKind {
-    match method {
-        LoginMethodKind::None => UiLoginMethodKind::None,
-        LoginMethodKind::Password => UiLoginMethodKind::Password,
-        LoginMethodKind::OAuth => UiLoginMethodKind::Oauth,
-        LoginMethodKind::Both => UiLoginMethodKind::Both,
-    }
-}
-
-fn to_media_state(state: MediaState) -> UiMediaState {
-    match state {
-        MediaState::Idle => UiMediaState::Idle,
-        MediaState::Ready => UiMediaState::Ready,
-        MediaState::Failed => UiMediaState::Failed,
-    }
-}
-
-fn to_message_kind(kind: MessageKind) -> UiMessageKind {
-    match kind {
-        MessageKind::Text => UiMessageKind::Text,
-        MessageKind::Notice => UiMessageKind::Notice,
-        MessageKind::Emote => UiMessageKind::Emote,
-        MessageKind::Image => UiMessageKind::Image,
-        MessageKind::File => UiMessageKind::File,
-        MessageKind::Service => UiMessageKind::Service,
-        MessageKind::Utd => UiMessageKind::Utd,
-        MessageKind::Unsupported => UiMessageKind::Unsupported,
-    }
-}
-
-fn to_preview_kind(kind: PreviewKind) -> UiPreviewKind {
-    match kind {
-        PreviewKind::None => UiPreviewKind::None,
-        PreviewKind::Text => UiPreviewKind::Text,
-        PreviewKind::Image => UiPreviewKind::Image,
-        PreviewKind::Video => UiPreviewKind::Video,
-        PreviewKind::Audio => UiPreviewKind::Audio,
-        PreviewKind::File => UiPreviewKind::File,
-        PreviewKind::Location => UiPreviewKind::Location,
-        PreviewKind::Encrypted => UiPreviewKind::Encrypted,
-        PreviewKind::Sticker => UiPreviewKind::Sticker,
-    }
-}
-
-fn to_service_kind(kind: ServiceKind) -> UiServiceKind {
-    match kind {
-        ServiceKind::None => UiServiceKind::None,
-        ServiceKind::Joined => UiServiceKind::Joined,
-        ServiceKind::Left => UiServiceKind::Left,
-        ServiceKind::Invited => UiServiceKind::Invited,
-        ServiceKind::InvitationAccepted => UiServiceKind::InvitationAccepted,
-        ServiceKind::InvitationRejected => UiServiceKind::InvitationRejected,
-        ServiceKind::InvitationRevoked => UiServiceKind::InvitationRevoked,
-        ServiceKind::Kicked => UiServiceKind::Kicked,
-        ServiceKind::Banned => UiServiceKind::Banned,
-        ServiceKind::Unbanned => UiServiceKind::Unbanned,
-        ServiceKind::Knocked => UiServiceKind::Knocked,
-        ServiceKind::KnockAccepted => UiServiceKind::KnockAccepted,
-        ServiceKind::NameSet => UiServiceKind::NameSet,
-        ServiceKind::NameChanged => UiServiceKind::NameChanged,
-        ServiceKind::NameRemoved => UiServiceKind::NameRemoved,
-        ServiceKind::AvatarChanged => UiServiceKind::AvatarChanged,
-        ServiceKind::RoomName => UiServiceKind::RoomName,
-        ServiceKind::RoomTopic => UiServiceKind::RoomTopic,
-        ServiceKind::RoomAvatar => UiServiceKind::RoomAvatar,
-        ServiceKind::RoomCreated => UiServiceKind::RoomCreated,
-        ServiceKind::Encryption => UiServiceKind::Encryption,
-        ServiceKind::CallStarted => UiServiceKind::CallStarted,
-        ServiceKind::CallNotification => UiServiceKind::CallNotification,
-    }
-}
-
-fn to_verification_phase(phase: VerifyStep) -> VerificationPhase {
-    match phase {
-        VerifyStep::None => VerificationPhase::None,
-        VerifyStep::Requested => VerificationPhase::Requested,
-        VerifyStep::Emojis => VerificationPhase::Emojis,
-        VerifyStep::Confirming => VerificationPhase::Confirming,
-        VerifyStep::Done => VerificationPhase::Done,
-        VerifyStep::Cancelled => VerificationPhase::Cancelled,
-    }
-}
+login_phases!(to_slint_enum val to_login_phase LoginStep LoginPhase;);
+login_activities!(to_slint_enum val to_login_activity LoginActivity UiLoginActivity;);
+login_methods!(to_slint_enum val to_login_method LoginMethod UiLoginMethodKind;);
+connection_states!(to_slint_enum ref to_connection_state ConnectionStatus ConnectionState;);
+timeline_states!(to_slint_enum val to_timeline_state TimelineStatus TimelineState;);
+verification_phases!(to_slint_enum val to_verification_phase VerifyStep VerificationPhase;);
+toast_kinds!(to_slint_enum val to_toast_kind ToastKind UiToastKind;);
+media_states!(to_slint_enum val to_media_state MediaState UiMediaState;);
+message_kinds!(to_slint_enum val to_message_kind MessageKind UiMessageKind;);
+preview_kinds!(to_slint_enum val to_preview_kind MessagePreviewKind UiPreviewKind;);
+service_kinds!(to_slint_enum val to_service_kind ServiceKind UiServiceKind;);
 
 pub struct CompiledBackend;
 

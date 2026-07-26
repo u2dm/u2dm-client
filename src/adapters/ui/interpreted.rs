@@ -30,15 +30,19 @@ use super::dto::{
     MediaState, ThumbUpdate, enrich_to_update, message_to_dto, room_to_dto, space_to_dto,
 };
 use super::multiplex::spawn_event_multiplexer;
-use super::present::{LoginMethodKind, ToastKind, VerifyStep};
+use super::present::{MessageKind, ServiceKind, ToastKind, VerifyStep};
 use super::props::{BoolProp, IntProp, StringProp, UiProps};
 use super::reconcile::reorder_rows;
-use super::schema::{message_fields, room_fields, simple_callbacks, space_fields};
+use super::schema::{
+    connection_states, login_activities, login_methods, login_phases, media_states, message_fields,
+    message_kinds, preview_kinds, room_fields, service_kinds, simple_callbacks, space_fields,
+    timeline_states, toast_kinds, verification_phases,
+};
 use super::{emoji, router};
 use crate::commands::{AppViewState, Effect, LoginActivity, LoginStep, UiCommand, ViewportChanged};
 use crate::domain::models::{
-    ConnectionStatus, EnrichmentDelta, LoginCredentials, Room, Space, TimelineMessage,
-    TimelineStatus, VerificationEmoji as DomainVerificationEmoji,
+    ConnectionStatus, EnrichmentDelta, LoginCredentials, LoginMethod, MessagePreviewKind, Room,
+    Space, TimelineMessage, TimelineStatus, VerificationEmoji as DomainVerificationEmoji,
 };
 use crate::error::{AppError, Result};
 use crate::ports::media::MediaCache;
@@ -136,68 +140,37 @@ fn set_global(inst: &ComponentInstance, global: &str, name: &str, value: Value) 
     }
 }
 
-fn enum_value(enumeration: &str, value: &str) -> Value {
-    Value::EnumerationValue(enumeration.to_string(), value.to_string())
+trait SlintEnum {
+    fn slint(&self) -> (&'static str, &'static str);
 }
 
-fn media_state_value(state: MediaState) -> Value {
-    let (name, variant) = state.slint();
-    enum_value(name, variant)
+fn enum_value(value: &impl SlintEnum) -> Value {
+    let (enumeration, variant) = value.slint();
+    Value::EnumerationValue(enumeration.to_string(), variant.to_string())
 }
 
-fn login_phase_value(step: LoginStep) -> &'static str {
-    match step {
-        LoginStep::Loading => "loading",
-        LoginStep::Homeserver => "homeserver",
-        LoginStep::Credentials => "credentials",
-        LoginStep::LoggedIn => "logged-in",
-    }
+macro_rules! impl_slint_enum {
+    ($src:ident $name:literal;
+        $($rust:ident $(($($p:tt)*))? $({$($b:tt)*})? $ui:ident $lit:literal;)*) => {
+        impl SlintEnum for $src {
+            fn slint(&self) -> (&'static str, &'static str) {
+                ($name, match self { $($src::$rust $(($($p)*))? $({$($b)*})? => $lit,)* })
+            }
+        }
+    };
 }
 
-fn login_activity_value(activity: LoginActivity) -> &'static str {
-    match activity {
-        LoginActivity::Idle => "idle",
-        LoginActivity::LoadingSession => "loading-session",
-        LoginActivity::OpeningStore => "opening-store",
-        LoginActivity::Connecting => "connecting",
-        LoginActivity::RestoringAuth => "restoring-auth",
-        LoginActivity::CheckingServer => "checking-server",
-        LoginActivity::LoggingIn => "logging-in",
-        LoginActivity::OpeningBrowser => "opening-browser",
-        LoginActivity::WaitingAuth => "waiting-auth",
-        LoginActivity::Syncing => "syncing",
-        LoginActivity::CleaningUp => "cleaning-up",
-    }
-}
-
-fn connection_state_value(status: &ConnectionStatus) -> &'static str {
-    match status {
-        ConnectionStatus::Disconnected => "disconnected",
-        ConnectionStatus::Connecting => "connecting",
-        ConnectionStatus::Connected => "connected",
-        ConnectionStatus::Error(_) => "error",
-    }
-}
-
-fn timeline_state_value(status: TimelineStatus) -> &'static str {
-    match status {
-        TimelineStatus::Loading => "loading",
-        TimelineStatus::Ready => "ready",
-        TimelineStatus::Failed { .. } => "failed",
-        TimelineStatus::Disconnected => "disconnected",
-    }
-}
-
-fn verification_phase_value(phase: VerifyStep) -> &'static str {
-    match phase {
-        VerifyStep::None => "none",
-        VerifyStep::Requested => "requested",
-        VerifyStep::Emojis => "emojis",
-        VerifyStep::Confirming => "confirming",
-        VerifyStep::Done => "done",
-        VerifyStep::Cancelled => "cancelled",
-    }
-}
+login_phases!(impl_slint_enum LoginStep "LoginPhase";);
+login_activities!(impl_slint_enum LoginActivity "LoginActivity";);
+login_methods!(impl_slint_enum LoginMethod "LoginMethodKind";);
+connection_states!(impl_slint_enum ConnectionStatus "ConnectionState";);
+timeline_states!(impl_slint_enum TimelineStatus "TimelineState";);
+verification_phases!(impl_slint_enum VerifyStep "VerificationPhase";);
+toast_kinds!(impl_slint_enum ToastKind "ToastKind";);
+media_states!(impl_slint_enum MediaState "MediaState";);
+message_kinds!(impl_slint_enum MessageKind "MessageKind";);
+preview_kinds!(impl_slint_enum MessagePreviewKind "PreviewKind";);
+service_kinds!(impl_slint_enum ServiceKind "ServiceKind";);
 
 fn string_arg(args: &[Value], index: usize) -> String {
     args.get(index)
@@ -289,58 +262,31 @@ impl UiProps for ComponentInstance {
     }
 
     fn set_login_phase(&self, step: LoginStep) {
-        set_global(
-            self,
-            "LoginView",
-            "step",
-            enum_value("LoginPhase", login_phase_value(step)),
-        );
+        set_global(self, "LoginView", "step", enum_value(&step));
     }
 
     fn set_login_activity(&self, activity: LoginActivity) {
-        set_global(
-            self,
-            "LoginView",
-            "activity",
-            enum_value("LoginActivity", login_activity_value(activity)),
-        );
+        set_global(self, "LoginView", "activity", enum_value(&activity));
     }
 
-    fn set_login_method_kind(&self, method: LoginMethodKind) {
-        let (name, variant) = method.slint();
-        set_global(self, "LoginView", "method", enum_value(name, variant));
+    fn set_login_method_kind(&self, method: LoginMethod) {
+        set_global(self, "LoginView", "method", enum_value(&method));
     }
 
     fn set_toast_kind(&self, kind: ToastKind) {
-        let (name, variant) = kind.slint();
-        set_global(self, "RoomView", "toast-kind", enum_value(name, variant));
+        set_global(self, "RoomView", "toast-kind", enum_value(&kind));
     }
 
     fn set_connection_state(&self, status: &ConnectionStatus) {
-        set_global(
-            self,
-            "SessionView",
-            "connection-status",
-            enum_value("ConnectionState", connection_state_value(status)),
-        );
+        set_global(self, "SessionView", "connection-status", enum_value(status));
     }
 
     fn set_timeline_state(&self, status: TimelineStatus) {
-        set_global(
-            self,
-            "RoomView",
-            "timeline-status",
-            enum_value("TimelineState", timeline_state_value(status)),
-        );
+        set_global(self, "RoomView", "timeline-status", enum_value(&status));
     }
 
     fn set_verification_phase(&self, phase: VerifyStep) {
-        set_global(
-            self,
-            "VerificationView",
-            "step",
-            enum_value("VerificationPhase", verification_phase_value(phase)),
-        );
+        set_global(self, "VerificationView", "step", enum_value(&phase));
     }
 
     fn get_string(&self, prop: StringProp) -> SharedString {
@@ -479,7 +425,7 @@ impl UiBackend for InterpretedBackend {
             s.set_field(message::THUMBNAIL.to_string(), Value::Image(image.clone()));
             s.set_field(
                 message::MEDIA_STATE.to_string(),
-                media_state_value(MediaState::Ready),
+                enum_value(&MediaState::Ready),
             );
         }
     }
@@ -488,7 +434,7 @@ impl UiBackend for InterpretedBackend {
         if let Value::Struct(s) = entry {
             s.set_field(
                 message::MEDIA_STATE.to_string(),
-                media_state_value(MediaState::Failed),
+                enum_value(&MediaState::Failed),
             );
         }
     }
@@ -856,10 +802,9 @@ macro_rules! field_value {
             $s.set_field($lit.to_string(), Value::Image(img));
         }
     };
-    ($s:ident, $lit:literal, $val:expr, enumk) => {{
-        let (name, variant) = $val.slint();
-        $s.set_field($lit.to_string(), enum_value(name, variant));
-    }};
+    ($s:ident, $lit:literal, $val:expr, enumk) => {
+        $s.set_field($lit.to_string(), enum_value(&$val));
+    };
 }
 
 macro_rules! gen_to_value {
@@ -885,13 +830,13 @@ fn enrich_value(value: &mut Value, delta: &EnrichmentDelta, media: &dyn MediaCac
             entry.set_field(message::THUMBNAIL.to_string(), Value::Image(img));
             entry.set_field(
                 message::MEDIA_STATE.to_string(),
-                media_state_value(MediaState::Ready),
+                enum_value(&MediaState::Ready),
             );
         }
         ThumbUpdate::Failed => {
             entry.set_field(
                 message::MEDIA_STATE.to_string(),
-                media_state_value(MediaState::Failed),
+                enum_value(&MediaState::Failed),
             );
         }
         ThumbUpdate::Unchanged => {}

@@ -5,7 +5,7 @@ use slint::SharedString;
 
 use super::backend::{UiBackend, UiEventContext};
 use super::decode::{AvatarSlot, clear_session_media, load_avatar_async};
-use super::present::{VerifyStep, login_method_kind, toast_kind, user_initial};
+use super::present::{VerifyStep, toast_kind, user_initial};
 use super::props::{BoolProp, IntProp, StringProp, UiProps};
 use super::reconcile::{apply_reconcile, apply_rooms, apply_timeline_patch};
 use crate::commands::{
@@ -196,7 +196,7 @@ fn apply_lifecycle(w: &impl UiProps, last: Option<&LifecycleView>, next: &Lifecy
         w.set_string(StringProp::LoginError, SharedString::from(&next.error));
     }
     if last.is_none_or(|l| l.method != next.method) {
-        w.set_login_method_kind(login_method_kind(next.method));
+        w.set_login_method_kind(next.method);
     }
     if last.is_none_or(|l| l.resolved_homeserver != next.resolved_homeserver) {
         w.set_string(

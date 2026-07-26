@@ -68,6 +68,159 @@ macro_rules! int_props {
 }
 pub(crate) use int_props;
 
+macro_rules! define_ui_enum {
+    ($name:ident; $($rust:ident $ui:ident $lit:literal;)*) => {
+        #[derive(Clone, Copy, PartialEq, Eq)]
+        pub enum $name { $($rust,)* }
+    };
+}
+pub(crate) use define_ui_enum;
+
+macro_rules! login_phases {
+    ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
+        Loading     Loading     "loading";
+        Homeserver  Homeserver  "homeserver";
+        Credentials Credentials "credentials";
+        LoggedIn    LoggedIn    "logged-in";
+    } };
+}
+pub(crate) use login_phases;
+
+macro_rules! login_activities {
+    ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
+        Idle           Idle           "idle";
+        LoadingSession LoadingSession "loading-session";
+        OpeningStore   OpeningStore   "opening-store";
+        Connecting     Connecting     "connecting";
+        RestoringAuth  RestoringAuth  "restoring-auth";
+        CheckingServer CheckingServer "checking-server";
+        LoggingIn      LoggingIn      "logging-in";
+        OpeningBrowser OpeningBrowser "opening-browser";
+        WaitingAuth    WaitingAuth    "waiting-auth";
+        Syncing        Syncing        "syncing";
+        CleaningUp     CleaningUp     "cleaning-up";
+    } };
+}
+pub(crate) use login_activities;
+
+macro_rules! login_methods {
+    ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
+        None     None     "none";
+        Password Password "password";
+        OAuth    Oauth    "oauth";
+        Both     Both     "both";
+    } };
+}
+pub(crate) use login_methods;
+
+macro_rules! connection_states {
+    ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
+        Disconnected Disconnected "disconnected";
+        Connecting   Connecting   "connecting";
+        Connected    Connected    "connected";
+        Error(_)     Error        "error";
+    } };
+}
+pub(crate) use connection_states;
+
+macro_rules! timeline_states {
+    ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
+        Loading      Loading      "loading";
+        Ready        Ready        "ready";
+        Failed{..}   Failed       "failed";
+        Disconnected Disconnected "disconnected";
+    } };
+}
+pub(crate) use timeline_states;
+
+macro_rules! verification_phases {
+    ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
+        None       None       "none";
+        Requested  Requested  "requested";
+        Emojis     Emojis     "emojis";
+        Confirming Confirming "confirming";
+        Done       Done       "done";
+        Cancelled  Cancelled  "cancelled";
+    } };
+}
+pub(crate) use verification_phases;
+
+macro_rules! toast_kinds {
+    ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
+        None      None      "none";
+        Error     Error     "error";
+        FileSaved FileSaved "file-saved";
+    } };
+}
+pub(crate) use toast_kinds;
+
+macro_rules! media_states {
+    ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
+        Idle   Idle   "idle";
+        Ready  Ready  "ready";
+        Failed Failed "failed";
+    } };
+}
+pub(crate) use media_states;
+
+macro_rules! message_kinds {
+    ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
+        Text        Text        "text";
+        Notice      Notice      "notice";
+        Emote       Emote       "emote";
+        Image       Image       "image";
+        File        File        "file";
+        Service     Service     "service";
+        Utd         Utd         "utd";
+        Unsupported Unsupported "unsupported";
+    } };
+}
+pub(crate) use message_kinds;
+
+macro_rules! preview_kinds {
+    ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
+        None      None      "none";
+        Text      Text      "text";
+        Image     Image     "image";
+        Video     Video     "video";
+        Audio     Audio     "audio";
+        File      File      "file";
+        Location  Location  "location";
+        Encrypted Encrypted "encrypted";
+        Sticker   Sticker   "sticker";
+    } };
+}
+pub(crate) use preview_kinds;
+
+macro_rules! service_kinds {
+    ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
+        None               None               "none";
+        Joined             Joined             "joined";
+        Left               Left               "left";
+        Invited            Invited            "invited";
+        InvitationAccepted InvitationAccepted "invitation-accepted";
+        InvitationRejected InvitationRejected "invitation-rejected";
+        InvitationRevoked  InvitationRevoked  "invitation-revoked";
+        Kicked             Kicked             "kicked";
+        Banned             Banned             "banned";
+        Unbanned           Unbanned           "unbanned";
+        Knocked            Knocked            "knocked";
+        KnockAccepted      KnockAccepted      "knock-accepted";
+        NameSet            NameSet            "name-set";
+        NameChanged        NameChanged        "name-changed";
+        NameRemoved        NameRemoved        "name-removed";
+        AvatarChanged      AvatarChanged      "avatar-changed";
+        RoomName           RoomName           "room-name";
+        RoomTopic          RoomTopic          "room-topic";
+        RoomAvatar         RoomAvatar         "room-avatar";
+        RoomCreated        RoomCreated        "room-created";
+        Encryption         Encryption         "encryption";
+        CallStarted        CallStarted        "call-started";
+        CallNotification   CallNotification   "call-notification";
+    } };
+}
+pub(crate) use service_kinds;
+
 #[cfg(feature = "interpreted")]
 macro_rules! message_fields {
     ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*

@@ -4,10 +4,11 @@ use std::sync::OnceLock;
 use chrono::{Locale, Timelike};
 use pure_rust_locales::locale_match;
 
-use crate::commands::Toast;
-use crate::domain::models::{
-    LoginMethod, MessageBody, MessagePreviewKind, ServiceEvent, TimelineMessage,
+use super::schema::{
+    define_ui_enum, message_kinds, service_kinds, toast_kinds, verification_phases,
 };
+use crate::commands::Toast;
+use crate::domain::models::{MessageBody, ServiceEvent, TimelineMessage};
 
 pub fn sender_initial(name: &str) -> &str {
     match name.chars().next() {
@@ -166,34 +167,7 @@ pub fn message_body_text(body: &MessageBody) -> &str {
     }
 }
 
-#[derive(Clone, Copy)]
-pub enum MessageKind {
-    Text,
-    Notice,
-    Emote,
-    Image,
-    File,
-    Service,
-    Utd,
-    Unsupported,
-}
-
-impl MessageKind {
-    #[cfg(feature = "interpreted")]
-    pub fn slint(self) -> (&'static str, &'static str) {
-        let variant = match self {
-            Self::Text => "text",
-            Self::Notice => "notice",
-            Self::Emote => "emote",
-            Self::Image => "image",
-            Self::File => "file",
-            Self::Service => "service",
-            Self::Utd => "utd",
-            Self::Unsupported => "unsupported",
-        };
-        ("MessageKind", variant)
-    }
-}
+message_kinds!(define_ui_enum MessageKind;);
 
 pub fn message_kind(body: &MessageBody) -> MessageKind {
     match body {
@@ -208,64 +182,7 @@ pub fn message_kind(body: &MessageBody) -> MessageKind {
     }
 }
 
-#[derive(Clone, Copy)]
-pub enum ServiceKind {
-    None,
-    Joined,
-    Left,
-    Invited,
-    InvitationAccepted,
-    InvitationRejected,
-    InvitationRevoked,
-    Kicked,
-    Banned,
-    Unbanned,
-    Knocked,
-    KnockAccepted,
-    NameSet,
-    NameChanged,
-    NameRemoved,
-    AvatarChanged,
-    RoomName,
-    RoomTopic,
-    RoomAvatar,
-    RoomCreated,
-    Encryption,
-    CallStarted,
-    CallNotification,
-}
-
-impl ServiceKind {
-    #[cfg(feature = "interpreted")]
-    pub fn slint(self) -> (&'static str, &'static str) {
-        let variant = match self {
-            Self::None => "none",
-            Self::Joined => "joined",
-            Self::Left => "left",
-            Self::Invited => "invited",
-            Self::InvitationAccepted => "invitation-accepted",
-            Self::InvitationRejected => "invitation-rejected",
-            Self::InvitationRevoked => "invitation-revoked",
-            Self::Kicked => "kicked",
-            Self::Banned => "banned",
-            Self::Unbanned => "unbanned",
-            Self::Knocked => "knocked",
-            Self::KnockAccepted => "knock-accepted",
-            Self::NameSet => "name-set",
-            Self::NameChanged => "name-changed",
-            Self::NameRemoved => "name-removed",
-            Self::AvatarChanged => "avatar-changed",
-            Self::RoomName => "room-name",
-            Self::RoomTopic => "room-topic",
-            Self::RoomAvatar => "room-avatar",
-            Self::RoomCreated => "room-created",
-            Self::Encryption => "encryption",
-            Self::CallStarted => "call-started",
-            Self::CallNotification => "call-notification",
-        };
-        ("ServiceKind", variant)
-    }
-}
+service_kinds!(define_ui_enum ServiceKind;);
 
 pub fn service_kind(event: &ServiceEvent) -> ServiceKind {
     match event {
@@ -316,99 +233,7 @@ pub fn unsupported_kind(body: &MessageBody) -> &str {
     }
 }
 
-#[derive(Clone, Copy)]
-pub enum PreviewKind {
-    None,
-    Text,
-    Image,
-    Video,
-    Audio,
-    File,
-    Location,
-    Encrypted,
-    Sticker,
-}
-
-impl PreviewKind {
-    #[cfg(feature = "interpreted")]
-    pub fn slint(self) -> (&'static str, &'static str) {
-        let variant = match self {
-            Self::None => "none",
-            Self::Text => "text",
-            Self::Image => "image",
-            Self::Video => "video",
-            Self::Audio => "audio",
-            Self::File => "file",
-            Self::Location => "location",
-            Self::Encrypted => "encrypted",
-            Self::Sticker => "sticker",
-        };
-        ("PreviewKind", variant)
-    }
-}
-
-pub fn preview_kind(kind: MessagePreviewKind) -> PreviewKind {
-    match kind {
-        MessagePreviewKind::None => PreviewKind::None,
-        MessagePreviewKind::Text => PreviewKind::Text,
-        MessagePreviewKind::Image => PreviewKind::Image,
-        MessagePreviewKind::Video => PreviewKind::Video,
-        MessagePreviewKind::Audio => PreviewKind::Audio,
-        MessagePreviewKind::File => PreviewKind::File,
-        MessagePreviewKind::Location => PreviewKind::Location,
-        MessagePreviewKind::Encrypted => PreviewKind::Encrypted,
-        MessagePreviewKind::Sticker => PreviewKind::Sticker,
-    }
-}
-
-#[derive(Clone, Copy)]
-pub enum LoginMethodKind {
-    None,
-    Password,
-    OAuth,
-    Both,
-}
-
-impl LoginMethodKind {
-    #[cfg(feature = "interpreted")]
-    pub fn slint(self) -> (&'static str, &'static str) {
-        let variant = match self {
-            Self::None => "none",
-            Self::Password => "password",
-            Self::OAuth => "oauth",
-            Self::Both => "both",
-        };
-        ("LoginMethodKind", variant)
-    }
-}
-
-pub fn login_method_kind(method: LoginMethod) -> LoginMethodKind {
-    match method {
-        LoginMethod::Password => LoginMethodKind::Password,
-        LoginMethod::OAuth => LoginMethodKind::OAuth,
-        LoginMethod::Both => LoginMethodKind::Both,
-        LoginMethod::None => LoginMethodKind::None,
-    }
-}
-
-#[derive(Clone, Copy)]
-pub enum ToastKind {
-    None,
-    Error,
-    FileSaved,
-}
-
-impl ToastKind {
-    #[cfg(feature = "interpreted")]
-    pub fn slint(self) -> (&'static str, &'static str) {
-        let variant = match self {
-            Self::None => "none",
-            Self::Error => "error",
-            Self::FileSaved => "file-saved",
-        };
-        ("ToastKind", variant)
-    }
-}
+toast_kinds!(define_ui_enum ToastKind;);
 
 pub fn toast_kind(toast: &Toast) -> ToastKind {
     match toast {
@@ -418,12 +243,4 @@ pub fn toast_kind(toast: &Toast) -> ToastKind {
     }
 }
 
-#[derive(Clone, Copy)]
-pub enum VerifyStep {
-    None,
-    Requested,
-    Emojis,
-    Confirming,
-    Done,
-    Cancelled,
-}
+verification_phases!(define_ui_enum VerifyStep;);
