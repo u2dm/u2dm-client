@@ -1,5 +1,6 @@
 mod data;
 mod dto;
+mod login;
 mod matrix;
 mod media;
 mod storage;

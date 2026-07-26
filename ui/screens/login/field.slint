@@ -1,0 +1,165 @@
+import { Palette } from "std-widgets.slint";
+import { IconDisplay, IconSet, Icon } from "@lucide";
+
+import { ClickArea } from "../../components/a11y.slint";
+import { LoginStyle } from "./common.slint";
+
+component ScrollingInput inherits Rectangle {
+    in-out property <string> text;
+    in property <string> placeholder;
+    in property <bool> enabled: true;
+    in property <InputType> input-type: InputType.text;
+    out property <bool> has-focus: input.has-focus;
+
+    callback accepted();
+
+    clip: true;
+    min-width: 1px;
+    min-height: input.preferred-height;
+    forward-focus: input;
+
+    placeholder-label := Text {
+        width: 100%;
+        height: 100%;
+        text: (root.text == "" && input.preedit-text == "") ? root.placeholder : "";
+        font-size: input.font-size;
+        vertical-alignment: center;
+        color: LoginStyle.faint;
+        accessible-role: none;
+    }
+
+    input := TextInput {
+        property <length> shift;
+
+        x: min(0px, max(parent.width - self.width - self.text-cursor-width, self.shift));
+        width: max(parent.width - self.text-cursor-width, self.preferred-width);
+        height: 100%;
+        font-size: 14px;
+        single-line: true;
+        vertical-alignment: center;
+        enabled: root.enabled;
+        input-type: root.input-type;
+        color: Palette.foreground;
+        selection-background-color: Palette.selection-background;
+        selection-foreground-color: Palette.selection-foreground;
+        text <=> root.text;
+        accessible-role: none;
+
+        cursor-position-changed(position) => {
+            if position.x + self.shift < 0px {
+                self.shift = -position.x;
+            } else if position.x + self.shift > parent.width - self.text-cursor-width {
+                self.shift = parent.width - position.x - self.text-cursor-width;
+            }
+        }
+
+        accepted => {
+            root.accepted();
+        }
+    }
+}
+
+export component LoginField inherits Rectangle {
+    in-out property <string> text;
+    in property <Icon> icon;
+    in property <string> placeholder;
+    in property <string> label;
+    in property <bool> enabled: true;
+    in property <bool> secret: false;
+    out property <bool> has-focus: input.has-focus;
+
+    callback accepted();
+
+    property <bool> revealed: false;
+    property <bool> shows-reveal: root.secret && root.text != "";
+
+    height: LoginStyle.control-height;
+    border-radius: LoginStyle.control-radius;
+    background: root.enabled ? LoginStyle.surface : LoginStyle.surface.transparentize(0.5);
+    border-width: root.has-focus ? 2px : 1px;
+    border-color: root.has-focus
+        ? Palette.accent-background
+        : (touch.has-hover && root.enabled ? Palette.foreground.transparentize(0.7) : LoginStyle.hairline);
+    accessible-role: text-input;
+    accessible-enabled: root.enabled;
+    accessible-label: root.label;
+    accessible-placeholder-text: root.placeholder;
+    accessible-value <=> root.text;
+    accessible-action-set-value(value) => {
+        root.text = value;
+    }
+    forward-focus: input;
+
+    animate border-color {
+        duration: 150ms;
+        easing: ease-out;
+    }
+
+    changed text => {
+        if self.text == "" {
+            self.revealed = false;
+        }
+    }
+
+    touch := TouchArea {
+        enabled: root.enabled;
+        mouse-cursor: MouseCursor.text;
+        clicked => {
+            input.focus();
+        }
+    }
+
+    HorizontalLayout {
+        padding-left: 13px;
+        padding-right: root.shows-reveal ? 6px : 13px;
+        spacing: 10px;
+
+        VerticalLayout {
+            alignment: center;
+
+            IconDisplay {
+                icon: root.icon;
+                size: 17px;
+                stroke: root.has-focus ? Palette.accent-background : LoginStyle.faint;
+            }
+        }
+
+        input := ScrollingInput {
+            horizontal-stretch: 1;
+            enabled: root.enabled;
+            placeholder: root.placeholder;
+            input-type: (root.secret && !root.revealed) ? InputType.password : InputType.text;
+            text <=> root.text;
+            accepted => {
+                root.accepted();
+            }
+        }
+
+        if root.shows-reveal: VerticalLayout {
+            alignment: center;
+
+            reveal := ClickArea {
+                width: 32px;
+                height: 32px;
+                ring-radius: 8px;
+                label: root.revealed ? @tr("Hide password") : @tr("Show password");
+                clicked => {
+                    root.revealed = !root.revealed;
+                }
+
+                Rectangle {
+                    width: 28px;
+                    height: 28px;
+                    border-radius: 8px;
+                    background: reveal.has-hover ? Palette.foreground.transparentize(0.92) : transparent;
+
+                    IconDisplay {
+                        icon: root.revealed ? IconSet.EyeOff : IconSet.Eye;
+                        size: 16px;
+                        stroke: LoginStyle.muted;
+                    }
+                }
+            }
+        }
+    }
+}

@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 
-use super::data;
+use super::{data, login};
 use crate::domain::account::AccountScope;
 use crate::domain::models::Session;
 use crate::error::Result;
@@ -15,6 +15,9 @@ impl StoragePort for DemoStorage {
     }
 
     async fn load_session(&self) -> Result<StoredSession> {
+        if login::requested().is_some_and(|demo| !demo.keeps_session) {
+            return Ok(StoredSession::Absent);
+        }
         Ok(StoredSession::Present(data::session()))
     }
 

@@ -7,7 +7,7 @@ use async_trait::async_trait;
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 
-use super::{data, media};
+use super::{data, login, media};
 use crate::domain::models::{
     AuthMethod, LoginCredentials, OAuthLoginData, PaginationDirection, PaginationOutcome,
     ReplyInfo, RoomId, ServerInfo, Session, SyncEvent, SyncOutcome, TimelineCommand,
@@ -25,13 +25,17 @@ pub struct DemoMatrix;
 #[async_trait]
 impl AuthPort for DemoMatrix {
     async fn discover_auth(&self, homeserver: &str, _passphrase: &str) -> Result<ServerInfo> {
+        login::pause().await;
+        let auth_methods = login::requested()
+            .map_or_else(|| vec![AuthMethod::Password], |demo| demo.methods.clone());
         Ok(ServerInfo {
-            auth_methods: vec![AuthMethod::Password],
+            auth_methods,
             homeserver_url: format!("https://{homeserver}"),
         })
     }
 
     async fn login_password(&self, _creds: LoginCredentials) -> Result<Session> {
+        login::pause().await;
         Ok(data::session())
     }
 
@@ -57,8 +61,12 @@ impl AuthPort for DemoMatrix {
         &self,
         session: &Session,
         _passphrase: &str,
-        _on_progress: Box<dyn Fn(String) + Send + Sync>,
+        on_progress: Box<dyn Fn(String) + Send + Sync>,
     ) -> Result<AuthenticatedSession> {
+        for step in ["connecting", "restoring-auth"] {
+            on_progress(step.to_owned());
+            login::pause().await;
+        }
         Ok(authenticated(session.clone()))
     }
 }

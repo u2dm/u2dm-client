@@ -1,18 +1,24 @@
-import { BrandTitle, StatusText, ErrorText, LoginStatus } from "./common.slint";
+import {
+    LoginPage,
+    BrandHeader,
+    StatusRow,
+    ErrorBanner,
+} from "./common.slint";
 import { LoginView } from "../../views.slint";
 
-export component LoadingScreen inherits VerticalLayout {
-    alignment: center;
-    padding: 24px;
-    spacing: 16px;
-
-    BrandTitle { }
-
-    if LoginView.status != "": StatusText {
-        text: LoginStatus.label(LoginView.status);
+export component LoadingScreen inherits LoginPage {
+    BrandHeader {
+        subtitle: LoginView.status == "" && LoginView.error == ""
+            ? @tr("Starting up...")
+            : "";
     }
 
-    if LoginView.error != "": ErrorText {
-        text: LoginView.error;
+    if LoginView.status != "": StatusRow {
+        status: LoginView.status;
+        spinner: true;
+    }
+
+    if LoginView.error != "": ErrorBanner {
+        message: LoginView.error;
     }
 }

@@ -1,0 +1,121 @@
+import { Palette } from "std-widgets.slint";
+import { IconDisplay, IconSet, Icon } from "@lucide";
+
+import { ClickArea } from "../../components/a11y.slint";
+import { LoginStyle, DotPulse } from "./common.slint";
+
+export component LoginButton inherits Rectangle {
+    in property <string> text;
+    in property <Icon> icon;
+    in property <bool> trailing-icon: false;
+    in property <bool> enabled: true;
+    in property <bool> busy: false;
+    in property <bool> filled: true;
+    in property <color> tint: Palette.accent-background;
+
+    callback clicked();
+
+    property <bool> interactive: root.enabled && !root.busy;
+    property <color> label-color: root.enabled
+        ? (root.filled ? Palette.accent-foreground : root.tint)
+        : LoginStyle.faint;
+    property <bool> has-icon: root.icon.paths.length > 0;
+
+    height: LoginStyle.control-height;
+    border-radius: LoginStyle.control-radius;
+    border-width: root.filled ? 0 : 1px;
+    border-color: root.filled ? transparent : LoginStyle.hairline;
+    background: !root.enabled
+        ? LoginStyle.surface
+        : (root.filled
+            ? (touch.pressed
+                ? root.tint.darker(0.2)
+                : (touch.has-hover && root.interactive ? root.tint.brighter(0.15) : root.tint))
+            : (touch.pressed
+                ? Palette.foreground.transparentize(0.88)
+                : (touch.has-hover && root.interactive ? Palette.foreground.transparentize(0.94) : transparent)));
+
+    animate background {
+        duration: 130ms;
+        easing: ease-out;
+    }
+
+    touch := ClickArea {
+        enabled: root.interactive;
+        label: root.text;
+        ring-radius: LoginStyle.control-radius;
+        clicked => {
+            root.clicked();
+        }
+    }
+
+    HorizontalLayout {
+        alignment: center;
+        spacing: 8px;
+        padding-left: 16px;
+        padding-right: 16px;
+
+        if root.busy: VerticalLayout {
+            alignment: center;
+
+            DotPulse {
+                tint: root.label-color;
+            }
+        }
+
+        if !root.busy && root.has-icon && !root.trailing-icon: VerticalLayout {
+            alignment: center;
+
+            IconDisplay {
+                icon: root.icon;
+                size: 17px;
+                stroke: root.label-color;
+            }
+        }
+
+        Text {
+            text: root.text;
+            font-size: 14px;
+            font-weight: 600;
+            vertical-alignment: center;
+            color: root.label-color;
+        }
+
+        if !root.busy && root.has-icon && root.trailing-icon: VerticalLayout {
+            alignment: center;
+
+            IconDisplay {
+                icon: root.icon;
+                size: 17px;
+                stroke: root.label-color;
+            }
+        }
+    }
+}
+
+export component BackButton inherits Rectangle {
+    in property <bool> enabled: true;
+
+    callback clicked();
+
+    width: 34px;
+    height: 34px;
+    border-radius: 10px;
+    opacity: root.enabled ? 1.0 : 0.4;
+    background: touch.has-hover && root.enabled ? Palette.foreground.transparentize(0.92) : transparent;
+
+    touch := ClickArea {
+        enabled: root.enabled;
+        label: @tr("Back to the homeserver step");
+        ring-radius: 10px;
+        clicked => {
+            root.clicked();
+        }
+    }
+
+    IconDisplay {
+        icon: IconSet.ArrowLeft;
+        size: 18px;
+        stroke: LoginStyle.muted;
+    }
+}

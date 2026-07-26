@@ -1,17 +1,19 @@
-import {
-    Button,
-    LineEdit,
-    Palette,
-} from "std-widgets.slint";
+import { IconSet } from "@lucide";
 
-import { BrandTitle, StatusText, ErrorText, LoginStatus } from "./common.slint";
+import {
+    LoginPage,
+    BrandHeader,
+    FieldLabel,
+    StatusRow,
+    ErrorBanner,
+    StepDots,
+    LoginStyle,
+} from "./common.slint";
+import { LoginField } from "./field.slint";
+import { LoginButton } from "./button.slint";
 import { LoginView } from "../../views.slint";
 
-export component HomeserverScreen inherits VerticalLayout {
-    alignment: center;
-    padding: 24px;
-    spacing: 12px;
-
+export component HomeserverScreen inherits LoginPage {
     in-out property <string> input-homeserver: "matrix.org";
 
     private property <bool> is-checking: LoginView.status == "checking-server";
@@ -24,46 +26,56 @@ export component HomeserverScreen inherits VerticalLayout {
         }
     }
 
-    BrandTitle { }
-
-    Text {
-        text: @tr("Enter your homeserver address");
-        font-size: 14px;
-        horizontal-alignment: center;
-        color: Palette.foreground.transparentize(0.3);
+    BrandHeader {
+        subtitle: @tr("Sign in to your Matrix account");
     }
 
-    HorizontalLayout {
-        alignment: center;
+    VerticalLayout {
+        spacing: 8px;
 
-        VerticalLayout {
-            spacing: 12px;
-            max-width: 320px;
+        FieldLabel {
+            text: @tr("HOMESERVER");
+        }
 
-            LineEdit {
-                text <=> root.input-homeserver;
-                placeholder-text: @tr("Homeserver (e.g. matrix.org)");
-                enabled: !root.is-checking;
-                accepted => {
-                    root.submit();
-                }
+        LoginField {
+            icon: IconSet.Globe;
+            label: @tr("Homeserver");
+            placeholder: "matrix.org";
+            enabled: !root.is-checking;
+            text <=> root.input-homeserver;
+            accepted => {
+                root.submit();
             }
+        }
 
-            Button {
-                text: root.is-checking ? @tr("Checking...") : @tr("Continue");
-                enabled: !root.is-checking && root.input-homeserver != "";
-                clicked => {
-                    root.submit();
-                }
-            }
+        Text {
+            text: @tr("The server that stores your account and messages.");
+            font-size: 11px;
+            wrap: word-wrap;
+            color: LoginStyle.faint;
         }
     }
 
-    if LoginView.status != "": StatusText {
-        text: LoginStatus.label(LoginView.status);
+    LoginButton {
+        text: @tr("Continue");
+        icon: IconSet.ArrowRight;
+        trailing-icon: true;
+        busy: root.is-checking;
+        enabled: root.input-homeserver != "";
+        clicked => {
+            root.submit();
+        }
     }
 
-    if LoginView.error != "": ErrorText {
-        text: LoginView.error;
+    if LoginView.status != "": StatusRow {
+        status: LoginView.status;
+    }
+
+    if LoginView.error != "": ErrorBanner {
+        message: LoginView.error;
+    }
+
+    StepDots {
+        step: 1;
     }
 }

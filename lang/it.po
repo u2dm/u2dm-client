@@ -519,120 +519,176 @@ msgctxt "Drawer"
 msgid "Log Out"
 msgstr ""
 
-#: ui/screens/login/credentials.slint:41
+#: ui/screens/login/credentials.slint:56
 msgctxt "CredentialsScreen"
-msgid "Server: {}"
-msgstr "Server: {}"
+msgid "Enter your credentials to continue"
+msgstr ""
 
-#: ui/screens/login/credentials.slint:55
+#: ui/screens/login/credentials.slint:70
+msgctxt "CredentialsScreen"
+msgid "USERNAME"
+msgstr ""
+
+#: ui/screens/login/credentials.slint:75
 msgctxt "CredentialsScreen"
 msgid "Username"
 msgstr "Nome utente"
 
-#: ui/screens/login/credentials.slint:70
+#: ui/screens/login/credentials.slint:76
+msgctxt "CredentialsScreen"
+msgid "username"
+msgstr ""
+
+#: ui/screens/login/credentials.slint:89
+msgctxt "CredentialsScreen"
+msgid "PASSWORD"
+msgstr ""
+
+#: ui/screens/login/credentials.slint:94
 msgctxt "CredentialsScreen"
 msgid "Password"
 msgstr "Password"
 
-#: ui/screens/login/credentials.slint:85
+#: ui/screens/login/credentials.slint:95
 msgctxt "CredentialsScreen"
-msgid "Logging in..."
-msgstr "Accesso in corso..."
+msgid "password"
+msgstr ""
 
-#: ui/screens/login/credentials.slint:85
+#: ui/screens/login/credentials.slint:106
 msgctxt "CredentialsScreen"
 msgid "Log in"
 msgstr "Accedi"
 
-#: ui/screens/login/credentials.slint:99
+#: ui/screens/login/credentials.slint:119
 msgctxt "CredentialsScreen"
-msgid "Log in with browser"
-msgstr "Accedi con il browser"
+msgid "Continue with browser"
+msgstr ""
 
-#: ui/screens/login/credentials.slint:111
+#: ui/screens/login/credentials.slint:130
 msgctxt "CredentialsScreen"
 msgid "Cancel"
 msgstr ""
 
-#: ui/screens/login/credentials.slint:122
-msgctxt "CredentialsScreen"
-msgid "Back"
-msgstr "Indietro"
+#: ui/screens/login/button.slint:109
+msgctxt "BackButton"
+msgid "Back to the homeserver step"
+msgstr ""
 
 #: ui/screens/login/homeserver.slint:30
 msgctxt "HomeserverScreen"
-msgid "Enter your homeserver address"
+msgid "Sign in to your Matrix account"
 msgstr ""
 
-#: ui/screens/login/homeserver.slint:45
+#: ui/screens/login/homeserver.slint:37
 msgctxt "HomeserverScreen"
-msgid "Homeserver (e.g. matrix.org)"
+msgid "HOMESERVER"
 msgstr ""
 
-#: ui/screens/login/homeserver.slint:53
+#: ui/screens/login/homeserver.slint:42
 msgctxt "HomeserverScreen"
-msgid "Checking..."
+msgid "Homeserver"
+msgstr "Homeserver"
+
+#: ui/screens/login/homeserver.slint:52
+msgctxt "HomeserverScreen"
+msgid "The server that stores your account and messages."
 msgstr ""
 
-#: ui/screens/login/homeserver.slint:53
+#: ui/screens/login/homeserver.slint:60
 msgctxt "HomeserverScreen"
 msgid "Continue"
 msgstr "Continua"
 
-#: ui/screens/login/common.slint:6
+#: ui/screens/login/common.slint:23
 msgctxt "LoginStatus"
 msgid "Loading saved session..."
 msgstr ""
 
-#: ui/screens/login/common.slint:9
+#: ui/screens/login/common.slint:26
 msgctxt "LoginStatus"
 msgid "Opening encrypted store..."
 msgstr ""
 
-#: ui/screens/login/common.slint:12
+#: ui/screens/login/common.slint:29
 msgctxt "LoginStatus"
 msgid "Connecting to homeserver..."
 msgstr ""
 
-#: ui/screens/login/common.slint:15
+#: ui/screens/login/common.slint:32
 msgctxt "LoginStatus"
 msgid "Restoring authentication..."
 msgstr ""
 
-#: ui/screens/login/common.slint:18
+#: ui/screens/login/common.slint:35
 msgctxt "LoginStatus"
 msgid "Syncing rooms..."
 msgstr ""
 
-#: ui/screens/login/common.slint:21
+#: ui/screens/login/common.slint:38
 msgctxt "LoginStatus"
 msgid "Checking server..."
 msgstr ""
 
-#: ui/screens/login/common.slint:24
+#: ui/screens/login/common.slint:41
 msgctxt "LoginStatus"
 msgid "Logging in..."
 msgstr ""
 
-#: ui/screens/login/common.slint:27
+#: ui/screens/login/common.slint:44
 msgctxt "LoginStatus"
 msgid "Opening browser..."
 msgstr ""
 
-#: ui/screens/login/common.slint:30
+#: ui/screens/login/common.slint:47
 msgctxt "LoginStatus"
 msgid "Waiting for authentication..."
 msgstr ""
 
-#: ui/screens/login/common.slint:33
+#: ui/screens/login/common.slint:50
 msgctxt "LoginStatus"
 msgid "Erasing local account data..."
 msgstr ""
 
-#: ui/screens/login/common.slint:40
-msgctxt "BrandTitle"
+#: ui/screens/login/common.slint:191
+msgctxt "BrandHeader"
 msgid "U2DM"
 msgstr ""
+
+#: ui/screens/login/common.slint:363
+msgctxt "OrDivider"
+msgid "or"
+msgstr ""
+
+#: ui/screens/login/field.slint:145
+msgctxt "LoginField"
+msgid "Hide password"
+msgstr ""
+
+#: ui/screens/login/field.slint:145
+msgctxt "LoginField"
+msgid "Show password"
+msgstr ""
+
+#: ui/screens/login/loading.slint:12
+msgctxt "LoadingScreen"
+msgid "Starting up..."
+msgstr ""
+
+#~ msgctxt "CredentialsScreen"
+#~ msgid "Logging in..."
+#~ msgstr "Accesso in corso..."
+
+#~ msgctxt "CredentialsScreen"
+#~ msgid "Server: {}"
+#~ msgstr "Server: {}"
+
+#~ msgctxt "CredentialsScreen"
+#~ msgid "Log in with browser"
+#~ msgstr "Accedi con il browser"
+
+#~ msgctxt "CredentialsScreen"
+#~ msgid "Back"
+#~ msgstr "Indietro"
 
 #~ msgctxt "HomeserverScreen"
 #~ msgid "Checking server..."
@@ -693,10 +749,6 @@ msgstr ""
 #~ msgctxt "TimelineView"
 #~ msgid "Send"
 #~ msgstr "Invia"
-
-#~ msgctxt "HomeserverScreen"
-#~ msgid "Homeserver"
-#~ msgstr "Homeserver"
 
 #~ msgctxt "ImageMessage"
 #~ msgid "Image without thumbnail: {}"

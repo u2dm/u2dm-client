@@ -1,4 +1,21 @@
-import { Palette } from "std-widgets.slint";
+import { Palette, Spinner } from "std-widgets.slint";
+import { IconDisplay, IconSet, Icon } from "@lucide";
+
+export global LoginStyle {
+    out property <bool> dark: Palette.color-scheme == ColorScheme.dark;
+    out property <brush> page: root.dark ? Palette.background : Palette.alternate-background;
+    out property <brush> card: root.dark ? Palette.alternate-background : Palette.background;
+    out property <length> card-width: 400px;
+    out property <length> control-height: 46px;
+    out property <length> control-radius: 12px;
+    out property <color> muted: Palette.foreground.transparentize(0.42);
+    out property <color> faint: Palette.foreground.transparentize(0.68);
+    out property <color> hairline: Palette.foreground.transparentize(0.88);
+    out property <color> surface: Palette.foreground.transparentize(0.955);
+    out property <color> danger: Colors.tomato.mix(Palette.foreground, 0.8);
+    out property <color> danger-surface: Colors.tomato.transparentize(0.9);
+    out property <color> success: Colors.mediumseagreen.mix(Palette.foreground, 0.8);
+}
 
 export global LoginStatus {
     public pure function label(id: string) -> string {
@@ -34,22 +51,330 @@ export global LoginStatus {
         }
         return id;
     }
+
+    public pure function icon(id: string) -> Icon {
+        if id == "loading-session" {
+            return IconSet.History;
+        }
+        if id == "opening-store" {
+            return IconSet.LockKeyhole;
+        }
+        if id == "connecting" {
+            return IconSet.Globe;
+        }
+        if id == "restoring-auth" {
+            return IconSet.KeyRound;
+        }
+        if id == "syncing" {
+            return IconSet.RefreshCw;
+        }
+        if id == "checking-server" {
+            return IconSet.Server;
+        }
+        if id == "logging-in" {
+            return IconSet.LogIn;
+        }
+        if id == "opening-browser" {
+            return IconSet.ExternalLink;
+        }
+        if id == "waiting-auth" {
+            return IconSet.Hourglass;
+        }
+        if id == "cleaning-up" {
+            return IconSet.Trash2;
+        }
+        return IconSet.Loader;
+    }
 }
 
-export component BrandTitle inherits Text {
-    text: @tr("U2DM");
-    font-size: 32px;
-    horizontal-alignment: center;
+export component DotPulse inherits HorizontalLayout {
+    in property <color> tint: Palette.accent-background;
+    in property <length> dot-size: 6px;
+
+    spacing: 4px;
+
+    for offset in [0, 1, 2]: VerticalLayout {
+        alignment: center;
+
+        Rectangle {
+            width: root.dot-size;
+            height: root.dot-size;
+            border-radius: self.width / 2;
+            background: root.tint;
+            opacity: 0.3 + 0.7 * abs(sin(360deg * (animation-tick() / 1.1s) - offset * 110deg));
+        }
+    }
 }
 
-export component StatusText inherits Text {
-    font-size: 13px;
-    horizontal-alignment: center;
-    color: Palette.foreground.transparentize(0.3);
+export component LoginPage inherits Rectangle {
+    width: 100%;
+    height: 100%;
+    background: LoginStyle.page;
+
+    Rectangle {
+        x: -0.24 * root.width;
+        y: -0.3 * root.height;
+        width: max(420px, root.width * 0.9);
+        height: self.width;
+        background: @radial-gradient(circle, Palette.accent-background.transparentize(0.78) 0%, Palette.accent-background.transparentize(1) 62%);
+    }
+
+    Rectangle {
+        x: root.width - 0.5 * self.width;
+        y: root.height - 0.45 * self.height;
+        width: max(360px, root.width * 0.75);
+        height: self.width;
+        background: @radial-gradient(circle, Palette.accent-background.transparentize(0.88) 0%, Palette.accent-background.transparentize(1) 60%);
+    }
+
+    HorizontalLayout {
+        alignment: center;
+
+        VerticalLayout {
+            alignment: center;
+            padding: 24px;
+
+            card := Rectangle {
+                width: min(LoginStyle.card-width, root.width - 48px);
+                background: LoginStyle.card;
+                border-radius: 20px;
+                border-width: 1px;
+                border-color: LoginStyle.hairline;
+                drop-shadow-blur: 40px;
+                drop-shadow-offset-y: 14px;
+                drop-shadow-color: Palette.foreground.transparentize(0.88);
+
+                VerticalLayout {
+                    padding: 32px;
+                    spacing: 20px;
+
+                    @children
+                }
+            }
+        }
+    }
 }
 
-export component ErrorText inherits Text {
-    color: red;
-    font-size: 13px;
-    horizontal-alignment: center;
+export component BrandMark inherits Rectangle {
+    in property <length> size: 60px;
+
+    width: root.size;
+    height: root.size;
+    border-radius: root.size * 0.3;
+    background: @linear-gradient(140deg, Palette.accent-background.brighter(0.25) 0%, Palette.accent-background.darker(0.15) 100%);
+    drop-shadow-blur: 18px;
+    drop-shadow-offset-y: 6px;
+    drop-shadow-color: Palette.accent-background.transparentize(0.68);
+
+    IconDisplay {
+        icon: IconSet.MessagesSquare;
+        size: root.size * 0.5;
+        stroke: Palette.accent-foreground;
+    }
+}
+
+export component BrandHeader inherits VerticalLayout {
+    in property <string> subtitle;
+    in property <length> mark-size: 60px;
+
+    spacing: 12px;
+
+    HorizontalLayout {
+        alignment: center;
+
+        BrandMark {
+            size: root.mark-size;
+        }
+    }
+
+    Text {
+        text: @tr("U2DM");
+        font-size: 26px;
+        font-weight: 700;
+        letter-spacing: 0.5px;
+        horizontal-alignment: center;
+    }
+
+    if root.subtitle != "": Text {
+        text: root.subtitle;
+        font-size: 13px;
+        horizontal-alignment: center;
+        wrap: word-wrap;
+        color: LoginStyle.muted;
+    }
+}
+
+export component FieldLabel inherits Text {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.6px;
+    color: LoginStyle.muted;
+}
+
+export component StepDots inherits HorizontalLayout {
+    in property <int> step: 1;
+
+    alignment: center;
+    spacing: 6px;
+
+    for index in [1, 2]: Rectangle {
+        property <bool> active: index == root.step;
+
+        width: self.active ? 22px : 7px;
+        height: 7px;
+        border-radius: self.height / 2;
+        background: self.active ? Palette.accent-background : LoginStyle.hairline;
+
+        animate width, background {
+            duration: 200ms;
+            easing: ease-out;
+        }
+    }
+}
+
+export component StatusRow inherits HorizontalLayout {
+    in property <string> status;
+    in property <bool> spinner: false;
+
+    alignment: center;
+    spacing: 8px;
+
+    if root.spinner: VerticalLayout {
+        alignment: center;
+
+        Spinner {
+            width: 16px;
+            height: 16px;
+            indeterminate: true;
+        }
+    }
+
+    VerticalLayout {
+        alignment: center;
+
+        IconDisplay {
+            icon: LoginStatus.icon(root.status);
+            size: 14px;
+            stroke: LoginStyle.faint;
+        }
+    }
+
+    Text {
+        text: LoginStatus.label(root.status);
+        font-size: 13px;
+        vertical-alignment: center;
+        color: LoginStyle.muted;
+    }
+}
+
+export component ErrorBanner inherits Rectangle {
+    in property <string> message;
+
+    background: LoginStyle.danger-surface;
+    border-radius: 10px;
+    border-width: 1px;
+    border-color: Colors.tomato.transparentize(0.78);
+
+    HorizontalLayout {
+        padding: 12px;
+        spacing: 10px;
+
+        VerticalLayout {
+            alignment: start;
+
+            IconDisplay {
+                icon: IconSet.TriangleAlert;
+                size: 16px;
+                stroke: LoginStyle.danger;
+            }
+        }
+
+        Text {
+            text: root.message;
+            font-size: 12px;
+            wrap: word-wrap;
+            horizontal-stretch: 1;
+            color: LoginStyle.danger;
+        }
+    }
+}
+
+export component ServerChip inherits Rectangle {
+    in property <string> server;
+
+    background: LoginStyle.surface;
+    border-radius: 9px;
+    border-width: 1px;
+    border-color: LoginStyle.hairline;
+    height: chip-layout.preferred-height;
+
+    chip-layout := HorizontalLayout {
+        padding-left: 10px;
+        padding-right: 10px;
+        padding-top: 7px;
+        padding-bottom: 7px;
+        spacing: 7px;
+
+        VerticalLayout {
+            alignment: center;
+
+            IconDisplay {
+                icon: IconSet.Server;
+                size: 14px;
+                stroke: LoginStyle.success;
+            }
+        }
+
+        Text {
+            text: root.server;
+            font-size: 12px;
+            overflow: elide;
+            horizontal-stretch: 1;
+            vertical-alignment: center;
+            color: LoginStyle.muted;
+        }
+
+        VerticalLayout {
+            alignment: center;
+
+            IconDisplay {
+                icon: IconSet.Check;
+                size: 14px;
+                stroke: LoginStyle.success;
+            }
+        }
+    }
+}
+
+export component OrDivider inherits HorizontalLayout {
+    spacing: 12px;
+
+    VerticalLayout {
+        alignment: center;
+        horizontal-stretch: 1;
+
+        Rectangle {
+            height: 1px;
+            background: LoginStyle.hairline;
+        }
+    }
+
+    Text {
+        text: @tr("or");
+        font-size: 11px;
+        font-weight: 600;
+        letter-spacing: 0.6px;
+        vertical-alignment: center;
+        color: LoginStyle.faint;
+    }
+
+    VerticalLayout {
+        alignment: center;
+        horizontal-stretch: 1;
+
+        Rectangle {
+            height: 1px;
+            background: LoginStyle.hairline;
+        }
+    }
 }
