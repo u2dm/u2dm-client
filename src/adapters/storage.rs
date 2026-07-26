@@ -1,27 +1,60 @@
-use std::io::ErrorKind;
+use std::io::{self, ErrorKind};
 use std::path::{Path, PathBuf};
 
 use async_trait::async_trait;
 use tokio::fs;
 use tokio::task::spawn_blocking;
 
-use crate::adapters::private_fs;
 use crate::domain::account::AccountScope;
-use crate::domain::models::{Session, SessionMetadata};
+use crate::domain::models::Session;
 use crate::error::{AppError, Result};
 use crate::ports::storage::{StoragePort, StoredSession};
 
 const KEYRING_SERVICE: &str = "u2dm";
-const CREDENTIALS_KEY: &str = "session-credentials";
-const CREDENTIALS_VERSION: u8 = 1;
+const SESSION_KEY: &str = "session-credentials";
+const SESSION_RECORD_VERSION: u8 = 2;
+
+#[derive(serde::Deserialize)]
+struct RecordVersion {
+    version: u8,
+}
 
 #[derive(serde::Serialize, serde::Deserialize)]
-struct StoredCredentials {
+struct StoredSessionRecord {
     version: u8,
     user_id: String,
+    device_id: String,
+    homeserver: String,
     access_token: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     refresh_token: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    client_id: Option<String>,
+}
+
+impl StoredSessionRecord {
+    fn new(session: &Session) -> Self {
+        Self {
+            version: SESSION_RECORD_VERSION,
+            user_id: session.user_id.clone(),
+            device_id: session.device_id.clone(),
+            homeserver: session.homeserver.clone(),
+            access_token: session.access_token.clone(),
+            refresh_token: session.refresh_token.clone(),
+            client_id: session.client_id.clone(),
+        }
+    }
+
+    fn into_session(self) -> Session {
+        Session {
+            user_id: self.user_id,
+            device_id: self.device_id,
+            homeserver: self.homeserver,
+            access_token: self.access_token,
+            refresh_token: self.refresh_token,
+            client_id: self.client_id,
+        }
+    }
 }
 
 fn passphrase_key(account: &AccountScope) -> String {
@@ -40,13 +73,24 @@ fn combine(operation: &str, failures: &[String]) -> Result<()> {
 }
 
 pub struct SecureStorage {
-    session_path: PathBuf,
+    superseded_metadata_path: PathBuf,
 }
 
 impl SecureStorage {
     pub fn new(data_dir: &Path) -> Self {
         Self {
-            session_path: data_dir.join("session.json"),
+            superseded_metadata_path: data_dir.join("session.json"),
+        }
+    }
+
+    async fn drop_superseded_metadata(&self) -> io::Result<()> {
+        match fs::remove_file(&self.superseded_metadata_path).await {
+            Ok(()) => {
+                tracing::debug!("removed session metadata left by an earlier layout");
+                Ok(())
+            }
+            Err(e) if e.kind() == ErrorKind::NotFound => Ok(()),
+            Err(e) => Err(e),
         }
     }
 }
@@ -55,64 +99,42 @@ impl SecureStorage {
 impl StoragePort for SecureStorage {
     async fn save_session(&self, session: &Session) -> Result<()> {
         tracing::debug!(user_id = %session.user_id, "saving session");
-        write_credentials(&StoredCredentials {
-            version: CREDENTIALS_VERSION,
-            user_id: session.user_id.clone(),
-            access_token: session.access_token.clone(),
-            refresh_token: session.refresh_token.clone(),
-        })
-        .await?;
+        write_record(&StoredSessionRecord::new(session)).await?;
 
-        let metadata = session.metadata();
-        write_json(&self.session_path, &metadata).await?;
+        if let Err(e) = self.drop_superseded_metadata().await {
+            tracing::warn!("stale session metadata could not be removed: {e}");
+        }
         tracing::debug!("session saved");
 
         Ok(())
     }
 
     async fn load_session(&self) -> Result<StoredSession> {
-        let contents = match fs::read_to_string(&self.session_path).await {
-            Ok(c) => c,
-            Err(e) if e.kind() == ErrorKind::NotFound => return Ok(StoredSession::Absent),
-            Err(e) => return Err(e.into()),
-        };
-
-        let metadata: SessionMetadata = serde_json::from_str(&contents)?;
-
-        let credentials = match load_credentials(&metadata.user_id).await {
-            Ok(Some(credentials)) => credentials,
-            Ok(None) => {
-                tracing::info!("session metadata present but no usable credentials in keyring");
-                return Ok(StoredSession::Incomplete);
-            }
+        let raw = match keyring_get(SESSION_KEY).await {
+            Ok(Some(raw)) => raw,
+            Ok(None) => return Ok(StoredSession::Absent),
             Err(e) => {
                 tracing::warn!("keyring unavailable while loading session: {e}");
                 return Ok(StoredSession::CredentialsUnavailable(e));
             }
         };
 
-        Ok(StoredSession::Present(Session {
-            user_id: metadata.user_id,
-            device_id: metadata.device_id,
-            homeserver: metadata.homeserver,
-            access_token: credentials.access_token,
-            refresh_token: credentials.refresh_token,
-            client_id: metadata.client_id,
-        }))
+        match decode_record(&raw) {
+            Some(record) => Ok(StoredSession::Present(record.into_session())),
+            None => Ok(StoredSession::Incomplete),
+        }
     }
 
     async fn clear_session(&self) -> Result<()> {
         tracing::debug!("clearing stored session");
         let mut failures = Vec::new();
 
-        match fs::remove_file(&self.session_path).await {
-            Ok(()) => {}
-            Err(e) if e.kind() == ErrorKind::NotFound => {}
-            Err(e) => failures.push(format!("{} ({e})", self.session_path.display())),
+        if let Err(e) = keyring_delete(SESSION_KEY).await {
+            failures.push(format!("{SESSION_KEY} ({e})"));
         }
 
-        if let Err(e) = keyring_delete(CREDENTIALS_KEY).await {
-            failures.push(format!("{CREDENTIALS_KEY} ({e})"));
+        if let Err(e) = self.drop_superseded_metadata().await {
+            failures.push(format!("{} ({e})", self.superseded_metadata_path.display()));
         }
 
         combine("stored credentials could not be removed", &failures)
@@ -131,39 +153,33 @@ impl StoragePort for SecureStorage {
     }
 }
 
-async fn write_credentials(record: &StoredCredentials) -> Result<()> {
-    keyring_set(CREDENTIALS_KEY, serde_json::to_string(record)?).await
+async fn write_record(record: &StoredSessionRecord) -> Result<()> {
+    keyring_set(SESSION_KEY, serde_json::to_string(record)?).await
 }
 
-async fn load_credentials(user_id: &str) -> Result<Option<StoredCredentials>> {
-    Ok(keyring_get(CREDENTIALS_KEY)
-        .await?
-        .and_then(|raw| decode_credentials(&raw, user_id)))
-}
-
-fn decode_credentials(raw: &str, user_id: &str) -> Option<StoredCredentials> {
-    let record: StoredCredentials = match serde_json::from_str(raw) {
-        Ok(record) => record,
-        Err(e) => {
-            tracing::warn!("stored credentials are unreadable, re-login required: {e}");
+fn decode_record(raw: &str) -> Option<StoredSessionRecord> {
+    match serde_json::from_str::<RecordVersion>(raw) {
+        Ok(RecordVersion { version }) if version == SESSION_RECORD_VERSION => {}
+        Ok(RecordVersion { version }) => {
+            tracing::warn!(
+                version,
+                "the stored session uses an unsupported layout, re-login required"
+            );
             return None;
         }
-    };
-
-    if record.version != CREDENTIALS_VERSION {
-        tracing::warn!(
-            version = record.version,
-            "stored credentials use an unsupported layout, re-login required"
-        );
-        return None;
+        Err(e) => {
+            tracing::warn!("the stored session is unreadable, re-login required: {e}");
+            return None;
+        }
     }
 
-    if record.user_id != user_id {
-        tracing::warn!("stored credentials belong to a different account, re-login required");
-        return None;
+    match serde_json::from_str(raw) {
+        Ok(record) => Some(record),
+        Err(e) => {
+            tracing::warn!("the stored session is incomplete, re-login required: {e}");
+            None
+        }
     }
-
-    Some(record)
 }
 
 async fn keyring_set(key: &str, secret: String) -> Result<()> {
@@ -257,15 +273,4 @@ fn store_error(source: keyring_core::Error) -> AppError {
         key: "<default-store>".to_owned(),
         source,
     }
-}
-
-async fn write_json<T: serde::Serialize + Sync + ?Sized>(path: &Path, value: &T) -> Result<()> {
-    if let Some(parent) = path.parent() {
-        private_fs::create_dir(parent).await?;
-    }
-
-    let json = serde_json::to_string_pretty(value)?;
-    private_fs::write_atomically(path, json.as_bytes()).await?;
-
-    Ok(())
 }

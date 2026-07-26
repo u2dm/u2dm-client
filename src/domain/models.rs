@@ -82,26 +82,6 @@ impl fmt::Debug for Session {
     }
 }
 
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct SessionMetadata {
-    pub user_id: String,
-    pub device_id: String,
-    pub homeserver: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub client_id: Option<String>,
-}
-
-impl Session {
-    pub fn metadata(&self) -> SessionMetadata {
-        SessionMetadata {
-            user_id: self.user_id.clone(),
-            device_id: self.device_id.clone(),
-            homeserver: self.homeserver.clone(),
-            client_id: self.client_id.clone(),
-        }
-    }
-}
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RoomId(String);
 
