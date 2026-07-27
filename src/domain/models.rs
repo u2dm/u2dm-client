@@ -272,7 +272,7 @@ pub struct ReplyInfo {
     pub body: String,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct TimelineMessage {
     pub unique_id: String,
     pub event_id: Option<EventId>,
@@ -285,22 +285,6 @@ pub struct TimelineMessage {
     pub is_own: bool,
     pub reply: Option<ReplyInfo>,
     pub edited: bool,
-}
-
-impl TimelineMessage {
-    pub fn visually_eq(&self, other: &Self) -> bool {
-        self.unique_id == other.unique_id
-            && self.event_id == other.event_id
-            && self.sender == other.sender
-            && self.sender_display_name == other.sender_display_name
-            && self.sender_avatar_url == other.sender_avatar_url
-            && self.sender_pronouns == other.sender_pronouns
-            && self.body == other.body
-            && self.timestamp == other.timestamp
-            && self.is_own == other.is_own
-            && self.reply == other.reply
-            && self.edited == other.edited
-    }
 }
 
 #[derive(Debug, Clone, strum::IntoStaticStr)]

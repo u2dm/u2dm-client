@@ -91,7 +91,7 @@ fn apply_set(
     items.set(index, value, new_msg.is_some());
 
     match (old_msg, new_msg) {
-        (Some(old), Some(new)) if old.visually_eq(&new) => None,
+        (Some(old), Some(new)) if old == new => None,
         (Some(_), Some(new)) => {
             spawn_if_needed(&new, ctx);
             Some(TimelinePatch::Set {
