@@ -34,6 +34,7 @@ mod composition;
 mod config;
 mod domain;
 mod error;
+mod locale;
 mod ports;
 mod util;
 
@@ -57,7 +58,9 @@ fn init_tracing() {
 }
 
 fn run() -> Result<()> {
-    slint::init_translations!(concat!(env!("CARGO_MANIFEST_DIR"), "/lang/"));
+    let catalog_dir = locale::catalog_dir();
+    tracing::debug!(dir = %catalog_dir.display(), "loading translation catalogs");
+    slint::init_translations!(catalog_dir);
     let rt = Runtime::new()?;
     let cfg = config::AppConfig::from_env()?;
     tracing::info!(data_dir = %cfg.data_dir.display(), cache_dir = %cfg.cache_dir.display(), "starting U2DM");

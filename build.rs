@@ -7,6 +7,7 @@ use std::process::Command;
 use std::{env, fs};
 
 const LANG_DIR: &str = "lang";
+const BUNDLED_CATALOGS_ENV: &str = "U2DM_BUNDLED_CATALOGS";
 const UI_DIR: &str = "ui";
 const POT_FILE: &str = "lang/u2dm.pot";
 const LUCIDE_LSP_LIB: &str = ".lucide/lib.slint";
@@ -33,7 +34,16 @@ fn main() {
         }
     }
 
-    update_translations();
+    update_translations(&bundled_catalog_root());
+}
+
+fn bundled_catalog_root() -> PathBuf {
+    let Ok(out_dir) = env::var("OUT_DIR") else {
+        panic!("OUT_DIR is unset, so there is nowhere to put the compiled translation catalogs");
+    };
+    let root = Path::new(&out_dir).join(LANG_DIR);
+    println!("cargo::rustc-env={BUNDLED_CATALOGS_ENV}={}", root.display());
+    root
 }
 
 fn ensure_twemoji_font() {
@@ -129,7 +139,7 @@ fn sync_lucide_lsp_lib() {
     drop(fs::copy(&src, &dest));
 }
 
-fn update_translations() {
+fn update_translations(catalog_root: &Path) {
     let slint_files = collect_files_recursive(UI_DIR, "slint");
     if slint_files.is_empty() {
         return;
@@ -143,8 +153,9 @@ fn update_translations() {
 
     let pkg_name = env::var("CARGO_PKG_NAME").unwrap_or_default();
     for po_path in collect_files_recursive(LANG_DIR, "po") {
+        println!("cargo::rerun-if-changed={po_path}");
         merge_translations(&po_path);
-        compile_translations(&po_path, &pkg_name);
+        compile_translations(&po_path, &pkg_name, catalog_root);
     }
 
     println!("cargo::rerun-if-changed={UI_DIR}/");
@@ -211,17 +222,28 @@ fn merge_translations(po_path: &str) {
     );
 }
 
-fn compile_translations(po_path: &str, pkg_name: &str) {
+fn compile_translations(po_path: &str, pkg_name: &str, catalog_root: &Path) {
     let Some(lang) = Path::new(po_path).file_stem().map(|s| s.to_string_lossy()) else {
         return;
     };
 
-    let mo_dir = format!("{LANG_DIR}/{lang}/LC_MESSAGES");
-    drop(fs::create_dir_all(&mo_dir));
+    let mo_dir = catalog_root.join(lang.as_ref()).join("LC_MESSAGES");
+    if let Err(e) = fs::create_dir_all(&mo_dir) {
+        panic!("failed to create {}: {e}", mo_dir.display());
+    }
 
-    drop(
-        Command::new("msgfmt")
-            .args([po_path, "-o", &format!("{mo_dir}/{pkg_name}.mo")])
-            .status(),
-    );
+    let mo_path = mo_dir.join(format!("{pkg_name}.mo"));
+    match Command::new("msgfmt")
+        .arg(po_path)
+        .arg("-o")
+        .arg(&mo_path)
+        .status()
+    {
+        Ok(status) if status.success() => {}
+        Ok(status) => panic!("msgfmt rejected {po_path} ({status}). The catalog is malformed."),
+        Err(e) => println!(
+            "cargo::warning=could not run msgfmt ({e}), {po_path} will not be compiled and its \
+             strings stay untranslated. Install gettext."
+        ),
+    }
 }

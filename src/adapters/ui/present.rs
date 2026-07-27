@@ -1,6 +1,5 @@
 use std::cell::RefCell;
 use std::collections::HashMap;
-use std::env;
 use std::sync::OnceLock;
 
 use chrono::{Locale, Timelike};
@@ -11,6 +10,7 @@ use super::schema::{
 };
 use crate::commands::Toast;
 use crate::domain::models::{MessageBody, ServiceEvent, TimelineMessage};
+use crate::locale::{self, LocaleRequest};
 
 pub fn sender_initial(name: &str) -> &str {
     match name.chars().next() {
@@ -78,34 +78,22 @@ fn truncate_chars(text: &str, max: usize) -> &str {
 fn active_locale() -> Locale {
     static LOCALE: OnceLock<Locale> = OnceLock::new();
     *LOCALE.get_or_init(|| {
-        lc_time_locale()
-            .or_else(sys_locale::get_locale)
-            .as_deref()
-            .and_then(parse_locale)
+        LocaleRequest::from_env(locale::TIME_LOCALE_KEYS)
+            .or_else(|| {
+                sys_locale::get_locale()
+                    .as_deref()
+                    .and_then(LocaleRequest::parse)
+            })
+            .and_then(|request| closest_known_locale(&request))
             .unwrap_or(Locale::POSIX)
     })
 }
 
-fn lc_time_locale() -> Option<String> {
-    ["LC_ALL", "LC_TIME", "LANG"]
-        .into_iter()
-        .find_map(|key| env::var(key).ok().filter(|value| !value.is_empty()))
-}
-
-fn parse_locale(tag: &str) -> Option<Locale> {
-    let core = tag
-        .split(['.', '@'])
-        .next()
-        .unwrap_or(tag)
-        .replace('-', "_");
-    let mut candidate: &str = &core;
-    loop {
-        if let Ok(locale) = Locale::try_from(candidate) {
-            return Some(locale);
-        }
-        let cut = candidate.rfind('_')?;
-        candidate = candidate.get(..cut)?;
-    }
+fn closest_known_locale(request: &LocaleRequest) -> Option<Locale> {
+    request
+        .candidates()
+        .iter()
+        .find_map(|candidate| Locale::try_from(candidate.as_str()).ok())
 }
 
 fn uses_12h_clock(locale: Locale) -> bool {
