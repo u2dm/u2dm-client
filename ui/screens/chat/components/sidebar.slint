@@ -13,16 +13,10 @@ import { ListItemArea } from "../../../components/a11y.slint";
 import { Avatars, Fonts } from "../../../theme.slint";
 import { ServiceKind } from "../../../enums.slint";
 import { DirectoryView } from "../../../views.slint";
+import { Actions } from "../../../actions.slint";
 
 export component Sidebar inherits Rectangle {
     background: Palette.alternate-background;
-
-    callback select-room(string);
-    callback select-space(string);
-    callback select-subspace(string);
-    callback move-space(int, int);
-    callback menu-clicked();
-    callback request-room-avatar(string);
 
     in property <length> subrail-width: 68px;
 
@@ -43,22 +37,10 @@ export component Sidebar inherits Rectangle {
     HorizontalLayout {
         SpaceRail {
             width: root.rail-width;
-            select-space(id) => {
-                root.select-space(id);
-            }
-            move-space(from, to) => {
-                root.move-space(from, to);
-            }
-            menu-clicked => {
-                root.menu-clicked();
-            }
         }
 
         if DirectoryView.subspaces.length > 0: SubspaceRail {
             width: root.subrail-width;
-            select-subspace(id) => {
-                root.select-subspace(id);
-            }
         }
 
         room-column := Rectangle {
@@ -122,11 +104,11 @@ export component Sidebar inherits Rectangle {
                         ring-inset: 2px;
                         background: root.row-background(self.selected, self.has-hover);
                         clicked => {
-                            root.select-room(room.id);
+                            Actions.select-room(room.id);
                         }
                         init => {
                             if (!room.has-avatar) {
-                                root.request-room-avatar(room.id);
+                                Actions.request-room-avatar(room.id);
                             }
                         }
 

@@ -11,77 +11,77 @@ msgstr ""
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: \n"
 
-#: ui/components/verification.slint:40
+#: ui/components/verification.slint:36
 msgctxt "VerificationDialog"
 msgid "Device Verification"
 msgstr ""
 
-#: ui/components/verification.slint:50
+#: ui/components/verification.slint:46
 msgctxt "VerificationDialog"
 msgid "Verify this session from your other device"
 msgstr ""
 
-#: ui/components/verification.slint:50
+#: ui/components/verification.slint:46
 msgctxt "VerificationDialog"
 msgid "Verification request from {}"
 msgstr ""
 
-#: ui/components/verification.slint:61
+#: ui/components/verification.slint:57
 msgctxt "VerificationDialog"
 msgid "Accept"
 msgstr ""
 
-#: ui/components/verification.slint:69
+#: ui/components/verification.slint:65
 msgctxt "VerificationDialog"
 msgid "Decline"
 msgstr ""
 
-#: ui/components/verification.slint:78
+#: ui/components/verification.slint:74
 msgctxt "VerificationDialog"
 msgid "Declining..."
 msgstr ""
 
-#: ui/components/verification.slint:90
+#: ui/components/verification.slint:86
 msgctxt "VerificationDialog"
 msgid "Confirm the emojis below match the other device:"
 msgstr ""
 
-#: ui/components/verification.slint:124
+#: ui/components/verification.slint:120
 msgctxt "VerificationDialog"
 msgid "They match"
 msgstr ""
 
-#: ui/components/verification.slint:132
+#: ui/components/verification.slint:128
 msgctxt "VerificationDialog"
 msgid "They don't match"
 msgstr ""
 
-#: ui/components/verification.slint:141
+#: ui/components/verification.slint:137
 msgctxt "VerificationDialog"
 msgid "Cancelling the verification..."
 msgstr ""
 
-#: ui/components/verification.slint:153
+#: ui/components/verification.slint:149
 msgctxt "VerificationDialog"
 msgid "Waiting for the other device to confirm..."
 msgstr ""
 
-#: ui/components/verification.slint:163
+#: ui/components/verification.slint:159
 msgctxt "VerificationDialog"
 msgid "Verification successful!"
 msgstr ""
 
-#: ui/components/verification.slint:174
+#: ui/components/verification.slint:170
 msgctxt "VerificationDialog"
 msgid "Done"
 msgstr ""
 
-#: ui/components/verification.slint:186
+#: ui/components/verification.slint:182
 msgctxt "VerificationDialog"
 msgid "Verification cancelled"
 msgstr ""
 
-#: ui/components/verification.slint:201
+#: ui/components/verification.slint:197
 msgctxt "VerificationDialog"
 msgid "Dismiss"
 msgstr ""
@@ -91,62 +91,62 @@ msgctxt "AppWindow"
 msgid "U2DM Matrix Client"
 msgstr ""
 
-#: ui/screens/chat/chat.slint:137
+#: ui/screens/chat/chat.slint:80
 msgctxt "ChatScreen"
 msgid "File saved to {}"
 msgstr ""
 
-#: ui/screens/chat/chat.slint:150
+#: ui/screens/chat/chat.slint:93
 msgctxt "ChatScreen"
 msgid "Dismiss"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/message-input.slint:91
+#: ui/screens/chat/components/timeline/message-input.slint:82
 msgctxt "MessageInput"
 msgid "Reply to {}"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/message-input.slint:98
+#: ui/screens/chat/components/timeline/message-input.slint:89
 msgctxt "MessageInput"
 msgid "Cancel reply"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/message-input.slint:144
+#: ui/screens/chat/components/timeline/message-input.slint:135
 msgctxt "MessageInput"
 msgid "Send a message..."
 msgstr ""
 
-#: ui/screens/chat/components/timeline/message-input.slint:155
+#: ui/screens/chat/components/timeline/message-input.slint:146
 msgctxt "MessageInput"
 msgid "Emoji"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/message-input.slint:175
+#: ui/screens/chat/components/timeline/message-input.slint:166
 msgctxt "MessageInput"
 msgid "Send"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/message-bubble.slint:238
+#: ui/screens/chat/components/timeline/message-bubble.slint:226
 msgctxt "MessageBubble"
 msgid "Reply to {}"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/message-bubble.slint:269
+#: ui/screens/chat/components/timeline/message-bubble.slint:259
 msgctxt "MessageBubble"
 msgid "Reply"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/timeline-content.slint:163
+#: ui/screens/chat/components/timeline/timeline-content.slint:144
 msgctxt "TimelineContent"
 msgid "Loading older messages..."
 msgstr ""
 
-#: ui/screens/chat/components/timeline/timeline-content.slint:170
+#: ui/screens/chat/components/timeline/timeline-content.slint:151
 msgctxt "TimelineContent"
 msgid "Loading newer messages..."
 msgstr ""
 
-#: ui/screens/chat/components/timeline/timeline-content.slint:182
+#: ui/screens/chat/components/timeline/timeline-content.slint:163
 msgctxt "TimelineContent"
 msgid "Jump to latest messages"
 msgstr ""
@@ -296,7 +296,7 @@ msgctxt "UnsupportedMessage"
 msgid "Unsupported message type: {}"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/messages/file-message.slint:27
+#: ui/screens/chat/components/timeline/messages/file-message.slint:25
 msgctxt "FileMessage"
 msgid "Save"
 msgstr ""
@@ -361,27 +361,27 @@ msgctxt "EmojiPicker"
 msgid "No emoji found"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/timeline-view.slint:50
+#: ui/screens/chat/components/timeline/timeline-view.slint:37
 msgctxt "TimelineView"
 msgid "Loading messages..."
 msgstr ""
 
-#: ui/screens/chat/components/timeline/timeline-view.slint:53
+#: ui/screens/chat/components/timeline/timeline-view.slint:40
 msgctxt "TimelineView"
 msgid "Connection lost"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/timeline-view.slint:55
+#: ui/screens/chat/components/timeline/timeline-view.slint:42
 msgctxt "TimelineView"
 msgid "Couldn't load messages"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/timeline-view.slint:66
+#: ui/screens/chat/components/timeline/timeline-view.slint:51
 msgctxt "TimelineView"
 msgid "Select a room"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/timeline-view.slint:95
+#: ui/screens/chat/components/timeline/timeline-view.slint:80
 msgctxt "TimelineView"
 msgid "{n} member"
 msgid_plural "{n} members"
@@ -398,47 +398,47 @@ msgctxt "StatusPill"
 msgid "Retry"
 msgstr ""
 
-#: ui/screens/chat/components/space-rail.slint:230
+#: ui/screens/chat/components/space-rail.slint:228
 msgctxt "SpaceRail"
 msgid "Menu"
 msgstr ""
 
-#: ui/screens/chat/components/space-rail.slint:260
+#: ui/screens/chat/components/space-rail.slint:258
 msgctxt "SpaceRail"
 msgid "Spaces"
 msgstr ""
 
-#: ui/screens/chat/components/space-rail.slint:270
+#: ui/screens/chat/components/space-rail.slint:268
 msgctxt "SpaceRail"
 msgid "All Rooms"
 msgstr ""
 
-#: ui/screens/chat/components/sidebar.slint:84
+#: ui/screens/chat/components/sidebar.slint:66
 msgctxt "Sidebar"
 msgid "Search"
 msgstr ""
 
-#: ui/screens/chat/components/sidebar.slint:112
+#: ui/screens/chat/components/sidebar.slint:94
 msgctxt "Sidebar"
 msgid "Rooms"
 msgstr ""
 
-#: ui/screens/chat/components/sidebar.slint:120
+#: ui/screens/chat/components/sidebar.slint:102
 msgctxt "Sidebar"
 msgid "{}, {} unread"
 msgstr ""
 
-#: ui/screens/chat/components/sidebar.slint:134
+#: ui/screens/chat/components/sidebar.slint:116
 msgctxt "Sidebar"
 msgid "You"
 msgstr ""
 
-#: ui/screens/chat/components/subspace-rail.slint:145
+#: ui/screens/chat/components/subspace-rail.slint:144
 msgctxt "SubspaceRail"
 msgid "Topics"
 msgstr ""
 
-#: ui/screens/chat/components/subspace-rail.slint:151
+#: ui/screens/chat/components/subspace-rail.slint:150
 msgctxt "SubspaceRail"
 msgid "All"
 msgstr ""
@@ -518,52 +518,52 @@ msgctxt "Drawer"
 msgid "Log Out"
 msgstr ""
 
-#: ui/screens/login/credentials.slint:57
+#: ui/screens/login/credentials.slint:52
 msgctxt "CredentialsScreen"
 msgid "Enter your credentials to continue"
 msgstr ""
 
-#: ui/screens/login/credentials.slint:71
+#: ui/screens/login/credentials.slint:66
 msgctxt "CredentialsScreen"
 msgid "USERNAME"
 msgstr ""
 
-#: ui/screens/login/credentials.slint:76
+#: ui/screens/login/credentials.slint:71
 msgctxt "CredentialsScreen"
 msgid "Username"
 msgstr ""
 
-#: ui/screens/login/credentials.slint:77
+#: ui/screens/login/credentials.slint:72
 msgctxt "CredentialsScreen"
 msgid "username"
 msgstr ""
 
-#: ui/screens/login/credentials.slint:90
+#: ui/screens/login/credentials.slint:85
 msgctxt "CredentialsScreen"
 msgid "PASSWORD"
 msgstr ""
 
-#: ui/screens/login/credentials.slint:95
+#: ui/screens/login/credentials.slint:90
 msgctxt "CredentialsScreen"
 msgid "Password"
 msgstr ""
 
-#: ui/screens/login/credentials.slint:96
+#: ui/screens/login/credentials.slint:91
 msgctxt "CredentialsScreen"
 msgid "password"
 msgstr ""
 
-#: ui/screens/login/credentials.slint:107
+#: ui/screens/login/credentials.slint:102
 msgctxt "CredentialsScreen"
 msgid "Log in"
 msgstr ""
 
-#: ui/screens/login/credentials.slint:120
+#: ui/screens/login/credentials.slint:115
 msgctxt "CredentialsScreen"
 msgid "Continue with browser"
 msgstr ""
 
-#: ui/screens/login/credentials.slint:131
+#: ui/screens/login/credentials.slint:126
 msgctxt "CredentialsScreen"
 msgid "Cancel"
 msgstr ""
@@ -573,27 +573,27 @@ msgctxt "BackButton"
 msgid "Back to the homeserver step"
 msgstr ""
 
-#: ui/screens/login/homeserver.slint:31
+#: ui/screens/login/homeserver.slint:30
 msgctxt "HomeserverScreen"
 msgid "Sign in to your Matrix account"
 msgstr ""
 
-#: ui/screens/login/homeserver.slint:38
+#: ui/screens/login/homeserver.slint:37
 msgctxt "HomeserverScreen"
 msgid "HOMESERVER"
 msgstr ""
 
-#: ui/screens/login/homeserver.slint:43
+#: ui/screens/login/homeserver.slint:42
 msgctxt "HomeserverScreen"
 msgid "Homeserver"
 msgstr ""
 
-#: ui/screens/login/homeserver.slint:53
+#: ui/screens/login/homeserver.slint:52
 msgctxt "HomeserverScreen"
 msgid "The server that stores your account and messages."
 msgstr ""
 
-#: ui/screens/login/homeserver.slint:61
+#: ui/screens/login/homeserver.slint:60
 msgctxt "HomeserverScreen"
 msgid "Continue"
 msgstr ""

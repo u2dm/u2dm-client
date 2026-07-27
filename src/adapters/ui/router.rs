@@ -1,6 +1,7 @@
 use tokio::sync::{mpsc, watch};
 
 use super::props::send_command;
+use super::schema::simple_callbacks;
 use crate::commands::{UiCommand, ViewportChanged};
 use crate::domain::models::{LoginCredentials, RoomId};
 
@@ -12,36 +13,38 @@ fn optional_room(id: String) -> Option<RoomId> {
     (!id.is_empty()).then(|| RoomId::new(id))
 }
 
-pub fn check_server(tx: &Tx, homeserver: String) {
-    send_command(tx, UiCommand::CheckServer(homeserver));
+macro_rules! gen_router_fns {
+    ($($on:ident $lit:literal $g:ident $gname:literal $fn:ident $kind:ident $cmd:ident;)*) => {
+        $( gen_router_fns!(@one $fn $kind $cmd); )*
+    };
+    (@one $fn:ident plain $cmd:ident) => {
+        pub fn $fn(tx: &Tx) {
+            send_command(tx, UiCommand::$cmd);
+        }
+    };
+    (@one $fn:ident pass $cmd:ident) => {
+        pub fn $fn(tx: &Tx, arg: String) {
+            send_command(tx, UiCommand::$cmd(arg));
+        }
+    };
+    (@one $fn:ident room $cmd:ident) => {
+        pub fn $fn(tx: &Tx, arg: String) {
+            send_command(tx, UiCommand::$cmd(RoomId::new(arg)));
+        }
+    };
+    (@one $fn:ident opt_room $cmd:ident) => {
+        pub fn $fn(tx: &Tx, arg: String) {
+            send_command(tx, UiCommand::$cmd(optional_room(arg)));
+        }
+    };
+    (@one $fn:ident manual_unit $cmd:ident) => {};
+    (@one $fn:ident manual_string $cmd:ident) => {};
 }
+
+simple_callbacks!(gen_router_fns);
 
 pub fn login_password(tx: &Tx, creds: LoginCredentials) {
     send_command(tx, UiCommand::LoginPassword(creds));
-}
-
-pub fn login_oauth(tx: &Tx) {
-    send_command(tx, UiCommand::LoginOAuth);
-}
-
-pub fn cancel_oauth(tx: &Tx) {
-    send_command(tx, UiCommand::CancelOAuth);
-}
-
-pub fn back_to_homeserver(tx: &Tx) {
-    send_command(tx, UiCommand::BackToHomeserver);
-}
-
-pub fn select_room(tx: &Tx, room_id: String) {
-    send_command(tx, UiCommand::SelectRoom(RoomId::new(room_id)));
-}
-
-pub fn select_space(tx: &Tx, space_id: String) {
-    send_command(tx, UiCommand::SelectSpace(optional_room(space_id)));
-}
-
-pub fn select_subspace(tx: &Tx, space_id: String) {
-    send_command(tx, UiCommand::SelectSubspace(optional_room(space_id)));
 }
 
 pub fn move_space(tx: &Tx, from: usize, to: usize, reorder: impl FnOnce(usize, usize)) {
@@ -50,14 +53,6 @@ pub fn move_space(tx: &Tx, from: usize, to: usize, reorder: impl FnOnce(usize, u
     }
     reorder(from, to);
     send_command(tx, UiCommand::MoveSpace { from, to });
-}
-
-pub fn logout(tx: &Tx) {
-    send_command(tx, UiCommand::Logout);
-}
-
-pub fn dismiss_toast(tx: &Tx) {
-    send_command(tx, UiCommand::DismissToast);
 }
 
 pub fn send_message(tx: &Tx, room_id: String, body: String, reply_to: String) {
@@ -72,22 +67,6 @@ pub fn send_message(tx: &Tx, room_id: String, body: String, reply_to: String) {
             reply_to: (!reply_to.is_empty()).then_some(reply_to),
         },
     );
-}
-
-pub fn accept_verification(tx: &Tx) {
-    send_command(tx, UiCommand::AcceptVerification);
-}
-
-pub fn confirm_verification(tx: &Tx) {
-    send_command(tx, UiCommand::ConfirmVerification);
-}
-
-pub fn reject_verification(tx: &Tx) {
-    send_command(tx, UiCommand::RejectVerification);
-}
-
-pub fn dismiss_verification(tx: &Tx) {
-    send_command(tx, UiCommand::DismissVerification);
 }
 
 pub fn open_media(tx: &Tx, event_id: String) {
@@ -158,8 +137,4 @@ pub fn jump_to_latest(tx: &Tx, key: RoomKey) {
             },
         );
     }
-}
-
-pub fn retry_timeline(tx: &Tx) {
-    send_command(tx, UiCommand::RetryTimeline);
 }

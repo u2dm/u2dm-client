@@ -5,25 +5,15 @@ import {
 import { IconDisplay, IconSet } from "@lucide";
 import { StatusPill } from "./status-pill.slint";
 
-import { SaveFileRequest } from "../types.slint";
-
 import { MessageBubble } from "./message-bubble.slint";
 import { MediaState, MessageKind } from "../../../../enums.slint";
 import { ClickArea } from "../../../../components/a11y.slint";
 import { RoomView } from "../../../../views.slint";
+import { Actions } from "../../../../actions.slint";
 
 export component TimelineContent inherits Rectangle {
     in property <string> room-id: "";
     in property <length> available-width;
-
-    callback open-media(string);
-    callback save-file(SaveFileRequest);
-    callback reply(string, string, string);
-    callback request-media(string);
-    callback scroll-position-changed(bool, bool);
-    callback paginate-backwards();
-    callback paginate-forwards();
-    callback jump-to-latest();
 
     clip: true;
 
@@ -84,10 +74,10 @@ export component TimelineContent inherits Rectangle {
             } else {
                 self.settling = false;
                 if self.at-top && !self.was-at-top && !RoomView.backwards-loading {
-                    root.paginate-backwards();
+                    Actions.paginate-backwards();
                 }
                 if self.at-bottom && !self.was-at-bottom && !RoomView.forwards-loading {
-                    root.paginate-forwards();
+                    Actions.paginate-forwards();
                 }
                 if self.scrollable {
                     if self.viewport-y > self.prev-viewport-y {
@@ -103,7 +93,7 @@ export component TimelineContent inherits Rectangle {
             if (self.at-top != self.was-at-top) || (self.at-bottom != self.was-at-bottom) {
                 self.was-at-top = self.at-top;
                 self.was-at-bottom = self.at-bottom;
-                root.scroll-position-changed(self.at-top, self.at-bottom);
+                Actions.scroll-position-changed(self.at-top, self.at-bottom);
             }
         }
 
@@ -142,17 +132,8 @@ export component TimelineContent inherits Rectangle {
             init => {
                 if (msg.message-type == MessageKind.image && msg.media-state != MediaState.ready)
                     || (!msg.is-own && !msg.has-avatar) {
-                    root.request-media(msg.unique-id);
+                    Actions.request-media(msg.unique-id);
                 }
-            }
-            open-media(id) => {
-                root.open-media(id);
-            }
-            save-file(req) => {
-                root.save-file(req);
-            }
-            reply(id, sender, preview) => {
-                root.reply(id, sender, preview);
             }
         }
     }
@@ -183,7 +164,7 @@ export component TimelineContent inherits Rectangle {
         clicked => {
             flickable.scroll-to-bottom();
             flickable.auto-scroll = true;
-            root.jump-to-latest();
+            Actions.jump-to-latest();
         }
 
         IconDisplay {

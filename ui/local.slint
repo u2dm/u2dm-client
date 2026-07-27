@@ -1,0 +1,15 @@
+export global Composer {
+    in-out property <string> reply-event-id;
+    in-out property <string> reply-sender;
+    in-out property <string> reply-preview;
+
+    public function clear() {
+        self.reply-event-id = "";
+        self.reply-sender = "";
+        self.reply-preview = "";
+    }
+}
+
+export global Shell {
+    in-out property <bool> drawer-open: false;
+}

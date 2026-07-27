@@ -1,0 +1,33 @@
+import { LoginRequest } from "screens/login/types.slint";
+import { SendMessageRequest, SaveFileRequest } from "screens/chat/components/types.slint";
+
+export global Actions {
+    callback check-server(string);
+    callback login-password(LoginRequest);
+    callback login-oauth();
+    callback cancel-oauth();
+    callback back-to-homeserver();
+    callback logout();
+
+    callback select-room(string);
+    callback select-space(string);
+    callback select-subspace(string);
+    callback move-space(int, int);
+    callback request-room-avatar(string);
+
+    callback send-message(SendMessageRequest);
+    callback open-media(string);
+    callback save-file(SaveFileRequest);
+    callback request-media(string);
+    callback scroll-position-changed(bool, bool);
+    callback paginate-backwards();
+    callback paginate-forwards();
+    callback jump-to-latest();
+    callback retry-timeline();
+    callback dismiss-toast();
+
+    callback accept-verification();
+    callback confirm-verification();
+    callback reject-verification();
+    callback dismiss-verification();
+}

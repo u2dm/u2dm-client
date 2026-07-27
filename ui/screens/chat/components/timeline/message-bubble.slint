@@ -3,10 +3,7 @@ import {
 } from "std-widgets.slint";
 import { IconDisplay, IconSet } from "@lucide";
 
-import {
-    MessageEntry,
-    SaveFileRequest,
-} from "../types.slint";
+import { MessageEntry } from "../types.slint";
 
 import { MessagePreview } from "../message-preview.slint";
 import { ReplyQuote } from "../reply-quote.slint";
@@ -18,6 +15,7 @@ import { UtdMessage } from "./messages/utd-message.slint";
 import { UnsupportedMessage } from "./messages/unsupported-message.slint";
 import { Avatar } from "../../../../components/avatar.slint";
 import { ClickArea } from "../../../../components/a11y.slint";
+import { Composer } from "../../../../local.slint";
 import { Avatars } from "../../../../theme.slint";
 import { MediaState, MessageKind } from "../../../../enums.slint";
 
@@ -65,10 +63,6 @@ export component MessageBubble inherits VerticalLayout {
     in property <bool> is-own;
     in property <MessageEntry> msg;
     in property <length> available-width;
-
-    callback open-media(string);
-    callback save-file(SaveFileRequest);
-    callback reply(string, string, string);
 
     property <color> own-bubble-color: Palette.accent-background.transparentize(0.4);
     property <color> other-bubble-color: Palette.alternate-background;
@@ -178,9 +172,6 @@ export component MessageBubble inherits VerticalLayout {
                     edited: msg.edited;
                     show-timestamp: root.is-photo-only;
                     bubble-hovered: hover-bg.has-hover || reply-btn.has-hover;
-                    open-media(id) => {
-                        root.open-media(id);
-                    }
                 }
 
                 if root.is-image && !root.has-photo: ImagePlaceholder {
@@ -190,9 +181,6 @@ export component MessageBubble inherits VerticalLayout {
                 if msg.message-type == MessageKind.file: FileMessage {
                     body: msg.body;
                     event-id: msg.event-id;
-                    save-file(req) => {
-                        root.save-file(req);
-                    }
                 }
 
                 if msg.message-type == MessageKind.utd: UtdMessage { }
@@ -239,7 +227,9 @@ export component MessageBubble inherits VerticalLayout {
                 enabled: root.has-remote-id;
                 opacity: root.has-remote-id && (hover-bg.has-hover || self.has-hover || self.has-focus) ? 1 : 0;
                 clicked => {
-                    root.reply(msg.event-id, msg.sender, MessagePreview.label(msg.preview-kind, msg.body));
+                    Composer.reply-event-id = msg.event-id;
+                    Composer.reply-sender = msg.sender;
+                    Composer.reply-preview = MessagePreview.label(msg.preview-kind, msg.body);
                 }
 
                 reply-pill := Rectangle {

@@ -35,13 +35,17 @@ mod generated {
     slint::include_modules!();
 }
 use generated::{
-    AppWindow, ConnectionState, DirectoryView, EmojiEntry, EmojiGroup, EmojiInsert, EmojiStore,
-    LoginActivity as UiLoginActivity, LoginMethodKind as UiLoginMethodKind, LoginPhase, LoginView,
-    MediaState as UiMediaState, MessageEntry, MessageKind as UiMessageKind,
+    Actions, AppWindow, ConnectionState, DirectoryView, EmojiEntry, EmojiGroup, EmojiInsert,
+    EmojiStore, LoginActivity as UiLoginActivity, LoginMethodKind as UiLoginMethodKind, LoginPhase,
+    LoginView, MediaState as UiMediaState, MessageEntry, MessageKind as UiMessageKind,
     PreviewKind as UiPreviewKind, RoomEntry, RoomView, ServiceKind as UiServiceKind, SessionView,
     SpaceEntry, TimelineState, ToastKind as UiToastKind, VerificationEmoji, VerificationPhase,
     VerificationView,
 };
+
+fn actions(window: &AppWindow) -> Actions<'_> {
+    window.global::<Actions>()
+}
 
 thread_local! {
     static TIMELINE_MODEL: RefCell<Option<Rc<VecModel<MessageEntry>>>> = const { RefCell::new(None) };
@@ -59,16 +63,34 @@ macro_rules! impl_prop_setter {
 }
 
 macro_rules! bind_compiled_callbacks {
-    ($win:ident $tx:ident; $($on:ident $lit:literal $fn:ident $shape:ident;)*) => {
-        $( bind_compiled_callbacks!(@one $win $tx $on $fn $shape); )*
+    ($win:ident $tx:ident; $($on:ident $lit:literal $g:ident $gname:literal $fn:ident $kind:ident $cmd:ident;)*) => {
+        $( bind_compiled_callbacks!(@one $win $tx $g $on $fn $kind); )*
     };
-    (@one $win:ident $tx:ident $on:ident $fn:ident unit) => {{
+    (@one $win:ident $tx:ident $g:ident $on:ident $fn:ident plain) => {
+        bind_compiled_callbacks!(@unit $win $tx $g $on $fn)
+    };
+    (@one $win:ident $tx:ident $g:ident $on:ident $fn:ident manual_unit) => {
+        bind_compiled_callbacks!(@unit $win $tx $g $on $fn)
+    };
+    (@one $win:ident $tx:ident $g:ident $on:ident $fn:ident pass) => {
+        bind_compiled_callbacks!(@string $win $tx $g $on $fn)
+    };
+    (@one $win:ident $tx:ident $g:ident $on:ident $fn:ident room) => {
+        bind_compiled_callbacks!(@string $win $tx $g $on $fn)
+    };
+    (@one $win:ident $tx:ident $g:ident $on:ident $fn:ident opt_room) => {
+        bind_compiled_callbacks!(@string $win $tx $g $on $fn)
+    };
+    (@one $win:ident $tx:ident $g:ident $on:ident $fn:ident manual_string) => {
+        bind_compiled_callbacks!(@string $win $tx $g $on $fn)
+    };
+    (@unit $win:ident $tx:ident $g:ident $on:ident $fn:ident) => {{
         let tx = $tx.clone();
-        $win.$on(move || router::$fn(&tx));
+        $win.global::<$g>().$on(move || router::$fn(&tx));
     }};
-    (@one $win:ident $tx:ident $on:ident $fn:ident string) => {{
+    (@string $win:ident $tx:ident $g:ident $on:ident $fn:ident) => {{
         let tx = $tx.clone();
-        $win.$on(move |arg| router::$fn(&tx, arg.to_string()));
+        $win.global::<$g>().$on(move |arg| router::$fn(&tx, arg.to_string()));
     }};
 }
 
@@ -297,7 +319,7 @@ impl SlintUiAdapter {
         simple_callbacks!(bind_compiled_callbacks win cmd_tx;);
 
         let tx = cmd_tx.clone();
-        self.window.on_login_password(move |req| {
+        actions(win).on_login_password(move |req| {
             router::login_password(
                 &tx,
                 LoginCredentials {
@@ -308,7 +330,7 @@ impl SlintUiAdapter {
         });
 
         let tx = cmd_tx.clone();
-        self.window.on_move_space(move |from, to| {
+        actions(win).on_move_space(move |from, to| {
             let (Ok(from), Ok(to)) = (usize::try_from(from), usize::try_from(to)) else {
                 return;
             };
@@ -322,7 +344,7 @@ impl SlintUiAdapter {
         });
 
         let tx = cmd_tx.clone();
-        self.window.on_send_message(move |req| {
+        actions(win).on_send_message(move |req| {
             router::send_message(
                 &tx,
                 req.room_id.to_string(),
@@ -331,45 +353,43 @@ impl SlintUiAdapter {
             );
         });
 
-        self.window
-            .on_request_media(move |unique_id| request_media(&unique_id));
+        actions(win).on_request_media(move |unique_id| request_media(&unique_id));
 
-        self.window.on_request_room_avatar(move |room_id| {
+        actions(win).on_request_room_avatar(move |room_id| {
             request_avatar(&AvatarSlot::Room(room_id.to_string()));
         });
 
         let tx = cmd_tx.clone();
-        self.window.on_save_file(move |req| {
+        actions(win).on_save_file(move |req| {
             router::save_file(&tx, req.event_id.to_string(), req.filename.to_string());
         });
 
         let scroll_tx = scroll_tx.clone();
         let weak = self.window.as_weak();
-        self.window
-            .on_scroll_position_changed(move |at_top, at_bottom| {
-                router::scroll_position(
-                    &scroll_tx,
-                    selected_room_key::<CompiledBackend>(&weak),
-                    at_top,
-                    at_bottom,
-                );
-            });
+        actions(win).on_scroll_position_changed(move |at_top, at_bottom| {
+            router::scroll_position(
+                &scroll_tx,
+                selected_room_key::<CompiledBackend>(&weak),
+                at_top,
+                at_bottom,
+            );
+        });
 
         let tx = cmd_tx.clone();
         let weak = self.window.as_weak();
-        self.window.on_paginate_backwards(move || {
+        actions(win).on_paginate_backwards(move || {
             router::paginate_backwards(&tx, selected_room_key::<CompiledBackend>(&weak));
         });
 
         let tx = cmd_tx.clone();
         let weak = self.window.as_weak();
-        self.window.on_paginate_forwards(move || {
+        actions(win).on_paginate_forwards(move || {
             router::paginate_forwards(&tx, selected_room_key::<CompiledBackend>(&weak));
         });
 
         let tx = cmd_tx.clone();
         let weak = self.window.as_weak();
-        self.window.on_jump_to_latest(move || {
+        actions(win).on_jump_to_latest(move || {
             router::jump_to_latest(&tx, selected_room_key::<CompiledBackend>(&weak));
         });
 

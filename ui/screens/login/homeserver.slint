@@ -13,17 +13,16 @@ import { LoginField } from "./field.slint";
 import { LoginButton } from "./button.slint";
 import { LoginActivity } from "../../enums.slint";
 import { LoginView } from "../../views.slint";
+import { Actions } from "../../actions.slint";
 
 export component HomeserverScreen inherits LoginPage {
     in-out property <string> input-homeserver: "matrix.org";
 
     private property <bool> is-checking: LoginView.activity == LoginActivity.checking-server;
 
-    callback check-server(string);
-
     function submit() {
         if (!root.is-checking && root.input-homeserver != "") {
-            root.check-server(root.input-homeserver);
+            Actions.check-server(root.input-homeserver);
         }
     }
 

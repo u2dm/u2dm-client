@@ -5,6 +5,7 @@ import { Avatar } from "../../../components/avatar.slint";
 import { ClickArea } from "../../../components/a11y.slint";
 import { ConnectionState } from "../../../enums.slint";
 import { SessionView } from "../../../views.slint";
+import { Actions } from "../../../actions.slint";
 
 component DrawerRow inherits Rectangle {
     in property <Icon> icon;
@@ -52,7 +53,6 @@ export component Drawer inherits Rectangle {
     in-out property <bool> open: false;
 
     callback add-account();
-    callback logout();
 
     property <length> panel-width: 300px;
     property <length> header-height: 148px;
@@ -240,7 +240,7 @@ export component Drawer inherits Rectangle {
             tint: Colors.tomato.mix(Palette.foreground, 0.55);
             clicked => {
                 root.open = false;
-                root.logout();
+                Actions.logout();
             }
         }
     }

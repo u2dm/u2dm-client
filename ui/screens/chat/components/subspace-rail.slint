@@ -6,6 +6,7 @@ import { TileGlyph, CountBadge } from "./tile.slint";
 import { Fonts } from "../../../theme.slint";
 import { FocusRing } from "../../../components/a11y.slint";
 import { DirectoryView } from "../../../views.slint";
+import { Actions } from "../../../actions.slint";
 
 component SubspaceTile inherits Rectangle {
     in property <string> label;
@@ -119,8 +120,6 @@ component SubspaceTile inherits Rectangle {
 }
 
 export component SubspaceRail inherits Rectangle {
-    callback select-subspace(string);
-
     property <length> row-height: 68px;
     property <length> top-padding: 8px;
 
@@ -153,7 +152,7 @@ export component SubspaceRail inherits Rectangle {
                 icon: IconSet.MessagesSquare;
                 selected: DirectoryView.selected-subspace-id == "";
                 clicked => {
-                    root.select-subspace("");
+                    Actions.select-subspace("");
                 }
             }
 
@@ -168,7 +167,7 @@ export component SubspaceRail inherits Rectangle {
                 mentions: subspace.mentions;
                 selected: DirectoryView.selected-subspace-id == subspace.id;
                 clicked => {
-                    root.select-subspace(subspace.id);
+                    Actions.select-subspace(subspace.id);
                 }
             }
         }

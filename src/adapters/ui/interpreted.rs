@@ -50,6 +50,7 @@ use crate::ports::media::MediaCache;
 #[allow(dead_code)]
 mod names {
     pub mod callback {
+        pub const GLOBAL: &str = "Actions";
         pub const LOGIN_PASSWORD: &str = "login-password";
         pub const MOVE_SPACE: &str = "move-space";
         pub const SEND_MESSAGE: &str = "send-message";
@@ -219,24 +220,51 @@ fn field(s: &Struct, name: &str) -> String {
 
 fn bind(
     inst: &ComponentInstance,
+    global: &str,
     name: &str,
-    callback: impl Fn(&[Value]) -> Value + 'static,
+    handler: impl Fn(&[Value]) -> Value + 'static,
 ) -> Result<()> {
-    inst.set_callback(name, callback)
+    inst.set_global_callback(global, name, handler)
         .map_err(|e| AppError::Ui(format!("{e:?}")))
 }
 
+fn bind_action(
+    inst: &ComponentInstance,
+    name: &str,
+    handler: impl Fn(&[Value]) -> Value + 'static,
+) -> Result<()> {
+    bind(inst, callback::GLOBAL, name, handler)
+}
+
 macro_rules! bind_interpreted_callbacks {
-    ($inst:expr, $tx:ident; $($on:ident $lit:literal $fn:ident $shape:ident;)*) => {
-        $( bind_interpreted_callbacks!(@one $inst, $tx, $lit, $fn, $shape)?; )*
+    ($inst:expr, $tx:ident; $($on:ident $lit:literal $g:ident $gname:literal $fn:ident $kind:ident $cmd:ident;)*) => {
+        $( bind_interpreted_callbacks!(@one $inst, $tx, $gname, $lit, $fn, $kind)?; )*
     };
-    (@one $inst:expr, $tx:ident, $lit:literal, $fn:ident, unit) => {{
+    (@one $inst:expr, $tx:ident, $gname:literal, $lit:literal, $fn:ident, plain) => {
+        bind_interpreted_callbacks!(@unit $inst, $tx, $gname, $lit, $fn)
+    };
+    (@one $inst:expr, $tx:ident, $gname:literal, $lit:literal, $fn:ident, manual_unit) => {
+        bind_interpreted_callbacks!(@unit $inst, $tx, $gname, $lit, $fn)
+    };
+    (@one $inst:expr, $tx:ident, $gname:literal, $lit:literal, $fn:ident, pass) => {
+        bind_interpreted_callbacks!(@string $inst, $tx, $gname, $lit, $fn)
+    };
+    (@one $inst:expr, $tx:ident, $gname:literal, $lit:literal, $fn:ident, room) => {
+        bind_interpreted_callbacks!(@string $inst, $tx, $gname, $lit, $fn)
+    };
+    (@one $inst:expr, $tx:ident, $gname:literal, $lit:literal, $fn:ident, opt_room) => {
+        bind_interpreted_callbacks!(@string $inst, $tx, $gname, $lit, $fn)
+    };
+    (@one $inst:expr, $tx:ident, $gname:literal, $lit:literal, $fn:ident, manual_string) => {
+        bind_interpreted_callbacks!(@string $inst, $tx, $gname, $lit, $fn)
+    };
+    (@unit $inst:expr, $tx:ident, $gname:literal, $lit:literal, $fn:ident) => {{
         let tx = $tx.clone();
-        bind($inst, $lit, move |_args| { router::$fn(&tx); Value::Void })
+        bind($inst, $gname, $lit, move |_args| { router::$fn(&tx); Value::Void })
     }};
-    (@one $inst:expr, $tx:ident, $lit:literal, $fn:ident, string) => {{
+    (@string $inst:expr, $tx:ident, $gname:literal, $lit:literal, $fn:ident) => {{
         let tx = $tx.clone();
-        bind($inst, $lit, move |args| {
+        bind($inst, $gname, $lit, move |args| {
             router::$fn(&tx, string_arg(args, 0));
             Value::Void
         })
@@ -496,7 +524,7 @@ impl SlintUiAdapter {
         simple_callbacks!(bind_interpreted_callbacks &self.instance, cmd_tx;);
 
         let tx = cmd_tx.clone();
-        bind(&self.instance, callback::LOGIN_PASSWORD, move |args| {
+        bind_action(&self.instance, callback::LOGIN_PASSWORD, move |args| {
             let Some(s) = struct_arg(args, 0) else {
                 return Value::Void;
             };
@@ -511,7 +539,7 @@ impl SlintUiAdapter {
         })?;
 
         let tx = cmd_tx.clone();
-        bind(&self.instance, callback::MOVE_SPACE, move |args| {
+        bind_action(&self.instance, callback::MOVE_SPACE, move |args| {
             if let (Some(from), Some(to)) = (usize_arg(args, 0), usize_arg(args, 1)) {
                 router::move_space(&tx, from, to, |from, to| {
                     SPACES_MODEL.with(|cell| {
@@ -525,7 +553,7 @@ impl SlintUiAdapter {
         })?;
 
         let tx = cmd_tx.clone();
-        bind(&self.instance, callback::SEND_MESSAGE, move |args| {
+        bind_action(&self.instance, callback::SEND_MESSAGE, move |args| {
             let Some(s) = struct_arg(args, 0) else {
                 return Value::Void;
             };
@@ -538,18 +566,18 @@ impl SlintUiAdapter {
             Value::Void
         })?;
 
-        bind(&self.instance, callback::REQUEST_MEDIA, move |args| {
+        bind_action(&self.instance, callback::REQUEST_MEDIA, move |args| {
             request_media(&string_arg(args, 0));
             Value::Void
         })?;
 
-        bind(&self.instance, callback::REQUEST_ROOM_AVATAR, move |args| {
+        bind_action(&self.instance, callback::REQUEST_ROOM_AVATAR, move |args| {
             request_avatar(&AvatarSlot::Room(string_arg(args, 0)));
             Value::Void
         })?;
 
         let tx = cmd_tx.clone();
-        bind(&self.instance, callback::SAVE_FILE, move |args| {
+        bind_action(&self.instance, callback::SAVE_FILE, move |args| {
             let Some(s) = struct_arg(args, 0) else {
                 return Value::Void;
             };
@@ -563,7 +591,7 @@ impl SlintUiAdapter {
 
         let scroll_tx = scroll_tx.clone();
         let weak = self.instance.as_weak();
-        bind(
+        bind_action(
             &self.instance,
             callback::SCROLL_POSITION_CHANGED,
             move |args| {
@@ -579,21 +607,21 @@ impl SlintUiAdapter {
 
         let tx = cmd_tx.clone();
         let weak = self.instance.as_weak();
-        bind(&self.instance, callback::PAGINATE_BACKWARDS, move |_args| {
+        bind_action(&self.instance, callback::PAGINATE_BACKWARDS, move |_args| {
             router::paginate_backwards(&tx, selected_room_key::<InterpretedBackend>(&weak));
             Value::Void
         })?;
 
         let tx = cmd_tx.clone();
         let weak = self.instance.as_weak();
-        bind(&self.instance, callback::PAGINATE_FORWARDS, move |_args| {
+        bind_action(&self.instance, callback::PAGINATE_FORWARDS, move |_args| {
             router::paginate_forwards(&tx, selected_room_key::<InterpretedBackend>(&weak));
             Value::Void
         })?;
 
         let tx = cmd_tx.clone();
         let weak = self.instance.as_weak();
-        bind(&self.instance, callback::JUMP_TO_LATEST, move |_args| {
+        bind_action(&self.instance, callback::JUMP_TO_LATEST, move |_args| {
             router::jump_to_latest(&tx, selected_room_key::<InterpretedBackend>(&weak));
             Value::Void
         })?;

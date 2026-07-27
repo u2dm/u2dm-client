@@ -1,4 +1,3 @@
-import { SendMessageRequest, SaveFileRequest } from "components/types.slint";
 import { Palette } from "std-widgets.slint";
 import { IconDisplay, IconSet } from "@lucide";
 import { Sidebar } from "components/sidebar.slint";
@@ -7,26 +6,16 @@ import { TimelineView } from "components/timeline/timeline-view.slint";
 import { ClickArea } from "../../components/a11y.slint";
 import { ToastKind } from "../../enums.slint";
 import { DirectoryView, RoomView } from "../../views.slint";
+import { Actions } from "../../actions.slint";
+import { Composer, Shell } from "../../local.slint";
 
 export component ChatScreen inherits Rectangle {
     in-out property <string> input-message: "";
 
-    callback select-room(string);
-    callback request-room-avatar(string);
-    callback select-space(string);
-    callback select-subspace(string);
-    callback move-space(int, int);
-    callback logout();
-    callback send-message(SendMessageRequest);
-    callback open-media(string);
-    callback save-file(SaveFileRequest);
-    callback request-media(string);
-    callback scroll-position-changed(bool, bool);
-    callback paginate-backwards();
-    callback paginate-forwards();
-    callback jump-to-latest();
-    callback retry-timeline();
-    callback dismiss-toast();
+    init => {
+        Composer.clear();
+        Shell.drawer-open = false;
+    }
 
     property <length> sidebar-width: 340px;
     property <length> divider-width: 4px;
@@ -36,7 +25,6 @@ export component ChatScreen inherits Rectangle {
     property <bool> has-subspaces: DirectoryView.subspaces.length > 0;
     property <length> total-sidebar-width: root.sidebar-width
         + (root.has-subspaces ? root.subrail-width : 0);
-    property <bool> drawer-open: false;
     property <bool> has-toast: RoomView.toast-kind != ToastKind.none;
     property <bool> is-file-saved-toast: RoomView.toast-kind == ToastKind.file-saved;
 
@@ -46,24 +34,6 @@ export component ChatScreen inherits Rectangle {
         width: root.total-sidebar-width;
         height: root.height;
         subrail-width: root.subrail-width;
-        select-room(id) => {
-            root.select-room(id);
-        }
-        request-room-avatar(id) => {
-            root.request-room-avatar(id);
-        }
-        select-space(id) => {
-            root.select-space(id);
-        }
-        select-subspace(id) => {
-            root.select-subspace(id);
-        }
-        move-space(from, to) => {
-            root.move-space(from, to);
-        }
-        menu-clicked => {
-            root.drawer-open = true;
-        }
     }
 
     TimelineView {
@@ -72,33 +42,6 @@ export component ChatScreen inherits Rectangle {
         width: root.width - root.total-sidebar-width;
         height: root.height;
         input-message <=> root.input-message;
-        send-message(req) => {
-            root.send-message(req);
-        }
-        open-media(id) => {
-            root.open-media(id);
-        }
-        save-file(req) => {
-            root.save-file(req);
-        }
-        request-media(id) => {
-            root.request-media(id);
-        }
-        scroll-position-changed(at-top, at-bottom) => {
-            root.scroll-position-changed(at-top, at-bottom);
-        }
-        paginate-backwards => {
-            root.paginate-backwards();
-        }
-        paginate-forwards => {
-            root.paginate-forwards();
-        }
-        jump-to-latest => {
-            root.jump-to-latest();
-        }
-        retry => {
-            root.retry-timeline();
-        }
     }
 
     TouchArea {
@@ -149,7 +92,7 @@ export component ChatScreen inherits Rectangle {
                 ring-radius: 6px;
                 label: @tr("Dismiss");
                 clicked => {
-                    root.dismiss-toast();
+                    Actions.dismiss-toast();
                 }
                 IconDisplay {
                     x: (parent.width - self.width) / 2;
@@ -167,11 +110,6 @@ export component ChatScreen inherits Rectangle {
         y: 0;
         width: root.width;
         height: root.height;
-        open <=> root.drawer-open;
-        add-account => {
-        }
-        logout => {
-            root.logout();
-        }
+        open <=> Shell.drawer-open;
     }
 }

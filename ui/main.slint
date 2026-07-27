@@ -1,7 +1,5 @@
 import "fonts/Twemoji.ttf";
 
-import { LoginRequest } from "screens/login/types.slint";
-import { SendMessageRequest, SaveFileRequest } from "screens/chat/components/types.slint";
 import {
     LoginPhase,
     ConnectionState,
@@ -20,6 +18,7 @@ import {
     RoomView,
     VerificationView,
 } from "views.slint";
+import { Actions } from "actions.slint";
 import {
     EmojiStore,
 } from "screens/chat/components/timeline/emoji-picker.slint";
@@ -27,6 +26,7 @@ export { EmojiStore }
 export { LoginPhase, ConnectionState, TimelineState, VerificationPhase, MediaState }
 export { MessageKind, PreviewKind, ServiceKind, LoginMethodKind }
 export { LoginView, SessionView, DirectoryView, RoomView, VerificationView }
+export { Actions }
 import { LoadingScreen } from "screens/login/loading.slint";
 import { HomeserverScreen } from "screens/login/homeserver.slint";
 import { CredentialsScreen } from "screens/login/credentials.slint";
@@ -43,122 +43,20 @@ export component AppWindow inherits Window {
     in-out property <string> input-password: "";
     in-out property <string> input-message: "";
 
-    callback check-server(string);
-    callback login-password(LoginRequest);
-    callback login-oauth();
-    callback cancel-oauth();
-    callback back-to-homeserver();
-    callback select-room(string);
-    callback select-space(string);
-    callback select-subspace(string);
-    callback move-space(int, int);
-    callback send-message(SendMessageRequest);
-    callback open-media(string);
-    callback save-file(SaveFileRequest);
-    callback request-media(string);
-    callback request-room-avatar(string);
-    callback logout();
-    callback accept-verification();
-    callback confirm-verification();
-    callback reject-verification();
-    callback dismiss-verification();
-    callback scroll-position-changed(bool, bool);
-    callback paginate-backwards();
-    callback paginate-forwards();
-    callback jump-to-latest();
-    callback retry-timeline();
-    callback dismiss-toast();
-
     if LoginView.step == LoginPhase.loading: LoadingScreen { }
 
     if LoginView.step == LoginPhase.homeserver: HomeserverScreen {
         input-homeserver <=> root.input-homeserver;
-        check-server(hs) => {
-            root.check-server(hs);
-        }
     }
 
     if LoginView.step == LoginPhase.credentials: CredentialsScreen {
         input-username <=> root.input-username;
         input-password <=> root.input-password;
-        login-password(req) => {
-            root.login-password(req);
-        }
-        login-oauth() => {
-            root.login-oauth();
-        }
-        cancel-oauth() => {
-            root.cancel-oauth();
-        }
-        back => {
-            root.back-to-homeserver();
-        }
     }
 
     if LoginView.step == LoginPhase.logged-in: ChatScreen {
         input-message <=> root.input-message;
-        select-room(id) => {
-            root.select-room(id);
-        }
-        request-room-avatar(id) => {
-            root.request-room-avatar(id);
-        }
-        select-space(id) => {
-            root.select-space(id);
-        }
-        select-subspace(id) => {
-            root.select-subspace(id);
-        }
-        move-space(from, to) => {
-            root.move-space(from, to);
-        }
-        logout => {
-            root.logout();
-        }
-        send-message(req) => {
-            root.send-message(req);
-        }
-        open-media(id) => {
-            root.open-media(id);
-        }
-        save-file(req) => {
-            root.save-file(req);
-        }
-        request-media(id) => {
-            root.request-media(id);
-        }
-        scroll-position-changed(at-top, at-bottom) => {
-            root.scroll-position-changed(at-top, at-bottom);
-        }
-        paginate-backwards => {
-            root.paginate-backwards();
-        }
-        paginate-forwards => {
-            root.paginate-forwards();
-        }
-        jump-to-latest => {
-            root.jump-to-latest();
-        }
-        retry-timeline => {
-            root.retry-timeline();
-        }
-        dismiss-toast => {
-            root.dismiss-toast();
-        }
     }
 
-    if VerificationView.visible && LoginView.step == LoginPhase.logged-in: VerificationDialog {
-        accept-verification => {
-            root.accept-verification();
-        }
-        confirm-verification => {
-            root.confirm-verification();
-        }
-        reject-verification => {
-            root.reject-verification();
-        }
-        dismiss => {
-            root.dismiss-verification();
-        }
-    }
+    if VerificationView.visible && LoginView.step == LoginPhase.logged-in: VerificationDialog { }
 }

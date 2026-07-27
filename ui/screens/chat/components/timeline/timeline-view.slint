@@ -1,12 +1,12 @@
 import { Palette } from "std-widgets.slint";
 
-import { SendMessageRequest, SaveFileRequest } from "../types.slint";
-
 import { TimelineContent } from "./timeline-content.slint";
 import { MessageInput } from "./message-input.slint";
 import { Fonts } from "../../../../theme.slint";
 import { TimelineState } from "../../../../enums.slint";
 import { DirectoryView, RoomView } from "../../../../views.slint";
+import { Actions } from "../../../../actions.slint";
+import { Composer } from "../../../../local.slint";
 import { StatusPill } from "./status-pill.slint";
 
 export component TimelineView inherits Rectangle {
@@ -15,19 +15,6 @@ export component TimelineView inherits Rectangle {
     property <string> room-id: DirectoryView.selected-room-id;
 
     in-out property <string> input-message: "";
-    in-out property <string> reply-event-id: "";
-    in-out property <string> reply-sender: "";
-    in-out property <string> reply-preview: "";
-
-    callback send-message(SendMessageRequest);
-    callback open-media(string);
-    callback save-file(SaveFileRequest);
-    callback request-media(string);
-    callback scroll-position-changed(bool, bool);
-    callback paginate-backwards();
-    callback paginate-forwards();
-    callback jump-to-latest();
-    callback retry();
 
     property <length> header-height: 52px;
     property <length> message-input-height: 40px;
@@ -35,7 +22,7 @@ export component TimelineView inherits Rectangle {
     property <length> spacing: 8px;
 
     property <bool> has-room: RoomView.selected-room-name != "";
-    property <bool> is-replying: root.reply-event-id != "";
+    property <bool> is-replying: Composer.reply-event-id != "";
     property <length> input-height: root.is-replying
         ? root.message-input-height + root.reply-bar-height
         : root.message-input-height;
@@ -57,9 +44,7 @@ export component TimelineView inherits Rectangle {
 
     changed room-id => {
         root.input-message = "";
-        root.reply-event-id = "";
-        root.reply-sender = "";
-        root.reply-preview = "";
+        Composer.clear();
     }
 
     if !has-room: Text {
@@ -107,32 +92,6 @@ export component TimelineView inherits Rectangle {
         height: root.height - root.header-height - root.input-height - root.spacing * 2;
         room-id: root.room-id;
         available-width: root.width;
-        open-media(id) => {
-            root.open-media(id);
-        }
-        save-file(req) => {
-            root.save-file(req);
-        }
-        request-media(id) => {
-            root.request-media(id);
-        }
-        reply(id, sender, preview) => {
-            root.reply-event-id = id;
-            root.reply-sender = sender;
-            root.reply-preview = preview;
-        }
-        scroll-position-changed(at-top, at-bottom) => {
-            root.scroll-position-changed(at-top, at-bottom);
-        }
-        paginate-backwards => {
-            root.paginate-backwards();
-        }
-        paginate-forwards => {
-            root.paginate-forwards();
-        }
-        jump-to-latest => {
-            root.jump-to-latest();
-        }
     }
 
     if show-status-pill: StatusPill {
@@ -142,7 +101,7 @@ export component TimelineView inherits Rectangle {
         loading: RoomView.timeline-status == TimelineState.loading;
         show-retry: root.can-retry;
         retry => {
-            root.retry();
+            Actions.retry-timeline();
         }
     }
 
@@ -152,11 +111,5 @@ export component TimelineView inherits Rectangle {
         width: root.width;
         room-id: root.room-id;
         message <=> root.input-message;
-        reply-event-id <=> root.reply-event-id;
-        reply-sender <=> root.reply-sender;
-        reply-preview <=> root.reply-preview;
-        send-message(req) => {
-            root.send-message(req);
-        }
     }
 }

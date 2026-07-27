@@ -3,23 +3,20 @@ import {
 } from "std-widgets.slint";
 import { IconDisplay, IconSet } from "@lucide";
 
-import { SendMessageRequest, EmojiInsert } from "../types.slint";
+import { EmojiInsert } from "../types.slint";
 import { EmojiPicker, EmojiStore } from "./emoji-picker.slint";
 import { ReplyQuote } from "../reply-quote.slint";
 import { Fonts } from "../../../../theme.slint";
 import { ClickArea } from "../../../../components/a11y.slint";
+import { Actions } from "../../../../actions.slint";
+import { Composer } from "../../../../local.slint";
 
 export component MessageInput inherits Rectangle {
     in property <string> room-id;
     in-out property <string> message: "";
-    in-out property <string> reply-event-id: "";
-    in-out property <string> reply-sender: "";
-    in-out property <string> reply-preview: "";
-
-    callback send-message(SendMessageRequest);
 
     property <bool> picker-open: false;
-    property <bool> is-replying: root.reply-event-id != "";
+    property <bool> is-replying: Composer.reply-event-id != "";
     property <bool> has-text: root.message != "";
     property <int> caret: 0;
     property <EmojiInsert> pending-insert;
@@ -30,20 +27,14 @@ export component MessageInput inherits Rectangle {
 
     function submit() {
         if root.has-text {
-            root.send-message({
+            Actions.send-message({
                 room-id: root.room-id,
                 body: root.message,
-                reply-to: root.reply-event-id,
+                reply-to: Composer.reply-event-id,
             });
             root.message = "";
-            root.clear-reply();
+            Composer.clear();
         }
-    }
-
-    function clear-reply() {
-        root.reply-event-id = "";
-        root.reply-sender = "";
-        root.reply-preview = "";
     }
 
     if root.picker-open: TouchArea {
@@ -88,8 +79,8 @@ export component MessageInput inherits Rectangle {
 
                 ReplyQuote {
                     horizontal-stretch: 1;
-                    sender: @tr("Reply to {}", root.reply-sender);
-                    preview: root.reply-preview;
+                    sender: @tr("Reply to {}", Composer.reply-sender);
+                    preview: Composer.reply-preview;
                 }
 
                 cancel-reply-touch := ClickArea {
@@ -97,7 +88,7 @@ export component MessageInput inherits Rectangle {
                     ring-radius: 8px;
                     label: @tr("Cancel reply");
                     clicked => {
-                        root.clear-reply();
+                        Composer.clear();
                     }
 
                     IconDisplay {
