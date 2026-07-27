@@ -34,6 +34,11 @@ use crate::ports::media::MediaFilePort;
 use crate::ports::output::AppOutputPort;
 use crate::ports::storage::StoragePort;
 
+enum EndReason {
+    UserLogout,
+    Expired,
+}
+
 pub(super) fn show_toast(output: &dyn AppOutputPort, toast: Toast) {
     output.publish(Box::new(move |view| view.toast = toast));
 }
@@ -268,10 +273,10 @@ impl AppService {
                 self.dismiss_verification();
             }
             UiCommand::SessionExpired => {
-                self.handle_session_expired().await;
+                self.end_session(EndReason::Expired).await;
             }
             UiCommand::Logout => {
-                self.handle_logout().await;
+                self.end_session(EndReason::UserLogout).await;
             }
             UiCommand::Quit => {
                 self.handle_quit().await;
@@ -563,34 +568,13 @@ impl AppService {
         );
     }
 
-    async fn handle_session_expired(&mut self) {
+    async fn end_session(&mut self, reason: EndReason) {
         let Some(session) = self.lifecycle.begin_logout() else {
             return;
         };
-        tracing::info!("session expired, clearing local state");
-        let ending = self.ending_session();
-        self.output.replace(AppViewState::logged_out());
-        self.output.emit(Effect::LoggedOut).await;
-        self.shutdown_all_tasks().await;
-        self.media.clear_session().await;
-        self.room_directory.reset();
-        self.selection = Selection::default();
-        self.active = None;
-        match ending {
-            Some((account, port)) => {
-                self.session
-                    .spawn_expire_session(&mut self.operations, session, account, port);
-            }
-            None => {
-                self.lifecycle.finish_logout(session);
-            }
+        if matches!(reason, EndReason::Expired) {
+            tracing::info!("session expired, clearing local state");
         }
-    }
-
-    async fn handle_logout(&mut self) {
-        let Some(session) = self.lifecycle.begin_logout() else {
-            return;
-        };
         let ending = self.ending_session();
         self.output.replace(AppViewState::logged_out());
         self.output.emit(Effect::LoggedOut).await;
@@ -600,10 +584,16 @@ impl AppService {
         self.selection = Selection::default();
         self.active = None;
         match ending {
-            Some((account, port)) => {
-                self.session
-                    .spawn_logout(&mut self.operations, session, account, port);
-            }
+            Some((account, port)) => match reason {
+                EndReason::UserLogout => {
+                    self.session
+                        .spawn_logout(&mut self.operations, session, account, port);
+                }
+                EndReason::Expired => {
+                    self.session
+                        .spawn_expire_session(&mut self.operations, session, account, port);
+                }
+            },
             None => {
                 self.lifecycle.finish_logout(session);
             }
