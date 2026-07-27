@@ -5,6 +5,7 @@ use chrono::Timelike;
 use slint::{Timer, TimerMode};
 
 use super::backend::UiBackend;
+use super::present::invalidate_activity_labels;
 use super::reconcile::apply_rooms;
 use super::reduce::latest_rooms;
 use crate::ports::media::MediaCache;
@@ -28,6 +29,7 @@ fn schedule_next<B: UiBackend>(media: Arc<dyn MediaCache>) {
 }
 
 fn refresh_room_labels<B: UiBackend>(media: &dyn MediaCache) {
+    invalidate_activity_labels();
     let Some(rooms) = latest_rooms() else {
         return;
     };
@@ -35,6 +37,8 @@ fn refresh_room_labels<B: UiBackend>(media: &dyn MediaCache) {
         apply_rooms(
             rooms_model,
             rooms.as_ref(),
+            &[],
+            media,
             &|room| B::convert_room(room, media),
             &|entry| B::room_id(entry),
         );

@@ -229,15 +229,21 @@ pub fn room_to_dto(r: &Room, media: &dyn MediaCache) -> RoomDto {
 
     if let Some(mxc) = &r.avatar_mxc
         && let Some(avatar_path) = media.room_avatar_path(mxc)
+        && let Some(img) = peek_avatar(&avatar_path)
     {
-        if let Some(img) = peek_avatar(&avatar_path) {
-            dto.avatar = Some(img);
-            dto.has_avatar = true;
-        }
-        record_avatar_need(AvatarSlot::Room(r.id.as_ref().to_owned()), avatar_path);
+        dto.avatar = Some(img);
+        dto.has_avatar = true;
     }
 
     dto
+}
+
+pub fn record_room_avatar_need(r: &Room, media: &dyn MediaCache) {
+    if let Some(mxc) = &r.avatar_mxc
+        && let Some(avatar_path) = media.room_avatar_path(mxc)
+    {
+        record_avatar_need(AvatarSlot::Room(r.id.as_ref().to_owned()), avatar_path);
+    }
 }
 
 pub fn space_to_dto(s: &Space, media: &dyn MediaCache) -> SpaceDto {

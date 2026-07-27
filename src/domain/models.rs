@@ -143,7 +143,7 @@ pub struct Room {
     pub last_message_edited: bool,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Space {
     pub id: String,
     pub name: String,

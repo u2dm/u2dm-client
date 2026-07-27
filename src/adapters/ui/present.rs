@@ -1,3 +1,5 @@
+use std::cell::RefCell;
+use std::collections::HashMap;
 use std::env;
 use std::sync::OnceLock;
 
@@ -107,10 +109,13 @@ fn parse_locale(tag: &str) -> Option<Locale> {
 }
 
 fn uses_12h_clock(locale: Locale) -> bool {
-    let time_format = locale_match!(locale => LC_TIME::T_FMT);
-    ["%p", "%r", "%I", "%l"]
-        .iter()
-        .any(|token| time_format.contains(token))
+    static TWELVE_HOUR: OnceLock<bool> = OnceLock::new();
+    *TWELVE_HOUR.get_or_init(|| {
+        let time_format = locale_match!(locale => LC_TIME::T_FMT);
+        ["%p", "%r", "%I", "%l"]
+            .iter()
+            .any(|token| time_format.contains(token))
+    })
 }
 
 fn to_local(timestamp_ms: u64) -> Option<chrono::DateTime<chrono::Local>> {
@@ -136,10 +141,28 @@ pub fn message_timestamp_label(timestamp: u64) -> String {
         .unwrap_or_default()
 }
 
+thread_local! {
+    static ACTIVITY_LABELS: RefCell<HashMap<u64, String>> = RefCell::new(HashMap::new());
+}
+
+pub fn invalidate_activity_labels() {
+    ACTIVITY_LABELS.with_borrow_mut(HashMap::clear);
+}
+
 pub fn room_activity_label(last_activity_ts: u64) -> String {
     if last_activity_ts == 0 {
         return String::new();
     }
+    let minute = last_activity_ts / 60_000;
+    if let Some(label) = ACTIVITY_LABELS.with_borrow(|labels| labels.get(&minute).cloned()) {
+        return label;
+    }
+    let label = format_activity_label(last_activity_ts);
+    ACTIVITY_LABELS.with_borrow_mut(|labels| labels.insert(minute, label.clone()));
+    label
+}
+
+fn format_activity_label(last_activity_ts: u64) -> String {
     let Some(local) = to_local(last_activity_ts) else {
         return String::new();
     };

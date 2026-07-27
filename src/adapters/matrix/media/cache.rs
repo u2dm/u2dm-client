@@ -50,10 +50,6 @@ enum CacheCommand {
         bytes: u64,
         ack: oneshot::Sender<()>,
     },
-    Forget {
-        key: String,
-        path: PathBuf,
-    },
     Clear(oneshot::Sender<()>),
 }
 
@@ -85,41 +81,11 @@ impl CacheHandle {
 
     pub(super) fn get(&self, key: &str) -> Option<PathBuf> {
         let path = self.snapshot.read().ok()?.get(key).cloned()?;
-        if !path.exists() {
-            self.forget(key, &path);
-            return None;
-        }
         if self.should_send_touch(key) && self.tx.send(CacheCommand::Touch(key.to_owned())).is_err()
         {
             tracing::trace!("media cache actor stopped; access not recorded");
         }
         Some(path)
-    }
-
-    fn forget(&self, key: &str, path: &Path) {
-        tracing::debug!(
-            path = %path.display(),
-            "cached media file is gone, dropping its index entry"
-        );
-        if let Ok(mut guard) = self.snapshot.write() {
-            let unchanged = guard.get(key).is_some_and(|current| current == path);
-            if unchanged {
-                guard.remove(key);
-            }
-        }
-        if let Ok(mut last) = self.last_touch.lock() {
-            last.remove(key);
-        }
-        if self
-            .tx
-            .send(CacheCommand::Forget {
-                key: key.to_owned(),
-                path: path.to_path_buf(),
-            })
-            .is_err()
-        {
-            tracing::trace!("media cache actor stopped; missing entry left in the index");
-        }
     }
 
     fn should_send_touch(&self, key: &str) -> bool {
@@ -263,19 +229,13 @@ impl CacheActor {
 
     async fn handle(&mut self, cmd: CacheCommand, shared: &RwLock<Index>) {
         match cmd {
-            CacheCommand::Touch(key) => {
-                if let Some(entry) = self.entries.get_mut(&key) {
-                    entry.last_access = SystemTime::now();
-                    self.dirty = true;
-                }
-            }
+            CacheCommand::Touch(key) => self.touch(&key, shared).await,
             CacheCommand::Insert {
                 key,
                 path,
                 bytes,
                 ack,
             } => self.publish_insert(key, path, bytes, ack, shared).await,
-            CacheCommand::Forget { key, path } => self.forget(&key, &path, shared),
             CacheCommand::Clear(ack) => {
                 self.entries.clear();
                 self.total_bytes = 0;
@@ -287,6 +247,24 @@ impl CacheActor {
                     tracing::trace!("media cache clear requester dropped before ack");
                 }
             }
+        }
+    }
+
+    async fn touch(&mut self, key: &str, shared: &RwLock<Index>) {
+        let Some(path) = self.entries.get(key).map(|entry| entry.path.clone()) else {
+            return;
+        };
+        if !fs::try_exists(&path).await.unwrap_or(true) {
+            tracing::debug!(
+                path = %path.display(),
+                "cached media file is gone, dropping its index entry"
+            );
+            self.forget(key, &path, shared);
+            return;
+        }
+        if let Some(entry) = self.entries.get_mut(key) {
+            entry.last_access = SystemTime::now();
+            self.dirty = true;
         }
     }
 

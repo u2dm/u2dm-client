@@ -123,6 +123,8 @@ fn apply_snapshot<B: UiBackend>(
         apply_rooms(
             ctx.rooms,
             view.directory.rooms.as_ref(),
+            last.map_or(&[], |l| l.directory.rooms.as_ref()),
+            ctx.media,
             &|room| B::convert_room(room, ctx.media),
             &|entry| B::room_id(entry),
         );
@@ -131,6 +133,7 @@ fn apply_snapshot<B: UiBackend>(
         apply_reconcile(
             ctx.spaces,
             view.directory.spaces.as_ref(),
+            &[],
             &|s| s.id.as_str(),
             &|space| B::convert_space(space, ctx.media),
             &|entry| B::space_id(entry),
@@ -140,6 +143,7 @@ fn apply_snapshot<B: UiBackend>(
         apply_reconcile(
             ctx.subspaces,
             view.directory.subspaces.as_ref(),
+            &[],
             &|s| s.id.as_str(),
             &|space| B::convert_space(space, ctx.media),
             &|entry| B::space_id(entry),

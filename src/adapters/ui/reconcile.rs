@@ -3,7 +3,9 @@ use std::collections::HashMap;
 use slint::{Model, VecModel};
 
 use super::decode::forget_all_media_needs;
+use super::dto::record_room_avatar_need;
 use crate::domain::models::{EnrichmentDelta, Room, TimelineMessage, TimelinePatch};
+use crate::ports::media::MediaCache;
 
 pub fn apply_timeline_patch<T: Clone + 'static>(
     model: &VecModel<T>,
@@ -113,15 +115,21 @@ pub fn reorder_rows<T: Clone + 'static>(model: &VecModel<T>, from: usize, to: us
 pub fn apply_rooms<T: Clone + PartialEq + 'static>(
     model: &VecModel<T>,
     rooms: &[Room],
+    previous: &[Room],
+    media: &dyn MediaCache,
     convert: &dyn Fn(&Room) -> T,
     get_id: &dyn Fn(&T) -> &str,
 ) {
-    apply_reconcile(model, rooms, &|r| r.id.as_ref(), convert, get_id);
+    for room in rooms {
+        record_room_avatar_need(room, media);
+    }
+    apply_reconcile(model, rooms, previous, &|r| r.id.as_ref(), convert, get_id);
 }
 
-pub fn apply_reconcile<S, T: Clone + PartialEq + 'static>(
+pub fn apply_reconcile<S: PartialEq, T: Clone + PartialEq + 'static>(
     model: &VecModel<T>,
     items: &[S],
+    previous: &[S],
     source_id: &dyn Fn(&S) -> &str,
     convert: &dyn Fn(&S) -> T,
     get_id: &dyn Fn(&T) -> &str,
@@ -145,24 +153,38 @@ pub fn apply_reconcile<S, T: Clone + PartialEq + 'static>(
         }
     }
 
+    let retained: HashMap<&str, &S> = previous
+        .iter()
+        .map(|item| (source_id(item), item))
+        .collect();
+
     for idx in 0..items.len() {
         let Some(item) = items.get(idx) else { continue };
-        let new_entry = convert(item);
+        let existing = model.row_data(idx);
+        let same_id = existing
+            .as_ref()
+            .is_some_and(|entry| get_id(entry) == source_id(item));
 
-        if idx < model.row_count() {
-            let same_id = model
-                .row_data(idx)
-                .is_some_and(|entry| get_id(&entry) == source_id(item));
-
-            if same_id {
-                if model.row_data(idx).as_ref() != Some(&new_entry) {
-                    model.set_row_data(idx, new_entry);
-                }
-            } else {
+        if !same_id {
+            let new_entry = convert(item);
+            if idx < model.row_count() {
                 model.insert(idx, new_entry);
+            } else {
+                model.push(new_entry);
             }
-        } else {
-            model.push(new_entry);
+            continue;
+        }
+
+        if retained
+            .get(source_id(item))
+            .is_some_and(|prior| *prior == item)
+        {
+            continue;
+        }
+
+        let new_entry = convert(item);
+        if existing.as_ref() != Some(&new_entry) {
+            model.set_row_data(idx, new_entry);
         }
     }
 
