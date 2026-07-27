@@ -7,7 +7,7 @@ use super::backend::{UiBackend, UiEventContext};
 use super::decode::{AvatarSlot, clear_session_media, load_avatar_async};
 use super::present::{VerifyStep, toast_kind, user_initial};
 use super::props::{BoolProp, IntProp, StringProp, UiProps};
-use super::reconcile::{apply_reconcile, apply_rooms, apply_timeline_patch};
+use super::reconcile::{apply_rooms, apply_spaces, apply_timeline_patch};
 use crate::commands::{
     AppViewState, Effect, LifecycleView, PaginationView, Toast, VerificationUpdate,
 };
@@ -130,21 +130,19 @@ fn apply_snapshot<B: UiBackend>(
         );
     }
     if last.is_none_or(|l| !Arc::ptr_eq(&l.directory.spaces, &view.directory.spaces)) {
-        apply_reconcile(
+        apply_spaces(
             ctx.spaces,
             view.directory.spaces.as_ref(),
-            &[],
-            &|s| s.id.as_str(),
+            ctx.media,
             &|space| B::convert_space(space, ctx.media),
             &|entry| B::space_id(entry),
         );
     }
     if last.is_none_or(|l| !Arc::ptr_eq(&l.directory.subspaces, &view.directory.subspaces)) {
-        apply_reconcile(
+        apply_spaces(
             ctx.subspaces,
             view.directory.subspaces.as_ref(),
-            &[],
-            &|s| s.id.as_str(),
+            ctx.media,
             &|space| B::convert_space(space, ctx.media),
             &|entry| B::space_id(entry),
         );

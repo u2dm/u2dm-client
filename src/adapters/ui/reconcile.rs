@@ -3,8 +3,8 @@ use std::collections::HashMap;
 use slint::{Model, VecModel};
 
 use super::decode::forget_all_media_needs;
-use super::dto::record_room_avatar_need;
-use crate::domain::models::{EnrichmentDelta, Room, TimelineMessage, TimelinePatch};
+use super::dto::{prefetch_space_avatar, record_room_avatar_need};
+use crate::domain::models::{EnrichmentDelta, Room, Space, TimelineMessage, TimelinePatch};
 use crate::ports::media::MediaCache;
 
 pub fn apply_timeline_patch<T: Clone + 'static>(
@@ -126,7 +126,20 @@ pub fn apply_rooms<T: Clone + PartialEq + 'static>(
     apply_reconcile(model, rooms, previous, &|r| r.id.as_ref(), convert, get_id);
 }
 
-pub fn apply_reconcile<S: PartialEq, T: Clone + PartialEq + 'static>(
+pub fn apply_spaces<T: Clone + PartialEq + 'static>(
+    model: &VecModel<T>,
+    spaces: &[Space],
+    media: &dyn MediaCache,
+    convert: &dyn Fn(&Space) -> T,
+    get_id: &dyn Fn(&T) -> &str,
+) {
+    for space in spaces {
+        prefetch_space_avatar(space, media);
+    }
+    apply_reconcile(model, spaces, &[], &|s| s.id.as_str(), convert, get_id);
+}
+
+fn apply_reconcile<S: PartialEq, T: Clone + PartialEq + 'static>(
     model: &VecModel<T>,
     items: &[S],
     previous: &[S],

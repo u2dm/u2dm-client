@@ -259,11 +259,19 @@ pub fn space_to_dto(s: &Space, media: &dyn MediaCache) -> SpaceDto {
 
     if let Some(mxc) = &s.avatar_mxc
         && let Some(avatar_path) = media.space_avatar_path(mxc)
-        && let Some(img) = load_avatar_async(&avatar_path, AvatarSlot::Space(s.id.clone()))
+        && let Some(img) = peek_avatar(&avatar_path)
     {
         dto.avatar = Some(img);
         dto.has_avatar = true;
     }
 
     dto
+}
+
+pub fn prefetch_space_avatar(s: &Space, media: &dyn MediaCache) {
+    if let Some(mxc) = &s.avatar_mxc
+        && let Some(avatar_path) = media.space_avatar_path(mxc)
+    {
+        load_avatar_async(&avatar_path, AvatarSlot::Space(s.id.clone()));
+    }
 }
