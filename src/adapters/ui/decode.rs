@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::sync::{Arc, Condvar, Mutex, MutexGuard, PoisonError};
 use std::time::{Duration, Instant};
-use std::{slice, thread};
+use std::{mem, slice, thread};
 
 use image::codecs::gif::GifDecoder;
 use image::codecs::webp::WebPDecoder;
@@ -59,6 +59,7 @@ impl DecodeState {
 
 thread_local! {
     static DECODE: RefCell<DecodeState> = RefCell::new(DecodeState::default());
+    static PENDING_REQUESTS: RefCell<Vec<Request>> = const { RefCell::new(Vec::new()) };
     static ANIMATION_TIMER: Timer = Timer::default();
     static ANIMATION_TICK_FN: RefCell<Option<Rc<dyn Fn()>>> = const { RefCell::new(None) };
     static DECODE_QUEUE: RefCell<Option<Arc<DecodeQueue>>> = const { RefCell::new(None) };
@@ -82,6 +83,12 @@ pub enum AvatarSlot {
     Room(String),
     Space(String),
     User,
+}
+
+#[derive(PartialEq, Eq)]
+enum Request {
+    Media(String),
+    Avatar(AvatarSlot),
 }
 
 #[derive(Clone)]
@@ -484,6 +491,7 @@ pub fn forget_all_media_needs() {
 }
 
 pub fn clear_session_media() {
+    PENDING_REQUESTS.with_borrow_mut(Vec::clear);
     DECODE.with_borrow_mut(|state| {
         let epoch = state.epoch.wrapping_add(1);
         *state = DecodeState {
@@ -504,6 +512,37 @@ pub fn record_avatar_need(slot: AvatarSlot, path: PathBuf) {
 }
 
 pub fn request_avatar(slot: &AvatarSlot) {
+    queue_request(Request::Avatar(slot.clone()));
+}
+
+pub fn request_media(unique_id: &str) {
+    queue_request(Request::Media(unique_id.to_owned()));
+}
+
+fn queue_request(request: Request) {
+    let armed = PENDING_REQUESTS.with_borrow_mut(|pending| {
+        if pending.contains(&request) {
+            return false;
+        }
+        let was_empty = pending.is_empty();
+        pending.push(request);
+        was_empty
+    });
+    if armed && slint::invoke_from_event_loop(flush_requests).is_err() {
+        flush_requests();
+    }
+}
+
+fn flush_requests() {
+    for request in PENDING_REQUESTS.with_borrow_mut(mem::take) {
+        match request {
+            Request::Media(unique_id) => resolve_media(&unique_id),
+            Request::Avatar(slot) => resolve_avatar(&slot),
+        }
+    }
+}
+
+fn resolve_avatar(slot: &AvatarSlot) {
     let Some(path) = DECODE.with_borrow(|state| state.avatar_needs.get(slot).cloned()) else {
         return;
     };
@@ -512,7 +551,7 @@ pub fn request_avatar(slot: &AvatarSlot) {
     }
 }
 
-pub fn request_media(unique_id: &str) {
+fn resolve_media(unique_id: &str) {
     let Some(need) = DECODE.with_borrow(|state| state.media_needs.get(unique_id).cloned()) else {
         return;
     };
