@@ -3,34 +3,124 @@ use std::sync::Arc;
 use matrix_sdk_ui::timeline::TimelineItem;
 
 use super::TimelineContext;
-use super::convert::{convert_timeline_item, service_event_from_content};
+use super::convert::convert_timeline_item;
 use crate::domain::models::TimelineMessage;
 
-pub(super) fn is_renderable(item: &TimelineItem) -> bool {
-    let Some(event) = item.as_event() else {
-        return false;
-    };
-    let content = event.content();
-    content.as_message().is_some()
-        || content.as_unable_to_decrypt().is_some()
-        || service_event_from_content(content).is_some()
+pub(super) struct TimelineItems {
+    items: Vec<Arc<TimelineItem>>,
+    renderable: Vec<bool>,
 }
 
-pub(super) fn msg_index_at(items: &[Arc<TimelineItem>], raw_index: usize) -> usize {
-    items
-        .get(..raw_index)
-        .unwrap_or(items)
-        .iter()
-        .filter(|i| is_renderable(i))
-        .count()
-}
+impl TimelineItems {
+    pub(super) fn load(
+        values: Vec<Arc<TimelineItem>>,
+        ctx: &TimelineContext<'_>,
+    ) -> (Self, Vec<TimelineMessage>) {
+        let mut items = Self {
+            items: Vec::new(),
+            renderable: Vec::new(),
+        };
+        let messages = items.reset(values, ctx);
+        (items, messages)
+    }
 
-pub(super) fn convert_timeline_items(
-    items: &[Arc<TimelineItem>],
-    ctx: &TimelineContext<'_>,
-) -> Vec<TimelineMessage> {
-    items
-        .iter()
-        .filter_map(|item| convert_timeline_item(item, ctx))
-        .collect()
+    pub(super) fn items(&self) -> &[Arc<TimelineItem>] {
+        &self.items
+    }
+
+    pub(super) fn msg_index_at(&self, raw_index: usize) -> usize {
+        self.renderable
+            .get(..raw_index)
+            .unwrap_or(&self.renderable)
+            .iter()
+            .filter(|renderable| **renderable)
+            .count()
+    }
+
+    pub(super) fn append(
+        &mut self,
+        values: Vec<Arc<TimelineItem>>,
+        ctx: &TimelineContext<'_>,
+    ) -> Vec<TimelineMessage> {
+        let messages = self.convert_and_flag(&values, ctx);
+        self.items.extend(values);
+        messages
+    }
+
+    pub(super) fn reset(
+        &mut self,
+        values: Vec<Arc<TimelineItem>>,
+        ctx: &TimelineContext<'_>,
+    ) -> Vec<TimelineMessage> {
+        self.clear();
+        self.append(values, ctx)
+    }
+
+    pub(super) fn clear(&mut self) {
+        self.items.clear();
+        self.renderable.clear();
+    }
+
+    pub(super) fn push_front(&mut self, value: Arc<TimelineItem>, renderable: bool) {
+        self.insert(0, value, renderable);
+    }
+
+    pub(super) fn push_back(&mut self, value: Arc<TimelineItem>, renderable: bool) {
+        self.items.push(value);
+        self.renderable.push(renderable);
+    }
+
+    pub(super) fn pop_front(&mut self) -> bool {
+        if self.items.is_empty() {
+            return false;
+        }
+        self.items.remove(0);
+        self.renderable.remove(0)
+    }
+
+    pub(super) fn pop_back(&mut self) -> bool {
+        self.items.pop();
+        self.renderable.pop().unwrap_or(false)
+    }
+
+    pub(super) fn insert(&mut self, index: usize, value: Arc<TimelineItem>, renderable: bool) {
+        self.items.insert(index, value);
+        self.renderable.insert(index, renderable);
+    }
+
+    pub(super) fn set(&mut self, index: usize, value: &Arc<TimelineItem>, renderable: bool) {
+        if let Some(slot) = self.items.get_mut(index) {
+            *slot = Arc::clone(value);
+        }
+        if let Some(slot) = self.renderable.get_mut(index) {
+            *slot = renderable;
+        }
+    }
+
+    pub(super) fn remove(&mut self, index: usize) -> bool {
+        self.items.remove(index);
+        self.renderable.remove(index)
+    }
+
+    pub(super) fn truncate(&mut self, length: usize) {
+        self.items.truncate(length);
+        self.renderable.truncate(length);
+    }
+
+    fn convert_and_flag(
+        &mut self,
+        values: &[Arc<TimelineItem>],
+        ctx: &TimelineContext<'_>,
+    ) -> Vec<TimelineMessage> {
+        let mut messages = Vec::with_capacity(values.len());
+        self.renderable.reserve(values.len());
+        for item in values {
+            let message = convert_timeline_item(item, ctx);
+            self.renderable.push(message.is_some());
+            if let Some(message) = message {
+                messages.push(message);
+            }
+        }
+        messages
+    }
 }

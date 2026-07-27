@@ -154,7 +154,7 @@ fn other_state_to_service(state: &AnyOtherStateEventContentChange) -> Option<Ser
     })
 }
 
-pub(super) fn service_event_from_content(content: &TimelineItemContent) -> Option<ServiceEvent> {
+fn service_event_from_content(content: &TimelineItemContent) -> Option<ServiceEvent> {
     match content {
         TimelineItemContent::MembershipChange(change) => membership_to_service(change),
         TimelineItemContent::ProfileChange(change) => profile_to_service(change),

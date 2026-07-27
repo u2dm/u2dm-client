@@ -11,7 +11,7 @@ use tokio::sync::{Semaphore, mpsc};
 use tokio::task::JoinSet;
 
 use super::diff::diff_to_patch;
-use super::filter::convert_timeline_items;
+use super::filter::TimelineItems;
 use super::{EnrichmentPool, TimelineContext};
 use crate::adapters::matrix::media::MediaService;
 use crate::adapters::matrix::profile::PronounCache;
@@ -104,14 +104,14 @@ pub(super) fn spawn_enrichment_for_messages(
 }
 
 async fn send_initial_timeline(
-    items: &[Arc<TimelineItem>],
+    raw_items: usize,
+    messages: Vec<TimelineMessage>,
     ctx: &TimelineContext<'_>,
     room_id: &RoomId,
     timeline_tx: &mpsc::Sender<TimelineUpdate>,
 ) -> bool {
-    let messages = convert_timeline_items(items, ctx);
     tracing::info!(
-        raw_items = items.len(),
+        raw_items,
         messages = messages.len(),
         %room_id,
         "timeline loaded"
@@ -135,7 +135,7 @@ async fn send_initial_timeline(
 }
 
 fn process_diffs(
-    items: &mut Vec<Arc<TimelineItem>>,
+    items: &mut TimelineItems,
     diffs: Vec<VectorDiff<Arc<TimelineItem>>>,
     ctx: &TimelineContext<'_>,
 ) -> Option<TimelinePatch> {
@@ -334,8 +334,10 @@ pub(crate) async fn subscribe_timeline(
         enrich: &enrich,
     };
 
-    let mut items: Vec<Arc<TimelineItem>> = initial_items.into_iter().collect();
-    if !send_initial_timeline(&items, &ctx, room_id, &timeline_tx).await {
+    let initial_items: Vec<Arc<TimelineItem>> = initial_items.into_iter().collect();
+    let raw_items = initial_items.len();
+    let (mut items, initial_messages) = TimelineItems::load(initial_items, &ctx);
+    if !send_initial_timeline(raw_items, initial_messages, &ctx, room_id, &timeline_tx).await {
         return Ok(());
     }
     if timeline_tx
@@ -352,7 +354,7 @@ pub(crate) async fn subscribe_timeline(
     let mut fetched_reply_details: HashSet<String> = HashSet::new();
     let reply_limit = Arc::new(Semaphore::new(REPLY_FETCH_INFLIGHT));
     spawn_reply_detail_fetches(
-        &items,
+        items.items(),
         &timeline,
         &mut fetched_reply_details,
         &reply_limit,
@@ -394,7 +396,7 @@ pub(crate) async fn subscribe_timeline(
                 {
                     return Ok(());
                 }
-                spawn_reply_detail_fetches(&items, &timeline, &mut fetched_reply_details, &reply_limit, &mut side_tasks);
+                spawn_reply_detail_fetches(items.items(), &timeline, &mut fetched_reply_details, &reply_limit, &mut side_tasks);
             }
         }
     }
