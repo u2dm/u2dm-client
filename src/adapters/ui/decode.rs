@@ -1,4 +1,4 @@
-use std::cell::{Cell, RefCell};
+use std::cell::RefCell;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::fs::File;
 use std::io::BufReader;
@@ -35,20 +35,35 @@ const MAX_DECODE_WORKERS: usize = 3;
 const GIF_INSTANT_DELAY: Duration = Duration::from_millis(10);
 const GIF_DEFAULT_DELAY: Duration = Duration::from_millis(100);
 
+#[derive(Default)]
+struct DecodeState {
+    images: ImageCache,
+    animations: HashMap<PathBuf, Option<Rc<Animation>>>,
+    playbacks: HashMap<String, Playback>,
+    in_flight: HashMap<PathBuf, Vec<String>>,
+    avatar_waiters: HashMap<PathBuf, Vec<AvatarSlot>>,
+    media_needs: HashMap<String, MediaNeed>,
+    avatar_needs: HashMap<AvatarSlot, PathBuf>,
+    epoch: u64,
+}
+
+impl DecodeState {
+    fn animation_bytes(&self) -> usize {
+        self.animations
+            .values()
+            .filter_map(Option::as_ref)
+            .map(|animation| animation.bytes)
+            .sum()
+    }
+}
+
 thread_local! {
-    static IMAGE_CACHE: RefCell<ImageCache> = RefCell::new(ImageCache::new());
-    static ANIMATION_CACHE: RefCell<HashMap<PathBuf, Option<Rc<Animation>>>> = RefCell::new(HashMap::new());
-    static PLAYBACKS: RefCell<HashMap<String, Playback>> = RefCell::new(HashMap::new());
+    static DECODE: RefCell<DecodeState> = RefCell::new(DecodeState::default());
     static ANIMATION_TIMER: Timer = Timer::default();
     static ANIMATION_TICK_FN: RefCell<Option<Rc<dyn Fn()>>> = const { RefCell::new(None) };
     static DECODE_QUEUE: RefCell<Option<Arc<DecodeQueue>>> = const { RefCell::new(None) };
-    static IN_FLIGHT: RefCell<HashMap<PathBuf, Vec<String>>> = RefCell::new(HashMap::new());
-    static AVATAR_WAITERS: RefCell<HashMap<PathBuf, Vec<AvatarSlot>>> = RefCell::new(HashMap::new());
-    static MEDIA_NEEDS: RefCell<HashMap<String, MediaNeed>> = RefCell::new(HashMap::new());
-    static AVATAR_NEEDS: RefCell<HashMap<AvatarSlot, PathBuf>> = RefCell::new(HashMap::new());
     static IMAGE_READY_FN: RefCell<Option<ImageReadyFn>> = const { RefCell::new(None) };
     static AVATAR_READY_FN: RefCell<Option<AvatarReadyFn>> = const { RefCell::new(None) };
-    static SESSION_EPOCH: Cell<u64> = const { Cell::new(0) };
 }
 
 type ImageReadyFn = Rc<dyn Fn(&str, DecodeOutcome<'_>)>;
@@ -87,6 +102,7 @@ struct CachedImage {
     tick: u64,
 }
 
+#[derive(Default)]
 struct ImageCache {
     entries: HashMap<PathBuf, CachedImage>,
     total_bytes: usize,
@@ -94,14 +110,6 @@ struct ImageCache {
 }
 
 impl ImageCache {
-    fn new() -> Self {
-        Self {
-            entries: HashMap::new(),
-            total_bytes: 0,
-            tick: 0,
-        }
-    }
-
     fn lookup(&mut self, path: &Path) -> Lookup {
         self.tick = self.tick.wrapping_add(1);
         let tick = self.tick;
@@ -321,24 +329,36 @@ fn run_job(lane: Lane, job: Job) {
 }
 
 fn on_static_decoded(path: &Path, decoded: Option<(Vec<u8>, u32, u32)>, epoch: u64) {
-    if epoch != SESSION_EPOCH.with(Cell::get) {
-        return;
-    }
-    let decoded = decoded.map(|(bytes, width, height)| {
-        let len = bytes.len();
-        (image_from_rgba(&bytes, width, height), len)
+    let delivery = DECODE.with_borrow_mut(|state| {
+        if epoch != state.epoch {
+            return None;
+        }
+        let decoded = decoded.map(|(bytes, width, height)| {
+            let len = bytes.len();
+            (image_from_rgba(&bytes, width, height), len)
+        });
+        let bytes = decoded.as_ref().map_or(0, |(_, len)| *len);
+        let image = decoded.map(|(image, _)| image);
+        state
+            .images
+            .insert(path.to_path_buf(), image.clone(), bytes);
+        Some((
+            image,
+            state.in_flight.remove(path),
+            state.avatar_waiters.remove(path),
+        ))
     });
-    let bytes = decoded.as_ref().map_or(0, |(_, len)| *len);
-    let image = decoded.map(|(image, _)| image);
-    IMAGE_CACHE.with_borrow_mut(|cache| cache.insert(path.to_path_buf(), image.clone(), bytes));
+    let Some((image, unique_ids, slots)) = delivery else {
+        return;
+    };
 
     let outcome = image
         .as_ref()
         .map_or(DecodeOutcome::Failed, DecodeOutcome::Ready);
-    if let Some(unique_ids) = IN_FLIGHT.with_borrow_mut(|inflight| inflight.remove(path)) {
+    if let Some(unique_ids) = unique_ids {
         notify_ready(&unique_ids, outcome);
     }
-    if let Some(slots) = AVATAR_WAITERS.with_borrow_mut(|waiters| waiters.remove(path)) {
+    if let Some(slots) = slots {
         notify_avatar_ready(&slots, outcome);
     }
 }
@@ -360,7 +380,7 @@ fn notify_avatar_ready(slots: &[AvatarSlot], outcome: DecodeOutcome<'_>) {
 
 fn send_job(lane: Lane, path: PathBuf) {
     ensure_workers();
-    let epoch = SESSION_EPOCH.with(Cell::get);
+    let epoch = DECODE.with_borrow(|state| state.epoch);
     let dropped = DECODE_QUEUE.with_borrow(|slot| {
         let queue = slot.as_ref()?;
         let dropped = {
@@ -382,12 +402,12 @@ fn defer_dropped(lane: Lane, path: &Path) {
     );
     match lane {
         Lane::Avatar => {
-            if let Some(slots) = AVATAR_WAITERS.with_borrow_mut(|waiters| waiters.remove(path)) {
+            if let Some(slots) = DECODE.with_borrow_mut(|state| state.avatar_waiters.remove(path)) {
                 notify_avatar_ready(&slots, DecodeOutcome::Deferred);
             }
         }
         Lane::Static | Lane::Animation => {
-            if let Some(unique_ids) = IN_FLIGHT.with_borrow_mut(|inflight| inflight.remove(path)) {
+            if let Some(unique_ids) = DECODE.with_borrow_mut(|state| state.in_flight.remove(path)) {
                 notify_ready(&unique_ids, DecodeOutcome::Deferred);
             }
         }
@@ -395,9 +415,9 @@ fn defer_dropped(lane: Lane, path: &Path) {
 }
 
 fn enqueue_decode(path: &Path, unique_id: &str, lane: Lane) {
-    let should_dispatch = IN_FLIGHT.with_borrow_mut(|inflight| {
-        let is_new = !inflight.contains_key(path);
-        let waiting = inflight.entry(path.to_path_buf()).or_default();
+    let should_dispatch = DECODE.with_borrow_mut(|state| {
+        let is_new = !state.in_flight.contains_key(path);
+        let waiting = state.in_flight.entry(path.to_path_buf()).or_default();
         if !waiting.iter().any(|id| id == unique_id) {
             waiting.push(unique_id.to_owned());
         }
@@ -409,14 +429,14 @@ fn enqueue_decode(path: &Path, unique_id: &str, lane: Lane) {
 }
 
 pub fn load_avatar_async(path: &Path, slot: AvatarSlot) -> Option<Image> {
-    match IMAGE_CACHE.with_borrow_mut(|cache| cache.lookup(path)) {
+    match DECODE.with_borrow_mut(|state| state.images.lookup(path)) {
         Lookup::Hit(image) => return Some(image),
         Lookup::Failed => return None,
         Lookup::Miss => {}
     }
-    let should_dispatch = AVATAR_WAITERS.with_borrow_mut(|waiters| {
-        let is_new = !waiters.contains_key(path);
-        let slots = waiters.entry(path.to_path_buf()).or_default();
+    let should_dispatch = DECODE.with_borrow_mut(|state| {
+        let is_new = !state.avatar_waiters.contains_key(path);
+        let slots = state.avatar_waiters.entry(path.to_path_buf()).or_default();
         if !slots.contains(&slot) {
             slots.push(slot);
         }
@@ -429,7 +449,7 @@ pub fn load_avatar_async(path: &Path, slot: AvatarSlot) -> Option<Image> {
 }
 
 fn cached_image(path: &Path) -> Option<Image> {
-    match IMAGE_CACHE.with_borrow_mut(|cache| cache.lookup(path)) {
+    match DECODE.with_borrow_mut(|state| state.images.lookup(path)) {
         Lookup::Hit(image) => Some(image),
         Lookup::Failed | Lookup::Miss => None,
     }
@@ -449,27 +469,28 @@ pub fn peek_avatar(path: &Path) -> Option<Image> {
 
 pub fn record_media_need(unique_id: &str, thumbnail: Option<PathBuf>, avatar: Option<PathBuf>) {
     if thumbnail.is_none() && avatar.is_none() {
-        MEDIA_NEEDS.with_borrow_mut(|needs| needs.remove(unique_id));
+        DECODE.with_borrow_mut(|state| state.media_needs.remove(unique_id));
         return;
     }
-    MEDIA_NEEDS.with_borrow_mut(|needs| {
-        needs.insert(unique_id.to_owned(), MediaNeed { thumbnail, avatar });
+    DECODE.with_borrow_mut(|state| {
+        state
+            .media_needs
+            .insert(unique_id.to_owned(), MediaNeed { thumbnail, avatar });
     });
 }
 
 pub fn forget_all_media_needs() {
-    MEDIA_NEEDS.with_borrow_mut(HashMap::clear);
+    DECODE.with_borrow_mut(|state| state.media_needs.clear());
 }
 
 pub fn clear_session_media() {
-    SESSION_EPOCH.with(|epoch| epoch.set(epoch.get().wrapping_add(1)));
-    IMAGE_CACHE.with_borrow_mut(|cache| *cache = ImageCache::new());
-    ANIMATION_CACHE.with_borrow_mut(HashMap::clear);
-    PLAYBACKS.with_borrow_mut(HashMap::clear);
-    IN_FLIGHT.with_borrow_mut(HashMap::clear);
-    AVATAR_WAITERS.with_borrow_mut(HashMap::clear);
-    MEDIA_NEEDS.with_borrow_mut(HashMap::clear);
-    AVATAR_NEEDS.with_borrow_mut(HashMap::clear);
+    DECODE.with_borrow_mut(|state| {
+        let epoch = state.epoch.wrapping_add(1);
+        *state = DecodeState {
+            epoch,
+            ..DecodeState::default()
+        };
+    });
     ANIMATION_TIMER.with(Timer::stop);
     DECODE_QUEUE.with_borrow(|slot| {
         if let Some(queue) = slot.as_ref() {
@@ -479,11 +500,11 @@ pub fn clear_session_media() {
 }
 
 pub fn record_avatar_need(slot: AvatarSlot, path: PathBuf) {
-    AVATAR_NEEDS.with_borrow_mut(|needs| needs.insert(slot, path));
+    DECODE.with_borrow_mut(|state| state.avatar_needs.insert(slot, path));
 }
 
 pub fn request_avatar(slot: &AvatarSlot) {
-    let Some(path) = AVATAR_NEEDS.with_borrow(|needs| needs.get(slot).cloned()) else {
+    let Some(path) = DECODE.with_borrow(|state| state.avatar_needs.get(slot).cloned()) else {
         return;
     };
     if let Some(image) = load_avatar_async(&path, slot.clone()) {
@@ -492,7 +513,7 @@ pub fn request_avatar(slot: &AvatarSlot) {
 }
 
 pub fn request_media(unique_id: &str) {
-    let Some(need) = MEDIA_NEEDS.with_borrow(|needs| needs.get(unique_id).cloned()) else {
+    let Some(need) = DECODE.with_borrow(|state| state.media_needs.get(unique_id).cloned()) else {
         return;
     };
     if let Some(thumbnail) = &need.thumbnail
@@ -720,35 +741,23 @@ fn decode_raw_animation(path: &Path) -> Option<RawAnimation> {
     })
 }
 
-fn cached_animation_bytes() -> usize {
-    ANIMATION_CACHE.with_borrow(|cache| {
-        cache
-            .values()
-            .filter_map(Option::as_ref)
-            .map(|animation| animation.bytes)
-            .sum()
-    })
-}
-
-fn cached_animation(path: &Path) -> Option<Rc<Animation>> {
-    ANIMATION_CACHE.with_borrow(|cache| cache.get(path).cloned().flatten())
-}
-
 fn on_animation_decoded(path: &Path, decoded: Option<RawAnimation>, epoch: u64) {
-    if epoch != SESSION_EPOCH.with(Cell::get) {
-        return;
-    }
-    let remaining = ANIMATION_MEMORY_BUDGET.saturating_sub(cached_animation_bytes());
-    let animation = decoded
-        .filter(|raw| raw.bytes <= remaining)
-        .map(|raw| Rc::new(raw.into_animation()));
-    ANIMATION_CACHE.with_borrow_mut(|cache| {
-        cache.insert(path.to_path_buf(), animation.clone());
+    let decoded = DECODE.with_borrow_mut(|state| {
+        if epoch != state.epoch {
+            return None;
+        }
+        let remaining = ANIMATION_MEMORY_BUDGET.saturating_sub(state.animation_bytes());
+        let animation = decoded
+            .filter(|raw| raw.bytes <= remaining)
+            .map(|raw| Rc::new(raw.into_animation()));
+        state
+            .animations
+            .insert(path.to_path_buf(), animation.clone());
+        Some((animation, state.in_flight.remove(path).unwrap_or_default()))
     });
-
-    let waiting = IN_FLIGHT
-        .with_borrow_mut(|inflight| inflight.remove(path))
-        .unwrap_or_default();
+    let Some((animation, waiting)) = decoded else {
+        return;
+    };
 
     let Some(animation) = animation else {
         for unique_id in &waiting {
@@ -758,7 +767,8 @@ fn on_animation_decoded(path: &Path, decoded: Option<RawAnimation>, epoch: u64) 
     };
 
     let now = Instant::now();
-    PLAYBACKS.with_borrow_mut(|playbacks| {
+    DECODE.with_borrow_mut(|state| {
+        let playbacks = &mut state.playbacks;
         for unique_id in &waiting {
             if playbacks.contains_key(unique_id) {
                 continue;
@@ -788,7 +798,7 @@ pub fn load_thumbnail(path: &Path, playback_key: &str) -> Option<Image> {
     if !is_animatable(path) {
         return request_thumbnail(path, playback_key);
     }
-    let animation = match ANIMATION_CACHE.with_borrow(|cache| cache.get(path).cloned()) {
+    let animation = match DECODE.with_borrow(|state| state.animations.get(path).cloned()) {
         Some(Some(animation)) => animation,
         Some(None) => return request_thumbnail(path, playback_key),
         None => {
@@ -797,7 +807,8 @@ pub fn load_thumbnail(path: &Path, playback_key: &str) -> Option<Image> {
         }
     };
 
-    let (frame, is_new) = PLAYBACKS.with_borrow_mut(|playbacks| {
+    let (frame, is_new) = DECODE.with_borrow_mut(|state| {
+        let playbacks = &mut state.playbacks;
         if let Some(playback) = playbacks.get(playback_key) {
             return (playback.frame, false);
         }
@@ -824,7 +835,7 @@ pub fn load_thumbnail(path: &Path, playback_key: &str) -> Option<Image> {
 }
 
 fn request_thumbnail(path: &Path, unique_id: &str) -> Option<Image> {
-    match IMAGE_CACHE.with_borrow_mut(|cache| cache.lookup(path)) {
+    match DECODE.with_borrow_mut(|state| state.images.lookup(path)) {
         Lookup::Hit(image) => Some(image),
         Lookup::Failed => None,
         Lookup::Miss => {
@@ -835,13 +846,18 @@ fn request_thumbnail(path: &Path, unique_id: &str) -> Option<Image> {
 }
 
 fn due_frames(now: Instant) -> Vec<DueFrame> {
-    PLAYBACKS.with_borrow_mut(|playbacks| {
+    DECODE.with_borrow_mut(|state| {
+        let DecodeState {
+            playbacks,
+            animations,
+            ..
+        } = state;
         let mut due = Vec::new();
         for (unique_id, playback) in playbacks.iter_mut() {
             if playback.next_at > now {
                 continue;
             }
-            let Some(animation) = cached_animation(&playback.path) else {
+            let Some(animation) = animations.get(&playback.path).and_then(Option::as_ref) else {
                 continue;
             };
             playback.frame = (playback.frame + 1) % animation.frames.len();
@@ -880,16 +896,21 @@ fn forget_playbacks(gone: &[String]) {
     if gone.is_empty() {
         return;
     }
-    let live_paths = PLAYBACKS.with_borrow_mut(|playbacks| {
+    DECODE.with_borrow_mut(|state| {
+        let DecodeState {
+            playbacks,
+            animations,
+            ..
+        } = state;
         for unique_id in gone {
             playbacks.remove(unique_id);
         }
-        playbacks
+        let live_paths = playbacks
             .values()
-            .map(|playback| playback.path.clone())
-            .collect::<HashSet<PathBuf>>()
+            .map(|playback| &playback.path)
+            .collect::<HashSet<&PathBuf>>();
+        animations.retain(|path, _| live_paths.contains(path));
     });
-    ANIMATION_CACHE.with_borrow_mut(|cache| cache.retain(|path, _| live_paths.contains(path)));
 }
 
 pub fn advance_animations<T: Clone + 'static>(
@@ -917,9 +938,9 @@ pub fn advance_animations<T: Clone + 'static>(
         located.push((item.unique_id, row));
     }
 
-    PLAYBACKS.with_borrow_mut(|playbacks| {
+    DECODE.with_borrow_mut(|state| {
         for (unique_id, row) in located {
-            if let Some(playback) = playbacks.get_mut(&unique_id) {
+            if let Some(playback) = state.playbacks.get_mut(&unique_id) {
                 playback.row_hint = row;
             }
         }
@@ -928,7 +949,7 @@ pub fn advance_animations<T: Clone + 'static>(
 }
 
 fn next_deadline() -> Option<Instant> {
-    PLAYBACKS.with_borrow(|playbacks| playbacks.values().map(|p| p.next_at).min())
+    DECODE.with_borrow(|state| state.playbacks.values().map(|p| p.next_at).min())
 }
 
 fn reschedule_animations() {
