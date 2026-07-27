@@ -83,19 +83,13 @@ pub fn save_file(tx: &Tx, event_id: String, filename: String) {
     send_command(tx, UiCommand::SaveFile { event_id, filename });
 }
 
-pub fn scroll_position(
-    scroll_tx: &watch::Sender<ViewportChanged>,
-    key: RoomKey,
-    at_top: bool,
-    at_bottom: bool,
-) {
+pub fn scroll_position(scroll_tx: &watch::Sender<ViewportChanged>, key: RoomKey, at_bottom: bool) {
     let Some((room_id, generation)) = key else {
         return;
     };
     let update = ViewportChanged {
         room_id,
         generation,
-        at_top,
         at_bottom,
     };
     if scroll_tx.send(update).is_err() {

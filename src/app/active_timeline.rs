@@ -234,7 +234,7 @@ impl ActiveTimeline {
         if !self.is_current(room_id, generation) {
             return;
         }
-        if !self.viewport.should_paginate_backwards(true) {
+        if !self.viewport.should_paginate_backwards() {
             return;
         }
         let Some(tx) = &self.timeline_cmd_tx else {
@@ -252,7 +252,7 @@ impl ActiveTimeline {
         if !self.is_current(room_id, generation) {
             return;
         }
-        if !self.viewport.should_paginate_forwards(true) {
+        if !self.viewport.should_paginate_forwards() {
             return;
         }
         let Some(tx) = &self.timeline_cmd_tx else {
@@ -317,14 +317,13 @@ impl ActiveTimeline {
         &mut self,
         room_id: &RoomId,
         generation: i32,
-        at_top: bool,
         at_bottom: bool,
     ) {
         if !self.is_current(room_id, generation) {
             return;
         }
 
-        let mode_changed = self.viewport.update_scroll_position(at_top, at_bottom);
+        let mode_changed = self.viewport.update_scroll_position(at_bottom);
 
         self.counters.set_at_bottom(at_bottom);
 

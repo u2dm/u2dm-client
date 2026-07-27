@@ -26,7 +26,7 @@ impl ViewportController {
         self.mode
     }
 
-    pub fn update_scroll_position(&mut self, _at_top: bool, at_bottom: bool) -> bool {
+    pub fn update_scroll_position(&mut self, at_bottom: bool) -> bool {
         let old_mode = self.mode;
 
         if at_bottom && (self.mode == ScrollMode::FollowLive || self.forwards_ended) {
@@ -43,15 +43,12 @@ impl ViewportController {
         self.forwards_ended = true;
     }
 
-    pub fn should_paginate_backwards(&self, at_top: bool) -> bool {
-        at_top && !self.backwards_loading && !self.backwards_ended
+    pub fn should_paginate_backwards(&self) -> bool {
+        !self.backwards_loading && !self.backwards_ended
     }
 
-    pub fn should_paginate_forwards(&self, at_bottom: bool) -> bool {
-        at_bottom
-            && !self.forwards_loading
-            && !self.forwards_ended
-            && self.mode == ScrollMode::PreserveAnchor
+    pub fn should_paginate_forwards(&self) -> bool {
+        !self.forwards_loading && !self.forwards_ended && self.mode == ScrollMode::PreserveAnchor
     }
 
     pub fn set_backwards_loading(&mut self, loading: bool) {

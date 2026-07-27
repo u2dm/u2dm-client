@@ -121,16 +121,14 @@ async fn send_initial_timeline(
         %room_id,
         "sending initial Reset patch to timeline channel"
     );
+    spawn_enrichment_for_messages(&messages, ctx);
     let sent = timeline_tx
         .send(TimelineUpdate::Patch(Box::new(TimelinePatch::Reset(
-            messages.clone(),
+            messages,
         ))))
         .await
         .is_ok();
     tracing::debug!(sent, %room_id, "initial Reset patch send result");
-    if sent {
-        spawn_enrichment_for_messages(&messages, ctx);
-    }
     sent
 }
 

@@ -33,12 +33,11 @@ fn event_id_from_str(event_id_str: String) -> Option<EventId> {
     (!event_id_str.is_empty()).then_some(EventId(event_id_str))
 }
 
-fn build_utd_message(
+fn base_message(
     unique_id: String,
     event: &EventTimelineItem,
     event_id_str: String,
     ctx: &TimelineContext<'_>,
-    reply: Option<ReplyInfo>,
 ) -> TimelineMessage {
     let (sender_display_name, sender_avatar_url) = extract_sender_profile(event);
     let ts: u64 = event.timestamp().0.into();
@@ -54,8 +53,21 @@ fn build_utd_message(
         body: MessageBody::UnableToDecrypt,
         timestamp: ts,
         is_own,
-        reply,
+        reply: None,
         edited: false,
+    }
+}
+
+fn build_utd_message(
+    unique_id: String,
+    event: &EventTimelineItem,
+    event_id_str: String,
+    ctx: &TimelineContext<'_>,
+    reply: Option<ReplyInfo>,
+) -> TimelineMessage {
+    TimelineMessage {
+        reply,
+        ..base_message(unique_id, event, event_id_str, ctx)
     }
 }
 
@@ -66,22 +78,10 @@ fn build_service_message(
     ctx: &TimelineContext<'_>,
     service: ServiceEvent,
 ) -> TimelineMessage {
-    let (sender_display_name, sender_avatar_url) = extract_sender_profile(event);
-    let ts: u64 = event.timestamp().0.into();
-    let sender_str = event.sender().to_string();
-    let is_own = ctx.own_user_id.is_some_and(|uid| uid == sender_str);
     TimelineMessage {
-        unique_id,
-        event_id: event_id_from_str(event_id_str),
         sender_pronouns: Vec::new(),
-        sender: sender_str,
-        sender_display_name,
-        sender_avatar_url,
         body: MessageBody::Service(service),
-        timestamp: ts,
-        is_own,
-        reply: None,
-        edited: false,
+        ..base_message(unique_id, event, event_id_str, ctx)
     }
 }
 
@@ -315,22 +315,11 @@ pub(super) fn convert_event_item_with_uid(
     };
 
     let body = message_type_to_body(message.msgtype(), &event_id_str, ctx.media_sources);
-    let (sender_display_name, sender_avatar_url) = extract_sender_profile(event);
-    let ts: u64 = event.timestamp().0.into();
-    let sender_str = event.sender().to_string();
-    let is_own = ctx.own_user_id.is_some_and(|uid| uid == sender_str);
 
     Some(TimelineMessage {
-        unique_id,
-        event_id: event_id_from_str(event_id_str),
-        sender_pronouns: ctx.pronouns.resolved(&sender_str),
-        sender: sender_str,
-        sender_display_name,
-        sender_avatar_url,
         body,
-        timestamp: ts,
-        is_own,
         reply,
         edited: message.is_edited(),
+        ..base_message(unique_id, event, event_id_str, ctx)
     })
 }

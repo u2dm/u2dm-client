@@ -1,3 +1,4 @@
+use std::future::Future;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -31,7 +32,18 @@ impl MediaActions {
         }
     }
 
-    pub(super) fn open_media(&mut self, media: Arc<dyn MediaPort>, event_id: String) {
+    fn spawn_media_action<F, Fut>(
+        &mut self,
+        media: Arc<dyn MediaPort>,
+        event_id: String,
+        download_failure: &'static str,
+        act: F,
+    ) where
+        F: FnOnce(Arc<dyn MediaFilePort>, Arc<dyn AppOutputPort>, String, Vec<u8>) -> Fut
+            + Send
+            + 'static,
+        Fut: Future<Output = ()> + Send,
+    {
         self.reap_finished();
 
         let media_files = Arc::clone(&self.media_files);
@@ -40,19 +52,11 @@ impl MediaActions {
         self.tasks.spawn(async move {
             let work = async move {
                 match media.download_media(&event_id, false).await {
-                    Ok(data) => {
-                        if let Err(e) = media_files.open_media(&event_id, &data).await {
-                            tracing::warn!("failed to open media: {e}");
-                            show_toast(
-                                output.as_ref(),
-                                Toast::Error(format!("Failed to open media: {e}")),
-                            );
-                        }
-                    }
+                    Ok(data) => act(media_files, output, event_id, data).await,
                     Err(e) => {
                         show_toast(
                             output.as_ref(),
-                            Toast::Error(format!("Failed to download media: {e}")),
+                            Toast::Error(format!("{download_failure}: {e}")),
                         );
                     }
                 }
@@ -64,43 +68,46 @@ impl MediaActions {
         });
     }
 
+    pub(super) fn open_media(&mut self, media: Arc<dyn MediaPort>, event_id: String) {
+        self.spawn_media_action(
+            media,
+            event_id,
+            "Failed to download media",
+            |media_files, output, event_id, data| async move {
+                if let Err(e) = media_files.open_media(&event_id, &data).await {
+                    tracing::warn!("failed to open media: {e}");
+                    show_toast(
+                        output.as_ref(),
+                        Toast::Error(format!("Failed to open media: {e}")),
+                    );
+                }
+            },
+        );
+    }
+
     pub(super) fn save_file(
         &mut self,
         media: Arc<dyn MediaPort>,
         event_id: String,
         filename: String,
     ) {
-        self.reap_finished();
-
-        let media_files = Arc::clone(&self.media_files);
-        let output = Arc::clone(&self.output);
-        let cancel = self.cancel.clone();
-        self.tasks.spawn(async move {
-            let work = async move {
-                match media.download_media(&event_id, false).await {
-                    Ok(data) => match media_files.save_file(&filename, &data).await {
-                        Ok(Some(path)) => show_toast(output.as_ref(), Toast::FileSaved(path)),
-                        Ok(None) => {}
-                        Err(e) => {
-                            show_toast(
-                                output.as_ref(),
-                                Toast::Error(format!("Failed to save file: {e}")),
-                            );
-                        }
-                    },
+        self.spawn_media_action(
+            media,
+            event_id,
+            "Failed to download file",
+            move |media_files, output, _event_id, data| async move {
+                match media_files.save_file(&filename, &data).await {
+                    Ok(Some(path)) => show_toast(output.as_ref(), Toast::FileSaved(path)),
+                    Ok(None) => {}
                     Err(e) => {
                         show_toast(
                             output.as_ref(),
-                            Toast::Error(format!("Failed to download file: {e}")),
+                            Toast::Error(format!("Failed to save file: {e}")),
                         );
                     }
                 }
-            };
-            tokio::select! {
-                () = cancel.cancelled() => {}
-                () = work => {}
-            }
-        });
+            },
+        );
     }
 
     pub(super) async fn cancel_and_drain(&mut self) {

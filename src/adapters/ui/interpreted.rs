@@ -599,7 +599,6 @@ impl SlintUiAdapter {
                     &scroll_tx,
                     selected_room_key::<InterpretedBackend>(&weak),
                     bool_arg(args, 0),
-                    bool_arg(args, 1),
                 );
                 Value::Void
             },

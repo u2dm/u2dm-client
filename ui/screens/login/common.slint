@@ -163,76 +163,49 @@ export component StepDots inherits HorizontalLayout {
     }
 }
 
+struct ActivityStyle {
+    label: string,
+    icon: Icon,
+}
+
 export component StatusRow inherits HorizontalLayout {
     in property <LoginActivity> activity;
     in property <bool> spinner: false;
 
-    pure function label() -> string {
-        if root.activity == LoginActivity.loading-session {
-            return @tr("Loading saved session...");
-        }
-        if root.activity == LoginActivity.opening-store {
-            return @tr("Opening encrypted store...");
-        }
-        if root.activity == LoginActivity.connecting {
-            return @tr("Connecting to homeserver...");
-        }
-        if root.activity == LoginActivity.restoring-auth {
-            return @tr("Restoring authentication...");
-        }
-        if root.activity == LoginActivity.syncing {
-            return @tr("Syncing rooms...");
-        }
-        if root.activity == LoginActivity.checking-server {
-            return @tr("Checking server...");
-        }
-        if root.activity == LoginActivity.logging-in {
-            return @tr("Logging in...");
-        }
-        if root.activity == LoginActivity.opening-browser {
-            return @tr("Opening browser...");
-        }
-        if root.activity == LoginActivity.waiting-auth {
-            return @tr("Waiting for authentication...");
-        }
-        if root.activity == LoginActivity.cleaning-up {
-            return @tr("Erasing local account data...");
-        }
-        return "";
-    }
+    property <ActivityStyle> style: self.activity-style();
 
-    pure function icon() -> Icon {
+    pure function activity-style() -> ActivityStyle {
         if root.activity == LoginActivity.loading-session {
-            return IconSet.History;
+            return { label: @tr("Loading saved session..."), icon: IconSet.History };
         }
         if root.activity == LoginActivity.opening-store {
-            return IconSet.LockKeyhole;
+            return { label: @tr("Opening encrypted store..."), icon: IconSet.LockKeyhole };
         }
         if root.activity == LoginActivity.connecting {
-            return IconSet.Globe;
+            return { label: @tr("Connecting to homeserver..."), icon: IconSet.Globe };
         }
         if root.activity == LoginActivity.restoring-auth {
-            return IconSet.KeyRound;
+            return { label: @tr("Restoring authentication..."), icon: IconSet.KeyRound };
         }
         if root.activity == LoginActivity.syncing {
-            return IconSet.RefreshCw;
+            return { label: @tr("Syncing rooms..."), icon: IconSet.RefreshCw };
         }
         if root.activity == LoginActivity.checking-server {
-            return IconSet.Server;
+            return { label: @tr("Checking server..."), icon: IconSet.Server };
         }
         if root.activity == LoginActivity.logging-in {
-            return IconSet.LogIn;
+            return { label: @tr("Logging in..."), icon: IconSet.LogIn };
         }
         if root.activity == LoginActivity.opening-browser {
-            return IconSet.ExternalLink;
+            return { label: @tr("Opening browser..."), icon: IconSet.ExternalLink };
         }
         if root.activity == LoginActivity.waiting-auth {
-            return IconSet.Hourglass;
+            return { label: @tr("Waiting for authentication..."), icon: IconSet.Hourglass };
         }
         if root.activity == LoginActivity.cleaning-up {
-            return IconSet.Trash2;
+            return { label: @tr("Erasing local account data..."), icon: IconSet.Trash2 };
         }
-        return IconSet.Loader;
+        return { label: "", icon: IconSet.Loader };
     }
 
     alignment: center;
@@ -252,14 +225,14 @@ export component StatusRow inherits HorizontalLayout {
         alignment: center;
 
         IconDisplay {
-            icon: root.icon();
+            icon: root.style.icon;
             size: 14px;
             stroke: LoginStyle.faint;
         }
     }
 
     Text {
-        text: root.label();
+        text: root.style.label;
         font-size: 13px;
         vertical-alignment: center;
         color: LoginStyle.muted;

@@ -603,57 +603,57 @@ msgctxt "BrandHeader"
 msgid "U2DM"
 msgstr ""
 
-#: ui/screens/login/common.slint:172
+#: ui/screens/login/common.slint:179
 msgctxt "StatusRow"
 msgid "Loading saved session..."
 msgstr ""
 
-#: ui/screens/login/common.slint:175
+#: ui/screens/login/common.slint:182
 msgctxt "StatusRow"
 msgid "Opening encrypted store..."
 msgstr ""
 
-#: ui/screens/login/common.slint:178
+#: ui/screens/login/common.slint:185
 msgctxt "StatusRow"
 msgid "Connecting to homeserver..."
 msgstr ""
 
-#: ui/screens/login/common.slint:181
+#: ui/screens/login/common.slint:188
 msgctxt "StatusRow"
 msgid "Restoring authentication..."
 msgstr ""
 
-#: ui/screens/login/common.slint:184
+#: ui/screens/login/common.slint:191
 msgctxt "StatusRow"
 msgid "Syncing rooms..."
 msgstr ""
 
-#: ui/screens/login/common.slint:187
+#: ui/screens/login/common.slint:194
 msgctxt "StatusRow"
 msgid "Checking server..."
 msgstr ""
 
-#: ui/screens/login/common.slint:190
+#: ui/screens/login/common.slint:197
 msgctxt "StatusRow"
 msgid "Logging in..."
 msgstr ""
 
-#: ui/screens/login/common.slint:193
+#: ui/screens/login/common.slint:200
 msgctxt "StatusRow"
 msgid "Opening browser..."
 msgstr ""
 
-#: ui/screens/login/common.slint:196
+#: ui/screens/login/common.slint:203
 msgctxt "StatusRow"
 msgid "Waiting for authentication..."
 msgstr ""
 
-#: ui/screens/login/common.slint:199
+#: ui/screens/login/common.slint:206
 msgctxt "StatusRow"
 msgid "Erasing local account data..."
 msgstr ""
 
-#: ui/screens/login/common.slint:362
+#: ui/screens/login/common.slint:335
 msgctxt "OrDivider"
 msgid "or"
 msgstr ""

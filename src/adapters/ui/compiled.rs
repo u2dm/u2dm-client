@@ -366,11 +366,10 @@ impl SlintUiAdapter {
 
         let scroll_tx = scroll_tx.clone();
         let weak = self.window.as_weak();
-        actions(win).on_scroll_position_changed(move |at_top, at_bottom| {
+        actions(win).on_scroll_position_changed(move |at_bottom| {
             router::scroll_position(
                 &scroll_tx,
                 selected_room_key::<CompiledBackend>(&weak),
-                at_top,
                 at_bottom,
             );
         });

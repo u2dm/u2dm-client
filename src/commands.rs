@@ -122,7 +122,6 @@ pub enum VerificationUpdate {
 pub struct ViewportChanged {
     pub room_id: RoomId,
     pub generation: i32,
-    pub at_top: bool,
     pub at_bottom: bool,
 }
 
@@ -131,7 +130,6 @@ impl ViewportChanged {
         Self {
             room_id: RoomId::new(String::new()),
             generation: 0,
-            at_top: false,
             at_bottom: true,
         }
     }

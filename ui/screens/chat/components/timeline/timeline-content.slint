@@ -93,7 +93,7 @@ export component TimelineContent inherits Rectangle {
             if (self.at-top != self.was-at-top) || (self.at-bottom != self.was-at-bottom) {
                 self.was-at-top = self.at-top;
                 self.was-at-bottom = self.at-bottom;
-                Actions.scroll-position-changed(self.at-top, self.at-bottom);
+                Actions.scroll-position-changed(self.at-bottom);
             }
         }
 

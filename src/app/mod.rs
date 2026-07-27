@@ -152,7 +152,6 @@ impl AppService {
                         self.active_timeline.scroll_position_changed(
                             &viewport.room_id,
                             viewport.generation,
-                            viewport.at_top,
                             viewport.at_bottom,
                         );
                     }
