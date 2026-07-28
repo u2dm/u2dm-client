@@ -12,6 +12,7 @@ mod props;
 mod reconcile;
 mod reduce;
 mod router;
+mod rows;
 mod schema;
 
 pub use output::UiEventOutput;

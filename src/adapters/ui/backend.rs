@@ -4,11 +4,12 @@ use slint::{ComponentHandle, Image, VecModel};
 use tokio::sync::OwnedSemaphorePermit;
 
 use super::decode::{
-    AvatarSlot, DecodeOutcome, advance_animations, patch_rows, set_animation_tick,
-    set_avatar_ready, set_image_ready,
+    AvatarSlot, DecodeOutcome, advance_animations, set_animation_tick, set_avatar_ready,
+    set_image_ready,
 };
 use super::props::{IntProp, StringProp, UiProps};
 use super::reduce::dispatch_effect;
+use super::rows::patch_rows;
 use crate::commands::Effect;
 use crate::domain::models::{EnrichmentDelta, Room, RoomId, Space, TimelineMessage};
 use crate::ports::media::MediaCache;
