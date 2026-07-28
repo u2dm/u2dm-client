@@ -7,7 +7,7 @@ use tokio_util::sync::CancellationToken;
 
 use super::establish::EstablishedSession;
 use super::lifecycle::Lifecycle;
-use super::task_group::TaskGroup;
+use super::task_group::{self, TaskGroup};
 use crate::commands::{LoginActivity, LoginStep, Toast, UserMessage, UserMessageKind};
 use crate::domain::account::AccountScope;
 use crate::domain::models::{LoginCredentials, LoginMethod, ServerInfo, Session};
@@ -21,6 +21,9 @@ use crate::ports::storage::{StoragePort, StoredSession};
 use crate::util::random_hex;
 
 const OAUTH_CALLBACK_TIMEOUT: Duration = Duration::from_mins(5);
+const LOCAL_ERASURE_RESERVE: Duration = Duration::from_secs(1);
+const SERVER_LOGOUT_TIMEOUT: Duration =
+    task_group::SHUTDOWN_GRACE.saturating_sub(LOCAL_ERASURE_RESERVE);
 
 pub(super) enum AuthOutcome {
     Login {
@@ -56,8 +59,10 @@ fn restore_activity(step: RestoreStep) -> LoginActivity {
 }
 
 async fn end_server_session(lifecycle_port: &dyn SessionPort) {
-    if let Err(e) = lifecycle_port.logout().await {
-        tracing::warn!("failed to logout from server: {e}");
+    match timeout(SERVER_LOGOUT_TIMEOUT, lifecycle_port.logout()).await {
+        Ok(Ok(())) => {}
+        Ok(Err(e)) => tracing::warn!("failed to logout from server: {e}"),
+        Err(_) => tracing::warn!("server logout timed out, erasing local state anyway"),
     }
 }
 
@@ -480,21 +485,31 @@ impl SessionController {
         &self,
         cancel: &CancellationToken,
     ) -> Result<Option<EstablishedSession>> {
+        let Some(session) = self.cancellable_browser_sign_in(cancel).await? else {
+            return Ok(None);
+        };
+        self.set_activity(LoginActivity::OpeningStore);
+        self.establish_session(session).await.map(Some)
+    }
+
+    async fn cancellable_browser_sign_in(
+        &self,
+        cancel: &CancellationToken,
+    ) -> Result<Option<Session>> {
         tokio::select! {
             biased;
             () = cancel.cancelled() => Ok(None),
-            result = self.oauth_login_steps() => result.map(Some),
+            result = self.browser_sign_in() => result.map(Some),
         }
     }
 
-    async fn oauth_login_steps(&self) -> Result<EstablishedSession> {
+    async fn browser_sign_in(&self) -> Result<Session> {
         let oauth_data = self.auth.login_oauth_start().await?;
         self.browser.open_url(&oauth_data.auth_url).await?;
         self.set_activity(LoginActivity::WaitingAuth);
-        let session = timeout(OAUTH_CALLBACK_TIMEOUT, self.auth.login_oauth_finish())
+        timeout(OAUTH_CALLBACK_TIMEOUT, self.auth.login_oauth_finish())
             .await
-            .map_err(|_| AppError::Other("Timed out waiting for browser sign-in.".into()))??;
-        self.establish_session(session).await
+            .map_err(|_| AppError::Other("Timed out waiting for browser sign-in.".into()))?
     }
 
     fn begin_oauth(&self) -> CancellationToken {

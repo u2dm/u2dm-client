@@ -40,11 +40,21 @@ impl AuthPort for DemoMatrix {
     }
 
     async fn login_oauth_start(&self) -> Result<OAuthLoginData> {
-        Err(unavailable("OAuth login"))
+        if !login::oauth_succeeds() {
+            return Err(unavailable("OAuth login"));
+        }
+        login::pause().await;
+        Ok(OAuthLoginData {
+            auth_url: "https://example.invalid/demo-oauth".to_owned(),
+        })
     }
 
     async fn login_oauth_finish(&self) -> Result<Session> {
-        Err(unavailable("OAuth login"))
+        if !login::oauth_succeeds() {
+            return Err(unavailable("OAuth login"));
+        }
+        login::pause().await;
+        Ok(data::session())
     }
 
     async fn adopt_session(
@@ -52,6 +62,7 @@ impl AuthPort for DemoMatrix {
         session: &Session,
         _passphrase: &str,
     ) -> Result<Box<dyn StoreAdoption>> {
+        login::pause().await;
         Ok(Box::new(DemoAdoption(session.clone())))
     }
 

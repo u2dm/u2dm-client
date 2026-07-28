@@ -4,7 +4,6 @@ use std::process::ExitCode;
 use std::sync::Arc;
 use std::time::Duration;
 
-use adapters::browser::DesktopBrowser;
 #[cfg(feature = "demo")]
 use adapters::demo;
 use adapters::media::DesktopMediaFiles;
@@ -14,7 +13,6 @@ use app::AppService;
 use commands::{AppViewState, DirectoryUpdate, Effect, UiCommand, ViewportChanged};
 use composition::Backend;
 use error::Result;
-use ports::browser::BrowserPort;
 use ports::media::MediaFilePort;
 use ports::output::AppOutputPort;
 use tokio::runtime::Runtime;
@@ -86,7 +84,7 @@ fn run() -> Result<()> {
     let enter_guard = rt.enter();
     let backend = Backend::select(&cfg);
     let media_files: Arc<dyn MediaFilePort> = Arc::new(DesktopMediaFiles::new());
-    let browser: Arc<dyn BrowserPort> = Arc::new(DesktopBrowser::new());
+    let browser = Arc::clone(&backend.browser);
     let output: Arc<dyn AppOutputPort> = Arc::new(UiEventOutput::new(ui_tx, view_out_tx));
 
     let cmd_tx_quit = cmd_tx.clone();

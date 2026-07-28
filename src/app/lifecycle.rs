@@ -42,6 +42,10 @@ impl Lifecycle {
         self.guard().phase
     }
 
+    pub(super) fn is_logged_out(&self) -> bool {
+        self.guard().phase == AppPhase::LoggedOut
+    }
+
     pub(super) fn begin_auth(&self) -> u64 {
         let mut inner = self.guard();
         inner.attempt += 1;

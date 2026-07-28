@@ -300,6 +300,12 @@ impl AppService {
             .publish(Box::new(move |view| view.connection = status));
     }
 
+    fn emit_login_idle(&self) {
+        self.output.publish(Box::new(|view| {
+            view.lifecycle.activity = LoginActivity::Idle;
+        }));
+    }
+
     fn emit_login_success(&self, user_id: String) {
         self.output.publish(Box::new(move |view| {
             view.lifecycle.user_id = user_id;
@@ -418,6 +424,9 @@ impl AppService {
             } => {
                 if self.lifecycle.promote_to_syncing(attempt).is_none() {
                     undo_superseded_login(established).await;
+                    if self.lifecycle.is_logged_out() {
+                        self.emit_login_idle();
+                    }
                     return None;
                 }
                 Some(established.commit().await)

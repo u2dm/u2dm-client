@@ -1,3 +1,4 @@
+mod browser;
 mod data;
 mod dto;
 mod login;
@@ -8,6 +9,7 @@ mod storage;
 use std::sync::Arc;
 
 use super::ui::SlintUiAdapter;
+use crate::ports::browser::BrowserPort;
 use crate::ports::matrix::AuthPort;
 use crate::ports::media::MediaCache;
 use crate::ports::storage::StoragePort;
@@ -24,6 +26,10 @@ pub fn storage() -> Arc<dyn StoragePort> {
 
 pub fn media_cache() -> Arc<dyn MediaCache> {
     Arc::new(media::DemoMediaCache)
+}
+
+pub fn browser() -> Arc<dyn BrowserPort> {
+    Arc::new(browser::DemoBrowser)
 }
 
 pub fn size_window_for_screenshots(ui: &SlintUiAdapter) {

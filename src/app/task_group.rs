@@ -5,7 +5,7 @@ use tokio::task::{JoinError, JoinSet};
 use tokio::time::sleep;
 use tokio_util::sync::CancellationToken;
 
-const SHUTDOWN_GRACE: Duration = Duration::from_secs(3);
+pub(super) const SHUTDOWN_GRACE: Duration = Duration::from_secs(3);
 
 pub(super) struct TaskGroup {
     name: &'static str,
