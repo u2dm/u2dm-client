@@ -11,7 +11,7 @@ use matrix_sdk::ruma::events::room::message::{MessageType, OriginalSyncRoomMessa
 use tokio::sync::{Mutex, mpsc};
 use tokio::time::timeout;
 
-use crate::domain::models::{VerificationEmoji, VerificationEvent};
+use crate::domain::models::{VerificationCancellation, VerificationEmoji, VerificationEvent};
 use crate::error::{AppError, Result};
 
 const VERIFICATION_QUEUE: usize = 8;
@@ -170,7 +170,7 @@ async fn cancel_active_verification(
         request.cancel().await.ok();
     }
     tx.send(VerificationEvent::Cancelled(
-        "Verification timed out".to_owned(),
+        VerificationCancellation::TimedOut,
     ))
     .ok();
 }
@@ -200,8 +200,10 @@ async fn handle_verification_request(
             }
             VerificationRequestState::Cancelled(info) => {
                 tracing::info!(reason = %info.reason(), "verification cancelled");
-                tx.send(VerificationEvent::Cancelled(info.reason().to_string()))
-                    .ok();
+                tx.send(VerificationEvent::Cancelled(
+                    VerificationCancellation::Remote(info.reason().to_string()),
+                ))
+                .ok();
                 break;
             }
             _ => {}
@@ -215,9 +217,9 @@ async fn handle_sas_verification(
     tx: &mpsc::UnboundedSender<VerificationEvent>,
 ) {
     if let Err(e) = sas.accept().await {
-        tx.send(VerificationEvent::Cancelled(format!(
-            "Failed to accept SAS: {e}"
-        )))
+        tx.send(VerificationEvent::Cancelled(
+            VerificationCancellation::AcceptFailed(e.to_string()),
+        ))
         .ok();
         return;
     }
@@ -250,8 +252,10 @@ async fn handle_sas_verification(
             }
             SasState::Cancelled(info) => {
                 tracing::info!(reason = %info.reason(), "SAS verification cancelled");
-                tx.send(VerificationEvent::Cancelled(info.reason().to_string()))
-                    .ok();
+                tx.send(VerificationEvent::Cancelled(
+                    VerificationCancellation::Remote(info.reason().to_string()),
+                ))
+                .ok();
                 break;
             }
             _ => {}

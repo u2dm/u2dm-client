@@ -1,5 +1,6 @@
 import { RoomEntry, SpaceEntry, MessageEntry } from "screens/chat/components/types.slint";
 import { VerificationEmoji } from "components/types.slint";
+import { UserMessage } from "messages.slint";
 import {
     LoginPhase,
     LoginActivity,
@@ -8,12 +9,13 @@ import {
     ToastKind,
     VerificationPhase,
     LoginMethodKind,
+    UserMessageKind,
 } from "enums.slint";
 
 export global LoginView {
     in property <LoginPhase> step: LoginPhase.loading;
     in property <LoginActivity> activity: LoginActivity.idle;
-    in property <string> error;
+    in property <[UserMessage]> messages;
     in property <LoginMethodKind> method: LoginMethodKind.none;
     in property <string> resolved-homeserver;
 }
@@ -47,8 +49,8 @@ export global RoomView {
     in property <bool> backwards-loading;
     in property <bool> forwards-loading;
     in property <ToastKind> toast-kind: ToastKind.none;
-    in property <string> toast-message;
-    in property <string> saved-file-path;
+    in property <UserMessageKind> toast-message: UserMessageKind.none;
+    in property <string> toast-detail;
 }
 
 export global VerificationView {
@@ -58,5 +60,6 @@ export global VerificationView {
     in property <string> sender;
     in property <bool> is-self;
     in property <[VerificationEmoji]> emojis;
-    in property <string> error;
+    in property <UserMessageKind> error: UserMessageKind.none;
+    in property <string> error-detail;
 }

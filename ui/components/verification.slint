@@ -3,7 +3,8 @@ import {
     Palette,
 } from "std-widgets.slint";
 
-import { VerificationPhase } from "../enums.slint";
+import { VerificationPhase, UserMessageKind } from "../enums.slint";
+import { UserMessages } from "../messages.slint";
 import { VerificationView } from "../views.slint";
 import { Actions } from "../actions.slint";
 
@@ -74,8 +75,8 @@ export component VerificationDialog inherits Rectangle {
                             text: @tr("Declining...");
                         }
 
-                        if !VerificationView.busy && VerificationView.error != "": DialogNote {
-                            text: VerificationView.error;
+                        if !VerificationView.busy && VerificationView.error != UserMessageKind.none: DialogNote {
+                            text: UserMessages.text(VerificationView.error, VerificationView.error-detail);
                         }
                     }
 
@@ -137,8 +138,8 @@ export component VerificationDialog inherits Rectangle {
                             text: @tr("Cancelling the verification...");
                         }
 
-                        if !VerificationView.busy && VerificationView.error != "": DialogNote {
-                            text: VerificationView.error;
+                        if !VerificationView.busy && VerificationView.error != UserMessageKind.none: DialogNote {
+                            text: UserMessages.text(VerificationView.error, VerificationView.error-detail);
                         }
                     }
 
@@ -186,8 +187,8 @@ export component VerificationDialog inherits Rectangle {
                             color: Colors.red;
                         }
 
-                        if VerificationView.error != "": DialogNote {
-                            text: VerificationView.error;
+                        if VerificationView.error != UserMessageKind.none: DialogNote {
+                            text: UserMessages.text(VerificationView.error, VerificationView.error-detail);
                         }
 
                         HorizontalLayout {

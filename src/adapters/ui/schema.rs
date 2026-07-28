@@ -9,14 +9,12 @@ pub(crate) use gen_consts;
 
 macro_rules! string_props {
     ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
-        LoginError LoginView "LoginView" "error" set_error;
         ResolvedHomeserver LoginView "LoginView" "resolved-homeserver" set_resolved_homeserver;
         UserId SessionView "SessionView" "user-id" set_user_id;
         UserInitial SessionView "SessionView" "user-initial" set_user_initial;
-        ToastMessage RoomView "RoomView" "toast-message" set_toast_message;
+        ToastDetail RoomView "RoomView" "toast-detail" set_toast_detail;
         VerificationSender VerificationView "VerificationView" "sender" set_sender;
-        VerificationError VerificationView "VerificationView" "error" set_error;
-        SavedFilePath RoomView "RoomView" "saved-file-path" set_saved_file_path;
+        VerificationErrorDetail VerificationView "VerificationView" "error-detail" set_error_detail;
         SelectedRoomName RoomView "RoomView" "selected-room-name" set_selected_room_name;
         SelectedRoomId DirectoryView "DirectoryView" "selected-room-id" set_selected_room_id;
         SelectedSpaceId DirectoryView "DirectoryView" "selected-space-id" set_selected_space_id;
@@ -153,6 +151,37 @@ macro_rules! toast_kinds {
     } };
 }
 pub(crate) use toast_kinds;
+
+macro_rules! user_message_kinds {
+    ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
+        None                      None                    "none";
+        ServerUnreachable         ServerUnreachable       "server-unreachable";
+        LoginFailed               LoginFailed             "login-failed";
+        SessionUnreadable         SessionUnreadable       "session-unreadable";
+        SessionRestoreFailed      SessionRestoreFailed    "session-restore-failed";
+        StoreKeyMissing           StoreKeyMissing         "store-key-missing";
+        StoreKeyUnreadable        StoreKeyUnreadable      "store-key-unreadable";
+        SessionExpired            SessionExpired          "session-expired";
+        DataQuarantined           DataQuarantined         "data-quarantined";
+        DataNotErased             DataNotErased           "data-not-erased";
+        SessionSaveFailed         SessionSaveFailed       "session-save-failed";
+        SendMessageFailed         SendMessageFailed       "send-message-failed";
+        LoadMoreFailed            LoadMoreFailed          "load-more-failed";
+        SpaceOrderSaveFailed      SpaceOrderSaveFailed    "space-order-save-failed";
+        MediaDownloadFailed       MediaDownloadFailed     "media-download-failed";
+        FileDownloadFailed        FileDownloadFailed      "file-download-failed";
+        MediaOpenFailed           MediaOpenFailed         "media-open-failed";
+        FileSaveFailed            FileSaveFailed          "file-save-failed";
+        FileSaved                 FileSaved               "file-saved";
+        VerificationAcceptFailed  VerificationAcceptFailed "verification-accept-failed";
+        VerificationConfirmFailed VerificationConfirmFailed "verification-confirm-failed";
+        VerificationRejectFailed  VerificationRejectFailed "verification-reject-failed";
+        VerificationTimedOut      VerificationTimedOut    "verification-timed-out";
+        VerificationSasAcceptFailed VerificationSasAcceptFailed "verification-sas-accept-failed";
+        VerificationCancelled     VerificationCancelled   "verification-cancelled";
+    } };
+}
+pub(crate) use user_message_kinds;
 
 macro_rules! media_states {
     ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*

@@ -9,7 +9,7 @@ import { LoginView } from "../../views.slint";
 
 export component LoadingScreen inherits LoginPage {
     BrandHeader {
-        subtitle: LoginView.activity == LoginActivity.idle && LoginView.error == ""
+        subtitle: LoginView.activity == LoginActivity.idle && LoginView.messages.length == 0
             ? @tr("Starting up...")
             : "";
     }
@@ -19,7 +19,7 @@ export component LoadingScreen inherits LoginPage {
         spinner: true;
     }
 
-    if LoginView.error != "": ErrorBanner {
-        message: LoginView.error;
+    if LoginView.messages.length > 0: ErrorBanner {
+        messages: LoginView.messages;
     }
 }

@@ -8,7 +8,7 @@ use tokio_util::sync::CancellationToken;
 
 use super::show_toast;
 use super::task_group::record_join;
-use crate::commands::Toast;
+use crate::commands::{Toast, UserMessage, UserMessageKind};
 use crate::ports::matrix::MediaPort;
 use crate::ports::media::MediaFilePort;
 use crate::ports::output::AppOutputPort;
@@ -36,7 +36,7 @@ impl MediaActions {
         &mut self,
         media: Arc<dyn MediaPort>,
         event_id: String,
-        download_failure: &'static str,
+        download_failure: UserMessageKind,
         act: F,
     ) where
         F: FnOnce(Arc<dyn MediaFilePort>, Arc<dyn AppOutputPort>, String, Vec<u8>) -> Fut
@@ -56,7 +56,7 @@ impl MediaActions {
                     Err(e) => {
                         show_toast(
                             output.as_ref(),
-                            Toast::Error(format!("{download_failure}: {e}")),
+                            Toast::Error(UserMessage::about(download_failure, &e)),
                         );
                     }
                 }
@@ -72,13 +72,13 @@ impl MediaActions {
         self.spawn_media_action(
             media,
             event_id,
-            "Failed to download media",
+            UserMessageKind::MediaDownloadFailed,
             |media_files, output, event_id, data| async move {
                 if let Err(e) = media_files.open_media(&event_id, &data).await {
                     tracing::warn!("failed to open media: {e}");
                     show_toast(
                         output.as_ref(),
-                        Toast::Error(format!("Failed to open media: {e}")),
+                        Toast::Error(UserMessage::about(UserMessageKind::MediaOpenFailed, &e)),
                     );
                 }
             },
@@ -94,7 +94,7 @@ impl MediaActions {
         self.spawn_media_action(
             media,
             event_id,
-            "Failed to download file",
+            UserMessageKind::FileDownloadFailed,
             move |media_files, output, _event_id, data| async move {
                 match media_files.save_file(&filename, &data).await {
                     Ok(Some(path)) => show_toast(output.as_ref(), Toast::FileSaved(path)),
@@ -102,7 +102,7 @@ impl MediaActions {
                     Err(e) => {
                         show_toast(
                             output.as_ref(),
-                            Toast::Error(format!("Failed to save file: {e}")),
+                            Toast::Error(UserMessage::about(UserMessageKind::FileSaveFailed, &e)),
                         );
                     }
                 }

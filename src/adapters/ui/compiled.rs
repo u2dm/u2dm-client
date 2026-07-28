@@ -19,10 +19,13 @@ use super::reconcile::reorder_rows;
 use super::schema::{
     bool_props, connection_states, int_props, login_activities, login_methods, login_phases,
     media_states, message_kinds, preview_kinds, service_kinds, simple_callbacks, string_props,
-    timeline_states, toast_kinds, verification_phases,
+    timeline_states, toast_kinds, user_message_kinds, verification_phases,
 };
 use super::{emoji, router};
-use crate::commands::{AppViewState, Effect, LoginActivity, LoginStep, UiCommand, ViewportChanged};
+use crate::commands::{
+    AppViewState, Effect, LoginActivity, LoginStep, UiCommand, UserMessage, UserMessageKind,
+    ViewportChanged,
+};
 use crate::domain::models::{
     ConnectionStatus, EnrichmentDelta, LoginCredentials, LoginMethod, MessagePreviewKind, Room,
     Space, TimelineMessage, TimelineStatus, VerificationEmoji as DomainVerificationEmoji,
@@ -39,8 +42,8 @@ use generated::{
     EmojiStore, LoginActivity as UiLoginActivity, LoginMethodKind as UiLoginMethodKind, LoginPhase,
     LoginView, MediaState as UiMediaState, MessageEntry, MessageKind as UiMessageKind,
     PreviewKind as UiPreviewKind, RoomEntry, RoomView, ServiceKind as UiServiceKind, SessionView,
-    SpaceEntry, TimelineState, ToastKind as UiToastKind, VerificationEmoji, VerificationPhase,
-    VerificationView,
+    SpaceEntry, TimelineState, ToastKind as UiToastKind, UserMessage as UiUserMessage,
+    UserMessageKind as UiUserMessageKind, VerificationEmoji, VerificationPhase, VerificationView,
 };
 
 fn actions(window: &AppWindow) -> Actions<'_> {
@@ -118,6 +121,16 @@ impl UiProps for AppWindow {
             .set_toast_kind(to_toast_kind(kind));
     }
 
+    fn set_toast_message(&self, kind: UserMessageKind) {
+        self.global::<RoomView>()
+            .set_toast_message(to_user_message_kind(kind));
+    }
+
+    fn set_verification_error(&self, kind: UserMessageKind) {
+        self.global::<VerificationView>()
+            .set_error(to_user_message_kind(kind));
+    }
+
     fn set_connection_state(&self, status: &ConnectionStatus) {
         self.global::<SessionView>()
             .set_connection_status(to_connection_state(status));
@@ -164,6 +177,18 @@ impl UiProps for AppWindow {
         }
     }
 
+    fn apply_login_messages(&self, messages: &[UserMessage]) {
+        let entries: Vec<UiUserMessage> = messages
+            .iter()
+            .map(|m| UiUserMessage {
+                kind: to_user_message_kind(m.kind),
+                detail: SharedString::from(&m.detail),
+            })
+            .collect();
+        self.global::<LoginView>()
+            .set_messages(ModelRc::new(VecModel::from(entries)));
+    }
+
     fn apply_emoji_model(&self, emojis: &[DomainVerificationEmoji]) {
         let entries: Vec<VerificationEmoji> = emojis
             .iter()
@@ -207,6 +232,7 @@ connection_states!(to_slint_enum ref to_connection_state ConnectionStatus Connec
 timeline_states!(to_slint_enum val to_timeline_state TimelineStatus TimelineState;);
 verification_phases!(to_slint_enum val to_verification_phase VerifyStep VerificationPhase;);
 toast_kinds!(to_slint_enum val to_toast_kind ToastKind UiToastKind;);
+user_message_kinds!(to_slint_enum val to_user_message_kind UserMessageKind UiUserMessageKind;);
 media_states!(to_slint_enum val to_media_state MediaState UiMediaState;);
 message_kinds!(to_slint_enum val to_message_kind MessageKind UiMessageKind;);
 preview_kinds!(to_slint_enum val to_preview_kind MessagePreviewKind UiPreviewKind;);

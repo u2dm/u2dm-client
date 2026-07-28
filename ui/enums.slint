@@ -49,6 +49,34 @@ export enum ToastKind {
     file-saved,
 }
 
+export enum UserMessageKind {
+    none,
+    server-unreachable,
+    login-failed,
+    session-unreadable,
+    session-restore-failed,
+    store-key-missing,
+    store-key-unreadable,
+    session-expired,
+    data-quarantined,
+    data-not-erased,
+    session-save-failed,
+    send-message-failed,
+    load-more-failed,
+    space-order-save-failed,
+    media-download-failed,
+    file-download-failed,
+    media-open-failed,
+    file-save-failed,
+    file-saved,
+    verification-accept-failed,
+    verification-confirm-failed,
+    verification-reject-failed,
+    verification-timed-out,
+    verification-sas-accept-failed,
+    verification-cancelled,
+}
+
 export enum MediaState {
     idle,
     ready,

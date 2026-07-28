@@ -1,6 +1,7 @@
 import { Palette, Spinner } from "std-widgets.slint";
 import { IconDisplay, IconSet, Icon } from "@lucide";
 import { LoginActivity } from "../../enums.slint";
+import { UserMessage, UserMessages } from "../../messages.slint";
 
 export global LoginStyle {
     out property <bool> dark: Palette.color-scheme == ColorScheme.dark;
@@ -240,7 +241,7 @@ export component StatusRow inherits HorizontalLayout {
 }
 
 export component ErrorBanner inherits Rectangle {
-    in property <string> message;
+    in property <[UserMessage]> messages;
 
     background: LoginStyle.danger-surface;
     border-radius: 10px;
@@ -261,12 +262,17 @@ export component ErrorBanner inherits Rectangle {
             }
         }
 
-        Text {
-            text: root.message;
-            font-size: 12px;
-            wrap: word-wrap;
+        VerticalLayout {
+            spacing: 6px;
             horizontal-stretch: 1;
-            color: LoginStyle.danger;
+
+            for message in root.messages: Text {
+                text: UserMessages.text(message.kind, message.detail);
+                font-size: 12px;
+                wrap: word-wrap;
+                horizontal-stretch: 1;
+                color: LoginStyle.danger;
+            }
         }
     }
 }

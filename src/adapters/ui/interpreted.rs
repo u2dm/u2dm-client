@@ -20,7 +20,7 @@ thread_local! {
 
 use names::{
     callback, emoji_entry, emoji_group, emoji_insert, emoji_store, login_request, message, room,
-    save_file_request, send_message_request, space, verification_emoji,
+    save_file_request, send_message_request, space, user_message, verification_emoji,
 };
 
 use super::backend::{UiBackend, install_render_hooks, post_effect, selected_room_key};
@@ -36,10 +36,13 @@ use super::reconcile::reorder_rows;
 use super::schema::{
     connection_states, login_activities, login_methods, login_phases, media_states, message_fields,
     message_kinds, preview_kinds, room_fields, service_kinds, simple_callbacks, space_fields,
-    timeline_states, toast_kinds, verification_phases,
+    timeline_states, toast_kinds, user_message_kinds, verification_phases,
 };
 use super::{emoji, router};
-use crate::commands::{AppViewState, Effect, LoginActivity, LoginStep, UiCommand, ViewportChanged};
+use crate::commands::{
+    AppViewState, Effect, LoginActivity, LoginStep, UiCommand, UserMessage, UserMessageKind,
+    ViewportChanged,
+};
 use crate::domain::models::{
     ConnectionStatus, EnrichmentDelta, LoginCredentials, LoginMethod, MessagePreviewKind, Room,
     Space, TimelineMessage, TimelineStatus, VerificationEmoji as DomainVerificationEmoji,
@@ -99,6 +102,11 @@ mod names {
     pub mod emoji_insert {
         pub const TEXT: &str = "text";
         pub const CARET: &str = "caret";
+    }
+
+    pub mod user_message {
+        pub const KIND: &str = "kind";
+        pub const DETAIL: &str = "detail";
     }
 
     pub mod verification_emoji {
@@ -168,6 +176,7 @@ connection_states!(impl_slint_enum ConnectionStatus "ConnectionState";);
 timeline_states!(impl_slint_enum TimelineStatus "TimelineState";);
 verification_phases!(impl_slint_enum VerifyStep "VerificationPhase";);
 toast_kinds!(impl_slint_enum ToastKind "ToastKind";);
+user_message_kinds!(impl_slint_enum UserMessageKind "UserMessageKind";);
 media_states!(impl_slint_enum MediaState "MediaState";);
 message_kinds!(impl_slint_enum MessageKind "MessageKind";);
 preview_kinds!(impl_slint_enum MessagePreviewKind "PreviewKind";);
@@ -305,6 +314,14 @@ impl UiProps for ComponentInstance {
         set_global(self, "RoomView", "toast-kind", enum_value(&kind));
     }
 
+    fn set_toast_message(&self, kind: UserMessageKind) {
+        set_global(self, "RoomView", "toast-message", enum_value(&kind));
+    }
+
+    fn set_verification_error(&self, kind: UserMessageKind) {
+        set_global(self, "VerificationView", "error", enum_value(&kind));
+    }
+
     fn set_connection_state(&self, status: &ConnectionStatus) {
         set_global(self, "SessionView", "connection-status", enum_value(status));
     }
@@ -344,6 +361,27 @@ impl UiProps for ComponentInstance {
             }
             None => set_global(self, "SessionView", "user-has-avatar", Value::Bool(false)),
         }
+    }
+
+    fn apply_login_messages(&self, messages: &[UserMessage]) {
+        let entries: Vec<Value> = messages
+            .iter()
+            .map(|m| {
+                Value::Struct(Struct::from_iter([
+                    (user_message::KIND.to_string(), enum_value(&m.kind)),
+                    (
+                        user_message::DETAIL.to_string(),
+                        Value::String(SharedString::from(&m.detail)),
+                    ),
+                ]))
+            })
+            .collect();
+        set_global(
+            self,
+            "LoginView",
+            "messages",
+            Value::Model(ModelRc::new(VecModel::from(entries))),
+        );
     }
 
     fn apply_emoji_model(&self, emojis: &[DomainVerificationEmoji]) {

@@ -8,8 +8,8 @@ use pure_rust_locales::locale_match;
 use super::schema::{
     define_ui_enum, message_kinds, service_kinds, toast_kinds, verification_phases,
 };
-use crate::commands::Toast;
-use crate::domain::models::{MessageBody, ServiceEvent, TimelineMessage};
+use crate::commands::{Toast, UserMessage, UserMessageKind};
+use crate::domain::models::{MessageBody, ServiceEvent, TimelineMessage, VerificationCancellation};
 use crate::locale::{self, LocaleRequest};
 
 pub fn sender_initial(name: &str) -> &str {
@@ -255,3 +255,17 @@ pub fn toast_kind(toast: &Toast) -> ToastKind {
 }
 
 verification_phases!(define_ui_enum VerifyStep;);
+
+pub fn verification_cancellation(reason: &VerificationCancellation) -> UserMessage {
+    match reason {
+        VerificationCancellation::TimedOut => {
+            UserMessage::new(UserMessageKind::VerificationTimedOut)
+        }
+        VerificationCancellation::AcceptFailed(detail) => {
+            UserMessage::about(UserMessageKind::VerificationSasAcceptFailed, detail)
+        }
+        VerificationCancellation::Remote(detail) => {
+            UserMessage::about(UserMessageKind::VerificationCancelled, detail)
+        }
+    }
+}

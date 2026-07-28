@@ -3,7 +3,7 @@ use std::sync::{Arc, Mutex as StdMutex, PoisonError};
 use tokio::sync::mpsc;
 
 use super::task_group::TaskGroup;
-use crate::commands::{Effect, Toast, VerificationUpdate};
+use crate::commands::{Effect, Toast, UserMessage, UserMessageKind, VerificationUpdate};
 use crate::domain::models::VerificationEvent;
 use crate::ports::matrix::VerificationPort;
 use crate::ports::output::AppOutputPort;
@@ -106,7 +106,10 @@ impl VerificationController {
                 tracing::warn!("verification accept failed: {e}");
                 super::show_toast(
                     output.as_ref(),
-                    Toast::Error(format!("Verification accept failed: {e}")),
+                    Toast::Error(UserMessage::about(
+                        UserMessageKind::VerificationAcceptFailed,
+                        &e,
+                    )),
                 );
             }
         });
@@ -126,7 +129,7 @@ impl VerificationController {
                 tracing::warn!("verification reject failed: {e}");
                 output
                     .emit(Effect::Verification(VerificationUpdate::RejectFailed(
-                        e.to_string(),
+                        UserMessage::about(UserMessageKind::VerificationRejectFailed, &e),
                     )))
                     .await;
             }
@@ -144,7 +147,10 @@ impl VerificationController {
                 tracing::warn!("verification confirm failed: {e}");
                 super::show_toast(
                     output.as_ref(),
-                    Toast::Error(format!("Verification confirm failed: {e}")),
+                    Toast::Error(UserMessage::about(
+                        UserMessageKind::VerificationConfirmFailed,
+                        &e,
+                    )),
                 );
             }
         });

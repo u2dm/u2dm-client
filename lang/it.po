@@ -12,77 +12,77 @@ msgstr ""
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=2; plural=(n != 1);\n"
 
-#: ui/components/verification.slint:36
+#: ui/components/verification.slint:37
 msgctxt "VerificationDialog"
 msgid "Device Verification"
 msgstr "Verifica del dispositivo"
 
-#: ui/components/verification.slint:46
+#: ui/components/verification.slint:47
 msgctxt "VerificationDialog"
 msgid "Verify this session from your other device"
 msgstr "Verifica questa sessione dall'altro dispositivo"
 
-#: ui/components/verification.slint:46
+#: ui/components/verification.slint:47
 msgctxt "VerificationDialog"
 msgid "Verification request from {}"
 msgstr "Richiesta di verifica da {}"
 
-#: ui/components/verification.slint:57
+#: ui/components/verification.slint:58
 msgctxt "VerificationDialog"
 msgid "Accept"
 msgstr "Accetta"
 
-#: ui/components/verification.slint:65
+#: ui/components/verification.slint:66
 msgctxt "VerificationDialog"
 msgid "Decline"
 msgstr "Rifiuta"
 
-#: ui/components/verification.slint:74
+#: ui/components/verification.slint:75
 msgctxt "VerificationDialog"
 msgid "Declining..."
 msgstr ""
 
-#: ui/components/verification.slint:86
+#: ui/components/verification.slint:87
 msgctxt "VerificationDialog"
 msgid "Confirm the emojis below match the other device:"
 msgstr "Conferma che le emoji corrispondano all'altro dispositivo:"
 
-#: ui/components/verification.slint:120
+#: ui/components/verification.slint:121
 msgctxt "VerificationDialog"
 msgid "They match"
 msgstr "Corrispondono"
 
-#: ui/components/verification.slint:128
+#: ui/components/verification.slint:129
 msgctxt "VerificationDialog"
 msgid "They don't match"
 msgstr "Non corrispondono"
 
-#: ui/components/verification.slint:137
+#: ui/components/verification.slint:138
 msgctxt "VerificationDialog"
 msgid "Cancelling the verification..."
 msgstr ""
 
-#: ui/components/verification.slint:149
+#: ui/components/verification.slint:150
 msgctxt "VerificationDialog"
 msgid "Waiting for the other device to confirm..."
 msgstr "In attesa della conferma dall'altro dispositivo..."
 
-#: ui/components/verification.slint:159
+#: ui/components/verification.slint:160
 msgctxt "VerificationDialog"
 msgid "Verification successful!"
 msgstr "Verifica riuscita!"
 
-#: ui/components/verification.slint:170
+#: ui/components/verification.slint:171
 msgctxt "VerificationDialog"
 msgid "Done"
 msgstr "Fatto"
 
-#: ui/components/verification.slint:182
+#: ui/components/verification.slint:183
 msgctxt "VerificationDialog"
 msgid "Verification cancelled"
 msgstr "Verifica annullata"
 
-#: ui/components/verification.slint:197
+#: ui/components/verification.slint:198
 msgctxt "VerificationDialog"
 msgid "Dismiss"
 msgstr "Chiudi"
@@ -92,12 +92,129 @@ msgctxt "AppWindow"
 msgid "U2DM Matrix Client"
 msgstr "U2DM Client Matrix"
 
-#: ui/screens/chat/chat.slint:80
-msgctxt "ChatScreen"
-msgid "File saved to {}"
-msgstr "File salvato in {}"
+#: ui/messages.slint:11
+msgctxt "UserMessages"
+msgid "Could not reach that homeserver: {}"
+msgstr ""
 
-#: ui/screens/chat/chat.slint:93
+#: ui/messages.slint:14
+msgctxt "UserMessages"
+msgid "Login failed: {}"
+msgstr ""
+
+#: ui/messages.slint:17
+msgctxt "UserMessages"
+msgid "The saved session could not be read: {}"
+msgstr ""
+
+#: ui/messages.slint:20
+msgctxt "UserMessages"
+msgid "The saved session could not be restored: {}"
+msgstr ""
+
+#: ui/messages.slint:23
+msgctxt "UserMessages"
+msgid "The key to the local store is missing. Please log in again."
+msgstr ""
+
+#: ui/messages.slint:26
+msgctxt "UserMessages"
+msgid "The key to the local store could not be read: {}"
+msgstr ""
+
+#: ui/messages.slint:29
+msgctxt "UserMessages"
+msgid "Session expired. Please log in again."
+msgstr ""
+
+#: ui/messages.slint:32
+msgctxt "UserMessages"
+msgid ""
+"Some local data could not be deleted, but its key was destroyed, so it is "
+"unreadable. It will be removed on the next start. ({})"
+msgstr ""
+
+#: ui/messages.slint:35
+msgctxt "UserMessages"
+msgid "Some local account data could not be erased: {}"
+msgstr ""
+
+#: ui/messages.slint:38
+msgctxt "UserMessages"
+msgid "Failed to save refreshed session: {}"
+msgstr ""
+
+#: ui/messages.slint:41
+msgctxt "UserMessages"
+msgid "Failed to send message: {}"
+msgstr ""
+
+#: ui/messages.slint:44
+msgctxt "UserMessages"
+msgid "Failed to load more messages"
+msgstr ""
+
+#: ui/messages.slint:47
+msgctxt "UserMessages"
+msgid "Failed to save space order: {}"
+msgstr ""
+
+#: ui/messages.slint:50
+msgctxt "UserMessages"
+msgid "Failed to download media: {}"
+msgstr ""
+
+#: ui/messages.slint:53
+msgctxt "UserMessages"
+msgid "Failed to download file: {}"
+msgstr ""
+
+#: ui/messages.slint:56
+msgctxt "UserMessages"
+msgid "Failed to open media: {}"
+msgstr ""
+
+#: ui/messages.slint:59
+msgctxt "UserMessages"
+msgid "Failed to save file: {}"
+msgstr ""
+
+#: ui/messages.slint:62
+msgctxt "UserMessages"
+msgid "File saved to {}"
+msgstr ""
+
+#: ui/messages.slint:65
+msgctxt "UserMessages"
+msgid "Verification accept failed: {}"
+msgstr ""
+
+#: ui/messages.slint:68
+msgctxt "UserMessages"
+msgid "Verification confirm failed: {}"
+msgstr ""
+
+#: ui/messages.slint:71
+msgctxt "UserMessages"
+msgid "Verification reject failed: {}"
+msgstr ""
+
+#: ui/messages.slint:74
+msgctxt "UserMessages"
+msgid "Verification timed out"
+msgstr ""
+
+#: ui/messages.slint:77
+msgctxt "UserMessages"
+msgid "Failed to accept the verification: {}"
+msgstr ""
+
+#: ui/messages.slint:80
+msgctxt "UserMessages"
+msgid "Verification cancelled: {}"
+msgstr ""
+
+#: ui/screens/chat/chat.slint:92
 msgctxt "ChatScreen"
 msgid "Dismiss"
 msgstr ""
@@ -599,62 +716,62 @@ msgctxt "HomeserverScreen"
 msgid "Continue"
 msgstr "Continua"
 
-#: ui/screens/login/common.slint:122
+#: ui/screens/login/common.slint:123
 msgctxt "BrandHeader"
 msgid "U2DM"
 msgstr ""
 
-#: ui/screens/login/common.slint:179
+#: ui/screens/login/common.slint:180
 msgctxt "StatusRow"
 msgid "Loading saved session..."
 msgstr ""
 
-#: ui/screens/login/common.slint:182
+#: ui/screens/login/common.slint:183
 msgctxt "StatusRow"
 msgid "Opening encrypted store..."
 msgstr ""
 
-#: ui/screens/login/common.slint:185
+#: ui/screens/login/common.slint:186
 msgctxt "StatusRow"
 msgid "Connecting to homeserver..."
 msgstr ""
 
-#: ui/screens/login/common.slint:188
+#: ui/screens/login/common.slint:189
 msgctxt "StatusRow"
 msgid "Restoring authentication..."
 msgstr ""
 
-#: ui/screens/login/common.slint:191
+#: ui/screens/login/common.slint:192
 msgctxt "StatusRow"
 msgid "Syncing rooms..."
 msgstr ""
 
-#: ui/screens/login/common.slint:194
+#: ui/screens/login/common.slint:195
 msgctxt "StatusRow"
 msgid "Checking server..."
 msgstr ""
 
-#: ui/screens/login/common.slint:197
+#: ui/screens/login/common.slint:198
 msgctxt "StatusRow"
 msgid "Logging in..."
 msgstr ""
 
-#: ui/screens/login/common.slint:200
+#: ui/screens/login/common.slint:201
 msgctxt "StatusRow"
 msgid "Opening browser..."
 msgstr ""
 
-#: ui/screens/login/common.slint:203
+#: ui/screens/login/common.slint:204
 msgctxt "StatusRow"
 msgid "Waiting for authentication..."
 msgstr ""
 
-#: ui/screens/login/common.slint:206
+#: ui/screens/login/common.slint:207
 msgctxt "StatusRow"
 msgid "Erasing local account data..."
 msgstr ""
 
-#: ui/screens/login/common.slint:335
+#: ui/screens/login/common.slint:341
 msgctxt "OrDivider"
 msgid "or"
 msgstr ""
@@ -673,6 +790,10 @@ msgstr ""
 msgctxt "LoadingScreen"
 msgid "Starting up..."
 msgstr ""
+
+#~ msgctxt "ChatScreen"
+#~ msgid "File saved to {}"
+#~ msgstr "File salvato in {}"
 
 #~ msgctxt "CredentialsScreen"
 #~ msgid "Logging in..."

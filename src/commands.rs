@@ -1,3 +1,4 @@
+use std::fmt;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -114,7 +115,7 @@ pub enum Effect {
 pub enum VerificationUpdate {
     Flow(VerificationEvent),
     Rejecting,
-    RejectFailed(String),
+    RejectFailed(UserMessage),
     Dismissed,
 }
 
@@ -160,8 +161,60 @@ impl AppViewState {
 pub enum Toast {
     #[default]
     None,
-    Error(String),
+    Error(UserMessage),
     FileSaved(String),
+}
+
+#[derive(Clone, Default, PartialEq, Eq)]
+pub struct UserMessage {
+    pub kind: UserMessageKind,
+    pub detail: String,
+}
+
+impl UserMessage {
+    pub fn new(kind: UserMessageKind) -> Self {
+        Self {
+            kind,
+            detail: String::new(),
+        }
+    }
+
+    pub fn about(kind: UserMessageKind, detail: &impl fmt::Display) -> Self {
+        Self {
+            kind,
+            detail: detail.to_string(),
+        }
+    }
+}
+
+#[derive(Clone, Copy, Default, PartialEq, Eq)]
+pub enum UserMessageKind {
+    #[default]
+    None,
+    ServerUnreachable,
+    LoginFailed,
+    SessionUnreadable,
+    SessionRestoreFailed,
+    StoreKeyMissing,
+    StoreKeyUnreadable,
+    SessionExpired,
+    DataQuarantined,
+    DataNotErased,
+    SessionSaveFailed,
+    SendMessageFailed,
+    LoadMoreFailed,
+    SpaceOrderSaveFailed,
+    MediaDownloadFailed,
+    FileDownloadFailed,
+    MediaOpenFailed,
+    FileSaveFailed,
+    FileSaved,
+    VerificationAcceptFailed,
+    VerificationConfirmFailed,
+    VerificationRejectFailed,
+    VerificationTimedOut,
+    VerificationSasAcceptFailed,
+    VerificationCancelled,
 }
 
 #[derive(Clone, Copy, Default, PartialEq, Eq)]
@@ -187,7 +240,7 @@ impl PaginationView {
 pub struct LifecycleView {
     pub step: LoginStep,
     pub activity: LoginActivity,
-    pub error: String,
+    pub messages: Vec<UserMessage>,
     pub method: LoginMethod,
     pub resolved_homeserver: String,
     pub user_id: String,

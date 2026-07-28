@@ -434,5 +434,12 @@ pub enum VerificationEvent {
     Emojis(Vec<VerificationEmoji>),
     Confirming,
     Done,
-    Cancelled(String),
+    Cancelled(VerificationCancellation),
+}
+
+#[derive(Debug, Clone)]
+pub enum VerificationCancellation {
+    TimedOut,
+    AcceptFailed(String),
+    Remote(String),
 }

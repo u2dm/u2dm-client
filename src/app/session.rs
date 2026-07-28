@@ -8,7 +8,7 @@ use tokio_util::sync::CancellationToken;
 use super::establish::EstablishedSession;
 use super::lifecycle::Lifecycle;
 use super::task_group::TaskGroup;
-use crate::commands::{LoginActivity, LoginStep, Toast};
+use crate::commands::{LoginActivity, LoginStep, Toast, UserMessage, UserMessageKind};
 use crate::domain::account::AccountScope;
 use crate::domain::models::{LoginCredentials, LoginMethod, ServerInfo, Session};
 use crate::error::{AppError, Result};
@@ -34,19 +34,18 @@ fn generate_passphrase() -> String {
     random_hex(32)
 }
 
-fn cleanup_problem(report: &CleanupReport) -> Option<String> {
+fn cleanup_problem(report: &CleanupReport) -> Option<UserMessage> {
     if report.is_clean() {
         return None;
     }
     let detail = report.summary();
     tracing::warn!("local account data was not fully erased: {detail}");
-    Some(if report.is_quarantined_only() {
-        format!(
-            "Some local data could not be deleted, but its key was destroyed, so it is unreadable. It will be removed on the next start. ({detail})"
-        )
+    let kind = if report.is_quarantined_only() {
+        UserMessageKind::DataQuarantined
     } else {
-        format!("Some local account data could not be erased: {detail}")
-    })
+        UserMessageKind::DataNotErased
+    };
+    Some(UserMessage::about(kind, &detail))
 }
 
 fn restore_activity(step: RestoreStep) -> LoginActivity {
@@ -143,7 +142,7 @@ impl SessionController {
         self.output.publish(Box::new(|view| {
             view.lifecycle.step = LoginStep::Homeserver;
             view.lifecycle.activity = LoginActivity::Idle;
-            view.lifecycle.error = String::new();
+            view.lifecycle.messages.clear();
         }));
     }
 
@@ -200,7 +199,7 @@ impl SessionController {
             Err(e) => {
                 tracing::warn!("session restore failed, preserving local data: {e}");
                 self.emit_show_login();
-                self.emit_login_error(&e);
+                self.emit_login_error(UserMessageKind::SessionRestoreFailed, &e);
                 None
             }
         }
@@ -212,15 +211,13 @@ impl SessionController {
             Ok(None) => {
                 tracing::warn!("no store key for the saved session, preserving local data");
                 self.emit_show_login();
-                self.emit_login_error(&AppError::Other(
-                    "The key to the local store is missing. Please log in again.".into(),
-                ));
+                self.fail_login_once(UserMessage::new(UserMessageKind::StoreKeyMissing));
                 None
             }
             Err(e) => {
                 tracing::warn!("failed to read the store key: {e}");
                 self.emit_show_login();
-                self.emit_login_error(&e);
+                self.emit_login_error(UserMessageKind::StoreKeyUnreadable, &e);
                 None
             }
         }
@@ -261,7 +258,7 @@ impl SessionController {
             }
             Err(e) => {
                 tracing::warn!(homeserver, "server discovery failed: {e}");
-                self.fail_auth(attempt, &e);
+                self.fail_auth(attempt, UserMessageKind::ServerUnreachable, &e);
             }
         }
     }
@@ -289,13 +286,13 @@ impl SessionController {
 
         self.emit_show_login();
         if let Some(e) = error {
-            self.emit_login_error(&e);
+            self.emit_login_error(UserMessageKind::SessionUnreadable, &e);
         }
     }
 
-    fn fail_auth(&self, attempt: u64, err: &AppError) {
+    fn fail_auth(&self, attempt: u64, kind: UserMessageKind, err: &AppError) {
         if self.lifecycle.settle_auth(attempt) {
-            self.emit_login_error(err);
+            self.emit_login_error(kind, err);
         } else {
             tracing::debug!("auth failure for superseded attempt, dropping");
         }
@@ -329,7 +326,7 @@ impl SessionController {
             }),
             Err(e) => {
                 tracing::warn!("password login failed: {e}");
-                self.fail_auth(attempt, &e);
+                self.fail_auth(attempt, UserMessageKind::LoginFailed, &e);
             }
         }
     }
@@ -368,7 +365,7 @@ impl SessionController {
             }
             Err(e) => {
                 tracing::warn!("OAuth login failed: {e}");
-                self.fail_auth(attempt, &e);
+                self.fail_auth(attempt, UserMessageKind::LoginFailed, &e);
             }
         }
     }
@@ -382,12 +379,9 @@ impl SessionController {
         let report = self
             .clear_local_state(session, account, lifecycle_port.as_ref())
             .await;
-        let mut message = "Session expired. Please log in again.".to_owned();
-        if let Some(problem) = cleanup_problem(&report) {
-            message.push(' ');
-            message.push_str(&problem);
-        }
-        self.fail_login(message);
+        let mut messages = vec![UserMessage::new(UserMessageKind::SessionExpired)];
+        messages.extend(cleanup_problem(&report));
+        self.fail_login(messages);
     }
 
     async fn logout(
@@ -418,7 +412,7 @@ impl SessionController {
 
     fn emit_cleanup_problem(&self, report: &CleanupReport) {
         if let Some(problem) = cleanup_problem(report) {
-            self.fail_login(problem);
+            self.fail_login_once(problem);
         }
     }
 
@@ -439,7 +433,10 @@ impl SessionController {
                         tracing::warn!("failed to persist refreshed session: {e}");
                         super::show_toast(
                             output.as_ref(),
-                            Toast::Error(format!("Failed to save refreshed session: {e}")),
+                            Toast::Error(UserMessage::about(
+                                UserMessageKind::SessionSaveFailed,
+                                &e,
+                            )),
                         );
                     } else {
                         tracing::info!("persisted refreshed session tokens");
@@ -560,8 +557,8 @@ impl SessionController {
         }));
     }
 
-    fn emit_login_error(&self, err: &AppError) {
-        self.fail_login(err.to_string());
+    fn emit_login_error(&self, kind: UserMessageKind, err: &AppError) {
+        self.fail_login_once(UserMessage::about(kind, err));
     }
 
     fn set_activity(&self, activity: LoginActivity) {
@@ -572,14 +569,18 @@ impl SessionController {
     fn begin_login(&self, activity: LoginActivity) {
         self.output.publish(Box::new(move |view| {
             view.lifecycle.activity = activity;
-            view.lifecycle.error = String::new();
+            view.lifecycle.messages.clear();
         }));
     }
 
-    fn fail_login(&self, message: String) {
+    fn fail_login(&self, messages: Vec<UserMessage>) {
         self.output.publish(Box::new(move |view| {
             view.lifecycle.activity = LoginActivity::Idle;
-            view.lifecycle.error = message;
+            view.lifecycle.messages = messages;
         }));
+    }
+
+    fn fail_login_once(&self, message: UserMessage) {
+        self.fail_login(vec![message]);
     }
 }

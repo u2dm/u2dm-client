@@ -23,8 +23,8 @@ use tokio::sync::{mpsc, watch};
 use verification::VerificationController;
 
 use crate::commands::{
-    AppViewState, DirectoryUpdate, Effect, LoginActivity, LoginStep, Toast, UiCommand,
-    ViewportChanged,
+    AppViewState, DirectoryUpdate, Effect, LoginActivity, LoginStep, Toast, UiCommand, UserMessage,
+    UserMessageKind, ViewportChanged,
 };
 use crate::domain::account::AccountScope;
 use crate::domain::models::{ConnectionStatus, Room, RoomId, Space};
@@ -346,7 +346,10 @@ impl AppService {
         tracing::warn!(op, "reverting optimistic space order: {error}");
         show_toast(
             self.output.as_ref(),
-            Toast::Error(format!("Failed to save space order: {error}")),
+            Toast::Error(UserMessage::about(
+                UserMessageKind::SpaceOrderSaveFailed,
+                &error,
+            )),
         );
     }
 

@@ -5,6 +5,7 @@ import { Drawer } from "components/drawer.slint";
 import { TimelineView } from "components/timeline/timeline-view.slint";
 import { ClickArea } from "../../components/a11y.slint";
 import { ToastKind } from "../../enums.slint";
+import { UserMessages } from "../../messages.slint";
 import { DirectoryView, RoomView } from "../../views.slint";
 import { Actions } from "../../actions.slint";
 import { Composer, Shell } from "../../local.slint";
@@ -76,9 +77,7 @@ export component ChatScreen inherits Rectangle {
             alignment: space-between;
 
             Text {
-                text: root.is-file-saved-toast
-                    ? @tr("File saved to {}", RoomView.saved-file-path)
-                    : RoomView.toast-message;
+                text: UserMessages.text(RoomView.toast-message, RoomView.toast-detail);
                 color: root.is-file-saved-toast
                     ? Palette.foreground
                     : Colors.tomato.mix(Palette.foreground, 60%);

@@ -4,7 +4,7 @@ use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use tokio::sync::mpsc;
 
 use super::task_group::TaskGroup;
-use crate::commands::{Effect, Toast, UiCommand};
+use crate::commands::{Effect, Toast, UiCommand, UserMessage, UserMessageKind};
 use crate::domain::models::{
     PaginationDirection, PaginationOutcome, RoomId, ScrollMode, TimelineCommand, TimelinePatch,
     TimelineStatus, TimelineUpdate,
@@ -220,7 +220,7 @@ impl ActiveTimeline {
                 tracing::warn!("failed to enqueue message: {e}");
                 super::show_toast(
                     output.as_ref(),
-                    Toast::Error(format!("Failed to send message: {e}")),
+                    Toast::Error(UserMessage::about(UserMessageKind::SendMessageFailed, &e)),
                 );
             }
         });
@@ -286,7 +286,7 @@ impl ActiveTimeline {
                 self.viewport.fail_pagination(direction);
                 super::show_toast(
                     self.output.as_ref(),
-                    Toast::Error("Failed to load more messages".to_owned()),
+                    Toast::Error(UserMessage::new(UserMessageKind::LoadMoreFailed)),
                 );
                 false
             }

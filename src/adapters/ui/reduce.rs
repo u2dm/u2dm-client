@@ -5,11 +5,12 @@ use slint::SharedString;
 
 use super::backend::{UiBackend, UiEventContext};
 use super::decode::{AvatarSlot, clear_session_media, load_avatar_async};
-use super::present::{VerifyStep, toast_kind, user_initial};
+use super::present::{VerifyStep, toast_kind, user_initial, verification_cancellation};
 use super::props::{BoolProp, IntProp, StringProp, UiProps};
 use super::reconcile::{apply_rooms, apply_spaces, apply_timeline_patch};
 use crate::commands::{
-    AppViewState, Effect, LifecycleView, PaginationView, Toast, VerificationUpdate,
+    AppViewState, Effect, LifecycleView, PaginationView, Toast, UserMessage, UserMessageKind,
+    VerificationUpdate,
 };
 use crate::domain::models::{
     Room, RoomId, TimelinePatch, TimelineStatus, VerificationEvent as DomainVerificationEvent,
@@ -194,8 +195,8 @@ fn apply_lifecycle(w: &impl UiProps, last: Option<&LifecycleView>, next: &Lifecy
     if last.is_none_or(|l| l.activity != next.activity) {
         w.set_login_activity(next.activity);
     }
-    if last.is_none_or(|l| l.error != next.error) {
-        w.set_string(StringProp::LoginError, SharedString::from(&next.error));
+    if last.is_none_or(|l| l.messages != next.messages) {
+        w.apply_login_messages(&next.messages);
     }
     if last.is_none_or(|l| l.method != next.method) {
         w.set_login_method_kind(next.method);
@@ -223,14 +224,14 @@ fn apply_lifecycle(w: &impl UiProps, last: Option<&LifecycleView>, next: &Lifecy
 }
 
 fn apply_toast(w: &impl UiProps, toast: &Toast) {
-    let (message, path) = match toast {
-        Toast::None => ("", ""),
-        Toast::Error(message) => (message.as_str(), ""),
-        Toast::FileSaved(path) => ("", path.as_str()),
+    let (kind, detail) = match toast {
+        Toast::None => (UserMessageKind::None, ""),
+        Toast::Error(message) => (message.kind, message.detail.as_str()),
+        Toast::FileSaved(path) => (UserMessageKind::FileSaved, path.as_str()),
     };
     w.set_toast_kind(toast_kind(toast));
-    w.set_string(StringProp::ToastMessage, SharedString::from(message));
-    w.set_string(StringProp::SavedFilePath, SharedString::from(path));
+    w.set_toast_message(kind);
+    w.set_string(StringProp::ToastDetail, SharedString::from(detail));
 }
 
 fn is_active(w: &impl UiProps, room_id: &RoomId, generation: i32) -> bool {
@@ -250,12 +251,9 @@ fn apply_verification(w: &impl UiProps, update: &VerificationUpdate) {
     match update {
         VerificationUpdate::Flow(event) => apply_verification_flow(w, event),
         VerificationUpdate::Rejecting => w.set_bool(BoolProp::VerificationBusy, true),
-        VerificationUpdate::RejectFailed(reason) => {
+        VerificationUpdate::RejectFailed(message) => {
             w.set_bool(BoolProp::VerificationBusy, false);
-            w.set_string(
-                StringProp::VerificationError,
-                SharedString::from(reason.as_str()),
-            );
+            set_verification_error(w, message);
         }
         VerificationUpdate::Dismissed => reset_verification(w),
     }
@@ -272,7 +270,7 @@ fn apply_verification_flow(w: &impl UiProps, event: &DomainVerificationEvent) {
                 SharedString::from(sender.as_str()),
             );
             w.set_bool(BoolProp::VerificationIsSelf, *is_self);
-            w.set_string(StringProp::VerificationError, SharedString::default());
+            set_verification_error(w, &UserMessage::default());
         }
         DomainVerificationEvent::Emojis(emojis) => {
             w.set_verification_phase(VerifyStep::Emojis);
@@ -286,10 +284,7 @@ fn apply_verification_flow(w: &impl UiProps, event: &DomainVerificationEvent) {
         }
         DomainVerificationEvent::Cancelled(reason) => {
             w.set_verification_phase(VerifyStep::Cancelled);
-            w.set_string(
-                StringProp::VerificationError,
-                SharedString::from(reason.as_str()),
-            );
+            set_verification_error(w, &verification_cancellation(reason));
         }
     }
 }
@@ -300,8 +295,16 @@ fn reset_verification(w: &impl UiProps) {
     w.set_verification_phase(VerifyStep::None);
     w.set_string(StringProp::VerificationSender, SharedString::default());
     w.set_bool(BoolProp::VerificationIsSelf, false);
-    w.set_string(StringProp::VerificationError, SharedString::default());
+    set_verification_error(w, &UserMessage::default());
     w.clear_emoji_model();
+}
+
+fn set_verification_error(w: &impl UiProps, message: &UserMessage) {
+    w.set_verification_error(message.kind);
+    w.set_string(
+        StringProp::VerificationErrorDetail,
+        SharedString::from(&message.detail),
+    );
 }
 
 fn clear_selected_room(w: &impl UiProps) {
