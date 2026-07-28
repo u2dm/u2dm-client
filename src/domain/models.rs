@@ -441,6 +441,6 @@ pub enum VerificationEvent {
 #[derive(Debug, Clone)]
 pub enum VerificationCancellation {
     TimedOut,
-    AcceptFailed(String),
-    Remote(String),
+    AcceptFailed,
+    Remote,
 }

@@ -54,9 +54,10 @@ impl MediaActions {
                 match media.download_media(&event_id, false).await {
                     Ok(data) => act(media_files, output, event_id, data).await,
                     Err(e) => {
+                        tracing::warn!("failed to download media: {e}");
                         show_toast(
                             output.as_ref(),
-                            Toast::Error(UserMessage::about(download_failure, &e)),
+                            Toast::Error(UserMessage::new(download_failure)),
                         );
                     }
                 }
@@ -78,7 +79,7 @@ impl MediaActions {
                     tracing::warn!("failed to open media: {e}");
                     show_toast(
                         output.as_ref(),
-                        Toast::Error(UserMessage::about(UserMessageKind::MediaOpenFailed, &e)),
+                        Toast::Error(UserMessage::new(UserMessageKind::MediaOpenFailed)),
                     );
                 }
             },
@@ -100,9 +101,10 @@ impl MediaActions {
                     Ok(Some(path)) => show_toast(output.as_ref(), Toast::FileSaved(path)),
                     Ok(None) => {}
                     Err(e) => {
+                        tracing::warn!("failed to save file: {e}");
                         show_toast(
                             output.as_ref(),
-                            Toast::Error(UserMessage::about(UserMessageKind::FileSaveFailed, &e)),
+                            Toast::Error(UserMessage::new(UserMessageKind::FileSaveFailed)),
                         );
                     }
                 }

@@ -261,11 +261,11 @@ pub fn verification_cancellation(reason: &VerificationCancellation) -> UserMessa
         VerificationCancellation::TimedOut => {
             UserMessage::new(UserMessageKind::VerificationTimedOut)
         }
-        VerificationCancellation::AcceptFailed(detail) => {
-            UserMessage::about(UserMessageKind::VerificationSasAcceptFailed, detail)
+        VerificationCancellation::AcceptFailed => {
+            UserMessage::new(UserMessageKind::VerificationSasAcceptFailed)
         }
-        VerificationCancellation::Remote(detail) => {
-            UserMessage::about(UserMessageKind::VerificationCancelled, detail)
+        VerificationCancellation::Remote => {
+            UserMessage::new(UserMessageKind::VerificationCancelled)
         }
     }
 }

@@ -53,6 +53,14 @@ impl CleanupReport {
         );
         parts.join("; ")
     }
+
+    pub fn quarantined_paths(&self) -> String {
+        self.quarantined
+            .iter()
+            .map(|p| p.display().to_string())
+            .collect::<Vec<_>>()
+            .join("; ")
+    }
 }
 
 pub struct AuthenticatedSession {

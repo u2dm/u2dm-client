@@ -305,7 +305,7 @@ impl VerificationPort for DemoAuthed {
             return Err(unavailable("Declining a verification"));
         }
         self.emit_verification(VerificationEvent::Cancelled(
-            VerificationCancellation::Remote("declined on this device".to_owned()),
+            VerificationCancellation::Remote,
         ));
         Ok(())
     }

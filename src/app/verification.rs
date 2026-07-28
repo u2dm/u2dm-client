@@ -119,7 +119,7 @@ impl VerificationController {
                 tracing::warn!("verification action failed: {e}");
                 output
                     .emit(Effect::Verification(VerificationUpdate::Failed(
-                        UserMessage::about(failure, &e),
+                        UserMessage::new(failure),
                     )))
                     .await;
             }

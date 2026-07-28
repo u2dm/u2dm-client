@@ -11,7 +11,7 @@ use super::task_group::{self, TaskGroup};
 use crate::commands::{LoginActivity, LoginStep, Toast, UserMessage, UserMessageKind};
 use crate::domain::account::AccountScope;
 use crate::domain::models::{LoginCredentials, LoginMethod, ServerInfo, Session};
-use crate::error::{AppError, Result};
+use crate::error::{AppError, AuthFailure, Result};
 use crate::ports::browser::BrowserPort;
 use crate::ports::matrix::{
     AuthPort, AuthenticatedSession, CleanupReport, RestoreStep, SessionPort,
@@ -41,14 +41,32 @@ fn cleanup_problem(report: &CleanupReport) -> Option<UserMessage> {
     if report.is_clean() {
         return None;
     }
-    let detail = report.summary();
-    tracing::warn!("local account data was not fully erased: {detail}");
-    let kind = if report.is_quarantined_only() {
-        UserMessageKind::DataQuarantined
-    } else {
-        UserMessageKind::DataNotErased
+    tracing::warn!(
+        "local account data was not fully erased: {}",
+        report.summary()
+    );
+    if report.is_quarantined_only() {
+        return Some(UserMessage::about(
+            UserMessageKind::DataQuarantined,
+            &report.quarantined_paths(),
+        ));
+    }
+    Some(UserMessage::new(UserMessageKind::DataNotErased))
+}
+
+fn login_failure(err: &AppError) -> UserMessageKind {
+    let AppError::Auth { kind, .. } = err else {
+        return UserMessageKind::LoginFailed;
     };
-    Some(UserMessage::about(kind, &detail))
+    match kind {
+        AuthFailure::Unreachable => UserMessageKind::ServerUnreachable,
+        AuthFailure::InvalidCredentials => UserMessageKind::InvalidCredentials,
+        AuthFailure::AccountDeactivated => UserMessageKind::AccountDeactivated,
+        AuthFailure::InvalidUsername => UserMessageKind::InvalidUsername,
+        AuthFailure::RateLimited => UserMessageKind::RateLimited,
+        AuthFailure::MethodUnsupported => UserMessageKind::LoginMethodUnsupported,
+        AuthFailure::Unknown => UserMessageKind::LoginFailed,
+    }
 }
 
 fn restore_activity(step: RestoreStep) -> LoginActivity {
@@ -204,7 +222,7 @@ impl SessionController {
             Err(e) => {
                 tracing::warn!("session restore failed, preserving local data: {e}");
                 self.emit_show_login();
-                self.emit_login_error(UserMessageKind::SessionRestoreFailed, &e);
+                self.emit_login_error(UserMessageKind::SessionRestoreFailed);
                 None
             }
         }
@@ -222,7 +240,7 @@ impl SessionController {
             Err(e) => {
                 tracing::warn!("failed to read the store key: {e}");
                 self.emit_show_login();
-                self.emit_login_error(UserMessageKind::StoreKeyUnreadable, &e);
+                self.emit_login_error(UserMessageKind::StoreKeyUnreadable);
                 None
             }
         }
@@ -271,7 +289,7 @@ impl SessionController {
             }
             Err(e) => {
                 tracing::warn!(homeserver, "server discovery failed: {e}");
-                self.fail_auth(attempt, UserMessageKind::ServerUnreachable, &e);
+                self.fail_auth(attempt, UserMessageKind::ServerUnreachable);
             }
         }
     }
@@ -298,13 +316,13 @@ impl SessionController {
         }
 
         self.emit_show_login();
-        if let Some(e) = error {
-            self.emit_login_error(UserMessageKind::SessionUnreadable, &e);
+        if error.is_some() {
+            self.emit_login_error(UserMessageKind::SessionUnreadable);
         }
     }
 
-    fn fail_auth(&self, attempt: u64, kind: UserMessageKind, err: &AppError) {
-        self.reject_auth(attempt, UserMessage::about(kind, err));
+    fn fail_auth(&self, attempt: u64, kind: UserMessageKind) {
+        self.reject_auth(attempt, UserMessage::new(kind));
     }
 
     fn reject_auth(&self, attempt: u64, message: UserMessage) {
@@ -343,7 +361,7 @@ impl SessionController {
             }),
             Err(e) => {
                 tracing::warn!("password login failed: {e}");
-                self.fail_auth(attempt, UserMessageKind::LoginFailed, &e);
+                self.fail_auth(attempt, login_failure(&e));
             }
         }
     }
@@ -382,7 +400,7 @@ impl SessionController {
             }
             Err(e) => {
                 tracing::warn!("OAuth login failed: {e}");
-                self.fail_auth(attempt, UserMessageKind::LoginFailed, &e);
+                self.fail_auth(attempt, login_failure(&e));
             }
         }
     }
@@ -450,10 +468,7 @@ impl SessionController {
                         tracing::warn!("failed to persist refreshed session: {e}");
                         super::show_toast(
                             output.as_ref(),
-                            Toast::Error(UserMessage::about(
-                                UserMessageKind::SessionSaveFailed,
-                                &e,
-                            )),
+                            Toast::Error(UserMessage::new(UserMessageKind::SessionSaveFailed)),
                         );
                     } else {
                         tracing::info!("persisted refreshed session tokens");
@@ -584,8 +599,8 @@ impl SessionController {
         }));
     }
 
-    fn emit_login_error(&self, kind: UserMessageKind, err: &AppError) {
-        self.fail_login_once(UserMessage::about(kind, err));
+    fn emit_login_error(&self, kind: UserMessageKind) {
+        self.fail_login_once(UserMessage::new(kind));
     }
 
     fn set_activity(&self, activity: LoginActivity) {

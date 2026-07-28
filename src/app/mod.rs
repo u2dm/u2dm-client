@@ -352,10 +352,7 @@ impl AppService {
         tracing::warn!(op, "reverting optimistic space order: {error}");
         show_toast(
             self.output.as_ref(),
-            Toast::Error(UserMessage::about(
-                UserMessageKind::SpaceOrderSaveFailed,
-                &error,
-            )),
+            Toast::Error(UserMessage::new(UserMessageKind::SpaceOrderSaveFailed)),
         );
     }
 

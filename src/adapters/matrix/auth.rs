@@ -8,18 +8,19 @@ use matrix_sdk::authentication::oauth::registration::{
 use matrix_sdk::authentication::oauth::{ClientId, OAuthSession, UserSession};
 use matrix_sdk::media::MediaRetentionPolicy;
 use matrix_sdk::ruma::api::client::session::get_login_types::v3::LoginType;
+use matrix_sdk::ruma::api::error::ErrorKind;
 use matrix_sdk::ruma::serde::Raw;
 use matrix_sdk::ruma::{IdParseError, OwnedDeviceId, OwnedUserId};
 use matrix_sdk::utils::UrlOrQuery;
 use matrix_sdk::utils::local_server::{LocalServerBuilder, LocalServerRedirectHandle};
-use matrix_sdk::{Client, ClientBuilder, SessionChange, SessionMeta};
+use matrix_sdk::{Client, ClientBuilder, HttpError, SessionChange, SessionMeta};
 use tokio::sync::{Mutex, mpsc};
 use url::Url;
 
 use super::store::StorePaths;
 use crate::adapters::private_fs;
 use crate::domain::models::{AuthMethod, LoginCredentials, OAuthLoginData, ServerInfo, Session};
-use crate::error::{AppError, Result};
+use crate::error::{AppError, AuthFailure, Result};
 use crate::ports::matrix::RestoreStep;
 
 async fn open_store(
@@ -121,13 +122,44 @@ fn partition_login_flows<'a>(
     (methods, unsupported)
 }
 
+fn classify_auth_failure(error: &matrix_sdk::Error) -> AuthFailure {
+    match error.client_api_error_kind() {
+        Some(ErrorKind::Forbidden | ErrorKind::Unauthorized) => AuthFailure::InvalidCredentials,
+        Some(ErrorKind::UserDeactivated) => AuthFailure::AccountDeactivated,
+        Some(ErrorKind::InvalidUsername) => AuthFailure::InvalidUsername,
+        Some(ErrorKind::LimitExceeded { .. }) => AuthFailure::RateLimited,
+        Some(ErrorKind::Unrecognized) => AuthFailure::MethodUnsupported,
+        Some(_) => AuthFailure::Unknown,
+        None => match error {
+            matrix_sdk::Error::Http(http) if is_transport_failure(http) => AuthFailure::Unreachable,
+            _ => AuthFailure::Unknown,
+        },
+    }
+}
+
+fn is_transport_failure(error: &HttpError) -> bool {
+    match error {
+        HttpError::Reqwest(_) => true,
+        HttpError::Cached(inner) => is_transport_failure(inner),
+        _ => false,
+    }
+}
+
+fn auth_error(error: &matrix_sdk::Error) -> AppError {
+    AppError::Auth {
+        kind: classify_auth_failure(error),
+        detail: error.to_string(),
+    }
+}
+
 pub(super) async fn login_password(client: &Client, creds: LoginCredentials) -> Result<Session> {
     tracing::info!(user = %creds.username, "logging in with password");
     client
         .matrix_auth()
         .login_username(&creds.username, &creds.password)
         .initial_device_display_name("U2DM")
-        .await?;
+        .await
+        .map_err(|e| auth_error(&e))?;
 
     let sdk_session = client
         .matrix_auth()
@@ -189,7 +221,8 @@ pub(super) async fn login_oauth_finish(
     client
         .oauth()
         .finish_login(UrlOrQuery::Query(query_string.0))
-        .await?;
+        .await
+        .map_err(|e| auth_error(&e))?;
 
     let sdk_session = client
         .oauth()

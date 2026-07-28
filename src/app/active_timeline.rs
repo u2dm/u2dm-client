@@ -220,7 +220,7 @@ impl ActiveTimeline {
                 tracing::warn!("failed to enqueue message: {e}");
                 super::show_toast(
                     output.as_ref(),
-                    Toast::Error(UserMessage::about(UserMessageKind::SendMessageFailed, &e)),
+                    Toast::Error(UserMessage::new(UserMessageKind::SendMessageFailed)),
                 );
             }
         });

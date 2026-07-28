@@ -201,7 +201,7 @@ async fn handle_verification_request(
             VerificationRequestState::Cancelled(info) => {
                 tracing::info!(reason = %info.reason(), "verification cancelled");
                 tx.send(VerificationEvent::Cancelled(
-                    VerificationCancellation::Remote(info.reason().to_string()),
+                    VerificationCancellation::Remote,
                 ))
                 .ok();
                 break;
@@ -217,8 +217,9 @@ async fn handle_sas_verification(
     tx: &mpsc::UnboundedSender<VerificationEvent>,
 ) {
     if let Err(e) = sas.accept().await {
+        tracing::warn!("failed to accept SAS verification: {e}");
         tx.send(VerificationEvent::Cancelled(
-            VerificationCancellation::AcceptFailed(e.to_string()),
+            VerificationCancellation::AcceptFailed,
         ))
         .ok();
         return;
@@ -253,7 +254,7 @@ async fn handle_sas_verification(
             SasState::Cancelled(info) => {
                 tracing::info!(reason = %info.reason(), "SAS verification cancelled");
                 tx.send(VerificationEvent::Cancelled(
-                    VerificationCancellation::Remote(info.reason().to_string()),
+                    VerificationCancellation::Remote,
                 ))
                 .ok();
                 break;

@@ -8,7 +8,7 @@ export struct UserMessage {
 export global UserMessages {
     public pure function text(kind: UserMessageKind, detail: string) -> string {
         if kind == UserMessageKind.server-unreachable {
-            return @tr("Could not reach that homeserver: {}", detail);
+            return @tr("Could not reach that homeserver. Check the address and your connection.");
         }
         if kind == UserMessageKind.unsupported-login-method {
             if detail == "" {
@@ -17,19 +17,34 @@ export global UserMessages {
             return @tr("This homeserver only offers login methods U2DM does not support yet: {}", detail);
         }
         if kind == UserMessageKind.login-failed {
-            return @tr("Login failed: {}", detail);
+            return @tr("Login failed. Please try again.");
+        }
+        if kind == UserMessageKind.invalid-credentials {
+            return @tr("Incorrect username or password.");
+        }
+        if kind == UserMessageKind.account-deactivated {
+            return @tr("This account has been deactivated.");
+        }
+        if kind == UserMessageKind.invalid-username {
+            return @tr("That username is not valid on this homeserver.");
+        }
+        if kind == UserMessageKind.rate-limited {
+            return @tr("Too many attempts. Please wait a moment and try again.");
+        }
+        if kind == UserMessageKind.login-method-unsupported {
+            return @tr("This homeserver does not support this way of signing in.");
         }
         if kind == UserMessageKind.session-unreadable {
-            return @tr("The saved session could not be read: {}", detail);
+            return @tr("The saved session could not be read. Please log in again.");
         }
         if kind == UserMessageKind.session-restore-failed {
-            return @tr("The saved session could not be restored: {}", detail);
+            return @tr("The saved session could not be restored. Please log in again.");
         }
         if kind == UserMessageKind.store-key-missing {
             return @tr("The key to the local store is missing. Please log in again.");
         }
         if kind == UserMessageKind.store-key-unreadable {
-            return @tr("The key to the local store could not be read: {}", detail);
+            return @tr("The key to the local store could not be read. Please log in again.");
         }
         if kind == UserMessageKind.session-expired {
             return @tr("Session expired. Please log in again.");
@@ -38,53 +53,53 @@ export global UserMessages {
             return @tr("Some local data could not be deleted, but its key was destroyed, so it is unreadable. It will be removed on the next start. ({})", detail);
         }
         if kind == UserMessageKind.data-not-erased {
-            return @tr("Some local account data could not be erased: {}", detail);
+            return @tr("Some local account data could not be erased.");
         }
         if kind == UserMessageKind.session-save-failed {
-            return @tr("Failed to save refreshed session: {}", detail);
+            return @tr("Could not save the refreshed session.");
         }
         if kind == UserMessageKind.send-message-failed {
-            return @tr("Failed to send message: {}", detail);
+            return @tr("Failed to send message");
         }
         if kind == UserMessageKind.load-more-failed {
             return @tr("Failed to load more messages");
         }
         if kind == UserMessageKind.space-order-save-failed {
-            return @tr("Failed to save space order: {}", detail);
+            return @tr("Failed to save space order");
         }
         if kind == UserMessageKind.media-download-failed {
-            return @tr("Failed to download media: {}", detail);
+            return @tr("Failed to download media");
         }
         if kind == UserMessageKind.file-download-failed {
-            return @tr("Failed to download file: {}", detail);
+            return @tr("Failed to download file");
         }
         if kind == UserMessageKind.media-open-failed {
-            return @tr("Failed to open media: {}", detail);
+            return @tr("Failed to open media");
         }
         if kind == UserMessageKind.file-save-failed {
-            return @tr("Failed to save file: {}", detail);
+            return @tr("Failed to save file");
         }
         if kind == UserMessageKind.file-saved {
             return @tr("File saved to {}", detail);
         }
         if kind == UserMessageKind.verification-accept-failed {
-            return @tr("Verification accept failed: {}", detail);
+            return @tr("Verification accept failed");
         }
         if kind == UserMessageKind.verification-confirm-failed {
-            return @tr("Verification confirm failed: {}", detail);
+            return @tr("Verification confirm failed");
         }
         if kind == UserMessageKind.verification-reject-failed {
-            return @tr("Verification reject failed: {}", detail);
+            return @tr("Verification reject failed");
         }
         if kind == UserMessageKind.verification-timed-out {
             return @tr("Verification timed out");
         }
         if kind == UserMessageKind.verification-sas-accept-failed {
-            return @tr("Failed to accept the verification: {}", detail);
+            return @tr("Failed to accept the verification");
         }
         if kind == UserMessageKind.verification-cancelled {
-            return @tr("Verification cancelled: {}", detail);
+            return @tr("Verification cancelled");
         }
-        return detail;
+        return "";
     }
 }

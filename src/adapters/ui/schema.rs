@@ -167,6 +167,11 @@ macro_rules! user_message_kinds {
         ServerUnreachable         ServerUnreachable       "server-unreachable";
         UnsupportedLoginMethod    UnsupportedLoginMethod  "unsupported-login-method";
         LoginFailed               LoginFailed             "login-failed";
+        InvalidCredentials        InvalidCredentials      "invalid-credentials";
+        AccountDeactivated        AccountDeactivated      "account-deactivated";
+        InvalidUsername           InvalidUsername         "invalid-username";
+        RateLimited               RateLimited             "rate-limited";
+        LoginMethodUnsupported    LoginMethodUnsupported  "login-method-unsupported";
         SessionUnreadable         SessionUnreadable       "session-unreadable";
         SessionRestoreFailed      SessionRestoreFailed    "session-restore-failed";
         StoreKeyMissing           StoreKeyMissing         "store-key-missing";
