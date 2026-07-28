@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet, VecDeque};
-use std::future;
 use std::sync::Arc;
 use std::time::Duration;
+use std::{future, mem};
 
 use futures_util::{StreamExt, stream};
 use matrix_sdk::deserialized_responses::SyncOrStrippedState;
@@ -15,10 +15,10 @@ use matrix_sdk::ruma::events::{
     AnyMessageLikeEventContent, AnySyncMessageLikeEvent, AnySyncStateEvent, AnySyncTimelineEvent,
     SyncMessageLikeEvent, SyncStateEvent,
 };
-use matrix_sdk::ruma::{OwnedMxcUri, OwnedUserId, RoomId as MatrixRoomId, UserId};
+use matrix_sdk::ruma::{OwnedMxcUri, OwnedRoomId, OwnedUserId, RoomId as MatrixRoomId, UserId};
 use matrix_sdk::sync::RoomUpdates;
 use matrix_sdk::{Client, HttpError, Room};
-use matrix_sdk_base::RoomInfoNotableUpdate;
+use matrix_sdk_base::{RoomInfoNotableUpdate, RoomInfoNotableUpdateReasons};
 use matrix_sdk_ui::encryption_sync_service::Error as EncryptionSyncError;
 use matrix_sdk_ui::room_list_service::Error as RoomListError;
 use matrix_sdk_ui::sync_service::{Error as SyncServiceError, State as SyncState, SyncService};
@@ -40,7 +40,11 @@ use crate::ports::matrix::SyncSink as OnSync;
 const EMIT_DEBOUNCE: Duration = Duration::from_millis(50);
 const AVATAR_INFLIGHT: usize = 8;
 const AVATAR_RETRY_COOLDOWN: Duration = Duration::from_mins(1);
+const AVATAR_REVALIDATE: Duration = Duration::from_mins(5);
 const SEED_INFLIGHT: usize = 16;
+const SYNC_RESTART_BACKOFF_START: Duration = Duration::from_secs(1);
+const SYNC_RESTART_BACKOFF_MAX: Duration = Duration::from_secs(30);
+const SYNC_RESTART_HEALTHY_AFTER: Duration = Duration::from_mins(1);
 
 fn room_avatar_mxc(room: &Room, is_direct: bool) -> Option<String> {
     if let Some(mxc) = room.avatar_url() {
@@ -201,13 +205,6 @@ async fn build_rooms(client: &Client) -> HashMap<String, DomainRoom> {
         .await
 }
 
-fn avatar_uris<T>(items: &[T], mxc_of: impl Fn(&T) -> Option<&str>) -> Vec<OwnedMxcUri> {
-    items
-        .iter()
-        .filter_map(|item| mxc_of(item).map(OwnedMxcUri::from))
-        .collect()
-}
-
 async fn space_child_ids(space: &Room) -> Vec<String> {
     let events = match space
         .get_state_events_static::<SpaceChildEventContent>()
@@ -285,22 +282,26 @@ enum AvatarState {
     Queued,
     InFlight,
     Failed { retry_at: Instant },
+    Ready { revalidate_at: Instant },
+}
+
+impl AvatarState {
+    fn due_at(&self) -> Option<Instant> {
+        match *self {
+            AvatarState::Failed { retry_at } => Some(retry_at),
+            AvatarState::Ready { revalidate_at } => Some(revalidate_at),
+            AvatarState::Queued | AvatarState::InFlight => None,
+        }
+    }
 }
 
 struct TrackedAvatar {
     kind: AvatarKind,
-    mxc: OwnedMxcUri,
     state: AvatarState,
 }
 
-impl TrackedAvatar {
-    fn retry_due(&self) -> bool {
-        matches!(self.state, AvatarState::Failed { retry_at } if retry_at <= Instant::now())
-    }
-}
-
 struct FetchedAvatar {
-    key: String,
+    mxc: String,
     kind: AvatarKind,
     fetched: bool,
 }
@@ -310,6 +311,7 @@ struct AvatarFetcher {
     tasks: JoinSet<FetchedAvatar>,
     tracked: HashMap<String, TrackedAvatar>,
     queue: VecDeque<String>,
+    next_due: Option<Instant>,
 }
 
 impl AvatarFetcher {
@@ -319,93 +321,97 @@ impl AvatarFetcher {
             tasks: JoinSet::new(),
             tracked: HashMap::new(),
             queue: VecDeque::new(),
+            next_due: None,
         }
     }
 
-    fn request(&mut self, client: &Client, kind: AvatarKind, uris: Vec<OwnedMxcUri>) {
+    fn request<'a>(
+        &mut self,
+        client: &Client,
+        kind: AvatarKind,
+        uris: impl Iterator<Item = &'a str>,
+    ) {
         for mxc in uris {
-            let key = mxc_avatar_key(mxc.as_str());
-            if self
-                .tracked
-                .get(&key)
-                .is_some_and(|tracked| !tracked.retry_due())
-            {
+            if self.tracked.contains_key(mxc) {
                 continue;
             }
-            self.arm(key, kind, mxc);
+            self.arm(mxc.to_owned(), kind);
         }
         self.pump(client);
     }
 
-    fn arm(&mut self, key: String, kind: AvatarKind, mxc: OwnedMxcUri) {
-        if self.media.cache_get(&key).is_some() {
-            self.tracked.remove(&key);
-            return;
-        }
-        let state = if self.media.is_failed(&key) {
+    fn arm(&mut self, mxc: String, kind: AvatarKind) {
+        let key = mxc_avatar_key(&mxc);
+        let state = if self.media.cache_get(&key).is_some() {
+            AvatarState::Ready {
+                revalidate_at: self.schedule(AVATAR_REVALIDATE),
+            }
+        } else if self.media.is_failed(&key) {
             AvatarState::Failed {
-                retry_at: Instant::now() + AVATAR_RETRY_COOLDOWN,
+                retry_at: self.schedule(AVATAR_RETRY_COOLDOWN),
             }
         } else {
-            self.queue.push_back(key.clone());
+            self.queue.push_back(mxc.clone());
             AvatarState::Queued
         };
-        self.tracked.insert(key, TrackedAvatar { kind, mxc, state });
+        self.tracked.insert(mxc, TrackedAvatar { kind, state });
     }
 
-    fn retry_at(&self) -> Option<Instant> {
-        self.tracked
-            .values()
-            .filter_map(|tracked| match tracked.state {
-                AvatarState::Failed { retry_at } => Some(retry_at),
-                AvatarState::Queued | AvatarState::InFlight => None,
-            })
-            .min()
+    fn schedule(&mut self, after: Duration) -> Instant {
+        let at = Instant::now() + after;
+        self.next_due = Some(self.next_due.map_or(at, |due| due.min(at)));
+        at
     }
 
-    fn retry_failed(&mut self, client: &Client) {
-        let due: Vec<String> = self
-            .tracked
-            .iter()
-            .filter(|(_, tracked)| tracked.retry_due())
-            .map(|(key, _)| key.clone())
-            .collect();
-        for key in due {
-            let Some(tracked) = self.tracked.get(&key) else {
-                continue;
-            };
-            let (kind, mxc) = (tracked.kind, tracked.mxc.clone());
-            self.arm(key, kind, mxc);
+    fn due_at(&self) -> Option<Instant> {
+        self.next_due
+    }
+
+    fn wake(&mut self, client: &Client) {
+        let now = Instant::now();
+        let mut due: Vec<(String, AvatarKind)> = Vec::new();
+        let mut next: Option<Instant> = None;
+        for (mxc, tracked) in &self.tracked {
+            match tracked.state.due_at() {
+                Some(at) if at <= now => due.push((mxc.clone(), tracked.kind)),
+                Some(at) => next = Some(next.map_or(at, |soonest: Instant| soonest.min(at))),
+                None => {}
+            }
+        }
+        self.next_due = next;
+        for (mxc, kind) in due {
+            self.arm(mxc, kind);
         }
         self.pump(client);
     }
 
     fn pump(&mut self, client: &Client) {
         while self.tasks.len() < AVATAR_INFLIGHT {
-            let Some(key) = self.queue.pop_front() else {
+            let Some(mxc) = self.queue.pop_front() else {
                 break;
             };
-            let Some(tracked) = self.tracked.get_mut(&key) else {
+            let Some(tracked) = self.tracked.get_mut(&mxc) else {
                 continue;
             };
             if !matches!(tracked.state, AvatarState::Queued) {
                 continue;
             }
             tracked.state = AvatarState::InFlight;
-            let (kind, mxc) = (tracked.kind, tracked.mxc.clone());
-            self.spawn_fetch(client, key, kind, mxc);
+            let kind = tracked.kind;
+            self.spawn_fetch(client, mxc, kind);
         }
     }
 
-    fn spawn_fetch(&mut self, client: &Client, key: String, kind: AvatarKind, mxc: OwnedMxcUri) {
+    fn spawn_fetch(&mut self, client: &Client, mxc: String, kind: AvatarKind) {
         let client = client.clone();
         let media = Arc::clone(&self.media);
         self.tasks.spawn(async move {
+            let key = mxc_avatar_key(&mxc);
             let fetched = media
-                .fetch_avatar_by_mxc(&client, &key, mxc)
+                .fetch_avatar_by_mxc(&client, &key, OwnedMxcUri::from(mxc.as_str()))
                 .await
                 .is_some();
-            FetchedAvatar { key, kind, fetched }
+            FetchedAvatar { mxc, kind, fetched }
         });
     }
 
@@ -427,16 +433,23 @@ impl AvatarFetcher {
                 return None;
             }
         };
-        if done.fetched {
-            self.tracked.remove(&done.key);
-            return Some(done.kind);
-        }
-        if let Some(tracked) = self.tracked.get_mut(&done.key) {
-            tracked.state = AvatarState::Failed {
-                retry_at: Instant::now() + AVATAR_RETRY_COOLDOWN,
-            };
-        }
-        None
+        let state = if done.fetched {
+            AvatarState::Ready {
+                revalidate_at: self.schedule(AVATAR_REVALIDATE),
+            }
+        } else {
+            AvatarState::Failed {
+                retry_at: self.schedule(AVATAR_RETRY_COOLDOWN),
+            }
+        };
+        self.tracked.insert(
+            done.mxc,
+            TrackedAvatar {
+                kind: done.kind,
+                state,
+            },
+        );
+        done.fetched.then_some(done.kind)
     }
 }
 
@@ -452,11 +465,37 @@ async fn build_sync_service(client: &Client) -> AppResult<SyncService> {
         .map_err(|e| AppError::Other(e.to_string()))
 }
 
+/// Reasons that feed a value `build_single_room` reads. The ones left out
+/// (recency stamp, unread marker, fully-read marker) back no field of
+/// [`DomainRoom`], and a read receipt only moves the two unread counts.
+const REBUILD_REASONS: RoomInfoNotableUpdateReasons = RoomInfoNotableUpdateReasons::LATEST_EVENT
+    .union(RoomInfoNotableUpdateReasons::MEMBERSHIP)
+    .union(RoomInfoNotableUpdateReasons::DISPLAY_NAME)
+    .union(RoomInfoNotableUpdateReasons::ACTIVE_SERVICE_MEMBERS)
+    .union(RoomInfoNotableUpdateReasons::NONE);
+
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+enum RoomRefresh {
+    Counts,
+    Full,
+}
+
+fn refresh_for(reasons: RoomInfoNotableUpdateReasons) -> Option<RoomRefresh> {
+    if reasons.intersects(REBUILD_REASONS) {
+        return Some(RoomRefresh::Full);
+    }
+    if reasons.contains(RoomInfoNotableUpdateReasons::READ_RECEIPT) {
+        return Some(RoomRefresh::Counts);
+    }
+    None
+}
+
 #[allow(clippy::struct_excessive_bools)]
 struct Directory {
     rooms: HashMap<String, DomainRoom>,
     order: Vec<String>,
     spaces: Vec<DomainSpace>,
+    pending: HashMap<OwnedRoomId, RoomRefresh>,
     rooms_dirty: bool,
     order_dirty: bool,
     spaces_dirty: bool,
@@ -470,6 +509,7 @@ impl Directory {
             rooms: HashMap::new(),
             order: Vec::new(),
             spaces: Vec::new(),
+            pending: HashMap::new(),
             rooms_dirty: false,
             order_dirty: false,
             spaces_dirty: false,
@@ -506,9 +546,16 @@ impl Directory {
         }
     }
 
+    fn mark_room(&mut self, room_id: OwnedRoomId, refresh: RoomRefresh) {
+        let pending = self.pending.entry(room_id).or_insert(refresh);
+        *pending = (*pending).max(refresh);
+        self.arm();
+    }
+
     async fn seed(&mut self, client: &Client) {
         self.rooms = build_rooms(client).await;
         self.spaces = build_spaces_meta(client).await;
+        self.pending.clear();
         self.order_dirty = true;
     }
 
@@ -527,19 +574,19 @@ impl Directory {
         self.mark_rooms();
     }
 
-    fn remove_room(&mut self, room_id: &str) {
-        if self.rooms.remove(room_id).is_none() {
+    fn remove_room(&mut self, room_id: &MatrixRoomId) {
+        self.pending.remove(room_id);
+        if self.rooms.remove(room_id.as_str()).is_none() {
             return;
         }
         self.order_dirty = true;
         self.mark_rooms();
     }
 
-    async fn apply_room_updates(&mut self, client: &Client, updates: &RoomUpdates) {
+    fn note_room_updates(&mut self, client: &Client, updates: &RoomUpdates) {
         for room_id in updates.left.keys() {
-            let key = room_id.as_str();
-            self.remove_room(key);
-            if self.spaces.iter().any(|space| space.id == key) {
+            self.remove_room(room_id);
+            if self.spaces.iter().any(|space| space.id == room_id.as_str()) {
                 self.mark_spaces_structural();
             }
         }
@@ -550,23 +597,52 @@ impl Directory {
             if room.is_space() {
                 self.mark_spaces_structural();
             } else {
-                self.upsert_room(build_single_room(&room).await);
+                self.mark_room(room_id.clone(), RoomRefresh::Full);
             }
         }
     }
 
-    async fn refresh_room(&mut self, client: &Client, room_id: &MatrixRoomId) {
-        let Some(room) = client.get_room(room_id) else {
+    fn note_room_info(&mut self, client: &Client, update: &RoomInfoNotableUpdate) {
+        let Some(refresh) = refresh_for(update.reasons) else {
+            return;
+        };
+        let Some(room) = client.get_room(&update.room_id) else {
             return;
         };
         if room.is_space() {
             self.mark_spaces_structural();
             return;
         }
-        if !self.rooms.contains_key(room_id.as_str()) {
+        if !self.rooms.contains_key(update.room_id.as_str()) {
             return;
         }
-        self.upsert_room(build_single_room(&room).await);
+        self.mark_room(update.room_id.clone(), refresh);
+    }
+
+    async fn apply_pending(&mut self, client: &Client) {
+        for (room_id, refresh) in mem::take(&mut self.pending) {
+            let Some(room) = client.get_room(&room_id) else {
+                continue;
+            };
+            match refresh {
+                RoomRefresh::Full => self.upsert_room(build_single_room(&room).await),
+                RoomRefresh::Counts => self.refresh_counts(&room),
+            }
+        }
+    }
+
+    fn refresh_counts(&mut self, room: &Room) {
+        let Some(current) = self.rooms.get_mut(room.room_id().as_str()) else {
+            return;
+        };
+        let unread = room.num_unread_notifications();
+        let mentions = room.num_unread_mentions();
+        if current.unread_count == unread && current.mention_count == mentions {
+            return;
+        }
+        current.unread_count = unread;
+        current.mention_count = mentions;
+        self.mark_rooms();
     }
 
     fn refresh_order(&mut self) {
@@ -587,6 +663,7 @@ impl Directory {
     }
 
     async fn flush(&mut self, client: &Client, on_sync: &OnSync, avatars: &mut AvatarFetcher) {
+        self.apply_pending(client).await;
         self.flush_at = None;
         if self.spaces_structural_dirty {
             self.spaces = build_spaces_meta(client).await;
@@ -614,7 +691,7 @@ impl Directory {
         avatars.request(
             client,
             AvatarKind::Room,
-            avatar_uris(&rooms, |room| room.avatar_mxc.as_deref()),
+            rooms.iter().filter_map(|room| room.avatar_mxc.as_deref()),
         );
         on_sync(SyncEvent::Rooms(rooms.into()));
     }
@@ -623,7 +700,9 @@ impl Directory {
         avatars.request(
             client,
             AvatarKind::Space,
-            avatar_uris(&self.spaces, |space| space.avatar_mxc.as_deref()),
+            self.spaces
+                .iter()
+                .filter_map(|space| space.avatar_mxc.as_deref()),
         );
         on_sync(SyncEvent::Spaces(Arc::from(self.spaces.as_slice())));
     }
@@ -661,6 +740,52 @@ enum LoopAction {
     Terminal(SyncOutcome),
 }
 
+struct SyncHealth {
+    connected: bool,
+    needs_resync: bool,
+    backoff: Duration,
+    restart_at: Option<Instant>,
+    running_since: Option<Instant>,
+}
+
+impl SyncHealth {
+    fn started() -> Self {
+        Self {
+            connected: true,
+            needs_resync: false,
+            backoff: SYNC_RESTART_BACKOFF_START,
+            restart_at: None,
+            running_since: Some(Instant::now()),
+        }
+    }
+
+    fn on_running(&mut self) -> bool {
+        self.restart_at = None;
+        self.running_since = Some(Instant::now());
+        mem::take(&mut self.needs_resync)
+    }
+
+    fn should_announce_connected(&mut self) -> bool {
+        !mem::replace(&mut self.connected, true)
+    }
+
+    fn on_error(&mut self) -> Duration {
+        if self
+            .running_since
+            .is_some_and(|since| since.elapsed() >= SYNC_RESTART_HEALTHY_AFTER)
+        {
+            self.backoff = SYNC_RESTART_BACKOFF_START;
+        }
+        self.connected = false;
+        self.needs_resync = true;
+        self.running_since = None;
+        let delay = self.backoff;
+        self.restart_at = Some(Instant::now() + delay);
+        self.backoff = self.backoff.saturating_mul(2).min(SYNC_RESTART_BACKOFF_MAX);
+        delay
+    }
+}
+
 async fn resync(client: &Client, dir: &mut Directory) {
     dir.seed(client).await;
     dir.mark_rooms();
@@ -682,7 +807,7 @@ async fn handle_room_update(
                 left = updates.left.len(),
                 "processing room updates"
             );
-            dir.apply_room_updates(client, &updates).await;
+            dir.note_room_updates(client, &updates);
             LoopAction::Continue
         }
         Err(RecvError::Lagged(n)) => {
@@ -703,7 +828,7 @@ async fn handle_room_info_update(
 ) -> LoopAction {
     match update {
         Ok(update) => {
-            dir.refresh_room(client, &update.room_id).await;
+            dir.note_room_info(client, &update);
             LoopAction::Continue
         }
         Err(RecvError::Lagged(n)) => {
@@ -721,32 +846,55 @@ async fn handle_room_info_update(
 async fn handle_sync_state(
     client: &Client,
     state: SyncState,
-    sync_service: &SyncService,
     dir: &mut Directory,
+    health: &mut SyncHealth,
     on_sync: &OnSync,
 ) -> LoopAction {
     match state {
         SyncState::Running => {
-            tracing::info!("sliding sync reconnected");
-            resync(client, dir).await;
-            on_sync(SyncEvent::Connected);
+            if health.on_running() {
+                tracing::info!("sliding sync reconnected");
+                resync(client, dir).await;
+            }
+            if health.should_announce_connected() {
+                on_sync(SyncEvent::Connected);
+            }
             LoopAction::Continue
         }
         SyncState::Error(err) => {
             let msg = err.to_string();
-            tracing::warn!("sliding sync error: {msg}");
             if is_auth_error(&err) {
+                tracing::warn!("sliding sync error: {msg}");
                 return LoopAction::Terminal(SyncOutcome::SessionExpired);
             }
+            let delay = health.on_error();
+            tracing::warn!("sliding sync error, restarting in {delay:?}: {msg}");
             on_sync(SyncEvent::ConnectionError(msg));
-            sync_service.start().await;
             LoopAction::Continue
         }
         SyncState::Terminated => {
             tracing::info!("sliding sync terminated");
             LoopAction::Terminal(SyncOutcome::Recoverable("sliding sync terminated".into()))
         }
-        SyncState::Idle | SyncState::Offline => LoopAction::Continue,
+        SyncState::Offline => {
+            health.needs_resync = true;
+            LoopAction::Continue
+        }
+        SyncState::Idle => LoopAction::Continue,
+    }
+}
+
+async fn restart_sync(sync_service: &SyncService, health: &mut SyncHealth) -> LoopAction {
+    health.restart_at = None;
+    tracing::info!("restarting sliding sync");
+    sync_service.start().await;
+    LoopAction::Continue
+}
+
+async fn wait_until(at: Option<Instant>) {
+    match at {
+        Some(at) => sleep_until(at).await,
+        None => future::pending::<()>().await,
     }
 }
 
@@ -758,6 +906,7 @@ async fn run_sync_loop(
     avatars: &mut AvatarFetcher,
 ) -> SyncOutcome {
     let mut dir = Directory::new();
+    let mut health = SyncHealth::started();
     let mut state_stream = sync_service.state();
     let mut room_info_rx = client.room_info_notable_update_receiver();
 
@@ -766,32 +915,22 @@ async fn run_sync_loop(
     on_sync(SyncEvent::Connected);
 
     loop {
-        let flush_at = dir.flush_at;
-        let flush_fut = async move {
-            match flush_at {
-                Some(at) => sleep_until(at).await,
-                None => future::pending::<()>().await,
-            }
-        };
-        let retry_at = avatars.retry_at();
-        let retry_fut = async move {
-            match retry_at {
-                Some(at) => sleep_until(at).await,
-                None => future::pending::<()>().await,
-            }
-        };
+        let flush_fut = wait_until(dir.flush_at);
+        let retry_fut = wait_until(avatars.due_at());
+        let restart_fut = wait_until(health.restart_at);
         let action = tokio::select! {
             biased;
             state = state_stream.next() => match state {
-                Some(state) => handle_sync_state(client, state, sync_service, &mut dir, on_sync).await,
+                Some(state) => handle_sync_state(client, state, &mut dir, &mut health, on_sync).await,
                 None => LoopAction::Terminal(SyncOutcome::Recoverable("sync state stream ended".into())),
             },
+            () = restart_fut => restart_sync(sync_service, &mut health).await,
             () = flush_fut => {
                 dir.flush(client, on_sync, avatars).await;
                 LoopAction::Continue
             }
             () = retry_fut => {
-                avatars.retry_failed(client);
+                avatars.wake(client);
                 LoopAction::Continue
             }
             Some(joined) = avatars.tasks.join_next() => {
