@@ -209,6 +209,7 @@ impl UiProps for AppWindow {
     fn clear_text_inputs(&self) {
         self.set_input_username(SharedString::default());
         self.set_input_password(SharedString::default());
+        self.set_input_message(SharedString::default());
     }
 }
 
