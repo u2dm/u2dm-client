@@ -181,9 +181,6 @@ pub enum SyncOutcome {
     Fatal(String),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct EventId(pub String);
-
 #[derive(Debug, Clone, PartialEq)]
 pub struct ImageMeta {
     pub width: Option<u32>,
@@ -276,7 +273,7 @@ pub struct ReplyInfo {
 #[derive(Debug, Clone, PartialEq)]
 pub struct TimelineMessage {
     pub unique_id: String,
-    pub event_id: Option<EventId>,
+    pub event_id: Option<String>,
     pub sender: String,
     pub sender_display_name: Option<String>,
     pub sender_avatar_url: Option<String>,
@@ -325,7 +322,7 @@ pub enum ThumbnailOutcome {
 #[derive(Debug, Clone)]
 pub struct EnrichmentDelta {
     pub unique_id: String,
-    pub event_id: Option<EventId>,
+    pub event_id: Option<String>,
     pub thumbnail: ThumbnailOutcome,
     pub avatar_mxc: Option<String>,
     pub pronouns: Option<Vec<String>>,

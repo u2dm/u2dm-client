@@ -46,6 +46,10 @@ impl TaskGroup {
 
     async fn cancel_and_drain(&mut self) {
         self.token.cancel();
+        self.drain().await;
+    }
+
+    pub(super) async fn drain(&mut self) {
         if !self.drain_within_grace().await {
             self.abort_stragglers().await;
         }
@@ -103,7 +107,7 @@ impl TaskGroup {
     }
 }
 
-pub(super) fn record_join(group: &str, result: Result<(), JoinError>) {
+fn record_join(group: &str, result: Result<(), JoinError>) {
     let Err(e) = result else { return };
     if e.is_panic() {
         tracing::error!(group, "task panicked: {e}");

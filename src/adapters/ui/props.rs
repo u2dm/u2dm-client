@@ -1,7 +1,7 @@
 use slint::{Image, SharedString};
 use tokio::sync::mpsc;
 
-use super::present::{ToastKind, VerifyStep};
+use super::present::VerifyStep;
 use super::schema::{bool_props, int_props, string_props};
 use crate::commands::{
     LoginActivity, LoginStep, UiCommand, UserMessage, UserMessageKind, VerificationActivity,
@@ -45,7 +45,6 @@ pub trait UiProps {
     fn set_login_phase(&self, step: LoginStep);
     fn set_login_activity(&self, activity: LoginActivity);
     fn set_login_method_kind(&self, method: LoginMethod);
-    fn set_toast_kind(&self, kind: ToastKind);
     fn set_toast_message(&self, kind: UserMessageKind);
     fn set_verification_error(&self, kind: UserMessageKind);
     fn set_connection_state(&self, status: &ConnectionStatus);

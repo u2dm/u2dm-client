@@ -15,8 +15,7 @@ use matrix_sdk_ui::timeline::{
 use super::TimelineContext;
 use crate::adapters::matrix::preview;
 use crate::domain::models::{
-    EventId, FileMeta, ImageMeta, MessageBody, MessagePreviewKind, ReplyInfo, ServiceEvent,
-    TimelineMessage,
+    FileMeta, ImageMeta, MessageBody, MessagePreviewKind, ReplyInfo, ServiceEvent, TimelineMessage,
 };
 
 fn extract_sender_profile(event: &EventTimelineItem) -> (Option<String>, Option<String>) {
@@ -29,8 +28,8 @@ fn extract_sender_profile(event: &EventTimelineItem) -> (Option<String>, Option<
     }
 }
 
-fn event_id_from_str(event_id_str: String) -> Option<EventId> {
-    (!event_id_str.is_empty()).then_some(EventId(event_id_str))
+fn event_id_from_str(event_id_str: String) -> Option<String> {
+    (!event_id_str.is_empty()).then_some(event_id_str)
 }
 
 fn base_message(

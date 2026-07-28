@@ -25,21 +25,21 @@ pub(crate) use string_props;
 
 macro_rules! simple_callbacks {
     ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
-        on_check_server "check-server" Actions "Actions" check_server pass CheckServer;
-        on_login_oauth "login-oauth" Actions "Actions" login_oauth plain LoginOAuth;
-        on_cancel_oauth "cancel-oauth" Actions "Actions" cancel_oauth plain CancelOAuth;
-        on_back_to_homeserver "back-to-homeserver" Actions "Actions" back_to_homeserver plain BackToHomeserver;
-        on_logout "logout" Actions "Actions" logout plain Logout;
-        on_dismiss_toast "dismiss-toast" Actions "Actions" dismiss_toast plain DismissToast;
-        on_accept_verification "accept-verification" Actions "Actions" accept_verification plain AcceptVerification;
-        on_confirm_verification "confirm-verification" Actions "Actions" confirm_verification plain ConfirmVerification;
-        on_reject_verification "reject-verification" Actions "Actions" reject_verification plain RejectVerification;
-        on_dismiss_verification "dismiss-verification" Actions "Actions" dismiss_verification plain DismissVerification;
-        on_retry_timeline "retry-timeline" Actions "Actions" retry_timeline plain RetryTimeline;
-        on_select_room "select-room" Actions "Actions" select_room room SelectRoom;
-        on_select_space "select-space" Actions "Actions" select_space opt_room SelectSpace;
-        on_select_subspace "select-subspace" Actions "Actions" select_subspace opt_room SelectSubspace;
-        on_open_media "open-media" Actions "Actions" open_media manual_string OpenMedia;
+        on_check_server "check-server" check_server pass CheckServer;
+        on_login_oauth "login-oauth" login_oauth plain LoginOAuth;
+        on_cancel_oauth "cancel-oauth" cancel_oauth plain CancelOAuth;
+        on_back_to_homeserver "back-to-homeserver" back_to_homeserver plain BackToHomeserver;
+        on_logout "logout" logout plain Logout;
+        on_dismiss_toast "dismiss-toast" dismiss_toast plain DismissToast;
+        on_accept_verification "accept-verification" accept_verification plain AcceptVerification;
+        on_confirm_verification "confirm-verification" confirm_verification plain ConfirmVerification;
+        on_reject_verification "reject-verification" reject_verification plain RejectVerification;
+        on_dismiss_verification "dismiss-verification" dismiss_verification plain DismissVerification;
+        on_retry_timeline "retry-timeline" retry_timeline plain RetryTimeline;
+        on_select_room "select-room" select_room room SelectRoom;
+        on_select_space "select-space" select_space opt_room SelectSpace;
+        on_select_subspace "select-subspace" select_subspace opt_room SelectSubspace;
+        on_open_media "open-media" open_media manual_string OpenMedia;
     } };
 }
 pub(crate) use simple_callbacks;
@@ -151,15 +151,6 @@ macro_rules! verification_activities {
     } };
 }
 pub(crate) use verification_activities;
-
-macro_rules! toast_kinds {
-    ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
-        None      None      "none";
-        Error     Error     "error";
-        FileSaved FileSaved "file-saved";
-    } };
-}
-pub(crate) use toast_kinds;
 
 macro_rules! user_message_kinds {
     ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*

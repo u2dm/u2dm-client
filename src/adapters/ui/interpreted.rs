@@ -30,13 +30,13 @@ use super::dto::{
     MediaState, ThumbUpdate, enrich_to_update, message_to_dto, room_to_dto, space_to_dto,
 };
 use super::multiplex::spawn_event_multiplexer;
-use super::present::{MessageKind, ServiceKind, ToastKind, VerifyStep};
+use super::present::{MessageKind, ServiceKind, VerifyStep};
 use super::props::{BoolProp, IntProp, StringProp, UiProps};
 use super::reconcile::reorder_rows;
 use super::schema::{
     connection_states, login_activities, login_methods, login_phases, media_states, message_fields,
     message_kinds, preview_kinds, room_fields, service_kinds, simple_callbacks, space_fields,
-    timeline_states, toast_kinds, user_message_kinds, verification_activities, verification_phases,
+    timeline_states, user_message_kinds, verification_activities, verification_phases,
 };
 use super::{emoji, router};
 use crate::commands::{
@@ -176,7 +176,6 @@ connection_states!(impl_slint_enum ConnectionStatus "ConnectionState";);
 timeline_states!(impl_slint_enum TimelineStatus "TimelineState";);
 verification_phases!(impl_slint_enum VerifyStep "VerificationPhase";);
 verification_activities!(impl_slint_enum VerificationActivity "VerificationActivity";);
-toast_kinds!(impl_slint_enum ToastKind "ToastKind";);
 user_message_kinds!(impl_slint_enum UserMessageKind "UserMessageKind";);
 media_states!(impl_slint_enum MediaState "MediaState";);
 message_kinds!(impl_slint_enum MessageKind "MessageKind";);
@@ -247,34 +246,31 @@ fn bind_action(
 }
 
 macro_rules! bind_interpreted_callbacks {
-    ($inst:expr, $tx:ident; $($on:ident $lit:literal $g:ident $gname:literal $fn:ident $kind:ident $cmd:ident;)*) => {
-        $( bind_interpreted_callbacks!(@one $inst, $tx, $gname, $lit, $fn, $kind)?; )*
+    ($inst:expr, $tx:ident; $($on:ident $lit:literal $fn:ident $kind:ident $cmd:ident;)*) => {
+        $( bind_interpreted_callbacks!(@one $inst, $tx, $lit, $fn, $kind)?; )*
     };
-    (@one $inst:expr, $tx:ident, $gname:literal, $lit:literal, $fn:ident, plain) => {
-        bind_interpreted_callbacks!(@unit $inst, $tx, $gname, $lit, $fn)
+    (@one $inst:expr, $tx:ident, $lit:literal, $fn:ident, plain) => {
+        bind_interpreted_callbacks!(@unit $inst, $tx, $lit, $fn)
     };
-    (@one $inst:expr, $tx:ident, $gname:literal, $lit:literal, $fn:ident, manual_unit) => {
-        bind_interpreted_callbacks!(@unit $inst, $tx, $gname, $lit, $fn)
+    (@one $inst:expr, $tx:ident, $lit:literal, $fn:ident, pass) => {
+        bind_interpreted_callbacks!(@string $inst, $tx, $lit, $fn)
     };
-    (@one $inst:expr, $tx:ident, $gname:literal, $lit:literal, $fn:ident, pass) => {
-        bind_interpreted_callbacks!(@string $inst, $tx, $gname, $lit, $fn)
+    (@one $inst:expr, $tx:ident, $lit:literal, $fn:ident, room) => {
+        bind_interpreted_callbacks!(@string $inst, $tx, $lit, $fn)
     };
-    (@one $inst:expr, $tx:ident, $gname:literal, $lit:literal, $fn:ident, room) => {
-        bind_interpreted_callbacks!(@string $inst, $tx, $gname, $lit, $fn)
+    (@one $inst:expr, $tx:ident, $lit:literal, $fn:ident, opt_room) => {
+        bind_interpreted_callbacks!(@string $inst, $tx, $lit, $fn)
     };
-    (@one $inst:expr, $tx:ident, $gname:literal, $lit:literal, $fn:ident, opt_room) => {
-        bind_interpreted_callbacks!(@string $inst, $tx, $gname, $lit, $fn)
+    (@one $inst:expr, $tx:ident, $lit:literal, $fn:ident, manual_string) => {
+        bind_interpreted_callbacks!(@string $inst, $tx, $lit, $fn)
     };
-    (@one $inst:expr, $tx:ident, $gname:literal, $lit:literal, $fn:ident, manual_string) => {
-        bind_interpreted_callbacks!(@string $inst, $tx, $gname, $lit, $fn)
-    };
-    (@unit $inst:expr, $tx:ident, $gname:literal, $lit:literal, $fn:ident) => {{
+    (@unit $inst:expr, $tx:ident, $lit:literal, $fn:ident) => {{
         let tx = $tx.clone();
-        bind($inst, $gname, $lit, move |_args| { router::$fn(&tx); Value::Void })
+        bind_action($inst, $lit, move |_args| { router::$fn(&tx); Value::Void })
     }};
-    (@string $inst:expr, $tx:ident, $gname:literal, $lit:literal, $fn:ident) => {{
+    (@string $inst:expr, $tx:ident, $lit:literal, $fn:ident) => {{
         let tx = $tx.clone();
-        bind($inst, $gname, $lit, move |args| {
+        bind_action($inst, $lit, move |args| {
             router::$fn(&tx, string_arg(args, 0));
             Value::Void
         })
@@ -309,10 +305,6 @@ impl UiProps for ComponentInstance {
 
     fn set_login_method_kind(&self, method: LoginMethod) {
         set_global(self, "LoginView", "method", enum_value(&method));
-    }
-
-    fn set_toast_kind(&self, kind: ToastKind) {
-        set_global(self, "RoomView", "toast-kind", enum_value(&kind));
     }
 
     fn set_toast_message(&self, kind: UserMessageKind) {

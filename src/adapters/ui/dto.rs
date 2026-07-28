@@ -107,7 +107,7 @@ pub fn message_to_dto(m: &TimelineMessage, media: &dyn MediaCache) -> MessageDto
         message_type: message_kind(&m.body),
         preview_kind: m.body.preview_kind(),
         unsupported_kind: SharedString::from(unsupported_kind(&m.body)),
-        event_id: SharedString::from(m.event_id.as_ref().map_or("", |e| e.0.as_str())),
+        event_id: SharedString::from(m.event_id.as_deref().unwrap_or_default()),
         sender_initial: SharedString::from(avatar_initials(sender_label)),
         color_index: avatar_color_index(&m.sender),
         is_own: m.is_own,
@@ -133,14 +133,14 @@ pub fn message_to_dto(m: &TimelineMessage, media: &dyn MediaCache) -> MessageDto
     if let MessageBody::Image { meta, .. } = &m.body {
         dto.image_width = meta.width.unwrap_or(0).cast_signed();
         dto.image_height = meta.height.unwrap_or(0).cast_signed();
-        if let Some(event_id) = m.event_id.as_ref() {
-            if let Some(path) = media.thumbnail_path(&event_id.0) {
+        if let Some(event_id) = m.event_id.as_deref() {
+            if let Some(path) = media.thumbnail_path(event_id) {
                 if let Some(img) = peek_thumbnail(&path) {
                     dto.thumbnail = Some(img);
                     dto.media_state = MediaState::Ready;
                 }
                 thumbnail_path = Some(path);
-            } else if media.thumbnail_failed(&event_id.0) {
+            } else if media.thumbnail_failed(event_id) {
                 dto.media_state = MediaState::Failed;
             }
         }
@@ -165,8 +165,8 @@ pub fn enrich_to_update(delta: &EnrichmentDelta, media: &dyn MediaCache) -> Enri
     let thumbnail = match delta.thumbnail {
         ThumbnailOutcome::Ready => delta
             .event_id
-            .as_ref()
-            .and_then(|event_id| media.thumbnail_path(&event_id.0))
+            .as_deref()
+            .and_then(|event_id| media.thumbnail_path(event_id))
             .and_then(|thumb_path| load_thumbnail(&thumb_path, &delta.unique_id))
             .map_or(ThumbUpdate::Unchanged, ThumbUpdate::Ready),
         ThumbnailOutcome::Failed => ThumbUpdate::Failed,

@@ -5,7 +5,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use super::dto::{DemoData, RoomDto, SpaceDto};
 use super::media;
 use crate::domain::models::{
-    EventId, MessageBody, ReplyInfo, Room, RoomId, Session, Space, TimelineMessage,
+    MessageBody, ReplyInfo, Room, RoomId, Session, Space, TimelineMessage,
 };
 
 const UNKNOWN_SENDER: &str = "@member:matrix.org";
@@ -70,7 +70,7 @@ pub fn own_message(sequence: u64, body: &str, reply: Option<ReplyInfo>) -> Timel
     let id = format!("demo-sent-{sequence}");
     TimelineMessage {
         unique_id: id.clone(),
-        event_id: Some(EventId(id)),
+        event_id: Some(id),
         sender_pronouns: Vec::new(),
         sender: own_user().to_owned(),
         sender_display_name: Some("You".to_owned()),
@@ -129,7 +129,7 @@ fn synthesized_message(dto: &RoomDto, room: &Room) -> TimelineMessage {
 
     TimelineMessage {
         unique_id: id.clone(),
-        event_id: Some(EventId(id)),
+        event_id: Some(id),
         sender_pronouns: pronouns(&sender),
         sender_avatar_url: Some(sender.clone()),
         sender,

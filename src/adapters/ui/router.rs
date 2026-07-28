@@ -14,7 +14,7 @@ fn optional_room(id: String) -> Option<RoomId> {
 }
 
 macro_rules! gen_router_fns {
-    ($($on:ident $lit:literal $g:ident $gname:literal $fn:ident $kind:ident $cmd:ident;)*) => {
+    ($($on:ident $lit:literal $fn:ident $kind:ident $cmd:ident;)*) => {
         $( gen_router_fns!(@one $fn $kind $cmd); )*
     };
     (@one $fn:ident plain $cmd:ident) => {
@@ -37,7 +37,6 @@ macro_rules! gen_router_fns {
             send_command(tx, UiCommand::$cmd(optional_room(arg)));
         }
     };
-    (@one $fn:ident manual_unit $cmd:ident) => {};
     (@one $fn:ident manual_string $cmd:ident) => {};
 }
 

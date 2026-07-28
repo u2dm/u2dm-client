@@ -5,12 +5,12 @@ use slint::SharedString;
 
 use super::backend::{UiBackend, UiEventContext};
 use super::decode::{AvatarSlot, clear_session_media, load_avatar_async};
-use super::present::{VerifyStep, toast_kind, user_initial, verification_cancellation};
+use super::present::{VerifyStep, user_initial, verification_cancellation};
 use super::props::{BoolProp, IntProp, StringProp, UiProps};
 use super::reconcile::{apply_rooms, apply_spaces, apply_timeline_patch};
 use crate::commands::{
-    AppViewState, Effect, LifecycleView, PaginationView, Toast, UserMessage, UserMessageKind,
-    VerificationActivity, VerificationUpdate,
+    AppViewState, DirectoryView, Effect, LifecycleView, PaginationView, Toast, UserMessage,
+    UserMessageKind, VerificationActivity, VerificationUpdate,
 };
 use crate::domain::models::{
     Room, RoomId, TimelinePatch, TimelineStatus, VerificationEvent as DomainVerificationEvent,
@@ -116,55 +116,67 @@ fn apply_snapshot<B: UiBackend>(
 ) {
     let previous = LATEST_SNAPSHOT.with(|cell| cell.borrow().clone());
     let last = previous.as_deref();
-    apply_lifecycle(w, last.map(|l| &l.lifecycle), &view.lifecycle);
-    if last.is_none_or(|l| l.connection != view.connection) {
-        w.set_connection_state(&view.connection);
+    let AppViewState {
+        lifecycle,
+        connection,
+        directory,
+        pagination,
+        toast,
+    } = view.as_ref();
+    let DirectoryView {
+        rooms,
+        spaces,
+        subspaces,
+        space_id,
+        subspace_id,
+    } = directory;
+
+    apply_lifecycle(w, last.map(|l| &l.lifecycle), lifecycle);
+    if last.is_none_or(|l| l.connection != *connection) {
+        w.set_connection_state(connection);
     }
-    if last.is_none_or(|l| !Arc::ptr_eq(&l.directory.rooms, &view.directory.rooms)) {
+    if last.is_none_or(|l| !Arc::ptr_eq(&l.directory.rooms, rooms)) {
         apply_rooms(
             ctx.rooms,
-            view.directory.rooms.as_ref(),
+            rooms.as_ref(),
             last.map_or(&[], |l| l.directory.rooms.as_ref()),
             ctx.media,
             &|room| B::convert_room(room, ctx.media),
             &|entry| B::room_id(entry),
         );
     }
-    if last.is_none_or(|l| !Arc::ptr_eq(&l.directory.spaces, &view.directory.spaces)) {
+    if last.is_none_or(|l| !Arc::ptr_eq(&l.directory.spaces, spaces)) {
         apply_spaces(
             ctx.spaces,
-            view.directory.spaces.as_ref(),
+            spaces.as_ref(),
             ctx.media,
             &|space| B::convert_space(space, ctx.media),
             &|entry| B::space_id(entry),
         );
     }
-    if last.is_none_or(|l| !Arc::ptr_eq(&l.directory.subspaces, &view.directory.subspaces)) {
+    if last.is_none_or(|l| !Arc::ptr_eq(&l.directory.subspaces, subspaces)) {
         apply_spaces(
             ctx.subspaces,
-            view.directory.subspaces.as_ref(),
+            subspaces.as_ref(),
             ctx.media,
             &|space| B::convert_space(space, ctx.media),
             &|entry| B::space_id(entry),
         );
     }
-    if last.is_none_or(|l| l.directory.space_id != view.directory.space_id) {
-        w.set_string(
-            StringProp::SelectedSpaceId,
-            SharedString::from(&view.directory.space_id),
-        );
+    if last.is_none_or(|l| l.directory.space_id != *space_id) {
+        w.set_string(StringProp::SelectedSpaceId, SharedString::from(space_id));
     }
-    if last.is_none_or(|l| l.directory.subspace_id != view.directory.subspace_id) {
+    if last.is_none_or(|l| l.directory.subspace_id != *subspace_id) {
         w.set_string(
             StringProp::SelectedSubspaceId,
-            SharedString::from(&view.directory.subspace_id),
+            SharedString::from(subspace_id),
         );
     }
-    if last.is_none_or(|l| l.pagination != view.pagination) {
-        sync_timeline_chrome(w, &view.pagination);
+    if last.is_none_or(|l| l.pagination != *pagination) {
+        sync_timeline_chrome(w, pagination);
     }
-    if last.is_none_or(|l| l.toast != view.toast) {
-        apply_toast(w, &view.toast);
+    if last.is_none_or(|l| l.toast != *toast) {
+        apply_toast(w, toast);
     }
     LATEST_SNAPSHOT.with(|cell| *cell.borrow_mut() = Some(Arc::clone(view)));
 }
@@ -189,34 +201,43 @@ fn sync_timeline_chrome(w: &impl UiProps, pagination: &PaginationView) {
 }
 
 fn apply_lifecycle(w: &impl UiProps, last: Option<&LifecycleView>, next: &LifecycleView) {
-    if last.is_none_or(|l| l.step != next.step) {
-        w.set_login_phase(next.step);
+    let LifecycleView {
+        step,
+        activity,
+        messages,
+        method,
+        resolved_homeserver,
+        user_id,
+        avatar_path,
+    } = next;
+
+    if last.is_none_or(|l| l.step != *step) {
+        w.set_login_phase(*step);
     }
-    if last.is_none_or(|l| l.activity != next.activity) {
-        w.set_login_activity(next.activity);
+    if last.is_none_or(|l| l.activity != *activity) {
+        w.set_login_activity(*activity);
     }
-    if last.is_none_or(|l| l.messages != next.messages) {
-        w.apply_login_messages(&next.messages);
+    if last.is_none_or(|l| l.messages != *messages) {
+        w.apply_login_messages(messages);
     }
-    if last.is_none_or(|l| l.method != next.method) {
-        w.set_login_method_kind(next.method);
+    if last.is_none_or(|l| l.method != *method) {
+        w.set_login_method_kind(*method);
     }
-    if last.is_none_or(|l| l.resolved_homeserver != next.resolved_homeserver) {
+    if last.is_none_or(|l| l.resolved_homeserver != *resolved_homeserver) {
         w.set_string(
             StringProp::ResolvedHomeserver,
-            SharedString::from(&next.resolved_homeserver),
+            SharedString::from(resolved_homeserver),
         );
     }
-    if last.is_none_or(|l| l.user_id != next.user_id) {
-        w.set_string(StringProp::UserId, SharedString::from(&next.user_id));
+    if last.is_none_or(|l| l.user_id != *user_id) {
+        w.set_string(StringProp::UserId, SharedString::from(user_id));
         w.set_string(
             StringProp::UserInitial,
-            SharedString::from(user_initial(&next.user_id)),
+            SharedString::from(user_initial(user_id)),
         );
     }
-    if last.is_none_or(|l| l.avatar_path != next.avatar_path) {
-        let avatar = next
-            .avatar_path
+    if last.is_none_or(|l| l.avatar_path != *avatar_path) {
+        let avatar = avatar_path
             .as_deref()
             .and_then(|p| load_avatar_async(p, AvatarSlot::User));
         w.apply_user_avatar(avatar);
@@ -229,7 +250,6 @@ fn apply_toast(w: &impl UiProps, toast: &Toast) {
         Toast::Error(message) => (message.kind, message.detail.as_str()),
         Toast::FileSaved(path) => (UserMessageKind::FileSaved, path.as_str()),
     };
-    w.set_toast_kind(toast_kind(toast));
     w.set_toast_message(kind);
     w.set_string(StringProp::ToastDetail, SharedString::from(detail));
 }

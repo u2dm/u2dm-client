@@ -230,10 +230,9 @@ impl MediaService {
         let MessageBody::Image { meta, .. } = &msg.body else {
             return ThumbnailOutcome::Unchanged;
         };
-        let Some(event_id) = msg.event_id.as_ref() else {
+        let Some(event_id) = msg.event_id.as_deref() else {
             return ThumbnailOutcome::Unchanged;
         };
-        let event_id = &event_id.0;
         let cache_key = thumb_key(event_id);
 
         if self.cache_get(&cache_key).is_some() {
@@ -370,8 +369,8 @@ impl MediaService {
 
     pub(crate) fn needs_media_download(&self, msg: &TimelineMessage) -> bool {
         let needs_thumbnail = matches!(&msg.body, MessageBody::Image { .. })
-            && msg.event_id.as_ref().is_some_and(|event_id| {
-                let key = thumb_key(&event_id.0);
+            && msg.event_id.as_deref().is_some_and(|event_id| {
+                let key = thumb_key(event_id);
                 self.cache_get(&key).is_none() && !self.is_failed(&key)
             });
         let needs_avatar = msg.sender_avatar_url.as_deref().is_some_and(|mxc| {

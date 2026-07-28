@@ -4,7 +4,7 @@ import { Sidebar } from "components/sidebar.slint";
 import { Drawer } from "components/drawer.slint";
 import { TimelineView } from "components/timeline/timeline-view.slint";
 import { ClickArea, FocusRing } from "../../components/a11y.slint";
-import { ToastKind } from "../../enums.slint";
+import { UserMessageKind } from "../../enums.slint";
 import { UserMessages } from "../../messages.slint";
 import { DirectoryView, RoomView } from "../../views.slint";
 import { Actions } from "../../actions.slint";
@@ -36,8 +36,8 @@ export component ChatScreen inherits Rectangle {
     property <bool> has-subspaces: DirectoryView.subspaces.length > 0;
     property <length> total-sidebar-width: root.sidebar-width
         + (root.has-subspaces ? root.subrail-width : 0);
-    property <bool> has-toast: RoomView.toast-kind != ToastKind.none;
-    property <bool> is-file-saved-toast: RoomView.toast-kind == ToastKind.file-saved;
+    property <bool> has-toast: RoomView.toast-message != UserMessageKind.none;
+    property <bool> is-file-saved-toast: RoomView.toast-message == UserMessageKind.file-saved;
 
     Sidebar {
         x: 0;

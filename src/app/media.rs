@@ -1,25 +1,17 @@
 use std::future::Future;
 use std::sync::Arc;
-use std::time::Duration;
-
-use tokio::task::JoinSet;
-use tokio::time;
-use tokio_util::sync::CancellationToken;
 
 use super::show_toast;
-use super::task_group::record_join;
+use super::task_group::TaskGroup;
 use crate::commands::{Toast, UserMessage, UserMessageKind};
 use crate::ports::matrix::MediaPort;
 use crate::ports::media::MediaFilePort;
 use crate::ports::output::AppOutputPort;
 
-const GROUP: &str = "media";
-
 pub(super) struct MediaActions {
     media_files: Arc<dyn MediaFilePort>,
     output: Arc<dyn AppOutputPort>,
-    tasks: JoinSet<()>,
-    cancel: CancellationToken,
+    tasks: TaskGroup,
 }
 
 impl MediaActions {
@@ -27,8 +19,7 @@ impl MediaActions {
         Self {
             media_files,
             output,
-            tasks: JoinSet::new(),
-            cancel: CancellationToken::new(),
+            tasks: TaskGroup::new("media"),
         }
     }
 
@@ -44,11 +35,9 @@ impl MediaActions {
             + 'static,
         Fut: Future<Output = ()> + Send,
     {
-        self.reap_finished();
-
         let media_files = Arc::clone(&self.media_files);
         let output = Arc::clone(&self.output);
-        let cancel = self.cancel.clone();
+        let cancel = self.tasks.token();
         self.tasks.spawn(async move {
             let work = async move {
                 match media.download_media(&event_id, false).await {
@@ -113,9 +102,7 @@ impl MediaActions {
     }
 
     pub(super) async fn cancel_and_drain(&mut self) {
-        self.cancel.cancel();
-        self.drain().await;
-        self.cancel = CancellationToken::new();
+        self.tasks.restart().await;
     }
 
     pub(super) async fn clear_session(&self) {
@@ -123,34 +110,6 @@ impl MediaActions {
     }
 
     pub(super) async fn drain(&mut self) {
-        if self.tasks.is_empty() {
-            return;
-        }
-
-        let count = self.tasks.len();
-        tracing::debug!("waiting for {count} in-flight task(s)");
-        let result = time::timeout(Duration::from_secs(3), async {
-            while let Some(joined) = self.tasks.join_next().await {
-                record_join(GROUP, joined);
-            }
-        })
-        .await;
-        if result.is_err() {
-            tracing::warn!(
-                group = GROUP,
-                stragglers = self.tasks.len(),
-                "timed out waiting for in-flight tasks, aborting"
-            );
-            self.tasks.abort_all();
-            while let Some(joined) = self.tasks.join_next().await {
-                record_join(GROUP, joined);
-            }
-        }
-    }
-
-    fn reap_finished(&mut self) {
-        while let Some(joined) = self.tasks.try_join_next() {
-            record_join(GROUP, joined);
-        }
+        self.tasks.drain().await;
     }
 }

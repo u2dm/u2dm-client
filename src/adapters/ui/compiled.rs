@@ -13,13 +13,13 @@ use super::dto::{
     MediaState, ThumbUpdate, enrich_to_update, message_to_dto, room_to_dto, space_to_dto,
 };
 use super::multiplex::spawn_event_multiplexer;
-use super::present::{MessageKind, ServiceKind, ToastKind, VerifyStep};
+use super::present::{MessageKind, ServiceKind, VerifyStep};
 use super::props::{BoolProp, IntProp, StringProp, UiProps};
 use super::reconcile::reorder_rows;
 use super::schema::{
     bool_props, connection_states, int_props, login_activities, login_methods, login_phases,
     media_states, message_kinds, preview_kinds, service_kinds, simple_callbacks, string_props,
-    timeline_states, toast_kinds, user_message_kinds, verification_activities, verification_phases,
+    timeline_states, user_message_kinds, verification_activities, verification_phases,
 };
 use super::{emoji, router};
 use crate::commands::{
@@ -42,9 +42,9 @@ use generated::{
     EmojiStore, LoginActivity as UiLoginActivity, LoginMethodKind as UiLoginMethodKind, LoginPhase,
     LoginView, MediaState as UiMediaState, MessageEntry, MessageKind as UiMessageKind,
     PreviewKind as UiPreviewKind, RoomEntry, RoomView, ServiceKind as UiServiceKind, SessionView,
-    SpaceEntry, TimelineState, ToastKind as UiToastKind, UserMessage as UiUserMessage,
-    UserMessageKind as UiUserMessageKind, VerificationActivity as UiVerificationActivity,
-    VerificationEmoji, VerificationPhase, VerificationView,
+    SpaceEntry, TimelineState, UserMessage as UiUserMessage, UserMessageKind as UiUserMessageKind,
+    VerificationActivity as UiVerificationActivity, VerificationEmoji, VerificationPhase,
+    VerificationView,
 };
 
 fn actions(window: &AppWindow) -> Actions<'_> {
@@ -67,34 +67,31 @@ macro_rules! impl_prop_setter {
 }
 
 macro_rules! bind_compiled_callbacks {
-    ($win:ident $tx:ident; $($on:ident $lit:literal $g:ident $gname:literal $fn:ident $kind:ident $cmd:ident;)*) => {
-        $( bind_compiled_callbacks!(@one $win $tx $g $on $fn $kind); )*
+    ($win:ident $tx:ident; $($on:ident $lit:literal $fn:ident $kind:ident $cmd:ident;)*) => {
+        $( bind_compiled_callbacks!(@one $win $tx $on $fn $kind); )*
     };
-    (@one $win:ident $tx:ident $g:ident $on:ident $fn:ident plain) => {
-        bind_compiled_callbacks!(@unit $win $tx $g $on $fn)
+    (@one $win:ident $tx:ident $on:ident $fn:ident plain) => {
+        bind_compiled_callbacks!(@unit $win $tx $on $fn)
     };
-    (@one $win:ident $tx:ident $g:ident $on:ident $fn:ident manual_unit) => {
-        bind_compiled_callbacks!(@unit $win $tx $g $on $fn)
+    (@one $win:ident $tx:ident $on:ident $fn:ident pass) => {
+        bind_compiled_callbacks!(@string $win $tx $on $fn)
     };
-    (@one $win:ident $tx:ident $g:ident $on:ident $fn:ident pass) => {
-        bind_compiled_callbacks!(@string $win $tx $g $on $fn)
+    (@one $win:ident $tx:ident $on:ident $fn:ident room) => {
+        bind_compiled_callbacks!(@string $win $tx $on $fn)
     };
-    (@one $win:ident $tx:ident $g:ident $on:ident $fn:ident room) => {
-        bind_compiled_callbacks!(@string $win $tx $g $on $fn)
+    (@one $win:ident $tx:ident $on:ident $fn:ident opt_room) => {
+        bind_compiled_callbacks!(@string $win $tx $on $fn)
     };
-    (@one $win:ident $tx:ident $g:ident $on:ident $fn:ident opt_room) => {
-        bind_compiled_callbacks!(@string $win $tx $g $on $fn)
+    (@one $win:ident $tx:ident $on:ident $fn:ident manual_string) => {
+        bind_compiled_callbacks!(@string $win $tx $on $fn)
     };
-    (@one $win:ident $tx:ident $g:ident $on:ident $fn:ident manual_string) => {
-        bind_compiled_callbacks!(@string $win $tx $g $on $fn)
-    };
-    (@unit $win:ident $tx:ident $g:ident $on:ident $fn:ident) => {{
+    (@unit $win:ident $tx:ident $on:ident $fn:ident) => {{
         let tx = $tx.clone();
-        $win.global::<$g>().$on(move || router::$fn(&tx));
+        actions($win).$on(move || router::$fn(&tx));
     }};
-    (@string $win:ident $tx:ident $g:ident $on:ident $fn:ident) => {{
+    (@string $win:ident $tx:ident $on:ident $fn:ident) => {{
         let tx = $tx.clone();
-        $win.global::<$g>().$on(move |arg| router::$fn(&tx, arg.to_string()));
+        actions($win).$on(move |arg| router::$fn(&tx, arg.to_string()));
     }};
 }
 
@@ -115,11 +112,6 @@ impl UiProps for AppWindow {
     fn set_login_method_kind(&self, method: LoginMethod) {
         self.global::<LoginView>()
             .set_method(to_login_method(method));
-    }
-
-    fn set_toast_kind(&self, kind: ToastKind) {
-        self.global::<RoomView>()
-            .set_toast_kind(to_toast_kind(kind));
     }
 
     fn set_toast_message(&self, kind: UserMessageKind) {
@@ -241,7 +233,6 @@ verification_phases!(to_slint_enum val to_verification_phase VerifyStep Verifica
 verification_activities!(
     to_slint_enum val to_verification_activity VerificationActivity UiVerificationActivity;
 );
-toast_kinds!(to_slint_enum val to_toast_kind ToastKind UiToastKind;);
 user_message_kinds!(to_slint_enum val to_user_message_kind UserMessageKind UiUserMessageKind;);
 media_states!(to_slint_enum val to_media_state MediaState UiMediaState;);
 message_kinds!(to_slint_enum val to_message_kind MessageKind UiMessageKind;);

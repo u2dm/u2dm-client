@@ -6,7 +6,6 @@ import {
     LoginActivity,
     ConnectionState,
     TimelineState,
-    ToastKind,
     VerificationPhase,
     VerificationActivity,
     LoginMethodKind,
@@ -49,7 +48,6 @@ export global RoomView {
     in property <int> prepend-token;
     in property <bool> backwards-loading;
     in property <bool> forwards-loading;
-    in property <ToastKind> toast-kind: ToastKind.none;
     in property <UserMessageKind> toast-message: UserMessageKind.none;
     in property <string> toast-detail;
 }

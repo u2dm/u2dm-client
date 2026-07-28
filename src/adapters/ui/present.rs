@@ -5,10 +5,8 @@ use std::sync::OnceLock;
 use chrono::{Locale, Timelike};
 use pure_rust_locales::locale_match;
 
-use super::schema::{
-    define_ui_enum, message_kinds, service_kinds, toast_kinds, verification_phases,
-};
-use crate::commands::{Toast, UserMessage, UserMessageKind};
+use super::schema::{define_ui_enum, message_kinds, service_kinds, verification_phases};
+use crate::commands::{UserMessage, UserMessageKind};
 use crate::domain::models::{MessageBody, ServiceEvent, TimelineMessage, VerificationCancellation};
 use crate::locale::{self, LocaleRequest};
 
@@ -241,16 +239,6 @@ pub fn unsupported_kind(body: &MessageBody) -> &str {
     match body {
         MessageBody::Unsupported { kind, .. } => kind,
         _ => "",
-    }
-}
-
-toast_kinds!(define_ui_enum ToastKind;);
-
-pub fn toast_kind(toast: &Toast) -> ToastKind {
-    match toast {
-        Toast::None => ToastKind::None,
-        Toast::Error(_) => ToastKind::Error,
-        Toast::FileSaved(_) => ToastKind::FileSaved,
     }
 }
 
