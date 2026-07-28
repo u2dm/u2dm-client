@@ -379,7 +379,7 @@ fn forget_playbacks(gone: &[String]) {
 
 pub fn advance_animations<T: Clone + 'static>(
     timeline_model: &VecModel<T>,
-    entry_id: &dyn Fn(&T) -> String,
+    entry_id: &dyn Fn(&T) -> &str,
     set_thumbnail: &dyn Fn(&mut T, Image),
 ) {
     let due = due_frames(Instant::now());

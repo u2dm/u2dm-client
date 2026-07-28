@@ -1,9 +1,11 @@
+use std::collections::HashSet;
+
 use slint::{Model, VecModel};
 
-pub fn patch_rows<T: Clone + 'static>(
+pub fn patch_first_row<T: Clone + 'static>(
     model: &VecModel<T>,
     matches: impl Fn(&T) -> bool,
-    apply: impl Fn(&mut T),
+    apply: impl FnOnce(&mut T),
 ) {
     for row in 0..model.row_count() {
         let Some(entry) = model.row_data(row) else {
@@ -13,13 +15,37 @@ pub fn patch_rows<T: Clone + 'static>(
             let mut updated = entry;
             apply(&mut updated);
             model.set_row_data(row, updated);
+            return;
+        }
+    }
+}
+
+pub fn patch_rows_by_id<T: Clone + 'static>(
+    model: &VecModel<T>,
+    ids: &HashSet<&str>,
+    row_id: &dyn Fn(&T) -> &str,
+    apply: impl Fn(&mut T),
+) {
+    let mut remaining = ids.len();
+    for row in 0..model.row_count() {
+        if remaining == 0 {
+            return;
+        }
+        let Some(entry) = model.row_data(row) else {
+            continue;
+        };
+        if ids.contains(row_id(&entry)) {
+            remaining -= 1;
+            let mut updated = entry;
+            apply(&mut updated);
+            model.set_row_data(row, updated);
         }
     }
 }
 
 pub fn locate_row<T: Clone + 'static>(
     model: &VecModel<T>,
-    entry_id: &dyn Fn(&T) -> String,
+    entry_id: &dyn Fn(&T) -> &str,
     unique_id: &str,
     hint: usize,
 ) -> Option<usize> {

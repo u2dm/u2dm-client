@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::sync::Arc;
 
 use slint::{ComponentHandle, Image, VecModel};
@@ -9,7 +10,7 @@ use super::decode::{
 };
 use super::props::{IntProp, StringProp, UiProps};
 use super::reduce::dispatch_effect;
-use super::rows::patch_rows;
+use super::rows::{patch_first_row, patch_rows_by_id};
 use crate::commands::Effect;
 use crate::domain::models::{EnrichmentDelta, Room, RoomId, Space, TimelineMessage};
 use crate::ports::media::MediaCache;
@@ -25,7 +26,7 @@ pub trait UiBackend: Sized + 'static {
     fn convert_room(room: &Room, media: &dyn MediaCache) -> Self::Room;
     fn convert_space(space: &Space, media: &dyn MediaCache) -> Self::Space;
 
-    fn message_id(entry: &Self::Message) -> String;
+    fn message_id(entry: &Self::Message) -> &str;
     fn room_id(entry: &Self::Room) -> &str;
     fn space_id(entry: &Self::Space) -> &str;
 
@@ -109,7 +110,7 @@ pub fn selected_room_key<B: UiBackend>(weak: &slint::Weak<B::Window>) -> Option<
 
 fn tick_animations<B: UiBackend>() {
     B::with_timeline(|timeline| {
-        advance_animations(timeline, &|entry| B::message_id(entry), &|entry, frame| {
+        advance_animations(timeline, &B::message_id, &|entry, frame| {
             B::set_message_frame(entry, frame);
         });
     });
@@ -120,9 +121,9 @@ fn apply_thumbnail_ready<B: UiBackend>(unique_id: &str, outcome: DecodeOutcome<'
         return;
     }
     B::with_timeline(|timeline| {
-        patch_rows(
+        patch_first_row(
             timeline,
-            |entry| B::message_id(entry).as_str() == unique_id,
+            |entry| B::message_id(entry) == unique_id,
             |entry| match outcome {
                 DecodeOutcome::Ready(image) => B::set_message_thumbnail(entry, image),
                 DecodeOutcome::Failed => B::set_message_media_failed(entry),
@@ -130,6 +131,33 @@ fn apply_thumbnail_ready<B: UiBackend>(unique_id: &str, outcome: DecodeOutcome<'
             },
         );
     });
+}
+
+#[derive(Default)]
+struct AvatarTargets<'a> {
+    messages: HashSet<&'a str>,
+    rooms: HashSet<&'a str>,
+    spaces: HashSet<&'a str>,
+    user: bool,
+}
+
+fn group_slots(slots: &[AvatarSlot]) -> AvatarTargets<'_> {
+    let mut targets = AvatarTargets::default();
+    for slot in slots {
+        match slot {
+            AvatarSlot::Message(id) => {
+                targets.messages.insert(id.as_str());
+            }
+            AvatarSlot::Room(id) => {
+                targets.rooms.insert(id.as_str());
+            }
+            AvatarSlot::Space(id) => {
+                targets.spaces.insert(id.as_str());
+            }
+            AvatarSlot::User => targets.user = true,
+        }
+    }
+    targets
 }
 
 fn apply_avatar_ready<B: UiBackend>(
@@ -140,37 +168,24 @@ fn apply_avatar_ready<B: UiBackend>(
     let DecodeOutcome::Ready(image) = outcome else {
         return;
     };
+    let targets = group_slots(slots);
+    if targets.user
+        && let Some(w) = weak.upgrade()
+    {
+        w.apply_user_avatar(Some(image.clone()));
+    }
     B::with_models(|timeline, rooms, spaces, subspaces| {
-        for slot in slots {
-            match slot {
-                AvatarSlot::Message(unique_id) => patch_rows(
-                    timeline,
-                    |entry| B::message_id(entry).as_str() == unique_id.as_str(),
-                    |entry| B::set_message_avatar(entry, image),
-                ),
-                AvatarSlot::Room(id) => patch_rows(
-                    rooms,
-                    |entry| B::room_id(entry) == id.as_str(),
-                    |entry| B::set_room_avatar(entry, image),
-                ),
-                AvatarSlot::Space(id) => {
-                    patch_rows(
-                        spaces,
-                        |entry| B::space_id(entry) == id.as_str(),
-                        |entry| B::set_space_avatar(entry, image),
-                    );
-                    patch_rows(
-                        subspaces,
-                        |entry| B::space_id(entry) == id.as_str(),
-                        |entry| B::set_space_avatar(entry, image),
-                    );
-                }
-                AvatarSlot::User => {
-                    if let Some(w) = weak.upgrade() {
-                        w.apply_user_avatar(Some(image.clone()));
-                    }
-                }
-            }
-        }
+        patch_rows_by_id(timeline, &targets.messages, &B::message_id, |entry| {
+            B::set_message_avatar(entry, image);
+        });
+        patch_rows_by_id(rooms, &targets.rooms, &B::room_id, |entry| {
+            B::set_room_avatar(entry, image);
+        });
+        patch_rows_by_id(spaces, &targets.spaces, &B::space_id, |entry| {
+            B::set_space_avatar(entry, image);
+        });
+        patch_rows_by_id(subspaces, &targets.spaces, &B::space_id, |entry| {
+            B::set_space_avatar(entry, image);
+        });
     });
 }

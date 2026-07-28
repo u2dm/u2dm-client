@@ -462,8 +462,8 @@ impl UiBackend for InterpretedBackend {
         space_to_value(space, media)
     }
 
-    fn message_id(entry: &Value) -> String {
-        entry_id_from_value(entry)
+    fn message_id(entry: &Value) -> &str {
+        entry_id_from_value(entry).map_or("", SharedString::as_str)
     }
 
     fn room_id(entry: &Value) -> &str {
@@ -919,13 +919,13 @@ room_fields!(gen_to_value room_to_value Room room_to_dto);
 
 space_fields!(gen_to_value space_to_value Space space_to_dto);
 
-fn entry_id_from_value(val: &Value) -> String {
+fn entry_id_from_value(val: &Value) -> Option<&SharedString> {
     if let Value::Struct(s) = val
         && let Some(Value::String(id)) = s.get_field(message::UNIQUE_ID)
     {
-        id.to_string()
+        Some(id)
     } else {
-        String::new()
+        None
     }
 }
 

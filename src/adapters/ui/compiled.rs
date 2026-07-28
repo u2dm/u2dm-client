@@ -262,8 +262,8 @@ impl UiBackend for CompiledBackend {
         space_to_entry(space, media)
     }
 
-    fn message_id(entry: &MessageEntry) -> String {
-        entry.unique_id.to_string()
+    fn message_id(entry: &MessageEntry) -> &str {
+        entry.unique_id.as_str()
     }
 
     fn room_id(entry: &RoomEntry) -> &str {

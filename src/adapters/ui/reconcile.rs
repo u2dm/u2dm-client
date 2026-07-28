@@ -12,7 +12,7 @@ pub fn apply_timeline_patch<T: Clone + 'static>(
     patch: TimelinePatch,
     convert: &dyn Fn(&TimelineMessage) -> T,
     enrich: &dyn Fn(&mut T, &EnrichmentDelta),
-    entry_id: &dyn Fn(&T) -> String,
+    entry_id: &dyn Fn(&T) -> &str,
 ) {
     let before = model.row_count();
     tracing::debug!(
@@ -77,7 +77,7 @@ pub fn apply_timeline_patch<T: Clone + 'static>(
         TimelinePatch::Enrich(delta) => {
             for i in 0..model.row_count() {
                 if let Some(entry) = model.row_data(i)
-                    && entry_id(&entry) == delta.unique_id
+                    && entry_id(&entry) == delta.unique_id.as_str()
                 {
                     let mut updated = entry;
                     enrich(&mut updated, &delta);
@@ -98,7 +98,7 @@ fn apply_batch<T: Clone + 'static>(
     patches: Vec<TimelinePatch>,
     convert: &dyn Fn(&TimelineMessage) -> T,
     enrich: &dyn Fn(&mut T, &EnrichmentDelta),
-    entry_id: &dyn Fn(&T) -> String,
+    entry_id: &dyn Fn(&T) -> &str,
 ) {
     for p in patches {
         apply_timeline_patch(model, p, convert, enrich, entry_id);
