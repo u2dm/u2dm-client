@@ -156,6 +156,7 @@ macro_rules! user_message_kinds {
     ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
         None                      None                    "none";
         ServerUnreachable         ServerUnreachable       "server-unreachable";
+        UnsupportedLoginMethod    UnsupportedLoginMethod  "unsupported-login-method";
         LoginFailed               LoginFailed             "login-failed";
         SessionUnreadable         SessionUnreadable       "session-unreadable";
         SessionRestoreFailed      SessionRestoreFailed    "session-restore-failed";

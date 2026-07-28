@@ -26,10 +26,13 @@ pub struct DemoMatrix;
 impl AuthPort for DemoMatrix {
     async fn discover_auth(&self, homeserver: &str, _passphrase: &str) -> Result<ServerInfo> {
         login::pause().await;
-        let auth_methods = login::requested()
-            .map_or_else(|| vec![AuthMethod::Password], |demo| demo.methods.clone());
+        let (auth_methods, unsupported_flows) = login::requested().map_or_else(
+            || (vec![AuthMethod::Password], Vec::new()),
+            |demo| (demo.methods.clone(), demo.unsupported_flows.clone()),
+        );
         Ok(ServerInfo {
             auth_methods,
+            unsupported_flows,
             homeserver_url: format!("https://{homeserver}"),
         })
     }

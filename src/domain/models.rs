@@ -42,6 +42,7 @@ impl LoginMethod {
 #[derive(Debug, Clone)]
 pub struct ServerInfo {
     pub auth_methods: Vec<AuthMethod>,
+    pub unsupported_flows: Vec<String>,
     pub homeserver_url: String,
 }
 

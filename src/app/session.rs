@@ -256,6 +256,14 @@ impl SessionController {
 
     async fn discover_server(&self, homeserver: &str, passphrase: &str, attempt: u64) {
         match self.auth.discover_auth(homeserver, passphrase).await {
+            Ok(info) if info.auth_methods.is_empty() => {
+                let flows = info.unsupported_flows.join(", ");
+                tracing::warn!(homeserver, flows = %flows, "no supported login method");
+                self.reject_auth(
+                    attempt,
+                    UserMessage::about(UserMessageKind::UnsupportedLoginMethod, &flows),
+                );
+            }
             Ok(info) => {
                 if self.lifecycle.settle_auth(attempt) {
                     self.emit_server_info(info);
@@ -296,8 +304,12 @@ impl SessionController {
     }
 
     fn fail_auth(&self, attempt: u64, kind: UserMessageKind, err: &AppError) {
+        self.reject_auth(attempt, UserMessage::about(kind, err));
+    }
+
+    fn reject_auth(&self, attempt: u64, message: UserMessage) {
         if self.lifecycle.settle_auth(attempt) {
-            self.emit_login_error(kind, err);
+            self.fail_login_once(message);
         } else {
             tracing::debug!("auth failure for superseded attempt, dropping");
         }

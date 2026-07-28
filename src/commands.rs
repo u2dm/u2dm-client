@@ -192,6 +192,7 @@ pub enum UserMessageKind {
     #[default]
     None,
     ServerUnreachable,
+    UnsupportedLoginMethod,
     LoginFailed,
     SessionUnreadable,
     SessionRestoreFailed,

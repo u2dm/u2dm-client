@@ -97,119 +97,129 @@ msgctxt "UserMessages"
 msgid "Could not reach that homeserver: {}"
 msgstr ""
 
-#: ui/messages.slint:14
+#: ui/messages.slint:15
 msgctxt "UserMessages"
-msgid "Login failed: {}"
+msgid "This homeserver did not offer any login method U2DM supports."
 msgstr ""
 
 #: ui/messages.slint:17
 msgctxt "UserMessages"
-msgid "The saved session could not be read: {}"
+msgid "This homeserver only offers login methods U2DM does not support yet: {}"
 msgstr ""
 
 #: ui/messages.slint:20
 msgctxt "UserMessages"
-msgid "The saved session could not be restored: {}"
+msgid "Login failed: {}"
 msgstr ""
 
 #: ui/messages.slint:23
 msgctxt "UserMessages"
-msgid "The key to the local store is missing. Please log in again."
+msgid "The saved session could not be read: {}"
 msgstr ""
 
 #: ui/messages.slint:26
 msgctxt "UserMessages"
-msgid "The key to the local store could not be read: {}"
+msgid "The saved session could not be restored: {}"
 msgstr ""
 
 #: ui/messages.slint:29
 msgctxt "UserMessages"
-msgid "Session expired. Please log in again."
+msgid "The key to the local store is missing. Please log in again."
 msgstr ""
 
 #: ui/messages.slint:32
+msgctxt "UserMessages"
+msgid "The key to the local store could not be read: {}"
+msgstr ""
+
+#: ui/messages.slint:35
+msgctxt "UserMessages"
+msgid "Session expired. Please log in again."
+msgstr ""
+
+#: ui/messages.slint:38
 msgctxt "UserMessages"
 msgid ""
 "Some local data could not be deleted, but its key was destroyed, so it is "
 "unreadable. It will be removed on the next start. ({})"
 msgstr ""
 
-#: ui/messages.slint:35
+#: ui/messages.slint:41
 msgctxt "UserMessages"
 msgid "Some local account data could not be erased: {}"
 msgstr ""
 
-#: ui/messages.slint:38
+#: ui/messages.slint:44
 msgctxt "UserMessages"
 msgid "Failed to save refreshed session: {}"
 msgstr ""
 
-#: ui/messages.slint:41
+#: ui/messages.slint:47
 msgctxt "UserMessages"
 msgid "Failed to send message: {}"
 msgstr ""
 
-#: ui/messages.slint:44
+#: ui/messages.slint:50
 msgctxt "UserMessages"
 msgid "Failed to load more messages"
 msgstr ""
 
-#: ui/messages.slint:47
+#: ui/messages.slint:53
 msgctxt "UserMessages"
 msgid "Failed to save space order: {}"
 msgstr ""
 
-#: ui/messages.slint:50
+#: ui/messages.slint:56
 msgctxt "UserMessages"
 msgid "Failed to download media: {}"
 msgstr ""
 
-#: ui/messages.slint:53
+#: ui/messages.slint:59
 msgctxt "UserMessages"
 msgid "Failed to download file: {}"
 msgstr ""
 
-#: ui/messages.slint:56
+#: ui/messages.slint:62
 msgctxt "UserMessages"
 msgid "Failed to open media: {}"
 msgstr ""
 
-#: ui/messages.slint:59
+#: ui/messages.slint:65
 msgctxt "UserMessages"
 msgid "Failed to save file: {}"
 msgstr ""
 
-#: ui/messages.slint:62
+#: ui/messages.slint:68
 msgctxt "UserMessages"
 msgid "File saved to {}"
 msgstr ""
 
-#: ui/messages.slint:65
+#: ui/messages.slint:71
 msgctxt "UserMessages"
 msgid "Verification accept failed: {}"
 msgstr ""
 
-#: ui/messages.slint:68
+#: ui/messages.slint:74
 msgctxt "UserMessages"
 msgid "Verification confirm failed: {}"
 msgstr ""
 
-#: ui/messages.slint:71
+#: ui/messages.slint:77
 msgctxt "UserMessages"
 msgid "Verification reject failed: {}"
 msgstr ""
 
-#: ui/messages.slint:74
+#: ui/messages.slint:80
 msgctxt "UserMessages"
 msgid "Verification timed out"
 msgstr ""
 
-#: ui/messages.slint:77
+#: ui/messages.slint:83
 msgctxt "UserMessages"
 msgid "Failed to accept the verification: {}"
 msgstr ""
 
-#: ui/messages.slint:80
+#: ui/messages.slint:86
 msgctxt "UserMessages"
 msgid "Verification cancelled: {}"
 msgstr ""

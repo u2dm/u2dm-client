@@ -11,6 +11,7 @@ const STEP_DELAY: Duration = Duration::from_millis(900);
 
 pub struct LoginDemo {
     pub methods: Vec<AuthMethod>,
+    pub unsupported_flows: Vec<String>,
     pub keeps_session: bool,
     pub oauth_succeeds: bool,
 }
@@ -28,6 +29,7 @@ impl Default for LoginDemo {
     fn default() -> Self {
         Self {
             methods: vec![AuthMethod::Password],
+            unsupported_flows: Vec::new(),
             keeps_session: false,
             oauth_succeeds: false,
         }
@@ -49,6 +51,11 @@ fn from_env() -> Option<LoginDemo> {
             methods: vec![AuthMethod::Password, AuthMethod::OAuth],
             ..LoginDemo::default()
         },
+        "sso" => LoginDemo {
+            methods: Vec::new(),
+            unsupported_flows: vec!["m.login.sso".to_owned(), "m.login.token".to_owned()],
+            ..LoginDemo::default()
+        },
         "restore" => LoginDemo {
             keeps_session: true,
             ..LoginDemo::default()
@@ -60,6 +67,11 @@ fn from_env() -> Option<LoginDemo> {
 }
 
 fn announce(demo: &LoginDemo) {
+    announce_start(demo);
+    announce_methods(demo);
+}
+
+fn announce_start(demo: &LoginDemo) {
     if demo.keeps_session {
         tracing::info!(
             "demo mode: restoring the saved session slowly so the loading step is visible"
@@ -67,8 +79,17 @@ fn announce(demo: &LoginDemo) {
     } else {
         tracing::info!("demo mode: starting logged out so the login steps are reachable");
     }
+}
+
+fn announce_methods(demo: &LoginDemo) {
     if demo.oauth_succeeds {
         tracing::info!("demo mode: the OAuth flow completes slowly so cancelling it is reachable");
+    }
+    if demo.methods.is_empty() {
+        tracing::info!(
+            flows = ?demo.unsupported_flows,
+            "demo mode: the server offers no login method U2DM supports"
+        );
     }
 }
 

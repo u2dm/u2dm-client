@@ -7,6 +7,7 @@ use matrix_sdk::authentication::oauth::registration::{
 };
 use matrix_sdk::authentication::oauth::{ClientId, OAuthSession, UserSession};
 use matrix_sdk::media::MediaRetentionPolicy;
+use matrix_sdk::ruma::api::client::session::get_login_types::v3::LoginType;
 use matrix_sdk::ruma::serde::Raw;
 use matrix_sdk::ruma::{IdParseError, OwnedDeviceId, OwnedUserId};
 use matrix_sdk::utils::UrlOrQuery;
@@ -58,31 +59,66 @@ pub(super) async fn discover_auth(
     )
     .await?;
 
-    let mut methods = Vec::new();
-
-    if client.oauth().server_metadata().await.is_ok() {
-        methods.push(AuthMethod::OAuth);
-    }
-
-    if let Ok(login_types) = client.matrix_auth().get_login_types().await {
-        methods.extend(
-            login_types
-                .flows
-                .iter()
-                .filter_map(|f| AuthMethod::from_login_type(f.login_type())),
-        );
-    }
+    let (auth_methods, unsupported_flows) = probe_auth_methods(&client).await?;
 
     let homeserver_url = client.homeserver().to_string();
-    tracing::info!(homeserver = %homeserver_url, methods = ?methods, "server discovery complete");
+    tracing::info!(
+        homeserver = %homeserver_url,
+        methods = ?auth_methods,
+        unsupported = ?unsupported_flows,
+        "server discovery complete"
+    );
 
     Ok((
         client,
         ServerInfo {
-            auth_methods: methods,
+            auth_methods,
+            unsupported_flows,
             homeserver_url,
         },
     ))
+}
+
+async fn probe_auth_methods(client: &Client) -> Result<(Vec<AuthMethod>, Vec<String>)> {
+    let oauth = client.oauth().server_metadata().await;
+    let login_types = client.matrix_auth().get_login_types().await;
+
+    let (mut methods, unsupported_flows) = match &login_types {
+        Ok(types) => partition_login_flows(types.flows.iter().map(LoginType::login_type)),
+        Err(e) => {
+            tracing::debug!("homeserver did not answer with its login types: {e}");
+            (Vec::new(), Vec::new())
+        }
+    };
+
+    match &oauth {
+        Ok(_) => methods.push(AuthMethod::OAuth),
+        Err(e) => tracing::debug!("homeserver does not offer OAuth: {e}"),
+    }
+
+    if let (Err(oauth_error), Err(login_types_error)) = (oauth, login_types) {
+        return Err(AppError::Other(format!(
+            "neither authentication API answered ({oauth_error}; {login_types_error})"
+        )));
+    }
+
+    Ok((methods, unsupported_flows))
+}
+
+fn partition_login_flows<'a>(
+    flows: impl Iterator<Item = &'a str>,
+) -> (Vec<AuthMethod>, Vec<String>) {
+    let mut methods = Vec::new();
+    let mut unsupported = Vec::new();
+
+    for flow in flows {
+        match AuthMethod::from_login_type(flow) {
+            Some(method) => methods.push(method),
+            None => unsupported.push(flow.to_owned()),
+        }
+    }
+
+    (methods, unsupported)
 }
 
 pub(super) async fn login_password(client: &Client, creds: LoginCredentials) -> Result<Session> {

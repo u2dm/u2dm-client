@@ -10,6 +10,12 @@ export global UserMessages {
         if kind == UserMessageKind.server-unreachable {
             return @tr("Could not reach that homeserver: {}", detail);
         }
+        if kind == UserMessageKind.unsupported-login-method {
+            if detail == "" {
+                return @tr("This homeserver did not offer any login method U2DM supports.");
+            }
+            return @tr("This homeserver only offers login methods U2DM does not support yet: {}", detail);
+        }
         if kind == UserMessageKind.login-failed {
             return @tr("Login failed: {}", detail);
         }
