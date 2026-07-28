@@ -5,6 +5,7 @@ use std::{env, fs, process};
 
 use async_trait::async_trait;
 use tokio::fs as async_fs;
+use tokio::task::spawn_blocking;
 
 use crate::adapters::private_fs;
 use crate::error::{AppError, Result};
@@ -44,7 +45,9 @@ impl MediaFilePort for DesktopMediaFiles {
         private_fs::create_dir(session_dir).await?;
         let path = session_dir.join(format!("{}.{ext}", random_hex(FILE_TOKEN_BYTES)));
         private_fs::write_private(&path, data).await?;
-        open::that_in_background(&path);
+        spawn_blocking(move || open::that_detached(&path))
+            .await
+            .map_err(|e| AppError::Other(format!("failed to launch media viewer: {e}")))??;
         Ok(())
     }
 
