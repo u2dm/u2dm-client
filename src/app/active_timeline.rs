@@ -100,7 +100,8 @@ impl ActiveTimeline {
 
         let (tl_tx, mut tl_rx) = mpsc::channel::<TimelineUpdate>(TIMELINE_CHANNEL_CAP);
         let (tl_cmd_tx, tl_cmd_rx) = mpsc::unbounded_channel::<TimelineCommand>();
-        self.timeline_cmd_tx = Some(tl_cmd_tx);
+        self.timeline_cmd_tx = Some(tl_cmd_tx.clone());
+        self.mark_read();
 
         let output = Arc::clone(&self.output);
         let cmd_tx = self.cmd_tx.clone();
@@ -120,15 +121,19 @@ impl ActiveTimeline {
 
                     match update {
                         TimelineUpdate::Patch(patch) => {
-                            if !counters.is_at_bottom() {
-                                let added = count_appended(patch.as_ref());
-                                if added > 0 {
-                                    let total = counters.add_new_messages(added);
-                                    output.publish(Box::new(move |view| {
-                                        view.pagination.retarget(generation);
-                                        view.pagination.new_messages = total;
-                                    }));
+                            let appended = count_appended(patch.as_ref());
+                            if counters.is_at_bottom() {
+                                if appended.from_others
+                                    && tl_cmd_tx.send(TimelineCommand::MarkRead).is_err()
+                                {
+                                    tracing::debug!("timeline command channel closed");
                                 }
+                            } else if appended.total > 0 {
+                                let total = counters.add_new_messages(appended.total);
+                                output.publish(Box::new(move |view| {
+                                    view.pagination.retarget(generation);
+                                    view.pagination.new_messages = total;
+                                }));
                             }
 
                             output
@@ -311,6 +316,7 @@ impl ActiveTimeline {
         self.counters.clear_new_messages();
         self.emit_new_messages(generation, 0);
         self.emit_pagination_state();
+        self.mark_read();
     }
 
     pub(super) fn scroll_position_changed(
@@ -324,12 +330,26 @@ impl ActiveTimeline {
         }
 
         let mode_changed = self.viewport.update_scroll_position(at_bottom);
+        let reached_bottom = at_bottom && !self.counters.is_at_bottom();
 
         self.counters.set_at_bottom(at_bottom);
 
         if mode_changed && self.viewport.mode() == ScrollMode::FollowLive {
             self.counters.clear_new_messages();
             self.emit_new_messages(generation, 0);
+        }
+
+        if reached_bottom {
+            self.mark_read();
+        }
+    }
+
+    fn mark_read(&self) {
+        let Some(tx) = &self.timeline_cmd_tx else {
+            return;
+        };
+        if tx.send(TimelineCommand::MarkRead).is_err() {
+            tracing::debug!("timeline command channel closed");
         }
     }
 
@@ -376,11 +396,35 @@ impl ActiveTimeline {
     }
 }
 
-fn count_appended(patch: &TimelinePatch) -> u32 {
+#[derive(Default, Clone, Copy)]
+struct Appended {
+    total: u32,
+    from_others: bool,
+}
+
+impl Appended {
+    fn merge(self, other: Self) -> Self {
+        Self {
+            total: self.total.saturating_add(other.total),
+            from_others: self.from_others || other.from_others,
+        }
+    }
+}
+
+fn count_appended(patch: &TimelinePatch) -> Appended {
     match patch {
-        TimelinePatch::Append(messages) => messages.len().try_into().unwrap_or(u32::MAX),
-        TimelinePatch::PushBack(_) => 1,
-        TimelinePatch::Batch(patches) => patches.iter().map(count_appended).sum(),
-        _ => 0,
+        TimelinePatch::Append(messages) => Appended {
+            total: messages.len().try_into().unwrap_or(u32::MAX),
+            from_others: messages.iter().any(|message| !message.is_own),
+        },
+        TimelinePatch::PushBack(message) => Appended {
+            total: 1,
+            from_others: !message.is_own,
+        },
+        TimelinePatch::Batch(patches) => patches
+            .iter()
+            .map(count_appended)
+            .fold(Appended::default(), Appended::merge),
+        _ => Appended::default(),
     }
 }

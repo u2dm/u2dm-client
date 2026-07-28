@@ -367,6 +367,7 @@ impl TimelinePatch {
 pub enum TimelineCommand {
     PaginateBackwards,
     PaginateForwards,
+    MarkRead,
 }
 
 #[derive(Debug, Clone, Copy)]

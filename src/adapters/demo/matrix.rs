@@ -208,6 +208,7 @@ impl TimelinePort for DemoAuthed {
             let direction = match command {
                 TimelineCommand::PaginateBackwards => PaginationDirection::Backwards,
                 TimelineCommand::PaginateForwards => PaginationDirection::Forwards,
+                TimelineCommand::MarkRead => continue,
             };
             let update = TimelineUpdate::Pagination {
                 direction,

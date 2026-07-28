@@ -3,6 +3,7 @@ use std::sync::{Arc, Mutex as StdMutex};
 
 use futures_util::StreamExt;
 use matrix_sdk::Client;
+use matrix_sdk::room::Receipts;
 use matrix_sdk::ruma::events::room::MediaSource;
 use matrix_sdk::ruma::{IdParseError, OwnedEventId, OwnedRoomId};
 use matrix_sdk_ui::eyeball_im::VectorDiff;
@@ -191,6 +192,10 @@ async fn handle_timeline_command(
             PaginationDirection::Forwards,
             paginate_forwards(timeline).await,
         ),
+        TimelineCommand::MarkRead => {
+            mark_read(timeline).await;
+            return;
+        }
     };
 
     if timeline_tx
@@ -199,6 +204,18 @@ async fn handle_timeline_command(
         .is_err()
     {
         tracing::debug!("timeline update channel closed");
+    }
+}
+
+async fn mark_read(timeline: &Timeline) {
+    let Some(event_id) = timeline.latest_event_id().await else {
+        return;
+    };
+    let receipts = Receipts::new()
+        .public_read_receipt(event_id.clone())
+        .fully_read_marker(event_id);
+    if let Err(e) = timeline.send_multiple_receipts(receipts).await {
+        tracing::warn!("failed to mark the room as read: {e}");
     }
 }
 
