@@ -1,10 +1,14 @@
+use std::future::Future;
 use std::sync::{Arc, Mutex as StdMutex, PoisonError};
 
 use tokio::sync::mpsc;
 
 use super::task_group::TaskGroup;
-use crate::commands::{Effect, Toast, UserMessage, UserMessageKind, VerificationUpdate};
+use crate::commands::{
+    Effect, UserMessage, UserMessageKind, VerificationActivity, VerificationUpdate,
+};
 use crate::domain::models::VerificationEvent;
+use crate::error::Result;
 use crate::ports::matrix::VerificationPort;
 use crate::ports::output::AppOutputPort;
 
@@ -95,24 +99,45 @@ impl VerificationController {
         });
     }
 
+    fn spawn_action<F, Fut>(
+        &self,
+        group: &mut TaskGroup,
+        verification: Arc<dyn VerificationPort>,
+        activity: VerificationActivity,
+        failure: UserMessageKind,
+        action: F,
+    ) where
+        F: FnOnce(Arc<dyn VerificationPort>) -> Fut + Send + 'static,
+        Fut: Future<Output = Result<()>> + Send,
+    {
+        let output = Arc::clone(&self.output);
+        group.spawn(async move {
+            output
+                .emit(Effect::Verification(VerificationUpdate::Busy(activity)))
+                .await;
+            if let Err(e) = action(verification).await {
+                tracing::warn!("verification action failed: {e}");
+                output
+                    .emit(Effect::Verification(VerificationUpdate::Failed(
+                        UserMessage::about(failure, &e),
+                    )))
+                    .await;
+            }
+        });
+    }
+
     pub(super) fn spawn_accept(
         &self,
         group: &mut TaskGroup,
         verification: Arc<dyn VerificationPort>,
     ) {
-        let output = Arc::clone(&self.output);
-        group.spawn(async move {
-            if let Err(e) = verification.accept_verification().await {
-                tracing::warn!("verification accept failed: {e}");
-                super::show_toast(
-                    output.as_ref(),
-                    Toast::Error(UserMessage::about(
-                        UserMessageKind::VerificationAcceptFailed,
-                        &e,
-                    )),
-                );
-            }
-        });
+        self.spawn_action(
+            group,
+            verification,
+            VerificationActivity::Accepting,
+            UserMessageKind::VerificationAcceptFailed,
+            |v| async move { v.accept_verification().await },
+        );
     }
 
     pub(super) fn spawn_reject(
@@ -120,20 +145,13 @@ impl VerificationController {
         group: &mut TaskGroup,
         verification: Arc<dyn VerificationPort>,
     ) {
-        let output = Arc::clone(&self.output);
-        group.spawn(async move {
-            output
-                .emit(Effect::Verification(VerificationUpdate::Rejecting))
-                .await;
-            if let Err(e) = verification.reject_verification().await {
-                tracing::warn!("verification reject failed: {e}");
-                output
-                    .emit(Effect::Verification(VerificationUpdate::RejectFailed(
-                        UserMessage::about(UserMessageKind::VerificationRejectFailed, &e),
-                    )))
-                    .await;
-            }
-        });
+        self.spawn_action(
+            group,
+            verification,
+            VerificationActivity::Declining,
+            UserMessageKind::VerificationRejectFailed,
+            |v| async move { v.reject_verification().await },
+        );
     }
 
     pub(super) fn spawn_confirm(
@@ -141,19 +159,13 @@ impl VerificationController {
         group: &mut TaskGroup,
         verification: Arc<dyn VerificationPort>,
     ) {
-        let output = Arc::clone(&self.output);
-        group.spawn(async move {
-            if let Err(e) = verification.confirm_verification().await {
-                tracing::warn!("verification confirm failed: {e}");
-                super::show_toast(
-                    output.as_ref(),
-                    Toast::Error(UserMessage::about(
-                        UserMessageKind::VerificationConfirmFailed,
-                        &e,
-                    )),
-                );
-            }
-        });
+        self.spawn_action(
+            group,
+            verification,
+            VerificationActivity::Confirming,
+            UserMessageKind::VerificationConfirmFailed,
+            |v| async move { v.confirm_verification().await },
+        );
     }
 
     pub(super) fn spawn_dismiss(

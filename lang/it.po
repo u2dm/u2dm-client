@@ -12,77 +12,82 @@ msgstr ""
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=2; plural=(n != 1);\n"
 
-#: ui/components/verification.slint:37
+#: ui/components/verification.slint:23
+msgctxt "BusyNote"
+msgid "Accepting..."
+msgstr ""
+
+#: ui/components/verification.slint:26
+msgctxt "BusyNote"
+msgid "Declining..."
+msgstr ""
+
+#: ui/components/verification.slint:29
+msgctxt "BusyNote"
+msgid "Confirming..."
+msgstr ""
+
+#: ui/components/verification.slint:69 ui/components/verification.slint:76
 msgctxt "VerificationDialog"
 msgid "Device Verification"
 msgstr "Verifica del dispositivo"
 
-#: ui/components/verification.slint:47
+#: ui/components/verification.slint:86
 msgctxt "VerificationDialog"
 msgid "Verify this session from your other device"
 msgstr "Verifica questa sessione dall'altro dispositivo"
 
-#: ui/components/verification.slint:47
+#: ui/components/verification.slint:86
 msgctxt "VerificationDialog"
 msgid "Verification request from {}"
 msgstr "Richiesta di verifica da {}"
 
-#: ui/components/verification.slint:58
+#: ui/components/verification.slint:97
 msgctxt "VerificationDialog"
 msgid "Accept"
 msgstr "Accetta"
 
-#: ui/components/verification.slint:66
+#: ui/components/verification.slint:105
 msgctxt "VerificationDialog"
 msgid "Decline"
 msgstr "Rifiuta"
 
-#: ui/components/verification.slint:75
-msgctxt "VerificationDialog"
-msgid "Declining..."
-msgstr ""
-
-#: ui/components/verification.slint:87
+#: ui/components/verification.slint:124
 msgctxt "VerificationDialog"
 msgid "Confirm the emojis below match the other device:"
 msgstr "Conferma che le emoji corrispondano all'altro dispositivo:"
 
-#: ui/components/verification.slint:121
+#: ui/components/verification.slint:158
 msgctxt "VerificationDialog"
 msgid "They match"
 msgstr "Corrispondono"
 
-#: ui/components/verification.slint:129
+#: ui/components/verification.slint:166
 msgctxt "VerificationDialog"
 msgid "They don't match"
 msgstr "Non corrispondono"
 
-#: ui/components/verification.slint:138
-msgctxt "VerificationDialog"
-msgid "Cancelling the verification..."
-msgstr ""
-
-#: ui/components/verification.slint:150
+#: ui/components/verification.slint:185
 msgctxt "VerificationDialog"
 msgid "Waiting for the other device to confirm..."
 msgstr "In attesa della conferma dall'altro dispositivo..."
 
-#: ui/components/verification.slint:160
+#: ui/components/verification.slint:195
 msgctxt "VerificationDialog"
 msgid "Verification successful!"
 msgstr "Verifica riuscita!"
 
-#: ui/components/verification.slint:171
+#: ui/components/verification.slint:206
 msgctxt "VerificationDialog"
 msgid "Done"
 msgstr "Fatto"
 
-#: ui/components/verification.slint:183
+#: ui/components/verification.slint:218
 msgctxt "VerificationDialog"
 msgid "Verification cancelled"
 msgstr "Verifica annullata"
 
-#: ui/components/verification.slint:198
+#: ui/components/verification.slint:233
 msgctxt "VerificationDialog"
 msgid "Dismiss"
 msgstr "Chiudi"
@@ -224,7 +229,12 @@ msgctxt "UserMessages"
 msgid "Verification cancelled: {}"
 msgstr ""
 
-#: ui/screens/chat/chat.slint:92
+#: ui/screens/chat/chat.slint:65
+msgctxt "ChatScreen"
+msgid "Sidebar width"
+msgstr ""
+
+#: ui/screens/chat/chat.slint:136
 msgctxt "ChatScreen"
 msgid "Dismiss"
 msgstr ""
@@ -546,17 +556,22 @@ msgctxt "Sidebar"
 msgid "Search"
 msgstr ""
 
-#: ui/screens/chat/components/sidebar.slint:94
+#: ui/screens/chat/components/sidebar.slint:81
+msgctxt "Sidebar"
+msgid "Search rooms"
+msgstr ""
+
+#: ui/screens/chat/components/sidebar.slint:97
 msgctxt "Sidebar"
 msgid "Rooms"
 msgstr ""
 
-#: ui/screens/chat/components/sidebar.slint:102
+#: ui/screens/chat/components/sidebar.slint:105
 msgctxt "Sidebar"
 msgid "{}, {} unread"
 msgstr ""
 
-#: ui/screens/chat/components/sidebar.slint:116
+#: ui/screens/chat/components/sidebar.slint:119
 msgctxt "Sidebar"
 msgid "You"
 msgstr ""

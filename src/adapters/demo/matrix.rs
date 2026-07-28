@@ -1,4 +1,5 @@
 use std::fs;
+use std::future::pending;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
@@ -7,11 +8,11 @@ use async_trait::async_trait;
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 
-use super::{data, login, media};
+use super::{data, login, media, verification};
 use crate::domain::models::{
     AuthMethod, LoginCredentials, OAuthLoginData, PaginationDirection, PaginationOutcome,
     ReplyInfo, RoomId, ServerInfo, Session, SyncEvent, SyncOutcome, TimelineCommand,
-    TimelineMessage, TimelinePatch, TimelineUpdate, VerificationEvent,
+    TimelineMessage, TimelinePatch, TimelineUpdate, VerificationCancellation, VerificationEvent,
 };
 use crate::error::{AppError, Result};
 use crate::ports::matrix::{
@@ -126,6 +127,7 @@ struct ActiveRoom {
 struct DemoAuthed {
     active: Mutex<Option<ActiveRoom>>,
     sent: AtomicU64,
+    verification_tx: Mutex<Option<mpsc::UnboundedSender<VerificationEvent>>>,
 }
 
 impl DemoAuthed {
@@ -147,7 +149,20 @@ impl DemoAuthed {
             (active.timeline_tx.clone(), message)
         };
         let (timeline_tx, message) = prepared;
+
         send_patch(&timeline_tx, TimelinePatch::PushBack(message)).await;
+    }
+
+    fn emit_verification(&self, event: VerificationEvent) {
+        let Ok(guard) = self.verification_tx.lock() else {
+            return;
+        };
+        let Some(tx) = guard.as_ref() else {
+            return;
+        };
+        if tx.send(event).is_err() {
+            tracing::debug!("demo: verification listener is gone");
+        }
     }
 }
 
@@ -232,21 +247,67 @@ impl MediaPort for DemoAuthed {
 impl VerificationPort for DemoAuthed {
     async fn listen_for_verification(
         &self,
-        _tx: mpsc::UnboundedSender<VerificationEvent>,
+        tx: mpsc::UnboundedSender<VerificationEvent>,
     ) -> Result<()> {
+        let Some(demo) = verification::requested() else {
+            return Ok(());
+        };
+        if let Ok(mut guard) = self.verification_tx.lock() {
+            *guard = Some(tx);
+        }
+
+        verification::wait_for_request().await;
+        self.emit_verification(verification::request(demo));
+
+        if demo.times_out {
+            verification::wait_for_request().await;
+            self.emit_verification(VerificationEvent::Cancelled(
+                VerificationCancellation::TimedOut,
+            ));
+        }
+
+        pending::<()>().await;
         Ok(())
     }
 
     async fn accept_verification(&self) -> Result<()> {
-        Err(unavailable("Verification"))
+        let Some(demo) = verification::requested() else {
+            return Err(unavailable("Verification"));
+        };
+        verification::pause().await;
+        if demo.fails == verification::FailingStep::Accept {
+            return Err(unavailable("Accepting a verification"));
+        }
+        self.emit_verification(verification::emojis());
+        Ok(())
     }
 
     async fn confirm_verification(&self) -> Result<()> {
-        Err(unavailable("Verification"))
+        let Some(demo) = verification::requested() else {
+            return Err(unavailable("Verification"));
+        };
+        verification::pause().await;
+        if demo.fails == verification::FailingStep::Confirm {
+            return Err(unavailable("Confirming a verification"));
+        }
+        self.emit_verification(VerificationEvent::Confirming);
+        verification::pause().await;
+        self.emit_verification(VerificationEvent::Done);
+        Ok(())
     }
 
     async fn reject_verification(&self) -> Result<()> {
-        Err(unavailable("Verification"))
+        let Some(demo) = verification::requested() else {
+            return Err(unavailable("Verification"));
+        };
+        verification::pause().await;
+        if demo.fails == verification::FailingStep::Reject {
+            return Err(unavailable("Declining a verification"));
+        }
+        self.emit_verification(VerificationEvent::Cancelled(
+            VerificationCancellation::Remote("declined on this device".to_owned()),
+        ));
+        Ok(())
     }
 }
 

@@ -10,7 +10,7 @@ use super::props::{BoolProp, IntProp, StringProp, UiProps};
 use super::reconcile::{apply_rooms, apply_spaces, apply_timeline_patch};
 use crate::commands::{
     AppViewState, Effect, LifecycleView, PaginationView, Toast, UserMessage, UserMessageKind,
-    VerificationUpdate,
+    VerificationActivity, VerificationUpdate,
 };
 use crate::domain::models::{
     Room, RoomId, TimelinePatch, TimelineStatus, VerificationEvent as DomainVerificationEvent,
@@ -250,9 +250,9 @@ fn apply_timeline_status(w: &impl UiProps, status: TimelineStatus) {
 fn apply_verification(w: &impl UiProps, update: &VerificationUpdate) {
     match update {
         VerificationUpdate::Flow(event) => apply_verification_flow(w, event),
-        VerificationUpdate::Rejecting => w.set_bool(BoolProp::VerificationBusy, true),
-        VerificationUpdate::RejectFailed(message) => {
-            w.set_bool(BoolProp::VerificationBusy, false);
+        VerificationUpdate::Busy(activity) => w.set_verification_activity(*activity),
+        VerificationUpdate::Failed(message) => {
+            w.set_verification_activity(VerificationActivity::None);
             set_verification_error(w, message);
         }
         VerificationUpdate::Dismissed => reset_verification(w),
@@ -260,7 +260,7 @@ fn apply_verification(w: &impl UiProps, update: &VerificationUpdate) {
 }
 
 fn apply_verification_flow(w: &impl UiProps, event: &DomainVerificationEvent) {
-    w.set_bool(BoolProp::VerificationBusy, false);
+    w.set_verification_activity(VerificationActivity::None);
     match event {
         DomainVerificationEvent::Requested { sender, is_self } => {
             w.set_bool(BoolProp::VerificationVisible, true);
@@ -291,7 +291,7 @@ fn apply_verification_flow(w: &impl UiProps, event: &DomainVerificationEvent) {
 
 fn reset_verification(w: &impl UiProps) {
     w.set_bool(BoolProp::VerificationVisible, false);
-    w.set_bool(BoolProp::VerificationBusy, false);
+    w.set_verification_activity(VerificationActivity::None);
     w.set_verification_phase(VerifyStep::None);
     w.set_string(StringProp::VerificationSender, SharedString::default());
     w.set_bool(BoolProp::VerificationIsSelf, false);

@@ -3,7 +3,7 @@ import {
     Palette,
 } from "std-widgets.slint";
 
-import { VerificationPhase, UserMessageKind } from "../enums.slint";
+import { VerificationPhase, VerificationActivity, UserMessageKind } from "../enums.slint";
 import { UserMessages } from "../messages.slint";
 import { VerificationView } from "../views.slint";
 import { Actions } from "../actions.slint";
@@ -15,8 +15,44 @@ component DialogNote inherits Text {
     color: Palette.foreground.transparentize(0.4);
 }
 
+component BusyNote inherits DialogNote {
+    text: self.busy-label();
+
+    pure function busy-label() -> string {
+        if VerificationView.activity == VerificationActivity.accepting {
+            return @tr("Accepting...");
+        }
+        if VerificationView.activity == VerificationActivity.declining {
+            return @tr("Declining...");
+        }
+        if VerificationView.activity == VerificationActivity.confirming {
+            return @tr("Confirming...");
+        }
+        return "";
+    }
+}
+
 export component VerificationDialog inherits Rectangle {
     background: Colors.black.transparentize(0.4);
+    forward-focus: escape-scope;
+
+    init => {
+        escape-scope.focus();
+    }
+
+    escape-scope := FocusScope {
+        key-pressed(event) => {
+            if (event.text == Key.Escape) {
+                Actions.dismiss-verification();
+                return accept;
+            }
+            return reject;
+        }
+    }
+
+    TouchArea {
+        mouse-cursor: default;
+    }
 
     HorizontalLayout {
         alignment: center;
@@ -28,6 +64,9 @@ export component VerificationDialog inherits Rectangle {
                 max-width: 480px;
                 background: Palette.alternate-background;
                 border-radius: 8px;
+
+                accessible-role: AccessibleRole.groupbox;
+                accessible-label: @tr("Device Verification");
 
                 VerticalLayout {
                     padding: 24px;
@@ -71,9 +110,7 @@ export component VerificationDialog inherits Rectangle {
                             }
                         }
 
-                        if VerificationView.busy: DialogNote {
-                            text: @tr("Declining...");
-                        }
+                        if VerificationView.busy: BusyNote { }
 
                         if !VerificationView.busy && VerificationView.error != UserMessageKind.none: DialogNote {
                             text: UserMessages.text(VerificationView.error, VerificationView.error-detail);
@@ -134,9 +171,7 @@ export component VerificationDialog inherits Rectangle {
                             }
                         }
 
-                        if VerificationView.busy: DialogNote {
-                            text: @tr("Cancelling the verification...");
-                        }
+                        if VerificationView.busy: BusyNote { }
 
                         if !VerificationView.busy && VerificationView.error != UserMessageKind.none: DialogNote {
                             text: UserMessages.text(VerificationView.error, VerificationView.error-detail);

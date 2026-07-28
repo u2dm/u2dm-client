@@ -3,7 +3,7 @@ import { IconDisplay, IconSet } from "@lucide";
 import { Sidebar } from "components/sidebar.slint";
 import { Drawer } from "components/drawer.slint";
 import { TimelineView } from "components/timeline/timeline-view.slint";
-import { ClickArea } from "../../components/a11y.slint";
+import { ClickArea, FocusRing } from "../../components/a11y.slint";
 import { ToastKind } from "../../enums.slint";
 import { UserMessages } from "../../messages.slint";
 import { DirectoryView, RoomView } from "../../views.slint";
@@ -22,6 +22,16 @@ export component ChatScreen inherits Rectangle {
     property <length> divider-width: 4px;
     property <length> min-sidebar-width: 260px;
     property <length> max-sidebar-width: 500px;
+    property <length> resize-step: 16px;
+
+    function resize-sidebar(delta: length) {
+        root.sidebar-width = clamp(
+                root.sidebar-width + delta,
+                root.min-sidebar-width,
+                root.max-sidebar-width,
+            );
+    }
+
     property <length> subrail-width: 68px;
     property <bool> has-subspaces: DirectoryView.subspaces.length > 0;
     property <length> total-sidebar-width: root.sidebar-width
@@ -45,18 +55,52 @@ export component ChatScreen inherits Rectangle {
         input-message <=> root.input-message;
     }
 
-    TouchArea {
+    Rectangle {
         x: root.total-sidebar-width - root.divider-width / 2;
         y: 0;
         width: root.divider-width;
         height: root.height;
-        mouse-cursor: col-resize;
-        moved => {
-            root.sidebar-width = clamp(
-                    root.sidebar-width + self.mouse-x - self.pressed-x,
-                    root.min-sidebar-width,
-                    root.max-sidebar-width,
-                );
+
+        accessible-role: AccessibleRole.slider;
+        accessible-label: @tr("Sidebar width");
+        accessible-value: root.sidebar-width / 1px;
+        accessible-value-minimum: root.min-sidebar-width / 1px;
+        accessible-value-maximum: root.max-sidebar-width / 1px;
+        accessible-value-step: root.resize-step / 1px;
+        accessible-action-increment => {
+            root.resize-sidebar(root.resize-step);
+        }
+        accessible-action-decrement => {
+            root.resize-sidebar(-root.resize-step);
+        }
+        forward-focus: divider-focus;
+
+        divider-focus := FocusScope {
+            width: 0;
+            key-pressed(event) => {
+                if (event.text == Key.LeftArrow) {
+                    root.resize-sidebar(-root.resize-step);
+                    return accept;
+                }
+                if (event.text == Key.RightArrow) {
+                    root.resize-sidebar(root.resize-step);
+                    return accept;
+                }
+                return reject;
+            }
+        }
+
+        TouchArea {
+            mouse-cursor: col-resize;
+            moved => {
+                root.resize-sidebar(self.mouse-x - self.pressed-x);
+            }
+        }
+
+        if divider-focus.has-focus: FocusRing {
+            width: 100%;
+            height: 100%;
+            border-radius: 0;
         }
     }
 

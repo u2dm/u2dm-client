@@ -47,7 +47,6 @@ pub(crate) use simple_callbacks;
 macro_rules! bool_props {
     ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
         VerificationVisible VerificationView "VerificationView" "visible" set_visible;
-        VerificationBusy VerificationView "VerificationView" "busy" set_busy;
         VerificationIsSelf VerificationView "VerificationView" "is-self" set_is_self;
         TimelineRetryable RoomView "RoomView" "timeline-retryable" set_timeline_retryable;
         BackwardsLoading RoomView "RoomView" "backwards-loading" set_backwards_loading;
@@ -142,6 +141,16 @@ macro_rules! verification_phases {
     } };
 }
 pub(crate) use verification_phases;
+
+macro_rules! verification_activities {
+    ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
+        None       None       "none";
+        Accepting  Accepting  "accepting";
+        Declining  Declining  "declining";
+        Confirming Confirming "confirming";
+    } };
+}
+pub(crate) use verification_activities;
 
 macro_rules! toast_kinds {
     ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*

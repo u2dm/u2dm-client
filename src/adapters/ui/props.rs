@@ -3,7 +3,9 @@ use tokio::sync::mpsc;
 
 use super::present::{ToastKind, VerifyStep};
 use super::schema::{bool_props, int_props, string_props};
-use crate::commands::{LoginActivity, LoginStep, UiCommand, UserMessage, UserMessageKind};
+use crate::commands::{
+    LoginActivity, LoginStep, UiCommand, UserMessage, UserMessageKind, VerificationActivity,
+};
 use crate::domain::models::{
     ConnectionStatus, LoginMethod, TimelineStatus, VerificationEmoji as DomainVerificationEmoji,
 };
@@ -49,6 +51,7 @@ pub trait UiProps {
     fn set_connection_state(&self, status: &ConnectionStatus);
     fn set_timeline_state(&self, status: TimelineStatus);
     fn set_verification_phase(&self, phase: VerifyStep);
+    fn set_verification_activity(&self, activity: VerificationActivity);
     fn get_string(&self, prop: StringProp) -> SharedString;
     fn get_int(&self, prop: IntProp) -> i32;
     fn apply_user_avatar(&self, avatar: Option<Image>);

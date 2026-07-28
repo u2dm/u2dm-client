@@ -19,12 +19,12 @@ use super::reconcile::reorder_rows;
 use super::schema::{
     bool_props, connection_states, int_props, login_activities, login_methods, login_phases,
     media_states, message_kinds, preview_kinds, service_kinds, simple_callbacks, string_props,
-    timeline_states, toast_kinds, user_message_kinds, verification_phases,
+    timeline_states, toast_kinds, user_message_kinds, verification_activities, verification_phases,
 };
 use super::{emoji, router};
 use crate::commands::{
     AppViewState, Effect, LoginActivity, LoginStep, UiCommand, UserMessage, UserMessageKind,
-    ViewportChanged,
+    VerificationActivity, ViewportChanged,
 };
 use crate::domain::models::{
     ConnectionStatus, EnrichmentDelta, LoginCredentials, LoginMethod, MessagePreviewKind, Room,
@@ -43,7 +43,8 @@ use generated::{
     LoginView, MediaState as UiMediaState, MessageEntry, MessageKind as UiMessageKind,
     PreviewKind as UiPreviewKind, RoomEntry, RoomView, ServiceKind as UiServiceKind, SessionView,
     SpaceEntry, TimelineState, ToastKind as UiToastKind, UserMessage as UiUserMessage,
-    UserMessageKind as UiUserMessageKind, VerificationEmoji, VerificationPhase, VerificationView,
+    UserMessageKind as UiUserMessageKind, VerificationActivity as UiVerificationActivity,
+    VerificationEmoji, VerificationPhase, VerificationView,
 };
 
 fn actions(window: &AppWindow) -> Actions<'_> {
@@ -146,6 +147,11 @@ impl UiProps for AppWindow {
             .set_step(to_verification_phase(phase));
     }
 
+    fn set_verification_activity(&self, activity: VerificationActivity) {
+        self.global::<VerificationView>()
+            .set_activity(to_verification_activity(activity));
+    }
+
     fn get_string(&self, prop: StringProp) -> SharedString {
         match prop {
             StringProp::SelectedRoomId => self.global::<DirectoryView>().get_selected_room_id(),
@@ -232,6 +238,9 @@ login_methods!(to_slint_enum val to_login_method LoginMethod UiLoginMethodKind;)
 connection_states!(to_slint_enum ref to_connection_state ConnectionStatus ConnectionState;);
 timeline_states!(to_slint_enum val to_timeline_state TimelineStatus TimelineState;);
 verification_phases!(to_slint_enum val to_verification_phase VerifyStep VerificationPhase;);
+verification_activities!(
+    to_slint_enum val to_verification_activity VerificationActivity UiVerificationActivity;
+);
 toast_kinds!(to_slint_enum val to_toast_kind ToastKind UiToastKind;);
 user_message_kinds!(to_slint_enum val to_user_message_kind UserMessageKind UiUserMessageKind;);
 media_states!(to_slint_enum val to_media_state MediaState UiMediaState;);

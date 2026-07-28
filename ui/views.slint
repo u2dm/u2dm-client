@@ -8,6 +8,7 @@ import {
     TimelineState,
     ToastKind,
     VerificationPhase,
+    VerificationActivity,
     LoginMethodKind,
     UserMessageKind,
 } from "enums.slint";
@@ -55,8 +56,9 @@ export global RoomView {
 
 export global VerificationView {
     in property <bool> visible;
-    in property <bool> busy;
+    in property <VerificationActivity> activity: VerificationActivity.none;
     in property <VerificationPhase> step: VerificationPhase.none;
+    out property <bool> busy: activity != VerificationActivity.none;
     in property <string> sender;
     in property <bool> is-self;
     in property <[VerificationEmoji]> emojis;

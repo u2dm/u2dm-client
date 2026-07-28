@@ -5,6 +5,7 @@ mod login;
 mod matrix;
 mod media;
 mod storage;
+mod verification;
 
 use std::sync::Arc;
 

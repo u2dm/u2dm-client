@@ -112,10 +112,19 @@ pub enum Effect {
     LoggedOut,
 }
 
+#[derive(Clone, Copy, Default, PartialEq, Eq)]
+pub enum VerificationActivity {
+    #[default]
+    None,
+    Accepting,
+    Declining,
+    Confirming,
+}
+
 pub enum VerificationUpdate {
     Flow(VerificationEvent),
-    Rejecting,
-    RejectFailed(UserMessage),
+    Busy(VerificationActivity),
+    Failed(UserMessage),
     Dismissed,
 }
 

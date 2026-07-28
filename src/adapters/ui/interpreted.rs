@@ -36,12 +36,12 @@ use super::reconcile::reorder_rows;
 use super::schema::{
     connection_states, login_activities, login_methods, login_phases, media_states, message_fields,
     message_kinds, preview_kinds, room_fields, service_kinds, simple_callbacks, space_fields,
-    timeline_states, toast_kinds, user_message_kinds, verification_phases,
+    timeline_states, toast_kinds, user_message_kinds, verification_activities, verification_phases,
 };
 use super::{emoji, router};
 use crate::commands::{
     AppViewState, Effect, LoginActivity, LoginStep, UiCommand, UserMessage, UserMessageKind,
-    ViewportChanged,
+    VerificationActivity, ViewportChanged,
 };
 use crate::domain::models::{
     ConnectionStatus, EnrichmentDelta, LoginCredentials, LoginMethod, MessagePreviewKind, Room,
@@ -175,6 +175,7 @@ login_methods!(impl_slint_enum LoginMethod "LoginMethodKind";);
 connection_states!(impl_slint_enum ConnectionStatus "ConnectionState";);
 timeline_states!(impl_slint_enum TimelineStatus "TimelineState";);
 verification_phases!(impl_slint_enum VerifyStep "VerificationPhase";);
+verification_activities!(impl_slint_enum VerificationActivity "VerificationActivity";);
 toast_kinds!(impl_slint_enum ToastKind "ToastKind";);
 user_message_kinds!(impl_slint_enum UserMessageKind "UserMessageKind";);
 media_states!(impl_slint_enum MediaState "MediaState";);
@@ -332,6 +333,10 @@ impl UiProps for ComponentInstance {
 
     fn set_verification_phase(&self, phase: VerifyStep) {
         set_global(self, "VerificationView", "step", enum_value(&phase));
+    }
+
+    fn set_verification_activity(&self, activity: VerificationActivity) {
+        set_global(self, "VerificationView", "activity", enum_value(&activity));
     }
 
     fn get_string(&self, prop: StringProp) -> SharedString {

@@ -77,6 +77,9 @@ export component Sidebar inherits Rectangle {
                                 single-line: true;
                                 color: Palette.foreground;
                                 text: "";
+                                accessible-role: AccessibleRole.text-input;
+                                accessible-label: @tr("Search rooms");
+                                accessible-value <=> self.text;
                             }
                         }
 
