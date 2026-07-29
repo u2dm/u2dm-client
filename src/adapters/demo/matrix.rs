@@ -6,13 +6,15 @@ use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
 use tokio::sync::mpsc;
+use tokio::time::sleep;
 use tokio_util::sync::CancellationToken;
 
-use super::{data, login, media, verification};
+use super::{data, login, media, timeline, verification};
 use crate::domain::models::{
-    AuthMethod, LoginCredentials, OAuthLoginData, PaginationDirection, PaginationOutcome,
-    ReplyInfo, RoomId, ServerInfo, Session, SyncEvent, SyncOutcome, TimelineCommand,
-    TimelineMessage, TimelinePatch, TimelineUpdate, VerificationCancellation, VerificationEvent,
+    AuthMethod, LoginCredentials, MessageBody, OAuthLoginData, PaginationDirection,
+    PaginationOutcome, ReplyInfo, RoomId, ServerInfo, Session, SyncEvent, SyncOutcome,
+    TimelineCommand, TimelineMessage, TimelinePatch, TimelineUpdate, VerificationCancellation,
+    VerificationEvent,
 };
 use crate::error::{AppError, Result};
 use crate::ports::matrix::{
@@ -172,8 +174,18 @@ impl SyncPort for DemoAuthed {
         on_sync(SyncEvent::Connected);
         on_sync(SyncEvent::Rooms(data::rooms().into()));
         on_sync(SyncEvent::Spaces(data::spaces().into()));
-        cancel.cancelled().await;
-        SyncOutcome::Cancelled
+        if !timeline::scenario().room_list_keeps_updating {
+            cancel.cancelled().await;
+            return SyncOutcome::Cancelled;
+        }
+        loop {
+            tokio::select! {
+                () = cancel.cancelled() => return SyncOutcome::Cancelled,
+                () = sleep(timeline::ROOM_LIST_INTERVAL) => {
+                    on_sync(SyncEvent::Rooms(data::rooms().into()));
+                }
+            }
+        }
     }
 }
 
@@ -193,26 +205,55 @@ impl TimelinePort for DemoAuthed {
         timeline_tx: mpsc::Sender<TimelineUpdate>,
         mut cmd_rx: mpsc::UnboundedReceiver<TimelineCommand>,
     ) -> Result<()> {
+        let scenario = timeline::scenario();
         let messages = data::messages(room_id);
-        send_patch(&timeline_tx, TimelinePatch::Reset(messages.clone())).await;
+
+        if scenario.counts_are_unresolved {
+            drop(timeline_tx.send(TimelineUpdate::ResolvingUnread).await);
+        }
+        if scenario.reset_is_slow {
+            sleep(timeline::SLOW_RESET_DELAY).await;
+        }
+        send_patch(&timeline_tx, opening_patch(scenario, messages.clone())).await;
 
         if let Ok(mut active) = self.active.lock() {
             *active = Some(ActiveRoom {
                 room_id: room_id.clone(),
                 timeline_tx: timeline_tx.clone(),
-                messages,
+                messages: messages.clone(),
             });
         }
 
+        if scenario.reset_repeats {
+            spawn_late_reset(scenario, timeline_tx.clone(), messages.clone());
+        }
+        if scenario.rows_keep_resizing {
+            spawn_row_churn(timeline_tx.clone(), messages.clone());
+        }
+        if scenario.message_arrives_late {
+            spawn_late_append(timeline_tx.clone());
+        }
+
+        let mut history = 0_u64;
         while let Some(command) = cmd_rx.recv().await {
             let direction = match command {
                 TimelineCommand::PaginateBackwards => PaginationDirection::Backwards,
                 TimelineCommand::PaginateForwards => PaginationDirection::Forwards,
                 TimelineCommand::MarkRead => continue,
             };
+            let mut hit_end = true;
+            if scenario.pagination_returns_history
+                && matches!(direction, PaginationDirection::Backwards)
+            {
+                history += 1;
+                hit_end = history > 2;
+                for message in older_history(history, &messages) {
+                    send_patch(&timeline_tx, TimelinePatch::PushFront(message)).await;
+                }
+            }
             let update = TimelineUpdate::Pagination {
                 direction,
-                outcome: PaginationOutcome::Completed { hit_end: true },
+                outcome: PaginationOutcome::Completed { hit_end },
             };
             if timeline_tx.send(update).await.is_err() {
                 break;
@@ -343,6 +384,83 @@ fn reply_info(messages: &[TimelineMessage], event_id: &str) -> Option<ReplyInfo>
             kind: message.body.preview_kind(),
             body: data::body_preview(&message.body),
         })
+}
+
+fn opening_patch(scenario: timeline::Scenario, messages: Vec<TimelineMessage>) -> TimelinePatch {
+    let reset = TimelinePatch::Reset(messages);
+    if scenario.reset_is_batched {
+        return TimelinePatch::Batch(vec![reset]);
+    }
+    reset
+}
+
+fn spawn_late_reset(
+    scenario: timeline::Scenario,
+    timeline_tx: mpsc::Sender<TimelineUpdate>,
+    messages: Vec<TimelineMessage>,
+) {
+    tokio::spawn(async move {
+        sleep(timeline::REPEATED_RESET_DELAY).await;
+        let mut messages = messages;
+        if scenario.repeat_drops_anchor {
+            let keep = messages.len().saturating_sub(3);
+            messages = messages.split_off(keep);
+        }
+        send_patch(&timeline_tx, opening_patch(scenario, messages)).await;
+    });
+}
+
+fn spawn_row_churn(timeline_tx: mpsc::Sender<TimelineUpdate>, messages: Vec<TimelineMessage>) {
+    tokio::spawn(async move {
+        for round in 0..timeline::RESIZE_ROUNDS {
+            sleep(timeline::RESIZE_INTERVAL).await;
+            let Some(index) = messages.len().checked_sub(1) else {
+                return;
+            };
+            let Some(message) = messages.get(index) else {
+                return;
+            };
+            let mut message = message.clone();
+            message.body = grown_body(&message.body, round);
+            send_patch(&timeline_tx, TimelinePatch::Set { index, message }).await;
+        }
+    });
+}
+
+fn spawn_late_append(timeline_tx: mpsc::Sender<TimelineUpdate>) {
+    tokio::spawn(async move {
+        sleep(timeline::LATE_MESSAGE_DELAY).await;
+        let mut message = data::own_message(9_000, "posted while the timeline was settling", None);
+        message.is_own = false;
+        message.sender = "@sarah:matrix.org".to_owned();
+        message.sender_display_name = Some("Sarah Chen".to_owned());
+        send_patch(&timeline_tx, TimelinePatch::PushBack(message)).await;
+    });
+}
+
+fn older_history(round: u64, messages: &[TimelineMessage]) -> Vec<TimelineMessage> {
+    messages
+        .iter()
+        .take(timeline::HISTORY_PAGE)
+        .enumerate()
+        .map(|(index, message)| {
+            let id = format!("demo-history-{round}-{index}");
+            TimelineMessage {
+                unique_id: id.clone(),
+                event_id: Some(id),
+                is_first_unread: false,
+                ..message.clone()
+            }
+        })
+        .collect()
+}
+
+fn grown_body(body: &MessageBody, round: usize) -> MessageBody {
+    let padding = " and it keeps going".repeat(round % 4);
+    match body {
+        MessageBody::Text(text) => MessageBody::Text(format!("{text}{padding}")),
+        other => other.clone(),
+    }
 }
 
 async fn send_patch(timeline_tx: &mpsc::Sender<TimelineUpdate>, patch: TimelinePatch) {

@@ -10,6 +10,7 @@ import { MessagePreview } from "./message-preview.slint";
 import { ServiceLabel } from "./timeline/messages/service-message.slint";
 import { Avatar } from "../../../components/avatar.slint";
 import { ListItemArea } from "../../../components/a11y.slint";
+import { DotPulse } from "../../../components/dot-pulse.slint";
 import { Avatars, Fonts } from "../../../theme.slint";
 import { ServiceKind } from "../../../enums.slint";
 import { DirectoryView } from "../../../views.slint";
@@ -101,9 +102,11 @@ export component Sidebar inherits Rectangle {
                         clip: true;
                         index: idx;
                         selected: room.id == DirectoryView.selected-room-id;
-                        label: room.unread > 0
-                            ? @tr("{}, {} unread", room.name, room.unread)
-                            : room.name;
+                        label: room.unread-pending
+                            ? @tr("{}, {} unread so far, still counting", room.name, room.unread)
+                            : room.unread > 0
+                                ? @tr("{}, {} unread", room.name, room.unread)
+                                : room.name;
                         ring-inset: 2px;
                         background: root.row-background(self.selected, self.has-hover);
                         clicked => {
@@ -218,18 +221,26 @@ export component Sidebar inherits Rectangle {
                                         }
                                     }
 
-                                    if room.unread > 0: Rectangle {
+                                    if room.unread-pending || room.unread > 0: Rectangle {
                                         y: (parent.height - self.height) / 2;
                                         height: 18px;
-                                        min-width: 18px;
+                                        width: max(18px, badge-content.preferred-width);
                                         border-radius: 9px;
                                         background: Palette.accent-background;
 
-                                        HorizontalLayout {
+                                        badge-content := HorizontalLayout {
                                             padding-left: 5px;
                                             padding-right: 5px;
+                                            spacing: 4px;
 
-                                            Text {
+                                            if room.unread-pending: DotPulse {
+                                                y: (parent.height - self.height) / 2;
+                                                tint: Palette.accent-foreground;
+                                                dot-size: 3px;
+                                                spacing: 2px;
+                                            }
+
+                                            if room.unread > 0: Text {
                                                 text: room.unread;
                                                 font-size: 11px;
                                                 font-weight: 700;

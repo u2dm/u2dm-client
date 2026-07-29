@@ -1,0 +1,20 @@
+import { Palette } from "std-widgets.slint";
+
+export component DotPulse inherits HorizontalLayout {
+    in property <color> tint: Palette.accent-background;
+    in property <length> dot-size: 6px;
+
+    spacing: 4px;
+
+    for offset in [0, 1, 2]: VerticalLayout {
+        alignment: center;
+
+        Rectangle {
+            width: root.dot-size;
+            height: root.dot-size;
+            border-radius: self.width / 2;
+            background: root.tint;
+            opacity: 0.3 + 0.7 * abs(sin(360deg * (animation-tick() / 1.1s) - offset * 110deg));
+        }
+    }
+}

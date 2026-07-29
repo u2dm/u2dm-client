@@ -127,6 +127,7 @@ pub enum MessagePreviewKind {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+#[allow(clippy::struct_excessive_bools)]
 pub struct Room {
     pub id: RoomId,
     pub display_name: String,
@@ -135,6 +136,7 @@ pub struct Room {
     pub member_count: u64,
     pub unread_count: u64,
     pub mention_count: u64,
+    pub unread_pending: bool,
     pub last_activity_ts: u64,
     pub last_message_sender: Option<String>,
     pub last_message_kind: MessagePreviewKind,
@@ -283,6 +285,13 @@ pub struct TimelineMessage {
     pub is_own: bool,
     pub reply: Option<ReplyInfo>,
     pub edited: bool,
+    pub is_first_unread: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct UnreadAnchor {
+    pub index: usize,
+    pub count: u32,
 }
 
 #[derive(Debug, Clone, strum::IntoStaticStr)]
@@ -345,6 +354,39 @@ impl TimelinePatch {
         self.adds_at_front() && !self.adds_at_back()
     }
 
+    pub fn opens_room(&self) -> bool {
+        self.last_reset().is_some()
+    }
+
+    pub fn unread_anchor(&self) -> Option<UnreadAnchor> {
+        let messages = self.last_reset()?;
+        let index = messages.iter().position(|m| m.is_first_unread)?;
+        Some(UnreadAnchor {
+            index,
+            count: u32::try_from(messages.len() - index).unwrap_or(u32::MAX),
+        })
+    }
+
+    pub fn shifts_rows(&self) -> bool {
+        match self {
+            Self::PushFront(_)
+            | Self::PopFront
+            | Self::Insert { .. }
+            | Self::Remove { .. }
+            | Self::Truncate { .. } => true,
+            Self::Batch(patches) => patches.iter().any(TimelinePatch::shifts_rows),
+            _ => false,
+        }
+    }
+
+    fn last_reset(&self) -> Option<&[TimelineMessage]> {
+        match self {
+            Self::Reset(messages) => Some(messages),
+            Self::Batch(patches) => patches.iter().rev().find_map(TimelinePatch::last_reset),
+            _ => None,
+        }
+    }
+
     fn adds_at_front(&self) -> bool {
         match self {
             Self::PushFront(_) => true,
@@ -385,6 +427,7 @@ pub enum PaginationOutcome {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TimelineStatus {
     Loading,
+    LoadingUnread,
     Ready,
     Failed { retryable: bool },
     Disconnected,
@@ -399,6 +442,7 @@ pub struct PaginationState {
 #[derive(Debug, Clone)]
 pub enum TimelineUpdate {
     Patch(Box<TimelinePatch>),
+    ResolvingUnread,
     Pagination {
         direction: PaginationDirection,
         outcome: PaginationOutcome,
@@ -409,6 +453,7 @@ impl TimelineUpdate {
     pub fn label(&self) -> &'static str {
         match self {
             Self::Patch(patch) => patch.label(),
+            Self::ResolvingUnread => "ResolvingUnread",
             Self::Pagination { .. } => "Pagination",
         }
     }

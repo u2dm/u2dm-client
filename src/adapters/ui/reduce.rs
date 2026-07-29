@@ -1,7 +1,7 @@
 use std::cell::{Cell, RefCell};
 use std::sync::Arc;
 
-use slint::SharedString;
+use slint::{Model, SharedString, VecModel};
 
 use super::backend::{UiBackend, UiEventContext};
 use super::decode::{AvatarSlot, clear_session_media, load_avatar_async};
@@ -15,6 +15,8 @@ use crate::commands::{
 use crate::domain::models::{
     Room, RoomId, TimelinePatch, TimelineStatus, VerificationEvent as DomainVerificationEvent,
 };
+
+const NO_UNREAD_ANCHOR: i32 = -1;
 
 thread_local! {
     static PREPEND_TOKEN: Cell<i32> = const { Cell::new(0) };
@@ -68,8 +70,18 @@ pub fn dispatch_effect<B: UiBackend>(w: &B::Window, event: Effect, ctx: &UiEvent
                 "dispatch_effect received Timeline event"
             );
             if matches {
-                if matches!(patch.as_ref(), TimelinePatch::Reset(_)) {
+                if patch.opens_room() {
                     apply_timeline_status(w, TimelineStatus::Ready);
+                    let anchor = unread_anchor_index(&patch);
+                    tracing::debug!(
+                        anchor,
+                        generation,
+                        label = patch.label(),
+                        %room_id,
+                        "publishing the unread anchor"
+                    );
+                    w.set_int(IntProp::UnreadAnchorIndex, anchor);
+                    w.set_int(IntProp::TimelineToken, generation);
                 }
                 if patch.is_prepend() {
                     let next = PREPEND_TOKEN.with(|t| {
@@ -79,6 +91,7 @@ pub fn dispatch_effect<B: UiBackend>(w: &B::Window, event: Effect, ctx: &UiEvent
                     });
                     w.set_int(IntProp::PrependToken, next);
                 }
+                let shifts_rows = patch.shifts_rows();
                 apply_timeline_patch(
                     ctx.timeline,
                     *patch,
@@ -86,6 +99,9 @@ pub fn dispatch_effect<B: UiBackend>(w: &B::Window, event: Effect, ctx: &UiEvent
                     &|entry, delta| B::enrich_message(entry, delta, ctx.media),
                     &|entry| B::message_id(entry),
                 );
+                if shifts_rows {
+                    w.set_int(IntProp::UnreadAnchorIndex, anchor_row::<B>(ctx.timeline));
+                }
             }
         }
         Effect::TimelineStatus {
@@ -254,6 +270,24 @@ fn apply_toast(w: &impl UiProps, toast: &Toast) {
     w.set_string(StringProp::ToastDetail, SharedString::from(detail));
 }
 
+fn anchor_row<B: UiBackend>(model: &VecModel<B::Message>) -> i32 {
+    (0..model.row_count())
+        .find(|row| {
+            model
+                .row_data(*row)
+                .is_some_and(|entry| B::message_is_first_unread(&entry))
+        })
+        .and_then(|row| i32::try_from(row).ok())
+        .unwrap_or(NO_UNREAD_ANCHOR)
+}
+
+fn unread_anchor_index(patch: &TimelinePatch) -> i32 {
+    patch
+        .unread_anchor()
+        .and_then(|anchor| i32::try_from(anchor.index).ok())
+        .unwrap_or(NO_UNREAD_ANCHOR)
+}
+
 fn is_active(w: &impl UiProps, room_id: &RoomId, generation: i32) -> bool {
     w.get_string(StringProp::SelectedRoomId).as_str() == room_id.as_ref()
         && ACTIVE_GENERATION.with(Cell::get) == generation
@@ -332,4 +366,5 @@ fn clear_selected_room(w: &impl UiProps) {
     w.set_string(StringProp::SelectedRoomName, SharedString::default());
     w.set_int(IntProp::SelectedRoomMembers, 0);
     w.set_int(IntProp::SelectedGeneration, 0);
+    w.set_int(IntProp::UnreadAnchorIndex, NO_UNREAD_ANCHOR);
 }

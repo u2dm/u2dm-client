@@ -45,6 +45,8 @@ export global RoomView {
     in property <TimelineState> timeline-status: TimelineState.none;
     in property <bool> timeline-retryable;
     in property <int> new-messages-count;
+    in property <int> unread-anchor-index: -1;
+    in property <int> timeline-token;
     in property <int> prepend-token;
     in property <bool> backwards-loading;
     in property <bool> forwards-loading;

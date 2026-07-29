@@ -288,27 +288,27 @@ msgctxt "MessageInput"
 msgid "Send"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/message-bubble.slint:226
+#: ui/screens/chat/components/timeline/message-bubble.slint:229
 msgctxt "MessageBubble"
 msgid "Reply to {}"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/message-bubble.slint:259
+#: ui/screens/chat/components/timeline/message-bubble.slint:262
 msgctxt "MessageBubble"
 msgid "Reply"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/timeline-content.slint:144
+#: ui/screens/chat/components/timeline/timeline-content.slint:213
 msgctxt "TimelineContent"
 msgid "Loading older messages..."
 msgstr ""
 
-#: ui/screens/chat/components/timeline/timeline-content.slint:151
+#: ui/screens/chat/components/timeline/timeline-content.slint:220
 msgctxt "TimelineContent"
 msgid "Loading newer messages..."
 msgstr ""
 
-#: ui/screens/chat/components/timeline/timeline-content.slint:163
+#: ui/screens/chat/components/timeline/timeline-content.slint:232
 msgctxt "TimelineContent"
 msgid "Jump to latest messages"
 msgstr ""
@@ -458,6 +458,11 @@ msgctxt "UnsupportedMessage"
 msgid "Unsupported message type: {}"
 msgstr ""
 
+#: ui/screens/chat/components/timeline/messages/unread-divider.slint:11
+msgctxt "UnreadDivider"
+msgid "Unread messages"
+msgstr ""
+
 #: ui/screens/chat/components/timeline/messages/file-message.slint:25
 msgctxt "FileMessage"
 msgid "Save"
@@ -523,27 +528,32 @@ msgctxt "EmojiPicker"
 msgid "No emoji found"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/timeline-view.slint:37
+#: ui/screens/chat/components/timeline/timeline-view.slint:38
 msgctxt "TimelineView"
 msgid "Loading messages..."
 msgstr ""
 
-#: ui/screens/chat/components/timeline/timeline-view.slint:40
+#: ui/screens/chat/components/timeline/timeline-view.slint:41
+msgctxt "TimelineView"
+msgid "Loading unread messages..."
+msgstr ""
+
+#: ui/screens/chat/components/timeline/timeline-view.slint:44
 msgctxt "TimelineView"
 msgid "Connection lost"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/timeline-view.slint:42
+#: ui/screens/chat/components/timeline/timeline-view.slint:46
 msgctxt "TimelineView"
 msgid "Couldn't load messages"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/timeline-view.slint:51
+#: ui/screens/chat/components/timeline/timeline-view.slint:55
 msgctxt "TimelineView"
 msgid "Select a room"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/timeline-view.slint:80
+#: ui/screens/chat/components/timeline/timeline-view.slint:84
 msgctxt "TimelineView"
 msgid "{n} member"
 msgid_plural "{n} members"
@@ -575,27 +585,32 @@ msgctxt "SpaceRail"
 msgid "All Rooms"
 msgstr ""
 
-#: ui/screens/chat/components/sidebar.slint:66
+#: ui/screens/chat/components/sidebar.slint:67
 msgctxt "Sidebar"
 msgid "Search"
 msgstr ""
 
-#: ui/screens/chat/components/sidebar.slint:81
+#: ui/screens/chat/components/sidebar.slint:82
 msgctxt "Sidebar"
 msgid "Search rooms"
 msgstr ""
 
-#: ui/screens/chat/components/sidebar.slint:97
+#: ui/screens/chat/components/sidebar.slint:98
 msgctxt "Sidebar"
 msgid "Rooms"
 msgstr ""
 
-#: ui/screens/chat/components/sidebar.slint:105
+#: ui/screens/chat/components/sidebar.slint:106
+msgctxt "Sidebar"
+msgid "{}, {} unread so far, still counting"
+msgstr ""
+
+#: ui/screens/chat/components/sidebar.slint:108
 msgctxt "Sidebar"
 msgid "{}, {} unread"
 msgstr ""
 
-#: ui/screens/chat/components/sidebar.slint:119
+#: ui/screens/chat/components/sidebar.slint:122
 msgctxt "Sidebar"
 msgid "You"
 msgstr ""
@@ -735,7 +750,7 @@ msgctxt "CredentialsScreen"
 msgid "Cancel"
 msgstr ""
 
-#: ui/screens/login/button.slint:109
+#: ui/screens/login/button.slint:110
 msgctxt "BackButton"
 msgid "Back to the homeserver step"
 msgstr ""
@@ -765,62 +780,62 @@ msgctxt "HomeserverScreen"
 msgid "Continue"
 msgstr ""
 
-#: ui/screens/login/common.slint:123
+#: ui/screens/login/common.slint:104
 msgctxt "BrandHeader"
 msgid "U2DM"
 msgstr ""
 
-#: ui/screens/login/common.slint:180
+#: ui/screens/login/common.slint:161
 msgctxt "StatusRow"
 msgid "Loading saved session..."
 msgstr ""
 
-#: ui/screens/login/common.slint:183
+#: ui/screens/login/common.slint:164
 msgctxt "StatusRow"
 msgid "Opening encrypted store..."
 msgstr ""
 
-#: ui/screens/login/common.slint:186
+#: ui/screens/login/common.slint:167
 msgctxt "StatusRow"
 msgid "Connecting to homeserver..."
 msgstr ""
 
-#: ui/screens/login/common.slint:189
+#: ui/screens/login/common.slint:170
 msgctxt "StatusRow"
 msgid "Restoring authentication..."
 msgstr ""
 
-#: ui/screens/login/common.slint:192
+#: ui/screens/login/common.slint:173
 msgctxt "StatusRow"
 msgid "Syncing rooms..."
 msgstr ""
 
-#: ui/screens/login/common.slint:195
+#: ui/screens/login/common.slint:176
 msgctxt "StatusRow"
 msgid "Checking server..."
 msgstr ""
 
-#: ui/screens/login/common.slint:198
+#: ui/screens/login/common.slint:179
 msgctxt "StatusRow"
 msgid "Logging in..."
 msgstr ""
 
-#: ui/screens/login/common.slint:201
+#: ui/screens/login/common.slint:182
 msgctxt "StatusRow"
 msgid "Opening browser..."
 msgstr ""
 
-#: ui/screens/login/common.slint:204
+#: ui/screens/login/common.slint:185
 msgctxt "StatusRow"
 msgid "Waiting for authentication..."
 msgstr ""
 
-#: ui/screens/login/common.slint:207
+#: ui/screens/login/common.slint:188
 msgctxt "StatusRow"
 msgid "Erasing local account data..."
 msgstr ""
 
-#: ui/screens/login/common.slint:341
+#: ui/screens/login/common.slint:322
 msgctxt "OrDivider"
 msgid "or"
 msgstr ""

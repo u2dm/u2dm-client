@@ -58,6 +58,8 @@ pub(crate) use bool_props;
 macro_rules! int_props {
     ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
         NewMessagesCount RoomView "RoomView" "new-messages-count" set_new_messages_count;
+        UnreadAnchorIndex RoomView "RoomView" "unread-anchor-index" set_unread_anchor_index;
+        TimelineToken RoomView "RoomView" "timeline-token" set_timeline_token;
         PrependToken RoomView "RoomView" "prepend-token" set_prepend_token;
         SelectedRoomMembers RoomView "RoomView" "selected-room-members" set_selected_room_members;
         SelectedGeneration DirectoryView "DirectoryView" "selected-generation" set_selected_generation;
@@ -123,6 +125,7 @@ pub(crate) use connection_states;
 macro_rules! timeline_states {
     ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
         Loading      Loading      "loading";
+        LoadingUnread LoadingUnread "loading-unread";
         Ready        Ready        "ready";
         Failed{..}   Failed       "failed";
         Disconnected Disconnected "disconnected";
@@ -272,6 +275,7 @@ macro_rules! message_fields {
         color_index COLOR_INDEX "color-index" int;
         is_own IS_OWN "is-own" flag;
         edited EDITED "edited" flag;
+        is_first_unread IS_FIRST_UNREAD "first-unread" flag;
         has_reply HAS_REPLY "has-reply" flag;
         reply_sender REPLY_SENDER "reply-sender" text;
         reply_kind REPLY_KIND "reply-kind" enumk;
@@ -299,6 +303,7 @@ macro_rules! room_fields {
         members MEMBERS "members" int;
         unread UNREAD "unread" int;
         mentions MENTIONS "mentions" int;
+        unread_pending UNREAD_PENDING "unread-pending" flag;
         last_message_sender LAST_MESSAGE_SENDER "last-message-sender" text;
         last_message_kind LAST_MESSAGE_KIND "last-message-kind" enumk;
         last_message_body LAST_MESSAGE_BODY "last-message-body" text;

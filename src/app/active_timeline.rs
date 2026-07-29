@@ -101,7 +101,6 @@ impl ActiveTimeline {
         let (tl_tx, mut tl_rx) = mpsc::channel::<TimelineUpdate>(TIMELINE_CHANNEL_CAP);
         let (tl_cmd_tx, tl_cmd_rx) = mpsc::unbounded_channel::<TimelineCommand>();
         self.timeline_cmd_tx = Some(tl_cmd_tx.clone());
-        self.mark_read();
 
         let output = Arc::clone(&self.output);
         let cmd_tx = self.cmd_tx.clone();
@@ -121,15 +120,9 @@ impl ActiveTimeline {
 
                     match update {
                         TimelineUpdate::Patch(patch) => {
-                            let appended = count_appended(patch.as_ref());
-                            if counters.is_at_bottom() {
-                                if appended.from_others
-                                    && tl_cmd_tx.send(TimelineCommand::MarkRead).is_err()
-                                {
-                                    tracing::debug!("timeline command channel closed");
-                                }
-                            } else if appended.total > 0 {
-                                let total = counters.add_new_messages(appended.total);
+                            if let Some(total) =
+                                settle_read_position(patch.as_ref(), &counters, &tl_cmd_tx)
+                            {
                                 output.publish(Box::new(move |view| {
                                     view.pagination.retarget(generation);
                                     view.pagination.new_messages = total;
@@ -141,6 +134,15 @@ impl ActiveTimeline {
                                     room_id: rid.clone(),
                                     generation,
                                     patch,
+                                })
+                                .await;
+                        }
+                        TimelineUpdate::ResolvingUnread => {
+                            output
+                                .emit(Effect::TimelineStatus {
+                                    room_id: rid.clone(),
+                                    generation,
+                                    status: TimelineStatus::LoadingUnread,
                                 })
                                 .await;
                         }
@@ -328,6 +330,7 @@ impl ActiveTimeline {
         if !self.is_current(room_id, generation) {
             return;
         }
+        tracing::debug!(at_bottom, generation, "the timeline reported its position");
 
         let mode_changed = self.viewport.update_scroll_position(at_bottom);
         let reached_bottom = at_bottom && !self.counters.is_at_bottom();
@@ -394,6 +397,28 @@ impl ActiveTimeline {
             view.pagination.new_messages = count;
         }));
     }
+}
+
+fn settle_read_position(
+    patch: &TimelinePatch,
+    counters: &GenerationCounters,
+    tl_cmd_tx: &mpsc::UnboundedSender<TimelineCommand>,
+) -> Option<u32> {
+    if let Some(anchor) = patch.unread_anchor() {
+        counters.set_at_bottom(false);
+        return Some(counters.add_new_messages(anchor.count));
+    }
+
+    let appended = count_appended(patch);
+    if counters.is_at_bottom() {
+        if (patch.opens_room() || appended.from_others)
+            && tl_cmd_tx.send(TimelineCommand::MarkRead).is_err()
+        {
+            tracing::debug!("timeline command channel closed");
+        }
+        return None;
+    }
+    (appended.total > 0).then(|| counters.add_new_messages(appended.total))
 }
 
 #[derive(Default, Clone, Copy)]

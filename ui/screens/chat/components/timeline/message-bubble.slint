@@ -13,6 +13,7 @@ import { ImageMessage, ImagePlaceholder } from "./messages/image-message.slint";
 import { FileMessage } from "./messages/file-message.slint";
 import { UtdMessage } from "./messages/utd-message.slint";
 import { UnsupportedMessage } from "./messages/unsupported-message.slint";
+import { UnreadDivider } from "./messages/unread-divider.slint";
 import { Avatar } from "../../../../components/avatar.slint";
 import { ClickArea } from "../../../../components/a11y.slint";
 import { Composer } from "../../../../local.slint";
@@ -81,6 +82,8 @@ export component MessageBubble inherits VerticalLayout {
         && (msg.media-state != MediaState.idle || (msg.image-width > 0 && msg.image-height > 0));
     property <bool> is-photo-only: root.has-photo && !root.has-caption;
     property <length> photo-row-padding: root.has-photo ? 10px : 0px;
+
+    if msg.first-unread: UnreadDivider { }
 
     if is-service: ServiceMessage {
         kind: msg.service-kind;

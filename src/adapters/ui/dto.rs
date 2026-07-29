@@ -33,6 +33,7 @@ pub struct MessageDto {
     pub color_index: i32,
     pub is_own: bool,
     pub edited: bool,
+    pub is_first_unread: bool,
     pub has_reply: bool,
     pub reply_sender: SharedString,
     pub reply_kind: MessagePreviewKind,
@@ -47,6 +48,7 @@ pub struct MessageDto {
     pub has_avatar: bool,
 }
 
+#[allow(clippy::struct_excessive_bools)]
 pub struct RoomDto {
     pub id: SharedString,
     pub name: SharedString,
@@ -55,6 +57,7 @@ pub struct RoomDto {
     pub members: i32,
     pub unread: i32,
     pub mentions: i32,
+    pub unread_pending: bool,
     pub last_message_sender: SharedString,
     pub last_message_kind: MessagePreviewKind,
     pub last_message_body: SharedString,
@@ -112,6 +115,7 @@ pub fn message_to_dto(m: &TimelineMessage, media: &dyn MediaCache) -> MessageDto
         color_index: avatar_color_index(&m.sender),
         is_own: m.is_own,
         edited: m.edited,
+        is_first_unread: m.is_first_unread,
         has_reply: m.reply.is_some(),
         reply_sender: SharedString::from(m.reply.as_ref().map_or("", |r| r.sender.as_str())),
         reply_kind: m
@@ -208,6 +212,7 @@ pub fn room_to_dto(r: &Room, media: &dyn MediaCache) -> RoomDto {
         },
         unread: count(r.unread_count),
         mentions: count(r.mention_count),
+        unread_pending: r.unread_pending,
         last_message_sender: SharedString::from(
             r.last_message_sender.as_deref().unwrap_or_default(),
         ),

@@ -267,6 +267,10 @@ impl UiBackend for CompiledBackend {
         entry.unique_id.as_str()
     }
 
+    fn message_is_first_unread(entry: &MessageEntry) -> bool {
+        entry.first_unread
+    }
+
     fn room_id(entry: &RoomEntry) -> &str {
         entry.id.as_str()
     }
@@ -547,6 +551,7 @@ fn message_to_entry(m: &TimelineMessage, media: &dyn MediaCache) -> MessageEntry
         color_index: d.color_index,
         is_own: d.is_own,
         edited: d.edited,
+        first_unread: d.is_first_unread,
         has_reply: d.has_reply,
         reply_sender: d.reply_sender,
         reply_kind: to_preview_kind(d.reply_kind),
@@ -587,6 +592,7 @@ fn room_to_entry(r: &Room, media: &dyn MediaCache) -> RoomEntry {
         members: d.members,
         unread: d.unread,
         mentions: d.mentions,
+        unread_pending: d.unread_pending,
         last_message_sender: d.last_message_sender,
         last_message_kind: to_preview_kind(d.last_message_kind),
         last_message_body: d.last_message_body,

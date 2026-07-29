@@ -4,6 +4,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use super::dto::{DemoData, RoomDto, SpaceDto};
 use super::media;
+use super::timeline::{self, scenario};
 use crate::domain::models::{
     MessageBody, ReplyInfo, Room, RoomId, Session, Space, TimelineMessage,
 };
@@ -53,12 +54,58 @@ pub fn spaces() -> Vec<Space> {
 
 pub fn messages(room_id: &RoomId) -> Vec<TimelineMessage> {
     let now = now_ms();
-    match data().timelines.get(room_id.as_ref()) {
+    let mut messages = match data().timelines.get(room_id.as_ref()) {
         Some(timeline) => timeline
             .iter()
             .map(|message| message.to_message(own_user(), now))
             .collect(),
         None => last_message_only(room_id),
+    };
+    if scenario().history_is_long {
+        messages = repeated_history(messages);
+    }
+    mark_first_unread(room_id, &mut messages);
+    messages
+}
+
+fn repeated_history(messages: Vec<TimelineMessage>) -> Vec<TimelineMessage> {
+    let mut repeated = Vec::with_capacity(messages.len() * timeline::HISTORY_COPIES);
+    for copy in 0..timeline::HISTORY_COPIES {
+        for message in &messages {
+            let mut message = message.clone();
+            message.unique_id = format!("{}-copy{copy}", message.unique_id);
+            message.event_id = message
+                .event_id
+                .as_ref()
+                .map(|id| format!("{id}-copy{copy}"));
+            repeated.push(message);
+        }
+    }
+    repeated
+}
+
+fn unread_count(room_id: &RoomId, loaded: usize) -> usize {
+    if scenario().read_position_precedes_history {
+        return loaded;
+    }
+    if scenario().history_is_long {
+        return loaded * timeline::UNREAD_PORTION_NUMERATOR / timeline::UNREAD_PORTION_DENOMINATOR;
+    }
+    data()
+        .rooms
+        .iter()
+        .find(|room| room.id == room_id.as_ref())
+        .map_or(0, |room| usize::try_from(room.unread).unwrap_or(usize::MAX))
+}
+
+fn mark_first_unread(room_id: &RoomId, messages: &mut [TimelineMessage]) {
+    let unread = unread_count(room_id, messages.len());
+    if unread == 0 {
+        return;
+    }
+    let read_up_to = messages.len().saturating_sub(unread);
+    if let Some(message) = messages.iter_mut().skip(read_up_to).find(|m| !m.is_own) {
+        message.is_first_unread = true;
     }
 }
 
@@ -80,6 +127,7 @@ pub fn own_message(sequence: u64, body: &str, reply: Option<ReplyInfo>) -> Timel
         is_own: true,
         reply,
         edited: false,
+        is_first_unread: false,
     }
 }
 
@@ -139,6 +187,7 @@ fn synthesized_message(dto: &RoomDto, room: &Room) -> TimelineMessage {
         is_own: dto.last_message.own,
         reply: None,
         edited: room.last_message_edited,
+        is_first_unread: false,
     }
 }
 

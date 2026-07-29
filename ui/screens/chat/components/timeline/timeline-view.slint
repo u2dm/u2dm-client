@@ -27,6 +27,7 @@ export component TimelineView inherits Rectangle {
         ? root.message-input-height + root.reply-bar-height
         : root.message-input-height;
     property <bool> is-blocking-status: RoomView.timeline-status == TimelineState.loading
+        || RoomView.timeline-status == TimelineState.loading-unread
         || RoomView.timeline-status == TimelineState.failed
         || RoomView.timeline-status == TimelineState.disconnected;
     property <bool> show-status-pill: root.has-room && root.is-blocking-status;
@@ -35,6 +36,9 @@ export component TimelineView inherits Rectangle {
     pure function status-message(status: TimelineState) -> string {
         if status == TimelineState.loading {
             return @tr("Loading messages...");
+        }
+        if status == TimelineState.loading-unread {
+            return @tr("Loading unread messages...");
         }
         if status == TimelineState.disconnected {
             return @tr("Connection lost");
@@ -90,7 +94,6 @@ export component TimelineView inherits Rectangle {
         y: root.header-height + root.spacing;
         width: root.width;
         height: root.height - root.header-height - root.input-height - root.spacing * 2;
-        room-id: root.room-id;
         available-width: root.width;
     }
 
@@ -98,7 +101,8 @@ export component TimelineView inherits Rectangle {
         x: 16px;
         y: root.height - root.input-height - root.spacing - self.height - 16px;
         text: root.status-message(RoomView.timeline-status);
-        loading: RoomView.timeline-status == TimelineState.loading;
+        loading: RoomView.timeline-status == TimelineState.loading
+            || RoomView.timeline-status == TimelineState.loading-unread;
         show-retry: root.can-retry;
         retry => {
             Actions.retry-timeline();

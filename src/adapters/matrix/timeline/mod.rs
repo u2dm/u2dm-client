@@ -25,6 +25,7 @@ pub(super) struct TimelineContext<'a> {
     pub(super) media_sources: &'a Arc<StdMutex<HashMap<String, MediaSource>>>,
     pub(super) pronouns: &'a Arc<PronounCache>,
     pub(super) own_user_id: Option<&'a str>,
+    pub(super) first_unread: Option<&'a str>,
     pub(super) timeline_tx: &'a mpsc::Sender<TimelineUpdate>,
     pub(super) enrich: &'a EnrichmentPool,
 }

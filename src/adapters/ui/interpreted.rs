@@ -468,6 +468,11 @@ impl UiBackend for InterpretedBackend {
         entry_id_from_value(entry).map_or("", SharedString::as_str)
     }
 
+    fn message_is_first_unread(entry: &Value) -> bool {
+        matches!(entry, Value::Struct(s)
+            if matches!(s.get_field(message::IS_FIRST_UNREAD), Some(Value::Bool(true))))
+    }
+
     fn room_id(entry: &Value) -> &str {
         room_id_from_value(entry).map_or("", SharedString::as_str)
     }

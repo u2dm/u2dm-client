@@ -27,6 +27,7 @@ pub trait UiBackend: Sized + 'static {
     fn convert_space(space: &Space, media: &dyn MediaCache) -> Self::Space;
 
     fn message_id(entry: &Self::Message) -> &str;
+    fn message_is_first_unread(entry: &Self::Message) -> bool;
     fn room_id(entry: &Self::Room) -> &str;
     fn space_id(entry: &Self::Space) -> &str;
 

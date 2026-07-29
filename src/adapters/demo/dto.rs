@@ -37,7 +37,7 @@ pub struct RoomDto {
     #[serde(default)]
     members: u64,
     #[serde(default)]
-    unread: u64,
+    pub unread: u64,
     #[serde(default)]
     mentions: u64,
     #[serde(default)]
@@ -209,6 +209,7 @@ impl RoomDto {
             is_direct: self.direct,
             member_count: self.members,
             unread_count: self.unread,
+            unread_pending: super::timeline::scenario().counts_are_unresolved,
             mention_count: self.mentions,
             last_activity_ts: ago_ms(now_ms, self.minutes_ago, self.days_ago),
             last_message_sender: self.last_message.sender.clone(),
@@ -254,6 +255,7 @@ impl MessageDto {
                 body: reply.body.clone(),
             }),
             edited: self.edited,
+            is_first_unread: false,
         }
     }
 

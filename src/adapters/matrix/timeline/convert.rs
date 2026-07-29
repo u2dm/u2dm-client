@@ -42,6 +42,7 @@ fn base_message(
     let ts: u64 = event.timestamp().0.into();
     let sender_str = event.sender().to_string();
     let is_own = ctx.own_user_id.is_some_and(|uid| uid == sender_str);
+    let is_first_unread = ctx.first_unread.is_some_and(|id| id == event_id_str);
     TimelineMessage {
         unique_id,
         event_id: event_id_from_str(event_id_str),
@@ -54,6 +55,7 @@ fn base_message(
         is_own,
         reply: None,
         edited: false,
+        is_first_unread,
     }
 }
 

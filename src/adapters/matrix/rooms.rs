@@ -59,13 +59,50 @@ fn room_avatar_mxc(room: &Room, is_direct: bool) -> Option<String> {
         .map(ToString::to_string)
 }
 
+fn backpaginate_until_read_receipts_anchor(client: &Client) {
+    client
+        .event_cache()
+        .config_mut()
+        .experimental_auto_backpagination = true;
+}
+
+struct UnreadCounts {
+    unread: u64,
+    mentions: u64,
+}
+
+fn highest_reported_unread(room: &Room) -> UnreadCounts {
+    let cached_messages = room.num_unread_messages();
+    let cached_notifications = room.num_unread_notifications();
+    let cached_mentions = room.num_unread_mentions();
+    let from_server = room.unread_notification_counts();
+
+    let counts = UnreadCounts {
+        unread: cached_messages
+            .max(cached_notifications)
+            .max(from_server.notification_count),
+        mentions: cached_mentions.max(from_server.highlight_count),
+    };
+
+    tracing::debug!(
+        room = %room.room_id(),
+        cached_messages,
+        cached_notifications,
+        cached_mentions,
+        server_notifications = from_server.notification_count,
+        server_highlights = from_server.highlight_count,
+        unread = counts.unread,
+        "unread counts"
+    );
+    counts
+}
+
 async fn build_single_room(room: &Room) -> DomainRoom {
     let display_name = room
         .cached_display_name()
         .map(|dn| dn.to_string())
         .unwrap_or_default();
-    let unread = room.num_unread_notifications();
-    let mentions = room.num_unread_mentions();
+    let counts = highest_reported_unread(room);
     let is_direct = room.is_direct().await.unwrap_or_default();
     let member_count = room.joined_members_count();
     let last_activity_ts: u64 = room.latest_event_timestamp().map_or(0, |ts| ts.0.into());
@@ -76,8 +113,9 @@ async fn build_single_room(room: &Room) -> DomainRoom {
         avatar_mxc: room_avatar_mxc(room, is_direct),
         is_direct,
         member_count,
-        unread_count: unread,
-        mention_count: mentions,
+        unread_count: counts.unread,
+        mention_count: counts.mentions,
+        unread_pending: false,
         last_activity_ts,
         last_message_sender: last_message.sender,
         last_message_kind: last_message.kind,
@@ -454,6 +492,7 @@ impl AvatarFetcher {
 }
 
 async fn build_sync_service(client: &Client) -> AppResult<SyncService> {
+    backpaginate_until_read_receipts_anchor(client);
     client
         .event_cache()
         .subscribe()
@@ -500,7 +539,17 @@ struct Directory {
     order_dirty: bool,
     spaces_dirty: bool,
     spaces_structural_dirty: bool,
+    still_counting: HashMap<String, Counting>,
     flush_at: Option<Instant>,
+}
+
+const UNREAD_HOLDS_STILL_FOR: Duration = Duration::from_millis(1500);
+const UNREAD_GIVES_UP_AFTER: Duration = Duration::from_secs(20);
+
+#[derive(Clone, Copy)]
+struct Counting {
+    until: Instant,
+    deadline: Instant,
 }
 
 impl Directory {
@@ -514,8 +563,47 @@ impl Directory {
             order_dirty: false,
             spaces_dirty: false,
             spaces_structural_dirty: false,
+            still_counting: HashMap::new(),
             flush_at: None,
         }
+    }
+
+    fn is_still_counting_unread(&mut self, id: &str, unread: u64, activity: u64) -> bool {
+        let now = Instant::now();
+        if self.grew_without_a_new_message(id, unread, activity) {
+            self.keep_counting(id, now);
+        }
+        let Some(until) = self.counting_until(id, now) else {
+            return false;
+        };
+        self.flush_at = Some(self.flush_at.map_or(until, |at| at.min(until)));
+        true
+    }
+
+    fn grew_without_a_new_message(&self, id: &str, unread: u64, activity: u64) -> bool {
+        self.rooms.get(id).is_some_and(|previous| {
+            unread > previous.unread_count && activity == previous.last_activity_ts
+        })
+    }
+
+    fn keep_counting(&mut self, id: &str, now: Instant) {
+        let counting = self
+            .still_counting
+            .entry(id.to_owned())
+            .or_insert(Counting {
+                until: now,
+                deadline: now + UNREAD_GIVES_UP_AFTER,
+            });
+        counting.until = (now + UNREAD_HOLDS_STILL_FOR).min(counting.deadline);
+    }
+
+    fn counting_until(&mut self, id: &str, now: Instant) -> Option<Instant> {
+        let until = self.still_counting.get(id)?.until;
+        if until <= now {
+            self.still_counting.remove(id);
+            return None;
+        }
+        Some(until)
     }
 
     fn arm(&mut self) {
@@ -559,8 +647,10 @@ impl Directory {
         self.order_dirty = true;
     }
 
-    fn upsert_room(&mut self, room: DomainRoom) {
+    fn upsert_room(&mut self, mut room: DomainRoom) {
         let key = room.id.to_string();
+        room.unread_pending =
+            self.is_still_counting_unread(&key, room.unread_count, room.last_activity_ts);
         match self.rooms.get(&key) {
             Some(current) if *current == room => return,
             Some(current) => {
@@ -576,6 +666,7 @@ impl Directory {
 
     fn remove_room(&mut self, room_id: &MatrixRoomId) {
         self.pending.remove(room_id);
+        self.still_counting.remove(room_id.as_str());
         if self.rooms.remove(room_id.as_str()).is_none() {
             return;
         }
@@ -632,16 +723,28 @@ impl Directory {
     }
 
     fn refresh_counts(&mut self, room: &Room) {
-        let Some(current) = self.rooms.get_mut(room.room_id().as_str()) else {
-            return;
-        };
-        let unread = room.num_unread_notifications();
-        let mentions = room.num_unread_mentions();
-        if current.unread_count == unread && current.mention_count == mentions {
+        let key = room.room_id().as_str();
+        if !self.rooms.contains_key(key) {
             return;
         }
-        current.unread_count = unread;
-        current.mention_count = mentions;
+        let counts = highest_reported_unread(room);
+        let activity = self
+            .rooms
+            .get(key)
+            .map_or(0, |current| current.last_activity_ts);
+        let pending = self.is_still_counting_unread(key, counts.unread, activity);
+        let Some(current) = self.rooms.get_mut(key) else {
+            return;
+        };
+        if current.unread_count == counts.unread
+            && current.mention_count == counts.mentions
+            && current.unread_pending == pending
+        {
+            return;
+        }
+        current.unread_count = counts.unread;
+        current.mention_count = counts.mentions;
+        current.unread_pending = pending;
         self.mark_rooms();
     }
 

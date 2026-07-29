@@ -1,0 +1,24 @@
+import { Palette } from "std-widgets.slint";
+
+export component UnreadDivider inherits Rectangle {
+    height: label.preferred-height + 10px;
+    background: Palette.accent-background.transparentize(0.88);
+
+    accessible-role: text;
+    accessible-label: label.text;
+
+    label := Text {
+        text: @tr("Unread messages");
+        font-size: 12px;
+        font-weight: 600;
+        color: Palette.accent-background;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+
+    Rectangle {
+        y: 0;
+        height: 1px;
+        background: Palette.accent-background.transparentize(0.7);
+    }
+}

@@ -12,15 +12,19 @@ import { RoomView } from "../../../../views.slint";
 import { Actions } from "../../../../actions.slint";
 
 export component TimelineContent inherits Rectangle {
-    in property <string> room-id: "";
     in property <length> available-width;
 
     clip: true;
 
     property <length> content-height: 0;
 
-    changed room-id => {
-        flickable.reset-scroll();
+    settle := Timer {
+        interval: 60ms;
+        running: false;
+        triggered => {
+            self.running = false;
+            flickable.finish-unread();
+        }
     }
 
     flickable := ListView {
@@ -50,9 +54,23 @@ export component TimelineContent inherits Rectangle {
             self.viewport-height > self.visible-height;
         property <int> item-count: RoomView.timeline.length;
 
+        property <int> unread-anchor: RoomView.unread-anchor-index;
+        property <int> seen-timeline-token: 0;
+        property <bool> unread-held: false;
+        property <int> unread-scrolls: 0;
+        property <length> unread-target: -min(
+            max(self.unread-anchor * (self.viewport-height / max(self.item-count, 1)), 0px),
+            max(self.max-scroll-y, 0px));
+
         changed viewport-height => {
+            self.adopt-timeline();
+            if self.unread-held && self.unread-scrolls >= 20 {
+                self.finish-unread();
+            }
             root.content-height = self.viewport-height;
-            if (self.settling || self.auto-scroll) && self.scrollable
+            if self.unread-pending() {
+                self.scroll-to-unread();
+            } else if (self.settling || self.auto-scroll) && self.scrollable
                 && self.viewport-y <= self.prev-viewport-y {
                 self.scroll-to-bottom();
             } else if RoomView.prepend-token != self.seen-prepend-token
@@ -71,12 +89,14 @@ export component TimelineContent inherits Rectangle {
         changed viewport-y => {
             if self.programmatic-scroll {
                 self.programmatic-scroll = false;
-            } else {
+            } else if !self.unread-held {
                 self.settling = false;
-                if self.at-top && !self.was-at-top && !RoomView.backwards-loading {
+                if self.scrollable && self.at-top && !self.was-at-top
+                    && !RoomView.backwards-loading {
                     Actions.paginate-backwards();
                 }
-                if self.at-bottom && !self.was-at-bottom && !RoomView.forwards-loading {
+                if self.scrollable && self.at-bottom && !self.was-at-bottom
+                    && !RoomView.forwards-loading {
                     Actions.paginate-forwards();
                 }
                 if self.scrollable {
@@ -90,7 +110,8 @@ export component TimelineContent inherits Rectangle {
 
             self.prev-viewport-y = self.viewport-y;
 
-            if (self.at-top != self.was-at-top) || (self.at-bottom != self.was-at-bottom) {
+            if !self.unread-held
+                && ((self.at-top != self.was-at-top) || (self.at-bottom != self.was-at-bottom)) {
                 self.was-at-top = self.at-top;
                 self.was-at-bottom = self.at-bottom;
                 Actions.scroll-position-changed(self.at-bottom);
@@ -98,25 +119,73 @@ export component TimelineContent inherits Rectangle {
         }
 
         changed item-count => {
-            if self.auto-scroll {
+            self.adopt-timeline();
+            if self.auto-scroll && !self.unread-pending() {
                 self.settling = true;
                 self.scroll-to-bottom();
             }
         }
 
-        function reset-scroll() {
-            self.auto-scroll = true;
-            self.settling = true;
-            self.seen-prepend-token = RoomView.prepend-token;
-            self.prev-viewport-height = 0;
-            self.prev-viewport-y = 0;
-            self.prev-item-count = 0;
-            self.scroll-to-bottom();
-        }
-
         function scroll-to-bottom() {
             self.programmatic-scroll = true;
             self.viewport-y = -max(self.max-scroll-y, 0px);
+        }
+
+        function adopt-timeline() {
+            if RoomView.timeline-token == self.seen-timeline-token {
+                return;
+            }
+            self.seen-timeline-token = RoomView.timeline-token;
+            self.seen-prepend-token = RoomView.prepend-token;
+            self.unread-scrolls = 0;
+            self.prev-viewport-height = 0;
+            self.prev-viewport-y = 0;
+            self.prev-item-count = 0;
+            self.unread-held = self.unread-anchor >= 0;
+            if self.unread-held {
+                self.auto-scroll = false;
+                self.settling = false;
+                self.delay-settle();
+            } else {
+                self.auto-scroll = true;
+                self.settling = true;
+                self.scroll-to-bottom();
+            }
+        }
+
+        function delay-settle() {
+            settle.running = true;
+            settle.restart();
+        }
+
+        public function finish-unread() {
+            if !self.unread-held {
+                return;
+            }
+            self.unread-held = false;
+            self.auto-scroll = self.at-bottom;
+            self.was-at-top = self.at-top;
+            self.was-at-bottom = self.at-bottom;
+            Actions.scroll-position-changed(self.at-bottom);
+        }
+
+        pure function unread-pending() -> bool {
+            return self.unread-held
+                && self.unread-anchor >= 0
+                && self.unread-anchor < self.item-count
+                && self.viewport-height > 0px
+                && self.unread-scrolls < 20;
+        }
+
+        function scroll-to-unread() {
+            self.settling = false;
+            self.auto-scroll = false;
+            if Math.abs(self.unread-target - self.viewport-y) > 0.5px {
+                self.unread-scrolls += 1;
+                self.programmatic-scroll = true;
+                self.viewport-y = self.unread-target;
+            }
+            self.delay-settle();
         }
 
         pure function anchor-viewport-y() -> length {
@@ -162,6 +231,7 @@ export component TimelineContent inherits Rectangle {
         background: Palette.alternate-background;
         label: @tr("Jump to latest messages");
         clicked => {
+            flickable.unread-held = false;
             flickable.scroll-to-bottom();
             flickable.auto-scroll = true;
             Actions.jump-to-latest();
