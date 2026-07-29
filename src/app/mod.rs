@@ -295,6 +295,13 @@ impl AppService {
         false
     }
 
+    fn port<P: ?Sized>(
+        &self,
+        pick: impl FnOnce(&AuthenticatedSession) -> &Arc<P>,
+    ) -> Option<Arc<P>> {
+        self.active.as_ref().map(|a| Arc::clone(pick(a)))
+    }
+
     fn set_selected_space(&self, id: String) {
         self.output
             .publish(Box::new(move |view| view.directory.space_id = id));
@@ -348,7 +355,7 @@ impl AppService {
     }
 
     fn move_space(&mut self, from: usize, to: usize) {
-        let Some(space_order) = self.active.as_ref().map(|a| Arc::clone(&a.space_order)) else {
+        let Some(space_order) = self.port(|a| &a.space_order) else {
             return;
         };
         if let Some(write) = self.room_directory.move_space(from, to) {
@@ -455,7 +462,7 @@ impl AppService {
     }
 
     fn send_message(&mut self, room_id: RoomId, body: String, reply_to: Option<String>) {
-        let Some(timeline) = self.active.as_ref().map(|a| Arc::clone(&a.timeline)) else {
+        let Some(timeline) = self.port(|a| &a.timeline) else {
             return;
         };
         self.active_timeline
@@ -463,40 +470,40 @@ impl AppService {
     }
 
     fn open_media(&mut self, event_id: String) {
-        if let Some(media) = self.active.as_ref().map(|a| Arc::clone(&a.media)) {
+        if let Some(media) = self.port(|a| &a.media) {
             self.media.open_media(media, event_id);
         }
     }
 
     fn save_file(&mut self, event_id: String, filename: String) {
-        if let Some(media) = self.active.as_ref().map(|a| Arc::clone(&a.media)) {
+        if let Some(media) = self.port(|a| &a.media) {
             self.media.save_file(media, event_id, filename);
         }
     }
 
     fn accept_verification(&mut self) {
-        if let Some(verification) = self.active.as_ref().map(|a| Arc::clone(&a.verification)) {
+        if let Some(verification) = self.port(|a| &a.verification) {
             self.verification
                 .spawn_accept(&mut self.operations, verification);
         }
     }
 
     fn reject_verification(&mut self) {
-        if let Some(verification) = self.active.as_ref().map(|a| Arc::clone(&a.verification)) {
+        if let Some(verification) = self.port(|a| &a.verification) {
             self.verification
                 .spawn_reject(&mut self.operations, verification);
         }
     }
 
     fn confirm_verification(&mut self) {
-        if let Some(verification) = self.active.as_ref().map(|a| Arc::clone(&a.verification)) {
+        if let Some(verification) = self.port(|a| &a.verification) {
             self.verification
                 .spawn_confirm(&mut self.operations, verification);
         }
     }
 
     fn dismiss_verification(&mut self) {
-        let verification = self.active.as_ref().map(|a| Arc::clone(&a.verification));
+        let verification = self.port(|a| &a.verification);
         self.verification
             .spawn_dismiss(&mut self.operations, verification);
     }
@@ -510,7 +517,7 @@ impl AppService {
             .map_or_else(|| (String::new(), 0), |m| (m.name, m.member_count));
         self.emit_selected_room(room_id.clone(), name, member_count, generation)
             .await;
-        let Some(timeline) = self.active.as_ref().map(|a| Arc::clone(&a.timeline)) else {
+        let Some(timeline) = self.port(|a| &a.timeline) else {
             return;
         };
         self.active_timeline
