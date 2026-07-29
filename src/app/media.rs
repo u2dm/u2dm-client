@@ -3,7 +3,8 @@ use std::sync::Arc;
 
 use super::show_toast;
 use super::task_group::TaskGroup;
-use crate::commands::{Toast, UserMessage, UserMessageKind};
+use crate::commands::messages::{UserMessage, UserMessageKind};
+use crate::commands::view::Toast;
 use crate::ports::matrix::MediaPort;
 use crate::ports::media::MediaFilePort;
 use crate::ports::output::AppOutputPort;

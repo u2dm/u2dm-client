@@ -6,7 +6,7 @@ use chrono::{Locale, Timelike};
 use pure_rust_locales::locale_match;
 
 use super::schema::{define_ui_enum, message_kinds, service_kinds, verification_phases};
-use crate::commands::{UserMessage, UserMessageKind};
+use crate::commands::messages::{UserMessage, UserMessageKind};
 use crate::domain::models::{MessageBody, ServiceEvent, TimelineMessage, VerificationCancellation};
 use crate::locale::{self, LocaleRequest};
 

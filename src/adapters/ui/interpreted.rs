@@ -39,10 +39,10 @@ use super::schema::{
     timeline_states, user_message_kinds, verification_activities, verification_phases,
 };
 use super::{emoji, router};
-use crate::commands::{
-    AppViewState, Effect, LoginActivity, LoginStep, UiCommand, UserMessage, UserMessageKind,
-    VerificationActivity, ViewportChanged,
-};
+use crate::commands::effects::{Effect, VerificationActivity};
+use crate::commands::messages::{UserMessage, UserMessageKind};
+use crate::commands::ui::{UiCommand, ViewportChanged};
+use crate::commands::view::{AppViewState, LoginActivity, LoginStep};
 use crate::domain::models::{
     ConnectionStatus, EnrichmentDelta, LoginCredentials, LoginMethod, MessagePreviewKind, Room,
     Space, TimelineMessage, TimelineStatus, VerificationEmoji as DomainVerificationEmoji,

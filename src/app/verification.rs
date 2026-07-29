@@ -4,9 +4,8 @@ use std::sync::{Arc, Mutex as StdMutex, PoisonError};
 use tokio::sync::mpsc;
 
 use super::task_group::TaskGroup;
-use crate::commands::{
-    Effect, UserMessage, UserMessageKind, VerificationActivity, VerificationUpdate,
-};
+use crate::commands::effects::{Effect, VerificationActivity, VerificationUpdate};
+use crate::commands::messages::{UserMessage, UserMessageKind};
 use crate::domain::models::VerificationEvent;
 use crate::error::Result;
 use crate::ports::matrix::VerificationPort;

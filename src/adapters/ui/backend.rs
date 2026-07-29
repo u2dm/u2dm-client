@@ -11,7 +11,7 @@ use super::decode::{
 use super::props::{IntProp, StringProp, UiProps};
 use super::reduce::dispatch_effect;
 use super::rows::{patch_first_row, patch_rows_by_id};
-use crate::commands::Effect;
+use crate::commands::effects::Effect;
 use crate::domain::models::{EnrichmentDelta, Room, RoomId, Space, TimelineMessage};
 use crate::ports::media::MediaCache;
 

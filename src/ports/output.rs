@@ -1,6 +1,7 @@
 use async_trait::async_trait;
 
-use crate::commands::{AppViewState, Effect};
+use crate::commands::effects::Effect;
+use crate::commands::view::AppViewState;
 
 pub type ViewMutation = Box<dyn FnOnce(&mut AppViewState) + Send>;
 

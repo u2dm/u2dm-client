@@ -3,7 +3,8 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use tokio::sync::{mpsc, watch};
 
-use crate::commands::{AppViewState, Effect};
+use crate::commands::effects::Effect;
+use crate::commands::view::AppViewState;
 use crate::ports::output::{AppOutputPort, ViewMutation};
 
 pub struct UiEventOutput {

@@ -3,7 +3,8 @@ use std::sync::Arc;
 use tokio::sync::{OwnedSemaphorePermit, Semaphore, mpsc, watch};
 
 use super::props::SLINT_INFLIGHT;
-use crate::commands::{AppViewState, Effect};
+use crate::commands::effects::Effect;
+use crate::commands::view::AppViewState;
 use crate::ports::media::MediaCache;
 
 pub fn spawn_event_multiplexer(

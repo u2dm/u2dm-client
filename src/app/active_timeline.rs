@@ -4,7 +4,10 @@ use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use tokio::sync::mpsc;
 
 use super::task_group::TaskGroup;
-use crate::commands::{Effect, Toast, UiCommand, UserMessage, UserMessageKind};
+use crate::commands::effects::Effect;
+use crate::commands::messages::{UserMessage, UserMessageKind};
+use crate::commands::ui::UiCommand;
+use crate::commands::view::Toast;
 use crate::domain::models::{
     PaginationDirection, PaginationOutcome, RoomId, ScrollMode, TimelineCommand, TimelinePatch,
     TimelineStatus, TimelineUpdate,

@@ -22,10 +22,11 @@ use task_group::TaskGroup;
 use tokio::sync::{mpsc, watch};
 use verification::VerificationController;
 
-use crate::commands::{
-    AppViewState, DirectoryUpdate, Effect, LoginActivity, LoginStep, Toast, UiCommand, UserMessage,
-    UserMessageKind, ViewportChanged,
-};
+use crate::commands::effects::Effect;
+use crate::commands::messages::{UserMessage, UserMessageKind};
+use crate::commands::sync::DirectoryUpdate;
+use crate::commands::ui::{UiCommand, ViewportChanged};
+use crate::commands::view::{AppViewState, LoginActivity, LoginStep, Toast};
 use crate::domain::account::AccountScope;
 use crate::domain::models::{ConnectionStatus, RoomId, RoomList, Space};
 use crate::ports::browser::BrowserPort;

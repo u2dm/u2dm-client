@@ -3,9 +3,10 @@ use tokio::sync::mpsc;
 
 use super::present::VerifyStep;
 use super::schema::{bool_props, int_props, string_props};
-use crate::commands::{
-    LoginActivity, LoginStep, UiCommand, UserMessage, UserMessageKind, VerificationActivity,
-};
+use crate::commands::effects::VerificationActivity;
+use crate::commands::messages::{UserMessage, UserMessageKind};
+use crate::commands::ui::UiCommand;
+use crate::commands::view::{LoginActivity, LoginStep};
 use crate::domain::models::{
     ConnectionStatus, LoginMethod, TimelineStatus, VerificationEmoji as DomainVerificationEmoji,
 };

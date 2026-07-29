@@ -8,10 +8,9 @@ use super::decode::{AvatarSlot, clear_session_media, load_avatar_async};
 use super::present::{VerifyStep, user_initial, verification_cancellation};
 use super::props::{BoolProp, IntProp, StringProp, UiProps};
 use super::reconcile::{apply_rooms, apply_spaces, apply_timeline_patch};
-use crate::commands::{
-    AppViewState, DirectoryView, Effect, LifecycleView, PaginationView, Toast, UserMessage,
-    UserMessageKind, VerificationActivity, VerificationUpdate,
-};
+use crate::commands::effects::{Effect, VerificationActivity, VerificationUpdate};
+use crate::commands::messages::{UserMessage, UserMessageKind};
+use crate::commands::view::{AppViewState, DirectoryView, LifecycleView, PaginationView, Toast};
 use crate::domain::models::{
     RoomId, RoomList, TimelinePatch, TimelineStatus, VerificationEvent as DomainVerificationEvent,
 };

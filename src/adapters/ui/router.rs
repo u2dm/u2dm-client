@@ -2,7 +2,7 @@ use tokio::sync::{mpsc, watch};
 
 use super::props::send_command;
 use super::schema::simple_callbacks;
-use crate::commands::{UiCommand, ViewportChanged};
+use crate::commands::ui::{UiCommand, ViewportChanged};
 use crate::domain::models::{LoginCredentials, RoomId};
 
 type Tx = mpsc::UnboundedSender<UiCommand>;

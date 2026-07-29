@@ -1,6 +1,6 @@
 use std::sync::{Arc, Mutex as StdMutex, MutexGuard, PoisonError};
 
-use crate::commands::UiCommand;
+use crate::commands::ui::UiCommand;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub(super) enum AppPhase {

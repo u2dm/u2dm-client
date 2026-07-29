@@ -11,7 +11,8 @@ use tokio_util::sync::CancellationToken;
 use super::selection::Selection;
 use super::space_order;
 use super::task_group::TaskGroup;
-use crate::commands::{DirectoryUpdate, UiCommand};
+use crate::commands::sync::DirectoryUpdate;
+use crate::commands::ui::UiCommand;
 use crate::domain::models::{
     ConnectionStatus, Room, RoomId, RoomList, Space, SyncEvent, SyncOutcome,
 };
