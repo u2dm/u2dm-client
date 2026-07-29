@@ -1,210 +1,25 @@
-import {
-    ListView,
-    Palette,
-} from "std-widgets.slint";
+import { Palette } from "std-widgets.slint";
 import { IconDisplay, IconSet } from "@lucide";
 import { StatusPill } from "./status-pill.slint";
 
-import { MessageBubble } from "./message-bubble.slint";
-import { MediaState, MessageKind } from "../../../../enums.slint";
+import { TimelineScroller } from "./timeline-scroller.slint";
 import { ClickArea } from "../../../../components/a11y.slint";
 import { RoomView } from "../../../../views.slint";
-import { Actions } from "../../../../actions.slint";
 
 export component TimelineContent inherits Rectangle {
     in property <length> available-width;
 
     clip: true;
 
-    property <length> content-height: 0;
-
-    settle := Timer {
-        interval: 60ms;
-        running: false;
-        triggered => {
-            self.running = false;
-            flickable.finish-unread();
-        }
-    }
-
-    flickable := ListView {
+    scroller := TimelineScroller {
         width: parent.width;
-        height: root.content-height > 0 ? min(parent.height, root.content-height) : parent.height;
-        y: parent.height - self.height;
-
-        property <length> scroll-threshold: 40px;
-        property <bool> auto-scroll: true;
-        property <bool> programmatic-scroll: false;
-        property <bool> settling: false;
-
-        property <bool> was-at-top: false;
-        property <bool> was-at-bottom: true;
-        property <bool> at-top: self.viewport-y >= -self.scroll-threshold;
-        property <bool> at-bottom:
-            self.viewport-y <= -(self.max-scroll-y - self.scroll-threshold);
-
-        property <int> seen-prepend-token: 0;
-        property <length> prev-viewport-height: 0;
-        property <length> prev-viewport-y: 0;
-        property <int> prev-item-count: 0;
-
-        property <length> max-scroll-y:
-            self.viewport-height - self.visible-height;
-        property <bool> scrollable:
-            self.viewport-height > self.visible-height;
-        property <int> item-count: RoomView.timeline.length;
-
-        property <int> unread-anchor: RoomView.unread-anchor-index;
-        property <int> seen-timeline-token: 0;
-        property <bool> unread-held: false;
-        property <int> unread-scrolls: 0;
-        property <length> unread-target: -min(
-            max(self.unread-anchor * (self.viewport-height / max(self.item-count, 1)), 0px),
-            max(self.max-scroll-y, 0px));
-
-        changed viewport-height => {
-            self.adopt-timeline();
-            if self.unread-held && self.unread-scrolls >= 20 {
-                self.finish-unread();
-            }
-            root.content-height = self.viewport-height;
-            if self.unread-pending() {
-                self.scroll-to-unread();
-            } else if (self.settling || self.auto-scroll) && self.scrollable
-                && self.viewport-y <= self.prev-viewport-y {
-                self.scroll-to-bottom();
-            } else if RoomView.prepend-token != self.seen-prepend-token
-                && self.scrollable
-                && self.prev-viewport-height > 0
-                && self.prev-item-count > 0
-                && self.item-count > self.prev-item-count {
-                self.programmatic-scroll = true;
-                self.viewport-y = self.anchor-viewport-y();
-            }
-            self.seen-prepend-token = RoomView.prepend-token;
-            self.prev-viewport-height = self.viewport-height;
-            self.prev-item-count = self.item-count;
-        }
-
-        changed viewport-y => {
-            if self.programmatic-scroll {
-                self.programmatic-scroll = false;
-            } else if !self.unread-held {
-                self.settling = false;
-                if self.scrollable && self.at-top && !self.was-at-top
-                    && !RoomView.backwards-loading {
-                    Actions.paginate-backwards();
-                }
-                if self.scrollable && self.at-bottom && !self.was-at-bottom
-                    && !RoomView.forwards-loading {
-                    Actions.paginate-forwards();
-                }
-                if self.scrollable {
-                    if self.viewport-y > self.prev-viewport-y {
-                        self.auto-scroll = false;
-                    } else if self.at-bottom {
-                        self.auto-scroll = true;
-                    }
-                }
-            }
-
-            self.prev-viewport-y = self.viewport-y;
-
-            if !self.unread-held
-                && ((self.at-top != self.was-at-top) || (self.at-bottom != self.was-at-bottom)) {
-                self.was-at-top = self.at-top;
-                self.was-at-bottom = self.at-bottom;
-                Actions.scroll-position-changed(self.at-bottom);
-            }
-        }
-
-        changed item-count => {
-            self.adopt-timeline();
-            if self.auto-scroll && !self.unread-pending() {
-                self.settling = true;
-                self.scroll-to-bottom();
-            }
-        }
-
-        function scroll-to-bottom() {
-            self.programmatic-scroll = true;
-            self.viewport-y = -max(self.max-scroll-y, 0px);
-        }
-
-        function adopt-timeline() {
-            if RoomView.timeline-token == self.seen-timeline-token {
-                return;
-            }
-            self.seen-timeline-token = RoomView.timeline-token;
-            self.seen-prepend-token = RoomView.prepend-token;
-            self.unread-scrolls = 0;
-            self.prev-viewport-height = 0;
-            self.prev-viewport-y = 0;
-            self.prev-item-count = 0;
-            self.unread-held = self.unread-anchor >= 0;
-            if self.unread-held {
-                self.auto-scroll = false;
-                self.settling = false;
-                self.delay-settle();
-            } else {
-                self.auto-scroll = true;
-                self.settling = true;
-                self.scroll-to-bottom();
-            }
-        }
-
-        function delay-settle() {
-            settle.running = true;
-            settle.restart();
-        }
-
-        public function finish-unread() {
-            if !self.unread-held {
-                return;
-            }
-            self.unread-held = false;
-            self.auto-scroll = self.at-bottom;
-            self.was-at-top = self.at-top;
-            self.was-at-bottom = self.at-bottom;
-            Actions.scroll-position-changed(self.at-bottom);
-        }
-
-        pure function unread-pending() -> bool {
-            return self.unread-held
-                && self.unread-anchor >= 0
-                && self.unread-anchor < self.item-count
-                && self.viewport-height > 0px
-                && self.unread-scrolls < 20;
-        }
-
-        function scroll-to-unread() {
-            self.settling = false;
-            self.auto-scroll = false;
-            if Math.abs(self.unread-target - self.viewport-y) > 0.5px {
-                self.unread-scrolls += 1;
-                self.programmatic-scroll = true;
-                self.viewport-y = self.unread-target;
-            }
-            self.delay-settle();
-        }
-
-        pure function anchor-viewport-y() -> length {
-            -((-self.viewport-y / (self.prev-viewport-height / self.prev-item-count))
-                + (self.item-count - self.prev-item-count))
-                * (self.viewport-height / self.item-count)
-        }
-
-        for msg in RoomView.timeline: MessageBubble {
-            is-own: msg.is-own;
-            msg: msg;
-            available-width: root.available-width;
-            init => {
-                if (msg.message-type == MessageKind.image && msg.media-state != MediaState.ready)
-                    || (!msg.is-own && !msg.has-avatar) {
-                    Actions.request-media(msg.unique-id);
-                }
-            }
-        }
+        height: parent.height;
+        available-width: root.available-width;
+        anchor-index: RoomView.unread-anchor-index;
+        timeline-token: RoomView.timeline-token;
+        prepend-token: RoomView.prepend-token;
+        backwards-loading: RoomView.backwards-loading;
+        forwards-loading: RoomView.forwards-loading;
     }
 
     if RoomView.backwards-loading && RoomView.timeline.length > 0: StatusPill {
@@ -221,7 +36,7 @@ export component TimelineContent inherits Rectangle {
         loading: true;
     }
 
-    if !flickable.auto-scroll && RoomView.timeline.length > 0: ClickArea {
+    if !scroller.following && RoomView.timeline.length > 0: ClickArea {
         x: parent.width - self.width - 16px;
         y: parent.height - self.height - 16px;
         width: 40px;
@@ -231,10 +46,7 @@ export component TimelineContent inherits Rectangle {
         background: Palette.alternate-background;
         label: @tr("Jump to latest messages");
         clicked => {
-            flickable.unread-held = false;
-            flickable.scroll-to-bottom();
-            flickable.auto-scroll = true;
-            Actions.jump-to-latest();
+            scroller.jump-to-latest();
         }
 
         IconDisplay {
