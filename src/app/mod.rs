@@ -39,6 +39,14 @@ enum EndReason {
     Expired,
 }
 
+#[derive(PartialEq, Eq)]
+struct EmittedRoom {
+    id: RoomId,
+    name: String,
+    member_count: u64,
+    generation: i32,
+}
+
 pub(super) fn show_toast(output: &dyn AppOutputPort, toast: Toast) {
     output.publish(Box::new(move |view| view.toast = toast));
 }
@@ -63,6 +71,7 @@ pub struct AppService {
     verification: VerificationController,
     media: MediaActions,
     selection: Selection,
+    last_selected_room: Option<EmittedRoom>,
     lifecycle: Lifecycle,
     active: Option<AuthenticatedSession>,
     auth_rx: Option<mpsc::UnboundedReceiver<AuthOutcome>>,
@@ -100,6 +109,7 @@ impl AppService {
             background: TaskGroup::new("background"),
             operations: TaskGroup::new("operations"),
             selection: Selection::default(),
+            last_selected_room: None,
             lifecycle,
             active: None,
             auth_rx: Some(auth_rx),
@@ -315,12 +325,18 @@ impl AppService {
     }
 
     async fn emit_selected_room(
-        &self,
+        &mut self,
         id: RoomId,
         name: String,
         member_count: u64,
         generation: i32,
     ) {
+        self.last_selected_room = Some(EmittedRoom {
+            id: id.clone(),
+            name: name.clone(),
+            member_count,
+            generation,
+        });
         self.output
             .emit(Effect::SelectedRoom {
                 id,
@@ -513,17 +529,29 @@ impl AppService {
         let Some(room_id) = self.selection.room.clone() else {
             return;
         };
-        if let Some(meta) = self.room_directory.selected_room_meta(&self.selection) {
-            let generation = self.selection.generation;
-            self.emit_selected_room(room_id, meta.name, meta.member_count, generation)
-                .await;
-        } else {
-            self.selection.room = None;
-            let generation = self.selection.next_generation();
-            self.emit_selected_room(RoomId::new(String::new()), String::new(), 0, generation)
-                .await;
-            self.active_timeline.clear_room(generation).await;
+        let Some(meta) = self.room_directory.selected_room_meta(&self.selection) else {
+            self.drop_selected_room().await;
+            return;
+        };
+        let next = EmittedRoom {
+            id: room_id,
+            name: meta.name,
+            member_count: meta.member_count,
+            generation: self.selection.generation,
+        };
+        if self.last_selected_room.as_ref() == Some(&next) {
+            return;
         }
+        self.emit_selected_room(next.id, next.name, next.member_count, next.generation)
+            .await;
+    }
+
+    async fn drop_selected_room(&mut self) {
+        self.selection.room = None;
+        let generation = self.selection.next_generation();
+        self.emit_selected_room(RoomId::new(String::new()), String::new(), 0, generation)
+            .await;
+        self.active_timeline.clear_room(generation).await;
     }
 
     async fn handle_fetch_rooms(&mut self) {
@@ -590,6 +618,7 @@ impl AppService {
         self.media.clear_session().await;
         self.room_directory.reset();
         self.selection = Selection::default();
+        self.last_selected_room = None;
         self.active = None;
         match ending {
             Some((account, port)) => match reason {
