@@ -9,6 +9,7 @@ use std::{env, fs};
 const LANG_DIR: &str = "lang";
 const BUNDLED_CATALOGS_ENV: &str = "U2DM_BUNDLED_CATALOGS";
 const UI_DIR: &str = "ui";
+const ENUMS_FILE: &str = "ui/enums.slint";
 const POT_FILE: &str = "lang/u2dm.pot";
 const LUCIDE_LSP_LIB: &str = ".lucide/lib.slint";
 const TWEMOJI_FONT: &str = "ui/fonts/Twemoji.ttf";
@@ -18,7 +19,37 @@ const DEMO_ASSETS_SCRIPT: &str = "scripts/gen-demo-assets.sh";
 #[cfg(feature = "demo")]
 const DEMO_DATA: &str = "assets/demo/data.json";
 
+struct EnumCoverage {
+    slint_enum: &'static str,
+    branches_in: &'static str,
+    falls_through: &'static [&'static str],
+}
+
+const ENUM_COVERAGE: &[EnumCoverage] = &[
+    EnumCoverage {
+        slint_enum: "UserMessageKind",
+        branches_in: "ui/messages.slint",
+        falls_through: &["none"],
+    },
+    EnumCoverage {
+        slint_enum: "ServiceKind",
+        branches_in: "ui/screens/chat/components/timeline/messages/service-message.slint",
+        falls_through: &["none"],
+    },
+    EnumCoverage {
+        slint_enum: "LoginActivity",
+        branches_in: "ui/screens/login/common.slint",
+        falls_through: &["idle"],
+    },
+    EnumCoverage {
+        slint_enum: "PreviewKind",
+        branches_in: "ui/screens/chat/components/message-preview.slint",
+        falls_through: &["none", "text"],
+    },
+];
+
 fn main() {
+    check_enum_branch_coverage();
     sync_lucide_lsp_lib();
     ensure_twemoji_font();
 
@@ -35,6 +66,117 @@ fn main() {
     }
 
     update_translations(&bundled_catalog_root());
+}
+
+fn check_enum_branch_coverage() {
+    println!("cargo::rerun-if-changed={ENUMS_FILE}");
+
+    let Ok(enums) = fs::read_to_string(ENUMS_FILE) else {
+        panic!("failed to read {ENUMS_FILE}, so no Slint enum can be checked for missing branches");
+    };
+
+    for coverage in ENUM_COVERAGE {
+        println!("cargo::rerun-if-changed={}", coverage.branches_in);
+        coverage.check(&enums);
+    }
+}
+
+impl EnumCoverage {
+    fn check(&self, enums: &str) {
+        let variants = self.declared_variants(enums);
+        self.reject_stale_exemptions(&variants);
+
+        let Ok(branches) = fs::read_to_string(self.branches_in) else {
+            panic!(
+                "failed to read {}, which is where {} is turned into text",
+                self.branches_in, self.slint_enum
+            );
+        };
+        let branches = branches.replace('_', "-");
+
+        let missing: Vec<&str> = variants
+            .iter()
+            .map(String::as_str)
+            .filter(|variant| !self.falls_through.contains(variant))
+            .filter(|variant| !branches_on(&branches, self.slint_enum, variant))
+            .collect();
+
+        assert!(
+            missing.is_empty(),
+            "{} has no branch for {} {missing:?}. Slint has no match and no exhaustiveness check, \
+             so this reaches the user as the fallthrough rather than as text. Add a branch, or \
+             list the variant under falls_through in ENUM_COVERAGE in build.rs if the fallthrough \
+             is deliberate.",
+            self.branches_in,
+            self.slint_enum
+        );
+    }
+
+    fn declared_variants(&self, enums: &str) -> Vec<String> {
+        let header = format!("export enum {} {{", self.slint_enum);
+        let Some(body) = enums
+            .split_once(header.as_str())
+            .and_then(|(_, rest)| rest.split_once('}'))
+            .map(|(body, _)| body)
+        else {
+            panic!(
+                "{ENUMS_FILE} declares no `export enum {}`, so the branches in {} cannot be \
+                 checked. Update ENUM_COVERAGE in build.rs to the new name.",
+                self.slint_enum, self.branches_in
+            );
+        };
+
+        let variants: Vec<String> = body
+            .lines()
+            .map(|line| line.split_once("//").map_or(line, |(code, _)| code))
+            .map(|line| line.trim().trim_end_matches(',').trim().replace('_', "-"))
+            .filter(|variant| !variant.is_empty())
+            .collect();
+
+        assert!(
+            !variants.is_empty(),
+            "`export enum {}` in {ENUMS_FILE} declares no variants",
+            self.slint_enum
+        );
+
+        variants
+    }
+
+    fn reject_stale_exemptions(&self, variants: &[String]) {
+        let stale: Vec<&str> = self
+            .falls_through
+            .iter()
+            .copied()
+            .filter(|exempt| !variants.iter().any(|variant| variant == exempt))
+            .collect();
+
+        assert!(
+            stale.is_empty(),
+            "ENUM_COVERAGE in build.rs lets {stale:?} fall through {}, but {ENUMS_FILE} no longer \
+             declares them. A stale exemption silently covers for a missing branch, so fix the \
+             list.",
+            self.slint_enum
+        );
+    }
+}
+
+fn branches_on(branches: &str, slint_enum: &str, variant: &str) -> bool {
+    let reference = format!("{slint_enum}.{variant}");
+    branches
+        .match_indices(reference.as_str())
+        .any(|(at, _)| is_whole_reference(branches, at, reference.len()))
+}
+
+fn is_whole_reference(branches: &str, at: usize, len: usize) -> bool {
+    let before = branches.get(..at).and_then(|head| head.chars().next_back());
+    let after = branches
+        .get(at + len..)
+        .and_then(|tail| tail.chars().next());
+    !before.is_some_and(is_identifier_char) && !after.is_some_and(is_identifier_char)
+}
+
+fn is_identifier_char(c: char) -> bool {
+    c.is_alphanumeric() || c == '_' || c == '-'
 }
 
 fn bundled_catalog_root() -> PathBuf {
