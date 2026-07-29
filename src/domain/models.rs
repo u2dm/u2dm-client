@@ -146,6 +146,8 @@ pub struct Room {
     pub last_message_edited: bool,
 }
 
+pub type RoomList = Arc<[Arc<Room>]>;
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct Space {
     pub id: String,
@@ -170,7 +172,7 @@ pub enum ConnectionStatus {
 #[derive(Debug)]
 pub enum SyncEvent {
     Connected,
-    Rooms(Arc<[Room]>),
+    Rooms(RoomList),
     Spaces(Arc<[Space]>),
     ConnectionError(String),
 }

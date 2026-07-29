@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use slint::{Model, VecModel};
 
@@ -114,8 +115,8 @@ pub fn reorder_rows<T: Clone + 'static>(model: &VecModel<T>, from: usize, to: us
 
 pub fn apply_rooms<T: Clone + PartialEq + 'static>(
     model: &VecModel<T>,
-    rooms: &[Room],
-    previous: &[Room],
+    rooms: &[Arc<Room>],
+    previous: &[Arc<Room>],
     media: &dyn MediaCache,
     convert: &dyn Fn(&Room) -> T,
     get_id: &dyn Fn(&T) -> &str,
@@ -123,7 +124,30 @@ pub fn apply_rooms<T: Clone + PartialEq + 'static>(
     for room in rooms {
         record_room_avatar_need(room, media);
     }
-    apply_reconcile(model, rooms, previous, &|r| r.id.as_ref(), convert, get_id);
+    apply_reconcile(
+        model,
+        rooms,
+        previous,
+        &|r| r.id.as_ref(),
+        &|r| convert(r),
+        get_id,
+    );
+}
+
+pub(super) trait SameItem {
+    fn same_item(&self, other: &Self) -> bool;
+}
+
+impl SameItem for Arc<Room> {
+    fn same_item(&self, other: &Self) -> bool {
+        Arc::ptr_eq(self, other) || **self == **other
+    }
+}
+
+impl SameItem for Space {
+    fn same_item(&self, other: &Self) -> bool {
+        self == other
+    }
 }
 
 pub fn apply_spaces<T: Clone + PartialEq + 'static>(
@@ -159,7 +183,7 @@ type RowsByDestination<T> = HashMap<usize, T>;
 type IndexById<'a> = HashMap<&'a str, usize>;
 type ItemById<'a, S> = HashMap<&'a str, &'a S>;
 
-fn apply_reconcile<S: PartialEq, T: Clone + PartialEq + 'static>(
+fn apply_reconcile<S: SameItem, T: Clone + PartialEq + 'static>(
     model: &VecModel<T>,
     items: &[S],
     previous: &[S],
@@ -300,7 +324,7 @@ fn lift_rows_that_must_move<T: Clone + 'static>(
     lifted
 }
 
-fn settle_rows_in_order<S: PartialEq, T: Clone + PartialEq + 'static>(
+fn settle_rows_in_order<S: SameItem, T: Clone + PartialEq + 'static>(
     model: &VecModel<T>,
     items: &[S],
     destination_of_row: &mut DestinationOfRow,
@@ -313,7 +337,7 @@ fn settle_rows_in_order<S: PartialEq, T: Clone + PartialEq + 'static>(
     for (destination, item) in items.iter().enumerate() {
         let unchanged = unchanged_since
             .get((ops.item_id)(item))
-            .is_some_and(|before| *before == item);
+            .is_some_and(|before| before.same_item(item));
         let already_settled = destination_of_row.get(destination) == Some(&destination);
 
         if already_settled {

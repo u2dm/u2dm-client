@@ -27,7 +27,7 @@ use crate::commands::{
     UserMessageKind, ViewportChanged,
 };
 use crate::domain::account::AccountScope;
-use crate::domain::models::{ConnectionStatus, Room, RoomId, Space};
+use crate::domain::models::{ConnectionStatus, RoomId, RoomList, Space};
 use crate::ports::browser::BrowserPort;
 use crate::ports::matrix::{AuthPort, AuthenticatedSession, SessionPort};
 use crate::ports::media::MediaFilePort;
@@ -376,7 +376,7 @@ impl AppService {
         tracing::info!(command = %cmd, "handling command");
     }
 
-    async fn handle_rooms_updated(&mut self, rooms: Arc<[Room]>) {
+    async fn handle_rooms_updated(&mut self, rooms: RoomList) {
         if self.active.is_none() {
             return;
         }

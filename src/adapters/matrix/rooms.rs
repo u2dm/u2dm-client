@@ -230,7 +230,7 @@ fn preview_from_message_content(content: &RoomMessageEventContent) -> MessagePre
     }
 }
 
-async fn build_rooms(client: &Client) -> HashMap<String, DomainRoom> {
+async fn build_rooms(client: &Client) -> HashMap<String, Arc<DomainRoom>> {
     let joined = client
         .joined_rooms()
         .into_iter()
@@ -238,7 +238,7 @@ async fn build_rooms(client: &Client) -> HashMap<String, DomainRoom> {
     stream::iter(joined)
         .map(|room| async move { build_single_room(&room).await })
         .buffer_unordered(SEED_INFLIGHT)
-        .map(|room| (room.id.to_string(), room))
+        .map(|room| (room.id.to_string(), Arc::new(room)))
         .collect()
         .await
 }
@@ -504,9 +504,6 @@ async fn build_sync_service(client: &Client) -> AppResult<SyncService> {
         .map_err(|e| AppError::Other(e.to_string()))
 }
 
-/// Reasons that feed a value `build_single_room` reads. The ones left out
-/// (recency stamp, unread marker, fully-read marker) back no field of
-/// [`DomainRoom`], and a read receipt only moves the two unread counts.
 const REBUILD_REASONS: RoomInfoNotableUpdateReasons = RoomInfoNotableUpdateReasons::LATEST_EVENT
     .union(RoomInfoNotableUpdateReasons::MEMBERSHIP)
     .union(RoomInfoNotableUpdateReasons::DISPLAY_NAME)
@@ -531,7 +528,7 @@ fn refresh_for(reasons: RoomInfoNotableUpdateReasons) -> Option<RoomRefresh> {
 
 #[allow(clippy::struct_excessive_bools)]
 struct Directory {
-    rooms: HashMap<String, DomainRoom>,
+    rooms: HashMap<String, Arc<DomainRoom>>,
     order: Vec<String>,
     spaces: Vec<DomainSpace>,
     pending: HashMap<OwnedRoomId, RoomRefresh>,
@@ -652,7 +649,7 @@ impl Directory {
         room.unread_pending =
             self.is_still_counting_unread(&key, room.unread_count, room.last_activity_ts);
         match self.rooms.get(&key) {
-            Some(current) if *current == room => return,
+            Some(current) if **current == room => return,
             Some(current) => {
                 if current.last_activity_ts != room.last_activity_ts {
                     self.order_dirty = true;
@@ -660,7 +657,7 @@ impl Directory {
             }
             None => self.order_dirty = true,
         }
-        self.rooms.insert(key, room);
+        self.rooms.insert(key, Arc::new(room));
         self.mark_rooms();
     }
 
@@ -733,15 +730,16 @@ impl Directory {
             .get(key)
             .map_or(0, |current| current.last_activity_ts);
         let pending = self.is_still_counting_unread(key, counts.unread, activity);
-        let Some(current) = self.rooms.get_mut(key) else {
+        let Some(entry) = self.rooms.get_mut(key) else {
             return;
         };
-        if current.unread_count == counts.unread
-            && current.mention_count == counts.mentions
-            && current.unread_pending == pending
+        if entry.unread_count == counts.unread
+            && entry.mention_count == counts.mentions
+            && entry.unread_pending == pending
         {
             return;
         }
+        let current = Arc::make_mut(entry);
         current.unread_count = counts.unread;
         current.mention_count = counts.mentions;
         current.unread_pending = pending;
@@ -758,7 +756,7 @@ impl Directory {
             let activity = |id| {
                 rooms
                     .get(id)
-                    .map_or(0, |room: &DomainRoom| room.last_activity_ts)
+                    .map_or(0, |room: &Arc<DomainRoom>| room.last_activity_ts)
             };
             activity(b).cmp(&activity(a)).then_with(|| a.cmp(b))
         });
@@ -785,11 +783,11 @@ impl Directory {
 
     fn emit_rooms(&mut self, client: &Client, on_sync: &OnSync, avatars: &mut AvatarFetcher) {
         self.refresh_order();
-        let rooms: Vec<DomainRoom> = self
+        let rooms: Vec<Arc<DomainRoom>> = self
             .order
             .iter()
             .filter_map(|id| self.rooms.get(id))
-            .cloned()
+            .map(Arc::clone)
             .collect();
         avatars.request(
             client,

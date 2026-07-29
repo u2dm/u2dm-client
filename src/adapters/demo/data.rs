@@ -1,5 +1,5 @@
 use std::fs;
-use std::sync::OnceLock;
+use std::sync::{Arc, OnceLock};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use super::dto::{DemoData, RoomDto, SpaceDto};
@@ -43,9 +43,13 @@ pub fn session() -> Session {
     data().session.to_session()
 }
 
-pub fn rooms() -> Vec<Room> {
+pub fn rooms() -> Vec<Arc<Room>> {
     let now = now_ms();
-    data().rooms.iter().map(|room| room.to_room(now)).collect()
+    data()
+        .rooms
+        .iter()
+        .map(|room| Arc::new(room.to_room(now)))
+        .collect()
 }
 
 pub fn spaces() -> Vec<Space> {

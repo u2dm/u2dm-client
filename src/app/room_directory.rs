@@ -12,7 +12,9 @@ use super::selection::Selection;
 use super::space_order;
 use super::task_group::TaskGroup;
 use crate::commands::{DirectoryUpdate, UiCommand};
-use crate::domain::models::{ConnectionStatus, Room, RoomId, Space, SyncEvent, SyncOutcome};
+use crate::domain::models::{
+    ConnectionStatus, Room, RoomId, RoomList, Space, SyncEvent, SyncOutcome,
+};
 use crate::ports::matrix::{SpaceOrderPort, SyncPort, SyncSink};
 use crate::ports::output::AppOutputPort;
 
@@ -187,7 +189,7 @@ enum OrderWriteStep {
 
 pub(super) struct RoomDirectory {
     output: Arc<dyn AppOutputPort>,
-    all_rooms: Arc<[Room]>,
+    all_rooms: RoomList,
     spaces: Arc<[Space]>,
     graph: SpaceGraph,
     counts: Vec<SpaceCounts>,
@@ -218,7 +220,7 @@ impl RoomDirectory {
         self.connected = true;
     }
 
-    pub(super) fn store_rooms(&mut self, rooms: Arc<[Room]>) -> bool {
+    pub(super) fn store_rooms(&mut self, rooms: RoomList) -> bool {
         if !self.connected {
             return false;
         }
@@ -511,8 +513,8 @@ impl RoomDirectory {
                     .all_rooms
                     .iter()
                     .filter(|room| self.graph.contains_room(space_index, room.id.as_ref()))
-                    .cloned()
-                    .collect::<Vec<Room>>()
+                    .map(Arc::clone)
+                    .collect::<Vec<Arc<Room>>>()
                     .into(),
                 None => Arc::from(Vec::new()),
             },
@@ -562,7 +564,10 @@ impl RoomDirectory {
     }
 
     fn room(&self, id: &str) -> Option<&Room> {
-        self.all_rooms.iter().find(|room| room.id.as_ref() == id)
+        self.all_rooms
+            .iter()
+            .find(|room| room.id.as_ref() == id)
+            .map(|room| &**room)
     }
 
     fn space(&self, id: &str) -> Option<&Space> {

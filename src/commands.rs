@@ -5,12 +5,12 @@ use std::sync::Arc;
 use strum::Display as StrumDisplay;
 
 use crate::domain::models::{
-    ConnectionStatus, LoginCredentials, LoginMethod, PaginationDirection, PaginationOutcome, Room,
-    RoomId, Space, TimelinePatch, TimelineStatus, VerificationEvent,
+    ConnectionStatus, LoginCredentials, LoginMethod, PaginationDirection, PaginationOutcome,
+    RoomId, RoomList, Space, TimelinePatch, TimelineStatus, VerificationEvent,
 };
 
 pub enum DirectoryUpdate {
-    Rooms(Arc<[Room]>),
+    Rooms(RoomList),
     Spaces(Arc<[Space]>),
 }
 
@@ -289,7 +289,7 @@ pub enum LoginActivity {
 
 #[derive(Clone)]
 pub struct DirectoryView {
-    pub rooms: Arc<[Room]>,
+    pub rooms: RoomList,
     pub spaces: Arc<[Space]>,
     pub subspaces: Arc<[Space]>,
     pub space_id: String,

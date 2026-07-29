@@ -13,7 +13,7 @@ use crate::commands::{
     UserMessageKind, VerificationActivity, VerificationUpdate,
 };
 use crate::domain::models::{
-    Room, RoomId, TimelinePatch, TimelineStatus, VerificationEvent as DomainVerificationEvent,
+    RoomId, RoomList, TimelinePatch, TimelineStatus, VerificationEvent as DomainVerificationEvent,
 };
 
 const NO_UNREAD_ANCHOR: i32 = -1;
@@ -24,7 +24,7 @@ thread_local! {
     static LATEST_SNAPSHOT: RefCell<Option<Arc<AppViewState>>> = const { RefCell::new(None) };
 }
 
-pub(super) fn latest_rooms() -> Option<Arc<[Room]>> {
+pub(super) fn latest_rooms() -> Option<RoomList> {
     LATEST_SNAPSHOT.with(|cell| {
         cell.borrow()
             .as_ref()
