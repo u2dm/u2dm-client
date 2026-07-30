@@ -85,11 +85,7 @@ impl Directory {
         if self.grew_without_a_new_message(id, unread, activity) {
             self.keep_counting(id, now);
         }
-        let Some(until) = self.counting_until(id, now) else {
-            return false;
-        };
-        self.flush_at = Some(self.flush_at.map_or(until, |at| at.min(until)));
-        true
+        self.counting_until(id, now).is_some()
     }
 
     fn grew_without_a_new_message(&self, id: &str, unread: u64, activity: u64) -> bool {
@@ -116,6 +112,34 @@ impl Directory {
             return None;
         }
         Some(until)
+    }
+
+    fn settle_finished_counts(&mut self) {
+        let now = Instant::now();
+        let settled: Vec<String> = self
+            .still_counting
+            .iter()
+            .filter(|(_, counting)| counting.until <= now)
+            .map(|(id, _)| id.clone())
+            .collect();
+        for id in settled {
+            self.still_counting.remove(&id);
+            let Some(entry) = self.rooms.get_mut(&id) else {
+                continue;
+            };
+            if !entry.unread_pending {
+                continue;
+            }
+            Arc::make_mut(entry).unread_pending = false;
+            self.rooms_dirty = true;
+        }
+    }
+
+    fn arm_for_counting(&mut self) {
+        let Some(next) = self.still_counting.values().map(|c| c.until).min() else {
+            return;
+        };
+        self.flush_at = Some(self.flush_at.map_or(next, |at| at.min(next)));
     }
 
     fn arm(&mut self) {
@@ -284,6 +308,7 @@ impl Directory {
         on_sync: &OnSync,
         avatars: &mut AvatarFetcher,
     ) {
+        self.settle_finished_counts();
         self.apply_pending(client).await;
         self.flush_at = None;
         if self.spaces_structural_dirty {
@@ -299,6 +324,7 @@ impl Directory {
             self.emit_spaces(client, on_sync, avatars);
             self.spaces_dirty = false;
         }
+        self.arm_for_counting();
     }
 
     fn emit_rooms(&mut self, client: &Client, on_sync: &OnSync, avatars: &mut AvatarFetcher) {
