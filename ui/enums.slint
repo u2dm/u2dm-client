@@ -65,6 +65,7 @@ export enum UserMessageKind {
     session-restore-failed,
     store-key-missing,
     store-key-unreadable,
+    identity-diverged,
     session-expired,
     data-quarantined,
     data-not-erased,
@@ -83,6 +84,10 @@ export enum UserMessageKind {
     verification-timed-out,
     verification-sas-accept-failed,
     verification-cancelled,
+    verification-declined,
+    verification-mismatch,
+    verification-accepted-elsewhere,
+    verification-failed,
 }
 
 export enum MediaState {

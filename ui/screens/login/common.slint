@@ -1,28 +1,13 @@
 import { Palette, Spinner } from "std-widgets.slint";
 import { IconDisplay, IconSet, Icon } from "@lucide";
 import { LoginActivity } from "../../enums.slint";
-import { UserMessage, UserMessages } from "../../messages.slint";
+import { AppStyle } from "../../components/style.slint";
 
-export global LoginStyle {
-    out property <bool> dark: Palette.color-scheme == ColorScheme.dark;
-    out property <brush> page: root.dark ? Palette.background : Palette.alternate-background;
-    out property <brush> card: root.dark ? Palette.alternate-background : Palette.background;
-    out property <length> card-width: 400px;
-    out property <length> control-height: 46px;
-    out property <length> control-radius: 12px;
-    out property <color> muted: Palette.foreground.transparentize(0.42);
-    out property <color> faint: Palette.foreground.transparentize(0.68);
-    out property <color> hairline: Palette.foreground.transparentize(0.88);
-    out property <color> surface: Palette.foreground.transparentize(0.955);
-    out property <color> danger: Colors.tomato.mix(Palette.foreground, 0.8);
-    out property <color> danger-surface: Colors.tomato.transparentize(0.9);
-    out property <color> success: Colors.mediumseagreen.mix(Palette.foreground, 0.8);
-}
 
 export component LoginPage inherits Rectangle {
     width: 100%;
     height: 100%;
-    background: LoginStyle.page;
+    background: AppStyle.page;
 
     Rectangle {
         x: -0.24 * root.width;
@@ -48,11 +33,11 @@ export component LoginPage inherits Rectangle {
             padding: 24px;
 
             card := Rectangle {
-                width: min(LoginStyle.card-width, root.width - 48px);
-                background: LoginStyle.card;
+                width: min(AppStyle.card-width, root.width - 48px);
+                background: AppStyle.card;
                 border-radius: 20px;
                 border-width: 1px;
-                border-color: LoginStyle.hairline;
+                border-color: AppStyle.hairline;
                 drop-shadow-blur: 40px;
                 drop-shadow-offset-y: 14px;
                 drop-shadow-color: Palette.foreground.transparentize(0.88);
@@ -113,7 +98,7 @@ export component BrandHeader inherits VerticalLayout {
         font-size: 13px;
         horizontal-alignment: center;
         wrap: word-wrap;
-        color: LoginStyle.muted;
+        color: AppStyle.muted;
     }
 }
 
@@ -121,7 +106,7 @@ export component FieldLabel inherits Text {
     font-size: 11px;
     font-weight: 600;
     letter-spacing: 0.6px;
-    color: LoginStyle.muted;
+    color: AppStyle.muted;
 }
 
 export component StepDots inherits HorizontalLayout {
@@ -136,7 +121,7 @@ export component StepDots inherits HorizontalLayout {
         width: self.active ? 22px : 7px;
         height: 7px;
         border-radius: self.height / 2;
-        background: self.active ? Palette.accent-background : LoginStyle.hairline;
+        background: self.active ? Palette.accent-background : AppStyle.hairline;
 
         animate width, background {
             duration: 200ms;
@@ -209,7 +194,7 @@ export component StatusRow inherits HorizontalLayout {
         IconDisplay {
             icon: root.style.icon;
             size: 14px;
-            stroke: LoginStyle.faint;
+            stroke: AppStyle.faint;
         }
     }
 
@@ -217,54 +202,17 @@ export component StatusRow inherits HorizontalLayout {
         text: root.style.label;
         font-size: 13px;
         vertical-alignment: center;
-        color: LoginStyle.muted;
-    }
-}
-
-export component ErrorBanner inherits Rectangle {
-    in property <[UserMessage]> messages;
-
-    background: LoginStyle.danger-surface;
-    border-radius: 10px;
-    border-width: 1px;
-    border-color: Colors.tomato.transparentize(0.78);
-
-    HorizontalLayout {
-        padding: 12px;
-        spacing: 10px;
-
-        VerticalLayout {
-            alignment: start;
-
-            IconDisplay {
-                icon: IconSet.TriangleAlert;
-                size: 16px;
-                stroke: LoginStyle.danger;
-            }
-        }
-
-        VerticalLayout {
-            spacing: 6px;
-            horizontal-stretch: 1;
-
-            for message in root.messages: Text {
-                text: UserMessages.text(message.kind, message.detail);
-                font-size: 12px;
-                wrap: word-wrap;
-                horizontal-stretch: 1;
-                color: LoginStyle.danger;
-            }
-        }
+        color: AppStyle.muted;
     }
 }
 
 export component ServerChip inherits Rectangle {
     in property <string> server;
 
-    background: LoginStyle.surface;
+    background: AppStyle.surface;
     border-radius: 9px;
     border-width: 1px;
-    border-color: LoginStyle.hairline;
+    border-color: AppStyle.hairline;
     height: chip-layout.preferred-height;
 
     chip-layout := HorizontalLayout {
@@ -280,7 +228,7 @@ export component ServerChip inherits Rectangle {
             IconDisplay {
                 icon: IconSet.Server;
                 size: 14px;
-                stroke: LoginStyle.success;
+                stroke: AppStyle.success;
             }
         }
 
@@ -290,7 +238,7 @@ export component ServerChip inherits Rectangle {
             overflow: elide;
             horizontal-stretch: 1;
             vertical-alignment: center;
-            color: LoginStyle.muted;
+            color: AppStyle.muted;
         }
 
         VerticalLayout {
@@ -299,7 +247,7 @@ export component ServerChip inherits Rectangle {
             IconDisplay {
                 icon: IconSet.Check;
                 size: 14px;
-                stroke: LoginStyle.success;
+                stroke: AppStyle.success;
             }
         }
     }
@@ -314,7 +262,7 @@ export component OrDivider inherits HorizontalLayout {
 
         Rectangle {
             height: 1px;
-            background: LoginStyle.hairline;
+            background: AppStyle.hairline;
         }
     }
 
@@ -324,7 +272,7 @@ export component OrDivider inherits HorizontalLayout {
         font-weight: 600;
         letter-spacing: 0.6px;
         vertical-alignment: center;
-        color: LoginStyle.faint;
+        color: AppStyle.faint;
     }
 
     VerticalLayout {
@@ -333,7 +281,7 @@ export component OrDivider inherits HorizontalLayout {
 
         Rectangle {
             height: 1px;
-            background: LoginStyle.hairline;
+            background: AppStyle.hairline;
         }
     }
 }

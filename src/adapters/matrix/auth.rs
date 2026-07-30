@@ -297,6 +297,8 @@ pub(super) async fn open_session(
         client.restore_session(matrix_session).await?;
     }
 
+    super::identity::ensure_identity_matches_server(&client).await?;
+
     tracing::info!("session restored successfully");
     Ok(client)
 }

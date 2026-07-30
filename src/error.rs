@@ -40,6 +40,7 @@ pub enum AuthFailure {
     InvalidUsername,
     RateLimited,
     MethodUnsupported,
+    IdentityDiverged,
     Unknown,
 }
 
@@ -52,6 +53,7 @@ impl fmt::Display for AuthFailure {
             Self::InvalidUsername => "invalid username",
             Self::RateLimited => "rate limited",
             Self::MethodUnsupported => "method unsupported",
+            Self::IdentityDiverged => "local signing key diverged from the published one",
             Self::Unknown => "unknown",
         };
         f.write_str(name)

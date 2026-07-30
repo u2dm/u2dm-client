@@ -2,7 +2,7 @@ import { Palette } from "std-widgets.slint";
 import { IconDisplay, IconSet, Icon } from "@lucide";
 
 import { ClickArea } from "../../components/a11y.slint";
-import { LoginStyle } from "./common.slint";
+import { AppStyle } from "../../components/style.slint";
 
 component ScrollingInput inherits Rectangle {
     in-out property <string> text;
@@ -24,7 +24,7 @@ component ScrollingInput inherits Rectangle {
         text: (root.text == "" && input.preedit-text == "") ? root.placeholder : "";
         font-size: input.font-size;
         vertical-alignment: center;
-        color: LoginStyle.faint;
+        color: AppStyle.faint;
         accessible-role: none;
     }
 
@@ -73,13 +73,13 @@ export component LoginField inherits Rectangle {
     property <bool> revealed: false;
     property <bool> shows-reveal: root.secret && root.text != "";
 
-    height: LoginStyle.control-height;
-    border-radius: LoginStyle.control-radius;
-    background: root.enabled ? LoginStyle.surface : LoginStyle.surface.transparentize(0.5);
+    height: AppStyle.control-height;
+    border-radius: AppStyle.control-radius;
+    background: root.enabled ? AppStyle.surface : AppStyle.surface.transparentize(0.5);
     border-width: root.has-focus ? 2px : 1px;
     border-color: root.has-focus
         ? Palette.accent-background
-        : (touch.has-hover && root.enabled ? Palette.foreground.transparentize(0.7) : LoginStyle.hairline);
+        : (touch.has-hover && root.enabled ? Palette.foreground.transparentize(0.7) : AppStyle.hairline);
     accessible-role: text-input;
     accessible-enabled: root.enabled;
     accessible-label: root.label;
@@ -120,7 +120,7 @@ export component LoginField inherits Rectangle {
             IconDisplay {
                 icon: root.icon;
                 size: 17px;
-                stroke: root.has-focus ? Palette.accent-background : LoginStyle.faint;
+                stroke: root.has-focus ? Palette.accent-background : AppStyle.faint;
             }
         }
 
@@ -156,7 +156,7 @@ export component LoginField inherits Rectangle {
                     IconDisplay {
                         icon: root.revealed ? IconSet.EyeOff : IconSet.Eye;
                         size: 16px;
-                        stroke: LoginStyle.muted;
+                        stroke: AppStyle.muted;
                     }
                 }
             }

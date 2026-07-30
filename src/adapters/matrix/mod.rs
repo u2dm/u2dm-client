@@ -1,4 +1,5 @@
 mod auth;
+mod identity;
 mod media;
 mod preview;
 mod profile;

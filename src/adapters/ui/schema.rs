@@ -170,6 +170,7 @@ macro_rules! user_message_kinds {
         SessionRestoreFailed      SessionRestoreFailed    "session-restore-failed";
         StoreKeyMissing           StoreKeyMissing         "store-key-missing";
         StoreKeyUnreadable        StoreKeyUnreadable      "store-key-unreadable";
+        IdentityDiverged          IdentityDiverged        "identity-diverged";
         SessionExpired            SessionExpired          "session-expired";
         DataQuarantined           DataQuarantined         "data-quarantined";
         DataNotErased             DataNotErased           "data-not-erased";
@@ -188,6 +189,10 @@ macro_rules! user_message_kinds {
         VerificationTimedOut      VerificationTimedOut    "verification-timed-out";
         VerificationSasAcceptFailed VerificationSasAcceptFailed "verification-sas-accept-failed";
         VerificationCancelled     VerificationCancelled   "verification-cancelled";
+        VerificationDeclined      VerificationDeclined    "verification-declined";
+        VerificationMismatch      VerificationMismatch    "verification-mismatch";
+        VerificationAcceptedElsewhere VerificationAcceptedElsewhere "verification-accepted-elsewhere";
+        VerificationFailed        VerificationFailed      "verification-failed";
     } };
 }
 pub(crate) use user_message_kinds;

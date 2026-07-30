@@ -1,0 +1,18 @@
+import { Palette } from "std-widgets.slint";
+
+export global AppStyle {
+    out property <bool> dark: Palette.color-scheme == ColorScheme.dark;
+    out property <brush> page: root.dark ? Palette.background : Palette.alternate-background;
+    out property <brush> card: root.dark ? Palette.alternate-background : Palette.background;
+    out property <length> card-width: 400px;
+    out property <length> control-height: 46px;
+    out property <length> control-radius: 12px;
+    out property <color> muted: Palette.foreground.transparentize(0.42);
+    out property <color> faint: Palette.foreground.transparentize(0.68);
+    out property <color> hairline: Palette.foreground.transparentize(0.88);
+    out property <color> surface: Palette.foreground.transparentize(0.955);
+    out property <color> danger: Colors.tomato.mix(Palette.foreground, 0.8);
+    out property <color> danger-surface: Colors.tomato.transparentize(0.9);
+    out property <color> success: Colors.mediumseagreen.mix(Palette.foreground, 0.8);
+    out property <color> success-surface: Colors.mediumseagreen.transparentize(0.9);
+}

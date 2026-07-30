@@ -1,11 +1,11 @@
 import { Palette } from "std-widgets.slint";
-import { IconDisplay, IconSet, Icon } from "@lucide";
+import { IconDisplay, Icon } from "@lucide";
 
-import { ClickArea } from "../../components/a11y.slint";
-import { LoginStyle } from "./common.slint";
-import { DotPulse } from "../../components/dot-pulse.slint";
+import { ClickArea } from "./a11y.slint";
+import { AppStyle } from "./style.slint";
+import { DotPulse } from "./dot-pulse.slint";
 
-export component LoginButton inherits Rectangle {
+export component AppButton inherits Rectangle {
     in property <string> text;
     in property <Icon> icon;
     in property <bool> trailing-icon: false;
@@ -19,15 +19,15 @@ export component LoginButton inherits Rectangle {
     property <bool> interactive: root.enabled && !root.busy;
     property <color> label-color: root.enabled
         ? (root.filled ? Palette.accent-foreground : root.tint)
-        : LoginStyle.faint;
+        : AppStyle.faint;
     property <bool> has-icon: root.icon.paths.length > 0;
 
-    height: LoginStyle.control-height;
-    border-radius: LoginStyle.control-radius;
+    height: AppStyle.control-height;
+    border-radius: AppStyle.control-radius;
     border-width: root.filled ? 0 : 1px;
-    border-color: root.filled ? transparent : LoginStyle.hairline;
+    border-color: root.filled ? transparent : AppStyle.hairline;
     background: !root.enabled
-        ? LoginStyle.surface
+        ? AppStyle.surface
         : (root.filled
             ? (touch.pressed
                 ? root.tint.darker(0.2)
@@ -44,7 +44,7 @@ export component LoginButton inherits Rectangle {
     touch := ClickArea {
         enabled: root.interactive;
         label: root.text;
-        ring-radius: LoginStyle.control-radius;
+        ring-radius: AppStyle.control-radius;
         clicked => {
             root.clicked();
         }
@@ -94,20 +94,23 @@ export component LoginButton inherits Rectangle {
     }
 }
 
-export component BackButton inherits Rectangle {
+export component IconButton inherits Rectangle {
+    in property <Icon> icon;
+    in property <string> label;
     in property <bool> enabled: true;
+    in property <length> size: 34px;
 
     callback clicked();
 
-    width: 34px;
-    height: 34px;
+    width: root.size;
+    height: root.size;
     border-radius: 10px;
     opacity: root.enabled ? 1.0 : 0.4;
     background: touch.has-hover && root.enabled ? Palette.foreground.transparentize(0.92) : transparent;
 
     touch := ClickArea {
         enabled: root.enabled;
-        label: @tr("Back to the homeserver step");
+        label: root.label;
         ring-radius: 10px;
         clicked => {
             root.clicked();
@@ -115,8 +118,8 @@ export component BackButton inherits Rectangle {
     }
 
     IconDisplay {
-        icon: IconSet.ArrowLeft;
-        size: 18px;
-        stroke: LoginStyle.muted;
+        icon: root.icon;
+        size: root.size * 0.53;
+        stroke: AppStyle.muted;
     }
 }

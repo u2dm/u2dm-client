@@ -46,6 +46,9 @@ export global UserMessages {
         if kind == UserMessageKind.store-key-unreadable {
             return @tr("The key to the local store could not be read. Please log in again.");
         }
+        if kind == UserMessageKind.identity-diverged {
+            return @tr("This session's encryption keys no longer match the ones the server has for it. Please log in again to create a new session.");
+        }
         if kind == UserMessageKind.session-expired {
             return @tr("Session expired. Please log in again.");
         }
@@ -83,22 +86,34 @@ export global UserMessages {
             return @tr("File saved to {}", detail);
         }
         if kind == UserMessageKind.verification-accept-failed {
-            return @tr("Verification accept failed");
+            return @tr("Could not accept the request. Please try again.");
         }
         if kind == UserMessageKind.verification-confirm-failed {
-            return @tr("Verification confirm failed");
+            return @tr("Could not confirm the match. Please try again.");
         }
         if kind == UserMessageKind.verification-reject-failed {
-            return @tr("Verification reject failed");
+            return @tr("Could not decline the request. Please try again.");
         }
         if kind == UserMessageKind.verification-timed-out {
-            return @tr("Verification timed out");
+            return @tr("Nobody answered in time, so the request expired.");
         }
         if kind == UserMessageKind.verification-sas-accept-failed {
-            return @tr("Failed to accept the verification");
+            return @tr("Could not accept the verification. Please try again.");
         }
         if kind == UserMessageKind.verification-cancelled {
-            return @tr("Verification cancelled");
+            return @tr("The other device cancelled the verification.");
+        }
+        if kind == UserMessageKind.verification-declined {
+            return @tr("You declined the verification.");
+        }
+        if kind == UserMessageKind.verification-mismatch {
+            return @tr("The emoji did not match, so the verification was stopped.");
+        }
+        if kind == UserMessageKind.verification-accepted-elsewhere {
+            return @tr("This request was answered on another one of your devices.");
+        }
+        if kind == UserMessageKind.verification-failed {
+            return @tr("The verification could not be completed.");
         }
         return "";
     }

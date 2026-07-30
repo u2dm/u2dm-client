@@ -487,5 +487,9 @@ pub enum VerificationEvent {
 pub enum VerificationCancellation {
     TimedOut,
     AcceptFailed,
+    Declined,
+    Mismatch,
+    AcceptedElsewhere,
     Remote,
+    Failed,
 }

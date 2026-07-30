@@ -38,6 +38,7 @@ pub enum UserMessageKind {
     SessionRestoreFailed,
     StoreKeyMissing,
     StoreKeyUnreadable,
+    IdentityDiverged,
     SessionExpired,
     DataQuarantined,
     DataNotErased,
@@ -56,4 +57,8 @@ pub enum UserMessageKind {
     VerificationTimedOut,
     VerificationSasAcceptFailed,
     VerificationCancelled,
+    VerificationDeclined,
+    VerificationMismatch,
+    VerificationAcceptedElsewhere,
+    VerificationFailed,
 }

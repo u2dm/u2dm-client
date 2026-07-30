@@ -66,8 +66,20 @@ fn login_failure(err: &AppError) -> UserMessageKind {
         AuthFailure::InvalidUsername => UserMessageKind::InvalidUsername,
         AuthFailure::RateLimited => UserMessageKind::RateLimited,
         AuthFailure::MethodUnsupported => UserMessageKind::LoginMethodUnsupported,
+        AuthFailure::IdentityDiverged => UserMessageKind::IdentityDiverged,
         AuthFailure::Unknown => UserMessageKind::LoginFailed,
     }
+}
+
+fn restore_failure(err: &AppError) -> UserMessageKind {
+    if let AppError::Auth {
+        kind: AuthFailure::IdentityDiverged,
+        ..
+    } = err
+    {
+        return UserMessageKind::IdentityDiverged;
+    }
+    UserMessageKind::SessionRestoreFailed
 }
 
 fn restore_activity(step: RestoreStep) -> LoginActivity {
@@ -223,7 +235,7 @@ impl SessionController {
             Err(e) => {
                 tracing::warn!("session restore failed, preserving local data: {e}");
                 self.emit_show_login();
-                self.emit_login_error(UserMessageKind::SessionRestoreFailed);
+                self.emit_login_error(restore_failure(&e));
                 None
             }
         }

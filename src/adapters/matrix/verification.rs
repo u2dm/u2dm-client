@@ -1,11 +1,15 @@
+use std::future::ready;
+use std::pin::pin;
 use std::time::Duration;
 
-use futures_util::StreamExt;
+use futures_util::{Stream, StreamExt, stream};
 use matrix_sdk::Client;
 use matrix_sdk::encryption::verification::{
-    SasState, SasVerification, Verification, VerificationRequest, VerificationRequestState,
+    CancelInfo, Emoji, EmojiShortAuthString, SasState, SasVerification, VerificationRequest,
+    VerificationRequestState,
 };
 use matrix_sdk::event_handler::EventHandlerDropGuard;
+use matrix_sdk::ruma::events::key::verification::cancel::CancelCode;
 use matrix_sdk::ruma::events::key::verification::request::ToDeviceKeyVerificationRequestEvent;
 use matrix_sdk::ruma::events::room::message::{MessageType, OriginalSyncRoomMessageEvent};
 use tokio::sync::{Mutex, mpsc};
@@ -15,7 +19,7 @@ use crate::domain::models::{VerificationCancellation, VerificationEmoji, Verific
 use crate::error::{AppError, Result};
 
 const VERIFICATION_QUEUE: usize = 8;
-const VERIFICATION_TIMEOUT: Duration = Duration::from_mins(5);
+const UNANSWERED_REQUEST_TIMEOUT: Duration = Duration::from_mins(10);
 
 async fn enqueue_or_reject(tx: &mpsc::Sender<VerificationRequest>, request: VerificationRequest) {
     if let Err(mpsc::error::TrySendError::Full(request)) = tx.try_send(request) {
@@ -93,7 +97,13 @@ pub(super) async fn listen_for_verification(
         let sender = request.other_user_id().to_string();
         let is_self = request.is_self_verification();
         let flow_id = request.flow_id().to_string();
-        tracing::info!(sender = %sender, is_self, "verification request received");
+
+        if is_settled(&request.state()) {
+            tracing::info!(%sender, %flow_id, "ignoring a verification request that is already over");
+            continue;
+        }
+
+        tracing::info!(%sender, is_self, %flow_id, "verification request received");
         *verification_request.lock().await = Some(request.clone());
 
         verification_tx
@@ -101,11 +111,10 @@ pub(super) async fn listen_for_verification(
             .ok();
 
         run_verification(
-            request,
+            &request,
             &flow_id,
             &mut rx,
             sas_verification,
-            verification_request,
             &verification_tx,
         )
         .await;
@@ -117,31 +126,49 @@ pub(super) async fn listen_for_verification(
     Ok(())
 }
 
+fn is_settled(state: &VerificationRequestState) -> bool {
+    matches!(
+        state,
+        VerificationRequestState::Cancelled(_) | VerificationRequestState::Done
+    )
+}
+
+fn current_then_changes<T: 'static>(
+    current: T,
+    changes: impl Stream<Item = T>,
+) -> impl Stream<Item = T> {
+    stream::once(ready(current)).chain(changes)
+}
+
+fn request_states(request: &VerificationRequest) -> impl Stream<Item = VerificationRequestState> {
+    let changes_from_now_on = request.changes();
+    current_then_changes(request.state(), changes_from_now_on)
+}
+
+fn sas_states(sas: &SasVerification) -> impl Stream<Item = SasState> {
+    let changes_from_now_on = sas.changes();
+    current_then_changes(sas.state(), changes_from_now_on)
+}
+
+fn send_cancelled(tx: &mpsc::UnboundedSender<VerificationEvent>, reason: VerificationCancellation) {
+    tx.send(VerificationEvent::Cancelled(reason)).ok();
+}
+
 async fn run_verification(
-    request: VerificationRequest,
+    request: &VerificationRequest,
     flow_id: &str,
     rx: &mut mpsc::Receiver<VerificationRequest>,
     sas_verification: &Mutex<Option<SasVerification>>,
-    verification_request: &Mutex<Option<VerificationRequest>>,
     tx: &mpsc::UnboundedSender<VerificationEvent>,
 ) {
-    let handle = timeout(
-        VERIFICATION_TIMEOUT,
-        handle_verification_request(request, sas_verification, tx),
-    );
-    tokio::pin!(handle);
+    let flow = drive_flow(request, sas_verification, tx);
+    tokio::pin!(flow);
 
     let mut channel_open = true;
     loop {
         tokio::select! {
             biased;
-            result = &mut handle => {
-                if result.is_err() {
-                    tracing::warn!("verification timed out; cancelling");
-                    cancel_active_verification(sas_verification, verification_request, tx).await;
-                }
-                break;
-            }
+            () = &mut flow => return,
             incoming = rx.recv(), if channel_open => {
                 match incoming {
                     Some(other) if other.flow_id() != flow_id => {
@@ -156,111 +183,287 @@ async fn run_verification(
     }
 }
 
-async fn cancel_active_verification(
+async fn drive_flow(
+    request: &VerificationRequest,
     sas_verification: &Mutex<Option<SasVerification>>,
-    verification_request: &Mutex<Option<VerificationRequest>>,
     tx: &mpsc::UnboundedSender<VerificationEvent>,
 ) {
-    let sas = sas_verification.lock().await.take();
-    let request = verification_request.lock().await.take();
-    if let Some(sas) = sas {
-        sas.cancel().await.ok();
-    }
-    if let Some(request) = request {
+    let mut states = pin!(request_states(request));
+
+    let Ok(arrival) = timeout(UNANSWERED_REQUEST_TIMEOUT, await_sas(&mut states, request)).await
+    else {
+        tracing::info!("nobody answered the verification request; cancelling it");
         request.cancel().await.ok();
+        send_cancelled(tx, VerificationCancellation::TimedOut);
+        return;
+    };
+
+    let end = match arrival {
+        SasArrival::Sas(sas) => follow_sas(sas, &mut states, request, sas_verification, tx).await,
+        SasArrival::Ended(end) => end,
+    };
+
+    match end {
+        FlowEnd::Done => {
+            tx.send(VerificationEvent::Done).ok();
+        }
+        FlowEnd::Cancelled(reason) => send_cancelled(tx, reason),
     }
-    tx.send(VerificationEvent::Cancelled(
-        VerificationCancellation::TimedOut,
-    ))
-    .ok();
 }
 
-#[allow(clippy::cognitive_complexity)]
-async fn handle_verification_request(
-    request: VerificationRequest,
-    sas_mutex: &Mutex<Option<SasVerification>>,
-    tx: &mpsc::UnboundedSender<VerificationEvent>,
-) {
-    let mut stream = request.changes();
+enum FlowEnd {
+    Done,
+    Cancelled(VerificationCancellation),
+}
 
-    while let Some(state) = stream.next().await {
-        match state {
-            VerificationRequestState::Transitioned { verification } => {
-                if let Verification::SasV1(sas) = verification {
-                    tracing::info!("verification transitioned to SAS");
-                    *sas_mutex.lock().await = Some(sas.clone());
-                    handle_sas_verification(sas, tx).await;
-                }
-                break;
-            }
-            VerificationRequestState::Done => {
-                tracing::info!("verification completed");
-                tx.send(VerificationEvent::Done).ok();
-                break;
-            }
-            VerificationRequestState::Cancelled(info) => {
-                tracing::info!(reason = %info.reason(), "verification cancelled");
-                tx.send(VerificationEvent::Cancelled(
-                    VerificationCancellation::Remote,
-                ))
-                .ok();
-                break;
-            }
-            _ => {}
+enum SasArrival {
+    Sas(SasVerification),
+    Ended(FlowEnd),
+}
+
+async fn await_sas(
+    states: &mut (impl Stream<Item = VerificationRequestState> + Unpin),
+    request: &VerificationRequest,
+) -> SasArrival {
+    while let Some(state) = states.next().await {
+        if let Some(arrival) = request_step(request, state).await {
+            return arrival;
+        }
+    }
+
+    SasArrival::Ended(request_states_ended())
+}
+
+async fn request_step(
+    request: &VerificationRequest,
+    state: VerificationRequestState,
+) -> Option<SasArrival> {
+    match state {
+        VerificationRequestState::Transitioned { verification } => {
+            let Some(sas) = verification.sas() else {
+                tracing::warn!("the verification chose a method U2DM cannot drive; cancelling");
+                request.cancel().await.ok();
+                return None;
+            };
+            tracing::info!("the verification transitioned to SAS");
+            Some(SasArrival::Sas(sas))
+        }
+        VerificationRequestState::Ready { their_methods, .. } => {
+            tracing::debug!(
+                ?their_methods,
+                "the request is ready; waiting for the other device to start the SAS"
+            );
+            None
+        }
+        VerificationRequestState::Done => Some(SasArrival::Ended(FlowEnd::Done)),
+        VerificationRequestState::Cancelled(info) => {
+            report_cancellation("verification request", &info);
+            Some(SasArrival::Ended(FlowEnd::Cancelled(cancellation(&info))))
+        }
+        VerificationRequestState::Created { .. } | VerificationRequestState::Requested { .. } => {
+            None
         }
     }
 }
 
-#[allow(clippy::cognitive_complexity)]
-async fn handle_sas_verification(
-    sas: SasVerification,
+async fn follow_sas(
+    first: SasVerification,
+    states: &mut (impl Stream<Item = VerificationRequestState> + Unpin),
+    request: &VerificationRequest,
+    sas_verification: &Mutex<Option<SasVerification>>,
     tx: &mpsc::UnboundedSender<VerificationEvent>,
-) {
-    if let Err(e) = sas.accept().await {
-        tracing::warn!("failed to accept SAS verification: {e}");
-        tx.send(VerificationEvent::Cancelled(
-            VerificationCancellation::AcceptFailed,
-        ))
-        .ok();
-        return;
+) -> FlowEnd {
+    let mut sas = first;
+    loop {
+        *sas_verification.lock().await = Some(sas.clone());
+        match race_sas_against_request(&sas, states, tx).await {
+            SasRace::Replaced(next) => {
+                tracing::info!("the verification switched to another SAS; following that one");
+                sas = next;
+            }
+            SasRace::Ended(FlowEnd::Cancelled(reason)) => {
+                return if request_completed(request) {
+                    tracing::info!(
+                        "the SAS reported a cancellation but the request completed; counting it verified"
+                    );
+                    FlowEnd::Done
+                } else {
+                    FlowEnd::Cancelled(reason)
+                };
+            }
+            SasRace::Ended(end) => return end,
+        }
     }
+}
 
-    let mut stream = sas.changes();
+fn request_completed(request: &VerificationRequest) -> bool {
+    matches!(request.state(), VerificationRequestState::Done)
+}
 
-    while let Some(state) = stream.next().await {
-        match state {
-            SasState::KeysExchanged { .. } => {
-                tracing::debug!("SAS keys exchanged, presenting emojis");
-                if let Some(emojis) = sas.emoji() {
-                    let domain_emojis: Vec<VerificationEmoji> = emojis
-                        .iter()
-                        .map(|e| VerificationEmoji {
-                            symbol: e.symbol.to_string(),
-                            description: e.description.to_string(),
-                        })
-                        .collect();
-                    tx.send(VerificationEvent::Emojis(domain_emojis)).ok();
+enum SasRace {
+    Ended(FlowEnd),
+    Replaced(SasVerification),
+}
+
+async fn race_sas_against_request(
+    sas: &SasVerification,
+    states: &mut (impl Stream<Item = VerificationRequestState> + Unpin),
+    tx: &mpsc::UnboundedSender<VerificationEvent>,
+) -> SasRace {
+    let driving = drive_sas(sas, tx);
+    tokio::pin!(driving);
+
+    loop {
+        tokio::select! {
+            end = &mut driving => return SasRace::Ended(end),
+            state = states.next() => {
+                match state {
+                    Some(VerificationRequestState::Transitioned { verification }) => {
+                        if let Some(next) = verification.sas() {
+                            return SasRace::Replaced(next);
+                        }
+                    }
+                    Some(VerificationRequestState::Done) => {
+                        tracing::info!("the request reports the verification is done");
+                        return SasRace::Ended(FlowEnd::Done);
+                    }
+                    Some(VerificationRequestState::Cancelled(info)) => {
+                        report_cancellation("verification request", &info);
+                        return SasRace::Ended(FlowEnd::Cancelled(cancellation(&info)));
+                    }
+                    Some(_) => {}
+                    None => return SasRace::Ended(request_states_ended()),
                 }
             }
-            SasState::Confirmed => {
-                tracing::debug!("SAS confirmed, waiting for other side");
+        }
+    }
+}
+
+fn request_states_ended() -> FlowEnd {
+    tracing::warn!("the verification request stopped reporting its state");
+    FlowEnd::Cancelled(VerificationCancellation::Failed)
+}
+
+async fn drive_sas(
+    sas: &SasVerification,
+    tx: &mpsc::UnboundedSender<VerificationEvent>,
+) -> FlowEnd {
+    let mut states = pin!(sas_states(sas));
+    let mut announced = AnnouncedSteps::default();
+
+    while let Some(state) = states.next().await {
+        tracing::debug!(state = sas_state_name(&state), "the SAS changed state");
+        if let Some(end) = step_sas(sas, state, &mut announced, tx).await {
+            return end;
+        }
+    }
+
+    tracing::warn!("the SAS stopped reporting its state");
+    FlowEnd::Cancelled(VerificationCancellation::Failed)
+}
+
+fn sas_state_name(state: &SasState) -> &'static str {
+    match state {
+        SasState::Created { .. } => "created",
+        SasState::Started { .. } => "started",
+        SasState::Accepted { .. } => "accepted",
+        SasState::KeysExchanged { .. } => "keys-exchanged",
+        SasState::Confirmed => "confirmed",
+        SasState::Done { .. } => "done",
+        SasState::Cancelled(_) => "cancelled",
+    }
+}
+
+#[derive(Default)]
+struct AnnouncedSteps {
+    emojis: bool,
+    confirming: bool,
+}
+
+async fn step_sas(
+    sas: &SasVerification,
+    state: SasState,
+    announced: &mut AnnouncedSteps,
+    tx: &mpsc::UnboundedSender<VerificationEvent>,
+) -> Option<FlowEnd> {
+    match state {
+        SasState::Started { .. } => match sas.accept().await {
+            Ok(()) => None,
+            Err(e) => {
+                tracing::warn!("failed to accept the SAS verification: {e}");
+                sas.cancel().await.ok();
+                Some(FlowEnd::Cancelled(VerificationCancellation::AcceptFailed))
+            }
+        },
+        SasState::KeysExchanged { emojis, decimals } => {
+            announce_emojis(sas, emojis.as_ref(), decimals, announced, tx).await;
+            None
+        }
+        SasState::Confirmed => {
+            if !announced.confirming {
+                announced.confirming = true;
                 tx.send(VerificationEvent::Confirming).ok();
             }
-            SasState::Done { .. } => {
-                tracing::info!("SAS verification done");
-                tx.send(VerificationEvent::Done).ok();
-                break;
-            }
-            SasState::Cancelled(info) => {
-                tracing::info!(reason = %info.reason(), "SAS verification cancelled");
-                tx.send(VerificationEvent::Cancelled(
-                    VerificationCancellation::Remote,
-                ))
-                .ok();
-                break;
-            }
-            _ => {}
+            None
         }
+        SasState::Done { .. } => Some(FlowEnd::Done),
+        SasState::Cancelled(info) => {
+            report_cancellation("SAS verification", &info);
+            Some(FlowEnd::Cancelled(cancellation(&info)))
+        }
+        SasState::Created { .. } | SasState::Accepted { .. } => None,
+    }
+}
+
+async fn announce_emojis(
+    sas: &SasVerification,
+    emojis: Option<&EmojiShortAuthString>,
+    decimals: (u16, u16, u16),
+    announced: &mut AnnouncedSteps,
+    tx: &mpsc::UnboundedSender<VerificationEvent>,
+) {
+    let Some(emojis) = emojis else {
+        tracing::warn!(
+            ?decimals,
+            "the SAS agreed on decimals, which U2DM cannot show"
+        );
+        sas.cancel().await.ok();
+        return;
+    };
+    if !announced.emojis {
+        announced.emojis = true;
+        tx.send(VerificationEvent::Emojis(domain_emojis(&emojis.emojis)))
+            .ok();
+    }
+}
+
+fn domain_emojis(emojis: &[Emoji; 7]) -> Vec<VerificationEmoji> {
+    emojis
+        .iter()
+        .map(|e| VerificationEmoji {
+            symbol: e.symbol.to_owned(),
+            description: e.description.to_owned(),
+        })
+        .collect()
+}
+
+fn report_cancellation(what: &str, info: &CancelInfo) {
+    tracing::info!(
+        by_us = info.cancelled_by_us(),
+        code = ?info.cancel_code(),
+        reason = info.reason(),
+        "{what} cancelled"
+    );
+}
+
+fn cancellation(info: &CancelInfo) -> VerificationCancellation {
+    match info.cancel_code() {
+        CancelCode::Timeout => VerificationCancellation::TimedOut,
+        CancelCode::Accepted => VerificationCancellation::AcceptedElsewhere,
+        CancelCode::MismatchedSas | CancelCode::KeyMismatch => VerificationCancellation::Mismatch,
+        CancelCode::User if info.cancelled_by_us() => VerificationCancellation::Declined,
+        CancelCode::User => VerificationCancellation::Remote,
+        _ => VerificationCancellation::Failed,
     }
 }
 

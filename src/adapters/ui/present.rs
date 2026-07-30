@@ -245,15 +245,15 @@ pub fn unsupported_kind(body: &MessageBody) -> &str {
 verification_phases!(define_ui_enum VerifyStep;);
 
 pub fn verification_cancellation(reason: &VerificationCancellation) -> UserMessage {
-    match reason {
-        VerificationCancellation::TimedOut => {
-            UserMessage::new(UserMessageKind::VerificationTimedOut)
+    UserMessage::new(match reason {
+        VerificationCancellation::TimedOut => UserMessageKind::VerificationTimedOut,
+        VerificationCancellation::AcceptFailed => UserMessageKind::VerificationSasAcceptFailed,
+        VerificationCancellation::Declined => UserMessageKind::VerificationDeclined,
+        VerificationCancellation::Mismatch => UserMessageKind::VerificationMismatch,
+        VerificationCancellation::AcceptedElsewhere => {
+            UserMessageKind::VerificationAcceptedElsewhere
         }
-        VerificationCancellation::AcceptFailed => {
-            UserMessage::new(UserMessageKind::VerificationSasAcceptFailed)
-        }
-        VerificationCancellation::Remote => {
-            UserMessage::new(UserMessageKind::VerificationCancelled)
-        }
-    }
+        VerificationCancellation::Remote => UserMessageKind::VerificationCancelled,
+        VerificationCancellation::Failed => UserMessageKind::VerificationFailed,
+    })
 }
