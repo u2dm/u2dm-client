@@ -1,5 +1,6 @@
 mod auth;
 mod identity;
+mod journal;
 mod media;
 mod preview;
 mod profile;
@@ -38,8 +39,8 @@ use crate::domain::models::{
 };
 use crate::error::{AppError, Result};
 use crate::ports::matrix::{
-    AuthPort, AuthenticatedSession, CleanupReport, MediaPort, ProgressSink, SessionPort,
-    SpaceOrderPort, StoreAdoption, SyncPort, SyncSink, TimelinePort, VerificationPort,
+    AuthPort, AuthenticatedSession, CleanupReport, MediaPort, PendingLogin, ProgressSink,
+    SessionPort, SpaceOrderPort, StoreAdoption, SyncPort, SyncSink, TimelinePort, VerificationPort,
 };
 use crate::ports::media::MediaCache;
 
@@ -169,6 +170,7 @@ async fn authenticate(
 struct UncommittedAdoption {
     layout: StoreLayout,
     media: Arc<MediaService>,
+    txn: String,
     adopted: AdoptedStore,
     client: Client,
     session: Session,
@@ -177,6 +179,18 @@ struct UncommittedAdoption {
 
 #[async_trait]
 impl StoreAdoption for UncommittedAdoption {
+    fn transaction(&self) -> &str {
+        &self.txn
+    }
+
+    async fn credentials_written(&self) -> Result<()> {
+        self.adopted.credentials_written().await
+    }
+
+    async fn rolling_back(&self) -> Result<()> {
+        self.adopted.rolling_back().await
+    }
+
     async fn commit(self: Box<Self>) -> AuthenticatedSession {
         let Self {
             layout,
@@ -185,6 +199,7 @@ impl StoreAdoption for UncommittedAdoption {
             client,
             session,
             account,
+            ..
         } = *self;
         layout.commit_adoption(adopted).await;
         authenticate(layout, media, client, session, account).await
@@ -275,6 +290,7 @@ impl AuthPort for MatrixAdapter {
         Ok(Box::new(UncommittedAdoption {
             layout: self.layout.clone(),
             media: Arc::clone(&self.media),
+            txn: adopted.txn.clone(),
             adopted,
             client,
             session: session.clone(),
@@ -294,6 +310,22 @@ impl AuthPort for MatrixAdapter {
         let paths = self.layout.account(&account);
         let client = auth::open_session(&paths, session, passphrase, on_progress.as_ref()).await?;
         Ok(self.authenticate(client, session.clone(), account).await)
+    }
+
+    async fn pending_logins(&self) -> Vec<PendingLogin> {
+        self.layout.pending_logins().await
+    }
+
+    async fn unwind_login(&self, txn: &str) -> CleanupReport {
+        self.layout.unwind_login(txn).await
+    }
+
+    async fn settle_login(&self, txn: &str) -> CleanupReport {
+        self.layout.settle_login(txn).await
+    }
+
+    async fn forget_login(&self, txn: &str) {
+        self.layout.forget_login(txn).await;
     }
 }
 

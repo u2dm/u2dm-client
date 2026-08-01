@@ -140,6 +140,10 @@ impl SessionController {
         }
     }
 
+    pub(super) async fn recover_interrupted_logins(&self) {
+        super::recover::recover_interrupted_logins(self.auth.as_ref(), self.storage.as_ref()).await;
+    }
+
     pub(super) fn spawn_restore_session(&self, group: &mut TaskGroup) {
         let this = self.clone();
         group.spawn(async move { this.restore_session().await });
@@ -474,7 +478,21 @@ impl SessionController {
         let token = group.token();
         group.spawn(async move {
             let (session_tx, mut session_rx) = mpsc::unbounded_channel::<Session>();
-            let subscribe = lifecycle_port.subscribe_session_changes(session_tx);
+
+            let listen = async move {
+                tokio::select! {
+                    result = lifecycle_port.subscribe_session_changes(session_tx) => {
+                        match result {
+                            Ok(()) => tracing::debug!("session change listener ended"),
+                            Err(e) => tracing::warn!("session change listener failed: {e}"),
+                        }
+                    }
+                    () = token.cancelled() => {
+                        tracing::debug!("session change listener cancelled");
+                    }
+                }
+            };
+
             let persist = async {
                 while let Some(session) = session_rx.recv().await {
                     if let Err(e) = storage.save_session(&session).await {
@@ -484,24 +502,12 @@ impl SessionController {
                             Toast::Error(UserMessage::new(UserMessageKind::SessionSaveFailed)),
                         );
                     } else {
-                        tracing::info!("persisted refreshed session tokens");
+                        tracing::info!("persisted the current session tokens");
                     }
                 }
             };
 
-            tokio::select! {
-                result = subscribe => {
-                    if let Err(e) = result {
-                        tracing::warn!("session change listener ended: {e}");
-                    }
-                }
-                () = persist => {
-                    tracing::debug!("session change persister stopped");
-                }
-                () = token.cancelled() => {
-                    tracing::debug!("session change listener cancelled");
-                }
-            }
+            tokio::join!(listen, persist);
         });
     }
 

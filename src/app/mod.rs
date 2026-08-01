@@ -2,6 +2,7 @@ mod active_timeline;
 mod establish;
 mod lifecycle;
 mod media;
+mod recover;
 mod room_directory;
 mod selection;
 mod session;
@@ -126,6 +127,7 @@ impl AppService {
         let Some(mut auth_rx) = self.auth_rx.take() else {
             return;
         };
+        self.session.recover_interrupted_logins().await;
         let mut dir_done = false;
         let mut scroll_done = false;
         let mut auth_done = false;

@@ -24,6 +24,10 @@ impl AccountScope {
         Self::new(&session.homeserver, &session.user_id)
     }
 
+    pub fn from_id(id: String) -> Self {
+        Self(id)
+    }
+
     pub fn id(&self) -> &str {
         &self.0
     }

@@ -11,6 +11,12 @@ pub enum StoredSession {
     CredentialsUnavailable(AppError),
 }
 
+pub struct SupersededLogin {
+    pub txn: String,
+    pub session: Option<Session>,
+    pub passphrase: Option<String>,
+}
+
 #[async_trait]
 pub trait StoragePort: Send + Sync {
     async fn save_session(&self, session: &Session) -> Result<()>;
@@ -19,4 +25,7 @@ pub trait StoragePort: Send + Sync {
     async fn save_passphrase(&self, account: &AccountScope, passphrase: &str) -> Result<()>;
     async fn load_passphrase(&self, account: &AccountScope) -> Result<Option<String>>;
     async fn clear_passphrase(&self, account: &AccountScope) -> Result<()>;
+    async fn save_superseded(&self, superseded: &SupersededLogin) -> Result<()>;
+    async fn load_superseded(&self) -> Result<Option<SupersededLogin>>;
+    async fn clear_superseded(&self) -> Result<()>;
 }

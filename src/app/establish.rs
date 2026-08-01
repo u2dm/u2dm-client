@@ -4,7 +4,7 @@ use crate::domain::account::AccountScope;
 use crate::domain::models::Session;
 use crate::error::{AppError, Result};
 use crate::ports::matrix::{AuthenticatedSession, CleanupReport, StoreAdoption};
-use crate::ports::storage::{StoragePort, StoredSession};
+use crate::ports::storage::{StoragePort, StoredSession, SupersededLogin};
 
 struct DisplacedRecords {
     session: Option<Session>,
@@ -58,7 +58,7 @@ impl EstablishedSession {
             displaced,
         };
 
-        match established.write_records(session, passphrase).await {
+        match established.record(session, passphrase).await {
             Ok(()) => Ok(established),
             Err(e) => {
                 let report = established.roll_back().await;
@@ -68,13 +68,54 @@ impl EstablishedSession {
     }
 
     pub(super) async fn commit(self) -> AuthenticatedSession {
-        self.adoption.commit().await
+        let Self {
+            adoption, storage, ..
+        } = self;
+        if let Err(e) = storage.clear_superseded().await {
+            tracing::warn!("the credentials this login replaced could not be unstaged: {e}");
+        }
+        adoption.commit().await
     }
 
     pub(super) async fn roll_back(self) -> CleanupReport {
-        let mut report = self.restore_displaced().await;
+        let mut report = CleanupReport::default();
+
+        if let Err(e) = self.adoption.rolling_back().await {
+            report.fail(format!(
+                "this login could not be marked for rollback, so it is left in place and the previous session is not restored ({e})"
+            ));
+            return report;
+        }
+
+        report.merge(self.restore_displaced().await);
         report.merge(self.adoption.roll_back().await);
+        if let Err(e) = self.storage.clear_superseded().await {
+            tracing::warn!("the restored credentials could not be unstaged: {e}");
+        }
         report
+    }
+
+    async fn record(&self, session: &Session, passphrase: &str) -> Result<()> {
+        self.stage_displaced().await?;
+        self.write_records(session, passphrase).await?;
+        self.adoption.credentials_written().await.map_err(|e| {
+            AppError::Other(format!(
+                "The login could not be recorded as complete, so it would not survive a restart: {e}"
+            ))
+        })
+    }
+
+    async fn stage_displaced(&self) -> Result<()> {
+        let superseded = SupersededLogin {
+            txn: self.adoption.transaction().to_owned(),
+            session: self.displaced.session.clone(),
+            passphrase: self.displaced.passphrase.clone(),
+        };
+        self.storage.save_superseded(&superseded).await.map_err(|e| {
+            AppError::Other(format!(
+                "The credentials this login replaces could not be staged, so the login was not started: {e}"
+            ))
+        })
     }
 
     async fn write_records(&self, session: &Session, passphrase: &str) -> Result<()> {

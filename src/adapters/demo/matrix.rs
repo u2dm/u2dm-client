@@ -18,8 +18,9 @@ use crate::domain::models::{
 };
 use crate::error::{AppError, Result};
 use crate::ports::matrix::{
-    AuthPort, AuthenticatedSession, CleanupReport, MediaPort, ProgressSink, RestoreStep,
-    SessionPort, SpaceOrderPort, StoreAdoption, SyncPort, SyncSink, TimelinePort, VerificationPort,
+    AuthPort, AuthenticatedSession, CleanupReport, MediaPort, PendingLogin, ProgressSink,
+    RestoreStep, SessionPort, SpaceOrderPort, StoreAdoption, SyncPort, SyncSink, TimelinePort,
+    VerificationPort,
 };
 use crate::ports::media::MediaCache;
 
@@ -69,7 +70,10 @@ impl AuthPort for DemoMatrix {
         _passphrase: &str,
     ) -> Result<Box<dyn StoreAdoption>> {
         login::pause().await;
-        Ok(Box::new(DemoAdoption(session.clone())))
+        Ok(Box::new(DemoAdoption {
+            session: session.clone(),
+            txn: "demo".to_owned(),
+        }))
     }
 
     async fn cancel_oauth(&self) {}
@@ -86,14 +90,43 @@ impl AuthPort for DemoMatrix {
         }
         Ok(authenticated(session.clone()))
     }
+
+    async fn pending_logins(&self) -> Vec<PendingLogin> {
+        Vec::new()
+    }
+
+    async fn unwind_login(&self, _txn: &str) -> CleanupReport {
+        CleanupReport::default()
+    }
+
+    async fn settle_login(&self, _txn: &str) -> CleanupReport {
+        CleanupReport::default()
+    }
+
+    async fn forget_login(&self, _txn: &str) {}
 }
 
-struct DemoAdoption(Session);
+struct DemoAdoption {
+    session: Session,
+    txn: String,
+}
 
 #[async_trait]
 impl StoreAdoption for DemoAdoption {
+    fn transaction(&self) -> &str {
+        &self.txn
+    }
+
+    async fn credentials_written(&self) -> Result<()> {
+        Ok(())
+    }
+
+    async fn rolling_back(&self) -> Result<()> {
+        Ok(())
+    }
+
     async fn commit(self: Box<Self>) -> AuthenticatedSession {
-        authenticated(self.0)
+        authenticated(self.session)
     }
 
     async fn roll_back(self: Box<Self>) -> CleanupReport {

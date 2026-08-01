@@ -8,11 +8,13 @@ use tokio::task::spawn_blocking;
 use crate::domain::account::AccountScope;
 use crate::domain::models::Session;
 use crate::error::{AppError, Result};
-use crate::ports::storage::{StoragePort, StoredSession};
+use crate::ports::storage::{StoragePort, StoredSession, SupersededLogin};
 
 const KEYRING_SERVICE: &str = "u2dm";
 const SESSION_KEY: &str = "session-credentials";
+const SUPERSEDED_KEY: &str = "superseded-login";
 const SESSION_RECORD_VERSION: u8 = 2;
+const SUPERSEDED_RECORD_VERSION: u8 = 1;
 
 #[derive(serde::Deserialize)]
 struct RecordVersion {
@@ -53,6 +55,35 @@ impl StoredSessionRecord {
             access_token: self.access_token,
             refresh_token: self.refresh_token,
             client_id: self.client_id,
+        }
+    }
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
+struct SupersededRecord {
+    version: u8,
+    txn: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    session: Option<StoredSessionRecord>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    passphrase: Option<String>,
+}
+
+impl SupersededRecord {
+    fn new(superseded: &SupersededLogin) -> Self {
+        Self {
+            version: SUPERSEDED_RECORD_VERSION,
+            txn: superseded.txn.clone(),
+            session: superseded.session.as_ref().map(StoredSessionRecord::new),
+            passphrase: superseded.passphrase.clone(),
+        }
+    }
+
+    fn into_superseded(self) -> SupersededLogin {
+        SupersededLogin {
+            txn: self.txn,
+            session: self.session.map(StoredSessionRecord::into_session),
+            passphrase: self.passphrase,
         }
     }
 }
@@ -150,6 +181,38 @@ impl StoragePort for SecureStorage {
 
     async fn clear_passphrase(&self, account: &AccountScope) -> Result<()> {
         keyring_delete(&passphrase_key(account)).await
+    }
+
+    async fn save_superseded(&self, superseded: &SupersededLogin) -> Result<()> {
+        tracing::debug!(txn = %superseded.txn, "staging the credentials this login displaces");
+        let encoded = serde_json::to_string(&SupersededRecord::new(superseded))?;
+        keyring_set(SUPERSEDED_KEY, encoded).await
+    }
+
+    async fn load_superseded(&self) -> Result<Option<SupersededLogin>> {
+        let Some(raw) = keyring_get(SUPERSEDED_KEY).await? else {
+            return Ok(None);
+        };
+        match serde_json::from_str::<SupersededRecord>(&raw) {
+            Ok(record) if record.version == SUPERSEDED_RECORD_VERSION => {
+                Ok(Some(record.into_superseded()))
+            }
+            Ok(record) => {
+                tracing::warn!(
+                    version = record.version,
+                    "the staged displaced credentials use an unsupported layout, ignoring them"
+                );
+                Ok(None)
+            }
+            Err(e) => {
+                tracing::warn!("the staged displaced credentials are unreadable: {e}");
+                Ok(None)
+            }
+        }
+    }
+
+    async fn clear_superseded(&self) -> Result<()> {
+        keyring_delete(SUPERSEDED_KEY).await
     }
 }
 

@@ -5,6 +5,7 @@ use async_trait::async_trait;
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 
+use crate::domain::account::AccountScope;
 use crate::domain::models::{
     LoginCredentials, OAuthLoginData, RoomId, ServerInfo, Session, SyncEvent, SyncOutcome,
     TimelineCommand, TimelineUpdate, VerificationEvent,
@@ -20,6 +21,18 @@ pub enum RestoreStep {
     RestoringAuth,
 }
 
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum LoginResolution {
+    RollBack,
+    RollForward,
+}
+
+pub struct PendingLogin {
+    pub txn: String,
+    pub account: AccountScope,
+    pub resolution: LoginResolution,
+}
+
 #[derive(Debug, Default)]
 pub struct CleanupReport {
     pub quarantined: Vec<PathBuf>,
@@ -33,6 +46,10 @@ impl CleanupReport {
 
     pub fn is_quarantined_only(&self) -> bool {
         self.failures.is_empty() && !self.quarantined.is_empty()
+    }
+
+    pub fn has_failures(&self) -> bool {
+        !self.failures.is_empty()
     }
 
     pub fn fail(&mut self, detail: impl Into<String>) {
@@ -91,10 +108,17 @@ pub trait AuthPort: Send + Sync {
         passphrase: &str,
         on_progress: ProgressSink,
     ) -> Result<AuthenticatedSession>;
+    async fn pending_logins(&self) -> Vec<PendingLogin>;
+    async fn unwind_login(&self, txn: &str) -> CleanupReport;
+    async fn settle_login(&self, txn: &str) -> CleanupReport;
+    async fn forget_login(&self, txn: &str);
 }
 
 #[async_trait]
 pub trait StoreAdoption: Send + Sync {
+    fn transaction(&self) -> &str;
+    async fn credentials_written(&self) -> Result<()>;
+    async fn rolling_back(&self) -> Result<()>;
     async fn commit(self: Box<Self>) -> AuthenticatedSession;
     async fn roll_back(self: Box<Self>) -> CleanupReport;
 }

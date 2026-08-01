@@ -62,18 +62,41 @@ fn is_exposed(_metadata: &std_fs::Metadata) -> bool {
 }
 
 pub(crate) async fn write_private(path: &Path, data: &[u8]) -> io::Result<()> {
+    write_owner_only(path, data, Durability::Buffered).await
+}
+
+pub(crate) async fn write_atomically(path: &Path, data: &[u8]) -> io::Result<()> {
+    stage_and_rename(path, data, Durability::Buffered).await
+}
+
+pub(crate) async fn write_durably(path: &Path, data: &[u8]) -> io::Result<()> {
+    stage_and_rename(path, data, Durability::Synced).await?;
+    sync_containing_dir(path).await
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Durability {
+    Buffered,
+    Synced,
+}
+
+async fn write_owner_only(path: &Path, data: &[u8], durability: Durability) -> io::Result<()> {
     let mut options = fs::OpenOptions::new();
     options.write(true).create_new(true);
     #[cfg(unix)]
     options.mode(OWNER_ONLY_FILE);
     let mut file = options.open(path).await?;
     file.write_all(data).await?;
-    file.flush().await
+    file.flush().await?;
+    if durability == Durability::Synced {
+        file.sync_all().await?;
+    }
+    Ok(())
 }
 
-pub(crate) async fn write_atomically(path: &Path, data: &[u8]) -> io::Result<()> {
+async fn stage_and_rename(path: &Path, data: &[u8], durability: Durability) -> io::Result<()> {
     let tmp = unique_tmp_path(path);
-    if let Err(e) = write_private(&tmp, data).await {
+    if let Err(e) = write_owner_only(&tmp, data, durability).await {
         discard_temp(&tmp).await;
         return Err(e);
     }
@@ -81,6 +104,23 @@ pub(crate) async fn write_atomically(path: &Path, data: &[u8]) -> io::Result<()>
         discard_temp(&tmp).await;
         return Err(e);
     }
+    Ok(())
+}
+
+pub(crate) async fn sync_containing_dir(path: &Path) -> io::Result<()> {
+    match path.parent() {
+        Some(parent) => sync_dir(parent).await,
+        None => Ok(()),
+    }
+}
+
+#[cfg(unix)]
+pub(crate) async fn sync_dir(dir: &Path) -> io::Result<()> {
+    fs::File::open(dir).await?.sync_all().await
+}
+
+#[cfg(not(unix))]
+pub(crate) async fn sync_dir(_dir: &Path) -> io::Result<()> {
     Ok(())
 }
 

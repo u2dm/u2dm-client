@@ -1,31 +1,58 @@
+use std::collections::HashSet;
 use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime};
 
 use tokio::fs;
+use tokio::sync::Mutex;
 
+use super::journal::{self, BACKUP_PREFIX, LoginJournal, LoginStage};
 use crate::adapters::private_fs;
 use crate::domain::account::AccountScope;
 use crate::error::{AppError, Result};
-use crate::ports::matrix::CleanupReport;
+use crate::ports::matrix::{CleanupReport, PendingLogin};
 use crate::util::random_hex;
 
 const STORES_DIR: &str = "stores";
 const LAYOUT_VERSION: &str = "v1";
 const PENDING_PREFIX: &str = "pending-";
-const BACKUP_PREFIX: &str = "backup-";
 const QUARANTINE_PREFIX: &str = "quarantine-";
 const ABANDONED_STORE_AGE: Duration = Duration::from_hours(24);
 
 #[derive(Clone, Debug)]
 pub(super) struct StorePaths {
+    pub(super) name: String,
     pub(super) data: PathBuf,
     pub(super) cache: PathBuf,
 }
 
+struct Roots {
+    data: PathBuf,
+    cache: PathBuf,
+}
+
 pub(super) struct AdoptedStore {
     pub(super) paths: StorePaths,
-    held_aside: Option<StorePaths>,
+    pub(super) txn: String,
+    journal: Mutex<LoginJournal>,
+}
+
+impl AdoptedStore {
+    pub(super) async fn credentials_written(&self) -> Result<()> {
+        self.journal
+            .lock()
+            .await
+            .advance(LoginStage::CredentialsWritten)
+            .await
+    }
+
+    pub(super) async fn rolling_back(&self) -> Result<()> {
+        let mut journal = self.journal.lock().await;
+        if journal.stage() != LoginStage::CredentialsWritten {
+            return Ok(());
+        }
+        journal.advance(LoginStage::NewStoreInstalled).await
+    }
 }
 
 #[derive(Clone)]
@@ -55,33 +82,33 @@ impl StoreLayout {
         pending: &StorePaths,
         account: &AccountScope,
     ) -> Result<AdoptedStore> {
+        let mut journal = LoginJournal::open(&self.roots().data, account, &pending.name).await?;
         let target = self.account(account);
-        let held_aside = self.hold_aside(&target).await?;
-        let adopted = AdoptedStore {
-            paths: target,
-            held_aside,
-        };
 
-        if let Err(e) = install(pending, &adopted.paths).await {
-            let report = self.roll_back_adoption(adopted).await;
+        if let Err(e) = self.install_journaled(&mut journal, pending, &target).await {
+            let report = self.unwind(&mut journal).await;
             if !report.is_clean() {
                 tracing::warn!(
                     "previous store not restored after a failed adoption: {}",
                     report.summary()
                 );
             }
+            journal.discard().await;
             return Err(e);
         }
 
-        tracing::info!(store = %adopted.paths.data.display(), "adopted login store for account");
-        Ok(adopted)
+        tracing::info!(store = %target.data.display(), "adopted login store for account");
+        Ok(AdoptedStore {
+            paths: target,
+            txn: journal.txn().to_owned(),
+            journal: Mutex::new(journal),
+        })
     }
 
     pub(super) async fn commit_adoption(&self, adopted: AdoptedStore) {
-        let Some(held_aside) = adopted.held_aside else {
-            return;
-        };
-        let report = self.purge(&held_aside).await;
+        let mut journal = adopted.journal.into_inner();
+        let report = self.settle(&mut journal).await;
+        journal.discard().await;
         if report.is_clean() {
             tracing::info!("previous store for this account discarded after adoption");
         } else {
@@ -93,18 +120,39 @@ impl StoreLayout {
     }
 
     pub(super) async fn roll_back_adoption(&self, adopted: AdoptedStore) -> CleanupReport {
-        let mut report = self.purge(&adopted.paths).await;
-        let Some(held_aside) = adopted.held_aside else {
-            return report;
-        };
-        match put_back(&held_aside, &adopted.paths).await {
-            Ok(()) => tracing::info!("previous store for this account put back"),
-            Err(e) => report.fail(format!(
-                "the previous store for this account is held at {} and could not be put back ({e})",
-                held_aside.data.display()
-            )),
-        }
+        let mut journal = adopted.journal.into_inner();
+        let report = self.unwind(&mut journal).await;
+        journal.discard().await;
         report
+    }
+
+    pub(super) async fn pending_logins(&self) -> Vec<PendingLogin> {
+        journal::load_all(&self.roots().data)
+            .await
+            .iter()
+            .map(LoginJournal::pending_login)
+            .collect()
+    }
+
+    pub(super) async fn unwind_login(&self, txn: &str) -> CleanupReport {
+        match LoginJournal::load(&self.roots().data, txn).await {
+            Ok(mut journal) => self.unwind(&mut journal).await,
+            Err(e) => unreadable_journal(txn, &e),
+        }
+    }
+
+    pub(super) async fn settle_login(&self, txn: &str) -> CleanupReport {
+        match LoginJournal::load(&self.roots().data, txn).await {
+            Ok(mut journal) => self.settle(&mut journal).await,
+            Err(e) => unreadable_journal(txn, &e),
+        }
+    }
+
+    pub(super) async fn forget_login(&self, txn: &str) {
+        match LoginJournal::load(&self.roots().data, txn).await {
+            Ok(journal) => journal.discard().await,
+            Err(e) => tracing::warn!(txn, "the login journal could not be closed: {e}"),
+        }
     }
 
     pub(super) async fn purge(&self, paths: &StorePaths) -> CleanupReport {
@@ -121,30 +169,74 @@ impl StoreLayout {
 
     pub(super) async fn sweep_stale(&self) {
         let roots = self.roots();
-        sweep_root(&roots.data).await;
-        sweep_root(&roots.cache).await;
+        let protected = self.protected_names().await;
+        sweep_root(&roots.data, &protected).await;
+        sweep_root(&roots.cache, &protected).await;
     }
 
-    async fn hold_aside(&self, target: &StorePaths) -> Result<Option<StorePaths>> {
-        let aside = self.child(&format!("{BACKUP_PREFIX}{}", random_hex(8)));
-        let data_held = move_existing(&target.data, &aside.data).await?;
+    async fn install_journaled(
+        &self,
+        journal: &mut LoginJournal,
+        pending: &StorePaths,
+        target: &StorePaths,
+    ) -> Result<()> {
+        hold_aside(target, &self.child(&journal.displaced())).await?;
+        journal.advance(LoginStage::OldStoreHeldAside).await?;
+        install(pending, target).await?;
+        journal.advance(LoginStage::NewStoreInstalled).await
+    }
 
-        match move_existing(&target.cache, &aside.cache).await {
-            Ok(cache_held) => Ok((data_held || cache_held).then_some(aside)),
-            Err(e) if !data_held => Err(e),
-            Err(e) => match move_dir(&aside.data, &target.data).await {
-                Ok(()) => Err(e),
-                Err(undo) => Err(AppError::Other(format!(
-                    "the previous store for this account could not be held aside ({e}), and it is now at {} instead of {} ({undo})",
-                    aside.data.display(),
-                    target.data.display()
-                ))),
-            },
+    async fn unwind(&self, journal: &mut LoginJournal) -> CleanupReport {
+        let target = self.account(&journal.account());
+        let aside = self.child(&journal.displaced());
+        let mut report = CleanupReport::default();
+
+        if journal.installed_store_is_ours() {
+            report.merge(self.purge(&target).await);
+            if let Err(e) = journal.advance(LoginStage::Prepared).await {
+                report.fail(format!(
+                    "the login transaction could not be marked as unwound, so the previous store is left at {} ({e})",
+                    aside.data.display()
+                ));
+                return report;
+            }
         }
+
+        match put_back(&aside, &target).await {
+            Ok(()) => tracing::info!("previous store for this account put back"),
+            Err(e) => report.fail(format!(
+                "the previous store for this account is held at {} and could not be put back ({e})",
+                aside.data.display()
+            )),
+        }
+
+        report.merge(self.purge(&self.child(journal.installing())).await);
+        report
     }
 
-    fn roots(&self) -> StorePaths {
-        StorePaths {
+    async fn settle(&self, journal: &mut LoginJournal) -> CleanupReport {
+        if journal.stage() != LoginStage::CredentialsWritten {
+            return CleanupReport::default();
+        }
+        let mut report = self.purge(&self.child(&journal.displaced())).await;
+        if let Err(e) = journal.advance(LoginStage::Committed).await {
+            report.fail(format!(
+                "the login transaction could not be marked as committed ({e})"
+            ));
+        }
+        report
+    }
+
+    async fn protected_names(&self) -> HashSet<String> {
+        journal::load_all(&self.roots().data)
+            .await
+            .iter()
+            .flat_map(LoginJournal::protected_names)
+            .collect()
+    }
+
+    fn roots(&self) -> Roots {
+        Roots {
             data: self.data_dir.join(STORES_DIR).join(LAYOUT_VERSION),
             cache: self.cache_dir.join(STORES_DIR).join(LAYOUT_VERSION),
         }
@@ -153,10 +245,19 @@ impl StoreLayout {
     fn child(&self, name: &str) -> StorePaths {
         let roots = self.roots();
         StorePaths {
+            name: name.to_owned(),
             data: roots.data.join(name),
             cache: roots.cache.join(name),
         }
     }
+}
+
+fn unreadable_journal(txn: &str, error: &AppError) -> CleanupReport {
+    let mut report = CleanupReport::default();
+    report.fail(format!(
+        "the interrupted login {txn} could not be resolved because its journal is unreadable ({error})"
+    ));
+    report
 }
 
 async fn install(pending: &StorePaths, target: &StorePaths) -> Result<()> {
@@ -165,9 +266,15 @@ async fn install(pending: &StorePaths, target: &StorePaths) -> Result<()> {
     Ok(())
 }
 
-async fn put_back(held_aside: &StorePaths, target: &StorePaths) -> Result<()> {
-    move_existing(&held_aside.data, &target.data).await?;
-    move_existing(&held_aside.cache, &target.cache).await?;
+async fn hold_aside(target: &StorePaths, aside: &StorePaths) -> Result<()> {
+    move_existing(&target.data, &aside.data).await?;
+    move_existing(&target.cache, &aside.cache).await?;
+    Ok(())
+}
+
+async fn put_back(aside: &StorePaths, target: &StorePaths) -> Result<()> {
+    move_existing(&aside.data, &target.data).await?;
+    move_existing(&aside.cache, &target.cache).await?;
     Ok(())
 }
 
@@ -200,6 +307,11 @@ async fn move_dir(from: &Path, to: &Path) -> Result<()> {
         private_fs::create_dir(parent).await?;
     }
     fs::rename(from, to).await?;
+    if let Some(parent) = to.parent()
+        && let Err(e) = private_fs::sync_dir(parent).await
+    {
+        tracing::debug!(path = %parent.display(), "could not sync the store directory: {e}");
+    }
     Ok(())
 }
 
@@ -248,22 +360,26 @@ async fn dir_exists(path: &Path) -> bool {
     fs::metadata(path).await.is_ok()
 }
 
-async fn sweep_root(root: &Path) {
+async fn sweep_root(root: &Path, protected: &HashSet<String>) {
     let Ok(mut entries) = fs::read_dir(root).await else {
         return;
     };
     while let Ok(Some(entry)) = entries.next_entry().await {
-        if is_sweepable(&entry).await {
+        if is_sweepable(&entry, protected).await {
             sweep(&entry.path()).await;
         }
     }
 }
 
-async fn is_sweepable(entry: &fs::DirEntry) -> bool {
+async fn is_sweepable(entry: &fs::DirEntry, protected: &HashSet<String>) -> bool {
     let name = entry.file_name();
     let Some(name) = name.to_str() else {
         return false;
     };
+    if protected.contains(name) {
+        tracing::debug!(name, "leaving a store an interrupted login still needs");
+        return false;
+    }
     if name.starts_with(QUARANTINE_PREFIX) {
         return true;
     }

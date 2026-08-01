@@ -14,6 +14,7 @@ use matrix_sdk::ruma::{IdParseError, OwnedDeviceId, OwnedUserId};
 use matrix_sdk::utils::UrlOrQuery;
 use matrix_sdk::utils::local_server::{LocalServerBuilder, LocalServerRedirectHandle};
 use matrix_sdk::{Client, ClientBuilder, HttpError, SessionChange, SessionMeta};
+use tokio::sync::broadcast::error::RecvError;
 use tokio::sync::{Mutex, mpsc};
 use url::Url;
 
@@ -331,17 +332,31 @@ pub(super) fn extract_current_session(client: &Client) -> Option<Session> {
     None
 }
 
+fn send_current_session(client: &Client, session_tx: &mpsc::UnboundedSender<Session>) -> bool {
+    extract_current_session(client).is_none_or(|session| session_tx.send(session).is_ok())
+}
+
 pub(super) async fn subscribe_session_changes(
     client: &Client,
     session_tx: mpsc::UnboundedSender<Session>,
 ) -> Result<()> {
-    let mut rx = client.subscribe_to_session_changes();
+    let mut changes = client.subscribe_to_session_changes();
 
-    while let Ok(change) = rx.recv().await {
-        if change == SessionChange::TokensRefreshed
-            && let Some(session) = extract_current_session(client)
-            && session_tx.send(session).is_err()
-        {
+    if !send_current_session(client, &session_tx) {
+        return Ok(());
+    }
+
+    loop {
+        match changes.recv().await {
+            Ok(SessionChange::TokensRefreshed) => {}
+            Ok(SessionChange::UnknownToken(_)) => continue,
+            Err(RecvError::Lagged(missed)) => {
+                tracing::debug!(missed, "missed session changes, saving the tokens in hand");
+            }
+            Err(RecvError::Closed) => break,
+        }
+
+        if !send_current_session(client, &session_tx) {
             break;
         }
     }
