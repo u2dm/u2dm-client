@@ -37,9 +37,10 @@ pub(super) struct ReconcileOutcome {
 }
 
 #[derive(Clone, Copy, Default, PartialEq, Eq)]
-struct SpaceCounts {
-    unread: u64,
-    mentions: u64,
+struct SpaceFlags {
+    alert: bool,
+    mention: bool,
+    hint: bool,
 }
 
 #[derive(Default)]
@@ -193,7 +194,7 @@ pub(super) struct RoomDirectory {
     all_rooms: RoomList,
     spaces: Arc<[Space]>,
     graph: SpaceGraph,
-    counts: Vec<SpaceCounts>,
+    flags: Vec<SpaceFlags>,
     spaces_dirty: bool,
     orders: HashMap<String, String>,
     pending_orders: HashMap<String, PendingOrder>,
@@ -208,7 +209,7 @@ impl RoomDirectory {
             all_rooms: Arc::from(Vec::new()),
             spaces: Arc::from(Vec::new()),
             graph: SpaceGraph::default(),
-            counts: Vec::new(),
+            flags: Vec::new(),
             spaces_dirty: false,
             orders: HashMap::new(),
             pending_orders: HashMap::new(),
@@ -226,7 +227,7 @@ impl RoomDirectory {
             return false;
         }
         self.all_rooms = rooms;
-        self.spaces_dirty |= self.recompute_counts();
+        self.spaces_dirty |= self.recompute_flags();
         true
     }
 
@@ -237,7 +238,7 @@ impl RoomDirectory {
         self.spaces = spaces;
         self.reconcile_orders();
         self.graph = SpaceGraph::build(&self.spaces);
-        self.recompute_counts();
+        self.recompute_flags();
         self.spaces_dirty = true;
         true
     }
@@ -367,7 +368,7 @@ impl RoomDirectory {
         self.all_rooms = Arc::from(Vec::new());
         self.spaces = Arc::from(Vec::new());
         self.graph = SpaceGraph::default();
-        self.counts.clear();
+        self.flags.clear();
         self.spaces_dirty = false;
         self.orders.clear();
         self.pending_orders.clear();
@@ -528,7 +529,7 @@ impl RoomDirectory {
         let spaces: Vec<Space> = self
             .ordered_root_indices()
             .into_iter()
-            .filter_map(|i| self.space_with_counts(i))
+            .filter_map(|i| self.space_with_flags(i))
             .collect();
         let spaces: Arc<[Space]> = spaces.into();
         self.output
@@ -545,7 +546,7 @@ impl RoomDirectory {
                     .child_space_ids
                     .iter()
                     .filter_map(|child| self.graph.index.get(child).copied())
-                    .filter_map(|i| self.space_with_counts(i))
+                    .filter_map(|i| self.space_with_flags(i))
                     .collect()
             })
             .unwrap_or_default();
@@ -554,12 +555,13 @@ impl RoomDirectory {
             .publish(Box::new(move |view| view.directory.subspaces = subspaces));
     }
 
-    fn space_with_counts(&self, space_index: usize) -> Option<Space> {
+    fn space_with_flags(&self, space_index: usize) -> Option<Space> {
         let space = self.spaces.get(space_index)?;
-        let counts = self.counts.get(space_index).copied().unwrap_or_default();
+        let flags = self.flags.get(space_index).copied().unwrap_or_default();
         Some(Space {
-            unread: counts.unread,
-            mentions: counts.mentions,
+            alert: flags.alert,
+            mention: flags.mention,
+            hint: flags.hint,
             ..space.clone()
         })
     }
@@ -575,19 +577,20 @@ impl RoomDirectory {
         self.graph.index.get(id).and_then(|&i| self.spaces.get(i))
     }
 
-    fn recompute_counts(&mut self) -> bool {
-        let mut next = vec![SpaceCounts::default(); self.spaces.len()];
+    fn recompute_flags(&mut self) -> bool {
+        let mut next = vec![SpaceFlags::default(); self.spaces.len()];
         for room in self.all_rooms.iter() {
             for &i in self.graph.ancestors_of(room.id.as_ref()) {
                 let Some(slot) = next.get_mut(i) else {
                     continue;
                 };
-                slot.unread = slot.unread.saturating_add(room.unread_count);
-                slot.mentions = slot.mentions.saturating_add(room.mention_count);
+                slot.alert |= room.alert();
+                slot.mention |= room.mention();
+                slot.hint |= room.hint();
             }
         }
-        let changed = next != self.counts;
-        self.counts = next;
+        let changed = next != self.flags;
+        self.flags = next;
         changed
     }
 

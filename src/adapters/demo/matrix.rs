@@ -241,7 +241,7 @@ impl TimelinePort for DemoAuthed {
         let scenario = timeline::scenario();
         let messages = data::messages(room_id);
 
-        if scenario.counts_are_unresolved {
+        if scenario.resolving_unread {
             drop(timeline_tx.send(TimelineUpdate::ResolvingUnread).await);
         }
         if scenario.reset_is_slow {
@@ -465,7 +465,7 @@ fn spawn_late_append(timeline_tx: mpsc::Sender<TimelineUpdate>) {
         sleep(timeline::LATE_MESSAGE_DELAY).await;
         let mut message = data::own_message(9_000, "posted while the timeline was settling", None);
         message.is_own = false;
-        message.sender = "@sarah:matrix.org".to_owned();
+        "@sarah:matrix.org".clone_into(&mut message.sender);
         message.sender_display_name = Some("Sarah Chen".to_owned());
         send_patch(&timeline_tx, TimelinePatch::PushBack(message)).await;
     });

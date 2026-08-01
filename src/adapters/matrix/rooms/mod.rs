@@ -7,6 +7,7 @@ use std::future;
 use std::sync::Arc;
 
 use matrix_sdk::Client;
+use matrix_sdk::notification_settings::NotificationSettings;
 use matrix_sdk::sync::RoomUpdates;
 use matrix_sdk_base::RoomInfoNotableUpdate;
 use matrix_sdk_ui::sync_service::{State as SyncState, SyncService};
@@ -23,15 +24,7 @@ use crate::domain::models::{SyncEvent, SyncOutcome};
 use crate::error::{AppError, Result as AppResult};
 use crate::ports::matrix::SyncSink as OnSync;
 
-fn backpaginate_until_read_receipts_anchor(client: &Client) {
-    client
-        .event_cache()
-        .config_mut()
-        .experimental_auto_backpagination = true;
-}
-
 async fn build_sync_service(client: &Client) -> AppResult<SyncService> {
-    backpaginate_until_read_receipts_anchor(client);
     client
         .event_cache()
         .subscribe()
@@ -146,6 +139,18 @@ async fn handle_sync_state(
     }
 }
 
+fn handle_push_rules_change(changed: &Result<(), RecvError>, dir: &mut Directory) -> LoopAction {
+    match changed {
+        Ok(()) | Err(RecvError::Lagged(_)) => {
+            dir.mark_all_flags();
+            LoopAction::Continue
+        }
+        Err(RecvError::Closed) => {
+            LoopAction::Terminal(SyncOutcome::Recoverable("push rules channel closed".into()))
+        }
+    }
+}
+
 async fn restart_sync(sync_service: &SyncService, health: &mut SyncHealth) -> LoopAction {
     health.on_restart();
     tracing::info!("restarting sliding sync");
@@ -164,10 +169,12 @@ async fn run_sync_loop(
     client: &Client,
     sync_service: &SyncService,
     room_updates_rx: &mut Receiver<RoomUpdates>,
+    push_rules_rx: &mut Receiver<()>,
+    notifications: NotificationSettings,
     on_sync: &OnSync,
     avatars: &mut AvatarFetcher,
 ) -> SyncOutcome {
-    let mut dir = Directory::new();
+    let mut dir = Directory::new(notifications);
     let mut health = SyncHealth::started();
     let mut state_stream = sync_service.state();
     let mut room_info_rx = client.room_info_notable_update_receiver();
@@ -207,6 +214,9 @@ async fn run_sync_loop(
             info = room_info_rx.recv() => {
                 handle_room_info_update(client, info, &mut dir).await
             }
+            changed = push_rules_rx.recv() => {
+                handle_push_rules_change(&changed, &mut dir)
+            }
         };
         if let LoopAction::Terminal(outcome) = action {
             return outcome;
@@ -226,6 +236,8 @@ pub(super) async fn start_sync(
     };
     let mut room_updates_rx = client.subscribe_to_all_room_updates();
     let mut avatars = AvatarFetcher::new(media);
+    let notifications = client.notification_settings().await;
+    let mut push_rules_rx = notifications.subscribe_to_changes();
 
     sync_service.start().await;
     tracing::info!("sliding sync service started");
@@ -235,6 +247,8 @@ pub(super) async fn start_sync(
             client,
             &sync_service,
             &mut room_updates_rx,
+            &mut push_rules_rx,
+            notifications,
             &on_sync,
             &mut avatars,
         ) => outcome,

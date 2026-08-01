@@ -306,9 +306,10 @@ macro_rules! room_fields {
         initial INITIAL "initial" text;
         color_index COLOR_INDEX "color-index" int;
         members MEMBERS "members" int;
-        unread UNREAD "unread" int;
-        mentions MENTIONS "mentions" int;
-        unread_pending UNREAD_PENDING "unread-pending" flag;
+        alert ALERT "alert" flag;
+        mention MENTION "mention" flag;
+        hint HINT "hint" flag;
+        muted MUTED "muted" flag;
         last_message_sender LAST_MESSAGE_SENDER "last-message-sender" text;
         last_message_kind LAST_MESSAGE_KIND "last-message-kind" enumk;
         last_message_body LAST_MESSAGE_BODY "last-message-body" text;
@@ -329,8 +330,9 @@ macro_rules! space_fields {
     ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
         id ID "id" text;
         name NAME "name" text;
-        unread UNREAD "unread" int;
-        mentions MENTIONS "mentions" int;
+        alert ALERT "alert" flag;
+        mention MENTION "mention" flag;
+        hint HINT "hint" flag;
         initial INITIAL "initial" text;
         has_avatar HAS_AVATAR "has-avatar" flag;
         avatar AVATAR "avatar" image;

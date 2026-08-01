@@ -66,16 +66,16 @@ pub fn messages(room_id: &RoomId) -> Vec<TimelineMessage> {
         None => last_message_only(room_id),
     };
     if scenario().history_is_long {
-        messages = repeated_history(messages);
+        messages = repeated_history(&messages);
     }
     mark_first_unread(room_id, &mut messages);
     messages
 }
 
-fn repeated_history(messages: Vec<TimelineMessage>) -> Vec<TimelineMessage> {
+fn repeated_history(messages: &[TimelineMessage]) -> Vec<TimelineMessage> {
     let mut repeated = Vec::with_capacity(messages.len() * timeline::HISTORY_COPIES);
     for copy in 0..timeline::HISTORY_COPIES {
-        for message in &messages {
+        for message in messages {
             let mut message = message.clone();
             message.unique_id = format!("{}-copy{copy}", message.unique_id);
             message.event_id = message

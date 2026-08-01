@@ -2,7 +2,7 @@ import { Palette } from "std-widgets.slint";
 import { Icon, IconSet } from "@lucide";
 
 import { SpaceEntry } from "./types.slint";
-import { TileGlyph, CountBadge } from "./tile.slint";
+import { TileGlyph, UnreadDot } from "./tile.slint";
 import { Fonts } from "../../../theme.slint";
 import { FocusRing } from "../../../components/a11y.slint";
 import { DirectoryView } from "../../../views.slint";
@@ -15,8 +15,9 @@ component SubspaceTile inherits Rectangle {
     in property <image> avatar;
     in property <bool> has-icon;
     in property <Icon> icon;
-    in property <int> unread;
-    in property <int> mentions;
+    in property <bool> alert;
+    in property <bool> mention;
+    in property <bool> hint;
     in property <bool> selected;
     in property <int> index: -1;
 
@@ -95,12 +96,17 @@ component SubspaceTile inherits Rectangle {
             : Palette.foreground.transparentize(0.4);
     }
 
-    if root.unread > 0 || root.mentions > 0: CountBadge {
-        x: tile.x + tile.width - self.width + 5px;
-        y: tile.y - 4px;
-        diameter: 17px;
-        unread: root.unread;
-        mentions: root.mentions;
+    property <length> badge-center-x: tile.x + tile.width - tile.border-radius * 0.293;
+    property <length> badge-center-y: tile.y + tile.border-radius * 0.293;
+
+    if root.alert || root.mention || root.hint: UnreadDot {
+        x: root.badge-center-x - self.width / 2;
+        y: root.badge-center-y - self.height / 2;
+        diameter: 9px;
+        ringed: true;
+        alert: root.alert;
+        mention: root.mention;
+        hint: root.hint;
     }
 
     touch := TouchArea {
@@ -163,8 +169,9 @@ export component SubspaceRail inherits Rectangle {
                 initial: subspace.initial;
                 has-avatar: subspace.has-avatar;
                 avatar: subspace.avatar;
-                unread: subspace.unread;
-                mentions: subspace.mentions;
+                alert: subspace.alert;
+                mention: subspace.mention;
+                hint: subspace.hint;
                 selected: DirectoryView.selected-subspace-id == subspace.id;
                 clicked => {
                     Actions.select-subspace(subspace.id);

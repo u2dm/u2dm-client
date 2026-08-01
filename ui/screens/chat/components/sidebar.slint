@@ -10,7 +10,8 @@ import { MessagePreview } from "./message-preview.slint";
 import { ServiceLabel } from "./timeline/messages/service-message.slint";
 import { Avatar } from "../../../components/avatar.slint";
 import { ListItemArea } from "../../../components/a11y.slint";
-import { DotPulse } from "../../../components/dot-pulse.slint";
+import { UnreadDot } from "./tile.slint";
+import { RoomEntry } from "./types.slint";
 import { Avatars, Fonts } from "../../../theme.slint";
 import { ServiceKind } from "../../../enums.slint";
 import { DirectoryView } from "../../../views.slint";
@@ -33,6 +34,25 @@ export component Sidebar inherits Rectangle {
             return Palette.background.transparentize(0.5);
         }
         return transparent;
+    }
+
+    pure function row-label(entry: RoomEntry) -> string {
+        if entry.mention {
+            return @tr("{}, mentions you", entry.name);
+        }
+        if entry.alert {
+            return @tr("{}, unread", entry.name);
+        }
+        if entry.muted && entry.hint {
+            return @tr("{}, muted, new activity", entry.name);
+        }
+        if entry.muted {
+            return @tr("{}, muted", entry.name);
+        }
+        if entry.hint {
+            return @tr("{}, new activity", entry.name);
+        }
+        return entry.name;
     }
 
     HorizontalLayout {
@@ -102,11 +122,7 @@ export component Sidebar inherits Rectangle {
                         clip: true;
                         index: idx;
                         selected: room.id == DirectoryView.selected-room-id;
-                        label: room.unread-pending
-                            ? @tr("{}, {} unread so far, still counting", room.name, room.unread)
-                            : room.unread > 0
-                                ? @tr("{}, {} unread", room.name, room.unread)
-                                : room.name;
+                        label: root.row-label(room);
                         ring-inset: 2px;
                         background: root.row-background(self.selected, self.has-hover);
                         clicked => {
@@ -205,49 +221,23 @@ export component Sidebar inherits Rectangle {
                                         }
                                     }
 
-                                    if room.mentions > 0: Rectangle {
-                                        y: (parent.height - self.height) / 2;
-                                        width: 18px;
-                                        height: 18px;
-                                        border-radius: 9px;
-                                        background: Palette.accent-background;
+                                    if room.muted: VerticalLayout {
+                                        alignment: center;
 
                                         IconDisplay {
-                                            x: (parent.width - self.width) / 2;
-                                            y: (parent.height - self.height) / 2;
-                                            icon: IconSet.AtSign;
-                                            size: 12px;
-                                            stroke: Palette.accent-foreground;
+                                            icon: IconSet.BellOff;
+                                            size: 14px;
+                                            stroke: Palette.foreground.transparentize(0.55);
                                         }
                                     }
 
-                                    if room.unread-pending || room.unread > 0: Rectangle {
-                                        y: (parent.height - self.height) / 2;
-                                        height: 18px;
-                                        width: max(18px, badge-content.preferred-width);
-                                        border-radius: 9px;
-                                        background: Palette.accent-background;
+                                    if room.alert || room.mention || room.hint: VerticalLayout {
+                                        alignment: center;
 
-                                        badge-content := HorizontalLayout {
-                                            padding-left: 5px;
-                                            padding-right: 5px;
-                                            spacing: 4px;
-
-                                            if room.unread-pending: DotPulse {
-                                                y: (parent.height - self.height) / 2;
-                                                tint: Palette.accent-foreground;
-                                                dot-size: 3px;
-                                                spacing: 2px;
-                                            }
-
-                                            if room.unread > 0: Text {
-                                                text: room.unread;
-                                                font-size: 11px;
-                                                font-weight: 700;
-                                                horizontal-alignment: center;
-                                                vertical-alignment: center;
-                                                color: Palette.accent-foreground;
-                                            }
+                                        UnreadDot {
+                                            alert: room.alert;
+                                            mention: room.mention;
+                                            hint: room.hint;
                                         }
                                     }
                                 }

@@ -2,7 +2,7 @@ import { Palette } from "std-widgets.slint";
 import { Icon, IconDisplay, IconSet } from "@lucide";
 
 import { SpaceEntry } from "./types.slint";
-import { TileGlyph, CountBadge } from "./tile.slint";
+import { TileGlyph, UnreadDot } from "./tile.slint";
 import { ClickArea, FocusRing } from "../../../components/a11y.slint";
 import { DirectoryView } from "../../../views.slint";
 import { Actions } from "../../../actions.slint";
@@ -14,8 +14,9 @@ component SpaceTile inherits Rectangle {
     in property <bool> has-avatar;
     in property <image> avatar;
     in property <bool> has-icon;
-    in property <int> unread;
-    in property <int> mentions;
+    in property <bool> alert;
+    in property <bool> mention;
+    in property <bool> hint;
     in property <bool> selected;
     in property <bool> draggable;
     in property <bool> elevated;
@@ -123,11 +124,16 @@ component SpaceTile inherits Rectangle {
                 : Palette.foreground.transparentize(0.45);
         }
 
-        if root.unread > 0 || root.mentions > 0: CountBadge {
-            x: avatar-circle.x + avatar-circle.width - self.width + 4px;
-            y: avatar-circle.y - 3px;
-            unread: root.unread;
-            mentions: root.mentions;
+        property <length> badge-center-x: avatar-circle.x + avatar-circle.width - avatar-circle.border-radius * 0.293;
+        property <length> badge-center-y: avatar-circle.y + avatar-circle.border-radius * 0.293;
+
+        if root.alert || root.mention || root.hint: UnreadDot {
+            x: parent.badge-center-x - self.width / 2;
+            y: parent.badge-center-y - self.height / 2;
+            ringed: true;
+            alert: root.alert;
+            mention: root.mention;
+            hint: root.hint;
         }
     }
 
@@ -291,8 +297,9 @@ export component SpaceRail inherits Rectangle {
             initial: space.initial;
             has-avatar: space.has-avatar;
             avatar: space.avatar;
-            unread: space.unread;
-            mentions: space.mentions;
+            alert: space.alert;
+            mention: space.mention;
+            hint: space.hint;
             selected: DirectoryView.selected-space-id == space.id;
             animate y {
                 duration: 120ms;
@@ -325,8 +332,9 @@ export component SpaceRail inherits Rectangle {
             initial: root.drag-entry.initial;
             has-avatar: root.drag-entry.has-avatar;
             avatar: root.drag-entry.avatar;
-            unread: root.drag-entry.unread;
-            mentions: root.drag-entry.mentions;
+            alert: root.drag-entry.alert;
+            mention: root.drag-entry.mention;
+            hint: root.drag-entry.hint;
             selected: root.drag-selected;
         }
     }

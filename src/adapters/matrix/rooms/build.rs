@@ -4,6 +4,9 @@ use std::sync::Arc;
 use futures_util::{StreamExt, stream};
 use matrix_sdk::deserialized_responses::SyncOrStrippedState;
 use matrix_sdk::latest_events::LatestEventValue;
+use matrix_sdk::notification_settings::{
+    IsEncrypted, IsOneToOne, NotificationSettings, RoomNotificationMode,
+};
 use matrix_sdk::ruma::events::room::member::MembershipState;
 use matrix_sdk::ruma::events::room::message::{Relation, RoomMessageEventContent};
 use matrix_sdk::ruma::events::space::child::SpaceChildEventContent;
@@ -17,7 +20,7 @@ use matrix_sdk::{Client, Room};
 
 use crate::adapters::matrix::preview::{self, MessagePreview};
 use crate::domain::models::{
-    MessagePreviewKind, Room as DomainRoom, RoomId, ServiceEvent, Space as DomainSpace,
+    MessagePreviewKind, NotifyMode, Room as DomainRoom, RoomId, ServiceEvent, Space as DomainSpace,
 };
 
 const SEED_INFLIGHT: usize = 16;
@@ -35,43 +38,63 @@ fn room_avatar_mxc(room: &Room, is_direct: bool) -> Option<String> {
         .map(ToString::to_string)
 }
 
-pub(super) struct UnreadCounts {
-    pub(super) unread: u64,
-    pub(super) mentions: u64,
+pub(super) struct UnreadFlags {
+    pub(super) has_unread: bool,
+    pub(super) has_mentions: bool,
+    pub(super) has_activity: bool,
+    pub(super) notify: NotifyMode,
 }
 
-pub(super) fn highest_reported_unread(room: &Room) -> UnreadCounts {
-    let cached_messages = room.num_unread_messages();
-    let cached_notifications = room.num_unread_notifications();
-    let cached_mentions = room.num_unread_mentions();
-    let from_server = room.unread_notification_counts();
-
-    let counts = UnreadCounts {
-        unread: cached_messages
-            .max(cached_notifications)
-            .max(from_server.notification_count),
-        mentions: cached_mentions.max(from_server.highlight_count),
+async fn notify_mode(room: &Room, settings: &NotificationSettings) -> NotifyMode {
+    let mode = match settings
+        .get_user_defined_room_notification_mode(room.room_id())
+        .await
+    {
+        Some(mode) => mode,
+        None => {
+            settings
+                .get_default_room_notification_mode(
+                    IsEncrypted::from(room.encryption_state().is_encrypted()),
+                    IsOneToOne::from(room.active_members_count() == 2),
+                )
+                .await
+        }
     };
+    match mode {
+        RoomNotificationMode::AllMessages => NotifyMode::AllMessages,
+        RoomNotificationMode::MentionsAndKeywordsOnly => NotifyMode::MentionsOnly,
+        RoomNotificationMode::Mute => NotifyMode::Muted,
+    }
+}
+
+pub(super) async fn unread_flags(room: &Room, settings: &NotificationSettings) -> UnreadFlags {
+    let messages = room.num_unread_messages();
+    let notifications = room.num_unread_notifications();
+    let mentions = room.num_unread_mentions();
+    let notify = notify_mode(room, settings).await;
 
     tracing::debug!(
         room = %room.room_id(),
-        cached_messages,
-        cached_notifications,
-        cached_mentions,
-        server_notifications = from_server.notification_count,
-        server_highlights = from_server.highlight_count,
-        unread = counts.unread,
-        "unread counts"
+        messages,
+        notifications,
+        mentions,
+        ?notify,
+        "unread flags"
     );
-    counts
+    UnreadFlags {
+        has_unread: notifications > 0,
+        has_mentions: mentions > 0,
+        has_activity: messages > 0,
+        notify,
+    }
 }
 
-pub(super) async fn build_single_room(room: &Room) -> DomainRoom {
+pub(super) async fn build_single_room(room: &Room, settings: &NotificationSettings) -> DomainRoom {
     let display_name = room
         .cached_display_name()
         .map(|dn| dn.to_string())
         .unwrap_or_default();
-    let counts = highest_reported_unread(room);
+    let flags = unread_flags(room, settings).await;
     let is_direct = room.is_direct().await.unwrap_or_default();
     let member_count = room.joined_members_count();
     let last_activity_ts: u64 = room.latest_event_timestamp().map_or(0, |ts| ts.0.into());
@@ -82,9 +105,10 @@ pub(super) async fn build_single_room(room: &Room) -> DomainRoom {
         avatar_mxc: room_avatar_mxc(room, is_direct),
         is_direct,
         member_count,
-        unread_count: counts.unread,
-        mention_count: counts.mentions,
-        unread_pending: false,
+        has_unread: flags.has_unread,
+        has_mentions: flags.has_mentions,
+        has_activity: flags.has_activity,
+        notify: flags.notify,
         last_activity_ts,
         last_message_sender: last_message.sender,
         last_message_kind: last_message.kind,
@@ -199,13 +223,16 @@ fn preview_from_message_content(content: &RoomMessageEventContent) -> MessagePre
     }
 }
 
-pub(super) async fn build_rooms(client: &Client) -> HashMap<String, Arc<DomainRoom>> {
+pub(super) async fn build_rooms(
+    client: &Client,
+    settings: &NotificationSettings,
+) -> HashMap<String, Arc<DomainRoom>> {
     let joined = client
         .joined_rooms()
         .into_iter()
         .filter(|room| !room.is_space());
     stream::iter(joined)
-        .map(|room| async move { build_single_room(&room).await })
+        .map(|room| async move { build_single_room(&room, settings).await })
         .buffer_unordered(SEED_INFLIGHT)
         .map(|room| (room.id.to_string(), Arc::new(room)))
         .collect()
@@ -270,8 +297,9 @@ pub(super) async fn build_spaces_meta(client: &Client) -> Vec<DomainSpace> {
                 child_room_ids,
                 child_space_ids,
                 order,
-                unread: 0,
-                mentions: 0,
+                alert: false,
+                mention: false,
+                hint: false,
             }
         })
         .buffered(SEED_INFLIGHT)

@@ -16,6 +16,7 @@ pub const UNREAD_PORTION_NUMERATOR: usize = 3;
 pub const UNREAD_PORTION_DENOMINATOR: usize = 5;
 
 #[derive(Default, Clone, Copy)]
+#[allow(clippy::struct_excessive_bools)]
 pub struct Scenario {
     pub reset_is_slow: bool,
     pub reset_is_batched: bool,
@@ -27,7 +28,7 @@ pub struct Scenario {
     pub pagination_returns_history: bool,
     pub history_is_long: bool,
     pub read_position_precedes_history: bool,
-    pub counts_are_unresolved: bool,
+    pub resolving_unread: bool,
 }
 
 pub fn scenario() -> Scenario {
@@ -54,7 +55,7 @@ fn from_env() -> Scenario {
         pagination_returns_history = scenario.pagination_returns_history,
         history_is_long = scenario.history_is_long,
         read_position_precedes_history = scenario.read_position_precedes_history,
-        counts_are_unresolved = scenario.counts_are_unresolved,
+        resolving_unread = scenario.resolving_unread,
         "demo mode: reproducing real-account timeline timing"
     );
     scenario
@@ -75,7 +76,7 @@ fn apply(scenario: &mut Scenario, flag: &str) {
         "sync" => scenario.room_list_keeps_updating = true,
         "deep" => scenario.history_is_long = true,
         "all-unread" => scenario.read_position_precedes_history = true,
-        "pending-counts" => scenario.counts_are_unresolved = true,
+        "unread-resolving" => scenario.resolving_unread = true,
         "all" => {
             *scenario = Scenario {
                 reset_is_slow: true,
@@ -88,7 +89,7 @@ fn apply(scenario: &mut Scenario, flag: &str) {
                 pagination_returns_history: true,
                 history_is_long: true,
                 read_position_precedes_history: false,
-                counts_are_unresolved: false,
+                resolving_unread: false,
             };
         }
         other => tracing::warn!(flag = other, "demo mode: unknown timeline scenario flag"),

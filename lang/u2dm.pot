@@ -615,57 +615,72 @@ msgctxt "StatusPill"
 msgid "Retry"
 msgstr ""
 
-#: ui/screens/chat/components/space-rail.slint:228
+#: ui/screens/chat/components/space-rail.slint:234
 msgctxt "SpaceRail"
 msgid "Menu"
 msgstr ""
 
-#: ui/screens/chat/components/space-rail.slint:258
+#: ui/screens/chat/components/space-rail.slint:264
 msgctxt "SpaceRail"
 msgid "Spaces"
 msgstr ""
 
-#: ui/screens/chat/components/space-rail.slint:268
+#: ui/screens/chat/components/space-rail.slint:274
 msgctxt "SpaceRail"
 msgid "All Rooms"
 msgstr ""
 
-#: ui/screens/chat/components/sidebar.slint:67
+#: ui/screens/chat/components/sidebar.slint:41
+msgctxt "Sidebar"
+msgid "{}, mentions you"
+msgstr ""
+
+#: ui/screens/chat/components/sidebar.slint:44
+msgctxt "Sidebar"
+msgid "{}, unread"
+msgstr ""
+
+#: ui/screens/chat/components/sidebar.slint:47
+msgctxt "Sidebar"
+msgid "{}, muted, new activity"
+msgstr ""
+
+#: ui/screens/chat/components/sidebar.slint:50
+msgctxt "Sidebar"
+msgid "{}, muted"
+msgstr ""
+
+#: ui/screens/chat/components/sidebar.slint:53
+msgctxt "Sidebar"
+msgid "{}, new activity"
+msgstr ""
+
+#: ui/screens/chat/components/sidebar.slint:87
 msgctxt "Sidebar"
 msgid "Search"
 msgstr ""
 
-#: ui/screens/chat/components/sidebar.slint:82
+#: ui/screens/chat/components/sidebar.slint:102
 msgctxt "Sidebar"
 msgid "Search rooms"
 msgstr ""
 
-#: ui/screens/chat/components/sidebar.slint:98
+#: ui/screens/chat/components/sidebar.slint:118
 msgctxt "Sidebar"
 msgid "Rooms"
 msgstr ""
 
-#: ui/screens/chat/components/sidebar.slint:106
-msgctxt "Sidebar"
-msgid "{}, {} unread so far, still counting"
-msgstr ""
-
-#: ui/screens/chat/components/sidebar.slint:108
-msgctxt "Sidebar"
-msgid "{}, {} unread"
-msgstr ""
-
-#: ui/screens/chat/components/sidebar.slint:122
+#: ui/screens/chat/components/sidebar.slint:138
 msgctxt "Sidebar"
 msgid "You"
 msgstr ""
 
-#: ui/screens/chat/components/subspace-rail.slint:144
+#: ui/screens/chat/components/subspace-rail.slint:150
 msgctxt "SubspaceRail"
 msgid "Topics"
 msgstr ""
 
-#: ui/screens/chat/components/subspace-rail.slint:150
+#: ui/screens/chat/components/subspace-rail.slint:156
 msgctxt "SubspaceRail"
 msgid "All"
 msgstr ""

@@ -55,9 +55,10 @@ pub struct RoomDto {
     pub initial: SharedString,
     pub color_index: i32,
     pub members: i32,
-    pub unread: i32,
-    pub mentions: i32,
-    pub unread_pending: bool,
+    pub alert: bool,
+    pub mention: bool,
+    pub hint: bool,
+    pub muted: bool,
     pub last_message_sender: SharedString,
     pub last_message_kind: MessagePreviewKind,
     pub last_message_body: SharedString,
@@ -70,11 +71,13 @@ pub struct RoomDto {
     pub has_avatar: bool,
 }
 
+#[allow(clippy::struct_excessive_bools)]
 pub struct SpaceDto {
     pub id: SharedString,
     pub name: SharedString,
-    pub unread: i32,
-    pub mentions: i32,
+    pub alert: bool,
+    pub mention: bool,
+    pub hint: bool,
     pub initial: SharedString,
     pub avatar: Option<Image>,
     pub has_avatar: bool,
@@ -210,9 +213,10 @@ pub fn room_to_dto(r: &Room, media: &dyn MediaCache) -> RoomDto {
         } else {
             count(r.member_count)
         },
-        unread: count(r.unread_count),
-        mentions: count(r.mention_count),
-        unread_pending: r.unread_pending,
+        alert: r.alert(),
+        mention: r.mention(),
+        hint: r.hint(),
+        muted: r.muted(),
         last_message_sender: SharedString::from(
             r.last_message_sender.as_deref().unwrap_or_default(),
         ),
@@ -255,8 +259,9 @@ pub fn space_to_dto(s: &Space, media: &dyn MediaCache) -> SpaceDto {
     let mut dto = SpaceDto {
         id: SharedString::from(&s.id),
         name: SharedString::from(&s.name),
-        unread: count(s.unread),
-        mentions: count(s.mentions),
+        alert: s.alert,
+        mention: s.mention,
+        hint: s.hint,
         initial: SharedString::from(sender_initial(&s.name)),
         avatar: None,
         has_avatar: false,

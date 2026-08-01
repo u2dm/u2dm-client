@@ -1,5 +1,5 @@
 import { Palette } from "std-widgets.slint";
-import { Icon, IconDisplay } from "@lucide";
+import { Icon, IconDisplay, IconSet } from "@lucide";
 
 import { Fonts } from "../../../theme.slint";
 
@@ -46,34 +46,27 @@ export component TileGlyph inherits Rectangle {
     }
 }
 
-export component CountBadge inherits Rectangle {
-    in property <int> unread;
-    in property <int> mentions;
-    in property <length> diameter: 18px;
+export component UnreadDot inherits Rectangle {
+    in property <bool> alert;
+    in property <bool> mention;
+    in property <bool> hint;
+    in property <length> diameter: 10px;
+    in property <bool> ringed;
 
-    height: root.diameter;
-    width: max(root.diameter, label.preferred-width + 10px);
-    border-radius: root.diameter / 2;
-    background: Palette.accent-background;
-    border-width: 2px;
+    height: root.mention ? 18px : root.diameter + (root.ringed ? 4px : 0);
+    width: self.height;
+    border-radius: self.height / 2;
+    background: root.mention || root.alert
+        ? Palette.accent-background
+        : Palette.foreground.transparentize(0.4);
+    border-width: root.ringed || root.mention ? 2px : 0;
     border-color: Palette.alternate-background;
 
-    pure function badge-text(unread: int, mentions: int) -> string {
-        if unread > 99 {
-            return "99+";
-        }
-        if unread > 0 {
-            return "\{unread}";
-        }
-        return "\{mentions}";
-    }
-
-    label := Text {
-        text: root.badge-text(root.unread, root.mentions);
-        font-size: 10px;
-        font-weight: 700;
-        horizontal-alignment: center;
-        vertical-alignment: center;
-        color: Palette.accent-foreground;
+    if root.mention: IconDisplay {
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+        icon: IconSet.AtSign;
+        size: 12px;
+        stroke: Palette.accent-foreground;
     }
 }

@@ -3,8 +3,8 @@ use std::collections::HashMap;
 use serde::Deserialize;
 
 use crate::domain::models::{
-    ImageMeta, MessageBody, MessagePreviewKind, ReplyInfo, Room, RoomId, ServiceEvent, Session,
-    Space, TimelineMessage,
+    ImageMeta, MessageBody, MessagePreviewKind, NotifyMode, ReplyInfo, Room, RoomId, ServiceEvent,
+    Session, Space, TimelineMessage,
 };
 
 #[derive(Deserialize, Default)]
@@ -27,6 +27,25 @@ pub struct SessionDto {
     pub homeserver: String,
 }
 
+#[derive(Deserialize, Default, Clone, Copy)]
+#[serde(rename_all = "lowercase")]
+enum NotifyDto {
+    #[default]
+    All,
+    Mentions,
+    Muted,
+}
+
+impl NotifyDto {
+    fn to_mode(self) -> NotifyMode {
+        match self {
+            Self::All => NotifyMode::AllMessages,
+            Self::Mentions => NotifyMode::MentionsOnly,
+            Self::Muted => NotifyMode::Muted,
+        }
+    }
+}
+
 #[derive(Deserialize)]
 pub struct RoomDto {
     pub id: String,
@@ -40,6 +59,8 @@ pub struct RoomDto {
     pub unread: u64,
     #[serde(default)]
     mentions: u64,
+    #[serde(default)]
+    notify: NotifyDto,
     #[serde(default)]
     minutes_ago: u64,
     #[serde(default)]
@@ -208,9 +229,10 @@ impl RoomDto {
             avatar_mxc: self.avatar.clone(),
             is_direct: self.direct,
             member_count: self.members,
-            unread_count: self.unread,
-            unread_pending: super::timeline::scenario().counts_are_unresolved,
-            mention_count: self.mentions,
+            has_unread: self.unread > 0 && matches!(self.notify, NotifyDto::All),
+            has_mentions: self.mentions > 0,
+            has_activity: self.unread > 0,
+            notify: self.notify.to_mode(),
             last_activity_ts: ago_ms(now_ms, self.minutes_ago, self.days_ago),
             last_message_sender: self.last_message.sender.clone(),
             last_message_kind: self.last_message.kind.to_kind(),
@@ -231,8 +253,9 @@ impl SpaceDto {
             child_room_ids: self.rooms.clone(),
             child_space_ids: self.spaces.clone(),
             order: None,
-            unread: 0,
-            mentions: 0,
+            alert: false,
+            mention: false,
+            hint: false,
         }
     }
 }

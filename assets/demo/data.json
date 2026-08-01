@@ -64,6 +64,7 @@
       "avatar": "linux-ricing",
       "members": 78,
       "unread": 1,
+      "notify": "muted",
       "minutes_ago": 95,
       "last_message": {
         "sender": "Kai",
@@ -160,6 +161,7 @@
       "name": "gym bros 💪",
       "members": 15,
       "unread": 3,
+      "notify": "mentions",
       "days_ago": 3,
       "last_message": {
         "sender": "Marcus",

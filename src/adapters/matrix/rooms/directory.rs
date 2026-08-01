@@ -3,6 +3,7 @@ use std::mem;
 use std::sync::Arc;
 use std::time::Duration;
 
+use matrix_sdk::notification_settings::NotificationSettings;
 use matrix_sdk::ruma::{OwnedRoomId, RoomId as MatrixRoomId};
 use matrix_sdk::sync::RoomUpdates;
 use matrix_sdk::{Client, Room};
@@ -10,13 +11,11 @@ use matrix_sdk_base::{RoomInfoNotableUpdate, RoomInfoNotableUpdateReasons};
 use tokio::time::Instant;
 
 use super::avatars::{AvatarFetcher, AvatarKind};
-use super::build::{build_rooms, build_single_room, build_spaces_meta, highest_reported_unread};
+use super::build::{build_rooms, build_single_room, build_spaces_meta, unread_flags};
 use crate::domain::models::{Room as DomainRoom, Space as DomainSpace, SyncEvent};
 use crate::ports::matrix::SyncSink as OnSync;
 
 const EMIT_DEBOUNCE: Duration = Duration::from_millis(50);
-const UNREAD_HOLDS_STILL_FOR: Duration = Duration::from_millis(1500);
-const UNREAD_GIVES_UP_AFTER: Duration = Duration::from_secs(20);
 
 const REBUILD_REASONS: RoomInfoNotableUpdateReasons = RoomInfoNotableUpdateReasons::LATEST_EVENT
     .union(RoomInfoNotableUpdateReasons::MEMBERSHIP)
@@ -26,7 +25,7 @@ const REBUILD_REASONS: RoomInfoNotableUpdateReasons = RoomInfoNotableUpdateReaso
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 enum RoomRefresh {
-    Counts,
+    Flags,
     Full,
 }
 
@@ -35,15 +34,9 @@ fn refresh_for(reasons: RoomInfoNotableUpdateReasons) -> Option<RoomRefresh> {
         return Some(RoomRefresh::Full);
     }
     if reasons.contains(RoomInfoNotableUpdateReasons::READ_RECEIPT) {
-        return Some(RoomRefresh::Counts);
+        return Some(RoomRefresh::Flags);
     }
     None
-}
-
-#[derive(Clone, Copy)]
-struct Counting {
-    until: Instant,
-    deadline: Instant,
 }
 
 #[allow(clippy::struct_excessive_bools)]
@@ -52,94 +45,32 @@ pub(super) struct Directory {
     order: Vec<String>,
     spaces: Vec<DomainSpace>,
     pending: HashMap<OwnedRoomId, RoomRefresh>,
+    notifications: NotificationSettings,
     rooms_dirty: bool,
     order_dirty: bool,
     spaces_dirty: bool,
     spaces_structural_dirty: bool,
-    still_counting: HashMap<String, Counting>,
     flush_at: Option<Instant>,
 }
 
 impl Directory {
-    pub(super) fn new() -> Self {
+    pub(super) fn new(notifications: NotificationSettings) -> Self {
         Self {
             rooms: HashMap::new(),
             order: Vec::new(),
             spaces: Vec::new(),
             pending: HashMap::new(),
+            notifications,
             rooms_dirty: false,
             order_dirty: false,
             spaces_dirty: false,
             spaces_structural_dirty: false,
-            still_counting: HashMap::new(),
             flush_at: None,
         }
     }
 
     pub(super) fn flush_at(&self) -> Option<Instant> {
         self.flush_at
-    }
-
-    fn is_still_counting_unread(&mut self, id: &str, unread: u64, activity: u64) -> bool {
-        let now = Instant::now();
-        if self.grew_without_a_new_message(id, unread, activity) {
-            self.keep_counting(id, now);
-        }
-        self.counting_until(id, now).is_some()
-    }
-
-    fn grew_without_a_new_message(&self, id: &str, unread: u64, activity: u64) -> bool {
-        self.rooms.get(id).is_some_and(|previous| {
-            unread > previous.unread_count && activity == previous.last_activity_ts
-        })
-    }
-
-    fn keep_counting(&mut self, id: &str, now: Instant) {
-        let counting = self
-            .still_counting
-            .entry(id.to_owned())
-            .or_insert(Counting {
-                until: now,
-                deadline: now + UNREAD_GIVES_UP_AFTER,
-            });
-        counting.until = (now + UNREAD_HOLDS_STILL_FOR).min(counting.deadline);
-    }
-
-    fn counting_until(&mut self, id: &str, now: Instant) -> Option<Instant> {
-        let until = self.still_counting.get(id)?.until;
-        if until <= now {
-            self.still_counting.remove(id);
-            return None;
-        }
-        Some(until)
-    }
-
-    fn settle_finished_counts(&mut self) {
-        let now = Instant::now();
-        let settled: Vec<String> = self
-            .still_counting
-            .iter()
-            .filter(|(_, counting)| counting.until <= now)
-            .map(|(id, _)| id.clone())
-            .collect();
-        for id in settled {
-            self.still_counting.remove(&id);
-            let Some(entry) = self.rooms.get_mut(&id) else {
-                continue;
-            };
-            if !entry.unread_pending {
-                continue;
-            }
-            Arc::make_mut(entry).unread_pending = false;
-            self.rooms_dirty = true;
-        }
-    }
-
-    fn arm_for_counting(&mut self) {
-        let Some(next) = self.still_counting.values().map(|c| c.until).min() else {
-            return;
-        };
-        self.flush_at = Some(self.flush_at.map_or(next, |at| at.min(next)));
     }
 
     fn arm(&mut self) {
@@ -176,17 +107,27 @@ impl Directory {
         self.arm();
     }
 
+    pub(super) fn mark_all_flags(&mut self) {
+        let ids: Vec<OwnedRoomId> = self
+            .rooms
+            .keys()
+            .filter_map(|id| MatrixRoomId::parse(id).ok())
+            .collect();
+        for id in ids {
+            self.mark_room(id, RoomRefresh::Flags);
+        }
+    }
+
     pub(super) async fn seed(&mut self, client: &Client) {
-        self.rooms = build_rooms(client).await;
+        let rooms = build_rooms(client, &self.notifications).await;
+        self.rooms = rooms;
         self.spaces = build_spaces_meta(client).await;
         self.pending.clear();
         self.order_dirty = true;
     }
 
-    fn upsert_room(&mut self, mut room: DomainRoom) {
+    fn upsert_room(&mut self, room: DomainRoom) {
         let key = room.id.to_string();
-        room.unread_pending =
-            self.is_still_counting_unread(&key, room.unread_count, room.last_activity_ts);
         match self.rooms.get(&key) {
             Some(current) if **current == room => return,
             Some(current) => {
@@ -202,7 +143,6 @@ impl Directory {
 
     fn remove_room(&mut self, room_id: &MatrixRoomId) {
         self.pending.remove(room_id);
-        self.still_counting.remove(room_id.as_str());
         if self.rooms.remove(room_id.as_str()).is_none() {
             return;
         }
@@ -252,36 +192,36 @@ impl Directory {
                 continue;
             };
             match refresh {
-                RoomRefresh::Full => self.upsert_room(build_single_room(&room).await),
-                RoomRefresh::Counts => self.refresh_counts(&room),
+                RoomRefresh::Full => {
+                    let built = build_single_room(&room, &self.notifications).await;
+                    self.upsert_room(built);
+                }
+                RoomRefresh::Flags => self.refresh_flags(&room).await,
             }
         }
     }
 
-    fn refresh_counts(&mut self, room: &Room) {
+    async fn refresh_flags(&mut self, room: &Room) {
         let key = room.room_id().as_str();
         if !self.rooms.contains_key(key) {
             return;
         }
-        let counts = highest_reported_unread(room);
-        let activity = self
-            .rooms
-            .get(key)
-            .map_or(0, |current| current.last_activity_ts);
-        let pending = self.is_still_counting_unread(key, counts.unread, activity);
+        let flags = unread_flags(room, &self.notifications).await;
         let Some(entry) = self.rooms.get_mut(key) else {
             return;
         };
-        if entry.unread_count == counts.unread
-            && entry.mention_count == counts.mentions
-            && entry.unread_pending == pending
+        if entry.has_unread == flags.has_unread
+            && entry.has_mentions == flags.has_mentions
+            && entry.has_activity == flags.has_activity
+            && entry.notify == flags.notify
         {
             return;
         }
         let current = Arc::make_mut(entry);
-        current.unread_count = counts.unread;
-        current.mention_count = counts.mentions;
-        current.unread_pending = pending;
+        current.has_unread = flags.has_unread;
+        current.has_mentions = flags.has_mentions;
+        current.has_activity = flags.has_activity;
+        current.notify = flags.notify;
         self.mark_rooms();
     }
 
@@ -308,7 +248,6 @@ impl Directory {
         on_sync: &OnSync,
         avatars: &mut AvatarFetcher,
     ) {
-        self.settle_finished_counts();
         self.apply_pending(client).await;
         self.flush_at = None;
         if self.spaces_structural_dirty {
@@ -324,7 +263,6 @@ impl Directory {
             self.emit_spaces(client, on_sync, avatars);
             self.spaces_dirty = false;
         }
-        self.arm_for_counting();
     }
 
     fn emit_rooms(&mut self, client: &Client, on_sync: &OnSync, avatars: &mut AvatarFetcher) {
