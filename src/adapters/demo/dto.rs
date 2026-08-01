@@ -203,6 +203,8 @@ fn optional(value: &str) -> Option<String> {
 struct ReplyDto {
     sender: String,
     #[serde(default)]
+    event_id: String,
+    #[serde(default)]
     kind: KindDto,
     #[serde(default)]
     body: String,
@@ -273,6 +275,7 @@ impl MessageDto {
             timestamp: ago_ms(now_ms, self.minutes_ago, self.days_ago),
             is_own: self.sender == own_user,
             reply: self.reply.as_ref().map(|reply| ReplyInfo {
+                event_id: reply.event_id.clone(),
                 sender: reply.sender.clone(),
                 kind: reply.kind.to_kind(),
                 body: reply.body.clone(),

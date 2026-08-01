@@ -45,6 +45,7 @@ pub enum UserMessageKind {
     SessionSaveFailed,
     SendMessageFailed,
     LoadMoreFailed,
+    MessageNotFound,
     SpaceOrderSaveFailed,
     MediaDownloadFailed,
     FileDownloadFailed,

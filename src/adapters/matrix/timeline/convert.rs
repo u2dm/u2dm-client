@@ -179,6 +179,7 @@ fn reply_preview_from_content(content: &TimelineItemContent) -> (MessagePreviewK
 
 fn extract_reply(content: &TimelineItemContent) -> Option<ReplyInfo> {
     let details = content.in_reply_to()?;
+    let event_id = details.event_id.to_string();
     let TimelineDetails::Ready(embedded) = details.event else {
         return None;
     };
@@ -190,7 +191,12 @@ fn extract_reply(content: &TimelineItemContent) -> Option<ReplyInfo> {
         _ => embedded.sender.to_string(),
     };
     let (kind, body) = reply_preview_from_content(&embedded.content);
-    Some(ReplyInfo { sender, kind, body })
+    Some(ReplyInfo {
+        event_id,
+        sender,
+        kind,
+        body,
+    })
 }
 
 fn extract_image_body(

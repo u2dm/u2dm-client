@@ -8,7 +8,7 @@ use tokio_util::sync::CancellationToken;
 use crate::domain::account::AccountScope;
 use crate::domain::models::{
     LoginCredentials, OAuthLoginData, RoomId, ServerInfo, Session, SyncEvent, SyncOutcome,
-    TimelineCommand, TimelineUpdate, VerificationEvent,
+    TimelineCommand, TimelineFocus, TimelineUpdate, VerificationEvent,
 };
 use crate::error::Result;
 
@@ -138,6 +138,7 @@ pub trait TimelinePort: Send + Sync {
     async fn subscribe_timeline(
         &self,
         room_id: &RoomId,
+        focus: TimelineFocus,
         timeline_tx: mpsc::Sender<TimelineUpdate>,
         cmd_rx: mpsc::UnboundedReceiver<TimelineCommand>,
     ) -> Result<()>;

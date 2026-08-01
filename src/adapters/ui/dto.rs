@@ -35,6 +35,7 @@ pub struct MessageDto {
     pub edited: bool,
     pub is_first_unread: bool,
     pub has_reply: bool,
+    pub reply_event_id: SharedString,
     pub reply_sender: SharedString,
     pub reply_kind: MessagePreviewKind,
     pub reply_body: SharedString,
@@ -120,6 +121,7 @@ pub fn message_to_dto(m: &TimelineMessage, media: &dyn MediaCache) -> MessageDto
         edited: m.edited,
         is_first_unread: m.is_first_unread,
         has_reply: m.reply.is_some(),
+        reply_event_id: SharedString::from(m.reply.as_ref().map_or("", |r| r.event_id.as_str())),
         reply_sender: SharedString::from(m.reply.as_ref().map_or("", |r| r.sender.as_str())),
         reply_kind: m
             .reply

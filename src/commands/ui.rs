@@ -1,6 +1,8 @@
 use strum::Display as StrumDisplay;
 
-use crate::domain::models::{LoginCredentials, PaginationDirection, PaginationOutcome, RoomId};
+use crate::domain::models::{
+    LoginCredentials, PaginationDirection, PaginationOutcome, RoomId, TimelineFocus,
+};
 
 #[derive(StrumDisplay)]
 pub enum UiCommand {
@@ -57,6 +59,16 @@ pub enum UiCommand {
     JumpToLatest {
         room_id: RoomId,
         generation: i32,
+    },
+    #[strum(to_string = "JumpToEvent({event_id})")]
+    JumpToEvent {
+        event_id: String,
+    },
+    #[strum(to_string = "RefocusTimeline({room_id})")]
+    RefocusTimeline {
+        room_id: RoomId,
+        generation: i32,
+        focus: TimelineFocus,
     },
     RetryTimeline,
     SessionExpired,

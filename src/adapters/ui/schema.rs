@@ -16,6 +16,7 @@ macro_rules! string_props {
         VerificationSender VerificationView "VerificationView" "sender" set_sender;
         VerificationErrorDetail VerificationView "VerificationView" "error-detail" set_error_detail;
         SelectedRoomName RoomView "RoomView" "selected-room-name" set_selected_room_name;
+        FocusEventId RoomView "RoomView" "focus-event-id" set_focus_event_id;
         SelectedRoomId DirectoryView "DirectoryView" "selected-room-id" set_selected_room_id;
         SelectedSpaceId DirectoryView "DirectoryView" "selected-space-id" set_selected_space_id;
         SelectedSubspaceId DirectoryView "DirectoryView" "selected-subspace-id" set_selected_subspace_id;
@@ -40,6 +41,7 @@ macro_rules! simple_callbacks {
         on_select_space "select-space" select_space opt_room SelectSpace;
         on_select_subspace "select-subspace" select_subspace opt_room SelectSubspace;
         on_open_media "open-media" open_media manual_string OpenMedia;
+        on_jump_to_event "jump-to-event" jump_to_event manual_string JumpToEvent;
     } };
 }
 pub(crate) use simple_callbacks;
@@ -58,7 +60,7 @@ pub(crate) use bool_props;
 macro_rules! int_props {
     ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
         NewMessagesCount RoomView "RoomView" "new-messages-count" set_new_messages_count;
-        UnreadAnchorIndex RoomView "RoomView" "unread-anchor-index" set_unread_anchor_index;
+        AnchorIndex RoomView "RoomView" "anchor-index" set_anchor_index;
         TimelineToken RoomView "RoomView" "timeline-token" set_timeline_token;
         PrependToken RoomView "RoomView" "prepend-token" set_prepend_token;
         SelectedRoomMembers RoomView "RoomView" "selected-room-members" set_selected_room_members;
@@ -126,6 +128,7 @@ macro_rules! timeline_states {
     ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
         Loading      Loading      "loading";
         LoadingUnread LoadingUnread "loading-unread";
+        LoadingFocus LoadingFocus "loading-focus";
         Ready        Ready        "ready";
         Failed{..}   Failed       "failed";
         Disconnected Disconnected "disconnected";
@@ -177,6 +180,7 @@ macro_rules! user_message_kinds {
         SessionSaveFailed         SessionSaveFailed       "session-save-failed";
         SendMessageFailed         SendMessageFailed       "send-message-failed";
         LoadMoreFailed            LoadMoreFailed          "load-more-failed";
+        MessageNotFound           MessageNotFound         "message-not-found";
         SpaceOrderSaveFailed      SpaceOrderSaveFailed    "space-order-save-failed";
         MediaDownloadFailed       MediaDownloadFailed     "media-download-failed";
         FileDownloadFailed        FileDownloadFailed      "file-download-failed";
@@ -282,6 +286,7 @@ macro_rules! message_fields {
         edited EDITED "edited" flag;
         is_first_unread IS_FIRST_UNREAD "first-unread" flag;
         has_reply HAS_REPLY "has-reply" flag;
+        reply_event_id REPLY_EVENT_ID "reply-event-id" text;
         reply_sender REPLY_SENDER "reply-sender" text;
         reply_kind REPLY_KIND "reply-kind" enumk;
         reply_body REPLY_BODY "reply-body" text;

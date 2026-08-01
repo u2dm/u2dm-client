@@ -468,6 +468,10 @@ impl UiBackend for InterpretedBackend {
         entry_id_from_value(entry).map_or("", SharedString::as_str)
     }
 
+    fn message_event_id(entry: &Value) -> &str {
+        message_text_field(entry, message::EVENT_ID).map_or("", SharedString::as_str)
+    }
+
     fn message_is_first_unread(entry: &Value) -> bool {
         matches!(entry, Value::Struct(s)
             if matches!(s.get_field(message::IS_FIRST_UNREAD), Some(Value::Bool(true))))
@@ -927,10 +931,14 @@ room_fields!(gen_to_value room_to_value Room room_to_dto);
 space_fields!(gen_to_value space_to_value Space space_to_dto);
 
 fn entry_id_from_value(val: &Value) -> Option<&SharedString> {
+    message_text_field(val, message::UNIQUE_ID)
+}
+
+fn message_text_field<'a>(val: &'a Value, field: &str) -> Option<&'a SharedString> {
     if let Value::Struct(s) = val
-        && let Some(Value::String(id)) = s.get_field(message::UNIQUE_ID)
+        && let Some(Value::String(text)) = s.get_field(field)
     {
-        Some(id)
+        Some(text)
     } else {
         None
     }

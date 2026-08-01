@@ -9,8 +9,8 @@ use crate::commands::messages::{UserMessage, UserMessageKind};
 use crate::commands::ui::UiCommand;
 use crate::commands::view::Toast;
 use crate::domain::models::{
-    PaginationDirection, PaginationOutcome, RoomId, ScrollMode, TimelineCommand, TimelinePatch,
-    TimelineStatus, TimelineUpdate,
+    PaginationDirection, PaginationOutcome, RoomId, ScrollMode, TimelineCommand, TimelineFocus,
+    TimelinePatch, TimelineStatus, TimelineUpdate,
 };
 use crate::domain::viewport::ViewportController;
 use crate::ports::matrix::TimelinePort;
@@ -60,6 +60,7 @@ pub(super) struct ActiveTimeline {
     active_room_id: Option<RoomId>,
     generation: i32,
     counters: GenerationCounters,
+    live: bool,
 }
 
 impl ActiveTimeline {
@@ -76,6 +77,7 @@ impl ActiveTimeline {
             active_room_id: None,
             generation: 0,
             counters: GenerationCounters::new(),
+            live: true,
         }
     }
 
@@ -84,22 +86,29 @@ impl ActiveTimeline {
         self.reset_state();
     }
 
+    pub(super) fn is_live(&self) -> bool {
+        self.live
+    }
+
     pub(super) async fn select_room(
         &mut self,
         timeline: Arc<dyn TimelinePort>,
         room_id: RoomId,
         generation: i32,
+        focus: TimelineFocus,
     ) {
-        tracing::info!(%room_id, generation, "switching room");
+        tracing::info!(%room_id, generation, ?focus, "opening timeline");
         self.tasks.cancel_and_detach();
 
+        let live = focus.is_live();
         self.viewport = ViewportController::new();
         self.active_room_id = Some(room_id.clone());
         self.generation = generation;
         self.counters = GenerationCounters::new();
+        self.live = live;
         self.emit_pagination_state();
 
-        self.emit_reset(room_id.clone(), generation).await;
+        self.emit_reset(room_id.clone(), generation, live).await;
 
         let (tl_tx, mut tl_rx) = mpsc::channel::<TimelineUpdate>(TIMELINE_CHANNEL_CAP);
         let (tl_cmd_tx, tl_cmd_rx) = mpsc::unbounded_channel::<TimelineCommand>();
@@ -111,60 +120,19 @@ impl ActiveTimeline {
         let rid = room_id.clone();
         let counters = self.counters.clone();
 
+        let forwarder = Forwarder {
+            output: Arc::clone(&output),
+            cmd_tx,
+            timeline_cmd_tx: tl_cmd_tx,
+            room_id: rid.clone(),
+            generation,
+            counters,
+            live,
+        };
+
         self.tasks.spawn(async move {
-            let subscribe = timeline.subscribe_timeline(&room_id, tl_tx, tl_cmd_rx);
-            let forward = async {
-                while let Some(update) = tl_rx.recv().await {
-                    tracing::debug!(
-                        update = update.label(),
-                        %rid,
-                        "forwarding timeline update"
-                    );
-
-                    match update {
-                        TimelineUpdate::Patch(patch) => {
-                            if let Some(total) =
-                                settle_read_position(patch.as_ref(), &counters, &tl_cmd_tx)
-                            {
-                                output.publish(Box::new(move |view| {
-                                    view.pagination.retarget(generation);
-                                    view.pagination.new_messages = total;
-                                }));
-                            }
-
-                            output
-                                .emit(Effect::Timeline {
-                                    room_id: rid.clone(),
-                                    generation,
-                                    patch,
-                                })
-                                .await;
-                        }
-                        TimelineUpdate::ResolvingUnread => {
-                            output
-                                .emit(Effect::TimelineStatus {
-                                    room_id: rid.clone(),
-                                    generation,
-                                    status: TimelineStatus::LoadingUnread,
-                                })
-                                .await;
-                        }
-                        TimelineUpdate::Pagination { direction, outcome } => {
-                            if let Err(e) = cmd_tx.send(UiCommand::TimelinePaginationCompleted {
-                                room_id: rid.clone(),
-                                generation,
-                                direction,
-                                outcome,
-                            }) {
-                                tracing::debug!(
-                                    "failed to send TimelinePaginationCompleted command: {e}"
-                                );
-                                break;
-                            }
-                        }
-                    }
-                }
-            };
+            let subscribe = timeline.subscribe_timeline(&room_id, focus, tl_tx, tl_cmd_rx);
+            let forward = forwarder.run(&mut tl_rx);
 
             tokio::select! {
                 result = subscribe => {
@@ -236,7 +204,7 @@ impl ActiveTimeline {
         });
     }
 
-    fn is_current(&self, room_id: &RoomId, generation: i32) -> bool {
+    pub(super) fn is_current(&self, room_id: &RoomId, generation: i32) -> bool {
         self.generation == generation && self.active_room_id.as_ref() == Some(room_id)
     }
 
@@ -303,12 +271,38 @@ impl ActiveTimeline {
         };
         self.emit_pagination_state();
 
-        if matches!(direction, PaginationDirection::Forwards)
-            && hit_end
-            && self.counters.is_at_bottom()
-        {
+        if !matches!(direction, PaginationDirection::Forwards) || !hit_end {
+            return;
+        }
+
+        let caught_up_with_live = !self.live;
+        if caught_up_with_live {
+            self.refocus(room_id, generation, TimelineFocus::Live);
+            return;
+        }
+
+        if self.counters.is_at_bottom() {
             self.counters.clear_new_messages();
             self.emit_new_messages(generation, 0);
+        }
+    }
+
+    fn refocus(&self, room_id: &RoomId, generation: i32, focus: TimelineFocus) {
+        if let Err(e) = self.cmd_tx.send(UiCommand::RefocusTimeline {
+            room_id: room_id.clone(),
+            generation,
+            focus,
+        }) {
+            tracing::debug!("failed to send RefocusTimeline command: {e}");
+        }
+    }
+
+    pub(super) fn jump_to_event(&mut self, event_id: String) {
+        let Some(tx) = &self.timeline_cmd_tx else {
+            return;
+        };
+        if tx.send(TimelineCommand::JumpTo(event_id)).is_err() {
+            tracing::debug!("timeline command channel closed");
         }
     }
 
@@ -351,6 +345,9 @@ impl ActiveTimeline {
     }
 
     fn mark_read(&self) {
+        if !self.live {
+            return;
+        }
         let Some(tx) = &self.timeline_cmd_tx else {
             return;
         };
@@ -365,6 +362,7 @@ impl ActiveTimeline {
         self.active_room_id = None;
         self.generation = 0;
         self.counters = GenerationCounters::new();
+        self.live = true;
     }
 
     fn emit_pagination_state(&self) {
@@ -377,12 +375,16 @@ impl ActiveTimeline {
         }));
     }
 
-    async fn emit_reset(&self, room_id: RoomId, generation: i32) {
+    async fn emit_reset(&self, room_id: RoomId, generation: i32, live: bool) {
         self.output
             .emit(Effect::TimelineStatus {
                 room_id: room_id.clone(),
                 generation,
-                status: TimelineStatus::Loading,
+                status: if live {
+                    TimelineStatus::Loading
+                } else {
+                    TimelineStatus::LoadingFocus
+                },
             })
             .await;
         self.output
@@ -402,10 +404,125 @@ impl ActiveTimeline {
     }
 }
 
+struct Forwarder {
+    output: Arc<dyn AppOutputPort>,
+    cmd_tx: mpsc::UnboundedSender<UiCommand>,
+    timeline_cmd_tx: mpsc::UnboundedSender<TimelineCommand>,
+    room_id: RoomId,
+    generation: i32,
+    counters: GenerationCounters,
+    live: bool,
+}
+
+impl Forwarder {
+    async fn run(&self, rx: &mut mpsc::Receiver<TimelineUpdate>) {
+        while let Some(update) = rx.recv().await {
+            tracing::debug!(
+                update = update.label(),
+                room_id = %self.room_id,
+                "forwarding timeline update"
+            );
+            if !self.dispatch(update).await {
+                break;
+            }
+        }
+    }
+
+    async fn dispatch(&self, update: TimelineUpdate) -> bool {
+        match update {
+            TimelineUpdate::Patch(patch) => self.forward_patch(patch).await,
+            TimelineUpdate::ResolvingUnread => {
+                self.emit_status(TimelineStatus::LoadingUnread).await;
+            }
+            TimelineUpdate::JumpOutcome { event_id, row } => {
+                self.forward_jump(event_id, row).await;
+            }
+            TimelineUpdate::Pagination { direction, outcome } => {
+                if let Err(e) = self.cmd_tx.send(UiCommand::TimelinePaginationCompleted {
+                    room_id: self.room_id.clone(),
+                    generation: self.generation,
+                    direction,
+                    outcome,
+                }) {
+                    tracing::debug!("failed to send TimelinePaginationCompleted command: {e}");
+                    return false;
+                }
+            }
+        }
+        true
+    }
+
+    async fn forward_patch(&self, patch: Box<TimelinePatch>) {
+        let generation = self.generation;
+        let receipts = self.live.then_some(&self.timeline_cmd_tx);
+        if let Some(total) = settle_read_position(patch.as_ref(), &self.counters, receipts) {
+            self.output.publish(Box::new(move |view| {
+                view.pagination.retarget(generation);
+                view.pagination.new_messages = total;
+            }));
+        }
+        self.output
+            .emit(Effect::Timeline {
+                room_id: self.room_id.clone(),
+                generation,
+                patch,
+            })
+            .await;
+    }
+
+    async fn forward_jump(&self, event_id: String, row: Option<usize>) {
+        let Some(row) = row else {
+            self.widen_search_for(event_id);
+            return;
+        };
+        self.counters.set_at_bottom(false);
+        self.output
+            .emit(Effect::TimelineFocus {
+                room_id: self.room_id.clone(),
+                generation: self.generation,
+                event_id,
+                row,
+            })
+            .await;
+    }
+
+    async fn emit_status(&self, status: TimelineStatus) {
+        self.output
+            .emit(Effect::TimelineStatus {
+                room_id: self.room_id.clone(),
+                generation: self.generation,
+                status,
+            })
+            .await;
+    }
+
+    fn widen_search_for(&self, event_id: String) {
+        let searched_live_window = self.live;
+        if searched_live_window {
+            self.refocus(TimelineFocus::Event(event_id));
+        } else {
+            super::show_toast(
+                self.output.as_ref(),
+                Toast::Error(UserMessage::new(UserMessageKind::MessageNotFound)),
+            );
+        }
+    }
+
+    fn refocus(&self, focus: TimelineFocus) {
+        if let Err(e) = self.cmd_tx.send(UiCommand::RefocusTimeline {
+            room_id: self.room_id.clone(),
+            generation: self.generation,
+            focus,
+        }) {
+            tracing::debug!("failed to send RefocusTimeline command: {e}");
+        }
+    }
+}
+
 fn settle_read_position(
     patch: &TimelinePatch,
     counters: &GenerationCounters,
-    tl_cmd_tx: &mpsc::UnboundedSender<TimelineCommand>,
+    receipts: Option<&mpsc::UnboundedSender<TimelineCommand>>,
 ) -> Option<u32> {
     if let Some(anchor) = patch.unread_anchor() {
         counters.set_at_bottom(false);
@@ -414,8 +531,9 @@ fn settle_read_position(
 
     let appended = count_appended(patch);
     if counters.is_at_bottom() {
-        if (patch.opens_room() || appended.from_others)
-            && tl_cmd_tx.send(TimelineCommand::MarkRead).is_err()
+        if let Some(tx) = receipts
+            && (patch.opens_room() || appended.from_others)
+            && tx.send(TimelineCommand::MarkRead).is_err()
         {
             tracing::debug!("timeline command channel closed");
         }

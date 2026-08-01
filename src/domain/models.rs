@@ -297,6 +297,7 @@ impl MessageBody {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ReplyInfo {
+    pub event_id: String,
     pub sender: String,
     pub kind: MessagePreviewKind,
     pub body: String,
@@ -320,7 +321,7 @@ pub struct TimelineMessage {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct UnreadAnchor {
-    pub index: usize,
+    pub row: usize,
     pub count: u32,
 }
 
@@ -390,10 +391,10 @@ impl TimelinePatch {
 
     pub fn unread_anchor(&self) -> Option<UnreadAnchor> {
         let messages = self.last_reset()?;
-        let index = messages.iter().position(|m| m.is_first_unread)?;
+        let row = messages.iter().position(|m| m.is_first_unread)?;
         Some(UnreadAnchor {
-            index,
-            count: u32::try_from(messages.len() - index).unwrap_or(u32::MAX),
+            row,
+            count: u32::try_from(messages.len() - row).unwrap_or(u32::MAX),
         })
     }
 
@@ -440,6 +441,26 @@ pub enum TimelineCommand {
     PaginateBackwards,
     PaginateForwards,
     MarkRead,
+    JumpTo(String),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TimelineFocus {
+    Live,
+    Event(String),
+}
+
+impl TimelineFocus {
+    pub fn is_live(&self) -> bool {
+        matches!(self, Self::Live)
+    }
+
+    pub fn target(&self) -> Option<&str> {
+        match self {
+            Self::Live => None,
+            Self::Event(event_id) => Some(event_id),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -458,6 +479,7 @@ pub enum PaginationOutcome {
 pub enum TimelineStatus {
     Loading,
     LoadingUnread,
+    LoadingFocus,
     Ready,
     Failed { retryable: bool },
     Disconnected,
@@ -477,6 +499,10 @@ pub enum TimelineUpdate {
         direction: PaginationDirection,
         outcome: PaginationOutcome,
     },
+    JumpOutcome {
+        event_id: String,
+        row: Option<usize>,
+    },
 }
 
 impl TimelineUpdate {
@@ -485,6 +511,7 @@ impl TimelineUpdate {
             Self::Patch(patch) => patch.label(),
             Self::ResolvingUnread => "ResolvingUnread",
             Self::Pagination { .. } => "Pagination",
+            Self::JumpOutcome { .. } => "JumpOutcome",
         }
     }
 }

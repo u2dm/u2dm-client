@@ -22,6 +22,12 @@ pub enum Effect {
         generation: i32,
         status: TimelineStatus,
     },
+    TimelineFocus {
+        room_id: RoomId,
+        generation: i32,
+        event_id: String,
+        row: usize,
+    },
     Verification(VerificationUpdate),
     LoggedOut,
 }

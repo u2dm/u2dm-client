@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
-use matrix_sdk_ui::timeline::TimelineItem;
+use matrix_sdk::ruma::EventId;
+use matrix_sdk_ui::timeline::{EventTimelineItem, TimelineItem};
 
 use super::TimelineContext;
 use super::convert::convert_timeline_item;
@@ -35,6 +36,13 @@ impl TimelineItems {
             .iter()
             .filter(|renderable| **renderable)
             .count()
+    }
+
+    pub(super) fn row_of_event(&self, event_id: &EventId) -> Option<usize> {
+        let raw = self.items.iter().position(|item| {
+            item.as_event().and_then(EventTimelineItem::event_id) == Some(event_id)
+        })?;
+        self.renderable.get(raw)?.then(|| self.msg_index_at(raw))
     }
 
     pub(super) fn append(

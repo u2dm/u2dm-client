@@ -17,6 +17,8 @@ import { UnreadDivider } from "./messages/unread-divider.slint";
 import { Avatar } from "../../../../components/avatar.slint";
 import { ClickArea } from "../../../../components/a11y.slint";
 import { Composer } from "../../../../local.slint";
+import { Actions } from "../../../../actions.slint";
+import { RoomView } from "../../../../views.slint";
 import { Avatars } from "../../../../theme.slint";
 import { MediaState, MessageKind } from "../../../../enums.slint";
 
@@ -75,6 +77,7 @@ export component MessageBubble inherits VerticalLayout {
         && msg.message-type != MessageKind.utd
         && msg.message-type != MessageKind.unsupported;
     property <bool> has-remote-id: msg.event-id != "";
+    property <bool> is-focused: root.has-remote-id && msg.event-id == RoomView.focus-event-id;
 
     property <bool> is-image: msg.message-type == MessageKind.image;
     property <bool> has-caption: msg.body != "";
@@ -117,7 +120,11 @@ export component MessageBubble inherits VerticalLayout {
             height: bubble-content.preferred-height;
             background: is-own ? own-bubble-color : other-bubble-color;
             border-radius: 12px;
+            border-width: root.is-focused ? 2px : 0;
+            border-color: Palette.accent-background;
             clip: true;
+
+            animate border-width { duration: 150ms; }
 
             hover-bg := TouchArea {
                 width: 100%;
@@ -148,12 +155,20 @@ export component MessageBubble inherits VerticalLayout {
                     padding-left: root.photo-row-padding;
                     padding-right: root.photo-row-padding;
 
-                    Rectangle {
+                    reply-jump := ClickArea {
                         height: reply-quote.preferred-height;
                         border-radius: 4px;
+                        ring-radius: 4px;
+                        enabled: msg.reply-event-id != "";
+                        label: @tr("Go to the message this replies to");
                         background: is-own
-                            ? Palette.accent-background.transparentize(0.7)
-                            : Palette.foreground.transparentize(0.92);
+                            ? Palette.accent-background.transparentize(
+                                reply-jump.has-hover ? 0.55 : 0.7)
+                            : Palette.foreground.transparentize(
+                                reply-jump.has-hover ? 0.86 : 0.92);
+                        clicked => {
+                            Actions.jump-to-event(msg.reply-event-id);
+                        }
 
                         reply-quote := ReplyQuote {
                             padding: 4px;

@@ -267,6 +267,10 @@ impl UiBackend for CompiledBackend {
         entry.unique_id.as_str()
     }
 
+    fn message_event_id(entry: &MessageEntry) -> &str {
+        entry.event_id.as_str()
+    }
+
     fn message_is_first_unread(entry: &MessageEntry) -> bool {
         entry.first_unread
     }
@@ -553,6 +557,7 @@ fn message_to_entry(m: &TimelineMessage, media: &dyn MediaCache) -> MessageEntry
         edited: d.edited,
         first_unread: d.is_first_unread,
         has_reply: d.has_reply,
+        reply_event_id: d.reply_event_id,
         reply_sender: d.reply_sender,
         reply_kind: to_preview_kind(d.reply_kind),
         reply_body: d.reply_body,

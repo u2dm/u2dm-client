@@ -35,7 +35,7 @@ use self::store::{AdoptedStore, StoreLayout, StorePaths};
 use crate::domain::account::AccountScope;
 use crate::domain::models::{
     LoginCredentials, OAuthLoginData, RoomId, ServerInfo, Session, SyncOutcome, TimelineCommand,
-    TimelineUpdate, VerificationEvent,
+    TimelineFocus, TimelineUpdate, VerificationEvent,
 };
 use crate::error::{AppError, Result};
 use crate::ports::matrix::{
@@ -404,16 +404,18 @@ impl TimelinePort for AuthedMatrix {
     async fn subscribe_timeline(
         &self,
         room_id: &RoomId,
+        focus: TimelineFocus,
         timeline_tx: mpsc::Sender<TimelineUpdate>,
         cmd_rx: mpsc::UnboundedReceiver<TimelineCommand>,
     ) -> Result<()> {
-        tracing::info!(%room_id, "subscribing to timeline");
+        tracing::info!(%room_id, ?focus, "subscribing to timeline");
         timeline::subscribe_timeline(
             &self.client().await?,
             &self.media,
             &self.media_sources,
             &self.pronouns,
             room_id,
+            &focus,
             timeline_tx,
             cmd_rx,
         )

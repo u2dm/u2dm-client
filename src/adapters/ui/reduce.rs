@@ -15,12 +15,45 @@ use crate::domain::models::{
     RoomId, RoomList, TimelinePatch, TimelineStatus, VerificationEvent as DomainVerificationEvent,
 };
 
-const NO_UNREAD_ANCHOR: i32 = -1;
+const NO_ANCHOR: i32 = -1;
 
 thread_local! {
     static PREPEND_TOKEN: Cell<i32> = const { Cell::new(0) };
+    static TIMELINE_TOKEN: Cell<i32> = const { Cell::new(0) };
+    static TOKEN_GENERATION: Cell<i32> = const { Cell::new(0) };
+    static FOCUS_EVENT_ID: RefCell<Option<String>> = const { RefCell::new(None) };
     static ACTIVE_GENERATION: Cell<i32> = const { Cell::new(0) };
     static LATEST_SNAPSHOT: RefCell<Option<Arc<AppViewState>>> = const { RefCell::new(None) };
+}
+
+fn is_new_generation(generation: i32) -> bool {
+    TOKEN_GENERATION.with(Cell::get) != generation
+}
+
+fn readopt_timeline(w: &impl UiProps, generation: i32) {
+    TOKEN_GENERATION.with(|g| g.set(generation));
+    let next = TIMELINE_TOKEN.with(|t| {
+        let next = t.get().wrapping_add(1);
+        t.set(next);
+        next
+    });
+    w.set_int(IntProp::TimelineToken, next);
+}
+
+fn next_prepend_token() -> i32 {
+    PREPEND_TOKEN.with(|t| {
+        let next = t.get().wrapping_add(1);
+        t.set(next);
+        next
+    })
+}
+
+fn set_focus(w: &impl UiProps, event_id: Option<&str>) {
+    FOCUS_EVENT_ID.with(|cell| *cell.borrow_mut() = event_id.map(ToOwned::to_owned));
+    w.set_string(
+        StringProp::FocusEventId,
+        SharedString::from(event_id.unwrap_or_default()),
+    );
 }
 
 pub(super) fn latest_rooms() -> Option<RoomList> {
@@ -41,6 +74,7 @@ pub fn dispatch_effect<B: UiBackend>(w: &B::Window, event: Effect, ctx: &UiEvent
             generation,
         } => {
             ACTIVE_GENERATION.with(|g| g.set(generation));
+            set_focus(w, None);
             w.set_int(IntProp::SelectedGeneration, generation);
             w.set_string(StringProp::SelectedRoomId, SharedString::from(id.as_ref()));
             w.set_string(StringProp::SelectedRoomName, SharedString::from(&name));
@@ -57,50 +91,19 @@ pub fn dispatch_effect<B: UiBackend>(w: &B::Window, event: Effect, ctx: &UiEvent
             room_id,
             generation,
             patch,
+        } => apply_timeline::<B>(w, &room_id, generation, patch, ctx),
+        Effect::TimelineFocus {
+            room_id,
+            generation,
+            event_id,
+            row,
         } => {
-            let selected = w.get_string(StringProp::SelectedRoomId);
-            let matches = is_active(w, &room_id, generation);
-            tracing::debug!(
-                patch = patch.label(),
-                %room_id,
-                generation,
-                %selected,
-                matches,
-                "dispatch_effect received Timeline event"
-            );
-            if matches {
-                if patch.opens_room() {
-                    apply_timeline_status(w, TimelineStatus::Ready);
-                    let anchor = unread_anchor_index(&patch);
-                    tracing::debug!(
-                        anchor,
-                        generation,
-                        label = patch.label(),
-                        %room_id,
-                        "publishing the unread anchor"
-                    );
-                    w.set_int(IntProp::UnreadAnchorIndex, anchor);
-                    w.set_int(IntProp::TimelineToken, generation);
-                }
-                if patch.is_prepend() {
-                    let next = PREPEND_TOKEN.with(|t| {
-                        let next = t.get().wrapping_add(1);
-                        t.set(next);
-                        next
-                    });
-                    w.set_int(IntProp::PrependToken, next);
-                }
-                let shifts_rows = patch.shifts_rows();
-                apply_timeline_patch(
-                    ctx.timeline,
-                    *patch,
-                    &|m| B::convert_message(m, ctx.media),
-                    &|entry, delta| B::enrich_message(entry, delta, ctx.media),
-                    &|entry| B::message_id(entry),
-                );
-                if shifts_rows {
-                    w.set_int(IntProp::UnreadAnchorIndex, anchor_row::<B>(ctx.timeline));
-                }
+            if is_active(w, &room_id, generation) {
+                let anchor = i32::try_from(row).unwrap_or(NO_ANCHOR);
+                tracing::debug!(anchor, generation, event_id, %room_id, "publishing the focus anchor");
+                set_focus(w, Some(&event_id));
+                w.set_int(IntProp::AnchorIndex, anchor);
+                readopt_timeline(w, generation);
             }
         }
         Effect::TimelineStatus {
@@ -121,6 +124,64 @@ pub fn dispatch_effect<B: UiBackend>(w: &B::Window, event: Effect, ctx: &UiEvent
             reset_verification(w);
             w.clear_text_inputs();
         }
+    }
+}
+
+fn apply_timeline<B: UiBackend>(
+    w: &B::Window,
+    room_id: &RoomId,
+    generation: i32,
+    patch: Box<TimelinePatch>,
+    ctx: &UiEventContext<'_, B>,
+) {
+    let selected = w.get_string(StringProp::SelectedRoomId);
+    let matches = is_active(w, room_id, generation);
+    tracing::debug!(
+        patch = patch.label(),
+        %room_id,
+        generation,
+        %selected,
+        matches,
+        "dispatch_effect received Timeline event"
+    );
+    if !matches {
+        return;
+    }
+
+    let opens_room = patch.opens_room();
+    let opens_new_timeline = opens_room && is_new_generation(generation);
+    let replaces_loaded_window = opens_room && !opens_new_timeline;
+
+    if opens_room {
+        apply_timeline_status(w, TimelineStatus::Ready);
+    }
+    if opens_new_timeline {
+        let anchor = unread_anchor_row(&patch);
+        tracing::debug!(
+            anchor,
+            generation,
+            label = patch.label(),
+            %room_id,
+            "publishing the unread anchor"
+        );
+        set_focus(w, None);
+        w.set_int(IntProp::AnchorIndex, anchor);
+        readopt_timeline(w, generation);
+    }
+    if patch.is_prepend() {
+        w.set_int(IntProp::PrependToken, next_prepend_token());
+    }
+
+    let anchor_row_moved = patch.shifts_rows() || replaces_loaded_window;
+    apply_timeline_patch(
+        ctx.timeline,
+        *patch,
+        &|m| B::convert_message(m, ctx.media),
+        &|entry, delta| B::enrich_message(entry, delta, ctx.media),
+        &|entry| B::message_id(entry),
+    );
+    if anchor_row_moved {
+        w.set_int(IntProp::AnchorIndex, anchor_row::<B>(ctx.timeline));
     }
 }
 
@@ -270,21 +331,22 @@ fn apply_toast(w: &impl UiProps, toast: &Toast) {
 }
 
 fn anchor_row<B: UiBackend>(model: &VecModel<B::Message>) -> i32 {
+    let focus = FOCUS_EVENT_ID.with(|cell| cell.borrow().clone());
+    let is_anchor = |entry: &B::Message| match &focus {
+        Some(event_id) => B::message_event_id(entry) == event_id,
+        None => B::message_is_first_unread(entry),
+    };
     (0..model.row_count())
-        .find(|row| {
-            model
-                .row_data(*row)
-                .is_some_and(|entry| B::message_is_first_unread(&entry))
-        })
+        .find(|row| model.row_data(*row).is_some_and(|entry| is_anchor(&entry)))
         .and_then(|row| i32::try_from(row).ok())
-        .unwrap_or(NO_UNREAD_ANCHOR)
+        .unwrap_or(NO_ANCHOR)
 }
 
-fn unread_anchor_index(patch: &TimelinePatch) -> i32 {
+fn unread_anchor_row(patch: &TimelinePatch) -> i32 {
     patch
         .unread_anchor()
-        .and_then(|anchor| i32::try_from(anchor.index).ok())
-        .unwrap_or(NO_UNREAD_ANCHOR)
+        .and_then(|anchor| i32::try_from(anchor.row).ok())
+        .unwrap_or(NO_ANCHOR)
 }
 
 fn is_active(w: &impl UiProps, room_id: &RoomId, generation: i32) -> bool {
@@ -365,5 +427,6 @@ fn clear_selected_room(w: &impl UiProps) {
     w.set_string(StringProp::SelectedRoomName, SharedString::default());
     w.set_int(IntProp::SelectedRoomMembers, 0);
     w.set_int(IntProp::SelectedGeneration, 0);
-    w.set_int(IntProp::UnreadAnchorIndex, NO_UNREAD_ANCHOR);
+    w.set_int(IntProp::AnchorIndex, NO_ANCHOR);
+    set_focus(w, None);
 }

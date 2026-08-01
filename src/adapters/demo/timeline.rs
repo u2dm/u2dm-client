@@ -11,6 +11,8 @@ pub const RESIZE_ROUNDS: usize = 8;
 pub const ROOM_LIST_INTERVAL: Duration = Duration::from_millis(400);
 pub const LATE_MESSAGE_DELAY: Duration = Duration::from_millis(300);
 pub const HISTORY_PAGE: usize = 12;
+pub const FOCUS_CONTEXT: usize = 15;
+pub const SHORT_WINDOW: usize = 8;
 pub const HISTORY_COPIES: usize = 6;
 pub const UNREAD_PORTION_NUMERATOR: usize = 3;
 pub const UNREAD_PORTION_DENOMINATOR: usize = 5;
@@ -29,6 +31,7 @@ pub struct Scenario {
     pub history_is_long: bool,
     pub read_position_precedes_history: bool,
     pub resolving_unread: bool,
+    pub window_is_short: bool,
 }
 
 pub fn scenario() -> Scenario {
@@ -56,6 +59,7 @@ fn from_env() -> Scenario {
         history_is_long = scenario.history_is_long,
         read_position_precedes_history = scenario.read_position_precedes_history,
         resolving_unread = scenario.resolving_unread,
+        window_is_short = scenario.window_is_short,
         "demo mode: reproducing real-account timeline timing"
     );
     scenario
@@ -77,6 +81,7 @@ fn apply(scenario: &mut Scenario, flag: &str) {
         "deep" => scenario.history_is_long = true,
         "all-unread" => scenario.read_position_precedes_history = true,
         "unread-resolving" => scenario.resolving_unread = true,
+        "jump-far" => scenario.window_is_short = true,
         "all" => {
             *scenario = Scenario {
                 reset_is_slow: true,
@@ -90,6 +95,7 @@ fn apply(scenario: &mut Scenario, flag: &str) {
                 history_is_long: true,
                 read_position_precedes_history: false,
                 resolving_unread: false,
+                window_is_short: false,
             };
         }
         other => tracing::warn!(flag = other, "demo mode: unknown timeline scenario flag"),

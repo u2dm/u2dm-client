@@ -2,16 +2,17 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::sync::{Arc, Mutex as StdMutex};
 
 use futures_util::{Stream, StreamExt};
-use matrix_sdk::Client;
 use matrix_sdk::room::Receipts;
 use matrix_sdk::ruma::events::fully_read::FullyReadEventContent;
 use matrix_sdk::ruma::events::room::MediaSource;
 use matrix_sdk::ruma::{
     EventId, IdParseError, MilliSecondsSinceUnixEpoch, OwnedEventId, OwnedRoomId, UserId,
 };
+use matrix_sdk::{Client, Room};
 use matrix_sdk_ui::eyeball_im::VectorDiff;
 use matrix_sdk_ui::timeline::{
-    EventTimelineItem, RoomExt as _, Timeline, TimelineItem, VirtualTimelineItem,
+    EventTimelineItem, RoomExt as _, Timeline, TimelineEventFocusThreadMode,
+    TimelineFocus as SdkTimelineFocus, TimelineItem, VirtualTimelineItem,
 };
 use tokio::sync::{Semaphore, mpsc};
 use tokio::task::JoinSet;
@@ -23,13 +24,14 @@ use crate::adapters::matrix::media::MediaService;
 use crate::adapters::matrix::profile::PronounCache;
 use crate::domain::models::{
     EnrichmentDelta, PaginationDirection, PaginationOutcome, RoomId, TimelineCommand,
-    TimelineMessage, TimelinePatch, TimelineUpdate,
+    TimelineFocus, TimelineMessage, TimelinePatch, TimelineUpdate,
 };
 use crate::domain::viewport::PAGINATION_BATCH_SIZE;
 use crate::error::{AppError, Result};
 
 const REPLY_FETCH_INFLIGHT: usize = 4;
 const UNREAD_LOOKBACK_BATCHES: usize = 4;
+const FOCUS_CONTEXT_EVENTS: u16 = 50;
 
 fn needs_pronouns(msg: &TimelineMessage, pronouns: &PronounCache) -> bool {
     !msg.is_own && pronouns.needs_fetch(&msg.sender)
@@ -189,6 +191,7 @@ fn spawn_backup_key_download(
 async fn handle_timeline_command(
     cmd: TimelineCommand,
     timeline: &Timeline,
+    items: &TimelineItems,
     timeline_tx: &mpsc::Sender<TimelineUpdate>,
 ) {
     let (direction, outcome) = match cmd {
@@ -204,6 +207,10 @@ async fn handle_timeline_command(
             mark_read(timeline).await;
             return;
         }
+        TimelineCommand::JumpTo(event_id) => {
+            report_jump(event_id, items, timeline_tx).await;
+            return;
+        }
     };
 
     if timeline_tx
@@ -213,6 +220,22 @@ async fn handle_timeline_command(
     {
         tracing::debug!("timeline update channel closed");
     }
+}
+
+async fn report_jump(
+    event_id: String,
+    items: &TimelineItems,
+    timeline_tx: &mpsc::Sender<TimelineUpdate>,
+) {
+    let row = OwnedEventId::try_from(event_id.as_str())
+        .ok()
+        .and_then(|id| items.row_of_event(&id));
+    tracing::debug!(event_id, ?row, "resolved a jump target");
+    drop(
+        timeline_tx
+            .send(TimelineUpdate::JumpOutcome { event_id, row })
+            .await,
+    );
 }
 
 async fn mark_read(timeline: &Timeline) {
@@ -252,6 +275,7 @@ async fn paginate_forwards(timeline: &Timeline) -> PaginationOutcome {
 async fn setup_timeline(
     client: &Client,
     room_id: &RoomId,
+    focus: &TimelineFocus,
 ) -> Result<(Arc<Timeline>, OwnedRoomId, PaginationOutcome)> {
     let room_id_parsed: OwnedRoomId = room_id
         .as_ref()
@@ -262,15 +286,39 @@ async fn setup_timeline(
         .get_room(&room_id_parsed)
         .ok_or_else(|| AppError::Other("Room not found".into()))?;
 
-    let timeline = Arc::new(
-        room.timeline()
-            .await
-            .map_err(|e| AppError::Other(e.to_string()))?,
-    );
+    let Some(target) = focus.target() else {
+        let timeline = Arc::new(
+            room.timeline()
+                .await
+                .map_err(|e| AppError::Other(e.to_string()))?,
+        );
+        let backwards_outcome = paginate_backwards(&timeline).await;
+        return Ok((timeline, room_id_parsed, backwards_outcome));
+    };
 
-    let backwards_outcome = paginate_backwards(&timeline).await;
+    let timeline = Arc::new(build_focused_timeline(&room, target).await?);
+    Ok((
+        timeline,
+        room_id_parsed,
+        PaginationOutcome::Completed { hit_end: false },
+    ))
+}
 
-    Ok((timeline, room_id_parsed, backwards_outcome))
+async fn build_focused_timeline(room: &Room, target: &str) -> Result<Timeline> {
+    let target: OwnedEventId = target
+        .try_into()
+        .map_err(|e: IdParseError| AppError::Other(e.to_string()))?;
+    room.timeline_builder()
+        .with_focus(SdkTimelineFocus::Event {
+            target,
+            num_context_events: FOCUS_CONTEXT_EVENTS,
+            thread_mode: TimelineEventFocusThreadMode::Automatic {
+                hide_threaded_events: false,
+            },
+        })
+        .build()
+        .await
+        .map_err(|e| AppError::Other(e.to_string()))
 }
 
 fn spawn_reply_detail_fetches(
@@ -452,10 +500,12 @@ pub(crate) async fn subscribe_timeline(
     media_sources: &Arc<StdMutex<HashMap<String, MediaSource>>>,
     pronouns: &Arc<PronounCache>,
     room_id: &RoomId,
+    focus: &TimelineFocus,
     timeline_tx: mpsc::Sender<TimelineUpdate>,
     mut cmd_rx: mpsc::UnboundedReceiver<TimelineCommand>,
 ) -> Result<()> {
-    let (timeline, room_id_parsed, backwards_outcome) = setup_timeline(client, room_id).await?;
+    let (timeline, room_id_parsed, backwards_outcome) =
+        setup_timeline(client, room_id, focus).await?;
 
     if let Ok(mut sources) = media_sources.lock() {
         sources.clear();
@@ -463,7 +513,10 @@ pub(crate) async fn subscribe_timeline(
 
     media.ensure_dirs().await;
 
-    let boundary = read_boundary(&timeline, client.user_id()).await;
+    let boundary = match focus {
+        TimelineFocus::Live => read_boundary(&timeline, client.user_id()).await,
+        TimelineFocus::Event(_) => None,
+    };
     let backwards_outcome = match boundary.as_ref() {
         Some(boundary) => {
             paginate_to_read_boundary(&timeline, boundary, backwards_outcome, &timeline_tx).await
@@ -506,6 +559,10 @@ pub(crate) async fn subscribe_timeline(
     else {
         return Ok(());
     };
+
+    if let Some(target) = focus.target() {
+        report_jump(target.to_owned(), &items, &timeline_tx).await;
+    }
 
     run_timeline_loop(
         &ctx,
@@ -557,7 +614,7 @@ async fn run_timeline_loop<S>(
             biased;
             cmd = cmd_rx.recv() => {
                 let Some(cmd) = cmd else { break };
-                handle_timeline_command(cmd, timeline, ctx.timeline_tx).await;
+                handle_timeline_command(cmd, timeline, &items, ctx.timeline_tx).await;
             }
             result = key_stream.next(), if !key_stream_done => {
                 match result {

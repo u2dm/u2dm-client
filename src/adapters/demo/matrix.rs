@@ -13,8 +13,8 @@ use super::{data, login, media, timeline, verification};
 use crate::domain::models::{
     AuthMethod, LoginCredentials, MessageBody, OAuthLoginData, PaginationDirection,
     PaginationOutcome, ReplyInfo, RoomId, ServerInfo, Session, SyncEvent, SyncOutcome,
-    TimelineCommand, TimelineMessage, TimelinePatch, TimelineUpdate, VerificationCancellation,
-    VerificationEvent,
+    TimelineCommand, TimelineFocus, TimelineMessage, TimelinePatch, TimelineUpdate,
+    VerificationCancellation, VerificationEvent,
 };
 use crate::error::{AppError, Result};
 use crate::ports::matrix::{
@@ -156,6 +156,7 @@ struct ActiveRoom {
     room_id: RoomId,
     timeline_tx: mpsc::Sender<TimelineUpdate>,
     messages: Vec<TimelineMessage>,
+    prepended: usize,
 }
 
 #[derive(Default)]
@@ -186,6 +187,16 @@ impl DemoAuthed {
         let (timeline_tx, message) = prepared;
 
         send_patch(&timeline_tx, TimelinePatch::PushBack(message)).await;
+    }
+
+    fn loaded_row_of(&self, event_id: &str) -> Option<usize> {
+        let guard = self.active.lock().ok()?;
+        let active = guard.as_ref()?;
+        let index_in_window = active
+            .messages
+            .iter()
+            .position(|message| message.event_id.as_deref() == Some(event_id))?;
+        Some(active.prepended.saturating_add(index_in_window))
     }
 
     fn emit_verification(&self, event: VerificationEvent) {
@@ -235,13 +246,19 @@ impl TimelinePort for DemoAuthed {
     async fn subscribe_timeline(
         &self,
         room_id: &RoomId,
+        focus: TimelineFocus,
         timeline_tx: mpsc::Sender<TimelineUpdate>,
         mut cmd_rx: mpsc::UnboundedReceiver<TimelineCommand>,
     ) -> Result<()> {
         let scenario = timeline::scenario();
-        let messages = data::messages(room_id);
+        let all = data::messages(room_id);
+        let messages = match focus.target() {
+            Some(target) => focused_window(&all, target)?,
+            None if scenario.window_is_short => newest(&all, timeline::SHORT_WINDOW),
+            None => all,
+        };
 
-        if scenario.resolving_unread {
+        if scenario.resolving_unread && focus.is_live() {
             drop(timeline_tx.send(TimelineUpdate::ResolvingUnread).await);
         }
         if scenario.reset_is_slow {
@@ -254,10 +271,23 @@ impl TimelinePort for DemoAuthed {
                 room_id: room_id.clone(),
                 timeline_tx: timeline_tx.clone(),
                 messages: messages.clone(),
+                prepended: 0,
             });
         }
 
-        if scenario.reset_repeats {
+        if let Some(target) = focus.target() {
+            let row = self.loaded_row_of(target);
+            drop(
+                timeline_tx
+                    .send(TimelineUpdate::JumpOutcome {
+                        event_id: target.to_owned(),
+                        row,
+                    })
+                    .await,
+            );
+        }
+
+        if focus.is_live() && scenario.reset_repeats {
             spawn_late_reset(scenario, timeline_tx.clone(), messages.clone());
         }
         if scenario.rows_keep_resizing {
@@ -273,6 +303,15 @@ impl TimelinePort for DemoAuthed {
                 TimelineCommand::PaginateBackwards => PaginationDirection::Backwards,
                 TimelineCommand::PaginateForwards => PaginationDirection::Forwards,
                 TimelineCommand::MarkRead => continue,
+                TimelineCommand::JumpTo(event_id) => {
+                    let row = self.loaded_row_of(&event_id);
+                    drop(
+                        timeline_tx
+                            .send(TimelineUpdate::JumpOutcome { event_id, row })
+                            .await,
+                    );
+                    continue;
+                }
             };
             let mut hit_end = true;
             if scenario.pagination_returns_history
@@ -280,7 +319,13 @@ impl TimelinePort for DemoAuthed {
             {
                 history += 1;
                 hit_end = history > 2;
-                for message in older_history(history, &messages) {
+                let page = older_history(history, &messages);
+                if let Ok(mut guard) = self.active.lock()
+                    && let Some(active) = guard.as_mut()
+                {
+                    active.prepended = active.prepended.saturating_add(page.len());
+                }
+                for message in page {
                     send_patch(&timeline_tx, TimelinePatch::PushFront(message)).await;
                 }
             }
@@ -413,10 +458,28 @@ fn reply_info(messages: &[TimelineMessage], event_id: &str) -> Option<ReplyInfo>
         .iter()
         .find(|message| message.event_id.as_deref() == Some(event_id))
         .map(|message| ReplyInfo {
+            event_id: event_id.to_owned(),
             sender: data::sender_label(message),
             kind: message.body.preview_kind(),
             body: data::body_preview(&message.body),
         })
+}
+
+fn newest(messages: &[TimelineMessage], count: usize) -> Vec<TimelineMessage> {
+    let start = messages.len().saturating_sub(count);
+    messages.get(start..).unwrap_or(messages).to_vec()
+}
+
+fn focused_window(messages: &[TimelineMessage], target: &str) -> Result<Vec<TimelineMessage>> {
+    let index = messages
+        .iter()
+        .position(|message| message.event_id.as_deref() == Some(target))
+        .ok_or_else(|| AppError::Other(format!("no demo event {target}")))?;
+    let start = index.saturating_sub(timeline::FOCUS_CONTEXT);
+    let end = messages
+        .len()
+        .min(index.saturating_add(timeline::FOCUS_CONTEXT));
+    Ok(messages.get(start..end).unwrap_or(messages).to_vec())
 }
 
 fn opening_patch(scenario: timeline::Scenario, messages: Vec<TimelineMessage>) -> TimelinePatch {

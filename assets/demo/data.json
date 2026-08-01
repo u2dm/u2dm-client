@@ -356,6 +356,7 @@
         "minutes_ago": 24,
         "reply": {
           "sender": "Kai",
+          "event_id": "demo-rust-3",
           "body": "rewriting coreutils in rust is fine. relicensing the entire userland on the way past is 6 7 behaviour"
         }
       },
@@ -437,6 +438,7 @@
         "minutes_ago": 12,
         "reply": {
           "sender": "You",
+          "event_id": "demo-rust-16",
           "body": "i am the animal. i wrote that yesterday"
         }
       },
@@ -487,6 +489,7 @@
         "minutes_ago": 7,
         "reply": {
           "sender": "Priya",
+          "event_id": "demo-rust-chart",
           "kind": "image"
         }
       },
@@ -510,7 +513,12 @@
         "sender": "@sarah:matrix.org",
         "name": "Sarah Chen",
         "body": "ci ran for 67 minutes to tell me clippy is not happy 🫃🫃🫃",
-        "minutes_ago": 3
+        "minutes_ago": 3,
+        "reply": {
+          "sender": "Rayshk",
+          "event_id": "demo-rust-5",
+          "body": "i read 400 replies of it and learned nothing. i would do it again tonight"
+        }
       }
     ],
 
@@ -551,6 +559,7 @@
         "minutes_ago": 29,
         "reply": {
           "sender": "Kai",
+          "event_id": "demo-matrixhq-4",
           "body": "nadia solo carried this entire release 🫃"
         }
       },
@@ -664,6 +673,7 @@
         "edited": true,
         "reply": {
           "sender": "Nadia",
+          "event_id": "demo-design-1",
           "body": "v3 of the onboarding flow is up, be gentle"
         }
       }
