@@ -58,7 +58,7 @@ export component UnreadDot inherits Rectangle {
     border-radius: self.height / 2;
     background: root.mention || root.alert
         ? Palette.accent-background
-        : Palette.foreground.transparentize(0.4);
+        : Palette.foreground;
     border-width: root.ringed || root.mention ? 2px : 0;
     border-color: Palette.alternate-background;
 
