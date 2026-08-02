@@ -441,7 +441,8 @@ impl CacheActor {
             .map(|entry| entry.path.as_path())
             .collect();
         self.sweep(&self.media_dir, &referenced);
-        self.sweep(&self.media_dir.join("avatars"), &referenced);
+        self.sweep(&self.media_dir.join(super::AVATARS_DIR), &referenced);
+        self.sweep(&self.media_dir.join(super::STICKERS_DIR), &referenced);
     }
 
     fn sweep(&self, dir: &Path, referenced: &HashSet<&Path>) {

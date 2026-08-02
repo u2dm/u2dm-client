@@ -110,7 +110,7 @@ msgctxt "VerificationDialog"
 msgid "Close"
 msgstr ""
 
-#: ui/main.slint:37
+#: ui/main.slint:38
 msgctxt "AppWindow"
 msgid "U2DM Matrix Client"
 msgstr "U2DM Client Matrix"
@@ -319,27 +319,32 @@ msgctxt "ChatScreen"
 msgid "Dismiss"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/message-input.slint:82
+#: ui/screens/chat/components/timeline/picker-search.slint:72
+msgctxt "PickerSearch"
+msgid "Clear search"
+msgstr ""
+
+#: ui/screens/chat/components/timeline/message-input.slint:99
 msgctxt "MessageInput"
 msgid "Reply to {}"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/message-input.slint:89
+#: ui/screens/chat/components/timeline/message-input.slint:106
 msgctxt "MessageInput"
 msgid "Cancel reply"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/message-input.slint:135
+#: ui/screens/chat/components/timeline/message-input.slint:152
 msgctxt "MessageInput"
 msgid "Send a message..."
 msgstr ""
 
-#: ui/screens/chat/components/timeline/message-input.slint:146
+#: ui/screens/chat/components/timeline/message-input.slint:163
 msgctxt "MessageInput"
 msgid "Emoji"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/message-input.slint:166
+#: ui/screens/chat/components/timeline/message-input.slint:183
 msgctxt "MessageInput"
 msgid "Send"
 msgstr ""
@@ -539,62 +544,62 @@ msgctxt "FileMessage"
 msgid "Save"
 msgstr "Salva"
 
-#: ui/screens/chat/components/timeline/emoji-picker.slint:102
+#: ui/screens/chat/components/timeline/emoji-picker.slint:105
 msgctxt "EmojiPicker"
 msgid "Smileys & emotion"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/emoji-picker.slint:103
+#: ui/screens/chat/components/timeline/emoji-picker.slint:106
 msgctxt "EmojiPicker"
 msgid "People & body"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/emoji-picker.slint:104
+#: ui/screens/chat/components/timeline/emoji-picker.slint:107
 msgctxt "EmojiPicker"
 msgid "Animals & nature"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/emoji-picker.slint:105
+#: ui/screens/chat/components/timeline/emoji-picker.slint:108
 msgctxt "EmojiPicker"
 msgid "Food & drink"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/emoji-picker.slint:106
+#: ui/screens/chat/components/timeline/emoji-picker.slint:109
 msgctxt "EmojiPicker"
 msgid "Travel & places"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/emoji-picker.slint:107
+#: ui/screens/chat/components/timeline/emoji-picker.slint:110
 msgctxt "EmojiPicker"
 msgid "Activities"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/emoji-picker.slint:108
+#: ui/screens/chat/components/timeline/emoji-picker.slint:111
 msgctxt "EmojiPicker"
 msgid "Objects"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/emoji-picker.slint:109
+#: ui/screens/chat/components/timeline/emoji-picker.slint:112
 msgctxt "EmojiPicker"
 msgid "Symbols"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/emoji-picker.slint:110
+#: ui/screens/chat/components/timeline/emoji-picker.slint:113
 msgctxt "EmojiPicker"
 msgid "Flags"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/emoji-picker.slint:139
+#: ui/screens/chat/components/timeline/emoji-picker.slint:134
 msgctxt "EmojiPicker"
 msgid "Search emoji"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/emoji-picker.slint:155
+#: ui/screens/chat/components/timeline/emoji-picker.slint:151
 msgctxt "EmojiPicker"
 msgid "Skin tone {}"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/emoji-picker.slint:214
+#: ui/screens/chat/components/timeline/emoji-picker.slint:210
 msgctxt "EmojiPicker"
 msgid "No emoji found"
 msgstr ""
@@ -635,6 +640,37 @@ msgid "{n} member"
 msgid_plural "{n} members"
 msgstr[0] ""
 msgstr[1] ""
+
+#: ui/screens/chat/components/timeline/picker-panel.slint:66
+msgctxt "PickerPanel"
+msgid "Emoji"
+msgstr ""
+
+#: ui/screens/chat/components/timeline/picker-panel.slint:74
+msgctxt "PickerPanel"
+msgid "Stickers"
+msgstr ""
+
+#: ui/screens/chat/components/timeline/sticker-picker.slint:110
+msgctxt "StickerPicker"
+msgid "Search stickers"
+msgstr ""
+
+#: ui/screens/chat/components/timeline/sticker-picker.slint:128
+msgctxt "StickerPicker"
+msgid "Stickers from packs are not encrypted."
+msgstr ""
+
+#: ui/screens/chat/components/timeline/sticker-picker.slint:214
+msgctxt "StickerPicker"
+msgid "No stickers match your search."
+msgstr ""
+
+#: ui/screens/chat/components/timeline/sticker-picker.slint:215
+msgctxt "StickerPicker"
+msgid ""
+"No sticker packs yet. Join a room that shares one, or add it to your account."
+msgstr ""
 
 #: ui/screens/chat/components/timeline/status-pill.slint:42
 msgctxt "StatusPill"

@@ -53,6 +53,9 @@ macro_rules! bool_props {
         TimelineRetryable RoomView "RoomView" "timeline-retryable" set_timeline_retryable;
         BackwardsLoading RoomView "RoomView" "backwards-loading" set_backwards_loading;
         ForwardsLoading RoomView "RoomView" "forwards-loading" set_forwards_loading;
+        StickerRoomEncrypted StickerView "StickerView" "room-encrypted" set_room_encrypted;
+        StickerLoading StickerView "StickerView" "loading" set_loading;
+        StickerHasPacks StickerView "StickerView" "has-packs" set_has_packs;
     } };
 }
 pub(crate) use bool_props;
@@ -65,6 +68,7 @@ macro_rules! int_props {
         PrependToken RoomView "RoomView" "prepend-token" set_prepend_token;
         SelectedRoomMembers RoomView "RoomView" "selected-room-members" set_selected_room_members;
         SelectedGeneration DirectoryView "DirectoryView" "selected-generation" set_selected_generation;
+        StickerColumns StickerView "StickerView" "columns" set_columns;
     } };
 }
 pub(crate) use int_props;
@@ -348,3 +352,41 @@ macro_rules! space_fields {
 }
 #[cfg(feature = "interpreted")]
 pub(crate) use space_fields;
+
+#[cfg(feature = "interpreted")]
+macro_rules! sticker_cell_fields {
+    ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
+        key KEY "key" text;
+        pack_id PACK_ID "pack-id" text;
+        shortcode SHORTCODE "shortcode" text;
+        label LABEL "label" text;
+        media_state MEDIA_STATE "media-state" enumk;
+        image IMAGE "image" image;
+    } };
+}
+#[cfg(feature = "interpreted")]
+pub(crate) use sticker_cell_fields;
+
+#[cfg(feature = "interpreted")]
+macro_rules! sticker_pack_fields {
+    ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
+        id ID "id" text;
+        title TITLE "title" text;
+        header_row HEADER_ROW "header-row" int;
+        icon ICON "icon" image;
+        has_icon HAS_ICON "has-icon" flag;
+    } };
+}
+#[cfg(feature = "interpreted")]
+pub(crate) use sticker_pack_fields;
+
+#[cfg(feature = "interpreted")]
+macro_rules! sticker_row_fields {
+    ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
+        title TITLE "title" text;
+        is_header IS_HEADER "is-header" flag;
+        cells CELLS "cells" list;
+    } };
+}
+#[cfg(feature = "interpreted")]
+pub(crate) use sticker_row_fields;

@@ -1,4 +1,10 @@
-import { RoomEntry, SpaceEntry, MessageEntry } from "screens/chat/components/types.slint";
+import {
+    RoomEntry,
+    SpaceEntry,
+    MessageEntry,
+    StickerRow,
+    StickerPackTab,
+} from "screens/chat/components/types.slint";
 import { VerificationEmoji } from "components/types.slint";
 import { UserMessage } from "messages.slint";
 import {
@@ -53,6 +59,15 @@ export global RoomView {
     in property <bool> forwards-loading;
     in property <UserMessageKind> toast-message: UserMessageKind.none;
     in property <string> toast-detail;
+}
+
+export global StickerView {
+    in property <[StickerRow]> rows;
+    in property <[StickerPackTab]> packs;
+    in property <int> columns: 5;
+    in property <bool> room-encrypted;
+    in property <bool> loading;
+    in property <bool> has-packs;
 }
 
 export global VerificationView {

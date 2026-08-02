@@ -13,7 +13,7 @@ use tokio::sync::Semaphore;
 use tokio::time::{sleep, timeout};
 
 use super::cache::{CacheHandle, FailureTracker};
-use super::{mxc_avatar_key, thumb_key, thumbnail_format};
+use super::{AVATARS_DIR, STICKERS_DIR, mxc_avatar_key, sticker_key, thumb_key, thumbnail_format};
 use crate::adapters::matrix::store::purge_dir;
 use crate::adapters::private_fs;
 use crate::domain::account::AccountScope;
@@ -33,7 +33,6 @@ const MAX_FULL_MEDIA_BYTES: usize = 100 * 1024 * 1024;
 
 const MEDIA_CACHE_DIR: &str = "media-cache";
 const LAYOUT_VERSION: &str = "v1";
-const AVATARS_DIR: &str = "avatars";
 
 struct MediaSession {
     media_dir: PathBuf,
@@ -119,6 +118,7 @@ impl MediaService {
         for dir in [
             session.media_dir.clone(),
             session.media_dir.join(AVATARS_DIR),
+            session.media_dir.join(STICKERS_DIR),
         ] {
             if let Err(e) = private_fs::create_dir(&dir).await {
                 tracing::warn!(path = %dir.display(), "failed to create media dir: {e}");
@@ -292,6 +292,26 @@ impl MediaService {
             .await
     }
 
+    pub(crate) async fn fetch_sticker_by_mxc(
+        &self,
+        client: &Client,
+        mxc: OwnedMxcUri,
+    ) -> Option<PathBuf> {
+        let cache_key = sticker_key(mxc.as_str());
+        if let Some(cached) = self.cache_get(&cache_key) {
+            return Some(cached);
+        }
+        let stickers = self.stickers_dir()?;
+        if let Err(e) = private_fs::create_dir(&stickers).await {
+            tracing::warn!("failed to create sticker dir: {e}");
+            return None;
+        }
+        let cache_stem = stickers.join(hex_encode_id(mxc.as_str()));
+        let source = MediaSource::Plain(mxc);
+        self.fetch_and_materialize(client, source, &cache_key, &cache_stem, MediaFormat::File)
+            .await
+    }
+
     pub(crate) async fn fetch_user_avatar(&self, client: &Client) -> Option<PathBuf> {
         let cached = client.account().get_cached_avatar_url().await;
         let mxc = match cached {
@@ -372,6 +392,10 @@ impl MediaService {
 
     fn avatars_dir(&self) -> Option<PathBuf> {
         Some(self.session()?.media_dir.join(AVATARS_DIR))
+    }
+
+    fn stickers_dir(&self) -> Option<PathBuf> {
+        Some(self.session()?.media_dir.join(STICKERS_DIR))
     }
 }
 

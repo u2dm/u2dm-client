@@ -2,7 +2,7 @@ use slint::{Image, SharedString};
 
 use super::decode::{
     AvatarSlot, load_avatar_async, load_thumbnail, peek_avatar, peek_thumbnail, record_avatar_need,
-    record_media_need,
+    record_media_need, record_sticker_need,
 };
 use super::present::{
     MessageKind, ServiceKind, avatar_color_index, avatar_initials, message_body_text, message_kind,
@@ -11,11 +11,129 @@ use super::present::{
 };
 use super::schema::{define_ui_enum, media_states};
 use crate::domain::models::{
-    EnrichmentDelta, MessagePreviewKind, Room, Space, ThumbnailOutcome, TimelineMessage,
+    EnrichmentDelta, MessagePreviewKind, PackId, Room, Space, StickerImage, StickerPack,
+    ThumbnailOutcome, TimelineMessage,
 };
 use crate::ports::media::MediaCache;
 
 media_states!(define_ui_enum MediaState;);
+
+pub const GRID_COLUMNS: i32 = 5;
+
+#[derive(Clone)]
+pub struct StickerCellDto {
+    pub key: SharedString,
+    pub pack_id: SharedString,
+    pub shortcode: SharedString,
+    pub label: SharedString,
+    pub image: Option<Image>,
+    pub media_state: MediaState,
+}
+
+pub struct StickerRowDto {
+    pub title: SharedString,
+    pub is_header: bool,
+    pub cells: Vec<StickerCellDto>,
+}
+
+pub struct StickerPackDto {
+    pub id: SharedString,
+    pub title: SharedString,
+    pub header_row: i32,
+    pub icon: Option<Image>,
+    pub icon_cell_key: SharedString,
+}
+
+pub struct StickerGrid {
+    pub rows: Vec<StickerRowDto>,
+    pub packs: Vec<StickerPackDto>,
+}
+
+pub const CELL_KEY_SEPARATOR: char = '\u{1}';
+
+pub fn cell_key(pack: &PackId, shortcode: &str) -> String {
+    format!("{pack}{CELL_KEY_SEPARATOR}{shortcode}")
+}
+
+pub fn sticker_grid(packs: &[StickerPack], query: &str, media: &dyn MediaCache) -> StickerGrid {
+    let per_row = usize::try_from(GRID_COLUMNS.max(1)).unwrap_or(1);
+    let needle = query.trim().to_lowercase();
+    let mut grid = StickerGrid {
+        rows: Vec::new(),
+        packs: Vec::new(),
+    };
+
+    for pack in packs {
+        let whole_pack = needle.is_empty() || pack.title.to_lowercase().contains(&needle);
+        let cells: Vec<StickerCellDto> = pack
+            .images
+            .iter()
+            .filter(|image| whole_pack || sticker_matches(image, &needle))
+            .map(|image| sticker_cell(pack, image, media))
+            .collect();
+        if cells.is_empty() {
+            continue;
+        }
+
+        grid.packs.push(StickerPackDto {
+            id: SharedString::from(pack.id.as_ref()),
+            title: SharedString::from(&pack.title),
+            header_row: i32::try_from(grid.rows.len()).unwrap_or(0),
+            icon: cells.first().and_then(|cell| cell.image.clone()),
+            icon_cell_key: cells
+                .first()
+                .map(|cell| cell.key.clone())
+                .unwrap_or_default(),
+        });
+        grid.rows.push(StickerRowDto {
+            title: SharedString::from(&pack.title),
+            is_header: true,
+            cells: Vec::new(),
+        });
+        for chunk in cells.chunks(per_row) {
+            grid.rows.push(StickerRowDto {
+                title: SharedString::new(),
+                is_header: false,
+                cells: chunk.to_vec(),
+            });
+        }
+    }
+
+    grid
+}
+
+fn sticker_matches(image: &StickerImage, needle: &str) -> bool {
+    image.shortcode.to_lowercase().contains(needle) || image.body.to_lowercase().contains(needle)
+}
+
+fn sticker_cell(
+    pack: &StickerPack,
+    image: &StickerImage,
+    media: &dyn MediaCache,
+) -> StickerCellDto {
+    let key = cell_key(&pack.id, &image.shortcode);
+    let mut cell = StickerCellDto {
+        key: SharedString::from(&key),
+        pack_id: SharedString::from(pack.id.as_ref()),
+        shortcode: SharedString::from(&image.shortcode),
+        label: SharedString::from(&image.body),
+        image: None,
+        media_state: MediaState::Idle,
+    };
+
+    if let Some(path) = media.sticker_path(&image.mxc) {
+        if let Some(decoded) = peek_thumbnail(&path) {
+            cell.image = Some(decoded);
+            cell.media_state = MediaState::Ready;
+        } else {
+            record_sticker_need(&key, path);
+        }
+    } else if media.sticker_failed(&image.mxc) {
+        cell.media_state = MediaState::Failed;
+    }
+
+    cell
+}
 
 #[allow(clippy::struct_excessive_bools)]
 pub struct MessageDto {

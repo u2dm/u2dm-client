@@ -1,0 +1,89 @@
+import { Palette } from "std-widgets.slint";
+import { IconDisplay, IconSet } from "@lucide";
+
+import { ClickArea } from "../../../../components/a11y.slint";
+
+export component PickerSearch inherits Rectangle {
+    in property <string> placeholder;
+    in-out property <string> query: "";
+    callback edited(string);
+
+    height: 30px;
+    border-radius: 8px;
+    background: Palette.foreground.transparentize(0.94);
+    border-width: 1px;
+    border-color: input.has-focus
+        ? Palette.accent-background.transparentize(0.45)
+        : Palette.foreground.transparentize(0.9);
+
+    forward-focus: input;
+
+    HorizontalLayout {
+        padding-left: 8px;
+        padding-right: 4px;
+        spacing: 6px;
+
+        VerticalLayout {
+            alignment: center;
+
+            IconDisplay {
+                icon: IconSet.Search;
+                size: 14px;
+                stroke: Palette.foreground.transparentize(0.55);
+            }
+        }
+
+        Rectangle {
+            horizontal-stretch: 1;
+
+            input := TextInput {
+                x: 0;
+                y: 0;
+                width: parent.width;
+                height: parent.height;
+                text <=> root.query;
+                color: Palette.foreground;
+                font-size: 13px;
+                vertical-alignment: center;
+                edited => {
+                    root.edited(self.text);
+                }
+            }
+
+            if root.query == "": Text {
+                x: 0;
+                y: 0;
+                width: parent.width;
+                height: parent.height;
+                text: root.placeholder;
+                color: Palette.foreground.transparentize(0.55);
+                font-size: 13px;
+                vertical-alignment: center;
+            }
+        }
+
+        VerticalLayout {
+            alignment: center;
+            width: 22px;
+
+            if root.query != "": ClickArea {
+                height: 22px;
+                ring-radius: 6px;
+                label: @tr("Clear search");
+                clicked => {
+                    root.query = "";
+                    root.edited("");
+                    input.focus();
+                }
+
+                IconDisplay {
+                    x: (parent.width - self.width) / 2;
+                    y: (parent.height - self.height) / 2;
+                    icon: IconSet.X;
+                    size: 13px;
+                    stroke: Palette.foreground.transparentize(0.4);
+                }
+            }
+        }
+    }
+}

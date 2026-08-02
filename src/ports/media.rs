@@ -17,4 +17,6 @@ pub trait MediaCache: Send + Sync {
     fn user_avatar_path(&self, mxc: &str) -> Option<PathBuf>;
     fn room_avatar_path(&self, mxc: &str) -> Option<PathBuf>;
     fn space_avatar_path(&self, mxc: &str) -> Option<PathBuf>;
+    fn sticker_path(&self, mxc: &str) -> Option<PathBuf>;
+    fn sticker_failed(&self, mxc: &str) -> bool;
 }

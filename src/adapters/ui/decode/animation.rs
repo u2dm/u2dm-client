@@ -9,9 +9,8 @@ use std::time::{Duration, Instant};
 use image::codecs::gif::GifDecoder;
 use image::codecs::webp::WebPDecoder;
 use image::{AnimationDecoder, DynamicImage, Frames, ImageDecoder, RgbaImage};
-use slint::{Image, Model, Timer, TimerMode, VecModel};
+use slint::{Image, Timer, TimerMode};
 
-use super::super::rows::locate_row;
 use super::waiters::DecodeOutcome;
 use super::workers::Lane;
 use super::{DISPLAY_MAX_DIMENSION, cache, image_from_rgba, waiters};
@@ -377,11 +376,7 @@ fn forget_playbacks(gone: &[String]) {
     });
 }
 
-pub fn advance_animations<T: Clone + 'static>(
-    timeline_model: &VecModel<T>,
-    entry_id: &dyn Fn(&T) -> &str,
-    set_thumbnail: &dyn Fn(&mut T, Image),
-) {
+pub fn advance_animations(place_frame: &mut dyn FnMut(&str, usize, Image) -> Option<usize>) {
     let due = due_frames(Instant::now());
     if due.is_empty() {
         return;
@@ -390,16 +385,10 @@ pub fn advance_animations<T: Clone + 'static>(
     let mut located = Vec::new();
     let mut gone = Vec::new();
     for item in due {
-        let Some(row) = locate_row(timeline_model, entry_id, &item.unique_id, item.row_hint) else {
-            gone.push(item.unique_id);
-            continue;
-        };
-        if let Some(entry) = timeline_model.row_data(row) {
-            let mut updated = entry;
-            set_thumbnail(&mut updated, item.image);
-            timeline_model.set_row_data(row, updated);
+        match place_frame(&item.unique_id, item.row_hint, item.image) {
+            Some(row) => located.push((item.unique_id, row)),
+            None => gone.push(item.unique_id),
         }
-        located.push((item.unique_id, row));
     }
 
     ANIMATIONS.with_borrow_mut(|state| {

@@ -1,0 +1,246 @@
+import { Palette, Spinner, ListView } from "std-widgets.slint";
+import { IconDisplay, IconSet } from "@lucide";
+
+import { MediaState } from "../../../../enums.slint";
+import { StickerCell, StickerRow, StickerPackTab } from "../types.slint";
+import { PickerSearch } from "picker-search.slint";
+import { StickerView } from "../../../../views.slint";
+import { Actions } from "../../../../actions.slint";
+import { ClickArea } from "../../../../components/a11y.slint";
+
+component StickerCellArt inherits Rectangle {
+    in property <image> art;
+    in property <MediaState> state;
+    in property <length> inset: 4px;
+
+    Image {
+        x: root.inset;
+        y: root.inset;
+        width: parent.width - 2 * root.inset;
+        height: parent.height - 2 * root.inset;
+        source: root.art;
+        image-fit: ImageFit.contain;
+        visible: root.state == MediaState.ready;
+    }
+
+    IconDisplay {
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+        icon: IconSet.ImageOff;
+        size: 18px;
+        stroke: Palette.foreground.transparentize(0.6);
+        visible: root.state == MediaState.failed;
+    }
+}
+
+component PackTab inherits Rectangle {
+    in property <image> icon;
+    in property <bool> has-icon;
+    in property <string> title;
+    in property <bool> selected;
+    callback clicked();
+
+    width: 34px;
+    height: 34px;
+    border-radius: 8px;
+    background: root.selected
+        ? Palette.accent-background.transparentize(0.82)
+        : (touch.has-hover ? Palette.foreground.transparentize(0.92) : transparent);
+
+    touch := ClickArea {
+        label: root.title;
+        ring-radius: 8px;
+        clicked => {
+            root.clicked();
+        }
+
+        Image {
+            x: 5px;
+            y: 5px;
+            width: 24px;
+            height: 24px;
+            source: root.icon;
+            image-fit: ImageFit.contain;
+            visible: root.has-icon;
+        }
+
+        Text {
+            x: 0;
+            y: 0;
+            width: parent.width;
+            height: parent.height;
+            text: root.title;
+            font-size: 12px;
+            color: Palette.foreground.transparentize(0.35);
+            horizontal-alignment: center;
+            vertical-alignment: center;
+            overflow: elide;
+            visible: !root.has-icon;
+        }
+    }
+}
+
+export component StickerPicker inherits Rectangle {
+    callback picked(string, string);
+
+    in-out property <string> query: "";
+
+    property <length> edge: 8px;
+    property <length> cell: (root.width - 2 * root.edge) / max(StickerView.columns, 1);
+    property <bool> is-searching: root.query != "";
+    property <bool> is-empty: StickerView.rows.length == 0;
+    property <length> viewport-middle: -grid.viewport-y + grid.visible-height / 2;
+    property <float> row-at-viewport-middle: floor(root.viewport-middle / max(1px, root.cell));
+
+    init => {
+        Actions.search-stickers(root.query);
+    }
+
+    function jump-to(header-row: int) {
+        grid.viewport-y = -min(
+            header-row * root.cell,
+            max(0px, grid.viewport-height - grid.visible-height));
+    }
+
+    VerticalLayout {
+        padding: root.edge;
+        spacing: 6px;
+
+        if StickerView.has-packs: PickerSearch {
+            placeholder: @tr("Search stickers");
+            query <=> root.query;
+            edited(text) => {
+                Actions.search-stickers(text);
+            }
+        }
+
+        if StickerView.room-encrypted: HorizontalLayout {
+            spacing: 6px;
+
+            IconDisplay {
+                icon: IconSet.ShieldAlert;
+                size: 14px;
+                stroke: Palette.foreground.transparentize(0.5);
+            }
+
+            Text {
+                horizontal-stretch: 1;
+                text: @tr("Stickers from packs are not encrypted.");
+                font-size: 11px;
+                color: Palette.foreground.transparentize(0.45);
+                wrap: word-wrap;
+            }
+        }
+
+        Rectangle {
+            vertical-stretch: 1;
+
+            grid := ListView {
+                for row in StickerView.rows: Rectangle {
+                    height: root.cell;
+
+                    Text {
+                        x: 0;
+                        y: 0;
+                        width: parent.width;
+                        height: parent.height - 6px;
+                        text: row.title;
+                        font-size: 11px;
+                        color: Palette.foreground.transparentize(0.45);
+                        vertical-alignment: bottom;
+                        overflow: elide;
+                        visible: row.is-header;
+                    }
+
+                    for entry[idx] in row.cells: ClickArea {
+                        x: idx * root.cell;
+                        y: 0;
+                        width: root.cell;
+                        height: root.cell;
+                        ring-radius: 8px;
+                        label: entry.label;
+
+                        init => {
+                            if entry.media-state == MediaState.idle {
+                                Actions.request-sticker(entry.key);
+                            }
+                        }
+
+                        clicked => {
+                            root.picked(entry.pack-id, entry.shortcode);
+                        }
+
+                        Rectangle {
+                            width: root.cell - 4px;
+                            height: root.cell - 4px;
+                            border-radius: 8px;
+                            background: parent.has-hover
+                                ? Palette.foreground.transparentize(0.9)
+                                : transparent;
+                        }
+
+                        StickerCellArt {
+                            width: root.cell;
+                            height: root.cell;
+                            art: entry.image;
+                            state: entry.media-state;
+                        }
+                    }
+                }
+            }
+
+            if StickerView.loading: Spinner {
+                x: (parent.width - self.width) / 2;
+                y: (parent.height - self.height) / 2;
+                indeterminate: true;
+            }
+
+            if !StickerView.loading && root.is-empty: VerticalLayout {
+                alignment: center;
+                spacing: 8px;
+
+                HorizontalLayout {
+                    alignment: center;
+
+                    IconDisplay {
+                        icon: root.is-searching ? IconSet.SearchX : IconSet.Sticker;
+                        size: 26px;
+                        stroke: Palette.foreground.transparentize(0.7);
+                    }
+                }
+
+                Text {
+                    text: root.is-searching
+                        ? @tr("No stickers match your search.")
+                        : @tr("No sticker packs yet. Join a room that shares one, or add it to your account.");
+                    color: Palette.foreground.transparentize(0.5);
+                    font-size: 12px;
+                    horizontal-alignment: center;
+                    wrap: word-wrap;
+                }
+            }
+        }
+
+        if !root.is-searching && StickerView.packs.length > 1: Rectangle {
+            height: 38px;
+
+            footer := Flickable {
+                viewport-width: max(self.width, StickerView.packs.length * 38px);
+
+                for pack[idx] in StickerView.packs: PackTab {
+                    x: idx * 38px + 2px;
+                    y: 2px;
+                    title: pack.title;
+                    icon: pack.icon;
+                    has-icon: pack.has-icon;
+                    selected: pack.header-row <= root.row-at-viewport-middle
+                        && (idx == StickerView.packs.length - 1
+                            || StickerView.packs[idx + 1].header-row > root.row-at-viewport-middle);
+                    clicked => {
+                        root.jump-to(pack.header-row);
+                    }
+                }
+            }
+        }
+    }
+}

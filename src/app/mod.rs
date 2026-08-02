@@ -7,6 +7,7 @@ mod room_directory;
 mod selection;
 mod session;
 mod space_order;
+mod stickers;
 mod task_group;
 mod verification;
 
@@ -19,6 +20,7 @@ use media::MediaActions;
 use room_directory::RoomDirectory;
 use selection::Selection;
 use session::{AuthOutcome, SessionController};
+use stickers::Stickers;
 use task_group::TaskGroup;
 use tokio::sync::{mpsc, watch};
 use verification::VerificationController;
@@ -29,7 +31,7 @@ use crate::commands::sync::DirectoryUpdate;
 use crate::commands::ui::{UiCommand, ViewportChanged};
 use crate::commands::view::{AppViewState, LoginActivity, LoginStep, Toast};
 use crate::domain::account::AccountScope;
-use crate::domain::models::{ConnectionStatus, RoomId, RoomList, Space, TimelineFocus};
+use crate::domain::models::{ConnectionStatus, PackId, RoomId, RoomList, Space, TimelineFocus};
 use crate::ports::browser::BrowserPort;
 use crate::ports::matrix::{AuthPort, AuthenticatedSession, SessionPort};
 use crate::ports::media::MediaFilePort;
@@ -72,6 +74,7 @@ pub struct AppService {
     active_timeline: ActiveTimeline,
     verification: VerificationController,
     media: MediaActions,
+    stickers: Stickers,
     selection: Selection,
     last_selected_room: Option<EmittedRoom>,
     lifecycle: Lifecycle,
@@ -105,6 +108,7 @@ impl AppService {
             active_timeline: ActiveTimeline::new(cmd_tx.clone(), Arc::clone(&output)),
             verification: VerificationController::new(Arc::clone(&output)),
             media: MediaActions::new(media_files, Arc::clone(&output)),
+            stickers: Stickers::new(Arc::clone(&output)),
             cmd_tx,
             dir_in_tx,
             output,
@@ -234,6 +238,14 @@ impl AppService {
                 reply_to,
             } => {
                 self.send_message(room_id, body, reply_to);
+            }
+            UiCommand::SendSticker {
+                room_id,
+                pack,
+                shortcode,
+                reply_to,
+            } => {
+                self.send_sticker(room_id, pack, shortcode, reply_to);
             }
             UiCommand::PaginateBackwards {
                 room_id,
@@ -488,6 +500,19 @@ impl AppService {
             .spawn_send(&mut self.operations, timeline, room_id, body, reply_to);
     }
 
+    fn send_sticker(
+        &mut self,
+        room_id: RoomId,
+        pack: PackId,
+        shortcode: String,
+        reply_to: Option<String>,
+    ) {
+        if let Some(stickers) = self.port(|a| &a.stickers) {
+            self.stickers
+                .send(stickers, room_id, pack, shortcode, reply_to);
+        }
+    }
+
     fn open_media(&mut self, event_id: String) {
         if let Some(media) = self.port(|a| &a.media) {
             self.media.open_media(media, event_id);
@@ -540,6 +565,10 @@ impl AppService {
             .map_or_else(|| (String::new(), 0), |m| (m.name, m.member_count));
         self.emit_selected_room(room_id.clone(), name, member_count, generation)
             .await;
+        if let Some(stickers) = self.port(|a| &a.stickers) {
+            self.stickers
+                .select_room(stickers, room_id.clone(), generation);
+        }
         let Some(timeline) = self.port(|a| &a.timeline) else {
             return;
         };
@@ -581,6 +610,7 @@ impl AppService {
         let generation = self.selection.next_generation();
         self.emit_selected_room(RoomId::new(String::new()), String::new(), 0, generation)
             .await;
+        self.stickers.clear_room();
         self.active_timeline.clear_room(generation).await;
     }
 
@@ -631,6 +661,7 @@ impl AppService {
             self.active_timeline.shutdown(),
             self.operations.restart(),
             self.media.cancel_and_drain(),
+            self.stickers.restart(),
         );
     }
 
@@ -673,6 +704,7 @@ impl AppService {
             self.active_timeline.shutdown(),
             self.operations.shutdown(),
             self.media.drain(),
+            self.stickers.shutdown(),
         );
     }
 }

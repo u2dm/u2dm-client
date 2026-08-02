@@ -4,7 +4,8 @@ import {
 import { IconDisplay, IconSet } from "@lucide";
 
 import { EmojiInsert } from "../types.slint";
-import { EmojiPicker, EmojiStore } from "./emoji-picker.slint";
+import { EmojiStore } from "./emoji-picker.slint";
+import { PickerPanel } from "./picker-panel.slint";
 import { ReplyQuote } from "../reply-quote.slint";
 import { Fonts } from "../../../../theme.slint";
 import { ClickArea } from "../../../../components/a11y.slint";
@@ -16,6 +17,7 @@ export component MessageInput inherits Rectangle {
     in-out property <string> message: "";
 
     property <bool> picker-open: false;
+    property <int> picker-tab: 0;
     property <bool> is-replying: Composer.reply-event-id != "";
     property <bool> has-text: root.message != "";
     property <int> caret: 0;
@@ -47,14 +49,29 @@ export component MessageInput inherits Rectangle {
         }
     }
 
-    if root.picker-open: EmojiPicker {
+    if root.picker-open: PickerPanel {
         width: min(root.width - 16px, 360px);
         x: root.width - self.width - 8px;
         y: -self.height - 8px;
         height: 380px;
-        picked(glyph) => {
+        tab <=> root.picker-tab;
+        emoji-picked(glyph) => {
             root.insert-at-caret(glyph);
         }
+        sticker-picked(pack-id, shortcode) => {
+            root.send-sticker(pack-id, shortcode);
+        }
+    }
+
+    function send-sticker(pack-id: string, shortcode: string) {
+        Actions.send-sticker({
+            room-id: root.room-id,
+            pack-id: pack-id,
+            shortcode: shortcode,
+            reply-to: Composer.reply-event-id,
+        });
+        Composer.clear();
+        root.picker-open = false;
     }
 
     function insert-at-caret(glyph: string) {

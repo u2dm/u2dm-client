@@ -1,7 +1,7 @@
 use strum::Display as StrumDisplay;
 
 use crate::domain::models::{
-    LoginCredentials, PaginationDirection, PaginationOutcome, RoomId, TimelineFocus,
+    LoginCredentials, PackId, PaginationDirection, PaginationOutcome, RoomId, TimelineFocus,
 };
 
 #[derive(StrumDisplay)]
@@ -36,6 +36,13 @@ pub enum UiCommand {
     SendMessage {
         room_id: RoomId,
         body: String,
+        reply_to: Option<String>,
+    },
+    #[strum(to_string = "SendSticker({room_id},{shortcode})")]
+    SendSticker {
+        room_id: RoomId,
+        pack: PackId,
+        shortcode: String,
         reply_to: Option<String>,
     },
     #[strum(to_string = "PaginateBackwards({room_id})")]

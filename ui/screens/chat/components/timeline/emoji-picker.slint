@@ -1,7 +1,8 @@
-import { Palette, LineEdit } from "std-widgets.slint";
+import { Palette } from "std-widgets.slint";
 import { IconDisplay, IconSet, Icon } from "@lucide";
 
 import { EmojiEntry, EmojiGroup, EmojiInsert } from "../types.slint";
+import { PickerSearch } from "picker-search.slint";
 import { Fonts } from "../../../../theme.slint";
 import { ClickArea } from "../../../../components/a11y.slint";
 
@@ -74,8 +75,10 @@ export component EmojiPicker inherits Rectangle {
     in-out property <int> category: 0;
     in-out property <string> query: "";
 
-    property <length> cell: 34px;
-    property <int> columns: max(1, floor((root.width - 16px) / root.cell));
+    property <length> min-cell: 34px;
+    property <length> grid-width: root.width - 16px;
+    property <int> columns: max(1, floor(root.grid-width / root.min-cell));
+    property <length> cell: root.grid-width / root.columns;
     property <bool> is-searching: root.query != "";
     property <[EmojiEntry]> current-items: root.is-searching
         ? EmojiStore.results
@@ -118,14 +121,6 @@ export component EmojiPicker inherits Rectangle {
         #7C533E,
     ];
 
-    background: Palette.alternate-background;
-    border-radius: 10px;
-    border-width: 1px;
-    border-color: Palette.foreground.transparentize(0.85);
-    drop-shadow-blur: 16px;
-    drop-shadow-color: Palette.foreground.transparentize(0.75);
-    drop-shadow-offset-y: 4px;
-
     VerticalLayout {
         padding: 8px;
         spacing: 6px;
@@ -134,10 +129,10 @@ export component EmojiPicker inherits Rectangle {
             height: 30px;
             spacing: 8px;
 
-            search-input := LineEdit {
+            PickerSearch {
                 horizontal-stretch: 1;
-                placeholder-text: @tr("Search emoji");
-                text <=> root.query;
+                placeholder: @tr("Search emoji");
+                query <=> root.query;
                 edited(text) => {
                     EmojiStore.search(text);
                 }
@@ -145,6 +140,7 @@ export component EmojiPicker inherits Rectangle {
 
             VerticalLayout {
                 alignment: center;
+                horizontal-stretch: 0;
 
                 HorizontalLayout {
                     spacing: 4px;

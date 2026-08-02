@@ -3,7 +3,7 @@ use tokio::sync::{mpsc, watch};
 use super::props::send_command;
 use super::schema::simple_callbacks;
 use crate::commands::ui::{UiCommand, ViewportChanged};
-use crate::domain::models::{LoginCredentials, RoomId};
+use crate::domain::models::{LoginCredentials, PackId, RoomId};
 
 type Tx = mpsc::UnboundedSender<UiCommand>;
 
@@ -63,6 +63,27 @@ pub fn send_message(tx: &Tx, room_id: String, body: String, reply_to: String) {
         UiCommand::SendMessage {
             room_id: RoomId::new(room_id),
             body,
+            reply_to: (!reply_to.is_empty()).then_some(reply_to),
+        },
+    );
+}
+
+pub fn send_sticker(
+    tx: &Tx,
+    room_id: String,
+    pack_id: String,
+    shortcode: String,
+    reply_to: String,
+) {
+    if room_id.is_empty() || pack_id.is_empty() || shortcode.is_empty() {
+        return;
+    }
+    send_command(
+        tx,
+        UiCommand::SendSticker {
+            room_id: RoomId::new(room_id),
+            pack: PackId::new(pack_id),
+            shortcode,
             reply_to: (!reply_to.is_empty()).then_some(reply_to),
         },
     );

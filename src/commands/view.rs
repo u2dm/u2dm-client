@@ -2,7 +2,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use super::messages::UserMessage;
-use crate::domain::models::{ConnectionStatus, LoginMethod, RoomList, Space};
+use crate::domain::models::{ConnectionStatus, LoginMethod, RoomList, Space, StickerPacks};
 
 #[derive(Clone, Default)]
 pub struct AppViewState {
@@ -10,6 +10,7 @@ pub struct AppViewState {
     pub connection: ConnectionStatus,
     pub directory: DirectoryView,
     pub pagination: PaginationView,
+    pub stickers: StickerView,
     pub toast: Toast,
 }
 
@@ -48,6 +49,27 @@ impl PaginationView {
                 generation,
                 ..Self::default()
             };
+        }
+    }
+}
+
+#[derive(Clone)]
+pub struct StickerView {
+    pub generation: i32,
+    pub packs: StickerPacks,
+    pub ready_images: usize,
+    pub room_encrypted: bool,
+    pub loading: bool,
+}
+
+impl Default for StickerView {
+    fn default() -> Self {
+        Self {
+            generation: 0,
+            packs: Arc::from(Vec::new()),
+            ready_images: 0,
+            room_encrypted: false,
+            loading: false,
         }
     }
 }

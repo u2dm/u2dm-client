@@ -2,14 +2,17 @@ use std::fs;
 use std::sync::{Arc, OnceLock};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use super::dto::{DemoData, RoomDto, SpaceDto};
+use super::dto::{DemoData, RoomDto, SpaceDto, StickerPackDto};
 use super::media;
 use super::timeline::{self, scenario};
 use crate::domain::models::{
-    MessageBody, ReplyInfo, Room, RoomId, Session, Space, TimelineMessage,
+    ImageMeta, MessageBody, ReplyInfo, Room, RoomId, Session, Space, StickerImage, StickerPack,
+    TimelineMessage,
 };
 
 const UNKNOWN_SENDER: &str = "@member:matrix.org";
+const SENT_STICKER_EXTENT: u32 = 512;
+const STICKER_ASSET_MARKER: char = '#';
 
 static DATA: OnceLock<DemoData> = OnceLock::new();
 
@@ -54,6 +57,26 @@ pub fn rooms() -> Vec<Arc<Room>> {
 
 pub fn spaces() -> Vec<Space> {
     data().spaces.iter().map(SpaceDto::to_space).collect()
+}
+
+pub fn sticker_packs(room_id: &RoomId) -> Vec<StickerPack> {
+    data()
+        .sticker_packs
+        .iter()
+        .filter(|pack| pack.covers(room_id))
+        .map(StickerPackDto::to_pack)
+        .collect()
+}
+
+pub fn sticker_image(pack_id: &str, shortcode: &str) -> Option<StickerImage> {
+    data()
+        .sticker_packs
+        .iter()
+        .find(|pack| pack.id == pack_id)?
+        .to_pack()
+        .images
+        .into_iter()
+        .find(|image| image.shortcode == shortcode)
 }
 
 pub fn messages(room_id: &RoomId) -> Vec<TimelineMessage> {
@@ -133,6 +156,44 @@ pub fn own_message(sequence: u64, body: &str, reply: Option<ReplyInfo>) -> Timel
         edited: false,
         is_first_unread: false,
     }
+}
+
+pub fn own_sticker(
+    sequence: u64,
+    image: &StickerImage,
+    reply: Option<ReplyInfo>,
+) -> TimelineMessage {
+    let id = format!(
+        "demo-sent-{sequence}{STICKER_ASSET_MARKER}{}",
+        media::mxc_asset(&image.mxc)
+    );
+    TimelineMessage {
+        unique_id: id.clone(),
+        event_id: Some(id),
+        sender_pronouns: Vec::new(),
+        sender: own_user().to_owned(),
+        sender_display_name: Some("You".to_owned()),
+        sender_avatar_url: Some(own_user().to_owned()),
+        body: MessageBody::Sticker {
+            alt: image.body.clone(),
+            meta: ImageMeta {
+                width: Some(SENT_STICKER_EXTENT),
+                height: Some(SENT_STICKER_EXTENT),
+                mimetype: None,
+            },
+        },
+        timestamp: now_ms(),
+        is_own: true,
+        reply,
+        edited: false,
+        is_first_unread: false,
+    }
+}
+
+pub fn sticker_asset_in(event_id: &str) -> Option<&str> {
+    event_id
+        .split_once(STICKER_ASSET_MARKER)
+        .map(|(_, asset)| asset)
 }
 
 pub fn body_preview(body: &MessageBody) -> String {

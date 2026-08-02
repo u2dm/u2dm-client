@@ -1,16 +1,17 @@
 use std::collections::HashSet;
 use std::sync::Arc;
 
-use slint::{ComponentHandle, Image, VecModel};
+use slint::{ComponentHandle, Image, Model, VecModel};
 use tokio::sync::OwnedSemaphorePermit;
 
 use super::decode::{
     AvatarSlot, DecodeOutcome, advance_animations, set_animation_tick, set_avatar_ready,
     set_image_ready,
 };
+use super::dto::{CELL_KEY_SEPARATOR, StickerPackDto, StickerRowDto};
 use super::props::{IntProp, StringProp, UiProps};
 use super::reduce::dispatch_effect;
-use super::rows::{patch_first_row, patch_rows_by_id};
+use super::rows::{locate_row, patch_first_row, patch_rows_by_id};
 use crate::commands::effects::Effect;
 use crate::domain::models::{EnrichmentDelta, Room, RoomId, Space, TimelineMessage};
 use crate::ports::media::MediaCache;
@@ -20,11 +21,22 @@ pub trait UiBackend: Sized + 'static {
     type Message: Clone + 'static;
     type Room: Clone + PartialEq + 'static;
     type Space: Clone + PartialEq + 'static;
+    type StickerRow: Clone + 'static;
+    type StickerPack: Clone + 'static;
 
     fn convert_message(message: &TimelineMessage, media: &dyn MediaCache) -> Self::Message;
     fn enrich_message(entry: &mut Self::Message, delta: &EnrichmentDelta, media: &dyn MediaCache);
     fn convert_room(room: &Room, media: &dyn MediaCache) -> Self::Room;
     fn convert_space(space: &Space, media: &dyn MediaCache) -> Self::Space;
+
+    fn convert_sticker_row(row: &StickerRowDto) -> Self::StickerRow;
+    fn convert_sticker_pack(pack: &StickerPackDto) -> Self::StickerPack;
+    fn patch_sticker_cell(row: &Self::StickerRow, key: &str, art: Option<&Image>) -> bool;
+    fn sticker_pack_with_icon(
+        pack: &Self::StickerPack,
+        pack_id: &str,
+        image: &Image,
+    ) -> Option<Self::StickerPack>;
 
     fn message_id(entry: &Self::Message) -> &str;
     fn message_event_id(entry: &Self::Message) -> &str;
@@ -48,6 +60,9 @@ pub trait UiBackend: Sized + 'static {
         ) -> R,
     ) -> Option<R>;
     fn with_timeline<R>(f: impl FnOnce(&VecModel<Self::Message>) -> R) -> Option<R>;
+    fn with_stickers<R>(
+        f: impl FnOnce(&VecModel<Self::StickerRow>, &VecModel<Self::StickerPack>) -> R,
+    ) -> Option<R>;
 }
 
 pub struct UiEventContext<'a, B: UiBackend> {
@@ -111,11 +126,60 @@ pub fn selected_room_key<B: UiBackend>(weak: &slint::Weak<B::Window>) -> Option<
 }
 
 fn tick_animations<B: UiBackend>() {
-    B::with_timeline(|timeline| {
-        advance_animations(timeline, &B::message_id, &|entry, frame| {
-            B::set_message_frame(entry, frame);
-        });
+    advance_animations(&mut |key, hint, frame| {
+        place_timeline_frame::<B>(key, hint, &frame)
+            .or_else(|| place_sticker_image::<B>(key, Some(&frame)))
     });
+}
+
+fn place_timeline_frame<B: UiBackend>(key: &str, hint: usize, frame: &Image) -> Option<usize> {
+    B::with_timeline(|timeline| {
+        let row = locate_row(timeline, &B::message_id, key, hint)?;
+        let entry = timeline.row_data(row)?;
+        let mut updated = entry;
+        B::set_message_frame(&mut updated, frame.clone());
+        timeline.set_row_data(row, updated);
+        Some(row)
+    })
+    .flatten()
+}
+
+fn place_sticker_image<B: UiBackend>(key: &str, art: Option<&Image>) -> Option<usize> {
+    B::with_stickers(|rows, packs| {
+        let mut placed = None;
+        for row in 0..rows.row_count() {
+            let Some(entry) = rows.row_data(row) else {
+                continue;
+            };
+            if B::patch_sticker_cell(&entry, key, art) {
+                placed = Some(row);
+                break;
+            }
+        }
+        if let Some(art) = art {
+            adopt_pack_icon::<B>(packs, key, art);
+        }
+        placed
+    })
+    .flatten()
+}
+
+fn adopt_pack_icon<B: UiBackend>(packs: &VecModel<B::StickerPack>, key: &str, image: &Image) {
+    let Some(pack_id) = key.split(CELL_KEY_SEPARATOR).next() else {
+        return;
+    };
+    let mut tabs: Vec<B::StickerPack> = packs.iter().collect();
+    let mut adopted = false;
+    for tab in &mut tabs {
+        if let Some(updated) = B::sticker_pack_with_icon(tab, pack_id, image) {
+            *tab = updated;
+            adopted = true;
+            break;
+        }
+    }
+    if adopted {
+        packs.set_vec(tabs);
+    }
 }
 
 fn apply_thumbnail_ready<B: UiBackend>(unique_id: &str, outcome: DecodeOutcome<'_>) {
@@ -133,6 +197,11 @@ fn apply_thumbnail_ready<B: UiBackend>(unique_id: &str, outcome: DecodeOutcome<'
             },
         );
     });
+    let image = match outcome {
+        DecodeOutcome::Ready(image) => Some(image),
+        DecodeOutcome::Failed | DecodeOutcome::Deferred => None,
+    };
+    place_sticker_image::<B>(unique_id, image);
 }
 
 #[derive(Default)]

@@ -1,0 +1,102 @@
+import { Palette } from "std-widgets.slint";
+
+import { EmojiPicker } from "emoji-picker.slint";
+import { StickerPicker } from "sticker-picker.slint";
+import { ClickArea } from "../../../../components/a11y.slint";
+
+component PanelTab inherits Rectangle {
+    in property <string> title;
+    in property <bool> selected;
+    callback clicked();
+
+    horizontal-stretch: 1;
+    height: 28px;
+    border-radius: 6px;
+    background: root.selected
+        ? Palette.accent-background.transparentize(0.82)
+        : (touch.has-hover ? Palette.foreground.transparentize(0.92) : transparent);
+
+    touch := ClickArea {
+        label: root.title;
+        ring-radius: 6px;
+        clicked => {
+            root.clicked();
+        }
+
+        Text {
+            x: 0;
+            y: 0;
+            width: parent.width;
+            height: parent.height;
+            text: root.title;
+            font-size: 12px;
+            color: root.selected
+                ? Palette.accent-background
+                : Palette.foreground.transparentize(0.35);
+            horizontal-alignment: center;
+            vertical-alignment: center;
+        }
+    }
+}
+
+export component PickerPanel inherits Rectangle {
+    callback emoji-picked(string);
+    callback sticker-picked(string, string);
+
+    in-out property <int> tab: 0;
+
+    background: Palette.alternate-background;
+    border-radius: 10px;
+    border-width: 1px;
+    border-color: Palette.foreground.transparentize(0.85);
+    drop-shadow-blur: 16px;
+    drop-shadow-color: Palette.foreground.transparentize(0.75);
+    drop-shadow-offset-y: 4px;
+
+    VerticalLayout {
+        padding: 8px;
+        padding-bottom: 0;
+        spacing: 6px;
+
+        HorizontalLayout {
+            height: 28px;
+            spacing: 4px;
+
+            PanelTab {
+                title: @tr("Emoji");
+                selected: root.tab == 0;
+                clicked => {
+                    root.tab = 0;
+                }
+            }
+
+            PanelTab {
+                title: @tr("Stickers");
+                selected: root.tab == 1;
+                clicked => {
+                    root.tab = 1;
+                }
+            }
+        }
+
+        Rectangle {
+            vertical-stretch: 1;
+
+            if root.tab == 0: EmojiPicker {
+                width: 100%;
+                height: 100%;
+                picked(glyph) => {
+                    root.emoji-picked(glyph);
+                }
+            }
+
+            if root.tab == 1: StickerPicker {
+                width: 100%;
+                height: 100%;
+                picked(pack-id, shortcode) => {
+                    root.sticker-picked(pack-id, shortcode);
+                }
+            }
+        }
+    }
+}

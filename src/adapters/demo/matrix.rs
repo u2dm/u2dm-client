@@ -9,18 +9,18 @@ use tokio::sync::mpsc;
 use tokio::time::sleep;
 use tokio_util::sync::CancellationToken;
 
-use super::{data, login, media, timeline, verification};
+use super::{data, login, media, stickers, timeline, verification};
 use crate::domain::models::{
-    AuthMethod, JumpTarget, LoginCredentials, MessageBody, OAuthLoginData, PaginationDirection,
-    PaginationOutcome, ReplyInfo, RoomId, ServerInfo, Session, SyncEvent, SyncOutcome,
-    TimelineCommand, TimelineFocus, TimelineMessage, TimelinePatch, TimelineUpdate,
-    VerificationCancellation, VerificationEvent,
+    AuthMethod, JumpTarget, LoginCredentials, MessageBody, OAuthLoginData, PackId,
+    PaginationDirection, PaginationOutcome, ReplyInfo, RoomId, ServerInfo, Session, StickerImage,
+    SyncEvent, SyncOutcome, TimelineCommand, TimelineFocus, TimelineMessage, TimelinePatch,
+    TimelineUpdate, VerificationCancellation, VerificationEvent,
 };
 use crate::error::{AppError, Result};
 use crate::ports::matrix::{
     AuthPort, AuthenticatedSession, CleanupReport, MediaPort, PendingLogin, ProgressSink,
-    RestoreStep, SessionPort, SpaceOrderPort, StoreAdoption, SyncPort, SyncSink, TimelinePort,
-    VerificationPort,
+    RestoreStep, SessionPort, SpaceOrderPort, StickerCatalog, StickerPort, StoreAdoption, SyncPort,
+    SyncSink, TimelinePort, VerificationPort,
 };
 use crate::ports::media::MediaCache;
 
@@ -141,6 +141,7 @@ fn authenticated(session: Session) -> AuthenticatedSession {
     let media = Arc::clone(&authed);
     let verification = Arc::clone(&authed);
     let space_order = Arc::clone(&authed);
+    let stickers = Arc::clone(&authed);
     AuthenticatedSession {
         session,
         sync,
@@ -148,6 +149,7 @@ fn authenticated(session: Session) -> AuthenticatedSession {
         media,
         verification,
         space_order,
+        stickers,
         lifecycle: authed,
     }
 }
@@ -181,6 +183,34 @@ impl DemoAuthed {
 
             let reply = in_reply_to.and_then(|event_id| reply_info(&active.messages, event_id));
             let message = data::own_message(self.sent.fetch_add(1, Ordering::Relaxed), body, reply);
+            active.messages.push(message.clone());
+            (active.timeline_tx.clone(), message)
+        };
+        let (timeline_tx, message) = prepared;
+
+        send_patch(&timeline_tx, TimelinePatch::PushBack(message)).await;
+    }
+
+    async fn append_own_sticker(
+        &self,
+        room_id: &RoomId,
+        image: &StickerImage,
+        in_reply_to: Option<&str>,
+    ) {
+        let prepared = {
+            let Ok(mut guard) = self.active.lock() else {
+                return;
+            };
+            let Some(active) = guard.as_mut() else {
+                return;
+            };
+            if &active.room_id != room_id {
+                return;
+            }
+
+            let reply = in_reply_to.and_then(|event_id| reply_info(&active.messages, event_id));
+            let message =
+                data::own_sticker(self.sent.fetch_add(1, Ordering::Relaxed), image, reply);
             active.messages.push(message.clone());
             (active.timeline_tx.clone(), message)
         };
@@ -362,6 +392,49 @@ impl MediaPort for DemoAuthed {
             .thumbnail_path(event_id)
             .ok_or_else(|| AppError::Other(format!("no demo asset for event {event_id}")))?;
         Ok(fs::read(path)?)
+    }
+}
+
+#[async_trait]
+impl StickerPort for DemoAuthed {
+    async fn catalog(&self, room_id: &RoomId) -> Result<StickerCatalog> {
+        let demo = stickers::scenario();
+        stickers::pause_catalog().await;
+        if demo.catalog_fails {
+            return Err(unavailable("loading sticker packs"));
+        }
+        let packs = if demo.catalog_is_empty {
+            Vec::new()
+        } else {
+            data::sticker_packs(room_id)
+        };
+        Ok(StickerCatalog {
+            packs,
+            room_encrypted: demo.room_is_encrypted,
+        })
+    }
+
+    async fn prefetch(&self, mxcs: &[String]) -> usize {
+        stickers::pause_prefetch().await;
+        mxcs.iter()
+            .filter(|mxc| media::DemoMediaCache.sticker_path(mxc).is_some())
+            .count()
+    }
+
+    async fn send_sticker(
+        &self,
+        room_id: &RoomId,
+        pack: &PackId,
+        shortcode: &str,
+        in_reply_to: Option<&str>,
+    ) -> Result<()> {
+        if stickers::scenario().send_fails {
+            return Err(unavailable("sending stickers"));
+        }
+        let image = data::sticker_image(pack, shortcode)
+            .ok_or_else(|| AppError::Other(format!("no demo sticker {pack}/{shortcode}")))?;
+        self.append_own_sticker(room_id, &image, in_reply_to).await;
+        Ok(())
     }
 }
 

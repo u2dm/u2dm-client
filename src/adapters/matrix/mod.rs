@@ -5,6 +5,7 @@ mod media;
 mod preview;
 mod profile;
 mod rooms;
+mod stickers;
 mod store;
 mod timeline;
 mod verification;
@@ -145,6 +146,7 @@ async fn authenticate(
         account,
         media,
         media_sources: Arc::new(StdMutex::new(HashMap::new())),
+        sticker_sources: Arc::new(StdMutex::new(HashMap::new())),
         pronouns: Arc::new(PronounCache::default()),
         verification_request: Mutex::new(None),
         sas_verification: Mutex::new(None),
@@ -156,6 +158,7 @@ async fn authenticate(
     let media = Arc::clone(&authed);
     let verification = Arc::clone(&authed);
     let space_order = Arc::clone(&authed);
+    let stickers = Arc::clone(&authed);
     AuthenticatedSession {
         session,
         sync,
@@ -163,6 +166,7 @@ async fn authenticate(
         media,
         verification,
         space_order,
+        stickers,
         lifecycle: authed,
     }
 }
@@ -335,6 +339,7 @@ struct AuthedMatrix {
     account: AccountScope,
     media: Arc<MediaService>,
     media_sources: Arc<StdMutex<HashMap<String, MediaSource>>>,
+    sticker_sources: Arc<stickers::StickerSources>,
     pronouns: Arc<PronounCache>,
     verification_request: Mutex<Option<VerificationRequest>>,
     sas_verification: Mutex<Option<SasVerification>>,

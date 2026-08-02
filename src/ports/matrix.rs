@@ -7,8 +7,8 @@ use tokio_util::sync::CancellationToken;
 
 use crate::domain::account::AccountScope;
 use crate::domain::models::{
-    LoginCredentials, OAuthLoginData, RoomId, ServerInfo, Session, SyncEvent, SyncOutcome,
-    TimelineCommand, TimelineFocus, TimelineUpdate, VerificationEvent,
+    LoginCredentials, OAuthLoginData, PackId, RoomId, ServerInfo, Session, StickerPack, SyncEvent,
+    SyncOutcome, TimelineCommand, TimelineFocus, TimelineUpdate, VerificationEvent,
 };
 use crate::error::Result;
 
@@ -87,6 +87,7 @@ pub struct AuthenticatedSession {
     pub media: Arc<dyn MediaPort>,
     pub verification: Arc<dyn VerificationPort>,
     pub space_order: Arc<dyn SpaceOrderPort>,
+    pub stickers: Arc<dyn StickerPort>,
     pub lifecycle: Arc<dyn SessionPort>,
 }
 
@@ -149,6 +150,25 @@ pub trait TimelinePort: Send + Sync {
 #[async_trait]
 pub trait MediaPort: Send + Sync {
     async fn download_media(&self, event_id: &str, thumbnail: bool) -> Result<Vec<u8>>;
+}
+
+#[derive(Debug, Default)]
+pub struct StickerCatalog {
+    pub packs: Vec<StickerPack>,
+    pub room_encrypted: bool,
+}
+
+#[async_trait]
+pub trait StickerPort: Send + Sync {
+    async fn catalog(&self, room_id: &RoomId) -> Result<StickerCatalog>;
+    async fn prefetch(&self, mxcs: &[String]) -> usize;
+    async fn send_sticker(
+        &self,
+        room_id: &RoomId,
+        pack: &PackId,
+        shortcode: &str,
+        in_reply_to: Option<&str>,
+    ) -> Result<()>;
 }
 
 #[async_trait]

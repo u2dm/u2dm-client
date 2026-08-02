@@ -79,9 +79,39 @@ export struct EmojiInsert {
     caret: int,
 }
 
+export struct StickerCell {
+    key: string,
+    pack-id: string,
+    shortcode: string,
+    label: string,
+    image: image,
+    media-state: MediaState,
+}
+
+export struct StickerRow {
+    title: string,
+    is-header: bool,
+    cells: [StickerCell],
+}
+
+export struct StickerPackTab {
+    id: string,
+    title: string,
+    header-row: int,
+    icon: image,
+    has-icon: bool,
+}
+
 export struct SendMessageRequest {
     room-id: string,
     body: string,
+    reply-to: string,
+}
+
+export struct SendStickerRequest {
+    room-id: string,
+    pack-id: string,
+    shortcode: string,
     reply-to: string,
 }
 

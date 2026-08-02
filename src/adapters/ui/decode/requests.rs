@@ -15,6 +15,7 @@ thread_local! {
 enum Request {
     Media(String),
     Avatar(AvatarSlot),
+    Sticker(String),
 }
 
 #[derive(Clone)]
@@ -27,6 +28,7 @@ struct MediaNeed {
 struct Needs {
     media: HashMap<String, MediaNeed>,
     avatars: HashMap<AvatarSlot, PathBuf>,
+    stickers: HashMap<String, PathBuf>,
 }
 
 pub fn record_media_need(unique_id: &str, thumbnail: Option<PathBuf>, avatar: Option<PathBuf>) {
@@ -45,6 +47,10 @@ pub fn record_avatar_need(slot: AvatarSlot, path: PathBuf) {
     NEEDS.with_borrow_mut(|needs| needs.avatars.insert(slot, path));
 }
 
+pub fn record_sticker_need(key: &str, path: PathBuf) {
+    NEEDS.with_borrow_mut(|needs| needs.stickers.insert(key.to_owned(), path));
+}
+
 pub fn forget_all_media_needs() {
     NEEDS.with_borrow_mut(|needs| needs.media.clear());
 }
@@ -55,6 +61,10 @@ pub fn request_avatar(slot: &AvatarSlot) {
 
 pub fn request_media(unique_id: &str) {
     queue(Request::Media(unique_id.to_owned()));
+}
+
+pub fn request_sticker(key: &str) {
+    queue(Request::Sticker(key.to_owned()));
 }
 
 fn queue(request: Request) {
@@ -76,7 +86,17 @@ fn flush() {
         match request {
             Request::Media(unique_id) => resolve_media(&unique_id),
             Request::Avatar(slot) => resolve_avatar(&slot),
+            Request::Sticker(key) => resolve_sticker(&key),
         }
+    }
+}
+
+fn resolve_sticker(key: &str) {
+    let Some(path) = NEEDS.with_borrow(|needs| needs.stickers.get(key).cloned()) else {
+        return;
+    };
+    if let Some(image) = animation::load_thumbnail(&path, key) {
+        waiters::notify_media(&[key.to_owned()], DecodeOutcome::Ready(&image));
     }
 }
 

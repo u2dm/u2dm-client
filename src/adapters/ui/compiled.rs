@@ -2,20 +2,22 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::Arc;
 
-use slint::{ComponentHandle, Image, ModelRc, SharedString, VecModel};
+use slint::{ComponentHandle, Image, Model, ModelRc, SharedString, VecModel};
 use tokio::runtime::Runtime;
 use tokio::sync::{mpsc, watch};
 
 use super::backend::{UiBackend, install_render_hooks, post_effect, selected_room_key};
 use super::clock::install_clock_invalidation;
-use super::decode::{AvatarSlot, request_avatar, request_media};
+use super::decode::{AvatarSlot, request_avatar, request_media, request_sticker};
 use super::dto::{
-    MediaState, ThumbUpdate, enrich_to_update, message_to_dto, room_to_dto, space_to_dto,
+    MediaState, StickerCellDto, StickerPackDto, StickerRowDto, ThumbUpdate, enrich_to_update,
+    message_to_dto, room_to_dto, space_to_dto,
 };
 use super::multiplex::spawn_event_multiplexer;
 use super::present::{MessageKind, ServiceKind, VerifyStep};
 use super::props::{BoolProp, IntProp, StringProp, UiProps};
 use super::reconcile::reorder_rows;
+use super::reduce::set_sticker_query;
 use super::schema::{
     bool_props, connection_states, int_props, login_activities, login_methods, login_phases,
     media_states, message_kinds, preview_kinds, service_kinds, simple_callbacks, string_props,
@@ -42,7 +44,8 @@ use generated::{
     EmojiStore, LoginActivity as UiLoginActivity, LoginMethodKind as UiLoginMethodKind, LoginPhase,
     LoginView, MediaState as UiMediaState, MessageEntry, MessageKind as UiMessageKind,
     PreviewKind as UiPreviewKind, RoomEntry, RoomView, ServiceKind as UiServiceKind, SessionView,
-    SpaceEntry, TimelineState, UserMessage as UiUserMessage, UserMessageKind as UiUserMessageKind,
+    SpaceEntry, StickerCell, StickerPackTab, StickerRow, StickerView, TimelineState,
+    UserMessage as UiUserMessage, UserMessageKind as UiUserMessageKind,
     VerificationActivity as UiVerificationActivity, VerificationEmoji, VerificationPhase,
     VerificationView,
 };
@@ -56,6 +59,8 @@ thread_local! {
     static ROOMS_MODEL: RefCell<Option<Rc<VecModel<RoomEntry>>>> = const { RefCell::new(None) };
     static SPACES_MODEL: RefCell<Option<Rc<VecModel<SpaceEntry>>>> = const { RefCell::new(None) };
     static SUBSPACES_MODEL: RefCell<Option<Rc<VecModel<SpaceEntry>>>> = const { RefCell::new(None) };
+    static STICKER_ROWS_MODEL: RefCell<Option<Rc<VecModel<StickerRow>>>> = const { RefCell::new(None) };
+    static STICKER_PACKS_MODEL: RefCell<Option<Rc<VecModel<StickerPackTab>>>> = const { RefCell::new(None) };
 }
 
 macro_rules! impl_prop_setter {
@@ -246,6 +251,8 @@ impl UiBackend for CompiledBackend {
     type Message = MessageEntry;
     type Room = RoomEntry;
     type Space = SpaceEntry;
+    type StickerRow = StickerRow;
+    type StickerPack = StickerPackTab;
 
     fn convert_message(message: &TimelineMessage, media: &dyn MediaCache) -> MessageEntry {
         message_to_entry(message, media)
@@ -261,6 +268,59 @@ impl UiBackend for CompiledBackend {
 
     fn convert_space(space: &Space, media: &dyn MediaCache) -> SpaceEntry {
         space_to_entry(space, media)
+    }
+
+    fn convert_sticker_row(row: &StickerRowDto) -> StickerRow {
+        StickerRow {
+            title: row.title.clone(),
+            is_header: row.is_header,
+            cells: ModelRc::new(VecModel::from(
+                row.cells.iter().map(sticker_to_entry).collect::<Vec<_>>(),
+            )),
+        }
+    }
+
+    fn convert_sticker_pack(pack: &StickerPackDto) -> StickerPackTab {
+        StickerPackTab {
+            id: pack.id.clone(),
+            title: pack.title.clone(),
+            header_row: pack.header_row,
+            icon: pack.icon.clone().unwrap_or_default(),
+            has_icon: pack.icon.is_some(),
+        }
+    }
+
+    fn sticker_pack_with_icon(
+        pack: &StickerPackTab,
+        pack_id: &str,
+        image: &Image,
+    ) -> Option<StickerPackTab> {
+        (!pack.has_icon && pack.id == pack_id).then(|| StickerPackTab {
+            icon: image.clone(),
+            has_icon: true,
+            ..pack.clone()
+        })
+    }
+
+    fn patch_sticker_cell(row: &StickerRow, key: &str, art: Option<&Image>) -> bool {
+        let Some(index) = row.cells.iter().position(|cell| cell.key == key) else {
+            return false;
+        };
+        let Some(cells) = row.cells.as_any().downcast_ref::<VecModel<StickerCell>>() else {
+            return false;
+        };
+        let Some(mut cell) = cells.row_data(index) else {
+            return false;
+        };
+        match art {
+            Some(art) => {
+                cell.image = art.clone();
+                cell.media_state = UiMediaState::Ready;
+            }
+            None => cell.media_state = UiMediaState::Failed,
+        }
+        cells.set_row_data(index, cell);
+        true
     }
 
     fn message_id(entry: &MessageEntry) -> &str {
@@ -330,6 +390,14 @@ impl UiBackend for CompiledBackend {
         let timeline = TIMELINE_MODEL.with(|cell| cell.borrow().clone())?;
         Some(f(&timeline))
     }
+
+    fn with_stickers<R>(
+        f: impl FnOnce(&VecModel<StickerRow>, &VecModel<StickerPackTab>) -> R,
+    ) -> Option<R> {
+        let rows = STICKER_ROWS_MODEL.with(|cell| cell.borrow().clone())?;
+        let packs = STICKER_PACKS_MODEL.with(|cell| cell.borrow().clone())?;
+        Some(f(&rows, &packs))
+    }
 }
 
 pub struct SlintUiAdapter {
@@ -388,11 +456,24 @@ impl SlintUiAdapter {
             );
         });
 
+        let tx = cmd_tx.clone();
+        actions(win).on_send_sticker(move |req| {
+            router::send_sticker(
+                &tx,
+                req.room_id.to_string(),
+                req.pack_id.to_string(),
+                req.shortcode.to_string(),
+                req.reply_to.to_string(),
+            );
+        });
+
         actions(win).on_request_media(move |unique_id| request_media(&unique_id));
 
         actions(win).on_request_room_avatar(move |room_id| {
             request_avatar(&AvatarSlot::Room(room_id.to_string()));
         });
+
+        actions(win).on_request_sticker(move |key| request_sticker(&key));
 
         let tx = cmd_tx.clone();
         actions(win).on_save_file(move |req| {
@@ -441,6 +522,8 @@ impl SlintUiAdapter {
         let rooms_model: Rc<VecModel<RoomEntry>> = Rc::new(VecModel::default());
         let spaces_model: Rc<VecModel<SpaceEntry>> = Rc::new(VecModel::default());
         let subspaces_model: Rc<VecModel<SpaceEntry>> = Rc::new(VecModel::default());
+        let sticker_rows_model: Rc<VecModel<StickerRow>> = Rc::new(VecModel::default());
+        let sticker_packs_model: Rc<VecModel<StickerPackTab>> = Rc::new(VecModel::default());
 
         self.window
             .global::<RoomView>()
@@ -454,14 +537,27 @@ impl SlintUiAdapter {
         self.window
             .global::<DirectoryView>()
             .set_subspaces(ModelRc::from(Rc::clone(&subspaces_model)));
+        self.window
+            .global::<StickerView>()
+            .set_rows(ModelRc::from(Rc::clone(&sticker_rows_model)));
+        self.window
+            .global::<StickerView>()
+            .set_packs(ModelRc::from(Rc::clone(&sticker_packs_model)));
 
         TIMELINE_MODEL.with(|cell| *cell.borrow_mut() = Some(timeline_model));
         ROOMS_MODEL.with(|cell| *cell.borrow_mut() = Some(rooms_model));
         SPACES_MODEL.with(|cell| *cell.borrow_mut() = Some(spaces_model));
         SUBSPACES_MODEL.with(|cell| *cell.borrow_mut() = Some(subspaces_model));
+        STICKER_ROWS_MODEL.with(|cell| *cell.borrow_mut() = Some(sticker_rows_model));
+        STICKER_PACKS_MODEL.with(|cell| *cell.borrow_mut() = Some(sticker_packs_model));
 
         install_render_hooks::<CompiledBackend>(self.window.as_weak());
         install_clock_invalidation::<CompiledBackend>(Arc::clone(&media_cache));
+
+        let media = Arc::clone(&media_cache);
+        actions(&self.window).on_search_stickers(move |query| {
+            set_sticker_query::<CompiledBackend>(&query, media.as_ref());
+        });
 
         spawn_event_multiplexer(ui_rx, view_rx, media_cache, move |event, media, permit| {
             post_effect::<CompiledBackend>(&weak, media, event, permit);
@@ -608,6 +704,17 @@ fn room_to_entry(r: &Room, media: &dyn MediaCache) -> RoomEntry {
         last_message_is_own: d.last_message_is_own,
         last_message_edited: d.last_message_edited,
         last_message_time: d.last_message_time,
+    }
+}
+
+fn sticker_to_entry(d: &StickerCellDto) -> StickerCell {
+    StickerCell {
+        key: d.key.clone(),
+        pack_id: d.pack_id.clone(),
+        shortcode: d.shortcode.clone(),
+        label: d.label.clone(),
+        image: d.image.clone().unwrap_or_default(),
+        media_state: to_media_state(d.media_state),
     }
 }
 

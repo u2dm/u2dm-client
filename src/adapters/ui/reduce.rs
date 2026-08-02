@@ -4,16 +4,20 @@ use std::sync::Arc;
 use slint::{Model, SharedString, VecModel};
 
 use super::backend::{UiBackend, UiEventContext};
-use super::decode::{AvatarSlot, clear_session_media, load_avatar_async};
+use super::decode::{AvatarSlot, clear_session_media, load_avatar_async, request_sticker};
+use super::dto::{GRID_COLUMNS, sticker_grid};
 use super::present::{VerifyStep, user_initial, verification_cancellation};
 use super::props::{BoolProp, IntProp, StringProp, UiProps};
 use super::reconcile::{apply_rooms, apply_spaces, apply_timeline_patch};
 use crate::commands::effects::{Effect, VerificationActivity, VerificationUpdate};
 use crate::commands::messages::{UserMessage, UserMessageKind};
-use crate::commands::view::{AppViewState, DirectoryView, LifecycleView, PaginationView, Toast};
+use crate::commands::view::{
+    AppViewState, DirectoryView, LifecycleView, PaginationView, StickerView, Toast,
+};
 use crate::domain::models::{
     RoomId, RoomList, TimelinePatch, TimelineStatus, VerificationEvent as DomainVerificationEvent,
 };
+use crate::ports::media::MediaCache;
 
 const NO_ANCHOR: i32 = -1;
 
@@ -24,6 +28,7 @@ thread_local! {
     static FOCUS_EVENT_ID: RefCell<Option<String>> = const { RefCell::new(None) };
     static ACTIVE_GENERATION: Cell<i32> = const { Cell::new(0) };
     static LATEST_SNAPSHOT: RefCell<Option<Arc<AppViewState>>> = const { RefCell::new(None) };
+    static STICKER_QUERY: RefCell<String> = const { RefCell::new(String::new()) };
 }
 
 fn is_new_generation(generation: i32) -> bool {
@@ -62,6 +67,14 @@ pub(super) fn latest_rooms() -> Option<RoomList> {
             .as_ref()
             .map(|view| Arc::clone(&view.directory.rooms))
     })
+}
+
+pub(super) fn set_sticker_query<B: UiBackend>(query: &str, media: &dyn MediaCache) {
+    STICKER_QUERY.with(|cell| query.clone_into(&mut cell.borrow_mut()));
+    let stickers = LATEST_SNAPSHOT.with(|cell| cell.borrow().as_ref().map(|v| v.stickers.clone()));
+    if let Some(stickers) = stickers {
+        rebuild_sticker_grid::<B>(&stickers, media);
+    }
 }
 
 pub fn dispatch_effect<B: UiBackend>(w: &B::Window, event: Effect, ctx: &UiEventContext<'_, B>) {
@@ -197,6 +210,7 @@ fn apply_snapshot<B: UiBackend>(
         connection,
         directory,
         pagination,
+        stickers,
         toast,
     } = view.as_ref();
     let DirectoryView {
@@ -251,10 +265,61 @@ fn apply_snapshot<B: UiBackend>(
     if last.is_none_or(|l| l.pagination != *pagination) {
         sync_timeline_chrome(w, pagination);
     }
+    if last.is_none_or(|l| {
+        !Arc::ptr_eq(&l.stickers.packs, &stickers.packs)
+            || l.stickers.generation != stickers.generation
+            || l.stickers.ready_images != stickers.ready_images
+            || l.stickers.room_encrypted != stickers.room_encrypted
+            || l.stickers.loading != stickers.loading
+    }) {
+        apply_stickers::<B>(w, stickers, ctx.media);
+    }
     if last.is_none_or(|l| l.toast != *toast) {
         apply_toast(w, toast);
     }
     LATEST_SNAPSHOT.with(|cell| *cell.borrow_mut() = Some(Arc::clone(view)));
+}
+
+fn apply_stickers<B: UiBackend>(w: &B::Window, stickers: &StickerView, media: &dyn MediaCache) {
+    rebuild_sticker_grid::<B>(stickers, media);
+    let for_this_room = stickers.generation == ACTIVE_GENERATION.with(Cell::get);
+    w.set_int(IntProp::StickerColumns, GRID_COLUMNS);
+    w.set_bool(BoolProp::StickerRoomEncrypted, stickers.room_encrypted);
+    w.set_bool(BoolProp::StickerLoading, stickers.loading);
+    w.set_bool(
+        BoolProp::StickerHasPacks,
+        for_this_room && !stickers.packs.is_empty(),
+    );
+}
+
+fn rebuild_sticker_grid<B: UiBackend>(stickers: &StickerView, media: &dyn MediaCache) {
+    let active = ACTIVE_GENERATION.with(Cell::get);
+    let query = STICKER_QUERY.with(|cell| cell.borrow().clone());
+    let grid = if stickers.generation == active {
+        sticker_grid(stickers.packs.as_ref(), &query, media)
+    } else {
+        sticker_grid(&[], &query, media)
+    };
+
+    B::with_stickers(|rows, packs| {
+        rows.set_vec(
+            grid.rows
+                .iter()
+                .map(B::convert_sticker_row)
+                .collect::<Vec<_>>(),
+        );
+        packs.set_vec(
+            grid.packs
+                .iter()
+                .map(B::convert_sticker_pack)
+                .collect::<Vec<_>>(),
+        );
+    });
+    for pack in &grid.packs {
+        if pack.icon.is_none() && !pack.icon_cell_key.is_empty() {
+            request_sticker(&pack.icon_cell_key);
+        }
+    }
 }
 
 fn sync_timeline_chrome(w: &impl UiProps, pagination: &PaginationView) {

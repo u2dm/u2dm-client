@@ -1292,5 +1292,103 @@
         }
       }
     ]
-  }
+  },
+  "sticker_packs": [
+    {
+      "id": "cats",
+      "title": "Cat Tax",
+      "images": [
+        {
+          "shortcode": "ship",
+          "body": "shipping it",
+          "asset": "demo-sticker-ship"
+        },
+        {
+          "shortcode": "tall",
+          "asset": "demo-sticker-tall"
+        },
+        {
+          "shortcode": "intensifies",
+          "body": "cat intensifies",
+          "asset": "demo-sticker-anim"
+        },
+        {
+          "shortcode": "smol",
+          "asset": "demo-sticker-small"
+        },
+        {
+          "shortcode": "ship2",
+          "body": "shipping it again",
+          "asset": "demo-sticker-ship"
+        },
+        {
+          "shortcode": "gone",
+          "body": "never arrives",
+          "asset": "demo-sticker-missing"
+        }
+      ]
+    },
+    {
+      "id": "rustaceans",
+      "title": "Rustaceans",
+      "rooms": ["!rust:demo.local"],
+      "images": [
+        {
+          "shortcode": "crab",
+          "body": "ferris approves",
+          "asset": "demo-sticker-small"
+        },
+        {
+          "shortcode": "tall_crab",
+          "asset": "demo-sticker-tall"
+        },
+        {
+          "shortcode": "wiggle",
+          "body": "ferris wiggles",
+          "asset": "demo-sticker-anim"
+        }
+      ]
+    },
+    {
+      "id": "reactions",
+      "title": "Reactions",
+      "images": [
+        {
+          "shortcode": "yes",
+          "body": "yes",
+          "asset": "demo-sticker-ship"
+        },
+        {
+          "shortcode": "no",
+          "body": "no",
+          "asset": "demo-sticker-tall"
+        },
+        {
+          "shortcode": "maybe",
+          "body": "maybe",
+          "asset": "demo-sticker-small"
+        },
+        {
+          "shortcode": "wow",
+          "body": "wow",
+          "asset": "demo-sticker-anim"
+        },
+        {
+          "shortcode": "hmm",
+          "body": "hmm",
+          "asset": "demo-sticker-ship"
+        },
+        {
+          "shortcode": "oof",
+          "body": "oof",
+          "asset": "demo-sticker-tall"
+        },
+        {
+          "shortcode": "nice",
+          "body": "nice",
+          "asset": "demo-sticker-small"
+        }
+      ]
+    }
+  ]
 }

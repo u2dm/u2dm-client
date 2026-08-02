@@ -12,12 +12,19 @@ pub(crate) use service::MediaService;
 use crate::domain::models::{ImageMeta, MediaKind};
 use crate::ports::media::MediaCache;
 
+pub(super) const AVATARS_DIR: &str = "avatars";
+pub(super) const STICKERS_DIR: &str = "stickers";
+
 pub(super) fn thumb_key(event_id: &str) -> String {
     format!("thumb:{event_id}")
 }
 
 pub(super) fn mxc_avatar_key(mxc: &str) -> String {
     format!("mxc-avatar:{mxc}")
+}
+
+pub(super) fn sticker_key(mxc: &str) -> String {
+    format!("sticker:{mxc}")
 }
 
 pub(super) struct MaterializedMedia {
@@ -49,6 +56,14 @@ impl MediaCache for MaterializedMedia {
 
     fn space_avatar_path(&self, mxc: &str) -> Option<PathBuf> {
         self.service.cache_get(&mxc_avatar_key(mxc))
+    }
+
+    fn sticker_path(&self, mxc: &str) -> Option<PathBuf> {
+        self.service.cache_get(&sticker_key(mxc))
+    }
+
+    fn sticker_failed(&self, mxc: &str) -> bool {
+        self.service.is_failed(&sticker_key(mxc))
     }
 }
 

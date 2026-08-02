@@ -3,8 +3,8 @@ use std::collections::HashMap;
 use serde::Deserialize;
 
 use crate::domain::models::{
-    ImageMeta, MessageBody, MessagePreviewKind, NotifyMode, ReplyInfo, Room, RoomId, ServiceEvent,
-    Session, Space, TimelineMessage,
+    ImageMeta, MessageBody, MessagePreviewKind, NotifyMode, PackId, ReplyInfo, Room, RoomId,
+    ServiceEvent, Session, Space, StickerImage, StickerPack, TimelineMessage,
 };
 
 #[derive(Deserialize, Default)]
@@ -18,6 +18,50 @@ pub struct DemoData {
     pub timelines: HashMap<String, Vec<MessageDto>>,
     #[serde(default)]
     pub pronouns: HashMap<String, Vec<String>>,
+    #[serde(default)]
+    pub sticker_packs: Vec<StickerPackDto>,
+}
+
+#[derive(Deserialize)]
+pub struct StickerPackDto {
+    pub id: String,
+    pub title: String,
+    #[serde(default)]
+    pub rooms: Vec<String>,
+    #[serde(default)]
+    pub images: Vec<PackImageDto>,
+}
+
+#[derive(Deserialize)]
+pub struct PackImageDto {
+    pub shortcode: String,
+    #[serde(default)]
+    pub body: Option<String>,
+    pub asset: String,
+}
+
+impl StickerPackDto {
+    pub fn covers(&self, room_id: &str) -> bool {
+        self.rooms.is_empty() || self.rooms.iter().any(|id| id == room_id)
+    }
+
+    pub fn to_pack(&self) -> StickerPack {
+        StickerPack {
+            id: PackId::new(self.id.clone()),
+            title: self.title.clone(),
+            images: self.images.iter().map(PackImageDto::to_image).collect(),
+        }
+    }
+}
+
+impl PackImageDto {
+    fn to_image(&self) -> StickerImage {
+        StickerImage {
+            shortcode: self.shortcode.clone(),
+            body: self.body.clone().unwrap_or_else(|| self.shortcode.clone()),
+            mxc: format!("mxc://demo.local/{}", self.asset),
+        }
+    }
 }
 
 #[derive(Deserialize, Default)]

@@ -9,7 +9,8 @@ use std::cell::Cell;
 pub use animation::{advance_animations, load_thumbnail, set_animation_tick};
 pub use cache::{load_avatar_async, peek_avatar, peek_thumbnail};
 pub use requests::{
-    forget_all_media_needs, record_avatar_need, record_media_need, request_avatar, request_media,
+    forget_all_media_needs, record_avatar_need, record_media_need, record_sticker_need,
+    request_avatar, request_media, request_sticker,
 };
 use slint::{Image, Rgba8Pixel, SharedPixelBuffer};
 pub use waiters::{AvatarSlot, DecodeOutcome, set_avatar_ready, set_image_ready};

@@ -1,5 +1,9 @@
 import { LoginRequest } from "screens/login/types.slint";
-import { SendMessageRequest, SaveFileRequest } from "screens/chat/components/types.slint";
+import {
+    SendMessageRequest,
+    SendStickerRequest,
+    SaveFileRequest,
+} from "screens/chat/components/types.slint";
 
 export global Actions {
     callback check-server(string);
@@ -16,6 +20,9 @@ export global Actions {
     callback request-room-avatar(string);
 
     callback send-message(SendMessageRequest);
+    callback send-sticker(SendStickerRequest);
+    callback request-sticker(string);
+    callback search-stickers(string);
     callback open-media(string);
     callback save-file(SaveFileRequest);
     callback request-media(string);

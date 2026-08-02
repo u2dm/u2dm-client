@@ -4,6 +4,7 @@ mod dto;
 mod login;
 mod matrix;
 mod media;
+mod stickers;
 mod storage;
 mod timeline;
 mod verification;
