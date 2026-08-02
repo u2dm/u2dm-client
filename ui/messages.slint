@@ -58,6 +58,9 @@ export global UserMessages {
         if kind == UserMessageKind.data-not-erased {
             return @tr("Some local account data could not be erased.");
         }
+        if kind == UserMessageKind.interrupted-login-unresolved {
+            return @tr("An earlier login was interrupted and cannot be undone safely, so signing in is paused to protect the encrypted history of the previous session. Make sure your credential store is unlocked and restart U2DM. ({})", detail);
+        }
         if kind == UserMessageKind.session-save-failed {
             return @tr("Could not save the refreshed session.");
         }

@@ -3,7 +3,7 @@ use std::sync::Arc;
 use crate::domain::account::AccountScope;
 use crate::domain::models::Session;
 use crate::error::{AppError, Result};
-use crate::ports::matrix::{AuthenticatedSession, CleanupReport, StoreAdoption};
+use crate::ports::matrix::{AuthenticatedSession, CleanupReport, StagedCleanup, StoreAdoption};
 use crate::ports::storage::{StoragePort, StoredSession, SupersededLogin};
 
 struct DisplacedRecords {
@@ -22,16 +22,42 @@ fn also_failed_to_roll_back(err: AppError, report: &CleanupReport) -> AppError {
     ))
 }
 
+async fn unstage(storage: &dyn StoragePort, txn: &str) -> StagedCleanup {
+    match storage.clear_superseded(txn).await {
+        Ok(()) => StagedCleanup::Done,
+        Err(e) => {
+            tracing::warn!("the credentials this login replaced could not be unstaged: {e}");
+            StagedCleanup::Pending
+        }
+    }
+}
+
+fn unreadable_displaced(what: &str, err: &AppError) -> AppError {
+    AppError::Other(format!(
+        "The {what} this login would replace could not be read, so the login was not started. \
+         Undoing it later would have destroyed the previous session's local data: {err}"
+    ))
+}
+
 impl DisplacedRecords {
-    async fn read(storage: &dyn StoragePort, account: &AccountScope) -> Self {
+    async fn read(storage: &dyn StoragePort, account: &AccountScope) -> Result<Self> {
         let session = match storage.load_session().await {
             Ok(StoredSession::Present(session)) => Some(session),
-            _ => None,
+            Ok(StoredSession::Absent | StoredSession::Incomplete) => None,
+            Ok(StoredSession::CredentialsUnavailable(e)) | Err(e) => {
+                return Err(unreadable_displaced("session", &e));
+            }
         };
-        Self {
+
+        let passphrase = storage
+            .load_passphrase(account)
+            .await
+            .map_err(|e| unreadable_displaced("local store key", &e))?;
+
+        Ok(Self {
             session,
-            passphrase: storage.load_passphrase(account).await.ok().flatten(),
-        }
+            passphrase,
+        })
     }
 }
 
@@ -50,7 +76,14 @@ impl EstablishedSession {
         session: &Session,
         passphrase: &str,
     ) -> Result<Self> {
-        let displaced = DisplacedRecords::read(storage.as_ref(), &account).await;
+        let displaced = match DisplacedRecords::read(storage.as_ref(), &account).await {
+            Ok(displaced) => displaced,
+            Err(e) => {
+                let report = adoption.roll_back(StagedCleanup::Done).await;
+                return Err(also_failed_to_roll_back(e, &report));
+            }
+        };
+
         let established = Self {
             adoption,
             storage,
@@ -71,10 +104,8 @@ impl EstablishedSession {
         let Self {
             adoption, storage, ..
         } = self;
-        if let Err(e) = storage.clear_superseded().await {
-            tracing::warn!("the credentials this login replaced could not be unstaged: {e}");
-        }
-        adoption.commit().await
+        let cleanup = unstage(storage.as_ref(), adoption.transaction()).await;
+        adoption.commit(cleanup).await
     }
 
     pub(super) async fn roll_back(self) -> CleanupReport {
@@ -87,16 +118,24 @@ impl EstablishedSession {
             return report;
         }
 
-        report.merge(self.restore_displaced().await);
-        report.merge(self.adoption.roll_back().await);
-        if let Err(e) = self.storage.clear_superseded().await {
-            tracing::warn!("the restored credentials could not be unstaged: {e}");
-        }
+        let restored = self.restore_displaced().await;
+        let cleanup = if restored.has_failures() {
+            StagedCleanup::Pending
+        } else {
+            unstage(self.storage.as_ref(), self.adoption.transaction()).await
+        };
+        report.merge(restored);
+        report.merge(self.adoption.roll_back(cleanup).await);
         report
     }
 
     async fn record(&self, session: &Session, passphrase: &str) -> Result<()> {
         self.stage_displaced().await?;
+        self.adoption.credentials_staged().await.map_err(|e| {
+            AppError::Other(format!(
+                "The credentials this login replaces could not be recorded as staged, so undoing the login after a restart would not know to restore them: {e}"
+            ))
+        })?;
         self.write_records(session, passphrase).await?;
         self.adoption.credentials_written().await.map_err(|e| {
             AppError::Other(format!(

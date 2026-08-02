@@ -205,105 +205,113 @@ msgstr ""
 
 #: ui/messages.slint:62
 msgctxt "UserMessages"
-msgid "Could not save the refreshed session."
+msgid ""
+"An earlier login was interrupted and cannot be undone safely, so signing in "
+"is paused to protect the encrypted history of the previous session. Make "
+"sure your credential store is unlocked and restart U2DM. ({})"
 msgstr ""
 
 #: ui/messages.slint:65
 msgctxt "UserMessages"
-msgid "Failed to send message"
+msgid "Could not save the refreshed session."
 msgstr ""
 
 #: ui/messages.slint:68
 msgctxt "UserMessages"
-msgid "Failed to load more messages"
+msgid "Failed to send message"
 msgstr ""
 
 #: ui/messages.slint:71
 msgctxt "UserMessages"
-msgid "That message could not be found"
+msgid "Failed to load more messages"
 msgstr ""
 
 #: ui/messages.slint:74
 msgctxt "UserMessages"
-msgid "That message can't be shown"
+msgid "That message could not be found"
 msgstr ""
 
 #: ui/messages.slint:77
 msgctxt "UserMessages"
-msgid "Failed to save space order"
+msgid "That message can't be shown"
 msgstr ""
 
 #: ui/messages.slint:80
 msgctxt "UserMessages"
-msgid "Failed to download media"
+msgid "Failed to save space order"
 msgstr ""
 
 #: ui/messages.slint:83
 msgctxt "UserMessages"
-msgid "Failed to download file"
+msgid "Failed to download media"
 msgstr ""
 
 #: ui/messages.slint:86
 msgctxt "UserMessages"
-msgid "Failed to open media"
+msgid "Failed to download file"
 msgstr ""
 
 #: ui/messages.slint:89
 msgctxt "UserMessages"
-msgid "Failed to save file"
+msgid "Failed to open media"
 msgstr ""
 
 #: ui/messages.slint:92
 msgctxt "UserMessages"
-msgid "File saved to {}"
+msgid "Failed to save file"
 msgstr ""
 
 #: ui/messages.slint:95
 msgctxt "UserMessages"
-msgid "Could not accept the request. Please try again."
+msgid "File saved to {}"
 msgstr ""
 
 #: ui/messages.slint:98
 msgctxt "UserMessages"
-msgid "Could not confirm the match. Please try again."
+msgid "Could not accept the request. Please try again."
 msgstr ""
 
 #: ui/messages.slint:101
 msgctxt "UserMessages"
-msgid "Could not decline the request. Please try again."
+msgid "Could not confirm the match. Please try again."
 msgstr ""
 
 #: ui/messages.slint:104
 msgctxt "UserMessages"
-msgid "Nobody answered in time, so the request expired."
+msgid "Could not decline the request. Please try again."
 msgstr ""
 
 #: ui/messages.slint:107
 msgctxt "UserMessages"
-msgid "Could not accept the verification. Please try again."
+msgid "Nobody answered in time, so the request expired."
 msgstr ""
 
 #: ui/messages.slint:110
 msgctxt "UserMessages"
-msgid "The other device cancelled the verification."
+msgid "Could not accept the verification. Please try again."
 msgstr ""
 
 #: ui/messages.slint:113
 msgctxt "UserMessages"
-msgid "You declined the verification."
+msgid "The other device cancelled the verification."
 msgstr ""
 
 #: ui/messages.slint:116
 msgctxt "UserMessages"
-msgid "The emoji did not match, so the verification was stopped."
+msgid "You declined the verification."
 msgstr ""
 
 #: ui/messages.slint:119
 msgctxt "UserMessages"
-msgid "This request was answered on another one of your devices."
+msgid "The emoji did not match, so the verification was stopped."
 msgstr ""
 
 #: ui/messages.slint:122
+msgctxt "UserMessages"
+msgid "This request was answered on another one of your devices."
+msgstr ""
+
+#: ui/messages.slint:125
 msgctxt "UserMessages"
 msgid "The verification could not be completed."
 msgstr ""

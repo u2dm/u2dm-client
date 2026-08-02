@@ -8,7 +8,7 @@ use tokio::task::spawn_blocking;
 use crate::domain::account::AccountScope;
 use crate::domain::models::Session;
 use crate::error::{AppError, Result};
-use crate::ports::storage::{StoragePort, StoredSession, SupersededLogin};
+use crate::ports::storage::{StagedCredentials, StoragePort, StoredSession, SupersededLogin};
 
 const KEYRING_SERVICE: &str = "u2dm";
 const SESSION_KEY: &str = "session-credentials";
@@ -189,35 +189,52 @@ impl StoragePort for SecureStorage {
         keyring_set(SUPERSEDED_KEY, encoded).await
     }
 
-    async fn load_superseded(&self) -> Result<Option<SupersededLogin>> {
+    async fn load_superseded(&self) -> Result<StagedCredentials> {
         let Some(raw) = keyring_get(SUPERSEDED_KEY).await? else {
-            return Ok(None);
+            return Ok(StagedCredentials::Absent);
         };
-        match serde_json::from_str::<SupersededRecord>(&raw) {
-            Ok(record) if record.version == SUPERSEDED_RECORD_VERSION => {
-                Ok(Some(record.into_superseded()))
-            }
-            Ok(record) => {
-                tracing::warn!(
-                    version = record.version,
-                    "the staged displaced credentials use an unsupported layout, ignoring them"
-                );
-                Ok(None)
-            }
-            Err(e) => {
-                tracing::warn!("the staged displaced credentials are unreadable: {e}");
-                Ok(None)
-            }
-        }
+        Ok(decode_superseded(&raw))
     }
 
-    async fn clear_superseded(&self) -> Result<()> {
-        keyring_delete(SUPERSEDED_KEY).await
+    async fn clear_superseded(&self, txn: &str) -> Result<()> {
+        let Some(raw) = keyring_get(SUPERSEDED_KEY).await? else {
+            return Ok(());
+        };
+        match decode_superseded(&raw) {
+            StagedCredentials::Present(staged) if staged.txn != txn => {
+                tracing::warn!(
+                    txn,
+                    staged = %staged.txn,
+                    "the staged credentials belong to another login, leaving them in place"
+                );
+                Ok(())
+            }
+            _ => keyring_delete(SUPERSEDED_KEY).await,
+        }
     }
 }
 
 async fn write_record(record: &StoredSessionRecord) -> Result<()> {
     keyring_set(SESSION_KEY, serde_json::to_string(record)?).await
+}
+
+fn decode_superseded(raw: &str) -> StagedCredentials {
+    match serde_json::from_str::<SupersededRecord>(raw) {
+        Ok(record) if record.version == SUPERSEDED_RECORD_VERSION => {
+            StagedCredentials::Present(record.into_superseded())
+        }
+        Ok(record) => {
+            tracing::warn!(
+                version = record.version,
+                "the staged displaced credentials use an unsupported layout"
+            );
+            StagedCredentials::Corrupt
+        }
+        Err(e) => {
+            tracing::warn!("the staged displaced credentials are unreadable: {e}");
+            StagedCredentials::Corrupt
+        }
+    }
 }
 
 fn decode_record(raw: &str) -> Option<StoredSessionRecord> {

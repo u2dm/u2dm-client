@@ -42,6 +42,7 @@ pub enum UserMessageKind {
     SessionExpired,
     DataQuarantined,
     DataNotErased,
+    InterruptedLoginUnresolved,
     SessionSaveFailed,
     SendMessageFailed,
     LoadMoreFailed,

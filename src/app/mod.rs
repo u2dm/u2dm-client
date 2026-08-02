@@ -17,6 +17,7 @@ use active_timeline::ActiveTimeline;
 use establish::EstablishedSession;
 use lifecycle::Lifecycle;
 use media::MediaActions;
+use recover::Recovery;
 use room_directory::RoomDirectory;
 use selection::Selection;
 use session::{AuthOutcome, SessionController};
@@ -80,6 +81,7 @@ pub struct AppService {
     lifecycle: Lifecycle,
     active: Option<AuthenticatedSession>,
     auth_rx: Option<mpsc::UnboundedReceiver<AuthOutcome>>,
+    blocked_reason: Option<String>,
 }
 
 impl AppService {
@@ -119,6 +121,7 @@ impl AppService {
             lifecycle,
             active: None,
             auth_rx: Some(auth_rx),
+            blocked_reason: None,
         }
     }
 
@@ -131,7 +134,9 @@ impl AppService {
         let Some(mut auth_rx) = self.auth_rx.take() else {
             return;
         };
-        self.session.recover_interrupted_logins().await;
+        if let Recovery::Blocked(reason) = self.session.recover_interrupted_logins().await {
+            self.block_sign_in(reason);
+        }
         let mut dir_done = false;
         let mut scroll_done = false;
         let mut auth_done = false;
@@ -177,11 +182,35 @@ impl AppService {
         }
     }
 
+    fn block_sign_in(&mut self, reason: String) {
+        tracing::error!("signing in is blocked until the interrupted login is resolved: {reason}");
+        self.lifecycle.block();
+        self.blocked_reason = Some(reason);
+        self.report_blocked();
+    }
+
+    fn report_blocked(&self) {
+        let Some(reason) = self.blocked_reason.clone() else {
+            return;
+        };
+        self.output.publish(Box::new(move |view| {
+            view.lifecycle.step = LoginStep::Homeserver;
+            view.lifecycle.activity = LoginActivity::Idle;
+            view.lifecycle.messages = vec![UserMessage::about(
+                UserMessageKind::InterruptedLoginUnresolved,
+                &reason,
+            )];
+        }));
+    }
+
     #[allow(clippy::too_many_lines)]
     async fn dispatch(&mut self, cmd: UiCommand) -> bool {
         let phase = self.lifecycle.phase();
         if !lifecycle::command_allowed(phase, &cmd) {
             tracing::debug!(?phase, command = %cmd, "rejecting command illegal in current phase");
+            if phase == lifecycle::AppPhase::Blocked {
+                self.report_blocked();
+            }
             return false;
         }
         match cmd {

@@ -5,6 +5,7 @@ use crate::commands::ui::UiCommand;
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub(super) enum AppPhase {
     Restoring,
+    Blocked,
     LoggedOut,
     Authenticating,
     Syncing,
@@ -40,6 +41,10 @@ impl Lifecycle {
 
     pub(super) fn phase(&self) -> AppPhase {
         self.guard().phase
+    }
+
+    pub(super) fn block(&self) {
+        self.guard().phase = AppPhase::Blocked;
     }
 
     pub(super) fn is_logged_out(&self) -> bool {

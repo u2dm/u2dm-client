@@ -52,6 +52,8 @@ struct JournalRecord {
     account: String,
     stage: LoginStage,
     installing: String,
+    #[serde(default)]
+    staged: bool,
 }
 
 pub(super) struct LoginJournal {
@@ -75,6 +77,7 @@ impl LoginJournal {
                 account: account.id().to_owned(),
                 stage: LoginStage::Prepared,
                 installing: installing.to_owned(),
+                staged: false,
             },
         };
         journal.persist().await?;
@@ -132,6 +135,7 @@ impl LoginJournal {
             txn: self.record.txn.clone(),
             account: self.account(),
             resolution: self.record.stage.resolution(),
+            credentials_staged: self.record.staged,
         }
     }
 
@@ -141,6 +145,19 @@ impl LoginJournal {
 
     pub(super) fn installed_store_is_ours(&self) -> bool {
         self.record.stage.installed_store_is_ours()
+    }
+
+    pub(super) async fn mark_credentials_staged(&mut self) -> Result<()> {
+        if self.record.staged {
+            return Ok(());
+        }
+        self.record.staged = true;
+        if let Err(e) = self.persist().await {
+            self.record.staged = false;
+            return Err(e);
+        }
+        tracing::debug!(txn = %self.record.txn, "the displaced credentials are staged");
+        Ok(())
     }
 
     pub(super) async fn advance(&mut self, stage: LoginStage) -> Result<()> {

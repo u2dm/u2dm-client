@@ -41,7 +41,8 @@ use crate::domain::models::{
 use crate::error::{AppError, Result};
 use crate::ports::matrix::{
     AuthPort, AuthenticatedSession, CleanupReport, MediaPort, PendingLogin, ProgressSink,
-    SessionPort, SpaceOrderPort, StoreAdoption, SyncPort, SyncSink, TimelinePort, VerificationPort,
+    SessionPort, SpaceOrderPort, StagedCleanup, StoreAdoption, SyncPort, SyncSink, TimelinePort,
+    VerificationPort,
 };
 use crate::ports::media::MediaCache;
 
@@ -96,7 +97,10 @@ impl MatrixAdapter {
     }
 
     async fn abandon_adoption(&self, adopted: AdoptedStore) {
-        let report = self.layout.roll_back_adoption(adopted).await;
+        let report = self
+            .layout
+            .roll_back_adoption(adopted, StagedCleanup::Done)
+            .await;
         if !report.is_clean() {
             tracing::warn!(
                 "previous store not restored after a failed adoption: {}",
@@ -187,6 +191,10 @@ impl StoreAdoption for UncommittedAdoption {
         &self.txn
     }
 
+    async fn credentials_staged(&self) -> Result<()> {
+        self.adopted.credentials_staged().await
+    }
+
     async fn credentials_written(&self) -> Result<()> {
         self.adopted.credentials_written().await
     }
@@ -195,7 +203,7 @@ impl StoreAdoption for UncommittedAdoption {
         self.adopted.rolling_back().await
     }
 
-    async fn commit(self: Box<Self>) -> AuthenticatedSession {
+    async fn commit(self: Box<Self>, cleanup: StagedCleanup) -> AuthenticatedSession {
         let Self {
             layout,
             media,
@@ -205,11 +213,11 @@ impl StoreAdoption for UncommittedAdoption {
             account,
             ..
         } = *self;
-        layout.commit_adoption(adopted).await;
+        layout.commit_adoption(adopted, cleanup).await;
         authenticate(layout, media, client, session, account).await
     }
 
-    async fn roll_back(self: Box<Self>) -> CleanupReport {
+    async fn roll_back(self: Box<Self>, cleanup: StagedCleanup) -> CleanupReport {
         let Self {
             layout,
             adopted,
@@ -217,7 +225,7 @@ impl StoreAdoption for UncommittedAdoption {
             ..
         } = *self;
         drop(client);
-        layout.roll_back_adoption(adopted).await
+        layout.roll_back_adoption(adopted, cleanup).await
     }
 }
 

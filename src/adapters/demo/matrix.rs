@@ -19,8 +19,8 @@ use crate::domain::models::{
 use crate::error::{AppError, Result};
 use crate::ports::matrix::{
     AuthPort, AuthenticatedSession, CleanupReport, MediaPort, PendingLogin, ProgressSink,
-    RestoreStep, SessionPort, SpaceOrderPort, StickerCatalog, StickerPort, StoreAdoption, SyncPort,
-    SyncSink, TimelinePort, VerificationPort,
+    RestoreStep, SessionPort, SpaceOrderPort, StagedCleanup, StickerCatalog, StickerPort,
+    StoreAdoption, SyncPort, SyncSink, TimelinePort, VerificationPort,
 };
 use crate::ports::media::MediaCache;
 
@@ -117,6 +117,10 @@ impl StoreAdoption for DemoAdoption {
         &self.txn
     }
 
+    async fn credentials_staged(&self) -> Result<()> {
+        Ok(())
+    }
+
     async fn credentials_written(&self) -> Result<()> {
         Ok(())
     }
@@ -125,11 +129,11 @@ impl StoreAdoption for DemoAdoption {
         Ok(())
     }
 
-    async fn commit(self: Box<Self>) -> AuthenticatedSession {
+    async fn commit(self: Box<Self>, _cleanup: StagedCleanup) -> AuthenticatedSession {
         authenticated(self.session)
     }
 
-    async fn roll_back(self: Box<Self>) -> CleanupReport {
+    async fn roll_back(self: Box<Self>, _cleanup: StagedCleanup) -> CleanupReport {
         CleanupReport::default()
     }
 }

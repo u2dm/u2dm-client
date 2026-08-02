@@ -7,6 +7,7 @@ use tokio_util::sync::CancellationToken;
 
 use super::establish::EstablishedSession;
 use super::lifecycle::Lifecycle;
+use super::recover::Recovery;
 use super::task_group::{self, TaskGroup};
 use crate::commands::messages::{UserMessage, UserMessageKind};
 use crate::commands::view::{LoginActivity, LoginStep, Toast};
@@ -140,8 +141,8 @@ impl SessionController {
         }
     }
 
-    pub(super) async fn recover_interrupted_logins(&self) {
-        super::recover::recover_interrupted_logins(self.auth.as_ref(), self.storage.as_ref()).await;
+    pub(super) async fn recover_interrupted_logins(&self) -> Recovery {
+        super::recover::recover_interrupted_logins(self.auth.as_ref(), self.storage.as_ref()).await
     }
 
     pub(super) fn spawn_restore_session(&self, group: &mut TaskGroup) {

@@ -4,7 +4,7 @@ use super::{data, login};
 use crate::domain::account::AccountScope;
 use crate::domain::models::Session;
 use crate::error::Result;
-use crate::ports::storage::{StoragePort, StoredSession, SupersededLogin};
+use crate::ports::storage::{StagedCredentials, StoragePort, StoredSession, SupersededLogin};
 
 pub struct DemoStorage;
 
@@ -41,11 +41,11 @@ impl StoragePort for DemoStorage {
         Ok(())
     }
 
-    async fn load_superseded(&self) -> Result<Option<SupersededLogin>> {
-        Ok(None)
+    async fn load_superseded(&self) -> Result<StagedCredentials> {
+        Ok(StagedCredentials::Absent)
     }
 
-    async fn clear_superseded(&self) -> Result<()> {
+    async fn clear_superseded(&self, _txn: &str) -> Result<()> {
         Ok(())
     }
 }

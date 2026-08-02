@@ -17,6 +17,12 @@ pub struct SupersededLogin {
     pub passphrase: Option<String>,
 }
 
+pub enum StagedCredentials {
+    Absent,
+    Present(SupersededLogin),
+    Corrupt,
+}
+
 #[async_trait]
 pub trait StoragePort: Send + Sync {
     async fn save_session(&self, session: &Session) -> Result<()>;
@@ -26,6 +32,6 @@ pub trait StoragePort: Send + Sync {
     async fn load_passphrase(&self, account: &AccountScope) -> Result<Option<String>>;
     async fn clear_passphrase(&self, account: &AccountScope) -> Result<()>;
     async fn save_superseded(&self, superseded: &SupersededLogin) -> Result<()>;
-    async fn load_superseded(&self) -> Result<Option<SupersededLogin>>;
-    async fn clear_superseded(&self) -> Result<()>;
+    async fn load_superseded(&self) -> Result<StagedCredentials>;
+    async fn clear_superseded(&self, txn: &str) -> Result<()>;
 }

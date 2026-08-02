@@ -31,6 +31,13 @@ pub struct PendingLogin {
     pub txn: String,
     pub account: AccountScope,
     pub resolution: LoginResolution,
+    pub credentials_staged: bool,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum StagedCleanup {
+    Done,
+    Pending,
 }
 
 #[derive(Debug, Default)]
@@ -118,10 +125,11 @@ pub trait AuthPort: Send + Sync {
 #[async_trait]
 pub trait StoreAdoption: Send + Sync {
     fn transaction(&self) -> &str;
+    async fn credentials_staged(&self) -> Result<()>;
     async fn credentials_written(&self) -> Result<()>;
     async fn rolling_back(&self) -> Result<()>;
-    async fn commit(self: Box<Self>) -> AuthenticatedSession;
-    async fn roll_back(self: Box<Self>) -> CleanupReport;
+    async fn commit(self: Box<Self>, cleanup: StagedCleanup) -> AuthenticatedSession;
+    async fn roll_back(self: Box<Self>, cleanup: StagedCleanup) -> CleanupReport;
 }
 
 #[async_trait]

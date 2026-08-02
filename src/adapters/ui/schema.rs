@@ -181,6 +181,7 @@ macro_rules! user_message_kinds {
         SessionExpired            SessionExpired          "session-expired";
         DataQuarantined           DataQuarantined         "data-quarantined";
         DataNotErased             DataNotErased           "data-not-erased";
+        InterruptedLoginUnresolved InterruptedLoginUnresolved "interrupted-login-unresolved";
         SessionSaveFailed         SessionSaveFailed       "session-save-failed";
         SendMessageFailed         SendMessageFailed       "send-message-failed";
         LoadMoreFailed            LoadMoreFailed          "load-more-failed";

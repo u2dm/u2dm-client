@@ -10,7 +10,7 @@ use super::journal::{self, BACKUP_PREFIX, LoginJournal, LoginStage};
 use crate::adapters::private_fs;
 use crate::domain::account::AccountScope;
 use crate::error::{AppError, Result};
-use crate::ports::matrix::{CleanupReport, PendingLogin};
+use crate::ports::matrix::{CleanupReport, PendingLogin, StagedCleanup};
 use crate::util::random_hex;
 
 const STORES_DIR: &str = "stores";
@@ -38,6 +38,10 @@ pub(super) struct AdoptedStore {
 }
 
 impl AdoptedStore {
+    pub(super) async fn credentials_staged(&self) -> Result<()> {
+        self.journal.lock().await.mark_credentials_staged().await
+    }
+
     pub(super) async fn credentials_written(&self) -> Result<()> {
         self.journal
             .lock()
@@ -105,10 +109,10 @@ impl StoreLayout {
         })
     }
 
-    pub(super) async fn commit_adoption(&self, adopted: AdoptedStore) {
+    pub(super) async fn commit_adoption(&self, adopted: AdoptedStore, cleanup: StagedCleanup) {
         let mut journal = adopted.journal.into_inner();
         let report = self.settle(&mut journal).await;
-        journal.discard().await;
+        close_or_retry(journal, cleanup).await;
         if report.is_clean() {
             tracing::info!("previous store for this account discarded after adoption");
         } else {
@@ -119,10 +123,14 @@ impl StoreLayout {
         }
     }
 
-    pub(super) async fn roll_back_adoption(&self, adopted: AdoptedStore) -> CleanupReport {
+    pub(super) async fn roll_back_adoption(
+        &self,
+        adopted: AdoptedStore,
+        cleanup: StagedCleanup,
+    ) -> CleanupReport {
         let mut journal = adopted.journal.into_inner();
         let report = self.unwind(&mut journal).await;
-        journal.discard().await;
+        close_or_retry(journal, cleanup).await;
         report
     }
 
@@ -249,6 +257,16 @@ impl StoreLayout {
             data: roots.data.join(name),
             cache: roots.cache.join(name),
         }
+    }
+}
+
+async fn close_or_retry(journal: LoginJournal, cleanup: StagedCleanup) {
+    match cleanup {
+        StagedCleanup::Done => journal.discard().await,
+        StagedCleanup::Pending => tracing::warn!(
+            txn = journal.txn(),
+            "the credentials this login replaced are still staged, so the journal is kept for the next start"
+        ),
     }
 }
 
