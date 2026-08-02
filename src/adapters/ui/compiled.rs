@@ -550,6 +550,7 @@ fn message_to_entry(m: &TimelineMessage, media: &dyn MediaCache) -> MessageEntry
         image_height: d.image_height,
         event_id: d.event_id,
         has_avatar: d.has_avatar,
+        needs_media: d.needs_media,
         avatar: d.avatar.unwrap_or_default(),
         sender_initial: d.sender_initial,
         color_index: d.color_index,

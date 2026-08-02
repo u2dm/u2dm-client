@@ -11,7 +11,7 @@ use tokio_util::sync::CancellationToken;
 
 use super::{data, login, media, timeline, verification};
 use crate::domain::models::{
-    AuthMethod, LoginCredentials, MessageBody, OAuthLoginData, PaginationDirection,
+    AuthMethod, JumpTarget, LoginCredentials, MessageBody, OAuthLoginData, PaginationDirection,
     PaginationOutcome, ReplyInfo, RoomId, ServerInfo, Session, SyncEvent, SyncOutcome,
     TimelineCommand, TimelineFocus, TimelineMessage, TimelinePatch, TimelineUpdate,
     VerificationCancellation, VerificationEvent,
@@ -189,14 +189,16 @@ impl DemoAuthed {
         send_patch(&timeline_tx, TimelinePatch::PushBack(message)).await;
     }
 
-    fn loaded_row_of(&self, event_id: &str) -> Option<usize> {
-        let guard = self.active.lock().ok()?;
-        let active = guard.as_ref()?;
-        let index_in_window = active
-            .messages
-            .iter()
-            .position(|message| message.event_id.as_deref() == Some(event_id))?;
-        Some(active.prepended.saturating_add(index_in_window))
+    fn loaded_row_of(&self, event_id: &str) -> JumpTarget {
+        let row = self.active.lock().ok().and_then(|guard| {
+            let active = guard.as_ref()?;
+            let index_in_window = active
+                .messages
+                .iter()
+                .position(|message| message.event_id.as_deref() == Some(event_id))?;
+            Some(active.prepended.saturating_add(index_in_window))
+        });
+        row.map_or(JumpTarget::NotLoaded, JumpTarget::Row)
     }
 
     fn emit_verification(&self, event: VerificationEvent) {
@@ -276,12 +278,12 @@ impl TimelinePort for DemoAuthed {
         }
 
         if let Some(target) = focus.target() {
-            let row = self.loaded_row_of(target);
+            let target_row = self.loaded_row_of(target);
             drop(
                 timeline_tx
                     .send(TimelineUpdate::JumpOutcome {
                         event_id: target.to_owned(),
-                        row,
+                        target: target_row,
                     })
                     .await,
             );
@@ -304,10 +306,10 @@ impl TimelinePort for DemoAuthed {
                 TimelineCommand::PaginateForwards => PaginationDirection::Forwards,
                 TimelineCommand::MarkRead => continue,
                 TimelineCommand::JumpTo(event_id) => {
-                    let row = self.loaded_row_of(&event_id);
+                    let target = self.loaded_row_of(&event_id);
                     drop(
                         timeline_tx
-                            .send(TimelineUpdate::JumpOutcome { event_id, row })
+                            .send(TimelineUpdate::JumpOutcome { event_id, target })
                             .await,
                     );
                     continue;

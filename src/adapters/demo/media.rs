@@ -12,8 +12,8 @@ impl MediaCache for DemoMediaCache {
             .or_else(|| asset(&format!("thumbnail-{event_id}.png")))
     }
 
-    fn thumbnail_failed(&self, _event_id: &str) -> bool {
-        false
+    fn thumbnail_failed(&self, event_id: &str) -> bool {
+        event_id.ends_with("-missing") && self.thumbnail_path(event_id).is_none()
     }
 
     fn user_avatar_path(&self, mxc: &str) -> Option<PathBuf> {

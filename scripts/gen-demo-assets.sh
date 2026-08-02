@@ -15,6 +15,7 @@ refetch_existing=0
 
 readonly AVATAR_SIZE=256
 readonly SPACE_TILE_SIZE=192
+readonly STICKER_SIZE=512
 readonly PASTEL_DARKEST=160
 readonly PASTEL_SPREAD=80
 readonly CC0_AVATAR_STYLES=(open-peeps notionists lorelei pixel-art)
@@ -98,6 +99,18 @@ photo_messages() {
   jq -r '.timelines[][] | select(.image) | "\(.id) \(.image.width) \(.image.height)"' "$data"
 }
 
+sticker_messages() {
+  jq -r '.timelines[][] | select(.sticker) | "\(.id) \(.sticker.animated // false)"' "$data"
+}
+
+sticker_url() {
+  echo "$DICEBEAR/$(avatar_style_for "$1")/png?seed=$(url_encode "$1")&size=$STICKER_SIZE"
+}
+
+has_no_asset_on_purpose() {
+  [[ $1 == *-missing ]]
+}
+
 already_fetched() {
   [[ -f $1 && $refetch_existing -eq 0 ]]
 }
@@ -150,6 +163,52 @@ fetch_photos() {
   done < <(photo_messages)
 }
 
+animate_sticker() {
+  local source=$1 destination=$2
+  magick -dispose background -delay 8 -loop 0 \
+    \( "$source" -background none -rotate -6 \) \
+    \( "$source" -background none -rotate 0 \) \
+    \( "$source" -background none -rotate 6 \) \
+    \( "$source" -background none -rotate 0 \) \
+    -define webp:lossless=true "$destination"
+}
+
+fetch_sticker() {
+  local id=$1 animated=$2 destination
+
+  if [[ $animated == true ]]; then
+    destination=$assets/thumbnail-$id.webp
+  else
+    destination=$assets/thumbnail-$id.png
+  fi
+
+  if already_fetched "$destination"; then
+    echo "  $(basename "$destination") (kept, --force to refetch)"
+    return
+  fi
+
+  if ! curl -sfL --max-time 20 "$(sticker_url "$id")" -o "$tmp/sticker"; then
+    echo "  $(basename "$destination") FAILED" >&2
+    echo "$destination" >>"$failures"
+    return
+  fi
+
+  if [[ $animated == true ]]; then
+    animate_sticker "$tmp/sticker" "$destination"
+  else
+    magick "$tmp/sticker" -background none "$destination"
+  fi
+  echo "  $(basename "$destination")"
+}
+
+fetch_stickers() {
+  local id animated
+  while read -r id animated; do
+    has_no_asset_on_purpose "$id" && continue
+    fetch_sticker "$id" "$animated"
+  done < <(sticker_messages)
+}
+
 report() {
   local failed
   failed=$(wc -l <"$failures")
@@ -165,4 +224,5 @@ fetch_avatars
 fetch_room_tiles
 fetch_space_tiles
 fetch_photos
+fetch_stickers
 report

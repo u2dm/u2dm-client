@@ -17,7 +17,7 @@ use super::{mxc_avatar_key, thumb_key, thumbnail_format};
 use crate::adapters::matrix::store::purge_dir;
 use crate::adapters::private_fs;
 use crate::domain::account::AccountScope;
-use crate::domain::models::{MessageBody, ThumbnailOutcome, TimelineMessage};
+use crate::domain::models::{ThumbnailOutcome, TimelineMessage};
 use crate::error::{AppError, Result};
 use crate::ports::matrix::CleanupReport;
 use crate::util::hex_encode_id;
@@ -227,7 +227,7 @@ impl MediaService {
         media_sources: &StdMutex<HashMap<String, MediaSource>>,
         msg: &TimelineMessage,
     ) -> ThumbnailOutcome {
-        let MessageBody::Image { meta, .. } = &msg.body else {
+        let Some((kind, meta)) = msg.body.media() else {
             return ThumbnailOutcome::Unchanged;
         };
         let Some(event_id) = msg.event_id.as_deref() else {
@@ -239,22 +239,12 @@ impl MediaService {
             return ThumbnailOutcome::Unchanged;
         }
 
-        let animated = super::is_animated_mime(meta.mimetype.as_deref());
-        let source = if animated {
-            super::lookup_full_media_source(media_sources, event_id)
-        } else {
-            super::lookup_media_source(media_sources, event_id)
-        };
+        let lane = super::lane(kind, meta);
 
-        let materialized_path = match (source, self.session()) {
+        let materialized_path = match (lane.source(media_sources, event_id), self.session()) {
             (Some(source), Some(session)) => {
-                let format = if animated {
-                    MediaFormat::File
-                } else {
-                    thumbnail_format()
-                };
                 let cache_stem = session.media_dir.join(hex_encode_id(event_id));
-                self.fetch_and_materialize(client, source, &cache_key, &cache_stem, format)
+                self.fetch_and_materialize(client, source, &cache_key, &cache_stem, lane.format())
                     .await
             }
             _ => None,
@@ -368,7 +358,7 @@ impl MediaService {
     }
 
     pub(crate) fn needs_media_download(&self, msg: &TimelineMessage) -> bool {
-        let needs_thumbnail = matches!(&msg.body, MessageBody::Image { .. })
+        let needs_thumbnail = msg.body.media().is_some()
             && msg.event_id.as_deref().is_some_and(|event_id| {
                 let key = thumb_key(event_id);
                 self.cache_get(&key).is_none() && !self.is_failed(&key)

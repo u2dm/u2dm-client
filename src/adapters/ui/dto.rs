@@ -11,8 +11,7 @@ use super::present::{
 };
 use super::schema::{define_ui_enum, media_states};
 use crate::domain::models::{
-    EnrichmentDelta, MessageBody, MessagePreviewKind, Room, Space, ThumbnailOutcome,
-    TimelineMessage,
+    EnrichmentDelta, MessagePreviewKind, Room, Space, ThumbnailOutcome, TimelineMessage,
 };
 use crate::ports::media::MediaCache;
 
@@ -47,6 +46,7 @@ pub struct MessageDto {
     pub media_state: MediaState,
     pub avatar: Option<Image>,
     pub has_avatar: bool,
+    pub needs_media: bool,
 }
 
 #[allow(clippy::struct_excessive_bools)]
@@ -136,10 +136,11 @@ pub fn message_to_dto(m: &TimelineMessage, media: &dyn MediaCache) -> MessageDto
         media_state: MediaState::Idle,
         avatar: None,
         has_avatar: false,
+        needs_media: false,
     };
 
     let mut thumbnail_path = None;
-    if let MessageBody::Image { meta, .. } = &m.body {
+    if let Some((_, meta)) = m.body.media() {
         dto.image_width = meta.width.unwrap_or(0).cast_signed();
         dto.image_height = meta.height.unwrap_or(0).cast_signed();
         if let Some(event_id) = m.event_id.as_deref() {
@@ -166,6 +167,9 @@ pub fn message_to_dto(m: &TimelineMessage, media: &dyn MediaCache) -> MessageDto
         dto.has_avatar = true;
     }
 
+    let thumbnail_undecoded = thumbnail_path.is_some() && dto.media_state != MediaState::Ready;
+    let avatar_undecoded = avatar_path.is_some() && !dto.has_avatar;
+    dto.needs_media = thumbnail_undecoded || avatar_undecoded;
     record_media_need(&m.unique_id, thumbnail_path, avatar_path);
     dto
 }

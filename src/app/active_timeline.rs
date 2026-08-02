@@ -9,8 +9,8 @@ use crate::commands::messages::{UserMessage, UserMessageKind};
 use crate::commands::ui::UiCommand;
 use crate::commands::view::Toast;
 use crate::domain::models::{
-    PaginationDirection, PaginationOutcome, RoomId, ScrollMode, TimelineCommand, TimelineFocus,
-    TimelinePatch, TimelineStatus, TimelineUpdate,
+    JumpTarget, PaginationDirection, PaginationOutcome, RoomId, ScrollMode, TimelineCommand,
+    TimelineFocus, TimelinePatch, TimelineStatus, TimelineUpdate,
 };
 use crate::domain::viewport::ViewportController;
 use crate::ports::matrix::TimelinePort;
@@ -434,8 +434,8 @@ impl Forwarder {
             TimelineUpdate::ResolvingUnread => {
                 self.emit_status(TimelineStatus::LoadingUnread).await;
             }
-            TimelineUpdate::JumpOutcome { event_id, row } => {
-                self.forward_jump(event_id, row).await;
+            TimelineUpdate::JumpOutcome { event_id, target } => {
+                self.forward_jump(event_id, target).await;
             }
             TimelineUpdate::Pagination { direction, outcome } => {
                 if let Err(e) = self.cmd_tx.send(UiCommand::TimelinePaginationCompleted {
@@ -470,10 +470,20 @@ impl Forwarder {
             .await;
     }
 
-    async fn forward_jump(&self, event_id: String, row: Option<usize>) {
-        let Some(row) = row else {
-            self.widen_search_for(event_id);
-            return;
+    async fn forward_jump(&self, event_id: String, target: JumpTarget) {
+        let row = match target {
+            JumpTarget::Row(row) => row,
+            JumpTarget::NotLoaded => {
+                self.widen_search_for(event_id);
+                return;
+            }
+            JumpTarget::NotRenderable => {
+                super::show_toast(
+                    self.output.as_ref(),
+                    Toast::Error(UserMessage::new(UserMessageKind::MessageNotShowable)),
+                );
+                return;
+            }
         };
         self.counters.set_at_bottom(false);
         self.output

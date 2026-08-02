@@ -124,6 +124,7 @@ pub struct MessageDto {
     #[serde(default)]
     edited: bool,
     image: Option<ImageDto>,
+    sticker: Option<StickerDto>,
     reply: Option<ReplyDto>,
     service: Option<ServiceDto>,
 }
@@ -132,6 +133,29 @@ pub struct MessageDto {
 struct ImageDto {
     width: u32,
     height: u32,
+}
+
+#[derive(Deserialize)]
+struct StickerDto {
+    width: u32,
+    height: u32,
+    #[serde(default)]
+    animated: bool,
+}
+
+impl StickerDto {
+    fn to_meta(&self) -> ImageMeta {
+        let mimetype = if self.animated {
+            "image/webp"
+        } else {
+            "image/png"
+        };
+        ImageMeta {
+            width: Some(self.width),
+            height: Some(self.height),
+            mimetype: Some(mimetype.to_owned()),
+        }
+    }
 }
 
 #[derive(Deserialize)]
@@ -288,6 +312,12 @@ impl MessageDto {
     fn to_body(&self) -> MessageBody {
         if let Some(service) = &self.service {
             return MessageBody::Service(service.to_event());
+        }
+        if let Some(sticker) = &self.sticker {
+            return MessageBody::Sticker {
+                alt: self.body.clone(),
+                meta: sticker.to_meta(),
+            };
         }
         match &self.image {
             Some(image) => MessageBody::Image {

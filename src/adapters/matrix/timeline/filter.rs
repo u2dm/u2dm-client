@@ -5,7 +5,7 @@ use matrix_sdk_ui::timeline::{EventTimelineItem, TimelineItem};
 
 use super::TimelineContext;
 use super::convert::convert_timeline_item;
-use crate::domain::models::TimelineMessage;
+use crate::domain::models::{JumpTarget, TimelineMessage};
 
 pub(super) struct TimelineItems {
     items: Vec<Arc<TimelineItem>>,
@@ -38,11 +38,17 @@ impl TimelineItems {
             .count()
     }
 
-    pub(super) fn row_of_event(&self, event_id: &EventId) -> Option<usize> {
-        let raw = self.items.iter().position(|item| {
+    pub(super) fn row_of_event(&self, event_id: &EventId) -> JumpTarget {
+        let Some(raw) = self.items.iter().position(|item| {
             item.as_event().and_then(EventTimelineItem::event_id) == Some(event_id)
-        })?;
-        self.renderable.get(raw)?.then(|| self.msg_index_at(raw))
+        }) else {
+            return JumpTarget::NotLoaded;
+        };
+        if self.renderable.get(raw).is_some_and(|renders| *renders) {
+            JumpTarget::Row(self.msg_index_at(raw))
+        } else {
+            JumpTarget::NotRenderable
+        }
     }
 
     pub(super) fn append(

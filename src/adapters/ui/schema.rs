@@ -181,6 +181,7 @@ macro_rules! user_message_kinds {
         SendMessageFailed         SendMessageFailed       "send-message-failed";
         LoadMoreFailed            LoadMoreFailed          "load-more-failed";
         MessageNotFound           MessageNotFound         "message-not-found";
+        MessageNotShowable        MessageNotShowable      "message-not-showable";
         SpaceOrderSaveFailed      SpaceOrderSaveFailed    "space-order-save-failed";
         MediaDownloadFailed       MediaDownloadFailed     "media-download-failed";
         FileDownloadFailed        FileDownloadFailed      "file-download-failed";
@@ -216,6 +217,7 @@ macro_rules! message_kinds {
         Notice      Notice      "notice";
         Emote       Emote       "emote";
         Image       Image       "image";
+        Sticker     Sticker     "sticker";
         File        File        "file";
         Service     Service     "service";
         Utd         Utd         "utd";
@@ -296,6 +298,7 @@ macro_rules! message_fields {
         image_width IMAGE_WIDTH "image-width" int;
         image_height IMAGE_HEIGHT "image-height" int;
         has_avatar HAS_AVATAR "has-avatar" flag;
+        needs_media NEEDS_MEDIA "needs-media" flag;
         thumbnail THUMBNAIL "thumbnail" image;
         avatar AVATAR "avatar" image;
     } };

@@ -10,6 +10,7 @@ import { ReplyQuote } from "../reply-quote.slint";
 import { ServiceMessage } from "./messages/service-message.slint";
 import { TextMessage } from "./messages/text-message.slint";
 import { ImageMessage, ImagePlaceholder } from "./messages/image-message.slint";
+import { StickerMessage } from "./messages/sticker-message.slint";
 import { FileMessage } from "./messages/file-message.slint";
 import { UtdMessage } from "./messages/utd-message.slint";
 import { UnsupportedMessage } from "./messages/unsupported-message.slint";
@@ -72,14 +73,14 @@ export component MessageBubble inherits VerticalLayout {
     property <length> bubble-max-width: available-width * 0.7;
 
     property <bool> is-service: msg.message-type == MessageKind.service;
-    property <bool> is-plain-text: msg.message-type != MessageKind.image
-        && msg.message-type != MessageKind.file
-        && msg.message-type != MessageKind.utd
-        && msg.message-type != MessageKind.unsupported;
+    property <bool> is-plain-text: msg.message-type == MessageKind.text
+        || msg.message-type == MessageKind.notice
+        || msg.message-type == MessageKind.emote;
     property <bool> has-remote-id: msg.event-id != "";
     property <bool> is-focused: root.has-remote-id && msg.event-id == RoomView.focus-event-id;
 
     property <bool> is-image: msg.message-type == MessageKind.image;
+    property <bool> is-sticker: msg.message-type == MessageKind.sticker;
     property <bool> has-caption: msg.body != "";
     property <bool> has-photo: root.is-image
         && (msg.media-state != MediaState.idle || (msg.image-width > 0 && msg.image-height > 0));
@@ -118,7 +119,9 @@ export component MessageBubble inherits VerticalLayout {
         Rectangle {
             max-width: bubble-max-width;
             height: bubble-content.preferred-height;
-            background: is-own ? own-bubble-color : other-bubble-color;
+            background: root.is-sticker
+                ? transparent
+                : (is-own ? own-bubble-color : other-bubble-color);
             border-radius: 12px;
             border-width: root.is-focused ? 2px : 0;
             border-color: Palette.accent-background;
@@ -194,6 +197,15 @@ export component MessageBubble inherits VerticalLayout {
 
                 if root.is-image && !root.has-photo: ImagePlaceholder {
                     body: msg.body;
+                }
+
+                if root.is-sticker: StickerMessage {
+                    sticker: msg.thumbnail;
+                    media-state: msg.media-state;
+                    sticker-width: msg.image-width;
+                    sticker-height: msg.image-height;
+                    alt: msg.body;
+                    bubble-hovered: hover-bg.has-hover || reply-btn.has-hover;
                 }
 
                 if msg.message-type == MessageKind.file: FileMessage {

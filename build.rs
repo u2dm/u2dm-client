@@ -46,6 +46,21 @@ const ENUM_COVERAGE: &[EnumCoverage] = &[
         branches_in: "ui/screens/chat/components/message-preview.slint",
         falls_through: &["none", "text"],
     },
+    EnumCoverage {
+        slint_enum: "MessageKind",
+        branches_in: "ui/screens/chat/components/timeline/message-bubble.slint",
+        falls_through: &[],
+    },
+];
+
+const SCHEMA_FILE: &str = "src/adapters/ui/schema.rs";
+
+const ENUM_TABLES: &[(&str, &str)] = &[
+    ("UserMessageKind", "user_message_kinds"),
+    ("ServiceKind", "service_kinds"),
+    ("PreviewKind", "preview_kinds"),
+    ("MessageKind", "message_kinds"),
+    ("MediaState", "media_states"),
 ];
 
 fn main() {
@@ -79,11 +94,94 @@ fn check_enum_branch_coverage() {
         println!("cargo::rerun-if-changed={}", coverage.branches_in);
         coverage.check(&enums);
     }
+
+    check_enum_table_names(&enums);
+}
+
+fn check_enum_table_names(enums: &str) {
+    println!("cargo::rerun-if-changed={SCHEMA_FILE}");
+
+    let Ok(schema) = fs::read_to_string(SCHEMA_FILE) else {
+        panic!(
+            "failed to read {SCHEMA_FILE}, so no enum table can be checked against {ENUMS_FILE}"
+        );
+    };
+
+    for (slint_enum, table) in ENUM_TABLES {
+        let declared = declared_variants(enums, slint_enum);
+        let listed = table_names(&schema, table);
+
+        assert!(
+            declared == listed,
+            "the `{table}!` table in {SCHEMA_FILE} names {listed:?} but `export enum {slint_enum}` \
+             in {ENUMS_FILE} declares {declared:?}. Interpreted mode looks these up by name, so a \
+             mismatch is not a compile error, it silently drops the value at runtime. Keep both \
+             lists identical and in the same order."
+        );
+    }
+}
+
+fn quoted_literals(source: &str) -> impl Iterator<Item = &str> {
+    source.split('"').skip(1).step_by(2)
+}
+
+fn table_names(schema: &str, table: &str) -> Vec<String> {
+    let header = format!("macro_rules! {table} {{");
+    let footer = format!("pub(crate) use {table};");
+    let Some(body) = schema
+        .split_once(header.as_str())
+        .and_then(|(_, rest)| rest.split_once(footer.as_str()))
+        .map(|(body, _)| body)
+    else {
+        panic!(
+            "{SCHEMA_FILE} has no `macro_rules! {table}` followed by `{footer}`, so its variant \
+             names cannot be checked. Update ENUM_TABLES in build.rs to the new name."
+        );
+    };
+
+    let names: Vec<String> = quoted_literals(body)
+        .map(|name| name.replace('_', "-"))
+        .collect();
+
+    assert!(
+        !names.is_empty(),
+        "the `{table}!` table in {SCHEMA_FILE} names no variants"
+    );
+
+    names
+}
+
+fn declared_variants(enums: &str, slint_enum: &str) -> Vec<String> {
+    let header = format!("export enum {slint_enum} {{");
+    let Some(body) = enums
+        .split_once(header.as_str())
+        .and_then(|(_, rest)| rest.split_once('}'))
+        .map(|(body, _)| body)
+    else {
+        panic!(
+            "{ENUMS_FILE} declares no `export enum {slint_enum}`, so it cannot be checked. Update \
+             ENUM_COVERAGE or ENUM_TABLES in build.rs to the new name."
+        );
+    };
+
+    let variants: Vec<String> = body
+        .lines()
+        .map(|line| line.split_once("//").map_or(line, |(code, _)| code))
+        .map(|line| line.trim().trim_end_matches(',').trim().replace('_', "-"))
+        .filter(|variant| !variant.is_empty())
+        .collect();
+
+    assert!(
+        !variants.is_empty(),
+        "`export enum {slint_enum}` in {ENUMS_FILE} declares no variants"
+    );
+
+    variants
 }
 
 impl EnumCoverage {
     fn check(&self, enums: &str) {
-        let variants = self.declared_variants(enums);
+        let variants = declared_variants(enums, self.slint_enum);
         self.reject_stale_exemptions(&variants);
 
         let Ok(branches) = fs::read_to_string(self.branches_in) else {
@@ -110,36 +208,6 @@ impl EnumCoverage {
             self.branches_in,
             self.slint_enum
         );
-    }
-
-    fn declared_variants(&self, enums: &str) -> Vec<String> {
-        let header = format!("export enum {} {{", self.slint_enum);
-        let Some(body) = enums
-            .split_once(header.as_str())
-            .and_then(|(_, rest)| rest.split_once('}'))
-            .map(|(body, _)| body)
-        else {
-            panic!(
-                "{ENUMS_FILE} declares no `export enum {}`, so the branches in {} cannot be \
-                 checked. Update ENUM_COVERAGE in build.rs to the new name.",
-                self.slint_enum, self.branches_in
-            );
-        };
-
-        let variants: Vec<String> = body
-            .lines()
-            .map(|line| line.split_once("//").map_or(line, |(code, _)| code))
-            .map(|line| line.trim().trim_end_matches(',').trim().replace('_', "-"))
-            .filter(|variant| !variant.is_empty())
-            .collect();
-
-        assert!(
-            !variants.is_empty(),
-            "`export enum {}` in {ENUMS_FILE} declares no variants",
-            self.slint_enum
-        );
-
-        variants
     }
 
     fn reject_stale_exemptions(&self, variants: &[String]) {

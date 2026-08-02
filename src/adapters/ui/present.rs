@@ -170,6 +170,7 @@ pub fn message_body_text(body: &MessageBody) -> &str {
     match body {
         MessageBody::Text(s) | MessageBody::Notice(s) | MessageBody::Emote(s) => s,
         MessageBody::Image { caption, .. } => caption.as_deref().unwrap_or_default(),
+        MessageBody::Sticker { alt, .. } => alt,
         MessageBody::File { meta, .. } => &meta.filename,
         MessageBody::Service(_) | MessageBody::UnableToDecrypt => "",
         MessageBody::Unsupported { fallback, .. } => fallback,
@@ -184,6 +185,7 @@ pub fn message_kind(body: &MessageBody) -> MessageKind {
         MessageBody::Notice(_) => MessageKind::Notice,
         MessageBody::Emote(_) => MessageKind::Emote,
         MessageBody::Image { .. } => MessageKind::Image,
+        MessageBody::Sticker { .. } => MessageKind::Sticker,
         MessageBody::File { .. } => MessageKind::File,
         MessageBody::Service(_) => MessageKind::Service,
         MessageBody::UnableToDecrypt => MessageKind::Utd,

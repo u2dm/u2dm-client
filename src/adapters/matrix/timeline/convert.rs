@@ -1,15 +1,17 @@
 use std::collections::HashMap;
 use std::sync::Mutex as StdMutex;
 
+use matrix_sdk::ruma::UInt;
 use matrix_sdk::ruma::events::StateEventContentChange;
-use matrix_sdk::ruma::events::room::MediaSource;
 use matrix_sdk::ruma::events::room::message::{
     FileMessageEventContent, ImageMessageEventContent, MessageType,
 };
 use matrix_sdk::ruma::events::room::name::RoomNameEventContent;
+use matrix_sdk::ruma::events::room::{ImageInfo, MediaSource};
+use matrix_sdk::ruma::events::sticker::StickerEventContent;
 use matrix_sdk_ui::timeline::{
     AnyOtherStateEventContentChange, EventTimelineItem, MemberProfileChange, MembershipChange,
-    RoomMembershipChange, TimelineDetails, TimelineItem, TimelineItemContent,
+    Message, RoomMembershipChange, Sticker, TimelineDetails, TimelineItem, TimelineItemContent,
 };
 
 use super::TimelineContext;
@@ -166,15 +168,41 @@ fn service_event_from_content(content: &TimelineItemContent) -> Option<ServiceEv
     }
 }
 
-fn reply_preview_from_content(content: &TimelineItemContent) -> (MessagePreviewKind, String) {
+pub(super) enum Renderable<'a> {
+    Message(&'a Message),
+    Sticker(&'a Sticker),
+    Utd,
+    Service(ServiceEvent),
+}
+
+pub(super) fn classify(content: &TimelineItemContent) -> Option<Renderable<'_>> {
     if let Some(message) = content.as_message() {
-        let preview = preview::from_msgtype(message.msgtype());
-        return (preview.kind, preview.body);
+        return Some(Renderable::Message(message));
+    }
+    if let Some(sticker) = content.as_sticker() {
+        return Some(Renderable::Sticker(sticker));
     }
     if content.as_unable_to_decrypt().is_some() {
-        return (MessagePreviewKind::Encrypted, String::new());
+        return Some(Renderable::Utd);
     }
-    (MessagePreviewKind::None, String::new())
+    service_event_from_content(content).map(Renderable::Service)
+}
+
+pub(super) fn renders(item: &TimelineItem) -> bool {
+    item.as_event()
+        .is_some_and(|event| classify(event.content()).is_some())
+}
+
+fn reply_preview_from_content(content: &TimelineItemContent) -> (MessagePreviewKind, String) {
+    match classify(content) {
+        Some(Renderable::Message(message)) => {
+            let preview = preview::from_msgtype(message.msgtype());
+            (preview.kind, preview.body)
+        }
+        Some(Renderable::Sticker(_)) => (MessagePreviewKind::Sticker, String::new()),
+        Some(Renderable::Utd) => (MessagePreviewKind::Encrypted, String::new()),
+        Some(Renderable::Service(_)) | None => (MessagePreviewKind::None, String::new()),
+    }
 }
 
 fn extract_reply(content: &TimelineItemContent) -> Option<ReplyInfo> {
@@ -199,6 +227,20 @@ fn extract_reply(content: &TimelineItemContent) -> Option<ReplyInfo> {
     })
 }
 
+#[allow(clippy::cast_possible_truncation)]
+fn pixels(value: UInt) -> u32 {
+    let value: u64 = value.into();
+    value as u32
+}
+
+fn image_meta(info: &ImageInfo) -> ImageMeta {
+    ImageMeta {
+        width: info.width.map(pixels),
+        height: info.height.map(pixels),
+        mimetype: info.mimetype.clone(),
+    }
+}
+
 fn extract_image_body(
     image: &ImageMessageEventContent,
     event_id_str: &str,
@@ -212,25 +254,26 @@ fn extract_image_body(
             sources.insert(format!("{event_id_str}:thumb"), thumb_source.clone());
         }
     }
-    #[allow(clippy::cast_possible_truncation)]
-    let (width, height, mimetype) = image.info.as_ref().map_or((None, None, None), |info| {
-        let w = info.width.map(|v| {
-            let n: u64 = v.into();
-            n as u32
-        });
-        let h = info.height.map(|v| {
-            let n: u64 = v.into();
-            n as u32
-        });
-        (w, h, info.mimetype.clone())
-    });
     MessageBody::Image {
         caption: image.caption().map(String::from),
-        meta: ImageMeta {
-            width,
-            height,
-            mimetype,
-        },
+        meta: image.info.as_deref().map(image_meta).unwrap_or_default(),
+    }
+}
+
+fn extract_sticker_body(
+    sticker: &StickerEventContent,
+    event_id_str: &str,
+    media_sources: &StdMutex<HashMap<String, MediaSource>>,
+) -> MessageBody {
+    if let Ok(mut sources) = media_sources.lock() {
+        sources.insert(
+            event_id_str.to_owned(),
+            MediaSource::from(sticker.source.clone()),
+        );
+    }
+    MessageBody::Sticker {
+        alt: sticker.body.clone(),
+        meta: image_meta(&sticker.info),
     }
 }
 
@@ -294,39 +337,45 @@ pub(super) fn convert_event_item_with_uid(
     let content = event.content();
     let reply = extract_reply(content);
 
-    let Some(message) = content.as_message() else {
-        if content.as_unable_to_decrypt().is_some() {
-            return Some(build_utd_message(
-                unique_id,
-                event,
-                event_id_str,
-                ctx,
+    match classify(content) {
+        Some(Renderable::Message(message)) => {
+            let body = message_type_to_body(message.msgtype(), &event_id_str, ctx.media_sources);
+            Some(TimelineMessage {
+                body,
                 reply,
-            ));
+                edited: message.is_edited(),
+                ..base_message(unique_id, event, event_id_str, ctx)
+            })
         }
-        if let Some(service) = service_event_from_content(content) {
-            return Some(build_service_message(
-                unique_id,
-                event,
-                event_id_str,
-                ctx,
-                service,
-            ));
+        Some(Renderable::Sticker(sticker)) => {
+            let body = extract_sticker_body(sticker.content(), &event_id_str, ctx.media_sources);
+            Some(TimelineMessage {
+                body,
+                reply,
+                ..base_message(unique_id, event, event_id_str, ctx)
+            })
         }
-        tracing::debug!(
-            event_id = event_id_str,
-            sender = %event.sender(),
-            "skipping non-message event"
-        );
-        return None;
-    };
-
-    let body = message_type_to_body(message.msgtype(), &event_id_str, ctx.media_sources);
-
-    Some(TimelineMessage {
-        body,
-        reply,
-        edited: message.is_edited(),
-        ..base_message(unique_id, event, event_id_str, ctx)
-    })
+        Some(Renderable::Utd) => Some(build_utd_message(
+            unique_id,
+            event,
+            event_id_str,
+            ctx,
+            reply,
+        )),
+        Some(Renderable::Service(service)) => Some(build_service_message(
+            unique_id,
+            event,
+            event_id_str,
+            ctx,
+            service,
+        )),
+        None => {
+            tracing::debug!(
+                event_id = event_id_str,
+                sender = %event.sender(),
+                "skipping non-message event"
+            );
+            None
+        }
+    }
 }

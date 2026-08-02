@@ -1,0 +1,98 @@
+import { Palette, Spinner } from "std-widgets.slint";
+import { IconDisplay, IconSet } from "@lucide";
+import { MediaState } from "../../../../../enums.slint";
+import { Fonts } from "../../../../../theme.slint";
+
+export component StickerMessage inherits HorizontalLayout {
+    in property <image> sticker;
+    in property <MediaState> media-state;
+    in property <int> sticker-width;
+    in property <int> sticker-height;
+    in property <string> alt;
+    in property <bool> bubble-hovered;
+
+    property <length> max-long-edge: 176px;
+    property <bool> is-ready: root.media-state == MediaState.ready;
+    property <bool> is-failed: root.media-state == MediaState.failed;
+    property <bool> has-dimensions: root.sticker-width > 0 && root.sticker-height > 0;
+    property <float> aspect: root.has-dimensions
+        ? root.sticker-width / max(root.sticker-height, 1)
+        : 1.0;
+    property <bool> is-landscape: root.aspect >= 1.0;
+    property <length> intrinsic-long-edge: max(root.sticker-width, root.sticker-height) * 1px;
+    property <length> display-long-edge: root.has-dimensions
+        ? min(root.intrinsic-long-edge, root.max-long-edge)
+        : root.max-long-edge;
+
+    out property <length> display-width: root.is-landscape
+        ? root.display-long-edge
+        : root.display-long-edge * root.aspect;
+    out property <length> display-height: root.is-landscape
+        ? root.display-long-edge / max(root.aspect, 0.01)
+        : root.display-long-edge;
+
+    alignment: start;
+
+    Rectangle {
+        width: root.display-width;
+        height: root.display-height;
+
+        accessible-role: image;
+        accessible-label: root.alt != "" ? @tr("Sticker: {}", root.alt) : @tr("Sticker");
+
+        if root.is-ready: Image {
+            width: 100%;
+            height: 100%;
+            source: root.sticker;
+            image-fit: ImageFit.contain;
+        }
+
+        if !root.is-ready: Rectangle {
+            width: 100%;
+            height: 100%;
+            border-radius: 8px;
+            background: Palette.foreground.transparentize(0.94);
+
+            if !root.is-failed: Spinner {
+                x: (parent.width - self.width) / 2;
+                y: (parent.height - self.height) / 2;
+                indeterminate: true;
+            }
+
+            if root.is-failed: IconDisplay {
+                x: (parent.width - self.width) / 2;
+                y: (parent.height - self.height) / 2;
+                icon: IconSet.ImageOff;
+                size: 24px;
+                stroke: Palette.foreground.transparentize(0.5);
+            }
+        }
+
+        if root.alt != "": Rectangle {
+            x: (parent.width - self.width) / 2;
+            y: parent.height - self.height - 4px;
+            width: min(parent.width, alt-text.preferred-width + 16px);
+            height: alt-text.preferred-height + 6px;
+            border-radius: self.height / 2;
+            background: Palette.background.transparentize(0.15);
+            opacity: root.is-ready && root.bubble-hovered ? 1 : 0;
+
+            animate opacity {
+                duration: 120ms;
+                easing: ease-out;
+            }
+
+            alt-text := Text {
+                x: 8px;
+                y: (parent.height - self.height) / 2;
+                width: parent.width - 16px;
+                text: root.alt;
+                font-family: Fonts.emoji;
+                font-size: 11px;
+                color: Palette.foreground;
+                horizontal-alignment: center;
+                overflow: elide;
+            }
+        }
+    }
+}

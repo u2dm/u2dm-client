@@ -33,3 +33,4 @@ is needed.
 - **Photo messages:** [Lorem Picsum](https://picsum.photos), which serves photos from
   [Unsplash](https://unsplash.com) under the [Unsplash License](https://unsplash.com/license).
   No attribution is required, though the photos cannot be resold unmodified.
+- **Stickers:** the CC0 DiceBear styles above. The animated one is derived locally.

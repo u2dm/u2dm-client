@@ -213,7 +213,7 @@ pub enum SyncOutcome {
     Fatal(String),
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 pub struct ImageMeta {
     pub width: Option<u32>,
     pub height: Option<u32>,
@@ -253,6 +253,12 @@ pub enum ServiceEvent {
     CallNotification,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MediaKind {
+    Photo,
+    Sticker,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum MessageBody {
     Text(String),
@@ -260,6 +266,10 @@ pub enum MessageBody {
     Emote(String),
     Image {
         caption: Option<String>,
+        meta: ImageMeta,
+    },
+    Sticker {
+        alt: String,
         meta: ImageMeta,
     },
     File {
@@ -289,8 +299,23 @@ impl MessageBody {
             | Self::Service(_)
             | Self::Unsupported { .. } => MessagePreviewKind::Text,
             Self::Image { .. } => MessagePreviewKind::Image,
+            Self::Sticker { .. } => MessagePreviewKind::Sticker,
             Self::File { .. } => MessagePreviewKind::File,
             Self::UnableToDecrypt => MessagePreviewKind::Encrypted,
+        }
+    }
+
+    pub fn media(&self) -> Option<(MediaKind, &ImageMeta)> {
+        match self {
+            Self::Image { meta, .. } => Some((MediaKind::Photo, meta)),
+            Self::Sticker { meta, .. } => Some((MediaKind::Sticker, meta)),
+            Self::Text(_)
+            | Self::Notice(_)
+            | Self::Emote(_)
+            | Self::File { .. }
+            | Self::Service(_)
+            | Self::UnableToDecrypt
+            | Self::Unsupported { .. } => None,
         }
     }
 }
@@ -501,8 +526,15 @@ pub enum TimelineUpdate {
     },
     JumpOutcome {
         event_id: String,
-        row: Option<usize>,
+        target: JumpTarget,
     },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum JumpTarget {
+    Row(usize),
+    NotRenderable,
+    NotLoaded,
 }
 
 impl TimelineUpdate {

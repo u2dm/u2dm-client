@@ -141,6 +141,7 @@ pub fn body_preview(body: &MessageBody) -> String {
             text.clone()
         }
         MessageBody::Image { caption, .. } => caption.clone().unwrap_or_default(),
+        MessageBody::Sticker { alt, .. } => alt.clone(),
         MessageBody::File { meta } => meta.filename.clone(),
         MessageBody::Service(_) | MessageBody::UnableToDecrypt => String::new(),
         MessageBody::Unsupported { fallback, .. } => fallback.clone(),

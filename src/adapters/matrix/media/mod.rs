@@ -9,6 +9,7 @@ use matrix_sdk::media::{MediaFormat, MediaThumbnailSettings};
 use matrix_sdk::ruma::events::room::MediaSource;
 pub(crate) use service::MediaService;
 
+use crate::domain::models::{ImageMeta, MediaKind};
 use crate::ports::media::MediaCache;
 
 pub(super) fn thumb_key(event_id: &str) -> String {
@@ -79,4 +80,38 @@ pub(super) fn is_animated_mime(mimetype: Option<&str>) -> bool {
 
 pub(super) fn thumbnail_format() -> MediaFormat {
     MediaFormat::Thumbnail(MediaThumbnailSettings::new(400u32.into(), 400u32.into()))
+}
+
+#[derive(Clone, Copy)]
+pub(super) enum MediaLane {
+    Thumbnail,
+    FullFile,
+}
+
+pub(super) fn lane(kind: MediaKind, meta: &ImageMeta) -> MediaLane {
+    match kind {
+        MediaKind::Sticker => MediaLane::FullFile,
+        MediaKind::Photo if is_animated_mime(meta.mimetype.as_deref()) => MediaLane::FullFile,
+        MediaKind::Photo => MediaLane::Thumbnail,
+    }
+}
+
+impl MediaLane {
+    pub(super) fn source(
+        self,
+        media_sources: &StdMutex<HashMap<String, MediaSource>>,
+        event_id: &str,
+    ) -> Option<MediaSource> {
+        match self {
+            Self::FullFile => lookup_full_media_source(media_sources, event_id),
+            Self::Thumbnail => lookup_media_source(media_sources, event_id),
+        }
+    }
+
+    pub(super) fn format(self) -> MediaFormat {
+        match self {
+            Self::FullFile => MediaFormat::File,
+            Self::Thumbnail => thumbnail_format(),
+        }
+    }
 }

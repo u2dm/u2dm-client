@@ -4,7 +4,6 @@
     "device_id": "DEMODEVICE",
     "homeserver": "https://matrix.org"
   },
-
   "pronouns": {
     "@alex:matrix.org": ["he/they"],
     "@sarah:matrix.org": ["she/her"],
@@ -17,7 +16,6 @@
     "@nina:matrix.org": ["she/they"],
     "@leo:matrix.org": ["he/him"]
   },
-
   "rooms": [
     {
       "id": "!rust:demo.local",
@@ -29,6 +27,19 @@
         "sender": "Sarah",
         "sender_id": "@sarah:matrix.org",
         "body": "ci ran for 67 minutes to tell me clippy is not happy 🫃🫃🫃"
+      }
+    },
+    {
+      "id": "!stickers:demo.local",
+      "name": "sticker spam",
+      "members": 38,
+      "unread": 2,
+      "minutes_ago": 2,
+      "last_message": {
+        "sender": "Alex",
+        "sender_id": "@alex:matrix.org",
+        "own": true,
+        "body": "this is exactly the energy the release needs"
       }
     },
     {
@@ -55,7 +66,9 @@
       "last_message": {
         "sender": "Sarah",
         "sender_id": "@sarah:matrix.org",
-        "service": { "kind": "call-started" }
+        "service": {
+          "kind": "call-started"
+        }
       }
     },
     {
@@ -154,7 +167,10 @@
       "direct": true,
       "members": 2,
       "days_ago": 3,
-      "last_message": { "body": "you are so unbelievably cooked", "own": true }
+      "last_message": {
+        "body": "you are so unbelievably cooked",
+        "own": true
+      }
     },
     {
       "id": "!gym:demo.local",
@@ -216,7 +232,6 @@
       }
     }
   ],
-
   "spaces": [
     {
       "id": "!space-rust:demo.local",
@@ -257,11 +272,11 @@
         "!gym:demo.local",
         "!music:demo.local",
         "!cats:demo.local",
-        "!jobs:demo.local"
+        "!jobs:demo.local",
+        "!stickers:demo.local"
       ]
     }
   ],
-
   "timelines": {
     "!rust:demo.local": [
       {
@@ -269,42 +284,55 @@
         "sender": "@sarah:matrix.org",
         "name": "Sarah Chen",
         "minutes_ago": 36,
-        "service": { "kind": "room-created" }
+        "service": {
+          "kind": "room-created"
+        }
       },
       {
         "id": "demo-rust-svc-enc",
         "sender": "@sarah:matrix.org",
         "name": "Sarah Chen",
         "minutes_ago": 35,
-        "service": { "kind": "encryption" }
+        "service": {
+          "kind": "encryption"
+        }
       },
       {
         "id": "demo-rust-svc-join-marcus",
         "sender": "@marcus:matrix.org",
         "name": "Marcus",
         "minutes_ago": 34,
-        "service": { "kind": "joined" }
+        "service": {
+          "kind": "joined"
+        }
       },
       {
         "id": "demo-rust-svc-join-kai",
         "sender": "@kai:matrix.org",
         "name": "Kai",
         "minutes_ago": 33,
-        "service": { "kind": "joined" }
+        "service": {
+          "kind": "joined"
+        }
       },
       {
         "id": "demo-rust-svc-name",
         "sender": "@kai:matrix.org",
         "name": "Kai",
         "minutes_ago": 18,
-        "service": { "kind": "name-changed", "target": "kai (afk)" }
+        "service": {
+          "kind": "name-changed",
+          "target": "kai (afk)"
+        }
       },
       {
         "id": "demo-rust-svc-call",
         "sender": "@sarah:matrix.org",
         "name": "Sarah Chen",
         "minutes_ago": 6,
-        "service": { "kind": "call-started" }
+        "service": {
+          "kind": "call-started"
+        }
       },
       {
         "id": "demo-rust-1",
@@ -521,7 +549,6 @@
         }
       }
     ],
-
     "!matrixhq:demo.local": [
       {
         "id": "demo-matrixhq-1",
@@ -599,7 +626,6 @@
         "minutes_ago": 18
       }
     ],
-
     "!sarah:demo.local": [
       {
         "id": "demo-sarah-1",
@@ -627,10 +653,12 @@
         "sender": "@sarah:matrix.org",
         "name": "Sarah Chen",
         "minutes_ago": 43,
-        "image": { "width": 1040, "height": 780 }
+        "image": {
+          "width": 1040,
+          "height": 780
+        }
       }
     ],
-
     "!design:demo.local": [
       {
         "id": "demo-design-1",
@@ -678,7 +706,6 @@
         }
       }
     ],
-
     "!ohio:demo.local": [
       {
         "id": "demo-ohio-1",
@@ -728,7 +755,6 @@
         "days_ago": 2
       }
     ],
-
     "!linux:demo.local": [
       {
         "id": "demo-linux-1",
@@ -794,7 +820,6 @@
         "minutes_ago": 95
       }
     ],
-
     "!trip:demo.local": [
       {
         "id": "demo-trip-1",
@@ -844,7 +869,6 @@
         "days_ago": 1
       }
     ],
-
     "!cats:demo.local": [
       {
         "id": "demo-cats-1",
@@ -886,7 +910,6 @@
         "days_ago": 1
       }
     ],
-
     "!gym:demo.local": [
       {
         "id": "demo-gym-1",
@@ -936,7 +959,6 @@
         "days_ago": 3
       }
     ],
-
     "!book:demo.local": [
       {
         "id": "demo-book-1",
@@ -978,7 +1000,6 @@
         "days_ago": 4
       }
     ],
-
     "!music:demo.local": [
       {
         "id": "demo-music-1",
@@ -1020,7 +1041,6 @@
         "days_ago": 5
       }
     ],
-
     "!devops:demo.local": [
       {
         "id": "demo-devops-1",
@@ -1062,7 +1082,6 @@
         "days_ago": 6
       }
     ],
-
     "!jobs:demo.local": [
       {
         "id": "demo-jobs-1",
@@ -1120,7 +1139,6 @@
         "days_ago": 3
       }
     ],
-
     "!nina:demo.local": [
       {
         "id": "demo-nina-1",
@@ -1146,7 +1164,6 @@
         "days_ago": 3
       }
     ],
-
     "!priya:demo.local": [
       {
         "id": "demo-priya-1",
@@ -1172,7 +1189,6 @@
         "days_ago": 2
       }
     ],
-
     "!frontend:demo.local": [
       {
         "id": "demo-frontend-1",
@@ -1204,6 +1220,76 @@
         "name": "Nadia",
         "body": "shipped it 🚀",
         "days_ago": 2
+      }
+    ],
+    "!stickers:demo.local": [
+      {
+        "id": "demo-sticker-ship",
+        "sender": "@priya:matrix.org",
+        "name": "Priya",
+        "body": "shipping it anyway",
+        "minutes_ago": 7,
+        "sticker": {
+          "width": 512,
+          "height": 512
+        }
+      },
+      {
+        "id": "demo-sticker-tall",
+        "sender": "@marcus:matrix.org",
+        "name": "Marcus",
+        "body": "the borrow checker, colourised",
+        "minutes_ago": 6,
+        "sticker": {
+          "width": 240,
+          "height": 512
+        }
+      },
+      {
+        "id": "demo-sticker-anim",
+        "sender": "@sarah:matrix.org",
+        "name": "Sarah Chen",
+        "body": "cargo build intensifies",
+        "minutes_ago": 5,
+        "sticker": {
+          "width": 512,
+          "height": 512,
+          "animated": true
+        }
+      },
+      {
+        "id": "demo-sticker-small",
+        "sender": "@kai:matrix.org",
+        "name": "Kai",
+        "body": "tiny",
+        "minutes_ago": 4,
+        "sticker": {
+          "width": 64,
+          "height": 64
+        }
+      },
+      {
+        "id": "demo-sticker-missing",
+        "sender": "@kai:matrix.org",
+        "name": "Kai",
+        "body": "this one never arrives",
+        "minutes_ago": 3,
+        "sticker": {
+          "width": 512,
+          "height": 512
+        }
+      },
+      {
+        "id": "demo-sticker-reply",
+        "sender": "@alex:matrix.org",
+        "name": "Alex",
+        "body": "this is exactly the energy the release needs",
+        "minutes_ago": 2,
+        "reply": {
+          "sender": "Priya",
+          "event_id": "demo-sticker-ship",
+          "kind": "sticker"
+        }
       }
     ]
   }

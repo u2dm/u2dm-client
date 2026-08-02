@@ -23,7 +23,7 @@ use super::{EnrichmentPool, TimelineContext};
 use crate::adapters::matrix::media::MediaService;
 use crate::adapters::matrix::profile::PronounCache;
 use crate::domain::models::{
-    EnrichmentDelta, PaginationDirection, PaginationOutcome, RoomId, TimelineCommand,
+    EnrichmentDelta, JumpTarget, PaginationDirection, PaginationOutcome, RoomId, TimelineCommand,
     TimelineFocus, TimelineMessage, TimelinePatch, TimelineUpdate,
 };
 use crate::domain::viewport::PAGINATION_BATCH_SIZE;
@@ -227,13 +227,13 @@ async fn report_jump(
     items: &TimelineItems,
     timeline_tx: &mpsc::Sender<TimelineUpdate>,
 ) {
-    let row = OwnedEventId::try_from(event_id.as_str())
+    let target = OwnedEventId::try_from(event_id.as_str())
         .ok()
-        .and_then(|id| items.row_of_event(&id));
-    tracing::debug!(event_id, ?row, "resolved a jump target");
+        .map_or(JumpTarget::NotLoaded, |id| items.row_of_event(&id));
+    tracing::debug!(event_id, ?target, "resolved a jump target");
     drop(
         timeline_tx
-            .send(TimelineUpdate::JumpOutcome { event_id, row })
+            .send(TimelineUpdate::JumpOutcome { event_id, target })
             .await,
     );
 }
@@ -455,6 +455,7 @@ fn first_unread_event_id(
     items
         .get(first_unread..)?
         .iter()
+        .filter(|item| super::convert::renders(item))
         .filter_map(|item| item.as_event())
         .find(|event| own_user_id != Some(event.sender()))
         .and_then(|event| event.event_id().map(ToString::to_string))

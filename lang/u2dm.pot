@@ -225,80 +225,85 @@ msgstr ""
 
 #: ui/messages.slint:74
 msgctxt "UserMessages"
-msgid "Failed to save space order"
+msgid "That message can't be shown"
 msgstr ""
 
 #: ui/messages.slint:77
 msgctxt "UserMessages"
-msgid "Failed to download media"
+msgid "Failed to save space order"
 msgstr ""
 
 #: ui/messages.slint:80
 msgctxt "UserMessages"
-msgid "Failed to download file"
+msgid "Failed to download media"
 msgstr ""
 
 #: ui/messages.slint:83
 msgctxt "UserMessages"
-msgid "Failed to open media"
+msgid "Failed to download file"
 msgstr ""
 
 #: ui/messages.slint:86
 msgctxt "UserMessages"
-msgid "Failed to save file"
+msgid "Failed to open media"
 msgstr ""
 
 #: ui/messages.slint:89
 msgctxt "UserMessages"
-msgid "File saved to {}"
+msgid "Failed to save file"
 msgstr ""
 
 #: ui/messages.slint:92
 msgctxt "UserMessages"
-msgid "Could not accept the request. Please try again."
+msgid "File saved to {}"
 msgstr ""
 
 #: ui/messages.slint:95
 msgctxt "UserMessages"
-msgid "Could not confirm the match. Please try again."
+msgid "Could not accept the request. Please try again."
 msgstr ""
 
 #: ui/messages.slint:98
 msgctxt "UserMessages"
-msgid "Could not decline the request. Please try again."
+msgid "Could not confirm the match. Please try again."
 msgstr ""
 
 #: ui/messages.slint:101
 msgctxt "UserMessages"
-msgid "Nobody answered in time, so the request expired."
+msgid "Could not decline the request. Please try again."
 msgstr ""
 
 #: ui/messages.slint:104
 msgctxt "UserMessages"
-msgid "Could not accept the verification. Please try again."
+msgid "Nobody answered in time, so the request expired."
 msgstr ""
 
 #: ui/messages.slint:107
 msgctxt "UserMessages"
-msgid "The other device cancelled the verification."
+msgid "Could not accept the verification. Please try again."
 msgstr ""
 
 #: ui/messages.slint:110
 msgctxt "UserMessages"
-msgid "You declined the verification."
+msgid "The other device cancelled the verification."
 msgstr ""
 
 #: ui/messages.slint:113
 msgctxt "UserMessages"
-msgid "The emoji did not match, so the verification was stopped."
+msgid "You declined the verification."
 msgstr ""
 
 #: ui/messages.slint:116
 msgctxt "UserMessages"
-msgid "This request was answered on another one of your devices."
+msgid "The emoji did not match, so the verification was stopped."
 msgstr ""
 
 #: ui/messages.slint:119
+msgctxt "UserMessages"
+msgid "This request was answered on another one of your devices."
+msgstr ""
+
+#: ui/messages.slint:122
 msgctxt "UserMessages"
 msgid "The verification could not be completed."
 msgstr ""
@@ -338,17 +343,17 @@ msgctxt "MessageInput"
 msgid "Send"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/message-bubble.slint:163
+#: ui/screens/chat/components/timeline/message-bubble.slint:166
 msgctxt "MessageBubble"
 msgid "Go to the message this replies to"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/message-bubble.slint:244
+#: ui/screens/chat/components/timeline/message-bubble.slint:256
 msgctxt "MessageBubble"
 msgid "Reply to {}"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/message-bubble.slint:277
+#: ui/screens/chat/components/timeline/message-bubble.slint:289
 msgctxt "MessageBubble"
 msgid "Reply"
 msgstr ""
@@ -516,6 +521,16 @@ msgstr ""
 #: ui/screens/chat/components/timeline/messages/unread-divider.slint:11
 msgctxt "UnreadDivider"
 msgid "Unread messages"
+msgstr ""
+
+#: ui/screens/chat/components/timeline/messages/sticker-message.slint:41
+msgctxt "StickerMessage"
+msgid "Sticker: {}"
+msgstr ""
+
+#: ui/screens/chat/components/timeline/messages/sticker-message.slint:41
+msgctxt "StickerMessage"
+msgid "Sticker"
 msgstr ""
 
 #: ui/screens/chat/components/timeline/messages/file-message.slint:25

@@ -70,6 +70,9 @@ export global UserMessages {
         if kind == UserMessageKind.message-not-found {
             return @tr("That message could not be found");
         }
+        if kind == UserMessageKind.message-not-showable {
+            return @tr("That message can't be shown");
+        }
         if kind == UserMessageKind.space-order-save-failed {
             return @tr("Failed to save space order");
         }

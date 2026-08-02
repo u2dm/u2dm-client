@@ -1,7 +1,6 @@
 import { ListView } from "std-widgets.slint";
 
 import { MessageBubble } from "./message-bubble.slint";
-import { MediaState, MessageKind } from "../../../../enums.slint";
 import { RoomView } from "../../../../views.slint";
 import { Actions } from "../../../../actions.slint";
 
@@ -227,8 +226,7 @@ export component TimelineScroller inherits Rectangle {
             msg: msg;
             available-width: root.available-width;
             init => {
-                if (msg.message-type == MessageKind.image && msg.media-state != MediaState.ready)
-                    || (!msg.is-own && !msg.has-avatar) {
+                if msg.needs-media {
                     Actions.request-media(msg.unique-id);
                 }
             }
