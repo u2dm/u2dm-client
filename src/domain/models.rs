@@ -1,3 +1,4 @@
+use std::hash::{DefaultHasher, Hash, Hasher};
 use std::sync::Arc;
 use std::{fmt, ops};
 
@@ -307,7 +308,7 @@ pub enum ServiceEvent {
     CallNotification,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum MediaKind {
     Photo,
     Sticker,
@@ -398,6 +399,25 @@ pub struct TimelineMessage {
     pub is_first_unread: bool,
 }
 
+impl TimelineMessage {
+    pub fn enrichment_fingerprint(&self) -> u64 {
+        let mut hasher = DefaultHasher::new();
+        self.event_id.hash(&mut hasher);
+        self.sender.hash(&mut hasher);
+        self.sender_avatar_url.hash(&mut hasher);
+        match self.body.media() {
+            Some((kind, meta)) => {
+                kind.hash(&mut hasher);
+                meta.width.hash(&mut hasher);
+                meta.height.hash(&mut hasher);
+                meta.mimetype.hash(&mut hasher);
+            }
+            None => None::<MediaKind>.hash(&mut hasher),
+        }
+        hasher.finish()
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct UnreadAnchor {
     pub row: usize,
@@ -442,6 +462,7 @@ pub enum ThumbnailOutcome {
 pub struct EnrichmentDelta {
     pub unique_id: String,
     pub event_id: Option<String>,
+    pub fingerprint: u64,
     pub thumbnail: ThumbnailOutcome,
     pub avatar_mxc: Option<String>,
     pub pronouns: Option<Vec<String>>,

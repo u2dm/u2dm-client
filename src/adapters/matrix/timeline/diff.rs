@@ -1,4 +1,3 @@
-use std::slice;
 use std::sync::Arc;
 
 use matrix_sdk_ui::eyeball_im::VectorDiff;
@@ -7,12 +6,8 @@ use matrix_sdk_ui::timeline::TimelineItem;
 use super::TimelineContext;
 use super::convert::convert_timeline_item;
 use super::filter::TimelineItems;
-use super::subscribe::spawn_enrichment_for_messages;
-use crate::domain::models::{TimelineMessage, TimelinePatch};
-
-fn spawn_if_needed(msg: &TimelineMessage, ctx: &TimelineContext<'_>) {
-    spawn_enrichment_for_messages(slice::from_ref(msg), ctx);
-}
+use super::subscribe::{enrich_message, enrich_messages};
+use crate::domain::models::TimelinePatch;
 
 fn apply_append(
     items: &mut TimelineItems,
@@ -23,7 +18,7 @@ fn apply_append(
     if msgs.is_empty() {
         return None;
     }
-    spawn_enrichment_for_messages(&msgs, ctx);
+    enrich_messages(&msgs, ctx);
     Some(TimelinePatch::Append(msgs))
 }
 
@@ -35,7 +30,7 @@ fn apply_push_front(
     let msg = convert_timeline_item(&value, ctx);
     items.push_front(value, msg.is_some());
     let msg = msg?;
-    spawn_if_needed(&msg, ctx);
+    enrich_message(&msg, ctx);
     Some(TimelinePatch::PushFront(msg))
 }
 
@@ -47,7 +42,7 @@ fn apply_push_back(
     let msg = convert_timeline_item(&value, ctx);
     items.push_back(value, msg.is_some());
     let msg = msg?;
-    spawn_if_needed(&msg, ctx);
+    enrich_message(&msg, ctx);
     Some(TimelinePatch::PushBack(msg))
 }
 
@@ -69,7 +64,7 @@ fn apply_insert(
     items.insert(index, value, msg.is_some());
     let msg = msg?;
     let mi = items.msg_index_at(index);
-    spawn_if_needed(&msg, ctx);
+    enrich_message(&msg, ctx);
     Some(TimelinePatch::Insert {
         index: mi,
         message: msg,
@@ -93,17 +88,20 @@ fn apply_set(
     match (old_msg, new_msg) {
         (Some(old), Some(new)) if old == new => None,
         (Some(_), Some(new)) => {
-            spawn_if_needed(&new, ctx);
+            enrich_message(&new, ctx);
             Some(TimelinePatch::Set {
                 index: items.msg_index_at(index),
                 message: new,
             })
         }
-        (Some(_), None) => Some(TimelinePatch::Remove {
-            index: items.msg_index_at(index),
-        }),
+        (Some(old), None) => {
+            ctx.enrich.invalidate(&old.unique_id);
+            Some(TimelinePatch::Remove {
+                index: items.msg_index_at(index),
+            })
+        }
         (None, Some(new)) => {
-            spawn_if_needed(&new, ctx);
+            enrich_message(&new, ctx);
             Some(TimelinePatch::Insert {
                 index: items.msg_index_at(index),
                 message: new,
@@ -132,7 +130,7 @@ fn apply_reset(
     ctx: &TimelineContext<'_>,
 ) -> TimelinePatch {
     let msgs = items.reset(values, ctx);
-    spawn_enrichment_for_messages(&msgs, ctx);
+    enrich_messages(&msgs, ctx);
     TimelinePatch::Reset(msgs)
 }
 

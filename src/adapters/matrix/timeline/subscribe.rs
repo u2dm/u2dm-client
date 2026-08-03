@@ -19,7 +19,7 @@ use tokio::task::JoinSet;
 
 use super::diff::diff_to_patch;
 use super::filter::TimelineItems;
-use super::{EnrichmentPool, TimelineContext};
+use super::{EnrichmentClaim, EnrichmentPool, TimelineContext};
 use crate::adapters::matrix::media::MediaService;
 use crate::adapters::matrix::profile::PronounCache;
 use crate::domain::models::{
@@ -37,16 +37,8 @@ fn needs_pronouns(msg: &TimelineMessage, pronouns: &PronounCache) -> bool {
     !msg.is_own && pronouns.needs_fetch(&msg.sender)
 }
 
-fn spawn_enrichment(ctx: &TimelineContext<'_>, msg: &TimelineMessage) {
+fn spawn_enrichment(ctx: &TimelineContext<'_>, msg: &TimelineMessage, claim: EnrichmentClaim) {
     let unique_id = msg.unique_id.clone();
-    if let Ok(mut inflight) = ctx.enrich.inflight.lock() {
-        if !inflight.insert(unique_id.clone()) {
-            return;
-        }
-    } else {
-        return;
-    }
-
     let msg = msg.clone();
     let resolve_pronouns = needs_pronouns(&msg, ctx.pronouns);
     let client = ctx.client.clone();
@@ -55,7 +47,11 @@ fn spawn_enrichment(ctx: &TimelineContext<'_>, msg: &TimelineMessage) {
     let pronouns = Arc::clone(ctx.pronouns);
     let inflight = Arc::clone(&ctx.enrich.inflight);
     let semaphore = Arc::clone(&ctx.enrich.semaphore);
-    let token = ctx.enrich.token.clone();
+    let EnrichmentClaim {
+        revision,
+        fingerprint,
+        cancel: token,
+    } = claim;
     let tx = ctx.timeline_tx.clone();
 
     ctx.enrich.tracker.spawn(async move {
@@ -76,6 +72,7 @@ fn spawn_enrichment(ctx: &TimelineContext<'_>, msg: &TimelineMessage) {
             Some(EnrichmentDelta {
                 unique_id: msg.unique_id.clone(),
                 event_id: msg.event_id.clone(),
+                fingerprint,
                 thumbnail,
                 avatar_mxc,
                 pronouns,
@@ -84,9 +81,7 @@ fn spawn_enrichment(ctx: &TimelineContext<'_>, msg: &TimelineMessage) {
 
         let delta = token.run_until_cancelled(work).await.flatten();
 
-        if let Ok(mut inflight) = inflight.lock() {
-            inflight.remove(&unique_id);
-        }
+        EnrichmentPool::finish(&inflight, &unique_id, revision);
 
         if let Some(delta) = delta
             && !delta.is_noop()
@@ -101,14 +96,24 @@ fn spawn_enrichment(ctx: &TimelineContext<'_>, msg: &TimelineMessage) {
     });
 }
 
-pub(super) fn spawn_enrichment_for_messages(
-    messages: &[TimelineMessage],
-    ctx: &TimelineContext<'_>,
-) {
+fn has_enrichment_work(msg: &TimelineMessage, ctx: &TimelineContext<'_>) -> bool {
+    ctx.media.needs_media_download(msg) || needs_pronouns(msg, ctx.pronouns)
+}
+
+pub(super) fn enrich_message(msg: &TimelineMessage, ctx: &TimelineContext<'_>) {
+    let claim = ctx.enrich.claim(
+        &msg.unique_id,
+        msg.enrichment_fingerprint(),
+        has_enrichment_work(msg, ctx),
+    );
+    if let Some(claim) = claim {
+        spawn_enrichment(ctx, msg, claim);
+    }
+}
+
+pub(super) fn enrich_messages(messages: &[TimelineMessage], ctx: &TimelineContext<'_>) {
     for msg in messages {
-        if ctx.media.needs_media_download(msg) || needs_pronouns(msg, ctx.pronouns) {
-            spawn_enrichment(ctx, msg);
-        }
+        enrich_message(msg, ctx);
     }
 }
 
@@ -126,7 +131,7 @@ async fn send_initial_timeline(
         %room_id,
         "timeline loaded"
     );
-    spawn_enrichment_for_messages(&messages, ctx);
+    enrich_messages(&messages, ctx);
     ctx.timeline_tx
         .send(TimelineUpdate::Patch(Box::new(TimelinePatch::Reset(
             messages,

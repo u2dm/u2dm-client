@@ -1,3 +1,4 @@
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -8,9 +9,108 @@ use super::dto::{prefetch_space_avatar, record_room_avatar_need};
 use crate::domain::models::{EnrichmentDelta, Room, Space, TimelineMessage, TimelinePatch};
 use crate::ports::media::MediaCache;
 
+thread_local! {
+    static TIMELINE_INDEX: RefCell<TimelineIndex> = RefCell::new(TimelineIndex::default());
+}
+
+#[derive(Default)]
+struct TimelineIndex {
+    row_of: HashMap<String, usize>,
+    fingerprint_of: HashMap<String, u64>,
+}
+
+impl TimelineIndex {
+    fn clear(&mut self) {
+        self.row_of.clear();
+        self.fingerprint_of.clear();
+    }
+
+    fn reset(&mut self, messages: &[TimelineMessage]) {
+        self.clear();
+        self.extend_from(0, messages);
+    }
+
+    fn extend_from(&mut self, base: usize, messages: &[TimelineMessage]) {
+        for (offset, message) in messages.iter().enumerate() {
+            self.remember(base.saturating_add(offset), message);
+        }
+    }
+
+    fn remember(&mut self, row: usize, message: &TimelineMessage) {
+        self.row_of.insert(message.unique_id.clone(), row);
+        self.fingerprint_of
+            .insert(message.unique_id.clone(), message.enrichment_fingerprint());
+    }
+
+    fn forget(&mut self, unique_id: &str) {
+        self.row_of.remove(unique_id);
+        self.fingerprint_of.remove(unique_id);
+    }
+
+    fn inserted_at(&mut self, row: usize, message: &TimelineMessage) {
+        for existing in self.row_of.values_mut() {
+            if *existing >= row {
+                *existing = existing.saturating_add(1);
+            }
+        }
+        self.remember(row, message);
+    }
+
+    fn replaced_at(&mut self, row: usize, previous: Option<&str>, message: &TimelineMessage) {
+        if let Some(previous) = previous.filter(|id| *id != message.unique_id) {
+            self.forget(previous);
+        }
+        self.remember(row, message);
+    }
+
+    fn removed_at(&mut self, row: usize, unique_id: Option<&str>) {
+        if let Some(unique_id) = unique_id {
+            self.forget(unique_id);
+        }
+        for existing in self.row_of.values_mut() {
+            if *existing > row {
+                *existing = existing.saturating_sub(1);
+            }
+        }
+    }
+
+    fn truncated_to(&mut self, length: usize) {
+        let Self {
+            row_of,
+            fingerprint_of,
+        } = self;
+        row_of.retain(|_, row| *row < length);
+        fingerprint_of.retain(|unique_id, _| row_of.contains_key(unique_id));
+    }
+
+    fn holds_revision(&self, delta: &EnrichmentDelta) -> bool {
+        self.fingerprint_of.get(&delta.unique_id) == Some(&delta.fingerprint)
+    }
+
+    fn row_for(&self, delta: &EnrichmentDelta) -> Option<usize> {
+        self.row_of
+            .get(&delta.unique_id)
+            .copied()
+            .filter(|_| self.holds_revision(delta))
+    }
+}
+
 pub fn apply_timeline_patch<T: Clone + 'static>(
     model: &VecModel<T>,
     patch: TimelinePatch,
+    convert: &dyn Fn(&TimelineMessage) -> T,
+    enrich: &dyn Fn(&mut T, &EnrichmentDelta),
+    entry_id: &dyn Fn(&T) -> &str,
+) {
+    TIMELINE_INDEX.with_borrow_mut(|index| {
+        apply_patch(model, patch, index, convert, enrich, entry_id);
+    });
+}
+
+fn apply_patch<T: Clone + 'static>(
+    model: &VecModel<T>,
+    patch: TimelinePatch,
+    index: &mut TimelineIndex,
     convert: &dyn Fn(&TimelineMessage) -> T,
     enrich: &dyn Fn(&mut T, &EnrichmentDelta),
     entry_id: &dyn Fn(&T) -> &str,
@@ -24,69 +124,47 @@ pub fn apply_timeline_patch<T: Clone + 'static>(
     match patch {
         TimelinePatch::Reset(messages) => {
             forget_all_media_needs();
+            index.reset(&messages);
             let entries: Vec<T> = messages.iter().map(convert).collect();
             model.set_vec(entries);
         }
         TimelinePatch::Append(messages) => {
+            index.extend_from(before, &messages);
             for m in &messages {
                 model.push(convert(m));
             }
         }
         TimelinePatch::PushFront(m) => {
+            index.inserted_at(0, &m);
             model.insert(0, convert(&m));
         }
         TimelinePatch::PushBack(m) => {
+            index.remember(before, &m);
             model.push(convert(&m));
         }
-        TimelinePatch::Insert { index, message } => {
-            let idx = index.min(model.row_count());
-            model.insert(idx, convert(&message));
+        TimelinePatch::Insert { index: at, message } => {
+            let row = at.min(before);
+            index.inserted_at(row, &message);
+            model.insert(row, convert(&message));
         }
-        TimelinePatch::Set { index, message } => {
-            if index < model.row_count() {
-                model.set_row_data(index, convert(&message));
-            }
+        TimelinePatch::Set { index: at, message } => {
+            set_row(model, at, before, index, &message, convert, entry_id);
         }
-        TimelinePatch::Remove { index } => {
-            if index < model.row_count() {
-                model.remove(index);
-            }
-        }
-        TimelinePatch::PopFront => {
-            if model.row_count() > 0 {
-                model.remove(0);
-            }
-        }
+        TimelinePatch::Remove { index: at } => remove_row(model, at, before, index, entry_id),
+        TimelinePatch::PopFront => remove_row(model, 0, before, index, entry_id),
         TimelinePatch::PopBack => {
-            let count = model.row_count();
-            if count > 0 {
-                model.remove(count - 1);
-            }
+            remove_row(model, before.saturating_sub(1), before, index, entry_id);
         }
-        TimelinePatch::Truncate { length } => {
-            while model.row_count() > length {
-                model.remove(model.row_count() - 1);
-            }
-        }
+        TimelinePatch::Truncate { length } => truncate_rows(model, length, index),
         TimelinePatch::Clear => {
             forget_all_media_needs();
+            index.clear();
             model.set_vec(Vec::new());
         }
         TimelinePatch::Batch(patches) => {
-            apply_batch(model, patches, convert, enrich, entry_id);
+            apply_batch(model, patches, index, convert, enrich, entry_id);
         }
-        TimelinePatch::Enrich(delta) => {
-            for i in 0..model.row_count() {
-                if let Some(entry) = model.row_data(i)
-                    && entry_id(&entry) == delta.unique_id.as_str()
-                {
-                    let mut updated = entry;
-                    enrich(&mut updated, &delta);
-                    model.set_row_data(i, updated);
-                    break;
-                }
-            }
-        }
+        TimelinePatch::Enrich(delta) => enrich_target(model, &delta, index, enrich, entry_id),
     }
     tracing::debug!(
         model_rows_after = model.row_count(),
@@ -94,16 +172,106 @@ pub fn apply_timeline_patch<T: Clone + 'static>(
     );
 }
 
+fn id_at<T: Clone + 'static>(
+    model: &VecModel<T>,
+    row: usize,
+    entry_id: &dyn Fn(&T) -> &str,
+) -> Option<String> {
+    model.row_data(row).map(|entry| entry_id(&entry).to_owned())
+}
+
 fn apply_batch<T: Clone + 'static>(
     model: &VecModel<T>,
     patches: Vec<TimelinePatch>,
+    index: &mut TimelineIndex,
     convert: &dyn Fn(&TimelineMessage) -> T,
     enrich: &dyn Fn(&mut T, &EnrichmentDelta),
     entry_id: &dyn Fn(&T) -> &str,
 ) {
-    for p in patches {
-        apply_timeline_patch(model, p, convert, enrich, entry_id);
+    for patch in patches {
+        apply_patch(model, patch, index, convert, enrich, entry_id);
     }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn set_row<T: Clone + 'static>(
+    model: &VecModel<T>,
+    row: usize,
+    row_count: usize,
+    index: &mut TimelineIndex,
+    message: &TimelineMessage,
+    convert: &dyn Fn(&TimelineMessage) -> T,
+    entry_id: &dyn Fn(&T) -> &str,
+) {
+    if row >= row_count {
+        return;
+    }
+    index.replaced_at(row, id_at(model, row, entry_id).as_deref(), message);
+    model.set_row_data(row, convert(message));
+}
+
+fn remove_row<T: Clone + 'static>(
+    model: &VecModel<T>,
+    row: usize,
+    row_count: usize,
+    index: &mut TimelineIndex,
+    entry_id: &dyn Fn(&T) -> &str,
+) {
+    if row >= row_count {
+        return;
+    }
+    index.removed_at(row, id_at(model, row, entry_id).as_deref());
+    model.remove(row);
+}
+
+fn truncate_rows<T: Clone + 'static>(
+    model: &VecModel<T>,
+    length: usize,
+    index: &mut TimelineIndex,
+) {
+    index.truncated_to(length);
+    while model.row_count() > length {
+        model.remove(model.row_count() - 1);
+    }
+}
+
+fn enrich_target<T: Clone + 'static>(
+    model: &VecModel<T>,
+    delta: &EnrichmentDelta,
+    index: &TimelineIndex,
+    enrich: &dyn Fn(&mut T, &EnrichmentDelta),
+    entry_id: &dyn Fn(&T) -> &str,
+) {
+    let Some(row) = index.row_for(delta) else {
+        tracing::debug!(
+            unique_id = delta.unique_id,
+            "dropped an enrichment delta with no live row at its revision"
+        );
+        return;
+    };
+    enrich_row(model, row, delta, enrich, entry_id);
+}
+
+fn enrich_row<T: Clone + 'static>(
+    model: &VecModel<T>,
+    row: usize,
+    delta: &EnrichmentDelta,
+    enrich: &dyn Fn(&mut T, &EnrichmentDelta),
+    entry_id: &dyn Fn(&T) -> &str,
+) {
+    let Some(mut entry) = model.row_data(row) else {
+        return;
+    };
+    if entry_id(&entry) != delta.unique_id.as_str() {
+        tracing::warn!(
+            row,
+            unique_id = delta.unique_id,
+            "the timeline index disagrees with the model, dropping an enrichment delta"
+        );
+        return;
+    }
+    enrich(&mut entry, delta);
+    model.set_row_data(row, entry);
 }
 
 pub fn reorder_rows<T: Clone + 'static>(model: &VecModel<T>, from: usize, to: usize) {
