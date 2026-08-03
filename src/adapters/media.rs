@@ -1,9 +1,10 @@
-use std::io::ErrorKind;
+use std::io::{Cursor, ErrorKind};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime};
 use std::{env, fs, process};
 
 use async_trait::async_trait;
+use image::{ImageFormat, ImageReader};
 use tokio::fs as async_fs;
 use tokio::task::spawn_blocking;
 
@@ -18,6 +19,17 @@ const SESSION_TOKEN_BYTES: usize = 8;
 const FILE_TOKEN_BYTES: usize = 16;
 const ROOT_TOKEN_BYTES: usize = 16;
 const ROOT_ATTEMPTS: usize = 8;
+
+const LAUNCHER_SAFE_IMAGE_FORMATS: &[(ImageFormat, &str)] = &[
+    (ImageFormat::Png, "png"),
+    (ImageFormat::Jpeg, "jpg"),
+    (ImageFormat::Gif, "gif"),
+    (ImageFormat::WebP, "webp"),
+    (ImageFormat::Bmp, "bmp"),
+    (ImageFormat::Ico, "ico"),
+    (ImageFormat::Tiff, "tiff"),
+    (ImageFormat::Avif, "avif"),
+];
 
 pub struct DesktopMediaFiles {
     session_dir: Option<PathBuf>,
@@ -41,9 +53,9 @@ impl DesktopMediaFiles {
 impl MediaFilePort for DesktopMediaFiles {
     async fn open_media(&self, _event_id: &str, data: &[u8]) -> Result<()> {
         let session_dir = self.session_dir()?;
-        let ext = infer::get(data).map_or("bin", |kind| kind.extension());
+        let extension = launcher_safe_extension(data).ok_or(AppError::UnviewableMedia)?;
         private_fs::create_dir(session_dir).await?;
-        let path = session_dir.join(format!("{}.{ext}", random_hex(FILE_TOKEN_BYTES)));
+        let path = session_dir.join(format!("{}.{extension}", random_hex(FILE_TOKEN_BYTES)));
         private_fs::write_private(&path, data).await?;
         spawn_blocking(move || open::that_detached(&path))
             .await
@@ -74,6 +86,28 @@ impl MediaFilePort for DesktopMediaFiles {
             tracing::debug!("failed to recreate session media directory: {e}");
         }
     }
+}
+
+fn launcher_safe_extension(data: &[u8]) -> Option<&'static str> {
+    let format = image::guess_format(data).ok()?;
+    let extension = launcher_safe_extension_for(format)?;
+    if format.reading_enabled() && !header_parses(data, format) {
+        return None;
+    }
+    Some(extension)
+}
+
+fn launcher_safe_extension_for(format: ImageFormat) -> Option<&'static str> {
+    LAUNCHER_SAFE_IMAGE_FORMATS
+        .iter()
+        .find(|(launcher_safe, _)| *launcher_safe == format)
+        .map(|(_, extension)| *extension)
+}
+
+fn header_parses(data: &[u8], format: ImageFormat) -> bool {
+    ImageReader::with_format(Cursor::new(data), format)
+        .into_dimensions()
+        .is_ok()
 }
 
 fn open_root() -> Option<PathBuf> {

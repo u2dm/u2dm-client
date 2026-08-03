@@ -191,6 +191,7 @@ macro_rules! user_message_kinds {
         MediaDownloadFailed       MediaDownloadFailed     "media-download-failed";
         FileDownloadFailed        FileDownloadFailed      "file-download-failed";
         MediaOpenFailed           MediaOpenFailed         "media-open-failed";
+        MediaNotViewable          MediaNotViewable        "media-not-viewable";
         FileSaveFailed            FileSaveFailed          "file-save-failed";
         FileSaved                 FileSaved               "file-saved";
         VerificationAcceptFailed  VerificationAcceptFailed "verification-accept-failed";

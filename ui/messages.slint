@@ -88,6 +88,9 @@ export global UserMessages {
         if kind == UserMessageKind.media-open-failed {
             return @tr("Failed to open media");
         }
+        if kind == UserMessageKind.media-not-viewable {
+            return @tr("That attachment isn't a viewable image");
+        }
         if kind == UserMessageKind.file-save-failed {
             return @tr("Failed to save file");
         }

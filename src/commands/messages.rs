@@ -52,6 +52,7 @@ pub enum UserMessageKind {
     MediaDownloadFailed,
     FileDownloadFailed,
     MediaOpenFailed,
+    MediaNotViewable,
     FileSaveFailed,
     FileSaved,
     VerificationAcceptFailed,

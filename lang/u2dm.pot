@@ -258,60 +258,65 @@ msgstr ""
 
 #: ui/messages.slint:92
 msgctxt "UserMessages"
-msgid "Failed to save file"
+msgid "That attachment isn't a viewable image"
 msgstr ""
 
 #: ui/messages.slint:95
 msgctxt "UserMessages"
-msgid "File saved to {}"
+msgid "Failed to save file"
 msgstr ""
 
 #: ui/messages.slint:98
 msgctxt "UserMessages"
-msgid "Could not accept the request. Please try again."
+msgid "File saved to {}"
 msgstr ""
 
 #: ui/messages.slint:101
 msgctxt "UserMessages"
-msgid "Could not confirm the match. Please try again."
+msgid "Could not accept the request. Please try again."
 msgstr ""
 
 #: ui/messages.slint:104
 msgctxt "UserMessages"
-msgid "Could not decline the request. Please try again."
+msgid "Could not confirm the match. Please try again."
 msgstr ""
 
 #: ui/messages.slint:107
 msgctxt "UserMessages"
-msgid "Nobody answered in time, so the request expired."
+msgid "Could not decline the request. Please try again."
 msgstr ""
 
 #: ui/messages.slint:110
 msgctxt "UserMessages"
-msgid "Could not accept the verification. Please try again."
+msgid "Nobody answered in time, so the request expired."
 msgstr ""
 
 #: ui/messages.slint:113
 msgctxt "UserMessages"
-msgid "The other device cancelled the verification."
+msgid "Could not accept the verification. Please try again."
 msgstr ""
 
 #: ui/messages.slint:116
 msgctxt "UserMessages"
-msgid "You declined the verification."
+msgid "The other device cancelled the verification."
 msgstr ""
 
 #: ui/messages.slint:119
 msgctxt "UserMessages"
-msgid "The emoji did not match, so the verification was stopped."
+msgid "You declined the verification."
 msgstr ""
 
 #: ui/messages.slint:122
 msgctxt "UserMessages"
-msgid "This request was answered on another one of your devices."
+msgid "The emoji did not match, so the verification was stopped."
 msgstr ""
 
 #: ui/messages.slint:125
+msgctxt "UserMessages"
+msgid "This request was answered on another one of your devices."
+msgstr ""
+
+#: ui/messages.slint:128
 msgctxt "UserMessages"
 msgid "The verification could not be completed."
 msgstr ""

@@ -5,6 +5,7 @@ use super::show_toast;
 use super::task_group::TaskGroup;
 use crate::commands::messages::{UserMessage, UserMessageKind};
 use crate::commands::view::Toast;
+use crate::error::AppError;
 use crate::ports::matrix::MediaPort;
 use crate::ports::media::MediaFilePort;
 use crate::ports::output::AppOutputPort;
@@ -67,10 +68,11 @@ impl MediaActions {
             |media_files, output, event_id, data| async move {
                 if let Err(e) = media_files.open_media(&event_id, &data).await {
                     tracing::warn!("failed to open media: {e}");
-                    show_toast(
-                        output.as_ref(),
-                        Toast::Error(UserMessage::new(UserMessageKind::MediaOpenFailed)),
-                    );
+                    let kind = match e {
+                        AppError::UnviewableMedia => UserMessageKind::MediaNotViewable,
+                        _ => UserMessageKind::MediaOpenFailed,
+                    };
+                    show_toast(output.as_ref(), Toast::Error(UserMessage::new(kind)));
                 }
             },
         );

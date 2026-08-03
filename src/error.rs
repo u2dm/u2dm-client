@@ -28,6 +28,9 @@ pub enum AppError {
     #[error("authentication failed ({kind}): {detail}")]
     Auth { kind: AuthFailure, detail: String },
 
+    #[error("the attachment is not a viewable image")]
+    UnviewableMedia,
+
     #[error("{0}")]
     Other(String),
 }
