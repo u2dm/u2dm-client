@@ -2,7 +2,7 @@ use std::sync::{Arc, Mutex as StdMutex};
 use std::time::Duration;
 
 use tokio::sync::mpsc;
-use tokio::time::timeout;
+use tokio::time::{sleep, timeout};
 use tokio_util::sync::CancellationToken;
 
 use super::establish::EstablishedSession;
@@ -26,6 +26,8 @@ const OAUTH_CALLBACK_TIMEOUT: Duration = Duration::from_mins(5);
 const LOCAL_ERASURE_RESERVE: Duration = Duration::from_secs(1);
 const SERVER_LOGOUT_TIMEOUT: Duration =
     task_group::SHUTDOWN_GRACE.saturating_sub(LOCAL_ERASURE_RESERVE);
+const PERSIST_RETRY_FLOOR: Duration = Duration::from_secs(1);
+const PERSIST_RETRY_CEILING: Duration = Duration::from_mins(1);
 
 pub(super) enum AuthOutcome {
     Login {
@@ -494,17 +496,30 @@ impl SessionController {
                 }
             };
 
-            let persist = async {
-                while let Some(session) = session_rx.recv().await {
-                    if let Err(e) = storage.save_session(&session).await {
-                        tracing::warn!("failed to persist refreshed session: {e}");
-                        super::show_toast(
-                            output.as_ref(),
-                            Toast::Error(UserMessage::new(UserMessageKind::SessionSaveFailed)),
-                        );
-                    } else {
-                        tracing::info!("persisted the current session tokens");
+            let persist = async move {
+                let mut persister = SessionPersister::new(storage, output);
+                let mut dirty: Option<Session> = None;
+                let mut retry_in = None;
+
+                loop {
+                    match next_persist_step(&mut session_rx, retry_in).await {
+                        PersistStep::Refreshed(session) => dirty = Some(session),
+                        PersistStep::Retry => {}
+                        PersistStep::Closed => break,
                     }
+                    let Some(session) = dirty.as_ref() else {
+                        continue;
+                    };
+                    retry_in = persister.store(session).await;
+                    if retry_in.is_none() {
+                        dirty = None;
+                    } else {
+                        persister.report_failure_once();
+                    }
+                }
+
+                if let Some(session) = dirty {
+                    persister.flush(&session).await;
                 }
             };
 
@@ -645,4 +660,93 @@ impl SessionController {
     fn fail_login_once(&self, message: UserMessage) {
         self.fail_login(vec![message]);
     }
+}
+
+struct SessionPersister {
+    storage: Arc<dyn StoragePort>,
+    output: Arc<dyn AppOutputPort>,
+    retry_in: Duration,
+    reported: bool,
+}
+
+impl SessionPersister {
+    fn new(storage: Arc<dyn StoragePort>, output: Arc<dyn AppOutputPort>) -> Self {
+        Self {
+            storage,
+            output,
+            retry_in: PERSIST_RETRY_FLOOR,
+            reported: false,
+        }
+    }
+
+    async fn store(&mut self, session: &Session) -> Option<Duration> {
+        match self.storage.save_session(session).await {
+            Ok(()) => {
+                if self.reported {
+                    tracing::info!("persisted the session tokens after earlier failures");
+                } else {
+                    tracing::info!("persisted the current session tokens");
+                }
+                self.retry_in = PERSIST_RETRY_FLOOR;
+                self.reported = false;
+                None
+            }
+            Err(e) => {
+                let retry_in = self.retry_in;
+                self.retry_in = retry_in.saturating_mul(2).min(PERSIST_RETRY_CEILING);
+                tracing::warn!(
+                    retry_in = retry_in.as_secs(),
+                    "failed to persist refreshed session, retrying: {e}"
+                );
+                Some(retry_in)
+            }
+        }
+    }
+
+    fn report_failure_once(&mut self) {
+        if self.reported {
+            return;
+        }
+        self.reported = true;
+        super::show_toast(
+            self.output.as_ref(),
+            Toast::Error(UserMessage::new(UserMessageKind::SessionSaveFailed)),
+        );
+    }
+
+    async fn flush(&mut self, session: &Session) {
+        if self.store(session).await.is_some() {
+            tracing::warn!("the newest session tokens were not persisted before shutting down");
+        }
+    }
+}
+
+enum PersistStep {
+    Refreshed(Session),
+    Retry,
+    Closed,
+}
+
+async fn next_persist_step(
+    session_rx: &mut mpsc::UnboundedReceiver<Session>,
+    retry_in: Option<Duration>,
+) -> PersistStep {
+    let Some(delay) = retry_in else {
+        return recv_newest_session(session_rx).await;
+    };
+    tokio::select! {
+        biased;
+        step = recv_newest_session(session_rx) => step,
+        () = sleep(delay) => PersistStep::Retry,
+    }
+}
+
+async fn recv_newest_session(session_rx: &mut mpsc::UnboundedReceiver<Session>) -> PersistStep {
+    let Some(mut newest) = session_rx.recv().await else {
+        return PersistStep::Closed;
+    };
+    while let Ok(newer) = session_rx.try_recv() {
+        newest = newer;
+    }
+    PersistStep::Refreshed(newest)
 }
