@@ -8,7 +8,9 @@ use super::decode::{AvatarSlot, clear_session_media, load_avatar_async, request_
 use super::dto::{GRID_COLUMNS, sticker_grid};
 use super::present::{VerifyStep, user_initial, verification_cancellation};
 use super::props::{BoolProp, IntProp, StringProp, UiProps};
-use super::reconcile::{apply_rooms, apply_spaces, apply_timeline_patch};
+use super::reconcile::{
+    apply_rooms, apply_spaces, apply_timeline_patch, forget_timeline_index, index_sticker_grid,
+};
 use crate::commands::effects::{Effect, VerificationActivity, VerificationUpdate};
 use crate::commands::messages::{UserMessage, UserMessageKind};
 use crate::commands::view::{
@@ -131,6 +133,7 @@ pub fn dispatch_effect<B: UiBackend>(w: &B::Window, event: Effect, ctx: &UiEvent
         Effect::Verification(update) => apply_verification(w, &update),
         Effect::LoggedOut => {
             clear_session_media();
+            forget_timeline_index();
             ctx.timeline.set_vec(Vec::new());
             apply_snapshot::<B>(w, &Arc::new(AppViewState::logged_out()), ctx);
             clear_selected_room(w);
@@ -301,6 +304,7 @@ fn rebuild_sticker_grid<B: UiBackend>(stickers: &StickerView, media: &dyn MediaC
         sticker_grid(&[], &query, media)
     };
 
+    index_sticker_grid(&grid);
     B::with_stickers(|rows, packs| {
         rows.set_vec(
             grid.rows

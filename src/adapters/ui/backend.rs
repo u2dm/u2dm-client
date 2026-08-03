@@ -8,10 +8,11 @@ use super::decode::{
     AvatarSlot, DecodeOutcome, advance_animations, set_animation_tick, set_avatar_ready,
     set_image_ready,
 };
-use super::dto::{CELL_KEY_SEPARATOR, StickerPackDto, StickerRowDto};
+use super::dto::{DecodeTarget, StickerPackDto, StickerRowDto};
 use super::props::{IntProp, StringProp, UiProps};
+use super::reconcile::{sticker_cell_row, sticker_pack_row, timeline_row_of};
 use super::reduce::dispatch_effect;
-use super::rows::{locate_row, patch_first_row, patch_rows_by_id};
+use super::rows::{locate_row, patch_rows_by_id};
 use crate::commands::effects::Effect;
 use crate::domain::models::{EnrichmentDelta, Room, RoomId, Space, TimelineMessage};
 use crate::ports::media::MediaCache;
@@ -126,82 +127,87 @@ pub fn selected_room_key<B: UiBackend>(weak: &slint::Weak<B::Window>) -> Option<
 }
 
 fn tick_animations<B: UiBackend>() {
-    advance_animations(&mut |key, hint, frame| {
-        place_timeline_frame::<B>(key, hint, &frame)
-            .or_else(|| place_sticker_image::<B>(key, Some(&frame)))
+    advance_animations(&mut |key, hint, frame| match DecodeTarget::of(key) {
+        DecodeTarget::Timeline { unique_id } => patch_timeline_row::<B>(unique_id, hint, |entry| {
+            B::set_message_frame(entry, frame.clone());
+        }),
+        DecodeTarget::StickerCell { key, .. } => place_sticker_cell::<B>(key, Some(&frame)),
     });
 }
 
-fn place_timeline_frame<B: UiBackend>(key: &str, hint: usize, frame: &Image) -> Option<usize> {
+fn patch_timeline_row<B: UiBackend>(
+    unique_id: &str,
+    hint: usize,
+    apply: impl FnOnce(&mut B::Message),
+) -> Option<usize> {
     B::with_timeline(|timeline| {
-        let row = locate_row(timeline, &B::message_id, key, hint)?;
-        let entry = timeline.row_data(row)?;
-        let mut updated = entry;
-        B::set_message_frame(&mut updated, frame.clone());
-        timeline.set_row_data(row, updated);
+        let hint = timeline_row_of(unique_id).unwrap_or(hint);
+        let row = locate_row(timeline, &B::message_id, unique_id, hint)?;
+        let mut entry = timeline.row_data(row)?;
+        apply(&mut entry);
+        timeline.set_row_data(row, entry);
         Some(row)
     })
     .flatten()
 }
 
-fn place_sticker_image<B: UiBackend>(key: &str, art: Option<&Image>) -> Option<usize> {
-    B::with_stickers(|rows, packs| {
-        let mut placed = None;
-        for row in 0..rows.row_count() {
-            let Some(entry) = rows.row_data(row) else {
-                continue;
-            };
-            if B::patch_sticker_cell(&entry, key, art) {
-                placed = Some(row);
-                break;
-            }
-        }
-        if let Some(art) = art {
-            adopt_pack_icon::<B>(packs, key, art);
-        }
-        placed
+fn place_sticker_cell<B: UiBackend>(key: &str, art: Option<&Image>) -> Option<usize> {
+    let row = sticker_cell_row(key)?;
+    B::with_stickers(|rows, _| {
+        let entry = rows.row_data(row)?;
+        B::patch_sticker_cell(&entry, key, art).then_some(row)
     })
     .flatten()
 }
 
-fn adopt_pack_icon<B: UiBackend>(packs: &VecModel<B::StickerPack>, key: &str, image: &Image) {
-    let Some(pack_id) = key.split(CELL_KEY_SEPARATOR).next() else {
+fn adopt_pack_icon<B: UiBackend>(pack_id: &str, image: &Image) {
+    let Some(row) = sticker_pack_row(pack_id) else {
         return;
     };
-    let mut tabs: Vec<B::StickerPack> = packs.iter().collect();
-    let mut adopted = false;
-    for tab in &mut tabs {
-        if let Some(updated) = B::sticker_pack_with_icon(tab, pack_id, image) {
-            *tab = updated;
-            adopted = true;
-            break;
-        }
-    }
-    if adopted {
+    B::with_stickers(|_, packs| {
+        let Some(tab) = packs.row_data(row) else {
+            return;
+        };
+        let Some(updated) = B::sticker_pack_with_icon(&tab, pack_id, image) else {
+            return;
+        };
+        let mut tabs: Vec<B::StickerPack> = packs.iter().collect();
+        let Some(slot) = tabs.get_mut(row) else {
+            return;
+        };
+        *slot = updated;
         packs.set_vec(tabs);
-    }
+    });
 }
 
-fn apply_thumbnail_ready<B: UiBackend>(unique_id: &str, outcome: DecodeOutcome<'_>) {
-    if matches!(outcome, DecodeOutcome::Deferred) {
-        return;
-    }
-    B::with_timeline(|timeline| {
-        patch_first_row(
-            timeline,
-            |entry| B::message_id(entry) == unique_id,
-            |entry| match outcome {
-                DecodeOutcome::Ready(image) => B::set_message_thumbnail(entry, image),
-                DecodeOutcome::Failed => B::set_message_media_failed(entry),
-                DecodeOutcome::Deferred => {}
-            },
-        );
-    });
-    let image = match outcome {
+fn apply_thumbnail_ready<B: UiBackend>(key: &str, outcome: DecodeOutcome<'_>) {
+    let art = match outcome {
         DecodeOutcome::Ready(image) => Some(image),
-        DecodeOutcome::Failed | DecodeOutcome::Deferred => None,
+        DecodeOutcome::Failed => None,
+        DecodeOutcome::Deferred => return,
     };
-    place_sticker_image::<B>(unique_id, image);
+    match DecodeTarget::of(key) {
+        DecodeTarget::Timeline { unique_id } => {
+            let placed = patch_timeline_row::<B>(unique_id, 0, |entry| match art {
+                Some(image) => B::set_message_thumbnail(entry, image),
+                None => B::set_message_media_failed(entry),
+            });
+            if placed.is_none() {
+                tracing::debug!(
+                    unique_id,
+                    "dropped a decoded image with no live timeline row"
+                );
+            }
+        }
+        DecodeTarget::StickerCell { key, pack } => {
+            if place_sticker_cell::<B>(key, art).is_none() {
+                tracing::debug!(key, "dropped a decoded image with no live sticker cell");
+            }
+            if let Some(image) = art {
+                adopt_pack_icon::<B>(pack, image);
+            }
+        }
+    }
 }
 
 #[derive(Default)]

@@ -55,6 +55,20 @@ pub fn cell_key(pack: &PackId, shortcode: &str) -> String {
     format!("{pack}{CELL_KEY_SEPARATOR}{shortcode}")
 }
 
+pub enum DecodeTarget<'a> {
+    Timeline { unique_id: &'a str },
+    StickerCell { key: &'a str, pack: &'a str },
+}
+
+impl<'a> DecodeTarget<'a> {
+    pub fn of(key: &'a str) -> Self {
+        match key.split_once(CELL_KEY_SEPARATOR) {
+            Some((pack, _)) => Self::StickerCell { key, pack },
+            None => Self::Timeline { unique_id: key },
+        }
+    }
+}
+
 pub fn sticker_grid(packs: &[StickerPack], query: &str, media: &dyn MediaCache) -> StickerGrid {
     let per_row = usize::try_from(GRID_COLUMNS.max(1)).unwrap_or(1);
     let needle = query.trim().to_lowercase();

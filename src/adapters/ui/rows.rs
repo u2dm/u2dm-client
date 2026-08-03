@@ -2,24 +2,6 @@ use std::collections::HashSet;
 
 use slint::{Model, VecModel};
 
-pub fn patch_first_row<T: Clone + 'static>(
-    model: &VecModel<T>,
-    matches: impl Fn(&T) -> bool,
-    apply: impl FnOnce(&mut T),
-) {
-    for row in 0..model.row_count() {
-        let Some(entry) = model.row_data(row) else {
-            continue;
-        };
-        if matches(&entry) {
-            let mut updated = entry;
-            apply(&mut updated);
-            model.set_row_data(row, updated);
-            return;
-        }
-    }
-}
-
 pub fn patch_rows_by_id<T: Clone + 'static>(
     model: &VecModel<T>,
     ids: &HashSet<&str>,

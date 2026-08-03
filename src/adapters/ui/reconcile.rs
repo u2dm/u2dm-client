@@ -5,12 +5,13 @@ use std::sync::Arc;
 use slint::{Model, VecModel};
 
 use super::decode::forget_all_media_needs;
-use super::dto::{prefetch_space_avatar, record_room_avatar_need};
+use super::dto::{StickerGrid, prefetch_space_avatar, record_room_avatar_need};
 use crate::domain::models::{EnrichmentDelta, Room, Space, TimelineMessage, TimelinePatch};
 use crate::ports::media::MediaCache;
 
 thread_local! {
     static TIMELINE_INDEX: RefCell<TimelineIndex> = RefCell::new(TimelineIndex::default());
+    static STICKER_INDEX: RefCell<StickerIndex> = RefCell::new(StickerIndex::default());
 }
 
 #[derive(Default)]
@@ -93,6 +94,47 @@ impl TimelineIndex {
             .copied()
             .filter(|_| self.holds_revision(delta))
     }
+}
+
+#[derive(Default)]
+struct StickerIndex {
+    row_of_cell: HashMap<String, usize>,
+    row_of_pack: HashMap<String, usize>,
+}
+
+pub fn index_sticker_grid(grid: &StickerGrid) {
+    STICKER_INDEX.with_borrow_mut(|index| {
+        let StickerIndex {
+            row_of_cell,
+            row_of_pack,
+        } = index;
+        row_of_cell.clear();
+        row_of_pack.clear();
+        for (row, entry) in grid.rows.iter().enumerate() {
+            for cell in &entry.cells {
+                row_of_cell.insert(cell.key.to_string(), row);
+            }
+        }
+        for (row, pack) in grid.packs.iter().enumerate() {
+            row_of_pack.insert(pack.id.to_string(), row);
+        }
+    });
+}
+
+pub fn sticker_cell_row(key: &str) -> Option<usize> {
+    STICKER_INDEX.with_borrow(|index| index.row_of_cell.get(key).copied())
+}
+
+pub fn sticker_pack_row(pack_id: &str) -> Option<usize> {
+    STICKER_INDEX.with_borrow(|index| index.row_of_pack.get(pack_id).copied())
+}
+
+pub fn timeline_row_of(unique_id: &str) -> Option<usize> {
+    TIMELINE_INDEX.with_borrow(|index| index.row_of.get(unique_id).copied())
+}
+
+pub fn forget_timeline_index() {
+    TIMELINE_INDEX.with_borrow_mut(TimelineIndex::clear);
 }
 
 pub fn apply_timeline_patch<T: Clone + 'static>(
