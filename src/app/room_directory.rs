@@ -168,7 +168,7 @@ struct OrderWrites {
 pub(super) struct SpaceOrderWrite {
     op: u64,
     writes: Arc<OrderWrites>,
-    assignments: Vec<(String, String)>,
+    outstanding: Vec<(String, String)>,
 }
 
 struct OrderWriteGuard {
@@ -262,23 +262,33 @@ impl RoomDirectory {
             .latest_op
             .fetch_add(1, Ordering::Relaxed)
             .saturating_add(1);
-        for (id, order) in &assignments {
+        for (id, order) in assignments {
             self.orders.insert(id.clone(), order.clone());
-            self.pending_orders.insert(
-                id.clone(),
-                PendingOrder {
-                    op,
-                    order: order.clone(),
-                },
-            );
+            self.pending_orders.insert(id, PendingOrder { op, order });
         }
 
+        let outstanding = self.claim_outstanding_orders(op);
         self.emit_spaces();
         Some(SpaceOrderWrite {
             op,
             writes: Arc::clone(&self.order_writes),
-            assignments,
+            outstanding,
         })
+    }
+
+    fn claim_outstanding_orders(&mut self, op: u64) -> Vec<(String, String)> {
+        for pending in self.pending_orders.values_mut() {
+            pending.op = op;
+        }
+        let mut outstanding: Vec<(String, String)> = self
+            .pending_orders
+            .iter()
+            .map(|(id, pending)| (id.clone(), pending.order.clone()))
+            .collect();
+        outstanding.sort_by(|(a_id, a_order), (b_id, b_order)| {
+            a_order.cmp(b_order).then_with(|| a_id.cmp(b_id))
+        });
+        outstanding
     }
 
     pub(super) fn rollback_space_orders(&mut self, op: u64, spaces: &[String]) -> bool {
@@ -301,6 +311,8 @@ impl RoomDirectory {
     }
 
     fn reconcile_orders(&mut self) {
+        self.forget_departed_spaces();
+
         let len = self.spaces.len();
         for i in 0..len {
             let Some((id, server)) = self
@@ -329,6 +341,13 @@ impl RoomDirectory {
                 }
             }
         }
+    }
+
+    fn forget_departed_spaces(&mut self) {
+        let live: HashSet<&str> = self.spaces.iter().map(|space| space.id.as_str()).collect();
+        self.orders.retain(|id, _| live.contains(id.as_str()));
+        self.pending_orders
+            .retain(|id, _| live.contains(id.as_str()));
     }
 
     fn assign_orders(&self, target: &[String], moved: usize) -> Vec<(String, String)> {
@@ -386,7 +405,7 @@ impl RoomDirectory {
             let SpaceOrderWrite {
                 op,
                 writes,
-                assignments,
+                outstanding,
             } = write;
             let guard = OrderWriteGuard {
                 op,
@@ -399,7 +418,7 @@ impl RoomDirectory {
 
             let mut failed = Vec::new();
             let mut error = String::new();
-            for (space_id, order) in assignments {
+            for (space_id, order) in outstanding {
                 match write_space_order(&port, &space_id, &order, &guard).await {
                     OrderWriteStep::Written => {}
                     OrderWriteStep::Superseded => {
