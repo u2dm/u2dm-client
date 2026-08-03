@@ -537,8 +537,14 @@ impl AppService {
         reply_to: Option<String>,
     ) {
         if let Some(stickers) = self.port(|a| &a.stickers) {
-            self.stickers
-                .send(stickers, room_id, pack, shortcode, reply_to);
+            self.stickers.send(
+                &mut self.operations,
+                stickers,
+                room_id,
+                pack,
+                shortcode,
+                reply_to,
+            );
         }
     }
 

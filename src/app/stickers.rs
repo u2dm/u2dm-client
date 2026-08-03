@@ -48,7 +48,8 @@ impl Stickers {
     }
 
     pub(super) fn send(
-        &mut self,
+        &self,
+        group: &mut TaskGroup,
         port: Arc<dyn StickerPort>,
         room_id: RoomId,
         pack: PackId,
@@ -56,23 +57,16 @@ impl Stickers {
         reply_to: Option<String>,
     ) {
         let output = Arc::clone(&self.output);
-        let cancel = self.tasks.token();
-        self.tasks.spawn(async move {
-            let work = async move {
-                let result = port
-                    .send_sticker(&room_id, &pack, &shortcode, reply_to.as_deref())
-                    .await;
-                if let Err(e) = result {
-                    tracing::warn!("failed to send sticker: {e}");
-                    show_toast(
-                        output.as_ref(),
-                        Toast::Error(UserMessage::new(UserMessageKind::SendMessageFailed)),
-                    );
-                }
-            };
-            tokio::select! {
-                () = cancel.cancelled() => {}
-                () = work => {}
+        group.spawn(async move {
+            let result = port
+                .send_sticker(&room_id, &pack, &shortcode, reply_to.as_deref())
+                .await;
+            if let Err(e) = result {
+                tracing::warn!("failed to send sticker: {e}");
+                show_toast(
+                    output.as_ref(),
+                    Toast::Error(UserMessage::new(UserMessageKind::SendMessageFailed)),
+                );
             }
         });
     }
