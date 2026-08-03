@@ -1,5 +1,7 @@
 import { Palette } from "std-widgets.slint";
 
+import { Shell } from "../local.slint";
+
 export component FocusRing inherits Rectangle {
     background: transparent;
     border-width: 2px;
@@ -9,6 +11,7 @@ export component FocusRing inherits Rectangle {
 
 export component ClickArea inherits Rectangle {
     in property <bool> enabled: true;
+    in property <bool> above-modal: false;
     in property <string> label;
     in property <bool> show-focus-ring: true;
     in property <length> ring-radius: 6px;
@@ -18,11 +21,18 @@ export component ClickArea inherits Rectangle {
 
     callback clicked();
 
+    property <bool> actionable: root.enabled
+        && (root.above-modal || Shell.background-reachable);
+
+    public function take-focus() {
+        fs.focus();
+    }
+
     accessible-role: button;
-    accessible-enabled: root.enabled;
+    accessible-enabled: root.actionable;
     accessible-label: root.label;
     accessible-action-default => {
-        if (root.enabled) {
+        if (root.actionable) {
             root.clicked();
         }
     }
@@ -32,6 +42,7 @@ export component ClickArea inherits Rectangle {
         x: 0;
         width: 0;
         enabled: root.enabled;
+        focus-on-tab-navigation: root.actionable;
         key-pressed(event) => {
             if (root.enabled && (event.text == " " || event.text == "\n")) {
                 root.clicked();
@@ -60,6 +71,7 @@ export component ClickArea inherits Rectangle {
 
 export component ListItemArea inherits Rectangle {
     in property <bool> enabled: true;
+    in property <bool> above-modal: false;
     in property <string> label;
     in property <bool> selected: false;
     in property <int> index: -1;
@@ -72,14 +84,21 @@ export component ListItemArea inherits Rectangle {
 
     callback clicked();
 
+    property <bool> actionable: root.enabled
+        && (root.above-modal || Shell.background-reachable);
+
+    public function take-focus() {
+        fs.focus();
+    }
+
     accessible-role: list-item;
-    accessible-enabled: root.enabled;
+    accessible-enabled: root.actionable;
     accessible-label: root.label;
     accessible-item-selectable: true;
     accessible-item-selected: root.selected;
     accessible-item-index: root.index;
     accessible-action-default => {
-        if (root.enabled) {
+        if (root.actionable) {
             root.clicked();
         }
     }
@@ -89,6 +108,7 @@ export component ListItemArea inherits Rectangle {
         x: 0;
         width: 0;
         enabled: root.enabled;
+        focus-on-tab-navigation: root.actionable;
         key-pressed(event) => {
             if (root.enabled && (event.text == " " || event.text == "\n")) {
                 root.clicked();

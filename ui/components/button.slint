@@ -10,6 +10,7 @@ export component AppButton inherits Rectangle {
     in property <Icon> icon;
     in property <bool> trailing-icon: false;
     in property <bool> enabled: true;
+    in property <bool> above-modal: false;
     in property <bool> busy: false;
     in property <bool> filled: true;
     in property <color> tint: Palette.accent-background;
@@ -43,6 +44,7 @@ export component AppButton inherits Rectangle {
 
     touch := ClickArea {
         enabled: root.interactive;
+        above-modal: root.above-modal;
         label: root.text;
         ring-radius: AppStyle.control-radius;
         clicked => {
@@ -98,6 +100,7 @@ export component IconButton inherits Rectangle {
     in property <Icon> icon;
     in property <string> label;
     in property <bool> enabled: true;
+    in property <bool> above-modal: false;
     in property <length> size: 34px;
 
     callback clicked();
@@ -110,6 +113,7 @@ export component IconButton inherits Rectangle {
 
     touch := ClickArea {
         enabled: root.enabled;
+        above-modal: root.above-modal;
         label: root.label;
         ring-radius: 10px;
         clicked => {

@@ -45,6 +45,9 @@ export component PickerSearch inherits Rectangle {
                 color: Palette.foreground;
                 font-size: 13px;
                 vertical-alignment: center;
+                single-line: true;
+                accessible-label: root.placeholder;
+                accessible-placeholder-text: root.placeholder;
                 edited => {
                     root.edited(self.text);
                 }

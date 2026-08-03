@@ -34,6 +34,7 @@ export component StatusPill inherits Rectangle {
             font-size: 13px;
             color: Palette.foreground.transparentize(0.15);
             vertical-alignment: center;
+            accessible-live-region: AccessibleLiveness.polite;
         }
 
         if root.show-retry: ClickArea {

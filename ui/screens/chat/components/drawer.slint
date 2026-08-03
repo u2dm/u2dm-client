@@ -3,6 +3,7 @@ import { IconDisplay, IconSet, Icon } from "@lucide";
 
 import { Avatar } from "../../../components/avatar.slint";
 import { ClickArea } from "../../../components/a11y.slint";
+import { ModalHost } from "../../../components/overlay.slint";
 import { ConnectionState } from "../../../enums.slint";
 import { SessionView } from "../../../views.slint";
 import { Actions } from "../../../actions.slint";
@@ -18,6 +19,7 @@ component DrawerRow inherits Rectangle {
     background: touch.has-hover ? Palette.foreground.transparentize(0.93) : transparent;
 
     touch := ClickArea {
+        above-modal: true;
         label: root.label;
         ring-radius: 0;
         clicked => {
@@ -59,6 +61,11 @@ export component Drawer inherits Rectangle {
     property <bool> accounts-expanded: false;
     property <length> accounts-height: root.accounts-expanded ? 84px : 0;
 
+    function dismiss() {
+        root.open = false;
+        root.accounts-expanded = false;
+    }
+
     pure function status-color(status: ConnectionState) -> color {
         if status == ConnectionState.connected {
             return Colors.mediumseagreen;
@@ -85,162 +92,160 @@ export component Drawer inherits Rectangle {
         return @tr("Offline");
     }
 
-    scrim := Rectangle {
-        background: #000000;
-        opacity: root.open ? 0.45 : 0;
-        animate opacity {
-            duration: 200ms;
-            easing: ease-out;
+    if root.open: ModalHost {
+        label: @tr("Account menu");
+        dismissed => {
+            root.dismiss();
         }
 
-        TouchArea {
-            enabled: root.open;
-            clicked => {
-                root.open = false;
-            }
-        }
-    }
+        panel := Rectangle {
+            property <bool> entered: false;
 
-    panel := Rectangle {
-        width: root.panel-width;
-        height: 100%;
-        x: root.open ? 0 : -root.panel-width - 24px;
-        background: Palette.alternate-background;
-        clip: true;
-        drop-shadow-blur: 24px;
-        drop-shadow-color: #00000077;
-        animate x {
-            duration: 240ms;
-            easing: ease-in-out;
-        }
-
-        TouchArea { }
-
-        header := Rectangle {
-            x: 0;
-            y: 0;
-            width: 100%;
-            height: root.header-height;
-            background: Palette.accent-background;
-
-            avatar := Avatar {
-                x: 20px;
-                y: 22px;
-                width: 60px;
-                height: 60px;
-                background: Palette.background;
-                has-image: SessionView.user-has-avatar;
-                image: SessionView.user-avatar;
-                initial: SessionView.user-initial;
-                initial-color: Palette.accent-background;
-                initial-size: 26px;
-                initial-weight: 700;
-                initial-font-family: "";
+            width: root.panel-width;
+            height: 100%;
+            x: self.entered ? 0 : -root.panel-width - 24px;
+            background: Palette.alternate-background;
+            clip: true;
+            drop-shadow-blur: 24px;
+            drop-shadow-color: #00000077;
+            animate x {
+                duration: 240ms;
+                easing: ease-in-out;
             }
 
-            status-dot := Rectangle {
-                x: avatar.x + avatar.width - self.width;
-                y: avatar.y + avatar.height - self.height;
-                width: 16px;
-                height: 16px;
-                border-radius: self.width / 2;
-                background: root.status-color(SessionView.connection-status);
-                border-width: 3px;
-                border-color: Palette.accent-background;
+            init => {
+                self.entered = true;
             }
 
-            expand-touch := ClickArea {
-                x: parent.width - 52px;
-                y: 20px;
-                width: 40px;
-                height: 40px;
-                ring-radius: 8px;
-                label: @tr("Toggle account list");
-                clicked => {
-                    root.accounts-expanded = !root.accounts-expanded;
+            TouchArea { }
+
+            header := Rectangle {
+                x: 0;
+                y: 0;
+                width: 100%;
+                height: root.header-height;
+                background: Palette.accent-background;
+
+                avatar := Avatar {
+                    x: 20px;
+                    y: 22px;
+                    width: 60px;
+                    height: 60px;
+                    background: Palette.background;
+                    has-image: SessionView.user-has-avatar;
+                    image: SessionView.user-avatar;
+                    initial: SessionView.user-initial;
+                    initial-color: Palette.accent-background;
+                    initial-size: 26px;
+                    initial-weight: 700;
+                    initial-font-family: "";
                 }
 
-                Rectangle {
-                    width: 36px;
-                    height: 36px;
-                    border-radius: 8px;
-                    background: expand-touch.has-hover
-                        ? Palette.accent-foreground.transparentize(0.85)
-                        : transparent;
+                status-dot := Rectangle {
+                    x: avatar.x + avatar.width - self.width;
+                    y: avatar.y + avatar.height - self.height;
+                    width: 16px;
+                    height: 16px;
+                    border-radius: self.width / 2;
+                    background: root.status-color(SessionView.connection-status);
+                    border-width: 3px;
+                    border-color: Palette.accent-background;
+                }
 
-                    IconDisplay {
-                        icon: root.accounts-expanded ? IconSet.ChevronDown : IconSet.ChevronRight;
-                        size: 20px;
-                        stroke: Palette.accent-foreground;
+                expand-touch := ClickArea {
+                    x: parent.width - 52px;
+                    y: 20px;
+                    width: 40px;
+                    height: 40px;
+                    above-modal: true;
+                    ring-radius: 8px;
+                    label: @tr("Toggle account list");
+                    clicked => {
+                        root.accounts-expanded = !root.accounts-expanded;
+                    }
+
+                    Rectangle {
+                        width: 36px;
+                        height: 36px;
+                        border-radius: 8px;
+                        background: expand-touch.has-hover
+                            ? Palette.accent-foreground.transparentize(0.85)
+                            : transparent;
+
+                        IconDisplay {
+                            icon: root.accounts-expanded ? IconSet.ChevronDown : IconSet.ChevronRight;
+                            size: 20px;
+                            stroke: Palette.accent-foreground;
+                        }
+                    }
+                }
+
+                Text {
+                    x: 20px;
+                    y: avatar.y + avatar.height + 12px;
+                    width: parent.width - 40px;
+                    text: SessionView.user-id;
+                    font-size: 16px;
+                    font-weight: 700;
+                    overflow: elide;
+                    color: Palette.accent-foreground;
+                }
+
+                Text {
+                    x: 20px;
+                    y: avatar.y + avatar.height + 34px;
+                    width: parent.width - 40px;
+                    text: root.status-label(SessionView.connection-status);
+                    font-size: 12px;
+                    overflow: elide;
+                    color: Palette.accent-foreground.transparentize(0.25);
+                }
+            }
+
+            accounts := Rectangle {
+                x: 0;
+                y: header.y + header.height;
+                width: 100%;
+                height: root.accounts-height;
+                clip: true;
+                background: Palette.background.transparentize(0.4);
+                animate height {
+                    duration: 200ms;
+                    easing: ease-in-out;
+                }
+
+                Text {
+                    x: 18px;
+                    y: 12px;
+                    text: @tr("No other accounts");
+                    font-size: 12px;
+                    color: Palette.foreground.transparentize(0.55);
+                }
+
+                DrawerRow {
+                    x: 0;
+                    y: 36px;
+                    width: 100%;
+                    icon: IconSet.UserRoundPlus;
+                    label: @tr("Add Account");
+                    tint: Palette.accent-background;
+                    clicked => {
+                        root.add-account();
                     }
                 }
             }
 
-            Text {
-                x: 20px;
-                y: avatar.y + avatar.height + 12px;
-                width: parent.width - 40px;
-                text: SessionView.user-id;
-                font-size: 16px;
-                font-weight: 700;
-                overflow: elide;
-                color: Palette.accent-foreground;
-            }
-
-            Text {
-                x: 20px;
-                y: avatar.y + avatar.height + 34px;
-                width: parent.width - 40px;
-                text: root.status-label(SessionView.connection-status);
-                font-size: 12px;
-                overflow: elide;
-                color: Palette.accent-foreground.transparentize(0.25);
-            }
-        }
-
-        accounts := Rectangle {
-            x: 0;
-            y: header.y + header.height;
-            width: 100%;
-            height: root.accounts-height;
-            clip: true;
-            background: Palette.background.transparentize(0.4);
-            animate height {
-                duration: 200ms;
-                easing: ease-in-out;
-            }
-
-            Text {
-                x: 18px;
-                y: 12px;
-                text: @tr("No other accounts");
-                font-size: 12px;
-                color: Palette.foreground.transparentize(0.55);
-            }
-
             DrawerRow {
                 x: 0;
-                y: 36px;
+                y: parent.height - self.height;
                 width: 100%;
-                icon: IconSet.UserRoundPlus;
-                label: @tr("Add Account");
-                tint: Palette.accent-background;
+                icon: IconSet.LogOut;
+                label: @tr("Log Out");
+                tint: Colors.tomato.mix(Palette.foreground, 0.55);
                 clicked => {
-                    root.add-account();
+                    root.dismiss();
+                    Actions.logout();
                 }
-            }
-        }
-
-        DrawerRow {
-            x: 0;
-            y: parent.height - self.height;
-            width: 100%;
-            icon: IconSet.LogOut;
-            label: @tr("Log Out");
-            tint: Colors.tomato.mix(Palette.foreground, 0.55);
-            clicked => {
-                root.open = false;
-                Actions.logout();
             }
         }
     }

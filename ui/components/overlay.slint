@@ -1,0 +1,56 @@
+export component ModalHost inherits Rectangle {
+    in property <bool> dim: true;
+    in property <float> dim-opacity: 0.45;
+    in property <bool> light-dismiss: true;
+    in property <string> label;
+
+    callback dismissed();
+
+    property <bool> entered: false;
+
+    accessible-role: AccessibleRole.groupbox;
+    accessible-label: root.label;
+
+    forward-focus: keys;
+
+    init => {
+        root.entered = true;
+        keys.focus();
+    }
+
+    keys := FocusScope {
+        focus-on-tab-navigation: false;
+        capture-key-pressed(event) => {
+            if (event.text == Key.Escape) {
+                root.dismissed();
+                return accept;
+            }
+            return reject;
+        }
+
+        Rectangle {
+            background: root.dim
+                ? Colors.black.transparentize(1.0 - root.dim-opacity)
+                : transparent;
+            opacity: root.entered ? 1.0 : 0.0;
+            animate opacity {
+                duration: 160ms;
+                easing: ease-out;
+            }
+
+            TouchArea {
+                mouse-cursor: default;
+                clicked => {
+                    if (root.light-dismiss) {
+                        root.dismissed();
+                    }
+                }
+                scroll-event(event) => {
+                    return accept;
+                }
+            }
+        }
+
+        @children
+    }
+}

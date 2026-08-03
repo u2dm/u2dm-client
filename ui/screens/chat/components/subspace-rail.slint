@@ -5,6 +5,7 @@ import { SpaceEntry } from "./types.slint";
 import { TileGlyph, UnreadDot } from "./tile.slint";
 import { Fonts } from "../../../theme.slint";
 import { FocusRing } from "../../../components/a11y.slint";
+import { Shell } from "../../../local.slint";
 import { DirectoryView } from "../../../views.slint";
 import { Actions } from "../../../actions.slint";
 
@@ -19,25 +20,32 @@ component SubspaceTile inherits Rectangle {
     in property <bool> mention;
     in property <bool> hint;
     in property <bool> selected;
+    in property <bool> above-modal: false;
     in property <int> index: -1;
 
     callback clicked();
 
     height: 68px;
 
+    property <bool> actionable: root.above-modal || Shell.background-reachable;
+
     accessible-role: list-item;
+    accessible-enabled: root.actionable;
     accessible-label: root.label;
     accessible-item-selectable: true;
     accessible-item-selected: root.selected;
     accessible-item-index: root.index;
     accessible-action-default => {
-        root.clicked();
+        if (root.actionable) {
+            root.clicked();
+        }
     }
     forward-focus: fs;
 
     fs := FocusScope {
         x: 0;
         width: 0;
+        focus-on-tab-navigation: root.actionable;
         key-pressed(event) => {
             if (event.text == " " || event.text == "\n") {
                 root.clicked();
@@ -126,6 +134,8 @@ component SubspaceTile inherits Rectangle {
 }
 
 export component SubspaceRail inherits Rectangle {
+    in property <bool> above-modal: false;
+
     property <length> row-height: 68px;
     property <length> top-padding: 8px;
 
@@ -152,6 +162,7 @@ export component SubspaceRail inherits Rectangle {
 
             SubspaceTile {
                 height: root.row-height;
+                above-modal: root.above-modal;
                 index: 0;
                 label: @tr("All");
                 has-icon: true;
@@ -164,6 +175,7 @@ export component SubspaceRail inherits Rectangle {
 
             for subspace[idx] in DirectoryView.subspaces: SubspaceTile {
                 height: root.row-height;
+                above-modal: root.above-modal;
                 index: idx + 1;
                 label: subspace.name;
                 initial: subspace.initial;

@@ -12,7 +12,7 @@ import { Avatar } from "../../../components/avatar.slint";
 import { ListItemArea } from "../../../components/a11y.slint";
 import { UnreadDot } from "./tile.slint";
 import { RoomEntry } from "./types.slint";
-import { Avatars, Fonts } from "../../../theme.slint";
+import { Avatars, Fonts, Metrics } from "../../../theme.slint";
 import { ServiceKind } from "../../../enums.slint";
 import { DirectoryView } from "../../../views.slint";
 import { Actions } from "../../../actions.slint";
@@ -20,11 +20,18 @@ import { Actions } from "../../../actions.slint";
 export component Sidebar inherits Rectangle {
     background: Palette.alternate-background;
 
-    in property <length> subrail-width: 68px;
+    in property <length> subrail-width: Metrics.subspace-rail;
+    in property <bool> above-modal: false;
+
+    callback room-selected();
 
     property <length> row-height: 64px;
-    property <length> rail-width: 72px;
+    property <length> rail-width: Metrics.space-rail;
     property <length> avatar-size: 48px;
+
+    public function focus-menu() {
+        rail.focus-menu();
+    }
 
     pure function row-background(selected: bool, hovered: bool) -> color {
         if selected {
@@ -56,12 +63,14 @@ export component Sidebar inherits Rectangle {
     }
 
     HorizontalLayout {
-        SpaceRail {
+        rail := SpaceRail {
             width: root.rail-width;
+            above-modal: root.above-modal;
         }
 
         if DirectoryView.subspaces.length > 0: SubspaceRail {
             width: root.subrail-width;
+            above-modal: root.above-modal;
         }
 
         room-column := Rectangle {
@@ -100,6 +109,7 @@ export component Sidebar inherits Rectangle {
                                 text: "";
                                 accessible-role: AccessibleRole.text-input;
                                 accessible-label: @tr("Search rooms");
+                                accessible-placeholder-text: @tr("Search");
                                 accessible-value <=> self.text;
                             }
                         }
@@ -121,12 +131,14 @@ export component Sidebar inherits Rectangle {
                         height: root.row-height;
                         clip: true;
                         index: idx;
+                        above-modal: root.above-modal;
                         selected: room.id == DirectoryView.selected-room-id;
                         label: root.row-label(room);
                         ring-inset: 2px;
                         background: root.row-background(self.selected, self.has-hover);
                         clicked => {
                             Actions.select-room(room.id);
+                            root.room-selected();
                         }
                         init => {
                             if (!room.has-avatar) {

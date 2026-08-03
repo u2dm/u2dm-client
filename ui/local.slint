@@ -1,3 +1,6 @@
+import { LoginPhase } from "enums.slint";
+import { LoginView, VerificationView } from "views.slint";
+
 export global Composer {
     in-out property <string> reply-event-id;
     in-out property <string> reply-sender;
@@ -12,4 +15,19 @@ export global Composer {
 
 export global Shell {
     in-out property <bool> drawer-open: false;
+    in-out property <bool> nav-open: false;
+    in-out property <bool> picker-open: false;
+
+    out property <bool> verification-open: VerificationView.visible
+        && LoginView.step == LoginPhase.logged-in;
+    out property <bool> modal-open: root.drawer-open
+        || root.nav-open
+        || root.verification-open;
+    out property <bool> background-reachable: !root.modal-open;
+
+    public function close-overlays() {
+        self.drawer-open = false;
+        self.nav-open = false;
+        self.picker-open = false;
+    }
 }

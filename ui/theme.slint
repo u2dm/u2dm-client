@@ -4,6 +4,27 @@ export global Fonts {
     in property <string> emoji: "Twemoji";
 }
 
+export global Metrics {
+    out property <length> room-header: 52px;
+    out property <length> composer-row: 40px;
+    out property <length> reply-bar: 44px;
+    out property <length> timeline-gap: 8px;
+
+    out property <length> space-rail: 72px;
+    out property <length> subspace-rail: 68px;
+    out property <length> sidebar-default: 340px;
+    out property <length> sidebar-min: 260px;
+    out property <length> sidebar-max: 500px;
+
+    out property <length> timeline-min: 380px;
+    out property <length> compact-breakpoint: 720px;
+
+    out property <length> window-min-width: 360px;
+    out property <length> window-min-height: 420px;
+    out property <length> window-initial-width: 1100px;
+    out property <length> window-initial-height: 760px;
+}
+
 export global Avatars {
     out property <[float]> hues: [357, 25, 253, 106, 181, 204, 333];
     out property <bool> dark: Palette.color-scheme == ColorScheme.dark;

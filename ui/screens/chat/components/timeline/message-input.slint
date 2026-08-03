@@ -9,20 +9,25 @@ import { PickerPanel } from "./picker-panel.slint";
 import { ReplyQuote } from "../reply-quote.slint";
 import { Fonts } from "../../../../theme.slint";
 import { ClickArea } from "../../../../components/a11y.slint";
+import { ModalHost } from "../../../../components/overlay.slint";
+import { Metrics } from "../../../../theme.slint";
 import { Actions } from "../../../../actions.slint";
-import { Composer } from "../../../../local.slint";
+import { Composer, Shell } from "../../../../local.slint";
 
 export component MessageInput inherits Rectangle {
     in property <string> room-id;
     in-out property <string> message: "";
 
-    property <bool> picker-open: false;
+    in property <length> overlay-x;
+    in property <length> overlay-y;
+    in property <length> overlay-width;
+    in property <length> overlay-height;
+
     property <int> picker-tab: 0;
     property <bool> is-replying: Composer.reply-event-id != "";
     property <bool> has-text: root.message != "";
     property <int> caret: 0;
     property <EmojiInsert> pending-insert;
-    property <length> input-row-height: 40px;
 
     background: Palette.alternate-background;
     height: layout.preferred-height;
@@ -39,27 +44,34 @@ export component MessageInput inherits Rectangle {
         }
     }
 
-    if root.picker-open: TouchArea {
-        x: 0;
-        y: -1200px;
-        width: root.width;
-        height: 1200px;
-        clicked => {
-            root.picker-open = false;
-        }
+    function close-picker() {
+        Shell.picker-open = false;
+        text-input.focus();
     }
 
-    if root.picker-open: PickerPanel {
-        width: min(root.width - 16px, 360px);
-        x: root.width - self.width - 8px;
-        y: -self.height - 8px;
-        height: 380px;
-        tab <=> root.picker-tab;
-        emoji-picked(glyph) => {
-            root.insert-at-caret(glyph);
+    if Shell.picker-open: ModalHost {
+        x: root.overlay-x;
+        y: root.overlay-y;
+        width: root.overlay-width;
+        height: root.overlay-height;
+        dim: false;
+        label: @tr("Emoji and sticker picker");
+        dismissed => {
+            root.close-picker();
         }
-        sticker-picked(pack-id, shortcode) => {
-            root.send-sticker(pack-id, shortcode);
+
+        PickerPanel {
+            width: min(root.width - 16px, 360px);
+            x: root.width - self.width - 8px - root.overlay-x;
+            y: -self.height - 8px - root.overlay-y;
+            height: 380px;
+            tab <=> root.picker-tab;
+            emoji-picked(glyph) => {
+                root.insert-at-caret(glyph);
+            }
+            sticker-picked(pack-id, shortcode) => {
+                root.send-sticker(pack-id, shortcode);
+            }
         }
     }
 
@@ -71,7 +83,7 @@ export component MessageInput inherits Rectangle {
             reply-to: Composer.reply-event-id,
         });
         Composer.clear();
-        root.picker-open = false;
+        root.close-picker();
     }
 
     function insert-at-caret(glyph: string) {
@@ -120,7 +132,7 @@ export component MessageInput inherits Rectangle {
         }
 
         HorizontalLayout {
-        height: root.input-row-height;
+        height: Metrics.composer-row;
         padding-left: 12px;
         padding-right: 12px;
 
@@ -133,6 +145,10 @@ export component MessageInput inherits Rectangle {
                 font-family: Fonts.emoji;
                 font-size: 14px;
                 vertical-alignment: center;
+                single-line: true;
+                enabled: Shell.background-reachable;
+                accessible-label: @tr("Message");
+                accessible-placeholder-text: @tr("Send a message...");
                 accepted => {
                     root.submit();
                 }
@@ -160,9 +176,9 @@ export component MessageInput inherits Rectangle {
         emoji-touch := ClickArea {
             width: 44px;
             ring-radius: 8px;
-            label: @tr("Emoji");
+            label: @tr("Emoji and stickers");
             clicked => {
-                root.picker-open = !root.picker-open;
+                Shell.picker-open = !Shell.picker-open;
             }
 
             IconDisplay {
@@ -170,7 +186,7 @@ export component MessageInput inherits Rectangle {
                 y: (parent.height - self.height) / 2;
                 icon: IconSet.Smile;
                 size: 20px;
-                stroke: root.picker-open
+                stroke: Shell.picker-open
                     ? Palette.accent-background
                     : Palette.foreground.transparentize(0.4);
             }

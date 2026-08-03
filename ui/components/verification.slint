@@ -10,6 +10,7 @@ import { Fonts } from "../theme.slint";
 import { AppStyle } from "./style.slint";
 import { AppButton, IconButton } from "./button.slint";
 import { DotPulse } from "./dot-pulse.slint";
+import { ModalHost } from "./overlay.slint";
 
 component DialogNote inherits Text {
     font-size: 12px;
@@ -120,6 +121,8 @@ component BusyRow inherits Text {
     horizontal-alignment: center;
     color: AppStyle.muted;
 
+    accessible-live-region: AccessibleLiveness.polite;
+
     pure function busy-label() -> string {
         if VerificationView.activity == VerificationActivity.accepting {
             return @tr("Accepting...");
@@ -134,26 +137,11 @@ component BusyRow inherits Text {
     }
 }
 
-export component VerificationDialog inherits Rectangle {
-    background: Colors.black.transparentize(AppStyle.dark ? 0.35 : 0.55);
-    forward-focus: escape-scope;
-
-    init => {
-        escape-scope.focus();
-    }
-
-    escape-scope := FocusScope {
-        key-pressed(event) => {
-            if (event.text == Key.Escape) {
-                Actions.dismiss-verification();
-                return accept;
-            }
-            return reject;
-        }
-    }
-
-    TouchArea {
-        mouse-cursor: default;
+export component VerificationDialog inherits ModalHost {
+    dim-opacity: AppStyle.dark ? 0.65 : 0.45;
+    label: @tr("Device verification");
+    dismissed => {
+        Actions.dismiss-verification();
     }
 
     HorizontalLayout {
@@ -172,9 +160,6 @@ export component VerificationDialog inherits Rectangle {
                 drop-shadow-blur: 44px;
                 drop-shadow-offset-y: 16px;
                 drop-shadow-color: Colors.black.transparentize(0.7);
-
-                accessible-role: AccessibleRole.groupbox;
-                accessible-label: @tr("Device verification");
 
                 VerticalLayout {
                     padding: 24px;
@@ -226,6 +211,7 @@ export component VerificationDialog inherits Rectangle {
 
                             IconButton {
                                 icon: IconSet.X;
+                                above-modal: true;
                                 label: @tr("Close the verification dialog");
                                 size: 30px;
                                 clicked => {
@@ -254,6 +240,7 @@ export component VerificationDialog inherits Rectangle {
 
                             AppButton {
                                 horizontal-stretch: 1;
+                                above-modal: true;
                                 text: @tr("Decline");
                                 icon: IconSet.X;
                                 filled: false;
@@ -266,6 +253,7 @@ export component VerificationDialog inherits Rectangle {
 
                             AppButton {
                                 horizontal-stretch: 1;
+                                above-modal: true;
                                 text: @tr("Accept");
                                 icon: IconSet.Check;
                                 enabled: !VerificationView.busy;
@@ -291,6 +279,7 @@ export component VerificationDialog inherits Rectangle {
 
                             AppButton {
                                 horizontal-stretch: 1;
+                                above-modal: true;
                                 text: @tr("They don't match");
                                 icon: IconSet.X;
                                 filled: false;
@@ -304,6 +293,7 @@ export component VerificationDialog inherits Rectangle {
 
                             AppButton {
                                 horizontal-stretch: 1;
+                                above-modal: true;
                                 text: @tr("They match");
                                 icon: IconSet.Check;
                                 enabled: !VerificationView.busy;
@@ -347,6 +337,7 @@ export component VerificationDialog inherits Rectangle {
                         }
 
                         AppButton {
+                            above-modal: true;
                             text: @tr("Done");
                             icon: IconSet.Check;
                             clicked => {
@@ -370,6 +361,7 @@ export component VerificationDialog inherits Rectangle {
                         }
 
                         AppButton {
+                            above-modal: true;
                             text: @tr("Close");
                             filled: false;
                             clicked => {
@@ -387,6 +379,10 @@ export component VerificationDialog inherits Rectangle {
                         border-radius: 10px;
                         border-width: 1px;
                         border-color: Colors.tomato.transparentize(0.78);
+
+                        accessible-role: text;
+                        accessible-label: UserMessages.text(VerificationView.error, VerificationView.error-detail);
+                        accessible-live-region: AccessibleLiveness.assertive;
 
                         HorizontalLayout {
                             padding: 10px;

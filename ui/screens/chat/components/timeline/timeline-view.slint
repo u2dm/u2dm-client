@@ -1,12 +1,14 @@
 import { Palette } from "std-widgets.slint";
+import { IconDisplay, IconSet } from "@lucide";
 
 import { TimelineContent } from "./timeline-content.slint";
 import { MessageInput } from "./message-input.slint";
-import { Fonts } from "../../../../theme.slint";
+import { Fonts, Metrics } from "../../../../theme.slint";
 import { TimelineState } from "../../../../enums.slint";
+import { ClickArea } from "../../../../components/a11y.slint";
 import { DirectoryView, RoomView } from "../../../../views.slint";
 import { Actions } from "../../../../actions.slint";
-import { Composer } from "../../../../local.slint";
+import { Composer, Shell } from "../../../../local.slint";
 import { StatusPill } from "./status-pill.slint";
 
 export component TimelineView inherits Rectangle {
@@ -16,16 +18,18 @@ export component TimelineView inherits Rectangle {
 
     in-out property <string> input-message: "";
 
-    property <length> header-height: 52px;
-    property <length> message-input-height: 40px;
-    property <length> reply-bar-height: 44px;
-    property <length> spacing: 8px;
+    in property <bool> compact: false;
+    in property <length> overlay-width;
+
+    property <length> header-height: Metrics.room-header;
+    property <length> spacing: Metrics.timeline-gap;
+    property <length> nav-button-width: 44px;
 
     property <bool> has-room: RoomView.selected-room-name != "";
     property <bool> is-replying: Composer.reply-event-id != "";
     property <length> input-height: root.is-replying
-        ? root.message-input-height + root.reply-bar-height
-        : root.message-input-height;
+        ? Metrics.composer-row + Metrics.reply-bar
+        : Metrics.composer-row;
     property <bool> is-blocking-status: RoomView.timeline-status == TimelineState.loading
         || RoomView.timeline-status == TimelineState.loading-unread
         || RoomView.timeline-status == TimelineState.loading-focus
@@ -50,6 +54,10 @@ export component TimelineView inherits Rectangle {
         return @tr("Couldn't load messages");
     }
 
+    public function focus-nav() {
+        nav-touch.take-focus();
+    }
+
     changed room-id => {
         root.input-message = "";
         Composer.clear();
@@ -71,8 +79,8 @@ export component TimelineView inherits Rectangle {
         background: Palette.alternate-background;
 
         VerticalLayout {
-            x: 12px;
-            width: parent.width - 24px;
+            x: root.compact ? root.nav-button-width : 12px;
+            width: parent.width - self.x - 12px;
             alignment: center;
             spacing: 1px;
 
@@ -89,6 +97,36 @@ export component TimelineView inherits Rectangle {
                 font-size: 12px;
                 color: Palette.foreground.transparentize(0.45);
                 overflow: elide;
+            }
+        }
+    }
+
+    nav-bar := Rectangle {
+        x: 0;
+        y: 0;
+        width: root.compact ? root.nav-button-width : 0;
+        height: root.header-height;
+        visible: root.compact;
+        background: Palette.alternate-background;
+
+        nav-touch := ClickArea {
+            x: 4px;
+            y: (parent.height - self.height) / 2;
+            width: 36px;
+            height: 36px;
+            enabled: root.compact;
+            ring-radius: 8px;
+            label: @tr("Show rooms");
+            clicked => {
+                Shell.nav-open = true;
+            }
+
+            IconDisplay {
+                x: (parent.width - self.width) / 2;
+                y: (parent.height - self.height) / 2;
+                icon: IconSet.PanelLeftOpen;
+                size: 20px;
+                stroke: Palette.foreground.transparentize(0.3);
             }
         }
     }
@@ -120,5 +158,9 @@ export component TimelineView inherits Rectangle {
         width: root.width;
         room-id: root.room-id;
         message <=> root.input-message;
+        overlay-x: -root.x;
+        overlay-y: -self.y;
+        overlay-width: root.overlay-width;
+        overlay-height: root.height;
     }
 }

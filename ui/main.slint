@@ -20,6 +20,7 @@ import {
     VerificationView,
 } from "views.slint";
 import { Actions } from "actions.slint";
+import { Metrics } from "theme.slint";
 import {
     EmojiStore,
 } from "screens/chat/components/timeline/emoji-picker.slint";
@@ -36,8 +37,10 @@ import { VerificationDialog } from "components/verification.slint";
 
 export component AppWindow inherits Window {
     title: @tr("U2DM Matrix Client");
-    preferred-width: root.width;
-    preferred-height: root.height;
+    preferred-width: Metrics.window-initial-width;
+    preferred-height: Metrics.window-initial-height;
+    min-width: Metrics.window-min-width;
+    min-height: Metrics.window-min-height;
 
     in-out property <string> input-homeserver: "matrix.org";
     in-out property <string> input-username: "";
