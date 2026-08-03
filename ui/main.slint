@@ -41,7 +41,6 @@ export component AppWindow inherits Window {
 
     in-out property <string> input-homeserver: "matrix.org";
     in-out property <string> input-username: "";
-    in-out property <string> input-password: "";
     in-out property <string> input-message: "";
 
     if LoginView.step == LoginPhase.loading: LoadingScreen { }
@@ -52,7 +51,6 @@ export component AppWindow inherits Window {
 
     if LoginView.step == LoginPhase.credentials: CredentialsScreen {
         input-username <=> root.input-username;
-        input-password <=> root.input-password;
     }
 
     if LoginView.step == LoginPhase.logged-in: ChatScreen {

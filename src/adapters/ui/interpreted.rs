@@ -458,11 +458,6 @@ impl UiProps for ComponentInstance {
         );
         set_prop(
             self,
-            "input-password",
-            Value::String(SharedString::default()),
-        );
-        set_prop(
-            self,
             "input-message",
             Value::String(SharedString::default()),
         );

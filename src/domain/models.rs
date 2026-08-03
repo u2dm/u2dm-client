@@ -46,10 +46,19 @@ pub struct ServerInfo {
     pub homeserver_url: String,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct LoginCredentials {
     pub username: String,
     pub password: String,
+}
+
+impl fmt::Debug for LoginCredentials {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("LoginCredentials")
+            .field("username", &self.username)
+            .field("password", &"[REDACTED]")
+            .finish()
+    }
 }
 
 #[derive(Debug, Clone)]

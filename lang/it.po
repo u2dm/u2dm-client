@@ -840,57 +840,57 @@ msgctxt "Drawer"
 msgid "Log Out"
 msgstr ""
 
-#: ui/screens/login/credentials.slint:45
+#: ui/screens/login/credentials.slint:47
 msgctxt "CredentialsScreen"
 msgid "Back to the homeserver step"
 msgstr ""
 
-#: ui/screens/login/credentials.slint:55
+#: ui/screens/login/credentials.slint:57
 msgctxt "CredentialsScreen"
 msgid "Enter your credentials to continue"
 msgstr ""
 
-#: ui/screens/login/credentials.slint:69
+#: ui/screens/login/credentials.slint:71
 msgctxt "CredentialsScreen"
 msgid "USERNAME"
 msgstr ""
 
-#: ui/screens/login/credentials.slint:74
+#: ui/screens/login/credentials.slint:76
 msgctxt "CredentialsScreen"
 msgid "Username"
 msgstr "Nome utente"
 
-#: ui/screens/login/credentials.slint:75
+#: ui/screens/login/credentials.slint:77
 msgctxt "CredentialsScreen"
 msgid "username"
 msgstr ""
 
-#: ui/screens/login/credentials.slint:88
+#: ui/screens/login/credentials.slint:90
 msgctxt "CredentialsScreen"
 msgid "PASSWORD"
 msgstr ""
 
-#: ui/screens/login/credentials.slint:93
+#: ui/screens/login/credentials.slint:95
 msgctxt "CredentialsScreen"
 msgid "Password"
 msgstr "Password"
 
-#: ui/screens/login/credentials.slint:94
+#: ui/screens/login/credentials.slint:96
 msgctxt "CredentialsScreen"
 msgid "password"
 msgstr ""
 
-#: ui/screens/login/credentials.slint:105
+#: ui/screens/login/credentials.slint:107
 msgctxt "CredentialsScreen"
 msgid "Log in"
 msgstr "Accedi"
 
-#: ui/screens/login/credentials.slint:118
+#: ui/screens/login/credentials.slint:120
 msgctxt "CredentialsScreen"
 msgid "Continue with browser"
 msgstr ""
 
-#: ui/screens/login/credentials.slint:129
+#: ui/screens/login/credentials.slint:131
 msgctxt "CredentialsScreen"
 msgid "Cancel"
 msgstr ""

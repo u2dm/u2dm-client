@@ -84,7 +84,7 @@ export component LoginField inherits Rectangle {
     accessible-enabled: root.enabled;
     accessible-label: root.label;
     accessible-placeholder-text: root.placeholder;
-    accessible-value <=> root.text;
+    accessible-value: root.secret ? "" : root.text;
     accessible-action-set-value(value) => {
         root.text = value;
     }
