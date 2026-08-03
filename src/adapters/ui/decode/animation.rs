@@ -11,6 +11,7 @@ use image::codecs::webp::WebPDecoder;
 use image::{AnimationDecoder, DynamicImage, Frames, ImageDecoder, RgbaImage};
 use slint::{Image, Timer, TimerMode};
 
+use super::cache::Decoded;
 use super::waiters::DecodeOutcome;
 use super::workers::Lane;
 use super::{DISPLAY_MAX_DIMENSION, cache, image_from_rgba, waiters};
@@ -306,7 +307,7 @@ pub(super) fn on_decoded(path: &Path, decoded: Option<RawAnimation>, epoch: u64)
     waiting.notify(first);
 }
 
-pub fn load_thumbnail(path: &Path, playback_key: &str) -> Option<Image> {
+pub fn load_thumbnail(path: &Path, playback_key: &str) -> Decoded {
     if !is_animatable(path) {
         return cache::request_thumbnail(path, playback_key);
     }
@@ -315,7 +316,7 @@ pub fn load_thumbnail(path: &Path, playback_key: &str) -> Option<Image> {
         Some(None) => return cache::request_thumbnail(path, playback_key),
         None => {
             waiters::enqueue_media(path, playback_key, Lane::Animation);
-            return None;
+            return Decoded::Pending;
         }
     };
 
@@ -331,7 +332,10 @@ pub fn load_thumbnail(path: &Path, playback_key: &str) -> Option<Image> {
         reschedule();
     }
 
-    animation.frame(frame).cloned()
+    animation
+        .frame(frame)
+        .cloned()
+        .map_or(Decoded::Failed, Decoded::Ready)
 }
 
 fn due_frames(now: Instant) -> Vec<DueFrame> {

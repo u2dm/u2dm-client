@@ -17,10 +17,10 @@ thread_local! {
     static IMAGES: RefCell<ImageCache> = RefCell::new(ImageCache::default());
 }
 
-enum Lookup {
-    Hit(Image),
+pub enum Decoded {
+    Ready(Image),
     Failed,
-    Miss,
+    Pending,
 }
 
 struct CachedImage {
@@ -37,16 +37,16 @@ struct ImageCache {
 }
 
 impl ImageCache {
-    fn lookup(&mut self, path: &Path) -> Lookup {
+    fn lookup(&mut self, path: &Path) -> Decoded {
         self.tick = self.tick.wrapping_add(1);
         let tick = self.tick;
         let Some(entry) = self.entries.get_mut(path) else {
-            return Lookup::Miss;
+            return Decoded::Pending;
         };
         entry.tick = tick;
         match &entry.image {
-            Some(image) => Lookup::Hit(image.clone()),
-            None => Lookup::Failed,
+            Some(image) => Decoded::Ready(image.clone()),
+            None => Decoded::Failed,
         }
     }
 
@@ -133,44 +133,43 @@ pub(super) fn on_decoded(path: &Path, decoded: Option<(Vec<u8>, u32, u32)>, epoc
     waiters::deliver(path, outcome);
 }
 
-fn cached(path: &Path) -> Option<Image> {
-    match IMAGES.with_borrow_mut(|images| images.lookup(path)) {
-        Lookup::Hit(image) => Some(image),
-        Lookup::Failed | Lookup::Miss => None,
-    }
+fn cached(path: &Path) -> Decoded {
+    IMAGES.with_borrow_mut(|images| images.lookup(path))
 }
 
-pub fn peek_thumbnail(path: &Path) -> Option<Image> {
+pub fn peek_thumbnail(path: &Path) -> Decoded {
     if animation::is_animatable(path) {
-        None
+        Decoded::Pending
     } else {
         cached(path)
     }
 }
 
 pub fn peek_avatar(path: &Path) -> Option<Image> {
-    cached(path)
+    match cached(path) {
+        Decoded::Ready(image) => Some(image),
+        Decoded::Failed | Decoded::Pending => None,
+    }
 }
 
 pub fn load_avatar_async(path: &Path, slot: AvatarSlot) -> Option<Image> {
-    match IMAGES.with_borrow_mut(|images| images.lookup(path)) {
-        Lookup::Hit(image) => Some(image),
-        Lookup::Failed => None,
-        Lookup::Miss => {
+    match cached(path) {
+        Decoded::Ready(image) => Some(image),
+        Decoded::Failed => None,
+        Decoded::Pending => {
             waiters::enqueue_avatar(path, slot);
             None
         }
     }
 }
 
-pub(super) fn request_thumbnail(path: &Path, unique_id: &str) -> Option<Image> {
-    match IMAGES.with_borrow_mut(|images| images.lookup(path)) {
-        Lookup::Hit(image) => Some(image),
-        Lookup::Failed => None,
-        Lookup::Miss => {
+pub(super) fn request_thumbnail(path: &Path, unique_id: &str) -> Decoded {
+    match cached(path) {
+        Decoded::Pending => {
             waiters::enqueue_media(path, unique_id, Lane::Static);
-            None
+            Decoded::Pending
         }
+        decoded => decoded,
     }
 }
 

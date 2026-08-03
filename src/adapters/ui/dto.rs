@@ -1,8 +1,8 @@
 use slint::{Image, SharedString};
 
 use super::decode::{
-    AvatarSlot, load_avatar_async, load_thumbnail, peek_avatar, peek_thumbnail, record_avatar_need,
-    record_media_need, record_sticker_need,
+    AvatarSlot, Decoded, load_avatar_async, load_thumbnail, peek_avatar, peek_thumbnail,
+    record_avatar_need, record_media_need, record_sticker_need,
 };
 use super::present::{
     MessageKind, ServiceKind, avatar_color_index, avatar_initials, message_body_text, message_kind,
@@ -122,11 +122,13 @@ fn sticker_cell(
     };
 
     if let Some(path) = media.sticker_path(&image.mxc) {
-        if let Some(decoded) = peek_thumbnail(&path) {
-            cell.image = Some(decoded);
-            cell.media_state = MediaState::Ready;
-        } else {
-            record_sticker_need(&key, path);
+        match peek_thumbnail(&path) {
+            Decoded::Ready(decoded) => {
+                cell.image = Some(decoded);
+                cell.media_state = MediaState::Ready;
+            }
+            Decoded::Failed => cell.media_state = MediaState::Failed,
+            Decoded::Pending => record_sticker_need(&key, path),
         }
     } else if media.sticker_failed(&image.mxc) {
         cell.media_state = MediaState::Failed;
@@ -263,9 +265,13 @@ pub fn message_to_dto(m: &TimelineMessage, media: &dyn MediaCache) -> MessageDto
         dto.image_height = meta.height.unwrap_or(0).cast_signed();
         if let Some(event_id) = m.event_id.as_deref() {
             if let Some(path) = media.thumbnail_path(event_id) {
-                if let Some(img) = peek_thumbnail(&path) {
-                    dto.thumbnail = Some(img);
-                    dto.media_state = MediaState::Ready;
+                match peek_thumbnail(&path) {
+                    Decoded::Ready(img) => {
+                        dto.thumbnail = Some(img);
+                        dto.media_state = MediaState::Ready;
+                    }
+                    Decoded::Failed => dto.media_state = MediaState::Failed,
+                    Decoded::Pending => {}
                 }
                 thumbnail_path = Some(path);
             } else if media.thumbnail_failed(event_id) {
@@ -285,7 +291,7 @@ pub fn message_to_dto(m: &TimelineMessage, media: &dyn MediaCache) -> MessageDto
         dto.has_avatar = true;
     }
 
-    let thumbnail_undecoded = thumbnail_path.is_some() && dto.media_state != MediaState::Ready;
+    let thumbnail_undecoded = thumbnail_path.is_some() && dto.media_state == MediaState::Idle;
     let avatar_undecoded = avatar_path.is_some() && !dto.has_avatar;
     dto.needs_media = thumbnail_undecoded || avatar_undecoded;
     record_media_need(&m.unique_id, thumbnail_path, avatar_path);
@@ -298,8 +304,13 @@ pub fn enrich_to_update(delta: &EnrichmentDelta, media: &dyn MediaCache) -> Enri
             .event_id
             .as_deref()
             .and_then(|event_id| media.thumbnail_path(event_id))
-            .and_then(|thumb_path| load_thumbnail(&thumb_path, &delta.unique_id))
-            .map_or(ThumbUpdate::Unchanged, ThumbUpdate::Ready),
+            .map_or(ThumbUpdate::Unchanged, |thumb_path| {
+                match load_thumbnail(&thumb_path, &delta.unique_id) {
+                    Decoded::Ready(image) => ThumbUpdate::Ready(image),
+                    Decoded::Failed => ThumbUpdate::Failed,
+                    Decoded::Pending => ThumbUpdate::Unchanged,
+                }
+            }),
         ThumbnailOutcome::Failed => ThumbUpdate::Failed,
         ThumbnailOutcome::Unchanged => ThumbUpdate::Unchanged,
     };

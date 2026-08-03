@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::{mem, slice};
 
+use super::cache::Decoded;
 use super::waiters::{AvatarSlot, DecodeOutcome};
 use super::{animation, cache, waiters};
 
@@ -95,9 +96,16 @@ fn resolve_sticker(key: &str) {
     let Some(path) = NEEDS.with_borrow(|needs| needs.stickers.get(key).cloned()) else {
         return;
     };
-    if let Some(image) = animation::load_thumbnail(&path, key) {
-        waiters::notify_media(&[key.to_owned()], DecodeOutcome::Ready(&image));
-    }
+    announce(key, &animation::load_thumbnail(&path, key));
+}
+
+fn announce(unique_id: &str, decoded: &Decoded) {
+    let outcome = match decoded {
+        Decoded::Ready(image) => DecodeOutcome::Ready(image),
+        Decoded::Failed => DecodeOutcome::Failed,
+        Decoded::Pending => return,
+    };
+    waiters::notify_media(&[unique_id.to_owned()], outcome);
 }
 
 fn resolve_avatar(slot: &AvatarSlot) {
@@ -113,10 +121,8 @@ fn resolve_media(unique_id: &str) {
     let Some(need) = NEEDS.with_borrow(|needs| needs.media.get(unique_id).cloned()) else {
         return;
     };
-    if let Some(thumbnail) = &need.thumbnail
-        && let Some(image) = animation::load_thumbnail(thumbnail, unique_id)
-    {
-        waiters::notify_media(&[unique_id.to_owned()], DecodeOutcome::Ready(&image));
+    if let Some(thumbnail) = &need.thumbnail {
+        announce(unique_id, &animation::load_thumbnail(thumbnail, unique_id));
     }
     if let Some(avatar) = &need.avatar {
         let slot = AvatarSlot::Message(unique_id.to_owned());
