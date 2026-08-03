@@ -407,7 +407,7 @@ impl SessionController {
     }
 
     async fn login_oauth(&self, cancel: CancellationToken, attempt: u64) {
-        let result = self.run_oauth_flow(&cancel).await;
+        let result = self.run_oauth_flow(&cancel, attempt).await;
         self.end_oauth().await;
         match result {
             Ok(Some(established)) => self.send_auth(AuthOutcome::Login {
@@ -416,7 +416,7 @@ impl SessionController {
             }),
             Ok(None) => {
                 tracing::info!("OAuth login cancelled");
-                self.set_activity(LoginActivity::Idle);
+                self.set_attempt_activity(attempt, LoginActivity::Idle);
             }
             Err(e) => {
                 tracing::warn!("OAuth login failed: {e}");
@@ -546,11 +546,12 @@ impl SessionController {
     async fn run_oauth_flow(
         &self,
         cancel: &CancellationToken,
+        attempt: u64,
     ) -> Result<Option<EstablishedSession>> {
         let Some(session) = self.cancellable_browser_sign_in(cancel).await? else {
             return Ok(None);
         };
-        self.set_activity(LoginActivity::OpeningStore);
+        self.set_attempt_activity(attempt, LoginActivity::OpeningStore);
         self.establish_session(session).await.map(Some)
     }
 
@@ -641,6 +642,14 @@ impl SessionController {
     fn set_activity(&self, activity: LoginActivity) {
         self.output
             .publish(Box::new(move |view| view.lifecycle.activity = activity));
+    }
+
+    fn set_attempt_activity(&self, attempt: u64, activity: LoginActivity) {
+        if self.lifecycle.is_current_attempt(attempt) {
+            self.set_activity(activity);
+        } else {
+            tracing::debug!("activity update for a superseded attempt, dropping");
+        }
     }
 
     fn begin_login(&self, activity: LoginActivity) {

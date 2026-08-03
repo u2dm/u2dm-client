@@ -68,6 +68,10 @@ impl Lifecycle {
         }
     }
 
+    pub(super) fn is_current_attempt(&self, attempt: u64) -> bool {
+        self.guard().attempt == attempt
+    }
+
     pub(super) fn cancel_auth(&self) -> bool {
         let mut inner = self.guard();
         if inner.phase == AppPhase::Authenticating {
