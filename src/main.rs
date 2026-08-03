@@ -108,11 +108,11 @@ fn run() -> Result<()> {
         service.run(cmd_rx, dir_in_rx, scroll_rx).await;
     });
 
-    ui.run()?;
+    let ui_result = ui.run();
     drop(enter_guard);
 
     shutdown(rt, &cmd_tx_quit, service_handle);
-    Ok(())
+    ui_result
 }
 
 fn shutdown(
@@ -123,11 +123,12 @@ fn shutdown(
     if let Err(e) = cmd_tx_quit.send(UiCommand::Quit) {
         tracing::debug!("failed to send Quit command: {e}");
     }
-    let cleaned_up = rt
-        .block_on(async { timeout(SHUTDOWN_WAIT, service_handle).await })
-        .is_ok();
-    if !cleaned_up {
-        tracing::warn!("service cleanup did not finish before deadline; forcing shutdown");
+    match rt.block_on(async { timeout(SHUTDOWN_WAIT, service_handle).await }) {
+        Ok(Ok(())) => {}
+        Ok(Err(e)) => tracing::error!("the service task ended abnormally: {e}"),
+        Err(_) => {
+            tracing::warn!("service cleanup did not finish before deadline; forcing shutdown");
+        }
     }
     rt.shutdown_timeout(SHUTDOWN_BACKSTOP);
 }
