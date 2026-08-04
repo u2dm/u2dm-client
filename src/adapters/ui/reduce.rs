@@ -16,9 +16,9 @@ use crate::commands::messages::{UserMessage, UserMessageKind};
 use crate::commands::view::{
     AppViewState, DirectoryView, LifecycleView, PaginationView, StickerView, Toast,
 };
-use crate::domain::models::{
-    RoomId, RoomList, TimelinePatch, TimelineStatus, VerificationEvent as DomainVerificationEvent,
-};
+use crate::domain::room::{RoomId, RoomList};
+use crate::domain::timeline::{TimelinePatch, TimelineStatus};
+use crate::domain::verification::VerificationEvent as DomainVerificationEvent;
 use crate::ports::media::MediaCache;
 
 const NO_ANCHOR: i32 = -1;

@@ -6,7 +6,7 @@ use tokio::fs;
 use tokio::task::spawn_blocking;
 
 use crate::domain::account::AccountScope;
-use crate::domain::models::Session;
+use crate::domain::auth::Session;
 use crate::error::{AppError, Result};
 use crate::ports::storage::{StagedCredentials, StoragePort, StoredSession, SupersededLogin};
 

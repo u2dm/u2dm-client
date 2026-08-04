@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use crate::domain::account::AccountScope;
-use crate::domain::models::Session;
+use crate::domain::auth::Session;
 use crate::error::{AppError, Result};
 use crate::ports::matrix::{AuthenticatedSession, CleanupReport, StagedCleanup, StoreAdoption};
 use crate::ports::storage::{StoragePort, StoredSession, SupersededLogin};

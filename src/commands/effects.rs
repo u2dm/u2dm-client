@@ -2,7 +2,9 @@ use std::sync::Arc;
 
 use super::messages::UserMessage;
 use super::view::AppViewState;
-use crate::domain::models::{RoomId, TimelinePatch, TimelineStatus, VerificationEvent};
+use crate::domain::room::RoomId;
+use crate::domain::timeline::{TimelinePatch, TimelineStatus};
+use crate::domain::verification::VerificationEvent;
 
 pub enum Effect {
     Snapshot(Arc<AppViewState>),

@@ -15,7 +15,7 @@ use matrix_sdk::ruma::events::room::message::{MessageType, OriginalSyncRoomMessa
 use tokio::sync::{Mutex, mpsc};
 use tokio::time::timeout;
 
-use crate::domain::models::{VerificationCancellation, VerificationEmoji, VerificationEvent};
+use crate::domain::verification::{VerificationCancellation, VerificationEmoji, VerificationEvent};
 use crate::error::{AppError, Result};
 
 const VERIFICATION_QUEUE: usize = 8;

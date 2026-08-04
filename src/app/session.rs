@@ -12,7 +12,7 @@ use super::task_group::{self, TaskGroup};
 use crate::commands::messages::{UserMessage, UserMessageKind};
 use crate::commands::view::{LoginActivity, LoginStep};
 use crate::domain::account::AccountScope;
-use crate::domain::models::{LoginCredentials, LoginMethod, ServerInfo, Session};
+use crate::domain::auth::{LoginCredentials, LoginMethod, ServerInfo, Session};
 use crate::error::{AppError, AuthFailure, Result};
 use crate::ports::browser::BrowserPort;
 use crate::ports::matrix::{

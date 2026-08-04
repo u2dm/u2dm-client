@@ -16,7 +16,7 @@ use tokio_util::task::TaskTracker;
 
 use super::media::MediaService;
 use super::profile::PronounCache;
-use crate::domain::models::TimelineUpdate;
+use crate::domain::timeline::TimelineUpdate;
 
 const ENRICH_INFLIGHT: usize = 8;
 

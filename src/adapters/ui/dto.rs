@@ -10,10 +10,11 @@ use super::present::{
     sender_initial, service_kind, service_target, unsupported_kind,
 };
 use super::schema::{define_ui_enum, media_states};
-use crate::domain::models::{
-    EnrichmentDelta, MessagePreviewKind, PackId, Room, Space, StickerImage, StickerPack,
-    ThumbnailOutcome, TimelineMessage,
-};
+use crate::domain::media::ThumbnailOutcome;
+use crate::domain::message::{MessagePreviewKind, TimelineMessage};
+use crate::domain::room::{Room, Space};
+use crate::domain::sticker::{PackId, StickerImage, StickerPack};
+use crate::domain::timeline::EnrichmentDelta;
 use crate::ports::media::MediaCache;
 
 media_states!(define_ui_enum MediaState;);

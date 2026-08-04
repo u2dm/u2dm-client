@@ -2,7 +2,10 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use super::messages::UserMessage;
-use crate::domain::models::{ConnectionStatus, LoginMethod, RoomList, Space, StickerPacks};
+use crate::domain::auth::LoginMethod;
+use crate::domain::room::{RoomList, Space};
+use crate::domain::sticker::StickerPacks;
+use crate::domain::sync::ConnectionStatus;
 
 #[derive(Clone, Default)]
 pub struct AppViewState {

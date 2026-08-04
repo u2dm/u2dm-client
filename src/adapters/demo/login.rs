@@ -4,7 +4,7 @@ use std::time::Duration;
 
 use tokio::time::sleep;
 
-use crate::domain::models::AuthMethod;
+use crate::domain::auth::AuthMethod;
 
 const ENV_VAR: &str = "U2DM_DEMO_LOGIN";
 const STEP_DELAY: Duration = Duration::from_millis(900);

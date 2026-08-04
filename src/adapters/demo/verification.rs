@@ -4,7 +4,7 @@ use std::time::Duration;
 
 use tokio::time::sleep;
 
-use crate::domain::models::{VerificationEmoji, VerificationEvent};
+use crate::domain::verification::{VerificationEmoji, VerificationEvent};
 
 const ENV_VAR: &str = "U2DM_DEMO_VERIFY";
 const REQUEST_DELAY: Duration = Duration::from_secs(3);

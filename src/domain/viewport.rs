@@ -1,4 +1,4 @@
-use super::models::{PaginationDirection, PaginationState, ScrollMode};
+use super::timeline::{PaginationDirection, PaginationState, ScrollMode};
 
 pub const PAGINATION_BATCH_SIZE: u16 = 50;
 

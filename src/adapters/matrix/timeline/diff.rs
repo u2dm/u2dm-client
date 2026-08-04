@@ -7,7 +7,7 @@ use super::TimelineContext;
 use super::convert::convert_timeline_item;
 use super::filter::TimelineItems;
 use super::subscribe::{enrich_message, enrich_messages};
-use crate::domain::models::TimelinePatch;
+use crate::domain::timeline::TimelinePatch;
 
 fn apply_append(
     items: &mut TimelineItems,

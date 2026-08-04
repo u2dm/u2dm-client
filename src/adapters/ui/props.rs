@@ -7,9 +7,10 @@ use crate::commands::effects::VerificationActivity;
 use crate::commands::messages::{UserMessage, UserMessageKind};
 use crate::commands::ui::UiCommand;
 use crate::commands::view::{LoginActivity, LoginStep};
-use crate::domain::models::{
-    ConnectionStatus, LoginMethod, TimelineStatus, VerificationEmoji as DomainVerificationEmoji,
-};
+use crate::domain::auth::LoginMethod;
+use crate::domain::sync::ConnectionStatus;
+use crate::domain::timeline::TimelineStatus;
+use crate::domain::verification::VerificationEmoji as DomainVerificationEmoji;
 
 pub const SLINT_INFLIGHT: usize = 32;
 

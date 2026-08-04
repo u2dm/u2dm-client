@@ -7,7 +7,7 @@ use super::event::AppEvent;
 use super::task_group::TaskGroup;
 use crate::commands::effects::{Effect, VerificationActivity, VerificationUpdate};
 use crate::commands::messages::{UserMessage, UserMessageKind};
-use crate::domain::models::VerificationEvent;
+use crate::domain::verification::VerificationEvent;
 use crate::error::Result;
 use crate::ports::matrix::VerificationPort;
 use crate::ports::output::AppOutputPort;

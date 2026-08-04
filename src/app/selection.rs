@@ -1,4 +1,4 @@
-use crate::domain::models::RoomId;
+use crate::domain::room::RoomId;
 
 #[derive(Default)]
 pub(super) struct Selection {

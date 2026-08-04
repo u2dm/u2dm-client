@@ -1,6 +1,6 @@
 use matrix_sdk::ruma::events::room::message::MessageType;
 
-use crate::domain::models::{MessagePreviewKind, ServiceEvent};
+use crate::domain::message::{MessagePreviewKind, ServiceEvent};
 
 pub(super) struct MessagePreview {
     pub kind: MessagePreviewKind,

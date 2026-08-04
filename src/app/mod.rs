@@ -34,9 +34,11 @@ use crate::commands::sync::DirectoryUpdate;
 use crate::commands::ui::{UiCommand, ViewportChanged};
 use crate::commands::view::{AppViewState, LoginActivity, LoginStep, Toast};
 use crate::domain::account::AccountScope;
-use crate::domain::models::{
-    ConnectionStatus, PackId, RoomId, RoomList, ServerInfo, Space, TimelineFocus,
-};
+use crate::domain::auth::ServerInfo;
+use crate::domain::room::{RoomId, RoomList, Space};
+use crate::domain::sticker::PackId;
+use crate::domain::sync::ConnectionStatus;
+use crate::domain::timeline::TimelineFocus;
 use crate::ports::browser::BrowserPort;
 use crate::ports::matrix::{AuthPort, AuthenticatedSession, CleanupReport, SessionPort};
 use crate::ports::media::MediaFilePort;

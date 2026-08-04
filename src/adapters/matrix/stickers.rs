@@ -11,7 +11,8 @@ use serde_json::{Map, Value, json};
 use tokio::task::JoinSet;
 
 use super::AuthedMatrix;
-use crate::domain::models::{PackId, RoomId, StickerImage, StickerPack};
+use crate::domain::room::RoomId;
+use crate::domain::sticker::{PackId, StickerImage, StickerPack};
 use crate::error::{AppError, Result};
 use crate::ports::matrix::{StickerCatalog, StickerPort};
 

@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use crate::domain::models::{RoomList, Space};
+use crate::domain::room::{RoomList, Space};
 
 pub enum DirectoryUpdate {
     Rooms(RoomList),

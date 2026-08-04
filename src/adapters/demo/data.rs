@@ -5,10 +5,11 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use super::dto::{DemoData, RoomDto, SpaceDto, StickerPackDto};
 use super::media;
 use super::timeline::{self, scenario};
-use crate::domain::models::{
-    ImageMeta, MessageBody, ReplyInfo, Room, RoomId, Session, Space, StickerImage, StickerPack,
-    TimelineMessage,
-};
+use crate::domain::auth::Session;
+use crate::domain::media::ImageMeta;
+use crate::domain::message::{MessageBody, ReplyInfo, TimelineMessage};
+use crate::domain::room::{Room, RoomId, Space};
+use crate::domain::sticker::{StickerImage, StickerPack};
 
 const UNKNOWN_SENDER: &str = "@member:matrix.org";
 const SENT_STICKER_EXTENT: u32 = 512;

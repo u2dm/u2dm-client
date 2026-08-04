@@ -10,12 +10,16 @@ use tokio::time::sleep;
 use tokio_util::sync::CancellationToken;
 
 use super::{data, login, media, stickers, timeline, verification};
-use crate::domain::models::{
-    AuthMethod, JumpTarget, LoginCredentials, MessageBody, OAuthLoginData, PackId,
-    PaginationDirection, PaginationOutcome, ReplyInfo, RoomId, ServerInfo, Session, StickerImage,
-    SyncEvent, SyncOutcome, TimelineCommand, TimelineFocus, TimelineMessage, TimelinePatch,
-    TimelineUpdate, VerificationCancellation, VerificationEvent,
+use crate::domain::auth::{AuthMethod, LoginCredentials, OAuthLoginData, ServerInfo, Session};
+use crate::domain::message::{MessageBody, ReplyInfo, TimelineMessage};
+use crate::domain::room::RoomId;
+use crate::domain::sticker::{PackId, StickerImage};
+use crate::domain::sync::{SyncEvent, SyncOutcome};
+use crate::domain::timeline::{
+    JumpTarget, PaginationDirection, PaginationOutcome, TimelineCommand, TimelineFocus,
+    TimelinePatch, TimelineUpdate,
 };
+use crate::domain::verification::{VerificationCancellation, VerificationEvent};
 use crate::error::{AppError, Result};
 use crate::ports::matrix::{
     AuthPort, AuthenticatedSession, CleanupReport, MediaPort, PendingLogin, ProgressSink,

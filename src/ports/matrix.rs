@@ -6,10 +6,12 @@ use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 
 use crate::domain::account::AccountScope;
-use crate::domain::models::{
-    LoginCredentials, OAuthLoginData, PackId, RoomId, ServerInfo, Session, StickerPack, SyncEvent,
-    SyncOutcome, TimelineCommand, TimelineFocus, TimelineUpdate, VerificationEvent,
-};
+use crate::domain::auth::{LoginCredentials, OAuthLoginData, ServerInfo, Session};
+use crate::domain::room::RoomId;
+use crate::domain::sticker::{PackId, StickerPack};
+use crate::domain::sync::{SyncEvent, SyncOutcome};
+use crate::domain::timeline::{TimelineCommand, TimelineFocus, TimelineUpdate};
+use crate::domain::verification::VerificationEvent;
 use crate::error::Result;
 
 pub type SyncSink = Arc<dyn Fn(SyncEvent) + Send + Sync>;

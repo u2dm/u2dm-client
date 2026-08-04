@@ -9,7 +9,7 @@ use matrix_sdk::media::{MediaFormat, MediaThumbnailSettings};
 use matrix_sdk::ruma::events::room::MediaSource;
 pub(crate) use service::MediaService;
 
-use crate::domain::models::{ImageMeta, MediaKind};
+use crate::domain::media::{ImageMeta, MediaKind};
 use crate::ports::media::MediaCache;
 
 pub(super) const AVATARS_DIR: &str = "avatars";

@@ -13,9 +13,8 @@ use super::space_order;
 use super::task_group::TaskGroup;
 use crate::commands::sync::DirectoryUpdate;
 use crate::commands::ui::UiCommand;
-use crate::domain::models::{
-    ConnectionStatus, Room, RoomId, RoomList, Space, SyncEvent, SyncOutcome,
-};
+use crate::domain::room::{Room, RoomId, RoomList, Space};
+use crate::domain::sync::{ConnectionStatus, SyncEvent, SyncOutcome};
 use crate::ports::matrix::{SpaceOrderPort, SyncPort, SyncSink};
 use crate::ports::output::AppOutputPort;
 

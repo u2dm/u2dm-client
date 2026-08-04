@@ -7,7 +7,8 @@ use pure_rust_locales::locale_match;
 
 use super::schema::{define_ui_enum, message_kinds, service_kinds, verification_phases};
 use crate::commands::messages::{UserMessage, UserMessageKind};
-use crate::domain::models::{MessageBody, ServiceEvent, TimelineMessage, VerificationCancellation};
+use crate::domain::message::{MessageBody, ServiceEvent, TimelineMessage};
+use crate::domain::verification::VerificationCancellation;
 use crate::locale::{self, LocaleRequest};
 
 pub fn sender_initial(name: &str) -> &str {

@@ -28,10 +28,12 @@ use crate::commands::effects::{Effect, VerificationActivity};
 use crate::commands::messages::{UserMessage, UserMessageKind};
 use crate::commands::ui::{UiCommand, ViewportChanged};
 use crate::commands::view::{AppViewState, LoginActivity, LoginStep};
-use crate::domain::models::{
-    ConnectionStatus, EnrichmentDelta, LoginCredentials, LoginMethod, MessagePreviewKind, Room,
-    Space, TimelineMessage, TimelineStatus, VerificationEmoji as DomainVerificationEmoji,
-};
+use crate::domain::auth::{LoginCredentials, LoginMethod};
+use crate::domain::message::{MessagePreviewKind, TimelineMessage};
+use crate::domain::room::{Room, Space};
+use crate::domain::sync::ConnectionStatus;
+use crate::domain::timeline::{EnrichmentDelta, TimelineStatus};
+use crate::domain::verification::VerificationEmoji as DomainVerificationEmoji;
 use crate::error::Result;
 use crate::ports::media::MediaCache;
 

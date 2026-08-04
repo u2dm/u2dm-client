@@ -3,7 +3,8 @@ use std::path::PathBuf;
 use super::establish::EstablishedSession;
 use crate::commands::messages::{UserMessage, UserMessageKind};
 use crate::commands::view::LoginActivity;
-use crate::domain::models::{ServerInfo, VerificationEvent};
+use crate::domain::auth::ServerInfo;
+use crate::domain::verification::VerificationEvent;
 use crate::ports::matrix::{AuthenticatedSession, CleanupReport};
 
 #[derive(Clone, Copy)]

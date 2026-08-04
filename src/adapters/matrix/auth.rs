@@ -20,7 +20,7 @@ use url::Url;
 
 use super::store::StorePaths;
 use crate::adapters::private_fs;
-use crate::domain::models::{AuthMethod, LoginCredentials, OAuthLoginData, ServerInfo, Session};
+use crate::domain::auth::{AuthMethod, LoginCredentials, OAuthLoginData, ServerInfo, Session};
 use crate::error::{AppError, AuthFailure, Result};
 use crate::ports::matrix::RestoreStep;
 

@@ -3,7 +3,9 @@ use tokio::sync::{mpsc, watch};
 use super::props::send_command;
 use super::schema::simple_callbacks;
 use crate::commands::ui::{UiCommand, ViewportChanged};
-use crate::domain::models::{LoginCredentials, PackId, RoomId};
+use crate::domain::auth::LoginCredentials;
+use crate::domain::room::RoomId;
+use crate::domain::sticker::PackId;
 
 type Tx = mpsc::UnboundedSender<UiCommand>;
 

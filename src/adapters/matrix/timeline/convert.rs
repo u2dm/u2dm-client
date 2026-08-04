@@ -16,8 +16,9 @@ use matrix_sdk_ui::timeline::{
 
 use super::TimelineContext;
 use crate::adapters::matrix::preview;
-use crate::domain::models::{
-    FileMeta, ImageMeta, MessageBody, MessagePreviewKind, ReplyInfo, ServiceEvent, TimelineMessage,
+use crate::domain::media::{FileMeta, ImageMeta};
+use crate::domain::message::{
+    MessageBody, MessagePreviewKind, ReplyInfo, ServiceEvent, TimelineMessage,
 };
 
 fn extract_sender_profile(event: &EventTimelineItem) -> (Option<String>, Option<String>) {

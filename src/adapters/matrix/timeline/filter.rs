@@ -5,7 +5,8 @@ use matrix_sdk_ui::timeline::{EventTimelineItem, TimelineItem};
 
 use super::TimelineContext;
 use super::convert::convert_timeline_item;
-use crate::domain::models::{JumpTarget, TimelineMessage};
+use crate::domain::message::TimelineMessage;
+use crate::domain::timeline::JumpTarget;
 
 pub(super) struct TimelineItems {
     items: Vec<Arc<TimelineItem>>,

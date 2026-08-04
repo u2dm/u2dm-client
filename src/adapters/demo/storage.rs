@@ -2,7 +2,7 @@ use async_trait::async_trait;
 
 use super::{data, login};
 use crate::domain::account::AccountScope;
-use crate::domain::models::Session;
+use crate::domain::auth::Session;
 use crate::error::Result;
 use crate::ports::storage::{StagedCredentials, StoragePort, StoredSession, SupersededLogin};
 

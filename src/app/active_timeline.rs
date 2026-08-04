@@ -7,9 +7,10 @@ use crate::commands::effects::Effect;
 use crate::commands::messages::{UserMessage, UserMessageKind};
 use crate::commands::ui::{TimelineAdvance, UiCommand};
 use crate::commands::view::Toast;
-use crate::domain::models::{
-    JumpTarget, PaginationDirection, PaginationOutcome, RoomId, ScrollMode, TimelineCommand,
-    TimelineFocus, TimelinePatch, TimelineStatus, TimelineUpdate,
+use crate::domain::room::RoomId;
+use crate::domain::timeline::{
+    JumpTarget, PaginationDirection, PaginationOutcome, ScrollMode, TimelineCommand, TimelineFocus,
+    TimelinePatch, TimelineStatus, TimelineUpdate,
 };
 use crate::domain::viewport::ViewportController;
 use crate::ports::matrix::TimelinePort;

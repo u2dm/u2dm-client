@@ -20,7 +20,7 @@ use self::avatars::AvatarFetcher;
 use self::directory::Directory;
 use self::health::{SyncHealth, is_auth_error};
 use super::media::MediaService;
-use crate::domain::models::{SyncEvent, SyncOutcome};
+use crate::domain::sync::{SyncEvent, SyncOutcome};
 use crate::error::{AppError, Result as AppResult};
 use crate::ports::matrix::SyncSink as OnSync;
 

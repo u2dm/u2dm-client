@@ -19,9 +19,8 @@ use matrix_sdk::ruma::{OwnedUserId, UserId};
 use matrix_sdk::{Client, Room};
 
 use crate::adapters::matrix::preview::{self, MessagePreview};
-use crate::domain::models::{
-    MessagePreviewKind, NotifyMode, Room as DomainRoom, RoomId, ServiceEvent, Space as DomainSpace,
-};
+use crate::domain::message::{MessagePreviewKind, ServiceEvent};
+use crate::domain::room::{NotifyMode, Room as DomainRoom, RoomId, Space as DomainSpace};
 
 const SEED_INFLIGHT: usize = 16;
 

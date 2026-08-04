@@ -17,7 +17,8 @@ use super::{AVATARS_DIR, STICKERS_DIR, mxc_avatar_key, sticker_key, thumb_key, t
 use crate::adapters::matrix::store::purge_dir;
 use crate::adapters::private_fs;
 use crate::domain::account::AccountScope;
-use crate::domain::models::{ThumbnailOutcome, TimelineMessage};
+use crate::domain::media::ThumbnailOutcome;
+use crate::domain::message::TimelineMessage;
 use crate::error::{AppError, Result};
 use crate::ports::matrix::CleanupReport;
 use crate::util::hex_encode_id;

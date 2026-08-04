@@ -22,9 +22,11 @@ use super::filter::TimelineItems;
 use super::{EnrichmentClaim, EnrichmentPool, TimelineContext};
 use crate::adapters::matrix::media::MediaService;
 use crate::adapters::matrix::profile::PronounCache;
-use crate::domain::models::{
-    EnrichmentDelta, JumpTarget, PaginationDirection, PaginationOutcome, RoomId, TimelineCommand,
-    TimelineFocus, TimelineMessage, TimelinePatch, TimelineUpdate,
+use crate::domain::message::TimelineMessage;
+use crate::domain::room::RoomId;
+use crate::domain::timeline::{
+    EnrichmentDelta, JumpTarget, PaginationDirection, PaginationOutcome, TimelineCommand,
+    TimelineFocus, TimelinePatch, TimelineUpdate,
 };
 use crate::domain::viewport::PAGINATION_BATCH_SIZE;
 use crate::error::{AppError, Result};

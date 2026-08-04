@@ -2,10 +2,13 @@ use std::collections::HashMap;
 
 use serde::Deserialize;
 
-use crate::domain::models::{
-    ImageMeta, MessageBody, MessagePreviewKind, NotifyMode, PackId, ReplyInfo, Room, RoomId,
-    ServiceEvent, Session, Space, StickerImage, StickerPack, TimelineMessage,
+use crate::domain::auth::Session;
+use crate::domain::media::ImageMeta;
+use crate::domain::message::{
+    MessageBody, MessagePreviewKind, ReplyInfo, ServiceEvent, TimelineMessage,
 };
+use crate::domain::room::{NotifyMode, Room, RoomId, Space};
+use crate::domain::sticker::{PackId, StickerImage, StickerPack};
 
 #[derive(Deserialize, Default)]
 pub struct DemoData {

@@ -1,6 +1,6 @@
 use sha2::{Digest, Sha256};
 
-use super::models::Session;
+use super::auth::Session;
 use crate::util::hex_encode;
 
 const ACCOUNT_ID_BYTES: usize = 16;

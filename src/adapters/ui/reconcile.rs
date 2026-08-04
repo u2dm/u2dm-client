@@ -6,7 +6,9 @@ use slint::{Model, VecModel};
 
 use super::decode::forget_all_media_needs;
 use super::dto::{StickerGrid, prefetch_space_avatar, record_room_avatar_need};
-use crate::domain::models::{EnrichmentDelta, Room, Space, TimelineMessage, TimelinePatch};
+use crate::domain::message::TimelineMessage;
+use crate::domain::room::{Room, Space};
+use crate::domain::timeline::{EnrichmentDelta, TimelinePatch};
 use crate::ports::media::MediaCache;
 
 thread_local! {

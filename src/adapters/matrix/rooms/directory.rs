@@ -12,7 +12,8 @@ use tokio::time::Instant;
 
 use super::avatars::{AvatarFetcher, AvatarKind};
 use super::build::{build_rooms, build_single_room, build_spaces_meta, unread_flags};
-use crate::domain::models::{Room as DomainRoom, Space as DomainSpace, SyncEvent};
+use crate::domain::room::{Room as DomainRoom, Space as DomainSpace};
+use crate::domain::sync::SyncEvent;
 use crate::ports::matrix::SyncSink as OnSync;
 
 const EMIT_DEBOUNCE: Duration = Duration::from_millis(50);

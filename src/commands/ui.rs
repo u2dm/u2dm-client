@@ -1,8 +1,9 @@
 use strum::Display as StrumDisplay;
 
-use crate::domain::models::{
-    LoginCredentials, PackId, PaginationDirection, PaginationOutcome, RoomId, TimelineFocus,
-};
+use crate::domain::auth::LoginCredentials;
+use crate::domain::room::RoomId;
+use crate::domain::sticker::PackId;
+use crate::domain::timeline::{PaginationDirection, PaginationOutcome, TimelineFocus};
 
 #[derive(StrumDisplay)]
 pub enum UiCommand {

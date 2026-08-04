@@ -4,7 +4,8 @@ use super::show_toast;
 use super::task_group::TaskGroup;
 use crate::commands::messages::{UserMessage, UserMessageKind};
 use crate::commands::view::{StickerView, Toast};
-use crate::domain::models::{PackId, RoomId, StickerPacks};
+use crate::domain::room::RoomId;
+use crate::domain::sticker::{PackId, StickerPacks};
 use crate::ports::matrix::StickerPort;
 use crate::ports::output::AppOutputPort;
 

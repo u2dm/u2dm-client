@@ -14,7 +14,9 @@ use super::reconcile::{sticker_cell_row, sticker_pack_row, timeline_row_of};
 use super::reduce::dispatch_effect;
 use super::rows::{locate_row, patch_rows_by_id};
 use crate::commands::effects::Effect;
-use crate::domain::models::{EnrichmentDelta, Room, RoomId, Space, TimelineMessage};
+use crate::domain::message::TimelineMessage;
+use crate::domain::room::{Room, RoomId, Space};
+use crate::domain::timeline::EnrichmentDelta;
 use crate::ports::media::MediaCache;
 
 pub trait UiBackend: Sized + 'static {

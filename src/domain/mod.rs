@@ -1,3 +1,10 @@
 pub mod account;
-pub mod models;
+pub mod auth;
+pub mod media;
+pub mod message;
+pub mod room;
+pub mod sticker;
+pub mod sync;
+pub mod timeline;
+pub mod verification;
 pub mod viewport;
