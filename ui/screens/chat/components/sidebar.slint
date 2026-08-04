@@ -22,6 +22,7 @@ export component Sidebar inherits Rectangle {
 
     in property <length> subrail-width: Metrics.subspace-rail;
     in property <bool> above-modal: false;
+    in property <bool> collapsed: false;
 
     callback room-selected();
 
@@ -78,7 +79,7 @@ export component Sidebar inherits Rectangle {
                 Rectangle {
                     height: 52px;
 
-                    search-field := Rectangle {
+                    if !root.collapsed: search-field := Rectangle {
                         x: 8px;
                         y: (parent.height - self.height) / 2;
                         width: parent.width - 16px;
@@ -151,7 +152,32 @@ export component Sidebar inherits Rectangle {
                             : room.last-message-sender;
                         property <bool> is-service: room.last-message-service-kind != ServiceKind.none;
 
-                        HorizontalLayout {
+                        if root.collapsed: Rectangle {
+                            width: 100%;
+                            height: 100%;
+
+                            collapsed-avatar := Avatar {
+                                x: (parent.width - self.width) / 2;
+                                y: (parent.height - self.height) / 2;
+                                width: root.avatar-size;
+                                height: root.avatar-size;
+                                background: Avatars.color(room.color-index);
+                                has-image: room.has-avatar;
+                                image: room.avatar;
+                                initial: room.initial;
+                            }
+
+                            if room.alert || room.mention || room.hint: UnreadDot {
+                                x: collapsed-avatar.x + collapsed-avatar.width - self.width + 2px;
+                                y: collapsed-avatar.y + collapsed-avatar.height - self.height + 2px;
+                                ringed: true;
+                                alert: room.alert;
+                                mention: room.mention;
+                                hint: room.hint;
+                            }
+                        }
+
+                        if !root.collapsed: HorizontalLayout {
                             padding-left: 12px;
                             padding-right: 12px;
                             spacing: 10px;

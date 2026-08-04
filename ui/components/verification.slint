@@ -1,4 +1,4 @@
-import { Palette } from "std-widgets.slint";
+import { Palette, ScrollView } from "std-widgets.slint";
 import { IconDisplay, IconSet, Icon } from "@lucide";
 
 import { VerificationPhase, VerificationActivity, UserMessageKind } from "../enums.slint";
@@ -88,10 +88,16 @@ component EmojiTile inherits Rectangle {
 }
 
 component EmojiGrid inherits HorizontalLayout {
-    property <length> tile-width: 74px;
-    property <length> tile-height: 74px;
+    in property <length> available-width;
+
     property <length> tile-gap: 8px;
     property <int> first-row-length: 4;
+    property <length> tile-width: clamp(
+        (root.available-width - (root.first-row-length - 1) * root.tile-gap) / root.first-row-length,
+        52px,
+        74px,
+    );
+    property <length> tile-height: root.tile-width;
     property <length> column-step: root.tile-width + root.tile-gap;
     property <length> row-step: root.tile-height + root.tile-gap;
     property <length> second-row-centering-inset: root.column-step / 2;
@@ -144,267 +150,275 @@ export component VerificationDialog inherits ModalHost {
         Actions.dismiss-verification();
     }
 
-    HorizontalLayout {
-        alignment: center;
+    property <length> card-width: min(420px, root.width - 48px);
+    property <length> card-height: card-body.preferred-height;
 
-        VerticalLayout {
-            alignment: center;
-            padding: 24px;
+    scroll := ScrollView {
+        x: 0;
+        y: 0;
+        width: 100%;
+        height: 100%;
+        viewport-width: self.width;
+        viewport-height: max(self.height, root.card-height + 48px);
 
-            Rectangle {
-                width: min(420px, root.width - 48px);
-                background: AppStyle.card;
-                border-radius: 20px;
-                border-width: 1px;
-                border-color: AppStyle.hairline;
-                drop-shadow-blur: 44px;
-                drop-shadow-offset-y: 16px;
-                drop-shadow-color: Colors.black.transparentize(0.7);
+        Rectangle {
+            x: (root.width - self.width) / 2;
+            y: (scroll.viewport-height - self.height) / 2;
+            width: root.card-width;
+            height: root.card-height;
+            background: AppStyle.card;
+            border-radius: 20px;
+            border-width: 1px;
+            border-color: AppStyle.hairline;
+            drop-shadow-blur: 44px;
+            drop-shadow-offset-y: 16px;
+            drop-shadow-color: Colors.black.transparentize(0.7);
 
-                VerticalLayout {
-                    padding: 24px;
-                    spacing: 18px;
+            card-body := VerticalLayout {
+                padding: 24px;
+                spacing: 18px;
+
+                HorizontalLayout {
+                    spacing: 12px;
+
+                    VerticalLayout {
+                        alignment: center;
+
+                        Rectangle {
+                            width: 40px;
+                            height: 40px;
+                            border-radius: 13px;
+                            background: @linear-gradient(140deg, Palette.accent-background.brighter(0.25) 0%, Palette.accent-background.darker(0.15) 100%);
+
+                            IconDisplay {
+                                icon: IconSet.ShieldCheck;
+                                size: 21px;
+                                stroke: Palette.accent-foreground;
+                            }
+                        }
+                    }
+
+                    VerticalLayout {
+                        alignment: center;
+                        spacing: 2px;
+                        horizontal-stretch: 1;
+
+                        Text {
+                            text: @tr("Device verification");
+                            font-size: 17px;
+                            font-weight: 700;
+                        }
+
+                        Text {
+                            text: VerificationView.is-self
+                                ? @tr("One of your own sessions")
+                                : VerificationView.sender;
+                            font-size: 12px;
+                            overflow: elide;
+                            color: AppStyle.muted;
+                        }
+                    }
+
+                    VerticalLayout {
+                        alignment: center;
+
+                        IconButton {
+                            icon: IconSet.X;
+                            above-modal: true;
+                            label: @tr("Close the verification dialog");
+                            size: 30px;
+                            clicked => {
+                                Actions.dismiss-verification();
+                            }
+                        }
+                    }
+                }
+
+                Rectangle {
+                    height: 1px;
+                    background: AppStyle.hairline;
+                }
+
+                if VerificationView.step == VerificationPhase.requested: VerticalLayout {
+                    spacing: 14px;
+
+                    DialogNote {
+                        text: VerificationView.is-self
+                            ? @tr("Accept to compare a row of emoji with your other device and unlock your encrypted history.")
+                            : @tr("{} wants to verify this session. Accept to compare a row of emoji with them.", VerificationView.sender);
+                    }
 
                     HorizontalLayout {
-                        spacing: 12px;
+                        spacing: 10px;
 
-                        VerticalLayout {
-                            alignment: center;
-
-                            Rectangle {
-                                width: 40px;
-                                height: 40px;
-                                border-radius: 13px;
-                                background: @linear-gradient(140deg, Palette.accent-background.brighter(0.25) 0%, Palette.accent-background.darker(0.15) 100%);
-
-                                IconDisplay {
-                                    icon: IconSet.ShieldCheck;
-                                    size: 21px;
-                                    stroke: Palette.accent-foreground;
-                                }
-                            }
-                        }
-
-                        VerticalLayout {
-                            alignment: center;
-                            spacing: 2px;
+                        AppButton {
                             horizontal-stretch: 1;
-
-                            Text {
-                                text: @tr("Device verification");
-                                font-size: 17px;
-                                font-weight: 700;
-                            }
-
-                            Text {
-                                text: VerificationView.is-self
-                                    ? @tr("One of your own sessions")
-                                    : VerificationView.sender;
-                                font-size: 12px;
-                                overflow: elide;
-                                color: AppStyle.muted;
+                            above-modal: true;
+                            text: @tr("Decline");
+                            icon: IconSet.X;
+                            filled: false;
+                            enabled: !VerificationView.busy;
+                            busy: VerificationView.activity == VerificationActivity.declining;
+                            clicked => {
+                                Actions.reject-verification();
                             }
                         }
+
+                        AppButton {
+                            horizontal-stretch: 1;
+                            above-modal: true;
+                            text: @tr("Accept");
+                            icon: IconSet.Check;
+                            enabled: !VerificationView.busy;
+                            busy: VerificationView.activity == VerificationActivity.accepting;
+                            clicked => {
+                                Actions.accept-verification();
+                            }
+                        }
+                    }
+                }
+
+                if VerificationView.step == VerificationPhase.emojis: VerticalLayout {
+                    spacing: 14px;
+
+                    DialogNote {
+                        text: @tr("Check that the same emoji appear in the same order on both devices.");
+                    }
+
+                    EmojiGrid {
+                        available-width: root.card-width - 48px;
+                    }
+
+                    HorizontalLayout {
+                        spacing: 10px;
+
+                        AppButton {
+                            horizontal-stretch: 1;
+                            above-modal: true;
+                            text: @tr("They don't match");
+                            icon: IconSet.X;
+                            filled: false;
+                            tint: AppStyle.danger;
+                            enabled: !VerificationView.busy;
+                            busy: VerificationView.activity == VerificationActivity.declining;
+                            clicked => {
+                                Actions.reject-verification();
+                            }
+                        }
+
+                        AppButton {
+                            horizontal-stretch: 1;
+                            above-modal: true;
+                            text: @tr("They match");
+                            icon: IconSet.Check;
+                            enabled: !VerificationView.busy;
+                            busy: VerificationView.activity == VerificationActivity.confirming;
+                            clicked => {
+                                Actions.confirm-verification();
+                            }
+                        }
+                    }
+                }
+
+                if VerificationView.step == VerificationPhase.confirming: VerticalLayout {
+                    spacing: 14px;
+
+                    HorizontalLayout {
+                        alignment: center;
+
+                        DotPulse {
+                            tint: Palette.accent-background;
+                            dot-size: 9px;
+                        }
+                    }
+
+                    DialogNote {
+                        text: @tr("Waiting for the other device to confirm...");
+                    }
+                }
+
+                if VerificationView.step == VerificationPhase.done: VerticalLayout {
+                    spacing: 16px;
+
+                    Verdict {
+                        icon: IconSet.ShieldCheck;
+                        tint: AppStyle.success;
+                        surface: AppStyle.success-surface;
+                        title: @tr("Session verified");
+                    }
+
+                    DialogNote {
+                        text: @tr("This session is trusted now, so encrypted messages can be read here.");
+                    }
+
+                    AppButton {
+                        above-modal: true;
+                        text: @tr("Done");
+                        icon: IconSet.Check;
+                        clicked => {
+                            Actions.dismiss-verification();
+                        }
+                    }
+                }
+
+                if VerificationView.step == VerificationPhase.cancelled: VerticalLayout {
+                    spacing: 16px;
+
+                    Verdict {
+                        icon: IconSet.ShieldAlert;
+                        tint: AppStyle.danger;
+                        surface: AppStyle.danger-surface;
+                        title: @tr("Verification stopped");
+                    }
+
+                    if VerificationView.error != UserMessageKind.none: DialogNote {
+                        text: UserMessages.text(VerificationView.error, VerificationView.error-detail);
+                    }
+
+                    AppButton {
+                        above-modal: true;
+                        text: @tr("Close");
+                        filled: false;
+                        clicked => {
+                            Actions.dismiss-verification();
+                        }
+                    }
+                }
+
+                if VerificationView.busy: BusyRow { }
+
+                if !VerificationView.busy
+                    && VerificationView.error != UserMessageKind.none
+                    && VerificationView.step != VerificationPhase.cancelled: Rectangle {
+                    background: AppStyle.danger-surface;
+                    border-radius: 10px;
+                    border-width: 1px;
+                    border-color: Colors.tomato.transparentize(0.78);
+
+                    accessible-role: text;
+                    accessible-label: UserMessages.text(VerificationView.error, VerificationView.error-detail);
+                    accessible-live-region: AccessibleLiveness.assertive;
+
+                    HorizontalLayout {
+                        padding: 10px;
+                        spacing: 8px;
 
                         VerticalLayout {
-                            alignment: center;
+                            alignment: start;
 
-                            IconButton {
-                                icon: IconSet.X;
-                                above-modal: true;
-                                label: @tr("Close the verification dialog");
-                                size: 30px;
-                                clicked => {
-                                    Actions.dismiss-verification();
-                                }
-                            }
-                        }
-                    }
-
-                    Rectangle {
-                        height: 1px;
-                        background: AppStyle.hairline;
-                    }
-
-                    if VerificationView.step == VerificationPhase.requested: VerticalLayout {
-                        spacing: 14px;
-
-                        DialogNote {
-                            text: VerificationView.is-self
-                                ? @tr("Accept to compare a row of emoji with your other device and unlock your encrypted history.")
-                                : @tr("{} wants to verify this session. Accept to compare a row of emoji with them.", VerificationView.sender);
-                        }
-
-                        HorizontalLayout {
-                            spacing: 10px;
-
-                            AppButton {
-                                horizontal-stretch: 1;
-                                above-modal: true;
-                                text: @tr("Decline");
-                                icon: IconSet.X;
-                                filled: false;
-                                enabled: !VerificationView.busy;
-                                busy: VerificationView.activity == VerificationActivity.declining;
-                                clicked => {
-                                    Actions.reject-verification();
-                                }
-                            }
-
-                            AppButton {
-                                horizontal-stretch: 1;
-                                above-modal: true;
-                                text: @tr("Accept");
-                                icon: IconSet.Check;
-                                enabled: !VerificationView.busy;
-                                busy: VerificationView.activity == VerificationActivity.accepting;
-                                clicked => {
-                                    Actions.accept-verification();
-                                }
-                            }
-                        }
-                    }
-
-                    if VerificationView.step == VerificationPhase.emojis: VerticalLayout {
-                        spacing: 14px;
-
-                        DialogNote {
-                            text: @tr("Check that the same emoji appear in the same order on both devices.");
-                        }
-
-                        EmojiGrid { }
-
-                        HorizontalLayout {
-                            spacing: 10px;
-
-                            AppButton {
-                                horizontal-stretch: 1;
-                                above-modal: true;
-                                text: @tr("They don't match");
-                                icon: IconSet.X;
-                                filled: false;
-                                tint: AppStyle.danger;
-                                enabled: !VerificationView.busy;
-                                busy: VerificationView.activity == VerificationActivity.declining;
-                                clicked => {
-                                    Actions.reject-verification();
-                                }
-                            }
-
-                            AppButton {
-                                horizontal-stretch: 1;
-                                above-modal: true;
-                                text: @tr("They match");
-                                icon: IconSet.Check;
-                                enabled: !VerificationView.busy;
-                                busy: VerificationView.activity == VerificationActivity.confirming;
-                                clicked => {
-                                    Actions.confirm-verification();
-                                }
-                            }
-                        }
-                    }
-
-                    if VerificationView.step == VerificationPhase.confirming: VerticalLayout {
-                        spacing: 14px;
-
-                        HorizontalLayout {
-                            alignment: center;
-
-                            DotPulse {
-                                tint: Palette.accent-background;
-                                dot-size: 9px;
+                            IconDisplay {
+                                icon: IconSet.TriangleAlert;
+                                size: 15px;
+                                stroke: AppStyle.danger;
                             }
                         }
 
-                        DialogNote {
-                            text: @tr("Waiting for the other device to confirm...");
-                        }
-                    }
-
-                    if VerificationView.step == VerificationPhase.done: VerticalLayout {
-                        spacing: 16px;
-
-                        Verdict {
-                            icon: IconSet.ShieldCheck;
-                            tint: AppStyle.success;
-                            surface: AppStyle.success-surface;
-                            title: @tr("Session verified");
-                        }
-
-                        DialogNote {
-                            text: @tr("This session is trusted now, so encrypted messages can be read here.");
-                        }
-
-                        AppButton {
-                            above-modal: true;
-                            text: @tr("Done");
-                            icon: IconSet.Check;
-                            clicked => {
-                                Actions.dismiss-verification();
-                            }
-                        }
-                    }
-
-                    if VerificationView.step == VerificationPhase.cancelled: VerticalLayout {
-                        spacing: 16px;
-
-                        Verdict {
-                            icon: IconSet.ShieldAlert;
-                            tint: AppStyle.danger;
-                            surface: AppStyle.danger-surface;
-                            title: @tr("Verification stopped");
-                        }
-
-                        if VerificationView.error != UserMessageKind.none: DialogNote {
+                        Text {
                             text: UserMessages.text(VerificationView.error, VerificationView.error-detail);
-                        }
-
-                        AppButton {
-                            above-modal: true;
-                            text: @tr("Close");
-                            filled: false;
-                            clicked => {
-                                Actions.dismiss-verification();
-                            }
-                        }
-                    }
-
-                    if VerificationView.busy: BusyRow { }
-
-                    if !VerificationView.busy
-                        && VerificationView.error != UserMessageKind.none
-                        && VerificationView.step != VerificationPhase.cancelled: Rectangle {
-                        background: AppStyle.danger-surface;
-                        border-radius: 10px;
-                        border-width: 1px;
-                        border-color: Colors.tomato.transparentize(0.78);
-
-                        accessible-role: text;
-                        accessible-label: UserMessages.text(VerificationView.error, VerificationView.error-detail);
-                        accessible-live-region: AccessibleLiveness.assertive;
-
-                        HorizontalLayout {
-                            padding: 10px;
-                            spacing: 8px;
-
-                            VerticalLayout {
-                                alignment: start;
-
-                                IconDisplay {
-                                    icon: IconSet.TriangleAlert;
-                                    size: 15px;
-                                    stroke: AppStyle.danger;
-                                }
-                            }
-
-                            Text {
-                                text: UserMessages.text(VerificationView.error, VerificationView.error-detail);
-                                font-size: 12px;
-                                wrap: word-wrap;
-                                horizontal-stretch: 1;
-                                color: AppStyle.danger;
-                            }
+                            font-size: 12px;
+                            wrap: word-wrap;
+                            horizontal-stretch: 1;
+                            color: AppStyle.danger;
                         }
                     }
                 }

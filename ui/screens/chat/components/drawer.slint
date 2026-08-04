@@ -4,6 +4,7 @@ import { IconDisplay, IconSet, Icon } from "@lucide";
 import { Avatar } from "../../../components/avatar.slint";
 import { ClickArea } from "../../../components/a11y.slint";
 import { ModalHost } from "../../../components/overlay.slint";
+import { Metrics } from "../../../theme.slint";
 import { ConnectionState } from "../../../enums.slint";
 import { SessionView } from "../../../views.slint";
 import { Actions } from "../../../actions.slint";
@@ -56,7 +57,10 @@ export component Drawer inherits Rectangle {
 
     callback add-account();
 
-    property <length> panel-width: 300px;
+    property <length> panel-width: min(
+        Metrics.drawer-width,
+        max(240px, root.width - Metrics.overlay-peek),
+    );
     property <length> header-height: 148px;
     property <bool> accounts-expanded: false;
     property <length> accounts-height: root.accounts-expanded ? 84px : 0;

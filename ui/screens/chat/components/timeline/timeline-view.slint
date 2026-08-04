@@ -116,7 +116,7 @@ export component TimelineView inherits Rectangle {
             height: 36px;
             enabled: root.compact;
             ring-radius: 8px;
-            label: @tr("Show rooms");
+            label: @tr("Back to the room list");
             clicked => {
                 Shell.nav-open = true;
             }
@@ -124,7 +124,7 @@ export component TimelineView inherits Rectangle {
             IconDisplay {
                 x: (parent.width - self.width) / 2;
                 y: (parent.height - self.height) / 2;
-                icon: IconSet.PanelLeftOpen;
+                icon: IconSet.ArrowLeft;
                 size: 20px;
                 stroke: Palette.foreground.transparentize(0.3);
             }

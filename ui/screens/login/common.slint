@@ -1,4 +1,4 @@
-import { Palette, Spinner } from "std-widgets.slint";
+import { Palette, ScrollView, Spinner } from "std-widgets.slint";
 import { IconDisplay, IconSet, Icon } from "@lucide";
 import { LoginActivity } from "../../enums.slint";
 import { AppStyle } from "../../components/style.slint";
@@ -25,29 +25,36 @@ export component LoginPage inherits Rectangle {
         background: @radial-gradient(circle, Palette.accent-background.transparentize(0.88) 0%, Palette.accent-background.transparentize(1) 60%);
     }
 
-    HorizontalLayout {
-        alignment: center;
+    out property <bool> dense: root.height < 620px;
+    property <length> card-height: card-body.preferred-height;
+    property <length> card-margin: root.dense ? 16px : 40px;
 
-        VerticalLayout {
-            alignment: center;
-            padding: 24px;
+    scroll := ScrollView {
+        x: 0;
+        y: 0;
+        width: 100%;
+        height: 100%;
+        viewport-width: self.width;
+        viewport-height: max(self.height, root.card-height + 2 * root.card-margin);
 
-            card := Rectangle {
-                width: min(AppStyle.card-width, root.width - 48px);
-                background: AppStyle.card;
-                border-radius: 20px;
-                border-width: 1px;
-                border-color: AppStyle.hairline;
-                drop-shadow-blur: 40px;
-                drop-shadow-offset-y: 14px;
-                drop-shadow-color: Palette.foreground.transparentize(0.88);
+        card := Rectangle {
+            x: (root.width - self.width) / 2;
+            y: (scroll.viewport-height - self.height) / 2;
+            width: min(AppStyle.card-width, root.width - 48px);
+            height: root.card-height;
+            background: AppStyle.card;
+            border-radius: 20px;
+            border-width: 1px;
+            border-color: AppStyle.hairline;
+            drop-shadow-blur: 40px;
+            drop-shadow-offset-y: 14px;
+            drop-shadow-color: Palette.foreground.transparentize(0.88);
 
-                VerticalLayout {
-                    padding: 32px;
-                    spacing: 20px;
+            card-body := VerticalLayout {
+                padding: root.dense ? 22px : 32px;
+                spacing: root.dense ? 14px : 20px;
 
-                    @children
-                }
+                @children
             }
         }
     }

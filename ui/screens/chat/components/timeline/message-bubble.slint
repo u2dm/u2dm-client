@@ -20,7 +20,7 @@ import { ClickArea } from "../../../../components/a11y.slint";
 import { Composer } from "../../../../local.slint";
 import { Actions } from "../../../../actions.slint";
 import { RoomView } from "../../../../views.slint";
-import { Avatars } from "../../../../theme.slint";
+import { Avatars, Metrics } from "../../../../theme.slint";
 import { MediaState, MessageKind } from "../../../../enums.slint";
 
 component PronounBadge inherits Rectangle {
@@ -70,7 +70,10 @@ export component MessageBubble inherits VerticalLayout {
 
     property <color> own-bubble-color: Palette.accent-background.transparentize(0.4);
     property <color> other-bubble-color: Palette.alternate-background;
-    property <length> bubble-max-width: available-width * 0.7;
+    property <length> bubble-max-width: max(
+        Metrics.bubble-max / 2,
+        min(Metrics.bubble-max, root.available-width - Metrics.bubble-gutter),
+    );
 
     property <bool> is-service: msg.message-type == MessageKind.service;
     property <bool> is-plain-text: msg.message-type == MessageKind.text

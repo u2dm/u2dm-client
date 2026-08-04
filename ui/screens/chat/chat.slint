@@ -4,7 +4,6 @@ import { Sidebar } from "components/sidebar.slint";
 import { Drawer } from "components/drawer.slint";
 import { TimelineView } from "components/timeline/timeline-view.slint";
 import { ClickArea, FocusRing } from "../../components/a11y.slint";
-import { ModalHost } from "../../components/overlay.slint";
 import { UserMessageKind } from "../../enums.slint";
 import { UserMessages } from "../../messages.slint";
 import { Metrics } from "../../theme.slint";
@@ -21,8 +20,11 @@ export component ChatScreen inherits Rectangle {
     }
 
     property <bool> compact: root.width < Metrics.compact-breakpoint;
+    property <bool> has-room: RoomView.selected-room-name != "";
+    property <bool> shows-room-list: root.compact && (!root.has-room || Shell.nav-open);
 
     property <length> sidebar-width: Metrics.sidebar-default;
+    property <bool> nav-collapsed: root.sidebar-width <= Metrics.sidebar-collapsed;
     property <length> divider-width: 4px;
     property <length> resize-step: 16px;
 
@@ -36,7 +38,6 @@ export component ChatScreen inherits Rectangle {
     );
     property <length> nav-width: min(root.sidebar-width, root.widest-usable-sidebar)
         + root.subrail-inset;
-    property <length> nav-overlay-width: min(root.nav-width, max(240px, root.width - 44px));
 
     property <length> timeline-x: root.compact ? 0 : root.nav-width;
     property <length> timeline-width: root.width - root.timeline-x;
@@ -44,7 +45,28 @@ export component ChatScreen inherits Rectangle {
     property <bool> has-toast: RoomView.toast-message != UserMessageKind.none;
     property <bool> is-file-saved-toast: RoomView.toast-message == UserMessageKind.file-saved;
 
-    function resize-sidebar(delta: length) {
+    pure function snapped-width(width: length) -> length {
+        if width < Metrics.sidebar-collapse-at {
+            return Metrics.sidebar-collapsed;
+        }
+        return clamp(width, Metrics.sidebar-min, Metrics.sidebar-max);
+    }
+
+    function drag-sidebar(delta: length) {
+        root.sidebar-width = root.snapped-width(root.sidebar-width + delta);
+    }
+
+    function step-sidebar(delta: length) {
+        if root.nav-collapsed {
+            if delta > 0 {
+                root.sidebar-width = Metrics.sidebar-min;
+            }
+            return;
+        }
+        if delta < 0 && root.sidebar-width <= Metrics.sidebar-min {
+            root.sidebar-width = Metrics.sidebar-collapsed;
+            return;
+        }
         root.sidebar-width = clamp(
                 root.sidebar-width + delta,
                 Metrics.sidebar-min,
@@ -57,12 +79,19 @@ export component ChatScreen inherits Rectangle {
         timeline.focus-nav();
     }
 
+    changed compact => {
+        if !root.compact {
+            Shell.nav-open = false;
+        }
+    }
+
     if !root.compact: Sidebar {
         x: 0;
         y: 0;
         width: root.nav-width;
         height: root.height;
         subrail-width: root.subrail-width;
+        collapsed: root.nav-collapsed;
     }
 
     timeline := TimelineView {
@@ -70,9 +99,21 @@ export component ChatScreen inherits Rectangle {
         y: 0;
         width: root.timeline-width;
         height: root.height;
-        compact: root.compact;
+        compact: root.compact && root.has-room;
         overlay-width: root.width;
         input-message <=> root.input-message;
+    }
+
+    if root.shows-room-list: Sidebar {
+        x: 0;
+        y: 0;
+        width: root.width;
+        height: root.height;
+        subrail-width: root.subrail-width;
+        above-modal: Shell.nav-open;
+        room-selected => {
+            root.close-nav();
+        }
     }
 
     if !root.compact: Rectangle {
@@ -84,15 +125,15 @@ export component ChatScreen inherits Rectangle {
         accessible-role: AccessibleRole.slider;
         accessible-label: @tr("Sidebar width");
         accessible-value: root.sidebar-width / 1px;
-        accessible-value-minimum: Metrics.sidebar-min / 1px;
+        accessible-value-minimum: Metrics.sidebar-collapsed / 1px;
         accessible-value-maximum: Metrics.sidebar-max / 1px;
         accessible-value-step: root.resize-step / 1px;
         accessible-enabled: Shell.background-reachable;
         accessible-action-increment => {
-            root.resize-sidebar(root.resize-step);
+            root.step-sidebar(root.resize-step);
         }
         accessible-action-decrement => {
-            root.resize-sidebar(-root.resize-step);
+            root.step-sidebar(-root.resize-step);
         }
         forward-focus: divider-focus;
 
@@ -101,11 +142,11 @@ export component ChatScreen inherits Rectangle {
             focus-on-tab-navigation: Shell.background-reachable;
             key-pressed(event) => {
                 if (event.text == Key.LeftArrow) {
-                    root.resize-sidebar(-root.resize-step);
+                    root.step-sidebar(-root.resize-step);
                     return accept;
                 }
                 if (event.text == Key.RightArrow) {
-                    root.resize-sidebar(root.resize-step);
+                    root.step-sidebar(root.resize-step);
                     return accept;
                 }
                 return reject;
@@ -115,7 +156,7 @@ export component ChatScreen inherits Rectangle {
         TouchArea {
             mouse-cursor: col-resize;
             moved => {
-                root.resize-sidebar(self.mouse-x - self.pressed-x);
+                root.drag-sidebar(self.mouse-x - self.pressed-x);
             }
         }
 
@@ -169,25 +210,6 @@ export component ChatScreen inherits Rectangle {
                     size: 16px;
                     stroke: Palette.foreground.transparentize(0.4);
                 }
-            }
-        }
-    }
-
-    if root.compact && Shell.nav-open: ModalHost {
-        label: @tr("Rooms");
-        dismissed => {
-            root.close-nav();
-        }
-
-        Sidebar {
-            x: 0;
-            y: 0;
-            width: root.nav-overlay-width;
-            height: root.height;
-            subrail-width: root.subrail-width;
-            above-modal: true;
-            room-selected => {
-                root.close-nav();
             }
         }
     }

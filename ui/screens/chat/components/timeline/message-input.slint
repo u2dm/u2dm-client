@@ -7,10 +7,9 @@ import { EmojiInsert } from "../types.slint";
 import { EmojiStore } from "./emoji-picker.slint";
 import { PickerPanel } from "./picker-panel.slint";
 import { ReplyQuote } from "../reply-quote.slint";
-import { Fonts } from "../../../../theme.slint";
+import { Fonts, Metrics } from "../../../../theme.slint";
 import { ClickArea } from "../../../../components/a11y.slint";
 import { ModalHost } from "../../../../components/overlay.slint";
-import { Metrics } from "../../../../theme.slint";
 import { Actions } from "../../../../actions.slint";
 import { Composer, Shell } from "../../../../local.slint";
 
@@ -28,6 +27,8 @@ export component MessageInput inherits Rectangle {
     property <bool> has-text: root.message != "";
     property <int> caret: 0;
     property <EmojiInsert> pending-insert;
+    property <length> picker-headroom: root.overlay-height - root.height
+        - Metrics.room-header - 16px;
 
     background: Palette.alternate-background;
     height: layout.preferred-height;
@@ -61,10 +62,13 @@ export component MessageInput inherits Rectangle {
         }
 
         PickerPanel {
-            width: min(root.width - 16px, 360px);
+            width: min(root.width - 16px, Metrics.picker-width);
+            height: max(
+                Metrics.picker-min-height,
+                min(Metrics.picker-height, root.picker-headroom),
+            );
             x: root.width - self.width - 8px - root.overlay-x;
             y: -self.height - 8px - root.overlay-y;
-            height: 380px;
             tab <=> root.picker-tab;
             emoji-picked(glyph) => {
                 root.insert-at-caret(glyph);
