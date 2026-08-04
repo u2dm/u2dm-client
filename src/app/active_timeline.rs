@@ -1,12 +1,11 @@
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 
 use tokio::sync::mpsc;
 
 use super::task_group::TaskGroup;
 use crate::commands::effects::Effect;
 use crate::commands::messages::{UserMessage, UserMessageKind};
-use crate::commands::ui::UiCommand;
+use crate::commands::ui::{TimelineAdvance, UiCommand};
 use crate::commands::view::Toast;
 use crate::domain::models::{
     JumpTarget, PaginationDirection, PaginationOutcome, RoomId, ScrollMode, TimelineCommand,
@@ -18,39 +17,6 @@ use crate::ports::output::AppOutputPort;
 
 const TIMELINE_CHANNEL_CAP: usize = 256;
 
-#[derive(Clone)]
-struct GenerationCounters {
-    at_bottom: Arc<AtomicBool>,
-    new_messages: Arc<AtomicU32>,
-}
-
-impl GenerationCounters {
-    fn new() -> Self {
-        Self {
-            at_bottom: Arc::new(AtomicBool::new(true)),
-            new_messages: Arc::new(AtomicU32::new(0)),
-        }
-    }
-
-    fn is_at_bottom(&self) -> bool {
-        self.at_bottom.load(Ordering::Relaxed)
-    }
-
-    fn set_at_bottom(&self, at_bottom: bool) {
-        self.at_bottom.store(at_bottom, Ordering::Relaxed);
-    }
-
-    fn add_new_messages(&self, count: u32) -> u32 {
-        self.new_messages
-            .fetch_add(count, Ordering::Relaxed)
-            .saturating_add(count)
-    }
-
-    fn clear_new_messages(&self) {
-        self.new_messages.store(0, Ordering::Relaxed);
-    }
-}
-
 pub(super) struct ActiveTimeline {
     cmd_tx: mpsc::UnboundedSender<UiCommand>,
     output: Arc<dyn AppOutputPort>,
@@ -59,7 +25,8 @@ pub(super) struct ActiveTimeline {
     timeline_cmd_tx: Option<mpsc::UnboundedSender<TimelineCommand>>,
     active_room_id: Option<RoomId>,
     generation: i32,
-    counters: GenerationCounters,
+    at_bottom: bool,
+    new_messages: u32,
     live: bool,
 }
 
@@ -76,7 +43,8 @@ impl ActiveTimeline {
             timeline_cmd_tx: None,
             active_room_id: None,
             generation: 0,
-            counters: GenerationCounters::new(),
+            at_bottom: true,
+            new_messages: 0,
             live: true,
         }
     }
@@ -104,7 +72,8 @@ impl ActiveTimeline {
         self.viewport = ViewportController::new();
         self.active_room_id = Some(room_id.clone());
         self.generation = generation;
-        self.counters = GenerationCounters::new();
+        self.at_bottom = true;
+        self.new_messages = 0;
         self.live = live;
         self.emit_pagination_state();
 
@@ -112,21 +81,18 @@ impl ActiveTimeline {
 
         let (tl_tx, mut tl_rx) = mpsc::channel::<TimelineUpdate>(TIMELINE_CHANNEL_CAP);
         let (tl_cmd_tx, tl_cmd_rx) = mpsc::unbounded_channel::<TimelineCommand>();
-        self.timeline_cmd_tx = Some(tl_cmd_tx.clone());
+        self.timeline_cmd_tx = Some(tl_cmd_tx);
 
         let output = Arc::clone(&self.output);
         let cmd_tx = self.cmd_tx.clone();
         let token = self.tasks.token();
         let rid = room_id.clone();
-        let counters = self.counters.clone();
 
         let forwarder = Forwarder {
             output: Arc::clone(&output),
             cmd_tx,
-            timeline_cmd_tx: tl_cmd_tx,
             room_id: rid.clone(),
             generation,
-            counters,
             live,
         };
 
@@ -281,10 +247,50 @@ impl ActiveTimeline {
             return;
         }
 
-        if self.counters.is_at_bottom() {
-            self.counters.clear_new_messages();
-            self.emit_new_messages(generation, 0);
+        if self.at_bottom {
+            self.clear_new_messages(generation);
         }
+    }
+
+    pub(super) fn settle_read_position(
+        &mut self,
+        room_id: &RoomId,
+        generation: i32,
+        advance: TimelineAdvance,
+    ) {
+        if !self.is_current(room_id, generation) {
+            return;
+        }
+        match advance {
+            TimelineAdvance::Focused => self.at_bottom = false,
+            TimelineAdvance::Anchored { count } => {
+                self.at_bottom = false;
+                self.add_new_messages(generation, count);
+            }
+            TimelineAdvance::Appended {
+                total,
+                from_others,
+                opens_room,
+            } => {
+                if self.at_bottom {
+                    if opens_room || from_others {
+                        self.mark_read();
+                    }
+                } else if total > 0 {
+                    self.add_new_messages(generation, total);
+                }
+            }
+        }
+    }
+
+    fn add_new_messages(&mut self, generation: i32, count: u32) {
+        self.new_messages = self.new_messages.saturating_add(count);
+        self.emit_new_messages(generation, self.new_messages);
+    }
+
+    fn clear_new_messages(&mut self, generation: i32) {
+        self.new_messages = 0;
+        self.emit_new_messages(generation, 0);
     }
 
     fn refocus(&self, room_id: &RoomId, generation: i32, focus: TimelineFocus) {
@@ -311,9 +317,8 @@ impl ActiveTimeline {
             return;
         }
         self.viewport.jump_to_latest();
-        self.counters.set_at_bottom(true);
-        self.counters.clear_new_messages();
-        self.emit_new_messages(generation, 0);
+        self.at_bottom = true;
+        self.clear_new_messages(generation);
         self.emit_pagination_state();
         self.mark_read();
     }
@@ -330,13 +335,12 @@ impl ActiveTimeline {
         tracing::debug!(at_bottom, generation, "the timeline reported its position");
 
         let mode_changed = self.viewport.update_scroll_position(at_bottom);
-        let reached_bottom = at_bottom && !self.counters.is_at_bottom();
+        let reached_bottom = at_bottom && !self.at_bottom;
 
-        self.counters.set_at_bottom(at_bottom);
+        self.at_bottom = at_bottom;
 
         if mode_changed && self.viewport.mode() == ScrollMode::FollowLive {
-            self.counters.clear_new_messages();
-            self.emit_new_messages(generation, 0);
+            self.clear_new_messages(generation);
         }
 
         if reached_bottom {
@@ -361,7 +365,8 @@ impl ActiveTimeline {
         self.timeline_cmd_tx = None;
         self.active_room_id = None;
         self.generation = 0;
-        self.counters = GenerationCounters::new();
+        self.at_bottom = true;
+        self.new_messages = 0;
         self.live = true;
     }
 
@@ -407,10 +412,8 @@ impl ActiveTimeline {
 struct Forwarder {
     output: Arc<dyn AppOutputPort>,
     cmd_tx: mpsc::UnboundedSender<UiCommand>,
-    timeline_cmd_tx: mpsc::UnboundedSender<TimelineCommand>,
     room_id: RoomId,
     generation: i32,
-    counters: GenerationCounters,
     live: bool,
 }
 
@@ -453,18 +456,13 @@ impl Forwarder {
     }
 
     async fn forward_patch(&self, patch: Box<TimelinePatch>) {
-        let generation = self.generation;
-        let receipts = self.live.then_some(&self.timeline_cmd_tx);
-        if let Some(total) = settle_read_position(patch.as_ref(), &self.counters, receipts) {
-            self.output.publish(Box::new(move |view| {
-                view.pagination.retarget(generation);
-                view.pagination.new_messages = total;
-            }));
+        if let Some(advance) = read_position_advance(patch.as_ref()) {
+            self.send_advance(advance);
         }
         self.output
             .emit(Effect::Timeline {
                 room_id: self.room_id.clone(),
-                generation,
+                generation: self.generation,
                 patch,
             })
             .await;
@@ -485,7 +483,7 @@ impl Forwarder {
                 return;
             }
         };
-        self.counters.set_at_bottom(false);
+        self.send_advance(TimelineAdvance::Focused);
         self.output
             .emit(Effect::TimelineFocus {
                 room_id: self.room_id.clone(),
@@ -494,6 +492,16 @@ impl Forwarder {
                 row,
             })
             .await;
+    }
+
+    fn send_advance(&self, advance: TimelineAdvance) {
+        if let Err(e) = self.cmd_tx.send(UiCommand::TimelineAdvanced {
+            room_id: self.room_id.clone(),
+            generation: self.generation,
+            advance,
+        }) {
+            tracing::debug!("failed to send TimelineAdvanced command: {e}");
+        }
     }
 
     async fn emit_status(&self, status: TimelineStatus) {
@@ -529,27 +537,23 @@ impl Forwarder {
     }
 }
 
-fn settle_read_position(
-    patch: &TimelinePatch,
-    counters: &GenerationCounters,
-    receipts: Option<&mpsc::UnboundedSender<TimelineCommand>>,
-) -> Option<u32> {
+fn read_position_advance(patch: &TimelinePatch) -> Option<TimelineAdvance> {
     if let Some(anchor) = patch.unread_anchor() {
-        counters.set_at_bottom(false);
-        return Some(counters.add_new_messages(anchor.count));
+        return Some(TimelineAdvance::Anchored {
+            count: anchor.count,
+        });
     }
 
     let appended = count_appended(patch);
-    if counters.is_at_bottom() {
-        if let Some(tx) = receipts
-            && (patch.opens_room() || appended.from_others)
-            && tx.send(TimelineCommand::MarkRead).is_err()
-        {
-            tracing::debug!("timeline command channel closed");
-        }
+    let opens_room = patch.opens_room();
+    if appended.total == 0 && !opens_room {
         return None;
     }
-    (appended.total > 0).then(|| counters.add_new_messages(appended.total))
+    Some(TimelineAdvance::Appended {
+        total: appended.total,
+        from_others: appended.from_others,
+        opens_room,
+    })
 }
 
 #[derive(Default, Clone, Copy)]

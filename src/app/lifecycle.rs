@@ -1,5 +1,3 @@
-use std::sync::{Arc, Mutex as StdMutex, MutexGuard, PoisonError};
-
 use crate::commands::ui::UiCommand;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -13,55 +11,46 @@ pub(super) enum AppPhase {
     CleaningUp,
 }
 
-struct Inner {
+pub(super) struct Lifecycle {
     phase: AppPhase,
     attempt: u64,
     session: u64,
 }
 
-#[derive(Clone)]
-pub(super) struct Lifecycle {
-    inner: Arc<StdMutex<Inner>>,
-}
-
 impl Lifecycle {
     pub(super) fn new() -> Self {
         Self {
-            inner: Arc::new(StdMutex::new(Inner {
-                phase: AppPhase::Restoring,
-                attempt: 0,
-                session: 0,
-            })),
+            phase: AppPhase::Restoring,
+            attempt: 0,
+            session: 0,
         }
     }
 
-    fn guard(&self) -> MutexGuard<'_, Inner> {
-        self.inner.lock().unwrap_or_else(PoisonError::into_inner)
-    }
-
     pub(super) fn phase(&self) -> AppPhase {
-        self.guard().phase
+        self.phase
     }
 
-    pub(super) fn block(&self) {
-        self.guard().phase = AppPhase::Blocked;
+    pub(super) fn block(&mut self) {
+        self.phase = AppPhase::Blocked;
     }
 
     pub(super) fn is_logged_out(&self) -> bool {
-        self.guard().phase == AppPhase::LoggedOut
+        self.phase == AppPhase::LoggedOut
     }
 
-    pub(super) fn begin_auth(&self) -> u64 {
-        let mut inner = self.guard();
-        inner.attempt += 1;
-        inner.phase = AppPhase::Authenticating;
-        inner.attempt
+    pub(super) fn is_restoring(&self) -> bool {
+        self.phase == AppPhase::Restoring
     }
 
-    pub(super) fn settle_auth(&self, attempt: u64) -> bool {
-        let mut inner = self.guard();
-        if inner.phase == AppPhase::Authenticating && inner.attempt == attempt {
-            inner.phase = AppPhase::LoggedOut;
+    pub(super) fn begin_auth(&mut self) -> u64 {
+        self.attempt += 1;
+        self.phase = AppPhase::Authenticating;
+        self.attempt
+    }
+
+    pub(super) fn settle_auth(&mut self, attempt: u64) -> bool {
+        if self.phase == AppPhase::Authenticating && self.attempt == attempt {
+            self.phase = AppPhase::LoggedOut;
             true
         } else {
             false
@@ -69,76 +58,69 @@ impl Lifecycle {
     }
 
     pub(super) fn is_current_attempt(&self, attempt: u64) -> bool {
-        self.guard().attempt == attempt
+        self.attempt == attempt
     }
 
-    pub(super) fn cancel_auth(&self) -> bool {
-        let mut inner = self.guard();
-        if inner.phase == AppPhase::Authenticating {
-            inner.phase = AppPhase::LoggedOut;
+    pub(super) fn cancel_auth(&mut self) -> bool {
+        if self.phase == AppPhase::Authenticating {
+            self.phase = AppPhase::LoggedOut;
             true
         } else {
             false
         }
     }
 
-    pub(super) fn promote_to_syncing(&self, attempt: u64) -> Option<u64> {
-        let mut inner = self.guard();
-        if inner.phase == AppPhase::Authenticating && inner.attempt == attempt {
-            inner.phase = AppPhase::Syncing;
-            inner.session += 1;
-            Some(inner.session)
+    pub(super) fn promote_to_syncing(&mut self, attempt: u64) -> Option<u64> {
+        if self.phase == AppPhase::Authenticating && self.attempt == attempt {
+            self.phase = AppPhase::Syncing;
+            self.session += 1;
+            Some(self.session)
         } else {
             None
         }
     }
 
-    pub(super) fn restore_succeeded(&self) -> Option<u64> {
-        let mut inner = self.guard();
-        if inner.phase == AppPhase::Restoring {
-            inner.phase = AppPhase::Syncing;
-            inner.session += 1;
-            Some(inner.session)
+    pub(super) fn restore_succeeded(&mut self) -> Option<u64> {
+        if self.phase == AppPhase::Restoring {
+            self.phase = AppPhase::Syncing;
+            self.session += 1;
+            Some(self.session)
         } else {
             None
         }
     }
 
-    pub(super) fn restore_failed(&self) -> bool {
-        let mut inner = self.guard();
-        if inner.phase == AppPhase::Restoring {
-            inner.phase = AppPhase::LoggedOut;
+    pub(super) fn restore_failed(&mut self) -> bool {
+        if self.phase == AppPhase::Restoring {
+            self.phase = AppPhase::LoggedOut;
             true
         } else {
             false
         }
     }
 
-    pub(super) fn begin_logout(&self) -> Option<u64> {
-        let mut inner = self.guard();
-        if inner.phase == AppPhase::Syncing {
-            inner.phase = AppPhase::LoggingOut;
-            Some(inner.session)
+    pub(super) fn begin_logout(&mut self) -> Option<u64> {
+        if self.phase == AppPhase::Syncing {
+            self.phase = AppPhase::LoggingOut;
+            Some(self.session)
         } else {
             None
         }
     }
 
-    pub(super) fn begin_cleanup(&self, session: u64) -> bool {
-        let mut inner = self.guard();
-        if inner.phase == AppPhase::LoggingOut && inner.session == session {
-            inner.phase = AppPhase::CleaningUp;
+    pub(super) fn begin_cleanup(&mut self, session: u64) -> bool {
+        if self.phase == AppPhase::LoggingOut && self.session == session {
+            self.phase = AppPhase::CleaningUp;
             true
         } else {
             false
         }
     }
 
-    pub(super) fn finish_logout(&self, session: u64) -> bool {
-        let mut inner = self.guard();
-        let ending = inner.phase == AppPhase::LoggingOut || inner.phase == AppPhase::CleaningUp;
-        if ending && inner.session == session {
-            inner.phase = AppPhase::LoggedOut;
+    pub(super) fn finish_logout(&mut self, session: u64) -> bool {
+        let ending = self.phase == AppPhase::LoggingOut || self.phase == AppPhase::CleaningUp;
+        if ending && self.session == session {
+            self.phase = AppPhase::LoggedOut;
             true
         } else {
             false

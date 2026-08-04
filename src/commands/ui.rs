@@ -55,6 +55,12 @@ pub enum UiCommand {
         room_id: RoomId,
         generation: i32,
     },
+    #[strum(to_string = "TimelineAdvanced({room_id})")]
+    TimelineAdvanced {
+        room_id: RoomId,
+        generation: i32,
+        advance: TimelineAdvance,
+    },
     #[strum(to_string = "TimelinePaginationCompleted({room_id})")]
     TimelinePaginationCompleted {
         room_id: RoomId,
@@ -95,6 +101,19 @@ pub enum UiCommand {
     DismissToast,
     Logout,
     Quit,
+}
+
+#[derive(Clone, Copy)]
+pub enum TimelineAdvance {
+    Anchored {
+        count: u32,
+    },
+    Appended {
+        total: u32,
+        from_others: bool,
+        opens_room: bool,
+    },
+    Focused,
 }
 
 #[derive(Clone)]

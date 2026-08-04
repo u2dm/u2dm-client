@@ -1,5 +1,6 @@
 mod active_timeline;
 mod establish;
+mod event;
 mod lifecycle;
 mod media;
 mod recover;
@@ -15,12 +16,13 @@ use std::sync::Arc;
 
 use active_timeline::ActiveTimeline;
 use establish::EstablishedSession;
+use event::{AppEvent, EndReason, SessionEvent};
 use lifecycle::Lifecycle;
 use media::MediaActions;
 use recover::Recovery;
 use room_directory::RoomDirectory;
 use selection::Selection;
-use session::{AuthOutcome, SessionController};
+use session::SessionController;
 use stickers::Stickers;
 use task_group::TaskGroup;
 use tokio::sync::{mpsc, watch};
@@ -32,17 +34,14 @@ use crate::commands::sync::DirectoryUpdate;
 use crate::commands::ui::{UiCommand, ViewportChanged};
 use crate::commands::view::{AppViewState, LoginActivity, LoginStep, Toast};
 use crate::domain::account::AccountScope;
-use crate::domain::models::{ConnectionStatus, PackId, RoomId, RoomList, Space, TimelineFocus};
+use crate::domain::models::{
+    ConnectionStatus, PackId, RoomId, RoomList, ServerInfo, Space, TimelineFocus,
+};
 use crate::ports::browser::BrowserPort;
-use crate::ports::matrix::{AuthPort, AuthenticatedSession, SessionPort};
+use crate::ports::matrix::{AuthPort, AuthenticatedSession, CleanupReport, SessionPort};
 use crate::ports::media::MediaFilePort;
 use crate::ports::output::AppOutputPort;
 use crate::ports::storage::StoragePort;
-
-enum EndReason {
-    UserLogout,
-    Expired,
-}
 
 #[derive(PartialEq, Eq)]
 struct EmittedRoom {
@@ -80,7 +79,7 @@ pub struct AppService {
     last_selected_room: Option<EmittedRoom>,
     lifecycle: Lifecycle,
     active: Option<AuthenticatedSession>,
-    auth_rx: Option<mpsc::UnboundedReceiver<AuthOutcome>>,
+    event_rx: Option<mpsc::UnboundedReceiver<AppEvent>>,
     blocked_reason: Option<String>,
 }
 
@@ -95,20 +94,18 @@ impl AppService {
         dir_in_tx: mpsc::UnboundedSender<DirectoryUpdate>,
         output: Arc<dyn AppOutputPort>,
     ) -> Self {
-        let lifecycle = Lifecycle::new();
-        let (auth_tx, auth_rx) = mpsc::unbounded_channel::<AuthOutcome>();
+        let (event_tx, event_rx) = mpsc::unbounded_channel::<AppEvent>();
         Self {
             session: SessionController::new(
                 auth,
                 storage,
                 browser,
                 Arc::clone(&output),
-                lifecycle.clone(),
-                auth_tx,
+                event_tx.clone(),
             ),
             room_directory: RoomDirectory::new(Arc::clone(&output)),
             active_timeline: ActiveTimeline::new(cmd_tx.clone(), Arc::clone(&output)),
-            verification: VerificationController::new(Arc::clone(&output)),
+            verification: VerificationController::new(Arc::clone(&output), event_tx),
             media: MediaActions::new(media_files, Arc::clone(&output)),
             stickers: Stickers::new(Arc::clone(&output)),
             cmd_tx,
@@ -118,9 +115,9 @@ impl AppService {
             operations: TaskGroup::new("operations"),
             selection: Selection::default(),
             last_selected_room: None,
-            lifecycle,
+            lifecycle: Lifecycle::new(),
             active: None,
-            auth_rx: Some(auth_rx),
+            event_rx: Some(event_rx),
             blocked_reason: None,
         }
     }
@@ -131,7 +128,7 @@ impl AppService {
         mut dir_in_rx: mpsc::UnboundedReceiver<DirectoryUpdate>,
         mut scroll_in_rx: watch::Receiver<ViewportChanged>,
     ) {
-        let Some(mut auth_rx) = self.auth_rx.take() else {
+        let Some(mut event_rx) = self.event_rx.take() else {
             return;
         };
         if let Recovery::Blocked(reason) = self.session.recover_interrupted_logins().await {
@@ -139,7 +136,6 @@ impl AppService {
         }
         let mut dir_done = false;
         let mut scroll_done = false;
-        let mut auth_done = false;
         loop {
             tokio::select! {
                 maybe_cmd = cmd_rx.recv() => {
@@ -149,11 +145,9 @@ impl AppService {
                         break;
                     }
                 }
-                maybe_outcome = auth_rx.recv(), if !auth_done => {
-                    match maybe_outcome {
-                        Some(outcome) => self.complete_auth(outcome).await,
-                        None => auth_done = true,
-                    }
+                Some(event) = event_rx.recv() => {
+                    tracing::debug!(event = event.label(), "handling app event");
+                    self.handle_event(event).await;
                 }
                 maybe_dir = dir_in_rx.recv(), if !dir_done => {
                     match maybe_dir {
@@ -233,9 +227,7 @@ impl AppService {
                     .spawn_login_oauth(&mut self.operations, attempt);
             }
             UiCommand::CancelOAuth => {
-                if self.lifecycle.cancel_auth() {
-                    self.session.cancel_oauth();
-                }
+                self.cancel_oauth();
             }
             UiCommand::BackToHomeserver => {
                 self.session.back_to_homeserver();
@@ -289,6 +281,14 @@ impl AppService {
             } => {
                 self.active_timeline.paginate_forwards(&room_id, generation);
             }
+            UiCommand::TimelineAdvanced {
+                room_id,
+                generation,
+                advance,
+            } => {
+                self.active_timeline
+                    .settle_read_position(&room_id, generation, advance);
+            }
             UiCommand::TimelinePaginationCompleted {
                 room_id,
                 generation,
@@ -302,11 +302,7 @@ impl AppService {
                 room_id,
                 generation,
             } => {
-                if self.active_timeline.is_live() {
-                    self.active_timeline.jump_to_latest(&room_id, generation);
-                } else if self.active_timeline.is_current(&room_id, generation) {
-                    self.open_room(room_id, TimelineFocus::Live).await;
-                }
+                self.jump_to_latest(room_id, generation).await;
             }
             UiCommand::JumpToEvent { event_id } => {
                 self.active_timeline.jump_to_event(event_id);
@@ -316,9 +312,7 @@ impl AppService {
                 generation,
                 focus,
             } => {
-                if self.active_timeline.is_current(&room_id, generation) {
-                    self.open_room(room_id, focus).await;
-                }
+                self.refocus_timeline(room_id, generation, focus).await;
             }
             UiCommand::OpenMedia { event_id } => {
                 self.open_media(event_id);
@@ -330,16 +324,16 @@ impl AppService {
                 show_toast(self.output.as_ref(), Toast::None);
             }
             UiCommand::AcceptVerification => {
-                self.accept_verification();
+                self.accept_verification().await;
             }
             UiCommand::RejectVerification => {
-                self.reject_verification();
+                self.reject_verification().await;
             }
             UiCommand::ConfirmVerification => {
-                self.confirm_verification();
+                self.confirm_verification().await;
             }
             UiCommand::DismissVerification => {
-                self.dismiss_verification();
+                self.dismiss_verification().await;
             }
             UiCommand::SessionExpired => {
                 self.end_session(EndReason::Expired).await;
@@ -353,6 +347,26 @@ impl AppService {
             }
         }
         false
+    }
+
+    fn cancel_oauth(&mut self) {
+        if self.lifecycle.cancel_auth() {
+            self.session.cancel_oauth();
+        }
+    }
+
+    async fn jump_to_latest(&mut self, room_id: RoomId, generation: i32) {
+        if self.active_timeline.is_live() {
+            self.active_timeline.jump_to_latest(&room_id, generation);
+        } else if self.active_timeline.is_current(&room_id, generation) {
+            self.open_room(room_id, TimelineFocus::Live).await;
+        }
+    }
+
+    async fn refocus_timeline(&mut self, room_id: RoomId, generation: i32, focus: TimelineFocus) {
+        if self.active_timeline.is_current(&room_id, generation) {
+            self.open_room(room_id, focus).await;
+        }
     }
 
     fn port<P: ?Sized>(
@@ -375,12 +389,6 @@ impl AppService {
     fn set_connection(&self, status: ConnectionStatus) {
         self.output
             .publish(Box::new(move |view| view.connection = status));
-    }
-
-    fn emit_login_idle(&self) {
-        self.output.publish(Box::new(|view| {
-            view.lifecycle.activity = LoginActivity::Idle;
-        }));
     }
 
     fn emit_login_success(&self, user_id: String) {
@@ -440,7 +448,11 @@ impl AppService {
     }
 
     fn log_command(cmd: &UiCommand) {
-        tracing::info!(command = %cmd, "handling command");
+        if matches!(cmd, UiCommand::TimelineAdvanced { .. }) {
+            tracing::debug!(command = %cmd, "handling command");
+        } else {
+            tracing::info!(command = %cmd, "handling command");
+        }
     }
 
     async fn handle_rooms_updated(&mut self, rooms: RoomList) {
@@ -483,41 +495,145 @@ impl AppService {
         self.room_directory.emit_rooms(&self.selection);
     }
 
-    async fn complete_auth(&mut self, outcome: AuthOutcome) {
-        let Some(capability) = self.settle_auth_outcome(outcome).await else {
+    async fn handle_event(&mut self, event: AppEvent) {
+        match event {
+            AppEvent::Session(event) => self.handle_session_event(event).await,
+            AppEvent::VerificationFlow(event) => self.verification.flow_advanced(event).await,
+            AppEvent::VerificationActionFailed(failure) => {
+                self.verification.action_failed(failure).await;
+            }
+        }
+    }
+
+    async fn handle_session_event(&mut self, event: SessionEvent) {
+        match event {
+            SessionEvent::RestoreProgress(activity) => self.settle_restore_progress(activity),
+            SessionEvent::RestoreFailed(message) => self.settle_restore_failure(message),
+            SessionEvent::Restored(capability) => self.settle_restore(*capability),
+            SessionEvent::ServerDiscovered { attempt, info } => {
+                self.settle_discovery(attempt, *info);
+            }
+            SessionEvent::AuthActivity { attempt, activity } => {
+                self.settle_auth_activity(attempt, activity);
+            }
+            SessionEvent::AuthRejected { attempt, message } => {
+                self.settle_auth_rejection(attempt, message);
+            }
+            SessionEvent::AuthCancelled { attempt } => self.settle_auth_cancel(attempt),
+            SessionEvent::LoggedIn {
+                attempt,
+                established,
+            } => self.settle_login(attempt, *established).await,
+            SessionEvent::ErasingLocalState { session } => self.settle_erasure_start(session),
+            SessionEvent::LocalStateCleared {
+                session,
+                reason,
+                report,
+            } => self.settle_erasure(session, reason, &report),
+            SessionEvent::TokensNotPersisted => show_toast(
+                self.output.as_ref(),
+                Toast::Error(UserMessage::new(UserMessageKind::SessionSaveFailed)),
+            ),
+            SessionEvent::UserAvatar(path) => {
+                self.output
+                    .publish(Box::new(move |view| view.lifecycle.avatar_path = path));
+            }
+        }
+    }
+
+    fn settle_restore_progress(&self, activity: LoginActivity) {
+        if self.lifecycle.is_restoring() {
+            self.session.set_activity(activity);
+        }
+    }
+
+    fn settle_restore_failure(&mut self, message: Option<UserMessage>) {
+        if self.lifecycle.restore_failed() {
+            self.session.show_login(message);
+        } else {
+            tracing::debug!("restore failure for a superseded restore, dropping");
+        }
+    }
+
+    fn settle_restore(&mut self, capability: AuthenticatedSession) {
+        if self.lifecycle.restore_succeeded().is_none() {
+            tracing::info!("restore superseded, dropping session");
             return;
+        }
+        self.activate(capability);
+    }
+
+    fn settle_discovery(&mut self, attempt: u64, info: ServerInfo) {
+        if self.lifecycle.settle_auth(attempt) {
+            self.session.show_credentials(info);
+        } else {
+            tracing::debug!("server info for a superseded attempt, dropping");
+        }
+    }
+
+    fn settle_auth_activity(&self, attempt: u64, activity: LoginActivity) {
+        if self.lifecycle.is_current_attempt(attempt) {
+            self.session.set_activity(activity);
+        } else {
+            tracing::debug!("activity update for a superseded attempt, dropping");
+        }
+    }
+
+    fn settle_auth_rejection(&mut self, attempt: u64, message: UserMessage) {
+        self.session.finish_oauth();
+        if self.lifecycle.settle_auth(attempt) {
+            self.session.fail_login(vec![message]);
+        } else {
+            tracing::debug!("auth failure for a superseded attempt, dropping");
+        }
+    }
+
+    fn settle_auth_cancel(&mut self, attempt: u64) {
+        self.session.finish_oauth();
+        if self.lifecycle.is_current_attempt(attempt) {
+            self.session.set_activity(LoginActivity::Idle);
+        }
+    }
+
+    fn settle_erasure_start(&mut self, session: u64) {
+        if self.lifecycle.begin_cleanup(session) {
+            self.session.set_activity(LoginActivity::CleaningUp);
+        }
+    }
+
+    fn settle_erasure(&mut self, session: u64, reason: EndReason, report: &CleanupReport) {
+        if !self.lifecycle.finish_logout(session) {
+            tracing::debug!("cleanup finished for a superseded session, dropping");
+            return;
+        }
+        let mut messages = match reason {
+            EndReason::Expired => vec![UserMessage::new(UserMessageKind::SessionExpired)],
+            EndReason::UserLogout => Vec::new(),
         };
+        messages.extend(session::cleanup_problem(report));
+        self.session.settle_logout(messages);
+    }
+
+    async fn settle_login(&mut self, attempt: u64, established: EstablishedSession) {
+        self.session.finish_oauth();
+        self.session.spend_pending_passphrase();
+        if self.lifecycle.promote_to_syncing(attempt).is_none() {
+            undo_superseded_login(established).await;
+            if self.lifecycle.is_logged_out() {
+                self.session.set_activity(LoginActivity::Idle);
+            }
+            return;
+        }
+        self.activate(established.commit().await);
+    }
+
+    fn activate(&mut self, capability: AuthenticatedSession) {
         let user_id = capability.session.user_id.clone();
         tracing::info!(%user_id, "authenticated");
         self.active = Some(capability);
         self.emit_login_success(user_id);
         if let Err(e) = self.cmd_tx.send(UiCommand::FetchRooms) {
             tracing::warn!("failed to trigger room fetch: {e}");
-        }
-    }
-
-    async fn settle_auth_outcome(&mut self, outcome: AuthOutcome) -> Option<AuthenticatedSession> {
-        match outcome {
-            AuthOutcome::Login {
-                attempt,
-                established,
-            } => {
-                if self.lifecycle.promote_to_syncing(attempt).is_none() {
-                    undo_superseded_login(established).await;
-                    if self.lifecycle.is_logged_out() {
-                        self.emit_login_idle();
-                    }
-                    return None;
-                }
-                Some(established.commit().await)
-            }
-            AuthOutcome::Restore(session) => {
-                if self.lifecycle.restore_succeeded().is_none() {
-                    tracing::info!("restore superseded, dropping session");
-                    return None;
-                }
-                Some(session)
-            }
         }
     }
 
@@ -560,31 +676,35 @@ impl AppService {
         }
     }
 
-    fn accept_verification(&mut self) {
+    async fn accept_verification(&mut self) {
         if let Some(verification) = self.port(|a| &a.verification) {
             self.verification
-                .spawn_accept(&mut self.operations, verification);
+                .accept(&mut self.operations, verification)
+                .await;
         }
     }
 
-    fn reject_verification(&mut self) {
+    async fn reject_verification(&mut self) {
         if let Some(verification) = self.port(|a| &a.verification) {
             self.verification
-                .spawn_reject(&mut self.operations, verification);
+                .reject(&mut self.operations, verification)
+                .await;
         }
     }
 
-    fn confirm_verification(&mut self) {
+    async fn confirm_verification(&mut self) {
         if let Some(verification) = self.port(|a| &a.verification) {
             self.verification
-                .spawn_confirm(&mut self.operations, verification);
+                .confirm(&mut self.operations, verification)
+                .await;
         }
     }
 
-    fn dismiss_verification(&mut self) {
+    async fn dismiss_verification(&mut self) {
         let verification = self.port(|a| &a.verification);
         self.verification
-            .spawn_dismiss(&mut self.operations, verification);
+            .dismiss(&mut self.operations, verification)
+            .await;
     }
 
     async fn select_room(&mut self, room_id: RoomId) {
@@ -668,7 +788,7 @@ impl AppService {
         self.session
             .spawn_session_persister(&mut self.background, Arc::clone(&lifecycle_port));
         self.verification
-            .spawn_forwarder(&mut self.background, verification);
+            .spawn_listener(&mut self.background, verification);
         self.set_connection(ConnectionStatus::Connecting);
         RoomDirectory::spawn_sync_pipeline(
             &mut self.background,
@@ -713,6 +833,7 @@ impl AppService {
         self.shutdown_all_tasks().await;
         self.media.clear_session().await;
         self.room_directory.reset();
+        self.verification.reset();
         self.selection = Selection::default();
         self.last_selected_room = None;
         self.active = None;
