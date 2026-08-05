@@ -112,6 +112,13 @@ pub fn save_file(tx: &Tx, event_id: String, filename: String) {
     send_command(tx, UiCommand::SaveFile { event_id, filename });
 }
 
+pub fn toggle_reaction(tx: &Tx, event_id: String, key: String) {
+    if event_id.is_empty() || key.is_empty() {
+        return;
+    }
+    send_command(tx, UiCommand::ToggleReaction { event_id, key });
+}
+
 pub fn scroll_position(scroll_tx: &watch::Sender<ViewportChanged>, key: RoomKey, at_bottom: bool) {
     let Some((room_id, generation)) = key else {
         return;

@@ -221,9 +221,10 @@ export component TimelineScroller inherits Rectangle {
                 * (self.viewport-height / self.item-count)
         }
 
-        for msg in RoomView.timeline: MessageBubble {
+        for msg[row] in RoomView.timeline: MessageBubble {
             is-own: msg.is-own;
             msg: msg;
+            timeline-row: row;
             available-width: root.available-width;
             init => {
                 if msg.needs-media {

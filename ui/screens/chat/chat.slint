@@ -9,7 +9,7 @@ import { UserMessages } from "../../messages.slint";
 import { Metrics } from "../../theme.slint";
 import { DirectoryView, RoomView } from "../../views.slint";
 import { Actions } from "../../actions.slint";
-import { Composer, Shell } from "../../local.slint";
+import { Composer, Reactions, Shell } from "../../local.slint";
 
 export component ChatScreen inherits Rectangle {
     in-out property <string> input-message: "";
@@ -17,6 +17,7 @@ export component ChatScreen inherits Rectangle {
     init => {
         Composer.clear();
         Shell.close-overlays();
+        Reactions.close();
     }
 
     property <bool> compact: root.width < Metrics.compact-breakpoint;

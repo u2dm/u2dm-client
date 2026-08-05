@@ -313,6 +313,18 @@ impl ActiveTimeline {
         }
     }
 
+    pub(super) fn toggle_reaction(&mut self, event_id: String, key: String) {
+        let Some(tx) = &self.timeline_cmd_tx else {
+            return;
+        };
+        if tx
+            .send(TimelineCommand::ToggleReaction { event_id, key })
+            .is_err()
+        {
+            tracing::debug!("timeline command channel closed");
+        }
+    }
+
     pub(super) fn jump_to_latest(&mut self, room_id: &RoomId, generation: i32) {
         if !self.is_current(room_id, generation) {
             return;

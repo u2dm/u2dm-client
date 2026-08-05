@@ -3,6 +3,7 @@ import { Palette } from "std-widgets.slint";
 import { EmojiPicker } from "emoji-picker.slint";
 import { StickerPicker } from "sticker-picker.slint";
 import { ClickArea } from "../../../../components/a11y.slint";
+import { PickerCard } from "../../../../components/overlay.slint";
 
 component PanelTab inherits Rectangle {
     in property <string> title;
@@ -39,19 +40,11 @@ component PanelTab inherits Rectangle {
     }
 }
 
-export component PickerPanel inherits Rectangle {
+export component PickerPanel inherits PickerCard {
     callback emoji-picked(string);
     callback sticker-picked(string, string);
 
     in-out property <int> tab: 0;
-
-    background: Palette.alternate-background;
-    border-radius: 10px;
-    border-width: 1px;
-    border-color: Palette.foreground.transparentize(0.85);
-    drop-shadow-blur: 16px;
-    drop-shadow-color: Palette.foreground.transparentize(0.75);
-    drop-shadow-offset-y: 4px;
 
     VerticalLayout {
         padding: 8px;

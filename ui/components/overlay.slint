@@ -1,3 +1,14 @@
+import { Palette } from "std-widgets.slint";
+
+export component PickerCard inherits Rectangle {
+    background: Palette.alternate-background;
+    border-radius: 10px;
+    border-width: 1px;
+    border-color: Palette.foreground.transparentize(0.85);
+
+    @children
+}
+
 export component ModalHost inherits Rectangle {
     in property <bool> dim: true;
     in property <float> dim-opacity: 0.45;

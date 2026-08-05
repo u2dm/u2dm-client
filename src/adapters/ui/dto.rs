@@ -6,12 +6,13 @@ use super::decode::{
 };
 use super::present::{
     MessageKind, ServiceKind, avatar_color_index, avatar_initials, message_body_text, message_kind,
-    message_sender_label, message_timestamp_label, pronoun_labels, room_activity_label,
-    sender_initial, service_kind, service_target, unsupported_kind,
+    message_sender_label, message_timestamp_label, pronoun_labels, reaction_key_label,
+    reactor_labels, room_activity_label, sender_initial, service_kind, service_target,
+    unsupported_kind,
 };
 use super::schema::{define_ui_enum, media_states};
 use crate::domain::media::ThumbnailOutcome;
-use crate::domain::message::{MessagePreviewKind, TimelineMessage};
+use crate::domain::message::{MessagePreviewKind, Reaction, TimelineMessage};
 use crate::domain::room::{Room, Space};
 use crate::domain::sticker::{PackId, StickerImage, StickerPack};
 use crate::domain::timeline::EnrichmentDelta;
@@ -137,7 +138,7 @@ fn sticker_cell(
     };
 
     if let Some(path) = media.sticker_path(&image.mxc) {
-        match peek_thumbnail(&path) {
+        match peek_thumbnail(&path, &key) {
             Decoded::Ready(decoded) => {
                 cell.image = Some(decoded);
                 cell.media_state = MediaState::Ready;
@@ -150,6 +151,20 @@ fn sticker_cell(
     }
 
     cell
+}
+
+pub const REACTION_CHIP_CAP: usize = 6;
+
+#[derive(Clone)]
+pub struct ReactionDto {
+    pub key: SharedString,
+    pub label: SharedString,
+    pub count: i32,
+    pub mine: bool,
+    pub pending: bool,
+    pub overflow: bool,
+    pub reactors: SharedString,
+    pub hidden_reactors: i32,
 }
 
 #[allow(clippy::struct_excessive_bools)]
@@ -182,6 +197,8 @@ pub struct MessageDto {
     pub avatar: Option<Image>,
     pub has_avatar: bool,
     pub needs_media: bool,
+    pub reactions: Vec<ReactionDto>,
+    pub all_reactions: Vec<ReactionDto>,
 }
 
 #[allow(clippy::struct_excessive_bools)]
@@ -231,12 +248,53 @@ pub struct EnrichUpdate {
     pub pronouns: Option<Vec<SharedString>>,
 }
 
-fn count(value: u64) -> i32 {
-    i32::try_from(value).unwrap_or(i32::MAX)
+fn count<T: TryInto<i32>>(value: T) -> i32 {
+    value.try_into().unwrap_or(i32::MAX)
+}
+
+fn reaction_dto(reaction: &Reaction) -> ReactionDto {
+    let (reactors, hidden) = reactor_labels(&reaction.senders);
+    ReactionDto {
+        key: SharedString::from(&reaction.key),
+        label: SharedString::from(reaction_key_label(&reaction.key)),
+        count: count(reaction.count()),
+        mine: reaction.mine,
+        pending: reaction.pending,
+        overflow: false,
+        reactors: SharedString::from(reactors),
+        hidden_reactors: count(hidden),
+    }
+}
+
+fn overflow_dto(hidden: usize) -> ReactionDto {
+    ReactionDto {
+        key: SharedString::new(),
+        label: SharedString::new(),
+        count: count(hidden),
+        mine: false,
+        pending: false,
+        overflow: true,
+        reactors: SharedString::new(),
+        hidden_reactors: 0,
+    }
+}
+
+fn reaction_dtos(reactions: &[Reaction]) -> (Vec<ReactionDto>, Vec<ReactionDto>) {
+    let all: Vec<ReactionDto> = reactions.iter().map(reaction_dto).collect();
+    if all.len() <= REACTION_CHIP_CAP {
+        return (all, Vec::new());
+    }
+    let mut chips: Vec<ReactionDto> = all
+        .get(..REACTION_CHIP_CAP)
+        .map(<[ReactionDto]>::to_vec)
+        .unwrap_or_default();
+    chips.push(overflow_dto(all.len() - REACTION_CHIP_CAP));
+    (chips, all)
 }
 
 pub fn message_to_dto(m: &TimelineMessage, media: &dyn MediaCache) -> MessageDto {
     let sender_label = message_sender_label(m);
+    let (reactions, all_reactions) = reaction_dtos(&m.reactions);
     let mut dto = MessageDto {
         unique_id: SharedString::from(&m.unique_id),
         sender: SharedString::from(sender_label),
@@ -272,6 +330,8 @@ pub fn message_to_dto(m: &TimelineMessage, media: &dyn MediaCache) -> MessageDto
         avatar: None,
         has_avatar: false,
         needs_media: false,
+        reactions,
+        all_reactions,
     };
 
     let mut thumbnail_path = None;
@@ -280,7 +340,7 @@ pub fn message_to_dto(m: &TimelineMessage, media: &dyn MediaCache) -> MessageDto
         dto.image_height = meta.height.unwrap_or(0).cast_signed();
         if let Some(event_id) = m.event_id.as_deref() {
             if let Some(path) = media.thumbnail_path(event_id) {
-                match peek_thumbnail(&path) {
+                match peek_thumbnail(&path, &m.unique_id) {
                     Decoded::Ready(img) => {
                         dto.thumbnail = Some(img);
                         dto.media_state = MediaState::Ready;

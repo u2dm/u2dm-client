@@ -21,17 +21,17 @@ thread_local! {
 }
 
 use names::{
-    callback, emoji_entry, emoji_group, emoji_insert, emoji_store, login_request, message, room,
-    save_file_request, send_message_request, send_sticker_request, space, sticker_cell,
-    sticker_pack, sticker_row, sticker_view, user_message, verification_emoji,
+    callback, emoji_entry, emoji_group, emoji_insert, emoji_store, login_request, message,
+    reaction, room, save_file_request, send_message_request, send_sticker_request, space,
+    sticker_cell, sticker_pack, sticker_row, sticker_view, user_message, verification_emoji,
 };
 
 use super::backend::{UiBackend, install_render_hooks, post_effect, selected_room_key};
 use super::clock::install_clock_invalidation;
 use super::decode::{AvatarSlot, request_avatar, request_media, request_sticker};
 use super::dto::{
-    MediaState, StickerCellDto, StickerPackDto, StickerRowDto, ThumbUpdate, enrich_to_update,
-    message_to_dto, room_to_dto, space_to_dto,
+    MediaState, ReactionDto, StickerCellDto, StickerPackDto, StickerRowDto, ThumbUpdate,
+    enrich_to_update, message_to_dto, room_to_dto, space_to_dto,
 };
 use super::multiplex::spawn_event_multiplexer;
 use super::present::{MessageKind, ServiceKind, VerifyStep};
@@ -63,6 +63,7 @@ mod names {
         pub const GLOBAL: &str = "Actions";
         pub const LOGIN_PASSWORD: &str = "login-password";
         pub const MOVE_SPACE: &str = "move-space";
+        pub const TOGGLE_REACTION: &str = "toggle-reaction";
         pub const SEND_MESSAGE: &str = "send-message";
         pub const SAVE_FILE: &str = "save-file";
         pub const SEND_STICKER: &str = "send-sticker";
@@ -87,6 +88,11 @@ mod names {
     pub mod message {
         use crate::adapters::ui::schema::{gen_consts, message_fields};
         message_fields!(gen_consts);
+    }
+
+    pub mod reaction {
+        use crate::adapters::ui::schema::{gen_consts, reaction_fields};
+        reaction_fields!(gen_consts);
     }
 
     pub mod room {
@@ -615,12 +621,6 @@ impl UiBackend for InterpretedBackend {
         }
     }
 
-    fn set_message_frame(entry: &mut Value, image: Image) {
-        if let Value::Struct(s) = entry {
-            s.set_field(message::THUMBNAIL.to_string(), Value::Image(image));
-        }
-    }
-
     fn with_models<R>(
         f: impl FnOnce(&VecModel<Value>, &VecModel<Value>, &VecModel<Value>, &VecModel<Value>) -> R,
     ) -> Option<R> {
@@ -708,6 +708,12 @@ impl SlintUiAdapter {
                 field(s, save_file_request::EVENT_ID),
                 field(s, save_file_request::FILENAME),
             );
+            Value::Void
+        })?;
+
+        let tx = cmd_tx.clone();
+        bind_action(&self.instance, callback::TOGGLE_REACTION, move |args| {
+            router::toggle_reaction(&tx, string_arg(args, 0), string_arg(args, 1));
             Value::Void
         })
     }
@@ -1017,6 +1023,39 @@ fn string_list(items: Vec<SharedString>) -> Value {
     Value::Model(ModelRc::new(VecModel::from(values)))
 }
 
+trait ToValue {
+    fn to_value(&self) -> Value;
+}
+
+fn struct_list<T: ToValue>(items: &[T]) -> Value {
+    let values: Vec<Value> = items.iter().map(ToValue::to_value).collect();
+    Value::Model(ModelRc::new(VecModel::from(values)))
+}
+
+impl ToValue for ReactionDto {
+    fn to_value(&self) -> Value {
+        let mut fields = Struct::default();
+        fields.set_field(reaction::KEY.to_string(), Value::String(self.key.clone()));
+        fields.set_field(
+            reaction::LABEL.to_string(),
+            Value::String(self.label.clone()),
+        );
+        fields.set_field(reaction::COUNT.to_string(), num(self.count));
+        fields.set_field(reaction::MINE.to_string(), Value::Bool(self.mine));
+        fields.set_field(reaction::PENDING.to_string(), Value::Bool(self.pending));
+        fields.set_field(reaction::OVERFLOW.to_string(), Value::Bool(self.overflow));
+        fields.set_field(
+            reaction::REACTORS.to_string(),
+            Value::String(self.reactors.clone()),
+        );
+        fields.set_field(
+            reaction::HIDDEN_REACTORS.to_string(),
+            num(self.hidden_reactors),
+        );
+        Value::Struct(fields)
+    }
+}
+
 macro_rules! field_value {
     ($s:ident, $lit:literal, $val:expr, text) => {
         $s.set_field($lit.to_string(), Value::String($val));
@@ -1029,6 +1068,9 @@ macro_rules! field_value {
     };
     ($s:ident, $lit:literal, $val:expr, list) => {
         $s.set_field($lit.to_string(), string_list($val));
+    };
+    ($s:ident, $lit:literal, $val:expr, structs) => {
+        $s.set_field($lit.to_string(), struct_list(&$val));
     };
     ($s:ident, $lit:literal, $val:expr, image) => {
         if let Some(img) = $val {

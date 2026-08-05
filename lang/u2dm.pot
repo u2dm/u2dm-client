@@ -321,14 +321,24 @@ msgctxt "UserMessages"
 msgid "The verification could not be completed."
 msgstr ""
 
-#: ui/screens/chat/chat.slint:126
+#: ui/screens/chat/chat.slint:127
 msgctxt "ChatScreen"
 msgid "Sidebar width"
 msgstr ""
 
-#: ui/screens/chat/chat.slint:202
+#: ui/screens/chat/chat.slint:203
 msgctxt "ChatScreen"
 msgid "Dismiss"
+msgstr ""
+
+#: ui/screens/chat/components/timeline/reaction-overlay.slint:82
+msgctxt "ReactionOverlay"
+msgid "React to a message"
+msgstr ""
+
+#: ui/screens/chat/components/timeline/reaction-overlay.slint:107
+msgctxt "ReactionOverlay"
+msgid "Everyone who reacted"
 msgstr ""
 
 #: ui/screens/chat/components/timeline/picker-search.slint:75
@@ -336,55 +346,70 @@ msgctxt "PickerSearch"
 msgid "Clear search"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/message-input.slint:59
+#: ui/screens/chat/components/timeline/message-input.slint:63
 msgctxt "MessageInput"
 msgid "Emoji and sticker picker"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/message-input.slint:115
+#: ui/screens/chat/components/timeline/message-input.slint:119
 msgctxt "MessageInput"
 msgid "Reply to {}"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/message-input.slint:122
+#: ui/screens/chat/components/timeline/message-input.slint:126
 msgctxt "MessageInput"
 msgid "Cancel reply"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/message-input.slint:154
+#: ui/screens/chat/components/timeline/message-input.slint:158
 msgctxt "MessageInput"
 msgid "Message"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/message-input.slint:155
-#: ui/screens/chat/components/timeline/message-input.slint:155
+#: ui/screens/chat/components/timeline/message-input.slint:159
+#: ui/screens/chat/components/timeline/message-input.slint:159
 msgctxt "MessageInput"
 msgid "Send a message..."
 msgstr ""
 
-#: ui/screens/chat/components/timeline/message-input.slint:183
+#: ui/screens/chat/components/timeline/message-input.slint:187
 msgctxt "MessageInput"
 msgid "Emoji and stickers"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/message-input.slint:203
+#: ui/screens/chat/components/timeline/message-input.slint:208
 msgctxt "MessageInput"
 msgid "Send"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/message-bubble.slint:169
+#: ui/screens/chat/components/timeline/reaction-picker.slint:112
+msgctxt "ReactionStrip"
+msgid "More emoji"
+msgstr ""
+
+#: ui/screens/chat/components/timeline/reaction-picker.slint:176
+msgctxt "ReactionPicker"
+msgid "Reactions are not encrypted."
+msgstr ""
+
+#: ui/screens/chat/components/timeline/message-bubble.slint:233
 msgctxt "MessageBubble"
 msgid "Go to the message this replies to"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/message-bubble.slint:259
+#: ui/screens/chat/components/timeline/message-bubble.slint:349
 msgctxt "MessageBubble"
 msgid "Reply to {}"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/message-bubble.slint:292
+#: ui/screens/chat/components/timeline/message-bubble.slint:380
 msgctxt "MessageBubble"
 msgid "Reply"
+msgstr ""
+
+#: ui/screens/chat/components/timeline/message-bubble.slint:416
+msgctxt "MessageBubble"
+msgid "React to {}'s message with {}"
 msgstr ""
 
 #: ui/screens/chat/components/timeline/timeline-content.slint:28
@@ -400,6 +425,26 @@ msgstr ""
 #: ui/screens/chat/components/timeline/timeline-content.slint:47
 msgctxt "TimelineContent"
 msgid "Jump to latest messages"
+msgstr ""
+
+#: ui/screens/chat/components/timeline/reaction-detail.slint:46
+msgctxt "DetailRow"
+msgid "{} and {} more"
+msgstr ""
+
+#: ui/screens/chat/components/timeline/reaction-detail.slint:66
+msgctxt "ReactionDetail"
+msgid "Reactions"
+msgstr ""
+
+#: ui/screens/chat/components/timeline/reaction-detail.slint:86
+msgctxt "ReactionDetail"
+msgid "Remove your {} reaction"
+msgstr ""
+
+#: ui/screens/chat/components/timeline/reaction-detail.slint:87
+msgctxt "ReactionDetail"
+msgid "React with {}"
 msgstr ""
 
 #: ui/screens/chat/components/timeline/messages/image-message.slint:47
@@ -552,12 +597,12 @@ msgctxt "UnreadDivider"
 msgid "Unread messages"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/messages/sticker-message.slint:41
+#: ui/screens/chat/components/timeline/messages/sticker-message.slint:42
 msgctxt "StickerMessage"
 msgid "Sticker: {}"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/messages/sticker-message.slint:41
+#: ui/screens/chat/components/timeline/messages/sticker-message.slint:42
 msgctxt "StickerMessage"
 msgid "Sticker"
 msgstr ""
@@ -627,54 +672,74 @@ msgctxt "EmojiPicker"
 msgid "No emoji found"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/timeline-view.slint:43
+#: ui/screens/chat/components/timeline/reaction-row.slint:97
+msgctxt "ReactionRow"
+msgid "{} and {} more"
+msgstr ""
+
+#: ui/screens/chat/components/timeline/reaction-row.slint:103
+msgctxt "ReactionRow"
+msgid "Show {} more reactions"
+msgstr ""
+
+#: ui/screens/chat/components/timeline/reaction-row.slint:106
+msgctxt "ReactionRow"
+msgid "Remove your {} reaction, reacted by {}"
+msgstr ""
+
+#: ui/screens/chat/components/timeline/reaction-row.slint:108
+msgctxt "ReactionRow"
+msgid "React with {}, reacted by {}"
+msgstr ""
+
+#: ui/screens/chat/components/timeline/timeline-view.slint:44
 msgctxt "TimelineView"
 msgid "Loading messages..."
 msgstr ""
 
-#: ui/screens/chat/components/timeline/timeline-view.slint:46
+#: ui/screens/chat/components/timeline/timeline-view.slint:47
 msgctxt "TimelineView"
 msgid "Loading unread messages..."
 msgstr ""
 
-#: ui/screens/chat/components/timeline/timeline-view.slint:49
+#: ui/screens/chat/components/timeline/timeline-view.slint:50
 msgctxt "TimelineView"
 msgid "Going to the message..."
 msgstr ""
 
-#: ui/screens/chat/components/timeline/timeline-view.slint:52
+#: ui/screens/chat/components/timeline/timeline-view.slint:53
 msgctxt "TimelineView"
 msgid "Connection lost"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/timeline-view.slint:54
+#: ui/screens/chat/components/timeline/timeline-view.slint:55
 msgctxt "TimelineView"
 msgid "Couldn't load messages"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/timeline-view.slint:67
+#: ui/screens/chat/components/timeline/timeline-view.slint:69
 msgctxt "TimelineView"
 msgid "Select a room"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/timeline-view.slint:96
+#: ui/screens/chat/components/timeline/timeline-view.slint:98
 msgctxt "TimelineView"
 msgid "{n} member"
 msgid_plural "{n} members"
 msgstr[0] ""
 msgstr[1] ""
 
-#: ui/screens/chat/components/timeline/timeline-view.slint:119
+#: ui/screens/chat/components/timeline/timeline-view.slint:121
 msgctxt "TimelineView"
 msgid "Back to the room list"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/picker-panel.slint:66
+#: ui/screens/chat/components/timeline/picker-panel.slint:59
 msgctxt "PickerPanel"
 msgid "Emoji"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/picker-panel.slint:74
+#: ui/screens/chat/components/timeline/picker-panel.slint:67
 msgctxt "PickerPanel"
 msgid "Stickers"
 msgstr ""

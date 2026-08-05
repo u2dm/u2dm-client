@@ -11,7 +11,7 @@ import { Fonts, Metrics } from "../../../../theme.slint";
 import { ClickArea } from "../../../../components/a11y.slint";
 import { ModalHost } from "../../../../components/overlay.slint";
 import { Actions } from "../../../../actions.slint";
-import { Composer, Shell } from "../../../../local.slint";
+import { Composer, Reactions, Shell } from "../../../../local.slint";
 
 export component MessageInput inherits Rectangle {
     in property <string> room-id;
@@ -47,6 +47,10 @@ export component MessageInput inherits Rectangle {
 
     function close-picker() {
         Shell.picker-open = false;
+        text-input.focus();
+    }
+
+    public function focus-input() {
         text-input.focus();
     }
 
@@ -182,6 +186,7 @@ export component MessageInput inherits Rectangle {
             ring-radius: 8px;
             label: @tr("Emoji and stickers");
             clicked => {
+                Reactions.close();
                 Shell.picker-open = !Shell.picker-open;
             }
 

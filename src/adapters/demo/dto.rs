@@ -5,7 +5,7 @@ use serde::Deserialize;
 use crate::domain::auth::Session;
 use crate::domain::media::ImageMeta;
 use crate::domain::message::{
-    MessageBody, MessagePreviewKind, ReplyInfo, ServiceEvent, TimelineMessage,
+    MessageBody, MessagePreviewKind, Reaction, ReplyInfo, ServiceEvent, TimelineMessage,
 };
 use crate::domain::room::{NotifyMode, Room, RoomId, Space};
 use crate::domain::sticker::{PackId, StickerImage, StickerPack};
@@ -174,6 +174,15 @@ pub struct MessageDto {
     sticker: Option<StickerDto>,
     reply: Option<ReplyDto>,
     service: Option<ServiceDto>,
+    #[serde(default)]
+    reactions: Vec<ReactionDto>,
+}
+
+#[derive(Deserialize)]
+struct ReactionDto {
+    key: String,
+    #[serde(default)]
+    senders: Vec<String>,
 }
 
 #[derive(Deserialize)]
@@ -353,6 +362,16 @@ impl MessageDto {
             }),
             edited: self.edited,
             is_first_unread: false,
+            reactions: self
+                .reactions
+                .iter()
+                .map(|reaction| Reaction {
+                    key: reaction.key.clone(),
+                    mine: reaction.senders.iter().any(|sender| sender == own_user),
+                    senders: reaction.senders.clone(),
+                    pending: false,
+                })
+                .collect(),
         }
     }
 

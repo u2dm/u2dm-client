@@ -92,6 +92,7 @@ pub fn messages(room_id: &RoomId) -> Vec<TimelineMessage> {
     if scenario().history_is_long {
         messages = repeated_history(&messages);
     }
+    super::reactions::apply_scenario(&mut messages);
     mark_first_unread(room_id, &mut messages);
     messages
 }
@@ -156,6 +157,7 @@ pub fn own_message(sequence: u64, body: &str, reply: Option<ReplyInfo>) -> Timel
         reply,
         edited: false,
         is_first_unread: false,
+        reactions: Vec::new(),
     }
 }
 
@@ -188,6 +190,7 @@ pub fn own_sticker(
         reply,
         edited: false,
         is_first_unread: false,
+        reactions: Vec::new(),
     }
 }
 
@@ -255,6 +258,7 @@ fn synthesized_message(dto: &RoomDto, room: &Room) -> TimelineMessage {
         reply: None,
         edited: room.last_message_edited,
         is_first_unread: false,
+        reactions: Vec::new(),
     }
 }
 

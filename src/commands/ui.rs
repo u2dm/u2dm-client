@@ -78,6 +78,11 @@ pub enum UiCommand {
     JumpToEvent {
         event_id: String,
     },
+    #[strum(to_string = "ToggleReaction({event_id})")]
+    ToggleReaction {
+        event_id: String,
+        key: String,
+    },
     #[strum(to_string = "RefocusTimeline({room_id})")]
     RefocusTimeline {
         room_id: RoomId,

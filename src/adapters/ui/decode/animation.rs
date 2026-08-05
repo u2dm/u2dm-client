@@ -307,6 +307,17 @@ pub(super) fn on_decoded(path: &Path, decoded: Option<RawAnimation>, epoch: u64)
     waiting.notify(first);
 }
 
+pub(super) fn playing_frame(path: &Path, playback_key: &str) -> Option<Image> {
+    ANIMATIONS.with_borrow(|state| {
+        let animation = state.clips.get(path)?.as_ref()?;
+        let playback = state.playbacks.get(playback_key)?;
+        (playback.path == path)
+            .then(|| animation.frame(playback.frame))
+            .flatten()
+            .cloned()
+    })
+}
+
 pub fn load_thumbnail(path: &Path, playback_key: &str) -> Decoded {
     if !is_animatable(path) {
         return cache::request_thumbnail(path, playback_key);

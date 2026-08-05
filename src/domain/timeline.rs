@@ -118,6 +118,7 @@ pub enum TimelineCommand {
     PaginateForwards,
     MarkRead,
     JumpTo(String),
+    ToggleReaction { event_id: String, key: String },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

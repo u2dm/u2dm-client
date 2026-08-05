@@ -10,8 +10,8 @@ use super::backend::{UiBackend, install_render_hooks, post_effect, selected_room
 use super::clock::install_clock_invalidation;
 use super::decode::{AvatarSlot, request_avatar, request_media, request_sticker};
 use super::dto::{
-    MediaState, StickerCellDto, StickerPackDto, StickerRowDto, ThumbUpdate, enrich_to_update,
-    message_to_dto, room_to_dto, space_to_dto,
+    MediaState, ReactionDto, StickerCellDto, StickerPackDto, StickerRowDto, ThumbUpdate,
+    enrich_to_update, message_to_dto, room_to_dto, space_to_dto,
 };
 use super::multiplex::spawn_event_multiplexer;
 use super::present::{MessageKind, ServiceKind, VerifyStep};
@@ -45,8 +45,8 @@ use generated::{
     Actions, AppWindow, ConnectionState, DirectoryView, EmojiEntry, EmojiGroup, EmojiInsert,
     EmojiStore, LoginActivity as UiLoginActivity, LoginMethodKind as UiLoginMethodKind, LoginPhase,
     LoginView, MediaState as UiMediaState, MessageEntry, MessageKind as UiMessageKind,
-    PreviewKind as UiPreviewKind, RoomEntry, RoomView, ServiceKind as UiServiceKind, SessionView,
-    SpaceEntry, StickerCell, StickerPackTab, StickerRow, StickerView, TimelineState,
+    PreviewKind as UiPreviewKind, ReactionEntry, RoomEntry, RoomView, ServiceKind as UiServiceKind,
+    SessionView, SpaceEntry, StickerCell, StickerPackTab, StickerRow, StickerView, TimelineState,
     UserMessage as UiUserMessage, UserMessageKind as UiUserMessageKind,
     VerificationActivity as UiVerificationActivity, VerificationEmoji, VerificationPhase,
     VerificationView,
@@ -368,10 +368,6 @@ impl UiBackend for CompiledBackend {
         entry.media_state = UiMediaState::Failed;
     }
 
-    fn set_message_frame(entry: &mut MessageEntry, image: Image) {
-        entry.thumbnail = image;
-    }
-
     fn with_models<R>(
         f: impl FnOnce(
             &VecModel<MessageEntry>,
@@ -479,6 +475,11 @@ impl SlintUiAdapter {
         let tx = cmd_tx.clone();
         actions(win).on_save_file(move |req| {
             router::save_file(&tx, req.event_id.to_string(), req.filename.to_string());
+        });
+
+        let tx = cmd_tx.clone();
+        actions(win).on_toggle_reaction(move |event_id, key| {
+            router::toggle_reaction(&tx, event_id.to_string(), key.to_string());
         });
 
         let scroll_tx = scroll_tx.clone();
@@ -630,6 +631,25 @@ fn string_model(items: Vec<SharedString>) -> ModelRc<SharedString> {
     ModelRc::new(VecModel::from(items))
 }
 
+fn reaction_to_entry(d: &ReactionDto) -> ReactionEntry {
+    ReactionEntry {
+        key: d.key.clone(),
+        label: d.label.clone(),
+        count: d.count,
+        mine: d.mine,
+        pending: d.pending,
+        overflow: d.overflow,
+        reactors: d.reactors.clone(),
+        hidden_reactors: d.hidden_reactors,
+    }
+}
+
+fn reaction_model(items: &[ReactionDto]) -> ModelRc<ReactionEntry> {
+    ModelRc::new(VecModel::from(
+        items.iter().map(reaction_to_entry).collect::<Vec<_>>(),
+    ))
+}
+
 fn message_to_entry(m: &TimelineMessage, media: &dyn MediaCache) -> MessageEntry {
     let d = message_to_dto(m, media);
     MessageEntry {
@@ -661,6 +681,8 @@ fn message_to_entry(m: &TimelineMessage, media: &dyn MediaCache) -> MessageEntry
         reply_body: d.reply_body,
         service_kind: to_service_kind(d.service_kind),
         service_target: d.service_target,
+        reactions: reaction_model(&d.reactions),
+        all_reactions: reaction_model(&d.all_reactions),
     }
 }
 

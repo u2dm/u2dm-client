@@ -1,0 +1,191 @@
+import {
+    Palette,
+} from "std-widgets.slint";
+import { IconDisplay, IconSet } from "@lucide";
+
+import { EmojiPicker } from "emoji-picker.slint";
+import { ClickArea } from "../../../../components/a11y.slint";
+import { PickerCard } from "../../../../components/overlay.slint";
+import { Fonts, Metrics } from "../../../../theme.slint";
+
+export global QuickReactions {
+    out property <[string]> keys: ["❤️", "😕", "🎉", "😭", "😄", "👎", "👍", "🫃"];
+    out property <int> default-index: root.keys.length - 1;
+    out property <string> default-key: root.keys[root.default-index];
+}
+
+component StripCell inherits ClickArea {
+    in property <string> key;
+
+    height: Metrics.reaction-strip-cell;
+    border-radius: self.height / 2;
+    ring-radius: self.height / 2;
+    background: root.has-hover
+        ? Palette.foreground.transparentize(0.88)
+        : transparent;
+
+    Text {
+        x: 0;
+        y: 0;
+        width: parent.width;
+        height: parent.height;
+        text: root.key;
+        font-family: Fonts.emoji;
+        font-size: Metrics.reaction-emoji;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+}
+
+export component ReactionStrip inherits PickerCard {
+    callback picked(string);
+    callback more-clicked();
+
+    property <length> pad: Metrics.reaction-strip-pad;
+    property <length> gap: 2px;
+    property <length> cell: Metrics.reaction-strip-cell;
+    property <length> pitch: root.cell + root.gap;
+    property <float> cells-when-open: 4.5;
+    property <int> cell-count: QuickReactions.keys.length + 1;
+    property <length> content-height: root.cell-count * root.pitch - root.gap;
+    property <length> open-height: root.cells-when-open * root.pitch - root.gap;
+    property <int> focused-cells: 0;
+
+    out property <bool> open: hover-area.has-hover || root.focused-cells > 0;
+
+    width: root.cell + 2 * root.pad;
+    height: (root.open ? root.open-height : root.cell) + 2 * root.pad;
+    border-radius: self.width / 2;
+    clip: true;
+
+    animate height {
+        duration: 160ms;
+        easing: ease-in-out;
+    }
+
+    function show-default() {
+        strip.viewport-y = strip.height - root.content-height;
+    }
+
+    function track-focus(focused: bool) {
+        root.focused-cells += focused ? 1 : -1;
+    }
+
+    init => {
+        root.show-default();
+    }
+
+    changed open => {
+        if (!root.open) {
+            root.show-default();
+        }
+    }
+
+    hover-area := TouchArea {
+        width: 100%;
+        height: 100%;
+        mouse-cursor: default;
+        scroll-event(event) => {
+            if (root.open) {
+                return accept;
+            }
+            return reject;
+        }
+
+        strip := Flickable {
+            x: root.pad;
+            y: root.height - self.height - root.pad;
+            width: root.width - 2 * root.pad;
+            height: root.open-height;
+            viewport-height: root.content-height;
+            interactive: root.open;
+
+            VerticalLayout {
+                spacing: root.gap;
+                alignment: start;
+
+                ClickArea {
+                    height: root.cell;
+                    border-radius: self.height / 2;
+                    ring-radius: self.height / 2;
+                    enabled: root.open;
+                    label: @tr("More emoji");
+                    background: self.has-hover
+                        ? Palette.foreground.transparentize(0.88)
+                        : transparent;
+                    clicked => {
+                        root.more-clicked();
+                    }
+                    changed has-focus => {
+                        root.track-focus(self.has-focus);
+                    }
+
+                    IconDisplay {
+                        x: (parent.width - self.width) / 2;
+                        y: (parent.height - self.height) / 2;
+                        width: 18px;
+                        height: 18px;
+                        icon: IconSet.Plus;
+                        size: 18px;
+                        stroke: Palette.foreground.transparentize(0.35);
+                    }
+                }
+
+                for key[index] in QuickReactions.keys: StripCell {
+                    key: key;
+                    label: key;
+                    enabled: root.open || index == QuickReactions.default-index;
+                    clicked => {
+                        root.picked(key);
+                    }
+                    changed has-focus => {
+                        root.track-focus(self.has-focus);
+                    }
+                }
+            }
+        }
+    }
+}
+
+export component ReactionPicker inherits PickerCard {
+    callback picked(string);
+
+    in property <bool> encrypted: false;
+
+    VerticalLayout {
+        padding: 6px;
+        spacing: 4px;
+
+        if root.encrypted: HorizontalLayout {
+            spacing: 6px;
+            padding-left: 4px;
+            padding-right: 4px;
+            padding-top: 2px;
+
+            IconDisplay {
+                y: (parent.height - self.height) / 2;
+                width: 13px;
+                height: 13px;
+                icon: IconSet.ShieldAlert;
+                size: 13px;
+                stroke: Palette.foreground.transparentize(0.5);
+            }
+
+            Text {
+                horizontal-stretch: 1;
+                text: @tr("Reactions are not encrypted.");
+                font-size: 11px;
+                color: Palette.foreground.transparentize(0.45);
+                vertical-alignment: center;
+                wrap: word-wrap;
+            }
+        }
+
+        EmojiPicker {
+            vertical-stretch: 1;
+            picked(glyph) => {
+                root.picked(glyph);
+            }
+        }
+    }
+}

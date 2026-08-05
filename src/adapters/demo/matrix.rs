@@ -9,7 +9,7 @@ use tokio::sync::mpsc;
 use tokio::time::sleep;
 use tokio_util::sync::CancellationToken;
 
-use super::{data, login, media, stickers, timeline, verification};
+use super::{data, login, media, reactions, stickers, timeline, verification};
 use crate::domain::auth::{AuthMethod, LoginCredentials, OAuthLoginData, ServerInfo, Session};
 use crate::domain::message::{MessageBody, ReplyInfo, TimelineMessage};
 use crate::domain::room::RoomId;
@@ -227,6 +227,37 @@ impl DemoAuthed {
         send_patch(&timeline_tx, TimelinePatch::PushBack(message)).await;
     }
 
+    async fn toggle_reaction(&self, event_id: &str, key: &str) {
+        if reactions::scenario().toggle_has_no_echo {
+            tracing::debug!(event_id, "demo: swallowing a reaction toggle");
+            return;
+        }
+        let prepared = {
+            let Ok(mut guard) = self.active.lock() else {
+                return;
+            };
+            let Some(active) = guard.as_mut() else {
+                return;
+            };
+            let Some(offset) = active
+                .messages
+                .iter()
+                .position(|message| message.event_id.as_deref() == Some(event_id))
+            else {
+                return;
+            };
+            let row = active.prepended.saturating_add(offset);
+            let Some(message) = active.messages.get_mut(offset) else {
+                return;
+            };
+            reactions::toggle(message, key, data::own_user());
+            (active.timeline_tx.clone(), row, message.clone())
+        };
+        let (timeline_tx, index, message) = prepared;
+
+        send_patch(&timeline_tx, TimelinePatch::Set { index, message }).await;
+    }
+
     fn loaded_row_of(&self, event_id: &str) -> JumpTarget {
         let row = self.active.lock().ok().and_then(|guard| {
             let active = guard.as_ref()?;
@@ -304,7 +335,16 @@ impl TimelinePort for DemoAuthed {
         if scenario.reset_is_slow {
             sleep(timeline::SLOW_RESET_DELAY).await;
         }
-        send_patch(&timeline_tx, opening_patch(scenario, messages.clone())).await;
+        let reset_messages = if reactions::scenario().reactions_arrive_late {
+            reactions::strip_reactions(&messages)
+        } else {
+            messages.clone()
+        };
+        send_patch(
+            &timeline_tx,
+            opening_patch(scenario, reset_messages.clone()),
+        )
+        .await;
 
         if let Ok(mut active) = self.active.lock() {
             *active = Some(ActiveRoom {
@@ -327,15 +367,7 @@ impl TimelinePort for DemoAuthed {
             );
         }
 
-        if focus.is_live() && scenario.reset_repeats {
-            spawn_late_reset(scenario, timeline_tx.clone(), messages.clone());
-        }
-        if scenario.rows_keep_resizing {
-            spawn_row_churn(timeline_tx.clone(), messages.clone());
-        }
-        if scenario.message_arrives_late {
-            spawn_late_append(timeline_tx.clone());
-        }
+        spawn_scenario_tasks(scenario, &focus, &timeline_tx, &messages, reset_messages);
 
         let mut history = 0_u64;
         while let Some(command) = cmd_rx.recv().await {
@@ -350,6 +382,10 @@ impl TimelinePort for DemoAuthed {
                             .send(TimelineUpdate::JumpOutcome { event_id, target })
                             .await,
                     );
+                    continue;
+                }
+                TimelineCommand::ToggleReaction { event_id, key } => {
+                    self.toggle_reaction(&event_id, &key).await;
                     continue;
                 }
             };
@@ -601,6 +637,48 @@ fn spawn_row_churn(timeline_tx: mpsc::Sender<TimelineUpdate>, messages: Vec<Time
             };
             let mut message = message.clone();
             message.body = grown_body(&message.body, round);
+            send_patch(&timeline_tx, TimelinePatch::Set { index, message }).await;
+        }
+    });
+}
+
+fn spawn_scenario_tasks(
+    scenario: timeline::Scenario,
+    focus: &TimelineFocus,
+    timeline_tx: &mpsc::Sender<TimelineUpdate>,
+    messages: &[TimelineMessage],
+    reset_messages: Vec<TimelineMessage>,
+) {
+    if focus.is_live() && scenario.reset_repeats {
+        spawn_late_reset(scenario, timeline_tx.clone(), reset_messages);
+    }
+    if scenario.rows_keep_resizing {
+        spawn_row_churn(timeline_tx.clone(), messages.to_vec());
+    }
+    if scenario.message_arrives_late {
+        spawn_late_append(timeline_tx.clone());
+    }
+    if reactions::scenario().reactions_arrive_late {
+        spawn_late_reactions(
+            timeline_tx.clone(),
+            messages.to_vec(),
+            reactions::reacted_indices(messages),
+        );
+    }
+}
+
+fn spawn_late_reactions(
+    timeline_tx: mpsc::Sender<TimelineUpdate>,
+    messages: Vec<TimelineMessage>,
+    rows: Vec<usize>,
+) {
+    tokio::spawn(async move {
+        for index in rows {
+            sleep(reactions::LATE_INTERVAL).await;
+            let Some(message) = messages.get(index) else {
+                return;
+            };
+            let message = message.clone();
             send_patch(&timeline_tx, TimelinePatch::Set { index, message }).await;
         }
     });

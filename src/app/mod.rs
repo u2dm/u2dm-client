@@ -309,6 +309,9 @@ impl AppService {
             UiCommand::JumpToEvent { event_id } => {
                 self.active_timeline.jump_to_event(event_id);
             }
+            UiCommand::ToggleReaction { event_id, key } => {
+                self.active_timeline.toggle_reaction(event_id, key);
+            }
             UiCommand::RefocusTimeline {
                 room_id,
                 generation,

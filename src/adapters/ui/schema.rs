@@ -307,10 +307,28 @@ macro_rules! message_fields {
         needs_media NEEDS_MEDIA "needs-media" flag;
         thumbnail THUMBNAIL "thumbnail" image;
         avatar AVATAR "avatar" image;
+        reactions REACTIONS "reactions" structs;
+        all_reactions ALL_REACTIONS "all-reactions" structs;
     } };
 }
 #[cfg(feature = "interpreted")]
 pub(crate) use message_fields;
+
+#[cfg(feature = "interpreted")]
+macro_rules! reaction_fields {
+    ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
+        key KEY "key" text;
+        label LABEL "label" text;
+        count COUNT "count" int;
+        mine MINE "mine" flag;
+        pending PENDING "pending" flag;
+        overflow OVERFLOW "overflow" flag;
+        reactors REACTORS "reactors" text;
+        hidden_reactors HIDDEN_REACTORS "hidden-reactors" int;
+    } };
+}
+#[cfg(feature = "interpreted")]
+pub(crate) use reaction_fields;
 
 #[cfg(feature = "interpreted")]
 macro_rules! room_fields {

@@ -15,12 +15,19 @@ import { FileMessage } from "./messages/file-message.slint";
 import { UtdMessage } from "./messages/utd-message.slint";
 import { UnsupportedMessage } from "./messages/unsupported-message.slint";
 import { UnreadDivider } from "./messages/unread-divider.slint";
+import { ReactionRow } from "./reaction-row.slint";
+import { QuickReactions } from "./reaction-picker.slint";
 import { Avatar } from "../../../../components/avatar.slint";
 import { ClickArea } from "../../../../components/a11y.slint";
-import { Composer } from "../../../../local.slint";
+import {
+    Composer,
+    ReactionAnchor,
+    Reactions,
+    Shell,
+} from "../../../../local.slint";
 import { Actions } from "../../../../actions.slint";
 import { RoomView } from "../../../../views.slint";
-import { Avatars, Metrics } from "../../../../theme.slint";
+import { Avatars, Fonts, Metrics } from "../../../../theme.slint";
 import { MediaState, MessageKind } from "../../../../enums.slint";
 
 component PronounBadge inherits Rectangle {
@@ -38,6 +45,26 @@ component PronounBadge inherits Rectangle {
         horizontal-alignment: center;
         vertical-alignment: center;
         overflow: elide;
+    }
+}
+
+component BubbleReactions inherits ReactionRow {
+    in property <string> event-id;
+
+    callback detail-anchor() -> ReactionAnchor;
+
+    toggled(key) => {
+        Actions.toggle-reaction(root.event-id, key);
+    }
+    overflow-clicked => {
+        Shell.picker-open = false;
+        Reactions.open-detail(root.detail-anchor());
+    }
+    hovered(index, text, rect) => {
+        Reactions.show-tooltip(root.event-id, index, text, rect);
+    }
+    unhovered(index) => {
+        Reactions.hide-tooltip(root.event-id, index);
     }
 }
 
@@ -67,6 +94,7 @@ export component MessageBubble inherits VerticalLayout {
     in property <bool> is-own;
     in property <MessageEntry> msg;
     in property <length> available-width;
+    in property <int> timeline-row;
 
     property <color> own-bubble-color: Palette.accent-background.transparentize(0.4);
     property <color> other-bubble-color: Palette.alternate-background;
@@ -81,6 +109,8 @@ export component MessageBubble inherits VerticalLayout {
         || msg.message-type == MessageKind.emote;
     property <bool> has-remote-id: msg.event-id != "";
     property <bool> is-focused: root.has-remote-id && msg.event-id == RoomView.focus-event-id;
+    property <bool> strip-mine: root.has-remote-id
+        && Reactions.strip-anchor.event-id == msg.event-id;
 
     property <bool> is-image: msg.message-type == MessageKind.image;
     property <bool> is-sticker: msg.message-type == MessageKind.sticker;
@@ -88,6 +118,9 @@ export component MessageBubble inherits VerticalLayout {
     property <bool> has-photo: root.is-image
         && (msg.media-state != MediaState.idle || (msg.image-width > 0 && msg.image-height > 0));
     property <bool> is-photo-only: root.has-photo && !root.has-caption;
+    property <bool> has-reactions: msg.reactions.length > 0;
+    property <bool> chips-outside: root.is-photo-only && root.has-reactions;
+    property <length> outside-chips-gap: 4px;
     property <length> photo-row-padding: root.has-photo ? 10px : 0px;
 
     if msg.first-unread: UnreadDivider { }
@@ -98,205 +131,312 @@ export component MessageBubble inherits VerticalLayout {
         target: msg.service-target;
     }
 
-    if !is-service: HorizontalLayout {
-        alignment: is-own ? end : start;
-        padding-left: is-own ? 0 : 8px;
-        padding-right: is-own ? 8px : 0;
-        padding-top: 2px;
-        padding-bottom: 2px;
+    if !is-service: message-row := Rectangle {
+        property <bool> hovered: root.has-remote-id
+            && (hover-bg.has-hover
+            || root.strip-mine
+            || react-btn.has-hover || react-btn.has-focus
+            || reply-btn.has-hover || reply-btn.has-focus);
 
-        if !is-own: Avatar {
-            width: 32px;
-            height: 32px;
-            background: Avatars.color(msg.color-index);
-            has-image: msg.has-avatar;
-            image: msg.avatar;
-            initial: msg.sender-initial;
-            initial-size: 13px;
-        }
+        height: row.preferred-height
+            + (root.chips-outside
+                ? Metrics.reaction-chip + root.outside-chips-gap
+                : 0);
 
-        if !is-own: Rectangle {
-            width: 6px;
-        }
+        row := HorizontalLayout {
+            alignment: is-own ? end : start;
+            padding-left: is-own ? 0 : 8px;
+            padding-right: is-own ? 8px : 0;
+            padding-top: 2px;
+            padding-bottom: 2px;
 
-        Rectangle {
-            max-width: bubble-max-width;
-            height: bubble-content.preferred-height;
-            background: root.is-sticker
-                ? transparent
-                : (is-own ? own-bubble-color : other-bubble-color);
-            border-radius: 12px;
-            border-width: root.is-focused ? 2px : 0;
-            border-color: Palette.accent-background;
-            clip: true;
-
-            animate border-width { duration: 150ms; }
-
-            hover-bg := TouchArea {
-                width: 100%;
-                height: 100%;
+            if !is-own: Avatar {
+                width: 32px;
+                height: 32px;
+                background: Avatars.color(msg.color-index);
+                has-image: msg.has-avatar;
+                image: msg.avatar;
+                initial: msg.sender-initial;
+                initial-size: 13px;
             }
 
-            bubble-content := VerticalLayout {
-                padding-top: root.has-photo ? 0 : 4px;
-                padding-bottom: root.is-photo-only ? 0 : 4px;
-                padding-left: root.has-photo ? 0 : 10px;
-                padding-right: root.has-photo ? 0 : 10px;
+            if !is-own: Rectangle {
+                width: 6px;
+            }
 
-                if !is-own: HorizontalLayout {
-                    padding-left: root.photo-row-padding;
-                    padding-right: root.photo-row-padding;
-                    padding-top: root.has-photo ? 5px : 0;
-                    padding-bottom: root.has-photo ? 3px : 0;
-
-                    SenderLine {
-                        sender: msg.sender;
-                        pronouns: msg.pronouns;
-                    }
+            bubble := Rectangle {
+                pure function anchor() -> ReactionAnchor {
+                    return {
+                        event-id: msg.event-id,
+                        row: root.timeline-row,
+                        is-own: root.is-own,
+                        x: self.absolute-position.x,
+                        y: self.absolute-position.y,
+                        width: self.width,
+                        height: self.height,
+                    };
                 }
 
-                if msg.has-reply: VerticalLayout {
-                    padding-top: is-own ? 0 : 4px;
-                    padding-bottom: root.has-photo ? 4px : 0;
-                    padding-left: root.photo-row-padding;
-                    padding-right: root.photo-row-padding;
+                max-width: bubble-max-width;
+                height: bubble-content.preferred-height;
+                background: root.is-sticker
+                    ? transparent
+                    : (is-own ? own-bubble-color : other-bubble-color);
+                border-radius: 12px;
+                border-width: root.is-focused ? 2px : 0;
+                border-color: Palette.accent-background;
+                clip: true;
 
-                    reply-jump := ClickArea {
-                        height: reply-quote.preferred-height;
-                        border-radius: 4px;
-                        ring-radius: 4px;
-                        enabled: msg.reply-event-id != "";
-                        label: @tr("Go to the message this replies to");
-                        background: is-own
-                            ? Palette.accent-background.transparentize(
-                                reply-jump.has-hover ? 0.55 : 0.7)
-                            : Palette.foreground.transparentize(
-                                reply-jump.has-hover ? 0.86 : 0.92);
-                        clicked => {
-                            Actions.jump-to-event(msg.reply-event-id);
-                        }
+                animate border-width { duration: 150ms; }
 
-                        reply-quote := ReplyQuote {
-                            padding: 4px;
-                            sender: msg.reply-sender;
-                            preview: MessagePreview.label(msg.reply-kind, msg.reply-body);
+                hover-bg := TouchArea {
+                    width: 100%;
+                    height: 100%;
+                    changed has-hover => {
+                        if (self.has-hover && root.has-remote-id) {
+                            Reactions.hover-bubble(bubble.anchor());
+                        } else {
+                            Reactions.leave-bubble(msg.event-id);
                         }
                     }
                 }
 
-                if root.has-photo: ImageMessage {
-                    thumbnail: msg.thumbnail;
-                    media-state: msg.media-state;
-                    image-width: msg.image-width;
-                    image-height: msg.image-height;
-                    body: msg.body;
-                    event-id: msg.event-id;
-                    frame-limit: root.bubble-max-width;
-                    timestamp: msg.timestamp;
-                    edited: msg.edited;
-                    show-timestamp: root.is-photo-only;
-                    bubble-hovered: hover-bg.has-hover || reply-btn.has-hover;
-                }
+                bubble-content := VerticalLayout {
+                    padding-top: root.has-photo ? 0 : 4px;
+                    padding-bottom: root.is-photo-only ? 0 : 4px;
+                    padding-left: root.has-photo ? 0 : 10px;
+                    padding-right: root.has-photo ? 0 : 10px;
 
-                if root.is-image && !root.has-photo: ImagePlaceholder {
-                    body: msg.body;
-                }
+                    if !is-own: HorizontalLayout {
+                        padding-left: root.photo-row-padding;
+                        padding-right: root.photo-row-padding;
+                        padding-top: root.has-photo ? 5px : 0;
+                        padding-bottom: root.has-photo ? 3px : 0;
 
-                if root.is-sticker: StickerMessage {
-                    sticker: msg.thumbnail;
-                    media-state: msg.media-state;
-                    sticker-width: msg.image-width;
-                    sticker-height: msg.image-height;
-                    alt: msg.body;
-                    bubble-hovered: hover-bg.has-hover || reply-btn.has-hover;
-                }
-
-                if msg.message-type == MessageKind.file: FileMessage {
-                    body: msg.body;
-                    event-id: msg.event-id;
-                }
-
-                if msg.message-type == MessageKind.utd: UtdMessage { }
-
-                if msg.message-type == MessageKind.unsupported: UnsupportedMessage {
-                    kind: msg.unsupported-kind;
-                    body: msg.body;
-                }
-
-                if is-plain-text: TextMessage {
-                    text: msg.body;
-                }
-
-                if !root.is-photo-only: HorizontalLayout {
-                    alignment: end;
-                    spacing: 3px;
-                    padding-left: root.photo-row-padding;
-                    padding-right: root.photo-row-padding;
-
-                    if msg.edited: IconDisplay {
-                        y: (parent.height - self.height) / 2;
-                        icon: IconSet.Pencil;
-                        size: 11px;
-                        stroke: Palette.foreground.transparentize(0.5);
+                        SenderLine {
+                            sender: msg.sender;
+                            pronouns: msg.pronouns;
+                        }
                     }
 
-                    Text {
-                        text: msg.timestamp;
-                        font-size: 12px;
-                        color: Palette.foreground.transparentize(0.5);
-                        horizontal-alignment: right;
-                        vertical-alignment: center;
+                    if msg.has-reply: VerticalLayout {
+                        padding-top: is-own ? 0 : 4px;
+                        padding-bottom: root.has-photo ? 4px : 0;
+                        padding-left: root.photo-row-padding;
+                        padding-right: root.photo-row-padding;
+
+                        reply-jump := ClickArea {
+                            height: reply-quote.preferred-height;
+                            border-radius: 4px;
+                            ring-radius: 4px;
+                            enabled: msg.reply-event-id != "";
+                            label: @tr("Go to the message this replies to");
+                            background: is-own
+                                ? Palette.accent-background.transparentize(
+                                    reply-jump.has-hover ? 0.55 : 0.7)
+                                : Palette.foreground.transparentize(
+                                    reply-jump.has-hover ? 0.86 : 0.92);
+                            clicked => {
+                                Actions.jump-to-event(msg.reply-event-id);
+                            }
+
+                            reply-quote := ReplyQuote {
+                                padding: 4px;
+                                sender: msg.reply-sender;
+                                preview: MessagePreview.label(msg.reply-kind, msg.reply-body);
+                            }
+                        }
+                    }
+
+                    if root.has-photo: ImageMessage {
+                        thumbnail: msg.thumbnail;
+                        media-state: msg.media-state;
+                        image-width: msg.image-width;
+                        image-height: msg.image-height;
+                        body: msg.body;
+                        event-id: msg.event-id;
+                        frame-limit: root.bubble-max-width;
+                        timestamp: msg.timestamp;
+                        edited: msg.edited;
+                        show-timestamp: root.is-photo-only;
+                        bubble-hovered: message-row.hovered;
+                    }
+
+                    if root.is-image && !root.has-photo: ImagePlaceholder {
+                        body: msg.body;
+                    }
+
+                    if root.is-sticker: StickerMessage {
+                        sticker: msg.thumbnail;
+                        media-state: msg.media-state;
+                        sticker-width: msg.image-width;
+                        sticker-height: msg.image-height;
+                        alt: msg.body;
+                        bubble-hovered: message-row.hovered;
+                        is-own: root.is-own;
+                    }
+
+                    if msg.message-type == MessageKind.file: FileMessage {
+                        body: msg.body;
+                        event-id: msg.event-id;
+                    }
+
+                    if msg.message-type == MessageKind.utd: UtdMessage { }
+
+                    if msg.message-type == MessageKind.unsupported: UnsupportedMessage {
+                        kind: msg.unsupported-kind;
+                        body: msg.body;
+                    }
+
+                    if is-plain-text: TextMessage {
+                        text: msg.body;
+                    }
+
+                    if !root.is-photo-only: HorizontalLayout {
+                        spacing: 6px;
+                        padding-left: root.photo-row-padding;
+                        padding-right: root.photo-row-padding;
+                        padding-top: root.has-reactions ? 4px : 0;
+
+                        if root.has-reactions: BubbleReactions {
+                            horizontal-stretch: 0;
+                            padding-bottom: 4px;
+                            reactions: msg.reactions;
+                            is-own: root.is-own;
+                            can-react: root.has-remote-id;
+                            event-id: msg.event-id;
+                            detail-anchor() => {
+                                return bubble.anchor();
+                            }
+                        }
+
+                        Rectangle {
+                            horizontal-stretch: 1;
+                        }
+
+                        if !root.is-photo-only: VerticalLayout {
+                            alignment: end;
+
+                            HorizontalLayout {
+                                alignment: end;
+                                spacing: 3px;
+
+                                if msg.edited: IconDisplay {
+                                    y: (parent.height - self.height) / 2;
+                                    icon: IconSet.Pencil;
+                                    size: 11px;
+                                    stroke: Palette.foreground.transparentize(0.5);
+                                }
+
+                                Text {
+                                    text: msg.timestamp;
+                                    font-size: 12px;
+                                    color: Palette.foreground.transparentize(0.5);
+                                    horizontal-alignment: right;
+                                    vertical-alignment: center;
+                                }
+                            }
+                        }
+                    }
+                }
+
+                reply-btn := ClickArea {
+                    x: parent.width - self.width - 6px;
+                    y: 4px;
+                    width: reply-pill.width;
+                    height: reply-pill.height;
+                    ring-radius: 11px;
+                    label: @tr("Reply to {}", msg.sender);
+                    enabled: root.has-remote-id;
+                    opacity: message-row.hovered ? 1 : 0;
+                    clicked => {
+                        Composer.reply-event-id = msg.event-id;
+                        Composer.reply-sender = msg.sender;
+                        Composer.reply-preview = MessagePreview.label(msg.preview-kind, msg.body);
+                    }
+
+                    reply-pill := Rectangle {
+                        width: reply-row.preferred-width;
+                        height: 22px;
+                        border-radius: 11px;
+                        background: Palette.accent-background;
+
+                        reply-row := HorizontalLayout {
+                            alignment: center;
+                            spacing: 4px;
+                            padding-left: 8px;
+                            padding-right: 8px;
+
+                            IconDisplay {
+                                width: 13px;
+                                height: 13px;
+                                y: (parent.height - self.height) / 2;
+                                icon: IconSet.Reply;
+                                size: 13px;
+                                stroke: Palette.accent-foreground;
+                            }
+
+                            Text {
+                                text: @tr("Reply");
+                                font-size: 12px;
+                                font-weight: 600;
+                                vertical-alignment: center;
+                                color: Palette.accent-foreground;
+                            }
+                        }
                     }
                 }
             }
+        }
 
-            reply-btn := ClickArea {
-                x: parent.width - self.width - 6px;
-                y: 4px;
-                width: reply-pill.width;
-                height: reply-pill.height;
-                ring-radius: 11px;
-                label: @tr("Reply to {}", msg.sender);
-                enabled: root.has-remote-id;
-                opacity: root.has-remote-id && (hover-bg.has-hover || self.has-hover || self.has-focus) ? 1 : 0;
-                clicked => {
-                    Composer.reply-event-id = msg.event-id;
-                    Composer.reply-sender = msg.sender;
-                    Composer.reply-preview = MessagePreview.label(msg.preview-kind, msg.body);
+        if root.chips-outside: BubbleReactions {
+            x: bubble.x;
+            y: bubble.y + bubble.height + root.outside-chips-gap;
+            width: bubble.width;
+            reactions: msg.reactions;
+            is-own: root.is-own;
+            can-react: root.has-remote-id;
+            event-id: msg.event-id;
+            detail-anchor() => {
+                return bubble.anchor();
+            }
+        }
+
+        react-btn := ClickArea {
+            x: root.is-own
+                ? bubble.x - self.width + Metrics.reaction-strip-overlap
+                : bubble.x + bubble.width - Metrics.reaction-strip-overlap;
+            y: bubble.y + bubble.height - self.height;
+            width: Metrics.reaction-strip-cell + 2 * Metrics.reaction-strip-pad;
+            height: self.width;
+            border-radius: self.height / 2;
+            ring-radius: self.height / 2;
+            background: Palette.alternate-background;
+            enabled: root.has-remote-id;
+            label: @tr("React to {}'s message with {}", msg.sender, QuickReactions.default-key);
+            opacity: message-row.hovered && !root.strip-mine ? 1 : 0;
+
+            clicked => {
+                Actions.toggle-reaction(msg.event-id, QuickReactions.default-key);
+            }
+            changed has-hover => {
+                if (self.has-hover && root.has-remote-id) {
+                    Reactions.hover-bubble(bubble.anchor());
+                } else {
+                    Reactions.leave-bubble(msg.event-id);
                 }
+            }
 
-                reply-pill := Rectangle {
-                    width: reply-row.preferred-width;
-                    height: 22px;
-                    border-radius: 11px;
-                    background: Palette.accent-background;
-                    drop-shadow-blur: 4px;
-                    drop-shadow-color: Palette.foreground.transparentize(0.7);
-
-                    reply-row := HorizontalLayout {
-                        alignment: center;
-                        spacing: 4px;
-                        padding-left: 8px;
-                        padding-right: 8px;
-
-                        IconDisplay {
-                            width: 13px;
-                            height: 13px;
-                            y: (parent.height - self.height) / 2;
-                            icon: IconSet.Reply;
-                            size: 13px;
-                            stroke: Palette.accent-foreground;
-                        }
-
-                        Text {
-                            text: @tr("Reply");
-                            font-size: 12px;
-                            font-weight: 600;
-                            vertical-alignment: center;
-                            color: Palette.accent-foreground;
-                        }
-                    }
-                }
+            Text {
+                x: 0;
+                y: 0;
+                width: parent.width;
+                height: parent.height;
+                text: QuickReactions.default-key;
+                font-family: Fonts.emoji;
+                font-size: Metrics.reaction-emoji;
+                horizontal-alignment: center;
+                vertical-alignment: center;
             }
         }
     }

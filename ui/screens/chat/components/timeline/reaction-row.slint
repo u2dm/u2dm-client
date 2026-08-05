@@ -1,0 +1,110 @@
+import {
+    Palette,
+} from "std-widgets.slint";
+
+import { ReactionEntry } from "../types.slint";
+import { ClickArea } from "../../../../components/a11y.slint";
+import { ReactionAnchor } from "../../../../local.slint";
+import { Fonts, Metrics } from "../../../../theme.slint";
+
+export component ReactionChip inherits ClickArea {
+    in property <ReactionEntry> entry;
+    in property <bool> is-own;
+
+    property <color> mine-fill: Palette.accent-background.transparentize(0.72);
+    property <color> other-fill: is-own
+        ? Palette.background.transparentize(0.78)
+        : Palette.foreground.transparentize(0.9);
+
+    width: chip-row.preferred-width;
+    height: Metrics.reaction-chip;
+    border-radius: self.height / 2;
+    ring-radius: self.height / 2;
+    border-width: entry.mine ? 1px : 0;
+    border-color: Palette.accent-background.transparentize(0.35);
+    background: entry.mine
+        ? (root.has-hover ? mine-fill.transparentize(-0.15) : mine-fill)
+        : (root.has-hover ? other-fill.transparentize(-0.25) : other-fill);
+    opacity: entry.pending ? 0.55 : 1;
+
+    chip-row := HorizontalLayout {
+        alignment: center;
+        spacing: 4px;
+        padding-left: 8px;
+        padding-right: 8px;
+
+        if !entry.overflow: Text {
+            text: entry.label;
+            font-family: Fonts.emoji;
+            font-size: Metrics.reaction-emoji;
+            vertical-alignment: center;
+        }
+
+        Text {
+            text: entry.overflow ? "+" + entry.count : entry.count;
+            font-size: 12px;
+            font-weight: 600;
+            color: entry.mine
+                ? Palette.accent-background
+                : Palette.foreground.transparentize(0.35);
+            vertical-alignment: center;
+        }
+    }
+}
+
+export component ReactionRow inherits HorizontalLayout {
+    in property <[ReactionEntry]> reactions;
+    in property <bool> is-own;
+    in property <bool> can-react;
+
+    callback toggled(string);
+    callback overflow-clicked();
+    callback hovered(int, string, ReactionAnchor);
+    callback unhovered(int);
+
+    alignment: start;
+    spacing: 4px;
+
+    for entry[index] in root.reactions: chip := ReactionChip {
+        entry: entry;
+        is-own: root.is-own;
+        enabled: entry.overflow || root.can-react;
+        label: root.chip-label(entry);
+        clicked => {
+            if (entry.overflow) {
+                root.overflow-clicked();
+            } else {
+                root.toggled(entry.key);
+            }
+        }
+        changed has-hover => {
+            if (self.has-hover && !entry.overflow) {
+                root.hovered(index, root.reactor-text(entry), {
+                    row: index,
+                    x: chip.absolute-position.x,
+                    y: chip.absolute-position.y,
+                    width: chip.width,
+                    height: chip.height,
+                });
+            } else {
+                root.unhovered(index);
+            }
+        }
+    }
+
+    pure function reactor-text(entry: ReactionEntry) -> string {
+        return entry.hidden-reactors > 0
+            ? @tr("{} and {} more" , entry.reactors, entry.hidden-reactors)
+            : entry.reactors;
+    }
+
+    pure function chip-label(entry: ReactionEntry) -> string {
+        if (entry.overflow) {
+            return @tr("Show {} more reactions", entry.count);
+        }
+        if (entry.mine) {
+            return @tr("Remove your {} reaction, reacted by {}", entry.label, root.reactor-text(entry));
+        }
+        return @tr("React with {}, reacted by {}", entry.label, root.reactor-text(entry));
+    }
+}

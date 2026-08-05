@@ -11,7 +11,7 @@ use matrix_sdk::ruma::{
 use matrix_sdk::{Client, Room};
 use matrix_sdk_ui::eyeball_im::VectorDiff;
 use matrix_sdk_ui::timeline::{
-    EventTimelineItem, RoomExt as _, Timeline, TimelineEventFocusThreadMode,
+    EventTimelineItem, RoomExt as _, Timeline, TimelineEventFocusThreadMode, TimelineEventItemId,
     TimelineFocus as SdkTimelineFocus, TimelineItem, VirtualTimelineItem,
 };
 use tokio::sync::{Semaphore, mpsc};
@@ -195,6 +195,23 @@ fn spawn_backup_key_download(
     });
 }
 
+async fn toggle_reaction(timeline: &Timeline, event_id: &str, key: &str) {
+    let Ok(target) = OwnedEventId::try_from(event_id) else {
+        tracing::warn!(
+            event_id,
+            "ignoring a reaction toggle for a malformed event id"
+        );
+        return;
+    };
+    match timeline
+        .toggle_reaction(&TimelineEventItemId::EventId(target), key)
+        .await
+    {
+        Ok(added) => tracing::debug!(event_id, added, "toggled a reaction"),
+        Err(e) => tracing::warn!("failed to toggle a reaction: {e}"),
+    }
+}
+
 async fn handle_timeline_command(
     cmd: TimelineCommand,
     timeline: &Timeline,
@@ -216,6 +233,10 @@ async fn handle_timeline_command(
         }
         TimelineCommand::JumpTo(event_id) => {
             report_jump(event_id, items, timeline_tx).await;
+            return;
+        }
+        TimelineCommand::ToggleReaction { event_id, key } => {
+            toggle_reaction(timeline, &event_id, &key).await;
             return;
         }
     };

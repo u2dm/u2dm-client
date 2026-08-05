@@ -1,0 +1,148 @@
+import {
+    Palette,
+} from "std-widgets.slint";
+
+import { ReactionPicker, ReactionStrip } from "reaction-picker.slint";
+import { ReactionDetail } from "reaction-detail.slint";
+import { ModalHost, PickerCard } from "../../../../components/overlay.slint";
+import { Reactions, Shell } from "../../../../local.slint";
+import { Actions } from "../../../../actions.slint";
+import { StickerView } from "../../../../views.slint";
+import { Metrics } from "../../../../theme.slint";
+
+export component ReactionOverlay inherits Rectangle {
+    callback closed();
+
+    property <length> edge: 8px;
+    property <length> gap: 6px;
+    property <duration> strip-close-delay: 160ms;
+    property <length> timeline-top: Metrics.room-header + Metrics.timeline-gap;
+
+    property <length> pane-w: min(Metrics.picker-width, root.width - 2 * root.edge);
+    property <length> pane-h: min(Metrics.picker-height, root.height - 2 * root.edge);
+    property <length> detail-w: min(Metrics.reaction-detail-width, root.width - 2 * root.edge);
+    property <length> detail-h: min(Metrics.reaction-detail-height, root.height - 2 * root.edge);
+
+    pure function place-x(anchor-x: length, anchor-w: length, is-own: bool, w: length) -> length {
+        return clamp(
+            is-own ? anchor-x + anchor-w - w : anchor-x,
+            root.edge,
+            max(root.edge, root.width - w - root.edge));
+    }
+
+    pure function place-y(anchor-y: length, anchor-h: length, h: length) -> length {
+        return (anchor-y - h - root.gap >= root.edge)
+            ? anchor-y - h - root.gap
+            : clamp(anchor-y + anchor-h + root.gap,
+                    root.edge,
+                    max(root.edge, root.height - h - root.edge));
+    }
+
+    Timer {
+        interval: Metrics.reaction-strip-reveal;
+        running: Reactions.strip-pending && !Reactions.strip-revealed;
+        triggered => {
+            Reactions.strip-revealed = true;
+        }
+    }
+
+    Timer {
+        interval: root.strip-close-delay;
+        running: Reactions.strip-pending
+            && !Reactions.bubble-hovered
+            && !Reactions.strip-hovered;
+        triggered => {
+            Reactions.close-strip();
+        }
+    }
+
+    if Reactions.strip-visible: ReactionStrip {
+        x: Reactions.strip-anchor.is-own
+            ? Reactions.strip-anchor.x - self.width + Metrics.reaction-strip-overlap
+            : Reactions.strip-anchor.x + Reactions.strip-anchor.width - Metrics.reaction-strip-overlap;
+        y: max(root.timeline-top,
+               Reactions.strip-anchor.y + Reactions.strip-anchor.height - self.height);
+
+        changed open => {
+            Reactions.strip-hovered = self.open;
+        }
+        picked(key) => {
+            Actions.toggle-reaction(Reactions.strip-anchor.event-id, key);
+        }
+        more-clicked => {
+            Shell.picker-open = false;
+            Reactions.open-picker(Reactions.strip-anchor);
+        }
+    }
+
+    if Reactions.picker-open: ModalHost {
+        width: 100%;
+        height: 100%;
+        dim: false;
+        label: @tr("React to a message");
+        dismissed => {
+            Reactions.close();
+            root.closed();
+        }
+
+        ReactionPicker {
+            x: root.place-x(Reactions.anchor.x, Reactions.anchor.width,
+                            Reactions.anchor.is-own, root.pane-w);
+            y: root.place-y(Reactions.anchor.y, Reactions.anchor.height, root.pane-h);
+            width: root.pane-w;
+            height: root.pane-h;
+            encrypted: StickerView.room-encrypted;
+            picked(key) => {
+                Actions.toggle-reaction(Reactions.anchor.event-id, key);
+                Reactions.close();
+                root.closed();
+            }
+        }
+    }
+
+    if Reactions.detail-visible: ModalHost {
+        width: 100%;
+        height: 100%;
+        dim: false;
+        label: @tr("Everyone who reacted");
+        dismissed => {
+            Reactions.close();
+            root.closed();
+        }
+
+        ReactionDetail {
+            x: root.place-x(Reactions.anchor.x, Reactions.anchor.width,
+                            Reactions.anchor.is-own, root.detail-w);
+            y: root.place-y(Reactions.anchor.y, Reactions.anchor.height, root.detail-h);
+            width: root.detail-w;
+            height: root.detail-h;
+            items: Reactions.items;
+            toggled(key) => {
+                Actions.toggle-reaction(Reactions.anchor.event-id, key);
+            }
+        }
+    }
+
+    if Reactions.tooltip-row >= 0 && !Reactions.open: PickerCard {
+        property <length> tip-w: tip-text.preferred-width + 16px;
+        property <length> tip-h: 24px;
+
+        x: clamp(Reactions.tooltip-anchor.x, root.edge,
+                 max(root.edge, root.width - self.tip-w - root.edge));
+        y: max(root.edge, Reactions.tooltip-anchor.y - self.tip-h - 4px);
+        width: self.tip-w;
+        height: self.tip-h;
+        border-radius: 6px;
+
+        tip-text := Text {
+            x: 8px;
+            width: parent.width - 16px;
+            height: parent.height;
+            text: Reactions.tooltip-text;
+            font-size: 11px;
+            color: Palette.foreground.transparentize(0.25);
+            vertical-alignment: center;
+            overflow: elide;
+        }
+    }
+}

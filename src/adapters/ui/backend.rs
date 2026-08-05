@@ -52,7 +52,6 @@ pub trait UiBackend: Sized + 'static {
     fn set_space_avatar(entry: &mut Self::Space, image: &Image);
     fn set_message_thumbnail(entry: &mut Self::Message, image: &Image);
     fn set_message_media_failed(entry: &mut Self::Message);
-    fn set_message_frame(entry: &mut Self::Message, image: Image);
 
     fn with_models<R>(
         f: impl FnOnce(
@@ -131,7 +130,7 @@ pub fn selected_room_key<B: UiBackend>(weak: &slint::Weak<B::Window>) -> Option<
 fn tick_animations<B: UiBackend>() {
     advance_animations(&mut |key, hint, frame| match DecodeTarget::of(key) {
         DecodeTarget::Timeline { unique_id } => patch_timeline_row::<B>(unique_id, hint, |entry| {
-            B::set_message_frame(entry, frame.clone());
+            B::set_message_thumbnail(entry, &frame);
         }),
         DecodeTarget::StickerCell { key, .. } => place_sticker_cell::<B>(key, Some(&frame)),
     });

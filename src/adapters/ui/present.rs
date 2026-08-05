@@ -74,6 +74,32 @@ fn truncate_chars(text: &str, max: usize) -> &str {
     }
 }
 
+const REACTION_KEY_MAX_LEN: usize = 12;
+const REACTORS_SHOWN: usize = 6;
+
+pub fn reaction_key_label(key: &str) -> String {
+    let short = truncate_chars(key, REACTION_KEY_MAX_LEN);
+    if short.len() == key.len() {
+        return short.to_owned();
+    }
+    format!("{short}\u{2026}")
+}
+
+pub fn user_localpart(user_id: &str) -> &str {
+    let name = user_id.strip_prefix('@').unwrap_or(user_id);
+    name.split_once(':').map_or(name, |(local, _)| local)
+}
+
+pub fn reactor_labels(senders: &[String]) -> (String, usize) {
+    let shown: Vec<&str> = senders
+        .iter()
+        .take(REACTORS_SHOWN)
+        .map(|id| user_localpart(id))
+        .collect();
+    let hidden = senders.len().saturating_sub(shown.len());
+    (shown.join(", "), hidden)
+}
+
 fn active_locale() -> Locale {
     static LOCALE: OnceLock<Locale> = OnceLock::new();
     *LOCALE.get_or_init(|| {

@@ -11,14 +11,15 @@ use matrix_sdk::ruma::events::room::{ImageInfo, MediaSource};
 use matrix_sdk::ruma::events::sticker::StickerEventContent;
 use matrix_sdk_ui::timeline::{
     AnyOtherStateEventContentChange, EventTimelineItem, MemberProfileChange, MembershipChange,
-    Message, RoomMembershipChange, Sticker, TimelineDetails, TimelineItem, TimelineItemContent,
+    Message, ReactionStatus, RoomMembershipChange, Sticker, TimelineDetails, TimelineItem,
+    TimelineItemContent,
 };
 
 use super::TimelineContext;
 use crate::adapters::matrix::preview;
 use crate::domain::media::{FileMeta, ImageMeta};
 use crate::domain::message::{
-    MessageBody, MessagePreviewKind, ReplyInfo, ServiceEvent, TimelineMessage,
+    MessageBody, MessagePreviewKind, Reaction, ReplyInfo, ServiceEvent, TimelineMessage,
 };
 
 fn extract_sender_profile(event: &EventTimelineItem) -> (Option<String>, Option<String>) {
@@ -33,6 +34,30 @@ fn extract_sender_profile(event: &EventTimelineItem) -> (Option<String>, Option<
 
 fn event_id_from_str(event_id_str: String) -> Option<String> {
     (!event_id_str.is_empty()).then_some(event_id_str)
+}
+
+fn extract_reactions(content: &TimelineItemContent, own_user_id: Option<&str>) -> Vec<Reaction> {
+    let Some(by_key) = content.reactions() else {
+        return Vec::new();
+    };
+    by_key
+        .iter()
+        .map(|(key, by_sender)| {
+            let own = own_user_id.and_then(|own| {
+                by_sender
+                    .iter()
+                    .find(|(user_id, _)| user_id.as_str() == own)
+                    .map(|(_, info)| info)
+            });
+            Reaction {
+                key: key.clone(),
+                senders: by_sender.keys().map(ToString::to_string).collect(),
+                mine: own.is_some(),
+                pending: own
+                    .is_some_and(|info| !matches!(info.status, ReactionStatus::RemoteToRemote(_))),
+            }
+        })
+        .collect()
 }
 
 fn base_message(
@@ -59,6 +84,7 @@ fn base_message(
         reply: None,
         edited: false,
         is_first_unread,
+        reactions: extract_reactions(event.content(), ctx.own_user_id),
     }
 }
 

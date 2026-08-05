@@ -137,11 +137,10 @@ fn cached(path: &Path) -> Decoded {
     IMAGES.with_borrow_mut(|images| images.lookup(path))
 }
 
-pub fn peek_thumbnail(path: &Path) -> Decoded {
-    if animation::is_animatable(path) {
-        Decoded::Pending
-    } else {
-        cached(path)
+pub fn peek_thumbnail(path: &Path, playback_key: &str) -> Decoded {
+    match animation::playing_frame(path, playback_key) {
+        Some(frame) => Decoded::Ready(frame),
+        None => cached(path),
     }
 }
 

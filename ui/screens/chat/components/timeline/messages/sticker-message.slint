@@ -10,6 +10,7 @@ export component StickerMessage inherits HorizontalLayout {
     in property <int> sticker-height;
     in property <string> alt;
     in property <bool> bubble-hovered;
+    in property <bool> is-own;
 
     property <length> max-long-edge: 176px;
     property <bool> is-ready: root.media-state == MediaState.ready;
@@ -31,7 +32,7 @@ export component StickerMessage inherits HorizontalLayout {
         ? root.display-long-edge / max(root.aspect, 0.01)
         : root.display-long-edge;
 
-    alignment: start;
+    alignment: root.is-own ? end : start;
 
     Rectangle {
         width: root.display-width;

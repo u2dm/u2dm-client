@@ -1,5 +1,16 @@
 import { LoginPhase } from "enums.slint";
-import { LoginView, VerificationView } from "views.slint";
+import { LoginView, RoomView, VerificationView } from "views.slint";
+import { MessageEntry, ReactionEntry } from "screens/chat/components/types.slint";
+
+export struct ReactionAnchor {
+    event-id: string,
+    row: int,
+    is-own: bool,
+    x: length,
+    y: length,
+    width: length,
+    height: length,
+}
 
 export global Composer {
     in-out property <string> reply-event-id;
@@ -29,5 +40,94 @@ export global Shell {
         self.drawer-open = false;
         self.nav-open = false;
         self.picker-open = false;
+    }
+}
+
+export global Reactions {
+    in-out property <ReactionAnchor> anchor: { row: -1 };
+    in-out property <bool> picker-open: false;
+    in-out property <bool> detail-open: false;
+
+    in-out property <ReactionAnchor> strip-anchor: { row: -1 };
+    in-out property <bool> bubble-hovered: false;
+    in-out property <bool> strip-hovered: false;
+    in-out property <bool> strip-revealed: false;
+
+    in-out property <int> tooltip-row: -1;
+    in-out property <string> tooltip-event-id;
+    in-out property <string> tooltip-text;
+    in-out property <ReactionAnchor> tooltip-anchor;
+
+    out property <MessageEntry> target: (root.anchor.row >= 0
+        && root.anchor.row < RoomView.timeline.length)
+        ? RoomView.timeline[root.anchor.row]
+        : { };
+    out property <bool> target-valid: root.anchor.event-id != ""
+        && root.target.event-id == root.anchor.event-id;
+    out property <[ReactionEntry]> items: root.target.all-reactions;
+
+    out property <bool> detail-visible: root.detail-open && root.target-valid;
+    out property <bool> open: root.picker-open || root.detail-visible;
+    out property <bool> strip-pending: root.strip-anchor.event-id != "" && !root.open;
+    out property <bool> strip-visible: root.strip-pending && root.strip-revealed;
+
+    public function hover-bubble(a: ReactionAnchor) {
+        if (!self.open) {
+            if (self.strip-anchor.event-id != a.event-id) {
+                self.strip-revealed = false;
+            }
+            self.strip-anchor = a;
+            self.bubble-hovered = true;
+        }
+    }
+
+    public function leave-bubble(event-id: string) {
+        if (self.strip-anchor.event-id == event-id) {
+            self.bubble-hovered = false;
+        }
+    }
+
+    public function close-strip() {
+        self.strip-anchor = { row: -1 };
+        self.bubble-hovered = false;
+        self.strip-hovered = false;
+        self.strip-revealed = false;
+    }
+
+    public function open-picker(a: ReactionAnchor) {
+        self.anchor = a;
+        self.detail-open = false;
+        self.picker-open = true;
+        self.close-strip();
+        self.tooltip-row = -1;
+    }
+
+    public function open-detail(a: ReactionAnchor) {
+        self.anchor = a;
+        self.picker-open = false;
+        self.detail-open = true;
+        self.close-strip();
+        self.tooltip-row = -1;
+    }
+
+    public function close() {
+        self.picker-open = false;
+        self.detail-open = false;
+        self.anchor = { row: -1 };
+        self.tooltip-row = -1;
+        self.close-strip();
+    }
+
+    public function show-tooltip(event-id: string, row: int, text: string, a: ReactionAnchor) {
+        self.tooltip-event-id = event-id;
+        self.tooltip-row = row;
+        self.tooltip-text = text;
+        self.tooltip-anchor = a;
+    }
+
+    public function hide-tooltip(event-id: string, row: int) {
+        if (self.tooltip-row == row && self.tooltip-event-id == event-id) {
+            self.tooltip-row = -1;
+        }
     }
 }

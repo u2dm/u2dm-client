@@ -3,12 +3,13 @@ import { IconDisplay, IconSet } from "@lucide";
 
 import { TimelineContent } from "./timeline-content.slint";
 import { MessageInput } from "./message-input.slint";
+import { ReactionOverlay } from "./reaction-overlay.slint";
 import { Fonts, Metrics } from "../../../../theme.slint";
 import { TimelineState } from "../../../../enums.slint";
 import { ClickArea } from "../../../../components/a11y.slint";
 import { DirectoryView, RoomView } from "../../../../views.slint";
 import { Actions } from "../../../../actions.slint";
-import { Composer, Shell } from "../../../../local.slint";
+import { Composer, Reactions, Shell } from "../../../../local.slint";
 import { StatusPill } from "./status-pill.slint";
 
 export component TimelineView inherits Rectangle {
@@ -61,6 +62,7 @@ export component TimelineView inherits Rectangle {
     changed room-id => {
         root.input-message = "";
         Composer.clear();
+        Reactions.close();
     }
 
     if !has-room: Text {
@@ -152,15 +154,32 @@ export component TimelineView inherits Rectangle {
         }
     }
 
-    if has-room: MessageInput {
+    if has-room: Rectangle {
         x: 0;
-        y: root.height - self.height;
+        y: 0;
         width: root.width;
-        room-id: root.room-id;
-        message <=> root.input-message;
-        overlay-x: -root.x;
-        overlay-y: -self.y;
-        overlay-width: root.overlay-width;
-        overlay-height: root.height;
+        height: root.height;
+
+        input := MessageInput {
+            x: 0;
+            y: parent.height - self.height;
+            width: parent.width;
+            room-id: root.room-id;
+            message <=> root.input-message;
+            overlay-x: -root.x;
+            overlay-y: -self.y;
+            overlay-width: root.overlay-width;
+            overlay-height: root.height;
+        }
+
+        ReactionOverlay {
+            x: -root.x;
+            y: 0;
+            width: root.overlay-width;
+            height: root.height;
+            closed => {
+                input.focus-input();
+            }
+        }
     }
 }

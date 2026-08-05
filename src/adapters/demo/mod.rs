@@ -4,11 +4,13 @@ mod dto;
 mod login;
 mod matrix;
 mod media;
+mod reactions;
 mod stickers;
 mod storage;
 mod timeline;
 mod verification;
 
+use std::env;
 use std::sync::Arc;
 
 use super::ui::SlintUiAdapter;
@@ -42,7 +44,7 @@ pub fn size_window_for_screenshots(ui: &SlintUiAdapter) {
 }
 
 fn requested_window_size() -> Option<(f32, f32)> {
-    let raw = std::env::var(WINDOW_ENV).ok()?;
+    let raw = env::var(WINDOW_ENV).ok()?;
     let (width, height) = raw.split_once(['x', 'X'])?;
     let parsed = (width.trim().parse().ok()?, height.trim().parse().ok()?);
     tracing::info!(

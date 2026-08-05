@@ -339,14 +339,21 @@
         "sender": "@sarah:matrix.org",
         "name": "Sarah Chen",
         "body": "the coreutils discourse is back on r/rust and i am not emotionally equipped for it",
-        "minutes_ago": 30
+        "minutes_ago": 30,
+        "reactions": [
+          { "key": "👍", "senders": ["@marcus:matrix.org", "@priya:matrix.org"] },
+          { "key": "😂", "senders": ["@kai:matrix.org"] }
+        ]
       },
       {
         "id": "demo-rust-2",
         "sender": "@marcus:matrix.org",
         "name": "Marcus",
         "body": "we are NOT doing gpl versus mit tonight",
-        "minutes_ago": 29
+        "minutes_ago": 29,
+        "reactions": [
+          { "key": "🎉", "senders": ["@sarah:matrix.org", "@alex:matrix.org", "@kai:matrix.org"] }
+        ]
       },
       {
         "id": "demo-rust-26",
@@ -386,7 +393,11 @@
           "sender": "Kai",
           "event_id": "demo-rust-3",
           "body": "rewriting coreutils in rust is fine. relicensing the entire userland on the way past is 6 7 behaviour"
-        }
+        },
+        "reactions": [
+          { "key": "❤️", "senders": ["@kai:matrix.org", "@alex:matrix.org"] },
+          { "key": "👀", "senders": ["@priya:matrix.org"] }
+        ]
       },
       {
         "id": "demo-rust-7",
@@ -511,6 +522,9 @@
       },
       {
         "id": "demo-rust-21",
+        "reactions": [
+          { "key": "😭", "senders": ["@sarah:matrix.org", "@priya:matrix.org", "@marcus:matrix.org"] }
+        ],
         "sender": "@alex:matrix.org",
         "name": "You",
         "body": "the real controversy was compile times all along",
@@ -523,6 +537,10 @@
       },
       {
         "id": "demo-rust-23",
+        "reactions": [
+          { "key": "❤️", "senders": ["@alex:matrix.org", "@sarah:matrix.org", "@kai:matrix.org"] },
+          { "key": "🙌", "senders": ["@marcus:matrix.org"] }
+        ],
         "sender": "@priya:matrix.org",
         "name": "Priya",
         "body": "i have carried this crate since 1.0 and my thanks is an issue titled \"why slow\" 🫃",
@@ -538,6 +556,10 @@
       },
       {
         "id": "demo-rust-25",
+        "reactions": [
+          { "key": "👍", "senders": ["@marcus:matrix.org", "@priya:matrix.org"] },
+          { "key": "🔥", "senders": ["@kai:matrix.org"] }
+        ],
         "sender": "@sarah:matrix.org",
         "name": "Sarah Chen",
         "body": "ci ran for 67 minutes to tell me clippy is not happy 🫃🫃🫃",
@@ -656,7 +678,11 @@
         "image": {
           "width": 1040,
           "height": 780
-        }
+        },
+        "reactions": [
+          { "key": "😍", "senders": ["@marcus:matrix.org", "@priya:matrix.org"] },
+          { "key": "🔥", "senders": ["@kai:matrix.org"] }
+        ]
       }
     ],
     "!design:demo.local": [
@@ -1232,7 +1258,11 @@
         "sticker": {
           "width": 512,
           "height": 512
-        }
+        },
+        "reactions": [
+          { "key": "🚀", "senders": ["@marcus:matrix.org", "@kai:matrix.org"] },
+          { "key": "🎉", "senders": ["@sarah:matrix.org"] }
+        ]
       },
       {
         "id": "demo-sticker-tall",
@@ -1255,18 +1285,26 @@
           "width": 512,
           "height": 512,
           "animated": true
-        }
+        },
+        "reactions": [
+          { "key": "😄", "senders": ["@priya:matrix.org", "@alex:matrix.org"] },
+          { "key": "🔥", "senders": ["@kai:matrix.org"] }
+        ]
       },
       {
         "id": "demo-sticker-small",
-        "sender": "@kai:matrix.org",
-        "name": "Kai",
+        "sender": "@alex:matrix.org",
+        "name": "Alex",
         "body": "tiny",
         "minutes_ago": 4,
         "sticker": {
           "width": 64,
           "height": 64
-        }
+        },
+        "reactions": [
+          { "key": "👀", "senders": ["@kai:matrix.org"] },
+          { "key": "🐢", "senders": ["@marcus:matrix.org", "@priya:matrix.org"] }
+        ]
       },
       {
         "id": "demo-sticker-missing",

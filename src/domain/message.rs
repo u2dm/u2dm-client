@@ -111,6 +111,20 @@ pub struct ReplyInfo {
     pub body: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Reaction {
+    pub key: String,
+    pub senders: Vec<String>,
+    pub mine: bool,
+    pub pending: bool,
+}
+
+impl Reaction {
+    pub fn count(&self) -> usize {
+        self.senders.len()
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct TimelineMessage {
     pub unique_id: String,
@@ -125,6 +139,7 @@ pub struct TimelineMessage {
     pub reply: Option<ReplyInfo>,
     pub edited: bool,
     pub is_first_unread: bool,
+    pub reactions: Vec<Reaction>,
 }
 
 impl TimelineMessage {

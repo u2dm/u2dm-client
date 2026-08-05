@@ -1,0 +1,95 @@
+import {
+    Palette,
+} from "std-widgets.slint";
+
+import { ReactionEntry } from "../types.slint";
+import { ClickArea } from "../../../../components/a11y.slint";
+import { PickerCard } from "../../../../components/overlay.slint";
+import { Fonts } from "../../../../theme.slint";
+
+component DetailRow inherits ClickArea {
+    in property <ReactionEntry> entry;
+
+    height: 34px;
+    border-radius: 6px;
+    ring-radius: 6px;
+    background: root.has-hover
+        ? Palette.foreground.transparentize(0.9)
+        : (entry.mine ? Palette.accent-background.transparentize(0.85) : transparent);
+
+    HorizontalLayout {
+        padding-left: 8px;
+        padding-right: 8px;
+        spacing: 8px;
+
+        Text {
+            text: root.entry.label;
+            font-family: Fonts.emoji;
+            font-size: 16px;
+            vertical-alignment: center;
+        }
+
+        Text {
+            width: 24px;
+            text: root.entry.count;
+            font-size: 12px;
+            font-weight: 600;
+            color: root.entry.mine
+                ? Palette.accent-background
+                : Palette.foreground.transparentize(0.35);
+            vertical-alignment: center;
+        }
+
+        Text {
+            horizontal-stretch: 1;
+            text: root.entry.hidden-reactors > 0
+                ? @tr("{} and {} more", root.entry.reactors, root.entry.hidden-reactors)
+                : root.entry.reactors;
+            font-size: 12px;
+            color: Palette.foreground.transparentize(0.45);
+            vertical-alignment: center;
+            overflow: elide;
+        }
+    }
+}
+
+export component ReactionDetail inherits PickerCard {
+    in property <[ReactionEntry]> items;
+
+    callback toggled(string);
+
+    VerticalLayout {
+        padding: 6px;
+        spacing: 2px;
+
+        Text {
+            text: @tr("Reactions");
+            font-size: 11px;
+            font-weight: 600;
+            color: Palette.foreground.transparentize(0.45);
+            horizontal-alignment: left;
+            vertical-alignment: center;
+            height: 20px;
+        }
+
+        Flickable {
+            vertical-stretch: 1;
+            viewport-height: rows.preferred-height;
+
+            rows := VerticalLayout {
+                alignment: start;
+                spacing: 2px;
+
+                for entry in root.items: DetailRow {
+                    entry: entry;
+                    label: entry.mine
+                        ? @tr("Remove your {} reaction", entry.label)
+                        : @tr("React with {}", entry.label);
+                    clicked => {
+                        root.toggled(entry.key);
+                    }
+                }
+            }
+        }
+    }
+}
