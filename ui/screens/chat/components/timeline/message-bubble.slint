@@ -140,8 +140,8 @@ export component MessageBubble inherits VerticalLayout {
 
         height: row.preferred-height
             + (root.chips-outside
-                ? Metrics.reaction-chip + root.outside-chips-gap
-                : 0);
+            ? Metrics.reaction-chip + root.outside-chips-gap
+            : 0);
 
         row := HorizontalLayout {
             alignment: is-own ? end : start;
@@ -341,11 +341,11 @@ export component MessageBubble inherits VerticalLayout {
                 }
 
                 reply-btn := ClickArea {
-                    x: parent.width - self.width - 6px;
+                    x: parent.width - self.width - 4px;
                     y: 4px;
-                    width: reply-pill.width;
-                    height: reply-pill.height;
-                    ring-radius: 11px;
+                    width: reply-text.width + 12px;
+                    height: 20px;
+                    ring-radius: 6px;
                     label: @tr("Reply to {}", msg.sender);
                     enabled: root.has-remote-id;
                     opacity: message-row.hovered ? 1 : 0;
@@ -355,35 +355,21 @@ export component MessageBubble inherits VerticalLayout {
                         Composer.reply-preview = MessagePreview.label(msg.preview-kind, msg.body);
                     }
 
-                    reply-pill := Rectangle {
-                        width: reply-row.preferred-width;
-                        height: 22px;
-                        border-radius: 11px;
-                        background: Palette.accent-background;
+                    reply-text := Text {
+                        x: (parent.width - self.width) / 2;
+                        y: (parent.height - self.height) / 2;
+                        text: @tr("Reply");
+                        font-size: 12px;
+                        font-weight: 600;
+                        color: root.is-own ? Palette.foreground : Palette.accent-background;
+                    }
 
-                        reply-row := HorizontalLayout {
-                            alignment: center;
-                            spacing: 4px;
-                            padding-left: 8px;
-                            padding-right: 8px;
-
-                            IconDisplay {
-                                width: 13px;
-                                height: 13px;
-                                y: (parent.height - self.height) / 2;
-                                icon: IconSet.Reply;
-                                size: 13px;
-                                stroke: Palette.accent-foreground;
-                            }
-
-                            Text {
-                                text: @tr("Reply");
-                                font-size: 12px;
-                                font-weight: 600;
-                                vertical-alignment: center;
-                                color: Palette.accent-foreground;
-                            }
-                        }
+                    if reply-btn.has-hover: Rectangle {
+                        x: reply-text.x;
+                        y: reply-text.y + reply-text.height;
+                        width: reply-text.width;
+                        height: 1px;
+                        background: reply-text.color;
                     }
                 }
             }

@@ -402,12 +402,12 @@ msgctxt "MessageBubble"
 msgid "Reply to {}"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/message-bubble.slint:380
+#: ui/screens/chat/components/timeline/message-bubble.slint:361
 msgctxt "MessageBubble"
 msgid "Reply"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/message-bubble.slint:416
+#: ui/screens/chat/components/timeline/message-bubble.slint:402
 msgctxt "MessageBubble"
 msgid "React to {}'s message with {}"
 msgstr ""
