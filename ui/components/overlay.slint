@@ -1,17 +1,18 @@
 import { Palette } from "std-widgets.slint";
+import { AppStyle, Motion, Opacity, Radius, Stroke } from "../theme.slint";
 
 export component PickerCard inherits Rectangle {
     background: Palette.alternate-background;
-    border-radius: 10px;
-    border-width: 1px;
-    border-color: Palette.foreground.transparentize(0.85);
+    border-radius: Radius.md;
+    border-width: Stroke.hairline;
+    border-color: AppStyle.border;
 
     @children
 }
 
 export component ModalHost inherits Rectangle {
     in property <bool> dim: true;
-    in property <float> dim-opacity: 0.45;
+    in property <float> dim-opacity: Opacity.scrim;
     in property <bool> light-dismiss: true;
     in property <string> label;
 
@@ -45,7 +46,7 @@ export component ModalHost inherits Rectangle {
                 : transparent;
             opacity: root.entered ? 1.0 : 0.0;
             animate opacity {
-                duration: 160ms;
+                duration: Motion.normal;
                 easing: ease-out;
             }
 

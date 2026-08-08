@@ -1,5 +1,5 @@
 import { Palette } from "std-widgets.slint";
-import { Fonts } from "../../../../../theme.slint";
+import { AppStyle, Fonts, Space } from "../../../../../theme.slint";
 import { ServiceKind } from "../../../../../enums.slint";
 
 export global ServiceLabel {
@@ -83,20 +83,20 @@ export component ServiceMessage inherits HorizontalLayout {
     in property <string> target;
 
     alignment: center;
-    padding-top: 4px;
-    padding-bottom: 4px;
+    padding-top: Space.sm;
+    padding-bottom: Space.sm;
 
     Rectangle {
-        width: label.preferred-width + 20px;
-        height: label.preferred-height + 8px;
+        width: label.preferred-width + Space.xl;
+        height: label.preferred-height + Space.md;
         border-radius: self.height / 2;
-        background: Palette.foreground.transparentize(0.9);
+        background: AppStyle.overlay-hover;
 
         label := Text {
             text: ServiceLabel.label(root.kind, root.actor, root.target);
             font-family: Fonts.emoji;
-            font-size: 12px;
-            color: Palette.foreground.transparentize(0.35);
+            font-size: Fonts.body-small;
+            color: AppStyle.foreground-strong;
             horizontal-alignment: center;
             vertical-alignment: center;
             wrap: word-wrap;

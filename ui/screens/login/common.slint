@@ -1,7 +1,7 @@
 import { Palette, ScrollView, Spinner } from "std-widgets.slint";
 import { IconDisplay, IconSet, Icon } from "@lucide";
 import { LoginActivity } from "../../enums.slint";
-import { AppStyle } from "../../components/style.slint";
+import { AppStyle, Fonts, IconSize, Metrics, Motion, Radius, Size, Space, Stroke, Tracking, Weight } from "../../theme.slint";
 
 
 export component LoginPage inherits Rectangle {
@@ -9,25 +9,33 @@ export component LoginPage inherits Rectangle {
     height: 100%;
     background: AppStyle.page;
 
+
+    property <float> glow-primary-x: -0.24;
+    property <float> glow-primary-y: -0.3;
+    property <float> glow-primary-extent: 0.9;
+    property <float> glow-secondary-x: 0.5;
+    property <float> glow-secondary-y: 0.45;
+    property <float> glow-secondary-extent: 0.75;
+
     Rectangle {
-        x: -0.24 * root.width;
-        y: -0.3 * root.height;
-        width: max(420px, root.width * 0.9);
+        x: root.glow-primary-x * root.width;
+        y: root.glow-primary-y * root.height;
+        width: max(AppStyle.card-width-wide, root.width * root.glow-primary-extent);
         height: self.width;
-        background: @radial-gradient(circle, Palette.accent-background.transparentize(0.78) 0%, Palette.accent-background.transparentize(1) 62%);
+        background: AppStyle.brand-glow-primary;
     }
 
     Rectangle {
-        x: root.width - 0.5 * self.width;
-        y: root.height - 0.45 * self.height;
-        width: max(360px, root.width * 0.75);
+        x: root.width - root.glow-secondary-x * self.width;
+        y: root.height - root.glow-secondary-y * self.height;
+        width: max(Metrics.login-glow-min-width, root.width * root.glow-secondary-extent);
         height: self.width;
-        background: @radial-gradient(circle, Palette.accent-background.transparentize(0.88) 0%, Palette.accent-background.transparentize(1) 60%);
+        background: AppStyle.brand-glow-secondary;
     }
 
-    out property <bool> dense: root.height < 620px;
+    out property <bool> dense: root.height < Metrics.login-dense-below;
     property <length> card-height: card-body.preferred-height;
-    property <length> card-margin: root.dense ? 16px : 40px;
+    property <length> card-margin: root.dense ? Space.xl : Metrics.login-card-margin;
 
     scroll := ScrollView {
         x: 0;
@@ -40,19 +48,16 @@ export component LoginPage inherits Rectangle {
         card := Rectangle {
             x: (root.width - self.width) / 2;
             y: (scroll.viewport-height - self.height) / 2;
-            width: min(AppStyle.card-width, root.width - 48px);
+            width: min(AppStyle.card-width, root.width - AppStyle.card-inset);
             height: root.card-height;
             background: AppStyle.card;
-            border-radius: 20px;
-            border-width: 1px;
-            border-color: AppStyle.hairline;
-            drop-shadow-blur: 40px;
-            drop-shadow-offset-y: 14px;
-            drop-shadow-color: Palette.foreground.transparentize(0.88);
+            border-radius: Radius.xl;
+            border-width: Stroke.hairline;
+            border-color: AppStyle.border;
 
             card-body := VerticalLayout {
-                padding: root.dense ? 22px : 32px;
-                spacing: root.dense ? 14px : 20px;
+                padding: root.dense ? AppStyle.card-padding-dense : AppStyle.card-padding;
+                spacing: root.dense ? Space.lg : Space.xl;
 
                 @children
             }
@@ -61,28 +66,28 @@ export component LoginPage inherits Rectangle {
 }
 
 export component BrandMark inherits Rectangle {
-    in property <length> size: 60px;
+    in property <length> size: Metrics.login-mark;
+
+    property <float> radius-scale: 0.3;
+    property <float> glyph-scale: 0.5;
 
     width: root.size;
     height: root.size;
-    border-radius: root.size * 0.3;
-    background: @linear-gradient(140deg, Palette.accent-background.brighter(0.25) 0%, Palette.accent-background.darker(0.15) 100%);
-    drop-shadow-blur: 18px;
-    drop-shadow-offset-y: 6px;
-    drop-shadow-color: Palette.accent-background.transparentize(0.68);
+    border-radius: root.size * root.radius-scale;
+    background: AppStyle.brand-gradient;
 
     IconDisplay {
         icon: IconSet.MessagesSquare;
-        size: root.size * 0.5;
+        size: root.size * root.glyph-scale;
         stroke: Palette.accent-foreground;
     }
 }
 
 export component BrandHeader inherits VerticalLayout {
     in property <string> subtitle;
-    in property <length> mark-size: 60px;
+    in property <length> mark-size: Metrics.login-mark;
 
-    spacing: 12px;
+    spacing: Space.lg;
 
     HorizontalLayout {
         alignment: center;
@@ -94,44 +99,44 @@ export component BrandHeader inherits VerticalLayout {
 
     Text {
         text: @tr("U2DM");
-        font-size: 26px;
-        font-weight: 700;
-        letter-spacing: 0.5px;
+        font-size: Fonts.display;
+        font-weight: Weight.bold;
+        letter-spacing: Tracking.wide;
         horizontal-alignment: center;
     }
 
     if root.subtitle != "": Text {
         text: root.subtitle;
-        font-size: 13px;
+        font-size: Fonts.label;
         horizontal-alignment: center;
         wrap: word-wrap;
-        color: AppStyle.muted;
+        color: AppStyle.foreground-muted;
     }
 }
 
 export component FieldLabel inherits Text {
-    font-size: 11px;
-    font-weight: 600;
-    letter-spacing: 0.6px;
-    color: AppStyle.muted;
+    font-size: Fonts.caption;
+    font-weight: Weight.semibold;
+    letter-spacing: Tracking.wide;
+    color: AppStyle.foreground-muted;
 }
 
 export component StepDots inherits HorizontalLayout {
     in property <int> step: 1;
 
     alignment: center;
-    spacing: 6px;
+    spacing: Space.md;
 
     for index in [1, 2]: Rectangle {
         property <bool> active: index == root.step;
 
-        width: self.active ? 22px : 7px;
-        height: 7px;
+        width: self.active ? Space.xxl : Space.md;
+        height: Space.md;
         border-radius: self.height / 2;
-        background: self.active ? Palette.accent-background : AppStyle.hairline;
+        background: self.active ? Palette.accent-background : AppStyle.overlay-pressed;
 
         animate width, background {
-            duration: 200ms;
+            duration: Motion.slow;
             easing: ease-out;
         }
     }
@@ -183,14 +188,14 @@ export component StatusRow inherits HorizontalLayout {
     }
 
     alignment: center;
-    spacing: 8px;
+    spacing: Space.md;
 
     if root.spinner: VerticalLayout {
         alignment: center;
 
         Spinner {
-            width: 16px;
-            height: 16px;
+            width: Size.xxs;
+            height: Size.xxs;
             indeterminate: true;
         }
     }
@@ -200,16 +205,16 @@ export component StatusRow inherits HorizontalLayout {
 
         IconDisplay {
             icon: root.style.icon;
-            size: 14px;
-            stroke: AppStyle.faint;
+            size: IconSize.sm;
+            stroke: AppStyle.foreground-faint;
         }
     }
 
     Text {
         text: root.style.label;
-        font-size: 13px;
+        font-size: Fonts.label;
         vertical-alignment: center;
-        color: AppStyle.muted;
+        color: AppStyle.foreground-muted;
         accessible-live-region: AccessibleLiveness.polite;
     }
 }
@@ -217,36 +222,36 @@ export component StatusRow inherits HorizontalLayout {
 export component ServerChip inherits Rectangle {
     in property <string> server;
 
-    background: AppStyle.surface;
-    border-radius: 9px;
-    border-width: 1px;
-    border-color: AppStyle.hairline;
+    background: AppStyle.overlay-subtle;
+    border-radius: Radius.md;
+    border-width: Stroke.hairline;
+    border-color: AppStyle.border;
     height: chip-layout.preferred-height;
 
     chip-layout := HorizontalLayout {
-        padding-left: 10px;
-        padding-right: 10px;
-        padding-top: 7px;
-        padding-bottom: 7px;
-        spacing: 7px;
+        padding-left: Space.lg;
+        padding-right: Space.lg;
+        padding-top: Space.md;
+        padding-bottom: Space.md;
+        spacing: Space.md;
 
         VerticalLayout {
             alignment: center;
 
             IconDisplay {
                 icon: IconSet.Server;
-                size: 14px;
+                size: IconSize.sm;
                 stroke: AppStyle.success;
             }
         }
 
         Text {
             text: root.server;
-            font-size: 12px;
+            font-size: Fonts.body-small;
             overflow: elide;
             horizontal-stretch: 1;
             vertical-alignment: center;
-            color: AppStyle.muted;
+            color: AppStyle.foreground-muted;
         }
 
         VerticalLayout {
@@ -254,7 +259,7 @@ export component ServerChip inherits Rectangle {
 
             IconDisplay {
                 icon: IconSet.Check;
-                size: 14px;
+                size: IconSize.sm;
                 stroke: AppStyle.success;
             }
         }
@@ -262,25 +267,25 @@ export component ServerChip inherits Rectangle {
 }
 
 export component OrDivider inherits HorizontalLayout {
-    spacing: 12px;
+    spacing: Space.lg;
 
     VerticalLayout {
         alignment: center;
         horizontal-stretch: 1;
 
         Rectangle {
-            height: 1px;
-            background: AppStyle.hairline;
+            height: Stroke.hairline;
+            background: AppStyle.overlay-pressed;
         }
     }
 
     Text {
         text: @tr("or");
-        font-size: 11px;
-        font-weight: 600;
-        letter-spacing: 0.6px;
+        font-size: Fonts.caption;
+        font-weight: Weight.semibold;
+        letter-spacing: Tracking.wide;
         vertical-alignment: center;
-        color: AppStyle.faint;
+        color: AppStyle.foreground-muted;
     }
 
     VerticalLayout {
@@ -288,8 +293,8 @@ export component OrDivider inherits HorizontalLayout {
         horizontal-stretch: 1;
 
         Rectangle {
-            height: 1px;
-            background: AppStyle.hairline;
+            height: Stroke.hairline;
+            background: AppStyle.overlay-pressed;
         }
     }
 }

@@ -1,12 +1,12 @@
-import { Fonts } from "../theme.slint";
+import { Fonts, Glyph, Weight } from "../theme.slint";
 
 export component Avatar inherits Rectangle {
     in property <bool> has-image;
     in property <image> image;
     in property <string> initial;
     in property <color> initial-color: white;
-    in property <length> initial-size: 17px;
-    in property <int> initial-weight: 600;
+    in property <length> initial-size: Glyph.sm;
+    in property <int> initial-weight: Weight.semibold;
     in property <string> initial-font-family: Fonts.emoji;
 
     border-radius: self.width / 2;

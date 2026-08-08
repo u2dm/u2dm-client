@@ -1,7 +1,7 @@
 import { Palette } from "std-widgets.slint";
 import { Icon, IconDisplay, IconSet } from "@lucide";
 
-import { Fonts } from "../../../theme.slint";
+import { AppStyle, Fonts, Glyph, IconSize, Metrics, Motion, Size, Space, Stroke, Weight } from "../../../theme.slint";
 
 export component TileGlyph inherits Rectangle {
     in property <bool> has-avatar;
@@ -10,9 +10,9 @@ export component TileGlyph inherits Rectangle {
     in property <Icon> icon;
     in property <string> initial;
     in property <color> foreground;
-    in property <length> icon-size: 20px;
-    in property <length> initial-size: 16px;
-    in property <int> initial-weight: 700;
+    in property <length> icon-size: IconSize.md;
+    in property <length> initial-size: Glyph.sm;
+    in property <int> initial-weight: Weight.bold;
     in property <string> initial-font-family: Fonts.emoji;
 
     clip: true;
@@ -50,23 +50,101 @@ export component UnreadDot inherits Rectangle {
     in property <bool> alert;
     in property <bool> mention;
     in property <bool> hint;
-    in property <length> diameter: 10px;
+    in property <length> diameter: Metrics.unread-dot;
     in property <bool> ringed;
 
-    height: root.mention ? 18px : root.diameter + (root.ringed ? 4px : 0);
+    height: root.mention ? Size.xs : root.diameter + (root.ringed ? Space.sm : 0);
     width: self.height;
     border-radius: self.height / 2;
     background: root.mention || root.alert
         ? Palette.accent-background
         : Palette.foreground;
-    border-width: root.ringed || root.mention ? 2px : 0;
+    border-width: root.ringed || root.mention ? Stroke.emphasis : 0;
     border-color: Palette.alternate-background;
 
     if root.mention: IconDisplay {
         x: (parent.width - self.width) / 2;
         y: (parent.height - self.height) / 2;
         icon: IconSet.AtSign;
-        size: 12px;
+        size: IconSize.xs;
         stroke: Palette.accent-foreground;
+    }
+}
+
+export component RailTileFace inherits Rectangle {
+    in property <string> caption;
+    in property <string> initial;
+    in property <bool> has-avatar;
+    in property <image> avatar;
+    in property <bool> has-icon;
+    in property <Icon> icon;
+    in property <bool> alert;
+    in property <bool> mention;
+    in property <bool> hint;
+    in property <bool> selected;
+    in property <length> glyph-extent;
+    in property <length> glyph-top;
+    in property <length> glyph-radius;
+    in property <brush> glyph-background;
+    in property <length> glyph-icon-size: IconSize.md;
+    in property <length> glyph-initial-size: Glyph.sm;
+    in property <string> glyph-initial-family: Fonts.emoji;
+    in property <length> caption-gap;
+    in property <int> caption-weight: Weight.regular;
+    in property <string> caption-family: Fonts.emoji;
+    in property <length> dot-diameter: Metrics.unread-dot;
+
+    property <bool> has-unread: root.alert || root.mention || root.hint;
+
+    glyph := Rectangle {
+        x: (parent.width - self.width) / 2;
+        y: root.glyph-top;
+        width: root.glyph-extent;
+        height: root.glyph-extent;
+        border-radius: root.glyph-radius;
+        background: root.glyph-background;
+        clip: true;
+
+        animate border-radius {
+            duration: Motion.normal;
+            easing: ease-out;
+        }
+
+        TileGlyph {
+            width: 100%;
+            height: 100%;
+            has-avatar: root.has-avatar;
+            avatar: root.avatar;
+            has-icon: root.has-icon;
+            icon: root.icon;
+            initial: root.initial;
+            foreground: root.selected ? Palette.accent-foreground : Palette.accent-background;
+            icon-size: root.glyph-icon-size;
+            initial-size: root.glyph-initial-size;
+            initial-font-family: root.glyph-initial-family;
+        }
+    }
+
+    Text {
+        x: Space.sm;
+        y: glyph.y + glyph.height + root.caption-gap;
+        width: parent.width - Space.md;
+        text: root.caption;
+        font-family: root.caption-family;
+        font-size: Fonts.caption-small;
+        font-weight: root.caption-weight;
+        horizontal-alignment: center;
+        overflow: elide;
+        color: root.selected ? Palette.foreground : AppStyle.foreground-muted;
+    }
+
+    if root.has-unread: UnreadDot {
+        x: glyph.x + glyph.width - glyph.border-radius * Metrics.corner-arc-inset - self.width / 2;
+        y: glyph.y + glyph.border-radius * Metrics.corner-arc-inset - self.height / 2;
+        diameter: root.dot-diameter;
+        ringed: true;
+        alert: root.alert;
+        mention: root.mention;
+        hint: root.hint;
     }
 }

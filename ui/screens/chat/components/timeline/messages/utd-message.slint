@@ -1,29 +1,30 @@
 import { Palette } from "std-widgets.slint";
 import { IconDisplay, IconSet } from "@lucide";
+import { AppStyle, Fonts, IconSize, Radius, Space } from "../../../../../theme.slint";
 
 export component UtdMessage inherits Rectangle {
     height: layout.preferred-height;
-    border-radius: 4px;
-    background: Palette.foreground.transparentize(0.92);
+    border-radius: Radius.xs;
+    background: AppStyle.overlay-hover;
 
     layout := HorizontalLayout {
-        padding: 6px;
-        padding-left: 8px;
-        padding-right: 8px;
-        spacing: 6px;
+        padding: Space.md;
+        padding-left: Space.md;
+        padding-right: Space.md;
+        spacing: Space.md;
         alignment: start;
 
         IconDisplay {
             icon: IconSet.LockKeyhole;
-            size: 15px;
-            stroke: Palette.foreground.transparentize(0.4);
+            size: IconSize.sm;
+            stroke: AppStyle.foreground-muted;
         }
 
         Text {
             text: @tr("Unable to decrypt message");
-            font-size: 13px;
+            font-size: Fonts.label;
             font-italic: true;
-            color: Palette.foreground.transparentize(0.4);
+            color: AppStyle.foreground-muted;
             vertical-alignment: center;
         }
     }

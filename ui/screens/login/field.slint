@@ -2,7 +2,8 @@ import { Palette } from "std-widgets.slint";
 import { IconDisplay, IconSet, Icon } from "@lucide";
 
 import { ClickArea } from "../../components/a11y.slint";
-import { AppStyle } from "../../components/style.slint";
+import { AppStyle, Fonts, IconSize, Motion, Radius, Size, Space, Stroke } from "../../theme.slint";
+import { IconButton } from "../../components/button.slint";
 
 component ScrollingInput inherits Rectangle {
     in-out property <string> text;
@@ -24,7 +25,7 @@ component ScrollingInput inherits Rectangle {
         text: (root.text == "" && input.preedit-text == "") ? root.placeholder : "";
         font-size: input.font-size;
         vertical-alignment: center;
-        color: AppStyle.faint;
+        color: AppStyle.foreground-muted;
         accessible-role: none;
     }
 
@@ -34,7 +35,7 @@ component ScrollingInput inherits Rectangle {
         x: min(0px, max(parent.width - self.width - self.text-cursor-width, self.shift));
         width: max(parent.width - self.text-cursor-width, self.preferred-width);
         height: 100%;
-        font-size: 14px;
+        font-size: Fonts.body;
         single-line: true;
         vertical-alignment: center;
         enabled: root.enabled;
@@ -74,12 +75,12 @@ export component LoginField inherits Rectangle {
     property <bool> shows-reveal: root.secret && root.text != "";
 
     height: AppStyle.control-height;
-    border-radius: AppStyle.control-radius;
-    background: root.enabled ? AppStyle.surface : AppStyle.surface.transparentize(0.5);
-    border-width: root.has-focus ? 2px : 1px;
+    border-radius: Radius.md;
+    background: root.enabled ? AppStyle.overlay-subtle : transparent;
+    border-width: root.has-focus ? Stroke.emphasis : Stroke.hairline;
     border-color: root.has-focus
         ? Palette.accent-background
-        : (touch.has-hover && root.enabled ? Palette.foreground.transparentize(0.7) : AppStyle.hairline);
+        : (touch.has-hover && root.enabled ? AppStyle.foreground-faint : AppStyle.border);
     accessible-role: text-input;
     accessible-enabled: root.enabled;
     accessible-label: root.label;
@@ -91,7 +92,7 @@ export component LoginField inherits Rectangle {
     forward-focus: input;
 
     animate border-color {
-        duration: 150ms;
+        duration: Motion.normal;
         easing: ease-out;
     }
 
@@ -110,17 +111,17 @@ export component LoginField inherits Rectangle {
     }
 
     HorizontalLayout {
-        padding-left: 13px;
-        padding-right: root.shows-reveal ? 6px : 13px;
-        spacing: 10px;
+        padding-left: Space.lg;
+        padding-right: root.shows-reveal ? Space.md : Space.lg;
+        spacing: Space.lg;
 
         VerticalLayout {
             alignment: center;
 
             IconDisplay {
                 icon: root.icon;
-                size: 17px;
-                stroke: root.has-focus ? Palette.accent-background : AppStyle.faint;
+                size: IconSize.sm;
+                stroke: root.has-focus ? Palette.accent-background : AppStyle.foreground-faint;
             }
         }
 
@@ -138,26 +139,14 @@ export component LoginField inherits Rectangle {
         if root.shows-reveal: VerticalLayout {
             alignment: center;
 
-            reveal := ClickArea {
-                width: 32px;
-                height: 32px;
-                ring-radius: 8px;
+            IconButton {
+                size: Size.md;
+                radius: Radius.sm;
+                icon-size: IconSize.sm;
+                icon: root.revealed ? IconSet.EyeOff : IconSet.Eye;
                 label: root.revealed ? @tr("Hide password") : @tr("Show password");
                 clicked => {
                     root.revealed = !root.revealed;
-                }
-
-                Rectangle {
-                    width: 28px;
-                    height: 28px;
-                    border-radius: 8px;
-                    background: reveal.has-hover ? Palette.foreground.transparentize(0.92) : transparent;
-
-                    IconDisplay {
-                        icon: root.revealed ? IconSet.EyeOff : IconSet.Eye;
-                        size: 16px;
-                        stroke: AppStyle.muted;
-                    }
                 }
             }
         }

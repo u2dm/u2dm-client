@@ -6,7 +6,8 @@ import { TimelineView } from "components/timeline/timeline-view.slint";
 import { ClickArea, FocusRing } from "../../components/a11y.slint";
 import { UserMessageKind } from "../../enums.slint";
 import { UserMessages } from "../../messages.slint";
-import { Metrics } from "../../theme.slint";
+import { AppStyle, IconSize, Metrics, Radius, Size, Space } from "../../theme.slint";
+import { IconButton } from "../../components/button.slint";
 import { DirectoryView, RoomView } from "../../views.slint";
 import { Actions } from "../../actions.slint";
 import { Composer, Reactions, Shell } from "../../local.slint";
@@ -26,8 +27,8 @@ export component ChatScreen inherits Rectangle {
 
     property <length> sidebar-width: Metrics.sidebar-default;
     property <bool> nav-collapsed: root.sidebar-width <= Metrics.sidebar-collapsed;
-    property <length> divider-width: 4px;
-    property <length> resize-step: 16px;
+    property <length> divider-width: Space.sm;
+    property <length> resize-step: Space.xl;
 
     property <bool> has-subspaces: DirectoryView.subspaces.length > 0;
     property <length> subrail-width: Metrics.subspace-rail;
@@ -45,6 +46,12 @@ export component ChatScreen inherits Rectangle {
 
     property <bool> has-toast: RoomView.toast-message != UserMessageKind.none;
     property <bool> is-file-saved-toast: RoomView.toast-message == UserMessageKind.file-saved;
+    property <color> toast-color: root.is-file-saved-toast
+        ? Palette.foreground
+        : AppStyle.danger;
+    property <AccessibleLiveness> toast-liveness: root.is-file-saved-toast
+        ? AccessibleLiveness.polite
+        : AccessibleLiveness.assertive;
 
     pure function snapped-width(width: length) -> length {
         if width < Metrics.sidebar-collapse-at {
@@ -169,47 +176,34 @@ export component ChatScreen inherits Rectangle {
     }
 
     if has-toast: Rectangle {
-        width: min(max(200px, root.timeline-width - 32px), 500px);
+        width: min(max(Metrics.toast-min-width, root.timeline-width - 2 * Space.xl), Metrics.toast-max-width);
         x: root.timeline-x + (root.timeline-width - self.width) / 2;
-        y: root.height - self.height - 16px;
+        y: root.height - self.height - Space.xl;
         height: toast-layout.preferred-height;
-        border-radius: 8px;
+        border-radius: Radius.sm;
         background: Palette.alternate-background;
-        drop-shadow-blur: 8px;
-        drop-shadow-color: Palette.foreground.transparentize(0.8);
-        drop-shadow-offset-y: 2px;
 
         toast-layout := HorizontalLayout {
-            padding: 12px;
-            spacing: 8px;
+            padding: Space.lg;
+            spacing: Space.md;
             alignment: space-between;
 
             Text {
                 text: UserMessages.text(RoomView.toast-message, RoomView.toast-detail);
-                color: root.is-file-saved-toast
-                    ? Palette.foreground
-                    : Colors.tomato.mix(Palette.foreground, 60%);
+                color: root.toast-color;
                 wrap: word-wrap;
                 vertical-alignment: center;
-                accessible-live-region: root.is-file-saved-toast
-                    ? AccessibleLiveness.polite
-                    : AccessibleLiveness.assertive;
+                accessible-live-region: root.toast-liveness;
             }
 
-            ClickArea {
-                width: 24px;
-                height: 24px;
-                ring-radius: 6px;
+            IconButton {
+                size: Size.target-min;
+                radius: Radius.sm;
+                icon-size: IconSize.sm;
+                icon: IconSet.X;
                 label: @tr("Dismiss");
                 clicked => {
                     Actions.dismiss-toast();
-                }
-                IconDisplay {
-                    x: (parent.width - self.width) / 2;
-                    y: (parent.height - self.height) / 2;
-                    icon: IconSet.X;
-                    size: 16px;
-                    stroke: Palette.foreground.transparentize(0.4);
                 }
             }
         }

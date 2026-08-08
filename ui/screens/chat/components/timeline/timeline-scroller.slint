@@ -81,6 +81,11 @@ export component TimelineScroller inherits Rectangle {
         property <bool> scrollable:
             self.viewport-height > self.visible-height;
         property <int> item-count: RoomView.timeline.length;
+        property <bool> history-prepended: root.prepend-token != self.seen-prepend-token
+            && self.scrollable
+            && self.prev-viewport-height > 0
+            && self.prev-item-count > 0
+            && self.item-count > self.prev-item-count;
 
         property <int> seen-timeline-token: 0;
         property <bool> anchor-held: false;
@@ -100,11 +105,7 @@ export component TimelineScroller inherits Rectangle {
             } else if (self.settling || self.auto-scroll) && self.scrollable
                 && self.viewport-y <= self.prev-viewport-y {
                 self.scroll-to-bottom();
-            } else if root.prepend-token != self.seen-prepend-token
-                && self.scrollable
-                && self.prev-viewport-height > 0
-                && self.prev-item-count > 0
-                && self.item-count > self.prev-item-count {
+            } else if self.history-prepended {
                 self.programmatic-scroll = true;
                 self.viewport-y = self.anchor-viewport-y();
             }

@@ -1,6 +1,9 @@
 import { Palette } from "std-widgets.slint";
 import { IconDisplay, IconSet } from "@lucide";
 
+import { AppStyle, Fonts, IconSize, Radius, Size, Space, Stroke } from "../../../../theme.slint";
+import { IconButton } from "../../../../components/button.slint";
+
 import { ClickArea } from "../../../../components/a11y.slint";
 
 export component PickerSearch inherits Rectangle {
@@ -8,28 +11,28 @@ export component PickerSearch inherits Rectangle {
     in-out property <string> query: "";
     callback edited(string);
 
-    height: 30px;
-    border-radius: 8px;
-    background: Palette.foreground.transparentize(0.94);
-    border-width: 1px;
+    height: Size.md;
+    border-radius: Radius.sm;
+    background: AppStyle.overlay-hover;
+    border-width: Stroke.hairline;
     border-color: input.has-focus
-        ? Palette.accent-background.transparentize(0.45)
-        : Palette.foreground.transparentize(0.9);
+        ? AppStyle.accent-surface
+        : AppStyle.overlay-hover;
 
     forward-focus: input;
 
     HorizontalLayout {
-        padding-left: 8px;
-        padding-right: 4px;
-        spacing: 6px;
+        padding-left: Space.md;
+        padding-right: Space.sm;
+        spacing: Space.md;
 
         VerticalLayout {
             alignment: center;
 
             IconDisplay {
                 icon: IconSet.Search;
-                size: 14px;
-                stroke: Palette.foreground.transparentize(0.55);
+                size: IconSize.sm;
+                stroke: AppStyle.foreground-faint;
             }
         }
 
@@ -43,7 +46,7 @@ export component PickerSearch inherits Rectangle {
                 height: parent.height;
                 text <=> root.query;
                 color: Palette.foreground;
-                font-size: 13px;
+                font-size: Fonts.label;
                 vertical-alignment: center;
                 single-line: true;
                 accessible-label: root.placeholder;
@@ -59,32 +62,26 @@ export component PickerSearch inherits Rectangle {
                 width: parent.width;
                 height: parent.height;
                 text: root.placeholder;
-                color: Palette.foreground.transparentize(0.55);
-                font-size: 13px;
+                color: AppStyle.foreground-muted;
+                font-size: Fonts.label;
                 vertical-alignment: center;
             }
         }
 
         VerticalLayout {
             alignment: center;
-            width: 22px;
+            width: Size.sm;
 
-            if root.query != "": ClickArea {
-                height: 22px;
-                ring-radius: 6px;
+            if root.query != "": IconButton {
+                size: Size.target-min;
+                radius: Radius.sm;
+                icon-size: IconSize.xs;
+                icon: IconSet.X;
                 label: @tr("Clear search");
                 clicked => {
                     root.query = "";
                     root.edited("");
                     input.focus();
-                }
-
-                IconDisplay {
-                    x: (parent.width - self.width) / 2;
-                    y: (parent.height - self.height) / 2;
-                    icon: IconSet.X;
-                    size: 13px;
-                    stroke: Palette.foreground.transparentize(0.4);
                 }
             }
         }

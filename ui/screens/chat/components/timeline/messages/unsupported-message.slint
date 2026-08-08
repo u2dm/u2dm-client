@@ -1,43 +1,44 @@
 import { Palette } from "std-widgets.slint";
+import { AppStyle, Fonts, Radius, Space } from "../../../../../theme.slint";
 
 export component UnsupportedMessage inherits Rectangle {
     in property <string> kind;
     in property <string> body;
 
     height: layout.preferred-height;
-    border-radius: 4px;
-    background: Palette.foreground.transparentize(0.92);
+    border-radius: Radius.xs;
+    background: AppStyle.overlay-hover;
 
     layout := HorizontalLayout {
-        padding: 6px;
-        padding-left: 8px;
-        padding-right: 8px;
-        spacing: 6px;
+        padding: Space.md;
+        padding-left: Space.md;
+        padding-right: Space.md;
+        spacing: Space.md;
         alignment: start;
 
         Text {
             text: "\u{2753}";
-            font-size: 13px;
+            font-size: Fonts.label;
             vertical-alignment: center;
         }
 
         VerticalLayout {
-            spacing: 2px;
+            spacing: Space.xs;
 
             Text {
                 text: @tr("Unsupported message type: {}", root.kind);
-                font-size: 13px;
+                font-size: Fonts.label;
                 font-italic: true;
-                color: Palette.foreground.transparentize(0.4);
+                color: AppStyle.foreground-muted;
                 vertical-alignment: center;
                 wrap: word-wrap;
             }
 
             if root.body != "": Text {
                 text: root.body;
-                font-size: 13px;
+                font-size: Fonts.label;
                 font-italic: true;
-                color: Palette.foreground.transparentize(0.4);
+                color: AppStyle.foreground-muted;
                 vertical-alignment: center;
                 wrap: word-wrap;
             }

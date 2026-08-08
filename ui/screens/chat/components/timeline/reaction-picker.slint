@@ -6,7 +6,8 @@ import { IconDisplay, IconSet } from "@lucide";
 import { EmojiPicker } from "emoji-picker.slint";
 import { ClickArea } from "../../../../components/a11y.slint";
 import { PickerCard } from "../../../../components/overlay.slint";
-import { Fonts, Metrics } from "../../../../theme.slint";
+import { UnencryptedNotice } from "picker-tab.slint";
+import { AppStyle, Fonts, Glyph, IconSize, Metrics, Motion, Size, Space } from "../../../../theme.slint";
 
 export global QuickReactions {
     out property <[string]> keys: ["❤️", "😕", "🎉", "😭", "😄", "👎", "👍", "🫃"];
@@ -21,7 +22,7 @@ component StripCell inherits ClickArea {
     border-radius: self.height / 2;
     ring-radius: self.height / 2;
     background: root.has-hover
-        ? Palette.foreground.transparentize(0.88)
+        ? AppStyle.overlay-pressed
         : transparent;
 
     Text {
@@ -31,7 +32,7 @@ component StripCell inherits ClickArea {
         height: parent.height;
         text: root.key;
         font-family: Fonts.emoji;
-        font-size: Metrics.reaction-emoji;
+        font-size: Glyph.xs;
         horizontal-alignment: center;
         vertical-alignment: center;
     }
@@ -42,7 +43,7 @@ export component ReactionStrip inherits PickerCard {
     callback more-clicked();
 
     property <length> pad: Metrics.reaction-strip-pad;
-    property <length> gap: 2px;
+    property <length> gap: Space.xs;
     property <length> cell: Metrics.reaction-strip-cell;
     property <length> pitch: root.cell + root.gap;
     property <float> cells-when-open: 4.5;
@@ -59,7 +60,7 @@ export component ReactionStrip inherits PickerCard {
     clip: true;
 
     animate height {
-        duration: 160ms;
+        duration: Motion.normal;
         easing: ease-in-out;
     }
 
@@ -111,7 +112,7 @@ export component ReactionStrip inherits PickerCard {
                     enabled: root.open;
                     label: @tr("More emoji");
                     background: self.has-hover
-                        ? Palette.foreground.transparentize(0.88)
+                        ? AppStyle.overlay-pressed
                         : transparent;
                     clicked => {
                         root.more-clicked();
@@ -123,11 +124,11 @@ export component ReactionStrip inherits PickerCard {
                     IconDisplay {
                         x: (parent.width - self.width) / 2;
                         y: (parent.height - self.height) / 2;
-                        width: 18px;
-                        height: 18px;
+                        width: Size.xs;
+                        height: Size.xs;
                         icon: IconSet.Plus;
-                        size: 18px;
-                        stroke: Palette.foreground.transparentize(0.35);
+                        size: IconSize.sm;
+                        stroke: AppStyle.foreground-strong;
                     }
                 }
 
@@ -153,32 +154,11 @@ export component ReactionPicker inherits PickerCard {
     in property <bool> encrypted: false;
 
     VerticalLayout {
-        padding: 6px;
-        spacing: 4px;
+        padding: Space.md;
+        spacing: Space.sm;
 
-        if root.encrypted: HorizontalLayout {
-            spacing: 6px;
-            padding-left: 4px;
-            padding-right: 4px;
-            padding-top: 2px;
-
-            IconDisplay {
-                y: (parent.height - self.height) / 2;
-                width: 13px;
-                height: 13px;
-                icon: IconSet.ShieldAlert;
-                size: 13px;
-                stroke: Palette.foreground.transparentize(0.5);
-            }
-
-            Text {
-                horizontal-stretch: 1;
-                text: @tr("Reactions are not encrypted.");
-                font-size: 11px;
-                color: Palette.foreground.transparentize(0.45);
-                vertical-alignment: center;
-                wrap: word-wrap;
-            }
+        if root.encrypted: UnencryptedNotice {
+            text: @tr("Reactions are not encrypted.");
         }
 
         EmojiPicker {

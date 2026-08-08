@@ -1,0 +1,48 @@
+import { IconDisplay, IconSet } from "@lucide";
+
+import { AppStyle, Fonts, IconSize, Radius, Space } from "../../../../theme.slint";
+import { ClickArea } from "../../../../components/a11y.slint";
+
+export component PickerTab inherits ClickArea {
+    in property <bool> selected;
+    in property <length> radius: Radius.sm;
+
+    border-radius: root.radius;
+    ring-radius: root.radius;
+    background: root.selected
+        ? AppStyle.accent-background-soft
+        : (root.has-hover ? AppStyle.overlay-hover : transparent);
+}
+
+export component GridCellHover inherits Rectangle {
+    in property <length> cell;
+    in property <bool> lit;
+
+    width: root.cell - Space.sm;
+    height: root.cell - Space.sm;
+    background: root.lit ? AppStyle.overlay-hover : transparent;
+}
+
+export component UnencryptedNotice inherits HorizontalLayout {
+    in property <string> text;
+
+    spacing: Space.md;
+    padding-left: Space.sm;
+    padding-right: Space.sm;
+    padding-top: Space.xs;
+
+    IconDisplay {
+        y: (parent.height - self.height) / 2;
+        icon: IconSet.ShieldAlert;
+        size: IconSize.xs;
+        stroke: AppStyle.foreground-faint;
+    }
+
+    Text {
+        horizontal-stretch: 1;
+        text: root.text;
+        font-size: Fonts.caption;
+        color: AppStyle.foreground-muted;
+        wrap: word-wrap;
+    }
+}

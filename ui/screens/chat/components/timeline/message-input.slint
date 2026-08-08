@@ -7,7 +7,7 @@ import { EmojiInsert } from "../types.slint";
 import { EmojiStore } from "./emoji-picker.slint";
 import { PickerPanel } from "./picker-panel.slint";
 import { ReplyQuote } from "../reply-quote.slint";
-import { Fonts, Metrics } from "../../../../theme.slint";
+import { AppStyle, Fonts, IconSize, Metrics, Radius, Size, Space } from "../../../../theme.slint";
 import { ClickArea } from "../../../../components/a11y.slint";
 import { ModalHost } from "../../../../components/overlay.slint";
 import { Actions } from "../../../../actions.slint";
@@ -28,7 +28,7 @@ export component MessageInput inherits Rectangle {
     property <int> caret: 0;
     property <EmojiInsert> pending-insert;
     property <length> picker-headroom: root.overlay-height - root.height
-        - Metrics.room-header - 16px;
+        - Metrics.header-row - Space.xl;
 
     background: Palette.alternate-background;
     height: layout.preferred-height;
@@ -66,13 +66,13 @@ export component MessageInput inherits Rectangle {
         }
 
         PickerPanel {
-            width: min(root.width - 16px, Metrics.picker-width);
+            width: min(root.width - Space.xl, Metrics.picker-width);
             height: max(
                 Metrics.picker-min-height,
                 min(Metrics.picker-height, root.picker-headroom),
             );
-            x: root.width - self.width - 8px - root.overlay-x;
-            y: -self.height - 8px - root.overlay-y;
+            x: root.width - self.width - Space.md - root.overlay-x;
+            y: -self.height - Space.md - root.overlay-y;
             tab <=> root.picker-tab;
             emoji-picked(glyph) => {
                 root.insert-at-caret(glyph);
@@ -104,15 +104,15 @@ export component MessageInput inherits Rectangle {
 
     layout := VerticalLayout {
         if root.is-replying: Rectangle {
-            height: 44px;
-            background: Palette.background.transparentize(0.3);
+            height: Metrics.reply-bar;
+            background: AppStyle.surface-sunken;
 
             HorizontalLayout {
-                padding-left: 12px;
-                padding-right: 8px;
-                padding-top: 6px;
-                padding-bottom: 6px;
-                spacing: 8px;
+                padding-left: Space.lg;
+                padding-right: Space.md;
+                padding-top: Space.md;
+                padding-bottom: Space.md;
+                spacing: Space.md;
 
                 ReplyQuote {
                     horizontal-stretch: 1;
@@ -121,8 +121,8 @@ export component MessageInput inherits Rectangle {
                 }
 
                 cancel-reply-touch := ClickArea {
-                    width: 28px;
-                    ring-radius: 8px;
+                    width: Size.md;
+                    ring-radius: Radius.sm;
                     label: @tr("Cancel reply");
                     clicked => {
                         Composer.clear();
@@ -132,8 +132,8 @@ export component MessageInput inherits Rectangle {
                         x: (parent.width - self.width) / 2;
                         y: (parent.height - self.height) / 2;
                         icon: IconSet.X;
-                        size: 16px;
-                        stroke: Palette.foreground.transparentize(0.4);
+                        size: IconSize.sm;
+                        stroke: AppStyle.foreground-muted;
                     }
                 }
             }
@@ -141,8 +141,8 @@ export component MessageInput inherits Rectangle {
 
         HorizontalLayout {
         height: Metrics.composer-row;
-        padding-left: 12px;
-        padding-right: 12px;
+        padding-left: Space.lg;
+        padding-right: Space.lg;
 
         Rectangle {
             horizontal-stretch: 1;
@@ -151,7 +151,7 @@ export component MessageInput inherits Rectangle {
                 text <=> root.message;
                 color: Palette.foreground;
                 font-family: Fonts.emoji;
-                font-size: 14px;
+                font-size: Fonts.body;
                 vertical-alignment: center;
                 single-line: true;
                 enabled: Shell.background-reachable;
@@ -174,16 +174,16 @@ export component MessageInput inherits Rectangle {
                 width: parent.width;
                 height: parent.height;
                 text: @tr("Send a message...");
-                color: Palette.foreground.transparentize(0.5);
-                font-size: 14px;
+                color: AppStyle.foreground-muted;
+                font-size: Fonts.body;
                 vertical-alignment: center;
                 horizontal-alignment: left;
             }
         }
 
         emoji-touch := ClickArea {
-            width: 44px;
-            ring-radius: 8px;
+            width: Size.target;
+            ring-radius: Radius.sm;
             label: @tr("Emoji and stickers");
             clicked => {
                 Reactions.close();
@@ -194,16 +194,16 @@ export component MessageInput inherits Rectangle {
                 x: (parent.width - self.width) / 2;
                 y: (parent.height - self.height) / 2;
                 icon: IconSet.Smile;
-                size: 20px;
+                size: IconSize.md;
                 stroke: Shell.picker-open
                     ? Palette.accent-background
-                    : Palette.foreground.transparentize(0.4);
+                    : AppStyle.foreground-muted;
             }
         }
 
         send-touch := ClickArea {
-            width: 44px;
-            ring-radius: 8px;
+            width: Size.target;
+            ring-radius: Radius.sm;
             enabled: root.has-text;
             label: @tr("Send");
             clicked => {
@@ -214,10 +214,10 @@ export component MessageInput inherits Rectangle {
                 x: (parent.width - self.width) / 2;
                 y: (parent.height - self.height) / 2;
                 icon: IconSet.SendHorizontal;
-                size: 20px;
+                size: IconSize.md;
                 stroke: root.has-text
                     ? Palette.accent-background
-                    : Palette.foreground.transparentize(0.6);
+                    : AppStyle.foreground-faint;
             }
         }
         }

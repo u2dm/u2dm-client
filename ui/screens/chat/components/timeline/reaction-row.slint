@@ -5,48 +5,50 @@ import {
 import { ReactionEntry } from "../types.slint";
 import { ClickArea } from "../../../../components/a11y.slint";
 import { ReactionAnchor } from "../../../../local.slint";
-import { Fonts, Metrics } from "../../../../theme.slint";
+import { AppStyle, Fonts, Glyph, Metrics, Opacity, Space, Stroke, Weight } from "../../../../theme.slint";
 
 export component ReactionChip inherits ClickArea {
     in property <ReactionEntry> entry;
     in property <bool> is-own;
 
-    property <color> mine-fill: Palette.accent-background.transparentize(0.72);
-    property <color> other-fill: is-own
-        ? Palette.background.transparentize(0.78)
-        : Palette.foreground.transparentize(0.9);
+    property <color> mine-fill: AppStyle.chip-fill-mine;
+    property <color> other-fill: root.is-own
+        ? AppStyle.chip-fill
+        : AppStyle.overlay-hover;
+    property <color> resting-fill: root.entry.mine ? root.mine-fill : root.other-fill;
+    property <float> hover-lift: root.entry.mine ? -0.15 : -0.25;
 
     width: chip-row.preferred-width;
     height: Metrics.reaction-chip;
     border-radius: self.height / 2;
     ring-radius: self.height / 2;
-    border-width: entry.mine ? 1px : 0;
-    border-color: Palette.accent-background.transparentize(0.35);
-    background: entry.mine
-        ? (root.has-hover ? mine-fill.transparentize(-0.15) : mine-fill)
-        : (root.has-hover ? other-fill.transparentize(-0.25) : other-fill);
-    opacity: entry.pending ? 0.55 : 1;
+    border-width: entry.mine ? Stroke.hairline : 0;
+    border-color: AppStyle.accent-border;
+    background: root.has-hover
+        ? root.resting-fill.transparentize(root.hover-lift)
+        : root.resting-fill;
+    opacity: entry.pending ? Opacity.pending : 1;
 
     chip-row := HorizontalLayout {
         alignment: center;
-        spacing: 4px;
-        padding-left: 8px;
-        padding-right: 8px;
+        spacing: Space.sm;
+        padding-left: Space.md;
+        padding-right: Space.md;
 
         if !entry.overflow: Text {
             text: entry.label;
             font-family: Fonts.emoji;
-            font-size: Metrics.reaction-emoji;
+            font-size: Glyph.xs;
             vertical-alignment: center;
         }
 
         Text {
             text: entry.overflow ? "+" + entry.count : entry.count;
-            font-size: 12px;
-            font-weight: 600;
+            font-size: Fonts.body-small;
+            font-weight: Weight.semibold;
             color: entry.mine
                 ? Palette.accent-background
-                : Palette.foreground.transparentize(0.35);
+                : AppStyle.foreground-strong;
             vertical-alignment: center;
         }
     }
@@ -63,7 +65,7 @@ export component ReactionRow inherits HorizontalLayout {
     callback unhovered(int);
 
     alignment: start;
-    spacing: 4px;
+    spacing: Space.sm;
 
     for entry[index] in root.reactions: chip := ReactionChip {
         entry: entry;

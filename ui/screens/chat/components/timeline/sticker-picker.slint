@@ -7,11 +7,13 @@ import { PickerSearch } from "picker-search.slint";
 import { StickerView } from "../../../../views.slint";
 import { Actions } from "../../../../actions.slint";
 import { ClickArea } from "../../../../components/a11y.slint";
+import { AppStyle, Fonts, IconSize, Radius, Size, Space } from "../../../../theme.slint";
+import { GridCellHover, PickerTab, UnencryptedNotice } from "picker-tab.slint";
 
 component StickerCellArt inherits Rectangle {
     in property <image> art;
     in property <MediaState> state;
-    in property <length> inset: 4px;
+    in property <length> inset: Space.sm;
 
     Image {
         x: root.inset;
@@ -27,56 +29,40 @@ component StickerCellArt inherits Rectangle {
         x: (parent.width - self.width) / 2;
         y: (parent.height - self.height) / 2;
         icon: IconSet.ImageOff;
-        size: 18px;
-        stroke: Palette.foreground.transparentize(0.6);
+        size: IconSize.sm;
+        stroke: AppStyle.foreground-faint;
         visible: root.state == MediaState.failed;
     }
 }
 
-component PackTab inherits Rectangle {
+component PackTab inherits PickerTab {
     in property <image> icon;
     in property <bool> has-icon;
-    in property <string> title;
-    in property <bool> selected;
-    callback clicked();
 
-    width: 34px;
-    height: 34px;
-    border-radius: 8px;
-    background: root.selected
-        ? Palette.accent-background.transparentize(0.82)
-        : (touch.has-hover ? Palette.foreground.transparentize(0.92) : transparent);
+    width: Size.lg;
+    height: Size.lg;
+    radius: Radius.sm;
 
-    touch := ClickArea {
-        label: root.title;
-        ring-radius: 8px;
-        clicked => {
-            root.clicked();
-        }
+    Image {
+        x: Space.sm;
+        y: Space.sm;
+        width: Size.sm;
+        height: Size.sm;
+        source: root.icon;
+        image-fit: ImageFit.contain;
+        visible: root.has-icon;
+    }
 
-        Image {
-            x: 5px;
-            y: 5px;
-            width: 24px;
-            height: 24px;
-            source: root.icon;
-            image-fit: ImageFit.contain;
-            visible: root.has-icon;
-        }
-
-        Text {
-            x: 0;
-            y: 0;
-            width: parent.width;
-            height: parent.height;
-            text: root.title;
-            font-size: 12px;
-            color: Palette.foreground.transparentize(0.35);
-            horizontal-alignment: center;
-            vertical-alignment: center;
-            overflow: elide;
-            visible: !root.has-icon;
-        }
+    Text {
+        width: 100%;
+        height: 100%;
+        text: root.label;
+        font-size: Fonts.body-small;
+        color: AppStyle.foreground-strong;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+        overflow: elide;
+        visible: !root.has-icon;
     }
 }
 
@@ -85,7 +71,9 @@ export component StickerPicker inherits Rectangle {
 
     in-out property <string> query: "";
 
-    property <length> edge: 8px;
+    property <length> edge: Space.md;
+    property <length> tab-inset: Space.xs;
+    property <length> tab-pitch: Size.lg + 2 * root.tab-inset;
     property <length> cell: (root.width - 2 * root.edge) / max(StickerView.columns, 1);
     property <bool> is-searching: root.query != "";
     property <bool> is-empty: StickerView.rows.length == 0;
@@ -104,7 +92,7 @@ export component StickerPicker inherits Rectangle {
 
     VerticalLayout {
         padding: root.edge;
-        spacing: 6px;
+        spacing: Space.md;
 
         if StickerView.has-packs: PickerSearch {
             placeholder: @tr("Search stickers");
@@ -114,22 +102,8 @@ export component StickerPicker inherits Rectangle {
             }
         }
 
-        if StickerView.room-encrypted: HorizontalLayout {
-            spacing: 6px;
-
-            IconDisplay {
-                icon: IconSet.ShieldAlert;
-                size: 14px;
-                stroke: Palette.foreground.transparentize(0.5);
-            }
-
-            Text {
-                horizontal-stretch: 1;
-                text: @tr("Stickers from packs are not encrypted.");
-                font-size: 11px;
-                color: Palette.foreground.transparentize(0.45);
-                wrap: word-wrap;
-            }
+        if StickerView.room-encrypted: UnencryptedNotice {
+            text: @tr("Stickers from packs are not encrypted.");
         }
 
         Rectangle {
@@ -143,10 +117,10 @@ export component StickerPicker inherits Rectangle {
                         x: 0;
                         y: 0;
                         width: parent.width;
-                        height: parent.height - 6px;
+                        height: parent.height - Space.md;
                         text: row.title;
-                        font-size: 11px;
-                        color: Palette.foreground.transparentize(0.45);
+                        font-size: Fonts.caption;
+                        color: AppStyle.foreground-muted;
                         vertical-alignment: bottom;
                         overflow: elide;
                         visible: row.is-header;
@@ -157,7 +131,7 @@ export component StickerPicker inherits Rectangle {
                         y: 0;
                         width: root.cell;
                         height: root.cell;
-                        ring-radius: 8px;
+                        ring-radius: Radius.sm;
                         label: entry.label;
 
                         init => {
@@ -170,13 +144,10 @@ export component StickerPicker inherits Rectangle {
                             root.picked(entry.pack-id, entry.shortcode);
                         }
 
-                        Rectangle {
-                            width: root.cell - 4px;
-                            height: root.cell - 4px;
-                            border-radius: 8px;
-                            background: parent.has-hover
-                                ? Palette.foreground.transparentize(0.9)
-                                : transparent;
+                        GridCellHover {
+                            cell: root.cell;
+                            lit: parent.has-hover;
+                            border-radius: Radius.sm;
                         }
 
                         StickerCellArt {
@@ -197,15 +168,15 @@ export component StickerPicker inherits Rectangle {
 
             if !StickerView.loading && root.is-empty: VerticalLayout {
                 alignment: center;
-                spacing: 8px;
+                spacing: Space.md;
 
                 HorizontalLayout {
                     alignment: center;
 
                     IconDisplay {
                         icon: root.is-searching ? IconSet.SearchX : IconSet.Sticker;
-                        size: 26px;
-                        stroke: Palette.foreground.transparentize(0.7);
+                        size: IconSize.lg;
+                        stroke: AppStyle.foreground-faint;
                     }
                 }
 
@@ -213,8 +184,8 @@ export component StickerPicker inherits Rectangle {
                     text: root.is-searching
                         ? @tr("No stickers match your search.")
                         : @tr("No sticker packs yet. Join a room that shares one, or add it to your account.");
-                    color: Palette.foreground.transparentize(0.5);
-                    font-size: 12px;
+                    color: AppStyle.foreground-muted;
+                    font-size: Fonts.body-small;
                     horizontal-alignment: center;
                     wrap: word-wrap;
                 }
@@ -222,15 +193,15 @@ export component StickerPicker inherits Rectangle {
         }
 
         if !root.is-searching && StickerView.packs.length > 1: Rectangle {
-            height: 38px;
+            height: root.tab-pitch;
 
             footer := Flickable {
-                viewport-width: max(self.width, StickerView.packs.length * 38px);
+                viewport-width: max(self.width, StickerView.packs.length * root.tab-pitch);
 
                 for pack[idx] in StickerView.packs: PackTab {
-                    x: idx * 38px + 2px;
-                    y: 2px;
-                    title: pack.title;
+                    x: idx * root.tab-pitch + root.tab-inset;
+                    y: root.tab-inset;
+                    label: pack.title;
                     icon: pack.icon;
                     has-icon: pack.has-icon;
                     selected: pack.header-row <= root.row-at-viewport-middle

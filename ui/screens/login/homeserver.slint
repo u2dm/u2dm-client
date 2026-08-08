@@ -8,7 +8,7 @@ import {
     StepDots,
 } from "./common.slint";
 import { LoginField } from "./field.slint";
-import { AppStyle } from "../../components/style.slint";
+import { AppStyle, Fonts, Metrics, Space } from "../../theme.slint";
 import { AppButton } from "../../components/button.slint";
 import { ErrorBanner } from "../../components/banner.slint";
 import { LoginActivity } from "../../enums.slint";
@@ -27,12 +27,12 @@ export component HomeserverScreen inherits LoginPage {
     }
 
     BrandHeader {
-        mark-size: root.dense ? 46px : 60px;
+        mark-size: root.dense ? Metrics.login-mark-dense : Metrics.login-mark;
         subtitle: @tr("Sign in to your Matrix account");
     }
 
     VerticalLayout {
-        spacing: 8px;
+        spacing: Space.md;
 
         FieldLabel {
             text: @tr("HOMESERVER");
@@ -51,9 +51,9 @@ export component HomeserverScreen inherits LoginPage {
 
         Text {
             text: @tr("The server that stores your account and messages.");
-            font-size: 11px;
+            font-size: Fonts.caption;
             wrap: word-wrap;
-            color: AppStyle.faint;
+            color: AppStyle.foreground-muted;
         }
     }
 

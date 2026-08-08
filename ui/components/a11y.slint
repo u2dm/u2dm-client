@@ -1,28 +1,41 @@
 import { Palette } from "std-widgets.slint";
 
 import { Shell } from "../local.slint";
+import { Radius, Stroke } from "../theme.slint";
+
+export global Interaction {
+    public pure function actionable(enabled: bool, above-modal: bool) -> bool {
+        return enabled && (above-modal || Shell.background-reachable);
+    }
+
+    public pure function activates(key: string) -> bool {
+        return key == " " || key == "\n";
+    }
+}
 
 export component FocusRing inherits Rectangle {
     background: transparent;
-    border-width: 2px;
+    border-width: Stroke.emphasis;
     border-color: Palette.accent-background;
-    border-radius: 6px;
+    border-radius: Radius.sm;
 }
 
 export component ClickArea inherits Rectangle {
     in property <bool> enabled: true;
     in property <bool> above-modal: false;
+    in property <bool> draggable: false;
     in property <string> label;
     in property <bool> show-focus-ring: true;
-    in property <length> ring-radius: 6px;
+    in property <length> ring-radius: Radius.sm;
+    in property <length> ring-inset: 0;
     out property <bool> has-hover: touch.has-hover;
     out property <bool> pressed: touch.pressed;
     out property <bool> has-focus: fs.has-focus;
 
     callback clicked();
+    callback moved(length);
 
-    property <bool> actionable: root.enabled
-        && (root.above-modal || Shell.background-reachable);
+    property <bool> actionable: Interaction.actionable(root.enabled, root.above-modal);
 
     public function take-focus() {
         fs.focus();
@@ -44,7 +57,7 @@ export component ClickArea inherits Rectangle {
         enabled: root.enabled;
         focus-on-tab-navigation: root.actionable;
         key-pressed(event) => {
-            if (root.enabled && (event.text == " " || event.text == "\n")) {
+            if (root.enabled && Interaction.activates(event.text)) {
                 root.clicked();
                 return accept;
             }
@@ -55,72 +68,11 @@ export component ClickArea inherits Rectangle {
     touch := TouchArea {
         enabled: root.enabled;
         mouse-cursor: root.enabled ? pointer : default;
-        clicked => {
-            root.clicked();
-        }
-    }
-
-    @children
-
-    if root.show-focus-ring && fs.has-focus: FocusRing {
-        width: 100%;
-        height: 100%;
-        border-radius: root.ring-radius;
-    }
-}
-
-export component ListItemArea inherits Rectangle {
-    in property <bool> enabled: true;
-    in property <bool> above-modal: false;
-    in property <string> label;
-    in property <bool> selected: false;
-    in property <int> index: -1;
-    in property <bool> show-focus-ring: true;
-    in property <length> ring-radius: 6px;
-    in property <length> ring-inset: 0;
-    out property <bool> has-hover: touch.has-hover;
-    out property <bool> pressed: touch.pressed;
-    out property <bool> has-focus: fs.has-focus;
-
-    callback clicked();
-
-    property <bool> actionable: root.enabled
-        && (root.above-modal || Shell.background-reachable);
-
-    public function take-focus() {
-        fs.focus();
-    }
-
-    accessible-role: list-item;
-    accessible-enabled: root.actionable;
-    accessible-label: root.label;
-    accessible-item-selectable: true;
-    accessible-item-selected: root.selected;
-    accessible-item-index: root.index;
-    accessible-action-default => {
-        if (root.actionable) {
-            root.clicked();
-        }
-    }
-    forward-focus: fs;
-
-    fs := FocusScope {
-        x: 0;
-        width: 0;
-        enabled: root.enabled;
-        focus-on-tab-navigation: root.actionable;
-        key-pressed(event) => {
-            if (root.enabled && (event.text == " " || event.text == "\n")) {
-                root.clicked();
-                return accept;
+        moved => {
+            if (root.draggable) {
+                root.moved(self.mouse-y - self.pressed-y);
             }
-            return reject;
         }
-    }
-
-    touch := TouchArea {
-        enabled: root.enabled;
-        mouse-cursor: root.enabled ? pointer : default;
         clicked => {
             root.clicked();
         }
@@ -135,4 +87,14 @@ export component ListItemArea inherits Rectangle {
         height: root.height - root.ring-inset * 2;
         border-radius: root.ring-radius;
     }
+}
+
+export component ListItemArea inherits ClickArea {
+    in property <bool> selected: false;
+    in property <int> index: -1;
+
+    accessible-role: list-item;
+    accessible-item-selectable: true;
+    accessible-item-selected: root.selected;
+    accessible-item-index: root.index;
 }

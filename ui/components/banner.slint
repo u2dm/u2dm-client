@@ -1,37 +1,38 @@
+import { Palette } from "std-widgets.slint";
 import { IconDisplay, IconSet } from "@lucide";
 
-import { AppStyle } from "./style.slint";
+import { AppStyle, Fonts, IconSize, Radius, Space, Stroke } from "../theme.slint";
 import { UserMessage, UserMessages } from "../messages.slint";
 
 export component ErrorBanner inherits Rectangle {
     in property <[UserMessage]> messages;
 
-    background: AppStyle.danger-surface;
-    border-radius: 10px;
-    border-width: 1px;
-    border-color: Colors.tomato.transparentize(0.78);
+    background: AppStyle.danger-background;
+    border-radius: Radius.md;
+    border-width: Stroke.hairline;
+    border-color: AppStyle.danger-border;
 
     HorizontalLayout {
-        padding: 12px;
-        spacing: 10px;
+        padding: Space.lg;
+        spacing: Space.lg;
 
         VerticalLayout {
             alignment: start;
 
             IconDisplay {
                 icon: IconSet.TriangleAlert;
-                size: 16px;
+                size: IconSize.sm;
                 stroke: AppStyle.danger;
             }
         }
 
         VerticalLayout {
-            spacing: 6px;
+            spacing: Space.md;
             horizontal-stretch: 1;
 
             for message in root.messages: Text {
                 text: UserMessages.text(message.kind, message.detail);
-                font-size: 12px;
+                font-size: Fonts.body-small;
                 wrap: word-wrap;
                 horizontal-stretch: 1;
                 color: AppStyle.danger;

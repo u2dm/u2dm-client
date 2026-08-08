@@ -2,15 +2,13 @@ import { Palette } from "std-widgets.slint";
 import { Icon, IconSet } from "@lucide";
 
 import { SpaceEntry } from "./types.slint";
-import { TileGlyph, UnreadDot } from "./tile.slint";
-import { Fonts } from "../../../theme.slint";
-import { FocusRing } from "../../../components/a11y.slint";
-import { Shell } from "../../../local.slint";
+import { RailTileFace } from "./tile.slint";
+import { AppStyle, Metrics, Radius, Size, Space, Stroke, Weight } from "../../../theme.slint";
+import { ListItemArea } from "../../../components/a11y.slint";
 import { DirectoryView } from "../../../views.slint";
 import { Actions } from "../../../actions.slint";
 
-component SubspaceTile inherits Rectangle {
-    in property <string> label;
+component SubspaceTile inherits ListItemArea {
     in property <string> initial;
     in property <bool> has-avatar;
     in property <image> avatar;
@@ -19,132 +17,57 @@ component SubspaceTile inherits Rectangle {
     in property <bool> alert;
     in property <bool> mention;
     in property <bool> hint;
-    in property <bool> selected;
-    in property <bool> above-modal: false;
-    in property <int> index: -1;
 
-    callback clicked();
+    height: Metrics.rail-row;
+    ring-radius: Radius.md;
+    ring-inset: Metrics.rail-tile-inset;
 
-    height: 68px;
-
-    property <bool> actionable: root.above-modal || Shell.background-reachable;
-
-    accessible-role: list-item;
-    accessible-enabled: root.actionable;
-    accessible-label: root.label;
-    accessible-item-selectable: true;
-    accessible-item-selected: root.selected;
-    accessible-item-index: root.index;
-    accessible-action-default => {
-        if (root.actionable) {
-            root.clicked();
-        }
-    }
-    forward-focus: fs;
-
-    fs := FocusScope {
-        x: 0;
-        width: 0;
-        focus-on-tab-navigation: root.actionable;
-        key-pressed(event) => {
-            if (event.text == " " || event.text == "\n") {
-                root.clicked();
-                return accept;
-            }
-            return reject;
-        }
-    }
-
-    highlight := Rectangle {
-        x: 4px;
-        y: 2px;
-        width: parent.width - 8px;
-        height: parent.height - 4px;
-        border-radius: 10px;
+    Rectangle {
+        x: Metrics.rail-tile-inset;
+        y: Metrics.rail-tile-inset;
+        width: parent.width - Metrics.rail-tile-inset * 2;
+        height: parent.height - Metrics.rail-tile-inset * 2;
+        border-radius: Radius.md;
         background: root.selected
-            ? Palette.accent-background.transparentize(0.85)
-            : (touch.has-hover ? Palette.foreground.transparentize(0.94) : transparent);
+            ? AppStyle.accent-background-soft
+            : (root.has-hover ? AppStyle.overlay-hover : transparent);
     }
 
-    tile := Rectangle {
-        width: 42px;
-        height: 42px;
-        x: (parent.width - self.width) / 2;
-        y: 6px;
-        border-radius: 12px;
-        background: root.selected
-            ? Palette.accent-background
-            : Palette.accent-background.transparentize(0.88);
-        clip: true;
-
-        TileGlyph {
-            width: 100%;
-            height: 100%;
-            has-avatar: root.has-avatar;
-            avatar: root.avatar;
-            has-icon: root.has-icon;
-            icon: root.icon;
-            initial: root.initial;
-            foreground: root.selected ? Palette.accent-foreground : Palette.accent-background;
-        }
-    }
-
-    Text {
-        x: 3px;
-        y: tile.y + tile.height + 3px;
-        width: parent.width - 6px;
-        text: root.label;
-        font-family: Fonts.emoji;
-        font-size: 9px;
-        font-weight: root.selected ? 700 : 400;
-        horizontal-alignment: center;
-        overflow: elide;
-        color: root.selected
-            ? Palette.foreground
-            : Palette.foreground.transparentize(0.4);
-    }
-
-    property <length> badge-center-x: tile.x + tile.width - tile.border-radius * 0.293;
-    property <length> badge-center-y: tile.y + tile.border-radius * 0.293;
-
-    if root.alert || root.mention || root.hint: UnreadDot {
-        x: root.badge-center-x - self.width / 2;
-        y: root.badge-center-y - self.height / 2;
-        diameter: 9px;
-        ringed: true;
+    RailTileFace {
+        width: 100%;
+        height: 100%;
+        caption: root.label;
+        initial: root.initial;
+        has-avatar: root.has-avatar;
+        avatar: root.avatar;
+        has-icon: root.has-icon;
+        icon: root.icon;
         alert: root.alert;
         mention: root.mention;
         hint: root.hint;
-    }
-
-    touch := TouchArea {
-        mouse-cursor: pointer;
-        clicked => {
-            root.clicked();
-        }
-    }
-
-    if fs.has-focus: FocusRing {
-        x: 4px;
-        y: 2px;
-        width: parent.width - 8px;
-        height: parent.height - 4px;
-        border-radius: 10px;
+        selected: root.selected;
+        glyph-extent: Size.xxl;
+        glyph-top: Space.md;
+        glyph-radius: Radius.md;
+        glyph-background: root.selected ? Palette.accent-background : AppStyle.accent-background-soft;
+        caption-gap: Space.sm;
+        caption-weight: root.selected ? Weight.bold : Weight.regular;
+        dot-diameter: Space.md;
     }
 }
 
 export component SubspaceRail inherits Rectangle {
     in property <bool> above-modal: false;
 
-    property <length> row-height: 68px;
-    property <length> top-padding: 8px;
+    property <length> row-height: Metrics.rail-row;
+    property <length> top-padding: Space.md;
 
     background: Palette.alternate-background;
 
     Rectangle {
-        x: parent.width - 1px;
-        width: 1px;
-        background: Palette.foreground.transparentize(0.92);
+        x: parent.width - Stroke.hairline;
+        width: Stroke.hairline;
+        background: AppStyle.overlay-hover;
     }
 
     Flickable {

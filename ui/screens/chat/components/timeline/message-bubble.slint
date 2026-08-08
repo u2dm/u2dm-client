@@ -27,21 +27,21 @@ import {
 } from "../../../../local.slint";
 import { Actions } from "../../../../actions.slint";
 import { RoomView } from "../../../../views.slint";
-import { Avatars, Fonts, Metrics } from "../../../../theme.slint";
+import { AppStyle, Avatars, Fonts, Glyph, IconSize, Metrics, Motion, Radius, Size, Space, Stroke, Weight } from "../../../../theme.slint";
 import { MediaState, MessageKind } from "../../../../enums.slint";
 
 component PronounBadge inherits Rectangle {
     in property <string> text;
 
-    width: pronoun-text.preferred-width + 10px;
-    height: pronoun-text.preferred-height + 2px;
+    width: pronoun-text.preferred-width + Space.lg;
+    height: pronoun-text.preferred-height + Space.xs;
     border-radius: self.height / 2;
-    background: Palette.foreground.transparentize(0.92);
+    background: AppStyle.overlay-hover;
 
     pronoun-text := Text {
         text: root.text;
-        font-size: 10px;
-        color: Palette.accent-background.transparentize(0.2);
+        font-size: Fonts.caption;
+        color: AppStyle.accent-on-surface;
         horizontal-alignment: center;
         vertical-alignment: center;
         overflow: elide;
@@ -73,12 +73,12 @@ component SenderLine inherits HorizontalLayout {
     in property <[string]> pronouns;
 
     alignment: start;
-    spacing: 4px;
+    spacing: Space.sm;
 
     Text {
         text: root.sender;
-        font-size: 12px;
-        font-weight: 700;
+        font-size: Fonts.body-small;
+        font-weight: Weight.bold;
         color: Palette.accent-background;
         vertical-alignment: center;
         overflow: elide;
@@ -96,7 +96,7 @@ export component MessageBubble inherits VerticalLayout {
     in property <length> available-width;
     in property <int> timeline-row;
 
-    property <color> own-bubble-color: Palette.accent-background.transparentize(0.4);
+    property <color> own-bubble-color: AppStyle.own-bubble;
     property <color> other-bubble-color: Palette.alternate-background;
     property <length> bubble-max-width: max(
         Metrics.bubble-max / 2,
@@ -120,8 +120,8 @@ export component MessageBubble inherits VerticalLayout {
     property <bool> is-photo-only: root.has-photo && !root.has-caption;
     property <bool> has-reactions: msg.reactions.length > 0;
     property <bool> chips-outside: root.is-photo-only && root.has-reactions;
-    property <length> outside-chips-gap: 4px;
-    property <length> photo-row-padding: root.has-photo ? 10px : 0px;
+    property <length> outside-chips-gap: Space.sm;
+    property <length> photo-row-padding: root.has-photo ? Space.lg : 0px;
 
     if msg.first-unread: UnreadDivider { }
 
@@ -145,23 +145,23 @@ export component MessageBubble inherits VerticalLayout {
 
         row := HorizontalLayout {
             alignment: is-own ? end : start;
-            padding-left: is-own ? 0 : 8px;
-            padding-right: is-own ? 8px : 0;
-            padding-top: 2px;
-            padding-bottom: 2px;
+            padding-left: is-own ? 0 : Space.md;
+            padding-right: is-own ? Space.md : 0;
+            padding-top: Space.xs;
+            padding-bottom: Space.xs;
 
             if !is-own: Avatar {
-                width: 32px;
-                height: 32px;
+                width: Size.md;
+                height: Size.md;
                 background: Avatars.color(msg.color-index);
                 has-image: msg.has-avatar;
                 image: msg.avatar;
                 initial: msg.sender-initial;
-                initial-size: 13px;
+                initial-size: Glyph.xs;
             }
 
             if !is-own: Rectangle {
-                width: 6px;
+                width: Space.md;
             }
 
             bubble := Rectangle {
@@ -182,12 +182,12 @@ export component MessageBubble inherits VerticalLayout {
                 background: root.is-sticker
                     ? transparent
                     : (is-own ? own-bubble-color : other-bubble-color);
-                border-radius: 12px;
-                border-width: root.is-focused ? 2px : 0;
+                border-radius: Radius.md;
+                border-width: root.is-focused ? Stroke.emphasis : 0;
                 border-color: Palette.accent-background;
                 clip: true;
 
-                animate border-width { duration: 150ms; }
+                animate border-width { duration: Motion.normal; }
 
                 hover-bg := TouchArea {
                     width: 100%;
@@ -202,16 +202,16 @@ export component MessageBubble inherits VerticalLayout {
                 }
 
                 bubble-content := VerticalLayout {
-                    padding-top: root.has-photo ? 0 : 4px;
-                    padding-bottom: root.is-photo-only ? 0 : 4px;
-                    padding-left: root.has-photo ? 0 : 10px;
-                    padding-right: root.has-photo ? 0 : 10px;
+                    padding-top: root.has-photo ? 0 : Space.sm;
+                    padding-bottom: root.is-photo-only ? 0 : Space.sm;
+                    padding-left: root.has-photo ? 0 : Space.lg;
+                    padding-right: root.has-photo ? 0 : Space.lg;
 
                     if !is-own: HorizontalLayout {
                         padding-left: root.photo-row-padding;
                         padding-right: root.photo-row-padding;
-                        padding-top: root.has-photo ? 5px : 0;
-                        padding-bottom: root.has-photo ? 3px : 0;
+                        padding-top: root.has-photo ? Space.sm : 0;
+                        padding-bottom: root.has-photo ? Space.sm : 0;
 
                         SenderLine {
                             sender: msg.sender;
@@ -220,28 +220,30 @@ export component MessageBubble inherits VerticalLayout {
                     }
 
                     if msg.has-reply: VerticalLayout {
-                        padding-top: is-own ? 0 : 4px;
-                        padding-bottom: root.has-photo ? 4px : 0;
+                        padding-top: is-own ? 0 : Space.sm;
+                        padding-bottom: root.has-photo ? Space.sm : 0;
                         padding-left: root.photo-row-padding;
                         padding-right: root.photo-row-padding;
 
                         reply-jump := ClickArea {
                             height: reply-quote.preferred-height;
-                            border-radius: 4px;
-                            ring-radius: 4px;
+                            border-radius: Radius.xs;
+                            ring-radius: Radius.xs;
                             enabled: msg.reply-event-id != "";
                             label: @tr("Go to the message this replies to");
-                            background: is-own
-                                ? Palette.accent-background.transparentize(
-                                    reply-jump.has-hover ? 0.55 : 0.7)
-                                : Palette.foreground.transparentize(
-                                    reply-jump.has-hover ? 0.86 : 0.92);
+                            property <color> quote-tint: is-own
+                                ? Palette.accent-background
+                                : Palette.foreground;
+                            property <float> quote-veil: is-own
+                                ? (reply-jump.has-hover ? 0.55 : 0.7)
+                                : (reply-jump.has-hover ? 0.86 : 0.92);
+                            background: self.quote-tint.transparentize(self.quote-veil);
                             clicked => {
                                 Actions.jump-to-event(msg.reply-event-id);
                             }
 
                             reply-quote := ReplyQuote {
-                                padding: 4px;
+                                padding: Space.sm;
                                 sender: msg.reply-sender;
                                 preview: MessagePreview.label(msg.reply-kind, msg.reply-body);
                             }
@@ -293,14 +295,14 @@ export component MessageBubble inherits VerticalLayout {
                     }
 
                     if !root.is-photo-only: HorizontalLayout {
-                        spacing: 6px;
+                        spacing: Space.md;
                         padding-left: root.photo-row-padding;
                         padding-right: root.photo-row-padding;
-                        padding-top: root.has-reactions ? 4px : 0;
+                        padding-top: root.has-reactions ? Space.sm : 0;
 
                         if root.has-reactions: BubbleReactions {
                             horizontal-stretch: 0;
-                            padding-bottom: 4px;
+                            padding-bottom: Space.sm;
                             reactions: msg.reactions;
                             is-own: root.is-own;
                             can-react: root.has-remote-id;
@@ -314,24 +316,24 @@ export component MessageBubble inherits VerticalLayout {
                             horizontal-stretch: 1;
                         }
 
-                        if !root.is-photo-only: VerticalLayout {
+                        VerticalLayout {
                             alignment: end;
 
                             HorizontalLayout {
                                 alignment: end;
-                                spacing: 3px;
+                                spacing: Space.sm;
 
                                 if msg.edited: IconDisplay {
                                     y: (parent.height - self.height) / 2;
                                     icon: IconSet.Pencil;
-                                    size: 11px;
-                                    stroke: Palette.foreground.transparentize(0.5);
+                                    size: IconSize.xs;
+                                    stroke: AppStyle.overlay-foreground-muted;
                                 }
 
                                 Text {
                                     text: msg.timestamp;
-                                    font-size: 12px;
-                                    color: Palette.foreground.transparentize(0.5);
+                                    font-size: Fonts.body-small;
+                                    color: AppStyle.overlay-foreground-muted;
                                     horizontal-alignment: right;
                                     vertical-alignment: center;
                                 }
@@ -341,11 +343,11 @@ export component MessageBubble inherits VerticalLayout {
                 }
 
                 reply-btn := ClickArea {
-                    x: parent.width - self.width - 4px;
-                    y: 4px;
-                    width: reply-text.width + 12px;
-                    height: 20px;
-                    ring-radius: 6px;
+                    x: parent.width - self.width - Space.sm;
+                    y: Space.sm;
+                    width: reply-text.width + Space.lg;
+                    height: Size.target-min;
+                    ring-radius: Radius.sm;
                     label: @tr("Reply to {}", msg.sender);
                     enabled: root.has-remote-id;
                     opacity: message-row.hovered ? 1 : 0;
@@ -359,8 +361,8 @@ export component MessageBubble inherits VerticalLayout {
                         x: (parent.width - self.width) / 2;
                         y: (parent.height - self.height) / 2;
                         text: @tr("Reply");
-                        font-size: 12px;
-                        font-weight: 600;
+                        font-size: Fonts.body-small;
+                        font-weight: Weight.semibold;
                         color: root.is-own ? Palette.foreground : Palette.accent-background;
                     }
 
@@ -368,7 +370,7 @@ export component MessageBubble inherits VerticalLayout {
                         x: reply-text.x;
                         y: reply-text.y + reply-text.height;
                         width: reply-text.width;
-                        height: 1px;
+                        height: Stroke.hairline;
                         background: reply-text.color;
                     }
                 }
@@ -393,7 +395,7 @@ export component MessageBubble inherits VerticalLayout {
                 ? bubble.x - self.width + Metrics.reaction-strip-overlap
                 : bubble.x + bubble.width - Metrics.reaction-strip-overlap;
             y: bubble.y + bubble.height - self.height;
-            width: Metrics.reaction-strip-cell + 2 * Metrics.reaction-strip-pad;
+            width: Metrics.reaction-strip-width;
             height: self.width;
             border-radius: self.height / 2;
             ring-radius: self.height / 2;
@@ -420,7 +422,7 @@ export component MessageBubble inherits VerticalLayout {
                 height: parent.height;
                 text: QuickReactions.default-key;
                 font-family: Fonts.emoji;
-                font-size: Metrics.reaction-emoji;
+                font-size: Glyph.xs;
                 horizontal-alignment: center;
                 vertical-alignment: center;
             }

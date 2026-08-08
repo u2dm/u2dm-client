@@ -1,7 +1,7 @@
 import { Palette, Spinner } from "std-widgets.slint";
 import { IconDisplay, IconSet } from "@lucide";
 import { MediaState } from "../../../../../enums.slint";
-import { Fonts } from "../../../../../theme.slint";
+import { AppStyle, Fonts, IconSize, Metrics, Motion, Radius, Space } from "../../../../../theme.slint";
 
 export component StickerMessage inherits HorizontalLayout {
     in property <image> sticker;
@@ -12,7 +12,7 @@ export component StickerMessage inherits HorizontalLayout {
     in property <bool> bubble-hovered;
     in property <bool> is-own;
 
-    property <length> max-long-edge: 176px;
+    property <length> max-long-edge: Metrics.sticker-max-extent;
     property <bool> is-ready: root.media-state == MediaState.ready;
     property <bool> is-failed: root.media-state == MediaState.failed;
     property <bool> has-dimensions: root.sticker-width > 0 && root.sticker-height > 0;
@@ -51,8 +51,8 @@ export component StickerMessage inherits HorizontalLayout {
         if !root.is-ready: Rectangle {
             width: 100%;
             height: 100%;
-            border-radius: 8px;
-            background: Palette.foreground.transparentize(0.94);
+            border-radius: Radius.sm;
+            background: AppStyle.overlay-hover;
 
             if !root.is-failed: Spinner {
                 x: (parent.width - self.width) / 2;
@@ -64,32 +64,32 @@ export component StickerMessage inherits HorizontalLayout {
                 x: (parent.width - self.width) / 2;
                 y: (parent.height - self.height) / 2;
                 icon: IconSet.ImageOff;
-                size: 24px;
-                stroke: Palette.foreground.transparentize(0.5);
+                size: IconSize.lg;
+                stroke: AppStyle.foreground-faint;
             }
         }
 
         if root.alt != "": Rectangle {
             x: (parent.width - self.width) / 2;
-            y: parent.height - self.height - 4px;
-            width: min(parent.width, alt-text.preferred-width + 16px);
-            height: alt-text.preferred-height + 6px;
+            y: parent.height - self.height - Space.sm;
+            width: min(parent.width, alt-text.preferred-width + Space.xl);
+            height: alt-text.preferred-height + Space.md;
             border-radius: self.height / 2;
-            background: Palette.background.transparentize(0.15);
+            background: AppStyle.overlay-sticker-scrim;
             opacity: root.is-ready && root.bubble-hovered ? 1 : 0;
 
             animate opacity {
-                duration: 120ms;
+                duration: Motion.fast;
                 easing: ease-out;
             }
 
             alt-text := Text {
-                x: 8px;
+                x: Space.md;
                 y: (parent.height - self.height) / 2;
-                width: parent.width - 16px;
+                width: parent.width - Space.xl;
                 text: root.alt;
                 font-family: Fonts.emoji;
-                font-size: 11px;
+                font-size: Fonts.caption;
                 color: Palette.foreground;
                 horizontal-alignment: center;
                 overflow: elide;

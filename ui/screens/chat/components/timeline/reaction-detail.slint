@@ -5,38 +5,38 @@ import {
 import { ReactionEntry } from "../types.slint";
 import { ClickArea } from "../../../../components/a11y.slint";
 import { PickerCard } from "../../../../components/overlay.slint";
-import { Fonts } from "../../../../theme.slint";
+import { AppStyle, Fonts, Radius, Size, Space, Weight } from "../../../../theme.slint";
 
 component DetailRow inherits ClickArea {
     in property <ReactionEntry> entry;
 
-    height: 34px;
-    border-radius: 6px;
-    ring-radius: 6px;
+    height: Size.lg;
+    border-radius: Radius.sm;
+    ring-radius: Radius.sm;
     background: root.has-hover
-        ? Palette.foreground.transparentize(0.9)
-        : (entry.mine ? Palette.accent-background.transparentize(0.85) : transparent);
+        ? AppStyle.overlay-hover
+        : (entry.mine ? AppStyle.accent-background-soft : transparent);
 
     HorizontalLayout {
-        padding-left: 8px;
-        padding-right: 8px;
-        spacing: 8px;
+        padding-left: Space.md;
+        padding-right: Space.md;
+        spacing: Space.md;
 
         Text {
             text: root.entry.label;
             font-family: Fonts.emoji;
-            font-size: 16px;
+            font-size: Fonts.title;
             vertical-alignment: center;
         }
 
         Text {
-            width: 24px;
+            width: Size.sm;
             text: root.entry.count;
-            font-size: 12px;
-            font-weight: 600;
+            font-size: Fonts.body-small;
+            font-weight: Weight.semibold;
             color: root.entry.mine
                 ? Palette.accent-background
-                : Palette.foreground.transparentize(0.35);
+                : AppStyle.foreground-strong;
             vertical-alignment: center;
         }
 
@@ -45,8 +45,8 @@ component DetailRow inherits ClickArea {
             text: root.entry.hidden-reactors > 0
                 ? @tr("{} and {} more", root.entry.reactors, root.entry.hidden-reactors)
                 : root.entry.reactors;
-            font-size: 12px;
-            color: Palette.foreground.transparentize(0.45);
+            font-size: Fonts.body-small;
+            color: AppStyle.foreground-muted;
             vertical-alignment: center;
             overflow: elide;
         }
@@ -59,17 +59,17 @@ export component ReactionDetail inherits PickerCard {
     callback toggled(string);
 
     VerticalLayout {
-        padding: 6px;
-        spacing: 2px;
+        padding: Space.md;
+        spacing: Space.xs;
 
         Text {
             text: @tr("Reactions");
-            font-size: 11px;
-            font-weight: 600;
-            color: Palette.foreground.transparentize(0.45);
+            font-size: Fonts.caption;
+            font-weight: Weight.semibold;
+            color: AppStyle.foreground-muted;
             horizontal-alignment: left;
             vertical-alignment: center;
-            height: 20px;
+            height: Size.xs;
         }
 
         Flickable {
@@ -78,7 +78,7 @@ export component ReactionDetail inherits PickerCard {
 
             rows := VerticalLayout {
                 alignment: start;
-                spacing: 2px;
+                spacing: Space.xs;
 
                 for entry in root.items: DetailRow {
                     entry: entry;

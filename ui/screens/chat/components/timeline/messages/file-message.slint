@@ -1,23 +1,24 @@
 import { Button, Palette } from "std-widgets.slint";
 import { IconDisplay, IconSet } from "@lucide";
 import { Actions } from "../../../../../actions.slint";
+import { Fonts, IconSize, Space } from "../../../../../theme.slint";
 
 export component FileMessage inherits HorizontalLayout {
     in property <string> body;
     in property <string> event-id;
 
-    spacing: 8px;
+    spacing: Space.md;
     alignment: start;
 
     IconDisplay {
         icon: IconSet.Paperclip;
-        size: 16px;
-        stroke: Palette.foreground.transparentize(0.2);
+        size: IconSize.sm;
+        stroke: Palette.foreground;
     }
 
     Text {
         text: root.body;
-        font-size: 14px;
+        font-size: Fonts.body;
         vertical-alignment: center;
     }
 

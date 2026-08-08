@@ -2,42 +2,223 @@ import { Palette } from "std-widgets.slint";
 
 export global Fonts {
     in property <string> emoji: "Twemoji";
+
+    out property <length> caption-small: 9px;
+    out property <length> caption: 11px;
+    out property <length> body-small: 12px;
+    out property <length> label: 13px;
+    out property <length> body: 14px;
+    out property <length> title: 16px;
+    out property <length> heading: 18px;
+    out property <length> display: 26px;
+}
+
+export global Space {
+    out property <length> xs: 2px;
+    out property <length> sm: 4px;
+    out property <length> md: 8px;
+    out property <length> lg: 12px;
+    out property <length> xl: 16px;
+    out property <length> xxl: 24px;
+}
+
+export global Radius {
+    out property <length> xs: 4px;
+    out property <length> sm: 8px;
+    out property <length> md: 12px;
+    out property <length> lg: 16px;
+    out property <length> xl: 20px;
+}
+
+export global Motion {
+    out property <duration> fast: 120ms;
+    out property <duration> normal: 150ms;
+    out property <duration> slow: 200ms;
+    out property <duration> close-delay: 160ms;
+    out property <duration> reveal-delay: 350ms;
+}
+
+export global Glyph {
+    out property <length> xs: 12px;
+    out property <length> sm: 16px;
+    out property <length> md: 18px;
+    out property <length> lg: 22px;
+    out property <length> xl: 26px;
+    out property <length> xxl: 30px;
+}
+
+export global Weight {
+    out property <int> regular: 400;
+    out property <int> semibold: 600;
+    out property <int> bold: 700;
+}
+
+export global Stroke {
+    out property <length> hairline: 1px;
+    out property <length> emphasis: 2px;
+    out property <length> marker: 3px;
+}
+
+export global Opacity {
+    out property <float> disabled: 0.4;
+    out property <float> pending: 0.55;
+    out property <float> scrim: 0.45;
+    out property <float> scrim-strong: 0.65;
+}
+
+export global Tracking {
+    out property <length> wide: 0.6px;
+}
+
+export global IconSize {
+    out property <length> xs: 12px;
+    out property <length> sm: 16px;
+    out property <length> md: 20px;
+    out property <length> lg: 24px;
+    out property <length> xl: 32px;
+}
+
+export global Size {
+    out property <length> xxs: 16px;
+    out property <length> xs: 20px;
+    out property <length> sm: 24px;
+    out property <length> md: 32px;
+    out property <length> lg: 36px;
+    out property <length> xl: 40px;
+    out property <length> xxl: 44px;
+
+    out property <length> target-min: 24px;
+    out property <length> target: 44px;
+}
+
+export global AppStyle {
+    out property <bool> dark: Palette.color-scheme == ColorScheme.dark;
+
+    out property <brush> page: root.dark ? Palette.background : Palette.alternate-background;
+    out property <brush> card: root.dark ? Palette.alternate-background : Palette.background;
+
+    out property <color> foreground-strong: Palette.foreground.mix(Palette.background, 0.7);
+    out property <color> foreground-muted: Palette.foreground.mix(Palette.background, 0.62);
+    out property <color> foreground-faint: Palette.foreground.mix(Palette.background, 0.47);
+    out property <color> foreground-disabled: Palette.foreground.mix(Palette.background, 0.32);
+
+    out property <color> border: Palette.foreground.mix(Palette.background, 0.12);
+    out property <color> accent-background-soft: Palette.accent-background.mix(Palette.background, 0.15);
+    out property <color> accent-divider: Palette.accent-background.mix(Palette.background, 0.3);
+    out property <color> accent-surface: Palette.accent-background.mix(Palette.background, 0.55);
+    out property <color> own-bubble: Palette.accent-background.mix(Palette.background, 0.6);
+    out property <color> accent-border: Palette.accent-background.mix(Palette.background, 0.65);
+    out property <color> accent-on-surface: Palette.accent-background.mix(Palette.background, 0.8);
+    out property <color> on-accent-strong: Palette.accent-foreground.mix(Palette.accent-background, 0.15);
+    out property <color> on-accent-muted: Palette.accent-foreground.mix(Palette.accent-background, 0.75);
+
+    out property <color> danger: Colors.tomato.mix(Palette.foreground, 0.8);
+    out property <color> danger-muted: Colors.tomato.mix(Palette.foreground, 0.55);
+    out property <color> danger-background: Colors.tomato.mix(Palette.background, 0.1);
+    out property <color> danger-border: Colors.tomato.mix(Palette.background, 0.22);
+    out property <color> success: Colors.mediumseagreen.mix(Palette.foreground, 0.8);
+    out property <color> success-background: Colors.mediumseagreen.mix(Palette.background, 0.1);
+
+    out property <color> status-online: Colors.mediumseagreen;
+    out property <color> status-pending: Colors.goldenrod;
+    out property <color> status-error: Colors.tomato;
+
+    out property <color> surface-raised: Palette.background.mix(Palette.alternate-background, 0.5);
+    out property <color> surface-panel: Palette.background.mix(Palette.alternate-background, 0.6);
+    out property <color> surface-sunken: Palette.background.mix(Palette.alternate-background, 0.7);
+    out property <color> surface-rail: Palette.alternate-background.mix(Palette.background, 0.35);
+
+    out property <color> chip-fill: Palette.background.transparentize(0.78);
+    out property <color> chip-fill-mine: Palette.accent-background.transparentize(0.72);
+
+    out property <color> overlay-pressed: Palette.foreground.transparentize(0.88);
+    out property <color> overlay-hover: Palette.foreground.transparentize(0.92);
+    out property <color> overlay-subtle: Palette.foreground.transparentize(0.955);
+    out property <color> overlay-foreground-muted: Palette.foreground.transparentize(0.38);
+    out property <color> overlay-media-scrim: Palette.background.transparentize(0.3);
+    out property <color> overlay-sticker-scrim: Palette.background.transparentize(0.15);
+
+    out property <brush> brand-glow-primary: @radial-gradient(circle, Palette.accent-background.transparentize(0.78) 0%, Palette.accent-background.transparentize(1) 62%);
+    out property <brush> brand-glow-secondary: @radial-gradient(circle, root.accent-background-soft 0%, Palette.accent-background.transparentize(1) 60%);
+
+    out property <length> card-width: 400px;
+    out property <length> card-width-wide: 420px;
+    out property <length> card-inset: 48px;
+    out property <length> card-padding: 32px;
+    out property <length> card-padding-dense: Space.xxl;
+    out property <length> control-height: 48px;
+    out property <brush> brand-gradient: @linear-gradient(140deg, Palette.accent-background.brighter(0.25) 0%, Palette.accent-background.darker(0.15) 100%);
 }
 
 export global Metrics {
-    out property <length> room-header: 52px;
-    out property <length> composer-row: 40px;
+    out property <length> header-row: 52px;
+    out property <length> composer-row: Size.xl;
     out property <length> reply-bar: 44px;
-    out property <length> timeline-gap: 8px;
+    out property <length> timeline-gap: Space.md;
 
     out property <length> space-rail: 72px;
     out property <length> subspace-rail: 68px;
+    out property <length> rail-row: 68px;
+    out property <length> rail-tile-inset: Space.sm;
+    out property <float> corner-arc-inset: sqrt(2.0) / 2 - 0.5;
     out property <length> sidebar-default: 340px;
     out property <length> sidebar-min: 260px;
     out property <length> sidebar-max: 500px;
-    out property <length> sidebar-narrow: 68px;
-    out property <length> sidebar-collapsed: root.space-rail + root.sidebar-narrow;
+    out property <length> room-column-narrow: 68px;
+    out property <length> sidebar-collapsed: root.space-rail + root.room-column-narrow;
     out property <length> sidebar-collapse-at: 200px;
+    out property <length> sidebar-row: 64px;
+    out property <length> sidebar-avatar: 48px;
 
     out property <length> bubble-max: 460px;
-    out property <length> bubble-gutter: 74px;
+    out property <length> bubble-gutter-base: 52px;
+    out property <length> bubble-gutter: root.bubble-gutter-base + root.reaction-strip-overhang;
 
     out property <length> picker-width: 360px;
     out property <length> picker-height: 380px;
     out property <length> picker-min-height: 180px;
-    out property <length> reaction-emoji: 12px;
-    out property <length> reaction-chip: 24px;
-    out property <length> reaction-strip-cell: 26px;
-    out property <length> reaction-strip-pad: 4px;
-    out property <length> reaction-strip-overlap: 12px;
-    out property <duration> reaction-strip-reveal: 350ms;
+    out property <length> reaction-chip: Size.sm;
+    out property <length> reaction-strip-cell: 28px;
+    out property <length> reaction-strip-pad: Space.sm;
+    out property <length> reaction-strip-overlap: Space.lg;
+    out property <length> reaction-strip-width: root.reaction-strip-cell + 2 * root.reaction-strip-pad;
+    out property <length> reaction-strip-overhang: root.reaction-strip-width - root.reaction-strip-overlap;
     out property <length> reaction-detail-width: 260px;
     out property <length> reaction-detail-height: 260px;
+    out property <length> unread-dot: 12px;
+
     out property <length> drawer-width: 300px;
+    out property <length> drawer-min-width: 240px;
+    out property <length> drawer-header: 148px;
+    out property <length> drawer-accounts-row: 84px;
+    out property <length> drawer-inset: 20px;
+    out property <length> drawer-row: 48px;
+    out property <length> drawer-avatar: 60px;
+    out property <length> drawer-close-inset: 52px;
     out property <length> overlay-peek: 44px;
 
+    out property <length> media-width-max: 400px;
+    out property <length> media-width-min: 140px;
+    out property <length> media-height-max: 380px;
+    out property <length> media-height-min: 80px;
+    out property <length> sticker-max-extent: 176px;
+
+    out property <length> toast-min-width: 200px;
+    out property <length> toast-max-width: 500px;
+
+    out property <length> login-glow-min-width: 360px;
+    out property <length> login-dense-below: 620px;
+    out property <length> login-card-margin: 40px;
+    out property <length> login-mark: 60px;
+    out property <length> login-mark-dense: 48px;
+    out property <length> login-mark-compact: 52px;
+
+    out property <length> verify-status-circle: 56px;
+    out property <length> verify-tile-min: 52px;
+    out property <length> verify-tile-max: 72px;
+
     out property <length> timeline-min: 380px;
-    out property <length> compact-breakpoint: 720px;
+    out property <length> compact-breakpoint: root.sidebar-default + root.timeline-min;
 
     out property <length> window-min-width: 360px;
     out property <length> window-min-height: 420px;

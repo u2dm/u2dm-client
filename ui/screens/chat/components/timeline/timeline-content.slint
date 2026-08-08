@@ -5,6 +5,7 @@ import { StatusPill } from "./status-pill.slint";
 import { TimelineScroller } from "./timeline-scroller.slint";
 import { ClickArea } from "../../../../components/a11y.slint";
 import { RoomView } from "../../../../views.slint";
+import { Fonts, IconSize, Radius, Size, Space, Weight } from "../../../../theme.slint";
 
 export component TimelineContent inherits Rectangle {
     in property <length> available-width;
@@ -23,26 +24,26 @@ export component TimelineContent inherits Rectangle {
     }
 
     if RoomView.backwards-loading && RoomView.timeline.length > 0: StatusPill {
-        x: 16px;
-        y: parent.height - self.height - 16px;
+        x: Space.xl;
+        y: parent.height - self.height - Space.xl;
         text: @tr("Loading older messages...");
         loading: true;
     }
 
     if RoomView.forwards-loading && RoomView.timeline.length > 0: StatusPill {
-        x: 16px;
-        y: parent.height - self.height - 16px;
+        x: Space.xl;
+        y: parent.height - self.height - Space.xl;
         text: @tr("Loading newer messages...");
         loading: true;
     }
 
     if !scroller.following && RoomView.timeline.length > 0: ClickArea {
-        x: parent.width - self.width - 16px;
-        y: parent.height - self.height - 16px;
-        width: 40px;
-        height: 40px;
-        border-radius: 20px;
-        ring-radius: 20px;
+        x: parent.width - self.width - Space.xl;
+        y: parent.height - self.height - Space.xl;
+        width: Size.xl;
+        height: Size.xl;
+        border-radius: Radius.xl;
+        ring-radius: Radius.xl;
         background: Palette.alternate-background;
         label: @tr("Jump to latest messages");
         clicked => {
@@ -53,22 +54,22 @@ export component TimelineContent inherits Rectangle {
             x: (parent.width - self.width) / 2;
             y: (parent.height - self.height) / 2;
             icon: IconSet.ChevronDown;
-            size: 22px;
+            size: IconSize.md;
             stroke: Palette.alternate-foreground;
         }
 
         if RoomView.new-messages-count > 0: Rectangle {
-            x: parent.width - self.width / 2 - 2px;
-            y: -self.height / 2 + 2px;
-            width: Math.max(18px, badge-text.preferred-width + 8px);
-            height: 18px;
-            border-radius: 9px;
+            x: parent.width - self.width / 2 - Space.xs;
+            y: -self.height / 2 + Space.xs;
+            width: Math.max(Size.xs, badge-text.preferred-width + Space.md);
+            height: Size.xs;
+            border-radius: Radius.md;
             background: Palette.accent-background;
 
             badge-text := Text {
                 text: RoomView.new-messages-count;
-                font-size: 10px;
-                font-weight: 700;
+                font-size: Fonts.caption;
+                font-weight: Weight.bold;
                 color: Palette.accent-foreground;
                 horizontal-alignment: center;
                 vertical-alignment: center;
