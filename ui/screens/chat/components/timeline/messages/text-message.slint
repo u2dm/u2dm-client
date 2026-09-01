@@ -1,12 +1,75 @@
 import { Palette } from "std-widgets.slint";
 
-import { Fonts } from "../../../../../theme.slint";
+import { Actions } from "../../../../../actions.slint";
+import { TextSelection } from "../../../../../local.slint";
+import { AppStyle, Fonts } from "../../../../../theme.slint";
 
-export component TextMessage inherits TextInput {
-    font-family: Fonts.emoji;
-    font-size: Fonts.body;
-    wrap: word-wrap;
-    read-only: true;
-    single-line: false;
-    color: Palette.foreground;
+export component TextMessage inherits Rectangle {
+    in property <string> unique-id;
+    in property <string> plain;
+    in property <styled-text> styled;
+    in property <bool> has-links;
+    in property <bool> is-own;
+
+    property <bool> selecting: TextSelection.active-id == root.unique-id && root.unique-id != "";
+
+    preferred-width: content.preferred-width;
+    height: content.preferred-height;
+
+    accessible-role: text;
+    accessible-label: root.plain;
+    accessible-action-default => {
+        TextSelection.select(root.unique-id);
+    }
+
+    content := VerticalLayout {
+        if !root.selecting: StyledText {
+            text: root.styled;
+            default-font-family: Fonts.emoji;
+            default-font-size: Fonts.body;
+            default-color: Palette.foreground;
+            link-color: root.is-own ? AppStyle.own-link : AppStyle.link;
+            link-clicked(url) => {
+                Actions.open-link(url);
+            }
+        }
+
+        if root.selecting: TextInput {
+            text: root.plain;
+            font-family: Fonts.emoji;
+            font-size: Fonts.body;
+            color: Palette.foreground;
+            wrap: word-wrap;
+            read-only: true;
+            single-line: false;
+            selection-background-color: Palette.selection-background;
+            selection-foreground-color: Palette.selection-foreground;
+
+            init => {
+                self.focus();
+                self.select-all();
+            }
+            changed has-focus => {
+                if (!self.has-focus) {
+                    TextSelection.clear();
+                }
+            }
+            key-pressed(event) => {
+                if (event.text == Key.Escape) {
+                    TextSelection.clear();
+                    return accept;
+                }
+                return reject;
+            }
+        }
+    }
+
+    if !root.selecting && !root.has-links: TouchArea {
+        width: 100%;
+        height: 100%;
+        mouse-cursor: text;
+        clicked => {
+            TextSelection.select(root.unique-id);
+        }
+    }
 }

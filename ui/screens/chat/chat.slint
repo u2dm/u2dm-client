@@ -10,7 +10,7 @@ import { AppStyle, IconSize, Metrics, Radius, Size, Space } from "../../theme.sl
 import { IconButton } from "../../components/button.slint";
 import { DirectoryView, RoomView } from "../../views.slint";
 import { Actions } from "../../actions.slint";
-import { Composer, Reactions, Shell } from "../../local.slint";
+import { Composer, Reactions, Shell, TextSelection } from "../../local.slint";
 
 export component ChatScreen inherits Rectangle {
     in-out property <string> input-message: "";
@@ -18,6 +18,7 @@ export component ChatScreen inherits Rectangle {
     init => {
         Composer.clear();
         Shell.close-overlays();
+        TextSelection.clear();
         Reactions.close();
     }
 

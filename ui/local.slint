@@ -24,6 +24,18 @@ export global Composer {
     }
 }
 
+export global TextSelection {
+    in-out property <string> active-id;
+
+    public function select(id: string) {
+        self.active-id = id;
+    }
+
+    public function clear() {
+        self.active-id = "";
+    }
+}
+
 export global Shell {
     in-out property <bool> drawer-open: false;
     in-out property <bool> nav-open: false;

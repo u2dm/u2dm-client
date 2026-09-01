@@ -4,7 +4,7 @@ use std::sync::Mutex as StdMutex;
 use matrix_sdk::ruma::UInt;
 use matrix_sdk::ruma::events::StateEventContentChange;
 use matrix_sdk::ruma::events::room::message::{
-    FileMessageEventContent, ImageMessageEventContent, MessageType,
+    FileMessageEventContent, FormattedBody, ImageMessageEventContent, MessageFormat, MessageType,
 };
 use matrix_sdk::ruma::events::room::name::RoomNameEventContent;
 use matrix_sdk::ruma::events::room::{ImageInfo, MediaSource};
@@ -19,7 +19,7 @@ use super::TimelineContext;
 use crate::adapters::matrix::preview;
 use crate::domain::media::{FileMeta, ImageMeta};
 use crate::domain::message::{
-    MessageBody, MessagePreviewKind, Reaction, ReplyInfo, ServiceEvent, TimelineMessage,
+    MessageBody, MessagePreviewKind, Reaction, ReplyInfo, RichText, ServiceEvent, TimelineMessage,
 };
 
 fn extract_sender_profile(event: &EventTimelineItem) -> (Option<String>, Option<String>) {
@@ -282,7 +282,9 @@ fn extract_image_body(
         }
     }
     MessageBody::Image {
-        caption: image.caption().map(String::from),
+        caption: image
+            .caption()
+            .map(|caption| rich_body(caption, image.formatted_caption())),
         meta: image.info.as_deref().map(image_meta).unwrap_or_default(),
     }
 }
@@ -324,15 +326,24 @@ fn extract_file_body(
     }
 }
 
+fn rich_body(plain: &str, formatted: Option<&FormattedBody>) -> RichText {
+    match formatted {
+        Some(formatted) if formatted.format == MessageFormat::Html => {
+            RichText::formatted(plain.to_owned(), formatted.body.clone())
+        }
+        _ => RichText::plain(plain.to_owned()),
+    }
+}
+
 fn message_type_to_body(
     msgtype: &MessageType,
     event_id_str: &str,
     media_sources: &StdMutex<HashMap<String, MediaSource>>,
 ) -> MessageBody {
     match msgtype {
-        MessageType::Text(t) => MessageBody::Text(t.body.clone()),
-        MessageType::Notice(n) => MessageBody::Notice(n.body.clone()),
-        MessageType::Emote(e) => MessageBody::Emote(e.body.clone()),
+        MessageType::Text(t) => MessageBody::Text(rich_body(&t.body, t.formatted.as_ref())),
+        MessageType::Notice(n) => MessageBody::Notice(rich_body(&n.body, n.formatted.as_ref())),
+        MessageType::Emote(e) => MessageBody::Emote(rich_body(&e.body, e.formatted.as_ref())),
         MessageType::Image(i) => extract_image_body(i, event_id_str, media_sources),
         MessageType::File(f) => extract_file_body(f, event_id_str, media_sources),
         other => MessageBody::Unsupported {

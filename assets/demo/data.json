@@ -360,6 +360,7 @@
         "sender": "@kai:matrix.org",
         "name": "Kai",
         "body": "/g/ has had a thread up since tuesday. 400 posts, zero lines of code between them",
+        "html": "/g/ has had <a href=\"https://example.invalid/thread\">a thread</a> up since tuesday. <strong>400 posts</strong>, zero lines of code between them",
         "minutes_ago": 28
       },
       {
@@ -411,6 +412,7 @@
         "sender": "@kai:matrix.org",
         "name": "Kai",
         "body": "a build script shipping a prebuilt binary was genuinely insane",
+        "html": "a <code>build.rs</code> shipping a <strong>prebuilt binary</strong> was genuinely insane",
         "minutes_ago": 22
       },
       {
@@ -432,6 +434,7 @@
         "sender": "@sarah:matrix.org",
         "name": "Sarah Chen",
         "body": "someone told me yesterday that unsafe is fine as long as you are careful",
+        "html": "someone told me yesterday that <code>unsafe</code> is fine <em>as long as you are careful</em>",
         "minutes_ago": 18
       },
       {

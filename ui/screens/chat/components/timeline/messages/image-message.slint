@@ -4,6 +4,7 @@ import { ClickArea } from "../../../../../components/a11y.slint";
 import { MediaState } from "../../../../../enums.slint";
 import { AppStyle, Fonts, IconSize, Metrics, Motion, Radius, Space } from "../../../../../theme.slint";
 import { Actions } from "../../../../../actions.slint";
+import { TextMessage } from "./text-message.slint";
 
 export component ImageMessage inherits VerticalLayout {
     in property <image> thumbnail;
@@ -11,6 +12,10 @@ export component ImageMessage inherits VerticalLayout {
     in property <int> image-width;
     in property <int> image-height;
     in property <string> body;
+    in property <string> unique-id;
+    in property <styled-text> styled;
+    in property <bool> has-links;
+    in property <bool> is-own;
     in property <string> event-id;
     in property <length> frame-limit: Metrics.media-width-max;
     in property <string> timestamp;
@@ -135,13 +140,13 @@ export component ImageMessage inherits VerticalLayout {
         padding-right: Space.lg;
         padding-top: Space.md;
 
-        Text {
+        TextMessage {
             width: root.display-width - 2 * Space.lg;
-            text: root.body;
-            font-family: Fonts.emoji;
-            font-size: Fonts.body;
-            color: Palette.foreground;
-            wrap: word-wrap;
+            unique-id: root.unique-id;
+            plain: root.body;
+            styled: root.styled;
+            has-links: root.has-links;
+            is-own: root.is-own;
         }
     }
 }

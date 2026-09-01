@@ -322,12 +322,12 @@ msgctxt "UserMessages"
 msgid "The verification could not be completed."
 msgstr ""
 
-#: ui/screens/chat/chat.slint:134
+#: ui/screens/chat/chat.slint:135
 msgctxt "ChatScreen"
 msgid "Sidebar width"
 msgstr ""
 
-#: ui/screens/chat/chat.slint:204
+#: ui/screens/chat/chat.slint:205
 msgctxt "ChatScreen"
 msgid "Dismiss"
 msgstr ""
@@ -392,22 +392,27 @@ msgctxt "ReactionPicker"
 msgid "Reactions are not encrypted."
 msgstr ""
 
-#: ui/screens/chat/components/timeline/message-bubble.slint:233
+#: ui/screens/chat/components/timeline/message-bubble.slint:238
 msgctxt "MessageBubble"
 msgid "Go to the message this replies to"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/message-bubble.slint:351
+#: ui/screens/chat/components/timeline/message-bubble.slint:364
+msgctxt "MessageBubble"
+msgid "Select the text of this message"
+msgstr ""
+
+#: ui/screens/chat/components/timeline/message-bubble.slint:387
 msgctxt "MessageBubble"
 msgid "Reply to {}"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/message-bubble.slint:363
+#: ui/screens/chat/components/timeline/message-bubble.slint:399
 msgctxt "MessageBubble"
 msgid "Reply"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/message-bubble.slint:404
+#: ui/screens/chat/components/timeline/message-bubble.slint:440
 msgctxt "MessageBubble"
 msgid "React to {}'s message with {}"
 msgstr ""
@@ -447,27 +452,27 @@ msgctxt "ReactionDetail"
 msgid "React with {}"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/messages/image-message.slint:47
+#: ui/screens/chat/components/timeline/messages/image-message.slint:52
 msgctxt "ImageMessage"
 msgid "Open image: {}"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/messages/image-message.slint:47
+#: ui/screens/chat/components/timeline/messages/image-message.slint:52
 msgctxt "ImageMessage"
 msgid "Open image"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/messages/image-message.slint:86
+#: ui/screens/chat/components/timeline/messages/image-message.slint:91
 msgctxt "ImageMessage"
 msgid "Image unavailable"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/messages/image-message.slint:152
+#: ui/screens/chat/components/timeline/messages/image-message.slint:157
 msgctxt "ImagePlaceholder"
 msgid "Image: {}"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/messages/image-message.slint:152
+#: ui/screens/chat/components/timeline/messages/image-message.slint:157
 msgctxt "ImagePlaceholder"
 msgid "Image"
 msgstr ""

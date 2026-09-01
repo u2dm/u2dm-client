@@ -42,13 +42,32 @@ pub enum ServiceEvent {
     CallNotification,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct RichText {
+    pub plain: String,
+    pub html: Option<String>,
+}
+
+impl RichText {
+    pub fn plain(plain: String) -> Self {
+        Self { plain, html: None }
+    }
+
+    pub fn formatted(plain: String, html: String) -> Self {
+        Self {
+            plain,
+            html: Some(html),
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum MessageBody {
-    Text(String),
-    Notice(String),
-    Emote(String),
+    Text(RichText),
+    Notice(RichText),
+    Emote(RichText),
     Image {
-        caption: Option<String>,
+        caption: Option<RichText>,
         meta: ImageMeta,
     },
     Sticker {

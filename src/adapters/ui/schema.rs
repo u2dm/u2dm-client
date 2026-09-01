@@ -41,6 +41,7 @@ macro_rules! simple_callbacks {
         on_select_space "select-space" select_space opt_room SelectSpace;
         on_select_subspace "select-subspace" select_subspace opt_room SelectSubspace;
         on_open_media "open-media" open_media manual_string OpenMedia;
+        on_open_link "open-link" open_link manual_string OpenLink;
         on_jump_to_event "jump-to-event" jump_to_event manual_string JumpToEvent;
     } };
 }
@@ -283,6 +284,8 @@ macro_rules! message_fields {
         sender SENDER "sender" text;
         pronouns PRONOUNS "pronouns" list;
         body BODY "body" text;
+        styled STYLED "styled" styled;
+        has_links HAS_LINKS "has-links" flag;
         timestamp TIMESTAMP "timestamp" text;
         message_type MESSAGE_TYPE "message-type" enumk;
         preview_kind PREVIEW_KIND "preview-kind" enumk;

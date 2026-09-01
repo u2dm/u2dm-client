@@ -24,6 +24,7 @@ import {
     ReactionAnchor,
     Reactions,
     Shell,
+    TextSelection,
 } from "../../../../local.slint";
 import { Actions } from "../../../../actions.slint";
 import { RoomView } from "../../../../views.slint";
@@ -136,7 +137,8 @@ export component MessageBubble inherits VerticalLayout {
             && (hover-bg.has-hover
             || root.strip-mine
             || react-btn.has-hover || react-btn.has-focus
-            || reply-btn.has-hover || reply-btn.has-focus);
+            || reply-btn.has-hover || reply-btn.has-focus
+            || select-btn.has-hover || select-btn.has-focus);
 
         height: row.preferred-height
             + (root.chips-outside
@@ -192,6 +194,9 @@ export component MessageBubble inherits VerticalLayout {
                 hover-bg := TouchArea {
                     width: 100%;
                     height: 100%;
+                    clicked => {
+                        TextSelection.clear();
+                    }
                     changed has-hover => {
                         if (self.has-hover && root.has-remote-id) {
                             Reactions.hover-bubble(bubble.anchor());
@@ -256,6 +261,10 @@ export component MessageBubble inherits VerticalLayout {
                         image-width: msg.image-width;
                         image-height: msg.image-height;
                         body: msg.body;
+                        unique-id: msg.unique-id;
+                        styled: msg.styled;
+                        has-links: msg.has-links;
+                        is-own: root.is-own;
                         event-id: msg.event-id;
                         frame-limit: root.bubble-max-width;
                         timestamp: msg.timestamp;
@@ -291,7 +300,11 @@ export component MessageBubble inherits VerticalLayout {
                     }
 
                     if is-plain-text: TextMessage {
-                        text: msg.body;
+                        unique-id: msg.unique-id;
+                        plain: msg.body;
+                        styled: msg.styled;
+                        has-links: msg.has-links;
+                        is-own: root.is-own;
                     }
 
                     if !root.is-photo-only: HorizontalLayout {
@@ -339,6 +352,29 @@ export component MessageBubble inherits VerticalLayout {
                                 }
                             }
                         }
+                    }
+                }
+
+                select-btn := ClickArea {
+                    x: reply-btn.x - self.width - Space.xs;
+                    y: Space.sm;
+                    width: Size.target-min;
+                    height: Size.target-min;
+                    ring-radius: Radius.sm;
+                    label: @tr("Select the text of this message");
+                    enabled: root.is-plain-text || (root.has-photo && root.has-caption);
+                    visible: self.enabled;
+                    opacity: message-row.hovered ? 1 : 0;
+                    clicked => {
+                        TextSelection.select(msg.unique-id);
+                    }
+
+                    IconDisplay {
+                        x: (parent.width - self.width) / 2;
+                        y: (parent.height - self.height) / 2;
+                        icon: IconSet.TextCursor;
+                        size: IconSize.sm;
+                        stroke: root.is-own ? Palette.foreground : Palette.accent-background;
                     }
                 }
 

@@ -5,6 +5,7 @@ mod login;
 mod matrix;
 mod media;
 mod reactions;
+mod richtext;
 mod stickers;
 mod storage;
 mod timeline;

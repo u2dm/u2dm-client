@@ -1080,6 +1080,9 @@ macro_rules! field_value {
     ($s:ident, $lit:literal, $val:expr, enumk) => {
         $s.set_field($lit.to_string(), enum_value(&$val));
     };
+    ($s:ident, $lit:literal, $val:expr, styled) => {
+        $s.set_field($lit.to_string(), Value::StyledText($val));
+    };
 }
 
 macro_rules! gen_to_value {

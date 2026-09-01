@@ -1,5 +1,6 @@
 #![allow(clippy::pub_use)]
 
+mod autolink;
 mod backend;
 mod clock;
 mod decode;
@@ -11,6 +12,7 @@ mod present;
 mod props;
 mod reconcile;
 mod reduce;
+mod richtext;
 mod router;
 mod rows;
 mod schema;

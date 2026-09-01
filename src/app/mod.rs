@@ -322,6 +322,9 @@ impl AppService {
             UiCommand::OpenMedia { event_id } => {
                 self.open_media(event_id);
             }
+            UiCommand::OpenLink { url } => {
+                self.session.spawn_open_link(&mut self.operations, url);
+            }
             UiCommand::SaveFile { event_id, filename } => {
                 self.save_file(event_id, filename);
             }

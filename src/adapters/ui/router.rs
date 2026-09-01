@@ -1,4 +1,5 @@
 use tokio::sync::{mpsc, watch};
+use url::Url;
 
 use super::props::send_command;
 use super::schema::simple_callbacks;
@@ -96,6 +97,20 @@ pub fn open_media(tx: &Tx, event_id: String) {
         return;
     }
     send_command(tx, UiCommand::OpenMedia { event_id });
+}
+
+const OPENABLE_SCHEMES: &[&str] = &["http", "https", "mailto"];
+
+pub fn open_link(tx: &Tx, url: String) {
+    let Ok(parsed) = Url::parse(&url) else {
+        tracing::debug!("ignoring a message link that is not a URL");
+        return;
+    };
+    if !OPENABLE_SCHEMES.contains(&parsed.scheme()) {
+        tracing::debug!(scheme = parsed.scheme(), "ignoring a message link");
+        return;
+    }
+    send_command(tx, UiCommand::OpenLink { url });
 }
 
 pub fn jump_to_event(tx: &Tx, event_id: String) {

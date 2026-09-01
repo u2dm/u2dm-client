@@ -5,7 +5,7 @@ use serde::Deserialize;
 use crate::domain::auth::Session;
 use crate::domain::media::ImageMeta;
 use crate::domain::message::{
-    MessageBody, MessagePreviewKind, Reaction, ReplyInfo, ServiceEvent, TimelineMessage,
+    MessageBody, MessagePreviewKind, Reaction, ReplyInfo, RichText, ServiceEvent, TimelineMessage,
 };
 use crate::domain::room::{NotifyMode, Room, RoomId, Space};
 use crate::domain::sticker::{PackId, StickerImage, StickerPack};
@@ -164,6 +164,7 @@ pub struct MessageDto {
     name: String,
     #[serde(default)]
     body: String,
+    html: Option<String>,
     #[serde(default)]
     minutes_ago: u64,
     #[serde(default)]
@@ -387,14 +388,21 @@ impl MessageDto {
         }
         match &self.image {
             Some(image) => MessageBody::Image {
-                caption: (!self.body.is_empty()).then(|| self.body.clone()),
+                caption: (!self.body.is_empty()).then(|| self.rich_body()),
                 meta: ImageMeta {
                     width: Some(image.width),
                     height: Some(image.height),
                     mimetype: Some("image/png".to_owned()),
                 },
             },
-            None => MessageBody::Text(self.body.clone()),
+            None => MessageBody::Text(self.rich_body()),
+        }
+    }
+
+    fn rich_body(&self) -> RichText {
+        match &self.html {
+            Some(html) => RichText::formatted(self.body.clone(), html.clone()),
+            None => RichText::plain(self.body.clone()),
         }
     }
 }

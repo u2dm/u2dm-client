@@ -11,7 +11,7 @@ use tokio_util::sync::CancellationToken;
 
 use super::{data, login, media, reactions, stickers, timeline, verification};
 use crate::domain::auth::{AuthMethod, LoginCredentials, OAuthLoginData, ServerInfo, Session};
-use crate::domain::message::{MessageBody, ReplyInfo, TimelineMessage};
+use crate::domain::message::{MessageBody, ReplyInfo, RichText, TimelineMessage};
 use crate::domain::room::RoomId;
 use crate::domain::sticker::{PackId, StickerImage};
 use crate::domain::sync::{SyncEvent, SyncOutcome};
@@ -715,7 +715,9 @@ fn older_history(round: u64, messages: &[TimelineMessage]) -> Vec<TimelineMessag
 fn grown_body(body: &MessageBody, round: usize) -> MessageBody {
     let padding = " and it keeps going".repeat(round % 4);
     match body {
-        MessageBody::Text(text) => MessageBody::Text(format!("{text}{padding}")),
+        MessageBody::Text(text) if text.html.is_none() => {
+            MessageBody::Text(RichText::plain(format!("{}{padding}", text.plain)))
+        }
         other => other.clone(),
     }
 }

@@ -7,7 +7,7 @@ use super::media;
 use super::timeline::{self, scenario};
 use crate::domain::auth::Session;
 use crate::domain::media::ImageMeta;
-use crate::domain::message::{MessageBody, ReplyInfo, TimelineMessage};
+use crate::domain::message::{MessageBody, ReplyInfo, RichText, TimelineMessage};
 use crate::domain::room::{Room, RoomId, Space};
 use crate::domain::sticker::{StickerImage, StickerPack};
 
@@ -92,6 +92,7 @@ pub fn messages(room_id: &RoomId) -> Vec<TimelineMessage> {
     if scenario().history_is_long {
         messages = repeated_history(&messages);
     }
+    super::richtext::apply_scenario(&mut messages);
     super::reactions::apply_scenario(&mut messages);
     mark_first_unread(room_id, &mut messages);
     messages
@@ -151,7 +152,7 @@ pub fn own_message(sequence: u64, body: &str, reply: Option<ReplyInfo>) -> Timel
         sender: own_user().to_owned(),
         sender_display_name: Some("You".to_owned()),
         sender_avatar_url: Some(own_user().to_owned()),
-        body: MessageBody::Text(body.to_owned()),
+        body: MessageBody::Text(RichText::plain(body.to_owned())),
         timestamp: now_ms(),
         is_own: true,
         reply,
@@ -203,9 +204,12 @@ pub fn sticker_asset_in(event_id: &str) -> Option<&str> {
 pub fn body_preview(body: &MessageBody) -> String {
     match body {
         MessageBody::Text(text) | MessageBody::Notice(text) | MessageBody::Emote(text) => {
-            text.clone()
+            text.plain.clone()
         }
-        MessageBody::Image { caption, .. } => caption.clone().unwrap_or_default(),
+        MessageBody::Image { caption, .. } => caption
+            .as_ref()
+            .map(|text| text.plain.clone())
+            .unwrap_or_default(),
         MessageBody::Sticker { alt, .. } => alt.clone(),
         MessageBody::File { meta } => meta.filename.clone(),
         MessageBody::Service(_) | MessageBody::UnableToDecrypt => String::new(),
@@ -252,7 +256,7 @@ fn synthesized_message(dto: &RoomDto, room: &Room) -> TimelineMessage {
         sender_avatar_url: Some(sender.clone()),
         sender,
         sender_display_name: Some(display_name),
-        body: MessageBody::Text(room.last_message_body.clone()),
+        body: MessageBody::Text(RichText::plain(room.last_message_body.clone())),
         timestamp: room.last_activity_ts,
         is_own: dto.last_message.own,
         reply: None,

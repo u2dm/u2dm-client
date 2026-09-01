@@ -99,6 +99,10 @@ pub enum UiCommand {
     OpenMedia {
         event_id: String,
     },
+    #[strum(to_string = "OpenLink")]
+    OpenLink {
+        url: String,
+    },
     #[strum(to_string = "SaveFile({filename})")]
     SaveFile {
         event_id: String,

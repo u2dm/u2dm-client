@@ -657,6 +657,8 @@ fn message_to_entry(m: &TimelineMessage, media: &dyn MediaCache) -> MessageEntry
         sender: d.sender,
         pronouns: string_model(d.pronouns),
         body: d.body,
+        styled: d.styled,
+        has_links: d.has_links,
         timestamp: d.timestamp,
         message_type: to_message_kind(d.message_type),
         preview_kind: to_preview_kind(d.preview_kind),

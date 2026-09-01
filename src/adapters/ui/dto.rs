@@ -1,15 +1,16 @@
-use slint::{Image, SharedString};
+use slint::{Image, SharedString, StyledText};
 
 use super::decode::{
     AvatarSlot, Decoded, load_avatar_async, load_thumbnail, peek_avatar, peek_thumbnail,
     record_avatar_need, record_media_need, record_sticker_need,
 };
 use super::present::{
-    MessageKind, ServiceKind, avatar_color_index, avatar_initials, message_body_text, message_kind,
-    message_sender_label, message_timestamp_label, pronoun_labels, reaction_key_label,
-    reactor_labels, room_activity_label, sender_initial, service_kind, service_target,
-    unsupported_kind,
+    MessageKind, ServiceKind, avatar_color_index, avatar_initials, message_body_html,
+    message_body_text, message_kind, message_sender_label, message_timestamp_label, pronoun_labels,
+    reaction_key_label, reactor_labels, room_activity_label, sender_initial, service_kind,
+    service_target, unsupported_kind,
 };
+use super::richtext;
 use super::schema::{define_ui_enum, media_states};
 use crate::domain::media::ThumbnailOutcome;
 use crate::domain::message::{MessagePreviewKind, Reaction, TimelineMessage};
@@ -173,6 +174,8 @@ pub struct MessageDto {
     pub sender: SharedString,
     pub pronouns: Vec<SharedString>,
     pub body: SharedString,
+    pub styled: StyledText,
+    pub has_links: bool,
     pub timestamp: SharedString,
     pub message_type: MessageKind,
     pub preview_kind: MessagePreviewKind,
@@ -295,6 +298,11 @@ fn reaction_dtos(reactions: &[Reaction]) -> (Vec<ReactionDto>, Vec<ReactionDto>)
 pub fn message_to_dto(m: &TimelineMessage, media: &dyn MediaCache) -> MessageDto {
     let sender_label = message_sender_label(m);
     let (reactions, all_reactions) = reaction_dtos(&m.reactions);
+    let plain = message_body_text(&m.body);
+    let rich = match message_body_html(&m.body) {
+        Some(html) => richtext::styled_body(html, plain),
+        None => richtext::plain_body(plain),
+    };
     let mut dto = MessageDto {
         unique_id: SharedString::from(&m.unique_id),
         sender: SharedString::from(sender_label),
@@ -302,7 +310,9 @@ pub fn message_to_dto(m: &TimelineMessage, media: &dyn MediaCache) -> MessageDto
             .into_iter()
             .map(SharedString::from)
             .collect(),
-        body: SharedString::from(message_body_text(&m.body)),
+        body: rich.plain,
+        styled: rich.styled,
+        has_links: rich.has_links,
         timestamp: SharedString::from(&message_timestamp_label(m.timestamp)),
         message_type: message_kind(&m.body),
         preview_kind: m.body.preview_kind(),

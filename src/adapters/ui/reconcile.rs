@@ -6,6 +6,7 @@ use slint::{Model, VecModel};
 
 use super::decode::forget_all_media_needs;
 use super::dto::{StickerGrid, prefetch_space_avatar, record_room_avatar_need};
+use super::richtext::forget_styled_bodies;
 use crate::domain::message::TimelineMessage;
 use crate::domain::room::{Room, Space};
 use crate::domain::timeline::{EnrichmentDelta, TimelinePatch};
@@ -168,6 +169,7 @@ fn apply_patch<T: Clone + 'static>(
     match patch {
         TimelinePatch::Reset(messages) => {
             forget_all_media_needs();
+            forget_styled_bodies();
             index.reset(&messages);
             let entries: Vec<T> = messages.iter().map(convert).collect();
             model.set_vec(entries);
@@ -202,6 +204,7 @@ fn apply_patch<T: Clone + 'static>(
         TimelinePatch::Truncate { length } => truncate_rows(model, length, index),
         TimelinePatch::Clear => {
             forget_all_media_needs();
+            forget_styled_bodies();
             index.clear();
             model.set_vec(Vec::new());
         }

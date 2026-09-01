@@ -195,12 +195,28 @@ fn format_activity_label(last_activity_ts: u64) -> String {
 
 pub fn message_body_text(body: &MessageBody) -> &str {
     match body {
-        MessageBody::Text(s) | MessageBody::Notice(s) | MessageBody::Emote(s) => s,
-        MessageBody::Image { caption, .. } => caption.as_deref().unwrap_or_default(),
+        MessageBody::Text(t) | MessageBody::Notice(t) | MessageBody::Emote(t) => &t.plain,
+        MessageBody::Image { caption, .. } => {
+            caption.as_ref().map_or("", |text| text.plain.as_str())
+        }
         MessageBody::Sticker { alt, .. } => alt,
         MessageBody::File { meta, .. } => &meta.filename,
         MessageBody::Service(_) | MessageBody::UnableToDecrypt => "",
         MessageBody::Unsupported { fallback, .. } => fallback,
+    }
+}
+
+pub fn message_body_html(body: &MessageBody) -> Option<&str> {
+    match body {
+        MessageBody::Text(t) | MessageBody::Notice(t) | MessageBody::Emote(t) => t.html.as_deref(),
+        MessageBody::Image { caption, .. } => {
+            caption.as_ref().and_then(|text| text.html.as_deref())
+        }
+        MessageBody::Sticker { .. }
+        | MessageBody::File { .. }
+        | MessageBody::Service(_)
+        | MessageBody::UnableToDecrypt
+        | MessageBody::Unsupported { .. } => None,
     }
 }
 

@@ -185,6 +185,15 @@ impl SessionController {
         group.spawn(async move { tasks.login_oauth(cancel, passphrase, attempt).await });
     }
 
+    pub(super) fn spawn_open_link(&self, group: &mut TaskGroup, url: String) {
+        let browser = Arc::clone(&self.tasks.browser);
+        group.spawn(async move {
+            if let Err(e) = browser.open_url(&url).await {
+                tracing::warn!("a message link could not be opened: {e}");
+            }
+        });
+    }
+
     pub(super) fn cancel_oauth(&mut self) {
         if let Some(token) = self.oauth_cancel.take() {
             tracing::info!("cancelling OAuth login");
