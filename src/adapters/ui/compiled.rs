@@ -10,8 +10,8 @@ use super::backend::{UiBackend, install_render_hooks, post_effect, selected_room
 use super::clock::install_clock_invalidation;
 use super::decode::{AvatarSlot, request_avatar, request_media, request_sticker};
 use super::dto::{
-    MediaState, ReactionDto, StickerCellDto, StickerPackDto, StickerRowDto, ThumbUpdate,
-    enrich_to_update, message_to_dto, room_to_dto, space_to_dto,
+    MediaFailureKind, MediaState, ReactionDto, StickerCellDto, StickerPackDto, StickerRowDto,
+    ThumbUpdate, enrich_to_update, message_to_dto, room_to_dto, space_to_dto,
 };
 use super::multiplex::spawn_event_multiplexer;
 use super::present::{MessageKind, ServiceKind, VerifyStep};
@@ -20,8 +20,9 @@ use super::reconcile::reorder_rows;
 use super::reduce::set_sticker_query;
 use super::schema::{
     bool_props, connection_states, int_props, login_activities, login_methods, login_phases,
-    media_states, message_kinds, preview_kinds, service_kinds, simple_callbacks, string_props,
-    timeline_states, user_message_kinds, verification_activities, verification_phases,
+    media_failures, media_states, message_kinds, preview_kinds, service_kinds, simple_callbacks,
+    string_props, timeline_states, user_message_kinds, verification_activities,
+    verification_phases,
 };
 use super::{emoji, router};
 use crate::commands::effects::{Effect, VerificationActivity};
@@ -44,10 +45,10 @@ mod generated {
 use generated::{
     Actions, AppWindow, ConnectionState, DirectoryView, EmojiEntry, EmojiGroup, EmojiInsert,
     EmojiStore, LoginActivity as UiLoginActivity, LoginMethodKind as UiLoginMethodKind, LoginPhase,
-    LoginView, MediaState as UiMediaState, MessageEntry, MessageKind as UiMessageKind,
-    PreviewKind as UiPreviewKind, ReactionEntry, RoomEntry, RoomView, ServiceKind as UiServiceKind,
-    SessionView, SpaceEntry, StickerCell, StickerPackTab, StickerRow, StickerView, TimelineState,
-    UserMessage as UiUserMessage, UserMessageKind as UiUserMessageKind,
+    LoginView, MediaFailure as UiMediaFailure, MediaState as UiMediaState, MessageEntry,
+    MessageKind as UiMessageKind, PreviewKind as UiPreviewKind, ReactionEntry, RoomEntry, RoomView,
+    ServiceKind as UiServiceKind, SessionView, SpaceEntry, StickerCell, StickerPackTab, StickerRow,
+    StickerView, TimelineState, UserMessage as UiUserMessage, UserMessageKind as UiUserMessageKind,
     VerificationActivity as UiVerificationActivity, VerificationEmoji, VerificationPhase,
     VerificationView,
 };
@@ -241,6 +242,7 @@ verification_activities!(
 );
 user_message_kinds!(to_slint_enum val to_user_message_kind UserMessageKind UiUserMessageKind;);
 media_states!(to_slint_enum val to_media_state MediaState UiMediaState;);
+media_failures!(to_slint_enum val to_media_failure MediaFailureKind UiMediaFailure;);
 message_kinds!(to_slint_enum val to_message_kind MessageKind UiMessageKind;);
 preview_kinds!(to_slint_enum val to_preview_kind MessagePreviewKind UiPreviewKind;);
 service_kinds!(to_slint_enum val to_service_kind ServiceKind UiServiceKind;);
@@ -364,8 +366,9 @@ impl UiBackend for CompiledBackend {
         entry.media_state = UiMediaState::Ready;
     }
 
-    fn set_message_media_failed(entry: &mut MessageEntry) {
+    fn set_message_media_failed(entry: &mut MessageEntry, reason: MediaFailureKind) {
         entry.media_state = UiMediaState::Failed;
+        entry.media_failure = to_media_failure(reason);
     }
 
     fn with_models<R>(
@@ -665,6 +668,9 @@ fn message_to_entry(m: &TimelineMessage, media: &dyn MediaCache) -> MessageEntry
         unsupported_kind: d.unsupported_kind,
         thumbnail: d.thumbnail.unwrap_or_default(),
         media_state: to_media_state(d.media_state),
+        media_failure: to_media_failure(d.media_failure),
+        image_mimetype: d.image_mimetype,
+        image_extension: d.image_extension,
         image_width: d.image_width,
         image_height: d.image_height,
         event_id: d.event_id,
@@ -695,7 +701,10 @@ fn enrich_entry(entry: &mut MessageEntry, delta: &EnrichmentDelta, media: &dyn M
             entry.thumbnail = img;
             entry.media_state = UiMediaState::Ready;
         }
-        ThumbUpdate::Failed => entry.media_state = UiMediaState::Failed,
+        ThumbUpdate::Failed(reason) => {
+            entry.media_state = UiMediaState::Failed;
+            entry.media_failure = to_media_failure(reason);
+        }
         ThumbUpdate::Unchanged => {}
     }
     if let Some(img) = update.avatar {

@@ -101,6 +101,15 @@ export enum MediaState {
     failed,
 }
 
+export enum MediaFailure {
+    none,
+    no-source,
+    download,
+    too-large,
+    storage,
+    unreadable,
+}
+
 export enum MessageKind {
     text,
     notice,

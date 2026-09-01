@@ -1,7 +1,23 @@
 use std::path::{Path, PathBuf};
 
 use super::data;
+use crate::domain::media::MediaFailure;
 use crate::ports::media::MediaCache;
+
+const FAILURE_SUFFIXES: &[(&str, MediaFailure)] = &[
+    ("-missing-download", MediaFailure::Download),
+    ("-missing-large", MediaFailure::TooLarge),
+    ("-missing-storage", MediaFailure::Storage),
+    ("-missing-unreadable", MediaFailure::Unreadable),
+    ("-missing", MediaFailure::NoSource),
+];
+
+fn demo_failure(id: &str) -> Option<MediaFailure> {
+    FAILURE_SUFFIXES
+        .iter()
+        .find(|(suffix, _)| id.ends_with(suffix))
+        .map(|(_, reason)| *reason)
+}
 
 pub struct DemoMediaCache;
 
@@ -13,8 +29,11 @@ impl MediaCache for DemoMediaCache {
         }
     }
 
-    fn thumbnail_failed(&self, event_id: &str) -> bool {
-        event_id.ends_with("-missing") && self.thumbnail_path(event_id).is_none()
+    fn thumbnail_failure(&self, event_id: &str) -> Option<MediaFailure> {
+        self.thumbnail_path(event_id)
+            .is_none()
+            .then(|| demo_failure(event_id))
+            .flatten()
     }
 
     fn user_avatar_path(&self, mxc: &str) -> Option<PathBuf> {
@@ -37,7 +56,7 @@ impl MediaCache for DemoMediaCache {
     }
 
     fn sticker_failed(&self, mxc: &str) -> bool {
-        mxc_asset(mxc).ends_with("-missing") && self.sticker_path(mxc).is_none()
+        demo_failure(mxc_asset(mxc)).is_some() && self.sticker_path(mxc).is_none()
     }
 }
 

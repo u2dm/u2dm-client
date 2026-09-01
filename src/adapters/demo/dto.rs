@@ -190,6 +190,8 @@ struct ReactionDto {
 struct ImageDto {
     width: u32,
     height: u32,
+    mimetype: Option<String>,
+    filename: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -211,6 +213,7 @@ impl StickerDto {
             width: Some(self.width),
             height: Some(self.height),
             mimetype: Some(mimetype.to_owned()),
+            filename: None,
         }
     }
 }
@@ -392,7 +395,13 @@ impl MessageDto {
                 meta: ImageMeta {
                     width: Some(image.width),
                     height: Some(image.height),
-                    mimetype: Some("image/png".to_owned()),
+                    mimetype: Some(
+                        image
+                            .mimetype
+                            .clone()
+                            .unwrap_or_else(|| "image/png".to_owned()),
+                    ),
+                    filename: image.filename.clone(),
                 },
             },
             None => MessageBody::Text(self.rich_body()),

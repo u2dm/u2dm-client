@@ -11,6 +11,7 @@ use tokio::time::{MissedTickBehavior, interval};
 use tokio::{fs, task};
 
 use crate::adapters::private_fs;
+use crate::domain::media::MediaFailure;
 
 const MAX_CACHE_BYTES: u64 = 512 * 1024 * 1024;
 const MAX_AGE: Duration = Duration::from_hours(14 * 24);
@@ -475,6 +476,7 @@ impl CacheActor {
 struct FailureRecord {
     attempts: u32,
     last_attempt: Instant,
+    reason: MediaFailure,
 }
 
 #[derive(Default)]
@@ -484,19 +486,28 @@ pub(super) struct FailureTracker {
 
 impl FailureTracker {
     pub(super) fn should_skip(&self, key: &str) -> bool {
-        self.records.get(key).is_some_and(|record| {
-            record.attempts >= RETRY_MAX_ATTEMPTS
-                && record.last_attempt.elapsed() < FAILURE_COOLDOWN
-        })
+        self.giving_up(key).is_some()
     }
 
-    pub(super) fn record_failure(&mut self, key: &str) {
+    pub(super) fn giving_up(&self, key: &str) -> Option<MediaFailure> {
+        self.records
+            .get(key)
+            .filter(|record| {
+                record.attempts >= RETRY_MAX_ATTEMPTS
+                    && record.last_attempt.elapsed() < FAILURE_COOLDOWN
+            })
+            .map(|record| record.reason)
+    }
+
+    pub(super) fn record_failure(&mut self, key: &str, reason: MediaFailure) {
         let record = self.records.entry(key.to_owned()).or_insert(FailureRecord {
             attempts: 0,
             last_attempt: Instant::now(),
+            reason,
         });
         record.attempts = record.attempts.saturating_add(1);
         record.last_attempt = Instant::now();
+        record.reason = reason;
     }
 
     pub(super) fn record_success(&mut self, key: &str) {

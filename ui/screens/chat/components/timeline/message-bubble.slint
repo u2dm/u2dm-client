@@ -273,6 +273,9 @@ export component MessageBubble inherits VerticalLayout {
                         if root.has-photo: ImageMessage {
                             thumbnail: msg.thumbnail;
                             media-state: msg.media-state;
+                            media-failure: msg.media-failure;
+                            mimetype: msg.image-mimetype;
+                            extension: msg.image-extension;
                             image-width: msg.image-width;
                             image-height: msg.image-height;
                             body: msg.body;
@@ -295,6 +298,7 @@ export component MessageBubble inherits VerticalLayout {
                         if root.is-sticker: StickerMessage {
                             sticker: msg.thumbnail;
                             media-state: msg.media-state;
+                            media-failure: msg.media-failure;
                             sticker-width: msg.image-width;
                             sticker-height: msg.image-height;
                             alt: msg.body;

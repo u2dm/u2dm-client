@@ -17,7 +17,7 @@ use super::{AVATARS_DIR, STICKERS_DIR, mxc_avatar_key, sticker_key, thumb_key, t
 use crate::adapters::matrix::store::purge_dir;
 use crate::adapters::private_fs;
 use crate::domain::account::AccountScope;
-use crate::domain::media::ThumbnailOutcome;
+use crate::domain::media::{MediaFailure, MediaResult, ThumbnailOutcome};
 use crate::domain::message::TimelineMessage;
 use crate::error::{AppError, Result};
 use crate::ports::matrix::CleanupReport;
@@ -135,9 +135,13 @@ impl MediaService {
         self.failures.lock().is_ok_and(|f| f.should_skip(key))
     }
 
-    fn record_failure(&self, key: &str) {
+    pub(crate) fn failure(&self, key: &str) -> Option<MediaFailure> {
+        self.failures.lock().ok()?.giving_up(key)
+    }
+
+    fn record_failure(&self, key: &str, reason: MediaFailure) {
         if let Ok(mut failures) = self.failures.lock() {
-            failures.record_failure(key);
+            failures.record_failure(key, reason);
         }
     }
 
@@ -160,13 +164,16 @@ impl MediaService {
         download_timeout: Duration,
         max_bytes: usize,
         full: bool,
-    ) -> Option<Vec<u8>> {
+    ) -> MediaResult<Vec<u8>> {
         let semaphore = if full {
             &self.full_semaphore
         } else {
             &self.semaphore
         };
-        let _permit = semaphore.acquire().await.ok()?;
+        let _permit = semaphore
+            .acquire()
+            .await
+            .map_err(|_| MediaFailure::Download)?;
 
         let mut backoff = RETRY_BACKOFF_BASE;
         for attempt in 1..=RETRY_MAX_ATTEMPTS {
@@ -176,16 +183,16 @@ impl MediaService {
                         "media payload {} bytes exceeds the {max_bytes} byte limit",
                         data.len()
                     );
-                    return None;
+                    return Err(MediaFailure::TooLarge);
                 }
-                return Some(data);
+                return Ok(data);
             }
             if attempt < RETRY_MAX_ATTEMPTS {
                 sleep(backoff).await;
                 backoff = backoff.saturating_mul(2);
             }
         }
-        None
+        Err(MediaFailure::Download)
     }
 
     pub(crate) async fn fetch_and_materialize(
@@ -195,31 +202,34 @@ impl MediaService {
         cache_key: &str,
         cache_stem: &Path,
         format: MediaFormat,
-    ) -> Option<PathBuf> {
-        if self.is_failed(cache_key) {
-            return None;
+    ) -> MediaResult<PathBuf> {
+        if let Some(reason) = self.failure(cache_key) {
+            return Err(reason);
         }
 
         let request = MediaRequestParameters { source, format };
-        let Some(data) = self
+        let data = match self
             .download(client, &request, DOWNLOAD_TIMEOUT, MAX_MEDIA_BYTES, false)
             .await
-        else {
-            self.record_failure(cache_key);
-            return None;
+        {
+            Ok(data) => data,
+            Err(reason) => {
+                self.record_failure(cache_key, reason);
+                return Err(reason);
+            }
         };
 
         let cache_path = cache_stem.with_extension(ext_from_magic(&data));
         if let Err(e) = private_fs::write_atomically(&cache_path, &data).await {
             tracing::warn!("failed to write materialized media: {e}");
-            self.record_failure(cache_key);
-            return None;
+            self.record_failure(cache_key, MediaFailure::Storage);
+            return Err(MediaFailure::Storage);
         }
 
         self.store(cache_key, cache_path.clone(), data.len() as u64)
             .await;
         self.record_success(cache_key);
-        Some(cache_path)
+        Ok(cache_path)
     }
 
     pub(crate) async fn enrich_thumbnail(
@@ -242,19 +252,19 @@ impl MediaService {
 
         let lane = super::lane(kind, meta);
 
-        let materialized_path = match (lane.source(media_sources, event_id), self.session()) {
+        let materialized = match (lane.source(media_sources, event_id), self.session()) {
             (Some(source), Some(session)) => {
                 let cache_stem = session.media_dir.join(hex_encode_id(event_id));
                 self.fetch_and_materialize(client, source, &cache_key, &cache_stem, lane.format())
                     .await
             }
-            _ => None,
+            (None, _) => Err(MediaFailure::NoSource),
+            (_, None) => Err(MediaFailure::Storage),
         };
 
-        if materialized_path.is_some() {
-            ThumbnailOutcome::Ready
-        } else {
-            ThumbnailOutcome::Failed
+        match materialized {
+            Ok(_) => ThumbnailOutcome::Ready,
+            Err(reason) => ThumbnailOutcome::Failed(reason),
         }
     }
 
@@ -291,6 +301,7 @@ impl MediaService {
         let source = MediaSource::Plain(mxc);
         self.fetch_and_materialize(client, source, cache_key, &cache_stem, thumbnail_format())
             .await
+            .ok()
     }
 
     pub(crate) async fn fetch_sticker_by_mxc(
@@ -311,6 +322,7 @@ impl MediaService {
         let source = MediaSource::Plain(mxc);
         self.fetch_and_materialize(client, source, &cache_key, &cache_stem, MediaFormat::File)
             .await
+            .ok()
     }
 
     pub(crate) async fn fetch_user_avatar(&self, client: &Client) -> Option<PathBuf> {
@@ -371,9 +383,10 @@ impl MediaService {
         let request = MediaRequestParameters { source, format };
         self.download(client, &request, download_timeout, max_bytes, !thumbnail)
             .await
-            .ok_or_else(|| {
+            .map_err(|reason| {
                 AppError::Other(format!(
-                    "media download failed or exceeded the {max_bytes} byte limit for event {event_id}"
+                    "media download for event {event_id} failed: {reason:?} \
+                     (limit {max_bytes} bytes)"
                 ))
             })
     }

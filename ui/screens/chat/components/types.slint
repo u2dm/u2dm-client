@@ -1,4 +1,4 @@
-import { MediaState, MessageKind, PreviewKind, ServiceKind } from "../../../enums.slint";
+import { MediaFailure, MediaState, MessageKind, PreviewKind, ServiceKind } from "../../../enums.slint";
 
 export struct RoomEntry {
     id: string,
@@ -57,6 +57,9 @@ export struct MessageEntry {
     unsupported-kind: string,
     thumbnail: image,
     media-state: MediaState,
+    media-failure: MediaFailure,
+    image-mimetype: string,
+    image-extension: string,
     image-width: int,
     image-height: int,
     event-id: string,

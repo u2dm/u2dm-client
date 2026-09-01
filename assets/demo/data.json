@@ -686,6 +686,53 @@
           { "key": "😍", "senders": ["@marcus:matrix.org", "@priya:matrix.org"] },
           { "key": "🔥", "senders": ["@kai:matrix.org"] }
         ]
+      },
+      {
+        "id": "demo-sarah-pano-missing-large",
+        "sender": "@sarah:matrix.org",
+        "name": "Sarah Chen",
+        "body": "the whole street, at some ridiculous resolution",
+        "minutes_ago": 39,
+        "image": {
+          "width": 8192,
+          "height": 2160,
+          "mimetype": "image/png",
+          "filename": "panorama-of-the-whole-street.png"
+        }
+      },
+      {
+        "id": "demo-sarah-heic-missing-unreadable",
+        "sender": "@sarah:matrix.org",
+        "name": "Sarah Chen",
+        "minutes_ago": 37,
+        "image": {
+          "width": 4032,
+          "height": 3024,
+          "mimetype": "image/heic",
+          "filename": "IMG_2031.HEIC"
+        }
+      },
+      {
+        "id": "demo-sarah-thumb-missing",
+        "sender": "@sarah:matrix.org",
+        "name": "Sarah Chen",
+        "minutes_ago": 35,
+        "image": {
+          "width": 640,
+          "height": 640
+        }
+      },
+      {
+        "id": "demo-sarah-view-missing-download",
+        "sender": "@sarah:matrix.org",
+        "name": "Sarah Chen",
+        "minutes_ago": 33,
+        "image": {
+          "width": 1040,
+          "height": 780,
+          "mimetype": "image/jpeg",
+          "filename": "the-view.jpg"
+        }
       }
     ],
     "!design:demo.local": [

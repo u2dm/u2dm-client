@@ -9,6 +9,7 @@ pub struct ImageMeta {
     pub width: Option<u32>,
     pub height: Option<u32>,
     pub mimetype: Option<String>,
+    pub filename: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -19,8 +20,19 @@ pub struct FileMeta {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MediaFailure {
+    NoSource,
+    Download,
+    TooLarge,
+    Storage,
+    Unreadable,
+}
+
+pub type MediaResult<T> = Result<T, MediaFailure>;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ThumbnailOutcome {
     Unchanged,
     Ready,
-    Failed,
+    Failed(MediaFailure),
 }

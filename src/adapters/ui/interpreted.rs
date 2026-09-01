@@ -30,8 +30,8 @@ use super::backend::{UiBackend, install_render_hooks, post_effect, selected_room
 use super::clock::install_clock_invalidation;
 use super::decode::{AvatarSlot, request_avatar, request_media, request_sticker};
 use super::dto::{
-    MediaState, ReactionDto, StickerCellDto, StickerPackDto, StickerRowDto, ThumbUpdate,
-    enrich_to_update, message_to_dto, room_to_dto, space_to_dto,
+    MediaFailureKind, MediaState, ReactionDto, StickerCellDto, StickerPackDto, StickerRowDto,
+    ThumbUpdate, enrich_to_update, message_to_dto, room_to_dto, space_to_dto,
 };
 use super::multiplex::spawn_event_multiplexer;
 use super::present::{MessageKind, ServiceKind, VerifyStep};
@@ -39,9 +39,10 @@ use super::props::{BoolProp, IntProp, StringProp, UiProps};
 use super::reconcile::reorder_rows;
 use super::reduce::set_sticker_query;
 use super::schema::{
-    connection_states, login_activities, login_methods, login_phases, media_states, message_fields,
-    message_kinds, preview_kinds, room_fields, service_kinds, simple_callbacks, space_fields,
-    timeline_states, user_message_kinds, verification_activities, verification_phases,
+    connection_states, login_activities, login_methods, login_phases, media_failures, media_states,
+    message_fields, message_kinds, preview_kinds, room_fields, service_kinds, simple_callbacks,
+    space_fields, timeline_states, user_message_kinds, verification_activities,
+    verification_phases,
 };
 use super::{emoji, router};
 use crate::commands::effects::{Effect, VerificationActivity};
@@ -222,6 +223,7 @@ verification_phases!(impl_slint_enum VerifyStep "VerificationPhase";);
 verification_activities!(impl_slint_enum VerificationActivity "VerificationActivity";);
 user_message_kinds!(impl_slint_enum UserMessageKind "UserMessageKind";);
 media_states!(impl_slint_enum MediaState "MediaState";);
+media_failures!(impl_slint_enum MediaFailureKind "MediaFailure";);
 message_kinds!(impl_slint_enum MessageKind "MessageKind";);
 preview_kinds!(impl_slint_enum MessagePreviewKind "PreviewKind";);
 service_kinds!(impl_slint_enum ServiceKind "ServiceKind";);
@@ -612,12 +614,13 @@ impl UiBackend for InterpretedBackend {
         }
     }
 
-    fn set_message_media_failed(entry: &mut Value) {
+    fn set_message_media_failed(entry: &mut Value, reason: MediaFailureKind) {
         if let Value::Struct(s) = entry {
             s.set_field(
                 message::MEDIA_STATE.to_string(),
                 enum_value(&MediaState::Failed),
             );
+            s.set_field(message::MEDIA_FAILURE.to_string(), enum_value(&reason));
         }
     }
 
@@ -1111,11 +1114,12 @@ fn enrich_value(value: &mut Value, delta: &EnrichmentDelta, media: &dyn MediaCac
                 enum_value(&MediaState::Ready),
             );
         }
-        ThumbUpdate::Failed => {
+        ThumbUpdate::Failed(reason) => {
             entry.set_field(
                 message::MEDIA_STATE.to_string(),
                 enum_value(&MediaState::Failed),
             );
+            entry.set_field(message::MEDIA_FAILURE.to_string(), enum_value(&reason));
         }
         ThumbUpdate::Unchanged => {}
     }

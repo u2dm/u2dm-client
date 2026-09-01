@@ -265,6 +265,7 @@ fn image_meta(info: &ImageInfo) -> ImageMeta {
         width: info.width.map(pixels),
         height: info.height.map(pixels),
         mimetype: info.mimetype.clone(),
+        filename: None,
     }
 }
 
@@ -285,7 +286,10 @@ fn extract_image_body(
         caption: image
             .caption()
             .map(|caption| rich_body(caption, image.formatted_caption())),
-        meta: image.info.as_deref().map(image_meta).unwrap_or_default(),
+        meta: ImageMeta {
+            filename: Some(image.filename().to_owned()),
+            ..image.info.as_deref().map(image_meta).unwrap_or_default()
+        },
     }
 }
 

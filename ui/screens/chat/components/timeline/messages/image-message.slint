@@ -1,14 +1,19 @@
 import { Palette, Spinner } from "std-widgets.slint";
 import { IconDisplay, IconSet } from "@lucide";
 import { ClickArea } from "../../../../../components/a11y.slint";
-import { MediaState } from "../../../../../enums.slint";
-import { AppStyle, Fonts, IconSize, Metrics, Motion, Radius, Space } from "../../../../../theme.slint";
+import { Pill } from "../../../../../components/pill.slint";
+import { MediaFailure, MediaState } from "../../../../../enums.slint";
+import { MediaFailures } from "../../../../../messages.slint";
+import { AppStyle, Fonts, IconSize, Metrics, Motion, Radius, Size, Space, Weight } from "../../../../../theme.slint";
 import { Actions } from "../../../../../actions.slint";
 import { TextMessage } from "./text-message.slint";
 
 export component ImageMessage inherits VerticalLayout {
     in property <image> thumbnail;
     in property <MediaState> media-state;
+    in property <MediaFailure> media-failure;
+    in property <string> mimetype;
+    in property <string> extension;
     in property <int> image-width;
     in property <int> image-height;
     in property <string> body;
@@ -23,8 +28,8 @@ export component ImageMessage inherits VerticalLayout {
     in property <bool> show-timestamp;
     in property <bool> bubble-hovered;
 
-    out property <length> display-width: min(root.width-limit, max(Metrics.media-width-min, root.height-limit * root.aspect));
-    out property <length> display-height: min(root.height-limit, max(Metrics.media-height-min, root.display-width / max(root.aspect, 0.01)));
+    out property <length> display-width: min(root.width-limit, max(root.frame-width-min, root.height-limit * root.aspect));
+    out property <length> display-height: min(root.height-limit, max(root.frame-height-min, root.display-width / max(root.aspect, 0.01)));
 
     property <length> width-limit: min(root.frame-limit, Metrics.media-width-max);
     property <length> height-limit: Metrics.media-height-max;
@@ -33,6 +38,23 @@ export component ImageMessage inherits VerticalLayout {
     property <bool> has-caption: root.body != "";
     property <bool> is-decoded: root.thumbnail.width > 0 && root.thumbnail.height > 0;
     property <bool> has-dimensions: root.image-width > 0 && root.image-height > 0;
+    property <length> frame-width-min: root.is-failed
+        ? min(root.width-limit, Metrics.media-failure-width-min)
+        : Metrics.media-width-min;
+    property <length> frame-height-min: root.is-failed
+        ? min(root.height-limit, Metrics.media-failure-height-min)
+        : Metrics.media-height-min;
+    property <bool> is-cramped: root.display-width < Metrics.media-failure-width-min
+        || root.display-height < Metrics.media-failure-height-min;
+    property <string> failure-detail: MediaFailures.detail(
+        root.extension,
+        root.mimetype,
+        root.image-width,
+        root.image-height,
+    );
+    property <length> action-height: Size.md;
+    property <bool> can-open-externally: root.event-id != ""
+        && root.media-failure != MediaFailure.no-source;
     property <float> aspect: root.is-ready && root.is-decoded
         ? root.thumbnail.width / max(root.thumbnail.height, 1)
         : (root.has-dimensions ? root.image-width / max(root.image-height, 1) : 1.5);
@@ -75,23 +97,71 @@ export component ImageMessage inherits VerticalLayout {
                 width: 100%;
                 height: 100%;
                 alignment: center;
-                spacing: Space.md;
+                padding: Space.md;
+                spacing: root.is-cramped ? Space.sm : Space.md;
 
                 HorizontalLayout {
                     alignment: center;
 
                     IconDisplay {
                         icon: IconSet.ImageOff;
-                        size: IconSize.xl;
+                        size: root.is-cramped ? IconSize.md : IconSize.xl;
                         stroke: AppStyle.foreground-faint;
                     }
                 }
 
-                Text {
+                if !root.is-cramped: Text {
                     text: @tr("Image unavailable");
                     font-size: Fonts.label;
+                    color: AppStyle.foreground-strong;
+                    horizontal-alignment: center;
+                    overflow: elide;
+                }
+
+                Text {
+                    text: MediaFailures.reason(root.media-failure);
+                    font-size: root.is-cramped ? Fonts.caption : Fonts.body-small;
                     color: AppStyle.foreground-muted;
                     horizontal-alignment: center;
+                    wrap: word-wrap;
+                    overflow: elide;
+                }
+
+                if !root.is-cramped && root.failure-detail != "": Text {
+                    text: root.failure-detail;
+                    font-size: Fonts.caption;
+                    color: AppStyle.foreground-muted;
+                    horizontal-alignment: center;
+                    overflow: elide;
+                }
+
+                if root.can-open-externally: HorizontalLayout {
+                    alignment: center;
+
+                    Pill {
+                        height: root.action-height;
+                        pad: root.is-cramped ? Space.sm : Space.lg;
+                        fill: AppStyle.overlay-hover;
+                        hover-lift: 0.25;
+                        label: @tr("Try opening this image in another application");
+                        clicked => {
+                            Actions.open-media(root.event-id);
+                        }
+
+                        IconDisplay {
+                            icon: IconSet.ExternalLink;
+                            size: IconSize.sm;
+                            stroke: AppStyle.foreground-strong;
+                        }
+
+                        if !root.is-cramped: Text {
+                            text: @tr("Open externally");
+                            font-size: Fonts.body-small;
+                            font-weight: Weight.semibold;
+                            color: AppStyle.foreground-strong;
+                            vertical-alignment: center;
+                        }
+                    }
                 }
             }
 

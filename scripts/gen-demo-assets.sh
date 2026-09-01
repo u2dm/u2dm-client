@@ -108,7 +108,7 @@ sticker_url() {
 }
 
 has_no_asset_on_purpose() {
-  [[ $1 == *-missing ]]
+  [[ $1 == *-missing || $1 == *-missing-* ]]
 }
 
 already_fetched() {
@@ -159,6 +159,7 @@ fetch_space_tiles() {
 fetch_photos() {
   local id width height
   while read -r id width height; do
+    has_no_asset_on_purpose "$id" && continue
     fetch "$(photo_url "$id" "$width" "$height")" "$assets/thumbnail-$id.png"
   done < <(photo_messages)
 }

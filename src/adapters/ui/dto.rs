@@ -5,14 +5,14 @@ use super::decode::{
     record_avatar_need, record_media_need, record_sticker_need,
 };
 use super::present::{
-    MessageKind, ServiceKind, avatar_color_index, avatar_initials, message_body_html,
-    message_body_text, message_kind, message_sender_label, message_timestamp_label, pronoun_labels,
-    reaction_key_label, reactor_labels, room_activity_label, sender_initial, service_kind,
-    service_target, unsupported_kind,
+    MessageKind, ServiceKind, avatar_color_index, avatar_initials, file_extension,
+    message_body_html, message_body_text, message_kind, message_sender_label,
+    message_timestamp_label, pronoun_labels, reaction_key_label, reactor_labels,
+    room_activity_label, sender_initial, service_kind, service_target, unsupported_kind,
 };
 use super::richtext;
-use super::schema::{define_ui_enum, media_states};
-use crate::domain::media::ThumbnailOutcome;
+use super::schema::{define_ui_enum, media_failures, media_states};
+use crate::domain::media::{MediaFailure, ThumbnailOutcome};
 use crate::domain::message::{MessagePreviewKind, Reaction, TimelineMessage};
 use crate::domain::room::{Room, Space};
 use crate::domain::sticker::{PackId, StickerImage, StickerPack};
@@ -20,6 +20,17 @@ use crate::domain::timeline::EnrichmentDelta;
 use crate::ports::media::MediaCache;
 
 media_states!(define_ui_enum MediaState;);
+media_failures!(define_ui_enum MediaFailureKind;);
+
+fn failure_kind(failure: MediaFailure) -> MediaFailureKind {
+    match failure {
+        MediaFailure::NoSource => MediaFailureKind::NoSource,
+        MediaFailure::Download => MediaFailureKind::Download,
+        MediaFailure::TooLarge => MediaFailureKind::TooLarge,
+        MediaFailure::Storage => MediaFailureKind::Storage,
+        MediaFailure::Unreadable => MediaFailureKind::Unreadable,
+    }
+}
 
 pub const GRID_COLUMNS: i32 = 5;
 
@@ -195,8 +206,11 @@ pub struct MessageDto {
     pub service_target: SharedString,
     pub image_width: i32,
     pub image_height: i32,
+    pub image_mimetype: SharedString,
+    pub image_extension: SharedString,
     pub thumbnail: Option<Image>,
     pub media_state: MediaState,
+    pub media_failure: MediaFailureKind,
     pub avatar: Option<Image>,
     pub has_avatar: bool,
     pub needs_media: bool,
@@ -241,7 +255,7 @@ pub struct SpaceDto {
 
 pub enum ThumbUpdate {
     Unchanged,
-    Failed,
+    Failed(MediaFailureKind),
     Ready(Image),
 }
 
@@ -335,8 +349,11 @@ pub fn message_to_dto(m: &TimelineMessage, media: &dyn MediaCache) -> MessageDto
         service_target: SharedString::from(m.body.service().map_or("", service_target)),
         image_width: 0,
         image_height: 0,
+        image_mimetype: SharedString::new(),
+        image_extension: SharedString::new(),
         thumbnail: None,
         media_state: MediaState::Idle,
+        media_failure: MediaFailureKind::None,
         avatar: None,
         has_avatar: false,
         needs_media: false,
@@ -348,6 +365,14 @@ pub fn message_to_dto(m: &TimelineMessage, media: &dyn MediaCache) -> MessageDto
     if let Some((_, meta)) = m.body.media() {
         dto.image_width = meta.width.unwrap_or(0).cast_signed();
         dto.image_height = meta.height.unwrap_or(0).cast_signed();
+        dto.image_mimetype = SharedString::from(meta.mimetype.as_deref().unwrap_or_default());
+        dto.image_extension = SharedString::from(
+            meta.filename
+                .as_deref()
+                .map(file_extension)
+                .unwrap_or_default()
+                .to_uppercase(),
+        );
         if let Some(event_id) = m.event_id.as_deref() {
             if let Some(path) = media.thumbnail_path(event_id) {
                 match peek_thumbnail(&path, &m.unique_id) {
@@ -355,12 +380,16 @@ pub fn message_to_dto(m: &TimelineMessage, media: &dyn MediaCache) -> MessageDto
                         dto.thumbnail = Some(img);
                         dto.media_state = MediaState::Ready;
                     }
-                    Decoded::Failed => dto.media_state = MediaState::Failed,
+                    Decoded::Failed => {
+                        dto.media_state = MediaState::Failed;
+                        dto.media_failure = MediaFailureKind::Unreadable;
+                    }
                     Decoded::Pending => {}
                 }
                 thumbnail_path = Some(path);
-            } else if media.thumbnail_failed(event_id) {
+            } else if let Some(reason) = media.thumbnail_failure(event_id) {
                 dto.media_state = MediaState::Failed;
+                dto.media_failure = failure_kind(reason);
             }
         }
     }
@@ -392,11 +421,11 @@ pub fn enrich_to_update(delta: &EnrichmentDelta, media: &dyn MediaCache) -> Enri
             .map_or(ThumbUpdate::Unchanged, |thumb_path| {
                 match load_thumbnail(&thumb_path, &delta.unique_id) {
                     Decoded::Ready(image) => ThumbUpdate::Ready(image),
-                    Decoded::Failed => ThumbUpdate::Failed,
+                    Decoded::Failed => ThumbUpdate::Failed(MediaFailureKind::Unreadable),
                     Decoded::Pending => ThumbUpdate::Unchanged,
                 }
             }),
-        ThumbnailOutcome::Failed => ThumbUpdate::Failed,
+        ThumbnailOutcome::Failed(reason) => ThumbUpdate::Failed(failure_kind(reason)),
         ThumbnailOutcome::Unchanged => ThumbUpdate::Unchanged,
     };
 

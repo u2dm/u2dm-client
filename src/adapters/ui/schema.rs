@@ -218,6 +218,18 @@ macro_rules! media_states {
 }
 pub(crate) use media_states;
 
+macro_rules! media_failures {
+    ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
+        None       None       "none";
+        NoSource   NoSource   "no-source";
+        Download   Download   "download";
+        TooLarge   TooLarge   "too-large";
+        Storage    Storage    "storage";
+        Unreadable Unreadable "unreadable";
+    } };
+}
+pub(crate) use media_failures;
+
 macro_rules! message_kinds {
     ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
         Text        Text        "text";
@@ -304,6 +316,9 @@ macro_rules! message_fields {
         service_kind SERVICE_KIND "service-kind" enumk;
         service_target SERVICE_TARGET "service-target" text;
         media_state MEDIA_STATE "media-state" enumk;
+        media_failure MEDIA_FAILURE "media-failure" enumk;
+        image_mimetype IMAGE_MIMETYPE "image-mimetype" text;
+        image_extension IMAGE_EXTENSION "image-extension" text;
         image_width IMAGE_WIDTH "image-width" int;
         image_height IMAGE_HEIGHT "image-height" int;
         has_avatar HAS_AVATAR "has-avatar" flag;

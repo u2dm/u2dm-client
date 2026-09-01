@@ -1,11 +1,13 @@
 import { Palette, Spinner } from "std-widgets.slint";
 import { IconDisplay, IconSet } from "@lucide";
-import { MediaState } from "../../../../../enums.slint";
+import { MediaFailure, MediaState } from "../../../../../enums.slint";
+import { MediaFailures } from "../../../../../messages.slint";
 import { AppStyle, Fonts, IconSize, Metrics, Motion, Radius, Space } from "../../../../../theme.slint";
 
 export component StickerMessage inherits HorizontalLayout {
     in property <image> sticker;
     in property <MediaState> media-state;
+    in property <MediaFailure> media-failure;
     in property <int> sticker-width;
     in property <int> sticker-height;
     in property <string> alt;
@@ -39,7 +41,9 @@ export component StickerMessage inherits HorizontalLayout {
         height: root.display-height;
 
         accessible-role: image;
-        accessible-label: root.alt != "" ? @tr("Sticker: {}", root.alt) : @tr("Sticker");
+        accessible-label: root.is-failed
+            ? @tr("Sticker unavailable. {}", MediaFailures.reason(root.media-failure))
+            : (root.alt != "" ? @tr("Sticker: {}", root.alt) : @tr("Sticker"));
 
         if root.is-ready: Image {
             width: 100%;

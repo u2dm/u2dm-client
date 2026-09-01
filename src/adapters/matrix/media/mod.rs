@@ -9,7 +9,7 @@ use matrix_sdk::media::{MediaFormat, MediaThumbnailSettings};
 use matrix_sdk::ruma::events::room::MediaSource;
 pub(crate) use service::MediaService;
 
-use crate::domain::media::{ImageMeta, MediaKind};
+use crate::domain::media::{ImageMeta, MediaFailure, MediaKind};
 use crate::ports::media::MediaCache;
 
 pub(super) const AVATARS_DIR: &str = "avatars";
@@ -42,8 +42,8 @@ impl MediaCache for MaterializedMedia {
         self.service.cache_get(&thumb_key(event_id))
     }
 
-    fn thumbnail_failed(&self, event_id: &str) -> bool {
-        self.service.is_failed(&thumb_key(event_id))
+    fn thumbnail_failure(&self, event_id: &str) -> Option<MediaFailure> {
+        self.service.failure(&thumb_key(event_id))
     }
 
     fn user_avatar_path(&self, mxc: &str) -> Option<PathBuf> {

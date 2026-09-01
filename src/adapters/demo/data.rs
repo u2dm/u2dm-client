@@ -184,6 +184,7 @@ pub fn own_sticker(
                 width: Some(SENT_STICKER_EXTENT),
                 height: Some(SENT_STICKER_EXTENT),
                 mimetype: None,
+                filename: None,
             },
         },
         timestamp: now_ms(),

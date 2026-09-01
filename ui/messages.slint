@@ -1,4 +1,4 @@
-import { UserMessageKind } from "enums.slint";
+import { MediaFailure, UserMessageKind } from "enums.slint";
 
 export struct UserMessage {
     kind: UserMessageKind,
@@ -128,5 +128,43 @@ export global UserMessages {
             return @tr("The verification could not be completed.");
         }
         return "";
+    }
+}
+
+export global MediaFailures {
+    public pure function reason(failure: MediaFailure) -> string {
+        if failure == MediaFailure.no-source {
+            return @tr("This message carries no image to download.");
+        }
+        if failure == MediaFailure.download {
+            return @tr("The homeserver did not send it. It may be offline, or the file may be gone.");
+        }
+        if failure == MediaFailure.too-large {
+            return @tr("It is larger than the download limit for images.");
+        }
+        if failure == MediaFailure.storage {
+            return @tr("It could not be written to the media cache on this device.");
+        }
+        if failure == MediaFailure.unreadable {
+            return @tr("It downloaded, but could not be read as an image.");
+        }
+        return @tr("It could not be loaded.");
+    }
+
+    pure function join(left: string, right: string) -> string {
+        if left == "" {
+            return right;
+        }
+        if right == "" {
+            return left;
+        }
+        return @tr("{} · {}", left, right);
+    }
+
+    public pure function detail(extension: string, mimetype: string, width: int, height: int) -> string {
+        return root.join(
+            root.join(extension, mimetype),
+            width > 0 && height > 0 ? @tr("{}×{}", width, height) : "",
+        );
     }
 }

@@ -47,6 +47,11 @@ const ENUM_COVERAGE: &[EnumCoverage] = &[
         falls_through: &["none", "text"],
     },
     EnumCoverage {
+        slint_enum: "MediaFailure",
+        branches_in: "ui/messages.slint",
+        falls_through: &["none"],
+    },
+    EnumCoverage {
         slint_enum: "MessageKind",
         branches_in: "ui/screens/chat/components/timeline/message-bubble.slint",
         falls_through: &[],
@@ -61,6 +66,7 @@ const ENUM_TABLES: &[(&str, &str)] = &[
     ("PreviewKind", "preview_kinds"),
     ("MessageKind", "message_kinds"),
     ("MediaState", "media_states"),
+    ("MediaFailure", "media_failures"),
 ];
 
 fn main() {
