@@ -210,151 +210,151 @@ export component MessageBubble inherits VerticalLayout {
                             Reactions.leave-bubble(msg.event-id);
                         }
                     }
-                }
 
-                bubble-content := VerticalLayout {
-                    padding-top: root.has-photo ? 0 : Space.sm;
-                    padding-bottom: root.is-photo-only ? 0 : Space.sm;
-                    padding-left: root.has-photo ? 0 : Space.lg;
-                    padding-right: root.has-photo ? 0 : Space.lg;
+                    bubble-content := VerticalLayout {
+                        padding-top: root.has-photo ? 0 : Space.sm;
+                        padding-bottom: root.is-photo-only ? 0 : Space.sm;
+                        padding-left: root.has-photo ? 0 : Space.lg;
+                        padding-right: root.has-photo ? 0 : Space.lg;
 
-                    if !is-own: HorizontalLayout {
-                        padding-left: root.photo-row-padding;
-                        padding-right: root.photo-row-padding;
-                        padding-top: root.has-photo ? Space.sm : 0;
-                        padding-bottom: root.has-photo ? Space.sm : 0;
+                        if !is-own: HorizontalLayout {
+                            padding-left: root.photo-row-padding;
+                            padding-right: root.photo-row-padding;
+                            padding-top: root.has-photo ? Space.sm : 0;
+                            padding-bottom: root.has-photo ? Space.sm : 0;
 
-                        SenderLine {
-                            sender: msg.sender;
-                            pronouns: msg.pronouns;
-                        }
-                    }
-
-                    if msg.has-reply: VerticalLayout {
-                        padding-top: is-own ? 0 : Space.sm;
-                        padding-bottom: root.has-photo ? Space.sm : 0;
-                        padding-left: root.photo-row-padding;
-                        padding-right: root.photo-row-padding;
-
-                        reply-jump := ClickArea {
-                            height: reply-quote.preferred-height;
-                            border-radius: Radius.xs;
-                            ring-radius: Radius.xs;
-                            enabled: msg.reply-event-id != "";
-                            label: @tr("Go to the message this replies to");
-                            property <color> quote-tint: is-own
-                                ? Palette.accent-background
-                                : Palette.foreground;
-                            property <float> quote-veil: is-own
-                                ? (reply-jump.has-hover ? 0.55 : 0.7)
-                                : (reply-jump.has-hover ? 0.86 : 0.92);
-                            background: self.quote-tint.transparentize(self.quote-veil);
-                            clicked => {
-                                Actions.jump-to-event(msg.reply-event-id);
-                            }
-
-                            reply-quote := ReplyQuote {
-                                padding: Space.sm;
-                                sender: msg.reply-sender;
-                                preview: MessagePreview.label(msg.reply-kind, msg.reply-body);
-                            }
-                        }
-                    }
-
-                    if root.has-photo: ImageMessage {
-                        thumbnail: msg.thumbnail;
-                        media-state: msg.media-state;
-                        image-width: msg.image-width;
-                        image-height: msg.image-height;
-                        body: msg.body;
-                        unique-id: msg.unique-id;
-                        styled: msg.styled;
-                        has-links: msg.has-links;
-                        is-own: root.is-own;
-                        event-id: msg.event-id;
-                        frame-limit: root.bubble-max-width;
-                        timestamp: msg.timestamp;
-                        edited: msg.edited;
-                        show-timestamp: root.is-photo-only;
-                        bubble-hovered: message-row.hovered;
-                    }
-
-                    if root.is-image && !root.has-photo: ImagePlaceholder {
-                        body: msg.body;
-                    }
-
-                    if root.is-sticker: StickerMessage {
-                        sticker: msg.thumbnail;
-                        media-state: msg.media-state;
-                        sticker-width: msg.image-width;
-                        sticker-height: msg.image-height;
-                        alt: msg.body;
-                        bubble-hovered: message-row.hovered;
-                        is-own: root.is-own;
-                    }
-
-                    if msg.message-type == MessageKind.file: FileMessage {
-                        body: msg.body;
-                        event-id: msg.event-id;
-                    }
-
-                    if msg.message-type == MessageKind.utd: UtdMessage { }
-
-                    if msg.message-type == MessageKind.unsupported: UnsupportedMessage {
-                        kind: msg.unsupported-kind;
-                        body: msg.body;
-                    }
-
-                    if is-plain-text: TextMessage {
-                        unique-id: msg.unique-id;
-                        plain: msg.body;
-                        styled: msg.styled;
-                        has-links: msg.has-links;
-                        is-own: root.is-own;
-                    }
-
-                    if !root.is-photo-only: HorizontalLayout {
-                        spacing: Space.md;
-                        padding-left: root.photo-row-padding;
-                        padding-right: root.photo-row-padding;
-                        padding-top: root.has-reactions ? Space.sm : 0;
-
-                        if root.has-reactions: BubbleReactions {
-                            horizontal-stretch: 0;
-                            padding-bottom: Space.sm;
-                            reactions: msg.reactions;
-                            is-own: root.is-own;
-                            can-react: root.has-remote-id;
-                            event-id: msg.event-id;
-                            detail-anchor() => {
-                                return bubble.anchor();
+                            SenderLine {
+                                sender: msg.sender;
+                                pronouns: msg.pronouns;
                             }
                         }
 
-                        Rectangle {
-                            horizontal-stretch: 1;
-                        }
+                        if msg.has-reply: VerticalLayout {
+                            padding-top: is-own ? 0 : Space.sm;
+                            padding-bottom: root.has-photo ? Space.sm : 0;
+                            padding-left: root.photo-row-padding;
+                            padding-right: root.photo-row-padding;
 
-                        VerticalLayout {
-                            alignment: end;
-
-                            HorizontalLayout {
-                                alignment: end;
-                                spacing: Space.sm;
-
-                                if msg.edited: IconDisplay {
-                                    y: (parent.height - self.height) / 2;
-                                    icon: IconSet.Pencil;
-                                    size: IconSize.xs;
-                                    stroke: AppStyle.overlay-foreground-muted;
+                            reply-jump := ClickArea {
+                                height: reply-quote.preferred-height;
+                                border-radius: Radius.xs;
+                                ring-radius: Radius.xs;
+                                enabled: msg.reply-event-id != "";
+                                label: @tr("Go to the message this replies to");
+                                property <color> quote-tint: is-own
+                                    ? Palette.accent-background
+                                    : Palette.foreground;
+                                property <float> quote-veil: is-own
+                                    ? (reply-jump.has-hover ? 0.55 : 0.7)
+                                    : (reply-jump.has-hover ? 0.86 : 0.92);
+                                background: self.quote-tint.transparentize(self.quote-veil);
+                                clicked => {
+                                    Actions.jump-to-event(msg.reply-event-id);
                                 }
 
-                                Text {
-                                    text: msg.timestamp;
-                                    font-size: Fonts.body-small;
-                                    color: AppStyle.overlay-foreground-muted;
-                                    horizontal-alignment: right;
-                                    vertical-alignment: center;
+                                reply-quote := ReplyQuote {
+                                    padding: Space.sm;
+                                    sender: msg.reply-sender;
+                                    preview: MessagePreview.label(msg.reply-kind, msg.reply-body);
+                                }
+                            }
+                        }
+
+                        if root.has-photo: ImageMessage {
+                            thumbnail: msg.thumbnail;
+                            media-state: msg.media-state;
+                            image-width: msg.image-width;
+                            image-height: msg.image-height;
+                            body: msg.body;
+                            unique-id: msg.unique-id;
+                            styled: msg.styled;
+                            has-links: msg.has-links;
+                            is-own: root.is-own;
+                            event-id: msg.event-id;
+                            frame-limit: root.bubble-max-width;
+                            timestamp: msg.timestamp;
+                            edited: msg.edited;
+                            show-timestamp: root.is-photo-only;
+                            bubble-hovered: message-row.hovered;
+                        }
+
+                        if root.is-image && !root.has-photo: ImagePlaceholder {
+                            body: msg.body;
+                        }
+
+                        if root.is-sticker: StickerMessage {
+                            sticker: msg.thumbnail;
+                            media-state: msg.media-state;
+                            sticker-width: msg.image-width;
+                            sticker-height: msg.image-height;
+                            alt: msg.body;
+                            bubble-hovered: message-row.hovered;
+                            is-own: root.is-own;
+                        }
+
+                        if msg.message-type == MessageKind.file: FileMessage {
+                            body: msg.body;
+                            event-id: msg.event-id;
+                        }
+
+                        if msg.message-type == MessageKind.utd: UtdMessage { }
+
+                        if msg.message-type == MessageKind.unsupported: UnsupportedMessage {
+                            kind: msg.unsupported-kind;
+                            body: msg.body;
+                        }
+
+                        if is-plain-text: TextMessage {
+                            unique-id: msg.unique-id;
+                            plain: msg.body;
+                            styled: msg.styled;
+                            has-links: msg.has-links;
+                            is-own: root.is-own;
+                        }
+
+                        if !root.is-photo-only: HorizontalLayout {
+                            spacing: Space.md;
+                            padding-left: root.photo-row-padding;
+                            padding-right: root.photo-row-padding;
+                            padding-top: root.has-reactions ? Space.sm : 0;
+
+                            if root.has-reactions: BubbleReactions {
+                                horizontal-stretch: 0;
+                                padding-bottom: Space.sm;
+                                reactions: msg.reactions;
+                                is-own: root.is-own;
+                                can-react: root.has-remote-id;
+                                event-id: msg.event-id;
+                                detail-anchor() => {
+                                    return bubble.anchor();
+                                }
+                            }
+
+                            Rectangle {
+                                horizontal-stretch: 1;
+                            }
+
+                            VerticalLayout {
+                                alignment: end;
+
+                                HorizontalLayout {
+                                    alignment: end;
+                                    spacing: Space.sm;
+
+                                    if msg.edited: IconDisplay {
+                                        y: (parent.height - self.height) / 2;
+                                        icon: IconSet.Pencil;
+                                        size: IconSize.xs;
+                                        stroke: AppStyle.overlay-foreground-muted;
+                                    }
+
+                                    Text {
+                                        text: msg.timestamp;
+                                        font-size: Fonts.body-small;
+                                        color: AppStyle.overlay-foreground-muted;
+                                        horizontal-alignment: right;
+                                        vertical-alignment: center;
+                                    }
                                 }
                             }
                         }
