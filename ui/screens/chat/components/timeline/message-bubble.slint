@@ -19,6 +19,7 @@ import { ReactionRow } from "./reaction-row.slint";
 import { QuickReactions } from "./reaction-picker.slint";
 import { Avatar } from "../../../../components/avatar.slint";
 import { ClickArea } from "../../../../components/a11y.slint";
+import { Pill } from "../../../../components/pill.slint";
 import {
     Composer,
     ReactionAnchor,
@@ -123,6 +124,11 @@ export component MessageBubble inherits VerticalLayout {
     property <bool> chips-outside: root.is-photo-only && root.has-reactions;
     property <length> outside-chips-gap: Space.sm;
     property <length> photo-row-padding: root.has-photo ? Space.lg : 0px;
+    property <length> pill-height: Size.target-min + 2 * Space.xs;
+    property <length> pill-gap: Space.sm;
+    property <length> pill-overlap: Space.sm;
+    property <color> pill-fill: Palette.alternate-background;
+    property <color> pill-foreground: Palette.accent-background;
 
     if msg.first-unread: UnreadDivider { }
 
@@ -137,8 +143,8 @@ export component MessageBubble inherits VerticalLayout {
             && (hover-bg.has-hover
             || root.strip-mine
             || react-btn.has-hover || react-btn.has-focus
-            || reply-btn.has-hover || reply-btn.has-focus
-            || select-btn.has-hover || select-btn.has-focus);
+            || reply-pill.has-hover || reply-pill.has-focus
+            || select-pill.has-hover || select-pill.has-focus);
 
         height: row.preferred-height
             + (root.chips-outside
@@ -354,62 +360,6 @@ export component MessageBubble inherits VerticalLayout {
                         }
                     }
                 }
-
-                select-btn := ClickArea {
-                    x: reply-btn.x - self.width - Space.xs;
-                    y: Space.sm;
-                    width: Size.target-min;
-                    height: Size.target-min;
-                    ring-radius: Radius.sm;
-                    label: @tr("Select the text of this message");
-                    enabled: root.is-plain-text || (root.has-photo && root.has-caption);
-                    visible: self.enabled;
-                    opacity: message-row.hovered ? 1 : 0;
-                    clicked => {
-                        TextSelection.select(msg.unique-id);
-                    }
-
-                    IconDisplay {
-                        x: (parent.width - self.width) / 2;
-                        y: (parent.height - self.height) / 2;
-                        icon: IconSet.TextCursor;
-                        size: IconSize.sm;
-                        stroke: root.is-own ? Palette.foreground : Palette.accent-background;
-                    }
-                }
-
-                reply-btn := ClickArea {
-                    x: parent.width - self.width - Space.sm;
-                    y: Space.sm;
-                    width: reply-text.width + Space.lg;
-                    height: Size.target-min;
-                    ring-radius: Radius.sm;
-                    label: @tr("Reply to {}", msg.sender);
-                    enabled: root.has-remote-id;
-                    opacity: message-row.hovered ? 1 : 0;
-                    clicked => {
-                        Composer.reply-event-id = msg.event-id;
-                        Composer.reply-sender = msg.sender;
-                        Composer.reply-preview = MessagePreview.label(msg.preview-kind, msg.body);
-                    }
-
-                    reply-text := Text {
-                        x: (parent.width - self.width) / 2;
-                        y: (parent.height - self.height) / 2;
-                        text: @tr("Reply");
-                        font-size: Fonts.body-small;
-                        font-weight: Weight.semibold;
-                        color: root.is-own ? Palette.foreground : Palette.accent-background;
-                    }
-
-                    if reply-btn.has-hover: Rectangle {
-                        x: reply-text.x;
-                        y: reply-text.y + reply-text.height;
-                        width: reply-text.width;
-                        height: Stroke.hairline;
-                        background: reply-text.color;
-                    }
-                }
             }
         }
 
@@ -426,16 +376,70 @@ export component MessageBubble inherits VerticalLayout {
             }
         }
 
-        react-btn := ClickArea {
+        select-pill := Pill {
+            x: reply-pill.x - self.width - root.pill-gap;
+            y: reply-pill.y;
+            width: root.pill-height;
+            height: root.pill-height;
+            pad: 0;
+            fill: root.pill-fill;
+            label: @tr("Select the text of this message");
+            enabled: root.is-plain-text || (root.has-photo && root.has-caption);
+            visible: self.enabled;
+            opacity: message-row.hovered ? 1 : 0;
+            clicked => {
+                TextSelection.select(msg.unique-id);
+            }
+
+            animate opacity {
+                duration: Motion.fast;
+                easing: ease-out;
+            }
+
+            IconDisplay {
+                icon: IconSet.TextCursor;
+                size: IconSize.sm;
+                stroke: root.pill-foreground;
+            }
+        }
+
+        reply-pill := Pill {
+            x: bubble.x + bubble.width - self.width;
+            y: bubble.y - self.height + root.pill-overlap;
+            height: root.pill-height;
+            fill: root.pill-fill;
+            label: @tr("Reply to {}", msg.sender);
+            enabled: root.has-remote-id;
+            opacity: message-row.hovered ? 1 : 0;
+            clicked => {
+                Composer.reply-event-id = msg.event-id;
+                Composer.reply-sender = msg.sender;
+                Composer.reply-preview = MessagePreview.label(msg.preview-kind, msg.body);
+            }
+
+            animate opacity {
+                duration: Motion.fast;
+                easing: ease-out;
+            }
+
+            Text {
+                text: @tr("Reply");
+                font-size: Fonts.body-small;
+                font-weight: Weight.semibold;
+                color: root.pill-foreground;
+                vertical-alignment: center;
+            }
+        }
+
+        react-btn := Pill {
             x: root.is-own
                 ? bubble.x - self.width + Metrics.reaction-strip-overlap
                 : bubble.x + bubble.width - Metrics.reaction-strip-overlap;
             y: bubble.y + bubble.height - self.height;
             width: Metrics.reaction-strip-width;
             height: self.width;
-            border-radius: self.height / 2;
-            ring-radius: self.height / 2;
-            background: Palette.alternate-background;
+            pad: 0;
+            fill: root.pill-fill;
             enabled: root.has-remote-id;
             label: @tr("React to {}'s message with {}", msg.sender, QuickReactions.default-key);
             opacity: message-row.hovered && !root.strip-mine ? 1 : 0;
@@ -452,10 +456,6 @@ export component MessageBubble inherits VerticalLayout {
             }
 
             Text {
-                x: 0;
-                y: 0;
-                width: parent.width;
-                height: parent.height;
                 text: QuickReactions.default-key;
                 font-family: Fonts.emoji;
                 font-size: Glyph.xs;

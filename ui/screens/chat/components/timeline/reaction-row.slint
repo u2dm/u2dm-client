@@ -3,11 +3,11 @@ import {
 } from "std-widgets.slint";
 
 import { ReactionEntry } from "../types.slint";
-import { ClickArea } from "../../../../components/a11y.slint";
+import { Pill } from "../../../../components/pill.slint";
 import { ReactionAnchor } from "../../../../local.slint";
 import { AppStyle, Fonts, Glyph, Metrics, Opacity, Space, Stroke, Weight } from "../../../../theme.slint";
 
-export component ReactionChip inherits ClickArea {
+export component ReactionChip inherits Pill {
     in property <ReactionEntry> entry;
     in property <bool> is-own;
 
@@ -15,42 +15,29 @@ export component ReactionChip inherits ClickArea {
     property <color> other-fill: root.is-own
         ? AppStyle.chip-fill
         : AppStyle.overlay-hover;
-    property <color> resting-fill: root.entry.mine ? root.mine-fill : root.other-fill;
-    property <float> hover-lift: root.entry.mine ? -0.15 : -0.25;
 
-    width: chip-row.preferred-width;
     height: Metrics.reaction-chip;
-    border-radius: self.height / 2;
-    ring-radius: self.height / 2;
     border-width: entry.mine ? Stroke.hairline : 0;
     border-color: AppStyle.accent-border;
-    background: root.has-hover
-        ? root.resting-fill.transparentize(root.hover-lift)
-        : root.resting-fill;
+    fill: root.entry.mine ? root.mine-fill : root.other-fill;
+    hover-lift: root.entry.mine ? 0.15 : 0.25;
     opacity: entry.pending ? Opacity.pending : 1;
 
-    chip-row := HorizontalLayout {
-        alignment: center;
-        spacing: Space.sm;
-        padding-left: Space.md;
-        padding-right: Space.md;
+    if !entry.overflow: Text {
+        text: entry.label;
+        font-family: Fonts.emoji;
+        font-size: Glyph.xs;
+        vertical-alignment: center;
+    }
 
-        if !entry.overflow: Text {
-            text: entry.label;
-            font-family: Fonts.emoji;
-            font-size: Glyph.xs;
-            vertical-alignment: center;
-        }
-
-        Text {
-            text: entry.overflow ? "+" + entry.count : entry.count;
-            font-size: Fonts.body-small;
-            font-weight: Weight.semibold;
-            color: entry.mine
-                ? Palette.accent-background
-                : AppStyle.foreground-strong;
-            vertical-alignment: center;
-        }
+    Text {
+        text: entry.overflow ? "+" + entry.count : entry.count;
+        font-size: Fonts.body-small;
+        font-weight: Weight.semibold;
+        color: entry.mine
+            ? Palette.accent-background
+            : AppStyle.foreground-strong;
+        vertical-alignment: center;
     }
 }
 
