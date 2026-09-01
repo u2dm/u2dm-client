@@ -30,6 +30,18 @@ export component MessageInput inherits Rectangle {
     property <length> picker-headroom: root.overlay-height - root.height
         - Metrics.header-row - Space.xl;
 
+    property <int> max-lines: 6;
+    property <length> text-inset: Space.md;
+    property <length> line-height: line-probe.preferred-height;
+    property <length> text-height: min(
+        max(text-input.preferred-height, root.line-height),
+        root.line-height * root.max-lines,
+    );
+    property <length> row-height: max(
+        Metrics.composer-row,
+        root.text-height + 2 * root.text-inset,
+    );
+
     background: Palette.alternate-background;
     height: layout.preferred-height;
 
@@ -41,7 +53,32 @@ export component MessageInput inherits Rectangle {
                 reply-to: Composer.reply-event-id,
             });
             root.message = "";
+            scroll.viewport-y = 0px;
             Composer.clear();
+        }
+    }
+
+    function keep-scroll-in-range() {
+        scroll.viewport-y = min(
+            0px,
+            max(scroll.height - scroll.viewport-height, scroll.viewport-y),
+        );
+    }
+
+    function reveal-caret(caret-y: length) {
+        if caret-y + scroll.viewport-y < 0px {
+            scroll.viewport-y = min(
+                0px,
+                max(scroll.height - scroll.viewport-height, -caret-y),
+            );
+        } else if caret-y + scroll.viewport-y > scroll.height - root.line-height {
+            scroll.viewport-y = min(
+                0px,
+                max(
+                    scroll.height - scroll.viewport-height,
+                    scroll.height - caret-y - root.line-height,
+                ),
+            );
         }
     }
 
@@ -52,6 +89,13 @@ export component MessageInput inherits Rectangle {
 
     public function focus-input() {
         text-input.focus();
+    }
+
+    line-probe := Text {
+        visible: false;
+        text: " ";
+        font-family: Fonts.emoji;
+        font-size: Fonts.body;
     }
 
     if Shell.picker-open: ModalHost {
@@ -140,86 +184,118 @@ export component MessageInput inherits Rectangle {
         }
 
         HorizontalLayout {
-        height: Metrics.composer-row;
-        padding-left: Space.lg;
-        padding-right: Space.lg;
+            height: root.row-height;
+            padding-left: Space.lg;
+            padding-right: Space.lg;
 
-        Rectangle {
-            horizontal-stretch: 1;
-
-            text-input := TextInput {
-                text <=> root.message;
-                color: Palette.foreground;
-                font-family: Fonts.emoji;
-                font-size: Fonts.body;
-                vertical-alignment: center;
-                single-line: true;
-                enabled: Shell.background-reachable;
-                accessible-label: @tr("Message");
-                accessible-placeholder-text: @tr("Send a message...");
-                accepted => {
-                    root.submit();
+            keys := FocusScope {
+                horizontal-stretch: 1;
+                focus-on-click: false;
+                focus-on-tab-navigation: false;
+                capture-key-pressed(event) => {
+                    if (event.text == Key.Return && !event.modifiers.shift) {
+                        root.submit();
+                        return accept;
+                    }
+                    return reject;
                 }
-                edited => {
-                    root.caret = self.cursor-position-byte-offset;
+
+                Rectangle {
+                    scroll := Flickable {
+                        x: 0;
+                        y: (parent.height - self.height) / 2;
+                        width: parent.width;
+                        height: root.text-height;
+                        interactive: false;
+                        viewport-width: self.width;
+                        viewport-height: max(self.height, text-input.preferred-height);
+
+                        text-input := TextInput {
+                            color: Palette.foreground;
+                            font-family: Fonts.emoji;
+                            font-size: Fonts.body;
+                            vertical-alignment: top;
+                            single-line: false;
+                            wrap: word-wrap;
+                            page-height: scroll.height;
+                            enabled: Shell.background-reachable;
+                            accessible-label: @tr("Message");
+                            accessible-placeholder-text: @tr("Send a message...");
+                            text <=> root.message;
+                            edited => {
+                                root.caret = self.cursor-position-byte-offset;
+                                root.keep-scroll-in-range();
+                            }
+                            cursor-position-changed(pos) => {
+                                root.caret = self.cursor-position-byte-offset;
+                                root.reveal-caret(pos.y);
+                            }
+                        }
+                    }
+
+                    if !root.has-text: Text {
+                        x: 0;
+                        y: scroll.y;
+                        width: parent.width;
+                        height: scroll.height;
+                        text: @tr("Send a message...");
+                        color: AppStyle.foreground-muted;
+                        font-size: Fonts.body;
+                        vertical-alignment: center;
+                        horizontal-alignment: left;
+                    }
                 }
-                cursor-position-changed(pos) => {
-                    root.caret = self.cursor-position-byte-offset;
+            }
+
+            VerticalLayout {
+                alignment: end;
+
+                emoji-touch := ClickArea {
+                    width: Size.target;
+                    height: Metrics.composer-row;
+                    ring-radius: Radius.sm;
+                    label: @tr("Emoji and stickers");
+                    clicked => {
+                        Reactions.close();
+                        Shell.picker-open = !Shell.picker-open;
+                    }
+
+                    IconDisplay {
+                        x: (parent.width - self.width) / 2;
+                        y: (parent.height - self.height) / 2;
+                        icon: IconSet.Smile;
+                        size: IconSize.md;
+                        stroke: Shell.picker-open
+                            ? Palette.accent-background
+                            : AppStyle.foreground-muted;
+                    }
                 }
             }
 
-            if !root.has-text: Text {
-                x: 0;
-                y: 0;
-                width: parent.width;
-                height: parent.height;
-                text: @tr("Send a message...");
-                color: AppStyle.foreground-muted;
-                font-size: Fonts.body;
-                vertical-alignment: center;
-                horizontal-alignment: left;
-            }
-        }
+            VerticalLayout {
+                alignment: end;
 
-        emoji-touch := ClickArea {
-            width: Size.target;
-            ring-radius: Radius.sm;
-            label: @tr("Emoji and stickers");
-            clicked => {
-                Reactions.close();
-                Shell.picker-open = !Shell.picker-open;
-            }
+                send-touch := ClickArea {
+                    width: Size.target;
+                    height: Metrics.composer-row;
+                    ring-radius: Radius.sm;
+                    enabled: root.has-text;
+                    label: @tr("Send");
+                    clicked => {
+                        root.submit();
+                    }
 
-            IconDisplay {
-                x: (parent.width - self.width) / 2;
-                y: (parent.height - self.height) / 2;
-                icon: IconSet.Smile;
-                size: IconSize.md;
-                stroke: Shell.picker-open
-                    ? Palette.accent-background
-                    : AppStyle.foreground-muted;
+                    IconDisplay {
+                        x: (parent.width - self.width) / 2;
+                        y: (parent.height - self.height) / 2;
+                        icon: IconSet.SendHorizontal;
+                        size: IconSize.md;
+                        stroke: root.has-text
+                            ? Palette.accent-background
+                            : AppStyle.foreground-faint;
+                    }
+                }
             }
-        }
-
-        send-touch := ClickArea {
-            width: Size.target;
-            ring-radius: Radius.sm;
-            enabled: root.has-text;
-            label: @tr("Send");
-            clicked => {
-                root.submit();
-            }
-
-            IconDisplay {
-                x: (parent.width - self.width) / 2;
-                y: (parent.height - self.height) / 2;
-                icon: IconSet.SendHorizontal;
-                size: IconSize.md;
-                stroke: root.has-text
-                    ? Palette.accent-background
-                    : AppStyle.foreground-faint;
-            }
-        }
         }
     }
 }

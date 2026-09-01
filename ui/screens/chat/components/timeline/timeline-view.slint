@@ -28,17 +28,12 @@ export component TimelineView inherits Rectangle {
     property <length> nav-button-width: Size.target;
 
     property <bool> has-room: RoomView.selected-room-name != "";
-    property <bool> is-replying: Composer.reply-event-id != "";
-    property <length> input-height: root.is-replying
-        ? Metrics.composer-row + Metrics.reply-bar
-        : Metrics.composer-row;
     property <bool> is-loading: RoomView.timeline-status == TimelineState.loading
         || RoomView.timeline-status == TimelineState.loading-unread
         || RoomView.timeline-status == TimelineState.loading-focus;
     property <bool> is-blocking-status: root.is-loading
         || RoomView.timeline-status == TimelineState.failed
         || RoomView.timeline-status == TimelineState.disconnected;
-    property <bool> show-status-pill: root.has-room && root.is-blocking-status;
     property <bool> can-retry: (RoomView.timeline-status == TimelineState.failed && RoomView.timeline-retryable)
         || RoomView.timeline-status == TimelineState.disconnected;
     pure function status-message(status: TimelineState) -> string {
@@ -129,30 +124,30 @@ export component TimelineView inherits Rectangle {
         }
     }
 
-    if has-room: TimelineContent {
-        x: 0;
-        y: root.header-height + root.spacing;
-        width: root.width;
-        height: root.height - root.header-height - root.input-height - root.spacing * 2;
-        available-width: root.width;
-    }
-
-    if show-status-pill: StatusPill {
-        x: Space.xl;
-        y: root.height - root.input-height - root.spacing - self.height - Space.xl;
-        text: root.status-message(RoomView.timeline-status);
-        loading: root.is-loading;
-        show-retry: root.can-retry;
-        retry => {
-            Actions.retry-timeline();
-        }
-    }
-
     if has-room: Rectangle {
         x: 0;
         y: 0;
         width: root.width;
         height: root.height;
+
+        TimelineContent {
+            x: 0;
+            y: root.header-height + root.spacing;
+            width: parent.width;
+            height: parent.height - root.header-height - input.height - root.spacing * 2;
+            available-width: parent.width;
+        }
+
+        if root.is-blocking-status: StatusPill {
+            x: Space.xl;
+            y: parent.height - input.height - root.spacing - self.height - Space.xl;
+            text: root.status-message(RoomView.timeline-status);
+            loading: root.is-loading;
+            show-retry: root.can-retry;
+            retry => {
+                Actions.retry-timeline();
+            }
+        }
 
         input := MessageInput {
             x: 0;
