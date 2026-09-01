@@ -130,7 +130,7 @@ export component TimelineView inherits Rectangle {
         width: root.width;
         height: root.height;
 
-        TimelineContent {
+        content := TimelineContent {
             x: 0;
             y: root.header-height + root.spacing;
             width: parent.width;
@@ -166,6 +166,7 @@ export component TimelineView inherits Rectangle {
             y: 0;
             width: root.overlay-width;
             height: root.height;
+            timeline-bottom: content.y + content.height;
             closed => {
                 input.focus-input();
             }

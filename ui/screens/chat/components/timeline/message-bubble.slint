@@ -55,6 +55,8 @@ component BubbleReactions inherits ReactionRow {
 
     callback detail-anchor() -> ReactionAnchor;
 
+    tracked-index: Reactions.tooltip-event-id == root.event-id ? Reactions.tooltip-row : -1;
+
     toggled(key) => {
         Actions.toggle-reaction(root.event-id, key);
     }
@@ -150,6 +152,14 @@ export component MessageBubble inherits VerticalLayout {
             + (root.chips-outside
             ? Metrics.reaction-chip + root.outside-chips-gap
             : 0);
+
+        property <ReactionAnchor> tracked-anchor: root.strip-mine
+            ? bubble.anchor()
+            : { row: -1 };
+
+        changed tracked-anchor => {
+            Reactions.follow-bubble(self.tracked-anchor);
+        }
 
         row := HorizontalLayout {
             alignment: is-own ? end : start;

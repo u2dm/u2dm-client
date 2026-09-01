@@ -93,6 +93,12 @@ export global Reactions {
         }
     }
 
+    public function follow-bubble(a: ReactionAnchor) {
+        if (self.strip-anchor.event-id == a.event-id) {
+            self.strip-anchor = a;
+        }
+    }
+
     public function leave-bubble(event-id: string) {
         if (self.strip-anchor.event-id == event-id) {
             self.bubble-hovered = false;

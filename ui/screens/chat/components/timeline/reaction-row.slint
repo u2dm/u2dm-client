@@ -45,6 +45,7 @@ export component ReactionRow inherits HorizontalLayout {
     in property <[ReactionEntry]> reactions;
     in property <bool> is-own;
     in property <bool> can-react;
+    in property <int> tracked-index: -1;
 
     callback toggled(string);
     callback overflow-clicked();
@@ -54,7 +55,21 @@ export component ReactionRow inherits HorizontalLayout {
     alignment: start;
     spacing: Space.sm;
 
+    pure function anchor(index: int, pos: Point, w: length, h: length) -> ReactionAnchor {
+        return { row: index, x: pos.x, y: pos.y, width: w, height: h };
+    }
+
     for entry[index] in root.reactions: chip := ReactionChip {
+        property <ReactionAnchor> tracked-anchor: root.tracked-index == index
+            ? root.anchor(index, chip.absolute-position, chip.width, chip.height)
+            : { row: -1 };
+
+        changed tracked-anchor => {
+            if (root.tracked-index == index) {
+                root.hovered(index, root.reactor-text(entry), self.tracked-anchor);
+            }
+        }
+
         entry: entry;
         is-own: root.is-own;
         enabled: entry.overflow || root.can-react;
@@ -68,13 +83,8 @@ export component ReactionRow inherits HorizontalLayout {
         }
         changed has-hover => {
             if (self.has-hover && !entry.overflow) {
-                root.hovered(index, root.reactor-text(entry), {
-                    row: index,
-                    x: chip.absolute-position.x,
-                    y: chip.absolute-position.y,
-                    width: chip.width,
-                    height: chip.height,
-                });
+                root.hovered(index, root.reactor-text(entry),
+                             root.anchor(index, chip.absolute-position, chip.width, chip.height));
             } else {
                 root.unhovered(index);
             }

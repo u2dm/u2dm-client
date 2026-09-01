@@ -11,12 +11,18 @@ import { StickerView } from "../../../../views.slint";
 import { Fonts, Metrics, Motion, Radius, Size, Space } from "../../../../theme.slint";
 
 export component ReactionOverlay inherits Rectangle {
+    in property <length> timeline-bottom: root.height;
+
     callback closed();
 
     property <length> edge: Space.md;
     property <length> gap: Space.md;
     property <duration> strip-close-delay: Motion.close-delay;
     property <length> timeline-top: Metrics.header-row + Metrics.timeline-gap;
+
+    property <bool> strip-in-view:
+        Reactions.strip-anchor.y + Reactions.strip-anchor.height > root.timeline-top
+        && Reactions.strip-anchor.y < root.timeline-bottom;
 
     property <length> pane-w: min(Metrics.picker-width, root.width - 2 * root.edge);
     property <length> pane-h: min(Metrics.picker-height, root.height - 2 * root.edge);
@@ -49,19 +55,20 @@ export component ReactionOverlay inherits Rectangle {
     Timer {
         interval: root.strip-close-delay;
         running: Reactions.strip-pending
-            && !Reactions.bubble-hovered
-            && !Reactions.strip-hovered;
+            && (!root.strip-in-view
+            || (!Reactions.bubble-hovered && !Reactions.strip-hovered));
         triggered => {
             Reactions.close-strip();
         }
     }
 
-    if Reactions.strip-visible: ReactionStrip {
+    if Reactions.strip-visible && root.strip-in-view: ReactionStrip {
         x: Reactions.strip-anchor.is-own
             ? Reactions.strip-anchor.x - self.width + Metrics.reaction-strip-overlap
             : Reactions.strip-anchor.x + Reactions.strip-anchor.width - Metrics.reaction-strip-overlap;
-        y: max(root.timeline-top,
-               Reactions.strip-anchor.y + Reactions.strip-anchor.height - self.height);
+        y: clamp(Reactions.strip-anchor.y + Reactions.strip-anchor.height - self.height,
+                 root.timeline-top,
+                 max(root.timeline-top, root.timeline-bottom - self.height));
 
         changed open => {
             Reactions.strip-hovered = self.open;
