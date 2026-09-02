@@ -2,6 +2,7 @@ use std::collections::HashMap;
 
 use serde::Deserialize;
 
+use super::reactions;
 use crate::domain::auth::Session;
 use crate::domain::media::ImageMeta;
 use crate::domain::message::{
@@ -372,7 +373,11 @@ impl MessageDto {
                 .map(|reaction| Reaction {
                     key: reaction.key.clone(),
                     mine: reaction.senders.iter().any(|sender| sender == own_user),
-                    senders: reaction.senders.clone(),
+                    senders: reaction
+                        .senders
+                        .iter()
+                        .map(|sender| reactions::reactor(sender))
+                        .collect(),
                     pending: false,
                 })
                 .collect(),

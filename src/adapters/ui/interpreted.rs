@@ -22,7 +22,7 @@ thread_local! {
 
 use names::{
     callback, emoji_entry, emoji_group, emoji_insert, emoji_store, login_request, message,
-    reaction, room, save_file_request, send_message_request, send_sticker_request, space,
+    reaction, reactor, room, save_file_request, send_message_request, send_sticker_request, space,
     sticker_cell, sticker_pack, sticker_row, sticker_view, user_message, verification_emoji,
 };
 
@@ -30,8 +30,8 @@ use super::backend::{UiBackend, install_render_hooks, post_effect, selected_room
 use super::clock::install_clock_invalidation;
 use super::decode::{AvatarSlot, request_avatar, request_media, request_sticker};
 use super::dto::{
-    MediaFailureKind, MediaState, ReactionDto, StickerCellDto, StickerPackDto, StickerRowDto,
-    ThumbUpdate, enrich_to_update, message_to_dto, room_to_dto, space_to_dto,
+    MediaFailureKind, MediaState, ReactionDto, ReactorAvatarDto, StickerCellDto, StickerPackDto,
+    StickerRowDto, ThumbUpdate, enrich_to_update, message_to_dto, room_to_dto, space_to_dto,
 };
 use super::multiplex::spawn_event_multiplexer;
 use super::present::{MessageKind, ServiceKind, VerifyStep};
@@ -94,6 +94,11 @@ mod names {
     pub mod reaction {
         use crate::adapters::ui::schema::{gen_consts, reaction_fields};
         reaction_fields!(gen_consts);
+    }
+
+    pub mod reactor {
+        use crate::adapters::ui::schema::{gen_consts, reactor_fields};
+        reactor_fields!(gen_consts);
     }
 
     pub mod room {
@@ -592,6 +597,38 @@ impl UiBackend for InterpretedBackend {
         true
     }
 
+    fn patch_reactor_avatar(entry: &Value, user_id: &str, image: &Image) -> bool {
+        let Value::Struct(fields) = entry else {
+            return false;
+        };
+        let Some(Value::Model(reactions)) = fields.get_field(message::REACTIONS) else {
+            return false;
+        };
+        let mut patched = false;
+        for reaction in reactions.iter() {
+            let Value::Struct(reaction) = reaction else {
+                continue;
+            };
+            let Some(Value::Model(faces)) = reaction.get_field(reaction::AVATARS) else {
+                continue;
+            };
+            let Some(index) = faces.iter().position(|face| unclaimed_face(&face, user_id)) else {
+                continue;
+            };
+            let Some(model) = faces.as_any().downcast_ref::<VecModel<Value>>() else {
+                continue;
+            };
+            let Some(Value::Struct(mut face)) = model.row_data(index) else {
+                continue;
+            };
+            face.set_field(reactor::AVATAR.to_string(), Value::Image(image.clone()));
+            face.set_field(reactor::HAS_AVATAR.to_string(), Value::Bool(true));
+            model.set_row_data(index, Value::Struct(face));
+            patched = true;
+        }
+        patched
+    }
+
     fn set_message_avatar(entry: &mut Value, image: &Image) {
         set_value_avatar(entry, message::AVATAR, message::HAS_AVATAR, image);
     }
@@ -1035,6 +1072,29 @@ fn struct_list<T: ToValue>(items: &[T]) -> Value {
     Value::Model(ModelRc::new(VecModel::from(values)))
 }
 
+impl ToValue for ReactorAvatarDto {
+    fn to_value(&self) -> Value {
+        let mut fields = Struct::default();
+        fields.set_field(
+            reactor::USER_ID.to_string(),
+            Value::String(self.user_id.clone()),
+        );
+        fields.set_field(
+            reactor::INITIAL.to_string(),
+            Value::String(self.initial.clone()),
+        );
+        fields.set_field(reactor::COLOR_INDEX.to_string(), num(self.color_index));
+        fields.set_field(
+            reactor::HAS_AVATAR.to_string(),
+            Value::Bool(self.image.is_some()),
+        );
+        if let Some(image) = self.image.clone() {
+            fields.set_field(reactor::AVATAR.to_string(), Value::Image(image));
+        }
+        Value::Struct(fields)
+    }
+}
+
 impl ToValue for ReactionDto {
     fn to_value(&self) -> Value {
         let mut fields = Struct::default();
@@ -1055,6 +1115,7 @@ impl ToValue for ReactionDto {
             reaction::HIDDEN_REACTORS.to_string(),
             num(self.hidden_reactors),
         );
+        fields.set_field(reaction::AVATARS.to_string(), struct_list(&self.avatars));
         Value::Struct(fields)
     }
 }
@@ -1206,6 +1267,21 @@ fn sticker_row_to_value(d: &StickerRowDto) -> Value {
         Value::Model(ModelRc::new(VecModel::from(cells))),
     );
     Value::Struct(fields)
+}
+
+fn unclaimed_face(face: &Value, user_id: &str) -> bool {
+    let Value::Struct(fields) = face else {
+        return false;
+    };
+    let claimed = matches!(
+        fields.get_field(reactor::HAS_AVATAR),
+        Some(Value::Bool(true))
+    );
+    !claimed
+        && matches!(
+            fields.get_field(reactor::USER_ID),
+            Some(Value::String(id)) if id == user_id
+        )
 }
 
 fn cell_key_of(cell: &Value) -> Option<&SharedString> {

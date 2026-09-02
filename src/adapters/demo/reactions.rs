@@ -2,7 +2,7 @@ use std::env;
 use std::sync::OnceLock;
 use std::time::Duration;
 
-use crate::domain::message::{Reaction, TimelineMessage};
+use crate::domain::message::{Reaction, Reactor, TimelineMessage};
 
 const ENV_VAR: &str = "U2DM_DEMO_REACTIONS";
 
@@ -66,9 +66,16 @@ fn apply(scenario: &mut Scenario, flag: &str) {
     }
 }
 
-fn crowd_senders() -> Vec<String> {
+pub fn reactor(user_id: &str) -> Reactor {
+    Reactor {
+        user_id: user_id.to_owned(),
+        avatar_url: Some(user_id.to_owned()),
+    }
+}
+
+fn crowd_senders() -> Vec<Reactor> {
     (0..CROWD_SIZE)
-        .map(|n| format!("@demo{n}:matrix.org"))
+        .map(|n| reactor(&format!("@demo{n}:matrix.org")))
         .collect()
 }
 
@@ -99,7 +106,7 @@ pub fn apply_scenario(messages: &mut [TimelineMessage]) {
     if scenario.key_is_long {
         message.reactions.push(Reaction {
             key: LONG_KEY.to_owned(),
-            senders: vec!["@kai:matrix.org".to_owned()],
+            senders: vec![reactor("@kai:matrix.org")],
             mine: false,
             pending: false,
         });
@@ -111,7 +118,7 @@ pub fn apply_scenario(messages: &mut [TimelineMessage]) {
             }
             message.reactions.push(Reaction {
                 key: (*key).to_owned(),
-                senders: vec!["@priya:matrix.org".to_owned()],
+                senders: vec![reactor("@priya:matrix.org")],
                 mine: false,
                 pending: false,
             });
@@ -143,7 +150,7 @@ pub fn toggle(message: &mut TimelineMessage, key: &str, own_user: &str) {
     let Some(position) = message.reactions.iter().position(|r| r.key == key) else {
         message.reactions.push(Reaction {
             key: key.to_owned(),
-            senders: vec![own_user.to_owned()],
+            senders: vec![reactor(own_user)],
             mine: true,
             pending,
         });
@@ -152,7 +159,11 @@ pub fn toggle(message: &mut TimelineMessage, key: &str, own_user: &str) {
     let Some(reaction) = message.reactions.get_mut(position) else {
         return;
     };
-    if let Some(mine) = reaction.senders.iter().position(|s| s == own_user) {
+    if let Some(mine) = reaction
+        .senders
+        .iter()
+        .position(|sender| sender.user_id == own_user)
+    {
         reaction.senders.remove(mine);
         reaction.mine = false;
         reaction.pending = false;
@@ -161,7 +172,7 @@ pub fn toggle(message: &mut TimelineMessage, key: &str, own_user: &str) {
         }
         return;
     }
-    reaction.senders.push(own_user.to_owned());
+    reaction.senders.push(reactor(own_user));
     reaction.mine = true;
     reaction.pending = pending;
 }

@@ -2,14 +2,36 @@ import {
     Palette,
 } from "std-widgets.slint";
 
-import { ReactionEntry } from "../types.slint";
+import { ReactionEntry, ReactorAvatar } from "../types.slint";
+import { Avatar } from "../../../../components/avatar.slint";
 import { Pill } from "../../../../components/pill.slint";
 import { ReactionAnchor } from "../../../../local.slint";
-import { AppStyle, Fonts, Glyph, Metrics, Opacity, Space, Stroke, Weight } from "../../../../theme.slint";
+import { AppStyle, Avatars, Fonts, Glyph, Metrics, Opacity, Space, Stroke, Weight } from "../../../../theme.slint";
+
+component ReactorFaces inherits Rectangle {
+    in property <[ReactorAvatar]> reactors;
+
+    width: Metrics.reactor-avatar
+        + (root.reactors.length - 1) * Metrics.reactor-avatar-pitch;
+    height: Metrics.reactor-avatar;
+
+    for reactor[index] in root.reactors: Avatar {
+        x: index * Metrics.reactor-avatar-pitch;
+        y: (parent.height - self.height) / 2;
+        width: Metrics.reactor-avatar;
+        height: self.width;
+        background: Avatars.color(reactor.color-index);
+        has-image: reactor.has-avatar;
+        image: reactor.avatar;
+        initial: reactor.initial;
+        initial-size: Glyph.xs;
+    }
+}
 
 export component ReactionChip inherits Pill {
     in property <ReactionEntry> entry;
     in property <bool> is-own;
+    property <bool> shows-faces: root.entry.avatars.length > 0;
 
     property <color> mine-fill: AppStyle.chip-fill-mine;
     property <color> other-fill: root.is-own
@@ -30,7 +52,11 @@ export component ReactionChip inherits Pill {
         vertical-alignment: center;
     }
 
-    Text {
+    if root.shows-faces: ReactorFaces {
+        reactors: root.entry.avatars;
+    }
+
+    if !root.shows-faces: Text {
         text: entry.overflow ? "+" + entry.count : entry.count;
         font-size: Fonts.body-small;
         font-weight: Weight.semibold;

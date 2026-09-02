@@ -7,7 +7,7 @@ use pure_rust_locales::locale_match;
 
 use super::schema::{define_ui_enum, message_kinds, service_kinds, verification_phases};
 use crate::commands::messages::{UserMessage, UserMessageKind};
-use crate::domain::message::{MessageBody, ServiceEvent, TimelineMessage};
+use crate::domain::message::{MessageBody, Reactor, ServiceEvent, TimelineMessage};
 use crate::domain::verification::VerificationCancellation;
 use crate::locale::{self, LocaleRequest};
 
@@ -102,11 +102,11 @@ pub fn user_localpart(user_id: &str) -> &str {
     name.split_once(':').map_or(name, |(local, _)| local)
 }
 
-pub fn reactor_labels(senders: &[String]) -> (String, usize) {
+pub fn reactor_labels(senders: &[Reactor]) -> (String, usize) {
     let shown: Vec<&str> = senders
         .iter()
         .take(REACTORS_SHOWN)
-        .map(|id| user_localpart(id))
+        .map(|reactor| user_localpart(&reactor.user_id))
         .collect();
     let hidden = senders.len().saturating_sub(shown.len());
     (shown.join(", "), hidden)

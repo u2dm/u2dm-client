@@ -10,8 +10,8 @@ use super::backend::{UiBackend, install_render_hooks, post_effect, selected_room
 use super::clock::install_clock_invalidation;
 use super::decode::{AvatarSlot, request_avatar, request_media, request_sticker};
 use super::dto::{
-    MediaFailureKind, MediaState, ReactionDto, StickerCellDto, StickerPackDto, StickerRowDto,
-    ThumbUpdate, enrich_to_update, message_to_dto, room_to_dto, space_to_dto,
+    MediaFailureKind, MediaState, ReactionDto, ReactorAvatarDto, StickerCellDto, StickerPackDto,
+    StickerRowDto, ThumbUpdate, enrich_to_update, message_to_dto, room_to_dto, space_to_dto,
 };
 use super::multiplex::spawn_event_multiplexer;
 use super::present::{MessageKind, ServiceKind, VerifyStep};
@@ -46,11 +46,11 @@ use generated::{
     Actions, AppWindow, ConnectionState, DirectoryView, EmojiEntry, EmojiGroup, EmojiInsert,
     EmojiStore, LoginActivity as UiLoginActivity, LoginMethodKind as UiLoginMethodKind, LoginPhase,
     LoginView, MediaFailure as UiMediaFailure, MediaState as UiMediaState, MessageEntry,
-    MessageKind as UiMessageKind, PreviewKind as UiPreviewKind, ReactionEntry, RoomEntry, RoomView,
-    ServiceKind as UiServiceKind, SessionView, SpaceEntry, StickerCell, StickerPackTab, StickerRow,
-    StickerView, TimelineState, UserMessage as UiUserMessage, UserMessageKind as UiUserMessageKind,
-    VerificationActivity as UiVerificationActivity, VerificationEmoji, VerificationPhase,
-    VerificationView,
+    MessageKind as UiMessageKind, PreviewKind as UiPreviewKind, ReactionEntry, ReactorAvatar,
+    RoomEntry, RoomView, ServiceKind as UiServiceKind, SessionView, SpaceEntry, StickerCell,
+    StickerPackTab, StickerRow, StickerView, TimelineState, UserMessage as UiUserMessage,
+    UserMessageKind as UiUserMessageKind, VerificationActivity as UiVerificationActivity,
+    VerificationEmoji, VerificationPhase, VerificationView,
 };
 
 fn actions(window: &AppWindow) -> Actions<'_> {
@@ -324,6 +324,40 @@ impl UiBackend for CompiledBackend {
         }
         cells.set_row_data(index, cell);
         true
+    }
+
+    fn patch_reactor_avatar(entry: &MessageEntry, user_id: &str, image: &Image) -> bool {
+        let Some(reactions) = entry
+            .reactions
+            .as_any()
+            .downcast_ref::<VecModel<ReactionEntry>>()
+        else {
+            return false;
+        };
+        let mut patched = false;
+        for reaction in reactions.iter() {
+            let Some(faces) = reaction
+                .avatars
+                .as_any()
+                .downcast_ref::<VecModel<ReactorAvatar>>()
+            else {
+                continue;
+            };
+            let Some(index) = faces
+                .iter()
+                .position(|face| face.user_id == user_id && !face.has_avatar)
+            else {
+                continue;
+            };
+            let Some(mut face) = faces.row_data(index) else {
+                continue;
+            };
+            face.avatar = image.clone();
+            face.has_avatar = true;
+            faces.set_row_data(index, face);
+            patched = true;
+        }
+        patched
     }
 
     fn message_id(entry: &MessageEntry) -> &str {
@@ -634,6 +668,22 @@ fn string_model(items: Vec<SharedString>) -> ModelRc<SharedString> {
     ModelRc::new(VecModel::from(items))
 }
 
+fn reactor_to_entry(d: &ReactorAvatarDto) -> ReactorAvatar {
+    ReactorAvatar {
+        user_id: d.user_id.clone(),
+        initial: d.initial.clone(),
+        color_index: d.color_index,
+        has_avatar: d.image.is_some(),
+        avatar: d.image.clone().unwrap_or_default(),
+    }
+}
+
+fn reactor_model(items: &[ReactorAvatarDto]) -> ModelRc<ReactorAvatar> {
+    ModelRc::new(VecModel::from(
+        items.iter().map(reactor_to_entry).collect::<Vec<_>>(),
+    ))
+}
+
 fn reaction_to_entry(d: &ReactionDto) -> ReactionEntry {
     ReactionEntry {
         key: d.key.clone(),
@@ -644,6 +694,7 @@ fn reaction_to_entry(d: &ReactionDto) -> ReactionEntry {
         overflow: d.overflow,
         reactors: d.reactors.clone(),
         hidden_reactors: d.hidden_reactors,
+        avatars: reactor_model(&d.avatars),
     }
 }
 

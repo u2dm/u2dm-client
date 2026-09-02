@@ -130,10 +130,27 @@ pub struct ReplyInfo {
     pub body: String,
 }
 
+pub const REACTOR_AVATAR_LIMIT: usize = 3;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Reactor {
+    pub user_id: String,
+    pub avatar_url: Option<String>,
+}
+
+impl Reactor {
+    pub fn new(user_id: String) -> Self {
+        Self {
+            user_id,
+            avatar_url: None,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Reaction {
     pub key: String,
-    pub senders: Vec<String>,
+    pub senders: Vec<Reactor>,
     pub mine: bool,
     pub pending: bool,
 }
@@ -141,6 +158,10 @@ pub struct Reaction {
 impl Reaction {
     pub fn count(&self) -> usize {
         self.senders.len()
+    }
+
+    pub fn shows_reactors(&self) -> bool {
+        self.senders.len() < REACTOR_AVATAR_LIMIT
     }
 }
 

@@ -19,6 +19,7 @@ use tokio::task::JoinSet;
 
 use super::diff::diff_to_patch;
 use super::filter::TimelineItems;
+use super::reactors::{ReactorAvatars, Resolution, resolve_reactor_avatars};
 use super::{EnrichmentClaim, EnrichmentPool, TimelineContext};
 use crate::adapters::matrix::media::MediaService;
 use crate::adapters::matrix::profile::PronounCache;
@@ -34,6 +35,7 @@ use crate::error::{AppError, Result};
 const REPLY_FETCH_INFLIGHT: usize = 4;
 const UNREAD_LOOKBACK_BATCHES: usize = 4;
 const FOCUS_CONTEXT_EVENTS: u16 = 50;
+const REACTOR_AVATAR_BATCHES: usize = 4;
 
 fn needs_pronouns(msg: &TimelineMessage, pronouns: &PronounCache) -> bool {
     !msg.is_own && pronouns.needs_fetch(&msg.sender)
@@ -573,11 +575,13 @@ pub(crate) async fn subscribe_timeline(
 
     let own_user_id = client.user_id().map(ToString::to_string);
     let enrich = EnrichmentPool::new();
+    let reactor_avatars = Arc::new(ReactorAvatars::default());
     let ctx = TimelineContext {
         client,
         media,
         media_sources,
         pronouns,
+        reactor_avatars: &reactor_avatars,
         own_user_id: own_user_id.as_deref(),
         first_unread: first_unread.as_deref(),
         timeline_tx: &timeline_tx,
@@ -607,6 +611,55 @@ pub(crate) async fn subscribe_timeline(
     Ok(())
 }
 
+fn spawn_reactor_avatar_fetch(
+    ctx: &TimelineContext<'_>,
+    room: Option<&Room>,
+    side_tasks: &mut JoinSet<()>,
+    resolved_tx: &mpsc::Sender<Vec<(String, Resolution)>>,
+) {
+    let Some(room) = room.cloned() else {
+        return;
+    };
+    let wanted = ctx.reactor_avatars.take_wanted();
+    if wanted.is_empty() {
+        return;
+    }
+    let client = ctx.client.clone();
+    let media = Arc::clone(ctx.media);
+    let resolved_tx = resolved_tx.clone();
+    side_tasks.spawn(async move {
+        let resolved = resolve_reactor_avatars(&room, &client, &media, wanted).await;
+        drop(resolved_tx.send(resolved).await);
+    });
+}
+
+fn reactor_avatar_patch(
+    items: &TimelineItems,
+    arrived: &HashSet<String>,
+    ctx: &TimelineContext<'_>,
+) -> Option<TimelinePatch> {
+    if arrived.is_empty() {
+        return None;
+    }
+    let mut patches: Vec<TimelinePatch> = Vec::new();
+    for (raw_index, item) in items.items().iter().enumerate() {
+        if !super::convert::reacted_by(item, arrived) {
+            continue;
+        }
+        if let Some(message) = super::convert::convert_timeline_item(item, ctx) {
+            patches.push(TimelinePatch::Set {
+                index: items.msg_index_at(raw_index),
+                message,
+            });
+        }
+    }
+    match patches.len() {
+        0 => None,
+        1 => patches.pop(),
+        _ => Some(TimelinePatch::Batch(patches)),
+    }
+}
+
 async fn run_timeline_loop<S>(
     ctx: &TimelineContext<'_>,
     timeline: &Arc<Timeline>,
@@ -627,6 +680,11 @@ async fn run_timeline_loop<S>(
         &reply_limit,
         &mut side_tasks,
     );
+
+    let room = ctx.client.get_room(room_id_parsed);
+    let (reactor_tx, mut reactor_rx) =
+        mpsc::channel::<Vec<(String, Resolution)>>(REACTOR_AVATAR_BATCHES);
+    spawn_reactor_avatar_fetch(ctx, room.as_ref(), &mut side_tasks, &reactor_tx);
 
     let mut key_stream = std::pin::pin!(
         ctx.client
@@ -653,6 +711,17 @@ async fn run_timeline_loop<S>(
                 }
             }
             Some(_) = side_tasks.join_next(), if !side_tasks.is_empty() => {}
+            Some(resolved) = reactor_rx.recv() => {
+                let arrived = ctx.reactor_avatars.record(resolved);
+                if let Some(patch) = reactor_avatar_patch(&items, &arrived, ctx)
+                    && ctx.timeline_tx
+                        .send(TimelineUpdate::Patch(Box::new(patch)))
+                        .await
+                        .is_err()
+                {
+                    break;
+                }
+            }
             diffs = stream.next() => {
                 let Some(diffs) = diffs else { break };
                 if let Some(patch) = process_diffs(&mut items, diffs, ctx)
@@ -664,6 +733,7 @@ async fn run_timeline_loop<S>(
                     break;
                 }
                 spawn_reply_detail_fetches(items.items(), timeline, &mut fetched_reply_details, &reply_limit, &mut side_tasks);
+                spawn_reactor_avatar_fetch(ctx, room.as_ref(), &mut side_tasks, &reactor_tx);
             }
         }
     }

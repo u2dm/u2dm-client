@@ -35,6 +35,7 @@ pub trait UiBackend: Sized + 'static {
     fn convert_sticker_row(row: &StickerRowDto) -> Self::StickerRow;
     fn convert_sticker_pack(pack: &StickerPackDto) -> Self::StickerPack;
     fn patch_sticker_cell(row: &Self::StickerRow, key: &str, art: Option<&Image>) -> bool;
+    fn patch_reactor_avatar(entry: &Self::Message, user_id: &str, image: &Image) -> bool;
     fn sticker_pack_with_icon(
         pack: &Self::StickerPack,
         pack_id: &str,
@@ -216,6 +217,7 @@ fn apply_thumbnail_ready<B: UiBackend>(key: &str, outcome: DecodeOutcome<'_>) {
 #[derive(Default)]
 struct AvatarTargets<'a> {
     messages: HashSet<&'a str>,
+    reactors: HashSet<&'a str>,
     rooms: HashSet<&'a str>,
     spaces: HashSet<&'a str>,
     user: bool,
@@ -228,6 +230,9 @@ fn group_slots(slots: &[AvatarSlot]) -> AvatarTargets<'_> {
             AvatarSlot::Message(id) => {
                 targets.messages.insert(id.as_str());
             }
+            AvatarSlot::Reactor(user_id) => {
+                targets.reactors.insert(user_id.as_str());
+            }
             AvatarSlot::Room(id) => {
                 targets.rooms.insert(id.as_str());
             }
@@ -238,6 +243,21 @@ fn group_slots(slots: &[AvatarSlot]) -> AvatarTargets<'_> {
         }
     }
     targets
+}
+
+fn patch_reactor_avatars<B: UiBackend>(
+    timeline: &VecModel<B::Message>,
+    reactors: &HashSet<&str>,
+    image: &Image,
+) {
+    if reactors.is_empty() {
+        return;
+    }
+    for entry in timeline.iter() {
+        for user_id in reactors {
+            B::patch_reactor_avatar(&entry, user_id, image);
+        }
+    }
 }
 
 fn apply_avatar_ready<B: UiBackend>(
@@ -258,6 +278,7 @@ fn apply_avatar_ready<B: UiBackend>(
         patch_rows_by_id(timeline, &targets.messages, &B::message_id, |entry| {
             B::set_message_avatar(entry, image);
         });
+        patch_reactor_avatars::<B>(timeline, &targets.reactors, image);
         patch_rows_by_id(rooms, &targets.rooms, &B::room_id, |entry| {
             B::set_room_avatar(entry, image);
         });

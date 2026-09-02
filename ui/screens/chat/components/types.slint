@@ -33,6 +33,14 @@ export struct SpaceEntry {
     has-avatar: bool,
 }
 
+export struct ReactorAvatar {
+    user-id: string,
+    initial: string,
+    color-index: int,
+    avatar: image,
+    has-avatar: bool,
+}
+
 export struct ReactionEntry {
     key: string,
     label: string,
@@ -42,6 +50,7 @@ export struct ReactionEntry {
     overflow: bool,
     reactors: string,
     hidden-reactors: int,
+    avatars: [ReactorAvatar],
 }
 
 export struct MessageEntry {

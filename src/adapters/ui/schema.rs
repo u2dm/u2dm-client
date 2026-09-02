@@ -343,10 +343,24 @@ macro_rules! reaction_fields {
         overflow OVERFLOW "overflow" flag;
         reactors REACTORS "reactors" text;
         hidden_reactors HIDDEN_REACTORS "hidden-reactors" int;
+        avatars AVATARS "avatars" structs;
+    } };
+}
+
+#[cfg(feature = "interpreted")]
+macro_rules! reactor_fields {
+    ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
+        user_id USER_ID "user-id" text;
+        initial INITIAL "initial" text;
+        color_index COLOR_INDEX "color-index" int;
+        avatar AVATAR "avatar" image;
+        has_avatar HAS_AVATAR "has-avatar" flag;
     } };
 }
 #[cfg(feature = "interpreted")]
 pub(crate) use reaction_fields;
+#[cfg(feature = "interpreted")]
+pub(crate) use reactor_fields;
 
 #[cfg(feature = "interpreted")]
 macro_rules! room_fields {

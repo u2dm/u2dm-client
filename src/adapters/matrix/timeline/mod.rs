@@ -1,6 +1,7 @@
 mod convert;
 mod diff;
 mod filter;
+mod reactors;
 mod subscribe;
 
 use std::collections::HashMap;
@@ -14,6 +15,7 @@ use tokio::sync::{Semaphore, mpsc};
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
 
+use self::reactors::ReactorAvatars;
 use super::media::MediaService;
 use super::profile::PronounCache;
 use crate::domain::timeline::TimelineUpdate;
@@ -25,6 +27,7 @@ pub(super) struct TimelineContext<'a> {
     pub(super) media: &'a Arc<MediaService>,
     pub(super) media_sources: &'a Arc<StdMutex<HashMap<String, MediaSource>>>,
     pub(super) pronouns: &'a Arc<PronounCache>,
+    pub(super) reactor_avatars: &'a Arc<ReactorAvatars>,
     pub(super) own_user_id: Option<&'a str>,
     pub(super) first_unread: Option<&'a str>,
     pub(super) timeline_tx: &'a mpsc::Sender<TimelineUpdate>,

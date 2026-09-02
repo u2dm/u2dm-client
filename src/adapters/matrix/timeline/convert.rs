@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Mutex as StdMutex;
 
 use matrix_sdk::ruma::UInt;
@@ -19,7 +19,8 @@ use super::TimelineContext;
 use crate::adapters::matrix::preview;
 use crate::domain::media::{FileMeta, ImageMeta};
 use crate::domain::message::{
-    MessageBody, MessagePreviewKind, Reaction, ReplyInfo, RichText, ServiceEvent, TimelineMessage,
+    MessageBody, MessagePreviewKind, REACTOR_AVATAR_LIMIT, Reaction, Reactor, ReplyInfo, RichText,
+    ServiceEvent, TimelineMessage,
 };
 
 fn extract_sender_profile(event: &EventTimelineItem) -> (Option<String>, Option<String>) {
@@ -36,28 +37,59 @@ fn event_id_from_str(event_id_str: String) -> Option<String> {
     (!event_id_str.is_empty()).then_some(event_id_str)
 }
 
-fn extract_reactions(content: &TimelineItemContent, own_user_id: Option<&str>) -> Vec<Reaction> {
+fn extract_reactions(content: &TimelineItemContent, ctx: &TimelineContext<'_>) -> Vec<Reaction> {
     let Some(by_key) = content.reactions() else {
         return Vec::new();
     };
     by_key
         .iter()
         .map(|(key, by_sender)| {
-            let own = own_user_id.and_then(|own| {
+            let own = ctx.own_user_id.and_then(|own| {
                 by_sender
                     .iter()
                     .find(|(user_id, _)| user_id.as_str() == own)
                     .map(|(_, info)| info)
             });
-            Reaction {
+            let mut reaction = Reaction {
                 key: key.clone(),
-                senders: by_sender.keys().map(ToString::to_string).collect(),
+                senders: by_sender
+                    .keys()
+                    .map(|user_id| Reactor::new(user_id.to_string()))
+                    .collect(),
                 mine: own.is_some(),
                 pending: own
                     .is_some_and(|info| !matches!(info.status, ReactionStatus::RemoteToRemote(_))),
+            };
+            if reaction.shows_reactors() {
+                attach_reactor_avatars(&mut reaction, ctx);
             }
+            reaction
         })
         .collect()
+}
+
+fn attach_reactor_avatars(reaction: &mut Reaction, ctx: &TimelineContext<'_>) {
+    for reactor in &mut reaction.senders {
+        reactor.avatar_url = ctx.reactor_avatars.avatar(&reactor.user_id);
+        if reactor.avatar_url.is_none() {
+            ctx.reactor_avatars.want(&reactor.user_id);
+        }
+    }
+}
+
+pub(super) fn reacted_by(item: &TimelineItem, users: &HashSet<String>) -> bool {
+    let Some(by_key) = item
+        .as_event()
+        .and_then(|event| event.content().reactions())
+    else {
+        return false;
+    };
+    by_key.iter().any(|(_, by_sender)| {
+        by_sender.len() < REACTOR_AVATAR_LIMIT
+            && by_sender
+                .keys()
+                .any(|user_id| users.contains(user_id.as_str()))
+    })
 }
 
 fn base_message(
@@ -84,7 +116,7 @@ fn base_message(
         reply: None,
         edited: false,
         is_first_unread,
-        reactions: extract_reactions(event.content(), ctx.own_user_id),
+        reactions: extract_reactions(event.content(), ctx),
     }
 }
 

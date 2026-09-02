@@ -9,11 +9,12 @@ use super::present::{
     message_body_html, message_body_text, message_kind, message_sender_label,
     message_timestamp_label, pronoun_labels, reaction_key_label, reactor_labels,
     room_activity_label, sender_initial, service_kind, service_target, unsupported_kind,
+    user_initial,
 };
 use super::richtext;
 use super::schema::{define_ui_enum, media_failures, media_states};
 use crate::domain::media::{MediaFailure, ThumbnailOutcome};
-use crate::domain::message::{MessagePreviewKind, Reaction, TimelineMessage};
+use crate::domain::message::{MessagePreviewKind, Reaction, Reactor, TimelineMessage};
 use crate::domain::room::{Room, Space};
 use crate::domain::sticker::{PackId, StickerImage, StickerPack};
 use crate::domain::timeline::EnrichmentDelta;
@@ -168,6 +169,14 @@ fn sticker_cell(
 pub const REACTION_CHIP_CAP: usize = 6;
 
 #[derive(Clone)]
+pub struct ReactorAvatarDto {
+    pub user_id: SharedString,
+    pub initial: SharedString,
+    pub color_index: i32,
+    pub image: Option<Image>,
+}
+
+#[derive(Clone)]
 pub struct ReactionDto {
     pub key: SharedString,
     pub label: SharedString,
@@ -177,6 +186,7 @@ pub struct ReactionDto {
     pub overflow: bool,
     pub reactors: SharedString,
     pub hidden_reactors: i32,
+    pub avatars: Vec<ReactorAvatarDto>,
 }
 
 #[allow(clippy::struct_excessive_bools)]
@@ -269,7 +279,32 @@ fn count<T: TryInto<i32>>(value: T) -> i32 {
     value.try_into().unwrap_or(i32::MAX)
 }
 
-fn reaction_dto(reaction: &Reaction) -> ReactionDto {
+fn reactor_avatar_dto(reactor: &Reactor, media: &dyn MediaCache) -> ReactorAvatarDto {
+    let image = reactor
+        .avatar_url
+        .as_deref()
+        .and_then(|mxc| media.user_avatar_path(mxc))
+        .and_then(|path| load_avatar_async(&path, AvatarSlot::Reactor(reactor.user_id.clone())));
+    ReactorAvatarDto {
+        user_id: SharedString::from(&reactor.user_id),
+        initial: SharedString::from(user_initial(&reactor.user_id)),
+        color_index: avatar_color_index(&reactor.user_id),
+        image,
+    }
+}
+
+fn reactor_avatar_dtos(reaction: &Reaction, media: &dyn MediaCache) -> Vec<ReactorAvatarDto> {
+    if !reaction.shows_reactors() {
+        return Vec::new();
+    }
+    reaction
+        .senders
+        .iter()
+        .map(|reactor| reactor_avatar_dto(reactor, media))
+        .collect()
+}
+
+fn reaction_dto(reaction: &Reaction, media: &dyn MediaCache) -> ReactionDto {
     let (reactors, hidden) = reactor_labels(&reaction.senders);
     ReactionDto {
         key: SharedString::from(&reaction.key),
@@ -280,6 +315,7 @@ fn reaction_dto(reaction: &Reaction) -> ReactionDto {
         overflow: false,
         reactors: SharedString::from(reactors),
         hidden_reactors: count(hidden),
+        avatars: reactor_avatar_dtos(reaction, media),
     }
 }
 
@@ -293,11 +329,18 @@ fn overflow_dto(hidden: usize) -> ReactionDto {
         overflow: true,
         reactors: SharedString::new(),
         hidden_reactors: 0,
+        avatars: Vec::new(),
     }
 }
 
-fn reaction_dtos(reactions: &[Reaction]) -> (Vec<ReactionDto>, Vec<ReactionDto>) {
-    let all: Vec<ReactionDto> = reactions.iter().map(reaction_dto).collect();
+fn reaction_dtos(
+    reactions: &[Reaction],
+    media: &dyn MediaCache,
+) -> (Vec<ReactionDto>, Vec<ReactionDto>) {
+    let all: Vec<ReactionDto> = reactions
+        .iter()
+        .map(|reaction| reaction_dto(reaction, media))
+        .collect();
     if all.len() <= REACTION_CHIP_CAP {
         return (all, Vec::new());
     }
@@ -311,7 +354,7 @@ fn reaction_dtos(reactions: &[Reaction]) -> (Vec<ReactionDto>, Vec<ReactionDto>)
 
 pub fn message_to_dto(m: &TimelineMessage, media: &dyn MediaCache) -> MessageDto {
     let sender_label = message_sender_label(m);
-    let (reactions, all_reactions) = reaction_dtos(&m.reactions);
+    let (reactions, all_reactions) = reaction_dtos(&m.reactions, media);
     let plain = message_body_text(&m.body);
     let rich = match message_body_html(&m.body) {
         Some(html) => richtext::styled_body(html, plain),
