@@ -31,6 +31,9 @@ pub enum AppError {
     #[error("the attachment is not a viewable image")]
     UnviewableMedia,
 
+    #[error("the attachment is larger than the {limit} byte upload limit")]
+    AttachmentTooLarge { limit: u64 },
+
     #[error("{0}")]
     Other(String),
 }

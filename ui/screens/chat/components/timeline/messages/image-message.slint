@@ -2,7 +2,7 @@ import { Palette, Spinner } from "std-widgets.slint";
 import { IconDisplay, IconSet } from "@lucide";
 import { ClickArea } from "../../../../../components/a11y.slint";
 import { Pill } from "../../../../../components/pill.slint";
-import { MediaFailure, MediaState } from "../../../../../enums.slint";
+import { MediaFailure, MediaState, SendState } from "../../../../../enums.slint";
 import { MediaFailures } from "../../../../../messages.slint";
 import { AppStyle, Fonts, IconSize, Metrics, Motion, Radius, Size, Space, Weight } from "../../../../../theme.slint";
 import { Actions } from "../../../../../actions.slint";
@@ -27,6 +27,11 @@ export component ImageMessage inherits VerticalLayout {
     in property <bool> edited;
     in property <bool> show-timestamp;
     in property <bool> bubble-hovered;
+    in property <SendState> send-state;
+    in property <float> send-progress;
+
+    property <bool> is-sending: root.send-state == SendState.sending
+        || root.send-state == SendState.uploading;
 
     out property <length> display-width: min(root.width-limit, max(root.frame-width-min, root.height-limit * root.aspect));
     out property <length> display-height: min(root.height-limit, max(root.frame-height-min, root.display-width / max(root.aspect, 0.01)));
@@ -91,6 +96,19 @@ export component ImageMessage inherits VerticalLayout {
                 x: (parent.width - self.width) / 2;
                 y: (parent.height - self.height) / 2;
                 indeterminate: true;
+            }
+
+            if root.is-sending: Rectangle {
+                width: 100%;
+                height: 100%;
+                background: AppStyle.overlay-media-scrim;
+
+                Spinner {
+                    x: (parent.width - self.width) / 2;
+                    y: (parent.height - self.height) / 2;
+                    indeterminate: root.send-state != SendState.uploading;
+                    progress: root.send-progress;
+                }
             }
 
             if root.is-failed: VerticalLayout {

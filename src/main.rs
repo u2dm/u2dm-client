@@ -6,7 +6,6 @@ use std::time::Duration;
 
 #[cfg(feature = "demo")]
 use adapters::demo;
-use adapters::media::DesktopMediaFiles;
 use adapters::private_fs;
 use adapters::ui::{SlintUiAdapter, UiEventOutput};
 use app::AppService;
@@ -16,7 +15,6 @@ use commands::ui::{UiCommand, ViewportChanged};
 use commands::view::AppViewState;
 use composition::Backend;
 use error::Result;
-use ports::media::MediaFilePort;
 use ports::output::AppOutputPort;
 use tokio::runtime::Runtime;
 use tokio::sync::{mpsc, watch};
@@ -86,7 +84,7 @@ fn run() -> Result<()> {
 
     let enter_guard = rt.enter();
     let backend = Backend::select(&cfg);
-    let media_files: Arc<dyn MediaFilePort> = Arc::new(DesktopMediaFiles::new());
+    let media_files = Arc::clone(&backend.media_files);
     let browser = Arc::clone(&backend.browser);
     let output: Arc<dyn AppOutputPort> = Arc::new(UiEventOutput::new(ui_tx, view_out_tx));
 

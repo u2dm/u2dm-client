@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use super::messages::UserMessage;
+use super::messages::{UserMessage, UserMessageKind};
 use crate::domain::auth::LoginMethod;
 use crate::domain::room::{RoomList, Space};
 use crate::domain::sticker::StickerPacks;
@@ -14,6 +14,7 @@ pub struct AppViewState {
     pub directory: DirectoryView,
     pub pagination: PaginationView,
     pub stickers: StickerView,
+    pub attachment: AttachmentView,
     pub toast: Toast,
 }
 
@@ -27,6 +28,21 @@ impl AppViewState {
             ..Self::default()
         }
     }
+}
+
+#[derive(Clone, Default, PartialEq, Eq)]
+pub struct AttachmentView {
+    pub visible: bool,
+    pub filename: String,
+    pub mimetype: String,
+    pub size: u64,
+    pub width: u32,
+    pub height: u32,
+    pub is_image: bool,
+    pub preview_path: Option<PathBuf>,
+    pub sending: bool,
+    pub error: UserMessageKind,
+    pub error_detail: String,
 }
 
 #[derive(Clone, Default, PartialEq, Eq)]

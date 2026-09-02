@@ -1,4 +1,4 @@
-import { MediaFailure, MediaState, MessageKind, PreviewKind, ServiceKind } from "../../../enums.slint";
+import { MediaFailure, MediaState, MessageKind, PreviewKind, SendState, ServiceKind } from "../../../enums.slint";
 
 export struct RoomEntry {
     id: string,
@@ -80,6 +80,8 @@ export struct MessageEntry {
     is-own: bool,
     edited: bool,
     first-unread: bool,
+    send-state: SendState,
+    send-progress: float,
     has-reply: bool,
     reply-event-id: string,
     reply-sender: string,
@@ -139,6 +141,13 @@ export struct SendStickerRequest {
     room-id: string,
     pack-id: string,
     shortcode: string,
+    reply-to: string,
+}
+
+export struct SendAttachmentRequest {
+    room-id: string,
+    caption: string,
+    as-document: bool,
     reply-to: string,
 }
 

@@ -29,8 +29,8 @@ import {
 } from "../../../../local.slint";
 import { Actions } from "../../../../actions.slint";
 import { RoomView } from "../../../../views.slint";
-import { AppStyle, Avatars, Fonts, Glyph, IconSize, Metrics, Motion, Radius, Size, Space, Stroke, Weight } from "../../../../theme.slint";
-import { MediaState, MessageKind } from "../../../../enums.slint";
+import { AppStyle, Avatars, Fonts, Glyph, IconSize, Metrics, Motion, Opacity, Radius, Size, Space, Stroke, Weight } from "../../../../theme.slint";
+import { MediaState, MessageKind, SendState } from "../../../../enums.slint";
 
 component PronounBadge inherits Rectangle {
     in property <string> text;
@@ -122,6 +122,8 @@ export component MessageBubble inherits VerticalLayout {
     property <bool> has-photo: root.is-image
         && (msg.media-state != MediaState.idle || (msg.image-width > 0 && msg.image-height > 0));
     property <bool> is-photo-only: root.has-photo && !root.has-caption;
+    property <bool> is-unsent: msg.send-state != SendState.sent;
+    property <bool> dims-while-unsent: root.is-unsent && !root.has-photo;
     property <bool> has-reactions: msg.reactions.length > 0;
     property <bool> chips-outside: root.is-photo-only && root.has-reactions;
     property <length> outside-chips-gap: Space.sm;
@@ -204,6 +206,9 @@ export component MessageBubble inherits VerticalLayout {
                 border-width: root.is-focused ? Stroke.emphasis : 0;
                 border-color: Palette.accent-background;
                 clip: true;
+                opacity: root.dims-while-unsent ? Opacity.pending : 1.0;
+
+                animate opacity { duration: Motion.normal; }
 
                 animate border-width { duration: Motion.normal; }
 
@@ -289,6 +294,8 @@ export component MessageBubble inherits VerticalLayout {
                             edited: msg.edited;
                             show-timestamp: root.is-photo-only;
                             bubble-hovered: message-row.hovered;
+                            send-state: msg.send-state;
+                            send-progress: msg.send-progress;
                         }
 
                         if root.is-image && !root.has-photo: ImagePlaceholder {
@@ -309,6 +316,8 @@ export component MessageBubble inherits VerticalLayout {
                         if msg.message-type == MessageKind.file: FileMessage {
                             body: msg.body;
                             event-id: msg.event-id;
+                            send-state: msg.send-state;
+                            send-progress: msg.send-progress;
                         }
 
                         if msg.message-type == MessageKind.utd: UtdMessage { }

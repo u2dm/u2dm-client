@@ -91,6 +91,15 @@ export global UserMessages {
         if kind == UserMessageKind.media-not-viewable {
             return @tr("That attachment isn't a viewable image");
         }
+        if kind == UserMessageKind.attachment-unreadable {
+            return @tr("That file could not be read");
+        }
+        if kind == UserMessageKind.attachment-too-large {
+            return @tr("That file is larger than this homeserver accepts (limit {})", detail);
+        }
+        if kind == UserMessageKind.send-attachment-failed {
+            return @tr("Failed to send attachment");
+        }
         if kind == UserMessageKind.file-save-failed {
             return @tr("Failed to save file");
         }

@@ -139,4 +139,3 @@ fn starts_with_ignoring_case(text: &str, prefix: &str) -> bool {
     text.get(..prefix.len())
         .is_some_and(|head| head.eq_ignore_ascii_case(prefix))
 }
-

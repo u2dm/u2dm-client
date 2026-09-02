@@ -10,9 +10,9 @@ use matrix_sdk::ruma::events::room::name::RoomNameEventContent;
 use matrix_sdk::ruma::events::room::{ImageInfo, MediaSource};
 use matrix_sdk::ruma::events::sticker::StickerEventContent;
 use matrix_sdk_ui::timeline::{
-    AnyOtherStateEventContentChange, EventTimelineItem, MemberProfileChange, MembershipChange,
-    Message, ReactionStatus, RoomMembershipChange, Sticker, TimelineDetails, TimelineItem,
-    TimelineItemContent,
+    AnyOtherStateEventContentChange, EventSendState, EventTimelineItem, MemberProfileChange,
+    MembershipChange, Message, ReactionStatus, RoomMembershipChange, Sticker, TimelineDetails,
+    TimelineItem, TimelineItemContent,
 };
 
 use super::TimelineContext;
@@ -20,7 +20,7 @@ use crate::adapters::matrix::preview;
 use crate::domain::media::{FileMeta, ImageMeta};
 use crate::domain::message::{
     MessageBody, MessagePreviewKind, REACTOR_AVATAR_LIMIT, Reaction, Reactor, ReplyInfo, RichText,
-    ServiceEvent, TimelineMessage,
+    SendState, ServiceEvent, TimelineMessage,
 };
 
 fn extract_sender_profile(event: &EventTimelineItem) -> (Option<String>, Option<String>) {
@@ -35,6 +35,34 @@ fn extract_sender_profile(event: &EventTimelineItem) -> (Option<String>, Option<
 
 fn event_id_from_str(event_id_str: String) -> Option<String> {
     (!event_id_str.is_empty()).then_some(event_id_str)
+}
+
+const LOCAL_MEDIA_PREFIX: &str = "local:";
+
+fn send_state(event: &EventTimelineItem) -> SendState {
+    match event.send_state() {
+        None | Some(EventSendState::Sent { .. }) => SendState::Sent,
+        Some(EventSendState::SendingFailed { .. }) => SendState::Failed,
+        Some(EventSendState::NotSentYet { progress: None }) => SendState::Sending,
+        Some(EventSendState::NotSentYet {
+            progress: Some(upload),
+        }) => SendState::Uploading {
+            sent: upload.progress.current as u64,
+            total: upload.progress.total as u64,
+        },
+    }
+}
+
+fn local_id(event: &EventTimelineItem) -> Option<String> {
+    let txn = event.transaction_id()?;
+    Some(format!("{LOCAL_MEDIA_PREFIX}{txn}"))
+}
+
+fn media_key(event: &EventTimelineItem, event_id_str: &str) -> String {
+    if event_id_str.is_empty() {
+        return local_id(event).unwrap_or_default();
+    }
+    event_id_str.to_owned()
 }
 
 fn extract_reactions(content: &TimelineItemContent, ctx: &TimelineContext<'_>) -> Vec<Reaction> {
@@ -106,6 +134,7 @@ fn base_message(
     TimelineMessage {
         unique_id,
         event_id: event_id_from_str(event_id_str),
+        local_id: local_id(event),
         sender_pronouns: ctx.pronouns.resolved(&sender_str),
         sender: sender_str,
         sender_display_name,
@@ -116,6 +145,7 @@ fn base_message(
         reply: None,
         edited: false,
         is_first_unread,
+        send_state: send_state(event),
         reactions: extract_reactions(event.content(), ctx),
     }
 }
@@ -303,15 +333,17 @@ fn image_meta(info: &ImageInfo) -> ImageMeta {
 
 fn extract_image_body(
     image: &ImageMessageEventContent,
-    event_id_str: &str,
+    media_key: &str,
     media_sources: &StdMutex<HashMap<String, MediaSource>>,
 ) -> MessageBody {
-    if let Ok(mut sources) = media_sources.lock() {
-        sources.insert(event_id_str.to_owned(), image.source.clone());
+    if !media_key.is_empty()
+        && let Ok(mut sources) = media_sources.lock()
+    {
+        sources.insert(media_key.to_owned(), image.source.clone());
         if let Some(info) = &image.info
             && let Some(ref thumb_source) = info.thumbnail_source
         {
-            sources.insert(format!("{event_id_str}:thumb"), thumb_source.clone());
+            sources.insert(format!("{media_key}:thumb"), thumb_source.clone());
         }
     }
     MessageBody::Image {
@@ -327,12 +359,14 @@ fn extract_image_body(
 
 fn extract_sticker_body(
     sticker: &StickerEventContent,
-    event_id_str: &str,
+    media_key: &str,
     media_sources: &StdMutex<HashMap<String, MediaSource>>,
 ) -> MessageBody {
-    if let Ok(mut sources) = media_sources.lock() {
+    if !media_key.is_empty()
+        && let Ok(mut sources) = media_sources.lock()
+    {
         sources.insert(
-            event_id_str.to_owned(),
+            media_key.to_owned(),
             MediaSource::from(sticker.source.clone()),
         );
     }
@@ -344,11 +378,13 @@ fn extract_sticker_body(
 
 fn extract_file_body(
     file: &FileMessageEventContent,
-    event_id_str: &str,
+    media_key: &str,
     media_sources: &StdMutex<HashMap<String, MediaSource>>,
 ) -> MessageBody {
-    if let Ok(mut sources) = media_sources.lock() {
-        sources.insert(event_id_str.to_owned(), file.source.clone());
+    if !media_key.is_empty()
+        && let Ok(mut sources) = media_sources.lock()
+    {
+        sources.insert(media_key.to_owned(), file.source.clone());
     }
     let (mimetype, size) = file.info.as_ref().map_or((None, None), |info| {
         (info.mimetype.clone(), info.size.map(Into::into))
@@ -373,15 +409,15 @@ fn rich_body(plain: &str, formatted: Option<&FormattedBody>) -> RichText {
 
 fn message_type_to_body(
     msgtype: &MessageType,
-    event_id_str: &str,
+    media_key: &str,
     media_sources: &StdMutex<HashMap<String, MediaSource>>,
 ) -> MessageBody {
     match msgtype {
         MessageType::Text(t) => MessageBody::Text(rich_body(&t.body, t.formatted.as_ref())),
         MessageType::Notice(n) => MessageBody::Notice(rich_body(&n.body, n.formatted.as_ref())),
         MessageType::Emote(e) => MessageBody::Emote(rich_body(&e.body, e.formatted.as_ref())),
-        MessageType::Image(i) => extract_image_body(i, event_id_str, media_sources),
-        MessageType::File(f) => extract_file_body(f, event_id_str, media_sources),
+        MessageType::Image(i) => extract_image_body(i, media_key, media_sources),
+        MessageType::File(f) => extract_file_body(f, media_key, media_sources),
         other => MessageBody::Unsupported {
             kind: other.msgtype().to_string(),
             fallback: other.body().to_string(),
@@ -408,12 +444,13 @@ pub(super) fn convert_event_item_with_uid(
         .map(ToString::to_string)
         .unwrap_or_default();
 
+    let media_key = media_key(event, &event_id_str);
     let content = event.content();
     let reply = extract_reply(content);
 
     match classify(content) {
         Some(Renderable::Message(message)) => {
-            let body = message_type_to_body(message.msgtype(), &event_id_str, ctx.media_sources);
+            let body = message_type_to_body(message.msgtype(), &media_key, ctx.media_sources);
             Some(TimelineMessage {
                 body,
                 reply,
@@ -422,7 +459,7 @@ pub(super) fn convert_event_item_with_uid(
             })
         }
         Some(Renderable::Sticker(sticker)) => {
-            let body = extract_sticker_body(sticker.content(), &event_id_str, ctx.media_sources);
+            let body = extract_sticker_body(sticker.content(), &media_key, ctx.media_sources);
             Some(TimelineMessage {
                 body,
                 reply,

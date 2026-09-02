@@ -6,7 +6,8 @@ use super::reactions;
 use crate::domain::auth::Session;
 use crate::domain::media::ImageMeta;
 use crate::domain::message::{
-    MessageBody, MessagePreviewKind, Reaction, ReplyInfo, RichText, ServiceEvent, TimelineMessage,
+    MessageBody, MessagePreviewKind, Reaction, ReplyInfo, RichText, SendState, ServiceEvent,
+    TimelineMessage,
 };
 use crate::domain::room::{NotifyMode, Room, RoomId, Space};
 use crate::domain::sticker::{PackId, StickerImage, StickerPack};
@@ -352,6 +353,7 @@ impl MessageDto {
         TimelineMessage {
             unique_id: self.id.clone(),
             event_id: Some(self.id.clone()),
+            local_id: None,
             sender_pronouns: super::data::pronouns(&self.sender),
             sender: self.sender.clone(),
             sender_display_name: Some(self.name.clone()),
@@ -367,6 +369,7 @@ impl MessageDto {
             }),
             edited: self.edited,
             is_first_unread: false,
+            send_state: SendState::default(),
             reactions: self
                 .reactions
                 .iter()

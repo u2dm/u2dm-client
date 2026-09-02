@@ -1,0 +1,319 @@
+import { Palette, ScrollView } from "std-widgets.slint";
+import { IconDisplay, IconSet } from "@lucide";
+
+import { UserMessageKind } from "../../../../enums.slint";
+import { AttachmentView, DirectoryView } from "../../../../views.slint";
+import { Actions } from "../../../../actions.slint";
+import { Composer } from "../../../../local.slint";
+import { AppStyle, Fonts, IconSize, Metrics, Opacity, Radius, Size, Space, Stroke, Weight } from "../../../../theme.slint";
+import { ErrorBanner } from "../../../../components/banner.slint";
+import { AppButton, IconButton } from "../../../../components/button.slint";
+import { ClickArea } from "../../../../components/a11y.slint";
+import { ModalHost } from "../../../../components/overlay.slint";
+
+component CaptionField inherits Rectangle {
+    in property <string> placeholder;
+    in-out property <string> text: "";
+
+    height: Size.md;
+    border-radius: Radius.sm;
+    background: AppStyle.overlay-hover;
+    border-width: Stroke.hairline;
+    border-color: input.has-focus ? AppStyle.accent-surface : AppStyle.overlay-hover;
+
+    forward-focus: input;
+
+    public function take-focus() {
+        input.focus();
+    }
+
+    HorizontalLayout {
+        padding-left: Space.md;
+        padding-right: Space.md;
+
+        Rectangle {
+            horizontal-stretch: 1;
+
+            input := TextInput {
+                x: 0;
+                y: 0;
+                width: parent.width;
+                height: parent.height;
+                text <=> root.text;
+                color: Palette.foreground;
+                font-size: Fonts.label;
+                vertical-alignment: center;
+                single-line: true;
+                accessible-label: root.placeholder;
+                accessible-placeholder-text: root.placeholder;
+            }
+
+            if root.text == "": Text {
+                x: 0;
+                y: 0;
+                width: parent.width;
+                height: parent.height;
+                text: root.placeholder;
+                color: AppStyle.foreground-muted;
+                font-size: Fonts.label;
+                vertical-alignment: center;
+            }
+        }
+    }
+}
+
+component CheckRow inherits Rectangle {
+    in property <string> label;
+    in-out property <bool> checked: false;
+
+    height: Size.sm;
+
+    touch := ClickArea {
+        above-modal: true;
+        label: root.label;
+        ring-radius: Radius.sm;
+        clicked => {
+            root.checked = !root.checked;
+        }
+    }
+
+    HorizontalLayout {
+        spacing: Space.md;
+
+        VerticalLayout {
+            alignment: center;
+
+            Rectangle {
+                width: Size.xs;
+                height: Size.xs;
+                border-radius: Radius.xs;
+                border-width: Stroke.hairline;
+                border-color: root.checked ? Palette.accent-background : AppStyle.foreground-faint;
+                background: root.checked ? Palette.accent-background : transparent;
+
+                if root.checked: IconDisplay {
+                    icon: IconSet.Check;
+                    size: IconSize.xs;
+                    stroke: Palette.accent-foreground;
+                }
+            }
+        }
+
+        Text {
+            text: root.label;
+            font-size: Fonts.label;
+            vertical-alignment: center;
+            horizontal-stretch: 1;
+            color: Palette.foreground;
+        }
+    }
+}
+
+component FileChip inherits Rectangle {
+    height: Metrics.attachment-chip;
+
+    HorizontalLayout {
+        spacing: Space.lg;
+
+        VerticalLayout {
+            alignment: center;
+
+            Rectangle {
+                width: Metrics.attachment-chip;
+                height: Metrics.attachment-chip;
+                border-radius: self.height / 2;
+                background: AppStyle.accent-background-soft;
+
+                IconDisplay {
+                    icon: IconSet.File;
+                    size: IconSize.lg;
+                    stroke: Palette.accent-background;
+                }
+            }
+        }
+
+        VerticalLayout {
+            alignment: center;
+            spacing: Space.xs;
+            horizontal-stretch: 1;
+
+            Text {
+                text: AttachmentView.filename;
+                font-size: Fonts.body;
+                font-weight: Weight.semibold;
+                overflow: elide;
+                color: Palette.foreground;
+            }
+
+            Text {
+                text: AttachmentView.extension == ""
+                    ? AttachmentView.size
+                    : @tr("{} · {}", AttachmentView.extension, AttachmentView.size);
+                font-size: Fonts.body-small;
+                overflow: elide;
+                color: AppStyle.foreground-muted;
+            }
+        }
+    }
+}
+
+export component AttachmentDialog inherits ModalHost {
+    dim-opacity: AppStyle.dark ? Opacity.scrim-strong : Opacity.scrim;
+    label: @tr("Send an attachment");
+    dismissed => {
+        root.cancel();
+    }
+
+    property <length> card-width: min(AppStyle.card-width-wide, root.width - AppStyle.card-inset);
+    property <length> card-height: card-body.preferred-height;
+
+    property <bool> as-document: false;
+    property <string> caption: "";
+
+    property <bool> shows-image: AttachmentView.is-image && AttachmentView.has-preview;
+    property <float> aspect: AttachmentView.height > 0
+        ? AttachmentView.width / AttachmentView.height
+        : 1.5;
+    property <length> preview-width: min(
+        root.card-width - 2 * Space.xxl,
+        max(Metrics.attachment-preview-min, Metrics.attachment-preview-max * root.aspect),
+    );
+    property <length> preview-height: min(
+        Metrics.attachment-preview-max,
+        max(Metrics.attachment-preview-min, root.preview-width / max(root.aspect, 0.01)),
+    );
+
+    function cancel() {
+        Actions.cancel-attachment();
+    }
+
+    function submit() {
+        Actions.send-attachment({
+            room-id: DirectoryView.selected-room-id,
+            caption: root.caption,
+            as-document: root.as-document,
+            reply-to: Composer.reply-event-id,
+        });
+        Composer.clear();
+    }
+
+    scroll := ScrollView {
+        x: 0;
+        y: 0;
+        width: 100%;
+        height: 100%;
+        viewport-width: self.width;
+        viewport-height: max(self.height, root.card-height + AppStyle.card-inset);
+
+        Rectangle {
+            x: (root.width - self.width) / 2;
+            y: (scroll.viewport-height - self.height) / 2;
+            width: root.card-width;
+            height: root.card-height;
+            background: AppStyle.card;
+            border-radius: Radius.xl;
+            border-width: Stroke.hairline;
+            border-color: AppStyle.border;
+
+            card-body := VerticalLayout {
+                padding: Space.xxl;
+                spacing: Space.xl;
+
+                HorizontalLayout {
+                    spacing: Space.lg;
+
+                    VerticalLayout {
+                        alignment: center;
+                        horizontal-stretch: 1;
+
+                        Text {
+                            text: root.as-document || !AttachmentView.is-image
+                                ? @tr("Send as a file")
+                                : @tr("Send an image");
+                            font-size: Fonts.heading;
+                            font-weight: Weight.bold;
+                            overflow: elide;
+                        }
+                    }
+
+                    VerticalLayout {
+                        alignment: center;
+
+                        IconButton {
+                            icon: IconSet.X;
+                            above-modal: true;
+                            label: @tr("Discard the attachment");
+                            size: Size.md;
+                            enabled: !AttachmentView.sending;
+                            clicked => {
+                                root.cancel();
+                            }
+                        }
+                    }
+                }
+
+                Rectangle {
+                    height: Stroke.hairline;
+                    background: AppStyle.overlay-pressed;
+                }
+
+                if root.shows-image && !root.as-document: Rectangle {
+                    height: root.preview-height;
+
+                    Image {
+                        x: (parent.width - self.width) / 2;
+                        width: root.preview-width;
+                        height: root.preview-height;
+                        source: AttachmentView.preview;
+                        image-fit: contain;
+                        accessible-label: AttachmentView.filename;
+                    }
+                }
+
+                if !root.shows-image || root.as-document: FileChip { }
+
+                if AttachmentView.is-image: CheckRow {
+                    label: @tr("Send as a document");
+                    checked <=> root.as-document;
+                }
+
+                CaptionField {
+                    placeholder: @tr("Caption");
+                    text <=> root.caption;
+                }
+
+                HorizontalLayout {
+                    spacing: Space.lg;
+
+                    AppButton {
+                        horizontal-stretch: 1;
+                        above-modal: true;
+                        text: @tr("Cancel");
+                        icon: IconSet.X;
+                        filled: false;
+                        enabled: !AttachmentView.sending;
+                        clicked => {
+                            root.cancel();
+                        }
+                    }
+
+                    AppButton {
+                        horizontal-stretch: 1;
+                        above-modal: true;
+                        text: @tr("Send");
+                        icon: IconSet.SendHorizontal;
+                        enabled: !AttachmentView.sending;
+                        busy: AttachmentView.sending;
+                        clicked => {
+                            root.submit();
+                        }
+                    }
+                }
+
+                if AttachmentView.error != UserMessageKind.none: ErrorBanner {
+                    messages: [{ kind: AttachmentView.error, detail: AttachmentView.error-detail }];
+                }
+            }
+        }
+    }
+}

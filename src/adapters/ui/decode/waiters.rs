@@ -30,6 +30,7 @@ pub enum AvatarSlot {
     Room(String),
     Space(String),
     User,
+    AttachmentPreview,
 }
 
 enum Registration {

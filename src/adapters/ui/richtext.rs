@@ -497,4 +497,3 @@ fn attribute(node: &NodeRef, name: &str) -> Option<String> {
         .map(|attr| attr.value.to_string())
         .filter(|value| !value.is_empty())
 }
-

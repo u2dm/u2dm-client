@@ -37,7 +37,7 @@ pub enum TimelinePatch {
 #[derive(Debug, Clone)]
 pub struct EnrichmentDelta {
     pub unique_id: String,
-    pub event_id: Option<String>,
+    pub media_key: Option<String>,
     pub fingerprint: u64,
     pub thumbnail: ThumbnailOutcome,
     pub avatar_mxc: Option<String>,

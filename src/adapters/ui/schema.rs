@@ -20,6 +20,11 @@ macro_rules! string_props {
         SelectedRoomId DirectoryView "DirectoryView" "selected-room-id" set_selected_room_id;
         SelectedSpaceId DirectoryView "DirectoryView" "selected-space-id" set_selected_space_id;
         SelectedSubspaceId DirectoryView "DirectoryView" "selected-subspace-id" set_selected_subspace_id;
+        AttachmentFilename AttachmentView "AttachmentView" "filename" set_filename;
+        AttachmentMimetype AttachmentView "AttachmentView" "mimetype" set_mimetype;
+        AttachmentExtension AttachmentView "AttachmentView" "extension" set_extension;
+        AttachmentSize AttachmentView "AttachmentView" "size" set_size;
+        AttachmentErrorDetail AttachmentView "AttachmentView" "error-detail" set_error_detail;
     } };
 }
 pub(crate) use string_props;
@@ -43,6 +48,9 @@ macro_rules! simple_callbacks {
         on_open_media "open-media" open_media manual_string OpenMedia;
         on_open_link "open-link" open_link manual_string OpenLink;
         on_jump_to_event "jump-to-event" jump_to_event manual_string JumpToEvent;
+        on_pick_photo "pick-photo" pick_photo manual_string PickAttachment;
+        on_pick_document "pick-document" pick_document manual_string PickAttachment;
+        on_cancel_attachment "cancel-attachment" cancel_attachment plain CancelAttachment;
     } };
 }
 pub(crate) use simple_callbacks;
@@ -57,6 +65,9 @@ macro_rules! bool_props {
         StickerRoomEncrypted StickerView "StickerView" "room-encrypted" set_room_encrypted;
         StickerLoading StickerView "StickerView" "loading" set_loading;
         StickerHasPacks StickerView "StickerView" "has-packs" set_has_packs;
+        AttachmentVisible AttachmentView "AttachmentView" "visible" set_visible;
+        AttachmentIsImage AttachmentView "AttachmentView" "is-image" set_is_image;
+        AttachmentSending AttachmentView "AttachmentView" "sending" set_sending;
     } };
 }
 pub(crate) use bool_props;
@@ -70,6 +81,8 @@ macro_rules! int_props {
         SelectedRoomMembers RoomView "RoomView" "selected-room-members" set_selected_room_members;
         SelectedGeneration DirectoryView "DirectoryView" "selected-generation" set_selected_generation;
         StickerColumns StickerView "StickerView" "columns" set_columns;
+        AttachmentWidth AttachmentView "AttachmentView" "width" set_width;
+        AttachmentHeight AttachmentView "AttachmentView" "height" set_height;
     } };
 }
 pub(crate) use int_props;
@@ -193,6 +206,9 @@ macro_rules! user_message_kinds {
         FileDownloadFailed        FileDownloadFailed      "file-download-failed";
         MediaOpenFailed           MediaOpenFailed         "media-open-failed";
         MediaNotViewable          MediaNotViewable        "media-not-viewable";
+        AttachmentUnreadable      AttachmentUnreadable    "attachment-unreadable";
+        AttachmentTooLarge        AttachmentTooLarge      "attachment-too-large";
+        SendAttachmentFailed      SendAttachmentFailed    "send-attachment-failed";
         FileSaveFailed            FileSaveFailed          "file-save-failed";
         FileSaved                 FileSaved               "file-saved";
         VerificationAcceptFailed  VerificationAcceptFailed "verification-accept-failed";
@@ -208,6 +224,16 @@ macro_rules! user_message_kinds {
     } };
 }
 pub(crate) use user_message_kinds;
+
+macro_rules! send_states {
+    ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
+        Sent          Sent      "sent";
+        Sending       Sending   "sending";
+        Uploading{..} Uploading "uploading";
+        Failed        Failed    "failed";
+    } };
+}
+pub(crate) use send_states;
 
 macro_rules! media_states {
     ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
@@ -308,6 +334,8 @@ macro_rules! message_fields {
         is_own IS_OWN "is-own" flag;
         edited EDITED "edited" flag;
         is_first_unread IS_FIRST_UNREAD "first-unread" flag;
+        send_state SEND_STATE "send-state" enumk;
+        send_progress SEND_PROGRESS "send-progress" ratio;
         has_reply HAS_REPLY "has-reply" flag;
         reply_event_id REPLY_EVENT_ID "reply-event-id" text;
         reply_sender REPLY_SENDER "reply-sender" text;

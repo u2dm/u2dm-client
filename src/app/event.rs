@@ -4,6 +4,8 @@ use super::establish::EstablishedSession;
 use crate::commands::messages::{UserMessage, UserMessageKind};
 use crate::commands::view::LoginActivity;
 use crate::domain::auth::ServerInfo;
+use crate::domain::media::PickedAttachment;
+use crate::domain::room::RoomId;
 use crate::domain::verification::VerificationEvent;
 use crate::ports::matrix::{AuthenticatedSession, CleanupReport};
 
@@ -13,10 +15,20 @@ pub(super) enum EndReason {
     Expired,
 }
 
+pub(super) struct AttachmentPicked {
+    pub(super) room_id: RoomId,
+    pub(super) outcome: Result<PickedAttachment, UserMessage>,
+}
+
 pub(super) enum AppEvent {
     Session(SessionEvent),
     VerificationFlow(VerificationEvent),
     VerificationActionFailed(UserMessageKind),
+    AttachmentPicked(Box<AttachmentPicked>),
+    AttachmentSettled {
+        room_id: RoomId,
+        failure: Option<UserMessage>,
+    },
 }
 
 impl AppEvent {
@@ -25,6 +37,8 @@ impl AppEvent {
             Self::Session(event) => event.label(),
             Self::VerificationFlow(_) => "VerificationFlow",
             Self::VerificationActionFailed(_) => "VerificationActionFailed",
+            Self::AttachmentPicked(_) => "AttachmentPicked",
+            Self::AttachmentSettled { .. } => "AttachmentSettled",
         }
     }
 }

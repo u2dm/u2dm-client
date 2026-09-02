@@ -1,4 +1,5 @@
 mod active_timeline;
+mod attachments;
 mod establish;
 mod event;
 mod lifecycle;
@@ -15,6 +16,7 @@ mod verification;
 use std::sync::Arc;
 
 use active_timeline::ActiveTimeline;
+use attachments::Attachments;
 use establish::EstablishedSession;
 use event::{AppEvent, EndReason, SessionEvent};
 use lifecycle::Lifecycle;
@@ -35,6 +37,7 @@ use crate::commands::ui::{UiCommand, ViewportChanged};
 use crate::commands::view::{AppViewState, LoginActivity, LoginStep, Toast};
 use crate::domain::account::AccountScope;
 use crate::domain::auth::ServerInfo;
+use crate::domain::media::AttachmentPick;
 use crate::domain::room::{RoomId, RoomList, Space};
 use crate::domain::sticker::PackId;
 use crate::domain::sync::ConnectionStatus;
@@ -77,6 +80,7 @@ pub struct AppService {
     verification: VerificationController,
     media: MediaActions,
     stickers: Stickers,
+    attachments: Attachments,
     selection: Selection,
     last_selected_room: Option<EmittedRoom>,
     lifecycle: Lifecycle,
@@ -107,9 +111,10 @@ impl AppService {
             ),
             room_directory: RoomDirectory::new(Arc::clone(&output)),
             active_timeline: ActiveTimeline::new(cmd_tx.clone(), Arc::clone(&output)),
-            verification: VerificationController::new(Arc::clone(&output), event_tx),
-            media: MediaActions::new(media_files, Arc::clone(&output)),
+            verification: VerificationController::new(Arc::clone(&output), event_tx.clone()),
+            media: MediaActions::new(Arc::clone(&media_files), Arc::clone(&output)),
             stickers: Stickers::new(Arc::clone(&output)),
+            attachments: Attachments::new(media_files, Arc::clone(&output), event_tx),
             cmd_tx,
             dir_in_tx,
             output,
@@ -261,6 +266,20 @@ impl AppService {
                 reply_to,
             } => {
                 self.send_message(room_id, body, reply_to);
+            }
+            UiCommand::PickAttachment { room_id, pick } => {
+                self.pick_attachment(room_id, pick);
+            }
+            UiCommand::SendAttachment {
+                room_id,
+                caption,
+                as_document,
+                reply_to,
+            } => {
+                self.send_attachment(room_id, caption, as_document, reply_to);
+            }
+            UiCommand::CancelAttachment => {
+                self.attachments.clear();
             }
             UiCommand::SendSticker {
                 room_id,
@@ -510,6 +529,13 @@ impl AppService {
             AppEvent::VerificationActionFailed(failure) => {
                 self.verification.action_failed(failure).await;
             }
+            AppEvent::AttachmentPicked(picked) => {
+                self.attachments
+                    .adopt(*picked, self.selection.room.as_ref());
+            }
+            AppEvent::AttachmentSettled { room_id, failure } => {
+                self.attachments.settle(&room_id, failure);
+            }
         }
     }
 
@@ -672,6 +698,30 @@ impl AppService {
         }
     }
 
+    fn pick_attachment(&mut self, room_id: RoomId, pick: AttachmentPick) {
+        self.attachments.pick(&mut self.operations, room_id, pick);
+    }
+
+    fn send_attachment(
+        &mut self,
+        room_id: RoomId,
+        caption: String,
+        as_document: bool,
+        reply_to: Option<String>,
+    ) {
+        let Some(timeline) = self.port(|a| &a.timeline) else {
+            return;
+        };
+        self.attachments.send(
+            &mut self.operations,
+            timeline,
+            room_id,
+            caption,
+            as_document,
+            reply_to,
+        );
+    }
+
     fn open_media(&mut self, event_id: String) {
         if let Some(media) = self.port(|a| &a.media) {
             self.media.open_media(media, event_id);
@@ -720,6 +770,7 @@ impl AppService {
     }
 
     async fn open_room(&mut self, room_id: RoomId, focus: TimelineFocus) {
+        self.attachments.clear();
         self.selection.room = Some(room_id.clone());
         let generation = self.selection.next_generation();
         let (name, member_count) = self
@@ -835,6 +886,7 @@ impl AppService {
         if matches!(reason, EndReason::Expired) {
             tracing::info!("session expired, clearing local state");
         }
+        self.attachments.clear();
         let ending = self.ending_session();
         self.output.replace(AppViewState::logged_out());
         self.output.emit(Effect::LoggedOut).await;

@@ -9,6 +9,7 @@ use tokio::fs as async_fs;
 use tokio::task::spawn_blocking;
 
 use crate::adapters::private_fs;
+use crate::domain::media::{AttachmentPick, PickedAttachment};
 use crate::error::{AppError, Result};
 use crate::ports::media::MediaFilePort;
 use crate::util::random_hex;
@@ -19,6 +20,12 @@ const SESSION_TOKEN_BYTES: usize = 8;
 const FILE_TOKEN_BYTES: usize = 16;
 const ROOT_TOKEN_BYTES: usize = 16;
 const ROOT_ATTEMPTS: usize = 8;
+const FALLBACK_MIME: &str = "application/octet-stream";
+
+const PICKABLE_MEDIA_EXTENSIONS: &[&str] = &[
+    "png", "jpg", "jpeg", "gif", "webp", "bmp", "ico", "tif", "tiff", "avif", "heic", "heif",
+    "mp4", "m4v", "mov", "webm", "mkv", "avi",
+];
 
 const LAUNCHER_SAFE_IMAGE_FORMATS: &[(ImageFormat, &str)] = &[
     (ImageFormat::Png, "png"),
@@ -63,6 +70,20 @@ impl MediaFilePort for DesktopMediaFiles {
         Ok(())
     }
 
+    async fn pick_attachment(&self, pick: AttachmentPick) -> Result<Option<PickedAttachment>> {
+        let mut dialog = rfd::AsyncFileDialog::new();
+        dialog = match pick {
+            AttachmentPick::Media => dialog
+                .set_title("Send a photo or video")
+                .add_filter("Photos and videos", PICKABLE_MEDIA_EXTENSIONS),
+            AttachmentPick::Document => dialog.set_title("Send a document"),
+        };
+        let Some(handle) = dialog.pick_file().await else {
+            return Ok(None);
+        };
+        describe(handle.path()).await.map(Some)
+    }
+
     async fn save_file(&self, default_filename: &str, data: &[u8]) -> Result<Option<String>> {
         let dialog = rfd::AsyncFileDialog::new().set_file_name(default_filename);
         let Some(file_handle) = dialog.save_file().await else {
@@ -86,6 +107,72 @@ impl MediaFilePort for DesktopMediaFiles {
             tracing::debug!("failed to recreate session media directory: {e}");
         }
     }
+}
+
+pub(crate) async fn describe(path: &Path) -> Result<PickedAttachment> {
+    let metadata = async_fs::metadata(path).await?;
+    if !metadata.is_file() {
+        return Err(AppError::Other(format!(
+            "{} is not a regular file",
+            path.display()
+        )));
+    }
+    let filename = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .ok_or_else(|| AppError::Other("the chosen file has no usable name".into()))?
+        .to_owned();
+
+    let mimetype = sniff_mimetype(path).await;
+    let dimensions = if mimetype.starts_with("image/") {
+        probe_dimensions(path.to_path_buf()).await
+    } else {
+        None
+    };
+
+    Ok(PickedAttachment {
+        path: path.to_path_buf(),
+        filename,
+        mimetype,
+        size: metadata.len(),
+        dimensions,
+    })
+}
+
+async fn sniff_mimetype(path: &Path) -> String {
+    if let Some(inferred) = sniff_magic(path.to_path_buf()).await {
+        return inferred;
+    }
+    mime_guess::from_path(path)
+        .first_raw()
+        .unwrap_or(FALLBACK_MIME)
+        .to_owned()
+}
+
+async fn sniff_magic(path: PathBuf) -> Option<String> {
+    spawn_blocking(move || {
+        infer::get_from_path(&path)
+            .ok()
+            .flatten()
+            .map(|kind| kind.mime_type().to_owned())
+    })
+    .await
+    .ok()
+    .flatten()
+}
+
+async fn probe_dimensions(path: PathBuf) -> Option<(u32, u32)> {
+    spawn_blocking(move || {
+        ImageReader::open(&path)
+            .ok()?
+            .with_guessed_format()
+            .ok()?
+            .into_dimensions()
+            .ok()
+    })
+    .await
+    .ok()
+    .flatten()
 }
 
 fn launcher_safe_extension(data: &[u8]) -> Option<&'static str> {

@@ -241,10 +241,10 @@ impl MediaService {
         let Some((kind, meta)) = msg.body.media() else {
             return ThumbnailOutcome::Unchanged;
         };
-        let Some(event_id) = msg.event_id.as_deref() else {
+        let Some(media_key) = msg.media_key() else {
             return ThumbnailOutcome::Unchanged;
         };
-        let cache_key = thumb_key(event_id);
+        let cache_key = thumb_key(media_key);
 
         if self.cache_get(&cache_key).is_some() {
             return ThumbnailOutcome::Unchanged;
@@ -252,9 +252,9 @@ impl MediaService {
 
         let lane = super::lane(kind, meta);
 
-        let materialized = match (lane.source(media_sources, event_id), self.session()) {
+        let materialized = match (lane.source(media_sources, media_key), self.session()) {
             (Some(source), Some(session)) => {
-                let cache_stem = session.media_dir.join(hex_encode_id(event_id));
+                let cache_stem = session.media_dir.join(hex_encode_id(media_key));
                 self.fetch_and_materialize(client, source, &cache_key, &cache_stem, lane.format())
                     .await
             }
@@ -393,8 +393,8 @@ impl MediaService {
 
     pub(crate) fn needs_media_download(&self, msg: &TimelineMessage) -> bool {
         let needs_thumbnail = msg.body.media().is_some()
-            && msg.event_id.as_deref().is_some_and(|event_id| {
-                let key = thumb_key(event_id);
+            && msg.media_key().is_some_and(|media_key| {
+                let key = thumb_key(media_key);
                 self.cache_get(&key).is_none() && !self.is_failed(&key)
             });
         let needs_avatar = msg.sender_avatar_url.as_deref().is_some_and(|mxc| {

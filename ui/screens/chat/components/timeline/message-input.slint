@@ -6,6 +6,7 @@ import { IconDisplay, IconSet } from "@lucide";
 import { EmojiInsert } from "../types.slint";
 import { EmojiStore } from "./emoji-picker.slint";
 import { PickerPanel } from "./picker-panel.slint";
+import { AttachMenu } from "./attach-menu.slint";
 import { ReplyQuote } from "../reply-quote.slint";
 import { AppStyle, Fonts, IconSize, Metrics, Radius, Size, Space } from "../../../../theme.slint";
 import { ClickArea } from "../../../../components/a11y.slint";
@@ -127,6 +128,29 @@ export component MessageInput inherits Rectangle {
         }
     }
 
+    if Shell.attach-open: ModalHost {
+        x: root.overlay-x;
+        y: root.overlay-y;
+        width: root.overlay-width;
+        height: root.overlay-height;
+        dim: false;
+        label: @tr("Attach a photo or a file");
+        dismissed => {
+            root.close-attach();
+        }
+
+        AttachMenu {
+            x: Space.lg - root.overlay-x;
+            y: -self.height - Space.md - root.overlay-y;
+            photo-picked => {
+                root.pick(false);
+            }
+            document-picked => {
+                root.pick(true);
+            }
+        }
+    }
+
     function send-sticker(pack-id: string, shortcode: string) {
         Actions.send-sticker({
             room-id: root.room-id,
@@ -136,6 +160,20 @@ export component MessageInput inherits Rectangle {
         });
         Composer.clear();
         root.close-picker();
+    }
+
+    function close-attach() {
+        Shell.attach-open = false;
+        text-input.focus();
+    }
+
+    function pick(document: bool) {
+        root.close-attach();
+        if (document) {
+            Actions.pick-document(root.room-id);
+        } else {
+            Actions.pick-photo(root.room-id);
+        }
     }
 
     function insert-at-caret(glyph: string) {
@@ -187,6 +225,32 @@ export component MessageInput inherits Rectangle {
             height: root.row-height;
             padding-left: Space.lg;
             padding-right: Space.lg;
+
+            VerticalLayout {
+                alignment: end;
+
+                attach-touch := ClickArea {
+                    width: Size.target;
+                    height: Metrics.composer-row;
+                    ring-radius: Radius.sm;
+                    label: @tr("Attach a photo or a file");
+                    clicked => {
+                        Reactions.close();
+                        Shell.picker-open = false;
+                        Shell.attach-open = !Shell.attach-open;
+                    }
+
+                    IconDisplay {
+                        x: (parent.width - self.width) / 2;
+                        y: (parent.height - self.height) / 2;
+                        icon: IconSet.Paperclip;
+                        size: IconSize.md;
+                        stroke: Shell.attach-open
+                            ? Palette.accent-background
+                            : AppStyle.foreground-muted;
+                    }
+                }
+            }
 
             keys := FocusScope {
                 horizontal-stretch: 1;
@@ -257,6 +321,7 @@ export component MessageInput inherits Rectangle {
                     label: @tr("Emoji and stickers");
                     clicked => {
                         Reactions.close();
+                        Shell.attach-open = false;
                         Shell.picker-open = !Shell.picker-open;
                     }
 

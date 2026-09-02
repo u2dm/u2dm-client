@@ -66,6 +66,7 @@ const ENUM_TABLES: &[(&str, &str)] = &[
     ("PreviewKind", "preview_kinds"),
     ("MessageKind", "message_kinds"),
     ("MediaState", "media_states"),
+    ("SendState", "send_states"),
     ("MediaFailure", "media_failures"),
 ];
 

@@ -2,6 +2,7 @@ import { LoginRequest } from "screens/login/types.slint";
 import {
     SendMessageRequest,
     SendStickerRequest,
+    SendAttachmentRequest,
     SaveFileRequest,
 } from "screens/chat/components/types.slint";
 
@@ -21,6 +22,10 @@ export global Actions {
 
     callback send-message(SendMessageRequest);
     callback send-sticker(SendStickerRequest);
+    callback pick-photo(string);
+    callback pick-document(string);
+    callback send-attachment(SendAttachmentRequest);
+    callback cancel-attachment();
     callback request-sticker(string);
     callback search-stickers(string);
     callback open-media(string);

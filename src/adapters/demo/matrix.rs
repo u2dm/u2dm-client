@@ -9,9 +9,10 @@ use tokio::sync::mpsc;
 use tokio::time::sleep;
 use tokio_util::sync::CancellationToken;
 
-use super::{data, login, media, reactions, stickers, timeline, verification};
+use super::{attachments, data, login, media, reactions, stickers, timeline, verification};
 use crate::domain::auth::{AuthMethod, LoginCredentials, OAuthLoginData, ServerInfo, Session};
-use crate::domain::message::{MessageBody, ReplyInfo, RichText, TimelineMessage};
+use crate::domain::media::OutgoingAttachment;
+use crate::domain::message::{MessageBody, ReplyInfo, RichText, SendState, TimelineMessage};
 use crate::domain::room::RoomId;
 use crate::domain::sticker::{PackId, StickerImage};
 use crate::domain::sync::{SyncEvent, SyncOutcome};
@@ -227,6 +228,45 @@ impl DemoAuthed {
         send_patch(&timeline_tx, TimelinePatch::PushBack(message)).await;
     }
 
+    fn timeline_sender(&self, room_id: &RoomId) -> Option<mpsc::Sender<TimelineUpdate>> {
+        let guard = self.active.lock().ok()?;
+        let active = guard.as_ref()?;
+        (&active.room_id == room_id).then(|| active.timeline_tx.clone())
+    }
+
+    async fn append_own_attachment(
+        &self,
+        room_id: &RoomId,
+        attachment: &OutgoingAttachment,
+        opening: SendState,
+    ) -> Option<(usize, TimelineMessage)> {
+        let prepared = {
+            let Ok(mut guard) = self.active.lock() else {
+                return None;
+            };
+            let active = guard.as_mut()?;
+            if &active.room_id != room_id {
+                return None;
+            }
+
+            let reply = attachment
+                .reply_to
+                .as_deref()
+                .and_then(|event_id| reply_info(&active.messages, event_id));
+            let settled =
+                data::own_attachment(self.sent.fetch_add(1, Ordering::Relaxed), attachment, reply);
+            active.messages.push(settled.clone());
+            let index = active.messages.len() - 1;
+            (active.timeline_tx.clone(), index, settled)
+        };
+        let (timeline_tx, index, settled) = prepared;
+
+        let mut opening_echo = settled.clone();
+        opening_echo.send_state = opening;
+        send_patch(&timeline_tx, TimelinePatch::PushBack(opening_echo)).await;
+        Some((index, settled))
+    }
+
     async fn toggle_reaction(&self, event_id: &str, key: &str) {
         if reactions::scenario().toggle_has_no_echo {
             tracing::debug!(event_id, "demo: swallowing a reaction toggle");
@@ -425,6 +465,46 @@ impl TimelinePort for DemoAuthed {
     async fn send_reply(&self, room_id: &RoomId, body: &str, in_reply_to: &str) -> Result<()> {
         self.append_own_message(room_id, body, Some(in_reply_to))
             .await;
+        Ok(())
+    }
+
+    async fn send_attachment(
+        &self,
+        room_id: &RoomId,
+        attachment: &OutgoingAttachment,
+    ) -> Result<()> {
+        if attachments::scenario().refuses_size {
+            return Err(AppError::AttachmentTooLarge {
+                limit: attachments::upload_limit(),
+            });
+        }
+        if attachments::scenario().send_fails {
+            attachments::pause_upload().await;
+            return Err(unavailable("sending attachments"));
+        }
+
+        let total = attachment.picked.size;
+        let uploads_slowly = attachments::scenario().upload_is_slow;
+        let opening = if uploads_slowly {
+            SendState::Uploading { sent: 0, total }
+        } else {
+            SendState::Sent
+        };
+        let Some((index, settled)) = self
+            .append_own_attachment(room_id, attachment, opening)
+            .await
+        else {
+            return Ok(());
+        };
+        if let Some(event_id) = settled.event_id.as_deref()
+            && attachment.picked.is_image()
+            && !attachment.as_document
+        {
+            attachments::remember_preview(event_id, &attachment.picked.path);
+        }
+        if uploads_slowly && let Some(timeline_tx) = self.timeline_sender(room_id) {
+            spawn_upload_progress(timeline_tx, index, settled, total);
+        }
         Ok(())
     }
 }
@@ -705,7 +785,9 @@ fn older_history(round: u64, messages: &[TimelineMessage]) -> Vec<TimelineMessag
             TimelineMessage {
                 unique_id: id.clone(),
                 event_id: Some(id),
+                local_id: None,
                 is_first_unread: false,
+                send_state: SendState::default(),
                 ..message.clone()
             }
         })
@@ -720,6 +802,34 @@ fn grown_body(body: &MessageBody, round: usize) -> MessageBody {
         }
         other => other.clone(),
     }
+}
+
+fn spawn_upload_progress(
+    timeline_tx: mpsc::Sender<TimelineUpdate>,
+    index: usize,
+    settled: TimelineMessage,
+    total: u64,
+) {
+    tokio::spawn(async move {
+        for step in 1..=attachments::UPLOAD_STEPS {
+            sleep(attachments::UPLOAD_STEP_DELAY).await;
+            let mut message = settled.clone();
+            message.send_state = SendState::Uploading {
+                sent: total * step / attachments::UPLOAD_STEPS,
+                total,
+            };
+            send_patch(&timeline_tx, TimelinePatch::Set { index, message }).await;
+        }
+        sleep(attachments::UPLOAD_STEP_DELAY).await;
+        send_patch(
+            &timeline_tx,
+            TimelinePatch::Set {
+                index,
+                message: settled,
+            },
+        )
+        .await;
+    });
 }
 
 async fn send_patch(timeline_tx: &mpsc::Sender<TimelineUpdate>, patch: TimelinePatch) {

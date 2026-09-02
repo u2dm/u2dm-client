@@ -20,8 +20,8 @@ use super::reconcile::reorder_rows;
 use super::reduce::set_sticker_query;
 use super::schema::{
     bool_props, connection_states, int_props, login_activities, login_methods, login_phases,
-    media_failures, media_states, message_kinds, preview_kinds, service_kinds, simple_callbacks,
-    string_props, timeline_states, user_message_kinds, verification_activities,
+    media_failures, media_states, message_kinds, preview_kinds, send_states, service_kinds,
+    simple_callbacks, string_props, timeline_states, user_message_kinds, verification_activities,
     verification_phases,
 };
 use super::{emoji, router};
@@ -30,7 +30,7 @@ use crate::commands::messages::{UserMessage, UserMessageKind};
 use crate::commands::ui::{UiCommand, ViewportChanged};
 use crate::commands::view::{AppViewState, LoginActivity, LoginStep};
 use crate::domain::auth::{LoginCredentials, LoginMethod};
-use crate::domain::message::{MessagePreviewKind, TimelineMessage};
+use crate::domain::message::{MessagePreviewKind, SendState, TimelineMessage};
 use crate::domain::room::{Room, Space};
 use crate::domain::sync::ConnectionStatus;
 use crate::domain::timeline::{EnrichmentDelta, TimelineStatus};
@@ -43,11 +43,12 @@ mod generated {
     slint::include_modules!();
 }
 use generated::{
-    Actions, AppWindow, ConnectionState, DirectoryView, EmojiEntry, EmojiGroup, EmojiInsert,
-    EmojiStore, LoginActivity as UiLoginActivity, LoginMethodKind as UiLoginMethodKind, LoginPhase,
-    LoginView, MediaFailure as UiMediaFailure, MediaState as UiMediaState, MessageEntry,
-    MessageKind as UiMessageKind, PreviewKind as UiPreviewKind, ReactionEntry, ReactorAvatar,
-    RoomEntry, RoomView, ServiceKind as UiServiceKind, SessionView, SpaceEntry, StickerCell,
+    Actions, AppWindow, AttachmentView, ConnectionState, DirectoryView, EmojiEntry, EmojiGroup,
+    EmojiInsert, EmojiStore, LoginActivity as UiLoginActivity,
+    LoginMethodKind as UiLoginMethodKind, LoginPhase, LoginView, MediaFailure as UiMediaFailure,
+    MediaState as UiMediaState, MessageEntry, MessageKind as UiMessageKind,
+    PreviewKind as UiPreviewKind, ReactionEntry, ReactorAvatar, RoomEntry, RoomView,
+    SendState as UiSendState, ServiceKind as UiServiceKind, SessionView, SpaceEntry, StickerCell,
     StickerPackTab, StickerRow, StickerView, TimelineState, UserMessage as UiUserMessage,
     UserMessageKind as UiUserMessageKind, VerificationActivity as UiVerificationActivity,
     VerificationEmoji, VerificationPhase, VerificationView,
@@ -132,6 +133,11 @@ impl UiProps for AppWindow {
             .set_error(to_user_message_kind(kind));
     }
 
+    fn set_attachment_error(&self, kind: UserMessageKind) {
+        self.global::<AttachmentView>()
+            .set_error(to_user_message_kind(kind));
+    }
+
     fn set_connection_state(&self, status: &ConnectionStatus) {
         self.global::<SessionView>()
             .set_connection_status(to_connection_state(status));
@@ -180,6 +186,17 @@ impl UiProps for AppWindow {
                 session.set_user_has_avatar(true);
             }
             None => session.set_user_has_avatar(false),
+        }
+    }
+
+    fn apply_attachment_preview(&self, preview: Option<Image>) {
+        let attachment = self.global::<AttachmentView>();
+        match preview {
+            Some(img) => {
+                attachment.set_preview(img);
+                attachment.set_has_preview(true);
+            }
+            None => attachment.set_has_preview(false),
         }
     }
 
@@ -242,6 +259,7 @@ verification_activities!(
 );
 user_message_kinds!(to_slint_enum val to_user_message_kind UserMessageKind UiUserMessageKind;);
 media_states!(to_slint_enum val to_media_state MediaState UiMediaState;);
+send_states!(to_slint_enum val to_send_state SendState UiSendState;);
 media_failures!(to_slint_enum val to_media_failure MediaFailureKind UiMediaFailure;);
 message_kinds!(to_slint_enum val to_message_kind MessageKind UiMessageKind;);
 preview_kinds!(to_slint_enum val to_preview_kind MessagePreviewKind UiPreviewKind;);
@@ -501,6 +519,17 @@ impl SlintUiAdapter {
             );
         });
 
+        let tx = cmd_tx.clone();
+        actions(win).on_send_attachment(move |req| {
+            router::send_attachment(
+                &tx,
+                req.room_id.to_string(),
+                req.caption.to_string(),
+                req.as_document,
+                req.reply_to.to_string(),
+            );
+        });
+
         actions(win).on_request_media(move |unique_id| request_media(&unique_id));
 
         actions(win).on_request_room_avatar(move |room_id| {
@@ -733,6 +762,8 @@ fn message_to_entry(m: &TimelineMessage, media: &dyn MediaCache) -> MessageEntry
         is_own: d.is_own,
         edited: d.edited,
         first_unread: d.is_first_unread,
+        send_state: to_send_state(d.send_state),
+        send_progress: d.send_progress,
         has_reply: d.has_reply,
         reply_event_id: d.reply_event_id,
         reply_sender: d.reply_sender,

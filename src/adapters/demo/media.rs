@@ -1,6 +1,6 @@
 use std::path::{Path, PathBuf};
 
-use super::data;
+use super::{attachments, data};
 use crate::domain::media::MediaFailure;
 use crate::ports::media::MediaCache;
 
@@ -23,6 +23,9 @@ pub struct DemoMediaCache;
 
 impl MediaCache for DemoMediaCache {
     fn thumbnail_path(&self, event_id: &str) -> Option<PathBuf> {
+        if let Some(sent) = attachments::preview_path(event_id) {
+            return Some(sent);
+        }
         match data::sticker_asset_in(event_id) {
             Some(asset) => sticker_asset_path(asset),
             None => probe("thumbnail", event_id),

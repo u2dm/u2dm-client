@@ -1,6 +1,8 @@
+mod attachments;
 mod browser;
 mod data;
 mod dto;
+mod files;
 mod login;
 mod matrix;
 mod media;
@@ -17,7 +19,7 @@ use std::sync::Arc;
 use super::ui::SlintUiAdapter;
 use crate::ports::browser::BrowserPort;
 use crate::ports::matrix::AuthPort;
-use crate::ports::media::MediaCache;
+use crate::ports::media::{MediaCache, MediaFilePort};
 use crate::ports::storage::StoragePort;
 
 const WINDOW_SIZE: (f32, f32) = (860.0, 1000.0);
@@ -37,6 +39,10 @@ pub fn media_cache() -> Arc<dyn MediaCache> {
 
 pub fn browser() -> Arc<dyn BrowserPort> {
     Arc::new(browser::DemoBrowser)
+}
+
+pub fn media_files() -> Arc<dyn MediaFilePort> {
+    Arc::new(files::DemoMediaFiles::new())
 }
 
 pub fn size_window_for_screenshots(ui: &SlintUiAdapter) {

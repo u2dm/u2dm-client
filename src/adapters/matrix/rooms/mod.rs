@@ -234,6 +234,7 @@ pub(super) async fn start_sync(
         Ok(service) => service,
         Err(e) => return SyncOutcome::Fatal(format!("failed to build sync service: {e}")),
     };
+    client.send_queue().enable_upload_progress(true);
     let mut room_updates_rx = client.subscribe_to_all_room_updates();
     let mut avatars = AvatarFetcher::new(media);
     let notifications = client.notification_settings().await;

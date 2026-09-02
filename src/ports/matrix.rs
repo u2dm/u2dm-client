@@ -7,6 +7,7 @@ use tokio_util::sync::CancellationToken;
 
 use crate::domain::account::AccountScope;
 use crate::domain::auth::{LoginCredentials, OAuthLoginData, ServerInfo, Session};
+use crate::domain::media::OutgoingAttachment;
 use crate::domain::room::RoomId;
 use crate::domain::sticker::{PackId, StickerPack};
 use crate::domain::sync::{SyncEvent, SyncOutcome};
@@ -155,6 +156,11 @@ pub trait TimelinePort: Send + Sync {
     ) -> Result<()>;
     async fn send_text(&self, room_id: &RoomId, body: &str) -> Result<()>;
     async fn send_reply(&self, room_id: &RoomId, body: &str, in_reply_to: &str) -> Result<()>;
+    async fn send_attachment(
+        &self,
+        room_id: &RoomId,
+        attachment: &OutgoingAttachment,
+    ) -> Result<()>;
 }
 
 #[async_trait]

@@ -19,6 +19,7 @@ import {
     RoomView,
     StickerView,
     VerificationView,
+    AttachmentView,
 } from "views.slint";
 import { Actions } from "actions.slint";
 import { Metrics } from "theme.slint";
@@ -29,12 +30,14 @@ export { EmojiStore }
 export { LoginPhase, ConnectionState, TimelineState, VerificationPhase, MediaState, MediaFailure }
 export { MessageKind, PreviewKind, ServiceKind, LoginMethodKind }
 export { LoginView, SessionView, DirectoryView, RoomView, StickerView, VerificationView }
+export { AttachmentView }
 export { Actions }
 import { LoadingScreen } from "screens/login/loading.slint";
 import { HomeserverScreen } from "screens/login/homeserver.slint";
 import { CredentialsScreen } from "screens/login/credentials.slint";
 import { ChatScreen } from "screens/chat/chat.slint";
 import { VerificationDialog } from "components/verification.slint";
+import { AttachmentDialog } from "screens/chat/components/timeline/attachment-dialog.slint";
 
 export component AppWindow inherits Window {
     title: @tr("U2DM Matrix Client");
@@ -60,6 +63,8 @@ export component AppWindow inherits Window {
     if LoginView.step == LoginPhase.logged-in: ChatScreen {
         input-message <=> root.input-message;
     }
+
+    if AttachmentView.visible && LoginView.step == LoginPhase.logged-in: AttachmentDialog { }
 
     if VerificationView.visible && LoginView.step == LoginPhase.logged-in: VerificationDialog { }
 }

@@ -22,8 +22,9 @@ thread_local! {
 
 use names::{
     callback, emoji_entry, emoji_group, emoji_insert, emoji_store, login_request, message,
-    reaction, reactor, room, save_file_request, send_message_request, send_sticker_request, space,
-    sticker_cell, sticker_pack, sticker_row, sticker_view, user_message, verification_emoji,
+    reaction, reactor, room, save_file_request, send_attachment_request, send_message_request,
+    send_sticker_request, space, sticker_cell, sticker_pack, sticker_row, sticker_view,
+    user_message, verification_emoji,
 };
 
 use super::backend::{UiBackend, install_render_hooks, post_effect, selected_room_key};
@@ -40,8 +41,8 @@ use super::reconcile::reorder_rows;
 use super::reduce::set_sticker_query;
 use super::schema::{
     connection_states, login_activities, login_methods, login_phases, media_failures, media_states,
-    message_fields, message_kinds, preview_kinds, room_fields, service_kinds, simple_callbacks,
-    space_fields, timeline_states, user_message_kinds, verification_activities,
+    message_fields, message_kinds, preview_kinds, room_fields, send_states, service_kinds,
+    simple_callbacks, space_fields, timeline_states, user_message_kinds, verification_activities,
     verification_phases,
 };
 use super::{emoji, router};
@@ -50,7 +51,7 @@ use crate::commands::messages::{UserMessage, UserMessageKind};
 use crate::commands::ui::{UiCommand, ViewportChanged};
 use crate::commands::view::{AppViewState, LoginActivity, LoginStep};
 use crate::domain::auth::{LoginCredentials, LoginMethod};
-use crate::domain::message::{MessagePreviewKind, TimelineMessage};
+use crate::domain::message::{MessagePreviewKind, SendState, TimelineMessage};
 use crate::domain::room::{Room, Space};
 use crate::domain::sync::ConnectionStatus;
 use crate::domain::timeline::{EnrichmentDelta, TimelineStatus};
@@ -68,6 +69,7 @@ mod names {
         pub const SEND_MESSAGE: &str = "send-message";
         pub const SAVE_FILE: &str = "save-file";
         pub const SEND_STICKER: &str = "send-sticker";
+        pub const SEND_ATTACHMENT: &str = "send-attachment";
         pub const REQUEST_MEDIA: &str = "request-media";
         pub const REQUEST_ROOM_AVATAR: &str = "request-room-avatar";
         pub const REQUEST_STICKER: &str = "request-sticker";
@@ -180,6 +182,13 @@ mod names {
         pub const SHORTCODE: &str = "shortcode";
         pub const REPLY_TO: &str = "reply-to";
     }
+
+    pub mod send_attachment_request {
+        pub const ROOM_ID: &str = "room-id";
+        pub const CAPTION: &str = "caption";
+        pub const AS_DOCUMENT: &str = "as-document";
+        pub const REPLY_TO: &str = "reply-to";
+    }
 }
 
 fn set_prop(inst: &ComponentInstance, name: &str, value: Value) {
@@ -228,6 +237,7 @@ verification_phases!(impl_slint_enum VerifyStep "VerificationPhase";);
 verification_activities!(impl_slint_enum VerificationActivity "VerificationActivity";);
 user_message_kinds!(impl_slint_enum UserMessageKind "UserMessageKind";);
 media_states!(impl_slint_enum MediaState "MediaState";);
+send_states!(impl_slint_enum SendState "SendState";);
 media_failures!(impl_slint_enum MediaFailureKind "MediaFailure";);
 message_kinds!(impl_slint_enum MessageKind "MessageKind";);
 preview_kinds!(impl_slint_enum MessagePreviewKind "PreviewKind";);
@@ -267,6 +277,15 @@ fn struct_arg(args: &[Value], index: usize) -> Option<&Struct> {
         Some(Value::Struct(s)) => Some(s),
         _ => None,
     }
+}
+
+fn flag(s: &Struct, name: &str) -> bool {
+    s.get_field(name)
+        .and_then(|v| match v {
+            Value::Bool(b) => Some(*b),
+            _ => None,
+        })
+        .unwrap_or_default()
 }
 
 fn field(s: &Struct, name: &str) -> String {
@@ -366,6 +385,10 @@ impl UiProps for ComponentInstance {
         set_global(self, "VerificationView", "error", enum_value(&kind));
     }
 
+    fn set_attachment_error(&self, kind: UserMessageKind) {
+        set_global(self, "AttachmentView", "error", enum_value(&kind));
+    }
+
     fn set_connection_state(&self, status: &ConnectionStatus) {
         set_global(self, "SessionView", "connection-status", enum_value(status));
     }
@@ -408,6 +431,16 @@ impl UiProps for ComponentInstance {
                 set_global(self, "SessionView", "user-has-avatar", Value::Bool(true));
             }
             None => set_global(self, "SessionView", "user-has-avatar", Value::Bool(false)),
+        }
+    }
+
+    fn apply_attachment_preview(&self, preview: Option<slint::Image>) {
+        match preview {
+            Some(img) => {
+                set_global(self, "AttachmentView", "preview", Value::Image(img));
+                set_global(self, "AttachmentView", "has-preview", Value::Bool(true));
+            }
+            None => set_global(self, "AttachmentView", "has-preview", Value::Bool(false)),
         }
     }
 
@@ -734,6 +767,21 @@ impl SlintUiAdapter {
                 field(s, send_sticker_request::PACK_ID),
                 field(s, send_sticker_request::SHORTCODE),
                 field(s, send_sticker_request::REPLY_TO),
+            );
+            Value::Void
+        })?;
+
+        let tx = cmd_tx.clone();
+        bind_action(&self.instance, callback::SEND_ATTACHMENT, move |args| {
+            let Some(s) = struct_arg(args, 0) else {
+                return Value::Void;
+            };
+            router::send_attachment(
+                &tx,
+                field(s, send_attachment_request::ROOM_ID),
+                field(s, send_attachment_request::CAPTION),
+                flag(s, send_attachment_request::AS_DOCUMENT),
+                field(s, send_attachment_request::REPLY_TO),
             );
             Value::Void
         })?;
@@ -1126,6 +1174,9 @@ macro_rules! field_value {
     };
     ($s:ident, $lit:literal, $val:expr, int) => {
         $s.set_field($lit.to_string(), num($val));
+    };
+    ($s:ident, $lit:literal, $val:expr, ratio) => {
+        $s.set_field($lit.to_string(), Value::Number($val.into()));
     };
     ($s:ident, $lit:literal, $val:expr, flag) => {
         $s.set_field($lit.to_string(), Value::Bool($val));

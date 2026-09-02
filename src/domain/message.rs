@@ -165,10 +165,38 @@ impl Reaction {
     }
 }
 
+const PROGRESS_SCALE: u16 = 1000;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum SendState {
+    #[default]
+    Sent,
+    Sending,
+    Uploading {
+        sent: u64,
+        total: u64,
+    },
+    Failed,
+}
+
+impl SendState {
+    pub fn fraction(self) -> f32 {
+        match self {
+            Self::Uploading { sent, total } if total > 0 => {
+                let scaled = sent.min(total).saturating_mul(u64::from(PROGRESS_SCALE)) / total;
+                f32::from(u16::try_from(scaled).unwrap_or(PROGRESS_SCALE))
+                    / f32::from(PROGRESS_SCALE)
+            }
+            _ => 0.0,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct TimelineMessage {
     pub unique_id: String,
     pub event_id: Option<String>,
+    pub local_id: Option<String>,
     pub sender: String,
     pub sender_display_name: Option<String>,
     pub sender_avatar_url: Option<String>,
@@ -179,13 +207,19 @@ pub struct TimelineMessage {
     pub reply: Option<ReplyInfo>,
     pub edited: bool,
     pub is_first_unread: bool,
+    pub send_state: SendState,
     pub reactions: Vec<Reaction>,
 }
 
 impl TimelineMessage {
+    pub fn media_key(&self) -> Option<&str> {
+        self.event_id.as_deref().or(self.local_id.as_deref())
+    }
+
     pub fn enrichment_fingerprint(&self) -> u64 {
         let mut hasher = DefaultHasher::new();
         self.event_id.hash(&mut hasher);
+        self.local_id.hash(&mut hasher);
         self.sender.hash(&mut hasher);
         self.sender_avatar_url.hash(&mut hasher);
         match self.body.media() {

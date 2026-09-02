@@ -75,7 +75,7 @@ fn spawn_enrichment(ctx: &TimelineContext<'_>, msg: &TimelineMessage, claim: Enr
             );
             Some(EnrichmentDelta {
                 unique_id: msg.unique_id.clone(),
-                event_id: msg.event_id.clone(),
+                media_key: msg.media_key().map(ToOwned::to_owned),
                 fingerprint,
                 thumbnail,
                 avatar_mxc,

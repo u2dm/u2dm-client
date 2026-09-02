@@ -1,7 +1,7 @@
 use std::env;
 use std::sync::OnceLock;
 
-use crate::domain::message::{MessageBody, RichText, TimelineMessage};
+use crate::domain::message::{MessageBody, RichText, SendState, TimelineMessage};
 
 const ENV_VAR: &str = "U2DM_DEMO_RICHTEXT";
 
@@ -207,10 +207,12 @@ fn message(
     TimelineMessage {
         unique_id: id.clone(),
         event_id: Some(id),
+        local_id: None,
         body: MessageBody::Text(body),
         reply: None,
         edited: false,
         is_first_unread: false,
+        send_state: SendState::default(),
         reactions: Vec::new(),
         ..template.clone()
     }

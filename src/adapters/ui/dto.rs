@@ -14,7 +14,7 @@ use super::present::{
 use super::richtext;
 use super::schema::{define_ui_enum, media_failures, media_states};
 use crate::domain::media::{MediaFailure, ThumbnailOutcome};
-use crate::domain::message::{MessagePreviewKind, Reaction, Reactor, TimelineMessage};
+use crate::domain::message::{MessagePreviewKind, Reaction, Reactor, SendState, TimelineMessage};
 use crate::domain::room::{Room, Space};
 use crate::domain::sticker::{PackId, StickerImage, StickerPack};
 use crate::domain::timeline::EnrichmentDelta;
@@ -207,6 +207,8 @@ pub struct MessageDto {
     pub is_own: bool,
     pub edited: bool,
     pub is_first_unread: bool,
+    pub send_state: SendState,
+    pub send_progress: f32,
     pub has_reply: bool,
     pub reply_event_id: SharedString,
     pub reply_sender: SharedString,
@@ -380,6 +382,8 @@ pub fn message_to_dto(m: &TimelineMessage, media: &dyn MediaCache) -> MessageDto
         is_own: m.is_own,
         edited: m.edited,
         is_first_unread: m.is_first_unread,
+        send_state: m.send_state,
+        send_progress: m.send_state.fraction(),
         has_reply: m.reply.is_some(),
         reply_event_id: SharedString::from(m.reply.as_ref().map_or("", |r| r.event_id.as_str())),
         reply_sender: SharedString::from(m.reply.as_ref().map_or("", |r| r.sender.as_str())),
@@ -416,8 +420,8 @@ pub fn message_to_dto(m: &TimelineMessage, media: &dyn MediaCache) -> MessageDto
                 .unwrap_or_default()
                 .to_uppercase(),
         );
-        if let Some(event_id) = m.event_id.as_deref() {
-            if let Some(path) = media.thumbnail_path(event_id) {
+        if let Some(media_key) = m.media_key() {
+            if let Some(path) = media.thumbnail_path(media_key) {
                 match peek_thumbnail(&path, &m.unique_id) {
                     Decoded::Ready(img) => {
                         dto.thumbnail = Some(img);
@@ -430,7 +434,7 @@ pub fn message_to_dto(m: &TimelineMessage, media: &dyn MediaCache) -> MessageDto
                     Decoded::Pending => {}
                 }
                 thumbnail_path = Some(path);
-            } else if let Some(reason) = media.thumbnail_failure(event_id) {
+            } else if let Some(reason) = media.thumbnail_failure(media_key) {
                 dto.media_state = MediaState::Failed;
                 dto.media_failure = failure_kind(reason);
             }
@@ -458,9 +462,9 @@ pub fn message_to_dto(m: &TimelineMessage, media: &dyn MediaCache) -> MessageDto
 pub fn enrich_to_update(delta: &EnrichmentDelta, media: &dyn MediaCache) -> EnrichUpdate {
     let thumbnail = match delta.thumbnail {
         ThumbnailOutcome::Ready => delta
-            .event_id
+            .media_key
             .as_deref()
-            .and_then(|event_id| media.thumbnail_path(event_id))
+            .and_then(|media_key| media.thumbnail_path(media_key))
             .map_or(ThumbUpdate::Unchanged, |thumb_path| {
                 match load_thumbnail(&thumb_path, &delta.unique_id) {
                     Decoded::Ready(image) => ThumbUpdate::Ready(image),

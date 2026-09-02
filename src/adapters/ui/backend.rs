@@ -221,6 +221,7 @@ struct AvatarTargets<'a> {
     rooms: HashSet<&'a str>,
     spaces: HashSet<&'a str>,
     user: bool,
+    attachment_preview: bool,
 }
 
 fn group_slots(slots: &[AvatarSlot]) -> AvatarTargets<'_> {
@@ -240,6 +241,7 @@ fn group_slots(slots: &[AvatarSlot]) -> AvatarTargets<'_> {
                 targets.spaces.insert(id.as_str());
             }
             AvatarSlot::User => targets.user = true,
+            AvatarSlot::AttachmentPreview => targets.attachment_preview = true,
         }
     }
     targets
@@ -269,10 +271,15 @@ fn apply_avatar_ready<B: UiBackend>(
         return;
     };
     let targets = group_slots(slots);
-    if targets.user
+    if (targets.user || targets.attachment_preview)
         && let Some(w) = weak.upgrade()
     {
-        w.apply_user_avatar(Some(image.clone()));
+        if targets.user {
+            w.apply_user_avatar(Some(image.clone()));
+        }
+        if targets.attachment_preview {
+            w.apply_attachment_preview(Some(image.clone()));
+        }
     }
     B::with_models(|timeline, rooms, spaces, subspaces| {
         patch_rows_by_id(timeline, &targets.messages, &B::message_id, |entry| {

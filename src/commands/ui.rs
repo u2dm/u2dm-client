@@ -1,6 +1,7 @@
 use strum::Display as StrumDisplay;
 
 use crate::domain::auth::LoginCredentials;
+use crate::domain::media::AttachmentPick;
 use crate::domain::room::RoomId;
 use crate::domain::sticker::PackId;
 use crate::domain::timeline::{PaginationDirection, PaginationOutcome, TimelineFocus};
@@ -39,6 +40,19 @@ pub enum UiCommand {
         body: String,
         reply_to: Option<String>,
     },
+    #[strum(to_string = "PickAttachment({room_id})")]
+    PickAttachment {
+        room_id: RoomId,
+        pick: AttachmentPick,
+    },
+    #[strum(to_string = "SendAttachment({room_id})")]
+    SendAttachment {
+        room_id: RoomId,
+        caption: String,
+        as_document: bool,
+        reply_to: Option<String>,
+    },
+    CancelAttachment,
     #[strum(to_string = "SendSticker({room_id},{shortcode})")]
     SendSticker {
         room_id: RoomId,

@@ -81,6 +81,9 @@ export enum UserMessageKind {
     file-download-failed,
     media-open-failed,
     media-not-viewable,
+    attachment-unreadable,
+    attachment-too-large,
+    send-attachment-failed,
     file-save-failed,
     file-saved,
     verification-accept-failed,
@@ -93,6 +96,13 @@ export enum UserMessageKind {
     verification-mismatch,
     verification-accepted-elsewhere,
     verification-failed,
+}
+
+export enum SendState {
+    sent,
+    sending,
+    uploading,
+    failed,
 }
 
 export enum MediaState {

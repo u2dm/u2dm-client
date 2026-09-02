@@ -6,8 +6,8 @@ use super::dto::{DemoData, RoomDto, SpaceDto, StickerPackDto};
 use super::media;
 use super::timeline::{self, scenario};
 use crate::domain::auth::Session;
-use crate::domain::media::ImageMeta;
-use crate::domain::message::{MessageBody, ReplyInfo, RichText, TimelineMessage};
+use crate::domain::media::{FileMeta, ImageMeta, OutgoingAttachment};
+use crate::domain::message::{MessageBody, ReplyInfo, RichText, SendState, TimelineMessage};
 use crate::domain::room::{Room, RoomId, Space};
 use crate::domain::sticker::{StickerImage, StickerPack};
 
@@ -148,6 +148,7 @@ pub fn own_message(sequence: u64, body: &str, reply: Option<ReplyInfo>) -> Timel
     TimelineMessage {
         unique_id: id.clone(),
         event_id: Some(id),
+        local_id: None,
         sender_pronouns: Vec::new(),
         sender: own_user().to_owned(),
         sender_display_name: Some("You".to_owned()),
@@ -158,6 +159,7 @@ pub fn own_message(sequence: u64, body: &str, reply: Option<ReplyInfo>) -> Timel
         reply,
         edited: false,
         is_first_unread: false,
+        send_state: SendState::default(),
         reactions: Vec::new(),
     }
 }
@@ -174,6 +176,7 @@ pub fn own_sticker(
     TimelineMessage {
         unique_id: id.clone(),
         event_id: Some(id),
+        local_id: None,
         sender_pronouns: Vec::new(),
         sender: own_user().to_owned(),
         sender_display_name: Some("You".to_owned()),
@@ -192,6 +195,57 @@ pub fn own_sticker(
         reply,
         edited: false,
         is_first_unread: false,
+        send_state: SendState::default(),
+        reactions: Vec::new(),
+    }
+}
+
+pub fn own_attachment(
+    sequence: u64,
+    attachment: &OutgoingAttachment,
+    reply: Option<ReplyInfo>,
+) -> TimelineMessage {
+    let id = format!("demo-sent-{sequence}");
+    let picked = &attachment.picked;
+    let as_image = picked.is_image() && !attachment.as_document;
+    let body = if as_image {
+        let (width, height) = picked.dimensions.unzip();
+        MessageBody::Image {
+            caption: attachment
+                .caption
+                .as_ref()
+                .map(|text| RichText::plain(text.clone())),
+            meta: ImageMeta {
+                width,
+                height,
+                mimetype: Some(picked.mimetype.clone()),
+                filename: Some(picked.filename.clone()),
+            },
+        }
+    } else {
+        MessageBody::File {
+            meta: FileMeta {
+                filename: picked.filename.clone(),
+                mimetype: Some(picked.mimetype.clone()),
+                size: Some(picked.size),
+            },
+        }
+    };
+    TimelineMessage {
+        unique_id: id.clone(),
+        event_id: Some(id),
+        local_id: None,
+        sender_pronouns: Vec::new(),
+        sender: own_user().to_owned(),
+        sender_display_name: Some("You".to_owned()),
+        sender_avatar_url: Some(own_user().to_owned()),
+        body,
+        timestamp: now_ms(),
+        is_own: true,
+        reply,
+        edited: false,
+        is_first_unread: false,
+        send_state: SendState::default(),
         reactions: Vec::new(),
     }
 }
@@ -253,6 +307,7 @@ fn synthesized_message(dto: &RoomDto, room: &Room) -> TimelineMessage {
     TimelineMessage {
         unique_id: id.clone(),
         event_id: Some(id),
+        local_id: None,
         sender_pronouns: pronouns(&sender),
         sender_avatar_url: Some(sender.clone()),
         sender,
@@ -263,6 +318,7 @@ fn synthesized_message(dto: &RoomDto, room: &Room) -> TimelineMessage {
         reply: None,
         edited: room.last_message_edited,
         is_first_unread: false,
+        send_state: SendState::default(),
         reactions: Vec::new(),
     }
 }

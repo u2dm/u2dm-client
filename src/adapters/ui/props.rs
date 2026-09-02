@@ -49,6 +49,7 @@ pub trait UiProps {
     fn set_login_method_kind(&self, method: LoginMethod);
     fn set_toast_message(&self, kind: UserMessageKind);
     fn set_verification_error(&self, kind: UserMessageKind);
+    fn set_attachment_error(&self, kind: UserMessageKind);
     fn set_connection_state(&self, status: &ConnectionStatus);
     fn set_timeline_state(&self, status: TimelineStatus);
     fn set_verification_phase(&self, phase: VerifyStep);
@@ -56,6 +57,7 @@ pub trait UiProps {
     fn get_string(&self, prop: StringProp) -> SharedString;
     fn get_int(&self, prop: IntProp) -> i32;
     fn apply_user_avatar(&self, avatar: Option<Image>);
+    fn apply_attachment_preview(&self, preview: Option<Image>);
     fn apply_login_messages(&self, messages: &[UserMessage]);
     fn apply_emoji_model(&self, emojis: &[DomainVerificationEmoji]);
     fn clear_emoji_model(&self);

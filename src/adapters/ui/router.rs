@@ -5,6 +5,7 @@ use super::props::send_command;
 use super::schema::simple_callbacks;
 use crate::commands::ui::{UiCommand, ViewportChanged};
 use crate::domain::auth::LoginCredentials;
+use crate::domain::media::AttachmentPick;
 use crate::domain::room::RoomId;
 use crate::domain::sticker::PackId;
 
@@ -87,6 +88,48 @@ pub fn send_sticker(
             room_id: RoomId::new(room_id),
             pack: PackId::new(pack_id),
             shortcode,
+            reply_to: (!reply_to.is_empty()).then_some(reply_to),
+        },
+    );
+}
+
+pub fn pick_photo(tx: &Tx, room_id: String) {
+    pick_attachment(tx, room_id, AttachmentPick::Media);
+}
+
+pub fn pick_document(tx: &Tx, room_id: String) {
+    pick_attachment(tx, room_id, AttachmentPick::Document);
+}
+
+fn pick_attachment(tx: &Tx, room_id: String, pick: AttachmentPick) {
+    if room_id.is_empty() {
+        return;
+    }
+    send_command(
+        tx,
+        UiCommand::PickAttachment {
+            room_id: RoomId::new(room_id),
+            pick,
+        },
+    );
+}
+
+pub fn send_attachment(
+    tx: &Tx,
+    room_id: String,
+    caption: String,
+    as_document: bool,
+    reply_to: String,
+) {
+    if room_id.is_empty() {
+        return;
+    }
+    send_command(
+        tx,
+        UiCommand::SendAttachment {
+            room_id: RoomId::new(room_id),
+            caption,
+            as_document,
             reply_to: (!reply_to.is_empty()).then_some(reply_to),
         },
     );

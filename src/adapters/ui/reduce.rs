@@ -6,7 +6,7 @@ use slint::{Model, SharedString, VecModel};
 use super::backend::{UiBackend, UiEventContext};
 use super::decode::{AvatarSlot, clear_session_media, load_avatar_async, request_sticker};
 use super::dto::{GRID_COLUMNS, sticker_grid};
-use super::present::{VerifyStep, user_initial, verification_cancellation};
+use super::present::{VerifyStep, file_extension, user_initial, verification_cancellation};
 use super::props::{BoolProp, IntProp, StringProp, UiProps};
 use super::reconcile::{
     apply_rooms, apply_spaces, apply_timeline_patch, forget_timeline_index, index_sticker_grid,
@@ -14,12 +14,13 @@ use super::reconcile::{
 use crate::commands::effects::{Effect, VerificationActivity, VerificationUpdate};
 use crate::commands::messages::{UserMessage, UserMessageKind};
 use crate::commands::view::{
-    AppViewState, DirectoryView, LifecycleView, PaginationView, StickerView, Toast,
+    AppViewState, AttachmentView, DirectoryView, LifecycleView, PaginationView, StickerView, Toast,
 };
 use crate::domain::room::{RoomId, RoomList};
 use crate::domain::timeline::{TimelinePatch, TimelineStatus};
 use crate::domain::verification::VerificationEvent as DomainVerificationEvent;
 use crate::ports::media::MediaCache;
+use crate::util::format_bytes;
 
 const NO_ANCHOR: i32 = -1;
 
@@ -214,6 +215,7 @@ fn apply_snapshot<B: UiBackend>(
         directory,
         pagination,
         stickers,
+        attachment,
         toast,
     } = view.as_ref();
     let DirectoryView {
@@ -276,6 +278,9 @@ fn apply_snapshot<B: UiBackend>(
             || l.stickers.loading != stickers.loading
     }) {
         apply_stickers::<B>(w, stickers, ctx.media);
+    }
+    if last.is_none_or(|l| l.attachment != *attachment) {
+        apply_attachment(w, attachment);
     }
     if last.is_none_or(|l| l.toast != *toast) {
         apply_toast(w, toast);
@@ -387,6 +392,51 @@ fn apply_lifecycle(w: &impl UiProps, last: Option<&LifecycleView>, next: &Lifecy
             .and_then(|p| load_avatar_async(p, AvatarSlot::User));
         w.apply_user_avatar(avatar);
     }
+}
+
+fn apply_attachment(w: &impl UiProps, attachment: &AttachmentView) {
+    let AttachmentView {
+        visible,
+        filename,
+        mimetype,
+        size,
+        width,
+        height,
+        is_image,
+        preview_path,
+        sending,
+        error,
+        error_detail,
+    } = attachment;
+
+    w.set_bool(BoolProp::AttachmentVisible, *visible);
+    w.set_bool(BoolProp::AttachmentIsImage, *is_image);
+    w.set_bool(BoolProp::AttachmentSending, *sending);
+    w.set_string(StringProp::AttachmentFilename, SharedString::from(filename));
+    w.set_string(StringProp::AttachmentMimetype, SharedString::from(mimetype));
+    w.set_string(
+        StringProp::AttachmentExtension,
+        SharedString::from(file_extension(filename).to_uppercase()),
+    );
+    w.set_string(
+        StringProp::AttachmentSize,
+        SharedString::from(if *visible {
+            format_bytes(*size)
+        } else {
+            String::new()
+        }),
+    );
+    w.set_int(IntProp::AttachmentWidth, (*width).cast_signed());
+    w.set_int(IntProp::AttachmentHeight, (*height).cast_signed());
+    w.set_attachment_error(*error);
+    w.set_string(
+        StringProp::AttachmentErrorDetail,
+        SharedString::from(error_detail),
+    );
+    let preview = preview_path
+        .as_deref()
+        .and_then(|p| load_avatar_async(p, AvatarSlot::AttachmentPreview));
+    w.apply_attachment_preview(preview);
 }
 
 fn apply_toast(w: &impl UiProps, toast: &Toast) {
