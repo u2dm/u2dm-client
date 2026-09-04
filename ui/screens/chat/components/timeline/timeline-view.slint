@@ -132,9 +132,9 @@ export component TimelineView inherits Rectangle {
 
         content := TimelineContent {
             x: 0;
-            y: root.header-height + root.spacing;
+            y: root.header-height;
             width: parent.width;
-            height: parent.height - root.header-height - root.spacing;
+            height: parent.height - root.header-height;
             available-width: parent.width;
             bottom-inset: input.height + root.spacing;
         }

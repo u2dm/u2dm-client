@@ -18,7 +18,7 @@ export component ReactionOverlay inherits Rectangle {
     property <length> edge: Space.md;
     property <length> gap: Space.md;
     property <duration> strip-close-delay: Motion.close-delay;
-    property <length> timeline-top: Metrics.header-row + Metrics.timeline-gap;
+    property <length> timeline-top: Metrics.header-row;
 
     property <bool> strip-in-view:
         Reactions.strip-anchor.y + Reactions.strip-anchor.height > root.timeline-top
