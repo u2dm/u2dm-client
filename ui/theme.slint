@@ -141,6 +141,10 @@ export global AppStyle {
     out property <color> overlay-media-scrim: Palette.background.transparentize(0.3);
     out property <color> overlay-sticker-scrim: Palette.background.transparentize(0.15);
 
+    out property <brush> composer-gradient: @linear-gradient(180deg,
+        Palette.background.transparentize(1) 0%,
+        Palette.background.transparentize(0) 100%);
+
     out property <brush> brand-glow-primary: @radial-gradient(circle, Palette.accent-background.transparentize(0.78) 0%, Palette.accent-background.transparentize(1) 62%);
     out property <brush> brand-glow-secondary: @radial-gradient(circle, root.accent-background-soft 0%, Palette.accent-background.transparentize(1) 60%);
 

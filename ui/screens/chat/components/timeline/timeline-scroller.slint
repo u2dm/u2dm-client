@@ -11,6 +11,7 @@ export component TimelineScroller inherits Rectangle {
     in property <int> prepend-token;
     in property <bool> backwards-loading;
     in property <bool> forwards-loading;
+    in property <length> bottom-inset;
 
     out property <bool> at-top: flickable.at-top;
     out property <bool> at-bottom: flickable.at-bottom;
@@ -222,14 +223,18 @@ export component TimelineScroller inherits Rectangle {
                 * (self.viewport-height / self.item-count)
         }
 
-        for msg[row] in RoomView.timeline: MessageBubble {
-            is-own: msg.is-own;
-            msg: msg;
-            timeline-row: row;
-            available-width: root.available-width;
-            init => {
-                if msg.needs-media {
-                    Actions.request-media(msg.unique-id);
+        for msg[row] in RoomView.timeline: VerticalLayout {
+            padding-bottom: row == RoomView.timeline.length - 1 ? root.bottom-inset : 0px;
+
+            MessageBubble {
+                is-own: msg.is-own;
+                msg: msg;
+                timeline-row: row;
+                available-width: root.available-width;
+                init => {
+                    if msg.needs-media {
+                        Actions.request-media(msg.unique-id);
+                    }
                 }
             }
         }

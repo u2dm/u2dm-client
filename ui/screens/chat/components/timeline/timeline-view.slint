@@ -134,8 +134,9 @@ export component TimelineView inherits Rectangle {
             x: 0;
             y: root.header-height + root.spacing;
             width: parent.width;
-            height: parent.height - root.header-height - input.height - root.spacing * 2;
+            height: parent.height - root.header-height - root.spacing;
             available-width: parent.width;
+            bottom-inset: input.height + root.spacing;
         }
 
         if root.is-blocking-status: StatusPill {
@@ -166,7 +167,7 @@ export component TimelineView inherits Rectangle {
             y: 0;
             width: root.overlay-width;
             height: root.height;
-            timeline-bottom: content.y + content.height;
+            timeline-bottom: content.y + content.height - input.height;
             closed => {
                 input.focus-input();
             }

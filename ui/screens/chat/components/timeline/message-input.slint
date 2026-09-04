@@ -8,7 +8,7 @@ import { EmojiStore } from "./emoji-picker.slint";
 import { PickerPanel } from "./picker-panel.slint";
 import { AttachMenu } from "./attach-menu.slint";
 import { ReplyQuote } from "../reply-quote.slint";
-import { AppStyle, Fonts, IconSize, Metrics, Radius, Size, Space } from "../../../../theme.slint";
+import { AppStyle, Fonts, IconSize, Metrics, Radius, Size, Space, Stroke } from "../../../../theme.slint";
 import { ClickArea } from "../../../../components/a11y.slint";
 import { ModalHost } from "../../../../components/overlay.slint";
 import { Actions } from "../../../../actions.slint";
@@ -31,6 +31,9 @@ export component MessageInput inherits Rectangle {
     property <length> picker-headroom: root.overlay-height - root.height
         - Metrics.header-row - Space.xl;
 
+    property <length> surface-inset: Space.lg;
+    property <length> row-inset: Space.sm;
+
     property <int> max-lines: 6;
     property <length> text-inset: Space.md;
     property <length> line-height: line-probe.preferred-height;
@@ -43,8 +46,8 @@ export component MessageInput inherits Rectangle {
         root.text-height + 2 * root.text-inset,
     );
 
-    background: Palette.alternate-background;
-    height: layout.preferred-height;
+    background: AppStyle.composer-gradient;
+    height: layout.preferred-height + root.surface-inset;
 
     function submit() {
         if root.has-text {
@@ -140,7 +143,7 @@ export component MessageInput inherits Rectangle {
         }
 
         AttachMenu {
-            x: Space.lg - root.overlay-x;
+            x: root.surface-inset + root.row-inset - root.overlay-x;
             y: -self.height - Space.md - root.overlay-y;
             photo-picked => {
                 root.pick(false);
@@ -184,180 +187,192 @@ export component MessageInput inherits Rectangle {
         text-input.set-selection-offsets(root.pending-insert.caret, root.pending-insert.caret);
     }
 
-    layout := VerticalLayout {
-        if root.is-replying: Rectangle {
-            height: Metrics.reply-bar;
-            background: AppStyle.surface-sunken;
+    surface := Rectangle {
+        x: root.surface-inset;
+        y: 0;
+        width: root.width - 2 * root.surface-inset;
+        height: layout.preferred-height;
+        background: Palette.alternate-background;
+        border-radius: Radius.xl;
+        border-width: Stroke.hairline;
+        border-color: AppStyle.border;
+        clip: true;
 
-            HorizontalLayout {
-                padding-left: Space.lg;
-                padding-right: Space.md;
-                padding-top: Space.md;
-                padding-bottom: Space.md;
-                spacing: Space.md;
+        layout := VerticalLayout {
+            if root.is-replying: Rectangle {
+                height: Metrics.reply-bar;
+                background: AppStyle.overlay-subtle;
 
-                ReplyQuote {
-                    horizontal-stretch: 1;
-                    sender: @tr("Reply to {}", Composer.reply-sender);
-                    preview: Composer.reply-preview;
-                }
+                HorizontalLayout {
+                    padding-left: Space.lg;
+                    padding-right: Space.md;
+                    padding-top: Space.md;
+                    padding-bottom: Space.md;
+                    spacing: Space.md;
 
-                cancel-reply-touch := ClickArea {
-                    width: Size.md;
-                    ring-radius: Radius.sm;
-                    label: @tr("Cancel reply");
-                    clicked => {
-                        Composer.clear();
+                    ReplyQuote {
+                        horizontal-stretch: 1;
+                        sender: @tr("Reply to {}", Composer.reply-sender);
+                        preview: Composer.reply-preview;
                     }
 
-                    IconDisplay {
-                        x: (parent.width - self.width) / 2;
-                        y: (parent.height - self.height) / 2;
-                        icon: IconSet.X;
-                        size: IconSize.sm;
-                        stroke: AppStyle.foreground-muted;
-                    }
-                }
-            }
-        }
+                    cancel-reply-touch := ClickArea {
+                        width: Size.md;
+                        ring-radius: Radius.sm;
+                        label: @tr("Cancel reply");
+                        clicked => {
+                            Composer.clear();
+                        }
 
-        HorizontalLayout {
-            height: root.row-height;
-            padding-left: Space.lg;
-            padding-right: Space.lg;
-
-            VerticalLayout {
-                alignment: end;
-
-                attach-touch := ClickArea {
-                    width: Size.target;
-                    height: Metrics.composer-row;
-                    ring-radius: Radius.sm;
-                    label: @tr("Attach a photo or a file");
-                    clicked => {
-                        Reactions.close();
-                        Shell.picker-open = false;
-                        Shell.attach-open = !Shell.attach-open;
-                    }
-
-                    IconDisplay {
-                        x: (parent.width - self.width) / 2;
-                        y: (parent.height - self.height) / 2;
-                        icon: IconSet.Paperclip;
-                        size: IconSize.md;
-                        stroke: Shell.attach-open
-                            ? Palette.accent-background
-                            : AppStyle.foreground-muted;
-                    }
-                }
-            }
-
-            keys := FocusScope {
-                horizontal-stretch: 1;
-                focus-on-click: false;
-                focus-on-tab-navigation: false;
-                capture-key-pressed(event) => {
-                    if (event.text == Key.Return && !event.modifiers.shift) {
-                        root.submit();
-                        return accept;
-                    }
-                    return reject;
-                }
-
-                Rectangle {
-                    scroll := Flickable {
-                        x: 0;
-                        y: (parent.height - self.height) / 2;
-                        width: parent.width;
-                        height: root.text-height;
-                        interactive: false;
-                        viewport-width: self.width;
-                        viewport-height: max(self.height, text-input.preferred-height);
-
-                        text-input := TextInput {
-                            color: Palette.foreground;
-                            font-family: Fonts.emoji;
-                            font-size: Fonts.body;
-                            vertical-alignment: top;
-                            single-line: false;
-                            wrap: word-wrap;
-                            page-height: scroll.height;
-                            enabled: Shell.background-reachable;
-                            accessible-label: @tr("Message");
-                            accessible-placeholder-text: @tr("Send a message...");
-                            text <=> root.message;
-                            edited => {
-                                root.caret = self.cursor-position-byte-offset;
-                                root.keep-scroll-in-range();
-                            }
-                            cursor-position-changed(pos) => {
-                                root.caret = self.cursor-position-byte-offset;
-                                root.reveal-caret(pos.y);
-                            }
+                        IconDisplay {
+                            x: (parent.width - self.width) / 2;
+                            y: (parent.height - self.height) / 2;
+                            icon: IconSet.X;
+                            size: IconSize.sm;
+                            stroke: AppStyle.foreground-muted;
                         }
                     }
-
-                    if !root.has-text: Text {
-                        x: 0;
-                        y: scroll.y;
-                        width: parent.width;
-                        height: scroll.height;
-                        text: @tr("Send a message...");
-                        color: AppStyle.foreground-muted;
-                        font-size: Fonts.body;
-                        vertical-alignment: center;
-                        horizontal-alignment: left;
-                    }
                 }
             }
 
-            VerticalLayout {
-                alignment: end;
+            HorizontalLayout {
+                height: root.row-height;
+                padding-left: root.row-inset;
+                padding-right: root.row-inset;
 
-                emoji-touch := ClickArea {
-                    width: Size.target;
-                    height: Metrics.composer-row;
-                    ring-radius: Radius.sm;
-                    label: @tr("Emoji and stickers");
-                    clicked => {
-                        Reactions.close();
-                        Shell.attach-open = false;
-                        Shell.picker-open = !Shell.picker-open;
-                    }
+                VerticalLayout {
+                    alignment: end;
 
-                    IconDisplay {
-                        x: (parent.width - self.width) / 2;
-                        y: (parent.height - self.height) / 2;
-                        icon: IconSet.Smile;
-                        size: IconSize.md;
-                        stroke: Shell.picker-open
-                            ? Palette.accent-background
-                            : AppStyle.foreground-muted;
+                    attach-touch := ClickArea {
+                        width: Size.target;
+                        height: Metrics.composer-row;
+                        ring-radius: Radius.sm;
+                        label: @tr("Attach a photo or a file");
+                        clicked => {
+                            Reactions.close();
+                            Shell.picker-open = false;
+                            Shell.attach-open = !Shell.attach-open;
+                        }
+
+                        IconDisplay {
+                            x: (parent.width - self.width) / 2;
+                            y: (parent.height - self.height) / 2;
+                            icon: IconSet.Paperclip;
+                            size: IconSize.md;
+                            stroke: Shell.attach-open
+                                ? Palette.accent-background
+                                : AppStyle.foreground-muted;
+                        }
                     }
                 }
-            }
 
-            VerticalLayout {
-                alignment: end;
-
-                send-touch := ClickArea {
-                    width: Size.target;
-                    height: Metrics.composer-row;
-                    ring-radius: Radius.sm;
-                    enabled: root.has-text;
-                    label: @tr("Send");
-                    clicked => {
-                        root.submit();
+                keys := FocusScope {
+                    horizontal-stretch: 1;
+                    focus-on-click: false;
+                    focus-on-tab-navigation: false;
+                    capture-key-pressed(event) => {
+                        if (event.text == Key.Return && !event.modifiers.shift) {
+                            root.submit();
+                            return accept;
+                        }
+                        return reject;
                     }
 
-                    IconDisplay {
-                        x: (parent.width - self.width) / 2;
-                        y: (parent.height - self.height) / 2;
-                        icon: IconSet.SendHorizontal;
-                        size: IconSize.md;
-                        stroke: root.has-text
-                            ? Palette.accent-background
-                            : AppStyle.foreground-faint;
+                    Rectangle {
+                        scroll := Flickable {
+                            x: 0;
+                            y: (parent.height - self.height) / 2;
+                            width: parent.width;
+                            height: root.text-height;
+                            interactive: false;
+                            viewport-width: self.width;
+                            viewport-height: max(self.height, text-input.preferred-height);
+
+                            text-input := TextInput {
+                                color: Palette.foreground;
+                                font-family: Fonts.emoji;
+                                font-size: Fonts.body;
+                                vertical-alignment: top;
+                                single-line: false;
+                                wrap: word-wrap;
+                                page-height: scroll.height;
+                                enabled: Shell.background-reachable;
+                                accessible-label: @tr("Message");
+                                accessible-placeholder-text: @tr("Send a message...");
+                                text <=> root.message;
+                                edited => {
+                                    root.caret = self.cursor-position-byte-offset;
+                                    root.keep-scroll-in-range();
+                                }
+                                cursor-position-changed(pos) => {
+                                    root.caret = self.cursor-position-byte-offset;
+                                    root.reveal-caret(pos.y);
+                                }
+                            }
+                        }
+
+                        if !root.has-text: Text {
+                            x: 0;
+                            y: scroll.y;
+                            width: parent.width;
+                            height: scroll.height;
+                            text: @tr("Send a message...");
+                            color: AppStyle.foreground-muted;
+                            font-size: Fonts.body;
+                            vertical-alignment: center;
+                            horizontal-alignment: left;
+                        }
+                    }
+                }
+
+                VerticalLayout {
+                    alignment: end;
+
+                    emoji-touch := ClickArea {
+                        width: Size.target;
+                        height: Metrics.composer-row;
+                        ring-radius: Radius.sm;
+                        label: @tr("Emoji and stickers");
+                        clicked => {
+                            Reactions.close();
+                            Shell.attach-open = false;
+                            Shell.picker-open = !Shell.picker-open;
+                        }
+
+                        IconDisplay {
+                            x: (parent.width - self.width) / 2;
+                            y: (parent.height - self.height) / 2;
+                            icon: IconSet.Smile;
+                            size: IconSize.md;
+                            stroke: Shell.picker-open
+                                ? Palette.accent-background
+                                : AppStyle.foreground-muted;
+                        }
+                    }
+                }
+
+                VerticalLayout {
+                    alignment: end;
+
+                    send-touch := ClickArea {
+                        width: Size.target;
+                        height: Metrics.composer-row;
+                        ring-radius: Radius.sm;
+                        enabled: root.has-text;
+                        label: @tr("Send");
+                        clicked => {
+                            root.submit();
+                        }
+
+                        IconDisplay {
+                            x: (parent.width - self.width) / 2;
+                            y: (parent.height - self.height) / 2;
+                            icon: IconSet.SendHorizontal;
+                            size: IconSize.md;
+                            stroke: root.has-text
+                                ? Palette.accent-background
+                                : AppStyle.foreground-faint;
+                        }
                     }
                 }
             }

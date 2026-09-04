@@ -9,6 +9,7 @@ import { Fonts, IconSize, Radius, Size, Space, Weight } from "../../../../theme.
 
 export component TimelineContent inherits Rectangle {
     in property <length> available-width;
+    in property <length> bottom-inset;
 
     clip: true;
 
@@ -21,25 +22,26 @@ export component TimelineContent inherits Rectangle {
         prepend-token: RoomView.prepend-token;
         backwards-loading: RoomView.backwards-loading;
         forwards-loading: RoomView.forwards-loading;
+        bottom-inset: root.bottom-inset;
     }
 
     if RoomView.backwards-loading && RoomView.timeline.length > 0: StatusPill {
         x: Space.xl;
-        y: parent.height - self.height - Space.xl;
+        y: parent.height - self.height - Space.xl - root.bottom-inset;
         text: @tr("Loading older messages...");
         loading: true;
     }
 
     if RoomView.forwards-loading && RoomView.timeline.length > 0: StatusPill {
         x: Space.xl;
-        y: parent.height - self.height - Space.xl;
+        y: parent.height - self.height - Space.xl - root.bottom-inset;
         text: @tr("Loading newer messages...");
         loading: true;
     }
 
     if !scroller.following && RoomView.timeline.length > 0: ClickArea {
         x: parent.width - self.width - Space.xl;
-        y: parent.height - self.height - Space.xl;
+        y: parent.height - self.height - Space.xl - root.bottom-inset;
         width: Size.xl;
         height: Size.xl;
         border-radius: Radius.xl;
