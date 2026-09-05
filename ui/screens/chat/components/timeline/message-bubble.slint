@@ -190,8 +190,8 @@ export component MessageBubble inherits VerticalLayout {
                         event-id: msg.event-id,
                         row: root.timeline-row,
                         is-own: root.is-own,
-                        x: self.absolute-position.x,
-                        y: self.absolute-position.y,
+                        x: row.absolute-position.x + self.x,
+                        y: row.absolute-position.y + self.y,
                         width: self.width,
                         height: self.height,
                     };

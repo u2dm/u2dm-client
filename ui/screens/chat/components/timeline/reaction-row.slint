@@ -81,13 +81,19 @@ export component ReactionRow inherits HorizontalLayout {
     alignment: start;
     spacing: Space.sm;
 
-    pure function anchor(index: int, pos: Point, w: length, h: length) -> ReactionAnchor {
-        return { row: index, x: pos.x, y: pos.y, width: w, height: h };
+    pure function anchor(index: int, x: length, y: length, w: length, h: length) -> ReactionAnchor {
+        return {
+            row: index,
+            x: root.absolute-position.x + x,
+            y: root.absolute-position.y + y,
+            width: w,
+            height: h,
+        };
     }
 
     for entry[index] in root.reactions: chip := ReactionChip {
         property <ReactionAnchor> tracked-anchor: root.tracked-index == index
-            ? root.anchor(index, chip.absolute-position, chip.width, chip.height)
+            ? root.anchor(index, chip.x, chip.y, chip.width, chip.height)
             : { row: -1 };
 
         changed tracked-anchor => {
@@ -110,7 +116,7 @@ export component ReactionRow inherits HorizontalLayout {
         changed has-hover => {
             if (self.has-hover && !entry.overflow) {
                 root.hovered(index, root.reactor-text(entry),
-                             root.anchor(index, chip.absolute-position, chip.width, chip.height));
+                             root.anchor(index, chip.x, chip.y, chip.width, chip.height));
             } else {
                 root.unhovered(index);
             }
