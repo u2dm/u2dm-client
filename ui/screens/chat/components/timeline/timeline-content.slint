@@ -61,7 +61,7 @@ export component TimelineContent inherits Rectangle {
         }
 
         if RoomView.new-messages-count > 0: Rectangle {
-            x: parent.width - self.width / 2 - Space.xs;
+            x: (parent.width - self.width) / 2;
             y: -self.height / 2 + Space.xs;
             width: Math.max(Size.xs, badge-text.preferred-width + Space.md);
             height: Size.xs;
@@ -69,6 +69,8 @@ export component TimelineContent inherits Rectangle {
             background: Palette.accent-background;
 
             badge-text := Text {
+                width: parent.width;
+                height: parent.height;
                 text: RoomView.new-messages-count;
                 font-size: Fonts.caption;
                 font-weight: Weight.bold;
