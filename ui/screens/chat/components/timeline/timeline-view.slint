@@ -137,6 +137,7 @@ export component TimelineView inherits Rectangle {
             height: parent.height - root.header-height;
             available-width: parent.width;
             bottom-inset: input.height + root.spacing;
+            composer-top: parent.height - input.height;
         }
 
         if root.is-blocking-status: StatusPill {

@@ -99,6 +99,7 @@ export component MessageBubble inherits VerticalLayout {
     in property <MessageEntry> msg;
     in property <length> available-width;
     in property <int> timeline-row;
+    in property <length> composer-top;
 
     property <color> own-bubble-color: AppStyle.own-bubble;
     property <color> other-bubble-color: Palette.alternate-background;
@@ -107,7 +108,12 @@ export component MessageBubble inherits VerticalLayout {
         min(Metrics.bubble-max, root.available-width - Metrics.bubble-gutter),
     );
 
+    property <length> avatar-size: Size.md;
+    property <length> avatar-inset: Space.md;
+
+    property <int> last-row: max(RoomView.timeline.length - 1, 0);
     property <MessageEntry> previous: RoomView.timeline[max(root.timeline-row - 1, 0)];
+    property <MessageEntry> following: RoomView.timeline[min(root.timeline-row + 1, root.last-row)];
 
     property <bool> is-service: msg.message-type == MessageKind.service;
     property <bool> is-plain-text: msg.message-type == MessageKind.text
@@ -124,6 +130,12 @@ export component MessageBubble inherits VerticalLayout {
         && root.previous.message-type != MessageKind.service
         && root.previous.sender-id != ""
         && root.previous.sender-id == msg.sender-id;
+    property <bool> continued-by-next: root.timeline-row < root.last-row
+        && !root.is-service
+        && !root.following.first-unread
+        && root.following.message-type != MessageKind.service
+        && root.following.sender-id != ""
+        && root.following.sender-id == msg.sender-id;
 
     property <bool> is-image: msg.message-type == MessageKind.image;
     property <bool> is-sticker: msg.message-type == MessageKind.sticker;
@@ -152,6 +164,16 @@ export component MessageBubble inherits VerticalLayout {
     }
 
     if !is-service: message-row := Rectangle {
+        property <bool> has-composer: root.composer-top > 0px;
+        property <length> row-top: self.absolute-position.y;
+        property <bool> starts-above-composer: !self.has-composer
+            || self.row-top < root.composer-top;
+        property <bool> ends-below-composer: self.has-composer
+            && self.row-top + self.height >= root.composer-top;
+        property <bool> shows-avatar: !root.is-own
+            && self.starts-above-composer
+            && (!root.continued-by-next || self.ends-below-composer);
+
         property <bool> hovered: root.has-remote-id
             && (hover-bg.has-hover
             || root.strip-mine
@@ -174,23 +196,13 @@ export component MessageBubble inherits VerticalLayout {
 
         row := HorizontalLayout {
             alignment: is-own ? end : start;
-            padding-left: is-own ? 0 : Space.md;
+            padding-left: is-own ? 0 : root.avatar-inset;
             padding-right: is-own ? Space.md : 0;
             padding-top: root.continues-previous ? 0 : Space.md;
             padding-bottom: Space.xs;
 
-            if !is-own && !root.continues-previous: Avatar {
-                width: Size.md;
-                height: Size.md;
-                background: Avatars.color(msg.color-index);
-                has-image: msg.has-avatar;
-                image: msg.avatar;
-                initial: msg.sender-initial;
-                initial-size: Glyph.xs;
-            }
-
-            if !is-own && root.continues-previous: Rectangle {
-                width: Size.md;
+            if !is-own: Rectangle {
+                width: root.avatar-size;
             }
 
             if !is-own: Rectangle {
@@ -397,6 +409,28 @@ export component MessageBubble inherits VerticalLayout {
                     }
                 }
             }
+        }
+
+        if !is-own: Avatar {
+            property <length> resting: bubble.y + bubble.height - root.avatar-size;
+            property <length> lifted: root.composer-top
+                - message-row.row-top
+                - root.avatar-size;
+
+            visible: message-row.shows-avatar;
+            x: root.avatar-inset;
+            y: !message-row.has-composer
+                ? self.resting
+                : (root.continues-previous
+                    ? min(self.resting, self.lifted)
+                    : max(bubble.y, min(self.resting, self.lifted)));
+            width: root.avatar-size;
+            height: root.avatar-size;
+            background: Avatars.color(msg.color-index);
+            has-image: msg.has-avatar;
+            image: msg.avatar;
+            initial: msg.sender-initial;
+            initial-size: Glyph.xs;
         }
 
         if root.chips-outside: BubbleReactions {

@@ -12,6 +12,7 @@ export component TimelineScroller inherits Rectangle {
     in property <bool> backwards-loading;
     in property <bool> forwards-loading;
     in property <length> bottom-inset;
+    in property <length> composer-top;
 
     out property <bool> at-top: flickable.at-top;
     out property <bool> at-bottom: flickable.at-bottom;
@@ -231,6 +232,7 @@ export component TimelineScroller inherits Rectangle {
                 msg: msg;
                 timeline-row: row;
                 available-width: root.available-width;
+                composer-top: root.composer-top;
                 init => {
                     if msg.needs-media {
                         Actions.request-media(msg.unique-id);
