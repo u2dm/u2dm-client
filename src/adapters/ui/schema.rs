@@ -262,6 +262,7 @@ macro_rules! message_kinds {
         Notice      Notice      "notice";
         Emote       Emote       "emote";
         Image       Image       "image";
+        Video       Video       "video";
         Sticker     Sticker     "sticker";
         File        File        "file";
         Service     Service     "service";
@@ -350,6 +351,7 @@ macro_rules! message_fields {
         image_extension IMAGE_EXTENSION "image-extension" text;
         image_width IMAGE_WIDTH "image-width" int;
         image_height IMAGE_HEIGHT "image-height" int;
+        duration DURATION "duration" text;
         has_avatar HAS_AVATAR "has-avatar" flag;
         needs_media NEEDS_MEDIA "needs-media" flag;
         thumbnail THUMBNAIL "thumbnail" image;

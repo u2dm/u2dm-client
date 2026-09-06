@@ -1,9 +1,11 @@
 use std::path::PathBuf;
+use std::time::Duration;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum MediaKind {
     Photo,
     Sticker,
+    Video,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -41,6 +43,13 @@ pub struct ImageMeta {
     pub height: Option<u32>,
     pub mimetype: Option<String>,
     pub filename: Option<String>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct VideoMeta {
+    pub image: ImageMeta,
+    pub duration: Option<Duration>,
+    pub size: Option<u64>,
 }
 
 #[derive(Debug, Clone, PartialEq)]

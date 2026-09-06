@@ -754,6 +754,7 @@ fn message_to_entry(m: &TimelineMessage, media: &dyn MediaCache) -> MessageEntry
         image_extension: d.image_extension,
         image_width: d.image_width,
         image_height: d.image_height,
+        duration: d.duration,
         event_id: d.event_id,
         has_avatar: d.has_avatar,
         needs_media: d.needs_media,

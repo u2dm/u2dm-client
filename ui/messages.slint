@@ -141,21 +141,27 @@ export global UserMessages {
 }
 
 export global MediaFailures {
-    public pure function reason(failure: MediaFailure) -> string {
+    public pure function reason(failure: MediaFailure, is-video: bool) -> string {
         if failure == MediaFailure.no-source {
-            return @tr("This message carries no image to download.");
+            return is-video
+                ? @tr("This message carries no preview image.")
+                : @tr("This message carries no image to download.");
         }
         if failure == MediaFailure.download {
             return @tr("The homeserver did not send it. It may be offline, or the file may be gone.");
         }
         if failure == MediaFailure.too-large {
-            return @tr("It is larger than the download limit for images.");
+            return is-video
+                ? @tr("It is larger than the download limit for videos.")
+                : @tr("It is larger than the download limit for images.");
         }
         if failure == MediaFailure.storage {
             return @tr("It could not be written to the media cache on this device.");
         }
         if failure == MediaFailure.unreadable {
-            return @tr("It downloaded, but could not be read as an image.");
+            return is-video
+                ? @tr("It downloaded, but could not be read as a video.")
+                : @tr("It downloaded, but could not be read as an image.");
         }
         return @tr("It could not be loaded.");
     }

@@ -10,6 +10,7 @@ import { ReplyQuote } from "../reply-quote.slint";
 import { ServiceMessage } from "./messages/service-message.slint";
 import { TextMessage } from "./messages/text-message.slint";
 import { ImageMessage, ImagePlaceholder } from "./messages/image-message.slint";
+import { VideoMessage, VideoPlaceholder } from "./messages/video-message.slint";
 import { StickerMessage } from "./messages/sticker-message.slint";
 import { FileMessage } from "./messages/file-message.slint";
 import { UtdMessage } from "./messages/utd-message.slint";
@@ -138,9 +139,11 @@ export component MessageBubble inherits VerticalLayout {
         && root.following.sender-id == msg.sender-id;
 
     property <bool> is-image: msg.message-type == MessageKind.image;
+    property <bool> is-video: msg.message-type == MessageKind.video;
+    property <bool> is-visual: root.is-image || root.is-video;
     property <bool> is-sticker: msg.message-type == MessageKind.sticker;
     property <bool> has-caption: msg.body != "";
-    property <bool> has-photo: root.is-image
+    property <bool> has-photo: root.is-visual
         && (msg.media-state != MediaState.idle || (msg.image-width > 0 && msg.image-height > 0));
     property <bool> is-photo-only: root.has-photo && !root.has-caption;
     property <bool> is-unsent: msg.send-state != SendState.sent;
@@ -300,7 +303,7 @@ export component MessageBubble inherits VerticalLayout {
                             }
                         }
 
-                        if root.has-photo: ImageMessage {
+                        if root.has-photo && root.is-image: ImageMessage {
                             thumbnail: msg.thumbnail;
                             media-state: msg.media-state;
                             media-failure: msg.media-failure;
@@ -323,7 +326,35 @@ export component MessageBubble inherits VerticalLayout {
                             send-progress: msg.send-progress;
                         }
 
+                        if root.has-photo && root.is-video: VideoMessage {
+                            poster: msg.thumbnail;
+                            media-state: msg.media-state;
+                            media-failure: msg.media-failure;
+                            mimetype: msg.image-mimetype;
+                            extension: msg.image-extension;
+                            video-width: msg.image-width;
+                            video-height: msg.image-height;
+                            duration: msg.duration;
+                            body: msg.body;
+                            unique-id: msg.unique-id;
+                            styled: msg.styled;
+                            has-links: msg.has-links;
+                            is-own: root.is-own;
+                            event-id: msg.event-id;
+                            frame-limit: root.bubble-max-width;
+                            timestamp: msg.timestamp;
+                            edited: msg.edited;
+                            show-timestamp: root.is-photo-only;
+                            bubble-hovered: message-row.hovered;
+                            send-state: msg.send-state;
+                            send-progress: msg.send-progress;
+                        }
+
                         if root.is-image && !root.has-photo: ImagePlaceholder {
+                            body: msg.body;
+                        }
+
+                        if root.is-video && !root.has-photo: VideoPlaceholder {
                             body: msg.body;
                         }
 

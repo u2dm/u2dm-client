@@ -42,7 +42,7 @@ export component StickerMessage inherits HorizontalLayout {
 
         accessible-role: image;
         accessible-label: root.is-failed
-            ? @tr("Sticker unavailable. {}", MediaFailures.reason(root.media-failure))
+            ? @tr("Sticker unavailable. {}", MediaFailures.reason(root.media-failure, false))
             : (root.alt != "" ? @tr("Sticker: {}", root.alt) : @tr("Sticker"));
 
         if root.is-ready: Image {

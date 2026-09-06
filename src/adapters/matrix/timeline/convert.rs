@@ -5,6 +5,7 @@ use matrix_sdk::ruma::UInt;
 use matrix_sdk::ruma::events::StateEventContentChange;
 use matrix_sdk::ruma::events::room::message::{
     FileMessageEventContent, FormattedBody, ImageMessageEventContent, MessageFormat, MessageType,
+    VideoInfo, VideoMessageEventContent,
 };
 use matrix_sdk::ruma::events::room::name::RoomNameEventContent;
 use matrix_sdk::ruma::events::room::{ImageInfo, MediaSource};
@@ -17,7 +18,7 @@ use matrix_sdk_ui::timeline::{
 
 use super::TimelineContext;
 use crate::adapters::matrix::preview;
-use crate::domain::media::{FileMeta, ImageMeta};
+use crate::domain::media::{FileMeta, ImageMeta, VideoMeta};
 use crate::domain::message::{
     MessageBody, MessagePreviewKind, REACTOR_AVATAR_LIMIT, Reaction, Reactor, ReplyInfo, RichText,
     SendState, ServiceEvent, TimelineMessage,
@@ -357,6 +358,44 @@ fn extract_image_body(
     }
 }
 
+fn video_meta(info: &VideoInfo) -> VideoMeta {
+    VideoMeta {
+        image: ImageMeta {
+            width: info.width.map(pixels),
+            height: info.height.map(pixels),
+            mimetype: info.mimetype.clone(),
+            filename: None,
+        },
+        duration: info.duration,
+        size: info.size.map(Into::into),
+    }
+}
+
+fn extract_video_body(
+    video: &VideoMessageEventContent,
+    media_key: &str,
+    media_sources: &StdMutex<HashMap<String, MediaSource>>,
+) -> MessageBody {
+    if !media_key.is_empty()
+        && let Ok(mut sources) = media_sources.lock()
+    {
+        sources.insert(media_key.to_owned(), video.source.clone());
+        if let Some(info) = &video.info
+            && let Some(ref thumb_source) = info.thumbnail_source
+        {
+            sources.insert(format!("{media_key}:thumb"), thumb_source.clone());
+        }
+    }
+    let mut meta = video.info.as_deref().map(video_meta).unwrap_or_default();
+    meta.image.filename = Some(video.filename().to_owned());
+    MessageBody::Video {
+        caption: video
+            .caption()
+            .map(|caption| rich_body(caption, video.formatted_caption())),
+        meta,
+    }
+}
+
 fn extract_sticker_body(
     sticker: &StickerEventContent,
     media_key: &str,
@@ -417,6 +456,7 @@ fn message_type_to_body(
         MessageType::Notice(n) => MessageBody::Notice(rich_body(&n.body, n.formatted.as_ref())),
         MessageType::Emote(e) => MessageBody::Emote(rich_body(&e.body, e.formatted.as_ref())),
         MessageType::Image(i) => extract_image_body(i, media_key, media_sources),
+        MessageType::Video(v) => extract_video_body(v, media_key, media_sources),
         MessageType::File(f) => extract_file_body(f, media_key, media_sources),
         other => MessageBody::Unsupported {
             kind: other.msgtype().to_string(),

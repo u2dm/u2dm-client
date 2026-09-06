@@ -27,6 +27,14 @@ const PICKABLE_MEDIA_EXTENSIONS: &[&str] = &[
     "mp4", "m4v", "mov", "webm", "mkv", "avi",
 ];
 
+const LAUNCHER_SAFE_VIDEO_FORMATS: &[(&str, &str)] = &[
+    ("video/mp4", "mp4"),
+    ("video/quicktime", "mov"),
+    ("video/webm", "webm"),
+    ("video/x-matroska", "mkv"),
+    ("video/x-msvideo", "avi"),
+];
+
 const LAUNCHER_SAFE_IMAGE_FORMATS: &[(ImageFormat, &str)] = &[
     (ImageFormat::Png, "png"),
     (ImageFormat::Jpeg, "jpg"),
@@ -176,12 +184,24 @@ async fn probe_dimensions(path: PathBuf) -> Option<(u32, u32)> {
 }
 
 fn launcher_safe_extension(data: &[u8]) -> Option<&'static str> {
+    launcher_safe_image_extension(data).or_else(|| launcher_safe_video_extension(data))
+}
+
+fn launcher_safe_image_extension(data: &[u8]) -> Option<&'static str> {
     let format = image::guess_format(data).ok()?;
     let extension = launcher_safe_extension_for(format)?;
     if format.reading_enabled() && !header_parses(data, format) {
         return None;
     }
     Some(extension)
+}
+
+fn launcher_safe_video_extension(data: &[u8]) -> Option<&'static str> {
+    let mime = infer::get(data)?.mime_type();
+    LAUNCHER_SAFE_VIDEO_FORMATS
+        .iter()
+        .find(|(container, _)| *container == mime)
+        .map(|(_, extension)| *extension)
 }
 
 fn launcher_safe_extension_for(format: ImageFormat) -> Option<&'static str> {

@@ -8,14 +8,15 @@ import { AppStyle, Fonts, IconSize, Metrics, Motion, Radius, Size, Space, Weight
 import { Actions } from "../../../../../actions.slint";
 import { TextMessage } from "./text-message.slint";
 
-export component ImageMessage inherits VerticalLayout {
-    in property <image> thumbnail;
+export component VideoMessage inherits VerticalLayout {
+    in property <image> poster;
     in property <MediaState> media-state;
     in property <MediaFailure> media-failure;
     in property <string> mimetype;
     in property <string> extension;
-    in property <int> image-width;
-    in property <int> image-height;
+    in property <int> video-width;
+    in property <int> video-height;
+    in property <string> duration;
     in property <string> body;
     in property <string> unique-id;
     in property <styled-text> styled;
@@ -38,11 +39,12 @@ export component ImageMessage inherits VerticalLayout {
 
     property <length> width-limit: min(root.frame-limit, Metrics.media-width-max);
     property <length> height-limit: Metrics.media-height-max;
-    property <bool> is-ready: root.media-state == MediaState.ready;
+    property <bool> has-poster: root.media-state == MediaState.ready;
     property <bool> is-failed: root.media-state == MediaState.failed;
+    property <bool> is-loading: root.media-state == MediaState.idle;
     property <bool> has-caption: root.body != "";
-    property <bool> is-decoded: root.thumbnail.width > 0 && root.thumbnail.height > 0;
-    property <bool> has-dimensions: root.image-width > 0 && root.image-height > 0;
+    property <bool> is-decoded: root.poster.width > 0 && root.poster.height > 0;
+    property <bool> has-dimensions: root.video-width > 0 && root.video-height > 0;
     property <length> frame-width-min: root.is-failed
         ? min(root.width-limit, Metrics.media-failure-width-min)
         : Metrics.media-width-min;
@@ -54,16 +56,17 @@ export component ImageMessage inherits VerticalLayout {
     property <string> failure-detail: MediaFailures.detail(
         root.extension,
         root.mimetype,
-        root.image-width,
-        root.image-height,
+        root.video-width,
+        root.video-height,
     );
     property <length> action-height: Size.md;
-    property <bool> can-open-externally: root.event-id != ""
-        && root.media-failure != MediaFailure.no-source;
-    property <float> aspect: root.is-ready && root.is-decoded
-        ? root.thumbnail.width / max(root.thumbnail.height, 1)
-        : (root.has-dimensions ? root.image-width / max(root.image-height, 1) : 1.5);
-
+    property <bool> can-open-externally: root.event-id != "";
+    property <float> aspect: root.has-poster && root.is-decoded
+        ? root.poster.width / max(root.poster.height, 1)
+        : (root.has-dimensions ? root.video-width / max(root.video-height, 1) : 1.5);
+    property <length> badge: root.is-cramped
+        ? Metrics.video-play-badge-compact
+        : Metrics.video-play-badge;
 
     HorizontalLayout {
         alignment: start;
@@ -71,12 +74,12 @@ export component ImageMessage inherits VerticalLayout {
         Rectangle {
             width: root.display-width;
             height: root.display-height;
-            background: root.is-ready ? transparent : Palette.alternate-background;
+            background: root.has-poster ? transparent : Palette.alternate-background;
             clip: true;
 
             media-click := ClickArea {
-                enabled: root.is-ready && root.event-id != "";
-                label: root.has-caption ? @tr("Open image: {}", root.body) : @tr("Open image");
+                enabled: root.event-id != "";
+                label: root.has-caption ? @tr("Play video: {}", root.body) : @tr("Play video");
                 ring-radius: Radius.xs;
                 width: 100%;
                 height: 100%;
@@ -84,17 +87,36 @@ export component ImageMessage inherits VerticalLayout {
                     Actions.open-media(root.event-id);
                 }
 
-                if root.is-ready: Image {
+                if root.has-poster: Image {
                     width: 100%;
                     height: 100%;
-                    source: root.thumbnail;
+                    source: root.poster;
                     image-fit: ImageFit.cover;
                 }
             }
 
-            if !root.is-ready && !root.is-failed: Spinner {
+            if !root.is-failed && !root.is-sending: Rectangle {
                 x: (parent.width - self.width) / 2;
                 y: (parent.height - self.height) / 2;
+                width: root.badge;
+                height: root.badge;
+                border-radius: self.height / 2;
+                background: AppStyle.overlay-media-scrim;
+
+                IconDisplay {
+                    x: (parent.width - self.width) / 2;
+                    y: (parent.height - self.height) / 2;
+                    icon: IconSet.Play;
+                    size: root.is-cramped ? IconSize.md : IconSize.lg;
+                    stroke: Palette.foreground;
+                }
+            }
+
+            if root.is-loading && !root.is-sending: Spinner {
+                x: parent.width - self.width - Space.md;
+                y: Space.md;
+                width: IconSize.md;
+                height: IconSize.md;
                 indeterminate: true;
             }
 
@@ -122,14 +144,14 @@ export component ImageMessage inherits VerticalLayout {
                     alignment: center;
 
                     IconDisplay {
-                        icon: IconSet.ImageOff;
+                        icon: IconSet.VideoOff;
                         size: root.is-cramped ? IconSize.md : IconSize.xl;
                         stroke: AppStyle.foreground-faint;
                     }
                 }
 
                 if !root.is-cramped: Text {
-                    text: @tr("Image unavailable");
+                    text: @tr("Video preview unavailable");
                     font-size: Fonts.label;
                     color: AppStyle.foreground-strong;
                     horizontal-alignment: center;
@@ -137,7 +159,7 @@ export component ImageMessage inherits VerticalLayout {
                 }
 
                 Text {
-                    text: MediaFailures.reason(root.media-failure, false);
+                    text: MediaFailures.reason(root.media-failure, true);
                     font-size: root.is-cramped ? Fonts.caption : Fonts.body-small;
                     color: AppStyle.foreground-muted;
                     horizontal-alignment: center;
@@ -161,7 +183,7 @@ export component ImageMessage inherits VerticalLayout {
                         pad: root.is-cramped ? Space.sm : Space.lg;
                         fill: AppStyle.overlay-hover;
                         hover-lift: 0.25;
-                        label: @tr("Try opening this image in another application");
+                        label: @tr("Try opening this video in another application");
                         clicked => {
                             Actions.open-media(root.event-id);
                         }
@@ -180,6 +202,24 @@ export component ImageMessage inherits VerticalLayout {
                             vertical-alignment: center;
                         }
                     }
+                }
+            }
+
+            if root.duration != "" && !root.is-failed: Rectangle {
+                x: Space.md;
+                y: parent.height - self.height - Space.md;
+                width: duration-text.preferred-width + Space.xl;
+                height: duration-text.preferred-height + Space.md;
+                border-radius: self.height / 2;
+                background: AppStyle.overlay-media-scrim;
+
+                duration-text := Text {
+                    x: (parent.width - self.width) / 2;
+                    y: (parent.height - self.height) / 2;
+                    text: root.duration;
+                    font-size: Fonts.body-small;
+                    color: Palette.foreground;
+                    vertical-alignment: center;
                 }
             }
 
@@ -239,10 +279,10 @@ export component ImageMessage inherits VerticalLayout {
     }
 }
 
-export component ImagePlaceholder inherits Text {
+export component VideoPlaceholder inherits Text {
     in property <string> body;
 
-    text: root.body != "" ? @tr("Image: {}", root.body) : @tr("Image");
+    text: root.body != "" ? @tr("Video: {}", root.body) : @tr("Video");
     font-size: Fonts.body;
     color: AppStyle.foreground-strong;
     wrap: word-wrap;

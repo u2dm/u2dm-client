@@ -1,6 +1,6 @@
 use std::hash::{DefaultHasher, Hash, Hasher};
 
-use crate::domain::media::{FileMeta, ImageMeta, MediaKind};
+use crate::domain::media::{FileMeta, ImageMeta, MediaKind, VideoMeta};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum MessagePreviewKind {
@@ -74,6 +74,10 @@ pub enum MessageBody {
         alt: String,
         meta: ImageMeta,
     },
+    Video {
+        caption: Option<RichText>,
+        meta: VideoMeta,
+    },
     File {
         meta: FileMeta,
     },
@@ -101,6 +105,7 @@ impl MessageBody {
             | Self::Service(_)
             | Self::Unsupported { .. } => MessagePreviewKind::Text,
             Self::Image { .. } => MessagePreviewKind::Image,
+            Self::Video { .. } => MessagePreviewKind::Video,
             Self::Sticker { .. } => MessagePreviewKind::Sticker,
             Self::File { .. } => MessagePreviewKind::File,
             Self::UnableToDecrypt => MessagePreviewKind::Encrypted,
@@ -111,6 +116,7 @@ impl MessageBody {
         match self {
             Self::Image { meta, .. } => Some((MediaKind::Photo, meta)),
             Self::Sticker { meta, .. } => Some((MediaKind::Sticker, meta)),
+            Self::Video { meta, .. } => Some((MediaKind::Video, &meta.image)),
             Self::Text(_)
             | Self::Notice(_)
             | Self::Emote(_)

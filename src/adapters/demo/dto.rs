@@ -1,10 +1,11 @@
 use std::collections::HashMap;
+use std::time::Duration;
 
 use serde::Deserialize;
 
 use super::reactions;
 use crate::domain::auth::Session;
-use crate::domain::media::ImageMeta;
+use crate::domain::media::{ImageMeta, VideoMeta};
 use crate::domain::message::{
     MessageBody, MessagePreviewKind, Reaction, ReplyInfo, RichText, SendState, ServiceEvent,
     TimelineMessage,
@@ -175,6 +176,7 @@ pub struct MessageDto {
     edited: bool,
     image: Option<ImageDto>,
     sticker: Option<StickerDto>,
+    video: Option<VideoDto>,
     reply: Option<ReplyDto>,
     service: Option<ServiceDto>,
     #[serde(default)]
@@ -194,6 +196,36 @@ struct ImageDto {
     height: u32,
     mimetype: Option<String>,
     filename: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct VideoDto {
+    width: u32,
+    height: u32,
+    #[serde(default)]
+    duration_secs: u64,
+    mimetype: Option<String>,
+    filename: Option<String>,
+    size: Option<u64>,
+}
+
+impl VideoDto {
+    fn to_meta(&self) -> VideoMeta {
+        VideoMeta {
+            image: ImageMeta {
+                width: Some(self.width),
+                height: Some(self.height),
+                mimetype: Some(
+                    self.mimetype
+                        .clone()
+                        .unwrap_or_else(|| "video/mp4".to_owned()),
+                ),
+                filename: self.filename.clone(),
+            },
+            duration: (self.duration_secs > 0).then(|| Duration::from_secs(self.duration_secs)),
+            size: self.size,
+        }
+    }
 }
 
 #[derive(Deserialize)]
@@ -395,6 +427,12 @@ impl MessageDto {
             return MessageBody::Sticker {
                 alt: self.body.clone(),
                 meta: sticker.to_meta(),
+            };
+        }
+        if let Some(video) = &self.video {
+            return MessageBody::Video {
+                caption: (!self.body.is_empty()).then(|| self.rich_body()),
+                meta: video.to_meta(),
             };
         }
         match &self.image {

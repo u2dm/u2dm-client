@@ -99,6 +99,10 @@ photo_messages() {
   jq -r '.timelines[][] | select(.image) | "\(.id) \(.image.width) \(.image.height)"' "$data"
 }
 
+video_messages() {
+  jq -r '.timelines[][] | select(.video) | "\(.id) \(.video.width) \(.video.height)"' "$data"
+}
+
 sticker_messages() {
   jq -r '.timelines[][] | select(.sticker) | "\(.id) \(.sticker.animated // false)"' "$data"
 }
@@ -164,6 +168,14 @@ fetch_photos() {
   done < <(photo_messages)
 }
 
+fetch_video_posters() {
+  local id width height
+  while read -r id width height; do
+    has_no_asset_on_purpose "$id" && continue
+    fetch "$(photo_url "$id" "$width" "$height")" "$assets/thumbnail-$id.png"
+  done < <(video_messages)
+}
+
 animate_sticker() {
   local source=$1 destination=$2
   magick -dispose background -delay 8 -loop 0 \
@@ -225,5 +237,6 @@ fetch_avatars
 fetch_room_tiles
 fetch_space_tiles
 fetch_photos
+fetch_video_posters
 fetch_stickers
 report

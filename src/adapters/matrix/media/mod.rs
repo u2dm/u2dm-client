@@ -80,6 +80,14 @@ pub(super) fn lookup_media_source(
     })
 }
 
+pub(super) fn lookup_poster_source(
+    media_sources: &StdMutex<HashMap<String, MediaSource>>,
+    event_id: &str,
+) -> Option<MediaSource> {
+    let thumb_key = format!("{event_id}:thumb");
+    media_sources.lock().ok()?.get(&thumb_key).cloned()
+}
+
 pub(super) fn lookup_full_media_source(
     media_sources: &StdMutex<HashMap<String, MediaSource>>,
     event_id: &str,
@@ -100,12 +108,14 @@ pub(super) fn thumbnail_format() -> MediaFormat {
 #[derive(Clone, Copy)]
 pub(super) enum MediaLane {
     Thumbnail,
+    Poster,
     FullFile,
 }
 
 pub(super) fn lane(kind: MediaKind, meta: &ImageMeta) -> MediaLane {
     match kind {
         MediaKind::Sticker => MediaLane::FullFile,
+        MediaKind::Video => MediaLane::Poster,
         MediaKind::Photo if is_animated_mime(meta.mimetype.as_deref()) => MediaLane::FullFile,
         MediaKind::Photo => MediaLane::Thumbnail,
     }
@@ -120,13 +130,14 @@ impl MediaLane {
         match self {
             Self::FullFile => lookup_full_media_source(media_sources, event_id),
             Self::Thumbnail => lookup_media_source(media_sources, event_id),
+            Self::Poster => lookup_poster_source(media_sources, event_id),
         }
     }
 
     pub(super) fn format(self) -> MediaFormat {
         match self {
             Self::FullFile => MediaFormat::File,
-            Self::Thumbnail => thumbnail_format(),
+            Self::Thumbnail | Self::Poster => thumbnail_format(),
         }
     }
 }

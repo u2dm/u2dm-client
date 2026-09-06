@@ -261,7 +261,7 @@ pub fn body_preview(body: &MessageBody) -> String {
         MessageBody::Text(text) | MessageBody::Notice(text) | MessageBody::Emote(text) => {
             text.plain.clone()
         }
-        MessageBody::Image { caption, .. } => caption
+        MessageBody::Image { caption, .. } | MessageBody::Video { caption, .. } => caption
             .as_ref()
             .map(|text| text.plain.clone())
             .unwrap_or_default(),

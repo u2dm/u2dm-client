@@ -943,6 +943,34 @@
         "name": "Marcus",
         "body": "so nobody is driving. we are simply manifesting the mountain",
         "days_ago": 1
+      },
+      {
+        "id": "demo-trip-clip",
+        "sender": "@sarah:matrix.org",
+        "name": "Sarah Chen",
+        "body": "the ferry coming in, finally",
+        "minutes_ago": 14,
+        "video": {
+          "width": 1280,
+          "height": 720,
+          "duration_secs": 42,
+          "mimetype": "video/mp4",
+          "filename": "ferry.mp4",
+          "size": 8400000
+        }
+      },
+      {
+        "id": "demo-trip-clip-noposter-missing",
+        "sender": "@marcus:matrix.org",
+        "name": "Marcus",
+        "minutes_ago": 11,
+        "video": {
+          "width": 1080,
+          "height": 1920,
+          "duration_secs": 3671,
+          "mimetype": "video/quicktime",
+          "filename": "IMG_4410.MOV"
+        }
       }
     ],
     "!cats:demo.local": [

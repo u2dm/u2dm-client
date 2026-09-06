@@ -1,6 +1,7 @@
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::sync::OnceLock;
+use std::time::Duration;
 
 use chrono::{Locale, Timelike};
 use pure_rust_locales::locale_match;
@@ -170,6 +171,23 @@ thread_local! {
     static ACTIVITY_LABELS: RefCell<HashMap<u64, String>> = RefCell::new(HashMap::new());
 }
 
+const SECONDS_PER_MINUTE: u64 = 60;
+const SECONDS_PER_HOUR: u64 = 60 * SECONDS_PER_MINUTE;
+
+pub fn duration_label(duration: Duration) -> String {
+    let total = duration.as_secs();
+    let (hours, minutes, seconds) = (
+        total / SECONDS_PER_HOUR,
+        (total % SECONDS_PER_HOUR) / SECONDS_PER_MINUTE,
+        total % SECONDS_PER_MINUTE,
+    );
+    if hours > 0 {
+        format!("{hours}:{minutes:02}:{seconds:02}")
+    } else {
+        format!("{minutes}:{seconds:02}")
+    }
+}
+
 pub fn invalidate_activity_labels() {
     ACTIVITY_LABELS.with_borrow_mut(HashMap::clear);
 }
@@ -208,7 +226,7 @@ fn format_activity_label(last_activity_ts: u64) -> String {
 pub fn message_body_text(body: &MessageBody) -> &str {
     match body {
         MessageBody::Text(t) | MessageBody::Notice(t) | MessageBody::Emote(t) => &t.plain,
-        MessageBody::Image { caption, .. } => {
+        MessageBody::Image { caption, .. } | MessageBody::Video { caption, .. } => {
             caption.as_ref().map_or("", |text| text.plain.as_str())
         }
         MessageBody::Sticker { alt, .. } => alt,
@@ -221,7 +239,7 @@ pub fn message_body_text(body: &MessageBody) -> &str {
 pub fn message_body_html(body: &MessageBody) -> Option<&str> {
     match body {
         MessageBody::Text(t) | MessageBody::Notice(t) | MessageBody::Emote(t) => t.html.as_deref(),
-        MessageBody::Image { caption, .. } => {
+        MessageBody::Image { caption, .. } | MessageBody::Video { caption, .. } => {
             caption.as_ref().and_then(|text| text.html.as_deref())
         }
         MessageBody::Sticker { .. }
@@ -240,6 +258,7 @@ pub fn message_kind(body: &MessageBody) -> MessageKind {
         MessageBody::Notice(_) => MessageKind::Notice,
         MessageBody::Emote(_) => MessageKind::Emote,
         MessageBody::Image { .. } => MessageKind::Image,
+        MessageBody::Video { .. } => MessageKind::Video,
         MessageBody::Sticker { .. } => MessageKind::Sticker,
         MessageBody::File { .. } => MessageKind::File,
         MessageBody::Service(_) => MessageKind::Service,

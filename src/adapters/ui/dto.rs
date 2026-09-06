@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use slint::{Image, SharedString, StyledText};
 
 use super::decode::{
@@ -5,7 +7,7 @@ use super::decode::{
     record_avatar_need, record_media_need, record_sticker_need,
 };
 use super::present::{
-    MessageKind, ServiceKind, avatar_color_index, avatar_initials, file_extension,
+    MessageKind, ServiceKind, avatar_color_index, avatar_initials, duration_label, file_extension,
     message_body_html, message_body_text, message_kind, message_sender_label,
     message_timestamp_label, pronoun_labels, reaction_key_label, reactor_labels,
     room_activity_label, sender_initial, service_kind, service_target, unsupported_kind,
@@ -14,7 +16,9 @@ use super::present::{
 use super::richtext;
 use super::schema::{define_ui_enum, media_failures, media_states};
 use crate::domain::media::{MediaFailure, ThumbnailOutcome};
-use crate::domain::message::{MessagePreviewKind, Reaction, Reactor, SendState, TimelineMessage};
+use crate::domain::message::{
+    MessageBody, MessagePreviewKind, Reaction, Reactor, SendState, TimelineMessage,
+};
 use crate::domain::room::{Room, Space};
 use crate::domain::sticker::{PackId, StickerImage, StickerPack};
 use crate::domain::timeline::EnrichmentDelta;
@@ -219,6 +223,7 @@ pub struct MessageDto {
     pub service_target: SharedString,
     pub image_width: i32,
     pub image_height: i32,
+    pub duration: SharedString,
     pub image_mimetype: SharedString,
     pub image_extension: SharedString,
     pub thumbnail: Option<Image>,
@@ -355,6 +360,51 @@ fn reaction_dtos(
     (chips, all)
 }
 
+fn apply_media(
+    dto: &mut MessageDto,
+    m: &TimelineMessage,
+    media: &dyn MediaCache,
+) -> Option<PathBuf> {
+    if let MessageBody::Video { meta, .. } = &m.body
+        && let Some(duration) = meta.duration
+    {
+        dto.duration = SharedString::from(&duration_label(duration));
+    }
+
+    let (_, meta) = m.body.media()?;
+    dto.image_width = meta.width.unwrap_or(0).cast_signed();
+    dto.image_height = meta.height.unwrap_or(0).cast_signed();
+    dto.image_mimetype = SharedString::from(meta.mimetype.as_deref().unwrap_or_default());
+    dto.image_extension = SharedString::from(
+        meta.filename
+            .as_deref()
+            .map(file_extension)
+            .unwrap_or_default()
+            .to_uppercase(),
+    );
+
+    let media_key = m.media_key()?;
+    let Some(path) = media.thumbnail_path(media_key) else {
+        if let Some(reason) = media.thumbnail_failure(media_key) {
+            dto.media_state = MediaState::Failed;
+            dto.media_failure = failure_kind(reason);
+        }
+        return None;
+    };
+    match peek_thumbnail(&path, &m.unique_id) {
+        Decoded::Ready(img) => {
+            dto.thumbnail = Some(img);
+            dto.media_state = MediaState::Ready;
+        }
+        Decoded::Failed => {
+            dto.media_state = MediaState::Failed;
+            dto.media_failure = MediaFailureKind::Unreadable;
+        }
+        Decoded::Pending => {}
+    }
+    Some(path)
+}
+
 pub fn message_to_dto(m: &TimelineMessage, media: &dyn MediaCache) -> MessageDto {
     let sender_label = message_sender_label(m);
     let (reactions, all_reactions) = reaction_dtos(&m.reactions, media);
@@ -398,6 +448,7 @@ pub fn message_to_dto(m: &TimelineMessage, media: &dyn MediaCache) -> MessageDto
         service_target: SharedString::from(m.body.service().map_or("", service_target)),
         image_width: 0,
         image_height: 0,
+        duration: SharedString::new(),
         image_mimetype: SharedString::new(),
         image_extension: SharedString::new(),
         thumbnail: None,
@@ -410,38 +461,7 @@ pub fn message_to_dto(m: &TimelineMessage, media: &dyn MediaCache) -> MessageDto
         all_reactions,
     };
 
-    let mut thumbnail_path = None;
-    if let Some((_, meta)) = m.body.media() {
-        dto.image_width = meta.width.unwrap_or(0).cast_signed();
-        dto.image_height = meta.height.unwrap_or(0).cast_signed();
-        dto.image_mimetype = SharedString::from(meta.mimetype.as_deref().unwrap_or_default());
-        dto.image_extension = SharedString::from(
-            meta.filename
-                .as_deref()
-                .map(file_extension)
-                .unwrap_or_default()
-                .to_uppercase(),
-        );
-        if let Some(media_key) = m.media_key() {
-            if let Some(path) = media.thumbnail_path(media_key) {
-                match peek_thumbnail(&path, &m.unique_id) {
-                    Decoded::Ready(img) => {
-                        dto.thumbnail = Some(img);
-                        dto.media_state = MediaState::Ready;
-                    }
-                    Decoded::Failed => {
-                        dto.media_state = MediaState::Failed;
-                        dto.media_failure = MediaFailureKind::Unreadable;
-                    }
-                    Decoded::Pending => {}
-                }
-                thumbnail_path = Some(path);
-            } else if let Some(reason) = media.thumbnail_failure(media_key) {
-                dto.media_state = MediaState::Failed;
-                dto.media_failure = failure_kind(reason);
-            }
-        }
-    }
+    let thumbnail_path = apply_media(&mut dto, m, media);
 
     let avatar_path = m
         .sender_avatar_url
