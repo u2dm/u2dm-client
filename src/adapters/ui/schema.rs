@@ -320,6 +320,7 @@ macro_rules! message_fields {
     ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
         unique_id UNIQUE_ID "unique-id" text;
         sender SENDER "sender" text;
+        sender_id SENDER_ID "sender-id" text;
         pronouns PRONOUNS "pronouns" list;
         body BODY "body" text;
         styled STYLED "styled" styled;

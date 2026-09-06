@@ -107,6 +107,8 @@ export component MessageBubble inherits VerticalLayout {
         min(Metrics.bubble-max, root.available-width - Metrics.bubble-gutter),
     );
 
+    property <MessageEntry> previous: RoomView.timeline[max(root.timeline-row - 1, 0)];
+
     property <bool> is-service: msg.message-type == MessageKind.service;
     property <bool> is-plain-text: msg.message-type == MessageKind.text
         || msg.message-type == MessageKind.notice
@@ -115,6 +117,13 @@ export component MessageBubble inherits VerticalLayout {
     property <bool> is-focused: root.has-remote-id && msg.event-id == RoomView.focus-event-id;
     property <bool> strip-mine: root.has-remote-id
         && Reactions.strip-anchor.event-id == msg.event-id;
+
+    property <bool> continues-previous: root.timeline-row > 0
+        && !root.is-service
+        && !msg.first-unread
+        && root.previous.message-type != MessageKind.service
+        && root.previous.sender-id != ""
+        && root.previous.sender-id == msg.sender-id;
 
     property <bool> is-image: msg.message-type == MessageKind.image;
     property <bool> is-sticker: msg.message-type == MessageKind.sticker;
@@ -167,10 +176,10 @@ export component MessageBubble inherits VerticalLayout {
             alignment: is-own ? end : start;
             padding-left: is-own ? 0 : Space.md;
             padding-right: is-own ? Space.md : 0;
-            padding-top: Space.xs;
+            padding-top: root.continues-previous ? 0 : Space.md;
             padding-bottom: Space.xs;
 
-            if !is-own: Avatar {
+            if !is-own && !root.continues-previous: Avatar {
                 width: Size.md;
                 height: Size.md;
                 background: Avatars.color(msg.color-index);
@@ -178,6 +187,10 @@ export component MessageBubble inherits VerticalLayout {
                 image: msg.avatar;
                 initial: msg.sender-initial;
                 initial-size: Glyph.xs;
+            }
+
+            if !is-own && root.continues-previous: Rectangle {
+                width: Size.md;
             }
 
             if !is-own: Rectangle {
@@ -232,7 +245,7 @@ export component MessageBubble inherits VerticalLayout {
                         padding-left: root.has-photo ? 0 : Space.lg;
                         padding-right: root.has-photo ? 0 : Space.lg;
 
-                        if !is-own: HorizontalLayout {
+                        if !is-own && !root.continues-previous: HorizontalLayout {
                             padding-left: root.photo-row-padding;
                             padding-right: root.photo-row-padding;
                             padding-top: root.has-photo ? Space.sm : 0;

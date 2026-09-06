@@ -738,6 +738,7 @@ fn message_to_entry(m: &TimelineMessage, media: &dyn MediaCache) -> MessageEntry
     MessageEntry {
         unique_id: d.unique_id,
         sender: d.sender,
+        sender_id: d.sender_id,
         pronouns: string_model(d.pronouns),
         body: d.body,
         styled: d.styled,

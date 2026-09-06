@@ -193,6 +193,7 @@ pub struct ReactionDto {
 pub struct MessageDto {
     pub unique_id: SharedString,
     pub sender: SharedString,
+    pub sender_id: SharedString,
     pub pronouns: Vec<SharedString>,
     pub body: SharedString,
     pub styled: StyledText,
@@ -365,6 +366,7 @@ pub fn message_to_dto(m: &TimelineMessage, media: &dyn MediaCache) -> MessageDto
     let mut dto = MessageDto {
         unique_id: SharedString::from(&m.unique_id),
         sender: SharedString::from(sender_label),
+        sender_id: SharedString::from(&m.sender),
         pronouns: pronoun_labels(&m.sender_pronouns)
             .into_iter()
             .map(SharedString::from)
