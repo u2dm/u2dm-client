@@ -1,4 +1,5 @@
 pub mod browser;
+pub mod container;
 #[cfg(feature = "demo")]
 pub mod demo;
 pub mod matrix;

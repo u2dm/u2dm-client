@@ -77,6 +77,11 @@ fn probe(prefix: &str, name: &str) -> Option<PathBuf> {
         .or_else(|| asset(&format!("{prefix}-{name}.png")))
 }
 
+pub(super) fn video_asset_path(event_id: &str) -> Option<PathBuf> {
+    asset(&format!("video-{event_id}.mp4"))
+        .or_else(|| asset(&format!("video-{event_id}.webm")))
+}
+
 fn sticker_asset_path(asset: &str) -> Option<PathBuf> {
     probe("sticker", asset).or_else(|| probe("thumbnail", asset))
 }

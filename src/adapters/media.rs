@@ -8,7 +8,7 @@ use image::{ImageFormat, ImageReader};
 use tokio::fs as async_fs;
 use tokio::task::spawn_blocking;
 
-use crate::adapters::private_fs;
+use crate::adapters::{container, private_fs};
 use crate::domain::media::{AttachmentPick, PickedAttachment};
 use crate::error::{AppError, Result};
 use crate::ports::media::MediaFilePort;
@@ -25,14 +25,6 @@ const FALLBACK_MIME: &str = "application/octet-stream";
 const PICKABLE_MEDIA_EXTENSIONS: &[&str] = &[
     "png", "jpg", "jpeg", "gif", "webp", "bmp", "ico", "tif", "tiff", "avif", "heic", "heif",
     "mp4", "m4v", "mov", "webm", "mkv", "avi",
-];
-
-const LAUNCHER_SAFE_VIDEO_FORMATS: &[(&str, &str)] = &[
-    ("video/mp4", "mp4"),
-    ("video/quicktime", "mov"),
-    ("video/webm", "webm"),
-    ("video/x-matroska", "mkv"),
-    ("video/x-msvideo", "avi"),
 ];
 
 const LAUNCHER_SAFE_IMAGE_FORMATS: &[(ImageFormat, &str)] = &[
@@ -72,6 +64,14 @@ impl MediaFilePort for DesktopMediaFiles {
         private_fs::create_dir(session_dir).await?;
         let path = session_dir.join(format!("{}.{extension}", random_hex(FILE_TOKEN_BYTES)));
         private_fs::write_private(&path, data).await?;
+        spawn_blocking(move || open::that_detached(&path))
+            .await
+            .map_err(|e| AppError::Other(format!("failed to launch media viewer: {e}")))??;
+        Ok(())
+    }
+
+    async fn open_path(&self, path: &Path) -> Result<()> {
+        let path = path.to_path_buf();
         spawn_blocking(move || open::that_detached(&path))
             .await
             .map_err(|e| AppError::Other(format!("failed to launch media viewer: {e}")))??;
@@ -184,7 +184,7 @@ async fn probe_dimensions(path: PathBuf) -> Option<(u32, u32)> {
 }
 
 fn launcher_safe_extension(data: &[u8]) -> Option<&'static str> {
-    launcher_safe_image_extension(data).or_else(|| launcher_safe_video_extension(data))
+    launcher_safe_image_extension(data).or_else(|| container::launcher_safe_video_extension(data))
 }
 
 fn launcher_safe_image_extension(data: &[u8]) -> Option<&'static str> {
@@ -194,14 +194,6 @@ fn launcher_safe_image_extension(data: &[u8]) -> Option<&'static str> {
         return None;
     }
     Some(extension)
-}
-
-fn launcher_safe_video_extension(data: &[u8]) -> Option<&'static str> {
-    let mime = infer::get(data)?.mime_type();
-    LAUNCHER_SAFE_VIDEO_FORMATS
-        .iter()
-        .find(|(container, _)| *container == mime)
-        .map(|(_, extension)| *extension)
 }
 
 fn launcher_safe_extension_for(format: ImageFormat) -> Option<&'static str> {

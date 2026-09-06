@@ -46,6 +46,7 @@ macro_rules! simple_callbacks {
         on_select_space "select-space" select_space opt_room SelectSpace;
         on_select_subspace "select-subspace" select_subspace opt_room SelectSubspace;
         on_open_media "open-media" open_media manual_string OpenMedia;
+        on_open_video "open-video" open_video manual_string OpenVideo;
         on_open_link "open-link" open_link manual_string OpenLink;
         on_jump_to_event "jump-to-event" jump_to_event manual_string JumpToEvent;
         on_pick_photo "pick-photo" pick_photo manual_string PickAttachment;

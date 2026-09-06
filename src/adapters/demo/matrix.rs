@@ -517,6 +517,11 @@ impl MediaPort for DemoAuthed {
             .ok_or_else(|| AppError::Other(format!("no demo asset for event {event_id}")))?;
         Ok(fs::read(path)?)
     }
+
+    async fn materialize_video(&self, event_id: &str) -> Result<PathBuf> {
+        media::video_asset_path(event_id)
+            .ok_or_else(|| AppError::Other(format!("no demo video for event {event_id}")))
+    }
 }
 
 #[async_trait]

@@ -14,6 +14,7 @@ use crate::adapters::private_fs;
 use crate::domain::media::MediaFailure;
 
 const MAX_CACHE_BYTES: u64 = 512 * 1024 * 1024;
+const MAX_VIDEO_CACHE_BYTES: u64 = 512 * 1024 * 1024;
 const MAX_AGE: Duration = Duration::from_hours(14 * 24);
 const FLUSH_INTERVAL: Duration = Duration::from_mins(1);
 const TOUCH_COALESCE: Duration = Duration::from_mins(1);
@@ -27,6 +28,63 @@ struct StoredEntry {
     path: PathBuf,
     bytes: u64,
     last_access_secs: u64,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum CacheClass {
+    Video,
+    Other,
+}
+
+impl CacheClass {
+    fn of(key: &str) -> Self {
+        if key.starts_with(super::VIDEO_KEY_PREFIX) {
+            Self::Video
+        } else {
+            Self::Other
+        }
+    }
+
+    fn budget(self) -> u64 {
+        match self {
+            Self::Video => MAX_VIDEO_CACHE_BYTES,
+            Self::Other => MAX_CACHE_BYTES,
+        }
+    }
+}
+
+#[derive(Default)]
+struct ClassBytes {
+    video: u64,
+    other: u64,
+}
+
+impl ClassBytes {
+    fn get(&self, class: CacheClass) -> u64 {
+        match class {
+            CacheClass::Video => self.video,
+            CacheClass::Other => self.other,
+        }
+    }
+
+    fn add(&mut self, class: CacheClass, bytes: u64) {
+        match class {
+            CacheClass::Video => self.video = self.video.saturating_add(bytes),
+            CacheClass::Other => self.other = self.other.saturating_add(bytes),
+        }
+    }
+
+    fn sub(&mut self, class: CacheClass, bytes: u64) {
+        match class {
+            CacheClass::Video => self.video = self.video.saturating_sub(bytes),
+            CacheClass::Other => self.other = self.other.saturating_sub(bytes),
+        }
+    }
+
+    fn reset(&mut self) {
+        self.video = 0;
+        self.other = 0;
+    }
 }
 
 struct CacheEntry {
@@ -138,7 +196,7 @@ struct CacheActor {
     index_path: PathBuf,
     media_dir: PathBuf,
     entries: HashMap<String, CacheEntry>,
-    total_bytes: u64,
+    bytes: ClassBytes,
     dirty: bool,
 }
 
@@ -149,12 +207,13 @@ impl CacheActor {
             index_path,
             media_dir,
             entries: HashMap::new(),
-            total_bytes: 0,
+            bytes: ClassBytes::default(),
             dirty: false,
         };
         actor.read_index();
         let mut victims = actor.prune_aged();
-        victims.extend(actor.evict_to_budget());
+        victims.extend(actor.evict_to_budget(CacheClass::Video));
+        victims.extend(actor.evict_to_budget(CacheClass::Other));
         for (_, path) in &victims {
             if let Err(e) = std_fs::remove_file(path) {
                 tracing::debug!("failed to evict cached media {}: {e}", path.display());
@@ -180,7 +239,7 @@ impl CacheActor {
             if !entry.path.exists() {
                 continue;
             }
-            self.total_bytes = self.total_bytes.saturating_add(entry.bytes);
+            self.bytes.add(CacheClass::of(&entry.key), entry.bytes);
             self.entries.insert(
                 entry.key,
                 CacheEntry {
@@ -239,7 +298,7 @@ impl CacheActor {
             } => self.publish_insert(key, path, bytes, ack, shared).await,
             CacheCommand::Clear(ack) => {
                 self.entries.clear();
-                self.total_bytes = 0;
+                self.bytes.reset();
                 if let Ok(mut guard) = shared.write() {
                     guard.clear();
                 }
@@ -308,13 +367,14 @@ impl CacheActor {
 
     fn insert(&mut self, key: &str, path: PathBuf, bytes: u64) -> Mutation {
         let mut mutation = Mutation::default();
+        let class = CacheClass::of(key);
         if let Some(previous) = self.entries.remove(key) {
-            self.total_bytes = self.total_bytes.saturating_sub(previous.bytes);
+            self.bytes.sub(class, previous.bytes);
             if previous.path != path {
                 mutation.removed_files.push(previous.path);
             }
         }
-        self.total_bytes = self.total_bytes.saturating_add(bytes);
+        self.bytes.add(class, bytes);
         self.entries.insert(
             key.to_owned(),
             CacheEntry {
@@ -323,7 +383,7 @@ impl CacheActor {
                 last_access: SystemTime::now(),
             },
         );
-        for (evicted_key, evicted_path) in self.evict_to_budget() {
+        for (evicted_key, evicted_path) in self.evict_to_budget(class) {
             mutation.evicted_keys.push(evicted_key);
             mutation.removed_files.push(evicted_path);
         }
@@ -350,12 +410,13 @@ impl CacheActor {
         victims
     }
 
-    fn evict_to_budget(&mut self) -> Vec<(String, PathBuf)> {
+    fn evict_to_budget(&mut self, class: CacheClass) -> Vec<(String, PathBuf)> {
         let mut victims = Vec::new();
-        while self.total_bytes > MAX_CACHE_BYTES {
+        while self.bytes.get(class) > class.budget() {
             let Some(victim) = self
                 .entries
                 .iter()
+                .filter(|(key, _)| CacheClass::of(key) == class)
                 .min_by_key(|(_, entry)| entry.last_access)
                 .map(|(key, _)| key.clone())
             else {
@@ -370,7 +431,7 @@ impl CacheActor {
 
     fn remove_entry(&mut self, key: &str) -> Option<PathBuf> {
         let entry = self.entries.remove(key)?;
-        self.total_bytes = self.total_bytes.saturating_sub(entry.bytes);
+        self.bytes.sub(CacheClass::of(key), entry.bytes);
         Some(entry.path)
     }
 
@@ -444,6 +505,7 @@ impl CacheActor {
         self.sweep(&self.media_dir, &referenced);
         self.sweep(&self.media_dir.join(super::AVATARS_DIR), &referenced);
         self.sweep(&self.media_dir.join(super::STICKERS_DIR), &referenced);
+        self.sweep(&self.media_dir.join(super::VIDEOS_DIR), &referenced);
     }
 
     fn sweep(&self, dir: &Path, referenced: &HashSet<&Path>) {

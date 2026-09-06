@@ -142,6 +142,13 @@ pub fn open_media(tx: &Tx, event_id: String) {
     send_command(tx, UiCommand::OpenMedia { event_id });
 }
 
+pub fn open_video(tx: &Tx, event_id: String) {
+    if event_id.is_empty() {
+        return;
+    }
+    send_command(tx, UiCommand::OpenVideo { event_id });
+}
+
 const OPENABLE_SCHEMES: &[&str] = &["http", "https", "mailto"];
 
 pub fn open_link(tx: &Tx, url: String) {

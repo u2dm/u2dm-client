@@ -14,6 +14,8 @@ use crate::ports::media::MediaCache;
 
 pub(super) const AVATARS_DIR: &str = "avatars";
 pub(super) const STICKERS_DIR: &str = "stickers";
+pub(super) const VIDEOS_DIR: &str = "videos";
+pub(super) const VIDEO_KEY_PREFIX: &str = "video:";
 
 pub(super) fn thumb_key(event_id: &str) -> String {
     format!("thumb:{event_id}")
@@ -23,7 +25,11 @@ pub(super) fn mxc_avatar_key(mxc: &str) -> String {
     format!("mxc-avatar:{mxc}")
 }
 
-pub(super) fn sticker_key(mxc: &str) -> String {
+pub(super) fn video_key(event_id: &str) -> String {
+    format!("{VIDEO_KEY_PREFIX}{event_id}")
+}
+
+fn sticker_key(mxc: &str) -> String {
     format!("sticker:{mxc}")
 }
 

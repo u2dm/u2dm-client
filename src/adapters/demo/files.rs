@@ -1,3 +1,5 @@
+use std::path::Path;
+
 use async_trait::async_trait;
 
 use super::attachments;
@@ -22,6 +24,10 @@ impl DemoMediaFiles {
 impl MediaFilePort for DemoMediaFiles {
     async fn open_media(&self, event_id: &str, data: &[u8]) -> Result<()> {
         self.inner.open_media(event_id, data).await
+    }
+
+    async fn open_path(&self, path: &Path) -> Result<()> {
+        self.inner.open_path(path).await
     }
 
     async fn pick_attachment(&self, pick: AttachmentPick) -> Result<Option<PickedAttachment>> {

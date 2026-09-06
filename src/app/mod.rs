@@ -341,6 +341,9 @@ impl AppService {
             UiCommand::OpenMedia { event_id } => {
                 self.open_media(event_id);
             }
+            UiCommand::OpenVideo { event_id } => {
+                self.open_video(event_id);
+            }
             UiCommand::OpenLink { url } => {
                 self.session.spawn_open_link(&mut self.operations, url);
             }
@@ -725,6 +728,12 @@ impl AppService {
     fn open_media(&mut self, event_id: String) {
         if let Some(media) = self.port(|a| &a.media) {
             self.media.open_media(media, event_id);
+        }
+    }
+
+    fn open_video(&mut self, event_id: String) {
+        if let Some(media) = self.port(|a| &a.media) {
+            self.media.open_video(media, event_id);
         }
     }
 

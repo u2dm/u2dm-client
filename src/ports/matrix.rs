@@ -166,6 +166,7 @@ pub trait TimelinePort: Send + Sync {
 #[async_trait]
 pub trait MediaPort: Send + Sync {
     async fn download_media(&self, event_id: &str, thumbnail: bool) -> Result<Vec<u8>>;
+    async fn materialize_video(&self, event_id: &str) -> Result<PathBuf>;
 }
 
 #[derive(Debug, Default)]

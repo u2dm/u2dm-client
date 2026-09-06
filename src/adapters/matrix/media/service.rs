@@ -13,9 +13,12 @@ use tokio::sync::Semaphore;
 use tokio::time::{sleep, timeout};
 
 use super::cache::{CacheHandle, FailureTracker};
-use super::{AVATARS_DIR, STICKERS_DIR, mxc_avatar_key, sticker_key, thumb_key, thumbnail_format};
+use super::{
+    AVATARS_DIR, STICKERS_DIR, VIDEOS_DIR, lookup_full_media_source, mxc_avatar_key, sticker_key,
+    thumb_key, thumbnail_format, video_key,
+};
 use crate::adapters::matrix::store::purge_dir;
-use crate::adapters::private_fs;
+use crate::adapters::{container, private_fs};
 use crate::domain::account::AccountScope;
 use crate::domain::media::{MediaFailure, MediaResult, ThumbnailOutcome};
 use crate::domain::message::TimelineMessage;
@@ -34,6 +37,73 @@ const MAX_FULL_MEDIA_BYTES: usize = 100 * 1024 * 1024;
 
 const MEDIA_CACHE_DIR: &str = "media-cache";
 const LAYOUT_VERSION: &str = "v1";
+
+#[derive(Clone, Copy)]
+pub(crate) enum Naming {
+    FromMagic,
+    LauncherSafeVideo,
+}
+
+impl Naming {
+    fn extension(self, data: &[u8]) -> MediaResult<&'static str> {
+        match self {
+            Self::FromMagic => Ok(ext_from_magic(data)),
+            Self::LauncherSafeVideo => {
+                container::launcher_safe_video_extension(data).ok_or(MediaFailure::Unreadable)
+            }
+        }
+    }
+}
+
+#[derive(Clone, Copy)]
+pub(crate) struct DownloadLimits {
+    timeout: Duration,
+    max_bytes: usize,
+    full: bool,
+}
+
+impl DownloadLimits {
+    pub(crate) const fn thumbnail() -> Self {
+        Self {
+            timeout: DOWNLOAD_TIMEOUT,
+            max_bytes: MAX_MEDIA_BYTES,
+            full: false,
+        }
+    }
+
+    pub(crate) const fn full_file() -> Self {
+        Self {
+            timeout: FULL_DOWNLOAD_TIMEOUT,
+            max_bytes: MAX_FULL_MEDIA_BYTES,
+            full: true,
+        }
+    }
+}
+
+#[derive(Clone)]
+pub(crate) struct Fetch {
+    format: MediaFormat,
+    limits: DownloadLimits,
+    naming: Naming,
+}
+
+impl Fetch {
+    pub(crate) fn rendered(format: MediaFormat) -> Self {
+        Self {
+            format,
+            limits: DownloadLimits::thumbnail(),
+            naming: Naming::FromMagic,
+        }
+    }
+
+    pub(crate) fn launchable_video() -> Self {
+        Self {
+            format: MediaFormat::File,
+            limits: DownloadLimits::full_file(),
+            naming: Naming::LauncherSafeVideo,
+        }
+    }
+}
 
 struct MediaSession {
     media_dir: PathBuf,
@@ -120,6 +190,7 @@ impl MediaService {
             session.media_dir.clone(),
             session.media_dir.join(AVATARS_DIR),
             session.media_dir.join(STICKERS_DIR),
+            session.media_dir.join(VIDEOS_DIR),
         ] {
             if let Err(e) = private_fs::create_dir(&dir).await {
                 tracing::warn!(path = %dir.display(), "failed to create media dir: {e}");
@@ -161,10 +232,13 @@ impl MediaService {
         &self,
         client: &Client,
         request: &MediaRequestParameters,
-        download_timeout: Duration,
-        max_bytes: usize,
-        full: bool,
+        limits: DownloadLimits,
     ) -> MediaResult<Vec<u8>> {
+        let DownloadLimits {
+            timeout: download_timeout,
+            max_bytes,
+            full,
+        } = limits;
         let semaphore = if full {
             &self.full_semaphore
         } else {
@@ -195,23 +269,56 @@ impl MediaService {
         Err(MediaFailure::Download)
     }
 
+    pub(crate) async fn materialize_video(
+        &self,
+        client: &Client,
+        media_sources: &StdMutex<HashMap<String, MediaSource>>,
+        event_id: &str,
+    ) -> MediaResult<PathBuf> {
+        let cache_key = video_key(event_id);
+        if let Some(cached) = self.cache_get(&cache_key) {
+            return Ok(cached);
+        }
+        if let Some(reason) = self.failure(&cache_key) {
+            return Err(reason);
+        }
+        let source =
+            lookup_full_media_source(media_sources, event_id).ok_or(MediaFailure::NoSource)?;
+        let videos = self.videos_dir().ok_or(MediaFailure::Storage)?;
+        if let Err(e) = private_fs::create_dir(&videos).await {
+            tracing::warn!("failed to create video dir: {e}");
+            return Err(MediaFailure::Storage);
+        }
+        let cache_stem = videos.join(hex_encode_id(event_id));
+        self.fetch_and_materialize(
+            client,
+            source,
+            &cache_key,
+            &cache_stem,
+            Fetch::launchable_video(),
+        )
+        .await
+    }
+
     pub(crate) async fn fetch_and_materialize(
         &self,
         client: &Client,
         source: MediaSource,
         cache_key: &str,
         cache_stem: &Path,
-        format: MediaFormat,
+        fetch: Fetch,
     ) -> MediaResult<PathBuf> {
+        let Fetch {
+            format,
+            limits,
+            naming,
+        } = fetch;
         if let Some(reason) = self.failure(cache_key) {
             return Err(reason);
         }
 
         let request = MediaRequestParameters { source, format };
-        let data = match self
-            .download(client, &request, DOWNLOAD_TIMEOUT, MAX_MEDIA_BYTES, false)
-            .await
-        {
+        let data = match self.download(client, &request, limits).await {
             Ok(data) => data,
             Err(reason) => {
                 self.record_failure(cache_key, reason);
@@ -219,7 +326,14 @@ impl MediaService {
             }
         };
 
-        let cache_path = cache_stem.with_extension(ext_from_magic(&data));
+        let extension = match naming.extension(&data) {
+            Ok(extension) => extension,
+            Err(reason) => {
+                self.record_failure(cache_key, reason);
+                return Err(reason);
+            }
+        };
+        let cache_path = cache_stem.with_extension(extension);
         if let Err(e) = private_fs::write_atomically(&cache_path, &data).await {
             tracing::warn!("failed to write materialized media: {e}");
             self.record_failure(cache_key, MediaFailure::Storage);
@@ -255,7 +369,13 @@ impl MediaService {
         let materialized = match (lane.source(media_sources, media_key), self.session()) {
             (Some(source), Some(session)) => {
                 let cache_stem = session.media_dir.join(hex_encode_id(media_key));
-                self.fetch_and_materialize(client, source, &cache_key, &cache_stem, lane.format())
+                self.fetch_and_materialize(
+                    client,
+                    source,
+                    &cache_key,
+                    &cache_stem,
+                    Fetch::rendered(lane.format()),
+                )
                     .await
             }
             (None, _) => Err(MediaFailure::NoSource),
@@ -299,7 +419,13 @@ impl MediaService {
         }
         let cache_stem = avatars.join(hex_encode_id(mxc.as_str()));
         let source = MediaSource::Plain(mxc);
-        self.fetch_and_materialize(client, source, cache_key, &cache_stem, thumbnail_format())
+        self.fetch_and_materialize(
+            client,
+            source,
+            cache_key,
+            &cache_stem,
+            Fetch::rendered(thumbnail_format()),
+        )
             .await
             .ok()
     }
@@ -320,7 +446,13 @@ impl MediaService {
         }
         let cache_stem = stickers.join(hex_encode_id(mxc.as_str()));
         let source = MediaSource::Plain(mxc);
-        self.fetch_and_materialize(client, source, &cache_key, &cache_stem, MediaFormat::File)
+        self.fetch_and_materialize(
+            client,
+            source,
+            &cache_key,
+            &cache_stem,
+            Fetch::rendered(MediaFormat::File),
+        )
             .await
             .ok()
     }
@@ -370,18 +502,15 @@ impl MediaService {
             })
             .ok_or_else(|| AppError::Other(format!("no media source for event {event_id}")))?;
 
-        let (format, download_timeout, max_bytes) = if thumbnail {
-            (thumbnail_format(), DOWNLOAD_TIMEOUT, MAX_MEDIA_BYTES)
+        let (format, limits) = if thumbnail {
+            (thumbnail_format(), DownloadLimits::thumbnail())
         } else {
-            (
-                MediaFormat::File,
-                FULL_DOWNLOAD_TIMEOUT,
-                MAX_FULL_MEDIA_BYTES,
-            )
+            (MediaFormat::File, DownloadLimits::full_file())
         };
+        let max_bytes = limits.max_bytes;
 
         let request = MediaRequestParameters { source, format };
-        self.download(client, &request, download_timeout, max_bytes, !thumbnail)
+        self.download(client, &request, limits)
             .await
             .map_err(|reason| {
                 AppError::Other(format!(
@@ -410,6 +539,10 @@ impl MediaService {
 
     fn stickers_dir(&self) -> Option<PathBuf> {
         Some(self.session()?.media_dir.join(STICKERS_DIR))
+    }
+
+    fn videos_dir(&self) -> Option<PathBuf> {
+        Some(self.session()?.media_dir.join(VIDEOS_DIR))
     }
 }
 

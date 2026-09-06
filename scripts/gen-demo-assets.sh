@@ -103,6 +103,11 @@ video_messages() {
   jq -r '.timelines[][] | select(.video) | "\(.id) \(.video.width) \(.video.height)"' "$data"
 }
 
+video_clips() {
+  jq -r '.timelines[][] | select(.video)
+    | "\(.id) \(.video.width) \(.video.height) \([.video.duration_secs // 5, 30] | min)"' "$data"
+}
+
 sticker_messages() {
   jq -r '.timelines[][] | select(.sticker) | "\(.id) \(.sticker.animated // false)"' "$data"
 }
@@ -166,6 +171,28 @@ fetch_photos() {
     has_no_asset_on_purpose "$id" && continue
     fetch "$(photo_url "$id" "$width" "$height")" "$assets/thumbnail-$id.png"
   done < <(photo_messages)
+}
+
+generate_demo_videos() {
+  local id width height duration
+  if ! command -v ffmpeg >/dev/null; then
+    echo "ffmpeg not found, skipping demo video clips" >&2
+    return 0
+  fi
+  while read -r id width height duration; do
+    has_no_asset_on_purpose "$id" && continue
+    local destination="$assets/video-$id.mp4"
+    already_fetched "$destination" && continue
+    if ffmpeg -y -loglevel error \
+      -f lavfi -i "testsrc=size=${width}x${height}:rate=25" \
+      -f lavfi -i "sine=frequency=440" \
+      -t "$duration" -c:v libx264 -pix_fmt yuv420p -preset veryfast \
+      -c:a aac -shortest "$destination"; then
+      echo "generated video-$id.mp4"
+    else
+      echo "video-$id" >>"$failures"
+    fi
+  done < <(video_clips)
 }
 
 fetch_video_posters() {
@@ -238,5 +265,6 @@ fetch_room_tiles
 fetch_space_tiles
 fetch_photos
 fetch_video_posters
+generate_demo_videos
 fetch_stickers
 report

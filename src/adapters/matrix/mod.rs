@@ -544,6 +544,17 @@ impl MediaPort for AuthedMatrix {
             )
             .await
     }
+
+    async fn materialize_video(&self, event_id: &str) -> Result<PathBuf> {
+        self.media
+            .materialize_video(&self.client().await?, &self.media_sources, event_id)
+            .await
+            .map_err(|reason| {
+                AppError::Other(format!(
+                    "video download for event {event_id} failed: {reason:?}"
+                ))
+            })
+    }
 }
 
 #[async_trait]
