@@ -72,9 +72,15 @@ window_handle() {
   tool_payload list_windows '{}' | jq -c '.windowHandles[0] // empty'
 }
 
+root_element() {
+  tool_payload get_window_properties \
+    "$(jq -cn --argjson window "$1" '{windowHandle: $window}')" |
+    jq -c '.rootElementHandle // empty'
+}
+
 room_rows() {
-  tool_payload find_elements_by_id \
-    "$(jq -cn --argjson window "$1" '{windowHandle: $window, elementsId: "ListItemArea::touch"}')" |
+  tool_payload query_element_descendants \
+    "$(jq -cn --argjson root "$1" '{elementHandle: $root, findAll: true, queryStack: [{matchElementTypeNameOrBase: "RoomRow"}]}')" |
     jq -c '.elementHandles // []'
 }
 
@@ -115,6 +121,7 @@ require_tools
 build_demo_app
 launch_demo_app
 window=$(await "the inspector to come up" window_handle)
-rooms=$(await "the demo rooms to load" room_rows "$window")
+root=$(await "the window to report its root element" root_element "$window")
+rooms=$(await "the demo rooms to load" room_rows "$root")
 open_room "$rooms"
 capture "$window"
