@@ -52,6 +52,11 @@ const ENUM_COVERAGE: &[EnumCoverage] = &[
         falls_through: &["none"],
     },
     EnumCoverage {
+        slint_enum: "AttachmentKind",
+        branches_in: "ui/screens/chat/components/timeline/attachment-dialog.slint",
+        falls_through: &[],
+    },
+    EnumCoverage {
         slint_enum: "MessageKind",
         branches_in: "ui/screens/chat/components/timeline/message-bubble.slint",
         falls_through: &[],
@@ -65,6 +70,7 @@ const ENUM_TABLES: &[(&str, &str)] = &[
     ("ServiceKind", "service_kinds"),
     ("PreviewKind", "preview_kinds"),
     ("MessageKind", "message_kinds"),
+    ("AttachmentKind", "attachment_kinds"),
     ("MediaState", "media_states"),
     ("SendState", "send_states"),
     ("MediaFailure", "media_failures"),

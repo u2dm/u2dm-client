@@ -490,14 +490,19 @@ impl TimelinePort for AuthedMatrix {
 
         let data = fs::read(&picked.path).await?;
         let content_type = attachment::content_type(picked, attachment.as_document);
-        let thumbnail = if attachment::wants_thumbnail(picked, &content_type) {
-            let bytes = data.clone();
-            spawn_blocking(move || attachment::make_thumbnail(&bytes))
-                .await
-                .ok()
-                .flatten()
-        } else {
-            None
+        let thumbnail = match attachment::thumbnail_source(picked, &content_type) {
+            Some(source) => {
+                let bytes = if source == picked.path {
+                    data.clone()
+                } else {
+                    fs::read(&source).await?
+                };
+                spawn_blocking(move || attachment::make_thumbnail(&bytes))
+                    .await
+                    .ok()
+                    .flatten()
+            }
+            None => None,
         };
 
         let mut config = AttachmentConfig::new()

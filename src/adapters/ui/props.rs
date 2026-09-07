@@ -6,7 +6,7 @@ use super::schema::{bool_props, int_props, string_props};
 use crate::commands::effects::VerificationActivity;
 use crate::commands::messages::{UserMessage, UserMessageKind};
 use crate::commands::ui::UiCommand;
-use crate::commands::view::{LoginActivity, LoginStep};
+use crate::commands::view::{AttachmentKind, LoginActivity, LoginStep};
 use crate::domain::auth::LoginMethod;
 use crate::domain::sync::ConnectionStatus;
 use crate::domain::timeline::TimelineStatus;
@@ -50,6 +50,7 @@ pub trait UiProps {
     fn set_toast_message(&self, kind: UserMessageKind);
     fn set_verification_error(&self, kind: UserMessageKind);
     fn set_attachment_error(&self, kind: UserMessageKind);
+    fn set_attachment_kind(&self, kind: AttachmentKind);
     fn set_connection_state(&self, status: &ConnectionStatus);
     fn set_timeline_state(&self, status: TimelineStatus);
     fn set_verification_phase(&self, phase: VerifyStep);

@@ -1,4 +1,5 @@
 use std::path::PathBuf;
+use std::time::Duration;
 use std::sync::Arc;
 
 use super::messages::{UserMessage, UserMessageKind};
@@ -38,11 +39,20 @@ pub struct AttachmentView {
     pub size: u64,
     pub width: u32,
     pub height: u32,
-    pub is_image: bool,
+    pub kind: AttachmentKind,
+    pub duration: Option<Duration>,
     pub preview_path: Option<PathBuf>,
     pub sending: bool,
     pub error: UserMessageKind,
     pub error_detail: String,
+}
+
+#[derive(Clone, Copy, Default, PartialEq, Eq)]
+pub enum AttachmentKind {
+    #[default]
+    File,
+    Image,
+    Video,
 }
 
 #[derive(Clone, Default, PartialEq, Eq)]

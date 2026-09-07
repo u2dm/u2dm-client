@@ -1,7 +1,7 @@
 import { Palette, ScrollView } from "std-widgets.slint";
 import { IconDisplay, IconSet } from "@lucide";
 
-import { UserMessageKind } from "../../../../enums.slint";
+import { AttachmentKind, UserMessageKind } from "../../../../enums.slint";
 import { AttachmentView, DirectoryView } from "../../../../views.slint";
 import { Actions } from "../../../../actions.slint";
 import { Composer } from "../../../../local.slint";
@@ -170,7 +170,8 @@ export component AttachmentDialog inherits ModalHost {
     property <bool> as-document: false;
     property <string> caption: "";
 
-    property <bool> shows-image: AttachmentView.is-image && AttachmentView.has-preview;
+    property <bool> shows-preview: AttachmentView.kind != AttachmentKind.file
+        && AttachmentView.has-preview;
     property <float> aspect: AttachmentView.height > 0
         ? AttachmentView.width / AttachmentView.height
         : 1.5;
@@ -227,9 +228,11 @@ export component AttachmentDialog inherits ModalHost {
                         horizontal-stretch: 1;
 
                         Text {
-                            text: root.as-document || !AttachmentView.is-image
+                            text: root.as-document || AttachmentView.kind == AttachmentKind.file
                                 ? @tr("Send as a file")
-                                : @tr("Send an image");
+                                : (AttachmentView.kind == AttachmentKind.video
+                                    ? @tr("Send a video")
+                                    : @tr("Send an image"));
                             font-size: Fonts.heading;
                             font-weight: Weight.bold;
                             overflow: elide;
@@ -257,7 +260,7 @@ export component AttachmentDialog inherits ModalHost {
                     background: AppStyle.overlay-pressed;
                 }
 
-                if root.shows-image && !root.as-document: Rectangle {
+                if root.shows-preview && !root.as-document: Rectangle {
                     height: root.preview-height;
 
                     Image {
@@ -268,11 +271,29 @@ export component AttachmentDialog inherits ModalHost {
                         image-fit: contain;
                         accessible-label: AttachmentView.filename;
                     }
+
+                    if AttachmentView.duration != "": Rectangle {
+                        x: (parent.width - root.preview-width) / 2 + Space.md;
+                        y: parent.height - self.height - Space.md;
+                        width: duration-text.preferred-width + Space.xl;
+                        height: duration-text.preferred-height + Space.md;
+                        border-radius: self.height / 2;
+                        background: AppStyle.overlay-media-scrim;
+
+                        duration-text := Text {
+                            x: (parent.width - self.width) / 2;
+                            y: (parent.height - self.height) / 2;
+                            text: AttachmentView.duration;
+                            font-size: Fonts.body-small;
+                            color: Palette.foreground;
+                            vertical-alignment: center;
+                        }
+                    }
                 }
 
-                if !root.shows-image || root.as-document: FileChip { }
+                if !root.shows-preview || root.as-document: FileChip { }
 
-                if AttachmentView.is-image: CheckRow {
+                if AttachmentView.kind == AttachmentKind.image: CheckRow {
                     label: @tr("Send as a document");
                     checked <=> root.as-document;
                 }

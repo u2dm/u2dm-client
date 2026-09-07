@@ -8,7 +8,7 @@ use image::{ImageFormat, ImageReader};
 use tokio::fs as async_fs;
 use tokio::task::spawn_blocking;
 
-use crate::adapters::{container, private_fs};
+use crate::adapters::{container, private_fs, video};
 use crate::domain::media::{AttachmentPick, PickedAttachment};
 use crate::error::{AppError, Result};
 use crate::ports::media::MediaFilePort;
@@ -21,6 +21,8 @@ const FILE_TOKEN_BYTES: usize = 16;
 const ROOT_TOKEN_BYTES: usize = 16;
 const ROOT_ATTEMPTS: usize = 8;
 const FALLBACK_MIME: &str = "application/octet-stream";
+const POSTER_MAX_EDGE: u32 = 800;
+const POSTER_QUALITY: u8 = 80;
 
 const PICKABLE_MEDIA_EXTENSIONS: &[&str] = &[
     "png", "jpg", "jpeg", "gif", "webp", "bmp", "ico", "tif", "tiff", "avif", "heic", "heif",
@@ -47,6 +49,10 @@ impl DesktopMediaFiles {
         Self {
             session_dir: open_root().and_then(|root| open_session_dir(&root)),
         }
+    }
+
+    pub(crate) async fn describe(&self, path: &Path) -> Result<PickedAttachment> {
+        describe_in(path, self.session_dir.as_deref()).await
     }
 
     fn session_dir(&self) -> Result<&Path> {
@@ -89,7 +95,7 @@ impl MediaFilePort for DesktopMediaFiles {
         let Some(handle) = dialog.pick_file().await else {
             return Ok(None);
         };
-        describe(handle.path()).await.map(Some)
+        self.describe(handle.path()).await.map(Some)
     }
 
     async fn save_file(&self, default_filename: &str, data: &[u8]) -> Result<Option<String>> {
@@ -117,7 +123,7 @@ impl MediaFilePort for DesktopMediaFiles {
     }
 }
 
-pub(crate) async fn describe(path: &Path) -> Result<PickedAttachment> {
+async fn describe_in(path: &Path, poster_dir: Option<&Path>) -> Result<PickedAttachment> {
     let metadata = async_fs::metadata(path).await?;
     if !metadata.is_file() {
         return Err(AppError::Other(format!(
@@ -132,10 +138,12 @@ pub(crate) async fn describe(path: &Path) -> Result<PickedAttachment> {
         .to_owned();
 
     let mimetype = sniff_mimetype(path).await;
-    let dimensions = if mimetype.starts_with("image/") {
-        probe_dimensions(path.to_path_buf()).await
+    let (dimensions, duration, poster) = if mimetype.starts_with("image/") {
+        (probe_dimensions(path.to_path_buf()).await, None, None)
+    } else if mimetype.starts_with("video/") {
+        inspect_video(path, poster_dir).await
     } else {
-        None
+        (None, None, None)
     };
 
     Ok(PickedAttachment {
@@ -144,7 +152,35 @@ pub(crate) async fn describe(path: &Path) -> Result<PickedAttachment> {
         mimetype,
         size: metadata.len(),
         dimensions,
+        duration,
+        poster,
     })
+}
+
+type VideoDetails = (Option<(u32, u32)>, Option<Duration>, Option<PathBuf>);
+
+async fn inspect_video(path: &Path, poster_dir: Option<&Path>) -> VideoDetails {
+    let owned = path.to_path_buf();
+    let probed = spawn_blocking(move || video::probe(&owned)).await.ok().flatten();
+    let dimensions = probed.as_ref().map(|probe| (probe.width, probe.height));
+    let duration = probed.and_then(|probe| probe.duration);
+    let poster = match poster_dir {
+        Some(dir) => write_poster(path, dir).await,
+        None => None,
+    };
+    (dimensions, duration, poster)
+}
+
+async fn write_poster(path: &Path, dir: &Path) -> Option<PathBuf> {
+    let owned = path.to_path_buf();
+    let jpeg = spawn_blocking(move || video::poster_jpeg(&owned, POSTER_MAX_EDGE, POSTER_QUALITY))
+        .await
+        .ok()
+        .flatten()?;
+    private_fs::create_dir(dir).await.ok()?;
+    let poster = dir.join(format!("{}.jpg", random_hex(FILE_TOKEN_BYTES)));
+    private_fs::write_private(&poster, &jpeg).await.ok()?;
+    Some(poster)
 }
 
 async fn sniff_mimetype(path: &Path) -> String {

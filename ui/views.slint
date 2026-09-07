@@ -7,16 +7,7 @@ import {
 } from "screens/chat/components/types.slint";
 import { VerificationEmoji } from "components/types.slint";
 import { UserMessage } from "messages.slint";
-import {
-    LoginPhase,
-    LoginActivity,
-    ConnectionState,
-    TimelineState,
-    VerificationPhase,
-    VerificationActivity,
-    LoginMethodKind,
-    UserMessageKind,
-} from "enums.slint";
+import { AttachmentKind, ConnectionState, LoginActivity, LoginMethodKind, LoginPhase, TimelineState, UserMessageKind, VerificationActivity, VerificationPhase } from "enums.slint";
 
 export global LoginView {
     in property <LoginPhase> step: LoginPhase.loading;
@@ -90,7 +81,8 @@ export global AttachmentView {
     in property <string> size;
     in property <int> width;
     in property <int> height;
-    in property <bool> is-image;
+    in property <AttachmentKind> kind: AttachmentKind.file;
+    in property <string> duration;
     in property <bool> has-preview;
     in property <image> preview;
     in property <bool> sending;

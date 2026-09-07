@@ -40,16 +40,13 @@ use super::props::{BoolProp, IntProp, StringProp, UiProps};
 use super::reconcile::reorder_rows;
 use super::reduce::set_sticker_query;
 use super::schema::{
-    connection_states, login_activities, login_methods, login_phases, media_failures, media_states,
-    message_fields, message_kinds, preview_kinds, room_fields, send_states, service_kinds,
-    simple_callbacks, space_fields, timeline_states, user_message_kinds, verification_activities,
-    verification_phases,
+    attachment_kinds, connection_states, login_activities, login_methods, login_phases, media_failures, media_states, message_fields, message_kinds, preview_kinds, room_fields, send_states, service_kinds, simple_callbacks, space_fields, timeline_states, user_message_kinds, verification_activities, verification_phases,
 };
 use super::{emoji, router};
 use crate::commands::effects::{Effect, VerificationActivity};
 use crate::commands::messages::{UserMessage, UserMessageKind};
 use crate::commands::ui::{UiCommand, ViewportChanged};
-use crate::commands::view::{AppViewState, LoginActivity, LoginStep};
+use crate::commands::view::{AppViewState, AttachmentKind, LoginActivity, LoginStep};
 use crate::domain::auth::{LoginCredentials, LoginMethod};
 use crate::domain::message::{MessagePreviewKind, SendState, TimelineMessage};
 use crate::domain::room::{Room, Space};
@@ -240,6 +237,7 @@ media_states!(impl_slint_enum MediaState "MediaState";);
 send_states!(impl_slint_enum SendState "SendState";);
 media_failures!(impl_slint_enum MediaFailureKind "MediaFailure";);
 message_kinds!(impl_slint_enum MessageKind "MessageKind";);
+attachment_kinds!(impl_slint_enum AttachmentKind "AttachmentKind";);
 preview_kinds!(impl_slint_enum MessagePreviewKind "PreviewKind";);
 service_kinds!(impl_slint_enum ServiceKind "ServiceKind";);
 
@@ -387,6 +385,10 @@ impl UiProps for ComponentInstance {
 
     fn set_attachment_error(&self, kind: UserMessageKind) {
         set_global(self, "AttachmentView", "error", enum_value(&kind));
+    }
+
+    fn set_attachment_kind(&self, kind: AttachmentKind) {
+        set_global(self, "AttachmentView", "kind", enum_value(&kind));
     }
 
     fn set_connection_state(&self, status: &ConnectionStatus) {

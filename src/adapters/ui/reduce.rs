@@ -6,7 +6,9 @@ use slint::{Model, SharedString, VecModel};
 use super::backend::{UiBackend, UiEventContext};
 use super::decode::{AvatarSlot, clear_session_media, load_avatar_async, request_sticker};
 use super::dto::{GRID_COLUMNS, sticker_grid};
-use super::present::{VerifyStep, file_extension, user_initial, verification_cancellation};
+use super::present::{
+    VerifyStep, duration_label, file_extension, user_initial, verification_cancellation,
+};
 use super::props::{BoolProp, IntProp, StringProp, UiProps};
 use super::reconcile::{
     apply_rooms, apply_spaces, apply_timeline_patch, forget_timeline_index, index_sticker_grid,
@@ -402,7 +404,8 @@ fn apply_attachment(w: &impl UiProps, attachment: &AttachmentView) {
         size,
         width,
         height,
-        is_image,
+        kind,
+        duration,
         preview_path,
         sending,
         error,
@@ -410,7 +413,7 @@ fn apply_attachment(w: &impl UiProps, attachment: &AttachmentView) {
     } = attachment;
 
     w.set_bool(BoolProp::AttachmentVisible, *visible);
-    w.set_bool(BoolProp::AttachmentIsImage, *is_image);
+    w.set_attachment_kind(*kind);
     w.set_bool(BoolProp::AttachmentSending, *sending);
     w.set_string(StringProp::AttachmentFilename, SharedString::from(filename));
     w.set_string(StringProp::AttachmentMimetype, SharedString::from(mimetype));
@@ -425,6 +428,10 @@ fn apply_attachment(w: &impl UiProps, attachment: &AttachmentView) {
         } else {
             String::new()
         }),
+    );
+    w.set_string(
+        StringProp::AttachmentDuration,
+        SharedString::from(duration.map(duration_label).unwrap_or_default()),
     );
     w.set_int(IntProp::AttachmentWidth, (*width).cast_signed());
     w.set_int(IntProp::AttachmentHeight, (*height).cast_signed());

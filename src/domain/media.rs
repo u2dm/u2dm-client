@@ -21,11 +21,24 @@ pub struct PickedAttachment {
     pub mimetype: String,
     pub size: u64,
     pub dimensions: Option<(u32, u32)>,
+    pub duration: Option<Duration>,
+    pub poster: Option<PathBuf>,
 }
 
 impl PickedAttachment {
     pub fn is_image(&self) -> bool {
         self.mimetype.starts_with("image/")
+    }
+
+    pub fn is_video(&self) -> bool {
+        self.mimetype.starts_with("video/")
+    }
+
+    pub fn preview_path(&self) -> Option<&PathBuf> {
+        if self.is_video() {
+            return self.poster.as_ref();
+        }
+        self.is_image().then_some(&self.path)
     }
 }
 

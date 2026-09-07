@@ -25,6 +25,7 @@ macro_rules! string_props {
         AttachmentExtension AttachmentView "AttachmentView" "extension" set_extension;
         AttachmentSize AttachmentView "AttachmentView" "size" set_size;
         AttachmentErrorDetail AttachmentView "AttachmentView" "error-detail" set_error_detail;
+        AttachmentDuration AttachmentView "AttachmentView" "duration" set_duration;
     } };
 }
 pub(crate) use string_props;
@@ -67,7 +68,6 @@ macro_rules! bool_props {
         StickerLoading StickerView "StickerView" "loading" set_loading;
         StickerHasPacks StickerView "StickerView" "has-packs" set_has_packs;
         AttachmentVisible AttachmentView "AttachmentView" "visible" set_visible;
-        AttachmentIsImage AttachmentView "AttachmentView" "is-image" set_is_image;
         AttachmentSending AttachmentView "AttachmentView" "sending" set_sending;
     } };
 }
@@ -235,6 +235,15 @@ macro_rules! send_states {
     } };
 }
 pub(crate) use send_states;
+
+macro_rules! attachment_kinds {
+    ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
+        File  File  "file";
+        Image Image "image";
+        Video Video "video";
+    } };
+}
+pub(crate) use attachment_kinds;
 
 macro_rules! media_states {
     ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*

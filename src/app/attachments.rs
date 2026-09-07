@@ -6,7 +6,7 @@ use super::event::{AppEvent, AttachmentPicked};
 use super::show_toast;
 use super::task_group::TaskGroup;
 use crate::commands::messages::{UserMessage, UserMessageKind};
-use crate::commands::view::{AttachmentView, Toast};
+use crate::commands::view::{AttachmentKind, AttachmentView, Toast};
 use crate::domain::media::{AttachmentPick, OutgoingAttachment, PickedAttachment};
 use crate::domain::room::RoomId;
 use crate::error::AppError;
@@ -166,11 +166,22 @@ fn describe(picked: &PickedAttachment, sending: bool, error: UserMessage) -> Att
         size: picked.size,
         width,
         height,
-        is_image: picked.is_image(),
-        preview_path: picked.is_image().then(|| picked.path.clone()),
+        kind: attachment_kind(picked),
+        duration: picked.duration,
+        preview_path: picked.preview_path().cloned(),
         sending,
         error: error.kind,
         error_detail: error.detail,
+    }
+}
+
+fn attachment_kind(picked: &PickedAttachment) -> AttachmentKind {
+    if picked.is_video() {
+        AttachmentKind::Video
+    } else if picked.is_image() {
+        AttachmentKind::Image
+    } else {
+        AttachmentKind::File
     }
 }
 

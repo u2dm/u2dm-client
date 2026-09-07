@@ -3,7 +3,7 @@ use std::path::Path;
 use async_trait::async_trait;
 
 use super::attachments;
-use crate::adapters::media::{self, DesktopMediaFiles};
+use crate::adapters::media::DesktopMediaFiles;
 use crate::domain::media::{AttachmentPick, PickedAttachment};
 use crate::error::Result;
 use crate::ports::media::MediaFilePort;
@@ -35,7 +35,7 @@ impl MediaFilePort for DemoMediaFiles {
             return self.inner.pick_attachment(pick).await;
         };
         tracing::info!(path = %preset.display(), "demo: picking a preset attachment");
-        media::describe(preset).await.map(Some)
+        self.inner.describe(preset).await.map(Some)
     }
 
     async fn save_file(&self, default_filename: &str, data: &[u8]) -> Result<Option<String>> {

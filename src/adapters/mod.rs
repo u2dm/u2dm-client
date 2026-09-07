@@ -7,3 +7,4 @@ pub mod media;
 pub mod private_fs;
 pub mod storage;
 pub mod ui;
+pub mod video;

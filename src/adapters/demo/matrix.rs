@@ -497,10 +497,10 @@ impl TimelinePort for DemoAuthed {
             return Ok(());
         };
         if let Some(event_id) = settled.event_id.as_deref()
-            && attachment.picked.is_image()
             && !attachment.as_document
+            && let Some(preview) = attachment.picked.preview_path()
         {
-            attachments::remember_preview(event_id, &attachment.picked.path);
+            attachments::remember_preview(event_id, preview);
         }
         if uploads_slowly && let Some(timeline_tx) = self.timeline_sender(room_id) {
             spawn_upload_progress(timeline_tx, index, settled, total);

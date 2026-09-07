@@ -1,4 +1,5 @@
 use std::io::Cursor;
+use std::path::PathBuf;
 
 use image::codecs::jpeg::JpegEncoder;
 use image::{DynamicImage, ImageFormat, ImageReader, Limits};
@@ -43,7 +44,7 @@ pub(super) fn attachment_info(picked: &PickedAttachment, content_type: &Mime) ->
             is_animated: None,
         }),
         mime::VIDEO => AttachmentInfo::Video(BaseVideoInfo {
-            duration: None,
+            duration: picked.duration,
             width,
             height,
             size,
@@ -53,7 +54,14 @@ pub(super) fn attachment_info(picked: &PickedAttachment, content_type: &Mime) ->
     }
 }
 
-pub(super) fn wants_thumbnail(picked: &PickedAttachment, content_type: &Mime) -> bool {
+pub(super) fn thumbnail_source(picked: &PickedAttachment, content_type: &Mime) -> Option<PathBuf> {
+    if content_type.type_() == mime::VIDEO {
+        return picked.poster.clone();
+    }
+    wants_thumbnail(picked, content_type).then(|| picked.path.clone())
+}
+
+fn wants_thumbnail(picked: &PickedAttachment, content_type: &Mime) -> bool {
     if content_type.type_() != mime::IMAGE {
         return false;
     }

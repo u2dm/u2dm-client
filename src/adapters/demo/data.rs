@@ -6,7 +6,7 @@ use super::dto::{DemoData, RoomDto, SpaceDto, StickerPackDto};
 use super::media;
 use super::timeline::{self, scenario};
 use crate::domain::auth::Session;
-use crate::domain::media::{FileMeta, ImageMeta, OutgoingAttachment};
+use crate::domain::media::{FileMeta, ImageMeta, OutgoingAttachment, VideoMeta};
 use crate::domain::message::{MessageBody, ReplyInfo, RichText, SendState, TimelineMessage};
 use crate::domain::room::{Room, RoomId, Space};
 use crate::domain::sticker::{StickerImage, StickerPack};
@@ -207,20 +207,40 @@ pub fn own_attachment(
 ) -> TimelineMessage {
     let id = format!("demo-sent-{sequence}");
     let picked = &attachment.picked;
-    let as_image = picked.is_image() && !attachment.as_document;
-    let body = if as_image {
-        let (width, height) = picked.dimensions.unzip();
-        MessageBody::Image {
-            caption: attachment
-                .caption
-                .as_ref()
-                .map(|text| RichText::plain(text.clone())),
-            meta: ImageMeta {
-                width,
-                height,
+    let caption = || {
+        attachment
+            .caption
+            .as_ref()
+            .map(|text| RichText::plain(text.clone()))
+    };
+    let (width, height) = picked.dimensions.unzip();
+    let image_meta = || ImageMeta {
+        width,
+        height,
+        mimetype: Some(picked.mimetype.clone()),
+        filename: Some(picked.filename.clone()),
+    };
+    let body = if attachment.as_document {
+        MessageBody::File {
+            meta: FileMeta {
+                filename: picked.filename.clone(),
                 mimetype: Some(picked.mimetype.clone()),
-                filename: Some(picked.filename.clone()),
+                size: Some(picked.size),
             },
+        }
+    } else if picked.is_video() {
+        MessageBody::Video {
+            caption: caption(),
+            meta: VideoMeta {
+                image: image_meta(),
+                duration: picked.duration,
+                size: Some(picked.size),
+            },
+        }
+    } else if picked.is_image() {
+        MessageBody::Image {
+            caption: caption(),
+            meta: image_meta(),
         }
     } else {
         MessageBody::File {
