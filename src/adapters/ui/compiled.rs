@@ -2,7 +2,9 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::Arc;
 
-use slint::{ComponentHandle, Image, Model, ModelRc, SharedString, VecModel};
+use slint::{
+    ComponentHandle, Image, Model, ModelRc, Rgb8Pixel, SharedPixelBuffer, SharedString, VecModel,
+};
 use tokio::runtime::Runtime;
 use tokio::sync::{mpsc, watch};
 
@@ -15,6 +17,7 @@ use super::dto::{
 };
 use super::multiplex::spawn_event_multiplexer;
 use super::present::{MessageKind, ServiceKind, VerifyStep};
+use super::video::{self, millis_to_duration};
 use super::props::{BoolProp, IntProp, StringProp, UiProps};
 use super::reconcile::reorder_rows;
 use super::reduce::set_sticker_query;
@@ -48,6 +51,7 @@ use generated::{
     PreviewKind as UiPreviewKind, ReactionEntry, ReactorAvatar, RoomEntry, RoomView,
     SendState as UiSendState, ServiceKind as UiServiceKind, SessionView, SpaceEntry, StickerCell,
     StickerPackTab, StickerRow, StickerView, TimelineState, UserMessage as UiUserMessage,
+    VideoView,
     UserMessageKind as UiUserMessageKind, VerificationActivity as UiVerificationActivity,
     VerificationEmoji, VerificationPhase, VerificationView,
 };
@@ -139,6 +143,23 @@ impl UiProps for AppWindow {
     fn set_attachment_kind(&self, kind: AttachmentKind) {
         self.global::<AttachmentView>()
             .set_kind(to_attachment_kind(kind));
+    }
+
+    fn set_video_error(&self, kind: UserMessageKind) {
+        self.global::<VideoView>()
+            .set_error(to_user_message_kind(kind));
+    }
+
+    fn apply_video_frame(&self, buffer: SharedPixelBuffer<Rgb8Pixel>) {
+        let video = self.global::<VideoView>();
+        video.set_frame(Image::from_rgb8(buffer));
+        video.set_has_frame(true);
+    }
+
+    fn clear_video_frame(&self) {
+        let video = self.global::<VideoView>();
+        video.set_frame(Image::default());
+        video.set_has_frame(false);
     }
 
     fn set_connection_state(&self, status: &ConnectionStatus) {
@@ -467,6 +488,23 @@ impl SlintUiAdapter {
     }
 
     #[allow(clippy::unnecessary_wraps)]
+    fn bind_video_callbacks(win: &AppWindow) {
+        let weak = win.as_weak();
+        actions(win).on_toggle_video(move || {
+            if let Some(window) = weak.upgrade() {
+                video::toggle(&window);
+            }
+        });
+
+        let weak = win.as_weak();
+        actions(win).on_seek_video(move |ms| {
+            if let Some(window) = weak.upgrade() {
+                video::seek(&window, millis_to_duration(usize::try_from(ms).ok()));
+            }
+        });
+    }
+
+    #[allow(clippy::unnecessary_wraps, reason = "mirrors the fallible interpreted adapter")]
     pub fn register_callbacks(
         &self,
         cmd_tx: &mpsc::UnboundedSender<UiCommand>,
@@ -535,6 +573,8 @@ impl SlintUiAdapter {
         });
 
         actions(win).on_request_media(move |unique_id| request_media(&unique_id));
+
+        Self::bind_video_callbacks(win);
 
         actions(win).on_request_room_avatar(move |room_id| {
             request_avatar(&AvatarSlot::Room(room_id.to_string()));

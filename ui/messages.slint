@@ -100,6 +100,9 @@ export global UserMessages {
         if kind == UserMessageKind.send-attachment-failed {
             return @tr("Failed to send attachment");
         }
+        if kind == UserMessageKind.video-playback-failed {
+            return @tr("This video could not be played");
+        }
         if kind == UserMessageKind.file-save-failed {
             return @tr("Failed to save file");
         }
@@ -137,6 +140,19 @@ export global UserMessages {
             return @tr("The verification could not be completed.");
         }
         return "";
+    }
+}
+
+export global Clocks {
+    pure function pad(value: int) -> string {
+        return value < 10 ? "0" + value : value;
+    }
+
+    public pure function label(total-ms: int) -> string {
+        if total-ms <= 0 {
+            return "0:00";
+        }
+        return floor(total-ms / 60000) + ":" + root.pad(floor(mod(total-ms / 1000, 60)));
     }
 }
 

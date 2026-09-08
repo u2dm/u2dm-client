@@ -48,6 +48,7 @@ macro_rules! simple_callbacks {
         on_select_subspace "select-subspace" select_subspace opt_room SelectSubspace;
         on_open_media "open-media" open_media manual_string OpenMedia;
         on_open_video "open-video" open_video manual_string OpenVideo;
+        on_close_video "close-video" close_video plain CloseVideo;
         on_open_link "open-link" open_link manual_string OpenLink;
         on_jump_to_event "jump-to-event" jump_to_event manual_string JumpToEvent;
         on_pick_photo "pick-photo" pick_photo manual_string PickAttachment;
@@ -69,6 +70,9 @@ macro_rules! bool_props {
         StickerHasPacks StickerView "StickerView" "has-packs" set_has_packs;
         AttachmentVisible AttachmentView "AttachmentView" "visible" set_visible;
         AttachmentSending AttachmentView "AttachmentView" "sending" set_sending;
+        VideoVisible VideoView "VideoView" "visible" set_visible;
+        VideoLoading VideoView "VideoView" "loading" set_loading;
+        VideoPlaying VideoView "VideoView" "playing" set_playing;
     } };
 }
 pub(crate) use bool_props;
@@ -84,6 +88,8 @@ macro_rules! int_props {
         StickerColumns StickerView "StickerView" "columns" set_columns;
         AttachmentWidth AttachmentView "AttachmentView" "width" set_width;
         AttachmentHeight AttachmentView "AttachmentView" "height" set_height;
+        VideoPositionMs VideoView "VideoView" "position-ms" set_position_ms;
+        VideoDurationMs VideoView "VideoView" "duration-ms" set_duration_ms;
     } };
 }
 pub(crate) use int_props;
@@ -210,6 +216,7 @@ macro_rules! user_message_kinds {
         AttachmentUnreadable      AttachmentUnreadable    "attachment-unreadable";
         AttachmentTooLarge        AttachmentTooLarge      "attachment-too-large";
         SendAttachmentFailed      SendAttachmentFailed    "send-attachment-failed";
+        VideoPlaybackFailed       VideoPlaybackFailed     "video-playback-failed";
         FileSaveFailed            FileSaveFailed          "file-save-failed";
         FileSaved                 FileSaved               "file-saved";
         VerificationAcceptFailed  VerificationAcceptFailed "verification-accept-failed";

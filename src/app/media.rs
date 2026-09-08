@@ -4,11 +4,15 @@ use std::sync::Arc;
 use super::show_toast;
 use super::task_group::TaskGroup;
 use crate::commands::messages::{UserMessage, UserMessageKind};
-use crate::commands::view::Toast;
+use crate::commands::view::{Toast, VideoView};
 use crate::error::AppError;
 use crate::ports::matrix::MediaPort;
 use crate::ports::media::MediaFilePort;
 use crate::ports::output::AppOutputPort;
+
+fn publish_video(output: &dyn AppOutputPort, view: VideoView) {
+    output.publish(Box::new(move |state| state.video = view));
+}
 
 pub(super) struct MediaActions {
     media_files: Arc<dyn MediaFilePort>,
@@ -85,28 +89,61 @@ impl MediaActions {
     }
 
     pub(super) fn open_video(&mut self, media: Arc<dyn MediaPort>, event_id: String) {
+        if !cfg!(feature = "video") {
+            self.play_externally(media, event_id);
+            return;
+        }
+        let output = Arc::clone(&self.output);
+        publish_video(
+            output.as_ref(),
+            VideoView {
+                visible: true,
+                loading: true,
+                ..VideoView::default()
+            },
+        );
+        self.spawn_cancellable(async move {
+            let opened = match media.materialize_video(&event_id).await {
+                Ok(path) => VideoView {
+                    visible: true,
+                    loading: false,
+                    path: Some(path),
+                    error: UserMessageKind::None,
+                },
+                Err(e) => {
+                    tracing::warn!("failed to materialize video: {e}");
+                    VideoView {
+                        visible: true,
+                        loading: false,
+                        path: None,
+                        error: UserMessageKind::MediaDownloadFailed,
+                    }
+                }
+            };
+            publish_video(output.as_ref(), opened);
+        });
+    }
+
+    fn play_externally(&mut self, media: Arc<dyn MediaPort>, event_id: String) {
         let media_files = Arc::clone(&self.media_files);
         let output = Arc::clone(&self.output);
         self.spawn_cancellable(async move {
-            let path = match media.materialize_video(&event_id).await {
-                Ok(path) => path,
-                Err(e) => {
-                    tracing::warn!("failed to materialize video: {e}");
-                    show_toast(
-                        output.as_ref(),
-                        Toast::Error(UserMessage::new(UserMessageKind::MediaDownloadFailed)),
-                    );
-                    return;
-                }
+            let outcome = match media.materialize_video(&event_id).await {
+                Ok(path) => media_files.open_path(&path).await,
+                Err(e) => Err(e),
             };
-            if let Err(e) = media_files.open_path(&path).await {
-                tracing::warn!("failed to open video: {e}");
+            if let Err(e) = outcome {
+                tracing::warn!("failed to play video externally: {e}");
                 show_toast(
                     output.as_ref(),
                     Toast::Error(UserMessage::new(UserMessageKind::MediaOpenFailed)),
                 );
             }
         });
+    }
+
+    pub(super) fn close_video(&mut self) {
+        publish_video(self.output.as_ref(), VideoView::default());
     }
 
     pub(super) fn save_file(

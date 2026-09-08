@@ -73,6 +73,17 @@ export global VerificationView {
     in property <string> error-detail;
 }
 
+export global VideoView {
+    in property <bool> visible;
+    in property <bool> loading;
+    in property <bool> playing;
+    in property <image> frame;
+    in property <bool> has-frame;
+    in property <int> position-ms;
+    in property <int> duration-ms;
+    in property <UserMessageKind> error: UserMessageKind.none;
+}
+
 export global AttachmentView {
     in property <bool> visible;
     in property <string> filename;

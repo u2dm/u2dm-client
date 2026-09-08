@@ -56,6 +56,7 @@ pub enum UserMessageKind {
     AttachmentUnreadable,
     AttachmentTooLarge,
     SendAttachmentFailed,
+    VideoPlaybackFailed,
     FileSaveFailed,
     FileSaved,
     VerificationAcceptFailed,

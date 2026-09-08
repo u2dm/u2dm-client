@@ -1,4 +1,4 @@
-use slint::{Image, SharedString};
+use slint::{Image, Rgb8Pixel, SharedPixelBuffer, SharedString};
 use tokio::sync::mpsc;
 
 use super::present::VerifyStep;
@@ -51,6 +51,9 @@ pub trait UiProps {
     fn set_verification_error(&self, kind: UserMessageKind);
     fn set_attachment_error(&self, kind: UserMessageKind);
     fn set_attachment_kind(&self, kind: AttachmentKind);
+    fn set_video_error(&self, kind: UserMessageKind);
+    fn apply_video_frame(&self, buffer: SharedPixelBuffer<Rgb8Pixel>);
+    fn clear_video_frame(&self);
     fn set_connection_state(&self, status: &ConnectionStatus);
     fn set_timeline_state(&self, status: TimelineStatus);
     fn set_verification_phase(&self, phase: VerifyStep);

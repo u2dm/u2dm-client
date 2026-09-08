@@ -16,6 +16,7 @@ mod richtext;
 mod router;
 mod rows;
 mod schema;
+mod video;
 
 pub use output::UiEventOutput;
 use slint::PlatformError;

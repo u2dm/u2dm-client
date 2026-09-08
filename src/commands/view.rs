@@ -16,6 +16,7 @@ pub struct AppViewState {
     pub pagination: PaginationView,
     pub stickers: StickerView,
     pub attachment: AttachmentView,
+    pub video: VideoView,
     pub toast: Toast,
 }
 
@@ -45,6 +46,14 @@ pub struct AttachmentView {
     pub sending: bool,
     pub error: UserMessageKind,
     pub error_detail: String,
+}
+
+#[derive(Clone, Default, PartialEq, Eq)]
+pub struct VideoView {
+    pub visible: bool,
+    pub loading: bool,
+    pub path: Option<PathBuf>,
+    pub error: UserMessageKind,
 }
 
 #[derive(Clone, Copy, Default, PartialEq, Eq)]

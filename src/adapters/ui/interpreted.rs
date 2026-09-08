@@ -4,7 +4,7 @@ use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
 
-use slint::{Image, Model, ModelRc, VecModel};
+use slint::{Image, Model, ModelRc, Rgb8Pixel, SharedPixelBuffer, VecModel};
 use slint_interpreter::{
     Compiler, ComponentHandle, ComponentInstance, SharedString, Struct, Value,
 };
@@ -36,6 +36,7 @@ use super::dto::{
 };
 use super::multiplex::spawn_event_multiplexer;
 use super::present::{MessageKind, ServiceKind, VerifyStep};
+use super::video::{self, millis_to_duration};
 use super::props::{BoolProp, IntProp, StringProp, UiProps};
 use super::reconcile::reorder_rows;
 use super::reduce::set_sticker_query;
@@ -70,6 +71,8 @@ mod names {
         pub const REQUEST_MEDIA: &str = "request-media";
         pub const REQUEST_ROOM_AVATAR: &str = "request-room-avatar";
         pub const REQUEST_STICKER: &str = "request-sticker";
+        pub const TOGGLE_VIDEO: &str = "toggle-video";
+        pub const SEEK_VIDEO: &str = "seek-video";
         pub const SEARCH_STICKERS: &str = "search-stickers";
         pub const SCROLL_POSITION_CHANGED: &str = "scroll-position-changed";
         pub const PAGINATE_BACKWARDS: &str = "paginate-backwards";
@@ -389,6 +392,20 @@ impl UiProps for ComponentInstance {
 
     fn set_attachment_kind(&self, kind: AttachmentKind) {
         set_global(self, "AttachmentView", "kind", enum_value(&kind));
+    }
+
+    fn set_video_error(&self, kind: UserMessageKind) {
+        set_global(self, "VideoView", "error", enum_value(&kind));
+    }
+
+    fn apply_video_frame(&self, buffer: SharedPixelBuffer<Rgb8Pixel>) {
+        set_global(self, "VideoView", "frame", Value::Image(Image::from_rgb8(buffer)));
+        set_global(self, "VideoView", "has-frame", Value::Bool(true));
+    }
+
+    fn clear_video_frame(&self) {
+        set_global(self, "VideoView", "frame", Value::Image(Image::default()));
+        set_global(self, "VideoView", "has-frame", Value::Bool(false));
     }
 
     fn set_connection_state(&self, status: &ConnectionStatus) {
@@ -821,6 +838,22 @@ impl SlintUiAdapter {
 
         bind_action(&self.instance, callback::REQUEST_STICKER, move |args| {
             request_sticker(&string_arg(args, 0));
+            Value::Void
+        })?;
+
+        let weak = self.instance.as_weak();
+        bind_action(&self.instance, callback::TOGGLE_VIDEO, move |_| {
+            if let Some(window) = weak.upgrade() {
+                video::toggle(&window);
+            }
+            Value::Void
+        })?;
+
+        let weak = self.instance.as_weak();
+        bind_action(&self.instance, callback::SEEK_VIDEO, move |args| {
+            if let Some(window) = weak.upgrade() {
+                video::seek(&window, millis_to_duration(usize_arg(args, 0)));
+            }
             Value::Void
         })
     }

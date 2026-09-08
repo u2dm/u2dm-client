@@ -117,6 +117,8 @@ pub enum UiCommand {
     OpenVideo {
         event_id: String,
     },
+    #[strum(to_string = "CloseVideo")]
+    CloseVideo,
     #[strum(to_string = "OpenLink")]
     OpenLink {
         url: String,

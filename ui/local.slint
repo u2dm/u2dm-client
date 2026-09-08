@@ -1,5 +1,5 @@
 import { LoginPhase } from "enums.slint";
-import { AttachmentView, LoginView, RoomView, VerificationView } from "views.slint";
+import { AttachmentView, LoginView, RoomView, VerificationView, VideoView } from "views.slint";
 import { MessageEntry, ReactionEntry } from "screens/chat/components/types.slint";
 
 export struct ReactionAnchor {
@@ -46,10 +46,13 @@ export global Shell {
         && LoginView.step == LoginPhase.logged-in;
     out property <bool> attachment-open: AttachmentView.visible
         && LoginView.step == LoginPhase.logged-in;
+    out property <bool> video-open: VideoView.visible
+        && LoginView.step == LoginPhase.logged-in;
     out property <bool> modal-open: root.drawer-open
         || root.nav-open
         || root.verification-open
-        || root.attachment-open;
+        || root.attachment-open
+        || root.video-open;
     out property <bool> background-reachable: !root.modal-open;
 
     public function close-overlays() {

@@ -1,7 +1,7 @@
 use std::cell::{Cell, RefCell};
 use std::sync::Arc;
 
-use slint::{Model, SharedString, VecModel};
+use slint::{ComponentHandle, Model, SharedString, VecModel};
 
 use super::backend::{UiBackend, UiEventContext};
 use super::decode::{AvatarSlot, clear_session_media, load_avatar_async, request_sticker};
@@ -13,10 +13,12 @@ use super::props::{BoolProp, IntProp, StringProp, UiProps};
 use super::reconcile::{
     apply_rooms, apply_spaces, apply_timeline_patch, forget_timeline_index, index_sticker_grid,
 };
+use super::video;
 use crate::commands::effects::{Effect, VerificationActivity, VerificationUpdate};
 use crate::commands::messages::{UserMessage, UserMessageKind};
 use crate::commands::view::{
     AppViewState, AttachmentView, DirectoryView, LifecycleView, PaginationView, StickerView, Toast,
+    VideoView,
 };
 use crate::domain::room::{RoomId, RoomList};
 use crate::domain::timeline::{TimelinePatch, TimelineStatus};
@@ -218,6 +220,7 @@ fn apply_snapshot<B: UiBackend>(
         pagination,
         stickers,
         attachment,
+        video,
         toast,
     } = view.as_ref();
     let DirectoryView {
@@ -283,6 +286,9 @@ fn apply_snapshot<B: UiBackend>(
     }
     if last.is_none_or(|l| l.attachment != *attachment) {
         apply_attachment(w, attachment);
+    }
+    if last.is_none_or(|l| l.video != *video) {
+        apply_video::<B>(w, video);
     }
     if last.is_none_or(|l| l.toast != *toast) {
         apply_toast(w, toast);
@@ -444,6 +450,24 @@ fn apply_attachment(w: &impl UiProps, attachment: &AttachmentView) {
         .as_deref()
         .and_then(|p| load_avatar_async(p, AvatarSlot::AttachmentPreview));
     w.apply_attachment_preview(preview);
+}
+
+fn apply_video<B: UiBackend>(w: &B::Window, view: &VideoView) {
+    let VideoView {
+        visible,
+        loading,
+        path,
+        error,
+    } = view;
+
+    w.set_bool(BoolProp::VideoVisible, *visible);
+    w.set_bool(BoolProp::VideoLoading, *loading);
+    w.set_video_error(*error);
+
+    match path.as_deref().filter(|_| *visible) {
+        Some(path) => video::open(w, &w.as_weak(), path),
+        None => video::close(w),
+    }
 }
 
 fn apply_toast(w: &impl UiProps, toast: &Toast) {
