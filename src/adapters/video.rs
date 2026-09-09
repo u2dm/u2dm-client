@@ -18,6 +18,8 @@ pub fn poster_jpeg(_path: &Path, _max_edge: u32, _quality: u8) -> Option<Vec<u8>
 }
 
 #[cfg(feature = "video")]
+mod audio;
+#[cfg(feature = "video")]
 pub mod player;
 
 #[cfg(feature = "video")]

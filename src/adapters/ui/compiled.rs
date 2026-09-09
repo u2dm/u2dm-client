@@ -497,6 +497,13 @@ impl SlintUiAdapter {
         });
 
         let weak = win.as_weak();
+        actions(win).on_toggle_video_muted(move || {
+            if let Some(window) = weak.upgrade() {
+                video::toggle_muted(&window);
+            }
+        });
+
+        let weak = win.as_weak();
         actions(win).on_seek_video(move |ms| {
             if let Some(window) = weak.upgrade() {
                 video::seek(&window, millis_to_duration(usize::try_from(ms).ok()));

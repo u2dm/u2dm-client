@@ -72,6 +72,7 @@ mod names {
         pub const REQUEST_ROOM_AVATAR: &str = "request-room-avatar";
         pub const REQUEST_STICKER: &str = "request-sticker";
         pub const TOGGLE_VIDEO: &str = "toggle-video";
+        pub const TOGGLE_VIDEO_MUTED: &str = "toggle-video-muted";
         pub const SEEK_VIDEO: &str = "seek-video";
         pub const SEARCH_STICKERS: &str = "search-stickers";
         pub const SCROLL_POSITION_CHANGED: &str = "scroll-position-changed";
@@ -845,6 +846,14 @@ impl SlintUiAdapter {
         bind_action(&self.instance, callback::TOGGLE_VIDEO, move |_| {
             if let Some(window) = weak.upgrade() {
                 video::toggle(&window);
+            }
+            Value::Void
+        })?;
+
+        let weak = self.instance.as_weak();
+        bind_action(&self.instance, callback::TOGGLE_VIDEO_MUTED, move |_| {
+            if let Some(window) = weak.upgrade() {
+                video::toggle_muted(&window);
             }
             Value::Void
         })?;

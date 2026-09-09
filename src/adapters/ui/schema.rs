@@ -73,6 +73,7 @@ macro_rules! bool_props {
         VideoVisible VideoView "VideoView" "visible" set_visible;
         VideoLoading VideoView "VideoView" "loading" set_loading;
         VideoPlaying VideoView "VideoView" "playing" set_playing;
+        VideoMuted VideoView "VideoView" "muted" set_muted;
     } };
 }
 pub(crate) use bool_props;

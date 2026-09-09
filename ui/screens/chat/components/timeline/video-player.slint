@@ -177,6 +177,30 @@ export component VideoPlayer inherits ModalHost {
 
                 ClickArea {
                     above-modal: true;
+                    enabled: VideoView.has-frame;
+                    width: Size.xl;
+                    height: Size.xl;
+                    ring-radius: Radius.sm;
+                    label: VideoView.muted ? @tr("Unmute") : @tr("Mute");
+                    clicked => {
+                        Actions.toggle-video-muted();
+                    }
+
+                    IconDisplay {
+                        x: (parent.width - self.width) / 2;
+                        y: (parent.height - self.height) / 2;
+                        icon: VideoView.muted ? IconSet.VolumeX : IconSet.Volume2;
+                        size: IconSize.md;
+                        stroke: Palette.foreground;
+                    }
+                }
+            }
+
+            VerticalLayout {
+                alignment: center;
+
+                ClickArea {
+                    above-modal: true;
                     width: Size.xl;
                     height: Size.xl;
                     ring-radius: Radius.sm;

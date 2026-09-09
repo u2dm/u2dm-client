@@ -1,3 +1,4 @@
+use std::collections::VecDeque;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
 use std::thread::{self, JoinHandle};
@@ -5,12 +6,23 @@ use std::time::{Duration, Instant};
 
 use ffmpeg_next::format::Pixel;
 use ffmpeg_next::software::scaling;
-use ffmpeg_next::util::frame::Video as VideoFrame;
-use ffmpeg_next::{Rational, codec, format, media};
+use ffmpeg_next::util::frame::{Audio as AudioFrame, Video as VideoFrame};
+use ffmpeg_next::Packet;
+use ffmpeg_next::util::format::sample::{Sample, Type as SampleType};
+use ffmpeg_next::{ChannelLayout, Rational, codec, format, media, software};
+
+use super::audio::AudioOutput;
 
 const MAX_DIMENSION: u32 = 1280;
 const LATE_FRAME_TOLERANCE: Duration = Duration::from_millis(120);
 const COMMAND_POLL: Duration = Duration::from_millis(4);
+const MAX_PENDING_FRAMES: usize = 4;
+const RESAMPLE_HEADROOM: usize = 1024;
+
+struct Pending {
+    rgb: Vec<u8>,
+    position: Duration,
+}
 
 pub enum PlayerEvent<'a> {
     Ready {
@@ -33,6 +45,7 @@ enum Command {
     Play,
     Pause,
     Seek(Duration),
+    Muted(bool),
     Stop,
 }
 
@@ -64,6 +77,10 @@ impl Playback {
         self.send(Command::Seek(position));
     }
 
+    pub fn set_muted(&self, muted: bool) {
+        self.send(Command::Muted(muted));
+    }
+
     fn send(&self, command: Command) {
         if self.commands.send(command).is_err() {
             tracing::debug!("video playback thread is gone, dropping the command");
@@ -82,49 +99,92 @@ impl Drop for Playback {
     }
 }
 
-struct Clock {
-    origin: Instant,
-    paused_at: Option<Instant>,
+enum Clock {
+    Wall {
+        origin: Instant,
+        paused_at: Option<Instant>,
+    },
+    Audio {
+        position: Duration,
+        paused: bool,
+    },
 }
 
 impl Clock {
-    fn started_at(position: Duration) -> Self {
-        Self {
-            origin: Instant::now().checked_sub(position).unwrap_or_else(Instant::now),
+    fn wall() -> Self {
+        Self::Wall {
+            origin: Instant::now(),
             paused_at: Some(Instant::now()),
         }
     }
 
+    fn audio() -> Self {
+        Self::Audio {
+            position: Duration::ZERO,
+            paused: true,
+        }
+    }
+
     fn is_paused(&self) -> bool {
-        self.paused_at.is_some()
+        match self {
+            Self::Wall { paused_at, .. } => paused_at.is_some(),
+            Self::Audio { paused, .. } => *paused,
+        }
     }
 
     fn resume(&mut self) {
-        if let Some(paused_at) = self.paused_at.take() {
-            self.origin += paused_at.elapsed();
+        match self {
+            Self::Wall { origin, paused_at } => {
+                if let Some(at) = paused_at.take() {
+                    *origin += at.elapsed();
+                }
+            }
+            Self::Audio { paused, .. } => *paused = false,
         }
     }
 
     fn pause(&mut self) {
-        if self.paused_at.is_none() {
-            self.paused_at = Some(Instant::now());
+        match self {
+            Self::Wall { paused_at, .. } => {
+                if paused_at.is_none() {
+                    *paused_at = Some(Instant::now());
+                }
+            }
+            Self::Audio { paused, .. } => *paused = true,
         }
     }
 
-    fn rebase(&mut self, position: Duration) {
-        let now = self.paused_at.unwrap_or_else(Instant::now);
-        self.origin = now.checked_sub(position).unwrap_or(now);
+    fn rebase(&mut self, to: Duration) {
+        match self {
+            Self::Wall { origin, paused_at } => {
+                let now = paused_at.unwrap_or_else(Instant::now);
+                *origin = now.checked_sub(to).unwrap_or(now);
+            }
+            Self::Audio { position, .. } => *position = to,
+        }
     }
 
-    fn due_in(&self, position: Duration) -> Option<Duration> {
-        let deadline = self.origin.checked_add(position)?;
-        Some(deadline.saturating_duration_since(Instant::now()))
+    fn observe(&mut self, heard: Duration) {
+        if let Self::Audio { position, .. } = self {
+            *position = heard;
+        }
+    }
+
+    fn elapsed(&self) -> Duration {
+        match self {
+            Self::Wall { origin, paused_at } => {
+                paused_at.unwrap_or_else(Instant::now).saturating_duration_since(*origin)
+            }
+            Self::Audio { position, .. } => *position,
+        }
+    }
+
+    fn due_in(&self, position: Duration) -> Duration {
+        position.saturating_sub(self.elapsed())
     }
 
     fn is_late(&self, position: Duration) -> bool {
-        self.origin
-            .checked_add(position)
-            .is_some_and(|deadline| Instant::now() > deadline + LATE_FRAME_TOLERANCE)
+        self.elapsed() > position + LATE_FRAME_TOLERANCE
     }
 }
 
@@ -140,6 +200,82 @@ fn run(path: &PathBuf, inbox: &Receiver<Command>, sink: &(dyn Fn(PlayerEvent<'_>
     }
 }
 
+struct Audio {
+    decoder: codec::decoder::Audio,
+    resampler: software::resampling::Context,
+    output: AudioOutput,
+    stream_index: usize,
+    layout: ChannelLayout,
+}
+
+impl Audio {
+    fn open(input: &format::context::Input) -> Option<Self> {
+        let stream = input.streams().best(media::Type::Audio)?;
+        let stream_index = stream.index();
+        let decoder = codec::context::Context::from_parameters(stream.parameters())
+            .ok()?
+            .decoder()
+            .audio()
+            .ok()?;
+        let output = AudioOutput::open()?;
+        let layout = match output.channels() {
+            1 => ChannelLayout::MONO,
+            _ => ChannelLayout::STEREO,
+        };
+        let resampler = software::resampling::Context::get(
+            decoder.format(),
+            decoder.channel_layout(),
+            decoder.rate(),
+            Sample::F32(SampleType::Packed),
+            layout,
+            output.sample_rate(),
+        )
+        .ok()?;
+        Some(Self {
+            decoder,
+            resampler,
+            output,
+            stream_index,
+            layout,
+        })
+    }
+
+    fn resampled_capacity(&self, samples: usize) -> usize {
+        let source = u64::from(self.decoder.rate().max(1));
+        let target = u64::from(self.output.sample_rate());
+        let scaled = (samples as u64).saturating_mul(target) / source;
+        usize::try_from(scaled).unwrap_or(samples) + RESAMPLE_HEADROOM
+    }
+
+    fn feed(&mut self, packet: &Packet) {
+        if self.decoder.send_packet(packet).is_err() {
+            return;
+        }
+        let mut decoded = AudioFrame::empty();
+        while self.decoder.receive_frame(&mut decoded).is_ok() {
+            let mut resampled = AudioFrame::new(
+                Sample::F32(SampleType::Packed),
+                self.resampled_capacity(decoded.samples()),
+                self.layout,
+            );
+            if self.resampler.run(&decoded, &mut resampled).is_err() {
+                continue;
+            }
+            let lanes = usize::from(self.output.channels());
+            let wanted = resampled.samples() * lanes * size_of::<f32>();
+            let Some(bytes) = resampled.data(0).get(..wanted) else {
+                continue;
+            };
+            let mut samples = Vec::with_capacity(resampled.samples() * lanes);
+            for chunk in bytes.chunks_exact(size_of::<f32>()) {
+                let value = <[u8; 4]>::try_from(chunk).map_or(0.0, f32::from_ne_bytes);
+                samples.push(value);
+            }
+            self.output.push(&samples);
+        }
+    }
+}
+
 struct Session {
     input: format::context::Input,
     decoder: codec::decoder::Video,
@@ -149,6 +285,9 @@ struct Session {
     duration: Option<Duration>,
     width: u32,
     height: u32,
+    audio: Option<Audio>,
+    pending: VecDeque<Pending>,
+    drained: bool,
 }
 
 impl Session {
@@ -177,6 +316,16 @@ impl Session {
             scaling::Flags::BILINEAR,
         )
         .ok()?;
+        let audio = Audio::open(&input);
+        if let Some(audio) = audio.as_ref() {
+            tracing::debug!(
+                sample_rate = audio.output.sample_rate(),
+                channels = audio.output.channels(),
+                "video playback opened an audio device"
+            );
+        } else {
+            tracing::debug!("video playback has no audio, pacing on the wall clock");
+        }
         Some(Self {
             input,
             decoder,
@@ -186,6 +335,9 @@ impl Session {
             duration,
             width,
             height,
+            audio,
+            pending: VecDeque::new(),
+            drained: false,
         })
     }
 
@@ -213,7 +365,11 @@ impl Session {
         sink(PlayerEvent::Ready {
             duration: self.duration,
         });
-        let mut clock = Clock::started_at(Duration::ZERO);
+        let mut clock = if self.audio.is_some() {
+            Clock::audio()
+        } else {
+            Clock::wall()
+        };
         loop {
             match self.pump(inbox, sink, &mut clock) {
                 Flow::Continue => {}
@@ -221,6 +377,9 @@ impl Session {
                 Flow::Ended => {
                     sink(PlayerEvent::Ended);
                     clock.pause();
+                    if let Some(audio) = self.audio.as_ref() {
+                        audio.output.pause();
+                    }
                     if matches!(self.wait_for_command(inbox, &mut clock), Flow::Stop) {
                         return;
                     }
@@ -245,13 +404,40 @@ impl Session {
 
     fn apply(&mut self, command: Command, clock: &mut Clock) {
         match command {
-            Command::Play => clock.resume(),
-            Command::Pause => clock.pause(),
+            Command::Play => {
+                clock.resume();
+                if let Some(audio) = self.audio.as_ref() {
+                    audio.output.resume();
+                }
+            }
+            Command::Pause => {
+                clock.pause();
+                if let Some(audio) = self.audio.as_ref() {
+                    audio.output.pause();
+                }
+            }
             Command::Seek(position) => {
                 self.seek_to(position);
+                self.pending.clear();
+                self.drained = false;
+                if let Some(audio) = self.audio.as_mut() {
+                    audio.decoder.flush();
+                    audio.output.rebase(position);
+                }
                 clock.rebase(position);
             }
+            Command::Muted(muted) => {
+                if let Some(audio) = self.audio.as_ref() {
+                    audio.output.set_muted(muted);
+                }
+            }
             Command::Stop => {}
+        }
+    }
+
+    fn sync_clock(&self, clock: &mut Clock) {
+        if let Some(audio) = self.audio.as_ref() {
+            clock.observe(audio.output.position());
         }
     }
 
@@ -265,6 +451,34 @@ impl Session {
         }
     }
 
+    fn audio_is_full(&self) -> bool {
+        self.audio
+            .as_ref()
+            .is_some_and(|audio| audio.output.is_full())
+    }
+
+    fn top_up(&mut self) {
+        while self.pending.len() < MAX_PENDING_FRAMES && !self.drained && !self.audio_is_full() {
+            match self.next_packet() {
+                Some(packet) => self.decode_into_pending(&packet),
+                None => self.drained = true,
+            }
+        }
+    }
+
+    fn decode_into_pending(&mut self, packet: &Packet) {
+        if self.decoder.send_packet(packet).is_err() {
+            return;
+        }
+        let mut frame = VideoFrame::empty();
+        while self.decoder.receive_frame(&mut frame).is_ok() {
+            let position = self.position_of(&frame);
+            if let Some(rgb) = self.scale_to_rgb(&frame) {
+                self.pending.push_back(Pending { rgb, position });
+            }
+        }
+    }
+
     fn pump(
         &mut self,
         inbox: &Receiver<Command>,
@@ -274,90 +488,74 @@ impl Session {
         if matches!(self.drain_commands(inbox, clock), Flow::Stop) {
             return Flow::Stop;
         }
+        self.sync_clock(clock);
         if clock.is_paused() {
             return self.wait_for_command(inbox, clock);
         }
-        let Some(packet) = self.next_packet() else {
-            return Flow::Ended;
+
+        self.top_up();
+        self.sync_clock(clock);
+
+        let Some(next) = self.pending.front() else {
+            return if self.drained {
+                Flow::Ended
+            } else {
+                Flow::Continue
+            };
         };
-        if self.decoder.send_packet(&packet).is_err() {
+        let position = next.position;
+
+        if clock.is_late(position) {
+            self.pending.pop_front();
             return Flow::Continue;
         }
-        let mut frame = VideoFrame::empty();
-        while self.decoder.receive_frame(&mut frame).is_ok() {
-            let position = self.position_of(&frame);
-            if clock.is_late(position) {
-                continue;
+        if clock.due_in(position).is_zero() {
+            if let Some(frame) = self.pending.pop_front() {
+                sink(PlayerEvent::Frame {
+                    rgb: &frame.rgb,
+                    width: self.width,
+                    height: self.height,
+                    position,
+                });
             }
-            match self.hold_until(inbox, clock, position) {
-                Flow::Stop => return Flow::Stop,
-                Flow::Ended => return Flow::Ended,
-                Flow::Continue => {}
-            }
-            self.emit(&frame, position, sink);
+            return Flow::Continue;
         }
-        Flow::Continue
-    }
 
-    fn hold_until(
-        &mut self,
-        inbox: &Receiver<Command>,
-        clock: &mut Clock,
-        position: Duration,
-    ) -> Flow {
-        while let Some(remaining) = clock.due_in(position) {
-            if remaining.is_zero() {
-                return Flow::Continue;
+        match inbox.recv_timeout(COMMAND_POLL) {
+            Ok(Command::Stop) | Err(RecvTimeoutError::Disconnected) => Flow::Stop,
+            Ok(command) => {
+                self.apply(command, clock);
+                Flow::Continue
             }
-            match inbox.recv_timeout(remaining.min(COMMAND_POLL)) {
-                Ok(Command::Stop) | Err(RecvTimeoutError::Disconnected) => return Flow::Stop,
-                Ok(command) => {
-                    self.apply(command, clock);
-                    if clock.is_paused() && matches!(self.wait_for_command(inbox, clock), Flow::Stop)
-                    {
-                        return Flow::Stop;
-                    }
-                }
-                Err(RecvTimeoutError::Timeout) => {}
-            }
-        }
-        Flow::Continue
-    }
-
-    fn next_packet(&mut self) -> Option<ffmpeg_next::Packet> {
-        loop {
-            let (stream, packet) = self.input.packets().next()?;
-            if stream.index() == self.stream_index {
-                return Some(packet);
-            }
+            Err(RecvTimeoutError::Timeout) => Flow::Continue,
         }
     }
 
-    fn emit(
-        &mut self,
-        frame: &VideoFrame,
-        position: Duration,
-        sink: &(dyn Fn(PlayerEvent<'_>) + Send),
-    ) {
+    fn scale_to_rgb(&mut self, frame: &VideoFrame) -> Option<Vec<u8>> {
         let mut rgb = VideoFrame::empty();
-        if self.scaler.run(frame, &mut rgb).is_err() {
-            return;
-        }
+        self.scaler.run(frame, &mut rgb).ok()?;
         let row_bytes = self.width as usize * 3;
         let stride = rgb.stride(0);
         let mut packed = Vec::with_capacity(row_bytes * self.height as usize);
         for row in rgb.data(0).chunks_exact(stride).take(self.height as usize) {
-            let Some(row) = row.get(..row_bytes) else {
-                return;
-            };
-            packed.extend_from_slice(row);
+            packed.extend_from_slice(row.get(..row_bytes)?);
         }
-        sink(PlayerEvent::Frame {
-            rgb: &packed,
-            width: self.width,
-            height: self.height,
-            position,
-        });
+        Some(packed)
+    }
+
+    fn next_packet(&mut self) -> Option<Packet> {
+        loop {
+            let (stream, packet) = self.input.packets().next()?;
+            let index = stream.index();
+            if index == self.stream_index {
+                return Some(packet);
+            }
+            if let Some(audio) = self.audio.as_mut()
+                && index == audio.stream_index
+            {
+                audio.feed(&packet);
+            }
+        }
     }
 }
 

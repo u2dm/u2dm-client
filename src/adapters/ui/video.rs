@@ -17,6 +17,7 @@ thread_local! {
     #[cfg(feature = "video")]
     static PLAYBACK: RefCell<Option<Session>> = const { RefCell::new(None) };
     static PLAYING: Cell<bool> = const { Cell::new(false) };
+    static MUTED: Cell<bool> = const { Cell::new(false) };
 }
 
 #[cfg(feature = "video")]
@@ -50,6 +51,8 @@ where
     window.set_int(IntProp::VideoPositionMs, 0);
     window.set_int(IntProp::VideoDurationMs, 0);
     window.clear_video_frame();
+    MUTED.set(false);
+    window.set_bool(BoolProp::VideoMuted, false);
     start(window, weak, path);
 }
 
@@ -96,6 +99,18 @@ pub fn set_playing<W: UiProps>(window: &W, playing: bool) {
 
 pub fn toggle<W: UiProps>(window: &W) {
     set_playing(window, !PLAYING.get());
+}
+
+pub fn toggle_muted<W: UiProps>(window: &W) {
+    let muted = !MUTED.get();
+    MUTED.set(muted);
+    #[cfg(feature = "video")]
+    PLAYBACK.with(|cell| {
+        if let Some(session) = cell.borrow().as_ref() {
+            session.playback.set_muted(muted);
+        }
+    });
+    window.set_bool(BoolProp::VideoMuted, muted);
 }
 
 pub fn seek<W: UiProps>(window: &W, position: Duration) {
