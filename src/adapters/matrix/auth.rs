@@ -371,7 +371,7 @@ fn client_metadata() -> Result<Raw<ClientMetadata>> {
     let ipv6_uri: Url = format!("http://[{}]/", Ipv6Addr::LOCALHOST)
         .parse()
         .map_err(|e: url::ParseError| AppError::Other(e.to_string()))?;
-    let client_uri: Url = "https://github.com/drendog/u2dm"
+    let client_uri: Url = "https://github.com/u2dm/u2dm-client"
         .parse()
         .map_err(|e: url::ParseError| AppError::Other(e.to_string()))?;
 
