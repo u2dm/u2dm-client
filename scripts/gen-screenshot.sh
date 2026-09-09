@@ -5,7 +5,6 @@ root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 destination="${1:-$root/docs/screenshot.png}"
 
 readonly MCP_PORT=8080
-readonly MCP_URL="http://127.0.0.1:$MCP_PORT/mcp"
 readonly APP_NAME="u2dm"
 readonly FEATURES="demo slint/mcp"
 readonly PROFILE="inspect"
@@ -14,6 +13,8 @@ readonly READY_TIMEOUT=60
 readonly RENDER_SETTLE=3
 
 export SLINT_EMIT_DEBUG_INFO=1
+
+source "$root/scripts/lib/mcp.sh"
 
 tmp="$(mktemp -d)"
 app_pid=""
@@ -55,34 +56,7 @@ give_up() {
   exit 1
 }
 
-call_tool() {
-  local tool=$1 arguments=$2 request response
-  request=$(jq -cn --arg tool "$tool" --argjson arguments "$arguments" \
-    '{jsonrpc: "2.0", id: 1, method: "tools/call", params: {name: $tool, arguments: $arguments}}')
-  response=$(curl -sf --max-time 30 -H 'Content-Type: application/json' -d "$request" "$MCP_URL") || return 1
-  [[ $(jq -r '.result.isError // false' <<<"$response") == false ]] || give_up "$tool failed: $(jq -r '.result.content[0].text' <<<"$response")"
-  echo "$response"
-}
-
-tool_payload() {
-  call_tool "$1" "$2" | jq -c '.result.content[0].text | fromjson'
-}
-
-window_handle() {
-  tool_payload list_windows '{}' | jq -c '.windowHandles[0] // empty'
-}
-
-root_element() {
-  tool_payload get_window_properties \
-    "$(jq -cn --argjson window "$1" '{windowHandle: $window}')" |
-    jq -c '.rootElementHandle // empty'
-}
-
-room_rows() {
-  tool_payload query_element_descendants \
-    "$(jq -cn --argjson root "$1" '{elementHandle: $root, findAll: true, queryStack: [{matchElementTypeNameOrBase: "RoomRow"}]}')" |
-    jq -c '.elementHandles // []'
-}
+mcp_fail() { give_up "$1"; }
 
 await() {
   local description=$1 waited=0 result
@@ -104,24 +78,20 @@ open_room() {
   local room
   room=$(jq -c ".[$ROOM_ROW] // empty" <<<"$1")
   [[ -n $room ]] || give_up "the sidebar has no room at row $ROOM_ROW"
-  call_tool click_element "$(jq -cn --argjson room "$room" '{elementHandle: $room}')" >/dev/null
+  mcp_click "$room"
   sleep "$RENDER_SETTLE"
 }
 
 capture() {
-  mkdir -p "$(dirname "$destination")"
-  call_tool take_screenshot "$(jq -cn --argjson window "$1" '{windowHandle: $window}')" |
-    jq -r '.result.content[] | select(.type == "image") | .data' |
-    base64 -d >"$destination"
-  [[ -s $destination ]] || give_up "the inspector returned an empty screenshot"
+  mcp_screenshot "$1" "$destination"
   echo "wrote $destination"
 }
 
 require_tools
 build_demo_app
 launch_demo_app
-window=$(await "the inspector to come up" window_handle)
-root=$(await "the window to report its root element" root_element "$window")
-rooms=$(await "the demo rooms to load" room_rows "$root")
+window=$(await "the inspector to come up" mcp_window)
+root=$(await "the window to report its root element" mcp_root_element "$window")
+rooms=$(await "the demo rooms to load" mcp_elements_of_type "$root" RoomRow)
 open_room "$rooms"
 capture "$window"

@@ -4,12 +4,14 @@ set -euo pipefail
 readonly PROBE_PORT=${U2DM_PROBE_PORT:-9090}
 readonly MCP_PORT=${SLINT_MCP_PORT:-8080}
 readonly PROBE="http://127.0.0.1:$PROBE_PORT"
-readonly MCP="http://127.0.0.1:$MCP_PORT/mcp"
 readonly PROFILE=${PROFILE:-inspect}
 readonly ROOT=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 readonly LOG=${U2DM_DRIVE_LOG:-$ROOT/target/u2dm-drive.log}
 
+source "$ROOT/scripts/lib/mcp.sh"
+
 die() { printf '%s\n' "$*" >&2; exit 1; }
+mcp_fail() { die "$1"; }
 
 probe() { # probe <path>
   curl -sf --max-time 35 "$PROBE$1" || die "the probe did not answer $1; is the app up? try: $0 up"
@@ -30,6 +32,7 @@ usage: u2dm-drive <command> [args]
   room <id>              shorthand for select_room
   wait [seq] [ms]        long-poll until the snapshot moves past seq
   logs [n]               tail the app log
+  window                 the window's logical size (needs --mcp)
   shot <file>            screenshot via the Slint MCP inspector (needs --mcp)
 
 Environment: U2DM_PROBE_PORT (9090), SLINT_MCP_PORT (8080), and any U2DM_DEMO_*
@@ -90,15 +93,14 @@ case "${1:-}" in
              cmd_send "$(jq -cn --arg id "$2" '{op:"select_room",room_id:$id}')" ;;
   wait)      probe "/state?wait=${2:-0}&ms=${3:-10000}" | jq '{seq}' ;;
   logs)      tail -n "${2:-40}" "$LOG" ;;
+  window)    win=$(mcp_window)
+             [[ -n $win ]] || die "no window; did you launch with --mcp?"
+             mcp_payload get_window_properties "$(jq -cn --argjson w "$win" '{windowHandle: $w}')" |
+               jq -r '"\((.size.width / .scaleFactor)|floor)x\((.size.height / .scaleFactor)|floor)"' ;;
   shot)      [[ -n ${2:-} ]] || die "shot needs a destination file"
-             win=$(curl -s -X POST "$MCP" -H 'Content-Type: application/json' \
-                   -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"list_windows","arguments":{}}}' \
-                   | jq -c '.result.content[0].text | fromjson | .windowHandles[0]')
-             [[ -n $win && $win != null ]] || die "no window; did you launch with --mcp?"
-             curl -s -X POST "$MCP" -H 'Content-Type: application/json' \
-               -d "$(jq -cn --argjson w "$win" '{jsonrpc:"2.0",id:1,method:"tools/call",params:{name:"take_screenshot",arguments:{windowHandle:$w}}}')" \
-               | jq -r '.result.content[] | select(.type=="image") | .data' | base64 -d > "$2"
-             [[ -s $2 ]] || die "the screenshot came back empty"
+             win=$(mcp_window)
+             [[ -n $win ]] || die "no window; did you launch with --mcp?"
+             mcp_screenshot "$win" "$2"
              echo "wrote $2" ;;
   ""|-h|--help|help) usage ;;
   *)         die "unknown command: $1 (try --help)" ;;

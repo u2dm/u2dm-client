@@ -21,6 +21,15 @@ demo *ARGS:
 screenshot *ARGS:
     ./scripts/gen-screenshot.sh {{ ARGS }}
 
+drive *ARGS:
+    ./scripts/u2dm-drive {{ ARGS }}
+
+scenario *ARGS:
+    ./scripts/scenario {{ ARGS }}
+
+scenarios:
+    ./scripts/scenario list
+
 clippy *ARGS:
     cargo clippy {{ ARGS }}
 
@@ -45,7 +54,10 @@ clean-modes:
 clean-inspect:
     rm -rf target/inspect
 
-clean-isolated: clean-modes clean-inspect
+clean-scenarios:
+    rm -rf target/scenarios
+
+clean-isolated: clean-modes clean-inspect clean-scenarios
 
 clean-all:
     cargo clean
