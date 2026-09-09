@@ -15,6 +15,8 @@ use super::dto::{
     MediaFailureKind, MediaState, ReactionDto, ReactorAvatarDto, StickerCellDto, StickerPackDto,
     StickerRowDto, ThumbUpdate, enrich_to_update, message_to_dto, room_to_dto, space_to_dto,
 };
+#[cfg(feature = "demo")]
+use super::dump;
 use super::multiplex::spawn_event_multiplexer;
 use super::present::{MessageKind, ServiceKind, VerifyStep};
 use super::video::{self, millis_to_duration};
@@ -694,6 +696,20 @@ impl SlintUiAdapter {
             .window()
             .set_size(slint::LogicalSize::new(width, height));
     }
+
+    #[cfg(feature = "demo")]
+    pub fn install_timeline_dump(&self) {
+        let weak = self.window.as_weak();
+        dump::install(Box::new(move |reply| {
+            let handle = weak.clone();
+            let queued = handle.upgrade_in_event_loop(move |window| {
+                drop(reply.send(probe_dump::collect(&window)));
+            });
+            if let Err(e) = queued {
+                tracing::debug!("the timeline dump could not reach the event loop: {e}");
+            }
+        }));
+    }
 }
 
 fn emoji_entry_to_ui(e: &emoji::EmojiEntry) -> EmojiEntry {
@@ -898,5 +914,93 @@ fn space_to_entry(s: &Space, media: &dyn MediaCache) -> SpaceEntry {
         initial: d.initial,
         avatar: d.avatar.unwrap_or_default(),
         has_avatar: d.has_avatar,
+    }
+}
+
+#[cfg(feature = "demo")]
+mod probe_dump {
+    use slint::{ComponentHandle, Model};
+
+    use super::generated::{
+        MediaFailure, MediaState, MessageKind, PreviewKind, SendState, ServiceKind,
+    };
+    use super::{
+        AppWindow, IntProp, MessageEntry, ReactionEntry, RoomView, StringProp, TIMELINE_MODEL,
+        UiProps,
+    };
+    use crate::adapters::ui::dump::{ReactionRowDump, TimelineDump, TimelineRowDump};
+    use crate::adapters::ui::schema::{
+        enum_names, media_failures, media_states, message_kinds, preview_kinds, send_states,
+        service_kinds,
+    };
+
+    message_kinds!(enum_names slint message_kind MessageKind;);
+    preview_kinds!(enum_names slint preview_kind PreviewKind;);
+    service_kinds!(enum_names slint service_kind ServiceKind;);
+    media_states!(enum_names slint media_state MediaState;);
+    media_failures!(enum_names slint media_failure MediaFailure;);
+    send_states!(enum_names slint send_state SendState;);
+
+    fn reaction(entry: &ReactionEntry) -> ReactionRowDump {
+        ReactionRowDump {
+            key: entry.key.to_string(),
+            label: entry.label.to_string(),
+            count: entry.count,
+            mine: entry.mine,
+            pending: entry.pending,
+            overflow: entry.overflow,
+            hidden_reactors: entry.hidden_reactors,
+        }
+    }
+
+    fn row(index: usize, entry: &MessageEntry) -> TimelineRowDump {
+        TimelineRowDump {
+            row: index,
+            unique_id: entry.unique_id.to_string(),
+            event_id: entry.event_id.to_string(),
+            sender: entry.sender.to_string(),
+            sender_id: entry.sender_id.to_string(),
+            body: entry.body.to_string(),
+            timestamp: entry.timestamp.to_string(),
+            message_type: message_kind(entry.message_type),
+            preview_kind: preview_kind(entry.preview_kind),
+            service_kind: service_kind(entry.service_kind),
+            service_target: entry.service_target.to_string(),
+            media_state: media_state(entry.media_state),
+            media_failure: media_failure(entry.media_failure),
+            send_state: send_state(entry.send_state),
+            send_progress: entry.send_progress,
+            is_own: entry.is_own,
+            edited: entry.edited,
+            first_unread: entry.first_unread,
+            needs_media: entry.needs_media,
+            has_avatar: entry.has_avatar,
+            image_width: entry.image_width,
+            image_height: entry.image_height,
+            duration: entry.duration.to_string(),
+            has_reply: entry.has_reply,
+            reply_event_id: entry.reply_event_id.to_string(),
+            reply_sender: entry.reply_sender.to_string(),
+            reply_body: entry.reply_body.to_string(),
+            reactions: entry.reactions.iter().map(|r| reaction(&r)).collect(),
+        }
+    }
+
+    pub fn collect(window: &AppWindow) -> TimelineDump {
+        let view = window.global::<RoomView>();
+        let rows = TIMELINE_MODEL
+            .with(|cell| cell.borrow().clone())
+            .map(|model| model.iter().enumerate().map(|(i, e)| row(i, &e)).collect())
+            .unwrap_or_default();
+        TimelineDump {
+            selected_room_id: window.get_string(StringProp::SelectedRoomId).to_string(),
+            selected_room_name: view.get_selected_room_name().to_string(),
+            generation: window.get_int(IntProp::SelectedGeneration),
+            timeline_token: view.get_timeline_token(),
+            prepend_token: view.get_prepend_token(),
+            anchor_index: view.get_anchor_index(),
+            focus_event_id: view.get_focus_event_id().to_string(),
+            rows,
+        }
     }
 }

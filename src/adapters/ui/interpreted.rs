@@ -1033,6 +1033,9 @@ impl SlintUiAdapter {
             .window()
             .set_size(slint::LogicalSize::new(width, height));
     }
+
+    #[cfg(feature = "demo")]
+    pub fn install_timeline_dump(&self) {}
 }
 
 fn emoji_entry_to_value(e: &emoji::EmojiEntry) -> Value {

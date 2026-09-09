@@ -78,6 +78,7 @@ const ENUM_TABLES: &[(&str, &str)] = &[
 
 fn main() {
     check_enum_branch_coverage();
+    check_scenario_catalogs();
     sync_lucide_lsp_lib();
     ensure_twemoji_font();
 
@@ -94,6 +95,96 @@ fn main() {
     }
 
     update_translations(&bundled_catalog_root());
+}
+
+struct ScenarioSource {
+    file: &'static str,
+    arms_between: (&'static str, &'static str),
+    ignored: &'static [&'static str],
+}
+
+const SCENARIO_SOURCES: &[ScenarioSource] = &[
+    ScenarioSource {
+        file: "src/adapters/demo/timeline.rs",
+        arms_between: ("fn apply(scenario: &mut Scenario, flag: &str) {", "\n}"),
+        ignored: &[],
+    },
+    ScenarioSource {
+        file: "src/adapters/demo/reactions.rs",
+        arms_between: ("fn apply(scenario: &mut Scenario, flag: &str) {", "\n}"),
+        ignored: &[],
+    },
+    ScenarioSource {
+        file: "src/adapters/demo/richtext.rs",
+        arms_between: ("fn apply(scenario: &mut Scenario, flag: &str) {", "\n}"),
+        ignored: &[],
+    },
+    ScenarioSource {
+        file: "src/adapters/demo/stickers.rs",
+        arms_between: ("fn apply(scenario: &mut Scenario, flag: &str) {", "\n}"),
+        ignored: &[],
+    },
+    ScenarioSource {
+        file: "src/adapters/demo/attachments.rs",
+        arms_between: ("fn apply(scenario: &mut Scenario, flag: &str) {", "\n}"),
+        ignored: &["pick=<path>"],
+    },
+];
+
+fn check_scenario_catalogs() {
+    for source in SCENARIO_SOURCES {
+        println!("cargo::rerun-if-changed={}", source.file);
+        let Ok(text) = fs::read_to_string(source.file) else {
+            panic!(
+                "failed to read {}, so its scenario catalog cannot be checked",
+                source.file
+            );
+        };
+        let arms = section(&text, source.file, source.arms_between, "the flag match");
+        let catalog = section(
+            &text,
+            source.file,
+            ("pub const CATALOG: Scenarios = Scenarios {", "\n};"),
+            "the CATALOG const",
+        );
+
+        let is_flag = |value: &&str| !value.is_empty() && !value.contains(' ');
+        let mut flags: Vec<String> = quoted_literals(arms)
+            .filter(is_flag)
+            .map(str::to_owned)
+            .collect();
+        let mut listed: Vec<String> = quoted_literals(catalog)
+            .filter(is_flag)
+            .map(str::to_owned)
+            .collect();
+        listed.retain(|value| !source.ignored.contains(&value.as_str()));
+        flags.sort_unstable();
+        flags.dedup();
+        listed.sort_unstable();
+        listed.dedup();
+
+        let missing: Vec<&String> = flags.iter().filter(|f| !listed.contains(f)).collect();
+        let extra: Vec<&String> = listed.iter().filter(|l| !flags.contains(l)).collect();
+        assert!(
+            missing.is_empty() && extra.is_empty(),
+            "{} and its CATALOG disagree: the match accepts {missing:?} that the catalog does not \
+             list, and the catalog lists {extra:?} that the match does not accept. The catalog is \
+             what `--demo-scenarios` reports, so a flag missing from it is one no agent will find.",
+            source.file
+        );
+    }
+}
+
+fn section<'a>(text: &'a str, file: &str, bounds: (&str, &str), what: &str) -> &'a str {
+    let (header, footer) = bounds;
+    let Some(body) = text
+        .split_once(header)
+        .and_then(|(_, rest)| rest.split_once(footer))
+        .map(|(body, _)| body)
+    else {
+        panic!("{file} has no `{header}` followed by `{footer}`, so {what} cannot be checked");
+    };
+    body
 }
 
 fn check_enum_branch_coverage() {

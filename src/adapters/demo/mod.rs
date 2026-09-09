@@ -7,6 +7,7 @@ mod files;
 mod login;
 mod matrix;
 mod media;
+pub mod probe;
 mod reactions;
 mod richtext;
 mod stickers;

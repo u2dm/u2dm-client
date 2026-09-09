@@ -80,7 +80,7 @@ fn write_catalog() -> io::Result<()> {
     out.flush()
 }
 
-fn json() -> serde_json::Value {
+pub fn json() -> serde_json::Value {
     let scenarios: Vec<serde_json::Value> = all()
         .iter()
         .map(|scenario| {

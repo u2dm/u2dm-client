@@ -1,0 +1,105 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+readonly PROBE_PORT=${U2DM_PROBE_PORT:-9090}
+readonly MCP_PORT=${SLINT_MCP_PORT:-8080}
+readonly PROBE="http://127.0.0.1:$PROBE_PORT"
+readonly MCP="http://127.0.0.1:$MCP_PORT/mcp"
+readonly PROFILE=${PROFILE:-inspect}
+readonly ROOT=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
+readonly LOG=${U2DM_DRIVE_LOG:-$ROOT/target/u2dm-drive.log}
+
+die() { printf '%s\n' "$*" >&2; exit 1; }
+
+probe() { # probe <path>
+  curl -sf --max-time 35 "$PROBE$1" || die "the probe did not answer $1; is the app up? try: $0 up"
+}
+
+usage() {
+  cat <<'USAGE'
+usage: u2dm-drive <command> [args]
+
+  up [--mcp] [--]        build and launch the demo app with the probe
+  down                   stop it
+  health                 fixture path, load error, room counts, selection
+  state [jq]             the AppViewState projection
+  timeline [jq]          the live Slint timeline rows (the ground truth)
+  journal [since]        the ordered effect record
+  scenarios              every U2DM_DEMO_* knob and its values
+  send <json>            inject a command, e.g. '{"op":"select_room","room_id":"!rust:demo.local"}'
+  room <id>              shorthand for select_room
+  wait [seq] [ms]        long-poll until the snapshot moves past seq
+  logs [n]               tail the app log
+  shot <file>            screenshot via the Slint MCP inspector (needs --mcp)
+
+Environment: U2DM_PROBE_PORT (9090), SLINT_MCP_PORT (8080), and any U2DM_DEMO_*
+scenario variable, which is passed straight through to the app.
+USAGE
+}
+
+cmd_up() {
+  local with_mcp=0
+  [[ ${1:-} == --mcp ]] && { with_mcp=1; shift; }
+  command -v curl >/dev/null || die "curl is required"
+  command -v jq >/dev/null || die "jq is required"
+
+  pkill -x u2dm 2>/dev/null || true
+  sleep 1
+
+  local features="demo"
+  local -a env=(U2DM_ASSERT_DEMO=1 "U2DM_PROBE_PORT=$PROBE_PORT" "U2DM_LOG_FORMAT=json")
+  [[ -n ${RUST_LOG:-} ]] && env+=("RUST_LOG=$RUST_LOG") || env+=("RUST_LOG=u2dm=debug")
+  if (( with_mcp )); then
+    features="demo slint/mcp"
+    env+=("SLINT_MCP_PORT=$MCP_PORT" "SLINT_EMIT_DEBUG_INFO=1")
+    [[ -n ${DISPLAY:-}${WAYLAND_DISPLAY:-} ]] || die "the MCP inspector needs a graphical session"
+  fi
+
+  ( cd "$ROOT" && SLINT_EMIT_DEBUG_INFO=${SLINT_EMIT_DEBUG_INFO:-} \
+      cargo build --profile "$PROFILE" --features "$features" ) || die "build failed"
+
+  mkdir -p "$(dirname "$LOG")"
+  ( cd "$ROOT" && setsid env "${env[@]}" \
+      "./target/$PROFILE/u2dm" >"$LOG" 2>&1 & )
+
+  local i
+  for i in $(seq 1 60); do
+    curl -sf "$PROBE/health" >/dev/null 2>&1 && { echo "up: probe $PROBE, log $LOG"; return 0; }
+    sleep 0.5
+  done
+  tail -20 "$LOG" >&2
+  die "the app did not come up within 30s"
+}
+
+cmd_send() {
+  [[ -n ${1:-} ]] || die "send needs a JSON command"
+  curl -s -X POST "$PROBE/command" -H 'Content-Type: application/json' -d "$1"
+  echo
+}
+
+case "${1:-}" in
+  up)        shift; cmd_up "$@" ;;
+  down)      pkill -x u2dm 2>/dev/null && echo "stopped" || echo "not running" ;;
+  health)    probe /health | jq ;;
+  state)     probe /state | jq "${2:-.}" ;;
+  timeline)  probe /timeline | jq "${2:-.}" ;;
+  journal)   probe "/journal?since=${2:-0}&limit=500" | jq ;;
+  scenarios) probe /scenarios | jq ;;
+  send)      shift; cmd_send "${1:-}" ;;
+  room)      [[ -n ${2:-} ]] || die "room needs a room id"
+             cmd_send "$(jq -cn --arg id "$2" '{op:"select_room",room_id:$id}')" ;;
+  wait)      probe "/state?wait=${2:-0}&ms=${3:-10000}" | jq '{seq}' ;;
+  logs)      tail -n "${2:-40}" "$LOG" ;;
+  shot)      [[ -n ${2:-} ]] || die "shot needs a destination file"
+             win=$(curl -s -X POST "$MCP" -H 'Content-Type: application/json' \
+                   -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"list_windows","arguments":{}}}' \
+                   | jq -c '.result.content[0].text | fromjson | .windowHandles[0]')
+             [[ -n $win && $win != null ]] || die "no window; did you launch with --mcp?"
+             curl -s -X POST "$MCP" -H 'Content-Type: application/json' \
+               -d "$(jq -cn --argjson w "$win" '{jsonrpc:"2.0",id:1,method:"tools/call",params:{name:"take_screenshot",arguments:{windowHandle:$w}}}')" \
+               | jq -r '.result.content[] | select(.type=="image") | .data' | base64 -d > "$2"
+             [[ -s $2 ]] || die "the screenshot came back empty"
+             echo "wrote $2" ;;
+  ""|-h|--help|help) usage ;;
+  *)         die "unknown command: $1 (try --help)" ;;
+esac

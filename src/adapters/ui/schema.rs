@@ -7,6 +7,29 @@ macro_rules! gen_consts {
 #[cfg(feature = "interpreted")]
 pub(crate) use gen_consts;
 
+#[cfg(feature = "demo")]
+macro_rules! enum_names {
+    (val $fn:ident $src:ident; $($rows:tt)*) => {
+        pub fn $fn(value: $src) -> &'static str { enum_names!(@source value, $src, $($rows)*) }
+    };
+    (ref $fn:ident $src:ident; $($rows:tt)*) => {
+        pub fn $fn(value: &$src) -> &'static str { enum_names!(@source value, $src, $($rows)*) }
+    };
+    (slint $fn:ident $ui_enum:ident; $($rows:tt)*) => {
+        fn $fn(value: $ui_enum) -> &'static str { enum_names!(@slint value, $ui_enum, $($rows)*) }
+    };
+    (@source $v:ident, $src:ident,
+        $($rust:ident $(($($p:tt)*))? $({$($b:tt)*})? $ui:ident $lit:literal;)*) => {
+        match $v { $($src::$rust $(($($p)*))? $({$($b)*})? => $lit,)* }
+    };
+    (@slint $v:ident, $ui_enum:ident,
+        $($rust:ident $(($($p:tt)*))? $({$($b:tt)*})? $ui:ident $lit:literal;)*) => {
+        match $v { $($ui_enum::$ui => $lit,)* }
+    };
+}
+#[cfg(feature = "demo")]
+pub(crate) use enum_names;
+
 macro_rules! string_props {
     ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
         ResolvedHomeserver LoginView "LoginView" "resolved-homeserver" set_resolved_homeserver;

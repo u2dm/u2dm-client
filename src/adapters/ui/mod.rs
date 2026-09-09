@@ -5,6 +5,8 @@ mod backend;
 mod clock;
 mod decode;
 mod dto;
+#[cfg(feature = "demo")]
+pub(crate) mod dump;
 mod emoji;
 mod multiplex;
 mod output;
@@ -15,7 +17,7 @@ mod reduce;
 mod richtext;
 mod router;
 mod rows;
-mod schema;
+pub(crate) mod schema;
 mod video;
 
 pub use output::UiEventOutput;

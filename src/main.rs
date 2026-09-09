@@ -43,8 +43,7 @@ mod util;
 
 fn main() -> ExitCode {
     init_tracing();
-    #[cfg(feature = "demo")]
-    if let Some(code) = demo::catalog::handle_cli() {
+    if let Some(code) = demo_scenarios_cli() {
         return code;
     }
     if demo_was_required_but_missing() {
@@ -59,12 +58,6 @@ fn main() -> ExitCode {
     }
 }
 
-/// Refuses to start a production build when the caller asked for demo mode.
-///
-/// A built binary's path says nothing about the features it was compiled with,
-/// so a script that means to launch the demo can otherwise open the user's real
-/// account by accident. Setting `U2DM_ASSERT_DEMO=1` makes that a loud failure
-/// rather than a silent real-account sync.
 fn demo_was_required_but_missing() -> bool {
     if !env::var(ASSERT_DEMO_ENV).is_ok_and(|value| value == "1") {
         return false;
@@ -123,14 +116,15 @@ fn run() -> Result<()> {
     let (scroll_tx, scroll_rx) = watch::channel::<ViewportChanged>(ViewportChanged::initial());
 
     ui.register_callbacks(&cmd_tx, &scroll_tx)?;
-    #[cfg(feature = "demo")]
-    demo::size_window_for_screenshots(&ui);
+    size_window_for_demo(&ui);
 
     let enter_guard = rt.enter();
     let backend = Backend::select(&cfg);
     let media_files = Arc::clone(&backend.media_files);
     let browser = Arc::clone(&backend.browser);
+    let probe_view_rx = view_out_tx.subscribe();
     let output: Arc<dyn AppOutputPort> = Arc::new(UiEventOutput::new(ui_tx, view_out_tx));
+    let output = attach_probe(output, &ui, probe_view_rx, &cmd_tx);
 
     let cmd_tx_quit = cmd_tx.clone();
     ui.spawn_event_handler(ui_rx, view_out_rx, backend.media_cache);
@@ -155,6 +149,49 @@ fn run() -> Result<()> {
 
     shutdown(rt, &cmd_tx_quit, service_handle);
     ui_result
+}
+
+#[cfg(feature = "demo")]
+fn demo_scenarios_cli() -> Option<ExitCode> {
+    demo::catalog::handle_cli()
+}
+
+#[cfg(not(feature = "demo"))]
+fn demo_scenarios_cli() -> Option<ExitCode> {
+    None
+}
+
+#[cfg(feature = "demo")]
+fn size_window_for_demo(ui: &SlintUiAdapter) {
+    demo::size_window_for_screenshots(ui);
+}
+
+#[cfg(not(feature = "demo"))]
+fn size_window_for_demo(_ui: &SlintUiAdapter) {}
+
+#[cfg(feature = "demo")]
+fn attach_probe(
+    output: Arc<dyn AppOutputPort>,
+    ui: &SlintUiAdapter,
+    view_rx: watch::Receiver<Arc<AppViewState>>,
+    cmd_tx: &mpsc::UnboundedSender<UiCommand>,
+) -> Arc<dyn AppOutputPort> {
+    let (output, probe) = demo::probe::wrap_output(output);
+    if let Some(probe) = probe {
+        ui.install_timeline_dump();
+        demo::probe::spawn(probe, view_rx, cmd_tx.clone());
+    }
+    output
+}
+
+#[cfg(not(feature = "demo"))]
+fn attach_probe(
+    output: Arc<dyn AppOutputPort>,
+    _ui: &SlintUiAdapter,
+    _view_rx: watch::Receiver<Arc<AppViewState>>,
+    _cmd_tx: &mpsc::UnboundedSender<UiCommand>,
+) -> Arc<dyn AppOutputPort> {
+    output
 }
 
 fn shutdown(
