@@ -1,3 +1,4 @@
+use super::catalog::{Flag, Scenarios};
 use std::env;
 use std::sync::OnceLock;
 use std::time::Duration;
@@ -7,6 +8,48 @@ use tokio::time::sleep;
 use crate::domain::auth::AuthMethod;
 
 const ENV_VAR: &str = "U2DM_DEMO_LOGIN";
+
+pub const CATALOG: Scenarios = Scenarios {
+    env: ENV_VAR,
+    summary: "starts logged out and shapes what the server advertises",
+    combinable: false,
+    flags: &[
+        Flag {
+            value: "password",
+            effect: "password auth only",
+            note: "also the fallback for any unrecognised value",
+        },
+        Flag {
+            value: "oauth",
+            effect: "OAuth only; the flow itself errors, exercising the error banner",
+            note: "",
+        },
+        Flag {
+            value: "oauth-ok",
+            effect: "OAuth that succeeds, pausing so cancelling mid-flow is reachable",
+            note: "the only way to reach the durable transaction in establish_session",
+        },
+        Flag {
+            value: "both",
+            effect: "both methods, so the divider and second button render",
+            note: "",
+        },
+        Flag {
+            value: "sso",
+            effect: "only m.login.sso/m.login.token, which U2DM cannot drive",
+            note: "",
+        },
+        Flag {
+            value: "restore",
+            effect: "keeps the saved session but restores it slowly",
+            note: "the only way to see the loading screen",
+        },
+    ],
+    notes: &[
+        "merely SETTING this variable switches the demo from logged-in to logged-out",
+        "each auth step pauses 900ms, which is what makes transient states wide enough to click",
+    ],
+};
 const STEP_DELAY: Duration = Duration::from_millis(900);
 
 pub struct LoginDemo {

@@ -1,3 +1,4 @@
+use super::catalog::{Flag, Scenarios};
 use std::env;
 use std::sync::OnceLock;
 use std::time::Duration;
@@ -7,6 +8,45 @@ use tokio::time::sleep;
 use crate::domain::verification::{VerificationEmoji, VerificationEvent};
 
 const ENV_VAR: &str = "U2DM_DEMO_VERIFY";
+
+pub const CATALOG: Scenarios = Scenarios {
+    env: ENV_VAR,
+    summary: "drives a scripted SAS verification flow",
+    combinable: false,
+    flags: &[
+        Flag {
+            value: "self",
+            effect: "request for this session; Accept, emojis, They match, done",
+            note: "also the fallback for any unrecognised value",
+        },
+        Flag {
+            value: "other",
+            effect: "the same flow but from @sarah:matrix.org, so the sender line renders",
+            note: "",
+        },
+        Flag {
+            value: "accept-fails",
+            effect: "Accept fails, exercising the in-dialog error",
+            note: "",
+        },
+        Flag {
+            value: "confirm-fails",
+            effect: "reaches the emojis, then \"They match\" fails",
+            note: "",
+        },
+        Flag {
+            value: "reject-fails",
+            effect: "Decline fails, leaving a live flow the user must retry",
+            note: "",
+        },
+        Flag {
+            value: "timeout",
+            effect: "nobody answers and the request cancels itself",
+            note: "",
+        },
+    ],
+    notes: &["the request arrives 3s after the chat opens; each action pauses 900ms"],
+};
 const REQUEST_DELAY: Duration = Duration::from_secs(3);
 const STEP_DELAY: Duration = Duration::from_millis(900);
 const SENDER: &str = "@sarah:matrix.org";

@@ -1,5 +1,6 @@
 mod attachments;
 mod browser;
+pub mod catalog;
 mod data;
 mod dto;
 mod files;
@@ -27,6 +28,23 @@ const WINDOW_ENV: &str = "U2DM_DEMO_WINDOW";
 
 pub fn matrix() -> Arc<dyn AuthPort> {
     Arc::new(matrix::DemoMatrix)
+}
+
+pub fn log_data_source() {
+    let (rooms, spaces, timelines) = data::counts();
+    tracing::info!(
+        path = %data::source_path(),
+        rooms,
+        spaces,
+        timelines,
+        "demo mode: loaded the fixture"
+    );
+    if let Some(error) = data::load_error() {
+        tracing::error!(
+            error,
+            "demo mode: the fixture did not load, so the app starts empty"
+        );
+    }
 }
 
 pub fn storage() -> Arc<dyn StoragePort> {

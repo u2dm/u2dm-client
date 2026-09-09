@@ -16,17 +16,19 @@ const SENT_STICKER_EXTENT: u32 = 512;
 const STICKER_ASSET_MARKER: char = '#';
 
 static DATA: OnceLock<DemoData> = OnceLock::new();
+static LOAD_ERROR: OnceLock<String> = OnceLock::new();
 
 fn data() -> &'static DemoData {
     DATA.get_or_init(load)
 }
 
 fn load() -> DemoData {
-    let path = media::assets_dir().join("data.json");
+    let path = media::data_path();
     let raw = match fs::read_to_string(&path) {
         Ok(raw) => raw,
         Err(e) => {
             tracing::error!("demo data {} could not be read: {e}", path.display());
+            drop(LOAD_ERROR.set(format!("{} could not be read: {e}", path.display())));
             return DemoData::default();
         }
     };
@@ -34,9 +36,23 @@ fn load() -> DemoData {
         Ok(data) => data,
         Err(e) => {
             tracing::error!("demo data {} is not valid: {e}", path.display());
+            drop(LOAD_ERROR.set(format!("{} is not valid: {e}", path.display())));
             DemoData::default()
         }
     }
+}
+
+pub fn load_error() -> Option<&'static str> {
+    LOAD_ERROR.get().map(String::as_str)
+}
+
+pub fn source_path() -> String {
+    media::data_path().display().to_string()
+}
+
+pub fn counts() -> (usize, usize, usize) {
+    let data = data();
+    (data.rooms.len(), data.spaces.len(), data.timelines.len())
 }
 
 pub fn own_user() -> &'static str {

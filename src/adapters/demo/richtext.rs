@@ -1,9 +1,49 @@
+use super::catalog::{Flag, Scenarios};
 use std::env;
 use std::sync::OnceLock;
 
 use crate::domain::message::{MessageBody, RichText, SendState, TimelineMessage};
 
 const ENV_VAR: &str = "U2DM_DEMO_RICHTEXT";
+
+pub const CATALOG: Scenarios = Scenarios {
+    env: ENV_VAR,
+    summary: "injects formatted and adversarial message bodies over the fixture",
+    combinable: true,
+    flags: &[
+        Flag {
+            value: "adversarial",
+            effect: "hostile HTML, so the sanitiser is exercised",
+            note: "",
+        },
+        Flag {
+            value: "hard",
+            effect: "structurally hard but legitimate formatting",
+            note: "",
+        },
+        Flag {
+            value: "links",
+            effect: "messages carrying rich links",
+            note: "",
+        },
+        Flag {
+            value: "bare",
+            effect: "bare URLs, which are linkified rather than parsed",
+            note: "",
+        },
+        Flag {
+            value: "long",
+            effect: "oversized bodies",
+            note: "",
+        },
+        Flag {
+            value: "all",
+            effect: "adversarial, hard, links, bare and long",
+            note: "",
+        },
+    ],
+    notes: &[],
+};
 
 const ADVERSARIAL: &[(&str, &str)] = &[
     (

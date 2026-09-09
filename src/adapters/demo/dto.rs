@@ -14,6 +14,7 @@ use crate::domain::room::{NotifyMode, Room, RoomId, Space};
 use crate::domain::sticker::{PackId, StickerImage, StickerPack};
 
 #[derive(Deserialize, Default)]
+#[serde(deny_unknown_fields)]
 pub struct DemoData {
     pub session: SessionDto,
     #[serde(default)]
@@ -29,6 +30,7 @@ pub struct DemoData {
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct StickerPackDto {
     pub id: String,
     pub title: String,
@@ -39,6 +41,7 @@ pub struct StickerPackDto {
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct PackImageDto {
     pub shortcode: String,
     #[serde(default)]
@@ -71,6 +74,7 @@ impl PackImageDto {
 }
 
 #[derive(Deserialize, Default)]
+#[serde(deny_unknown_fields)]
 pub struct SessionDto {
     pub user_id: String,
     pub device_id: String,
@@ -97,6 +101,7 @@ impl NotifyDto {
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct RoomDto {
     pub id: String,
     name: String,
@@ -120,6 +125,7 @@ pub struct RoomDto {
 }
 
 #[derive(Deserialize, Default)]
+#[serde(deny_unknown_fields)]
 pub struct LastMessageDto {
     pub sender: Option<String>,
     pub sender_id: Option<String>,
@@ -150,6 +156,7 @@ enum KindDto {
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct SpaceDto {
     id: String,
     name: String,
@@ -161,6 +168,7 @@ pub struct SpaceDto {
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct MessageDto {
     id: String,
     sender: String,
@@ -184,6 +192,7 @@ pub struct MessageDto {
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct ReactionDto {
     key: String,
     #[serde(default)]
@@ -191,6 +200,7 @@ struct ReactionDto {
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct ImageDto {
     width: u32,
     height: u32,
@@ -199,6 +209,7 @@ struct ImageDto {
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct VideoDto {
     width: u32,
     height: u32,
@@ -229,6 +240,7 @@ impl VideoDto {
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct StickerDto {
     width: u32,
     height: u32,
@@ -318,6 +330,7 @@ fn optional(value: &str) -> Option<String> {
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct ReplyDto {
     sender: String,
     #[serde(default)]

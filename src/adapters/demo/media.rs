@@ -1,8 +1,11 @@
+use std::env;
 use std::path::{Path, PathBuf};
 
 use super::{attachments, data};
 use crate::domain::media::MediaFailure;
 use crate::ports::media::MediaCache;
+
+const DATA_ENV: &str = "U2DM_DEMO_DATA";
 
 const FAILURE_SUFFIXES: &[(&str, MediaFailure)] = &[
     ("-missing-download", MediaFailure::Download),
@@ -65,6 +68,13 @@ impl MediaCache for DemoMediaCache {
 
 pub fn assets_dir() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("assets/demo")
+}
+
+pub fn data_path() -> PathBuf {
+    match env::var_os(DATA_ENV) {
+        Some(raw) => PathBuf::from(raw),
+        None => assets_dir().join("data.json"),
+    }
 }
 
 pub fn user_avatar_path() -> Option<PathBuf> {

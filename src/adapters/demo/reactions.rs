@@ -1,3 +1,4 @@
+use super::catalog::{Flag, Scenarios};
 use std::env;
 use std::sync::OnceLock;
 use std::time::Duration;
@@ -5,6 +6,52 @@ use std::time::Duration;
 use crate::domain::message::{Reaction, Reactor, TimelineMessage};
 
 const ENV_VAR: &str = "U2DM_DEMO_REACTIONS";
+
+pub const CATALOG: Scenarios = Scenarios {
+    env: ENV_VAR,
+    summary: "reproduces how reactions actually arrive from a homeserver",
+    combinable: true,
+    flags: &[
+        Flag {
+            value: "late",
+            effect: "every chip arrives as a Set rather than inside the opening Reset",
+            note: "include in ANY reaction test; authored reactions ride the opening Reset, where the Set path that production always uses never runs once",
+        },
+        Flag {
+            value: "overflow",
+            effect: "eleven keys on one message, so the cap and the +N chip render",
+            note: "",
+        },
+        Flag {
+            value: "long-key",
+            effect: "a sentence-length key, so the spec-required elision is visible",
+            note: "",
+        },
+        Flag {
+            value: "pending",
+            effect: "a local echo that never confirms, so the dimmed chip is observable",
+            note: "excluded from `all`",
+        },
+        Flag {
+            value: "crowd",
+            effect: "forty reactors, so the \"and N more\" truncation renders",
+            note: "",
+        },
+        Flag {
+            value: "no-echo",
+            effect: "the toggle is swallowed, so nothing moves",
+            note: "excluded from `all`",
+        },
+        Flag {
+            value: "all",
+            effect: "late, overflow, long-key and crowd",
+            note: "excludes pending and no-echo",
+        },
+    ],
+    notes: &[
+        "the newest reacted message is widened, not the first, because a room opens at the bottom",
+    ],
+};
 
 pub const LATE_INTERVAL: Duration = Duration::from_millis(350);
 

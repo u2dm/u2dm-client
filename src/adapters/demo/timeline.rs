@@ -1,8 +1,83 @@
+use super::catalog::{Flag, Scenarios};
 use std::env;
 use std::sync::OnceLock;
 use std::time::Duration;
 
 const ENV_VAR: &str = "U2DM_DEMO_TIMELINE";
+
+pub const CATALOG: Scenarios = Scenarios {
+    env: ENV_VAR,
+    summary: "reproduces real-homeserver timeline delivery timing",
+    combinable: true,
+    flags: &[
+        Flag {
+            value: "deep",
+            effect: "six copies of history with 60% unread",
+            note: "include in ANY anchor or unread test; without it the unread run fits on screen and every other flag looks like it passes",
+        },
+        Flag {
+            value: "slow",
+            effect: "the Reset lands 1.5s after SelectedRoom",
+            note: "",
+        },
+        Flag {
+            value: "batch",
+            effect: "the Reset arrives nested in a Batch",
+            note: "",
+        },
+        Flag {
+            value: "late-reset",
+            effect: "a second Reset follows the first, as the event cache replaces its events",
+            note: "",
+        },
+        Flag {
+            value: "drop-anchor",
+            effect: "that second Reset arrives too short to hold the anchor",
+            note: "deliberately excluded from `all`; asserts the timeline stays put rather than jumping to the end",
+        },
+        Flag {
+            value: "churn",
+            effect: "rows keep resizing for another second",
+            note: "",
+        },
+        Flag {
+            value: "append",
+            effect: "somebody posts while the timeline is still settling",
+            note: "",
+        },
+        Flag {
+            value: "prepend",
+            effect: "back-pagination returns history, so every row index shifts",
+            note: "",
+        },
+        Flag {
+            value: "sync",
+            effect: "the room list updates every 400ms, re-emitting SelectedRoom mid-flight",
+            note: "",
+        },
+        Flag {
+            value: "all-unread",
+            effect: "the read position precedes everything loaded, so the anchor is row 0",
+            note: "excluded from `all`",
+        },
+        Flag {
+            value: "unread-resolving",
+            effect: "holds the \"Loading unread messages...\" pill while the read position is placed",
+            note: "excluded from `all`",
+        },
+        Flag {
+            value: "jump-far",
+            effect: "the live window holds only the newest few messages, forcing a focused /context jump",
+            note: "excluded from `all`",
+        },
+        Flag {
+            value: "all",
+            effect: "slow, batch, late-reset, churn, sync, append, prepend and deep",
+            note: "excludes drop-anchor, all-unread, unread-resolving and jump-far",
+        },
+    ],
+    notes: &["unknown flags warn and are ignored, never rejected"],
+};
 
 pub const SLOW_RESET_DELAY: Duration = Duration::from_millis(1500);
 pub const REPEATED_RESET_DELAY: Duration = Duration::from_millis(700);

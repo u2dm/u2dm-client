@@ -1,5 +1,7 @@
 #![recursion_limit = "256"]
 
+use std::env;
+use std::io::{self, IsTerminal};
 use std::process::ExitCode;
 use std::sync::Arc;
 use std::time::Duration;
@@ -22,6 +24,8 @@ use tokio::task::JoinHandle;
 use tokio::time::timeout;
 use tracing_subscriber::EnvFilter;
 
+const ASSERT_DEMO_ENV: &str = "U2DM_ASSERT_DEMO";
+const LOG_FORMAT_ENV: &str = "U2DM_LOG_FORMAT";
 const UI_EVENT_CHANNEL_CAP: usize = 256;
 const SHUTDOWN_WAIT: Duration = Duration::from_secs(6);
 const SHUTDOWN_BACKSTOP: Duration = Duration::from_secs(1);
@@ -39,6 +43,13 @@ mod util;
 
 fn main() -> ExitCode {
     init_tracing();
+    #[cfg(feature = "demo")]
+    if let Some(code) = demo::catalog::handle_cli() {
+        return code;
+    }
+    if demo_was_required_but_missing() {
+        return ExitCode::FAILURE;
+    }
     match run() {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) => {
@@ -48,12 +59,45 @@ fn main() -> ExitCode {
     }
 }
 
-fn init_tracing() {
-    drop(
-        tracing_subscriber::fmt()
-            .with_env_filter(EnvFilter::from_default_env())
-            .try_init(),
+/// Refuses to start a production build when the caller asked for demo mode.
+///
+/// A built binary's path says nothing about the features it was compiled with,
+/// so a script that means to launch the demo can otherwise open the user's real
+/// account by accident. Setting `U2DM_ASSERT_DEMO=1` makes that a loud failure
+/// rather than a silent real-account sync.
+fn demo_was_required_but_missing() -> bool {
+    if !env::var(ASSERT_DEMO_ENV).is_ok_and(|value| value == "1") {
+        return false;
+    }
+    if cfg!(feature = "demo") {
+        return false;
+    }
+    tracing::error!(
+        "{ASSERT_DEMO_ENV}=1 was set, but this binary was built without --features demo; \
+         refusing to start against a real account"
     );
+    true
+}
+
+fn init_tracing() {
+    let filter = EnvFilter::from_default_env();
+    if env::var(LOG_FORMAT_ENV).is_ok_and(|format| format == "json") {
+        drop(
+            tracing_subscriber::fmt()
+                .json()
+                .with_current_span(false)
+                .with_span_list(false)
+                .with_env_filter(filter)
+                .try_init(),
+        );
+    } else {
+        drop(
+            tracing_subscriber::fmt()
+                .with_ansi(io::stdout().is_terminal())
+                .with_env_filter(filter)
+                .try_init(),
+        );
+    }
 }
 
 fn run() -> Result<()> {

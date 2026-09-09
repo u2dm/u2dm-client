@@ -1,3 +1,4 @@
+use super::catalog::{Flag, Scenarios};
 use std::env;
 use std::sync::OnceLock;
 use std::time::Duration;
@@ -5,6 +6,50 @@ use std::time::Duration;
 use tokio::time::sleep;
 
 const ENV_VAR: &str = "U2DM_DEMO_STICKERS";
+
+pub const CATALOG: Scenarios = Scenarios {
+    env: ENV_VAR,
+    summary: "reproduces real-account sticker pack loading and timing",
+    combinable: true,
+    flags: &[
+        Flag {
+            value: "trickle",
+            effect: "one prefetch batch per 300ms, so the placeholder-to-ready path actually runs",
+            note: "include in ANY sticker test; without it every image is ready on the first publish",
+        },
+        Flag {
+            value: "slow",
+            effect: "catalog() pauses 900ms, so the loading state is observable",
+            note: "",
+        },
+        Flag {
+            value: "empty",
+            effect: "no packs, so the empty state is reachable",
+            note: "excluded from `all`",
+        },
+        Flag {
+            value: "fails",
+            effect: "catalog() errors",
+            note: "excluded from `all`",
+        },
+        Flag {
+            value: "send-fails",
+            effect: "send_sticker errors, so the failure toast is reachable",
+            note: "excluded from `all`",
+        },
+        Flag {
+            value: "encrypted",
+            effect: "forces room_encrypted, so the warning strip renders",
+            note: "",
+        },
+        Flag {
+            value: "all",
+            effect: "slow, trickle and encrypted",
+            note: "excludes empty, fails and send-fails",
+        },
+    ],
+    notes: &[],
+};
 const CATALOG_DELAY: Duration = Duration::from_millis(900);
 const TRICKLE_DELAY: Duration = Duration::from_millis(300);
 

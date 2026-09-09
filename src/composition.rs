@@ -29,6 +29,7 @@ impl Backend {
     #[allow(clippy::unnecessary_wraps)]
     fn demo() -> Option<Self> {
         tracing::info!("demo mode: serving fake rooms, spaces and timeline");
+        demo::log_data_source();
         Some(Self {
             auth: demo::matrix(),
             storage: demo::storage(),

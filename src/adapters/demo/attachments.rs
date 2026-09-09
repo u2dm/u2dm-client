@@ -1,3 +1,4 @@
+use super::catalog::{Flag, Scenarios};
 use std::collections::HashMap;
 use std::env;
 use std::path::{Path, PathBuf};
@@ -7,6 +8,40 @@ use std::time::Duration;
 use tokio::time::sleep;
 
 const ENV_VAR: &str = "U2DM_DEMO_ATTACHMENTS";
+
+pub const CATALOG: Scenarios = Scenarios {
+    env: ENV_VAR,
+    summary: "reproduces attachment upload timing and refusals",
+    combinable: true,
+    flags: &[
+        Flag {
+            value: "slow",
+            effect: "the echo lands as Uploading and ticks to 100% over ~5s",
+            note: "",
+        },
+        Flag {
+            value: "send-fails",
+            effect: "the in-dialog error",
+            note: "excluded from `all`",
+        },
+        Flag {
+            value: "too-large",
+            effect: "the server size refusal, unreachable without a real server",
+            note: "excluded from `all`",
+        },
+        Flag {
+            value: "pick=<path>",
+            effect: "skips the native file dialog and picks that file",
+            note: "REQUIRED for any scripted attachment run: a native chooser cannot be driven by the MCP inspector, and it blocks the Slint event loop",
+        },
+        Flag {
+            value: "all",
+            effect: "slow only",
+            note: "",
+        },
+    ],
+    notes: &[],
+};
 const UPLOAD_DELAY: Duration = Duration::from_millis(2500);
 pub const UPLOAD_STEPS: u64 = 12;
 pub const UPLOAD_STEP_DELAY: Duration = Duration::from_millis(400);
