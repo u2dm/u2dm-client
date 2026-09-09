@@ -104,6 +104,7 @@ cmd_run() {
   "$DRIVE" journal  >"$out/journal.json"
   if [[ -n $shot ]]; then
     "$DRIVE" shot "$out/shot.png" >/dev/null
+    "$DRIVE" scroll >"$out/scroll.txt" 2>/dev/null || true
     check_window "$name" "$mode"
   fi
   cp "$ROOT/target/u2dm-drive.log" "$out/app.log" 2>/dev/null || true

@@ -12,6 +12,10 @@ export struct ReactionAnchor {
     height: length,
 }
 
+export global Probe {
+    in property <bool> enabled: false;
+}
+
 export global Composer {
     in-out property <string> reply-event-id;
     in-out property <string> reply-sender;

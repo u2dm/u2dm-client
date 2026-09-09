@@ -34,6 +34,7 @@ usage: u2dm-drive <command> [args]
   wait [seq] [ms]        long-poll until the snapshot moves past seq
   logs [n]               tail the app log
   window                 the window's logical size (needs --mcp)
+  scroll                 the timeline scroll state machine (needs --mcp)
   shot <file>            screenshot via the Slint MCP inspector (needs --mcp)
 
 Environment: U2DM_PROBE_PORT (9090), SLINT_MCP_PORT (8080), and any U2DM_DEMO_*
@@ -110,6 +111,14 @@ case "${1:-}" in
              cmd_send "$(jq -cn --arg id "$2" '{op:"select_room",room_id:$id}')" ;;
   wait)      probe "/state?wait=${2:-0}&ms=${3:-10000}" | jq '{seq}' ;;
   logs)      tail -n "${2:-40}" "$LOG" ;;
+  scroll)    win=$(mcp_window)
+             [[ -n $win ]] || die "no window; did you launch with --mcp or --headless?"
+             el=$(mcp_payload find_elements_by_id \
+                   "$(jq -cn --argjson w "$win" '{windowHandle: $w, elementsId: "TimelineContent::probe-scroll"}')" |
+                   jq -c '.elementHandles[0] // empty')
+             [[ -n $el ]] || die "no scroll probe: open a room first, and launch with U2DM_PROBE_PORT set"
+             mcp_payload get_element_properties "$(jq -cn --argjson e "$el" '{elementHandle: $e}')" |
+               jq -r '.accessibleDescription' ;;
   window)    win=$(mcp_window)
              [[ -n $win ]] || die "no window; did you launch with --mcp?"
              mcp_payload get_window_properties "$(jq -cn --argjson w "$win" '{windowHandle: $w}')" |

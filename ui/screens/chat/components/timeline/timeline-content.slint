@@ -3,6 +3,7 @@ import { IconDisplay, IconSet } from "@lucide";
 import { StatusPill } from "./status-pill.slint";
 
 import { TimelineScroller } from "./timeline-scroller.slint";
+import { Probe } from "../../../../local.slint";
 import { ClickArea } from "../../../../components/a11y.slint";
 import { RoomView } from "../../../../views.slint";
 import { Fonts, IconSize, Radius, Size, Space, Weight } from "../../../../theme.slint";
@@ -25,6 +26,28 @@ export component TimelineContent inherits Rectangle {
         forwards-loading: RoomView.forwards-loading;
         bottom-inset: root.bottom-inset;
         composer-top: root.composer-top;
+    }
+
+    if Probe.enabled: probe-scroll := Rectangle {
+        x: 0;
+        y: 0;
+        width: 1px;
+        height: 1px;
+        background: transparent;
+        accessible-role: text;
+        accessible-label: "u2dm.scroll-state";
+        accessible-description: "at-top=\{scroller.at-top ? 1 : 0} "
+            + "at-bottom=\{scroller.at-bottom ? 1 : 0} "
+            + "following=\{scroller.following ? 1 : 0} "
+            + "anchor-held=\{scroller.anchor-held ? 1 : 0} "
+            + "settling=\{scroller.settling ? 1 : 0} "
+            + "anchor-scrolls=\{scroller.anchor-scrolls} "
+            + "item-count=\{scroller.item-count} "
+            + "seen-timeline-token=\{scroller.seen-timeline-token} "
+            + "seen-prepend-token=\{scroller.seen-prepend-token} "
+            + "timeline-token=\{RoomView.timeline-token} "
+            + "prepend-token=\{RoomView.prepend-token} "
+            + "anchor-index=\{RoomView.anchor-index}";
     }
 
     if RoomView.backwards-loading && RoomView.timeline.length > 0: StatusPill {

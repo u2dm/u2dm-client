@@ -179,6 +179,7 @@ fn attach_probe(
     let (output, probe) = demo::probe::wrap_output(output);
     if let Some(probe) = probe {
         ui.install_timeline_dump();
+        ui.enable_probe_introspection();
         demo::probe::spawn(probe, view_rx, cmd_tx.clone());
     }
     output

@@ -1035,6 +1035,11 @@ impl SlintUiAdapter {
     }
 
     #[cfg(feature = "demo")]
+    pub fn enable_probe_introspection(&self) {
+        self.set_bool(BoolProp::ProbeEnabled, true);
+    }
+
+    #[cfg(feature = "demo")]
     pub fn install_timeline_dump(&self) {}
 }
 

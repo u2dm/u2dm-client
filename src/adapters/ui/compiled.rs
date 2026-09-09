@@ -49,13 +49,12 @@ use generated::{
     DirectoryView, EmojiEntry, EmojiGroup, EmojiInsert, EmojiStore,
     LoginActivity as UiLoginActivity, LoginMethodKind as UiLoginMethodKind, LoginPhase, LoginView,
     MediaFailure as UiMediaFailure, MediaState as UiMediaState, MessageEntry,
-    MessageKind as UiMessageKind,
-    PreviewKind as UiPreviewKind, ReactionEntry, ReactorAvatar, RoomEntry, RoomView,
-    SendState as UiSendState, ServiceKind as UiServiceKind, SessionView, SpaceEntry, StickerCell,
-    StickerPackTab, StickerRow, StickerView, TimelineState, UserMessage as UiUserMessage,
-    VideoView,
-    UserMessageKind as UiUserMessageKind, VerificationActivity as UiVerificationActivity,
-    VerificationEmoji, VerificationPhase, VerificationView,
+    MessageKind as UiMessageKind, PreviewKind as UiPreviewKind, Probe, ReactionEntry,
+    ReactorAvatar, RoomEntry, RoomView, SendState as UiSendState, ServiceKind as UiServiceKind,
+    SessionView, SpaceEntry, StickerCell, StickerPackTab, StickerRow, StickerView, TimelineState,
+    UserMessage as UiUserMessage, UserMessageKind as UiUserMessageKind,
+    VerificationActivity as UiVerificationActivity, VerificationEmoji, VerificationPhase,
+    VerificationView, VideoView,
 };
 
 fn actions(window: &AppWindow) -> Actions<'_> {
@@ -695,6 +694,11 @@ impl SlintUiAdapter {
         self.window
             .window()
             .set_size(slint::LogicalSize::new(width, height));
+    }
+
+    #[cfg(feature = "demo")]
+    pub fn enable_probe_introspection(&self) {
+        self.window.set_bool(BoolProp::ProbeEnabled, true);
     }
 
     #[cfg(feature = "demo")]
