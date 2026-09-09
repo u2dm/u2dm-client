@@ -35,8 +35,12 @@ impl From<PlatformError> for AppError {
 mod compiled;
 #[cfg(not(feature = "interpreted"))]
 pub use compiled::SlintUiAdapter;
+#[cfg(all(not(feature = "interpreted"), feature = "demo"))]
+pub use compiled::install_timeline_dump;
 
 #[cfg(feature = "interpreted")]
 mod interpreted;
 #[cfg(feature = "interpreted")]
 pub use interpreted::SlintUiAdapter;
+#[cfg(all(feature = "interpreted", feature = "demo"))]
+pub use interpreted::install_timeline_dump;

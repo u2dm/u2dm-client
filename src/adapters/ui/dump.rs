@@ -63,6 +63,7 @@ type Requester = Box<dyn Fn(oneshot::Sender<TimelineDump>) + Send + Sync>;
 
 static REQUESTER: OnceLock<Requester> = OnceLock::new();
 
+#[cfg(not(feature = "interpreted"))]
 pub fn install(requester: Requester) {
     if REQUESTER.set(requester).is_err() {
         tracing::debug!("the timeline dump was already installed");

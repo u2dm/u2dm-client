@@ -21,16 +21,16 @@ pub fn send_command(tx: &mpsc::UnboundedSender<UiCommand>, cmd: UiCommand) {
 }
 
 macro_rules! prop_enum {
-    ($name:ident; $($v:ident $g:ident $gname:literal $lit:literal $s:ident;)*) => {
-        pub enum $name { $($v,)* }
+    ($name:ident; $($(#[$attr:meta])* $v:ident $g:ident $gname:literal $lit:literal $s:ident;)*) => {
+        pub enum $name { $($(#[$attr])* $v,)* }
         impl $name {
             #[allow(dead_code)]
             pub fn as_str(&self) -> &'static str {
-                match self { $(Self::$v => $lit,)* }
+                match self { $($(#[$attr])* Self::$v => $lit,)* }
             }
             #[allow(dead_code)]
             pub fn global(&self) -> &'static str {
-                match self { $(Self::$v => $gname,)* }
+                match self { $($(#[$attr])* Self::$v => $gname,)* }
             }
         }
     };

@@ -9,6 +9,8 @@ use std::time::Duration;
 #[cfg(feature = "demo")]
 use adapters::demo;
 use adapters::private_fs;
+#[cfg(feature = "demo")]
+use adapters::ui::install_timeline_dump;
 use adapters::ui::{SlintUiAdapter, UiEventOutput};
 use app::AppService;
 use commands::effects::Effect;
@@ -178,7 +180,7 @@ fn attach_probe(
 ) -> Arc<dyn AppOutputPort> {
     let (output, probe) = demo::probe::wrap_output(output);
     if let Some(probe) = probe {
-        ui.install_timeline_dump();
+        install_timeline_dump(ui);
         ui.enable_probe_introspection();
         demo::probe::spawn(probe, view_rx, cmd_tx.clone());
     }

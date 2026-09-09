@@ -1036,12 +1036,12 @@ impl SlintUiAdapter {
 
     #[cfg(feature = "demo")]
     pub fn enable_probe_introspection(&self) {
-        self.set_bool(BoolProp::ProbeEnabled, true);
+        self.instance.set_bool(BoolProp::ProbeEnabled, true);
     }
-
-    #[cfg(feature = "demo")]
-    pub fn install_timeline_dump(&self) {}
 }
+
+#[cfg(feature = "demo")]
+pub fn install_timeline_dump(_ui: &SlintUiAdapter) {}
 
 fn emoji_entry_to_value(e: &emoji::EmojiEntry) -> Value {
     let tones: Vec<Value> = e

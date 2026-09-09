@@ -89,7 +89,7 @@ macro_rules! bool_props {
         BackwardsLoading RoomView "RoomView" "backwards-loading" set_backwards_loading;
         ForwardsLoading RoomView "RoomView" "forwards-loading" set_forwards_loading;
         StickerRoomEncrypted StickerView "StickerView" "room-encrypted" set_room_encrypted;
-        ProbeEnabled Probe "Probe" "enabled" set_enabled;
+        #[cfg(feature = "demo")] ProbeEnabled Probe "Probe" "enabled" set_enabled;
         StickerLoading StickerView "StickerView" "loading" set_loading;
         StickerHasPacks StickerView "StickerView" "has-packs" set_has_packs;
         AttachmentVisible AttachmentView "AttachmentView" "visible" set_visible;

@@ -44,14 +44,16 @@ use crate::ports::media::MediaCache;
 mod generated {
     slint::include_modules!();
 }
+#[cfg(feature = "demo")]
+use generated::Probe;
 use generated::{
     Actions, AppWindow, AttachmentKind as UiAttachmentKind, AttachmentView, ConnectionState,
     DirectoryView, EmojiEntry, EmojiGroup, EmojiInsert, EmojiStore,
     LoginActivity as UiLoginActivity, LoginMethodKind as UiLoginMethodKind, LoginPhase, LoginView,
     MediaFailure as UiMediaFailure, MediaState as UiMediaState, MessageEntry,
-    MessageKind as UiMessageKind, PreviewKind as UiPreviewKind, Probe, ReactionEntry,
-    ReactorAvatar, RoomEntry, RoomView, SendState as UiSendState, ServiceKind as UiServiceKind,
-    SessionView, SpaceEntry, StickerCell, StickerPackTab, StickerRow, StickerView, TimelineState,
+    MessageKind as UiMessageKind, PreviewKind as UiPreviewKind, ReactionEntry, ReactorAvatar,
+    RoomEntry, RoomView, SendState as UiSendState, ServiceKind as UiServiceKind, SessionView,
+    SpaceEntry, StickerCell, StickerPackTab, StickerRow, StickerView, TimelineState,
     UserMessage as UiUserMessage, UserMessageKind as UiUserMessageKind,
     VerificationActivity as UiVerificationActivity, VerificationEmoji, VerificationPhase,
     VerificationView, VideoView,
@@ -71,9 +73,9 @@ thread_local! {
 }
 
 macro_rules! impl_prop_setter {
-    ($fn:ident $enum:ident $ty:ty; $($v:ident $g:ident $gname:literal $lit:literal $s:ident;)*) => {
+    ($fn:ident $enum:ident $ty:ty; $($(#[$attr:meta])* $v:ident $g:ident $gname:literal $lit:literal $s:ident;)*) => {
         fn $fn(&self, prop: $enum, value: $ty) {
-            match prop { $($enum::$v => self.global::<$g>().$s(value),)* }
+            match prop { $($(#[$attr])* $enum::$v => self.global::<$g>().$s(value),)* }
         }
     };
 }
@@ -700,20 +702,20 @@ impl SlintUiAdapter {
     pub fn enable_probe_introspection(&self) {
         self.window.set_bool(BoolProp::ProbeEnabled, true);
     }
+}
 
-    #[cfg(feature = "demo")]
-    pub fn install_timeline_dump(&self) {
-        let weak = self.window.as_weak();
-        dump::install(Box::new(move |reply| {
-            let handle = weak.clone();
-            let queued = handle.upgrade_in_event_loop(move |window| {
-                drop(reply.send(probe_dump::collect(&window)));
-            });
-            if let Err(e) = queued {
-                tracing::debug!("the timeline dump could not reach the event loop: {e}");
-            }
-        }));
-    }
+#[cfg(feature = "demo")]
+pub fn install_timeline_dump(ui: &SlintUiAdapter) {
+    let weak = ui.window.as_weak();
+    dump::install(Box::new(move |reply| {
+        let handle = weak.clone();
+        let queued = handle.upgrade_in_event_loop(move |window| {
+            drop(reply.send(probe_dump::collect(&window)));
+        });
+        if let Err(e) = queued {
+            tracing::debug!("the timeline dump could not reach the event loop: {e}");
+        }
+    }));
 }
 
 fn emoji_entry_to_ui(e: &emoji::EmojiEntry) -> EmojiEntry {
