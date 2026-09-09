@@ -21,7 +21,8 @@ usage() {
   cat <<'USAGE'
 usage: u2dm-drive <command> [args]
 
-  up [--mcp] [--]        build and launch the demo app with the probe
+  up [--mcp|--headless]  build and launch the demo app with the probe
+                         --headless needs no display and honours U2DM_DEMO_WINDOW exactly
   down                   stop it
   health                 fixture path, load error, room counts, selection
   state [jq]             the AppViewState projection
@@ -41,8 +42,15 @@ USAGE
 }
 
 cmd_up() {
-  local with_mcp=0
-  [[ ${1:-} == --mcp ]] && { with_mcp=1; shift; }
+  local with_mcp=0 headless=0
+  while [[ ${1:-} == --* ]]; do
+    case $1 in
+      --mcp) with_mcp=1 ;;
+      --headless) with_mcp=1; headless=1 ;;
+      *) die "unknown flag for up: $1" ;;
+    esac
+    shift
+  done
   command -v curl >/dev/null || die "curl is required"
   command -v jq >/dev/null || die "jq is required"
 
@@ -55,14 +63,23 @@ cmd_up() {
   if (( with_mcp )); then
     features="demo slint/mcp"
     env+=("SLINT_MCP_PORT=$MCP_PORT" "SLINT_EMIT_DEBUG_INFO=1")
-    [[ -n ${DISPLAY:-}${WAYLAND_DISPLAY:-} ]] || die "the MCP inspector needs a graphical session"
+    if (( headless )); then
+      features="demo slint/mcp slint/renderer-software"
+      env+=("SLINT_BACKEND=headless")
+    elif [[ -z ${DISPLAY:-}${WAYLAND_DISPLAY:-} ]]; then
+      die "no graphical session; use --headless"
+    fi
   fi
 
   ( cd "$ROOT" && SLINT_EMIT_DEBUG_INFO=${SLINT_EMIT_DEBUG_INFO:-} \
       cargo build --profile "$PROFILE" --features "$features" ) || die "build failed"
 
   mkdir -p "$(dirname "$LOG")"
-  ( cd "$ROOT" && setsid env "${env[@]}" \
+  local -a launcher=(setsid env)
+  if (( headless )); then
+    launcher=(setsid env -u DISPLAY -u WAYLAND_DISPLAY)
+  fi
+  ( cd "$ROOT" && "${launcher[@]}" "${env[@]}" \
       "./target/$PROFILE/u2dm" >"$LOG" 2>&1 & )
 
   local i

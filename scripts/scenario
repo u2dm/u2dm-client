@@ -44,7 +44,7 @@ scenario_note() {
     sticker-trickle) echo 'images arrive one batch at a time over a slow catalog, in an encrypted room' ;;
     jump-to-reply)   echo 'a short live window, so a reply quote must take the focused /context path' ;;
     media-failures)  echo 'every MediaFailure variant on one timeline' ;;
-    compact-layout)  echo 'narrow window: needs a floating window, a tiling compositor clamps the width' ;;
+    compact-layout)  echo 'below the 720px breakpoint; run with --headless, a compositor clamps the width' ;;
     login-oauth)     echo 'starts logged out on an OAuth flow that succeeds slowly' ;;
     verify-self)     echo 'a scripted SAS verification arriving 3s after the chat opens' ;;
   esac
@@ -57,7 +57,7 @@ check_window() {
   logical=$("$DRIVE" window 2>/dev/null) || return 0
   if [[ $logical != "$requested" ]]; then
     printf '  ! window is %s, not the requested %s: the compositor clamped it,\n' "$logical" "$requested"
-    printf '  ! so this scenario is NOT reproducing what its name claims.\n'
+    printf '  ! so this scenario is NOT reproducing what its name claims. Re-run with --headless.\n'
   fi
 }
 
@@ -75,15 +75,18 @@ cmd_list() {
 }
 
 cmd_run() {
-  local name=$1 shot=${2:-} out env step
+  local name=$1 mode=${2:-} out env step
   env=$(scenario_env "$name") || die "unknown scenario: $name (try: $0 list)"
   out="$OUT_ROOT/$name"
   rm -rf "$out"; mkdir -p "$out"
 
-  local -a launch=()
-  if [[ -n $shot ]]; then
-    launch+=(--mcp)
-  fi
+  local -a launch=() shot=""
+  case $mode in
+    --shot)     launch+=(--mcp); shot=1 ;;
+    --headless) launch+=(--headless); shot=1 ;;
+    "")         ;;
+    *)          die "unknown flag: $mode (use --shot or --headless)" ;;
+  esac
 
   echo "# $name — $(scenario_note "$name")"
   echo "# env: $env"
@@ -101,7 +104,7 @@ cmd_run() {
   "$DRIVE" journal  >"$out/journal.json"
   if [[ -n $shot ]]; then
     "$DRIVE" shot "$out/shot.png" >/dev/null
-    check_window "$name"
+    check_window "$name" "$mode"
   fi
   cp "$ROOT/target/u2dm-drive.log" "$out/app.log" 2>/dev/null || true
   "$DRIVE" down >/dev/null
@@ -117,6 +120,9 @@ case "${1:-}" in
         cmd_run "$2" "${3:-}" ;;
   all)  while read -r n; do cmd_run "$n" "${2:-}" || true; echo; done < <(names) ;;
   ""|-h|--help|help)
-        echo "usage: scenario list | run <name> [--shot] | all [--shot]"; echo; cmd_list ;;
+        echo "usage: scenario list | run <name> [--shot|--headless] | all [--shot|--headless]"
+        echo "  --shot      capture a screenshot through the real window manager"
+        echo "  --headless  no display needed, and U2DM_DEMO_WINDOW is honoured exactly"
+        echo; cmd_list ;;
   *)    die "unknown command: $1" ;;
 esac
