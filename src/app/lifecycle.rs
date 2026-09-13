@@ -43,7 +43,7 @@ impl Lifecycle {
     }
 
     pub(super) fn begin_auth(&mut self) -> u64 {
-        self.attempt += 1;
+        self.attempt = self.attempt.saturating_add(1);
         self.phase = AppPhase::Authenticating;
         self.attempt
     }
@@ -73,7 +73,7 @@ impl Lifecycle {
     pub(super) fn promote_to_syncing(&mut self, attempt: u64) -> Option<u64> {
         if self.phase == AppPhase::Authenticating && self.attempt == attempt {
             self.phase = AppPhase::Syncing;
-            self.session += 1;
+            self.session = self.session.saturating_add(1);
             Some(self.session)
         } else {
             None
@@ -83,7 +83,7 @@ impl Lifecycle {
     pub(super) fn restore_succeeded(&mut self) -> Option<u64> {
         if self.phase == AppPhase::Restoring {
             self.phase = AppPhase::Syncing;
-            self.session += 1;
+            self.session = self.session.saturating_add(1);
             Some(self.session)
         } else {
             None
