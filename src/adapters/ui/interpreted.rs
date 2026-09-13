@@ -44,9 +44,10 @@ use super::schema::{
     attachment_kinds, connection_states, login_activities, login_methods, login_phases, media_failures, media_states, message_fields, message_kinds, preview_kinds, room_fields, send_states, service_kinds, simple_callbacks, space_fields, timeline_states, user_message_kinds, verification_activities, verification_phases,
 };
 use super::{emoji, router};
+use crate::app::input::CommandSender;
 use crate::commands::effects::{Effect, VerificationActivity};
 use crate::commands::messages::{UserMessage, UserMessageKind};
-use crate::commands::ui::{UiCommand, ViewportChanged};
+use crate::commands::ui::ViewportChanged;
 use crate::commands::view::{AppViewState, AttachmentKind, LoginActivity, LoginStep};
 use crate::domain::auth::{LoginCredentials, LoginMethod};
 use crate::domain::message::{MessagePreviewKind, SendState, TimelineMessage};
@@ -761,7 +762,7 @@ impl SlintUiAdapter {
         Ok(Self { instance })
     }
 
-    fn bind_composer_callbacks(&self, cmd_tx: &mpsc::UnboundedSender<UiCommand>) -> Result<()> {
+    fn bind_composer_callbacks(&self, cmd_tx: &CommandSender) -> Result<()> {
         let tx = cmd_tx.clone();
         bind_action(&self.instance, callback::SEND_MESSAGE, move |args| {
             let Some(s) = struct_arg(args, 0) else {
@@ -869,7 +870,7 @@ impl SlintUiAdapter {
 
     pub fn register_callbacks(
         &self,
-        cmd_tx: &mpsc::UnboundedSender<UiCommand>,
+        cmd_tx: &CommandSender,
         scroll_tx: &watch::Sender<ViewportChanged>,
     ) -> Result<()> {
         setup_emoji_store(&self.instance)?;

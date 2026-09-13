@@ -2,15 +2,16 @@ use std::sync::Arc;
 
 use tokio::sync::mpsc;
 
+use super::event::{AppEvent, TimelineEvent};
+use super::input::EventSender;
 use super::task_group::TaskGroup;
 use crate::commands::effects::Effect;
 use crate::commands::messages::{UserMessage, UserMessageKind};
-use crate::commands::ui::{TimelineAdvance, UiCommand};
 use crate::commands::view::Toast;
 use crate::domain::room::RoomId;
 use crate::domain::timeline::{
-    JumpTarget, PaginationDirection, PaginationOutcome, ScrollMode, TimelineCommand, TimelineFocus,
-    TimelinePatch, TimelineStatus, TimelineUpdate,
+    JumpTarget, PaginationDirection, PaginationOutcome, ScrollMode, TimelineAdvance,
+    TimelineCommand, TimelineFocus, TimelinePatch, TimelineStatus, TimelineUpdate,
 };
 use crate::domain::viewport::ViewportController;
 use crate::ports::matrix::TimelinePort;
@@ -19,7 +20,7 @@ use crate::ports::output::AppOutputPort;
 const TIMELINE_CHANNEL_CAP: usize = 256;
 
 pub(super) struct ActiveTimeline {
-    cmd_tx: mpsc::UnboundedSender<UiCommand>,
+    events: EventSender,
     output: Arc<dyn AppOutputPort>,
     tasks: TaskGroup,
     viewport: ViewportController,
@@ -32,12 +33,9 @@ pub(super) struct ActiveTimeline {
 }
 
 impl ActiveTimeline {
-    pub(super) fn new(
-        cmd_tx: mpsc::UnboundedSender<UiCommand>,
-        output: Arc<dyn AppOutputPort>,
-    ) -> Self {
+    pub(super) fn new(events: EventSender, output: Arc<dyn AppOutputPort>) -> Self {
         Self {
-            cmd_tx,
+            events,
             output,
             tasks: TaskGroup::new("timeline"),
             viewport: ViewportController::new(),
@@ -85,13 +83,13 @@ impl ActiveTimeline {
         self.timeline_cmd_tx = Some(tl_cmd_tx);
 
         let output = Arc::clone(&self.output);
-        let cmd_tx = self.cmd_tx.clone();
+        let events = self.events.clone();
         let token = self.tasks.token();
         let rid = room_id.clone();
 
         let forwarder = Forwarder {
             output: Arc::clone(&output),
-            cmd_tx,
+            events,
             room_id: rid.clone(),
             generation,
             live,
@@ -295,13 +293,12 @@ impl ActiveTimeline {
     }
 
     fn refocus(&self, room_id: &RoomId, generation: i32, focus: TimelineFocus) {
-        if let Err(e) = self.cmd_tx.send(UiCommand::RefocusTimeline {
+        let refocus = TimelineEvent::Refocus {
             room_id: room_id.clone(),
             generation,
             focus,
-        }) {
-            tracing::debug!("failed to send RefocusTimeline command: {e}");
-        }
+        };
+        drop(self.events.send(AppEvent::Timeline(refocus)));
     }
 
     pub(super) fn jump_to_event(&mut self, event_id: String) {
@@ -424,7 +421,7 @@ impl ActiveTimeline {
 
 struct Forwarder {
     output: Arc<dyn AppOutputPort>,
-    cmd_tx: mpsc::UnboundedSender<UiCommand>,
+    events: EventSender,
     room_id: RoomId,
     generation: i32,
     live: bool,
@@ -454,13 +451,13 @@ impl Forwarder {
                 self.forward_jump(event_id, target).await;
             }
             TimelineUpdate::Pagination { direction, outcome } => {
-                if let Err(e) = self.cmd_tx.send(UiCommand::TimelinePaginationCompleted {
+                let settled = TimelineEvent::PaginationCompleted {
                     room_id: self.room_id.clone(),
                     generation: self.generation,
                     direction,
                     outcome,
-                }) {
-                    tracing::debug!("failed to send TimelinePaginationCompleted command: {e}");
+                };
+                if self.events.send(AppEvent::Timeline(settled)).is_err() {
                     return false;
                 }
             }
@@ -508,13 +505,12 @@ impl Forwarder {
     }
 
     fn send_advance(&self, advance: TimelineAdvance) {
-        if let Err(e) = self.cmd_tx.send(UiCommand::TimelineAdvanced {
+        let advanced = TimelineEvent::Advanced {
             room_id: self.room_id.clone(),
             generation: self.generation,
             advance,
-        }) {
-            tracing::debug!("failed to send TimelineAdvanced command: {e}");
-        }
+        };
+        drop(self.events.send(AppEvent::Timeline(advanced)));
     }
 
     async fn emit_status(&self, status: TimelineStatus) {
@@ -540,13 +536,12 @@ impl Forwarder {
     }
 
     fn refocus(&self, focus: TimelineFocus) {
-        if let Err(e) = self.cmd_tx.send(UiCommand::RefocusTimeline {
+        let refocus = TimelineEvent::Refocus {
             room_id: self.room_id.clone(),
             generation: self.generation,
             focus,
-        }) {
-            tracing::debug!("failed to send RefocusTimeline command: {e}");
-        }
+        };
+        drop(self.events.send(AppEvent::Timeline(refocus)));
     }
 }
 

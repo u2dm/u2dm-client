@@ -7,6 +7,7 @@ use tokio_util::sync::CancellationToken;
 
 use super::establish::EstablishedSession;
 use super::event::{AppEvent, EndReason, SessionEvent};
+use super::input::EventSender;
 use super::recover::Recovery;
 use super::task_group::{self, TaskGroup};
 use crate::commands::messages::{UserMessage, UserMessageKind};
@@ -107,7 +108,7 @@ struct SessionTasks {
     auth: Arc<dyn AuthPort>,
     storage: Arc<dyn StoragePort>,
     browser: Arc<dyn BrowserPort>,
-    events: mpsc::UnboundedSender<AppEvent>,
+    events: EventSender,
 }
 
 pub(super) struct SessionController {
@@ -123,7 +124,7 @@ impl SessionController {
         storage: Arc<dyn StoragePort>,
         browser: Arc<dyn BrowserPort>,
         output: Arc<dyn AppOutputPort>,
-        events: mpsc::UnboundedSender<AppEvent>,
+        events: EventSender,
     ) -> Self {
         Self {
             tasks: SessionTasks {
@@ -362,10 +363,8 @@ impl SessionController {
     }
 }
 
-fn send(events: &mpsc::UnboundedSender<AppEvent>, event: SessionEvent) {
-    if events.send(AppEvent::Session(event)).is_err() {
-        tracing::debug!("the app event loop is gone; dropping a session event");
-    }
+fn send(events: &EventSender, event: SessionEvent) {
+    drop(events.send(AppEvent::Session(event)));
 }
 
 impl SessionTasks {
@@ -643,13 +642,13 @@ impl SessionTasks {
 
 struct SessionPersister {
     storage: Arc<dyn StoragePort>,
-    events: mpsc::UnboundedSender<AppEvent>,
+    events: EventSender,
     retry_in: Duration,
     reported: bool,
 }
 
 impl SessionPersister {
-    fn new(storage: Arc<dyn StoragePort>, events: mpsc::UnboundedSender<AppEvent>) -> Self {
+    fn new(storage: Arc<dyn StoragePort>, events: EventSender) -> Self {
         Self {
             storage,
             events,

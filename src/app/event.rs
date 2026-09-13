@@ -6,6 +6,9 @@ use crate::commands::view::LoginActivity;
 use crate::domain::auth::ServerInfo;
 use crate::domain::media::PickedAttachment;
 use crate::domain::room::RoomId;
+use crate::domain::timeline::{
+    PaginationDirection, PaginationOutcome, TimelineAdvance, TimelineFocus,
+};
 use crate::domain::verification::VerificationEvent;
 use crate::ports::matrix::{AuthenticatedSession, CleanupReport};
 
@@ -22,6 +25,12 @@ pub(super) struct AttachmentPicked {
 
 pub(super) enum AppEvent {
     Session(SessionEvent),
+    Timeline(TimelineEvent),
+    SpaceOrderWriteFailed {
+        op: u64,
+        spaces: Vec<String>,
+        error: String,
+    },
     VerificationFlow(VerificationEvent),
     VerificationActionFailed(UserMessageKind),
     AttachmentPicked(Box<AttachmentPicked>),
@@ -35,10 +44,41 @@ impl AppEvent {
     pub(super) fn label(&self) -> &'static str {
         match self {
             Self::Session(event) => event.label(),
+            Self::Timeline(event) => event.label(),
+            Self::SpaceOrderWriteFailed { .. } => "SpaceOrderWriteFailed",
             Self::VerificationFlow(_) => "VerificationFlow",
             Self::VerificationActionFailed(_) => "VerificationActionFailed",
             Self::AttachmentPicked(_) => "AttachmentPicked",
             Self::AttachmentSettled { .. } => "AttachmentSettled",
+        }
+    }
+}
+
+pub(super) enum TimelineEvent {
+    Advanced {
+        room_id: RoomId,
+        generation: i32,
+        advance: TimelineAdvance,
+    },
+    PaginationCompleted {
+        room_id: RoomId,
+        generation: i32,
+        direction: PaginationDirection,
+        outcome: PaginationOutcome,
+    },
+    Refocus {
+        room_id: RoomId,
+        generation: i32,
+        focus: TimelineFocus,
+    },
+}
+
+impl TimelineEvent {
+    fn label(&self) -> &'static str {
+        match self {
+            Self::Advanced { .. } => "TimelineAdvanced",
+            Self::PaginationCompleted { .. } => "TimelinePaginationCompleted",
+            Self::Refocus { .. } => "RefocusTimeline",
         }
     }
 }
@@ -76,6 +116,7 @@ pub(super) enum SessionEvent {
     },
     TokensNotPersisted,
     UserAvatar(Option<PathBuf>),
+    Expired,
 }
 
 impl SessionEvent {
@@ -93,6 +134,7 @@ impl SessionEvent {
             Self::LocalStateCleared { .. } => "LocalStateCleared",
             Self::TokensNotPersisted => "TokensNotPersisted",
             Self::UserAvatar(_) => "UserAvatar",
+            Self::Expired => "SessionExpired",
         }
     }
 }

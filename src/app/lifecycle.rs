@@ -137,6 +137,31 @@ pub(super) fn command_allowed(phase: AppPhase, cmd: &UiCommand) -> bool {
         | UiCommand::LoginOAuth
         | UiCommand::BackToHomeserver => phase == AppPhase::LoggedOut,
         UiCommand::CancelOAuth => phase == AppPhase::Authenticating,
-        _ => phase == AppPhase::Syncing,
+        UiCommand::SelectSpace(_)
+        | UiCommand::SelectSubspace(_)
+        | UiCommand::MoveSpace { .. }
+        | UiCommand::SelectRoom(_)
+        | UiCommand::SendMessage { .. }
+        | UiCommand::PickAttachment { .. }
+        | UiCommand::SendAttachment { .. }
+        | UiCommand::CancelAttachment
+        | UiCommand::SendSticker { .. }
+        | UiCommand::PaginateBackwards { .. }
+        | UiCommand::PaginateForwards { .. }
+        | UiCommand::JumpToLatest { .. }
+        | UiCommand::JumpToEvent { .. }
+        | UiCommand::ToggleReaction { .. }
+        | UiCommand::RetryTimeline
+        | UiCommand::AcceptVerification
+        | UiCommand::RejectVerification
+        | UiCommand::ConfirmVerification
+        | UiCommand::DismissVerification
+        | UiCommand::OpenMedia { .. }
+        | UiCommand::OpenVideo { .. }
+        | UiCommand::CloseVideo
+        | UiCommand::OpenLink { .. }
+        | UiCommand::SaveFile { .. }
+        | UiCommand::DismissToast
+        | UiCommand::Logout => phase == AppPhase::Syncing,
     }
 }

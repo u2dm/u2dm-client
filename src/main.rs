@@ -13,6 +13,7 @@ use adapters::private_fs;
 use adapters::ui::install_timeline_dump;
 use adapters::ui::{SlintUiAdapter, UiEventOutput};
 use app::AppService;
+use app::input::CommandSender;
 use commands::effects::Effect;
 use commands::sync::DirectoryUpdate;
 use commands::ui::{UiCommand, ViewportChanged};
@@ -108,7 +109,7 @@ fn run() -> Result<()> {
     });
     let ui = SlintUiAdapter::compile(&rt)?;
 
-    let (cmd_tx, cmd_rx) = mpsc::unbounded_channel::<UiCommand>();
+    let (cmd_tx, inbox) = app::input::channel();
     let (ui_tx, ui_rx) = mpsc::channel::<Effect>(UI_EVENT_CHANNEL_CAP);
 
     let (view_out_tx, view_out_rx) =
@@ -128,28 +129,25 @@ fn run() -> Result<()> {
     let output: Arc<dyn AppOutputPort> = Arc::new(UiEventOutput::new(ui_tx, view_out_tx));
     let output = attach_probe(output, &ui, probe_view_rx, &cmd_tx);
 
-    let cmd_tx_quit = cmd_tx.clone();
     ui.spawn_event_handler(ui_rx, view_out_rx, backend.media_cache);
-    if let Err(e) = cmd_tx.send(UiCommand::RestoreSession) {
-        tracing::warn!("failed to send RestoreSession command: {e}");
-    }
+    drop(cmd_tx.send(UiCommand::RestoreSession));
     let mut service = AppService::new(
         backend.auth,
         backend.storage,
         media_files,
         browser,
-        cmd_tx,
+        &cmd_tx,
         dir_in_tx,
         output,
     );
     let service_handle = tokio::spawn(async move {
-        service.run(cmd_rx, dir_in_rx, scroll_rx).await;
+        service.run(inbox, dir_in_rx, scroll_rx).await;
     });
 
     let ui_result = ui.run();
     drop(enter_guard);
 
-    shutdown(rt, &cmd_tx_quit, service_handle);
+    shutdown(rt, &cmd_tx, service_handle);
     ui_result
 }
 
@@ -176,7 +174,7 @@ fn attach_probe(
     output: Arc<dyn AppOutputPort>,
     ui: &SlintUiAdapter,
     view_rx: watch::Receiver<Arc<AppViewState>>,
-    cmd_tx: &mpsc::UnboundedSender<UiCommand>,
+    cmd_tx: &CommandSender,
 ) -> Arc<dyn AppOutputPort> {
     let (output, probe) = demo::probe::wrap_output(output);
     if let Some(probe) = probe {
@@ -192,19 +190,13 @@ fn attach_probe(
     output: Arc<dyn AppOutputPort>,
     _ui: &SlintUiAdapter,
     _view_rx: watch::Receiver<Arc<AppViewState>>,
-    _cmd_tx: &mpsc::UnboundedSender<UiCommand>,
+    _cmd_tx: &CommandSender,
 ) -> Arc<dyn AppOutputPort> {
     output
 }
 
-fn shutdown(
-    rt: Runtime,
-    cmd_tx_quit: &mpsc::UnboundedSender<UiCommand>,
-    service_handle: JoinHandle<()>,
-) {
-    if let Err(e) = cmd_tx_quit.send(UiCommand::Quit) {
-        tracing::debug!("failed to send Quit command: {e}");
-    }
+fn shutdown(rt: Runtime, cmd_tx: &CommandSender, service_handle: JoinHandle<()>) {
+    drop(cmd_tx.send(UiCommand::Quit));
     match rt.block_on(async { timeout(SHUTDOWN_WAIT, service_handle).await }) {
         Ok(Ok(())) => {}
         Ok(Err(e)) => tracing::error!("the service task ended abnormally: {e}"),

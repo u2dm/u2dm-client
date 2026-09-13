@@ -4,6 +4,7 @@ use std::sync::Arc;
 use tokio::sync::mpsc;
 
 use super::event::AppEvent;
+use super::input::EventSender;
 use super::task_group::TaskGroup;
 use crate::commands::effects::{Effect, VerificationActivity, VerificationUpdate};
 use crate::commands::messages::{UserMessage, UserMessageKind};
@@ -33,15 +34,12 @@ impl FlowState {
 
 pub(super) struct VerificationController {
     output: Arc<dyn AppOutputPort>,
-    events: mpsc::UnboundedSender<AppEvent>,
+    events: EventSender,
     flow: FlowState,
 }
 
 impl VerificationController {
-    pub(super) fn new(
-        output: Arc<dyn AppOutputPort>,
-        events: mpsc::UnboundedSender<AppEvent>,
-    ) -> Self {
+    pub(super) fn new(output: Arc<dyn AppOutputPort>, events: EventSender) -> Self {
         Self {
             output,
             events,

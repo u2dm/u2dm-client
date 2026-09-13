@@ -1,3 +1,5 @@
+use std::fmt;
+
 use serde::Deserialize;
 
 use crate::adapters::demo::attachments;
@@ -15,7 +17,6 @@ pub enum ProbeCommand {
     LoginOauth,
     CancelOauth,
     BackToHomeserver,
-    FetchRooms,
     SelectSpace {
         #[serde(default)]
         space_id: Option<String>,
@@ -108,6 +109,20 @@ pub enum ProbeCommand {
 
 pub struct Rejected(pub String);
 
+pub enum Driven {
+    Command(UiCommand),
+    SessionExpiry,
+}
+
+impl fmt::Display for Driven {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Command(cmd) => write!(f, "{cmd}"),
+            Self::SessionExpiry => f.write_str("SessionExpired"),
+        }
+    }
+}
+
 pub type Selection<'a> = Option<&'a (String, i32)>;
 
 struct Target {
@@ -138,13 +153,12 @@ fn room(explicit: Option<String>, selected: Selection<'_>) -> Result<RoomId, Rej
 }
 
 #[allow(clippy::too_many_lines)]
-pub fn to_ui(command: ProbeCommand, selected: Selection<'_>) -> Result<UiCommand, Rejected> {
-    Ok(match command {
+pub fn to_driven(command: ProbeCommand, selected: Selection<'_>) -> Result<Driven, Rejected> {
+    Ok(Driven::Command(match command {
         ProbeCommand::CheckServer { homeserver } => UiCommand::CheckServer(homeserver),
         ProbeCommand::LoginOauth => UiCommand::LoginOAuth,
         ProbeCommand::CancelOauth => UiCommand::CancelOAuth,
         ProbeCommand::BackToHomeserver => UiCommand::BackToHomeserver,
-        ProbeCommand::FetchRooms => UiCommand::FetchRooms,
         ProbeCommand::SelectSpace { space_id } => UiCommand::SelectSpace(space_id.map(RoomId::new)),
         ProbeCommand::SelectSubspace { subspace_id } => {
             UiCommand::SelectSubspace(subspace_id.map(RoomId::new))
@@ -251,9 +265,9 @@ pub fn to_ui(command: ProbeCommand, selected: Selection<'_>) -> Result<UiCommand
         ProbeCommand::RejectVerification => UiCommand::RejectVerification,
         ProbeCommand::ConfirmVerification => UiCommand::ConfirmVerification,
         ProbeCommand::DismissVerification => UiCommand::DismissVerification,
-        ProbeCommand::SessionExpired => UiCommand::SessionExpired,
+        ProbeCommand::SessionExpired => return Ok(Driven::SessionExpiry),
         ProbeCommand::DismissToast => UiCommand::DismissToast,
         ProbeCommand::Logout => UiCommand::Logout,
         ProbeCommand::Quit => UiCommand::Quit,
-    })
+    }))
 }

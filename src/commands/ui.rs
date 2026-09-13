@@ -4,7 +4,6 @@ use crate::domain::auth::LoginCredentials;
 use crate::domain::media::AttachmentPick;
 use crate::domain::room::RoomId;
 use crate::domain::sticker::PackId;
-use crate::domain::timeline::{PaginationDirection, PaginationOutcome, TimelineFocus};
 
 #[derive(StrumDisplay)]
 pub enum UiCommand {
@@ -16,7 +15,6 @@ pub enum UiCommand {
     LoginOAuth,
     CancelOAuth,
     BackToHomeserver,
-    FetchRooms,
     #[strum(to_string = "SelectSpace")]
     SelectSpace(Option<RoomId>),
     #[strum(to_string = "SelectSubspace")]
@@ -25,12 +23,6 @@ pub enum UiCommand {
     MoveSpace {
         from: usize,
         to: usize,
-    },
-    #[strum(to_string = "SpaceOrderWriteFailed({op})")]
-    SpaceOrderWriteFailed {
-        op: u64,
-        spaces: Vec<String>,
-        error: String,
     },
     #[strum(to_string = "SelectRoom({0})")]
     SelectRoom(RoomId),
@@ -70,19 +62,6 @@ pub enum UiCommand {
         room_id: RoomId,
         generation: i32,
     },
-    #[strum(to_string = "TimelineAdvanced({room_id})")]
-    TimelineAdvanced {
-        room_id: RoomId,
-        generation: i32,
-        advance: TimelineAdvance,
-    },
-    #[strum(to_string = "TimelinePaginationCompleted({room_id})")]
-    TimelinePaginationCompleted {
-        room_id: RoomId,
-        generation: i32,
-        direction: PaginationDirection,
-        outcome: PaginationOutcome,
-    },
     #[strum(to_string = "JumpToLatest({room_id})")]
     JumpToLatest {
         room_id: RoomId,
@@ -97,14 +76,7 @@ pub enum UiCommand {
         event_id: String,
         key: String,
     },
-    #[strum(to_string = "RefocusTimeline({room_id})")]
-    RefocusTimeline {
-        room_id: RoomId,
-        generation: i32,
-        focus: TimelineFocus,
-    },
     RetryTimeline,
-    SessionExpired,
     AcceptVerification,
     RejectVerification,
     ConfirmVerification,
@@ -131,19 +103,6 @@ pub enum UiCommand {
     DismissToast,
     Logout,
     Quit,
-}
-
-#[derive(Clone, Copy)]
-pub enum TimelineAdvance {
-    Anchored {
-        count: u32,
-    },
-    Appended {
-        total: u32,
-        from_others: bool,
-        opens_room: bool,
-    },
-    Focused,
 }
 
 #[derive(Clone)]

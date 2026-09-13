@@ -1,8 +1,7 @@
 use std::sync::Arc;
 
-use tokio::sync::mpsc;
-
 use super::event::{AppEvent, AttachmentPicked};
+use super::input::EventSender;
 use super::show_toast;
 use super::task_group::TaskGroup;
 use crate::commands::messages::{UserMessage, UserMessageKind};
@@ -18,7 +17,7 @@ use crate::util::format_bytes;
 pub(super) struct Attachments {
     media_files: Arc<dyn MediaFilePort>,
     output: Arc<dyn AppOutputPort>,
-    events: mpsc::UnboundedSender<AppEvent>,
+    events: EventSender,
     pending: Option<PickedAttachment>,
     room_id: Option<RoomId>,
     sending: bool,
@@ -28,7 +27,7 @@ impl Attachments {
     pub(super) fn new(
         media_files: Arc<dyn MediaFilePort>,
         output: Arc<dyn AppOutputPort>,
-        events: mpsc::UnboundedSender<AppEvent>,
+        events: EventSender,
     ) -> Self {
         Self {
             media_files,

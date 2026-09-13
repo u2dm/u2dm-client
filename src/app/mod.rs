@@ -2,6 +2,7 @@ mod active_timeline;
 mod attachments;
 mod establish;
 mod event;
+pub mod input;
 mod lifecycle;
 mod media;
 mod recover;
@@ -18,7 +19,8 @@ use std::sync::Arc;
 use active_timeline::ActiveTimeline;
 use attachments::Attachments;
 use establish::EstablishedSession;
-use event::{AppEvent, EndReason, SessionEvent};
+use event::{AppEvent, EndReason, SessionEvent, TimelineEvent};
+use input::{CommandSender, EventSender, Inbox, Input};
 use lifecycle::Lifecycle;
 use media::MediaActions;
 use recover::Recovery;
@@ -69,7 +71,7 @@ async fn undo_superseded_login(established: EstablishedSession) {
 }
 
 pub struct AppService {
-    cmd_tx: mpsc::UnboundedSender<UiCommand>,
+    events: EventSender,
     dir_in_tx: mpsc::UnboundedSender<DirectoryUpdate>,
     output: Arc<dyn AppOutputPort>,
     background: TaskGroup,
@@ -85,7 +87,6 @@ pub struct AppService {
     last_selected_room: Option<EmittedRoom>,
     lifecycle: Lifecycle,
     active: Option<AuthenticatedSession>,
-    event_rx: Option<mpsc::UnboundedReceiver<AppEvent>>,
     blocked_reason: Option<String>,
 }
 
@@ -96,26 +97,26 @@ impl AppService {
         storage: Arc<dyn StoragePort>,
         media_files: Arc<dyn MediaFilePort>,
         browser: Arc<dyn BrowserPort>,
-        cmd_tx: mpsc::UnboundedSender<UiCommand>,
+        commands: &CommandSender,
         dir_in_tx: mpsc::UnboundedSender<DirectoryUpdate>,
         output: Arc<dyn AppOutputPort>,
     ) -> Self {
-        let (event_tx, event_rx) = mpsc::unbounded_channel::<AppEvent>();
+        let events = commands.events();
         Self {
             session: SessionController::new(
                 auth,
                 storage,
                 browser,
                 Arc::clone(&output),
-                event_tx.clone(),
+                events.clone(),
             ),
             room_directory: RoomDirectory::new(Arc::clone(&output)),
-            active_timeline: ActiveTimeline::new(cmd_tx.clone(), Arc::clone(&output)),
-            verification: VerificationController::new(Arc::clone(&output), event_tx.clone()),
+            active_timeline: ActiveTimeline::new(events.clone(), Arc::clone(&output)),
+            verification: VerificationController::new(Arc::clone(&output), events.clone()),
             media: MediaActions::new(Arc::clone(&media_files), Arc::clone(&output)),
             stickers: Stickers::new(Arc::clone(&output)),
-            attachments: Attachments::new(media_files, Arc::clone(&output), event_tx),
-            cmd_tx,
+            attachments: Attachments::new(media_files, Arc::clone(&output), events.clone()),
+            events,
             dir_in_tx,
             output,
             background: TaskGroup::new("background"),
@@ -124,20 +125,16 @@ impl AppService {
             last_selected_room: None,
             lifecycle: Lifecycle::new(),
             active: None,
-            event_rx: Some(event_rx),
             blocked_reason: None,
         }
     }
 
     pub async fn run(
         &mut self,
-        mut cmd_rx: mpsc::UnboundedReceiver<UiCommand>,
+        mut inbox: Inbox,
         mut dir_in_rx: mpsc::UnboundedReceiver<DirectoryUpdate>,
         mut scroll_in_rx: watch::Receiver<ViewportChanged>,
     ) {
-        let Some(mut event_rx) = self.event_rx.take() else {
-            return;
-        };
         if let Recovery::Blocked(reason) = self.session.recover_interrupted_logins().await {
             self.block_sign_in(reason);
         }
@@ -145,16 +142,11 @@ impl AppService {
         let mut scroll_done = false;
         loop {
             tokio::select! {
-                maybe_cmd = cmd_rx.recv() => {
-                    let Some(cmd) = maybe_cmd else { break };
-                    Self::log_command(&cmd);
-                    if self.dispatch(cmd).await {
+                maybe_input = inbox.recv() => {
+                    let Some(input) = maybe_input else { break };
+                    if self.handle_input(input).await {
                         break;
                     }
-                }
-                Some(event) = event_rx.recv() => {
-                    tracing::debug!(event = event.label(), "handling app event");
-                    self.handle_event(event).await;
                 }
                 maybe_dir = dir_in_rx.recv(), if !dir_done => {
                     match maybe_dir {
@@ -179,6 +171,20 @@ impl AppService {
                         );
                     }
                 }
+            }
+        }
+    }
+
+    async fn handle_input(&mut self, input: Input) -> bool {
+        match input {
+            Input::Ui(cmd) => {
+                tracing::info!(command = %cmd, "handling command");
+                self.dispatch(cmd).await
+            }
+            Input::Internal(event) => {
+                tracing::debug!(event = event.label(), "handling app event");
+                self.handle_event(event).await;
+                false
             }
         }
     }
@@ -239,9 +245,6 @@ impl AppService {
             UiCommand::BackToHomeserver => {
                 self.session.back_to_homeserver();
             }
-            UiCommand::FetchRooms => {
-                self.handle_fetch_rooms().await;
-            }
             UiCommand::SelectSpace(space) => {
                 self.handle_select_space(space);
             }
@@ -250,9 +253,6 @@ impl AppService {
             }
             UiCommand::MoveSpace { from, to } => {
                 self.move_space(from, to);
-            }
-            UiCommand::SpaceOrderWriteFailed { op, spaces, error } => {
-                self.revert_space_orders(op, &spaces, &error);
             }
             UiCommand::SelectRoom(room_id) => {
                 self.select_room(room_id).await;
@@ -302,23 +302,6 @@ impl AppService {
             } => {
                 self.active_timeline.paginate_forwards(&room_id, generation);
             }
-            UiCommand::TimelineAdvanced {
-                room_id,
-                generation,
-                advance,
-            } => {
-                self.active_timeline
-                    .settle_read_position(&room_id, generation, advance);
-            }
-            UiCommand::TimelinePaginationCompleted {
-                room_id,
-                generation,
-                direction,
-                outcome,
-            } => {
-                self.active_timeline
-                    .complete_pagination(&room_id, generation, direction, outcome);
-            }
             UiCommand::JumpToLatest {
                 room_id,
                 generation,
@@ -330,13 +313,6 @@ impl AppService {
             }
             UiCommand::ToggleReaction { event_id, key } => {
                 self.active_timeline.toggle_reaction(event_id, key);
-            }
-            UiCommand::RefocusTimeline {
-                room_id,
-                generation,
-                focus,
-            } => {
-                self.refocus_timeline(room_id, generation, focus).await;
             }
             UiCommand::OpenMedia { event_id } => {
                 self.open_media(event_id);
@@ -367,9 +343,6 @@ impl AppService {
             }
             UiCommand::DismissVerification => {
                 self.dismiss_verification().await;
-            }
-            UiCommand::SessionExpired => {
-                self.end_session(EndReason::Expired).await;
             }
             UiCommand::Logout => {
                 self.end_session(EndReason::UserLogout).await;
@@ -464,7 +437,7 @@ impl AppService {
                 &mut self.operations,
                 space_order,
                 write,
-                self.cmd_tx.clone(),
+                self.events.clone(),
             );
         }
     }
@@ -478,14 +451,6 @@ impl AppService {
             self.output.as_ref(),
             Toast::Error(UserMessage::new(UserMessageKind::SpaceOrderSaveFailed)),
         );
-    }
-
-    fn log_command(cmd: &UiCommand) {
-        if matches!(cmd, UiCommand::TimelineAdvanced { .. }) {
-            tracing::debug!(command = %cmd, "handling command");
-        } else {
-            tracing::info!(command = %cmd, "handling command");
-        }
     }
 
     async fn handle_rooms_updated(&mut self, rooms: RoomList) {
@@ -531,6 +496,10 @@ impl AppService {
     async fn handle_event(&mut self, event: AppEvent) {
         match event {
             AppEvent::Session(event) => self.handle_session_event(event).await,
+            AppEvent::Timeline(event) => self.handle_timeline_event(event).await,
+            AppEvent::SpaceOrderWriteFailed { op, spaces, error } => {
+                self.revert_space_orders(op, &spaces, &error);
+            }
             AppEvent::VerificationFlow(event) => self.verification.flow_advanced(event).await,
             AppEvent::VerificationActionFailed(failure) => {
                 self.verification.action_failed(failure).await;
@@ -545,11 +514,36 @@ impl AppService {
         }
     }
 
+    async fn handle_timeline_event(&mut self, event: TimelineEvent) {
+        match event {
+            TimelineEvent::Advanced {
+                room_id,
+                generation,
+                advance,
+            } => self
+                .active_timeline
+                .settle_read_position(&room_id, generation, advance),
+            TimelineEvent::PaginationCompleted {
+                room_id,
+                generation,
+                direction,
+                outcome,
+            } => self
+                .active_timeline
+                .complete_pagination(&room_id, generation, direction, outcome),
+            TimelineEvent::Refocus {
+                room_id,
+                generation,
+                focus,
+            } => self.refocus_timeline(room_id, generation, focus).await,
+        }
+    }
+
     async fn handle_session_event(&mut self, event: SessionEvent) {
         match event {
             SessionEvent::RestoreProgress(activity) => self.settle_restore_progress(activity),
             SessionEvent::RestoreFailed(message) => self.settle_restore_failure(message),
-            SessionEvent::Restored(capability) => self.settle_restore(*capability),
+            SessionEvent::Restored(capability) => self.settle_restore(*capability).await,
             SessionEvent::ServerDiscovered { attempt, info } => {
                 self.settle_discovery(attempt, *info);
             }
@@ -578,6 +572,7 @@ impl AppService {
                 self.output
                     .publish(Box::new(move |view| view.lifecycle.avatar_path = path));
             }
+            SessionEvent::Expired => self.end_session(EndReason::Expired).await,
         }
     }
 
@@ -595,12 +590,12 @@ impl AppService {
         }
     }
 
-    fn settle_restore(&mut self, capability: AuthenticatedSession) {
+    async fn settle_restore(&mut self, capability: AuthenticatedSession) {
         if self.lifecycle.restore_succeeded().is_none() {
             tracing::info!("restore superseded, dropping session");
             return;
         }
-        self.activate(capability);
+        self.activate(capability).await;
     }
 
     fn settle_discovery(&mut self, attempt: u64, info: ServerInfo) {
@@ -664,17 +659,15 @@ impl AppService {
             }
             return;
         }
-        self.activate(established.commit().await);
+        self.activate(established.commit().await).await;
     }
 
-    fn activate(&mut self, capability: AuthenticatedSession) {
+    async fn activate(&mut self, capability: AuthenticatedSession) {
         let user_id = capability.session.user_id.clone();
         tracing::info!(%user_id, "authenticated");
         self.active = Some(capability);
         self.emit_login_success(user_id);
-        if let Err(e) = self.cmd_tx.send(UiCommand::FetchRooms) {
-            tracing::warn!("failed to trigger room fetch: {e}");
-        }
+        self.start_syncing().await;
     }
 
     fn send_message(&mut self, room_id: RoomId, body: String, reply_to: Option<String>) {
@@ -840,7 +833,7 @@ impl AppService {
         self.active_timeline.clear_room(generation).await;
     }
 
-    async fn handle_fetch_rooms(&mut self) {
+    async fn start_syncing(&mut self) {
         let Some((sync, verification, lifecycle_port)) = self.active.as_ref().map(|a| {
             (
                 Arc::clone(&a.sync),
@@ -848,7 +841,7 @@ impl AppService {
                 Arc::clone(&a.lifecycle),
             )
         }) else {
-            tracing::debug!("fetch rooms without an authenticated session, ignoring");
+            tracing::debug!("no authenticated session to sync, ignoring");
             return;
         };
         self.room_directory.connect();
@@ -865,7 +858,7 @@ impl AppService {
             &mut self.background,
             sync,
             Arc::clone(&self.output),
-            self.cmd_tx.clone(),
+            self.events.clone(),
             self.dir_in_tx.clone(),
         );
         self.session

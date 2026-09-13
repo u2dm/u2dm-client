@@ -8,11 +8,12 @@ use tokio::sync::{Mutex, MutexGuard, mpsc};
 use tokio::time::{Instant, sleep};
 use tokio_util::sync::CancellationToken;
 
+use super::event::{AppEvent, SessionEvent};
+use super::input::EventSender;
 use super::selection::Selection;
 use super::space_order;
 use super::task_group::TaskGroup;
 use crate::commands::sync::DirectoryUpdate;
-use crate::commands::ui::UiCommand;
 use crate::domain::room::{Room, RoomId, RoomList, Space};
 use crate::domain::sync::{ConnectionStatus, SyncEvent, SyncOutcome};
 use crate::ports::matrix::{SpaceOrderPort, SyncPort, SyncSink};
@@ -397,7 +398,7 @@ impl RoomDirectory {
         group: &mut TaskGroup,
         port: Arc<dyn SpaceOrderPort>,
         write: SpaceOrderWrite,
-        cmd_tx: mpsc::UnboundedSender<UiCommand>,
+        events: EventSender,
     ) {
         let token = group.token();
         group.spawn(async move {
@@ -433,7 +434,7 @@ impl RoomDirectory {
             }
 
             if !failed.is_empty() {
-                drop(cmd_tx.send(UiCommand::SpaceOrderWriteFailed {
+                drop(events.send(AppEvent::SpaceOrderWriteFailed {
                     op,
                     spaces: failed,
                     error,
@@ -446,7 +447,7 @@ impl RoomDirectory {
         group: &mut TaskGroup,
         sync: Arc<dyn SyncPort>,
         output: Arc<dyn AppOutputPort>,
-        cmd_tx: mpsc::UnboundedSender<UiCommand>,
+        events: EventSender,
         dir_in_tx: mpsc::UnboundedSender<DirectoryUpdate>,
     ) {
         let token = group.token();
@@ -470,7 +471,7 @@ impl RoomDirectory {
             }
         });
 
-        group.spawn(supervise_sync(sync, output, cmd_tx, on_sync, token));
+        group.spawn(supervise_sync(sync, output, events, on_sync, token));
     }
 
     pub(super) fn reconcile(&self, sel: &mut Selection) -> ReconcileOutcome {
@@ -683,7 +684,7 @@ fn publish_connection(output: &Arc<dyn AppOutputPort>, status: ConnectionStatus)
 async fn supervise_sync(
     sync: Arc<dyn SyncPort>,
     output: Arc<dyn AppOutputPort>,
-    cmd_tx: mpsc::UnboundedSender<UiCommand>,
+    events: EventSender,
     on_sync: SyncSink,
     token: CancellationToken,
 ) {
@@ -693,7 +694,7 @@ async fn supervise_sync(
         match sync.start_sync(Arc::clone(&on_sync), token.clone()).await {
             SyncOutcome::Cancelled => return,
             SyncOutcome::SessionExpired => {
-                drop(cmd_tx.send(UiCommand::SessionExpired));
+                drop(events.send(AppEvent::Session(SessionEvent::Expired)));
                 return;
             }
             SyncOutcome::Fatal(msg) => {

@@ -140,6 +140,19 @@ impl TimelineFocus {
     }
 }
 
+#[derive(Clone, Copy)]
+pub enum TimelineAdvance {
+    Anchored {
+        count: u32,
+    },
+    Appended {
+        total: u32,
+        from_others: bool,
+        opens_room: bool,
+    },
+    Focused,
+}
+
 #[derive(Debug, Clone, Copy)]
 pub enum PaginationDirection {
     Backwards,

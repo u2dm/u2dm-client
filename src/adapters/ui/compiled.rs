@@ -27,9 +27,10 @@ use super::schema::{
     attachment_kinds, bool_props, connection_states, int_props, login_activities, login_methods, login_phases, media_failures, media_states, message_kinds, preview_kinds, send_states, service_kinds, simple_callbacks, string_props, timeline_states, user_message_kinds, verification_activities, verification_phases,
 };
 use super::{emoji, router};
+use crate::app::input::CommandSender;
 use crate::commands::effects::{Effect, VerificationActivity};
 use crate::commands::messages::{UserMessage, UserMessageKind};
-use crate::commands::ui::{UiCommand, ViewportChanged};
+use crate::commands::ui::ViewportChanged;
 use crate::commands::view::{AppViewState, AttachmentKind, LoginActivity, LoginStep};
 use crate::domain::auth::{LoginCredentials, LoginMethod};
 use crate::domain::message::{MessagePreviewKind, SendState, TimelineMessage};
@@ -517,7 +518,7 @@ impl SlintUiAdapter {
     #[allow(clippy::unnecessary_wraps, reason = "mirrors the fallible interpreted adapter")]
     pub fn register_callbacks(
         &self,
-        cmd_tx: &mpsc::UnboundedSender<UiCommand>,
+        cmd_tx: &CommandSender,
         scroll_tx: &watch::Sender<ViewportChanged>,
     ) -> Result<()> {
         setup_emoji_store(&self.window);

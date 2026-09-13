@@ -18,15 +18,15 @@ use axum::{Json, Router};
 use serde::Deserialize;
 use serde_json::{Value, json};
 use tokio::net::TcpListener;
-use tokio::sync::{mpsc, watch};
+use tokio::sync::watch;
 use tokio::time::timeout;
 
-use self::command::ProbeCommand;
+use self::command::{Driven, ProbeCommand};
 use self::journal::{Journal, Selected};
 use self::output::ProbeOutput;
 use super::{catalog, data};
 use crate::adapters::ui::dump;
-use crate::commands::ui::UiCommand;
+use crate::app::input::CommandSender;
 use crate::commands::view::AppViewState;
 use crate::ports::output::AppOutputPort;
 
@@ -60,14 +60,10 @@ struct Server {
     selected: Arc<Selected>,
     view: watch::Receiver<Arc<AppViewState>>,
     revision: Arc<AtomicU64>,
-    commands: mpsc::UnboundedSender<UiCommand>,
+    commands: CommandSender,
 }
 
-pub fn spawn(
-    probe: Probe,
-    view: watch::Receiver<Arc<AppViewState>>,
-    commands: mpsc::UnboundedSender<UiCommand>,
-) {
+pub fn spawn(probe: Probe, view: watch::Receiver<Arc<AppViewState>>, commands: CommandSender) {
     let Some(port) = port() else {
         return;
     };
@@ -221,13 +217,17 @@ async fn run_command(
     State(server): State<Server>,
     Json(request): Json<ProbeCommand>,
 ) -> impl IntoResponse {
-    let ui = match command::to_ui(request, server.selected.get().as_ref()) {
-        Ok(ui) => ui,
+    let driven = match command::to_driven(request, server.selected.get().as_ref()) {
+        Ok(driven) => driven,
         Err(command::Rejected(reason)) => return failure(StatusCode::CONFLICT, reason),
     };
-    let label = ui.to_string();
+    let label = driven.to_string();
     server.journal.record_command(label.clone());
-    if let Err(e) = server.commands.send(ui) {
+    let delivered = match driven {
+        Driven::Command(cmd) => server.commands.send(cmd),
+        Driven::SessionExpiry => server.commands.inject_session_expiry(),
+    };
+    if let Err(e) = delivered {
         return failure(StatusCode::SERVICE_UNAVAILABLE, e.to_string());
     }
     (

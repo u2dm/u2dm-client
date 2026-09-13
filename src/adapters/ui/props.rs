@@ -1,8 +1,8 @@
 use slint::{Image, Rgb8Pixel, SharedPixelBuffer, SharedString};
-use tokio::sync::mpsc;
 
 use super::present::VerifyStep;
 use super::schema::{bool_props, int_props, string_props};
+use crate::app::input::CommandSender;
 use crate::commands::effects::VerificationActivity;
 use crate::commands::messages::{UserMessage, UserMessageKind};
 use crate::commands::ui::UiCommand;
@@ -14,10 +14,8 @@ use crate::domain::verification::VerificationEmoji as DomainVerificationEmoji;
 
 pub const SLINT_INFLIGHT: usize = 32;
 
-pub fn send_command(tx: &mpsc::UnboundedSender<UiCommand>, cmd: UiCommand) {
-    if let Err(mpsc::error::SendError(cmd)) = tx.send(cmd) {
-        tracing::debug!(command = %cmd, "command channel closed; dropping command");
-    }
+pub fn send_command(tx: &CommandSender, cmd: UiCommand) {
+    drop(tx.send(cmd));
 }
 
 macro_rules! prop_enum {

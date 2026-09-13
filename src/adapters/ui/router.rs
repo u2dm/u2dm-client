@@ -1,15 +1,16 @@
-use tokio::sync::{mpsc, watch};
+use tokio::sync::watch;
 use url::Url;
 
 use super::props::send_command;
 use super::schema::simple_callbacks;
+use crate::app::input::CommandSender;
 use crate::commands::ui::{UiCommand, ViewportChanged};
 use crate::domain::auth::LoginCredentials;
 use crate::domain::media::AttachmentPick;
 use crate::domain::room::RoomId;
 use crate::domain::sticker::PackId;
 
-type Tx = mpsc::UnboundedSender<UiCommand>;
+type Tx = CommandSender;
 
 pub type RoomKey = Option<(RoomId, i32)>;
 
