@@ -8,24 +8,39 @@ use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex as StdMutex};
 
+use async_trait::async_trait;
 use matrix_sdk::Client;
-use matrix_sdk::ruma::events::room::MediaSource;
-pub(super) use subscribe::subscribe_timeline;
+use matrix_sdk::attachment::AttachmentConfig;
+use matrix_sdk::room::reply::{EnforceThread, Reply};
+use matrix_sdk::ruma::events::room::message::{
+    AddMentions, RoomMessageEventContent, RoomMessageEventContentWithoutRelation,
+    TextMessageEventContent,
+};
+use matrix_sdk::ruma::{IdParseError, OwnedEventId};
+use tokio::fs;
 use tokio::sync::{Semaphore, mpsc};
+use tokio::task::spawn_blocking;
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
 
 use self::reactors::ReactorAvatars;
-use super::media::MediaService;
+use self::subscribe::subscribe_timeline;
+use super::attachment;
+use super::media::{MediaService, MediaSources};
 use super::profile::PronounCache;
-use crate::domain::timeline::TimelineUpdate;
+use super::session::ClientHandle;
+use crate::domain::media::OutgoingAttachment;
+use crate::domain::room::RoomId;
+use crate::domain::timeline::{TimelineCommand, TimelineFocus, TimelineUpdate};
+use crate::error::{AppError, Result};
+use crate::ports::matrix::TimelinePort;
 
 const ENRICH_INFLIGHT: usize = 8;
 
 pub(super) struct TimelineContext<'a> {
     pub(super) client: &'a Client,
     pub(super) media: &'a Arc<MediaService>,
-    pub(super) media_sources: &'a Arc<StdMutex<HashMap<String, MediaSource>>>,
+    pub(super) media_sources: &'a Arc<MediaSources>,
     pub(super) pronouns: &'a Arc<PronounCache>,
     pub(super) reactor_avatars: &'a Arc<ReactorAvatars>,
     pub(super) own_user_id: Option<&'a str>,
@@ -140,5 +155,136 @@ impl Drop for EnrichmentPool {
     fn drop(&mut self) {
         self.token.cancel();
         self.tracker.close();
+    }
+}
+
+pub(super) struct MatrixTimeline {
+    matrix: Arc<ClientHandle>,
+    media_sources: Arc<MediaSources>,
+    pronouns: Arc<PronounCache>,
+}
+
+impl MatrixTimeline {
+    pub(super) fn new(matrix: Arc<ClientHandle>, media_sources: Arc<MediaSources>) -> Self {
+        Self {
+            matrix,
+            media_sources,
+            pronouns: Arc::new(PronounCache::default()),
+        }
+    }
+
+    fn reply_relation(in_reply_to: &str) -> Result<Reply> {
+        let event_id: OwnedEventId = in_reply_to
+            .try_into()
+            .map_err(|e: IdParseError| AppError::Other(e.to_string()))?;
+        Ok(Reply {
+            event_id,
+            enforce_thread: EnforceThread::MaybeThreaded,
+            add_mentions: AddMentions::Yes,
+        })
+    }
+}
+
+#[async_trait]
+impl TimelinePort for MatrixTimeline {
+    async fn subscribe_timeline(
+        &self,
+        room_id: &RoomId,
+        focus: TimelineFocus,
+        timeline_tx: mpsc::Sender<TimelineUpdate>,
+        cmd_rx: mpsc::UnboundedReceiver<TimelineCommand>,
+    ) -> Result<()> {
+        tracing::info!(%room_id, ?focus, "subscribing to timeline");
+        subscribe_timeline(
+            &self.matrix.client().await?,
+            self.matrix.media(),
+            &self.media_sources,
+            &self.pronouns,
+            room_id,
+            &focus,
+            timeline_tx,
+            cmd_rx,
+        )
+        .await
+    }
+
+    async fn send_text(&self, room_id: &RoomId, body: &str) -> Result<()> {
+        let room = self.matrix.room(room_id).await?;
+        let content = RoomMessageEventContent::text_plain(body);
+        room.send(content)
+            .await
+            .map_err(|e| AppError::Other(e.to_string()))?;
+        Ok(())
+    }
+
+    async fn send_reply(&self, room_id: &RoomId, body: &str, in_reply_to: &str) -> Result<()> {
+        let room = self.matrix.room(room_id).await?;
+        let content = RoomMessageEventContentWithoutRelation::text_plain(body);
+        let reply = Self::reply_relation(in_reply_to)?;
+        let content = room
+            .make_reply_event(content, reply)
+            .await
+            .map_err(|e| AppError::Other(e.to_string()))?;
+        room.send(content)
+            .await
+            .map_err(|e| AppError::Other(e.to_string()))?;
+        Ok(())
+    }
+
+    async fn send_attachment(
+        &self,
+        room_id: &RoomId,
+        attachment: &OutgoingAttachment,
+    ) -> Result<()> {
+        let client = self.matrix.client().await?;
+        let room = self.matrix.room(room_id).await?;
+        let picked = &attachment.picked;
+
+        if let Ok(limit) = client.load_or_fetch_max_upload_size().await {
+            let limit = u64::from(limit);
+            if picked.size > limit {
+                return Err(AppError::AttachmentTooLarge { limit });
+            }
+        }
+
+        let data = fs::read(&picked.path).await?;
+        let content_type = attachment::content_type(picked, attachment.as_document);
+        let thumbnail = match attachment::thumbnail_source(picked, &content_type) {
+            Some(source) => {
+                let bytes = if source == picked.path {
+                    data.clone()
+                } else {
+                    fs::read(&source).await?
+                };
+                spawn_blocking(move || attachment::make_thumbnail(&bytes))
+                    .await
+                    .ok()
+                    .flatten()
+            }
+            None => None,
+        };
+
+        let mut config = AttachmentConfig::new()
+            .info(attachment::attachment_info(picked, &content_type))
+            .thumbnail(thumbnail);
+        if let Some(caption) = attachment.caption.as_deref() {
+            config = config.caption(Some(TextMessageEventContent::plain(caption)));
+        }
+        if let Some(in_reply_to) = attachment.reply_to.as_deref() {
+            config = config.reply(Some(Self::reply_relation(in_reply_to)?));
+        }
+
+        tracing::info!(
+            %room_id,
+            filename = picked.filename,
+            %content_type,
+            size = picked.size,
+            "queueing an attachment"
+        );
+        room.send_queue()
+            .send_attachment(picked.filename.clone(), content_type, data, config)
+            .await
+            .map_err(|e| AppError::Other(e.to_string()))?;
+        Ok(())
     }
 }

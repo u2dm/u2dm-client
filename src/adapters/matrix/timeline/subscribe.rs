@@ -1,10 +1,9 @@
-use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
-use std::sync::{Arc, Mutex as StdMutex};
+use std::collections::{BTreeMap, BTreeSet, HashSet};
+use std::sync::Arc;
 
 use futures_util::{Stream, StreamExt};
 use matrix_sdk::room::Receipts;
 use matrix_sdk::ruma::events::fully_read::FullyReadEventContent;
-use matrix_sdk::ruma::events::room::MediaSource;
 use matrix_sdk::ruma::{
     EventId, IdParseError, MilliSecondsSinceUnixEpoch, OwnedEventId, OwnedRoomId, UserId,
 };
@@ -21,7 +20,7 @@ use super::diff::diff_to_patch;
 use super::filter::TimelineItems;
 use super::reactors::{ReactorAvatars, Resolution, resolve_reactor_avatars};
 use super::{EnrichmentClaim, EnrichmentPool, TimelineContext};
-use crate::adapters::matrix::media::MediaService;
+use crate::adapters::matrix::media::{MediaService, MediaSources};
 use crate::adapters::matrix::profile::PronounCache;
 use crate::domain::message::TimelineMessage;
 use crate::domain::room::RoomId;
@@ -528,7 +527,7 @@ async fn handle_room_keys(timeline: &Timeline, keys: BTreeMap<String, BTreeSet<S
 pub(crate) async fn subscribe_timeline(
     client: &Client,
     media: &Arc<MediaService>,
-    media_sources: &Arc<StdMutex<HashMap<String, MediaSource>>>,
+    media_sources: &Arc<MediaSources>,
     pronouns: &Arc<PronounCache>,
     room_id: &RoomId,
     focus: &TimelineFocus,

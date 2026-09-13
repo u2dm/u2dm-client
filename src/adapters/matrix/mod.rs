@@ -6,50 +6,30 @@ mod media;
 mod preview;
 mod profile;
 mod rooms;
+mod session;
 mod stickers;
 mod store;
 mod timeline;
 mod verification;
 
-use std::collections::HashMap;
 use std::path::PathBuf;
+use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex as StdMutex};
 
 use async_trait::async_trait;
 use matrix_sdk::Client;
-use matrix_sdk::attachment::AttachmentConfig;
-use matrix_sdk::encryption::verification::{SasVerification, VerificationRequest};
-use matrix_sdk::event_handler::EventHandlerDropGuard;
-use matrix_sdk::room::reply::{EnforceThread, Reply};
-use matrix_sdk::ruma::events::room::MediaSource;
-use matrix_sdk::ruma::events::room::message::{
-    AddMentions, RoomMessageEventContent, RoomMessageEventContentWithoutRelation,
-    TextMessageEventContent,
-};
-use matrix_sdk::ruma::events::space_order::SpaceOrderEventContent;
-use matrix_sdk::ruma::{IdParseError, OwnedEventId, OwnedRoomId, SpaceChildOrder};
 use matrix_sdk::utils::local_server::LocalServerRedirectHandle;
-use tokio::fs;
-use tokio::sync::{Mutex, RwLock, mpsc};
-use tokio::task::spawn_blocking;
-use tokio_util::sync::CancellationToken;
+use tokio::sync::{Mutex, RwLock};
 
 use self::media::MediaService;
-use self::profile::PronounCache;
+use self::session::authenticate;
 use self::store::{AdoptedStore, StoreLayout, StorePaths};
 use crate::domain::account::AccountScope;
 use crate::domain::auth::{LoginCredentials, OAuthLoginData, ServerInfo, Session};
-use crate::domain::media::OutgoingAttachment;
-use crate::domain::room::RoomId;
-use crate::domain::sync::SyncOutcome;
-use crate::domain::timeline::{TimelineCommand, TimelineFocus, TimelineUpdate};
-use crate::domain::verification::VerificationEvent;
 use crate::error::{AppError, Result};
 use crate::ports::matrix::{
-    AuthPort, AuthenticatedSession, CleanupReport, MediaPort, PendingLogin, ProgressSink,
-    SessionPort, SpaceOrderPort, StagedCleanup, StoreAdoption, SyncPort, SyncSink, TimelinePort,
-    VerificationPort,
+    AuthPort, AuthenticatedSession, CleanupReport, PendingLogin, ProgressSink, StagedCleanup,
+    StoreAdoption,
 };
 use crate::ports::media::MediaCache;
 
@@ -140,45 +120,6 @@ impl MatrixAdapter {
             account,
         )
         .await
-    }
-}
-
-async fn authenticate(
-    layout: StoreLayout,
-    media: Arc<MediaService>,
-    client: Client,
-    session: Session,
-    account: AccountScope,
-) -> AuthenticatedSession {
-    media.open(&account).await;
-    let authed = Arc::new(AuthedMatrix {
-        client: RwLock::new(Some(client)),
-        layout,
-        account,
-        media,
-        media_sources: Arc::new(StdMutex::new(HashMap::new())),
-        sticker_sources: Arc::new(StdMutex::new(HashMap::new())),
-        pronouns: Arc::new(PronounCache::default()),
-        verification_request: Mutex::new(None),
-        sas_verification: Mutex::new(None),
-        verification_req_rx: Mutex::new(None),
-        verification_handler_guards: Mutex::new(Vec::new()),
-    });
-    let sync = Arc::clone(&authed);
-    let timeline = Arc::clone(&authed);
-    let media = Arc::clone(&authed);
-    let verification = Arc::clone(&authed);
-    let space_order = Arc::clone(&authed);
-    let stickers = Arc::clone(&authed);
-    AuthenticatedSession {
-        session,
-        sync,
-        timeline,
-        media,
-        verification,
-        space_order,
-        stickers,
-        lifecycle: authed,
     }
 }
 
@@ -345,289 +286,5 @@ impl AuthPort for MatrixAdapter {
 
     async fn forget_login(&self, txn: &str) {
         self.layout.forget_login(txn).await;
-    }
-}
-
-struct AuthedMatrix {
-    client: RwLock<Option<Client>>,
-    layout: StoreLayout,
-    account: AccountScope,
-    media: Arc<MediaService>,
-    media_sources: Arc<StdMutex<HashMap<String, MediaSource>>>,
-    sticker_sources: Arc<stickers::StickerSources>,
-    pronouns: Arc<PronounCache>,
-    verification_request: Mutex<Option<VerificationRequest>>,
-    sas_verification: Mutex<Option<SasVerification>>,
-    verification_req_rx: Mutex<Option<mpsc::Receiver<VerificationRequest>>>,
-    verification_handler_guards: Mutex<Vec<EventHandlerDropGuard>>,
-}
-
-impl AuthedMatrix {
-    async fn client(&self) -> Result<Client> {
-        self.client
-            .read()
-            .await
-            .clone()
-            .ok_or_else(|| AppError::Other("The session has been closed".into()))
-    }
-
-    fn clear_media_sources(&self) {
-        if let Ok(mut sources) = self.media_sources.lock() {
-            sources.clear();
-        }
-    }
-
-    async fn room(&self, room_id: &RoomId) -> Result<matrix_sdk::Room> {
-        let room_id_parsed: OwnedRoomId = room_id
-            .as_ref()
-            .try_into()
-            .map_err(|e: IdParseError| AppError::Other(e.to_string()))?;
-        self.client()
-            .await?
-            .get_room(&room_id_parsed)
-            .ok_or_else(|| AppError::Other("Room not found".into()))
-    }
-
-    async fn release_session_resources(&self) {
-        self.clear_media_sources();
-        self.verification_handler_guards.lock().await.clear();
-        *self.verification_req_rx.lock().await = None;
-    }
-}
-
-#[async_trait]
-impl SyncPort for AuthedMatrix {
-    async fn start_sync(&self, on_sync: SyncSink, cancel: CancellationToken) -> SyncOutcome {
-        tracing::info!("starting continuous sync loop");
-        let client = match self.client().await {
-            Ok(client) => client,
-            Err(e) => return SyncOutcome::Fatal(e.to_string()),
-        };
-        rooms::start_sync(&client, Arc::clone(&self.media), on_sync, cancel).await
-    }
-}
-
-#[async_trait]
-impl SpaceOrderPort for AuthedMatrix {
-    async fn set_space_order(&self, space_id: &RoomId, order: &str) -> Result<()> {
-        let room = self.room(space_id).await?;
-        let order = SpaceChildOrder::parse(order).map_err(|e| AppError::Other(e.to_string()))?;
-        room.set_account_data(SpaceOrderEventContent::new(order))
-            .await
-            .map_err(|e| AppError::Other(e.to_string()))?;
-        Ok(())
-    }
-}
-
-#[async_trait]
-impl TimelinePort for AuthedMatrix {
-    async fn subscribe_timeline(
-        &self,
-        room_id: &RoomId,
-        focus: TimelineFocus,
-        timeline_tx: mpsc::Sender<TimelineUpdate>,
-        cmd_rx: mpsc::UnboundedReceiver<TimelineCommand>,
-    ) -> Result<()> {
-        tracing::info!(%room_id, ?focus, "subscribing to timeline");
-        timeline::subscribe_timeline(
-            &self.client().await?,
-            &self.media,
-            &self.media_sources,
-            &self.pronouns,
-            room_id,
-            &focus,
-            timeline_tx,
-            cmd_rx,
-        )
-        .await
-    }
-
-    async fn send_text(&self, room_id: &RoomId, body: &str) -> Result<()> {
-        let room = self.room(room_id).await?;
-        let content = RoomMessageEventContent::text_plain(body);
-        room.send(content)
-            .await
-            .map_err(|e| AppError::Other(e.to_string()))?;
-        Ok(())
-    }
-
-    async fn send_reply(&self, room_id: &RoomId, body: &str, in_reply_to: &str) -> Result<()> {
-        let room = self.room(room_id).await?;
-        let event_id: OwnedEventId = in_reply_to
-            .try_into()
-            .map_err(|e: IdParseError| AppError::Other(e.to_string()))?;
-        let content = RoomMessageEventContentWithoutRelation::text_plain(body);
-        let reply = Reply {
-            event_id,
-            enforce_thread: EnforceThread::MaybeThreaded,
-            add_mentions: AddMentions::Yes,
-        };
-        let content = room
-            .make_reply_event(content, reply)
-            .await
-            .map_err(|e| AppError::Other(e.to_string()))?;
-        room.send(content)
-            .await
-            .map_err(|e| AppError::Other(e.to_string()))?;
-        Ok(())
-    }
-
-    async fn send_attachment(
-        &self,
-        room_id: &RoomId,
-        attachment: &OutgoingAttachment,
-    ) -> Result<()> {
-        let client = self.client().await?;
-        let room = self.room(room_id).await?;
-        let picked = &attachment.picked;
-
-        if let Ok(limit) = client.load_or_fetch_max_upload_size().await {
-            let limit = u64::from(limit);
-            if picked.size > limit {
-                return Err(AppError::AttachmentTooLarge { limit });
-            }
-        }
-
-        let data = fs::read(&picked.path).await?;
-        let content_type = attachment::content_type(picked, attachment.as_document);
-        let thumbnail = match attachment::thumbnail_source(picked, &content_type) {
-            Some(source) => {
-                let bytes = if source == picked.path {
-                    data.clone()
-                } else {
-                    fs::read(&source).await?
-                };
-                spawn_blocking(move || attachment::make_thumbnail(&bytes))
-                    .await
-                    .ok()
-                    .flatten()
-            }
-            None => None,
-        };
-
-        let mut config = AttachmentConfig::new()
-            .info(attachment::attachment_info(picked, &content_type))
-            .thumbnail(thumbnail);
-        if let Some(caption) = attachment.caption.as_deref() {
-            config = config.caption(Some(TextMessageEventContent::plain(caption)));
-        }
-        if let Some(in_reply_to) = attachment.reply_to.as_deref() {
-            let event_id: OwnedEventId = in_reply_to
-                .try_into()
-                .map_err(|e: IdParseError| AppError::Other(e.to_string()))?;
-            config = config.reply(Some(Reply {
-                event_id,
-                enforce_thread: EnforceThread::MaybeThreaded,
-                add_mentions: AddMentions::Yes,
-            }));
-        }
-
-        tracing::info!(
-            %room_id,
-            filename = picked.filename,
-            %content_type,
-            size = picked.size,
-            "queueing an attachment"
-        );
-        room.send_queue()
-            .send_attachment(picked.filename.clone(), content_type, data, config)
-            .await
-            .map_err(|e| AppError::Other(e.to_string()))?;
-        Ok(())
-    }
-}
-
-#[async_trait]
-impl MediaPort for AuthedMatrix {
-    async fn download_media(&self, event_id: &str, thumbnail: bool) -> Result<Vec<u8>> {
-        self.media
-            .download_media(
-                &self.client().await?,
-                &self.media_sources,
-                event_id,
-                thumbnail,
-            )
-            .await
-    }
-
-    async fn materialize_video(&self, event_id: &str) -> Result<PathBuf> {
-        self.media
-            .materialize_video(&self.client().await?, &self.media_sources, event_id)
-            .await
-            .map_err(|reason| {
-                AppError::Other(format!(
-                    "video download for event {event_id} failed: {reason:?}"
-                ))
-            })
-    }
-}
-
-#[async_trait]
-impl VerificationPort for AuthedMatrix {
-    async fn listen_for_verification(
-        &self,
-        verification_tx: mpsc::UnboundedSender<VerificationEvent>,
-    ) -> Result<()> {
-        verification::listen_for_verification(
-            &self.client().await?,
-            &self.verification_req_rx,
-            &self.verification_handler_guards,
-            &self.verification_request,
-            &self.sas_verification,
-            verification_tx,
-        )
-        .await
-    }
-
-    async fn accept_verification(&self) -> Result<()> {
-        verification::accept_verification(&self.verification_request).await
-    }
-
-    async fn confirm_verification(&self) -> Result<()> {
-        verification::confirm_verification(&self.sas_verification).await
-    }
-
-    async fn reject_verification(&self) -> Result<()> {
-        verification::reject_verification(&self.sas_verification, &self.verification_request).await
-    }
-}
-
-#[async_trait]
-impl SessionPort for AuthedMatrix {
-    async fn subscribe_session_changes(
-        &self,
-        session_tx: mpsc::UnboundedSender<Session>,
-    ) -> Result<()> {
-        auth::subscribe_session_changes(&self.client().await?, session_tx).await
-    }
-
-    async fn fetch_user_avatar(&self) -> Result<Option<PathBuf>> {
-        Ok(self.media.fetch_user_avatar(&self.client().await?).await)
-    }
-
-    async fn logout(&self) -> Result<()> {
-        tracing::info!("logging out");
-        self.release_session_resources().await;
-        if let Err(e) = self.client().await?.logout().await {
-            tracing::warn!("failed to logout from server: {e}");
-        }
-        Ok(())
-    }
-
-    async fn clear_store(&self) -> CleanupReport {
-        tracing::info!("clearing local account data");
-        self.release_session_resources().await;
-
-        let mut report = self.media.close(&self.account).await;
-
-        drop(self.client.write().await.take());
-        report.merge(self.layout.purge_account(&self.account).await);
-
-        if report.is_clean() {
-            tracing::info!("local account data cleared");
-        } else {
-            tracing::warn!("local account data not fully cleared: {}", report.summary());
-        }
-        report
     }
 }

@@ -10,7 +10,7 @@ use serde::Deserialize;
 use serde_json::{Map, Value, json};
 use tokio::task::JoinSet;
 
-use super::AuthedMatrix;
+use super::session::ClientHandle;
 use crate::domain::room::RoomId;
 use crate::domain::sticker::{PackId, StickerImage, StickerPack};
 use crate::error::{AppError, Result};
@@ -22,10 +22,10 @@ const ROOM_PACK_TYPES: [&str; 2] = ["m.room.image_pack", "im.ponies.room_emotes"
 const STICKER_USAGE: &str = "sticker";
 const MAX_INFLIGHT_FETCHES: usize = 8;
 
-pub(super) type StickerSources = StdMutex<HashMap<PackId, PackSources>>;
+type StickerSources = StdMutex<HashMap<PackId, PackSources>>;
 type PackSources = HashMap<String, StickerSource>;
 
-pub(super) struct StickerSource {
+struct StickerSource {
     body: String,
     url: String,
     info: Option<Value>,
@@ -111,9 +111,21 @@ impl PackDto {
     }
 }
 
-impl AuthedMatrix {
+pub(super) struct MatrixStickers {
+    matrix: Arc<ClientHandle>,
+    sources: Arc<StickerSources>,
+}
+
+impl MatrixStickers {
+    pub(super) fn new(matrix: Arc<ClientHandle>) -> Self {
+        Self {
+            matrix,
+            sources: Arc::new(StdMutex::new(HashMap::new())),
+        }
+    }
+
     fn remember_pack(&self, id: &PackId, sources: PackSources) {
-        if let Ok(mut cache) = self.sticker_sources.lock() {
+        if let Ok(mut cache) = self.sources.lock() {
             cache.insert(id.clone(), sources);
         }
     }
@@ -203,10 +215,10 @@ impl AuthedMatrix {
 }
 
 #[async_trait]
-impl StickerPort for AuthedMatrix {
+impl StickerPort for MatrixStickers {
     async fn catalog(&self, room_id: &RoomId) -> Result<StickerCatalog> {
-        let client = self.client().await?;
-        let room = self.room(room_id).await?;
+        let client = self.matrix.client().await?;
+        let room = self.matrix.room(room_id).await?;
 
         let mut packs: Vec<StickerPack> = Vec::new();
 
@@ -237,7 +249,7 @@ impl StickerPort for AuthedMatrix {
     }
 
     async fn prefetch(&self, mxcs: &[String]) -> usize {
-        let Ok(client) = self.client().await else {
+        let Ok(client) = self.matrix.client().await else {
             return 0;
         };
 
@@ -246,7 +258,7 @@ impl StickerPort for AuthedMatrix {
         for mxc in mxcs {
             let uri: OwnedMxcUri = mxc.as_str().into();
             let client = client.clone();
-            let media = Arc::clone(&self.media);
+            let media = Arc::clone(self.matrix.media());
             tasks.spawn(async move { media.fetch_sticker_by_mxc(&client, uri).await.is_some() });
             if tasks.len() >= MAX_INFLIGHT_FETCHES {
                 fetched += usize::from(matches!(tasks.join_next().await, Some(Ok(true))));
@@ -266,7 +278,8 @@ impl StickerPort for AuthedMatrix {
         in_reply_to: Option<&str>,
     ) -> Result<()> {
         let content = self.sticker_event_content(pack, shortcode, in_reply_to)?;
-        self.room(room_id)
+        self.matrix
+            .room(room_id)
             .await?
             .send_raw("m.sticker", content)
             .await
@@ -275,7 +288,7 @@ impl StickerPort for AuthedMatrix {
     }
 }
 
-impl AuthedMatrix {
+impl MatrixStickers {
     fn sticker_event_content(
         &self,
         pack: &PackId,
@@ -283,7 +296,7 @@ impl AuthedMatrix {
         in_reply_to: Option<&str>,
     ) -> Result<Value> {
         let cache = self
-            .sticker_sources
+            .sources
             .lock()
             .map_err(|_| AppError::Other("The sticker cache is poisoned".into()))?;
         let source = cache

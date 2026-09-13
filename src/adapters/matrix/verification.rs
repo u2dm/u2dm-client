@@ -1,7 +1,9 @@
 use std::future::ready;
 use std::pin::pin;
+use std::sync::Arc;
 use std::time::Duration;
 
+use async_trait::async_trait;
 use futures_util::{Stream, StreamExt, stream};
 use matrix_sdk::Client;
 use matrix_sdk::encryption::verification::{
@@ -15,8 +17,10 @@ use matrix_sdk::ruma::events::room::message::{MessageType, OriginalSyncRoomMessa
 use tokio::sync::{Mutex, mpsc};
 use tokio::time::timeout;
 
+use super::session::{ClientHandle, SessionResource};
 use crate::domain::verification::{VerificationCancellation, VerificationEmoji, VerificationEvent};
 use crate::error::{AppError, Result};
+use crate::ports::matrix::VerificationPort;
 
 const VERIFICATION_QUEUE: usize = 8;
 const UNANSWERED_REQUEST_TIMEOUT: Duration = Duration::from_mins(10);
@@ -75,7 +79,7 @@ fn setup_verification_handlers(
     *verification_req_rx = Some(rx);
 }
 
-pub(super) async fn listen_for_verification(
+async fn listen_for_verification(
     client: &Client,
     verification_req_rx: &Mutex<Option<mpsc::Receiver<VerificationRequest>>>,
     handler_guards: &Mutex<Vec<EventHandlerDropGuard>>,
@@ -467,7 +471,7 @@ fn cancellation(info: &CancelInfo) -> VerificationCancellation {
     }
 }
 
-pub(super) async fn accept_verification(
+async fn accept_verification(
     verification_request: &Mutex<Option<VerificationRequest>>,
 ) -> Result<()> {
     let request = {
@@ -480,9 +484,7 @@ pub(super) async fn accept_verification(
     Ok(())
 }
 
-pub(super) async fn confirm_verification(
-    sas_verification: &Mutex<Option<SasVerification>>,
-) -> Result<()> {
+async fn confirm_verification(sas_verification: &Mutex<Option<SasVerification>>) -> Result<()> {
     let sas = {
         let guard = sas_verification.lock().await;
         guard
@@ -493,7 +495,7 @@ pub(super) async fn confirm_verification(
     Ok(())
 }
 
-pub(super) async fn reject_verification(
+async fn reject_verification(
     sas_verification: &Mutex<Option<SasVerification>>,
     verification_request: &Mutex<Option<VerificationRequest>>,
 ) -> Result<()> {
@@ -507,4 +509,62 @@ pub(super) async fn reject_verification(
         request.ok_or_else(|| AppError::Other("No pending verification request".into()))?;
     request.cancel().await?;
     Ok(())
+}
+
+pub(super) struct MatrixVerification {
+    matrix: Arc<ClientHandle>,
+    request: Mutex<Option<VerificationRequest>>,
+    sas: Mutex<Option<SasVerification>>,
+    incoming: Mutex<Option<mpsc::Receiver<VerificationRequest>>>,
+    handler_guards: Mutex<Vec<EventHandlerDropGuard>>,
+}
+
+impl MatrixVerification {
+    pub(super) fn new(matrix: Arc<ClientHandle>) -> Self {
+        Self {
+            matrix,
+            request: Mutex::new(None),
+            sas: Mutex::new(None),
+            incoming: Mutex::new(None),
+            handler_guards: Mutex::new(Vec::new()),
+        }
+    }
+}
+
+#[async_trait]
+impl SessionResource for MatrixVerification {
+    async fn release(&self) {
+        self.handler_guards.lock().await.clear();
+        *self.incoming.lock().await = None;
+    }
+}
+
+#[async_trait]
+impl VerificationPort for MatrixVerification {
+    async fn listen_for_verification(
+        &self,
+        tx: mpsc::UnboundedSender<VerificationEvent>,
+    ) -> Result<()> {
+        listen_for_verification(
+            &self.matrix.client().await?,
+            &self.incoming,
+            &self.handler_guards,
+            &self.request,
+            &self.sas,
+            tx,
+        )
+        .await
+    }
+
+    async fn accept_verification(&self) -> Result<()> {
+        accept_verification(&self.request).await
+    }
+
+    async fn confirm_verification(&self) -> Result<()> {
+        confirm_verification(&self.sas).await
+    }
+
+    async fn reject_verification(&self) -> Result<()> {
+        reject_verification(&self.sas, &self.request).await
+    }
 }

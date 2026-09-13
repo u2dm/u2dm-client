@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex as StdMutex, RwLock as StdRwLock};
@@ -14,8 +13,8 @@ use tokio::time::{sleep, timeout};
 
 use super::cache::{CacheHandle, FailureTracker};
 use super::{
-    AVATARS_DIR, STICKERS_DIR, VIDEOS_DIR, lookup_full_media_source, mxc_avatar_key, sticker_key,
-    thumb_key, thumbnail_format, video_key,
+    AVATARS_DIR, MediaSources, STICKERS_DIR, VIDEOS_DIR, lookup_full_media_source, mxc_avatar_key,
+    sticker_key, thumb_key, thumbnail_format, video_key,
 };
 use crate::adapters::matrix::store::purge_dir;
 use crate::adapters::{container, private_fs};
@@ -272,7 +271,7 @@ impl MediaService {
     pub(crate) async fn materialize_video(
         &self,
         client: &Client,
-        media_sources: &StdMutex<HashMap<String, MediaSource>>,
+        media_sources: &MediaSources,
         event_id: &str,
     ) -> MediaResult<PathBuf> {
         let cache_key = video_key(event_id);
@@ -349,7 +348,7 @@ impl MediaService {
     pub(crate) async fn enrich_thumbnail(
         &self,
         client: &Client,
-        media_sources: &StdMutex<HashMap<String, MediaSource>>,
+        media_sources: &MediaSources,
         msg: &TimelineMessage,
     ) -> ThumbnailOutcome {
         let Some((kind, meta)) = msg.body.media() else {
@@ -478,7 +477,7 @@ impl MediaService {
     pub(crate) async fn download_media(
         &self,
         client: &Client,
-        media_sources: &StdMutex<HashMap<String, MediaSource>>,
+        media_sources: &MediaSources,
         event_id: &str,
         thumbnail: bool,
     ) -> Result<Vec<u8>> {

@@ -5,12 +5,18 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex as StdMutex};
 
+use async_trait::async_trait;
 use matrix_sdk::media::{MediaFormat, MediaThumbnailSettings};
 use matrix_sdk::ruma::events::room::MediaSource;
 pub(crate) use service::MediaService;
 
+use super::session::ClientHandle;
 use crate::domain::media::{ImageMeta, MediaFailure, MediaKind};
+use crate::error::{AppError, Result};
+use crate::ports::matrix::MediaPort;
 use crate::ports::media::MediaCache;
+
+pub(super) type MediaSources = StdMutex<HashMap<String, MediaSource>>;
 
 pub(super) const AVATARS_DIR: &str = "avatars";
 pub(super) const STICKERS_DIR: &str = "stickers";
@@ -74,7 +80,7 @@ impl MediaCache for MaterializedMedia {
 }
 
 pub(super) fn lookup_media_source(
-    media_sources: &StdMutex<HashMap<String, MediaSource>>,
+    media_sources: &MediaSources,
     event_id: &str,
 ) -> Option<MediaSource> {
     let thumb_key = format!("{event_id}:thumb");
@@ -87,7 +93,7 @@ pub(super) fn lookup_media_source(
 }
 
 pub(super) fn lookup_poster_source(
-    media_sources: &StdMutex<HashMap<String, MediaSource>>,
+    media_sources: &MediaSources,
     event_id: &str,
 ) -> Option<MediaSource> {
     let thumb_key = format!("{event_id}:thumb");
@@ -95,7 +101,7 @@ pub(super) fn lookup_poster_source(
 }
 
 pub(super) fn lookup_full_media_source(
-    media_sources: &StdMutex<HashMap<String, MediaSource>>,
+    media_sources: &MediaSources,
     event_id: &str,
 ) -> Option<MediaSource> {
     media_sources.lock().ok()?.get(event_id).cloned()
@@ -130,7 +136,7 @@ pub(super) fn lane(kind: MediaKind, meta: &ImageMeta) -> MediaLane {
 impl MediaLane {
     pub(super) fn source(
         self,
-        media_sources: &StdMutex<HashMap<String, MediaSource>>,
+        media_sources: &MediaSources,
         event_id: &str,
     ) -> Option<MediaSource> {
         match self {
@@ -145,5 +151,40 @@ impl MediaLane {
             Self::FullFile => MediaFormat::File,
             Self::Thumbnail | Self::Poster => thumbnail_format(),
         }
+    }
+}
+
+pub(super) struct MatrixMedia {
+    matrix: Arc<ClientHandle>,
+    sources: Arc<MediaSources>,
+}
+
+impl MatrixMedia {
+    pub(super) fn new(matrix: Arc<ClientHandle>, sources: Arc<MediaSources>) -> Self {
+        Self { matrix, sources }
+    }
+}
+
+#[async_trait]
+impl MediaPort for MatrixMedia {
+    async fn download_media(&self, event_id: &str, thumbnail: bool) -> Result<Vec<u8>> {
+        let client = self.matrix.client().await?;
+        self.matrix
+            .media()
+            .download_media(&client, &self.sources, event_id, thumbnail)
+            .await
+    }
+
+    async fn materialize_video(&self, event_id: &str) -> Result<PathBuf> {
+        let client = self.matrix.client().await?;
+        self.matrix
+            .media()
+            .materialize_video(&client, &self.sources, event_id)
+            .await
+            .map_err(|reason| {
+                AppError::Other(format!(
+                    "video download for event {event_id} failed: {reason:?}"
+                ))
+            })
     }
 }

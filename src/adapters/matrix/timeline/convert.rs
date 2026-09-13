@@ -1,5 +1,4 @@
-use std::collections::{HashMap, HashSet};
-use std::sync::Mutex as StdMutex;
+use std::collections::HashSet;
 
 use matrix_sdk::ruma::UInt;
 use matrix_sdk::ruma::events::StateEventContentChange;
@@ -17,6 +16,7 @@ use matrix_sdk_ui::timeline::{
 };
 
 use super::TimelineContext;
+use crate::adapters::matrix::media::MediaSources;
 use crate::adapters::matrix::preview;
 use crate::domain::media::{FileMeta, ImageMeta, VideoMeta};
 use crate::domain::message::{
@@ -335,7 +335,7 @@ fn image_meta(info: &ImageInfo) -> ImageMeta {
 fn extract_image_body(
     image: &ImageMessageEventContent,
     media_key: &str,
-    media_sources: &StdMutex<HashMap<String, MediaSource>>,
+    media_sources: &MediaSources,
 ) -> MessageBody {
     if !media_key.is_empty()
         && let Ok(mut sources) = media_sources.lock()
@@ -374,7 +374,7 @@ fn video_meta(info: &VideoInfo) -> VideoMeta {
 fn extract_video_body(
     video: &VideoMessageEventContent,
     media_key: &str,
-    media_sources: &StdMutex<HashMap<String, MediaSource>>,
+    media_sources: &MediaSources,
 ) -> MessageBody {
     if !media_key.is_empty()
         && let Ok(mut sources) = media_sources.lock()
@@ -399,7 +399,7 @@ fn extract_video_body(
 fn extract_sticker_body(
     sticker: &StickerEventContent,
     media_key: &str,
-    media_sources: &StdMutex<HashMap<String, MediaSource>>,
+    media_sources: &MediaSources,
 ) -> MessageBody {
     if !media_key.is_empty()
         && let Ok(mut sources) = media_sources.lock()
@@ -418,7 +418,7 @@ fn extract_sticker_body(
 fn extract_file_body(
     file: &FileMessageEventContent,
     media_key: &str,
-    media_sources: &StdMutex<HashMap<String, MediaSource>>,
+    media_sources: &MediaSources,
 ) -> MessageBody {
     if !media_key.is_empty()
         && let Ok(mut sources) = media_sources.lock()
@@ -449,7 +449,7 @@ fn rich_body(plain: &str, formatted: Option<&FormattedBody>) -> RichText {
 fn message_type_to_body(
     msgtype: &MessageType,
     media_key: &str,
-    media_sources: &StdMutex<HashMap<String, MediaSource>>,
+    media_sources: &MediaSources,
 ) -> MessageBody {
     match msgtype {
         MessageType::Text(t) => MessageBody::Text(rich_body(&t.body, t.formatted.as_ref())),

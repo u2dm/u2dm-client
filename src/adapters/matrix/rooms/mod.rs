@@ -6,8 +6,11 @@ mod health;
 use std::future;
 use std::sync::Arc;
 
+use async_trait::async_trait;
 use matrix_sdk::Client;
 use matrix_sdk::notification_settings::NotificationSettings;
+use matrix_sdk::ruma::SpaceChildOrder;
+use matrix_sdk::ruma::events::space_order::SpaceOrderEventContent;
 use matrix_sdk::sync::RoomUpdates;
 use matrix_sdk_base::RoomInfoNotableUpdate;
 use matrix_sdk_ui::sync_service::{State as SyncState, SyncService};
@@ -20,9 +23,11 @@ use self::avatars::AvatarFetcher;
 use self::directory::Directory;
 use self::health::{SyncHealth, is_auth_error};
 use super::media::MediaService;
+use super::session::ClientHandle;
+use crate::domain::room::RoomId;
 use crate::domain::sync::{SyncEvent, SyncOutcome};
 use crate::error::{AppError, Result as AppResult};
-use crate::ports::matrix::SyncSink as OnSync;
+use crate::ports::matrix::{SpaceOrderPort, SyncPort, SyncSink as OnSync};
 
 async fn build_sync_service(client: &Client) -> AppResult<SyncService> {
     client
@@ -224,7 +229,7 @@ async fn run_sync_loop(
     }
 }
 
-pub(super) async fn start_sync(
+async fn drive_sync_service(
     client: &Client,
     media: Arc<MediaService>,
     on_sync: OnSync,
@@ -261,4 +266,48 @@ pub(super) async fn start_sync(
 
     sync_service.stop().await;
     outcome
+}
+
+pub(super) struct MatrixSync {
+    matrix: Arc<ClientHandle>,
+}
+
+impl MatrixSync {
+    pub(super) fn new(matrix: Arc<ClientHandle>) -> Self {
+        Self { matrix }
+    }
+}
+
+#[async_trait]
+impl SyncPort for MatrixSync {
+    async fn start_sync(&self, on_sync: OnSync, cancel: CancellationToken) -> SyncOutcome {
+        tracing::info!("starting continuous sync loop");
+        let client = match self.matrix.client().await {
+            Ok(client) => client,
+            Err(e) => return SyncOutcome::Fatal(e.to_string()),
+        };
+        drive_sync_service(&client, Arc::clone(self.matrix.media()), on_sync, cancel).await
+    }
+}
+
+pub(super) struct MatrixSpaceOrder {
+    matrix: Arc<ClientHandle>,
+}
+
+impl MatrixSpaceOrder {
+    pub(super) fn new(matrix: Arc<ClientHandle>) -> Self {
+        Self { matrix }
+    }
+}
+
+#[async_trait]
+impl SpaceOrderPort for MatrixSpaceOrder {
+    async fn set_space_order(&self, space_id: &RoomId, order: &str) -> AppResult<()> {
+        let room = self.matrix.room(space_id).await?;
+        let order = SpaceChildOrder::parse(order).map_err(|e| AppError::Other(e.to_string()))?;
+        room.set_account_data(SpaceOrderEventContent::new(order))
+            .await
+            .map_err(|e| AppError::Other(e.to_string()))?;
+        Ok(())
+    }
 }
