@@ -11,10 +11,15 @@ pub enum StoredSession {
     CredentialsUnavailable(AppError),
 }
 
-pub struct SupersededLogin {
-    pub txn: String,
+#[derive(Clone)]
+pub struct DisplacedCredentials {
     pub session: Option<Session>,
     pub passphrase: Option<String>,
+}
+
+pub struct SupersededLogin {
+    pub txn: String,
+    pub displaced: DisplacedCredentials,
 }
 
 pub enum StagedCredentials {

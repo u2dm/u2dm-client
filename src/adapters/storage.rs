@@ -8,7 +8,9 @@ use tokio::task::spawn_blocking;
 use crate::domain::account::AccountScope;
 use crate::domain::auth::Session;
 use crate::error::{AppError, Result};
-use crate::ports::storage::{StagedCredentials, StoragePort, StoredSession, SupersededLogin};
+use crate::ports::storage::{
+    DisplacedCredentials, StagedCredentials, StoragePort, StoredSession, SupersededLogin,
+};
 
 const KEYRING_SERVICE: &str = "u2dm";
 const SESSION_KEY: &str = "session-credentials";
@@ -74,16 +76,22 @@ impl SupersededRecord {
         Self {
             version: SUPERSEDED_RECORD_VERSION,
             txn: superseded.txn.clone(),
-            session: superseded.session.as_ref().map(StoredSessionRecord::new),
-            passphrase: superseded.passphrase.clone(),
+            session: superseded
+                .displaced
+                .session
+                .as_ref()
+                .map(StoredSessionRecord::new),
+            passphrase: superseded.displaced.passphrase.clone(),
         }
     }
 
     fn into_superseded(self) -> SupersededLogin {
         SupersededLogin {
             txn: self.txn,
-            session: self.session.map(StoredSessionRecord::into_session),
-            passphrase: self.passphrase,
+            displaced: DisplacedCredentials {
+                session: self.session.map(StoredSessionRecord::into_session),
+                passphrase: self.passphrase,
+            },
         }
     }
 }

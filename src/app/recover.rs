@@ -1,3 +1,4 @@
+use super::credentials;
 use crate::ports::matrix::{AuthPort, CleanupReport, LoginResolution, PendingLogin};
 use crate::ports::storage::{StagedCredentials, StoragePort, SupersededLogin};
 
@@ -154,7 +155,6 @@ async fn apply(
     login: &PendingLogin,
     plan: &CredentialPlan,
 ) -> CleanupReport {
-    let mut report = CleanupReport::default();
     let staged = match plan {
         CredentialPlan::Restore(staged) => staged,
         CredentialPlan::NothingStaged => {
@@ -162,29 +162,11 @@ async fn apply(
                 txn = %login.txn,
                 "no credentials were staged for this login, leaving the credential store as it is"
             );
-            return report;
+            return CleanupReport::default();
         }
     };
 
-    let restored_session = match &staged.session {
-        Some(session) => storage.save_session(session).await,
-        None => storage.clear_session().await,
-    };
-    if let Err(e) = restored_session {
-        report.fail(format!("the previous session could not be put back ({e})"));
-    }
-
-    let restored_key = match &staged.passphrase {
-        Some(passphrase) => storage.save_passphrase(&login.account, passphrase).await,
-        None => storage.clear_passphrase(&login.account).await,
-    };
-    if let Err(e) = restored_key {
-        report.fail(format!(
-            "the previous local store key could not be put back ({e})"
-        ));
-    }
-
-    report
+    credentials::restore_displaced(storage, &login.account, &staged.displaced).await
 }
 
 fn report_unresolved(login: &PendingLogin, report: &CleanupReport) {

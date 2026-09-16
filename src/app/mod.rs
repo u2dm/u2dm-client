@@ -1,5 +1,6 @@
 mod active_timeline;
 mod attachments;
+mod credentials;
 mod establish;
 mod event;
 pub mod input;
