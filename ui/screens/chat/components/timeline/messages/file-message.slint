@@ -1,48 +1,71 @@
-import { Button, Palette, ProgressIndicator } from "std-widgets.slint";
-import { IconDisplay, IconSet } from "@lucide";
+import { Palette } from "std-widgets.slint";
+import { IconSet } from "@lucide";
+import { Interaction } from "../../../../../components/a11y.slint";
 import { Actions } from "../../../../../actions.slint";
 import { SendState } from "../../../../../enums.slint";
-import { Fonts, IconSize, Metrics, Space } from "../../../../../theme.slint";
+import { AppStyle, Fonts, IconSize, Space, Weight } from "../../../../../theme.slint";
+import { MediaButton } from "./media-button.slint";
 
-export component FileMessage inherits VerticalLayout {
-    in property <string> body;
+export component FileMessage inherits HorizontalLayout {
+    in property <string> filename;
+    in property <string> size;
     in property <string> event-id;
+    in property <bool> is-own;
     in property <SendState> send-state;
     in property <float> send-progress;
 
-    property <bool> is-sending: root.send-state == SendState.sending
-        || root.send-state == SendState.uploading;
+    property <bool> can-save: root.event-id != "";
 
-    spacing: Space.sm;
+    function save() {
+        Actions.save-file({ event-id: root.event-id, filename: root.filename });
+    }
 
-    HorizontalLayout {
-        spacing: Space.md;
-        alignment: start;
+    padding-top: Space.md;
+    spacing: Space.lg;
+    alignment: start;
 
-        IconDisplay {
-            icon: IconSet.Paperclip;
-            size: IconSize.sm;
-            stroke: Palette.foreground;
-        }
+    VerticalLayout {
+        alignment: center;
 
-        Text {
-            text: root.body;
-            font-size: Fonts.body;
-            vertical-alignment: center;
-        }
-
-        Button {
-            text: @tr("Save");
-            enabled: root.event-id != "";
+        MediaButton {
+            enabled: root.can-save;
+            is-own: root.is-own;
+            icon: IconSet.ArrowDown;
+            glyph-size: IconSize.lg;
+            send-state: root.send-state;
+            send-progress: root.send-progress;
+            label: @tr("Save {}", root.filename);
             clicked => {
-                Actions.save-file({ event-id: root.event-id, filename: root.body });
+                root.save();
             }
         }
     }
 
-    if root.is-sending: ProgressIndicator {
-        height: Metrics.upload-bar;
-        indeterminate: root.send-state != SendState.uploading;
-        progress: root.send-progress;
+    TouchArea {
+        enabled: Interaction.actionable(root.can-save, false);
+        mouse-cursor: self.enabled ? pointer : default;
+        clicked => {
+            root.save();
+        }
+
+        VerticalLayout {
+            alignment: center;
+            spacing: Space.xs;
+
+            Text {
+                text: root.filename;
+                font-size: Fonts.body;
+                font-weight: Weight.semibold;
+                color: Palette.foreground;
+                overflow: elide;
+            }
+
+            if root.size != "": Text {
+                text: root.size;
+                font-size: Fonts.body-small;
+                color: AppStyle.overlay-foreground-muted;
+                overflow: elide;
+            }
+        }
     }
 }

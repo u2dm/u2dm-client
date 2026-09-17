@@ -131,10 +131,10 @@ export global AppStyle {
     out property <color> surface-sunken: Palette.background.mix(Palette.alternate-background, 0.7);
     out property <color> surface-rail: Palette.alternate-background.mix(Palette.background, 0.35);
 
-    out property <color> audio-button: Palette.accent-background;
-    out property <color> on-audio-button: Palette.accent-foreground;
-    out property <color> audio-button-own: root.dark ? Palette.foreground : Palette.background;
-    out property <color> on-audio-button-own: root.dark ? root.own-bubble : Palette.accent-background;
+    out property <color> media-button: Palette.accent-background;
+    out property <color> on-media-button: Palette.accent-foreground;
+    out property <color> media-button-own: root.dark ? Palette.foreground : Palette.background;
+    out property <color> on-media-button-own: root.dark ? root.own-bubble : Palette.accent-background;
     out property <color> audio-wave-played: Palette.accent-background;
     out property <color> audio-wave-played-own: Palette.foreground;
     out property <color> audio-wave-rest: Palette.foreground.transparentize(0.7);
@@ -238,7 +238,7 @@ export global Metrics {
     out property <length> video-scrub-knob: 12px;
     out property <length> video-stage-inset: 48px;
 
-    out property <length> audio-button: Size.target;
+    out property <length> media-button: Size.target;
     out property <length> audio-wave-height: Size.xs;
     out property <length> audio-wave-width: 160px;
     out property <length> audio-wave-bar: Stroke.marker;

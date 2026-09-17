@@ -202,7 +202,7 @@ export component MessageBubble inherits VerticalLayout {
             alignment: is-own ? end : start;
             padding-left: is-own ? 0 : root.avatar-inset;
             padding-right: is-own ? Space.md : 0;
-            padding-top: root.continues-previous ? 0 : Space.md;
+            padding-top: root.continues-previous ? 0 : Space.sm;
             padding-bottom: Space.xs;
 
             if !is-own: Rectangle {
@@ -371,8 +371,10 @@ export component MessageBubble inherits VerticalLayout {
                         }
 
                         if msg.message-type == MessageKind.file: FileMessage {
-                            body: msg.body;
+                            filename: msg.filename;
+                            size: msg.size;
                             event-id: msg.event-id;
+                            is-own: root.is-own;
                             send-state: msg.send-state;
                             send-progress: msg.send-progress;
                         }

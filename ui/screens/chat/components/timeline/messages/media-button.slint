@@ -1,0 +1,43 @@
+import { Spinner } from "std-widgets.slint";
+import { Icon, IconDisplay } from "@lucide";
+import { ClickArea } from "../../../../../components/a11y.slint";
+import { SendState } from "../../../../../enums.slint";
+import { AppStyle, IconSize, Metrics } from "../../../../../theme.slint";
+
+export component MediaButton inherits ClickArea {
+    in property <Icon> icon;
+    in property <bool> solid;
+    in property <length> glyph-size: IconSize.md;
+    in property <bool> is-own;
+    in property <bool> loading;
+    in property <SendState> send-state;
+    in property <float> send-progress;
+
+    property <bool> uploading: root.send-state == SendState.uploading;
+    property <bool> spinning: root.loading || root.uploading || root.send-state == SendState.sending;
+    property <color> glyph: root.is-own ? AppStyle.on-media-button-own : AppStyle.on-media-button;
+
+    width: Metrics.media-button;
+    height: Metrics.media-button;
+    border-radius: self.height / 2;
+    ring-radius: self.height / 2;
+    background: root.is-own ? AppStyle.media-button-own : AppStyle.media-button;
+
+    if !root.spinning: IconDisplay {
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+        icon: root.icon;
+        size: root.glyph-size;
+        stroke: root.glyph;
+        stroke-fill: root.solid ? root.glyph : transparent;
+    }
+
+    if root.spinning: Spinner {
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+        width: IconSize.lg;
+        height: IconSize.lg;
+        indeterminate: !root.uploading;
+        progress: root.send-progress;
+    }
+}

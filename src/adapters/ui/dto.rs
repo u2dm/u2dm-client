@@ -15,7 +15,7 @@ use super::present::{
 };
 use super::richtext;
 use super::schema::{define_ui_enum, media_failures, media_states};
-use crate::domain::media::{AudioKind, AudioMeta, MediaFailure, ThumbnailOutcome};
+use crate::domain::media::{AudioKind, AudioMeta, FileMeta, MediaFailure, ThumbnailOutcome};
 use crate::domain::message::{
     MessageBody, MessagePreviewKind, Reaction, Reactor, SendState, TimelineMessage,
 };
@@ -395,6 +395,16 @@ pub fn audio_row_update(
     }
 }
 
+fn size_label(size: Option<u64>) -> SharedString {
+    size.map(|size| SharedString::from(&format_bytes(size)))
+        .unwrap_or_default()
+}
+
+fn apply_file(dto: &mut MessageDto, meta: &FileMeta) {
+    dto.filename = SharedString::from(&meta.filename);
+    dto.size = size_label(meta.size);
+}
+
 fn apply_audio(
     dto: &mut MessageDto,
     m: &TimelineMessage,
@@ -403,10 +413,7 @@ fn apply_audio(
 ) {
     dto.audio_kind = meta.kind;
     dto.filename = SharedString::from(&meta.filename);
-    dto.size = meta
-        .size
-        .map(|size| SharedString::from(&format_bytes(size)))
-        .unwrap_or_default();
+    dto.size = size_label(meta.size);
     if let Some(duration) = meta.duration {
         dto.duration = SharedString::from(&duration_label(duration));
     }
@@ -429,6 +436,9 @@ fn apply_media(
     }
     if let Some(meta) = m.body.audio() {
         apply_audio(dto, m, meta, media);
+    }
+    if let MessageBody::File { meta } = &m.body {
+        apply_file(dto, meta);
     }
 
     let (_, meta) = m.body.media()?;

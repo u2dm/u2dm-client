@@ -239,11 +239,6 @@ msgctxt "UnsupportedMessage"
 msgid "Unsupported message type: {}"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/messages/file-message.slint:35
-msgctxt "FileMessage"
-msgid "Save"
-msgstr ""
-
 #: ui/screens/chat/components/timeline/messages/image-message.slint:79
 msgctxt "ImageMessage"
 msgid "Open image: {}"
@@ -329,39 +324,44 @@ msgctxt "VideoPlaceholder"
 msgid "Video"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/messages/audio-message.slint:71
+#: ui/screens/chat/components/timeline/messages/audio-message.slint:40
 msgctxt "VoiceWaveform"
 msgid "Voice message position"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/messages/audio-message.slint:138
+#: ui/screens/chat/components/timeline/messages/audio-message.slint:106
 msgctxt "AudioMessage"
 msgid "{} · {}"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/messages/audio-message.slint:140
+#: ui/screens/chat/components/timeline/messages/audio-message.slint:108
 msgctxt "AudioMessage"
 msgid "{} / {}"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/messages/audio-message.slint:169
+#: ui/screens/chat/components/timeline/messages/audio-message.slint:137
 msgctxt "AudioMessage"
 msgid "Pause"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/messages/audio-message.slint:170
+#: ui/screens/chat/components/timeline/messages/audio-message.slint:138
 msgctxt "AudioMessage"
 msgid "Play voice message"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/messages/audio-message.slint:170
+#: ui/screens/chat/components/timeline/messages/audio-message.slint:138
 msgctxt "AudioMessage"
 msgid "Play {}"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/messages/audio-message.slint:224
+#: ui/screens/chat/components/timeline/messages/audio-message.slint:192
 msgctxt "AudioMessage"
 msgid "Track position"
+msgstr ""
+
+#: ui/screens/chat/components/timeline/messages/file-message.slint:37
+msgctxt "FileMessage"
+msgid "Save {}"
 msgstr ""
 
 #: ui/screens/chat/components/timeline/reaction-detail.slint:46
@@ -597,31 +597,6 @@ msgctxt "AttachMenu"
 msgid "Document"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/message-bubble.slint:287
-msgctxt "MessageBubble"
-msgid "Go to the message this replies to"
-msgstr ""
-
-#: ui/screens/chat/components/timeline/message-bubble.slint:509
-msgctxt "MessageBubble"
-msgid "Select the text of this message"
-msgstr ""
-
-#: ui/screens/chat/components/timeline/message-bubble.slint:534
-msgctxt "MessageBubble"
-msgid "Reply to {}"
-msgstr ""
-
-#: ui/screens/chat/components/timeline/message-bubble.slint:549
-msgctxt "MessageBubble"
-msgid "Reply"
-msgstr ""
-
-#: ui/screens/chat/components/timeline/message-bubble.slint:567
-msgctxt "MessageBubble"
-msgid "React to {}'s message with {}"
-msgstr ""
-
 #: ui/screens/chat/components/timeline/video-player.slint:14
 msgctxt "VideoPlayer"
 msgid "Video player"
@@ -803,6 +778,31 @@ msgstr ""
 #: ui/screens/chat/components/timeline/attachment-dialog.slint:338
 msgctxt "AttachmentDialog"
 msgid "Send"
+msgstr ""
+
+#: ui/screens/chat/components/timeline/message-bubble.slint:287
+msgctxt "MessageBubble"
+msgid "Go to the message this replies to"
+msgstr ""
+
+#: ui/screens/chat/components/timeline/message-bubble.slint:511
+msgctxt "MessageBubble"
+msgid "Select the text of this message"
+msgstr ""
+
+#: ui/screens/chat/components/timeline/message-bubble.slint:536
+msgctxt "MessageBubble"
+msgid "Reply to {}"
+msgstr ""
+
+#: ui/screens/chat/components/timeline/message-bubble.slint:551
+msgctxt "MessageBubble"
+msgid "Reply"
+msgstr ""
+
+#: ui/screens/chat/components/timeline/message-bubble.slint:569
+msgctxt "MessageBubble"
+msgid "React to {}'s message with {}"
 msgstr ""
 
 #: ui/screens/chat/components/drawer.slint:87
