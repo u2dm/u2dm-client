@@ -161,6 +161,8 @@ pub trait TimelinePort: Send + Sync {
         room_id: &RoomId,
         attachment: &OutgoingAttachment,
     ) -> Result<()>;
+    async fn resend(&self, room_id: &RoomId, local_id: &str) -> Result<()>;
+    async fn discard_send(&self, room_id: &RoomId, local_id: &str) -> Result<()>;
 }
 
 #[async_trait]

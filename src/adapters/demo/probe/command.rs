@@ -92,6 +92,12 @@ pub enum ProbeCommand {
         event_id: String,
         key: String,
     },
+    RetrySend {
+        local_id: String,
+    },
+    DiscardSend {
+        local_id: String,
+    },
     RetryTimeline,
     OpenVideo {
         event_id: String,
@@ -264,6 +270,8 @@ pub fn to_driven(command: ProbeCommand, selected: Selection<'_>) -> Result<Drive
         ProbeCommand::ToggleReaction { event_id, key } => {
             UiCommand::ToggleReaction { event_id, key }
         }
+        ProbeCommand::RetrySend { local_id } => UiCommand::RetrySend { local_id },
+        ProbeCommand::DiscardSend { local_id } => UiCommand::DiscardSend { local_id },
         ProbeCommand::RetryTimeline => UiCommand::RetryTimeline,
         ProbeCommand::OpenVideo { event_id } => {
             if !cfg!(feature = "video") {

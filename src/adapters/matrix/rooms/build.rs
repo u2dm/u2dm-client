@@ -24,7 +24,7 @@ use crate::domain::room::{NotifyMode, Room as DomainRoom, RoomId, Space as Domai
 
 const SEED_INFLIGHT: usize = 16;
 
-fn room_avatar_mxc(room: &Room, is_direct: bool) -> Option<String> {
+async fn room_avatar_mxc(room: &Room, is_direct: bool) -> Option<String> {
     if let Some(mxc) = room.avatar_url() {
         return Some(mxc.to_string());
     }
@@ -32,6 +32,7 @@ fn room_avatar_mxc(room: &Room, is_direct: bool) -> Option<String> {
         return None;
     }
     room.heroes()
+        .await
         .first()
         .and_then(|hero| hero.avatar_url.as_ref())
         .map(ToString::to_string)
@@ -101,7 +102,7 @@ pub(super) async fn build_single_room(room: &Room, settings: &NotificationSettin
     DomainRoom {
         id: RoomId::new(room.room_id().to_string()),
         display_name,
-        avatar_mxc: room_avatar_mxc(room, is_direct),
+        avatar_mxc: room_avatar_mxc(room, is_direct).await,
         is_direct,
         member_count,
         has_unread: flags.has_unread,

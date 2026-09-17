@@ -3,7 +3,7 @@ use std::env;
 use std::sync::OnceLock;
 use std::time::Duration;
 
-use crate::domain::message::{Reaction, Reactor, TimelineMessage};
+use crate::domain::message::{Reaction, ReactionSend, Reactor, TimelineMessage};
 
 const ENV_VAR: &str = "U2DM_DEMO_REACTIONS";
 
@@ -33,6 +33,11 @@ pub const CATALOG: Scenarios = Scenarios {
             note: "excluded from `all`",
         },
         Flag {
+            value: "failed",
+            effect: "a local echo that is rejected, so the danger-styled chip is observable",
+            note: "excluded from `all`",
+        },
+        Flag {
             value: "crowd",
             effect: "forty reactors, so the \"and N more\" truncation renders",
             note: "",
@@ -45,7 +50,7 @@ pub const CATALOG: Scenarios = Scenarios {
         Flag {
             value: "all",
             effect: "late, overflow, long-key and crowd",
-            note: "excludes pending and no-echo",
+            note: "excludes pending, failed and no-echo",
         },
     ],
     notes: &[
@@ -66,6 +71,7 @@ pub struct Scenario {
     pub keys_overflow: bool,
     pub key_is_long: bool,
     pub mine_stays_pending: bool,
+    pub mine_fails_to_send: bool,
     pub crowd_reacts: bool,
     pub toggle_has_no_echo: bool,
 }
@@ -88,6 +94,7 @@ fn from_env() -> Scenario {
         keys_overflow = scenario.keys_overflow,
         key_is_long = scenario.key_is_long,
         mine_stays_pending = scenario.mine_stays_pending,
+        mine_fails_to_send = scenario.mine_fails_to_send,
         crowd_reacts = scenario.crowd_reacts,
         toggle_has_no_echo = scenario.toggle_has_no_echo,
         "demo mode: reproducing real-account reaction timing"
@@ -101,6 +108,7 @@ fn apply(scenario: &mut Scenario, flag: &str) {
         "overflow" => scenario.keys_overflow = true,
         "long-key" => scenario.key_is_long = true,
         "pending" => scenario.mine_stays_pending = true,
+        "failed" => scenario.mine_fails_to_send = true,
         "crowd" => scenario.crowd_reacts = true,
         "no-echo" => scenario.toggle_has_no_echo = true,
         "all" => {
@@ -155,7 +163,7 @@ pub fn apply_scenario(messages: &mut [TimelineMessage]) {
             key: LONG_KEY.to_owned(),
             senders: vec![reactor("@kai:matrix.org")],
             mine: false,
-            pending: false,
+            send: ReactionSend::Sent,
         });
     }
     if scenario.keys_overflow {
@@ -167,7 +175,7 @@ pub fn apply_scenario(messages: &mut [TimelineMessage]) {
                 key: (*key).to_owned(),
                 senders: vec![reactor("@priya:matrix.org")],
                 mine: false,
-                pending: false,
+                send: ReactionSend::Sent,
             });
         }
     }
@@ -192,14 +200,25 @@ pub fn reacted_indices(messages: &[TimelineMessage]) -> Vec<usize> {
         .collect()
 }
 
+fn own_send_state() -> ReactionSend {
+    let scenario = scenario();
+    if scenario.mine_fails_to_send {
+        return ReactionSend::Failed;
+    }
+    if scenario.mine_stays_pending {
+        return ReactionSend::Sending;
+    }
+    ReactionSend::Sent
+}
+
 pub fn toggle(message: &mut TimelineMessage, key: &str, own_user: &str) {
-    let pending = scenario().mine_stays_pending;
+    let send = own_send_state();
     let Some(position) = message.reactions.iter().position(|r| r.key == key) else {
         message.reactions.push(Reaction {
             key: key.to_owned(),
             senders: vec![reactor(own_user)],
             mine: true,
-            pending,
+            send,
         });
         return;
     };
@@ -213,7 +232,7 @@ pub fn toggle(message: &mut TimelineMessage, key: &str, own_user: &str) {
     {
         reaction.senders.remove(mine);
         reaction.mine = false;
-        reaction.pending = false;
+        reaction.send = ReactionSend::Sent;
         if reaction.senders.is_empty() {
             message.reactions.remove(position);
         }
@@ -221,5 +240,5 @@ pub fn toggle(message: &mut TimelineMessage, key: &str, own_user: &str) {
     }
     reaction.senders.push(reactor(own_user));
     reaction.mine = true;
-    reaction.pending = pending;
+    reaction.send = send;
 }

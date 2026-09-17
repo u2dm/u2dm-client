@@ -175,7 +175,15 @@ pub struct Reaction {
     pub key: String,
     pub senders: Vec<Reactor>,
     pub mine: bool,
-    pub pending: bool,
+    pub send: ReactionSend,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ReactionSend {
+    #[default]
+    Sent,
+    Sending,
+    Failed,
 }
 
 impl Reaction {

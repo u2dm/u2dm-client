@@ -7,6 +7,12 @@ pub struct UnreadAnchor {
     pub count: u32,
 }
 
+#[derive(Debug, Clone, Copy)]
+pub enum FailedSend {
+    Retry,
+    Discard,
+}
+
 #[derive(Debug, Clone, strum::IntoStaticStr)]
 pub enum TimelinePatch {
     Reset(Vec<TimelineMessage>),

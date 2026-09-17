@@ -3,6 +3,7 @@ import {
 } from "std-widgets.slint";
 
 import { ReactionEntry, ReactorAvatar } from "../types.slint";
+import { ReactionSend } from "../../../../enums.slint";
 import { Avatar } from "../../../../components/avatar.slint";
 import { Pill } from "../../../../components/pill.slint";
 import { ReactionAnchor } from "../../../../local.slint";
@@ -32,6 +33,7 @@ export component ReactionChip inherits Pill {
     in property <ReactionEntry> entry;
     in property <bool> is-own;
     property <bool> shows-faces: root.entry.avatars.length > 0;
+    property <bool> failed: root.entry.send == ReactionSend.failed;
 
     property <color> mine-fill: AppStyle.chip-fill-mine;
     property <color> other-fill: root.is-own
@@ -39,11 +41,13 @@ export component ReactionChip inherits Pill {
         : AppStyle.overlay-hover;
 
     height: Metrics.reaction-chip;
-    border-width: entry.mine ? Stroke.hairline : 0;
-    border-color: AppStyle.accent-border;
-    fill: root.entry.mine ? root.mine-fill : root.other-fill;
+    border-width: entry.mine || root.failed ? Stroke.hairline : 0;
+    border-color: root.failed ? AppStyle.danger-border : AppStyle.accent-border;
+    fill: root.failed
+        ? AppStyle.danger-background
+        : root.entry.mine ? root.mine-fill : root.other-fill;
     hover-lift: root.entry.mine ? 0.15 : 0.25;
-    opacity: entry.pending ? Opacity.pending : 1;
+    opacity: root.entry.send == ReactionSend.sending ? Opacity.pending : 1;
 
     if !entry.overflow: Text {
         text: entry.label;

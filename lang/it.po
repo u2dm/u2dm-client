@@ -452,117 +452,6 @@ msgctxt "TimelineView"
 msgid "Back to the room list"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/emoji-picker.slint:90
-msgctxt "EmojiPicker"
-msgid "Smileys & emotion"
-msgstr ""
-
-#: ui/screens/chat/components/timeline/emoji-picker.slint:91
-msgctxt "EmojiPicker"
-msgid "People & body"
-msgstr ""
-
-#: ui/screens/chat/components/timeline/emoji-picker.slint:92
-msgctxt "EmojiPicker"
-msgid "Animals & nature"
-msgstr ""
-
-#: ui/screens/chat/components/timeline/emoji-picker.slint:93
-msgctxt "EmojiPicker"
-msgid "Food & drink"
-msgstr ""
-
-#: ui/screens/chat/components/timeline/emoji-picker.slint:94
-msgctxt "EmojiPicker"
-msgid "Travel & places"
-msgstr ""
-
-#: ui/screens/chat/components/timeline/emoji-picker.slint:95
-msgctxt "EmojiPicker"
-msgid "Activities"
-msgstr ""
-
-#: ui/screens/chat/components/timeline/emoji-picker.slint:96
-msgctxt "EmojiPicker"
-msgid "Objects"
-msgstr ""
-
-#: ui/screens/chat/components/timeline/emoji-picker.slint:97
-msgctxt "EmojiPicker"
-msgid "Symbols"
-msgstr ""
-
-#: ui/screens/chat/components/timeline/emoji-picker.slint:98
-msgctxt "EmojiPicker"
-msgid "Flags"
-msgstr ""
-
-#: ui/screens/chat/components/timeline/emoji-picker.slint:119
-msgctxt "EmojiPicker"
-msgid "Search emoji"
-msgstr ""
-
-#: ui/screens/chat/components/timeline/emoji-picker.slint:136
-msgctxt "EmojiPicker"
-msgid "Skin tone {}"
-msgstr ""
-
-#: ui/screens/chat/components/timeline/emoji-picker.slint:192
-msgctxt "EmojiPicker"
-msgid "No emoji found"
-msgstr ""
-
-#: ui/screens/chat/components/timeline/reaction-detail.slint:46
-msgctxt "DetailRow"
-msgid "{} and {} more"
-msgstr ""
-
-#: ui/screens/chat/components/timeline/reaction-detail.slint:66
-msgctxt "ReactionDetail"
-msgid "Reactions"
-msgstr ""
-
-#: ui/screens/chat/components/timeline/reaction-detail.slint:86
-msgctxt "ReactionDetail"
-msgid "Remove your {} reaction"
-msgstr ""
-
-#: ui/screens/chat/components/timeline/reaction-detail.slint:87
-msgctxt "ReactionDetail"
-msgid "React with {}"
-msgstr ""
-
-#: ui/screens/chat/components/timeline/reaction-picker.slint:113
-msgctxt "ReactionStrip"
-msgid "More emoji"
-msgstr ""
-
-#: ui/screens/chat/components/timeline/reaction-picker.slint:161
-msgctxt "ReactionPicker"
-msgid "Reactions are not encrypted."
-msgstr ""
-
-#: ui/screens/chat/components/timeline/sticker-picker.slint:98
-msgctxt "StickerPicker"
-msgid "Search stickers"
-msgstr ""
-
-#: ui/screens/chat/components/timeline/sticker-picker.slint:106
-msgctxt "StickerPicker"
-msgid "Stickers from packs are not encrypted."
-msgstr ""
-
-#: ui/screens/chat/components/timeline/sticker-picker.slint:185
-msgctxt "StickerPicker"
-msgid "No stickers match your search."
-msgstr ""
-
-#: ui/screens/chat/components/timeline/sticker-picker.slint:186
-msgctxt "StickerPicker"
-msgid ""
-"No sticker packs yet. Join a room that shares one, or add it to your account."
-msgstr ""
-
 #: ui/screens/chat/components/timeline/attach-menu.slint:61
 msgctxt "AttachMenu"
 msgid "Photo or video"
@@ -626,6 +515,66 @@ msgstr ""
 #: ui/screens/chat/components/timeline/attachment-dialog.slint:329
 msgctxt "AttachmentDialog"
 msgid "Send"
+msgstr ""
+
+#: ui/screens/chat/components/timeline/emoji-picker.slint:90
+msgctxt "EmojiPicker"
+msgid "Smileys & emotion"
+msgstr ""
+
+#: ui/screens/chat/components/timeline/emoji-picker.slint:91
+msgctxt "EmojiPicker"
+msgid "People & body"
+msgstr ""
+
+#: ui/screens/chat/components/timeline/emoji-picker.slint:92
+msgctxt "EmojiPicker"
+msgid "Animals & nature"
+msgstr ""
+
+#: ui/screens/chat/components/timeline/emoji-picker.slint:93
+msgctxt "EmojiPicker"
+msgid "Food & drink"
+msgstr ""
+
+#: ui/screens/chat/components/timeline/emoji-picker.slint:94
+msgctxt "EmojiPicker"
+msgid "Travel & places"
+msgstr ""
+
+#: ui/screens/chat/components/timeline/emoji-picker.slint:95
+msgctxt "EmojiPicker"
+msgid "Activities"
+msgstr ""
+
+#: ui/screens/chat/components/timeline/emoji-picker.slint:96
+msgctxt "EmojiPicker"
+msgid "Objects"
+msgstr ""
+
+#: ui/screens/chat/components/timeline/emoji-picker.slint:97
+msgctxt "EmojiPicker"
+msgid "Symbols"
+msgstr ""
+
+#: ui/screens/chat/components/timeline/emoji-picker.slint:98
+msgctxt "EmojiPicker"
+msgid "Flags"
+msgstr ""
+
+#: ui/screens/chat/components/timeline/emoji-picker.slint:119
+msgctxt "EmojiPicker"
+msgid "Search emoji"
+msgstr ""
+
+#: ui/screens/chat/components/timeline/emoji-picker.slint:136
+msgctxt "EmojiPicker"
+msgid "Skin tone {}"
+msgstr ""
+
+#: ui/screens/chat/components/timeline/emoji-picker.slint:192
+msgctxt "EmojiPicker"
+msgid "No emoji found"
 msgstr ""
 
 #: ui/screens/chat/components/timeline/message-input.slint:111
@@ -723,6 +672,77 @@ msgctxt "PickerSearch"
 msgid "Clear search"
 msgstr ""
 
+#: ui/screens/chat/components/timeline/reaction-detail.slint:46
+msgctxt "DetailRow"
+msgid "{} and {} more"
+msgstr ""
+
+#: ui/screens/chat/components/timeline/reaction-detail.slint:66
+msgctxt "ReactionDetail"
+msgid "Reactions"
+msgstr ""
+
+#: ui/screens/chat/components/timeline/reaction-detail.slint:86
+msgctxt "ReactionDetail"
+msgid "Remove your {} reaction"
+msgstr ""
+
+#: ui/screens/chat/components/timeline/reaction-detail.slint:87
+msgctxt "ReactionDetail"
+msgid "React with {}"
+msgstr ""
+
+#: ui/screens/chat/components/timeline/reaction-picker.slint:113
+msgctxt "ReactionStrip"
+msgid "More emoji"
+msgstr ""
+
+#: ui/screens/chat/components/timeline/reaction-picker.slint:161
+msgctxt "ReactionPicker"
+msgid "Reactions are not encrypted."
+msgstr ""
+
+#: ui/screens/chat/components/timeline/reaction-row.slint:132
+msgctxt "ReactionRow"
+msgid "{} and {} more"
+msgstr ""
+
+#: ui/screens/chat/components/timeline/reaction-row.slint:138
+msgctxt "ReactionRow"
+msgid "Show {} more reactions"
+msgstr ""
+
+#: ui/screens/chat/components/timeline/reaction-row.slint:141
+msgctxt "ReactionRow"
+msgid "Remove your {} reaction, reacted by {}"
+msgstr ""
+
+#: ui/screens/chat/components/timeline/reaction-row.slint:143
+msgctxt "ReactionRow"
+msgid "React with {}, reacted by {}"
+msgstr ""
+
+#: ui/screens/chat/components/timeline/sticker-picker.slint:98
+msgctxt "StickerPicker"
+msgid "Search stickers"
+msgstr ""
+
+#: ui/screens/chat/components/timeline/sticker-picker.slint:106
+msgctxt "StickerPicker"
+msgid "Stickers from packs are not encrypted."
+msgstr ""
+
+#: ui/screens/chat/components/timeline/sticker-picker.slint:185
+msgctxt "StickerPicker"
+msgid "No stickers match your search."
+msgstr ""
+
+#: ui/screens/chat/components/timeline/sticker-picker.slint:186
+msgctxt "StickerPicker"
+msgid ""
+"No sticker packs yet. Join a room that shares one, or add it to your account."
+msgstr ""
+
 #: ui/screens/chat/components/timeline/video-player.slint:14
 msgctxt "VideoPlayer"
 msgid "Video player"
@@ -758,49 +778,54 @@ msgctxt "VideoPlayer"
 msgid "Close"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/message-bubble.slint:287
+#: ui/screens/chat/components/timeline/message-bubble.slint:295
 msgctxt "MessageBubble"
 msgid "Go to the message this replies to"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/message-bubble.slint:509
+#: ui/screens/chat/components/timeline/message-bubble.slint:519
 msgctxt "MessageBubble"
-msgid "Select the text of this message"
+msgid "Not sent"
+msgstr ""
+
+#: ui/screens/chat/components/timeline/message-bubble.slint:528
+msgctxt "MessageBubble"
+msgid "Retry sending this message"
 msgstr ""
 
 #: ui/screens/chat/components/timeline/message-bubble.slint:534
 msgctxt "MessageBubble"
+msgid "Retry"
+msgstr ""
+
+#: ui/screens/chat/components/timeline/message-bubble.slint:544
+msgctxt "MessageBubble"
+msgid "Discard this message"
+msgstr ""
+
+#: ui/screens/chat/components/timeline/message-bubble.slint:550
+msgctxt "MessageBubble"
+msgid "Discard"
+msgstr ""
+
+#: ui/screens/chat/components/timeline/message-bubble.slint:566
+msgctxt "MessageBubble"
+msgid "Select the text of this message"
+msgstr ""
+
+#: ui/screens/chat/components/timeline/message-bubble.slint:591
+msgctxt "MessageBubble"
 msgid "Reply to {}"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/message-bubble.slint:549
+#: ui/screens/chat/components/timeline/message-bubble.slint:606
 msgctxt "MessageBubble"
 msgid "Reply"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/message-bubble.slint:567
+#: ui/screens/chat/components/timeline/message-bubble.slint:624
 msgctxt "MessageBubble"
 msgid "React to {}'s message with {}"
-msgstr ""
-
-#: ui/screens/chat/components/timeline/reaction-row.slint:128
-msgctxt "ReactionRow"
-msgid "{} and {} more"
-msgstr ""
-
-#: ui/screens/chat/components/timeline/reaction-row.slint:134
-msgctxt "ReactionRow"
-msgid "Show {} more reactions"
-msgstr ""
-
-#: ui/screens/chat/components/timeline/reaction-row.slint:137
-msgctxt "ReactionRow"
-msgid "Remove your {} reaction, reacted by {}"
-msgstr ""
-
-#: ui/screens/chat/components/timeline/reaction-row.slint:139
-msgctxt "ReactionRow"
-msgid "React with {}, reacted by {}"
 msgstr ""
 
 #: ui/screens/chat/components/message-preview.slint:6
@@ -841,31 +866,6 @@ msgstr ""
 #: ui/screens/chat/components/message-preview.slint:27
 msgctxt "MessagePreview"
 msgid "Sticker"
-msgstr ""
-
-#: ui/screens/chat/components/space-rail.slint:149
-msgctxt "SpaceRail"
-msgid "Menu"
-msgstr ""
-
-#: ui/screens/chat/components/space-rail.slint:179
-msgctxt "SpaceRail"
-msgid "Spaces"
-msgstr ""
-
-#: ui/screens/chat/components/space-rail.slint:190
-msgctxt "SpaceRail"
-msgid "All Rooms"
-msgstr ""
-
-#: ui/screens/chat/components/subspace-rail.slint:83
-msgctxt "SubspaceRail"
-msgid "Topics"
-msgstr ""
-
-#: ui/screens/chat/components/subspace-rail.slint:90
-msgctxt "SubspaceRail"
-msgid "All"
 msgstr ""
 
 #: ui/screens/chat/components/drawer.slint:85
@@ -956,6 +956,31 @@ msgstr ""
 #: ui/screens/chat/components/sidebar.slint:276
 msgctxt "Sidebar"
 msgid "Rooms"
+msgstr ""
+
+#: ui/screens/chat/components/space-rail.slint:149
+msgctxt "SpaceRail"
+msgid "Menu"
+msgstr ""
+
+#: ui/screens/chat/components/space-rail.slint:179
+msgctxt "SpaceRail"
+msgid "Spaces"
+msgstr ""
+
+#: ui/screens/chat/components/space-rail.slint:190
+msgctxt "SpaceRail"
+msgid "All Rooms"
+msgstr ""
+
+#: ui/screens/chat/components/subspace-rail.slint:83
+msgctxt "SubspaceRail"
+msgid "Topics"
+msgstr ""
+
+#: ui/screens/chat/components/subspace-rail.slint:90
+msgctxt "SubspaceRail"
+msgid "All"
 msgstr ""
 
 #: ui/screens/chat/chat.slint:135

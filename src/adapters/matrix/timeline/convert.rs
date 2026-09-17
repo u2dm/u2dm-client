@@ -11,7 +11,7 @@ use matrix_sdk::ruma::events::room::{ImageInfo, MediaSource};
 use matrix_sdk::ruma::events::sticker::StickerEventContent;
 use matrix_sdk_ui::timeline::{
     AnyOtherStateEventContentChange, EventSendState, EventTimelineItem, MemberProfileChange,
-    MembershipChange, Message, ReactionStatus, RoomMembershipChange, Sticker, TimelineDetails,
+    MembershipChange, Message, ReactionInfo, RoomMembershipChange, Sticker, TimelineDetails,
     TimelineItem, TimelineItemContent,
 };
 
@@ -20,8 +20,8 @@ use crate::adapters::matrix::media::MediaSources;
 use crate::adapters::matrix::preview;
 use crate::domain::media::{AudioKind, AudioMeta, FileMeta, ImageMeta, VideoMeta, Waveform};
 use crate::domain::message::{
-    MessageBody, MessagePreviewKind, REACTOR_AVATAR_LIMIT, Reaction, Reactor, ReplyInfo, RichText,
-    SendState, ServiceEvent, TimelineMessage,
+    MessageBody, MessagePreviewKind, REACTOR_AVATAR_LIMIT, Reaction, ReactionSend, Reactor,
+    ReplyInfo, RichText, SendState, ServiceEvent, TimelineMessage,
 };
 
 fn extract_sender_profile(event: &EventTimelineItem) -> (Option<String>, Option<String>) {
@@ -38,7 +38,7 @@ fn event_id_from_str(event_id_str: String) -> Option<String> {
     (!event_id_str.is_empty()).then_some(event_id_str)
 }
 
-const LOCAL_MEDIA_PREFIX: &str = "local:";
+pub(super) const LOCAL_ID_PREFIX: &str = "local:";
 
 fn send_state(event: &EventTimelineItem) -> SendState {
     match event.send_state() {
@@ -56,7 +56,7 @@ fn send_state(event: &EventTimelineItem) -> SendState {
 
 fn local_id(event: &EventTimelineItem) -> Option<String> {
     let txn = event.transaction_id()?;
-    Some(format!("{LOCAL_MEDIA_PREFIX}{txn}"))
+    Some(format!("{LOCAL_ID_PREFIX}{txn}"))
 }
 
 fn media_key(event: &EventTimelineItem, event_id_str: &str) -> String {
@@ -64,6 +64,14 @@ fn media_key(event: &EventTimelineItem, event_id_str: &str) -> String {
         return local_id(event).unwrap_or_default();
     }
     event_id_str.to_owned()
+}
+
+fn reaction_send(info: Option<&ReactionInfo>) -> ReactionSend {
+    match info.and_then(|info| info.send_state.as_ref()) {
+        None | Some(EventSendState::Sent { .. }) => ReactionSend::Sent,
+        Some(EventSendState::SendingFailed { .. }) => ReactionSend::Failed,
+        Some(EventSendState::NotSentYet { .. }) => ReactionSend::Sending,
+    }
 }
 
 fn extract_reactions(content: &TimelineItemContent, ctx: &TimelineContext<'_>) -> Vec<Reaction> {
@@ -86,8 +94,7 @@ fn extract_reactions(content: &TimelineItemContent, ctx: &TimelineContext<'_>) -
                     .map(|user_id| Reactor::new(user_id.to_string()))
                     .collect(),
                 mine: own.is_some(),
-                pending: own
-                    .is_some_and(|info| !matches!(info.status, ReactionStatus::RemoteToRemote(_))),
+                send: reaction_send(own),
             };
             if reaction.shows_reactors() {
                 attach_reactor_avatars(&mut reaction, ctx);

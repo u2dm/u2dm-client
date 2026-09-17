@@ -9,8 +9,9 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex as StdMutex};
 
 use async_trait::async_trait;
-use matrix_sdk::Client;
 use matrix_sdk::attachment::AttachmentConfig;
+use matrix_sdk::send_queue::{LocalEchoContent, SendHandle};
+use matrix_sdk::{Client, Room};
 use matrix_sdk::room::reply::{EnforceThread, Reply};
 use matrix_sdk::ruma::events::room::message::{
     AddMentions, RoomMessageEventContent, RoomMessageEventContentWithoutRelation,
@@ -164,6 +165,33 @@ pub(super) struct MatrixTimeline {
     pronouns: Arc<PronounCache>,
 }
 
+async fn queued_send(room: &Room, local_id: &str) -> Result<SendHandle> {
+    let txn = local_id
+        .strip_prefix(convert::LOCAL_ID_PREFIX)
+        .unwrap_or(local_id);
+    let (echoes, _updates) = room
+        .send_queue()
+        .subscribe()
+        .await
+        .map_err(|e| AppError::Other(e.to_string()))?;
+    echoes
+        .into_iter()
+        .find(|echo| echo.transaction_id.as_str() == txn)
+        .and_then(|echo| match echo.content {
+            LocalEchoContent::Event { send_handle, .. } => Some(send_handle),
+            LocalEchoContent::React { .. } | LocalEchoContent::Redaction { .. } => None,
+        })
+        .ok_or_else(|| AppError::Other(format!("no queued send for {local_id}")))
+}
+
+async fn queue(room: &Room, content: RoomMessageEventContent) -> Result<()> {
+    room.send_queue()
+        .send(content.into())
+        .await
+        .map(|_handle| ())
+        .map_err(|e| AppError::Other(e.to_string()))
+}
+
 impl MatrixTimeline {
     pub(super) fn new(matrix: Arc<ClientHandle>, media_sources: Arc<MediaSources>) -> Self {
         Self {
@@ -211,10 +239,7 @@ impl TimelinePort for MatrixTimeline {
     async fn send_text(&self, room_id: &RoomId, body: &str) -> Result<()> {
         let room = self.matrix.room(room_id).await?;
         let content = RoomMessageEventContent::text_plain(body);
-        room.send(content)
-            .await
-            .map_err(|e| AppError::Other(e.to_string()))?;
-        Ok(())
+        queue(&room, content).await
     }
 
     async fn send_reply(&self, room_id: &RoomId, body: &str, in_reply_to: &str) -> Result<()> {
@@ -225,10 +250,7 @@ impl TimelinePort for MatrixTimeline {
             .make_reply_event(content, reply)
             .await
             .map_err(|e| AppError::Other(e.to_string()))?;
-        room.send(content)
-            .await
-            .map_err(|e| AppError::Other(e.to_string()))?;
-        Ok(())
+        queue(&room, content).await
     }
 
     async fn send_attachment(
@@ -286,5 +308,24 @@ impl TimelinePort for MatrixTimeline {
             .await
             .map_err(|e| AppError::Other(e.to_string()))?;
         Ok(())
+    }
+
+    async fn resend(&self, room_id: &RoomId, local_id: &str) -> Result<()> {
+        let room = self.matrix.room(room_id).await?;
+        queued_send(&room, local_id)
+            .await?
+            .unwedge()
+            .await
+            .map_err(|e| AppError::Other(e.to_string()))
+    }
+
+    async fn discard_send(&self, room_id: &RoomId, local_id: &str) -> Result<()> {
+        let room = self.matrix.room(room_id).await?;
+        queued_send(&room, local_id)
+            .await?
+            .abort()
+            .await
+            .map(|_removed| ())
+            .map_err(|e| AppError::Other(e.to_string()))
     }
 }

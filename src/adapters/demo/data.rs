@@ -161,12 +161,18 @@ pub fn pronouns(user_id: &str) -> Vec<String> {
     data().pronouns.get(user_id).cloned().unwrap_or_default()
 }
 
-pub fn own_message(sequence: u64, body: &str, reply: Option<ReplyInfo>) -> TimelineMessage {
+pub fn own_message(
+    sequence: u64,
+    body: &str,
+    reply: Option<ReplyInfo>,
+    send_state: SendState,
+) -> TimelineMessage {
     let id = format!("demo-sent-{sequence}");
+    let settled = send_state == SendState::Sent;
     TimelineMessage {
         unique_id: id.clone(),
-        event_id: Some(id),
-        local_id: None,
+        event_id: settled.then(|| id.clone()),
+        local_id: (!settled).then(|| format!("local:{id}")),
         sender_pronouns: Vec::new(),
         sender: own_user().to_owned(),
         sender_display_name: Some("You".to_owned()),
@@ -177,7 +183,7 @@ pub fn own_message(sequence: u64, body: &str, reply: Option<ReplyInfo>) -> Timel
         reply,
         edited: false,
         is_first_unread: false,
-        send_state: SendState::default(),
+        send_state,
         reactions: Vec::new(),
     }
 }

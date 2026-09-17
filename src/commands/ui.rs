@@ -76,6 +76,10 @@ pub enum UiCommand {
         event_id: String,
         key: String,
     },
+    #[strum(to_string = "RetrySend({local_id})")]
+    RetrySend { local_id: String },
+    #[strum(to_string = "DiscardSend({local_id})")]
+    DiscardSend { local_id: String },
     RetryTimeline,
     AcceptVerification,
     RejectVerification,

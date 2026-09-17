@@ -71,6 +71,11 @@ pub const CATALOG: Scenarios = Scenarios {
             note: "excluded from `all`",
         },
         Flag {
+            value: "send-fails",
+            effect: "every message sent is wedged in the queue, so the retry and discard row renders",
+            note: "excluded from `all`",
+        },
+        Flag {
             value: "all",
             effect: "slow, batch, late-reset, churn, sync, append, prepend and deep",
             note: "excludes drop-anchor, all-unread, unread-resolving and jump-far",
@@ -107,6 +112,7 @@ pub struct Scenario {
     pub read_position_precedes_history: bool,
     pub resolving_unread: bool,
     pub window_is_short: bool,
+    pub sends_fail: bool,
 }
 
 pub fn scenario() -> Scenario {
@@ -135,6 +141,7 @@ fn from_env() -> Scenario {
         read_position_precedes_history = scenario.read_position_precedes_history,
         resolving_unread = scenario.resolving_unread,
         window_is_short = scenario.window_is_short,
+        sends_fail = scenario.sends_fail,
         "demo mode: reproducing real-account timeline timing"
     );
     scenario
@@ -157,6 +164,7 @@ fn apply(scenario: &mut Scenario, flag: &str) {
         "all-unread" => scenario.read_position_precedes_history = true,
         "unread-resolving" => scenario.resolving_unread = true,
         "jump-far" => scenario.window_is_short = true,
+        "send-fails" => scenario.sends_fail = true,
         "all" => {
             *scenario = Scenario {
                 reset_is_slow: true,
@@ -171,6 +179,7 @@ fn apply(scenario: &mut Scenario, flag: &str) {
                 read_position_precedes_history: false,
                 resolving_unread: false,
                 window_is_short: false,
+                sends_fail: false,
             };
         }
         other => tracing::warn!(flag = other, "demo mode: unknown timeline scenario flag"),

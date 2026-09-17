@@ -1,4 +1,4 @@
-import { AudioKind, MediaFailure, MediaState, MessageKind, PreviewKind, SendState, ServiceKind } from "../../../enums.slint";
+import { AudioKind, MediaFailure, MediaState, MessageKind, PreviewKind, ReactionSend, SendState, ServiceKind } from "../../../enums.slint";
 
 export struct RoomEntry {
     id: string,
@@ -46,7 +46,7 @@ export struct ReactionEntry {
     label: string,
     count: int,
     mine: bool,
-    pending: bool,
+    send: ReactionSend,
     overflow: bool,
     reactors: string,
     hidden-reactors: int,
@@ -55,6 +55,7 @@ export struct ReactionEntry {
 
 export struct MessageEntry {
     unique-id: string,
+    local-id: string,
     sender: string,
     sender-id: string,
     pronouns: [string],

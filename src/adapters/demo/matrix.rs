@@ -180,6 +180,44 @@ struct DemoAuthed {
 }
 
 impl DemoAuthed {
+    async fn patch_queued_send(&self, room_id: &RoomId, local_id: &str, resend: bool) -> Result<()> {
+        let prepared = {
+            let Ok(mut guard) = self.active.lock() else {
+                return Err(unavailable("the demo timeline"));
+            };
+            let Some(active) = guard.as_mut() else {
+                return Err(unavailable("the demo timeline"));
+            };
+            if &active.room_id != room_id {
+                return Err(unavailable("the demo timeline"));
+            }
+            let index = active
+                .messages
+                .iter()
+                .position(|m| m.local_id.as_deref() == Some(local_id))
+                .ok_or_else(|| AppError::Other(format!("no queued send for {local_id}")))?;
+            let patch = if resend {
+                let Some(message) = active.messages.get_mut(index) else {
+                    return Err(unavailable("the demo timeline"));
+                };
+                message.send_state = SendState::Sent;
+                message.event_id = Some(message.unique_id.clone());
+                message.local_id = None;
+                TimelinePatch::Set {
+                    index,
+                    message: message.clone(),
+                }
+            } else {
+                active.messages.remove(index);
+                TimelinePatch::Remove { index }
+            };
+            (active.timeline_tx.clone(), patch)
+        };
+        let (timeline_tx, patch) = prepared;
+        send_patch(&timeline_tx, patch).await;
+        Ok(())
+    }
+
     async fn append_own_message(&self, room_id: &RoomId, body: &str, in_reply_to: Option<&str>) {
         let prepared = {
             let Ok(mut guard) = self.active.lock() else {
@@ -193,7 +231,12 @@ impl DemoAuthed {
             }
 
             let reply = in_reply_to.and_then(|event_id| reply_info(&active.messages, event_id));
-            let message = data::own_message(self.sent.fetch_add(1, Ordering::Relaxed), body, reply);
+            let message = data::own_message(
+                self.sent.fetch_add(1, Ordering::Relaxed),
+                body,
+                reply,
+                outgoing_send_state(),
+            );
             active.messages.push(message.clone());
             (active.timeline_tx.clone(), message)
         };
@@ -360,6 +403,14 @@ impl SpaceOrderPort for DemoAuthed {
     }
 }
 
+fn outgoing_send_state() -> SendState {
+    if timeline::scenario().sends_fail {
+        SendState::Failed
+    } else {
+        SendState::Sent
+    }
+}
+
 #[async_trait]
 impl TimelinePort for DemoAuthed {
     async fn subscribe_timeline(
@@ -486,6 +537,14 @@ impl TimelinePort for DemoAuthed {
         self.append_own_message(room_id, body, Some(in_reply_to))
             .await;
         Ok(())
+    }
+
+    async fn resend(&self, room_id: &RoomId, local_id: &str) -> Result<()> {
+        self.patch_queued_send(room_id, local_id, true).await
+    }
+
+    async fn discard_send(&self, room_id: &RoomId, local_id: &str) -> Result<()> {
+        self.patch_queued_send(room_id, local_id, false).await
     }
 
     async fn send_attachment(
@@ -814,7 +873,12 @@ fn spawn_late_reactions(
 fn spawn_late_append(timeline_tx: mpsc::Sender<TimelineUpdate>) {
     tokio::spawn(async move {
         sleep(timeline::LATE_MESSAGE_DELAY).await;
-        let mut message = data::own_message(9_000, "posted while the timeline was settling", None);
+        let mut message = data::own_message(
+            9_000,
+            "posted while the timeline was settling",
+            None,
+            SendState::Sent,
+        );
         message.is_own = false;
         "@sarah:matrix.org".clone_into(&mut message.sender);
         message.sender_display_name = Some("Sarah Chen".to_owned());

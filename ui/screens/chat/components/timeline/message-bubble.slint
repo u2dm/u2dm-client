@@ -148,8 +148,9 @@ export component MessageBubble inherits VerticalLayout {
         && (msg.media-state != MediaState.idle || (msg.image-width > 0 && msg.image-height > 0));
     property <bool> is-photo-only: root.has-photo && !root.has-caption;
     property <bool> is-unsent: msg.send-state != SendState.sent;
-    property <bool> dims-while-unsent: root.is-unsent && !root.has-photo;
+    property <bool> dims-while-unsent: root.is-unsent && !root.send-failed && !root.has-photo;
     property <bool> has-reactions: msg.reactions.length > 0;
+    property <bool> send-failed: msg.send-state == SendState.failed;
     property <bool> chips-outside: root.is-photo-only && root.has-reactions;
     property <length> outside-chips-gap: Space.sm;
     property <length> photo-row-padding: root.has-photo ? Space.lg : 0px;
@@ -185,8 +186,13 @@ export component MessageBubble inherits VerticalLayout {
             || reply-pill.has-hover || reply-pill.has-focus
             || select-pill.has-hover || select-pill.has-focus);
 
+        property <length> outside-chips-height: root.chips-outside
+            ? Metrics.reaction-chip + root.outside-chips-gap
+            : 0;
+
         height: row.preferred-height
-            + (root.chips-outside
+            + self.outside-chips-height
+            + (root.send-failed
             ? Metrics.reaction-chip + root.outside-chips-gap
             : 0);
 
@@ -232,8 +238,10 @@ export component MessageBubble inherits VerticalLayout {
                     ? transparent
                     : (is-own ? own-bubble-color : other-bubble-color);
                 border-radius: Radius.md;
-                border-width: root.is-focused ? Stroke.emphasis : 0;
-                border-color: Palette.accent-background;
+                border-width: root.is-focused || root.send-failed ? Stroke.emphasis : 0;
+                border-color: root.send-failed
+                    ? AppStyle.danger-border
+                    : Palette.accent-background;
                 clip: true;
                 opacity: root.dims-while-unsent ? Opacity.pending : 1.0;
 
@@ -496,6 +504,55 @@ export component MessageBubble inherits VerticalLayout {
             event-id: msg.event-id;
             detail-anchor() => {
                 return bubble.anchor();
+            }
+        }
+
+        if root.send-failed: HorizontalLayout {
+            x: bubble.x;
+            y: bubble.y + bubble.height + root.outside-chips-gap + parent.outside-chips-height;
+            width: bubble.width;
+            height: Metrics.reaction-chip;
+            alignment: root.is-own ? end : start;
+            spacing: Space.sm;
+
+            Text {
+                text: @tr("Not sent");
+                color: AppStyle.danger;
+                font-size: Glyph.xs;
+                font-weight: Weight.semibold;
+                vertical-alignment: center;
+            }
+
+            retry-action := ClickArea {
+                width: retry-label.preferred-width;
+                label: @tr("Retry sending this message");
+                clicked => {
+                    Actions.retry-send(msg.local-id);
+                }
+
+                retry-label := Text {
+                    text: @tr("Retry");
+                    color: Palette.accent-background;
+                    font-size: Glyph.xs;
+                    font-weight: Weight.semibold;
+                    vertical-alignment: center;
+                }
+            }
+
+            discard-action := ClickArea {
+                width: discard-label.preferred-width;
+                label: @tr("Discard this message");
+                clicked => {
+                    Actions.discard-send(msg.local-id);
+                }
+
+                discard-label := Text {
+                    text: @tr("Discard");
+                    color: AppStyle.danger-muted;
+                    font-size: Glyph.xs;
+                    font-weight: Weight.semibold;
+                    vertical-alignment: center;
+                }
             }
         }
 

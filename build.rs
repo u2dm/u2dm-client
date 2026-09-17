@@ -79,6 +79,7 @@ const ENUM_TABLES: &[(&str, &str)] = &[
     ("AudioKind", "audio_kinds"),
     ("MediaState", "media_states"),
     ("SendState", "send_states"),
+    ("ReactionSend", "reaction_sends"),
     ("MediaFailure", "media_failures"),
 ];
 

@@ -5,6 +5,7 @@ use async_trait::async_trait;
 use matrix_sdk::Client;
 use matrix_sdk::ruma::api::client::state::get_state_event_for_key;
 use matrix_sdk::ruma::events::{GlobalAccountDataEventType, StateEventType};
+use matrix_sdk::ruma::serde::Raw;
 use matrix_sdk::ruma::{OwnedMxcUri, OwnedRoomId};
 use serde::Deserialize;
 use serde_json::{Map, Value, json};
@@ -19,6 +20,7 @@ use crate::ports::matrix::{StickerCatalog, StickerPort};
 const PACK_ROOMS_TYPES: [&str; 2] = ["m.image_pack.rooms", "im.ponies.emote_rooms"];
 const ACCOUNT_PACK_TYPES: [&str; 2] = ["m.image_pack", "im.ponies.user_emotes"];
 const ROOM_PACK_TYPES: [&str; 2] = ["m.room.image_pack", "im.ponies.room_emotes"];
+const STICKER_EVENT_TYPE: &str = "m.sticker";
 const STICKER_USAGE: &str = "sticker";
 const MAX_INFLIGHT_FETCHES: usize = 8;
 
@@ -278,13 +280,17 @@ impl StickerPort for MatrixStickers {
         in_reply_to: Option<&str>,
     ) -> Result<()> {
         let content = self.sticker_event_content(pack, shortcode, in_reply_to)?;
+        let content = Raw::new(&content)
+            .map_err(|e| AppError::Other(e.to_string()))?
+            .cast_unchecked();
         self.matrix
             .room(room_id)
             .await?
-            .send_raw("m.sticker", content)
+            .send_queue()
+            .send_raw(content, STICKER_EVENT_TYPE.to_owned())
             .await
-            .map_err(|e| AppError::Other(e.to_string()))?;
-        Ok(())
+            .map(|_handle| ())
+            .map_err(|e| AppError::Other(e.to_string()))
     }
 }
 

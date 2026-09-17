@@ -35,6 +35,7 @@ async fn open_store(
     let client = builder
         .handle_refresh_tokens()
         .respect_login_well_known(true)
+        .with_enable_automatic_back_pagination(true)
         .sqlite_store_with_cache_path(&paths.data, &paths.cache, Some(passphrase))
         .build()
         .await

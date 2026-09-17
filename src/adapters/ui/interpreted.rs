@@ -43,7 +43,7 @@ use super::props::{BoolProp, IntProp, StringProp, UiProps};
 use super::reconcile::reorder_rows;
 use super::reduce::set_sticker_query;
 use super::schema::{
-    attachment_kinds, audio_kinds, connection_states, login_activities, login_methods, login_phases, media_failures, media_states, message_fields, message_kinds, preview_kinds, room_fields, send_states, service_kinds, simple_callbacks, space_fields, timeline_states, user_message_kinds, verification_activities, verification_phases,
+    attachment_kinds, audio_kinds, connection_states, login_activities, login_methods, login_phases, media_failures, media_states, message_fields, message_kinds, preview_kinds, reaction_sends, room_fields, send_states, service_kinds, simple_callbacks, space_fields, timeline_states, user_message_kinds, verification_activities, verification_phases,
 };
 use super::{emoji, router};
 use crate::app::input::CommandSender;
@@ -53,7 +53,7 @@ use crate::commands::ui::ViewportChanged;
 use crate::commands::view::{AppViewState, AttachmentKind, LoginActivity, LoginStep};
 use crate::domain::auth::{LoginCredentials, LoginMethod};
 use crate::domain::media::AudioKind;
-use crate::domain::message::{MessagePreviewKind, SendState, TimelineMessage};
+use crate::domain::message::{MessagePreviewKind, ReactionSend, SendState, TimelineMessage};
 use crate::domain::room::{Room, Space};
 use crate::domain::sync::ConnectionStatus;
 use crate::domain::timeline::{EnrichmentDelta, TimelineStatus};
@@ -245,6 +245,7 @@ verification_activities!(impl_slint_enum VerificationActivity "VerificationActiv
 user_message_kinds!(impl_slint_enum UserMessageKind "UserMessageKind";);
 media_states!(impl_slint_enum MediaState "MediaState";);
 send_states!(impl_slint_enum SendState "SendState";);
+reaction_sends!(impl_slint_enum ReactionSend "ReactionSend";);
 media_failures!(impl_slint_enum MediaFailureKind "MediaFailure";);
 message_kinds!(impl_slint_enum MessageKind "MessageKind";);
 attachment_kinds!(impl_slint_enum AttachmentKind "AttachmentKind";);
@@ -1267,7 +1268,7 @@ impl ToValue for ReactionDto {
         );
         fields.set_field(reaction::COUNT.to_string(), num(self.count));
         fields.set_field(reaction::MINE.to_string(), Value::Bool(self.mine));
-        fields.set_field(reaction::PENDING.to_string(), Value::Bool(self.pending));
+        fields.set_field(reaction::SEND.to_string(), enum_value(&self.send));
         fields.set_field(reaction::OVERFLOW.to_string(), Value::Bool(self.overflow));
         fields.set_field(
             reaction::REACTORS.to_string(),

@@ -10,6 +10,7 @@ use crate::commands::messages::{UserMessage, UserMessageKind};
 use crate::commands::view::Toast;
 use crate::domain::room::RoomId;
 use crate::domain::timeline::{
+    FailedSend,
     AudioLookup, JumpTarget, PaginationDirection, PaginationOutcome, ScrollMode, TimelineAdvance,
     TimelineCommand, TimelineFocus, TimelinePatch, TimelineStatus, TimelineUpdate,
 };
@@ -167,6 +168,34 @@ impl ActiveTimeline {
                 );
             }
         });
+    }
+
+    pub(super) fn spawn_resolve_failed_send(
+        &self,
+        group: &mut TaskGroup,
+        timeline: Arc<dyn TimelinePort>,
+        room_id: RoomId,
+        local_id: String,
+        action: FailedSend,
+    ) {
+        let output = Arc::clone(&self.output);
+        group.spawn(async move {
+            let result = match action {
+                FailedSend::Retry => timeline.resend(&room_id, &local_id).await,
+                FailedSend::Discard => timeline.discard_send(&room_id, &local_id).await,
+            };
+            if let Err(e) = result {
+                tracing::warn!("failed to resolve a wedged send: {e}");
+                super::show_toast(
+                    output.as_ref(),
+                    Toast::Error(UserMessage::new(UserMessageKind::SendMessageFailed)),
+                );
+            }
+        });
+    }
+
+    pub(super) fn room_id(&self) -> Option<&RoomId> {
+        self.active_room_id.as_ref()
     }
 
     pub(super) fn is_current(&self, room_id: &RoomId, generation: i32) -> bool {

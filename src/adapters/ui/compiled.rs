@@ -26,7 +26,7 @@ use super::props::{BoolProp, IntProp, StringProp, UiProps};
 use super::reconcile::reorder_rows;
 use super::reduce::set_sticker_query;
 use super::schema::{
-    attachment_kinds, audio_kinds, bool_props, connection_states, int_props, login_activities, login_methods, login_phases, media_failures, media_states, message_kinds, preview_kinds, send_states, service_kinds, simple_callbacks, string_props, timeline_states, user_message_kinds, verification_activities, verification_phases,
+    attachment_kinds, audio_kinds, bool_props, connection_states, int_props, login_activities, login_methods, login_phases, media_failures, media_states, message_kinds, preview_kinds, reaction_sends, send_states, service_kinds, simple_callbacks, string_props, timeline_states, user_message_kinds, verification_activities, verification_phases,
 };
 use super::{emoji, router};
 use crate::app::input::CommandSender;
@@ -36,7 +36,7 @@ use crate::commands::ui::ViewportChanged;
 use crate::commands::view::{AppViewState, AttachmentKind, LoginActivity, LoginStep};
 use crate::domain::auth::{LoginCredentials, LoginMethod};
 use crate::domain::media::AudioKind;
-use crate::domain::message::{MessagePreviewKind, SendState, TimelineMessage};
+use crate::domain::message::{MessagePreviewKind, ReactionSend, SendState, TimelineMessage};
 use crate::domain::room::{Room, Space};
 use crate::domain::sync::ConnectionStatus;
 use crate::domain::timeline::{EnrichmentDelta, TimelineStatus};
@@ -56,7 +56,8 @@ use generated::{
     LoginActivity as UiLoginActivity, LoginMethodKind as UiLoginMethodKind, LoginPhase, LoginView,
     MediaFailure as UiMediaFailure, MediaState as UiMediaState, MessageEntry,
     MessageKind as UiMessageKind, PreviewKind as UiPreviewKind, ReactionEntry, ReactorAvatar,
-    RoomEntry, RoomView, SendState as UiSendState, ServiceKind as UiServiceKind, SessionView,
+    ReactionSend as UiReactionSend, RoomEntry, RoomView, SendState as UiSendState,
+    ServiceKind as UiServiceKind, SessionView,
     SpaceEntry, StickerCell, StickerPackTab, StickerRow, StickerView, TimelineState,
     UserMessage as UiUserMessage, UserMessageKind as UiUserMessageKind,
     VerificationActivity as UiVerificationActivity, VerificationEmoji, VerificationPhase,
@@ -295,6 +296,7 @@ verification_activities!(
 user_message_kinds!(to_slint_enum val to_user_message_kind UserMessageKind UiUserMessageKind;);
 media_states!(to_slint_enum val to_media_state MediaState UiMediaState;);
 send_states!(to_slint_enum val to_send_state SendState UiSendState;);
+reaction_sends!(to_slint_enum val to_reaction_send ReactionSend UiReactionSend;);
 media_failures!(to_slint_enum val to_media_failure MediaFailureKind UiMediaFailure;);
 message_kinds!(to_slint_enum val to_message_kind MessageKind UiMessageKind;);
 attachment_kinds!(to_slint_enum val to_attachment_kind AttachmentKind UiAttachmentKind;);
@@ -841,7 +843,7 @@ fn reaction_to_entry(d: &ReactionDto) -> ReactionEntry {
         label: d.label.clone(),
         count: d.count,
         mine: d.mine,
-        pending: d.pending,
+        send: to_reaction_send(d.send),
         overflow: d.overflow,
         reactors: d.reactors.clone(),
         hidden_reactors: d.hidden_reactors,
@@ -859,6 +861,7 @@ fn message_to_entry(m: &TimelineMessage, media: &dyn MediaCache) -> MessageEntry
     let d = message_to_dto(m, media);
     MessageEntry {
         unique_id: d.unique_id,
+        local_id: d.local_id,
         sender: d.sender,
         sender_id: d.sender_id,
         pronouns: string_model(d.pronouns),
@@ -981,8 +984,8 @@ mod probe_dump {
     use slint::{ComponentHandle, Model};
 
     use super::generated::{
-        AudioKind, AudioView, MediaFailure, MediaState, MessageKind, PreviewKind, SendState,
-        ServiceKind,
+        AudioKind, AudioView, MediaFailure, MediaState, MessageKind, PreviewKind, ReactionSend,
+        SendState, ServiceKind,
     };
     use super::{
         AppWindow, IntProp, MessageEntry, ReactionEntry, RoomView, StringProp, TIMELINE_MODEL,
@@ -991,7 +994,7 @@ mod probe_dump {
     use crate::adapters::ui::dump::{AudioDump, ReactionRowDump, TimelineDump, TimelineRowDump};
     use crate::adapters::ui::schema::{
         audio_kinds, enum_names, media_failures, media_states, message_kinds, preview_kinds,
-        send_states, service_kinds,
+        reaction_sends, send_states, service_kinds,
     };
 
     message_kinds!(enum_names slint message_kind MessageKind;);
@@ -1000,6 +1003,7 @@ mod probe_dump {
     media_states!(enum_names slint media_state MediaState;);
     media_failures!(enum_names slint media_failure MediaFailure;);
     send_states!(enum_names slint send_state SendState;);
+    reaction_sends!(enum_names slint reaction_send ReactionSend;);
     audio_kinds!(enum_names slint audio_kind AudioKind;);
 
     fn reaction(entry: &ReactionEntry) -> ReactionRowDump {
@@ -1008,7 +1012,7 @@ mod probe_dump {
             label: entry.label.to_string(),
             count: entry.count,
             mine: entry.mine,
-            pending: entry.pending,
+            send: reaction_send(entry.send),
             overflow: entry.overflow,
             hidden_reactors: entry.hidden_reactors,
         }
@@ -1018,6 +1022,7 @@ mod probe_dump {
         TimelineRowDump {
             row: index,
             unique_id: entry.unique_id.to_string(),
+            local_id: entry.local_id.to_string(),
             event_id: entry.event_id.to_string(),
             sender: entry.sender.to_string(),
             sender_id: entry.sender_id.to_string(),

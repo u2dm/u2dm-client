@@ -17,7 +17,7 @@ use super::richtext;
 use super::schema::{define_ui_enum, media_failures, media_states};
 use crate::domain::media::{AudioKind, AudioMeta, FileMeta, MediaFailure, ThumbnailOutcome};
 use crate::domain::message::{
-    MessageBody, MessagePreviewKind, Reaction, Reactor, SendState, TimelineMessage,
+    MessageBody, MessagePreviewKind, Reaction, ReactionSend, Reactor, SendState, TimelineMessage,
 };
 use crate::domain::room::{Room, Space};
 use crate::domain::sticker::{PackId, StickerImage, StickerPack};
@@ -187,7 +187,7 @@ pub struct ReactionDto {
     pub label: SharedString,
     pub count: i32,
     pub mine: bool,
-    pub pending: bool,
+    pub send: ReactionSend,
     pub overflow: bool,
     pub reactors: SharedString,
     pub hidden_reactors: i32,
@@ -197,6 +197,7 @@ pub struct ReactionDto {
 #[allow(clippy::struct_excessive_bools)]
 pub struct MessageDto {
     pub unique_id: SharedString,
+    pub local_id: SharedString,
     pub sender: SharedString,
     pub sender_id: SharedString,
     pub pronouns: Vec<SharedString>,
@@ -324,7 +325,7 @@ fn reaction_dto(reaction: &Reaction, media: &dyn MediaCache) -> ReactionDto {
         label: SharedString::from(reaction_key_label(&reaction.key)),
         count: count(reaction.count()),
         mine: reaction.mine,
-        pending: reaction.pending,
+        send: reaction.send,
         overflow: false,
         reactors: SharedString::from(reactors),
         hidden_reactors: count(hidden),
@@ -338,7 +339,7 @@ fn overflow_dto(hidden: usize) -> ReactionDto {
         label: SharedString::new(),
         count: count(hidden),
         mine: false,
-        pending: false,
+        send: ReactionSend::default(),
         overflow: true,
         reactors: SharedString::new(),
         hidden_reactors: 0,
@@ -485,6 +486,7 @@ pub fn message_to_dto(m: &TimelineMessage, media: &dyn MediaCache) -> MessageDto
     };
     let mut dto = MessageDto {
         unique_id: SharedString::from(&m.unique_id),
+        local_id: m.local_id.as_deref().map(SharedString::from).unwrap_or_default(),
         sender: SharedString::from(sender_label),
         sender_id: SharedString::from(&m.sender),
         pronouns: pronoun_labels(&m.sender_pronouns)

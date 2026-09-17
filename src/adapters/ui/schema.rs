@@ -83,6 +83,8 @@ macro_rules! simple_callbacks {
         on_pick_photo "pick-photo" pick_photo manual_string PickAttachment;
         on_pick_document "pick-document" pick_document manual_string PickAttachment;
         on_cancel_attachment "cancel-attachment" cancel_attachment plain CancelAttachment;
+        on_retry_send "retry-send" retry_send manual_string RetrySend;
+        on_discard_send "discard-send" discard_send manual_string DiscardSend;
     } };
 }
 pub(crate) use simple_callbacks;
@@ -281,6 +283,15 @@ macro_rules! send_states {
 }
 pub(crate) use send_states;
 
+macro_rules! reaction_sends {
+    ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
+        Sent    Sent    "sent";
+        Sending Sending "sending";
+        Failed  Failed  "failed";
+    } };
+}
+pub(crate) use reaction_sends;
+
 macro_rules! attachment_kinds {
     ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
         File  File  "file";
@@ -386,6 +397,7 @@ pub(crate) use service_kinds;
 macro_rules! message_fields {
     ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
         unique_id UNIQUE_ID "unique-id" text;
+        local_id LOCAL_ID "local-id" text;
         sender SENDER "sender" text;
         sender_id SENDER_ID "sender-id" text;
         pronouns PRONOUNS "pronouns" list;
@@ -440,7 +452,7 @@ macro_rules! reaction_fields {
         label LABEL "label" text;
         count COUNT "count" int;
         mine MINE "mine" flag;
-        pending PENDING "pending" flag;
+        send SEND "send" enumk;
         overflow OVERFLOW "overflow" flag;
         reactors REACTORS "reactors" text;
         hidden_reactors HIDDEN_REACTORS "hidden-reactors" int;

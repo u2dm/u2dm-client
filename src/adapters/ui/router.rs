@@ -178,6 +178,20 @@ pub fn jump_to_event(tx: &Tx, event_id: String) {
     send_command(tx, UiCommand::JumpToEvent { event_id });
 }
 
+pub fn retry_send(tx: &Tx, local_id: String) {
+    if local_id.is_empty() {
+        return;
+    }
+    send_command(tx, UiCommand::RetrySend { local_id });
+}
+
+pub fn discard_send(tx: &Tx, local_id: String) {
+    if local_id.is_empty() {
+        return;
+    }
+    send_command(tx, UiCommand::DiscardSend { local_id });
+}
+
 pub fn save_file(tx: &Tx, event_id: String, filename: String) {
     if event_id.is_empty() {
         return;

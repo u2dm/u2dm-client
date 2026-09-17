@@ -10,7 +10,7 @@ pub struct ReactionRowDump {
     pub label: String,
     pub count: i32,
     pub mine: bool,
-    pub pending: bool,
+    pub send: &'static str,
     pub overflow: bool,
     pub hidden_reactors: i32,
 }
@@ -20,6 +20,7 @@ pub struct ReactionRowDump {
 pub struct TimelineRowDump {
     pub row: usize,
     pub unique_id: String,
+    pub local_id: String,
     pub event_id: String,
     pub sender: String,
     pub sender_id: String,

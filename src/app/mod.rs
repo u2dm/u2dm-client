@@ -46,7 +46,7 @@ use crate::domain::media::AttachmentPick;
 use crate::domain::room::{RoomId, RoomList, Space};
 use crate::domain::sticker::PackId;
 use crate::domain::sync::ConnectionStatus;
-use crate::domain::timeline::{AudioTrack, TimelineFocus};
+use crate::domain::timeline::{AudioTrack, FailedSend, TimelineFocus};
 use crate::ports::browser::BrowserPort;
 use crate::ports::matrix::{AuthPort, AuthenticatedSession, CleanupReport, SessionPort};
 use crate::ports::media::MediaFilePort;
@@ -315,6 +315,12 @@ impl AppService {
             }
             UiCommand::JumpToEvent { event_id } => {
                 self.active_timeline.jump_to_event(event_id);
+            }
+            UiCommand::RetrySend { local_id } => {
+                self.resolve_failed_send(local_id, FailedSend::Retry);
+            }
+            UiCommand::DiscardSend { local_id } => {
+                self.resolve_failed_send(local_id, FailedSend::Discard);
             }
             UiCommand::ToggleReaction { event_id, key } => {
                 self.active_timeline.toggle_reaction(event_id, key);
@@ -699,6 +705,22 @@ impl AppService {
         };
         self.active_timeline
             .spawn_send(&mut self.operations, timeline, room_id, body, reply_to);
+    }
+
+    fn resolve_failed_send(&mut self, local_id: String, action: FailedSend) {
+        let Some(timeline) = self.port(|a| &a.timeline) else {
+            return;
+        };
+        let Some(room_id) = self.active_timeline.room_id().cloned() else {
+            return;
+        };
+        self.active_timeline.spawn_resolve_failed_send(
+            &mut self.operations,
+            timeline,
+            room_id,
+            local_id,
+            action,
+        );
     }
 
     fn send_sticker(

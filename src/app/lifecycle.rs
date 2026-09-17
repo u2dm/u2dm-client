@@ -151,6 +151,8 @@ pub(super) fn command_allowed(phase: AppPhase, cmd: &UiCommand) -> bool {
         | UiCommand::JumpToLatest { .. }
         | UiCommand::JumpToEvent { .. }
         | UiCommand::ToggleReaction { .. }
+        | UiCommand::RetrySend { .. }
+        | UiCommand::DiscardSend { .. }
         | UiCommand::RetryTimeline
         | UiCommand::AcceptVerification
         | UiCommand::RejectVerification
