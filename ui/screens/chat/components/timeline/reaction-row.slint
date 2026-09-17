@@ -67,7 +67,7 @@ export component ReactionChip inherits Pill {
     }
 }
 
-export component ReactionRow inherits HorizontalLayout {
+export component ReactionRow inherits FlexboxLayout {
     in property <[ReactionEntry]> reactions;
     in property <bool> is-own;
     in property <bool> can-react;
@@ -84,8 +84,8 @@ export component ReactionRow inherits HorizontalLayout {
     pure function anchor(index: int, x: length, y: length, w: length, h: length) -> ReactionAnchor {
         return {
             row: index,
-            x: root.absolute-position.x + x,
-            y: root.absolute-position.y + y,
+            x: x,
+            y: y,
             width: w,
             height: h,
         };
@@ -93,7 +93,7 @@ export component ReactionRow inherits HorizontalLayout {
 
     for entry[index] in root.reactions: chip := ReactionChip {
         property <ReactionAnchor> tracked-anchor: root.tracked-index == index
-            ? root.anchor(index, chip.x, chip.y, chip.width, chip.height)
+            ? root.anchor(index, chip.absolute-position.x, chip.absolute-position.y, chip.width, chip.height)
             : { row: -1 };
 
         changed tracked-anchor => {
@@ -116,7 +116,7 @@ export component ReactionRow inherits HorizontalLayout {
         changed has-hover => {
             if (self.has-hover && !entry.overflow) {
                 root.hovered(index, root.reactor-text(entry),
-                             root.anchor(index, chip.x, chip.y, chip.width, chip.height));
+                             root.anchor(index, chip.absolute-position.x, chip.absolute-position.y, chip.width, chip.height));
             } else {
                 root.unhovered(index);
             }

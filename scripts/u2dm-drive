@@ -72,7 +72,7 @@ cmd_up() {
     fi
   fi
 
-  ( cd "$ROOT" && SLINT_EMIT_DEBUG_INFO=${SLINT_EMIT_DEBUG_INFO:-} \
+  ( cd "$ROOT" && SLINT_EMIT_DEBUG_INFO=${SLINT_EMIT_DEBUG_INFO:-1} \
       cargo build --profile "$PROFILE" --features "$features" ) || die "build failed"
 
   mkdir -p "$(dirname "$LOG")"

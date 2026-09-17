@@ -26,14 +26,11 @@ export component PickerSearch inherits Rectangle {
         padding-right: Space.sm;
         spacing: Space.md;
 
-        VerticalLayout {
-            alignment: center;
-
-            IconDisplay {
-                icon: IconSet.Search;
-                size: IconSize.sm;
-                stroke: AppStyle.foreground-faint;
-            }
+        IconDisplay {
+            cross-axis-self-alignment: center;
+            icon: IconSet.Search;
+            size: IconSize.sm;
+            stroke: AppStyle.foreground-faint;
         }
 
         Rectangle {

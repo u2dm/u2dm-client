@@ -29,7 +29,7 @@ export component TimelineScroller inherits Rectangle {
 
     property <int> max-anchor-scrolls: 20;
     property <duration> settle-interval: 60ms;
-    property <length> content-height: 0;
+    property <length> list-height: 0;
 
     public function jump-to-latest() {
         flickable.anchor-held = false;
@@ -60,7 +60,7 @@ export component TimelineScroller inherits Rectangle {
 
     flickable := ListView {
         width: parent.width;
-        height: root.content-height > 0 ? min(parent.height, root.content-height) : parent.height;
+        height: root.list-height > 0 ? min(parent.height, root.list-height) : parent.height;
         y: parent.height - self.height;
 
         property <length> scroll-threshold: 40px;
@@ -70,23 +70,23 @@ export component TimelineScroller inherits Rectangle {
 
         property <bool> was-at-top: false;
         property <bool> was-at-bottom: true;
-        property <bool> at-top: self.viewport-y >= -self.scroll-threshold;
+        property <bool> at-top: self.content-y >= -self.scroll-threshold;
         property <bool> at-bottom:
-            self.viewport-y <= -(self.max-scroll-y - self.scroll-threshold);
+            self.content-y <= -(self.max-scroll-y - self.scroll-threshold);
 
         property <int> seen-prepend-token: 0;
-        property <length> prev-viewport-height: 0;
-        property <length> prev-viewport-y: 0;
+        property <length> prev-content-height: 0;
+        property <length> prev-content-y: 0;
         property <int> prev-item-count: 0;
 
         property <length> max-scroll-y:
-            self.viewport-height - self.visible-height;
+            self.content-height - self.visible-height;
         property <bool> scrollable:
-            self.viewport-height > self.visible-height;
+            self.content-height > self.visible-height;
         property <int> item-count: RoomView.timeline.length;
         property <bool> history-prepended: root.prepend-token != self.seen-prepend-token
             && self.scrollable
-            && self.prev-viewport-height > 0
+            && self.prev-content-height > 0
             && self.prev-item-count > 0
             && self.item-count > self.prev-item-count;
 
@@ -94,30 +94,30 @@ export component TimelineScroller inherits Rectangle {
         property <bool> anchor-held: false;
         property <int> anchor-scrolls: 0;
         property <length> anchor-target: -min(
-            max(root.anchor-index * ((self.viewport-height - root.top-inset) / max(self.item-count, 1)) - root.top-inset, 0px),
+            max(root.anchor-index * ((self.content-height - root.top-inset) / max(self.item-count, 1)) - root.top-inset, 0px),
             max(self.max-scroll-y, 0px));
 
-        changed viewport-height => {
+        changed content-height => {
             self.adopt-timeline();
             if self.anchor-held && self.anchor-scrolls >= root.max-anchor-scrolls {
                 self.finish-anchor();
             }
-            root.content-height = self.viewport-height;
+            root.list-height = self.content-height;
             if self.anchor-pending() {
                 self.scroll-to-anchor();
             } else if (self.settling || self.auto-scroll) && self.scrollable
-                && self.viewport-y <= self.prev-viewport-y {
+                && self.content-y <= self.prev-content-y {
                 self.scroll-to-bottom();
             } else if self.history-prepended {
                 self.programmatic-scroll = true;
-                self.viewport-y = self.anchor-viewport-y();
+                self.content-y = self.anchor-content-y();
             }
             self.seen-prepend-token = root.prepend-token;
-            self.prev-viewport-height = self.viewport-height;
+            self.prev-content-height = self.content-height;
             self.prev-item-count = self.item-count;
         }
 
-        changed viewport-y => {
+        changed content-y => {
             if self.programmatic-scroll {
                 self.programmatic-scroll = false;
             } else if !self.anchor-held {
@@ -131,7 +131,7 @@ export component TimelineScroller inherits Rectangle {
                     Actions.paginate-forwards();
                 }
                 if self.scrollable {
-                    if self.viewport-y > self.prev-viewport-y {
+                    if self.content-y > self.prev-content-y {
                         self.auto-scroll = false;
                     } else if self.at-bottom {
                         self.auto-scroll = true;
@@ -139,7 +139,7 @@ export component TimelineScroller inherits Rectangle {
                 }
             }
 
-            self.prev-viewport-y = self.viewport-y;
+            self.prev-content-y = self.content-y;
 
             if !self.anchor-held
                 && ((self.at-top != self.was-at-top) || (self.at-bottom != self.was-at-bottom)) {
@@ -159,7 +159,7 @@ export component TimelineScroller inherits Rectangle {
 
         function scroll-to-bottom() {
             self.programmatic-scroll = true;
-            self.viewport-y = -max(self.max-scroll-y, 0px);
+            self.content-y = -max(self.max-scroll-y, 0px);
         }
 
         public function adopt-timeline() {
@@ -169,8 +169,8 @@ export component TimelineScroller inherits Rectangle {
             self.seen-timeline-token = root.timeline-token;
             self.seen-prepend-token = root.prepend-token;
             self.anchor-scrolls = 0;
-            self.prev-viewport-height = 0;
-            self.prev-viewport-y = 0;
+            self.prev-content-height = 0;
+            self.prev-content-y = 0;
             self.prev-item-count = 0;
             self.anchor-held = root.anchor-index >= 0;
             if self.anchor-held {
@@ -204,25 +204,25 @@ export component TimelineScroller inherits Rectangle {
             return self.anchor-held
                 && root.anchor-index >= 0
                 && root.anchor-index < self.item-count
-                && self.viewport-height > 0px
+                && self.content-height > 0px
                 && self.anchor-scrolls < root.max-anchor-scrolls;
         }
 
         public function scroll-to-anchor() {
             self.settling = false;
             self.auto-scroll = false;
-            if Math.abs(self.anchor-target - self.viewport-y) > 0.5px {
+            if Math.abs(self.anchor-target - self.content-y) > 0.5px {
                 self.anchor-scrolls += 1;
                 self.programmatic-scroll = true;
-                self.viewport-y = self.anchor-target;
+                self.content-y = self.anchor-target;
             }
             self.delay-settle();
         }
 
-        pure function anchor-viewport-y() -> length {
-            -((-self.viewport-y / (self.prev-viewport-height / self.prev-item-count))
+        pure function anchor-content-y() -> length {
+            -((-self.content-y / (self.prev-content-height / self.prev-item-count))
                 + (self.item-count - self.prev-item-count))
-                * (self.viewport-height / self.item-count)
+                * (self.content-height / self.item-count)
         }
 
         for msg[row] in RoomView.timeline: VerticalLayout {

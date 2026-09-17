@@ -219,8 +219,8 @@ export component MessageBubble inherits VerticalLayout {
                         event-id: msg.event-id,
                         row: root.timeline-row,
                         is-own: root.is-own,
-                        x: row.absolute-position.x + self.x,
-                        y: row.absolute-position.y + self.y,
+                        x: self.absolute-position.x,
+                        y: self.absolute-position.y,
                         width: self.width,
                         height: self.height,
                     };
@@ -437,27 +437,24 @@ export component MessageBubble inherits VerticalLayout {
                                 horizontal-stretch: 1;
                             }
 
-                            VerticalLayout {
+                            HorizontalLayout {
+                                cross-axis-self-alignment: end;
                                 alignment: end;
+                                spacing: Space.sm;
 
-                                HorizontalLayout {
-                                    alignment: end;
-                                    spacing: Space.sm;
+                                if msg.edited: IconDisplay {
+                                    y: (parent.height - self.height) / 2;
+                                    icon: IconSet.Pencil;
+                                    size: IconSize.xs;
+                                    stroke: AppStyle.overlay-foreground-muted;
+                                }
 
-                                    if msg.edited: IconDisplay {
-                                        y: (parent.height - self.height) / 2;
-                                        icon: IconSet.Pencil;
-                                        size: IconSize.xs;
-                                        stroke: AppStyle.overlay-foreground-muted;
-                                    }
-
-                                    Text {
-                                        text: msg.timestamp;
-                                        font-size: Fonts.body-small;
-                                        color: AppStyle.overlay-foreground-muted;
-                                        horizontal-alignment: right;
-                                        vertical-alignment: center;
-                                    }
+                                Text {
+                                    text: msg.timestamp;
+                                    font-size: Fonts.body-small;
+                                    color: AppStyle.overlay-foreground-muted;
+                                    horizontal-alignment: right;
+                                    vertical-alignment: center;
                                 }
                             }
                         }
@@ -492,6 +489,7 @@ export component MessageBubble inherits VerticalLayout {
             x: bubble.x;
             y: bubble.y + bubble.height + root.outside-chips-gap;
             width: bubble.width;
+            flex-wrap: FlexboxLayoutWrap.no-wrap;
             reactions: msg.reactions;
             is-own: root.is-own;
             can-react: root.has-remote-id;

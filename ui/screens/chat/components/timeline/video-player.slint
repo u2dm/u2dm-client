@@ -68,27 +68,24 @@ export component VideoPlayer inherits ModalHost {
             height: Metrics.video-controls-row;
             spacing: Space.lg;
 
-            VerticalLayout {
-                alignment: center;
+            ClickArea {
+                cross-axis-self-alignment: center;
+                above-modal: true;
+                enabled: VideoView.has-frame;
+                width: Size.xl;
+                height: Size.xl;
+                ring-radius: Radius.sm;
+                label: VideoView.playing ? @tr("Pause") : @tr("Play");
+                clicked => {
+                    Actions.toggle-video();
+                }
 
-                ClickArea {
-                    above-modal: true;
-                    enabled: VideoView.has-frame;
-                    width: Size.xl;
-                    height: Size.xl;
-                    ring-radius: Radius.sm;
-                    label: VideoView.playing ? @tr("Pause") : @tr("Play");
-                    clicked => {
-                        Actions.toggle-video();
-                    }
-
-                    IconDisplay {
-                        x: (parent.width - self.width) / 2;
-                        y: (parent.height - self.height) / 2;
-                        icon: VideoView.playing ? IconSet.Pause : IconSet.Play;
-                        size: IconSize.lg;
-                        stroke: Palette.foreground;
-                    }
+                IconDisplay {
+                    x: (parent.width - self.width) / 2;
+                    y: (parent.height - self.height) / 2;
+                    icon: VideoView.playing ? IconSet.Pause : IconSet.Play;
+                    size: IconSize.lg;
+                    stroke: Palette.foreground;
                 }
             }
 
@@ -107,61 +104,52 @@ export component VideoPlayer inherits ModalHost {
                 }
             }
 
-            VerticalLayout {
-                alignment: center;
+            Text {
+                cross-axis-self-alignment: center;
+                text: Clocks.label(VideoView.position-ms) + " / " + Clocks.label(VideoView.duration-ms);
+                font-size: Fonts.body-small;
+                color: Palette.foreground;
+                vertical-alignment: center;
+            }
 
-                Text {
-                    text: Clocks.label(VideoView.position-ms) + " / " + Clocks.label(VideoView.duration-ms);
-                    font-size: Fonts.body-small;
-                    color: Palette.foreground;
-                    vertical-alignment: center;
+            ClickArea {
+                cross-axis-self-alignment: center;
+                above-modal: true;
+                enabled: VideoView.has-frame;
+                width: Size.xl;
+                height: Size.xl;
+                ring-radius: Radius.sm;
+                label: VideoView.muted ? @tr("Unmute") : @tr("Mute");
+                clicked => {
+                    Actions.toggle-video-muted();
+                }
+
+                IconDisplay {
+                    x: (parent.width - self.width) / 2;
+                    y: (parent.height - self.height) / 2;
+                    icon: VideoView.muted ? IconSet.VolumeX : IconSet.Volume2;
+                    size: IconSize.md;
+                    stroke: Palette.foreground;
                 }
             }
 
-            VerticalLayout {
-                alignment: center;
-
-                ClickArea {
-                    above-modal: true;
-                    enabled: VideoView.has-frame;
-                    width: Size.xl;
-                    height: Size.xl;
-                    ring-radius: Radius.sm;
-                    label: VideoView.muted ? @tr("Unmute") : @tr("Mute");
-                    clicked => {
-                        Actions.toggle-video-muted();
-                    }
-
-                    IconDisplay {
-                        x: (parent.width - self.width) / 2;
-                        y: (parent.height - self.height) / 2;
-                        icon: VideoView.muted ? IconSet.VolumeX : IconSet.Volume2;
-                        size: IconSize.md;
-                        stroke: Palette.foreground;
-                    }
+            ClickArea {
+                cross-axis-self-alignment: center;
+                above-modal: true;
+                width: Size.xl;
+                height: Size.xl;
+                ring-radius: Radius.sm;
+                label: @tr("Close");
+                clicked => {
+                    Actions.close-video();
                 }
-            }
 
-            VerticalLayout {
-                alignment: center;
-
-                ClickArea {
-                    above-modal: true;
-                    width: Size.xl;
-                    height: Size.xl;
-                    ring-radius: Radius.sm;
-                    label: @tr("Close");
-                    clicked => {
-                        Actions.close-video();
-                    }
-
-                    IconDisplay {
-                        x: (parent.width - self.width) / 2;
-                        y: (parent.height - self.height) / 2;
-                        icon: IconSet.X;
-                        size: IconSize.md;
-                        stroke: Palette.foreground;
-                    }
+                IconDisplay {
+                    x: (parent.width - self.width) / 2;
+                    y: (parent.height - self.height) / 2;
+                    icon: IconSet.X;
+                    size: IconSize.md;
+                    stroke: Palette.foreground;
                 }
             }
         }

@@ -22,20 +22,17 @@ export component NowPlayingBar inherits Rectangle {
         padding-right: Space.sm;
         spacing: Space.md;
 
-        VerticalLayout {
-            alignment: center;
-
-            IconButton {
-                size: Size.md;
-                radius: Radius.md;
-                icon-size: IconSize.md;
-                enabled: !AudioView.loading;
-                tint: Palette.accent-background;
-                icon: AudioView.playing ? IconSet.Pause : IconSet.Play;
-                label: AudioView.playing ? @tr("Pause") : @tr("Play");
-                clicked => {
-                    Actions.toggle-audio();
-                }
+        IconButton {
+            cross-axis-self-alignment: center;
+            size: Size.md;
+            radius: Radius.md;
+            icon-size: IconSize.md;
+            enabled: !AudioView.loading;
+            tint: Palette.accent-background;
+            icon: AudioView.playing ? IconSet.Pause : IconSet.Play;
+            label: AudioView.playing ? @tr("Pause") : @tr("Play");
+            clicked => {
+                Actions.toggle-audio();
             }
         }
 
@@ -76,16 +73,13 @@ export component NowPlayingBar inherits Rectangle {
             }
         }
 
-        if AudioView.silent: VerticalLayout {
-            alignment: center;
-
-            IconDisplay {
-                icon: IconSet.VolumeX;
-                size: IconSize.sm;
-                stroke: AppStyle.foreground-faint;
-                accessible-role: image;
-                accessible-label: @tr("No sound device, playing silently");
-            }
+        if AudioView.silent: IconDisplay {
+            cross-axis-self-alignment: center;
+            icon: IconSet.VolumeX;
+            size: IconSize.sm;
+            stroke: AppStyle.foreground-faint;
+            accessible-role: image;
+            accessible-label: @tr("No sound device, playing silently");
         }
 
         Text {
@@ -95,18 +89,15 @@ export component NowPlayingBar inherits Rectangle {
             vertical-alignment: center;
         }
 
-        VerticalLayout {
-            alignment: center;
-
-            IconButton {
-                size: Size.md;
-                radius: Radius.md;
-                icon-size: IconSize.sm;
-                icon: IconSet.X;
-                label: @tr("Close the player");
-                clicked => {
-                    Actions.close-audio();
-                }
+        IconButton {
+            cross-axis-self-alignment: center;
+            size: Size.md;
+            radius: Radius.md;
+            icon-size: IconSize.sm;
+            icon: IconSet.X;
+            label: @tr("Close the player");
+            clicked => {
+                Actions.close-audio();
             }
         }
     }

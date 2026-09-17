@@ -159,7 +159,7 @@ export component EmojiPicker inherits Rectangle {
             vertical-stretch: 1;
 
             grid := Flickable {
-                viewport-height: max(self.height, ceil(root.current-items.length / root.columns) * root.cell);
+                content-height: max(self.height, ceil(root.current-items.length / root.columns) * root.cell);
 
                 for entry[idx] in root.current-items: ClickArea {
                     x: mod(idx, root.columns) * root.cell;

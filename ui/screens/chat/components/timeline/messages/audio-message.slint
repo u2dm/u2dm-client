@@ -122,23 +122,20 @@ export component AudioMessage inherits HorizontalLayout {
     spacing: Space.lg;
     alignment: start;
 
-    VerticalLayout {
-        alignment: center;
-
-        MediaButton {
-            enabled: root.event-id != "";
-            is-own: root.is-own;
-            icon: root.shows-failure ? IconSet.CircleAlert : (root.is-playing ? IconSet.Pause : IconSet.Play);
-            solid: !root.shows-failure;
-            loading: root.is-loading;
-            send-state: root.send-state;
-            send-progress: root.send-progress;
-            label: root.is-playing
-                ? @tr("Pause")
-                : (root.is-voice ? @tr("Play voice message") : @tr("Play {}", root.filename));
-            clicked => {
-                root.press();
-            }
+    MediaButton {
+        cross-axis-self-alignment: center;
+        enabled: root.event-id != "";
+        is-own: root.is-own;
+        icon: root.shows-failure ? IconSet.CircleAlert : (root.is-playing ? IconSet.Pause : IconSet.Play);
+        solid: !root.shows-failure;
+        loading: root.is-loading;
+        send-state: root.send-state;
+        send-progress: root.send-progress;
+        label: root.is-playing
+            ? @tr("Pause")
+            : (root.is-voice ? @tr("Play voice message") : @tr("Play {}", root.filename));
+        clicked => {
+            root.press();
         }
     }
 

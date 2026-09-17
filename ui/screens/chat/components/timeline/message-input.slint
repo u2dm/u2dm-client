@@ -57,29 +57,29 @@ export component MessageInput inherits Rectangle {
                 reply-to: Composer.reply-event-id,
             });
             root.message = "";
-            scroll.viewport-y = 0px;
+            scroll.content-y = 0px;
             Composer.clear();
         }
     }
 
     function keep-scroll-in-range() {
-        scroll.viewport-y = min(
+        scroll.content-y = min(
             0px,
-            max(scroll.height - scroll.viewport-height, scroll.viewport-y),
+            max(scroll.height - scroll.content-height, scroll.content-y),
         );
     }
 
     function reveal-caret(caret-y: length) {
-        if caret-y + scroll.viewport-y < 0px {
-            scroll.viewport-y = min(
+        if caret-y + scroll.content-y < 0px {
+            scroll.content-y = min(
                 0px,
-                max(scroll.height - scroll.viewport-height, -caret-y),
+                max(scroll.height - scroll.content-height, -caret-y),
             );
-        } else if caret-y + scroll.viewport-y > scroll.height - root.line-height {
-            scroll.viewport-y = min(
+        } else if caret-y + scroll.content-y > scroll.height - root.line-height {
+            scroll.content-y = min(
                 0px,
                 max(
-                    scroll.height - scroll.viewport-height,
+                    scroll.height - scroll.content-height,
                     scroll.height - caret-y - root.line-height,
                 ),
             );
@@ -240,29 +240,26 @@ export component MessageInput inherits Rectangle {
                 padding-left: root.row-inset;
                 padding-right: root.row-inset;
 
-                VerticalLayout {
-                    alignment: end;
+                attach-touch := ClickArea {
+                    cross-axis-self-alignment: end;
+                    width: Size.target;
+                    height: Metrics.composer-row;
+                    ring-radius: Radius.sm;
+                    label: @tr("Attach a photo or a file");
+                    clicked => {
+                        Reactions.close();
+                        Shell.picker-open = false;
+                        Shell.attach-open = !Shell.attach-open;
+                    }
 
-                    attach-touch := ClickArea {
-                        width: Size.target;
-                        height: Metrics.composer-row;
-                        ring-radius: Radius.sm;
-                        label: @tr("Attach a photo or a file");
-                        clicked => {
-                            Reactions.close();
-                            Shell.picker-open = false;
-                            Shell.attach-open = !Shell.attach-open;
-                        }
-
-                        IconDisplay {
-                            x: (parent.width - self.width) / 2;
-                            y: (parent.height - self.height) / 2;
-                            icon: IconSet.Paperclip;
-                            size: IconSize.md;
-                            stroke: Shell.attach-open
-                                ? Palette.accent-background
-                                : AppStyle.foreground-muted;
-                        }
+                    IconDisplay {
+                        x: (parent.width - self.width) / 2;
+                        y: (parent.height - self.height) / 2;
+                        icon: IconSet.Paperclip;
+                        size: IconSize.md;
+                        stroke: Shell.attach-open
+                            ? Palette.accent-background
+                            : AppStyle.foreground-muted;
                     }
                 }
 
@@ -285,8 +282,8 @@ export component MessageInput inherits Rectangle {
                             width: parent.width;
                             height: root.text-height;
                             interactive: false;
-                            viewport-width: self.width;
-                            viewport-height: max(self.height, text-input.preferred-height);
+                            content-width: self.width;
+                            content-height: max(self.height, text-input.preferred-height);
 
                             text-input := TextInput {
                                 color: Palette.foreground;
@@ -325,54 +322,48 @@ export component MessageInput inherits Rectangle {
                     }
                 }
 
-                VerticalLayout {
-                    alignment: end;
+                emoji-touch := ClickArea {
+                    cross-axis-self-alignment: end;
+                    width: Size.target;
+                    height: Metrics.composer-row;
+                    ring-radius: Radius.sm;
+                    label: @tr("Emoji and stickers");
+                    clicked => {
+                        Reactions.close();
+                        Shell.attach-open = false;
+                        Shell.picker-open = !Shell.picker-open;
+                    }
 
-                    emoji-touch := ClickArea {
-                        width: Size.target;
-                        height: Metrics.composer-row;
-                        ring-radius: Radius.sm;
-                        label: @tr("Emoji and stickers");
-                        clicked => {
-                            Reactions.close();
-                            Shell.attach-open = false;
-                            Shell.picker-open = !Shell.picker-open;
-                        }
-
-                        IconDisplay {
-                            x: (parent.width - self.width) / 2;
-                            y: (parent.height - self.height) / 2;
-                            icon: IconSet.Smile;
-                            size: IconSize.md;
-                            stroke: Shell.picker-open
-                                ? Palette.accent-background
-                                : AppStyle.foreground-muted;
-                        }
+                    IconDisplay {
+                        x: (parent.width - self.width) / 2;
+                        y: (parent.height - self.height) / 2;
+                        icon: IconSet.Smile;
+                        size: IconSize.md;
+                        stroke: Shell.picker-open
+                            ? Palette.accent-background
+                            : AppStyle.foreground-muted;
                     }
                 }
 
-                VerticalLayout {
-                    alignment: end;
+                send-touch := ClickArea {
+                    cross-axis-self-alignment: end;
+                    width: Size.target;
+                    height: Metrics.composer-row;
+                    ring-radius: Radius.sm;
+                    enabled: root.has-text;
+                    label: @tr("Send");
+                    clicked => {
+                        root.submit();
+                    }
 
-                    send-touch := ClickArea {
-                        width: Size.target;
-                        height: Metrics.composer-row;
-                        ring-radius: Radius.sm;
-                        enabled: root.has-text;
-                        label: @tr("Send");
-                        clicked => {
-                            root.submit();
-                        }
-
-                        IconDisplay {
-                            x: (parent.width - self.width) / 2;
-                            y: (parent.height - self.height) / 2;
-                            icon: IconSet.SendHorizontal;
-                            size: IconSize.md;
-                            stroke: root.has-text
-                                ? Palette.accent-background
-                                : AppStyle.foreground-faint;
-                        }
+                    IconDisplay {
+                        x: (parent.width - self.width) / 2;
+                        y: (parent.height - self.height) / 2;
+                        icon: IconSet.SendHorizontal;
+                        size: IconSize.md;
+                        stroke: root.has-text
+                            ? Palette.accent-background
+                            : AppStyle.foreground-faint;
                     }
                 }
             }

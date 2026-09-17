@@ -24,20 +24,17 @@ export component FileMessage inherits HorizontalLayout {
     spacing: Space.lg;
     alignment: start;
 
-    VerticalLayout {
-        alignment: center;
-
-        MediaButton {
-            enabled: root.can-save;
-            is-own: root.is-own;
-            icon: IconSet.ArrowDown;
-            glyph-size: IconSize.lg;
-            send-state: root.send-state;
-            send-progress: root.send-progress;
-            label: @tr("Save {}", root.filename);
-            clicked => {
-                root.save();
-            }
+    MediaButton {
+        cross-axis-self-alignment: center;
+        enabled: root.can-save;
+        is-own: root.is-own;
+        icon: IconSet.ArrowDown;
+        glyph-size: IconSize.lg;
+        send-state: root.send-state;
+        send-progress: root.send-progress;
+        label: @tr("Save {}", root.filename);
+        clicked => {
+            root.save();
         }
     }
 

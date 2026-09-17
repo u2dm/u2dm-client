@@ -16,14 +16,11 @@ export component ErrorBanner inherits Rectangle {
         padding: Space.lg;
         spacing: Space.lg;
 
-        VerticalLayout {
-            alignment: start;
-
-            IconDisplay {
-                icon: IconSet.TriangleAlert;
-                size: IconSize.sm;
-                stroke: AppStyle.danger;
-            }
+        IconDisplay {
+            cross-axis-self-alignment: start;
+            icon: IconSet.TriangleAlert;
+            size: IconSize.sm;
+            stroke: AppStyle.danger;
         }
 
         VerticalLayout {

@@ -33,13 +33,11 @@ component DrawerRow inherits Rectangle {
         padding-right: Space.xl;
         spacing: Space.xl;
 
-        VerticalLayout {
-            alignment: center;
-            IconDisplay {
-                icon: root.icon;
-                size: IconSize.md;
-                stroke: root.tint;
-            }
+        IconDisplay {
+            cross-axis-self-alignment: center;
+            icon: root.icon;
+            size: IconSize.md;
+            stroke: root.tint;
         }
 
         Text {

@@ -77,7 +77,7 @@ export component StickerPicker inherits Rectangle {
     property <length> cell: (root.width - 2 * root.edge) / max(StickerView.columns, 1);
     property <bool> is-searching: root.query != "";
     property <bool> is-empty: StickerView.rows.length == 0;
-    property <length> viewport-middle: -grid.viewport-y + grid.visible-height / 2;
+    property <length> viewport-middle: -grid.content-y + grid.visible-height / 2;
     property <float> row-at-viewport-middle: floor(root.viewport-middle / max(1px, root.cell));
 
     init => {
@@ -85,9 +85,9 @@ export component StickerPicker inherits Rectangle {
     }
 
     function jump-to(header-row: int) {
-        grid.viewport-y = -min(
+        grid.content-y = -min(
             header-row * root.cell,
-            max(0px, grid.viewport-height - grid.visible-height));
+            max(0px, grid.content-height - grid.visible-height));
     }
 
     VerticalLayout {
@@ -196,7 +196,7 @@ export component StickerPicker inherits Rectangle {
             height: root.tab-pitch;
 
             footer := Flickable {
-                viewport-width: max(self.width, StickerView.packs.length * root.tab-pitch);
+                content-width: max(self.width, StickerView.packs.length * root.tab-pitch);
 
                 for pack[idx] in StickerView.packs: PackTab {
                     x: idx * root.tab-pitch + root.tab-inset;

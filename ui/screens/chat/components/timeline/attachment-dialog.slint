@@ -80,22 +80,19 @@ component CheckRow inherits Rectangle {
     HorizontalLayout {
         spacing: Space.md;
 
-        VerticalLayout {
-            alignment: center;
+        Rectangle {
+            cross-axis-self-alignment: center;
+            width: Size.xs;
+            height: Size.xs;
+            border-radius: Radius.xs;
+            border-width: Stroke.hairline;
+            border-color: root.checked ? Palette.accent-background : AppStyle.foreground-faint;
+            background: root.checked ? Palette.accent-background : transparent;
 
-            Rectangle {
-                width: Size.xs;
-                height: Size.xs;
-                border-radius: Radius.xs;
-                border-width: Stroke.hairline;
-                border-color: root.checked ? Palette.accent-background : AppStyle.foreground-faint;
-                background: root.checked ? Palette.accent-background : transparent;
-
-                if root.checked: IconDisplay {
-                    icon: IconSet.Check;
-                    size: IconSize.xs;
-                    stroke: Palette.accent-foreground;
-                }
+            if root.checked: IconDisplay {
+                icon: IconSet.Check;
+                size: IconSize.xs;
+                stroke: Palette.accent-foreground;
             }
         }
 
@@ -118,20 +115,17 @@ component FileChip inherits Rectangle {
     HorizontalLayout {
         spacing: Space.lg;
 
-        VerticalLayout {
-            alignment: center;
+        Rectangle {
+            cross-axis-self-alignment: center;
+            width: Metrics.attachment-chip;
+            height: Metrics.attachment-chip;
+            border-radius: self.height / 2;
+            background: AppStyle.accent-background-soft;
 
-            Rectangle {
-                width: Metrics.attachment-chip;
-                height: Metrics.attachment-chip;
-                border-radius: self.height / 2;
-                background: AppStyle.accent-background-soft;
-
-                IconDisplay {
-                    icon: root.icon;
-                    size: IconSize.lg;
-                    stroke: Palette.accent-background;
-                }
+            IconDisplay {
+                icon: root.icon;
+                size: IconSize.lg;
+                stroke: Palette.accent-background;
             }
         }
 
@@ -212,12 +206,12 @@ export component AttachmentDialog inherits ModalHost {
         y: 0;
         width: 100%;
         height: 100%;
-        viewport-width: self.width;
-        viewport-height: max(self.height, root.card-height + AppStyle.card-inset);
+        content-width: self.width;
+        content-height: max(self.height, root.card-height + AppStyle.card-inset);
 
         Rectangle {
             x: (root.width - self.width) / 2;
-            y: (scroll.viewport-height - self.height) / 2;
+            y: (scroll.content-height - self.height) / 2;
             width: root.card-width;
             height: root.card-height;
             background: AppStyle.card;
@@ -250,18 +244,15 @@ export component AttachmentDialog inherits ModalHost {
                         }
                     }
 
-                    VerticalLayout {
-                        alignment: center;
-
-                        IconButton {
-                            icon: IconSet.X;
-                            above-modal: true;
-                            label: @tr("Discard the attachment");
-                            size: Size.md;
-                            enabled: !AttachmentView.sending;
-                            clicked => {
-                                root.cancel();
-                            }
+                    IconButton {
+                        cross-axis-self-alignment: center;
+                        icon: IconSet.X;
+                        above-modal: true;
+                        label: @tr("Discard the attachment");
+                        size: Size.md;
+                        enabled: !AttachmentView.sending;
+                        clicked => {
+                            root.cancel();
                         }
                     }
                 }

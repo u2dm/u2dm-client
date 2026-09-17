@@ -60,6 +60,29 @@ component ScrollingInput inherits Rectangle {
     }
 }
 
+component RevealedInput inherits Rectangle {
+    in-out property <string> text;
+    in property <string> placeholder;
+    in property <bool> enabled: true;
+    out property <bool> has-focus: input.has-focus;
+
+    callback accepted();
+
+    accessible-role: groupbox;
+    forward-focus: input;
+
+    input := ScrollingInput {
+        width: 100%;
+        height: 100%;
+        enabled: root.enabled;
+        placeholder: root.placeholder;
+        text <=> root.text;
+        accepted => {
+            root.accepted();
+        }
+    }
+}
+
 export component LoginField inherits Rectangle {
     in-out property <string> text;
     in property <Icon> icon;
@@ -67,7 +90,7 @@ export component LoginField inherits Rectangle {
     in property <string> label;
     in property <bool> enabled: true;
     in property <bool> secret: false;
-    out property <bool> has-focus: input.has-focus;
+    out property <bool> has-focus: input.has-focus || revealed-input.has-focus;
 
     callback accepted();
 
@@ -106,7 +129,11 @@ export component LoginField inherits Rectangle {
         enabled: root.enabled;
         mouse-cursor: MouseCursor.text;
         clicked => {
-            input.focus();
+            if root.revealed {
+                revealed-input.focus();
+            } else {
+                input.focus();
+            }
         }
     }
 
@@ -115,39 +142,53 @@ export component LoginField inherits Rectangle {
         padding-right: root.shows-reveal ? Space.md : Space.lg;
         spacing: Space.lg;
 
-        VerticalLayout {
-            alignment: center;
-
-            IconDisplay {
-                icon: root.icon;
-                size: IconSize.sm;
-                stroke: root.has-focus ? Palette.accent-background : AppStyle.foreground-faint;
-            }
+        IconDisplay {
+            cross-axis-self-alignment: center;
+            icon: root.icon;
+            size: IconSize.sm;
+            stroke: root.has-focus ? Palette.accent-background : AppStyle.foreground-faint;
         }
 
-        input := ScrollingInput {
+        Rectangle {
             horizontal-stretch: 1;
-            enabled: root.enabled;
-            placeholder: root.placeholder;
-            input-type: (root.secret && !root.revealed) ? InputType.password : InputType.text;
-            text <=> root.text;
-            accepted => {
-                root.accepted();
+            min-width: 1px;
+            min-height: input.min-height;
+
+            input := ScrollingInput {
+                width: 100%;
+                height: 100%;
+                visible: !root.revealed;
+                enabled: root.enabled && !root.revealed;
+                placeholder: root.placeholder;
+                input-type: root.secret ? InputType.password : InputType.text;
+                text <=> root.text;
+                accepted => {
+                    root.accepted();
+                }
+            }
+
+            revealed-input := RevealedInput {
+                width: 100%;
+                height: 100%;
+                visible: root.revealed;
+                enabled: root.enabled && root.revealed;
+                placeholder: root.placeholder;
+                text <=> root.text;
+                accepted => {
+                    root.accepted();
+                }
             }
         }
 
-        if root.shows-reveal: VerticalLayout {
-            alignment: center;
-
-            IconButton {
-                size: Size.md;
-                radius: Radius.sm;
-                icon-size: IconSize.sm;
-                icon: root.revealed ? IconSet.EyeOff : IconSet.Eye;
-                label: root.revealed ? @tr("Hide password") : @tr("Show password");
-                clicked => {
-                    root.revealed = !root.revealed;
-                }
+        if root.shows-reveal: IconButton {
+            cross-axis-self-alignment: center;
+            size: Size.md;
+            radius: Radius.sm;
+            icon-size: IconSize.sm;
+            icon: root.revealed ? IconSet.EyeOff : IconSet.Eye;
+            label: root.revealed ? @tr("Hide password") : @tr("Show password");
+            clicked => {
+                root.revealed = !root.revealed;
             }
         }
     }

@@ -73,8 +73,8 @@ export component SubspaceRail inherits Rectangle {
     Flickable {
         width: root.width;
         height: root.height;
-        viewport-width: root.width;
-        viewport-height: (DirectoryView.subspaces.length + 1) * root.row-height + root.top-padding;
+        content-width: root.width;
+        content-height: (DirectoryView.subspaces.length + 1) * root.row-height + root.top-padding;
 
         VerticalLayout {
             alignment: start;

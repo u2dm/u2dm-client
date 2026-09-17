@@ -65,7 +65,7 @@ export component ReactionStrip inherits PickerCard {
     }
 
     function show-default() {
-        strip.viewport-y = strip.height - root.content-height;
+        strip.content-y = strip.height - root.content-height;
     }
 
     function track-focus(focused: bool) {
@@ -98,7 +98,7 @@ export component ReactionStrip inherits PickerCard {
             y: root.height - self.height - root.pad;
             width: root.width - 2 * root.pad;
             height: root.open-height;
-            viewport-height: root.content-height;
+            content-height: root.content-height;
             interactive: root.open;
 
             VerticalLayout {

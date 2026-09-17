@@ -42,12 +42,12 @@ export component LoginPage inherits Rectangle {
         y: 0;
         width: 100%;
         height: 100%;
-        viewport-width: self.width;
-        viewport-height: max(self.height, root.card-height + 2 * root.card-margin);
+        content-width: self.width;
+        content-height: max(self.height, root.card-height + 2 * root.card-margin);
 
         card := Rectangle {
             x: (root.width - self.width) / 2;
-            y: (scroll.viewport-height - self.height) / 2;
+            y: (scroll.content-height - self.height) / 2;
             width: min(AppStyle.card-width, root.width - AppStyle.card-inset);
             height: root.card-height;
             background: AppStyle.card;
@@ -190,24 +190,18 @@ export component StatusRow inherits HorizontalLayout {
     alignment: center;
     spacing: Space.md;
 
-    if root.spinner: VerticalLayout {
-        alignment: center;
-
-        Spinner {
-            width: Size.xxs;
-            height: Size.xxs;
-            indeterminate: true;
-        }
+    if root.spinner: Spinner {
+        cross-axis-self-alignment: center;
+        width: Size.xxs;
+        height: Size.xxs;
+        indeterminate: true;
     }
 
-    VerticalLayout {
-        alignment: center;
-
-        IconDisplay {
-            icon: root.style.icon;
-            size: IconSize.sm;
-            stroke: AppStyle.foreground-faint;
-        }
+    IconDisplay {
+        cross-axis-self-alignment: center;
+        icon: root.style.icon;
+        size: IconSize.sm;
+        stroke: AppStyle.foreground-faint;
     }
 
     Text {
@@ -235,14 +229,11 @@ export component ServerChip inherits Rectangle {
         padding-bottom: Space.md;
         spacing: Space.md;
 
-        VerticalLayout {
-            alignment: center;
-
-            IconDisplay {
-                icon: IconSet.Server;
-                size: IconSize.sm;
-                stroke: AppStyle.success;
-            }
+        IconDisplay {
+            cross-axis-self-alignment: center;
+            icon: IconSet.Server;
+            size: IconSize.sm;
+            stroke: AppStyle.success;
         }
 
         Text {
@@ -254,14 +245,11 @@ export component ServerChip inherits Rectangle {
             color: AppStyle.foreground-muted;
         }
 
-        VerticalLayout {
-            alignment: center;
-
-            IconDisplay {
-                icon: IconSet.Check;
-                size: IconSize.sm;
-                stroke: AppStyle.success;
-            }
+        IconDisplay {
+            cross-axis-self-alignment: center;
+            icon: IconSet.Check;
+            size: IconSize.sm;
+            stroke: AppStyle.success;
         }
     }
 }

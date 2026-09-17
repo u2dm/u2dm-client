@@ -73,22 +73,16 @@ export component AppButton inherits Rectangle {
         padding-left: Space.xl;
         padding-right: Space.xl;
 
-        if root.busy: VerticalLayout {
-            alignment: center;
-
-            DotPulse {
-                tint: root.label-color;
-            }
+        if root.busy: DotPulse {
+            cross-axis-self-alignment: center;
+            tint: root.label-color;
         }
 
-        if !root.busy && root.has-icon && !root.trailing-icon: VerticalLayout {
-            alignment: center;
-
-            IconDisplay {
-                icon: root.icon;
-                size: IconSize.sm;
-                stroke: root.label-color;
-            }
+        if !root.busy && root.has-icon && !root.trailing-icon: IconDisplay {
+            cross-axis-self-alignment: center;
+            icon: root.icon;
+            size: IconSize.sm;
+            stroke: root.label-color;
         }
 
         Text {
@@ -99,14 +93,11 @@ export component AppButton inherits Rectangle {
             color: root.label-color;
         }
 
-        if !root.busy && root.has-icon && root.trailing-icon: VerticalLayout {
-            alignment: center;
-
-            IconDisplay {
-                icon: root.icon;
-                size: IconSize.sm;
-                stroke: root.label-color;
-            }
+        if !root.busy && root.has-icon && root.trailing-icon: IconDisplay {
+            cross-axis-self-alignment: center;
+            icon: root.icon;
+            size: IconSize.sm;
+            stroke: root.label-color;
         }
     }
 }

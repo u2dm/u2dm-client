@@ -28,13 +28,11 @@ component AttachRow inherits Rectangle {
         padding-right: Space.lg;
         spacing: Space.lg;
 
-        VerticalLayout {
-            alignment: center;
-            IconDisplay {
-                icon: root.icon;
-                size: IconSize.md;
-                stroke: AppStyle.foreground-muted;
-            }
+        IconDisplay {
+            cross-axis-self-alignment: center;
+            icon: root.icon;
+            size: IconSize.md;
+            stroke: AppStyle.foreground-muted;
         }
 
         Text {

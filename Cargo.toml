@@ -43,7 +43,7 @@ image = { version = "0.25.10", default-features = false, features = [
 ] }
 infer = "0.22.0"
 keyring-core = "1.0.0"
-lucide-slint = { version = "1.41.0", optional = true }
+lucide-slint = { version = "1.46.0", optional = true }
 matrix-sdk = { version = "0.18.0", default-features = false, features = [
     "e2e-encryption",
     "sqlite",
@@ -60,7 +60,7 @@ rfd = "0.17.2"
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.151"
 sha2 = "0.11.0"
-slint = { version = "1.17.1", default-features = false, features = [
+slint = { version = "1.18.0", default-features = false, features = [
     "std",
     "compat-1-2",
     "backend-winit",
@@ -68,7 +68,7 @@ slint = { version = "1.17.1", default-features = false, features = [
     "accessibility",
     "gettext",
 ] }
-slint-interpreter = { version = "1.17.1", optional = true, default-features = false, features = [
+slint-interpreter = { version = "1.18.0", optional = true, default-features = false, features = [
     "compat-1-2",
     "backend-winit",
     "renderer-femtovg",
@@ -108,8 +108,8 @@ apple-native-keyring-store = { version = "1.0.2", features = ["keychain"] }
 windows-native-keyring-store = "1.1.0"
 
 [build-dependencies]
-lucide-slint = "1.41.0"
-slint-build = "1.17.1"
+lucide-slint = "1.46.0"
+slint-build = { version = "1.18.0", default-features = false, features = ["compat-1-18"] }
 
 [lints.clippy]
 all = { level = "deny", priority = -1 }

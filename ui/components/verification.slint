@@ -158,12 +158,12 @@ export component VerificationDialog inherits ModalHost {
         y: 0;
         width: 100%;
         height: 100%;
-        viewport-width: self.width;
-        viewport-height: max(self.height, root.card-height + AppStyle.card-inset);
+        content-width: self.width;
+        content-height: max(self.height, root.card-height + AppStyle.card-inset);
 
         Rectangle {
             x: (root.width - self.width) / 2;
-            y: (scroll.viewport-height - self.height) / 2;
+            y: (scroll.content-height - self.height) / 2;
             width: root.card-width;
             height: root.card-height;
             background: AppStyle.card;
@@ -178,20 +178,17 @@ export component VerificationDialog inherits ModalHost {
                 HorizontalLayout {
                     spacing: Space.lg;
 
-                    VerticalLayout {
-                        alignment: center;
+                    Rectangle {
+                        cross-axis-self-alignment: center;
+                        width: Size.xl;
+                        height: Size.xl;
+                        border-radius: Radius.md;
+                        background: AppStyle.brand-gradient;
 
-                        Rectangle {
-                            width: Size.xl;
-                            height: Size.xl;
-                            border-radius: Radius.md;
-                            background: AppStyle.brand-gradient;
-
-                            IconDisplay {
-                                icon: IconSet.ShieldCheck;
-                                size: IconSize.md;
-                                stroke: Palette.accent-foreground;
-                            }
+                        IconDisplay {
+                            icon: IconSet.ShieldCheck;
+                            size: IconSize.md;
+                            stroke: Palette.accent-foreground;
                         }
                     }
 
@@ -216,17 +213,14 @@ export component VerificationDialog inherits ModalHost {
                         }
                     }
 
-                    VerticalLayout {
-                        alignment: center;
-
-                        IconButton {
-                            icon: IconSet.X;
-                            above-modal: true;
-                            label: @tr("Close the verification dialog");
-                            size: Size.md;
-                            clicked => {
-                                Actions.dismiss-verification();
-                            }
+                    IconButton {
+                        cross-axis-self-alignment: center;
+                        icon: IconSet.X;
+                        above-modal: true;
+                        label: @tr("Close the verification dialog");
+                        size: Size.md;
+                        clicked => {
+                            Actions.dismiss-verification();
                         }
                     }
                 }

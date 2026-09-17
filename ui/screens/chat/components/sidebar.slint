@@ -139,17 +139,14 @@ component RoomRow inherits ListItemArea {
         padding-right: Space.lg;
         spacing: Space.lg;
 
-        VerticalLayout {
-            alignment: center;
-
-            Avatar {
-                width: root.avatar-size;
-                height: root.avatar-size;
-                background: Avatars.color(root.entry.color-index);
-                has-image: root.entry.has-avatar;
-                image: root.entry.avatar;
-                initial: root.entry.initial;
-            }
+        Avatar {
+            cross-axis-self-alignment: center;
+            width: root.avatar-size;
+            height: root.avatar-size;
+            background: Avatars.color(root.entry.color-index);
+            has-image: root.entry.has-avatar;
+            image: root.entry.avatar;
+            initial: root.entry.initial;
         }
 
         VerticalLayout {
@@ -216,24 +213,18 @@ component RoomRow inherits ListItemArea {
                     }
                 }
 
-                if root.entry.muted: VerticalLayout {
-                    alignment: center;
-
-                    IconDisplay {
-                        icon: IconSet.BellOff;
-                        size: IconSize.sm;
-                        stroke: AppStyle.foreground-faint;
-                    }
+                if root.entry.muted: IconDisplay {
+                    cross-axis-self-alignment: center;
+                    icon: IconSet.BellOff;
+                    size: IconSize.sm;
+                    stroke: AppStyle.foreground-faint;
                 }
 
-                if root.has-unread: VerticalLayout {
-                    alignment: center;
-
-                    UnreadDot {
-                        alert: root.entry.alert;
-                        mention: root.entry.mention;
-                        hint: root.entry.hint;
-                    }
+                if root.has-unread: UnreadDot {
+                    cross-axis-self-alignment: center;
+                    alert: root.entry.alert;
+                    mention: root.entry.mention;
+                    hint: root.entry.hint;
                 }
             }
         }

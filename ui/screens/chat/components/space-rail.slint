@@ -173,8 +173,8 @@ export component SpaceRail inherits Rectangle {
         width: root.width;
         height: root.height - root.menu-height;
         interactive: !root.dragging;
-        viewport-width: root.width;
-        viewport-height: (DirectoryView.spaces.length + 1) * root.row-height;
+        content-width: root.width;
+        content-height: (DirectoryView.spaces.length + 1) * root.row-height;
         accessible-role: list;
         accessible-label: @tr("Spaces");
         accessible-item-count: DirectoryView.spaces.length + 1;
