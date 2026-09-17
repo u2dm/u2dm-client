@@ -11,6 +11,7 @@ export component TimelineScroller inherits Rectangle {
     in property <int> prepend-token;
     in property <bool> backwards-loading;
     in property <bool> forwards-loading;
+    in property <length> top-inset;
     in property <length> bottom-inset;
     in property <length> composer-top;
 
@@ -93,7 +94,7 @@ export component TimelineScroller inherits Rectangle {
         property <bool> anchor-held: false;
         property <int> anchor-scrolls: 0;
         property <length> anchor-target: -min(
-            max(root.anchor-index * (self.viewport-height / max(self.item-count, 1)), 0px),
+            max(root.anchor-index * ((self.viewport-height - root.top-inset) / max(self.item-count, 1)) - root.top-inset, 0px),
             max(self.max-scroll-y, 0px));
 
         changed viewport-height => {
@@ -225,6 +226,7 @@ export component TimelineScroller inherits Rectangle {
         }
 
         for msg[row] in RoomView.timeline: VerticalLayout {
+            padding-top: row == 0 ? root.top-inset : 0px;
             padding-bottom: row == RoomView.timeline.length - 1 ? root.bottom-inset : 0px;
 
             MessageBubble {

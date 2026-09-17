@@ -19,6 +19,8 @@ scenario_env() {
     compact-layout)  echo 'U2DM_DEMO_WINDOW=700x900 U2DM_DEMO_TIMELINE=deep' ;;
     login-oauth)     echo 'U2DM_DEMO_LOGIN=oauth-ok' ;;
     verify-self)     echo 'U2DM_DEMO_VERIFY=self' ;;
+    audio-track)     echo 'U2DM_DEMO_AUDIO=silent,slow' ;;
+    voice-notes)     echo 'U2DM_DEMO_AUDIO=silent' ;;
     *) return 1 ;;
   esac
 }
@@ -31,6 +33,17 @@ scenario_steps() {
       echo '{"op":"select_room","room_id":"!stickers:demo.local"}' ;;
     media-failures)
       echo '{"op":"select_room","room_id":"!sarah:demo.local"}' ;;
+    audio-track)
+      echo '{"op":"select_room","room_id":"!music:demo.local"}'
+      echo 'sleep 2'
+      echo '{"op":"play_audio","event_id":"demo-music-interlude"}'
+      echo 'sleep 4'
+      echo '{"op":"select_room","room_id":"!rust:demo.local"}' ;;
+    voice-notes)
+      echo '{"op":"select_room","room_id":"!nina:demo.local"}'
+      echo 'sleep 2'
+      echo '{"op":"play_audio","event_id":"demo-nina-voice-1"}'
+      echo 'sleep 6' ;;
     login-oauth|verify-self)
       : ;;
   esac
@@ -47,6 +60,8 @@ scenario_note() {
     compact-layout)  echo 'below the 720px breakpoint; run with --headless, a compositor clamps the width' ;;
     login-oauth)     echo 'starts logged out on an OAuth flow that succeeds slowly' ;;
     verify-self)     echo 'a scripted SAS verification arriving 3s after the chat opens' ;;
+    audio-track)     echo 'a track downloads slowly, starts playing, and keeps playing after switching rooms' ;;
+    voice-notes)     echo 'a voice note advances to the next one, whose download then fails' ;;
   esac
 }
 
@@ -63,7 +78,7 @@ check_window() {
 
 names() {
   printf '%s\n' unread-anchor all-unread reactions-late sticker-trickle jump-to-reply \
-    media-failures compact-layout login-oauth verify-self
+    media-failures compact-layout login-oauth verify-self audio-track voice-notes
 }
 
 cmd_list() {
@@ -95,6 +110,10 @@ cmd_run() {
 
   while read -r step; do
     [[ -n $step ]] || continue
+    if [[ $step == "sleep "* ]]; then
+      sleep "${step#sleep }"
+      continue
+    fi
     "$DRIVE" send "$step" >>"$out/commands.json"
   done < <(scenario_steps "$name")
 
@@ -113,6 +132,7 @@ cmd_run() {
   echo "# wrote $out"
   jq -r '"  rooms=\(.view.directory.rooms|length) step=\(.view.lifecycle.step) toast=\(.view.toast.kind)"' "$out/state.json"
   jq -r 'if .rows then "  timeline rows=\(.rows|length) anchor=\(.anchor_index) unread=\([.rows[]|select(.first_unread)|.row])" else "  timeline unavailable" end' "$out/timeline.json"
+  jq -r 'if .audio then "  audio state=\(.audio.state) event=\(.audio.event_id) position=\(.audio.position_ms)/\(.audio.duration_ms) output=\(.audio.output)" else empty end' "$out/timeline.json"
 }
 
 case "${1:-}" in

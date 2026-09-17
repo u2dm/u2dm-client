@@ -57,6 +57,11 @@ const ENUM_COVERAGE: &[EnumCoverage] = &[
         falls_through: &[],
     },
     EnumCoverage {
+        slint_enum: "AudioKind",
+        branches_in: "ui/screens/chat/components/timeline/messages/audio-message.slint",
+        falls_through: &[],
+    },
+    EnumCoverage {
         slint_enum: "MessageKind",
         branches_in: "ui/screens/chat/components/timeline/message-bubble.slint",
         falls_through: &[],
@@ -71,6 +76,7 @@ const ENUM_TABLES: &[(&str, &str)] = &[
     ("PreviewKind", "preview_kinds"),
     ("MessageKind", "message_kinds"),
     ("AttachmentKind", "attachment_kinds"),
+    ("AudioKind", "audio_kinds"),
     ("MediaState", "media_states"),
     ("SendState", "send_states"),
     ("MediaFailure", "media_failures"),
@@ -121,6 +127,11 @@ const SCENARIO_SOURCES: &[ScenarioSource] = &[
     },
     ScenarioSource {
         file: "src/adapters/demo/stickers.rs",
+        arms_between: ("fn apply(scenario: &mut Scenario, flag: &str) {", "\n}"),
+        ignored: &[],
+    },
+    ScenarioSource {
+        file: "src/adapters/demo/audio.rs",
         arms_between: ("fn apply(scenario: &mut Scenario, flag: &str) {", "\n}"),
         ignored: &[],
     },

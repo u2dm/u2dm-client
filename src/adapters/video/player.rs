@@ -1,23 +1,21 @@
 use std::collections::VecDeque;
 use std::path::{Path, PathBuf};
-use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
-use std::thread::{self, JoinHandle};
-use std::time::{Duration, Instant};
+use std::sync::mpsc::{self, Receiver, RecvTimeoutError};
+use std::time::Duration;
 
+use ffmpeg_next::Packet;
 use ffmpeg_next::format::Pixel;
 use ffmpeg_next::software::scaling;
-use ffmpeg_next::util::frame::{Audio as AudioFrame, Video as VideoFrame};
-use ffmpeg_next::Packet;
-use ffmpeg_next::util::format::sample::{Sample, Type as SampleType};
-use ffmpeg_next::{ChannelLayout, Rational, codec, format, media, software};
+use ffmpeg_next::util::frame::Video as VideoFrame;
+use ffmpeg_next::{Rational, codec, format, media};
 
-use super::audio::AudioOutput;
+use super::decoder::{self, AudioDecoder, PcmTarget};
+use super::output::AudioOutput;
+use super::playback::{Clock, Command, Flow, Playback, stream_duration};
 
 const MAX_DIMENSION: u32 = 1280;
-const LATE_FRAME_TOLERANCE: Duration = Duration::from_millis(120);
 const COMMAND_POLL: Duration = Duration::from_millis(4);
 const MAX_PENDING_FRAMES: usize = 4;
-const RESAMPLE_HEADROOM: usize = 1024;
 
 struct Pending {
     rgb: Vec<u8>,
@@ -40,157 +38,9 @@ pub enum PlayerEvent<'a> {
 
 pub type Sink = Box<dyn Fn(PlayerEvent<'_>) + Send>;
 
-#[derive(Clone, Copy)]
-enum Command {
-    Play,
-    Pause,
-    Seek(Duration),
-    Muted(bool),
-    Stop,
-}
-
-pub struct Playback {
-    commands: Sender<Command>,
-    worker: Option<JoinHandle<()>>,
-}
-
-impl Playback {
-    pub fn start(path: &Path, sink: Sink) -> Self {
-        let (commands, inbox) = mpsc::channel();
-        let path = path.to_path_buf();
-        let worker = thread::Builder::new()
-            .name("u2dm-video".into())
-            .spawn(move || run(&path, &inbox, sink.as_ref()))
-            .ok();
-        Self { commands, worker }
-    }
-
-    pub fn play(&self) {
-        self.send(Command::Play);
-    }
-
-    pub fn pause(&self) {
-        self.send(Command::Pause);
-    }
-
-    pub fn seek(&self, position: Duration) {
-        self.send(Command::Seek(position));
-    }
-
-    pub fn set_muted(&self, muted: bool) {
-        self.send(Command::Muted(muted));
-    }
-
-    fn send(&self, command: Command) {
-        if self.commands.send(command).is_err() {
-            tracing::debug!("video playback thread is gone, dropping the command");
-        }
-    }
-}
-
-impl Drop for Playback {
-    fn drop(&mut self) {
-        self.send(Command::Stop);
-        if let Some(worker) = self.worker.take()
-            && worker.join().is_err()
-        {
-            tracing::warn!("the video playback thread panicked");
-        }
-    }
-}
-
-enum Clock {
-    Wall {
-        origin: Instant,
-        paused_at: Option<Instant>,
-    },
-    Audio {
-        position: Duration,
-        paused: bool,
-    },
-}
-
-impl Clock {
-    fn wall() -> Self {
-        Self::Wall {
-            origin: Instant::now(),
-            paused_at: Some(Instant::now()),
-        }
-    }
-
-    fn audio() -> Self {
-        Self::Audio {
-            position: Duration::ZERO,
-            paused: true,
-        }
-    }
-
-    fn is_paused(&self) -> bool {
-        match self {
-            Self::Wall { paused_at, .. } => paused_at.is_some(),
-            Self::Audio { paused, .. } => *paused,
-        }
-    }
-
-    fn resume(&mut self) {
-        match self {
-            Self::Wall { origin, paused_at } => {
-                if let Some(at) = paused_at.take() {
-                    *origin += at.elapsed();
-                }
-            }
-            Self::Audio { paused, .. } => *paused = false,
-        }
-    }
-
-    fn pause(&mut self) {
-        match self {
-            Self::Wall { paused_at, .. } => {
-                if paused_at.is_none() {
-                    *paused_at = Some(Instant::now());
-                }
-            }
-            Self::Audio { paused, .. } => *paused = true,
-        }
-    }
-
-    fn rebase(&mut self, to: Duration) {
-        match self {
-            Self::Wall { origin, paused_at } => {
-                let now = paused_at.unwrap_or_else(Instant::now);
-                *origin = now.checked_sub(to).unwrap_or(now);
-            }
-            Self::Audio { position, .. } => *position = to,
-        }
-    }
-
-    fn observe(&mut self, heard: Duration) {
-        if let Self::Audio { position, .. } = self {
-            *position = heard;
-        }
-    }
-
-    fn elapsed(&self) -> Duration {
-        match self {
-            Self::Wall { origin, paused_at } => {
-                paused_at.unwrap_or_else(Instant::now).saturating_duration_since(*origin)
-            }
-            Self::Audio { position, .. } => *position,
-        }
-    }
-
-    fn due_in(&self, position: Duration) -> Duration {
-        position.saturating_sub(self.elapsed())
-    }
-
-    fn is_late(&self, position: Duration) -> bool {
-        self.elapsed() > position + LATE_FRAME_TOLERANCE
-    }
-}
-
-fn stream_duration(input: &format::context::Input) -> Option<Duration> {
-    let micros = input.duration();
-    (micros > 0).then(|| Duration::from_micros(micros.unsigned_abs()))
+pub fn start(path: &Path, sink: Sink) -> Playback {
+    let path = path.to_path_buf();
+    Playback::spawn("u2dm-video", move |inbox| run(&path, inbox, sink.as_ref()))
 }
 
 fn run(path: &PathBuf, inbox: &Receiver<Command>, sink: &(dyn Fn(PlayerEvent<'_>) + Send)) {
@@ -200,79 +50,27 @@ fn run(path: &PathBuf, inbox: &Receiver<Command>, sink: &(dyn Fn(PlayerEvent<'_>
     }
 }
 
-struct Audio {
-    decoder: codec::decoder::Audio,
-    resampler: software::resampling::Context,
+struct SyncedAudio {
+    decoder: AudioDecoder,
     output: AudioOutput,
-    stream_index: usize,
-    layout: ChannelLayout,
 }
 
-impl Audio {
+impl SyncedAudio {
     fn open(input: &format::context::Input) -> Option<Self> {
-        let stream = input.streams().best(media::Type::Audio)?;
-        let stream_index = stream.index();
-        let decoder = codec::context::Context::from_parameters(stream.parameters())
-            .ok()?
-            .decoder()
-            .audio()
-            .ok()?;
+        input.streams().best(media::Type::Audio)?;
         let output = AudioOutput::open()?;
-        let layout = match output.channels() {
-            1 => ChannelLayout::MONO,
-            _ => ChannelLayout::STEREO,
+        let target = PcmTarget {
+            rate: output.sample_rate(),
+            channels: output.channels(),
         };
-        let resampler = software::resampling::Context::get(
-            decoder.format(),
-            decoder.channel_layout(),
-            decoder.rate(),
-            Sample::F32(SampleType::Packed),
-            layout,
-            output.sample_rate(),
-        )
-        .ok()?;
-        Some(Self {
-            decoder,
-            resampler,
-            output,
-            stream_index,
-            layout,
-        })
-    }
-
-    fn resampled_capacity(&self, samples: usize) -> usize {
-        let source = u64::from(self.decoder.rate().max(1));
-        let target = u64::from(self.output.sample_rate());
-        let scaled = (samples as u64).saturating_mul(target) / source;
-        usize::try_from(scaled).unwrap_or(samples) + RESAMPLE_HEADROOM
+        let decoder = AudioDecoder::open(input, target)?;
+        Some(Self { decoder, output })
     }
 
     fn feed(&mut self, packet: &Packet) {
-        if self.decoder.send_packet(packet).is_err() {
-            return;
-        }
-        let mut decoded = AudioFrame::empty();
-        while self.decoder.receive_frame(&mut decoded).is_ok() {
-            let mut resampled = AudioFrame::new(
-                Sample::F32(SampleType::Packed),
-                self.resampled_capacity(decoded.samples()),
-                self.layout,
-            );
-            if self.resampler.run(&decoded, &mut resampled).is_err() {
-                continue;
-            }
-            let lanes = usize::from(self.output.channels());
-            let wanted = resampled.samples() * lanes * size_of::<f32>();
-            let Some(bytes) = resampled.data(0).get(..wanted) else {
-                continue;
-            };
-            let mut samples = Vec::with_capacity(resampled.samples() * lanes);
-            for chunk in bytes.chunks_exact(size_of::<f32>()) {
-                let value = <[u8; 4]>::try_from(chunk).map_or(0.0, f32::from_ne_bytes);
-                samples.push(value);
-            }
-            self.output.push(&samples);
-        }
+        let output = &self.output;
+        self.decoder
+            .feed(packet, &mut |samples, _| output.push(samples));
     }
 }
 
@@ -285,7 +83,7 @@ struct Session {
     duration: Option<Duration>,
     width: u32,
     height: u32,
-    audio: Option<Audio>,
+    audio: Option<SyncedAudio>,
     pending: VecDeque<Pending>,
     drained: bool,
 }
@@ -316,7 +114,7 @@ impl Session {
             scaling::Flags::BILINEAR,
         )
         .ok()?;
-        let audio = Audio::open(&input);
+        let audio = SyncedAudio::open(&input);
         if let Some(audio) = audio.as_ref() {
             tracing::debug!(
                 sample_rate = audio.output.sample_rate(),
@@ -342,14 +140,8 @@ impl Session {
     }
 
     fn position_of(&self, frame: &VideoFrame) -> Duration {
-        let ticks = i128::from(frame.pts().or_else(|| frame.timestamp()).unwrap_or(0).max(0));
-        let numerator = i128::from(self.time_base.numerator());
-        let denominator = i128::from(self.time_base.denominator());
-        if denominator == 0 {
-            return Duration::ZERO;
-        }
-        let micros = ticks.saturating_mul(numerator).saturating_mul(1_000_000) / denominator;
-        Duration::from_micros(u64::try_from(micros).unwrap_or(0))
+        let ticks = frame.pts().or_else(|| frame.timestamp()).unwrap_or(0);
+        decoder::ticks_to_duration(ticks, self.time_base)
     }
 
     fn seek_to(&mut self, position: Duration) {
@@ -421,7 +213,7 @@ impl Session {
                 self.pending.clear();
                 self.drained = false;
                 if let Some(audio) = self.audio.as_mut() {
-                    audio.decoder.flush();
+                    audio.decoder.reset();
                     audio.output.rebase(position);
                 }
                 clock.rebase(position);
@@ -551,16 +343,10 @@ impl Session {
                 return Some(packet);
             }
             if let Some(audio) = self.audio.as_mut()
-                && index == audio.stream_index
+                && index == audio.decoder.stream_index()
             {
                 audio.feed(&packet);
             }
         }
     }
-}
-
-enum Flow {
-    Continue,
-    Stop,
-    Ended,
 }

@@ -1,0 +1,128 @@
+import { Palette } from "std-widgets.slint";
+import { FocusRing, Interaction } from "a11y.slint";
+import { AppStyle, Metrics } from "../theme.slint";
+
+export enum ScrubCommit {
+    live,
+    on-release,
+}
+
+export component ScrubBar inherits Rectangle {
+    in property <int> position-ms;
+    in property <int> duration-ms;
+    in property <ScrubCommit> commit: ScrubCommit.live;
+    in property <bool> above-modal: false;
+    in property <length> track-height: Metrics.video-scrub-track;
+    in property <length> knob-size: Metrics.video-scrub-knob;
+    in property <color> played: Palette.accent-background;
+    in property <color> rest: AppStyle.scrub-track;
+    in property <string> label: @tr("Seek");
+    in property <float> resting-knob-opacity: 0;
+
+    callback seek(int);
+
+    property <int> step-ms: 5000;
+    property <bool> actionable: Interaction.actionable(root.duration-ms > 0, root.above-modal);
+    property <bool> previewing: root.commit == ScrubCommit.on-release && scrub.pressed;
+    property <float> pointer-fraction: clamp(scrub.mouse-x / max(root.width, 1px), 0.0, 1.0);
+    property <float> progress: root.previewing
+        ? root.pointer-fraction
+        : (root.duration-ms > 0 ? clamp(root.position-ms / root.duration-ms, 0.0, 1.0) : 0.0);
+
+    function seek-to-pointer() {
+        if (root.actionable) {
+            root.seek(root.pointer-fraction * root.duration-ms);
+        }
+    }
+
+    function nudge(delta-ms: int) {
+        if (root.actionable) {
+            root.seek(clamp(root.position-ms + delta-ms, 0, root.duration-ms));
+        }
+    }
+
+    height: root.knob-size;
+    accessible-role: slider;
+    accessible-label: root.label;
+    accessible-enabled: root.actionable;
+    accessible-value: floor(root.position-ms / 1000);
+    accessible-value-minimum: 0;
+    accessible-value-maximum: floor(root.duration-ms / 1000);
+    accessible-action-increment => {
+        root.nudge(root.step-ms);
+    }
+    accessible-action-decrement => {
+        root.nudge(-root.step-ms);
+    }
+    forward-focus: focus;
+
+    track := Rectangle {
+        y: (parent.height - self.height) / 2;
+        height: root.track-height;
+        border-radius: self.height / 2;
+        background: root.rest;
+
+        Rectangle {
+            x: 0;
+            width: parent.width * root.progress;
+            height: parent.height;
+            border-radius: self.height / 2;
+            background: root.played;
+        }
+    }
+
+    knob := Rectangle {
+        x: track.width * root.progress - self.width / 2;
+        y: (parent.height - self.height) / 2;
+        width: root.knob-size;
+        height: root.knob-size;
+        border-radius: self.height / 2;
+        background: root.played;
+        opacity: scrub.has-hover || scrub.pressed || focus.has-focus ? 1 : root.resting-knob-opacity;
+    }
+
+    focus := FocusScope {
+        width: 0;
+        enabled: root.actionable;
+        focus-on-tab-navigation: root.actionable;
+        key-pressed(event) => {
+            if (event.text == Key.RightArrow) {
+                root.nudge(root.step-ms);
+                return accept;
+            }
+            if (event.text == Key.LeftArrow) {
+                root.nudge(-root.step-ms);
+                return accept;
+            }
+            return reject;
+        }
+    }
+
+    scrub := TouchArea {
+        width: 100%;
+        height: 100%;
+        enabled: root.actionable;
+        mouse-cursor: pointer;
+        pointer-event(event) => {
+            if (root.commit == ScrubCommit.live && self.pressed) {
+                root.seek-to-pointer();
+            }
+            if (root.commit == ScrubCommit.on-release
+                && event.kind == PointerEventKind.up
+                && event.button == PointerEventButton.left) {
+                root.seek-to-pointer();
+            }
+        }
+        clicked => {
+            if (root.commit == ScrubCommit.live) {
+                root.seek-to-pointer();
+            }
+        }
+    }
+
+    if focus.has-focus: FocusRing {
+        width: 100%;
+        height: 100%;
+        border-radius: self.height / 2;
+    }
+}

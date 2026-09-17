@@ -85,6 +85,7 @@ export enum UserMessageKind {
     attachment-too-large,
     send-attachment-failed,
     video-playback-failed,
+    audio-playback-failed,
     file-save-failed,
     file-saved,
     verification-accept-failed,
@@ -110,6 +111,7 @@ export enum AttachmentKind {
     file,
     image,
     video,
+    audio,
 }
 
 export enum MediaState {
@@ -133,6 +135,7 @@ export enum MessageKind {
     emote,
     image,
     video,
+    audio,
     sticker,
     file,
     service,
@@ -146,10 +149,16 @@ export enum PreviewKind {
     image,
     video,
     audio,
+    voice,
     file,
     location,
     encrypted,
     sticker,
+}
+
+export enum AudioKind {
+    voice,
+    track,
 }
 
 export enum ServiceKind {

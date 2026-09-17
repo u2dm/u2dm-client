@@ -3,8 +3,8 @@ use serde::Serialize;
 use super::names;
 use crate::commands::messages::UserMessage;
 use crate::commands::view::{
-    AppViewState, AttachmentView, DirectoryView, LifecycleView, PaginationView, StickerView, Toast,
-    VideoView,
+    AppViewState, AttachmentView, AudioView, DirectoryView, LifecycleView, PaginationView,
+    StickerView, Toast, TrackFile, VideoView,
 };
 use crate::domain::room::{Room, Space};
 use crate::domain::sticker::StickerPack;
@@ -19,6 +19,7 @@ pub struct ViewDto {
     stickers: StickersDto,
     attachment: AttachmentDto,
     video: VideoDto,
+    audio: Option<NowPlayingDto>,
     toast: ToastDto,
 }
 
@@ -136,6 +137,19 @@ struct VideoDto {
 }
 
 #[derive(Serialize)]
+struct NowPlayingDto {
+    request: u64,
+    room_id: String,
+    event_id: String,
+    sender: String,
+    kind: &'static str,
+    title: String,
+    duration_ms: Option<u128>,
+    has_waveform: bool,
+    downloaded: bool,
+}
+
+#[derive(Serialize)]
 struct ToastDto {
     kind: &'static str,
     detail: Option<String>,
@@ -150,6 +164,7 @@ pub fn view(source: &AppViewState) -> ViewDto {
         stickers: stickers(&source.stickers),
         attachment: attachment(&source.attachment),
         video: video(&source.video),
+        audio: audio(&source.audio),
         toast: toast(&source.toast),
     }
 }
@@ -282,6 +297,21 @@ fn video(source: &VideoView) -> VideoDto {
         has_path: source.path.is_some(),
         error: names::user_message_kind(source.error),
     }
+}
+
+fn audio(source: &AudioView) -> Option<NowPlayingDto> {
+    let now = source.now_playing.as_ref()?;
+    Some(NowPlayingDto {
+        request: now.request,
+        room_id: now.room_id.to_string(),
+        event_id: now.event_id.clone(),
+        sender: now.sender.clone(),
+        kind: names::audio_kind(now.meta.kind),
+        title: now.meta.filename.clone(),
+        duration_ms: now.meta.duration.map(|value| value.as_millis()),
+        has_waveform: now.meta.waveform.is_some(),
+        downloaded: matches!(now.file, TrackFile::Ready(_)),
+    })
 }
 
 fn toast(source: &Toast) -> ToastDto {

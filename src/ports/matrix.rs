@@ -7,7 +7,7 @@ use tokio_util::sync::CancellationToken;
 
 use crate::domain::account::AccountScope;
 use crate::domain::auth::{LoginCredentials, OAuthLoginData, ServerInfo, Session};
-use crate::domain::media::OutgoingAttachment;
+use crate::domain::media::{OutgoingAttachment, WaveformNeed};
 use crate::domain::room::RoomId;
 use crate::domain::sticker::{PackId, StickerPack};
 use crate::domain::sync::{SyncEvent, SyncOutcome};
@@ -167,6 +167,7 @@ pub trait TimelinePort: Send + Sync {
 pub trait MediaPort: Send + Sync {
     async fn download_media(&self, event_id: &str, thumbnail: bool) -> Result<Vec<u8>>;
     async fn materialize_video(&self, event_id: &str) -> Result<PathBuf>;
+    async fn materialize_audio(&self, event_id: &str, need: WaveformNeed) -> Result<PathBuf>;
 }
 
 #[derive(Debug, Default)]

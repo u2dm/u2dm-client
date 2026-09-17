@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex as StdMutex, RwLock as StdRwLock};
@@ -9,17 +10,18 @@ use matrix_sdk::ruma::OwnedMxcUri;
 use matrix_sdk::ruma::events::room::MediaSource;
 use tokio::fs;
 use tokio::sync::Semaphore;
+use tokio::task::spawn_blocking;
 use tokio::time::{sleep, timeout};
 
 use super::cache::{CacheHandle, FailureTracker};
 use super::{
-    AVATARS_DIR, MediaSources, STICKERS_DIR, VIDEOS_DIR, lookup_full_media_source, mxc_avatar_key,
-    sticker_key, thumb_key, thumbnail_format, video_key,
+    AUDIO_DIR, AVATARS_DIR, MediaSources, STICKERS_DIR, VIDEOS_DIR, audio_key,
+    lookup_full_media_source, mxc_avatar_key, sticker_key, thumb_key, thumbnail_format, video_key,
 };
 use crate::adapters::matrix::store::purge_dir;
-use crate::adapters::{container, private_fs};
+use crate::adapters::{container, private_fs, video};
 use crate::domain::account::AccountScope;
-use crate::domain::media::{MediaFailure, MediaResult, ThumbnailOutcome};
+use crate::domain::media::{MediaFailure, MediaResult, ThumbnailOutcome, Waveform};
 use crate::domain::message::TimelineMessage;
 use crate::error::{AppError, Result};
 use crate::ports::matrix::CleanupReport;
@@ -41,6 +43,7 @@ const LAYOUT_VERSION: &str = "v1";
 pub(crate) enum Naming {
     FromMagic,
     LauncherSafeVideo,
+    LauncherSafeAudio,
 }
 
 impl Naming {
@@ -49,6 +52,9 @@ impl Naming {
             Self::FromMagic => Ok(ext_from_magic(data)),
             Self::LauncherSafeVideo => {
                 container::launcher_safe_video_extension(data).ok_or(MediaFailure::Unreadable)
+            }
+            Self::LauncherSafeAudio => {
+                container::launcher_safe_audio_extension(data).ok_or(MediaFailure::Unreadable)
             }
         }
     }
@@ -95,11 +101,43 @@ impl Fetch {
         }
     }
 
-    pub(crate) fn launchable_video() -> Self {
+    pub(crate) fn launchable(playable: Playable) -> Self {
         Self {
             format: MediaFormat::File,
             limits: DownloadLimits::full_file(),
-            naming: Naming::LauncherSafeVideo,
+            naming: match playable {
+                Playable::Video => Naming::LauncherSafeVideo,
+                Playable::Audio => Naming::LauncherSafeAudio,
+            },
+        }
+    }
+}
+
+#[derive(Clone, Copy)]
+pub(crate) enum Playable {
+    Video,
+    Audio,
+}
+
+impl Playable {
+    pub(crate) fn noun(self) -> &'static str {
+        match self {
+            Self::Video => "video",
+            Self::Audio => "audio",
+        }
+    }
+
+    fn key(self, event_id: &str) -> String {
+        match self {
+            Self::Video => video_key(event_id),
+            Self::Audio => audio_key(event_id),
+        }
+    }
+
+    fn dir(self) -> &'static str {
+        match self {
+            Self::Video => VIDEOS_DIR,
+            Self::Audio => AUDIO_DIR,
         }
     }
 }
@@ -115,6 +153,7 @@ pub(crate) struct MediaService {
     semaphore: Semaphore,
     full_semaphore: Semaphore,
     failures: StdMutex<FailureTracker>,
+    waveforms: StdMutex<HashMap<String, Waveform>>,
 }
 
 impl MediaService {
@@ -125,6 +164,7 @@ impl MediaService {
             semaphore: Semaphore::new(MAX_CONCURRENT_DOWNLOADS),
             full_semaphore: Semaphore::new(MAX_CONCURRENT_FULL_DOWNLOADS),
             failures: StdMutex::new(FailureTracker::default()),
+            waveforms: StdMutex::new(HashMap::new()),
         })
     }
 
@@ -169,6 +209,9 @@ impl MediaService {
         if let Ok(mut failures) = self.failures.lock() {
             failures.clear();
         }
+        if let Ok(mut waveforms) = self.waveforms.lock() {
+            waveforms.clear();
+        }
         let previous = self.session.write().ok().and_then(|mut guard| guard.take());
         let Some(session) = previous else {
             return;
@@ -190,10 +233,32 @@ impl MediaService {
             session.media_dir.join(AVATARS_DIR),
             session.media_dir.join(STICKERS_DIR),
             session.media_dir.join(VIDEOS_DIR),
+            session.media_dir.join(AUDIO_DIR),
         ] {
             if let Err(e) = private_fs::create_dir(&dir).await {
                 tracing::warn!(path = %dir.display(), "failed to create media dir: {e}");
             }
+        }
+    }
+
+    pub(crate) fn waveform(&self, event_id: &str) -> Option<Waveform> {
+        self.waveforms.lock().ok()?.get(event_id).cloned()
+    }
+
+    pub(crate) async fn learn_waveform(&self, event_id: &str, path: &Path) {
+        if self.waveform(event_id).is_some() {
+            return;
+        }
+        let owned = path.to_path_buf();
+        let learned = spawn_blocking(move || video::probe_audio(&owned))
+            .await
+            .ok()
+            .flatten()
+            .and_then(|probe| probe.waveform);
+        if let Some(waveform) = learned
+            && let Ok(mut waveforms) = self.waveforms.lock()
+        {
+            waveforms.insert(event_id.to_owned(), waveform);
         }
     }
 
@@ -268,13 +333,14 @@ impl MediaService {
         Err(MediaFailure::Download)
     }
 
-    pub(crate) async fn materialize_video(
+    pub(crate) async fn materialize_playable(
         &self,
         client: &Client,
         media_sources: &MediaSources,
         event_id: &str,
+        playable: Playable,
     ) -> MediaResult<PathBuf> {
-        let cache_key = video_key(event_id);
+        let cache_key = playable.key(event_id);
         if let Some(cached) = self.cache_get(&cache_key) {
             return Ok(cached);
         }
@@ -283,18 +349,18 @@ impl MediaService {
         }
         let source =
             lookup_full_media_source(media_sources, event_id).ok_or(MediaFailure::NoSource)?;
-        let videos = self.videos_dir().ok_or(MediaFailure::Storage)?;
-        if let Err(e) = private_fs::create_dir(&videos).await {
-            tracing::warn!("failed to create video dir: {e}");
+        let dir = self.playable_dir(playable).ok_or(MediaFailure::Storage)?;
+        if let Err(e) = private_fs::create_dir(&dir).await {
+            tracing::warn!("failed to create the {} dir: {e}", playable.noun());
             return Err(MediaFailure::Storage);
         }
-        let cache_stem = videos.join(hex_encode_id(event_id));
+        let cache_stem = dir.join(hex_encode_id(event_id));
         self.fetch_and_materialize(
             client,
             source,
             &cache_key,
             &cache_stem,
-            Fetch::launchable_video(),
+            Fetch::launchable(playable),
         )
         .await
     }
@@ -540,8 +606,8 @@ impl MediaService {
         Some(self.session()?.media_dir.join(STICKERS_DIR))
     }
 
-    fn videos_dir(&self) -> Option<PathBuf> {
-        Some(self.session()?.media_dir.join(VIDEOS_DIR))
+    fn playable_dir(&self, playable: Playable) -> Option<PathBuf> {
+        Some(self.session()?.media_dir.join(playable.dir()))
     }
 }
 

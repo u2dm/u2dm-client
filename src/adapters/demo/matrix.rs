@@ -6,19 +6,21 @@ use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
 use tokio::sync::mpsc;
+use tokio::task::spawn_blocking;
 use tokio::time::sleep;
 use tokio_util::sync::CancellationToken;
 
-use super::{attachments, data, login, media, reactions, stickers, timeline, verification};
+use super::{attachments, audio, data, login, media, reactions, stickers, timeline, verification};
+use crate::adapters::video;
 use crate::domain::auth::{AuthMethod, LoginCredentials, OAuthLoginData, ServerInfo, Session};
-use crate::domain::media::OutgoingAttachment;
+use crate::domain::media::{OutgoingAttachment, WaveformNeed};
 use crate::domain::message::{MessageBody, ReplyInfo, RichText, SendState, TimelineMessage};
 use crate::domain::room::RoomId;
 use crate::domain::sticker::{PackId, StickerImage};
 use crate::domain::sync::{SyncEvent, SyncOutcome};
 use crate::domain::timeline::{
-    JumpTarget, PaginationDirection, PaginationOutcome, TimelineCommand, TimelineFocus,
-    TimelinePatch, TimelineUpdate,
+    AudioLookup, AudioTrack, JumpTarget, PaginationDirection, PaginationOutcome, TimelineCommand,
+    TimelineFocus, TimelinePatch, TimelineUpdate, locate_audio,
 };
 use crate::domain::verification::{VerificationCancellation, VerificationEvent};
 use crate::error::{AppError, Result};
@@ -310,6 +312,12 @@ impl DemoAuthed {
         row.map_or(JumpTarget::NotLoaded, JumpTarget::Row)
     }
 
+    fn locate_audio(&self, lookup: &AudioLookup) -> Option<AudioTrack> {
+        let guard = self.active.lock().ok()?;
+        let active = guard.as_ref()?;
+        locate_audio(lookup, active.messages.iter().cloned())
+    }
+
     fn emit_verification(&self, event: VerificationEvent) {
         let Ok(guard) = self.verification_tx.lock() else {
             return;
@@ -428,6 +436,18 @@ impl TimelinePort for DemoAuthed {
                     self.toggle_reaction(&event_id, &key).await;
                     continue;
                 }
+                TimelineCommand::LocateAudio { request, lookup } => {
+                    let track = self.locate_audio(&lookup);
+                    drop(
+                        timeline_tx
+                            .send(TimelineUpdate::AudioLocated {
+                                request,
+                                track: track.map(Box::new),
+                            })
+                            .await,
+                    );
+                    continue;
+                }
             };
             let mut hit_end = true;
             if scenario.pagination_returns_history
@@ -498,9 +518,13 @@ impl TimelinePort for DemoAuthed {
         };
         if let Some(event_id) = settled.event_id.as_deref()
             && !attachment.as_document
-            && let Some(preview) = attachment.picked.preview_path()
         {
-            attachments::remember_preview(event_id, preview);
+            if let Some(preview) = attachment.picked.preview_path() {
+                attachments::remember_preview(event_id, preview);
+            }
+            if attachment.picked.is_audio() {
+                attachments::remember_sent_audio(event_id, &attachment.picked.path);
+            }
         }
         if uploads_slowly && let Some(timeline_tx) = self.timeline_sender(room_id) {
             spawn_upload_progress(timeline_tx, index, settled, total);
@@ -521,6 +545,24 @@ impl MediaPort for DemoAuthed {
     async fn materialize_video(&self, event_id: &str) -> Result<PathBuf> {
         media::video_asset_path(event_id)
             .ok_or_else(|| AppError::Other(format!("no demo video for event {event_id}")))
+    }
+
+    async fn materialize_audio(&self, event_id: &str, need: WaveformNeed) -> Result<PathBuf> {
+        audio::pause_download().await;
+        let path = media::fetch_audio(event_id)
+            .ok_or_else(|| AppError::Other(format!("no demo audio for event {event_id}")))?;
+        if need == WaveformNeed::Compute {
+            let owned = path.clone();
+            let learned = spawn_blocking(move || video::probe_audio(&owned))
+                .await
+                .ok()
+                .flatten()
+                .and_then(|probe| probe.waveform);
+            if let Some(waveform) = learned {
+                media::remember_waveform(event_id, waveform);
+            }
+        }
+        Ok(path)
     }
 }
 

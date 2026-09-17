@@ -120,6 +120,7 @@ fn run() -> Result<()> {
 
     ui.register_callbacks(&cmd_tx, &scroll_tx)?;
     size_window_for_demo(&ui);
+    configure_demo_audio();
 
     let enter_guard = rt.enter();
     let backend = Backend::select(&cfg);
@@ -168,6 +169,14 @@ fn size_window_for_demo(ui: &SlintUiAdapter) {
 
 #[cfg(not(feature = "demo"))]
 fn size_window_for_demo(_ui: &SlintUiAdapter) {}
+
+#[cfg(feature = "demo")]
+fn configure_demo_audio() {
+    demo::configure_audio();
+}
+
+#[cfg(not(feature = "demo"))]
+fn configure_demo_audio() {}
 
 #[cfg(feature = "demo")]
 fn attach_probe(

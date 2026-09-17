@@ -2,7 +2,10 @@ use std::fmt;
 
 use serde::Deserialize;
 
+use std::time::Duration;
+
 use crate::adapters::demo::attachments;
+use crate::adapters::ui::dump::Poke;
 use crate::commands::ui::UiCommand;
 use crate::domain::media::AttachmentPick;
 use crate::domain::room::RoomId;
@@ -94,6 +97,14 @@ pub enum ProbeCommand {
         event_id: String,
     },
     CloseVideo,
+    PlayAudio {
+        event_id: String,
+    },
+    CloseAudio,
+    ToggleAudio,
+    SeekAudio {
+        ms: u64,
+    },
     OpenLink {
         url: String,
     },
@@ -112,6 +123,7 @@ pub struct Rejected(pub String);
 pub enum Driven {
     Command(UiCommand),
     SessionExpiry,
+    Poke(Poke),
 }
 
 impl fmt::Display for Driven {
@@ -119,6 +131,10 @@ impl fmt::Display for Driven {
         match self {
             Self::Command(cmd) => write!(f, "{cmd}"),
             Self::SessionExpiry => f.write_str("SessionExpired"),
+            Self::Poke(Poke::ToggleAudio) => f.write_str("ToggleAudio"),
+            Self::Poke(Poke::SeekAudio(position)) => {
+                write!(f, "SeekAudio({}ms)", position.as_millis())
+            }
         }
     }
 }
@@ -260,6 +276,21 @@ pub fn to_driven(command: ProbeCommand, selected: Selection<'_>) -> Result<Drive
             UiCommand::OpenVideo { event_id }
         }
         ProbeCommand::CloseVideo => UiCommand::CloseVideo,
+        ProbeCommand::PlayAudio { event_id } => {
+            if !cfg!(feature = "video") {
+                return Err(Rejected(
+                    "this build has no video feature, so PlayAudio hands the file to the system \
+                     player instead of playing it in the app"
+                        .to_owned(),
+                ));
+            }
+            UiCommand::PlayAudio { event_id }
+        }
+        ProbeCommand::CloseAudio => UiCommand::CloseAudio,
+        ProbeCommand::ToggleAudio => return Ok(Driven::Poke(Poke::ToggleAudio)),
+        ProbeCommand::SeekAudio { ms } => {
+            return Ok(Driven::Poke(Poke::SeekAudio(Duration::from_millis(ms))));
+        }
         ProbeCommand::OpenLink { url } => UiCommand::OpenLink { url },
         ProbeCommand::AcceptVerification => UiCommand::AcceptVerification,
         ProbeCommand::RejectVerification => UiCommand::RejectVerification,

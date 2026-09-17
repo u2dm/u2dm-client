@@ -36,6 +36,9 @@ pub(super) fn from_msgtype(msgtype: &MessageType) -> MessagePreview {
         MessageType::Emote(content) => (MessagePreviewKind::Text, content.body.as_str()),
         MessageType::Image(_) => return MessagePreview::labelled(MessagePreviewKind::Image),
         MessageType::Video(_) => return MessagePreview::labelled(MessagePreviewKind::Video),
+        MessageType::Audio(content) if content.voice.is_some() => {
+            return MessagePreview::labelled(MessagePreviewKind::Voice);
+        }
         MessageType::Audio(_) => return MessagePreview::labelled(MessagePreviewKind::Audio),
         MessageType::File(content) => (
             MessagePreviewKind::File,

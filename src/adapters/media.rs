@@ -9,7 +9,7 @@ use tokio::fs as async_fs;
 use tokio::task::spawn_blocking;
 
 use crate::adapters::{container, private_fs, video};
-use crate::domain::media::{AttachmentPick, PickedAttachment};
+use crate::domain::media::{AttachmentPick, PickedAttachment, Waveform};
 use crate::error::{AppError, Result};
 use crate::ports::media::MediaFilePort;
 use crate::util::random_hex;
@@ -137,38 +137,87 @@ async fn describe_in(path: &Path, poster_dir: Option<&Path>) -> Result<PickedAtt
         .ok_or_else(|| AppError::Other("the chosen file has no usable name".into()))?
         .to_owned();
 
-    let mimetype = sniff_mimetype(path).await;
-    let (dimensions, duration, poster) = if mimetype.starts_with("image/") {
-        (probe_dimensions(path.to_path_buf()).await, None, None)
-    } else if mimetype.starts_with("video/") {
-        inspect_video(path, poster_dir).await
-    } else {
-        (None, None, None)
-    };
+    let (mimetype, inspected) = inspect(path, sniff_mimetype(path).await, poster_dir).await;
 
     Ok(PickedAttachment {
         path: path.to_path_buf(),
         filename,
         mimetype,
         size: metadata.len(),
-        dimensions,
-        duration,
-        poster,
+        dimensions: inspected.dimensions,
+        duration: inspected.duration,
+        poster: inspected.poster,
+        waveform: inspected.waveform,
     })
 }
 
-type VideoDetails = (Option<(u32, u32)>, Option<Duration>, Option<PathBuf>);
+#[derive(Default)]
+struct Inspected {
+    dimensions: Option<(u32, u32)>,
+    duration: Option<Duration>,
+    poster: Option<PathBuf>,
+    waveform: Option<Waveform>,
+}
 
-async fn inspect_video(path: &Path, poster_dir: Option<&Path>) -> VideoDetails {
+async fn inspect(path: &Path, mimetype: String, poster_dir: Option<&Path>) -> (String, Inspected) {
+    if mimetype.starts_with("image/") {
+        let dimensions = probe_dimensions(path.to_path_buf()).await;
+        return (
+            mimetype,
+            Inspected {
+                dimensions,
+                ..Inspected::default()
+            },
+        );
+    }
+    if mimetype.starts_with("audio/") {
+        let canonical = container::canonical_audio_mime(&mimetype).to_owned();
+        return (canonical, inspect_audio(path).await.unwrap_or_default());
+    }
+    if !mimetype.starts_with("video/") {
+        return (mimetype, Inspected::default());
+    }
+    if let Some(inspected) = inspect_video(path, poster_dir).await {
+        return (mimetype, inspected);
+    }
+    match container::audio_only_mime(&mimetype) {
+        Some(audio) => match inspect_audio(path).await {
+            Some(inspected) => (audio.to_owned(), inspected),
+            None => (mimetype, Inspected::default()),
+        },
+        None => (mimetype, Inspected::default()),
+    }
+}
+
+async fn inspect_video(path: &Path, poster_dir: Option<&Path>) -> Option<Inspected> {
     let owned = path.to_path_buf();
-    let probed = spawn_blocking(move || video::probe(&owned)).await.ok().flatten();
-    let dimensions = probed.as_ref().map(|probe| (probe.width, probe.height));
-    let duration = probed.and_then(|probe| probe.duration);
+    let probed = spawn_blocking(move || video::probe(&owned))
+        .await
+        .ok()
+        .flatten()?;
     let poster = match poster_dir {
         Some(dir) => write_poster(path, dir).await,
         None => None,
     };
-    (dimensions, duration, poster)
+    Some(Inspected {
+        dimensions: Some((probed.width, probed.height)),
+        duration: probed.duration,
+        poster,
+        waveform: None,
+    })
+}
+
+async fn inspect_audio(path: &Path) -> Option<Inspected> {
+    let owned = path.to_path_buf();
+    let probed = spawn_blocking(move || video::probe_audio(&owned))
+        .await
+        .ok()
+        .flatten()?;
+    Some(Inspected {
+        duration: probed.duration,
+        waveform: probed.waveform,
+        ..Inspected::default()
+    })
 }
 
 async fn write_poster(path: &Path, dir: &Path) -> Option<PathBuf> {
@@ -220,7 +269,9 @@ async fn probe_dimensions(path: PathBuf) -> Option<(u32, u32)> {
 }
 
 fn launcher_safe_extension(data: &[u8]) -> Option<&'static str> {
-    launcher_safe_image_extension(data).or_else(|| container::launcher_safe_video_extension(data))
+    launcher_safe_image_extension(data)
+        .or_else(|| container::launcher_safe_video_extension(data))
+        .or_else(|| container::launcher_safe_audio_extension(data))
 }
 
 fn launcher_safe_image_extension(data: &[u8]) -> Option<&'static str> {

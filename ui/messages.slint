@@ -103,6 +103,9 @@ export global UserMessages {
         if kind == UserMessageKind.video-playback-failed {
             return @tr("This video could not be played");
         }
+        if kind == UserMessageKind.audio-playback-failed {
+            return @tr("This audio could not be played");
+        }
         if kind == UserMessageKind.file-save-failed {
             return @tr("Failed to save file");
         }
@@ -152,7 +155,11 @@ export global Clocks {
         if total-ms <= 0 {
             return "0:00";
         }
-        return floor(total-ms / 60000) + ":" + root.pad(floor(mod(total-ms / 1000, 60)));
+        if total-ms < 3600000 {
+            return floor(total-ms / 60000) + ":" + root.pad(floor(mod(total-ms / 1000, 60)));
+        }
+        return floor(total-ms / 3600000) + ":" + root.pad(floor(mod(total-ms / 60000, 60))) + ":"
+            + root.pad(floor(mod(total-ms / 1000, 60)));
     }
 }
 

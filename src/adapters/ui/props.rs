@@ -8,6 +8,7 @@ use crate::commands::messages::{UserMessage, UserMessageKind};
 use crate::commands::ui::UiCommand;
 use crate::commands::view::{AttachmentKind, LoginActivity, LoginStep};
 use crate::domain::auth::LoginMethod;
+use crate::domain::media::AudioKind;
 use crate::domain::sync::ConnectionStatus;
 use crate::domain::timeline::TimelineStatus;
 use crate::domain::verification::VerificationEmoji as DomainVerificationEmoji;
@@ -50,6 +51,7 @@ pub trait UiProps {
     fn set_attachment_error(&self, kind: UserMessageKind);
     fn set_attachment_kind(&self, kind: AttachmentKind);
     fn set_video_error(&self, kind: UserMessageKind);
+    fn set_audio_kind(&self, kind: AudioKind);
     fn apply_video_frame(&self, buffer: SharedPixelBuffer<Rgb8Pixel>);
     fn clear_video_frame(&self);
     fn set_connection_state(&self, status: &ConnectionStatus);

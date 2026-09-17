@@ -7,7 +7,7 @@ use crate::domain::auth::ServerInfo;
 use crate::domain::media::PickedAttachment;
 use crate::domain::room::RoomId;
 use crate::domain::timeline::{
-    PaginationDirection, PaginationOutcome, TimelineAdvance, TimelineFocus,
+    AudioTrack, PaginationDirection, PaginationOutcome, TimelineAdvance, TimelineFocus,
 };
 use crate::domain::verification::VerificationEvent;
 use crate::ports::matrix::{AuthenticatedSession, CleanupReport};
@@ -38,6 +38,10 @@ pub(super) enum AppEvent {
         room_id: RoomId,
         failure: Option<UserMessage>,
     },
+    AudioFetched {
+        request: u64,
+        outcome: Result<PathBuf, UserMessageKind>,
+    },
 }
 
 impl AppEvent {
@@ -50,6 +54,7 @@ impl AppEvent {
             Self::VerificationActionFailed(_) => "VerificationActionFailed",
             Self::AttachmentPicked(_) => "AttachmentPicked",
             Self::AttachmentSettled { .. } => "AttachmentSettled",
+            Self::AudioFetched { .. } => "AudioFetched",
         }
     }
 }
@@ -71,6 +76,12 @@ pub(super) enum TimelineEvent {
         generation: i32,
         focus: TimelineFocus,
     },
+    AudioLocated {
+        room_id: RoomId,
+        generation: i32,
+        request: u64,
+        track: Option<Box<AudioTrack>>,
+    },
 }
 
 impl TimelineEvent {
@@ -79,6 +90,7 @@ impl TimelineEvent {
             Self::Advanced { .. } => "TimelineAdvanced",
             Self::PaginationCompleted { .. } => "TimelinePaginationCompleted",
             Self::Refocus { .. } => "RefocusTimeline",
+            Self::AudioLocated { .. } => "AudioLocated",
         }
     }
 }

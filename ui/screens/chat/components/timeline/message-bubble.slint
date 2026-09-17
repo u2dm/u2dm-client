@@ -13,6 +13,7 @@ import { ImageMessage, ImagePlaceholder } from "./messages/image-message.slint";
 import { VideoMessage, VideoPlaceholder } from "./messages/video-message.slint";
 import { StickerMessage } from "./messages/sticker-message.slint";
 import { FileMessage } from "./messages/file-message.slint";
+import { AudioMessage } from "./messages/audio-message.slint";
 import { UtdMessage } from "./messages/utd-message.slint";
 import { UnsupportedMessage } from "./messages/unsupported-message.slint";
 import { UnreadDivider } from "./messages/unread-divider.slint";
@@ -374,6 +375,27 @@ export component MessageBubble inherits VerticalLayout {
                             event-id: msg.event-id;
                             send-state: msg.send-state;
                             send-progress: msg.send-progress;
+                        }
+
+                        if msg.message-type == MessageKind.audio: AudioMessage {
+                            audio-kind: msg.audio-kind;
+                            filename: msg.filename;
+                            duration: msg.duration;
+                            size: msg.size;
+                            waveform: msg.waveform;
+                            event-id: msg.event-id;
+                            is-own: root.is-own;
+                            media-state: msg.media-state;
+                            send-state: msg.send-state;
+                            send-progress: msg.send-progress;
+                        }
+
+                        if msg.message-type == MessageKind.audio && root.has-caption: TextMessage {
+                            unique-id: msg.unique-id;
+                            plain: msg.body;
+                            styled: msg.styled;
+                            has-links: msg.has-links;
+                            is-own: root.is-own;
                         }
 
                         if msg.message-type == MessageKind.utd: UtdMessage { }

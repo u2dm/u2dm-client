@@ -131,6 +131,15 @@ export global AppStyle {
     out property <color> surface-sunken: Palette.background.mix(Palette.alternate-background, 0.7);
     out property <color> surface-rail: Palette.alternate-background.mix(Palette.background, 0.35);
 
+    out property <color> audio-button: Palette.accent-background;
+    out property <color> on-audio-button: Palette.accent-foreground;
+    out property <color> audio-button-own: root.dark ? Palette.foreground : Palette.background;
+    out property <color> on-audio-button-own: root.dark ? root.own-bubble : Palette.accent-background;
+    out property <color> audio-wave-played: Palette.accent-background;
+    out property <color> audio-wave-played-own: Palette.foreground;
+    out property <color> audio-wave-rest: Palette.foreground.transparentize(0.7);
+    out property <color> scrub-track: Palette.foreground.transparentize(0.75);
+
     out property <color> chip-fill: Palette.background.transparentize(0.78);
     out property <color> chip-fill-mine: Palette.accent-background.transparentize(0.72);
 
@@ -228,6 +237,16 @@ export global Metrics {
     out property <length> video-scrub-track: 4px;
     out property <length> video-scrub-knob: 12px;
     out property <length> video-stage-inset: 48px;
+
+    out property <length> audio-button: Size.target;
+    out property <length> audio-wave-height: Size.xs;
+    out property <length> audio-wave-width: 160px;
+    out property <length> audio-wave-bar: Stroke.marker;
+    out property <length> audio-wave-bar-min: Stroke.emphasis;
+    out property <length> audio-wave-gap: Stroke.hairline;
+    out property <length> audio-track-width: 200px;
+    out property <length> audio-track-line: Stroke.emphasis;
+    out property <length> now-playing-bar: Size.xl;
 
     out property <length> toast-min-width: 200px;
     out property <length> toast-max-width: 500px;

@@ -1,4 +1,4 @@
-use crate::domain::media::ThumbnailOutcome;
+use crate::domain::media::{AudioKind, AudioMeta, ThumbnailOutcome};
 use crate::domain::message::TimelineMessage;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -119,6 +119,58 @@ pub enum TimelineCommand {
     MarkRead,
     JumpTo(String),
     ToggleReaction { event_id: String, key: String },
+    LocateAudio { request: u64, lookup: AudioLookup },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AudioLookup {
+    Event(String),
+    VoiceAfter(String),
+}
+
+impl AudioLookup {
+    pub fn anchor(&self) -> &str {
+        match self {
+            Self::Event(event_id) | Self::VoiceAfter(event_id) => event_id,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct AudioTrack {
+    pub event_id: String,
+    pub sender: String,
+    pub meta: AudioMeta,
+}
+
+impl AudioTrack {
+    fn of(message: TimelineMessage) -> Option<Self> {
+        let meta = message.body.audio()?.clone();
+        let sender = message
+            .sender_display_name
+            .unwrap_or_else(|| message.sender.clone());
+        Some(Self {
+            event_id: message.event_id?,
+            sender,
+            meta,
+        })
+    }
+}
+
+pub fn locate_audio<I>(lookup: &AudioLookup, messages: I) -> Option<AudioTrack>
+where
+    I: IntoIterator<Item = TimelineMessage>,
+{
+    let mut from_anchor = messages
+        .into_iter()
+        .skip_while(|message| message.event_id.as_deref() != Some(lookup.anchor()));
+    match lookup {
+        AudioLookup::Event(_) => from_anchor.next().and_then(AudioTrack::of),
+        AudioLookup::VoiceAfter(_) => from_anchor
+            .skip(1)
+            .filter_map(AudioTrack::of)
+            .find(|track| track.meta.kind == AudioKind::Voice),
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -193,6 +245,10 @@ pub enum TimelineUpdate {
         event_id: String,
         target: JumpTarget,
     },
+    AudioLocated {
+        request: u64,
+        track: Option<Box<AudioTrack>>,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -209,6 +265,7 @@ impl TimelineUpdate {
             Self::ResolvingUnread => "ResolvingUnread",
             Self::Pagination { .. } => "Pagination",
             Self::JumpOutcome { .. } => "JumpOutcome",
+            Self::AudioLocated { .. } => "AudioLocated",
         }
     }
 }

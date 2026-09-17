@@ -166,10 +166,11 @@
       "avatar": "@nina:matrix.org",
       "direct": true,
       "members": 2,
-      "days_ago": 3,
+      "minutes_ago": 5,
       "last_message": {
-        "body": "you are so unbelievably cooked",
-        "own": true
+        "sender": "Nina",
+        "sender_id": "@nina:matrix.org",
+        "kind": "voice"
       }
     },
     {
@@ -1130,6 +1131,20 @@
         "minutes_ago": 30
       },
       {
+        "id": "demo-music-interlude",
+        "sender": "@leo:matrix.org",
+        "name": "Leo",
+        "days_ago": 5,
+        "minutes_ago": 29,
+        "audio": {
+          "kind": "track",
+          "duration_secs": 12,
+          "mimetype": "audio/mp4",
+          "filename": "04 Interlude.m4a",
+          "size": 1930000
+        }
+      },
+      {
         "id": "demo-music-4",
         "sender": "@priya:matrix.org",
         "name": "Priya",
@@ -1266,6 +1281,41 @@
         "name": "You",
         "body": "you are so unbelievably cooked",
         "days_ago": 3
+      },
+      {
+        "id": "demo-nina-voice-1",
+        "sender": "@nina:matrix.org",
+        "name": "Nina Kowalski",
+        "minutes_ago": 9,
+        "audio": {
+          "kind": "voice",
+          "duration_secs": 3,
+          "mimetype": "audio/ogg",
+          "size": 14200,
+          "waveform": [80, 220, 510, 760, 900, 640, 300, 120, 90, 340, 720, 1010, 860, 520, 260, 140, 380, 610, 840, 700,
+                       430, 210, 95, 60, 250, 540, 820, 980, 760, 480, 300, 180, 420, 690, 560, 330, 160, 90, 70, 40]
+        }
+      },
+      {
+        "id": "demo-nina-voice-2",
+        "sender": "@alex:matrix.org",
+        "name": "You",
+        "minutes_ago": 7,
+        "audio": { "kind": "voice", "duration_secs": 2, "mimetype": "audio/ogg", "size": 9800 }
+      },
+      {
+        "id": "demo-nina-4",
+        "sender": "@nina:matrix.org",
+        "name": "Nina Kowalski",
+        "body": "ok but hear me out",
+        "minutes_ago": 6
+      },
+      {
+        "id": "demo-nina-voice-3-missing-download",
+        "sender": "@nina:matrix.org",
+        "name": "Nina Kowalski",
+        "minutes_ago": 5,
+        "audio": { "kind": "voice", "duration_secs": 4, "mimetype": "audio/ogg", "size": 18400 }
       }
     ],
     "!priya:demo.local": [

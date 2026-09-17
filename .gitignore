@@ -10,3 +10,6 @@
 /assets/demo/*.gif
 /assets/demo/*.webp
 /assets/demo/*.mp4
+/assets/demo/*.ogg
+/assets/demo/*.m4a
+/assets/demo/*.mp3

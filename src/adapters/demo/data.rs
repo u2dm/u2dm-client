@@ -6,7 +6,9 @@ use super::dto::{DemoData, RoomDto, SpaceDto, StickerPackDto};
 use super::media;
 use super::timeline::{self, scenario};
 use crate::domain::auth::Session;
-use crate::domain::media::{FileMeta, ImageMeta, OutgoingAttachment, VideoMeta};
+use crate::domain::media::{
+    AudioKind, AudioMeta, FileMeta, ImageMeta, OutgoingAttachment, VideoMeta,
+};
 use crate::domain::message::{MessageBody, ReplyInfo, RichText, SendState, TimelineMessage};
 use crate::domain::room::{Room, RoomId, Space};
 use crate::domain::sticker::{StickerImage, StickerPack};
@@ -253,6 +255,18 @@ pub fn own_attachment(
                 size: Some(picked.size),
             },
         }
+    } else if picked.is_audio() {
+        MessageBody::Audio {
+            caption: caption(),
+            meta: AudioMeta {
+                kind: AudioKind::Track,
+                filename: picked.filename.clone(),
+                mimetype: Some(picked.mimetype.clone()),
+                duration: picked.duration,
+                size: Some(picked.size),
+                waveform: picked.waveform.clone(),
+            },
+        }
     } else if picked.is_image() {
         MessageBody::Image {
             caption: caption(),
@@ -297,7 +311,9 @@ pub fn body_preview(body: &MessageBody) -> String {
         MessageBody::Text(text) | MessageBody::Notice(text) | MessageBody::Emote(text) => {
             text.plain.clone()
         }
-        MessageBody::Image { caption, .. } | MessageBody::Video { caption, .. } => caption
+        MessageBody::Image { caption, .. }
+        | MessageBody::Video { caption, .. }
+        | MessageBody::Audio { caption, .. } => caption
             .as_ref()
             .map(|text| text.plain.clone())
             .unwrap_or_default(),

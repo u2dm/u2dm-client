@@ -1,11 +1,14 @@
+use std::collections::{HashMap, HashSet};
 use std::env;
 use std::path::{Path, PathBuf};
+use std::sync::{Mutex, OnceLock};
 
 use super::{attachments, data};
-use crate::domain::media::MediaFailure;
+use crate::domain::media::{MediaFailure, Waveform};
 use crate::ports::media::MediaCache;
 
 const DATA_ENV: &str = "U2DM_DEMO_DATA";
+const AUDIO_ASSET_EXTENSIONS: &[&str] = &["ogg", "m4a", "mp3"];
 
 const FAILURE_SUFFIXES: &[(&str, MediaFailure)] = &[
     ("-missing-download", MediaFailure::Download),
@@ -64,6 +67,50 @@ impl MediaCache for DemoMediaCache {
     fn sticker_failed(&self, mxc: &str) -> bool {
         demo_failure(mxc_asset(mxc)).is_some() && self.sticker_path(mxc).is_none()
     }
+
+    fn audio_path(&self, event_id: &str) -> Option<PathBuf> {
+        was_fetched(event_id)
+            .then(|| audio_asset_path(event_id))
+            .flatten()
+    }
+
+    fn audio_failure(&self, event_id: &str) -> Option<MediaFailure> {
+        (was_fetched(event_id) && audio_asset_path(event_id).is_none())
+            .then(|| demo_failure(event_id).unwrap_or(MediaFailure::NoSource))
+    }
+
+    fn audio_waveform(&self, event_id: &str) -> Option<Waveform> {
+        learned_waveforms().lock().ok()?.get(event_id).cloned()
+    }
+}
+
+fn learned_waveforms() -> &'static Mutex<HashMap<String, Waveform>> {
+    static LEARNED: OnceLock<Mutex<HashMap<String, Waveform>>> = OnceLock::new();
+    LEARNED.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+pub(super) fn remember_waveform(event_id: &str, waveform: Waveform) {
+    if let Ok(mut learned) = learned_waveforms().lock() {
+        learned.insert(event_id.to_owned(), waveform);
+    }
+}
+
+fn fetched_audio() -> &'static Mutex<HashSet<String>> {
+    static FETCHED: OnceLock<Mutex<HashSet<String>>> = OnceLock::new();
+    FETCHED.get_or_init(|| Mutex::new(HashSet::new()))
+}
+
+fn was_fetched(event_id: &str) -> bool {
+    fetched_audio()
+        .lock()
+        .is_ok_and(|fetched| fetched.contains(event_id))
+}
+
+pub(super) fn fetch_audio(event_id: &str) -> Option<PathBuf> {
+    if let Ok(mut fetched) = fetched_audio().lock() {
+        fetched.insert(event_id.to_owned());
+    }
+    audio_asset_path(event_id)
 }
 
 pub fn assets_dir() -> PathBuf {
@@ -90,6 +137,14 @@ fn probe(prefix: &str, name: &str) -> Option<PathBuf> {
 pub(super) fn video_asset_path(event_id: &str) -> Option<PathBuf> {
     asset(&format!("video-{event_id}.mp4"))
         .or_else(|| asset(&format!("video-{event_id}.webm")))
+}
+
+fn audio_asset_path(event_id: &str) -> Option<PathBuf> {
+    attachments::sent_audio_path(event_id).or_else(|| {
+        AUDIO_ASSET_EXTENSIONS
+            .iter()
+            .find_map(|extension| asset(&format!("audio-{event_id}.{extension}")))
+    })
 }
 
 fn sticker_asset_path(asset: &str) -> Option<PathBuf> {

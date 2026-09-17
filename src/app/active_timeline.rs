@@ -10,7 +10,7 @@ use crate::commands::messages::{UserMessage, UserMessageKind};
 use crate::commands::view::Toast;
 use crate::domain::room::RoomId;
 use crate::domain::timeline::{
-    JumpTarget, PaginationDirection, PaginationOutcome, ScrollMode, TimelineAdvance,
+    AudioLookup, JumpTarget, PaginationDirection, PaginationOutcome, ScrollMode, TimelineAdvance,
     TimelineCommand, TimelineFocus, TimelinePatch, TimelineStatus, TimelineUpdate,
 };
 use crate::domain::viewport::ViewportController;
@@ -310,6 +310,18 @@ impl ActiveTimeline {
         }
     }
 
+    pub(super) fn locate_audio(&self, request: u64, lookup: AudioLookup) -> Option<RoomId> {
+        let room_id = self.active_room_id.clone()?;
+        let tx = self.timeline_cmd_tx.as_ref()?;
+        tx.send(TimelineCommand::LocateAudio { request, lookup })
+            .ok()
+            .map(|()| room_id)
+    }
+
+    pub(super) fn is_active_room(&self, room_id: &RoomId) -> bool {
+        self.active_room_id.as_ref() == Some(room_id)
+    }
+
     pub(super) fn toggle_reaction(&mut self, event_id: String, key: String) {
         let Some(tx) = &self.timeline_cmd_tx else {
             return;
@@ -449,6 +461,17 @@ impl Forwarder {
             }
             TimelineUpdate::JumpOutcome { event_id, target } => {
                 self.forward_jump(event_id, target).await;
+            }
+            TimelineUpdate::AudioLocated { request, track } => {
+                let located = TimelineEvent::AudioLocated {
+                    room_id: self.room_id.clone(),
+                    generation: self.generation,
+                    request,
+                    track,
+                };
+                if self.events.send(AppEvent::Timeline(located)).is_err() {
+                    return false;
+                }
             }
             TimelineUpdate::Pagination { direction, outcome } => {
                 let settled = TimelineEvent::PaginationCompleted {

@@ -1,4 +1,5 @@
 mod attachments;
+pub mod audio;
 mod browser;
 pub mod catalog;
 mod data;
@@ -62,6 +63,12 @@ pub fn browser() -> Arc<dyn BrowserPort> {
 
 pub fn media_files() -> Arc<dyn MediaFilePort> {
     Arc::new(files::DemoMediaFiles::new())
+}
+
+pub fn configure_audio() {
+    if audio::scenario().silent {
+        SlintUiAdapter::prefer_silent_audio();
+    }
 }
 
 pub fn size_window_for_screenshots(ui: &SlintUiAdapter) {

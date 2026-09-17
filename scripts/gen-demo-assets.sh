@@ -108,6 +108,11 @@ video_clips() {
     | "\(.id) \(.video.width) \(.video.height) \([.video.duration_secs // 5, 30] | min)"' "$data"
 }
 
+audio_clips() {
+  jq -r '.timelines[][] | select(.audio)
+    | "\(.id) \(.audio.kind) \([.audio.duration_secs // 5, 30] | min)"' "$data"
+}
+
 sticker_messages() {
   jq -r '.timelines[][] | select(.sticker) | "\(.id) \(.sticker.animated // false)"' "$data"
 }
@@ -195,6 +200,47 @@ generate_demo_videos() {
   done < <(video_clips)
 }
 
+voice_encoder_args() {
+  local encoders
+  encoders=$(ffmpeg -hide_banner -encoders 2>/dev/null)
+  if grep -q ' libopus ' <<<"$encoders"; then
+    echo "-c:a libopus -b:a 32k"
+  elif grep -q ' opus ' <<<"$encoders"; then
+    echo "-c:a opus -strict experimental -b:a 32k"
+  else
+    echo "-c:a libvorbis -q:a 2"
+  fi
+}
+
+generate_demo_audio() {
+  local id kind duration destination source voice_args
+  if ! command -v ffmpeg >/dev/null; then
+    echo "ffmpeg not found, skipping demo audio clips" >&2
+    return 0
+  fi
+  voice_args=$(voice_encoder_args)
+  while read -r id kind duration; do
+    has_no_asset_on_purpose "$id" && continue
+    if [[ $kind == voice ]]; then
+      destination="$assets/audio-$id.ogg"
+      source="0.5*sin(2*PI*210*t)*abs(sin(2*PI*0.9*t))*(0.4+0.6*abs(sin(2*PI*3.1*t)))"
+    else
+      destination="$assets/audio-$id.m4a"
+      source="0.2*sin(2*PI*261.6*t)+0.2*sin(2*PI*329.6*t)+0.2*sin(2*PI*392*t)"
+    fi
+    already_fetched "$destination" && continue
+    local codec_args=(-c:a aac -b:a 96k)
+    [[ $kind == voice ]] && read -r -a codec_args <<<"$voice_args"
+    if ffmpeg -y -loglevel error \
+      -f lavfi -i "aevalsrc=$source:s=48000:d=$duration" \
+      -ac 1 "${codec_args[@]}" "$destination"; then
+      echo "generated $(basename "$destination")"
+    else
+      echo "audio-$id" >>"$failures"
+    fi
+  done < <(audio_clips)
+}
+
 fetch_video_posters() {
   local id width height
   while read -r id width height; do
@@ -266,5 +312,6 @@ fetch_space_tiles
 fetch_photos
 fetch_video_posters
 generate_demo_videos
+generate_demo_audio
 fetch_stickers
 report

@@ -1,5 +1,6 @@
 #![allow(clippy::pub_use)]
 
+mod audio;
 mod autolink;
 mod backend;
 mod clock;

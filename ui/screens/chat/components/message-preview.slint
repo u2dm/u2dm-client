@@ -11,6 +11,9 @@ export global MessagePreview {
         if kind == PreviewKind.audio {
             return @tr("🎵 Audio");
         }
+        if kind == PreviewKind.voice {
+            return @tr("🎤 Voice message");
+        }
         if kind == PreviewKind.file {
             return @tr("📎 {}", body);
         }

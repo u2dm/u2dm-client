@@ -1,6 +1,6 @@
 use std::hash::{DefaultHasher, Hash, Hasher};
 
-use crate::domain::media::{FileMeta, ImageMeta, MediaKind, VideoMeta};
+use crate::domain::media::{AudioKind, AudioMeta, FileMeta, ImageMeta, MediaKind, VideoMeta};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum MessagePreviewKind {
@@ -10,6 +10,7 @@ pub enum MessagePreviewKind {
     Image,
     Video,
     Audio,
+    Voice,
     File,
     Location,
     Encrypted,
@@ -78,6 +79,10 @@ pub enum MessageBody {
         caption: Option<RichText>,
         meta: VideoMeta,
     },
+    Audio {
+        caption: Option<RichText>,
+        meta: AudioMeta,
+    },
     File {
         meta: FileMeta,
     },
@@ -107,8 +112,19 @@ impl MessageBody {
             Self::Image { .. } => MessagePreviewKind::Image,
             Self::Video { .. } => MessagePreviewKind::Video,
             Self::Sticker { .. } => MessagePreviewKind::Sticker,
+            Self::Audio { meta, .. } => match meta.kind {
+                AudioKind::Voice => MessagePreviewKind::Voice,
+                AudioKind::Track => MessagePreviewKind::Audio,
+            },
             Self::File { .. } => MessagePreviewKind::File,
             Self::UnableToDecrypt => MessagePreviewKind::Encrypted,
+        }
+    }
+
+    pub fn audio(&self) -> Option<&AudioMeta> {
+        match self {
+            Self::Audio { meta, .. } => Some(meta),
+            _ => None,
         }
     }
 
@@ -120,6 +136,7 @@ impl MessageBody {
             Self::Text(_)
             | Self::Notice(_)
             | Self::Emote(_)
+            | Self::Audio { .. }
             | Self::File { .. }
             | Self::Service(_)
             | Self::UnableToDecrypt

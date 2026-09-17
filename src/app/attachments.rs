@@ -177,6 +177,8 @@ fn describe(picked: &PickedAttachment, sending: bool, error: UserMessage) -> Att
 fn attachment_kind(picked: &PickedAttachment) -> AttachmentKind {
     if picked.is_video() {
         AttachmentKind::Video
+    } else if picked.is_audio() {
+        AttachmentKind::Audio
     } else if picked.is_image() {
         AttachmentKind::Image
     } else {

@@ -4,7 +4,8 @@ use std::sync::Arc;
 
 use super::messages::{UserMessage, UserMessageKind};
 use crate::domain::auth::LoginMethod;
-use crate::domain::room::{RoomList, Space};
+use crate::domain::media::AudioMeta;
+use crate::domain::room::{RoomId, RoomList, Space};
 use crate::domain::sticker::StickerPacks;
 use crate::domain::sync::ConnectionStatus;
 
@@ -17,6 +18,7 @@ pub struct AppViewState {
     pub stickers: StickerView,
     pub attachment: AttachmentView,
     pub video: VideoView,
+    pub audio: AudioView,
     pub toast: Toast,
 }
 
@@ -56,12 +58,34 @@ pub struct VideoView {
     pub error: UserMessageKind,
 }
 
+#[derive(Clone, Default, PartialEq)]
+pub struct AudioView {
+    pub now_playing: Option<NowPlaying>,
+}
+
+#[derive(Clone, PartialEq)]
+pub struct NowPlaying {
+    pub request: u64,
+    pub room_id: RoomId,
+    pub event_id: String,
+    pub sender: String,
+    pub meta: AudioMeta,
+    pub file: TrackFile,
+}
+
+#[derive(Clone, PartialEq, Eq)]
+pub enum TrackFile {
+    Downloading,
+    Ready(PathBuf),
+}
+
 #[derive(Clone, Copy, Default, PartialEq, Eq)]
 pub enum AttachmentKind {
     #[default]
     File,
     Image,
     Video,
+    Audio,
 }
 
 #[derive(Clone, Default, PartialEq, Eq)]

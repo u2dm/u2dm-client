@@ -1,5 +1,6 @@
 mod active_timeline;
 mod attachments;
+mod audio;
 mod credentials;
 mod establish;
 mod event;
@@ -19,6 +20,7 @@ use std::sync::Arc;
 
 use active_timeline::ActiveTimeline;
 use attachments::Attachments;
+use audio::AudioController;
 use establish::EstablishedSession;
 use event::{AppEvent, EndReason, SessionEvent, TimelineEvent};
 use input::{CommandSender, EventSender, Inbox, Input};
@@ -44,7 +46,7 @@ use crate::domain::media::AttachmentPick;
 use crate::domain::room::{RoomId, RoomList, Space};
 use crate::domain::sticker::PackId;
 use crate::domain::sync::ConnectionStatus;
-use crate::domain::timeline::TimelineFocus;
+use crate::domain::timeline::{AudioTrack, TimelineFocus};
 use crate::ports::browser::BrowserPort;
 use crate::ports::matrix::{AuthPort, AuthenticatedSession, CleanupReport, SessionPort};
 use crate::ports::media::MediaFilePort;
@@ -82,6 +84,7 @@ pub struct AppService {
     active_timeline: ActiveTimeline,
     verification: VerificationController,
     media: MediaActions,
+    audio: AudioController,
     stickers: Stickers,
     attachments: Attachments,
     selection: Selection,
@@ -115,6 +118,7 @@ impl AppService {
             active_timeline: ActiveTimeline::new(events.clone(), Arc::clone(&output)),
             verification: VerificationController::new(Arc::clone(&output), events.clone()),
             media: MediaActions::new(Arc::clone(&media_files), Arc::clone(&output)),
+            audio: AudioController::new(Arc::clone(&output), events.clone()),
             stickers: Stickers::new(Arc::clone(&output)),
             attachments: Attachments::new(media_files, Arc::clone(&output), events.clone()),
             events,
@@ -324,6 +328,15 @@ impl AppService {
             UiCommand::CloseVideo => {
                 self.media.close_video();
             }
+            UiCommand::PlayAudio { event_id } => {
+                self.play_audio(event_id);
+            }
+            UiCommand::CloseAudio => {
+                self.audio.close();
+            }
+            UiCommand::AudioEnded { request, end } => {
+                self.audio.ended(&self.active_timeline, request, end);
+            }
             UiCommand::OpenLink { url } => {
                 self.session.spawn_open_link(&mut self.operations, url);
             }
@@ -512,6 +525,9 @@ impl AppService {
             AppEvent::AttachmentSettled { room_id, failure } => {
                 self.attachments.settle(&room_id, failure);
             }
+            AppEvent::AudioFetched { request, outcome } => {
+                self.audio.fetched(request, outcome);
+            }
         }
     }
 
@@ -537,6 +553,12 @@ impl AppService {
                 generation,
                 focus,
             } => self.refocus_timeline(room_id, generation, focus).await,
+            TimelineEvent::AudioLocated {
+                room_id,
+                generation,
+                request,
+                track,
+            } => self.settle_audio_lookup(&room_id, generation, request, track),
         }
     }
 
@@ -734,6 +756,30 @@ impl AppService {
         }
     }
 
+    fn play_audio(&mut self, event_id: String) {
+        if cfg!(feature = "video") {
+            self.audio.play(&self.active_timeline, event_id);
+        } else if let Some(media) = self.port(|a| &a.media) {
+            self.media.play_audio_externally(media, event_id);
+        }
+    }
+
+    fn settle_audio_lookup(
+        &mut self,
+        room_id: &RoomId,
+        generation: i32,
+        request: u64,
+        track: Option<Box<AudioTrack>>,
+    ) {
+        let Some(media) = self.port(|a| &a.media) else {
+            return;
+        };
+        let track = track
+            .filter(|_| self.active_timeline.is_current(room_id, generation))
+            .map(|track| *track);
+        self.audio.located(media, request, track);
+    }
+
     fn save_file(&mut self, event_id: String, filename: String) {
         if let Some(media) = self.port(|a| &a.media) {
             self.media.save_file(media, event_id, filename);
@@ -777,6 +823,7 @@ impl AppService {
 
     async fn open_room(&mut self, room_id: RoomId, focus: TimelineFocus) {
         self.attachments.clear();
+        self.audio.abandon_lookup();
         self.selection.room = Some(room_id.clone());
         let generation = self.selection.next_generation();
         let (name, member_count) = self
@@ -881,6 +928,7 @@ impl AppService {
             self.active_timeline.shutdown(),
             self.operations.restart(),
             self.media.cancel_and_drain(),
+            self.audio.restart(),
             self.stickers.restart(),
         );
     }
@@ -926,6 +974,7 @@ impl AppService {
             self.active_timeline.shutdown(),
             self.operations.shutdown(),
             self.media.drain(),
+            self.audio.shutdown(),
             self.stickers.shutdown(),
         );
     }

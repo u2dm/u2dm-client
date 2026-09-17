@@ -11,11 +11,11 @@ use super::present::{
     message_body_html, message_body_text, message_kind, message_sender_label,
     message_timestamp_label, pronoun_labels, reaction_key_label, reactor_labels,
     room_activity_label, sender_initial, service_kind, service_target, unsupported_kind,
-    user_initial,
+    user_initial, voice_bars,
 };
 use super::richtext;
 use super::schema::{define_ui_enum, media_failures, media_states};
-use crate::domain::media::{MediaFailure, ThumbnailOutcome};
+use crate::domain::media::{AudioKind, AudioMeta, MediaFailure, ThumbnailOutcome};
 use crate::domain::message::{
     MessageBody, MessagePreviewKind, Reaction, Reactor, SendState, TimelineMessage,
 };
@@ -23,6 +23,7 @@ use crate::domain::room::{Room, Space};
 use crate::domain::sticker::{PackId, StickerImage, StickerPack};
 use crate::domain::timeline::EnrichmentDelta;
 use crate::ports::media::MediaCache;
+use crate::util::format_bytes;
 
 media_states!(define_ui_enum MediaState;);
 media_failures!(define_ui_enum MediaFailureKind;);
@@ -224,6 +225,10 @@ pub struct MessageDto {
     pub image_width: i32,
     pub image_height: i32,
     pub duration: SharedString,
+    pub filename: SharedString,
+    pub size: SharedString,
+    pub audio_kind: AudioKind,
+    pub waveform: Vec<f32>,
     pub image_mimetype: SharedString,
     pub image_extension: SharedString,
     pub thumbnail: Option<Image>,
@@ -360,6 +365,58 @@ fn reaction_dtos(
     (chips, all)
 }
 
+pub struct AudioRowUpdate {
+    pub media_state: MediaState,
+    pub media_failure: MediaFailureKind,
+    pub waveform: Vec<f32>,
+}
+
+fn audio_media_state(event_id: &str, media: &dyn MediaCache) -> (MediaState, MediaFailureKind) {
+    if media.audio_path(event_id).is_some() {
+        return (MediaState::Ready, MediaFailureKind::None);
+    }
+    media
+        .audio_failure(event_id)
+        .map_or((MediaState::Idle, MediaFailureKind::None), |reason| {
+            (MediaState::Failed, failure_kind(reason))
+        })
+}
+
+pub fn audio_row_update(
+    event_id: &str,
+    meta: &AudioMeta,
+    media: &dyn MediaCache,
+) -> AudioRowUpdate {
+    let (media_state, media_failure) = audio_media_state(event_id, media);
+    AudioRowUpdate {
+        media_state,
+        media_failure,
+        waveform: voice_bars(meta, media.audio_waveform(event_id).as_ref()),
+    }
+}
+
+fn apply_audio(
+    dto: &mut MessageDto,
+    m: &TimelineMessage,
+    meta: &AudioMeta,
+    media: &dyn MediaCache,
+) {
+    dto.audio_kind = meta.kind;
+    dto.filename = SharedString::from(&meta.filename);
+    dto.size = meta
+        .size
+        .map(|size| SharedString::from(&format_bytes(size)))
+        .unwrap_or_default();
+    if let Some(duration) = meta.duration {
+        dto.duration = SharedString::from(&duration_label(duration));
+    }
+    dto.waveform = voice_bars(meta, None);
+    if let Some(event_id) = m.event_id.as_deref() {
+        (dto.media_state, dto.media_failure) = audio_media_state(event_id, media);
+        dto.waveform = voice_bars(meta, media.audio_waveform(event_id).as_ref());
+    }
+}
+
 fn apply_media(
     dto: &mut MessageDto,
     m: &TimelineMessage,
@@ -369,6 +426,9 @@ fn apply_media(
         && let Some(duration) = meta.duration
     {
         dto.duration = SharedString::from(&duration_label(duration));
+    }
+    if let Some(meta) = m.body.audio() {
+        apply_audio(dto, m, meta, media);
     }
 
     let (_, meta) = m.body.media()?;
@@ -449,6 +509,10 @@ pub fn message_to_dto(m: &TimelineMessage, media: &dyn MediaCache) -> MessageDto
         image_width: 0,
         image_height: 0,
         duration: SharedString::new(),
+        filename: SharedString::new(),
+        size: SharedString::new(),
+        audio_kind: AudioKind::Track,
+        waveform: Vec::new(),
         image_mimetype: SharedString::new(),
         image_extension: SharedString::new(),
         thumbnail: None,

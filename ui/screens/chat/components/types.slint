@@ -1,4 +1,4 @@
-import { MediaFailure, MediaState, MessageKind, PreviewKind, SendState, ServiceKind } from "../../../enums.slint";
+import { AudioKind, MediaFailure, MediaState, MessageKind, PreviewKind, SendState, ServiceKind } from "../../../enums.slint";
 
 export struct RoomEntry {
     id: string,
@@ -73,6 +73,10 @@ export struct MessageEntry {
     image-width: int,
     image-height: int,
     duration: string,
+    filename: string,
+    size: string,
+    audio-kind: AudioKind,
+    waveform: [float],
     event-id: string,
     has-avatar: bool,
     needs-media: bool,

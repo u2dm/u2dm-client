@@ -14,7 +14,7 @@ use crate::adapters::private_fs;
 use crate::domain::media::MediaFailure;
 
 const MAX_CACHE_BYTES: u64 = 512 * 1024 * 1024;
-const MAX_VIDEO_CACHE_BYTES: u64 = 512 * 1024 * 1024;
+const MAX_PLAYABLE_CACHE_BYTES: u64 = 512 * 1024 * 1024;
 const MAX_AGE: Duration = Duration::from_hours(14 * 24);
 const FLUSH_INTERVAL: Duration = Duration::from_mins(1);
 const TOUCH_COALESCE: Duration = Duration::from_mins(1);
@@ -32,14 +32,14 @@ struct StoredEntry {
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum CacheClass {
-    Video,
+    Playable,
     Other,
 }
 
 impl CacheClass {
     fn of(key: &str) -> Self {
-        if key.starts_with(super::VIDEO_KEY_PREFIX) {
-            Self::Video
+        if key.starts_with(super::VIDEO_KEY_PREFIX) || key.starts_with(super::AUDIO_KEY_PREFIX) {
+            Self::Playable
         } else {
             Self::Other
         }
@@ -47,7 +47,7 @@ impl CacheClass {
 
     fn budget(self) -> u64 {
         match self {
-            Self::Video => MAX_VIDEO_CACHE_BYTES,
+            Self::Playable => MAX_PLAYABLE_CACHE_BYTES,
             Self::Other => MAX_CACHE_BYTES,
         }
     }
@@ -55,34 +55,34 @@ impl CacheClass {
 
 #[derive(Default)]
 struct ClassBytes {
-    video: u64,
+    playable: u64,
     other: u64,
 }
 
 impl ClassBytes {
     fn get(&self, class: CacheClass) -> u64 {
         match class {
-            CacheClass::Video => self.video,
+            CacheClass::Playable => self.playable,
             CacheClass::Other => self.other,
         }
     }
 
     fn add(&mut self, class: CacheClass, bytes: u64) {
         match class {
-            CacheClass::Video => self.video = self.video.saturating_add(bytes),
+            CacheClass::Playable => self.playable = self.playable.saturating_add(bytes),
             CacheClass::Other => self.other = self.other.saturating_add(bytes),
         }
     }
 
     fn sub(&mut self, class: CacheClass, bytes: u64) {
         match class {
-            CacheClass::Video => self.video = self.video.saturating_sub(bytes),
+            CacheClass::Playable => self.playable = self.playable.saturating_sub(bytes),
             CacheClass::Other => self.other = self.other.saturating_sub(bytes),
         }
     }
 
     fn reset(&mut self) {
-        self.video = 0;
+        self.playable = 0;
         self.other = 0;
     }
 }
@@ -212,7 +212,7 @@ impl CacheActor {
         };
         actor.read_index();
         let mut victims = actor.prune_aged();
-        victims.extend(actor.evict_to_budget(CacheClass::Video));
+        victims.extend(actor.evict_to_budget(CacheClass::Playable));
         victims.extend(actor.evict_to_budget(CacheClass::Other));
         for (_, path) in &victims {
             if let Err(e) = std_fs::remove_file(path) {
@@ -506,6 +506,7 @@ impl CacheActor {
         self.sweep(&self.media_dir.join(super::AVATARS_DIR), &referenced);
         self.sweep(&self.media_dir.join(super::STICKERS_DIR), &referenced);
         self.sweep(&self.media_dir.join(super::VIDEOS_DIR), &referenced);
+        self.sweep(&self.media_dir.join(super::AUDIO_DIR), &referenced);
     }
 
     fn sweep(&self, dir: &Path, referenced: &HashSet<&Path>) {

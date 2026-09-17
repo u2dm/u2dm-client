@@ -11,6 +11,7 @@ import {
     PreviewKind,
     ServiceKind,
     LoginMethodKind,
+    AudioKind,
 } from "enums.slint";
 import {
     LoginView,
@@ -21,6 +22,7 @@ import {
     VerificationView,
     AttachmentView,
     VideoView,
+    AudioView,
 } from "views.slint";
 import { Actions } from "actions.slint";
 import { Probe } from "local.slint";
@@ -30,9 +32,9 @@ import {
 } from "screens/chat/components/timeline/emoji-picker.slint";
 export { EmojiStore }
 export { LoginPhase, ConnectionState, TimelineState, VerificationPhase, MediaState, MediaFailure }
-export { MessageKind, PreviewKind, ServiceKind, LoginMethodKind }
+export { MessageKind, PreviewKind, ServiceKind, LoginMethodKind, AudioKind }
 export { LoginView, SessionView, DirectoryView, RoomView, StickerView, VerificationView }
-export { AttachmentView, VideoView }
+export { AttachmentView, VideoView, AudioView }
 export { Actions }
 export { Probe }
 import { LoadingScreen } from "screens/login/loading.slint";

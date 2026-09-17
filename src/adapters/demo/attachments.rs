@@ -115,3 +115,18 @@ pub fn remember_preview(event_id: &str, path: &Path) {
 pub fn preview_path(event_id: &str) -> Option<PathBuf> {
     previews().lock().ok()?.get(event_id).cloned()
 }
+
+fn sent_audio() -> &'static Mutex<HashMap<String, PathBuf>> {
+    static SENT: OnceLock<Mutex<HashMap<String, PathBuf>>> = OnceLock::new();
+    SENT.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+pub fn remember_sent_audio(event_id: &str, path: &Path) {
+    if let Ok(mut guard) = sent_audio().lock() {
+        guard.insert(event_id.to_owned(), path.to_path_buf());
+    }
+}
+
+pub fn sent_audio_path(event_id: &str) -> Option<PathBuf> {
+    sent_audio().lock().ok()?.get(event_id).cloned()
+}

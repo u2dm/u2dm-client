@@ -21,7 +21,7 @@ thread_local! {
 }
 
 #[cfg(feature = "video")]
-use crate::adapters::video::player::Playback;
+use crate::adapters::video::playback::Playback;
 
 #[cfg(feature = "video")]
 struct Session {
@@ -183,7 +183,7 @@ fn start<W>(_window: &W, weak: &slint::Weak<W>, path: &Path)
 where
     W: ComponentHandle + UiProps + 'static,
 {
-    use crate::adapters::video::player::PlayerEvent;
+    use crate::adapters::video::player::{self, PlayerEvent};
 
     let weak = weak.clone();
     let sink = Box::new(move |event: PlayerEvent<'_>| {
@@ -209,7 +209,7 @@ where
         }
     });
 
-    let playback = Playback::start(path, sink);
+    let playback = player::start(path, sink);
     playback.play();
     PLAYBACK.with(|cell| {
         *cell.borrow_mut() = Some(Session {

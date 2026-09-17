@@ -27,12 +27,14 @@ use names::{
     user_message, verification_emoji,
 };
 
+use super::audio;
 use super::backend::{UiBackend, install_render_hooks, post_effect, selected_room_key};
 use super::clock::install_clock_invalidation;
 use super::decode::{AvatarSlot, request_avatar, request_media, request_sticker};
 use super::dto::{
-    MediaFailureKind, MediaState, ReactionDto, ReactorAvatarDto, StickerCellDto, StickerPackDto,
-    StickerRowDto, ThumbUpdate, enrich_to_update, message_to_dto, room_to_dto, space_to_dto,
+    AudioRowUpdate, MediaFailureKind, MediaState, ReactionDto, ReactorAvatarDto, StickerCellDto,
+    StickerPackDto, StickerRowDto, ThumbUpdate, enrich_to_update, message_to_dto, room_to_dto,
+    space_to_dto,
 };
 use super::multiplex::spawn_event_multiplexer;
 use super::present::{MessageKind, ServiceKind, VerifyStep};
@@ -41,7 +43,7 @@ use super::props::{BoolProp, IntProp, StringProp, UiProps};
 use super::reconcile::reorder_rows;
 use super::reduce::set_sticker_query;
 use super::schema::{
-    attachment_kinds, connection_states, login_activities, login_methods, login_phases, media_failures, media_states, message_fields, message_kinds, preview_kinds, room_fields, send_states, service_kinds, simple_callbacks, space_fields, timeline_states, user_message_kinds, verification_activities, verification_phases,
+    attachment_kinds, audio_kinds, connection_states, login_activities, login_methods, login_phases, media_failures, media_states, message_fields, message_kinds, preview_kinds, room_fields, send_states, service_kinds, simple_callbacks, space_fields, timeline_states, user_message_kinds, verification_activities, verification_phases,
 };
 use super::{emoji, router};
 use crate::app::input::CommandSender;
@@ -50,6 +52,7 @@ use crate::commands::messages::{UserMessage, UserMessageKind};
 use crate::commands::ui::ViewportChanged;
 use crate::commands::view::{AppViewState, AttachmentKind, LoginActivity, LoginStep};
 use crate::domain::auth::{LoginCredentials, LoginMethod};
+use crate::domain::media::AudioKind;
 use crate::domain::message::{MessagePreviewKind, SendState, TimelineMessage};
 use crate::domain::room::{Room, Space};
 use crate::domain::sync::ConnectionStatus;
@@ -75,6 +78,8 @@ mod names {
         pub const TOGGLE_VIDEO: &str = "toggle-video";
         pub const TOGGLE_VIDEO_MUTED: &str = "toggle-video-muted";
         pub const SEEK_VIDEO: &str = "seek-video";
+        pub const TOGGLE_AUDIO: &str = "toggle-audio";
+        pub const SEEK_AUDIO: &str = "seek-audio";
         pub const SEARCH_STICKERS: &str = "search-stickers";
         pub const SCROLL_POSITION_CHANGED: &str = "scroll-position-changed";
         pub const PAGINATE_BACKWARDS: &str = "paginate-backwards";
@@ -244,6 +249,7 @@ media_failures!(impl_slint_enum MediaFailureKind "MediaFailure";);
 message_kinds!(impl_slint_enum MessageKind "MessageKind";);
 attachment_kinds!(impl_slint_enum AttachmentKind "AttachmentKind";);
 preview_kinds!(impl_slint_enum MessagePreviewKind "PreviewKind";);
+audio_kinds!(impl_slint_enum AudioKind "AudioKind";);
 service_kinds!(impl_slint_enum ServiceKind "ServiceKind";);
 
 fn string_arg(args: &[Value], index: usize) -> String {
@@ -398,6 +404,10 @@ impl UiProps for ComponentInstance {
 
     fn set_video_error(&self, kind: UserMessageKind) {
         set_global(self, "VideoView", "error", enum_value(&kind));
+    }
+
+    fn set_audio_kind(&self, kind: AudioKind) {
+        set_global(self, "AudioView", "kind", enum_value(&kind));
     }
 
     fn apply_video_frame(&self, buffer: SharedPixelBuffer<Rgb8Pixel>) {
@@ -705,6 +715,23 @@ impl UiBackend for InterpretedBackend {
         }
     }
 
+    fn set_message_audio(entry: &mut Value, update: &AudioRowUpdate) {
+        if let Value::Struct(s) = entry {
+            s.set_field(
+                message::MEDIA_STATE.to_string(),
+                enum_value(&update.media_state),
+            );
+            s.set_field(
+                message::MEDIA_FAILURE.to_string(),
+                enum_value(&update.media_failure),
+            );
+            s.set_field(
+                message::WAVEFORM.to_string(),
+                float_list(update.waveform.clone()),
+            );
+        }
+    }
+
     fn set_message_media_failed(entry: &mut Value, reason: MediaFailureKind) {
         if let Value::Struct(s) = entry {
             s.set_field(
@@ -827,6 +854,26 @@ impl SlintUiAdapter {
         })
     }
 
+    fn bind_audio_callbacks(&self, cmd_tx: &CommandSender) -> Result<()> {
+        audio::install_commands(cmd_tx);
+
+        let weak = self.instance.as_weak();
+        bind_action(&self.instance, callback::TOGGLE_AUDIO, move |_| {
+            if let Some(window) = weak.upgrade() {
+                audio::toggle(&window);
+            }
+            Value::Void
+        })?;
+
+        let weak = self.instance.as_weak();
+        bind_action(&self.instance, callback::SEEK_AUDIO, move |args| {
+            if let Some(window) = weak.upgrade() {
+                audio::seek(&window, millis_to_duration(usize_arg(args, 0)));
+            }
+            Value::Void
+        })
+    }
+
     fn bind_decode_requests(&self) -> Result<()> {
         bind_action(&self.instance, callback::REQUEST_MEDIA, move |args| {
             request_media(&string_arg(args, 0));
@@ -908,6 +955,7 @@ impl SlintUiAdapter {
 
         self.bind_composer_callbacks(cmd_tx)?;
         self.bind_decode_requests()?;
+        self.bind_audio_callbacks(cmd_tx)?;
 
         let scroll_tx = scroll_tx.clone();
         let weak = self.instance.as_weak();
@@ -1033,6 +1081,11 @@ impl SlintUiAdapter {
         self.instance
             .window()
             .set_size(slint::LogicalSize::new(width, height));
+    }
+
+    #[cfg(feature = "demo")]
+    pub fn prefer_silent_audio() {
+        audio::prefer_silent();
     }
 
     #[cfg(feature = "demo")]
@@ -1164,6 +1217,14 @@ fn string_list(items: Vec<SharedString>) -> Value {
     Value::Model(ModelRc::new(VecModel::from(values)))
 }
 
+fn float_list(items: Vec<f32>) -> Value {
+    let values: Vec<Value> = items
+        .into_iter()
+        .map(|item| Value::Number(item.into()))
+        .collect();
+    Value::Model(ModelRc::new(VecModel::from(values)))
+}
+
 trait ToValue {
     fn to_value(&self) -> Value;
 }
@@ -1236,6 +1297,9 @@ macro_rules! field_value {
     };
     ($s:ident, $lit:literal, $val:expr, list) => {
         $s.set_field($lit.to_string(), string_list($val));
+    };
+    ($s:ident, $lit:literal, $val:expr, floats) => {
+        $s.set_field($lit.to_string(), float_list($val));
     };
     ($s:ident, $lit:literal, $val:expr, structs) => {
         $s.set_field($lit.to_string(), struct_list(&$val));

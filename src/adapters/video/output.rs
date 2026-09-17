@@ -108,6 +108,13 @@ impl AudioOutput {
             .is_ok_and(|queue| queue.len() >= self.capacity)
     }
 
+    pub fn queued_frames(&self) -> usize {
+        self.shared
+            .samples
+            .lock()
+            .map_or(0, |queue| queue.len() / usize::from(self.channels.max(1)))
+    }
+
     pub fn push(&self, samples: &[f32]) {
         if let Ok(mut queue) = self.shared.samples.lock() {
             queue.extend(samples);

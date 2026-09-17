@@ -1,0 +1,243 @@
+import { Palette, ProgressIndicator, Spinner } from "std-widgets.slint";
+import { IconDisplay, IconSet } from "@lucide";
+import { ClickArea, Interaction } from "../../../../../components/a11y.slint";
+import { ScrubBar, ScrubCommit } from "../../../../../components/scrub-bar.slint";
+import { AudioKind, MediaState, SendState } from "../../../../../enums.slint";
+import { Clocks } from "../../../../../messages.slint";
+import { Actions } from "../../../../../actions.slint";
+import { AudioView } from "../../../../../views.slint";
+import { AppStyle, Fonts, IconSize, Metrics, Space, Weight } from "../../../../../theme.slint";
+
+component PlayToggle inherits ClickArea {
+    in property <bool> playing;
+    in property <bool> loading;
+    in property <bool> failed;
+    in property <bool> is-own;
+
+    width: Metrics.audio-button;
+    height: Metrics.audio-button;
+    border-radius: self.height / 2;
+    ring-radius: self.height / 2;
+    background: root.is-own ? AppStyle.audio-button-own : AppStyle.audio-button;
+
+    property <color> glyph: root.is-own ? AppStyle.on-audio-button-own : AppStyle.on-audio-button;
+
+    if !root.loading: IconDisplay {
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+        icon: root.failed ? IconSet.CircleAlert : (root.playing ? IconSet.Pause : IconSet.Play);
+        size: IconSize.md;
+        stroke: root.glyph;
+        stroke-fill: root.failed ? transparent : root.glyph;
+    }
+
+    if root.loading: Spinner {
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+        width: IconSize.lg;
+        height: IconSize.lg;
+        indeterminate: true;
+    }
+}
+
+component VoiceWaveform inherits Rectangle {
+    in property <[float]> levels;
+    in property <float> progress;
+    in property <bool> is-own;
+    in property <bool> seekable;
+    in property <int> duration-ms;
+
+    callback seek(int);
+    callback activate();
+
+    property <int> step-ms: 5000;
+    property <bool> actionable: Interaction.actionable(true, false);
+    property <float> pointer-fraction: clamp(touch.mouse-x / max(root.width, 1px), 0.0, 1.0);
+    property <float> shown: root.seekable && touch.pressed ? root.pointer-fraction : root.progress;
+    property <length> pitch: root.width / max(root.levels.length, 1);
+    property <length> bar: max(Metrics.audio-wave-gap, min(Metrics.audio-wave-bar, root.pitch - Metrics.audio-wave-gap));
+    property <color> played: root.is-own ? AppStyle.audio-wave-played-own : AppStyle.audio-wave-played;
+
+    function nudge(delta-ms: int) {
+        if (root.seekable && root.duration-ms > 0) {
+            root.seek(clamp(root.progress * root.duration-ms + delta-ms, 0, root.duration-ms));
+        }
+    }
+
+    min-width: Metrics.audio-wave-width / 2;
+    preferred-width: Metrics.audio-wave-width;
+    height: Metrics.audio-wave-height;
+    accessible-role: slider;
+    accessible-label: @tr("Voice message position");
+    accessible-enabled: root.seekable;
+    accessible-value: floor(root.progress * root.duration-ms / 1000);
+    accessible-value-minimum: 0;
+    accessible-value-maximum: floor(root.duration-ms / 1000);
+    accessible-action-increment => {
+        root.nudge(root.step-ms);
+    }
+    accessible-action-decrement => {
+        root.nudge(-root.step-ms);
+    }
+
+    for level[index] in root.levels: Rectangle {
+        x: index * root.pitch + (root.pitch - root.bar) / 2;
+        y: root.height - self.height;
+        width: root.bar;
+        height: max(Metrics.audio-wave-bar-min, clamp(level, 0, 1) * root.height);
+        border-radius: self.width / 2;
+        background: (index + 0.5) / root.levels.length <= root.shown
+            ? root.played
+            : AppStyle.audio-wave-rest;
+    }
+
+    touch := TouchArea {
+        enabled: root.actionable;
+        mouse-cursor: pointer;
+        pointer-event(event) => {
+            if (event.kind != PointerEventKind.up || event.button != PointerEventButton.left) {
+                return;
+            }
+            if (root.seekable && root.duration-ms > 0) {
+                root.seek(root.pointer-fraction * root.duration-ms);
+            } else if (!root.seekable) {
+                root.activate();
+            }
+        }
+    }
+}
+
+export component AudioMessage inherits VerticalLayout {
+    in property <AudioKind> audio-kind;
+    in property <string> filename;
+    in property <string> duration;
+    in property <string> size;
+    in property <[float]> waveform;
+    in property <string> event-id;
+    in property <bool> is-own;
+    in property <MediaState> media-state;
+    in property <SendState> send-state;
+    in property <float> send-progress;
+
+    property <bool> is-voice: root.audio-kind == AudioKind.voice;
+    property <bool> is-track: root.audio-kind == AudioKind.track;
+    property <bool> is-failed: root.media-state == MediaState.failed;
+    property <bool> is-sending: root.send-state == SendState.sending
+        || root.send-state == SendState.uploading;
+    property <bool> is-active: root.event-id != ""
+        && AudioView.visible
+        && AudioView.event-id == root.event-id;
+    property <bool> is-loading: root.is-active && AudioView.loading;
+    property <bool> is-playing: root.is-active && AudioView.playing;
+    property <bool> is-seekable: root.is-active && !AudioView.loading && AudioView.duration-ms > 0;
+    property <float> progress: root.is-seekable
+        ? clamp(AudioView.position-ms / AudioView.duration-ms, 0.0, 1.0)
+        : 0.0;
+    property <string> resting-details: root.duration == "" || root.media-state == MediaState.ready
+        ? (root.duration == "" ? root.size : root.duration)
+        : (root.size == "" ? root.duration : @tr("{} · {}", root.duration, root.size));
+    property <string> details: root.is-seekable
+        ? @tr("{} / {}", Clocks.label(AudioView.position-ms), Clocks.label(AudioView.duration-ms))
+        : root.resting-details;
+
+    function press() {
+        if (root.is-active) {
+            if (!AudioView.loading) {
+                Actions.toggle-audio();
+            }
+        } else {
+            Actions.play-audio(root.event-id);
+        }
+    }
+
+    spacing: Space.sm;
+
+    HorizontalLayout {
+        spacing: Space.lg;
+        alignment: start;
+
+        VerticalLayout {
+            alignment: center;
+
+            PlayToggle {
+                enabled: root.event-id != "";
+                is-own: root.is-own;
+                failed: root.is-failed && !root.is-active;
+                loading: root.is-loading;
+                playing: root.is-playing;
+                label: root.is-playing
+                    ? @tr("Pause")
+                    : (root.is-voice ? @tr("Play voice message") : @tr("Play {}", root.filename));
+                clicked => {
+                    root.press();
+                }
+            }
+        }
+
+        if root.is-voice: VerticalLayout {
+            alignment: center;
+            spacing: Space.xs;
+
+            VoiceWaveform {
+                levels: root.waveform;
+                progress: root.progress;
+                is-own: root.is-own;
+                seekable: root.is-seekable;
+                duration-ms: AudioView.duration-ms;
+                seek(ms) => {
+                    Actions.seek-audio(ms);
+                }
+                activate => {
+                    if (root.event-id != "") {
+                        root.press();
+                    }
+                }
+            }
+
+            Text {
+                text: root.details;
+                font-size: Fonts.caption;
+                color: AppStyle.overlay-foreground-muted;
+            }
+        }
+
+        if root.is-track: VerticalLayout {
+            alignment: center;
+            spacing: Space.xs;
+
+            Text {
+                text: root.filename;
+                preferred-width: Metrics.audio-track-width;
+                font-size: Fonts.body;
+                font-weight: Weight.semibold;
+                color: Palette.foreground;
+                overflow: elide;
+            }
+
+            if root.is-seekable: ScrubBar {
+                commit: ScrubCommit.on-release;
+                track-height: Metrics.audio-track-line;
+                played: root.is-own ? AppStyle.audio-wave-played-own : AppStyle.audio-wave-played;
+                rest: AppStyle.audio-wave-rest;
+                position-ms: AudioView.position-ms;
+                duration-ms: AudioView.duration-ms;
+                label: @tr("Track position");
+                seek(ms) => {
+                    Actions.seek-audio(ms);
+                }
+            }
+
+            Text {
+                text: root.details;
+                font-size: Fonts.body-small;
+                color: AppStyle.overlay-foreground-muted;
+            }
+        }
+    }
+
+    if root.is-sending: ProgressIndicator {
+        height: Metrics.upload-bar;
+        indeterminate: root.send-state != SendState.uploading;
+        progress: root.send-progress;
+    }
+}

@@ -3,8 +3,8 @@ use std::collections::HashSet;
 use matrix_sdk::ruma::UInt;
 use matrix_sdk::ruma::events::StateEventContentChange;
 use matrix_sdk::ruma::events::room::message::{
-    FileMessageEventContent, FormattedBody, ImageMessageEventContent, MessageFormat, MessageType,
-    VideoInfo, VideoMessageEventContent,
+    AudioMessageEventContent, FileMessageEventContent, FormattedBody, ImageMessageEventContent,
+    MessageFormat, MessageType, UnstableAmplitude, VideoInfo, VideoMessageEventContent,
 };
 use matrix_sdk::ruma::events::room::name::RoomNameEventContent;
 use matrix_sdk::ruma::events::room::{ImageInfo, MediaSource};
@@ -18,7 +18,7 @@ use matrix_sdk_ui::timeline::{
 use super::TimelineContext;
 use crate::adapters::matrix::media::MediaSources;
 use crate::adapters::matrix::preview;
-use crate::domain::media::{FileMeta, ImageMeta, VideoMeta};
+use crate::domain::media::{AudioKind, AudioMeta, FileMeta, ImageMeta, VideoMeta, Waveform};
 use crate::domain::message::{
     MessageBody, MessagePreviewKind, REACTOR_AVATAR_LIMIT, Reaction, Reactor, ReplyInfo, RichText,
     SendState, ServiceEvent, TimelineMessage,
@@ -396,6 +396,49 @@ fn extract_video_body(
     }
 }
 
+fn amplitude(value: UnstableAmplitude) -> u16 {
+    u16::try_from(u64::from(value.get())).unwrap_or(u16::MAX)
+}
+
+fn audio_meta(audio: &AudioMessageEventContent) -> AudioMeta {
+    let info = audio.info.as_deref();
+    let details = audio.audio.as_ref();
+    AudioMeta {
+        kind: if audio.voice.is_some() {
+            AudioKind::Voice
+        } else {
+            AudioKind::Track
+        },
+        filename: audio.filename().to_owned(),
+        mimetype: info.and_then(|info| info.mimetype.clone()),
+        duration: info
+            .and_then(|info| info.duration)
+            .or_else(|| details.map(|details| details.duration)),
+        size: info.and_then(|info| info.size).map(Into::into),
+        waveform: details.and_then(|details| {
+            Waveform::from_amplitudes(details.waveform.iter().copied().map(amplitude))
+        }),
+    }
+}
+
+fn extract_audio_body(
+    audio: &AudioMessageEventContent,
+    media_key: &str,
+    media_sources: &MediaSources,
+) -> MessageBody {
+    if !media_key.is_empty()
+        && let Ok(mut sources) = media_sources.lock()
+    {
+        sources.insert(media_key.to_owned(), audio.source.clone());
+    }
+    MessageBody::Audio {
+        caption: audio
+            .caption()
+            .map(|caption| rich_body(caption, audio.formatted_caption())),
+        meta: audio_meta(audio),
+    }
+}
+
 fn extract_sticker_body(
     sticker: &StickerEventContent,
     media_key: &str,
@@ -457,6 +500,7 @@ fn message_type_to_body(
         MessageType::Emote(e) => MessageBody::Emote(rich_body(&e.body, e.formatted.as_ref())),
         MessageType::Image(i) => extract_image_body(i, media_key, media_sources),
         MessageType::Video(v) => extract_video_body(v, media_key, media_sources),
+        MessageType::Audio(a) => extract_audio_body(a, media_key, media_sources),
         MessageType::File(f) => extract_file_body(f, media_key, media_sources),
         other => MessageBody::Unsupported {
             kind: other.msgtype().to_string(),

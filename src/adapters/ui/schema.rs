@@ -48,6 +48,10 @@ macro_rules! string_props {
         AttachmentExtension AttachmentView "AttachmentView" "extension" set_extension;
         AttachmentSize AttachmentView "AttachmentView" "size" set_size;
         AttachmentErrorDetail AttachmentView "AttachmentView" "error-detail" set_error_detail;
+        AudioEventId AudioView "AudioView" "event-id" set_event_id;
+        AudioRoomId AudioView "AudioView" "room-id" set_room_id;
+        AudioSender AudioView "AudioView" "sender" set_sender;
+        AudioTitle AudioView "AudioView" "title" set_title;
         AttachmentDuration AttachmentView "AttachmentView" "duration" set_duration;
     } };
 }
@@ -72,6 +76,8 @@ macro_rules! simple_callbacks {
         on_open_media "open-media" open_media manual_string OpenMedia;
         on_open_video "open-video" open_video manual_string OpenVideo;
         on_close_video "close-video" close_video plain CloseVideo;
+        on_play_audio "play-audio" play_audio manual_string PlayAudio;
+        on_close_audio "close-audio" close_audio plain CloseAudio;
         on_open_link "open-link" open_link manual_string OpenLink;
         on_jump_to_event "jump-to-event" jump_to_event manual_string JumpToEvent;
         on_pick_photo "pick-photo" pick_photo manual_string PickAttachment;
@@ -98,6 +104,10 @@ macro_rules! bool_props {
         VideoLoading VideoView "VideoView" "loading" set_loading;
         VideoPlaying VideoView "VideoView" "playing" set_playing;
         VideoMuted VideoView "VideoView" "muted" set_muted;
+        AudioVisible AudioView "AudioView" "visible" set_visible;
+        AudioLoading AudioView "AudioView" "loading" set_loading;
+        AudioPlaying AudioView "AudioView" "playing" set_playing;
+        AudioSilent AudioView "AudioView" "silent" set_silent;
     } };
 }
 pub(crate) use bool_props;
@@ -115,6 +125,8 @@ macro_rules! int_props {
         AttachmentHeight AttachmentView "AttachmentView" "height" set_height;
         VideoPositionMs VideoView "VideoView" "position-ms" set_position_ms;
         VideoDurationMs VideoView "VideoView" "duration-ms" set_duration_ms;
+        AudioPositionMs AudioView "AudioView" "position-ms" set_position_ms;
+        AudioDurationMs AudioView "AudioView" "duration-ms" set_duration_ms;
     } };
 }
 pub(crate) use int_props;
@@ -242,6 +254,7 @@ macro_rules! user_message_kinds {
         AttachmentTooLarge        AttachmentTooLarge      "attachment-too-large";
         SendAttachmentFailed      SendAttachmentFailed    "send-attachment-failed";
         VideoPlaybackFailed       VideoPlaybackFailed     "video-playback-failed";
+        AudioPlaybackFailed       AudioPlaybackFailed     "audio-playback-failed";
         FileSaveFailed            FileSaveFailed          "file-save-failed";
         FileSaved                 FileSaved               "file-saved";
         VerificationAcceptFailed  VerificationAcceptFailed "verification-accept-failed";
@@ -273,6 +286,7 @@ macro_rules! attachment_kinds {
         File  File  "file";
         Image Image "image";
         Video Video "video";
+        Audio Audio "audio";
     } };
 }
 pub(crate) use attachment_kinds;
@@ -305,6 +319,7 @@ macro_rules! message_kinds {
         Emote       Emote       "emote";
         Image       Image       "image";
         Video       Video       "video";
+        Audio       Audio       "audio";
         Sticker     Sticker     "sticker";
         File        File        "file";
         Service     Service     "service";
@@ -321,6 +336,7 @@ macro_rules! preview_kinds {
         Image     Image     "image";
         Video     Video     "video";
         Audio     Audio     "audio";
+        Voice     Voice     "voice";
         File      File      "file";
         Location  Location  "location";
         Encrypted Encrypted "encrypted";
@@ -328,6 +344,14 @@ macro_rules! preview_kinds {
     } };
 }
 pub(crate) use preview_kinds;
+
+macro_rules! audio_kinds {
+    ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
+        Voice Voice "voice";
+        Track Track "track";
+    } };
+}
+pub(crate) use audio_kinds;
 
 macro_rules! service_kinds {
     ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
@@ -394,6 +418,10 @@ macro_rules! message_fields {
         image_width IMAGE_WIDTH "image-width" int;
         image_height IMAGE_HEIGHT "image-height" int;
         duration DURATION "duration" text;
+        filename FILENAME "filename" text;
+        size SIZE "size" text;
+        audio_kind AUDIO_KIND "audio-kind" enumk;
+        waveform WAVEFORM "waveform" floats;
         has_avatar HAS_AVATAR "has-avatar" flag;
         needs_media NEEDS_MEDIA "needs-media" flag;
         thumbnail THUMBNAIL "thumbnail" image;

@@ -1,6 +1,8 @@
 use std::path::Path;
 use std::time::Duration;
 
+use crate::domain::media::Waveform;
+
 pub struct VideoProbe {
     pub width: u32,
     pub height: u32,
@@ -17,10 +19,28 @@ pub fn poster_jpeg(_path: &Path, _max_edge: u32, _quality: u8) -> Option<Vec<u8>
     None
 }
 
+pub struct AudioProbe {
+    pub duration: Option<Duration>,
+    pub waveform: Option<Waveform>,
+}
+
+#[cfg(not(feature = "video"))]
+pub fn probe_audio(_path: &Path) -> Option<AudioProbe> {
+    None
+}
+
 #[cfg(feature = "video")]
-mod audio;
+pub mod audio_player;
+#[cfg(feature = "video")]
+mod decoder;
+#[cfg(feature = "video")]
+mod output;
+#[cfg(feature = "video")]
+pub mod playback;
 #[cfg(feature = "video")]
 pub mod player;
+#[cfg(feature = "video")]
+mod waveform;
 
 #[cfg(feature = "video")]
 fn ffmpeg_ready() -> bool {
@@ -156,4 +176,9 @@ pub fn probe(path: &Path) -> Option<VideoProbe> {
 #[cfg(feature = "video")]
 pub fn poster_jpeg(path: &Path, max_edge: u32, quality: u8) -> Option<Vec<u8>> {
     backend::poster_jpeg(path, max_edge, quality)
+}
+
+#[cfg(feature = "video")]
+pub fn probe_audio(path: &Path) -> Option<AudioProbe> {
+    waveform::probe_audio(path)
 }

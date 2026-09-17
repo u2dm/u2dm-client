@@ -8,6 +8,7 @@ use pure_rust_locales::locale_match;
 
 use super::schema::{define_ui_enum, message_kinds, service_kinds, verification_phases};
 use crate::commands::messages::{UserMessage, UserMessageKind};
+use crate::domain::media::{AudioKind, AudioMeta, Waveform};
 use crate::domain::message::{MessageBody, Reactor, ServiceEvent, TimelineMessage};
 use crate::domain::verification::VerificationCancellation;
 use crate::locale::{self, LocaleRequest};
@@ -188,6 +189,19 @@ pub fn duration_label(duration: Duration) -> String {
     }
 }
 
+pub const VOICE_WAVEFORM_BARS: usize = 40;
+const PLACEHOLDER_LEVEL: f32 = 0.0;
+
+pub fn voice_bars(meta: &AudioMeta, computed: Option<&Waveform>) -> Vec<f32> {
+    match meta.kind {
+        AudioKind::Track => Vec::new(),
+        AudioKind::Voice => meta.waveform.as_ref().or(computed).map_or_else(
+            || vec![PLACEHOLDER_LEVEL; VOICE_WAVEFORM_BARS],
+            |waveform| waveform.resampled(VOICE_WAVEFORM_BARS),
+        ),
+    }
+}
+
 pub fn invalidate_activity_labels() {
     ACTIVITY_LABELS.with_borrow_mut(HashMap::clear);
 }
@@ -226,7 +240,9 @@ fn format_activity_label(last_activity_ts: u64) -> String {
 pub fn message_body_text(body: &MessageBody) -> &str {
     match body {
         MessageBody::Text(t) | MessageBody::Notice(t) | MessageBody::Emote(t) => &t.plain,
-        MessageBody::Image { caption, .. } | MessageBody::Video { caption, .. } => {
+        MessageBody::Image { caption, .. }
+        | MessageBody::Video { caption, .. }
+        | MessageBody::Audio { caption, .. } => {
             caption.as_ref().map_or("", |text| text.plain.as_str())
         }
         MessageBody::Sticker { alt, .. } => alt,
@@ -239,7 +255,9 @@ pub fn message_body_text(body: &MessageBody) -> &str {
 pub fn message_body_html(body: &MessageBody) -> Option<&str> {
     match body {
         MessageBody::Text(t) | MessageBody::Notice(t) | MessageBody::Emote(t) => t.html.as_deref(),
-        MessageBody::Image { caption, .. } | MessageBody::Video { caption, .. } => {
+        MessageBody::Image { caption, .. }
+        | MessageBody::Video { caption, .. }
+        | MessageBody::Audio { caption, .. } => {
             caption.as_ref().and_then(|text| text.html.as_deref())
         }
         MessageBody::Sticker { .. }
@@ -259,6 +277,7 @@ pub fn message_kind(body: &MessageBody) -> MessageKind {
         MessageBody::Emote(_) => MessageKind::Emote,
         MessageBody::Image { .. } => MessageKind::Image,
         MessageBody::Video { .. } => MessageKind::Video,
+        MessageBody::Audio { .. } => MessageKind::Audio,
         MessageBody::Sticker { .. } => MessageKind::Sticker,
         MessageBody::File { .. } => MessageKind::File,
         MessageBody::Service(_) => MessageKind::Service,

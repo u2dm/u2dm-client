@@ -8,10 +8,10 @@ use std::sync::{Arc, Mutex as StdMutex};
 use async_trait::async_trait;
 use matrix_sdk::media::{MediaFormat, MediaThumbnailSettings};
 use matrix_sdk::ruma::events::room::MediaSource;
-pub(crate) use service::MediaService;
+pub(crate) use service::{MediaService, Playable};
 
 use super::session::ClientHandle;
-use crate::domain::media::{ImageMeta, MediaFailure, MediaKind};
+use crate::domain::media::{ImageMeta, MediaFailure, MediaKind, Waveform, WaveformNeed};
 use crate::error::{AppError, Result};
 use crate::ports::matrix::MediaPort;
 use crate::ports::media::MediaCache;
@@ -22,6 +22,8 @@ pub(super) const AVATARS_DIR: &str = "avatars";
 pub(super) const STICKERS_DIR: &str = "stickers";
 pub(super) const VIDEOS_DIR: &str = "videos";
 pub(super) const VIDEO_KEY_PREFIX: &str = "video:";
+pub(super) const AUDIO_DIR: &str = "audio";
+pub(super) const AUDIO_KEY_PREFIX: &str = "audio:";
 
 pub(super) fn thumb_key(event_id: &str) -> String {
     format!("thumb:{event_id}")
@@ -33,6 +35,10 @@ pub(super) fn mxc_avatar_key(mxc: &str) -> String {
 
 pub(super) fn video_key(event_id: &str) -> String {
     format!("{VIDEO_KEY_PREFIX}{event_id}")
+}
+
+pub(super) fn audio_key(event_id: &str) -> String {
+    format!("{AUDIO_KEY_PREFIX}{event_id}")
 }
 
 fn sticker_key(mxc: &str) -> String {
@@ -76,6 +82,18 @@ impl MediaCache for MaterializedMedia {
 
     fn sticker_failed(&self, mxc: &str) -> bool {
         self.service.is_failed(&sticker_key(mxc))
+    }
+
+    fn audio_path(&self, event_id: &str) -> Option<PathBuf> {
+        self.service.cache_get(&audio_key(event_id))
+    }
+
+    fn audio_failure(&self, event_id: &str) -> Option<MediaFailure> {
+        self.service.failure(&audio_key(event_id))
+    }
+
+    fn audio_waveform(&self, event_id: &str) -> Option<Waveform> {
+        self.service.waveform(event_id)
     }
 }
 
@@ -163,6 +181,20 @@ impl MatrixMedia {
     pub(super) fn new(matrix: Arc<ClientHandle>, sources: Arc<MediaSources>) -> Self {
         Self { matrix, sources }
     }
+
+    async fn materialize(&self, event_id: &str, playable: Playable) -> Result<PathBuf> {
+        let client = self.matrix.client().await?;
+        self.matrix
+            .media()
+            .materialize_playable(&client, &self.sources, event_id, playable)
+            .await
+            .map_err(|reason| {
+                AppError::Other(format!(
+                    "{} download for event {event_id} failed: {reason:?}",
+                    playable.noun()
+                ))
+            })
+    }
 }
 
 #[async_trait]
@@ -176,15 +208,14 @@ impl MediaPort for MatrixMedia {
     }
 
     async fn materialize_video(&self, event_id: &str) -> Result<PathBuf> {
-        let client = self.matrix.client().await?;
-        self.matrix
-            .media()
-            .materialize_video(&client, &self.sources, event_id)
-            .await
-            .map_err(|reason| {
-                AppError::Other(format!(
-                    "video download for event {event_id} failed: {reason:?}"
-                ))
-            })
+        self.materialize(event_id, Playable::Video).await
+    }
+
+    async fn materialize_audio(&self, event_id: &str, need: WaveformNeed) -> Result<PathBuf> {
+        let path = self.materialize(event_id, Playable::Audio).await?;
+        if need == WaveformNeed::Compute {
+            self.matrix.media().learn_waveform(event_id, &path).await;
+        }
+        Ok(path)
     }
 }

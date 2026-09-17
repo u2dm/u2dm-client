@@ -8,12 +8,14 @@ use slint::{
 use tokio::runtime::Runtime;
 use tokio::sync::{mpsc, watch};
 
+use super::audio;
 use super::backend::{UiBackend, install_render_hooks, post_effect, selected_room_key};
 use super::clock::install_clock_invalidation;
 use super::decode::{AvatarSlot, request_avatar, request_media, request_sticker};
 use super::dto::{
-    MediaFailureKind, MediaState, ReactionDto, ReactorAvatarDto, StickerCellDto, StickerPackDto,
-    StickerRowDto, ThumbUpdate, enrich_to_update, message_to_dto, room_to_dto, space_to_dto,
+    AudioRowUpdate, MediaFailureKind, MediaState, ReactionDto, ReactorAvatarDto, StickerCellDto,
+    StickerPackDto, StickerRowDto, ThumbUpdate, enrich_to_update, message_to_dto, room_to_dto,
+    space_to_dto,
 };
 #[cfg(feature = "demo")]
 use super::dump;
@@ -24,7 +26,7 @@ use super::props::{BoolProp, IntProp, StringProp, UiProps};
 use super::reconcile::reorder_rows;
 use super::reduce::set_sticker_query;
 use super::schema::{
-    attachment_kinds, bool_props, connection_states, int_props, login_activities, login_methods, login_phases, media_failures, media_states, message_kinds, preview_kinds, send_states, service_kinds, simple_callbacks, string_props, timeline_states, user_message_kinds, verification_activities, verification_phases,
+    attachment_kinds, audio_kinds, bool_props, connection_states, int_props, login_activities, login_methods, login_phases, media_failures, media_states, message_kinds, preview_kinds, send_states, service_kinds, simple_callbacks, string_props, timeline_states, user_message_kinds, verification_activities, verification_phases,
 };
 use super::{emoji, router};
 use crate::app::input::CommandSender;
@@ -33,6 +35,7 @@ use crate::commands::messages::{UserMessage, UserMessageKind};
 use crate::commands::ui::ViewportChanged;
 use crate::commands::view::{AppViewState, AttachmentKind, LoginActivity, LoginStep};
 use crate::domain::auth::{LoginCredentials, LoginMethod};
+use crate::domain::media::AudioKind;
 use crate::domain::message::{MessagePreviewKind, SendState, TimelineMessage};
 use crate::domain::room::{Room, Space};
 use crate::domain::sync::ConnectionStatus;
@@ -48,8 +51,8 @@ mod generated {
 #[cfg(feature = "demo")]
 use generated::Probe;
 use generated::{
-    Actions, AppWindow, AttachmentKind as UiAttachmentKind, AttachmentView, ConnectionState,
-    DirectoryView, EmojiEntry, EmojiGroup, EmojiInsert, EmojiStore,
+    Actions, AppWindow, AttachmentKind as UiAttachmentKind, AttachmentView,
+    AudioKind as UiAudioKind, AudioView, ConnectionState, DirectoryView, EmojiEntry, EmojiGroup, EmojiInsert, EmojiStore,
     LoginActivity as UiLoginActivity, LoginMethodKind as UiLoginMethodKind, LoginPhase, LoginView,
     MediaFailure as UiMediaFailure, MediaState as UiMediaState, MessageEntry,
     MessageKind as UiMessageKind, PreviewKind as UiPreviewKind, ReactionEntry, ReactorAvatar,
@@ -152,6 +155,10 @@ impl UiProps for AppWindow {
     fn set_video_error(&self, kind: UserMessageKind) {
         self.global::<VideoView>()
             .set_error(to_user_message_kind(kind));
+    }
+
+    fn set_audio_kind(&self, kind: AudioKind) {
+        self.global::<AudioView>().set_kind(to_audio_kind(kind));
     }
 
     fn apply_video_frame(&self, buffer: SharedPixelBuffer<Rgb8Pixel>) {
@@ -292,6 +299,7 @@ media_failures!(to_slint_enum val to_media_failure MediaFailureKind UiMediaFailu
 message_kinds!(to_slint_enum val to_message_kind MessageKind UiMessageKind;);
 attachment_kinds!(to_slint_enum val to_attachment_kind AttachmentKind UiAttachmentKind;);
 preview_kinds!(to_slint_enum val to_preview_kind MessagePreviewKind UiPreviewKind;);
+audio_kinds!(to_slint_enum val to_audio_kind AudioKind UiAudioKind;);
 service_kinds!(to_slint_enum val to_service_kind ServiceKind UiServiceKind;);
 
 pub struct CompiledBackend;
@@ -452,6 +460,12 @@ impl UiBackend for CompiledBackend {
         entry.media_failure = to_media_failure(reason);
     }
 
+    fn set_message_audio(entry: &mut MessageEntry, update: &AudioRowUpdate) {
+        entry.media_state = to_media_state(update.media_state);
+        entry.media_failure = to_media_failure(update.media_failure);
+        entry.waveform = ModelRc::new(VecModel::from(update.waveform.clone()));
+    }
+
     fn with_models<R>(
         f: impl FnOnce(
             &VecModel<MessageEntry>,
@@ -511,6 +525,24 @@ impl SlintUiAdapter {
         actions(win).on_seek_video(move |ms| {
             if let Some(window) = weak.upgrade() {
                 video::seek(&window, millis_to_duration(usize::try_from(ms).ok()));
+            }
+        });
+    }
+
+    fn bind_audio_callbacks(win: &AppWindow, cmd_tx: &CommandSender) {
+        audio::install_commands(cmd_tx);
+
+        let weak = win.as_weak();
+        actions(win).on_toggle_audio(move || {
+            if let Some(window) = weak.upgrade() {
+                audio::toggle(&window);
+            }
+        });
+
+        let weak = win.as_weak();
+        actions(win).on_seek_audio(move |ms| {
+            if let Some(window) = weak.upgrade() {
+                audio::seek(&window, millis_to_duration(usize::try_from(ms).ok()));
             }
         });
     }
@@ -586,6 +618,7 @@ impl SlintUiAdapter {
         actions(win).on_request_media(move |unique_id| request_media(&unique_id));
 
         Self::bind_video_callbacks(win);
+        Self::bind_audio_callbacks(win, cmd_tx);
 
         actions(win).on_request_room_avatar(move |room_id| {
             request_avatar(&AvatarSlot::Room(room_id.to_string()));
@@ -700,6 +733,11 @@ impl SlintUiAdapter {
     }
 
     #[cfg(feature = "demo")]
+    pub fn prefer_silent_audio() {
+        audio::prefer_silent();
+    }
+
+    #[cfg(feature = "demo")]
     pub fn enable_probe_introspection(&self) {
         self.window.set_bool(BoolProp::ProbeEnabled, true);
     }
@@ -708,13 +746,23 @@ impl SlintUiAdapter {
 #[cfg(feature = "demo")]
 pub fn install_timeline_dump(ui: &SlintUiAdapter) {
     let weak = ui.window.as_weak();
+    let dump_weak = weak.clone();
     dump::install(Box::new(move |reply| {
-        let handle = weak.clone();
+        let handle = dump_weak.clone();
         let queued = handle.upgrade_in_event_loop(move |window| {
             drop(reply.send(probe_dump::collect(&window)));
         });
         if let Err(e) = queued {
             tracing::debug!("the timeline dump could not reach the event loop: {e}");
+        }
+    }));
+    dump::install_pokes(Box::new(move |poke| {
+        let queued = weak.upgrade_in_event_loop(move |window| match poke {
+            dump::Poke::ToggleAudio => audio::toggle(&window),
+            dump::Poke::SeekAudio(position) => audio::seek(&window, position),
+        });
+        if let Err(e) = queued {
+            tracing::debug!("a probe poke could not reach the event loop: {e}");
         }
     }));
 }
@@ -829,6 +877,10 @@ fn message_to_entry(m: &TimelineMessage, media: &dyn MediaCache) -> MessageEntry
         image_width: d.image_width,
         image_height: d.image_height,
         duration: d.duration,
+        filename: d.filename,
+        size: d.size,
+        audio_kind: to_audio_kind(d.audio_kind),
+        waveform: ModelRc::new(VecModel::from(d.waveform)),
         event_id: d.event_id,
         has_avatar: d.has_avatar,
         needs_media: d.needs_media,
@@ -929,16 +981,17 @@ mod probe_dump {
     use slint::{ComponentHandle, Model};
 
     use super::generated::{
-        MediaFailure, MediaState, MessageKind, PreviewKind, SendState, ServiceKind,
+        AudioKind, AudioView, MediaFailure, MediaState, MessageKind, PreviewKind, SendState,
+        ServiceKind,
     };
     use super::{
         AppWindow, IntProp, MessageEntry, ReactionEntry, RoomView, StringProp, TIMELINE_MODEL,
         UiProps,
     };
-    use crate::adapters::ui::dump::{ReactionRowDump, TimelineDump, TimelineRowDump};
+    use crate::adapters::ui::dump::{AudioDump, ReactionRowDump, TimelineDump, TimelineRowDump};
     use crate::adapters::ui::schema::{
-        enum_names, media_failures, media_states, message_kinds, preview_kinds, send_states,
-        service_kinds,
+        audio_kinds, enum_names, media_failures, media_states, message_kinds, preview_kinds,
+        send_states, service_kinds,
     };
 
     message_kinds!(enum_names slint message_kind MessageKind;);
@@ -947,6 +1000,7 @@ mod probe_dump {
     media_states!(enum_names slint media_state MediaState;);
     media_failures!(enum_names slint media_failure MediaFailure;);
     send_states!(enum_names slint send_state SendState;);
+    audio_kinds!(enum_names slint audio_kind AudioKind;);
 
     fn reaction(entry: &ReactionEntry) -> ReactionRowDump {
         ReactionRowDump {
@@ -985,11 +1039,40 @@ mod probe_dump {
             image_width: entry.image_width,
             image_height: entry.image_height,
             duration: entry.duration.to_string(),
+            filename: entry.filename.to_string(),
+            size: entry.size.to_string(),
+            audio_kind: audio_kind(entry.audio_kind),
+            waveform: entry.waveform.iter().collect(),
             has_reply: entry.has_reply,
             reply_event_id: entry.reply_event_id.to_string(),
             reply_sender: entry.reply_sender.to_string(),
             reply_body: entry.reply_body.to_string(),
             reactions: entry.reactions.iter().map(|r| reaction(&r)).collect(),
+        }
+    }
+
+    fn audio(window: &AppWindow) -> AudioDump {
+        let view = window.global::<AudioView>();
+        let state = match (view.get_visible(), view.get_loading(), view.get_playing()) {
+            (false, _, _) => "hidden",
+            (true, true, _) => "loading",
+            (true, false, true) => "playing",
+            (true, false, false) => "paused",
+        };
+        AudioDump {
+            state,
+            output: if view.get_silent() {
+                "silent"
+            } else {
+                "device"
+            },
+            event_id: view.get_event_id().to_string(),
+            room_id: view.get_room_id().to_string(),
+            kind: audio_kind(view.get_kind()),
+            sender: view.get_sender().to_string(),
+            title: view.get_title().to_string(),
+            position_ms: view.get_position_ms(),
+            duration_ms: view.get_duration_ms(),
         }
     }
 
@@ -1008,6 +1091,7 @@ mod probe_dump {
             anchor_index: view.get_anchor_index(),
             focus_event_id: view.get_focus_event_id().to_string(),
             rows,
+            audio: audio(window),
         }
     }
 }

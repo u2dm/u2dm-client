@@ -226,6 +226,15 @@ async fn run_command(
     let delivered = match driven {
         Driven::Command(cmd) => server.commands.send(cmd),
         Driven::SessionExpiry => server.commands.inject_session_expiry(),
+        Driven::Poke(poke) => {
+            if !dump::poke(poke) {
+                return failure(
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    "this build has no UI poke hook (interpreted mode)".to_owned(),
+                );
+            }
+            Ok(())
+        }
     };
     if let Err(e) = delivered {
         return failure(StatusCode::SERVICE_UNAVAILABLE, e.to_string());

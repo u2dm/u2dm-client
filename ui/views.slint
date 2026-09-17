@@ -7,7 +7,7 @@ import {
 } from "screens/chat/components/types.slint";
 import { VerificationEmoji } from "components/types.slint";
 import { UserMessage } from "messages.slint";
-import { AttachmentKind, ConnectionState, LoginActivity, LoginMethodKind, LoginPhase, TimelineState, UserMessageKind, VerificationActivity, VerificationPhase } from "enums.slint";
+import { AttachmentKind, AudioKind, ConnectionState, LoginActivity, LoginMethodKind, LoginPhase, TimelineState, UserMessageKind, VerificationActivity, VerificationPhase } from "enums.slint";
 
 export global LoginView {
     in property <LoginPhase> step: LoginPhase.loading;
@@ -83,6 +83,20 @@ export global VideoView {
     in property <int> position-ms;
     in property <int> duration-ms;
     in property <UserMessageKind> error: UserMessageKind.none;
+}
+
+export global AudioView {
+    in property <bool> visible;
+    in property <bool> loading;
+    in property <bool> playing;
+    in property <bool> silent;
+    in property <string> event-id;
+    in property <string> room-id;
+    in property <string> sender;
+    in property <string> title;
+    in property <AudioKind> kind: AudioKind.voice;
+    in property <int> position-ms;
+    in property <int> duration-ms;
 }
 
 export global AttachmentView {

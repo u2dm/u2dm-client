@@ -39,10 +39,14 @@ impl TimelineItems {
             .count()
     }
 
-    pub(super) fn row_of_event(&self, event_id: &EventId) -> JumpTarget {
-        let Some(raw) = self.items.iter().position(|item| {
+    pub(super) fn position_of_event(&self, event_id: &EventId) -> Option<usize> {
+        self.items.iter().position(|item| {
             item.as_event().and_then(EventTimelineItem::event_id) == Some(event_id)
-        }) else {
+        })
+    }
+
+    pub(super) fn row_of_event(&self, event_id: &EventId) -> JumpTarget {
+        let Some(raw) = self.position_of_event(event_id) else {
             return JumpTarget::NotLoaded;
         };
         if self.renderable.get(raw).is_some_and(|renders| *renders) {

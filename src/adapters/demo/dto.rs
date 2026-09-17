@@ -5,7 +5,7 @@ use serde::Deserialize;
 
 use super::reactions;
 use crate::domain::auth::Session;
-use crate::domain::media::{ImageMeta, VideoMeta};
+use crate::domain::media::{AudioKind, AudioMeta, ImageMeta, VideoMeta, Waveform};
 use crate::domain::message::{
     MessageBody, MessagePreviewKind, Reaction, ReplyInfo, RichText, SendState, ServiceEvent,
     TimelineMessage,
@@ -148,6 +148,7 @@ enum KindDto {
     Image,
     Video,
     Audio,
+    Voice,
     File,
     Location,
     Encrypted,
@@ -185,6 +186,7 @@ pub struct MessageDto {
     image: Option<ImageDto>,
     sticker: Option<StickerDto>,
     video: Option<VideoDto>,
+    audio: Option<AudioDto>,
     reply: Option<ReplyDto>,
     service: Option<ServiceDto>,
     #[serde(default)]
@@ -235,6 +237,43 @@ impl VideoDto {
             },
             duration: (self.duration_secs > 0).then(|| Duration::from_secs(self.duration_secs)),
             size: self.size,
+        }
+    }
+}
+
+#[derive(Deserialize, Clone, Copy)]
+#[serde(rename_all = "lowercase")]
+enum AudioKindDto {
+    Voice,
+    Track,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct AudioDto {
+    kind: AudioKindDto,
+    #[serde(default)]
+    duration_secs: u64,
+    mimetype: Option<String>,
+    filename: Option<String>,
+    size: Option<u64>,
+    #[serde(default)]
+    waveform: Vec<u16>,
+}
+
+impl AudioDto {
+    fn to_meta(&self) -> AudioMeta {
+        let (kind, filename, mimetype) = match self.kind {
+            AudioKindDto::Voice => (AudioKind::Voice, "voice-message.ogg", "audio/ogg"),
+            AudioKindDto::Track => (AudioKind::Track, "audio.m4a", "audio/mp4"),
+        };
+        AudioMeta {
+            kind,
+            filename: self.filename.clone().unwrap_or_else(|| filename.to_owned()),
+            mimetype: Some(self.mimetype.clone().unwrap_or_else(|| mimetype.to_owned())),
+            duration: (self.duration_secs > 0).then(|| Duration::from_secs(self.duration_secs)),
+            size: self.size,
+            waveform: Waveform::from_amplitudes(self.waveform.iter().copied()),
         }
     }
 }
@@ -442,6 +481,12 @@ impl MessageDto {
                 meta: sticker.to_meta(),
             };
         }
+        if let Some(audio) = &self.audio {
+            return MessageBody::Audio {
+                caption: (!self.body.is_empty()).then(|| self.rich_body()),
+                meta: audio.to_meta(),
+            };
+        }
         if let Some(video) = &self.video {
             return MessageBody::Video {
                 caption: (!self.body.is_empty()).then(|| self.rich_body()),
@@ -482,6 +527,7 @@ impl KindDto {
             Self::Image => MessagePreviewKind::Image,
             Self::Video => MessagePreviewKind::Video,
             Self::Audio => MessagePreviewKind::Audio,
+            Self::Voice => MessagePreviewKind::Voice,
             Self::File => MessagePreviewKind::File,
             Self::Location => MessagePreviewKind::Location,
             Self::Encrypted => MessagePreviewKind::Encrypted,

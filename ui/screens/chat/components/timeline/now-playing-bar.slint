@@ -1,0 +1,133 @@
+import { Palette } from "std-widgets.slint";
+import { IconDisplay, IconSet } from "@lucide";
+import { ClickArea } from "../../../../components/a11y.slint";
+import { IconButton } from "../../../../components/button.slint";
+import { ScrubBar, ScrubCommit } from "../../../../components/scrub-bar.slint";
+import { AudioKind } from "../../../../enums.slint";
+import { Clocks } from "../../../../messages.slint";
+import { Actions } from "../../../../actions.slint";
+import { AudioView, DirectoryView } from "../../../../views.slint";
+import { AppStyle, Fonts, IconSize, Metrics, Radius, Size, Space, Stroke, Weight } from "../../../../theme.slint";
+
+export component NowPlayingBar inherits Rectangle {
+    property <bool> in-this-room: AudioView.room-id == DirectoryView.selected-room-id;
+
+    height: Metrics.now-playing-bar;
+    background: AppStyle.surface-raised;
+    accessible-role: groupbox;
+    accessible-label: @tr("Now playing");
+
+    HorizontalLayout {
+        padding-left: Space.sm;
+        padding-right: Space.sm;
+        spacing: Space.md;
+
+        VerticalLayout {
+            alignment: center;
+
+            IconButton {
+                size: Size.md;
+                radius: Radius.md;
+                icon-size: IconSize.md;
+                enabled: !AudioView.loading;
+                tint: Palette.accent-background;
+                icon: AudioView.playing ? IconSet.Pause : IconSet.Play;
+                label: AudioView.playing ? @tr("Pause") : @tr("Play");
+                clicked => {
+                    Actions.toggle-audio();
+                }
+            }
+        }
+
+        ClickArea {
+            horizontal-stretch: 1;
+            min-width: 0;
+            ring-radius: Radius.xs;
+            label: root.in-this-room
+                ? @tr("Go to the message that is playing")
+                : @tr("Go to the room that is playing");
+            clicked => {
+                if (root.in-this-room) {
+                    Actions.jump-to-event(AudioView.event-id);
+                } else {
+                    Actions.select-room(AudioView.room-id);
+                }
+            }
+
+            VerticalLayout {
+                width: 100%;
+                height: 100%;
+                alignment: center;
+
+                Text {
+                    text: AudioView.sender;
+                    font-size: Fonts.body-small;
+                    font-weight: Weight.semibold;
+                    color: Palette.accent-background;
+                    overflow: elide;
+                }
+
+                Text {
+                    text: AudioView.kind == AudioKind.voice ? @tr("Voice message") : AudioView.title;
+                    font-size: Fonts.caption;
+                    color: AppStyle.foreground-muted;
+                    overflow: elide;
+                }
+            }
+        }
+
+        if AudioView.silent: VerticalLayout {
+            alignment: center;
+
+            IconDisplay {
+                icon: IconSet.VolumeX;
+                size: IconSize.sm;
+                stroke: AppStyle.foreground-faint;
+                accessible-role: image;
+                accessible-label: @tr("No sound device, playing silently");
+            }
+        }
+
+        Text {
+            text: @tr("{} / {}", Clocks.label(AudioView.position-ms), Clocks.label(AudioView.duration-ms));
+            font-size: Fonts.caption;
+            color: AppStyle.foreground-muted;
+            vertical-alignment: center;
+        }
+
+        VerticalLayout {
+            alignment: center;
+
+            IconButton {
+                size: Size.md;
+                radius: Radius.md;
+                icon-size: IconSize.sm;
+                icon: IconSet.X;
+                label: @tr("Close the player");
+                clicked => {
+                    Actions.close-audio();
+                }
+            }
+        }
+    }
+
+    Rectangle {
+        y: parent.height - self.height;
+        height: Stroke.hairline;
+        background: AppStyle.border;
+    }
+
+    ScrubBar {
+        y: parent.height - (self.height + Metrics.audio-track-line) / 2;
+        width: parent.width;
+        commit: ScrubCommit.on-release;
+        track-height: Metrics.audio-track-line;
+        rest: transparent;
+        position-ms: AudioView.position-ms;
+        duration-ms: AudioView.duration-ms;
+        label: @tr("Playback position");
+        seek(ms) => {
+            Actions.seek-audio(ms);
+        }
+    }
+}

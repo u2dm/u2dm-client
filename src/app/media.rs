@@ -1,11 +1,13 @@
 use std::future::Future;
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use super::show_toast;
 use super::task_group::TaskGroup;
 use crate::commands::messages::{UserMessage, UserMessageKind};
 use crate::commands::view::{Toast, VideoView};
-use crate::error::AppError;
+use crate::domain::media::WaveformNeed;
+use crate::error::{AppError, Result};
 use crate::ports::matrix::MediaPort;
 use crate::ports::media::MediaFilePort;
 use crate::ports::output::AppOutputPort;
@@ -90,7 +92,9 @@ impl MediaActions {
 
     pub(super) fn open_video(&mut self, media: Arc<dyn MediaPort>, event_id: String) {
         if !cfg!(feature = "video") {
-            self.play_externally(media, event_id);
+            self.play_externally(media, event_id, |media, event_id| async move {
+                media.materialize_video(&event_id).await
+            });
             return;
         }
         let output = Arc::clone(&self.output);
@@ -124,16 +128,26 @@ impl MediaActions {
         });
     }
 
-    fn play_externally(&mut self, media: Arc<dyn MediaPort>, event_id: String) {
+    pub(super) fn play_audio_externally(&mut self, media: Arc<dyn MediaPort>, event_id: String) {
+        self.play_externally(media, event_id, |media, event_id| async move {
+            media.materialize_audio(&event_id, WaveformNeed::Skip).await
+        });
+    }
+
+    fn play_externally<F, Fut>(&mut self, media: Arc<dyn MediaPort>, event_id: String, fetch: F)
+    where
+        F: FnOnce(Arc<dyn MediaPort>, String) -> Fut + Send + 'static,
+        Fut: Future<Output = Result<PathBuf>> + Send,
+    {
         let media_files = Arc::clone(&self.media_files);
         let output = Arc::clone(&self.output);
         self.spawn_cancellable(async move {
-            let outcome = match media.materialize_video(&event_id).await {
+            let outcome = match fetch(media, event_id).await {
                 Ok(path) => media_files.open_path(&path).await,
                 Err(e) => Err(e),
             };
             if let Err(e) = outcome {
-                tracing::warn!("failed to play video externally: {e}");
+                tracing::warn!("failed to play media externally: {e}");
                 show_toast(
                     output.as_ref(),
                     Toast::Error(UserMessage::new(UserMessageKind::MediaOpenFailed)),

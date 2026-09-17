@@ -16,6 +16,7 @@ use matrix_sdk_ui::timeline::{
 use tokio::sync::{Semaphore, mpsc};
 use tokio::task::JoinSet;
 
+use super::convert::convert_timeline_item;
 use super::diff::diff_to_patch;
 use super::filter::TimelineItems;
 use super::reactors::{ReactorAvatars, Resolution, resolve_reactor_avatars};
@@ -25,8 +26,8 @@ use crate::adapters::matrix::profile::PronounCache;
 use crate::domain::message::TimelineMessage;
 use crate::domain::room::RoomId;
 use crate::domain::timeline::{
-    EnrichmentDelta, JumpTarget, PaginationDirection, PaginationOutcome, TimelineCommand,
-    TimelineFocus, TimelinePatch, TimelineUpdate,
+    AudioLookup, EnrichmentDelta, JumpTarget, PaginationDirection, PaginationOutcome,
+    TimelineCommand, TimelineFocus, TimelinePatch, TimelineUpdate, locate_audio,
 };
 use crate::domain::viewport::PAGINATION_BATCH_SIZE;
 use crate::error::{AppError, Result};
@@ -217,8 +218,9 @@ async fn handle_timeline_command(
     cmd: TimelineCommand,
     timeline: &Timeline,
     items: &TimelineItems,
-    timeline_tx: &mpsc::Sender<TimelineUpdate>,
+    ctx: &TimelineContext<'_>,
 ) {
+    let timeline_tx = ctx.timeline_tx;
     let (direction, outcome) = match cmd {
         TimelineCommand::PaginateBackwards => (
             PaginationDirection::Backwards,
@@ -238,6 +240,10 @@ async fn handle_timeline_command(
         }
         TimelineCommand::ToggleReaction { event_id, key } => {
             toggle_reaction(timeline, &event_id, &key).await;
+            return;
+        }
+        TimelineCommand::LocateAudio { request, lookup } => {
+            report_audio(request, &lookup, items, ctx).await;
             return;
         }
     };
@@ -263,6 +269,34 @@ async fn report_jump(
     drop(
         timeline_tx
             .send(TimelineUpdate::JumpOutcome { event_id, target })
+            .await,
+    );
+}
+
+async fn report_audio(
+    request: u64,
+    lookup: &AudioLookup,
+    items: &TimelineItems,
+    ctx: &TimelineContext<'_>,
+) {
+    let anchor = OwnedEventId::try_from(lookup.anchor())
+        .ok()
+        .and_then(|event_id| items.position_of_event(&event_id));
+    let track = anchor.and_then(|start| {
+        let messages = items
+            .items()
+            .get(start..)?
+            .iter()
+            .filter_map(|item| convert_timeline_item(item, ctx));
+        locate_audio(lookup, messages)
+    });
+    tracing::debug!(request, found = track.is_some(), "resolved an audio lookup");
+    drop(
+        ctx.timeline_tx
+            .send(TimelineUpdate::AudioLocated {
+                request,
+                track: track.map(Box::new),
+            })
             .await,
     );
 }
@@ -645,7 +679,7 @@ fn reactor_avatar_patch(
         if !super::convert::reacted_by(item, arrived) {
             continue;
         }
-        if let Some(message) = super::convert::convert_timeline_item(item, ctx) {
+        if let Some(message) = convert_timeline_item(item, ctx) {
             patches.push(TimelinePatch::Set {
                 index: items.msg_index_at(raw_index),
                 message,
@@ -700,7 +734,7 @@ async fn run_timeline_loop<S>(
             biased;
             cmd = cmd_rx.recv() => {
                 let Some(cmd) = cmd else { break };
-                handle_timeline_command(cmd, timeline, &items, ctx.timeline_tx).await;
+                handle_timeline_command(cmd, timeline, &items, ctx).await;
             }
             result = key_stream.next(), if !key_stream_done => {
                 match result {

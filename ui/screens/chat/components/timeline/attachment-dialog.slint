@@ -1,5 +1,5 @@
 import { Palette, ScrollView } from "std-widgets.slint";
-import { IconDisplay, IconSet } from "@lucide";
+import { Icon, IconDisplay, IconSet } from "@lucide";
 
 import { AttachmentKind, UserMessageKind } from "../../../../enums.slint";
 import { AttachmentView, DirectoryView } from "../../../../views.slint";
@@ -110,6 +110,9 @@ component CheckRow inherits Rectangle {
 }
 
 component FileChip inherits Rectangle {
+    in property <Icon> icon: IconSet.File;
+    in property <string> detail;
+
     height: Metrics.attachment-chip;
 
     HorizontalLayout {
@@ -125,7 +128,7 @@ component FileChip inherits Rectangle {
                 background: AppStyle.accent-background-soft;
 
                 IconDisplay {
-                    icon: IconSet.File;
+                    icon: root.icon;
                     size: IconSize.lg;
                     stroke: Palette.accent-background;
                 }
@@ -146,9 +149,7 @@ component FileChip inherits Rectangle {
             }
 
             Text {
-                text: AttachmentView.extension == ""
-                    ? AttachmentView.size
-                    : @tr("{} · {}", AttachmentView.extension, AttachmentView.size);
+                text: root.detail;
                 font-size: Fonts.body-small;
                 overflow: elide;
                 color: AppStyle.foreground-muted;
@@ -170,8 +171,16 @@ export component AttachmentDialog inherits ModalHost {
     property <bool> as-document: false;
     property <string> caption: "";
 
-    property <bool> shows-preview: AttachmentView.kind != AttachmentKind.file
+    property <bool> shows-preview: (AttachmentView.kind == AttachmentKind.image
+        || AttachmentView.kind == AttachmentKind.video)
         && AttachmentView.has-preview;
+    property <bool> is-audio: AttachmentView.kind == AttachmentKind.audio && !root.as-document;
+    property <string> file-detail: AttachmentView.extension == ""
+        ? AttachmentView.size
+        : @tr("{} · {}", AttachmentView.extension, AttachmentView.size);
+    property <string> audio-detail: AttachmentView.duration == ""
+        ? root.file-detail
+        : @tr("{} · {}", AttachmentView.duration, AttachmentView.size);
     property <float> aspect: AttachmentView.height > 0
         ? AttachmentView.width / AttachmentView.height
         : 1.5;
@@ -232,7 +241,9 @@ export component AttachmentDialog inherits ModalHost {
                                 ? @tr("Send as a file")
                                 : (AttachmentView.kind == AttachmentKind.video
                                     ? @tr("Send a video")
-                                    : @tr("Send an image"));
+                                    : (AttachmentView.kind == AttachmentKind.audio
+                                        ? @tr("Send an audio file")
+                                        : @tr("Send an image")));
                             font-size: Fonts.heading;
                             font-weight: Weight.bold;
                             overflow: elide;
@@ -291,7 +302,10 @@ export component AttachmentDialog inherits ModalHost {
                     }
                 }
 
-                if !root.shows-preview || root.as-document: FileChip { }
+                if !root.shows-preview || root.as-document: FileChip {
+                    icon: root.is-audio ? IconSet.Music : IconSet.File;
+                    detail: root.is-audio ? root.audio-detail : root.file-detail;
+                }
 
                 if AttachmentView.kind == AttachmentKind.image: CheckRow {
                     label: @tr("Send as a document");

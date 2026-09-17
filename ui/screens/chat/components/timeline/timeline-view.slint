@@ -8,10 +8,11 @@ import { AppStyle, Fonts, IconSize, Metrics, Radius, Size, Space, Weight } from 
 import { IconButton } from "../../../../components/button.slint";
 import { TimelineState } from "../../../../enums.slint";
 import { ClickArea } from "../../../../components/a11y.slint";
-import { DirectoryView, RoomView } from "../../../../views.slint";
+import { AudioView, DirectoryView, RoomView } from "../../../../views.slint";
 import { Actions } from "../../../../actions.slint";
 import { Composer, Reactions, Shell } from "../../../../local.slint";
 import { StatusPill } from "./status-pill.slint";
+import { NowPlayingBar } from "./now-playing-bar.slint";
 
 export component TimelineView inherits Rectangle {
     background: Palette.background;
@@ -136,8 +137,15 @@ export component TimelineView inherits Rectangle {
             width: parent.width;
             height: parent.height - root.header-height;
             available-width: parent.width;
+            top-inset: AudioView.visible ? Metrics.now-playing-bar : 0px;
             bottom-inset: input.height + root.spacing;
             composer-top: parent.height - input.height;
+        }
+
+        if AudioView.visible: NowPlayingBar {
+            x: 0;
+            y: root.header-height;
+            width: parent.width;
         }
 
         if root.is-blocking-status: StatusPill {

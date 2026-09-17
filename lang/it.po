@@ -110,6 +110,11 @@ msgctxt "VerificationDialog"
 msgid "Close"
 msgstr ""
 
+#: ui/components/scrub-bar.slint:19
+msgctxt "ScrubBar"
+msgid "Seek"
+msgstr ""
+
 #: ui/screens/chat/components/timeline/messages/unread-divider.slint:12
 msgctxt "UnreadDivider"
 msgid "Unread messages"
@@ -325,6 +330,41 @@ msgctxt "VideoPlaceholder"
 msgid "Video"
 msgstr ""
 
+#: ui/screens/chat/components/timeline/messages/audio-message.slint:71
+msgctxt "VoiceWaveform"
+msgid "Voice message position"
+msgstr ""
+
+#: ui/screens/chat/components/timeline/messages/audio-message.slint:138
+msgctxt "AudioMessage"
+msgid "{} · {}"
+msgstr ""
+
+#: ui/screens/chat/components/timeline/messages/audio-message.slint:140
+msgctxt "AudioMessage"
+msgid "{} / {}"
+msgstr ""
+
+#: ui/screens/chat/components/timeline/messages/audio-message.slint:169
+msgctxt "AudioMessage"
+msgid "Pause"
+msgstr ""
+
+#: ui/screens/chat/components/timeline/messages/audio-message.slint:170
+msgctxt "AudioMessage"
+msgid "Play voice message"
+msgstr ""
+
+#: ui/screens/chat/components/timeline/messages/audio-message.slint:170
+msgctxt "AudioMessage"
+msgid "Play {}"
+msgstr ""
+
+#: ui/screens/chat/components/timeline/messages/audio-message.slint:224
+msgctxt "AudioMessage"
+msgid "Track position"
+msgstr ""
+
 #: ui/screens/chat/components/timeline/reaction-detail.slint:46
 msgctxt "DetailRow"
 msgid "{} and {} more"
@@ -425,17 +465,17 @@ msgctxt "PickerPanel"
 msgid "Stickers"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/timeline-content.slint:56
+#: ui/screens/chat/components/timeline/timeline-content.slint:58
 msgctxt "TimelineContent"
 msgid "Loading older messages..."
 msgstr ""
 
-#: ui/screens/chat/components/timeline/timeline-content.slint:63
+#: ui/screens/chat/components/timeline/timeline-content.slint:65
 msgctxt "TimelineContent"
 msgid "Loading newer messages..."
 msgstr ""
 
-#: ui/screens/chat/components/timeline/timeline-content.slint:75
+#: ui/screens/chat/components/timeline/timeline-content.slint:77
 msgctxt "TimelineContent"
 msgid "Jump to latest messages"
 msgstr ""
@@ -448,48 +488,6 @@ msgstr ""
 #: ui/screens/chat/components/timeline/status-pill.slint:48
 msgctxt "StatusPill"
 msgid "Retry"
-msgstr ""
-
-#: ui/screens/chat/components/timeline/timeline-view.slint:41
-msgctxt "TimelineView"
-msgid "Loading messages..."
-msgstr "Caricamento messaggi..."
-
-#: ui/screens/chat/components/timeline/timeline-view.slint:44
-msgctxt "TimelineView"
-msgid "Loading unread messages..."
-msgstr ""
-
-#: ui/screens/chat/components/timeline/timeline-view.slint:47
-msgctxt "TimelineView"
-msgid "Going to the message..."
-msgstr ""
-
-#: ui/screens/chat/components/timeline/timeline-view.slint:50
-msgctxt "TimelineView"
-msgid "Connection lost"
-msgstr ""
-
-#: ui/screens/chat/components/timeline/timeline-view.slint:52
-msgctxt "TimelineView"
-msgid "Couldn't load messages"
-msgstr ""
-
-#: ui/screens/chat/components/timeline/timeline-view.slint:66
-msgctxt "TimelineView"
-msgid "Select a room"
-msgstr "Seleziona una stanza"
-
-#: ui/screens/chat/components/timeline/timeline-view.slint:95
-msgctxt "TimelineView"
-msgid "{n} member"
-msgid_plural "{n} members"
-msgstr[0] ""
-msgstr[1] ""
-
-#: ui/screens/chat/components/timeline/timeline-view.slint:120
-msgctxt "TimelineView"
-msgid "Back to the room list"
 msgstr ""
 
 #: ui/screens/chat/components/timeline/picker-search.slint:80
@@ -598,119 +596,211 @@ msgctxt "AttachMenu"
 msgid "Document"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/message-bubble.slint:286
+#: ui/screens/chat/components/timeline/message-bubble.slint:287
 msgctxt "MessageBubble"
 msgid "Go to the message this replies to"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/message-bubble.slint:487
+#: ui/screens/chat/components/timeline/message-bubble.slint:509
 msgctxt "MessageBubble"
 msgid "Select the text of this message"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/message-bubble.slint:512
+#: ui/screens/chat/components/timeline/message-bubble.slint:534
 msgctxt "MessageBubble"
 msgid "Reply to {}"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/message-bubble.slint:527
+#: ui/screens/chat/components/timeline/message-bubble.slint:549
 msgctxt "MessageBubble"
 msgid "Reply"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/message-bubble.slint:545
+#: ui/screens/chat/components/timeline/message-bubble.slint:567
 msgctxt "MessageBubble"
 msgid "React to {}'s message with {}"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/attachment-dialog.slint:151
-msgctxt "FileChip"
-msgid "{} · {}"
-msgstr ""
-
-#: ui/screens/chat/components/timeline/attachment-dialog.slint:162
-msgctxt "AttachmentDialog"
-msgid "Send an attachment"
-msgstr ""
-
-#: ui/screens/chat/components/timeline/attachment-dialog.slint:232
-msgctxt "AttachmentDialog"
-msgid "Send as a file"
-msgstr ""
-
-#: ui/screens/chat/components/timeline/attachment-dialog.slint:234
-msgctxt "AttachmentDialog"
-msgid "Send a video"
-msgstr ""
-
-#: ui/screens/chat/components/timeline/attachment-dialog.slint:235
-msgctxt "AttachmentDialog"
-msgid "Send an image"
-msgstr ""
-
-#: ui/screens/chat/components/timeline/attachment-dialog.slint:248
-msgctxt "AttachmentDialog"
-msgid "Discard the attachment"
-msgstr ""
-
-#: ui/screens/chat/components/timeline/attachment-dialog.slint:297
-msgctxt "AttachmentDialog"
-msgid "Send as a document"
-msgstr ""
-
-#: ui/screens/chat/components/timeline/attachment-dialog.slint:302
-msgctxt "AttachmentDialog"
-msgid "Caption"
-msgstr ""
-
-#: ui/screens/chat/components/timeline/attachment-dialog.slint:312
-msgctxt "AttachmentDialog"
-msgid "Cancel"
-msgstr ""
-
-#: ui/screens/chat/components/timeline/attachment-dialog.slint:324
-msgctxt "AttachmentDialog"
-msgid "Send"
-msgstr ""
-
-#: ui/screens/chat/components/timeline/video-player.slint:22
-msgctxt "ScrubBar"
-msgid "Seek"
-msgstr ""
-
-#: ui/screens/chat/components/timeline/video-player.slint:70
+#: ui/screens/chat/components/timeline/video-player.slint:14
 msgctxt "VideoPlayer"
 msgid "Video player"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/video-player.slint:89
+#: ui/screens/chat/components/timeline/video-player.slint:33
 msgctxt "VideoPlayer"
 msgid "Video"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/video-player.slint:136
+#: ui/screens/chat/components/timeline/video-player.slint:80
 msgctxt "VideoPlayer"
 msgid "Pause"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/video-player.slint:136
+#: ui/screens/chat/components/timeline/video-player.slint:80
 msgctxt "VideoPlayer"
 msgid "Play"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/video-player.slint:184
+#: ui/screens/chat/components/timeline/video-player.slint:130
 msgctxt "VideoPlayer"
 msgid "Unmute"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/video-player.slint:184
+#: ui/screens/chat/components/timeline/video-player.slint:130
 msgctxt "VideoPlayer"
 msgid "Mute"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/video-player.slint:207
+#: ui/screens/chat/components/timeline/video-player.slint:153
 msgctxt "VideoPlayer"
 msgid "Close"
+msgstr ""
+
+#: ui/screens/chat/components/timeline/now-playing-bar.slint:18
+msgctxt "NowPlayingBar"
+msgid "Now playing"
+msgstr ""
+
+#: ui/screens/chat/components/timeline/now-playing-bar.slint:35
+msgctxt "NowPlayingBar"
+msgid "Pause"
+msgstr ""
+
+#: ui/screens/chat/components/timeline/now-playing-bar.slint:35
+msgctxt "NowPlayingBar"
+msgid "Play"
+msgstr ""
+
+#: ui/screens/chat/components/timeline/now-playing-bar.slint:47
+msgctxt "NowPlayingBar"
+msgid "Go to the message that is playing"
+msgstr ""
+
+#: ui/screens/chat/components/timeline/now-playing-bar.slint:48
+msgctxt "NowPlayingBar"
+msgid "Go to the room that is playing"
+msgstr ""
+
+#: ui/screens/chat/components/timeline/now-playing-bar.slint:71
+msgctxt "NowPlayingBar"
+msgid "Voice message"
+msgstr ""
+
+#: ui/screens/chat/components/timeline/now-playing-bar.slint:87
+msgctxt "NowPlayingBar"
+msgid "No sound device, playing silently"
+msgstr ""
+
+#: ui/screens/chat/components/timeline/now-playing-bar.slint:92
+msgctxt "NowPlayingBar"
+msgid "{} / {}"
+msgstr ""
+
+#: ui/screens/chat/components/timeline/now-playing-bar.slint:106
+msgctxt "NowPlayingBar"
+msgid "Close the player"
+msgstr ""
+
+#: ui/screens/chat/components/timeline/now-playing-bar.slint:128
+msgctxt "NowPlayingBar"
+msgid "Playback position"
+msgstr ""
+
+#: ui/screens/chat/components/timeline/timeline-view.slint:42
+msgctxt "TimelineView"
+msgid "Loading messages..."
+msgstr "Caricamento messaggi..."
+
+#: ui/screens/chat/components/timeline/timeline-view.slint:45
+msgctxt "TimelineView"
+msgid "Loading unread messages..."
+msgstr ""
+
+#: ui/screens/chat/components/timeline/timeline-view.slint:48
+msgctxt "TimelineView"
+msgid "Going to the message..."
+msgstr ""
+
+#: ui/screens/chat/components/timeline/timeline-view.slint:51
+msgctxt "TimelineView"
+msgid "Connection lost"
+msgstr ""
+
+#: ui/screens/chat/components/timeline/timeline-view.slint:53
+msgctxt "TimelineView"
+msgid "Couldn't load messages"
+msgstr ""
+
+#: ui/screens/chat/components/timeline/timeline-view.slint:67
+msgctxt "TimelineView"
+msgid "Select a room"
+msgstr "Seleziona una stanza"
+
+#: ui/screens/chat/components/timeline/timeline-view.slint:96
+msgctxt "TimelineView"
+msgid "{n} member"
+msgid_plural "{n} members"
+msgstr[0] ""
+msgstr[1] ""
+
+#: ui/screens/chat/components/timeline/timeline-view.slint:121
+msgctxt "TimelineView"
+msgid "Back to the room list"
+msgstr ""
+
+#: ui/screens/chat/components/timeline/attachment-dialog.slint:163
+msgctxt "AttachmentDialog"
+msgid "Send an attachment"
+msgstr ""
+
+#: ui/screens/chat/components/timeline/attachment-dialog.slint:180
+msgctxt "AttachmentDialog"
+msgid "{} · {}"
+msgstr ""
+
+#: ui/screens/chat/components/timeline/attachment-dialog.slint:241
+msgctxt "AttachmentDialog"
+msgid "Send as a file"
+msgstr ""
+
+#: ui/screens/chat/components/timeline/attachment-dialog.slint:243
+msgctxt "AttachmentDialog"
+msgid "Send a video"
+msgstr ""
+
+#: ui/screens/chat/components/timeline/attachment-dialog.slint:245
+msgctxt "AttachmentDialog"
+msgid "Send an audio file"
+msgstr ""
+
+#: ui/screens/chat/components/timeline/attachment-dialog.slint:246
+msgctxt "AttachmentDialog"
+msgid "Send an image"
+msgstr ""
+
+#: ui/screens/chat/components/timeline/attachment-dialog.slint:259
+msgctxt "AttachmentDialog"
+msgid "Discard the attachment"
+msgstr ""
+
+#: ui/screens/chat/components/timeline/attachment-dialog.slint:311
+msgctxt "AttachmentDialog"
+msgid "Send as a document"
+msgstr ""
+
+#: ui/screens/chat/components/timeline/attachment-dialog.slint:316
+msgctxt "AttachmentDialog"
+msgid "Caption"
+msgstr ""
+
+#: ui/screens/chat/components/timeline/attachment-dialog.slint:326
+msgctxt "AttachmentDialog"
+msgid "Cancel"
+msgstr ""
+
+#: ui/screens/chat/components/timeline/attachment-dialog.slint:338
+msgctxt "AttachmentDialog"
+msgid "Send"
 msgstr ""
 
 #: ui/screens/chat/components/drawer.slint:87
@@ -775,20 +865,25 @@ msgstr ""
 
 #: ui/screens/chat/components/message-preview.slint:15
 msgctxt "MessagePreview"
-msgid "📎 {}"
+msgid "🎤 Voice message"
 msgstr ""
 
 #: ui/screens/chat/components/message-preview.slint:18
 msgctxt "MessagePreview"
-msgid "📍 Location"
+msgid "📎 {}"
 msgstr ""
 
 #: ui/screens/chat/components/message-preview.slint:21
 msgctxt "MessagePreview"
-msgid "🔒 Encrypted message"
+msgid "📍 Location"
 msgstr ""
 
 #: ui/screens/chat/components/message-preview.slint:24
+msgctxt "MessagePreview"
+msgid "🔒 Encrypted message"
+msgstr ""
+
+#: ui/screens/chat/components/message-preview.slint:27
 msgctxt "MessagePreview"
 msgid "Sticker"
 msgstr ""
@@ -1028,7 +1123,7 @@ msgctxt "LoginField"
 msgid "Show password"
 msgstr ""
 
-#: ui/main.slint:47
+#: ui/main.slint:49
 msgctxt "AppWindow"
 msgid "U2DM Matrix Client"
 msgstr "U2DM Client Matrix"
@@ -1202,116 +1297,121 @@ msgstr ""
 
 #: ui/messages.slint:107
 msgctxt "UserMessages"
-msgid "Failed to save file"
+msgid "This audio could not be played"
 msgstr ""
 
 #: ui/messages.slint:110
 msgctxt "UserMessages"
-msgid "File saved to {}"
+msgid "Failed to save file"
 msgstr ""
 
 #: ui/messages.slint:113
 msgctxt "UserMessages"
-msgid "Could not accept the request. Please try again."
+msgid "File saved to {}"
 msgstr ""
 
 #: ui/messages.slint:116
 msgctxt "UserMessages"
-msgid "Could not confirm the match. Please try again."
+msgid "Could not accept the request. Please try again."
 msgstr ""
 
 #: ui/messages.slint:119
 msgctxt "UserMessages"
-msgid "Could not decline the request. Please try again."
+msgid "Could not confirm the match. Please try again."
 msgstr ""
 
 #: ui/messages.slint:122
 msgctxt "UserMessages"
-msgid "Nobody answered in time, so the request expired."
+msgid "Could not decline the request. Please try again."
 msgstr ""
 
 #: ui/messages.slint:125
 msgctxt "UserMessages"
-msgid "Could not accept the verification. Please try again."
+msgid "Nobody answered in time, so the request expired."
 msgstr ""
 
 #: ui/messages.slint:128
 msgctxt "UserMessages"
-msgid "The other device cancelled the verification."
+msgid "Could not accept the verification. Please try again."
 msgstr ""
 
 #: ui/messages.slint:131
 msgctxt "UserMessages"
-msgid "You declined the verification."
+msgid "The other device cancelled the verification."
 msgstr ""
 
 #: ui/messages.slint:134
 msgctxt "UserMessages"
-msgid "The emoji did not match, so the verification was stopped."
+msgid "You declined the verification."
 msgstr ""
 
 #: ui/messages.slint:137
 msgctxt "UserMessages"
-msgid "This request was answered on another one of your devices."
+msgid "The emoji did not match, so the verification was stopped."
 msgstr ""
 
 #: ui/messages.slint:140
 msgctxt "UserMessages"
+msgid "This request was answered on another one of your devices."
+msgstr ""
+
+#: ui/messages.slint:143
+msgctxt "UserMessages"
 msgid "The verification could not be completed."
 msgstr ""
 
-#: ui/messages.slint:163
+#: ui/messages.slint:170
 msgctxt "MediaFailures"
 msgid "This message carries no preview image."
 msgstr ""
 
-#: ui/messages.slint:164
+#: ui/messages.slint:171
 msgctxt "MediaFailures"
 msgid "This message carries no image to download."
 msgstr ""
 
-#: ui/messages.slint:167
+#: ui/messages.slint:174
 msgctxt "MediaFailures"
 msgid ""
 "The homeserver did not send it. It may be offline, or the file may be gone."
 msgstr ""
 
-#: ui/messages.slint:171
+#: ui/messages.slint:178
 msgctxt "MediaFailures"
 msgid "It is larger than the download limit for videos."
 msgstr ""
 
-#: ui/messages.slint:172
+#: ui/messages.slint:179
 msgctxt "MediaFailures"
 msgid "It is larger than the download limit for images."
 msgstr ""
 
-#: ui/messages.slint:175
+#: ui/messages.slint:182
 msgctxt "MediaFailures"
 msgid "It could not be written to the media cache on this device."
 msgstr ""
 
-#: ui/messages.slint:179
+#: ui/messages.slint:186
 msgctxt "MediaFailures"
 msgid "It downloaded, but could not be read as a video."
 msgstr ""
 
-#: ui/messages.slint:180
+#: ui/messages.slint:187
 msgctxt "MediaFailures"
 msgid "It downloaded, but could not be read as an image."
 msgstr ""
 
-#: ui/messages.slint:182
+#: ui/messages.slint:189
 msgctxt "MediaFailures"
 msgid "It could not be loaded."
 msgstr ""
 
-#: ui/messages.slint:192
+#: ui/messages.slint:199
 msgctxt "MediaFailures"
 msgid "{} · {}"
 msgstr ""
 
-#: ui/messages.slint:198
+#: ui/messages.slint:205
 msgctxt "MediaFailures"
 msgid "{}×{}"
 msgstr ""

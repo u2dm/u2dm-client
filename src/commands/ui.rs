@@ -91,6 +91,16 @@ pub enum UiCommand {
     },
     #[strum(to_string = "CloseVideo")]
     CloseVideo,
+    #[strum(to_string = "PlayAudio({event_id})")]
+    PlayAudio {
+        event_id: String,
+    },
+    CloseAudio,
+    #[strum(to_string = "AudioEnded({request}, {end})")]
+    AudioEnded {
+        request: u64,
+        end: AudioEnd,
+    },
     #[strum(to_string = "OpenLink")]
     OpenLink {
         url: String,
@@ -103,6 +113,12 @@ pub enum UiCommand {
     DismissToast,
     Logout,
     Quit,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, StrumDisplay)]
+pub enum AudioEnd {
+    Finished,
+    Failed,
 }
 
 #[derive(Clone)]

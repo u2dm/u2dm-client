@@ -4,12 +4,12 @@ use std::path::PathBuf;
 use image::codecs::jpeg::JpegEncoder;
 use image::{DynamicImage, ImageFormat, ImageReader, Limits};
 use matrix_sdk::attachment::{
-    AttachmentInfo, BaseFileInfo, BaseImageInfo, BaseVideoInfo, Thumbnail,
+    AttachmentInfo, BaseAudioInfo, BaseFileInfo, BaseImageInfo, BaseVideoInfo, Thumbnail,
 };
 use matrix_sdk::ruma::UInt;
 use mime::Mime;
 
-use crate::domain::media::PickedAttachment;
+use crate::domain::media::{PickedAttachment, Waveform};
 
 const THUMBNAIL_MAX_EDGE: u32 = 800;
 const THUMBNAIL_JPEG_QUALITY: u8 = 80;
@@ -49,6 +49,11 @@ pub(super) fn attachment_info(picked: &PickedAttachment, content_type: &Mime) ->
             height,
             size,
             blurhash: None,
+        }),
+        mime::AUDIO => AttachmentInfo::Audio(BaseAudioInfo {
+            duration: picked.duration,
+            size,
+            waveform: picked.waveform.as_ref().map(Waveform::levels),
         }),
         _ => AttachmentInfo::File(BaseFileInfo { size }),
     }

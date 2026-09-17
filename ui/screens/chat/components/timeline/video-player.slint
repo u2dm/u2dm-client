@@ -1,69 +1,13 @@
 import { Palette, Spinner } from "std-widgets.slint";
 import { IconDisplay, IconSet } from "@lucide";
 import { ClickArea } from "../../../../components/a11y.slint";
+import { ScrubBar } from "../../../../components/scrub-bar.slint";
 import { ModalHost } from "../../../../components/overlay.slint";
 import { UserMessageKind } from "../../../../enums.slint";
 import { Clocks, UserMessages } from "../../../../messages.slint";
 import { AppStyle, Fonts, IconSize, Metrics, Opacity, Radius, Size, Space, Stroke } from "../../../../theme.slint";
 import { Actions } from "../../../../actions.slint";
 import { VideoView } from "../../../../views.slint";
-
-component ScrubBar inherits Rectangle {
-    in property <int> position-ms;
-    in property <int> duration-ms;
-    callback seek(int);
-
-    property <float> progress: root.duration-ms > 0
-        ? clamp(root.position-ms / root.duration-ms, 0.0, 1.0)
-        : 0.0;
-
-    height: Metrics.video-scrub-knob;
-    accessible-role: slider;
-    accessible-label: @tr("Seek");
-    accessible-value: root.position-ms / 1000;
-    accessible-value-minimum: 0;
-    accessible-value-maximum: root.duration-ms / 1000;
-
-    track := Rectangle {
-        y: (parent.height - self.height) / 2;
-        height: Metrics.video-scrub-track;
-        border-radius: self.height / 2;
-        background: Palette.foreground.transparentize(0.75);
-
-        Rectangle {
-            x: 0;
-            width: parent.width * root.progress;
-            height: parent.height;
-            border-radius: self.height / 2;
-            background: Palette.accent-background;
-        }
-    }
-
-    knob := Rectangle {
-        x: track.width * root.progress - self.width / 2;
-        y: (parent.height - self.height) / 2;
-        width: Metrics.video-scrub-knob;
-        height: Metrics.video-scrub-knob;
-        border-radius: self.height / 2;
-        background: Palette.accent-background;
-        opacity: scrub.has-hover || scrub.pressed ? 1 : Opacity.scrim-strong;
-    }
-
-    scrub := TouchArea {
-        width: 100%;
-        height: 100%;
-        pointer-event(event) => {
-            if (self.pressed && root.duration-ms > 0) {
-                root.seek(clamp(self.mouse-x / root.width, 0.0, 1.0) * root.duration-ms);
-            }
-        }
-        clicked => {
-            if (root.duration-ms > 0) {
-                root.seek(clamp(self.mouse-x / root.width, 0.0, 1.0) * root.duration-ms);
-            }
-        }
-    }
-}
 
 export component VideoPlayer inherits ModalHost {
     dim-opacity: Opacity.scrim-strong;
@@ -153,6 +97,8 @@ export component VideoPlayer inherits ModalHost {
                 horizontal-stretch: 1;
 
                 ScrubBar {
+                    above-modal: true;
+                    resting-knob-opacity: Opacity.scrim-strong;
                     position-ms: VideoView.position-ms;
                     duration-ms: VideoView.duration-ms;
                     seek(ms) => {

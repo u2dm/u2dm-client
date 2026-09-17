@@ -159,6 +159,9 @@ pub(super) fn command_allowed(phase: AppPhase, cmd: &UiCommand) -> bool {
         | UiCommand::OpenMedia { .. }
         | UiCommand::OpenVideo { .. }
         | UiCommand::CloseVideo
+        | UiCommand::PlayAudio { .. }
+        | UiCommand::CloseAudio
+        | UiCommand::AudioEnded { .. }
         | UiCommand::OpenLink { .. }
         | UiCommand::SaveFile { .. }
         | UiCommand::DismissToast

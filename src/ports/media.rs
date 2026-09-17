@@ -2,7 +2,7 @@ use std::path::{Path, PathBuf};
 
 use async_trait::async_trait;
 
-use crate::domain::media::{AttachmentPick, MediaFailure, PickedAttachment};
+use crate::domain::media::{AttachmentPick, MediaFailure, PickedAttachment, Waveform};
 use crate::error::Result;
 
 #[async_trait]
@@ -22,4 +22,7 @@ pub trait MediaCache: Send + Sync {
     fn space_avatar_path(&self, mxc: &str) -> Option<PathBuf>;
     fn sticker_path(&self, mxc: &str) -> Option<PathBuf>;
     fn sticker_failed(&self, mxc: &str) -> bool;
+    fn audio_path(&self, event_id: &str) -> Option<PathBuf>;
+    fn audio_failure(&self, event_id: &str) -> Option<MediaFailure>;
+    fn audio_waveform(&self, event_id: &str) -> Option<Waveform>;
 }

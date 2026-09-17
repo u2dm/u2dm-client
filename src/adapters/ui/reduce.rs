@@ -1,11 +1,14 @@
 use std::cell::{Cell, RefCell};
 use std::sync::Arc;
 
+use std::collections::HashSet;
+
 use slint::{ComponentHandle, Model, SharedString, VecModel};
 
+use super::audio;
 use super::backend::{UiBackend, UiEventContext};
 use super::decode::{AvatarSlot, clear_session_media, load_avatar_async, request_sticker};
-use super::dto::{GRID_COLUMNS, sticker_grid};
+use super::dto::{GRID_COLUMNS, audio_row_update, sticker_grid};
 use super::present::{
     VerifyStep, duration_label, file_extension, user_initial, verification_cancellation,
 };
@@ -13,12 +16,13 @@ use super::props::{BoolProp, IntProp, StringProp, UiProps};
 use super::reconcile::{
     apply_rooms, apply_spaces, apply_timeline_patch, forget_timeline_index, index_sticker_grid,
 };
+use super::rows::patch_rows_by_id;
 use super::video;
 use crate::commands::effects::{Effect, VerificationActivity, VerificationUpdate};
 use crate::commands::messages::{UserMessage, UserMessageKind};
 use crate::commands::view::{
-    AppViewState, AttachmentView, DirectoryView, LifecycleView, PaginationView, StickerView, Toast,
-    VideoView,
+    AppViewState, AttachmentView, AudioView, DirectoryView, LifecycleView, NowPlaying,
+    PaginationView, StickerView, Toast, TrackFile, VideoView,
 };
 use crate::domain::room::{RoomId, RoomList};
 use crate::domain::timeline::{TimelinePatch, TimelineStatus};
@@ -221,6 +225,7 @@ fn apply_snapshot<B: UiBackend>(
         stickers,
         attachment,
         video,
+        audio,
         toast,
     } = view.as_ref();
     let DirectoryView {
@@ -289,6 +294,9 @@ fn apply_snapshot<B: UiBackend>(
     }
     if last.is_none_or(|l| l.video != *video) {
         apply_video::<B>(w, video);
+    }
+    if last.is_none_or(|l| l.audio != *audio) {
+        apply_audio::<B>(w, last.map(|l| &l.audio), audio, ctx);
     }
     if last.is_none_or(|l| l.toast != *toast) {
         apply_toast(w, toast);
@@ -465,9 +473,63 @@ fn apply_video<B: UiBackend>(w: &B::Window, view: &VideoView) {
     w.set_video_error(*error);
 
     match path.as_deref().filter(|_| *visible) {
-        Some(path) => video::open(w, &w.as_weak(), path),
+        Some(path) => {
+            audio::pause(w);
+            video::open(w, &w.as_weak(), path);
+        }
         None => video::close(w),
     }
+}
+
+fn apply_audio<B: UiBackend>(
+    w: &B::Window,
+    last: Option<&AudioView>,
+    view: &AudioView,
+    ctx: &UiEventContext<'_, B>,
+) {
+    if let Some(now) = &view.now_playing {
+        show_now_playing(w, now);
+    } else {
+        w.set_bool(BoolProp::AudioVisible, false);
+        w.set_bool(BoolProp::AudioLoading, false);
+        w.set_string(StringProp::AudioEventId, SharedString::new());
+        audio::close(w);
+    }
+    let previous = last.and_then(|l| l.now_playing.as_ref());
+    for now in previous.into_iter().chain(view.now_playing.as_ref()) {
+        refresh_audio_row::<B>(now, ctx);
+    }
+}
+
+fn show_now_playing<W>(w: &W, now: &NowPlaying)
+where
+    W: ComponentHandle + UiProps + 'static,
+{
+    audio::prepare(w, now.request, now.meta.duration);
+    w.set_string(StringProp::AudioEventId, SharedString::from(&now.event_id));
+    w.set_string(
+        StringProp::AudioRoomId,
+        SharedString::from(now.room_id.as_ref()),
+    );
+    w.set_string(StringProp::AudioSender, SharedString::from(&now.sender));
+    w.set_string(
+        StringProp::AudioTitle,
+        SharedString::from(&now.meta.filename),
+    );
+    w.set_audio_kind(now.meta.kind);
+    w.set_bool(BoolProp::AudioLoading, now.file == TrackFile::Downloading);
+    w.set_bool(BoolProp::AudioVisible, true);
+    if let TrackFile::Ready(path) = &now.file {
+        audio::open(w, &w.as_weak(), now.request, path);
+    }
+}
+
+fn refresh_audio_row<B: UiBackend>(now: &NowPlaying, ctx: &UiEventContext<'_, B>) {
+    let update = audio_row_update(&now.event_id, &now.meta, ctx.media);
+    let ids = HashSet::from([now.event_id.as_str()]);
+    patch_rows_by_id(ctx.timeline, &ids, &B::message_event_id, |entry| {
+        B::set_message_audio(entry, &update);
+    });
 }
 
 fn apply_toast(w: &impl UiProps, toast: &Toast) {

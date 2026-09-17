@@ -10,6 +10,7 @@ import { Fonts, IconSize, Radius, Size, Space, Weight } from "../../../../theme.
 
 export component TimelineContent inherits Rectangle {
     in property <length> available-width;
+    in property <length> top-inset;
     in property <length> bottom-inset;
     in property <length> composer-top;
 
@@ -24,6 +25,7 @@ export component TimelineContent inherits Rectangle {
         prepend-token: RoomView.prepend-token;
         backwards-loading: RoomView.backwards-loading;
         forwards-loading: RoomView.forwards-loading;
+        top-inset: root.top-inset;
         bottom-inset: root.bottom-inset;
         composer-top: root.composer-top;
     }

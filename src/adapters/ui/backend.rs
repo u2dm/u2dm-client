@@ -8,7 +8,7 @@ use super::decode::{
     AvatarSlot, DecodeOutcome, advance_animations, set_animation_tick, set_avatar_ready,
     set_image_ready,
 };
-use super::dto::{DecodeTarget, MediaFailureKind, StickerPackDto, StickerRowDto};
+use super::dto::{AudioRowUpdate, DecodeTarget, MediaFailureKind, StickerPackDto, StickerRowDto};
 use super::props::{IntProp, StringProp, UiProps};
 use super::reconcile::{sticker_cell_row, sticker_pack_row, timeline_row_of};
 use super::reduce::dispatch_effect;
@@ -53,6 +53,7 @@ pub trait UiBackend: Sized + 'static {
     fn set_space_avatar(entry: &mut Self::Space, image: &Image);
     fn set_message_thumbnail(entry: &mut Self::Message, image: &Image);
     fn set_message_media_failed(entry: &mut Self::Message, reason: MediaFailureKind);
+    fn set_message_audio(entry: &mut Self::Message, update: &AudioRowUpdate);
 
     fn with_models<R>(
         f: impl FnOnce(

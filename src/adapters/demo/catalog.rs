@@ -2,7 +2,7 @@ use std::env;
 use std::io::{self, Write};
 use std::process::ExitCode;
 
-use super::{attachments, login, reactions, richtext, stickers, timeline, verification};
+use super::{attachments, audio, login, reactions, richtext, stickers, timeline, verification};
 
 const CLI_FLAG: &str = "--demo-scenarios";
 
@@ -27,6 +27,7 @@ pub fn all() -> &'static [&'static Scenarios] {
         &richtext::CATALOG,
         &stickers::CATALOG,
         &attachments::CATALOG,
+        &audio::CATALOG,
         &login::CATALOG,
         &verification::CATALOG,
         &WINDOW,
