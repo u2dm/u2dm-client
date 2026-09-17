@@ -4,9 +4,10 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
-use cpal::{SampleFormat, StreamConfig};
+use cpal::{BufferSize, SampleFormat, StreamConfig, SupportedBufferSize, SupportedStreamConfig};
 
 const BUFFERED_SECONDS: f64 = 1.0;
+const DEVICE_PERIODS_PER_SECOND: u32 = 40;
 const NULL_DRIVER: &str = "null";
 
 #[derive(Default)]
@@ -18,7 +19,7 @@ struct Shared {
 
 pub struct AudioOutput {
     shared: Arc<Shared>,
-    stream: cpal::Stream,
+    stream: Box<cpal::Stream>,
     sample_rate: u32,
     channels: u16,
     capacity: usize,
@@ -46,19 +47,9 @@ impl AudioOutput {
     }
 
     fn on(device: &cpal::Device) -> Option<Self> {
-        let Ok(supported) = device.default_output_config() else {
-            return None;
-        };
-        if supported.sample_format() != SampleFormat::F32 {
-            tracing::debug!(
-                "the audio device wants {:?}, which this build does not convert to",
-                supported.sample_format()
-            );
-            return None;
-        }
-        let sample_rate = supported.sample_rate();
-        let channels = supported.channels();
-        let config: StreamConfig = supported.into();
+        let config = float_config(device)?;
+        let sample_rate = config.sample_rate;
+        let channels = config.channels;
 
         let shared = Arc::new(Shared::default());
         let sink = Arc::clone(&shared);
@@ -79,7 +70,7 @@ impl AudioOutput {
         let capacity = (f64::from(sample_rate) * BUFFERED_SECONDS) as usize * lanes;
         Some(Self {
             shared,
-            stream,
+            stream: Box::new(stream),
             sample_rate,
             channels,
             capacity,
@@ -170,6 +161,46 @@ fn quietly<T>(probe: impl FnOnce() -> T) -> T {
         tracing::debug!("alsa: {line}");
     }
     probed
+}
+
+fn float_config(device: &cpal::Device) -> Option<StreamConfig> {
+    let preferred = device.default_output_config().ok()?;
+    let float = if preferred.sample_format() == SampleFormat::F32 {
+        preferred
+    } else {
+        let Some(converted) = float_variant(device, &preferred) else {
+            tracing::debug!(
+                "the audio device wants {:?}, which this build does not convert to",
+                preferred.sample_format()
+            );
+            return None;
+        };
+        converted
+    };
+    Some(StreamConfig {
+        buffer_size: short_period(float.sample_rate(), float.buffer_size()),
+        ..float.config()
+    })
+}
+
+fn float_variant(
+    device: &cpal::Device,
+    preferred: &SupportedStreamConfig,
+) -> Option<SupportedStreamConfig> {
+    device
+        .supported_output_configs()
+        .ok()?
+        .filter(|range| {
+            range.sample_format() == SampleFormat::F32 && range.channels() == preferred.channels()
+        })
+        .find_map(|range| range.try_with_sample_rate(preferred.sample_rate()))
+}
+
+fn short_period(sample_rate: u32, supported: &SupportedBufferSize) -> BufferSize {
+    let SupportedBufferSize::Range { min, max } = *supported else {
+        return BufferSize::Default;
+    };
+    BufferSize::Fixed((sample_rate / DEVICE_PERIODS_PER_SECOND).max(min).min(max))
 }
 
 fn discards_samples(device: &cpal::Device) -> bool {
