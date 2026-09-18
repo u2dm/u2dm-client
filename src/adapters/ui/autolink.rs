@@ -8,7 +8,7 @@ const OPENING: &[char] = &[
 const TRAILING: &[char] = &[
     '.', ',', ';', ':', '!', '?', '"', '\'', '>', '\u{201d}', '\u{2019}', '\u{00bb}',
 ];
-const BRACKETS: &[(char, char)] = &[('(', ')'), ('[', ']'), ('{', '}')];
+const BRACKETS: [(char, char); 3] = [('(', ')'), ('[', ']'), ('{', '}')];
 const SCHEMES: &[&str] = &["https://", "http://", "mailto:"];
 const HOST_PREFIX: &str = "www.";
 const LOCAL_PART_PUNCTUATION: &[char] = &['.', '_', '%', '+', '-'];
@@ -57,12 +57,11 @@ fn link_in(word: &str) -> Option<(Range<usize>, String)> {
 }
 
 fn trim_trailing(candidate: &str) -> &str {
+    let mut unmatched =
+        BRACKETS.map(|(open, close)| (close, unmatched_closers(candidate, open, close)));
     let mut kept = candidate;
     while let Some(last) = kept.chars().last() {
-        let droppable = TRAILING.contains(&last)
-            || BRACKETS
-                .iter()
-                .any(|&(open, close)| last == close && unbalanced(kept, open, close));
+        let droppable = TRAILING.contains(&last) || take_unmatched_closer(&mut unmatched, last);
         if !droppable {
             break;
         }
@@ -74,10 +73,23 @@ fn trim_trailing(candidate: &str) -> &str {
     kept
 }
 
-fn unbalanced(text: &str, open: char, close: char) -> bool {
+fn unmatched_closers(text: &str, open: char, close: char) -> usize {
     let opened = text.chars().filter(|&ch| ch == open).count();
     let closed = text.chars().filter(|&ch| ch == close).count();
-    closed > opened
+    closed.saturating_sub(opened)
+}
+
+fn take_unmatched_closer(unmatched: &mut [(char, usize)], last: char) -> bool {
+    match unmatched
+        .iter_mut()
+        .find(|(close, count)| *close == last && *count > 0)
+    {
+        Some((_, count)) => {
+            *count -= 1;
+            true
+        }
+        None => false,
+    }
 }
 
 fn destination(candidate: &str) -> Option<String> {
