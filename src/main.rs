@@ -28,6 +28,7 @@ use tokio::time::timeout;
 use tracing_subscriber::EnvFilter;
 
 const ASSERT_DEMO_ENV: &str = "U2DM_ASSERT_DEMO";
+const DEMO_SCENARIOS_FLAG: &str = "--demo-scenarios";
 const LOG_FORMAT_ENV: &str = "U2DM_LOG_FORMAT";
 const UI_EVENT_CHANNEL_CAP: usize = 256;
 const SHUTDOWN_WAIT: Duration = Duration::from_secs(6);
@@ -152,14 +153,24 @@ fn run() -> Result<()> {
     ui_result
 }
 
-#[cfg(feature = "demo")]
 fn demo_scenarios_cli() -> Option<ExitCode> {
-    demo::catalog::handle_cli()
+    env::args_os()
+        .any(|arg| arg == DEMO_SCENARIOS_FLAG)
+        .then(list_demo_scenarios)
+}
+
+#[cfg(feature = "demo")]
+fn list_demo_scenarios() -> ExitCode {
+    demo::catalog::print()
 }
 
 #[cfg(not(feature = "demo"))]
-fn demo_scenarios_cli() -> Option<ExitCode> {
-    None
+fn list_demo_scenarios() -> ExitCode {
+    tracing::error!(
+        "{DEMO_SCENARIOS_FLAG} lists the demo scenarios, but this binary was built without \
+         --features demo; refusing to start against a real account"
+    );
+    ExitCode::FAILURE
 }
 
 #[cfg(feature = "demo")]

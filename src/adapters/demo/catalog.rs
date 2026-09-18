@@ -4,8 +4,6 @@ use std::process::ExitCode;
 
 use super::{attachments, audio, login, reactions, richtext, stickers, timeline, verification};
 
-const CLI_FLAG: &str = "--demo-scenarios";
-
 pub struct Flag {
     pub value: &'static str,
     pub effect: &'static str,
@@ -59,17 +57,14 @@ const DATA: Scenarios = Scenarios {
     notes: &["a malformed fixture names the offending field and starts the app empty"],
 };
 
-pub fn handle_cli() -> Option<ExitCode> {
-    if !env::args().any(|arg| arg == CLI_FLAG) {
-        return None;
-    }
-    Some(match write_catalog() {
+pub fn print() -> ExitCode {
+    match write_catalog() {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) => {
             tracing::error!("the scenario catalog could not be written: {e}");
             ExitCode::FAILURE
         }
-    })
+    }
 }
 
 fn write_catalog() -> io::Result<()> {
