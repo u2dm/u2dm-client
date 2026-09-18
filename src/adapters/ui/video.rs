@@ -16,6 +16,8 @@ use crate::commands::messages::UserMessageKind;
 thread_local! {
     #[cfg(feature = "video")]
     static PLAYBACK: RefCell<Option<Session>> = const { RefCell::new(None) };
+    #[cfg(feature = "video")]
+    static LAST_GENERATION: Cell<u64> = const { Cell::new(0) };
     static PLAYING: Cell<bool> = const { Cell::new(false) };
     static MUTED: Cell<bool> = const { Cell::new(false) };
 }
@@ -25,6 +27,7 @@ use crate::adapters::video::playback::Playback;
 
 #[cfg(feature = "video")]
 struct Session {
+    generation: u64,
     path: PathBuf,
     playback: Playback,
 }
@@ -79,6 +82,22 @@ fn is_open(_path: &Path) -> bool {
 }
 
 #[cfg(feature = "video")]
+fn is_current(generation: u64) -> bool {
+    PLAYBACK.with(|cell| {
+        cell.borrow()
+            .as_ref()
+            .is_some_and(|session| session.generation == generation)
+    })
+}
+
+#[cfg(feature = "video")]
+fn next_generation() -> u64 {
+    let generation = LAST_GENERATION.get().wrapping_add(1);
+    LAST_GENERATION.set(generation);
+    generation
+}
+
+#[cfg(feature = "video")]
 pub fn stop() {
     PLAYBACK.with(|cell| cell.borrow_mut().take());
 }
@@ -124,7 +143,10 @@ pub fn seek<W: UiProps>(window: &W, position: Duration) {
 }
 
 #[cfg(feature = "video")]
-pub fn apply<W: UiProps>(window: &W, update: Update) {
+pub fn apply<W: UiProps>(window: &W, generation: u64, update: Update) {
+    if !is_current(generation) {
+        return;
+    }
     match update {
         Update::Ready(duration) => {
             window.set_int(IntProp::VideoDurationMs, duration.map_or(0, millis));
@@ -139,12 +161,14 @@ pub fn apply<W: UiProps>(window: &W, update: Update) {
             PLAYING.set(false);
             window.set_bool(BoolProp::VideoPlaying, false);
         }
-        Update::Failed => {
-            PLAYING.set(false);
-            window.set_bool(BoolProp::VideoPlaying, false);
-            window.set_video_error(UserMessageKind::VideoPlaybackFailed);
-        }
+        Update::Failed => fail(window),
     }
+}
+
+fn fail<W: UiProps>(window: &W) {
+    PLAYING.set(false);
+    window.set_bool(BoolProp::VideoPlaying, false);
+    window.set_video_error(UserMessageKind::VideoPlaybackFailed);
 }
 
 pub fn millis_to_duration(millis: Option<usize>) -> Duration {
@@ -175,16 +199,17 @@ fn start<W>(window: &W, _weak: &slint::Weak<W>, _path: &Path)
 where
     W: ComponentHandle + UiProps + 'static,
 {
-    window.set_video_error(UserMessageKind::VideoPlaybackFailed);
+    fail(window);
 }
 
 #[cfg(feature = "video")]
-fn start<W>(_window: &W, weak: &slint::Weak<W>, path: &Path)
+fn start<W>(window: &W, weak: &slint::Weak<W>, path: &Path)
 where
     W: ComponentHandle + UiProps + 'static,
 {
     use crate::adapters::video::player::{self, PlayerEvent};
 
+    let generation = next_generation();
     let weak = weak.clone();
     let sink = Box::new(move |event: PlayerEvent<'_>| {
         let update = match event {
@@ -202,17 +227,21 @@ where
             },
         };
         if weak
-            .upgrade_in_event_loop(move |window| apply(&window, update))
+            .upgrade_in_event_loop(move |window| apply(&window, generation, update))
             .is_err()
         {
             tracing::debug!("the event loop is gone, dropping a video update");
         }
     });
 
-    let playback = player::start(path, sink);
+    let Some(playback) = player::start(path, sink) else {
+        fail(window);
+        return;
+    };
     playback.play();
     PLAYBACK.with(|cell| {
         *cell.borrow_mut() = Some(Session {
+            generation,
             path: path.to_path_buf(),
             playback,
         });

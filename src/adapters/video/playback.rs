@@ -1,5 +1,5 @@
 use std::sync::mpsc::{self, Receiver, Sender};
-use std::thread::{self, JoinHandle};
+use std::thread;
 use std::time::{Duration, Instant};
 
 use ffmpeg_next::format;
@@ -17,20 +17,24 @@ pub(super) enum Command {
 
 pub struct Playback {
     commands: Sender<Command>,
-    worker: Option<JoinHandle<()>>,
 }
 
 impl Playback {
-    pub(super) fn spawn<F>(name: &str, body: F) -> Self
+    pub(super) fn spawn<F>(name: &str, body: F) -> Option<Self>
     where
         F: FnOnce(&Receiver<Command>) + Send + 'static,
     {
         let (commands, inbox) = mpsc::channel();
-        let worker = thread::Builder::new()
+        match thread::Builder::new()
             .name(name.into())
             .spawn(move || body(&inbox))
-            .ok();
-        Self { commands, worker }
+        {
+            Ok(_) => Some(Self { commands }),
+            Err(e) => {
+                tracing::warn!("failed to spawn the {name} thread: {e}");
+                None
+            }
+        }
     }
 
     pub fn play(&self) {
@@ -59,11 +63,6 @@ impl Playback {
 impl Drop for Playback {
     fn drop(&mut self) {
         self.send(Command::Stop);
-        if let Some(worker) = self.worker.take()
-            && worker.join().is_err()
-        {
-            tracing::warn!("the playback thread panicked");
-        }
     }
 }
 

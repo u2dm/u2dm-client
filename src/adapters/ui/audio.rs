@@ -210,7 +210,10 @@ where
     } else {
         Sound::Device
     };
-    let playback = audio_player::start(path, preferred, sink);
+    let Some(playback) = audio_player::start(path, preferred, sink) else {
+        finish(window, request, AudioEnd::Failed);
+        return;
+    };
     playback.play();
     PLAYING.set(true);
     window.set_bool(BoolProp::AudioPlaying, true);

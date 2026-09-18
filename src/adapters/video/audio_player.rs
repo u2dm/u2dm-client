@@ -4,7 +4,8 @@ use std::time::{Duration, Instant};
 
 use ffmpeg_next::{Packet, Rational, format, media};
 
-use super::decoder::{self, AudioDecoder, PcmTarget};
+use super::decoder;
+use super::feed::AudioFeed;
 use super::output::AudioOutput;
 use super::playback::{Clock, Command, Flow, Playback, stream_duration};
 
@@ -31,7 +32,7 @@ pub type AudioSink = Box<dyn Fn(AudioEvent) + Send>;
 
 type SinkRef<'a> = &'a (dyn Fn(AudioEvent) + Send);
 
-pub fn start(path: &Path, preferred: Sound, sink: AudioSink) -> Playback {
+pub fn start(path: &Path, preferred: Sound, sink: AudioSink) -> Option<Playback> {
     let path = path.to_path_buf();
     Playback::spawn("u2dm-audio", move |inbox| {
         run(&path, preferred, inbox, sink.as_ref());
@@ -46,15 +47,8 @@ fn run(path: &PathBuf, preferred: Sound, inbox: &Receiver<Command>, sink: SinkRe
 }
 
 enum Pacing {
-    Device {
-        decoder: AudioDecoder,
-        output: AudioOutput,
-        trim_until: Option<Duration>,
-    },
-    Wall {
-        clock: Clock,
-        heard_until: Duration,
-    },
+    Device(AudioFeed),
+    Wall { clock: Clock, heard_until: Duration },
 }
 
 impl Pacing {
@@ -69,64 +63,48 @@ impl Pacing {
                 heard_until: Duration::ZERO,
             });
         };
-        let target = PcmTarget {
-            rate: output.sample_rate(),
-            channels: output.channels(),
-        };
-        let decoder = AudioDecoder::open(input, target)?;
-        output.pause();
-        Some(Self::Device {
-            decoder,
-            output,
-            trim_until: None,
-        })
+        let audio = AudioFeed::open(input, output)?;
+        audio.output().pause();
+        Some(Self::Device(audio))
     }
 
     fn sound(&self) -> Sound {
         match self {
-            Self::Device { .. } => Sound::Device,
+            Self::Device(_) => Sound::Device,
             Self::Wall { .. } => Sound::Silent,
         }
     }
 
     fn position(&self) -> Duration {
         match self {
-            Self::Device { output, .. } => output.position(),
+            Self::Device(audio) => audio.output().position(),
             Self::Wall { clock, .. } => clock.elapsed(),
         }
     }
 
     fn resume(&mut self) {
         match self {
-            Self::Device { output, .. } => output.resume(),
+            Self::Device(audio) => audio.output().resume(),
             Self::Wall { clock, .. } => clock.resume(),
         }
     }
 
     fn pause(&mut self) {
         match self {
-            Self::Device { output, .. } => output.pause(),
+            Self::Device(audio) => audio.output().pause(),
             Self::Wall { clock, .. } => clock.pause(),
         }
     }
 
     fn set_muted(&self, muted: bool) {
-        if let Self::Device { output, .. } = self {
-            output.set_muted(muted);
+        if let Self::Device(audio) = self {
+            audio.output().set_muted(muted);
         }
     }
 
     fn rebase(&mut self, position: Duration) {
         match self {
-            Self::Device {
-                decoder,
-                output,
-                trim_until,
-            } => {
-                decoder.reset();
-                output.rebase(position);
-                *trim_until = Some(position);
-            }
+            Self::Device(audio) => audio.rebase(position),
             Self::Wall { clock, heard_until } => {
                 clock.rebase(position);
                 *heard_until = position;
@@ -136,27 +114,21 @@ impl Pacing {
 
     fn is_saturated(&self) -> bool {
         match self {
-            Self::Device { output, .. } => output.is_full(),
+            Self::Device(audio) => audio.output().is_full(),
             Self::Wall { clock, heard_until } => *heard_until > clock.elapsed() + WALL_LOOKAHEAD,
         }
     }
 
     fn is_exhausted(&self) -> bool {
         match self {
-            Self::Device { output, .. } => output.queued_frames() == 0,
+            Self::Device(audio) => audio.output().queued_frames() == 0,
             Self::Wall { clock, heard_until } => clock.elapsed() >= *heard_until,
         }
     }
 
     fn feed(&mut self, packet: &Packet, time_base: Rational) {
         match self {
-            Self::Device {
-                decoder,
-                output,
-                trim_until,
-            } => decoder.feed(packet, &mut |samples, start| {
-                push_trimmed(output, trim_until, samples, start);
-            }),
+            Self::Device(audio) => audio.feed(packet),
             Self::Wall { heard_until, .. } => {
                 let ticks = packet
                     .pts()
@@ -168,45 +140,9 @@ impl Pacing {
     }
 
     fn finish(&mut self) {
-        if let Self::Device {
-            decoder,
-            output,
-            trim_until,
-        } = self
-        {
-            decoder.finish(&mut |samples, start| {
-                push_trimmed(output, trim_until, samples, start);
-            });
+        if let Self::Device(audio) = self {
+            audio.finish();
         }
-    }
-}
-
-fn push_trimmed(
-    output: &AudioOutput,
-    trim_until: &mut Option<Duration>,
-    samples: &[f32],
-    start: Option<Duration>,
-) {
-    let (Some(until), Some(start)) = (*trim_until, start) else {
-        *trim_until = None;
-        output.push(samples);
-        return;
-    };
-    let Some(ahead) = until.checked_sub(start) else {
-        *trim_until = None;
-        output.push(samples);
-        return;
-    };
-    let frames = ahead
-        .as_micros()
-        .saturating_mul(u128::from(output.sample_rate()))
-        / 1_000_000;
-    let skip = usize::try_from(frames)
-        .unwrap_or(usize::MAX)
-        .saturating_mul(usize::from(output.channels()));
-    if let Some(rest) = samples.get(skip..).filter(|rest| !rest.is_empty()) {
-        *trim_until = None;
-        output.push(rest);
     }
 }
 

@@ -34,6 +34,8 @@ pub mod audio_player;
 #[cfg(feature = "video")]
 mod decoder;
 #[cfg(feature = "video")]
+mod feed;
+#[cfg(feature = "video")]
 mod output;
 #[cfg(feature = "video")]
 pub mod playback;

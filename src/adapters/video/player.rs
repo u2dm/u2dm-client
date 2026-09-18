@@ -9,7 +9,8 @@ use ffmpeg_next::software::scaling;
 use ffmpeg_next::util::frame::Video as VideoFrame;
 use ffmpeg_next::{Rational, codec, format, media};
 
-use super::decoder::{self, AudioDecoder, PcmTarget};
+use super::decoder;
+use super::feed::AudioFeed;
 use super::output::AudioOutput;
 use super::playback::{Clock, Command, Flow, Playback, stream_duration};
 
@@ -38,7 +39,7 @@ pub enum PlayerEvent<'a> {
 
 pub type Sink = Box<dyn Fn(PlayerEvent<'_>) + Send>;
 
-pub fn start(path: &Path, sink: Sink) -> Playback {
+pub fn start(path: &Path, sink: Sink) -> Option<Playback> {
     let path = path.to_path_buf();
     Playback::spawn("u2dm-video", move |inbox| run(&path, inbox, sink.as_ref()))
 }
@@ -50,28 +51,9 @@ fn run(path: &PathBuf, inbox: &Receiver<Command>, sink: &(dyn Fn(PlayerEvent<'_>
     }
 }
 
-struct SyncedAudio {
-    decoder: AudioDecoder,
-    output: AudioOutput,
-}
-
-impl SyncedAudio {
-    fn open(input: &format::context::Input) -> Option<Self> {
-        input.streams().best(media::Type::Audio)?;
-        let output = AudioOutput::open()?;
-        let target = PcmTarget {
-            rate: output.sample_rate(),
-            channels: output.channels(),
-        };
-        let decoder = AudioDecoder::open(input, target)?;
-        Some(Self { decoder, output })
-    }
-
-    fn feed(&mut self, packet: &Packet) {
-        let output = &self.output;
-        self.decoder
-            .feed(packet, &mut |samples, _| output.push(samples));
-    }
+fn open_audio(input: &format::context::Input) -> Option<AudioFeed> {
+    input.streams().best(media::Type::Audio)?;
+    AudioFeed::open(input, AudioOutput::open()?)
 }
 
 struct Session {
@@ -83,7 +65,7 @@ struct Session {
     duration: Option<Duration>,
     width: u32,
     height: u32,
-    audio: Option<SyncedAudio>,
+    audio: Option<AudioFeed>,
     pending: VecDeque<Pending>,
     drained: bool,
 }
@@ -114,11 +96,11 @@ impl Session {
             scaling::Flags::BILINEAR,
         )
         .ok()?;
-        let audio = SyncedAudio::open(&input);
+        let audio = open_audio(&input);
         if let Some(audio) = audio.as_ref() {
             tracing::debug!(
-                sample_rate = audio.output.sample_rate(),
-                channels = audio.output.channels(),
+                sample_rate = audio.output().sample_rate(),
+                channels = audio.output().channels(),
                 "video playback opened an audio device"
             );
         } else {
@@ -144,13 +126,23 @@ impl Session {
         decoder::ticks_to_duration(ticks, self.time_base)
     }
 
-    fn seek_to(&mut self, position: Duration) {
+    fn has_finished(&self) -> bool {
+        self.drained && self.pending.is_empty()
+    }
+
+    fn seek_to(&mut self, position: Duration, clock: &mut Clock) {
         let target = i64::try_from(position.as_micros()).unwrap_or(i64::MAX);
         if self.input.seek(target, ..target).is_err() {
             tracing::debug!("seek failed, staying where we are");
             return;
         }
         self.decoder.flush();
+        self.pending.clear();
+        self.drained = false;
+        if let Some(audio) = self.audio.as_mut() {
+            audio.rebase(position);
+        }
+        clock.rebase(position);
     }
 
     fn drive(&mut self, inbox: &Receiver<Command>, sink: &(dyn Fn(PlayerEvent<'_>) + Send)) {
@@ -170,7 +162,7 @@ impl Session {
                     sink(PlayerEvent::Ended);
                     clock.pause();
                     if let Some(audio) = self.audio.as_ref() {
-                        audio.output.pause();
+                        audio.output().pause();
                     }
                     if matches!(self.wait_for_command(inbox, &mut clock), Flow::Stop) {
                         return;
@@ -197,30 +189,24 @@ impl Session {
     fn apply(&mut self, command: Command, clock: &mut Clock) {
         match command {
             Command::Play => {
+                if self.has_finished() {
+                    self.seek_to(Duration::ZERO, clock);
+                }
                 clock.resume();
                 if let Some(audio) = self.audio.as_ref() {
-                    audio.output.resume();
+                    audio.output().resume();
                 }
             }
             Command::Pause => {
                 clock.pause();
                 if let Some(audio) = self.audio.as_ref() {
-                    audio.output.pause();
+                    audio.output().pause();
                 }
             }
-            Command::Seek(position) => {
-                self.seek_to(position);
-                self.pending.clear();
-                self.drained = false;
-                if let Some(audio) = self.audio.as_mut() {
-                    audio.decoder.reset();
-                    audio.output.rebase(position);
-                }
-                clock.rebase(position);
-            }
+            Command::Seek(position) => self.seek_to(position, clock),
             Command::Muted(muted) => {
                 if let Some(audio) = self.audio.as_ref() {
-                    audio.output.set_muted(muted);
+                    audio.output().set_muted(muted);
                 }
             }
             Command::Stop => {}
@@ -229,7 +215,7 @@ impl Session {
 
     fn sync_clock(&self, clock: &mut Clock) {
         if let Some(audio) = self.audio.as_ref() {
-            clock.observe(audio.output.position());
+            clock.observe(audio.output().position());
         }
     }
 
@@ -246,7 +232,7 @@ impl Session {
     fn audio_is_full(&self) -> bool {
         self.audio
             .as_ref()
-            .is_some_and(|audio| audio.output.is_full())
+            .is_some_and(|audio| audio.output().is_full())
     }
 
     fn top_up(&mut self) {
@@ -343,7 +329,7 @@ impl Session {
                 return Some(packet);
             }
             if let Some(audio) = self.audio.as_mut()
-                && index == audio.decoder.stream_index()
+                && index == audio.stream_index()
             {
                 audio.feed(&packet);
             }
