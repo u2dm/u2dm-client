@@ -1,4 +1,3 @@
-use std::cell::RefCell;
 use std::collections::HashMap;
 use std::fmt::Write;
 use std::hash::{DefaultHasher, Hash, Hasher};
@@ -7,6 +6,7 @@ use matrix_sdk::ruma::html::{Html, NodeRef};
 use slint::{SharedString, StyledText};
 
 use super::autolink;
+use super::session::with_session;
 
 const MAX_DEPTH: usize = 16;
 const MAX_NODES: usize = 4096;
@@ -26,17 +26,20 @@ pub struct StyledBody {
     pub has_links: bool,
 }
 
-thread_local! {
-    static MEMO: RefCell<HashMap<u64, StyledBody>> = RefCell::new(HashMap::new());
-}
+#[derive(Default)]
+pub struct StyledBodies(HashMap<u64, StyledBody>);
 
 pub fn forget_styled_bodies() {
-    MEMO.with_borrow_mut(HashMap::clear);
+    with_session(|session| session.bodies.0.clear());
+}
+
+fn remembered(key: u64) -> Option<StyledBody> {
+    with_session(|session| session.bodies.0.get(&key).cloned())
 }
 
 pub fn styled_body(html: &str, plain_fallback: &str) -> StyledBody {
     let key = memo_key(FORMATTED, html);
-    if let Some(hit) = MEMO.with_borrow(|memo| memo.get(&key).cloned()) {
+    if let Some(hit) = remembered(key) {
         return hit;
     }
 
@@ -47,7 +50,7 @@ pub fn styled_body(html: &str, plain_fallback: &str) -> StyledBody {
 
 pub fn plain_body(text: &str) -> StyledBody {
     let key = memo_key(UNFORMATTED, text);
-    if let Some(hit) = MEMO.with_borrow(|memo| memo.get(&key).cloned()) {
+    if let Some(hit) = remembered(key) {
         return hit;
     }
 
@@ -65,7 +68,8 @@ fn unstyled_body(text: &str) -> StyledBody {
 }
 
 fn remember(key: u64, built: &StyledBody) {
-    MEMO.with_borrow_mut(|memo| {
+    with_session(|session| {
+        let memo = &mut session.bodies.0;
         if memo.len() >= MAX_MEMO_ENTRIES {
             memo.clear();
         }

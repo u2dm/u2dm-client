@@ -81,6 +81,7 @@ const ENUM_TABLES: &[(&str, &str)] = &[
     ("SendState", "send_states"),
     ("ReactionSend", "reaction_sends"),
     ("MediaFailure", "media_failures"),
+    ("TimelineState", "timeline_states"),
 ];
 
 fn main() {

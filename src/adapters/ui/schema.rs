@@ -236,6 +236,7 @@ pub(crate) use connection_states;
 
 macro_rules! timeline_states {
     ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
+        None         None         "none";
         Loading      Loading      "loading";
         LoadingUnread LoadingUnread "loading-unread";
         LoadingFocus LoadingFocus "loading-focus";

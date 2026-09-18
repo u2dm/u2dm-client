@@ -223,13 +223,17 @@ pub enum PaginationOutcome {
     Failed,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum TimelineStatus {
+    #[default]
+    None,
     Loading,
     LoadingUnread,
     LoadingFocus,
     Ready,
-    Failed { retryable: bool },
+    Failed {
+        retryable: bool,
+    },
     Disconnected,
 }
 

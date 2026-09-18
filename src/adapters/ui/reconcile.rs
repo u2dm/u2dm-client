@@ -1,4 +1,3 @@
-use std::cell::RefCell;
 use std::collections::HashMap;
 use std::mem;
 use std::sync::Arc;
@@ -8,19 +7,15 @@ use slint::{Model, SharedString, VecModel};
 use super::decode::forget_all_media_needs;
 use super::dto::{StickerGrid, StickerRowDto, prefetch_space_avatar, record_room_avatar_need};
 use super::richtext::forget_styled_bodies;
+use super::session::with_session;
 use super::splice_model::SpliceModel;
 use crate::domain::message::TimelineMessage;
 use crate::domain::room::{Room, Space};
 use crate::domain::timeline::{EnrichmentDelta, TimelinePatch};
 use crate::ports::media::MediaCache;
 
-thread_local! {
-    static TIMELINE_INDEX: RefCell<TimelineIndex> = RefCell::new(TimelineIndex::default());
-    static STICKER_INDEX: RefCell<StickerIndex> = RefCell::new(StickerIndex::default());
-}
-
 #[derive(Default)]
-struct TimelineIndex {
+pub struct TimelineIndex {
     row_of: HashMap<String, usize>,
     fingerprint_of: HashMap<String, u64>,
 }
@@ -103,7 +98,7 @@ impl TimelineIndex {
 }
 
 #[derive(Default)]
-struct StickerIndex {
+pub struct StickerIndex {
     row_of_cell: HashMap<String, usize>,
     row_of_pack: HashMap<String, usize>,
     row_shapes: Vec<StickerRowShape>,
@@ -136,7 +131,8 @@ impl RowReplacements {
 }
 
 pub fn index_sticker_grid(grid: &StickerGrid) -> RowReplacements {
-    STICKER_INDEX.with_borrow_mut(|index| {
+    with_session(|session| {
+        let index = &mut session.sticker_index;
         let shapes: Vec<StickerRowShape> = grid.rows.iter().map(StickerRowShape::of).collect();
         let replaced = RowReplacements(
             shapes
@@ -170,27 +166,22 @@ pub fn index_sticker_grid(grid: &StickerGrid) -> RowReplacements {
 }
 
 pub fn retain_awaited_downloads(mut still_awaited: impl FnMut(&str, &str) -> bool) {
-    STICKER_INDEX.with_borrow_mut(|index| {
-        index
-            .awaited_downloads
-            .retain(|key, mxc| still_awaited(key, mxc));
-    });
+    let mut awaited =
+        with_session(|session| mem::take(&mut session.sticker_index.awaited_downloads));
+    awaited.retain(|key, mxc| still_awaited(key, mxc));
+    with_session(|session| session.sticker_index.awaited_downloads = awaited);
 }
 
 pub fn sticker_cell_row(key: &str) -> Option<usize> {
-    STICKER_INDEX.with_borrow(|index| index.row_of_cell.get(key).copied())
+    with_session(|session| session.sticker_index.row_of_cell.get(key).copied())
 }
 
 pub fn sticker_pack_row(pack_id: &str) -> Option<usize> {
-    STICKER_INDEX.with_borrow(|index| index.row_of_pack.get(pack_id).copied())
+    with_session(|session| session.sticker_index.row_of_pack.get(pack_id).copied())
 }
 
 pub fn timeline_row_of(unique_id: &str) -> Option<usize> {
-    TIMELINE_INDEX.with_borrow(|index| index.row_of.get(unique_id).copied())
-}
-
-pub fn forget_timeline_index() {
-    TIMELINE_INDEX.with_borrow_mut(TimelineIndex::clear);
+    with_session(|session| session.timeline_index.row_of.get(unique_id).copied())
 }
 
 pub fn apply_timeline_patch<T: Clone + 'static>(
@@ -200,9 +191,9 @@ pub fn apply_timeline_patch<T: Clone + 'static>(
     enrich: &dyn Fn(&mut T, &EnrichmentDelta),
     entry_id: &dyn Fn(&T) -> &str,
 ) {
-    TIMELINE_INDEX.with_borrow_mut(|index| {
-        apply_patch(model, patch, index, convert, enrich, entry_id);
-    });
+    let mut index = with_session(|session| mem::take(&mut session.timeline_index));
+    apply_patch(model, patch, &mut index, convert, enrich, entry_id);
+    with_session(|session| session.timeline_index = index);
 }
 
 fn apply_patch<T: Clone + 'static>(

@@ -1,4 +1,3 @@
-use std::cell::RefCell;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
@@ -6,16 +5,12 @@ use slint::Image;
 
 use super::waiters::{AvatarSlot, DecodeOutcome};
 use super::workers::Lane;
-use super::{DISPLAY_MAX_DIMENSION, animation, image_from_rgba, waiters};
+use super::{DISPLAY_MAX_DIMENSION, Epoch, animation, image_from_rgba, waiters, with_media};
 
 const IMAGE_CACHE_MAX_BYTES: usize = 64 * 1024 * 1024;
 
 const DECODE_MAX_DIMENSION: u32 = 4096;
 const DECODE_MAX_ALLOC: u64 = 4 * DECODE_MAX_DIMENSION as u64 * DECODE_MAX_DIMENSION as u64;
-
-thread_local! {
-    static IMAGES: RefCell<ImageCache> = RefCell::new(ImageCache::default());
-}
 
 pub enum Decoded {
     Ready(Image),
@@ -30,7 +25,7 @@ struct CachedImage {
 }
 
 #[derive(Default)]
-struct ImageCache {
+pub(super) struct ImageCache {
     entries: HashMap<PathBuf, CachedImage>,
     total_bytes: usize,
     tick: u64,
@@ -115,8 +110,8 @@ pub(super) fn decode_rgba(path: &Path) -> Option<(Vec<u8>, u32, u32)> {
     (raw.len() == expected_len).then_some((raw, width, height))
 }
 
-pub(super) fn on_decoded(path: &Path, decoded: Option<(Vec<u8>, u32, u32)>, epoch: u64) {
-    if super::is_stale(epoch) {
+pub(super) fn on_decoded(path: &Path, decoded: Option<(Vec<u8>, u32, u32)>, epoch: Epoch) {
+    if !epoch.is_current() {
         return;
     }
     let decoded = decoded.map(|(bytes, width, height)| {
@@ -125,7 +120,11 @@ pub(super) fn on_decoded(path: &Path, decoded: Option<(Vec<u8>, u32, u32)>, epoc
     });
     let bytes = decoded.as_ref().map_or(0, |(_, len)| *len);
     let image = decoded.map(|(image, _)| image);
-    IMAGES.with_borrow_mut(|images| images.insert(path.to_path_buf(), image.clone(), bytes));
+    with_media(|media| {
+        media
+            .images
+            .insert(path.to_path_buf(), image.clone(), bytes);
+    });
 
     let outcome = image
         .as_ref()
@@ -134,7 +133,7 @@ pub(super) fn on_decoded(path: &Path, decoded: Option<(Vec<u8>, u32, u32)>, epoc
 }
 
 fn cached(path: &Path) -> Decoded {
-    IMAGES.with_borrow_mut(|images| images.lookup(path))
+    with_media(|media| media.images.lookup(path))
 }
 
 pub fn peek_thumbnail(path: &Path, playback_key: &str) -> Decoded {
@@ -170,8 +169,4 @@ pub(super) fn request_thumbnail(path: &Path, unique_id: &str) -> Decoded {
         }
         decoded => decoded,
     }
-}
-
-pub(super) fn clear() {
-    IMAGES.with_borrow_mut(|images| *images = ImageCache::default());
 }

@@ -1,15 +1,11 @@
-use std::cell::{Cell, RefCell};
-use std::sync::Arc;
-
 use std::collections::HashSet;
+use std::sync::Arc;
 
 use slint::{ComponentHandle, Model, SharedString};
 
 use super::audio;
 use super::backend::{UiBackend, UiEventContext, apply_thumbnail_ready};
-use super::decode::{
-    AvatarSlot, DecodeOutcome, clear_session_media, load_avatar_async, request_sticker,
-};
+use super::decode::{AvatarSlot, DecodeOutcome, load_avatar_async, request_sticker};
 use super::dto::{
     GRID_COLUMNS, StickerArt, StickerPackDto, StickerRowDto, audio_row_update, sticker_art,
     sticker_grid, sticker_needle,
@@ -19,10 +15,11 @@ use super::present::{
 };
 use super::props::{BoolProp, IntProp, StringProp, UiProps};
 use super::reconcile::{
-    RowReplacements, apply_rooms, apply_spaces, apply_timeline_patch, forget_timeline_index,
-    index_sticker_grid, retain_awaited_downloads,
+    RowReplacements, apply_rooms, apply_spaces, apply_timeline_patch, index_sticker_grid,
+    retain_awaited_downloads,
 };
 use super::rows::patch_rows_by_id;
+use super::session::{begin_session, with_session};
 use super::splice_model::SpliceModel;
 use super::video;
 use crate::commands::effects::{Effect, VerificationActivity, VerificationUpdate};
@@ -39,49 +36,72 @@ use crate::util::format_bytes;
 
 const NO_ANCHOR: i32 = -1;
 
-thread_local! {
-    static PREPEND_TOKEN: Cell<i32> = const { Cell::new(0) };
-    static TIMELINE_TOKEN: Cell<i32> = const { Cell::new(0) };
-    static TOKEN_GENERATION: Cell<i32> = const { Cell::new(0) };
-    static FOCUS_EVENT_ID: RefCell<Option<String>> = const { RefCell::new(None) };
-    static ACTIVE_GENERATION: Cell<i32> = const { Cell::new(0) };
-    static LATEST_SNAPSHOT: RefCell<Option<Arc<AppViewState>>> = const { RefCell::new(None) };
-    static STICKER_NEEDLE: RefCell<String> = const { RefCell::new(String::new()) };
+#[derive(Default)]
+pub struct RoomCursor {
+    active_generation: i32,
+    adopted_generation: i32,
+    timeline_token: i32,
+    prepend_token: i32,
+    focus_event_id: Option<String>,
+}
+
+fn active_generation() -> i32 {
+    with_session(|session| session.room.active_generation)
 }
 
 fn is_new_generation(generation: i32) -> bool {
-    TOKEN_GENERATION.with(Cell::get) != generation
+    with_session(|session| session.room.adopted_generation != generation)
 }
 
 fn readopt_timeline(w: &impl UiProps, generation: i32) {
-    TOKEN_GENERATION.with(|g| g.set(generation));
-    let next = TIMELINE_TOKEN.with(|t| {
-        let next = t.get().wrapping_add(1);
-        t.set(next);
-        next
+    let next = with_session(|session| {
+        let room = &mut session.room;
+        room.adopted_generation = generation;
+        room.timeline_token = room.timeline_token.wrapping_add(1);
+        room.timeline_token
     });
     w.set_int(IntProp::TimelineToken, next);
 }
 
 fn next_prepend_token() -> i32 {
-    PREPEND_TOKEN.with(|t| {
-        let next = t.get().wrapping_add(1);
-        t.set(next);
-        next
+    with_session(|session| {
+        let room = &mut session.room;
+        room.prepend_token = room.prepend_token.wrapping_add(1);
+        room.prepend_token
     })
 }
 
 fn set_focus(w: &impl UiProps, event_id: Option<&str>) {
-    FOCUS_EVENT_ID.with(|cell| *cell.borrow_mut() = event_id.map(ToOwned::to_owned));
+    with_session(|session| session.room.focus_event_id = event_id.map(ToOwned::to_owned));
     w.set_string(
         StringProp::FocusEventId,
         SharedString::from(event_id.unwrap_or_default()),
     );
 }
 
+fn publish_room_cursor(w: &impl UiProps) {
+    let (generation, timeline_token, prepend_token, focus) = with_session(|session| {
+        let room = &session.room;
+        (
+            room.active_generation,
+            room.timeline_token,
+            room.prepend_token,
+            room.focus_event_id.clone(),
+        )
+    });
+    w.set_int(IntProp::SelectedGeneration, generation);
+    w.set_int(IntProp::TimelineToken, timeline_token);
+    w.set_int(IntProp::PrependToken, prepend_token);
+    w.set_string(
+        StringProp::FocusEventId,
+        SharedString::from(focus.unwrap_or_default()),
+    );
+}
+
 pub(super) fn latest_rooms() -> Option<RoomList> {
-    LATEST_SNAPSHOT.with(|cell| {
-        cell.borrow()
+    with_session(|session| {
+        session
+            .snapshot
             .as_ref()
             .map(|view| Arc::clone(&view.directory.rooms))
     })
@@ -89,12 +109,13 @@ pub(super) fn latest_rooms() -> Option<RoomList> {
 
 pub(super) fn set_sticker_query<B: UiBackend>(query: &str, media: &dyn MediaCache) {
     let needle = sticker_needle(query);
-    let unchanged = STICKER_NEEDLE.with(|cell| *cell.borrow() == needle);
-    if unchanged {
-        return;
-    }
-    STICKER_NEEDLE.with(|cell| *cell.borrow_mut() = needle);
-    let stickers = LATEST_SNAPSHOT.with(|cell| cell.borrow().as_ref().map(|v| v.stickers.clone()));
+    let stickers = with_session(|session| {
+        if session.sticker_needle == needle {
+            return None;
+        }
+        session.sticker_needle = needle;
+        session.snapshot.as_ref().map(|view| view.stickers.clone())
+    });
     if let Some(stickers) = stickers {
         rebuild_sticker_grid::<B>(&stickers, media);
     }
@@ -109,7 +130,7 @@ pub fn dispatch_effect<B: UiBackend>(w: &B::Window, event: Effect, ctx: &UiEvent
             member_count,
             generation,
         } => {
-            ACTIVE_GENERATION.with(|g| g.set(generation));
+            with_session(|session| session.room.active_generation = generation);
             set_focus(w, None);
             w.set_int(IntProp::SelectedGeneration, generation);
             w.set_string(StringProp::SelectedRoomId, SharedString::from(id.as_ref()));
@@ -118,9 +139,9 @@ pub fn dispatch_effect<B: UiBackend>(w: &B::Window, event: Effect, ctx: &UiEvent
                 IntProp::SelectedRoomMembers,
                 i32::try_from(member_count).unwrap_or(i32::MAX),
             );
-            let pagination = LATEST_SNAPSHOT
-                .with(|cell| cell.borrow().as_ref().map(|view| view.pagination))
-                .unwrap_or_default();
+            let pagination =
+                with_session(|session| session.snapshot.as_ref().map(|view| view.pagination))
+                    .unwrap_or_default();
             sync_timeline_chrome(w, &pagination);
         }
         Effect::Timeline {
@@ -153,10 +174,12 @@ pub fn dispatch_effect<B: UiBackend>(w: &B::Window, event: Effect, ctx: &UiEvent
         }
         Effect::Verification(update) => apply_verification(w, &update),
         Effect::LoggedOut => {
-            clear_session_media();
-            forget_timeline_index();
-            ctx.timeline.set_vec(Vec::new());
-            apply_snapshot::<B>(w, &Arc::new(AppViewState::logged_out()), ctx);
+            let models = begin_session::<B>(w);
+            let fresh = UiEventContext::<B> {
+                models: &models,
+                media: ctx.media,
+            };
+            apply_snapshot::<B>(w, &Arc::new(AppViewState::logged_out()), &fresh);
             clear_selected_room(w);
             reset_verification(w);
             w.clear_text_inputs();
@@ -211,14 +234,14 @@ fn apply_timeline<B: UiBackend>(
 
     let anchor_row_moved = patch.shifts_rows() || replaces_loaded_window;
     apply_timeline_patch(
-        ctx.timeline,
+        &ctx.models.timeline,
         *patch,
         &|m| B::convert_message(m, ctx.media),
         &|entry, delta| B::enrich_message(entry, delta, ctx.media),
         &|entry| B::message_id(entry),
     );
     if anchor_row_moved {
-        w.set_int(IntProp::AnchorIndex, anchor_row::<B>(ctx.timeline));
+        w.set_int(IntProp::AnchorIndex, anchor_row::<B>(&ctx.models.timeline));
     }
 }
 
@@ -227,7 +250,7 @@ fn apply_snapshot<B: UiBackend>(
     view: &Arc<AppViewState>,
     ctx: &UiEventContext<'_, B>,
 ) {
-    let previous = LATEST_SNAPSHOT.with(|cell| cell.borrow().clone());
+    let previous = with_session(|session| session.snapshot.clone());
     let last = previous.as_deref();
     let AppViewState {
         lifecycle,
@@ -254,7 +277,7 @@ fn apply_snapshot<B: UiBackend>(
     }
     if last.is_none_or(|l| !Arc::ptr_eq(&l.directory.rooms, rooms)) {
         apply_rooms(
-            ctx.rooms,
+            &ctx.models.rooms,
             rooms.as_ref(),
             last.map_or(&[], |l| l.directory.rooms.as_ref()),
             ctx.media,
@@ -264,7 +287,7 @@ fn apply_snapshot<B: UiBackend>(
     }
     if last.is_none_or(|l| !Arc::ptr_eq(&l.directory.spaces, spaces)) {
         apply_spaces(
-            ctx.spaces,
+            &ctx.models.spaces,
             spaces.as_ref(),
             ctx.media,
             &|space| B::convert_space(space, ctx.media),
@@ -273,7 +296,7 @@ fn apply_snapshot<B: UiBackend>(
     }
     if last.is_none_or(|l| !Arc::ptr_eq(&l.directory.subspaces, subspaces)) {
         apply_spaces(
-            ctx.subspaces,
+            &ctx.models.subspaces,
             subspaces.as_ref(),
             ctx.media,
             &|space| B::convert_space(space, ctx.media),
@@ -313,7 +336,7 @@ fn apply_snapshot<B: UiBackend>(
     if last.is_none_or(|l| l.toast != *toast) {
         apply_toast(w, toast);
     }
-    LATEST_SNAPSHOT.with(|cell| *cell.borrow_mut() = Some(Arc::clone(view)));
+    with_session(|session| session.snapshot = Some(Arc::clone(view)));
 }
 
 fn apply_stickers<B: UiBackend>(
@@ -330,7 +353,7 @@ fn apply_stickers<B: UiBackend>(
     } else if last.is_some_and(|l| l.ready_images != stickers.ready_images) {
         settle_sticker_downloads::<B>(media);
     }
-    let for_this_room = stickers.generation == ACTIVE_GENERATION.with(Cell::get);
+    let for_this_room = stickers.generation == active_generation();
     w.set_int(IntProp::StickerColumns, GRID_COLUMNS);
     w.set_bool(BoolProp::StickerRoomEncrypted, stickers.room_encrypted);
     w.set_bool(BoolProp::StickerLoading, stickers.loading);
@@ -341,8 +364,12 @@ fn apply_stickers<B: UiBackend>(
 }
 
 fn rebuild_sticker_grid<B: UiBackend>(stickers: &StickerView, media: &dyn MediaCache) {
-    let active = ACTIVE_GENERATION.with(Cell::get);
-    let needle = STICKER_NEEDLE.with(|cell| cell.borrow().clone());
+    let (active, needle) = with_session(|session| {
+        (
+            session.room.active_generation,
+            session.sticker_needle.clone(),
+        )
+    });
     let grid = if stickers.generation == active {
         sticker_grid(stickers.packs.as_ref(), &needle, media)
     } else {
@@ -415,8 +442,7 @@ fn packs_missing_icons(packs: &[StickerPackDto]) -> Vec<SharedString> {
 }
 
 fn sync_timeline_chrome(w: &impl UiProps, pagination: &PaginationView) {
-    let active = ACTIVE_GENERATION.with(Cell::get);
-    let (backwards, forwards, badge) = if pagination.generation == active {
+    let (backwards, forwards, badge) = if pagination.generation == active_generation() {
         (
             pagination.backwards_loading,
             pagination.forwards_loading,
@@ -594,7 +620,7 @@ where
 fn refresh_audio_row<B: UiBackend>(now: &NowPlaying, ctx: &UiEventContext<'_, B>) {
     let update = audio_row_update(&now.event_id, &now.meta, ctx.media);
     let ids = HashSet::from([now.event_id.as_str()]);
-    patch_rows_by_id(ctx.timeline, &ids, &B::message_event_id, |entry| {
+    patch_rows_by_id(&*ctx.models.timeline, &ids, &B::message_event_id, |entry| {
         B::set_message_audio(entry, &update);
     });
 }
@@ -610,7 +636,7 @@ fn apply_toast(w: &impl UiProps, toast: &Toast) {
 }
 
 fn anchor_row<B: UiBackend>(model: &SpliceModel<B::Message>) -> i32 {
-    let focus = FOCUS_EVENT_ID.with(|cell| cell.borrow().clone());
+    let focus = with_session(|session| session.room.focus_event_id.clone());
     let is_anchor = |entry: &B::Message| match &focus {
         Some(event_id) => B::message_event_id(entry) == event_id,
         None => B::message_is_first_unread(entry),
@@ -630,7 +656,7 @@ fn unread_anchor_row(patch: &TimelinePatch) -> i32 {
 
 fn is_active(w: &impl UiProps, room_id: &RoomId, generation: i32) -> bool {
     w.get_string(StringProp::SelectedRoomId).as_str() == room_id.as_ref()
-        && ACTIVE_GENERATION.with(Cell::get) == generation
+        && active_generation() == generation
 }
 
 fn apply_timeline_status(w: &impl UiProps, status: TimelineStatus) {
@@ -705,7 +731,7 @@ fn clear_selected_room(w: &impl UiProps) {
     w.set_string(StringProp::SelectedRoomId, SharedString::default());
     w.set_string(StringProp::SelectedRoomName, SharedString::default());
     w.set_int(IntProp::SelectedRoomMembers, 0);
-    w.set_int(IntProp::SelectedGeneration, 0);
     w.set_int(IntProp::AnchorIndex, NO_ANCHOR);
-    set_focus(w, None);
+    publish_room_cursor(w);
+    apply_timeline_status(w, TimelineStatus::None);
 }

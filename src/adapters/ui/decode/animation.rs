@@ -14,7 +14,7 @@ use slint::{Image, Timer, TimerMode};
 use super::cache::Decoded;
 use super::waiters::DecodeOutcome;
 use super::workers::Lane;
-use super::{DISPLAY_MAX_DIMENSION, cache, image_from_rgba, waiters};
+use super::{DISPLAY_MAX_DIMENSION, Epoch, cache, image_from_rgba, waiters, with_media};
 
 const ANIMATION_MEMORY_BUDGET: usize = 128 * 1024 * 1024;
 const ANIM_PER_ITEM_BUDGET: usize = 32 * 1024 * 1024;
@@ -30,15 +30,18 @@ const GIF_INSTANT_DELAY: Duration = Duration::from_millis(10);
 const GIF_DEFAULT_DELAY: Duration = Duration::from_millis(100);
 
 thread_local! {
-    static ANIMATIONS: RefCell<AnimationState> = RefCell::new(AnimationState::default());
     static ANIMATION_TIMER: Timer = Timer::default();
     static ANIMATION_TICK_FN: RefCell<Option<Rc<dyn Fn()>>> = const { RefCell::new(None) };
 }
 
 #[derive(Default)]
-struct AnimationState {
+pub(super) struct AnimationState {
     clips: HashMap<PathBuf, Option<Rc<Animation>>>,
     playbacks: HashMap<String, Playback>,
+}
+
+fn with_animations<R>(f: impl FnOnce(&mut AnimationState) -> R) -> R {
+    with_media(|media| f(&mut media.animations))
 }
 
 impl AnimationState {
@@ -268,11 +271,11 @@ pub(super) fn decode_raw(path: &Path) -> Option<RawAnimation> {
     })
 }
 
-pub(super) fn on_decoded(path: &Path, decoded: Option<RawAnimation>, epoch: u64) {
-    if super::is_stale(epoch) {
+pub(super) fn on_decoded(path: &Path, decoded: Option<RawAnimation>, epoch: Epoch) {
+    if !epoch.is_current() {
         return;
     }
-    let animation = ANIMATIONS.with_borrow_mut(|state| {
+    let animation = with_animations(|state| {
         let remaining = ANIMATION_MEMORY_BUDGET.saturating_sub(state.retained_bytes());
         let animation = decoded
             .filter(|raw| raw.bytes <= remaining)
@@ -289,7 +292,7 @@ pub(super) fn on_decoded(path: &Path, decoded: Option<RawAnimation>, epoch: u64)
         return;
     };
 
-    ANIMATIONS.with_borrow_mut(|state| {
+    with_animations(|state| {
         for unique_id in waiting.unique_ids() {
             if matches!(
                 state.start_playback(unique_id, path, &animation),
@@ -308,7 +311,7 @@ pub(super) fn on_decoded(path: &Path, decoded: Option<RawAnimation>, epoch: u64)
 }
 
 pub(super) fn playing_frame(path: &Path, playback_key: &str) -> Option<Image> {
-    ANIMATIONS.with_borrow(|state| {
+    with_animations(|state| {
         let animation = state.clips.get(path)?.as_ref()?;
         let playback = state.playbacks.get(playback_key)?;
         (playback.path == path)
@@ -322,7 +325,7 @@ pub fn load_thumbnail(path: &Path, playback_key: &str) -> Decoded {
     if !is_animatable(path) {
         return cache::request_thumbnail(path, playback_key);
     }
-    let animation = match ANIMATIONS.with_borrow(|state| state.clips.get(path).cloned()) {
+    let animation = match with_animations(|state| state.clips.get(path).cloned()) {
         Some(Some(animation)) => animation,
         Some(None) => return cache::request_thumbnail(path, playback_key),
         None => {
@@ -331,7 +334,7 @@ pub fn load_thumbnail(path: &Path, playback_key: &str) -> Decoded {
         }
     };
 
-    let (frame, is_new) = ANIMATIONS.with_borrow_mut(|state| {
+    let (frame, is_new) = with_animations(|state| {
         if let Some(playback) = state.playbacks.get(playback_key) {
             return (playback.frame, false);
         }
@@ -350,7 +353,7 @@ pub fn load_thumbnail(path: &Path, playback_key: &str) -> Decoded {
 }
 
 fn due_frames(now: Instant) -> Vec<DueFrame> {
-    ANIMATIONS.with_borrow_mut(|state| {
+    with_animations(|state| {
         let AnimationState { clips, playbacks } = state;
         let mut due = Vec::new();
         for (unique_id, playback) in playbacks.iter_mut() {
@@ -378,7 +381,7 @@ fn forget_playbacks(gone: &[String]) {
     if gone.is_empty() {
         return;
     }
-    ANIMATIONS.with_borrow_mut(|state| {
+    with_animations(|state| {
         let AnimationState { clips, playbacks } = state;
         for unique_id in gone {
             playbacks.remove(unique_id);
@@ -406,7 +409,7 @@ pub fn advance_animations(place_frame: &mut dyn FnMut(&str, usize, Image) -> Opt
         }
     }
 
-    ANIMATIONS.with_borrow_mut(|state| {
+    with_animations(|state| {
         for (unique_id, row) in located {
             if let Some(playback) = state.playbacks.get_mut(&unique_id) {
                 playback.row_hint = row;
@@ -417,7 +420,7 @@ pub fn advance_animations(place_frame: &mut dyn FnMut(&str, usize, Image) -> Opt
 }
 
 fn next_deadline() -> Option<Instant> {
-    ANIMATIONS.with_borrow(|state| state.playbacks.values().map(|p| p.next_at).min())
+    with_animations(|state| state.playbacks.values().map(|p| p.next_at).min())
 }
 
 fn reschedule() {
@@ -444,9 +447,4 @@ fn on_deadline() {
 
 pub fn set_animation_tick(tick: impl Fn() + 'static) {
     ANIMATION_TICK_FN.with_borrow_mut(|slot| *slot = Some(Rc::new(tick)));
-}
-
-pub(super) fn clear() {
-    ANIMATIONS.with_borrow_mut(|state| *state = AnimationState::default());
-    ANIMATION_TIMER.with(Timer::stop);
 }

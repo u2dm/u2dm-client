@@ -1,19 +1,13 @@
-use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::{mem, slice};
 
 use super::cache::Decoded;
 use super::waiters::{AvatarSlot, DecodeOutcome};
-use super::{animation, cache, waiters};
-
-thread_local! {
-    static NEEDS: RefCell<Needs> = RefCell::new(Needs::default());
-    static PENDING: RefCell<Vec<Request>> = const { RefCell::new(Vec::new()) };
-}
+use super::{animation, cache, waiters, with_media};
 
 #[derive(PartialEq, Eq)]
-enum Request {
+pub(super) enum Request {
     Media(String),
     Avatar(AvatarSlot),
     Sticker(String),
@@ -26,7 +20,7 @@ struct MediaNeed {
 }
 
 #[derive(Default)]
-struct Needs {
+pub(super) struct Needs {
     media: HashMap<String, MediaNeed>,
     avatars: HashMap<AvatarSlot, PathBuf>,
     stickers: HashMap<String, PathBuf>,
@@ -35,22 +29,24 @@ struct Needs {
 
 pub fn record_media_need(unique_id: &str, thumbnail: Option<PathBuf>, avatar: Option<PathBuf>) {
     if thumbnail.is_none() && avatar.is_none() {
-        NEEDS.with_borrow_mut(|needs| needs.media.remove(unique_id));
+        with_media(|media| media.needs.media.remove(unique_id));
         return;
     }
-    NEEDS.with_borrow_mut(|needs| {
-        needs
+    with_media(|media| {
+        media
+            .needs
             .media
             .insert(unique_id.to_owned(), MediaNeed { thumbnail, avatar });
     });
 }
 
 pub fn record_avatar_need(slot: AvatarSlot, path: PathBuf) {
-    NEEDS.with_borrow_mut(|needs| needs.avatars.insert(slot, path));
+    with_media(|media| media.needs.avatars.insert(slot, path));
 }
 
 pub fn record_sticker_need(key: &str, path: PathBuf) {
-    let already_asked = NEEDS.with_borrow_mut(|needs| {
+    let already_asked = with_media(|media| {
+        let needs = &mut media.needs;
         needs.stickers.insert(key.to_owned(), path);
         needs.stickers_asked_before_download.remove(key)
     });
@@ -60,7 +56,7 @@ pub fn record_sticker_need(key: &str, path: PathBuf) {
 }
 
 pub fn forget_all_media_needs() {
-    NEEDS.with_borrow_mut(|needs| needs.media.clear());
+    with_media(|media| media.needs.media.clear());
 }
 
 pub fn request_avatar(slot: &AvatarSlot) {
@@ -76,7 +72,8 @@ pub fn request_sticker(key: &str) {
 }
 
 fn queue(request: Request) {
-    let armed = PENDING.with_borrow_mut(|pending| {
+    let armed = with_media(|media| {
+        let pending = &mut media.pending;
         if pending.contains(&request) {
             return false;
         }
@@ -90,7 +87,7 @@ fn queue(request: Request) {
 }
 
 fn flush() {
-    for request in PENDING.with_borrow_mut(mem::take) {
+    for request in with_media(|media| mem::take(&mut media.pending)) {
         match request {
             Request::Media(unique_id) => resolve_media(&unique_id),
             Request::Avatar(slot) => resolve_avatar(&slot),
@@ -100,7 +97,8 @@ fn flush() {
 }
 
 fn resolve_sticker(key: &str) {
-    let path = NEEDS.with_borrow_mut(|needs| {
+    let path = with_media(|media| {
+        let needs = &mut media.needs;
         let path = needs.stickers.get(key).cloned();
         if path.is_none() {
             needs.stickers_asked_before_download.insert(key.to_owned());
@@ -123,7 +121,7 @@ fn announce(unique_id: &str, decoded: &Decoded) {
 }
 
 fn resolve_avatar(slot: &AvatarSlot) {
-    let Some(path) = NEEDS.with_borrow(|needs| needs.avatars.get(slot).cloned()) else {
+    let Some(path) = with_media(|media| media.needs.avatars.get(slot).cloned()) else {
         return;
     };
     if let Some(image) = cache::load_avatar_async(&path, slot.clone()) {
@@ -132,7 +130,7 @@ fn resolve_avatar(slot: &AvatarSlot) {
 }
 
 fn resolve_media(unique_id: &str) {
-    let Some(need) = NEEDS.with_borrow(|needs| needs.media.get(unique_id).cloned()) else {
+    let Some(need) = with_media(|media| media.needs.media.get(unique_id).cloned()) else {
         return;
     };
     if let Some(thumbnail) = &need.thumbnail {
@@ -144,9 +142,4 @@ fn resolve_media(unique_id: &str) {
             waiters::notify_avatars(slice::from_ref(&slot), DecodeOutcome::Ready(&image));
         }
     }
-}
-
-pub(super) fn clear() {
-    PENDING.with_borrow_mut(Vec::clear);
-    NEEDS.with_borrow_mut(|needs| *needs = Needs::default());
 }

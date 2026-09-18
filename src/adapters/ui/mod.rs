@@ -19,6 +19,7 @@ mod richtext;
 mod router;
 mod rows;
 pub(crate) mod schema;
+mod session;
 mod splice_model;
 mod video;
 

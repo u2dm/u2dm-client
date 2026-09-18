@@ -1,5 +1,3 @@
-use std::any::Any;
-use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 use std::sync::Arc;
@@ -22,6 +20,7 @@ use super::reconcile::{reorder_rows, sticker_cell_row, sticker_pack_row, timelin
 use super::reduce::{dispatch_effect, set_sticker_query};
 use super::rows::{locate_row, patch_rows_by_id};
 use super::schema::model_props;
+use super::session::begin_session;
 use super::splice_model::SpliceModel;
 use crate::commands::effects::Effect;
 use crate::commands::view::AppViewState;
@@ -38,6 +37,7 @@ pub trait UiBackend: Sized + 'static {
     type StickerRow: Clone + From<StickerRowDto> + 'static;
     type StickerPack: Clone + From<StickerPackDto> + 'static;
 
+    fn models() -> Rc<Models<Self>>;
     fn attach_models(window: &Self::Window, models: &Models<Self>);
     fn bind_sticker_search(window: &Self::Window, search: impl Fn(&str) + 'static);
 
@@ -82,24 +82,25 @@ pub trait UiBackend: Sized + 'static {
             &VecModel<Self::Space>,
             &VecModel<Self::Space>,
         ) -> R,
-    ) -> Option<R> {
-        let models = models::<Self>()?;
-        Some(f(
+    ) -> R {
+        let models = Self::models();
+        f(
             &models.timeline,
             &models.rooms,
             &models.spaces,
             &models.subspaces,
-        ))
+        )
     }
 
-    fn with_timeline<R>(f: impl FnOnce(&SpliceModel<Self::Message>) -> R) -> Option<R> {
-        models::<Self>().map(|models| f(&models.timeline))
+    fn with_timeline<R>(f: impl FnOnce(&SpliceModel<Self::Message>) -> R) -> R {
+        f(&Self::models().timeline)
     }
 
     fn with_stickers<R>(
         f: impl FnOnce(&SpliceModel<Self::StickerRow>, &VecModel<Self::StickerPack>) -> R,
-    ) -> Option<R> {
-        models::<Self>().map(|models| f(&models.sticker_rows, &models.sticker_packs))
+    ) -> R {
+        let models = Self::models();
+        f(&models.sticker_rows, &models.sticker_packs)
     }
 }
 
@@ -119,23 +120,13 @@ macro_rules! declare_models {
 
 model_props!(declare_models);
 
-thread_local! {
-    static MODELS: RefCell<Option<Rc<dyn Any>>> = const { RefCell::new(None) };
-}
-
-fn models<B: UiBackend>() -> Option<Rc<Models<B>>> {
-    MODELS.with(|cell| cell.borrow().clone())?.downcast().ok()
-}
-
 pub fn spawn_event_handler<B: UiBackend>(
     window: &B::Window,
     ui_rx: mpsc::Receiver<Effect>,
     view_rx: watch::Receiver<Arc<AppViewState>>,
     media_cache: Arc<dyn MediaCache>,
 ) {
-    let models = Rc::new(Models::<B>::default());
-    B::attach_models(window, &models);
-    MODELS.with(|cell| *cell.borrow_mut() = Some(models));
+    begin_session::<B>(window);
 
     install_render_hooks::<B>(window.as_weak());
     install_clock_invalidation::<B>(Arc::clone(&media_cache));
@@ -156,10 +147,7 @@ pub fn reorder_spaces<B: UiBackend>(from: usize, to: usize) {
 }
 
 pub struct UiEventContext<'a, B: UiBackend> {
-    pub timeline: &'a SpliceModel<B::Message>,
-    pub rooms: &'a VecModel<B::Room>,
-    pub spaces: &'a VecModel<B::Space>,
-    pub subspaces: &'a VecModel<B::Space>,
+    pub models: &'a Models<B>,
     pub media: &'a dyn MediaCache,
 }
 
@@ -170,16 +158,12 @@ fn post_effect<B: UiBackend>(
     permit: OwnedSemaphorePermit,
 ) {
     weak.upgrade_in_event_loop(move |w| {
-        B::with_models(move |timeline, rooms, spaces, subspaces| {
-            let ctx = UiEventContext::<B> {
-                timeline,
-                rooms,
-                spaces,
-                subspaces,
-                media: media.as_ref(),
-            };
-            dispatch_effect::<B>(&w, event, &ctx);
-        });
+        let models = B::models();
+        let ctx = UiEventContext::<B> {
+            models: &models,
+            media: media.as_ref(),
+        };
+        dispatch_effect::<B>(&w, event, &ctx);
         drop(permit);
     })
     .ok();
@@ -237,7 +221,6 @@ fn patch_timeline_row<B: UiBackend>(
         timeline.set_row_data(row, entry);
         Some(row)
     })
-    .flatten()
 }
 
 fn place_sticker_cell<B: UiBackend>(key: &str, art: Option<&Image>) -> Option<usize> {
@@ -246,7 +229,6 @@ fn place_sticker_cell<B: UiBackend>(key: &str, art: Option<&Image>) -> Option<us
         let entry = rows.row_data(row)?;
         B::patch_sticker_cell(&entry, key, art).then_some(row)
     })
-    .flatten()
 }
 
 fn adopt_pack_icon<B: UiBackend>(pack_id: &str, image: &Image) {

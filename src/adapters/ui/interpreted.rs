@@ -32,6 +32,7 @@ use super::schema::{
     sticker_row_fields, timeline_states, user_message_kinds, verification_activities,
     verification_phases,
 };
+use super::session::active_models;
 use super::video::{self, millis_to_duration};
 use super::{audio, emoji, router};
 use crate::app::input::CommandSender;
@@ -493,6 +494,10 @@ impl UiBackend for InterpretedBackend {
     type Space = Value;
     type StickerRow = Value;
     type StickerPack = Value;
+
+    fn models() -> Rc<Models<Self>> {
+        active_models()
+    }
 
     fn attach_models(window: &ComponentInstance, models: &Models<Self>) {
         model_props!(attach_interpreted_models window models;);

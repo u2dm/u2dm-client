@@ -26,6 +26,7 @@ use super::schema::{
     sticker_pack_fields, sticker_row_fields, string_props, timeline_states, user_message_kinds,
     verification_activities, verification_phases,
 };
+use super::session::active_models;
 use super::video::{self, millis_to_duration};
 use super::{audio, emoji, router};
 use crate::app::input::CommandSender;
@@ -330,6 +331,10 @@ impl UiBackend for CompiledBackend {
     type Space = SpaceEntry;
     type StickerRow = StickerRow;
     type StickerPack = StickerPackTab;
+
+    fn models() -> Rc<Models<Self>> {
+        active_models()
+    }
 
     fn attach_models(window: &AppWindow, models: &Models<Self>) {
         model_props!(attach_compiled_models window models;);
@@ -794,8 +799,7 @@ mod probe_dump {
                 .enumerate()
                 .map(|(i, e)| row(i, &e))
                 .collect::<Vec<_>>()
-        })
-        .unwrap_or_default();
+        });
         TimelineDump {
             selected_room_id: window.get_string(StringProp::SelectedRoomId).to_string(),
             selected_room_name: view.get_selected_room_name().to_string(),

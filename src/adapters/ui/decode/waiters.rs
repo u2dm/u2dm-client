@@ -5,13 +5,13 @@ use std::rc::Rc;
 
 use slint::Image;
 
+use super::with_media;
 use super::workers::{self, Lane};
 
 type ImageReadyFn = Rc<dyn Fn(&str, DecodeOutcome<'_>)>;
 type AvatarReadyFn = Rc<dyn Fn(&[AvatarSlot], DecodeOutcome<'_>)>;
 
 thread_local! {
-    static WAITERS: RefCell<Waiters> = RefCell::new(Waiters::default());
     static IMAGE_READY_FN: RefCell<Option<ImageReadyFn>> = const { RefCell::new(None) };
     static AVATAR_READY_FN: RefCell<Option<AvatarReadyFn>> = const { RefCell::new(None) };
 }
@@ -45,7 +45,7 @@ impl Registration {
 }
 
 #[derive(Default)]
-struct Waiters {
+pub(super) struct Waiters {
     media: HashMap<PathBuf, Vec<String>>,
     avatars: HashMap<PathBuf, Vec<AvatarSlot>>,
 }
@@ -99,6 +99,10 @@ impl Waiters {
     }
 }
 
+fn with_waiters<R>(f: impl FnOnce(&mut Waiters) -> R) -> R {
+    with_media(|media| f(&mut media.waiters))
+}
+
 pub(super) struct Drained {
     unique_ids: Vec<String>,
     slots: Vec<AvatarSlot>,
@@ -137,19 +141,13 @@ pub(super) fn notify_avatars(slots: &[AvatarSlot], outcome: DecodeOutcome<'_>) {
 }
 
 pub(super) fn enqueue_media(path: &Path, unique_id: &str, lane: Lane) {
-    if WAITERS
-        .with_borrow_mut(|waiters| waiters.join_media(path, unique_id))
-        .starts_decode()
-    {
+    if with_waiters(|waiters| waiters.join_media(path, unique_id)).starts_decode() {
         start_decode(lane, path.to_path_buf());
     }
 }
 
 pub(super) fn enqueue_avatar(path: &Path, slot: AvatarSlot) {
-    if WAITERS
-        .with_borrow_mut(|waiters| waiters.join_avatar(path, slot))
-        .starts_decode()
-    {
+    if with_waiters(|waiters| waiters.join_avatar(path, slot)).starts_decode() {
         start_decode(Lane::Avatar, path.to_path_buf());
     }
 }
@@ -162,26 +160,19 @@ fn start_decode(lane: Lane, path: PathBuf) {
         "decode lane at capacity, deferred {}; it will be re-requested",
         evicted.display()
     );
-    WAITERS
-        .with_borrow_mut(|waiters| match lane {
-            Lane::Avatar => waiters.take_avatars(&evicted),
-            Lane::Static | Lane::Animation => waiters.take_media(&evicted),
-        })
-        .notify(DecodeOutcome::Deferred);
+    with_waiters(|waiters| match lane {
+        Lane::Avatar => waiters.take_avatars(&evicted),
+        Lane::Static | Lane::Animation => waiters.take_media(&evicted),
+    })
+    .notify(DecodeOutcome::Deferred);
 }
 
 pub(super) fn deliver(path: &Path, outcome: DecodeOutcome<'_>) {
-    WAITERS
-        .with_borrow_mut(|waiters| waiters.take_all(path))
-        .notify(outcome);
+    with_waiters(|waiters| waiters.take_all(path)).notify(outcome);
 }
 
 pub(super) fn take_media(path: &Path) -> Drained {
-    WAITERS.with_borrow_mut(|waiters| waiters.take_media(path))
-}
-
-pub(super) fn clear() {
-    WAITERS.with_borrow_mut(|waiters| *waiters = Waiters::default());
+    with_waiters(|waiters| waiters.take_media(path))
 }
 
 pub fn set_image_ready(ready: impl Fn(&str, DecodeOutcome<'_>) + 'static) {

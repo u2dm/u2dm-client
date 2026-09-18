@@ -4,7 +4,7 @@ use std::path::PathBuf;
 use std::sync::{Arc, Condvar, Mutex, MutexGuard, PoisonError};
 use std::thread;
 
-use super::{animation, cache};
+use super::{Epoch, animation, cache, with_media};
 
 const DECODE_LANE_CAP: usize = 1024;
 const MAX_DECODE_WORKERS: usize = 3;
@@ -22,7 +22,7 @@ pub(super) enum Lane {
 
 struct Job {
     path: PathBuf,
-    epoch: u64,
+    epoch: Epoch,
 }
 
 struct QueueInner {
@@ -63,12 +63,6 @@ impl QueueInner {
         (queue.len() > DECODE_LANE_CAP)
             .then(|| queue.pop_front())
             .flatten()
-    }
-
-    fn clear(&mut self) {
-        self.avatar.clear();
-        self.static_img.clear();
-        self.animation.clear();
     }
 }
 
@@ -132,6 +126,9 @@ fn next_job(queue: &Arc<DecodeQueue>) -> (Lane, Job) {
 
 fn run_job(lane: Lane, job: Job) {
     let Job { path, epoch } = job;
+    if !epoch.is_current() {
+        return;
+    }
     match lane {
         Lane::Avatar | Lane::Static => {
             let decoded = cache::decode_rgba(&path);
@@ -152,7 +149,7 @@ pub(super) type Evicted = Option<PathBuf>;
 
 pub(super) fn submit(lane: Lane, path: PathBuf) -> Evicted {
     ensure_workers();
-    let epoch = super::current_epoch();
+    let epoch = with_media(|media| media.epoch);
     DECODE_QUEUE.with_borrow(|slot| {
         let queue = slot.as_ref()?;
         let evicted = {
@@ -160,14 +157,8 @@ pub(super) fn submit(lane: Lane, path: PathBuf) -> Evicted {
             inner.push_back_evicting_oldest(lane, Job { path, epoch })
         };
         queue.signal.notify_all();
-        evicted.map(|job| job.path)
+        evicted
+            .filter(|job| job.epoch.is_current())
+            .map(|job| job.path)
     })
-}
-
-pub(super) fn clear() {
-    DECODE_QUEUE.with_borrow(|slot| {
-        if let Some(queue) = slot.as_ref() {
-            lock(&queue.inner).clear();
-        }
-    });
 }
