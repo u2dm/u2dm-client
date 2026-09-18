@@ -1,12 +1,16 @@
 use std::collections::{BTreeMap, HashMap};
 use std::sync::{Arc, Mutex as StdMutex};
+use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
-use matrix_sdk::Client;
+use futures_util::future::join_all;
+use futures_util::{StreamExt, stream};
 use matrix_sdk::ruma::api::client::state::get_state_event_for_key;
+use matrix_sdk::ruma::api::error::ErrorKind;
 use matrix_sdk::ruma::events::{GlobalAccountDataEventType, StateEventType};
 use matrix_sdk::ruma::serde::Raw;
 use matrix_sdk::ruma::{OwnedMxcUri, OwnedRoomId};
+use matrix_sdk::{Client, HttpError};
 use serde::Deserialize;
 use serde_json::{Map, Value, json};
 use tokio::task::JoinSet;
@@ -23,9 +27,41 @@ const ROOM_PACK_TYPES: [&str; 2] = ["m.room.image_pack", "im.ponies.room_emotes"
 const STICKER_EVENT_TYPE: &str = "m.sticker";
 const STICKER_USAGE: &str = "sticker";
 const MAX_INFLIGHT_FETCHES: usize = 8;
+const PACK_FRESHNESS: Duration = Duration::from_mins(10);
 
 type StickerSources = StdMutex<HashMap<PackId, PackSources>>;
 type PackSources = HashMap<String, StickerSource>;
+type PackCache = StdMutex<HashMap<PackRef, CachedPack>>;
+
+#[derive(Clone, PartialEq, Eq, Hash)]
+struct PackRef {
+    room: OwnedRoomId,
+    state_key: String,
+}
+
+impl PackRef {
+    fn pack_id(&self) -> PackId {
+        PackId::new(format!("room:{}:{}", self.room, self.state_key))
+    }
+}
+
+#[derive(Clone)]
+struct CachedPack {
+    fetched_at: Instant,
+    pack: Option<StickerPack>,
+}
+
+enum PackFetch {
+    Found(StickerPack, PackSources),
+    Absent,
+    Unreachable,
+}
+
+enum PackState {
+    Published(PackDto),
+    Missing,
+    Unreachable,
+}
 
 struct StickerSource {
     body: String,
@@ -116,6 +152,7 @@ impl PackDto {
 pub(super) struct MatrixStickers {
     matrix: Arc<ClientHandle>,
     sources: Arc<StickerSources>,
+    packs: PackCache,
 }
 
 impl MatrixStickers {
@@ -123,6 +160,7 @@ impl MatrixStickers {
         Self {
             matrix,
             sources: Arc::new(StdMutex::new(HashMap::new())),
+            packs: StdMutex::new(HashMap::new()),
         }
     }
 
@@ -150,7 +188,7 @@ impl MatrixStickers {
         None
     }
 
-    async fn pack_rooms(&self, client: &Client) -> Vec<(OwnedRoomId, String)> {
+    async fn pack_references(&self, client: &Client) -> Vec<PackRef> {
         for event_type in PACK_ROOMS_TYPES {
             let Ok(Some(raw)) = client
                 .account()
@@ -162,7 +200,7 @@ impl MatrixStickers {
             let Ok(dto) = raw.deserialize_as_unchecked::<PackRoomsDto>() else {
                 continue;
             };
-            let refs: Vec<(OwnedRoomId, String)> = dto
+            let refs: Vec<PackRef> = dto
                 .rooms
                 .into_iter()
                 .filter_map(|(room, keys)| {
@@ -171,7 +209,10 @@ impl MatrixStickers {
                 })
                 .flat_map(|(room, keys)| {
                     keys.into_keys()
-                        .map(move |key| (room.clone(), key))
+                        .map(move |state_key| PackRef {
+                            room: room.clone(),
+                            state_key,
+                        })
                         .collect::<Vec<_>>()
                 })
                 .collect();
@@ -182,38 +223,106 @@ impl MatrixStickers {
         Vec::new()
     }
 
-    async fn room_pack(
-        &self,
-        client: &Client,
-        room_id: &OwnedRoomId,
-        state_key: &str,
-    ) -> Option<(StickerPack, PackSources)> {
-        let fallback = client
-            .get_room(room_id)
-            .and_then(|room| room.cached_display_name())
-            .map_or_else(|| room_id.to_string(), |name| name.to_string());
+    async fn room_packs(&self, client: &Client, references: Vec<PackRef>) -> Vec<StickerPack> {
+        let packs: Vec<Option<StickerPack>> = stream::iter(references)
+            .map(|reference| self.room_pack(client, reference))
+            .buffered(MAX_INFLIGHT_FETCHES)
+            .collect()
+            .await;
+        packs.into_iter().flatten().collect()
+    }
 
-        for event_type in ROOM_PACK_TYPES {
-            let request = get_state_event_for_key::v3::Request::new(
-                room_id.clone(),
-                StateEventType::from(event_type),
-                state_key.to_owned(),
+    async fn room_pack(&self, client: &Client, reference: PackRef) -> Option<StickerPack> {
+        if let Some(cached) = self.fresh_pack(&reference) {
+            return cached.pack;
+        }
+        let pack = match fetch_room_pack(client, &reference).await {
+            PackFetch::Found(pack, sources) => {
+                self.remember_pack(&pack.id, sources);
+                Some(pack)
+            }
+            PackFetch::Absent => None,
+            PackFetch::Unreachable => return None,
+        };
+        self.cache_pack(reference, pack.clone());
+        pack
+    }
+
+    fn fresh_pack(&self, reference: &PackRef) -> Option<CachedPack> {
+        self.packs
+            .lock()
+            .ok()?
+            .get(reference)
+            .filter(|cached| cached.fetched_at.elapsed() < PACK_FRESHNESS)
+            .cloned()
+    }
+
+    fn cache_pack(&self, reference: PackRef, pack: Option<StickerPack>) {
+        if let Ok(mut packs) = self.packs.lock() {
+            packs.insert(
+                reference,
+                CachedPack {
+                    fetched_at: Instant::now(),
+                    pack,
+                },
             );
-            let Ok(response) = client.send(request).await else {
-                continue;
-            };
-            if let Ok(dto) = response
-                .into_content()
-                .deserialize_as_unchecked::<PackDto>()
-            {
-                let id = PackId::new(format!("room:{room_id}:{state_key}"));
-                if let Some(pack) = dto.into_pack(id, &fallback) {
-                    return Some(pack);
+        }
+    }
+}
+
+async fn fetch_room_pack(client: &Client, reference: &PackRef) -> PackFetch {
+    let fallback = client
+        .get_room(&reference.room)
+        .and_then(|room| room.cached_display_name())
+        .map_or_else(|| reference.room.to_string(), |name| name.to_string());
+
+    let answers =
+        join_all(ROOM_PACK_TYPES.map(|event_type| fetch_pack_state(client, reference, event_type)))
+            .await;
+
+    let mut fetch = PackFetch::Absent;
+    for answer in answers {
+        match answer {
+            PackState::Published(dto) => {
+                if let Some((pack, sources)) = dto.into_pack(reference.pack_id(), &fallback) {
+                    return PackFetch::Found(pack, sources);
                 }
             }
+            PackState::Missing => {}
+            PackState::Unreachable => fetch = PackFetch::Unreachable,
         }
-        None
     }
+    fetch
+}
+
+async fn fetch_pack_state(client: &Client, reference: &PackRef, event_type: &str) -> PackState {
+    let request = get_state_event_for_key::v3::Request::new(
+        reference.room.clone(),
+        StateEventType::from(event_type),
+        reference.state_key.clone(),
+    );
+    match client.send(request).await {
+        Ok(response) => response
+            .into_content()
+            .deserialize_as_unchecked::<PackDto>()
+            .map_or(PackState::Missing, PackState::Published),
+        Err(e) if rules_out_a_pack(&e) => PackState::Missing,
+        Err(e) => {
+            tracing::debug!(
+                room = %reference.room,
+                event_type,
+                "an image pack could not be fetched: {e}"
+            );
+            PackState::Unreachable
+        }
+    }
+}
+
+fn rules_out_a_pack(error: &HttpError) -> bool {
+    matches!(
+        error.client_api_error_kind(),
+        Some(ErrorKind::NotFound | ErrorKind::Forbidden)
+    )
 }
 
 #[async_trait]
@@ -229,20 +338,15 @@ impl StickerPort for MatrixStickers {
             packs.push(pack);
         }
 
-        let mut references = self.pack_rooms(&client).await;
-        references.push((room.room_id().to_owned(), String::new()));
-
-        for (pack_room, state_key) in references {
-            let Some((pack, sources)) = self.room_pack(&client, &pack_room, &state_key).await
-            else {
-                continue;
-            };
-            if packs.iter().any(|known| known.id == pack.id) {
-                continue;
-            }
-            self.remember_pack(&pack.id, sources);
-            packs.push(pack);
+        let mut references = self.pack_references(&client).await;
+        let own_pack = PackRef {
+            room: room.room_id().to_owned(),
+            state_key: String::new(),
+        };
+        if !references.contains(&own_pack) {
+            references.push(own_pack);
         }
+        packs.extend(self.room_packs(&client, references).await);
 
         Ok(StickerCatalog {
             packs,

@@ -1,3 +1,4 @@
+use std::mem;
 use std::sync::Arc;
 
 use matrix_sdk::ruma::EventId;
@@ -10,7 +11,7 @@ use crate::domain::timeline::JumpTarget;
 
 pub(super) struct TimelineItems {
     items: Vec<Arc<TimelineItem>>,
-    renderable: Vec<bool>,
+    messages: Vec<Option<TimelineMessage>>,
 }
 
 impl TimelineItems {
@@ -20,7 +21,7 @@ impl TimelineItems {
     ) -> (Self, Vec<TimelineMessage>) {
         let mut items = Self {
             items: Vec::new(),
-            renderable: Vec::new(),
+            messages: Vec::new(),
         };
         let messages = items.reset(values, ctx);
         (items, messages)
@@ -30,12 +31,24 @@ impl TimelineItems {
         &self.items
     }
 
+    pub(super) fn message_at(&self, raw_index: usize) -> Option<&TimelineMessage> {
+        self.messages.get(raw_index)?.as_ref()
+    }
+
+    pub(super) fn messages_from(&self, raw_index: usize) -> impl Iterator<Item = &TimelineMessage> {
+        self.messages
+            .get(raw_index..)
+            .into_iter()
+            .flatten()
+            .flatten()
+    }
+
     pub(super) fn msg_index_at(&self, raw_index: usize) -> usize {
-        self.renderable
+        self.messages
             .get(..raw_index)
-            .unwrap_or(&self.renderable)
+            .unwrap_or(&self.messages)
             .iter()
-            .filter(|renderable| **renderable)
+            .filter(|message| message.is_some())
             .count()
     }
 
@@ -49,7 +62,7 @@ impl TimelineItems {
         let Some(raw) = self.position_of_event(event_id) else {
             return JumpTarget::NotLoaded;
         };
-        if self.renderable.get(raw).is_some_and(|renders| *renders) {
+        if self.message_at(raw).is_some() {
             JumpTarget::Row(self.msg_index_at(raw))
         } else {
             JumpTarget::NotRenderable
@@ -61,7 +74,7 @@ impl TimelineItems {
         values: Vec<Arc<TimelineItem>>,
         ctx: &TimelineContext<'_>,
     ) -> Vec<TimelineMessage> {
-        let messages = self.convert_and_flag(&values, ctx);
+        let messages = self.convert_and_store(&values, ctx);
         self.items.extend(values);
         messages
     }
@@ -77,16 +90,20 @@ impl TimelineItems {
 
     pub(super) fn clear(&mut self) {
         self.items.clear();
-        self.renderable.clear();
+        self.messages.clear();
     }
 
-    pub(super) fn push_front(&mut self, value: Arc<TimelineItem>, renderable: bool) {
-        self.insert(0, value, renderable);
+    pub(super) fn push_front(
+        &mut self,
+        value: Arc<TimelineItem>,
+        message: Option<TimelineMessage>,
+    ) {
+        self.insert(0, value, message);
     }
 
-    pub(super) fn push_back(&mut self, value: Arc<TimelineItem>, renderable: bool) {
+    pub(super) fn push_back(&mut self, value: Arc<TimelineItem>, message: Option<TimelineMessage>) {
         self.items.push(value);
-        self.renderable.push(renderable);
+        self.messages.push(message);
     }
 
     pub(super) fn pop_front(&mut self) -> bool {
@@ -94,51 +111,73 @@ impl TimelineItems {
             return false;
         }
         self.items.remove(0);
-        self.renderable.remove(0)
+        self.messages.remove(0).is_some()
     }
 
     pub(super) fn pop_back(&mut self) -> bool {
         self.items.pop();
-        self.renderable.pop().unwrap_or(false)
+        self.messages.pop().flatten().is_some()
     }
 
-    pub(super) fn insert(&mut self, index: usize, value: Arc<TimelineItem>, renderable: bool) {
+    pub(super) fn insert(
+        &mut self,
+        index: usize,
+        value: Arc<TimelineItem>,
+        message: Option<TimelineMessage>,
+    ) {
         self.items.insert(index, value);
-        self.renderable.insert(index, renderable);
+        self.messages.insert(index, message);
     }
 
-    pub(super) fn set(&mut self, index: usize, value: &Arc<TimelineItem>, renderable: bool) {
+    pub(super) fn set(
+        &mut self,
+        index: usize,
+        value: &Arc<TimelineItem>,
+        message: Option<TimelineMessage>,
+    ) -> Option<TimelineMessage> {
         if let Some(slot) = self.items.get_mut(index) {
             *slot = Arc::clone(value);
         }
-        if let Some(slot) = self.renderable.get_mut(index) {
-            *slot = renderable;
+        self.messages
+            .get_mut(index)
+            .and_then(|slot| mem::replace(slot, message))
+    }
+
+    pub(super) fn reconvert(
+        &mut self,
+        raw_index: usize,
+        ctx: &TimelineContext<'_>,
+    ) -> Option<TimelineMessage> {
+        let message = convert_timeline_item(self.items.get(raw_index)?, ctx)?;
+        if let Some(slot) = self.messages.get_mut(raw_index) {
+            *slot = Some(message.clone());
         }
+        Some(message)
     }
 
     pub(super) fn remove(&mut self, index: usize) -> bool {
         self.items.remove(index);
-        self.renderable.remove(index)
+        self.messages.remove(index).is_some()
     }
 
     pub(super) fn truncate(&mut self, length: usize) {
         self.items.truncate(length);
-        self.renderable.truncate(length);
+        self.messages.truncate(length);
     }
 
-    fn convert_and_flag(
+    fn convert_and_store(
         &mut self,
         values: &[Arc<TimelineItem>],
         ctx: &TimelineContext<'_>,
     ) -> Vec<TimelineMessage> {
         let mut messages = Vec::with_capacity(values.len());
-        self.renderable.reserve(values.len());
+        self.messages.reserve(values.len());
         for item in values {
             let message = convert_timeline_item(item, ctx);
-            self.renderable.push(message.is_some());
-            if let Some(message) = message {
-                messages.push(message);
+            if let Some(message) = &message {
+                messages.push(message.clone());
             }
+            self.messages.push(message);
         }
         messages
     }

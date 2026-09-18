@@ -7,6 +7,7 @@ use super::TimelineContext;
 use super::convert::convert_timeline_item;
 use super::filter::TimelineItems;
 use super::subscribe::{enrich_message, enrich_messages};
+use crate::domain::message::TimelineMessage;
 use crate::domain::timeline::TimelinePatch;
 
 fn apply_append(
@@ -28,7 +29,7 @@ fn apply_push_front(
     ctx: &TimelineContext<'_>,
 ) -> Option<TimelinePatch> {
     let msg = convert_timeline_item(&value, ctx);
-    items.push_front(value, msg.is_some());
+    items.push_front(value, msg.clone());
     let msg = msg?;
     enrich_message(&msg, ctx);
     Some(TimelinePatch::PushFront(msg))
@@ -40,7 +41,7 @@ fn apply_push_back(
     ctx: &TimelineContext<'_>,
 ) -> Option<TimelinePatch> {
     let msg = convert_timeline_item(&value, ctx);
-    items.push_back(value, msg.is_some());
+    items.push_back(value, msg.clone());
     let msg = msg?;
     enrich_message(&msg, ctx);
     Some(TimelinePatch::PushBack(msg))
@@ -61,7 +62,7 @@ fn apply_insert(
     ctx: &TimelineContext<'_>,
 ) -> Option<TimelinePatch> {
     let msg = convert_timeline_item(&value, ctx);
-    items.insert(index, value, msg.is_some());
+    items.insert(index, value, msg.clone());
     let msg = msg?;
     let mi = items.msg_index_at(index);
     enrich_message(&msg, ctx);
@@ -71,27 +72,31 @@ fn apply_insert(
     })
 }
 
+fn with_current_pronouns(message: TimelineMessage, ctx: &TimelineContext<'_>) -> TimelineMessage {
+    TimelineMessage {
+        sender_pronouns: ctx.pronouns.resolved(&message.sender),
+        ..message
+    }
+}
+
 fn apply_set(
     items: &mut TimelineItems,
     index: usize,
     value: &Arc<TimelineItem>,
     ctx: &TimelineContext<'_>,
 ) -> Option<TimelinePatch> {
+    let converted = convert_timeline_item(value, ctx);
     let old_msg = items
-        .items()
-        .get(index)
-        .and_then(|item| convert_timeline_item(item, ctx));
-    let new_msg = convert_timeline_item(value, ctx);
+        .set(index, value, converted)
+        .map(|old| with_current_pronouns(old, ctx));
 
-    items.set(index, value, new_msg.is_some());
-
-    match (old_msg, new_msg) {
-        (Some(old), Some(new)) if old == new => None,
+    match (old_msg, items.message_at(index)) {
+        (Some(old), Some(new)) if old == *new => None,
         (Some(_), Some(new)) => {
-            enrich_message(&new, ctx);
+            enrich_message(new, ctx);
             Some(TimelinePatch::Set {
                 index: items.msg_index_at(index),
-                message: new,
+                message: new.clone(),
             })
         }
         (Some(old), None) => {
@@ -101,10 +106,10 @@ fn apply_set(
             })
         }
         (None, Some(new)) => {
-            enrich_message(&new, ctx);
+            enrich_message(new, ctx);
             Some(TimelinePatch::Insert {
                 index: items.msg_index_at(index),
-                message: new,
+                message: new.clone(),
             })
         }
         (None, None) => None,

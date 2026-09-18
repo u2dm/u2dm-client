@@ -16,13 +16,13 @@ use matrix_sdk_ui::timeline::{
 use tokio::sync::{Semaphore, mpsc};
 use tokio::task::JoinSet;
 
-use super::convert::convert_timeline_item;
 use super::diff::diff_to_patch;
 use super::filter::TimelineItems;
 use super::reactors::{ReactorAvatars, Resolution, resolve_reactor_avatars};
 use super::{EnrichmentClaim, EnrichmentPool, TimelineContext};
-use crate::adapters::matrix::media::{MediaService, MediaSources};
+use crate::adapters::matrix::media::{MediaService, MediaSources, ThumbnailRequest};
 use crate::adapters::matrix::profile::PronounCache;
+use crate::domain::media::ThumbnailOutcome;
 use crate::domain::message::TimelineMessage;
 use crate::domain::room::RoomId;
 use crate::domain::timeline::{
@@ -41,10 +41,59 @@ fn needs_pronouns(msg: &TimelineMessage, pronouns: &PronounCache) -> bool {
     !msg.is_own && pronouns.needs_fetch(&msg.sender)
 }
 
+struct EnrichmentJob {
+    unique_id: String,
+    thumbnail: Option<ThumbnailRequest>,
+    sender_avatar: Option<String>,
+    pronouns_of: Option<String>,
+}
+
+impl EnrichmentJob {
+    fn of(msg: &TimelineMessage, pronouns: &PronounCache) -> Self {
+        Self {
+            unique_id: msg.unique_id.clone(),
+            thumbnail: ThumbnailRequest::of(msg),
+            sender_avatar: msg.sender_avatar_url.clone(),
+            pronouns_of: needs_pronouns(msg, pronouns).then(|| msg.sender.clone()),
+        }
+    }
+
+    async fn fetch_thumbnail(
+        &self,
+        client: &Client,
+        media: &MediaService,
+        media_sources: &MediaSources,
+    ) -> ThumbnailOutcome {
+        match &self.thumbnail {
+            Some(request) => media.enrich_thumbnail(client, media_sources, request).await,
+            None => ThumbnailOutcome::Unchanged,
+        }
+    }
+
+    async fn fetch_avatar(&self, client: &Client, media: &MediaService) -> Option<String> {
+        let mxc = self.sender_avatar.as_deref()?;
+        media.enrich_avatar(client, mxc).await
+    }
+
+    async fn resolve_pronouns(
+        &self,
+        client: &Client,
+        pronouns: &PronounCache,
+    ) -> Option<Vec<String>> {
+        let sender = self.pronouns_of.as_deref()?;
+        let resolved = pronouns.resolve(client, sender).await;
+        (!resolved.is_empty()).then_some(resolved)
+    }
+
+    fn media_key(&self) -> Option<String> {
+        self.thumbnail
+            .as_ref()
+            .map(|request| request.media_key.clone())
+    }
+}
+
 fn spawn_enrichment(ctx: &TimelineContext<'_>, msg: &TimelineMessage, claim: EnrichmentClaim) {
-    let unique_id = msg.unique_id.clone();
-    let msg = msg.clone();
-    let resolve_pronouns = needs_pronouns(&msg, ctx.pronouns);
+    let job = EnrichmentJob::of(msg, ctx.pronouns);
     let client = ctx.client.clone();
     let media = Arc::clone(ctx.media);
     let media_sources = Arc::clone(ctx.media_sources);
@@ -62,20 +111,13 @@ fn spawn_enrichment(ctx: &TimelineContext<'_>, msg: &TimelineMessage, claim: Enr
         let work = async {
             let _permit = semaphore.acquire().await.ok()?;
             let (thumbnail, avatar_mxc, pronouns) = tokio::join!(
-                media.enrich_thumbnail(&client, &media_sources, &msg),
-                media.enrich_avatar(&client, &msg),
-                async {
-                    if resolve_pronouns {
-                        let resolved = pronouns.resolve(&client, &msg.sender).await;
-                        (!resolved.is_empty()).then_some(resolved)
-                    } else {
-                        None
-                    }
-                },
+                job.fetch_thumbnail(&client, &media, &media_sources),
+                job.fetch_avatar(&client, &media),
+                job.resolve_pronouns(&client, &pronouns),
             );
             Some(EnrichmentDelta {
-                unique_id: msg.unique_id.clone(),
-                media_key: msg.media_key().map(ToOwned::to_owned),
+                unique_id: job.unique_id.clone(),
+                media_key: job.media_key(),
                 fingerprint,
                 thumbnail,
                 avatar_mxc,
@@ -85,7 +127,7 @@ fn spawn_enrichment(ctx: &TimelineContext<'_>, msg: &TimelineMessage, claim: Enr
 
         let delta = token.run_until_cancelled(work).await.flatten();
 
-        EnrichmentPool::finish(&inflight, &unique_id, revision);
+        EnrichmentPool::finish(&inflight, &job.unique_id, revision);
 
         if let Some(delta) = delta
             && !delta.is_noop()
@@ -282,14 +324,7 @@ async fn report_audio(
     let anchor = OwnedEventId::try_from(lookup.anchor())
         .ok()
         .and_then(|event_id| items.position_of_event(&event_id));
-    let track = anchor.and_then(|start| {
-        let messages = items
-            .items()
-            .get(start..)?
-            .iter()
-            .filter_map(|item| convert_timeline_item(item, ctx));
-        locate_audio(lookup, messages)
-    });
+    let track = anchor.and_then(|start| locate_audio(lookup, items.messages_from(start).cloned()));
     tracing::debug!(request, found = track.is_some(), "resolved an audio lookup");
     drop(
         ctx.timeline_tx
@@ -667,19 +702,23 @@ fn spawn_reactor_avatar_fetch(
 }
 
 fn reactor_avatar_patch(
-    items: &TimelineItems,
+    items: &mut TimelineItems,
     arrived: &HashSet<String>,
     ctx: &TimelineContext<'_>,
 ) -> Option<TimelinePatch> {
     if arrived.is_empty() {
         return None;
     }
+    let reacted: Vec<usize> = items
+        .items()
+        .iter()
+        .enumerate()
+        .filter(|(_, item)| super::convert::reacted_by(item, arrived))
+        .map(|(raw_index, _)| raw_index)
+        .collect();
     let mut patches: Vec<TimelinePatch> = Vec::new();
-    for (raw_index, item) in items.items().iter().enumerate() {
-        if !super::convert::reacted_by(item, arrived) {
-            continue;
-        }
-        if let Some(message) = convert_timeline_item(item, ctx) {
+    for raw_index in reacted {
+        if let Some(message) = items.reconvert(raw_index, ctx) {
             patches.push(TimelinePatch::Set {
                 index: items.msg_index_at(raw_index),
                 message,
@@ -746,7 +785,7 @@ async fn run_timeline_loop<S>(
             Some(_) = side_tasks.join_next(), if !side_tasks.is_empty() => {}
             Some(resolved) = reactor_rx.recv() => {
                 let arrived = ctx.reactor_avatars.record(resolved);
-                if let Some(patch) = reactor_avatar_patch(&items, &arrived, ctx)
+                if let Some(patch) = reactor_avatar_patch(&mut items, &arrived, ctx)
                     && ctx.timeline_tx
                         .send(TimelineUpdate::Patch(Box::new(patch)))
                         .await

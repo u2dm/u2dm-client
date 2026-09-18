@@ -1,4 +1,5 @@
 mod cache;
+mod flight;
 mod service;
 
 use std::collections::HashMap;
@@ -14,6 +15,7 @@ use super::session::ClientHandle;
 use crate::domain::media::{
     ImageMeta, MediaFailure, MediaKind, MediaRendition, Waveform, WaveformNeed,
 };
+use crate::domain::message::TimelineMessage;
 use crate::error::{AppError, Result};
 use crate::ports::matrix::MediaPort;
 use crate::ports::media::MediaCache;
@@ -144,12 +146,27 @@ pub(super) enum MediaLane {
     FullFile,
 }
 
-pub(super) fn lane(kind: MediaKind, meta: &ImageMeta) -> MediaLane {
+fn lane(kind: MediaKind, meta: &ImageMeta) -> MediaLane {
     match kind {
         MediaKind::Sticker => MediaLane::FullFile,
         MediaKind::Video => MediaLane::Poster,
         MediaKind::Photo if is_animated_mime(meta.mimetype.as_deref()) => MediaLane::FullFile,
         MediaKind::Photo => MediaLane::Thumbnail,
+    }
+}
+
+pub(super) struct ThumbnailRequest {
+    pub(super) media_key: String,
+    lane: MediaLane,
+}
+
+impl ThumbnailRequest {
+    pub(super) fn of(msg: &TimelineMessage) -> Option<Self> {
+        let (kind, meta) = msg.body.media()?;
+        Some(Self {
+            media_key: msg.media_key()?.to_owned(),
+            lane: lane(kind, meta),
+        })
     }
 }
 

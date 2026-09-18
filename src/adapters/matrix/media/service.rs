@@ -14,9 +14,11 @@ use tokio::task::spawn_blocking;
 use tokio::time::{sleep, timeout};
 
 use super::cache::{CacheHandle, FailureTracker};
+use super::flight::SingleFlight;
 use super::{
-    AUDIO_DIR, AVATARS_DIR, MediaLane, MediaSources, STICKERS_DIR, VIDEOS_DIR, audio_key,
-    lookup_full_media_source, mxc_avatar_key, sticker_key, thumb_key, thumbnail_format, video_key,
+    AUDIO_DIR, AVATARS_DIR, MediaLane, MediaSources, STICKERS_DIR, ThumbnailRequest, VIDEOS_DIR,
+    audio_key, lookup_full_media_source, mxc_avatar_key, sticker_key, thumb_key, thumbnail_format,
+    video_key,
 };
 use crate::adapters::matrix::store::purge_dir;
 use crate::adapters::{container, private_fs, video};
@@ -35,6 +37,7 @@ const RETRY_MAX_ATTEMPTS: u32 = 3;
 const RETRY_BACKOFF_BASE: Duration = Duration::from_millis(500);
 const MAX_MEDIA_BYTES: usize = 20 * 1024 * 1024;
 const MAX_FULL_MEDIA_BYTES: usize = 100 * 1024 * 1024;
+const CACHE_IN_SDK_MEDIA_STORE: bool = false;
 
 const MEDIA_CACHE_DIR: &str = "media-cache";
 const LAYOUT_VERSION: &str = "v1";
@@ -152,6 +155,7 @@ pub(crate) struct MediaService {
     session: StdRwLock<Option<Arc<MediaSession>>>,
     semaphore: Semaphore,
     full_semaphore: Semaphore,
+    flights: SingleFlight,
     failures: StdMutex<FailureTracker>,
     waveforms: StdMutex<HashMap<String, Waveform>>,
 }
@@ -163,6 +167,7 @@ impl MediaService {
             session: StdRwLock::new(None),
             semaphore: Semaphore::new(MAX_CONCURRENT_DOWNLOADS),
             full_semaphore: Semaphore::new(MAX_CONCURRENT_FULL_DOWNLOADS),
+            flights: SingleFlight::default(),
             failures: StdMutex::new(FailureTracker::default()),
             waveforms: StdMutex::new(HashMap::new()),
         })
@@ -206,6 +211,7 @@ impl MediaService {
     }
 
     async fn detach(&self) {
+        self.flights.clear();
         if let Ok(mut failures) = self.failures.lock() {
             failures.clear();
         }
@@ -308,14 +314,16 @@ impl MediaService {
         } else {
             &self.semaphore
         };
-        let _permit = semaphore
-            .acquire()
-            .await
-            .map_err(|_| MediaFailure::Download)?;
-
         let mut backoff = RETRY_BACKOFF_BASE;
         for attempt in 1..=RETRY_MAX_ATTEMPTS {
-            if let Some(data) = attempt_download(client, request, attempt, download_timeout).await {
+            let fetched = {
+                let _permit = semaphore
+                    .acquire()
+                    .await
+                    .map_err(|_| MediaFailure::Download)?;
+                attempt_download(client, request, attempt, download_timeout).await
+            };
+            if let Some(data) = fetched {
                 if data.len() > max_bytes {
                     tracing::debug!(
                         "media payload {} bytes exceeds the {max_bytes} byte limit",
@@ -373,11 +381,28 @@ impl MediaService {
         cache_stem: &Path,
         fetch: Fetch,
     ) -> MediaResult<PathBuf> {
+        self.flights
+            .join(cache_key)
+            .outcome(|| self.materialize(client, source, cache_key, cache_stem, fetch))
+            .await
+    }
+
+    async fn materialize(
+        &self,
+        client: &Client,
+        source: MediaSource,
+        cache_key: &str,
+        cache_stem: &Path,
+        fetch: Fetch,
+    ) -> MediaResult<PathBuf> {
         let Fetch {
             format,
             limits,
             naming,
         } = fetch;
+        if let Some(cached) = self.cache_get(cache_key) {
+            return Ok(cached);
+        }
         if let Some(reason) = self.failure(cache_key) {
             return Err(reason);
         }
@@ -415,21 +440,14 @@ impl MediaService {
         &self,
         client: &Client,
         media_sources: &MediaSources,
-        msg: &TimelineMessage,
+        request: &ThumbnailRequest,
     ) -> ThumbnailOutcome {
-        let Some((kind, meta)) = msg.body.media() else {
-            return ThumbnailOutcome::Unchanged;
-        };
-        let Some(media_key) = msg.media_key() else {
-            return ThumbnailOutcome::Unchanged;
-        };
+        let ThumbnailRequest { media_key, lane } = request;
         let cache_key = thumb_key(media_key);
 
         if self.cache_get(&cache_key).is_some() {
             return ThumbnailOutcome::Unchanged;
         }
-
-        let lane = super::lane(kind, meta);
 
         let materialized = match (lane.source(media_sources, media_key), self.session()) {
             (Some(source), Some(session)) => {
@@ -453,12 +471,7 @@ impl MediaService {
         }
     }
 
-    pub(crate) async fn enrich_avatar(
-        &self,
-        client: &Client,
-        msg: &TimelineMessage,
-    ) -> Option<String> {
-        let mxc = msg.sender_avatar_url.as_deref()?;
+    pub(crate) async fn enrich_avatar(&self, client: &Client, mxc: &str) -> Option<String> {
         let cache_key = mxc_avatar_key(mxc);
         if self.cache_get(&cache_key).is_some() {
             return None;
@@ -628,7 +641,9 @@ async fn attempt_download(
 ) -> Option<Vec<u8>> {
     match timeout(
         download_timeout,
-        client.media().get_media_content(request, true),
+        client
+            .media()
+            .get_media_content(request, CACHE_IN_SDK_MEDIA_STORE),
     )
     .await
     {
