@@ -5,7 +5,7 @@ use std::time::Duration;
 
 use matrix_sdk::notification_settings::NotificationSettings;
 use matrix_sdk::ruma::{OwnedRoomId, RoomId as MatrixRoomId};
-use matrix_sdk::sync::RoomUpdates;
+use matrix_sdk::sync::{JoinedRoomUpdate, RoomUpdates, State};
 use matrix_sdk::{Client, Room};
 use matrix_sdk_base::{RoomInfoNotableUpdate, RoomInfoNotableUpdateReasons};
 use tokio::time::Instant;
@@ -38,6 +38,13 @@ fn refresh_for(reasons: RoomInfoNotableUpdateReasons) -> Option<RoomRefresh> {
         return Some(RoomRefresh::Flags);
     }
     None
+}
+
+fn refresh_for_joined(update: &JoinedRoomUpdate) -> Option<RoomRefresh> {
+    let (State::Before(state) | State::After(state)) = &update.state;
+    let rewrites_room =
+        !update.timeline.events.is_empty() || !state.is_empty() || !update.account_data.is_empty();
+    rewrites_room.then_some(RoomRefresh::Full)
 }
 
 #[allow(clippy::struct_excessive_bools)]
@@ -158,14 +165,17 @@ impl Directory {
                 self.mark_spaces_structural();
             }
         }
-        for room_id in updates.joined.keys() {
+        for (room_id, update) in &updates.joined {
+            let Some(refresh) = refresh_for_joined(update) else {
+                continue;
+            };
             let Some(room) = client.get_room(room_id) else {
                 continue;
             };
             if room.is_space() {
                 self.mark_spaces_structural();
             } else {
-                self.mark_room(room_id.clone(), RoomRefresh::Full);
+                self.mark_room(room_id.clone(), refresh);
             }
         }
     }
