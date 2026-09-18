@@ -20,7 +20,9 @@ pub fn send_command(tx: &CommandSender, cmd: UiCommand) {
 }
 
 macro_rules! prop_enum {
-    ($name:ident; $($(#[$attr:meta])* $v:ident $g:ident $gname:literal $lit:literal $s:ident;)*) => {
+    ($(#[$meta:meta])* $name:ident;
+        $($(#[$attr:meta])* $v:ident $g:ident $gname:literal $lit:literal $s:ident $get:ident;)*) => {
+        $(#[$meta])*
         pub enum $name { $($(#[$attr])* $v,)* }
         impl $name {
             #[allow(dead_code)]
@@ -35,12 +37,21 @@ macro_rules! prop_enum {
     };
 }
 
+#[cfg(feature = "demo")]
+macro_rules! enum_prop_enum {
+    ($($v:ident $fn:ident($ty:ty) $g:ident $gname:literal $lit:literal $s:ident $get:ident;)*) => {
+        prop_enum!(#[allow(dead_code)] EnumProp; $($v $g $gname $lit $s $get;)*);
+    };
+}
+
 string_props!(prop_enum StringProp;);
 bool_props!(prop_enum BoolProp;);
 int_props!(prop_enum IntProp;);
+#[cfg(feature = "demo")]
+enum_props!(enum_prop_enum);
 
 macro_rules! declare_enum_setters {
-    ($($fn:ident($ty:ty) $g:ident $gname:literal $lit:literal $s:ident;)*) => {
+    ($($v:ident $fn:ident($ty:ty) $g:ident $gname:literal $lit:literal $s:ident $get:ident;)*) => {
         $( fn $fn(&self, value: $ty); )*
     };
 }
@@ -54,6 +65,10 @@ pub trait UiProps {
     fn clear_video_frame(&self);
     fn get_string(&self, prop: StringProp) -> SharedString;
     fn get_int(&self, prop: IntProp) -> i32;
+    #[cfg(feature = "demo")]
+    fn get_bool(&self, prop: BoolProp) -> bool;
+    #[cfg(feature = "demo")]
+    fn get_enum(&self, prop: EnumProp) -> SharedString;
     fn apply_user_avatar(&self, avatar: Option<Image>);
     fn apply_attachment_preview(&self, preview: Option<Image>);
     fn apply_login_messages(&self, messages: &[UserMessage]);

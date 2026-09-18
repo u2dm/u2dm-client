@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
 
-use slint::{Image, Model, ModelRc, Rgb8Pixel, SharedPixelBuffer, VecModel};
+use slint::{Image, Model, ModelRc, Rgb8Pixel, SharedPixelBuffer, StyledText, VecModel};
 use slint_interpreter::{
     Compiler, ComponentHandle, ComponentInstance, SharedString, Struct, Value,
 };
@@ -11,18 +11,24 @@ use tokio::runtime::Runtime;
 use tokio::sync::{mpsc, watch};
 
 use names::{
-    callback, emoji_entry, emoji_group, emoji_insert, emoji_store, message, reaction, reactor,
-    room, space, sticker_cell, sticker_pack, sticker_row, user_message, verification_emoji,
+    callback, emoji_entry, emoji_group, emoji_insert, emoji_store, user_message, verification_emoji,
 };
 
 use super::backend::{self, Models, UiBackend, reorder_spaces, selected_room_key};
 use super::decode::{AvatarSlot, request_avatar, request_media, request_sticker};
 use super::dto::{
-    AudioRowUpdate, MediaFailureKind, MediaState, MessageDto, ReactionDto, ReactorAvatarDto,
-    RoomDto, SpaceDto, StickerCellDto, StickerPackDto, StickerRowDto, ThumbUpdate,
-    enrich_to_update,
+    MediaFailureKind, MediaState, MessageDto, ReactionDto, ReactorAvatarDto, RoomDto, SpaceDto,
+    StickerCellDto, StickerPackDto, StickerRowDto,
+};
+#[cfg(feature = "demo")]
+use super::dump;
+use super::fields::{
+    MessageFields, ReactionFields, ReactorFields, RoomFields, SpaceFields, StickerCellFields,
+    StickerPackFields, StickerRowFields,
 };
 use super::present::{MessageKind, ServiceKind, VerifyStep};
+#[cfg(feature = "demo")]
+use super::props::EnumProp;
 use super::props::{BoolProp, IntProp, StringProp, UiProps};
 use super::schema::{
     attachment_kinds, audio_kinds, connection_states, enum_props, login_activities, login_methods,
@@ -44,7 +50,7 @@ use crate::domain::auth::LoginMethod;
 use crate::domain::media::AudioKind;
 use crate::domain::message::{MessagePreviewKind, ReactionSend, SendState};
 use crate::domain::sync::ConnectionStatus;
-use crate::domain::timeline::{EnrichmentDelta, TimelineStatus};
+use crate::domain::timeline::TimelineStatus;
 use crate::domain::verification::VerificationEmoji as DomainVerificationEmoji;
 use crate::error::{AppError, Result};
 use crate::ports::media::MediaCache;
@@ -73,46 +79,6 @@ mod names {
         pub const RESULTS: &str = "results";
         pub const SEARCH: &str = "search";
         pub const INSERT: &str = "insert";
-    }
-
-    pub mod message {
-        use crate::adapters::ui::schema::{gen_consts, message_fields};
-        message_fields!(gen_consts);
-    }
-
-    pub mod reaction {
-        use crate::adapters::ui::schema::{gen_consts, reaction_fields};
-        reaction_fields!(gen_consts);
-    }
-
-    pub mod reactor {
-        use crate::adapters::ui::schema::{gen_consts, reactor_fields};
-        reactor_fields!(gen_consts);
-    }
-
-    pub mod room {
-        use crate::adapters::ui::schema::{gen_consts, room_fields};
-        room_fields!(gen_consts);
-    }
-
-    pub mod space {
-        use crate::adapters::ui::schema::{gen_consts, space_fields};
-        space_fields!(gen_consts);
-    }
-
-    pub mod sticker_cell {
-        use crate::adapters::ui::schema::{gen_consts, sticker_cell_fields};
-        sticker_cell_fields!(gen_consts);
-    }
-
-    pub mod sticker_pack {
-        use crate::adapters::ui::schema::{gen_consts, sticker_pack_fields};
-        sticker_pack_fields!(gen_consts);
-    }
-
-    pub mod sticker_row {
-        use crate::adapters::ui::schema::{gen_consts, sticker_row_fields};
-        sticker_row_fields!(gen_consts);
     }
 
     pub mod emoji_entry {
@@ -329,7 +295,7 @@ macro_rules! bind_interpreted_callbacks {
 }
 
 macro_rules! impl_enum_setters {
-    ($($fn:ident($ty:ty) $g:ident $gname:literal $lit:literal $s:ident;)*) => {
+    ($($v:ident $fn:ident($ty:ty) $g:ident $gname:literal $lit:literal $s:ident $get:ident;)*) => {
         $( fn $fn(&self, value: $ty) { set_global(self, $gname, $lit, enum_value(&value)); } )*
     };
 }
@@ -375,12 +341,20 @@ impl UiProps for ComponentInstance {
     }
 
     fn get_int(&self, prop: IntProp) -> i32 {
-        match self.get_global_property(prop.global(), prop.as_str()) {
-            Ok(Value::Number(n)) if n.is_finite() && n.fract() == 0.0 => {
-                n.to_string().parse().unwrap_or_default()
-            }
-            _ => 0,
-        }
+        let value = self.get_global_property(prop.global(), prop.as_str()).ok();
+        int_of(value.as_ref())
+    }
+
+    #[cfg(feature = "demo")]
+    fn get_bool(&self, prop: BoolProp) -> bool {
+        let value = self.get_global_property(prop.global(), prop.as_str()).ok();
+        flag_of(value.as_ref())
+    }
+
+    #[cfg(feature = "demo")]
+    fn get_enum(&self, prop: EnumProp) -> SharedString {
+        let value = self.get_global_property(prop.global(), prop.as_str()).ok();
+        variant_of(value.as_ref()).into()
     }
 
     fn apply_user_avatar(&self, avatar: Option<slint::Image>) {
@@ -471,13 +445,6 @@ impl UiProps for ComponentInstance {
     }
 }
 
-fn set_value_avatar(entry: &mut Value, avatar_field: &str, has_field: &str, image: &Image) {
-    if let Value::Struct(s) = entry {
-        s.set_field(avatar_field.to_string(), Value::Image(image.clone()));
-        s.set_field(has_field.to_string(), Value::Bool(true));
-    }
-}
-
 macro_rules! attach_interpreted_models {
     ($window:ident $models:ident;
         $($field:ident $row:ident $model:ident $g:ident $gname:literal $lit:literal $s:ident;)*) => {
@@ -490,9 +457,12 @@ pub struct InterpretedBackend;
 impl UiBackend for InterpretedBackend {
     type Window = ComponentInstance;
     type Message = Value;
+    type Reaction = Value;
+    type Reactor = Value;
     type Room = Value;
     type Space = Value;
     type StickerRow = Value;
+    type StickerCell = Value;
     type StickerPack = Value;
 
     fn models() -> Rc<Models<Self>> {
@@ -510,195 +480,6 @@ impl UiBackend for InterpretedBackend {
         });
         if let Err(e) = bound {
             tracing::warn!("failed to bind the sticker search callback: {e}");
-        }
-    }
-
-    fn enrich_message(value: &mut Value, delta: &EnrichmentDelta, media: &dyn MediaCache) {
-        let Value::Struct(entry) = value else {
-            return;
-        };
-        let update = enrich_to_update(delta, media);
-        match update.thumbnail {
-            ThumbUpdate::Ready(img) => {
-                entry.set_field(message::THUMBNAIL.to_string(), Value::Image(img));
-                entry.set_field(
-                    message::MEDIA_STATE.to_string(),
-                    enum_value(&MediaState::Ready),
-                );
-            }
-            ThumbUpdate::Failed(reason) => {
-                entry.set_field(
-                    message::MEDIA_STATE.to_string(),
-                    enum_value(&MediaState::Failed),
-                );
-                entry.set_field(message::MEDIA_FAILURE.to_string(), enum_value(&reason));
-            }
-            ThumbUpdate::Unchanged => {}
-        }
-        if let Some(img) = update.avatar {
-            entry.set_field(message::AVATAR.to_string(), Value::Image(img));
-            entry.set_field(message::HAS_AVATAR.to_string(), Value::Bool(true));
-        }
-        if let Some(pronouns) = update.pronouns {
-            entry.set_field(message::PRONOUNS.to_string(), string_list(pronouns));
-        }
-    }
-
-    fn message_id(entry: &Value) -> &str {
-        entry_id_from_value(entry).map_or("", SharedString::as_str)
-    }
-
-    fn message_event_id(entry: &Value) -> &str {
-        message_text_field(entry, message::EVENT_ID).map_or("", SharedString::as_str)
-    }
-
-    fn message_is_first_unread(entry: &Value) -> bool {
-        matches!(entry, Value::Struct(s)
-            if matches!(s.get_field(message::FIRST_UNREAD), Some(Value::Bool(true))))
-    }
-
-    fn room_id(entry: &Value) -> &str {
-        room_id_from_value(entry).map_or("", SharedString::as_str)
-    }
-
-    fn space_id(entry: &Value) -> &str {
-        room_id_from_value(entry).map_or("", SharedString::as_str)
-    }
-
-    fn sticker_pack_with_icon(pack: &Value, pack_id: &str, image: &Image) -> Option<Value> {
-        let Value::Struct(fields) = pack else {
-            return None;
-        };
-        if !matches!(
-            fields.get_field(sticker_pack::HAS_ICON),
-            Some(Value::Bool(false))
-        ) {
-            return None;
-        }
-        match fields.get_field(sticker_pack::ID) {
-            Some(Value::String(id)) if id == pack_id => {}
-            _ => return None,
-        }
-        let mut updated = fields.clone();
-        updated.set_field(sticker_pack::ICON.to_string(), Value::Image(image.clone()));
-        updated.set_field(sticker_pack::HAS_ICON.to_string(), Value::Bool(true));
-        Some(Value::Struct(updated))
-    }
-
-    fn patch_sticker_cell(row: &Value, key: &str, art: Option<&Image>) -> bool {
-        let Value::Struct(fields) = row else {
-            return false;
-        };
-        let Some(Value::Model(cells)) = fields.get_field(sticker_row::CELLS) else {
-            return false;
-        };
-        let Some(index) = cells
-            .iter()
-            .position(|cell| cell_key_of(&cell).is_some_and(|k| k == key))
-        else {
-            return false;
-        };
-        let Some(model) = cells.as_any().downcast_ref::<VecModel<Value>>() else {
-            return false;
-        };
-        let Some(Value::Struct(mut cell)) = model.row_data(index) else {
-            return false;
-        };
-        match art {
-            Some(art) => {
-                cell.set_field(sticker_cell::IMAGE.to_string(), Value::Image(art.clone()));
-                cell.set_field(
-                    sticker_cell::MEDIA_STATE.to_string(),
-                    enum_value(&MediaState::Ready),
-                );
-            }
-            None => cell.set_field(
-                sticker_cell::MEDIA_STATE.to_string(),
-                enum_value(&MediaState::Failed),
-            ),
-        }
-        model.set_row_data(index, Value::Struct(cell));
-        true
-    }
-
-    fn patch_reactor_avatar(entry: &Value, user_id: &str, image: &Image) -> bool {
-        let Value::Struct(fields) = entry else {
-            return false;
-        };
-        let Some(Value::Model(reactions)) = fields.get_field(message::REACTIONS) else {
-            return false;
-        };
-        let mut patched = false;
-        for reaction in reactions.iter() {
-            let Value::Struct(reaction) = reaction else {
-                continue;
-            };
-            let Some(Value::Model(faces)) = reaction.get_field(reaction::AVATARS) else {
-                continue;
-            };
-            let Some(index) = faces.iter().position(|face| unclaimed_face(&face, user_id)) else {
-                continue;
-            };
-            let Some(model) = faces.as_any().downcast_ref::<VecModel<Value>>() else {
-                continue;
-            };
-            let Some(Value::Struct(mut face)) = model.row_data(index) else {
-                continue;
-            };
-            face.set_field(reactor::AVATAR.to_string(), Value::Image(image.clone()));
-            face.set_field(reactor::HAS_AVATAR.to_string(), Value::Bool(true));
-            model.set_row_data(index, Value::Struct(face));
-            patched = true;
-        }
-        patched
-    }
-
-    fn set_message_avatar(entry: &mut Value, image: &Image) {
-        set_value_avatar(entry, message::AVATAR, message::HAS_AVATAR, image);
-    }
-
-    fn set_room_avatar(entry: &mut Value, image: &Image) {
-        set_value_avatar(entry, room::AVATAR, room::HAS_AVATAR, image);
-    }
-
-    fn set_space_avatar(entry: &mut Value, image: &Image) {
-        set_value_avatar(entry, space::AVATAR, space::HAS_AVATAR, image);
-    }
-
-    fn set_message_thumbnail(entry: &mut Value, image: &Image) {
-        if let Value::Struct(s) = entry {
-            s.set_field(message::THUMBNAIL.to_string(), Value::Image(image.clone()));
-            s.set_field(
-                message::MEDIA_STATE.to_string(),
-                enum_value(&MediaState::Ready),
-            );
-        }
-    }
-
-    fn set_message_audio(entry: &mut Value, update: &AudioRowUpdate) {
-        if let Value::Struct(s) = entry {
-            s.set_field(
-                message::MEDIA_STATE.to_string(),
-                enum_value(&update.media_state),
-            );
-            s.set_field(
-                message::MEDIA_FAILURE.to_string(),
-                enum_value(&update.media_failure),
-            );
-            s.set_field(
-                message::WAVEFORM.to_string(),
-                float_list(update.waveform.clone()),
-            );
-        }
-    }
-
-    fn set_message_media_failed(entry: &mut Value, reason: MediaFailureKind) {
-        if let Value::Struct(s) = entry {
-            s.set_field(
-                message::MEDIA_STATE.to_string(),
-                enum_value(&MediaState::Failed),
-            );
-            s.set_field(message::MEDIA_FAILURE.to_string(), enum_value(&reason));
         }
     }
 }
@@ -869,7 +650,9 @@ impl SlintUiAdapter {
 }
 
 #[cfg(feature = "demo")]
-pub fn install_timeline_dump(_ui: &SlintUiAdapter) {}
+pub fn install_timeline_dump(ui: &SlintUiAdapter) {
+    dump::install_probe::<InterpretedBackend>(&ui.instance);
+}
 
 fn emoji_entry_to_value(e: &emoji::EmojiEntry) -> Value {
     let tones: Vec<Value> = e
@@ -986,6 +769,10 @@ fn num(value: i32) -> Value {
     Value::Number(f64::from(value))
 }
 
+fn ratio(value: f32) -> Value {
+    Value::Number(value.into())
+}
+
 fn string_list(items: Vec<SharedString>) -> Value {
     let values: Vec<Value> = items.into_iter().map(Value::String).collect();
     Value::Model(ModelRc::new(VecModel::from(values)))
@@ -1016,7 +803,7 @@ macro_rules! field_value {
         $s.set_field($lit.to_string(), num($val));
     };
     ($s:ident, $lit:literal, $val:expr, ratio) => {
-        $s.set_field($lit.to_string(), Value::Number($val.into()));
+        $s.set_field($lit.to_string(), ratio($val));
     };
     ($s:ident, $lit:literal, $val:expr, flag) => {
         $s.set_field($lit.to_string(), Value::Bool($val));
@@ -1043,8 +830,49 @@ macro_rules! field_value {
     };
 }
 
-macro_rules! impl_value_from {
-    ($dto:ident; $($f:ident $c:ident $lit:literal $k:ident;)*) => {
+macro_rules! value_accessors {
+    ($f:ident $set:ident $lit:literal text) => {
+        value_accessors!(@with $f $set $lit &str, SharedString, text_of, Value::String);
+    };
+    ($f:ident $set:ident $lit:literal int) => {
+        value_accessors!(@with $f $set $lit i32, i32, int_of, num);
+    };
+    ($f:ident $set:ident $lit:literal ratio) => {
+        value_accessors!(@with $f $set $lit f32, f32, float_of, ratio);
+    };
+    ($f:ident $set:ident $lit:literal flag) => {
+        value_accessors!(@with $f $set $lit bool, bool, flag_of, Value::Bool);
+    };
+    ($f:ident $set:ident $lit:literal list) => {
+        value_accessors!(@with $f $set $lit
+            Vec<SharedString>, Vec<SharedString>, strings_of, string_list);
+    };
+    ($f:ident $set:ident $lit:literal floats) => {
+        value_accessors!(@with $f $set $lit Vec<f32>, Vec<f32>, floats_of, float_list);
+    };
+    ($f:ident $set:ident $lit:literal image) => {
+        value_accessors!(@with $f $set $lit Image, Image, image_of, Value::Image);
+    };
+    ($f:ident $set:ident $lit:literal styled) => {
+        value_accessors!(@with $f $set $lit
+            StyledText, StyledText, styled_of, Value::StyledText);
+    };
+    ($f:ident $set:ident $lit:literal structs($row:ident)) => {
+        value_accessors!(@with $f $set $lit
+            ModelRc<Value>, ModelRc<Value>, model_of, Value::Model);
+    };
+    ($f:ident $set:ident $lit:literal enumk($ty:ident)) => {
+        fn $f(&self) -> &str { variant_of(field_of(self, $lit)) }
+        fn $set(&mut self, value: $ty) { put_field(self, $lit, enum_value(&value)); }
+    };
+    (@with $f:ident $set:ident $lit:literal $out:ty, $in:ty, $read:ident, $write:path) => {
+        fn $f(&self) -> $out { $read(field_of(self, $lit)) }
+        fn $set(&mut self, value: $in) { put_field(self, $lit, $write(value)); }
+    };
+}
+
+macro_rules! impl_value {
+    ($dto:ident $fields:ident; $($f:ident $set:ident $lit:literal $k:ident $(($arg:ident))?;)*) => {
         impl From<$dto> for Value {
             fn from(d: $dto) -> Self {
                 let mut fields = Struct::default();
@@ -1052,63 +880,100 @@ macro_rules! impl_value_from {
                 Value::Struct(fields)
             }
         }
+
+        impl $fields<InterpretedBackend> for Value {
+            $( value_accessors!($f $set $lit $k $(($arg))?); )*
+        }
     };
 }
 
-message_fields!(impl_value_from MessageDto;);
-reaction_fields!(impl_value_from ReactionDto;);
-reactor_fields!(impl_value_from ReactorAvatarDto;);
-room_fields!(impl_value_from RoomDto;);
-space_fields!(impl_value_from SpaceDto;);
-sticker_cell_fields!(impl_value_from StickerCellDto;);
-sticker_pack_fields!(impl_value_from StickerPackDto;);
-sticker_row_fields!(impl_value_from StickerRowDto;);
+message_fields!(impl_value MessageDto MessageFields;);
+reaction_fields!(impl_value ReactionDto ReactionFields;);
+reactor_fields!(impl_value ReactorAvatarDto ReactorFields;);
+room_fields!(impl_value RoomDto RoomFields;);
+space_fields!(impl_value SpaceDto SpaceFields;);
+sticker_cell_fields!(impl_value StickerCellDto StickerCellFields;);
+sticker_pack_fields!(impl_value StickerPackDto StickerPackFields;);
+sticker_row_fields!(impl_value StickerRowDto StickerRowFields;);
 
-fn entry_id_from_value(val: &Value) -> Option<&SharedString> {
-    message_text_field(val, message::UNIQUE_ID)
-}
-
-fn message_text_field<'a>(val: &'a Value, field: &str) -> Option<&'a SharedString> {
-    if let Value::Struct(s) = val
-        && let Some(Value::String(text)) = s.get_field(field)
-    {
-        Some(text)
-    } else {
-        None
+fn field_of<'a>(row: &'a Value, name: &str) -> Option<&'a Value> {
+    match row {
+        Value::Struct(fields) => fields.get_field(name),
+        _ => None,
     }
 }
 
-fn unclaimed_face(face: &Value, user_id: &str) -> bool {
-    let Value::Struct(fields) = face else {
-        return false;
-    };
-    let claimed = matches!(
-        fields.get_field(reactor::HAS_AVATAR),
-        Some(Value::Bool(true))
-    );
-    !claimed
-        && matches!(
-            fields.get_field(reactor::USER_ID),
-            Some(Value::String(id)) if id == user_id
-        )
-}
-
-fn cell_key_of(cell: &Value) -> Option<&SharedString> {
-    if let Value::Struct(s) = cell
-        && let Some(Value::String(key)) = s.get_field(sticker_cell::KEY)
-    {
-        Some(key)
-    } else {
-        None
+fn put_field(row: &mut Value, name: &str, value: Value) {
+    if let Value::Struct(fields) = row {
+        fields.set_field(name.to_string(), value);
     }
 }
 
-fn room_id_from_value(val: &Value) -> Option<&SharedString> {
-    if let Value::Struct(s) = val
-        && let Some(Value::String(id)) = s.get_field(room::ID)
-    {
-        Some(id)
-    } else {
-        None
+fn text_of(value: Option<&Value>) -> &str {
+    match value {
+        Some(Value::String(text)) => text.as_str(),
+        _ => "",
     }
+}
+
+fn variant_of(value: Option<&Value>) -> &str {
+    match value {
+        Some(Value::EnumerationValue(_, variant)) => variant.as_str(),
+        _ => "",
+    }
+}
+
+fn int_of(value: Option<&Value>) -> i32 {
+    match value {
+        Some(Value::Number(n)) if n.is_finite() && n.fract() == 0.0 => {
+            n.to_string().parse().unwrap_or_default()
+        }
+        _ => 0,
+    }
+}
+
+fn float_of(value: Option<&Value>) -> f32 {
+    match value {
+        Some(Value::Number(n)) => n.to_string().parse().unwrap_or_default(),
+        _ => 0.0,
+    }
+}
+
+fn flag_of(value: Option<&Value>) -> bool {
+    matches!(value, Some(Value::Bool(true)))
+}
+
+fn image_of(value: Option<&Value>) -> Image {
+    match value {
+        Some(Value::Image(image)) => image.clone(),
+        _ => Image::default(),
+    }
+}
+
+fn styled_of(value: Option<&Value>) -> StyledText {
+    match value {
+        Some(Value::StyledText(styled)) => styled.clone(),
+        _ => StyledText::default(),
+    }
+}
+
+fn model_of(value: Option<&Value>) -> ModelRc<Value> {
+    match value {
+        Some(Value::Model(model)) => model.clone(),
+        _ => ModelRc::default(),
+    }
+}
+
+fn strings_of(value: Option<&Value>) -> Vec<SharedString> {
+    model_of(value)
+        .iter()
+        .map(|item| SharedString::from(text_of(Some(&item))))
+        .collect()
+}
+
+fn floats_of(value: Option<&Value>) -> Vec<f32> {
+    model_of(value)
+        .iter()
+        .map(|item| float_of(Some(&item)))
+        .collect()
 }

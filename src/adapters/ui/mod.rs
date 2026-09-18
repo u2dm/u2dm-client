@@ -9,6 +9,7 @@ mod dto;
 #[cfg(feature = "demo")]
 pub(crate) mod dump;
 mod emoji;
+mod fields;
 mod multiplex;
 mod output;
 mod present;

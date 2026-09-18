@@ -1,12 +1,3 @@
-#[cfg(feature = "interpreted")]
-macro_rules! gen_consts {
-    ($($a:ident $c:ident $lit:literal $d:ident;)*) => {
-        $( pub const $c: &str = $lit; )*
-    };
-}
-#[cfg(feature = "interpreted")]
-pub(crate) use gen_consts;
-
 #[cfg(feature = "demo")]
 macro_rules! enum_names {
     (val $fn:ident $src:ident; $($rows:tt)*) => {
@@ -15,16 +6,9 @@ macro_rules! enum_names {
     (ref $fn:ident $src:ident; $($rows:tt)*) => {
         pub fn $fn(value: &$src) -> &'static str { enum_names!(@source value, $src, $($rows)*) }
     };
-    (slint $fn:ident $ui_enum:ident; $($rows:tt)*) => {
-        fn $fn(value: $ui_enum) -> &'static str { enum_names!(@slint value, $ui_enum, $($rows)*) }
-    };
     (@source $v:ident, $src:ident,
         $($rust:ident $(($($p:tt)*))? $({$($b:tt)*})? $ui:ident $lit:literal;)*) => {
         match $v { $($src::$rust $(($($p)*))? $({$($b)*})? => $lit,)* }
-    };
-    (@slint $v:ident, $ui_enum:ident,
-        $($rust:ident $(($($p:tt)*))? $({$($b:tt)*})? $ui:ident $lit:literal;)*) => {
-        match $v { $($ui_enum::$ui => $lit,)* }
     };
 }
 #[cfg(feature = "demo")]
@@ -32,27 +16,27 @@ pub(crate) use enum_names;
 
 macro_rules! string_props {
     ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
-        ResolvedHomeserver LoginView "LoginView" "resolved-homeserver" set_resolved_homeserver;
-        UserId SessionView "SessionView" "user-id" set_user_id;
-        UserInitial SessionView "SessionView" "user-initial" set_user_initial;
-        ToastDetail RoomView "RoomView" "toast-detail" set_toast_detail;
-        VerificationSender VerificationView "VerificationView" "sender" set_sender;
-        VerificationErrorDetail VerificationView "VerificationView" "error-detail" set_error_detail;
-        SelectedRoomName RoomView "RoomView" "selected-room-name" set_selected_room_name;
-        FocusEventId RoomView "RoomView" "focus-event-id" set_focus_event_id;
-        SelectedRoomId DirectoryView "DirectoryView" "selected-room-id" set_selected_room_id;
-        SelectedSpaceId DirectoryView "DirectoryView" "selected-space-id" set_selected_space_id;
-        SelectedSubspaceId DirectoryView "DirectoryView" "selected-subspace-id" set_selected_subspace_id;
-        AttachmentFilename AttachmentView "AttachmentView" "filename" set_filename;
-        AttachmentMimetype AttachmentView "AttachmentView" "mimetype" set_mimetype;
-        AttachmentExtension AttachmentView "AttachmentView" "extension" set_extension;
-        AttachmentSize AttachmentView "AttachmentView" "size" set_size;
-        AttachmentErrorDetail AttachmentView "AttachmentView" "error-detail" set_error_detail;
-        AudioEventId AudioView "AudioView" "event-id" set_event_id;
-        AudioRoomId AudioView "AudioView" "room-id" set_room_id;
-        AudioSender AudioView "AudioView" "sender" set_sender;
-        AudioTitle AudioView "AudioView" "title" set_title;
-        AttachmentDuration AttachmentView "AttachmentView" "duration" set_duration;
+        ResolvedHomeserver LoginView "LoginView" "resolved-homeserver" set_resolved_homeserver get_resolved_homeserver;
+        UserId SessionView "SessionView" "user-id" set_user_id get_user_id;
+        UserInitial SessionView "SessionView" "user-initial" set_user_initial get_user_initial;
+        ToastDetail RoomView "RoomView" "toast-detail" set_toast_detail get_toast_detail;
+        VerificationSender VerificationView "VerificationView" "sender" set_sender get_sender;
+        VerificationErrorDetail VerificationView "VerificationView" "error-detail" set_error_detail get_error_detail;
+        SelectedRoomName RoomView "RoomView" "selected-room-name" set_selected_room_name get_selected_room_name;
+        FocusEventId RoomView "RoomView" "focus-event-id" set_focus_event_id get_focus_event_id;
+        SelectedRoomId DirectoryView "DirectoryView" "selected-room-id" set_selected_room_id get_selected_room_id;
+        SelectedSpaceId DirectoryView "DirectoryView" "selected-space-id" set_selected_space_id get_selected_space_id;
+        SelectedSubspaceId DirectoryView "DirectoryView" "selected-subspace-id" set_selected_subspace_id get_selected_subspace_id;
+        AttachmentFilename AttachmentView "AttachmentView" "filename" set_filename get_filename;
+        AttachmentMimetype AttachmentView "AttachmentView" "mimetype" set_mimetype get_mimetype;
+        AttachmentExtension AttachmentView "AttachmentView" "extension" set_extension get_extension;
+        AttachmentSize AttachmentView "AttachmentView" "size" set_size get_size;
+        AttachmentErrorDetail AttachmentView "AttachmentView" "error-detail" set_error_detail get_error_detail;
+        AudioEventId AudioView "AudioView" "event-id" set_event_id get_event_id;
+        AudioRoomId AudioView "AudioView" "room-id" set_room_id get_room_id;
+        AudioSender AudioView "AudioView" "sender" set_sender get_sender;
+        AudioTitle AudioView "AudioView" "title" set_title get_title;
+        AttachmentDuration AttachmentView "AttachmentView" "duration" set_duration get_duration;
     } };
 }
 pub(crate) use string_props;
@@ -106,63 +90,76 @@ pub(crate) use simple_callbacks;
 
 macro_rules! bool_props {
     ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
-        VerificationVisible VerificationView "VerificationView" "visible" set_visible;
-        VerificationIsSelf VerificationView "VerificationView" "is-self" set_is_self;
-        TimelineRetryable RoomView "RoomView" "timeline-retryable" set_timeline_retryable;
-        BackwardsLoading RoomView "RoomView" "backwards-loading" set_backwards_loading;
-        ForwardsLoading RoomView "RoomView" "forwards-loading" set_forwards_loading;
-        StickerRoomEncrypted StickerView "StickerView" "room-encrypted" set_room_encrypted;
-        #[cfg(feature = "demo")] ProbeEnabled Probe "Probe" "enabled" set_enabled;
-        StickerLoading StickerView "StickerView" "loading" set_loading;
-        StickerHasPacks StickerView "StickerView" "has-packs" set_has_packs;
-        AttachmentVisible AttachmentView "AttachmentView" "visible" set_visible;
-        AttachmentSending AttachmentView "AttachmentView" "sending" set_sending;
-        VideoVisible VideoView "VideoView" "visible" set_visible;
-        VideoLoading VideoView "VideoView" "loading" set_loading;
-        VideoPlaying VideoView "VideoView" "playing" set_playing;
-        VideoMuted VideoView "VideoView" "muted" set_muted;
-        AudioVisible AudioView "AudioView" "visible" set_visible;
-        AudioLoading AudioView "AudioView" "loading" set_loading;
-        AudioPlaying AudioView "AudioView" "playing" set_playing;
-        AudioSilent AudioView "AudioView" "silent" set_silent;
+        VerificationVisible VerificationView "VerificationView" "visible" set_visible get_visible;
+        VerificationIsSelf VerificationView "VerificationView" "is-self" set_is_self get_is_self;
+        TimelineRetryable RoomView "RoomView" "timeline-retryable" set_timeline_retryable get_timeline_retryable;
+        BackwardsLoading RoomView "RoomView" "backwards-loading" set_backwards_loading get_backwards_loading;
+        ForwardsLoading RoomView "RoomView" "forwards-loading" set_forwards_loading get_forwards_loading;
+        StickerRoomEncrypted StickerView "StickerView" "room-encrypted" set_room_encrypted get_room_encrypted;
+        #[cfg(feature = "demo")] ProbeEnabled Probe "Probe" "enabled" set_enabled get_enabled;
+        StickerLoading StickerView "StickerView" "loading" set_loading get_loading;
+        StickerHasPacks StickerView "StickerView" "has-packs" set_has_packs get_has_packs;
+        AttachmentVisible AttachmentView "AttachmentView" "visible" set_visible get_visible;
+        AttachmentSending AttachmentView "AttachmentView" "sending" set_sending get_sending;
+        VideoVisible VideoView "VideoView" "visible" set_visible get_visible;
+        VideoLoading VideoView "VideoView" "loading" set_loading get_loading;
+        VideoPlaying VideoView "VideoView" "playing" set_playing get_playing;
+        VideoMuted VideoView "VideoView" "muted" set_muted get_muted;
+        AudioVisible AudioView "AudioView" "visible" set_visible get_visible;
+        AudioLoading AudioView "AudioView" "loading" set_loading get_loading;
+        AudioPlaying AudioView "AudioView" "playing" set_playing get_playing;
+        AudioSilent AudioView "AudioView" "silent" set_silent get_silent;
     } };
 }
 pub(crate) use bool_props;
 
 macro_rules! int_props {
     ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
-        NewMessagesCount RoomView "RoomView" "new-messages-count" set_new_messages_count;
-        AnchorIndex RoomView "RoomView" "anchor-index" set_anchor_index;
-        TimelineToken RoomView "RoomView" "timeline-token" set_timeline_token;
-        PrependToken RoomView "RoomView" "prepend-token" set_prepend_token;
-        SelectedRoomMembers RoomView "RoomView" "selected-room-members" set_selected_room_members;
-        SelectedGeneration DirectoryView "DirectoryView" "selected-generation" set_selected_generation;
-        StickerColumns StickerView "StickerView" "columns" set_columns;
-        AttachmentWidth AttachmentView "AttachmentView" "width" set_width;
-        AttachmentHeight AttachmentView "AttachmentView" "height" set_height;
-        VideoPositionMs VideoView "VideoView" "position-ms" set_position_ms;
-        VideoDurationMs VideoView "VideoView" "duration-ms" set_duration_ms;
-        AudioPositionMs AudioView "AudioView" "position-ms" set_position_ms;
-        AudioDurationMs AudioView "AudioView" "duration-ms" set_duration_ms;
+        NewMessagesCount RoomView "RoomView" "new-messages-count" set_new_messages_count get_new_messages_count;
+        AnchorIndex RoomView "RoomView" "anchor-index" set_anchor_index get_anchor_index;
+        TimelineToken RoomView "RoomView" "timeline-token" set_timeline_token get_timeline_token;
+        PrependToken RoomView "RoomView" "prepend-token" set_prepend_token get_prepend_token;
+        SelectedRoomMembers RoomView "RoomView" "selected-room-members" set_selected_room_members get_selected_room_members;
+        SelectedGeneration DirectoryView "DirectoryView" "selected-generation" set_selected_generation get_selected_generation;
+        StickerColumns StickerView "StickerView" "columns" set_columns get_columns;
+        AttachmentWidth AttachmentView "AttachmentView" "width" set_width get_width;
+        AttachmentHeight AttachmentView "AttachmentView" "height" set_height get_height;
+        VideoPositionMs VideoView "VideoView" "position-ms" set_position_ms get_position_ms;
+        VideoDurationMs VideoView "VideoView" "duration-ms" set_duration_ms get_duration_ms;
+        AudioPositionMs AudioView "AudioView" "position-ms" set_position_ms get_position_ms;
+        AudioDurationMs AudioView "AudioView" "duration-ms" set_duration_ms get_duration_ms;
     } };
 }
 pub(crate) use int_props;
 
 macro_rules! enum_props {
     ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
-        set_login_phase(LoginStep) LoginView "LoginView" "step" set_step;
-        set_login_activity(LoginActivity) LoginView "LoginView" "activity" set_activity;
-        set_login_method_kind(LoginMethod) LoginView "LoginView" "method" set_method;
-        set_connection_state(&ConnectionStatus) SessionView "SessionView" "connection-status" set_connection_status;
-        set_timeline_state(TimelineStatus) RoomView "RoomView" "timeline-status" set_timeline_status;
-        set_toast_message(UserMessageKind) RoomView "RoomView" "toast-message" set_toast_message;
-        set_verification_phase(VerifyStep) VerificationView "VerificationView" "step" set_step;
-        set_verification_activity(VerificationActivity) VerificationView "VerificationView" "activity" set_activity;
-        set_verification_error(UserMessageKind) VerificationView "VerificationView" "error" set_error;
-        set_attachment_kind(AttachmentKind) AttachmentView "AttachmentView" "kind" set_kind;
-        set_attachment_error(UserMessageKind) AttachmentView "AttachmentView" "error" set_error;
-        set_video_error(UserMessageKind) VideoView "VideoView" "error" set_error;
-        set_audio_kind(AudioKind) AudioView "AudioView" "kind" set_kind;
+        LoginPhase set_login_phase(LoginStep)
+            LoginView "LoginView" "step" set_step get_step;
+        LoginActivity set_login_activity(LoginActivity)
+            LoginView "LoginView" "activity" set_activity get_activity;
+        LoginMethodKind set_login_method_kind(LoginMethod)
+            LoginView "LoginView" "method" set_method get_method;
+        ConnectionState set_connection_state(&ConnectionStatus)
+            SessionView "SessionView" "connection-status" set_connection_status get_connection_status;
+        TimelineState set_timeline_state(TimelineStatus)
+            RoomView "RoomView" "timeline-status" set_timeline_status get_timeline_status;
+        ToastMessage set_toast_message(UserMessageKind)
+            RoomView "RoomView" "toast-message" set_toast_message get_toast_message;
+        VerificationPhase set_verification_phase(VerifyStep)
+            VerificationView "VerificationView" "step" set_step get_step;
+        VerificationActivity set_verification_activity(VerificationActivity)
+            VerificationView "VerificationView" "activity" set_activity get_activity;
+        VerificationError set_verification_error(UserMessageKind)
+            VerificationView "VerificationView" "error" set_error get_error;
+        AttachmentKind set_attachment_kind(AttachmentKind)
+            AttachmentView "AttachmentView" "kind" set_kind get_kind;
+        AttachmentError set_attachment_error(UserMessageKind)
+            AttachmentView "AttachmentView" "error" set_error get_error;
+        VideoError set_video_error(UserMessageKind)
+            VideoView "VideoView" "error" set_error get_error;
+        AudioKind set_audio_kind(AudioKind)
+            AudioView "AudioView" "kind" set_kind get_kind;
     } };
 }
 pub(crate) use enum_props;
@@ -442,75 +439,75 @@ pub(crate) use service_kinds;
 
 macro_rules! message_fields {
     ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
-        unique_id UNIQUE_ID "unique-id" text;
-        local_id LOCAL_ID "local-id" text;
-        sender SENDER "sender" text;
-        sender_id SENDER_ID "sender-id" text;
-        pronouns PRONOUNS "pronouns" list;
-        body BODY "body" text;
-        styled STYLED "styled" styled;
-        has_links HAS_LINKS "has-links" flag;
-        timestamp TIMESTAMP "timestamp" text;
-        message_type MESSAGE_TYPE "message-type" enumk;
-        preview_kind PREVIEW_KIND "preview-kind" enumk;
-        unsupported_kind UNSUPPORTED_KIND "unsupported-kind" text;
-        event_id EVENT_ID "event-id" text;
-        sender_initial SENDER_INITIAL "sender-initial" text;
-        color_index COLOR_INDEX "color-index" int;
-        is_own IS_OWN "is-own" flag;
-        edited EDITED "edited" flag;
-        first_unread FIRST_UNREAD "first-unread" flag;
-        send_state SEND_STATE "send-state" enumk;
-        send_progress SEND_PROGRESS "send-progress" ratio;
-        has_reply HAS_REPLY "has-reply" flag;
-        reply_event_id REPLY_EVENT_ID "reply-event-id" text;
-        reply_sender REPLY_SENDER "reply-sender" text;
-        reply_kind REPLY_KIND "reply-kind" enumk;
-        reply_body REPLY_BODY "reply-body" text;
-        service_kind SERVICE_KIND "service-kind" enumk;
-        service_target SERVICE_TARGET "service-target" text;
-        media_state MEDIA_STATE "media-state" enumk;
-        media_failure MEDIA_FAILURE "media-failure" enumk;
-        image_mimetype IMAGE_MIMETYPE "image-mimetype" text;
-        image_extension IMAGE_EXTENSION "image-extension" text;
-        image_width IMAGE_WIDTH "image-width" int;
-        image_height IMAGE_HEIGHT "image-height" int;
-        duration DURATION "duration" text;
-        filename FILENAME "filename" text;
-        size SIZE "size" text;
-        audio_kind AUDIO_KIND "audio-kind" enumk;
-        waveform WAVEFORM "waveform" floats;
-        has_avatar HAS_AVATAR "has-avatar" flag;
-        needs_media NEEDS_MEDIA "needs-media" flag;
-        thumbnail THUMBNAIL "thumbnail" image;
-        avatar AVATAR "avatar" image;
-        reactions REACTIONS "reactions" structs;
-        all_reactions ALL_REACTIONS "all-reactions" structs;
+        unique_id set_unique_id "unique-id" text;
+        local_id set_local_id "local-id" text;
+        sender set_sender "sender" text;
+        sender_id set_sender_id "sender-id" text;
+        pronouns set_pronouns "pronouns" list;
+        body set_body "body" text;
+        styled set_styled "styled" styled;
+        has_links set_has_links "has-links" flag;
+        timestamp set_timestamp "timestamp" text;
+        message_type set_message_type "message-type" enumk(MessageKind);
+        preview_kind set_preview_kind "preview-kind" enumk(MessagePreviewKind);
+        unsupported_kind set_unsupported_kind "unsupported-kind" text;
+        event_id set_event_id "event-id" text;
+        sender_initial set_sender_initial "sender-initial" text;
+        color_index set_color_index "color-index" int;
+        is_own set_is_own "is-own" flag;
+        edited set_edited "edited" flag;
+        first_unread set_first_unread "first-unread" flag;
+        send_state set_send_state "send-state" enumk(SendState);
+        send_progress set_send_progress "send-progress" ratio;
+        has_reply set_has_reply "has-reply" flag;
+        reply_event_id set_reply_event_id "reply-event-id" text;
+        reply_sender set_reply_sender "reply-sender" text;
+        reply_kind set_reply_kind "reply-kind" enumk(MessagePreviewKind);
+        reply_body set_reply_body "reply-body" text;
+        service_kind set_service_kind "service-kind" enumk(ServiceKind);
+        service_target set_service_target "service-target" text;
+        media_state set_media_state "media-state" enumk(MediaState);
+        media_failure set_media_failure "media-failure" enumk(MediaFailureKind);
+        image_mimetype set_image_mimetype "image-mimetype" text;
+        image_extension set_image_extension "image-extension" text;
+        image_width set_image_width "image-width" int;
+        image_height set_image_height "image-height" int;
+        duration set_duration "duration" text;
+        filename set_filename "filename" text;
+        size set_size "size" text;
+        audio_kind set_audio_kind "audio-kind" enumk(AudioKind);
+        waveform set_waveform "waveform" floats;
+        has_avatar set_has_avatar "has-avatar" flag;
+        needs_media set_needs_media "needs-media" flag;
+        thumbnail set_thumbnail "thumbnail" image;
+        avatar set_avatar "avatar" image;
+        reactions set_reactions "reactions" structs(Reaction);
+        all_reactions set_all_reactions "all-reactions" structs(Reaction);
     } };
 }
 pub(crate) use message_fields;
 
 macro_rules! reaction_fields {
     ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
-        key KEY "key" text;
-        label LABEL "label" text;
-        count COUNT "count" int;
-        mine MINE "mine" flag;
-        send SEND "send" enumk;
-        overflow OVERFLOW "overflow" flag;
-        reactors REACTORS "reactors" text;
-        hidden_reactors HIDDEN_REACTORS "hidden-reactors" int;
-        avatars AVATARS "avatars" structs;
+        key set_key "key" text;
+        label set_label "label" text;
+        count set_count "count" int;
+        mine set_mine "mine" flag;
+        send set_send "send" enumk(ReactionSend);
+        overflow set_overflow "overflow" flag;
+        reactors set_reactors "reactors" text;
+        hidden_reactors set_hidden_reactors "hidden-reactors" int;
+        avatars set_avatars "avatars" structs(Reactor);
     } };
 }
 
 macro_rules! reactor_fields {
     ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
-        user_id USER_ID "user-id" text;
-        initial INITIAL "initial" text;
-        color_index COLOR_INDEX "color-index" int;
-        avatar AVATAR "avatar" image;
-        has_avatar HAS_AVATAR "has-avatar" flag;
+        user_id set_user_id "user-id" text;
+        initial set_initial "initial" text;
+        color_index set_color_index "color-index" int;
+        avatar set_avatar "avatar" image;
+        has_avatar set_has_avatar "has-avatar" flag;
     } };
 }
 pub(crate) use reaction_fields;
@@ -518,71 +515,71 @@ pub(crate) use reactor_fields;
 
 macro_rules! room_fields {
     ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
-        id ID "id" text;
-        name NAME "name" text;
-        initial INITIAL "initial" text;
-        color_index COLOR_INDEX "color-index" int;
-        members MEMBERS "members" int;
-        alert ALERT "alert" flag;
-        mention MENTION "mention" flag;
-        hint HINT "hint" flag;
-        muted MUTED "muted" flag;
-        last_message_sender LAST_MESSAGE_SENDER "last-message-sender" text;
-        last_message_kind LAST_MESSAGE_KIND "last-message-kind" enumk;
-        last_message_body LAST_MESSAGE_BODY "last-message-body" text;
-        last_message_service_kind LAST_MESSAGE_SERVICE_KIND "last-message-service-kind" enumk;
-        last_message_service_target LAST_MESSAGE_SERVICE_TARGET "last-message-service-target" text;
-        last_message_is_own LAST_MESSAGE_IS_OWN "last-message-is-own" flag;
-        last_message_edited LAST_MESSAGE_EDITED "last-message-edited" flag;
-        last_message_time LAST_MESSAGE_TIME "last-message-time" text;
-        has_avatar HAS_AVATAR "has-avatar" flag;
-        avatar AVATAR "avatar" image;
+        id set_id "id" text;
+        name set_name "name" text;
+        initial set_initial "initial" text;
+        color_index set_color_index "color-index" int;
+        members set_members "members" int;
+        alert set_alert "alert" flag;
+        mention set_mention "mention" flag;
+        hint set_hint "hint" flag;
+        muted set_muted "muted" flag;
+        last_message_sender set_last_message_sender "last-message-sender" text;
+        last_message_kind set_last_message_kind "last-message-kind" enumk(MessagePreviewKind);
+        last_message_body set_last_message_body "last-message-body" text;
+        last_message_service_kind set_last_message_service_kind "last-message-service-kind" enumk(ServiceKind);
+        last_message_service_target set_last_message_service_target "last-message-service-target" text;
+        last_message_is_own set_last_message_is_own "last-message-is-own" flag;
+        last_message_edited set_last_message_edited "last-message-edited" flag;
+        last_message_time set_last_message_time "last-message-time" text;
+        has_avatar set_has_avatar "has-avatar" flag;
+        avatar set_avatar "avatar" image;
     } };
 }
 pub(crate) use room_fields;
 
 macro_rules! space_fields {
     ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
-        id ID "id" text;
-        name NAME "name" text;
-        alert ALERT "alert" flag;
-        mention MENTION "mention" flag;
-        hint HINT "hint" flag;
-        initial INITIAL "initial" text;
-        has_avatar HAS_AVATAR "has-avatar" flag;
-        avatar AVATAR "avatar" image;
+        id set_id "id" text;
+        name set_name "name" text;
+        alert set_alert "alert" flag;
+        mention set_mention "mention" flag;
+        hint set_hint "hint" flag;
+        initial set_initial "initial" text;
+        has_avatar set_has_avatar "has-avatar" flag;
+        avatar set_avatar "avatar" image;
     } };
 }
 pub(crate) use space_fields;
 
 macro_rules! sticker_cell_fields {
     ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
-        key KEY "key" text;
-        pack_id PACK_ID "pack-id" text;
-        shortcode SHORTCODE "shortcode" text;
-        label LABEL "label" text;
-        media_state MEDIA_STATE "media-state" enumk;
-        image IMAGE "image" image;
+        key set_key "key" text;
+        pack_id set_pack_id "pack-id" text;
+        shortcode set_shortcode "shortcode" text;
+        label set_label "label" text;
+        media_state set_media_state "media-state" enumk(MediaState);
+        image set_image "image" image;
     } };
 }
 pub(crate) use sticker_cell_fields;
 
 macro_rules! sticker_pack_fields {
     ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
-        id ID "id" text;
-        title TITLE "title" text;
-        header_row HEADER_ROW "header-row" int;
-        icon ICON "icon" image;
-        has_icon HAS_ICON "has-icon" flag;
+        id set_id "id" text;
+        title set_title "title" text;
+        header_row set_header_row "header-row" int;
+        icon set_icon "icon" image;
+        has_icon set_has_icon "has-icon" flag;
     } };
 }
 pub(crate) use sticker_pack_fields;
 
 macro_rules! sticker_row_fields {
     ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
-        title TITLE "title" text;
-        is_header IS_HEADER "is-header" flag;
-        cells CELLS "cells" structs;
+        title set_title "title" text;
+        is_header set_is_header "is-header" flag;
+        cells set_cells "cells" structs(StickerCell);
     } };
 }
 pub(crate) use sticker_row_fields;

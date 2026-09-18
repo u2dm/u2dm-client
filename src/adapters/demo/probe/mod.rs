@@ -177,7 +177,7 @@ async fn timeline() -> impl IntoResponse {
     let Some(pending) = dump::request() else {
         return failure(
             StatusCode::SERVICE_UNAVAILABLE,
-            "no timeline dump is installed; this build is interpreted, or no window is running",
+            "no timeline dump is installed; no window is running",
         );
     };
     match timeout(DUMP_TIMEOUT, pending).await {

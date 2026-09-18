@@ -4,12 +4,13 @@ use std::sync::Arc;
 use slint::{ComponentHandle, Model, SharedString};
 
 use super::audio;
-use super::backend::{UiBackend, UiEventContext, apply_thumbnail_ready};
+use super::backend::{UiBackend, UiEventContext, apply_thumbnail_ready, enrich_message};
 use super::decode::{AvatarSlot, DecodeOutcome, load_avatar_async, request_sticker};
 use super::dto::{
     GRID_COLUMNS, StickerArt, StickerPackDto, StickerRowDto, audio_row_update, sticker_art,
     sticker_grid, sticker_needle,
 };
+use super::fields::{MessageFields, RoomFields, SpaceFields};
 use super::present::{
     VerifyStep, duration_label, file_extension, user_initial, verification_cancellation,
 };
@@ -237,8 +238,8 @@ fn apply_timeline<B: UiBackend>(
         &ctx.models.timeline,
         *patch,
         &|m| B::convert_message(m, ctx.media),
-        &|entry, delta| B::enrich_message(entry, delta, ctx.media),
-        &|entry| B::message_id(entry),
+        &|entry, delta| enrich_message::<B>(entry, delta, ctx.media),
+        &|entry| entry.unique_id(),
     );
     if anchor_row_moved {
         w.set_int(IntProp::AnchorIndex, anchor_row::<B>(&ctx.models.timeline));
@@ -282,7 +283,7 @@ fn apply_snapshot<B: UiBackend>(
             last.map_or(&[], |l| l.directory.rooms.as_ref()),
             ctx.media,
             &|room| B::convert_room(room, ctx.media),
-            &|entry| B::room_id(entry),
+            &|entry| entry.id(),
         );
     }
     if last.is_none_or(|l| !Arc::ptr_eq(&l.directory.spaces, spaces)) {
@@ -291,7 +292,7 @@ fn apply_snapshot<B: UiBackend>(
             spaces.as_ref(),
             ctx.media,
             &|space| B::convert_space(space, ctx.media),
-            &|entry| B::space_id(entry),
+            &|entry| entry.id(),
         );
     }
     if last.is_none_or(|l| !Arc::ptr_eq(&l.directory.subspaces, subspaces)) {
@@ -300,7 +301,7 @@ fn apply_snapshot<B: UiBackend>(
             subspaces.as_ref(),
             ctx.media,
             &|space| B::convert_space(space, ctx.media),
-            &|entry| B::space_id(entry),
+            &|entry| entry.id(),
         );
     }
     if last.is_none_or(|l| l.directory.space_id != *space_id) {
@@ -620,9 +621,16 @@ where
 fn refresh_audio_row<B: UiBackend>(now: &NowPlaying, ctx: &UiEventContext<'_, B>) {
     let update = audio_row_update(&now.event_id, &now.meta, ctx.media);
     let ids = HashSet::from([now.event_id.as_str()]);
-    patch_rows_by_id(&*ctx.models.timeline, &ids, &B::message_event_id, |entry| {
-        B::set_message_audio(entry, &update);
-    });
+    patch_rows_by_id(
+        &*ctx.models.timeline,
+        &ids,
+        &B::Message::event_id,
+        |entry| {
+            entry.set_media_state(update.media_state);
+            entry.set_media_failure(update.media_failure);
+            entry.set_waveform(update.waveform.clone());
+        },
+    );
 }
 
 fn apply_toast(w: &impl UiProps, toast: &Toast) {
@@ -638,8 +646,8 @@ fn apply_toast(w: &impl UiProps, toast: &Toast) {
 fn anchor_row<B: UiBackend>(model: &SpliceModel<B::Message>) -> i32 {
     let focus = with_session(|session| session.room.focus_event_id.clone());
     let is_anchor = |entry: &B::Message| match &focus {
-        Some(event_id) => B::message_event_id(entry) == event_id,
-        None => B::message_is_first_unread(entry),
+        Some(event_id) => entry.event_id() == event_id,
+        None => entry.first_unread(),
     };
     (0..model.row_count())
         .find(|row| model.row_data(*row).is_some_and(|entry| is_anchor(&entry)))

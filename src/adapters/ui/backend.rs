@@ -11,8 +11,12 @@ use super::decode::{
     set_image_ready,
 };
 use super::dto::{
-    AudioRowUpdate, DecodeTarget, MediaFailureKind, MessageDto, RoomDto, SpaceDto, StickerPackDto,
-    StickerRowDto, message_to_dto, room_to_dto, space_to_dto,
+    DecodeTarget, MediaFailureKind, MediaState, MessageDto, RoomDto, SpaceDto, StickerPackDto,
+    StickerRowDto, ThumbUpdate, enrich_to_update, message_to_dto, room_to_dto, space_to_dto,
+};
+use super::fields::{
+    MessageFields, ReactionFields, ReactorFields, RoomFields, SpaceFields, StickerCellFields,
+    StickerPackFields, StickerRowFields,
 };
 use super::multiplex::spawn_event_multiplexer;
 use super::props::{IntProp, StringProp, UiProps};
@@ -31,37 +35,18 @@ use crate::ports::media::MediaCache;
 
 pub trait UiBackend: Sized + 'static {
     type Window: ComponentHandle + UiProps + 'static;
-    type Message: Clone + From<MessageDto> + 'static;
-    type Room: Clone + PartialEq + From<RoomDto> + 'static;
-    type Space: Clone + PartialEq + From<SpaceDto> + 'static;
-    type StickerRow: Clone + From<StickerRowDto> + 'static;
-    type StickerPack: Clone + From<StickerPackDto> + 'static;
+    type Message: MessageFields<Self> + Clone + From<MessageDto> + 'static;
+    type Reaction: ReactionFields<Self> + Clone + 'static;
+    type Reactor: ReactorFields<Self> + Clone + 'static;
+    type Room: RoomFields<Self> + Clone + PartialEq + From<RoomDto> + 'static;
+    type Space: SpaceFields<Self> + Clone + PartialEq + From<SpaceDto> + 'static;
+    type StickerRow: StickerRowFields<Self> + Clone + From<StickerRowDto> + 'static;
+    type StickerCell: StickerCellFields<Self> + Clone + 'static;
+    type StickerPack: StickerPackFields<Self> + Clone + From<StickerPackDto> + 'static;
 
     fn models() -> Rc<Models<Self>>;
     fn attach_models(window: &Self::Window, models: &Models<Self>);
     fn bind_sticker_search(window: &Self::Window, search: impl Fn(&str) + 'static);
-
-    fn enrich_message(entry: &mut Self::Message, delta: &EnrichmentDelta, media: &dyn MediaCache);
-    fn patch_sticker_cell(row: &Self::StickerRow, key: &str, art: Option<&Image>) -> bool;
-    fn patch_reactor_avatar(entry: &Self::Message, user_id: &str, image: &Image) -> bool;
-    fn sticker_pack_with_icon(
-        pack: &Self::StickerPack,
-        pack_id: &str,
-        image: &Image,
-    ) -> Option<Self::StickerPack>;
-
-    fn message_id(entry: &Self::Message) -> &str;
-    fn message_event_id(entry: &Self::Message) -> &str;
-    fn message_is_first_unread(entry: &Self::Message) -> bool;
-    fn room_id(entry: &Self::Room) -> &str;
-    fn space_id(entry: &Self::Space) -> &str;
-
-    fn set_message_avatar(entry: &mut Self::Message, image: &Image);
-    fn set_room_avatar(entry: &mut Self::Room, image: &Image);
-    fn set_space_avatar(entry: &mut Self::Space, image: &Image);
-    fn set_message_thumbnail(entry: &mut Self::Message, image: &Image);
-    fn set_message_media_failed(entry: &mut Self::Message, reason: MediaFailureKind);
-    fn set_message_audio(entry: &mut Self::Message, update: &AudioRowUpdate);
 
     fn convert_message(message: &TimelineMessage, media: &dyn MediaCache) -> Self::Message {
         message_to_dto(message, media).into()
@@ -199,10 +184,40 @@ pub fn selected_room_key<B: UiBackend>(weak: &slint::Weak<B::Window>) -> Option<
     Some((RoomId::new(room_id), w.get_int(IntProp::SelectedGeneration)))
 }
 
+pub fn enrich_message<B: UiBackend>(
+    entry: &mut B::Message,
+    delta: &EnrichmentDelta,
+    media: &dyn MediaCache,
+) {
+    let update = enrich_to_update(delta, media);
+    match update.thumbnail {
+        ThumbUpdate::Ready(image) => show_thumbnail::<B>(entry, image),
+        ThumbUpdate::Failed(reason) => show_media_failure::<B>(entry, reason),
+        ThumbUpdate::Unchanged => {}
+    }
+    if let Some(image) = update.avatar {
+        entry.set_avatar(image);
+        entry.set_has_avatar(true);
+    }
+    if let Some(pronouns) = update.pronouns {
+        entry.set_pronouns(pronouns);
+    }
+}
+
+fn show_thumbnail<B: UiBackend>(entry: &mut B::Message, image: Image) {
+    entry.set_thumbnail(image);
+    entry.set_media_state(MediaState::Ready);
+}
+
+fn show_media_failure<B: UiBackend>(entry: &mut B::Message, reason: MediaFailureKind) {
+    entry.set_media_state(MediaState::Failed);
+    entry.set_media_failure(reason);
+}
+
 fn tick_animations<B: UiBackend>() {
     advance_animations(&mut |key, hint, frame| match DecodeTarget::of(key) {
         DecodeTarget::Timeline { unique_id } => patch_timeline_row::<B>(unique_id, hint, |entry| {
-            B::set_message_thumbnail(entry, &frame);
+            show_thumbnail::<B>(entry, frame);
         }),
         DecodeTarget::StickerCell { key, .. } => place_sticker_cell::<B>(key, Some(&frame)),
     });
@@ -215,7 +230,7 @@ fn patch_timeline_row<B: UiBackend>(
 ) -> Option<usize> {
     B::with_timeline(|timeline| {
         let hint = timeline_row_of(unique_id).unwrap_or(hint);
-        let row = locate_row(timeline, &B::message_id, unique_id, hint)?;
+        let row = locate_row(timeline, &B::Message::unique_id, unique_id, hint)?;
         let mut entry = timeline.row_data(row)?;
         apply(&mut entry);
         timeline.set_row_data(row, entry);
@@ -227,8 +242,27 @@ fn place_sticker_cell<B: UiBackend>(key: &str, art: Option<&Image>) -> Option<us
     let row = sticker_cell_row(key)?;
     B::with_stickers(|rows, _| {
         let entry = rows.row_data(row)?;
-        B::patch_sticker_cell(&entry, key, art).then_some(row)
+        patch_sticker_cell::<B>(&entry, key, art).then_some(row)
     })
+}
+
+fn patch_sticker_cell<B: UiBackend>(row: &B::StickerRow, key: &str, art: Option<&Image>) -> bool {
+    let cells = row.cells();
+    let Some(index) = cells.iter().position(|cell| cell.key() == key) else {
+        return false;
+    };
+    let Some(mut cell) = cells.row_data(index) else {
+        return false;
+    };
+    match art {
+        Some(art) => {
+            cell.set_image(art.clone());
+            cell.set_media_state(MediaState::Ready);
+        }
+        None => cell.set_media_state(MediaState::Failed),
+    }
+    cells.set_row_data(index, cell);
+    true
 }
 
 fn adopt_pack_icon<B: UiBackend>(pack_id: &str, image: &Image) {
@@ -238,13 +272,27 @@ fn adopt_pack_icon<B: UiBackend>(pack_id: &str, image: &Image) {
     B::with_stickers(|_, packs| {
         let Some(updated) = packs
             .row_data(row)
-            .and_then(|tab| B::sticker_pack_with_icon(&tab, pack_id, image))
+            .and_then(|tab| pack_with_icon::<B>(&tab, pack_id, image))
         else {
             return;
         };
         packs.remove(row);
         packs.insert(row, updated);
     });
+}
+
+fn pack_with_icon<B: UiBackend>(
+    pack: &B::StickerPack,
+    pack_id: &str,
+    image: &Image,
+) -> Option<B::StickerPack> {
+    if pack.has_icon() || pack.id() != pack_id {
+        return None;
+    }
+    let mut updated = pack.clone();
+    updated.set_icon(image.clone());
+    updated.set_has_icon(true);
+    Some(updated)
 }
 
 pub(super) fn apply_thumbnail_ready<B: UiBackend>(key: &str, outcome: DecodeOutcome<'_>) {
@@ -256,10 +304,8 @@ pub(super) fn apply_thumbnail_ready<B: UiBackend>(key: &str, outcome: DecodeOutc
     match DecodeTarget::of(key) {
         DecodeTarget::Timeline { unique_id } => {
             let placed = patch_timeline_row::<B>(unique_id, 0, |entry| match art {
-                Some(image) => B::set_message_thumbnail(entry, image),
-                None => {
-                    B::set_message_media_failed(entry, MediaFailureKind::Unreadable);
-                }
+                Some(image) => show_thumbnail::<B>(entry, image.clone()),
+                None => show_media_failure::<B>(entry, MediaFailureKind::Unreadable),
             });
             if placed.is_none() {
                 tracing::debug!(
@@ -322,7 +368,7 @@ fn indexed_timeline_row<B: UiBackend>(
 ) -> Option<usize> {
     locate_row(
         timeline,
-        &B::message_id,
+        &B::Message::unique_id,
         unique_id,
         timeline_row_of(unique_id)?,
     )
@@ -340,7 +386,8 @@ fn patch_message_avatars<B: UiBackend>(
         let Some(mut entry) = timeline.row_data(row) else {
             continue;
         };
-        B::set_message_avatar(&mut entry, image);
+        entry.set_avatar(image.clone());
+        entry.set_has_avatar(true);
         timeline.set_row_data(row, entry);
     }
 }
@@ -357,8 +404,26 @@ fn patch_reactor_avatars<B: UiBackend>(
             continue;
         };
         for user_id in user_ids {
-            B::patch_reactor_avatar(&entry, user_id, image);
+            patch_reactor_avatar::<B>(&entry, user_id, image);
         }
+    }
+}
+
+fn patch_reactor_avatar<B: UiBackend>(entry: &B::Message, user_id: &str, image: &Image) {
+    for reaction in entry.reactions().iter() {
+        let faces = reaction.avatars();
+        let Some(index) = faces
+            .iter()
+            .position(|face| face.user_id() == user_id && !face.has_avatar())
+        else {
+            continue;
+        };
+        let Some(mut face) = faces.row_data(index) else {
+            continue;
+        };
+        face.set_avatar(image.clone());
+        face.set_has_avatar(true);
+        faces.set_row_data(index, face);
     }
 }
 
@@ -384,14 +449,17 @@ fn apply_avatar_ready<B: UiBackend>(
     B::with_models(|timeline, rooms, spaces, subspaces| {
         patch_message_avatars::<B>(timeline, &targets.messages, image);
         patch_reactor_avatars::<B>(timeline, &targets.reactors_by_message, image);
-        patch_rows_by_id(rooms, &targets.rooms, &B::room_id, |entry| {
-            B::set_room_avatar(entry, image);
+        patch_rows_by_id(rooms, &targets.rooms, &B::Room::id, |entry| {
+            entry.set_avatar(image.clone());
+            entry.set_has_avatar(true);
         });
-        patch_rows_by_id(spaces, &targets.spaces, &B::space_id, |entry| {
-            B::set_space_avatar(entry, image);
+        patch_rows_by_id(spaces, &targets.spaces, &B::Space::id, |entry| {
+            entry.set_avatar(image.clone());
+            entry.set_has_avatar(true);
         });
-        patch_rows_by_id(subspaces, &targets.spaces, &B::space_id, |entry| {
-            B::set_space_avatar(entry, image);
+        patch_rows_by_id(subspaces, &targets.spaces, &B::Space::id, |entry| {
+            entry.set_avatar(image.clone());
+            entry.set_has_avatar(true);
         });
     });
 }
