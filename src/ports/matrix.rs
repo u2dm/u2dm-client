@@ -167,9 +167,19 @@ pub trait TimelinePort: Send + Sync {
 
 #[async_trait]
 pub trait MediaPort: Send + Sync {
-    async fn download_media(&self, event_id: &str, rendition: MediaRendition) -> Result<Vec<u8>>;
-    async fn materialize_video(&self, event_id: &str) -> Result<PathBuf>;
-    async fn materialize_audio(&self, event_id: &str, need: WaveformNeed) -> Result<PathBuf>;
+    async fn download_media(
+        &self,
+        room_id: &RoomId,
+        event_id: &str,
+        rendition: MediaRendition,
+    ) -> Result<Vec<u8>>;
+    async fn materialize_video(&self, room_id: &RoomId, event_id: &str) -> Result<PathBuf>;
+    async fn materialize_audio(
+        &self,
+        room_id: &RoomId,
+        event_id: &str,
+        need: WaveformNeed,
+    ) -> Result<PathBuf>;
 }
 
 #[derive(Debug, Default)]

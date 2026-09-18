@@ -593,19 +593,29 @@ impl TimelinePort for DemoAuthed {
 
 #[async_trait]
 impl MediaPort for DemoAuthed {
-    async fn download_media(&self, event_id: &str, _rendition: MediaRendition) -> Result<Vec<u8>> {
+    async fn download_media(
+        &self,
+        _room_id: &RoomId,
+        event_id: &str,
+        _rendition: MediaRendition,
+    ) -> Result<Vec<u8>> {
         let path: PathBuf = media::DemoMediaCache
             .thumbnail_path(event_id)
             .ok_or_else(|| AppError::Other(format!("no demo asset for event {event_id}")))?;
         Ok(fs::read(path)?)
     }
 
-    async fn materialize_video(&self, event_id: &str) -> Result<PathBuf> {
+    async fn materialize_video(&self, _room_id: &RoomId, event_id: &str) -> Result<PathBuf> {
         media::video_asset_path(event_id)
             .ok_or_else(|| AppError::Other(format!("no demo video for event {event_id}")))
     }
 
-    async fn materialize_audio(&self, event_id: &str, need: WaveformNeed) -> Result<PathBuf> {
+    async fn materialize_audio(
+        &self,
+        _room_id: &RoomId,
+        event_id: &str,
+        need: WaveformNeed,
+    ) -> Result<PathBuf> {
         audio::pause_download().await;
         let path = media::fetch_audio(event_id)
             .ok_or_else(|| AppError::Other(format!("no demo audio for event {event_id}")))?;

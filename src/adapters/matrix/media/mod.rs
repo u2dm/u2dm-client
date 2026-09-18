@@ -1,26 +1,26 @@
 mod cache;
 mod flight;
 mod service;
+mod source;
 
-use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex as StdMutex};
+use std::sync::Arc;
 
 use async_trait::async_trait;
 use matrix_sdk::media::{MediaFormat, MediaThumbnailSettings};
 use matrix_sdk::ruma::events::room::MediaSource;
 pub(crate) use service::{MediaService, Playable};
+pub(crate) use source::EventMedia;
 
 use super::session::ClientHandle;
 use crate::domain::media::{
     ImageMeta, MediaFailure, MediaKind, MediaRendition, Waveform, WaveformNeed,
 };
 use crate::domain::message::TimelineMessage;
+use crate::domain::room::RoomId;
 use crate::error::{AppError, Result};
 use crate::ports::matrix::MediaPort;
 use crate::ports::media::MediaCache;
-
-pub(super) type MediaSources = StdMutex<HashMap<String, MediaSource>>;
 
 pub(super) const AVATARS_DIR: &str = "avatars";
 pub(super) const STICKERS_DIR: &str = "stickers";
@@ -101,34 +101,6 @@ impl MediaCache for MaterializedMedia {
     }
 }
 
-pub(super) fn lookup_media_source(
-    media_sources: &MediaSources,
-    event_id: &str,
-) -> Option<MediaSource> {
-    let thumb_key = format!("{event_id}:thumb");
-    media_sources.lock().ok().and_then(|sources| {
-        sources
-            .get(&thumb_key)
-            .or_else(|| sources.get(event_id))
-            .cloned()
-    })
-}
-
-pub(super) fn lookup_poster_source(
-    media_sources: &MediaSources,
-    event_id: &str,
-) -> Option<MediaSource> {
-    let thumb_key = format!("{event_id}:thumb");
-    media_sources.lock().ok()?.get(&thumb_key).cloned()
-}
-
-pub(super) fn lookup_full_media_source(
-    media_sources: &MediaSources,
-    event_id: &str,
-) -> Option<MediaSource> {
-    media_sources.lock().ok()?.get(event_id).cloned()
-}
-
 pub(super) fn is_animated_mime(mimetype: Option<&str>) -> bool {
     mimetype.is_some_and(|mime| {
         mime.eq_ignore_ascii_case("image/gif") || mime.eq_ignore_ascii_case("image/webp")
@@ -158,28 +130,28 @@ fn lane(kind: MediaKind, meta: &ImageMeta) -> MediaLane {
 pub(super) struct ThumbnailRequest {
     pub(super) media_key: String,
     lane: MediaLane,
+    source: Option<MediaSource>,
 }
 
 impl ThumbnailRequest {
-    pub(super) fn of(msg: &TimelineMessage) -> Option<Self> {
+    pub(super) fn of(msg: &TimelineMessage, media: Option<EventMedia>) -> Option<Self> {
         let (kind, meta) = msg.body.media()?;
+        let lane = lane(kind, meta);
         Some(Self {
             media_key: msg.media_key()?.to_owned(),
-            lane: lane(kind, meta),
+            lane,
+            source: media.and_then(|media| lane.pick(media)),
         })
     }
 }
 
 impl MediaLane {
-    pub(super) fn source(
-        self,
-        media_sources: &MediaSources,
-        event_id: &str,
-    ) -> Option<MediaSource> {
+    pub(super) fn pick(self, media: EventMedia) -> Option<MediaSource> {
+        let EventMedia { file, thumbnail } = media;
         match self {
-            Self::FullFile => lookup_full_media_source(media_sources, event_id),
-            Self::Thumbnail => lookup_media_source(media_sources, event_id),
-            Self::Poster => lookup_poster_source(media_sources, event_id),
+            Self::FullFile => Some(file),
+            Self::Thumbnail => Some(thumbnail.unwrap_or(file)),
+            Self::Poster => thumbnail,
         }
     }
 
@@ -193,19 +165,23 @@ impl MediaLane {
 
 pub(super) struct MatrixMedia {
     matrix: Arc<ClientHandle>,
-    sources: Arc<MediaSources>,
 }
 
 impl MatrixMedia {
-    pub(super) fn new(matrix: Arc<ClientHandle>, sources: Arc<MediaSources>) -> Self {
-        Self { matrix, sources }
+    pub(super) fn new(matrix: Arc<ClientHandle>) -> Self {
+        Self { matrix }
     }
 
-    async fn materialize(&self, event_id: &str, playable: Playable) -> Result<PathBuf> {
-        let client = self.matrix.client().await?;
+    async fn materialize(
+        &self,
+        room_id: &RoomId,
+        event_id: &str,
+        playable: Playable,
+    ) -> Result<PathBuf> {
+        let room = self.matrix.room(room_id).await?;
         self.matrix
             .media()
-            .materialize_playable(&client, &self.sources, event_id, playable)
+            .materialize_playable(&room, event_id, playable)
             .await
             .map_err(|reason| {
                 AppError::Other(format!(
@@ -218,20 +194,30 @@ impl MatrixMedia {
 
 #[async_trait]
 impl MediaPort for MatrixMedia {
-    async fn download_media(&self, event_id: &str, rendition: MediaRendition) -> Result<Vec<u8>> {
-        let client = self.matrix.client().await?;
+    async fn download_media(
+        &self,
+        room_id: &RoomId,
+        event_id: &str,
+        rendition: MediaRendition,
+    ) -> Result<Vec<u8>> {
+        let room = self.matrix.room(room_id).await?;
         self.matrix
             .media()
-            .download_media(&client, &self.sources, event_id, rendition)
+            .download_media(&room, event_id, rendition)
             .await
     }
 
-    async fn materialize_video(&self, event_id: &str) -> Result<PathBuf> {
-        self.materialize(event_id, Playable::Video).await
+    async fn materialize_video(&self, room_id: &RoomId, event_id: &str) -> Result<PathBuf> {
+        self.materialize(room_id, event_id, Playable::Video).await
     }
 
-    async fn materialize_audio(&self, event_id: &str, need: WaveformNeed) -> Result<PathBuf> {
-        let path = self.materialize(event_id, Playable::Audio).await?;
+    async fn materialize_audio(
+        &self,
+        room_id: &RoomId,
+        event_id: &str,
+        need: WaveformNeed,
+    ) -> Result<PathBuf> {
+        let path = self.materialize(room_id, event_id, Playable::Audio).await?;
         if need == WaveformNeed::Compute {
             self.matrix.media().learn_waveform(event_id, &path).await;
         }

@@ -102,7 +102,7 @@ impl AudioController {
         } = track;
         self.now_playing = Some(NowPlaying {
             request,
-            room_id: locating.room_id,
+            room_id: locating.room_id.clone(),
             event_id: event_id.clone(),
             sender,
             meta,
@@ -113,13 +113,14 @@ impl AudioController {
             .as_ref()
             .map_or(WaveformNeed::Skip, |now| WaveformNeed::of(&now.meta));
         self.publish();
-        self.fetch(media, request, event_id, need);
+        self.fetch(media, request, locating.room_id, event_id, need);
     }
 
     fn fetch(
         &mut self,
         media: Arc<dyn MediaPort>,
         request: u64,
+        room_id: RoomId,
         event_id: String,
         need: WaveformNeed,
     ) {
@@ -129,7 +130,7 @@ impl AudioController {
         self.tasks.spawn(async move {
             let outcome = tokio::select! {
                 () = cancel.cancelled() => return,
-                fetched = media.materialize_audio(&event_id, need) => fetched.map_err(|e| {
+                fetched = media.materialize_audio(&room_id, &event_id, need) => fetched.map_err(|e| {
                     tracing::warn!("failed to download audio: {e}");
                     UserMessageKind::MediaDownloadFailed
                 }),

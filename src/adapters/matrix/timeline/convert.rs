@@ -2,12 +2,12 @@ use std::collections::HashSet;
 
 use matrix_sdk::ruma::UInt;
 use matrix_sdk::ruma::events::StateEventContentChange;
+use matrix_sdk::ruma::events::room::ImageInfo;
 use matrix_sdk::ruma::events::room::message::{
     AudioMessageEventContent, FileMessageEventContent, FormattedBody, ImageMessageEventContent,
     MessageFormat, MessageType, UnstableAmplitude, VideoInfo, VideoMessageEventContent,
 };
 use matrix_sdk::ruma::events::room::name::RoomNameEventContent;
-use matrix_sdk::ruma::events::room::{ImageInfo, MediaSource};
 use matrix_sdk::ruma::events::sticker::StickerEventContent;
 use matrix_sdk_ui::timeline::{
     AnyOtherStateEventContentChange, EventSendState, EventTimelineItem, MemberProfileChange,
@@ -16,7 +16,7 @@ use matrix_sdk_ui::timeline::{
 };
 
 use super::TimelineContext;
-use crate::adapters::matrix::media::MediaSources;
+use crate::adapters::matrix::media::EventMedia;
 use crate::adapters::matrix::preview;
 use crate::domain::media::{AudioKind, AudioMeta, FileMeta, ImageMeta, VideoMeta, Waveform};
 use crate::domain::message::{
@@ -57,13 +57,6 @@ fn send_state(event: &EventTimelineItem) -> SendState {
 fn local_id(event: &EventTimelineItem) -> Option<String> {
     let txn = event.transaction_id()?;
     Some(format!("{LOCAL_ID_PREFIX}{txn}"))
-}
-
-fn media_key(event: &EventTimelineItem, event_id_str: &str) -> String {
-    if event_id_str.is_empty() {
-        return local_id(event).unwrap_or_default();
-    }
-    event_id_str.to_owned()
 }
 
 fn reaction_send(info: Option<&ReactionInfo>) -> ReactionSend {
@@ -290,6 +283,14 @@ pub(super) fn renders(item: &TimelineItem) -> bool {
         .is_some_and(|event| classify(event.content()).is_some())
 }
 
+pub(super) fn event_media(item: &TimelineItem) -> Option<EventMedia> {
+    match classify(item.as_event()?.content())? {
+        Renderable::Message(message) => EventMedia::of_message(message.msgtype()),
+        Renderable::Sticker(sticker) => Some(EventMedia::of_sticker(sticker.content())),
+        Renderable::Utd | Renderable::Service(_) => None,
+    }
+}
+
 fn reply_preview_from_content(content: &TimelineItemContent) -> (MessagePreviewKind, String) {
     match classify(content) {
         Some(Renderable::Message(message)) => {
@@ -339,21 +340,7 @@ fn image_meta(info: &ImageInfo) -> ImageMeta {
     }
 }
 
-fn extract_image_body(
-    image: &ImageMessageEventContent,
-    media_key: &str,
-    media_sources: &MediaSources,
-) -> MessageBody {
-    if !media_key.is_empty()
-        && let Ok(mut sources) = media_sources.lock()
-    {
-        sources.insert(media_key.to_owned(), image.source.clone());
-        if let Some(info) = &image.info
-            && let Some(ref thumb_source) = info.thumbnail_source
-        {
-            sources.insert(format!("{media_key}:thumb"), thumb_source.clone());
-        }
-    }
+fn extract_image_body(image: &ImageMessageEventContent) -> MessageBody {
     MessageBody::Image {
         caption: image
             .caption()
@@ -378,21 +365,7 @@ fn video_meta(info: &VideoInfo) -> VideoMeta {
     }
 }
 
-fn extract_video_body(
-    video: &VideoMessageEventContent,
-    media_key: &str,
-    media_sources: &MediaSources,
-) -> MessageBody {
-    if !media_key.is_empty()
-        && let Ok(mut sources) = media_sources.lock()
-    {
-        sources.insert(media_key.to_owned(), video.source.clone());
-        if let Some(info) = &video.info
-            && let Some(ref thumb_source) = info.thumbnail_source
-        {
-            sources.insert(format!("{media_key}:thumb"), thumb_source.clone());
-        }
-    }
+fn extract_video_body(video: &VideoMessageEventContent) -> MessageBody {
     let mut meta = video.info.as_deref().map(video_meta).unwrap_or_default();
     meta.image.filename = Some(video.filename().to_owned());
     MessageBody::Video {
@@ -428,16 +401,7 @@ fn audio_meta(audio: &AudioMessageEventContent) -> AudioMeta {
     }
 }
 
-fn extract_audio_body(
-    audio: &AudioMessageEventContent,
-    media_key: &str,
-    media_sources: &MediaSources,
-) -> MessageBody {
-    if !media_key.is_empty()
-        && let Ok(mut sources) = media_sources.lock()
-    {
-        sources.insert(media_key.to_owned(), audio.source.clone());
-    }
+fn extract_audio_body(audio: &AudioMessageEventContent) -> MessageBody {
     MessageBody::Audio {
         caption: audio
             .caption()
@@ -446,35 +410,14 @@ fn extract_audio_body(
     }
 }
 
-fn extract_sticker_body(
-    sticker: &StickerEventContent,
-    media_key: &str,
-    media_sources: &MediaSources,
-) -> MessageBody {
-    if !media_key.is_empty()
-        && let Ok(mut sources) = media_sources.lock()
-    {
-        sources.insert(
-            media_key.to_owned(),
-            MediaSource::from(sticker.source.clone()),
-        );
-    }
+fn extract_sticker_body(sticker: &StickerEventContent) -> MessageBody {
     MessageBody::Sticker {
         alt: sticker.body.clone(),
         meta: image_meta(&sticker.info),
     }
 }
 
-fn extract_file_body(
-    file: &FileMessageEventContent,
-    media_key: &str,
-    media_sources: &MediaSources,
-) -> MessageBody {
-    if !media_key.is_empty()
-        && let Ok(mut sources) = media_sources.lock()
-    {
-        sources.insert(media_key.to_owned(), file.source.clone());
-    }
+fn extract_file_body(file: &FileMessageEventContent) -> MessageBody {
     let (mimetype, size) = file.info.as_ref().map_or((None, None), |info| {
         (info.mimetype.clone(), info.size.map(Into::into))
     });
@@ -496,19 +439,15 @@ fn rich_body(plain: &str, formatted: Option<&FormattedBody>) -> RichText {
     }
 }
 
-fn message_type_to_body(
-    msgtype: &MessageType,
-    media_key: &str,
-    media_sources: &MediaSources,
-) -> MessageBody {
+fn message_type_to_body(msgtype: &MessageType) -> MessageBody {
     match msgtype {
         MessageType::Text(t) => MessageBody::Text(rich_body(&t.body, t.formatted.as_ref())),
         MessageType::Notice(n) => MessageBody::Notice(rich_body(&n.body, n.formatted.as_ref())),
         MessageType::Emote(e) => MessageBody::Emote(rich_body(&e.body, e.formatted.as_ref())),
-        MessageType::Image(i) => extract_image_body(i, media_key, media_sources),
-        MessageType::Video(v) => extract_video_body(v, media_key, media_sources),
-        MessageType::Audio(a) => extract_audio_body(a, media_key, media_sources),
-        MessageType::File(f) => extract_file_body(f, media_key, media_sources),
+        MessageType::Image(i) => extract_image_body(i),
+        MessageType::Video(v) => extract_video_body(v),
+        MessageType::Audio(a) => extract_audio_body(a),
+        MessageType::File(f) => extract_file_body(f),
         other => MessageBody::Unsupported {
             kind: other.msgtype().to_string(),
             fallback: other.body().to_string(),
@@ -535,13 +474,12 @@ pub(super) fn convert_event_item_with_uid(
         .map(ToString::to_string)
         .unwrap_or_default();
 
-    let media_key = media_key(event, &event_id_str);
     let content = event.content();
     let reply = extract_reply(content);
 
     match classify(content) {
         Some(Renderable::Message(message)) => {
-            let body = message_type_to_body(message.msgtype(), &media_key, ctx.media_sources);
+            let body = message_type_to_body(message.msgtype());
             Some(TimelineMessage {
                 body,
                 reply,
@@ -550,7 +488,7 @@ pub(super) fn convert_event_item_with_uid(
             })
         }
         Some(Renderable::Sticker(sticker)) => {
-            let body = extract_sticker_body(sticker.content(), &media_key, ctx.media_sources);
+            let body = extract_sticker_body(sticker.content());
             Some(TimelineMessage {
                 body,
                 reply,

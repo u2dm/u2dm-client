@@ -27,7 +27,7 @@ use tokio_util::task::TaskTracker;
 use self::reactors::ReactorAvatars;
 use self::subscribe::subscribe_timeline;
 use super::attachment;
-use super::media::{MediaService, MediaSources};
+use super::media::MediaService;
 use super::profile::PronounCache;
 use super::session::ClientHandle;
 use crate::domain::media::OutgoingAttachment;
@@ -41,7 +41,6 @@ const ENRICH_INFLIGHT: usize = 8;
 pub(super) struct TimelineContext<'a> {
     pub(super) client: &'a Client,
     pub(super) media: &'a Arc<MediaService>,
-    pub(super) media_sources: &'a Arc<MediaSources>,
     pub(super) pronouns: &'a Arc<PronounCache>,
     pub(super) reactor_avatars: &'a Arc<ReactorAvatars>,
     pub(super) own_user_id: Option<&'a str>,
@@ -161,7 +160,6 @@ impl Drop for EnrichmentPool {
 
 pub(super) struct MatrixTimeline {
     matrix: Arc<ClientHandle>,
-    media_sources: Arc<MediaSources>,
     pronouns: Arc<PronounCache>,
 }
 
@@ -193,10 +191,9 @@ async fn queue(room: &Room, content: RoomMessageEventContent) -> Result<()> {
 }
 
 impl MatrixTimeline {
-    pub(super) fn new(matrix: Arc<ClientHandle>, media_sources: Arc<MediaSources>) -> Self {
+    pub(super) fn new(matrix: Arc<ClientHandle>) -> Self {
         Self {
             matrix,
-            media_sources,
             pronouns: Arc::new(PronounCache::default()),
         }
     }
@@ -226,7 +223,6 @@ impl TimelinePort for MatrixTimeline {
         subscribe_timeline(
             &self.matrix.client().await?,
             self.matrix.media(),
-            &self.media_sources,
             &self.pronouns,
             room_id,
             &focus,

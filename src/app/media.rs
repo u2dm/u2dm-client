@@ -7,6 +7,7 @@ use super::task_group::TaskGroup;
 use crate::commands::messages::{UserMessage, UserMessageKind};
 use crate::commands::view::{Toast, VideoView};
 use crate::domain::media::{MediaRendition, WaveformNeed};
+use crate::domain::room::RoomId;
 use crate::error::{AppError, Result};
 use crate::ports::matrix::MediaPort;
 use crate::ports::media::MediaFilePort;
@@ -47,6 +48,7 @@ impl MediaActions {
     fn spawn_media_action<F, Fut>(
         &mut self,
         media: Arc<dyn MediaPort>,
+        room_id: RoomId,
         event_id: String,
         download_failure: UserMessageKind,
         act: F,
@@ -60,7 +62,7 @@ impl MediaActions {
         let output = Arc::clone(&self.output);
         self.spawn_cancellable(async move {
             match media
-                .download_media(&event_id, MediaRendition::FullFile)
+                .download_media(&room_id, &event_id, MediaRendition::FullFile)
                 .await
             {
                 Ok(data) => act(media_files, output, event_id, data).await,
@@ -75,9 +77,15 @@ impl MediaActions {
         });
     }
 
-    pub(super) fn open_media(&mut self, media: Arc<dyn MediaPort>, event_id: String) {
+    pub(super) fn open_media(
+        &mut self,
+        media: Arc<dyn MediaPort>,
+        room_id: RoomId,
+        event_id: String,
+    ) {
         self.spawn_media_action(
             media,
+            room_id,
             event_id,
             UserMessageKind::MediaDownloadFailed,
             |media_files, output, event_id, data| async move {
@@ -93,11 +101,14 @@ impl MediaActions {
         );
     }
 
-    pub(super) fn open_video(&mut self, media: Arc<dyn MediaPort>, event_id: String) {
+    pub(super) fn open_video(
+        &mut self,
+        media: Arc<dyn MediaPort>,
+        room_id: RoomId,
+        event_id: String,
+    ) {
         if !cfg!(feature = "video") {
-            self.play_externally(media, event_id, |media, event_id| async move {
-                media.materialize_video(&event_id).await
-            });
+            self.play_externally(async move { media.materialize_video(&room_id, &event_id).await });
             return;
         }
         let output = Arc::clone(&self.output);
@@ -110,7 +121,7 @@ impl MediaActions {
             },
         );
         self.spawn_cancellable(async move {
-            let opened = match media.materialize_video(&event_id).await {
+            let opened = match media.materialize_video(&room_id, &event_id).await {
                 Ok(path) => VideoView {
                     visible: true,
                     loading: false,
@@ -131,21 +142,27 @@ impl MediaActions {
         });
     }
 
-    pub(super) fn play_audio_externally(&mut self, media: Arc<dyn MediaPort>, event_id: String) {
-        self.play_externally(media, event_id, |media, event_id| async move {
-            media.materialize_audio(&event_id, WaveformNeed::Skip).await
+    pub(super) fn play_audio_externally(
+        &mut self,
+        media: Arc<dyn MediaPort>,
+        room_id: RoomId,
+        event_id: String,
+    ) {
+        self.play_externally(async move {
+            media
+                .materialize_audio(&room_id, &event_id, WaveformNeed::Skip)
+                .await
         });
     }
 
-    fn play_externally<F, Fut>(&mut self, media: Arc<dyn MediaPort>, event_id: String, fetch: F)
+    fn play_externally<Fut>(&mut self, fetch: Fut)
     where
-        F: FnOnce(Arc<dyn MediaPort>, String) -> Fut + Send + 'static,
-        Fut: Future<Output = Result<PathBuf>> + Send,
+        Fut: Future<Output = Result<PathBuf>> + Send + 'static,
     {
         let media_files = Arc::clone(&self.media_files);
         let output = Arc::clone(&self.output);
         self.spawn_cancellable(async move {
-            let outcome = match fetch(media, event_id).await {
+            let outcome = match fetch.await {
                 Ok(path) => media_files.open_path(&path).await,
                 Err(e) => Err(e),
             };
@@ -166,11 +183,13 @@ impl MediaActions {
     pub(super) fn save_file(
         &mut self,
         media: Arc<dyn MediaPort>,
+        room_id: RoomId,
         event_id: String,
         filename: String,
     ) {
         self.spawn_media_action(
             media,
+            room_id,
             event_id,
             UserMessageKind::FileDownloadFailed,
             move |media_files, output, _event_id, data| async move {

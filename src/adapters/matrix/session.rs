@@ -1,6 +1,5 @@
-use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex as StdMutex};
+use std::sync::Arc;
 
 use async_trait::async_trait;
 use matrix_sdk::Client;
@@ -8,7 +7,7 @@ use matrix_sdk::ruma::{IdParseError, OwnedRoomId};
 use tokio::sync::{RwLock, mpsc};
 
 use super::auth;
-use super::media::{MatrixMedia, MediaService, MediaSources};
+use super::media::{MatrixMedia, MediaService};
 use super::rooms::{MatrixSpaceOrder, MatrixSync};
 use super::stickers::MatrixStickers;
 use super::store::StoreLayout;
@@ -62,15 +61,6 @@ impl ClientHandle {
 #[async_trait]
 pub(super) trait SessionResource: Send + Sync {
     async fn release(&self);
-}
-
-#[async_trait]
-impl SessionResource for MediaSources {
-    async fn release(&self) {
-        if let Ok(mut sources) = self.lock() {
-            sources.clear();
-        }
-    }
 }
 
 struct MatrixLifecycle {
@@ -138,21 +128,15 @@ pub(super) async fn authenticate(
         media,
     });
 
-    let media_sources: Arc<MediaSources> = Arc::new(StdMutex::new(HashMap::new()));
     let verification = Arc::new(MatrixVerification::new(Arc::clone(&matrix)));
-    let resources: Vec<Arc<dyn SessionResource>> = vec![
-        Arc::clone(&media_sources) as Arc<dyn SessionResource>,
-        Arc::clone(&verification) as Arc<dyn SessionResource>,
-    ];
+    let resources: Vec<Arc<dyn SessionResource>> =
+        vec![Arc::clone(&verification) as Arc<dyn SessionResource>];
 
     AuthenticatedSession {
         session,
         sync: Arc::new(MatrixSync::new(Arc::clone(&matrix))),
-        timeline: Arc::new(MatrixTimeline::new(
-            Arc::clone(&matrix),
-            Arc::clone(&media_sources),
-        )),
-        media: Arc::new(MatrixMedia::new(Arc::clone(&matrix), media_sources)),
+        timeline: Arc::new(MatrixTimeline::new(Arc::clone(&matrix))),
+        media: Arc::new(MatrixMedia::new(Arc::clone(&matrix))),
         verification,
         space_order: Arc::new(MatrixSpaceOrder::new(Arc::clone(&matrix))),
         stickers: Arc::new(MatrixStickers::new(Arc::clone(&matrix))),

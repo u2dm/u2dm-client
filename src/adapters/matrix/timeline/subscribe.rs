@@ -16,11 +16,12 @@ use matrix_sdk_ui::timeline::{
 use tokio::sync::{Semaphore, mpsc};
 use tokio::task::JoinSet;
 
+use super::convert::event_media;
 use super::diff::diff_to_patch;
 use super::filter::TimelineItems;
 use super::reactors::{ReactorAvatars, Resolution, resolve_reactor_avatars};
 use super::{EnrichmentClaim, EnrichmentPool, TimelineContext};
-use crate::adapters::matrix::media::{MediaService, MediaSources, ThumbnailRequest};
+use crate::adapters::matrix::media::{MediaService, ThumbnailRequest};
 use crate::adapters::matrix::profile::PronounCache;
 use crate::domain::media::ThumbnailOutcome;
 use crate::domain::message::TimelineMessage;
@@ -49,23 +50,18 @@ struct EnrichmentJob {
 }
 
 impl EnrichmentJob {
-    fn of(msg: &TimelineMessage, pronouns: &PronounCache) -> Self {
+    fn of(item: &TimelineItem, msg: &TimelineMessage, pronouns: &PronounCache) -> Self {
         Self {
             unique_id: msg.unique_id.clone(),
-            thumbnail: ThumbnailRequest::of(msg),
+            thumbnail: ThumbnailRequest::of(msg, event_media(item)),
             sender_avatar: msg.sender_avatar_url.clone(),
             pronouns_of: needs_pronouns(msg, pronouns).then(|| msg.sender.clone()),
         }
     }
 
-    async fn fetch_thumbnail(
-        &self,
-        client: &Client,
-        media: &MediaService,
-        media_sources: &MediaSources,
-    ) -> ThumbnailOutcome {
+    async fn fetch_thumbnail(&self, client: &Client, media: &MediaService) -> ThumbnailOutcome {
         match &self.thumbnail {
-            Some(request) => media.enrich_thumbnail(client, media_sources, request).await,
+            Some(request) => media.enrich_thumbnail(client, request).await,
             None => ThumbnailOutcome::Unchanged,
         }
     }
@@ -92,11 +88,15 @@ impl EnrichmentJob {
     }
 }
 
-fn spawn_enrichment(ctx: &TimelineContext<'_>, msg: &TimelineMessage, claim: EnrichmentClaim) {
-    let job = EnrichmentJob::of(msg, ctx.pronouns);
+fn spawn_enrichment(
+    ctx: &TimelineContext<'_>,
+    item: &TimelineItem,
+    msg: &TimelineMessage,
+    claim: EnrichmentClaim,
+) {
+    let job = EnrichmentJob::of(item, msg, ctx.pronouns);
     let client = ctx.client.clone();
     let media = Arc::clone(ctx.media);
-    let media_sources = Arc::clone(ctx.media_sources);
     let pronouns = Arc::clone(ctx.pronouns);
     let inflight = Arc::clone(&ctx.enrich.inflight);
     let semaphore = Arc::clone(&ctx.enrich.semaphore);
@@ -111,7 +111,7 @@ fn spawn_enrichment(ctx: &TimelineContext<'_>, msg: &TimelineMessage, claim: Enr
         let work = async {
             let _permit = semaphore.acquire().await.ok()?;
             let (thumbnail, avatar_mxc, pronouns) = tokio::join!(
-                job.fetch_thumbnail(&client, &media, &media_sources),
+                job.fetch_thumbnail(&client, &media),
                 job.fetch_avatar(&client, &media),
                 job.resolve_pronouns(&client, &pronouns),
             );
@@ -146,20 +146,27 @@ fn has_enrichment_work(msg: &TimelineMessage, ctx: &TimelineContext<'_>) -> bool
     ctx.media.needs_media_download(msg) || needs_pronouns(msg, ctx.pronouns)
 }
 
-pub(super) fn enrich_message(msg: &TimelineMessage, ctx: &TimelineContext<'_>) {
+pub(super) fn enrich_message(
+    item: &TimelineItem,
+    msg: &TimelineMessage,
+    ctx: &TimelineContext<'_>,
+) {
     let claim = ctx.enrich.claim(
         &msg.unique_id,
         msg.enrichment_fingerprint(),
         has_enrichment_work(msg, ctx),
     );
     if let Some(claim) = claim {
-        spawn_enrichment(ctx, msg, claim);
+        spawn_enrichment(ctx, item, msg, claim);
     }
 }
 
-pub(super) fn enrich_messages(messages: &[TimelineMessage], ctx: &TimelineContext<'_>) {
-    for msg in messages {
-        enrich_message(msg, ctx);
+pub(super) fn enrich_messages<'a>(
+    rendered: impl Iterator<Item = (&'a TimelineItem, &'a TimelineMessage)>,
+    ctx: &TimelineContext<'_>,
+) {
+    for (item, msg) in rendered {
+        enrich_message(item, msg, ctx);
     }
 }
 
@@ -177,7 +184,7 @@ async fn send_initial_timeline(
         %room_id,
         "timeline loaded"
     );
-    enrich_messages(&messages, ctx);
+    enrich_messages(items.rendered_from(0), ctx);
     ctx.timeline_tx
         .send(TimelineUpdate::Patch(Box::new(TimelinePatch::Reset(
             messages,
@@ -592,11 +599,9 @@ async fn handle_room_keys(timeline: &Timeline, keys: BTreeMap<String, BTreeSet<S
     }
 }
 
-#[allow(clippy::too_many_arguments)]
 pub(crate) async fn subscribe_timeline(
     client: &Client,
     media: &Arc<MediaService>,
-    media_sources: &Arc<MediaSources>,
     pronouns: &Arc<PronounCache>,
     room_id: &RoomId,
     focus: &TimelineFocus,
@@ -605,10 +610,6 @@ pub(crate) async fn subscribe_timeline(
 ) -> Result<()> {
     let (timeline, room_id_parsed, backwards_outcome) =
         setup_timeline(client, room_id, focus).await?;
-
-    if let Ok(mut sources) = media_sources.lock() {
-        sources.clear();
-    }
 
     media.ensure_dirs().await;
 
@@ -647,7 +648,6 @@ pub(crate) async fn subscribe_timeline(
     let ctx = TimelineContext {
         client,
         media,
-        media_sources,
         pronouns,
         reactor_avatars: &reactor_avatars,
         own_user_id: own_user_id.as_deref(),

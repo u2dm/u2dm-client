@@ -48,7 +48,7 @@ use crate::domain::sticker::PackId;
 use crate::domain::sync::ConnectionStatus;
 use crate::domain::timeline::{AudioTrack, FailedSend, TimelineFocus};
 use crate::ports::browser::BrowserPort;
-use crate::ports::matrix::{AuthPort, AuthenticatedSession, CleanupReport, SessionPort};
+use crate::ports::matrix::{AuthPort, AuthenticatedSession, CleanupReport, MediaPort, SessionPort};
 use crate::ports::media::MediaFilePort;
 use crate::ports::output::AppOutputPort;
 use crate::ports::storage::StoragePort;
@@ -766,23 +766,29 @@ impl AppService {
         );
     }
 
+    fn media_in_active_room(&self) -> Option<(Arc<dyn MediaPort>, RoomId)> {
+        let media = self.port(|a| &a.media)?;
+        let room_id = self.active_timeline.room_id()?.clone();
+        Some((media, room_id))
+    }
+
     fn open_media(&mut self, event_id: String) {
-        if let Some(media) = self.port(|a| &a.media) {
-            self.media.open_media(media, event_id);
+        if let Some((media, room_id)) = self.media_in_active_room() {
+            self.media.open_media(media, room_id, event_id);
         }
     }
 
     fn open_video(&mut self, event_id: String) {
-        if let Some(media) = self.port(|a| &a.media) {
-            self.media.open_video(media, event_id);
+        if let Some((media, room_id)) = self.media_in_active_room() {
+            self.media.open_video(media, room_id, event_id);
         }
     }
 
     fn play_audio(&mut self, event_id: String) {
         if cfg!(feature = "video") {
             self.audio.play(&self.active_timeline, event_id);
-        } else if let Some(media) = self.port(|a| &a.media) {
-            self.media.play_audio_externally(media, event_id);
+        } else if let Some((media, room_id)) = self.media_in_active_room() {
+            self.media.play_audio_externally(media, room_id, event_id);
         }
     }
 
@@ -803,8 +809,8 @@ impl AppService {
     }
 
     fn save_file(&mut self, event_id: String, filename: String) {
-        if let Some(media) = self.port(|a| &a.media) {
-            self.media.save_file(media, event_id, filename);
+        if let Some((media, room_id)) = self.media_in_active_room() {
+            self.media.save_file(media, room_id, event_id, filename);
         }
     }
 

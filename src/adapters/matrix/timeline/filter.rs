@@ -43,6 +43,18 @@ impl TimelineItems {
             .flatten()
     }
 
+    pub(super) fn rendered_from(
+        &self,
+        raw_index: usize,
+    ) -> impl Iterator<Item = (&TimelineItem, &TimelineMessage)> {
+        let items = self.items.get(raw_index..).unwrap_or_default();
+        let messages = self.messages.get(raw_index..).unwrap_or_default();
+        items
+            .iter()
+            .zip(messages)
+            .filter_map(|(item, message)| Some((item.as_ref(), message.as_ref()?)))
+    }
+
     pub(super) fn msg_index_at(&self, raw_index: usize) -> usize {
         self.messages
             .get(..raw_index)

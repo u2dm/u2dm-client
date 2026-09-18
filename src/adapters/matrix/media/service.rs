@@ -4,10 +4,10 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex as StdMutex, RwLock as StdRwLock};
 use std::time::Duration;
 
-use matrix_sdk::Client;
 use matrix_sdk::media::{MediaFormat, MediaRequestParameters};
 use matrix_sdk::ruma::OwnedMxcUri;
 use matrix_sdk::ruma::events::room::MediaSource;
+use matrix_sdk::{Client, Room};
 use tokio::fs;
 use tokio::sync::Semaphore;
 use tokio::task::spawn_blocking;
@@ -16,9 +16,8 @@ use tokio::time::{sleep, timeout};
 use super::cache::{CacheHandle, FailureTracker};
 use super::flight::SingleFlight;
 use super::{
-    AUDIO_DIR, AVATARS_DIR, MediaLane, MediaSources, STICKERS_DIR, ThumbnailRequest, VIDEOS_DIR,
-    audio_key, lookup_full_media_source, mxc_avatar_key, sticker_key, thumb_key, thumbnail_format,
-    video_key,
+    AUDIO_DIR, AVATARS_DIR, MediaLane, STICKERS_DIR, ThumbnailRequest, VIDEOS_DIR, audio_key,
+    mxc_avatar_key, source, sticker_key, thumb_key, thumbnail_format, video_key,
 };
 use crate::adapters::matrix::store::purge_dir;
 use crate::adapters::{container, private_fs, video};
@@ -343,8 +342,7 @@ impl MediaService {
 
     pub(crate) async fn materialize_playable(
         &self,
-        client: &Client,
-        media_sources: &MediaSources,
+        room: &Room,
         event_id: &str,
         playable: Playable,
     ) -> MediaResult<PathBuf> {
@@ -355,8 +353,7 @@ impl MediaService {
         if let Some(reason) = self.failure(&cache_key) {
             return Err(reason);
         }
-        let source =
-            lookup_full_media_source(media_sources, event_id).ok_or(MediaFailure::NoSource)?;
+        let source = source::resolve(room, event_id, MediaLane::FullFile).await?;
         let dir = self.playable_dir(playable).ok_or(MediaFailure::Storage)?;
         if let Err(e) = private_fs::create_dir(&dir).await {
             tracing::warn!("failed to create the {} dir: {e}", playable.noun());
@@ -364,7 +361,7 @@ impl MediaService {
         }
         let cache_stem = dir.join(hex_encode_id(event_id));
         self.fetch_and_materialize(
-            client,
+            &room.client(),
             source,
             &cache_key,
             &cache_stem,
@@ -439,22 +436,25 @@ impl MediaService {
     pub(crate) async fn enrich_thumbnail(
         &self,
         client: &Client,
-        media_sources: &MediaSources,
         request: &ThumbnailRequest,
     ) -> ThumbnailOutcome {
-        let ThumbnailRequest { media_key, lane } = request;
+        let ThumbnailRequest {
+            media_key,
+            lane,
+            source,
+        } = request;
         let cache_key = thumb_key(media_key);
 
         if self.cache_get(&cache_key).is_some() {
             return ThumbnailOutcome::Unchanged;
         }
 
-        let materialized = match (lane.source(media_sources, media_key), self.session()) {
+        let materialized = match (source, self.session()) {
             (Some(source), Some(session)) => {
                 let cache_stem = session.media_dir.join(hex_encode_id(media_key));
                 self.fetch_and_materialize(
                     client,
-                    source,
+                    source.clone(),
                     &cache_key,
                     &cache_stem,
                     Fetch::rendered(lane.format()),
@@ -555,8 +555,7 @@ impl MediaService {
 
     pub(crate) async fn download_media(
         &self,
-        client: &Client,
-        media_sources: &MediaSources,
+        room: &Room,
         event_id: &str,
         rendition: MediaRendition,
     ) -> Result<Vec<u8>> {
@@ -564,16 +563,18 @@ impl MediaService {
             MediaRendition::Thumbnail => (MediaLane::Thumbnail, DownloadLimits::thumbnail()),
             MediaRendition::FullFile => (MediaLane::FullFile, DownloadLimits::full_file()),
         };
-        let source = lane
-            .source(media_sources, event_id)
-            .ok_or_else(|| AppError::Other(format!("no media source for event {event_id}")))?;
+        let source = source::resolve(room, event_id, lane)
+            .await
+            .map_err(|reason| {
+                AppError::Other(format!("no media source for event {event_id} ({reason:?})"))
+            })?;
         let max_bytes = limits.max_bytes;
 
         let request = MediaRequestParameters {
             source,
             format: lane.format(),
         };
-        self.download(client, &request, limits)
+        self.download(&room.client(), &request, limits)
             .await
             .map_err(|reason| {
                 AppError::Other(format!(

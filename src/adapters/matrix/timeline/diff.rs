@@ -15,12 +15,19 @@ fn apply_append(
     values: Vec<Arc<TimelineItem>>,
     ctx: &TimelineContext<'_>,
 ) -> Option<TimelinePatch> {
+    let first_new = items.items().len();
     let msgs = items.append(values, ctx);
     if msgs.is_empty() {
         return None;
     }
-    enrich_messages(&msgs, ctx);
+    enrich_messages(items.rendered_from(first_new), ctx);
     Some(TimelinePatch::Append(msgs))
+}
+
+fn convert_and_enrich(value: &TimelineItem, ctx: &TimelineContext<'_>) -> Option<TimelineMessage> {
+    let msg = convert_timeline_item(value, ctx)?;
+    enrich_message(value, &msg, ctx);
+    Some(msg)
 }
 
 fn apply_push_front(
@@ -28,11 +35,9 @@ fn apply_push_front(
     value: Arc<TimelineItem>,
     ctx: &TimelineContext<'_>,
 ) -> Option<TimelinePatch> {
-    let msg = convert_timeline_item(&value, ctx);
+    let msg = convert_and_enrich(&value, ctx);
     items.push_front(value, msg.clone());
-    let msg = msg?;
-    enrich_message(&msg, ctx);
-    Some(TimelinePatch::PushFront(msg))
+    msg.map(TimelinePatch::PushFront)
 }
 
 fn apply_push_back(
@@ -40,11 +45,9 @@ fn apply_push_back(
     value: Arc<TimelineItem>,
     ctx: &TimelineContext<'_>,
 ) -> Option<TimelinePatch> {
-    let msg = convert_timeline_item(&value, ctx);
+    let msg = convert_and_enrich(&value, ctx);
     items.push_back(value, msg.clone());
-    let msg = msg?;
-    enrich_message(&msg, ctx);
-    Some(TimelinePatch::PushBack(msg))
+    msg.map(TimelinePatch::PushBack)
 }
 
 fn apply_pop_front(items: &mut TimelineItems) -> Option<TimelinePatch> {
@@ -61,11 +64,10 @@ fn apply_insert(
     value: Arc<TimelineItem>,
     ctx: &TimelineContext<'_>,
 ) -> Option<TimelinePatch> {
-    let msg = convert_timeline_item(&value, ctx);
+    let msg = convert_and_enrich(&value, ctx);
     items.insert(index, value, msg.clone());
     let msg = msg?;
     let mi = items.msg_index_at(index);
-    enrich_message(&msg, ctx);
     Some(TimelinePatch::Insert {
         index: mi,
         message: msg,
@@ -93,7 +95,7 @@ fn apply_set(
     match (old_msg, items.message_at(index)) {
         (Some(old), Some(new)) if old == *new => None,
         (Some(_), Some(new)) => {
-            enrich_message(new, ctx);
+            enrich_message(value, new, ctx);
             Some(TimelinePatch::Set {
                 index: items.msg_index_at(index),
                 message: new.clone(),
@@ -106,7 +108,7 @@ fn apply_set(
             })
         }
         (None, Some(new)) => {
-            enrich_message(new, ctx);
+            enrich_message(value, new, ctx);
             Some(TimelinePatch::Insert {
                 index: items.msg_index_at(index),
                 message: new.clone(),
@@ -135,7 +137,7 @@ fn apply_reset(
     ctx: &TimelineContext<'_>,
 ) -> TimelinePatch {
     let msgs = items.reset(values, ctx);
-    enrich_messages(&msgs, ctx);
+    enrich_messages(items.rendered_from(0), ctx);
     TimelinePatch::Reset(msgs)
 }
 
