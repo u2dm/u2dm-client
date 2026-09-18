@@ -60,6 +60,8 @@ pub(crate) use string_props;
 macro_rules! simple_callbacks {
     ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
         on_check_server "check-server" check_server pass CheckServer;
+        on_login_password "login-password" login_password
+            request(username "username" text, password "password" text) LoginPassword;
         on_login_oauth "login-oauth" login_oauth plain LoginOAuth;
         on_cancel_oauth "cancel-oauth" cancel_oauth plain CancelOAuth;
         on_back_to_homeserver "back-to-homeserver" back_to_homeserver plain BackToHomeserver;
@@ -73,6 +75,19 @@ macro_rules! simple_callbacks {
         on_select_room "select-room" select_room room SelectRoom;
         on_select_space "select-space" select_space opt_room SelectSpace;
         on_select_subspace "select-subspace" select_subspace opt_room SelectSubspace;
+        on_paginate_backwards "paginate-backwards" paginate_backwards room_key PaginateBackwards;
+        on_paginate_forwards "paginate-forwards" paginate_forwards room_key PaginateForwards;
+        on_jump_to_latest "jump-to-latest" jump_to_latest room_key JumpToLatest;
+        on_send_message "send-message" send_message
+            request(room_id "room-id" text, body "body" text, reply_to "reply-to" text) SendMessage;
+        on_send_sticker "send-sticker" send_sticker
+            request(room_id "room-id" text, pack_id "pack-id" text, shortcode "shortcode" text,
+                reply_to "reply-to" text) SendSticker;
+        on_send_attachment "send-attachment" send_attachment
+            request(room_id "room-id" text, caption "caption" text, as_document "as-document" flag,
+                reply_to "reply-to" text) SendAttachment;
+        on_save_file "save-file" save_file
+            request(event_id "event-id" text, filename "filename" text) SaveFile;
         on_open_media "open-media" open_media manual_string OpenMedia;
         on_open_video "open-video" open_video manual_string OpenVideo;
         on_close_video "close-video" close_video plain CloseVideo;
@@ -132,6 +147,37 @@ macro_rules! int_props {
     } };
 }
 pub(crate) use int_props;
+
+macro_rules! enum_props {
+    ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
+        set_login_phase(LoginStep) LoginView "LoginView" "step" set_step;
+        set_login_activity(LoginActivity) LoginView "LoginView" "activity" set_activity;
+        set_login_method_kind(LoginMethod) LoginView "LoginView" "method" set_method;
+        set_connection_state(&ConnectionStatus) SessionView "SessionView" "connection-status" set_connection_status;
+        set_timeline_state(TimelineStatus) RoomView "RoomView" "timeline-status" set_timeline_status;
+        set_toast_message(UserMessageKind) RoomView "RoomView" "toast-message" set_toast_message;
+        set_verification_phase(VerifyStep) VerificationView "VerificationView" "step" set_step;
+        set_verification_activity(VerificationActivity) VerificationView "VerificationView" "activity" set_activity;
+        set_verification_error(UserMessageKind) VerificationView "VerificationView" "error" set_error;
+        set_attachment_kind(AttachmentKind) AttachmentView "AttachmentView" "kind" set_kind;
+        set_attachment_error(UserMessageKind) AttachmentView "AttachmentView" "error" set_error;
+        set_video_error(UserMessageKind) VideoView "VideoView" "error" set_error;
+        set_audio_kind(AudioKind) AudioView "AudioView" "kind" set_kind;
+    } };
+}
+pub(crate) use enum_props;
+
+macro_rules! model_props {
+    ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
+        timeline Message RoomView "RoomView" "timeline" set_timeline;
+        rooms Room DirectoryView "DirectoryView" "rooms" set_rooms;
+        spaces Space DirectoryView "DirectoryView" "spaces" set_spaces;
+        subspaces Space DirectoryView "DirectoryView" "subspaces" set_subspaces;
+        sticker_rows StickerRow StickerView "StickerView" "rows" set_rows;
+        sticker_packs StickerPack StickerView "StickerView" "packs" set_packs;
+    } };
+}
+pub(crate) use model_props;
 
 macro_rules! define_ui_enum {
     ($name:ident; $($rust:ident $ui:ident $lit:literal;)*) => {
@@ -393,7 +439,6 @@ macro_rules! service_kinds {
 }
 pub(crate) use service_kinds;
 
-#[cfg(feature = "interpreted")]
 macro_rules! message_fields {
     ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
         unique_id UNIQUE_ID "unique-id" text;
@@ -413,7 +458,7 @@ macro_rules! message_fields {
         color_index COLOR_INDEX "color-index" int;
         is_own IS_OWN "is-own" flag;
         edited EDITED "edited" flag;
-        is_first_unread IS_FIRST_UNREAD "first-unread" flag;
+        first_unread FIRST_UNREAD "first-unread" flag;
         send_state SEND_STATE "send-state" enumk;
         send_progress SEND_PROGRESS "send-progress" ratio;
         has_reply HAS_REPLY "has-reply" flag;
@@ -442,10 +487,8 @@ macro_rules! message_fields {
         all_reactions ALL_REACTIONS "all-reactions" structs;
     } };
 }
-#[cfg(feature = "interpreted")]
 pub(crate) use message_fields;
 
-#[cfg(feature = "interpreted")]
 macro_rules! reaction_fields {
     ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
         key KEY "key" text;
@@ -460,7 +503,6 @@ macro_rules! reaction_fields {
     } };
 }
 
-#[cfg(feature = "interpreted")]
 macro_rules! reactor_fields {
     ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
         user_id USER_ID "user-id" text;
@@ -470,12 +512,9 @@ macro_rules! reactor_fields {
         has_avatar HAS_AVATAR "has-avatar" flag;
     } };
 }
-#[cfg(feature = "interpreted")]
 pub(crate) use reaction_fields;
-#[cfg(feature = "interpreted")]
 pub(crate) use reactor_fields;
 
-#[cfg(feature = "interpreted")]
 macro_rules! room_fields {
     ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
         id ID "id" text;
@@ -499,10 +538,8 @@ macro_rules! room_fields {
         avatar AVATAR "avatar" image;
     } };
 }
-#[cfg(feature = "interpreted")]
 pub(crate) use room_fields;
 
-#[cfg(feature = "interpreted")]
 macro_rules! space_fields {
     ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
         id ID "id" text;
@@ -515,10 +552,8 @@ macro_rules! space_fields {
         avatar AVATAR "avatar" image;
     } };
 }
-#[cfg(feature = "interpreted")]
 pub(crate) use space_fields;
 
-#[cfg(feature = "interpreted")]
 macro_rules! sticker_cell_fields {
     ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
         key KEY "key" text;
@@ -529,10 +564,8 @@ macro_rules! sticker_cell_fields {
         image IMAGE "image" image;
     } };
 }
-#[cfg(feature = "interpreted")]
 pub(crate) use sticker_cell_fields;
 
-#[cfg(feature = "interpreted")]
 macro_rules! sticker_pack_fields {
     ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
         id ID "id" text;
@@ -542,16 +575,13 @@ macro_rules! sticker_pack_fields {
         has_icon HAS_ICON "has-icon" flag;
     } };
 }
-#[cfg(feature = "interpreted")]
 pub(crate) use sticker_pack_fields;
 
-#[cfg(feature = "interpreted")]
 macro_rules! sticker_row_fields {
     ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
         title TITLE "title" text;
         is_header IS_HEADER "is-header" flag;
-        cells CELLS "cells" list;
+        cells CELLS "cells" structs;
     } };
 }
-#[cfg(feature = "interpreted")]
 pub(crate) use sticker_row_fields;

@@ -1,19 +1,29 @@
+use std::any::Any;
+use std::cell::RefCell;
 use std::collections::HashSet;
+use std::rc::Rc;
 use std::sync::Arc;
 
 use slint::{ComponentHandle, Image, Model, VecModel};
-use tokio::sync::OwnedSemaphorePermit;
+use tokio::sync::{OwnedSemaphorePermit, mpsc, watch};
 
+use super::clock::install_clock_invalidation;
 use super::decode::{
     AvatarSlot, DecodeOutcome, advance_animations, set_animation_tick, set_avatar_ready,
     set_image_ready,
 };
-use super::dto::{AudioRowUpdate, DecodeTarget, MediaFailureKind, StickerPackDto, StickerRowDto};
+use super::dto::{
+    AudioRowUpdate, DecodeTarget, MediaFailureKind, MessageDto, RoomDto, SpaceDto, StickerPackDto,
+    StickerRowDto, message_to_dto, room_to_dto, space_to_dto,
+};
+use super::multiplex::spawn_event_multiplexer;
 use super::props::{IntProp, StringProp, UiProps};
-use super::reconcile::{sticker_cell_row, sticker_pack_row, timeline_row_of};
-use super::reduce::dispatch_effect;
+use super::reconcile::{reorder_rows, sticker_cell_row, sticker_pack_row, timeline_row_of};
+use super::reduce::{dispatch_effect, set_sticker_query};
 use super::rows::{locate_row, patch_rows_by_id};
+use super::schema::model_props;
 use crate::commands::effects::Effect;
+use crate::commands::view::AppViewState;
 use crate::domain::message::TimelineMessage;
 use crate::domain::room::{Room, RoomId, Space};
 use crate::domain::timeline::EnrichmentDelta;
@@ -21,19 +31,16 @@ use crate::ports::media::MediaCache;
 
 pub trait UiBackend: Sized + 'static {
     type Window: ComponentHandle + UiProps + 'static;
-    type Message: Clone + 'static;
-    type Room: Clone + PartialEq + 'static;
-    type Space: Clone + PartialEq + 'static;
-    type StickerRow: Clone + 'static;
-    type StickerPack: Clone + 'static;
+    type Message: Clone + From<MessageDto> + 'static;
+    type Room: Clone + PartialEq + From<RoomDto> + 'static;
+    type Space: Clone + PartialEq + From<SpaceDto> + 'static;
+    type StickerRow: Clone + From<StickerRowDto> + 'static;
+    type StickerPack: Clone + From<StickerPackDto> + 'static;
 
-    fn convert_message(message: &TimelineMessage, media: &dyn MediaCache) -> Self::Message;
+    fn attach_models(window: &Self::Window, models: &Models<Self>);
+    fn bind_sticker_search(window: &Self::Window, search: impl Fn(&str) + 'static);
+
     fn enrich_message(entry: &mut Self::Message, delta: &EnrichmentDelta, media: &dyn MediaCache);
-    fn convert_room(room: &Room, media: &dyn MediaCache) -> Self::Room;
-    fn convert_space(space: &Space, media: &dyn MediaCache) -> Self::Space;
-
-    fn convert_sticker_row(row: &StickerRowDto) -> Self::StickerRow;
-    fn convert_sticker_pack(pack: &StickerPackDto) -> Self::StickerPack;
     fn patch_sticker_cell(row: &Self::StickerRow, key: &str, art: Option<&Image>) -> bool;
     fn patch_reactor_avatar(entry: &Self::Message, user_id: &str, image: &Image) -> bool;
     fn sticker_pack_with_icon(
@@ -55,6 +62,18 @@ pub trait UiBackend: Sized + 'static {
     fn set_message_media_failed(entry: &mut Self::Message, reason: MediaFailureKind);
     fn set_message_audio(entry: &mut Self::Message, update: &AudioRowUpdate);
 
+    fn convert_message(message: &TimelineMessage, media: &dyn MediaCache) -> Self::Message {
+        message_to_dto(message, media).into()
+    }
+
+    fn convert_room(room: &Room, media: &dyn MediaCache) -> Self::Room {
+        room_to_dto(room, media).into()
+    }
+
+    fn convert_space(space: &Space, media: &dyn MediaCache) -> Self::Space {
+        space_to_dto(space, media).into()
+    }
+
     fn with_models<R>(
         f: impl FnOnce(
             &VecModel<Self::Message>,
@@ -62,11 +81,77 @@ pub trait UiBackend: Sized + 'static {
             &VecModel<Self::Space>,
             &VecModel<Self::Space>,
         ) -> R,
-    ) -> Option<R>;
-    fn with_timeline<R>(f: impl FnOnce(&VecModel<Self::Message>) -> R) -> Option<R>;
+    ) -> Option<R> {
+        let models = models::<Self>()?;
+        Some(f(
+            &models.timeline,
+            &models.rooms,
+            &models.spaces,
+            &models.subspaces,
+        ))
+    }
+
+    fn with_timeline<R>(f: impl FnOnce(&VecModel<Self::Message>) -> R) -> Option<R> {
+        models::<Self>().map(|models| f(&models.timeline))
+    }
+
     fn with_stickers<R>(
         f: impl FnOnce(&VecModel<Self::StickerRow>, &VecModel<Self::StickerPack>) -> R,
-    ) -> Option<R>;
+    ) -> Option<R> {
+        models::<Self>().map(|models| f(&models.sticker_rows, &models.sticker_packs))
+    }
+}
+
+macro_rules! declare_models {
+    ($($field:ident $row:ident $g:ident $gname:literal $lit:literal $s:ident;)*) => {
+        pub struct Models<B: UiBackend> {
+            $(pub $field: Rc<VecModel<B::$row>>,)*
+        }
+
+        impl<B: UiBackend> Default for Models<B> {
+            fn default() -> Self {
+                Self { $($field: Rc::default(),)* }
+            }
+        }
+    };
+}
+
+model_props!(declare_models);
+
+thread_local! {
+    static MODELS: RefCell<Option<Rc<dyn Any>>> = const { RefCell::new(None) };
+}
+
+fn models<B: UiBackend>() -> Option<Rc<Models<B>>> {
+    MODELS.with(|cell| cell.borrow().clone())?.downcast().ok()
+}
+
+pub fn spawn_event_handler<B: UiBackend>(
+    window: &B::Window,
+    ui_rx: mpsc::Receiver<Effect>,
+    view_rx: watch::Receiver<Arc<AppViewState>>,
+    media_cache: Arc<dyn MediaCache>,
+) {
+    let models = Rc::new(Models::<B>::default());
+    B::attach_models(window, &models);
+    MODELS.with(|cell| *cell.borrow_mut() = Some(models));
+
+    install_render_hooks::<B>(window.as_weak());
+    install_clock_invalidation::<B>(Arc::clone(&media_cache));
+
+    let media = Arc::clone(&media_cache);
+    B::bind_sticker_search(window, move |query| {
+        set_sticker_query::<B>(query, media.as_ref());
+    });
+
+    let weak = window.as_weak();
+    spawn_event_multiplexer(ui_rx, view_rx, media_cache, move |event, media, permit| {
+        post_effect::<B>(&weak, media, event, permit);
+    });
+}
+
+pub fn reorder_spaces<B: UiBackend>(from: usize, to: usize) {
+    B::with_models(|_timeline, _rooms, spaces, _subspaces| reorder_rows(spaces, from, to));
 }
 
 pub struct UiEventContext<'a, B: UiBackend> {
@@ -77,7 +162,7 @@ pub struct UiEventContext<'a, B: UiBackend> {
     pub media: &'a dyn MediaCache,
 }
 
-pub fn post_effect<B: UiBackend>(
+fn post_effect<B: UiBackend>(
     weak: &slint::Weak<B::Window>,
     media: Arc<dyn MediaCache>,
     event: Effect,
@@ -99,7 +184,7 @@ pub fn post_effect<B: UiBackend>(
     .ok();
 }
 
-pub fn install_render_hooks<B: UiBackend>(weak: slint::Weak<B::Window>) {
+fn install_render_hooks<B: UiBackend>(weak: slint::Weak<B::Window>) {
     set_animation_tick(tick_animations::<B>);
 
     set_image_ready({

@@ -1,7 +1,7 @@
 use slint::{Image, Rgb8Pixel, SharedPixelBuffer, SharedString};
 
 use super::present::VerifyStep;
-use super::schema::{bool_props, int_props, string_props};
+use super::schema::{bool_props, enum_props, int_props, string_props};
 use crate::app::input::CommandSender;
 use crate::commands::effects::VerificationActivity;
 use crate::commands::messages::{UserMessage, UserMessageKind};
@@ -39,25 +39,19 @@ string_props!(prop_enum StringProp;);
 bool_props!(prop_enum BoolProp;);
 int_props!(prop_enum IntProp;);
 
+macro_rules! declare_enum_setters {
+    ($($fn:ident($ty:ty) $g:ident $gname:literal $lit:literal $s:ident;)*) => {
+        $( fn $fn(&self, value: $ty); )*
+    };
+}
+
 pub trait UiProps {
     fn set_string(&self, prop: StringProp, value: SharedString);
     fn set_bool(&self, prop: BoolProp, value: bool);
     fn set_int(&self, prop: IntProp, value: i32);
-    fn set_login_phase(&self, step: LoginStep);
-    fn set_login_activity(&self, activity: LoginActivity);
-    fn set_login_method_kind(&self, method: LoginMethod);
-    fn set_toast_message(&self, kind: UserMessageKind);
-    fn set_verification_error(&self, kind: UserMessageKind);
-    fn set_attachment_error(&self, kind: UserMessageKind);
-    fn set_attachment_kind(&self, kind: AttachmentKind);
-    fn set_video_error(&self, kind: UserMessageKind);
-    fn set_audio_kind(&self, kind: AudioKind);
+    enum_props!(declare_enum_setters);
     fn apply_video_frame(&self, buffer: SharedPixelBuffer<Rgb8Pixel>);
     fn clear_video_frame(&self);
-    fn set_connection_state(&self, status: &ConnectionStatus);
-    fn set_timeline_state(&self, status: TimelineStatus);
-    fn set_verification_phase(&self, phase: VerifyStep);
-    fn set_verification_activity(&self, activity: VerificationActivity);
     fn get_string(&self, prop: StringProp) -> SharedString;
     fn get_int(&self, prop: IntProp) -> i32;
     fn apply_user_avatar(&self, avatar: Option<Image>);

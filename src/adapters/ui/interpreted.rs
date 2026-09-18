@@ -1,4 +1,3 @@
-use std::cell::RefCell;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::rc::Rc;
@@ -11,50 +10,38 @@ use slint_interpreter::{
 use tokio::runtime::Runtime;
 use tokio::sync::{mpsc, watch};
 
-thread_local! {
-    static TIMELINE_MODEL: RefCell<Option<Rc<VecModel<Value>>>> = const { RefCell::new(None) };
-    static ROOMS_MODEL: RefCell<Option<Rc<VecModel<Value>>>> = const { RefCell::new(None) };
-    static SPACES_MODEL: RefCell<Option<Rc<VecModel<Value>>>> = const { RefCell::new(None) };
-    static SUBSPACES_MODEL: RefCell<Option<Rc<VecModel<Value>>>> = const { RefCell::new(None) };
-    static STICKER_ROWS_MODEL: RefCell<Option<Rc<VecModel<Value>>>> = const { RefCell::new(None) };
-    static STICKER_PACKS_MODEL: RefCell<Option<Rc<VecModel<Value>>>> = const { RefCell::new(None) };
-}
-
 use names::{
-    callback, emoji_entry, emoji_group, emoji_insert, emoji_store, login_request, message,
-    reaction, reactor, room, save_file_request, send_attachment_request, send_message_request,
-    send_sticker_request, space, sticker_cell, sticker_pack, sticker_row, sticker_view,
-    user_message, verification_emoji,
+    callback, emoji_entry, emoji_group, emoji_insert, emoji_store, message, reaction, reactor,
+    room, space, sticker_cell, sticker_pack, sticker_row, user_message, verification_emoji,
 };
 
-use super::audio;
-use super::backend::{UiBackend, install_render_hooks, post_effect, selected_room_key};
-use super::clock::install_clock_invalidation;
+use super::backend::{self, Models, UiBackend, reorder_spaces, selected_room_key};
 use super::decode::{AvatarSlot, request_avatar, request_media, request_sticker};
 use super::dto::{
-    AudioRowUpdate, MediaFailureKind, MediaState, ReactionDto, ReactorAvatarDto, StickerCellDto,
-    StickerPackDto, StickerRowDto, ThumbUpdate, enrich_to_update, message_to_dto, room_to_dto,
-    space_to_dto,
+    AudioRowUpdate, MediaFailureKind, MediaState, MessageDto, ReactionDto, ReactorAvatarDto,
+    RoomDto, SpaceDto, StickerCellDto, StickerPackDto, StickerRowDto, ThumbUpdate,
+    enrich_to_update,
 };
-use super::multiplex::spawn_event_multiplexer;
 use super::present::{MessageKind, ServiceKind, VerifyStep};
-use super::video::{self, millis_to_duration};
 use super::props::{BoolProp, IntProp, StringProp, UiProps};
-use super::reconcile::reorder_rows;
-use super::reduce::set_sticker_query;
 use super::schema::{
-    attachment_kinds, audio_kinds, connection_states, login_activities, login_methods, login_phases, media_failures, media_states, message_fields, message_kinds, preview_kinds, reaction_sends, room_fields, send_states, service_kinds, simple_callbacks, space_fields, timeline_states, user_message_kinds, verification_activities, verification_phases,
+    attachment_kinds, audio_kinds, connection_states, enum_props, login_activities, login_methods,
+    login_phases, media_failures, media_states, message_fields, message_kinds, model_props,
+    preview_kinds, reaction_fields, reaction_sends, reactor_fields, room_fields, send_states,
+    service_kinds, simple_callbacks, space_fields, sticker_cell_fields, sticker_pack_fields,
+    sticker_row_fields, timeline_states, user_message_kinds, verification_activities,
+    verification_phases,
 };
-use super::{emoji, router};
+use super::video::{self, millis_to_duration};
+use super::{audio, emoji, router};
 use crate::app::input::CommandSender;
 use crate::commands::effects::{Effect, VerificationActivity};
 use crate::commands::messages::{UserMessage, UserMessageKind};
 use crate::commands::ui::ViewportChanged;
 use crate::commands::view::{AppViewState, AttachmentKind, LoginActivity, LoginStep};
-use crate::domain::auth::{LoginCredentials, LoginMethod};
+use crate::domain::auth::LoginMethod;
 use crate::domain::media::AudioKind;
-use crate::domain::message::{MessagePreviewKind, ReactionSend, SendState, TimelineMessage};
-use crate::domain::room::{Room, Space};
+use crate::domain::message::{MessagePreviewKind, ReactionSend, SendState};
 use crate::domain::sync::ConnectionStatus;
 use crate::domain::timeline::{EnrichmentDelta, TimelineStatus};
 use crate::domain::verification::VerificationEmoji as DomainVerificationEmoji;
@@ -65,13 +52,8 @@ use crate::ports::media::MediaCache;
 mod names {
     pub mod callback {
         pub const GLOBAL: &str = "Actions";
-        pub const LOGIN_PASSWORD: &str = "login-password";
         pub const MOVE_SPACE: &str = "move-space";
         pub const TOGGLE_REACTION: &str = "toggle-reaction";
-        pub const SEND_MESSAGE: &str = "send-message";
-        pub const SAVE_FILE: &str = "save-file";
-        pub const SEND_STICKER: &str = "send-sticker";
-        pub const SEND_ATTACHMENT: &str = "send-attachment";
         pub const REQUEST_MEDIA: &str = "request-media";
         pub const REQUEST_ROOM_AVATAR: &str = "request-room-avatar";
         pub const REQUEST_STICKER: &str = "request-sticker";
@@ -82,9 +64,6 @@ mod names {
         pub const SEEK_AUDIO: &str = "seek-audio";
         pub const SEARCH_STICKERS: &str = "search-stickers";
         pub const SCROLL_POSITION_CHANGED: &str = "scroll-position-changed";
-        pub const PAGINATE_BACKWARDS: &str = "paginate-backwards";
-        pub const PAGINATE_FORWARDS: &str = "paginate-forwards";
-        pub const JUMP_TO_LATEST: &str = "jump-to-latest";
     }
 
     pub mod emoji_store {
@@ -135,12 +114,6 @@ mod names {
         sticker_row_fields!(gen_consts);
     }
 
-    pub mod sticker_view {
-        pub const NAME: &str = "StickerView";
-        pub const ROWS: &str = "rows";
-        pub const PACKS: &str = "packs";
-    }
-
     pub mod emoji_entry {
         pub const BASE: &str = "base";
         pub const TONES: &str = "tones";
@@ -165,37 +138,6 @@ mod names {
         pub const SYMBOL: &str = "symbol";
         pub const DESCRIPTION: &str = "description";
     }
-
-    pub mod login_request {
-        pub const HOMESERVER: &str = "homeserver";
-        pub const USERNAME: &str = "username";
-        pub const PASSWORD: &str = "password";
-    }
-
-    pub mod send_message_request {
-        pub const ROOM_ID: &str = "room-id";
-        pub const BODY: &str = "body";
-        pub const REPLY_TO: &str = "reply-to";
-    }
-
-    pub mod save_file_request {
-        pub const EVENT_ID: &str = "event-id";
-        pub const FILENAME: &str = "filename";
-    }
-
-    pub mod send_sticker_request {
-        pub const ROOM_ID: &str = "room-id";
-        pub const PACK_ID: &str = "pack-id";
-        pub const SHORTCODE: &str = "shortcode";
-        pub const REPLY_TO: &str = "reply-to";
-    }
-
-    pub mod send_attachment_request {
-        pub const ROOM_ID: &str = "room-id";
-        pub const CAPTION: &str = "caption";
-        pub const AS_DOCUMENT: &str = "as-document";
-        pub const REPLY_TO: &str = "reply-to";
-    }
 }
 
 fn set_prop(inst: &ComponentInstance, name: &str, value: Value) {
@@ -217,6 +159,12 @@ fn set_global(inst: &ComponentInstance, global: &str, name: &str, value: Value) 
 
 trait SlintEnum {
     fn slint(&self) -> (&'static str, &'static str);
+}
+
+impl<E: SlintEnum> SlintEnum for &E {
+    fn slint(&self) -> (&'static str, &'static str) {
+        E::slint(self)
+    }
 }
 
 fn enum_value(value: &impl SlintEnum) -> Value {
@@ -326,8 +274,9 @@ fn bind_action(
 }
 
 macro_rules! bind_interpreted_callbacks {
-    ($inst:expr, $tx:ident; $($on:ident $lit:literal $fn:ident $kind:ident $cmd:ident;)*) => {
-        $( bind_interpreted_callbacks!(@one $inst, $tx, $lit, $fn, $kind)?; )*
+    ($inst:expr, $tx:ident;
+        $($on:ident $lit:literal $fn:ident $kind:ident $(($($arg:tt)*))? $cmd:ident;)*) => {
+        $( bind_interpreted_callbacks!(@one $inst, $tx, $lit, $fn, $kind $(($($arg)*))?)?; )*
     };
     (@one $inst:expr, $tx:ident, $lit:literal, $fn:ident, plain) => {
         bind_interpreted_callbacks!(@unit $inst, $tx, $lit, $fn)
@@ -344,6 +293,25 @@ macro_rules! bind_interpreted_callbacks {
     (@one $inst:expr, $tx:ident, $lit:literal, $fn:ident, manual_string) => {
         bind_interpreted_callbacks!(@string $inst, $tx, $lit, $fn)
     };
+    (@one $inst:expr, $tx:ident, $lit:literal, $fn:ident, room_key) => {{
+        let tx = $tx.clone();
+        let weak = $inst.as_weak();
+        bind_action($inst, $lit, move |_args| {
+            router::$fn(&tx, selected_room_key::<InterpretedBackend>(&weak));
+            Value::Void
+        })
+    }};
+    (@one $inst:expr, $tx:ident, $lit:literal, $fn:ident,
+        request($($field:ident $name:literal $field_kind:ident),*)) => {{
+        let tx = $tx.clone();
+        bind_action($inst, $lit, move |args| {
+            let Some(s) = struct_arg(args, 0) else {
+                return Value::Void;
+            };
+            router::$fn(&tx, $(bind_interpreted_callbacks!(@field s $name $field_kind)),*);
+            Value::Void
+        })
+    }};
     (@unit $inst:expr, $tx:ident, $lit:literal, $fn:ident) => {{
         let tx = $tx.clone();
         bind_action($inst, $lit, move |_args| { router::$fn(&tx); Value::Void })
@@ -355,6 +323,14 @@ macro_rules! bind_interpreted_callbacks {
             Value::Void
         })
     }};
+    (@field $s:ident $name:literal text) => { field($s, $name) };
+    (@field $s:ident $name:literal flag) => { flag($s, $name) };
+}
+
+macro_rules! impl_enum_setters {
+    ($($fn:ident($ty:ty) $g:ident $gname:literal $lit:literal $s:ident;)*) => {
+        $( fn $fn(&self, value: $ty) { set_global(self, $gname, $lit, enum_value(&value)); } )*
+    };
 }
 
 impl UiProps for ComponentInstance {
@@ -375,41 +351,7 @@ impl UiProps for ComponentInstance {
         );
     }
 
-    fn set_login_phase(&self, step: LoginStep) {
-        set_global(self, "LoginView", "step", enum_value(&step));
-    }
-
-    fn set_login_activity(&self, activity: LoginActivity) {
-        set_global(self, "LoginView", "activity", enum_value(&activity));
-    }
-
-    fn set_login_method_kind(&self, method: LoginMethod) {
-        set_global(self, "LoginView", "method", enum_value(&method));
-    }
-
-    fn set_toast_message(&self, kind: UserMessageKind) {
-        set_global(self, "RoomView", "toast-message", enum_value(&kind));
-    }
-
-    fn set_verification_error(&self, kind: UserMessageKind) {
-        set_global(self, "VerificationView", "error", enum_value(&kind));
-    }
-
-    fn set_attachment_error(&self, kind: UserMessageKind) {
-        set_global(self, "AttachmentView", "error", enum_value(&kind));
-    }
-
-    fn set_attachment_kind(&self, kind: AttachmentKind) {
-        set_global(self, "AttachmentView", "kind", enum_value(&kind));
-    }
-
-    fn set_video_error(&self, kind: UserMessageKind) {
-        set_global(self, "VideoView", "error", enum_value(&kind));
-    }
-
-    fn set_audio_kind(&self, kind: AudioKind) {
-        set_global(self, "AudioView", "kind", enum_value(&kind));
-    }
+    enum_props!(impl_enum_setters);
 
     fn apply_video_frame(&self, buffer: SharedPixelBuffer<Rgb8Pixel>) {
         set_global(self, "VideoView", "frame", Value::Image(Image::from_rgb8(buffer)));
@@ -419,22 +361,6 @@ impl UiProps for ComponentInstance {
     fn clear_video_frame(&self) {
         set_global(self, "VideoView", "frame", Value::Image(Image::default()));
         set_global(self, "VideoView", "has-frame", Value::Bool(false));
-    }
-
-    fn set_connection_state(&self, status: &ConnectionStatus) {
-        set_global(self, "SessionView", "connection-status", enum_value(status));
-    }
-
-    fn set_timeline_state(&self, status: TimelineStatus) {
-        set_global(self, "RoomView", "timeline-status", enum_value(&status));
-    }
-
-    fn set_verification_phase(&self, phase: VerifyStep) {
-        set_global(self, "VerificationView", "step", enum_value(&phase));
-    }
-
-    fn set_verification_activity(&self, activity: VerificationActivity) {
-        set_global(self, "VerificationView", "activity", enum_value(&activity));
     }
 
     fn get_string(&self, prop: StringProp) -> SharedString {
@@ -551,6 +477,13 @@ fn set_value_avatar(entry: &mut Value, avatar_field: &str, has_field: &str, imag
     }
 }
 
+macro_rules! attach_interpreted_models {
+    ($window:ident $models:ident;
+        $($field:ident $row:ident $g:ident $gname:literal $lit:literal $s:ident;)*) => {
+        $( set_global($window, $gname, $lit, Value::Model(ModelRc::from(Rc::clone(&$models.$field)))); )*
+    };
+}
+
 pub struct InterpretedBackend;
 
 impl UiBackend for InterpretedBackend {
@@ -561,20 +494,49 @@ impl UiBackend for InterpretedBackend {
     type StickerRow = Value;
     type StickerPack = Value;
 
-    fn convert_message(message: &TimelineMessage, media: &dyn MediaCache) -> Value {
-        message_to_value(message, media)
+    fn attach_models(window: &ComponentInstance, models: &Models<Self>) {
+        model_props!(attach_interpreted_models window models;);
     }
 
-    fn enrich_message(entry: &mut Value, delta: &EnrichmentDelta, media: &dyn MediaCache) {
-        enrich_value(entry, delta, media);
+    fn bind_sticker_search(window: &ComponentInstance, search: impl Fn(&str) + 'static) {
+        let bound = bind_action(window, callback::SEARCH_STICKERS, move |args| {
+            search(&string_arg(args, 0));
+            Value::Void
+        });
+        if let Err(e) = bound {
+            tracing::warn!("failed to bind the sticker search callback: {e}");
+        }
     }
 
-    fn convert_room(room: &Room, media: &dyn MediaCache) -> Value {
-        room_to_value(room, media)
-    }
-
-    fn convert_space(space: &Space, media: &dyn MediaCache) -> Value {
-        space_to_value(space, media)
+    fn enrich_message(value: &mut Value, delta: &EnrichmentDelta, media: &dyn MediaCache) {
+        let Value::Struct(entry) = value else {
+            return;
+        };
+        let update = enrich_to_update(delta, media);
+        match update.thumbnail {
+            ThumbUpdate::Ready(img) => {
+                entry.set_field(message::THUMBNAIL.to_string(), Value::Image(img));
+                entry.set_field(
+                    message::MEDIA_STATE.to_string(),
+                    enum_value(&MediaState::Ready),
+                );
+            }
+            ThumbUpdate::Failed(reason) => {
+                entry.set_field(
+                    message::MEDIA_STATE.to_string(),
+                    enum_value(&MediaState::Failed),
+                );
+                entry.set_field(message::MEDIA_FAILURE.to_string(), enum_value(&reason));
+            }
+            ThumbUpdate::Unchanged => {}
+        }
+        if let Some(img) = update.avatar {
+            entry.set_field(message::AVATAR.to_string(), Value::Image(img));
+            entry.set_field(message::HAS_AVATAR.to_string(), Value::Bool(true));
+        }
+        if let Some(pronouns) = update.pronouns {
+            entry.set_field(message::PRONOUNS.to_string(), string_list(pronouns));
+        }
     }
 
     fn message_id(entry: &Value) -> &str {
@@ -587,7 +549,7 @@ impl UiBackend for InterpretedBackend {
 
     fn message_is_first_unread(entry: &Value) -> bool {
         matches!(entry, Value::Struct(s)
-            if matches!(s.get_field(message::IS_FIRST_UNREAD), Some(Value::Bool(true))))
+            if matches!(s.get_field(message::FIRST_UNREAD), Some(Value::Bool(true))))
     }
 
     fn room_id(entry: &Value) -> &str {
@@ -596,14 +558,6 @@ impl UiBackend for InterpretedBackend {
 
     fn space_id(entry: &Value) -> &str {
         room_id_from_value(entry).map_or("", SharedString::as_str)
-    }
-
-    fn convert_sticker_row(row: &StickerRowDto) -> Value {
-        sticker_row_to_value(row)
-    }
-
-    fn convert_sticker_pack(pack: &StickerPackDto) -> Value {
-        sticker_pack_to_value(pack)
     }
 
     fn sticker_pack_with_icon(pack: &Value, pack_id: &str, image: &Image) -> Option<Value> {
@@ -742,27 +696,6 @@ impl UiBackend for InterpretedBackend {
             s.set_field(message::MEDIA_FAILURE.to_string(), enum_value(&reason));
         }
     }
-
-    fn with_models<R>(
-        f: impl FnOnce(&VecModel<Value>, &VecModel<Value>, &VecModel<Value>, &VecModel<Value>) -> R,
-    ) -> Option<R> {
-        let timeline = TIMELINE_MODEL.with(|cell| cell.borrow().clone())?;
-        let rooms = ROOMS_MODEL.with(|cell| cell.borrow().clone())?;
-        let spaces = SPACES_MODEL.with(|cell| cell.borrow().clone())?;
-        let subspaces = SUBSPACES_MODEL.with(|cell| cell.borrow().clone())?;
-        Some(f(&timeline, &rooms, &spaces, &subspaces))
-    }
-
-    fn with_timeline<R>(f: impl FnOnce(&VecModel<Value>) -> R) -> Option<R> {
-        let timeline = TIMELINE_MODEL.with(|cell| cell.borrow().clone())?;
-        Some(f(&timeline))
-    }
-
-    fn with_stickers<R>(f: impl FnOnce(&VecModel<Value>, &VecModel<Value>) -> R) -> Option<R> {
-        let rows = STICKER_ROWS_MODEL.with(|cell| cell.borrow().clone())?;
-        let packs = STICKER_PACKS_MODEL.with(|cell| cell.borrow().clone())?;
-        Some(f(&rows, &packs))
-    }
 }
 
 pub struct SlintUiAdapter {
@@ -788,71 +721,6 @@ impl SlintUiAdapter {
             Ok::<_, AppError>(inst)
         })?;
         Ok(Self { instance })
-    }
-
-    fn bind_composer_callbacks(&self, cmd_tx: &CommandSender) -> Result<()> {
-        let tx = cmd_tx.clone();
-        bind_action(&self.instance, callback::SEND_MESSAGE, move |args| {
-            let Some(s) = struct_arg(args, 0) else {
-                return Value::Void;
-            };
-            router::send_message(
-                &tx,
-                field(s, send_message_request::ROOM_ID),
-                field(s, send_message_request::BODY),
-                field(s, send_message_request::REPLY_TO),
-            );
-            Value::Void
-        })?;
-
-        let tx = cmd_tx.clone();
-        bind_action(&self.instance, callback::SEND_STICKER, move |args| {
-            let Some(s) = struct_arg(args, 0) else {
-                return Value::Void;
-            };
-            router::send_sticker(
-                &tx,
-                field(s, send_sticker_request::ROOM_ID),
-                field(s, send_sticker_request::PACK_ID),
-                field(s, send_sticker_request::SHORTCODE),
-                field(s, send_sticker_request::REPLY_TO),
-            );
-            Value::Void
-        })?;
-
-        let tx = cmd_tx.clone();
-        bind_action(&self.instance, callback::SEND_ATTACHMENT, move |args| {
-            let Some(s) = struct_arg(args, 0) else {
-                return Value::Void;
-            };
-            router::send_attachment(
-                &tx,
-                field(s, send_attachment_request::ROOM_ID),
-                field(s, send_attachment_request::CAPTION),
-                flag(s, send_attachment_request::AS_DOCUMENT),
-                field(s, send_attachment_request::REPLY_TO),
-            );
-            Value::Void
-        })?;
-
-        let tx = cmd_tx.clone();
-        bind_action(&self.instance, callback::SAVE_FILE, move |args| {
-            let Some(s) = struct_arg(args, 0) else {
-                return Value::Void;
-            };
-            router::save_file(
-                &tx,
-                field(s, save_file_request::EVENT_ID),
-                field(s, save_file_request::FILENAME),
-            );
-            Value::Void
-        })?;
-
-        let tx = cmd_tx.clone();
-        bind_action(&self.instance, callback::TOGGLE_REACTION, move |args| {
-            router::toggle_reaction(&tx, string_arg(args, 0), string_arg(args, 1));
-            Value::Void
-        })
     }
 
     fn bind_audio_callbacks(&self, cmd_tx: &CommandSender) -> Result<()> {
@@ -926,35 +794,19 @@ impl SlintUiAdapter {
         simple_callbacks!(bind_interpreted_callbacks &self.instance, cmd_tx;);
 
         let tx = cmd_tx.clone();
-        bind_action(&self.instance, callback::LOGIN_PASSWORD, move |args| {
-            let Some(s) = struct_arg(args, 0) else {
-                return Value::Void;
-            };
-            router::login_password(
-                &tx,
-                LoginCredentials {
-                    username: field(s, login_request::USERNAME),
-                    password: field(s, login_request::PASSWORD),
-                },
-            );
-            Value::Void
-        })?;
-
-        let tx = cmd_tx.clone();
         bind_action(&self.instance, callback::MOVE_SPACE, move |args| {
             if let (Some(from), Some(to)) = (usize_arg(args, 0), usize_arg(args, 1)) {
-                router::move_space(&tx, from, to, |from, to| {
-                    SPACES_MODEL.with(|cell| {
-                        if let Some(model) = cell.borrow().as_ref() {
-                            reorder_rows(model, from, to);
-                        }
-                    });
-                });
+                router::move_space(&tx, from, to, reorder_spaces::<InterpretedBackend>);
             }
             Value::Void
         })?;
 
-        self.bind_composer_callbacks(cmd_tx)?;
+        let tx = cmd_tx.clone();
+        bind_action(&self.instance, callback::TOGGLE_REACTION, move |args| {
+            router::toggle_reaction(&tx, string_arg(args, 0), string_arg(args, 1));
+            Value::Void
+        })?;
+
         self.bind_decode_requests()?;
         self.bind_audio_callbacks(cmd_tx)?;
 
@@ -971,30 +823,7 @@ impl SlintUiAdapter {
                 );
                 Value::Void
             },
-        )?;
-
-        let tx = cmd_tx.clone();
-        let weak = self.instance.as_weak();
-        bind_action(&self.instance, callback::PAGINATE_BACKWARDS, move |_args| {
-            router::paginate_backwards(&tx, selected_room_key::<InterpretedBackend>(&weak));
-            Value::Void
-        })?;
-
-        let tx = cmd_tx.clone();
-        let weak = self.instance.as_weak();
-        bind_action(&self.instance, callback::PAGINATE_FORWARDS, move |_args| {
-            router::paginate_forwards(&tx, selected_room_key::<InterpretedBackend>(&weak));
-            Value::Void
-        })?;
-
-        let tx = cmd_tx.clone();
-        let weak = self.instance.as_weak();
-        bind_action(&self.instance, callback::JUMP_TO_LATEST, move |_args| {
-            router::jump_to_latest(&tx, selected_room_key::<InterpretedBackend>(&weak));
-            Value::Void
-        })?;
-
-        Ok(())
+        )
     }
 
     pub fn spawn_event_handler(
@@ -1003,73 +832,12 @@ impl SlintUiAdapter {
         view_rx: watch::Receiver<Arc<AppViewState>>,
         media_cache: Arc<dyn MediaCache>,
     ) {
-        let weak = self.instance.as_weak();
-        let timeline_model: Rc<VecModel<Value>> = Rc::new(VecModel::default());
-        let rooms_model: Rc<VecModel<Value>> = Rc::new(VecModel::default());
-        let spaces_model: Rc<VecModel<Value>> = Rc::new(VecModel::default());
-        let subspaces_model: Rc<VecModel<Value>> = Rc::new(VecModel::default());
-        let sticker_rows_model: Rc<VecModel<Value>> = Rc::new(VecModel::default());
-        let sticker_packs_model: Rc<VecModel<Value>> = Rc::new(VecModel::default());
-
-        set_global(
+        backend::spawn_event_handler::<InterpretedBackend>(
             &self.instance,
-            "RoomView",
-            "timeline",
-            Value::Model(ModelRc::from(Rc::clone(&timeline_model))),
+            ui_rx,
+            view_rx,
+            media_cache,
         );
-        set_global(
-            &self.instance,
-            "DirectoryView",
-            "rooms",
-            Value::Model(ModelRc::from(Rc::clone(&rooms_model))),
-        );
-        set_global(
-            &self.instance,
-            "DirectoryView",
-            "spaces",
-            Value::Model(ModelRc::from(Rc::clone(&spaces_model))),
-        );
-        set_global(
-            &self.instance,
-            "DirectoryView",
-            "subspaces",
-            Value::Model(ModelRc::from(Rc::clone(&subspaces_model))),
-        );
-        set_global(
-            &self.instance,
-            sticker_view::NAME,
-            sticker_view::ROWS,
-            Value::Model(ModelRc::from(Rc::clone(&sticker_rows_model))),
-        );
-        set_global(
-            &self.instance,
-            sticker_view::NAME,
-            sticker_view::PACKS,
-            Value::Model(ModelRc::from(Rc::clone(&sticker_packs_model))),
-        );
-
-        TIMELINE_MODEL.with(|cell| *cell.borrow_mut() = Some(timeline_model));
-        ROOMS_MODEL.with(|cell| *cell.borrow_mut() = Some(rooms_model));
-        SPACES_MODEL.with(|cell| *cell.borrow_mut() = Some(spaces_model));
-        SUBSPACES_MODEL.with(|cell| *cell.borrow_mut() = Some(subspaces_model));
-        STICKER_ROWS_MODEL.with(|cell| *cell.borrow_mut() = Some(sticker_rows_model));
-        STICKER_PACKS_MODEL.with(|cell| *cell.borrow_mut() = Some(sticker_packs_model));
-
-        install_render_hooks::<InterpretedBackend>(self.instance.as_weak());
-        install_clock_invalidation::<InterpretedBackend>(Arc::clone(&media_cache));
-
-        let media = Arc::clone(&media_cache);
-        let bound = bind_action(&self.instance, callback::SEARCH_STICKERS, move |args| {
-            set_sticker_query::<InterpretedBackend>(&string_arg(args, 0), media.as_ref());
-            Value::Void
-        });
-        if let Err(e) = bound {
-            tracing::warn!("failed to bind the sticker search callback: {e}");
-        }
-
-        spawn_event_multiplexer(ui_rx, view_rx, media_cache, move |event, media, permit| {
-            post_effect::<InterpretedBackend>(&weak, media, event, permit);
-        });
     }
 
     pub fn run(&self) -> Result<()> {
@@ -1226,61 +994,13 @@ fn float_list(items: Vec<f32>) -> Value {
     Value::Model(ModelRc::new(VecModel::from(values)))
 }
 
-trait ToValue {
-    fn to_value(&self) -> Value;
-}
-
-fn struct_list<T: ToValue>(items: &[T]) -> Value {
-    let values: Vec<Value> = items.iter().map(ToValue::to_value).collect();
-    Value::Model(ModelRc::new(VecModel::from(values)))
-}
-
-impl ToValue for ReactorAvatarDto {
-    fn to_value(&self) -> Value {
-        let mut fields = Struct::default();
-        fields.set_field(
-            reactor::USER_ID.to_string(),
-            Value::String(self.user_id.clone()),
-        );
-        fields.set_field(
-            reactor::INITIAL.to_string(),
-            Value::String(self.initial.clone()),
-        );
-        fields.set_field(reactor::COLOR_INDEX.to_string(), num(self.color_index));
-        fields.set_field(
-            reactor::HAS_AVATAR.to_string(),
-            Value::Bool(self.image.is_some()),
-        );
-        if let Some(image) = self.image.clone() {
-            fields.set_field(reactor::AVATAR.to_string(), Value::Image(image));
-        }
-        Value::Struct(fields)
-    }
-}
-
-impl ToValue for ReactionDto {
-    fn to_value(&self) -> Value {
-        let mut fields = Struct::default();
-        fields.set_field(reaction::KEY.to_string(), Value::String(self.key.clone()));
-        fields.set_field(
-            reaction::LABEL.to_string(),
-            Value::String(self.label.clone()),
-        );
-        fields.set_field(reaction::COUNT.to_string(), num(self.count));
-        fields.set_field(reaction::MINE.to_string(), Value::Bool(self.mine));
-        fields.set_field(reaction::SEND.to_string(), enum_value(&self.send));
-        fields.set_field(reaction::OVERFLOW.to_string(), Value::Bool(self.overflow));
-        fields.set_field(
-            reaction::REACTORS.to_string(),
-            Value::String(self.reactors.clone()),
-        );
-        fields.set_field(
-            reaction::HIDDEN_REACTORS.to_string(),
-            num(self.hidden_reactors),
-        );
-        fields.set_field(reaction::AVATARS.to_string(), struct_list(&self.avatars));
-        Value::Struct(fields)
-    }
+fn struct_list<T>(items: Vec<T>) -> Value
+where
+    Value: From<T>,
+{
+    Value::Model(ModelRc::new(
+        items.into_iter().map(Value::from).collect::<VecModel<_>>(),
+    ))
 }
 
 macro_rules! field_value {
@@ -1303,7 +1023,7 @@ macro_rules! field_value {
         $s.set_field($lit.to_string(), float_list($val));
     };
     ($s:ident, $lit:literal, $val:expr, structs) => {
-        $s.set_field($lit.to_string(), struct_list(&$val));
+        $s.set_field($lit.to_string(), struct_list($val));
     };
     ($s:ident, $lit:literal, $val:expr, image) => {
         if let Some(img) = $val {
@@ -1318,53 +1038,26 @@ macro_rules! field_value {
     };
 }
 
-macro_rules! gen_to_value {
-    ($fn:ident $ty:ident $dto:ident $($f:ident $c:ident $lit:literal $k:ident;)*) => {
-        fn $fn(src: &$ty, media: &dyn MediaCache) -> Value {
-            let d = $dto(src, media);
-            let mut fields = Struct::default();
-            $( field_value!(fields, $lit, d.$f, $k); )*
-            Value::Struct(fields)
+macro_rules! impl_value_from {
+    ($dto:ident; $($f:ident $c:ident $lit:literal $k:ident;)*) => {
+        impl From<$dto> for Value {
+            fn from(d: $dto) -> Self {
+                let mut fields = Struct::default();
+                $( field_value!(fields, $lit, d.$f, $k); )*
+                Value::Struct(fields)
+            }
         }
     };
 }
 
-message_fields!(gen_to_value message_to_value TimelineMessage message_to_dto);
-
-fn enrich_value(value: &mut Value, delta: &EnrichmentDelta, media: &dyn MediaCache) {
-    let Value::Struct(entry) = value else {
-        return;
-    };
-    let update = enrich_to_update(delta, media);
-    match update.thumbnail {
-        ThumbUpdate::Ready(img) => {
-            entry.set_field(message::THUMBNAIL.to_string(), Value::Image(img));
-            entry.set_field(
-                message::MEDIA_STATE.to_string(),
-                enum_value(&MediaState::Ready),
-            );
-        }
-        ThumbUpdate::Failed(reason) => {
-            entry.set_field(
-                message::MEDIA_STATE.to_string(),
-                enum_value(&MediaState::Failed),
-            );
-            entry.set_field(message::MEDIA_FAILURE.to_string(), enum_value(&reason));
-        }
-        ThumbUpdate::Unchanged => {}
-    }
-    if let Some(img) = update.avatar {
-        entry.set_field(message::AVATAR.to_string(), Value::Image(img));
-        entry.set_field(message::HAS_AVATAR.to_string(), Value::Bool(true));
-    }
-    if let Some(pronouns) = update.pronouns {
-        entry.set_field(message::PRONOUNS.to_string(), string_list(pronouns));
-    }
-}
-
-room_fields!(gen_to_value room_to_value Room room_to_dto);
-
-space_fields!(gen_to_value space_to_value Space space_to_dto);
+message_fields!(impl_value_from MessageDto;);
+reaction_fields!(impl_value_from ReactionDto;);
+reactor_fields!(impl_value_from ReactorAvatarDto;);
+room_fields!(impl_value_from RoomDto;);
+space_fields!(impl_value_from SpaceDto;);
+sticker_cell_fields!(impl_value_from StickerCellDto;);
+sticker_pack_fields!(impl_value_from StickerPackDto;);
+sticker_row_fields!(impl_value_from StickerRowDto;);
 
 fn entry_id_from_value(val: &Value) -> Option<&SharedString> {
     message_text_field(val, message::UNIQUE_ID)
@@ -1378,64 +1071,6 @@ fn message_text_field<'a>(val: &'a Value, field: &str) -> Option<&'a SharedStrin
     } else {
         None
     }
-}
-
-fn sticker_cell_to_value(d: &StickerCellDto) -> Value {
-    let mut fields = Struct::default();
-    fields.set_field(sticker_cell::KEY.to_string(), Value::String(d.key.clone()));
-    fields.set_field(
-        sticker_cell::PACK_ID.to_string(),
-        Value::String(d.pack_id.clone()),
-    );
-    fields.set_field(
-        sticker_cell::SHORTCODE.to_string(),
-        Value::String(d.shortcode.clone()),
-    );
-    fields.set_field(
-        sticker_cell::LABEL.to_string(),
-        Value::String(d.label.clone()),
-    );
-    fields.set_field(
-        sticker_cell::MEDIA_STATE.to_string(),
-        enum_value(&d.media_state),
-    );
-    if let Some(img) = d.image.clone() {
-        fields.set_field(sticker_cell::IMAGE.to_string(), Value::Image(img));
-    }
-    Value::Struct(fields)
-}
-
-fn sticker_pack_to_value(d: &StickerPackDto) -> Value {
-    let mut fields = Struct::default();
-    fields.set_field(sticker_pack::ID.to_string(), Value::String(d.id.clone()));
-    fields.set_field(
-        sticker_pack::TITLE.to_string(),
-        Value::String(d.title.clone()),
-    );
-    fields.set_field(sticker_pack::HEADER_ROW.to_string(), num(d.header_row));
-    fields.set_field(
-        sticker_pack::HAS_ICON.to_string(),
-        Value::Bool(d.icon.is_some()),
-    );
-    if let Some(icon) = d.icon.clone() {
-        fields.set_field(sticker_pack::ICON.to_string(), Value::Image(icon));
-    }
-    Value::Struct(fields)
-}
-
-fn sticker_row_to_value(d: &StickerRowDto) -> Value {
-    let cells: Vec<Value> = d.cells.iter().map(sticker_cell_to_value).collect();
-    let mut fields = Struct::default();
-    fields.set_field(
-        sticker_row::TITLE.to_string(),
-        Value::String(d.title.clone()),
-    );
-    fields.set_field(sticker_row::IS_HEADER.to_string(), Value::Bool(d.is_header));
-    fields.set_field(
-        sticker_row::CELLS.to_string(),
-        Value::Model(ModelRc::new(VecModel::from(cells))),
-    );
-    Value::Struct(fields)
 }
 
 fn unclaimed_face(face: &Value, user_id: &str) -> bool {

@@ -61,6 +61,7 @@ pub struct StickerPackDto {
     pub title: SharedString,
     pub header_row: i32,
     pub icon: Option<Image>,
+    pub has_icon: bool,
     pub icon_cell_key: SharedString,
 }
 
@@ -109,11 +110,13 @@ pub fn sticker_grid(packs: &[StickerPack], query: &str, media: &dyn MediaCache) 
             continue;
         }
 
+        let icon = cells.first().and_then(|cell| cell.image.clone());
         grid.packs.push(StickerPackDto {
             id: SharedString::from(pack.id.as_ref()),
             title: SharedString::from(&pack.title),
             header_row: i32::try_from(grid.rows.len()).unwrap_or(0),
-            icon: cells.first().and_then(|cell| cell.image.clone()),
+            has_icon: icon.is_some(),
+            icon,
             icon_cell_key: cells
                 .first()
                 .map(|cell| cell.key.clone())
@@ -178,7 +181,8 @@ pub struct ReactorAvatarDto {
     pub user_id: SharedString,
     pub initial: SharedString,
     pub color_index: i32,
-    pub image: Option<Image>,
+    pub avatar: Option<Image>,
+    pub has_avatar: bool,
 }
 
 #[derive(Clone)]
@@ -213,7 +217,7 @@ pub struct MessageDto {
     pub color_index: i32,
     pub is_own: bool,
     pub edited: bool,
-    pub is_first_unread: bool,
+    pub first_unread: bool,
     pub send_state: SendState,
     pub send_progress: f32,
     pub has_reply: bool,
@@ -294,7 +298,7 @@ fn count<T: TryInto<i32>>(value: T) -> i32 {
 }
 
 fn reactor_avatar_dto(reactor: &Reactor, media: &dyn MediaCache) -> ReactorAvatarDto {
-    let image = reactor
+    let avatar = reactor
         .avatar_url
         .as_deref()
         .and_then(|mxc| media.user_avatar_path(mxc))
@@ -303,7 +307,8 @@ fn reactor_avatar_dto(reactor: &Reactor, media: &dyn MediaCache) -> ReactorAvata
         user_id: SharedString::from(&reactor.user_id),
         initial: SharedString::from(user_initial(&reactor.user_id)),
         color_index: avatar_color_index(&reactor.user_id),
-        image,
+        has_avatar: avatar.is_some(),
+        avatar,
     }
 }
 
@@ -505,7 +510,7 @@ pub fn message_to_dto(m: &TimelineMessage, media: &dyn MediaCache) -> MessageDto
         color_index: avatar_color_index(&m.sender),
         is_own: m.is_own,
         edited: m.edited,
-        is_first_unread: m.is_first_unread,
+        first_unread: m.is_first_unread,
         send_state: m.send_state,
         send_progress: m.send_state.fraction(),
         has_reply: m.reply.is_some(),

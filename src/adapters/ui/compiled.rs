@@ -1,4 +1,3 @@
-use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::Arc;
 
@@ -8,36 +7,35 @@ use slint::{
 use tokio::runtime::Runtime;
 use tokio::sync::{mpsc, watch};
 
-use super::audio;
-use super::backend::{UiBackend, install_render_hooks, post_effect, selected_room_key};
-use super::clock::install_clock_invalidation;
+use super::backend::{self, Models, UiBackend, reorder_spaces, selected_room_key};
 use super::decode::{AvatarSlot, request_avatar, request_media, request_sticker};
 use super::dto::{
-    AudioRowUpdate, MediaFailureKind, MediaState, ReactionDto, ReactorAvatarDto, StickerCellDto,
-    StickerPackDto, StickerRowDto, ThumbUpdate, enrich_to_update, message_to_dto, room_to_dto,
-    space_to_dto,
+    AudioRowUpdate, MediaFailureKind, MediaState, MessageDto, ReactionDto, ReactorAvatarDto,
+    RoomDto, SpaceDto, StickerCellDto, StickerPackDto, StickerRowDto, ThumbUpdate,
+    enrich_to_update,
 };
 #[cfg(feature = "demo")]
 use super::dump;
-use super::multiplex::spawn_event_multiplexer;
 use super::present::{MessageKind, ServiceKind, VerifyStep};
-use super::video::{self, millis_to_duration};
 use super::props::{BoolProp, IntProp, StringProp, UiProps};
-use super::reconcile::reorder_rows;
-use super::reduce::set_sticker_query;
 use super::schema::{
-    attachment_kinds, audio_kinds, bool_props, connection_states, int_props, login_activities, login_methods, login_phases, media_failures, media_states, message_kinds, preview_kinds, reaction_sends, send_states, service_kinds, simple_callbacks, string_props, timeline_states, user_message_kinds, verification_activities, verification_phases,
+    attachment_kinds, audio_kinds, bool_props, connection_states, enum_props, int_props,
+    login_activities, login_methods, login_phases, media_failures, media_states, message_fields,
+    message_kinds, model_props, preview_kinds, reaction_fields, reaction_sends, reactor_fields,
+    room_fields, send_states, service_kinds, simple_callbacks, space_fields, sticker_cell_fields,
+    sticker_pack_fields, sticker_row_fields, string_props, timeline_states, user_message_kinds,
+    verification_activities, verification_phases,
 };
-use super::{emoji, router};
+use super::video::{self, millis_to_duration};
+use super::{audio, emoji, router};
 use crate::app::input::CommandSender;
 use crate::commands::effects::{Effect, VerificationActivity};
 use crate::commands::messages::{UserMessage, UserMessageKind};
 use crate::commands::ui::ViewportChanged;
 use crate::commands::view::{AppViewState, AttachmentKind, LoginActivity, LoginStep};
-use crate::domain::auth::{LoginCredentials, LoginMethod};
+use crate::domain::auth::LoginMethod;
 use crate::domain::media::AudioKind;
-use crate::domain::message::{MessagePreviewKind, ReactionSend, SendState, TimelineMessage};
-use crate::domain::room::{Room, Space};
+use crate::domain::message::{MessagePreviewKind, ReactionSend, SendState};
 use crate::domain::sync::ConnectionStatus;
 use crate::domain::timeline::{EnrichmentDelta, TimelineStatus};
 use crate::domain::verification::VerificationEmoji as DomainVerificationEmoji;
@@ -52,12 +50,12 @@ mod generated {
 use generated::Probe;
 use generated::{
     Actions, AppWindow, AttachmentKind as UiAttachmentKind, AttachmentView,
-    AudioKind as UiAudioKind, AudioView, ConnectionState, DirectoryView, EmojiEntry, EmojiGroup, EmojiInsert, EmojiStore,
-    LoginActivity as UiLoginActivity, LoginMethodKind as UiLoginMethodKind, LoginPhase, LoginView,
-    MediaFailure as UiMediaFailure, MediaState as UiMediaState, MessageEntry,
-    MessageKind as UiMessageKind, PreviewKind as UiPreviewKind, ReactionEntry, ReactorAvatar,
-    ReactionSend as UiReactionSend, RoomEntry, RoomView, SendState as UiSendState,
-    ServiceKind as UiServiceKind, SessionView,
+    AudioKind as UiAudioKind, AudioView, ConnectionState, DirectoryView, EmojiEntry, EmojiGroup,
+    EmojiInsert, EmojiStore, LoginActivity as UiLoginActivity,
+    LoginMethodKind as UiLoginMethodKind, LoginPhase, LoginView, MediaFailure as UiMediaFailure,
+    MediaState as UiMediaState, MessageEntry, MessageKind as UiMessageKind,
+    PreviewKind as UiPreviewKind, ReactionEntry, ReactionSend as UiReactionSend, ReactorAvatar,
+    RoomEntry, RoomView, SendState as UiSendState, ServiceKind as UiServiceKind, SessionView,
     SpaceEntry, StickerCell, StickerPackTab, StickerRow, StickerView, TimelineState,
     UserMessage as UiUserMessage, UserMessageKind as UiUserMessageKind,
     VerificationActivity as UiVerificationActivity, VerificationEmoji, VerificationPhase,
@@ -68,15 +66,6 @@ fn actions(window: &AppWindow) -> Actions<'_> {
     window.global::<Actions>()
 }
 
-thread_local! {
-    static TIMELINE_MODEL: RefCell<Option<Rc<VecModel<MessageEntry>>>> = const { RefCell::new(None) };
-    static ROOMS_MODEL: RefCell<Option<Rc<VecModel<RoomEntry>>>> = const { RefCell::new(None) };
-    static SPACES_MODEL: RefCell<Option<Rc<VecModel<SpaceEntry>>>> = const { RefCell::new(None) };
-    static SUBSPACES_MODEL: RefCell<Option<Rc<VecModel<SpaceEntry>>>> = const { RefCell::new(None) };
-    static STICKER_ROWS_MODEL: RefCell<Option<Rc<VecModel<StickerRow>>>> = const { RefCell::new(None) };
-    static STICKER_PACKS_MODEL: RefCell<Option<Rc<VecModel<StickerPackTab>>>> = const { RefCell::new(None) };
-}
-
 macro_rules! impl_prop_setter {
     ($fn:ident $enum:ident $ty:ty; $($(#[$attr:meta])* $v:ident $g:ident $gname:literal $lit:literal $s:ident;)*) => {
         fn $fn(&self, prop: $enum, value: $ty) {
@@ -85,9 +74,16 @@ macro_rules! impl_prop_setter {
     };
 }
 
+macro_rules! impl_enum_setters {
+    ($($fn:ident($ty:ty) $g:ident $gname:literal $lit:literal $s:ident;)*) => {
+        $( fn $fn(&self, value: $ty) { self.global::<$g>().$s(value.slint()); } )*
+    };
+}
+
 macro_rules! bind_compiled_callbacks {
-    ($win:ident $tx:ident; $($on:ident $lit:literal $fn:ident $kind:ident $cmd:ident;)*) => {
-        $( bind_compiled_callbacks!(@one $win $tx $on $fn $kind); )*
+    ($win:ident $tx:ident;
+        $($on:ident $lit:literal $fn:ident $kind:ident $(($($arg:tt)*))? $cmd:ident;)*) => {
+        $( bind_compiled_callbacks!(@one $win $tx $on $fn $kind $(($($arg)*))?); )*
     };
     (@one $win:ident $tx:ident $on:ident $fn:ident plain) => {
         bind_compiled_callbacks!(@unit $win $tx $on $fn)
@@ -104,6 +100,18 @@ macro_rules! bind_compiled_callbacks {
     (@one $win:ident $tx:ident $on:ident $fn:ident manual_string) => {
         bind_compiled_callbacks!(@string $win $tx $on $fn)
     };
+    (@one $win:ident $tx:ident $on:ident $fn:ident room_key) => {{
+        let tx = $tx.clone();
+        let weak = $win.as_weak();
+        actions($win).$on(move || router::$fn(&tx, selected_room_key::<CompiledBackend>(&weak)));
+    }};
+    (@one $win:ident $tx:ident $on:ident $fn:ident
+        request($($field:ident $name:literal $field_kind:ident),*)) => {{
+        let tx = $tx.clone();
+        actions($win).$on(move |req| {
+            router::$fn(&tx, $(bind_compiled_callbacks!(@field req $field $field_kind)),*);
+        });
+    }};
     (@unit $win:ident $tx:ident $on:ident $fn:ident) => {{
         let tx = $tx.clone();
         actions($win).$on(move || router::$fn(&tx));
@@ -112,55 +120,15 @@ macro_rules! bind_compiled_callbacks {
         let tx = $tx.clone();
         actions($win).$on(move |arg| router::$fn(&tx, arg.to_string()));
     }};
+    (@field $req:ident $field:ident text) => { $req.$field.to_string() };
+    (@field $req:ident $field:ident flag) => { $req.$field };
 }
 
 impl UiProps for AppWindow {
     string_props!(impl_prop_setter set_string StringProp SharedString;);
     bool_props!(impl_prop_setter set_bool BoolProp bool;);
     int_props!(impl_prop_setter set_int IntProp i32;);
-
-    fn set_login_phase(&self, step: LoginStep) {
-        self.global::<LoginView>().set_step(to_login_phase(step));
-    }
-
-    fn set_login_activity(&self, activity: LoginActivity) {
-        self.global::<LoginView>()
-            .set_activity(to_login_activity(activity));
-    }
-
-    fn set_login_method_kind(&self, method: LoginMethod) {
-        self.global::<LoginView>()
-            .set_method(to_login_method(method));
-    }
-
-    fn set_toast_message(&self, kind: UserMessageKind) {
-        self.global::<RoomView>()
-            .set_toast_message(to_user_message_kind(kind));
-    }
-
-    fn set_verification_error(&self, kind: UserMessageKind) {
-        self.global::<VerificationView>()
-            .set_error(to_user_message_kind(kind));
-    }
-
-    fn set_attachment_error(&self, kind: UserMessageKind) {
-        self.global::<AttachmentView>()
-            .set_error(to_user_message_kind(kind));
-    }
-
-    fn set_attachment_kind(&self, kind: AttachmentKind) {
-        self.global::<AttachmentView>()
-            .set_kind(to_attachment_kind(kind));
-    }
-
-    fn set_video_error(&self, kind: UserMessageKind) {
-        self.global::<VideoView>()
-            .set_error(to_user_message_kind(kind));
-    }
-
-    fn set_audio_kind(&self, kind: AudioKind) {
-        self.global::<AudioView>().set_kind(to_audio_kind(kind));
-    }
+    enum_props!(impl_enum_setters);
 
     fn apply_video_frame(&self, buffer: SharedPixelBuffer<Rgb8Pixel>) {
         let video = self.global::<VideoView>();
@@ -172,26 +140,6 @@ impl UiProps for AppWindow {
         let video = self.global::<VideoView>();
         video.set_frame(Image::default());
         video.set_has_frame(false);
-    }
-
-    fn set_connection_state(&self, status: &ConnectionStatus) {
-        self.global::<SessionView>()
-            .set_connection_status(to_connection_state(status));
-    }
-
-    fn set_timeline_state(&self, status: TimelineStatus) {
-        self.global::<RoomView>()
-            .set_timeline_status(to_timeline_state(status));
-    }
-
-    fn set_verification_phase(&self, phase: VerifyStep) {
-        self.global::<VerificationView>()
-            .set_step(to_verification_phase(phase));
-    }
-
-    fn set_verification_activity(&self, activity: VerificationActivity) {
-        self.global::<VerificationView>()
-            .set_activity(to_verification_activity(activity));
     }
 
     fn get_string(&self, prop: StringProp) -> SharedString {
@@ -240,7 +188,7 @@ impl UiProps for AppWindow {
         let entries: Vec<UiUserMessage> = messages
             .iter()
             .map(|m| UiUserMessage {
-                kind: to_user_message_kind(m.kind),
+                kind: m.kind.slint(),
                 detail: SharedString::from(&m.detail),
             })
             .collect();
@@ -271,38 +219,107 @@ impl UiProps for AppWindow {
     }
 }
 
-macro_rules! to_slint_enum {
-    (val $fn:ident $src:ident $dst:ident; $($rows:tt)*) => {
-        fn $fn(value: $src) -> $dst { to_slint_enum!(@arms value, $src, $dst, $($rows)*) }
-    };
-    (ref $fn:ident $src:ident $dst:ident; $($rows:tt)*) => {
-        fn $fn(value: &$src) -> $dst { to_slint_enum!(@arms value, $src, $dst, $($rows)*) }
-    };
-    (@arms $v:ident, $src:ident, $dst:ident,
+trait SlintEnum {
+    type Slint;
+    fn slint(&self) -> Self::Slint;
+}
+
+macro_rules! impl_slint_enum {
+    ($src:ident $dst:ident;
         $($rust:ident $(($($p:tt)*))? $({$($b:tt)*})? $ui:ident $lit:literal;)*) => {
-        match $v { $($src::$rust $(($($p)*))? $({$($b)*})? => $dst::$ui,)* }
+        impl SlintEnum for $src {
+            type Slint = $dst;
+            fn slint(&self) -> $dst {
+                match self { $($src::$rust $(($($p)*))? $({$($b)*})? => $dst::$ui,)* }
+            }
+        }
     };
 }
 
-login_phases!(to_slint_enum val to_login_phase LoginStep LoginPhase;);
-login_activities!(to_slint_enum val to_login_activity LoginActivity UiLoginActivity;);
-login_methods!(to_slint_enum val to_login_method LoginMethod UiLoginMethodKind;);
-connection_states!(to_slint_enum ref to_connection_state ConnectionStatus ConnectionState;);
-timeline_states!(to_slint_enum val to_timeline_state TimelineStatus TimelineState;);
-verification_phases!(to_slint_enum val to_verification_phase VerifyStep VerificationPhase;);
-verification_activities!(
-    to_slint_enum val to_verification_activity VerificationActivity UiVerificationActivity;
-);
-user_message_kinds!(to_slint_enum val to_user_message_kind UserMessageKind UiUserMessageKind;);
-media_states!(to_slint_enum val to_media_state MediaState UiMediaState;);
-send_states!(to_slint_enum val to_send_state SendState UiSendState;);
-reaction_sends!(to_slint_enum val to_reaction_send ReactionSend UiReactionSend;);
-media_failures!(to_slint_enum val to_media_failure MediaFailureKind UiMediaFailure;);
-message_kinds!(to_slint_enum val to_message_kind MessageKind UiMessageKind;);
-attachment_kinds!(to_slint_enum val to_attachment_kind AttachmentKind UiAttachmentKind;);
-preview_kinds!(to_slint_enum val to_preview_kind MessagePreviewKind UiPreviewKind;);
-audio_kinds!(to_slint_enum val to_audio_kind AudioKind UiAudioKind;);
-service_kinds!(to_slint_enum val to_service_kind ServiceKind UiServiceKind;);
+login_phases!(impl_slint_enum LoginStep LoginPhase;);
+login_activities!(impl_slint_enum LoginActivity UiLoginActivity;);
+login_methods!(impl_slint_enum LoginMethod UiLoginMethodKind;);
+connection_states!(impl_slint_enum ConnectionStatus ConnectionState;);
+timeline_states!(impl_slint_enum TimelineStatus TimelineState;);
+verification_phases!(impl_slint_enum VerifyStep VerificationPhase;);
+verification_activities!(impl_slint_enum VerificationActivity UiVerificationActivity;);
+user_message_kinds!(impl_slint_enum UserMessageKind UiUserMessageKind;);
+media_states!(impl_slint_enum MediaState UiMediaState;);
+send_states!(impl_slint_enum SendState UiSendState;);
+reaction_sends!(impl_slint_enum ReactionSend UiReactionSend;);
+media_failures!(impl_slint_enum MediaFailureKind UiMediaFailure;);
+message_kinds!(impl_slint_enum MessageKind UiMessageKind;);
+attachment_kinds!(impl_slint_enum AttachmentKind UiAttachmentKind;);
+preview_kinds!(impl_slint_enum MessagePreviewKind UiPreviewKind;);
+audio_kinds!(impl_slint_enum AudioKind UiAudioKind;);
+service_kinds!(impl_slint_enum ServiceKind UiServiceKind;);
+
+fn string_model(items: Vec<SharedString>) -> ModelRc<SharedString> {
+    ModelRc::new(VecModel::from(items))
+}
+
+fn entry_model<T, E: From<T> + Clone + 'static>(items: Vec<T>) -> ModelRc<E> {
+    ModelRc::new(items.into_iter().map(E::from).collect::<VecModel<E>>())
+}
+
+macro_rules! entry_field {
+    ($val:expr, text) => {
+        $val
+    };
+    ($val:expr, int) => {
+        $val
+    };
+    ($val:expr, ratio) => {
+        $val
+    };
+    ($val:expr, flag) => {
+        $val
+    };
+    ($val:expr, styled) => {
+        $val
+    };
+    ($val:expr, list) => {
+        string_model($val)
+    };
+    ($val:expr, floats) => {
+        ModelRc::new(VecModel::from($val))
+    };
+    ($val:expr, structs) => {
+        entry_model($val)
+    };
+    ($val:expr, image) => {
+        $val.unwrap_or_default()
+    };
+    ($val:expr, enumk) => {
+        $val.slint()
+    };
+}
+
+macro_rules! impl_entry_from {
+    ($dto:ident $entry:ident; $($f:ident $c:ident $lit:literal $k:ident;)*) => {
+        impl From<$dto> for $entry {
+            fn from(d: $dto) -> Self {
+                Self { $( $f: entry_field!(d.$f, $k), )* }
+            }
+        }
+    };
+}
+
+message_fields!(impl_entry_from MessageDto MessageEntry;);
+reaction_fields!(impl_entry_from ReactionDto ReactionEntry;);
+reactor_fields!(impl_entry_from ReactorAvatarDto ReactorAvatar;);
+room_fields!(impl_entry_from RoomDto RoomEntry;);
+space_fields!(impl_entry_from SpaceDto SpaceEntry;);
+sticker_cell_fields!(impl_entry_from StickerCellDto StickerCell;);
+sticker_pack_fields!(impl_entry_from StickerPackDto StickerPackTab;);
+sticker_row_fields!(impl_entry_from StickerRowDto StickerRow;);
+
+macro_rules! attach_compiled_models {
+    ($window:ident $models:ident;
+        $($field:ident $row:ident $g:ident $gname:literal $lit:literal $s:ident;)*) => {
+        $( $window.global::<$g>().$s(ModelRc::from(Rc::clone(&$models.$field))); )*
+    };
+}
 
 pub struct CompiledBackend;
 
@@ -314,39 +331,33 @@ impl UiBackend for CompiledBackend {
     type StickerRow = StickerRow;
     type StickerPack = StickerPackTab;
 
-    fn convert_message(message: &TimelineMessage, media: &dyn MediaCache) -> MessageEntry {
-        message_to_entry(message, media)
+    fn attach_models(window: &AppWindow, models: &Models<Self>) {
+        model_props!(attach_compiled_models window models;);
+    }
+
+    fn bind_sticker_search(window: &AppWindow, search: impl Fn(&str) + 'static) {
+        actions(window).on_search_stickers(move |query| search(&query));
     }
 
     fn enrich_message(entry: &mut MessageEntry, delta: &EnrichmentDelta, media: &dyn MediaCache) {
-        enrich_entry(entry, delta, media);
-    }
-
-    fn convert_room(room: &Room, media: &dyn MediaCache) -> RoomEntry {
-        room_to_entry(room, media)
-    }
-
-    fn convert_space(space: &Space, media: &dyn MediaCache) -> SpaceEntry {
-        space_to_entry(space, media)
-    }
-
-    fn convert_sticker_row(row: &StickerRowDto) -> StickerRow {
-        StickerRow {
-            title: row.title.clone(),
-            is_header: row.is_header,
-            cells: ModelRc::new(VecModel::from(
-                row.cells.iter().map(sticker_to_entry).collect::<Vec<_>>(),
-            )),
+        let update = enrich_to_update(delta, media);
+        match update.thumbnail {
+            ThumbUpdate::Ready(img) => {
+                entry.thumbnail = img;
+                entry.media_state = UiMediaState::Ready;
+            }
+            ThumbUpdate::Failed(reason) => {
+                entry.media_state = UiMediaState::Failed;
+                entry.media_failure = reason.slint();
+            }
+            ThumbUpdate::Unchanged => {}
         }
-    }
-
-    fn convert_sticker_pack(pack: &StickerPackDto) -> StickerPackTab {
-        StickerPackTab {
-            id: pack.id.clone(),
-            title: pack.title.clone(),
-            header_row: pack.header_row,
-            icon: pack.icon.clone().unwrap_or_default(),
-            has_icon: pack.icon.is_some(),
+        if let Some(img) = update.avatar {
+            entry.avatar = img;
+            entry.has_avatar = true;
+        }
+        if let Some(pronouns) = update.pronouns {
+            entry.pronouns = string_model(pronouns);
         }
     }
 
@@ -459,41 +470,13 @@ impl UiBackend for CompiledBackend {
 
     fn set_message_media_failed(entry: &mut MessageEntry, reason: MediaFailureKind) {
         entry.media_state = UiMediaState::Failed;
-        entry.media_failure = to_media_failure(reason);
+        entry.media_failure = reason.slint();
     }
 
     fn set_message_audio(entry: &mut MessageEntry, update: &AudioRowUpdate) {
-        entry.media_state = to_media_state(update.media_state);
-        entry.media_failure = to_media_failure(update.media_failure);
+        entry.media_state = update.media_state.slint();
+        entry.media_failure = update.media_failure.slint();
         entry.waveform = ModelRc::new(VecModel::from(update.waveform.clone()));
-    }
-
-    fn with_models<R>(
-        f: impl FnOnce(
-            &VecModel<MessageEntry>,
-            &VecModel<RoomEntry>,
-            &VecModel<SpaceEntry>,
-            &VecModel<SpaceEntry>,
-        ) -> R,
-    ) -> Option<R> {
-        let timeline = TIMELINE_MODEL.with(|cell| cell.borrow().clone())?;
-        let rooms = ROOMS_MODEL.with(|cell| cell.borrow().clone())?;
-        let spaces = SPACES_MODEL.with(|cell| cell.borrow().clone())?;
-        let subspaces = SUBSPACES_MODEL.with(|cell| cell.borrow().clone())?;
-        Some(f(&timeline, &rooms, &spaces, &subspaces))
-    }
-
-    fn with_timeline<R>(f: impl FnOnce(&VecModel<MessageEntry>) -> R) -> Option<R> {
-        let timeline = TIMELINE_MODEL.with(|cell| cell.borrow().clone())?;
-        Some(f(&timeline))
-    }
-
-    fn with_stickers<R>(
-        f: impl FnOnce(&VecModel<StickerRow>, &VecModel<StickerPackTab>) -> R,
-    ) -> Option<R> {
-        let rows = STICKER_ROWS_MODEL.with(|cell| cell.borrow().clone())?;
-        let packs = STICKER_PACKS_MODEL.with(|cell| cell.borrow().clone())?;
-        Some(f(&rows, &packs))
     }
 }
 
@@ -561,60 +544,11 @@ impl SlintUiAdapter {
         simple_callbacks!(bind_compiled_callbacks win cmd_tx;);
 
         let tx = cmd_tx.clone();
-        actions(win).on_login_password(move |req| {
-            router::login_password(
-                &tx,
-                LoginCredentials {
-                    username: req.username.to_string(),
-                    password: req.password.to_string(),
-                },
-            );
-        });
-
-        let tx = cmd_tx.clone();
         actions(win).on_move_space(move |from, to| {
             let (Ok(from), Ok(to)) = (usize::try_from(from), usize::try_from(to)) else {
                 return;
             };
-            router::move_space(&tx, from, to, |from, to| {
-                SPACES_MODEL.with(|cell| {
-                    if let Some(model) = cell.borrow().as_ref() {
-                        reorder_rows(model, from, to);
-                    }
-                });
-            });
-        });
-
-        let tx = cmd_tx.clone();
-        actions(win).on_send_message(move |req| {
-            router::send_message(
-                &tx,
-                req.room_id.to_string(),
-                req.body.to_string(),
-                req.reply_to.to_string(),
-            );
-        });
-
-        let tx = cmd_tx.clone();
-        actions(win).on_send_sticker(move |req| {
-            router::send_sticker(
-                &tx,
-                req.room_id.to_string(),
-                req.pack_id.to_string(),
-                req.shortcode.to_string(),
-                req.reply_to.to_string(),
-            );
-        });
-
-        let tx = cmd_tx.clone();
-        actions(win).on_send_attachment(move |req| {
-            router::send_attachment(
-                &tx,
-                req.room_id.to_string(),
-                req.caption.to_string(),
-                req.as_document,
-                req.reply_to.to_string(),
-            );
+            router::move_space(&tx, from, to, reorder_spaces::<CompiledBackend>);
         });
 
         actions(win).on_request_media(move |unique_id| request_media(&unique_id));
@@ -627,11 +561,6 @@ impl SlintUiAdapter {
         });
 
         actions(win).on_request_sticker(move |key| request_sticker(&key));
-
-        let tx = cmd_tx.clone();
-        actions(win).on_save_file(move |req| {
-            router::save_file(&tx, req.event_id.to_string(), req.filename.to_string());
-        });
 
         let tx = cmd_tx.clone();
         actions(win).on_toggle_reaction(move |event_id, key| {
@@ -648,24 +577,6 @@ impl SlintUiAdapter {
             );
         });
 
-        let tx = cmd_tx.clone();
-        let weak = self.window.as_weak();
-        actions(win).on_paginate_backwards(move || {
-            router::paginate_backwards(&tx, selected_room_key::<CompiledBackend>(&weak));
-        });
-
-        let tx = cmd_tx.clone();
-        let weak = self.window.as_weak();
-        actions(win).on_paginate_forwards(move || {
-            router::paginate_forwards(&tx, selected_room_key::<CompiledBackend>(&weak));
-        });
-
-        let tx = cmd_tx.clone();
-        let weak = self.window.as_weak();
-        actions(win).on_jump_to_latest(move || {
-            router::jump_to_latest(&tx, selected_room_key::<CompiledBackend>(&weak));
-        });
-
         Ok(())
     }
 
@@ -675,51 +586,7 @@ impl SlintUiAdapter {
         view_rx: watch::Receiver<Arc<AppViewState>>,
         media_cache: Arc<dyn MediaCache>,
     ) {
-        let weak = self.window.as_weak();
-        let timeline_model: Rc<VecModel<MessageEntry>> = Rc::new(VecModel::default());
-        let rooms_model: Rc<VecModel<RoomEntry>> = Rc::new(VecModel::default());
-        let spaces_model: Rc<VecModel<SpaceEntry>> = Rc::new(VecModel::default());
-        let subspaces_model: Rc<VecModel<SpaceEntry>> = Rc::new(VecModel::default());
-        let sticker_rows_model: Rc<VecModel<StickerRow>> = Rc::new(VecModel::default());
-        let sticker_packs_model: Rc<VecModel<StickerPackTab>> = Rc::new(VecModel::default());
-
-        self.window
-            .global::<RoomView>()
-            .set_timeline(ModelRc::from(Rc::clone(&timeline_model)));
-        self.window
-            .global::<DirectoryView>()
-            .set_rooms(ModelRc::from(Rc::clone(&rooms_model)));
-        self.window
-            .global::<DirectoryView>()
-            .set_spaces(ModelRc::from(Rc::clone(&spaces_model)));
-        self.window
-            .global::<DirectoryView>()
-            .set_subspaces(ModelRc::from(Rc::clone(&subspaces_model)));
-        self.window
-            .global::<StickerView>()
-            .set_rows(ModelRc::from(Rc::clone(&sticker_rows_model)));
-        self.window
-            .global::<StickerView>()
-            .set_packs(ModelRc::from(Rc::clone(&sticker_packs_model)));
-
-        TIMELINE_MODEL.with(|cell| *cell.borrow_mut() = Some(timeline_model));
-        ROOMS_MODEL.with(|cell| *cell.borrow_mut() = Some(rooms_model));
-        SPACES_MODEL.with(|cell| *cell.borrow_mut() = Some(spaces_model));
-        SUBSPACES_MODEL.with(|cell| *cell.borrow_mut() = Some(subspaces_model));
-        STICKER_ROWS_MODEL.with(|cell| *cell.borrow_mut() = Some(sticker_rows_model));
-        STICKER_PACKS_MODEL.with(|cell| *cell.borrow_mut() = Some(sticker_packs_model));
-
-        install_render_hooks::<CompiledBackend>(self.window.as_weak());
-        install_clock_invalidation::<CompiledBackend>(Arc::clone(&media_cache));
-
-        let media = Arc::clone(&media_cache);
-        actions(&self.window).on_search_stickers(move |query| {
-            set_sticker_query::<CompiledBackend>(&query, media.as_ref());
-        });
-
-        spawn_event_multiplexer(ui_rx, view_rx, media_cache, move |event, media, permit| {
-            post_effect::<CompiledBackend>(&weak, media, event, permit);
-        });
+        backend::spawn_event_handler::<CompiledBackend>(&self.window, ui_rx, view_rx, media_cache);
     }
 
     pub fn run(&self) -> Result<()> {
@@ -817,168 +684,6 @@ fn setup_emoji_store(window: &AppWindow) {
     });
 }
 
-fn string_model(items: Vec<SharedString>) -> ModelRc<SharedString> {
-    ModelRc::new(VecModel::from(items))
-}
-
-fn reactor_to_entry(d: &ReactorAvatarDto) -> ReactorAvatar {
-    ReactorAvatar {
-        user_id: d.user_id.clone(),
-        initial: d.initial.clone(),
-        color_index: d.color_index,
-        has_avatar: d.image.is_some(),
-        avatar: d.image.clone().unwrap_or_default(),
-    }
-}
-
-fn reactor_model(items: &[ReactorAvatarDto]) -> ModelRc<ReactorAvatar> {
-    ModelRc::new(VecModel::from(
-        items.iter().map(reactor_to_entry).collect::<Vec<_>>(),
-    ))
-}
-
-fn reaction_to_entry(d: &ReactionDto) -> ReactionEntry {
-    ReactionEntry {
-        key: d.key.clone(),
-        label: d.label.clone(),
-        count: d.count,
-        mine: d.mine,
-        send: to_reaction_send(d.send),
-        overflow: d.overflow,
-        reactors: d.reactors.clone(),
-        hidden_reactors: d.hidden_reactors,
-        avatars: reactor_model(&d.avatars),
-    }
-}
-
-fn reaction_model(items: &[ReactionDto]) -> ModelRc<ReactionEntry> {
-    ModelRc::new(VecModel::from(
-        items.iter().map(reaction_to_entry).collect::<Vec<_>>(),
-    ))
-}
-
-fn message_to_entry(m: &TimelineMessage, media: &dyn MediaCache) -> MessageEntry {
-    let d = message_to_dto(m, media);
-    MessageEntry {
-        unique_id: d.unique_id,
-        local_id: d.local_id,
-        sender: d.sender,
-        sender_id: d.sender_id,
-        pronouns: string_model(d.pronouns),
-        body: d.body,
-        styled: d.styled,
-        has_links: d.has_links,
-        timestamp: d.timestamp,
-        message_type: to_message_kind(d.message_type),
-        preview_kind: to_preview_kind(d.preview_kind),
-        unsupported_kind: d.unsupported_kind,
-        thumbnail: d.thumbnail.unwrap_or_default(),
-        media_state: to_media_state(d.media_state),
-        media_failure: to_media_failure(d.media_failure),
-        image_mimetype: d.image_mimetype,
-        image_extension: d.image_extension,
-        image_width: d.image_width,
-        image_height: d.image_height,
-        duration: d.duration,
-        filename: d.filename,
-        size: d.size,
-        audio_kind: to_audio_kind(d.audio_kind),
-        waveform: ModelRc::new(VecModel::from(d.waveform)),
-        event_id: d.event_id,
-        has_avatar: d.has_avatar,
-        needs_media: d.needs_media,
-        avatar: d.avatar.unwrap_or_default(),
-        sender_initial: d.sender_initial,
-        color_index: d.color_index,
-        is_own: d.is_own,
-        edited: d.edited,
-        first_unread: d.is_first_unread,
-        send_state: to_send_state(d.send_state),
-        send_progress: d.send_progress,
-        has_reply: d.has_reply,
-        reply_event_id: d.reply_event_id,
-        reply_sender: d.reply_sender,
-        reply_kind: to_preview_kind(d.reply_kind),
-        reply_body: d.reply_body,
-        service_kind: to_service_kind(d.service_kind),
-        service_target: d.service_target,
-        reactions: reaction_model(&d.reactions),
-        all_reactions: reaction_model(&d.all_reactions),
-    }
-}
-
-fn enrich_entry(entry: &mut MessageEntry, delta: &EnrichmentDelta, media: &dyn MediaCache) {
-    let update = enrich_to_update(delta, media);
-    match update.thumbnail {
-        ThumbUpdate::Ready(img) => {
-            entry.thumbnail = img;
-            entry.media_state = UiMediaState::Ready;
-        }
-        ThumbUpdate::Failed(reason) => {
-            entry.media_state = UiMediaState::Failed;
-            entry.media_failure = to_media_failure(reason);
-        }
-        ThumbUpdate::Unchanged => {}
-    }
-    if let Some(img) = update.avatar {
-        entry.avatar = img;
-        entry.has_avatar = true;
-    }
-    if let Some(pronouns) = update.pronouns {
-        entry.pronouns = string_model(pronouns);
-    }
-}
-
-fn room_to_entry(r: &Room, media: &dyn MediaCache) -> RoomEntry {
-    let d = room_to_dto(r, media);
-    RoomEntry {
-        id: d.id,
-        name: d.name,
-        initial: d.initial,
-        avatar: d.avatar.unwrap_or_default(),
-        has_avatar: d.has_avatar,
-        color_index: d.color_index,
-        members: d.members,
-        alert: d.alert,
-        mention: d.mention,
-        hint: d.hint,
-        muted: d.muted,
-        last_message_sender: d.last_message_sender,
-        last_message_kind: to_preview_kind(d.last_message_kind),
-        last_message_body: d.last_message_body,
-        last_message_service_kind: to_service_kind(d.last_message_service_kind),
-        last_message_service_target: d.last_message_service_target,
-        last_message_is_own: d.last_message_is_own,
-        last_message_edited: d.last_message_edited,
-        last_message_time: d.last_message_time,
-    }
-}
-
-fn sticker_to_entry(d: &StickerCellDto) -> StickerCell {
-    StickerCell {
-        key: d.key.clone(),
-        pack_id: d.pack_id.clone(),
-        shortcode: d.shortcode.clone(),
-        label: d.label.clone(),
-        image: d.image.clone().unwrap_or_default(),
-        media_state: to_media_state(d.media_state),
-    }
-}
-
-fn space_to_entry(s: &Space, media: &dyn MediaCache) -> SpaceEntry {
-    let d = space_to_dto(s, media);
-    SpaceEntry {
-        id: d.id,
-        name: d.name,
-        alert: d.alert,
-        mention: d.mention,
-        hint: d.hint,
-        initial: d.initial,
-        avatar: d.avatar.unwrap_or_default(),
-        has_avatar: d.has_avatar,
-    }
-}
-
 #[cfg(feature = "demo")]
 mod probe_dump {
     use slint::{ComponentHandle, Model};
@@ -988,8 +693,8 @@ mod probe_dump {
         SendState, ServiceKind,
     };
     use super::{
-        AppWindow, IntProp, MessageEntry, ReactionEntry, RoomView, StringProp, TIMELINE_MODEL,
-        UiProps,
+        AppWindow, CompiledBackend, IntProp, MessageEntry, ReactionEntry, RoomView, StringProp,
+        UiBackend, UiProps,
     };
     use crate::adapters::ui::dump::{AudioDump, ReactionRowDump, TimelineDump, TimelineRowDump};
     use crate::adapters::ui::schema::{
@@ -1083,10 +788,14 @@ mod probe_dump {
 
     pub fn collect(window: &AppWindow) -> TimelineDump {
         let view = window.global::<RoomView>();
-        let rows = TIMELINE_MODEL
-            .with(|cell| cell.borrow().clone())
-            .map(|model| model.iter().enumerate().map(|(i, e)| row(i, &e)).collect())
-            .unwrap_or_default();
+        let rows = CompiledBackend::with_timeline(|model| {
+            model
+                .iter()
+                .enumerate()
+                .map(|(i, e)| row(i, &e))
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
         TimelineDump {
             selected_room_id: window.get_string(StringProp::SelectedRoomId).to_string(),
             selected_room_name: view.get_selected_room_name().to_string(),

@@ -19,7 +19,7 @@ fn optional_room(id: String) -> Option<RoomId> {
 }
 
 macro_rules! gen_router_fns {
-    ($($on:ident $lit:literal $fn:ident $kind:ident $cmd:ident;)*) => {
+    ($($on:ident $lit:literal $fn:ident $kind:ident $(($($arg:tt)*))? $cmd:ident;)*) => {
         $( gen_router_fns!(@one $fn $kind $cmd); )*
     };
     (@one $fn:ident plain $cmd:ident) => {
@@ -42,13 +42,24 @@ macro_rules! gen_router_fns {
             send_command(tx, UiCommand::$cmd(optional_room(arg)));
         }
     };
+    (@one $fn:ident room_key $cmd:ident) => {
+        pub fn $fn(tx: &Tx, key: RoomKey) {
+            if let Some((room_id, generation)) = key {
+                send_command(tx, UiCommand::$cmd { room_id, generation });
+            }
+        }
+    };
     (@one $fn:ident manual_string $cmd:ident) => {};
+    (@one $fn:ident request $cmd:ident) => {};
 }
 
 simple_callbacks!(gen_router_fns);
 
-pub fn login_password(tx: &Tx, creds: LoginCredentials) {
-    send_command(tx, UiCommand::LoginPassword(creds));
+pub fn login_password(tx: &Tx, username: String, password: String) {
+    send_command(
+        tx,
+        UiCommand::LoginPassword(LoginCredentials { username, password }),
+    );
 }
 
 pub fn move_space(tx: &Tx, from: usize, to: usize, reorder: impl FnOnce(usize, usize)) {
@@ -217,41 +228,5 @@ pub fn scroll_position(scroll_tx: &watch::Sender<ViewportChanged>, key: RoomKey,
     };
     if scroll_tx.send(update).is_err() {
         tracing::debug!("scroll position receiver closed");
-    }
-}
-
-pub fn paginate_backwards(tx: &Tx, key: RoomKey) {
-    if let Some((room_id, generation)) = key {
-        send_command(
-            tx,
-            UiCommand::PaginateBackwards {
-                room_id,
-                generation,
-            },
-        );
-    }
-}
-
-pub fn paginate_forwards(tx: &Tx, key: RoomKey) {
-    if let Some((room_id, generation)) = key {
-        send_command(
-            tx,
-            UiCommand::PaginateForwards {
-                room_id,
-                generation,
-            },
-        );
-    }
-}
-
-pub fn jump_to_latest(tx: &Tx, key: RoomKey) {
-    if let Some((room_id, generation)) = key {
-        send_command(
-            tx,
-            UiCommand::JumpToLatest {
-                room_id,
-                generation,
-            },
-        );
     }
 }

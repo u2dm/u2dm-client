@@ -8,7 +8,7 @@ use slint::{ComponentHandle, Model, SharedString, VecModel};
 use super::audio;
 use super::backend::{UiBackend, UiEventContext};
 use super::decode::{AvatarSlot, clear_session_media, load_avatar_async, request_sticker};
-use super::dto::{GRID_COLUMNS, audio_row_update, sticker_grid};
+use super::dto::{GRID_COLUMNS, StickerPackDto, audio_row_update, sticker_grid};
 use super::present::{
     VerifyStep, duration_label, file_extension, user_initial, verification_cancellation,
 };
@@ -326,25 +326,32 @@ fn rebuild_sticker_grid<B: UiBackend>(stickers: &StickerView, media: &dyn MediaC
     };
 
     index_sticker_grid(&grid);
+    let missing_icons = packs_missing_icons(&grid.packs);
     B::with_stickers(|rows, packs| {
         rows.set_vec(
             grid.rows
-                .iter()
-                .map(B::convert_sticker_row)
+                .into_iter()
+                .map(B::StickerRow::from)
                 .collect::<Vec<_>>(),
         );
         packs.set_vec(
             grid.packs
-                .iter()
-                .map(B::convert_sticker_pack)
+                .into_iter()
+                .map(B::StickerPack::from)
                 .collect::<Vec<_>>(),
         );
     });
-    for pack in &grid.packs {
-        if pack.icon.is_none() && !pack.icon_cell_key.is_empty() {
-            request_sticker(&pack.icon_cell_key);
-        }
+    for icon_cell_key in &missing_icons {
+        request_sticker(icon_cell_key);
     }
+}
+
+fn packs_missing_icons(packs: &[StickerPackDto]) -> Vec<SharedString> {
+    packs
+        .iter()
+        .filter(|pack| pack.icon.is_none() && !pack.icon_cell_key.is_empty())
+        .map(|pack| pack.icon_cell_key.clone())
+        .collect()
 }
 
 fn sync_timeline_chrome(w: &impl UiProps, pagination: &PaginationView) {
