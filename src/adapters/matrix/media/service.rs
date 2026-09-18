@@ -15,13 +15,13 @@ use tokio::time::{sleep, timeout};
 
 use super::cache::{CacheHandle, FailureTracker};
 use super::{
-    AUDIO_DIR, AVATARS_DIR, MediaSources, STICKERS_DIR, VIDEOS_DIR, audio_key,
+    AUDIO_DIR, AVATARS_DIR, MediaLane, MediaSources, STICKERS_DIR, VIDEOS_DIR, audio_key,
     lookup_full_media_source, mxc_avatar_key, sticker_key, thumb_key, thumbnail_format, video_key,
 };
 use crate::adapters::matrix::store::purge_dir;
 use crate::adapters::{container, private_fs, video};
 use crate::domain::account::AccountScope;
-use crate::domain::media::{MediaFailure, MediaResult, ThumbnailOutcome, Waveform};
+use crate::domain::media::{MediaFailure, MediaRendition, MediaResult, ThumbnailOutcome, Waveform};
 use crate::domain::message::TimelineMessage;
 use crate::error::{AppError, Result};
 use crate::ports::matrix::CleanupReport;
@@ -545,36 +545,21 @@ impl MediaService {
         client: &Client,
         media_sources: &MediaSources,
         event_id: &str,
-        thumbnail: bool,
+        rendition: MediaRendition,
     ) -> Result<Vec<u8>> {
-        let key = if thumbnail {
-            format!("{event_id}:thumb")
-        } else {
-            event_id.to_string()
+        let (lane, limits) = match rendition {
+            MediaRendition::Thumbnail => (MediaLane::Thumbnail, DownloadLimits::thumbnail()),
+            MediaRendition::FullFile => (MediaLane::FullFile, DownloadLimits::full_file()),
         };
-
-        let source = media_sources
-            .lock()
-            .map_err(|e| AppError::Other(format!("media source lock poisoned: {e}")))?
-            .get(&key)
-            .cloned()
-            .or_else(|| {
-                if thumbnail {
-                    media_sources.lock().ok()?.get(event_id).cloned()
-                } else {
-                    None
-                }
-            })
+        let source = lane
+            .source(media_sources, event_id)
             .ok_or_else(|| AppError::Other(format!("no media source for event {event_id}")))?;
-
-        let (format, limits) = if thumbnail {
-            (thumbnail_format(), DownloadLimits::thumbnail())
-        } else {
-            (MediaFormat::File, DownloadLimits::full_file())
-        };
         let max_bytes = limits.max_bytes;
 
-        let request = MediaRequestParameters { source, format };
+        let request = MediaRequestParameters {
+            source,
+            format: lane.format(),
+        };
         self.download(client, &request, limits)
             .await
             .map_err(|reason| {

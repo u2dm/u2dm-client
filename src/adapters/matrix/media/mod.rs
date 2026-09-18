@@ -11,7 +11,9 @@ use matrix_sdk::ruma::events::room::MediaSource;
 pub(crate) use service::{MediaService, Playable};
 
 use super::session::ClientHandle;
-use crate::domain::media::{ImageMeta, MediaFailure, MediaKind, Waveform, WaveformNeed};
+use crate::domain::media::{
+    ImageMeta, MediaFailure, MediaKind, MediaRendition, Waveform, WaveformNeed,
+};
 use crate::error::{AppError, Result};
 use crate::ports::matrix::MediaPort;
 use crate::ports::media::MediaCache;
@@ -199,11 +201,11 @@ impl MatrixMedia {
 
 #[async_trait]
 impl MediaPort for MatrixMedia {
-    async fn download_media(&self, event_id: &str, thumbnail: bool) -> Result<Vec<u8>> {
+    async fn download_media(&self, event_id: &str, rendition: MediaRendition) -> Result<Vec<u8>> {
         let client = self.matrix.client().await?;
         self.matrix
             .media()
-            .download_media(&client, &self.sources, event_id, thumbnail)
+            .download_media(&client, &self.sources, event_id, rendition)
             .await
     }
 

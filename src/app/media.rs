@@ -6,7 +6,7 @@ use super::show_toast;
 use super::task_group::TaskGroup;
 use crate::commands::messages::{UserMessage, UserMessageKind};
 use crate::commands::view::{Toast, VideoView};
-use crate::domain::media::WaveformNeed;
+use crate::domain::media::{MediaRendition, WaveformNeed};
 use crate::error::{AppError, Result};
 use crate::ports::matrix::MediaPort;
 use crate::ports::media::MediaFilePort;
@@ -59,7 +59,10 @@ impl MediaActions {
         let media_files = Arc::clone(&self.media_files);
         let output = Arc::clone(&self.output);
         self.spawn_cancellable(async move {
-            match media.download_media(&event_id, false).await {
+            match media
+                .download_media(&event_id, MediaRendition::FullFile)
+                .await
+            {
                 Ok(data) => act(media_files, output, event_id, data).await,
                 Err(e) => {
                     tracing::warn!("failed to download media: {e}");

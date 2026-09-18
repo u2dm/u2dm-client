@@ -13,7 +13,7 @@ use tokio_util::sync::CancellationToken;
 use super::{attachments, audio, data, login, media, reactions, stickers, timeline, verification};
 use crate::adapters::video;
 use crate::domain::auth::{AuthMethod, LoginCredentials, OAuthLoginData, ServerInfo, Session};
-use crate::domain::media::{OutgoingAttachment, WaveformNeed};
+use crate::domain::media::{MediaRendition, OutgoingAttachment, WaveformNeed};
 use crate::domain::message::{MessageBody, ReplyInfo, RichText, SendState, TimelineMessage};
 use crate::domain::room::RoomId;
 use crate::domain::sticker::{PackId, StickerImage};
@@ -594,7 +594,7 @@ impl TimelinePort for DemoAuthed {
 
 #[async_trait]
 impl MediaPort for DemoAuthed {
-    async fn download_media(&self, event_id: &str, _thumbnail: bool) -> Result<Vec<u8>> {
+    async fn download_media(&self, event_id: &str, _rendition: MediaRendition) -> Result<Vec<u8>> {
         let path: PathBuf = media::DemoMediaCache
             .thumbnail_path(event_id)
             .ok_or_else(|| AppError::Other(format!("no demo asset for event {event_id}")))?;

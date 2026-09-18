@@ -133,6 +133,13 @@ impl Waveform {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MediaRendition {
+    #[allow(dead_code)]
+    Thumbnail,
+    FullFile,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum WaveformNeed {
     Skip,
     Compute,
