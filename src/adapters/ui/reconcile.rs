@@ -1,12 +1,14 @@
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::mem;
 use std::sync::Arc;
 
-use slint::{Model, VecModel};
+use slint::{Model, SharedString, VecModel};
 
 use super::decode::forget_all_media_needs;
-use super::dto::{StickerGrid, prefetch_space_avatar, record_room_avatar_need};
+use super::dto::{StickerGrid, StickerRowDto, prefetch_space_avatar, record_room_avatar_need};
 use super::richtext::forget_styled_bodies;
+use super::splice_model::SpliceModel;
 use crate::domain::message::TimelineMessage;
 use crate::domain::room::{Room, Space};
 use crate::domain::timeline::{EnrichmentDelta, TimelinePatch};
@@ -51,13 +53,14 @@ impl TimelineIndex {
         self.fingerprint_of.remove(unique_id);
     }
 
-    fn inserted_at(&mut self, row: usize, message: &TimelineMessage) {
+    fn spliced_at(&mut self, row: usize, messages: &[TimelineMessage]) {
+        let count = messages.len();
         for existing in self.row_of.values_mut() {
             if *existing >= row {
-                *existing = existing.saturating_add(1);
+                *existing = existing.saturating_add(count);
             }
         }
-        self.remember(row, message);
+        self.extend_from(row, messages);
     }
 
     fn replaced_at(&mut self, row: usize, previous: Option<&str>, message: &TimelineMessage) {
@@ -103,24 +106,74 @@ impl TimelineIndex {
 struct StickerIndex {
     row_of_cell: HashMap<String, usize>,
     row_of_pack: HashMap<String, usize>,
+    row_shapes: Vec<StickerRowShape>,
+    awaited_downloads: HashMap<String, String>,
 }
 
-pub fn index_sticker_grid(grid: &StickerGrid) {
+#[derive(PartialEq)]
+struct StickerRowShape {
+    is_header: bool,
+    title: SharedString,
+    cell_keys: Vec<SharedString>,
+}
+
+impl StickerRowShape {
+    fn of(row: &StickerRowDto) -> Self {
+        Self {
+            is_header: row.is_header,
+            title: row.title.clone(),
+            cell_keys: row.cells.iter().map(|cell| cell.key.clone()).collect(),
+        }
+    }
+}
+
+pub struct RowReplacements(Vec<bool>);
+
+impl RowReplacements {
+    pub fn must_replace(&self, row: usize) -> bool {
+        self.0.get(row).copied().unwrap_or(true)
+    }
+}
+
+pub fn index_sticker_grid(grid: &StickerGrid) -> RowReplacements {
     STICKER_INDEX.with_borrow_mut(|index| {
-        let StickerIndex {
-            row_of_cell,
-            row_of_pack,
-        } = index;
-        row_of_cell.clear();
-        row_of_pack.clear();
+        let shapes: Vec<StickerRowShape> = grid.rows.iter().map(StickerRowShape::of).collect();
+        let replaced = RowReplacements(
+            shapes
+                .iter()
+                .enumerate()
+                .map(|(row, shape)| index.row_shapes.get(row) != Some(shape))
+                .collect(),
+        );
+        let mut previously_awaited = mem::take(&mut index.awaited_downloads);
+        index.row_of_cell.clear();
+        index.row_of_pack.clear();
         for (row, entry) in grid.rows.iter().enumerate() {
             for cell in &entry.cells {
-                row_of_cell.insert(cell.key.to_string(), row);
+                index.row_of_cell.insert(cell.key.to_string(), row);
+                let awaited = if replaced.must_replace(row) {
+                    cell.awaited_mxc.clone()
+                } else {
+                    previously_awaited.remove(cell.key.as_str())
+                };
+                if let Some(mxc) = awaited {
+                    index.awaited_downloads.insert(cell.key.to_string(), mxc);
+                }
             }
         }
         for (row, pack) in grid.packs.iter().enumerate() {
-            row_of_pack.insert(pack.id.to_string(), row);
+            index.row_of_pack.insert(pack.id.to_string(), row);
         }
+        index.row_shapes = shapes;
+        replaced
+    })
+}
+
+pub fn retain_awaited_downloads(mut still_awaited: impl FnMut(&str, &str) -> bool) {
+    STICKER_INDEX.with_borrow_mut(|index| {
+        index
+            .awaited_downloads
+            .retain(|key, mxc| still_awaited(key, mxc));
     });
 }
 
@@ -141,7 +194,7 @@ pub fn forget_timeline_index() {
 }
 
 pub fn apply_timeline_patch<T: Clone + 'static>(
-    model: &VecModel<T>,
+    model: &SpliceModel<T>,
     patch: TimelinePatch,
     convert: &dyn Fn(&TimelineMessage) -> T,
     enrich: &dyn Fn(&mut T, &EnrichmentDelta),
@@ -153,7 +206,7 @@ pub fn apply_timeline_patch<T: Clone + 'static>(
 }
 
 fn apply_patch<T: Clone + 'static>(
-    model: &VecModel<T>,
+    model: &SpliceModel<T>,
     patch: TimelinePatch,
     index: &mut TimelineIndex,
     convert: &dyn Fn(&TimelineMessage) -> T,
@@ -174,24 +227,11 @@ fn apply_patch<T: Clone + 'static>(
             let entries: Vec<T> = messages.iter().map(convert).collect();
             model.set_vec(entries);
         }
-        TimelinePatch::Append(messages) => {
-            index.extend_from(before, &messages);
-            for m in &messages {
-                model.push(convert(m));
-            }
-        }
-        TimelinePatch::PushFront(m) => {
-            index.inserted_at(0, &m);
-            model.insert(0, convert(&m));
-        }
-        TimelinePatch::PushBack(m) => {
-            index.remember(before, &m);
-            model.push(convert(&m));
-        }
+        TimelinePatch::Append(messages) => splice_rows(model, before, &messages, index, convert),
+        TimelinePatch::PushFront(m) => splice_rows(model, 0, &[m], index, convert),
+        TimelinePatch::PushBack(m) => splice_rows(model, before, &[m], index, convert),
         TimelinePatch::Insert { index: at, message } => {
-            let row = at.min(before);
-            index.inserted_at(row, &message);
-            model.insert(row, convert(&message));
+            splice_rows(model, at.min(before), &[message], index, convert);
         }
         TimelinePatch::Set { index: at, message } => {
             set_row(model, at, before, index, &message, convert, entry_id);
@@ -220,29 +260,85 @@ fn apply_patch<T: Clone + 'static>(
 }
 
 fn id_at<T: Clone + 'static>(
-    model: &VecModel<T>,
+    model: &SpliceModel<T>,
     row: usize,
     entry_id: &dyn Fn(&T) -> &str,
 ) -> Option<String> {
     model.row_data(row).map(|entry| entry_id(&entry).to_owned())
 }
 
+fn splice_rows<T: Clone + 'static>(
+    model: &SpliceModel<T>,
+    row: usize,
+    messages: &[TimelineMessage],
+    index: &mut TimelineIndex,
+    convert: &dyn Fn(&TimelineMessage) -> T,
+) {
+    if messages.is_empty() {
+        return;
+    }
+    if row < model.row_count() {
+        index.spliced_at(row, messages);
+    } else {
+        index.extend_from(row, messages);
+    }
+    model.insert_rows(row, messages.iter().map(convert).collect());
+}
+
+#[derive(Default)]
+struct EdgeInsertions {
+    newest_first_at_front: Vec<TimelineMessage>,
+    at_back: Vec<TimelineMessage>,
+}
+
+impl EdgeInsertions {
+    fn absorb(&mut self, patch: TimelinePatch) -> Option<TimelinePatch> {
+        match patch {
+            TimelinePatch::PushFront(message) | TimelinePatch::Insert { index: 0, message } => {
+                self.newest_first_at_front.push(message);
+            }
+            TimelinePatch::PushBack(message) => self.at_back.push(message),
+            TimelinePatch::Append(messages) => self.at_back.extend(messages),
+            other => return Some(other),
+        }
+        None
+    }
+
+    fn flush<T: Clone + 'static>(
+        &mut self,
+        model: &SpliceModel<T>,
+        index: &mut TimelineIndex,
+        convert: &dyn Fn(&TimelineMessage) -> T,
+    ) {
+        let mut front = mem::take(&mut self.newest_first_at_front);
+        front.reverse();
+        splice_rows(model, 0, &front, index, convert);
+        let back = mem::take(&mut self.at_back);
+        splice_rows(model, model.row_count(), &back, index, convert);
+    }
+}
+
 fn apply_batch<T: Clone + 'static>(
-    model: &VecModel<T>,
+    model: &SpliceModel<T>,
     patches: Vec<TimelinePatch>,
     index: &mut TimelineIndex,
     convert: &dyn Fn(&TimelineMessage) -> T,
     enrich: &dyn Fn(&mut T, &EnrichmentDelta),
     entry_id: &dyn Fn(&T) -> &str,
 ) {
+    let mut edges = EdgeInsertions::default();
     for patch in patches {
-        apply_patch(model, patch, index, convert, enrich, entry_id);
+        if let Some(positional) = edges.absorb(patch) {
+            edges.flush(model, index, convert);
+            apply_patch(model, positional, index, convert, enrich, entry_id);
+        }
     }
+    edges.flush(model, index, convert);
 }
 
 #[allow(clippy::too_many_arguments)]
 fn set_row<T: Clone + 'static>(
-    model: &VecModel<T>,
+    model: &SpliceModel<T>,
     row: usize,
     row_count: usize,
     index: &mut TimelineIndex,
@@ -258,7 +354,7 @@ fn set_row<T: Clone + 'static>(
 }
 
 fn remove_row<T: Clone + 'static>(
-    model: &VecModel<T>,
+    model: &SpliceModel<T>,
     row: usize,
     row_count: usize,
     index: &mut TimelineIndex,
@@ -272,18 +368,16 @@ fn remove_row<T: Clone + 'static>(
 }
 
 fn truncate_rows<T: Clone + 'static>(
-    model: &VecModel<T>,
+    model: &SpliceModel<T>,
     length: usize,
     index: &mut TimelineIndex,
 ) {
     index.truncated_to(length);
-    while model.row_count() > length {
-        model.remove(model.row_count() - 1);
-    }
+    model.truncate(length);
 }
 
 fn enrich_target<T: Clone + 'static>(
-    model: &VecModel<T>,
+    model: &SpliceModel<T>,
     delta: &EnrichmentDelta,
     index: &TimelineIndex,
     enrich: &dyn Fn(&mut T, &EnrichmentDelta),
@@ -300,7 +394,7 @@ fn enrich_target<T: Clone + 'static>(
 }
 
 fn enrich_row<T: Clone + 'static>(
-    model: &VecModel<T>,
+    model: &SpliceModel<T>,
     row: usize,
     delta: &EnrichmentDelta,
     enrich: &dyn Fn(&mut T, &EnrichmentDelta),

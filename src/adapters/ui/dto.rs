@@ -48,6 +48,7 @@ pub struct StickerCellDto {
     pub label: SharedString,
     pub image: Option<Image>,
     pub media_state: MediaState,
+    pub awaited_mxc: Option<String>,
 }
 
 pub struct StickerRowDto {
@@ -90,20 +91,23 @@ impl<'a> DecodeTarget<'a> {
     }
 }
 
-pub fn sticker_grid(packs: &[StickerPack], query: &str, media: &dyn MediaCache) -> StickerGrid {
+pub fn sticker_needle(query: &str) -> String {
+    query.trim().to_lowercase()
+}
+
+pub fn sticker_grid(packs: &[StickerPack], needle: &str, media: &dyn MediaCache) -> StickerGrid {
     let per_row = usize::try_from(GRID_COLUMNS.max(1)).unwrap_or(1);
-    let needle = query.trim().to_lowercase();
     let mut grid = StickerGrid {
         rows: Vec::new(),
         packs: Vec::new(),
     };
 
     for pack in packs {
-        let whole_pack = needle.is_empty() || pack.title.to_lowercase().contains(&needle);
+        let whole_pack = needle.is_empty() || pack.title.to_lowercase().contains(needle);
         let cells: Vec<StickerCellDto> = pack
             .images
             .iter()
-            .filter(|image| whole_pack || sticker_matches(image, &needle))
+            .filter(|image| whole_pack || sticker_matches(image, needle))
             .map(|image| sticker_cell(pack, image, media))
             .collect();
         if cells.is_empty() {
@@ -143,35 +147,52 @@ fn sticker_matches(image: &StickerImage, needle: &str) -> bool {
     image.shortcode.to_lowercase().contains(needle) || image.body.to_lowercase().contains(needle)
 }
 
+pub enum StickerArt {
+    Ready(Image),
+    Failed,
+    Decoding,
+    Downloading,
+}
+
+pub fn sticker_art(key: &str, mxc: &str, media: &dyn MediaCache) -> StickerArt {
+    if let Some(path) = media.sticker_path(mxc) {
+        return match peek_thumbnail(&path, key) {
+            Decoded::Ready(decoded) => StickerArt::Ready(decoded),
+            Decoded::Failed => StickerArt::Failed,
+            Decoded::Pending => {
+                record_sticker_need(key, path);
+                StickerArt::Decoding
+            }
+        };
+    }
+    if media.sticker_failed(mxc) {
+        StickerArt::Failed
+    } else {
+        StickerArt::Downloading
+    }
+}
+
 fn sticker_cell(
     pack: &StickerPack,
     image: &StickerImage,
     media: &dyn MediaCache,
 ) -> StickerCellDto {
     let key = cell_key(&pack.id, &image.shortcode);
-    let mut cell = StickerCellDto {
+    let (art, media_state, awaited_mxc) = match sticker_art(&key, &image.mxc, media) {
+        StickerArt::Ready(decoded) => (Some(decoded), MediaState::Ready, None),
+        StickerArt::Failed => (None, MediaState::Failed, None),
+        StickerArt::Decoding => (None, MediaState::Idle, None),
+        StickerArt::Downloading => (None, MediaState::Idle, Some(image.mxc.clone())),
+    };
+    StickerCellDto {
         key: SharedString::from(&key),
         pack_id: SharedString::from(pack.id.as_ref()),
         shortcode: SharedString::from(&image.shortcode),
         label: SharedString::from(&image.body),
-        image: None,
-        media_state: MediaState::Idle,
-    };
-
-    if let Some(path) = media.sticker_path(&image.mxc) {
-        match peek_thumbnail(&path, &key) {
-            Decoded::Ready(decoded) => {
-                cell.image = Some(decoded);
-                cell.media_state = MediaState::Ready;
-            }
-            Decoded::Failed => cell.media_state = MediaState::Failed,
-            Decoded::Pending => record_sticker_need(&key, path),
-        }
-    } else if media.sticker_failed(&image.mxc) {
-        cell.media_state = MediaState::Failed;
+        image: art,
+        media_state,
+        awaited_mxc,
     }
-
-    cell
 }
 
 pub const REACTION_CHIP_CAP: usize = 6;
@@ -297,12 +318,20 @@ fn count<T: TryInto<i32>>(value: T) -> i32 {
     value.try_into().unwrap_or(i32::MAX)
 }
 
-fn reactor_avatar_dto(reactor: &Reactor, media: &dyn MediaCache) -> ReactorAvatarDto {
+fn reactor_avatar_dto(
+    unique_id: &str,
+    reactor: &Reactor,
+    media: &dyn MediaCache,
+) -> ReactorAvatarDto {
+    let slot = AvatarSlot::Reactor {
+        unique_id: unique_id.to_owned(),
+        user_id: reactor.user_id.clone(),
+    };
     let avatar = reactor
         .avatar_url
         .as_deref()
         .and_then(|mxc| media.user_avatar_path(mxc))
-        .and_then(|path| load_avatar_async(&path, AvatarSlot::Reactor(reactor.user_id.clone())));
+        .and_then(|path| load_avatar_async(&path, slot));
     ReactorAvatarDto {
         user_id: SharedString::from(&reactor.user_id),
         initial: SharedString::from(user_initial(&reactor.user_id)),
@@ -312,18 +341,22 @@ fn reactor_avatar_dto(reactor: &Reactor, media: &dyn MediaCache) -> ReactorAvata
     }
 }
 
-fn reactor_avatar_dtos(reaction: &Reaction, media: &dyn MediaCache) -> Vec<ReactorAvatarDto> {
+fn reactor_avatar_dtos(
+    unique_id: &str,
+    reaction: &Reaction,
+    media: &dyn MediaCache,
+) -> Vec<ReactorAvatarDto> {
     if !reaction.shows_reactors() {
         return Vec::new();
     }
     reaction
         .senders
         .iter()
-        .map(|reactor| reactor_avatar_dto(reactor, media))
+        .map(|reactor| reactor_avatar_dto(unique_id, reactor, media))
         .collect()
 }
 
-fn reaction_dto(reaction: &Reaction, media: &dyn MediaCache) -> ReactionDto {
+fn reaction_dto(unique_id: &str, reaction: &Reaction, media: &dyn MediaCache) -> ReactionDto {
     let (reactors, hidden) = reactor_labels(&reaction.senders);
     ReactionDto {
         key: SharedString::from(&reaction.key),
@@ -334,7 +367,7 @@ fn reaction_dto(reaction: &Reaction, media: &dyn MediaCache) -> ReactionDto {
         overflow: false,
         reactors: SharedString::from(reactors),
         hidden_reactors: count(hidden),
-        avatars: reactor_avatar_dtos(reaction, media),
+        avatars: reactor_avatar_dtos(unique_id, reaction, media),
     }
 }
 
@@ -353,12 +386,13 @@ fn overflow_dto(hidden: usize) -> ReactionDto {
 }
 
 fn reaction_dtos(
+    unique_id: &str,
     reactions: &[Reaction],
     media: &dyn MediaCache,
 ) -> (Vec<ReactionDto>, Vec<ReactionDto>) {
     let all: Vec<ReactionDto> = reactions
         .iter()
-        .map(|reaction| reaction_dto(reaction, media))
+        .map(|reaction| reaction_dto(unique_id, reaction, media))
         .collect();
     if all.len() <= REACTION_CHIP_CAP {
         return (all, Vec::new());
@@ -483,7 +517,7 @@ fn apply_media(
 
 pub fn message_to_dto(m: &TimelineMessage, media: &dyn MediaCache) -> MessageDto {
     let sender_label = message_sender_label(m);
-    let (reactions, all_reactions) = reaction_dtos(&m.reactions, media);
+    let (reactions, all_reactions) = reaction_dtos(&m.unique_id, &m.reactions, media);
     let plain = message_body_text(&m.body);
     let rich = match message_body_html(&m.body) {
         Some(html) => richtext::styled_body(html, plain),

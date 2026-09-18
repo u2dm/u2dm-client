@@ -26,7 +26,7 @@ pub enum DecodeOutcome<'a> {
 #[derive(Clone, PartialEq, Eq, Hash)]
 pub enum AvatarSlot {
     Message(String),
-    Reactor(String),
+    Reactor { unique_id: String, user_id: String },
     Room(String),
     Space(String),
     User,

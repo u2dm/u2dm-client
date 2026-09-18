@@ -1,6 +1,6 @@
 use std::any::Any;
 use std::cell::RefCell;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 use std::sync::Arc;
 
@@ -22,6 +22,7 @@ use super::reconcile::{reorder_rows, sticker_cell_row, sticker_pack_row, timelin
 use super::reduce::{dispatch_effect, set_sticker_query};
 use super::rows::{locate_row, patch_rows_by_id};
 use super::schema::model_props;
+use super::splice_model::SpliceModel;
 use crate::commands::effects::Effect;
 use crate::commands::view::AppViewState;
 use crate::domain::message::TimelineMessage;
@@ -76,7 +77,7 @@ pub trait UiBackend: Sized + 'static {
 
     fn with_models<R>(
         f: impl FnOnce(
-            &VecModel<Self::Message>,
+            &SpliceModel<Self::Message>,
             &VecModel<Self::Room>,
             &VecModel<Self::Space>,
             &VecModel<Self::Space>,
@@ -91,21 +92,21 @@ pub trait UiBackend: Sized + 'static {
         ))
     }
 
-    fn with_timeline<R>(f: impl FnOnce(&VecModel<Self::Message>) -> R) -> Option<R> {
+    fn with_timeline<R>(f: impl FnOnce(&SpliceModel<Self::Message>) -> R) -> Option<R> {
         models::<Self>().map(|models| f(&models.timeline))
     }
 
     fn with_stickers<R>(
-        f: impl FnOnce(&VecModel<Self::StickerRow>, &VecModel<Self::StickerPack>) -> R,
+        f: impl FnOnce(&SpliceModel<Self::StickerRow>, &VecModel<Self::StickerPack>) -> R,
     ) -> Option<R> {
         models::<Self>().map(|models| f(&models.sticker_rows, &models.sticker_packs))
     }
 }
 
 macro_rules! declare_models {
-    ($($field:ident $row:ident $g:ident $gname:literal $lit:literal $s:ident;)*) => {
+    ($($field:ident $row:ident $model:ident $g:ident $gname:literal $lit:literal $s:ident;)*) => {
         pub struct Models<B: UiBackend> {
-            $(pub $field: Rc<VecModel<B::$row>>,)*
+            $(pub $field: Rc<$model<B::$row>>,)*
         }
 
         impl<B: UiBackend> Default for Models<B> {
@@ -155,7 +156,7 @@ pub fn reorder_spaces<B: UiBackend>(from: usize, to: usize) {
 }
 
 pub struct UiEventContext<'a, B: UiBackend> {
-    pub timeline: &'a VecModel<B::Message>,
+    pub timeline: &'a SpliceModel<B::Message>,
     pub rooms: &'a VecModel<B::Room>,
     pub spaces: &'a VecModel<B::Space>,
     pub subspaces: &'a VecModel<B::Space>,
@@ -253,22 +254,18 @@ fn adopt_pack_icon<B: UiBackend>(pack_id: &str, image: &Image) {
         return;
     };
     B::with_stickers(|_, packs| {
-        let Some(tab) = packs.row_data(row) else {
+        let Some(updated) = packs
+            .row_data(row)
+            .and_then(|tab| B::sticker_pack_with_icon(&tab, pack_id, image))
+        else {
             return;
         };
-        let Some(updated) = B::sticker_pack_with_icon(&tab, pack_id, image) else {
-            return;
-        };
-        let mut tabs: Vec<B::StickerPack> = packs.iter().collect();
-        let Some(slot) = tabs.get_mut(row) else {
-            return;
-        };
-        *slot = updated;
-        packs.set_vec(tabs);
+        packs.remove(row);
+        packs.insert(row, updated);
     });
 }
 
-fn apply_thumbnail_ready<B: UiBackend>(key: &str, outcome: DecodeOutcome<'_>) {
+pub(super) fn apply_thumbnail_ready<B: UiBackend>(key: &str, outcome: DecodeOutcome<'_>) {
     let art = match outcome {
         DecodeOutcome::Ready(image) => Some(image),
         DecodeOutcome::Failed => None,
@@ -303,7 +300,7 @@ fn apply_thumbnail_ready<B: UiBackend>(key: &str, outcome: DecodeOutcome<'_>) {
 #[derive(Default)]
 struct AvatarTargets<'a> {
     messages: HashSet<&'a str>,
-    reactors: HashSet<&'a str>,
+    reactors_by_message: HashMap<&'a str, HashSet<&'a str>>,
     rooms: HashSet<&'a str>,
     spaces: HashSet<&'a str>,
     user: bool,
@@ -317,8 +314,12 @@ fn group_slots(slots: &[AvatarSlot]) -> AvatarTargets<'_> {
             AvatarSlot::Message(id) => {
                 targets.messages.insert(id.as_str());
             }
-            AvatarSlot::Reactor(user_id) => {
-                targets.reactors.insert(user_id.as_str());
+            AvatarSlot::Reactor { unique_id, user_id } => {
+                targets
+                    .reactors_by_message
+                    .entry(unique_id.as_str())
+                    .or_default()
+                    .insert(user_id.as_str());
             }
             AvatarSlot::Room(id) => {
                 targets.rooms.insert(id.as_str());
@@ -333,16 +334,47 @@ fn group_slots(slots: &[AvatarSlot]) -> AvatarTargets<'_> {
     targets
 }
 
-fn patch_reactor_avatars<B: UiBackend>(
-    timeline: &VecModel<B::Message>,
-    reactors: &HashSet<&str>,
+fn indexed_timeline_row<B: UiBackend>(
+    timeline: &SpliceModel<B::Message>,
+    unique_id: &str,
+) -> Option<usize> {
+    locate_row(
+        timeline,
+        &B::message_id,
+        unique_id,
+        timeline_row_of(unique_id)?,
+    )
+}
+
+fn patch_message_avatars<B: UiBackend>(
+    timeline: &SpliceModel<B::Message>,
+    unique_ids: &HashSet<&str>,
     image: &Image,
 ) {
-    if reactors.is_empty() {
-        return;
+    for unique_id in unique_ids {
+        let Some(row) = indexed_timeline_row::<B>(timeline, unique_id) else {
+            continue;
+        };
+        let Some(mut entry) = timeline.row_data(row) else {
+            continue;
+        };
+        B::set_message_avatar(&mut entry, image);
+        timeline.set_row_data(row, entry);
     }
-    for entry in timeline.iter() {
-        for user_id in reactors {
+}
+
+fn patch_reactor_avatars<B: UiBackend>(
+    timeline: &SpliceModel<B::Message>,
+    reactors_by_message: &HashMap<&str, HashSet<&str>>,
+    image: &Image,
+) {
+    for (unique_id, user_ids) in reactors_by_message {
+        let Some(entry) =
+            indexed_timeline_row::<B>(timeline, unique_id).and_then(|row| timeline.row_data(row))
+        else {
+            continue;
+        };
+        for user_id in user_ids {
             B::patch_reactor_avatar(&entry, user_id, image);
         }
     }
@@ -368,10 +400,8 @@ fn apply_avatar_ready<B: UiBackend>(
         }
     }
     B::with_models(|timeline, rooms, spaces, subspaces| {
-        patch_rows_by_id(timeline, &targets.messages, &B::message_id, |entry| {
-            B::set_message_avatar(entry, image);
-        });
-        patch_reactor_avatars::<B>(timeline, &targets.reactors, image);
+        patch_message_avatars::<B>(timeline, &targets.messages, image);
+        patch_reactor_avatars::<B>(timeline, &targets.reactors_by_message, image);
         patch_rows_by_id(rooms, &targets.rooms, &B::room_id, |entry| {
             B::set_room_avatar(entry, image);
         });

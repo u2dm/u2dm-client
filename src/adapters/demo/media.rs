@@ -3,7 +3,7 @@ use std::env;
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
 
-use super::{attachments, data};
+use super::{attachments, data, stickers};
 use crate::domain::media::{MediaFailure, Waveform};
 use crate::ports::media::MediaCache;
 
@@ -61,11 +61,15 @@ impl MediaCache for DemoMediaCache {
     }
 
     fn sticker_path(&self, mxc: &str) -> Option<PathBuf> {
-        sticker_asset_path(mxc_asset(mxc))
+        sticker_downloaded(mxc)
+            .then(|| sticker_asset_path(mxc_asset(mxc)))
+            .flatten()
     }
 
     fn sticker_failed(&self, mxc: &str) -> bool {
-        demo_failure(mxc_asset(mxc)).is_some() && self.sticker_path(mxc).is_none()
+        sticker_downloaded(mxc)
+            && demo_failure(mxc_asset(mxc)).is_some()
+            && sticker_asset_path(mxc_asset(mxc)).is_none()
     }
 
     fn audio_path(&self, event_id: &str) -> Option<PathBuf> {
@@ -98,6 +102,27 @@ pub(super) fn remember_waveform(event_id: &str, waveform: Waveform) {
 fn fetched_audio() -> &'static Mutex<HashSet<String>> {
     static FETCHED: OnceLock<Mutex<HashSet<String>>> = OnceLock::new();
     FETCHED.get_or_init(|| Mutex::new(HashSet::new()))
+}
+
+fn prefetched_stickers() -> &'static Mutex<HashSet<String>> {
+    static PREFETCHED: OnceLock<Mutex<HashSet<String>>> = OnceLock::new();
+    PREFETCHED.get_or_init(|| Mutex::new(HashSet::new()))
+}
+
+fn sticker_downloaded(mxc: &str) -> bool {
+    !stickers::scenario().images_trickle
+        || prefetched_stickers()
+            .lock()
+            .is_ok_and(|prefetched| prefetched.contains(mxc))
+}
+
+pub(super) fn prefetch_stickers(mxcs: &[String]) -> usize {
+    if let Ok(mut prefetched) = prefetched_stickers().lock() {
+        prefetched.extend(mxcs.iter().cloned());
+    }
+    mxcs.iter()
+        .filter(|mxc| sticker_asset_path(mxc_asset(mxc)).is_some())
+        .count()
 }
 
 fn was_fetched(event_id: &str) -> bool {

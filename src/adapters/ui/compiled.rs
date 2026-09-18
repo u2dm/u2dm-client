@@ -316,7 +316,7 @@ sticker_row_fields!(impl_entry_from StickerRowDto StickerRow;);
 
 macro_rules! attach_compiled_models {
     ($window:ident $models:ident;
-        $($field:ident $row:ident $g:ident $gname:literal $lit:literal $s:ident;)*) => {
+        $($field:ident $row:ident $model:ident $g:ident $gname:literal $lit:literal $s:ident;)*) => {
         $( $window.global::<$g>().$s(ModelRc::from(Rc::clone(&$models.$field))); )*
     };
 }

@@ -1,5 +1,5 @@
 use std::cell::RefCell;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::{mem, slice};
 
@@ -30,6 +30,7 @@ struct Needs {
     media: HashMap<String, MediaNeed>,
     avatars: HashMap<AvatarSlot, PathBuf>,
     stickers: HashMap<String, PathBuf>,
+    stickers_asked_before_download: HashSet<String>,
 }
 
 pub fn record_media_need(unique_id: &str, thumbnail: Option<PathBuf>, avatar: Option<PathBuf>) {
@@ -49,7 +50,13 @@ pub fn record_avatar_need(slot: AvatarSlot, path: PathBuf) {
 }
 
 pub fn record_sticker_need(key: &str, path: PathBuf) {
-    NEEDS.with_borrow_mut(|needs| needs.stickers.insert(key.to_owned(), path));
+    let already_asked = NEEDS.with_borrow_mut(|needs| {
+        needs.stickers.insert(key.to_owned(), path);
+        needs.stickers_asked_before_download.remove(key)
+    });
+    if already_asked {
+        request_sticker(key);
+    }
 }
 
 pub fn forget_all_media_needs() {
@@ -93,7 +100,14 @@ fn flush() {
 }
 
 fn resolve_sticker(key: &str) {
-    let Some(path) = NEEDS.with_borrow(|needs| needs.stickers.get(key).cloned()) else {
+    let path = NEEDS.with_borrow_mut(|needs| {
+        let path = needs.stickers.get(key).cloned();
+        if path.is_none() {
+            needs.stickers_asked_before_download.insert(key.to_owned());
+        }
+        path
+    });
+    let Some(path) = path else {
         return;
     };
     announce(key, &animation::load_thumbnail(&path, key));

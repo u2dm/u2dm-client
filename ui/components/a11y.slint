@@ -26,6 +26,8 @@ export component ClickArea inherits Rectangle {
     in property <bool> draggable: false;
     in property <string> label;
     in property <bool> show-focus-ring: true;
+    in property <bool> focusable: true;
+    in property <bool> roving-focus: false;
     in property <length> ring-radius: Radius.sm;
     in property <length> ring-inset: 0;
     out property <bool> has-hover: touch.has-hover;
@@ -54,8 +56,8 @@ export component ClickArea inherits Rectangle {
     fs := FocusScope {
         x: 0;
         width: 0;
-        enabled: root.enabled;
-        focus-on-tab-navigation: root.actionable;
+        enabled: root.enabled && root.focusable;
+        focus-on-tab-navigation: root.actionable && root.focusable;
         key-pressed(event) => {
             if (root.enabled && Interaction.activates(event.text)) {
                 root.clicked();
@@ -80,7 +82,7 @@ export component ClickArea inherits Rectangle {
 
     @children
 
-    if root.show-focus-ring && fs.has-focus: FocusRing {
+    if root.show-focus-ring && (fs.has-focus || root.roving-focus): FocusRing {
         x: root.ring-inset;
         y: root.ring-inset;
         width: root.width - root.ring-inset * 2;

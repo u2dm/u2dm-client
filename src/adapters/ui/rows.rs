@@ -1,9 +1,9 @@
 use std::collections::HashSet;
 
-use slint::{Model, VecModel};
+use slint::Model;
 
 pub fn patch_rows_by_id<T: Clone + 'static>(
-    model: &VecModel<T>,
+    model: &impl Model<Data = T>,
     ids: &HashSet<&str>,
     row_id: &dyn Fn(&T) -> &str,
     apply: impl Fn(&mut T),
@@ -26,7 +26,7 @@ pub fn patch_rows_by_id<T: Clone + 'static>(
 }
 
 pub fn locate_row<T: Clone + 'static>(
-    model: &VecModel<T>,
+    model: &impl Model<Data = T>,
     entry_id: &dyn Fn(&T) -> &str,
     unique_id: &str,
     hint: usize,

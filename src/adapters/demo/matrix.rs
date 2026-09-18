@@ -512,9 +512,8 @@ impl TimelinePort for DemoAuthed {
                 {
                     active.prepended = active.prepended.saturating_add(page.len());
                 }
-                for message in page {
-                    send_patch(&timeline_tx, TimelinePatch::PushFront(message)).await;
-                }
+                let page = page.into_iter().map(TimelinePatch::PushFront).collect();
+                send_patch(&timeline_tx, TimelinePatch::Batch(page)).await;
             }
             let update = TimelineUpdate::Pagination {
                 direction,
@@ -646,9 +645,7 @@ impl StickerPort for DemoAuthed {
 
     async fn prefetch(&self, mxcs: &[String]) -> usize {
         stickers::pause_prefetch().await;
-        mxcs.iter()
-            .filter(|mxc| media::DemoMediaCache.sticker_path(mxc).is_some())
-            .count()
+        media::prefetch_stickers(mxcs)
     }
 
     async fn send_sticker(

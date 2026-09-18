@@ -19,6 +19,7 @@ mod richtext;
 mod router;
 mod rows;
 pub(crate) mod schema;
+mod splice_model;
 mod video;
 
 pub use output::UiEventOutput;

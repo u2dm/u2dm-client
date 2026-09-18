@@ -479,7 +479,7 @@ fn set_value_avatar(entry: &mut Value, avatar_field: &str, has_field: &str, imag
 
 macro_rules! attach_interpreted_models {
     ($window:ident $models:ident;
-        $($field:ident $row:ident $g:ident $gname:literal $lit:literal $s:ident;)*) => {
+        $($field:ident $row:ident $model:ident $g:ident $gname:literal $lit:literal $s:ident;)*) => {
         $( set_global($window, $gname, $lit, Value::Model(ModelRc::from(Rc::clone(&$models.$field)))); )*
     };
 }

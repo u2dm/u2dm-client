@@ -517,62 +517,62 @@ msgctxt "AttachmentDialog"
 msgid "Send"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/emoji-picker.slint:90
+#: ui/screens/chat/components/timeline/emoji-picker.slint:91
 msgctxt "EmojiPicker"
 msgid "Smileys & emotion"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/emoji-picker.slint:91
+#: ui/screens/chat/components/timeline/emoji-picker.slint:92
 msgctxt "EmojiPicker"
 msgid "People & body"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/emoji-picker.slint:92
+#: ui/screens/chat/components/timeline/emoji-picker.slint:93
 msgctxt "EmojiPicker"
 msgid "Animals & nature"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/emoji-picker.slint:93
+#: ui/screens/chat/components/timeline/emoji-picker.slint:94
 msgctxt "EmojiPicker"
 msgid "Food & drink"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/emoji-picker.slint:94
+#: ui/screens/chat/components/timeline/emoji-picker.slint:95
 msgctxt "EmojiPicker"
 msgid "Travel & places"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/emoji-picker.slint:95
+#: ui/screens/chat/components/timeline/emoji-picker.slint:96
 msgctxt "EmojiPicker"
 msgid "Activities"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/emoji-picker.slint:96
+#: ui/screens/chat/components/timeline/emoji-picker.slint:97
 msgctxt "EmojiPicker"
 msgid "Objects"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/emoji-picker.slint:97
+#: ui/screens/chat/components/timeline/emoji-picker.slint:98
 msgctxt "EmojiPicker"
 msgid "Symbols"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/emoji-picker.slint:98
+#: ui/screens/chat/components/timeline/emoji-picker.slint:99
 msgctxt "EmojiPicker"
 msgid "Flags"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/emoji-picker.slint:119
+#: ui/screens/chat/components/timeline/emoji-picker.slint:120
 msgctxt "EmojiPicker"
 msgid "Search emoji"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/emoji-picker.slint:136
+#: ui/screens/chat/components/timeline/emoji-picker.slint:137
 msgctxt "EmojiPicker"
 msgid "Skin tone {}"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/emoji-picker.slint:192
+#: ui/screens/chat/components/timeline/emoji-picker.slint:197
 msgctxt "EmojiPicker"
 msgid "No emoji found"
 msgstr ""
@@ -780,54 +780,54 @@ msgctxt "VideoPlayer"
 msgid "Close"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/message-bubble.slint:295
-msgctxt "MessageBubble"
-msgid "Go to the message this replies to"
-msgstr ""
-
-#: ui/screens/chat/components/timeline/message-bubble.slint:519
-msgctxt "MessageBubble"
-msgid "Not sent"
-msgstr ""
-
-#: ui/screens/chat/components/timeline/message-bubble.slint:528
-msgctxt "MessageBubble"
-msgid "Retry sending this message"
-msgstr ""
-
-#: ui/screens/chat/components/timeline/message-bubble.slint:534
-msgctxt "MessageBubble"
-msgid "Retry"
-msgstr ""
-
-#: ui/screens/chat/components/timeline/message-bubble.slint:544
-msgctxt "MessageBubble"
-msgid "Discard this message"
-msgstr ""
-
-#: ui/screens/chat/components/timeline/message-bubble.slint:550
-msgctxt "MessageBubble"
-msgid "Discard"
-msgstr ""
-
-#: ui/screens/chat/components/timeline/message-bubble.slint:566
+#: ui/screens/chat/components/timeline/message-bubble.slint:176
 msgctxt "MessageBubble"
 msgid "Select the text of this message"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/message-bubble.slint:591
+#: ui/screens/chat/components/timeline/message-bubble.slint:179
 msgctxt "MessageBubble"
 msgid "Reply to {}"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/message-bubble.slint:606
-msgctxt "MessageBubble"
-msgid "Reply"
-msgstr ""
-
-#: ui/screens/chat/components/timeline/message-bubble.slint:624
+#: ui/screens/chat/components/timeline/message-bubble.slint:181
 msgctxt "MessageBubble"
 msgid "React to {}'s message with {}"
+msgstr ""
+
+#: ui/screens/chat/components/timeline/message-bubble.slint:336
+msgctxt "MessageBubble"
+msgid "Go to the message this replies to"
+msgstr ""
+
+#: ui/screens/chat/components/timeline/message-bubble.slint:560
+msgctxt "MessageBubble"
+msgid "Not sent"
+msgstr ""
+
+#: ui/screens/chat/components/timeline/message-bubble.slint:569
+msgctxt "MessageBubble"
+msgid "Retry sending this message"
+msgstr ""
+
+#: ui/screens/chat/components/timeline/message-bubble.slint:575
+msgctxt "MessageBubble"
+msgid "Retry"
+msgstr ""
+
+#: ui/screens/chat/components/timeline/message-bubble.slint:585
+msgctxt "MessageBubble"
+msgid "Discard this message"
+msgstr ""
+
+#: ui/screens/chat/components/timeline/message-bubble.slint:591
+msgctxt "MessageBubble"
+msgid "Discard"
+msgstr ""
+
+#: ui/screens/chat/components/timeline/message-bubble.slint:687
+msgctxt "MessageBubble"
+msgid "Reply"
 msgstr ""
 
 #: ui/screens/chat/components/message-preview.slint:6

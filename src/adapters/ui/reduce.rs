@@ -3,20 +3,27 @@ use std::sync::Arc;
 
 use std::collections::HashSet;
 
-use slint::{ComponentHandle, Model, SharedString, VecModel};
+use slint::{ComponentHandle, Model, SharedString};
 
 use super::audio;
-use super::backend::{UiBackend, UiEventContext};
-use super::decode::{AvatarSlot, clear_session_media, load_avatar_async, request_sticker};
-use super::dto::{GRID_COLUMNS, StickerPackDto, audio_row_update, sticker_grid};
+use super::backend::{UiBackend, UiEventContext, apply_thumbnail_ready};
+use super::decode::{
+    AvatarSlot, DecodeOutcome, clear_session_media, load_avatar_async, request_sticker,
+};
+use super::dto::{
+    GRID_COLUMNS, StickerArt, StickerPackDto, StickerRowDto, audio_row_update, sticker_art,
+    sticker_grid, sticker_needle,
+};
 use super::present::{
     VerifyStep, duration_label, file_extension, user_initial, verification_cancellation,
 };
 use super::props::{BoolProp, IntProp, StringProp, UiProps};
 use super::reconcile::{
-    apply_rooms, apply_spaces, apply_timeline_patch, forget_timeline_index, index_sticker_grid,
+    RowReplacements, apply_rooms, apply_spaces, apply_timeline_patch, forget_timeline_index,
+    index_sticker_grid, retain_awaited_downloads,
 };
 use super::rows::patch_rows_by_id;
+use super::splice_model::SpliceModel;
 use super::video;
 use crate::commands::effects::{Effect, VerificationActivity, VerificationUpdate};
 use crate::commands::messages::{UserMessage, UserMessageKind};
@@ -39,7 +46,7 @@ thread_local! {
     static FOCUS_EVENT_ID: RefCell<Option<String>> = const { RefCell::new(None) };
     static ACTIVE_GENERATION: Cell<i32> = const { Cell::new(0) };
     static LATEST_SNAPSHOT: RefCell<Option<Arc<AppViewState>>> = const { RefCell::new(None) };
-    static STICKER_QUERY: RefCell<String> = const { RefCell::new(String::new()) };
+    static STICKER_NEEDLE: RefCell<String> = const { RefCell::new(String::new()) };
 }
 
 fn is_new_generation(generation: i32) -> bool {
@@ -81,7 +88,12 @@ pub(super) fn latest_rooms() -> Option<RoomList> {
 }
 
 pub(super) fn set_sticker_query<B: UiBackend>(query: &str, media: &dyn MediaCache) {
-    STICKER_QUERY.with(|cell| query.clone_into(&mut cell.borrow_mut()));
+    let needle = sticker_needle(query);
+    let unchanged = STICKER_NEEDLE.with(|cell| *cell.borrow() == needle);
+    if unchanged {
+        return;
+    }
+    STICKER_NEEDLE.with(|cell| *cell.borrow_mut() = needle);
     let stickers = LATEST_SNAPSHOT.with(|cell| cell.borrow().as_ref().map(|v| v.stickers.clone()));
     if let Some(stickers) = stickers {
         rebuild_sticker_grid::<B>(&stickers, media);
@@ -287,7 +299,7 @@ fn apply_snapshot<B: UiBackend>(
             || l.stickers.room_encrypted != stickers.room_encrypted
             || l.stickers.loading != stickers.loading
     }) {
-        apply_stickers::<B>(w, stickers, ctx.media);
+        apply_stickers::<B>(w, last.map(|l| &l.stickers), stickers, ctx.media);
     }
     if last.is_none_or(|l| l.attachment != *attachment) {
         apply_attachment(w, attachment);
@@ -304,8 +316,20 @@ fn apply_snapshot<B: UiBackend>(
     LATEST_SNAPSHOT.with(|cell| *cell.borrow_mut() = Some(Arc::clone(view)));
 }
 
-fn apply_stickers<B: UiBackend>(w: &B::Window, stickers: &StickerView, media: &dyn MediaCache) {
-    rebuild_sticker_grid::<B>(stickers, media);
+fn apply_stickers<B: UiBackend>(
+    w: &B::Window,
+    last: Option<&StickerView>,
+    stickers: &StickerView,
+    media: &dyn MediaCache,
+) {
+    let catalog_changed = last.is_none_or(|l| {
+        !Arc::ptr_eq(&l.packs, &stickers.packs) || l.generation != stickers.generation
+    });
+    if catalog_changed {
+        rebuild_sticker_grid::<B>(stickers, media);
+    } else if last.is_some_and(|l| l.ready_images != stickers.ready_images) {
+        settle_sticker_downloads::<B>(media);
+    }
     let for_this_room = stickers.generation == ACTIVE_GENERATION.with(Cell::get);
     w.set_int(IntProp::StickerColumns, GRID_COLUMNS);
     w.set_bool(BoolProp::StickerRoomEncrypted, stickers.room_encrypted);
@@ -318,22 +342,17 @@ fn apply_stickers<B: UiBackend>(w: &B::Window, stickers: &StickerView, media: &d
 
 fn rebuild_sticker_grid<B: UiBackend>(stickers: &StickerView, media: &dyn MediaCache) {
     let active = ACTIVE_GENERATION.with(Cell::get);
-    let query = STICKER_QUERY.with(|cell| cell.borrow().clone());
+    let needle = STICKER_NEEDLE.with(|cell| cell.borrow().clone());
     let grid = if stickers.generation == active {
-        sticker_grid(stickers.packs.as_ref(), &query, media)
+        sticker_grid(stickers.packs.as_ref(), &needle, media)
     } else {
-        sticker_grid(&[], &query, media)
+        sticker_grid(&[], &needle, media)
     };
 
-    index_sticker_grid(&grid);
+    let replacements = index_sticker_grid(&grid);
     let missing_icons = packs_missing_icons(&grid.packs);
     B::with_stickers(|rows, packs| {
-        rows.set_vec(
-            grid.rows
-                .into_iter()
-                .map(B::StickerRow::from)
-                .collect::<Vec<_>>(),
-        );
+        replace_reshaped_rows::<B>(rows, grid.rows, &replacements);
         packs.set_vec(
             grid.packs
                 .into_iter()
@@ -343,6 +362,47 @@ fn rebuild_sticker_grid<B: UiBackend>(stickers: &StickerView, media: &dyn MediaC
     });
     for icon_cell_key in &missing_icons {
         request_sticker(icon_cell_key);
+    }
+    settle_sticker_downloads::<B>(media);
+}
+
+fn replace_reshaped_rows<B: UiBackend>(
+    rows: &SpliceModel<B::StickerRow>,
+    grid_rows: Vec<StickerRowDto>,
+    replacements: &RowReplacements,
+) {
+    let kept = rows.row_count();
+    let total = grid_rows.len();
+    let mut appended = Vec::new();
+    for (row, entry) in grid_rows.into_iter().enumerate() {
+        if row >= kept {
+            appended.push(B::StickerRow::from(entry));
+        } else if replacements.must_replace(row) {
+            rows.set_row_data(row, B::StickerRow::from(entry));
+        }
+    }
+    rows.truncate(total);
+    rows.insert_rows(kept, appended);
+}
+
+fn settle_sticker_downloads<B: UiBackend>(media: &dyn MediaCache) {
+    let mut settled = Vec::new();
+    retain_awaited_downloads(|key, mxc| match sticker_art(key, mxc, media) {
+        StickerArt::Downloading => true,
+        StickerArt::Decoding => false,
+        art => {
+            settled.push((key.to_owned(), art));
+            false
+        }
+    });
+    for (key, art) in settled {
+        match art {
+            StickerArt::Ready(image) => {
+                apply_thumbnail_ready::<B>(&key, DecodeOutcome::Ready(&image));
+            }
+            StickerArt::Failed => apply_thumbnail_ready::<B>(&key, DecodeOutcome::Failed),
+            StickerArt::Decoding | StickerArt::Downloading => {}
+        }
     }
 }
 
@@ -549,7 +609,7 @@ fn apply_toast(w: &impl UiProps, toast: &Toast) {
     w.set_string(StringProp::ToastDetail, SharedString::from(detail));
 }
 
-fn anchor_row<B: UiBackend>(model: &VecModel<B::Message>) -> i32 {
+fn anchor_row<B: UiBackend>(model: &SpliceModel<B::Message>) -> i32 {
     let focus = FOCUS_EVENT_ID.with(|cell| cell.borrow().clone());
     let is_anchor = |entry: &B::Message| match &focus {
         Some(event_id) => B::message_event_id(entry) == event_id,

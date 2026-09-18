@@ -20,7 +20,7 @@ import { UnreadDivider } from "./messages/unread-divider.slint";
 import { ReactionRow } from "./reaction-row.slint";
 import { QuickReactions } from "./reaction-picker.slint";
 import { Avatar } from "../../../../components/avatar.slint";
-import { ClickArea } from "../../../../components/a11y.slint";
+import { ClickArea, Interaction } from "../../../../components/a11y.slint";
 import { Pill } from "../../../../components/pill.slint";
 import {
     Composer,
@@ -33,6 +33,12 @@ import { Actions } from "../../../../actions.slint";
 import { RoomView } from "../../../../views.slint";
 import { AppStyle, Avatars, Fonts, Glyph, IconSize, Metrics, Motion, Opacity, Radius, Size, Space, Stroke, Weight } from "../../../../theme.slint";
 import { MediaState, MessageKind, SendState } from "../../../../enums.slint";
+
+enum RowAction {
+    select-text,
+    reply,
+    react,
+}
 
 component PronounBadge inherits Rectangle {
     in property <string> text;
@@ -160,6 +166,36 @@ export component MessageBubble inherits VerticalLayout {
     property <color> pill-fill: Palette.alternate-background;
     property <color> pill-foreground: Palette.accent-background;
 
+    property <bool> can-select-text: root.is-plain-text || (root.has-photo && root.has-caption);
+    property <[RowAction]> row-actions: root.can-select-text
+        ? [RowAction.select-text, RowAction.reply, RowAction.react]
+        : [RowAction.reply, RowAction.react];
+
+    pure function action-label(action: RowAction) -> string {
+        if action == RowAction.select-text {
+            return @tr("Select the text of this message");
+        }
+        if action == RowAction.reply {
+            return @tr("Reply to {}", msg.sender);
+        }
+        return @tr("React to {}'s message with {}", msg.sender, QuickReactions.default-key);
+    }
+
+    function run-action(action: RowAction) {
+        if !root.has-remote-id {
+            return;
+        }
+        if action == RowAction.select-text {
+            TextSelection.select(msg.unique-id);
+        } else if action == RowAction.reply {
+            Composer.reply-event-id = msg.event-id;
+            Composer.reply-sender = msg.sender;
+            Composer.reply-preview = MessagePreview.label(msg.preview-kind, msg.body);
+        } else {
+            Actions.toggle-reaction(msg.event-id, QuickReactions.default-key);
+        }
+    }
+
     if msg.first-unread: UnreadDivider { }
 
     if is-service: ServiceMessage {
@@ -179,12 +215,16 @@ export component MessageBubble inherits VerticalLayout {
             && self.starts-above-composer
             && (!root.continued-by-next || self.ends-below-composer);
 
+        property <bool> bubble-hovered: false;
+        property <bool> action-hovered: false;
+        property <int> action-cursor: 0;
+        property <RowAction> focused-action: root.row-actions[min(self.action-cursor, root.row-actions.length - 1)];
+
         property <bool> hovered: root.has-remote-id
-            && (hover-bg.has-hover
+            && (self.bubble-hovered
+            || self.action-hovered
             || root.strip-mine
-            || react-btn.has-hover || react-btn.has-focus
-            || reply-pill.has-hover || reply-pill.has-focus
-            || select-pill.has-hover || select-pill.has-focus);
+            || action-focus.has-focus);
 
         property <length> outside-chips-height: root.chips-outside
             ? Metrics.reaction-chip + root.outside-chips-gap
@@ -256,6 +296,7 @@ export component MessageBubble inherits VerticalLayout {
                         TextSelection.clear();
                     }
                     changed has-hover => {
+                        message-row.bubble-hovered = self.has-hover;
                         if (self.has-hover && root.has-remote-id) {
                             Reactions.hover-bubble(bubble.anchor());
                         } else {
@@ -556,91 +597,138 @@ export component MessageBubble inherits VerticalLayout {
             }
         }
 
-        select-pill := Pill {
-            x: reply-pill.x - self.width - root.pill-gap;
-            y: reply-pill.y;
-            width: root.pill-height;
-            height: root.pill-height;
-            pad: 0;
-            fill: root.pill-fill;
-            label: @tr("Select the text of this message");
-            enabled: root.is-plain-text || (root.has-photo && root.has-caption);
-            visible: self.enabled;
-            opacity: message-row.hovered ? 1 : 0;
-            clicked => {
-                TextSelection.select(msg.unique-id);
+        action-focus := FocusScope {
+            x: bubble.x;
+            y: bubble.y;
+            width: 0;
+            height: 0;
+            focus-on-click: false;
+            focus-on-tab-navigation: Interaction.actionable(root.has-remote-id, false);
+            accessible-role: button;
+            accessible-label: root.action-label(message-row.focused-action);
+            accessible-action-default => {
+                root.run-action(message-row.focused-action);
             }
+            key-pressed(event) => {
+                if event.text == Key.RightArrow {
+                    message-row.action-cursor = mod(message-row.action-cursor + 1, root.row-actions.length);
+                    return accept;
+                }
+                if event.text == Key.LeftArrow {
+                    message-row.action-cursor = mod(message-row.action-cursor + root.row-actions.length - 1, root.row-actions.length);
+                    return accept;
+                }
+                if Interaction.activates(event.text) {
+                    root.run-action(message-row.focused-action);
+                    return accept;
+                }
+                return reject;
+            }
+        }
+
+        if message-row.hovered: Rectangle {
+            property <bool> any-hovered: select-pill.has-hover
+                || reply-pill.has-hover
+                || react-btn.has-hover;
+
+            width: 100%;
+            height: 100%;
+            opacity: 0;
 
             animate opacity {
                 duration: Motion.fast;
                 easing: ease-out;
             }
 
-            IconDisplay {
-                icon: IconSet.TextCursor;
-                size: IconSize.sm;
-                stroke: root.pill-foreground;
-            }
-        }
-
-        reply-pill := Pill {
-            x: bubble.x + bubble.width - self.width;
-            y: bubble.y - self.height + root.pill-overlap;
-            height: root.pill-height;
-            fill: root.pill-fill;
-            label: @tr("Reply to {}", msg.sender);
-            enabled: root.has-remote-id;
-            opacity: message-row.hovered ? 1 : 0;
-            clicked => {
-                Composer.reply-event-id = msg.event-id;
-                Composer.reply-sender = msg.sender;
-                Composer.reply-preview = MessagePreview.label(msg.preview-kind, msg.body);
+            init => {
+                self.opacity = 1;
             }
 
-            animate opacity {
-                duration: Motion.fast;
-                easing: ease-out;
+            changed any-hovered => {
+                message-row.action-hovered = self.any-hovered;
             }
 
-            Text {
-                text: @tr("Reply");
-                font-size: Fonts.body-small;
-                font-weight: Weight.semibold;
-                color: root.pill-foreground;
-                vertical-alignment: center;
-            }
-        }
+            select-pill := Pill {
+                x: reply-pill.x - self.width - root.pill-gap;
+                y: reply-pill.y;
+                width: root.pill-height;
+                height: root.pill-height;
+                pad: 0;
+                fill: root.pill-fill;
+                label: root.action-label(RowAction.select-text);
+                enabled: root.can-select-text;
+                visible: self.enabled;
+                focusable: false;
+                roving-focus: action-focus.has-focus && message-row.focused-action == RowAction.select-text;
+                clicked => {
+                    root.run-action(RowAction.select-text);
+                }
 
-        react-btn := Pill {
-            x: root.is-own
-                ? bubble.x - self.width + Metrics.reaction-strip-overlap
-                : bubble.x + bubble.width - Metrics.reaction-strip-overlap;
-            y: bubble.y + bubble.height - self.height;
-            width: Metrics.reaction-strip-width;
-            height: self.width;
-            pad: 0;
-            fill: root.pill-fill;
-            enabled: root.has-remote-id;
-            label: @tr("React to {}'s message with {}", msg.sender, QuickReactions.default-key);
-            opacity: message-row.hovered && !root.strip-mine ? 1 : 0;
-
-            clicked => {
-                Actions.toggle-reaction(msg.event-id, QuickReactions.default-key);
-            }
-            changed has-hover => {
-                if (self.has-hover && root.has-remote-id) {
-                    Reactions.hover-bubble(bubble.anchor());
-                } else {
-                    Reactions.leave-bubble(msg.event-id);
+                IconDisplay {
+                    icon: IconSet.TextCursor;
+                    size: IconSize.sm;
+                    stroke: root.pill-foreground;
                 }
             }
 
-            Text {
-                text: QuickReactions.default-key;
-                font-family: Fonts.emoji;
-                font-size: Glyph.xs;
-                horizontal-alignment: center;
-                vertical-alignment: center;
+            reply-pill := Pill {
+                x: bubble.x + bubble.width - self.width;
+                y: bubble.y - self.height + root.pill-overlap;
+                height: root.pill-height;
+                fill: root.pill-fill;
+                label: root.action-label(RowAction.reply);
+                focusable: false;
+                roving-focus: action-focus.has-focus && message-row.focused-action == RowAction.reply;
+                clicked => {
+                    root.run-action(RowAction.reply);
+                }
+
+                Text {
+                    text: @tr("Reply");
+                    font-size: Fonts.body-small;
+                    font-weight: Weight.semibold;
+                    color: root.pill-foreground;
+                    vertical-alignment: center;
+                }
+            }
+
+            react-btn := Pill {
+                x: root.is-own
+                    ? bubble.x - self.width + Metrics.reaction-strip-overlap
+                    : bubble.x + bubble.width - Metrics.reaction-strip-overlap;
+                y: bubble.y + bubble.height - self.height;
+                width: Metrics.reaction-strip-width;
+                height: self.width;
+                pad: 0;
+                fill: root.pill-fill;
+                label: root.action-label(RowAction.react);
+                focusable: false;
+                roving-focus: action-focus.has-focus && message-row.focused-action == RowAction.react;
+                opacity: root.strip-mine ? 0 : 1;
+
+                animate opacity {
+                    duration: Motion.fast;
+                    easing: ease-out;
+                }
+
+                clicked => {
+                    root.run-action(RowAction.react);
+                }
+                changed has-hover => {
+                    if (self.has-hover && root.has-remote-id) {
+                        Reactions.hover-bubble(bubble.anchor());
+                    } else {
+                        Reactions.leave-bubble(msg.event-id);
+                    }
+                }
+
+                Text {
+                    text: QuickReactions.default-key;
+                    font-family: Fonts.emoji;
+                    font-size: Glyph.xs;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
             }
         }
     }

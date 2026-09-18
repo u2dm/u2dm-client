@@ -1,4 +1,4 @@
-import { Palette } from "std-widgets.slint";
+import { ListView, Palette } from "std-widgets.slint";
 import { IconDisplay, IconSet, Icon } from "@lucide";
 
 import { EmojiEntry, EmojiGroup, EmojiInsert } from "../types.slint";
@@ -64,6 +64,7 @@ export component EmojiPicker inherits Rectangle {
     property <length> grid-width: root.width - Space.xl;
     property <int> columns: max(1, floor(root.grid-width / root.min-cell));
     property <length> cell: root.grid-width / root.columns;
+    property <int> row-count: ceil(root.current-items.length / root.columns);
     property <bool> is-searching: root.query != "";
     property <[EmojiEntry]> current-items: root.is-searching
         ? EmojiStore.results
@@ -158,32 +159,36 @@ export component EmojiPicker inherits Rectangle {
         Rectangle {
             vertical-stretch: 1;
 
-            grid := Flickable {
-                content-height: max(self.height, ceil(root.current-items.length / root.columns) * root.cell);
-
-                for entry[idx] in root.current-items: ClickArea {
-                    x: mod(idx, root.columns) * root.cell;
-                    y: floor(idx / root.columns) * root.cell;
-                    width: root.cell;
+            ListView {
+                for row in root.row-count: Rectangle {
                     height: root.cell;
-                    ring-radius: Radius.sm;
-                    label: entry.name;
-                    clicked => {
-                        root.picked(root.tone-glyph(entry));
-                    }
 
-                    GridCellHover {
-                        cell: root.cell;
-                        lit: parent.has-hover;
-                        border-radius: Radius.sm;
-                    }
+                    for column in min(root.columns, root.current-items.length - row * root.columns): emoji-cell := ClickArea {
+                        property <EmojiEntry> entry: root.current-items[row * root.columns + column];
 
-                    Text {
-                        text: root.tone-glyph(entry);
-                        font-family: Fonts.emoji;
-                        font-size: Glyph.lg;
-                        horizontal-alignment: center;
-                        vertical-alignment: center;
+                        x: column * root.cell;
+                        y: 0;
+                        width: root.cell;
+                        height: root.cell;
+                        ring-radius: Radius.sm;
+                        label: self.entry.name;
+                        clicked => {
+                            root.picked(root.tone-glyph(self.entry));
+                        }
+
+                        GridCellHover {
+                            cell: root.cell;
+                            lit: emoji-cell.has-hover;
+                            border-radius: Radius.sm;
+                        }
+
+                        Text {
+                            text: root.tone-glyph(emoji-cell.entry);
+                            font-family: Fonts.emoji;
+                            font-size: Glyph.lg;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                        }
                     }
                 }
             }

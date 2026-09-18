@@ -169,12 +169,12 @@ pub(crate) use enum_props;
 
 macro_rules! model_props {
     ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
-        timeline Message RoomView "RoomView" "timeline" set_timeline;
-        rooms Room DirectoryView "DirectoryView" "rooms" set_rooms;
-        spaces Space DirectoryView "DirectoryView" "spaces" set_spaces;
-        subspaces Space DirectoryView "DirectoryView" "subspaces" set_subspaces;
-        sticker_rows StickerRow StickerView "StickerView" "rows" set_rows;
-        sticker_packs StickerPack StickerView "StickerView" "packs" set_packs;
+        timeline Message SpliceModel RoomView "RoomView" "timeline" set_timeline;
+        rooms Room VecModel DirectoryView "DirectoryView" "rooms" set_rooms;
+        spaces Space VecModel DirectoryView "DirectoryView" "spaces" set_spaces;
+        subspaces Space VecModel DirectoryView "DirectoryView" "subspaces" set_subspaces;
+        sticker_rows StickerRow SpliceModel StickerView "StickerView" "rows" set_rows;
+        sticker_packs StickerPack VecModel StickerView "StickerView" "packs" set_packs;
     } };
 }
 pub(crate) use model_props;

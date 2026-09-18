@@ -14,7 +14,7 @@ pub const CATALOG: Scenarios = Scenarios {
     flags: &[
         Flag {
             value: "trickle",
-            effect: "one prefetch batch per 300ms, so the placeholder-to-ready path actually runs",
+            effect: "one prefetch batch per 300ms, and a sticker's file exists only once its batch lands, so the download-to-ready path actually runs",
             note: "include in ANY sticker test; without it every image is ready on the first publish",
         },
         Flag {
