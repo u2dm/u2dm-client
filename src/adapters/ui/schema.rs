@@ -116,6 +116,7 @@ macro_rules! bool_props {
         AudioPlaying AudioView "AudioView" "playing" set_playing get_playing;
         AudioSilent AudioView "AudioView" "silent" set_silent get_silent;
         UnsentVisible UnsentView "UnsentView" "visible" set_visible get_visible;
+        WindowFocused WindowView "WindowView" "focused" set_focused get_focused;
     } };
 }
 pub(crate) use bool_props;

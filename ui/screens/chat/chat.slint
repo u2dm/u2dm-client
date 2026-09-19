@@ -8,23 +8,29 @@ import { UserMessageKind } from "../../enums.slint";
 import { UserMessages } from "../../messages.slint";
 import { AppStyle, IconSize, Metrics, Radius, Size, Space } from "../../theme.slint";
 import { IconButton } from "../../components/button.slint";
-import { DirectoryView, RoomView } from "../../views.slint";
+import { DirectoryView, RoomView, WindowView } from "../../views.slint";
 import { Actions } from "../../actions.slint";
 import { Composer, Reactions, Shell, TextSelection } from "../../local.slint";
 
 export component ChatScreen inherits Rectangle {
     in-out property <string> input-message: "";
+    in property <bool> window-minimized;
 
     init => {
         Composer.clear();
         Shell.close-overlays();
         TextSelection.clear();
         Reactions.close();
+        Actions.timeline-visibility-changed(root.timeline-visible);
     }
 
     property <bool> compact: root.width < Metrics.compact-breakpoint;
     property <bool> has-room: RoomView.selected-room-name != "";
     property <bool> shows-room-list: root.compact && (!root.has-room || Shell.nav-open);
+    property <bool> timeline-visible: WindowView.focused
+        && !root.window-minimized
+        && !root.shows-room-list
+        && !Shell.modal-open;
 
     property <length> sidebar-width: Metrics.sidebar-default;
     property <bool> nav-collapsed: root.sidebar-width <= Metrics.sidebar-collapsed;
@@ -92,6 +98,10 @@ export component ChatScreen inherits Rectangle {
         if !root.compact {
             Shell.nav-open = false;
         }
+    }
+
+    changed timeline-visible => {
+        Actions.timeline-visibility-changed(root.timeline-visible);
     }
 
     if !root.compact: Sidebar {

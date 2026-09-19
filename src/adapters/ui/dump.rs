@@ -99,6 +99,7 @@ fn install(requester: Requester) {
 pub enum Poke {
     ToggleAudio,
     SeekAudio(Duration),
+    WindowFocus(bool),
 }
 
 type Poker = Box<dyn Fn(Poke) + Send + Sync>;
@@ -140,6 +141,7 @@ pub fn install_probe<B: UiBackend>(window: &B::Window) {
         let queued = weak.upgrade_in_event_loop(move |window| match poke {
             Poke::ToggleAudio => audio::toggle(&window),
             Poke::SeekAudio(position) => audio::seek(&window, position),
+            Poke::WindowFocus(focused) => window.set_bool(BoolProp::WindowFocused, focused),
         });
         if let Err(e) = queued {
             tracing::debug!("a probe poke could not reach the event loop: {e}");

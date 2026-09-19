@@ -7,6 +7,7 @@ use super::input::EventSender;
 use super::task_group::TaskGroup;
 use crate::commands::effects::Effect;
 use crate::commands::messages::{UserMessage, UserMessageKind};
+use crate::commands::ui::TimelineVisibility;
 use crate::commands::view::Toast;
 use crate::domain::room::RoomId;
 use crate::domain::timeline::{
@@ -31,6 +32,8 @@ pub(super) struct ActiveTimeline {
     at_bottom: bool,
     new_messages: u32,
     live: bool,
+    visibility: TimelineVisibility,
+    receipt_withheld: bool,
 }
 
 impl ActiveTimeline {
@@ -46,12 +49,15 @@ impl ActiveTimeline {
             at_bottom: true,
             new_messages: 0,
             live: true,
+            visibility: TimelineVisibility::default(),
+            receipt_withheld: false,
         }
     }
 
     pub(super) async fn shutdown(&mut self) {
         self.tasks.shutdown().await;
         self.reset_state();
+        self.visibility = TimelineVisibility::default();
     }
 
     pub(super) fn is_live(&self) -> bool {
@@ -75,6 +81,7 @@ impl ActiveTimeline {
         self.at_bottom = true;
         self.new_messages = 0;
         self.live = live;
+        self.receipt_withheld = false;
         self.emit_pagination_state();
 
         self.emit_reset(room_id.clone(), generation, live).await;
@@ -376,13 +383,28 @@ impl ActiveTimeline {
         }
     }
 
-    fn mark_read(&self) {
+    pub(super) fn visibility_changed(&mut self, visibility: TimelineVisibility) {
+        tracing::debug!(?visibility, "the timeline's visibility changed");
+        self.visibility = visibility;
+        if self.receipt_withheld && self.at_bottom {
+            self.mark_read();
+        }
+    }
+
+    fn mark_read(&mut self) {
         if !self.live {
+            return;
+        }
+        if self.visibility == TimelineVisibility::Hidden {
+            tracing::debug!("withholding the read receipt until the timeline is visible");
+            self.receipt_withheld = true;
             return;
         }
         let Some(tx) = &self.timeline_cmd_tx else {
             return;
         };
+        self.receipt_withheld = false;
+        tracing::debug!("marking the room read");
         if tx.send(TimelineCommand::MarkRead).is_err() {
             tracing::debug!("timeline command channel closed");
         }
@@ -396,6 +418,7 @@ impl ActiveTimeline {
         self.at_bottom = true;
         self.new_messages = 0;
         self.live = true;
+        self.receipt_withheld = false;
     }
 
     fn emit_pagination_state(&self) {

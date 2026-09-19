@@ -44,7 +44,7 @@ use super::{audio, emoji, router};
 use crate::app::input::CommandSender;
 use crate::commands::effects::{Effect, VerificationActivity};
 use crate::commands::messages::{UserMessage, UserMessageKind};
-use crate::commands::ui::ViewportChanged;
+use crate::commands::ui::{TimelineVisibility, ViewportChanged};
 use crate::commands::view::{AppViewState, AttachmentKind, LoginActivity, LoginStep};
 use crate::domain::auth::LoginMethod;
 use crate::domain::media::AudioKind;
@@ -72,6 +72,7 @@ mod names {
         pub const SEEK_AUDIO: &str = "seek-audio";
         pub const SEARCH_STICKERS: &str = "search-stickers";
         pub const SCROLL_POSITION_CHANGED: &str = "scroll-position-changed";
+        pub const TIMELINE_VISIBILITY_CHANGED: &str = "timeline-visibility-changed";
     }
 
     pub mod emoji_store {
@@ -589,6 +590,7 @@ impl SlintUiAdapter {
         &self,
         cmd_tx: &CommandSender,
         scroll_tx: &watch::Sender<ViewportChanged>,
+        visibility_tx: &watch::Sender<TimelineVisibility>,
     ) -> Result<()> {
         setup_emoji_store(&self.instance)?;
 
@@ -630,6 +632,16 @@ impl SlintUiAdapter {
                     selected_room_key::<InterpretedBackend>(&weak),
                     bool_arg(args, 0),
                 );
+                Value::Void
+            },
+        )?;
+
+        let visibility_tx = visibility_tx.clone();
+        bind_action(
+            &self.instance,
+            callback::TIMELINE_VISIBILITY_CHANGED,
+            move |args| {
+                router::timeline_visibility(&visibility_tx, bool_arg(args, 0));
                 Value::Void
             },
         )

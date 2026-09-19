@@ -25,6 +25,10 @@ export global SessionView {
     in property <ConnectionState> connection-status: ConnectionState.disconnected;
 }
 
+export global WindowView {
+    in property <bool> focused: true;
+}
+
 export global DirectoryView {
     in property <[RoomEntry]> rooms;
     in property <[SpaceEntry]> spaces;

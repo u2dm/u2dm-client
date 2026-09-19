@@ -1008,12 +1008,12 @@ msgctxt "SubspaceRail"
 msgid "All"
 msgstr ""
 
-#: ui/screens/chat/chat.slint:135
+#: ui/screens/chat/chat.slint:145
 msgctxt "ChatScreen"
 msgid "Sidebar width"
 msgstr ""
 
-#: ui/screens/chat/chat.slint:205
+#: ui/screens/chat/chat.slint:215
 msgctxt "ChatScreen"
 msgid "Dismiss"
 msgstr ""
@@ -1172,11 +1172,6 @@ msgstr ""
 msgctxt "LoginField"
 msgid "Show password"
 msgstr ""
-
-#: ui/main.slint:50
-msgctxt "AppWindow"
-msgid "U2DM Matrix Client"
-msgstr "U2DM Client Matrix"
 
 #: ui/messages.slint:11
 msgctxt "UserMessages"
@@ -1465,6 +1460,11 @@ msgstr ""
 msgctxt "MediaFailures"
 msgid "{}×{}"
 msgstr ""
+
+#: ui/main.slint:51
+msgctxt "AppWindow"
+msgid "U2DM Matrix Client"
+msgstr "U2DM Client Matrix"
 
 #~ msgctxt "FileMessage"
 #~ msgid "Save"

@@ -65,6 +65,7 @@ slint = { version = "1.18.0", default-features = false, features = [
     "std",
     "compat-1-2",
     "backend-winit",
+    "unstable-winit-030",
     "renderer-femtovg",
     "accessibility",
     "gettext",

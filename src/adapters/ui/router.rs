@@ -4,7 +4,9 @@ use url::Url;
 use super::props::send_command;
 use super::schema::simple_callbacks;
 use crate::app::input::CommandSender;
-use crate::commands::ui::{MessageDraft, ReplyDraft, UiCommand, ViewportChanged};
+use crate::commands::ui::{
+    MessageDraft, ReplyDraft, TimelineVisibility, UiCommand, ViewportChanged,
+};
 use crate::domain::auth::LoginCredentials;
 use crate::domain::media::AttachmentPick;
 use crate::domain::room::RoomId;
@@ -243,5 +245,16 @@ pub fn scroll_position(scroll_tx: &watch::Sender<ViewportChanged>, key: RoomKey,
     };
     if scroll_tx.send(update).is_err() {
         tracing::debug!("scroll position receiver closed");
+    }
+}
+
+pub fn timeline_visibility(visibility_tx: &watch::Sender<TimelineVisibility>, visible: bool) {
+    let visibility = if visible {
+        TimelineVisibility::Visible
+    } else {
+        TimelineVisibility::Hidden
+    };
+    if visibility_tx.send(visibility).is_err() {
+        tracing::debug!("timeline visibility receiver closed");
     }
 }

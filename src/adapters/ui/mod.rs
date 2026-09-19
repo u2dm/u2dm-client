@@ -10,6 +10,7 @@ mod dto;
 pub(crate) mod dump;
 mod emoji;
 mod fields;
+mod focus;
 mod multiplex;
 mod output;
 mod present;

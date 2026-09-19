@@ -24,6 +24,7 @@ import {
     VideoView,
     AudioView,
     UnsentView,
+    WindowView,
 } from "views.slint";
 import { Actions } from "actions.slint";
 import { Probe } from "local.slint";
@@ -35,7 +36,7 @@ export { EmojiStore }
 export { LoginPhase, ConnectionState, TimelineState, VerificationPhase, MediaState, MediaFailure }
 export { MessageKind, PreviewKind, ServiceKind, LoginMethodKind, AudioKind }
 export { LoginView, SessionView, DirectoryView, RoomView, StickerView, VerificationView }
-export { AttachmentView, VideoView, AudioView, UnsentView }
+export { AttachmentView, VideoView, AudioView, UnsentView, WindowView }
 export { Actions }
 export { Probe }
 import { LoadingScreen } from "screens/login/loading.slint";
@@ -69,6 +70,7 @@ export component AppWindow inherits Window {
 
     if LoginView.step == LoginPhase.logged-in: ChatScreen {
         input-message <=> root.input-message;
+        window-minimized: root.minimized;
     }
 
     if AttachmentView.visible && LoginView.step == LoginPhase.logged-in: AttachmentDialog { }

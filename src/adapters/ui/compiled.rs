@@ -38,7 +38,7 @@ use super::{audio, emoji, router};
 use crate::app::input::CommandSender;
 use crate::commands::effects::{Effect, VerificationActivity};
 use crate::commands::messages::{UserMessage, UserMessageKind};
-use crate::commands::ui::ViewportChanged;
+use crate::commands::ui::{TimelineVisibility, ViewportChanged};
 use crate::commands::view::{AppViewState, AttachmentKind, LoginActivity, LoginStep};
 use crate::domain::auth::LoginMethod;
 use crate::domain::media::AudioKind;
@@ -66,7 +66,7 @@ use generated::{
     SpaceEntry, StickerCell, StickerPackTab, StickerRow, StickerView, TimelineState, UnsentView,
     UserMessage as UiUserMessage, UserMessageKind as UiUserMessageKind,
     VerificationActivity as UiVerificationActivity, VerificationEmoji, VerificationPhase,
-    VerificationView, VideoView,
+    VerificationView, VideoView, WindowView,
 };
 
 fn actions(window: &AppWindow) -> Actions<'_> {
@@ -466,6 +466,7 @@ impl SlintUiAdapter {
         &self,
         cmd_tx: &CommandSender,
         scroll_tx: &watch::Sender<ViewportChanged>,
+        visibility_tx: &watch::Sender<TimelineVisibility>,
     ) -> Result<()> {
         setup_emoji_store(&self.window);
 
@@ -507,6 +508,11 @@ impl SlintUiAdapter {
                 selected_room_key::<CompiledBackend>(&weak),
                 at_bottom,
             );
+        });
+
+        let visibility_tx = visibility_tx.clone();
+        actions(win).on_timeline_visibility_changed(move |visible| {
+            router::timeline_visibility(&visibility_tx, visible);
         });
 
         Ok(())

@@ -118,6 +118,9 @@ pub enum ProbeCommand {
     SeekAudio {
         ms: u64,
     },
+    WindowFocus {
+        focused: bool,
+    },
     OpenLink {
         url: String,
     },
@@ -148,6 +151,7 @@ impl fmt::Display for Driven {
             Self::Poke(Poke::SeekAudio(position)) => {
                 write!(f, "SeekAudio({}ms)", position.as_millis())
             }
+            Self::Poke(Poke::WindowFocus(focused)) => write!(f, "WindowFocus({focused})"),
         }
     }
 }
@@ -314,6 +318,9 @@ pub fn to_driven(command: ProbeCommand, selected: Selection<'_>) -> Result<Drive
         ProbeCommand::ToggleAudio => return Ok(Driven::Poke(Poke::ToggleAudio)),
         ProbeCommand::SeekAudio { ms } => {
             return Ok(Driven::Poke(Poke::SeekAudio(Duration::from_millis(ms))));
+        }
+        ProbeCommand::WindowFocus { focused } => {
+            return Ok(Driven::Poke(Poke::WindowFocus(focused)));
         }
         ProbeCommand::OpenLink { url } => UiCommand::OpenLink { url },
         ProbeCommand::AcceptVerification => UiCommand::AcceptVerification,

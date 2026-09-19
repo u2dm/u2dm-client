@@ -16,7 +16,7 @@ use app::AppService;
 use app::input::CommandSender;
 use commands::effects::Effect;
 use commands::sync::DirectoryUpdate;
-use commands::ui::{UiCommand, ViewportChanged};
+use commands::ui::{TimelineVisibility, UiCommand, ViewportChanged};
 use commands::view::AppViewState;
 use composition::Backend;
 use error::Result;
@@ -118,8 +118,9 @@ fn run() -> Result<()> {
 
     let (dir_in_tx, dir_in_rx) = mpsc::unbounded_channel::<DirectoryUpdate>();
     let (scroll_tx, scroll_rx) = watch::channel::<ViewportChanged>(ViewportChanged::initial());
+    let (visibility_tx, visibility_rx) = watch::channel(TimelineVisibility::default());
 
-    ui.register_callbacks(&cmd_tx, &scroll_tx)?;
+    ui.register_callbacks(&cmd_tx, &scroll_tx, &visibility_tx)?;
     size_window_for_demo(&ui);
     configure_demo_audio();
 
@@ -143,7 +144,9 @@ fn run() -> Result<()> {
         output,
     );
     let service_handle = tokio::spawn(async move {
-        service.run(inbox, dir_in_rx, scroll_rx).await;
+        service
+            .run(inbox, dir_in_rx, scroll_rx, visibility_rx)
+            .await;
     });
 
     let ui_result = ui.run();

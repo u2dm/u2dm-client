@@ -43,7 +43,7 @@ use video::VideoController;
 use crate::commands::effects::Effect;
 use crate::commands::messages::{UserMessage, UserMessageKind};
 use crate::commands::sync::DirectoryUpdate;
-use crate::commands::ui::{MessageDraft, UiCommand, ViewportChanged};
+use crate::commands::ui::{MessageDraft, TimelineVisibility, UiCommand, ViewportChanged};
 use crate::commands::view::{AppViewState, LoginActivity, LoginStep, Toast};
 use crate::domain::account::AccountScope;
 use crate::domain::auth::ServerInfo;
@@ -148,12 +148,14 @@ impl AppService {
         mut inbox: Inbox,
         mut dir_in_rx: mpsc::UnboundedReceiver<DirectoryUpdate>,
         mut scroll_in_rx: watch::Receiver<ViewportChanged>,
+        mut visibility_in_rx: watch::Receiver<TimelineVisibility>,
     ) {
         if let Recovery::Blocked(reason) = self.session.recover_interrupted_logins().await {
             self.block_sign_in(reason);
         }
         let mut dir_done = false;
         let mut scroll_done = false;
+        let mut visibility_done = false;
         loop {
             tokio::select! {
                 maybe_input = inbox.recv() => {
@@ -183,6 +185,14 @@ impl AppService {
                             viewport.generation,
                             viewport.at_bottom,
                         );
+                    }
+                }
+                changed = visibility_in_rx.changed(), if !visibility_done => {
+                    if changed.is_err() {
+                        visibility_done = true;
+                    } else {
+                        let visibility = *visibility_in_rx.borrow_and_update();
+                        self.active_timeline.visibility_changed(visibility);
                     }
                 }
             }
