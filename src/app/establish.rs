@@ -1,10 +1,10 @@
 use std::sync::Arc;
 
-use super::credentials;
+use super::{conclude, credentials};
 use crate::domain::account::AccountScope;
 use crate::domain::auth::Session;
 use crate::error::{AppError, Result};
-use crate::ports::matrix::{AuthenticatedSession, CleanupReport, StagedCleanup, StoreAdoption};
+use crate::ports::matrix::{AuthPort, AuthenticatedSession, CleanupReport, StoreAdoption};
 use crate::ports::storage::{DisplacedCredentials, StoragePort, SupersededLogin};
 
 fn also_failed_to_roll_back(err: AppError, report: &CleanupReport) -> AppError {
@@ -18,18 +18,33 @@ fn also_failed_to_roll_back(err: AppError, report: &CleanupReport) -> AppError {
     ))
 }
 
-async fn unstage(storage: &dyn StoragePort, txn: &str) -> StagedCleanup {
-    match storage.clear_superseded(txn).await {
-        Ok(()) => StagedCleanup::Done,
-        Err(e) => {
-            tracing::warn!("the credentials this login replaced could not be unstaged: {e}");
-            StagedCleanup::Pending
-        }
+async fn finish_rollback(
+    adoption: Box<dyn StoreAdoption>,
+    auth: &dyn AuthPort,
+    storage: &dyn StoragePort,
+    mut report: CleanupReport,
+) -> CleanupReport {
+    let txn = adoption.transaction().to_owned();
+    report.merge(adoption.unwind().await);
+    if report.has_failures() {
+        tracing::warn!(
+            txn,
+            "the login was not fully undone, so its journal and staged credentials are kept for the next start"
+        );
+        return report;
     }
+    if let Err(e) = conclude::close_rolled_back(auth, storage, &txn).await {
+        tracing::warn!(
+            txn,
+            "the undone login could not be recorded as rolled back, so the next start repeats the rollback: {e}"
+        );
+    }
+    report
 }
 
 pub(super) struct EstablishedSession {
     adoption: Box<dyn StoreAdoption>,
+    auth: Arc<dyn AuthPort>,
     storage: Arc<dyn StoragePort>,
     account: AccountScope,
     displaced: DisplacedCredentials,
@@ -38,6 +53,7 @@ pub(super) struct EstablishedSession {
 impl EstablishedSession {
     pub(super) async fn record_or_roll_back(
         adoption: Box<dyn StoreAdoption>,
+        auth: Arc<dyn AuthPort>,
         storage: Arc<dyn StoragePort>,
         account: AccountScope,
         session: &Session,
@@ -46,13 +62,20 @@ impl EstablishedSession {
         let displaced = match credentials::read_displaced(storage.as_ref(), &account).await {
             Ok(displaced) => displaced,
             Err(e) => {
-                let report = adoption.roll_back(StagedCleanup::Done).await;
+                let report = finish_rollback(
+                    adoption,
+                    auth.as_ref(),
+                    storage.as_ref(),
+                    CleanupReport::default(),
+                )
+                .await;
                 return Err(also_failed_to_roll_back(e, &report));
             }
         };
 
         let established = Self {
             adoption,
+            auth,
             storage,
             account,
             displaced,
@@ -69,33 +92,36 @@ impl EstablishedSession {
 
     pub(super) async fn commit(self) -> AuthenticatedSession {
         let Self {
-            adoption, storage, ..
+            adoption,
+            auth,
+            storage,
+            ..
         } = self;
-        let cleanup = unstage(storage.as_ref(), adoption.transaction()).await;
-        adoption.commit(cleanup).await
+        let txn = adoption.transaction().to_owned();
+        let authenticated = adoption.commit().await;
+        conclude::close_terminal(auth.as_ref(), storage.as_ref(), &txn).await;
+        authenticated
     }
 
     pub(super) async fn roll_back(self) -> CleanupReport {
-        let mut report = CleanupReport::default();
+        let Self {
+            adoption,
+            auth,
+            storage,
+            account,
+            displaced,
+        } = self;
 
-        if let Err(e) = self.adoption.rolling_back().await {
+        if let Err(e) = adoption.rolling_back().await {
+            let mut report = CleanupReport::default();
             report.fail(format!(
                 "this login could not be marked for rollback, so it is left in place and the previous session is not restored ({e})"
             ));
             return report;
         }
 
-        let restored =
-            credentials::restore_displaced(self.storage.as_ref(), &self.account, &self.displaced)
-                .await;
-        let cleanup = if restored.has_failures() {
-            StagedCleanup::Pending
-        } else {
-            unstage(self.storage.as_ref(), self.adoption.transaction()).await
-        };
-        report.merge(restored);
-        report.merge(self.adoption.roll_back(cleanup).await);
-        report
+        let restored = credentials::restore_displaced(storage.as_ref(), &account, &displaced).await;
+        finish_rollback(adoption, auth.as_ref(), storage.as_ref(), restored).await
     }
 
     async fn record(&self, session: &Session, passphrase: &str) -> Result<()> {

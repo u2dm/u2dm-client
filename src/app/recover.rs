@@ -1,5 +1,9 @@
+use super::conclude::{self, Closing};
 use super::credentials;
-use crate::ports::matrix::{AuthPort, CleanupReport, LoginResolution, PendingLogin};
+use crate::error::AppError;
+use crate::ports::matrix::{
+    AuthPort, CleanupReport, InterruptedLogin, LoginResolution, PendingLogin,
+};
 use crate::ports::storage::{StagedCredentials, StoragePort, SupersededLogin};
 
 pub(super) enum Recovery {
@@ -22,7 +26,10 @@ pub(super) async fn recover_interrupted_logins(
     auth: &dyn AuthPort,
     storage: &dyn StoragePort,
 ) -> Recovery {
-    let interrupted = auth.pending_logins().await;
+    let interrupted = match auth.interrupted_logins().await {
+        Ok(interrupted) => interrupted,
+        Err(e) => return unlisted(&e),
+    };
     if interrupted.is_empty() {
         return Recovery::Clean;
     }
@@ -36,7 +43,7 @@ pub(super) async fn recover_interrupted_logins(
         match resolve(auth, storage, login).await {
             Outcome::Resolved => {}
             Outcome::Retry => tracing::warn!(
-                txn = %login.txn,
+                txn = login.txn(),
                 "an interrupted login was left for the next start"
             ),
             Outcome::Blocked(reason) => blocked.push(reason),
@@ -50,11 +57,40 @@ pub(super) async fn recover_interrupted_logins(
     }
 }
 
-async fn resolve(auth: &dyn AuthPort, storage: &dyn StoragePort, login: &PendingLogin) -> Outcome {
+fn unlisted(error: &AppError) -> Recovery {
+    let reason = format!("the interrupted logins could not be listed ({error})");
+    tracing::error!("refusing to sign in past login journals it cannot see: {reason}");
+    Recovery::Blocked(reason)
+}
+
+async fn resolve(
+    auth: &dyn AuthPort,
+    storage: &dyn StoragePort,
+    login: &InterruptedLogin,
+) -> Outcome {
+    let login = match login {
+        InterruptedLogin::Journaled(login) => login,
+        InterruptedLogin::Unreadable { txn, reason } => return unreadable(txn, reason),
+    };
     match login.resolution {
         LoginResolution::RollBack => roll_back(auth, storage, login).await,
         LoginResolution::RollForward => roll_forward(auth, storage, login).await,
+        LoginResolution::Close => closed(
+            login,
+            conclude::close_terminal(auth, storage, &login.txn).await,
+        ),
     }
+}
+
+fn unreadable(txn: &str, reason: &str) -> Outcome {
+    tracing::error!(
+        txn,
+        "refusing to sign in past a login journal that cannot be read: {reason}"
+    );
+    Outcome::Blocked(format!(
+        "the journal of login {txn} cannot be read, so the store and credentials it protects \
+         cannot be restored ({reason})"
+    ))
 }
 
 async fn roll_forward(
@@ -67,7 +103,10 @@ async fn roll_forward(
         report_unresolved(login, &report);
         return Outcome::Retry;
     }
-    close(auth, storage, login).await
+    closed(
+        login,
+        conclude::close_terminal(auth, storage, &login.txn).await,
+    )
 }
 
 async fn roll_back(
@@ -98,7 +137,18 @@ async fn roll_back(
         return Outcome::Blocked(report.summary());
     }
 
-    close(auth, storage, login).await
+    match conclude::close_rolled_back(auth, storage, &login.txn).await {
+        Ok(closing) => closed(login, closing),
+        Err(e) => {
+            let reason = format!(
+                "login {} was undone, but that could not be recorded, so its staged credentials \
+                 are still needed ({e})",
+                login.txn
+            );
+            tracing::error!(txn = %login.txn, "{reason}");
+            Outcome::Blocked(reason)
+        }
+    }
 }
 
 async fn credential_plan(
@@ -177,15 +227,12 @@ fn report_unresolved(login: &PendingLogin, report: &CleanupReport) {
     );
 }
 
-async fn close(auth: &dyn AuthPort, storage: &dyn StoragePort, login: &PendingLogin) -> Outcome {
-    if let Err(e) = storage.clear_superseded(&login.txn).await {
-        tracing::warn!(
-            txn = %login.txn,
-            "the staged credentials could not be unstaged, so the login stays open: {e}"
-        );
-        return Outcome::Retry;
+fn closed(login: &PendingLogin, closing: Closing) -> Outcome {
+    match closing {
+        Closing::Closed => {
+            tracing::info!(txn = %login.txn, ?login.resolution, "interrupted login resolved");
+            Outcome::Resolved
+        }
+        Closing::CleanupPending => Outcome::Retry,
     }
-    auth.forget_login(&login.txn).await;
-    tracing::info!(txn = %login.txn, ?login.resolution, "interrupted login resolved");
-    Outcome::Resolved
 }

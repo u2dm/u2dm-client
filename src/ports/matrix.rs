@@ -28,6 +28,7 @@ pub enum RestoreStep {
 pub enum LoginResolution {
     RollBack,
     RollForward,
+    Close,
 }
 
 pub struct PendingLogin {
@@ -37,10 +38,18 @@ pub struct PendingLogin {
     pub credentials_staged: bool,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub enum StagedCleanup {
-    Done,
-    Pending,
+pub enum InterruptedLogin {
+    Journaled(PendingLogin),
+    Unreadable { txn: String, reason: String },
+}
+
+impl InterruptedLogin {
+    pub fn txn(&self) -> &str {
+        match self {
+            Self::Journaled(login) => &login.txn,
+            Self::Unreadable { txn, .. } => txn,
+        }
+    }
 }
 
 #[derive(Debug, Default)]
@@ -119,9 +128,10 @@ pub trait AuthPort: Send + Sync {
         passphrase: &str,
         on_progress: ProgressSink,
     ) -> Result<AuthenticatedSession>;
-    async fn pending_logins(&self) -> Vec<PendingLogin>;
+    async fn interrupted_logins(&self) -> Result<Vec<InterruptedLogin>>;
     async fn unwind_login(&self, txn: &str) -> CleanupReport;
     async fn settle_login(&self, txn: &str) -> CleanupReport;
+    async fn mark_rolled_back(&self, txn: &str) -> Result<()>;
     async fn forget_login(&self, txn: &str);
 }
 
@@ -131,8 +141,8 @@ pub trait StoreAdoption: Send + Sync {
     async fn credentials_staged(&self) -> Result<()>;
     async fn credentials_written(&self) -> Result<()>;
     async fn rolling_back(&self) -> Result<()>;
-    async fn commit(self: Box<Self>, cleanup: StagedCleanup) -> AuthenticatedSession;
-    async fn roll_back(self: Box<Self>, cleanup: StagedCleanup) -> CleanupReport;
+    async fn commit(self: Box<Self>) -> AuthenticatedSession;
+    async fn unwind(self: Box<Self>) -> CleanupReport;
 }
 
 #[async_trait]

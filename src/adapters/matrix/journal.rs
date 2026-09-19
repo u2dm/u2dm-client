@@ -7,7 +7,7 @@ use tokio::fs;
 use crate::adapters::private_fs;
 use crate::domain::account::AccountScope;
 use crate::error::{AppError, Result};
-use crate::ports::matrix::{LoginResolution, PendingLogin};
+use crate::ports::matrix::{InterruptedLogin, LoginResolution, PendingLogin};
 use crate::util::random_hex;
 
 const JOURNAL_PREFIX: &str = "txn-";
@@ -25,6 +25,7 @@ pub(super) enum LoginStage {
     NewStoreInstalled,
     CredentialsWritten,
     Committed,
+    RolledBack,
 }
 
 impl LoginStage {
@@ -33,8 +34,13 @@ impl LoginStage {
             Self::Prepared | Self::OldStoreHeldAside | Self::NewStoreInstalled => {
                 LoginResolution::RollBack
             }
-            Self::CredentialsWritten | Self::Committed => LoginResolution::RollForward,
+            Self::CredentialsWritten => LoginResolution::RollForward,
+            Self::Committed | Self::RolledBack => LoginResolution::Close,
         }
+    }
+
+    fn is_terminal(self) -> bool {
+        self.resolution() == LoginResolution::Close
     }
 
     fn installed_store_is_ours(self) -> bool {
@@ -123,14 +129,14 @@ impl LoginJournal {
     }
 
     pub(super) fn displaced(&self) -> String {
-        format!("{BACKUP_PREFIX}{}", self.record.txn)
+        backup_name(&self.record.txn)
     }
 
     pub(super) fn account(&self) -> AccountScope {
         AccountScope::from_id(self.record.account.clone())
     }
 
-    pub(super) fn pending_login(&self) -> PendingLogin {
+    fn pending_login(&self) -> PendingLogin {
         PendingLogin {
             txn: self.record.txn.clone(),
             account: self.account(),
@@ -174,7 +180,38 @@ impl LoginJournal {
         Ok(())
     }
 
+    pub(super) async fn record_rolled_back(&mut self) -> Result<()> {
+        match self.record.stage {
+            LoginStage::Prepared | LoginStage::RolledBack => {
+                self.advance(LoginStage::RolledBack).await
+            }
+            stage => Err(AppError::Other(format!(
+                "login {} is at {stage:?} rather than unwound, so it cannot be recorded as rolled back",
+                self.record.txn
+            ))),
+        }
+    }
+
+    pub(super) async fn close_rolled_back(mut self) {
+        if let Err(e) = self.record_rolled_back().await {
+            tracing::warn!(
+                txn = %self.record.txn,
+                "the undone login could not be recorded as rolled back, so it is left for the next start: {e}"
+            );
+            return;
+        }
+        self.discard().await;
+    }
+
     pub(super) async fn discard(self) {
+        if !self.record.stage.is_terminal() {
+            tracing::warn!(
+                txn = %self.record.txn,
+                stage = ?self.record.stage,
+                "the login transaction has not reached its end, so its journal is kept for the next start"
+            );
+            return;
+        }
         match fs::remove_file(&self.path).await {
             Ok(()) => self.report_closed().await,
             Err(e) if e.kind() == ErrorKind::NotFound => {}
@@ -199,28 +236,62 @@ impl LoginJournal {
     }
 }
 
-pub(super) async fn load_all(root: &Path) -> Vec<LoginJournal> {
-    let Ok(mut entries) = fs::read_dir(root).await else {
-        return Vec::new();
+pub(super) enum JournalEntry {
+    Readable(LoginJournal),
+    Unreadable { txn: String, reason: String },
+}
+
+impl JournalEntry {
+    pub(super) fn interrupted_login(&self) -> InterruptedLogin {
+        match self {
+            Self::Readable(journal) => InterruptedLogin::Journaled(journal.pending_login()),
+            Self::Unreadable { txn, reason } => InterruptedLogin::Unreadable {
+                txn: txn.clone(),
+                reason: reason.clone(),
+            },
+        }
+    }
+
+    pub(super) fn protected_names(&self) -> Vec<String> {
+        match self {
+            Self::Readable(journal) => journal.protected_names().into(),
+            Self::Unreadable { txn, .. } => vec![backup_name(txn)],
+        }
+    }
+}
+
+pub(super) async fn load_all(root: &Path) -> Result<Vec<JournalEntry>> {
+    let mut entries = match fs::read_dir(root).await {
+        Ok(entries) => entries,
+        Err(e) if e.kind() == ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(e) => return Err(e.into()),
     };
     let mut journals = Vec::new();
-    while let Ok(Some(entry)) = entries.next_entry().await {
+    while let Some(entry) = entries.next_entry().await? {
         if let Some(journal) = load_entry(root, &entry.file_name()).await {
             journals.push(journal);
         }
     }
-    journals
+    Ok(journals)
 }
 
-async fn load_entry(root: &Path, file_name: &OsStr) -> Option<LoginJournal> {
+async fn load_entry(root: &Path, file_name: &OsStr) -> Option<JournalEntry> {
     let txn = file_name.to_str().and_then(txn_of)?;
     match LoginJournal::load(root, txn).await {
-        Ok(journal) => Some(journal),
+        Ok(journal) => Some(JournalEntry::Readable(journal)),
+        Err(AppError::Io(e)) if e.kind() == ErrorKind::NotFound => None,
         Err(e) => {
-            tracing::warn!(txn, "an unreadable login journal was left in place: {e}");
-            None
+            tracing::warn!(txn, "a login journal could not be read: {e}");
+            Some(JournalEntry::Unreadable {
+                txn: txn.to_owned(),
+                reason: format!("{} ({e})", journal_path(root, txn).display()),
+            })
         }
     }
+}
+
+fn backup_name(txn: &str) -> String {
+    format!("{BACKUP_PREFIX}{txn}")
 }
 
 fn journal_path(root: &Path, txn: &str) -> PathBuf {

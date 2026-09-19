@@ -6,11 +6,11 @@ use std::time::{Duration, SystemTime};
 use tokio::fs;
 use tokio::sync::Mutex;
 
-use super::journal::{self, BACKUP_PREFIX, LoginJournal, LoginStage};
+use super::journal::{self, BACKUP_PREFIX, JournalEntry, LoginJournal, LoginStage};
 use crate::adapters::private_fs;
 use crate::domain::account::AccountScope;
 use crate::error::{AppError, Result};
-use crate::ports::matrix::{CleanupReport, PendingLogin, StagedCleanup};
+use crate::ports::matrix::{CleanupReport, InterruptedLogin};
 use crate::util::random_hex;
 
 const STORES_DIR: &str = "stores";
@@ -90,14 +90,7 @@ impl StoreLayout {
         let target = self.account(account);
 
         if let Err(e) = self.install_journaled(&mut journal, pending, &target).await {
-            let report = self.unwind(&mut journal).await;
-            if !report.is_clean() {
-                tracing::warn!(
-                    "previous store not restored after a failed adoption: {}",
-                    report.summary()
-                );
-            }
-            journal.discard().await;
+            self.abandon(journal).await;
             return Err(e);
         }
 
@@ -109,10 +102,9 @@ impl StoreLayout {
         })
     }
 
-    pub(super) async fn commit_adoption(&self, adopted: AdoptedStore, cleanup: StagedCleanup) {
+    pub(super) async fn commit_adoption(&self, adopted: AdoptedStore) {
         let mut journal = adopted.journal.into_inner();
         let report = self.settle(&mut journal).await;
-        close_or_retry(journal, cleanup).await;
         if report.is_clean() {
             tracing::info!("previous store for this account discarded after adoption");
         } else {
@@ -123,23 +115,21 @@ impl StoreLayout {
         }
     }
 
-    pub(super) async fn roll_back_adoption(
-        &self,
-        adopted: AdoptedStore,
-        cleanup: StagedCleanup,
-    ) -> CleanupReport {
+    pub(super) async fn unwind_adoption(&self, adopted: AdoptedStore) -> CleanupReport {
         let mut journal = adopted.journal.into_inner();
-        let report = self.unwind(&mut journal).await;
-        close_or_retry(journal, cleanup).await;
-        report
+        self.unwind(&mut journal).await
     }
 
-    pub(super) async fn pending_logins(&self) -> Vec<PendingLogin> {
-        journal::load_all(&self.roots().data)
-            .await
+    pub(super) async fn abandon_adoption(&self, adopted: AdoptedStore) {
+        self.abandon(adopted.journal.into_inner()).await;
+    }
+
+    pub(super) async fn interrupted_logins(&self) -> Result<Vec<InterruptedLogin>> {
+        Ok(journal::load_all(&self.roots().data)
+            .await?
             .iter()
-            .map(LoginJournal::pending_login)
-            .collect()
+            .map(JournalEntry::interrupted_login)
+            .collect())
     }
 
     pub(super) async fn unwind_login(&self, txn: &str) -> CleanupReport {
@@ -154,6 +144,13 @@ impl StoreLayout {
             Ok(mut journal) => self.settle(&mut journal).await,
             Err(e) => unreadable_journal(txn, &e),
         }
+    }
+
+    pub(super) async fn mark_rolled_back(&self, txn: &str) -> Result<()> {
+        LoginJournal::load(&self.roots().data, txn)
+            .await?
+            .record_rolled_back()
+            .await
     }
 
     pub(super) async fn forget_login(&self, txn: &str) {
@@ -177,7 +174,15 @@ impl StoreLayout {
 
     pub(super) async fn sweep_stale(&self) {
         let roots = self.roots();
-        let protected = self.protected_names().await;
+        let protected = match self.protected_names().await {
+            Ok(protected) => protected,
+            Err(e) => {
+                tracing::warn!(
+                    "the login journals could not be listed, so no leftover store is swept: {e}"
+                );
+                return;
+            }
+        };
         sweep_root(&roots.data, &protected).await;
         sweep_root(&roots.cache, &protected).await;
     }
@@ -192,6 +197,25 @@ impl StoreLayout {
         journal.advance(LoginStage::OldStoreHeldAside).await?;
         install(pending, target).await?;
         journal.advance(LoginStage::NewStoreInstalled).await
+    }
+
+    async fn abandon(&self, mut journal: LoginJournal) {
+        let report = self.unwind(&mut journal).await;
+        if report.has_failures() {
+            tracing::warn!(
+                txn = journal.txn(),
+                "previous store not restored after a failed adoption, the login is left for the next start: {}",
+                report.summary()
+            );
+            return;
+        }
+        if !report.is_clean() {
+            tracing::warn!(
+                "login store not fully removed after a failed adoption: {}",
+                report.summary()
+            );
+        }
+        journal.close_rolled_back().await;
     }
 
     async fn unwind(&self, journal: &mut LoginJournal) -> CleanupReport {
@@ -235,12 +259,12 @@ impl StoreLayout {
         report
     }
 
-    async fn protected_names(&self) -> HashSet<String> {
-        journal::load_all(&self.roots().data)
-            .await
+    async fn protected_names(&self) -> Result<HashSet<String>> {
+        Ok(journal::load_all(&self.roots().data)
+            .await?
             .iter()
-            .flat_map(LoginJournal::protected_names)
-            .collect()
+            .flat_map(JournalEntry::protected_names)
+            .collect())
     }
 
     fn roots(&self) -> Roots {
@@ -257,16 +281,6 @@ impl StoreLayout {
             data: roots.data.join(name),
             cache: roots.cache.join(name),
         }
-    }
-}
-
-async fn close_or_retry(journal: LoginJournal, cleanup: StagedCleanup) {
-    match cleanup {
-        StagedCleanup::Done => journal.discard().await,
-        StagedCleanup::Pending => tracing::warn!(
-            txn = journal.txn(),
-            "the credentials this login replaced are still staged, so the journal is kept for the next start"
-        ),
     }
 }
 

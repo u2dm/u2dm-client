@@ -25,9 +25,9 @@ use crate::domain::timeline::{
 use crate::domain::verification::{VerificationCancellation, VerificationEvent};
 use crate::error::{AppError, Result};
 use crate::ports::matrix::{
-    AuthPort, AuthenticatedSession, CleanupReport, MediaPort, PendingLogin, ProgressSink,
-    RestoreStep, SessionPort, SpaceOrderPort, StagedCleanup, StickerCatalog, StickerPort,
-    StoreAdoption, SyncPort, SyncSink, TimelinePort, VerificationPort,
+    AuthPort, AuthenticatedSession, CleanupReport, InterruptedLogin, MediaPort, ProgressSink,
+    RestoreStep, SessionPort, SpaceOrderPort, StickerCatalog, StickerPort, StoreAdoption, SyncPort,
+    SyncSink, TimelinePort, VerificationPort,
 };
 use crate::ports::media::MediaCache;
 
@@ -98,8 +98,8 @@ impl AuthPort for DemoMatrix {
         Ok(authenticated(session.clone()))
     }
 
-    async fn pending_logins(&self) -> Vec<PendingLogin> {
-        Vec::new()
+    async fn interrupted_logins(&self) -> Result<Vec<InterruptedLogin>> {
+        Ok(Vec::new())
     }
 
     async fn unwind_login(&self, _txn: &str) -> CleanupReport {
@@ -108,6 +108,10 @@ impl AuthPort for DemoMatrix {
 
     async fn settle_login(&self, _txn: &str) -> CleanupReport {
         CleanupReport::default()
+    }
+
+    async fn mark_rolled_back(&self, _txn: &str) -> Result<()> {
+        Ok(())
     }
 
     async fn forget_login(&self, _txn: &str) {}
@@ -136,11 +140,11 @@ impl StoreAdoption for DemoAdoption {
         Ok(())
     }
 
-    async fn commit(self: Box<Self>, _cleanup: StagedCleanup) -> AuthenticatedSession {
+    async fn commit(self: Box<Self>) -> AuthenticatedSession {
         authenticated(self.session)
     }
 
-    async fn roll_back(self: Box<Self>, _cleanup: StagedCleanup) -> CleanupReport {
+    async fn unwind(self: Box<Self>) -> CleanupReport {
         CleanupReport::default()
     }
 }

@@ -571,6 +571,7 @@ impl SessionTasks {
         let adoption = self.auth.adopt_session(&session, &passphrase).await?;
         EstablishedSession::record_or_roll_back(
             adoption,
+            Arc::clone(&self.auth),
             Arc::clone(&self.storage),
             account,
             &session,

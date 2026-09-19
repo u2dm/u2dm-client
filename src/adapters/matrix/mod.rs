@@ -28,8 +28,7 @@ use crate::domain::account::AccountScope;
 use crate::domain::auth::{LoginCredentials, OAuthLoginData, ServerInfo, Session};
 use crate::error::{AppError, Result};
 use crate::ports::matrix::{
-    AuthPort, AuthenticatedSession, CleanupReport, PendingLogin, ProgressSink, StagedCleanup,
-    StoreAdoption,
+    AuthPort, AuthenticatedSession, CleanupReport, InterruptedLogin, ProgressSink, StoreAdoption,
 };
 use crate::ports::media::MediaCache;
 
@@ -81,19 +80,6 @@ impl MatrixAdapter {
             return;
         };
         self.purge_login_scratch(&paths).await;
-    }
-
-    async fn abandon_adoption(&self, adopted: AdoptedStore) {
-        let report = self
-            .layout
-            .roll_back_adoption(adopted, StagedCleanup::Done)
-            .await;
-        if !report.is_clean() {
-            tracing::warn!(
-                "previous store not restored after a failed adoption: {}",
-                report.summary()
-            );
-        }
     }
 
     async fn purge_login_scratch(&self, paths: &StorePaths) {
@@ -151,7 +137,7 @@ impl StoreAdoption for UncommittedAdoption {
         self.adopted.rolling_back().await
     }
 
-    async fn commit(self: Box<Self>, cleanup: StagedCleanup) -> AuthenticatedSession {
+    async fn commit(self: Box<Self>) -> AuthenticatedSession {
         let Self {
             layout,
             media,
@@ -161,11 +147,11 @@ impl StoreAdoption for UncommittedAdoption {
             account,
             ..
         } = *self;
-        layout.commit_adoption(adopted, cleanup).await;
+        layout.commit_adoption(adopted).await;
         authenticate(layout, media, client, session, account).await
     }
 
-    async fn roll_back(self: Box<Self>, cleanup: StagedCleanup) -> CleanupReport {
+    async fn unwind(self: Box<Self>) -> CleanupReport {
         let Self {
             layout,
             adopted,
@@ -173,7 +159,7 @@ impl StoreAdoption for UncommittedAdoption {
             ..
         } = *self;
         drop(client);
-        layout.roll_back_adoption(adopted, cleanup).await
+        layout.unwind_adoption(adopted).await
     }
 }
 
@@ -242,7 +228,7 @@ impl AuthPort for MatrixAdapter {
         let client = match auth::open_session(&adopted.paths, session, passphrase, &|_| {}).await {
             Ok(client) => client,
             Err(e) => {
-                self.abandon_adoption(adopted).await;
+                self.layout.abandon_adoption(adopted).await;
                 return Err(e);
             }
         };
@@ -272,8 +258,8 @@ impl AuthPort for MatrixAdapter {
         Ok(self.authenticate(client, session.clone(), account).await)
     }
 
-    async fn pending_logins(&self) -> Vec<PendingLogin> {
-        self.layout.pending_logins().await
+    async fn interrupted_logins(&self) -> Result<Vec<InterruptedLogin>> {
+        self.layout.interrupted_logins().await
     }
 
     async fn unwind_login(&self, txn: &str) -> CleanupReport {
@@ -282,6 +268,10 @@ impl AuthPort for MatrixAdapter {
 
     async fn settle_login(&self, txn: &str) -> CleanupReport {
         self.layout.settle_login(txn).await
+    }
+
+    async fn mark_rolled_back(&self, txn: &str) -> Result<()> {
+        self.layout.mark_rolled_back(txn).await
     }
 
     async fn forget_login(&self, txn: &str) {
