@@ -1,0 +1,53 @@
+import {
+    Palette,
+} from "std-widgets.slint";
+
+import { ClickArea } from "../../../../components/a11y.slint";
+import { Actions } from "../../../../actions.slint";
+import { AppStyle, Glyph, Space, Weight } from "../../../../theme.slint";
+
+export component SendFailedRow inherits HorizontalLayout {
+    in property <string> local-id;
+
+    spacing: Space.sm;
+
+    Text {
+        text: @tr("Not sent");
+        color: AppStyle.danger;
+        font-size: Glyph.xs;
+        font-weight: Weight.semibold;
+        vertical-alignment: center;
+    }
+
+    retry-action := ClickArea {
+        width: retry-label.preferred-width;
+        label: @tr("Retry sending this message");
+        clicked => {
+            Actions.retry-send(root.local-id);
+        }
+
+        retry-label := Text {
+            text: @tr("Retry");
+            color: Palette.accent-background;
+            font-size: Glyph.xs;
+            font-weight: Weight.semibold;
+            vertical-alignment: center;
+        }
+    }
+
+    discard-action := ClickArea {
+        width: discard-label.preferred-width;
+        label: @tr("Discard this message");
+        clicked => {
+            Actions.discard-send(root.local-id);
+        }
+
+        discard-label := Text {
+            text: @tr("Discard");
+            color: AppStyle.danger-muted;
+            font-size: Glyph.xs;
+            font-weight: Weight.semibold;
+            vertical-alignment: center;
+        }
+    }
+}

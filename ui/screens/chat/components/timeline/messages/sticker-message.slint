@@ -1,28 +1,23 @@
 import { Palette, Spinner } from "std-widgets.slint";
 import { IconDisplay, IconSet } from "@lucide";
-import { MediaFailure, MediaState } from "../../../../../enums.slint";
+import { MessageEntry } from "../../types.slint";
+import { MediaState } from "../../../../../enums.slint";
 import { MediaFailures } from "../../../../../messages.slint";
 import { AppStyle, Fonts, IconSize, Metrics, Motion, Radius, Space } from "../../../../../theme.slint";
 
 export component StickerMessage inherits HorizontalLayout {
-    in property <image> sticker;
-    in property <MediaState> media-state;
-    in property <MediaFailure> media-failure;
-    in property <int> sticker-width;
-    in property <int> sticker-height;
-    in property <string> alt;
+    in property <MessageEntry> msg;
     in property <bool> bubble-hovered;
-    in property <bool> is-own;
 
     property <length> max-long-edge: Metrics.sticker-max-extent;
-    property <bool> is-ready: root.media-state == MediaState.ready;
-    property <bool> is-failed: root.media-state == MediaState.failed;
-    property <bool> has-dimensions: root.sticker-width > 0 && root.sticker-height > 0;
+    property <bool> is-ready: root.msg.media-state == MediaState.ready;
+    property <bool> is-failed: root.msg.media-state == MediaState.failed;
+    property <bool> has-dimensions: root.msg.image-width > 0 && root.msg.image-height > 0;
     property <float> aspect: root.has-dimensions
-        ? root.sticker-width / max(root.sticker-height, 1)
+        ? root.msg.image-width / max(root.msg.image-height, 1)
         : 1.0;
     property <bool> is-landscape: root.aspect >= 1.0;
-    property <length> intrinsic-long-edge: max(root.sticker-width, root.sticker-height) * 1px;
+    property <length> intrinsic-long-edge: max(root.msg.image-width, root.msg.image-height) * 1px;
     property <length> display-long-edge: root.has-dimensions
         ? min(root.intrinsic-long-edge, root.max-long-edge)
         : root.max-long-edge;
@@ -34,7 +29,7 @@ export component StickerMessage inherits HorizontalLayout {
         ? root.display-long-edge / max(root.aspect, 0.01)
         : root.display-long-edge;
 
-    alignment: root.is-own ? end : start;
+    alignment: root.msg.is-own ? end : start;
 
     Rectangle {
         width: root.display-width;
@@ -42,13 +37,13 @@ export component StickerMessage inherits HorizontalLayout {
 
         accessible-role: image;
         accessible-label: root.is-failed
-            ? @tr("Sticker unavailable. {}", MediaFailures.reason(root.media-failure, false))
-            : (root.alt != "" ? @tr("Sticker: {}", root.alt) : @tr("Sticker"));
+            ? @tr("Sticker unavailable. {}", MediaFailures.reason(root.msg.media-failure, false))
+            : (root.msg.body != "" ? @tr("Sticker: {}", root.msg.body) : @tr("Sticker"));
 
         if root.is-ready: Image {
             width: 100%;
             height: 100%;
-            source: root.sticker;
+            source: root.msg.thumbnail;
             image-fit: ImageFit.contain;
         }
 
@@ -73,7 +68,7 @@ export component StickerMessage inherits HorizontalLayout {
             }
         }
 
-        if root.alt != "": Rectangle {
+        if root.msg.body != "": Rectangle {
             x: (parent.width - self.width) / 2;
             y: parent.height - self.height - Space.sm;
             width: min(parent.width, alt-text.preferred-width + Space.xl);
@@ -91,7 +86,7 @@ export component StickerMessage inherits HorizontalLayout {
                 x: Space.md;
                 y: (parent.height - self.height) / 2;
                 width: parent.width - Space.xl;
-                text: root.alt;
+                text: root.msg.body;
                 font-family: Fonts.emoji;
                 font-size: Fonts.caption;
                 color: Palette.foreground;

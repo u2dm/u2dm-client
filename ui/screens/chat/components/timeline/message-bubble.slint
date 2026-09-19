@@ -8,22 +8,15 @@ import { MessageEntry } from "../types.slint";
 import { MessagePreview } from "../message-preview.slint";
 import { ReplyQuote } from "../reply-quote.slint";
 import { ServiceMessage } from "./messages/service-message.slint";
-import { TextMessage } from "./messages/text-message.slint";
-import { ImageMessage, ImagePlaceholder } from "./messages/image-message.slint";
-import { VideoMessage, VideoPlaceholder } from "./messages/video-message.slint";
-import { StickerMessage } from "./messages/sticker-message.slint";
-import { FileMessage } from "./messages/file-message.slint";
-import { AudioMessage } from "./messages/audio-message.slint";
-import { UtdMessage } from "./messages/utd-message.slint";
-import { UnsupportedMessage } from "./messages/unsupported-message.slint";
 import { UnreadDivider } from "./messages/unread-divider.slint";
+import { MessageBody, MessageShape } from "./message-body.slint";
 import { ReactionRow } from "./reaction-row.slint";
-import { QuickReactions } from "./reaction-picker.slint";
+import { RowActions } from "./row-actions.slint";
+import { SendFailedRow } from "./send-failed-row.slint";
+import { SenderLine } from "./sender-line.slint";
 import { Avatar } from "../../../../components/avatar.slint";
-import { ClickArea, Interaction } from "../../../../components/a11y.slint";
-import { Pill } from "../../../../components/pill.slint";
+import { ClickArea } from "../../../../components/a11y.slint";
 import {
-    Composer,
     ReactionAnchor,
     Reactions,
     Shell,
@@ -31,32 +24,8 @@ import {
 } from "../../../../local.slint";
 import { Actions } from "../../../../actions.slint";
 import { RoomView } from "../../../../views.slint";
-import { AppStyle, Avatars, Fonts, Glyph, IconSize, Metrics, Motion, Opacity, Radius, Size, Space, Stroke, Weight } from "../../../../theme.slint";
-import { MediaState, MessageKind, SendState } from "../../../../enums.slint";
-
-enum RowAction {
-    select-text,
-    reply,
-    react,
-}
-
-component PronounBadge inherits Rectangle {
-    in property <string> text;
-
-    width: pronoun-text.preferred-width + Space.lg;
-    height: pronoun-text.preferred-height + Space.xs;
-    border-radius: self.height / 2;
-    background: AppStyle.overlay-hover;
-
-    pronoun-text := Text {
-        text: root.text;
-        font-size: Fonts.caption;
-        color: AppStyle.accent-on-surface;
-        horizontal-alignment: center;
-        vertical-alignment: center;
-        overflow: elide;
-    }
-}
+import { AppStyle, Avatars, Fonts, Glyph, IconSize, Metrics, Motion, Opacity, Radius, Size, Space, Stroke } from "../../../../theme.slint";
+import { MessageKind, SendState } from "../../../../enums.slint";
 
 component BubbleReactions inherits ReactionRow {
     in property <string> event-id;
@@ -77,28 +46,6 @@ component BubbleReactions inherits ReactionRow {
     }
     unhovered(index) => {
         Reactions.hide-tooltip(root.event-id, index);
-    }
-}
-
-component SenderLine inherits HorizontalLayout {
-    in property <string> sender;
-    in property <[string]> pronouns;
-
-    alignment: start;
-    spacing: Space.sm;
-
-    Text {
-        text: root.sender;
-        font-size: Fonts.body-small;
-        font-weight: Weight.bold;
-        color: Palette.accent-background;
-        vertical-alignment: center;
-        overflow: elide;
-    }
-
-    for pronoun in root.pronouns: PronounBadge {
-        y: (parent.height - self.height) / 2;
-        text: pronoun;
     }
 }
 
@@ -124,9 +71,6 @@ export component MessageBubble inherits VerticalLayout {
     property <MessageEntry> following: RoomView.timeline[min(root.timeline-row + 1, root.last-row)];
 
     property <bool> is-service: msg.message-type == MessageKind.service;
-    property <bool> is-plain-text: msg.message-type == MessageKind.text
-        || msg.message-type == MessageKind.notice
-        || msg.message-type == MessageKind.emote;
     property <bool> has-remote-id: msg.event-id != "";
     property <bool> is-focused: root.has-remote-id && msg.event-id == RoomView.focus-event-id;
     property <bool> strip-mine: root.has-remote-id
@@ -145,14 +89,9 @@ export component MessageBubble inherits VerticalLayout {
         && root.following.sender-id != ""
         && root.following.sender-id == msg.sender-id;
 
-    property <bool> is-image: msg.message-type == MessageKind.image;
-    property <bool> is-video: msg.message-type == MessageKind.video;
-    property <bool> is-visual: root.is-image || root.is-video;
     property <bool> is-sticker: msg.message-type == MessageKind.sticker;
-    property <bool> has-caption: msg.body != "";
-    property <bool> has-photo: root.is-visual
-        && (msg.media-state != MediaState.idle || (msg.image-width > 0 && msg.image-height > 0));
-    property <bool> is-photo-only: root.has-photo && !root.has-caption;
+    property <bool> has-photo: MessageShape.has-photo(msg);
+    property <bool> is-photo-only: MessageShape.is-photo-only(msg);
     property <bool> is-unsent: msg.send-state != SendState.sent;
     property <bool> dims-while-unsent: root.is-unsent && !root.send-failed && !root.has-photo;
     property <bool> has-reactions: msg.reactions.length > 0;
@@ -160,48 +99,11 @@ export component MessageBubble inherits VerticalLayout {
     property <bool> chips-outside: root.is-photo-only && root.has-reactions;
     property <length> outside-chips-gap: Space.sm;
     property <length> photo-row-padding: root.has-photo ? Space.lg : 0px;
-    property <length> pill-height: Size.target-min + 2 * Space.xs;
-    property <length> pill-gap: Space.sm;
-    property <length> pill-overlap: Space.sm;
-    property <color> pill-fill: Palette.alternate-background;
-    property <color> pill-foreground: Palette.accent-background;
-
-    property <bool> can-select-text: root.is-plain-text || (root.has-photo && root.has-caption);
-    property <[RowAction]> row-actions: root.can-select-text
-        ? [RowAction.select-text, RowAction.reply, RowAction.react]
-        : [RowAction.reply, RowAction.react];
-
-    pure function action-label(action: RowAction) -> string {
-        if action == RowAction.select-text {
-            return @tr("Select the text of this message");
-        }
-        if action == RowAction.reply {
-            return @tr("Reply to {}", msg.sender);
-        }
-        return @tr("React to {}'s message with {}", msg.sender, QuickReactions.default-key);
-    }
-
-    function run-action(action: RowAction) {
-        if !root.has-remote-id {
-            return;
-        }
-        if action == RowAction.select-text {
-            TextSelection.select(msg.unique-id);
-        } else if action == RowAction.reply {
-            Composer.reply-event-id = msg.event-id;
-            Composer.reply-sender = msg.sender;
-            Composer.reply-preview = MessagePreview.label(msg.preview-kind, msg.body);
-        } else {
-            Actions.toggle-reaction(msg.event-id, QuickReactions.default-key);
-        }
-    }
 
     if msg.first-unread: UnreadDivider { }
 
     if is-service: ServiceMessage {
-        kind: msg.service-kind;
-        actor: msg.sender;
-        target: msg.service-target;
+        msg: root.msg;
     }
 
     if !is-service: message-row := Rectangle {
@@ -216,15 +118,6 @@ export component MessageBubble inherits VerticalLayout {
             && (!root.continued-by-next || self.ends-below-composer);
 
         property <bool> bubble-hovered: false;
-        property <bool> action-hovered: false;
-        property <int> action-cursor: 0;
-        property <RowAction> focused-action: root.row-actions[min(self.action-cursor, root.row-actions.length - 1)];
-
-        property <bool> hovered: root.has-remote-id
-            && (self.bubble-hovered
-            || self.action-hovered
-            || root.strip-mine
-            || action-focus.has-focus);
 
         property <length> outside-chips-height: root.chips-outside
             ? Metrics.reaction-chip + root.outside-chips-gap
@@ -353,115 +246,10 @@ export component MessageBubble inherits VerticalLayout {
                             }
                         }
 
-                        if root.has-photo && root.is-image: ImageMessage {
-                            thumbnail: msg.thumbnail;
-                            media-state: msg.media-state;
-                            media-failure: msg.media-failure;
-                            mimetype: msg.image-mimetype;
-                            extension: msg.image-extension;
-                            image-width: msg.image-width;
-                            image-height: msg.image-height;
-                            body: msg.body;
-                            unique-id: msg.unique-id;
-                            styled: msg.styled;
-                            has-links: msg.has-links;
-                            is-own: root.is-own;
-                            event-id: msg.event-id;
+                        MessageBody {
+                            msg: root.msg;
                             frame-limit: root.bubble-max-width;
-                            timestamp: msg.timestamp;
-                            edited: msg.edited;
-                            show-timestamp: root.is-photo-only;
-                            bubble-hovered: message-row.hovered;
-                            send-state: msg.send-state;
-                            send-progress: msg.send-progress;
-                        }
-
-                        if root.has-photo && root.is-video: VideoMessage {
-                            poster: msg.thumbnail;
-                            media-state: msg.media-state;
-                            media-failure: msg.media-failure;
-                            mimetype: msg.image-mimetype;
-                            extension: msg.image-extension;
-                            video-width: msg.image-width;
-                            video-height: msg.image-height;
-                            duration: msg.duration;
-                            body: msg.body;
-                            unique-id: msg.unique-id;
-                            styled: msg.styled;
-                            has-links: msg.has-links;
-                            is-own: root.is-own;
-                            event-id: msg.event-id;
-                            frame-limit: root.bubble-max-width;
-                            timestamp: msg.timestamp;
-                            edited: msg.edited;
-                            show-timestamp: root.is-photo-only;
-                            bubble-hovered: message-row.hovered;
-                            send-state: msg.send-state;
-                            send-progress: msg.send-progress;
-                        }
-
-                        if root.is-image && !root.has-photo: ImagePlaceholder {
-                            body: msg.body;
-                        }
-
-                        if root.is-video && !root.has-photo: VideoPlaceholder {
-                            body: msg.body;
-                        }
-
-                        if root.is-sticker: StickerMessage {
-                            sticker: msg.thumbnail;
-                            media-state: msg.media-state;
-                            media-failure: msg.media-failure;
-                            sticker-width: msg.image-width;
-                            sticker-height: msg.image-height;
-                            alt: msg.body;
-                            bubble-hovered: message-row.hovered;
-                            is-own: root.is-own;
-                        }
-
-                        if msg.message-type == MessageKind.file: FileMessage {
-                            filename: msg.filename;
-                            size: msg.size;
-                            event-id: msg.event-id;
-                            is-own: root.is-own;
-                            send-state: msg.send-state;
-                            send-progress: msg.send-progress;
-                        }
-
-                        if msg.message-type == MessageKind.audio: AudioMessage {
-                            audio-kind: msg.audio-kind;
-                            filename: msg.filename;
-                            duration: msg.duration;
-                            size: msg.size;
-                            waveform: msg.waveform;
-                            event-id: msg.event-id;
-                            is-own: root.is-own;
-                            media-state: msg.media-state;
-                            send-state: msg.send-state;
-                            send-progress: msg.send-progress;
-                        }
-
-                        if msg.message-type == MessageKind.audio && root.has-caption: TextMessage {
-                            unique-id: msg.unique-id;
-                            plain: msg.body;
-                            styled: msg.styled;
-                            has-links: msg.has-links;
-                            is-own: root.is-own;
-                        }
-
-                        if msg.message-type == MessageKind.utd: UtdMessage { }
-
-                        if msg.message-type == MessageKind.unsupported: UnsupportedMessage {
-                            kind: msg.unsupported-kind;
-                            body: msg.body;
-                        }
-
-                        if is-plain-text: TextMessage {
-                            unique-id: msg.unique-id;
-                            plain: msg.body;
-                            styled: msg.styled;
-                            has-links: msg.has-links;
-                            is-own: root.is-own;
+                            hovered: actions.hovered;
                         }
 
                         if !root.is-photo-only: HorizontalLayout {
@@ -548,187 +336,25 @@ export component MessageBubble inherits VerticalLayout {
             }
         }
 
-        if root.send-failed: HorizontalLayout {
+        if root.send-failed: SendFailedRow {
             x: bubble.x;
             y: bubble.y + bubble.height + root.outside-chips-gap + parent.outside-chips-height;
             width: bubble.width;
             height: Metrics.reaction-chip;
             alignment: root.is-own ? end : start;
-            spacing: Space.sm;
-
-            Text {
-                text: @tr("Not sent");
-                color: AppStyle.danger;
-                font-size: Glyph.xs;
-                font-weight: Weight.semibold;
-                vertical-alignment: center;
-            }
-
-            retry-action := ClickArea {
-                width: retry-label.preferred-width;
-                label: @tr("Retry sending this message");
-                clicked => {
-                    Actions.retry-send(msg.local-id);
-                }
-
-                retry-label := Text {
-                    text: @tr("Retry");
-                    color: Palette.accent-background;
-                    font-size: Glyph.xs;
-                    font-weight: Weight.semibold;
-                    vertical-alignment: center;
-                }
-            }
-
-            discard-action := ClickArea {
-                width: discard-label.preferred-width;
-                label: @tr("Discard this message");
-                clicked => {
-                    Actions.discard-send(msg.local-id);
-                }
-
-                discard-label := Text {
-                    text: @tr("Discard");
-                    color: AppStyle.danger-muted;
-                    font-size: Glyph.xs;
-                    font-weight: Weight.semibold;
-                    vertical-alignment: center;
-                }
-            }
+            local-id: msg.local-id;
         }
 
-        action-focus := FocusScope {
+        actions := RowActions {
             x: bubble.x;
             y: bubble.y;
-            width: 0;
-            height: 0;
-            focus-on-click: false;
-            focus-on-tab-navigation: Interaction.actionable(root.has-remote-id, false);
-            accessible-role: button;
-            accessible-label: root.action-label(message-row.focused-action);
-            accessible-action-default => {
-                root.run-action(message-row.focused-action);
-            }
-            key-pressed(event) => {
-                if event.text == Key.RightArrow {
-                    message-row.action-cursor = mod(message-row.action-cursor + 1, root.row-actions.length);
-                    return accept;
-                }
-                if event.text == Key.LeftArrow {
-                    message-row.action-cursor = mod(message-row.action-cursor + root.row-actions.length - 1, root.row-actions.length);
-                    return accept;
-                }
-                if Interaction.activates(event.text) {
-                    root.run-action(message-row.focused-action);
-                    return accept;
-                }
-                return reject;
-            }
-        }
-
-        if message-row.hovered: Rectangle {
-            property <bool> any-hovered: select-pill.has-hover
-                || reply-pill.has-hover
-                || react-btn.has-hover;
-
-            width: 100%;
-            height: 100%;
-            opacity: 0;
-
-            animate opacity {
-                duration: Motion.fast;
-                easing: ease-out;
-            }
-
-            init => {
-                self.opacity = 1;
-            }
-
-            changed any-hovered => {
-                message-row.action-hovered = self.any-hovered;
-            }
-
-            select-pill := Pill {
-                x: reply-pill.x - self.width - root.pill-gap;
-                y: reply-pill.y;
-                width: root.pill-height;
-                height: root.pill-height;
-                pad: 0;
-                fill: root.pill-fill;
-                label: root.action-label(RowAction.select-text);
-                enabled: root.can-select-text;
-                visible: self.enabled;
-                focusable: false;
-                roving-focus: action-focus.has-focus && message-row.focused-action == RowAction.select-text;
-                clicked => {
-                    root.run-action(RowAction.select-text);
-                }
-
-                IconDisplay {
-                    icon: IconSet.TextCursor;
-                    size: IconSize.sm;
-                    stroke: root.pill-foreground;
-                }
-            }
-
-            reply-pill := Pill {
-                x: bubble.x + bubble.width - self.width;
-                y: bubble.y - self.height + root.pill-overlap;
-                height: root.pill-height;
-                fill: root.pill-fill;
-                label: root.action-label(RowAction.reply);
-                focusable: false;
-                roving-focus: action-focus.has-focus && message-row.focused-action == RowAction.reply;
-                clicked => {
-                    root.run-action(RowAction.reply);
-                }
-
-                Text {
-                    text: @tr("Reply");
-                    font-size: Fonts.body-small;
-                    font-weight: Weight.semibold;
-                    color: root.pill-foreground;
-                    vertical-alignment: center;
-                }
-            }
-
-            react-btn := Pill {
-                x: root.is-own
-                    ? bubble.x - self.width + Metrics.reaction-strip-overlap
-                    : bubble.x + bubble.width - Metrics.reaction-strip-overlap;
-                y: bubble.y + bubble.height - self.height;
-                width: Metrics.reaction-strip-width;
-                height: self.width;
-                pad: 0;
-                fill: root.pill-fill;
-                label: root.action-label(RowAction.react);
-                focusable: false;
-                roving-focus: action-focus.has-focus && message-row.focused-action == RowAction.react;
-                opacity: root.strip-mine ? 0 : 1;
-
-                animate opacity {
-                    duration: Motion.fast;
-                    easing: ease-out;
-                }
-
-                clicked => {
-                    root.run-action(RowAction.react);
-                }
-                changed has-hover => {
-                    if (self.has-hover && root.has-remote-id) {
-                        Reactions.hover-bubble(bubble.anchor());
-                    } else {
-                        Reactions.leave-bubble(msg.event-id);
-                    }
-                }
-
-                Text {
-                    text: QuickReactions.default-key;
-                    font-family: Fonts.emoji;
-                    font-size: Glyph.xs;
-                    horizontal-alignment: center;
-                    vertical-alignment: center;
-                }
+            width: bubble.width;
+            height: bubble.height;
+            msg: root.msg;
+            bubble-hovered: message-row.bubble-hovered;
+            strip-mine: root.strip-mine;
+            anchor() => {
+                return bubble.anchor();
             }
         }
     }

@@ -1,23 +1,18 @@
 import { Palette } from "std-widgets.slint";
 import { IconSet } from "@lucide";
+import { MessageEntry } from "../../types.slint";
 import { Interaction } from "../../../../../components/a11y.slint";
 import { Actions } from "../../../../../actions.slint";
-import { SendState } from "../../../../../enums.slint";
 import { AppStyle, Fonts, IconSize, Space, Weight } from "../../../../../theme.slint";
 import { MediaButton } from "./media-button.slint";
 
 export component FileMessage inherits HorizontalLayout {
-    in property <string> filename;
-    in property <string> size;
-    in property <string> event-id;
-    in property <bool> is-own;
-    in property <SendState> send-state;
-    in property <float> send-progress;
+    in property <MessageEntry> msg;
 
-    property <bool> can-save: root.event-id != "";
+    property <bool> can-save: root.msg.event-id != "";
 
     function save() {
-        Actions.save-file({ event-id: root.event-id, filename: root.filename });
+        Actions.save-file({ event-id: root.msg.event-id, filename: root.msg.filename });
     }
 
     padding-top: Space.md;
@@ -27,12 +22,12 @@ export component FileMessage inherits HorizontalLayout {
     MediaButton {
         cross-axis-self-alignment: center;
         enabled: root.can-save;
-        is-own: root.is-own;
+        is-own: root.msg.is-own;
         icon: IconSet.ArrowDown;
         glyph-size: IconSize.lg;
-        send-state: root.send-state;
-        send-progress: root.send-progress;
-        label: @tr("Save {}", root.filename);
+        send-state: root.msg.send-state;
+        send-progress: root.msg.send-progress;
+        label: @tr("Save {}", root.msg.filename);
         clicked => {
             root.save();
         }
@@ -50,15 +45,15 @@ export component FileMessage inherits HorizontalLayout {
             spacing: Space.xs;
 
             Text {
-                text: root.filename;
+                text: root.msg.filename;
                 font-size: Fonts.body;
                 font-weight: Weight.semibold;
                 color: Palette.foreground;
                 overflow: elide;
             }
 
-            if root.size != "": Text {
-                text: root.size;
+            if root.msg.size != "": Text {
+                text: root.msg.size;
                 font-size: Fonts.body-small;
                 color: AppStyle.overlay-foreground-muted;
                 overflow: elide;

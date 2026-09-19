@@ -1,0 +1,91 @@
+import { MessageEntry } from "../types.slint";
+
+import { ImageMessage, ImagePlaceholder } from "./messages/image-message.slint";
+import { VideoMessage, VideoPlaceholder } from "./messages/video-message.slint";
+import { StickerMessage } from "./messages/sticker-message.slint";
+import { FileMessage } from "./messages/file-message.slint";
+import { AudioMessage } from "./messages/audio-message.slint";
+import { TextMessage } from "./messages/text-message.slint";
+import { UtdMessage } from "./messages/utd-message.slint";
+import { UnsupportedMessage } from "./messages/unsupported-message.slint";
+import { MediaState, MessageKind } from "../../../../enums.slint";
+
+export global MessageShape {
+    public pure function is-plain-text(msg: MessageEntry) -> bool {
+        return msg.message-type == MessageKind.text
+            || msg.message-type == MessageKind.notice
+            || msg.message-type == MessageKind.emote;
+    }
+
+    public pure function has-photo(msg: MessageEntry) -> bool {
+        return (msg.message-type == MessageKind.image || msg.message-type == MessageKind.video)
+            && (msg.media-state != MediaState.idle || (msg.image-width > 0 && msg.image-height > 0));
+    }
+
+    public pure function is-photo-only(msg: MessageEntry) -> bool {
+        return root.has-photo(msg) && msg.body == "";
+    }
+
+    public pure function has-selectable-text(msg: MessageEntry) -> bool {
+        return root.is-plain-text(msg) || (root.has-photo(msg) && msg.body != "");
+    }
+}
+
+export component MessageBody inherits VerticalLayout {
+    in property <MessageEntry> msg;
+    in property <length> frame-limit;
+    in property <bool> hovered;
+
+    property <MessageKind> kind: root.msg.message-type;
+    property <bool> has-photo: MessageShape.has-photo(root.msg);
+    property <bool> has-caption: root.msg.body != "";
+
+    if root.has-photo && root.kind == MessageKind.image: ImageMessage {
+        msg: root.msg;
+        frame-limit: root.frame-limit;
+        show-timestamp: MessageShape.is-photo-only(root.msg);
+        bubble-hovered: root.hovered;
+    }
+
+    if root.has-photo && root.kind == MessageKind.video: VideoMessage {
+        msg: root.msg;
+        frame-limit: root.frame-limit;
+        show-timestamp: MessageShape.is-photo-only(root.msg);
+        bubble-hovered: root.hovered;
+    }
+
+    if !root.has-photo && root.kind == MessageKind.image: ImagePlaceholder {
+        msg: root.msg;
+    }
+
+    if !root.has-photo && root.kind == MessageKind.video: VideoPlaceholder {
+        msg: root.msg;
+    }
+
+    if root.kind == MessageKind.sticker: StickerMessage {
+        msg: root.msg;
+        bubble-hovered: root.hovered;
+    }
+
+    if root.kind == MessageKind.file: FileMessage {
+        msg: root.msg;
+    }
+
+    if root.kind == MessageKind.audio: AudioMessage {
+        msg: root.msg;
+    }
+
+    if root.kind == MessageKind.audio && root.has-caption: TextMessage {
+        msg: root.msg;
+    }
+
+    if root.kind == MessageKind.utd: UtdMessage { }
+
+    if root.kind == MessageKind.unsupported: UnsupportedMessage {
+        msg: root.msg;
+    }
+
+    if MessageShape.is-plain-text(root.msg): TextMessage {
+        msg: root.msg;
+    }
+}

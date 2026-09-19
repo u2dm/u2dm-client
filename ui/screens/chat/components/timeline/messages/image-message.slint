@@ -1,5 +1,6 @@
 import { Palette, Spinner } from "std-widgets.slint";
 import { IconDisplay, IconSet } from "@lucide";
+import { MessageEntry } from "../../types.slint";
 import { ClickArea } from "../../../../../components/a11y.slint";
 import { Pill } from "../../../../../components/pill.slint";
 import { MediaFailure, MediaState, SendState } from "../../../../../enums.slint";
@@ -9,40 +10,24 @@ import { Actions } from "../../../../../actions.slint";
 import { TextMessage } from "./text-message.slint";
 
 export component ImageMessage inherits VerticalLayout {
-    in property <image> thumbnail;
-    in property <MediaState> media-state;
-    in property <MediaFailure> media-failure;
-    in property <string> mimetype;
-    in property <string> extension;
-    in property <int> image-width;
-    in property <int> image-height;
-    in property <string> body;
-    in property <string> unique-id;
-    in property <styled-text> styled;
-    in property <bool> has-links;
-    in property <bool> is-own;
-    in property <string> event-id;
+    in property <MessageEntry> msg;
     in property <length> frame-limit: Metrics.media-width-max;
-    in property <string> timestamp;
-    in property <bool> edited;
     in property <bool> show-timestamp;
     in property <bool> bubble-hovered;
-    in property <SendState> send-state;
-    in property <float> send-progress;
 
-    property <bool> is-sending: root.send-state == SendState.sending
-        || root.send-state == SendState.uploading;
+    property <bool> is-sending: root.msg.send-state == SendState.sending
+        || root.msg.send-state == SendState.uploading;
 
     out property <length> display-width: min(root.width-limit, max(root.frame-width-min, root.height-limit * root.aspect));
     out property <length> display-height: min(root.height-limit, max(root.frame-height-min, root.display-width / max(root.aspect, 0.01)));
 
     property <length> width-limit: min(root.frame-limit, Metrics.media-width-max);
     property <length> height-limit: Metrics.media-height-max;
-    property <bool> is-ready: root.media-state == MediaState.ready;
-    property <bool> is-failed: root.media-state == MediaState.failed;
-    property <bool> has-caption: root.body != "";
-    property <bool> is-decoded: root.thumbnail.width > 0 && root.thumbnail.height > 0;
-    property <bool> has-dimensions: root.image-width > 0 && root.image-height > 0;
+    property <bool> is-ready: root.msg.media-state == MediaState.ready;
+    property <bool> is-failed: root.msg.media-state == MediaState.failed;
+    property <bool> has-caption: root.msg.body != "";
+    property <bool> is-decoded: root.msg.thumbnail.width > 0 && root.msg.thumbnail.height > 0;
+    property <bool> has-dimensions: root.msg.image-width > 0 && root.msg.image-height > 0;
     property <length> frame-width-min: root.is-failed
         ? min(root.width-limit, Metrics.media-failure-width-min)
         : Metrics.media-width-min;
@@ -52,17 +37,17 @@ export component ImageMessage inherits VerticalLayout {
     property <bool> is-cramped: root.display-width < Metrics.media-failure-width-min
         || root.display-height < Metrics.media-failure-height-min;
     property <string> failure-detail: MediaFailures.detail(
-        root.extension,
-        root.mimetype,
-        root.image-width,
-        root.image-height,
+        root.msg.image-extension,
+        root.msg.image-mimetype,
+        root.msg.image-width,
+        root.msg.image-height,
     );
     property <length> action-height: Size.md;
-    property <bool> can-open-externally: root.event-id != ""
-        && root.media-failure != MediaFailure.no-source;
+    property <bool> can-open-externally: root.msg.event-id != ""
+        && root.msg.media-failure != MediaFailure.no-source;
     property <float> aspect: root.is-ready && root.is-decoded
-        ? root.thumbnail.width / max(root.thumbnail.height, 1)
-        : (root.has-dimensions ? root.image-width / max(root.image-height, 1) : 1.5);
+        ? root.msg.thumbnail.width / max(root.msg.thumbnail.height, 1)
+        : (root.has-dimensions ? root.msg.image-width / max(root.msg.image-height, 1) : 1.5);
 
 
     HorizontalLayout {
@@ -75,19 +60,19 @@ export component ImageMessage inherits VerticalLayout {
             clip: true;
 
             media-click := ClickArea {
-                enabled: root.is-ready && root.event-id != "";
-                label: root.has-caption ? @tr("Open image: {}", root.body) : @tr("Open image");
+                enabled: root.is-ready && root.msg.event-id != "";
+                label: root.has-caption ? @tr("Open image: {}", root.msg.body) : @tr("Open image");
                 ring-radius: Radius.xs;
                 width: 100%;
                 height: 100%;
                 clicked => {
-                    Actions.open-media(root.event-id);
+                    Actions.open-media(root.msg.event-id);
                 }
 
                 if root.is-ready: Image {
                     width: 100%;
                     height: 100%;
-                    source: root.thumbnail;
+                    source: root.msg.thumbnail;
                     image-fit: ImageFit.cover;
                 }
             }
@@ -106,8 +91,8 @@ export component ImageMessage inherits VerticalLayout {
                 Spinner {
                     x: (parent.width - self.width) / 2;
                     y: (parent.height - self.height) / 2;
-                    indeterminate: root.send-state != SendState.uploading;
-                    progress: root.send-progress;
+                    indeterminate: root.msg.send-state != SendState.uploading;
+                    progress: root.msg.send-progress;
                 }
             }
 
@@ -137,7 +122,7 @@ export component ImageMessage inherits VerticalLayout {
                 }
 
                 Text {
-                    text: MediaFailures.reason(root.media-failure, false);
+                    text: MediaFailures.reason(root.msg.media-failure, false);
                     font-size: root.is-cramped ? Fonts.caption : Fonts.body-small;
                     color: AppStyle.foreground-muted;
                     horizontal-alignment: center;
@@ -163,7 +148,7 @@ export component ImageMessage inherits VerticalLayout {
                         hover-lift: 0.25;
                         label: @tr("Try opening this image in another application");
                         clicked => {
-                            Actions.open-media(root.event-id);
+                            Actions.open-media(root.msg.event-id);
                         }
 
                         IconDisplay {
@@ -204,7 +189,7 @@ export component ImageMessage inherits VerticalLayout {
                     height: self.preferred-height;
                     spacing: Space.sm;
 
-                    if root.edited: IconDisplay {
+                    if root.msg.edited: IconDisplay {
                         y: (parent.height - self.height) / 2;
                         icon: IconSet.Pencil;
                         size: IconSize.xs;
@@ -212,7 +197,7 @@ export component ImageMessage inherits VerticalLayout {
                     }
 
                     Text {
-                        text: root.timestamp;
+                        text: root.msg.timestamp;
                         font-size: Fonts.body-small;
                         color: Palette.foreground;
                         vertical-alignment: center;
@@ -230,19 +215,15 @@ export component ImageMessage inherits VerticalLayout {
 
         TextMessage {
             width: root.display-width - 2 * Space.lg;
-            unique-id: root.unique-id;
-            plain: root.body;
-            styled: root.styled;
-            has-links: root.has-links;
-            is-own: root.is-own;
+            msg: root.msg;
         }
     }
 }
 
 export component ImagePlaceholder inherits Text {
-    in property <string> body;
+    in property <MessageEntry> msg;
 
-    text: root.body != "" ? @tr("Image: {}", root.body) : @tr("Image");
+    text: root.msg.body != "" ? @tr("Image: {}", root.msg.body) : @tr("Image");
     font-size: Fonts.body;
     color: AppStyle.foreground-strong;
     wrap: word-wrap;

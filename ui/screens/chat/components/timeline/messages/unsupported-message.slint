@@ -1,9 +1,9 @@
 import { Palette } from "std-widgets.slint";
+import { MessageEntry } from "../../types.slint";
 import { AppStyle, Fonts, Radius, Space } from "../../../../../theme.slint";
 
 export component UnsupportedMessage inherits Rectangle {
-    in property <string> kind;
-    in property <string> body;
+    in property <MessageEntry> msg;
 
     height: layout.preferred-height;
     border-radius: Radius.xs;
@@ -26,7 +26,7 @@ export component UnsupportedMessage inherits Rectangle {
             spacing: Space.xs;
 
             Text {
-                text: @tr("Unsupported message type: {}", root.kind);
+                text: @tr("Unsupported message type: {}", root.msg.unsupported-kind);
                 font-size: Fonts.label;
                 font-italic: true;
                 color: AppStyle.foreground-muted;
@@ -34,8 +34,8 @@ export component UnsupportedMessage inherits Rectangle {
                 wrap: word-wrap;
             }
 
-            if root.body != "": Text {
-                text: root.body;
+            if root.msg.body != "": Text {
+                text: root.msg.body;
                 font-size: Fonts.label;
                 font-italic: true;
                 color: AppStyle.foreground-muted;

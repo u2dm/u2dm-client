@@ -1,4 +1,5 @@
 import { Palette } from "std-widgets.slint";
+import { MessageEntry } from "../../types.slint";
 import { AppStyle, Fonts, Space } from "../../../../../theme.slint";
 import { ServiceKind } from "../../../../../enums.slint";
 
@@ -78,9 +79,7 @@ export global ServiceLabel {
 }
 
 export component ServiceMessage inherits HorizontalLayout {
-    in property <ServiceKind> kind;
-    in property <string> actor;
-    in property <string> target;
+    in property <MessageEntry> msg;
 
     alignment: center;
     padding-top: Space.sm;
@@ -93,7 +92,7 @@ export component ServiceMessage inherits HorizontalLayout {
         background: AppStyle.overlay-hover;
 
         label := Text {
-            text: ServiceLabel.label(root.kind, root.actor, root.target);
+            text: ServiceLabel.label(root.msg.service-kind, root.msg.sender, root.msg.service-target);
             font-family: Fonts.emoji;
             font-size: Fonts.body-small;
             color: AppStyle.foreground-strong;

@@ -1,8 +1,9 @@
 import { Palette } from "std-widgets.slint";
 import { IconSet } from "@lucide";
+import { MessageEntry } from "../../types.slint";
 import { Interaction } from "../../../../../components/a11y.slint";
 import { ScrubBar, ScrubCommit } from "../../../../../components/scrub-bar.slint";
-import { AudioKind, MediaState, SendState } from "../../../../../enums.slint";
+import { AudioKind, MediaState } from "../../../../../enums.slint";
 import { Clocks } from "../../../../../messages.slint";
 import { Actions } from "../../../../../actions.slint";
 import { AudioView } from "../../../../../views.slint";
@@ -77,23 +78,14 @@ component VoiceWaveform inherits Rectangle {
 }
 
 export component AudioMessage inherits HorizontalLayout {
-    in property <AudioKind> audio-kind;
-    in property <string> filename;
-    in property <string> duration;
-    in property <string> size;
-    in property <[float]> waveform;
-    in property <string> event-id;
-    in property <bool> is-own;
-    in property <MediaState> media-state;
-    in property <SendState> send-state;
-    in property <float> send-progress;
+    in property <MessageEntry> msg;
 
-    property <bool> is-voice: root.audio-kind == AudioKind.voice;
-    property <bool> is-track: root.audio-kind == AudioKind.track;
-    property <bool> is-failed: root.media-state == MediaState.failed;
-    property <bool> is-active: root.event-id != ""
+    property <bool> is-voice: root.msg.audio-kind == AudioKind.voice;
+    property <bool> is-track: root.msg.audio-kind == AudioKind.track;
+    property <bool> is-failed: root.msg.media-state == MediaState.failed;
+    property <bool> is-active: root.msg.event-id != ""
         && AudioView.visible
-        && AudioView.event-id == root.event-id;
+        && AudioView.event-id == root.msg.event-id;
     property <bool> is-loading: root.is-active && AudioView.loading;
     property <bool> shows-failure: root.is-failed && !root.is-active;
     property <bool> is-playing: root.is-active && AudioView.playing;
@@ -101,9 +93,9 @@ export component AudioMessage inherits HorizontalLayout {
     property <float> progress: root.is-seekable
         ? clamp(AudioView.position-ms / AudioView.duration-ms, 0.0, 1.0)
         : 0.0;
-    property <string> resting-details: root.duration == "" || root.media-state == MediaState.ready
-        ? (root.duration == "" ? root.size : root.duration)
-        : (root.size == "" ? root.duration : @tr("{} · {}", root.duration, root.size));
+    property <string> resting-details: root.msg.duration == "" || root.msg.media-state == MediaState.ready
+        ? (root.msg.duration == "" ? root.msg.size : root.msg.duration)
+        : (root.msg.size == "" ? root.msg.duration : @tr("{} · {}", root.msg.duration, root.msg.size));
     property <string> details: root.is-seekable
         ? @tr("{} / {}", Clocks.label(AudioView.position-ms), Clocks.label(AudioView.duration-ms))
         : root.resting-details;
@@ -114,7 +106,7 @@ export component AudioMessage inherits HorizontalLayout {
                 Actions.toggle-audio();
             }
         } else {
-            Actions.play-audio(root.event-id);
+            Actions.play-audio(root.msg.event-id);
         }
     }
 
@@ -124,16 +116,16 @@ export component AudioMessage inherits HorizontalLayout {
 
     MediaButton {
         cross-axis-self-alignment: center;
-        enabled: root.event-id != "";
-        is-own: root.is-own;
+        enabled: root.msg.event-id != "";
+        is-own: root.msg.is-own;
         icon: root.shows-failure ? IconSet.CircleAlert : (root.is-playing ? IconSet.Pause : IconSet.Play);
         solid: !root.shows-failure;
         loading: root.is-loading;
-        send-state: root.send-state;
-        send-progress: root.send-progress;
+        send-state: root.msg.send-state;
+        send-progress: root.msg.send-progress;
         label: root.is-playing
             ? @tr("Pause")
-            : (root.is-voice ? @tr("Play voice message") : @tr("Play {}", root.filename));
+            : (root.is-voice ? @tr("Play voice message") : @tr("Play {}", root.msg.filename));
         clicked => {
             root.press();
         }
@@ -144,16 +136,16 @@ export component AudioMessage inherits HorizontalLayout {
         spacing: Space.xs;
 
         VoiceWaveform {
-            levels: root.waveform;
+            levels: root.msg.waveform;
             progress: root.progress;
-            is-own: root.is-own;
+            is-own: root.msg.is-own;
             seekable: root.is-seekable;
             duration-ms: AudioView.duration-ms;
             seek(ms) => {
                 Actions.seek-audio(ms);
             }
             activate => {
-                if (root.event-id != "") {
+                if (root.msg.event-id != "") {
                     root.press();
                 }
             }
@@ -171,7 +163,7 @@ export component AudioMessage inherits HorizontalLayout {
         spacing: Space.xs;
 
         Text {
-            text: root.filename;
+            text: root.msg.filename;
             preferred-width: Metrics.audio-track-width;
             font-size: Fonts.body;
             font-weight: Weight.semibold;
@@ -182,7 +174,7 @@ export component AudioMessage inherits HorizontalLayout {
         if root.is-seekable: ScrubBar {
             commit: ScrubCommit.on-release;
             track-height: Metrics.audio-track-line;
-            played: root.is-own ? AppStyle.audio-wave-played-own : AppStyle.audio-wave-played;
+            played: root.msg.is-own ? AppStyle.audio-wave-played-own : AppStyle.audio-wave-played;
             rest: AppStyle.audio-wave-rest;
             position-ms: AudioView.position-ms;
             duration-ms: AudioView.duration-ms;

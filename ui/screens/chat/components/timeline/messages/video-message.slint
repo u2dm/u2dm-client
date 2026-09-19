@@ -1,50 +1,34 @@
 import { Palette, Spinner } from "std-widgets.slint";
 import { IconDisplay, IconSet } from "@lucide";
+import { MessageEntry } from "../../types.slint";
 import { ClickArea } from "../../../../../components/a11y.slint";
 import { Pill } from "../../../../../components/pill.slint";
-import { MediaFailure, MediaState, SendState } from "../../../../../enums.slint";
+import { MediaState, SendState } from "../../../../../enums.slint";
 import { MediaFailures } from "../../../../../messages.slint";
 import { AppStyle, Fonts, IconSize, Metrics, Motion, Radius, Size, Space, Weight } from "../../../../../theme.slint";
 import { Actions } from "../../../../../actions.slint";
 import { TextMessage } from "./text-message.slint";
 
 export component VideoMessage inherits VerticalLayout {
-    in property <image> poster;
-    in property <MediaState> media-state;
-    in property <MediaFailure> media-failure;
-    in property <string> mimetype;
-    in property <string> extension;
-    in property <int> video-width;
-    in property <int> video-height;
-    in property <string> duration;
-    in property <string> body;
-    in property <string> unique-id;
-    in property <styled-text> styled;
-    in property <bool> has-links;
-    in property <bool> is-own;
-    in property <string> event-id;
+    in property <MessageEntry> msg;
     in property <length> frame-limit: Metrics.media-width-max;
-    in property <string> timestamp;
-    in property <bool> edited;
     in property <bool> show-timestamp;
     in property <bool> bubble-hovered;
-    in property <SendState> send-state;
-    in property <float> send-progress;
 
-    property <bool> is-sending: root.send-state == SendState.sending
-        || root.send-state == SendState.uploading;
+    property <bool> is-sending: root.msg.send-state == SendState.sending
+        || root.msg.send-state == SendState.uploading;
 
     out property <length> display-width: min(root.width-limit, max(root.frame-width-min, root.height-limit * root.aspect));
     out property <length> display-height: min(root.height-limit, max(root.frame-height-min, root.display-width / max(root.aspect, 0.01)));
 
     property <length> width-limit: min(root.frame-limit, Metrics.media-width-max);
     property <length> height-limit: Metrics.media-height-max;
-    property <bool> has-poster: root.media-state == MediaState.ready;
-    property <bool> is-failed: root.media-state == MediaState.failed;
-    property <bool> is-loading: root.media-state == MediaState.idle;
-    property <bool> has-caption: root.body != "";
-    property <bool> is-decoded: root.poster.width > 0 && root.poster.height > 0;
-    property <bool> has-dimensions: root.video-width > 0 && root.video-height > 0;
+    property <bool> has-poster: root.msg.media-state == MediaState.ready;
+    property <bool> is-failed: root.msg.media-state == MediaState.failed;
+    property <bool> is-loading: root.msg.media-state == MediaState.idle;
+    property <bool> has-caption: root.msg.body != "";
+    property <bool> is-decoded: root.msg.thumbnail.width > 0 && root.msg.thumbnail.height > 0;
+    property <bool> has-dimensions: root.msg.image-width > 0 && root.msg.image-height > 0;
     property <length> frame-width-min: root.is-failed
         ? min(root.width-limit, Metrics.media-failure-width-min)
         : Metrics.media-width-min;
@@ -54,16 +38,16 @@ export component VideoMessage inherits VerticalLayout {
     property <bool> is-cramped: root.display-width < Metrics.media-failure-width-min
         || root.display-height < Metrics.media-failure-height-min;
     property <string> failure-detail: MediaFailures.detail(
-        root.extension,
-        root.mimetype,
-        root.video-width,
-        root.video-height,
+        root.msg.image-extension,
+        root.msg.image-mimetype,
+        root.msg.image-width,
+        root.msg.image-height,
     );
     property <length> action-height: Size.md;
-    property <bool> can-open-externally: root.event-id != "";
+    property <bool> can-open-externally: root.msg.event-id != "";
     property <float> aspect: root.has-poster && root.is-decoded
-        ? root.poster.width / max(root.poster.height, 1)
-        : (root.has-dimensions ? root.video-width / max(root.video-height, 1) : 1.5);
+        ? root.msg.thumbnail.width / max(root.msg.thumbnail.height, 1)
+        : (root.has-dimensions ? root.msg.image-width / max(root.msg.image-height, 1) : 1.5);
     property <length> badge: root.is-cramped
         ? Metrics.video-play-badge-compact
         : Metrics.video-play-badge;
@@ -78,19 +62,19 @@ export component VideoMessage inherits VerticalLayout {
             clip: true;
 
             media-click := ClickArea {
-                enabled: root.event-id != "";
-                label: root.has-caption ? @tr("Play video: {}", root.body) : @tr("Play video");
+                enabled: root.msg.event-id != "";
+                label: root.has-caption ? @tr("Play video: {}", root.msg.body) : @tr("Play video");
                 ring-radius: Radius.xs;
                 width: 100%;
                 height: 100%;
                 clicked => {
-                    Actions.open-video(root.event-id);
+                    Actions.open-video(root.msg.event-id);
                 }
 
                 if root.has-poster: Image {
                     width: 100%;
                     height: 100%;
-                    source: root.poster;
+                    source: root.msg.thumbnail;
                     image-fit: ImageFit.cover;
                 }
             }
@@ -128,8 +112,8 @@ export component VideoMessage inherits VerticalLayout {
                 Spinner {
                     x: (parent.width - self.width) / 2;
                     y: (parent.height - self.height) / 2;
-                    indeterminate: root.send-state != SendState.uploading;
-                    progress: root.send-progress;
+                    indeterminate: root.msg.send-state != SendState.uploading;
+                    progress: root.msg.send-progress;
                 }
             }
 
@@ -159,7 +143,7 @@ export component VideoMessage inherits VerticalLayout {
                 }
 
                 Text {
-                    text: MediaFailures.reason(root.media-failure, true);
+                    text: MediaFailures.reason(root.msg.media-failure, true);
                     font-size: root.is-cramped ? Fonts.caption : Fonts.body-small;
                     color: AppStyle.foreground-muted;
                     horizontal-alignment: center;
@@ -185,7 +169,7 @@ export component VideoMessage inherits VerticalLayout {
                         hover-lift: 0.25;
                         label: @tr("Try opening this video in another application");
                         clicked => {
-                            Actions.open-media(root.event-id);
+                            Actions.open-media(root.msg.event-id);
                         }
 
                         IconDisplay {
@@ -205,7 +189,7 @@ export component VideoMessage inherits VerticalLayout {
                 }
             }
 
-            if root.duration != "" && !root.is-failed: Rectangle {
+            if root.msg.duration != "" && !root.is-failed: Rectangle {
                 x: Space.md;
                 y: parent.height - self.height - Space.md;
                 width: duration-text.preferred-width + Space.xl;
@@ -216,7 +200,7 @@ export component VideoMessage inherits VerticalLayout {
                 duration-text := Text {
                     x: (parent.width - self.width) / 2;
                     y: (parent.height - self.height) / 2;
-                    text: root.duration;
+                    text: root.msg.duration;
                     font-size: Fonts.body-small;
                     color: Palette.foreground;
                     vertical-alignment: center;
@@ -244,7 +228,7 @@ export component VideoMessage inherits VerticalLayout {
                     height: self.preferred-height;
                     spacing: Space.sm;
 
-                    if root.edited: IconDisplay {
+                    if root.msg.edited: IconDisplay {
                         y: (parent.height - self.height) / 2;
                         icon: IconSet.Pencil;
                         size: IconSize.xs;
@@ -252,7 +236,7 @@ export component VideoMessage inherits VerticalLayout {
                     }
 
                     Text {
-                        text: root.timestamp;
+                        text: root.msg.timestamp;
                         font-size: Fonts.body-small;
                         color: Palette.foreground;
                         vertical-alignment: center;
@@ -270,19 +254,15 @@ export component VideoMessage inherits VerticalLayout {
 
         TextMessage {
             width: root.display-width - 2 * Space.lg;
-            unique-id: root.unique-id;
-            plain: root.body;
-            styled: root.styled;
-            has-links: root.has-links;
-            is-own: root.is-own;
+            msg: root.msg;
         }
     }
 }
 
 export component VideoPlaceholder inherits Text {
-    in property <string> body;
+    in property <MessageEntry> msg;
 
-    text: root.body != "" ? @tr("Video: {}", root.body) : @tr("Video");
+    text: root.msg.body != "" ? @tr("Video: {}", root.msg.body) : @tr("Video");
     font-size: Fonts.body;
     color: AppStyle.foreground-strong;
     wrap: word-wrap;

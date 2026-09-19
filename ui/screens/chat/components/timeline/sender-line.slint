@@ -1,0 +1,45 @@
+import {
+    Palette,
+} from "std-widgets.slint";
+
+import { AppStyle, Fonts, Space, Weight } from "../../../../theme.slint";
+
+component PronounBadge inherits Rectangle {
+    in property <string> text;
+
+    width: pronoun-text.preferred-width + Space.lg;
+    height: pronoun-text.preferred-height + Space.xs;
+    border-radius: self.height / 2;
+    background: AppStyle.overlay-hover;
+
+    pronoun-text := Text {
+        text: root.text;
+        font-size: Fonts.caption;
+        color: AppStyle.accent-on-surface;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+        overflow: elide;
+    }
+}
+
+export component SenderLine inherits HorizontalLayout {
+    in property <string> sender;
+    in property <[string]> pronouns;
+
+    alignment: start;
+    spacing: Space.sm;
+
+    Text {
+        text: root.sender;
+        font-size: Fonts.body-small;
+        font-weight: Weight.bold;
+        color: Palette.accent-background;
+        vertical-alignment: center;
+        overflow: elide;
+    }
+
+    for pronoun in root.pronouns: PronounBadge {
+        y: (parent.height - self.height) / 2;
+        text: pronoun;
+    }
+}

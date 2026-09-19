@@ -1,41 +1,38 @@
 import { Palette } from "std-widgets.slint";
 
+import { MessageEntry } from "../../types.slint";
 import { Actions } from "../../../../../actions.slint";
 import { TextSelection } from "../../../../../local.slint";
 import { AppStyle, Fonts } from "../../../../../theme.slint";
 
 export component TextMessage inherits Rectangle {
-    in property <string> unique-id;
-    in property <string> plain;
-    in property <styled-text> styled;
-    in property <bool> has-links;
-    in property <bool> is-own;
+    in property <MessageEntry> msg;
 
-    property <bool> selecting: TextSelection.active-id == root.unique-id && root.unique-id != "";
+    property <bool> selecting: TextSelection.active-id == root.msg.unique-id && root.msg.unique-id != "";
 
     preferred-width: content.preferred-width;
     height: content.preferred-height;
 
     accessible-role: text;
-    accessible-label: root.plain;
+    accessible-label: root.msg.body;
     accessible-action-default => {
-        TextSelection.select(root.unique-id);
+        TextSelection.select(root.msg.unique-id);
     }
 
     content := VerticalLayout {
         if !root.selecting: StyledText {
-            text: root.styled;
+            text: root.msg.styled;
             default-font-family: Fonts.emoji;
             default-font-size: Fonts.body;
             default-color: Palette.foreground;
-            link-color: root.is-own ? AppStyle.own-link : AppStyle.link;
+            link-color: root.msg.is-own ? AppStyle.own-link : AppStyle.link;
             link-clicked(url) => {
                 Actions.open-link(url);
             }
         }
 
         if root.selecting: TextInput {
-            text: root.plain;
+            text: root.msg.body;
             font-family: Fonts.emoji;
             font-size: Fonts.body;
             color: Palette.foreground;
@@ -64,12 +61,12 @@ export component TextMessage inherits Rectangle {
         }
     }
 
-    if !root.selecting && !root.has-links: TouchArea {
+    if !root.selecting && !root.msg.has-links: TouchArea {
         width: 100%;
         height: 100%;
         mouse-cursor: text;
         clicked => {
-            TextSelection.select(root.unique-id);
+            TextSelection.select(root.msg.unique-id);
         }
     }
 }

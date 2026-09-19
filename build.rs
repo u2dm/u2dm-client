@@ -63,8 +63,8 @@ const ENUM_COVERAGE: &[EnumCoverage] = &[
     },
     EnumCoverage {
         slint_enum: "MessageKind",
-        branches_in: "ui/screens/chat/components/timeline/message-bubble.slint",
-        falls_through: &[],
+        branches_in: "ui/screens/chat/components/timeline/message-body.slint",
+        falls_through: &["service"],
     },
 ];
 
