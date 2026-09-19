@@ -13,6 +13,7 @@ use tokio::sync::Semaphore;
 use tokio::task::spawn_blocking;
 use tokio::time::{sleep, timeout};
 
+use super::bounded;
 use super::cache::{CacheHandle, FailureTracker};
 use super::flight::SingleFlight;
 use super::{
@@ -36,7 +37,6 @@ const RETRY_MAX_ATTEMPTS: u32 = 3;
 const RETRY_BACKOFF_BASE: Duration = Duration::from_millis(500);
 const MAX_MEDIA_BYTES: usize = 20 * 1024 * 1024;
 const MAX_FULL_MEDIA_BYTES: usize = 100 * 1024 * 1024;
-const CACHE_IN_SDK_MEDIA_STORE: bool = false;
 
 const MEDIA_CACHE_DIR: &str = "media-cache";
 const LAYOUT_VERSION: &str = "v1";
@@ -320,21 +320,14 @@ impl MediaService {
                     .acquire()
                     .await
                     .map_err(|_| MediaFailure::Download)?;
-                attempt_download(client, request, attempt, download_timeout).await
+                attempt_download(client, request, attempt, download_timeout, max_bytes).await
             };
-            if let Some(data) = fetched {
-                if data.len() > max_bytes {
-                    tracing::debug!(
-                        "media payload {} bytes exceeds the {max_bytes} byte limit",
-                        data.len()
-                    );
-                    return Err(MediaFailure::TooLarge);
+            match fetched {
+                Err(MediaFailure::Download) if attempt < RETRY_MAX_ATTEMPTS => {
+                    sleep(backoff).await;
+                    backoff = backoff.saturating_mul(2);
                 }
-                return Ok(data);
-            }
-            if attempt < RETRY_MAX_ATTEMPTS {
-                sleep(backoff).await;
-                backoff = backoff.saturating_mul(2);
+                settled => return settled,
             }
         }
         Err(MediaFailure::Download)
@@ -639,23 +632,22 @@ async fn attempt_download(
     request: &MediaRequestParameters,
     attempt: u32,
     download_timeout: Duration,
-) -> Option<Vec<u8>> {
-    match timeout(
+    max_bytes: usize,
+) -> MediaResult<Vec<u8>> {
+    let fetched = timeout(
         download_timeout,
-        client
-            .media()
-            .get_media_content(request, CACHE_IN_SDK_MEDIA_STORE),
+        bounded::fetch(client, request, max_bytes, download_timeout),
     )
-    .await
-    {
-        Ok(Ok(data)) => Some(data),
-        Ok(Err(e)) => {
-            tracing::debug!("media download attempt {attempt} failed: {e}");
-            None
+    .await;
+    match fetched {
+        Ok(Ok(data)) => Ok(data),
+        Ok(Err(reason)) => {
+            tracing::debug!("media download attempt {attempt} failed: {reason:?}");
+            Err(reason)
         }
         Err(_) => {
             tracing::debug!("media download attempt {attempt} timed out");
-            None
+            Err(MediaFailure::Download)
         }
     }
 }
