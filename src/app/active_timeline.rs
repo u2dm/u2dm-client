@@ -88,12 +88,13 @@ impl ActiveTimeline {
         let token = self.tasks.token();
         let rid = room_id.clone();
 
-        let forwarder = Forwarder {
+        let mut forwarder = Forwarder {
             output: Arc::clone(&output),
             events,
             room_id: rid.clone(),
             generation,
             live,
+            next_snapshot: Snapshot::Opening,
         };
 
         self.tasks.spawn(async move {
@@ -466,10 +467,17 @@ struct Forwarder {
     room_id: RoomId,
     generation: i32,
     live: bool,
+    next_snapshot: Snapshot,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Snapshot {
+    Opening,
+    Replacement,
 }
 
 impl Forwarder {
-    async fn run(&self, rx: &mut mpsc::Receiver<TimelineUpdate>) {
+    async fn run(&mut self, rx: &mut mpsc::Receiver<TimelineUpdate>) {
         while let Some(update) = rx.recv().await {
             tracing::debug!(
                 update = update.label(),
@@ -482,7 +490,7 @@ impl Forwarder {
         }
     }
 
-    async fn dispatch(&self, update: TimelineUpdate) -> bool {
+    async fn dispatch(&mut self, update: TimelineUpdate) -> bool {
         match update {
             TimelineUpdate::Patch(patch) => self.forward_patch(patch).await,
             TimelineUpdate::ResolvingUnread => {
@@ -517,9 +525,12 @@ impl Forwarder {
         true
     }
 
-    async fn forward_patch(&self, patch: Box<TimelinePatch>) {
-        if let Some(advance) = read_position_advance(patch.as_ref()) {
+    async fn forward_patch(&mut self, patch: Box<TimelinePatch>) {
+        if let Some(advance) = read_position_advance(patch.as_ref(), self.next_snapshot) {
             self.send_advance(advance);
+        }
+        if patch.opens_room() {
+            self.next_snapshot = Snapshot::Replacement;
         }
         self.output
             .emit(Effect::Timeline {
@@ -597,8 +608,10 @@ impl Forwarder {
     }
 }
 
-fn read_position_advance(patch: &TimelinePatch) -> Option<TimelineAdvance> {
-    if let Some(anchor) = patch.unread_anchor() {
+fn read_position_advance(patch: &TimelinePatch, snapshot: Snapshot) -> Option<TimelineAdvance> {
+    if snapshot == Snapshot::Opening
+        && let Some(anchor) = patch.unread_anchor()
+    {
         return Some(TimelineAdvance::Anchored {
             count: anchor.count,
         });
