@@ -312,7 +312,9 @@ impl TimelinePort for MatrixTimeline {
             .await?
             .unwedge()
             .await
-            .map_err(|e| AppError::Other(e.to_string()))
+            .map_err(|e| AppError::Other(e.to_string()))?;
+        room.send_queue().set_enabled(true);
+        Ok(())
     }
 
     async fn discard_send(&self, room_id: &RoomId, local_id: &str) -> Result<()> {
@@ -321,7 +323,8 @@ impl TimelinePort for MatrixTimeline {
             .await?
             .abort()
             .await
-            .map(|_removed| ())
-            .map_err(|e| AppError::Other(e.to_string()))
+            .map_err(|e| AppError::Other(e.to_string()))?;
+        room.send_queue().set_enabled(true);
+        Ok(())
     }
 }

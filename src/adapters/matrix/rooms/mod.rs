@@ -2,6 +2,7 @@ mod avatars;
 mod build;
 mod directory;
 mod health;
+mod send_queue;
 
 use std::future;
 use std::sync::Arc;
@@ -11,6 +12,7 @@ use matrix_sdk::Client;
 use matrix_sdk::notification_settings::NotificationSettings;
 use matrix_sdk::ruma::SpaceChildOrder;
 use matrix_sdk::ruma::events::space_order::SpaceOrderEventContent;
+use matrix_sdk::send_queue::SendQueueRoomError;
 use matrix_sdk::sync::RoomUpdates;
 use matrix_sdk_base::RoomInfoNotableUpdate;
 use matrix_sdk_ui::sync_service::{State as SyncState, SyncService};
@@ -22,6 +24,7 @@ use tokio_util::sync::CancellationToken;
 use self::avatars::AvatarFetcher;
 use self::directory::Directory;
 use self::health::{SyncHealth, is_auth_error};
+use self::send_queue::SendQueueRecovery;
 use super::media::MediaService;
 use super::session::ClientHandle;
 use crate::domain::room::RoomId;
@@ -108,6 +111,7 @@ async fn handle_sync_state(
     state: SyncState,
     dir: &mut Directory,
     health: &mut SyncHealth,
+    sends: &mut SendQueueRecovery,
     on_sync: &OnSync,
 ) -> LoopAction {
     match state {
@@ -115,6 +119,7 @@ async fn handle_sync_state(
             if health.on_running() {
                 tracing::info!("sliding sync reconnected");
                 resync(client, dir).await;
+                sends.resume(client).await;
             }
             if health.should_announce_connected() {
                 on_sync(SyncEvent::Connected);
@@ -156,6 +161,25 @@ fn handle_push_rules_change(changed: &Result<(), RecvError>, dir: &mut Directory
     }
 }
 
+fn handle_send_queue_error(
+    update: Result<SendQueueRoomError, RecvError>,
+    sends: &mut SendQueueRecovery,
+) -> LoopAction {
+    match update {
+        Ok(failure) => {
+            sends.on_error(&failure);
+            LoopAction::Continue
+        }
+        Err(RecvError::Lagged(n)) => {
+            sends.on_lagged(n);
+            LoopAction::Continue
+        }
+        Err(RecvError::Closed) => LoopAction::Terminal(SyncOutcome::Recoverable(
+            "send queue error channel closed".into(),
+        )),
+    }
+}
+
 async fn restart_sync(sync_service: &SyncService, health: &mut SyncHealth) -> LoopAction {
     health.on_restart();
     tracing::info!("restarting sliding sync");
@@ -183,6 +207,7 @@ async fn run_sync_loop(
     let mut health = SyncHealth::started();
     let mut state_stream = sync_service.state();
     let mut room_info_rx = client.room_info_notable_update_receiver();
+    let mut sends = SendQueueRecovery::start(client).await;
 
     resync(client, &mut dir).await;
     dir.flush(client, on_sync, avatars).await;
@@ -192,13 +217,20 @@ async fn run_sync_loop(
         let flush_fut = wait_until(dir.flush_at());
         let retry_fut = wait_until(avatars.due_at());
         let restart_fut = wait_until(health.restart_at());
+        let resume_fut = wait_until(sends.resume_at());
         let action = tokio::select! {
             biased;
             state = state_stream.next() => match state {
-                Some(state) => handle_sync_state(client, state, &mut dir, &mut health, on_sync).await,
+                Some(state) => {
+                    handle_sync_state(client, state, &mut dir, &mut health, &mut sends, on_sync).await
+                }
                 None => LoopAction::Terminal(SyncOutcome::Recoverable("sync state stream ended".into())),
             },
             () = restart_fut => restart_sync(sync_service, &mut health).await,
+            () = resume_fut => {
+                sends.resume(client).await;
+                LoopAction::Continue
+            }
             () = flush_fut => {
                 dir.flush(client, on_sync, avatars).await;
                 LoopAction::Continue
@@ -221,6 +253,9 @@ async fn run_sync_loop(
             }
             changed = push_rules_rx.recv() => {
                 handle_push_rules_change(&changed, &mut dir)
+            }
+            failure = sends.next_error() => {
+                handle_send_queue_error(failure, &mut sends)
             }
         };
         if let LoopAction::Terminal(outcome) = action {
