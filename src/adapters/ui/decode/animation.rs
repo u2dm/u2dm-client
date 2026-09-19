@@ -21,7 +21,7 @@ use super::{
 };
 
 const ANIMATION_MEMORY_BUDGET: usize = 128 * 1024 * 1024;
-const ANIM_PER_ITEM_BUDGET: usize = 32 * 1024 * 1024;
+const ANIM_PER_ITEM_BUDGET: usize = 64 * 1024 * 1024;
 const ANIM_MAX_DIMENSION: u32 = 2048;
 const ANIM_MAX_FRAMES: usize = 600;
 const ANIM_MAX_SOURCE_PIXELS: u64 = 128 * 1024 * 1024;
