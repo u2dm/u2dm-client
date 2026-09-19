@@ -10,7 +10,9 @@ use tokio::task::spawn_blocking;
 use tokio::time::sleep;
 use tokio_util::sync::CancellationToken;
 
-use super::{attachments, audio, data, login, media, reactions, stickers, timeline, verification};
+use super::{
+    attachments, audio, data, login, media, reactions, stickers, timeline, verification, videos,
+};
 use crate::adapters::video;
 use crate::domain::auth::{AuthMethod, LoginCredentials, OAuthLoginData, ServerInfo, Session};
 use crate::domain::media::{MediaRendition, OutgoingAttachment, WaveformNeed};
@@ -532,11 +534,17 @@ impl TimelinePort for DemoAuthed {
     }
 
     async fn send_text(&self, room_id: &RoomId, body: &str) -> Result<()> {
+        if timeline::scenario().sends_are_refused {
+            return Err(unavailable("sending messages"));
+        }
         self.append_own_message(room_id, body, None).await;
         Ok(())
     }
 
     async fn send_reply(&self, room_id: &RoomId, body: &str, in_reply_to: &str) -> Result<()> {
+        if timeline::scenario().sends_are_refused {
+            return Err(unavailable("sending replies"));
+        }
         self.append_own_message(room_id, body, Some(in_reply_to))
             .await;
         Ok(())
@@ -610,6 +618,7 @@ impl MediaPort for DemoAuthed {
     }
 
     async fn materialize_video(&self, _room_id: &RoomId, event_id: &str) -> Result<PathBuf> {
+        videos::pause_download().await;
         media::video_asset_path(event_id)
             .ok_or_else(|| AppError::Other(format!("no demo video for event {event_id}")))
     }

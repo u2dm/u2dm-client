@@ -4,7 +4,7 @@ use super::names;
 use crate::commands::messages::UserMessage;
 use crate::commands::view::{
     AppViewState, AttachmentView, AudioView, DirectoryView, LifecycleView, PaginationView,
-    StickerView, Toast, TrackFile, VideoView,
+    StickerView, Toast, TrackFile, UnsentMessage, VideoView,
 };
 use crate::domain::room::{Room, Space};
 use crate::domain::sticker::StickerPack;
@@ -20,6 +20,7 @@ pub struct ViewDto {
     attachment: AttachmentDto,
     video: VideoDto,
     audio: Option<NowPlayingDto>,
+    unsent: Option<UnsentDto>,
     toast: ToastDto,
 }
 
@@ -137,6 +138,14 @@ struct VideoDto {
 }
 
 #[derive(Serialize)]
+struct UnsentDto {
+    submission: i32,
+    room_id: String,
+    body: String,
+    reply_to: Option<String>,
+}
+
+#[derive(Serialize)]
 struct NowPlayingDto {
     request: u64,
     room_id: String,
@@ -165,6 +174,7 @@ pub fn view(source: &AppViewState) -> ViewDto {
         attachment: attachment(&source.attachment),
         video: video(&source.video),
         audio: audio(&source.audio),
+        unsent: source.unsent.as_ref().map(unsent),
         toast: toast(&source.toast),
     }
 }
@@ -296,6 +306,19 @@ fn video(source: &VideoView) -> VideoDto {
         loading: source.loading,
         has_path: source.path.is_some(),
         error: names::user_message_kind(source.error),
+    }
+}
+
+fn unsent(source: &UnsentMessage) -> UnsentDto {
+    UnsentDto {
+        submission: source.submission,
+        room_id: source.room_id.to_string(),
+        body: source.draft.body.clone(),
+        reply_to: source
+            .draft
+            .reply
+            .as_ref()
+            .map(|reply| reply.event_id.clone()),
     }
 }
 

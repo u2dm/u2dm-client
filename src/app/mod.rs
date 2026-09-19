@@ -14,8 +14,10 @@ mod selection;
 mod session;
 mod space_order;
 mod stickers;
+mod submissions;
 mod task_group;
 mod verification;
+mod video;
 
 use std::sync::Arc;
 
@@ -32,14 +34,16 @@ use room_directory::RoomDirectory;
 use selection::Selection;
 use session::SessionController;
 use stickers::Stickers;
+use submissions::Submissions;
 use task_group::TaskGroup;
 use tokio::sync::{mpsc, watch};
 use verification::VerificationController;
+use video::VideoController;
 
 use crate::commands::effects::Effect;
 use crate::commands::messages::{UserMessage, UserMessageKind};
 use crate::commands::sync::DirectoryUpdate;
-use crate::commands::ui::{UiCommand, ViewportChanged};
+use crate::commands::ui::{MessageDraft, UiCommand, ViewportChanged};
 use crate::commands::view::{AppViewState, LoginActivity, LoginStep, Toast};
 use crate::domain::account::AccountScope;
 use crate::domain::auth::ServerInfo;
@@ -86,8 +90,10 @@ pub struct AppService {
     verification: VerificationController,
     media: MediaActions,
     audio: AudioController,
+    video: VideoController,
     stickers: Stickers,
     attachments: Attachments,
+    submissions: Submissions,
     selection: Selection,
     last_selected_room: Option<EmittedRoom>,
     lifecycle: Lifecycle,
@@ -120,8 +126,10 @@ impl AppService {
             verification: VerificationController::new(Arc::clone(&output), events.clone()),
             media: MediaActions::new(Arc::clone(&media_files), Arc::clone(&output)),
             audio: AudioController::new(Arc::clone(&output), events.clone()),
+            video: VideoController::new(Arc::clone(&output), events.clone()),
             stickers: Stickers::new(Arc::clone(&output)),
             attachments: Attachments::new(media_files, Arc::clone(&output), events.clone()),
+            submissions: Submissions::new(Arc::clone(&output), events.clone()),
             events,
             dir_in_tx,
             output,
@@ -266,12 +274,12 @@ impl AppService {
             UiCommand::RetryTimeline => {
                 self.retry_timeline().await;
             }
-            UiCommand::SendMessage {
-                room_id,
-                body,
-                reply_to,
-            } => {
-                self.send_message(room_id, body, reply_to);
+            UiCommand::SendMessage { room_id, draft } => {
+                self.send_message(room_id, draft);
+            }
+            UiCommand::DismissUnsent { submission } => {
+                self.submissions
+                    .dismiss(submission, self.selection.room.as_ref());
             }
             UiCommand::PickAttachment { room_id, pick } => {
                 self.pick_attachment(room_id, pick);
@@ -333,7 +341,7 @@ impl AppService {
                 self.open_video(event_id);
             }
             UiCommand::CloseVideo => {
-                self.media.close_video();
+                self.video.close();
             }
             UiCommand::PlayAudio { event_id } => {
                 self.play_audio(event_id);
@@ -535,6 +543,16 @@ impl AppService {
             AppEvent::AudioFetched { request, outcome } => {
                 self.audio.fetched(request, outcome);
             }
+            AppEvent::VideoFetched { request, outcome } => {
+                self.video.fetched(request, outcome);
+            }
+            AppEvent::SubmissionSettled {
+                submission,
+                enqueue,
+            } => {
+                self.submissions
+                    .settled(submission, enqueue, self.selection.room.as_ref());
+            }
         }
     }
 
@@ -700,12 +718,12 @@ impl AppService {
         self.start_syncing().await;
     }
 
-    fn send_message(&mut self, room_id: RoomId, body: String, reply_to: Option<String>) {
+    fn send_message(&mut self, room_id: RoomId, draft: MessageDraft) {
         let Some(timeline) = self.port(|a| &a.timeline) else {
             return;
         };
-        self.active_timeline
-            .spawn_send(&mut self.operations, timeline, room_id, body, reply_to);
+        self.submissions
+            .send(&mut self.operations, timeline, room_id, draft);
     }
 
     fn resolve_failed_send(&mut self, local_id: String, action: FailedSend) {
@@ -780,8 +798,13 @@ impl AppService {
     }
 
     fn open_video(&mut self, event_id: String) {
-        if let Some((media, room_id)) = self.media_in_active_room() {
-            self.media.open_video(media, room_id, event_id);
+        let Some((media, room_id)) = self.media_in_active_room() else {
+            return;
+        };
+        if cfg!(feature = "video") {
+            self.video.open(media, room_id, event_id);
+        } else {
+            self.media.play_video_externally(media, room_id, event_id);
         }
     }
 
@@ -854,6 +877,7 @@ impl AppService {
         self.attachments.clear();
         self.audio.abandon_lookup();
         self.selection.room = Some(room_id.clone());
+        self.submissions.offer(self.selection.room.as_ref());
         let generation = self.selection.next_generation();
         let (name, member_count) = self
             .room_directory
@@ -903,6 +927,7 @@ impl AppService {
 
     async fn drop_selected_room(&mut self) {
         self.selection.room = None;
+        self.submissions.offer(None);
         let generation = self.selection.next_generation();
         self.emit_selected_room(RoomId::new(String::new()), String::new(), 0, generation)
             .await;
@@ -958,6 +983,7 @@ impl AppService {
             self.operations.restart(),
             self.media.cancel_and_drain(),
             self.audio.restart(),
+            self.video.restart(),
             self.stickers.restart(),
         );
     }
@@ -970,6 +996,7 @@ impl AppService {
             tracing::info!("session expired, clearing local state");
         }
         self.attachments.clear();
+        self.submissions.forget_all();
         let ending = self.ending_session();
         self.output.replace(AppViewState::logged_out());
         self.output.emit(Effect::LoggedOut).await;
@@ -1004,6 +1031,7 @@ impl AppService {
             self.operations.shutdown(),
             self.media.drain(),
             self.audio.shutdown(),
+            self.video.shutdown(),
             self.stickers.shutdown(),
         );
     }

@@ -6,7 +6,7 @@ use std::time::Duration;
 
 use crate::adapters::demo::attachments;
 use crate::adapters::ui::dump::Poke;
-use crate::commands::ui::UiCommand;
+use crate::commands::ui::{MessageDraft, ReplyDraft, UiCommand};
 use crate::domain::media::AttachmentPick;
 use crate::domain::room::RoomId;
 use crate::domain::sticker::PackId;
@@ -41,6 +41,13 @@ pub enum ProbeCommand {
         body: String,
         #[serde(default)]
         reply_to: Option<String>,
+        #[serde(default)]
+        reply_sender: String,
+        #[serde(default)]
+        reply_preview: String,
+    },
+    DismissUnsent {
+        submission: i32,
     },
     SendSticker {
         #[serde(default)]
@@ -191,11 +198,20 @@ pub fn to_driven(command: ProbeCommand, selected: Selection<'_>) -> Result<Drive
             room_id,
             body,
             reply_to,
+            reply_sender,
+            reply_preview,
         } => UiCommand::SendMessage {
             room_id: room(room_id, selected)?,
-            body,
-            reply_to,
+            draft: MessageDraft {
+                body,
+                reply: reply_to.map(|event_id| ReplyDraft {
+                    event_id,
+                    sender: reply_sender,
+                    preview: reply_preview,
+                }),
+            },
         },
+        ProbeCommand::DismissUnsent { submission } => UiCommand::DismissUnsent { submission },
         ProbeCommand::SendSticker {
             room_id,
             pack,

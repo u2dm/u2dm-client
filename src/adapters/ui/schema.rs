@@ -37,6 +37,11 @@ macro_rules! string_props {
         AudioSender AudioView "AudioView" "sender" set_sender get_sender;
         AudioTitle AudioView "AudioView" "title" set_title get_title;
         AttachmentDuration AttachmentView "AttachmentView" "duration" set_duration get_duration;
+        UnsentRoomId UnsentView "UnsentView" "room-id" set_room_id get_room_id;
+        UnsentBody UnsentView "UnsentView" "body" set_body get_body;
+        UnsentReplyEventId UnsentView "UnsentView" "reply-event-id" set_reply_event_id get_reply_event_id;
+        UnsentReplySender UnsentView "UnsentView" "reply-sender" set_reply_sender get_reply_sender;
+        UnsentReplyPreview UnsentView "UnsentView" "reply-preview" set_reply_preview get_reply_preview;
     } };
 }
 pub(crate) use string_props;
@@ -63,7 +68,8 @@ macro_rules! simple_callbacks {
         on_paginate_forwards "paginate-forwards" paginate_forwards room_key PaginateForwards;
         on_jump_to_latest "jump-to-latest" jump_to_latest room_key JumpToLatest;
         on_send_message "send-message" send_message
-            request(room_id "room-id" text, body "body" text, reply_to "reply-to" text) SendMessage;
+            request(room_id "room-id" text, body "body" text, reply_to "reply-to" text,
+                reply_sender "reply-sender" text, reply_preview "reply-preview" text) SendMessage;
         on_send_sticker "send-sticker" send_sticker
             request(room_id "room-id" text, pack_id "pack-id" text, shortcode "shortcode" text,
                 reply_to "reply-to" text) SendSticker;
@@ -109,6 +115,7 @@ macro_rules! bool_props {
         AudioLoading AudioView "AudioView" "loading" set_loading get_loading;
         AudioPlaying AudioView "AudioView" "playing" set_playing get_playing;
         AudioSilent AudioView "AudioView" "silent" set_silent get_silent;
+        UnsentVisible UnsentView "UnsentView" "visible" set_visible get_visible;
     } };
 }
 pub(crate) use bool_props;
@@ -128,6 +135,7 @@ macro_rules! int_props {
         VideoDurationMs VideoView "VideoView" "duration-ms" set_duration_ms get_duration_ms;
         AudioPositionMs AudioView "AudioView" "position-ms" set_position_ms get_position_ms;
         AudioDurationMs AudioView "AudioView" "duration-ms" set_duration_ms get_duration_ms;
+        UnsentSubmission UnsentView "UnsentView" "submission" set_submission get_submission;
     } };
 }
 pub(crate) use int_props;

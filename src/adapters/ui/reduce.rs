@@ -30,7 +30,7 @@ use crate::commands::effects::{Effect, VerificationActivity, VerificationUpdate}
 use crate::commands::messages::{UserMessage, UserMessageKind};
 use crate::commands::view::{
     AppViewState, AttachmentView, AudioView, DirectoryView, LifecycleView, NowPlaying,
-    PaginationView, StickerView, Toast, TrackFile, VideoView,
+    PaginationView, StickerView, Toast, TrackFile, UnsentMessage, VideoView,
 };
 use crate::domain::room::{RoomId, RoomList};
 use crate::domain::timeline::{TimelinePatch, TimelineStatus};
@@ -271,6 +271,7 @@ fn apply_snapshot<B: UiBackend>(
         attachment,
         video,
         audio,
+        unsent,
         toast,
     } = view.as_ref();
     let DirectoryView {
@@ -342,6 +343,9 @@ fn apply_snapshot<B: UiBackend>(
     }
     if last.is_none_or(|l| l.audio != *audio) {
         apply_audio::<B>(w, last.map(|l| &l.audio), audio, ctx);
+    }
+    if last.is_none_or(|l| l.unsent != *unsent) {
+        apply_unsent(w, unsent.as_ref());
     }
     if last.is_none_or(|l| l.toast != *toast) {
         apply_toast(w, toast);
@@ -637,6 +641,36 @@ fn refresh_audio_row<B: UiBackend>(now: &NowPlaying, ctx: &UiEventContext<'_, B>
             entry.set_media_failure(update.media_failure);
             entry.set_waveform(update.waveform.clone());
         },
+    );
+}
+
+fn apply_unsent(w: &impl UiProps, unsent: Option<&UnsentMessage>) {
+    let draft = unsent.map(|unsent| &unsent.draft);
+    let reply = draft.and_then(|draft| draft.reply.as_ref());
+    w.set_bool(BoolProp::UnsentVisible, unsent.is_some());
+    w.set_int(
+        IntProp::UnsentSubmission,
+        unsent.map_or(0, |unsent| unsent.submission),
+    );
+    w.set_string(
+        StringProp::UnsentRoomId,
+        SharedString::from(unsent.map_or("", |unsent| unsent.room_id.as_ref())),
+    );
+    w.set_string(
+        StringProp::UnsentBody,
+        SharedString::from(draft.map_or("", |draft| draft.body.as_str())),
+    );
+    w.set_string(
+        StringProp::UnsentReplyEventId,
+        SharedString::from(reply.map_or("", |reply| reply.event_id.as_str())),
+    );
+    w.set_string(
+        StringProp::UnsentReplySender,
+        SharedString::from(reply.map_or("", |reply| reply.sender.as_str())),
+    );
+    w.set_string(
+        StringProp::UnsentReplyPreview,
+        SharedString::from(reply.map_or("", |reply| reply.preview.as_str())),
     );
 }
 

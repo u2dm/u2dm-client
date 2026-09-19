@@ -42,6 +42,20 @@ pub(super) enum AppEvent {
         request: u64,
         outcome: Result<PathBuf, UserMessageKind>,
     },
+    VideoFetched {
+        request: u64,
+        outcome: Result<PathBuf, UserMessageKind>,
+    },
+    SubmissionSettled {
+        submission: i32,
+        enqueue: Enqueue,
+    },
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(super) enum Enqueue {
+    Accepted,
+    Refused,
 }
 
 impl AppEvent {
@@ -55,6 +69,8 @@ impl AppEvent {
             Self::AttachmentPicked(_) => "AttachmentPicked",
             Self::AttachmentSettled { .. } => "AttachmentSettled",
             Self::AudioFetched { .. } => "AudioFetched",
+            Self::VideoFetched { .. } => "VideoFetched",
+            Self::SubmissionSettled { .. } => "SubmissionSettled",
         }
     }
 }

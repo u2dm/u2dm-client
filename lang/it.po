@@ -577,42 +577,67 @@ msgctxt "EmojiPicker"
 msgid "No emoji found"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/message-input.slint:111
+#: ui/screens/chat/components/timeline/message-input.slint:133
 msgctxt "MessageInput"
 msgid "Emoji and sticker picker"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/message-input.slint:140
+#: ui/screens/chat/components/timeline/message-input.slint:162
 msgctxt "MessageInput"
 msgid "Attach a photo or a file"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/message-input.slint:215
+#: ui/screens/chat/components/timeline/message-input.slint:239
+msgctxt "MessageInput"
+msgid "Not sent"
+msgstr ""
+
+#: ui/screens/chat/components/timeline/message-input.slint:246
+msgctxt "MessageInput"
+msgid "Put the unsent message back in the composer"
+msgstr ""
+
+#: ui/screens/chat/components/timeline/message-input.slint:252
+msgctxt "MessageInput"
+msgid "Restore"
+msgstr ""
+
+#: ui/screens/chat/components/timeline/message-input.slint:264
+msgctxt "MessageInput"
+msgid "Discard the unsent message"
+msgstr ""
+
+#: ui/screens/chat/components/timeline/message-input.slint:270
+msgctxt "MessageInput"
+msgid "Discard"
+msgstr ""
+
+#: ui/screens/chat/components/timeline/message-input.slint:294
 msgctxt "MessageInput"
 msgid "Reply to {}"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/message-input.slint:222
+#: ui/screens/chat/components/timeline/message-input.slint:301
 msgctxt "MessageInput"
 msgid "Cancel reply"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/message-input.slint:297
+#: ui/screens/chat/components/timeline/message-input.slint:376
 msgctxt "MessageInput"
 msgid "Message"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/message-input.slint:298
+#: ui/screens/chat/components/timeline/message-input.slint:377
 msgctxt "MessageInput"
 msgid "Send a message..."
 msgstr ""
 
-#: ui/screens/chat/components/timeline/message-input.slint:330
+#: ui/screens/chat/components/timeline/message-input.slint:409
 msgctxt "MessageInput"
 msgid "Emoji and stickers"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/message-input.slint:354
+#: ui/screens/chat/components/timeline/message-input.slint:433
 msgctxt "MessageInput"
 msgid "Send"
 msgstr ""
@@ -1148,7 +1173,7 @@ msgctxt "LoginField"
 msgid "Show password"
 msgstr ""
 
-#: ui/main.slint:49
+#: ui/main.slint:50
 msgctxt "AppWindow"
 msgid "U2DM Matrix Client"
 msgstr "U2DM Client Matrix"

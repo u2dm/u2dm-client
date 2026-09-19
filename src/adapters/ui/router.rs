@@ -4,7 +4,7 @@ use url::Url;
 use super::props::send_command;
 use super::schema::simple_callbacks;
 use crate::app::input::CommandSender;
-use crate::commands::ui::{UiCommand, ViewportChanged};
+use crate::commands::ui::{MessageDraft, ReplyDraft, UiCommand, ViewportChanged};
 use crate::domain::auth::LoginCredentials;
 use crate::domain::media::AttachmentPick;
 use crate::domain::room::RoomId;
@@ -70,18 +70,33 @@ pub fn move_space(tx: &Tx, from: usize, to: usize, reorder: impl FnOnce(usize, u
     send_command(tx, UiCommand::MoveSpace { from, to });
 }
 
-pub fn send_message(tx: &Tx, room_id: String, body: String, reply_to: String) {
+pub fn send_message(
+    tx: &Tx,
+    room_id: String,
+    body: String,
+    reply_to: String,
+    reply_sender: String,
+    reply_preview: String,
+) {
     if room_id.is_empty() || body.is_empty() {
         return;
     }
+    let reply = (!reply_to.is_empty()).then_some(ReplyDraft {
+        event_id: reply_to,
+        sender: reply_sender,
+        preview: reply_preview,
+    });
     send_command(
         tx,
         UiCommand::SendMessage {
             room_id: RoomId::new(room_id),
-            body,
-            reply_to: (!reply_to.is_empty()).then_some(reply_to),
+            draft: MessageDraft { body, reply },
         },
     );
+}
+
+pub fn dismiss_unsent(tx: &Tx, submission: i32) {
+    send_command(tx, UiCommand::DismissUnsent { submission });
 }
 
 pub fn send_sticker(

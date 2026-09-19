@@ -63,7 +63,7 @@ use generated::{
     MediaState as UiMediaState, MessageEntry, MessageKind as UiMessageKind,
     PreviewKind as UiPreviewKind, ReactionEntry, ReactionSend as UiReactionSend, ReactorAvatar,
     RoomEntry, RoomView, SendState as UiSendState, ServiceKind as UiServiceKind, SessionView,
-    SpaceEntry, StickerCell, StickerPackTab, StickerRow, StickerView, TimelineState,
+    SpaceEntry, StickerCell, StickerPackTab, StickerRow, StickerView, TimelineState, UnsentView,
     UserMessage as UiUserMessage, UserMessageKind as UiUserMessageKind,
     VerificationActivity as UiVerificationActivity, VerificationEmoji, VerificationPhase,
     VerificationView, VideoView,
@@ -479,6 +479,9 @@ impl SlintUiAdapter {
             };
             router::move_space(&tx, from, to, reorder_spaces::<CompiledBackend>);
         });
+
+        let tx = cmd_tx.clone();
+        actions(win).on_dismiss_unsent(move |submission| router::dismiss_unsent(&tx, submission));
 
         actions(win).on_request_media(move |unique_id| request_media(&unique_id));
 

@@ -99,6 +99,16 @@ export global AudioView {
     in property <int> duration-ms;
 }
 
+export global UnsentView {
+    in property <bool> visible;
+    in property <int> submission;
+    in property <string> room-id;
+    in property <string> body;
+    in property <string> reply-event-id;
+    in property <string> reply-sender;
+    in property <string> reply-preview;
+}
+
 export global AttachmentView {
     in property <bool> visible;
     in property <string> filename;

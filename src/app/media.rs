@@ -5,17 +5,13 @@ use std::sync::Arc;
 use super::show_toast;
 use super::task_group::TaskGroup;
 use crate::commands::messages::{UserMessage, UserMessageKind};
-use crate::commands::view::{Toast, VideoView};
+use crate::commands::view::Toast;
 use crate::domain::media::{MediaRendition, WaveformNeed};
 use crate::domain::room::RoomId;
 use crate::error::{AppError, Result};
 use crate::ports::matrix::MediaPort;
 use crate::ports::media::MediaFilePort;
 use crate::ports::output::AppOutputPort;
-
-fn publish_video(output: &dyn AppOutputPort, view: VideoView) {
-    output.publish(Box::new(move |state| state.video = view));
-}
 
 pub(super) struct MediaActions {
     media_files: Arc<dyn MediaFilePort>,
@@ -101,45 +97,13 @@ impl MediaActions {
         );
     }
 
-    pub(super) fn open_video(
+    pub(super) fn play_video_externally(
         &mut self,
         media: Arc<dyn MediaPort>,
         room_id: RoomId,
         event_id: String,
     ) {
-        if !cfg!(feature = "video") {
-            self.play_externally(async move { media.materialize_video(&room_id, &event_id).await });
-            return;
-        }
-        let output = Arc::clone(&self.output);
-        publish_video(
-            output.as_ref(),
-            VideoView {
-                visible: true,
-                loading: true,
-                ..VideoView::default()
-            },
-        );
-        self.spawn_cancellable(async move {
-            let opened = match media.materialize_video(&room_id, &event_id).await {
-                Ok(path) => VideoView {
-                    visible: true,
-                    loading: false,
-                    path: Some(path),
-                    error: UserMessageKind::None,
-                },
-                Err(e) => {
-                    tracing::warn!("failed to materialize video: {e}");
-                    VideoView {
-                        visible: true,
-                        loading: false,
-                        path: None,
-                        error: UserMessageKind::MediaDownloadFailed,
-                    }
-                }
-            };
-            publish_video(output.as_ref(), opened);
-        });
+        self.play_externally(async move { media.materialize_video(&room_id, &event_id).await });
     }
 
     pub(super) fn play_audio_externally(
@@ -174,10 +138,6 @@ impl MediaActions {
                 );
             }
         });
-    }
-
-    pub(super) fn close_video(&mut self) {
-        publish_video(self.output.as_ref(), VideoView::default());
     }
 
     pub(super) fn save_file(

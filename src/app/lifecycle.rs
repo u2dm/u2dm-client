@@ -142,6 +142,7 @@ pub(super) fn command_allowed(phase: AppPhase, cmd: &UiCommand) -> bool {
         | UiCommand::MoveSpace { .. }
         | UiCommand::SelectRoom(_)
         | UiCommand::SendMessage { .. }
+        | UiCommand::DismissUnsent { .. }
         | UiCommand::PickAttachment { .. }
         | UiCommand::SendAttachment { .. }
         | UiCommand::CancelAttachment

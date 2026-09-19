@@ -8,11 +8,12 @@ import { EmojiStore } from "./emoji-picker.slint";
 import { PickerPanel } from "./picker-panel.slint";
 import { AttachMenu } from "./attach-menu.slint";
 import { ReplyQuote } from "../reply-quote.slint";
-import { AppStyle, Fonts, IconSize, Metrics, Radius, Size, Space, Stroke } from "../../../../theme.slint";
+import { AppStyle, Fonts, IconSize, Metrics, Radius, Size, Space, Stroke, Weight } from "../../../../theme.slint";
 import { ClickArea } from "../../../../components/a11y.slint";
 import { ModalHost } from "../../../../components/overlay.slint";
 import { Actions } from "../../../../actions.slint";
 import { Composer, Reactions, Shell } from "../../../../local.slint";
+import { UnsentView } from "../../../../views.slint";
 
 export component MessageInput inherits Rectangle {
     in property <string> room-id;
@@ -25,6 +26,10 @@ export component MessageInput inherits Rectangle {
 
     property <int> picker-tab: 0;
     property <bool> is-replying: Composer.reply-event-id != "";
+    property <int> settled-submission: 0;
+    property <bool> has-unsent: UnsentView.visible
+        && UnsentView.room-id == root.room-id
+        && UnsentView.submission != root.settled-submission;
     property <bool> has-text: root.message != "";
     property <int> caret: 0;
     property <EmojiInsert> pending-insert;
@@ -55,11 +60,28 @@ export component MessageInput inherits Rectangle {
                 room-id: root.room-id,
                 body: root.message,
                 reply-to: Composer.reply-event-id,
+                reply-sender: Composer.reply-sender,
+                reply-preview: Composer.reply-preview,
             });
             root.message = "";
             scroll.content-y = 0px;
             Composer.clear();
         }
+    }
+
+    function restore-unsent() {
+        if !root.is-replying {
+            Composer.reply-event-id = UnsentView.reply-event-id;
+            Composer.reply-sender = UnsentView.reply-sender;
+            Composer.reply-preview = UnsentView.reply-preview;
+        }
+        root.insert-at-caret(UnsentView.body);
+        root.settle-unsent();
+    }
+
+    function settle-unsent() {
+        root.settled-submission = UnsentView.submission;
+        Actions.dismiss-unsent(UnsentView.submission);
     }
 
     function keep-scroll-in-range() {
@@ -199,6 +221,63 @@ export component MessageInput inherits Rectangle {
         clip: true;
 
         layout := VerticalLayout {
+            if root.has-unsent: Rectangle {
+                height: Metrics.reply-bar;
+                background: AppStyle.danger-background;
+
+                HorizontalLayout {
+                    padding-left: Space.lg;
+                    padding-right: Space.md;
+                    padding-top: Space.md;
+                    padding-bottom: Space.md;
+                    spacing: Space.md;
+
+                    ReplyQuote {
+                        horizontal-stretch: 1;
+                        accent: AppStyle.danger;
+                        liveness: AccessibleLiveness.assertive;
+                        sender: @tr("Not sent");
+                        preview: UnsentView.body;
+                    }
+
+                    restore-touch := ClickArea {
+                        width: restore-label.preferred-width + 2 * Space.sm;
+                        ring-radius: Radius.sm;
+                        label: @tr("Put the unsent message back in the composer");
+                        clicked => {
+                            root.restore-unsent();
+                        }
+
+                        restore-label := Text {
+                            text: @tr("Restore");
+                            color: Palette.accent-background;
+                            font-size: Fonts.body-small;
+                            font-weight: Weight.semibold;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                        }
+                    }
+
+                    discard-touch := ClickArea {
+                        width: discard-label.preferred-width + 2 * Space.sm;
+                        ring-radius: Radius.sm;
+                        label: @tr("Discard the unsent message");
+                        clicked => {
+                            root.settle-unsent();
+                        }
+
+                        discard-label := Text {
+                            text: @tr("Discard");
+                            color: AppStyle.danger-muted;
+                            font-size: Fonts.body-small;
+                            font-weight: Weight.semibold;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                        }
+                    }
+                }
+            }
+
             if root.is-replying: Rectangle {
                 height: Metrics.reply-bar;
                 background: AppStyle.overlay-subtle;

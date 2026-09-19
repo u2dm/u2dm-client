@@ -4,13 +4,15 @@ import { AppStyle, Fonts, Space, Stroke, Weight } from "../../../theme.slint";
 export component ReplyQuote inherits HorizontalLayout {
     in property <string> sender;
     in property <string> preview;
+    in property <color> accent: Palette.accent-background;
+    in property <AccessibleLiveness> liveness: AccessibleLiveness.off;
 
     spacing: Space.md;
 
     Rectangle {
         width: Stroke.marker;
         border-radius: self.width / 2;
-        background: Palette.accent-background;
+        background: root.accent;
     }
 
     VerticalLayout {
@@ -22,8 +24,9 @@ export component ReplyQuote inherits HorizontalLayout {
             text: root.sender;
             font-size: Fonts.body-small;
             font-weight: Weight.bold;
-            color: Palette.accent-background;
+            color: root.accent;
             overflow: elide;
+            accessible-live-region: root.liveness;
         }
 
         Text {
@@ -32,6 +35,7 @@ export component ReplyQuote inherits HorizontalLayout {
             font-size: Fonts.body-small;
             color: AppStyle.overlay-foreground-muted;
             overflow: elide;
+            accessible-live-region: root.liveness;
         }
     }
 }

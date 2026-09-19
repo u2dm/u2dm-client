@@ -2,7 +2,9 @@ use std::env;
 use std::io::{self, Write};
 use std::process::ExitCode;
 
-use super::{attachments, audio, login, reactions, richtext, stickers, timeline, verification};
+use super::{
+    attachments, audio, login, reactions, richtext, stickers, timeline, verification, videos,
+};
 
 pub struct Flag {
     pub value: &'static str,
@@ -26,6 +28,7 @@ pub fn all() -> &'static [&'static Scenarios] {
         &stickers::CATALOG,
         &attachments::CATALOG,
         &audio::CATALOG,
+        &videos::CATALOG,
         &login::CATALOG,
         &verification::CATALOG,
         &WINDOW,

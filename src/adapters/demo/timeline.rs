@@ -76,9 +76,14 @@ pub const CATALOG: Scenarios = Scenarios {
             note: "excluded from `all`",
         },
         Flag {
+            value: "send-refused",
+            effect: "every text message is refused before the send queue holds it, so the composer offers it back",
+            note: "excluded from `all`",
+        },
+        Flag {
             value: "all",
             effect: "slow, batch, late-reset, churn, sync, append, prepend and deep",
-            note: "excludes drop-anchor, all-unread, unread-resolving and jump-far",
+            note: "excludes drop-anchor, all-unread, unread-resolving, jump-far, send-fails and send-refused",
         },
     ],
     notes: &["unknown flags warn and are ignored, never rejected"],
@@ -113,6 +118,7 @@ pub struct Scenario {
     pub resolving_unread: bool,
     pub window_is_short: bool,
     pub sends_fail: bool,
+    pub sends_are_refused: bool,
 }
 
 pub fn scenario() -> Scenario {
@@ -142,6 +148,7 @@ fn from_env() -> Scenario {
         resolving_unread = scenario.resolving_unread,
         window_is_short = scenario.window_is_short,
         sends_fail = scenario.sends_fail,
+        sends_are_refused = scenario.sends_are_refused,
         "demo mode: reproducing real-account timeline timing"
     );
     scenario
@@ -165,6 +172,7 @@ fn apply(scenario: &mut Scenario, flag: &str) {
         "unread-resolving" => scenario.resolving_unread = true,
         "jump-far" => scenario.window_is_short = true,
         "send-fails" => scenario.sends_fail = true,
+        "send-refused" => scenario.sends_are_refused = true,
         "all" => {
             *scenario = Scenario {
                 reset_is_slow: true,
@@ -180,6 +188,7 @@ fn apply(scenario: &mut Scenario, flag: &str) {
                 resolving_unread: false,
                 window_is_short: false,
                 sends_fail: false,
+                sends_are_refused: false,
             };
         }
         other => tracing::warn!(flag = other, "demo mode: unknown timeline scenario flag"),

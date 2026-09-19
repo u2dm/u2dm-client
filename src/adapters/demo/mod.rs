@@ -15,6 +15,7 @@ mod stickers;
 mod storage;
 mod timeline;
 mod verification;
+mod videos;
 
 use std::env;
 use std::sync::Arc;

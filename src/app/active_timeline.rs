@@ -147,30 +147,6 @@ impl ActiveTimeline {
             .await;
     }
 
-    pub(super) fn spawn_send(
-        &self,
-        group: &mut TaskGroup,
-        timeline: Arc<dyn TimelinePort>,
-        room_id: RoomId,
-        body: String,
-        reply_to: Option<String>,
-    ) {
-        let output = Arc::clone(&self.output);
-        group.spawn(async move {
-            let result = match reply_to {
-                Some(event_id) => timeline.send_reply(&room_id, &body, &event_id).await,
-                None => timeline.send_text(&room_id, &body).await,
-            };
-            if let Err(e) = result {
-                tracing::warn!("failed to enqueue message: {e}");
-                super::show_toast(
-                    output.as_ref(),
-                    Toast::Error(UserMessage::new(UserMessageKind::SendMessageFailed)),
-                );
-            }
-        });
-    }
-
     pub(super) fn spawn_resolve_failed_send(
         &self,
         group: &mut TaskGroup,

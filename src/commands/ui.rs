@@ -29,8 +29,11 @@ pub enum UiCommand {
     #[strum(to_string = "SendMessage({room_id})")]
     SendMessage {
         room_id: RoomId,
-        body: String,
-        reply_to: Option<String>,
+        draft: MessageDraft,
+    },
+    #[strum(to_string = "DismissUnsent({submission})")]
+    DismissUnsent {
+        submission: i32,
     },
     #[strum(to_string = "PickAttachment({room_id})")]
     PickAttachment {
@@ -117,6 +120,19 @@ pub enum UiCommand {
     DismissToast,
     Logout,
     Quit,
+}
+
+#[derive(Clone, PartialEq, Eq)]
+pub struct MessageDraft {
+    pub body: String,
+    pub reply: Option<ReplyDraft>,
+}
+
+#[derive(Clone, PartialEq, Eq)]
+pub struct ReplyDraft {
+    pub event_id: String,
+    pub sender: String,
+    pub preview: String,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, StrumDisplay)]

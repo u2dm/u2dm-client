@@ -60,6 +60,7 @@ mod names {
     pub mod callback {
         pub const GLOBAL: &str = "Actions";
         pub const MOVE_SPACE: &str = "move-space";
+        pub const DISMISS_UNSENT: &str = "dismiss-unsent";
         pub const TOGGLE_REACTION: &str = "toggle-reaction";
         pub const REQUEST_MEDIA: &str = "request-media";
         pub const REQUEST_ROOM_AVATAR: &str = "request-room-avatar";
@@ -190,6 +191,20 @@ fn usize_arg(args: &[Value], index: usize) -> Option<usize> {
     match args.get(index) {
         Some(Value::Number(n))
             if n.is_finite() && n.fract() == 0.0 && *n >= 0.0 && *n <= u32::MAX.into() =>
+        {
+            n.to_string().parse().ok()
+        }
+        _ => None,
+    }
+}
+
+fn int_arg(args: &[Value], index: usize) -> Option<i32> {
+    match args.get(index) {
+        Some(Value::Number(n))
+            if n.is_finite()
+                && n.fract() == 0.0
+                && *n >= i32::MIN.into()
+                && *n <= i32::MAX.into() =>
         {
             n.to_string().parse().ok()
         }
@@ -583,6 +598,14 @@ impl SlintUiAdapter {
         bind_action(&self.instance, callback::MOVE_SPACE, move |args| {
             if let (Some(from), Some(to)) = (usize_arg(args, 0), usize_arg(args, 1)) {
                 router::move_space(&tx, from, to, reorder_spaces::<InterpretedBackend>);
+            }
+            Value::Void
+        })?;
+
+        let tx = cmd_tx.clone();
+        bind_action(&self.instance, callback::DISMISS_UNSENT, move |args| {
+            if let Some(submission) = int_arg(args, 0) {
+                router::dismiss_unsent(&tx, submission);
             }
             Value::Void
         })?;

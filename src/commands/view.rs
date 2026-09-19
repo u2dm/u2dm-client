@@ -3,6 +3,7 @@ use std::time::Duration;
 use std::sync::Arc;
 
 use super::messages::{UserMessage, UserMessageKind};
+use super::ui::MessageDraft;
 use crate::domain::auth::LoginMethod;
 use crate::domain::media::AudioMeta;
 use crate::domain::room::{RoomId, RoomList, Space};
@@ -19,6 +20,7 @@ pub struct AppViewState {
     pub attachment: AttachmentView,
     pub video: VideoView,
     pub audio: AudioView,
+    pub unsent: Option<UnsentMessage>,
     pub toast: Toast,
 }
 
@@ -57,6 +59,13 @@ pub struct VideoView {
     pub loading: bool,
     pub path: Option<PathBuf>,
     pub error: UserMessageKind,
+}
+
+#[derive(Clone, PartialEq, Eq)]
+pub struct UnsentMessage {
+    pub submission: i32,
+    pub room_id: RoomId,
+    pub draft: MessageDraft,
 }
 
 #[derive(Clone, Default, PartialEq)]
