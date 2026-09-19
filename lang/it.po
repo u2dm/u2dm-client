@@ -848,7 +848,7 @@ msgctxt "SendFailedRow"
 msgid "Discard"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/message-bubble.slint:231
+#: ui/screens/chat/components/timeline/message-bubble.slint:251
 msgctxt "MessageBubble"
 msgid "Go to the message this replies to"
 msgstr ""

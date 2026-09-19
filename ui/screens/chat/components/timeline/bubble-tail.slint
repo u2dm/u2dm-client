@@ -1,0 +1,14 @@
+import { Metrics } from "../../../../theme.slint";
+
+export component BubbleTail inherits Path {
+    in property <bool> is-right-side;
+
+    width: Metrics.bubble-tail-width + Metrics.bubble-tail-overlap;
+    height: Metrics.bubble-tail-height;
+    fit: fill;
+    viewbox-width: 1;
+    viewbox-height: 1;
+    commands: root.is-right-side
+        ? "M 0 0 A 1 1 0 0 0 1 1 L 0 1 Z"
+        : "M 1 0 A 1 1 0 0 1 0 1 L 1 1 Z";
+}
