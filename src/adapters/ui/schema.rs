@@ -366,12 +366,15 @@ pub(crate) use media_states;
 
 macro_rules! media_failures {
     ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
-        None       None       "none";
-        NoSource   NoSource   "no-source";
-        Download   Download   "download";
-        TooLarge   TooLarge   "too-large";
-        Storage    Storage    "storage";
-        Unreadable Unreadable "unreadable";
+        None              None              "none";
+        NoSource          NoSource          "no-source";
+        Download          Download          "download";
+        TooLarge          TooLarge          "too-large";
+        Storage           Storage           "storage";
+        Unreadable        Unreadable        "unreadable";
+        UnsupportedFormat UnsupportedFormat "unsupported-format";
+        TooLargeToDisplay TooLargeToDisplay "too-large-to-display";
+        Damaged           Damaged           "damaged";
     } };
 }
 pub(crate) use media_failures;

@@ -10,7 +10,9 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use animation::AnimationState;
 pub use animation::{advance_animations, load_thumbnail, set_animation_tick};
 use cache::ImageCache;
-pub use cache::{Decoded, load_attachment_preview, load_avatar_async, peek_avatar, peek_thumbnail};
+pub use cache::{
+    DecodeFailure, Decoded, load_attachment_preview, load_avatar_async, peek_avatar, peek_thumbnail,
+};
 use requests::{Needs, Request};
 pub use requests::{
     forget_all_media_needs, record_avatar_need, record_media_need, record_sticker_need,

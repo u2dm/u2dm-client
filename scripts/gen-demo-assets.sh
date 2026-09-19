@@ -22,6 +22,9 @@ readonly CC0_AVATAR_STYLES=(open-peeps notionists lorelei pixel-art)
 readonly CC0_SPACE_STYLES=(shapes rings glass identicon)
 readonly DICEBEAR="https://api.dicebear.com/9.x"
 readonly PHOTOS="https://picsum.photos/seed"
+readonly HEIF_BRAND_BOX='\x00\x00\x00\x18ftypheic\x00\x00\x00\x00mif1heic'
+readonly UNDECODABLE_SEED_SIZE=64x48
+readonly JPEG_FRAME_HEADER_TO_HEIGHT=5
 
 require_tools() {
   local tool
@@ -125,6 +128,10 @@ has_no_asset_on_purpose() {
   [[ $1 == *-missing || $1 == *-missing-* ]]
 }
 
+is_undecodable_on_purpose() {
+  [[ $1 == *-undecodable-* ]]
+}
+
 already_fetched() {
   [[ -f $1 && $refetch_existing -eq 0 ]]
 }
@@ -170,10 +177,69 @@ fetch_space_tiles() {
   done < <(space_avatars)
 }
 
+jpeg_frame_header_offset() {
+  LC_ALL=C grep -obUaP '\xFF[\xC0\xC2]' "$1" | head -n1 | cut -d: -f1
+}
+
+declare_jpeg_size() {
+  local file=$1 width=$2 height=$3 frame
+  frame=$(jpeg_frame_header_offset "$file")
+  [[ -n $frame ]] || return 1
+  printf '%b' "$(printf '\\x%02x' $((height >> 8)) $((height & 255)) $((width >> 8)) $((width & 255)))" |
+    dd of="$file" bs=1 seek=$((frame + JPEG_FRAME_HEADER_TO_HEIGHT)) conv=notrunc status=none
+}
+
+write_first_half() {
+  local source=$1 destination=$2
+  head -c $(($(wc -c <"$source") / 2)) "$source" >"$destination"
+}
+
+undecodable_asset() {
+  local id=$1
+  case ${id##*-undecodable-} in
+    format) echo "$assets/thumbnail-$id.heif" ;;
+    oversized) echo "$assets/thumbnail-$id.jpg" ;;
+    *) echo "$assets/thumbnail-$id.png" ;;
+  esac
+}
+
+write_undecodable() {
+  local id=$1 width=$2 height=$3 destination=$4
+  case ${id##*-undecodable-} in
+    format) printf '%b' "$HEIF_BRAND_BOX" >"$destination" ;;
+    oversized)
+      magick -size "$UNDECODABLE_SEED_SIZE" xc:gray60 -strip "jpg:$destination" &&
+        declare_jpeg_size "$destination" "$width" "$height"
+      ;;
+    truncated)
+      magick -size "${width}x${height}" gradient: "$tmp/whole.png" &&
+        write_first_half "$tmp/whole.png" "$destination"
+      ;;
+    *) return 1 ;;
+  esac
+}
+
+make_undecodable_photo() {
+  local id=$1 width=$2 height=$3 destination
+  destination=$(undecodable_asset "$id")
+  if already_fetched "$destination"; then
+    echo "  $(basename "$destination") (kept, --force to rewrite)"
+  elif write_undecodable "$id" "$width" "$height" "$destination"; then
+    echo "  $(basename "$destination") (undecodable on purpose)"
+  else
+    echo "  $(basename "$destination") FAILED" >&2
+    echo "$destination" >>"$failures"
+  fi
+}
+
 fetch_photos() {
   local id width height
   while read -r id width height; do
     has_no_asset_on_purpose "$id" && continue
+    if is_undecodable_on_purpose "$id"; then
+      make_undecodable_photo "$id" "$width" "$height"
+      continue
+    fi
     fetch "$(photo_url "$id" "$width" "$height")" "$assets/thumbnail-$id.png"
   done < <(photo_messages)
 }

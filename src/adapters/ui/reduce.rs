@@ -4,11 +4,8 @@ use std::sync::Arc;
 use slint::{ComponentHandle, Model, SharedString};
 
 use super::audio;
-use super::backend::{UiBackend, UiEventContext, apply_thumbnail_ready, enrich_message};
-use super::decode::{
-    AvatarSlot, DecodeOutcome, MediaSlot, load_attachment_preview, load_avatar_async,
-    request_sticker,
-};
+use super::backend::{UiBackend, UiEventContext, apply_sticker_art, enrich_message};
+use super::decode::{AvatarSlot, load_attachment_preview, load_avatar_async, request_sticker};
 use super::dto::{
     GRID_COLUMNS, StickerArt, StickerPackDto, StickerRowDto, audio_row_update, sticker_art,
     sticker_grid, sticker_needle,
@@ -437,12 +434,9 @@ fn settle_sticker_downloads<B: UiBackend>(media: &dyn MediaCache) {
         }
     });
     for (key, art) in settled {
-        let slot = MediaSlot::StickerCell(key);
         match art {
-            StickerArt::Ready(image) => {
-                apply_thumbnail_ready::<B>(&slot, DecodeOutcome::Ready(&image));
-            }
-            StickerArt::Failed => apply_thumbnail_ready::<B>(&slot, DecodeOutcome::Failed),
+            StickerArt::Ready(image) => apply_sticker_art::<B>(&key, Some(&image)),
+            StickerArt::Failed => apply_sticker_art::<B>(&key, None),
             StickerArt::Decoding | StickerArt::Downloading => {}
         }
     }

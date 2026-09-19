@@ -702,7 +702,19 @@
         }
       },
       {
-        "id": "demo-sarah-heic-missing-unreadable",
+        "id": "demo-sarah-camera-undecodable-oversized",
+        "sender": "@sarah:matrix.org",
+        "name": "Sarah Chen",
+        "minutes_ago": 38,
+        "image": {
+          "width": 12000,
+          "height": 9000,
+          "mimetype": "image/jpeg",
+          "filename": "IMG_20260914_182211.jpg"
+        }
+      },
+      {
+        "id": "demo-sarah-heic-undecodable-format",
         "sender": "@sarah:matrix.org",
         "name": "Sarah Chen",
         "minutes_ago": 37,
@@ -711,6 +723,19 @@
           "height": 3024,
           "mimetype": "image/heic",
           "filename": "IMG_2031.HEIC"
+        }
+      },
+      {
+        "id": "demo-sarah-receipt-undecodable-truncated",
+        "sender": "@sarah:matrix.org",
+        "name": "Sarah Chen",
+        "body": "can you read the total on this?",
+        "minutes_ago": 36,
+        "image": {
+          "width": 1040,
+          "height": 780,
+          "mimetype": "image/png",
+          "filename": "receipt-scan.png"
         }
       },
       {

@@ -5,6 +5,7 @@ use std::rc::Rc;
 
 use slint::Image;
 
+use super::cache::DecodeFailure;
 use super::requests::Needs;
 use super::slots::{AvatarSlot, MediaSlot};
 use super::with_media;
@@ -21,7 +22,7 @@ thread_local! {
 #[derive(Clone, Copy)]
 pub enum DecodeOutcome<'a> {
     Ready(&'a Image),
-    Failed,
+    Failed(DecodeFailure),
     Deferred,
 }
 

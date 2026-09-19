@@ -163,7 +163,7 @@ fn resolve_sticker(key: &str) {
 fn announce(slot: &MediaSlot, decoded: &Decoded) {
     let outcome = match decoded {
         Decoded::Ready(image) => DecodeOutcome::Ready(image),
-        Decoded::Failed => DecodeOutcome::Failed,
+        Decoded::Failed(failure) => DecodeOutcome::Failed(*failure),
         Decoded::Pending => return,
     };
     waiters::notify_media(slice::from_ref(slot), outcome);

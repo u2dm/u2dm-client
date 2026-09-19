@@ -186,6 +186,21 @@ export global MediaFailures {
                 ? @tr("It downloaded, but could not be read as a video.")
                 : @tr("It downloaded, but could not be read as an image.");
         }
+        if failure == MediaFailure.unsupported-format {
+            return is-video
+                ? @tr("The preview image downloaded, but U2DM cannot display its format.")
+                : @tr("It downloaded, but U2DM cannot display this image format.");
+        }
+        if failure == MediaFailure.too-large-to-display {
+            return is-video
+                ? @tr("The preview image downloaded, but is too large to display here.")
+                : @tr("It downloaded, but is too large to display here.");
+        }
+        if failure == MediaFailure.damaged {
+            return is-video
+                ? @tr("The preview image downloaded, but is damaged or incomplete.")
+                : @tr("It downloaded, but the file is damaged or incomplete.");
+        }
         return @tr("It could not be loaded.");
     }
 

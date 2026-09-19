@@ -1,6 +1,8 @@
 use std::collections::HashMap;
+use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 
+use image::{DynamicImage, ImageError, ImageReader, ImageResult};
 use slint::Image;
 
 use super::requests::PreviewPick;
@@ -11,17 +13,41 @@ use super::{DISPLAY_MAX_DIMENSION, Epoch, animation, image_from_rgba, waiters, w
 
 const IMAGE_CACHE_MAX_BYTES: usize = 64 * 1024 * 1024;
 
-const DECODE_MAX_DIMENSION: u32 = 4096;
-const DECODE_MAX_ALLOC: u64 = 4 * DECODE_MAX_DIMENSION as u64 * DECODE_MAX_DIMENSION as u64;
+const DECODE_MAX_PIXELS: u64 = 8192 * 8192;
+const DECODE_MAX_ALLOC: u64 = 4 * DECODE_MAX_PIXELS;
+
+type Rgba = (Vec<u8>, u32, u32);
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DecodeFailure {
+    UnsupportedFormat,
+    OverBudget,
+    Damaged,
+    Unreadable,
+}
+
+impl DecodeFailure {
+    fn of(error: &ImageError) -> Self {
+        match error {
+            ImageError::Unsupported(_) => Self::UnsupportedFormat,
+            ImageError::Limits(_) => Self::OverBudget,
+            ImageError::Decoding(_) => Self::Damaged,
+            ImageError::IoError(io) if io.kind() == ErrorKind::UnexpectedEof => Self::Damaged,
+            ImageError::IoError(_) | ImageError::Encoding(_) | ImageError::Parameter(_) => {
+                Self::Unreadable
+            }
+        }
+    }
+}
 
 pub enum Decoded {
     Ready(Image),
-    Failed,
+    Failed(DecodeFailure),
     Pending,
 }
 
 struct CachedImage {
-    image: Option<Image>,
+    image: Result<Image, DecodeFailure>,
     bytes: usize,
     tick: u64,
 }
@@ -42,12 +68,12 @@ impl ImageCache {
         };
         entry.tick = tick;
         match &entry.image {
-            Some(image) => Decoded::Ready(image.clone()),
-            None => Decoded::Failed,
+            Ok(image) => Decoded::Ready(image.clone()),
+            Err(failure) => Decoded::Failed(*failure),
         }
     }
 
-    fn insert(&mut self, path: PathBuf, image: Option<Image>, bytes: usize) {
+    fn insert(&mut self, path: PathBuf, image: Result<Image, DecodeFailure>, bytes: usize) {
         self.tick = self.tick.wrapping_add(1);
         if let Some(previous) = self.entries.insert(
             path,
@@ -88,19 +114,21 @@ impl ImageCache {
 
 fn decode_limits() -> image::Limits {
     let mut limits = image::Limits::no_limits();
-    limits.max_image_width = Some(DECODE_MAX_DIMENSION);
-    limits.max_image_height = Some(DECODE_MAX_DIMENSION);
     limits.max_alloc = Some(DECODE_MAX_ALLOC);
     limits
 }
 
-pub(super) fn decode_rgba(path: &Path) -> Option<(Vec<u8>, u32, u32)> {
-    let mut reader = image::ImageReader::open(path)
-        .ok()?
-        .with_guessed_format()
-        .ok()?;
+fn read_image(path: &Path) -> ImageResult<DynamicImage> {
+    let mut reader = ImageReader::open(path)?.with_guessed_format()?;
     reader.limits(decode_limits());
-    let decoded = reader.decode().ok()?;
+    reader.decode()
+}
+
+pub(super) fn decode_rgba(path: &Path) -> Result<Rgba, DecodeFailure> {
+    let decoded = read_image(path).map_err(|e| {
+        tracing::debug!("could not decode {}: {e}", path.display());
+        DecodeFailure::of(&e)
+    })?;
 
     let decoded =
         if decoded.width() > DISPLAY_MAX_DIMENSION || decoded.height() > DISPLAY_MAX_DIMENSION {
@@ -113,12 +141,14 @@ pub(super) fn decode_rgba(path: &Path) -> Option<(Vec<u8>, u32, u32)> {
     let (width, height) = (rgba.width(), rgba.height());
     let expected_len = (width as usize)
         .checked_mul(height as usize)
-        .and_then(|pixels| pixels.checked_mul(4))?;
+        .and_then(|pixels| pixels.checked_mul(4));
     let raw = rgba.into_raw();
-    (raw.len() == expected_len).then_some((raw, width, height))
+    (Some(raw.len()) == expected_len)
+        .then_some((raw, width, height))
+        .ok_or(DecodeFailure::Unreadable)
 }
 
-pub(super) fn on_decoded(path: &Path, decoded: Option<(Vec<u8>, u32, u32)>, epoch: Epoch) {
+pub(super) fn on_decoded(path: &Path, decoded: Result<Rgba, DecodeFailure>, epoch: Epoch) {
     if !epoch.is_current() {
         return;
     }
@@ -134,9 +164,10 @@ pub(super) fn on_decoded(path: &Path, decoded: Option<(Vec<u8>, u32, u32)>, epoc
             .insert(path.to_path_buf(), image.clone(), bytes);
     });
 
-    let outcome = image
-        .as_ref()
-        .map_or(DecodeOutcome::Failed, DecodeOutcome::Ready);
+    let outcome = match &image {
+        Ok(image) => DecodeOutcome::Ready(image),
+        Err(failure) => DecodeOutcome::Failed(*failure),
+    };
     waiters::deliver(path, outcome);
 }
 
@@ -154,7 +185,7 @@ pub fn peek_thumbnail(path: &Path, slot: &MediaSlot) -> Decoded {
 pub fn peek_avatar(path: &Path) -> Option<Image> {
     match cached(path) {
         Decoded::Ready(image) => Some(image),
-        Decoded::Failed | Decoded::Pending => None,
+        Decoded::Failed(_) | Decoded::Pending => None,
     }
 }
 
@@ -163,7 +194,7 @@ pub fn load_avatar_async(path: Option<&Path>, slot: AvatarSlot) -> Option<Image>
     let path = path?;
     match cached(path) {
         Decoded::Ready(image) => Some(image),
-        Decoded::Failed => None,
+        Decoded::Failed(_) => None,
         Decoded::Pending => {
             waiters::enqueue_avatar(path, slot);
             None

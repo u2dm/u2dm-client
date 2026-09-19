@@ -9,6 +9,7 @@ use crate::ports::media::MediaCache;
 
 const DATA_ENV: &str = "U2DM_DEMO_DATA";
 const AUDIO_ASSET_EXTENSIONS: &[&str] = &["ogg", "m4a", "mp3"];
+const IMAGE_ASSET_EXTENSIONS: &[&str] = &["gif", "webp", "png", "jpg", "heif"];
 
 const FAILURE_SUFFIXES: &[(&str, MediaFailure)] = &[
     ("-missing-download", MediaFailure::Download),
@@ -161,9 +162,9 @@ pub fn user_avatar_path() -> Option<PathBuf> {
 }
 
 fn probe(prefix: &str, name: &str) -> Option<PathBuf> {
-    asset(&format!("{prefix}-{name}.gif"))
-        .or_else(|| asset(&format!("{prefix}-{name}.webp")))
-        .or_else(|| asset(&format!("{prefix}-{name}.png")))
+    IMAGE_ASSET_EXTENSIONS
+        .iter()
+        .find_map(|extension| asset(&format!("{prefix}-{name}.{extension}")))
 }
 
 pub(super) fn video_asset_path(event_id: &str) -> Option<PathBuf> {

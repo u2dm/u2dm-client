@@ -3,8 +3,9 @@ use std::path::PathBuf;
 use slint::{Image, SharedString, StyledText};
 
 use super::decode::{
-    AvatarSlot, Decoded, MediaSlot, TimelineItemKey, load_avatar_async, load_thumbnail,
-    peek_avatar, peek_thumbnail, record_avatar_need, record_media_need, record_sticker_need,
+    AvatarSlot, DecodeFailure, Decoded, MediaSlot, TimelineItemKey, load_avatar_async,
+    load_thumbnail, peek_avatar, peek_thumbnail, record_avatar_need, record_media_need,
+    record_sticker_need,
 };
 use super::present::{
     MessageKind, ServiceKind, avatar_color_index, avatar_initials, duration_label, file_extension,
@@ -37,6 +38,15 @@ fn failure_kind(failure: MediaFailure) -> MediaFailureKind {
         MediaFailure::TooLarge => MediaFailureKind::TooLarge,
         MediaFailure::Storage => MediaFailureKind::Storage,
         MediaFailure::Unreadable => MediaFailureKind::Unreadable,
+    }
+}
+
+pub(super) fn decode_failure_kind(failure: DecodeFailure) -> MediaFailureKind {
+    match failure {
+        DecodeFailure::UnsupportedFormat => MediaFailureKind::UnsupportedFormat,
+        DecodeFailure::OverBudget => MediaFailureKind::TooLargeToDisplay,
+        DecodeFailure::Damaged => MediaFailureKind::Damaged,
+        DecodeFailure::Unreadable => MediaFailureKind::Unreadable,
     }
 }
 
@@ -153,7 +163,7 @@ pub fn sticker_art(key: &str, mxc: &str, media: &dyn MediaCache) -> StickerArt {
     if let Some(path) = path {
         return match peek_thumbnail(&path, &MediaSlot::StickerCell(key.to_owned())) {
             Decoded::Ready(decoded) => StickerArt::Ready(decoded),
-            Decoded::Failed => StickerArt::Failed,
+            Decoded::Failed(_) => StickerArt::Failed,
             Decoded::Pending => StickerArt::Decoding,
         };
     }
@@ -495,9 +505,9 @@ fn apply_media(
             dto.thumbnail = Some(img);
             dto.media_state = MediaState::Ready;
         }
-        Decoded::Failed => {
+        Decoded::Failed(failure) => {
             dto.media_state = MediaState::Failed;
-            dto.media_failure = MediaFailureKind::Unreadable;
+            dto.media_failure = decode_failure_kind(failure);
         }
         Decoded::Pending => {}
     }
@@ -596,7 +606,7 @@ pub fn enrich_to_update(delta: &EnrichmentDelta, media: &dyn MediaCache) -> Enri
             .map_or(ThumbUpdate::Unchanged, |thumb_path| {
                 match load_thumbnail(&thumb_path, &MediaSlot::Thumbnail(item.clone())) {
                     Decoded::Ready(image) => ThumbUpdate::Ready(image),
-                    Decoded::Failed => ThumbUpdate::Failed(MediaFailureKind::Unreadable),
+                    Decoded::Failed(failure) => ThumbUpdate::Failed(decode_failure_kind(failure)),
                     Decoded::Pending => ThumbUpdate::Unchanged,
                 }
             }),

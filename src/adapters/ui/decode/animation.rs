@@ -11,7 +11,7 @@ use image::codecs::webp::WebPDecoder;
 use image::{AnimationDecoder, DynamicImage, Frames, ImageDecoder, RgbaImage};
 use slint::{Image, Timer, TimerMode};
 
-use super::cache::Decoded;
+use super::cache::{DecodeFailure, Decoded};
 use super::requests::Needs;
 use super::slots::MediaSlot;
 use super::waiters::DecodeOutcome;
@@ -337,9 +337,10 @@ pub(super) fn on_decoded(path: &Path, decoded: Option<RawAnimation>, epoch: Epoc
     });
     reschedule();
 
-    let first = animation
-        .frame(0)
-        .map_or(DecodeOutcome::Failed, DecodeOutcome::Ready);
+    let first = animation.frame(0).map_or(
+        DecodeOutcome::Failed(DecodeFailure::Unreadable),
+        DecodeOutcome::Ready,
+    );
     waiting.notify(first);
 }
 
@@ -380,7 +381,7 @@ pub fn load_thumbnail(path: &Path, slot: &MediaSlot) -> Decoded {
     animation
         .frame(frame)
         .cloned()
-        .map_or(Decoded::Failed, Decoded::Ready)
+        .map_or(Decoded::Failed(DecodeFailure::Unreadable), Decoded::Ready)
 }
 
 fn due_frames(now: Instant) -> Tick {

@@ -1449,17 +1449,47 @@ msgctxt "MediaFailures"
 msgid "It downloaded, but could not be read as an image."
 msgstr ""
 
-#: ui/messages.slint:189
+#: ui/messages.slint:191
+msgctxt "MediaFailures"
+msgid "The preview image downloaded, but U2DM cannot display its format."
+msgstr ""
+
+#: ui/messages.slint:192
+msgctxt "MediaFailures"
+msgid "It downloaded, but U2DM cannot display this image format."
+msgstr ""
+
+#: ui/messages.slint:196
+msgctxt "MediaFailures"
+msgid "The preview image downloaded, but is too large to display here."
+msgstr ""
+
+#: ui/messages.slint:197
+msgctxt "MediaFailures"
+msgid "It downloaded, but is too large to display here."
+msgstr ""
+
+#: ui/messages.slint:201
+msgctxt "MediaFailures"
+msgid "The preview image downloaded, but is damaged or incomplete."
+msgstr ""
+
+#: ui/messages.slint:202
+msgctxt "MediaFailures"
+msgid "It downloaded, but the file is damaged or incomplete."
+msgstr ""
+
+#: ui/messages.slint:204
 msgctxt "MediaFailures"
 msgid "It could not be loaded."
 msgstr ""
 
-#: ui/messages.slint:199
+#: ui/messages.slint:214
 msgctxt "MediaFailures"
 msgid "{} · {}"
 msgstr ""
 
-#: ui/messages.slint:205
+#: ui/messages.slint:220
 msgctxt "MediaFailures"
 msgid "{}×{}"
 msgstr ""

@@ -12,7 +12,8 @@ use super::decode::{
 };
 use super::dto::{
     MediaFailureKind, MediaState, MessageDto, RoomDto, SpaceDto, StickerPackDto, StickerRowDto,
-    ThumbUpdate, cell_pack, enrich_to_update, message_to_dto, room_to_dto, space_to_dto,
+    ThumbUpdate, cell_pack, decode_failure_kind, enrich_to_update, message_to_dto, room_to_dto,
+    space_to_dto,
 };
 use super::fields::{
     MessageFields, ReactionFields, ReactorFields, RoomFields, SpaceFields, StickerCellFields,
@@ -299,16 +300,16 @@ fn pack_with_icon<B: UiBackend>(
 
 pub(super) fn apply_thumbnail_ready<B: UiBackend>(slot: &MediaSlot, outcome: DecodeOutcome<'_>) {
     let art = match outcome {
-        DecodeOutcome::Ready(image) => Some(image),
-        DecodeOutcome::Failed => None,
+        DecodeOutcome::Ready(image) => Ok(image),
+        DecodeOutcome::Failed(failure) => Err(failure),
         DecodeOutcome::Deferred => return,
     };
     match slot {
         MediaSlot::Thumbnail(item) => {
             let unique_id = item.unique_id();
             let placed = patch_timeline_row::<B>(unique_id, 0, |entry| match art {
-                Some(image) => show_thumbnail::<B>(entry, image.clone()),
-                None => show_media_failure::<B>(entry, MediaFailureKind::Unreadable),
+                Ok(image) => show_thumbnail::<B>(entry, image.clone()),
+                Err(failure) => show_media_failure::<B>(entry, decode_failure_kind(failure)),
             });
             if placed.is_none() {
                 tracing::debug!(
@@ -317,14 +318,16 @@ pub(super) fn apply_thumbnail_ready<B: UiBackend>(slot: &MediaSlot, outcome: Dec
                 );
             }
         }
-        MediaSlot::StickerCell(key) => {
-            if place_sticker_cell::<B>(key, art).is_none() {
-                tracing::debug!(key, "dropped a decoded image with no live sticker cell");
-            }
-            if let Some(image) = art {
-                adopt_pack_icon::<B>(cell_pack(key), image);
-            }
-        }
+        MediaSlot::StickerCell(key) => apply_sticker_art::<B>(key, art.ok()),
+    }
+}
+
+pub(super) fn apply_sticker_art<B: UiBackend>(key: &str, art: Option<&Image>) {
+    if place_sticker_cell::<B>(key, art).is_none() {
+        tracing::debug!(key, "dropped a decoded image with no live sticker cell");
+    }
+    if let Some(image) = art {
+        adopt_pack_icon::<B>(cell_pack(key), image);
     }
 }
 
