@@ -1,8 +1,10 @@
 use std::mem;
 use std::time::Duration;
 
-use matrix_sdk::HttpError;
+use matrix_sdk::authentication::oauth::OAuthError;
+use matrix_sdk::authentication::oauth::error::{BasicErrorResponseType, RequestTokenError};
 use matrix_sdk::ruma::api::error::ErrorKind;
+use matrix_sdk::{HttpError, RefreshTokenError};
 use matrix_sdk_ui::encryption_sync_service::Error as EncryptionSyncError;
 use matrix_sdk_ui::room_list_service::Error as RoomListError;
 use matrix_sdk_ui::sync_service::Error as SyncServiceError;
@@ -20,23 +22,42 @@ fn extract_sdk_error(err: &SyncServiceError) -> Option<&matrix_sdk::Error> {
     }
 }
 
-fn is_refresh_token_error(err: &matrix_sdk::Error) -> bool {
+fn rejects_credentials(kind: Option<&ErrorKind>) -> bool {
+    matches!(
+        kind,
+        Some(ErrorKind::UnknownToken { .. } | ErrorKind::Unauthorized | ErrorKind::Forbidden)
+    )
+}
+
+fn revokes_refresh_grant(err: &OAuthError) -> bool {
+    matches!(
+        err,
+        OAuthError::RefreshToken(RequestTokenError::ServerResponse(response))
+            if *response.error() == BasicErrorResponseType::InvalidGrant
+    )
+}
+
+fn refresh_rejected(err: &RefreshTokenError) -> bool {
     match err {
-        matrix_sdk::Error::Http(http) => matches!(http.as_ref(), HttpError::RefreshToken(_)),
-        _ => false,
+        RefreshTokenError::RefreshTokenRequired => true,
+        RefreshTokenError::MatrixAuth(http) => http_rejects_credentials(http),
+        RefreshTokenError::OAuth(oauth) => revokes_refresh_grant(oauth),
+    }
+}
+
+fn http_rejects_credentials(err: &HttpError) -> bool {
+    match err {
+        HttpError::RefreshToken(refresh) => refresh_rejected(refresh),
+        HttpError::Cached(inner) => http_rejects_credentials(inner),
+        _ => rejects_credentials(err.client_api_error_kind()),
     }
 }
 
 pub(super) fn is_auth_error(err: &SyncServiceError) -> bool {
-    extract_sdk_error(err).is_some_and(|e| {
-        if matches!(
-            e.client_api_error_kind(),
-            Some(ErrorKind::UnknownToken { .. } | ErrorKind::Unauthorized | ErrorKind::Forbidden)
-        ) {
-            return true;
-        }
-        is_refresh_token_error(e)
-    })
+    matches!(
+        extract_sdk_error(err),
+        Some(matrix_sdk::Error::Http(http)) if http_rejects_credentials(http)
+    )
 }
 
 pub(super) struct SyncHealth {

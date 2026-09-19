@@ -778,11 +778,6 @@ msgctxt "VideoPlayer"
 msgid "Close"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/message-bubble.slint:229
-msgctxt "MessageBubble"
-msgid "Go to the message this replies to"
-msgstr ""
-
 #: ui/screens/chat/components/timeline/row-actions.slint:59
 msgctxt "RowActions"
 msgid "Select the text of this message"
@@ -826,6 +821,11 @@ msgstr ""
 #: ui/screens/chat/components/timeline/send-failed-row.slint:46
 msgctxt "SendFailedRow"
 msgid "Discard"
+msgstr ""
+
+#: ui/screens/chat/components/timeline/message-bubble.slint:229
+msgctxt "MessageBubble"
+msgid "Go to the message this replies to"
 msgstr ""
 
 #: ui/screens/chat/components/message-preview.slint:6
