@@ -16,9 +16,11 @@ use matrix_sdk_ui::timeline::{
 };
 
 use super::TimelineContext;
-use crate::adapters::matrix::media::EventMedia;
+use crate::adapters::matrix::media::{EventMedia, file_content, thumbnail_content};
 use crate::adapters::matrix::preview;
-use crate::domain::media::{AudioKind, AudioMeta, FileMeta, ImageMeta, VideoMeta, Waveform};
+use crate::domain::media::{
+    AudioKind, AudioMeta, FileMeta, ImageMeta, MediaKind, VideoMeta, Waveform,
+};
 use crate::domain::message::{
     MessageBody, MessagePreviewKind, REACTOR_AVATAR_LIMIT, Reaction, ReactionSend, Reactor,
     ReplyInfo, RichText, SendState, ServiceEvent, TimelineMessage,
@@ -337,18 +339,21 @@ fn image_meta(info: &ImageInfo) -> ImageMeta {
         height: info.height.map(pixels),
         mimetype: info.mimetype.clone(),
         filename: None,
+        thumbnail: None,
     }
 }
 
 fn extract_image_body(image: &ImageMessageEventContent) -> MessageBody {
+    let mut meta = ImageMeta {
+        filename: Some(image.filename().to_owned()),
+        ..image.info.as_deref().map(image_meta).unwrap_or_default()
+    };
+    meta.thumbnail = thumbnail_content(MediaKind::Photo, &meta, EventMedia::of_image(image));
     MessageBody::Image {
         caption: image
             .caption()
             .map(|caption| rich_body(caption, image.formatted_caption())),
-        meta: ImageMeta {
-            filename: Some(image.filename().to_owned()),
-            ..image.info.as_deref().map(image_meta).unwrap_or_default()
-        },
+        meta,
     }
 }
 
@@ -359,6 +364,7 @@ fn video_meta(info: &VideoInfo) -> VideoMeta {
             height: info.height.map(pixels),
             mimetype: info.mimetype.clone(),
             filename: None,
+            thumbnail: None,
         },
         duration: info.duration,
         size: info.size.map(Into::into),
@@ -368,6 +374,8 @@ fn video_meta(info: &VideoInfo) -> VideoMeta {
 fn extract_video_body(video: &VideoMessageEventContent) -> MessageBody {
     let mut meta = video.info.as_deref().map(video_meta).unwrap_or_default();
     meta.image.filename = Some(video.filename().to_owned());
+    meta.image.thumbnail =
+        thumbnail_content(MediaKind::Video, &meta.image, EventMedia::of_video(video));
     MessageBody::Video {
         caption: video
             .caption()
@@ -389,6 +397,7 @@ fn audio_meta(audio: &AudioMessageEventContent) -> AudioMeta {
         } else {
             AudioKind::Track
         },
+        file: file_content(&audio.source),
         filename: audio.filename().to_owned(),
         mimetype: info.and_then(|info| info.mimetype.clone()),
         duration: info
@@ -411,9 +420,11 @@ fn extract_audio_body(audio: &AudioMessageEventContent) -> MessageBody {
 }
 
 fn extract_sticker_body(sticker: &StickerEventContent) -> MessageBody {
+    let mut meta = image_meta(&sticker.info);
+    meta.thumbnail = thumbnail_content(MediaKind::Sticker, &meta, EventMedia::of_sticker(sticker));
     MessageBody::Sticker {
         alt: sticker.body.clone(),
-        meta: image_meta(&sticker.info),
+        meta,
     }
 }
 

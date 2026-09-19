@@ -5,10 +5,12 @@ use std::rc::Rc;
 
 use slint::Image;
 
+use super::requests::Needs;
+use super::slots::{AvatarSlot, MediaSlot};
 use super::with_media;
 use super::workers::{self, Lane};
 
-type ImageReadyFn = Rc<dyn Fn(&str, DecodeOutcome<'_>)>;
+type ImageReadyFn = Rc<dyn Fn(&MediaSlot, DecodeOutcome<'_>)>;
 type AvatarReadyFn = Rc<dyn Fn(&[AvatarSlot], DecodeOutcome<'_>)>;
 
 thread_local! {
@@ -21,16 +23,6 @@ pub enum DecodeOutcome<'a> {
     Ready(&'a Image),
     Failed,
     Deferred,
-}
-
-#[derive(Clone, PartialEq, Eq, Hash)]
-pub enum AvatarSlot {
-    Message(String),
-    Reactor { unique_id: String, user_id: String },
-    Room(String),
-    Space(String),
-    User,
-    AttachmentPreview,
 }
 
 enum Registration {
@@ -46,16 +38,16 @@ impl Registration {
 
 #[derive(Default)]
 pub(super) struct Waiters {
-    media: HashMap<PathBuf, Vec<String>>,
+    media: HashMap<PathBuf, Vec<MediaSlot>>,
     avatars: HashMap<PathBuf, Vec<AvatarSlot>>,
 }
 
 impl Waiters {
-    fn join_media(&mut self, path: &Path, unique_id: &str) -> Registration {
+    fn join_media(&mut self, path: &Path, slot: &MediaSlot) -> Registration {
         let is_first = !self.media.contains_key(path);
         let waiting = self.media.entry(path.to_path_buf()).or_default();
-        if !waiting.iter().any(|id| id == unique_id) {
-            waiting.push(unique_id.to_owned());
+        if !waiting.contains(slot) {
+            waiting.push(slot.clone());
         }
         if is_first {
             Registration::FirstWaiter
@@ -79,22 +71,22 @@ impl Waiters {
 
     fn take_media(&mut self, path: &Path) -> Drained {
         Drained {
-            unique_ids: self.media.remove(path).unwrap_or_default(),
-            slots: Vec::new(),
+            media: self.media.remove(path).unwrap_or_default(),
+            avatars: Vec::new(),
         }
     }
 
     fn take_avatars(&mut self, path: &Path) -> Drained {
         Drained {
-            unique_ids: Vec::new(),
-            slots: self.avatars.remove(path).unwrap_or_default(),
+            media: Vec::new(),
+            avatars: self.avatars.remove(path).unwrap_or_default(),
         }
     }
 
     fn take_all(&mut self, path: &Path) -> Drained {
         Drained {
-            unique_ids: self.media.remove(path).unwrap_or_default(),
-            slots: self.avatars.remove(path).unwrap_or_default(),
+            media: self.media.remove(path).unwrap_or_default(),
+            avatars: self.avatars.remove(path).unwrap_or_default(),
         }
     }
 }
@@ -103,31 +95,44 @@ fn with_waiters<R>(f: impl FnOnce(&mut Waiters) -> R) -> R {
     with_media(|media| f(&mut media.waiters))
 }
 
+fn drain_expected(path: &Path, take: impl FnOnce(&mut Waiters, &Path) -> Drained) -> Drained {
+    with_media(|media| {
+        let mut drained = take(&mut media.waiters, path);
+        drained.keep_expected(&media.needs, path);
+        drained
+    })
+}
+
 pub(super) struct Drained {
-    unique_ids: Vec<String>,
-    slots: Vec<AvatarSlot>,
+    media: Vec<MediaSlot>,
+    avatars: Vec<AvatarSlot>,
 }
 
 impl Drained {
-    pub(super) fn unique_ids(&self) -> &[String] {
-        &self.unique_ids
+    fn keep_expected(&mut self, needs: &Needs, path: &Path) {
+        self.media.retain(|slot| needs.expects_media(slot, path));
+        self.avatars.retain(|slot| needs.expects_avatar(slot, path));
+    }
+
+    pub(super) fn media_slots(&self) -> &[MediaSlot] {
+        &self.media
     }
 
     pub(super) fn notify(&self, outcome: DecodeOutcome<'_>) {
-        notify_media(&self.unique_ids, outcome);
-        notify_avatars(&self.slots, outcome);
+        notify_media(&self.media, outcome);
+        notify_avatars(&self.avatars, outcome);
     }
 }
 
-pub(super) fn notify_media(unique_ids: &[String], outcome: DecodeOutcome<'_>) {
-    if unique_ids.is_empty() {
+pub(super) fn notify_media(slots: &[MediaSlot], outcome: DecodeOutcome<'_>) {
+    if slots.is_empty() {
         return;
     }
     let Some(ready) = IMAGE_READY_FN.with_borrow(Clone::clone) else {
         return;
     };
-    for unique_id in unique_ids {
-        ready(unique_id, outcome);
+    for slot in slots {
+        ready(slot, outcome);
     }
 }
 
@@ -140,8 +145,8 @@ pub(super) fn notify_avatars(slots: &[AvatarSlot], outcome: DecodeOutcome<'_>) {
     }
 }
 
-pub(super) fn enqueue_media(path: &Path, unique_id: &str, lane: Lane) {
-    if with_waiters(|waiters| waiters.join_media(path, unique_id)).starts_decode() {
+pub(super) fn enqueue_media(path: &Path, slot: &MediaSlot, lane: Lane) {
+    if with_waiters(|waiters| waiters.join_media(path, slot)).starts_decode() {
         start_decode(lane, path.to_path_buf());
     }
 }
@@ -160,22 +165,22 @@ fn start_decode(lane: Lane, path: PathBuf) {
         "decode lane at capacity, deferred {}; it will be re-requested",
         evicted.display()
     );
-    with_waiters(|waiters| match lane {
-        Lane::Avatar => waiters.take_avatars(&evicted),
-        Lane::Static | Lane::Animation => waiters.take_media(&evicted),
+    drain_expected(&evicted, |waiters, path| match lane {
+        Lane::Avatar => waiters.take_avatars(path),
+        Lane::Static | Lane::Animation => waiters.take_media(path),
     })
     .notify(DecodeOutcome::Deferred);
 }
 
 pub(super) fn deliver(path: &Path, outcome: DecodeOutcome<'_>) {
-    with_waiters(|waiters| waiters.take_all(path)).notify(outcome);
+    drain_expected(path, Waiters::take_all).notify(outcome);
 }
 
 pub(super) fn take_media(path: &Path) -> Drained {
-    with_waiters(|waiters| waiters.take_media(path))
+    drain_expected(path, Waiters::take_media)
 }
 
-pub fn set_image_ready(ready: impl Fn(&str, DecodeOutcome<'_>) + 'static) {
+pub fn set_image_ready(ready: impl Fn(&MediaSlot, DecodeOutcome<'_>) + 'static) {
     IMAGE_READY_FN.with_borrow_mut(|slot| *slot = Some(Rc::new(ready)));
 }
 

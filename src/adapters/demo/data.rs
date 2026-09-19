@@ -197,6 +197,7 @@ pub fn own_sticker(
         "demo-sent-{sequence}{STICKER_ASSET_MARKER}{}",
         media::mxc_asset(&image.mxc)
     );
+    let content = media::content_of(&id);
     TimelineMessage {
         unique_id: id.clone(),
         event_id: Some(id),
@@ -212,6 +213,7 @@ pub fn own_sticker(
                 height: Some(SENT_STICKER_EXTENT),
                 mimetype: None,
                 filename: None,
+                thumbnail: Some(content),
             },
         },
         timestamp: now_ms(),
@@ -243,6 +245,7 @@ pub fn own_attachment(
         height,
         mimetype: Some(picked.mimetype.clone()),
         filename: Some(picked.filename.clone()),
+        thumbnail: Some(media::content_of(&id)),
     };
     let body = if attachment.as_document {
         MessageBody::File {
@@ -266,6 +269,7 @@ pub fn own_attachment(
             caption: caption(),
             meta: AudioMeta {
                 kind: AudioKind::Track,
+                file: media::content_of(&id),
                 filename: picked.filename.clone(),
                 mimetype: Some(picked.mimetype.clone()),
                 duration: picked.duration,

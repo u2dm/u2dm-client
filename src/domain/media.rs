@@ -55,12 +55,26 @@ pub struct OutgoingAttachment {
     pub reply_to: Option<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct ContentKey(String);
+
+impl ContentKey {
+    pub fn new(key: String) -> Self {
+        Self(key)
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct ImageMeta {
     pub width: Option<u32>,
     pub height: Option<u32>,
     pub mimetype: Option<String>,
     pub filename: Option<String>,
+    pub thumbnail: Option<ContentKey>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -157,6 +171,7 @@ impl WaveformNeed {
 #[derive(Debug, Clone, PartialEq)]
 pub struct AudioMeta {
     pub kind: AudioKind,
+    pub file: ContentKey,
     pub filename: String,
     pub mimetype: Option<String>,
     pub duration: Option<Duration>,

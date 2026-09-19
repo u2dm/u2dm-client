@@ -1,54 +1,102 @@
 use std::collections::{HashMap, HashSet};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::{mem, slice};
 
 use super::cache::Decoded;
-use super::waiters::{AvatarSlot, DecodeOutcome};
+use super::slots::{AvatarSlot, MediaSlot, TimelineItemKey};
+use super::waiters::DecodeOutcome;
 use super::{animation, cache, waiters, with_media};
 
 #[derive(PartialEq, Eq)]
 pub(super) enum Request {
-    Media(String),
+    Media(TimelineItemKey),
     Avatar(AvatarSlot),
     Sticker(String),
 }
 
-#[derive(Clone)]
-struct MediaNeed {
-    thumbnail: Option<PathBuf>,
-    avatar: Option<PathBuf>,
+pub(super) enum PreviewPick {
+    AlreadyShown,
+    New,
 }
 
 #[derive(Default)]
 pub(super) struct Needs {
-    media: HashMap<String, MediaNeed>,
+    media: HashMap<MediaSlot, PathBuf>,
     avatars: HashMap<AvatarSlot, PathBuf>,
-    stickers: HashMap<String, PathBuf>,
     stickers_asked_before_download: HashSet<String>,
 }
 
-pub fn record_media_need(unique_id: &str, thumbnail: Option<PathBuf>, avatar: Option<PathBuf>) {
-    if thumbnail.is_none() && avatar.is_none() {
-        with_media(|media| media.needs.media.remove(unique_id));
-        return;
+impl Needs {
+    pub(super) fn expect_media(&mut self, slot: &MediaSlot, path: Option<&Path>) {
+        match path {
+            Some(path) => {
+                self.media.insert(slot.clone(), path.to_path_buf());
+            }
+            None => {
+                self.media.remove(slot);
+            }
+        }
     }
+
+    pub(super) fn expect_avatar(&mut self, slot: &AvatarSlot, path: Option<&Path>) {
+        match path {
+            Some(path) => {
+                self.avatars.insert(slot.clone(), path.to_path_buf());
+            }
+            None => {
+                self.avatars.remove(slot);
+            }
+        }
+    }
+
+    pub(super) fn expects_media(&self, slot: &MediaSlot, path: &Path) -> bool {
+        self.media
+            .get(slot)
+            .is_some_and(|expected| expected == path)
+    }
+
+    pub(super) fn expects_avatar(&self, slot: &AvatarSlot, path: &Path) -> bool {
+        self.avatars
+            .get(slot)
+            .is_some_and(|expected| expected == path)
+    }
+
+    pub(super) fn adopt_preview(&mut self, pick: &AvatarSlot) -> PreviewPick {
+        let shown = self.avatars.contains_key(pick);
+        self.avatars
+            .retain(|slot, _| !slot.is_attachment_preview() || slot == pick);
+        if shown {
+            PreviewPick::AlreadyShown
+        } else {
+            PreviewPick::New
+        }
+    }
+
+    fn forget_timeline(&mut self) {
+        self.media.retain(|slot, _| !slot.belongs_to_timeline());
+        self.avatars.retain(|slot, _| !slot.belongs_to_timeline());
+    }
+}
+
+pub fn record_media_need(item: &TimelineItemKey, thumbnail: Option<&Path>, avatar: Option<&Path>) {
+    let thumbnail_slot = MediaSlot::Thumbnail(item.clone());
+    let avatar_slot = AvatarSlot::Message(item.clone());
     with_media(|media| {
-        media
-            .needs
-            .media
-            .insert(unique_id.to_owned(), MediaNeed { thumbnail, avatar });
+        media.needs.expect_media(&thumbnail_slot, thumbnail);
+        media.needs.expect_avatar(&avatar_slot, avatar);
     });
 }
 
-pub fn record_avatar_need(slot: AvatarSlot, path: PathBuf) {
-    with_media(|media| media.needs.avatars.insert(slot, path));
+pub fn record_avatar_need(slot: &AvatarSlot, path: Option<&Path>) {
+    with_media(|media| media.needs.expect_avatar(slot, path));
 }
 
-pub fn record_sticker_need(key: &str, path: PathBuf) {
+pub fn record_sticker_need(key: &str, path: Option<&Path>) {
+    let slot = MediaSlot::StickerCell(key.to_owned());
     let already_asked = with_media(|media| {
         let needs = &mut media.needs;
-        needs.stickers.insert(key.to_owned(), path);
-        needs.stickers_asked_before_download.remove(key)
+        needs.expect_media(&slot, path);
+        path.is_some() && needs.stickers_asked_before_download.remove(key)
     });
     if already_asked {
         request_sticker(key);
@@ -56,7 +104,7 @@ pub fn record_sticker_need(key: &str, path: PathBuf) {
 }
 
 pub fn forget_all_media_needs() {
-    with_media(|media| media.needs.media.clear());
+    with_media(|media| media.needs.forget_timeline());
 }
 
 pub fn request_avatar(slot: &AvatarSlot) {
@@ -64,7 +112,7 @@ pub fn request_avatar(slot: &AvatarSlot) {
 }
 
 pub fn request_media(unique_id: &str) {
-    queue(Request::Media(unique_id.to_owned()));
+    queue(Request::Media(TimelineItemKey::current(unique_id)));
 }
 
 pub fn request_sticker(key: &str) {
@@ -89,7 +137,7 @@ fn queue(request: Request) {
 fn flush() {
     for request in with_media(|media| mem::take(&mut media.pending)) {
         match request {
-            Request::Media(unique_id) => resolve_media(&unique_id),
+            Request::Media(item) => resolve_media(&item),
             Request::Avatar(slot) => resolve_avatar(&slot),
             Request::Sticker(key) => resolve_sticker(&key),
         }
@@ -97,9 +145,10 @@ fn flush() {
 }
 
 fn resolve_sticker(key: &str) {
+    let slot = MediaSlot::StickerCell(key.to_owned());
     let path = with_media(|media| {
         let needs = &mut media.needs;
-        let path = needs.stickers.get(key).cloned();
+        let path = needs.media.get(&slot).cloned();
         if path.is_none() {
             needs.stickers_asked_before_download.insert(key.to_owned());
         }
@@ -108,38 +157,47 @@ fn resolve_sticker(key: &str) {
     let Some(path) = path else {
         return;
     };
-    announce(key, &animation::load_thumbnail(&path, key));
+    announce(&slot, &animation::load_thumbnail(&path, &slot));
 }
 
-fn announce(unique_id: &str, decoded: &Decoded) {
+fn announce(slot: &MediaSlot, decoded: &Decoded) {
     let outcome = match decoded {
         Decoded::Ready(image) => DecodeOutcome::Ready(image),
         Decoded::Failed => DecodeOutcome::Failed,
         Decoded::Pending => return,
     };
-    waiters::notify_media(&[unique_id.to_owned()], outcome);
+    waiters::notify_media(slice::from_ref(slot), outcome);
 }
 
 fn resolve_avatar(slot: &AvatarSlot) {
     let Some(path) = with_media(|media| media.needs.avatars.get(slot).cloned()) else {
         return;
     };
-    if let Some(image) = cache::load_avatar_async(&path, slot.clone()) {
+    show_resolved_avatar(&path, slot);
+}
+
+fn show_resolved_avatar(path: &Path, slot: &AvatarSlot) {
+    if let Some(image) = cache::load_avatar_async(Some(path), slot.clone()) {
         waiters::notify_avatars(slice::from_ref(slot), DecodeOutcome::Ready(&image));
     }
 }
 
-fn resolve_media(unique_id: &str) {
-    let Some(need) = with_media(|media| media.needs.media.get(unique_id).cloned()) else {
-        return;
-    };
-    if let Some(thumbnail) = &need.thumbnail {
-        announce(unique_id, &animation::load_thumbnail(thumbnail, unique_id));
+fn resolve_media(item: &TimelineItemKey) {
+    let thumbnail_slot = MediaSlot::Thumbnail(item.clone());
+    let avatar_slot = AvatarSlot::Message(item.clone());
+    let (thumbnail, avatar) = with_media(|media| {
+        (
+            media.needs.media.get(&thumbnail_slot).cloned(),
+            media.needs.avatars.get(&avatar_slot).cloned(),
+        )
+    });
+    if let Some(thumbnail) = &thumbnail {
+        announce(
+            &thumbnail_slot,
+            &animation::load_thumbnail(thumbnail, &thumbnail_slot),
+        );
     }
-    if let Some(avatar) = &need.avatar {
-        let slot = AvatarSlot::Message(unique_id.to_owned());
-        if let Some(image) = cache::load_avatar_async(avatar, slot.clone()) {
-            waiters::notify_avatars(slice::from_ref(&slot), DecodeOutcome::Ready(&image));
-        }
+    if let Some(avatar) = &avatar {
+        show_resolved_avatar(avatar, &avatar_slot);
     }
 }

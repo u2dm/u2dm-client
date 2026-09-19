@@ -5,7 +5,10 @@ use slint::{ComponentHandle, Model, SharedString};
 
 use super::audio;
 use super::backend::{UiBackend, UiEventContext, apply_thumbnail_ready, enrich_message};
-use super::decode::{AvatarSlot, DecodeOutcome, load_avatar_async, request_sticker};
+use super::decode::{
+    AvatarSlot, DecodeOutcome, MediaSlot, load_attachment_preview, load_avatar_async,
+    request_sticker,
+};
 use super::dto::{
     GRID_COLUMNS, StickerArt, StickerPackDto, StickerRowDto, audio_row_update, sticker_art,
     sticker_grid, sticker_needle,
@@ -46,8 +49,14 @@ pub struct RoomCursor {
     focus_event_id: Option<String>,
 }
 
+impl RoomCursor {
+    pub fn active_generation(&self) -> i32 {
+        self.active_generation
+    }
+}
+
 fn active_generation() -> i32 {
-    with_session(|session| session.room.active_generation)
+    with_session(|session| session.room.active_generation())
 }
 
 fn is_new_generation(generation: i32) -> bool {
@@ -424,11 +433,12 @@ fn settle_sticker_downloads<B: UiBackend>(media: &dyn MediaCache) {
         }
     });
     for (key, art) in settled {
+        let slot = MediaSlot::StickerCell(key);
         match art {
             StickerArt::Ready(image) => {
-                apply_thumbnail_ready::<B>(&key, DecodeOutcome::Ready(&image));
+                apply_thumbnail_ready::<B>(&slot, DecodeOutcome::Ready(&image));
             }
-            StickerArt::Failed => apply_thumbnail_ready::<B>(&key, DecodeOutcome::Failed),
+            StickerArt::Failed => apply_thumbnail_ready::<B>(&slot, DecodeOutcome::Failed),
             StickerArt::Decoding | StickerArt::Downloading => {}
         }
     }
@@ -497,15 +507,14 @@ fn apply_lifecycle(w: &impl UiProps, last: Option<&LifecycleView>, next: &Lifecy
         );
     }
     if last.is_none_or(|l| l.avatar_path != *avatar_path) {
-        let avatar = avatar_path
-            .as_deref()
-            .and_then(|p| load_avatar_async(p, AvatarSlot::User));
+        let avatar = load_avatar_async(avatar_path.as_deref(), AvatarSlot::User);
         w.apply_user_avatar(avatar);
     }
 }
 
 fn apply_attachment(w: &impl UiProps, attachment: &AttachmentView) {
     let AttachmentView {
+        pick,
         visible,
         filename,
         mimetype,
@@ -548,9 +557,7 @@ fn apply_attachment(w: &impl UiProps, attachment: &AttachmentView) {
         StringProp::AttachmentErrorDetail,
         SharedString::from(error_detail),
     );
-    let preview = preview_path
-        .as_deref()
-        .and_then(|p| load_avatar_async(p, AvatarSlot::AttachmentPreview));
+    let preview = load_attachment_preview(*pick, preview_path.as_deref());
     w.apply_attachment_preview(preview);
 }
 
@@ -619,7 +626,7 @@ where
 }
 
 fn refresh_audio_row<B: UiBackend>(now: &NowPlaying, ctx: &UiEventContext<'_, B>) {
-    let update = audio_row_update(&now.event_id, &now.meta, ctx.media);
+    let update = audio_row_update(&now.meta, ctx.media);
     let ids = HashSet::from([now.event_id.as_str()]);
     patch_rows_by_id(
         &*ctx.models.timeline,

@@ -3,7 +3,7 @@ use std::time::Duration;
 
 use serde::Deserialize;
 
-use super::reactions;
+use super::{media, reactions};
 use crate::domain::auth::Session;
 use crate::domain::media::{AudioKind, AudioMeta, ImageMeta, VideoMeta, Waveform};
 use crate::domain::message::{
@@ -223,7 +223,7 @@ struct VideoDto {
 }
 
 impl VideoDto {
-    fn to_meta(&self) -> VideoMeta {
+    fn to_meta(&self, id: &str) -> VideoMeta {
         VideoMeta {
             image: ImageMeta {
                 width: Some(self.width),
@@ -234,6 +234,7 @@ impl VideoDto {
                         .unwrap_or_else(|| "video/mp4".to_owned()),
                 ),
                 filename: self.filename.clone(),
+                thumbnail: Some(media::content_of(id)),
             },
             duration: (self.duration_secs > 0).then(|| Duration::from_secs(self.duration_secs)),
             size: self.size,
@@ -262,13 +263,14 @@ struct AudioDto {
 }
 
 impl AudioDto {
-    fn to_meta(&self) -> AudioMeta {
+    fn to_meta(&self, id: &str) -> AudioMeta {
         let (kind, filename, mimetype) = match self.kind {
             AudioKindDto::Voice => (AudioKind::Voice, "voice-message.ogg", "audio/ogg"),
             AudioKindDto::Track => (AudioKind::Track, "audio.m4a", "audio/mp4"),
         };
         AudioMeta {
             kind,
+            file: media::content_of(id),
             filename: self.filename.clone().unwrap_or_else(|| filename.to_owned()),
             mimetype: Some(self.mimetype.clone().unwrap_or_else(|| mimetype.to_owned())),
             duration: (self.duration_secs > 0).then(|| Duration::from_secs(self.duration_secs)),
@@ -288,7 +290,7 @@ struct StickerDto {
 }
 
 impl StickerDto {
-    fn to_meta(&self) -> ImageMeta {
+    fn to_meta(&self, id: &str) -> ImageMeta {
         let mimetype = if self.animated {
             "image/webp"
         } else {
@@ -299,6 +301,7 @@ impl StickerDto {
             height: Some(self.height),
             mimetype: Some(mimetype.to_owned()),
             filename: None,
+            thumbnail: Some(media::content_of(id)),
         }
     }
 }
@@ -478,19 +481,19 @@ impl MessageDto {
         if let Some(sticker) = &self.sticker {
             return MessageBody::Sticker {
                 alt: self.body.clone(),
-                meta: sticker.to_meta(),
+                meta: sticker.to_meta(&self.id),
             };
         }
         if let Some(audio) = &self.audio {
             return MessageBody::Audio {
                 caption: (!self.body.is_empty()).then(|| self.rich_body()),
-                meta: audio.to_meta(),
+                meta: audio.to_meta(&self.id),
             };
         }
         if let Some(video) = &self.video {
             return MessageBody::Video {
                 caption: (!self.body.is_empty()).then(|| self.rich_body()),
-                meta: video.to_meta(),
+                meta: video.to_meta(&self.id),
             };
         }
         match &self.image {
@@ -506,6 +509,7 @@ impl MessageDto {
                             .unwrap_or_else(|| "image/png".to_owned()),
                     ),
                     filename: image.filename.clone(),
+                    thumbnail: Some(media::content_of(&self.id)),
                 },
             },
             None => MessageBody::Text(self.rich_body()),

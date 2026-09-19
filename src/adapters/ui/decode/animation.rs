@@ -12,9 +12,13 @@ use image::{AnimationDecoder, DynamicImage, Frames, ImageDecoder, RgbaImage};
 use slint::{Image, Timer, TimerMode};
 
 use super::cache::Decoded;
+use super::requests::Needs;
+use super::slots::MediaSlot;
 use super::waiters::DecodeOutcome;
 use super::workers::Lane;
-use super::{DISPLAY_MAX_DIMENSION, Epoch, cache, image_from_rgba, waiters, with_media};
+use super::{
+    DISPLAY_MAX_DIMENSION, Epoch, MediaSession, cache, image_from_rgba, waiters, with_media,
+};
 
 const ANIMATION_MEMORY_BUDGET: usize = 128 * 1024 * 1024;
 const ANIM_PER_ITEM_BUDGET: usize = 32 * 1024 * 1024;
@@ -37,11 +41,20 @@ thread_local! {
 #[derive(Default)]
 pub(super) struct AnimationState {
     clips: HashMap<PathBuf, Option<Rc<Animation>>>,
-    playbacks: HashMap<String, Playback>,
+    playbacks: HashMap<MediaSlot, Playback>,
 }
 
 fn with_animations<R>(f: impl FnOnce(&mut AnimationState) -> R) -> R {
     with_media(|media| f(&mut media.animations))
+}
+
+fn with_animations_and_needs<R>(f: impl FnOnce(&mut AnimationState, &Needs) -> R) -> R {
+    with_media(|media| {
+        let MediaSession {
+            animations, needs, ..
+        } = media;
+        f(animations, needs)
+    })
 }
 
 impl AnimationState {
@@ -55,18 +68,26 @@ impl AnimationState {
 
     fn start_playback(
         &mut self,
-        unique_id: &str,
+        needs: &Needs,
+        slot: &MediaSlot,
         path: &Path,
         animation: &Animation,
     ) -> PlaybackStart {
-        if self.playbacks.contains_key(unique_id) {
+        if self.playing(slot, path).is_some() {
             return PlaybackStart::AlreadyRunning;
         }
-        if self.playbacks.len() >= MAX_ACTIVE_ANIMATIONS {
+        let others_expected = self
+            .playbacks
+            .iter()
+            .filter(|&(other, playback)| {
+                other != slot && needs.expects_media(other, &playback.path)
+            })
+            .count();
+        if others_expected >= MAX_ACTIVE_ANIMATIONS {
             return PlaybackStart::AtCapacity;
         }
         self.playbacks.insert(
-            unique_id.to_owned(),
+            slot.clone(),
             Playback {
                 path: path.to_path_buf(),
                 frame: 0,
@@ -75,6 +96,12 @@ impl AnimationState {
             },
         );
         PlaybackStart::Started
+    }
+
+    fn playing(&self, slot: &MediaSlot, path: &Path) -> Option<&Playback> {
+        self.playbacks
+            .get(slot)
+            .filter(|playback| playback.path == path)
     }
 }
 
@@ -139,9 +166,15 @@ struct Playback {
 }
 
 struct DueFrame {
-    unique_id: String,
+    slot: MediaSlot,
     image: Image,
     row_hint: usize,
+}
+
+#[derive(Default)]
+struct Tick {
+    due: Vec<DueFrame>,
+    unexpected: Vec<MediaSlot>,
 }
 
 fn frame_delay(declared: Duration) -> Duration {
@@ -286,16 +319,16 @@ pub(super) fn on_decoded(path: &Path, decoded: Option<RawAnimation>, epoch: Epoc
     let waiting = waiters::take_media(path);
 
     let Some(animation) = animation else {
-        for unique_id in waiting.unique_ids() {
-            waiters::enqueue_media(path, unique_id, Lane::Static);
+        for slot in waiting.media_slots() {
+            waiters::enqueue_media(path, slot, Lane::Static);
         }
         return;
     };
 
-    with_animations(|state| {
-        for unique_id in waiting.unique_ids() {
+    with_animations_and_needs(|state, needs| {
+        for slot in waiting.media_slots() {
             if matches!(
-                state.start_playback(unique_id, path, &animation),
+                state.start_playback(needs, slot, path, &animation),
                 PlaybackStart::AtCapacity
             ) {
                 break;
@@ -310,35 +343,33 @@ pub(super) fn on_decoded(path: &Path, decoded: Option<RawAnimation>, epoch: Epoc
     waiting.notify(first);
 }
 
-pub(super) fn playing_frame(path: &Path, playback_key: &str) -> Option<Image> {
+pub(super) fn playing_frame(path: &Path, slot: &MediaSlot) -> Option<Image> {
     with_animations(|state| {
         let animation = state.clips.get(path)?.as_ref()?;
-        let playback = state.playbacks.get(playback_key)?;
-        (playback.path == path)
-            .then(|| animation.frame(playback.frame))
-            .flatten()
-            .cloned()
+        let playback = state.playing(slot, path)?;
+        animation.frame(playback.frame).cloned()
     })
 }
 
-pub fn load_thumbnail(path: &Path, playback_key: &str) -> Decoded {
+pub fn load_thumbnail(path: &Path, slot: &MediaSlot) -> Decoded {
+    with_media(|media| media.needs.expect_media(slot, Some(path)));
     if !is_animatable(path) {
-        return cache::request_thumbnail(path, playback_key);
+        return cache::request_thumbnail(path, slot);
     }
     let animation = match with_animations(|state| state.clips.get(path).cloned()) {
         Some(Some(animation)) => animation,
-        Some(None) => return cache::request_thumbnail(path, playback_key),
+        Some(None) => return cache::request_thumbnail(path, slot),
         None => {
-            waiters::enqueue_media(path, playback_key, Lane::Animation);
+            waiters::enqueue_media(path, slot, Lane::Animation);
             return Decoded::Pending;
         }
     };
 
-    let (frame, is_new) = with_animations(|state| {
-        if let Some(playback) = state.playbacks.get(playback_key) {
+    let (frame, is_new) = with_animations_and_needs(|state, needs| {
+        if let Some(playback) = state.playing(slot, path) {
             return (playback.frame, false);
         }
-        let started = state.start_playback(playback_key, path, &animation);
+        let started = state.start_playback(needs, slot, path, &animation);
         (0, matches!(started, PlaybackStart::Started))
     });
 
@@ -352,11 +383,15 @@ pub fn load_thumbnail(path: &Path, playback_key: &str) -> Decoded {
         .map_or(Decoded::Failed, Decoded::Ready)
 }
 
-fn due_frames(now: Instant) -> Vec<DueFrame> {
-    with_animations(|state| {
+fn due_frames(now: Instant) -> Tick {
+    with_animations_and_needs(|state, needs| {
         let AnimationState { clips, playbacks } = state;
-        let mut due = Vec::new();
-        for (unique_id, playback) in playbacks.iter_mut() {
+        let mut tick = Tick::default();
+        for (slot, playback) in playbacks.iter_mut() {
+            if !needs.expects_media(slot, &playback.path) {
+                tick.unexpected.push(slot.clone());
+                continue;
+            }
             if playback.next_at > now {
                 continue;
             }
@@ -366,25 +401,25 @@ fn due_frames(now: Instant) -> Vec<DueFrame> {
             playback.frame = (playback.frame + 1) % animation.frames.len();
             playback.next_at = now + animation.delay(playback.frame);
             if let Some(frame) = animation.frame(playback.frame) {
-                due.push(DueFrame {
-                    unique_id: unique_id.clone(),
+                tick.due.push(DueFrame {
+                    slot: slot.clone(),
                     image: frame.clone(),
                     row_hint: playback.row_hint,
                 });
             }
         }
-        due
+        tick
     })
 }
 
-fn forget_playbacks(gone: &[String]) {
+fn forget_playbacks(gone: &[MediaSlot]) {
     if gone.is_empty() {
         return;
     }
     with_animations(|state| {
         let AnimationState { clips, playbacks } = state;
-        for unique_id in gone {
-            playbacks.remove(unique_id);
+        for slot in gone {
+            playbacks.remove(slot);
         }
         let live_paths = playbacks
             .values()
@@ -394,24 +429,23 @@ fn forget_playbacks(gone: &[String]) {
     });
 }
 
-pub fn advance_animations(place_frame: &mut dyn FnMut(&str, usize, Image) -> Option<usize>) {
-    let due = due_frames(Instant::now());
-    if due.is_empty() {
-        return;
-    }
+pub fn advance_animations(place_frame: &mut dyn FnMut(&MediaSlot, usize, Image) -> Option<usize>) {
+    let Tick {
+        due,
+        unexpected: mut gone,
+    } = due_frames(Instant::now());
 
     let mut located = Vec::new();
-    let mut gone = Vec::new();
     for item in due {
-        match place_frame(&item.unique_id, item.row_hint, item.image) {
-            Some(row) => located.push((item.unique_id, row)),
-            None => gone.push(item.unique_id),
+        match place_frame(&item.slot, item.row_hint, item.image) {
+            Some(row) => located.push((item.slot, row)),
+            None => gone.push(item.slot),
         }
     }
 
     with_animations(|state| {
-        for (unique_id, row) in located {
-            if let Some(playback) = state.playbacks.get_mut(&unique_id) {
+        for (slot, row) in located {
+            if let Some(playback) = state.playbacks.get_mut(&slot) {
                 playback.row_hint = row;
             }
         }

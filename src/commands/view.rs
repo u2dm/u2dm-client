@@ -36,6 +36,7 @@ impl AppViewState {
 
 #[derive(Clone, Default, PartialEq, Eq)]
 pub struct AttachmentView {
+    pub pick: u64,
     pub visible: bool,
     pub filename: String,
     pub mimetype: String,

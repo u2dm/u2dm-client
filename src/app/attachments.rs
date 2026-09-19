@@ -19,6 +19,7 @@ pub(super) struct Attachments {
     output: Arc<dyn AppOutputPort>,
     events: EventSender,
     pending: Option<PickedAttachment>,
+    pick: u64,
     room_id: Option<RoomId>,
     sending: bool,
 }
@@ -34,6 +35,7 @@ impl Attachments {
             output,
             events,
             pending: None,
+            pick: 0,
             room_id: None,
             sending: false,
         }
@@ -71,8 +73,14 @@ impl Attachments {
         }
         match picked.outcome {
             Ok(attachment) => {
+                self.pick = self.pick.saturating_add(1);
                 self.room_id = Some(picked.room_id);
-                self.publish(describe(&attachment, false, UserMessage::default()));
+                self.publish(describe(
+                    &attachment,
+                    self.pick,
+                    false,
+                    UserMessage::default(),
+                ));
                 self.pending = Some(attachment);
             }
             Err(failure) => show_toast(self.output.as_ref(), Toast::Error(failure)),
@@ -98,7 +106,7 @@ impl Attachments {
             return;
         }
         self.sending = true;
-        self.publish(describe(&picked, true, UserMessage::default()));
+        self.publish(describe(&picked, self.pick, true, UserMessage::default()));
 
         let attachment = OutgoingAttachment {
             picked,
@@ -137,7 +145,7 @@ impl Attachments {
         let Some(picked) = self.pending.clone() else {
             return;
         };
-        self.publish(describe(&picked, false, failure));
+        self.publish(describe(&picked, self.pick, false, failure));
     }
 
     pub(super) fn clear(&mut self) {
@@ -156,9 +164,15 @@ impl Attachments {
     }
 }
 
-fn describe(picked: &PickedAttachment, sending: bool, error: UserMessage) -> AttachmentView {
+fn describe(
+    picked: &PickedAttachment,
+    pick: u64,
+    sending: bool,
+    error: UserMessage,
+) -> AttachmentView {
     let (width, height) = picked.dimensions.unwrap_or((0, 0));
     AttachmentView {
+        pick,
         visible: true,
         filename: picked.filename.clone(),
         mimetype: picked.mimetype.clone(),

@@ -1,4 +1,4 @@
-use crate::domain::media::{AudioKind, AudioMeta, ThumbnailOutcome};
+use crate::domain::media::{AudioKind, AudioMeta, ContentKey, ThumbnailOutcome};
 use crate::domain::message::TimelineMessage;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -43,7 +43,7 @@ pub enum TimelinePatch {
 #[derive(Debug, Clone)]
 pub struct EnrichmentDelta {
     pub unique_id: String,
-    pub media_key: Option<String>,
+    pub thumbnail_content: Option<ContentKey>,
     pub fingerprint: u64,
     pub thumbnail: ThumbnailOutcome,
     pub avatar_mxc: Option<String>,

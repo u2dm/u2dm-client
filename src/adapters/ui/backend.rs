@@ -7,12 +7,12 @@ use tokio::sync::{OwnedSemaphorePermit, mpsc, watch};
 
 use super::clock::install_clock_invalidation;
 use super::decode::{
-    AvatarSlot, DecodeOutcome, advance_animations, set_animation_tick, set_avatar_ready,
+    AvatarSlot, DecodeOutcome, MediaSlot, advance_animations, set_animation_tick, set_avatar_ready,
     set_image_ready,
 };
 use super::dto::{
-    DecodeTarget, MediaFailureKind, MediaState, MessageDto, RoomDto, SpaceDto, StickerPackDto,
-    StickerRowDto, ThumbUpdate, enrich_to_update, message_to_dto, room_to_dto, space_to_dto,
+    MediaFailureKind, MediaState, MessageDto, RoomDto, SpaceDto, StickerPackDto, StickerRowDto,
+    ThumbUpdate, cell_pack, enrich_to_update, message_to_dto, room_to_dto, space_to_dto,
 };
 use super::fields::{
     MessageFields, ReactionFields, ReactorFields, RoomFields, SpaceFields, StickerCellFields,
@@ -159,8 +159,8 @@ fn install_render_hooks<B: UiBackend>(weak: slint::Weak<B::Window>) {
 
     set_image_ready({
         let weak = weak.clone();
-        move |unique_id, outcome| {
-            apply_thumbnail_ready::<B>(unique_id, outcome);
+        move |slot, outcome| {
+            apply_thumbnail_ready::<B>(slot, outcome);
             if let Some(w) = weak.upgrade() {
                 w.window().request_redraw();
             }
@@ -215,11 +215,11 @@ fn show_media_failure<B: UiBackend>(entry: &mut B::Message, reason: MediaFailure
 }
 
 fn tick_animations<B: UiBackend>() {
-    advance_animations(&mut |key, hint, frame| match DecodeTarget::of(key) {
-        DecodeTarget::Timeline { unique_id } => patch_timeline_row::<B>(unique_id, hint, |entry| {
+    advance_animations(&mut |slot, hint, frame| match slot {
+        MediaSlot::Thumbnail(item) => patch_timeline_row::<B>(item.unique_id(), hint, |entry| {
             show_thumbnail::<B>(entry, frame);
         }),
-        DecodeTarget::StickerCell { key, .. } => place_sticker_cell::<B>(key, Some(&frame)),
+        MediaSlot::StickerCell(key) => place_sticker_cell::<B>(key, Some(&frame)),
     });
 }
 
@@ -295,14 +295,15 @@ fn pack_with_icon<B: UiBackend>(
     Some(updated)
 }
 
-pub(super) fn apply_thumbnail_ready<B: UiBackend>(key: &str, outcome: DecodeOutcome<'_>) {
+pub(super) fn apply_thumbnail_ready<B: UiBackend>(slot: &MediaSlot, outcome: DecodeOutcome<'_>) {
     let art = match outcome {
         DecodeOutcome::Ready(image) => Some(image),
         DecodeOutcome::Failed => None,
         DecodeOutcome::Deferred => return,
     };
-    match DecodeTarget::of(key) {
-        DecodeTarget::Timeline { unique_id } => {
+    match slot {
+        MediaSlot::Thumbnail(item) => {
+            let unique_id = item.unique_id();
             let placed = patch_timeline_row::<B>(unique_id, 0, |entry| match art {
                 Some(image) => show_thumbnail::<B>(entry, image.clone()),
                 None => show_media_failure::<B>(entry, MediaFailureKind::Unreadable),
@@ -314,12 +315,12 @@ pub(super) fn apply_thumbnail_ready<B: UiBackend>(key: &str, outcome: DecodeOutc
                 );
             }
         }
-        DecodeTarget::StickerCell { key, pack } => {
+        MediaSlot::StickerCell(key) => {
             if place_sticker_cell::<B>(key, art).is_none() {
                 tracing::debug!(key, "dropped a decoded image with no live sticker cell");
             }
             if let Some(image) = art {
-                adopt_pack_icon::<B>(pack, image);
+                adopt_pack_icon::<B>(cell_pack(key), image);
             }
         }
     }
@@ -339,13 +340,13 @@ fn group_slots(slots: &[AvatarSlot]) -> AvatarTargets<'_> {
     let mut targets = AvatarTargets::default();
     for slot in slots {
         match slot {
-            AvatarSlot::Message(id) => {
-                targets.messages.insert(id.as_str());
+            AvatarSlot::Message(item) => {
+                targets.messages.insert(item.unique_id());
             }
-            AvatarSlot::Reactor { unique_id, user_id } => {
+            AvatarSlot::Reactor { item, user_id } => {
                 targets
                     .reactors_by_message
-                    .entry(unique_id.as_str())
+                    .entry(item.unique_id())
                     .or_default()
                     .insert(user_id.as_str());
             }
@@ -356,7 +357,7 @@ fn group_slots(slots: &[AvatarSlot]) -> AvatarTargets<'_> {
                 targets.spaces.insert(id.as_str());
             }
             AvatarSlot::User => targets.user = true,
-            AvatarSlot::AttachmentPreview => targets.attachment_preview = true,
+            AvatarSlot::AttachmentPreview { .. } => targets.attachment_preview = true,
         }
     }
     targets

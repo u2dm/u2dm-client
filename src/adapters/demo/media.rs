@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
 
 use super::{attachments, data, stickers};
-use crate::domain::media::{MediaFailure, Waveform};
+use crate::domain::media::{ContentKey, MediaFailure, Waveform};
 use crate::ports::media::MediaCache;
 
 const DATA_ENV: &str = "U2DM_DEMO_DATA";
@@ -28,7 +28,8 @@ fn demo_failure(id: &str) -> Option<MediaFailure> {
 pub struct DemoMediaCache;
 
 impl MediaCache for DemoMediaCache {
-    fn thumbnail_path(&self, event_id: &str) -> Option<PathBuf> {
+    fn thumbnail_path(&self, content: &ContentKey) -> Option<PathBuf> {
+        let event_id = content.as_str();
         if let Some(sent) = attachments::preview_path(event_id) {
             return Some(sent);
         }
@@ -38,10 +39,10 @@ impl MediaCache for DemoMediaCache {
         }
     }
 
-    fn thumbnail_failure(&self, event_id: &str) -> Option<MediaFailure> {
-        self.thumbnail_path(event_id)
+    fn thumbnail_failure(&self, content: &ContentKey) -> Option<MediaFailure> {
+        self.thumbnail_path(content)
             .is_none()
-            .then(|| demo_failure(event_id))
+            .then(|| demo_failure(content.as_str()))
             .flatten()
     }
 
@@ -72,19 +73,25 @@ impl MediaCache for DemoMediaCache {
             && sticker_asset_path(mxc_asset(mxc)).is_none()
     }
 
-    fn audio_path(&self, event_id: &str) -> Option<PathBuf> {
+    fn audio_path(&self, content: &ContentKey) -> Option<PathBuf> {
+        let event_id = content.as_str();
         was_fetched(event_id)
             .then(|| audio_asset_path(event_id))
             .flatten()
     }
 
-    fn audio_failure(&self, event_id: &str) -> Option<MediaFailure> {
+    fn audio_failure(&self, content: &ContentKey) -> Option<MediaFailure> {
+        let event_id = content.as_str();
         (was_fetched(event_id) && audio_asset_path(event_id).is_none())
             .then(|| demo_failure(event_id).unwrap_or(MediaFailure::NoSource))
     }
 
-    fn audio_waveform(&self, event_id: &str) -> Option<Waveform> {
-        learned_waveforms().lock().ok()?.get(event_id).cloned()
+    fn audio_waveform(&self, content: &ContentKey) -> Option<Waveform> {
+        learned_waveforms()
+            .lock()
+            .ok()?
+            .get(content.as_str())
+            .cloned()
     }
 }
 
@@ -179,6 +186,10 @@ fn sticker_asset_path(asset: &str) -> Option<PathBuf> {
 fn asset(name: &str) -> Option<PathBuf> {
     let path = assets_dir().join(name);
     path.is_file().then_some(path)
+}
+
+pub fn content_of(event_id: &str) -> ContentKey {
+    ContentKey::new(event_id.to_owned())
 }
 
 pub fn mxc_asset(mxc: &str) -> &str {

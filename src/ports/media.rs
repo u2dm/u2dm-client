@@ -2,7 +2,7 @@ use std::path::{Path, PathBuf};
 
 use async_trait::async_trait;
 
-use crate::domain::media::{AttachmentPick, MediaFailure, PickedAttachment, Waveform};
+use crate::domain::media::{AttachmentPick, ContentKey, MediaFailure, PickedAttachment, Waveform};
 use crate::error::Result;
 
 #[async_trait]
@@ -15,14 +15,14 @@ pub trait MediaFilePort: Send + Sync {
 }
 
 pub trait MediaCache: Send + Sync {
-    fn thumbnail_path(&self, event_id: &str) -> Option<PathBuf>;
-    fn thumbnail_failure(&self, event_id: &str) -> Option<MediaFailure>;
+    fn thumbnail_path(&self, content: &ContentKey) -> Option<PathBuf>;
+    fn thumbnail_failure(&self, content: &ContentKey) -> Option<MediaFailure>;
     fn user_avatar_path(&self, mxc: &str) -> Option<PathBuf>;
     fn room_avatar_path(&self, mxc: &str) -> Option<PathBuf>;
     fn space_avatar_path(&self, mxc: &str) -> Option<PathBuf>;
     fn sticker_path(&self, mxc: &str) -> Option<PathBuf>;
     fn sticker_failed(&self, mxc: &str) -> bool;
-    fn audio_path(&self, event_id: &str) -> Option<PathBuf>;
-    fn audio_failure(&self, event_id: &str) -> Option<MediaFailure>;
-    fn audio_waveform(&self, event_id: &str) -> Option<Waveform>;
+    fn audio_path(&self, content: &ContentKey) -> Option<PathBuf>;
+    fn audio_failure(&self, content: &ContentKey) -> Option<MediaFailure>;
+    fn audio_waveform(&self, content: &ContentKey) -> Option<Waveform>;
 }

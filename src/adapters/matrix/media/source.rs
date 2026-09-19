@@ -3,7 +3,9 @@ use std::sync::Arc;
 use matrix_sdk::deserialized_responses::TimelineEvent;
 use matrix_sdk::ruma::events::relation::RelationType;
 use matrix_sdk::ruma::events::room::MediaSource;
-use matrix_sdk::ruma::events::room::message::{MessageType, Relation};
+use matrix_sdk::ruma::events::room::message::{
+    ImageMessageEventContent, MessageType, Relation, VideoMessageEventContent,
+};
 use matrix_sdk::ruma::events::sticker::StickerEventContent;
 use matrix_sdk::ruma::events::{
     AnySyncMessageLikeEvent, AnySyncTimelineEvent, SyncMessageLikeEvent,
@@ -29,22 +31,30 @@ impl EventMedia {
         }
     }
 
+    pub(crate) fn of_image(image: &ImageMessageEventContent) -> Self {
+        Self {
+            file: image.source.clone(),
+            thumbnail: image
+                .info
+                .as_ref()
+                .and_then(|info| info.thumbnail_source.clone()),
+        }
+    }
+
+    pub(crate) fn of_video(video: &VideoMessageEventContent) -> Self {
+        Self {
+            file: video.source.clone(),
+            thumbnail: video
+                .info
+                .as_ref()
+                .and_then(|info| info.thumbnail_source.clone()),
+        }
+    }
+
     pub(crate) fn of_message(msgtype: &MessageType) -> Option<Self> {
         match msgtype {
-            MessageType::Image(image) => Some(Self {
-                file: image.source.clone(),
-                thumbnail: image
-                    .info
-                    .as_ref()
-                    .and_then(|info| info.thumbnail_source.clone()),
-            }),
-            MessageType::Video(video) => Some(Self {
-                file: video.source.clone(),
-                thumbnail: video
-                    .info
-                    .as_ref()
-                    .and_then(|info| info.thumbnail_source.clone()),
-            }),
+            MessageType::Image(image) => Some(Self::of_image(image)),
+            MessageType::Video(video) => Some(Self::of_video(video)),
             MessageType::Audio(audio) => Some(Self::file_only(audio.source.clone())),
             MessageType::File(file) => Some(Self::file_only(file.source.clone())),
             _ => None,

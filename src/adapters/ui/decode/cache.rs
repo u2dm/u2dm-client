@@ -3,7 +3,9 @@ use std::path::{Path, PathBuf};
 
 use slint::Image;
 
-use super::waiters::{AvatarSlot, DecodeOutcome};
+use super::requests::PreviewPick;
+use super::slots::{AvatarSlot, MediaSlot};
+use super::waiters::DecodeOutcome;
 use super::workers::Lane;
 use super::{DISPLAY_MAX_DIMENSION, Epoch, animation, image_from_rgba, waiters, with_media};
 
@@ -59,6 +61,12 @@ impl ImageCache {
         }
         self.total_bytes = self.total_bytes.saturating_add(bytes);
         self.evict_to_budget();
+    }
+
+    fn forget(&mut self, path: &Path) {
+        if let Some(entry) = self.entries.remove(path) {
+            self.total_bytes = self.total_bytes.saturating_sub(entry.bytes);
+        }
     }
 
     fn evict_to_budget(&mut self) {
@@ -136,8 +144,8 @@ fn cached(path: &Path) -> Decoded {
     with_media(|media| media.images.lookup(path))
 }
 
-pub fn peek_thumbnail(path: &Path, playback_key: &str) -> Decoded {
-    match animation::playing_frame(path, playback_key) {
+pub fn peek_thumbnail(path: &Path, slot: &MediaSlot) -> Decoded {
+    match animation::playing_frame(path, slot) {
         Some(frame) => Decoded::Ready(frame),
         None => cached(path),
     }
@@ -150,7 +158,9 @@ pub fn peek_avatar(path: &Path) -> Option<Image> {
     }
 }
 
-pub fn load_avatar_async(path: &Path, slot: AvatarSlot) -> Option<Image> {
+pub fn load_avatar_async(path: Option<&Path>, slot: AvatarSlot) -> Option<Image> {
+    with_media(|media| media.needs.expect_avatar(&slot, path));
+    let path = path?;
     match cached(path) {
         Decoded::Ready(image) => Some(image),
         Decoded::Failed => None,
@@ -161,10 +171,20 @@ pub fn load_avatar_async(path: &Path, slot: AvatarSlot) -> Option<Image> {
     }
 }
 
-pub(super) fn request_thumbnail(path: &Path, unique_id: &str) -> Decoded {
+pub fn load_attachment_preview(pick: u64, path: Option<&Path>) -> Option<Image> {
+    let slot = AvatarSlot::AttachmentPreview { pick };
+    with_media(|media| {
+        if let (PreviewPick::New, Some(path)) = (media.needs.adopt_preview(&slot), path) {
+            media.images.forget(path);
+        }
+    });
+    load_avatar_async(path, slot)
+}
+
+pub(super) fn request_thumbnail(path: &Path, slot: &MediaSlot) -> Decoded {
     match cached(path) {
         Decoded::Pending => {
-            waiters::enqueue_media(path, unique_id, Lane::Static);
+            waiters::enqueue_media(path, slot, Lane::Static);
             Decoded::Pending
         }
         decoded => decoded,

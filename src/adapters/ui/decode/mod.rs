@@ -1,6 +1,7 @@
 mod animation;
 mod cache;
 mod requests;
+mod slots;
 mod waiters;
 mod workers;
 
@@ -9,15 +10,16 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use animation::AnimationState;
 pub use animation::{advance_animations, load_thumbnail, set_animation_tick};
 use cache::ImageCache;
-pub use cache::{Decoded, load_avatar_async, peek_avatar, peek_thumbnail};
+pub use cache::{Decoded, load_attachment_preview, load_avatar_async, peek_avatar, peek_thumbnail};
 use requests::{Needs, Request};
 pub use requests::{
     forget_all_media_needs, record_avatar_need, record_media_need, record_sticker_need,
     request_avatar, request_media, request_sticker,
 };
 use slint::{Image, Rgba8Pixel, SharedPixelBuffer};
+pub use slots::{AvatarSlot, MediaSlot, TimelineItemKey};
 use waiters::Waiters;
-pub use waiters::{AvatarSlot, DecodeOutcome, set_avatar_ready, set_image_ready};
+pub use waiters::{DecodeOutcome, set_avatar_ready, set_image_ready};
 
 use super::session::with_session;
 
@@ -62,6 +64,10 @@ impl Default for MediaSession {
 
 fn with_media<R>(f: impl FnOnce(&mut MediaSession) -> R) -> R {
     with_session(|session| f(&mut session.media))
+}
+
+fn active_generation() -> i32 {
+    with_session(|session| session.room.active_generation())
 }
 
 fn image_from_rgba(rgba: &[u8], width: u32, height: u32) -> Image {

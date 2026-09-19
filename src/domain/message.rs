@@ -1,6 +1,8 @@
 use std::hash::{DefaultHasher, Hash, Hasher};
 
-use crate::domain::media::{AudioKind, AudioMeta, FileMeta, ImageMeta, MediaKind, VideoMeta};
+use crate::domain::media::{
+    AudioKind, AudioMeta, ContentKey, FileMeta, ImageMeta, MediaKind, VideoMeta,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum MessagePreviewKind {
@@ -243,8 +245,8 @@ pub struct TimelineMessage {
 }
 
 impl TimelineMessage {
-    pub fn media_key(&self) -> Option<&str> {
-        self.event_id.as_deref().or(self.local_id.as_deref())
+    pub fn thumbnail_content(&self) -> Option<&ContentKey> {
+        self.body.media()?.1.thumbnail.as_ref()
     }
 
     pub fn enrichment_fingerprint(&self) -> u64 {
@@ -259,6 +261,7 @@ impl TimelineMessage {
                 meta.width.hash(&mut hasher);
                 meta.height.hash(&mut hasher);
                 meta.mimetype.hash(&mut hasher);
+                meta.thumbnail.hash(&mut hasher);
             }
             None => None::<MediaKind>.hash(&mut hasher),
         }

@@ -18,12 +18,14 @@ use super::cache::{CacheHandle, FailureTracker};
 use super::flight::SingleFlight;
 use super::{
     AUDIO_DIR, AVATARS_DIR, MediaLane, STICKERS_DIR, ThumbnailRequest, VIDEOS_DIR, audio_key,
-    mxc_avatar_key, source, sticker_key, thumb_key, thumbnail_format, video_key,
+    file_content, mxc_avatar_key, source, sticker_key, thumb_key, thumbnail_format, video_key,
 };
 use crate::adapters::matrix::store::purge_dir;
 use crate::adapters::{container, private_fs, video};
 use crate::domain::account::AccountScope;
-use crate::domain::media::{MediaFailure, MediaRendition, MediaResult, ThumbnailOutcome, Waveform};
+use crate::domain::media::{
+    ContentKey, MediaFailure, MediaRendition, MediaResult, ThumbnailOutcome, Waveform,
+};
 use crate::domain::message::TimelineMessage;
 use crate::error::{AppError, Result};
 use crate::ports::matrix::CleanupReport;
@@ -39,7 +41,7 @@ const MAX_MEDIA_BYTES: usize = 20 * 1024 * 1024;
 const MAX_FULL_MEDIA_BYTES: usize = 100 * 1024 * 1024;
 
 const MEDIA_CACHE_DIR: &str = "media-cache";
-const LAYOUT_VERSION: &str = "v1";
+const LAYOUT_VERSION: &str = "v2";
 
 #[derive(Clone, Copy)]
 pub(crate) enum Naming {
@@ -129,10 +131,10 @@ impl Playable {
         }
     }
 
-    fn key(self, event_id: &str) -> String {
+    fn key(self, content: &ContentKey) -> String {
         match self {
-            Self::Video => video_key(event_id),
-            Self::Audio => audio_key(event_id),
+            Self::Video => video_key(content),
+            Self::Audio => audio_key(content),
         }
     }
 
@@ -142,6 +144,11 @@ impl Playable {
             Self::Audio => AUDIO_DIR,
         }
     }
+}
+
+pub(crate) struct Materialized {
+    pub(crate) content: ContentKey,
+    pub(crate) path: PathBuf,
 }
 
 struct MediaSession {
@@ -156,7 +163,7 @@ pub(crate) struct MediaService {
     full_semaphore: Semaphore,
     flights: SingleFlight,
     failures: StdMutex<FailureTracker>,
-    waveforms: StdMutex<HashMap<String, Waveform>>,
+    waveforms: StdMutex<HashMap<ContentKey, Waveform>>,
 }
 
 impl MediaService {
@@ -246,12 +253,12 @@ impl MediaService {
         }
     }
 
-    pub(crate) fn waveform(&self, event_id: &str) -> Option<Waveform> {
-        self.waveforms.lock().ok()?.get(event_id).cloned()
+    pub(crate) fn waveform(&self, content: &ContentKey) -> Option<Waveform> {
+        self.waveforms.lock().ok()?.get(content).cloned()
     }
 
-    pub(crate) async fn learn_waveform(&self, event_id: &str, path: &Path) {
-        if self.waveform(event_id).is_some() {
+    pub(crate) async fn learn_waveform(&self, content: &ContentKey, path: &Path) {
+        if self.waveform(content).is_some() {
             return;
         }
         let owned = path.to_path_buf();
@@ -263,7 +270,7 @@ impl MediaService {
         if let Some(waveform) = learned
             && let Ok(mut waveforms) = self.waveforms.lock()
         {
-            waveforms.insert(event_id.to_owned(), waveform);
+            waveforms.insert(content.clone(), waveform);
         }
     }
 
@@ -338,29 +345,32 @@ impl MediaService {
         room: &Room,
         event_id: &str,
         playable: Playable,
-    ) -> MediaResult<PathBuf> {
-        let cache_key = playable.key(event_id);
-        if let Some(cached) = self.cache_get(&cache_key) {
-            return Ok(cached);
+    ) -> MediaResult<Materialized> {
+        let source = source::resolve(room, event_id, MediaLane::FullFile).await?;
+        let content = file_content(&source);
+        let cache_key = playable.key(&content);
+        if let Some(path) = self.cache_get(&cache_key) {
+            return Ok(Materialized { content, path });
         }
         if let Some(reason) = self.failure(&cache_key) {
             return Err(reason);
         }
-        let source = source::resolve(room, event_id, MediaLane::FullFile).await?;
         let dir = self.playable_dir(playable).ok_or(MediaFailure::Storage)?;
         if let Err(e) = private_fs::create_dir(&dir).await {
             tracing::warn!("failed to create the {} dir: {e}", playable.noun());
             return Err(MediaFailure::Storage);
         }
-        let cache_stem = dir.join(hex_encode_id(event_id));
-        self.fetch_and_materialize(
-            &room.client(),
-            source,
-            &cache_key,
-            &cache_stem,
-            Fetch::launchable(playable),
-        )
-        .await
+        let cache_stem = dir.join(content.as_str());
+        let path = self
+            .fetch_and_materialize(
+                &room.client(),
+                source,
+                &cache_key,
+                &cache_stem,
+                Fetch::launchable(playable),
+            )
+            .await?;
+        Ok(Materialized { content, path })
     }
 
     pub(crate) async fn fetch_and_materialize(
@@ -432,19 +442,19 @@ impl MediaService {
         request: &ThumbnailRequest,
     ) -> ThumbnailOutcome {
         let ThumbnailRequest {
-            media_key,
+            content,
             lane,
             source,
         } = request;
-        let cache_key = thumb_key(media_key);
+        let cache_key = thumb_key(content);
 
         if self.cache_get(&cache_key).is_some() {
             return ThumbnailOutcome::Unchanged;
         }
 
-        let materialized = match (source, self.session()) {
-            (Some(source), Some(session)) => {
-                let cache_stem = session.media_dir.join(hex_encode_id(media_key));
+        let materialized = match self.session() {
+            Some(session) => {
+                let cache_stem = session.media_dir.join(content.as_str());
                 self.fetch_and_materialize(
                     client,
                     source.clone(),
@@ -452,10 +462,9 @@ impl MediaService {
                     &cache_stem,
                     Fetch::rendered(lane.format()),
                 )
-                    .await
+                .await
             }
-            (None, _) => Err(MediaFailure::NoSource),
-            (_, None) => Err(MediaFailure::Storage),
+            None => Err(MediaFailure::Storage),
         };
 
         match materialized {
@@ -497,8 +506,8 @@ impl MediaService {
             &cache_stem,
             Fetch::rendered(thumbnail_format()),
         )
-            .await
-            .ok()
+        .await
+        .ok()
     }
 
     pub(crate) async fn fetch_sticker_by_mxc(
@@ -524,8 +533,8 @@ impl MediaService {
             &cache_stem,
             Fetch::rendered(MediaFormat::File),
         )
-            .await
-            .ok()
+        .await
+        .ok()
     }
 
     pub(crate) async fn fetch_user_avatar(&self, client: &Client) -> Option<PathBuf> {
@@ -578,11 +587,10 @@ impl MediaService {
     }
 
     pub(crate) fn needs_media_download(&self, msg: &TimelineMessage) -> bool {
-        let needs_thumbnail = msg.body.media().is_some()
-            && msg.media_key().is_some_and(|media_key| {
-                let key = thumb_key(media_key);
-                self.cache_get(&key).is_none() && !self.is_failed(&key)
-            });
+        let needs_thumbnail = msg.thumbnail_content().is_some_and(|content| {
+            let key = thumb_key(content);
+            self.cache_get(&key).is_none() && !self.is_failed(&key)
+        });
         let needs_avatar = msg.sender_avatar_url.as_deref().is_some_and(|mxc| {
             let key = mxc_avatar_key(mxc);
             self.cache_get(&key).is_none() && !self.is_failed(&key)

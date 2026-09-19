@@ -23,7 +23,7 @@ use super::reactors::{ReactorAvatars, Resolution, resolve_reactor_avatars};
 use super::{EnrichmentClaim, EnrichmentPool, TimelineContext};
 use crate::adapters::matrix::media::{MediaService, ThumbnailRequest};
 use crate::adapters::matrix::profile::PronounCache;
-use crate::domain::media::ThumbnailOutcome;
+use crate::domain::media::{ContentKey, ThumbnailOutcome};
 use crate::domain::message::TimelineMessage;
 use crate::domain::room::RoomId;
 use crate::domain::timeline::{
@@ -81,10 +81,10 @@ impl EnrichmentJob {
         (!resolved.is_empty()).then_some(resolved)
     }
 
-    fn media_key(&self) -> Option<String> {
+    fn thumbnail_content(&self) -> Option<ContentKey> {
         self.thumbnail
             .as_ref()
-            .map(|request| request.media_key.clone())
+            .map(|request| request.content.clone())
     }
 }
 
@@ -117,7 +117,7 @@ fn spawn_enrichment(
             );
             Some(EnrichmentDelta {
                 unique_id: job.unique_id.clone(),
-                media_key: job.media_key(),
+                thumbnail_content: job.thumbnail_content(),
                 fingerprint,
                 thumbnail,
                 avatar_mxc,

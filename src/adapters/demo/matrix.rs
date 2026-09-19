@@ -604,7 +604,7 @@ impl MediaPort for DemoAuthed {
         _rendition: MediaRendition,
     ) -> Result<Vec<u8>> {
         let path: PathBuf = media::DemoMediaCache
-            .thumbnail_path(event_id)
+            .thumbnail_path(&media::content_of(event_id))
             .ok_or_else(|| AppError::Other(format!("no demo asset for event {event_id}")))?;
         Ok(fs::read(path)?)
     }

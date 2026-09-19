@@ -3,8 +3,8 @@ use std::path::PathBuf;
 use slint::{Image, SharedString, StyledText};
 
 use super::decode::{
-    AvatarSlot, Decoded, load_avatar_async, load_thumbnail, peek_avatar, peek_thumbnail,
-    record_avatar_need, record_media_need, record_sticker_need,
+    AvatarSlot, Decoded, MediaSlot, TimelineItemKey, load_avatar_async, load_thumbnail,
+    peek_avatar, peek_thumbnail, record_avatar_need, record_media_need, record_sticker_need,
 };
 use super::present::{
     MessageKind, ServiceKind, avatar_color_index, avatar_initials, duration_label, file_extension,
@@ -15,7 +15,9 @@ use super::present::{
 };
 use super::richtext;
 use super::schema::{define_ui_enum, media_failures, media_states};
-use crate::domain::media::{AudioKind, AudioMeta, FileMeta, MediaFailure, ThumbnailOutcome};
+use crate::domain::media::{
+    AudioKind, AudioMeta, ContentKey, FileMeta, MediaFailure, ThumbnailOutcome,
+};
 use crate::domain::message::{
     MessageBody, MessagePreviewKind, Reaction, ReactionSend, Reactor, SendState, TimelineMessage,
 };
@@ -77,18 +79,9 @@ pub fn cell_key(pack: &PackId, shortcode: &str) -> String {
     format!("{pack}{CELL_KEY_SEPARATOR}{shortcode}")
 }
 
-pub enum DecodeTarget<'a> {
-    Timeline { unique_id: &'a str },
-    StickerCell { key: &'a str, pack: &'a str },
-}
-
-impl<'a> DecodeTarget<'a> {
-    pub fn of(key: &'a str) -> Self {
-        match key.split_once(CELL_KEY_SEPARATOR) {
-            Some((pack, _)) => Self::StickerCell { key, pack },
-            None => Self::Timeline { unique_id: key },
-        }
-    }
+pub fn cell_pack(key: &str) -> &str {
+    key.split_once(CELL_KEY_SEPARATOR)
+        .map_or(key, |(pack, _)| pack)
 }
 
 pub fn sticker_needle(query: &str) -> String {
@@ -155,14 +148,13 @@ pub enum StickerArt {
 }
 
 pub fn sticker_art(key: &str, mxc: &str, media: &dyn MediaCache) -> StickerArt {
-    if let Some(path) = media.sticker_path(mxc) {
-        return match peek_thumbnail(&path, key) {
+    let path = media.sticker_path(mxc);
+    record_sticker_need(key, path.as_deref());
+    if let Some(path) = path {
+        return match peek_thumbnail(&path, &MediaSlot::StickerCell(key.to_owned())) {
             Decoded::Ready(decoded) => StickerArt::Ready(decoded),
             Decoded::Failed => StickerArt::Failed,
-            Decoded::Pending => {
-                record_sticker_need(key, path);
-                StickerArt::Decoding
-            }
+            Decoded::Pending => StickerArt::Decoding,
         };
     }
     if media.sticker_failed(mxc) {
@@ -319,19 +311,19 @@ fn count<T: TryInto<i32>>(value: T) -> i32 {
 }
 
 fn reactor_avatar_dto(
-    unique_id: &str,
+    item: &TimelineItemKey,
     reactor: &Reactor,
     media: &dyn MediaCache,
 ) -> ReactorAvatarDto {
     let slot = AvatarSlot::Reactor {
-        unique_id: unique_id.to_owned(),
+        item: item.clone(),
         user_id: reactor.user_id.clone(),
     };
-    let avatar = reactor
+    let path = reactor
         .avatar_url
         .as_deref()
-        .and_then(|mxc| media.user_avatar_path(mxc))
-        .and_then(|path| load_avatar_async(&path, slot));
+        .and_then(|mxc| media.user_avatar_path(mxc));
+    let avatar = load_avatar_async(path.as_deref(), slot);
     ReactorAvatarDto {
         user_id: SharedString::from(&reactor.user_id),
         initial: SharedString::from(user_initial(&reactor.user_id)),
@@ -342,7 +334,7 @@ fn reactor_avatar_dto(
 }
 
 fn reactor_avatar_dtos(
-    unique_id: &str,
+    item: &TimelineItemKey,
     reaction: &Reaction,
     media: &dyn MediaCache,
 ) -> Vec<ReactorAvatarDto> {
@@ -352,11 +344,15 @@ fn reactor_avatar_dtos(
     reaction
         .senders
         .iter()
-        .map(|reactor| reactor_avatar_dto(unique_id, reactor, media))
+        .map(|reactor| reactor_avatar_dto(item, reactor, media))
         .collect()
 }
 
-fn reaction_dto(unique_id: &str, reaction: &Reaction, media: &dyn MediaCache) -> ReactionDto {
+fn reaction_dto(
+    item: &TimelineItemKey,
+    reaction: &Reaction,
+    media: &dyn MediaCache,
+) -> ReactionDto {
     let (reactors, hidden) = reactor_labels(&reaction.senders);
     ReactionDto {
         key: SharedString::from(&reaction.key),
@@ -367,7 +363,7 @@ fn reaction_dto(unique_id: &str, reaction: &Reaction, media: &dyn MediaCache) ->
         overflow: false,
         reactors: SharedString::from(reactors),
         hidden_reactors: count(hidden),
-        avatars: reactor_avatar_dtos(unique_id, reaction, media),
+        avatars: reactor_avatar_dtos(item, reaction, media),
     }
 }
 
@@ -386,13 +382,13 @@ fn overflow_dto(hidden: usize) -> ReactionDto {
 }
 
 fn reaction_dtos(
-    unique_id: &str,
+    item: &TimelineItemKey,
     reactions: &[Reaction],
     media: &dyn MediaCache,
 ) -> (Vec<ReactionDto>, Vec<ReactionDto>) {
     let all: Vec<ReactionDto> = reactions
         .iter()
-        .map(|reaction| reaction_dto(unique_id, reaction, media))
+        .map(|reaction| reaction_dto(item, reaction, media))
         .collect();
     if all.len() <= REACTION_CHIP_CAP {
         return (all, Vec::new());
@@ -411,27 +407,23 @@ pub struct AudioRowUpdate {
     pub waveform: Vec<f32>,
 }
 
-fn audio_media_state(event_id: &str, media: &dyn MediaCache) -> (MediaState, MediaFailureKind) {
-    if media.audio_path(event_id).is_some() {
+fn audio_media_state(file: &ContentKey, media: &dyn MediaCache) -> (MediaState, MediaFailureKind) {
+    if media.audio_path(file).is_some() {
         return (MediaState::Ready, MediaFailureKind::None);
     }
     media
-        .audio_failure(event_id)
+        .audio_failure(file)
         .map_or((MediaState::Idle, MediaFailureKind::None), |reason| {
             (MediaState::Failed, failure_kind(reason))
         })
 }
 
-pub fn audio_row_update(
-    event_id: &str,
-    meta: &AudioMeta,
-    media: &dyn MediaCache,
-) -> AudioRowUpdate {
-    let (media_state, media_failure) = audio_media_state(event_id, media);
+pub fn audio_row_update(meta: &AudioMeta, media: &dyn MediaCache) -> AudioRowUpdate {
+    let (media_state, media_failure) = audio_media_state(&meta.file, media);
     AudioRowUpdate {
         media_state,
         media_failure,
-        waveform: voice_bars(meta, media.audio_waveform(event_id).as_ref()),
+        waveform: voice_bars(meta, media.audio_waveform(&meta.file).as_ref()),
     }
 }
 
@@ -445,28 +437,21 @@ fn apply_file(dto: &mut MessageDto, meta: &FileMeta) {
     dto.size = size_label(meta.size);
 }
 
-fn apply_audio(
-    dto: &mut MessageDto,
-    m: &TimelineMessage,
-    meta: &AudioMeta,
-    media: &dyn MediaCache,
-) {
+fn apply_audio(dto: &mut MessageDto, meta: &AudioMeta, media: &dyn MediaCache) {
     dto.audio_kind = meta.kind;
     dto.filename = SharedString::from(&meta.filename);
     dto.size = size_label(meta.size);
     if let Some(duration) = meta.duration {
         dto.duration = SharedString::from(&duration_label(duration));
     }
-    dto.waveform = voice_bars(meta, None);
-    if let Some(event_id) = m.event_id.as_deref() {
-        (dto.media_state, dto.media_failure) = audio_media_state(event_id, media);
-        dto.waveform = voice_bars(meta, media.audio_waveform(event_id).as_ref());
-    }
+    (dto.media_state, dto.media_failure) = audio_media_state(&meta.file, media);
+    dto.waveform = voice_bars(meta, media.audio_waveform(&meta.file).as_ref());
 }
 
 fn apply_media(
     dto: &mut MessageDto,
     m: &TimelineMessage,
+    item: &TimelineItemKey,
     media: &dyn MediaCache,
 ) -> Option<PathBuf> {
     if let MessageBody::Video { meta, .. } = &m.body
@@ -475,7 +460,7 @@ fn apply_media(
         dto.duration = SharedString::from(&duration_label(duration));
     }
     if let Some(meta) = m.body.audio() {
-        apply_audio(dto, m, meta, media);
+        apply_audio(dto, meta, media);
     }
     if let MessageBody::File { meta } = &m.body {
         apply_file(dto, meta);
@@ -493,15 +478,19 @@ fn apply_media(
             .to_uppercase(),
     );
 
-    let media_key = m.media_key()?;
-    let Some(path) = media.thumbnail_path(media_key) else {
-        if let Some(reason) = media.thumbnail_failure(media_key) {
+    let Some(content) = meta.thumbnail.as_ref() else {
+        dto.media_state = MediaState::Failed;
+        dto.media_failure = MediaFailureKind::NoSource;
+        return None;
+    };
+    let Some(path) = media.thumbnail_path(content) else {
+        if let Some(reason) = media.thumbnail_failure(content) {
             dto.media_state = MediaState::Failed;
             dto.media_failure = failure_kind(reason);
         }
         return None;
     };
-    match peek_thumbnail(&path, &m.unique_id) {
+    match peek_thumbnail(&path, &MediaSlot::Thumbnail(item.clone())) {
         Decoded::Ready(img) => {
             dto.thumbnail = Some(img);
             dto.media_state = MediaState::Ready;
@@ -516,8 +505,9 @@ fn apply_media(
 }
 
 pub fn message_to_dto(m: &TimelineMessage, media: &dyn MediaCache) -> MessageDto {
+    let item = TimelineItemKey::current(&m.unique_id);
     let sender_label = message_sender_label(m);
-    let (reactions, all_reactions) = reaction_dtos(&m.unique_id, &m.reactions, media);
+    let (reactions, all_reactions) = reaction_dtos(&item, &m.reactions, media);
     let plain = message_body_text(&m.body);
     let rich = match message_body_html(&m.body) {
         Some(html) => richtext::styled_body(html, plain),
@@ -576,7 +566,7 @@ pub fn message_to_dto(m: &TimelineMessage, media: &dyn MediaCache) -> MessageDto
         all_reactions,
     };
 
-    let thumbnail_path = apply_media(&mut dto, m, media);
+    let thumbnail_path = apply_media(&mut dto, m, &item, media);
 
     let avatar_path = m
         .sender_avatar_url
@@ -592,18 +582,19 @@ pub fn message_to_dto(m: &TimelineMessage, media: &dyn MediaCache) -> MessageDto
     let thumbnail_undecoded = thumbnail_path.is_some() && dto.media_state == MediaState::Idle;
     let avatar_undecoded = avatar_path.is_some() && !dto.has_avatar;
     dto.needs_media = thumbnail_undecoded || avatar_undecoded;
-    record_media_need(&m.unique_id, thumbnail_path, avatar_path);
+    record_media_need(&item, thumbnail_path.as_deref(), avatar_path.as_deref());
     dto
 }
 
 pub fn enrich_to_update(delta: &EnrichmentDelta, media: &dyn MediaCache) -> EnrichUpdate {
+    let item = TimelineItemKey::current(&delta.unique_id);
     let thumbnail = match delta.thumbnail {
         ThumbnailOutcome::Ready => delta
-            .media_key
-            .as_deref()
-            .and_then(|media_key| media.thumbnail_path(media_key))
+            .thumbnail_content
+            .as_ref()
+            .and_then(|content| media.thumbnail_path(content))
             .map_or(ThumbUpdate::Unchanged, |thumb_path| {
-                match load_thumbnail(&thumb_path, &delta.unique_id) {
+                match load_thumbnail(&thumb_path, &MediaSlot::Thumbnail(item.clone())) {
                     Decoded::Ready(image) => ThumbUpdate::Ready(image),
                     Decoded::Failed => ThumbUpdate::Failed(MediaFailureKind::Unreadable),
                     Decoded::Pending => ThumbUpdate::Unchanged,
@@ -617,9 +608,7 @@ pub fn enrich_to_update(delta: &EnrichmentDelta, media: &dyn MediaCache) -> Enri
         .avatar_mxc
         .as_deref()
         .and_then(|mxc| media.user_avatar_path(mxc))
-        .and_then(|avatar_path| {
-            load_avatar_async(&avatar_path, AvatarSlot::Message(delta.unique_id.clone()))
-        });
+        .and_then(|avatar_path| load_avatar_async(Some(&avatar_path), AvatarSlot::Message(item)));
 
     let pronouns = delta.pronouns.as_ref().map(|pronouns| {
         pronoun_labels(pronouns)
@@ -681,11 +670,14 @@ pub fn room_to_dto(r: &Room, media: &dyn MediaCache) -> RoomDto {
 }
 
 pub fn record_room_avatar_need(r: &Room, media: &dyn MediaCache) {
-    if let Some(mxc) = &r.avatar_mxc
-        && let Some(avatar_path) = media.room_avatar_path(mxc)
-    {
-        record_avatar_need(AvatarSlot::Room(r.id.as_ref().to_owned()), avatar_path);
-    }
+    let avatar_path = r
+        .avatar_mxc
+        .as_deref()
+        .and_then(|mxc| media.room_avatar_path(mxc));
+    record_avatar_need(
+        &AvatarSlot::Room(r.id.as_ref().to_owned()),
+        avatar_path.as_deref(),
+    );
 }
 
 pub fn space_to_dto(s: &Space, media: &dyn MediaCache) -> SpaceDto {
@@ -712,9 +704,9 @@ pub fn space_to_dto(s: &Space, media: &dyn MediaCache) -> SpaceDto {
 }
 
 pub fn prefetch_space_avatar(s: &Space, media: &dyn MediaCache) {
-    if let Some(mxc) = &s.avatar_mxc
-        && let Some(avatar_path) = media.space_avatar_path(mxc)
-    {
-        load_avatar_async(&avatar_path, AvatarSlot::Space(s.id.clone()));
-    }
+    let avatar_path = s
+        .avatar_mxc
+        .as_deref()
+        .and_then(|mxc| media.space_avatar_path(mxc));
+    load_avatar_async(avatar_path.as_deref(), AvatarSlot::Space(s.id.clone()));
 }
