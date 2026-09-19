@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use matrix_sdk_ui::eyeball_im::VectorDiff;
@@ -168,4 +169,50 @@ pub(crate) fn diff_to_patch(
             Some(apply_reset(items, values, ctx))
         }
     }
+}
+
+struct ReadStamp {
+    row: usize,
+    message: TimelineMessage,
+    carried: bool,
+}
+
+pub(crate) fn stamp_read_marks(
+    items: &mut TimelineItems,
+    batch: &mut Vec<TimelinePatch>,
+    ctx: &TimelineContext<'_>,
+) {
+    let mut stamps: HashMap<String, ReadStamp> = items
+        .restamp_read_by(ctx.own_user_id)
+        .into_iter()
+        .map(|(row, message)| {
+            let stamp = ReadStamp {
+                row,
+                message,
+                carried: false,
+            };
+            (stamp.message.unique_id.clone(), stamp)
+        })
+        .collect();
+    if stamps.is_empty() {
+        return;
+    }
+    for patch in batch.iter_mut() {
+        patch.visit_messages_mut(&mut |message| {
+            if let Some(stamp) = stamps.get_mut(&message.unique_id) {
+                message.read_by.clone_from(&stamp.message.read_by);
+                stamp.carried = true;
+            }
+        });
+    }
+    let mut uncarried: Vec<ReadStamp> = stamps
+        .into_values()
+        .filter(|stamp| !stamp.carried)
+        .collect();
+    uncarried.sort_by_key(|stamp| stamp.row);
+    tracing::debug!(rows = uncarried.len(), "read marks moved");
+    batch.extend(uncarried.into_iter().map(|stamp| TimelinePatch::Set {
+        index: stamp.row,
+        message: stamp.message,
+    }));
 }

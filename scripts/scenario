@@ -21,6 +21,7 @@ scenario_env() {
     verify-self)     echo 'U2DM_DEMO_VERIFY=self' ;;
     audio-track)     echo 'U2DM_DEMO_AUDIO=silent,slow' ;;
     voice-notes)     echo 'U2DM_DEMO_AUDIO=silent' ;;
+    delivery-marks)  echo 'U2DM_DEMO_RECEIPTS=late,crowd,seen' ;;
     *) return 1 ;;
   esac
 }
@@ -44,6 +45,10 @@ scenario_steps() {
       echo 'sleep 2'
       echo '{"op":"play_audio","event_id":"demo-nina-voice-1"}'
       echo 'sleep 6' ;;
+    delivery-marks)
+      echo '{"op":"select_room","room_id":"!rust:demo.local"}'
+      echo 'sleep 3'
+      echo '{"op":"send_message","body":"one check, then two"}' ;;
     login-oauth|verify-self)
       : ;;
   esac
@@ -62,6 +67,7 @@ scenario_note() {
     verify-self)     echo 'a scripted SAS verification arriving 3s after the chat opens' ;;
     audio-track)     echo 'a track downloads slowly, starts playing, and keeps playing after switching rooms' ;;
     voice-notes)     echo 'a voice note advances to the next one, whose download then fails' ;;
+    delivery-marks)  echo 'read marks arrive as Sets, a crowd has read the newest, and a sent text turns read live' ;;
   esac
 }
 
@@ -78,7 +84,7 @@ check_window() {
 
 names() {
   printf '%s\n' unread-anchor all-unread reactions-late sticker-trickle jump-to-reply \
-    media-failures compact-layout login-oauth verify-self audio-track voice-notes
+    media-failures compact-layout login-oauth verify-self audio-track voice-notes delivery-marks
 }
 
 cmd_list() {

@@ -92,6 +92,31 @@ impl TimelinePatch {
         }
     }
 
+    pub fn visit_messages_mut(&mut self, visit: &mut impl FnMut(&mut TimelineMessage)) {
+        match self {
+            Self::Reset(messages) | Self::Append(messages) => {
+                for message in messages {
+                    visit(message);
+                }
+            }
+            Self::PushFront(message)
+            | Self::PushBack(message)
+            | Self::Insert { message, .. }
+            | Self::Set { message, .. } => visit(message),
+            Self::Batch(patches) => {
+                for patch in patches {
+                    patch.visit_messages_mut(visit);
+                }
+            }
+            Self::Remove { .. }
+            | Self::PopFront
+            | Self::PopBack
+            | Self::Truncate { .. }
+            | Self::Clear
+            | Self::Enrich(_) => {}
+        }
+    }
+
     fn last_reset(&self) -> Option<&[TimelineMessage]> {
         match self {
             Self::Reset(messages) => Some(messages),

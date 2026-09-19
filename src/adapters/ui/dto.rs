@@ -8,11 +8,11 @@ use super::decode::{
     record_sticker_need,
 };
 use super::present::{
-    MessageKind, ServiceKind, avatar_color_index, avatar_initials, duration_label, file_extension,
-    message_body_html, message_body_text, message_kind, message_sender_label,
-    message_timestamp_label, pronoun_labels, reaction_key_label, reactor_labels,
-    room_activity_label, sender_initial, service_kind, service_target, unsupported_kind,
-    user_initial, voice_bars,
+    Delivery, MessageKind, ServiceKind, avatar_color_index, avatar_initials, delivery,
+    duration_label, file_extension, message_body_html, message_body_text, message_kind,
+    message_sender_label, message_sent_at_label, message_timestamp_label, pronoun_labels,
+    reaction_key_label, reactor_labels, reader_labels, room_activity_label, sender_initial,
+    service_kind, service_target, unsupported_kind, user_initial, voice_bars,
 };
 use super::richtext;
 use super::schema::{define_ui_enum, media_failures, media_states};
@@ -232,6 +232,7 @@ pub struct MessageDto {
     pub styled: StyledText,
     pub has_links: bool,
     pub timestamp: SharedString,
+    pub sent_at: SharedString,
     pub message_type: MessageKind,
     pub preview_kind: MessagePreviewKind,
     pub unsupported_kind: SharedString,
@@ -243,6 +244,10 @@ pub struct MessageDto {
     pub first_unread: bool,
     pub send_state: SendState,
     pub send_progress: f32,
+    pub delivery: Delivery,
+    pub readers: SharedString,
+    pub hidden_readers: i32,
+    pub reader_count: i32,
     pub has_reply: bool,
     pub reply_event_id: SharedString,
     pub reply_sender: SharedString,
@@ -518,6 +523,7 @@ pub fn message_to_dto(m: &TimelineMessage, media: &dyn MediaCache) -> MessageDto
     let item = TimelineItemKey::current(&m.unique_id);
     let sender_label = message_sender_label(m);
     let (reactions, all_reactions) = reaction_dtos(&item, &m.reactions, media);
+    let (readers, hidden_readers) = reader_labels(&m.read_by);
     let plain = message_body_text(&m.body);
     let rich = match message_body_html(&m.body) {
         Some(html) => richtext::styled_body(html, plain),
@@ -536,6 +542,11 @@ pub fn message_to_dto(m: &TimelineMessage, media: &dyn MediaCache) -> MessageDto
         styled: rich.styled,
         has_links: rich.has_links,
         timestamp: SharedString::from(&message_timestamp_label(m.timestamp)),
+        sent_at: if m.is_own {
+            SharedString::from(message_sent_at_label(m.timestamp))
+        } else {
+            SharedString::new()
+        },
         message_type: message_kind(&m.body),
         preview_kind: m.body.preview_kind(),
         unsupported_kind: SharedString::from(unsupported_kind(&m.body)),
@@ -547,6 +558,10 @@ pub fn message_to_dto(m: &TimelineMessage, media: &dyn MediaCache) -> MessageDto
         first_unread: m.is_first_unread,
         send_state: m.send_state,
         send_progress: m.send_state.fraction(),
+        delivery: delivery(m),
+        readers: SharedString::from(readers),
+        hidden_readers: count(hidden_readers),
+        reader_count: count(m.read_by.total),
         has_reply: m.reply.is_some(),
         reply_event_id: SharedString::from(m.reply.as_ref().map_or("", |r| r.event_id.as_str())),
         reply_sender: SharedString::from(m.reply.as_ref().map_or("", |r| r.sender.as_str())),

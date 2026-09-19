@@ -7,8 +7,8 @@ use super::{media, reactions};
 use crate::domain::auth::Session;
 use crate::domain::media::{AudioKind, AudioMeta, ImageMeta, VideoMeta, Waveform};
 use crate::domain::message::{
-    MessageBody, MessagePreviewKind, Reaction, ReactionSend, ReplyInfo, RichText, SendState,
-    ServiceEvent, TimelineMessage,
+    MessageBody, MessagePreviewKind, Reaction, ReactionSend, ReadBy, ReplyInfo, RichText,
+    SendState, ServiceEvent, TimelineMessage,
 };
 use crate::domain::room::{NotifyMode, Room, RoomId, Space};
 use crate::domain::sticker::{PackId, StickerImage, StickerPack};
@@ -471,6 +471,7 @@ impl MessageDto {
                     send: ReactionSend::default(),
                 })
                 .collect(),
+            read_by: ReadBy::default(),
         }
     }
 

@@ -1,0 +1,118 @@
+import { IconDisplay, IconSet } from "@lucide";
+
+import { MessageEntry } from "../types.slint";
+import { Delivery } from "../../../../enums.slint";
+import { Deliveries } from "../../../../messages.slint";
+import { DeliveryTip, ReactionAnchor } from "../../../../local.slint";
+import { RoomView } from "../../../../views.slint";
+import { AppStyle, Fonts, IconSize, Space } from "../../../../theme.slint";
+
+export global Readers {
+    out property <int> direct-room-members: 2;
+
+    public pure function counted(msg: MessageEntry) -> bool {
+        return msg.delivery == Delivery.seen
+            || (msg.delivery == Delivery.read
+            && RoomView.selected-room-members > root.direct-room-members);
+    }
+}
+
+component TipTrigger inherits Rectangle {
+    in property <MessageEntry> msg;
+    in property <int> timeline-row;
+    in property <bool> on-counter;
+    in property <bool> has-tip;
+
+    property <bool> tip-mine: DeliveryTip.key != ""
+        && DeliveryTip.key == root.msg.unique-id
+        && DeliveryTip.on-counter == root.on-counter;
+
+    pure function anchor() -> ReactionAnchor {
+        return {
+            event-id: root.msg.event-id,
+            row: root.timeline-row,
+            is-own: root.msg.is-own,
+            x: self.absolute-position.x,
+            y: self.absolute-position.y,
+            width: self.width,
+            height: self.height,
+        };
+    }
+
+    property <ReactionAnchor> tracked-anchor: root.tip-mine ? root.anchor() : { row: -1 };
+
+    changed tracked-anchor => {
+        DeliveryTip.follow(root.msg.unique-id, self.tracked-anchor, root.on-counter);
+    }
+
+    height: IconSize.sm;
+    accessible-role: image;
+
+    @children
+
+    TouchArea {
+        enabled: root.has-tip;
+        changed has-hover => {
+            if (self.has-hover) {
+                DeliveryTip.show(root.msg.unique-id, root.anchor(), root.on-counter);
+            } else {
+                DeliveryTip.hide(root.msg.unique-id, root.on-counter);
+            }
+        }
+    }
+}
+
+export component DeliveryMark inherits TipTrigger {
+    in property <color> tint;
+    in property <bool> counted;
+
+    property <Delivery> delivery: root.msg.delivery;
+
+    width: IconSize.sm;
+    has-tip: root.delivery != Delivery.none;
+    accessible-label: Deliveries.label(root.delivery, root.counted ? "" : root.msg.readers,
+                                       root.msg.hidden-readers);
+
+    IconDisplay {
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+        icon: root.delivery == Delivery.pending ? IconSet.Clock
+            : root.delivery == Delivery.read ? IconSet.CheckCheck
+            : root.delivery == Delivery.failed ? IconSet.CircleAlert
+            : IconSet.Check;
+        size: root.delivery == Delivery.pending ? IconSize.xs : IconSize.sm;
+        stroke: root.delivery == Delivery.read ? AppStyle.delivery-read
+            : root.delivery == Delivery.failed ? AppStyle.delivery-failed-glyph
+            : root.tint;
+        stroke-fill: root.delivery == Delivery.failed ? AppStyle.delivery-failed : transparent;
+    }
+}
+
+export component ReaderCount inherits TipTrigger {
+    in property <color> tint;
+    in property <length> trailing-gap: Space.sm;
+
+    width: row.preferred-width;
+    on-counter: true;
+    has-tip: true;
+    accessible-label: Deliveries.label(root.msg.delivery, root.msg.readers, root.msg.hidden-readers);
+
+    row := HorizontalLayout {
+        spacing: Space.xs;
+        padding-right: root.trailing-gap;
+
+        IconDisplay {
+            y: (parent.height - self.height) / 2;
+            icon: IconSet.Eye;
+            size: IconSize.sm;
+            stroke: root.tint;
+        }
+
+        Text {
+            text: root.msg.reader-count;
+            font-size: Fonts.body-small;
+            color: root.tint;
+            vertical-alignment: center;
+        }
+    }
+}

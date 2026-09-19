@@ -22,7 +22,7 @@ use crate::domain::media::{
     AudioKind, AudioMeta, FileMeta, ImageMeta, MediaKind, VideoMeta, Waveform,
 };
 use crate::domain::message::{
-    MessageBody, MessagePreviewKind, REACTOR_AVATAR_LIMIT, Reaction, ReactionSend, Reactor,
+    MessageBody, MessagePreviewKind, REACTOR_AVATAR_LIMIT, Reaction, ReactionSend, Reactor, ReadBy,
     ReplyInfo, RichText, SendState, ServiceEvent, TimelineMessage,
 };
 
@@ -150,6 +150,7 @@ fn base_message(
         is_first_unread,
         send_state: send_state(event),
         reactions: extract_reactions(event.content(), ctx),
+        read_by: ReadBy::default(),
     }
 }
 

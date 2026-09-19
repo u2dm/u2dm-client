@@ -1,4 +1,4 @@
-import { MediaFailure, UserMessageKind } from "enums.slint";
+import { Delivery, MediaFailure, UserMessageKind } from "enums.slint";
 
 export struct UserMessage {
     kind: UserMessageKind,
@@ -160,6 +160,47 @@ export global Clocks {
         }
         return floor(total-ms / 3600000) + ":" + root.pad(floor(mod(total-ms / 60000, 60))) + ":"
             + root.pad(floor(mod(total-ms / 1000, 60)));
+    }
+}
+
+export global Deliveries {
+    public pure function label(delivery: Delivery, readers: string, hidden-readers: int) -> string {
+        if delivery == Delivery.pending {
+            return @tr("Sending");
+        }
+        if delivery == Delivery.sent {
+            return @tr("Sent");
+        }
+        if delivery == Delivery.read || delivery == Delivery.seen {
+            if readers == "" {
+                return @tr("Read");
+            }
+            return hidden-readers > 0
+                ? @tr("Read by {} and {} more", readers, hidden-readers)
+                : @tr("Read by {}", readers);
+        }
+        if delivery == Delivery.failed {
+            return @tr("Not sent");
+        }
+        return "";
+    }
+}
+
+export global DeliveryStatus {
+    public pure function text(delivery: Delivery, sent-at: string) -> string {
+        if delivery == Delivery.pending {
+            return @tr("Sending…");
+        }
+        if delivery == Delivery.sent {
+            return @tr("Sent {}", sent-at);
+        }
+        if delivery == Delivery.read {
+            return @tr("Read · sent {}", sent-at);
+        }
+        if delivery == Delivery.failed {
+            return @tr("Not sent");
+        }
+        return "";
     }
 }
 

@@ -2,6 +2,7 @@ import { Palette } from "std-widgets.slint";
 import { MessageEntry } from "../../types.slint";
 import { AppStyle, Fonts, Space } from "../../../../../theme.slint";
 import { ServiceKind } from "../../../../../enums.slint";
+import { ReaderCount, Readers } from "../delivery-mark.slint";
 
 export global ServiceLabel {
     public pure function label(kind: ServiceKind, actor: string, target: string) -> string {
@@ -80,25 +81,42 @@ export global ServiceLabel {
 
 export component ServiceMessage inherits HorizontalLayout {
     in property <MessageEntry> msg;
+    in property <int> timeline-row;
 
     alignment: center;
     padding-top: Space.sm;
     padding-bottom: Space.sm;
 
     Rectangle {
-        width: label.preferred-width + Space.xl;
-        height: label.preferred-height + Space.md;
+        width: content.preferred-width;
+        height: content.preferred-height;
         border-radius: self.height / 2;
         background: AppStyle.overlay-hover;
 
-        label := Text {
-            text: ServiceLabel.label(root.msg.service-kind, root.msg.sender, root.msg.service-target);
-            font-family: Fonts.emoji;
-            font-size: Fonts.body-small;
-            color: AppStyle.foreground-strong;
-            horizontal-alignment: center;
-            vertical-alignment: center;
-            wrap: word-wrap;
+        content := HorizontalLayout {
+            padding-left: Space.md;
+            padding-right: Space.md;
+            padding-top: Space.sm;
+            padding-bottom: Space.sm;
+            spacing: Space.md;
+
+            Text {
+                text: ServiceLabel.label(root.msg.service-kind, root.msg.sender, root.msg.service-target);
+                font-family: Fonts.emoji;
+                font-size: Fonts.body-small;
+                color: AppStyle.foreground-strong;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+                wrap: word-wrap;
+            }
+
+            if Readers.counted(root.msg): ReaderCount {
+                y: (parent.height - self.height) / 2;
+                msg: root.msg;
+                timeline-row: root.timeline-row;
+                tint: AppStyle.foreground-muted;
+                trailing-gap: 0;
+            }
         }
     }
 }

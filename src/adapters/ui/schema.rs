@@ -345,6 +345,18 @@ macro_rules! reaction_sends {
 }
 pub(crate) use reaction_sends;
 
+macro_rules! deliveries {
+    ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
+        None    None    "none";
+        Pending Pending "pending";
+        Sent    Sent    "sent";
+        Read    Read    "read";
+        Seen    Seen    "seen";
+        Failed  Failed  "failed";
+    } };
+}
+pub(crate) use deliveries;
+
 macro_rules! attachment_kinds {
     ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
         File  File  "file";
@@ -460,6 +472,7 @@ macro_rules! message_fields {
         styled set_styled "styled" styled;
         has_links set_has_links "has-links" flag;
         timestamp set_timestamp "timestamp" text;
+        sent_at set_sent_at "sent-at" text;
         message_type set_message_type "message-type" enumk(MessageKind);
         preview_kind set_preview_kind "preview-kind" enumk(MessagePreviewKind);
         unsupported_kind set_unsupported_kind "unsupported-kind" text;
@@ -471,6 +484,10 @@ macro_rules! message_fields {
         first_unread set_first_unread "first-unread" flag;
         send_state set_send_state "send-state" enumk(SendState);
         send_progress set_send_progress "send-progress" ratio;
+        delivery set_delivery "delivery" enumk(Delivery);
+        readers set_readers "readers" text;
+        hidden_readers set_hidden_readers "hidden-readers" int;
+        reader_count set_reader_count "reader-count" int;
         has_reply set_has_reply "has-reply" flag;
         reply_event_id set_reply_event_id "reply-event-id" text;
         reply_sender set_reply_sender "reply-sender" text;

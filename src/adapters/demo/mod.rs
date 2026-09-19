@@ -10,6 +10,7 @@ mod matrix;
 mod media;
 pub mod probe;
 mod reactions;
+mod receipts;
 mod richtext;
 mod stickers;
 mod storage;

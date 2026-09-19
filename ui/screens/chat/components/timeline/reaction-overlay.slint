@@ -5,10 +5,30 @@ import {
 import { ReactionPicker, ReactionStrip } from "reaction-picker.slint";
 import { ReactionDetail } from "reaction-detail.slint";
 import { ModalHost, PickerCard } from "../../../../components/overlay.slint";
-import { Reactions, Shell } from "../../../../local.slint";
+import { DeliveryTip, Reactions, Shell } from "../../../../local.slint";
 import { Actions } from "../../../../actions.slint";
+import { Deliveries, DeliveryStatus } from "../../../../messages.slint";
 import { StickerView } from "../../../../views.slint";
 import { Fonts, Metrics, Motion, Radius, Size, Space } from "../../../../theme.slint";
+
+component TipCard inherits PickerCard {
+    in property <string> text;
+
+    width: tip-text.preferred-width + Space.xl;
+    height: Size.sm;
+    border-radius: Radius.sm;
+
+    tip-text := Text {
+        x: Space.md;
+        width: parent.width - Space.xl;
+        height: parent.height;
+        text: root.text;
+        font-size: Fonts.caption;
+        color: Palette.foreground;
+        vertical-alignment: center;
+        overflow: elide;
+    }
+}
 
 export component ReactionOverlay inherits Rectangle {
     in property <length> timeline-bottom: root.height;
@@ -131,26 +151,20 @@ export component ReactionOverlay inherits Rectangle {
         }
     }
 
-    if Reactions.tooltip-row >= 0 && !Reactions.open: PickerCard {
-        property <length> tip-w: tip-text.preferred-width + Space.xl;
-        property <length> tip-h: Size.sm;
-
+    if Reactions.tooltip-row >= 0 && !Reactions.open: TipCard {
         x: clamp(Reactions.tooltip-anchor.x, root.edge,
-                 max(root.edge, root.width - self.tip-w - root.edge));
-        y: max(root.edge, Reactions.tooltip-anchor.y - self.tip-h - Space.sm);
-        width: self.tip-w;
-        height: self.tip-h;
-        border-radius: Radius.sm;
+                 max(root.edge, root.width - self.width - root.edge));
+        y: max(root.edge, Reactions.tooltip-anchor.y - self.height - Space.sm);
+        text: Reactions.tooltip-text;
+    }
 
-        tip-text := Text {
-            x: Space.md;
-            width: parent.width - Space.xl;
-            height: parent.height;
-            text: Reactions.tooltip-text;
-            font-size: Fonts.caption;
-            color: Palette.foreground;
-            vertical-alignment: center;
-            overflow: elide;
-        }
+    if DeliveryTip.showing && !Reactions.open: TipCard {
+        x: clamp(DeliveryTip.anchor.x + DeliveryTip.anchor.width - self.width, root.edge,
+                 max(root.edge, root.width - self.width - root.edge));
+        y: max(root.edge, DeliveryTip.anchor.y - self.height - Space.sm);
+        text: DeliveryTip.on-counter
+            ? Deliveries.label(DeliveryTip.target.delivery, DeliveryTip.target.readers,
+                               DeliveryTip.target.hidden-readers)
+            : DeliveryStatus.text(DeliveryTip.target.delivery, DeliveryTip.target.sent-at);
     }
 }

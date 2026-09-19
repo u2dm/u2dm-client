@@ -3,6 +3,7 @@ use std::future::pending;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 use async_trait::async_trait;
 use tokio::sync::mpsc;
@@ -11,7 +12,8 @@ use tokio::time::sleep;
 use tokio_util::sync::CancellationToken;
 
 use super::{
-    attachments, audio, data, login, media, reactions, stickers, timeline, verification, videos,
+    attachments, audio, data, login, media, reactions, receipts, stickers, timeline, verification,
+    videos,
 };
 use crate::adapters::video;
 use crate::domain::auth::{AuthMethod, LoginCredentials, OAuthLoginData, ServerInfo, Session};
@@ -176,11 +178,14 @@ struct ActiveRoom {
     timeline_tx: mpsc::Sender<TimelineUpdate>,
     messages: Vec<TimelineMessage>,
     prepended: usize,
+    receipts: Vec<receipts::Receipt>,
 }
+
+type SharedActiveRoom = Arc<Mutex<Option<ActiveRoom>>>;
 
 #[derive(Default)]
 struct DemoAuthed {
-    active: Mutex<Option<ActiveRoom>>,
+    active: SharedActiveRoom,
     sent: AtomicU64,
     verification_tx: Mutex<Option<mpsc::UnboundedSender<VerificationEvent>>>,
 }
@@ -248,7 +253,12 @@ impl DemoAuthed {
         };
         let (timeline_tx, message) = prepared;
 
+        let seen = receipts::scenario().member_sees_sends && message.event_id.is_some();
+        let unique_id = message.unique_id.clone();
         send_patch(&timeline_tx, TimelinePatch::PushBack(message)).await;
+        if seen {
+            spawn_seen(Arc::clone(&self.active), unique_id);
+        }
     }
 
     async fn append_own_sticker(
@@ -409,9 +419,24 @@ impl SpaceOrderPort for DemoAuthed {
     }
 }
 
+fn reset_messages(messages: &[TimelineMessage]) -> Vec<TimelineMessage> {
+    let messages = if reactions::scenario().reactions_arrive_late {
+        reactions::strip_reactions(messages)
+    } else {
+        messages.to_vec()
+    };
+    if receipts::scenario().marks_arrive_late {
+        receipts::strip_read_marks(&messages)
+    } else {
+        messages
+    }
+}
+
 fn outgoing_send_state() -> SendState {
     if timeline::scenario().sends_fail {
         SendState::Failed
+    } else if receipts::scenario().sends_stay_pending {
+        SendState::Sending
     } else {
         SendState::Sent
     }
@@ -428,6 +453,7 @@ impl TimelinePort for DemoAuthed {
     ) -> Result<()> {
         let scenario = timeline::scenario();
         let all = data::messages(room_id);
+        let seeded_receipts = receipts::seed_receipts(&all);
         let messages = match focus.target() {
             Some(target) => focused_window(&all, target)?,
             None if scenario.window_is_short => newest(&all, timeline::SHORT_WINDOW),
@@ -440,11 +466,7 @@ impl TimelinePort for DemoAuthed {
         if scenario.reset_is_slow {
             sleep(timeline::SLOW_RESET_DELAY).await;
         }
-        let reset_messages = if reactions::scenario().reactions_arrive_late {
-            reactions::strip_reactions(&messages)
-        } else {
-            messages.clone()
-        };
+        let reset_messages = reset_messages(&messages);
         send_patch(
             &timeline_tx,
             opening_patch(scenario, reset_messages.clone()),
@@ -457,6 +479,7 @@ impl TimelinePort for DemoAuthed {
                 timeline_tx: timeline_tx.clone(),
                 messages: messages.clone(),
                 prepended: 0,
+                receipts: seeded_receipts,
             });
         }
 
@@ -865,22 +888,71 @@ fn spawn_scenario_tasks(
         spawn_late_append(timeline_tx.clone());
     }
     if reactions::scenario().reactions_arrive_late {
-        spawn_late_reactions(
+        spawn_late_sets(
             timeline_tx.clone(),
             messages.to_vec(),
             reactions::reacted_indices(messages),
+            reactions::LATE_INTERVAL,
+        );
+    }
+    if receipts::scenario().marks_arrive_late {
+        spawn_late_sets(
+            timeline_tx.clone(),
+            messages.to_vec(),
+            receipts::read_indices(messages),
+            receipts::LATE_INTERVAL,
         );
     }
 }
 
-fn spawn_late_reactions(
+fn spawn_seen(active: SharedActiveRoom, unique_id: String) {
+    tokio::spawn(async move {
+        sleep(receipts::SEEN_DELAY).await;
+        let prepared = {
+            let Ok(mut guard) = active.lock() else {
+                return;
+            };
+            let Some(room) = guard.as_mut() else {
+                return;
+            };
+            if !room
+                .messages
+                .iter()
+                .any(|message| message.unique_id == unique_id)
+            {
+                return;
+            }
+            let reader = receipts::likely_reader(&room.messages);
+            room.receipts.push(receipts::Receipt { unique_id, reader });
+            let changed = receipts::stamp(&mut room.messages, &room.receipts);
+            let patches: Vec<TimelinePatch> = changed
+                .into_iter()
+                .filter_map(|offset| {
+                    let message = room.messages.get(offset)?.clone();
+                    Some(TimelinePatch::Set {
+                        index: room.prepended.saturating_add(offset),
+                        message,
+                    })
+                })
+                .collect();
+            (room.timeline_tx.clone(), patches)
+        };
+        let (timeline_tx, patches) = prepared;
+        if !patches.is_empty() {
+            send_patch(&timeline_tx, TimelinePatch::Batch(patches)).await;
+        }
+    });
+}
+
+fn spawn_late_sets(
     timeline_tx: mpsc::Sender<TimelineUpdate>,
     messages: Vec<TimelineMessage>,
     rows: Vec<usize>,
+    interval: Duration,
 ) {
     tokio::spawn(async move {
         for index in rows {
-            sleep(reactions::LATE_INTERVAL).await;
+            sleep(interval).await;
             let Some(message) = messages.get(index) else {
                 return;
             };

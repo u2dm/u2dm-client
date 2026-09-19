@@ -6,7 +6,7 @@ use matrix_sdk_ui::timeline::{EventTimelineItem, TimelineItem};
 
 use super::TimelineContext;
 use super::convert::convert_timeline_item;
-use crate::domain::message::TimelineMessage;
+use crate::domain::message::{ReadScan, TimelineMessage};
 use crate::domain::timeline::JumpTarget;
 
 pub(super) struct TimelineItems {
@@ -86,9 +86,9 @@ impl TimelineItems {
         values: Vec<Arc<TimelineItem>>,
         ctx: &TimelineContext<'_>,
     ) -> Vec<TimelineMessage> {
-        let messages = self.convert_and_store(&values, ctx);
-        self.items.extend(values);
-        messages
+        let first = self.messages.len();
+        self.store(values, ctx);
+        self.messages_from(first).cloned().collect()
     }
 
     pub(super) fn reset(
@@ -97,7 +97,43 @@ impl TimelineItems {
         ctx: &TimelineContext<'_>,
     ) -> Vec<TimelineMessage> {
         self.clear();
-        self.append(values, ctx)
+        self.store(values, ctx);
+        self.stamp_read_by(ctx.own_user_id, |_, _| {});
+        self.messages_from(0).cloned().collect()
+    }
+
+    pub(super) fn restamp_read_by(
+        &mut self,
+        own_user_id: Option<&str>,
+    ) -> Vec<(usize, TimelineMessage)> {
+        let mut changed = Vec::new();
+        self.stamp_read_by(own_user_id, |row, message| {
+            changed.push((row, message.clone()));
+        });
+        changed
+    }
+
+    fn stamp_read_by(
+        &mut self,
+        own_user_id: Option<&str>,
+        mut on_change: impl FnMut(usize, &TimelineMessage),
+    ) {
+        let Self { items, messages } = self;
+        let mut scan = ReadScan::excluding(own_user_id);
+        let mut row = messages.iter().flatten().count();
+        for (item, slot) in items.iter().zip(messages.iter_mut()).rev() {
+            if let Some(event) = item.as_event() {
+                scan.observe(event.read_receipts().keys().map(|user_id| user_id.as_str()));
+            }
+            let Some(message) = slot else {
+                continue;
+            };
+            row = row.saturating_sub(1);
+            if message.tracks_readers() && !scan.describes(&message.read_by, &message.sender) {
+                message.read_by = scan.read_by(&message.sender);
+                on_change(row, message);
+            }
+        }
     }
 
     pub(super) fn clear(&mut self) {
@@ -150,9 +186,10 @@ impl TimelineItems {
         if let Some(slot) = self.items.get_mut(index) {
             *slot = Arc::clone(value);
         }
-        self.messages
-            .get_mut(index)
-            .and_then(|slot| mem::replace(slot, message))
+        self.messages.get_mut(index).and_then(|slot| {
+            let message = message.map(|message| carrying_read_by(message, slot.as_ref()));
+            mem::replace(slot, message)
+        })
     }
 
     pub(super) fn reconvert(
@@ -161,9 +198,11 @@ impl TimelineItems {
         ctx: &TimelineContext<'_>,
     ) -> Option<TimelineMessage> {
         let message = convert_timeline_item(self.items.get(raw_index)?, ctx)?;
-        if let Some(slot) = self.messages.get_mut(raw_index) {
-            *slot = Some(message.clone());
-        }
+        let Some(slot) = self.messages.get_mut(raw_index) else {
+            return Some(message);
+        };
+        let message = carrying_read_by(message, slot.as_ref());
+        *slot = Some(message.clone());
         Some(message)
     }
 
@@ -177,20 +216,22 @@ impl TimelineItems {
         self.messages.truncate(length);
     }
 
-    fn convert_and_store(
-        &mut self,
-        values: &[Arc<TimelineItem>],
-        ctx: &TimelineContext<'_>,
-    ) -> Vec<TimelineMessage> {
-        let mut messages = Vec::with_capacity(values.len());
-        self.messages.reserve(values.len());
-        for item in values {
-            let message = convert_timeline_item(item, ctx);
-            if let Some(message) = &message {
-                messages.push(message.clone());
-            }
-            self.messages.push(message);
-        }
-        messages
+    fn store(&mut self, values: Vec<Arc<TimelineItem>>, ctx: &TimelineContext<'_>) {
+        self.messages
+            .extend(values.iter().map(|item| convert_timeline_item(item, ctx)));
+        self.items.extend(values);
+    }
+}
+
+fn carrying_read_by(
+    message: TimelineMessage,
+    previous: Option<&TimelineMessage>,
+) -> TimelineMessage {
+    match previous {
+        Some(previous) if previous.unique_id == message.unique_id => TimelineMessage {
+            read_by: previous.read_by.clone(),
+            ..message
+        },
+        _ => message,
     }
 }

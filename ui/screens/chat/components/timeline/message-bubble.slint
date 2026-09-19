@@ -10,6 +10,7 @@ import { ReplyQuote } from "../reply-quote.slint";
 import { ServiceMessage } from "./messages/service-message.slint";
 import { UnreadDivider } from "./messages/unread-divider.slint";
 import { MessageBody, MessageShape } from "./message-body.slint";
+import { DeliveryMark, ReaderCount, Readers } from "./delivery-mark.slint";
 import { ReactionRow } from "./reaction-row.slint";
 import { RowActions } from "./row-actions.slint";
 import { SendFailedRow } from "./send-failed-row.slint";
@@ -25,7 +26,7 @@ import {
 import { Actions } from "../../../../actions.slint";
 import { RoomView } from "../../../../views.slint";
 import { AppStyle, Avatars, Fonts, Glyph, IconSize, Metrics, Motion, Opacity, Radius, Size, Space, Stroke } from "../../../../theme.slint";
-import { MessageKind, SendState } from "../../../../enums.slint";
+import { Delivery, MessageKind, SendState } from "../../../../enums.slint";
 
 component BubbleReactions inherits ReactionRow {
     in property <string> event-id;
@@ -104,6 +105,7 @@ export component MessageBubble inherits VerticalLayout {
 
     if is-service: ServiceMessage {
         msg: root.msg;
+        timeline-row: root.timeline-row;
     }
 
     if !is-service: message-row := Rectangle {
@@ -248,6 +250,7 @@ export component MessageBubble inherits VerticalLayout {
 
                         MessageBody {
                             msg: root.msg;
+                            timeline-row: root.timeline-row;
                             frame-limit: root.bubble-max-width;
                             hovered: actions.hovered;
                         }
@@ -286,12 +289,27 @@ export component MessageBubble inherits VerticalLayout {
                                     stroke: AppStyle.overlay-foreground-muted;
                                 }
 
+                                if Readers.counted(msg): ReaderCount {
+                                    y: (parent.height - self.height) / 2;
+                                    msg: root.msg;
+                                    timeline-row: root.timeline-row;
+                                    tint: AppStyle.overlay-foreground-muted;
+                                }
+
                                 Text {
                                     text: msg.timestamp;
                                     font-size: Fonts.body-small;
                                     color: AppStyle.overlay-foreground-muted;
                                     horizontal-alignment: right;
                                     vertical-alignment: center;
+                                }
+
+                                if msg.delivery != Delivery.none && msg.delivery != Delivery.seen: DeliveryMark {
+                                    y: (parent.height - self.height) / 2;
+                                    msg: root.msg;
+                                    timeline-row: root.timeline-row;
+                                    tint: AppStyle.overlay-foreground-muted;
+                                    counted: Readers.counted(msg);
                                 }
                             }
                         }

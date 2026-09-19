@@ -33,6 +33,7 @@ export global MessageShape {
 
 export component MessageBody inherits VerticalLayout {
     in property <MessageEntry> msg;
+    in property <int> timeline-row;
     in property <length> frame-limit;
     in property <bool> hovered;
 
@@ -42,6 +43,7 @@ export component MessageBody inherits VerticalLayout {
 
     if root.has-photo && root.kind == MessageKind.image: ImageMessage {
         msg: root.msg;
+        timeline-row: root.timeline-row;
         frame-limit: root.frame-limit;
         show-timestamp: MessageShape.is-photo-only(root.msg);
         bubble-hovered: root.hovered;
@@ -49,6 +51,7 @@ export component MessageBody inherits VerticalLayout {
 
     if root.has-photo && root.kind == MessageKind.video: VideoMessage {
         msg: root.msg;
+        timeline-row: root.timeline-row;
         frame-limit: root.frame-limit;
         show-timestamp: MessageShape.is-photo-only(root.msg);
         bubble-hovered: root.hovered;

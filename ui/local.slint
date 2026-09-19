@@ -1,4 +1,4 @@
-import { LoginPhase } from "enums.slint";
+import { Delivery, LoginPhase } from "enums.slint";
 import { AttachmentView, LoginView, RoomView, VerificationView, VideoView } from "views.slint";
 import { MessageEntry, ReactionEntry } from "screens/chat/components/types.slint";
 
@@ -64,6 +64,45 @@ export global Shell {
         self.nav-open = false;
         self.picker-open = false;
         self.attach-open = false;
+    }
+}
+
+export global DeliveryTip {
+    in-out property <string> key;
+    in-out property <bool> on-counter;
+    in-out property <ReactionAnchor> anchor: { row: -1 };
+
+    out property <MessageEntry> target: (root.anchor.row >= 0
+        && root.anchor.row < RoomView.timeline.length)
+        ? RoomView.timeline[root.anchor.row]
+        : { };
+    out property <bool> names-readers: root.target.delivery == Delivery.read
+        || root.target.delivery == Delivery.seen;
+    out property <bool> showing: root.key != ""
+        && root.target.unique-id == root.key
+        && (root.on-counter ? root.names-readers : root.target.delivery != Delivery.none);
+
+    public function show(key: string, a: ReactionAnchor, on-counter: bool) {
+        self.key = key;
+        self.anchor = a;
+        self.on-counter = on-counter;
+    }
+
+    public function follow(key: string, a: ReactionAnchor, on-counter: bool) {
+        if (self.key == key && self.on-counter == on-counter) {
+            self.anchor = a;
+        }
+    }
+
+    public function hide(key: string, on-counter: bool) {
+        if (self.key == key && self.on-counter == on-counter) {
+            self.clear();
+        }
+    }
+
+    public function clear() {
+        self.key = "";
+        self.anchor = { row: -1 };
     }
 }
 

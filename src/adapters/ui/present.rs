@@ -6,10 +6,14 @@ use std::time::Duration;
 use chrono::{Locale, Timelike};
 use pure_rust_locales::locale_match;
 
-use super::schema::{define_ui_enum, message_kinds, service_kinds, verification_phases};
+use super::schema::{
+    define_ui_enum, deliveries, message_kinds, service_kinds, verification_phases,
+};
 use crate::commands::messages::{UserMessage, UserMessageKind};
 use crate::domain::media::{AudioKind, AudioMeta, Waveform};
-use crate::domain::message::{MessageBody, Reactor, ServiceEvent, TimelineMessage};
+use crate::domain::message::{
+    MessageBody, Reactor, ReadBy, SendState, ServiceEvent, TimelineMessage,
+};
 use crate::domain::verification::VerificationCancellation;
 use crate::locale::{self, LocaleRequest};
 
@@ -77,7 +81,7 @@ fn truncate_chars(text: &str, max: usize) -> &str {
 }
 
 const REACTION_KEY_MAX_LEN: usize = 12;
-const REACTORS_SHOWN: usize = 6;
+const NAMES_SHOWN: usize = 6;
 
 pub fn reaction_key_label(key: &str) -> String {
     let short = truncate_chars(key, REACTION_KEY_MAX_LEN);
@@ -105,12 +109,19 @@ pub fn user_localpart(user_id: &str) -> &str {
 }
 
 pub fn reactor_labels(senders: &[Reactor]) -> (String, usize) {
-    let shown: Vec<&str> = senders
-        .iter()
-        .take(REACTORS_SHOWN)
-        .map(|reactor| user_localpart(&reactor.user_id))
-        .collect();
-    let hidden = senders.len().saturating_sub(shown.len());
+    named_localparts(
+        senders.iter().map(|reactor| reactor.user_id.as_str()),
+        senders.len(),
+    )
+}
+
+pub fn reader_labels(read_by: &ReadBy) -> (String, usize) {
+    named_localparts(read_by.named.iter().map(String::as_str), read_by.total)
+}
+
+fn named_localparts<'a>(user_ids: impl Iterator<Item = &'a str>, total: usize) -> (String, usize) {
+    let shown: Vec<&str> = user_ids.take(NAMES_SHOWN).map(user_localpart).collect();
+    let hidden = total.saturating_sub(shown.len());
     (shown.join(", "), hidden)
 }
 
@@ -174,6 +185,18 @@ thread_local! {
 
 const SECONDS_PER_MINUTE: u64 = 60;
 const SECONDS_PER_HOUR: u64 = 60 * SECONDS_PER_MINUTE;
+
+pub fn message_sent_at_label(timestamp: u64) -> String {
+    let Some(local) = to_local(timestamp) else {
+        return String::new();
+    };
+    let locale = active_locale();
+    format!(
+        "{}, {}",
+        local.format_localized("%x", locale),
+        short_time(&local, locale)
+    )
+}
 
 pub fn duration_label(duration: Duration) -> String {
     let total = duration.as_secs();
@@ -287,6 +310,24 @@ pub fn message_kind(body: &MessageBody) -> MessageKind {
 }
 
 service_kinds!(define_ui_enum ServiceKind;);
+
+deliveries!(define_ui_enum Delivery;);
+
+pub fn delivery(message: &TimelineMessage) -> Delivery {
+    if !message.is_own {
+        return if message.read_by.is_read() {
+            Delivery::Seen
+        } else {
+            Delivery::None
+        };
+    }
+    match message.send_state {
+        SendState::Sending | SendState::Uploading { .. } => Delivery::Pending,
+        SendState::Failed => Delivery::Failed,
+        SendState::Sent if message.read_by.is_read() => Delivery::Read,
+        SendState::Sent => Delivery::Sent,
+    }
+}
 
 pub fn service_kind(event: &ServiceEvent) -> ServiceKind {
     match event {

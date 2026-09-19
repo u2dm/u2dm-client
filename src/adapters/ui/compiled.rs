@@ -20,17 +20,17 @@ use super::fields::{
     MessageFields, ReactionFields, ReactorFields, RoomFields, SpaceFields, StickerCellFields,
     StickerPackFields, StickerRowFields,
 };
-use super::present::{MessageKind, ServiceKind, VerifyStep};
+use super::present::{Delivery, MessageKind, ServiceKind, VerifyStep};
 #[cfg(feature = "demo")]
 use super::props::EnumProp;
 use super::props::{BoolProp, IntProp, StringProp, UiProps};
 use super::schema::{
-    attachment_kinds, audio_kinds, bool_props, connection_states, enum_props, int_props,
-    login_activities, login_methods, login_phases, media_failures, media_states, message_fields,
-    message_kinds, model_props, preview_kinds, reaction_fields, reaction_sends, reactor_fields,
-    room_fields, send_states, service_kinds, simple_callbacks, space_fields, sticker_cell_fields,
-    sticker_pack_fields, sticker_row_fields, string_props, timeline_states, user_message_kinds,
-    verification_activities, verification_phases,
+    attachment_kinds, audio_kinds, bool_props, connection_states, deliveries, enum_props,
+    int_props, login_activities, login_methods, login_phases, media_failures, media_states,
+    message_fields, message_kinds, model_props, preview_kinds, reaction_fields, reaction_sends,
+    reactor_fields, room_fields, send_states, service_kinds, simple_callbacks, space_fields,
+    sticker_cell_fields, sticker_pack_fields, sticker_row_fields, string_props, timeline_states,
+    user_message_kinds, verification_activities, verification_phases,
 };
 use super::session::active_models;
 use super::video::{self, millis_to_duration};
@@ -57,8 +57,8 @@ mod generated {
 use generated::Probe;
 use generated::{
     Actions, AppWindow, AttachmentKind as UiAttachmentKind, AttachmentView,
-    AudioKind as UiAudioKind, AudioView, ConnectionState, DirectoryView, EmojiEntry, EmojiGroup,
-    EmojiInsert, EmojiStore, LoginActivity as UiLoginActivity,
+    AudioKind as UiAudioKind, AudioView, ConnectionState, Delivery as UiDelivery, DirectoryView,
+    EmojiEntry, EmojiGroup, EmojiInsert, EmojiStore, LoginActivity as UiLoginActivity,
     LoginMethodKind as UiLoginMethodKind, LoginPhase, LoginView, MediaFailure as UiMediaFailure,
     MediaState as UiMediaState, MessageEntry, MessageKind as UiMessageKind,
     PreviewKind as UiPreviewKind, ReactionEntry, ReactionSend as UiReactionSend, ReactorAvatar,
@@ -269,6 +269,7 @@ user_message_kinds!(impl_slint_enum UserMessageKind UiUserMessageKind;);
 media_states!(impl_slint_enum MediaState UiMediaState;);
 send_states!(impl_slint_enum SendState UiSendState;);
 reaction_sends!(impl_slint_enum ReactionSend UiReactionSend;);
+deliveries!(impl_slint_enum Delivery UiDelivery;);
 media_failures!(impl_slint_enum MediaFailureKind UiMediaFailure;);
 message_kinds!(impl_slint_enum MessageKind UiMessageKind;);
 attachment_kinds!(impl_slint_enum AttachmentKind UiAttachmentKind;);

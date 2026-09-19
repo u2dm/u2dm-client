@@ -26,17 +26,17 @@ use super::fields::{
     MessageFields, ReactionFields, ReactorFields, RoomFields, SpaceFields, StickerCellFields,
     StickerPackFields, StickerRowFields,
 };
-use super::present::{MessageKind, ServiceKind, VerifyStep};
+use super::present::{Delivery, MessageKind, ServiceKind, VerifyStep};
 #[cfg(feature = "demo")]
 use super::props::EnumProp;
 use super::props::{BoolProp, IntProp, StringProp, UiProps};
 use super::schema::{
-    attachment_kinds, audio_kinds, connection_states, enum_props, login_activities, login_methods,
-    login_phases, media_failures, media_states, message_fields, message_kinds, model_props,
-    preview_kinds, reaction_fields, reaction_sends, reactor_fields, room_fields, send_states,
-    service_kinds, simple_callbacks, space_fields, sticker_cell_fields, sticker_pack_fields,
-    sticker_row_fields, timeline_states, user_message_kinds, verification_activities,
-    verification_phases,
+    attachment_kinds, audio_kinds, connection_states, deliveries, enum_props, login_activities,
+    login_methods, login_phases, media_failures, media_states, message_fields, message_kinds,
+    model_props, preview_kinds, reaction_fields, reaction_sends, reactor_fields, room_fields,
+    send_states, service_kinds, simple_callbacks, space_fields, sticker_cell_fields,
+    sticker_pack_fields, sticker_row_fields, timeline_states, user_message_kinds,
+    verification_activities, verification_phases,
 };
 use super::session::active_models;
 use super::video::{self, millis_to_duration};
@@ -163,6 +163,7 @@ user_message_kinds!(impl_slint_enum UserMessageKind "UserMessageKind";);
 media_states!(impl_slint_enum MediaState "MediaState";);
 send_states!(impl_slint_enum SendState "SendState";);
 reaction_sends!(impl_slint_enum ReactionSend "ReactionSend";);
+deliveries!(impl_slint_enum Delivery "Delivery";);
 media_failures!(impl_slint_enum MediaFailureKind "MediaFailure";);
 message_kinds!(impl_slint_enum MessageKind "MessageKind";);
 attachment_kinds!(impl_slint_enum AttachmentKind "AttachmentKind";);

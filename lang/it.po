@@ -125,112 +125,112 @@ msgctxt "UtdMessage"
 msgid "Unable to decrypt message"
 msgstr "Impossibile decifrare il messaggio"
 
-#: ui/screens/chat/components/timeline/messages/service-message.slint:9
+#: ui/screens/chat/components/timeline/messages/service-message.slint:10
 msgctxt "ServiceLabel"
 msgid "{} joined the room"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/messages/service-message.slint:12
+#: ui/screens/chat/components/timeline/messages/service-message.slint:13
 msgctxt "ServiceLabel"
 msgid "{} left the room"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/messages/service-message.slint:15
+#: ui/screens/chat/components/timeline/messages/service-message.slint:16
 msgctxt "ServiceLabel"
 msgid "{} invited {}"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/messages/service-message.slint:18
+#: ui/screens/chat/components/timeline/messages/service-message.slint:19
 msgctxt "ServiceLabel"
 msgid "{} accepted the invitation"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/messages/service-message.slint:21
+#: ui/screens/chat/components/timeline/messages/service-message.slint:22
 msgctxt "ServiceLabel"
 msgid "{} rejected the invitation"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/messages/service-message.slint:24
+#: ui/screens/chat/components/timeline/messages/service-message.slint:25
 msgctxt "ServiceLabel"
 msgid "{} revoked the invitation for {}"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/messages/service-message.slint:27
+#: ui/screens/chat/components/timeline/messages/service-message.slint:28
 msgctxt "ServiceLabel"
 msgid "{} removed {}"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/messages/service-message.slint:30
+#: ui/screens/chat/components/timeline/messages/service-message.slint:31
 msgctxt "ServiceLabel"
 msgid "{} banned {}"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/messages/service-message.slint:33
+#: ui/screens/chat/components/timeline/messages/service-message.slint:34
 msgctxt "ServiceLabel"
 msgid "{} unbanned {}"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/messages/service-message.slint:36
+#: ui/screens/chat/components/timeline/messages/service-message.slint:37
 msgctxt "ServiceLabel"
 msgid "{} requested to join"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/messages/service-message.slint:39
+#: ui/screens/chat/components/timeline/messages/service-message.slint:40
 msgctxt "ServiceLabel"
 msgid "{} allowed {} to join"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/messages/service-message.slint:42
+#: ui/screens/chat/components/timeline/messages/service-message.slint:43
 msgctxt "ServiceLabel"
 msgid "{} set their name to {}"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/messages/service-message.slint:45
+#: ui/screens/chat/components/timeline/messages/service-message.slint:46
 msgctxt "ServiceLabel"
 msgid "{} changed their name to {}"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/messages/service-message.slint:48
+#: ui/screens/chat/components/timeline/messages/service-message.slint:49
 msgctxt "ServiceLabel"
 msgid "{} removed their name"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/messages/service-message.slint:51
+#: ui/screens/chat/components/timeline/messages/service-message.slint:52
 msgctxt "ServiceLabel"
 msgid "{} changed their avatar"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/messages/service-message.slint:54
+#: ui/screens/chat/components/timeline/messages/service-message.slint:55
 msgctxt "ServiceLabel"
 msgid "{} changed the room name to {}"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/messages/service-message.slint:57
+#: ui/screens/chat/components/timeline/messages/service-message.slint:58
 msgctxt "ServiceLabel"
 msgid "{} changed the room topic"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/messages/service-message.slint:60
+#: ui/screens/chat/components/timeline/messages/service-message.slint:61
 msgctxt "ServiceLabel"
 msgid "{} changed the room avatar"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/messages/service-message.slint:63
+#: ui/screens/chat/components/timeline/messages/service-message.slint:64
 msgctxt "ServiceLabel"
 msgid "{} created the room"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/messages/service-message.slint:66
+#: ui/screens/chat/components/timeline/messages/service-message.slint:67
 msgctxt "ServiceLabel"
 msgid "{} enabled end-to-end encryption"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/messages/service-message.slint:69
+#: ui/screens/chat/components/timeline/messages/service-message.slint:70
 msgctxt "ServiceLabel"
 msgid "{} started a call"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/messages/service-message.slint:72
+#: ui/screens/chat/components/timeline/messages/service-message.slint:73
 msgctxt "ServiceLabel"
 msgid "{} is calling"
 msgstr ""
@@ -240,37 +240,37 @@ msgctxt "UnsupportedMessage"
 msgid "Unsupported message type: {}"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/messages/image-message.slint:64
+#: ui/screens/chat/components/timeline/messages/image-message.slint:66
 msgctxt "ImageMessage"
 msgid "Open image: {}"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/messages/image-message.slint:64
+#: ui/screens/chat/components/timeline/messages/image-message.slint:66
 msgctxt "ImageMessage"
 msgid "Open image"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/messages/image-message.slint:117
+#: ui/screens/chat/components/timeline/messages/image-message.slint:119
 msgctxt "ImageMessage"
 msgid "Image unavailable"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/messages/image-message.slint:149
+#: ui/screens/chat/components/timeline/messages/image-message.slint:151
 msgctxt "ImageMessage"
 msgid "Try opening this image in another application"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/messages/image-message.slint:161
+#: ui/screens/chat/components/timeline/messages/image-message.slint:163
 msgctxt "ImageMessage"
 msgid "Open externally"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/messages/image-message.slint:226
+#: ui/screens/chat/components/timeline/messages/image-message.slint:243
 msgctxt "ImagePlaceholder"
 msgid "Image: {}"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/messages/image-message.slint:226
+#: ui/screens/chat/components/timeline/messages/image-message.slint:243
 msgctxt "ImagePlaceholder"
 msgid "Image"
 msgstr ""
@@ -330,37 +330,37 @@ msgctxt "StickerMessage"
 msgid "Sticker"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/messages/video-message.slint:66
+#: ui/screens/chat/components/timeline/messages/video-message.slint:68
 msgctxt "VideoMessage"
 msgid "Play video: {}"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/messages/video-message.slint:66
+#: ui/screens/chat/components/timeline/messages/video-message.slint:68
 msgctxt "VideoMessage"
 msgid "Play video"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/messages/video-message.slint:138
+#: ui/screens/chat/components/timeline/messages/video-message.slint:140
 msgctxt "VideoMessage"
 msgid "Video preview unavailable"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/messages/video-message.slint:170
+#: ui/screens/chat/components/timeline/messages/video-message.slint:172
 msgctxt "VideoMessage"
 msgid "Try opening this video in another application"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/messages/video-message.slint:182
+#: ui/screens/chat/components/timeline/messages/video-message.slint:184
 msgctxt "VideoMessage"
 msgid "Open externally"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/messages/video-message.slint:265
+#: ui/screens/chat/components/timeline/messages/video-message.slint:282
 msgctxt "VideoPlaceholder"
 msgid "Video: {}"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/messages/video-message.slint:265
+#: ui/screens/chat/components/timeline/messages/video-message.slint:282
 msgctxt "VideoPlaceholder"
 msgid "Video"
 msgstr ""
@@ -400,12 +400,12 @@ msgctxt "StatusPill"
 msgid "Retry"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/reaction-overlay.slint:90
+#: ui/screens/chat/components/timeline/reaction-overlay.slint:110
 msgctxt "ReactionOverlay"
 msgid "React to a message"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/reaction-overlay.slint:115
+#: ui/screens/chat/components/timeline/reaction-overlay.slint:135
 msgctxt "ReactionOverlay"
 msgid "Everyone who reacted"
 msgstr ""
@@ -435,19 +435,19 @@ msgctxt "TimelineView"
 msgid "Couldn't load messages"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/timeline-view.slint:67
+#: ui/screens/chat/components/timeline/timeline-view.slint:68
 msgctxt "TimelineView"
 msgid "Select a room"
 msgstr "Seleziona una stanza"
 
-#: ui/screens/chat/components/timeline/timeline-view.slint:96
+#: ui/screens/chat/components/timeline/timeline-view.slint:97
 msgctxt "TimelineView"
 msgid "{n} member"
 msgid_plural "{n} members"
 msgstr[0] ""
 msgstr[1] ""
 
-#: ui/screens/chat/components/timeline/timeline-view.slint:121
+#: ui/screens/chat/components/timeline/timeline-view.slint:122
 msgctxt "TimelineView"
 msgid "Back to the room list"
 msgstr ""
@@ -848,7 +848,7 @@ msgctxt "SendFailedRow"
 msgid "Discard"
 msgstr ""
 
-#: ui/screens/chat/components/timeline/message-bubble.slint:229
+#: ui/screens/chat/components/timeline/message-bubble.slint:231
 msgctxt "MessageBubble"
 msgid "Go to the message this replies to"
 msgstr ""
@@ -1008,12 +1008,12 @@ msgctxt "SubspaceRail"
 msgid "All"
 msgstr ""
 
-#: ui/screens/chat/chat.slint:145
+#: ui/screens/chat/chat.slint:146
 msgctxt "ChatScreen"
 msgid "Sidebar width"
 msgstr ""
 
-#: ui/screens/chat/chat.slint:215
+#: ui/screens/chat/chat.slint:216
 msgctxt "ChatScreen"
 msgid "Dismiss"
 msgstr ""
@@ -1405,88 +1405,138 @@ msgctxt "UserMessages"
 msgid "The verification could not be completed."
 msgstr ""
 
-#: ui/messages.slint:170
+#: ui/messages.slint:169
+msgctxt "Deliveries"
+msgid "Sending"
+msgstr ""
+
+#: ui/messages.slint:172
+msgctxt "Deliveries"
+msgid "Sent"
+msgstr ""
+
+#: ui/messages.slint:176
+msgctxt "Deliveries"
+msgid "Read"
+msgstr ""
+
+#: ui/messages.slint:179
+msgctxt "Deliveries"
+msgid "Read by {} and {} more"
+msgstr ""
+
+#: ui/messages.slint:180
+msgctxt "Deliveries"
+msgid "Read by {}"
+msgstr ""
+
+#: ui/messages.slint:183
+msgctxt "Deliveries"
+msgid "Not sent"
+msgstr ""
+
+#: ui/messages.slint:192
+msgctxt "DeliveryStatus"
+msgid "Sending…"
+msgstr ""
+
+#: ui/messages.slint:195
+msgctxt "DeliveryStatus"
+msgid "Sent {}"
+msgstr ""
+
+#: ui/messages.slint:198
+msgctxt "DeliveryStatus"
+msgid "Read · sent {}"
+msgstr ""
+
+#: ui/messages.slint:201
+msgctxt "DeliveryStatus"
+msgid "Not sent"
+msgstr ""
+
+#: ui/messages.slint:211
 msgctxt "MediaFailures"
 msgid "This message carries no preview image."
 msgstr ""
 
-#: ui/messages.slint:171
+#: ui/messages.slint:212
 msgctxt "MediaFailures"
 msgid "This message carries no image to download."
 msgstr ""
 
-#: ui/messages.slint:174
+#: ui/messages.slint:215
 msgctxt "MediaFailures"
 msgid ""
 "The homeserver did not send it. It may be offline, or the file may be gone."
 msgstr ""
 
-#: ui/messages.slint:178
+#: ui/messages.slint:219
 msgctxt "MediaFailures"
 msgid "It is larger than the download limit for videos."
 msgstr ""
 
-#: ui/messages.slint:179
+#: ui/messages.slint:220
 msgctxt "MediaFailures"
 msgid "It is larger than the download limit for images."
 msgstr ""
 
-#: ui/messages.slint:182
+#: ui/messages.slint:223
 msgctxt "MediaFailures"
 msgid "It could not be written to the media cache on this device."
 msgstr ""
 
-#: ui/messages.slint:186
+#: ui/messages.slint:227
 msgctxt "MediaFailures"
 msgid "It downloaded, but could not be read as a video."
 msgstr ""
 
-#: ui/messages.slint:187
+#: ui/messages.slint:228
 msgctxt "MediaFailures"
 msgid "It downloaded, but could not be read as an image."
 msgstr ""
 
-#: ui/messages.slint:191
+#: ui/messages.slint:232
 msgctxt "MediaFailures"
 msgid "The preview image downloaded, but U2DM cannot display its format."
 msgstr ""
 
-#: ui/messages.slint:192
+#: ui/messages.slint:233
 msgctxt "MediaFailures"
 msgid "It downloaded, but U2DM cannot display this image format."
 msgstr ""
 
-#: ui/messages.slint:196
+#: ui/messages.slint:237
 msgctxt "MediaFailures"
 msgid "The preview image downloaded, but is too large to display here."
 msgstr ""
 
-#: ui/messages.slint:197
+#: ui/messages.slint:238
 msgctxt "MediaFailures"
 msgid "It downloaded, but is too large to display here."
 msgstr ""
 
-#: ui/messages.slint:201
+#: ui/messages.slint:242
 msgctxt "MediaFailures"
 msgid "The preview image downloaded, but is damaged or incomplete."
 msgstr ""
 
-#: ui/messages.slint:202
+#: ui/messages.slint:243
 msgctxt "MediaFailures"
 msgid "It downloaded, but the file is damaged or incomplete."
 msgstr ""
 
-#: ui/messages.slint:204
+#: ui/messages.slint:245
 msgctxt "MediaFailures"
 msgid "It could not be loaded."
 msgstr ""
 
-#: ui/messages.slint:214
+#: ui/messages.slint:255
 msgctxt "MediaFailures"
 msgid "{} · {}"
 msgstr ""
 
-#: ui/messages.slint:220
+#: ui/messages.slint:261
 msgctxt "MediaFailures"
 msgid "{}×{}"
 msgstr ""

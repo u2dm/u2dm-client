@@ -1,3 +1,4 @@
+use std::collections::BTreeSet;
 use std::hash::{DefaultHasher, Hash, Hasher};
 
 use crate::domain::media::{
@@ -198,6 +199,76 @@ impl Reaction {
     }
 }
 
+pub const READERS_NAMED: usize = 6;
+
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct ReadBy {
+    pub named: Vec<String>,
+    pub total: usize,
+}
+
+impl ReadBy {
+    pub fn is_read(&self) -> bool {
+        self.total > 0
+    }
+
+    pub fn hidden(&self) -> usize {
+        self.total.saturating_sub(self.named.len())
+    }
+}
+
+pub struct ReadScan<'own> {
+    own_user_id: Option<&'own str>,
+    readers: BTreeSet<String>,
+}
+
+impl<'own> ReadScan<'own> {
+    pub fn excluding(own_user_id: Option<&'own str>) -> Self {
+        Self {
+            own_user_id,
+            readers: BTreeSet::new(),
+        }
+    }
+
+    pub fn observe<'id>(&mut self, user_ids: impl IntoIterator<Item = &'id str>) {
+        for user_id in user_ids {
+            if Some(user_id) != self.own_user_id && !self.readers.contains(user_id) {
+                self.readers.insert(user_id.to_owned());
+            }
+        }
+    }
+
+    pub fn describes(&self, read_by: &ReadBy, sender: &str) -> bool {
+        read_by.total == self.total(sender)
+            && read_by
+                .named
+                .iter()
+                .map(String::as_str)
+                .eq(self.named(sender))
+    }
+
+    pub fn read_by(&self, sender: &str) -> ReadBy {
+        ReadBy {
+            named: self.named(sender).map(str::to_owned).collect(),
+            total: self.total(sender),
+        }
+    }
+
+    fn total(&self, sender: &str) -> usize {
+        self.readers
+            .len()
+            .saturating_sub(usize::from(self.readers.contains(sender)))
+    }
+
+    fn named<'a>(&'a self, sender: &'a str) -> impl Iterator<Item = &'a str> {
+        self.readers
+            .iter()
+            .map(String::as_str)
+            .filter(move |reader| *reader != sender)
+            .take(READERS_NAMED)
+    }
+}
+
 const PROGRESS_SCALE: u16 = 1000;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -242,9 +313,14 @@ pub struct TimelineMessage {
     pub is_first_unread: bool,
     pub send_state: SendState,
     pub reactions: Vec<Reaction>,
+    pub read_by: ReadBy,
 }
 
 impl TimelineMessage {
+    pub fn tracks_readers(&self) -> bool {
+        self.event_id.is_some()
+    }
+
     pub fn thumbnail_content(&self) -> Option<&ContentKey> {
         self.body.media()?.1.thumbnail.as_ref()
     }

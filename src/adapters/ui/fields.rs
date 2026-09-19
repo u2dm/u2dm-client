@@ -2,7 +2,7 @@ use slint::{Image, ModelRc, SharedString, StyledText};
 
 use super::backend::UiBackend;
 use super::dto::{MediaFailureKind, MediaState};
-use super::present::{MessageKind, ServiceKind};
+use super::present::{Delivery, MessageKind, ServiceKind};
 use super::schema::{
     message_fields, reaction_fields, reactor_fields, room_fields, space_fields,
     sticker_cell_fields, sticker_pack_fields, sticker_row_fields,

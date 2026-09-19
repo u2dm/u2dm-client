@@ -9,7 +9,9 @@ use crate::domain::auth::Session;
 use crate::domain::media::{
     AudioKind, AudioMeta, FileMeta, ImageMeta, OutgoingAttachment, VideoMeta,
 };
-use crate::domain::message::{MessageBody, ReplyInfo, RichText, SendState, TimelineMessage};
+use crate::domain::message::{
+    MessageBody, ReadBy, ReplyInfo, RichText, SendState, TimelineMessage,
+};
 use crate::domain::room::{Room, RoomId, Space};
 use crate::domain::sticker::{StickerImage, StickerPack};
 
@@ -112,6 +114,7 @@ pub fn messages(room_id: &RoomId) -> Vec<TimelineMessage> {
     }
     super::richtext::apply_scenario(&mut messages);
     super::reactions::apply_scenario(&mut messages);
+    super::receipts::apply_scenario(&mut messages);
     mark_first_unread(room_id, &mut messages);
     messages
 }
@@ -185,6 +188,7 @@ pub fn own_message(
         is_first_unread: false,
         send_state,
         reactions: Vec::new(),
+        read_by: ReadBy::default(),
     }
 }
 
@@ -223,6 +227,7 @@ pub fn own_sticker(
         is_first_unread: false,
         send_state: SendState::default(),
         reactions: Vec::new(),
+        read_by: ReadBy::default(),
     }
 }
 
@@ -307,6 +312,7 @@ pub fn own_attachment(
         is_first_unread: false,
         send_state: SendState::default(),
         reactions: Vec::new(),
+        read_by: ReadBy::default(),
     }
 }
 
@@ -382,6 +388,7 @@ fn synthesized_message(dto: &RoomDto, room: &Room) -> TimelineMessage {
         is_first_unread: false,
         send_state: SendState::default(),
         reactions: Vec::new(),
+        read_by: ReadBy::default(),
     }
 }
 

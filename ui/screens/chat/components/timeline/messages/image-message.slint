@@ -3,14 +3,16 @@ import { IconDisplay, IconSet } from "@lucide";
 import { MessageEntry } from "../../types.slint";
 import { ClickArea } from "../../../../../components/a11y.slint";
 import { Pill } from "../../../../../components/pill.slint";
-import { MediaFailure, MediaState, SendState } from "../../../../../enums.slint";
+import { Delivery, MediaFailure, MediaState, SendState } from "../../../../../enums.slint";
 import { MediaFailures } from "../../../../../messages.slint";
 import { AppStyle, Fonts, IconSize, Metrics, Motion, Radius, Size, Space, Weight } from "../../../../../theme.slint";
 import { Actions } from "../../../../../actions.slint";
 import { TextMessage } from "./text-message.slint";
+import { DeliveryMark, ReaderCount, Readers } from "../delivery-mark.slint";
 
 export component ImageMessage inherits VerticalLayout {
     in property <MessageEntry> msg;
+    in property <int> timeline-row;
     in property <length> frame-limit: Metrics.media-width-max;
     in property <bool> show-timestamp;
     in property <bool> bubble-hovered;
@@ -196,11 +198,26 @@ export component ImageMessage inherits VerticalLayout {
                         stroke: Palette.foreground;
                     }
 
+                    if Readers.counted(root.msg): ReaderCount {
+                        y: (parent.height - self.height) / 2;
+                        msg: root.msg;
+                        timeline-row: root.timeline-row;
+                        tint: Palette.foreground;
+                    }
+
                     Text {
                         text: root.msg.timestamp;
                         font-size: Fonts.body-small;
                         color: Palette.foreground;
                         vertical-alignment: center;
+                    }
+
+                    if root.msg.delivery != Delivery.none && root.msg.delivery != Delivery.seen: DeliveryMark {
+                        y: (parent.height - self.height) / 2;
+                        msg: root.msg;
+                        timeline-row: root.timeline-row;
+                        tint: Palette.foreground;
+                        counted: Readers.counted(root.msg);
                     }
                 }
             }

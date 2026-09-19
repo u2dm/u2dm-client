@@ -17,7 +17,7 @@ use tokio::sync::{Semaphore, mpsc};
 use tokio::task::JoinSet;
 
 use super::convert::event_media;
-use super::diff::diff_to_patch;
+use super::diff::{diff_to_patch, stamp_read_marks};
 use super::filter::TimelineItems;
 use super::reactors::{ReactorAvatars, Resolution, resolve_reactor_avatars};
 use super::{EnrichmentClaim, EnrichmentPool, TimelineContext};
@@ -214,6 +214,7 @@ fn process_diffs(
             batch.push(patch);
         }
     }
+    stamp_read_marks(items, &mut batch, ctx);
     let result = match batch.len() {
         0 => None,
         1 => Some(batch.remove(0)),
