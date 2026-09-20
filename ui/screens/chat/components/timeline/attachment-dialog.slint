@@ -164,6 +164,8 @@ export component AttachmentDialog inherits ModalHost {
 
     property <bool> as-document: false;
     property <string> caption: "";
+    property <bool> holds-reply: false;
+    property <string> held-reply: "";
 
     property <bool> shows-preview: (AttachmentView.kind == AttachmentKind.image
         || AttachmentView.kind == AttachmentKind.video)
@@ -188,17 +190,27 @@ export component AttachmentDialog inherits ModalHost {
     );
 
     function cancel() {
-        Actions.cancel-attachment();
+        if (!AttachmentView.sending) {
+            Actions.cancel-attachment();
+        }
+    }
+
+    function hold-reply() {
+        if (!root.holds-reply) {
+            root.holds-reply = true;
+            root.held-reply = Composer.reply-event-id;
+            Composer.clear();
+        }
     }
 
     function submit() {
+        root.hold-reply();
         Actions.send-attachment({
             room-id: DirectoryView.selected-room-id,
             caption: root.caption,
             as-document: root.as-document,
-            reply-to: Composer.reply-event-id,
+            reply-to: root.held-reply,
         });
-        Composer.clear();
     }
 
     scroll := ScrollView {

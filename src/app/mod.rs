@@ -547,8 +547,11 @@ impl AppService {
                 self.attachments
                     .adopt(*picked, self.selection.room.as_ref());
             }
-            AppEvent::AttachmentSettled { room_id, failure } => {
-                self.attachments.settle(&room_id, failure);
+            AppEvent::AttachmentSettled {
+                submission,
+                failure,
+            } => {
+                self.attachments.settle(submission, failure);
             }
             AppEvent::AudioFetched { request, outcome } => {
                 self.audio.fetched(request, outcome);

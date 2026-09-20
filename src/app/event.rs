@@ -19,6 +19,7 @@ pub(super) enum EndReason {
 }
 
 pub(super) struct AttachmentPicked {
+    pub(super) pick: u64,
     pub(super) room_id: RoomId,
     pub(super) outcome: Result<PickedAttachment, UserMessage>,
 }
@@ -35,7 +36,7 @@ pub(super) enum AppEvent {
     VerificationActionFailed(UserMessageKind),
     AttachmentPicked(Box<AttachmentPicked>),
     AttachmentSettled {
-        room_id: RoomId,
+        submission: u64,
         failure: Option<UserMessage>,
     },
     AudioFetched {

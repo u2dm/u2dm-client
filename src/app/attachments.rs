@@ -14,14 +14,34 @@ use crate::ports::media::MediaFilePort;
 use crate::ports::output::AppOutputPort;
 use crate::util::format_bytes;
 
+struct Draft {
+    pick: u64,
+    room_id: RoomId,
+    attachment: PickedAttachment,
+    submission: Option<u64>,
+}
+
+impl Draft {
+    fn is_sending(&self) -> bool {
+        self.submission.is_some()
+    }
+
+    fn accepts_send(&self, room_id: &RoomId) -> bool {
+        !self.is_sending() && &self.room_id == room_id
+    }
+
+    fn awaits(&self, submission: u64) -> bool {
+        self.submission == Some(submission)
+    }
+}
+
 pub(super) struct Attachments {
     media_files: Arc<dyn MediaFilePort>,
     output: Arc<dyn AppOutputPort>,
     events: EventSender,
-    pending: Option<PickedAttachment>,
-    pick: u64,
-    room_id: Option<RoomId>,
-    sending: bool,
+    draft: Option<Draft>,
+    picks: u64,
+    submissions: u64,
 }
 
 impl Attachments {
@@ -34,19 +54,20 @@ impl Attachments {
             media_files,
             output,
             events,
-            pending: None,
-            pick: 0,
-            room_id: None,
-            sending: false,
+            draft: None,
+            picks: 0,
+            submissions: 0,
         }
     }
 
-    pub(super) fn pick(&mut self, group: &mut TaskGroup, room_id: RoomId, pick: AttachmentPick) {
+    pub(super) fn pick(&mut self, group: &mut TaskGroup, room_id: RoomId, source: AttachmentPick) {
         self.clear();
+        self.picks = self.picks.saturating_add(1);
+        let pick = self.picks;
         let media_files = Arc::clone(&self.media_files);
         let events = self.events.clone();
         group.spawn(async move {
-            let outcome = match media_files.pick_attachment(pick).await {
+            let outcome = match media_files.pick_attachment(source).await {
                 Ok(None) => return,
                 Ok(Some(picked)) => Ok(picked),
                 Err(e) => {
@@ -56,6 +77,7 @@ impl Attachments {
             };
             if events
                 .send(AppEvent::AttachmentPicked(Box::new(AttachmentPicked {
+                    pick,
                     room_id,
                     outcome,
                 })))
@@ -67,21 +89,24 @@ impl Attachments {
     }
 
     pub(super) fn adopt(&mut self, picked: AttachmentPicked, selected: Option<&RoomId>) {
+        if picked.pick != self.picks {
+            tracing::debug!("dropping an attachment picked for a draft that was replaced");
+            return;
+        }
         if selected != Some(&picked.room_id) {
             tracing::debug!("dropping an attachment picked for a room that is no longer selected");
             return;
         }
         match picked.outcome {
             Ok(attachment) => {
-                self.pick = self.pick.saturating_add(1);
-                self.room_id = Some(picked.room_id);
-                self.publish(describe(
-                    &attachment,
-                    self.pick,
-                    false,
-                    UserMessage::default(),
-                ));
-                self.pending = Some(attachment);
+                let draft = Draft {
+                    pick: picked.pick,
+                    room_id: picked.room_id,
+                    attachment,
+                    submission: None,
+                };
+                self.publish(describe(&draft, UserMessage::default()));
+                self.draft = Some(draft);
             }
             Err(failure) => show_toast(self.output.as_ref(), Toast::Error(failure)),
         }
@@ -96,24 +121,25 @@ impl Attachments {
         as_document: bool,
         reply_to: Option<String>,
     ) {
-        if self.sending {
-            return;
-        }
-        let Some(picked) = self.pending.clone() else {
+        self.submissions = self.submissions.saturating_add(1);
+        let submission = self.submissions;
+        let Some(draft) = self
+            .draft
+            .as_mut()
+            .filter(|draft| draft.accepts_send(&room_id))
+        else {
             return;
         };
-        if self.room_id.as_ref() != Some(&room_id) {
-            return;
-        }
-        self.sending = true;
-        self.publish(describe(&picked, self.pick, true, UserMessage::default()));
-
+        draft.submission = Some(submission);
         let attachment = OutgoingAttachment {
-            picked,
+            picked: draft.attachment.clone(),
             caption: (!caption.is_empty()).then_some(caption),
             as_document,
             reply_to,
         };
+        let sending = describe(draft, UserMessage::default());
+        self.publish(sending);
+
         let events = self.events.clone();
         group.spawn(async move {
             let outcome = timeline.send_attachment(&room_id, &attachment).await;
@@ -125,7 +151,10 @@ impl Attachments {
                 }
             };
             if events
-                .send(AppEvent::AttachmentSettled { room_id, failure })
+                .send(AppEvent::AttachmentSettled {
+                    submission,
+                    failure,
+                })
                 .is_err()
             {
                 tracing::debug!("app event channel closed; dropping the attachment outcome");
@@ -133,27 +162,23 @@ impl Attachments {
         });
     }
 
-    pub(super) fn settle(&mut self, room_id: &RoomId, failure: Option<UserMessage>) {
-        if self.room_id.as_ref() != Some(room_id) {
+    pub(super) fn settle(&mut self, submission: u64, failure: Option<UserMessage>) {
+        let Some(draft) = self.draft.as_mut().filter(|draft| draft.awaits(submission)) else {
+            tracing::debug!("dropping the outcome of an abandoned attachment send");
             return;
+        };
+        draft.submission = None;
+        match failure {
+            Some(failure) => {
+                let failed = describe(draft, failure);
+                self.publish(failed);
+            }
+            None => self.clear(),
         }
-        self.sending = false;
-        let Some(failure) = failure else {
-            self.clear();
-            return;
-        };
-        let Some(picked) = self.pending.clone() else {
-            return;
-        };
-        self.publish(describe(&picked, self.pick, false, failure));
     }
 
     pub(super) fn clear(&mut self) {
-        let had_state = self.pending.is_some() || self.room_id.is_some();
-        self.pending = None;
-        self.room_id = None;
-        self.sending = false;
-        if had_state {
+        if self.draft.take().is_some() {
             self.publish(AttachmentView::default());
         }
     }
@@ -164,15 +189,11 @@ impl Attachments {
     }
 }
 
-fn describe(
-    picked: &PickedAttachment,
-    pick: u64,
-    sending: bool,
-    error: UserMessage,
-) -> AttachmentView {
+fn describe(draft: &Draft, error: UserMessage) -> AttachmentView {
+    let picked = &draft.attachment;
     let (width, height) = picked.dimensions.unwrap_or((0, 0));
     AttachmentView {
-        pick,
+        pick: draft.pick,
         visible: true,
         filename: picked.filename.clone(),
         mimetype: picked.mimetype.clone(),
@@ -182,7 +203,7 @@ fn describe(
         kind: attachment_kind(picked),
         duration: picked.duration,
         preview_path: picked.preview_path().cloned(),
-        sending,
+        sending: draft.is_sending(),
         error: error.kind,
         error_detail: error.detail,
     }
