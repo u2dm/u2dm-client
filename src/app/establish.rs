@@ -1,11 +1,53 @@
+use std::result;
 use std::sync::Arc;
 
-use super::{conclude, credentials};
+use super::conclude::{self, Closing};
+use super::credentials;
+use crate::commands::messages::{UserMessage, UserMessageKind};
 use crate::domain::account::AccountScope;
 use crate::domain::auth::Session;
 use crate::error::{AppError, Result};
 use crate::ports::matrix::{AuthPort, AuthenticatedSession, CleanupReport, StoreAdoption};
 use crate::ports::storage::{DisplacedCredentials, StoragePort, SupersededLogin};
+
+pub(super) type Establishing<T> = result::Result<T, LoginFailure>;
+
+pub(super) enum LoginFailure {
+    Rejected(AppError),
+    Unresolved(UserMessage),
+}
+
+impl From<AppError> for LoginFailure {
+    fn from(err: AppError) -> Self {
+        Self::Rejected(err)
+    }
+}
+
+pub(super) enum Rollback {
+    Complete(CleanupReport),
+    Unresolved(UserMessage),
+}
+
+impl Rollback {
+    fn unresolved(detail: &str) -> Self {
+        Self::Unresolved(UserMessage::about(
+            UserMessageKind::InterruptedLoginUnresolved,
+            &detail,
+        ))
+    }
+
+    fn into_failure(self, cause: AppError) -> LoginFailure {
+        match self {
+            Self::Complete(report) => {
+                LoginFailure::Rejected(also_failed_to_roll_back(cause, &report))
+            }
+            Self::Unresolved(message) => {
+                tracing::error!("the login that could not be undone had failed with: {cause}");
+                LoginFailure::Unresolved(message)
+            }
+        }
+    }
+}
 
 fn also_failed_to_roll_back(err: AppError, report: &CleanupReport) -> AppError {
     if report.is_clean() {
@@ -23,23 +65,23 @@ async fn finish_rollback(
     auth: &dyn AuthPort,
     storage: &dyn StoragePort,
     mut report: CleanupReport,
-) -> CleanupReport {
+) -> Rollback {
     let txn = adoption.transaction().to_owned();
     report.merge(adoption.unwind().await);
     if report.has_failures() {
-        tracing::warn!(
-            txn,
-            "the login was not fully undone, so its journal and staged credentials are kept for the next start"
-        );
-        return report;
+        return Rollback::unresolved(&format!(
+            "login {txn} could not be undone, so its journal and the credentials it staged are \
+             kept for the next start ({})",
+            report.summary()
+        ));
     }
-    if let Err(e) = conclude::close_rolled_back(auth, storage, &txn).await {
-        tracing::warn!(
-            txn,
-            "the undone login could not be recorded as rolled back, so the next start repeats the rollback: {e}"
-        );
+    match conclude::close_rolled_back(auth, storage, &txn).await {
+        Ok(Closing::Closed | Closing::CleanupPending) => Rollback::Complete(report),
+        Err(e) => Rollback::unresolved(&format!(
+            "login {txn} was undone, but that could not be recorded, so its staged credentials \
+             are still needed ({e})"
+        )),
     }
-    report
 }
 
 pub(super) struct EstablishedSession {
@@ -58,18 +100,18 @@ impl EstablishedSession {
         account: AccountScope,
         session: &Session,
         passphrase: &str,
-    ) -> Result<Self> {
+    ) -> Establishing<Self> {
         let displaced = match credentials::read_displaced(storage.as_ref(), &account).await {
             Ok(displaced) => displaced,
             Err(e) => {
-                let report = finish_rollback(
+                let rollback = finish_rollback(
                     adoption,
                     auth.as_ref(),
                     storage.as_ref(),
                     CleanupReport::default(),
                 )
                 .await;
-                return Err(also_failed_to_roll_back(e, &report));
+                return Err(rollback.into_failure(e));
             }
         };
 
@@ -84,8 +126,8 @@ impl EstablishedSession {
         match established.record(session, passphrase).await {
             Ok(()) => Ok(established),
             Err(e) => {
-                let report = established.roll_back().await;
-                Err(also_failed_to_roll_back(e, &report))
+                let rollback = established.roll_back().await;
+                Err(rollback.into_failure(e))
             }
         }
     }
@@ -103,7 +145,7 @@ impl EstablishedSession {
         authenticated
     }
 
-    pub(super) async fn roll_back(self) -> CleanupReport {
+    pub(super) async fn roll_back(self) -> Rollback {
         let Self {
             adoption,
             auth,
@@ -113,11 +155,11 @@ impl EstablishedSession {
         } = self;
 
         if let Err(e) = adoption.rolling_back().await {
-            let mut report = CleanupReport::default();
-            report.fail(format!(
-                "this login could not be marked for rollback, so it is left in place and the previous session is not restored ({e})"
+            return Rollback::unresolved(&format!(
+                "login {} could not be marked for rollback, so it is left in place and the \
+                 previous session is not restored ({e})",
+                adoption.transaction()
             ));
-            return report;
         }
 
         let restored = credentials::restore_displaced(storage.as_ref(), &account, &displaced).await;

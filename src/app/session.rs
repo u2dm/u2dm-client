@@ -5,7 +5,7 @@ use tokio::sync::mpsc;
 use tokio::time::{sleep, timeout};
 use tokio_util::sync::CancellationToken;
 
-use super::establish::EstablishedSession;
+use super::establish::{EstablishedSession, Establishing, LoginFailure};
 use super::event::{AppEvent, EndReason, SessionEvent};
 use super::input::EventSender;
 use super::recover::Recovery;
@@ -513,17 +513,14 @@ impl SessionTasks {
     ) {
         let outcome = match self.auth.login_password(creds).await {
             Ok(session) => self.establish_session(session, passphrase).await,
-            Err(e) => Err(e),
+            Err(e) => Err(e.into()),
         };
         match outcome {
             Ok(established) => self.send(SessionEvent::LoggedIn {
                 attempt,
                 established: Box::new(established),
             }),
-            Err(e) => {
-                tracing::warn!("password login failed: {e}");
-                self.reject(attempt, login_failure(&e));
-            }
+            Err(failure) => self.report_login_failure("password login", attempt, failure),
         }
     }
 
@@ -544,9 +541,18 @@ impl SessionTasks {
                 tracing::info!("OAuth login cancelled");
                 self.send(SessionEvent::AuthCancelled { attempt });
             }
-            Err(e) => {
-                tracing::warn!("OAuth login failed: {e}");
+            Err(failure) => self.report_login_failure("OAuth login", attempt, failure),
+        }
+    }
+
+    fn report_login_failure(&self, method: &str, attempt: u64, failure: LoginFailure) {
+        match failure {
+            LoginFailure::Rejected(e) => {
+                tracing::warn!("{method} failed: {e}");
                 self.reject(attempt, login_failure(&e));
+            }
+            LoginFailure::Unresolved(message) => {
+                self.send(SessionEvent::LoginUnresolved(message));
             }
         }
     }
@@ -556,7 +562,7 @@ impl SessionTasks {
         cancel: &CancellationToken,
         passphrase: Option<String>,
         attempt: u64,
-    ) -> Result<Option<EstablishedSession>> {
+    ) -> Establishing<Option<EstablishedSession>> {
         let Some(session) = self.cancellable_browser_sign_in(cancel, attempt).await? else {
             return Ok(None);
         };
@@ -595,7 +601,7 @@ impl SessionTasks {
         &self,
         session: Session,
         passphrase: Option<String>,
-    ) -> Result<EstablishedSession> {
+    ) -> Establishing<EstablishedSession> {
         let passphrase = passphrase.ok_or_else(|| {
             AppError::Other("No login store was prepared. Please start again.".into())
         })?;

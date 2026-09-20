@@ -24,7 +24,7 @@ use std::sync::Arc;
 use active_timeline::ActiveTimeline;
 use attachments::Attachments;
 use audio::AudioController;
-use establish::EstablishedSession;
+use establish::{EstablishedSession, Rollback};
 use event::{AppEvent, EndReason, SessionEvent, TimelineEvent};
 use input::{CommandSender, EventSender, Inbox, Input};
 use lifecycle::Lifecycle;
@@ -116,11 +116,16 @@ impl HeldSession {
     }
 }
 
-async fn undo_superseded_login(established: EstablishedSession) {
+async fn undo_superseded_login(established: EstablishedSession) -> Option<UserMessage> {
     tracing::info!("authentication superseded, undoing the login");
-    let report = established.roll_back().await;
-    if !report.is_clean() {
-        tracing::warn!("superseded login not fully undone: {}", report.summary());
+    match established.roll_back().await {
+        Rollback::Complete(report) => {
+            if !report.is_clean() {
+                tracing::warn!("superseded login not fully undone: {}", report.summary());
+            }
+            None
+        }
+        Rollback::Unresolved(message) => Some(message),
     }
 }
 
@@ -694,6 +699,7 @@ impl AppService {
                 attempt,
                 established,
             } => self.settle_login(attempt, *established).await,
+            SessionEvent::LoginUnresolved(message) => self.block_sign_in(message),
             SessionEvent::ErasingLocalState { session } => self.settle_erasure_start(session),
             SessionEvent::LocalStateCleared {
                 session,
@@ -794,8 +800,9 @@ impl AppService {
         self.session.finish_oauth();
         self.session.spend_pending_passphrase();
         if self.lifecycle.promote_to_syncing(attempt).is_none() {
-            undo_superseded_login(established).await;
-            if self.lifecycle.is_logged_out() {
+            if let Some(message) = undo_superseded_login(established).await {
+                self.block_sign_in(message);
+            } else if self.lifecycle.is_logged_out() {
                 self.session.set_activity(LoginActivity::Idle);
             }
             return;

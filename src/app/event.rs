@@ -135,6 +135,7 @@ pub(super) enum SessionEvent {
         attempt: u64,
         established: Box<EstablishedSession>,
     },
+    LoginUnresolved(UserMessage),
     Resumed {
         attempt: u64,
         capability: Box<AuthenticatedSession>,
@@ -164,6 +165,7 @@ impl SessionEvent {
             Self::AuthRejected { .. } => "AuthRejected",
             Self::AuthCancelled { .. } => "AuthCancelled",
             Self::LoggedIn { .. } => "LoggedIn",
+            Self::LoginUnresolved(_) => "LoginUnresolved",
             Self::Resumed { .. } => "Resumed",
             Self::ErasingLocalState { .. } => "ErasingLocalState",
             Self::LocalStateCleared { .. } => "LocalStateCleared",
