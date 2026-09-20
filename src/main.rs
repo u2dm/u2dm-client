@@ -125,7 +125,7 @@ fn run() -> Result<()> {
     configure_demo_audio();
 
     let enter_guard = rt.enter();
-    let backend = Backend::select(&cfg);
+    let backend = Backend::select(&cfg, rt.handle());
     let media_files = Arc::clone(&backend.media_files);
     let browser = Arc::clone(&backend.browser);
     let probe_view_rx = view_out_tx.subscribe();

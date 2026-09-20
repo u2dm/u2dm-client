@@ -1,5 +1,7 @@
 use std::sync::Arc;
 
+use tokio::runtime::Handle;
+
 use crate::adapters::browser::DesktopBrowser;
 #[cfg(feature = "demo")]
 use crate::adapters::demo;
@@ -21,8 +23,8 @@ pub struct Backend {
 }
 
 impl Backend {
-    pub fn select(cfg: &AppConfig) -> Self {
-        Self::demo().unwrap_or_else(|| Self::production(cfg))
+    pub fn select(cfg: &AppConfig, runtime: &Handle) -> Self {
+        Self::demo().unwrap_or_else(|| Self::production(cfg, runtime))
     }
 
     #[cfg(feature = "demo")]
@@ -44,12 +46,12 @@ impl Backend {
         None
     }
 
-    fn production(cfg: &AppConfig) -> Self {
+    fn production(cfg: &AppConfig, runtime: &Handle) -> Self {
         let adapter = MatrixAdapter::new(cfg.data_dir.clone(), cfg.cache_dir.clone());
         let media_cache = adapter.media_cache();
         Self {
             auth: Arc::new(adapter),
-            storage: Arc::new(SecureStorage::new(&cfg.data_dir)),
+            storage: Arc::new(SecureStorage::new(&cfg.data_dir, runtime)),
             media_cache,
             media_files: Arc::new(DesktopMediaFiles::new()),
             browser: Arc::new(DesktopBrowser::new()),
