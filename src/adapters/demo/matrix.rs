@@ -506,6 +506,9 @@ impl TimelinePort for DemoAuthed {
         if scenario.resolving_unread && focus.is_live() {
             drop(timeline_tx.send(TimelineUpdate::ResolvingUnread).await);
         }
+        if scenario.unread_boundary_is_unresolved && focus.is_live() {
+            drop(timeline_tx.send(TimelineUpdate::UnreadUnresolved).await);
+        }
         if scenario.reset_is_slow {
             sleep(timeline::SLOW_RESET_DELAY).await;
         }

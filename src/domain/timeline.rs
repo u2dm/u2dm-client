@@ -228,6 +228,7 @@ pub enum TimelineAdvance {
     Anchored {
         count: u32,
     },
+    UnreadUnresolved,
     Appended {
         total: u32,
         from_others: bool,
@@ -272,6 +273,7 @@ pub struct PaginationState {
 pub enum TimelineUpdate {
     Patch(Box<TimelinePatch>),
     ResolvingUnread,
+    UnreadUnresolved,
     Pagination {
         direction: PaginationDirection,
         outcome: PaginationOutcome,
@@ -298,6 +300,7 @@ impl TimelineUpdate {
         match self {
             Self::Patch(patch) => patch.label(),
             Self::ResolvingUnread => "ResolvingUnread",
+            Self::UnreadUnresolved => "UnreadUnresolved",
             Self::Pagination { .. } => "Pagination",
             Self::JumpOutcome { .. } => "JumpOutcome",
             Self::AudioLocated { .. } => "AudioLocated",

@@ -4,9 +4,7 @@ use std::sync::Arc;
 use futures_util::{Stream, StreamExt};
 use matrix_sdk::room::Receipts;
 use matrix_sdk::ruma::events::fully_read::FullyReadEventContent;
-use matrix_sdk::ruma::{
-    EventId, IdParseError, MilliSecondsSinceUnixEpoch, OwnedEventId, OwnedRoomId, UserId,
-};
+use matrix_sdk::ruma::{EventId, IdParseError, OwnedEventId, OwnedRoomId, UserId};
 use matrix_sdk::{Client, Room};
 use matrix_sdk_ui::eyeball_im::VectorDiff;
 use matrix_sdk_ui::timeline::{
@@ -482,26 +480,35 @@ async fn fully_read_marker(timeline: &Timeline) -> Option<OwnedEventId> {
 }
 
 #[derive(Debug)]
-struct ReadPosition {
-    event_id: OwnedEventId,
-    sent_at: Option<MilliSecondsSinceUnixEpoch>,
+enum UnreadBoundary {
+    FirstUnread(String),
+    CaughtUp,
+    Unresolved,
 }
 
-async fn read_boundary(timeline: &Timeline, own_user_id: Option<&UserId>) -> Option<ReadPosition> {
-    if let Some(user_id) = own_user_id
-        && let Some((event_id, receipt)) = timeline.latest_user_read_receipt(user_id).await
-    {
-        return Some(ReadPosition {
-            event_id,
-            sent_at: receipt.ts,
-        });
+impl UnreadBoundary {
+    fn first_unread(&self) -> Option<&str> {
+        match self {
+            Self::FirstUnread(event_id) => Some(event_id),
+            Self::CaughtUp | Self::Unresolved => None,
+        }
     }
-    fully_read_marker(timeline)
-        .await
-        .map(|event_id| ReadPosition {
-            event_id,
-            sent_at: None,
-        })
+
+    fn is_unresolved(&self) -> bool {
+        matches!(self, Self::Unresolved)
+    }
+}
+
+async fn acknowledged_event(
+    timeline: &Timeline,
+    own_user_id: Option<&UserId>,
+) -> Option<OwnedEventId> {
+    if let Some(user_id) = own_user_id
+        && let Some((event_id, _)) = timeline.latest_user_read_receipt(user_id).await
+    {
+        return Some(event_id);
+    }
+    fully_read_marker(timeline).await
 }
 
 fn event_id_of(item: &TimelineItem) -> Option<&EventId> {
@@ -512,27 +519,58 @@ fn contains_event(items: &[Arc<TimelineItem>], event_id: &EventId) -> bool {
     items.iter().any(|item| event_id_of(item) == Some(event_id))
 }
 
-fn first_unread_index(
+async fn locate_unread(
+    timeline: &Timeline,
     items: &[Arc<TimelineItem>],
-    boundary: Option<&ReadPosition>,
+    acknowledged: Option<&EventId>,
+    own_user_id: Option<&UserId>,
+) -> UnreadBoundary {
+    let Some(first_unread) = first_unread_index(timeline, items, acknowledged, own_user_id).await
+    else {
+        return match acknowledged {
+            Some(_) => UnreadBoundary::Unresolved,
+            None => UnreadBoundary::CaughtUp,
+        };
+    };
+    first_unread_event_id(items, first_unread, own_user_id)
+        .map_or(UnreadBoundary::CaughtUp, UnreadBoundary::FirstUnread)
+}
+
+async fn first_unread_index(
+    timeline: &Timeline,
+    items: &[Arc<TimelineItem>],
+    acknowledged: Option<&EventId>,
+    own_user_id: Option<&UserId>,
 ) -> Option<usize> {
-    let after_marker = items
-        .iter()
-        .rposition(|item| matches!(item.as_virtual(), Some(VirtualTimelineItem::ReadMarker)))
-        .map(|marker| marker.saturating_add(1));
-    let after_boundary = boundary.and_then(|boundary| first_unread_after(items, boundary));
-    match (after_marker, after_boundary) {
-        (Some(marker), Some(boundary)) => Some(marker.max(boundary)),
-        (marker, boundary) => marker.or(boundary),
+    let after_marker = row_after_read_marker(items);
+    let after_acknowledged =
+        row_after_acknowledged(timeline, items, acknowledged, own_user_id).await;
+    match (after_marker, after_acknowledged) {
+        (Some(marker), Some(acknowledged)) => Some(marker.max(acknowledged)),
+        (marker, acknowledged) => marker.or(acknowledged),
     }
 }
 
-fn first_unread_after(items: &[Arc<TimelineItem>], boundary: &ReadPosition) -> Option<usize> {
-    row_after_event(items, &boundary.event_id).or_else(|| {
-        boundary
-            .sent_at
-            .map(|sent_at| row_after_timestamp(items, sent_at))
-    })
+fn row_after_read_marker(items: &[Arc<TimelineItem>]) -> Option<usize> {
+    items
+        .iter()
+        .rposition(|item| matches!(item.as_virtual(), Some(VirtualTimelineItem::ReadMarker)))
+        .map(|marker| marker.saturating_add(1))
+}
+
+async fn row_after_acknowledged(
+    timeline: &Timeline,
+    items: &[Arc<TimelineItem>],
+    acknowledged: Option<&EventId>,
+    own_user_id: Option<&UserId>,
+) -> Option<usize> {
+    if let Some(row) = row_after_event(items, acknowledged?) {
+        return Some(row);
+    }
+    let shown_receipt = timeline
+        .latest_user_read_receipt_timeline_event_id(own_user_id?)
+        .await?;
+    row_after_event(items, &shown_receipt)
 }
 
 fn row_after_event(items: &[Arc<TimelineItem>], event_id: &EventId) -> Option<usize> {
@@ -542,22 +580,11 @@ fn row_after_event(items: &[Arc<TimelineItem>], event_id: &EventId) -> Option<us
         .map(|index| index.saturating_add(1))
 }
 
-fn row_after_timestamp(items: &[Arc<TimelineItem>], sent_at: MilliSecondsSinceUnixEpoch) -> usize {
-    items
-        .iter()
-        .rposition(|item| {
-            item.as_event()
-                .is_some_and(|event| event.timestamp() <= sent_at)
-        })
-        .map_or(0, |index| index.saturating_add(1))
-}
-
 fn first_unread_event_id(
     items: &[Arc<TimelineItem>],
-    boundary: Option<&ReadPosition>,
+    first_unread: usize,
     own_user_id: Option<&UserId>,
 ) -> Option<String> {
-    let first_unread = first_unread_index(items, boundary)?;
     items
         .get(first_unread..)?
         .iter()
@@ -569,7 +596,7 @@ fn first_unread_event_id(
 
 async fn paginate_to_read_boundary(
     timeline: &Timeline,
-    boundary: &ReadPosition,
+    boundary: &EventId,
     outcome: PaginationOutcome,
     timeline_tx: &mpsc::Sender<TimelineUpdate>,
 ) -> PaginationOutcome {
@@ -580,7 +607,7 @@ async fn paginate_to_read_boundary(
             return outcome;
         }
         let items: Vec<Arc<TimelineItem>> = timeline.items().await.into_iter().collect();
-        if contains_event(&items, &boundary.event_id) {
+        if contains_event(&items, boundary) {
             return outcome;
         }
         if !announced {
@@ -614,13 +641,14 @@ pub(crate) async fn subscribe_timeline(
 
     media.ensure_dirs().await;
 
-    let boundary = match focus {
-        TimelineFocus::Live => read_boundary(&timeline, client.user_id()).await,
+    let acknowledged = match focus {
+        TimelineFocus::Live => acknowledged_event(&timeline, client.user_id()).await,
         TimelineFocus::Event(_) => None,
     };
-    let backwards_outcome = match boundary.as_ref() {
-        Some(boundary) => {
-            paginate_to_read_boundary(&timeline, boundary, backwards_outcome, &timeline_tx).await
+    let backwards_outcome = match acknowledged.as_deref() {
+        Some(acknowledged) => {
+            paginate_to_read_boundary(&timeline, acknowledged, backwards_outcome, &timeline_tx)
+                .await
         }
         None => backwards_outcome,
     };
@@ -634,14 +662,23 @@ pub(crate) async fn subscribe_timeline(
     });
 
     let initial_items: Vec<Arc<TimelineItem>> = initial_items.into_iter().collect();
-    let first_unread = first_unread_event_id(&initial_items, boundary.as_ref(), client.user_id());
+    let unread = locate_unread(
+        &timeline,
+        &initial_items,
+        acknowledged.as_deref(),
+        client.user_id(),
+    )
+    .await;
     tracing::debug!(
-        ?boundary,
-        ?first_unread,
+        ?acknowledged,
+        ?unread,
         items = initial_items.len(),
         %room_id,
         "resolved the read position"
     );
+    if unread.is_unresolved() {
+        drop(timeline_tx.send(TimelineUpdate::UnreadUnresolved).await);
+    }
 
     let own_user_id = client.user_id().map(ToString::to_string);
     let enrich = EnrichmentPool::new();
@@ -652,7 +689,7 @@ pub(crate) async fn subscribe_timeline(
         pronouns,
         reactor_avatars: &reactor_avatars,
         own_user_id: own_user_id.as_deref(),
-        first_unread: first_unread.as_deref(),
+        first_unread: unread.first_unread(),
         timeline_tx: &timeline_tx,
         enrich: &enrich,
     };

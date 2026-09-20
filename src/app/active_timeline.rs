@@ -21,6 +21,12 @@ use crate::ports::output::AppOutputPort;
 
 const TIMELINE_CHANNEL_CAP: usize = 256;
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum ReadBoundary {
+    Resolved,
+    Unresolved,
+}
+
 pub(super) struct ActiveTimeline {
     events: EventSender,
     output: Arc<dyn AppOutputPort>,
@@ -34,6 +40,7 @@ pub(super) struct ActiveTimeline {
     live: bool,
     visibility: TimelineVisibility,
     receipt_withheld: bool,
+    read_boundary: ReadBoundary,
 }
 
 impl ActiveTimeline {
@@ -51,6 +58,7 @@ impl ActiveTimeline {
             live: true,
             visibility: TimelineVisibility::default(),
             receipt_withheld: false,
+            read_boundary: ReadBoundary::Resolved,
         }
     }
 
@@ -82,6 +90,7 @@ impl ActiveTimeline {
         self.new_messages = 0;
         self.live = live;
         self.receipt_withheld = false;
+        self.read_boundary = ReadBoundary::Resolved;
         self.emit_pagination_state();
 
         self.emit_reset(room_id.clone(), generation, live).await;
@@ -275,6 +284,9 @@ impl ActiveTimeline {
         }
         match advance {
             TimelineAdvance::Focused => self.at_bottom = false,
+            TimelineAdvance::UnreadUnresolved => {
+                self.read_boundary = ReadBoundary::Unresolved;
+            }
             TimelineAdvance::Anchored { count } => {
                 self.at_bottom = false;
                 self.add_new_messages(generation, count);
@@ -286,7 +298,7 @@ impl ActiveTimeline {
             } => {
                 if self.at_bottom {
                     if opens_room || from_others {
-                        self.mark_read();
+                        self.mark_read_if_resolved();
                     }
                 } else if total > 0 {
                     self.add_new_messages(generation, total);
@@ -355,7 +367,7 @@ impl ActiveTimeline {
         self.at_bottom = true;
         self.clear_new_messages(generation);
         self.emit_pagination_state();
-        self.mark_read();
+        self.mark_read_at_latest();
     }
 
     pub(super) fn scroll_position_changed(
@@ -379,7 +391,7 @@ impl ActiveTimeline {
         }
 
         if reached_bottom {
-            self.mark_read();
+            self.mark_read_at_latest();
         }
     }
 
@@ -389,6 +401,19 @@ impl ActiveTimeline {
         if self.receipt_withheld && self.at_bottom {
             self.mark_read();
         }
+    }
+
+    fn mark_read_if_resolved(&mut self) {
+        if self.read_boundary == ReadBoundary::Unresolved {
+            tracing::debug!("withholding the read receipt until the unread boundary resolves");
+            return;
+        }
+        self.mark_read();
+    }
+
+    fn mark_read_at_latest(&mut self) {
+        self.read_boundary = ReadBoundary::Resolved;
+        self.mark_read();
     }
 
     fn mark_read(&mut self) {
@@ -419,6 +444,7 @@ impl ActiveTimeline {
         self.new_messages = 0;
         self.live = true;
         self.receipt_withheld = false;
+        self.read_boundary = ReadBoundary::Resolved;
     }
 
     fn emit_pagination_state(&self) {
@@ -494,6 +520,9 @@ impl Forwarder {
             TimelineUpdate::Patch(patch) => self.forward_patch(patch).await,
             TimelineUpdate::ResolvingUnread => {
                 self.emit_status(TimelineStatus::LoadingUnread).await;
+            }
+            TimelineUpdate::UnreadUnresolved => {
+                self.send_advance(TimelineAdvance::UnreadUnresolved);
             }
             TimelineUpdate::JumpOutcome { event_id, target } => {
                 self.forward_jump(event_id, target).await;

@@ -136,6 +136,9 @@ fn repeated_history(messages: &[TimelineMessage]) -> Vec<TimelineMessage> {
 }
 
 fn unread_count(room_id: &RoomId, loaded: usize) -> usize {
+    if scenario().unread_boundary_is_unresolved {
+        return 0;
+    }
     if scenario().read_position_precedes_history {
         return loaded;
     }

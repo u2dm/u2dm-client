@@ -12,6 +12,7 @@ scenario_env() {
   case $1 in
     unread-anchor)   echo 'U2DM_DEMO_TIMELINE=deep,late-reset' ;;
     all-unread)      echo 'U2DM_DEMO_TIMELINE=deep,all-unread' ;;
+    unread-unresolved) echo 'U2DM_DEMO_TIMELINE=deep,unread-unresolved' ;;
     reactions-late)  echo 'U2DM_DEMO_TIMELINE=deep U2DM_DEMO_REACTIONS=late,overflow,crowd' ;;
     sticker-trickle) echo 'U2DM_DEMO_STICKERS=trickle,slow,encrypted' ;;
     jump-to-reply)   echo 'U2DM_DEMO_TIMELINE=deep,jump-far' ;;
@@ -28,7 +29,7 @@ scenario_env() {
 
 scenario_steps() {
   case $1 in
-    unread-anchor|reactions-late|jump-to-reply|compact-layout|all-unread)
+    unread-anchor|reactions-late|jump-to-reply|compact-layout|all-unread|unread-unresolved)
       echo '{"op":"select_room","room_id":"!rust:demo.local"}' ;;
     sticker-trickle)
       echo '{"op":"select_room","room_id":"!stickers:demo.local"}' ;;
@@ -57,7 +58,8 @@ scenario_steps() {
 scenario_note() {
   case $1 in
     unread-anchor)   echo 'deep history, a repeated Reset: anchor_index must equal the one first_unread row' ;;
-    all-unread)      echo 'read position older than everything loaded, so the anchor is row 0' ;;
+    all-unread)      echo 'every loaded message unread, so the anchor is the top row' ;;
+    unread-unresolved) echo 'the read position cannot be placed, so opening the room withholds the receipt' ;;
     reactions-late)  echo 'every chip arrives as a Set, with an overflow run and a crowd of reactors' ;;
     sticker-trickle) echo 'images arrive one batch at a time over a slow catalog, in an encrypted room' ;;
     jump-to-reply)   echo 'a short live window, so a reply quote must take the focused /context path' ;;
@@ -83,7 +85,7 @@ check_window() {
 }
 
 names() {
-  printf '%s\n' unread-anchor all-unread reactions-late sticker-trickle jump-to-reply \
+  printf '%s\n' unread-anchor all-unread unread-unresolved reactions-late sticker-trickle jump-to-reply \
     media-failures compact-layout login-oauth verify-self audio-track voice-notes delivery-marks
 }
 
