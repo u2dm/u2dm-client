@@ -24,15 +24,18 @@ use tokio::sync::{Mutex, RwLock};
 use self::media::MediaService;
 use self::session::authenticate;
 use self::store::{AdoptedStore, StoreLayout, StorePaths};
+use crate::adapters::instance::InstanceClaim;
 use crate::domain::account::AccountScope;
 use crate::domain::auth::{LoginCredentials, OAuthLoginData, ServerInfo, Session};
 use crate::error::{AppError, Result};
 use crate::ports::matrix::{
-    AuthPort, AuthenticatedSession, CleanupReport, InterruptedLogin, ProgressSink, StoreAdoption,
+    AuthPort, AuthenticatedSession, CleanupReport, InterruptedLogin, LocalDataOwnership,
+    ProgressSink, StoreAdoption,
 };
 use crate::ports::media::MediaCache;
 
 pub struct MatrixAdapter {
+    instance: InstanceClaim,
     layout: StoreLayout,
     client: RwLock<Option<Client>>,
     pending_store: Mutex<Option<StorePaths>>,
@@ -43,8 +46,10 @@ pub struct MatrixAdapter {
 
 impl MatrixAdapter {
     pub fn new(data_dir: PathBuf, cache_dir: PathBuf) -> Self {
+        let instance = InstanceClaim::take(&data_dir);
         let media = MediaService::new(&cache_dir);
         Self {
+            instance,
             layout: StoreLayout::new(data_dir, cache_dir),
             client: RwLock::new(None),
             pending_store: Mutex::new(None),
@@ -256,6 +261,10 @@ impl AuthPort for MatrixAdapter {
         let paths = self.layout.account(&account);
         let client = auth::open_session(&paths, session, passphrase, on_progress.as_ref()).await?;
         Ok(self.authenticate(client, session.clone(), account).await)
+    }
+
+    fn local_data_ownership(&self) -> LocalDataOwnership {
+        self.instance.ownership()
     }
 
     async fn interrupted_logins(&self) -> Result<Vec<InterruptedLogin>> {

@@ -1272,271 +1272,287 @@ msgstr ""
 
 #: ui/messages.slint:65
 msgctxt "UserMessages"
-msgid "Could not save the refreshed session."
+msgid ""
+"Another U2DM is already running and is using the local data, so this window "
+"will not touch it. Close the other U2DM and try again. ({})"
 msgstr ""
 
 #: ui/messages.slint:68
 msgctxt "UserMessages"
-msgid "Failed to send message"
+msgid ""
+"U2DM could not claim its local data for this window alone, so signing in is "
+"paused rather than risk two copies writing the same stores. Make sure no "
+"other U2DM is running and that its data directory is writable, then restart "
+"U2DM. ({})"
 msgstr ""
 
 #: ui/messages.slint:71
 msgctxt "UserMessages"
-msgid "Failed to load more messages"
+msgid "Could not save the refreshed session."
 msgstr ""
 
 #: ui/messages.slint:74
 msgctxt "UserMessages"
-msgid "That message could not be found"
+msgid "Failed to send message"
 msgstr ""
 
 #: ui/messages.slint:77
 msgctxt "UserMessages"
-msgid "That message can't be shown"
+msgid "Failed to load more messages"
 msgstr ""
 
 #: ui/messages.slint:80
 msgctxt "UserMessages"
-msgid "Failed to save space order"
+msgid "That message could not be found"
 msgstr ""
 
 #: ui/messages.slint:83
 msgctxt "UserMessages"
-msgid "Failed to download media"
+msgid "That message can't be shown"
 msgstr ""
 
 #: ui/messages.slint:86
 msgctxt "UserMessages"
-msgid "Failed to download file"
+msgid "Failed to save space order"
 msgstr ""
 
 #: ui/messages.slint:89
 msgctxt "UserMessages"
-msgid "Failed to open media"
+msgid "Failed to download media"
 msgstr ""
 
 #: ui/messages.slint:92
 msgctxt "UserMessages"
-msgid "That attachment isn't a viewable image"
+msgid "Failed to download file"
 msgstr ""
 
 #: ui/messages.slint:95
 msgctxt "UserMessages"
-msgid "That file could not be read"
+msgid "Failed to open media"
 msgstr ""
 
 #: ui/messages.slint:98
 msgctxt "UserMessages"
-msgid "That file is larger than this homeserver accepts (limit {})"
+msgid "That attachment isn't a viewable image"
 msgstr ""
 
 #: ui/messages.slint:101
 msgctxt "UserMessages"
-msgid "Failed to send attachment"
+msgid "That file could not be read"
 msgstr ""
 
 #: ui/messages.slint:104
 msgctxt "UserMessages"
-msgid "This video could not be played"
+msgid "That file is larger than this homeserver accepts (limit {})"
 msgstr ""
 
 #: ui/messages.slint:107
 msgctxt "UserMessages"
-msgid "This audio could not be played"
+msgid "Failed to send attachment"
 msgstr ""
 
 #: ui/messages.slint:110
 msgctxt "UserMessages"
-msgid "Failed to save file"
+msgid "This video could not be played"
 msgstr ""
 
 #: ui/messages.slint:113
 msgctxt "UserMessages"
-msgid "File saved to {}"
+msgid "This audio could not be played"
 msgstr ""
 
 #: ui/messages.slint:116
 msgctxt "UserMessages"
-msgid "Could not accept the request. Please try again."
+msgid "Failed to save file"
 msgstr ""
 
 #: ui/messages.slint:119
 msgctxt "UserMessages"
-msgid "Could not confirm the match. Please try again."
+msgid "File saved to {}"
 msgstr ""
 
 #: ui/messages.slint:122
 msgctxt "UserMessages"
-msgid "Could not decline the request. Please try again."
+msgid "Could not accept the request. Please try again."
 msgstr ""
 
 #: ui/messages.slint:125
 msgctxt "UserMessages"
-msgid "Nobody answered in time, so the request expired."
+msgid "Could not confirm the match. Please try again."
 msgstr ""
 
 #: ui/messages.slint:128
 msgctxt "UserMessages"
-msgid "Could not accept the verification. Please try again."
+msgid "Could not decline the request. Please try again."
 msgstr ""
 
 #: ui/messages.slint:131
 msgctxt "UserMessages"
-msgid "The other device cancelled the verification."
+msgid "Nobody answered in time, so the request expired."
 msgstr ""
 
 #: ui/messages.slint:134
 msgctxt "UserMessages"
-msgid "You declined the verification."
+msgid "Could not accept the verification. Please try again."
 msgstr ""
 
 #: ui/messages.slint:137
 msgctxt "UserMessages"
-msgid "The emoji did not match, so the verification was stopped."
+msgid "The other device cancelled the verification."
 msgstr ""
 
 #: ui/messages.slint:140
 msgctxt "UserMessages"
-msgid "This request was answered on another one of your devices."
+msgid "You declined the verification."
 msgstr ""
 
 #: ui/messages.slint:143
 msgctxt "UserMessages"
+msgid "The emoji did not match, so the verification was stopped."
+msgstr ""
+
+#: ui/messages.slint:146
+msgctxt "UserMessages"
+msgid "This request was answered on another one of your devices."
+msgstr ""
+
+#: ui/messages.slint:149
+msgctxt "UserMessages"
 msgid "The verification could not be completed."
 msgstr ""
 
-#: ui/messages.slint:169
+#: ui/messages.slint:175
 msgctxt "Deliveries"
 msgid "Sending"
 msgstr ""
 
-#: ui/messages.slint:172
+#: ui/messages.slint:178
 msgctxt "Deliveries"
 msgid "Sent"
 msgstr ""
 
-#: ui/messages.slint:176
+#: ui/messages.slint:182
 msgctxt "Deliveries"
 msgid "Read"
 msgstr ""
 
-#: ui/messages.slint:179
+#: ui/messages.slint:185
 msgctxt "Deliveries"
 msgid "Read by {} and {} more"
 msgstr ""
 
-#: ui/messages.slint:180
+#: ui/messages.slint:186
 msgctxt "Deliveries"
 msgid "Read by {}"
 msgstr ""
 
-#: ui/messages.slint:183
+#: ui/messages.slint:189
 msgctxt "Deliveries"
 msgid "Not sent"
 msgstr ""
 
-#: ui/messages.slint:192
+#: ui/messages.slint:198
 msgctxt "DeliveryStatus"
 msgid "Sending…"
 msgstr ""
 
-#: ui/messages.slint:195
+#: ui/messages.slint:201
 msgctxt "DeliveryStatus"
 msgid "Sent {}"
 msgstr ""
 
-#: ui/messages.slint:198
+#: ui/messages.slint:204
 msgctxt "DeliveryStatus"
 msgid "Read · sent {}"
 msgstr ""
 
-#: ui/messages.slint:201
+#: ui/messages.slint:207
 msgctxt "DeliveryStatus"
 msgid "Not sent"
 msgstr ""
 
-#: ui/messages.slint:211
+#: ui/messages.slint:217
 msgctxt "MediaFailures"
 msgid "This message carries no preview image."
 msgstr ""
 
-#: ui/messages.slint:212
+#: ui/messages.slint:218
 msgctxt "MediaFailures"
 msgid "This message carries no image to download."
 msgstr ""
 
-#: ui/messages.slint:215
+#: ui/messages.slint:221
 msgctxt "MediaFailures"
 msgid ""
 "The homeserver did not send it. It may be offline, or the file may be gone."
 msgstr ""
 
-#: ui/messages.slint:219
+#: ui/messages.slint:225
 msgctxt "MediaFailures"
 msgid "It is larger than the download limit for videos."
 msgstr ""
 
-#: ui/messages.slint:220
+#: ui/messages.slint:226
 msgctxt "MediaFailures"
 msgid "It is larger than the download limit for images."
 msgstr ""
 
-#: ui/messages.slint:223
+#: ui/messages.slint:229
 msgctxt "MediaFailures"
 msgid "It could not be written to the media cache on this device."
 msgstr ""
 
-#: ui/messages.slint:227
+#: ui/messages.slint:233
 msgctxt "MediaFailures"
 msgid "It downloaded, but could not be read as a video."
 msgstr ""
 
-#: ui/messages.slint:228
+#: ui/messages.slint:234
 msgctxt "MediaFailures"
 msgid "It downloaded, but could not be read as an image."
 msgstr ""
 
-#: ui/messages.slint:232
+#: ui/messages.slint:238
 msgctxt "MediaFailures"
 msgid "The preview image downloaded, but U2DM cannot display its format."
 msgstr ""
 
-#: ui/messages.slint:233
+#: ui/messages.slint:239
 msgctxt "MediaFailures"
 msgid "It downloaded, but U2DM cannot display this image format."
 msgstr ""
 
-#: ui/messages.slint:237
+#: ui/messages.slint:243
 msgctxt "MediaFailures"
 msgid "The preview image downloaded, but is too large to display here."
 msgstr ""
 
-#: ui/messages.slint:238
+#: ui/messages.slint:244
 msgctxt "MediaFailures"
 msgid "It downloaded, but is too large to display here."
 msgstr ""
 
-#: ui/messages.slint:242
+#: ui/messages.slint:248
 msgctxt "MediaFailures"
 msgid "The preview image downloaded, but is damaged or incomplete."
 msgstr ""
 
-#: ui/messages.slint:243
+#: ui/messages.slint:249
 msgctxt "MediaFailures"
 msgid "It downloaded, but the file is damaged or incomplete."
 msgstr ""
 
-#: ui/messages.slint:245
+#: ui/messages.slint:251
 msgctxt "MediaFailures"
 msgid "It could not be loaded."
 msgstr ""
 
-#: ui/messages.slint:255
+#: ui/messages.slint:261
 msgctxt "MediaFailures"
 msgid "{} · {}"
 msgstr ""
 
-#: ui/messages.slint:261
+#: ui/messages.slint:267
 msgctxt "MediaFailures"
 msgid "{}×{}"
 msgstr ""

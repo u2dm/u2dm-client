@@ -1,14 +1,15 @@
 use super::conclude::{self, Closing};
 use super::credentials;
+use crate::commands::messages::{UserMessage, UserMessageKind};
 use crate::error::AppError;
 use crate::ports::matrix::{
-    AuthPort, CleanupReport, InterruptedLogin, LoginResolution, PendingLogin,
+    AuthPort, CleanupReport, InterruptedLogin, LocalDataOwnership, LoginResolution, PendingLogin,
 };
 use crate::ports::storage::{StagedCredentials, StoragePort, SupersededLogin};
 
 pub(super) enum Recovery {
     Clean,
-    Blocked(String),
+    Blocked(UserMessage),
 }
 
 enum Outcome {
@@ -26,6 +27,12 @@ pub(super) async fn recover_interrupted_logins(
     auth: &dyn AuthPort,
     storage: &dyn StoragePort,
 ) -> Recovery {
+    match auth.local_data_ownership() {
+        LocalDataOwnership::Exclusive => {}
+        LocalDataOwnership::AnotherInstance { lock } => return another_instance(&lock),
+        LocalDataOwnership::Undetermined { reason } => return unclaimed(&reason),
+    }
+
     let interrupted = match auth.interrupted_logins().await {
         Ok(interrupted) => interrupted,
         Err(e) => return unlisted(&e),
@@ -53,14 +60,39 @@ pub(super) async fn recover_interrupted_logins(
     if blocked.is_empty() {
         Recovery::Clean
     } else {
-        Recovery::Blocked(blocked.join("; "))
+        unresolved(&blocked.join("; "))
     }
+}
+
+fn another_instance(lock: &str) -> Recovery {
+    tracing::error!(
+        "refusing to touch stores and credentials another running instance owns: {lock}"
+    );
+    Recovery::Blocked(UserMessage::about(
+        UserMessageKind::AnotherInstanceRunning,
+        &lock,
+    ))
+}
+
+fn unclaimed(reason: &str) -> Recovery {
+    tracing::error!("refusing to touch stores and credentials nothing guards: {reason}");
+    Recovery::Blocked(UserMessage::about(
+        UserMessageKind::LocalDataClaimFailed,
+        &reason,
+    ))
 }
 
 fn unlisted(error: &AppError) -> Recovery {
     let reason = format!("the interrupted logins could not be listed ({error})");
     tracing::error!("refusing to sign in past login journals it cannot see: {reason}");
-    Recovery::Blocked(reason)
+    unresolved(&reason)
+}
+
+fn unresolved(reason: &str) -> Recovery {
+    Recovery::Blocked(UserMessage::about(
+        UserMessageKind::InterruptedLoginUnresolved,
+        &reason,
+    ))
 }
 
 async fn resolve(

@@ -295,6 +295,8 @@ macro_rules! user_message_kinds {
         DataQuarantined           DataQuarantined         "data-quarantined";
         DataNotErased             DataNotErased           "data-not-erased";
         InterruptedLoginUnresolved InterruptedLoginUnresolved "interrupted-login-unresolved";
+        AnotherInstanceRunning    AnotherInstanceRunning  "another-instance-running";
+        LocalDataClaimFailed      LocalDataClaimFailed    "local-data-claim-failed";
         SessionSaveFailed         SessionSaveFailed       "session-save-failed";
         SendMessageFailed         SendMessageFailed       "send-message-failed";
         LoadMoreFailed            LoadMoreFailed          "load-more-failed";

@@ -98,7 +98,7 @@ pub struct AppService {
     last_selected_room: Option<EmittedRoom>,
     lifecycle: Lifecycle,
     active: Option<AuthenticatedSession>,
-    blocked_reason: Option<String>,
+    blocked: Option<UserMessage>,
 }
 
 impl AppService {
@@ -139,7 +139,7 @@ impl AppService {
             last_selected_room: None,
             lifecycle: Lifecycle::new(),
             active: None,
-            blocked_reason: None,
+            blocked: None,
         }
     }
 
@@ -150,8 +150,8 @@ impl AppService {
         mut scroll_in_rx: watch::Receiver<ViewportChanged>,
         mut visibility_in_rx: watch::Receiver<TimelineVisibility>,
     ) {
-        if let Recovery::Blocked(reason) = self.session.recover_interrupted_logins().await {
-            self.block_sign_in(reason);
+        if let Recovery::Blocked(message) = self.session.recover_interrupted_logins().await {
+            self.block_sign_in(message);
         }
         let mut dir_done = false;
         let mut scroll_done = false;
@@ -213,24 +213,24 @@ impl AppService {
         }
     }
 
-    fn block_sign_in(&mut self, reason: String) {
-        tracing::error!("signing in is blocked until the interrupted login is resolved: {reason}");
+    fn block_sign_in(&mut self, message: UserMessage) {
+        tracing::error!(
+            "signing in is blocked until this is resolved: {detail}",
+            detail = message.detail
+        );
         self.lifecycle.block();
-        self.blocked_reason = Some(reason);
+        self.blocked = Some(message);
         self.report_blocked();
     }
 
     fn report_blocked(&self) {
-        let Some(reason) = self.blocked_reason.clone() else {
+        let Some(message) = self.blocked.clone() else {
             return;
         };
         self.output.publish(Box::new(move |view| {
             view.lifecycle.step = LoginStep::Homeserver;
             view.lifecycle.activity = LoginActivity::Idle;
-            view.lifecycle.messages = vec![UserMessage::about(
-                UserMessageKind::InterruptedLoginUnresolved,
-                &reason,
-            )];
+            view.lifecycle.messages = vec![message];
         }));
     }
 

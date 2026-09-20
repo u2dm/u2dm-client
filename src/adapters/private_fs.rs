@@ -2,7 +2,7 @@ use std::ffi::OsString;
 use std::fs as std_fs;
 use std::io::{self, ErrorKind};
 #[cfg(unix)]
-use std::os::unix::fs::{DirBuilderExt, MetadataExt, PermissionsExt};
+use std::os::unix::fs::{DirBuilderExt, MetadataExt, OpenOptionsExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 
 #[cfg(unix)]
@@ -28,11 +28,27 @@ pub(crate) async fn create_dir(dir: &Path) -> io::Result<()> {
     builder.create(dir).await
 }
 
+pub(crate) fn create_dir_blocking(dir: &Path) -> io::Result<()> {
+    let mut builder = std_fs::DirBuilder::new();
+    builder.recursive(true);
+    #[cfg(unix)]
+    builder.mode(OWNER_ONLY_DIR);
+    builder.create(dir)
+}
+
 pub(crate) fn create_dir_exclusive_blocking(dir: &Path) -> io::Result<()> {
     let mut builder = std_fs::DirBuilder::new();
     #[cfg(unix)]
     builder.mode(OWNER_ONLY_DIR);
     builder.create(dir)
+}
+
+pub(crate) fn create_or_open_private_blocking(path: &Path) -> io::Result<std_fs::File> {
+    let mut options = std_fs::OpenOptions::new();
+    options.read(true).write(true).create(true);
+    #[cfg(unix)]
+    options.mode(OWNER_ONLY_FILE);
+    options.open(path)
 }
 
 pub(crate) fn is_private_dir(path: &Path) -> bool {

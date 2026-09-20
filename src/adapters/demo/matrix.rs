@@ -29,9 +29,9 @@ use crate::domain::timeline::{
 use crate::domain::verification::{VerificationCancellation, VerificationEvent};
 use crate::error::{AppError, Result};
 use crate::ports::matrix::{
-    AuthPort, AuthenticatedSession, CleanupReport, InterruptedLogin, MediaPort, ProgressSink,
-    RestoreStep, SessionPort, SpaceOrderPort, StickerCatalog, StickerPort, StoreAdoption, SyncPort,
-    SyncSink, TimelinePort, VerificationPort,
+    AuthPort, AuthenticatedSession, CleanupReport, InterruptedLogin, LocalDataOwnership, MediaPort,
+    ProgressSink, RestoreStep, SessionPort, SpaceOrderPort, StickerCatalog, StickerPort,
+    StoreAdoption, SyncPort, SyncSink, TimelinePort, VerificationPort,
 };
 use crate::ports::media::MediaCache;
 
@@ -100,6 +100,10 @@ impl AuthPort for DemoMatrix {
             login::pause().await;
         }
         Ok(authenticated(session.clone()))
+    }
+
+    fn local_data_ownership(&self) -> LocalDataOwnership {
+        LocalDataOwnership::Exclusive
     }
 
     async fn interrupted_logins(&self) -> Result<Vec<InterruptedLogin>> {

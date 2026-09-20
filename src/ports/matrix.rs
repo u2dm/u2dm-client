@@ -52,6 +52,12 @@ impl InterruptedLogin {
     }
 }
 
+pub enum LocalDataOwnership {
+    Exclusive,
+    AnotherInstance { lock: String },
+    Undetermined { reason: String },
+}
+
 #[derive(Debug, Default)]
 pub struct CleanupReport {
     pub quarantined: Vec<PathBuf>,
@@ -128,6 +134,7 @@ pub trait AuthPort: Send + Sync {
         passphrase: &str,
         on_progress: ProgressSink,
     ) -> Result<AuthenticatedSession>;
+    fn local_data_ownership(&self) -> LocalDataOwnership;
     async fn interrupted_logins(&self) -> Result<Vec<InterruptedLogin>>;
     async fn unwind_login(&self, txn: &str) -> CleanupReport;
     async fn settle_login(&self, txn: &str) -> CleanupReport;

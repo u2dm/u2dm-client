@@ -43,6 +43,8 @@ pub enum UserMessageKind {
     DataQuarantined,
     DataNotErased,
     InterruptedLoginUnresolved,
+    AnotherInstanceRunning,
+    LocalDataClaimFailed,
     SessionSaveFailed,
     SendMessageFailed,
     LoadMoreFailed,

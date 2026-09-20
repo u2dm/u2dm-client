@@ -61,6 +61,12 @@ export global UserMessages {
         if kind == UserMessageKind.interrupted-login-unresolved {
             return @tr("An earlier login was interrupted and cannot be undone safely, so signing in is paused to protect the encrypted history of the previous session. Make sure your credential store is unlocked and restart U2DM. ({})", detail);
         }
+        if kind == UserMessageKind.another-instance-running {
+            return @tr("Another U2DM is already running and is using the local data, so this window will not touch it. Close the other U2DM and try again. ({})", detail);
+        }
+        if kind == UserMessageKind.local-data-claim-failed {
+            return @tr("U2DM could not claim its local data for this window alone, so signing in is paused rather than risk two copies writing the same stores. Make sure no other U2DM is running and that its data directory is writable, then restart U2DM. ({})", detail);
+        }
         if kind == UserMessageKind.session-save-failed {
             return @tr("Could not save the refreshed session.");
         }
