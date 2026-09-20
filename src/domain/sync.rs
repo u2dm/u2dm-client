@@ -19,10 +19,16 @@ pub enum SyncEvent {
     ConnectionError(String),
 }
 
+#[derive(Debug, Clone, Copy)]
+pub enum SessionLoss {
+    SoftLogout,
+    Expired,
+}
+
 #[derive(Debug)]
 pub enum SyncOutcome {
     Cancelled,
     Recoverable(String),
-    SessionExpired,
+    SessionLost(SessionLoss),
     Fatal(String),
 }

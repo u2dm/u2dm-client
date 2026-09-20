@@ -52,6 +52,9 @@ export global UserMessages {
         if kind == UserMessageKind.session-expired {
             return @tr("Session expired. Please log in again.");
         }
+        if kind == UserMessageKind.reauth-not-possible {
+            return @tr("Signing in returned a different account or device, so this device's encrypted history cannot be reused. Sign in again as the same user, or sign out to start a new session.");
+        }
         if kind == UserMessageKind.data-quarantined {
             return @tr("Some local data could not be deleted, but its key was destroyed, so it is unreadable. It will be removed on the next start. ({})", detail);
         }

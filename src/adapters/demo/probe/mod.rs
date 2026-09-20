@@ -226,6 +226,7 @@ async fn run_command(
     let delivered = match driven {
         Driven::Command(cmd) => server.commands.send(cmd),
         Driven::SessionExpiry => server.commands.inject_session_expiry(),
+        Driven::SoftLogout => server.commands.inject_soft_logout(),
         Driven::Poke(poke) => {
             if !dump::poke(poke) {
                 return failure(

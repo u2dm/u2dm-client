@@ -180,13 +180,13 @@ pub fn dispatch_effect<B: UiBackend>(w: &B::Window, event: Effect, ctx: &UiEvent
             }
         }
         Effect::Verification(update) => apply_verification(w, &update),
-        Effect::LoggedOut => {
+        Effect::SessionReset(view) => {
             let models = begin_session::<B>(w);
             let fresh = UiEventContext::<B> {
                 models: &models,
                 media: ctx.media,
             };
-            apply_snapshot::<B>(w, &Arc::new(AppViewState::logged_out()), &fresh);
+            apply_snapshot::<B>(w, &Arc::new(*view), &fresh);
             clear_selected_room(w);
             reset_verification(w);
             w.clear_text_inputs();

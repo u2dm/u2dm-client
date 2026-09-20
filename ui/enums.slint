@@ -2,6 +2,7 @@ export enum LoginPhase {
     loading,
     homeserver,
     credentials,
+    reauthenticate,
     logged-in,
 }
 
@@ -68,6 +69,7 @@ export enum UserMessageKind {
     store-key-unreadable,
     identity-diverged,
     session-expired,
+    reauth-not-possible,
     data-quarantined,
     data-not-erased,
     interrupted-login-unresolved,

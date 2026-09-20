@@ -50,6 +50,11 @@ impl ClientHandle {
             .ok_or_else(|| AppError::Other("Room not found".into()))
     }
 
+    async fn release(&self) {
+        self.media.detach().await;
+        drop(self.client.write().await.take());
+    }
+
     async fn erase_account(&self) -> CleanupReport {
         let mut report = self.media.close(&self.account).await;
         drop(self.client.write().await.take());
@@ -97,6 +102,12 @@ impl SessionPort for MatrixLifecycle {
             tracing::warn!("failed to logout from server: {e}");
         }
         Ok(())
+    }
+
+    async fn suspend(&self) {
+        tracing::info!("suspending the session, keeping the local account data");
+        self.release_session_resources().await;
+        self.matrix.release().await;
     }
 
     async fn clear_store(&self) -> CleanupReport {

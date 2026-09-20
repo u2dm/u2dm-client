@@ -40,6 +40,7 @@ pub enum UserMessageKind {
     StoreKeyUnreadable,
     IdentityDiverged,
     SessionExpired,
+    ReauthNotPossible,
     DataQuarantined,
     DataNotErased,
     InterruptedLoginUnresolved,

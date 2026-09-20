@@ -135,6 +135,10 @@ pub(super) enum SessionEvent {
         attempt: u64,
         established: Box<EstablishedSession>,
     },
+    Resumed {
+        attempt: u64,
+        capability: Box<AuthenticatedSession>,
+    },
     ErasingLocalState {
         session: u64,
     },
@@ -145,6 +149,7 @@ pub(super) enum SessionEvent {
     },
     TokensNotPersisted,
     UserAvatar(Option<PathBuf>),
+    Suspended,
     Expired,
 }
 
@@ -159,10 +164,12 @@ impl SessionEvent {
             Self::AuthRejected { .. } => "AuthRejected",
             Self::AuthCancelled { .. } => "AuthCancelled",
             Self::LoggedIn { .. } => "LoggedIn",
+            Self::Resumed { .. } => "Resumed",
             Self::ErasingLocalState { .. } => "ErasingLocalState",
             Self::LocalStateCleared { .. } => "LocalStateCleared",
             Self::TokensNotPersisted => "TokensNotPersisted",
             Self::UserAvatar(_) => "UserAvatar",
+            Self::Suspended => "SessionSuspended",
             Self::Expired => "SessionExpired",
         }
     }

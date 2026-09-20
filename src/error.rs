@@ -47,6 +47,7 @@ pub enum AuthFailure {
     RateLimited,
     MethodUnsupported,
     IdentityDiverged,
+    SessionNotReusable,
     Unknown,
 }
 
@@ -60,6 +61,7 @@ impl fmt::Display for AuthFailure {
             Self::RateLimited => "rate limited",
             Self::MethodUnsupported => "method unsupported",
             Self::IdentityDiverged => "local signing key diverged from the published one",
+            Self::SessionNotReusable => "the sign-in did not return the device it was asked for",
             Self::Unknown => "unknown",
         };
         f.write_str(name)

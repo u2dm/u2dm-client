@@ -63,6 +63,7 @@ fn login_failure(err: &AppError) -> UserMessageKind {
         AuthFailure::RateLimited => UserMessageKind::RateLimited,
         AuthFailure::MethodUnsupported => UserMessageKind::LoginMethodUnsupported,
         AuthFailure::IdentityDiverged => UserMessageKind::IdentityDiverged,
+        AuthFailure::SessionNotReusable => UserMessageKind::ReauthNotPossible,
         AuthFailure::Unknown => UserMessageKind::LoginFailed,
     }
 }
@@ -101,6 +102,12 @@ fn classify_unusable_session(loaded: Result<StoredSession>) -> (&'static str, Op
         Err(e) => ("failed to load session", Some(e)),
         Ok(StoredSession::Present(_)) => ("session present", None),
     }
+}
+
+pub(super) struct SuspendedSession {
+    pub(super) session: Session,
+    pub(super) account: AccountScope,
+    pub(super) lifecycle: Arc<dyn SessionPort>,
 }
 
 #[derive(Clone)]
@@ -186,6 +193,31 @@ impl SessionController {
         group.spawn(async move { tasks.login_oauth(cancel, passphrase, attempt).await });
     }
 
+    pub(super) fn spawn_reauth_password(
+        &mut self,
+        group: &mut TaskGroup,
+        prior: Session,
+        password: String,
+        attempt: u64,
+    ) {
+        self.begin_login(LoginActivity::LoggingIn);
+        let tasks = self.tasks.clone();
+        group.spawn(async move { tasks.reauth_password(prior, password, attempt).await });
+    }
+
+    pub(super) fn spawn_reauth_oauth(
+        &mut self,
+        group: &mut TaskGroup,
+        prior: Session,
+        attempt: u64,
+    ) {
+        self.begin_login(LoginActivity::OpeningBrowser);
+        let cancel = CancellationToken::new();
+        self.oauth_cancel = Some(cancel.clone());
+        let tasks = self.tasks.clone();
+        group.spawn(async move { tasks.reauth_oauth(prior, cancel, attempt).await });
+    }
+
     pub(super) fn spawn_open_link(&self, group: &mut TaskGroup, url: String) {
         let browser = Arc::clone(&self.tasks.browser);
         group.spawn(async move {
@@ -221,17 +253,18 @@ impl SessionController {
         group.spawn(async move { tasks.logout(session, &account, lifecycle_port).await });
     }
 
-    pub(super) fn spawn_expire_session(
+    pub(super) fn spawn_erase_session(
         &self,
         group: &mut TaskGroup,
         session: u64,
         account: AccountScope,
         lifecycle_port: Arc<dyn SessionPort>,
+        reason: EndReason,
     ) {
         let tasks = self.tasks.clone();
         group.spawn(async move {
             tasks
-                .expire_session(session, &account, lifecycle_port)
+                .erase_session(session, &account, lifecycle_port, reason)
                 .await;
         });
     }
@@ -587,18 +620,116 @@ impl SessionTasks {
         });
     }
 
-    async fn expire_session(
+    async fn preserved_passphrase(&self, account: &AccountScope, attempt: u64) -> Option<String> {
+        match self.storage.load_passphrase(account).await {
+            Ok(Some(passphrase)) => Some(passphrase),
+            Ok(None) => {
+                tracing::warn!("no store key for the suspended session, preserving local data");
+                self.reject(attempt, UserMessageKind::StoreKeyMissing);
+                None
+            }
+            Err(e) => {
+                tracing::warn!("failed to read the store key: {e}");
+                self.reject(attempt, UserMessageKind::StoreKeyUnreadable);
+                None
+            }
+        }
+    }
+
+    async fn reauth_password(&self, prior: Session, password: String, attempt: u64) {
+        let account = AccountScope::from_session(&prior);
+        let Some(passphrase) = self.preserved_passphrase(&account, attempt).await else {
+            return;
+        };
+        let creds = LoginCredentials {
+            username: prior.user_id.clone(),
+            password,
+        };
+        match self.auth.reauthenticate(&prior, &passphrase, creds).await {
+            Ok(capability) => self.report_resumed(attempt, capability).await,
+            Err(e) => {
+                tracing::warn!("password re-authentication failed: {e}");
+                self.reject(attempt, login_failure(&e));
+            }
+        }
+    }
+
+    async fn reauth_oauth(&self, prior: Session, cancel: CancellationToken, attempt: u64) {
+        let account = AccountScope::from_session(&prior);
+        let Some(passphrase) = self.preserved_passphrase(&account, attempt).await else {
+            return;
+        };
+        let result = self
+            .cancellable_reauth_sign_in(&prior, &passphrase, &cancel, attempt)
+            .await;
+        self.auth.cancel_oauth().await;
+        match result {
+            Ok(Some(capability)) => self.report_resumed(attempt, capability).await,
+            Ok(None) => {
+                tracing::info!("OAuth re-authentication cancelled");
+                self.send(SessionEvent::AuthCancelled { attempt });
+            }
+            Err(e) => {
+                tracing::warn!("OAuth re-authentication failed: {e}");
+                self.reject(attempt, login_failure(&e));
+            }
+        }
+    }
+
+    async fn cancellable_reauth_sign_in(
+        &self,
+        prior: &Session,
+        passphrase: &str,
+        cancel: &CancellationToken,
+        attempt: u64,
+    ) -> Result<Option<AuthenticatedSession>> {
+        tokio::select! {
+            biased;
+            () = cancel.cancelled() => Ok(None),
+            result = self.reauth_browser_sign_in(prior, passphrase, attempt) => result.map(Some),
+        }
+    }
+
+    async fn reauth_browser_sign_in(
+        &self,
+        prior: &Session,
+        passphrase: &str,
+        attempt: u64,
+    ) -> Result<AuthenticatedSession> {
+        let oauth_data = self.auth.reauth_oauth_start(prior, passphrase).await?;
+        self.browser.open_url(&oauth_data.auth_url).await?;
+        self.send(SessionEvent::AuthActivity {
+            attempt,
+            activity: LoginActivity::WaitingAuth,
+        });
+        timeout(OAUTH_CALLBACK_TIMEOUT, self.auth.reauth_oauth_finish(prior))
+            .await
+            .map_err(|_| AppError::Other("Timed out waiting for browser sign-in.".into()))?
+    }
+
+    async fn report_resumed(&self, attempt: u64, capability: AuthenticatedSession) {
+        if let Err(e) = self.storage.save_session(&capability.session).await {
+            tracing::warn!("the re-authenticated session is not saved yet: {e}");
+        }
+        self.send(SessionEvent::Resumed {
+            attempt,
+            capability: Box::new(capability),
+        });
+    }
+
+    async fn erase_session(
         &self,
         session: u64,
         account: &AccountScope,
         lifecycle_port: Arc<dyn SessionPort>,
+        reason: EndReason,
     ) {
         let report = self
             .clear_local_state(session, account, lifecycle_port.as_ref())
             .await;
         self.send(SessionEvent::LocalStateCleared {
             session,
-            reason: EndReason::Expired,
+            reason,
             report,
         });
     }
@@ -611,14 +742,8 @@ impl SessionTasks {
     ) {
         tracing::info!("user initiated logout");
         end_server_session(lifecycle_port.as_ref()).await;
-        let report = self
-            .clear_local_state(session, account, lifecycle_port.as_ref())
+        self.erase_session(session, account, lifecycle_port, EndReason::UserLogout)
             .await;
-        self.send(SessionEvent::LocalStateCleared {
-            session,
-            reason: EndReason::UserLogout,
-            report,
-        });
     }
 
     async fn clear_local_state(

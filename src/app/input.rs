@@ -57,6 +57,14 @@ impl CommandSender {
         )
     }
 
+    #[cfg(feature = "demo")]
+    pub fn inject_soft_logout(&self) -> Result<(), Closed> {
+        deliver(
+            &self.tx,
+            Input::Internal(AppEvent::Session(SessionEvent::Suspended)),
+        )
+    }
+
     pub(super) fn events(&self) -> EventSender {
         EventSender {
             tx: self.tx.clone(),

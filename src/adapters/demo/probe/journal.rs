@@ -156,7 +156,7 @@ fn summarize(effect: &Effect) -> Summary {
             Some(format!("{event_id}@{row}")),
         ),
         Effect::Verification(_) => ("verification", None, None, None),
-        Effect::LoggedOut => ("logged-out", None, None, None),
+        Effect::SessionReset(_) => ("session-reset", None, None, None),
     }
 }
 

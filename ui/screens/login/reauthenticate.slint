@@ -1,0 +1,152 @@
+import { IconDisplay, IconSet } from "@lucide";
+
+import {
+    LoginPage,
+    BrandHeader,
+    FieldLabel,
+    StatusRow,
+    ServerChip,
+    OrDivider,
+} from "./common.slint";
+import { LoginField } from "./field.slint";
+import { AppButton } from "../../components/button.slint";
+import { ErrorBanner, NoticeBanner } from "../../components/banner.slint";
+import { LoginActivity, LoginMethodKind } from "../../enums.slint";
+import { LoginView, SessionView } from "../../views.slint";
+import { Actions } from "../../actions.slint";
+import { AppStyle, Fonts, IconSize, Metrics, Radius, Size, Space, Stroke } from "../../theme.slint";
+
+export component ReauthenticateScreen inherits LoginPage {
+    private property <string> input-password: "";
+    private property <bool> is-busy: LoginView.activity != LoginActivity.idle;
+    private property <bool> is-oauth-pending: LoginView.activity == LoginActivity.opening-browser
+        || LoginView.activity == LoginActivity.waiting-auth;
+    private property <bool> wants-password: LoginView.method == LoginMethodKind.password || LoginView.method == LoginMethodKind.both;
+    private property <bool> wants-oauth: LoginView.method == LoginMethodKind.oauth || LoginView.method == LoginMethodKind.both;
+
+    function submit-password() {
+        if (!root.is-busy && root.input-password != "") {
+            Actions.reauth-password(root.input-password);
+            root.input-password = "";
+        }
+    }
+
+    BrandHeader {
+        mark-size: root.dense ? Size.xl : Metrics.login-mark-compact;
+        subtitle: @tr("Sign in again to carry on with this device");
+    }
+
+    ServerChip {
+        server: LoginView.resolved-homeserver;
+    }
+
+    Rectangle {
+        background: AppStyle.overlay-subtle;
+        border-radius: Radius.md;
+        border-width: Stroke.hairline;
+        border-color: AppStyle.border;
+        height: account-layout.preferred-height;
+
+        account-layout := HorizontalLayout {
+            padding-left: Space.lg;
+            padding-right: Space.lg;
+            padding-top: Space.md;
+            padding-bottom: Space.md;
+            spacing: Space.md;
+
+            IconDisplay {
+                cross-axis-self-alignment: center;
+                icon: IconSet.UserRound;
+                size: IconSize.sm;
+                stroke: AppStyle.foreground-faint;
+            }
+
+            Text {
+                text: SessionView.user-id;
+                font-size: Fonts.body-small;
+                overflow: elide;
+                horizontal-stretch: 1;
+                vertical-alignment: center;
+                color: AppStyle.foreground-muted;
+            }
+        }
+    }
+
+    NoticeBanner {
+        text: @tr("Your homeserver asked you to sign in again. This device and the messages it has already decrypted stay on it.");
+    }
+
+    if root.wants-password: VerticalLayout {
+        spacing: Space.xl;
+
+        VerticalLayout {
+            spacing: Space.md;
+
+            FieldLabel {
+                text: @tr("PASSWORD");
+            }
+
+            LoginField {
+                icon: IconSet.LockKeyhole;
+                label: @tr("Password");
+                placeholder: @tr("password");
+                secret: true;
+                enabled: !root.is-busy;
+                text <=> root.input-password;
+                accepted => {
+                    root.submit-password();
+                }
+            }
+        }
+
+        AppButton {
+            text: @tr("Sign in again");
+            icon: IconSet.LogIn;
+            busy: root.is-busy && !root.is-oauth-pending;
+            enabled: root.is-busy || root.input-password != "";
+            clicked => {
+                root.submit-password();
+            }
+        }
+    }
+
+    if root.wants-password && root.wants-oauth: OrDivider { }
+
+    if root.wants-oauth: AppButton {
+        text: @tr("Continue with browser");
+        icon: IconSet.ExternalLink;
+        filled: false;
+        busy: root.is-oauth-pending;
+        enabled: !root.is-busy;
+        clicked => {
+            Actions.reauth-oauth();
+        }
+    }
+
+    if root.is-oauth-pending: AppButton {
+        text: @tr("Cancel");
+        icon: IconSet.X;
+        filled: false;
+        clicked => {
+            Actions.cancel-oauth();
+        }
+    }
+
+    if LoginView.activity != LoginActivity.idle: StatusRow {
+        activity: LoginView.activity;
+    }
+
+    if LoginView.messages.length > 0: ErrorBanner {
+        messages: LoginView.messages;
+    }
+
+    AppButton {
+        text: @tr("Sign out instead");
+        icon: IconSet.LogOut;
+        filled: false;
+        enabled: !root.is-busy;
+        clicked => {
+            Actions.logout();
+        }
+    }
+}

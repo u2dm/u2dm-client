@@ -31,7 +31,7 @@ pub enum Effect {
         row: usize,
     },
     Verification(VerificationUpdate),
-    LoggedOut,
+    SessionReset(Box<AppViewState>),
 }
 
 #[derive(Clone, Copy, Default, PartialEq, Eq)]

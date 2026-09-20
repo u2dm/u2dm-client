@@ -4,6 +4,36 @@ import { IconDisplay, IconSet } from "@lucide";
 import { AppStyle, Fonts, IconSize, Radius, Space, Stroke } from "../theme.slint";
 import { UserMessage, UserMessages } from "../messages.slint";
 
+export component NoticeBanner inherits Rectangle {
+    in property <string> text;
+
+    background: AppStyle.accent-background-soft;
+    border-radius: Radius.md;
+    border-width: Stroke.hairline;
+    border-color: AppStyle.accent-divider;
+
+    HorizontalLayout {
+        padding: Space.lg;
+        spacing: Space.lg;
+
+        IconDisplay {
+            cross-axis-self-alignment: start;
+            icon: IconSet.KeyRound;
+            size: IconSize.sm;
+            stroke: AppStyle.link;
+        }
+
+        Text {
+            text: root.text;
+            font-size: Fonts.body-small;
+            wrap: word-wrap;
+            horizontal-stretch: 1;
+            color: AppStyle.foreground-muted;
+            accessible-live-region: AccessibleLiveness.polite;
+        }
+    }
+}
+
 export component ErrorBanner inherits Rectangle {
     in property <[UserMessage]> messages;
 

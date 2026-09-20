@@ -15,6 +15,9 @@ pub enum UiCommand {
     LoginOAuth,
     CancelOAuth,
     BackToHomeserver,
+    #[strum(to_string = "ReauthPassword(...)")]
+    ReauthPassword(String),
+    ReauthOAuth,
     #[strum(to_string = "SelectSpace")]
     SelectSpace(Option<RoomId>),
     #[strum(to_string = "SelectSubspace")]

@@ -134,6 +134,15 @@ pub trait AuthPort: Send + Sync {
         passphrase: &str,
         on_progress: ProgressSink,
     ) -> Result<AuthenticatedSession>;
+    async fn reauthenticate(
+        &self,
+        prior: &Session,
+        passphrase: &str,
+        creds: LoginCredentials,
+    ) -> Result<AuthenticatedSession>;
+    async fn reauth_oauth_start(&self, prior: &Session, passphrase: &str)
+    -> Result<OAuthLoginData>;
+    async fn reauth_oauth_finish(&self, prior: &Session) -> Result<AuthenticatedSession>;
     fn local_data_ownership(&self) -> LocalDataOwnership;
     async fn interrupted_logins(&self) -> Result<Vec<InterruptedLogin>>;
     async fn unwind_login(&self, txn: &str) -> CleanupReport;
@@ -237,5 +246,6 @@ pub trait SessionPort: Send + Sync {
     ) -> Result<()>;
     async fn fetch_user_avatar(&self) -> Result<Option<PathBuf>>;
     async fn logout(&self) -> Result<()>;
+    async fn suspend(&self);
     async fn clear_store(&self) -> CleanupReport;
 }

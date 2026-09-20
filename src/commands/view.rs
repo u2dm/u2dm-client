@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use super::messages::{UserMessage, UserMessageKind};
 use super::ui::MessageDraft;
-use crate::domain::auth::LoginMethod;
+use crate::domain::auth::{LoginMethod, Session};
 use crate::domain::media::AudioMeta;
 use crate::domain::room::{RoomId, RoomList, Space};
 use crate::domain::sticker::StickerPacks;
@@ -29,6 +29,19 @@ impl AppViewState {
         Self {
             lifecycle: LifecycleView {
                 step: LoginStep::Homeserver,
+                ..LifecycleView::default()
+            },
+            ..Self::default()
+        }
+    }
+
+    pub fn reauthenticating(session: &Session) -> Self {
+        Self {
+            lifecycle: LifecycleView {
+                step: LoginStep::Reauthenticate,
+                method: session.login_method(),
+                resolved_homeserver: session.homeserver.clone(),
+                user_id: session.user_id.clone(),
                 ..LifecycleView::default()
             },
             ..Self::default()
@@ -163,6 +176,7 @@ pub enum LoginStep {
     Loading,
     Homeserver,
     Credentials,
+    Reauthenticate,
     LoggedIn,
 }
 

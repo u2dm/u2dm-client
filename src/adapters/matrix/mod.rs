@@ -18,6 +18,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use async_trait::async_trait;
 use matrix_sdk::Client;
+use matrix_sdk::ruma::OwnedDeviceId;
 use matrix_sdk::utils::local_server::LocalServerRedirectHandle;
 use tokio::sync::{Mutex, RwLock};
 
@@ -38,6 +39,7 @@ pub struct MatrixAdapter {
     instance: InstanceClaim,
     layout: StoreLayout,
     client: RwLock<Option<Client>>,
+    reauth_client: RwLock<Option<Client>>,
     pending_store: Mutex<Option<StorePaths>>,
     redirect_handle: Mutex<Option<LocalServerRedirectHandle>>,
     media: Arc<MediaService>,
@@ -52,6 +54,7 @@ impl MatrixAdapter {
             instance,
             layout: StoreLayout::new(data_dir, cache_dir),
             client: RwLock::new(None),
+            reauth_client: RwLock::new(None),
             pending_store: Mutex::new(None),
             redirect_handle: Mutex::new(None),
             media,
@@ -85,6 +88,27 @@ impl MatrixAdapter {
             return;
         };
         self.purge_login_scratch(&paths).await;
+    }
+
+    async fn discard_reauth_client(&self) {
+        drop(self.reauth_client.write().await.take());
+    }
+
+    async fn open_reauth_client(&self, prior: &Session, passphrase: &str) -> Result<Client> {
+        self.discard_reauth_client().await;
+        let paths = self.layout.account(&AccountScope::from_session(prior));
+        auth::open_account_store(&paths, prior, passphrase).await
+    }
+
+    async fn resume_on_preserved_store(
+        &self,
+        client: Client,
+        prior: &Session,
+        session: Session,
+    ) -> Result<AuthenticatedSession> {
+        identity::ensure_identity_matches_server(&client).await?;
+        let account = AccountScope::from_session(prior);
+        Ok(self.authenticate(client, session, account).await)
     }
 
     async fn purge_login_scratch(&self, paths: &StorePaths) {
@@ -195,7 +219,7 @@ impl AuthPort for MatrixAdapter {
 
     async fn login_oauth_start(&self) -> Result<OAuthLoginData> {
         let client = self.get_client().await?;
-        auth::login_oauth_start(&client, &self.redirect_handle).await
+        auth::login_oauth_start(&client, &self.redirect_handle, None).await
     }
 
     async fn login_oauth_finish(&self) -> Result<Session> {
@@ -208,6 +232,7 @@ impl AuthPort for MatrixAdapter {
         if pending.is_some() {
             tracing::debug!("shutting down pending OAuth redirect server");
         }
+        self.discard_reauth_client().await;
     }
 
     async fn adopt_session(
@@ -261,6 +286,40 @@ impl AuthPort for MatrixAdapter {
         let paths = self.layout.account(&account);
         let client = auth::open_session(&paths, session, passphrase, on_progress.as_ref()).await?;
         Ok(self.authenticate(client, session.clone(), account).await)
+    }
+
+    async fn reauthenticate(
+        &self,
+        prior: &Session,
+        passphrase: &str,
+        creds: LoginCredentials,
+    ) -> Result<AuthenticatedSession> {
+        let client = self.open_reauth_client(prior, passphrase).await?;
+        let session = auth::reauth_password(&client, prior, creds).await?;
+        self.resume_on_preserved_store(client, prior, session).await
+    }
+
+    async fn reauth_oauth_start(
+        &self,
+        prior: &Session,
+        passphrase: &str,
+    ) -> Result<OAuthLoginData> {
+        let client = self.open_reauth_client(prior, passphrase).await?;
+        let device_id: OwnedDeviceId = prior.device_id.as_str().into();
+        let data = auth::login_oauth_start(&client, &self.redirect_handle, Some(device_id)).await?;
+        *self.reauth_client.write().await = Some(client);
+        Ok(data)
+    }
+
+    async fn reauth_oauth_finish(&self, prior: &Session) -> Result<AuthenticatedSession> {
+        let client = self
+            .reauth_client
+            .write()
+            .await
+            .take()
+            .ok_or_else(|| AppError::Other("No re-authentication is in progress".into()))?;
+        let session = auth::reauth_oauth_finish(&client, &self.redirect_handle, prior).await?;
+        self.resume_on_preserved_store(client, prior, session).await
     }
 
     fn local_data_ownership(&self) -> LocalDataOwnership {

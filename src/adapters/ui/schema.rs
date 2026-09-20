@@ -54,6 +54,8 @@ macro_rules! simple_callbacks {
         on_login_oauth "login-oauth" login_oauth plain LoginOAuth;
         on_cancel_oauth "cancel-oauth" cancel_oauth plain CancelOAuth;
         on_back_to_homeserver "back-to-homeserver" back_to_homeserver plain BackToHomeserver;
+        on_reauth_password "reauth-password" reauth_password pass ReauthPassword;
+        on_reauth_oauth "reauth-oauth" reauth_oauth plain ReauthOAuth;
         on_logout "logout" logout plain Logout;
         on_dismiss_toast "dismiss-toast" dismiss_toast plain DismissToast;
         on_accept_verification "accept-verification" accept_verification plain AcceptVerification;
@@ -198,6 +200,7 @@ macro_rules! login_phases {
         Loading     Loading     "loading";
         Homeserver  Homeserver  "homeserver";
         Credentials Credentials "credentials";
+        Reauthenticate Reauthenticate "reauthenticate";
         LoggedIn    LoggedIn    "logged-in";
     } };
 }
@@ -292,6 +295,7 @@ macro_rules! user_message_kinds {
         StoreKeyUnreadable        StoreKeyUnreadable      "store-key-unreadable";
         IdentityDiverged          IdentityDiverged        "identity-diverged";
         SessionExpired            SessionExpired          "session-expired";
+        ReauthNotPossible         ReauthNotPossible       "reauth-not-possible";
         DataQuarantined           DataQuarantined         "data-quarantined";
         DataNotErased             DataNotErased           "data-not-erased";
         InterruptedLoginUnresolved InterruptedLoginUnresolved "interrupted-login-unresolved";

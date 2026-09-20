@@ -20,6 +20,7 @@ pub enum ProbeCommand {
     LoginOauth,
     CancelOauth,
     BackToHomeserver,
+    ReauthOauth,
     SelectSpace {
         #[serde(default)]
         space_id: Option<String>,
@@ -129,6 +130,7 @@ pub enum ProbeCommand {
     ConfirmVerification,
     DismissVerification,
     SessionExpired,
+    SoftLogout,
     DismissToast,
     Logout,
     Quit,
@@ -139,6 +141,7 @@ pub struct Rejected(pub String);
 pub enum Driven {
     Command(UiCommand),
     SessionExpiry,
+    SoftLogout,
     Poke(Poke),
 }
 
@@ -147,6 +150,7 @@ impl fmt::Display for Driven {
         match self {
             Self::Command(cmd) => write!(f, "{cmd}"),
             Self::SessionExpiry => f.write_str("SessionExpired"),
+            Self::SoftLogout => f.write_str("SoftLogout"),
             Self::Poke(Poke::ToggleAudio) => f.write_str("ToggleAudio"),
             Self::Poke(Poke::SeekAudio(position)) => {
                 write!(f, "SeekAudio({}ms)", position.as_millis())
@@ -192,6 +196,7 @@ pub fn to_driven(command: ProbeCommand, selected: Selection<'_>) -> Result<Drive
         ProbeCommand::LoginOauth => UiCommand::LoginOAuth,
         ProbeCommand::CancelOauth => UiCommand::CancelOAuth,
         ProbeCommand::BackToHomeserver => UiCommand::BackToHomeserver,
+        ProbeCommand::ReauthOauth => UiCommand::ReauthOAuth,
         ProbeCommand::SelectSpace { space_id } => UiCommand::SelectSpace(space_id.map(RoomId::new)),
         ProbeCommand::SelectSubspace { subspace_id } => {
             UiCommand::SelectSubspace(subspace_id.map(RoomId::new))
@@ -328,6 +333,7 @@ pub fn to_driven(command: ProbeCommand, selected: Selection<'_>) -> Result<Drive
         ProbeCommand::ConfirmVerification => UiCommand::ConfirmVerification,
         ProbeCommand::DismissVerification => UiCommand::DismissVerification,
         ProbeCommand::SessionExpired => return Ok(Driven::SessionExpiry),
+        ProbeCommand::SoftLogout => return Ok(Driven::SoftLogout),
         ProbeCommand::DismissToast => UiCommand::DismissToast,
         ProbeCommand::Logout => UiCommand::Logout,
         ProbeCommand::Quit => UiCommand::Quit,

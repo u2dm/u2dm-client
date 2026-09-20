@@ -23,7 +23,7 @@ use tokio_util::sync::CancellationToken;
 
 use self::avatars::AvatarFetcher;
 use self::directory::Directory;
-use self::health::{SyncHealth, is_auth_error};
+use self::health::{SyncHealth, session_loss};
 use self::send_queue::SendQueueRecovery;
 use super::media::MediaService;
 use super::session::ClientHandle;
@@ -128,9 +128,9 @@ async fn handle_sync_state(
         }
         SyncState::Error(err) => {
             let msg = err.to_string();
-            if is_auth_error(&err) {
-                tracing::warn!("sliding sync error: {msg}");
-                return LoopAction::Terminal(SyncOutcome::SessionExpired);
+            if let Some(loss) = session_loss(&err) {
+                tracing::warn!(?loss, "sliding sync error: {msg}");
+                return LoopAction::Terminal(SyncOutcome::SessionLost(loss));
             }
             let delay = health.on_error();
             tracing::warn!("sliding sync error, restarting in {delay:?}: {msg}");

@@ -32,7 +32,7 @@ use media::MediaActions;
 use recover::Recovery;
 use room_directory::RoomDirectory;
 use selection::Selection;
-use session::SessionController;
+use session::{SessionController, SuspendedSession};
 use stickers::Stickers;
 use submissions::Submissions;
 use task_group::TaskGroup;
@@ -70,6 +70,52 @@ pub(super) fn show_toast(output: &dyn AppOutputPort, toast: Toast) {
     output.publish(Box::new(move |view| view.toast = toast));
 }
 
+enum Reauth {
+    Password(String),
+    Browser,
+}
+
+enum HeldSession {
+    None,
+    Running(Box<AuthenticatedSession>),
+    Suspended(Box<SuspendedSession>),
+}
+
+enum Ending {
+    Live(AccountScope, Arc<dyn SessionPort>),
+    Detached(AccountScope, Arc<dyn SessionPort>),
+}
+
+impl HeldSession {
+    fn running(&self) -> Option<&AuthenticatedSession> {
+        match self {
+            Self::Running(capability) => Some(capability),
+            Self::None | Self::Suspended(_) => None,
+        }
+    }
+
+    fn ending(&self) -> Option<Ending> {
+        match self {
+            Self::None => None,
+            Self::Running(capability) => Some(Ending::Live(
+                AccountScope::from_session(&capability.session),
+                Arc::clone(&capability.lifecycle),
+            )),
+            Self::Suspended(suspended) => Some(Ending::Detached(
+                suspended.account.clone(),
+                Arc::clone(&suspended.lifecycle),
+            )),
+        }
+    }
+
+    fn suspended(&self) -> Option<&SuspendedSession> {
+        match self {
+            Self::Suspended(suspended) => Some(suspended),
+            Self::None | Self::Running(_) => None,
+        }
+    }
+}
+
 async fn undo_superseded_login(established: EstablishedSession) {
     tracing::info!("authentication superseded, undoing the login");
     let report = established.roll_back().await;
@@ -97,7 +143,7 @@ pub struct AppService {
     selection: Selection,
     last_selected_room: Option<EmittedRoom>,
     lifecycle: Lifecycle,
-    active: Option<AuthenticatedSession>,
+    held_session: HeldSession,
     blocked: Option<UserMessage>,
 }
 
@@ -138,7 +184,7 @@ impl AppService {
             selection: Selection::default(),
             last_selected_room: None,
             lifecycle: Lifecycle::new(),
-            active: None,
+            held_session: HeldSession::None,
             blocked: None,
         }
     }
@@ -268,6 +314,12 @@ impl AppService {
             }
             UiCommand::BackToHomeserver => {
                 self.session.back_to_homeserver();
+            }
+            UiCommand::ReauthPassword(password) => {
+                self.reauthenticate(Reauth::Password(password));
+            }
+            UiCommand::ReauthOAuth => {
+                self.reauthenticate(Reauth::Browser);
             }
             UiCommand::SelectSpace(space) => {
                 self.handle_select_space(space);
@@ -400,6 +452,29 @@ impl AppService {
         }
     }
 
+    fn reauthenticate(&mut self, method: Reauth) {
+        let Some(prior) = self
+            .held_session
+            .suspended()
+            .map(|suspended| suspended.session.clone())
+        else {
+            return;
+        };
+        let Some(attempt) = self.lifecycle.begin_reauth() else {
+            return;
+        };
+        match method {
+            Reauth::Password(password) => {
+                self.session
+                    .spawn_reauth_password(&mut self.operations, prior, password, attempt);
+            }
+            Reauth::Browser => {
+                self.session
+                    .spawn_reauth_oauth(&mut self.operations, prior, attempt);
+            }
+        }
+    }
+
     async fn jump_to_latest(&mut self, room_id: RoomId, generation: i32) {
         if self.active_timeline.is_live() {
             self.active_timeline.jump_to_latest(&room_id, generation);
@@ -418,7 +493,7 @@ impl AppService {
         &self,
         pick: impl FnOnce(&AuthenticatedSession) -> &Arc<P>,
     ) -> Option<Arc<P>> {
-        self.active.as_ref().map(|a| Arc::clone(pick(a)))
+        self.held_session.running().map(|a| Arc::clone(pick(a)))
     }
 
     fn set_selected_space(&self, id: String) {
@@ -493,7 +568,7 @@ impl AppService {
     }
 
     async fn handle_rooms_updated(&mut self, rooms: RoomList) {
-        if self.active.is_none() {
+        if self.held_session.running().is_none() {
             return;
         }
         if self.room_directory.store_rooms(rooms) {
@@ -503,7 +578,7 @@ impl AppService {
     }
 
     fn handle_spaces_updated(&mut self, spaces: Arc<[Space]>) {
-        if self.active.is_none() {
+        if self.held_session.running().is_none() {
             return;
         }
         if self.room_directory.store_spaces(spaces) {
@@ -633,6 +708,11 @@ impl AppService {
                 self.output
                     .publish(Box::new(move |view| view.lifecycle.avatar_path = path));
             }
+            SessionEvent::Resumed {
+                attempt,
+                capability,
+            } => self.settle_resume(attempt, *capability).await,
+            SessionEvent::Suspended => self.suspend_session().await,
             SessionEvent::Expired => self.end_session(EndReason::Expired).await,
         }
     }
@@ -723,10 +803,20 @@ impl AppService {
         self.activate(established.commit().await).await;
     }
 
+    async fn settle_resume(&mut self, attempt: u64, capability: AuthenticatedSession) {
+        self.session.finish_oauth();
+        if self.lifecycle.resume_syncing(attempt).is_none() {
+            tracing::info!("re-authentication superseded, releasing the session it produced");
+            capability.lifecycle.suspend().await;
+            return;
+        }
+        self.activate(capability).await;
+    }
+
     async fn activate(&mut self, capability: AuthenticatedSession) {
         let user_id = capability.session.user_id.clone();
         tracing::info!(%user_id, "authenticated");
-        self.active = Some(capability);
+        self.held_session = HeldSession::Running(Box::new(capability));
         self.emit_login_success(user_id);
         self.start_syncing().await;
     }
@@ -949,7 +1039,7 @@ impl AppService {
     }
 
     async fn start_syncing(&mut self) {
-        let Some((sync, verification, lifecycle_port)) = self.active.as_ref().map(|a| {
+        let Some((sync, verification, lifecycle_port)) = self.held_session.running().map(|a| {
             (
                 Arc::clone(&a.sync),
                 Arc::clone(&a.verification),
@@ -980,15 +1070,6 @@ impl AppService {
             .spawn_user_avatar_fetch(&mut self.background, lifecycle_port);
     }
 
-    fn ending_session(&self) -> Option<(AccountScope, Arc<dyn SessionPort>)> {
-        self.active.as_ref().map(|a| {
-            (
-                AccountScope::from_session(&a.session),
-                Arc::clone(&a.lifecycle),
-            )
-        })
-    }
-
     async fn shutdown_all_tasks(&mut self) {
         tokio::join!(
             self.background.shutdown(),
@@ -1008,33 +1089,68 @@ impl AppService {
         if matches!(reason, EndReason::Expired) {
             tracing::info!("session expired, clearing local state");
         }
+        let ending = self.held_session.ending();
+        self.tear_down_session(AppViewState::logged_out()).await;
+        match ending {
+            Some(Ending::Live(account, port)) if matches!(reason, EndReason::UserLogout) => {
+                self.session
+                    .spawn_logout(&mut self.operations, session, account, port);
+            }
+            Some(Ending::Live(account, port) | Ending::Detached(account, port)) => {
+                self.session.spawn_erase_session(
+                    &mut self.operations,
+                    session,
+                    account,
+                    port,
+                    reason,
+                );
+            }
+            None => {
+                self.lifecycle.finish_logout(session);
+            }
+        }
+    }
+
+    async fn suspend_session(&mut self) {
+        let Some((session, lifecycle_port)) = self
+            .held_session
+            .running()
+            .map(|a| (a.session.clone(), Arc::clone(&a.lifecycle)))
+        else {
+            return;
+        };
+        if !self.lifecycle.suspend() {
+            return;
+        }
+        tracing::info!(
+            user_id = %session.user_id,
+            device_id = %session.device_id,
+            "the homeserver asked for re-authentication, keeping this device and its local data"
+        );
+        self.tear_down_session(AppViewState::reauthenticating(&session))
+            .await;
+        lifecycle_port.suspend().await;
+        self.held_session = HeldSession::Suspended(Box::new(SuspendedSession {
+            account: AccountScope::from_session(&session),
+            session,
+            lifecycle: lifecycle_port,
+        }));
+    }
+
+    async fn tear_down_session(&mut self, view: AppViewState) {
         self.attachments.clear();
         self.submissions.forget_all();
-        let ending = self.ending_session();
-        self.output.replace(AppViewState::logged_out());
-        self.output.emit(Effect::LoggedOut).await;
+        self.output
+            .emit(Effect::SessionReset(Box::new(view.clone())))
+            .await;
+        self.output.replace(view);
         self.shutdown_all_tasks().await;
         self.media.clear_session().await;
         self.room_directory.reset();
         self.verification.reset();
         self.selection = Selection::default();
         self.last_selected_room = None;
-        self.active = None;
-        match ending {
-            Some((account, port)) => match reason {
-                EndReason::UserLogout => {
-                    self.session
-                        .spawn_logout(&mut self.operations, session, account, port);
-                }
-                EndReason::Expired => {
-                    self.session
-                        .spawn_expire_session(&mut self.operations, session, account, port);
-                }
-            },
-            None => {
-                self.lifecycle.finish_logout(session);
-            }
-        }
+        self.held_session = HeldSession::None;
     }
 
     async fn handle_quit(&mut self) {

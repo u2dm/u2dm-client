@@ -7,6 +7,8 @@ pub(super) enum AppPhase {
     LoggedOut,
     Authenticating,
     Syncing,
+    SoftLoggedOut,
+    Reauthenticating,
     LoggingOut,
     CleaningUp,
 }
@@ -48,13 +50,30 @@ impl Lifecycle {
         self.attempt
     }
 
-    pub(super) fn settle_auth(&mut self, attempt: u64) -> bool {
-        if self.phase == AppPhase::Authenticating && self.attempt == attempt {
-            self.phase = AppPhase::LoggedOut;
-            true
-        } else {
-            false
+    pub(super) fn begin_reauth(&mut self) -> Option<u64> {
+        if self.phase != AppPhase::SoftLoggedOut {
+            return None;
         }
+        self.attempt = self.attempt.saturating_add(1);
+        self.phase = AppPhase::Reauthenticating;
+        Some(self.attempt)
+    }
+
+    fn idle_after_auth(phase: AppPhase) -> Option<AppPhase> {
+        match phase {
+            AppPhase::Authenticating => Some(AppPhase::LoggedOut),
+            AppPhase::Reauthenticating => Some(AppPhase::SoftLoggedOut),
+            _ => None,
+        }
+    }
+
+    pub(super) fn settle_auth(&mut self, attempt: u64) -> bool {
+        let Some(idle) = Self::idle_after_auth(self.phase).filter(|_| self.attempt == attempt)
+        else {
+            return false;
+        };
+        self.phase = idle;
+        true
     }
 
     pub(super) fn is_current_attempt(&self, attempt: u64) -> bool {
@@ -62,16 +81,33 @@ impl Lifecycle {
     }
 
     pub(super) fn cancel_auth(&mut self) -> bool {
-        if self.phase == AppPhase::Authenticating {
-            self.phase = AppPhase::LoggedOut;
-            true
-        } else {
-            false
-        }
+        let Some(idle) = Self::idle_after_auth(self.phase) else {
+            return false;
+        };
+        self.phase = idle;
+        true
     }
 
     pub(super) fn promote_to_syncing(&mut self, attempt: u64) -> Option<u64> {
         if self.phase == AppPhase::Authenticating && self.attempt == attempt {
+            self.phase = AppPhase::Syncing;
+            self.session = self.session.saturating_add(1);
+            Some(self.session)
+        } else {
+            None
+        }
+    }
+
+    pub(super) fn suspend(&mut self) -> bool {
+        if self.phase != AppPhase::Syncing {
+            return false;
+        }
+        self.phase = AppPhase::SoftLoggedOut;
+        true
+    }
+
+    pub(super) fn resume_syncing(&mut self, attempt: u64) -> Option<u64> {
+        if self.phase == AppPhase::Reauthenticating && self.attempt == attempt {
             self.phase = AppPhase::Syncing;
             self.session = self.session.saturating_add(1);
             Some(self.session)
@@ -100,7 +136,7 @@ impl Lifecycle {
     }
 
     pub(super) fn begin_logout(&mut self) -> Option<u64> {
-        if self.phase == AppPhase::Syncing {
+        if matches!(self.phase, AppPhase::Syncing | AppPhase::SoftLoggedOut) {
             self.phase = AppPhase::LoggingOut;
             Some(self.session)
         } else {
@@ -136,7 +172,11 @@ pub(super) fn command_allowed(phase: AppPhase, cmd: &UiCommand) -> bool {
         | UiCommand::LoginPassword(_)
         | UiCommand::LoginOAuth
         | UiCommand::BackToHomeserver => phase == AppPhase::LoggedOut,
-        UiCommand::CancelOAuth => phase == AppPhase::Authenticating,
+        UiCommand::ReauthPassword(_) | UiCommand::ReauthOAuth => phase == AppPhase::SoftLoggedOut,
+        UiCommand::CancelOAuth => {
+            matches!(phase, AppPhase::Authenticating | AppPhase::Reauthenticating)
+        }
+        UiCommand::Logout => matches!(phase, AppPhase::Syncing | AppPhase::SoftLoggedOut),
         UiCommand::SelectSpace(_)
         | UiCommand::SelectSubspace(_)
         | UiCommand::MoveSpace { .. }
@@ -167,7 +207,6 @@ pub(super) fn command_allowed(phase: AppPhase, cmd: &UiCommand) -> bool {
         | UiCommand::AudioEnded { .. }
         | UiCommand::OpenLink { .. }
         | UiCommand::SaveFile { .. }
-        | UiCommand::DismissToast
-        | UiCommand::Logout => phase == AppPhase::Syncing,
+        | UiCommand::DismissToast => phase == AppPhase::Syncing,
     }
 }

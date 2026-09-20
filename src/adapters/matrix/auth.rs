@@ -6,6 +6,7 @@ use matrix_sdk::authentication::oauth::registration::{
     ApplicationType, ClientMetadata, Localized, OAuthGrantType,
 };
 use matrix_sdk::authentication::oauth::{ClientId, OAuthSession, UserSession};
+use matrix_sdk::encryption::CryptoStoreError;
 use matrix_sdk::media::MediaRetentionPolicy;
 use matrix_sdk::ruma::api::client::session::get_login_types::v3::LoginType;
 use matrix_sdk::ruma::api::error::ErrorKind;
@@ -134,9 +135,16 @@ fn classify_auth_failure(error: &matrix_sdk::Error) -> AuthFailure {
         Some(_) => AuthFailure::Unknown,
         None => match error {
             matrix_sdk::Error::Http(http) if is_transport_failure(http) => AuthFailure::Unreachable,
+            matrix_sdk::Error::CryptoStoreError(store) if holds_another_device(store) => {
+                AuthFailure::SessionNotReusable
+            }
             _ => AuthFailure::Unknown,
         },
     }
+}
+
+fn holds_another_device(error: &CryptoStoreError) -> bool {
+    matches!(error, CryptoStoreError::MismatchedAccount { .. })
 }
 
 fn is_transport_failure(error: &HttpError) -> bool {
@@ -154,47 +162,64 @@ fn auth_error(error: &matrix_sdk::Error) -> AppError {
     }
 }
 
+fn current_session(client: &Client, missing: &'static str) -> Result<Session> {
+    extract_current_session(client).ok_or_else(|| AppError::Other(missing.into()))
+}
+
+async fn submit_password(
+    client: &Client,
+    creds: &LoginCredentials,
+    reuse_device: Option<&str>,
+) -> Result<()> {
+    let login = client
+        .matrix_auth()
+        .login_username(&creds.username, &creds.password);
+    let login = match reuse_device {
+        Some(device_id) => login.device_id(device_id),
+        None => login.initial_device_display_name("U2DM"),
+    };
+    login.await.map(|_| ()).map_err(|e| auth_error(&e))
+}
+
 pub(super) async fn login_password(client: &Client, creds: LoginCredentials) -> Result<Session> {
     tracing::info!(user = %creds.username, "logging in with password");
-    client
-        .matrix_auth()
-        .login_username(&creds.username, &creds.password)
-        .initial_device_display_name("U2DM")
-        .await
-        .map_err(|e| auth_error(&e))?;
+    submit_password(client, &creds, None).await?;
 
-    let sdk_session = client
-        .matrix_auth()
-        .session()
-        .ok_or_else(|| AppError::Other("No session after login".into()))?;
-    let homeserver = client.homeserver().to_string();
+    let session = current_session(client, "No session after login")?;
     tracing::info!(
-        user_id = %sdk_session.meta.user_id,
-        device_id = %sdk_session.meta.device_id,
+        user_id = %session.user_id,
+        device_id = %session.device_id,
         "password login successful"
     );
+    Ok(session)
+}
 
-    Ok(Session {
-        user_id: sdk_session.meta.user_id.to_string(),
-        device_id: sdk_session.meta.device_id.to_string(),
-        homeserver,
-        access_token: sdk_session.tokens.access_token,
-        refresh_token: sdk_session.tokens.refresh_token,
-        client_id: None,
-    })
+pub(super) async fn reauth_password(
+    client: &Client,
+    prior: &Session,
+    creds: LoginCredentials,
+) -> Result<Session> {
+    tracing::info!(
+        user = %creds.username,
+        device_id = %prior.device_id,
+        "re-authenticating the existing device with a password"
+    );
+    submit_password(client, &creds, Some(&prior.device_id)).await?;
+    resumed_session(client, prior)
 }
 
 pub(super) async fn login_oauth_start(
     client: &Client,
     redirect_handle: &Mutex<Option<LocalServerRedirectHandle>>,
+    reuse_device: Option<OwnedDeviceId>,
 ) -> Result<OAuthLoginData> {
-    tracing::info!("starting OAuth login flow");
+    tracing::info!(?reuse_device, "starting OAuth login flow");
     let (redirect_uri, server_handle) = LocalServerBuilder::new().spawn().await?;
 
     let metadata = client_metadata()?;
     let auth_data = client
         .oauth()
-        .login(redirect_uri, None, Some(metadata.into()), None)
+        .login(redirect_uri, reuse_device, Some(metadata.into()), None)
         .build()
         .await
         .map_err(|e| AppError::Other(e.to_string()))?;
@@ -206,10 +231,10 @@ pub(super) async fn login_oauth_start(
     })
 }
 
-pub(super) async fn login_oauth_finish(
+async fn await_oauth_callback(
     client: &Client,
     redirect_handle: &Mutex<Option<LocalServerRedirectHandle>>,
-) -> Result<Session> {
+) -> Result<()> {
     let handle = redirect_handle
         .lock()
         .await
@@ -224,27 +249,67 @@ pub(super) async fn login_oauth_finish(
         .oauth()
         .finish_login(UrlOrQuery::Query(query_string.0))
         .await
-        .map_err(|e| auth_error(&e))?;
+        .map_err(|e| auth_error(&e))
+}
 
-    let sdk_session = client
-        .oauth()
-        .full_session()
-        .ok_or_else(|| AppError::Other("No session after OAuth login".into()))?;
-    let homeserver = client.homeserver().to_string();
+pub(super) async fn login_oauth_finish(
+    client: &Client,
+    redirect_handle: &Mutex<Option<LocalServerRedirectHandle>>,
+) -> Result<Session> {
+    await_oauth_callback(client, redirect_handle).await?;
+
+    let session = current_session(client, "No session after OAuth login")?;
     tracing::info!(
-        user_id = %sdk_session.user.meta.user_id,
-        device_id = %sdk_session.user.meta.device_id,
+        user_id = %session.user_id,
+        device_id = %session.device_id,
         "OAuth login successful"
     );
+    Ok(session)
+}
 
+pub(super) async fn reauth_oauth_finish(
+    client: &Client,
+    redirect_handle: &Mutex<Option<LocalServerRedirectHandle>>,
+    prior: &Session,
+) -> Result<Session> {
+    await_oauth_callback(client, redirect_handle).await?;
+    resumed_session(client, prior)
+}
+
+fn resumed_session(client: &Client, prior: &Session) -> Result<Session> {
+    let fresh = current_session(client, "No session after re-authentication")?;
+    if fresh.user_id != prior.user_id || fresh.device_id != prior.device_id {
+        return Err(AppError::Auth {
+            kind: AuthFailure::SessionNotReusable,
+            detail: format!(
+                "signing in returned {} on device {}, not {} on device {}",
+                fresh.user_id, fresh.device_id, prior.user_id, prior.device_id
+            ),
+        });
+    }
+
+    tracing::info!(
+        user_id = %fresh.user_id,
+        device_id = %fresh.device_id,
+        "re-authenticated the device the local store belongs to"
+    );
     Ok(Session {
-        user_id: sdk_session.user.meta.user_id.to_string(),
-        device_id: sdk_session.user.meta.device_id.to_string(),
-        homeserver,
-        access_token: sdk_session.user.tokens.access_token,
-        refresh_token: sdk_session.user.tokens.refresh_token,
-        client_id: Some(sdk_session.client_id.to_string()),
+        homeserver: prior.homeserver.clone(),
+        ..fresh
     })
+}
+
+pub(super) async fn open_account_store(
+    paths: &StorePaths,
+    session: &Session,
+    passphrase: &str,
+) -> Result<Client> {
+    open_store(
+        Client::builder().homeserver_url(&session.homeserver),
+        paths,
+        passphrase,
+    )
+    .await
 }
 
 pub(super) async fn open_session(
@@ -255,12 +320,7 @@ pub(super) async fn open_session(
 ) -> Result<Client> {
     on_progress(RestoreStep::Connecting);
 
-    let client = open_store(
-        Client::builder().homeserver_url(&session.homeserver),
-        paths,
-        passphrase,
-    )
-    .await?;
+    let client = open_account_store(paths, session, passphrase).await?;
 
     on_progress(RestoreStep::RestoringAuth);
 

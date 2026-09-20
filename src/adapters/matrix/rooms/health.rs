@@ -10,6 +10,8 @@ use matrix_sdk_ui::room_list_service::Error as RoomListError;
 use matrix_sdk_ui::sync_service::Error as SyncServiceError;
 use tokio::time::Instant;
 
+use crate::domain::sync::SessionLoss;
+
 const SYNC_RESTART_BACKOFF_START: Duration = Duration::from_secs(1);
 const SYNC_RESTART_BACKOFF_MAX: Duration = Duration::from_secs(30);
 const SYNC_RESTART_HEALTHY_AFTER: Duration = Duration::from_mins(1);
@@ -22,11 +24,14 @@ fn extract_sdk_error(err: &SyncServiceError) -> Option<&matrix_sdk::Error> {
     }
 }
 
-fn rejects_credentials(kind: Option<&ErrorKind>) -> bool {
-    matches!(
-        kind,
-        Some(ErrorKind::UnknownToken { .. } | ErrorKind::Unauthorized | ErrorKind::Forbidden)
-    )
+fn rejected_credentials(kind: Option<&ErrorKind>) -> Option<SessionLoss> {
+    match kind? {
+        ErrorKind::UnknownToken(data) if data.soft_logout => Some(SessionLoss::SoftLogout),
+        ErrorKind::UnknownToken(_) | ErrorKind::Unauthorized | ErrorKind::Forbidden => {
+            Some(SessionLoss::Expired)
+        }
+        _ => None,
+    }
 }
 
 fn revokes_refresh_grant(err: &OAuthError) -> bool {
@@ -37,27 +42,29 @@ fn revokes_refresh_grant(err: &OAuthError) -> bool {
     )
 }
 
-fn refresh_rejected(err: &RefreshTokenError) -> bool {
+fn rejected_refresh(err: &RefreshTokenError) -> Option<SessionLoss> {
     match err {
-        RefreshTokenError::RefreshTokenRequired => true,
-        RefreshTokenError::MatrixAuth(http) => http_rejects_credentials(http),
-        RefreshTokenError::OAuth(oauth) => revokes_refresh_grant(oauth),
+        RefreshTokenError::RefreshTokenRequired => Some(SessionLoss::Expired),
+        RefreshTokenError::MatrixAuth(http) => rejected_over_http(http),
+        RefreshTokenError::OAuth(oauth) => {
+            revokes_refresh_grant(oauth).then_some(SessionLoss::Expired)
+        }
     }
 }
 
-fn http_rejects_credentials(err: &HttpError) -> bool {
+fn rejected_over_http(err: &HttpError) -> Option<SessionLoss> {
     match err {
-        HttpError::RefreshToken(refresh) => refresh_rejected(refresh),
-        HttpError::Cached(inner) => http_rejects_credentials(inner),
-        _ => rejects_credentials(err.client_api_error_kind()),
+        HttpError::RefreshToken(refresh) => rejected_refresh(refresh),
+        HttpError::Cached(inner) => rejected_over_http(inner),
+        _ => rejected_credentials(err.client_api_error_kind()),
     }
 }
 
-pub(super) fn is_auth_error(err: &SyncServiceError) -> bool {
-    matches!(
-        extract_sdk_error(err),
-        Some(matrix_sdk::Error::Http(http)) if http_rejects_credentials(http)
-    )
+pub(super) fn session_loss(err: &SyncServiceError) -> Option<SessionLoss> {
+    match extract_sdk_error(err) {
+        Some(matrix_sdk::Error::Http(http)) => rejected_over_http(http),
+        _ => None,
+    }
 }
 
 pub(super) struct SyncHealth {

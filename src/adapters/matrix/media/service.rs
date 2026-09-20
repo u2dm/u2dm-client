@@ -216,7 +216,7 @@ impl MediaService {
         report
     }
 
-    async fn detach(&self) {
+    pub(crate) async fn detach(&self) {
         self.flights.clear();
         if let Ok(mut failures) = self.failures.lock() {
             failures.clear();

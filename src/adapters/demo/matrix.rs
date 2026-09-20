@@ -72,7 +72,7 @@ impl AuthPort for DemoMatrix {
             return Err(unavailable("OAuth login"));
         }
         login::pause().await;
-        Ok(data::session())
+        Ok(oauth_session())
     }
 
     async fn adopt_session(
@@ -100,6 +100,38 @@ impl AuthPort for DemoMatrix {
             login::pause().await;
         }
         Ok(authenticated(session.clone()))
+    }
+
+    async fn reauthenticate(
+        &self,
+        prior: &Session,
+        _passphrase: &str,
+        _creds: LoginCredentials,
+    ) -> Result<AuthenticatedSession> {
+        login::pause().await;
+        Ok(authenticated(prior.clone()))
+    }
+
+    async fn reauth_oauth_start(
+        &self,
+        _prior: &Session,
+        _passphrase: &str,
+    ) -> Result<OAuthLoginData> {
+        if !login::oauth_succeeds() {
+            return Err(unavailable("OAuth login"));
+        }
+        login::pause().await;
+        Ok(OAuthLoginData {
+            auth_url: "https://example.invalid/demo-oauth".to_owned(),
+        })
+    }
+
+    async fn reauth_oauth_finish(&self, prior: &Session) -> Result<AuthenticatedSession> {
+        if !login::oauth_succeeds() {
+            return Err(unavailable("OAuth login"));
+        }
+        login::pause().await;
+        Ok(authenticated(prior.clone()))
     }
 
     fn local_data_ownership(&self) -> LocalDataOwnership {
@@ -154,6 +186,13 @@ impl StoreAdoption for DemoAdoption {
 
     async fn unwind(self: Box<Self>) -> CleanupReport {
         CleanupReport::default()
+    }
+}
+
+fn oauth_session() -> Session {
+    Session {
+        client_id: Some("demo-oauth-client".to_owned()),
+        ..data::session()
     }
 }
 
@@ -799,6 +838,8 @@ impl SessionPort for DemoAuthed {
     async fn logout(&self) -> Result<()> {
         Ok(())
     }
+
+    async fn suspend(&self) {}
 
     async fn clear_store(&self) -> CleanupReport {
         CleanupReport::default()

@@ -12,6 +12,8 @@ export global Actions {
     callback login-oauth();
     callback cancel-oauth();
     callback back-to-homeserver();
+    callback reauth-password(string);
+    callback reauth-oauth();
     callback logout();
 
     callback select-room(string);

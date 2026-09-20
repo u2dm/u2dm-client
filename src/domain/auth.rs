@@ -75,6 +75,16 @@ pub struct Session {
     pub client_id: Option<String>,
 }
 
+impl Session {
+    pub fn login_method(&self) -> LoginMethod {
+        if self.client_id.is_some() {
+            LoginMethod::OAuth
+        } else {
+            LoginMethod::Password
+        }
+    }
+}
+
 impl fmt::Debug for Session {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Session")

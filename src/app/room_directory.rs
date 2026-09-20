@@ -15,7 +15,7 @@ use super::space_order;
 use super::task_group::TaskGroup;
 use crate::commands::sync::DirectoryUpdate;
 use crate::domain::room::{Room, RoomId, RoomList, Space};
-use crate::domain::sync::{ConnectionStatus, SyncEvent, SyncOutcome};
+use crate::domain::sync::{ConnectionStatus, SessionLoss, SyncEvent, SyncOutcome};
 use crate::ports::matrix::{SpaceOrderPort, SyncPort, SyncSink};
 use crate::ports::output::AppOutputPort;
 
@@ -693,8 +693,12 @@ async fn supervise_sync(
         let started = Instant::now();
         match sync.start_sync(Arc::clone(&on_sync), token.clone()).await {
             SyncOutcome::Cancelled => return,
-            SyncOutcome::SessionExpired => {
-                drop(events.send(AppEvent::Session(SessionEvent::Expired)));
+            SyncOutcome::SessionLost(loss) => {
+                let event = match loss {
+                    SessionLoss::SoftLogout => SessionEvent::Suspended,
+                    SessionLoss::Expired => SessionEvent::Expired,
+                };
+                drop(events.send(AppEvent::Session(event)));
                 return;
             }
             SyncOutcome::Fatal(msg) => {
