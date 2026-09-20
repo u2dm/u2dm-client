@@ -137,6 +137,24 @@ impl Clock {
         }
     }
 
+    pub(super) fn follow_audio(&mut self, position: Duration) {
+        *self = Self::Audio {
+            position,
+            paused: self.is_paused(),
+        };
+    }
+
+    pub(super) fn hand_off_to_wall(&mut self) {
+        let Self::Audio { position, paused } = *self else {
+            return;
+        };
+        let now = Instant::now();
+        *self = Self::Wall {
+            origin: now.checked_sub(position).unwrap_or(now),
+            paused_at: paused.then_some(now),
+        };
+    }
+
     pub(super) fn elapsed(&self) -> Duration {
         match self {
             Self::Wall { origin, paused_at } => paused_at

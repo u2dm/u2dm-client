@@ -17,6 +17,14 @@ use super::playback::{Clock, Command, Flow, Playback, stream_duration};
 const MAX_DIMENSION: u32 = 1280;
 const COMMAND_POLL: Duration = Duration::from_millis(4);
 const MAX_PENDING_FRAMES: usize = 4;
+const AUDIO_INTERLEAVE_SLACK: Duration = Duration::from_secs(1);
+const MAX_LOOKAHEAD_PACKETS: usize = 120;
+
+enum AudioSupply {
+    Buffered,
+    Starving,
+    Exhausted,
+}
 
 struct Pending {
     rgb: Vec<u8>,
@@ -67,6 +75,8 @@ struct Session {
     height: u32,
     audio: Option<AudioFeed>,
     pending: VecDeque<Pending>,
+    stashed: VecDeque<Packet>,
+    demuxed: Duration,
     drained: bool,
 }
 
@@ -117,6 +127,8 @@ impl Session {
             height,
             audio,
             pending: VecDeque::new(),
+            stashed: VecDeque::new(),
+            demuxed: Duration::ZERO,
             drained: false,
         })
     }
@@ -127,7 +139,29 @@ impl Session {
     }
 
     fn has_finished(&self) -> bool {
-        self.drained && self.pending.is_empty()
+        self.drained && self.pending.is_empty() && self.stashed.is_empty()
+    }
+
+    fn paced_by_audio(&self) -> bool {
+        self.audio.is_some()
+    }
+
+    fn audio_supply(&self) -> AudioSupply {
+        let Some(audio) = self.audio.as_ref() else {
+            return AudioSupply::Exhausted;
+        };
+        if audio.output().queued_frames() > 0 {
+            AudioSupply::Buffered
+        } else if self.drained || self.looked_past_the_audio(audio) {
+            AudioSupply::Exhausted
+        } else {
+            AudioSupply::Starving
+        }
+    }
+
+    fn looked_past_the_audio(&self, audio: &AudioFeed) -> bool {
+        self.demuxed >= audio.horizon().saturating_add(AUDIO_INTERLEAVE_SLACK)
+            || self.stashed.len() >= MAX_LOOKAHEAD_PACKETS
     }
 
     fn seek_to(&mut self, position: Duration, clock: &mut Clock) {
@@ -138,18 +172,24 @@ impl Session {
         }
         self.decoder.flush();
         self.pending.clear();
+        self.stashed.clear();
         self.drained = false;
+        self.demuxed = position;
         if let Some(audio) = self.audio.as_mut() {
             audio.rebase(position);
         }
-        clock.rebase(position);
+        if self.paced_by_audio() {
+            clock.follow_audio(position);
+        } else {
+            clock.rebase(position);
+        }
     }
 
     fn drive(&mut self, inbox: &Receiver<Command>, sink: &(dyn Fn(PlayerEvent<'_>) + Send)) {
         sink(PlayerEvent::Ready {
             duration: self.duration,
         });
-        let mut clock = if self.audio.is_some() {
+        let mut clock = if self.paced_by_audio() {
             Clock::audio()
         } else {
             Clock::wall()
@@ -214,8 +254,13 @@ impl Session {
     }
 
     fn sync_clock(&self, clock: &mut Clock) {
-        if let Some(audio) = self.audio.as_ref() {
-            clock.observe(audio.output().position());
+        match self.audio_supply() {
+            AudioSupply::Buffered | AudioSupply::Starving => {
+                if let Some(audio) = self.audio.as_ref() {
+                    clock.observe(audio.output().position());
+                }
+            }
+            AudioSupply::Exhausted => clock.hand_off_to_wall(),
         }
     }
 
@@ -236,12 +281,40 @@ impl Session {
     }
 
     fn top_up(&mut self) {
-        while self.pending.len() < MAX_PENDING_FRAMES && !self.drained && !self.audio_is_full() {
+        loop {
+            self.decode_stashed();
+            if !self.wants_packet() {
+                return;
+            }
             match self.next_packet() {
-                Some(packet) => self.decode_into_pending(&packet),
-                None => self.drained = true,
+                Some(packet) => self.stashed.push_back(packet),
+                None => self.close_input(),
             }
         }
+    }
+
+    fn wants_packet(&self) -> bool {
+        if self.drained || self.audio_is_full() {
+            return false;
+        }
+        self.pending.len() + self.stashed.len() < MAX_PENDING_FRAMES
+            || matches!(self.audio_supply(), AudioSupply::Starving)
+    }
+
+    fn decode_stashed(&mut self) {
+        while self.pending.len() < MAX_PENDING_FRAMES {
+            let Some(packet) = self.stashed.pop_front() else {
+                return;
+            };
+            self.decode_into_pending(&packet);
+        }
+    }
+
+    fn close_input(&mut self) {
+        if let Some(audio) = self.audio.as_mut() {
+            audio.finish();
+        }
+        self.drained = true;
     }
 
     fn decode_into_pending(&mut self, packet: &Packet) {
@@ -323,8 +396,11 @@ impl Session {
 
     fn next_packet(&mut self) -> Option<Packet> {
         loop {
-            let (stream, packet) = self.input.packets().next()?;
-            let index = stream.index();
+            let (index, time_base, packet) = {
+                let (stream, packet) = self.input.packets().next()?;
+                (stream.index(), stream.time_base(), packet)
+            };
+            self.demuxed = self.demuxed.max(packet_position(&packet, time_base));
             if index == self.stream_index {
                 return Some(packet);
             }
@@ -335,4 +411,9 @@ impl Session {
             }
         }
     }
+}
+
+fn packet_position(packet: &Packet, time_base: Rational) -> Duration {
+    let ticks = packet.pts().or_else(|| packet.dts()).unwrap_or(0);
+    decoder::ticks_to_duration(ticks, time_base)
 }

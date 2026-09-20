@@ -9,6 +9,7 @@ pub struct AudioFeed {
     decoder: AudioDecoder,
     output: AudioOutput,
     trim_until: Option<Duration>,
+    horizon: Duration,
 }
 
 impl AudioFeed {
@@ -22,6 +23,7 @@ impl AudioFeed {
             decoder,
             output,
             trim_until: None,
+            horizon: Duration::ZERO,
         })
     }
 
@@ -33,13 +35,19 @@ impl AudioFeed {
         self.decoder.stream_index()
     }
 
+    pub fn horizon(&self) -> Duration {
+        self.horizon
+    }
+
     pub fn feed(&mut self, packet: &Packet) {
         let Self {
             decoder,
             output,
             trim_until,
+            horizon,
         } = self;
         decoder.feed(packet, &mut |samples, start| {
+            *horizon = horizon_after(output, *horizon, samples, start);
             push_trimmed(output, trim_until, samples, start);
         });
     }
@@ -49,8 +57,10 @@ impl AudioFeed {
             decoder,
             output,
             trim_until,
+            horizon,
         } = self;
         decoder.finish(&mut |samples, start| {
+            *horizon = horizon_after(output, *horizon, samples, start);
             push_trimmed(output, trim_until, samples, start);
         });
     }
@@ -59,7 +69,22 @@ impl AudioFeed {
         self.decoder.reset();
         self.output.rebase(position);
         self.trim_until = Some(position);
+        self.horizon = position;
     }
+}
+
+fn horizon_after(
+    output: &AudioOutput,
+    horizon: Duration,
+    samples: &[f32],
+    start: Option<Duration>,
+) -> Duration {
+    let lanes = usize::from(output.channels().max(1));
+    let frames = u64::try_from(samples.len() / lanes).unwrap_or(u64::MAX);
+    let span = Duration::from_micros(
+        frames.saturating_mul(1_000_000) / u64::from(output.sample_rate().max(1)),
+    );
+    horizon.max(start.unwrap_or(horizon).saturating_add(span))
 }
 
 fn push_trimmed(
