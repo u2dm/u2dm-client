@@ -9,8 +9,12 @@ readme = "README.md"
 keywords = ["matrix", "chat", "slint"]
 categories = ["network-programming"]
 
+[workspace]
+members = ["crates/ui"]
+
 [features]
-default = ["video"]
+default = ["video", "compiled"]
+compiled = ["u2dm-ui/codegen"]
 interpreted = ["dep:slint-interpreter", "dep:lucide-slint"]
 demo = ["dep:axum"]
 video = ["dep:alsa", "dep:cpal", "dep:ffmpeg-next"]
@@ -89,6 +93,7 @@ tokio = { version = "1.53.1", features = [
 tokio-util = { version = "0.7.19", features = ["rt"] }
 tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.23", features = ["env-filter", "json"] }
+u2dm-ui = { path = "crates/ui", default-features = false }
 url = "2.5.8"
 
 [target.'cfg(target_os = "linux")'.dependencies]
@@ -111,9 +116,11 @@ windows-native-keyring-store = "1.1.0"
 
 [build-dependencies]
 lucide-slint = "1.46.0"
-slint-build = { version = "1.18.0", default-features = false, features = ["compat-1-18"] }
 
-[lints.clippy]
+[lints]
+workspace = true
+
+[workspace.lints.clippy]
 all = { level = "deny", priority = -1 }
 pedantic = { level = "deny", priority = -1 }
 #cargo = { level = "deny", priority = -1 }
@@ -153,10 +160,16 @@ split-debuginfo = "unpacked"
 opt-level = 3
 debug = false
 
+[profile.dev.package.u2dm-ui]
+debug = false
+
 [profile.inspect]
 inherits = "dev"
 incremental = false
 
 [profile.inspect.package."*"]
 opt-level = 3
+debug = false
+
+[profile.inspect.package.u2dm-ui]
 debug = false

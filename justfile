@@ -1,4 +1,5 @@
 MODES := "target/modes"
+INTERPRETED := "--no-default-features --features interpreted,video"
 
 default:
     @just --list
@@ -10,10 +11,10 @@ run *ARGS:
     cargo run {{ ARGS }}
 
 interpreted *ARGS:
-    CARGO_TARGET_DIR={{ MODES }}/interpreted cargo build --features interpreted {{ ARGS }}
+    CARGO_TARGET_DIR={{ MODES }}/interpreted cargo build {{ INTERPRETED }} {{ ARGS }}
 
 run-interpreted *ARGS:
-    CARGO_TARGET_DIR={{ MODES }}/interpreted cargo run --features interpreted {{ ARGS }}
+    CARGO_TARGET_DIR={{ MODES }}/interpreted cargo run {{ INTERPRETED }} {{ ARGS }}
 
 demo *ARGS:
     CARGO_TARGET_DIR={{ MODES }}/demo cargo run --features demo {{ ARGS }}

@@ -1,19 +1,18 @@
 #![allow(clippy::panic)]
 
-#[cfg(not(feature = "interpreted"))]
-use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::{env, fs};
 
 const LANG_DIR: &str = "lang";
+const SRC_DIR: &str = "src";
+const GENERATED_UI_CRATE: &str = "u2dm_ui";
+const GENERATED_UI_ADAPTER: &str = "src/adapters/ui/compiled.rs";
 const BUNDLED_CATALOGS_ENV: &str = "U2DM_BUNDLED_CATALOGS";
 const UI_DIR: &str = "ui";
 const ENUMS_FILE: &str = "ui/enums.slint";
 const POT_FILE: &str = "lang/u2dm.pot";
 const LUCIDE_LSP_LIB: &str = ".lucide/lib.slint";
-const TWEMOJI_FONT: &str = "ui/fonts/Twemoji.ttf";
-const FONT_REPO: &str = "u2dm/twemoji";
 #[cfg(feature = "demo")]
 const DEMO_ASSETS_SCRIPT: &str = "scripts/gen-demo-assets.sh";
 #[cfg(feature = "demo")]
@@ -93,20 +92,11 @@ const ENUM_TABLES: &[(&str, &str)] = &[
 fn main() {
     check_enum_branch_coverage();
     check_scenario_catalogs();
+    check_generated_ui_stays_in_its_adapter();
     sync_lucide_lsp_lib();
-    ensure_twemoji_font();
 
     #[cfg(feature = "demo")]
     fetch_demo_assets();
-
-    #[cfg(not(feature = "interpreted"))]
-    {
-        let library = HashMap::from([("lucide".to_string(), PathBuf::from(lucide_slint::lib()))]);
-        let config = slint_build::CompilerConfiguration::new().with_library_paths(library);
-        if let Err(e) = slint_build::compile_with_config("ui/main.slint", config) {
-            panic!("Failed to compile Slint UI: {e}");
-        }
-    }
 
     update_translations(&bundled_catalog_root());
 }
@@ -214,6 +204,27 @@ fn section<'a>(text: &'a str, file: &str, bounds: (&str, &str), what: &str) -> &
         panic!("{file} has no `{header}` followed by `{footer}`, so {what} cannot be checked");
     };
     body
+}
+
+fn check_generated_ui_stays_in_its_adapter() {
+    let trespassers: Vec<String> = collect_files_recursive(SRC_DIR, "rs")
+        .into_iter()
+        .filter(|path| path != GENERATED_UI_ADAPTER)
+        .filter(|path| names_generated_ui(path))
+        .collect();
+
+    assert!(
+        trespassers.is_empty(),
+        "{trespassers:?} name the `{GENERATED_UI_CRATE}` crate, which only {GENERATED_UI_ADAPTER} \
+         may. The generated Slint types used to be a private module inside that adapter, so \
+         nothing else could reach them; giving them their own crate made them importable from \
+         anywhere, and a Slint type in app/ or domain/ is the boundary rule in architecture.md \
+         broken by an import."
+    );
+}
+
+fn names_generated_ui(path: &str) -> bool {
+    fs::read_to_string(path).is_ok_and(|text| text.contains(GENERATED_UI_CRATE))
 }
 
 fn check_enum_branch_coverage() {
@@ -387,53 +398,6 @@ fn bundled_catalog_root() -> PathBuf {
     let root = Path::new(&out_dir).join(LANG_DIR);
     println!("cargo::rustc-env={BUNDLED_CATALOGS_ENV}={}", root.display());
     root
-}
-
-fn ensure_twemoji_font() {
-    println!("cargo::rerun-if-changed={TWEMOJI_FONT}");
-
-    if Path::new(TWEMOJI_FONT).exists() {
-        return;
-    }
-
-    if let Some(parent) = Path::new(TWEMOJI_FONT).parent()
-        && fs::create_dir_all(parent).is_err()
-    {
-        panic!(
-            "failed to create the {} directory for the emoji font",
-            parent.display()
-        );
-    }
-
-    // hardcoded for now
-    let url = format!("https://github.com/{FONT_REPO}/releases/latest/download/Twemoji.ttf");
-    println!("cargo::warning={TWEMOJI_FONT} is missing; downloading it from {url}");
-
-    let tmp = format!("{TWEMOJI_FONT}.download");
-    match Command::new("curl")
-        .args([
-            "--fail",
-            "--location",
-            "--silent",
-            "--show-error",
-            "--output",
-            &tmp,
-            &url,
-        ])
-        .status()
-    {
-        Ok(status) if status.success() => {}
-        Ok(_) => panic!(
-            "failed to download {url}. Confirm a release exists at \
-             https://github.com/{FONT_REPO}/releases."
-        ),
-        Err(e) => panic!("failed to run curl to download {url}: {e}. Install curl."),
-    }
-
-    if let Err(e) = fs::rename(&tmp, TWEMOJI_FONT) {
-        drop(fs::remove_file(&tmp));
-        panic!("failed to move downloaded emoji font into place: {e}");
-    }
 }
 
 #[cfg(feature = "demo")]

@@ -1,0 +1,27 @@
+[package]
+name = "u2dm-ui"
+version = "0.1.0"
+edition = "2024"
+description = "Compiled Slint UI for U2DM"
+license = "AGPL-3.0-or-later"
+publish = false
+
+[features]
+default = ["codegen"]
+codegen = ["dep:slint-build", "dep:lucide-slint"]
+
+[lints]
+workspace = true
+
+[dependencies]
+slint = { version = "1.18.0", default-features = false, features = [
+    "std",
+    "compat-1-2",
+    "gettext",
+] }
+
+[build-dependencies]
+lucide-slint = { version = "1.46.0", optional = true }
+slint-build = { version = "1.18.0", optional = true, default-features = false, features = [
+    "compat-1-18",
+] }

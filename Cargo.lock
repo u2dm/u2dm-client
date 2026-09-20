@@ -7807,7 +7807,6 @@ dependencies = [
  "serde_json",
  "sha2 0.11.0",
  "slint",
- "slint-build",
  "slint-interpreter",
  "strum",
  "sys-locale",
@@ -7816,10 +7815,20 @@ dependencies = [
  "tokio-util",
  "tracing",
  "tracing-subscriber",
+ "u2dm-ui",
  "url",
  "windows-native-keyring-store",
  "xdg",
  "zbus-secret-service-keyring-store",
+]
+
+[[package]]
+name = "u2dm-ui"
+version = "0.1.0"
+dependencies = [
+ "lucide-slint",
+ "slint",
+ "slint-build",
 ]
 
 [[package]]

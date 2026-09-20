@@ -7,6 +7,21 @@ use slint::{
 };
 use tokio::runtime::Runtime;
 use tokio::sync::{mpsc, watch};
+#[cfg(feature = "demo")]
+use u2dm_ui::Probe;
+use u2dm_ui::{
+    Actions, AppWindow, AttachmentKind as UiAttachmentKind, AttachmentView,
+    AudioKind as UiAudioKind, AudioView, ConnectionState, Delivery as UiDelivery, DirectoryView,
+    EmojiEntry, EmojiGroup, EmojiInsert, EmojiStore, LoginActivity as UiLoginActivity,
+    LoginMethodKind as UiLoginMethodKind, LoginPhase, LoginView, MediaFailure as UiMediaFailure,
+    MediaState as UiMediaState, MessageEntry, MessageKind as UiMessageKind,
+    PreviewKind as UiPreviewKind, ReactionEntry, ReactionSend as UiReactionSend, ReactorAvatar,
+    RoomEntry, RoomView, SendState as UiSendState, ServiceKind as UiServiceKind, SessionView,
+    SpaceEntry, StickerCell, StickerPackTab, StickerRow, StickerView, TimelineState, UnsentView,
+    UserMessage as UiUserMessage, UserMessageKind as UiUserMessageKind,
+    VerificationActivity as UiVerificationActivity, VerificationEmoji, VerificationPhase,
+    VerificationView, VideoView, WindowView,
+};
 
 use super::backend::{self, Models, UiBackend, reorder_spaces, selected_room_key};
 use super::decode::{AvatarSlot, request_avatar, request_media, request_sticker};
@@ -48,26 +63,6 @@ use crate::domain::timeline::TimelineStatus;
 use crate::domain::verification::VerificationEmoji as DomainVerificationEmoji;
 use crate::error::Result;
 use crate::ports::media::MediaCache;
-
-#[allow(clippy::all, clippy::pedantic, clippy::restriction, clippy::nursery)]
-mod generated {
-    slint::include_modules!();
-}
-#[cfg(feature = "demo")]
-use generated::Probe;
-use generated::{
-    Actions, AppWindow, AttachmentKind as UiAttachmentKind, AttachmentView,
-    AudioKind as UiAudioKind, AudioView, ConnectionState, Delivery as UiDelivery, DirectoryView,
-    EmojiEntry, EmojiGroup, EmojiInsert, EmojiStore, LoginActivity as UiLoginActivity,
-    LoginMethodKind as UiLoginMethodKind, LoginPhase, LoginView, MediaFailure as UiMediaFailure,
-    MediaState as UiMediaState, MessageEntry, MessageKind as UiMessageKind,
-    PreviewKind as UiPreviewKind, ReactionEntry, ReactionSend as UiReactionSend, ReactorAvatar,
-    RoomEntry, RoomView, SendState as UiSendState, ServiceKind as UiServiceKind, SessionView,
-    SpaceEntry, StickerCell, StickerPackTab, StickerRow, StickerView, TimelineState, UnsentView,
-    UserMessage as UiUserMessage, UserMessageKind as UiUserMessageKind,
-    VerificationActivity as UiVerificationActivity, VerificationEmoji, VerificationPhase,
-    VerificationView, VideoView, WindowView,
-};
 
 fn actions(window: &AppWindow) -> Actions<'_> {
     window.global::<Actions>()
