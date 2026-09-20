@@ -36,7 +36,7 @@ export component MessageInput inherits Rectangle {
     property <length> picker-headroom: root.overlay-height - root.height
         - Metrics.header-row - Space.xl;
 
-    property <length> surface-inset: Space.lg;
+    property <length> surface-inset: Metrics.timeline-inset;
     property <length> row-inset: Space.sm;
 
     property <int> max-lines: 6;

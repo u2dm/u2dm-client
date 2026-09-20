@@ -67,7 +67,6 @@ export component MessageBubble inherits VerticalLayout {
     );
 
     property <length> avatar-size: Size.md;
-    property <length> avatar-inset: Space.md;
 
     property <int> last-row: max(RoomView.timeline.length - 1, 0);
     property <MessageEntry> previous: RoomView.timeline[max(root.timeline-row - 1, 0)];
@@ -150,8 +149,8 @@ export component MessageBubble inherits VerticalLayout {
 
         row := HorizontalLayout {
             alignment: is-own ? end : start;
-            padding-left: is-own ? 0 : root.avatar-inset;
-            padding-right: is-own ? Metrics.bubble-tail-width + Space.md : 0;
+            padding-left: is-own ? 0 : Metrics.timeline-inset;
+            padding-right: is-own ? Metrics.bubble-tail-width + Metrics.timeline-inset : 0;
             padding-top: root.continues-previous ? 0 : Space.sm;
             padding-bottom: Space.xs;
 
@@ -346,7 +345,7 @@ export component MessageBubble inherits VerticalLayout {
                 - root.avatar-size;
 
             visible: message-row.shows-avatar;
-            x: root.avatar-inset;
+            x: Metrics.timeline-inset;
             y: !message-row.has-composer
                 ? self.resting
                 : (root.continues-previous
