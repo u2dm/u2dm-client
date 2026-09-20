@@ -235,6 +235,7 @@ impl AppService {
                             &viewport.room_id,
                             viewport.generation,
                             viewport.at_bottom,
+                            viewport.unread_below,
                         );
                     }
                 }

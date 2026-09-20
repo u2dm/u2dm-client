@@ -23,7 +23,7 @@ use u2dm_ui::{
     VerificationView, VideoView, WindowView,
 };
 
-use super::backend::{self, Models, UiBackend, reorder_spaces, selected_room_key};
+use super::backend::{self, Models, UiBackend, reorder_spaces, selected_room_key, unread_below};
 use super::decode::{AvatarSlot, request_avatar, request_media, request_sticker};
 use super::dto::{
     MediaFailureKind, MediaState, MessageDto, ReactionDto, ReactorAvatarDto, RoomDto, SpaceDto,
@@ -498,11 +498,12 @@ impl SlintUiAdapter {
 
         let scroll_tx = scroll_tx.clone();
         let weak = self.window.as_weak();
-        actions(win).on_scroll_position_changed(move |at_bottom| {
+        actions(win).on_scroll_position_changed(move |at_bottom, first_unseen_row| {
             router::scroll_position(
                 &scroll_tx,
                 selected_room_key::<CompiledBackend>(&weak),
                 at_bottom,
+                unread_below::<CompiledBackend>(first_unseen_row),
             );
         });
 

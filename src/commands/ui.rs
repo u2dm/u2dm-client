@@ -149,6 +149,7 @@ pub struct ViewportChanged {
     pub room_id: RoomId,
     pub generation: i32,
     pub at_bottom: bool,
+    pub unread_below: u32,
 }
 
 impl ViewportChanged {
@@ -157,6 +158,7 @@ impl ViewportChanged {
             room_id: RoomId::new(String::new()),
             generation: 0,
             at_bottom: true,
+            unread_below: 0,
         }
     }
 }

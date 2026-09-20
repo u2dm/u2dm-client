@@ -187,6 +187,14 @@ pub fn selected_room_key<B: UiBackend>(weak: &slint::Weak<B::Window>) -> Option<
     Some((RoomId::new(room_id), w.get_int(IntProp::SelectedGeneration)))
 }
 
+pub fn unread_below<B: UiBackend>(first_unseen_row: i32) -> u32 {
+    let from = usize::try_from(first_unseen_row).unwrap_or(0);
+    let below = B::with_timeline(|timeline| {
+        timeline.count_tail(from, |entry: &B::Message| entry.counts_as_unread())
+    });
+    u32::try_from(below).unwrap_or(u32::MAX)
+}
+
 pub fn enrich_message<B: UiBackend>(
     entry: &mut B::Message,
     delta: &EnrichmentDelta,

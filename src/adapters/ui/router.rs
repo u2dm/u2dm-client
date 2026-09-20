@@ -234,7 +234,12 @@ pub fn toggle_reaction(tx: &Tx, event_id: String, key: String) {
     send_command(tx, UiCommand::ToggleReaction { event_id, key });
 }
 
-pub fn scroll_position(scroll_tx: &watch::Sender<ViewportChanged>, key: RoomKey, at_bottom: bool) {
+pub fn scroll_position(
+    scroll_tx: &watch::Sender<ViewportChanged>,
+    key: RoomKey,
+    at_bottom: bool,
+    unread_below: u32,
+) {
     let Some((room_id, generation)) = key else {
         return;
     };
@@ -242,6 +247,7 @@ pub fn scroll_position(scroll_tx: &watch::Sender<ViewportChanged>, key: RoomKey,
         room_id,
         generation,
         at_bottom,
+        unread_below,
     };
     if scroll_tx.send(update).is_err() {
         tracing::debug!("scroll position receiver closed");

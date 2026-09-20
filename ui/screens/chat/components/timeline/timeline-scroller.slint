@@ -20,6 +20,7 @@ export component TimelineScroller inherits Rectangle {
     out property <bool> following: flickable.auto-scroll;
 
     out property <int> item-count: flickable.item-count;
+    out property <int> first-unseen-row: flickable.first-unseen-row;
     out property <bool> anchor-held: flickable.anchor-held;
     out property <int> anchor-scrolls: flickable.anchor-scrolls;
     out property <bool> settling: flickable.settling;
@@ -73,6 +74,16 @@ export component TimelineScroller inherits Rectangle {
         property <bool> at-top: self.content-y >= -self.scroll-threshold;
         property <bool> at-bottom:
             self.content-y <= -(self.max-scroll-y - self.scroll-threshold);
+
+        property <int> first-unseen-row: 0;
+
+        public function note-reading-edge(row: int) {
+            if self.first-unseen-row == row {
+                return;
+            }
+            self.first-unseen-row = row;
+            Actions.scroll-position-changed(self.at-bottom, row);
+        }
 
         property <int> seen-prepend-token: 0;
         property <length> prev-content-height: 0;
@@ -145,7 +156,7 @@ export component TimelineScroller inherits Rectangle {
                 && ((self.at-top != self.was-at-top) || (self.at-bottom != self.was-at-bottom)) {
                 self.was-at-top = self.at-top;
                 self.was-at-bottom = self.at-bottom;
-                Actions.scroll-position-changed(self.at-bottom);
+                Actions.scroll-position-changed(self.at-bottom, self.first-unseen-row);
             }
         }
 
@@ -168,6 +179,7 @@ export component TimelineScroller inherits Rectangle {
             }
             self.seen-timeline-token = root.timeline-token;
             self.seen-prepend-token = root.prepend-token;
+            self.first-unseen-row = 0;
             self.anchor-scrolls = 0;
             self.prev-content-height = 0;
             self.prev-content-y = 0;
@@ -197,7 +209,7 @@ export component TimelineScroller inherits Rectangle {
             self.auto-scroll = self.at-bottom;
             self.was-at-top = self.at-top;
             self.was-at-bottom = self.at-bottom;
-            Actions.scroll-position-changed(self.at-bottom);
+            Actions.scroll-position-changed(self.at-bottom, self.first-unseen-row);
         }
 
         public pure function anchor-pending() -> bool {
@@ -235,6 +247,17 @@ export component TimelineScroller inherits Rectangle {
                 timeline-row: row;
                 available-width: root.available-width;
                 composer-top: root.composer-top;
+
+                property <bool> crosses-reading-edge: self.height > 0
+                    && self.absolute-position.y < root.composer-top
+                    && self.absolute-position.y + self.height > root.composer-top;
+
+                changed crosses-reading-edge => {
+                    if self.crosses-reading-edge {
+                        flickable.note-reading-edge(row);
+                    }
+                }
+
                 init => {
                     if msg.needs-media {
                         Actions.request-media(msg.unique-id);

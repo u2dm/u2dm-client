@@ -50,6 +50,15 @@ impl<T: Clone + 'static> SpliceModel<T> {
         removed
     }
 
+    pub fn count_tail(&self, from: usize, matches: impl Fn(&T) -> bool) -> usize {
+        self.rows
+            .borrow()
+            .iter()
+            .skip(from)
+            .filter(|row| matches(row))
+            .count()
+    }
+
     pub fn truncate(&self, length: usize) {
         let removed = {
             let mut all = self.rows.borrow_mut();

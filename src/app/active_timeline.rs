@@ -12,8 +12,7 @@ use crate::commands::view::Toast;
 use crate::domain::message::TimelineMessage;
 use crate::domain::room::RoomId;
 use crate::domain::timeline::{
-    FailedSend,
-    AudioLookup, JumpTarget, PaginationDirection, PaginationOutcome, ScrollMode, TimelineAdvance,
+    AudioLookup, FailedSend, JumpTarget, PaginationDirection, PaginationOutcome, TimelineAdvance,
     TimelineCommand, TimelineFocus, TimelinePatch, TimelineStatus, TimelineUpdate,
 };
 use crate::domain::viewport::ViewportController;
@@ -309,13 +308,23 @@ impl ActiveTimeline {
     }
 
     fn add_new_messages(&mut self, generation: i32, count: u32) {
-        self.new_messages = self.new_messages.saturating_add(count);
-        self.emit_new_messages(generation, self.new_messages);
+        self.set_new_messages(generation, self.new_messages.saturating_add(count));
+    }
+
+    fn lower_new_messages(&mut self, generation: i32, remaining: u32) {
+        self.set_new_messages(generation, self.new_messages.min(remaining));
     }
 
     fn clear_new_messages(&mut self, generation: i32) {
-        self.new_messages = 0;
-        self.emit_new_messages(generation, 0);
+        self.set_new_messages(generation, 0);
+    }
+
+    fn set_new_messages(&mut self, generation: i32, count: u32) {
+        if self.new_messages == count {
+            return;
+        }
+        self.new_messages = count;
+        self.emit_new_messages(generation, count);
     }
 
     fn refocus(&self, room_id: &RoomId, generation: i32, focus: TimelineFocus) {
@@ -376,19 +385,27 @@ impl ActiveTimeline {
         room_id: &RoomId,
         generation: i32,
         at_bottom: bool,
+        unread_below: u32,
     ) {
         if !self.is_current(room_id, generation) {
             return;
         }
-        tracing::debug!(at_bottom, generation, "the timeline reported its position");
+        tracing::debug!(
+            at_bottom,
+            unread_below,
+            generation,
+            "the timeline reported its position"
+        );
 
-        let mode_changed = self.viewport.update_scroll_position(at_bottom);
+        self.viewport.update_scroll_position(at_bottom);
         let reached_bottom = at_bottom && !self.at_bottom;
 
         self.at_bottom = at_bottom;
 
-        if mode_changed && self.viewport.mode() == ScrollMode::FollowLive {
+        if at_bottom {
             self.clear_new_messages(generation);
+        } else {
+            self.lower_new_messages(generation, unread_below);
         }
 
         if reached_bottom {

@@ -14,7 +14,7 @@ use names::{
     callback, emoji_entry, emoji_group, emoji_insert, emoji_store, user_message, verification_emoji,
 };
 
-use super::backend::{self, Models, UiBackend, reorder_spaces, selected_room_key};
+use super::backend::{self, Models, UiBackend, reorder_spaces, selected_room_key, unread_below};
 use super::decode::{AvatarSlot, request_avatar, request_media, request_sticker};
 use super::dto::{
     MediaFailureKind, MediaState, MessageDto, ReactionDto, ReactorAvatarDto, RoomDto, SpaceDto,
@@ -632,6 +632,7 @@ impl SlintUiAdapter {
                     &scroll_tx,
                     selected_room_key::<InterpretedBackend>(&weak),
                     bool_arg(args, 0),
+                    unread_below::<InterpretedBackend>(int_arg(args, 1).unwrap_or_default()),
                 );
                 Value::Void
             },

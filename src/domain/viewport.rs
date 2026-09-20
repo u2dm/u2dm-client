@@ -22,20 +22,12 @@ impl ViewportController {
         }
     }
 
-    pub fn mode(&self) -> ScrollMode {
-        self.mode
-    }
-
-    pub fn update_scroll_position(&mut self, at_bottom: bool) -> bool {
-        let old_mode = self.mode;
-
+    pub fn update_scroll_position(&mut self, at_bottom: bool) {
         if at_bottom && (self.mode == ScrollMode::FollowLive || self.forwards_ended) {
             self.mode = ScrollMode::FollowLive;
         } else if !at_bottom {
             self.mode = ScrollMode::PreserveAnchor;
         }
-
-        old_mode != self.mode
     }
 
     pub fn jump_to_latest(&mut self) {

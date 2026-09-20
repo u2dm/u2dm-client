@@ -488,6 +488,7 @@ macro_rules! message_fields {
         is_own set_is_own "is-own" flag;
         edited set_edited "edited" flag;
         first_unread set_first_unread "first-unread" flag;
+        counts_as_unread set_counts_as_unread "counts-as-unread" flag;
         send_state set_send_state "send-state" enumk(SendState);
         send_progress set_send_progress "send-progress" ratio;
         delivery set_delivery "delivery" enumk(Delivery);
