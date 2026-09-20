@@ -74,9 +74,14 @@ impl TimelinePatch {
     pub fn unread_anchor(&self) -> Option<UnreadAnchor> {
         let messages = self.last_reset()?;
         let row = messages.iter().position(|m| m.is_first_unread)?;
+        let unread = messages
+            .get(row..)?
+            .iter()
+            .filter(|message| message.counts_as_unread())
+            .count();
         Some(UnreadAnchor {
             row,
-            count: u32::try_from(messages.len() - row).unwrap_or(u32::MAX),
+            count: u32::try_from(unread).unwrap_or(u32::MAX),
         })
     }
 
@@ -230,7 +235,7 @@ pub enum TimelineAdvance {
     },
     UnreadUnresolved,
     Appended {
-        total: u32,
+        new_messages: u32,
         from_others: bool,
         opens_room: bool,
     },

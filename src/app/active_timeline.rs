@@ -9,6 +9,7 @@ use crate::commands::effects::Effect;
 use crate::commands::messages::{UserMessage, UserMessageKind};
 use crate::commands::ui::TimelineVisibility;
 use crate::commands::view::Toast;
+use crate::domain::message::TimelineMessage;
 use crate::domain::room::RoomId;
 use crate::domain::timeline::{
     FailedSend,
@@ -292,7 +293,7 @@ impl ActiveTimeline {
                 self.add_new_messages(generation, count);
             }
             TimelineAdvance::Appended {
-                total,
+                new_messages,
                 from_others,
                 opens_room,
             } => {
@@ -300,8 +301,8 @@ impl ActiveTimeline {
                     if opens_room || from_others {
                         self.mark_read_if_resolved();
                     }
-                } else if total > 0 {
-                    self.add_new_messages(generation, total);
+                } else if new_messages > 0 {
+                    self.add_new_messages(generation, new_messages);
                 }
             }
         }
@@ -647,11 +648,11 @@ fn read_position_advance(patch: &TimelinePatch, snapshot: Snapshot) -> Option<Ti
 
     let appended = count_appended(patch);
     let opens_room = patch.opens_room();
-    if appended.total == 0 && !opens_room {
+    if appended.is_silent() && !opens_room {
         return None;
     }
     Some(TimelineAdvance::Appended {
-        total: appended.total,
+        new_messages: appended.new_messages,
         from_others: appended.from_others,
         opens_room,
     })
@@ -659,14 +660,25 @@ fn read_position_advance(patch: &TimelinePatch, snapshot: Snapshot) -> Option<Ti
 
 #[derive(Default, Clone, Copy)]
 struct Appended {
-    total: u32,
+    new_messages: u32,
     from_others: bool,
 }
 
 impl Appended {
+    fn of(message: &TimelineMessage) -> Self {
+        Self {
+            new_messages: u32::from(message.counts_as_unread()),
+            from_others: !message.is_own,
+        }
+    }
+
+    fn is_silent(self) -> bool {
+        self.new_messages == 0 && !self.from_others
+    }
+
     fn merge(self, other: Self) -> Self {
         Self {
-            total: self.total.saturating_add(other.total),
+            new_messages: self.new_messages.saturating_add(other.new_messages),
             from_others: self.from_others || other.from_others,
         }
     }
@@ -674,14 +686,11 @@ impl Appended {
 
 fn count_appended(patch: &TimelinePatch) -> Appended {
     match patch {
-        TimelinePatch::Append(messages) => Appended {
-            total: messages.len().try_into().unwrap_or(u32::MAX),
-            from_others: messages.iter().any(|message| !message.is_own),
-        },
-        TimelinePatch::PushBack(message) => Appended {
-            total: 1,
-            from_others: !message.is_own,
-        },
+        TimelinePatch::Append(messages) => messages
+            .iter()
+            .map(Appended::of)
+            .fold(Appended::default(), Appended::merge),
+        TimelinePatch::PushBack(message) => Appended::of(message),
         TimelinePatch::Batch(patches) => patches
             .iter()
             .map(count_appended)

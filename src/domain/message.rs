@@ -317,6 +317,10 @@ pub struct TimelineMessage {
 }
 
 impl TimelineMessage {
+    pub fn counts_as_unread(&self) -> bool {
+        !self.is_own && self.body.service().is_none()
+    }
+
     pub fn tracks_readers(&self) -> bool {
         self.event_id.is_some()
     }
