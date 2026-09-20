@@ -1,0 +1,64 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$root"
+
+readonly UI_DIR="ui"
+readonly LANG_DIR="lang"
+readonly POT_FILE="lang/u2dm.pot"
+
+require_tools() {
+  local tool missing=0
+  for tool in "slint-tr-extractor:cargo install slint-tr-extractor" "msgmerge:the gettext package"; do
+    command -v "${tool%%:*}" >/dev/null 2>&1 && continue
+    echo "update-i18n needs ${tool%%:*}, which this machine does not have: ${tool#*:}" >&2
+    missing=1
+  done
+  ((missing == 0)) || exit 1
+}
+
+extract_translatable_strings() {
+  local sources=()
+  while IFS= read -r -d '' source; do
+    sources+=("$source")
+  done < <(find "$UI_DIR" -type f -name '*.slint' -print0 | sort -z)
+
+  if ((${#sources[@]} == 0)); then
+    echo "no .slint sources under $UI_DIR/, refusing to overwrite $POT_FILE" >&2
+    exit 1
+  fi
+
+  slint-tr-extractor -o "$POT_FILE" "${sources[@]}"
+}
+
+strip_pot_creation_date() {
+  local without_date
+  without_date="$(mktemp)"
+  grep -v 'POT-Creation-Date' "$POT_FILE" >"$without_date"
+  cat "$without_date" >"$POT_FILE"
+  rm -f "$without_date"
+}
+
+merge_translations() {
+  local po
+  for po in "$LANG_DIR"/*.po; do
+    [[ -e $po ]] || continue
+    msgmerge --update --no-fuzzy-matching --backup=none "$po" "$POT_FILE"
+  done
+}
+
+report_changes() {
+  git rev-parse --git-dir >/dev/null 2>&1 || return 0
+  if git diff --quiet -- "$LANG_DIR"; then
+    echo "$LANG_DIR/ is already up to date"
+  else
+    git diff --stat -- "$LANG_DIR"
+  fi
+}
+
+require_tools
+extract_translatable_strings
+strip_pot_creation_date
+merge_translations
+report_changes

@@ -9,9 +9,7 @@ const SRC_DIR: &str = "src";
 const GENERATED_UI_CRATE: &str = "u2dm_ui";
 const GENERATED_UI_ADAPTER: &str = "src/adapters/ui/compiled.rs";
 const BUNDLED_CATALOGS_ENV: &str = "U2DM_BUNDLED_CATALOGS";
-const UI_DIR: &str = "ui";
 const ENUMS_FILE: &str = "ui/enums.slint";
-const POT_FILE: &str = "lang/u2dm.pot";
 const LUCIDE_LSP_LIB: &str = ".lucide/lib.slint";
 #[cfg(feature = "demo")]
 const DEMO_ASSETS_SCRIPT: &str = "scripts/gen-demo-assets.sh";
@@ -98,7 +96,7 @@ fn main() {
     #[cfg(feature = "demo")]
     fetch_demo_assets();
 
-    update_translations(&bundled_catalog_root());
+    compile_bundled_catalogs(&bundled_catalog_root());
 }
 
 struct ScenarioSource {
@@ -446,26 +444,12 @@ fn sync_lucide_lsp_lib() {
     drop(fs::copy(&src, &dest));
 }
 
-fn update_translations(catalog_root: &Path) {
-    let slint_files = collect_files_recursive(UI_DIR, "slint");
-    if slint_files.is_empty() {
-        return;
-    }
-
-    if !extract_translatable_strings(&slint_files) {
-        return;
-    }
-
-    strip_pot_creation_date(POT_FILE);
-
+fn compile_bundled_catalogs(catalog_root: &Path) {
     let pkg_name = env::var("CARGO_PKG_NAME").unwrap_or_default();
     for po_path in collect_files_recursive(LANG_DIR, "po") {
         println!("cargo::rerun-if-changed={po_path}");
-        merge_translations(&po_path);
         compile_translations(&po_path, &pkg_name, catalog_root);
     }
-
-    println!("cargo::rerun-if-changed={UI_DIR}/");
 }
 
 fn collect_files_recursive(dir: &str, extension: &str) -> Vec<String> {
@@ -482,51 +466,6 @@ fn collect_files_recursive(dir: &str, extension: &str) -> Vec<String> {
         }
     }
     files
-}
-
-fn extract_translatable_strings(slint_files: &[String]) -> bool {
-    let Ok(status) = Command::new("slint-tr-extractor")
-        .arg("-o")
-        .arg(POT_FILE)
-        .args(slint_files)
-        .status()
-    else {
-        println!("cargo::warning=slint-tr-extractor not found, skipping translation extraction");
-        return false;
-    };
-
-    if !status.success() {
-        println!("cargo::warning=slint-tr-extractor failed");
-        return false;
-    }
-
-    true
-}
-
-fn strip_pot_creation_date(path: &str) {
-    let Ok(content) = fs::read_to_string(path) else {
-        return;
-    };
-    let stripped: String = content
-        .lines()
-        .filter(|line| !line.contains("POT-Creation-Date"))
-        .collect::<Vec<_>>()
-        .join("\n");
-    drop(fs::write(path, stripped));
-}
-
-fn merge_translations(po_path: &str) {
-    drop(
-        Command::new("msgmerge")
-            .args([
-                "--update",
-                "--no-fuzzy-matching",
-                "--backup=none",
-                po_path,
-                POT_FILE,
-            ])
-            .status(),
-    );
 }
 
 fn compile_translations(po_path: &str, pkg_name: &str, catalog_root: &Path) {

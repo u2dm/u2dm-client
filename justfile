@@ -31,6 +31,9 @@ scenario *ARGS:
 scenarios:
     ./scripts/scenario list
 
+update-i18n:
+    ./scripts/update-i18n
+
 clippy *ARGS:
     cargo clippy {{ ARGS }}
 
