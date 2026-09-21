@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use super::event::{AppEvent, Enqueue};
 use super::input::EventSender;
-use super::task_group::TaskGroup;
+use super::send_lanes::SendLanes;
 use crate::commands::ui::MessageDraft;
 use crate::commands::view::UnsentMessage;
 use crate::domain::room::RoomId;
@@ -45,7 +45,7 @@ impl Submissions {
 
     pub(super) fn send(
         &mut self,
-        group: &mut TaskGroup,
+        lanes: &mut SendLanes,
         timeline: Arc<dyn TimelinePort>,
         room_id: RoomId,
         draft: MessageDraft,
@@ -63,7 +63,7 @@ impl Submissions {
             stage: Stage::Enqueueing,
         });
         let events = self.events.clone();
-        group.spawn(async move {
+        lanes.spawn(room_id.clone(), async move {
             let enqueued = match reply_to {
                 Some(event_id) => timeline.send_reply(&room_id, &body, &event_id).await,
                 None => timeline.send_text(&room_id, &body).await,

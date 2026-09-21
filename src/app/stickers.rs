@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use super::send_lanes::SendLanes;
 use super::show_toast;
 use super::task_group::TaskGroup;
 use crate::commands::messages::{UserMessage, UserMessageKind};
@@ -50,7 +51,7 @@ impl Stickers {
 
     pub(super) fn send(
         &self,
-        group: &mut TaskGroup,
+        lanes: &mut SendLanes,
         port: Arc<dyn StickerPort>,
         room_id: RoomId,
         pack: PackId,
@@ -58,7 +59,7 @@ impl Stickers {
         reply_to: Option<String>,
     ) {
         let output = Arc::clone(&self.output);
-        group.spawn(async move {
+        lanes.spawn(room_id.clone(), async move {
             let result = port
                 .send_sticker(&room_id, &pack, &shortcode, reply_to.as_deref())
                 .await;

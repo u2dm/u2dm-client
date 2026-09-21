@@ -11,6 +11,7 @@ mod media;
 mod recover;
 mod room_directory;
 mod selection;
+mod send_lanes;
 mod session;
 mod space_order;
 mod stickers;
@@ -32,6 +33,7 @@ use media::MediaActions;
 use recover::Recovery;
 use room_directory::RoomDirectory;
 use selection::Selection;
+use send_lanes::SendLanes;
 use session::{SessionController, SuspendedSession};
 use stickers::Stickers;
 use submissions::Submissions;
@@ -135,6 +137,7 @@ pub struct AppService {
     output: Arc<dyn AppOutputPort>,
     background: TaskGroup,
     operations: TaskGroup,
+    send_lanes: SendLanes,
     session: SessionController,
     room_directory: RoomDirectory,
     active_timeline: ActiveTimeline,
@@ -186,6 +189,7 @@ impl AppService {
             output,
             background: TaskGroup::new("background"),
             operations: TaskGroup::new("operations"),
+            send_lanes: SendLanes::new(),
             selection: Selection::default(),
             last_selected_room: None,
             lifecycle: Lifecycle::new(),
@@ -834,7 +838,7 @@ impl AppService {
             return;
         };
         self.submissions
-            .send(&mut self.operations, timeline, room_id, draft);
+            .send(&mut self.send_lanes, timeline, room_id, draft);
     }
 
     fn resolve_failed_send(&mut self, local_id: String, action: FailedSend) {
@@ -862,7 +866,7 @@ impl AppService {
     ) {
         if let Some(stickers) = self.port(|a| &a.stickers) {
             self.stickers.send(
-                &mut self.operations,
+                &mut self.send_lanes,
                 stickers,
                 room_id,
                 pack,
@@ -887,7 +891,7 @@ impl AppService {
             return;
         };
         self.attachments.send(
-            &mut self.operations,
+            &mut self.send_lanes,
             timeline,
             room_id,
             caption,
@@ -1083,6 +1087,7 @@ impl AppService {
             self.background.shutdown(),
             self.active_timeline.shutdown(),
             self.operations.restart(),
+            self.send_lanes.restart(),
             self.media.cancel_and_drain(),
             self.audio.restart(),
             self.video.restart(),
@@ -1166,6 +1171,7 @@ impl AppService {
             self.background.shutdown(),
             self.active_timeline.shutdown(),
             self.operations.shutdown(),
+            self.send_lanes.shutdown(),
             self.media.drain(),
             self.audio.shutdown(),
             self.video.shutdown(),

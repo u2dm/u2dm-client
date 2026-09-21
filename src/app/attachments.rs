@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use super::event::{AppEvent, AttachmentPicked};
 use super::input::EventSender;
+use super::send_lanes::SendLanes;
 use super::show_toast;
 use super::task_group::TaskGroup;
 use crate::commands::messages::{UserMessage, UserMessageKind};
@@ -114,7 +115,7 @@ impl Attachments {
 
     pub(super) fn send(
         &mut self,
-        group: &mut TaskGroup,
+        lanes: &mut SendLanes,
         timeline: Arc<dyn TimelinePort>,
         room_id: RoomId,
         caption: String,
@@ -141,7 +142,7 @@ impl Attachments {
         self.publish(sending);
 
         let events = self.events.clone();
-        group.spawn(async move {
+        lanes.spawn(room_id.clone(), async move {
             let outcome = timeline.send_attachment(&room_id, &attachment).await;
             let failure = match outcome {
                 Ok(()) => None,

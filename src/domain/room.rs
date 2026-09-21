@@ -3,7 +3,7 @@ use std::{fmt, ops};
 
 use crate::domain::message::{MessagePreviewKind, ServiceEvent};
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct RoomId(String);
 
 impl RoomId {
