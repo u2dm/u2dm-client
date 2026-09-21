@@ -16,7 +16,8 @@ use u2dm_ui::{
     LoginMethodKind as UiLoginMethodKind, LoginPhase, LoginView, MediaFailure as UiMediaFailure,
     MediaState as UiMediaState, MessageEntry, MessageKind as UiMessageKind,
     PreviewKind as UiPreviewKind, ReactionEntry, ReactionSend as UiReactionSend, ReactorAvatar,
-    RoomEntry, RoomView, SendState as UiSendState, ServiceKind as UiServiceKind, SessionView,
+    ReplySwipe, RoomEntry, RoomView, SendState as UiSendState, ServiceKind as UiServiceKind,
+    SessionView,
     SpaceEntry, StickerCell, StickerPackTab, StickerRow, StickerView, TimelineState, UnsentView,
     UserMessage as UiUserMessage, UserMessageKind as UiUserMessageKind,
     VerificationActivity as UiVerificationActivity, VerificationEmoji, VerificationPhase,
@@ -152,7 +153,6 @@ impl UiProps for AppWindow {
     enum_props!(impl_enum_setters);
     string_props!(impl_prop_getter get_string StringProp SharedString;);
     int_props!(impl_prop_getter get_int IntProp i32;);
-    #[cfg(feature = "demo")]
     bool_props!(impl_prop_getter get_bool BoolProp bool;);
     #[cfg(feature = "demo")]
     enum_props!(impl_enum_getter);

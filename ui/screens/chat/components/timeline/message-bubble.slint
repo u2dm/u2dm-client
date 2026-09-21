@@ -21,6 +21,7 @@ import { ClickArea } from "../../../../components/a11y.slint";
 import {
     ReactionAnchor,
     Reactions,
+    ReplySwipe,
     Shell,
     TextSelection,
 } from "../../../../local.slint";
@@ -129,6 +130,9 @@ export component MessageBubble inherits VerticalLayout {
 
         property <bool> bubble-hovered: false;
 
+        property <bool> swipe-mine: root.has-remote-id && ReplySwipe.event-id == msg.event-id;
+        property <length> swipe-pull: self.swipe-mine ? ReplySwipe.pull : 0px;
+
         property <length> outside-chips-height: root.chips-outside
             ? Metrics.reaction-chip + root.outside-chips-gap
             : 0;
@@ -147,188 +151,217 @@ export component MessageBubble inherits VerticalLayout {
             Reactions.follow-bubble(self.tracked-anchor);
         }
 
-        row := HorizontalLayout {
-            alignment: is-own ? end : start;
-            padding-left: is-own ? 0 : Metrics.timeline-inset;
-            padding-right: is-own ? Metrics.bubble-tail-width + Metrics.timeline-inset : 0;
-            padding-top: root.continues-previous ? 0 : Space.sm;
-            padding-bottom: Space.xs;
+        if message-row.swipe-mine: IconDisplay {
+            x: bubble.x + bubble.width - self.width - Space.xs;
+            y: bubble.y + (bubble.height - self.height) / 2;
+            icon: IconSet.Reply;
+            size: IconSize.md;
+            stroke: ReplySwipe.within-reach
+                ? Palette.accent-background
+                : AppStyle.overlay-foreground-muted;
+            opacity: ReplySwipe.reach;
+        }
 
-            if !is-own: Rectangle {
-                width: root.avatar-size;
+        hover-row := TouchArea {
+            width: 100%;
+            height: 100%;
+            changed has-hover => {
+                if (self.has-hover && root.has-remote-id) {
+                    ReplySwipe.hover(bubble.anchor());
+                } else {
+                    ReplySwipe.leave(msg.event-id);
+                }
             }
 
-            if !is-own: Rectangle {
-                width: Space.md;
-            }
-
-            bubble := Rectangle {
-                pure function anchor() -> ReactionAnchor {
-                    return {
-                        event-id: msg.event-id,
-                        row: root.timeline-row,
-                        is-own: root.is-own,
-                        x: self.absolute-position.x,
-                        y: self.absolute-position.y,
-                        width: self.width,
-                        height: self.height,
-                    };
+            row := HorizontalLayout {
+                x: -message-row.swipe-pull;
+                animate x {
+                    duration: ReplySwipe.settling ? Motion.normal : 0ms;
+                    easing: ease-out;
                 }
 
-                max-width: bubble-max-width;
-                height: bubble-content.preferred-height;
-                opacity: root.dims-while-unsent ? Opacity.pending : 1.0;
+                alignment: is-own ? end : start;
+                padding-left: is-own ? 0 : Metrics.timeline-inset;
+                padding-right: is-own ? Metrics.bubble-tail-width + Metrics.timeline-inset : 0;
+                padding-top: root.continues-previous ? 0 : Space.sm;
+                padding-bottom: Space.xs;
 
-                animate opacity { duration: Motion.normal; }
-
-                if root.has-tail: BubbleTail {
-                    x: root.is-own
-                        ? parent.width - Metrics.bubble-tail-overlap
-                        : -Metrics.bubble-tail-width;
-                    y: parent.height - self.height;
-                    is-right-side: root.is-own;
-                    fill: root.outlined ? root.outline-color : root.bubble-color;
-
-                    animate fill { duration: Motion.normal; }
+                if !is-own: Rectangle {
+                    width: root.avatar-size;
                 }
 
-                surface := Rectangle {
-                    background: root.is-sticker ? transparent : root.bubble-color;
-                    border-radius: Radius.md;
-                    border-bottom-left-radius: root.has-tail && !root.is-own ? 0 : Radius.md;
-                    border-bottom-right-radius: root.has-tail && root.is-own ? 0 : Radius.md;
-                    border-width: root.outlined ? Stroke.emphasis : 0;
-                    border-color: root.outline-color;
-                    clip: true;
+                if !is-own: Rectangle {
+                    width: Space.md;
+                }
 
-                    animate border-width { duration: Motion.normal; }
+                bubble := Rectangle {
+                    pure function anchor() -> ReactionAnchor {
+                        return {
+                            event-id: msg.event-id,
+                            row: root.timeline-row,
+                            is-own: root.is-own,
+                            x: self.absolute-position.x,
+                            y: self.absolute-position.y,
+                            width: self.width,
+                            height: self.height,
+                        };
+                    }
 
-                    hover-bg := TouchArea {
-                        width: 100%;
-                        height: 100%;
-                        clicked => {
-                            TextSelection.clear();
-                        }
-                        changed has-hover => {
-                            message-row.bubble-hovered = self.has-hover;
-                            if (self.has-hover && root.has-remote-id) {
-                                Reactions.hover-bubble(bubble.anchor());
-                            } else {
-                                Reactions.leave-bubble(msg.event-id);
+                    max-width: bubble-max-width;
+                    height: bubble-content.preferred-height;
+                    opacity: root.dims-while-unsent ? Opacity.pending : 1.0;
+
+                    animate opacity { duration: Motion.normal; }
+
+                    if root.has-tail: BubbleTail {
+                        x: root.is-own
+                            ? parent.width - Metrics.bubble-tail-overlap
+                            : -Metrics.bubble-tail-width;
+                        y: parent.height - self.height;
+                        is-right-side: root.is-own;
+                        fill: root.outlined ? root.outline-color : root.bubble-color;
+
+                        animate fill { duration: Motion.normal; }
+                    }
+
+                    surface := Rectangle {
+                        background: root.is-sticker ? transparent : root.bubble-color;
+                        border-radius: Radius.md;
+                        border-bottom-left-radius: root.has-tail && !root.is-own ? 0 : Radius.md;
+                        border-bottom-right-radius: root.has-tail && root.is-own ? 0 : Radius.md;
+                        border-width: root.outlined ? Stroke.emphasis : 0;
+                        border-color: root.outline-color;
+                        clip: true;
+
+                        animate border-width { duration: Motion.normal; }
+
+                        hover-bg := TouchArea {
+                            width: 100%;
+                            height: 100%;
+                            clicked => {
+                                TextSelection.clear();
                             }
-                        }
-
-                        bubble-content := VerticalLayout {
-                            padding-top: root.has-photo ? 0 : Space.sm;
-                            padding-bottom: root.is-photo-only ? 0 : Space.sm;
-                            padding-left: root.has-photo ? 0 : Space.lg;
-                            padding-right: root.has-photo ? 0 : Space.lg;
-
-                            if !is-own && !root.continues-previous: HorizontalLayout {
-                                padding-left: root.photo-row-padding;
-                                padding-right: root.photo-row-padding;
-                                padding-top: root.has-photo ? Space.sm : 0;
-                                padding-bottom: root.has-photo ? Space.sm : 0;
-
-                                SenderLine {
-                                    sender: msg.sender;
-                                    pronouns: msg.pronouns;
+                            changed has-hover => {
+                                message-row.bubble-hovered = self.has-hover;
+                                if (self.has-hover && root.has-remote-id) {
+                                    Reactions.hover-bubble(bubble.anchor());
+                                } else {
+                                    Reactions.leave-bubble(msg.event-id);
                                 }
                             }
 
-                            if msg.has-reply: VerticalLayout {
-                                padding-top: is-own ? 0 : Space.sm;
-                                padding-bottom: root.has-photo ? Space.sm : 0;
-                                padding-left: root.photo-row-padding;
-                                padding-right: root.photo-row-padding;
+                            bubble-content := VerticalLayout {
+                                padding-top: root.has-photo ? 0 : Space.sm;
+                                padding-bottom: root.is-photo-only ? 0 : Space.sm;
+                                padding-left: root.has-photo ? 0 : Space.lg;
+                                padding-right: root.has-photo ? 0 : Space.lg;
 
-                                reply-jump := ClickArea {
-                                    height: reply-quote.preferred-height;
-                                    border-radius: Radius.xs;
-                                    ring-radius: Radius.xs;
-                                    enabled: msg.reply-event-id != "";
-                                    label: @tr("Go to the message this replies to");
-                                    property <color> quote-tint: is-own
-                                        ? Palette.accent-background
-                                        : Palette.foreground;
-                                    property <float> quote-veil: is-own
-                                        ? (reply-jump.has-hover ? 0.55 : 0.7)
-                                        : (reply-jump.has-hover ? 0.86 : 0.92);
-                                    background: self.quote-tint.transparentize(self.quote-veil);
-                                    clicked => {
-                                        Actions.jump-to-event(msg.reply-event-id);
-                                    }
+                                if !is-own && !root.continues-previous: HorizontalLayout {
+                                    padding-left: root.photo-row-padding;
+                                    padding-right: root.photo-row-padding;
+                                    padding-top: root.has-photo ? Space.sm : 0;
+                                    padding-bottom: root.has-photo ? Space.sm : 0;
 
-                                    reply-quote := ReplyQuote {
-                                        padding: Space.sm;
-                                        sender: msg.reply-sender;
-                                        preview: MessagePreview.label(msg.reply-kind, msg.reply-body);
-                                    }
-                                }
-                            }
-
-                            MessageBody {
-                                msg: root.msg;
-                                timeline-row: root.timeline-row;
-                                frame-limit: root.bubble-max-width;
-                                hovered: actions.hovered;
-                            }
-
-                            if !root.is-photo-only: HorizontalLayout {
-                                spacing: Space.md;
-                                padding-left: root.photo-row-padding;
-                                padding-right: root.photo-row-padding;
-                                padding-top: root.has-reactions ? Space.sm : 0;
-
-                                if root.has-reactions: BubbleReactions {
-                                    horizontal-stretch: 0;
-                                    padding-bottom: Space.sm;
-                                    reactions: msg.reactions;
-                                    is-own: root.is-own;
-                                    can-react: root.has-remote-id;
-                                    event-id: msg.event-id;
-                                    detail-anchor() => {
-                                        return bubble.anchor();
+                                    SenderLine {
+                                        sender: msg.sender;
+                                        pronouns: msg.pronouns;
                                     }
                                 }
 
-                                Rectangle {
-                                    horizontal-stretch: 1;
+                                if msg.has-reply: VerticalLayout {
+                                    padding-top: is-own ? 0 : Space.sm;
+                                    padding-bottom: root.has-photo ? Space.sm : 0;
+                                    padding-left: root.photo-row-padding;
+                                    padding-right: root.photo-row-padding;
+
+                                    reply-jump := ClickArea {
+                                        height: reply-quote.preferred-height;
+                                        border-radius: Radius.xs;
+                                        ring-radius: Radius.xs;
+                                        enabled: msg.reply-event-id != "";
+                                        label: @tr("Go to the message this replies to");
+                                        property <color> quote-tint: is-own
+                                            ? Palette.accent-background
+                                            : Palette.foreground;
+                                        property <float> quote-veil: is-own
+                                            ? (reply-jump.has-hover ? 0.55 : 0.7)
+                                            : (reply-jump.has-hover ? 0.86 : 0.92);
+                                        background: self.quote-tint.transparentize(self.quote-veil);
+                                        clicked => {
+                                            Actions.jump-to-event(msg.reply-event-id);
+                                        }
+
+                                        reply-quote := ReplyQuote {
+                                            padding: Space.sm;
+                                            sender: msg.reply-sender;
+                                            preview: MessagePreview.label(msg.reply-kind, msg.reply-body);
+                                        }
+                                    }
                                 }
 
-                                HorizontalLayout {
-                                    cross-axis-self-alignment: end;
-                                    alignment: end;
-                                    spacing: Space.sm;
+                                MessageBody {
+                                    msg: root.msg;
+                                    timeline-row: root.timeline-row;
+                                    frame-limit: root.bubble-max-width;
+                                    hovered: actions.hovered;
+                                }
 
-                                    if msg.edited: IconDisplay {
-                                        y: (parent.height - self.height) / 2;
-                                        icon: IconSet.Pencil;
-                                        size: IconSize.xs;
-                                        stroke: AppStyle.overlay-foreground-muted;
+                                if !root.is-photo-only: HorizontalLayout {
+                                    spacing: Space.md;
+                                    padding-left: root.photo-row-padding;
+                                    padding-right: root.photo-row-padding;
+                                    padding-top: root.has-reactions ? Space.sm : 0;
+
+                                    if root.has-reactions: BubbleReactions {
+                                        horizontal-stretch: 0;
+                                        padding-bottom: Space.sm;
+                                        reactions: msg.reactions;
+                                        is-own: root.is-own;
+                                        can-react: root.has-remote-id;
+                                        event-id: msg.event-id;
+                                        detail-anchor() => {
+                                            return bubble.anchor();
+                                        }
                                     }
 
-                                    if Readers.counted(msg): ReaderCount {
-                                        y: (parent.height - self.height) / 2;
-                                        msg: root.msg;
-                                        timeline-row: root.timeline-row;
-                                        tint: AppStyle.overlay-foreground-muted;
+                                    Rectangle {
+                                        horizontal-stretch: 1;
                                     }
 
-                                    Text {
-                                        text: msg.timestamp;
-                                        font-size: Fonts.body-small;
-                                        color: AppStyle.overlay-foreground-muted;
-                                        horizontal-alignment: right;
-                                        vertical-alignment: center;
-                                    }
+                                    HorizontalLayout {
+                                        cross-axis-self-alignment: end;
+                                        alignment: end;
+                                        spacing: Space.sm;
 
-                                    if msg.delivery != Delivery.none && msg.delivery != Delivery.seen: DeliveryMark {
-                                        y: (parent.height - self.height) / 2;
-                                        msg: root.msg;
-                                        timeline-row: root.timeline-row;
-                                        tint: AppStyle.overlay-foreground-muted;
-                                        counted: Readers.counted(msg);
+                                        if msg.edited: IconDisplay {
+                                            y: (parent.height - self.height) / 2;
+                                            icon: IconSet.Pencil;
+                                            size: IconSize.xs;
+                                            stroke: AppStyle.overlay-foreground-muted;
+                                        }
+
+                                        if Readers.counted(msg): ReaderCount {
+                                            y: (parent.height - self.height) / 2;
+                                            msg: root.msg;
+                                            timeline-row: root.timeline-row;
+                                            tint: AppStyle.overlay-foreground-muted;
+                                        }
+
+                                        Text {
+                                            text: msg.timestamp;
+                                            font-size: Fonts.body-small;
+                                            color: AppStyle.overlay-foreground-muted;
+                                            horizontal-alignment: right;
+                                            vertical-alignment: center;
+                                        }
+
+                                        if msg.delivery != Delivery.none && msg.delivery != Delivery.seen: DeliveryMark {
+                                            y: (parent.height - self.height) / 2;
+                                            msg: root.msg;
+                                            timeline-row: root.timeline-row;
+                                            tint: AppStyle.overlay-foreground-muted;
+                                            counted: Readers.counted(msg);
+                                        }
                                     }
                                 }
                             }
@@ -345,7 +378,7 @@ export component MessageBubble inherits VerticalLayout {
                 - root.avatar-size;
 
             visible: message-row.shows-avatar;
-            x: Metrics.timeline-inset;
+            x: Metrics.timeline-inset + row.x;
             y: !message-row.has-composer
                 ? self.resting
                 : (root.continues-previous
@@ -361,7 +394,7 @@ export component MessageBubble inherits VerticalLayout {
         }
 
         if root.chips-outside: BubbleReactions {
-            x: bubble.x;
+            x: bubble.x + row.x;
             y: bubble.y + bubble.height + root.outside-chips-gap;
             width: bubble.width;
             flex-wrap: FlexboxLayoutWrap.no-wrap;
@@ -375,7 +408,7 @@ export component MessageBubble inherits VerticalLayout {
         }
 
         if root.send-failed: SendFailedRow {
-            x: bubble.x;
+            x: bubble.x + row.x;
             y: bubble.y + bubble.height + root.outside-chips-gap + parent.outside-chips-height;
             width: bubble.width;
             height: Metrics.reaction-chip;
@@ -384,7 +417,7 @@ export component MessageBubble inherits VerticalLayout {
         }
 
         actions := RowActions {
-            x: bubble.x;
+            x: bubble.x + row.x;
             y: bubble.y;
             width: bubble.width;
             height: bubble.height;

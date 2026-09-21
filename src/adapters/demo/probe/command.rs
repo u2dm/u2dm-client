@@ -122,6 +122,9 @@ pub enum ProbeCommand {
     WindowFocus {
         focused: bool,
     },
+    SwipeTravel {
+        px: i32,
+    },
     OpenLink {
         url: String,
     },
@@ -156,6 +159,7 @@ impl fmt::Display for Driven {
                 write!(f, "SeekAudio({}ms)", position.as_millis())
             }
             Self::Poke(Poke::WindowFocus(focused)) => write!(f, "WindowFocus({focused})"),
+            Self::Poke(Poke::SwipeTravel(px)) => write!(f, "SwipeTravel({px}px)"),
         }
     }
 }
@@ -327,6 +331,7 @@ pub fn to_driven(command: ProbeCommand, selected: Selection<'_>) -> Result<Drive
         ProbeCommand::WindowFocus { focused } => {
             return Ok(Driven::Poke(Poke::WindowFocus(focused)));
         }
+        ProbeCommand::SwipeTravel { px } => return Ok(Driven::Poke(Poke::SwipeTravel(px))),
         ProbeCommand::OpenLink { url } => UiCommand::OpenLink { url },
         ProbeCommand::AcceptVerification => UiCommand::AcceptVerification,
         ProbeCommand::RejectVerification => UiCommand::RejectVerification,

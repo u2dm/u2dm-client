@@ -7817,6 +7817,7 @@ dependencies = [
  "tracing-subscriber",
  "u2dm-ui",
  "url",
+ "wayland-client",
  "windows-native-keyring-store",
  "xdg",
  "zbus-secret-service-keyring-store",

@@ -119,6 +119,7 @@ macro_rules! bool_props {
         AudioSilent AudioView "AudioView" "silent" set_silent get_silent;
         UnsentVisible UnsentView "UnsentView" "visible" set_visible get_visible;
         WindowFocused WindowView "WindowView" "focused" set_focused get_focused;
+        ReplySwipeArmed ReplySwipe "ReplySwipe" "armed" set_armed get_armed;
     } };
 }
 pub(crate) use bool_props;
@@ -139,6 +140,7 @@ macro_rules! int_props {
         AudioPositionMs AudioView "AudioView" "position-ms" set_position_ms get_position_ms;
         AudioDurationMs AudioView "AudioView" "duration-ms" set_duration_ms get_duration_ms;
         UnsentSubmission UnsentView "UnsentView" "submission" set_submission get_submission;
+        SwipeTravel WindowView "WindowView" "swipe-travel" set_swipe_travel get_swipe_travel;
     } };
 }
 pub(crate) use int_props;

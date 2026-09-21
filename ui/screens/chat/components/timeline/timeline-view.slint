@@ -10,7 +10,7 @@ import { TimelineState } from "../../../../enums.slint";
 import { ClickArea } from "../../../../components/a11y.slint";
 import { AudioView, DirectoryView, RoomView } from "../../../../views.slint";
 import { Actions } from "../../../../actions.slint";
-import { Composer, DeliveryTip, Reactions, Shell } from "../../../../local.slint";
+import { Composer, DeliveryTip, Reactions, ReplySwipe, Shell } from "../../../../local.slint";
 import { StatusPill } from "./status-pill.slint";
 import { NowPlayingBar } from "./now-playing-bar.slint";
 
@@ -61,6 +61,7 @@ export component TimelineView inherits Rectangle {
         root.input-message = "";
         Composer.clear();
         Reactions.close();
+        ReplySwipe.clear();
         DeliveryTip.clear();
     }
 
@@ -131,6 +132,15 @@ export component TimelineView inherits Rectangle {
         y: 0;
         width: root.width;
         height: root.height;
+
+        property <bool> swipe-within-reach: ReplySwipe.within-reach;
+
+        changed swipe-within-reach => {
+            if (self.swipe-within-reach) {
+                ReplySwipe.commit();
+                input.focus-input();
+            }
+        }
 
         content := TimelineContent {
             x: 0;

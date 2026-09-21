@@ -10,6 +10,7 @@ mod dto;
 pub(crate) mod dump;
 mod emoji;
 mod fields;
+mod finger_direction;
 mod focus;
 mod multiplex;
 mod output;
@@ -23,7 +24,9 @@ mod rows;
 pub(crate) mod schema;
 mod session;
 mod splice_model;
+mod swipe;
 mod video;
+mod window_events;
 
 pub use output::UiEventOutput;
 use slint::PlatformError;

@@ -362,7 +362,6 @@ impl UiProps for ComponentInstance {
         int_of(value.as_ref())
     }
 
-    #[cfg(feature = "demo")]
     fn get_bool(&self, prop: BoolProp) -> bool {
         let value = self.get_global_property(prop.global(), prop.as_str()).ok();
         flag_of(value.as_ref())

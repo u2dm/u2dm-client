@@ -1,6 +1,8 @@
 import { Delivery, LoginPhase } from "enums.slint";
-import { AttachmentView, LoginView, RoomView, VerificationView, VideoView } from "views.slint";
+import { AttachmentView, LoginView, RoomView, VerificationView, VideoView, WindowView } from "views.slint";
 import { MessageEntry, ReactionEntry } from "screens/chat/components/types.slint";
+import { MessagePreview } from "screens/chat/components/message-preview.slint";
+import { Metrics } from "theme.slint";
 
 export struct ReactionAnchor {
     event-id: string,
@@ -198,5 +200,51 @@ export global Reactions {
         if (self.tooltip-row == row && self.tooltip-event-id == event-id) {
             self.tooltip-row = -1;
         }
+    }
+}
+
+export global ReplySwipe {
+    in-out property <ReactionAnchor> anchor: { row: -1 };
+
+    in-out property <bool> armed: root.anchor.event-id != ""
+        && !Reactions.open
+        && !Shell.modal-open;
+
+    out property <MessageEntry> target: (root.anchor.row >= 0
+        && root.anchor.row < RoomView.timeline.length)
+        ? RoomView.timeline[root.anchor.row]
+        : { };
+    out property <string> event-id: (root.armed
+        && root.target.event-id != ""
+        && root.target.event-id == root.anchor.event-id)
+        ? root.target.event-id
+        : "";
+
+    out property <length> pull: min(WindowView.swipe-travel * 1px, Metrics.swipe-reply-pull);
+    out property <float> reach: min(WindowView.swipe-travel * 1px / Metrics.swipe-reply-travel, 1.0);
+    out property <bool> within-reach: root.reach >= 1.0;
+    out property <bool> settling: WindowView.swipe-travel == 0;
+
+    public function hover(a: ReactionAnchor) {
+        self.anchor = a;
+    }
+
+    public function leave(event-id: string) {
+        if (self.anchor.event-id == event-id) {
+            self.clear();
+        }
+    }
+
+    public function clear() {
+        self.anchor = { row: -1 };
+    }
+
+    public function commit() {
+        if (root.event-id == "") {
+            return;
+        }
+        Composer.reply-event-id = root.event-id;
+        Composer.reply-sender = root.target.sender;
+        Composer.reply-preview = MessagePreview.label(root.target.preview-kind, root.target.body);
     }
 }

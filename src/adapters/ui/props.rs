@@ -65,7 +65,6 @@ pub trait UiProps {
     fn clear_video_frame(&self);
     fn get_string(&self, prop: StringProp) -> SharedString;
     fn get_int(&self, prop: IntProp) -> i32;
-    #[cfg(feature = "demo")]
     fn get_bool(&self, prop: BoolProp) -> bool;
     #[cfg(feature = "demo")]
     fn get_enum(&self, prop: EnumProp) -> SharedString;

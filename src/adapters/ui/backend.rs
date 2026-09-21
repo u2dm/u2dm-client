@@ -19,7 +19,6 @@ use super::fields::{
     MessageFields, ReactionFields, ReactorFields, RoomFields, SpaceFields, StickerCellFields,
     StickerPackFields, StickerRowFields,
 };
-use super::focus::install_focus_mirror;
 use super::multiplex::spawn_event_multiplexer;
 use super::props::{IntProp, StringProp, UiProps};
 use super::reconcile::{reorder_rows, sticker_cell_row, sticker_pack_row, timeline_row_of};
@@ -28,6 +27,7 @@ use super::rows::{locate_row, patch_rows_by_id};
 use super::schema::model_props;
 use super::session::begin_session;
 use super::splice_model::SpliceModel;
+use super::window_events::install_window_events;
 use crate::commands::effects::Effect;
 use crate::commands::view::AppViewState;
 use crate::domain::message::TimelineMessage;
@@ -117,7 +117,7 @@ pub fn spawn_event_handler<B: UiBackend>(
 
     install_render_hooks::<B>(window.as_weak());
     install_clock_invalidation::<B>(Arc::clone(&media_cache));
-    install_focus_mirror::<B>(window);
+    install_window_events::<B>(window);
 
     let media = Arc::clone(&media_cache);
     B::bind_sticker_search(window, move |query| {

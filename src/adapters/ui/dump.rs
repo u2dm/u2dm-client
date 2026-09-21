@@ -105,6 +105,7 @@ pub enum Poke {
     ToggleAudio,
     SeekAudio(Duration),
     WindowFocus(bool),
+    SwipeTravel(i32),
 }
 
 type Poker = Box<dyn Fn(Poke) + Send + Sync>;
@@ -147,6 +148,7 @@ pub fn install_probe<B: UiBackend>(window: &B::Window) {
             Poke::ToggleAudio => audio::toggle(&window),
             Poke::SeekAudio(position) => audio::seek(&window, position),
             Poke::WindowFocus(focused) => window.set_bool(BoolProp::WindowFocused, focused),
+            Poke::SwipeTravel(px) => window.set_int(IntProp::SwipeTravel, px),
         });
         if let Err(e) = queued {
             tracing::debug!("a probe poke could not reach the event loop: {e}");
