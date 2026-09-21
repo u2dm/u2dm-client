@@ -15,6 +15,7 @@ const CELL_GAP: &str = "   ";
 const TAB_AS_SPACES: &str = "    ";
 const LIST_INDENT: &str = "    ";
 const BULLET: &str = "\u{2022} ";
+const DELIMITER_GUARD: &str = "<u></u>";
 
 #[derive(Clone)]
 pub struct StyledBody {
@@ -135,6 +136,44 @@ fn build_plain(text: &str) -> Option<StyledBody> {
     }
 }
 
+#[derive(PartialEq, Eq)]
+enum InlineStyle {
+    Strong,
+    Italic,
+    Struck,
+    Underlined,
+    Coloured(String),
+}
+
+impl InlineStyle {
+    fn opener(&self) -> String {
+        match self {
+            Self::Strong => guarded("**"),
+            Self::Italic => guarded("*"),
+            Self::Struck => guarded("~~"),
+            Self::Underlined => "<u>".to_owned(),
+            Self::Coloured(colour) => format!("<font color=\"{colour}\">"),
+        }
+    }
+
+    fn closer(&self) -> String {
+        match self {
+            Self::Strong | Self::Italic | Self::Struck => self.opener(),
+            Self::Underlined => "</u>".to_owned(),
+            Self::Coloured(_) => "</font>".to_owned(),
+        }
+    }
+}
+
+fn guarded(delimiter: &str) -> String {
+    format!("{DELIMITER_GUARD}{delimiter}{DELIMITER_GUARD}")
+}
+
+struct OpenStyle {
+    style: InlineStyle,
+    written_on_this_line: bool,
+}
+
 #[derive(Default)]
 #[allow(clippy::struct_excessive_bools)]
 struct Writer {
@@ -146,6 +185,7 @@ struct Writer {
     line_has_content: bool,
     link_open: bool,
     list_depth: usize,
+    open_styles: Vec<OpenStyle>,
 }
 
 impl Writer {
@@ -176,13 +216,13 @@ impl Writer {
             "br" => self.finish_line(),
             "hr" => self.block(node, depth, |w, _, _| w.text("---")),
             "img" => self.text(&image_text(node)),
-            "b" | "strong" => self.inline("**", "**", node, depth),
-            "i" | "em" => self.inline("*", "*", node, depth),
-            "del" | "s" | "strike" => self.inline("~~", "~~", node, depth),
-            "u" | "ins" => self.inline("<u>", "</u>", node, depth),
+            "b" | "strong" => self.styled(InlineStyle::Strong, node, depth),
+            "i" | "em" => self.styled(InlineStyle::Italic, node, depth),
+            "del" | "s" | "strike" => self.styled(InlineStyle::Struck, node, depth),
+            "u" | "ins" => self.styled(InlineStyle::Underlined, node, depth),
             "span" | "font" => self.coloured(node, depth),
             "h1" | "h2" | "h3" | "h4" | "h5" | "h6" => {
-                self.block(node, depth, |w, n, d| w.inline("**", "**", n, d));
+                self.block(node, depth, |w, n, d| w.styled(InlineStyle::Strong, n, d));
             }
             "code" => self.code_span(collapse_whitespace(&node_text(node)).trim()),
             "pre" => self.preformatted(node),
@@ -208,16 +248,39 @@ impl Writer {
         self.finish_line();
     }
 
-    fn inline(&mut self, open: &str, close: &str, node: &NodeRef, depth: usize) {
-        let opener_at = self.markdown.len();
-        self.markdown.push_str(open);
-        self.children(node, depth);
+    fn styled(&mut self, style: InlineStyle, node: &NodeRef, depth: usize) {
+        if self.open_styles.iter().any(|open| open.style == style) {
+            self.children(node, depth);
+            return;
+        }
 
-        if self.spans_one_line(opener_at + open.len()) {
-            self.markdown.push_str(close);
-        } else {
-            self.markdown
-                .replace_range(opener_at..opener_at + open.len(), "");
+        self.open_styles.push(OpenStyle {
+            style,
+            written_on_this_line: false,
+        });
+        self.children(node, depth);
+        if let Some(open) = self.open_styles.pop()
+            && open.written_on_this_line
+        {
+            self.markdown.push_str(&open.style.closer());
+        }
+    }
+
+    fn write_pending_openers(&mut self) {
+        for open in &mut self.open_styles {
+            if !open.written_on_this_line {
+                self.markdown.push_str(&open.style.opener());
+                open.written_on_this_line = true;
+            }
+        }
+    }
+
+    fn write_closers_before_line_end(&mut self) {
+        for open in self.open_styles.iter_mut().rev() {
+            if open.written_on_this_line {
+                self.markdown.push_str(&open.style.closer());
+                open.written_on_this_line = false;
+            }
         }
     }
 
@@ -231,12 +294,7 @@ impl Writer {
             .or_else(|| attribute(node, "color"))
             .filter(|value| is_hex_colour(value));
         match colour {
-            Some(colour) => self.inline(
-                &format!("<font color=\"{colour}\">"),
-                "</font>",
-                node,
-                depth,
-            ),
+            Some(colour) => self.styled(InlineStyle::Coloured(colour), node, depth),
             None => self.children(node, depth),
         }
     }
@@ -258,6 +316,7 @@ impl Writer {
         if text.is_empty() || self.exceeded_limits() {
             return;
         }
+        self.write_pending_openers();
         let fence = "`".repeat(longest_backtick_run(text) + 1);
         let padding = if text.starts_with('`') || text.ends_with('`') {
             " "
@@ -291,6 +350,7 @@ impl Writer {
             self.text(&plain_label);
             return;
         }
+        self.write_pending_openers();
 
         self.link_open = true;
         let bracket_at = self.markdown.len();
@@ -357,6 +417,7 @@ impl Writer {
             return;
         }
 
+        self.write_pending_openers();
         if self.link_open {
             self.push_escaped(text);
         } else {
@@ -397,6 +458,7 @@ impl Writer {
         if !self.line_has_content {
             return;
         }
+        self.write_closers_before_line_end();
         self.markdown.push('\n');
         self.plain.push('\n');
         self.line_has_content = false;
