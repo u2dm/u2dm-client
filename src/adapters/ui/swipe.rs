@@ -2,10 +2,11 @@ use std::cell::Cell;
 use std::rc::Rc;
 use std::time::Duration;
 
+use slint::platform::WindowEvent as SlintEvent;
 use slint::winit_030::EventResult;
 use slint::winit_030::winit::dpi::{LogicalPosition, PhysicalPosition};
 use slint::winit_030::winit::event::{MouseScrollDelta, TouchPhase, WindowEvent};
-use slint::{ComponentHandle, Timer, TimerMode, Weak, Window};
+use slint::{ComponentHandle, LogicalPosition as SlintPosition, Timer, TimerMode, Weak, Window};
 
 use super::backend::UiBackend;
 use super::finger_direction::FingerDirection;
@@ -19,17 +20,30 @@ const TRAVEL_CAP: f32 = 9999.0;
 #[derive(Clone, Copy)]
 enum Gesture {
     Idle,
+    Unarmed,
     Measuring { x: f32, y: f32 },
     Replying { travel: f32 },
     Scrolling,
+}
+
+impl Gesture {
+    const fn opened_over_a_row(self) -> bool {
+        matches!(
+            self,
+            Self::Measuring { .. } | Self::Replying { .. } | Self::Scrolling
+        )
+    }
 }
 
 pub fn reply_swipe<B: UiBackend>(
     window: &B::Window,
 ) -> impl FnMut(&Window, &WindowEvent) -> EventResult + use<B> {
     let swipe = Swipe::<B> {
-        weak: window.as_weak(),
-        gesture: Rc::new(Cell::new(Gesture::Idle)),
+        state: Rc::new(State {
+            weak: window.as_weak(),
+            gesture: Cell::new(Gesture::Idle),
+            pointer: Cell::new(None),
+        }),
         idle: Timer::default(),
         fingers: FingerDirection::new(),
     };
@@ -37,10 +51,15 @@ pub fn reply_swipe<B: UiBackend>(
 }
 
 struct Swipe<B: UiBackend> {
-    weak: Weak<B::Window>,
-    gesture: Rc<Cell<Gesture>>,
+    state: Rc<State<B>>,
     idle: Timer,
     fingers: FingerDirection,
+}
+
+struct State<B: UiBackend> {
+    weak: Weak<B::Window>,
+    gesture: Cell<Gesture>,
+    pointer: Cell<Option<SlintPosition>>,
 }
 
 impl<B: UiBackend> Swipe<B> {
@@ -48,6 +67,15 @@ impl<B: UiBackend> Swipe<B> {
         self.fingers.follow(window);
         match event {
             WindowEvent::MouseWheel { delta, phase, .. } => self.wheel(window, *delta, *phase),
+            WindowEvent::CursorMoved { position, .. } => {
+                let at = logical(window, *position);
+                self.state.pointer.set(Some(SlintPosition::new(at.x, at.y)));
+                EventResult::Propagate
+            }
+            WindowEvent::CursorLeft { .. } => {
+                self.state.pointer.set(None);
+                EventResult::Propagate
+            }
             _ => EventResult::Propagate,
         }
     }
@@ -63,37 +91,60 @@ impl<B: UiBackend> Swipe<B> {
         }
 
         self.wait_for_the_fingers_to_lift();
-        let step = logical_delta(window, pixels);
-        if matches!(phase, TouchPhase::Started) || matches!(self.gesture.get(), Gesture::Idle) {
-            self.gesture.set(self.open());
+        let step = logical(window, pixels);
+        if matches!(phase, TouchPhase::Started) || matches!(self.state.gesture.get(), Gesture::Idle)
+        {
+            self.state.gesture.set(self.state.open());
         }
 
-        match self.gesture.get() {
+        match self.state.gesture.get() {
             Gesture::Measuring { x, y } => self.measure(x + step.x, y + step.y),
-            Gesture::Replying { travel } => self.pull(travel + self.fingers.leftward(step.x)),
-            Gesture::Idle | Gesture::Scrolling => EventResult::Propagate,
-        }
-    }
-
-    fn open(&self) -> Gesture {
-        if self.armed() {
-            Gesture::Measuring { x: 0.0, y: 0.0 }
-        } else {
-            Gesture::Scrolling
+            Gesture::Replying { travel } => self.state.pull(travel + self.fingers.leftward(step.x)),
+            Gesture::Idle | Gesture::Unarmed | Gesture::Scrolling => EventResult::Propagate,
         }
     }
 
     fn measure(&self, x: f32, y: f32) -> EventResult {
         if x.abs().max(y.abs()) < AXIS_LOCK {
-            self.gesture.set(Gesture::Measuring { x, y });
+            self.state.gesture.set(Gesture::Measuring { x, y });
             return EventResult::Propagate;
         }
         let leftward = self.fingers.leftward(x);
         if leftward > y.abs() * AXIS_DOMINANCE {
-            return self.pull(leftward);
+            return self.state.claim(leftward);
         }
-        self.gesture.set(Gesture::Scrolling);
+        self.state.gesture.set(Gesture::Scrolling);
         EventResult::Propagate
+    }
+
+    fn finish(&self) {
+        self.idle.stop();
+        self.state.end();
+    }
+
+    fn wait_for_the_fingers_to_lift(&self) {
+        if self.idle.running() {
+            self.idle.restart();
+            return;
+        }
+        let state = Rc::clone(&self.state);
+        self.idle
+            .start(TimerMode::SingleShot, GESTURE_GAP, move || state.end());
+    }
+}
+
+impl<B: UiBackend> State<B> {
+    fn open(&self) -> Gesture {
+        if self.armed() {
+            Gesture::Measuring { x: 0.0, y: 0.0 }
+        } else {
+            Gesture::Unarmed
+        }
+    }
+
+    fn claim(&self, travel: f32) -> EventResult {
+        self.rehover();
+        self.pull(travel)
     }
 
     fn pull(&self, travel: f32) -> EventResult {
@@ -103,30 +154,25 @@ impl<B: UiBackend> Swipe<B> {
         EventResult::PreventDefault
     }
 
-    fn finish(&self) {
-        self.idle.stop();
-        if matches!(self.gesture.get(), Gesture::Replying { .. }) {
+    fn end(self: &Rc<Self>) {
+        let ended = self.gesture.replace(Gesture::Idle);
+        if matches!(ended, Gesture::Replying { .. }) {
             self.publish(0.0);
         }
-        self.gesture.set(Gesture::Idle);
+        if ended.opened_over_a_row() {
+            let state = Rc::clone(self);
+            Timer::single_shot(Duration::ZERO, move || state.rehover());
+        }
     }
 
-    fn wait_for_the_fingers_to_lift(&self) {
-        if self.idle.running() {
-            self.idle.restart();
-            return;
+    fn rehover(&self) {
+        if let Some(position) = self.pointer.get()
+            && let Some(window) = self.weak.upgrade()
+        {
+            window
+                .window()
+                .dispatch_event(SlintEvent::PointerMoved { position });
         }
-        let gesture = Rc::clone(&self.gesture);
-        let weak = self.weak.clone();
-        self.idle
-            .start(TimerMode::SingleShot, GESTURE_GAP, move || {
-                if matches!(gesture.get(), Gesture::Replying { .. })
-                    && let Some(window) = weak.upgrade()
-                {
-                    window.set_int(IntProp::SwipeTravel, 0);
-                }
-                gesture.set(Gesture::Idle);
-            });
     }
 
     fn armed(&self) -> bool {
@@ -142,8 +188,8 @@ impl<B: UiBackend> Swipe<B> {
     }
 }
 
-fn logical_delta(window: &Window, delta: PhysicalPosition<f64>) -> LogicalPosition<f32> {
-    delta.to_logical(f64::from(window.scale_factor()))
+fn logical(window: &Window, physical: PhysicalPosition<f64>) -> LogicalPosition<f32> {
+    physical.to_logical(f64::from(window.scale_factor()))
 }
 
 #[allow(clippy::cast_possible_truncation)]
