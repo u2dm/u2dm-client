@@ -1,6 +1,5 @@
 use std::collections::HashMap;
 use std::fmt::Write;
-use std::hash::{DefaultHasher, Hash, Hasher};
 
 use matrix_sdk::ruma::html::{Html, NodeRef};
 use slint::{SharedString, StyledText};
@@ -16,8 +15,6 @@ const CELL_GAP: &str = "   ";
 const TAB_AS_SPACES: &str = "    ";
 const LIST_INDENT: &str = "    ";
 const BULLET: &str = "\u{2022} ";
-const FORMATTED: u8 = 0;
-const UNFORMATTED: u8 = 1;
 
 #[derive(Clone)]
 pub struct StyledBody {
@@ -26,36 +23,36 @@ pub struct StyledBody {
     pub has_links: bool,
 }
 
+#[derive(PartialEq, Eq, Hash)]
+enum Source {
+    Formatted(String),
+    Unformatted(String),
+}
+
 #[derive(Default)]
-pub struct StyledBodies(HashMap<u64, StyledBody>);
+pub struct StyledBodies(HashMap<Source, Option<StyledBody>>);
 
 pub fn forget_styled_bodies() {
     with_session(|session| session.bodies.0.clear());
 }
 
-fn remembered(key: u64) -> Option<StyledBody> {
-    with_session(|session| session.bodies.0.get(&key).cloned())
-}
-
 pub fn styled_body(html: &str, plain_fallback: &str) -> StyledBody {
-    let key = memo_key(FORMATTED, html);
-    if let Some(hit) = remembered(key) {
-        return hit;
-    }
-
-    let built = build(html, plain_fallback);
-    remember(key, &built);
-    built
+    rendered(Source::Formatted(html.to_owned()), || build(html))
+        .unwrap_or_else(|| unstyled_body(plain_fallback))
 }
 
 pub fn plain_body(text: &str) -> StyledBody {
-    let key = memo_key(UNFORMATTED, text);
-    if let Some(hit) = remembered(key) {
+    rendered(Source::Unformatted(text.to_owned()), || build_plain(text))
+        .unwrap_or_else(|| unstyled_body(text))
+}
+
+fn rendered(source: Source, render: impl FnOnce() -> Option<StyledBody>) -> Option<StyledBody> {
+    if let Some(hit) = with_session(|session| session.bodies.0.get(&source).cloned()) {
         return hit;
     }
 
-    let built = build_plain(text).unwrap_or_else(|| unstyled_body(text));
-    remember(key, &built);
+    let built = render();
+    remember(source, built.clone());
     built
 }
 
@@ -67,24 +64,17 @@ fn unstyled_body(text: &str) -> StyledBody {
     }
 }
 
-fn remember(key: u64, built: &StyledBody) {
+fn remember(source: Source, built: Option<StyledBody>) {
     with_session(|session| {
         let memo = &mut session.bodies.0;
         if memo.len() >= MAX_MEMO_ENTRIES {
             memo.clear();
         }
-        memo.insert(key, built.clone());
+        memo.insert(source, built);
     });
 }
 
-fn memo_key(kind: u8, text: &str) -> u64 {
-    let mut hasher = DefaultHasher::new();
-    kind.hash(&mut hasher);
-    text.hash(&mut hasher);
-    hasher.finish()
-}
-
-fn build(html: &str, plain_fallback: &str) -> StyledBody {
+fn build(html: &str) -> Option<StyledBody> {
     let mut writer = Writer::default();
     let document = Html::parse(html);
     for node in document.children() {
@@ -94,28 +84,24 @@ fn build(html: &str, plain_fallback: &str) -> StyledBody {
 
     if writer.exceeded_limits() {
         tracing::debug!("a formatted message exceeded the rich-text limits, showing it plain");
-        return unstyled_body(plain_fallback);
+        return None;
     }
 
     let markdown = writer.markdown.trim();
     let plain = writer.plain.trim();
     if markdown.is_empty() {
-        return unstyled_body(plain_fallback);
+        return None;
     }
 
     match StyledText::from_markdown(markdown) {
-        Ok(styled) => StyledBody {
+        Ok(styled) => Some(StyledBody {
             styled,
             plain: SharedString::from(plain),
             has_links: writer.has_links,
-        },
+        }),
         Err(e) => {
             tracing::debug!("a formatted message did not render, showing it plain: {e}");
-            unstyled_body(if plain.is_empty() {
-                plain_fallback
-            } else {
-                plain
-            })
+            (!plain.is_empty()).then(|| unstyled_body(plain))
         }
     }
 }
