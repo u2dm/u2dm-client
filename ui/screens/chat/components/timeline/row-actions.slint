@@ -34,9 +34,8 @@ export component RowActions inherits Rectangle {
 
     property <bool> has-remote-id: root.msg.event-id != "";
     property <bool> can-select-text: MessageShape.has-selectable-text(root.msg);
-    property <[RowAction]> row-actions: root.can-select-text
-        ? [RowAction.select-text, RowAction.reply, RowAction.react]
-        : [RowAction.reply, RowAction.react];
+    property <[RowAction]> row-actions: root.offered-actions();
+    property <bool> has-actions: root.row-actions.length > 0;
 
     property <bool> action-hovered: false;
     property <int> action-cursor: 0;
@@ -48,7 +47,7 @@ export component RowActions inherits Rectangle {
     property <color> pill-fill: Palette.alternate-background;
     property <color> pill-foreground: Palette.accent-background;
 
-    out property <bool> hovered: root.has-remote-id
+    out property <bool> hovered: root.has-actions
         && (root.bubble-hovered
         || root.action-hovered
         || root.strip-mine
@@ -64,8 +63,25 @@ export component RowActions inherits Rectangle {
         return @tr("React to {}'s message with {}", root.msg.sender, QuickReactions.default-key);
     }
 
+    pure function offered-actions() -> [RowAction] {
+        if root.has-remote-id && root.can-select-text {
+            return [RowAction.select-text, RowAction.reply, RowAction.react];
+        }
+        if root.has-remote-id {
+            return [RowAction.reply, RowAction.react];
+        }
+        if root.can-select-text {
+            return [RowAction.select-text];
+        }
+        return [];
+    }
+
+    pure function available(action: RowAction) -> bool {
+        return action == RowAction.select-text ? root.can-select-text : root.has-remote-id;
+    }
+
     function run-action(action: RowAction) {
-        if !root.has-remote-id {
+        if !root.available(action) {
             return;
         }
         if action == RowAction.select-text {
@@ -85,7 +101,7 @@ export component RowActions inherits Rectangle {
         width: 0;
         height: 0;
         focus-on-click: false;
-        focus-on-tab-navigation: Interaction.actionable(root.has-remote-id, false);
+        focus-on-tab-navigation: Interaction.actionable(root.has-actions, false);
         accessible-role: button;
         accessible-label: root.action-label(root.focused-action);
         accessible-action-default => {
@@ -131,14 +147,14 @@ export component RowActions inherits Rectangle {
         }
 
         select-pill := Pill {
-            x: reply-pill.x - self.width - root.pill-gap;
+            x: reply-pill.visible ? reply-pill.x - self.width - root.pill-gap : root.width - self.width;
             y: reply-pill.y;
             width: root.pill-height;
             height: root.pill-height;
             pad: 0;
             fill: root.pill-fill;
             label: root.action-label(RowAction.select-text);
-            enabled: root.can-select-text;
+            enabled: root.available(RowAction.select-text);
             visible: self.enabled;
             focusable: false;
             roving-focus: action-focus.has-focus && root.focused-action == RowAction.select-text;
@@ -159,6 +175,8 @@ export component RowActions inherits Rectangle {
             height: root.pill-height;
             fill: root.pill-fill;
             label: root.action-label(RowAction.reply);
+            enabled: root.available(RowAction.reply);
+            visible: self.enabled;
             focusable: false;
             roving-focus: action-focus.has-focus && root.focused-action == RowAction.reply;
             clicked => {
@@ -184,6 +202,8 @@ export component RowActions inherits Rectangle {
             pad: 0;
             fill: root.pill-fill;
             label: root.action-label(RowAction.react);
+            enabled: root.available(RowAction.react);
+            visible: self.enabled;
             focusable: false;
             roving-focus: action-focus.has-focus && root.focused-action == RowAction.react;
             opacity: root.strip-mine ? 0 : 1;
