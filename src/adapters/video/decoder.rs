@@ -82,6 +82,7 @@ impl AudioDecoder {
     fn drain_decoder(&mut self, emit: Emit<'_>) {
         let mut decoded = AudioFrame::empty();
         while self.decoder.receive_frame(&mut decoded).is_ok() {
+            decoded.set_channel_layout(named_layout(decoded.channel_layout()));
             let start = decoded.pts().or_else(|| decoded.timestamp());
             let mut resampled = self.output_frame(self.resampled_capacity(decoded.samples()));
             if self.resampler.run(&decoded, &mut resampled).is_err() {
@@ -143,11 +144,19 @@ fn resampler_for(
 ) -> Option<software::resampling::Context> {
     software::resampling::Context::get(
         decoder.format(),
-        decoder.channel_layout(),
+        named_layout(decoder.channel_layout()),
         decoder.rate(),
         Sample::F32(SampleType::Packed),
         target.layout(),
         target.rate,
     )
     .ok()
+}
+
+fn named_layout(layout: ChannelLayout) -> ChannelLayout {
+    if layout.is_empty() {
+        ChannelLayout::default(layout.channels())
+    } else {
+        layout
+    }
 }
