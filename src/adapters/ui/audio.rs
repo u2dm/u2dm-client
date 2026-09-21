@@ -28,6 +28,12 @@ struct Session {
     playback: Playback,
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum Start {
+    Playing,
+    Paused,
+}
+
 #[cfg(feature = "video")]
 #[derive(Clone, Copy)]
 pub enum Update {
@@ -63,14 +69,14 @@ pub fn prepare<W: UiProps>(window: &W, request: u64, duration: Option<Duration>)
     window.set_int(IntProp::AudioDurationMs, duration.map_or(0, millis));
 }
 
-pub fn open<W>(window: &W, weak: &slint::Weak<W>, request: u64, path: &Path)
+pub fn open<W>(window: &W, weak: &slint::Weak<W>, request: u64, path: &Path, start: Start)
 where
     W: ComponentHandle + UiProps + 'static,
 {
     if REQUEST.get() != request || is_open(request) {
         return;
     }
-    start(window, weak, request, path);
+    begin(window, weak, request, path, start);
 }
 
 pub fn close<W: UiProps>(window: &W) {
@@ -175,7 +181,7 @@ fn stop() {
 fn stop() {}
 
 #[cfg(not(feature = "video"))]
-fn start<W>(window: &W, _weak: &slint::Weak<W>, request: u64, _path: &Path)
+fn begin<W>(window: &W, _weak: &slint::Weak<W>, request: u64, _path: &Path, _start: Start)
 where
     W: ComponentHandle + UiProps + 'static,
 {
@@ -183,7 +189,7 @@ where
 }
 
 #[cfg(feature = "video")]
-fn start<W>(window: &W, weak: &slint::Weak<W>, request: u64, path: &Path)
+fn begin<W>(window: &W, weak: &slint::Weak<W>, request: u64, path: &Path, start: Start)
 where
     W: ComponentHandle + UiProps + 'static,
 {
@@ -214,10 +220,8 @@ where
         finish(window, request, AudioEnd::Failed);
         return;
     };
-    playback.play();
-    PLAYING.set(true);
-    window.set_bool(BoolProp::AudioPlaying, true);
     SESSION.with(|cell| {
         *cell.borrow_mut() = Some(Session { request, playback });
     });
+    set_playing(window, start == Start::Playing);
 }

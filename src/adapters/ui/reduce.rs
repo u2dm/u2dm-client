@@ -348,7 +348,7 @@ fn apply_snapshot<B: UiBackend>(
         apply_video::<B>(w, video);
     }
     if last.is_none_or(|l| l.audio != *audio) {
-        apply_audio::<B>(w, last.map(|l| &l.audio), audio, ctx);
+        apply_audio::<B>(w, last.map(|l| &l.audio), audio, audio_start(video), ctx);
     }
     if last.is_none_or(|l| l.unsent != *unsent) {
         apply_unsent(w, unsent.as_ref());
@@ -589,14 +589,23 @@ fn apply_video<B: UiBackend>(w: &B::Window, view: &VideoView) {
     }
 }
 
+fn audio_start(video: &VideoView) -> audio::Start {
+    if video.visible {
+        audio::Start::Paused
+    } else {
+        audio::Start::Playing
+    }
+}
+
 fn apply_audio<B: UiBackend>(
     w: &B::Window,
     last: Option<&AudioView>,
     view: &AudioView,
+    start: audio::Start,
     ctx: &UiEventContext<'_, B>,
 ) {
     if let Some(now) = &view.now_playing {
-        show_now_playing(w, now);
+        show_now_playing(w, now, start);
     } else {
         w.set_bool(BoolProp::AudioVisible, false);
         w.set_bool(BoolProp::AudioLoading, false);
@@ -609,7 +618,7 @@ fn apply_audio<B: UiBackend>(
     }
 }
 
-fn show_now_playing<W>(w: &W, now: &NowPlaying)
+fn show_now_playing<W>(w: &W, now: &NowPlaying, start: audio::Start)
 where
     W: ComponentHandle + UiProps + 'static,
 {
@@ -628,7 +637,7 @@ where
     w.set_bool(BoolProp::AudioLoading, now.file == TrackFile::Downloading);
     w.set_bool(BoolProp::AudioVisible, true);
     if let TrackFile::Ready(path) = &now.file {
-        audio::open(w, &w.as_weak(), now.request, path);
+        audio::open(w, &w.as_weak(), now.request, path, start);
     }
 }
 
