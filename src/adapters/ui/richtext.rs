@@ -14,6 +14,7 @@ const MAX_MEMO_ENTRIES: usize = 512;
 const CELL_GAP: &str = "   ";
 const TAB_AS_SPACES: &str = "    ";
 const LIST_INDENT: &str = "    ";
+const FIRST_LIST_NUMBER: usize = 1;
 const BULLET: &str = "\u{2022} ";
 const DELIMITER_GUARD: &str = "<u></u>";
 
@@ -169,6 +170,31 @@ fn guarded(delimiter: &str) -> String {
     format!("{DELIMITER_GUARD}{delimiter}{DELIMITER_GUARD}")
 }
 
+#[derive(Clone, Copy, Default)]
+enum ListMarkers {
+    #[default]
+    DashAndDot,
+    StarAndParen,
+}
+
+impl ListMarkers {
+    fn other(self) -> Self {
+        match self {
+            Self::DashAndDot => Self::StarAndParen,
+            Self::StarAndParen => Self::DashAndDot,
+        }
+    }
+
+    fn marker(self, number: Option<usize>) -> String {
+        match (self, number) {
+            (Self::DashAndDot, None) => "- ".to_owned(),
+            (Self::StarAndParen, None) => "* ".to_owned(),
+            (Self::DashAndDot, Some(n)) => format!("{n}. "),
+            (Self::StarAndParen, Some(n)) => format!("{n}) "),
+        }
+    }
+}
+
 struct OpenStyle {
     style: InlineStyle,
     written_on_this_line: bool,
@@ -185,6 +211,8 @@ struct Writer {
     line_has_content: bool,
     link_open: bool,
     list_depth: usize,
+    item_content_column: usize,
+    list_markers: ListMarkers,
     open_styles: Vec<OpenStyle>,
 }
 
@@ -371,35 +399,52 @@ impl Writer {
             self.children(node, depth);
             return;
         }
-        let ordered = has_name(node, "ol");
+        let mut number = has_name(node, "ol").then(|| list_start(node));
+        let top_level = self.list_depth == 0;
 
         self.finish_line();
+        if top_level {
+            self.leave_blank_line();
+        }
         self.list_depth += 1;
-        let mut number = 0;
         for child in node.children() {
             if !has_name(&child, "li") {
                 continue;
             }
-            number += 1;
-            self.item(&child, depth + 1, ordered.then_some(number));
+            self.item(&child, depth + 1, number);
+            number = number.map(|n| n.saturating_add(1));
         }
         self.list_depth -= 1;
         self.finish_line();
+        if top_level {
+            self.leave_blank_line();
+            self.list_markers = self.list_markers.other();
+        }
+    }
+
+    fn leave_blank_line(&mut self) {
+        if !self.markdown.is_empty() && !self.markdown.ends_with("\n\n") {
+            self.markdown.push('\n');
+        }
     }
 
     fn item(&mut self, node: &NodeRef, depth: usize, number: Option<usize>) {
         self.finish_line();
-        let indent = LIST_INDENT.repeat(self.list_depth.saturating_sub(1));
-        let markdown_marker = number.map_or_else(|| "- ".to_owned(), |n| format!("{n}. "));
+        let markdown_indent = " ".repeat(self.item_content_column);
+        let plain_indent = LIST_INDENT.repeat(self.list_depth.saturating_sub(1));
+        let markdown_marker = self.list_markers.marker(number);
         let plain_marker = number.map_or_else(|| BULLET.to_owned(), |n| format!("{n}. "));
 
-        self.markdown.push_str(&indent);
+        self.markdown.push_str(&markdown_indent);
         self.markdown.push_str(&markdown_marker);
-        self.plain.push_str(&indent);
+        self.plain.push_str(&plain_indent);
         self.plain.push_str(&plain_marker);
         self.line_has_content = true;
 
+        let parent_content_column = self.item_content_column;
+        self.item_content_column = markdown_indent.len() + markdown_marker.len();
         self.children(node, depth);
+        self.item_content_column = parent_content_column;
         self.finish_line();
     }
 
@@ -504,6 +549,12 @@ fn is_hex_colour(value: &str) -> bool {
         return false;
     };
     matches!(digits.len(), 3 | 4 | 6 | 8) && digits.chars().all(|ch| ch.is_ascii_hexdigit())
+}
+
+fn list_start(node: &NodeRef) -> usize {
+    attribute(node, "start")
+        .and_then(|start| start.trim().parse().ok())
+        .unwrap_or(FIRST_LIST_NUMBER)
 }
 
 fn has_name(node: &NodeRef, name: &str) -> bool {
