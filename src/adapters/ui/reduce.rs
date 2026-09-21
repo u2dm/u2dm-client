@@ -1,4 +1,5 @@
 use std::collections::HashSet;
+use std::mem;
 use std::sync::Arc;
 
 use slint::{ComponentHandle, Model, SharedString};
@@ -54,6 +55,13 @@ impl RoomCursor {
 
 fn active_generation() -> i32 {
     with_session(|session| session.room.active_generation())
+}
+
+fn adopt_selected_generation(generation: i32) -> bool {
+    with_session(|session| {
+        let previous = mem::replace(&mut session.room.active_generation, generation);
+        previous != generation
+    })
 }
 
 fn is_new_generation(generation: i32) -> bool {
@@ -137,8 +145,9 @@ pub fn dispatch_effect<B: UiBackend>(w: &B::Window, event: Effect, ctx: &UiEvent
             member_count,
             generation,
         } => {
-            with_session(|session| session.room.active_generation = generation);
-            set_focus(w, None);
+            if adopt_selected_generation(generation) {
+                set_focus(w, None);
+            }
             w.set_int(IntProp::SelectedGeneration, generation);
             w.set_string(StringProp::SelectedRoomId, SharedString::from(id.as_ref()));
             w.set_string(StringProp::SelectedRoomName, SharedString::from(&name));
