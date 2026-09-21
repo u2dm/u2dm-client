@@ -1,3 +1,4 @@
+use std::iter;
 use std::time::Duration;
 
 use ffmpeg_next::util::format::sample::{Sample, Type as SampleType};
@@ -15,10 +16,44 @@ pub struct PcmTarget {
 }
 
 impl PcmTarget {
-    fn layout(self) -> ChannelLayout {
+    fn mixdown(self) -> Mixdown {
         match self.channels {
-            1 => ChannelLayout::MONO,
-            _ => ChannelLayout::STEREO,
+            1 => Mixdown::Mono,
+            _ => Mixdown::Stereo,
+        }
+    }
+
+    fn spread_across_device(self, mixed: Vec<f32>) -> Vec<f32> {
+        let lanes = self.mixdown().lanes();
+        let silent = usize::from(self.channels).saturating_sub(lanes);
+        if silent == 0 {
+            return mixed;
+        }
+        mixed
+            .chunks_exact(lanes)
+            .flat_map(|frame| frame.iter().copied().chain(iter::repeat_n(0.0, silent)))
+            .collect()
+    }
+}
+
+#[derive(Clone, Copy)]
+enum Mixdown {
+    Mono,
+    Stereo,
+}
+
+impl Mixdown {
+    fn layout(self) -> ChannelLayout {
+        match self {
+            Self::Mono => ChannelLayout::MONO,
+            Self::Stereo => ChannelLayout::STEREO,
+        }
+    }
+
+    fn lanes(self) -> usize {
+        match self {
+            Self::Mono => 1,
+            Self::Stereo => 2,
         }
     }
 }
@@ -97,12 +132,12 @@ impl AudioDecoder {
         AudioFrame::new(
             Sample::F32(SampleType::Packed),
             capacity,
-            self.target.layout(),
+            self.target.mixdown().layout(),
         )
     }
 
     fn emit_resampled(&self, resampled: &AudioFrame, start: Option<Duration>, emit: Emit<'_>) {
-        let lanes = usize::from(self.target.channels);
+        let lanes = self.target.mixdown().lanes();
         let wanted = resampled.samples() * lanes * size_of::<f32>();
         let Some(bytes) = resampled.data(0).get(..wanted) else {
             return;
@@ -114,7 +149,7 @@ impl AudioDecoder {
             .chunks_exact(size_of::<f32>())
             .map(|chunk| <[u8; 4]>::try_from(chunk).map_or(0.0, f32::from_ne_bytes))
             .collect();
-        emit(&samples, start);
+        emit(&self.target.spread_across_device(samples), start);
     }
 
     fn resampled_capacity(&self, samples: usize) -> usize {
@@ -147,7 +182,7 @@ fn resampler_for(
         named_layout(decoder.channel_layout()),
         decoder.rate(),
         Sample::F32(SampleType::Packed),
-        target.layout(),
+        target.mixdown().layout(),
         target.rate,
     )
     .ok()
