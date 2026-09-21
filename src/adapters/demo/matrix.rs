@@ -497,16 +497,12 @@ impl TimelinePort for DemoAuthed {
         let scenario = timeline::scenario();
         let all = data::messages(room_id);
         let seeded_receipts = receipts::seed_receipts(&all);
-        let messages = match focus.target() {
-            Some(target) => focused_window(&all, target)?,
-            None if scenario.window_is_short => newest(&all, timeline::SHORT_WINDOW),
-            None => all,
-        };
+        let messages = opening_window(all, &focus, scenario)?;
 
-        if scenario.resolving_unread && focus.is_live() {
+        if scenario.resolving_unread && focus.opens_at_read_position() {
             drop(timeline_tx.send(TimelineUpdate::ResolvingUnread).await);
         }
-        if scenario.unread_boundary_is_unresolved && focus.is_live() {
+        if scenario.unread_boundary_is_unresolved && focus.opens_at_read_position() {
             drop(timeline_tx.send(TimelineUpdate::UnreadUnresolved).await);
         }
         if scenario.reset_is_slow {
@@ -859,6 +855,28 @@ fn reply_info(messages: &[TimelineMessage], event_id: &str) -> Option<ReplyInfo>
             kind: message.body.preview_kind(),
             body: data::body_preview(&message.body),
         })
+}
+
+fn opening_window(
+    all: Vec<TimelineMessage>,
+    focus: &TimelineFocus,
+    scenario: timeline::Scenario,
+) -> Result<Vec<TimelineMessage>> {
+    let mut messages = match focus.target() {
+        Some(target) => focused_window(&all, target)?,
+        None if scenario.window_is_short => newest(&all, timeline::SHORT_WINDOW),
+        None => all,
+    };
+    if matches!(focus, TimelineFocus::Latest) {
+        clear_unread_divider(&mut messages);
+    }
+    Ok(messages)
+}
+
+fn clear_unread_divider(messages: &mut [TimelineMessage]) {
+    for message in messages {
+        message.is_first_unread = false;
+    }
 }
 
 fn newest(messages: &[TimelineMessage], count: usize) -> Vec<TimelineMessage> {

@@ -264,7 +264,7 @@ impl ActiveTimeline {
 
         let caught_up_with_live = !self.live;
         if caught_up_with_live {
-            self.refocus(room_id, generation, TimelineFocus::Live);
+            self.refocus(room_id, generation, TimelineFocus::ReadPosition);
             return;
         }
 

@@ -211,18 +211,23 @@ where
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TimelineFocus {
-    Live,
+    ReadPosition,
+    Latest,
     Event(String),
 }
 
 impl TimelineFocus {
     pub fn is_live(&self) -> bool {
-        matches!(self, Self::Live)
+        matches!(self, Self::ReadPosition | Self::Latest)
+    }
+
+    pub fn opens_at_read_position(&self) -> bool {
+        matches!(self, Self::ReadPosition)
     }
 
     pub fn target(&self) -> Option<&str> {
         match self {
-            Self::Live => None,
+            Self::ReadPosition | Self::Latest => None,
             Self::Event(event_id) => Some(event_id),
         }
     }

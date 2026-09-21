@@ -65,6 +65,7 @@ export component TimelineScroller inherits Rectangle {
         y: parent.height - self.height;
 
         property <length> scroll-threshold: 40px;
+        property <length> scroll-end-epsilon: 0.5px;
         property <bool> auto-scroll: true;
         property <bool> programmatic-scroll: false;
         property <bool> settling: false;
@@ -74,6 +75,8 @@ export component TimelineScroller inherits Rectangle {
         property <bool> at-top: self.content-y >= -self.scroll-threshold;
         property <bool> at-bottom:
             self.content-y <= -(self.max-scroll-y - self.scroll-threshold);
+        property <bool> at-scroll-end:
+            self.content-y <= -(self.max-scroll-y - self.scroll-end-epsilon);
 
         property <int> first-unseen-row: 0;
 
@@ -142,7 +145,7 @@ export component TimelineScroller inherits Rectangle {
                     Actions.paginate-forwards();
                 }
                 if self.scrollable {
-                    if self.content-y > self.prev-content-y {
+                    if self.content-y > self.prev-content-y && !self.at-scroll-end {
                         self.auto-scroll = false;
                     } else if self.at-bottom {
                         self.auto-scroll = true;

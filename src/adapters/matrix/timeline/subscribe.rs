@@ -641,9 +641,10 @@ pub(crate) async fn subscribe_timeline(
 
     media.ensure_dirs().await;
 
-    let acknowledged = match focus {
-        TimelineFocus::Live => acknowledged_event(&timeline, client.user_id()).await,
-        TimelineFocus::Event(_) => None,
+    let acknowledged = if focus.opens_at_read_position() {
+        acknowledged_event(&timeline, client.user_id()).await
+    } else {
+        None
     };
     let backwards_outcome = match acknowledged.as_deref() {
         Some(acknowledged) => {
@@ -662,13 +663,18 @@ pub(crate) async fn subscribe_timeline(
     });
 
     let initial_items: Vec<Arc<TimelineItem>> = initial_items.into_iter().collect();
-    let unread = locate_unread(
-        &timeline,
-        &initial_items,
-        acknowledged.as_deref(),
-        client.user_id(),
-    )
-    .await;
+    let unread = match focus {
+        TimelineFocus::Latest => UnreadBoundary::CaughtUp,
+        TimelineFocus::ReadPosition | TimelineFocus::Event(_) => {
+            locate_unread(
+                &timeline,
+                &initial_items,
+                acknowledged.as_deref(),
+                client.user_id(),
+            )
+            .await
+        }
+    };
     tracing::debug!(
         ?acknowledged,
         ?unread,

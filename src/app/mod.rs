@@ -485,7 +485,7 @@ impl AppService {
         if self.active_timeline.is_live() {
             self.active_timeline.jump_to_latest(&room_id, generation);
         } else if self.active_timeline.is_current(&room_id, generation) {
-            self.open_room(room_id, TimelineFocus::Live).await;
+            self.open_room(room_id, TimelineFocus::Latest).await;
         }
     }
 
@@ -981,7 +981,7 @@ impl AppService {
     }
 
     async fn select_room(&mut self, room_id: RoomId) {
-        self.open_room(room_id, TimelineFocus::Live).await;
+        self.open_room(room_id, TimelineFocus::ReadPosition).await;
     }
 
     async fn open_room(&mut self, room_id: RoomId, focus: TimelineFocus) {
