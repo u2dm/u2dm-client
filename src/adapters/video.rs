@@ -120,6 +120,16 @@ mod backend {
             .decoder()
             .video()
             .ok()?;
+        let frame = decode_first(&mut input, index, &mut decoder)?;
+        Some((frame, decoder.width(), decoder.height(), decoder.format()))
+    }
+
+    fn decode_first(
+        input: &mut format::context::Input,
+        index: usize,
+        decoder: &mut codec::decoder::Video,
+    ) -> Option<VideoFrame> {
+        let mut frame = VideoFrame::empty();
         for (stream, packet) in input.packets() {
             if stream.index() != index {
                 continue;
@@ -127,12 +137,13 @@ mod backend {
             if decoder.send_packet(&packet).is_err() {
                 continue;
             }
-            let mut frame = VideoFrame::empty();
             if decoder.receive_frame(&mut frame).is_ok() {
-                return Some((frame, decoder.width(), decoder.height(), decoder.format()));
+                return Some(frame);
             }
         }
-        None
+        decoder.send_eof().ok()?;
+        decoder.receive_frame(&mut frame).ok()?;
+        Some(frame)
     }
 
     pub(super) fn poster_jpeg(path: &Path, max_edge: u32, quality: u8) -> Option<Vec<u8>> {

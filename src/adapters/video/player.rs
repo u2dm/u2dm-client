@@ -26,6 +26,13 @@ enum AudioSupply {
     Exhausted,
 }
 
+enum Stage {
+    Demuxing,
+    Demuxed,
+    Flushing,
+    Decoded,
+}
+
 struct Pending {
     rgb: Vec<u8>,
     position: Duration,
@@ -77,7 +84,7 @@ struct Session {
     pending: VecDeque<Pending>,
     stashed: VecDeque<Packet>,
     demuxed: Duration,
-    drained: bool,
+    stage: Stage,
 }
 
 impl Session {
@@ -129,7 +136,7 @@ impl Session {
             pending: VecDeque::new(),
             stashed: VecDeque::new(),
             demuxed: Duration::ZERO,
-            drained: false,
+            stage: Stage::Demuxing,
         })
     }
 
@@ -139,7 +146,11 @@ impl Session {
     }
 
     fn has_finished(&self) -> bool {
-        self.drained && self.pending.is_empty() && self.stashed.is_empty()
+        matches!(self.stage, Stage::Decoded) && self.pending.is_empty()
+    }
+
+    fn is_demuxing(&self) -> bool {
+        matches!(self.stage, Stage::Demuxing)
     }
 
     fn paced_by_audio(&self) -> bool {
@@ -152,7 +163,7 @@ impl Session {
         };
         if audio.output().queued_frames() > 0 {
             AudioSupply::Buffered
-        } else if self.drained || self.looked_past_the_audio(audio) {
+        } else if !self.is_demuxing() || self.looked_past_the_audio(audio) {
             AudioSupply::Exhausted
         } else {
             AudioSupply::Starving
@@ -173,7 +184,7 @@ impl Session {
         self.decoder.flush();
         self.pending.clear();
         self.stashed.clear();
-        self.drained = false;
+        self.stage = Stage::Demuxing;
         self.demuxed = position;
         if let Some(audio) = self.audio.as_mut() {
             audio.rebase(position);
@@ -294,7 +305,7 @@ impl Session {
     }
 
     fn wants_packet(&self) -> bool {
-        if self.drained || self.audio_is_full() {
+        if !self.is_demuxing() || self.audio_is_full() {
             return false;
         }
         self.pending.len() + self.stashed.len() < MAX_PENDING_FRAMES
@@ -303,10 +314,15 @@ impl Session {
 
     fn decode_stashed(&mut self) {
         while self.pending.len() < MAX_PENDING_FRAMES {
-            let Some(packet) = self.stashed.pop_front() else {
-                return;
-            };
-            self.decode_into_pending(&packet);
+            if let Some(packet) = self.stashed.pop_front() {
+                self.decode_into_pending(&packet);
+                continue;
+            }
+            match self.stage {
+                Stage::Demuxing | Stage::Decoded => return,
+                Stage::Demuxed => self.signal_end_of_stream(),
+                Stage::Flushing => self.receive_delayed_frame(),
+            }
         }
     }
 
@@ -314,7 +330,24 @@ impl Session {
         if let Some(audio) = self.audio.as_mut() {
             audio.finish();
         }
-        self.drained = true;
+        self.stage = Stage::Demuxed;
+    }
+
+    fn signal_end_of_stream(&mut self) {
+        self.stage = if self.decoder.send_eof().is_ok() {
+            Stage::Flushing
+        } else {
+            Stage::Decoded
+        };
+    }
+
+    fn receive_delayed_frame(&mut self) {
+        let mut frame = VideoFrame::empty();
+        if self.decoder.receive_frame(&mut frame).is_ok() {
+            self.queue_frame(&frame);
+        } else {
+            self.stage = Stage::Decoded;
+        }
     }
 
     fn decode_into_pending(&mut self, packet: &Packet) {
@@ -323,10 +356,14 @@ impl Session {
         }
         let mut frame = VideoFrame::empty();
         while self.decoder.receive_frame(&mut frame).is_ok() {
-            let position = self.position_of(&frame);
-            if let Some(rgb) = self.scale_to_rgb(&frame) {
-                self.pending.push_back(Pending { rgb, position });
-            }
+            self.queue_frame(&frame);
+        }
+    }
+
+    fn queue_frame(&mut self, frame: &VideoFrame) {
+        let position = self.position_of(frame);
+        if let Some(rgb) = self.scale_to_rgb(frame) {
+            self.pending.push_back(Pending { rgb, position });
         }
     }
 
@@ -348,7 +385,7 @@ impl Session {
         self.sync_clock(clock);
 
         let Some(next) = self.pending.front() else {
-            return if self.drained {
+            return if self.has_finished() {
                 Flow::Ended
             } else {
                 Flow::Continue
