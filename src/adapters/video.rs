@@ -36,6 +36,8 @@ mod decoder;
 #[cfg(feature = "video")]
 mod feed;
 #[cfg(feature = "video")]
+mod orientation;
+#[cfg(feature = "video")]
 mod output;
 #[cfg(feature = "video")]
 pub mod playback;
@@ -82,10 +84,11 @@ mod backend {
     use ffmpeg_next::software::scaling;
     use ffmpeg_next::util::frame::Video as VideoFrame;
     use ffmpeg_next::{codec, format, media};
+    use image::RgbImage;
     use image::codecs::jpeg::JpegEncoder;
-    use image::{ImageBuffer, Rgb};
+    use image::metadata::Orientation;
 
-    use super::VideoProbe;
+    use super::{VideoProbe, orientation};
 
     fn duration_of(input: &format::context::Input) -> Option<Duration> {
         let micros = input.duration();
@@ -104,24 +107,49 @@ mod backend {
             .decoder()
             .video()
             .ok()?;
+        let (width, height) = orientation::displayed_extent(
+            decoder.width(),
+            decoder.height(),
+            orientation::of_stream(&stream),
+        );
         Some(VideoProbe {
-            width: decoder.width(),
-            height: decoder.height(),
+            width,
+            height,
             duration,
         })
     }
 
-    fn first_frame(path: &Path) -> Option<(VideoFrame, u32, u32, Pixel)> {
+    struct FirstFrame {
+        frame: VideoFrame,
+        width: u32,
+        height: u32,
+        format: Pixel,
+        orientation: Orientation,
+    }
+
+    fn first_frame(path: &Path) -> Option<FirstFrame> {
         let mut input = format::input(path).ok()?;
-        let index = input.streams().best(media::Type::Video)?.index();
-        let parameters = input.streams().best(media::Type::Video)?.parameters();
+        let (index, parameters, orientation) = {
+            let stream = input.streams().best(media::Type::Video)?;
+            (
+                stream.index(),
+                stream.parameters(),
+                orientation::of_stream(&stream),
+            )
+        };
         let mut decoder = codec::context::Context::from_parameters(parameters)
             .ok()?
             .decoder()
             .video()
             .ok()?;
         let frame = decode_first(&mut input, index, &mut decoder)?;
-        Some((frame, decoder.width(), decoder.height(), decoder.format()))
+        Some(FirstFrame {
+            frame,
+            width: decoder.width(),
+            height: decoder.height(),
+            format: decoder.format(),
+            orientation,
+        })
     }
 
     fn decode_first(
@@ -150,12 +178,13 @@ mod backend {
         if !super::ffmpeg_ready() {
             return None;
         }
-        let (frame, width, height, format) = first_frame(path)?;
-        let (target_width, target_height) = super::scaled_extent(width, height, max_edge);
+        let first = first_frame(path)?;
+        let (target_width, target_height) =
+            super::scaled_extent(first.width, first.height, max_edge);
         let mut scaler = scaling::Context::get(
-            format,
-            width,
-            height,
+            first.format,
+            first.width,
+            first.height,
             Pixel::RGB24,
             target_width,
             target_height,
@@ -163,7 +192,7 @@ mod backend {
         )
         .ok()?;
         let mut rgb = VideoFrame::empty();
-        scaler.run(&frame, &mut rgb).ok()?;
+        scaler.run(&first.frame, &mut rgb).ok()?;
 
         let stride = rgb.stride(0);
         let row_bytes = target_width as usize * 3;
@@ -172,11 +201,11 @@ mod backend {
             packed.extend_from_slice(row.get(..row_bytes)?);
         }
 
-        let buffer: ImageBuffer<Rgb<u8>, Vec<u8>> =
-            ImageBuffer::from_raw(target_width, target_height, packed)?;
+        let as_stored = RgbImage::from_raw(target_width, target_height, packed)?;
+        let poster = orientation::upright(as_stored, first.orientation);
         let mut bytes = Vec::new();
         let encoder = JpegEncoder::new_with_quality(&mut bytes, quality);
-        buffer.write_with_encoder(encoder).ok()?;
+        poster.write_with_encoder(encoder).ok()?;
         Some(bytes)
     }
 }

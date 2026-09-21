@@ -8,11 +8,13 @@ use ffmpeg_next::format::Pixel;
 use ffmpeg_next::software::scaling;
 use ffmpeg_next::util::frame::Video as VideoFrame;
 use ffmpeg_next::{Rational, codec, format, media};
+use image::RgbImage;
+use image::metadata::Orientation;
 
-use super::decoder;
 use super::feed::AudioFeed;
 use super::output::AudioOutput;
 use super::playback::{Clock, Command, Flow, Playback, stream_duration};
+use super::{decoder, orientation};
 
 const MAX_DIMENSION: u32 = 1280;
 const COMMAND_POLL: Duration = Duration::from_millis(4);
@@ -34,7 +36,7 @@ enum Stage {
 }
 
 struct Pending {
-    rgb: Vec<u8>,
+    picture: RgbImage,
     position: Duration,
 }
 
@@ -80,6 +82,7 @@ struct Session {
     duration: Option<Duration>,
     width: u32,
     height: u32,
+    orientation: Orientation,
     audio: Option<AudioFeed>,
     pending: VecDeque<Pending>,
     stashed: VecDeque<Packet>,
@@ -97,6 +100,7 @@ impl Session {
         let stream = input.streams().best(media::Type::Video)?;
         let stream_index = stream.index();
         let time_base = stream.time_base();
+        let orientation = orientation::of_stream(&stream);
         let decoder = codec::context::Context::from_parameters(stream.parameters())
             .ok()?
             .decoder()
@@ -132,6 +136,7 @@ impl Session {
             duration,
             width,
             height,
+            orientation,
             audio,
             pending: VecDeque::new(),
             stashed: VecDeque::new(),
@@ -362,8 +367,9 @@ impl Session {
 
     fn queue_frame(&mut self, frame: &VideoFrame) {
         let position = self.position_of(frame);
-        if let Some(rgb) = self.scale_to_rgb(frame) {
-            self.pending.push_back(Pending { rgb, position });
+        if let Some(scaled) = self.scale_to_rgb(frame) {
+            let picture = orientation::upright(scaled, self.orientation);
+            self.pending.push_back(Pending { picture, position });
         }
     }
 
@@ -400,9 +406,9 @@ impl Session {
         if clock.due_in(position).is_zero() {
             if let Some(frame) = self.pending.pop_front() {
                 sink(PlayerEvent::Frame {
-                    rgb: &frame.rgb,
-                    width: self.width,
-                    height: self.height,
+                    rgb: frame.picture.as_raw(),
+                    width: frame.picture.width(),
+                    height: frame.picture.height(),
                     position,
                 });
             }
@@ -419,7 +425,7 @@ impl Session {
         }
     }
 
-    fn scale_to_rgb(&mut self, frame: &VideoFrame) -> Option<Vec<u8>> {
+    fn scale_to_rgb(&mut self, frame: &VideoFrame) -> Option<RgbImage> {
         let mut rgb = VideoFrame::empty();
         self.scaler.run(frame, &mut rgb).ok()?;
         let row_bytes = self.width as usize * 3;
@@ -428,7 +434,7 @@ impl Session {
         for row in rgb.data(0).chunks_exact(stride).take(self.height as usize) {
             packed.extend_from_slice(row.get(..row_bytes)?);
         }
-        Some(packed)
+        RgbImage::from_raw(self.width, self.height, packed)
     }
 
     fn next_packet(&mut self) -> Option<Packet> {
