@@ -151,7 +151,9 @@ impl Session {
     }
 
     fn has_finished(&self) -> bool {
-        matches!(self.stage, Stage::Decoded) && self.pending.is_empty()
+        matches!(self.stage, Stage::Decoded)
+            && self.pending.is_empty()
+            && matches!(self.audio_supply(), AudioSupply::Exhausted)
     }
 
     fn is_demuxing(&self) -> bool {
@@ -394,7 +396,7 @@ impl Session {
             return if self.has_finished() {
                 Flow::Ended
             } else {
-                Flow::Continue
+                self.wait_briefly_for_command(inbox, clock)
             };
         };
         let position = next.position;
@@ -415,6 +417,10 @@ impl Session {
             return Flow::Continue;
         }
 
+        self.wait_briefly_for_command(inbox, clock)
+    }
+
+    fn wait_briefly_for_command(&mut self, inbox: &Receiver<Command>, clock: &mut Clock) -> Flow {
         match inbox.recv_timeout(COMMAND_POLL) {
             Ok(Command::Stop) | Err(RecvTimeoutError::Disconnected) => Flow::Stop,
             Ok(command) => {
