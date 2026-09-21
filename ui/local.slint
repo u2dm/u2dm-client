@@ -54,11 +54,12 @@ export global Shell {
         && LoginView.step == LoginPhase.logged-in;
     out property <bool> video-open: VideoView.visible
         && LoginView.step == LoginPhase.logged-in;
-    out property <bool> modal-open: root.drawer-open
-        || root.nav-open
+    out property <bool> modal-over-nav: root.drawer-open
         || root.verification-open
         || root.attachment-open
         || root.video-open;
+    out property <bool> modal-open: root.nav-open || root.modal-over-nav;
+    out property <bool> nav-on-top: root.nav-open && !root.modal-over-nav;
     out property <bool> background-reachable: !root.modal-open;
 
     public function close-overlays() {

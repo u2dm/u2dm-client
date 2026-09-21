@@ -9,7 +9,7 @@ import { SubspaceRail } from "./subspace-rail.slint";
 import { MessagePreview } from "./message-preview.slint";
 import { ServiceLabel } from "./timeline/messages/service-message.slint";
 import { Avatar } from "../../../components/avatar.slint";
-import { ListItemArea } from "../../../components/a11y.slint";
+import { Interaction, ListItemArea } from "../../../components/a11y.slint";
 import { UnreadDot } from "./tile.slint";
 import { RoomEntry } from "./types.slint";
 import { AppStyle, Avatars, Fonts, IconSize, Metrics, Size, Space, Weight } from "../../../theme.slint";
@@ -18,6 +18,8 @@ import { DirectoryView } from "../../../views.slint";
 import { Actions } from "../../../actions.slint";
 
 component SidebarSearch inherits Rectangle {
+    in property <bool> above-modal: false;
+
     height: Size.lg;
     background: transparent;
 
@@ -43,6 +45,7 @@ component SidebarSearch inherits Rectangle {
             single-line: true;
             color: Palette.foreground;
             text: "";
+            enabled: Interaction.actionable(true, root.above-modal);
             accessible-role: AccessibleRole.text-input;
             accessible-label: @tr("Search rooms");
             accessible-placeholder-text: @tr("Search");
@@ -268,6 +271,7 @@ export component Sidebar inherits Rectangle {
                         x: Space.md;
                         y: (parent.height - self.height) / 2;
                         width: parent.width - Space.xl;
+                        above-modal: root.above-modal;
                     }
                 }
 
