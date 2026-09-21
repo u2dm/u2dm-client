@@ -76,6 +76,7 @@ export component MessageInput inherits Rectangle {
             Composer.reply-preview = UnsentView.reply-preview;
         }
         root.insert-at-caret(UnsentView.body);
+        text-input.focus();
         root.settle-unsent();
     }
 
@@ -205,7 +206,6 @@ export component MessageInput inherits Rectangle {
         root.pending-insert = EmojiStore.insert(root.message, root.caret, glyph);
         root.message = root.pending-insert.text;
         root.caret = root.pending-insert.caret;
-        text-input.focus();
         text-input.set-selection-offsets(root.pending-insert.caret, root.pending-insert.caret);
     }
 
