@@ -16,12 +16,11 @@ use u2dm_ui::{
     LoginMethodKind as UiLoginMethodKind, LoginPhase, LoginView, MediaFailure as UiMediaFailure,
     MediaState as UiMediaState, MessageEntry, MessageKind as UiMessageKind,
     PreviewKind as UiPreviewKind, ReactionEntry, ReactionSend as UiReactionSend, ReactorAvatar,
-    ReplySwipe, RoomEntry, RoomView, SendState as UiSendState, ServiceKind as UiServiceKind,
-    SessionView,
-    SpaceEntry, StickerCell, StickerPackTab, StickerRow, StickerView, TimelineState, UnsentView,
-    UserMessage as UiUserMessage, UserMessageKind as UiUserMessageKind,
-    VerificationActivity as UiVerificationActivity, VerificationEmoji, VerificationPhase,
-    VerificationView, VideoView, WindowView,
+    ReplySwipe, RoomEntry, RoomScope as UiRoomScope, RoomView, SendState as UiSendState,
+    ServiceKind as UiServiceKind, SessionView, SpaceEntry, StickerCell, StickerPackTab, StickerRow,
+    StickerView, TimelineState, UnsentView, UserMessage as UiUserMessage,
+    UserMessageKind as UiUserMessageKind, VerificationActivity as UiVerificationActivity,
+    VerificationEmoji, VerificationPhase, VerificationView, VideoView, WindowView,
 };
 
 use super::backend::{self, Models, UiBackend, reorder_spaces, selected_room_key, unread_below};
@@ -44,9 +43,9 @@ use super::schema::{
     attachment_kinds, audio_kinds, bool_props, connection_states, deliveries, enum_props,
     int_props, login_activities, login_methods, login_phases, media_failures, media_states,
     message_fields, message_kinds, model_props, preview_kinds, reaction_fields, reaction_sends,
-    reactor_fields, room_fields, send_states, service_kinds, simple_callbacks, space_fields,
-    sticker_cell_fields, sticker_pack_fields, sticker_row_fields, string_props, timeline_states,
-    user_message_kinds, verification_activities, verification_phases,
+    reactor_fields, room_fields, room_scopes, send_states, service_kinds, simple_callbacks,
+    space_fields, sticker_cell_fields, sticker_pack_fields, sticker_row_fields, string_props,
+    timeline_states, user_message_kinds, verification_activities, verification_phases,
 };
 use super::session::active_models;
 use super::video::{self, millis_to_duration};
@@ -55,7 +54,7 @@ use crate::app::input::CommandSender;
 use crate::commands::effects::{Effect, VerificationActivity};
 use crate::commands::messages::{UserMessage, UserMessageKind};
 use crate::commands::ui::{TimelineVisibility, ViewportChanged};
-use crate::commands::view::{AppViewState, AttachmentKind, LoginActivity, LoginStep};
+use crate::commands::view::{AppViewState, AttachmentKind, LoginActivity, LoginStep, RoomScope};
 use crate::domain::auth::LoginMethod;
 use crate::domain::media::AudioKind;
 use crate::domain::message::{MessagePreviewKind, ReactionSend, SendState};
@@ -268,6 +267,7 @@ deliveries!(impl_slint_enum Delivery UiDelivery;);
 media_failures!(impl_slint_enum MediaFailureKind UiMediaFailure;);
 message_kinds!(impl_slint_enum MessageKind UiMessageKind;);
 attachment_kinds!(impl_slint_enum AttachmentKind UiAttachmentKind;);
+room_scopes!(impl_slint_enum RoomScope UiRoomScope;);
 preview_kinds!(impl_slint_enum MessagePreviewKind UiPreviewKind;);
 audio_kinds!(impl_slint_enum AudioKind UiAudioKind;);
 service_kinds!(impl_slint_enum ServiceKind UiServiceKind;);

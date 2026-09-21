@@ -6,7 +6,7 @@ use super::messages::{UserMessage, UserMessageKind};
 use super::ui::MessageDraft;
 use crate::domain::auth::{LoginMethod, Session};
 use crate::domain::media::AudioMeta;
-use crate::domain::room::{RoomId, RoomList, Space};
+use crate::domain::room::{RoomId, RoomList, Space, UnreadFlags};
 use crate::domain::sticker::StickerPacks;
 use crate::domain::sync::ConnectionStatus;
 
@@ -100,6 +100,14 @@ pub struct NowPlaying {
 pub enum TrackFile {
     Downloading,
     Ready(PathBuf),
+}
+
+#[derive(Clone, Copy, Default, PartialEq, Eq)]
+pub enum RoomScope {
+    #[default]
+    All,
+    Direct,
+    Space,
 }
 
 #[derive(Clone, Copy, Default, PartialEq, Eq)]
@@ -201,8 +209,10 @@ pub struct DirectoryView {
     pub rooms: RoomList,
     pub spaces: Arc<[Space]>,
     pub subspaces: Arc<[Space]>,
+    pub scope: RoomScope,
     pub space_id: String,
     pub subspace_id: String,
+    pub direct_flags: UnreadFlags,
 }
 
 impl Default for DirectoryView {
@@ -211,8 +221,10 @@ impl Default for DirectoryView {
             rooms: Arc::from(Vec::new()),
             spaces: Arc::from(Vec::new()),
             subspaces: Arc::from(Vec::new()),
+            scope: RoomScope::default(),
             space_id: String::new(),
             subspace_id: String::new(),
+            direct_flags: UnreadFlags::default(),
         }
     }
 }

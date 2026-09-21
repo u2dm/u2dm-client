@@ -82,8 +82,12 @@ struct SpaceDto {
 
 #[derive(Serialize)]
 struct DirectoryDto {
+    scope: &'static str,
     space_id: String,
     subspace_id: String,
+    direct_alert: bool,
+    direct_mention: bool,
+    direct_hint: bool,
     rooms: Vec<RoomDto>,
     spaces: Vec<SpaceDto>,
     subspaces: Vec<SpaceDto>,
@@ -244,8 +248,12 @@ fn space(source: &Space) -> SpaceDto {
 
 fn directory(source: &DirectoryView) -> DirectoryDto {
     DirectoryDto {
+        scope: names::room_scope(source.scope),
         space_id: source.space_id.clone(),
         subspace_id: source.subspace_id.clone(),
+        direct_alert: source.direct_flags.alert,
+        direct_mention: source.direct_flags.mention,
+        direct_hint: source.direct_flags.hint,
         rooms: source.rooms.iter().map(|entry| room(entry)).collect(),
         spaces: source.spaces.iter().map(space).collect(),
         subspaces: source.subspaces.iter().map(space).collect(),

@@ -20,6 +20,7 @@ pub enum UiCommand {
     ReauthOAuth,
     #[strum(to_string = "SelectSpace")]
     SelectSpace(Option<RoomId>),
+    SelectDirect,
     #[strum(to_string = "SelectSubspace")]
     SelectSubspace(Option<RoomId>),
     #[strum(to_string = "MoveSpace({from},{to})")]

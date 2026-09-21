@@ -334,6 +334,9 @@ impl AppService {
             UiCommand::SelectSpace(space) => {
                 self.handle_select_space(space);
             }
+            UiCommand::SelectDirect => {
+                self.handle_select_direct();
+            }
             UiCommand::SelectSubspace(subspace) => {
                 self.handle_select_subspace(subspace);
             }
@@ -506,14 +509,15 @@ impl AppService {
         self.held_session.running().map(|a| Arc::clone(pick(a)))
     }
 
-    fn set_selected_space(&self, id: String) {
-        self.output
-            .publish(Box::new(move |view| view.directory.space_id = id));
-    }
-
-    fn set_selected_subspace(&self, id: String) {
-        self.output
-            .publish(Box::new(move |view| view.directory.subspace_id = id));
+    fn publish_selection(&self) {
+        let scope = self.selection.scope();
+        let space_id = self.selection.space_id_str();
+        let subspace_id = self.selection.subspace_id_str();
+        self.output.publish(Box::new(move |view| {
+            view.directory.scope = scope;
+            view.directory.space_id = space_id;
+            view.directory.subspace_id = subspace_id;
+        }));
     }
 
     fn set_connection(&self, status: ConnectionStatus) {
@@ -593,11 +597,8 @@ impl AppService {
         }
         if self.room_directory.store_spaces(spaces) {
             let outcome = self.room_directory.reconcile(&mut self.selection);
-            if outcome.space_dropped {
-                self.set_selected_space(String::new());
-                self.set_selected_subspace(String::new());
-            } else if outcome.subspace_dropped {
-                self.set_selected_subspace(String::new());
+            if outcome.space_dropped || outcome.subspace_dropped {
+                self.publish_selection();
             }
             self.room_directory.emit_directory(&self.selection);
         }
@@ -605,15 +606,23 @@ impl AppService {
 
     fn handle_select_space(&mut self, space: Option<RoomId>) {
         self.selection.set_space(space);
-        self.set_selected_space(self.selection.space_id_str());
-        self.set_selected_subspace(self.selection.subspace_id_str());
+        self.show_selected_scope();
+    }
+
+    fn handle_select_direct(&mut self) {
+        self.selection.set_direct();
+        self.show_selected_scope();
+    }
+
+    fn show_selected_scope(&self) {
+        self.publish_selection();
         self.room_directory.emit_subspaces(&self.selection);
         self.room_directory.emit_rooms(&self.selection);
     }
 
     fn handle_select_subspace(&mut self, subspace: Option<RoomId>) {
         self.selection.set_subspace(subspace);
-        self.set_selected_subspace(self.selection.subspace_id_str());
+        self.publish_selection();
         self.room_directory.emit_rooms(&self.selection);
     }
 

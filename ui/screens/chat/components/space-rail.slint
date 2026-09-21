@@ -5,6 +5,7 @@ import { SpaceEntry } from "./types.slint";
 import { RailTileFace } from "./tile.slint";
 import { ClickArea, ListItemArea } from "../../../components/a11y.slint";
 import { DirectoryView } from "../../../views.slint";
+import { RoomScope } from "../../../enums.slint";
 import { Actions } from "../../../actions.slint";
 import { Shell } from "../../../local.slint";
 import { AppStyle, Glyph, IconSize, Metrics, Motion, Radius, Size, Space, Stroke } from "../../../theme.slint";
@@ -79,6 +80,7 @@ export component SpaceRail inherits Rectangle {
 
     property <length> menu-height: Metrics.header-row;
     property <length> row-height: Metrics.rail-row;
+    property <int> fixed-tiles: 2;
     property <length> drag-threshold: Space.md;
     property <bool> dragging: false;
     property <int> drag-from: -1;
@@ -174,10 +176,10 @@ export component SpaceRail inherits Rectangle {
         height: root.height - root.menu-height;
         interactive: !root.dragging;
         content-width: root.width;
-        content-height: (DirectoryView.spaces.length + 1) * root.row-height;
+        content-height: (DirectoryView.spaces.length + root.fixed-tiles) * root.row-height;
         accessible-role: list;
         accessible-label: @tr("Spaces");
-        accessible-item-count: DirectoryView.spaces.length + 1;
+        accessible-item-count: DirectoryView.spaces.length + root.fixed-tiles;
 
         SpaceTile {
             x: 0;
@@ -190,7 +192,7 @@ export component SpaceRail inherits Rectangle {
             label: @tr("All Rooms");
             has-icon: true;
             icon: IconSet.MessagesSquare;
-            selected: DirectoryView.selected-space-id == "";
+            selected: DirectoryView.room-scope == RoomScope.all;
             changed pressed => {
                 if (self.pressed) {
                     root.did-drag = false;
@@ -203,14 +205,41 @@ export component SpaceRail inherits Rectangle {
             }
         }
 
+        SpaceTile {
+            x: 0;
+            y: root.row-height;
+            width: root.width;
+            height: root.row-height;
+            draggable: false;
+            above-modal: root.above-modal;
+            index: 1;
+            label: @tr("DMs");
+            has-icon: true;
+            icon: IconSet.UserRound;
+            alert: DirectoryView.direct-alert;
+            mention: DirectoryView.direct-mention;
+            hint: DirectoryView.direct-hint;
+            selected: DirectoryView.room-scope == RoomScope.direct;
+            changed pressed => {
+                if (self.pressed) {
+                    root.did-drag = false;
+                }
+            }
+            clicked => {
+                if (!root.did-drag) {
+                    Actions.select-direct();
+                }
+            }
+        }
+
         for space[idx] in DirectoryView.spaces: SpaceTile {
             x: 0;
-            y: (root.slot-for(idx) + 1) * root.row-height;
+            y: (root.slot-for(idx) + root.fixed-tiles) * root.row-height;
             width: root.width;
             height: root.row-height;
             draggable: true;
             above-modal: root.above-modal;
-            index: idx + 1;
+            index: idx + root.fixed-tiles;
             hidden: root.dragging && idx == root.drag-from;
             label: space.name;
             initial: space.initial;
@@ -243,7 +272,7 @@ export component SpaceRail inherits Rectangle {
 
         if root.dragging: SpaceTile {
             x: 0;
-            y: (root.drag-from + 1) * root.row-height + root.drag-dy;
+            y: (root.drag-from + root.fixed-tiles) * root.row-height + root.drag-dy;
             width: root.width;
             height: root.row-height;
             enabled: false;

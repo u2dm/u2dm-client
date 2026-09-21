@@ -65,6 +65,7 @@ macro_rules! simple_callbacks {
         on_retry_timeline "retry-timeline" retry_timeline plain RetryTimeline;
         on_select_room "select-room" select_room room SelectRoom;
         on_select_space "select-space" select_space opt_room SelectSpace;
+        on_select_direct "select-direct" select_direct plain SelectDirect;
         on_select_subspace "select-subspace" select_subspace opt_room SelectSubspace;
         on_paginate_backwards "paginate-backwards" paginate_backwards room_key PaginateBackwards;
         on_paginate_forwards "paginate-forwards" paginate_forwards room_key PaginateForwards;
@@ -99,6 +100,9 @@ pub(crate) use simple_callbacks;
 macro_rules! bool_props {
     ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
         VerificationVisible VerificationView "VerificationView" "visible" set_visible get_visible;
+        DirectAlert DirectoryView "DirectoryView" "direct-alert" set_direct_alert get_direct_alert;
+        DirectMention DirectoryView "DirectoryView" "direct-mention" set_direct_mention get_direct_mention;
+        DirectHint DirectoryView "DirectoryView" "direct-hint" set_direct_hint get_direct_hint;
         VerificationIsSelf VerificationView "VerificationView" "is-self" set_is_self get_is_self;
         TimelineRetryable RoomView "RoomView" "timeline-retryable" set_timeline_retryable get_timeline_retryable;
         BackwardsLoading RoomView "RoomView" "backwards-loading" set_backwards_loading get_backwards_loading;
@@ -155,6 +159,8 @@ macro_rules! enum_props {
             LoginView "LoginView" "method" set_method get_method;
         ConnectionState set_connection_state(&ConnectionStatus)
             SessionView "SessionView" "connection-status" set_connection_status get_connection_status;
+        RoomScope set_room_scope(RoomScope)
+            DirectoryView "DirectoryView" "room-scope" set_room_scope get_room_scope;
         TimelineState set_timeline_state(TimelineStatus)
             RoomView "RoomView" "timeline-status" set_timeline_status get_timeline_status;
         ToastMessage set_toast_message(UserMessageKind)
@@ -374,6 +380,15 @@ macro_rules! attachment_kinds {
     } };
 }
 pub(crate) use attachment_kinds;
+
+macro_rules! room_scopes {
+    ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
+        All    All    "all";
+        Direct Direct "direct";
+        Space  Space  "space";
+    } };
+}
+pub(crate) use room_scopes;
 
 macro_rules! media_states {
     ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*

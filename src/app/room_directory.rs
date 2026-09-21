@@ -10,11 +10,11 @@ use tokio_util::sync::CancellationToken;
 
 use super::event::{AppEvent, SessionEvent};
 use super::input::EventSender;
-use super::selection::Selection;
+use super::selection::{RoomFilter, Selection};
 use super::space_order;
 use super::task_group::TaskGroup;
 use crate::commands::sync::DirectoryUpdate;
-use crate::domain::room::{Room, RoomId, RoomList, Space};
+use crate::domain::room::{Room, RoomId, RoomList, Space, UnreadFlags};
 use crate::domain::sync::{ConnectionStatus, SessionLoss, SyncEvent, SyncOutcome};
 use crate::ports::matrix::{SpaceOrderPort, SyncPort, SyncSink};
 use crate::ports::output::AppOutputPort;
@@ -34,13 +34,6 @@ pub(super) struct RoomMeta {
 pub(super) struct ReconcileOutcome {
     pub(super) space_dropped: bool,
     pub(super) subspace_dropped: bool,
-}
-
-#[derive(Clone, Copy, Default, PartialEq, Eq)]
-struct SpaceFlags {
-    alert: bool,
-    mention: bool,
-    hint: bool,
 }
 
 #[derive(Default)]
@@ -194,8 +187,9 @@ pub(super) struct RoomDirectory {
     all_rooms: RoomList,
     spaces: Arc<[Space]>,
     graph: SpaceGraph,
-    flags: Vec<SpaceFlags>,
-    spaces_dirty: bool,
+    flags: Vec<UnreadFlags>,
+    direct_flags: UnreadFlags,
+    rail_dirty: bool,
     orders: HashMap<String, String>,
     pending_orders: HashMap<String, PendingOrder>,
     order_writes: Arc<OrderWrites>,
@@ -210,7 +204,8 @@ impl RoomDirectory {
             spaces: Arc::from(Vec::new()),
             graph: SpaceGraph::default(),
             flags: Vec::new(),
-            spaces_dirty: false,
+            direct_flags: UnreadFlags::default(),
+            rail_dirty: false,
             orders: HashMap::new(),
             pending_orders: HashMap::new(),
             order_writes: Arc::default(),
@@ -227,7 +222,7 @@ impl RoomDirectory {
             return false;
         }
         self.all_rooms = rooms;
-        self.spaces_dirty |= self.recompute_flags();
+        self.rail_dirty |= self.recompute_flags();
         true
     }
 
@@ -239,7 +234,7 @@ impl RoomDirectory {
         self.reconcile_orders();
         self.graph = SpaceGraph::build(&self.spaces);
         self.recompute_flags();
-        self.spaces_dirty = true;
+        self.rail_dirty = true;
         true
     }
 
@@ -388,7 +383,8 @@ impl RoomDirectory {
         self.spaces = Arc::from(Vec::new());
         self.graph = SpaceGraph::default();
         self.flags.clear();
-        self.spaces_dirty = false;
+        self.direct_flags = UnreadFlags::default();
+        self.rail_dirty = false;
         self.orders.clear();
         self.pending_orders.clear();
         self.order_writes.latest_op.fetch_add(1, Ordering::Relaxed);
@@ -475,32 +471,25 @@ impl RoomDirectory {
     }
 
     pub(super) fn reconcile(&self, sel: &mut Selection) -> ReconcileOutcome {
-        let space_gone = sel
-            .space
-            .as_ref()
-            .is_some_and(|id| self.space(id).is_none());
-        if space_gone {
-            sel.space = None;
-            sel.subspace = None;
+        let RoomFilter::Space { space, subspace } = &mut sel.filter else {
+            return ReconcileOutcome::default();
+        };
+        let Some(parent) = self.space(space) else {
+            sel.filter = RoomFilter::All;
             return ReconcileOutcome {
                 space_dropped: true,
                 subspace_dropped: true,
             };
-        }
+        };
 
-        let subspace_gone = sel.subspace.as_ref().is_some_and(|id| {
-            !sel.space
-                .as_ref()
-                .and_then(|parent| self.space(parent))
-                .is_some_and(|parent| {
-                    parent
-                        .child_space_ids
-                        .iter()
-                        .any(|child| child == id.as_ref())
-                })
+        let subspace_gone = subspace.as_ref().is_some_and(|id| {
+            !parent
+                .child_space_ids
+                .iter()
+                .any(|child| child == id.as_ref())
         });
         if subspace_gone {
-            sel.subspace = None;
+            *subspace = None;
         }
 
         ReconcileOutcome {
@@ -519,29 +508,39 @@ impl RoomDirectory {
     }
 
     pub(super) fn emit_directory(&mut self, sel: &Selection) {
-        if mem::take(&mut self.spaces_dirty) {
+        if mem::take(&mut self.rail_dirty) {
             self.emit_spaces();
             self.emit_subspaces(sel);
+            self.emit_direct_flags();
         }
         self.emit_rooms(sel);
     }
 
     pub(super) fn emit_rooms(&self, sel: &Selection) {
-        let rooms = match sel.active_filter().map(AsRef::as_ref) {
-            None => Arc::clone(&self.all_rooms),
-            Some(space_id) => match self.graph.index.get(space_id).copied() {
-                Some(space_index) => self
-                    .all_rooms
-                    .iter()
-                    .filter(|room| self.graph.contains_room(space_index, room.id.as_ref()))
-                    .map(Arc::clone)
-                    .collect::<Vec<Arc<Room>>>()
-                    .into(),
-                None => Arc::from(Vec::new()),
-            },
+        let rooms = match &sel.filter {
+            RoomFilter::All => Arc::clone(&self.all_rooms),
+            RoomFilter::Direct => self.rooms_where(|room| room.is_direct),
+            RoomFilter::Space { space, subspace } => {
+                let space_id = subspace.as_ref().unwrap_or(space);
+                match self.graph.index.get(space_id.as_ref()).copied() {
+                    Some(space_index) => self.rooms_where(|room| {
+                        self.graph.contains_room(space_index, room.id.as_ref())
+                    }),
+                    None => Arc::from(Vec::new()),
+                }
+            }
         };
         self.output
             .publish(Box::new(move |view| view.directory.rooms = rooms));
+    }
+
+    fn rooms_where(&self, keep: impl Fn(&Room) -> bool) -> RoomList {
+        self.all_rooms
+            .iter()
+            .filter(|room| keep(room))
+            .map(Arc::clone)
+            .collect::<Vec<Arc<Room>>>()
+            .into()
     }
 
     pub(super) fn emit_spaces(&self) {
@@ -557,8 +556,7 @@ impl RoomDirectory {
 
     pub(super) fn emit_subspaces(&self, sel: &Selection) {
         let subspaces: Vec<Space> = sel
-            .space
-            .as_deref()
+            .space()
             .and_then(|id| self.space(id))
             .map(|space| {
                 space
@@ -572,6 +570,12 @@ impl RoomDirectory {
         let subspaces: Arc<[Space]> = subspaces.into();
         self.output
             .publish(Box::new(move |view| view.directory.subspaces = subspaces));
+    }
+
+    fn emit_direct_flags(&self) {
+        let flags = self.direct_flags;
+        self.output
+            .publish(Box::new(move |view| view.directory.direct_flags = flags));
     }
 
     fn space_with_flags(&self, space_index: usize) -> Option<Space> {
@@ -597,19 +601,22 @@ impl RoomDirectory {
     }
 
     fn recompute_flags(&mut self) -> bool {
-        let mut next = vec![SpaceFlags::default(); self.spaces.len()];
+        let mut next = vec![UnreadFlags::default(); self.spaces.len()];
+        let mut direct = UnreadFlags::default();
         for room in self.all_rooms.iter() {
             for &i in self.graph.ancestors_of(room.id.as_ref()) {
                 let Some(slot) = next.get_mut(i) else {
                     continue;
                 };
-                slot.alert |= room.alert();
-                slot.mention |= room.mention();
-                slot.hint |= room.hint();
+                slot.absorb(room);
+            }
+            if room.is_direct {
+                direct.absorb(room);
             }
         }
-        let changed = next != self.flags;
+        let changed = next != self.flags || direct != self.direct_flags;
         self.flags = next;
+        self.direct_flags = direct;
         changed
     }
 

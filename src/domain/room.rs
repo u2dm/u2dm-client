@@ -79,6 +79,21 @@ impl Room {
     }
 }
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct UnreadFlags {
+    pub alert: bool,
+    pub mention: bool,
+    pub hint: bool,
+}
+
+impl UnreadFlags {
+    pub fn absorb(&mut self, room: &Room) {
+        self.alert |= room.alert();
+        self.mention |= room.mention();
+        self.hint |= room.hint();
+    }
+}
+
 pub type RoomList = Arc<[Arc<Room>]>;
 
 #[derive(Debug, Clone, PartialEq)]

@@ -78,6 +78,7 @@ const ENUM_TABLES: &[(&str, &str)] = &[
     ("PreviewKind", "preview_kinds"),
     ("MessageKind", "message_kinds"),
     ("AttachmentKind", "attachment_kinds"),
+    ("RoomScope", "room_scopes"),
     ("AudioKind", "audio_kinds"),
     ("MediaState", "media_states"),
     ("SendState", "send_states"),

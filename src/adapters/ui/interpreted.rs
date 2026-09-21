@@ -34,7 +34,7 @@ use super::schema::{
     attachment_kinds, audio_kinds, connection_states, deliveries, enum_props, login_activities,
     login_methods, login_phases, media_failures, media_states, message_fields, message_kinds,
     model_props, preview_kinds, reaction_fields, reaction_sends, reactor_fields, room_fields,
-    send_states, service_kinds, simple_callbacks, space_fields, sticker_cell_fields,
+    room_scopes, send_states, service_kinds, simple_callbacks, space_fields, sticker_cell_fields,
     sticker_pack_fields, sticker_row_fields, timeline_states, user_message_kinds,
     verification_activities, verification_phases,
 };
@@ -45,7 +45,7 @@ use crate::app::input::CommandSender;
 use crate::commands::effects::{Effect, VerificationActivity};
 use crate::commands::messages::{UserMessage, UserMessageKind};
 use crate::commands::ui::{TimelineVisibility, ViewportChanged};
-use crate::commands::view::{AppViewState, AttachmentKind, LoginActivity, LoginStep};
+use crate::commands::view::{AppViewState, AttachmentKind, LoginActivity, LoginStep, RoomScope};
 use crate::domain::auth::LoginMethod;
 use crate::domain::media::AudioKind;
 use crate::domain::message::{MessagePreviewKind, ReactionSend, SendState};
@@ -167,6 +167,7 @@ deliveries!(impl_slint_enum Delivery "Delivery";);
 media_failures!(impl_slint_enum MediaFailureKind "MediaFailure";);
 message_kinds!(impl_slint_enum MessageKind "MessageKind";);
 attachment_kinds!(impl_slint_enum AttachmentKind "AttachmentKind";);
+room_scopes!(impl_slint_enum RoomScope "RoomScope";);
 preview_kinds!(impl_slint_enum MessagePreviewKind "PreviewKind";);
 audio_kinds!(impl_slint_enum AudioKind "AudioKind";);
 service_kinds!(impl_slint_enum ServiceKind "ServiceKind";);

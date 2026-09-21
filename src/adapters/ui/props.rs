@@ -6,7 +6,7 @@ use crate::app::input::CommandSender;
 use crate::commands::effects::VerificationActivity;
 use crate::commands::messages::{UserMessage, UserMessageKind};
 use crate::commands::ui::UiCommand;
-use crate::commands::view::{AttachmentKind, LoginActivity, LoginStep};
+use crate::commands::view::{AttachmentKind, LoginActivity, LoginStep, RoomScope};
 use crate::domain::auth::LoginMethod;
 use crate::domain::media::AudioKind;
 use crate::domain::sync::ConnectionStatus;

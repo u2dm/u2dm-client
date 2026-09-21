@@ -284,8 +284,10 @@ fn apply_snapshot<B: UiBackend>(
         rooms,
         spaces,
         subspaces,
+        scope,
         space_id,
         subspace_id,
+        direct_flags,
     } = directory;
 
     apply_lifecycle(w, last.map(|l| &l.lifecycle), lifecycle);
@@ -320,6 +322,9 @@ fn apply_snapshot<B: UiBackend>(
             &|entry| entry.id(),
         );
     }
+    if last.is_none_or(|l| l.directory.scope != *scope) {
+        w.set_room_scope(*scope);
+    }
     if last.is_none_or(|l| l.directory.space_id != *space_id) {
         w.set_string(StringProp::SelectedSpaceId, SharedString::from(space_id));
     }
@@ -328,6 +333,11 @@ fn apply_snapshot<B: UiBackend>(
             StringProp::SelectedSubspaceId,
             SharedString::from(subspace_id),
         );
+    }
+    if last.is_none_or(|l| l.directory.direct_flags != *direct_flags) {
+        w.set_bool(BoolProp::DirectAlert, direct_flags.alert);
+        w.set_bool(BoolProp::DirectMention, direct_flags.mention);
+        w.set_bool(BoolProp::DirectHint, direct_flags.hint);
     }
     if last.is_none_or(|l| l.pagination != *pagination) {
         sync_timeline_chrome(w, pagination);

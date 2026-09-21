@@ -7,7 +7,7 @@ import {
 } from "screens/chat/components/types.slint";
 import { VerificationEmoji } from "components/types.slint";
 import { UserMessage } from "messages.slint";
-import { AttachmentKind, AudioKind, ConnectionState, LoginActivity, LoginMethodKind, LoginPhase, TimelineState, UserMessageKind, VerificationActivity, VerificationPhase } from "enums.slint";
+import { AttachmentKind, AudioKind, ConnectionState, LoginActivity, LoginMethodKind, LoginPhase, RoomScope, TimelineState, UserMessageKind, VerificationActivity, VerificationPhase } from "enums.slint";
 
 export global LoginView {
     in property <LoginPhase> step: LoginPhase.loading;
@@ -35,8 +35,12 @@ export global DirectoryView {
     in property <[SpaceEntry]> spaces;
     in property <[SpaceEntry]> subspaces;
     in property <string> selected-room-id;
+    in property <RoomScope> room-scope: RoomScope.all;
     in property <string> selected-space-id;
     in property <string> selected-subspace-id;
+    in property <bool> direct-alert;
+    in property <bool> direct-mention;
+    in property <bool> direct-hint;
     in property <int> selected-generation;
 }
 

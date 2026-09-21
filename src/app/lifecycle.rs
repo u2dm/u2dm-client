@@ -178,6 +178,7 @@ pub(super) fn command_allowed(phase: AppPhase, cmd: &UiCommand) -> bool {
         }
         UiCommand::Logout => matches!(phase, AppPhase::Syncing | AppPhase::SoftLoggedOut),
         UiCommand::SelectSpace(_)
+        | UiCommand::SelectDirect
         | UiCommand::SelectSubspace(_)
         | UiCommand::MoveSpace { .. }
         | UiCommand::SelectRoom(_)

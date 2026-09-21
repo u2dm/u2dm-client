@@ -25,6 +25,7 @@ pub enum ProbeCommand {
         #[serde(default)]
         space_id: Option<String>,
     },
+    SelectDirect,
     SelectSubspace {
         #[serde(default)]
         subspace_id: Option<String>,
@@ -202,6 +203,7 @@ pub fn to_driven(command: ProbeCommand, selected: Selection<'_>) -> Result<Drive
         ProbeCommand::BackToHomeserver => UiCommand::BackToHomeserver,
         ProbeCommand::ReauthOauth => UiCommand::ReauthOAuth,
         ProbeCommand::SelectSpace { space_id } => UiCommand::SelectSpace(space_id.map(RoomId::new)),
+        ProbeCommand::SelectDirect => UiCommand::SelectDirect,
         ProbeCommand::SelectSubspace { subspace_id } => {
             UiCommand::SelectSubspace(subspace_id.map(RoomId::new))
         }

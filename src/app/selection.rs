@@ -1,9 +1,20 @@
+use crate::commands::view::RoomScope;
 use crate::domain::room::RoomId;
 
 #[derive(Default)]
+pub(super) enum RoomFilter {
+    #[default]
+    All,
+    Direct,
+    Space {
+        space: RoomId,
+        subspace: Option<RoomId>,
+    },
+}
+
+#[derive(Default)]
 pub(super) struct Selection {
-    pub(super) space: Option<RoomId>,
-    pub(super) subspace: Option<RoomId>,
+    pub(super) filter: RoomFilter,
     pub(super) room: Option<RoomId>,
     pub(super) generation: i32,
 }
@@ -15,23 +26,55 @@ impl Selection {
     }
 
     pub(super) fn set_space(&mut self, space: Option<RoomId>) {
-        self.space = space.filter(|id| !id.is_empty());
-        self.subspace = None;
+        self.filter = match space.filter(|id| !id.is_empty()) {
+            Some(space) => RoomFilter::Space {
+                space,
+                subspace: None,
+            },
+            None => RoomFilter::All,
+        };
+    }
+
+    pub(super) fn set_direct(&mut self) {
+        self.filter = RoomFilter::Direct;
     }
 
     pub(super) fn set_subspace(&mut self, subspace: Option<RoomId>) {
-        self.subspace = subspace.filter(|id| !id.is_empty());
+        if let RoomFilter::Space {
+            subspace: current, ..
+        } = &mut self.filter
+        {
+            *current = subspace.filter(|id| !id.is_empty());
+        }
     }
 
-    pub(super) fn active_filter(&self) -> Option<&RoomId> {
-        self.subspace.as_ref().or(self.space.as_ref())
+    pub(super) fn space(&self) -> Option<&RoomId> {
+        match &self.filter {
+            RoomFilter::Space { space, .. } => Some(space),
+            RoomFilter::All | RoomFilter::Direct => None,
+        }
+    }
+
+    pub(super) fn subspace(&self) -> Option<&RoomId> {
+        match &self.filter {
+            RoomFilter::Space { subspace, .. } => subspace.as_ref(),
+            RoomFilter::All | RoomFilter::Direct => None,
+        }
+    }
+
+    pub(super) fn scope(&self) -> RoomScope {
+        match self.filter {
+            RoomFilter::All => RoomScope::All,
+            RoomFilter::Direct => RoomScope::Direct,
+            RoomFilter::Space { .. } => RoomScope::Space,
+        }
     }
 
     pub(super) fn space_id_str(&self) -> String {
-        self.space.as_deref().unwrap_or_default().to_owned()
+        self.space().map(ToString::to_string).unwrap_or_default()
     }
 
     pub(super) fn subspace_id_str(&self) -> String {
-        self.subspace.as_deref().unwrap_or_default().to_owned()
+        self.subspace().map(ToString::to_string).unwrap_or_default()
     }
 }
