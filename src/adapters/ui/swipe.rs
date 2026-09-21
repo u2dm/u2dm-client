@@ -2,11 +2,10 @@ use std::cell::Cell;
 use std::rc::Rc;
 use std::time::Duration;
 
-use slint::platform::WindowEvent as PointerEvent;
 use slint::winit_030::EventResult;
-use slint::winit_030::winit::dpi::PhysicalPosition;
+use slint::winit_030::winit::dpi::{LogicalPosition, PhysicalPosition};
 use slint::winit_030::winit::event::{MouseScrollDelta, TouchPhase, WindowEvent};
-use slint::{ComponentHandle, LogicalPosition, Timer, TimerMode, Weak, Window};
+use slint::{ComponentHandle, Timer, TimerMode, Weak, Window};
 
 use super::backend::UiBackend;
 use super::finger_direction::FingerDirection;
@@ -30,7 +29,6 @@ pub fn reply_swipe<B: UiBackend>(
 ) -> impl FnMut(&Window, &WindowEvent) -> EventResult + use<B> {
     let swipe = Swipe::<B> {
         weak: window.as_weak(),
-        cursor: Cell::default(),
         gesture: Rc::new(Cell::new(Gesture::Idle)),
         idle: Timer::default(),
         fingers: FingerDirection::new(),
@@ -40,7 +38,6 @@ pub fn reply_swipe<B: UiBackend>(
 
 struct Swipe<B: UiBackend> {
     weak: Weak<B::Window>,
-    cursor: Cell<LogicalPosition>,
     gesture: Rc<Cell<Gesture>>,
     idle: Timer,
     fingers: FingerDirection,
@@ -50,10 +47,6 @@ impl<B: UiBackend> Swipe<B> {
     fn handle(&self, window: &Window, event: &WindowEvent) -> EventResult {
         self.fingers.follow(window);
         match event {
-            WindowEvent::CursorMoved { position, .. } => {
-                self.cursor.set(logical(window, *position));
-                EventResult::Propagate
-            }
             WindowEvent::MouseWheel { delta, phase, .. } => self.wheel(window, *delta, *phase),
             _ => EventResult::Propagate,
         }
@@ -65,21 +58,18 @@ impl<B: UiBackend> Swipe<B> {
             return EventResult::Propagate;
         };
         if matches!(phase, TouchPhase::Ended | TouchPhase::Cancelled) {
-            return if self.finish() {
-                EventResult::PreventDefault
-            } else {
-                EventResult::Propagate
-            };
+            self.finish();
+            return EventResult::Propagate;
         }
 
         self.wait_for_the_fingers_to_lift();
-        let step = logical(window, pixels);
+        let step = logical_delta(window, pixels);
         if matches!(phase, TouchPhase::Started) || matches!(self.gesture.get(), Gesture::Idle) {
             self.gesture.set(self.open());
         }
 
         match self.gesture.get() {
-            Gesture::Measuring { x, y } => self.measure(window, x + step.x, y + step.y),
+            Gesture::Measuring { x, y } => self.measure(x + step.x, y + step.y),
             Gesture::Replying { travel } => self.pull(travel + self.fingers.leftward(step.x)),
             Gesture::Idle | Gesture::Scrolling => EventResult::Propagate,
         }
@@ -93,22 +83,17 @@ impl<B: UiBackend> Swipe<B> {
         }
     }
 
-    fn measure(&self, window: &Window, x: f32, y: f32) -> EventResult {
+    fn measure(&self, x: f32, y: f32) -> EventResult {
         if x.abs().max(y.abs()) < AXIS_LOCK {
             self.gesture.set(Gesture::Measuring { x, y });
-            return EventResult::PreventDefault;
+            return EventResult::Propagate;
         }
         let leftward = self.fingers.leftward(x);
         if leftward > y.abs() * AXIS_DOMINANCE {
             return self.pull(leftward);
         }
         self.gesture.set(Gesture::Scrolling);
-        window.dispatch_event(PointerEvent::PointerScrolled {
-            position: self.cursor.get(),
-            delta_x: x,
-            delta_y: y,
-        });
-        EventResult::PreventDefault
+        EventResult::Propagate
     }
 
     fn pull(&self, travel: f32) -> EventResult {
@@ -118,14 +103,12 @@ impl<B: UiBackend> Swipe<B> {
         EventResult::PreventDefault
     }
 
-    fn finish(&self) -> bool {
+    fn finish(&self) {
         self.idle.stop();
-        let pulled = matches!(self.gesture.get(), Gesture::Replying { .. });
-        if pulled {
+        if matches!(self.gesture.get(), Gesture::Replying { .. }) {
             self.publish(0.0);
         }
         self.gesture.set(Gesture::Idle);
-        pulled
     }
 
     fn wait_for_the_fingers_to_lift(&self) {
@@ -159,9 +142,8 @@ impl<B: UiBackend> Swipe<B> {
     }
 }
 
-fn logical(window: &Window, position: PhysicalPosition<f64>) -> LogicalPosition {
-    let position = position.to_logical::<f32>(f64::from(window.scale_factor()));
-    LogicalPosition::new(position.x, position.y)
+fn logical_delta(window: &Window, delta: PhysicalPosition<f64>) -> LogicalPosition<f32> {
+    delta.to_logical(f64::from(window.scale_factor()))
 }
 
 #[allow(clippy::cast_possible_truncation)]
