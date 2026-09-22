@@ -182,6 +182,12 @@ pub(super) fn command_allowed(phase: AppPhase, cmd: &UiCommand) -> bool {
         | UiCommand::SelectSubspace(_)
         | UiCommand::MoveSpace { .. }
         | UiCommand::SelectRoom(_)
+        | UiCommand::OpenSpaceIndex
+        | UiCommand::CloseSpaceIndex
+        | UiCommand::PageSpaceIndex
+        | UiCommand::RetrySpaceIndex
+        | UiCommand::JoinSpaceChild(_)
+        | UiCommand::OpenSpaceChild(_)
         | UiCommand::SendMessage { .. }
         | UiCommand::DismissUnsent { .. }
         | UiCommand::PickAttachment { .. }

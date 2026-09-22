@@ -4,9 +4,10 @@ use super::names;
 use crate::commands::messages::UserMessage;
 use crate::commands::view::{
     AppViewState, AttachmentView, AudioView, DirectoryView, LifecycleView, PaginationView,
-    StickerView, Toast, TrackFile, UnsentMessage, VideoView,
+    SpaceIndexRow, SpaceIndexView, StickerView, Toast, TrackFile, UnsentMessage, VideoView,
 };
 use crate::domain::room::{Room, Space};
+use crate::domain::space_index::{ChildKind, JoinRule};
 use crate::domain::sticker::StickerPack;
 use crate::domain::sync::ConnectionStatus;
 
@@ -15,6 +16,7 @@ pub struct ViewDto {
     lifecycle: LifecycleDto,
     connection: ConnectionDto,
     directory: DirectoryDto,
+    space_index: SpaceIndexDto,
     pagination: PaginationDto,
     stickers: StickersDto,
     attachment: AttachmentDto,
@@ -91,6 +93,27 @@ struct DirectoryDto {
     rooms: Vec<RoomDto>,
     spaces: Vec<SpaceDto>,
     subspaces: Vec<SpaceDto>,
+}
+
+#[derive(Serialize)]
+struct SpaceIndexDto {
+    status: &'static str,
+    space_name: String,
+    avatars_ready: usize,
+    rows: Vec<SpaceChildDto>,
+}
+
+#[derive(Serialize)]
+struct SpaceChildDto {
+    id: String,
+    name: String,
+    kind: &'static str,
+    children: Option<u64>,
+    members: u64,
+    join_rule: &'static str,
+    via: Vec<String>,
+    has_avatar_mxc: bool,
+    access: &'static str,
 }
 
 #[derive(Serialize)]
@@ -173,6 +196,7 @@ pub fn view(source: &AppViewState) -> ViewDto {
         lifecycle: lifecycle(&source.lifecycle),
         connection: connection(&source.connection),
         directory: directory(&source.directory),
+        space_index: space_index(&source.space_index),
         pagination: pagination(source.pagination),
         stickers: stickers(&source.stickers),
         attachment: attachment(&source.attachment),
@@ -257,6 +281,46 @@ fn directory(source: &DirectoryView) -> DirectoryDto {
         rooms: source.rooms.iter().map(|entry| room(entry)).collect(),
         spaces: source.spaces.iter().map(space).collect(),
         subspaces: source.subspaces.iter().map(space).collect(),
+    }
+}
+
+fn space_index(source: &SpaceIndexView) -> SpaceIndexDto {
+    SpaceIndexDto {
+        status: names::space_index_status(source.status),
+        space_name: source.space_name.clone(),
+        avatars_ready: source.avatars_ready,
+        rows: source.rows.iter().map(space_child).collect(),
+    }
+}
+
+fn space_child(source: &SpaceIndexRow) -> SpaceChildDto {
+    let child = &source.child;
+    let (kind, children) = match child.kind {
+        ChildKind::Room => ("room", None),
+        ChildKind::Space { children } => ("space", Some(children)),
+    };
+    SpaceChildDto {
+        id: child.id.to_string(),
+        name: child.name.clone(),
+        kind,
+        children,
+        members: child.member_count,
+        join_rule: join_rule(&child.join_rule),
+        via: child.via.clone(),
+        has_avatar_mxc: child.avatar_mxc.is_some(),
+        access: names::child_access(source.access),
+    }
+}
+
+fn join_rule(source: &JoinRule) -> &'static str {
+    match source {
+        JoinRule::Public => "public",
+        JoinRule::Restricted { .. } => "restricted",
+        JoinRule::KnockRestricted { .. } => "knock_restricted",
+        JoinRule::Knock => "knock",
+        JoinRule::Invite => "invite",
+        JoinRule::Private => "private",
+        JoinRule::Unsupported => "unsupported",
     }
 }
 

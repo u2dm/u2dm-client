@@ -12,14 +12,15 @@ use tokio::time::sleep;
 use tokio_util::sync::CancellationToken;
 
 use super::{
-    attachments, audio, data, login, media, reactions, receipts, stickers, timeline, verification,
-    videos,
+    attachments, audio, data, login, media, reactions, receipts, space_index, stickers, timeline,
+    verification, videos,
 };
 use crate::adapters::video;
 use crate::domain::auth::{AuthMethod, LoginCredentials, OAuthLoginData, ServerInfo, Session};
 use crate::domain::media::{MediaRendition, OutgoingAttachment, WaveformNeed};
 use crate::domain::message::{MessageBody, ReplyInfo, RichText, SendState, TimelineMessage};
 use crate::domain::room::RoomId;
+use crate::domain::space_index::HierarchyPage;
 use crate::domain::sticker::{PackId, StickerImage};
 use crate::domain::sync::{SyncEvent, SyncOutcome};
 use crate::domain::timeline::{
@@ -30,8 +31,8 @@ use crate::domain::verification::{VerificationCancellation, VerificationEvent};
 use crate::error::{AppError, Result};
 use crate::ports::matrix::{
     AuthPort, AuthenticatedSession, CleanupReport, InterruptedLogin, LocalDataOwnership, MediaPort,
-    ProgressSink, RestoreStep, SessionPort, SpaceOrderPort, StickerCatalog, StickerPort,
-    StoreAdoption, SyncPort, SyncSink, TimelinePort, VerificationPort,
+    ProgressSink, RestoreStep, SessionPort, SpaceIndexPort, SpaceOrderPort, StickerCatalog,
+    StickerPort, StoreAdoption, SyncPort, SyncSink, TimelinePort, VerificationPort,
 };
 use crate::ports::media::MediaCache;
 
@@ -203,6 +204,7 @@ fn authenticated(session: Session) -> AuthenticatedSession {
     let media = Arc::clone(&authed);
     let verification = Arc::clone(&authed);
     let space_order = Arc::clone(&authed);
+    let space_index = Arc::clone(&authed);
     let stickers = Arc::clone(&authed);
     AuthenticatedSession {
         session,
@@ -211,6 +213,7 @@ fn authenticated(session: Session) -> AuthenticatedSession {
         media,
         verification,
         space_order,
+        space_index,
         stickers,
         lifecycle: authed,
     }
@@ -231,6 +234,8 @@ struct DemoAuthed {
     active: SharedActiveRoom,
     sent: AtomicU64,
     verification_tx: Mutex<Option<mpsc::UnboundedSender<VerificationEvent>>>,
+    sync_sink: Mutex<Option<SyncSink>>,
+    joined: Mutex<Vec<RoomId>>,
 }
 
 impl DemoAuthed {
@@ -436,9 +441,13 @@ impl DemoAuthed {
 #[async_trait]
 impl SyncPort for DemoAuthed {
     async fn start_sync(&self, on_sync: SyncSink, cancel: CancellationToken) -> SyncOutcome {
+        if let Ok(mut sink) = self.sync_sink.lock() {
+            *sink = Some(Arc::clone(&on_sync));
+        }
+        let joined = self.joined_rooms();
         on_sync(SyncEvent::Connected);
-        on_sync(SyncEvent::Rooms(data::rooms().into()));
-        on_sync(SyncEvent::Spaces(data::spaces().into()));
+        on_sync(SyncEvent::Rooms(data::rooms_with(&joined).into()));
+        on_sync(SyncEvent::Spaces(data::spaces_with(&joined).into()));
         if !timeline::scenario().room_list_keeps_updating {
             cancel.cancelled().await;
             return SyncOutcome::Cancelled;
@@ -447,10 +456,77 @@ impl SyncPort for DemoAuthed {
             tokio::select! {
                 () = cancel.cancelled() => return SyncOutcome::Cancelled,
                 () = sleep(timeline::ROOM_LIST_INTERVAL) => {
-                    on_sync(SyncEvent::Rooms(data::rooms().into()));
+                    on_sync(SyncEvent::Rooms(data::rooms_with(&self.joined_rooms()).into()));
                 }
             }
         }
+    }
+}
+
+impl DemoAuthed {
+    fn joined_rooms(&self) -> Vec<RoomId> {
+        self.joined
+            .lock()
+            .map(|joined| joined.clone())
+            .unwrap_or_default()
+    }
+
+    fn remember_join(&self, room_id: &RoomId) -> Vec<RoomId> {
+        let Ok(mut joined) = self.joined.lock() else {
+            return Vec::new();
+        };
+        if !joined.contains(room_id) {
+            joined.push(room_id.clone());
+        }
+        joined.clone()
+    }
+
+    fn echo_join(&self, joined: Vec<RoomId>) {
+        let Some(sink) = self.sync_sink.lock().ok().and_then(|sink| sink.clone()) else {
+            return;
+        };
+        tokio::spawn(async move {
+            sleep(space_index::JOIN_ECHO_LAG).await;
+            sink(SyncEvent::Rooms(data::rooms_with(&joined).into()));
+            sink(SyncEvent::Spaces(data::spaces_with(&joined).into()));
+        });
+    }
+}
+
+#[async_trait]
+impl SpaceIndexPort for DemoAuthed {
+    async fn hierarchy_page(&self, space_id: &RoomId, from: Option<&str>) -> Result<HierarchyPage> {
+        space_index::pause().await;
+        let offset = from.and_then(|token| token.parse().ok()).unwrap_or(0);
+        if space_index::page_fails_now(space_id, offset) {
+            return Err(unavailable("this page of the space index"));
+        }
+        let children = data::space_children(space_id);
+        let next = offset.saturating_add(space_index::PAGE_SIZE);
+        Ok(HierarchyPage {
+            next: (next < children.len()).then(|| next.to_string()),
+            children: children
+                .into_iter()
+                .skip(offset)
+                .take(space_index::PAGE_SIZE)
+                .collect(),
+        })
+    }
+
+    async fn join(&self, room_id: &RoomId, via: &[String]) -> Result<()> {
+        space_index::pause().await;
+        if space_index::scenario().join_fails {
+            return Err(unavailable("joining rooms"));
+        }
+        tracing::debug!(%room_id, ?via, "demo: joining a room from the space index");
+        let joined = self.remember_join(room_id);
+        self.echo_join(joined);
+        Ok(())
+    }
+
+    async fn fetch_avatars(&self, mxcs: &[String]) -> usize {
+        space_index::pause_avatars().await;
+        media::fetch_unjoined_avatars(mxcs)
     }
 }
 

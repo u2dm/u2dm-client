@@ -1,4 +1,4 @@
-import { AudioKind, Delivery, MediaFailure, MediaState, MessageKind, PreviewKind, ReactionSend, SendState, ServiceKind } from "../../../enums.slint";
+import { AudioKind, ChildAccess, Delivery, MediaFailure, MediaState, MessageKind, PreviewKind, ReactionSend, SendState, ServiceKind } from "../../../enums.slint";
 
 export struct RoomEntry {
     id: string,
@@ -31,6 +31,20 @@ export struct SpaceEntry {
     initial: string,
     avatar: image,
     has-avatar: bool,
+}
+
+export struct SpaceChildEntry {
+    id: string,
+    name: string,
+    initial: string,
+    color-index: int,
+    detail: string,
+    members: int,
+    is-space: bool,
+    children: int,
+    access: ChildAccess,
+    has-avatar: bool,
+    avatar: image,
 }
 
 export struct ReactorAvatar {

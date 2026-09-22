@@ -4,9 +4,10 @@ use super::backend::UiBackend;
 use super::dto::{MediaFailureKind, MediaState};
 use super::present::{Delivery, MessageKind, ServiceKind};
 use super::schema::{
-    message_fields, reaction_fields, reactor_fields, room_fields, space_fields,
+    message_fields, reaction_fields, reactor_fields, room_fields, space_child_fields, space_fields,
     sticker_cell_fields, sticker_pack_fields, sticker_row_fields,
 };
+use crate::commands::view::ChildAccess;
 use crate::domain::media::AudioKind;
 use crate::domain::message::{MessagePreviewKind, ReactionSend, SendState};
 
@@ -49,6 +50,7 @@ reaction_fields!(declare_fields ReactionFields;);
 reactor_fields!(declare_fields ReactorFields;);
 room_fields!(declare_fields RoomFields;);
 space_fields!(declare_fields SpaceFields;);
+space_child_fields!(declare_fields SpaceChildFields;);
 sticker_cell_fields!(declare_fields StickerCellFields;);
 sticker_pack_fields!(declare_fields StickerPackFields;);
 sticker_row_fields!(declare_fields StickerRowFields;);

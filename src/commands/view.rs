@@ -7,6 +7,7 @@ use super::ui::MessageDraft;
 use crate::domain::auth::{LoginMethod, Session};
 use crate::domain::media::AudioMeta;
 use crate::domain::room::{RoomId, RoomList, Space, UnreadFlags};
+use crate::domain::space_index::SpaceChild;
 use crate::domain::sticker::StickerPacks;
 use crate::domain::sync::ConnectionStatus;
 
@@ -15,6 +16,7 @@ pub struct AppViewState {
     pub lifecycle: LifecycleView,
     pub connection: ConnectionStatus,
     pub directory: DirectoryView,
+    pub space_index: SpaceIndexView,
     pub pagination: PaginationView,
     pub stickers: StickerView,
     pub attachment: AttachmentView,
@@ -225,6 +227,56 @@ impl Default for DirectoryView {
             space_id: String::new(),
             subspace_id: String::new(),
             direct_flags: UnreadFlags::default(),
+        }
+    }
+}
+
+#[derive(Clone, Copy, Default, PartialEq, Eq)]
+pub enum SpaceIndexStatus {
+    #[default]
+    Closed,
+    Loading,
+    Partial,
+    Complete,
+    LoadingMore,
+    Failed,
+    MoreFailed,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum ChildAccess {
+    Open,
+    OpenSubspace,
+    Joined,
+    Joining,
+    Join,
+    InviteOnly,
+    Knock,
+    MembersOnly,
+    Unavailable,
+}
+
+#[derive(Clone, PartialEq)]
+pub struct SpaceIndexRow {
+    pub child: Arc<SpaceChild>,
+    pub access: ChildAccess,
+}
+
+#[derive(Clone)]
+pub struct SpaceIndexView {
+    pub status: SpaceIndexStatus,
+    pub space_name: String,
+    pub rows: Arc<[SpaceIndexRow]>,
+    pub avatars_ready: usize,
+}
+
+impl Default for SpaceIndexView {
+    fn default() -> Self {
+        Self {
+            status: SpaceIndexStatus::default(),
+            space_name: String::new(),
+            rows: Arc::from(Vec::new()),
+            avatars_ready: 0,
         }
     }
 }

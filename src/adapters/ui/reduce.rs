@@ -11,14 +11,14 @@ use super::dto::{
     GRID_COLUMNS, StickerArt, StickerPackDto, StickerRowDto, audio_row_update, sticker_art,
     sticker_grid, sticker_needle,
 };
-use super::fields::{MessageFields, RoomFields, SpaceFields};
+use super::fields::{MessageFields, RoomFields, SpaceChildFields, SpaceFields};
 use super::present::{
     VerifyStep, duration_label, file_extension, user_initial, verification_cancellation,
 };
 use super::props::{BoolProp, IntProp, StringProp, UiProps};
 use super::reconcile::{
-    RowReplacements, apply_rooms, apply_spaces, apply_timeline_patch, index_sticker_grid,
-    retain_awaited_downloads,
+    RowReplacements, apply_rooms, apply_space_children, apply_spaces, apply_timeline_patch,
+    index_sticker_grid, retain_awaited_downloads,
 };
 use super::rows::patch_rows_by_id;
 use super::session::{begin_session, with_session};
@@ -28,7 +28,7 @@ use crate::commands::effects::{Effect, VerificationActivity, VerificationUpdate}
 use crate::commands::messages::{UserMessage, UserMessageKind};
 use crate::commands::view::{
     AppViewState, AttachmentView, AudioView, DirectoryView, LifecycleView, NowPlaying,
-    PaginationView, StickerView, Toast, TrackFile, UnsentMessage, VideoView,
+    PaginationView, SpaceIndexView, StickerView, Toast, TrackFile, UnsentMessage, VideoView,
 };
 use crate::domain::room::{RoomId, RoomList};
 use crate::domain::timeline::{TimelinePatch, TimelineStatus};
@@ -272,6 +272,7 @@ fn apply_snapshot<B: UiBackend>(
         lifecycle,
         connection,
         directory,
+        space_index,
         pagination,
         stickers,
         attachment,
@@ -280,65 +281,13 @@ fn apply_snapshot<B: UiBackend>(
         unsent,
         toast,
     } = view.as_ref();
-    let DirectoryView {
-        rooms,
-        spaces,
-        subspaces,
-        scope,
-        space_id,
-        subspace_id,
-        direct_flags,
-    } = directory;
 
     apply_lifecycle(w, last.map(|l| &l.lifecycle), lifecycle);
     if last.is_none_or(|l| l.connection != *connection) {
         w.set_connection_state(connection);
     }
-    if last.is_none_or(|l| !Arc::ptr_eq(&l.directory.rooms, rooms)) {
-        apply_rooms(
-            &ctx.models.rooms,
-            rooms.as_ref(),
-            last.map_or(&[], |l| l.directory.rooms.as_ref()),
-            ctx.media,
-            &|room| B::convert_room(room, ctx.media),
-            &|entry| entry.id(),
-        );
-    }
-    if last.is_none_or(|l| !Arc::ptr_eq(&l.directory.spaces, spaces)) {
-        apply_spaces(
-            &ctx.models.spaces,
-            spaces.as_ref(),
-            ctx.media,
-            &|space| B::convert_space(space, ctx.media),
-            &|entry| entry.id(),
-        );
-    }
-    if last.is_none_or(|l| !Arc::ptr_eq(&l.directory.subspaces, subspaces)) {
-        apply_spaces(
-            &ctx.models.subspaces,
-            subspaces.as_ref(),
-            ctx.media,
-            &|space| B::convert_space(space, ctx.media),
-            &|entry| entry.id(),
-        );
-    }
-    if last.is_none_or(|l| l.directory.scope != *scope) {
-        w.set_room_scope(*scope);
-    }
-    if last.is_none_or(|l| l.directory.space_id != *space_id) {
-        w.set_string(StringProp::SelectedSpaceId, SharedString::from(space_id));
-    }
-    if last.is_none_or(|l| l.directory.subspace_id != *subspace_id) {
-        w.set_string(
-            StringProp::SelectedSubspaceId,
-            SharedString::from(subspace_id),
-        );
-    }
-    if last.is_none_or(|l| l.directory.direct_flags != *direct_flags) {
-        w.set_bool(BoolProp::DirectAlert, direct_flags.alert);
-        w.set_bool(BoolProp::DirectMention, direct_flags.mention);
-        w.set_bool(BoolProp::DirectHint, direct_flags.hint);
-    }
+    apply_directory::<B>(w, last.map(|l| &l.directory), directory, ctx);
+    apply_space_index::<B>(w, last.map(|l| &l.space_index), space_index, ctx);
     if last.is_none_or(|l| l.pagination != *pagination) {
         sync_timeline_chrome(w, pagination);
     }
@@ -367,6 +316,102 @@ fn apply_snapshot<B: UiBackend>(
         apply_toast(w, toast);
     }
     with_session(|session| session.snapshot = Some(Arc::clone(view)));
+}
+
+fn apply_directory<B: UiBackend>(
+    w: &B::Window,
+    last: Option<&DirectoryView>,
+    directory: &DirectoryView,
+    ctx: &UiEventContext<'_, B>,
+) {
+    let DirectoryView {
+        rooms,
+        spaces,
+        subspaces,
+        scope,
+        space_id,
+        subspace_id,
+        direct_flags,
+    } = directory;
+
+    if last.is_none_or(|l| !Arc::ptr_eq(&l.rooms, rooms)) {
+        apply_rooms(
+            &ctx.models.rooms,
+            rooms.as_ref(),
+            last.map_or(&[], |l| l.rooms.as_ref()),
+            ctx.media,
+            &|room| B::convert_room(room, ctx.media),
+            &|entry| entry.id(),
+        );
+    }
+    if last.is_none_or(|l| !Arc::ptr_eq(&l.spaces, spaces)) {
+        apply_spaces(
+            &ctx.models.spaces,
+            spaces.as_ref(),
+            ctx.media,
+            &|space| B::convert_space(space, ctx.media),
+            &|entry| entry.id(),
+        );
+    }
+    if last.is_none_or(|l| !Arc::ptr_eq(&l.subspaces, subspaces)) {
+        apply_spaces(
+            &ctx.models.subspaces,
+            subspaces.as_ref(),
+            ctx.media,
+            &|space| B::convert_space(space, ctx.media),
+            &|entry| entry.id(),
+        );
+    }
+    if last.is_none_or(|l| l.scope != *scope) {
+        w.set_room_scope(*scope);
+    }
+    if last.is_none_or(|l| l.space_id != *space_id) {
+        w.set_string(StringProp::SelectedSpaceId, SharedString::from(space_id));
+    }
+    if last.is_none_or(|l| l.subspace_id != *subspace_id) {
+        w.set_string(
+            StringProp::SelectedSubspaceId,
+            SharedString::from(subspace_id),
+        );
+    }
+    if last.is_none_or(|l| l.direct_flags != *direct_flags) {
+        w.set_bool(BoolProp::DirectAlert, direct_flags.alert);
+        w.set_bool(BoolProp::DirectMention, direct_flags.mention);
+        w.set_bool(BoolProp::DirectHint, direct_flags.hint);
+    }
+}
+
+fn apply_space_index<B: UiBackend>(
+    w: &B::Window,
+    last: Option<&SpaceIndexView>,
+    space_index: &SpaceIndexView,
+    ctx: &UiEventContext<'_, B>,
+) {
+    if last.is_none_or(|l| l.status != space_index.status) {
+        w.set_space_index_status(space_index.status);
+    }
+    if last.is_none_or(|l| l.space_name != space_index.space_name) {
+        w.set_string(
+            StringProp::SpaceIndexName,
+            SharedString::from(&space_index.space_name),
+        );
+    }
+    let rows_changed = last.is_none_or(|l| !Arc::ptr_eq(&l.rows, &space_index.rows));
+    let avatars_landed = last.is_some_and(|l| l.avatars_ready != space_index.avatars_ready);
+    if !rows_changed && !avatars_landed {
+        return;
+    }
+    let previous = last
+        .filter(|_| !avatars_landed)
+        .map_or(&[] as &[_], |l| l.rows.as_ref());
+    apply_space_children(
+        &ctx.models.space_children,
+        space_index.rows.as_ref(),
+        previous,
+        ctx.media,
+        &|row| B::convert_space_child(row, ctx.media),
+        &|entry| entry.id(),
+    );
 }
 
 fn apply_stickers<B: UiBackend>(

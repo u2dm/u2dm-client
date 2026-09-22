@@ -5,10 +5,14 @@ use std::sync::Arc;
 use slint::{Model, SharedString, VecModel};
 
 use super::decode::forget_all_media_needs;
-use super::dto::{StickerGrid, StickerRowDto, prefetch_space_avatar, record_room_avatar_need};
+use super::dto::{
+    StickerGrid, StickerRowDto, prefetch_space_avatar, record_room_avatar_need,
+    request_space_child_avatar,
+};
 use super::richtext::forget_styled_bodies;
 use super::session::with_session;
 use super::splice_model::SpliceModel;
+use crate::commands::view::SpaceIndexRow;
 use crate::domain::message::TimelineMessage;
 use crate::domain::room::{Room, Space};
 use crate::domain::timeline::{EnrichmentDelta, TimelinePatch};
@@ -461,6 +465,33 @@ pub fn apply_spaces<T: Clone + PartialEq + 'static>(
         prefetch_space_avatar(space, media);
     }
     apply_reconcile(model, spaces, &[], &|s| s.id.as_str(), convert, get_id);
+}
+
+impl SameItem for SpaceIndexRow {
+    fn same_item(&self, other: &Self) -> bool {
+        self == other
+    }
+}
+
+pub fn apply_space_children<T: Clone + PartialEq + 'static>(
+    model: &VecModel<T>,
+    rows: &[SpaceIndexRow],
+    previous: &[SpaceIndexRow],
+    media: &dyn MediaCache,
+    convert: &dyn Fn(&SpaceIndexRow) -> T,
+    get_id: &dyn Fn(&T) -> &str,
+) {
+    for row in rows {
+        request_space_child_avatar(row, media);
+    }
+    apply_reconcile(
+        model,
+        rows,
+        previous,
+        &|row| row.child.id.as_ref(),
+        convert,
+        get_id,
+    );
 }
 
 struct RowOps<'a, S, T> {

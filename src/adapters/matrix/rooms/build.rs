@@ -239,7 +239,7 @@ pub(super) async fn build_rooms(
         .await
 }
 
-async fn space_child_ids(space: &Room) -> Vec<String> {
+pub(super) async fn space_child_vias(space: &Room) -> Vec<(String, Vec<String>)> {
     let events = match space
         .get_state_events_static::<SpaceChildEventContent>()
         .await
@@ -253,11 +253,22 @@ async fn space_child_ids(space: &Room) -> Vec<String> {
     events
         .into_iter()
         .filter_map(|raw| match raw.deserialize() {
-            Ok(SyncOrStrippedState::Sync(SyncStateEvent::Original(event))) => {
-                (!event.content.via.is_empty()).then(|| event.state_key.to_string())
+            Ok(SyncOrStrippedState::Sync(SyncStateEvent::Original(event)))
+                if !event.content.via.is_empty() =>
+            {
+                let via = event.content.via.iter().map(ToString::to_string).collect();
+                Some((event.state_key.to_string(), via))
             }
             _ => None,
         })
+        .collect()
+}
+
+async fn space_child_ids(space: &Room) -> Vec<String> {
+    space_child_vias(space)
+        .await
+        .into_iter()
+        .map(|(id, _)| id)
         .collect()
 }
 

@@ -22,6 +22,12 @@ export global Actions {
     callback select-subspace(string);
     callback move-space(int, int);
     callback request-room-avatar(string);
+    callback open-space-index();
+    callback close-space-index();
+    callback page-space-index();
+    callback retry-space-index();
+    callback join-space-child(string);
+    callback open-space-child(string);
 
     callback send-message(SendMessageRequest);
     callback dismiss-unsent(int);

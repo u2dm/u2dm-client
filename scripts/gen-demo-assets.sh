@@ -91,11 +91,12 @@ user_ids() {
 }
 
 room_avatars() {
-  jq -r '.rooms[] | .avatar // empty | select(startswith("@") | not)' "$data"
+  jq -r '(.rooms[], (.unjoined[]? | select(.space | not))) | .avatar // empty
+         | select(startswith("@") | not)' "$data"
 }
 
 space_avatars() {
-  jq -r '.spaces[] | select(.avatar) | .avatar' "$data"
+  jq -r '(.spaces[], (.unjoined[]? | select(.space))) | select(.avatar) | .avatar' "$data"
 }
 
 photo_messages() {

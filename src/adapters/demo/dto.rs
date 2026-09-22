@@ -11,6 +11,7 @@ use crate::domain::message::{
     SendState, ServiceEvent, TimelineMessage,
 };
 use crate::domain::room::{NotifyMode, Room, RoomId, Space};
+use crate::domain::space_index::{ChildKind, JoinRule, SpaceChild};
 use crate::domain::sticker::{PackId, StickerImage, StickerPack};
 
 #[derive(Deserialize, Default)]
@@ -27,6 +28,8 @@ pub struct DemoData {
     pub pronouns: HashMap<String, Vec<String>>,
     #[serde(default)]
     pub sticker_packs: Vec<StickerPackDto>,
+    #[serde(default)]
+    pub unjoined: Vec<UnjoinedDto>,
 }
 
 #[derive(Deserialize)]
@@ -166,6 +169,43 @@ pub struct SpaceDto {
     rooms: Vec<String>,
     #[serde(default)]
     spaces: Vec<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct UnjoinedDto {
+    pub id: String,
+    name: String,
+    #[serde(default)]
+    topic: Option<String>,
+    #[serde(default)]
+    alias: Option<String>,
+    #[serde(default)]
+    avatar: Option<String>,
+    #[serde(default)]
+    members: u64,
+    #[serde(default)]
+    join_rule: JoinRuleDto,
+    #[serde(default)]
+    allowed: Vec<String>,
+    #[serde(default)]
+    pub space: bool,
+    #[serde(default)]
+    pub rooms: Vec<String>,
+    #[serde(default)]
+    pub spaces: Vec<String>,
+}
+
+#[derive(Deserialize, Default, Clone, Copy)]
+#[serde(rename_all = "snake_case")]
+enum JoinRuleDto {
+    #[default]
+    Public,
+    Restricted,
+    KnockRestricted,
+    Knock,
+    Invite,
+    Private,
 }
 
 #[derive(Deserialize)]
@@ -419,7 +459,122 @@ impl RoomDto {
     }
 }
 
+impl UnjoinedDto {
+    pub fn to_child(&self, via: &[String]) -> SpaceChild {
+        let allowed = || self.allowed.iter().map(RoomId::new).collect();
+        SpaceChild {
+            id: RoomId::new(&self.id),
+            name: self.name.clone(),
+            alias: self.alias.clone(),
+            topic: self.topic.clone(),
+            avatar_mxc: self.avatar.clone(),
+            member_count: self.members,
+            join_rule: match self.join_rule {
+                JoinRuleDto::Public => JoinRule::Public,
+                JoinRuleDto::Restricted => JoinRule::Restricted { allowed: allowed() },
+                JoinRuleDto::KnockRestricted => JoinRule::KnockRestricted { allowed: allowed() },
+                JoinRuleDto::Knock => JoinRule::Knock,
+                JoinRuleDto::Invite => JoinRule::Invite,
+                JoinRuleDto::Private => JoinRule::Private,
+            },
+            kind: if self.space {
+                ChildKind::Space {
+                    children: child_count(&self.rooms, &self.spaces),
+                }
+            } else {
+                ChildKind::Room
+            },
+            via: via.to_vec(),
+        }
+    }
+
+    pub fn to_room(&self, now_ms: u64) -> Room {
+        Room {
+            id: RoomId::new(&self.id),
+            display_name: self.name.clone(),
+            avatar_mxc: self.avatar.clone(),
+            is_direct: false,
+            member_count: self.members.saturating_add(1),
+            has_unread: false,
+            has_mentions: false,
+            has_activity: false,
+            notify: NotifyMode::AllMessages,
+            last_activity_ts: now_ms,
+            last_message_sender: None,
+            last_message_kind: MessagePreviewKind::None,
+            last_message_body: String::new(),
+            last_message_service: None,
+            last_message_is_own: false,
+            last_message_edited: false,
+        }
+    }
+
+    pub fn to_space(&self) -> Space {
+        Space {
+            id: self.id.clone(),
+            name: self.name.clone(),
+            avatar_mxc: self.avatar.clone(),
+            child_room_ids: self.rooms.clone(),
+            child_space_ids: self.spaces.clone(),
+            order: None,
+            alert: false,
+            mention: false,
+            hint: false,
+        }
+    }
+}
+
+impl UnjoinedDto {
+    pub fn avatar(&self) -> Option<&str> {
+        self.avatar.as_deref()
+    }
+}
+
+pub fn child_count(rooms: &[String], spaces: &[String]) -> u64 {
+    u64::try_from(rooms.len().saturating_add(spaces.len())).unwrap_or(u64::MAX)
+}
+
+impl RoomDto {
+    pub fn to_child(&self, via: &[String]) -> SpaceChild {
+        SpaceChild {
+            id: RoomId::new(&self.id),
+            name: self.name.clone(),
+            alias: None,
+            topic: None,
+            avatar_mxc: self.avatar.clone(),
+            member_count: self.members,
+            join_rule: JoinRule::Public,
+            kind: ChildKind::Room,
+            via: via.to_vec(),
+        }
+    }
+}
+
 impl SpaceDto {
+    pub fn to_child(&self, via: &[String]) -> SpaceChild {
+        SpaceChild {
+            id: RoomId::new(&self.id),
+            name: self.name.clone(),
+            alias: None,
+            topic: None,
+            avatar_mxc: self.avatar.clone(),
+            member_count: 0,
+            join_rule: JoinRule::Public,
+            kind: ChildKind::Space {
+                children: child_count(&self.rooms, &self.spaces),
+            },
+            via: via.to_vec(),
+        }
+    }
+
+    pub fn id(&self) -> &str {
+        &self.id
+    }
+
+    pub fn children(&self) -> impl Iterator<Item = &String> {
+        self.rooms.iter().chain(&self.spaces)
+    }
+
     pub fn to_space(&self) -> Space {
         Space {
             id: self.id.clone(),

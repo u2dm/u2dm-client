@@ -8,7 +8,7 @@ use tokio::sync::{RwLock, mpsc};
 
 use super::auth;
 use super::media::{MatrixMedia, MediaService};
-use super::rooms::{MatrixSpaceOrder, MatrixSync};
+use super::rooms::{MatrixSpaceIndex, MatrixSpaceOrder, MatrixSync};
 use super::stickers::MatrixStickers;
 use super::store::StoreLayout;
 use super::timeline::MatrixTimeline;
@@ -150,6 +150,7 @@ pub(super) async fn authenticate(
         media: Arc::new(MatrixMedia::new(Arc::clone(&matrix))),
         verification,
         space_order: Arc::new(MatrixSpaceOrder::new(Arc::clone(&matrix))),
+        space_index: Arc::new(MatrixSpaceIndex::new(Arc::clone(&matrix))),
         stickers: Arc::new(MatrixStickers::new(Arc::clone(&matrix))),
         lifecycle: Arc::new(MatrixLifecycle { matrix, resources }),
     }

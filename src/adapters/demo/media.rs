@@ -3,7 +3,7 @@ use std::env;
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
 
-use super::{attachments, data, stickers};
+use super::{attachments, data, space_index, stickers};
 use crate::domain::media::{ContentKey, MediaFailure, Waveform};
 use crate::ports::media::MediaCache;
 
@@ -55,10 +55,16 @@ impl MediaCache for DemoMediaCache {
         if mxc.starts_with('@') {
             return self.user_avatar_path(mxc);
         }
+        if unjoined_avatar_withheld(mxc) {
+            return None;
+        }
         asset(&format!("room-{mxc}.png"))
     }
 
     fn space_avatar_path(&self, mxc: &str) -> Option<PathBuf> {
+        if unjoined_avatar_withheld(mxc) {
+            return None;
+        }
         asset(&format!("space-{mxc}.png"))
     }
 
@@ -130,6 +136,31 @@ pub(super) fn prefetch_stickers(mxcs: &[String]) -> usize {
     }
     mxcs.iter()
         .filter(|mxc| sticker_asset_path(mxc_asset(mxc)).is_some())
+        .count()
+}
+
+fn fetched_unjoined_avatars() -> &'static Mutex<HashSet<String>> {
+    static FETCHED: OnceLock<Mutex<HashSet<String>>> = OnceLock::new();
+    FETCHED.get_or_init(|| Mutex::new(HashSet::new()))
+}
+
+fn unjoined_avatar_withheld(mxc: &str) -> bool {
+    space_index::scenario().is_slow
+        && data::is_unjoined_avatar(mxc)
+        && !fetched_unjoined_avatars()
+            .lock()
+            .is_ok_and(|fetched| fetched.contains(mxc))
+}
+
+pub(super) fn fetch_unjoined_avatars(mxcs: &[String]) -> usize {
+    if let Ok(mut fetched) = fetched_unjoined_avatars().lock() {
+        fetched.extend(mxcs.iter().cloned());
+    }
+    mxcs.iter()
+        .filter(|mxc| {
+            asset(&format!("room-{mxc}.png")).is_some()
+                || asset(&format!("space-{mxc}.png")).is_some()
+        })
         .count()
 }
 

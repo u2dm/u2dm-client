@@ -238,14 +238,30 @@
       "id": "!space-rust:demo.local",
       "name": "Rust",
       "avatar": "rust",
-      "rooms": ["!rust:demo.local"],
-      "spaces": ["!space-rust-web:demo.local", "!space-rust-infra:demo.local"]
+      "rooms": [
+        "!rust:demo.local",
+        "!rust-internals:demo.local",
+        "!rust-foundation:demo.local",
+        "!rust-core:demo.local",
+        "!rust-archive:demo.local"
+      ],
+      "spaces": [
+        "!space-rust-web:demo.local",
+        "!space-rust-infra:demo.local",
+        "!space-rust-gamedev:demo.local"
+      ]
     },
     {
       "id": "!space-rust-web:demo.local",
       "name": "Web",
       "avatar": "rust-web",
-      "rooms": ["!frontend:demo.local", "!design:demo.local"]
+      "rooms": ["!frontend:demo.local", "!design:demo.local", "!rust-wasm:demo.local"],
+      "spaces": ["!space-rust-web-a11y:demo.local"]
+    },
+    {
+      "id": "!space-rust-web-a11y:demo.local",
+      "name": "Web Accessibility",
+      "rooms": ["!frontend:demo.local"]
     },
     {
       "id": "!space-rust-infra:demo.local",
@@ -255,7 +271,25 @@
     {
       "id": "!space-matrix:demo.local",
       "name": "Matrix",
-      "rooms": ["!matrixhq:demo.local", "!devops:demo.local"]
+      "rooms": [
+        "!matrixhq:demo.local",
+        "!devops:demo.local",
+        "!matrix-dev:demo.local",
+        "!matrix-spec:demo.local",
+        "!matrix-offtopic:demo.local",
+        "!matrix-bridges:demo.local",
+        "!matrix-e2ee:demo.local",
+        "!matrix-synapse:demo.local",
+        "!matrix-sdk:demo.local",
+        "!matrix-design:demo.local",
+        "!matrix-core:demo.local",
+        "!matrix-foundation:demo.local",
+        "!matrix-events:demo.local",
+        "!matrix-hosting:demo.local",
+        "!matrix-bots:demo.local",
+        "!matrix-a11y:demo.local",
+        "!matrix-i18n:demo.local"
+      ]
     },
     {
       "id": "!space-design:demo.local",
@@ -276,6 +310,157 @@
         "!jobs:demo.local",
         "!stickers:demo.local"
       ]
+    }
+  ],
+  "unjoined": [
+    {
+      "id": "!matrix-dev:demo.local",
+      "name": "Matrix Dev",
+      "topic": "Client and server development, one bug at a time",
+      "alias": "#matrix-dev:demo.local",
+      "avatar": "matrix-dev",
+      "members": 312
+    },
+    {
+      "id": "!matrix-spec:demo.local",
+      "name": "Spec Proposals",
+      "topic": "MSC discussion and review",
+      "alias": "#matrix-spec:demo.local",
+      "members": 540
+    },
+    {
+      "id": "!matrix-offtopic:demo.local",
+      "name": "Matrix Off-Topic",
+      "alias": "#offtopic:demo.local",
+      "members": 1204
+    },
+    {
+      "id": "!matrix-bridges:demo.local",
+      "name": "Bridges",
+      "topic": "mautrix, heisenbridge and friends",
+      "members": 188
+    },
+    {
+      "id": "!matrix-e2ee:demo.local",
+      "name": "Encryption",
+      "topic": "Olm, Megolm and cross-signing",
+      "members": 97,
+      "join_rule": "restricted",
+      "allowed": ["!space-matrix:demo.local"]
+    },
+    {
+      "id": "!matrix-synapse:demo.local",
+      "name": "Synapse Admins",
+      "topic": "Running Synapse in production",
+      "members": 876
+    },
+    {
+      "id": "!matrix-sdk:demo.local",
+      "name": "Rust SDK",
+      "topic": "matrix-rust-sdk users and contributors",
+      "avatar": "matrix-sdk",
+      "members": 421
+    },
+    {
+      "id": "!matrix-design:demo.local",
+      "name": "Matrix Design",
+      "topic": "Ask to join if you want to help with design reviews",
+      "members": 45,
+      "join_rule": "knock"
+    },
+    {
+      "id": "!matrix-core:demo.local",
+      "name": "Core Team",
+      "members": 12,
+      "join_rule": "invite"
+    },
+    {
+      "id": "!matrix-foundation:demo.local",
+      "name": "Foundation",
+      "topic": "Governance and funding",
+      "members": 230
+    },
+    {
+      "id": "!matrix-events:demo.local",
+      "name": "Events & Meetups",
+      "members": 64
+    },
+    {
+      "id": "!matrix-hosting:demo.local",
+      "name": "Self-Hosting",
+      "topic": "Homeservers on small machines",
+      "members": 755
+    },
+    {
+      "id": "!matrix-bots:demo.local",
+      "name": "Bots",
+      "members": 142
+    },
+    {
+      "id": "!matrix-a11y:demo.local",
+      "name": "Accessibility",
+      "topic": "Making clients usable by everyone",
+      "members": 58
+    },
+    {
+      "id": "!matrix-i18n:demo.local",
+      "name": "Translations",
+      "members": 77
+    },
+    {
+      "id": "!rust-internals:demo.local",
+      "name": "Rust Internals",
+      "topic": "Compiler and standard library work",
+      "members": 203,
+      "join_rule": "restricted",
+      "allowed": ["!space-rust:demo.local"]
+    },
+    {
+      "id": "!rust-foundation:demo.local",
+      "name": "Foundation Members",
+      "members": 41,
+      "join_rule": "restricted",
+      "allowed": ["!space-rust-foundation:demo.local"]
+    },
+    {
+      "id": "!rust-core:demo.local",
+      "name": "Core Team",
+      "members": 9,
+      "join_rule": "invite"
+    },
+    {
+      "id": "!rust-archive:demo.local",
+      "name": "Archive",
+      "topic": "Read-only history",
+      "members": 3,
+      "join_rule": "private"
+    },
+    {
+      "id": "!space-rust-gamedev:demo.local",
+      "name": "Game Dev",
+      "topic": "Engines, jams and shaders",
+      "avatar": "rust-gamedev",
+      "members": 96,
+      "space": true,
+      "rooms": ["!rust-bevy:demo.local", "!rust-godot:demo.local"]
+    },
+    {
+      "id": "!rust-bevy:demo.local",
+      "name": "Bevy",
+      "topic": "The ECS engine",
+      "members": 180
+    },
+    {
+      "id": "!rust-godot:demo.local",
+      "name": "Godot + Rust",
+      "members": 35
+    },
+    {
+      "id": "!rust-wasm:demo.local",
+      "name": "WebAssembly",
+      "topic": "wasm-bindgen, wasm-pack and the browser",
+      "alias": "#rust-wasm:demo.local",
+      "members": 154
     }
   ],
   "timelines": {

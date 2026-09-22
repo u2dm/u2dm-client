@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 
 use super::establish::EstablishedSession;
+use super::space_index::{JoinOutcome, PageOutcome};
 use crate::commands::messages::{UserMessage, UserMessageKind};
 use crate::commands::view::LoginActivity;
 use crate::domain::auth::ServerInfo;
@@ -51,6 +52,19 @@ pub(super) enum AppEvent {
         submission: i32,
         enqueue: Enqueue,
     },
+    SpaceIndexPaged {
+        generation: u64,
+        outcome: PageOutcome,
+    },
+    SpaceIndexAvatarsReady {
+        generation: u64,
+        ready: usize,
+    },
+    SpaceChildJoinSettled {
+        room_id: RoomId,
+        name: String,
+        outcome: JoinOutcome,
+    },
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -72,6 +86,9 @@ impl AppEvent {
             Self::AudioFetched { .. } => "AudioFetched",
             Self::VideoFetched { .. } => "VideoFetched",
             Self::SubmissionSettled { .. } => "SubmissionSettled",
+            Self::SpaceIndexPaged { .. } => "SpaceIndexPaged",
+            Self::SpaceIndexAvatarsReady { .. } => "SpaceIndexAvatarsReady",
+            Self::SpaceChildJoinSettled { .. } => "SpaceChildJoinSettled",
         }
     }
 }

@@ -42,6 +42,7 @@ macro_rules! string_props {
         UnsentReplyEventId UnsentView "UnsentView" "reply-event-id" set_reply_event_id get_reply_event_id;
         UnsentReplySender UnsentView "UnsentView" "reply-sender" set_reply_sender get_reply_sender;
         UnsentReplyPreview UnsentView "UnsentView" "reply-preview" set_reply_preview get_reply_preview;
+        SpaceIndexName SpaceIndexView "SpaceIndexView" "space-name" set_space_name get_space_name;
     } };
 }
 pub(crate) use string_props;
@@ -67,6 +68,12 @@ macro_rules! simple_callbacks {
         on_select_space "select-space" select_space opt_room SelectSpace;
         on_select_direct "select-direct" select_direct plain SelectDirect;
         on_select_subspace "select-subspace" select_subspace opt_room SelectSubspace;
+        on_open_space_index "open-space-index" open_space_index plain OpenSpaceIndex;
+        on_close_space_index "close-space-index" close_space_index plain CloseSpaceIndex;
+        on_page_space_index "page-space-index" page_space_index plain PageSpaceIndex;
+        on_retry_space_index "retry-space-index" retry_space_index plain RetrySpaceIndex;
+        on_join_space_child "join-space-child" join_space_child room JoinSpaceChild;
+        on_open_space_child "open-space-child" open_space_child room OpenSpaceChild;
         on_paginate_backwards "paginate-backwards" paginate_backwards room_key PaginateBackwards;
         on_paginate_forwards "paginate-forwards" paginate_forwards room_key PaginateForwards;
         on_jump_to_latest "jump-to-latest" jump_to_latest room_key JumpToLatest;
@@ -179,6 +186,8 @@ macro_rules! enum_props {
             VideoView "VideoView" "error" set_error get_error;
         AudioKind set_audio_kind(AudioKind)
             AudioView "AudioView" "kind" set_kind get_kind;
+        SpaceIndexStatus set_space_index_status(SpaceIndexStatus)
+            SpaceIndexView "SpaceIndexView" "status" set_status get_status;
     } };
 }
 pub(crate) use enum_props;
@@ -191,6 +200,7 @@ macro_rules! model_props {
         subspaces Space VecModel DirectoryView "DirectoryView" "subspaces" set_subspaces;
         sticker_rows StickerRow SpliceModel StickerView "StickerView" "rows" set_rows;
         sticker_packs StickerPack VecModel StickerView "StickerView" "packs" set_packs;
+        space_children SpaceChild VecModel SpaceIndexView "SpaceIndexView" "rows" set_rows;
     } };
 }
 pub(crate) use model_props;
@@ -315,6 +325,7 @@ macro_rules! user_message_kinds {
         MessageNotFound           MessageNotFound         "message-not-found";
         MessageNotShowable        MessageNotShowable      "message-not-showable";
         SpaceOrderSaveFailed      SpaceOrderSaveFailed    "space-order-save-failed";
+        JoinRoomFailed            JoinRoomFailed          "join-room-failed";
         MediaDownloadFailed       MediaDownloadFailed     "media-download-failed";
         FileDownloadFailed        FileDownloadFailed      "file-download-failed";
         MediaOpenFailed           MediaOpenFailed         "media-open-failed";
@@ -389,6 +400,34 @@ macro_rules! room_scopes {
     } };
 }
 pub(crate) use room_scopes;
+
+macro_rules! space_index_statuses {
+    ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
+        Closed      Closed      "closed";
+        Loading     Loading     "loading";
+        Partial     Partial     "partial";
+        Complete    Complete    "complete";
+        LoadingMore LoadingMore "loading-more";
+        Failed      Failed      "failed";
+        MoreFailed  MoreFailed  "more-failed";
+    } };
+}
+pub(crate) use space_index_statuses;
+
+macro_rules! child_accesses {
+    ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
+        Open         Open         "open";
+        OpenSubspace OpenSubspace "open-subspace";
+        Joined       Joined       "joined";
+        Joining      Joining      "joining";
+        Join         Join         "join";
+        InviteOnly   InviteOnly   "invite-only";
+        Knock        Knock        "knock";
+        MembersOnly  MembersOnly  "members-only";
+        Unavailable  Unavailable  "unavailable";
+    } };
+}
+pub(crate) use child_accesses;
 
 macro_rules! media_states {
     ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
@@ -604,6 +643,23 @@ macro_rules! space_fields {
     } };
 }
 pub(crate) use space_fields;
+
+macro_rules! space_child_fields {
+    ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
+        id set_id "id" text;
+        name set_name "name" text;
+        initial set_initial "initial" text;
+        color_index set_color_index "color-index" int;
+        detail set_detail "detail" text;
+        members set_members "members" int;
+        is_space set_is_space "is-space" flag;
+        children set_children "children" int;
+        access set_access "access" enumk(ChildAccess);
+        has_avatar set_has_avatar "has-avatar" flag;
+        avatar set_avatar "avatar" image;
+    } };
+}
+pub(crate) use space_child_fields;
 
 macro_rules! sticker_cell_fields {
     ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*

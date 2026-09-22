@@ -88,6 +88,9 @@ export global UserMessages {
         if kind == UserMessageKind.space-order-save-failed {
             return @tr("Failed to save space order");
         }
+        if kind == UserMessageKind.join-room-failed {
+            return @tr("Could not join {}", detail);
+        }
         if kind == UserMessageKind.media-download-failed {
             return @tr("Failed to download media");
         }

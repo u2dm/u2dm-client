@@ -6,6 +6,8 @@ export component StatusPill inherits Rectangle {
     in property <string> text;
     in property <bool> loading;
     in property <bool> show-retry;
+    in property <string> retry-label: @tr("Retry loading messages");
+    in property <bool> above-modal: false;
 
     callback retry();
 
@@ -38,7 +40,8 @@ export component StatusPill inherits Rectangle {
         if root.show-retry: ClickArea {
             width: retry-label.preferred-width + Space.lg;
             ring-radius: Radius.sm;
-            label: @tr("Retry loading messages");
+            label: root.retry-label;
+            above-modal: root.above-modal;
             clicked => {
                 root.retry();
             }

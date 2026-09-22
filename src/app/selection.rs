@@ -62,6 +62,10 @@ impl Selection {
         }
     }
 
+    pub(super) fn listed_space(&self) -> Option<&RoomId> {
+        self.subspace().or_else(|| self.space())
+    }
+
     pub(super) fn scope(&self) -> RoomScope {
         match self.filter {
             RoomFilter::All => RoomScope::All,

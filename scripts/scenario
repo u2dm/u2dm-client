@@ -23,6 +23,7 @@ scenario_env() {
     audio-track)     echo 'U2DM_DEMO_AUDIO=silent,slow' ;;
     voice-notes)     echo 'U2DM_DEMO_AUDIO=silent' ;;
     delivery-marks)  echo 'U2DM_DEMO_RECEIPTS=late,crowd,seen' ;;
+    space-index)     echo 'U2DM_DEMO_SPACE_INDEX=slow' ;;
     *) return 1 ;;
   esac
 }
@@ -50,6 +51,14 @@ scenario_steps() {
       echo '{"op":"select_room","room_id":"!rust:demo.local"}'
       echo 'sleep 3'
       echo '{"op":"send_message","body":"one check, then two"}' ;;
+    space-index)
+      echo '{"op":"select_space","space_id":"!space-matrix:demo.local"}'
+      echo '{"op":"open_space_index"}'
+      echo 'sleep 3'
+      echo '{"op":"page_space_index"}'
+      echo 'sleep 3'
+      echo '{"op":"join_space_child","room_id":"!matrix-dev:demo.local"}'
+      echo 'sleep 4' ;;
     login-oauth|verify-self)
       : ;;
   esac
@@ -70,6 +79,7 @@ scenario_note() {
     audio-track)     echo 'a track downloads slowly, starts playing, and keeps playing after switching rooms' ;;
     voice-notes)     echo 'a voice note advances to the next one, whose download then fails' ;;
     delivery-marks)  echo 'read marks arrive as Sets, a crowd has read the newest, and a sent text turns read live' ;;
+    space-index)     echo 'the Matrix space index loads slowly, pages, and joins a room that turns to Open on the sync echo' ;;
   esac
 }
 
@@ -86,7 +96,8 @@ check_window() {
 
 names() {
   printf '%s\n' unread-anchor all-unread unread-unresolved reactions-late sticker-trickle jump-to-reply \
-    media-failures compact-layout login-oauth verify-self audio-track voice-notes delivery-marks
+    media-failures compact-layout login-oauth verify-self audio-track voice-notes delivery-marks \
+    space-index
 }
 
 cmd_list() {

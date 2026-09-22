@@ -30,6 +30,14 @@ pub enum UiCommand {
     },
     #[strum(to_string = "SelectRoom({0})")]
     SelectRoom(RoomId),
+    OpenSpaceIndex,
+    CloseSpaceIndex,
+    PageSpaceIndex,
+    RetrySpaceIndex,
+    #[strum(to_string = "JoinSpaceChild({0})")]
+    JoinSpaceChild(RoomId),
+    #[strum(to_string = "OpenSpaceChild({0})")]
+    OpenSpaceChild(RoomId),
     #[strum(to_string = "SendMessage({room_id})")]
     SendMessage {
         room_id: RoomId,

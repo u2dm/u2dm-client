@@ -11,13 +11,13 @@ use super::decode::{
     set_image_ready,
 };
 use super::dto::{
-    MediaFailureKind, MediaState, MessageDto, RoomDto, SpaceDto, StickerPackDto, StickerRowDto,
-    ThumbUpdate, cell_pack, decode_failure_kind, enrich_to_update, message_to_dto, room_to_dto,
-    space_to_dto,
+    MediaFailureKind, MediaState, MessageDto, RoomDto, SpaceChildDto, SpaceDto, StickerPackDto,
+    StickerRowDto, ThumbUpdate, cell_pack, decode_failure_kind, enrich_to_update, message_to_dto,
+    room_to_dto, space_child_to_dto, space_to_dto,
 };
 use super::fields::{
-    MessageFields, ReactionFields, ReactorFields, RoomFields, SpaceFields, StickerCellFields,
-    StickerPackFields, StickerRowFields,
+    MessageFields, ReactionFields, ReactorFields, RoomFields, SpaceChildFields, SpaceFields,
+    StickerCellFields, StickerPackFields, StickerRowFields,
 };
 use super::multiplex::spawn_event_multiplexer;
 use super::props::{IntProp, StringProp, UiProps};
@@ -29,7 +29,7 @@ use super::session::begin_session;
 use super::splice_model::SpliceModel;
 use super::window_events::install_window_events;
 use crate::commands::effects::Effect;
-use crate::commands::view::AppViewState;
+use crate::commands::view::{AppViewState, SpaceIndexRow};
 use crate::domain::message::TimelineMessage;
 use crate::domain::room::{Room, RoomId, Space};
 use crate::domain::timeline::EnrichmentDelta;
@@ -42,6 +42,7 @@ pub trait UiBackend: Sized + 'static {
     type Reactor: ReactorFields<Self> + Clone + 'static;
     type Room: RoomFields<Self> + Clone + PartialEq + From<RoomDto> + 'static;
     type Space: SpaceFields<Self> + Clone + PartialEq + From<SpaceDto> + 'static;
+    type SpaceChild: SpaceChildFields<Self> + Clone + PartialEq + From<SpaceChildDto> + 'static;
     type StickerRow: StickerRowFields<Self> + Clone + From<StickerRowDto> + 'static;
     type StickerCell: StickerCellFields<Self> + Clone + 'static;
     type StickerPack: StickerPackFields<Self> + Clone + From<StickerPackDto> + 'static;
@@ -60,6 +61,10 @@ pub trait UiBackend: Sized + 'static {
 
     fn convert_space(space: &Space, media: &dyn MediaCache) -> Self::Space {
         space_to_dto(space, media).into()
+    }
+
+    fn convert_space_child(row: &SpaceIndexRow, media: &dyn MediaCache) -> Self::SpaceChild {
+        space_child_to_dto(row, media).into()
     }
 
     fn with_models<R>(
@@ -345,6 +350,7 @@ struct AvatarTargets<'a> {
     reactors_by_message: HashMap<&'a str, HashSet<&'a str>>,
     rooms: HashSet<&'a str>,
     spaces: HashSet<&'a str>,
+    space_children: HashSet<&'a str>,
     user: bool,
     attachment_preview: bool,
 }
@@ -368,6 +374,9 @@ fn group_slots(slots: &[AvatarSlot]) -> AvatarTargets<'_> {
             }
             AvatarSlot::Space(id) => {
                 targets.spaces.insert(id.as_str());
+            }
+            AvatarSlot::SpaceChild(id) => {
+                targets.space_children.insert(id.as_str());
             }
             AvatarSlot::User => targets.user = true,
             AvatarSlot::AttachmentPreview { .. } => targets.attachment_preview = true,
@@ -476,4 +485,16 @@ fn apply_avatar_ready<B: UiBackend>(
             entry.set_has_avatar(true);
         });
     });
+    if !targets.space_children.is_empty() {
+        let models = B::models();
+        patch_rows_by_id(
+            &*models.space_children,
+            &targets.space_children,
+            &B::SpaceChild::id,
+            |entry| {
+                entry.set_avatar(image.clone());
+                entry.set_has_avatar(true);
+            },
+        );
+    }
 }

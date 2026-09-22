@@ -1,0 +1,349 @@
+import { ListView, Palette, Spinner } from "std-widgets.slint";
+import { IconDisplay, IconSet } from "@lucide";
+
+import { Avatar } from "../../../components/avatar.slint";
+import { AppButton, IconButton } from "../../../components/button.slint";
+import { StatusPill } from "./timeline/status-pill.slint";
+import { SpaceChildEntry } from "./types.slint";
+import { AppStyle, Avatars, Fonts, IconSize, Metrics, Radius, Size, Space, Stroke, Weight } from "../../../theme.slint";
+import { ChildAccess, SpaceIndexStatus } from "../../../enums.slint";
+import { SpaceIndexView } from "../../../views.slint";
+import { Actions } from "../../../actions.slint";
+
+component ChildRow inherits Rectangle {
+    in property <SpaceChildEntry> entry;
+    in property <int> index;
+    in property <bool> above-modal;
+
+    callback room-opened();
+
+    property <bool> joinable: root.entry.access == ChildAccess.join
+        || root.entry.access == ChildAccess.joining;
+    property <bool> openable: root.entry.access == ChildAccess.open
+        || root.entry.access == ChildAccess.open-subspace;
+
+    pure function reason(access: ChildAccess) -> string {
+        if access == ChildAccess.joined {
+            return @tr("Joined");
+        }
+        if access == ChildAccess.invite-only {
+            return @tr("Invite only");
+        }
+        if access == ChildAccess.knock {
+            return @tr("Requires approval");
+        }
+        if access == ChildAccess.members-only {
+            return @tr("Members only");
+        }
+        if access == ChildAccess.unavailable {
+            return @tr("Can't join");
+        }
+        return "";
+    }
+
+    pure function summary(entry: SpaceChildEntry) -> string {
+        if entry.is-space {
+            return @tr("{n} room" | "{n} rooms" % entry.children);
+        }
+        return entry.detail;
+    }
+
+    pure function describe(entry: SpaceChildEntry) -> string {
+        if entry.access == ChildAccess.open {
+            return @tr("{}, joined", entry.name);
+        }
+        if entry.access == ChildAccess.open-subspace {
+            return @tr("{}, joined space", entry.name);
+        }
+        if entry.access == ChildAccess.joining {
+            return @tr("{}, joining", entry.name);
+        }
+        if entry.access == ChildAccess.join {
+            return entry.is-space ? @tr("{}, space you can join", entry.name) : @tr("{}, room you can join", entry.name);
+        }
+        return @tr("{}, {}", entry.name, root.reason(entry.access));
+    }
+
+    accessible-role: list-item;
+    accessible-item-index: root.index;
+    accessible-label: root.describe(root.entry);
+
+    HorizontalLayout {
+        padding-left: Space.lg;
+        padding-right: Space.lg;
+        spacing: Space.lg;
+
+        Rectangle {
+            cross-axis-self-alignment: center;
+            width: Metrics.index-avatar;
+            height: Metrics.index-avatar;
+
+            Avatar {
+                width: 100%;
+                height: 100%;
+                background: Avatars.color(root.entry.color-index);
+                has-image: root.entry.has-avatar;
+                image: root.entry.avatar;
+                initial: root.entry.initial;
+            }
+
+            if root.entry.is-space: Rectangle {
+                x: parent.width - self.width + Space.xs;
+                y: parent.height - self.height + Space.xs;
+                width: Metrics.index-badge;
+                height: Metrics.index-badge;
+                border-radius: self.height / 2;
+                border-width: Stroke.emphasis;
+                border-color: Palette.background;
+                background: Palette.alternate-background;
+
+                IconDisplay {
+                    icon: IconSet.Layers;
+                    size: IconSize.xs;
+                    stroke: AppStyle.foreground-muted;
+                }
+            }
+        }
+
+        VerticalLayout {
+            horizontal-stretch: 1;
+            alignment: center;
+            spacing: Space.sm;
+
+            HorizontalLayout {
+                spacing: Space.md;
+
+                Text {
+                    horizontal-stretch: 1;
+                    text: root.entry.name;
+                    font-family: Fonts.emoji;
+                    font-size: Fonts.body;
+                    font-weight: Weight.semibold;
+                    vertical-alignment: center;
+                    overflow: elide;
+                }
+
+                if root.entry.members > 0: Text {
+                    text: @tr("{n} member" | "{n} members" % root.entry.members);
+                    font-size: Fonts.caption;
+                    vertical-alignment: center;
+                    color: AppStyle.foreground-muted;
+                }
+            }
+
+            if root.summary(root.entry) != "": Text {
+                text: root.summary(root.entry);
+                font-family: Fonts.emoji;
+                font-size: Fonts.body-small;
+                color: AppStyle.foreground-muted;
+                overflow: elide;
+            }
+        }
+
+        if root.joinable: AppButton {
+            cross-axis-self-alignment: center;
+            height: Metrics.index-action;
+            min-width: Metrics.index-action-min-width;
+            text: root.entry.access == ChildAccess.joining ? @tr("Joining") : @tr("Join");
+            busy: root.entry.access == ChildAccess.joining;
+            above-modal: root.above-modal;
+            clicked => {
+                Actions.join-space-child(root.entry.id);
+            }
+        }
+
+        if root.openable: AppButton {
+            cross-axis-self-alignment: center;
+            height: Metrics.index-action;
+            min-width: Metrics.index-action-min-width;
+            text: @tr("Open");
+            filled: false;
+            above-modal: root.above-modal;
+            clicked => {
+                Actions.open-space-child(root.entry.id);
+                if root.entry.access == ChildAccess.open {
+                    root.room-opened();
+                }
+            }
+        }
+
+        if !root.joinable && !root.openable: Text {
+            cross-axis-self-alignment: center;
+            text: root.reason(root.entry.access);
+            font-size: Fonts.body-small;
+            color: AppStyle.foreground-muted;
+        }
+    }
+}
+
+component IndexNotice inherits VerticalLayout {
+    in property <string> text;
+    in property <bool> failed;
+    in property <bool> above-modal;
+
+    alignment: center;
+    spacing: Space.lg;
+    padding: Space.xxl;
+
+    HorizontalLayout {
+        alignment: center;
+
+        IconDisplay {
+            icon: root.failed ? IconSet.CircleAlert : IconSet.Compass;
+            size: IconSize.lg;
+            stroke: AppStyle.foreground-faint;
+        }
+    }
+
+    Text {
+        text: root.text;
+        color: AppStyle.foreground-muted;
+        font-size: Fonts.body-small;
+        horizontal-alignment: center;
+        wrap: word-wrap;
+        accessible-live-region: root.failed ? AccessibleLiveness.assertive : AccessibleLiveness.polite;
+    }
+
+    if root.failed: HorizontalLayout {
+        alignment: center;
+
+        AppButton {
+            text: @tr("Retry");
+            filled: false;
+            above-modal: root.above-modal;
+            clicked => {
+                Actions.retry-space-index();
+            }
+        }
+    }
+}
+
+export component SpaceIndexPane inherits Rectangle {
+    in property <bool> above-modal: false;
+
+    callback room-opened();
+
+    property <SpaceIndexStatus> status: SpaceIndexView.status;
+    property <bool> has-rows: SpaceIndexView.rows.length > 0;
+    property <bool> shows-footer: root.status == SpaceIndexStatus.loading-more
+        || root.status == SpaceIndexStatus.more-failed;
+    property <bool> wants-page: root.status == SpaceIndexStatus.partial
+        && rows-view.content-height + rows-view.content-y - rows-view.visible-height <= Metrics.index-page-ahead;
+
+    pure function title(name: string) -> string {
+        if name == "" {
+            return @tr("Rooms in this space");
+        }
+        return @tr("Rooms in {}", name);
+    }
+
+    function page-if-wanted() {
+        if root.wants-page {
+            Actions.page-space-index();
+        }
+    }
+
+    init => {
+        root.page-if-wanted();
+    }
+
+    changed wants-page => {
+        root.page-if-wanted();
+    }
+
+    background: Palette.background;
+    accessible-role: AccessibleRole.groupbox;
+    accessible-label: root.title(SpaceIndexView.space-name);
+
+    VerticalLayout {
+        Rectangle {
+            height: Metrics.header-row;
+            background: Palette.alternate-background;
+
+            HorizontalLayout {
+                padding-left: Space.lg;
+                padding-right: Space.sm;
+                spacing: Space.md;
+
+                Text {
+                    horizontal-stretch: 1;
+                    text: root.title(SpaceIndexView.space-name);
+                    font-family: Fonts.emoji;
+                    font-size: Fonts.title;
+                    font-weight: Weight.bold;
+                    vertical-alignment: center;
+                    overflow: elide;
+                }
+
+                IconButton {
+                    cross-axis-self-alignment: center;
+                    size: Size.lg;
+                    radius: Radius.sm;
+                    icon-size: IconSize.md;
+                    icon: IconSet.X;
+                    tint: AppStyle.foreground-strong;
+                    label: @tr("Close the room index");
+                    above-modal: root.above-modal;
+                    clicked => {
+                        Actions.close-space-index();
+                    }
+                }
+            }
+        }
+
+        Rectangle {
+            vertical-stretch: 1;
+
+            rows-view := ListView {
+                accessible-role: list;
+                accessible-label: @tr("Rooms in this space");
+                accessible-item-count: SpaceIndexView.rows.length;
+
+                for child[idx] in SpaceIndexView.rows: ChildRow {
+                    height: Metrics.index-row;
+                    index: idx;
+                    entry: child;
+                    above-modal: root.above-modal;
+                    room-opened => {
+                        root.room-opened();
+                    }
+                }
+            }
+
+            if root.status == SpaceIndexStatus.loading: Spinner {
+                x: (parent.width - self.width) / 2;
+                y: (parent.height - self.height) / 2;
+                indeterminate: true;
+            }
+
+            if root.status == SpaceIndexStatus.failed: IndexNotice {
+                text: @tr("Couldn't load the rooms in this space.");
+                failed: true;
+                above-modal: root.above-modal;
+            }
+
+            if root.status == SpaceIndexStatus.complete && !root.has-rows: IndexNotice {
+                text: @tr("This space has no rooms you can see.");
+            }
+        }
+
+        if root.shows-footer: Rectangle {
+            height: Metrics.index-footer;
+
+            StatusPill {
+                x: (parent.width - self.width) / 2;
+                y: (parent.height - self.height) / 2;
+                text: root.status == SpaceIndexStatus.loading-more
+                    ? @tr("Loading more rooms...")
+                    : @tr("Couldn't load more rooms");
+                loading: root.status == SpaceIndexStatus.loading-more;
+                show-retry: root.status == SpaceIndexStatus.more-failed;
+                retry-label: @tr("Retry loading more rooms");
+                above-modal: root.above-modal;
+                retry => {
+                    Actions.retry-space-index();
+                }
+            }
+        }
+    }
+}

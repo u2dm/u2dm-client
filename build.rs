@@ -64,6 +64,16 @@ const ENUM_COVERAGE: &[EnumCoverage] = &[
         falls_through: &["none"],
     },
     EnumCoverage {
+        slint_enum: "ChildAccess",
+        branches_in: "ui/screens/chat/components/space-index.slint",
+        falls_through: &[],
+    },
+    EnumCoverage {
+        slint_enum: "SpaceIndexStatus",
+        branches_in: "ui/screens/chat/components/space-index.slint",
+        falls_through: &["closed"],
+    },
+    EnumCoverage {
         slint_enum: "MessageKind",
         branches_in: "ui/screens/chat/components/timeline/message-body.slint",
         falls_through: &["service"],
@@ -79,6 +89,8 @@ const ENUM_TABLES: &[(&str, &str)] = &[
     ("MessageKind", "message_kinds"),
     ("AttachmentKind", "attachment_kinds"),
     ("RoomScope", "room_scopes"),
+    ("SpaceIndexStatus", "space_index_statuses"),
+    ("ChildAccess", "child_accesses"),
     ("AudioKind", "audio_kinds"),
     ("MediaState", "media_states"),
     ("SendState", "send_states"),
@@ -139,6 +151,11 @@ const SCENARIO_SOURCES: &[ScenarioSource] = &[
     },
     ScenarioSource {
         file: "src/adapters/demo/videos.rs",
+        arms_between: ("fn apply(scenario: &mut Scenario, flag: &str) {", "\n}"),
+        ignored: &[],
+    },
+    ScenarioSource {
+        file: "src/adapters/demo/space_index.rs",
         arms_between: ("fn apply(scenario: &mut Scenario, flag: &str) {", "\n}"),
         ignored: &[],
     },

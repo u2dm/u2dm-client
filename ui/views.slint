@@ -1,5 +1,6 @@
 import {
     RoomEntry,
+    SpaceChildEntry,
     SpaceEntry,
     MessageEntry,
     StickerRow,
@@ -7,7 +8,7 @@ import {
 } from "screens/chat/components/types.slint";
 import { VerificationEmoji } from "components/types.slint";
 import { UserMessage } from "messages.slint";
-import { AttachmentKind, AudioKind, ConnectionState, LoginActivity, LoginMethodKind, LoginPhase, RoomScope, TimelineState, UserMessageKind, VerificationActivity, VerificationPhase } from "enums.slint";
+import { AttachmentKind, AudioKind, ConnectionState, LoginActivity, LoginMethodKind, LoginPhase, RoomScope, SpaceIndexStatus, TimelineState, UserMessageKind, VerificationActivity, VerificationPhase } from "enums.slint";
 
 export global LoginView {
     in property <LoginPhase> step: LoginPhase.loading;
@@ -42,6 +43,13 @@ export global DirectoryView {
     in property <bool> direct-mention;
     in property <bool> direct-hint;
     in property <int> selected-generation;
+}
+
+export global SpaceIndexView {
+    in property <SpaceIndexStatus> status: SpaceIndexStatus.closed;
+    out property <bool> visible: self.status != SpaceIndexStatus.closed;
+    in property <string> space-name;
+    in property <[SpaceChildEntry]> rows;
 }
 
 export global RoomView {

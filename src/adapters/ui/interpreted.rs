@@ -17,26 +17,27 @@ use names::{
 use super::backend::{self, Models, UiBackend, reorder_spaces, selected_room_key, unread_below};
 use super::decode::{AvatarSlot, request_avatar, request_media, request_sticker};
 use super::dto::{
-    MediaFailureKind, MediaState, MessageDto, ReactionDto, ReactorAvatarDto, RoomDto, SpaceDto,
-    StickerCellDto, StickerPackDto, StickerRowDto,
+    MediaFailureKind, MediaState, MessageDto, ReactionDto, ReactorAvatarDto, RoomDto,
+    SpaceChildDto, SpaceDto, StickerCellDto, StickerPackDto, StickerRowDto,
 };
 #[cfg(feature = "demo")]
 use super::dump;
 use super::fields::{
-    MessageFields, ReactionFields, ReactorFields, RoomFields, SpaceFields, StickerCellFields,
-    StickerPackFields, StickerRowFields,
+    MessageFields, ReactionFields, ReactorFields, RoomFields, SpaceChildFields, SpaceFields,
+    StickerCellFields, StickerPackFields, StickerRowFields,
 };
 use super::present::{Delivery, MessageKind, ServiceKind, VerifyStep};
 #[cfg(feature = "demo")]
 use super::props::EnumProp;
 use super::props::{BoolProp, IntProp, StringProp, UiProps};
 use super::schema::{
-    attachment_kinds, audio_kinds, connection_states, deliveries, enum_props, login_activities,
-    login_methods, login_phases, media_failures, media_states, message_fields, message_kinds,
-    model_props, preview_kinds, reaction_fields, reaction_sends, reactor_fields, room_fields,
-    room_scopes, send_states, service_kinds, simple_callbacks, space_fields, sticker_cell_fields,
-    sticker_pack_fields, sticker_row_fields, timeline_states, user_message_kinds,
-    verification_activities, verification_phases,
+    attachment_kinds, audio_kinds, child_accesses, connection_states, deliveries, enum_props,
+    login_activities, login_methods, login_phases, media_failures, media_states, message_fields,
+    message_kinds, model_props, preview_kinds, reaction_fields, reaction_sends, reactor_fields,
+    room_fields, room_scopes, send_states, service_kinds, simple_callbacks, space_child_fields,
+    space_fields, space_index_statuses, sticker_cell_fields, sticker_pack_fields,
+    sticker_row_fields, timeline_states, user_message_kinds, verification_activities,
+    verification_phases,
 };
 use super::session::active_models;
 use super::video::{self, millis_to_duration};
@@ -45,7 +46,10 @@ use crate::app::input::CommandSender;
 use crate::commands::effects::{Effect, VerificationActivity};
 use crate::commands::messages::{UserMessage, UserMessageKind};
 use crate::commands::ui::{TimelineVisibility, ViewportChanged};
-use crate::commands::view::{AppViewState, AttachmentKind, LoginActivity, LoginStep, RoomScope};
+use crate::commands::view::{
+    AppViewState, AttachmentKind, ChildAccess, LoginActivity, LoginStep, RoomScope,
+    SpaceIndexStatus,
+};
 use crate::domain::auth::LoginMethod;
 use crate::domain::media::AudioKind;
 use crate::domain::message::{MessagePreviewKind, ReactionSend, SendState};
@@ -168,6 +172,8 @@ media_failures!(impl_slint_enum MediaFailureKind "MediaFailure";);
 message_kinds!(impl_slint_enum MessageKind "MessageKind";);
 attachment_kinds!(impl_slint_enum AttachmentKind "AttachmentKind";);
 room_scopes!(impl_slint_enum RoomScope "RoomScope";);
+space_index_statuses!(impl_slint_enum SpaceIndexStatus "SpaceIndexStatus";);
+child_accesses!(impl_slint_enum ChildAccess "ChildAccess";);
 preview_kinds!(impl_slint_enum MessagePreviewKind "PreviewKind";);
 audio_kinds!(impl_slint_enum AudioKind "AudioKind";);
 service_kinds!(impl_slint_enum ServiceKind "ServiceKind";);
@@ -478,6 +484,7 @@ impl UiBackend for InterpretedBackend {
     type Reactor = Value;
     type Room = Value;
     type Space = Value;
+    type SpaceChild = Value;
     type StickerRow = Value;
     type StickerCell = Value;
     type StickerPack = Value;
@@ -929,6 +936,7 @@ reaction_fields!(impl_value ReactionDto ReactionFields;);
 reactor_fields!(impl_value ReactorAvatarDto ReactorFields;);
 room_fields!(impl_value RoomDto RoomFields;);
 space_fields!(impl_value SpaceDto SpaceFields;);
+space_child_fields!(impl_value SpaceChildDto SpaceChildFields;);
 sticker_cell_fields!(impl_value StickerCellDto StickerCellFields;);
 sticker_pack_fields!(impl_value StickerPackDto StickerPackFields;);
 sticker_row_fields!(impl_value StickerRowDto StickerRowFields;);

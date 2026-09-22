@@ -36,6 +36,34 @@ pub(super) struct ReconcileOutcome {
     pub(super) subspace_dropped: bool,
 }
 
+pub(super) struct Membership<'a> {
+    rooms: HashSet<&'a str>,
+    spaces: &'a HashMap<String, usize>,
+    rail: &'a [String],
+}
+
+impl Membership<'_> {
+    pub(super) fn has_room(&self, id: &str) -> bool {
+        self.rooms.contains(id)
+    }
+
+    pub(super) fn has_space(&self, id: &str) -> bool {
+        self.spaces.contains_key(id)
+    }
+
+    pub(super) fn in_rail(&self, id: &str) -> bool {
+        self.rail.iter().any(|child| child == id)
+    }
+
+    pub(super) fn has_joined(&self, id: &str) -> bool {
+        self.has_room(id) || self.has_space(id)
+    }
+
+    pub(super) fn admits(&self, allowed: &[RoomId]) -> bool {
+        allowed.is_empty() || allowed.iter().any(|id| self.has_joined(id))
+    }
+}
+
 #[derive(Default)]
 struct SpaceGraph {
     index: HashMap<String, usize>,
@@ -495,6 +523,21 @@ impl RoomDirectory {
         ReconcileOutcome {
             space_dropped: false,
             subspace_dropped: subspace_gone,
+        }
+    }
+
+    pub(super) fn space_name(&self, id: &str) -> Option<&str> {
+        self.space(id).map(|space| space.name.as_str())
+    }
+
+    pub(super) fn membership(&self, sel: &Selection) -> Membership<'_> {
+        Membership {
+            rooms: self.all_rooms.iter().map(|room| room.id.as_ref()).collect(),
+            spaces: &self.graph.index,
+            rail: sel
+                .space()
+                .and_then(|id| self.space(id))
+                .map_or(&[] as &[String], |space| space.child_space_ids.as_slice()),
         }
     }
 

@@ -37,6 +37,16 @@ pub enum ProbeCommand {
     SelectRoom {
         room_id: String,
     },
+    OpenSpaceIndex,
+    CloseSpaceIndex,
+    PageSpaceIndex,
+    RetrySpaceIndex,
+    JoinSpaceChild {
+        room_id: String,
+    },
+    OpenSpaceChild {
+        room_id: String,
+    },
     SendMessage {
         #[serde(default)]
         room_id: Option<String>,
@@ -209,6 +219,12 @@ pub fn to_driven(command: ProbeCommand, selected: Selection<'_>) -> Result<Drive
         }
         ProbeCommand::MoveSpace { from, to } => UiCommand::MoveSpace { from, to },
         ProbeCommand::SelectRoom { room_id } => UiCommand::SelectRoom(RoomId::new(room_id)),
+        ProbeCommand::OpenSpaceIndex => UiCommand::OpenSpaceIndex,
+        ProbeCommand::CloseSpaceIndex => UiCommand::CloseSpaceIndex,
+        ProbeCommand::PageSpaceIndex => UiCommand::PageSpaceIndex,
+        ProbeCommand::RetrySpaceIndex => UiCommand::RetrySpaceIndex,
+        ProbeCommand::JoinSpaceChild { room_id } => UiCommand::JoinSpaceChild(RoomId::new(room_id)),
+        ProbeCommand::OpenSpaceChild { room_id } => UiCommand::OpenSpaceChild(RoomId::new(room_id)),
         ProbeCommand::SendMessage {
             room_id,
             body,

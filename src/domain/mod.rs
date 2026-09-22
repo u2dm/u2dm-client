@@ -3,6 +3,7 @@ pub mod auth;
 pub mod media;
 pub mod message;
 pub mod room;
+pub mod space_index;
 pub mod sticker;
 pub mod sync;
 pub mod timeline;

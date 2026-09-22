@@ -1,8 +1,10 @@
+use std::collections::HashSet;
 use std::fs;
+use std::mem;
 use std::sync::{Arc, OnceLock};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use super::dto::{DemoData, RoomDto, SpaceDto, StickerPackDto};
+use super::dto::{DemoData, RoomDto, SpaceDto, StickerPackDto, UnjoinedDto};
 use super::media;
 use super::timeline::{self, scenario};
 use crate::domain::auth::Session;
@@ -13,11 +15,13 @@ use crate::domain::message::{
     MessageBody, ReadBy, ReplyInfo, RichText, SendState, TimelineMessage,
 };
 use crate::domain::room::{Room, RoomId, Space};
+use crate::domain::space_index::SpaceChild;
 use crate::domain::sticker::{StickerImage, StickerPack};
 
 const UNKNOWN_SENDER: &str = "@member:matrix.org";
 const SENT_STICKER_EXTENT: u32 = 512;
 const STICKER_ASSET_MARKER: char = '#';
+const DEMO_VIA: &str = "demo.local";
 
 static DATA: OnceLock<DemoData> = OnceLock::new();
 static LOAD_ERROR: OnceLock<String> = OnceLock::new();
@@ -67,17 +71,90 @@ pub fn session() -> Session {
     data().session.to_session()
 }
 
-pub fn rooms() -> Vec<Arc<Room>> {
+pub fn rooms_with(joined: &[RoomId]) -> Vec<Arc<Room>> {
     let now = now_ms();
-    data()
-        .rooms
+    let data = data();
+    data.rooms
         .iter()
         .map(|room| Arc::new(room.to_room(now)))
+        .chain(
+            data.unjoined
+                .iter()
+                .filter(|entry| !entry.space && was_joined(joined, &entry.id))
+                .map(|entry| Arc::new(entry.to_room(now))),
+        )
         .collect()
 }
 
-pub fn spaces() -> Vec<Space> {
-    data().spaces.iter().map(SpaceDto::to_space).collect()
+pub fn spaces_with(joined: &[RoomId]) -> Vec<Space> {
+    let data = data();
+    let mut spaces: Vec<Space> = data
+        .spaces
+        .iter()
+        .map(SpaceDto::to_space)
+        .chain(
+            data.unjoined
+                .iter()
+                .filter(|entry| entry.space && was_joined(joined, &entry.id))
+                .map(UnjoinedDto::to_space),
+        )
+        .collect();
+    let joined_spaces: HashSet<String> = spaces.iter().map(|space| space.id.clone()).collect();
+    for space in &mut spaces {
+        (space.child_space_ids, space.child_room_ids) = mem::take(&mut space.child_room_ids)
+            .into_iter()
+            .chain(mem::take(&mut space.child_space_ids))
+            .partition(|child| joined_spaces.contains(child));
+    }
+    spaces
+}
+
+fn was_joined(joined: &[RoomId], id: &str) -> bool {
+    joined.iter().any(|room| room.as_ref() == id)
+}
+
+pub fn space_children(space_id: &RoomId) -> Vec<SpaceChild> {
+    let data = data();
+    let via = [DEMO_VIA.to_owned()];
+    let children: Vec<&String> = if let Some(space) = data
+        .spaces
+        .iter()
+        .find(|space| space.id() == space_id.as_ref())
+    {
+        space.children().collect()
+    } else if let Some(entry) = data
+        .unjoined
+        .iter()
+        .find(|entry| entry.space && entry.id == space_id.as_ref())
+    {
+        entry.rooms.iter().chain(&entry.spaces).collect()
+    } else {
+        Vec::new()
+    };
+    children
+        .into_iter()
+        .filter_map(|id| space_child(data, id, &via))
+        .collect()
+}
+
+fn space_child(data: &DemoData, id: &str, via: &[String]) -> Option<SpaceChild> {
+    if let Some(room) = data.rooms.iter().find(|room| room.id == id) {
+        return Some(room.to_child(via));
+    }
+    if let Some(space) = data.spaces.iter().find(|space| space.id() == id) {
+        return Some(space.to_child(via));
+    }
+    data.unjoined
+        .iter()
+        .find(|entry| entry.id == id)
+        .map(|entry| entry.to_child(via))
+}
+
+pub fn is_unjoined_avatar(mxc: &str) -> bool {
+    data()
+        .unjoined
+        .iter()
+        .any(|entry| entry.avatar() == Some(mxc))
 }
 
 pub fn sticker_packs(room_id: &RoomId) -> Vec<StickerPack> {

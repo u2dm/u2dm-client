@@ -2,6 +2,7 @@ mod avatars;
 mod build;
 mod directory;
 mod health;
+mod hierarchy;
 mod send_queue;
 
 use std::future;
@@ -24,6 +25,7 @@ use tokio_util::sync::CancellationToken;
 use self::avatars::AvatarFetcher;
 use self::directory::Directory;
 use self::health::{SyncHealth, session_loss};
+pub(super) use self::hierarchy::MatrixSpaceIndex;
 use self::send_queue::SendQueueRecovery;
 use super::media::MediaService;
 use super::session::ClientHandle;

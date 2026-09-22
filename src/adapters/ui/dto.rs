@@ -16,6 +16,7 @@ use super::present::{
 };
 use super::richtext;
 use super::schema::{define_ui_enum, media_failures, media_states};
+use crate::commands::view::{ChildAccess, SpaceIndexRow};
 use crate::domain::media::{
     AudioKind, AudioMeta, ContentKey, FileMeta, MediaFailure, ThumbnailOutcome,
 };
@@ -23,6 +24,7 @@ use crate::domain::message::{
     MessageBody, MessagePreviewKind, Reaction, ReactionSend, Reactor, SendState, TimelineMessage,
 };
 use crate::domain::room::{Room, Space};
+use crate::domain::space_index::{ChildKind, SpaceChild};
 use crate::domain::sticker::{PackId, StickerImage, StickerPack};
 use crate::domain::timeline::EnrichmentDelta;
 use crate::ports::media::MediaCache;
@@ -306,6 +308,20 @@ pub struct SpaceDto {
     pub mention: bool,
     pub hint: bool,
     pub initial: SharedString,
+    pub avatar: Option<Image>,
+    pub has_avatar: bool,
+}
+
+pub struct SpaceChildDto {
+    pub id: SharedString,
+    pub name: SharedString,
+    pub initial: SharedString,
+    pub color_index: i32,
+    pub detail: SharedString,
+    pub members: i32,
+    pub is_space: bool,
+    pub children: i32,
+    pub access: ChildAccess,
     pub avatar: Option<Image>,
     pub has_avatar: bool,
 }
@@ -736,4 +752,51 @@ pub fn prefetch_space_avatar(s: &Space, media: &dyn MediaCache) {
         .as_deref()
         .and_then(|mxc| media.space_avatar_path(mxc));
     load_avatar_async(avatar_path.as_deref(), AvatarSlot::Space(s.id.clone()));
+}
+
+pub fn space_child_to_dto(row: &SpaceIndexRow, media: &dyn MediaCache) -> SpaceChildDto {
+    let child = &row.child;
+    let (is_space, children) = match child.kind {
+        ChildKind::Room => (false, 0),
+        ChildKind::Space { children } => (true, count(children)),
+    };
+    let avatar = space_child_avatar_path(child, media).and_then(|path| peek_avatar(&path));
+    SpaceChildDto {
+        id: SharedString::from(child.id.as_ref()),
+        name: SharedString::from(&child.name),
+        initial: SharedString::from(avatar_initials(&child.name)),
+        color_index: avatar_color_index(child.id.as_ref()),
+        detail: SharedString::from(space_child_detail(child)),
+        members: count(child.member_count),
+        is_space,
+        children,
+        access: row.access,
+        has_avatar: avatar.is_some(),
+        avatar,
+    }
+}
+
+pub fn request_space_child_avatar(row: &SpaceIndexRow, media: &dyn MediaCache) {
+    let path = space_child_avatar_path(&row.child, media);
+    load_avatar_async(
+        path.as_deref(),
+        AvatarSlot::SpaceChild(row.child.id.to_string()),
+    );
+}
+
+fn space_child_avatar_path(child: &SpaceChild, media: &dyn MediaCache) -> Option<PathBuf> {
+    let mxc = child.avatar_mxc.as_deref()?;
+    match child.kind {
+        ChildKind::Room => media.room_avatar_path(mxc),
+        ChildKind::Space { .. } => media.space_avatar_path(mxc),
+    }
+}
+
+fn space_child_detail(child: &SpaceChild) -> &str {
+    child
+        .topic
+        .as_deref()
+        .and_then(|topic| topic.lines().find(|line| !line.trim().is_empty()))
+        .or(child.alias.as_deref())
+        .unwrap_or_default()
 }

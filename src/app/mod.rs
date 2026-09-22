@@ -13,6 +13,7 @@ mod room_directory;
 mod selection;
 mod send_lanes;
 mod session;
+mod space_index;
 mod space_order;
 mod stickers;
 mod submissions;
@@ -35,6 +36,7 @@ use room_directory::RoomDirectory;
 use selection::Selection;
 use send_lanes::SendLanes;
 use session::{SessionController, SuspendedSession};
+use space_index::{ChildTarget, JoinOutcome, ListedSpace, PageOutcome, SpaceIndex};
 use stickers::Stickers;
 use submissions::Submissions;
 use task_group::TaskGroup;
@@ -146,6 +148,7 @@ pub struct AppService {
     audio: AudioController,
     video: VideoController,
     stickers: Stickers,
+    space_index: SpaceIndex,
     attachments: Attachments,
     submissions: Submissions,
     selection: Selection,
@@ -182,6 +185,7 @@ impl AppService {
             audio: AudioController::new(Arc::clone(&output), events.clone()),
             video: VideoController::new(Arc::clone(&output), events.clone()),
             stickers: Stickers::new(Arc::clone(&output)),
+            space_index: SpaceIndex::new(Arc::clone(&output), events.clone()),
             attachments: Attachments::new(media_files, Arc::clone(&output), events.clone()),
             submissions: Submissions::new(Arc::clone(&output), events.clone()),
             events,
@@ -345,6 +349,28 @@ impl AppService {
             }
             UiCommand::SelectRoom(room_id) => {
                 self.select_room(room_id).await;
+            }
+            UiCommand::OpenSpaceIndex => {
+                self.open_space_index();
+            }
+            UiCommand::CloseSpaceIndex => {
+                self.space_index.close();
+            }
+            UiCommand::PageSpaceIndex => {
+                if let Some(port) = self.port(|a| &a.space_index) {
+                    self.space_index.page(port);
+                }
+            }
+            UiCommand::RetrySpaceIndex => {
+                if let Some(port) = self.port(|a| &a.space_index) {
+                    self.space_index.retry(port);
+                }
+            }
+            UiCommand::JoinSpaceChild(room_id) => {
+                self.join_space_child(room_id);
+            }
+            UiCommand::OpenSpaceChild(room_id) => {
+                self.open_space_child(room_id).await;
             }
             UiCommand::RetryTimeline => {
                 self.retry_timeline().await;
@@ -588,6 +614,7 @@ impl AppService {
         if self.room_directory.store_rooms(rooms) {
             self.refresh_selected_room().await;
             self.room_directory.emit_directory(&self.selection);
+            self.refresh_space_index();
         }
     }
 
@@ -601,17 +628,20 @@ impl AppService {
                 self.publish_selection();
             }
             self.room_directory.emit_directory(&self.selection);
+            self.follow_space_index();
         }
     }
 
     fn handle_select_space(&mut self, space: Option<RoomId>) {
         self.selection.set_space(space);
         self.show_selected_scope();
+        self.follow_space_index();
     }
 
     fn handle_select_direct(&mut self) {
         self.selection.set_direct();
         self.show_selected_scope();
+        self.follow_space_index();
     }
 
     fn show_selected_scope(&self) {
@@ -624,6 +654,76 @@ impl AppService {
         self.selection.set_subspace(subspace);
         self.publish_selection();
         self.room_directory.emit_rooms(&self.selection);
+        self.follow_space_index();
+    }
+
+    fn listed_space(&self) -> Option<ListedSpace> {
+        let id = self.selection.listed_space()?.clone();
+        let name = self
+            .room_directory
+            .space_name(&id)
+            .unwrap_or_default()
+            .to_owned();
+        Some(ListedSpace { id, name })
+    }
+
+    fn open_space_index(&mut self) {
+        if let Some(port) = self.port(|a| &a.space_index) {
+            let target = self.listed_space();
+            self.space_index.open(port, target);
+        }
+    }
+
+    fn follow_space_index(&mut self) {
+        let Some(port) = self.port(|a| &a.space_index) else {
+            return;
+        };
+        let target = self.listed_space();
+        let membership = self.room_directory.membership(&self.selection);
+        self.space_index.follow(port, target, &membership);
+    }
+
+    fn refresh_space_index(&mut self) {
+        if !self.space_index.is_tracking() {
+            return;
+        }
+        let membership = self.room_directory.membership(&self.selection);
+        self.space_index.membership_changed(&membership);
+    }
+
+    fn settle_space_index_page(&mut self, generation: u64, outcome: PageOutcome) {
+        let Some(port) = self.port(|a| &a.space_index) else {
+            return;
+        };
+        let membership = self.room_directory.membership(&self.selection);
+        self.space_index
+            .fetched(port, generation, outcome, &membership);
+    }
+
+    fn join_space_child(&mut self, room_id: RoomId) {
+        let Some(port) = self.port(|a| &a.space_index) else {
+            return;
+        };
+        let membership = self.room_directory.membership(&self.selection);
+        self.space_index.join(port, room_id, &membership);
+    }
+
+    fn settle_space_child_join(&mut self, room_id: RoomId, name: &str, outcome: JoinOutcome) {
+        let membership = self.room_directory.membership(&self.selection);
+        self.space_index
+            .join_settled(room_id, name, outcome, &membership);
+    }
+
+    async fn open_space_child(&mut self, room_id: RoomId) {
+        let membership = self.room_directory.membership(&self.selection);
+        let target = self.space_index.open_target(&room_id, &membership);
+        match target {
+            Some(ChildTarget::Room) => self.select_room(room_id).await,
+            Some(ChildTarget::Subspace) => self.handle_select_subspace(Some(room_id)),
+            None => {
+                tracing::debug!(%room_id, "ignoring an open for a space index row that cannot open");
+            }
+        }
     }
 
     async fn handle_event(&mut self, event: AppEvent) {
@@ -659,6 +759,22 @@ impl AppService {
             } => {
                 self.submissions
                     .settled(submission, enqueue, self.selection.room.as_ref());
+            }
+            AppEvent::SpaceIndexPaged {
+                generation,
+                outcome,
+            } => {
+                self.settle_space_index_page(generation, outcome);
+            }
+            AppEvent::SpaceIndexAvatarsReady { generation, ready } => {
+                self.space_index.avatars_ready(generation, ready);
+            }
+            AppEvent::SpaceChildJoinSettled {
+                room_id,
+                name,
+                outcome,
+            } => {
+                self.settle_space_child_join(room_id, &name, outcome);
             }
         }
     }
@@ -994,6 +1110,7 @@ impl AppService {
     }
 
     async fn select_room(&mut self, room_id: RoomId) {
+        self.space_index.close();
         self.open_room(room_id, TimelineFocus::ReadPosition).await;
     }
 
@@ -1101,6 +1218,7 @@ impl AppService {
             self.audio.restart(),
             self.video.restart(),
             self.stickers.restart(),
+            self.space_index.restart(),
         );
     }
 
@@ -1185,6 +1303,7 @@ impl AppService {
             self.audio.shutdown(),
             self.video.shutdown(),
             self.stickers.shutdown(),
+            self.space_index.shutdown(),
         );
     }
 }

@@ -52,6 +52,7 @@ pub enum UserMessageKind {
     MessageNotFound,
     MessageNotShowable,
     SpaceOrderSaveFailed,
+    JoinRoomFailed,
     MediaDownloadFailed,
     FileDownloadFailed,
     MediaOpenFailed,

@@ -81,6 +81,7 @@ export enum UserMessageKind {
     message-not-found,
     message-not-showable,
     space-order-save-failed,
+    join-room-failed,
     media-download-failed,
     file-download-failed,
     media-open-failed,
@@ -137,6 +138,28 @@ export enum RoomScope {
     all,
     direct,
     space,
+}
+
+export enum SpaceIndexStatus {
+    closed,
+    loading,
+    partial,
+    complete,
+    loading-more,
+    failed,
+    more-failed,
+}
+
+export enum ChildAccess {
+    open,
+    open-subspace,
+    joined,
+    joining,
+    join,
+    invite-only,
+    knock,
+    members-only,
+    unavailable,
 }
 
 export enum MediaState {

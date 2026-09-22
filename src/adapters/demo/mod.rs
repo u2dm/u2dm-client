@@ -12,6 +12,7 @@ pub mod probe;
 mod reactions;
 mod receipts;
 mod richtext;
+mod space_index;
 mod stickers;
 mod storage;
 mod timeline;

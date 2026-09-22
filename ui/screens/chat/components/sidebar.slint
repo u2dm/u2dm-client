@@ -12,9 +12,10 @@ import { Avatar } from "../../../components/avatar.slint";
 import { Interaction, ListItemArea } from "../../../components/a11y.slint";
 import { UnreadDot } from "./tile.slint";
 import { RoomEntry } from "./types.slint";
-import { AppStyle, Avatars, Fonts, IconSize, Metrics, Size, Space, Weight } from "../../../theme.slint";
-import { ServiceKind } from "../../../enums.slint";
-import { DirectoryView } from "../../../views.slint";
+import { IconButton } from "../../../components/button.slint";
+import { AppStyle, Avatars, Fonts, IconSize, Metrics, Radius, Size, Space, Weight } from "../../../theme.slint";
+import { RoomScope, ServiceKind } from "../../../enums.slint";
+import { DirectoryView, SpaceIndexView } from "../../../views.slint";
 import { Actions } from "../../../actions.slint";
 
 component SidebarSearch inherits Rectangle {
@@ -246,6 +247,7 @@ export component Sidebar inherits Rectangle {
     property <length> row-height: Metrics.sidebar-row;
     property <length> rail-width: Metrics.space-rail;
     property <length> avatar-size: Metrics.sidebar-avatar;
+    property <bool> in-space: DirectoryView.room-scope == RoomScope.space;
 
     public function focus-menu() {
         rail.focus-menu();
@@ -267,11 +269,36 @@ export component Sidebar inherits Rectangle {
                 Rectangle {
                     height: Metrics.header-row;
 
+                    property <length> index-button-room: root.in-space ? Size.lg + Space.sm : 0;
+
                     if !root.collapsed: SidebarSearch {
                         x: Space.md;
                         y: (parent.height - self.height) / 2;
-                        width: parent.width - Space.xl;
+                        width: parent.width - Space.xl - parent.index-button-room;
                         above-modal: root.above-modal;
+                    }
+
+                    if root.in-space: IconButton {
+                        x: root.collapsed
+                            ? (parent.width - self.width) / 2
+                            : parent.width - self.width - Space.md;
+                        y: (parent.height - self.height) / 2;
+                        size: Size.lg;
+                        radius: Radius.sm;
+                        icon-size: IconSize.md;
+                        icon: IconSet.Compass;
+                        tint: SpaceIndexView.visible ? Palette.accent-background : AppStyle.foreground-muted;
+                        above-modal: root.above-modal;
+                        label: SpaceIndexView.visible
+                            ? @tr("Close the room index")
+                            : @tr("Browse rooms in this space");
+                        clicked => {
+                            if SpaceIndexView.visible {
+                                Actions.close-space-index();
+                            } else {
+                                Actions.open-space-index();
+                            }
+                        }
                     }
                 }
 

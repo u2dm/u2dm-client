@@ -3,12 +3,13 @@ import { IconDisplay, IconSet } from "@lucide";
 import { Sidebar } from "components/sidebar.slint";
 import { Drawer } from "components/drawer.slint";
 import { TimelineView } from "components/timeline/timeline-view.slint";
+import { SpaceIndexPane } from "components/space-index.slint";
 import { ClickArea, FocusRing } from "../../components/a11y.slint";
 import { UserMessageKind } from "../../enums.slint";
 import { UserMessages } from "../../messages.slint";
 import { AppStyle, IconSize, Metrics, Radius, Size, Space } from "../../theme.slint";
 import { IconButton } from "../../components/button.slint";
-import { DirectoryView, RoomView, WindowView } from "../../views.slint";
+import { DirectoryView, RoomView, SpaceIndexView, WindowView } from "../../views.slint";
 import { Actions } from "../../actions.slint";
 import { Composer, DeliveryTip, Reactions, ReplySwipe, Shell, TextSelection } from "../../local.slint";
 
@@ -28,10 +29,13 @@ export component ChatScreen inherits Rectangle {
 
     property <bool> compact: root.width < Metrics.compact-breakpoint;
     property <bool> has-room: RoomView.selected-room-name != "";
-    property <bool> shows-room-list: root.compact && (!root.has-room || Shell.nav-open);
+    property <bool> shows-room-list: root.compact
+        && !SpaceIndexView.visible
+        && (!root.has-room || Shell.nav-open);
     property <bool> timeline-visible: WindowView.focused
         && !root.window-minimized
         && !root.shows-room-list
+        && !SpaceIndexView.visible
         && !Shell.modal-open;
 
     property <length> sidebar-width: Metrics.sidebar-default;
@@ -120,6 +124,7 @@ export component ChatScreen inherits Rectangle {
         y: 0;
         width: root.timeline-width;
         height: root.height;
+        visible: !SpaceIndexView.visible;
         compact: root.compact && root.has-room;
         overlay-width: root.width;
         input-message <=> root.input-message;
@@ -134,6 +139,17 @@ export component ChatScreen inherits Rectangle {
         above-modal: Shell.nav-on-top;
         room-selected => {
             root.close-nav();
+        }
+    }
+
+    if SpaceIndexView.visible: SpaceIndexPane {
+        x: root.timeline-x;
+        y: 0;
+        width: root.timeline-width;
+        height: root.height;
+        above-modal: Shell.nav-on-top;
+        room-opened => {
+            Shell.nav-open = false;
         }
     }
 
