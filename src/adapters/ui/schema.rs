@@ -27,6 +27,7 @@ macro_rules! string_props {
         SelectedRoomId DirectoryView "DirectoryView" "selected-room-id" set_selected_room_id get_selected_room_id;
         SelectedSpaceId DirectoryView "DirectoryView" "selected-space-id" set_selected_space_id get_selected_space_id;
         SelectedSubspaceId DirectoryView "DirectoryView" "selected-subspace-id" set_selected_subspace_id get_selected_subspace_id;
+        ListedSpaceName DirectoryView "DirectoryView" "listed-space-name" set_listed_space_name get_listed_space_name;
         AttachmentFilename AttachmentView "AttachmentView" "filename" set_filename get_filename;
         AttachmentMimetype AttachmentView "AttachmentView" "mimetype" set_mimetype get_mimetype;
         AttachmentExtension AttachmentView "AttachmentView" "extension" set_extension get_extension;
@@ -143,6 +144,7 @@ macro_rules! int_props {
         PrependToken RoomView "RoomView" "prepend-token" set_prepend_token get_prepend_token;
         SelectedRoomMembers RoomView "RoomView" "selected-room-members" set_selected_room_members get_selected_room_members;
         SelectedGeneration DirectoryView "DirectoryView" "selected-generation" set_selected_generation get_selected_generation;
+        ListedSpaceMembers DirectoryView "DirectoryView" "listed-space-members" set_listed_space_members get_listed_space_members;
         StickerColumns StickerView "StickerView" "columns" set_columns get_columns;
         AttachmentWidth AttachmentView "AttachmentView" "width" set_width get_width;
         AttachmentHeight AttachmentView "AttachmentView" "height" set_height get_height;

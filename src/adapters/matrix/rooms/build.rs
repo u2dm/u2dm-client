@@ -305,6 +305,7 @@ pub(super) async fn build_spaces_meta(client: &Client) -> Vec<DomainSpace> {
                 id: space.room_id().to_string(),
                 name,
                 avatar_mxc,
+                member_count: space.joined_members_count(),
                 child_room_ids,
                 child_space_ids,
                 order,

@@ -237,6 +237,7 @@
     {
       "id": "!space-rust:demo.local",
       "name": "Rust",
+      "members": 1284,
       "avatar": "rust",
       "rooms": [
         "!rust:demo.local",
@@ -254,6 +255,7 @@
     {
       "id": "!space-rust-web:demo.local",
       "name": "Web",
+      "members": 342,
       "avatar": "rust-web",
       "rooms": ["!frontend:demo.local", "!design:demo.local", "!rust-wasm:demo.local"],
       "spaces": ["!space-rust-web-a11y:demo.local"]
@@ -261,16 +263,19 @@
     {
       "id": "!space-rust-web-a11y:demo.local",
       "name": "Web Accessibility",
+      "members": 57,
       "rooms": ["!frontend:demo.local"]
     },
     {
       "id": "!space-rust-infra:demo.local",
       "name": "Infra",
+      "members": 128,
       "rooms": ["!devops:demo.local", "!linux:demo.local"]
     },
     {
       "id": "!space-matrix:demo.local",
       "name": "Matrix",
+      "members": 2451,
       "rooms": [
         "!matrixhq:demo.local",
         "!devops:demo.local",
@@ -294,12 +299,14 @@
     {
       "id": "!space-design:demo.local",
       "name": "Design",
+      "members": 89,
       "avatar": "design",
       "rooms": ["!design:demo.local", "!book:demo.local"]
     },
     {
       "id": "!space-social:demo.local",
       "name": "Social",
+      "members": 23,
       "avatar": "social",
       "rooms": [
         "!trip:demo.local",

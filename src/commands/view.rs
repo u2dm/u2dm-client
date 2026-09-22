@@ -206,6 +206,12 @@ pub enum LoginActivity {
     CleaningUp,
 }
 
+#[derive(Clone, Default, PartialEq, Eq)]
+pub struct SpaceHeading {
+    pub name: String,
+    pub member_count: u64,
+}
+
 #[derive(Clone)]
 pub struct DirectoryView {
     pub rooms: RoomList,
@@ -214,6 +220,7 @@ pub struct DirectoryView {
     pub scope: RoomScope,
     pub space_id: String,
     pub subspace_id: String,
+    pub listed_space: SpaceHeading,
     pub direct_flags: UnreadFlags,
 }
 
@@ -226,6 +233,7 @@ impl Default for DirectoryView {
             scope: RoomScope::default(),
             space_id: String::new(),
             subspace_id: String::new(),
+            listed_space: SpaceHeading::default(),
             direct_flags: UnreadFlags::default(),
         }
     }

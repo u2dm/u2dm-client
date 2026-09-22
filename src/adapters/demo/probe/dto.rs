@@ -74,6 +74,7 @@ struct RoomDto {
 struct SpaceDto {
     id: String,
     name: String,
+    member_count: u64,
     child_room_ids: Vec<String>,
     child_space_ids: Vec<String>,
     order: Option<String>,
@@ -83,10 +84,17 @@ struct SpaceDto {
 }
 
 #[derive(Serialize)]
+struct SpaceHeadingDto {
+    name: String,
+    member_count: u64,
+}
+
+#[derive(Serialize)]
 struct DirectoryDto {
     scope: &'static str,
     space_id: String,
     subspace_id: String,
+    listed_space: SpaceHeadingDto,
     direct_alert: bool,
     direct_mention: bool,
     direct_hint: bool,
@@ -261,6 +269,7 @@ fn space(source: &Space) -> SpaceDto {
     SpaceDto {
         id: source.id.clone(),
         name: source.name.clone(),
+        member_count: source.member_count,
         child_room_ids: source.child_room_ids.clone(),
         child_space_ids: source.child_space_ids.clone(),
         order: source.order.clone(),
@@ -275,6 +284,10 @@ fn directory(source: &DirectoryView) -> DirectoryDto {
         scope: names::room_scope(source.scope),
         space_id: source.space_id.clone(),
         subspace_id: source.subspace_id.clone(),
+        listed_space: SpaceHeadingDto {
+            name: source.listed_space.name.clone(),
+            member_count: source.listed_space.member_count,
+        },
         direct_alert: source.direct_flags.alert,
         direct_mention: source.direct_flags.mention,
         direct_hint: source.direct_flags.hint,

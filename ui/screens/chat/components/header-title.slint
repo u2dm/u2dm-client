@@ -1,0 +1,24 @@
+import { AppStyle, Fonts, Space, Weight } from "../../../theme.slint";
+
+export component HeaderTitle inherits VerticalLayout {
+    in property <string> title;
+    in property <int> members;
+
+    alignment: center;
+    spacing: Space.xs;
+
+    Text {
+        text: root.title;
+        font-family: Fonts.emoji;
+        font-size: Fonts.title;
+        font-weight: Weight.bold;
+        overflow: elide;
+    }
+
+    if root.members > 0: Text {
+        text: @tr("{n} member" | "{n} members" % root.members);
+        font-size: Fonts.body-small;
+        color: AppStyle.foreground-muted;
+        overflow: elide;
+    }
+}

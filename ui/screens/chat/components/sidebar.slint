@@ -7,6 +7,7 @@ import { IconDisplay, IconSet } from "@lucide";
 import { SpaceRail } from "./space-rail.slint";
 import { SubspaceRail } from "./subspace-rail.slint";
 import { MessagePreview } from "./message-preview.slint";
+import { HeaderTitle } from "./header-title.slint";
 import { ServiceLabel } from "./timeline/messages/service-message.slint";
 import { Avatar } from "../../../components/avatar.slint";
 import { Interaction, ListItemArea } from "../../../components/a11y.slint";
@@ -269,19 +270,26 @@ export component Sidebar inherits Rectangle {
                 Rectangle {
                     height: Metrics.header-row;
 
-                    property <length> index-button-room: root.in-space ? Size.lg + Space.sm : 0;
+                    property <length> index-button-inset: Space.md;
 
-                    if !root.collapsed: SidebarSearch {
+                    if !root.collapsed && !root.in-space: SidebarSearch {
                         x: Space.md;
                         y: (parent.height - self.height) / 2;
-                        width: parent.width - Space.xl - parent.index-button-room;
+                        width: parent.width - 2 * Space.md;
                         above-modal: root.above-modal;
+                    }
+
+                    if !root.collapsed && root.in-space: HeaderTitle {
+                        x: Space.lg;
+                        width: parent.width - self.x - Size.lg - 2 * parent.index-button-inset;
+                        title: DirectoryView.listed-space-name;
+                        members: DirectoryView.listed-space-members;
                     }
 
                     if root.in-space: IconButton {
                         x: root.collapsed
                             ? (parent.width - self.width) / 2
-                            : parent.width - self.width - Space.md;
+                            : parent.width - self.width - parent.index-button-inset;
                         y: (parent.height - self.height) / 2;
                         size: Size.lg;
                         radius: Radius.sm;

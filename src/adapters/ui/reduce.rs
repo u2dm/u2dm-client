@@ -331,6 +331,7 @@ fn apply_directory<B: UiBackend>(
         scope,
         space_id,
         subspace_id,
+        listed_space,
         direct_flags,
     } = directory;
 
@@ -372,6 +373,16 @@ fn apply_directory<B: UiBackend>(
         w.set_string(
             StringProp::SelectedSubspaceId,
             SharedString::from(subspace_id),
+        );
+    }
+    if last.is_none_or(|l| l.listed_space != *listed_space) {
+        w.set_string(
+            StringProp::ListedSpaceName,
+            SharedString::from(&listed_space.name),
+        );
+        w.set_int(
+            IntProp::ListedSpaceMembers,
+            i32::try_from(listed_space.member_count).unwrap_or(i32::MAX),
         );
     }
     if last.is_none_or(|l| l.direct_flags != *direct_flags) {

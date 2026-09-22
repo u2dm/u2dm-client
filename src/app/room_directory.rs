@@ -14,6 +14,7 @@ use super::selection::{RoomFilter, Selection};
 use super::space_order;
 use super::task_group::TaskGroup;
 use crate::commands::sync::DirectoryUpdate;
+use crate::commands::view::SpaceHeading;
 use crate::domain::room::{Room, RoomId, RoomList, Space, UnreadFlags};
 use crate::domain::sync::{ConnectionStatus, SessionLoss, SyncEvent, SyncOutcome};
 use crate::ports::matrix::{SpaceOrderPort, SyncPort, SyncSink};
@@ -554,6 +555,7 @@ impl RoomDirectory {
         if mem::take(&mut self.rail_dirty) {
             self.emit_spaces();
             self.emit_subspaces(sel);
+            self.emit_listed_space(sel);
             self.emit_direct_flags();
         }
         self.emit_rooms(sel);
@@ -613,6 +615,19 @@ impl RoomDirectory {
         let subspaces: Arc<[Space]> = subspaces.into();
         self.output
             .publish(Box::new(move |view| view.directory.subspaces = subspaces));
+    }
+
+    pub(super) fn emit_listed_space(&self, sel: &Selection) {
+        let heading = sel
+            .listed_space()
+            .and_then(|id| self.space(id))
+            .map(|space| SpaceHeading {
+                name: space.name.clone(),
+                member_count: space.member_count,
+            })
+            .unwrap_or_default();
+        self.output
+            .publish(Box::new(move |view| view.directory.listed_space = heading));
     }
 
     fn emit_direct_flags(&self) {

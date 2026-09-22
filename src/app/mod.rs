@@ -544,6 +544,7 @@ impl AppService {
             view.directory.space_id = space_id;
             view.directory.subspace_id = subspace_id;
         }));
+        self.room_directory.emit_listed_space(&self.selection);
     }
 
     fn set_connection(&self, status: ConnectionStatus) {

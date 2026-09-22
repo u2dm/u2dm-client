@@ -4,7 +4,7 @@ import { IconDisplay, IconSet } from "@lucide";
 import { TimelineContent } from "./timeline-content.slint";
 import { MessageInput } from "./message-input.slint";
 import { ReactionOverlay } from "./reaction-overlay.slint";
-import { AppStyle, Fonts, IconSize, Metrics, Radius, Size, Space, Weight } from "../../../../theme.slint";
+import { AppStyle, Fonts, IconSize, Metrics, Radius, Size, Space } from "../../../../theme.slint";
 import { IconButton } from "../../../../components/button.slint";
 import { TimelineState } from "../../../../enums.slint";
 import { ClickArea } from "../../../../components/a11y.slint";
@@ -13,6 +13,7 @@ import { Actions } from "../../../../actions.slint";
 import { Composer, DeliveryTip, Reactions, ReplySwipe, Shell } from "../../../../local.slint";
 import { StatusPill } from "./status-pill.slint";
 import { NowPlayingBar } from "./now-playing-bar.slint";
+import { HeaderTitle } from "../header-title.slint";
 
 export component TimelineView inherits Rectangle {
     background: Palette.background;
@@ -80,26 +81,11 @@ export component TimelineView inherits Rectangle {
         height: root.header-height;
         background: Palette.alternate-background;
 
-        VerticalLayout {
+        HeaderTitle {
             x: root.compact ? root.nav-button-width : Space.lg;
             width: parent.width - self.x - Space.lg;
-            alignment: center;
-            spacing: Space.xs;
-
-            Text {
-                text: RoomView.selected-room-name;
-                font-family: Fonts.emoji;
-                font-size: Fonts.title;
-                font-weight: Weight.bold;
-                overflow: elide;
-            }
-
-            if RoomView.selected-room-members > 0: Text {
-                text: @tr("{n} member" | "{n} members" % RoomView.selected-room-members);
-                font-size: Fonts.body-small;
-                color: AppStyle.foreground-muted;
-                overflow: elide;
-            }
+            title: RoomView.selected-room-name;
+            members: RoomView.selected-room-members;
         }
     }
 

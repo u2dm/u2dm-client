@@ -101,6 +101,7 @@ pub struct Space {
     pub id: String,
     pub name: String,
     pub avatar_mxc: Option<String>,
+    pub member_count: u64,
     pub child_room_ids: Vec<String>,
     pub child_space_ids: Vec<String>,
     pub order: Option<String>,

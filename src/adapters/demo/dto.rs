@@ -166,6 +166,8 @@ pub struct SpaceDto {
     name: String,
     avatar: Option<String>,
     #[serde(default)]
+    members: u64,
+    #[serde(default)]
     rooms: Vec<String>,
     #[serde(default)]
     spaces: Vec<String>,
@@ -514,6 +516,7 @@ impl UnjoinedDto {
             id: self.id.clone(),
             name: self.name.clone(),
             avatar_mxc: self.avatar.clone(),
+            member_count: self.members.saturating_add(1),
             child_room_ids: self.rooms.clone(),
             child_space_ids: self.spaces.clone(),
             order: None,
@@ -558,7 +561,7 @@ impl SpaceDto {
             alias: None,
             topic: None,
             avatar_mxc: self.avatar.clone(),
-            member_count: 0,
+            member_count: self.members,
             join_rule: JoinRule::Public,
             kind: ChildKind::Space {
                 children: child_count(&self.rooms, &self.spaces),
@@ -580,6 +583,7 @@ impl SpaceDto {
             id: self.id.clone(),
             name: self.name.clone(),
             avatar_mxc: self.avatar.clone(),
+            member_count: self.members,
             child_room_ids: self.rooms.clone(),
             child_space_ids: self.spaces.clone(),
             order: None,
