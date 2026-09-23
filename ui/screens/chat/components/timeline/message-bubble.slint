@@ -109,6 +109,10 @@ export component MessageBubble inherits VerticalLayout {
     property <bool> has-tail: !root.continued-by-next
         && !root.is-sticker
         && !root.is-photo-only;
+    property <length> tail-side-top-radius: root.continues-previous ? Radius.xs : Radius.md;
+    property <length> tail-side-bottom-radius: root.has-tail
+        ? 0
+        : (root.continued-by-next ? Radius.xs : Radius.md);
 
     if msg.first-unread: UnreadDivider { }
 
@@ -239,9 +243,10 @@ export component MessageBubble inherits VerticalLayout {
 
                         surface := Rectangle {
                             background: root.is-sticker ? transparent : root.bubble-color;
-                            border-radius: Radius.md;
-                            border-bottom-left-radius: root.has-tail && !root.is-own ? 0 : Radius.md;
-                            border-bottom-right-radius: root.has-tail && root.is-own ? 0 : Radius.md;
+                            border-top-left-radius: root.is-own ? Radius.md : root.tail-side-top-radius;
+                            border-top-right-radius: root.is-own ? root.tail-side-top-radius : Radius.md;
+                            border-bottom-left-radius: root.is-own ? Radius.md : root.tail-side-bottom-radius;
+                            border-bottom-right-radius: root.is-own ? root.tail-side-bottom-radius : Radius.md;
                             border-width: root.outlined ? Stroke.emphasis : 0;
                             border-color: root.outline-color;
                             clip: true;
