@@ -611,7 +611,7 @@ impl MessageDto {
                 event_id: reply.event_id.clone(),
                 sender: reply.sender.clone(),
                 kind: reply.kind.to_kind(),
-                body: reply.body.clone(),
+                body: RichText::plain(reply.body.clone()),
             }),
             edited: self.edited,
             is_first_unread: false,

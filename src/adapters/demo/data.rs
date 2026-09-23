@@ -402,21 +402,18 @@ pub fn sticker_asset_in(event_id: &str) -> Option<&str> {
         .map(|(_, asset)| asset)
 }
 
-pub fn body_preview(body: &MessageBody) -> String {
+pub fn body_preview(body: &MessageBody) -> RichText {
     match body {
         MessageBody::Text(text) | MessageBody::Notice(text) | MessageBody::Emote(text) => {
-            text.plain.clone()
+            text.clone()
         }
         MessageBody::Image { caption, .. }
         | MessageBody::Video { caption, .. }
-        | MessageBody::Audio { caption, .. } => caption
-            .as_ref()
-            .map(|text| text.plain.clone())
-            .unwrap_or_default(),
-        MessageBody::Sticker { alt, .. } => alt.clone(),
-        MessageBody::File { meta } => meta.filename.clone(),
-        MessageBody::Service(_) | MessageBody::UnableToDecrypt => String::new(),
-        MessageBody::Unsupported { fallback, .. } => fallback.clone(),
+        | MessageBody::Audio { caption, .. } => caption.clone().unwrap_or_default(),
+        MessageBody::Sticker { alt, .. } => RichText::plain(alt.clone()),
+        MessageBody::File { meta } => RichText::plain(meta.filename.clone()),
+        MessageBody::Service(_) | MessageBody::UnableToDecrypt => RichText::default(),
+        MessageBody::Unsupported { fallback, .. } => RichText::plain(fallback.clone()),
     }
 }
 

@@ -294,15 +294,25 @@ pub(super) fn event_media(item: &TimelineItem) -> Option<EventMedia> {
     }
 }
 
-fn reply_preview_from_content(content: &TimelineItemContent) -> (MessagePreviewKind, String) {
+fn formatted_body(msgtype: &MessageType) -> Option<&FormattedBody> {
+    match msgtype {
+        MessageType::Text(text) => text.formatted.as_ref(),
+        MessageType::Notice(notice) => notice.formatted.as_ref(),
+        MessageType::Emote(emote) => emote.formatted.as_ref(),
+        _ => None,
+    }
+}
+
+fn reply_preview_from_content(content: &TimelineItemContent) -> (MessagePreviewKind, RichText) {
     match classify(content) {
         Some(Renderable::Message(message)) => {
             let preview = preview::from_msgtype(message.msgtype());
-            (preview.kind, preview.body)
+            let body = rich_body(&preview.body, formatted_body(message.msgtype()));
+            (preview.kind, body)
         }
-        Some(Renderable::Sticker(_)) => (MessagePreviewKind::Sticker, String::new()),
-        Some(Renderable::Utd) => (MessagePreviewKind::Encrypted, String::new()),
-        Some(Renderable::Service(_)) | None => (MessagePreviewKind::None, String::new()),
+        Some(Renderable::Sticker(_)) => (MessagePreviewKind::Sticker, RichText::default()),
+        Some(Renderable::Utd) => (MessagePreviewKind::Encrypted, RichText::default()),
+        Some(Renderable::Service(_)) | None => (MessagePreviewKind::None, RichText::default()),
     }
 }
 

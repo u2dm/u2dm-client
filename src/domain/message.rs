@@ -153,7 +153,7 @@ pub struct ReplyInfo {
     pub event_id: String,
     pub sender: String,
     pub kind: MessagePreviewKind,
-    pub body: String,
+    pub body: RichText,
 }
 
 pub const REACTOR_AVATAR_LIMIT: usize = 3;

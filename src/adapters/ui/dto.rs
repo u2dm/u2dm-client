@@ -21,7 +21,8 @@ use crate::domain::media::{
     AudioKind, AudioMeta, ContentKey, FileMeta, MediaFailure, ThumbnailOutcome,
 };
 use crate::domain::message::{
-    MessageBody, MessagePreviewKind, Reaction, ReactionSend, Reactor, SendState, TimelineMessage,
+    MessageBody, MessagePreviewKind, Reaction, ReactionSend, Reactor, RichText, SendState,
+    TimelineMessage,
 };
 use crate::domain::room::{Room, Space};
 use crate::domain::space_index::{ChildKind, SpaceChild};
@@ -536,6 +537,14 @@ fn apply_media(
     Some(path)
 }
 
+fn single_line(text: &RichText) -> SharedString {
+    let plain = match text.html.as_deref() {
+        Some(html) => richtext::styled_body(html, &text.plain).plain,
+        None => SharedString::from(&text.plain),
+    };
+    SharedString::from(plain.split_whitespace().collect::<Vec<_>>().join(" "))
+}
+
 pub fn message_to_dto(m: &TimelineMessage, media: &dyn MediaCache) -> MessageDto {
     let item = TimelineItemKey::current(&m.unique_id);
     let sender_label = message_sender_label(m);
@@ -587,7 +596,11 @@ pub fn message_to_dto(m: &TimelineMessage, media: &dyn MediaCache) -> MessageDto
             .reply
             .as_ref()
             .map_or(MessagePreviewKind::None, |r| r.kind),
-        reply_body: SharedString::from(m.reply.as_ref().map_or("", |r| r.body.as_str())),
+        reply_body: m
+            .reply
+            .as_ref()
+            .map(|r| single_line(&r.body))
+            .unwrap_or_default(),
         service_kind: m.body.service().map_or(ServiceKind::None, service_kind),
         service_target: SharedString::from(m.body.service().map_or("", service_target)),
         image_width: 0,
