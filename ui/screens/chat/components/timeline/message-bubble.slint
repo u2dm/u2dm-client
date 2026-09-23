@@ -52,6 +52,34 @@ component BubbleReactions inherits ReactionRow {
     }
 }
 
+component BubbleReply inherits ClickArea {
+    in property <MessageEntry> msg;
+
+    height: Metrics.reply-bar;
+    enabled: root.msg.reply-event-id != "";
+    label: @tr("Go to the message this replies to");
+    ring-radius: Radius.md;
+    clicked => {
+        Actions.jump-to-event(root.msg.reply-event-id);
+    }
+
+    Rectangle {
+        border-radius: root.border-radius;
+        background: root.pressed
+            ? AppStyle.overlay-pressed
+            : (root.has-hover ? AppStyle.overlay-hover : AppStyle.overlay-subtle);
+    }
+
+    ReplyQuote {
+        padding-left: Space.lg;
+        padding-right: Space.lg;
+        padding-top: Space.md;
+        padding-bottom: Space.md;
+        sender: root.msg.reply-sender;
+        preview: MessagePreview.label(root.msg.reply-kind, root.msg.reply-body);
+    }
+}
+
 export component MessageBubble inherits VerticalLayout {
     in property <bool> is-own;
     in property <MessageEntry> msg;
@@ -101,7 +129,6 @@ export component MessageBubble inherits VerticalLayout {
     property <bool> send-failed: msg.send-state == SendState.failed;
     property <bool> chips-outside: root.is-photo-only && root.has-reactions;
     property <length> outside-chips-gap: Space.sm;
-    property <length> photo-row-padding: root.has-photo ? Space.lg : 0px;
     property <bool> outlined: root.is-focused || root.send-failed;
     property <color> outline-color: root.send-failed
         ? AppStyle.danger-border
@@ -269,43 +296,18 @@ export component MessageBubble inherits VerticalLayout {
                                 }
 
                                 bubble-content := VerticalLayout {
-                                    padding-top: root.has-photo ? 0 : Space.sm;
                                     padding-bottom: root.is-photo-only ? 0 : Space.sm;
-                                    padding-left: root.has-photo ? 0 : Space.lg;
-                                    padding-right: root.has-photo ? 0 : Space.lg;
 
-                                    if msg.has-reply: VerticalLayout {
-                                        padding-top: root.has-photo ? Space.sm : 0;
-                                        padding-bottom: root.has-photo ? Space.sm : 0;
-                                        padding-left: root.photo-row-padding;
-                                        padding-right: root.photo-row-padding;
-
-                                        reply-jump := ClickArea {
-                                            height: reply-quote.preferred-height;
-                                            border-radius: Radius.xs;
-                                            ring-radius: Radius.xs;
-                                            enabled: msg.reply-event-id != "";
-                                            label: @tr("Go to the message this replies to");
-                                            property <color> quote-tint: is-own
-                                                ? Palette.accent-background
-                                                : Palette.foreground;
-                                            property <float> quote-veil: is-own
-                                                ? (reply-jump.has-hover ? 0.55 : 0.7)
-                                                : (reply-jump.has-hover ? 0.86 : 0.92);
-                                            background: self.quote-tint.transparentize(self.quote-veil);
-                                            clicked => {
-                                                Actions.jump-to-event(msg.reply-event-id);
-                                            }
-
-                                            reply-quote := ReplyQuote {
-                                                padding: Space.sm;
-                                                sender: msg.reply-sender;
-                                                preview: MessagePreview.label(msg.reply-kind, msg.reply-body);
-                                            }
-                                        }
+                                    if msg.has-reply: BubbleReply {
+                                        msg: root.msg;
+                                        background: root.is-sticker ? root.bubble-color : transparent;
+                                        border-radius: root.is-sticker ? Radius.md : 0;
                                     }
 
                                     MessageBody {
+                                        padding-top: root.has-photo ? 0 : Space.sm;
+                                        padding-left: root.has-photo ? 0 : Space.lg;
+                                        padding-right: root.has-photo ? 0 : Space.lg;
                                         msg: root.msg;
                                         timeline-row: root.timeline-row;
                                         frame-limit: root.bubble-max-width;
@@ -314,8 +316,8 @@ export component MessageBubble inherits VerticalLayout {
 
                                     if !root.is-photo-only: HorizontalLayout {
                                         spacing: Space.md;
-                                        padding-left: root.photo-row-padding;
-                                        padding-right: root.photo-row-padding;
+                                        padding-left: Space.lg;
+                                        padding-right: Space.lg;
                                         padding-top: root.has-reactions ? Space.sm : 0;
 
                                         if root.has-reactions: BubbleReactions {
