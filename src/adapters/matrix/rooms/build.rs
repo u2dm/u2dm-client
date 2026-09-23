@@ -19,7 +19,7 @@ use matrix_sdk::ruma::{OwnedUserId, UserId};
 use matrix_sdk::{Client, Room};
 
 use crate::adapters::matrix::preview::{self, MessagePreview};
-use crate::domain::message::{MessagePreviewKind, ServiceEvent};
+use crate::domain::message::{MessagePreviewKind, RichText, ServiceEvent};
 use crate::domain::room::{NotifyMode, Room as DomainRoom, RoomId, Space as DomainSpace};
 
 const SEED_INFLIGHT: usize = 16;
@@ -123,7 +123,7 @@ pub(super) async fn build_single_room(room: &Room, settings: &NotificationSettin
 struct LastMessage {
     sender: Option<String>,
     kind: MessagePreviewKind,
-    body: String,
+    body: RichText,
     service: Option<ServiceEvent>,
     is_own: bool,
     edited: bool,

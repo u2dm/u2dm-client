@@ -136,6 +136,7 @@ pub struct LastMessageDto {
     kind: KindDto,
     #[serde(default)]
     pub body: String,
+    html: Option<String>,
     service: Option<ServiceDto>,
     #[serde(default)]
     pub own: bool,
@@ -453,7 +454,7 @@ impl RoomDto {
             last_activity_ts: ago_ms(now_ms, self.minutes_ago, self.days_ago),
             last_message_sender: self.last_message.sender.clone(),
             last_message_kind: self.last_message.kind.to_kind(),
-            last_message_body: self.last_message.body.clone(),
+            last_message_body: self.last_message.rich_body(),
             last_message_service: self.last_message.service.as_ref().map(ServiceDto::to_event),
             last_message_is_own: self.last_message.own,
             last_message_edited: self.last_message.edited,
@@ -504,7 +505,7 @@ impl UnjoinedDto {
             last_activity_ts: now_ms,
             last_message_sender: None,
             last_message_kind: MessagePreviewKind::None,
-            last_message_body: String::new(),
+            last_message_body: RichText::default(),
             last_message_service: None,
             last_message_is_own: false,
             last_message_edited: false,
@@ -677,10 +678,20 @@ impl MessageDto {
     }
 
     fn rich_body(&self) -> RichText {
-        match &self.html {
-            Some(html) => RichText::formatted(self.body.clone(), html.clone()),
-            None => RichText::plain(self.body.clone()),
-        }
+        rich_text(&self.body, self.html.as_deref())
+    }
+}
+
+impl LastMessageDto {
+    fn rich_body(&self) -> RichText {
+        rich_text(&self.body, self.html.as_deref())
+    }
+}
+
+fn rich_text(body: &str, html: Option<&str>) -> RichText {
+    match html {
+        Some(html) => RichText::formatted(body.to_owned(), html.to_owned()),
+        None => RichText::plain(body.to_owned()),
     }
 }
 

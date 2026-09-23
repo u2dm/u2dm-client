@@ -89,7 +89,7 @@ export component RowActions inherits Rectangle {
         } else if action == RowAction.reply {
             Composer.reply-event-id = root.msg.event-id;
             Composer.reply-sender = root.msg.sender;
-            Composer.reply-preview = MessagePreview.label(root.msg.preview-kind, root.msg.body);
+            Composer.reply-preview = MessagePreview.label(root.msg.preview-kind, root.msg.preview-body);
         } else {
             Actions.toggle-reaction(root.msg.event-id, QuickReactions.default-key);
         }

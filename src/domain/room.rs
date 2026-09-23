@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use std::{fmt, ops};
 
-use crate::domain::message::{MessagePreviewKind, ServiceEvent};
+use crate::domain::message::{MessagePreviewKind, RichText, ServiceEvent};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct RoomId(String);
@@ -55,7 +55,7 @@ pub struct Room {
     pub last_activity_ts: u64,
     pub last_message_sender: Option<String>,
     pub last_message_kind: MessagePreviewKind,
-    pub last_message_body: String,
+    pub last_message_body: RichText,
     pub last_message_service: Option<ServiceEvent>,
     pub last_message_is_own: bool,
     pub last_message_edited: bool,

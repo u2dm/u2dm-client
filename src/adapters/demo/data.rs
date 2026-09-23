@@ -457,7 +457,7 @@ fn synthesized_message(dto: &RoomDto, room: &Room) -> TimelineMessage {
         sender_avatar_url: Some(sender.clone()),
         sender,
         sender_display_name: Some(display_name),
-        body: MessageBody::Text(RichText::plain(room.last_message_body.clone())),
+        body: MessageBody::Text(room.last_message_body.clone()),
         timestamp: room.last_activity_ts,
         is_own: dto.last_message.own,
         reply: None,

@@ -246,6 +246,6 @@ export global ReplySwipe {
         }
         Composer.reply-event-id = root.event-id;
         Composer.reply-sender = root.target.sender;
-        Composer.reply-preview = MessagePreview.label(root.target.preview-kind, root.target.body);
+        Composer.reply-preview = MessagePreview.label(root.target.preview-kind, root.target.preview-body);
     }
 }

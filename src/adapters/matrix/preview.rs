@@ -1,10 +1,10 @@
-use matrix_sdk::ruma::events::room::message::MessageType;
+use matrix_sdk::ruma::events::room::message::{MessageFormat, MessageType};
 
-use crate::domain::message::{MessagePreviewKind, ServiceEvent};
+use crate::domain::message::{MessagePreviewKind, RichText, ServiceEvent};
 
 pub(super) struct MessagePreview {
     pub kind: MessagePreviewKind,
-    pub body: String,
+    pub body: RichText,
     pub service: Option<ServiceEvent>,
     pub edited: bool,
 }
@@ -13,7 +13,7 @@ impl MessagePreview {
     pub(super) fn labelled(kind: MessagePreviewKind) -> Self {
         Self {
             kind,
-            body: String::new(),
+            body: RichText::default(),
             service: None,
             edited: false,
         }
@@ -22,11 +22,21 @@ impl MessagePreview {
     pub(super) fn service(event: ServiceEvent) -> Self {
         Self {
             kind: MessagePreviewKind::Text,
-            body: String::new(),
+            body: RichText::default(),
             service: Some(event),
             edited: false,
         }
     }
+}
+
+fn formatted_html(msgtype: &MessageType) -> Option<String> {
+    let formatted = match msgtype {
+        MessageType::Text(content) => content.formatted.as_ref(),
+        MessageType::Notice(content) => content.formatted.as_ref(),
+        MessageType::Emote(content) => content.formatted.as_ref(),
+        _ => None,
+    }?;
+    (formatted.format == MessageFormat::Html).then(|| formatted.body.clone())
 }
 
 pub(super) fn from_msgtype(msgtype: &MessageType) -> MessagePreview {
@@ -49,7 +59,10 @@ pub(super) fn from_msgtype(msgtype: &MessageType) -> MessagePreview {
     };
     MessagePreview {
         kind,
-        body: body.split_whitespace().collect::<Vec<_>>().join(" "),
+        body: RichText {
+            plain: body.split_whitespace().collect::<Vec<_>>().join(" "),
+            html: formatted_html(msgtype),
+        },
         service: None,
         edited: false,
     }

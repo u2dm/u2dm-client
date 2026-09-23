@@ -259,7 +259,7 @@ fn room(source: &Room) -> RoomDto {
         hint: source.hint(),
         last_activity_ts: source.last_activity_ts,
         last_message_sender: source.last_message_sender.clone(),
-        last_message_body: source.last_message_body.clone(),
+        last_message_body: source.last_message_body.plain.clone(),
         last_message_is_own: source.last_message_is_own,
         last_message_edited: source.last_message_edited,
     }

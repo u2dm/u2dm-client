@@ -238,6 +238,7 @@ pub struct MessageDto {
     pub sent_at: SharedString,
     pub message_type: MessageKind,
     pub preview_kind: MessagePreviewKind,
+    pub preview_body: SharedString,
     pub unsupported_kind: SharedString,
     pub event_id: SharedString,
     pub sender_initial: SharedString,
@@ -537,12 +538,15 @@ fn apply_media(
     Some(path)
 }
 
-fn single_line(text: &RichText) -> SharedString {
-    let plain = match text.html.as_deref() {
-        Some(html) => richtext::styled_body(html, &text.plain).plain,
-        None => SharedString::from(&text.plain),
-    };
-    SharedString::from(plain.split_whitespace().collect::<Vec<_>>().join(" "))
+fn one_line(text: &str) -> SharedString {
+    SharedString::from(text.split_whitespace().collect::<Vec<_>>().join(" "))
+}
+
+fn preview_line(text: &RichText) -> SharedString {
+    match text.html.as_deref() {
+        Some(html) => one_line(&richtext::styled_body(html, &text.plain).plain),
+        None => one_line(&text.plain),
+    }
 }
 
 pub fn message_to_dto(m: &TimelineMessage, media: &dyn MediaCache) -> MessageDto {
@@ -555,6 +559,7 @@ pub fn message_to_dto(m: &TimelineMessage, media: &dyn MediaCache) -> MessageDto
         Some(html) => richtext::styled_body(html, plain),
         None => richtext::plain_body(plain),
     };
+    let preview_body = one_line(&rich.plain);
     let mut dto = MessageDto {
         unique_id: SharedString::from(&m.unique_id),
         local_id: m.local_id.as_deref().map(SharedString::from).unwrap_or_default(),
@@ -575,6 +580,7 @@ pub fn message_to_dto(m: &TimelineMessage, media: &dyn MediaCache) -> MessageDto
         },
         message_type: message_kind(&m.body),
         preview_kind: m.body.preview_kind(),
+        preview_body,
         unsupported_kind: SharedString::from(unsupported_kind(&m.body)),
         event_id: SharedString::from(m.event_id.as_deref().unwrap_or_default()),
         sender_initial: SharedString::from(avatar_initials(sender_label)),
@@ -599,7 +605,7 @@ pub fn message_to_dto(m: &TimelineMessage, media: &dyn MediaCache) -> MessageDto
         reply_body: m
             .reply
             .as_ref()
-            .map(|r| single_line(&r.body))
+            .map(|r| preview_line(&r.body))
             .unwrap_or_default(),
         service_kind: m.body.service().map_or(ServiceKind::None, service_kind),
         service_target: SharedString::from(m.body.service().map_or("", service_target)),
@@ -699,7 +705,7 @@ pub fn room_to_dto(r: &Room, media: &dyn MediaCache) -> RoomDto {
             r.last_message_sender.as_deref().unwrap_or_default(),
         ),
         last_message_kind: r.last_message_kind,
-        last_message_body: SharedString::from(&r.last_message_body),
+        last_message_body: preview_line(&r.last_message_body),
         last_message_service_kind: r
             .last_message_service
             .as_ref()

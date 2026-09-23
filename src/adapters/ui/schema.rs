@@ -539,6 +539,7 @@ macro_rules! message_fields {
         sent_at set_sent_at "sent-at" text;
         message_type set_message_type "message-type" enumk(MessageKind);
         preview_kind set_preview_kind "preview-kind" enumk(MessagePreviewKind);
+        preview_body set_preview_body "preview-body" text;
         unsupported_kind set_unsupported_kind "unsupported-kind" text;
         event_id set_event_id "event-id" text;
         sender_initial set_sender_initial "sender-initial" text;

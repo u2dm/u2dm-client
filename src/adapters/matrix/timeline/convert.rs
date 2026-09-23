@@ -294,21 +294,11 @@ pub(super) fn event_media(item: &TimelineItem) -> Option<EventMedia> {
     }
 }
 
-fn formatted_body(msgtype: &MessageType) -> Option<&FormattedBody> {
-    match msgtype {
-        MessageType::Text(text) => text.formatted.as_ref(),
-        MessageType::Notice(notice) => notice.formatted.as_ref(),
-        MessageType::Emote(emote) => emote.formatted.as_ref(),
-        _ => None,
-    }
-}
-
 fn reply_preview_from_content(content: &TimelineItemContent) -> (MessagePreviewKind, RichText) {
     match classify(content) {
         Some(Renderable::Message(message)) => {
             let preview = preview::from_msgtype(message.msgtype());
-            let body = rich_body(&preview.body, formatted_body(message.msgtype()));
-            (preview.kind, body)
+            (preview.kind, preview.body)
         }
         Some(Renderable::Sticker(_)) => (MessagePreviewKind::Sticker, RichText::default()),
         Some(Renderable::Utd) => (MessagePreviewKind::Encrypted, RichText::default()),
