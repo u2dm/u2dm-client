@@ -382,7 +382,8 @@ export component MessageBubble inherits VerticalLayout {
 
         if !is-own: Avatar {
             property <length> resting: message-row.bubble-top + bubble.height - root.avatar-size;
-            property <length> lifted: root.composer-top
+            property <length> floor: root.composer-top - Space.sm - row.padding-bottom;
+            property <length> lifted: self.floor
                 - message-row.row-top
                 - root.avatar-size;
 
