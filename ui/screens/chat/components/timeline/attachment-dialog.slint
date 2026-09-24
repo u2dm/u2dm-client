@@ -7,65 +7,10 @@ import { Actions } from "../../../../actions.slint";
 import { Composer } from "../../../../local.slint";
 import { AppStyle, Fonts, IconSize, Metrics, Opacity, Radius, Size, Space, Stroke, Weight } from "../../../../theme.slint";
 import { ErrorBanner } from "../../../../components/banner.slint";
-import { AppButton, IconButton } from "../../../../components/button.slint";
 import { ClickArea } from "../../../../components/a11y.slint";
-import { DialogCard, ModalHost } from "../../../../components/overlay.slint";
-
-component CaptionField inherits Rectangle {
-    in property <string> placeholder;
-    in-out property <string> text: "";
-
-    callback accepted();
-
-    height: Size.md;
-    border-radius: Radius.sm;
-    background: AppStyle.overlay-hover;
-    border-width: Stroke.hairline;
-    border-color: input.has-focus ? AppStyle.accent-surface : AppStyle.overlay-hover;
-
-    forward-focus: input;
-
-    public function take-focus() {
-        input.focus();
-    }
-
-    HorizontalLayout {
-        padding-left: Space.md;
-        padding-right: Space.md;
-
-        Rectangle {
-            horizontal-stretch: 1;
-
-            input := TextInput {
-                x: 0;
-                y: 0;
-                width: parent.width;
-                height: parent.height;
-                text <=> root.text;
-                color: Palette.foreground;
-                font-size: Fonts.label;
-                vertical-alignment: center;
-                single-line: true;
-                accessible-label: root.placeholder;
-                accessible-placeholder-text: root.placeholder;
-                accepted => {
-                    root.accepted();
-                }
-            }
-
-            if root.text == "": Text {
-                x: 0;
-                y: 0;
-                width: parent.width;
-                height: parent.height;
-                text: root.placeholder;
-                color: AppStyle.foreground-muted;
-                font-size: Fonts.label;
-                vertical-alignment: center;
-            }
-        }
-    }
-}
+import { DialogCard, ModalHost, PickerCard } from "../../../../components/overlay.slint";
+import { ComposerField } from "./composer-field.slint";
+import { EmojiPicker } from "./emoji-picker.slint";
 
 component CheckRow inherits Rectangle {
     in property <string> label;
@@ -115,9 +60,12 @@ component FileChip inherits Rectangle {
     in property <Icon> icon: IconSet.File;
     in property <string> detail;
 
-    height: Metrics.attachment-chip;
+    height: layout.preferred-height;
+    border-radius: Radius.lg;
+    background: AppStyle.overlay-subtle;
 
-    HorizontalLayout {
+    layout := HorizontalLayout {
+        padding: Space.lg;
         spacing: Space.lg;
 
         Rectangle {
@@ -157,27 +105,76 @@ component FileChip inherits Rectangle {
     }
 }
 
+component MediaPreview inherits Rectangle {
+    in property <float> aspect;
+
+    property <length> media-width: min(root.width, root.height * root.aspect);
+
+    border-radius: Radius.lg;
+    background: AppStyle.overlay-subtle;
+    clip: true;
+
+    Image {
+        x: (parent.width - self.width) / 2;
+        y: 0;
+        width: root.media-width;
+        height: parent.height;
+        source: AttachmentView.preview;
+        image-fit: contain;
+        accessible-label: AttachmentView.filename;
+    }
+
+    if AttachmentView.duration != "": Rectangle {
+        x: (parent.width - root.media-width) / 2 + Space.md;
+        y: parent.height - self.height - Space.md;
+        width: duration-text.preferred-width + Space.xl;
+        height: duration-text.preferred-height + Space.md;
+        border-radius: self.height / 2;
+        background: AppStyle.overlay-media-scrim;
+
+        duration-text := Text {
+            x: (parent.width - self.width) / 2;
+            y: (parent.height - self.height) / 2;
+            text: AttachmentView.duration;
+            font-size: Fonts.body-small;
+            color: Palette.foreground;
+            vertical-alignment: center;
+        }
+    }
+}
+
 export component AttachmentDialog inherits ModalHost {
     dim-opacity: AppStyle.dark ? Opacity.scrim-strong : Opacity.scrim;
     label: @tr("Send an attachment");
     dismissed => {
-        root.cancel();
+        if (root.picker-open) {
+            root.close-picker();
+        } else {
+            root.cancel();
+        }
     }
     opened => {
-        caption-field.take-focus();
+        field.focus-input();
     }
 
     property <length> card-width: min(AppStyle.card-width-wide, root.width - AppStyle.card-inset);
-    property <length> card-height: card-body.preferred-height;
+    property <length> card-height: clamp(
+        root.height - AppStyle.card-inset,
+        card-body.min-height,
+        card-body.preferred-height,
+    );
+    property <length> card-padding: Space.xl;
 
     property <bool> as-document: false;
     property <string> caption: "";
     property <bool> holds-reply: false;
     property <string> held-reply: "";
+    property <bool> picker-open: false;
 
     property <bool> shows-preview: (AttachmentView.kind == AttachmentKind.image
         || AttachmentView.kind == AttachmentKind.video)
-        && AttachmentView.has-preview;
+        && AttachmentView.has-preview
+        && !root.as-document;
     property <bool> is-audio: AttachmentView.kind == AttachmentKind.audio && !root.as-document;
     property <string> file-detail: AttachmentView.extension == ""
         ? AttachmentView.size
@@ -185,22 +182,41 @@ export component AttachmentDialog inherits ModalHost {
     property <string> audio-detail: AttachmentView.duration == ""
         ? root.file-detail
         : @tr("{} · {}", AttachmentView.duration, AttachmentView.size);
-    property <float> aspect: AttachmentView.height > 0
+    property <float> aspect: AttachmentView.width > 0 && AttachmentView.height > 0
         ? AttachmentView.width / AttachmentView.height
         : 1.5;
     property <length> preview-width: min(
-        root.card-width - 2 * Space.xxl,
+        root.card-width - 2 * root.card-padding,
         max(Metrics.attachment-preview-min, Metrics.attachment-preview-max * root.aspect),
     );
     property <length> preview-height: min(
         Metrics.attachment-preview-max,
         max(Metrics.attachment-preview-min, root.preview-width / max(root.aspect, 0.01)),
     );
+    property <length> picker-headroom: field.absolute-position.y - 2 * Space.md;
+
+    pure function heading() -> string {
+        if root.as-document || AttachmentView.kind == AttachmentKind.file {
+            return @tr("Send as a file");
+        }
+        if AttachmentView.kind == AttachmentKind.video {
+            return @tr("Send a video");
+        }
+        if AttachmentView.kind == AttachmentKind.audio {
+            return @tr("Send an audio file");
+        }
+        return @tr("Send an image");
+    }
 
     function cancel() {
         if (!AttachmentView.sending) {
             Actions.cancel-attachment();
         }
+    }
+
+    function close-picker() {
+        root.picker-open = false;
+        field.focus-input();
     }
 
     function hold-reply() {
@@ -238,80 +254,24 @@ export component AttachmentDialog inherits ModalHost {
             height: root.card-height;
 
             card-body := VerticalLayout {
-                padding: Space.xxl;
-                spacing: Space.xl;
+                padding: root.card-padding;
+                spacing: Space.lg;
 
-                HorizontalLayout {
-                    spacing: Space.lg;
-
-                    VerticalLayout {
-                        alignment: center;
-                        horizontal-stretch: 1;
-
-                        Text {
-                            text: root.as-document || AttachmentView.kind == AttachmentKind.file
-                                ? @tr("Send as a file")
-                                : (AttachmentView.kind == AttachmentKind.video
-                                    ? @tr("Send a video")
-                                    : (AttachmentView.kind == AttachmentKind.audio
-                                        ? @tr("Send an audio file")
-                                        : @tr("Send an image")));
-                            font-size: Fonts.heading;
-                            font-weight: Weight.bold;
-                            overflow: elide;
-                        }
-                    }
-
-                    IconButton {
-                        cross-axis-self-alignment: center;
-                        icon: IconSet.X;
-                        above-modal: true;
-                        label: @tr("Discard the attachment");
-                        size: Size.md;
-                        enabled: !AttachmentView.sending;
-                        clicked => {
-                            root.cancel();
-                        }
-                    }
+                Text {
+                    text: root.heading();
+                    font-size: Fonts.heading;
+                    font-weight: Weight.bold;
+                    overflow: elide;
                 }
 
-                Rectangle {
-                    height: Stroke.hairline;
-                    background: AppStyle.overlay-pressed;
+                if root.shows-preview: MediaPreview {
+                    min-height: Metrics.attachment-preview-min;
+                    preferred-height: root.preview-height;
+                    max-height: root.preview-height;
+                    aspect: root.aspect;
                 }
 
-                if root.shows-preview && !root.as-document: Rectangle {
-                    height: root.preview-height;
-
-                    Image {
-                        x: (parent.width - self.width) / 2;
-                        width: root.preview-width;
-                        height: root.preview-height;
-                        source: AttachmentView.preview;
-                        image-fit: contain;
-                        accessible-label: AttachmentView.filename;
-                    }
-
-                    if AttachmentView.duration != "": Rectangle {
-                        x: (parent.width - root.preview-width) / 2 + Space.md;
-                        y: parent.height - self.height - Space.md;
-                        width: duration-text.preferred-width + Space.xl;
-                        height: duration-text.preferred-height + Space.md;
-                        border-radius: self.height / 2;
-                        background: AppStyle.overlay-media-scrim;
-
-                        duration-text := Text {
-                            x: (parent.width - self.width) / 2;
-                            y: (parent.height - self.height) / 2;
-                            text: AttachmentView.duration;
-                            font-size: Fonts.body-small;
-                            color: Palette.foreground;
-                            vertical-alignment: center;
-                        }
-                    }
-                }
-
-                if !root.shows-preview || root.as-document: FileChip {
+                if !root.shows-preview: FileChip {
                     icon: root.is-audio ? IconSet.Music : IconSet.File;
                     detail: root.is-audio ? root.audio-detail : root.file-detail;
                 }
@@ -321,44 +281,62 @@ export component AttachmentDialog inherits ModalHost {
                     checked <=> root.as-document;
                 }
 
-                caption-field := CaptionField {
-                    placeholder: @tr("Caption");
+                if AttachmentView.error != UserMessageKind.none: ErrorBanner {
+                    messages: [{ kind: AttachmentView.error, detail: AttachmentView.error-detail }];
+                }
+
+                field := ComposerField {
+                    background: AppStyle.page;
+                    above-modal: true;
                     text <=> root.caption;
-                    accepted => {
+                    placeholder: @tr("Add a caption...");
+                    input-label: @tr("Caption");
+                    lead-icon: IconSet.X;
+                    lead-label: @tr("Discard the attachment");
+                    lead-destructive: true;
+                    emoji-label: @tr("Emoji");
+                    emoji-active: root.picker-open;
+                    text-optional: true;
+                    busy: AttachmentView.sending;
+                    lead-clicked => {
+                        root.cancel();
+                    }
+                    emoji-clicked => {
+                        root.picker-open = true;
+                    }
+                    submitted => {
                         root.submit();
                     }
                 }
+            }
+        }
+    }
 
-                HorizontalLayout {
-                    spacing: Space.lg;
+    if root.picker-open: ModalHost {
+        dim: false;
+        label: @tr("Emoji picker");
+        dismissed => {
+            root.close-picker();
+        }
 
-                    AppButton {
-                        horizontal-stretch: 1;
-                        above-modal: true;
-                        text: @tr("Cancel");
-                        icon: IconSet.X;
-                        filled: false;
-                        enabled: !AttachmentView.sending;
-                        clicked => {
-                            root.cancel();
-                        }
+        PickerCard {
+            width: min(root.width - Space.xl, Metrics.picker-width);
+            height: max(
+                Metrics.picker-min-height,
+                min(Metrics.picker-height, root.picker-headroom),
+            );
+            x: max(Space.md, field.absolute-position.x + field.width - self.width);
+            y: max(Space.md, field.absolute-position.y - self.height - Space.md);
+
+            VerticalLayout {
+                padding: Space.md;
+                padding-bottom: 0;
+
+                EmojiPicker {
+                    above-modal: true;
+                    picked(glyph) => {
+                        field.insert-at-caret(glyph);
                     }
-
-                    AppButton {
-                        horizontal-stretch: 1;
-                        above-modal: true;
-                        text: @tr("Send");
-                        icon: IconSet.SendHorizontal;
-                        enabled: !AttachmentView.sending;
-                        busy: AttachmentView.sending;
-                        clicked => {
-                            root.submit();
-                        }
-                    }
-                }
-
-                if AttachmentView.error != UserMessageKind.none: ErrorBanner {
-                    messages: [{ kind: AttachmentView.error, detail: AttachmentView.error-detail }];
                 }
             }
         }

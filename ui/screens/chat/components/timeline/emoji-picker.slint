@@ -19,6 +19,7 @@ component ToneSwatch inherits Rectangle {
     in property <color> swatch;
     in property <bool> selected;
     in property <string> label;
+    in property <bool> above-modal;
     callback clicked();
 
     width: Size.xs;
@@ -32,6 +33,7 @@ component ToneSwatch inherits Rectangle {
 
     ClickArea {
         label: root.label;
+        above-modal: root.above-modal;
         ring-radius: Radius.md;
         clicked => {
             root.clicked();
@@ -59,6 +61,7 @@ export component EmojiPicker inherits Rectangle {
 
     in-out property <int> category: 0;
     in-out property <string> query: "";
+    in property <bool> above-modal: false;
 
     property <length> min-cell: Size.lg;
     property <length> grid-width: root.width - Space.xl;
@@ -118,6 +121,7 @@ export component EmojiPicker inherits Rectangle {
             PickerSearch {
                 horizontal-stretch: 1;
                 placeholder: @tr("Search emoji");
+                above-modal: root.above-modal;
                 query <=> root.query;
                 edited(text) => {
                     EmojiStore.search(text);
@@ -135,6 +139,7 @@ export component EmojiPicker inherits Rectangle {
                         swatch: swatch;
                         selected: idx == EmojiStore.tone;
                         label: @tr("Skin tone {}", idx + 1);
+                        above-modal: root.above-modal;
                         clicked => {
                             EmojiStore.tone = idx;
                         }
@@ -150,6 +155,7 @@ export component EmojiPicker inherits Rectangle {
                 icon: icon;
                 selected: idx == root.category;
                 label: root.category-labels[idx];
+                above-modal: root.above-modal;
                 clicked => {
                     root.category = idx;
                 }
@@ -172,6 +178,7 @@ export component EmojiPicker inherits Rectangle {
                         height: root.cell;
                         ring-radius: Radius.sm;
                         label: self.entry.name;
+                        above-modal: root.above-modal;
                         clicked => {
                             root.picked(root.tone-glyph(self.entry));
                         }

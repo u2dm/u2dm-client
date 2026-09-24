@@ -9,6 +9,7 @@ import { ClickArea } from "../../../../components/a11y.slint";
 export component PickerSearch inherits Rectangle {
     in property <string> placeholder;
     in-out property <string> query: "";
+    in property <bool> above-modal: false;
     callback edited(string);
 
     height: Size.md;
@@ -75,6 +76,7 @@ export component PickerSearch inherits Rectangle {
                 icon-size: IconSize.xs;
                 icon: IconSet.X;
                 label: @tr("Clear search");
+                above-modal: root.above-modal;
                 clicked => {
                     root.query = "";
                     root.edited("");

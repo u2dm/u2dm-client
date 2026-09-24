@@ -1,0 +1,271 @@
+import { Palette, Spinner } from "std-widgets.slint";
+import { Icon, IconDisplay, IconSet } from "@lucide";
+
+import { EmojiInsert } from "../types.slint";
+import { EmojiStore } from "./emoji-picker.slint";
+import { AppStyle, Fonts, IconSize, Metrics, Motion, Radius, Size, Space, Stroke } from "../../../../theme.slint";
+import { ClickArea, Interaction } from "../../../../components/a11y.slint";
+
+component ComposerButton inherits ClickArea {
+    in property <Icon> icon;
+    in property <bool> active: false;
+    in property <bool> destructive: false;
+    in property <bool> busy: false;
+
+    pure function tint() -> color {
+        if !root.enabled {
+            return AppStyle.foreground-faint;
+        }
+        if root.destructive {
+            return AppStyle.danger;
+        }
+        return root.active ? Palette.accent-background : AppStyle.foreground-muted;
+    }
+
+    width: Size.target;
+    height: Metrics.composer-row;
+    ring-radius: Radius.sm;
+
+    if root.destructive: Rectangle {
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+        width: Size.md;
+        height: Size.md;
+        border-radius: self.height / 2;
+        background: root.has-hover && root.enabled ? AppStyle.danger-background : transparent;
+
+        animate background {
+            duration: Motion.fast;
+            easing: ease-out;
+        }
+    }
+
+    if !root.busy: IconDisplay {
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+        icon: root.icon;
+        size: IconSize.md;
+        stroke: root.tint();
+    }
+
+    if root.busy: Spinner {
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+        width: IconSize.md;
+        height: IconSize.md;
+        indeterminate: true;
+    }
+}
+
+export component ComposerField inherits Rectangle {
+    in-out property <string> text: "";
+    in property <string> placeholder;
+    in property <string> input-label;
+    in property <Icon> lead-icon;
+    in property <string> lead-label;
+    in property <bool> lead-active: false;
+    in property <bool> lead-destructive: false;
+    in property <string> emoji-label;
+    in property <bool> emoji-active: false;
+    in property <bool> text-optional: false;
+    in property <bool> busy: false;
+    in property <bool> above-modal: false;
+    out property <length> row-inset: Space.sm;
+
+    callback lead-clicked();
+    callback emoji-clicked();
+    callback submitted();
+    callback paste-pressed() -> EventResult;
+
+    property <bool> has-text: root.text != "";
+    property <bool> can-send: !root.busy && (root.has-text || root.text-optional);
+    property <int> caret: 0;
+    property <EmojiInsert> pending-insert;
+
+    property <int> max-lines: 6;
+    property <length> text-inset: Space.md;
+    property <length> line-height: line-probe.preferred-height;
+    property <length> text-height: min(
+        max(text-input.preferred-height, root.line-height),
+        root.line-height * root.max-lines,
+    );
+    property <length> row-height: max(
+        Metrics.composer-row,
+        root.text-height + 2 * root.text-inset,
+    );
+
+    height: layout.preferred-height;
+    background: Palette.alternate-background;
+    border-radius: Radius.xl;
+    border-width: Stroke.hairline;
+    border-color: AppStyle.border;
+    clip: true;
+
+    public function focus-input() {
+        text-input.focus();
+    }
+
+    public function clear() {
+        root.text = "";
+        scroll.content-y = 0px;
+    }
+
+    public function insert-at-caret(glyph: string) {
+        root.pending-insert = EmojiStore.insert(root.text, root.caret, glyph);
+        root.text = root.pending-insert.text;
+        root.caret = root.pending-insert.caret;
+        text-input.set-selection-offsets(root.pending-insert.caret, root.pending-insert.caret);
+    }
+
+    function send() {
+        if root.can-send {
+            root.submitted();
+        }
+    }
+
+    pure function is-paste(event: KeyEvent) -> bool {
+        event.modifiers.control && !event.modifiers.shift && event.text == "v"
+    }
+
+    function keep-scroll-in-range() {
+        scroll.content-y = min(
+            0px,
+            max(scroll.height - scroll.content-height, scroll.content-y),
+        );
+    }
+
+    function reveal-caret(caret-y: length) {
+        if caret-y + scroll.content-y < 0px {
+            scroll.content-y = min(
+                0px,
+                max(scroll.height - scroll.content-height, -caret-y),
+            );
+        } else if caret-y + scroll.content-y > scroll.height - root.line-height {
+            scroll.content-y = min(
+                0px,
+                max(
+                    scroll.height - scroll.content-height,
+                    scroll.height - caret-y - root.line-height,
+                ),
+            );
+        }
+    }
+
+    line-probe := Text {
+        visible: false;
+        text: " ";
+        font-family: Fonts.emoji;
+        font-size: Fonts.body;
+    }
+
+    layout := VerticalLayout {
+        @children
+
+        HorizontalLayout {
+            height: root.row-height;
+            padding-left: root.row-inset;
+            padding-right: root.row-inset;
+
+            ComposerButton {
+                cross-axis-self-alignment: end;
+                icon: root.lead-icon;
+                label: root.lead-label;
+                active: root.lead-active;
+                destructive: root.lead-destructive;
+                enabled: !root.busy;
+                above-modal: root.above-modal;
+                clicked => {
+                    root.lead-clicked();
+                }
+            }
+
+            keys := FocusScope {
+                horizontal-stretch: 1;
+                focus-on-click: false;
+                focus-on-tab-navigation: false;
+                capture-key-pressed(event) => {
+                    if (event.text == Key.Return && !event.modifiers.shift) {
+                        root.send();
+                        return accept;
+                    }
+                    if (root.is-paste(event)) {
+                        return root.paste-pressed();
+                    }
+                    return reject;
+                }
+
+                Rectangle {
+                    scroll := Flickable {
+                        x: 0;
+                        y: (parent.height - self.height) / 2;
+                        width: parent.width;
+                        height: root.text-height;
+                        interactive: false;
+                        content-width: self.width;
+                        content-height: max(self.height, text-input.preferred-height);
+
+                        text-input := TextInput {
+                            color: Palette.foreground;
+                            font-family: Fonts.emoji;
+                            font-size: Fonts.body;
+                            vertical-alignment: top;
+                            single-line: false;
+                            wrap: word-wrap;
+                            page-height: scroll.height;
+                            enabled: Interaction.actionable(true, root.above-modal);
+                            read-only: root.busy;
+                            accessible-label: root.input-label;
+                            accessible-placeholder-text: root.placeholder;
+                            text <=> root.text;
+                            edited => {
+                                root.caret = self.cursor-position-byte-offset;
+                                root.keep-scroll-in-range();
+                            }
+                            cursor-position-changed(pos) => {
+                                root.caret = self.cursor-position-byte-offset;
+                                root.reveal-caret(pos.y);
+                            }
+                        }
+                    }
+
+                    if !root.has-text: Text {
+                        x: 0;
+                        y: scroll.y;
+                        width: parent.width;
+                        height: scroll.height;
+                        text: root.placeholder;
+                        color: AppStyle.foreground-muted;
+                        font-size: Fonts.body;
+                        vertical-alignment: center;
+                        horizontal-alignment: left;
+                    }
+                }
+            }
+
+            ComposerButton {
+                cross-axis-self-alignment: end;
+                icon: IconSet.Smile;
+                label: root.emoji-label;
+                active: root.emoji-active;
+                enabled: !root.busy;
+                above-modal: root.above-modal;
+                clicked => {
+                    root.emoji-clicked();
+                }
+            }
+
+            ComposerButton {
+                cross-axis-self-alignment: end;
+                icon: IconSet.SendHorizontal;
+                label: @tr("Send");
+                active: true;
+                busy: root.busy;
+                enabled: root.can-send;
+                above-modal: root.above-modal;
+                clicked => {
+                    root.send();
+                }
+            }
+        }
+    }
+}

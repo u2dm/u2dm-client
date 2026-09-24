@@ -3,12 +3,11 @@ import {
 } from "std-widgets.slint";
 import { IconDisplay, IconSet } from "@lucide";
 
-import { EmojiInsert } from "../types.slint";
-import { EmojiStore } from "./emoji-picker.slint";
 import { PickerPanel } from "./picker-panel.slint";
 import { AttachMenu } from "./attach-menu.slint";
+import { ComposerField } from "./composer-field.slint";
 import { ReplyQuote } from "../reply-quote.slint";
-import { AppStyle, Fonts, IconSize, Metrics, Radius, Size, Space, Stroke, Weight } from "../../../../theme.slint";
+import { AppStyle, Fonts, IconSize, Metrics, Radius, Size, Space, Weight } from "../../../../theme.slint";
 import { ClickArea } from "../../../../components/a11y.slint";
 import { ModalHost } from "../../../../components/overlay.slint";
 import { Actions } from "../../../../actions.slint";
@@ -30,43 +29,24 @@ export component MessageInput inherits Rectangle {
     property <bool> has-unsent: UnsentView.visible
         && UnsentView.room-id == root.room-id
         && UnsentView.submission != root.settled-submission;
-    property <bool> has-text: root.message != "";
-    property <int> caret: 0;
-    property <EmojiInsert> pending-insert;
     property <length> picker-headroom: root.overlay-height - root.height
         - Metrics.header-row - Space.xl;
 
     property <length> surface-inset: Metrics.timeline-inset;
-    property <length> row-inset: Space.sm;
-
-    property <int> max-lines: 6;
-    property <length> text-inset: Space.md;
-    property <length> line-height: line-probe.preferred-height;
-    property <length> text-height: min(
-        max(text-input.preferred-height, root.line-height),
-        root.line-height * root.max-lines,
-    );
-    property <length> row-height: max(
-        Metrics.composer-row,
-        root.text-height + 2 * root.text-inset,
-    );
 
     background: AppStyle.composer-gradient;
-    height: layout.preferred-height + root.surface-inset;
+    height: field.height + root.surface-inset;
 
     function submit() {
-        if root.has-text {
-            Actions.send-message({
-                room-id: root.room-id,
-                body: root.message,
-                reply-to: Composer.reply-event-id,
-                reply-sender: Composer.reply-sender,
-                reply-preview: Composer.reply-preview,
-            });
-            root.message = "";
-            scroll.content-y = 0px;
-            Composer.clear();
-        }
+        Actions.send-message({
+            room-id: root.room-id,
+            body: root.message,
+            reply-to: Composer.reply-event-id,
+            reply-sender: Composer.reply-sender,
+            reply-preview: Composer.reply-preview,
+        });
+        field.clear();
+        Composer.clear();
     }
 
     function restore-unsent() {
@@ -75,8 +55,8 @@ export component MessageInput inherits Rectangle {
             Composer.reply-sender = UnsentView.reply-sender;
             Composer.reply-preview = UnsentView.reply-preview;
         }
-        root.insert-at-caret(UnsentView.body);
-        text-input.focus();
+        field.insert-at-caret(UnsentView.body);
+        field.focus-input();
         root.settle-unsent();
     }
 
@@ -85,48 +65,13 @@ export component MessageInput inherits Rectangle {
         Actions.dismiss-unsent(UnsentView.submission);
     }
 
-    pure function is-paste(event: KeyEvent) -> bool {
-        event.modifiers.control && !event.modifiers.shift && event.text == "v"
-    }
-
-    function keep-scroll-in-range() {
-        scroll.content-y = min(
-            0px,
-            max(scroll.height - scroll.content-height, scroll.content-y),
-        );
-    }
-
-    function reveal-caret(caret-y: length) {
-        if caret-y + scroll.content-y < 0px {
-            scroll.content-y = min(
-                0px,
-                max(scroll.height - scroll.content-height, -caret-y),
-            );
-        } else if caret-y + scroll.content-y > scroll.height - root.line-height {
-            scroll.content-y = min(
-                0px,
-                max(
-                    scroll.height - scroll.content-height,
-                    scroll.height - caret-y - root.line-height,
-                ),
-            );
-        }
-    }
-
     function close-picker() {
         Shell.picker-open = false;
-        text-input.focus();
+        field.focus-input();
     }
 
     public function focus-input() {
-        text-input.focus();
-    }
-
-    line-probe := Text {
-        visible: false;
-        text: " ";
-        font-family: Fonts.emoji;
-        font-size: Fonts.body;
+        field.focus-input();
     }
 
     if Shell.picker-open: ModalHost {
@@ -150,7 +95,7 @@ export component MessageInput inherits Rectangle {
             y: -self.height - Space.md - root.overlay-y;
             tab <=> root.picker-tab;
             emoji-picked(glyph) => {
-                root.insert-at-caret(glyph);
+                field.insert-at-caret(glyph);
             }
             sticker-picked(pack-id, shortcode) => {
                 root.send-sticker(pack-id, shortcode);
@@ -170,7 +115,7 @@ export component MessageInput inherits Rectangle {
         }
 
         AttachMenu {
-            x: root.surface-inset + root.row-inset - root.overlay-x;
+            x: root.surface-inset + field.row-inset - root.overlay-x;
             y: -self.height - Space.md - root.overlay-y;
             photo-picked => {
                 root.pick(false);
@@ -194,7 +139,7 @@ export component MessageInput inherits Rectangle {
 
     function close-attach() {
         Shell.attach-open = false;
-        text-input.focus();
+        field.focus-input();
     }
 
     function pick(document: bool) {
@@ -206,250 +151,123 @@ export component MessageInput inherits Rectangle {
         }
     }
 
-    function insert-at-caret(glyph: string) {
-        root.pending-insert = EmojiStore.insert(root.message, root.caret, glyph);
-        root.message = root.pending-insert.text;
-        root.caret = root.pending-insert.caret;
-        text-input.set-selection-offsets(root.pending-insert.caret, root.pending-insert.caret);
-    }
-
-    surface := Rectangle {
+    field := ComposerField {
         x: root.surface-inset;
         y: 0;
         width: root.width - 2 * root.surface-inset;
-        height: layout.preferred-height;
-        background: Palette.alternate-background;
-        border-radius: Radius.xl;
-        border-width: Stroke.hairline;
-        border-color: AppStyle.border;
-        clip: true;
+        text <=> root.message;
+        placeholder: @tr("Send a message...");
+        input-label: @tr("Message");
+        lead-icon: IconSet.Paperclip;
+        lead-label: @tr("Attach a photo or a file");
+        lead-active: Shell.attach-open;
+        emoji-label: @tr("Emoji and stickers");
+        emoji-active: Shell.picker-open;
+        lead-clicked => {
+            Reactions.close();
+            Shell.picker-open = false;
+            Shell.attach-open = !Shell.attach-open;
+        }
+        emoji-clicked => {
+            Reactions.close();
+            Shell.attach-open = false;
+            Shell.picker-open = !Shell.picker-open;
+        }
+        submitted => {
+            root.submit();
+        }
+        paste-pressed => {
+            return Actions.paste-attachment(root.room-id) ? EventResult.accept : EventResult.reject;
+        }
 
-        layout := VerticalLayout {
-            if root.has-unsent: Rectangle {
-                height: Metrics.reply-bar;
-                background: AppStyle.danger-background;
-
-                HorizontalLayout {
-                    padding-left: Space.lg;
-                    padding-right: Space.md;
-                    padding-top: Space.md;
-                    padding-bottom: Space.md;
-                    spacing: Space.md;
-
-                    ReplyQuote {
-                        horizontal-stretch: 1;
-                        accent: AppStyle.danger;
-                        liveness: AccessibleLiveness.assertive;
-                        sender: @tr("Not sent");
-                        preview: UnsentView.body;
-                    }
-
-                    restore-touch := ClickArea {
-                        width: restore-label.preferred-width + 2 * Space.sm;
-                        ring-radius: Radius.sm;
-                        label: @tr("Put the unsent message back in the composer");
-                        clicked => {
-                            root.restore-unsent();
-                        }
-
-                        restore-label := Text {
-                            text: @tr("Restore");
-                            color: Palette.accent-background;
-                            font-size: Fonts.body-small;
-                            font-weight: Weight.semibold;
-                            horizontal-alignment: center;
-                            vertical-alignment: center;
-                        }
-                    }
-
-                    discard-touch := ClickArea {
-                        width: discard-label.preferred-width + 2 * Space.sm;
-                        ring-radius: Radius.sm;
-                        label: @tr("Discard the unsent message");
-                        clicked => {
-                            root.settle-unsent();
-                        }
-
-                        discard-label := Text {
-                            text: @tr("Discard");
-                            color: AppStyle.danger-muted;
-                            font-size: Fonts.body-small;
-                            font-weight: Weight.semibold;
-                            horizontal-alignment: center;
-                            vertical-alignment: center;
-                        }
-                    }
-                }
-            }
-
-            if root.is-replying: Rectangle {
-                height: Metrics.reply-bar;
-                background: AppStyle.overlay-subtle;
-
-                HorizontalLayout {
-                    padding-left: Space.lg;
-                    padding-right: Space.md;
-                    padding-top: Space.md;
-                    padding-bottom: Space.md;
-                    spacing: Space.md;
-
-                    ReplyQuote {
-                        horizontal-stretch: 1;
-                        sender: @tr("Reply to {}", Composer.reply-sender);
-                        preview: Composer.reply-preview;
-                    }
-
-                    cancel-reply-touch := ClickArea {
-                        width: Size.md;
-                        ring-radius: Radius.sm;
-                        label: @tr("Cancel reply");
-                        clicked => {
-                            Composer.clear();
-                        }
-
-                        IconDisplay {
-                            x: (parent.width - self.width) / 2;
-                            y: (parent.height - self.height) / 2;
-                            icon: IconSet.X;
-                            size: IconSize.sm;
-                            stroke: AppStyle.foreground-muted;
-                        }
-                    }
-                }
-            }
+        if root.has-unsent: Rectangle {
+            height: Metrics.reply-bar;
+            background: AppStyle.danger-background;
 
             HorizontalLayout {
-                height: root.row-height;
-                padding-left: root.row-inset;
-                padding-right: root.row-inset;
+                padding-left: Space.lg;
+                padding-right: Space.md;
+                padding-top: Space.md;
+                padding-bottom: Space.md;
+                spacing: Space.md;
 
-                attach-touch := ClickArea {
-                    cross-axis-self-alignment: end;
-                    width: Size.target;
-                    height: Metrics.composer-row;
-                    ring-radius: Radius.sm;
-                    label: @tr("Attach a photo or a file");
-                    clicked => {
-                        Reactions.close();
-                        Shell.picker-open = false;
-                        Shell.attach-open = !Shell.attach-open;
-                    }
-
-                    IconDisplay {
-                        x: (parent.width - self.width) / 2;
-                        y: (parent.height - self.height) / 2;
-                        icon: IconSet.Paperclip;
-                        size: IconSize.md;
-                        stroke: Shell.attach-open
-                            ? Palette.accent-background
-                            : AppStyle.foreground-muted;
-                    }
-                }
-
-                keys := FocusScope {
+                ReplyQuote {
                     horizontal-stretch: 1;
-                    focus-on-click: false;
-                    focus-on-tab-navigation: false;
-                    capture-key-pressed(event) => {
-                        if (event.text == Key.Return && !event.modifiers.shift) {
-                            root.submit();
-                            return accept;
-                        }
-                        if (root.is-paste(event) && Actions.paste-attachment(root.room-id)) {
-                            return accept;
-                        }
-                        return reject;
+                    accent: AppStyle.danger;
+                    liveness: AccessibleLiveness.assertive;
+                    sender: @tr("Not sent");
+                    preview: UnsentView.body;
+                }
+
+                restore-touch := ClickArea {
+                    width: restore-label.preferred-width + 2 * Space.sm;
+                    ring-radius: Radius.sm;
+                    label: @tr("Put the unsent message back in the composer");
+                    clicked => {
+                        root.restore-unsent();
                     }
 
-                    Rectangle {
-                        scroll := Flickable {
-                            x: 0;
-                            y: (parent.height - self.height) / 2;
-                            width: parent.width;
-                            height: root.text-height;
-                            interactive: false;
-                            content-width: self.width;
-                            content-height: max(self.height, text-input.preferred-height);
-
-                            text-input := TextInput {
-                                color: Palette.foreground;
-                                font-family: Fonts.emoji;
-                                font-size: Fonts.body;
-                                vertical-alignment: top;
-                                single-line: false;
-                                wrap: word-wrap;
-                                page-height: scroll.height;
-                                enabled: Shell.background-reachable;
-                                accessible-label: @tr("Message");
-                                accessible-placeholder-text: @tr("Send a message...");
-                                text <=> root.message;
-                                edited => {
-                                    root.caret = self.cursor-position-byte-offset;
-                                    root.keep-scroll-in-range();
-                                }
-                                cursor-position-changed(pos) => {
-                                    root.caret = self.cursor-position-byte-offset;
-                                    root.reveal-caret(pos.y);
-                                }
-                            }
-                        }
-
-                        if !root.has-text: Text {
-                            x: 0;
-                            y: scroll.y;
-                            width: parent.width;
-                            height: scroll.height;
-                            text: @tr("Send a message...");
-                            color: AppStyle.foreground-muted;
-                            font-size: Fonts.body;
-                            vertical-alignment: center;
-                            horizontal-alignment: left;
-                        }
+                    restore-label := Text {
+                        text: @tr("Restore");
+                        color: Palette.accent-background;
+                        font-size: Fonts.body-small;
+                        font-weight: Weight.semibold;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
                     }
                 }
 
-                emoji-touch := ClickArea {
-                    cross-axis-self-alignment: end;
-                    width: Size.target;
-                    height: Metrics.composer-row;
+                discard-touch := ClickArea {
+                    width: discard-label.preferred-width + 2 * Space.sm;
                     ring-radius: Radius.sm;
-                    label: @tr("Emoji and stickers");
+                    label: @tr("Discard the unsent message");
                     clicked => {
-                        Reactions.close();
-                        Shell.attach-open = false;
-                        Shell.picker-open = !Shell.picker-open;
+                        root.settle-unsent();
+                    }
+
+                    discard-label := Text {
+                        text: @tr("Discard");
+                        color: AppStyle.danger-muted;
+                        font-size: Fonts.body-small;
+                        font-weight: Weight.semibold;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                    }
+                }
+            }
+        }
+
+        if root.is-replying: Rectangle {
+            height: Metrics.reply-bar;
+            background: AppStyle.overlay-subtle;
+
+            HorizontalLayout {
+                padding-left: Space.lg;
+                padding-right: Space.md;
+                padding-top: Space.md;
+                padding-bottom: Space.md;
+                spacing: Space.md;
+
+                ReplyQuote {
+                    horizontal-stretch: 1;
+                    sender: @tr("Reply to {}", Composer.reply-sender);
+                    preview: Composer.reply-preview;
+                }
+
+                cancel-reply-touch := ClickArea {
+                    width: Size.md;
+                    ring-radius: Radius.sm;
+                    label: @tr("Cancel reply");
+                    clicked => {
+                        Composer.clear();
                     }
 
                     IconDisplay {
                         x: (parent.width - self.width) / 2;
                         y: (parent.height - self.height) / 2;
-                        icon: IconSet.Smile;
-                        size: IconSize.md;
-                        stroke: Shell.picker-open
-                            ? Palette.accent-background
-                            : AppStyle.foreground-muted;
-                    }
-                }
-
-                send-touch := ClickArea {
-                    cross-axis-self-alignment: end;
-                    width: Size.target;
-                    height: Metrics.composer-row;
-                    ring-radius: Radius.sm;
-                    enabled: root.has-text;
-                    label: @tr("Send");
-                    clicked => {
-                        root.submit();
-                    }
-
-                    IconDisplay {
-                        x: (parent.width - self.width) / 2;
-                        y: (parent.height - self.height) / 2;
-                        icon: IconSet.SendHorizontal;
-                        size: IconSize.md;
-                        stroke: root.has-text
-                            ? Palette.accent-background
-                            : AppStyle.foreground-faint;
+                        icon: IconSet.X;
+                        size: IconSize.sm;
+                        stroke: AppStyle.foreground-muted;
                     }
                 }
             }
