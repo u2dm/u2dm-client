@@ -85,6 +85,10 @@ export component MessageInput inherits Rectangle {
         Actions.dismiss-unsent(UnsentView.submission);
     }
 
+    pure function is-paste(event: KeyEvent) -> bool {
+        event.modifiers.control && !event.modifiers.shift && event.text == "v"
+    }
+
     function keep-scroll-in-range() {
         scroll.content-y = min(
             0px,
@@ -349,6 +353,9 @@ export component MessageInput inherits Rectangle {
                     capture-key-pressed(event) => {
                         if (event.text == Key.Return && !event.modifiers.shift) {
                             root.submit();
+                            return accept;
+                        }
+                        if (root.is-paste(event) && Actions.paste-attachment(root.room-id)) {
                             return accept;
                         }
                         return reject;

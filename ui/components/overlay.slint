@@ -10,6 +10,17 @@ export component PickerCard inherits Rectangle {
     @children
 }
 
+export component DialogCard inherits Rectangle {
+    background: AppStyle.card;
+    border-radius: Radius.xl;
+    border-width: Stroke.hairline;
+    border-color: AppStyle.border;
+
+    TouchArea { }
+
+    @children
+}
+
 export component ModalHost inherits Rectangle {
     in property <bool> dim: true;
     in property <float> dim-opacity: Opacity.scrim;
@@ -17,6 +28,7 @@ export component ModalHost inherits Rectangle {
     in property <string> label;
 
     callback dismissed();
+    callback opened();
 
     property <bool> entered: false;
 
@@ -28,6 +40,7 @@ export component ModalHost inherits Rectangle {
     init => {
         root.entered = true;
         keys.focus();
+        root.opened();
     }
 
     keys := FocusScope {

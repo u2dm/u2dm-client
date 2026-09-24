@@ -490,6 +490,10 @@ impl SlintUiAdapter {
         let tx = cmd_tx.clone();
         actions(win).on_dismiss_unsent(move |submission| router::dismiss_unsent(&tx, submission));
 
+        let tx = cmd_tx.clone();
+        actions(win)
+            .on_paste_attachment(move |room_id| router::paste_attachment(&tx, room_id.to_string()));
+
         actions(win).on_request_media(move |unique_id| request_media(&unique_id));
 
         Self::bind_video_callbacks(win);

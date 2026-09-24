@@ -32,7 +32,7 @@ pub const CATALOG: Scenarios = Scenarios {
         Flag {
             value: "pick=<path>",
             effect: "skips the native file dialog and picks that file",
-            note: "REQUIRED for any scripted attachment run: a native chooser cannot be driven by the MCP inspector, and it blocks the Slint event loop",
+            note: "REQUIRED for any scripted dialog pick: a native chooser cannot be driven by the MCP inspector, and it blocks the Slint event loop; a Ctrl+V paste ignores it and reads the real clipboard",
         },
         Flag {
             value: "all",

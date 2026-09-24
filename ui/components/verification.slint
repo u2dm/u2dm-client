@@ -10,7 +10,7 @@ import { AppStyle, Fonts, Glyph, IconSize, Metrics, Opacity, Radius, Size, Space
 import { ErrorBanner } from "banner.slint";
 import { AppButton, IconButton } from "./button.slint";
 import { DotPulse } from "./dot-pulse.slint";
-import { ModalHost } from "./overlay.slint";
+import { DialogCard, ModalHost } from "./overlay.slint";
 
 component DialogNote inherits Text {
     font-size: Fonts.body-small;
@@ -161,15 +161,11 @@ export component VerificationDialog inherits ModalHost {
         content-width: self.width;
         content-height: max(self.height, root.card-height + AppStyle.card-inset);
 
-        Rectangle {
+        DialogCard {
             x: (root.width - self.width) / 2;
             y: (scroll.content-height - self.height) / 2;
             width: root.card-width;
             height: root.card-height;
-            background: AppStyle.card;
-            border-radius: Radius.xl;
-            border-width: Stroke.hairline;
-            border-color: AppStyle.border;
 
             card-body := VerticalLayout {
                 padding: Space.xxl;

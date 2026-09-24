@@ -65,6 +65,7 @@ mod names {
         pub const GLOBAL: &str = "Actions";
         pub const MOVE_SPACE: &str = "move-space";
         pub const DISMISS_UNSENT: &str = "dismiss-unsent";
+        pub const PASTE_ATTACHMENT: &str = "paste-attachment";
         pub const TOGGLE_REACTION: &str = "toggle-reaction";
         pub const REQUEST_MEDIA: &str = "request-media";
         pub const REQUEST_ROOM_AVATAR: &str = "request-room-avatar";
@@ -618,6 +619,11 @@ impl SlintUiAdapter {
                 router::dismiss_unsent(&tx, submission);
             }
             Value::Void
+        })?;
+
+        let tx = cmd_tx.clone();
+        bind_action(&self.instance, callback::PASTE_ATTACHMENT, move |args| {
+            Value::Bool(router::paste_attachment(&tx, string_arg(args, 0)))
         })?;
 
         let tx = cmd_tx.clone();

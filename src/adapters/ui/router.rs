@@ -1,6 +1,7 @@
 use tokio::sync::watch;
 use url::Url;
 
+use super::clipboard;
 use super::props::send_command;
 use super::schema::simple_callbacks;
 use crate::app::input::CommandSender;
@@ -128,6 +129,17 @@ pub fn pick_photo(tx: &Tx, room_id: String) {
 
 pub fn pick_document(tx: &Tx, room_id: String) {
     pick_attachment(tx, room_id, AttachmentPick::Document);
+}
+
+pub fn paste_attachment(tx: &Tx, room_id: String) -> bool {
+    if room_id.is_empty() {
+        return false;
+    }
+    let Some(media) = clipboard::pasted_media() else {
+        return false;
+    };
+    pick_attachment(tx, room_id, AttachmentPick::Pasted(media));
+    true
 }
 
 fn pick_attachment(tx: &Tx, room_id: String, pick: AttachmentPick) {

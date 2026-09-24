@@ -8,10 +8,52 @@ pub enum MediaKind {
     Video,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug)]
 pub enum AttachmentPick {
     Media,
     Document,
+    Pasted(PastedMedia),
+}
+
+#[derive(Debug)]
+pub enum PastedMedia {
+    File(PathBuf),
+    Image(PastedImage),
+}
+
+#[derive(Debug)]
+pub struct PastedImage {
+    width: u32,
+    height: u32,
+    rgba: Vec<u8>,
+}
+
+impl PastedImage {
+    const RGBA_BYTES: usize = 4;
+
+    pub fn new(width: u32, height: u32, rgba: Vec<u8>) -> Option<Self> {
+        let expected = usize::try_from(width)
+            .ok()?
+            .checked_mul(usize::try_from(height).ok()?)?
+            .checked_mul(Self::RGBA_BYTES)?;
+        (rgba.len() == expected).then_some(Self {
+            width,
+            height,
+            rgba,
+        })
+    }
+
+    pub fn width(&self) -> u32 {
+        self.width
+    }
+
+    pub fn height(&self) -> u32 {
+        self.height
+    }
+
+    pub fn rgba(&self) -> &[u8] {
+        &self.rgba
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

@@ -31,12 +31,16 @@ impl MediaFilePort for DemoMediaFiles {
     }
 
     async fn pick_attachment(&self, pick: AttachmentPick) -> Result<Option<PickedAttachment>> {
-        let Some(preset) = attachments::scenario().preset_pick.as_deref() else {
-            return self.inner.pick_attachment(pick).await;
-        };
-        tracing::info!(path = %preset.display(), "demo: picking a preset attachment");
-        self.inner.describe(preset).await.map(Some)
+        match (pick, attachments::scenario().preset_pick.as_deref()) {
+            (AttachmentPick::Media | AttachmentPick::Document, Some(preset)) => {
+                tracing::info!(path = %preset.display(), "demo: picking a preset attachment");
+                self.inner.describe(preset).await.map(Some)
+            }
+            (pick, _) => self.inner.pick_attachment(pick).await,
+        }
     }
+
+    async fn release_attachment(&self, _picked: PickedAttachment) {}
 
     async fn save_file(&self, default_filename: &str, data: &[u8]) -> Result<Option<String>> {
         self.inner.save_file(default_filename, data).await

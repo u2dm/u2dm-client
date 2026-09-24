@@ -4,12 +4,14 @@ use std::time::{Duration, SystemTime};
 use std::{env, fs, process};
 
 use async_trait::async_trait;
-use image::{ImageFormat, ImageReader};
+use image::codecs::png::{CompressionType, FilterType, PngEncoder};
+use image::{ExtendedColorType, ImageEncoder, ImageFormat, ImageReader};
+use rfd::AsyncFileDialog;
 use tokio::fs as async_fs;
 use tokio::task::spawn_blocking;
 
 use crate::adapters::{container, private_fs, video};
-use crate::domain::media::{AttachmentPick, PickedAttachment, Waveform};
+use crate::domain::media::{AttachmentPick, PastedImage, PastedMedia, PickedAttachment, Waveform};
 use crate::error::{AppError, Result};
 use crate::ports::media::MediaFilePort;
 use crate::util::random_hex;
@@ -23,6 +25,8 @@ const ROOT_ATTEMPTS: usize = 8;
 const FALLBACK_MIME: &str = "application/octet-stream";
 const POSTER_MAX_EDGE: u32 = 800;
 const POSTER_QUALITY: u8 = 80;
+const PASTED_IMAGE_FILENAME: &str = "image.png";
+const PASTED_IMAGE_COMPRESSION: CompressionType = CompressionType::Level(3);
 
 const PICKABLE_MEDIA_EXTENSIONS: &[&str] = &[
     "png", "jpg", "jpeg", "gif", "webp", "bmp", "ico", "tif", "tiff", "avif", "heic", "heif",
@@ -55,6 +59,28 @@ impl DesktopMediaFiles {
         describe_in(path, self.session_dir.as_deref()).await
     }
 
+    async fn pick_from(&self, dialog: AsyncFileDialog) -> Result<Option<PickedAttachment>> {
+        let Some(handle) = dialog.pick_file().await else {
+            return Ok(None);
+        };
+        self.describe(handle.path()).await.map(Some)
+    }
+
+    async fn describe_pasted_image(&self, image: PastedImage) -> Result<PickedAttachment> {
+        let session_dir = self.session_dir()?;
+        let png = spawn_blocking(move || encode_png(&image))
+            .await
+            .map_err(|e| AppError::Other(format!("failed to encode the pasted image: {e}")))??;
+        private_fs::create_dir(session_dir).await?;
+        let path = session_dir.join(format!("{}.png", random_hex(FILE_TOKEN_BYTES)));
+        private_fs::write_private(&path, &png).await?;
+        let picked = self.describe(&path).await?;
+        Ok(PickedAttachment {
+            filename: PASTED_IMAGE_FILENAME.to_owned(),
+            ..picked
+        })
+    }
+
     fn session_dir(&self) -> Result<&Path> {
         self.session_dir.as_deref().ok_or_else(|| {
             AppError::Other("no private directory is available to open media from".into())
@@ -85,17 +111,41 @@ impl MediaFilePort for DesktopMediaFiles {
     }
 
     async fn pick_attachment(&self, pick: AttachmentPick) -> Result<Option<PickedAttachment>> {
-        let mut dialog = rfd::AsyncFileDialog::new();
-        dialog = match pick {
-            AttachmentPick::Media => dialog
-                .set_title("Send a photo or video")
-                .add_filter("Photos and videos", PICKABLE_MEDIA_EXTENSIONS),
-            AttachmentPick::Document => dialog.set_title("Send a document"),
+        match pick {
+            AttachmentPick::Media => {
+                self.pick_from(
+                    AsyncFileDialog::new()
+                        .set_title("Send a photo or video")
+                        .add_filter("Photos and videos", PICKABLE_MEDIA_EXTENSIONS),
+                )
+                .await
+            }
+            AttachmentPick::Document => {
+                self.pick_from(AsyncFileDialog::new().set_title("Send a document"))
+                    .await
+            }
+            AttachmentPick::Pasted(PastedMedia::File(path)) => self.describe(&path).await.map(Some),
+            AttachmentPick::Pasted(PastedMedia::Image(image)) => {
+                self.describe_pasted_image(image).await.map(Some)
+            }
+        }
+    }
+
+    async fn release_attachment(&self, picked: PickedAttachment) {
+        let Some(session_dir) = self.session_dir.as_deref() else {
+            return;
         };
-        let Some(handle) = dialog.pick_file().await else {
-            return Ok(None);
-        };
-        self.describe(handle.path()).await.map(Some)
+        let written_here = [Some(picked.path), picked.poster]
+            .into_iter()
+            .flatten()
+            .filter(|path| path.parent() == Some(session_dir));
+        for path in written_here {
+            if let Err(e) = async_fs::remove_file(&path).await
+                && e.kind() != ErrorKind::NotFound
+            {
+                tracing::debug!("failed to remove {}: {e}", path.display());
+            }
+        }
     }
 
     async fn save_file(&self, default_filename: &str, data: &[u8]) -> Result<Option<String>> {
@@ -121,6 +171,19 @@ impl MediaFilePort for DesktopMediaFiles {
             tracing::debug!("failed to recreate session media directory: {e}");
         }
     }
+}
+
+fn encode_png(image: &PastedImage) -> Result<Vec<u8>> {
+    let mut png = Vec::new();
+    PngEncoder::new_with_quality(&mut png, PASTED_IMAGE_COMPRESSION, FilterType::Adaptive)
+        .write_image(
+            image.rgba(),
+            image.width(),
+            image.height(),
+            ExtendedColorType::Rgba8,
+        )
+        .map_err(|e| AppError::Other(format!("failed to encode the pasted image: {e}")))?;
+    Ok(png)
 }
 
 async fn describe_in(path: &Path, poster_dir: Option<&Path>) -> Result<PickedAttachment> {

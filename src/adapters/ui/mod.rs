@@ -3,6 +3,7 @@
 mod audio;
 mod autolink;
 mod backend;
+mod clipboard;
 mod clock;
 mod decode;
 mod dto;

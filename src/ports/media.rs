@@ -10,6 +10,7 @@ pub trait MediaFilePort: Send + Sync {
     async fn open_media(&self, event_id: &str, data: &[u8]) -> Result<()>;
     async fn open_path(&self, path: &Path) -> Result<()>;
     async fn pick_attachment(&self, pick: AttachmentPick) -> Result<Option<PickedAttachment>>;
+    async fn release_attachment(&self, picked: PickedAttachment);
     async fn save_file(&self, default_filename: &str, data: &[u8]) -> Result<Option<String>>;
     async fn clear_session(&self);
 }

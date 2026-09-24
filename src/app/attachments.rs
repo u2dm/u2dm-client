@@ -34,6 +34,10 @@ impl Draft {
     fn awaits(&self, submission: u64) -> bool {
         self.submission == Some(submission)
     }
+
+    fn into_unused_attachment(self) -> Option<PickedAttachment> {
+        (!self.is_sending()).then_some(self.attachment)
+    }
 }
 
 pub(super) struct Attachments {
@@ -43,6 +47,7 @@ pub(super) struct Attachments {
     draft: Option<Draft>,
     picks: u64,
     submissions: u64,
+    releases: TaskGroup,
 }
 
 impl Attachments {
@@ -58,6 +63,7 @@ impl Attachments {
             draft: None,
             picks: 0,
             submissions: 0,
+            releases: TaskGroup::new("attachment-releases"),
         }
     }
 
@@ -92,10 +98,12 @@ impl Attachments {
     pub(super) fn adopt(&mut self, picked: AttachmentPicked, selected: Option<&RoomId>) {
         if picked.pick != self.picks {
             tracing::debug!("dropping an attachment picked for a draft that was replaced");
+            self.release_unadopted(picked.outcome);
             return;
         }
         if selected != Some(&picked.room_id) {
             tracing::debug!("dropping an attachment picked for a room that is no longer selected");
+            self.release_unadopted(picked.outcome);
             return;
         }
         match picked.outcome {
@@ -179,9 +187,25 @@ impl Attachments {
     }
 
     pub(super) fn clear(&mut self) {
-        if self.draft.take().is_some() {
-            self.publish(AttachmentView::default());
+        let Some(draft) = self.draft.take() else {
+            return;
+        };
+        if let Some(attachment) = draft.into_unused_attachment() {
+            self.release(attachment);
         }
+        self.publish(AttachmentView::default());
+    }
+
+    fn release_unadopted(&mut self, outcome: Result<PickedAttachment, UserMessage>) {
+        if let Ok(attachment) = outcome {
+            self.release(attachment);
+        }
+    }
+
+    fn release(&mut self, attachment: PickedAttachment) {
+        let media_files = Arc::clone(&self.media_files);
+        self.releases
+            .spawn(async move { media_files.release_attachment(attachment).await });
     }
 
     fn publish(&self, view: AttachmentView) {

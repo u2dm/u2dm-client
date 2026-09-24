@@ -9,11 +9,13 @@ import { AppStyle, Fonts, IconSize, Metrics, Opacity, Radius, Size, Space, Strok
 import { ErrorBanner } from "../../../../components/banner.slint";
 import { AppButton, IconButton } from "../../../../components/button.slint";
 import { ClickArea } from "../../../../components/a11y.slint";
-import { ModalHost } from "../../../../components/overlay.slint";
+import { DialogCard, ModalHost } from "../../../../components/overlay.slint";
 
 component CaptionField inherits Rectangle {
     in property <string> placeholder;
     in-out property <string> text: "";
+
+    callback accepted();
 
     height: Size.md;
     border-radius: Radius.sm;
@@ -46,6 +48,9 @@ component CaptionField inherits Rectangle {
                 single-line: true;
                 accessible-label: root.placeholder;
                 accessible-placeholder-text: root.placeholder;
+                accepted => {
+                    root.accepted();
+                }
             }
 
             if root.text == "": Text {
@@ -158,6 +163,9 @@ export component AttachmentDialog inherits ModalHost {
     dismissed => {
         root.cancel();
     }
+    opened => {
+        caption-field.take-focus();
+    }
 
     property <length> card-width: min(AppStyle.card-width-wide, root.width - AppStyle.card-inset);
     property <length> card-height: card-body.preferred-height;
@@ -204,13 +212,15 @@ export component AttachmentDialog inherits ModalHost {
     }
 
     function submit() {
-        root.hold-reply();
-        Actions.send-attachment({
-            room-id: DirectoryView.selected-room-id,
-            caption: root.caption,
-            as-document: root.as-document,
-            reply-to: root.held-reply,
-        });
+        if (!AttachmentView.sending) {
+            root.hold-reply();
+            Actions.send-attachment({
+                room-id: DirectoryView.selected-room-id,
+                caption: root.caption,
+                as-document: root.as-document,
+                reply-to: root.held-reply,
+            });
+        }
     }
 
     scroll := ScrollView {
@@ -221,15 +231,11 @@ export component AttachmentDialog inherits ModalHost {
         content-width: self.width;
         content-height: max(self.height, root.card-height + AppStyle.card-inset);
 
-        Rectangle {
+        DialogCard {
             x: (root.width - self.width) / 2;
             y: (scroll.content-height - self.height) / 2;
             width: root.card-width;
             height: root.card-height;
-            background: AppStyle.card;
-            border-radius: Radius.xl;
-            border-width: Stroke.hairline;
-            border-color: AppStyle.border;
 
             card-body := VerticalLayout {
                 padding: Space.xxl;
@@ -315,9 +321,12 @@ export component AttachmentDialog inherits ModalHost {
                     checked <=> root.as-document;
                 }
 
-                CaptionField {
+                caption-field := CaptionField {
                     placeholder: @tr("Caption");
                     text <=> root.caption;
+                    accepted => {
+                        root.submit();
+                    }
                 }
 
                 HorizontalLayout {
