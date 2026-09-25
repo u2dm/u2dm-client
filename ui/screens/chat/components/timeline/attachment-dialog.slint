@@ -4,13 +4,14 @@ import { Icon, IconDisplay, IconSet } from "@lucide";
 import { AttachmentKind, UserMessageKind } from "../../../../enums.slint";
 import { AttachmentView, DirectoryView } from "../../../../views.slint";
 import { Actions } from "../../../../actions.slint";
-import { Composer } from "../../../../local.slint";
+import { Composer, ReplyDraft } from "../../../../local.slint";
 import { AppStyle, Fonts, IconSize, Metrics, Opacity, Radius, Size, Space, Stroke, Weight } from "../../../../theme.slint";
 import { ErrorBanner } from "../../../../components/banner.slint";
 import { ClickArea } from "../../../../components/a11y.slint";
 import { DialogCard, ModalHost, PickerCard } from "../../../../components/overlay.slint";
 import { ComposerField } from "./composer-field.slint";
 import { EmojiPicker } from "./emoji-picker.slint";
+import { ReplyBar } from "./reply-bar.slint";
 
 component CheckRow inherits Rectangle {
     in property <string> label;
@@ -168,7 +169,9 @@ export component AttachmentDialog inherits ModalHost {
     property <bool> as-document: false;
     property <string> caption: "";
     property <bool> holds-reply: false;
-    property <string> held-reply: "";
+    property <ReplyDraft> held-reply;
+    property <ReplyDraft> reply: root.holds-reply ? root.held-reply : Composer.reply;
+    property <bool> is-replying: root.reply.event-id != "";
     property <bool> picker-open: false;
 
     property <bool> shows-preview: (AttachmentView.kind == AttachmentKind.image
@@ -222,9 +225,16 @@ export component AttachmentDialog inherits ModalHost {
     function hold-reply() {
         if (!root.holds-reply) {
             root.holds-reply = true;
-            root.held-reply = Composer.reply-event-id;
+            root.held-reply = Composer.reply;
             Composer.clear();
         }
+    }
+
+    function cancel-reply() {
+        root.holds-reply = true;
+        root.held-reply = { };
+        Composer.clear();
+        field.focus-input();
     }
 
     function submit() {
@@ -234,7 +244,7 @@ export component AttachmentDialog inherits ModalHost {
                 room-id: DirectoryView.selected-room-id,
                 caption: root.caption,
                 as-document: root.as-document,
-                reply-to: root.held-reply,
+                reply-to: root.held-reply.event-id,
             });
         }
     }
@@ -306,6 +316,16 @@ export component AttachmentDialog inherits ModalHost {
                     }
                     submitted => {
                         root.submit();
+                    }
+
+                    if root.is-replying: ReplyBar {
+                        sender: root.reply.sender;
+                        preview: root.reply.preview;
+                        enabled: !AttachmentView.sending;
+                        above-modal: true;
+                        cancel-clicked => {
+                            root.cancel-reply();
+                        }
                     }
                 }
             }

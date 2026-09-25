@@ -14,6 +14,12 @@ export struct ReactionAnchor {
     height: length,
 }
 
+export struct ReplyDraft {
+    event-id: string,
+    sender: string,
+    preview: string,
+}
+
 export global Probe {
     in property <bool> enabled: false;
 }
@@ -22,6 +28,11 @@ export global Composer {
     in-out property <string> reply-event-id;
     in-out property <string> reply-sender;
     in-out property <string> reply-preview;
+    out property <ReplyDraft> reply: {
+        event-id: root.reply-event-id,
+        sender: root.reply-sender,
+        preview: root.reply-preview,
+    };
 
     public function clear() {
         self.reply-event-id = "";

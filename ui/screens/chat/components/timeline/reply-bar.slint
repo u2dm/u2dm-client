@@ -1,0 +1,50 @@
+import { IconDisplay, IconSet } from "@lucide";
+
+import { ReplyQuote } from "../reply-quote.slint";
+import { AppStyle, IconSize, Metrics, Radius, Size, Space } from "../../../../theme.slint";
+import { ClickArea } from "../../../../components/a11y.slint";
+
+export component ReplyBar inherits Rectangle {
+    in property <string> sender;
+    in property <string> preview;
+    in property <bool> enabled: true;
+    in property <bool> above-modal: false;
+
+    callback cancel-clicked();
+
+    height: Metrics.reply-bar;
+    background: AppStyle.overlay-subtle;
+
+    HorizontalLayout {
+        padding-left: Space.lg;
+        padding-right: Space.md;
+        padding-top: Space.md;
+        padding-bottom: Space.md;
+        spacing: Space.md;
+
+        ReplyQuote {
+            horizontal-stretch: 1;
+            sender: @tr("Reply to {}", root.sender);
+            preview: root.preview;
+        }
+
+        cancel-touch := ClickArea {
+            width: Size.md;
+            ring-radius: Radius.sm;
+            label: @tr("Cancel reply");
+            enabled: root.enabled;
+            above-modal: root.above-modal;
+            clicked => {
+                root.cancel-clicked();
+            }
+
+            IconDisplay {
+                x: (parent.width - self.width) / 2;
+                y: (parent.height - self.height) / 2;
+                icon: IconSet.X;
+                size: IconSize.sm;
+                stroke: root.enabled ? AppStyle.foreground-muted : AppStyle.foreground-faint;
+            }
+        }
+    }
+}
