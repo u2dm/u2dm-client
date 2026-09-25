@@ -11,7 +11,7 @@ use super::media::{MatrixMedia, MediaService};
 use super::rooms::{MatrixSpaceIndex, MatrixSpaceOrder, MatrixSync};
 use super::stickers::MatrixStickers;
 use super::store::StoreLayout;
-use super::timeline::MatrixTimeline;
+use super::timeline::{MatrixPinned, MatrixTimeline};
 use super::verification::MatrixVerification;
 use crate::domain::account::AccountScope;
 use crate::domain::auth::Session;
@@ -147,6 +147,7 @@ pub(super) async fn authenticate(
         session,
         sync: Arc::new(MatrixSync::new(Arc::clone(&matrix))),
         timeline: Arc::new(MatrixTimeline::new(Arc::clone(&matrix))),
+        pinned: Arc::new(MatrixPinned::new(Arc::clone(&matrix))),
         media: Arc::new(MatrixMedia::new(Arc::clone(&matrix))),
         verification,
         space_order: Arc::new(MatrixSpaceOrder::new(Arc::clone(&matrix))),

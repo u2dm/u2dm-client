@@ -11,6 +11,7 @@ use crate::commands::view::{
 };
 use crate::domain::auth::LoginMethod;
 use crate::domain::media::AudioKind;
+use crate::domain::message::MessagePreviewKind;
 use crate::domain::sync::ConnectionStatus;
 use crate::domain::timeline::TimelineStatus;
 use crate::domain::verification::VerificationEmoji as DomainVerificationEmoji;

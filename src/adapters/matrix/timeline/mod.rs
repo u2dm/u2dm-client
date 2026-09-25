@@ -1,6 +1,7 @@
 mod convert;
 mod diff;
 mod filter;
+mod pinned;
 mod reactors;
 mod subscribe;
 
@@ -24,6 +25,7 @@ use tokio::task::spawn_blocking;
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
 
+pub(super) use self::pinned::MatrixPinned;
 use self::reactors::ReactorAvatars;
 use self::subscribe::subscribe_timeline;
 use super::attachment;

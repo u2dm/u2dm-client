@@ -127,6 +127,8 @@ pub struct RoomDto {
     days_ago: u64,
     #[serde(default)]
     pub last_message: LastMessageDto,
+    #[serde(default)]
+    pub pinned: Vec<String>,
 }
 
 #[derive(Deserialize, Default)]

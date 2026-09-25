@@ -8,7 +8,7 @@ import {
 } from "screens/chat/components/types.slint";
 import { VerificationEmoji } from "components/types.slint";
 import { UserMessage } from "messages.slint";
-import { AttachmentKind, AudioKind, ConnectionState, LoginActivity, LoginMethodKind, LoginPhase, RoomScope, SpaceIndexStatus, TimelineState, UserMessageKind, VerificationActivity, VerificationPhase } from "enums.slint";
+import { AttachmentKind, AudioKind, ConnectionState, LoginActivity, LoginMethodKind, LoginPhase, PreviewKind, RoomScope, SpaceIndexStatus, TimelineState, UserMessageKind, VerificationActivity, VerificationPhase } from "enums.slint";
 
 export global LoginView {
     in property <LoginPhase> step: LoginPhase.loading;
@@ -64,6 +64,11 @@ export global RoomView {
     in property <int> new-messages-count;
     in property <int> anchor-index: -1;
     in property <string> focus-event-id;
+    in property <int> pinned-count;
+    in property <int> pinned-index;
+    in property <string> pinned-event-id;
+    in property <PreviewKind> pinned-kind: PreviewKind.none;
+    in property <string> pinned-body;
     in property <int> timeline-token;
     in property <int> prepend-token;
     in property <bool> backwards-loading;

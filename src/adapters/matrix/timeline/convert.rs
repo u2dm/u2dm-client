@@ -294,7 +294,7 @@ pub(super) fn event_media(item: &TimelineItem) -> Option<EventMedia> {
     }
 }
 
-fn reply_preview_from_content(content: &TimelineItemContent) -> (MessagePreviewKind, RichText) {
+pub(super) fn content_preview(content: &TimelineItemContent) -> (MessagePreviewKind, RichText) {
     match classify(content) {
         Some(Renderable::Message(message)) => {
             let preview = preview::from_msgtype(message.msgtype());
@@ -302,7 +302,18 @@ fn reply_preview_from_content(content: &TimelineItemContent) -> (MessagePreviewK
         }
         Some(Renderable::Sticker(_)) => (MessagePreviewKind::Sticker, RichText::default()),
         Some(Renderable::Utd) => (MessagePreviewKind::Encrypted, RichText::default()),
-        Some(Renderable::Service(_)) | None => (MessagePreviewKind::None, RichText::default()),
+        Some(Renderable::Service(_)) => (MessagePreviewKind::None, RichText::default()),
+        None => poll_preview(content),
+    }
+}
+
+fn poll_preview(content: &TimelineItemContent) -> (MessagePreviewKind, RichText) {
+    match content.as_poll() {
+        Some(poll) => (
+            MessagePreviewKind::Poll,
+            RichText::plain(poll.results().question),
+        ),
+        None => (MessagePreviewKind::None, RichText::default()),
     }
 }
 
@@ -319,7 +330,7 @@ fn extract_reply(content: &TimelineItemContent) -> Option<ReplyInfo> {
             .unwrap_or_else(|| embedded.sender.to_string()),
         _ => embedded.sender.to_string(),
     };
-    let (kind, body) = reply_preview_from_content(&embedded.content);
+    let (kind, body) = content_preview(&embedded.content);
     Some(ReplyInfo {
         event_id,
         sender,

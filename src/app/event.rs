@@ -6,6 +6,7 @@ use crate::commands::messages::{UserMessage, UserMessageKind};
 use crate::commands::view::LoginActivity;
 use crate::domain::auth::ServerInfo;
 use crate::domain::media::PickedAttachment;
+use crate::domain::message::PinnedMessage;
 use crate::domain::room::RoomId;
 use crate::domain::timeline::{
     AudioTrack, PaginationDirection, PaginationOutcome, TimelineAdvance, TimelineFocus,
@@ -52,6 +53,10 @@ pub(super) enum AppEvent {
         submission: i32,
         enqueue: Enqueue,
     },
+    PinnedChanged {
+        watch: u64,
+        messages: Vec<PinnedMessage>,
+    },
     SpaceIndexPaged {
         generation: u64,
         outcome: PageOutcome,
@@ -86,6 +91,7 @@ impl AppEvent {
             Self::AudioFetched { .. } => "AudioFetched",
             Self::VideoFetched { .. } => "VideoFetched",
             Self::SubmissionSettled { .. } => "SubmissionSettled",
+            Self::PinnedChanged { .. } => "PinnedChanged",
             Self::SpaceIndexPaged { .. } => "SpaceIndexPaged",
             Self::SpaceIndexAvatarsReady { .. } => "SpaceIndexAvatarsReady",
             Self::SpaceChildJoinSettled { .. } => "SpaceChildJoinSettled",

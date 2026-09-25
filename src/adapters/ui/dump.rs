@@ -78,6 +78,15 @@ pub struct AudioDump {
 }
 
 #[derive(Serialize)]
+pub struct PinnedDump {
+    pub count: i32,
+    pub index: i32,
+    pub event_id: String,
+    pub kind: String,
+    pub body: String,
+}
+
+#[derive(Serialize)]
 pub struct TimelineDump {
     pub selected_room_id: String,
     pub selected_room_name: String,
@@ -87,6 +96,7 @@ pub struct TimelineDump {
     pub prepend_token: i32,
     pub anchor_index: i32,
     pub focus_event_id: String,
+    pub pinned: PinnedDump,
     pub rows: Vec<TimelineRowDump>,
     pub audio: AudioDump,
 }
@@ -174,8 +184,19 @@ fn collect<B: UiBackend>(window: &B::Window) -> TimelineDump {
         prepend_token: window.get_int(IntProp::PrependToken),
         anchor_index: window.get_int(IntProp::AnchorIndex),
         focus_event_id: window.get_string(StringProp::FocusEventId).to_string(),
+        pinned: pinned_view(window),
         rows,
         audio: audio_view(window),
+    }
+}
+
+fn pinned_view(window: &impl UiProps) -> PinnedDump {
+    PinnedDump {
+        count: window.get_int(IntProp::PinnedCount),
+        index: window.get_int(IntProp::PinnedIndex),
+        event_id: window.get_string(StringProp::PinnedEventId).to_string(),
+        kind: window.get_enum(EnumProp::PinnedKind).to_string(),
+        body: window.get_string(StringProp::PinnedBody).to_string(),
     }
 }
 

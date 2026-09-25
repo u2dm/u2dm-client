@@ -8,8 +8,8 @@ use super::audio;
 use super::backend::{UiBackend, UiEventContext, apply_sticker_art, enrich_message};
 use super::decode::{AvatarSlot, load_attachment_preview, load_avatar_async, request_sticker};
 use super::dto::{
-    GRID_COLUMNS, StickerArt, StickerPackDto, StickerRowDto, audio_row_update, sticker_art,
-    sticker_grid, sticker_needle,
+    GRID_COLUMNS, StickerArt, StickerPackDto, StickerRowDto, audio_row_update, preview_line,
+    sticker_art, sticker_grid, sticker_needle,
 };
 use super::fields::{MessageFields, RoomFields, SpaceChildFields, SpaceFields};
 use super::present::{
@@ -28,8 +28,10 @@ use crate::commands::effects::{Effect, VerificationActivity, VerificationUpdate}
 use crate::commands::messages::{UserMessage, UserMessageKind};
 use crate::commands::view::{
     AppViewState, AttachmentView, AudioView, DirectoryView, LifecycleView, NowPlaying,
-    PaginationView, SpaceIndexView, StickerView, Toast, TrackFile, UnsentMessage, VideoView,
+    PaginationView, PinnedView, SpaceIndexView, StickerView, Toast, TrackFile, UnsentMessage,
+    VideoView,
 };
+use crate::domain::message::MessagePreviewKind;
 use crate::domain::room::{RoomId, RoomList};
 use crate::domain::timeline::{TimelinePatch, TimelineStatus};
 use crate::domain::verification::VerificationEvent as DomainVerificationEvent;
@@ -157,10 +159,15 @@ pub fn dispatch_effect<B: UiBackend>(w: &B::Window, event: Effect, ctx: &UiEvent
                 i32::try_from(member_count).unwrap_or(i32::MAX),
             );
             w.set_bool(BoolProp::SelectedRoomEncrypted, encrypted);
-            let pagination =
-                with_session(|session| session.snapshot.as_ref().map(|view| view.pagination))
-                    .unwrap_or_default();
+            let (pagination, pinned) = with_session(|session| {
+                session
+                    .snapshot
+                    .as_ref()
+                    .map(|view| (view.pagination, view.pinned.clone()))
+            })
+            .unwrap_or_default();
             sync_timeline_chrome(w, &pagination);
+            apply_pinned(w, &pinned);
         }
         Effect::Timeline {
             room_id,
@@ -276,6 +283,7 @@ fn apply_snapshot<B: UiBackend>(
         directory,
         space_index,
         pagination,
+        pinned,
         stickers,
         attachment,
         video,
@@ -292,6 +300,9 @@ fn apply_snapshot<B: UiBackend>(
     apply_space_index::<B>(w, last.map(|l| &l.space_index), space_index, ctx);
     if last.is_none_or(|l| l.pagination != *pagination) {
         sync_timeline_chrome(w, pagination);
+    }
+    if last.is_none_or(|l| l.pinned != *pinned) {
+        apply_pinned(w, pinned);
     }
     if last.is_none_or(|l| {
         !Arc::ptr_eq(&l.stickers.packs, &stickers.packs)
@@ -542,6 +553,34 @@ fn sync_timeline_chrome(w: &impl UiProps, pagination: &PaginationView) {
     w.set_int(
         IntProp::NewMessagesCount,
         i32::try_from(badge).unwrap_or(i32::MAX),
+    );
+}
+
+fn apply_pinned(w: &impl UiProps, pinned: &PinnedView) {
+    let selected = w.get_string(StringProp::SelectedRoomId);
+    let shown = pinned.shown_in(selected.as_str());
+    let (count, index) = match shown {
+        Some(_) => (pinned.messages.len(), pinned.shown),
+        None => (0, 0),
+    };
+    w.set_int(
+        IntProp::PinnedCount,
+        i32::try_from(count).unwrap_or(i32::MAX),
+    );
+    w.set_int(
+        IntProp::PinnedIndex,
+        i32::try_from(index).unwrap_or(i32::MAX),
+    );
+    w.set_string(
+        StringProp::PinnedEventId,
+        SharedString::from(shown.map_or("", |message| message.event_id.as_str())),
+    );
+    w.set_pinned_kind(shown.map_or(MessagePreviewKind::None, |message| message.kind));
+    w.set_string(
+        StringProp::PinnedBody,
+        shown
+            .map(|message| preview_line(&message.body))
+            .unwrap_or_default(),
     );
 }
 

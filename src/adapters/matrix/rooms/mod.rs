@@ -11,14 +11,15 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use matrix_sdk::Client;
 use matrix_sdk::notification_settings::NotificationSettings;
-use matrix_sdk::ruma::SpaceChildOrder;
 use matrix_sdk::ruma::events::space_order::SpaceOrderEventContent;
+use matrix_sdk::ruma::{OwnedRoomId, SpaceChildOrder};
 use matrix_sdk::send_queue::SendQueueRoomError;
 use matrix_sdk::sync::RoomUpdates;
 use matrix_sdk_base::RoomInfoNotableUpdate;
 use matrix_sdk_ui::sync_service::{State as SyncState, SyncService};
 use tokio::sync::broadcast::Receiver;
 use tokio::sync::broadcast::error::RecvError;
+use tokio::sync::watch;
 use tokio::time::{Instant, sleep_until};
 use tokio_util::sync::CancellationToken;
 
@@ -49,6 +50,36 @@ async fn build_sync_service(client: &Client) -> AppResult<SyncService> {
 enum LoopAction {
     Continue,
     Terminal(SyncOutcome),
+}
+
+type SelectedRoom = watch::Receiver<Option<RoomId>>;
+
+async fn subscribe_selected_room(sync_service: &SyncService, room_id: Option<&RoomId>) {
+    let subscribed: Option<OwnedRoomId> =
+        room_id.and_then(|id| OwnedRoomId::try_from(id.as_ref()).ok());
+    sync_service
+        .room_list_service()
+        .set_room_subscriptions(subscribed.as_deref().as_slice())
+        .await;
+    tracing::debug!(room_id = ?subscribed, "subscribed the selected room");
+}
+
+async fn start_with_selected_room(sync_service: &SyncService, selected: &mut SelectedRoom) {
+    let room_id = selected.borrow_and_update().clone();
+    subscribe_selected_room(sync_service, room_id.as_ref()).await;
+    sync_service.start().await;
+    tracing::info!("sliding sync service started");
+}
+
+async fn follow_selected_room(
+    sync_service: &SyncService,
+    mut selected: SelectedRoom,
+) -> SyncOutcome {
+    while selected.changed().await.is_ok() {
+        let room_id = selected.borrow_and_update().clone();
+        subscribe_selected_room(sync_service, room_id.as_ref()).await;
+    }
+    SyncOutcome::Recoverable("the selected room channel closed".into())
 }
 
 async fn resync(client: &Client, dir: &mut Directory) {
@@ -270,6 +301,7 @@ async fn drive_sync_service(
     client: &Client,
     media: Arc<MediaService>,
     on_sync: OnSync,
+    mut selected: SelectedRoom,
     cancel: CancellationToken,
 ) -> SyncOutcome {
     let sync_service = match build_sync_service(client).await {
@@ -282,8 +314,7 @@ async fn drive_sync_service(
     let notifications = client.notification_settings().await;
     let mut push_rules_rx = notifications.subscribe_to_changes();
 
-    sync_service.start().await;
-    tracing::info!("sliding sync service started");
+    start_with_selected_room(&sync_service, &mut selected).await;
 
     let outcome = tokio::select! {
         outcome = run_sync_loop(
@@ -295,6 +326,7 @@ async fn drive_sync_service(
             &on_sync,
             &mut avatars,
         ) => outcome,
+        outcome = follow_selected_room(&sync_service, selected) => outcome,
         () = cancel.cancelled() => {
             tracing::debug!("sync cancelled, stopping sync service");
             SyncOutcome::Cancelled
@@ -307,11 +339,15 @@ async fn drive_sync_service(
 
 pub(super) struct MatrixSync {
     matrix: Arc<ClientHandle>,
+    selected: watch::Sender<Option<RoomId>>,
 }
 
 impl MatrixSync {
     pub(super) fn new(matrix: Arc<ClientHandle>) -> Self {
-        Self { matrix }
+        Self {
+            matrix,
+            selected: watch::Sender::new(None),
+        }
     }
 }
 
@@ -323,7 +359,24 @@ impl SyncPort for MatrixSync {
             Ok(client) => client,
             Err(e) => return SyncOutcome::Fatal(e.to_string()),
         };
-        drive_sync_service(&client, Arc::clone(self.matrix.media()), on_sync, cancel).await
+        drive_sync_service(
+            &client,
+            Arc::clone(self.matrix.media()),
+            on_sync,
+            self.selected.subscribe(),
+            cancel,
+        )
+        .await
+    }
+
+    fn set_selected_room(&self, room_id: Option<&RoomId>) {
+        self.selected.send_if_modified(|selected| {
+            if selected.as_ref() == room_id {
+                return false;
+            }
+            *selected = room_id.cloned();
+            true
+        });
     }
 }
 

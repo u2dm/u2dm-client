@@ -542,7 +542,7 @@ fn one_line(text: &str) -> SharedString {
     SharedString::from(text.split_whitespace().collect::<Vec<_>>().join(" "))
 }
 
-fn preview_line(text: &RichText) -> SharedString {
+pub fn preview_line(text: &RichText) -> SharedString {
     match text.html.as_deref() {
         Some(html) => one_line(&richtext::styled_body(html, &text.plain).plain),
         None => one_line(&text.plain),

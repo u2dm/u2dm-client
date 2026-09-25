@@ -12,7 +12,7 @@ use crate::domain::media::{
     AudioKind, AudioMeta, FileMeta, ImageMeta, OutgoingAttachment, VideoMeta,
 };
 use crate::domain::message::{
-    MessageBody, ReadBy, ReplyInfo, RichText, SendState, TimelineMessage,
+    MessageBody, PinnedMessage, ReadBy, ReplyInfo, RichText, SendState, TimelineMessage,
 };
 use crate::domain::room::{Room, RoomId, Space};
 use crate::domain::space_index::SpaceChild;
@@ -22,6 +22,7 @@ const UNKNOWN_SENDER: &str = "@member:matrix.org";
 const SENT_STICKER_EXTENT: u32 = 512;
 const STICKER_ASSET_MARKER: char = '#';
 const DEMO_VIA: &str = "demo.local";
+const COPY_SUFFIX: &str = "-copy";
 
 static DATA: OnceLock<DemoData> = OnceLock::new();
 static LOAD_ERROR: OnceLock<String> = OnceLock::new();
@@ -208,15 +209,68 @@ fn repeated_history(messages: &[TimelineMessage]) -> Vec<TimelineMessage> {
     for copy in 0..timeline::HISTORY_COPIES {
         for message in messages {
             let mut message = message.clone();
-            message.unique_id = format!("{}-copy{copy}", message.unique_id);
+            message.unique_id = format!("{}{COPY_SUFFIX}{copy}", message.unique_id);
             message.event_id = message
                 .event_id
                 .as_ref()
-                .map(|id| format!("{id}-copy{copy}"));
+                .map(|id| format!("{id}{COPY_SUFFIX}{copy}"));
             repeated.push(message);
         }
     }
     repeated
+}
+
+pub fn pinned_messages(room_id: &RoomId) -> Vec<PinnedMessage> {
+    let pins = room_pins(room_id);
+    if pins.is_empty() {
+        return Vec::new();
+    }
+    let messages = messages(room_id);
+    let mut rows: Vec<usize> = pins
+        .iter()
+        .filter_map(|pin| {
+            messages
+                .iter()
+                .rposition(|message| fixture_id(message).is_some_and(|id| id == pin))
+        })
+        .collect();
+    rows.sort_unstable();
+    rows.dedup();
+    rows.into_iter()
+        .filter_map(|row| messages.get(row))
+        .filter_map(pinned_message)
+        .collect()
+}
+
+pub fn latest_pinnable(room_id: &RoomId) -> Option<PinnedMessage> {
+    messages(room_id).iter().rev().find_map(pinned_message)
+}
+
+fn room_pins(room_id: &RoomId) -> &'static [String] {
+    data()
+        .rooms
+        .iter()
+        .find(|room| room.id == room_id.as_ref())
+        .map_or(&[], |room| room.pinned.as_slice())
+}
+
+fn fixture_id(message: &TimelineMessage) -> Option<&str> {
+    let event_id = message.event_id.as_deref()?;
+    let copied = event_id
+        .rsplit_once(COPY_SUFFIX)
+        .filter(|(_, copy)| copy.parse::<usize>().is_ok());
+    Some(copied.map_or(event_id, |(id, _)| id))
+}
+
+fn pinned_message(message: &TimelineMessage) -> Option<PinnedMessage> {
+    if message.body.service().is_some() {
+        return None;
+    }
+    Some(PinnedMessage {
+        event_id: message.event_id.clone()?,
+        kind: message.body.preview_kind(),
+        body: body_preview(&message.body),
+    })
 }
 
 fn unread_count(room_id: &RoomId, loaded: usize) -> usize {

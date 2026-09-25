@@ -1,0 +1,76 @@
+import { Palette } from "std-widgets.slint";
+
+import { MessagePreview } from "../message-preview.slint";
+import { QuoteLines } from "../reply-quote.slint";
+import { ClickArea } from "../../../../components/a11y.slint";
+import { Actions } from "../../../../actions.slint";
+import { RoomView } from "../../../../views.slint";
+import { AppStyle, Metrics, Radius, Space, Stroke } from "../../../../theme.slint";
+
+component PinnedMarker inherits Rectangle {
+    in property <int> count;
+    in property <int> index;
+
+    property <int> most-segments: 4;
+    property <int> older-in-view: 1;
+    property <int> segments: min(root.count, root.most-segments);
+    property <int> first-segment: clamp(root.index - root.older-in-view, 0, root.count - root.segments);
+    property <length> gap: Space.xs;
+    property <length> segment-height: (root.height - (root.segments - 1) * root.gap) / max(root.segments, 1);
+
+    width: Stroke.marker;
+
+    for segment in root.segments: Rectangle {
+        y: segment * (root.segment-height + root.gap);
+        width: root.width;
+        height: root.segment-height;
+        border-radius: self.width / 2;
+        background: root.first-segment + segment == root.index
+            ? Palette.accent-background
+            : AppStyle.pinned-marker-rest;
+    }
+}
+
+export component PinnedBar inherits ClickArea {
+    height: Metrics.pinned-bar;
+    background: AppStyle.surface-raised;
+    label: @tr("Go to the pinned message");
+    ring-inset: Space.xs;
+    ring-radius: Radius.sm;
+    clicked => {
+        Actions.open-pinned(RoomView.pinned-event-id);
+    }
+
+    Rectangle {
+        background: root.pressed
+            ? AppStyle.overlay-pressed
+            : (root.has-hover ? AppStyle.overlay-hover : transparent);
+    }
+
+    HorizontalLayout {
+        padding-left: Space.lg;
+        padding-right: Space.lg;
+        padding-top: Space.md;
+        padding-bottom: Space.md;
+        spacing: Space.md;
+
+        PinnedMarker {
+            count: RoomView.pinned-count;
+            index: RoomView.pinned-index;
+        }
+
+        QuoteLines {
+            horizontal-stretch: 1;
+            title: RoomView.pinned-count > 1
+                ? @tr("Pinned message #{}", RoomView.pinned-index + 1)
+                : @tr("Pinned message");
+            preview: MessagePreview.label(RoomView.pinned-kind, RoomView.pinned-body);
+        }
+    }
+
+    Rectangle {
+        y: parent.height - self.height;
+        height: Stroke.hairline;
+        background: AppStyle.border;
+    }
+}

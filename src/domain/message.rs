@@ -18,6 +18,7 @@ pub enum MessagePreviewKind {
     Location,
     Encrypted,
     Sticker,
+    Poll,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -152,6 +153,13 @@ impl MessageBody {
 pub struct ReplyInfo {
     pub event_id: String,
     pub sender: String,
+    pub kind: MessagePreviewKind,
+    pub body: RichText,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PinnedMessage {
+    pub event_id: String,
     pub kind: MessagePreviewKind,
     pub body: RichText,
 }

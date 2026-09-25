@@ -107,6 +107,9 @@ pub enum ProbeCommand {
     JumpToEvent {
         event_id: String,
     },
+    OpenPinned {
+        event_id: String,
+    },
     ToggleReaction {
         event_id: String,
         key: String,
@@ -314,6 +317,7 @@ pub fn to_driven(command: ProbeCommand, selected: Selection<'_>) -> Result<Drive
             }
         }
         ProbeCommand::JumpToEvent { event_id } => UiCommand::JumpToEvent { event_id },
+        ProbeCommand::OpenPinned { event_id } => UiCommand::OpenPinned { event_id },
         ProbeCommand::ToggleReaction { event_id, key } => {
             UiCommand::ToggleReaction { event_id, key }
         }

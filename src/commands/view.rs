@@ -6,6 +6,7 @@ use super::messages::{UserMessage, UserMessageKind};
 use super::ui::MessageDraft;
 use crate::domain::auth::{LoginMethod, Session};
 use crate::domain::media::AudioMeta;
+use crate::domain::message::PinnedMessage;
 use crate::domain::room::{RoomId, RoomList, Space, UnreadFlags};
 use crate::domain::space_index::SpaceChild;
 use crate::domain::sticker::StickerPacks;
@@ -18,6 +19,7 @@ pub struct AppViewState {
     pub directory: DirectoryView,
     pub space_index: SpaceIndexView,
     pub pagination: PaginationView,
+    pub pinned: PinnedView,
     pub stickers: StickerView,
     pub attachment: AttachmentView,
     pub video: VideoView,
@@ -145,6 +147,22 @@ impl PaginationView {
                 ..Self::default()
             };
         }
+    }
+}
+
+#[derive(Clone, Default, PartialEq)]
+pub struct PinnedView {
+    pub room_id: Option<RoomId>,
+    pub messages: Arc<[PinnedMessage]>,
+    pub shown: usize,
+}
+
+impl PinnedView {
+    pub fn shown_in(&self, room_id: &str) -> Option<&PinnedMessage> {
+        if self.room_id.as_deref() != Some(room_id) {
+            return None;
+        }
+        self.messages.get(self.shown)
     }
 }
 

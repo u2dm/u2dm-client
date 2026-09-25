@@ -142,6 +142,7 @@ export global AppStyle {
     out property <color> delivery-failed-glyph: Colors.white;
     out property <color> audio-wave-rest: Palette.foreground.transparentize(0.7);
     out property <color> scrub-track: Palette.foreground.transparentize(0.75);
+    out property <color> pinned-marker-rest: Palette.accent-background.transparentize(0.6);
 
     out property <color> chip-fill: Palette.background.transparentize(0.78);
     out property <color> chip-fill-mine: Palette.accent-background.transparentize(0.72);
@@ -264,6 +265,7 @@ export global Metrics {
     out property <length> audio-track-width: 200px;
     out property <length> audio-track-line: Stroke.emphasis;
     out property <length> now-playing-bar: Size.xl;
+    out property <length> pinned-bar: root.reply-bar;
 
     out property <length> toast-min-width: 200px;
     out property <length> toast-max-width: 500px;

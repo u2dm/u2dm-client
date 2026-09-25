@@ -12,13 +12,15 @@ use tokio::time::sleep;
 use tokio_util::sync::CancellationToken;
 
 use super::{
-    attachments, audio, data, login, media, reactions, receipts, space_index, stickers, timeline,
-    verification, videos,
+    attachments, audio, data, login, media, pinned, reactions, receipts, space_index, stickers,
+    timeline, verification, videos,
 };
 use crate::adapters::video;
 use crate::domain::auth::{AuthMethod, LoginCredentials, OAuthLoginData, ServerInfo, Session};
 use crate::domain::media::{MediaRendition, OutgoingAttachment, WaveformNeed};
-use crate::domain::message::{MessageBody, ReplyInfo, RichText, SendState, TimelineMessage};
+use crate::domain::message::{
+    MessageBody, PinnedMessage, ReplyInfo, RichText, SendState, TimelineMessage,
+};
 use crate::domain::room::RoomId;
 use crate::domain::space_index::HierarchyPage;
 use crate::domain::sticker::{PackId, StickerImage};
@@ -31,8 +33,8 @@ use crate::domain::verification::{VerificationCancellation, VerificationEvent};
 use crate::error::{AppError, Result};
 use crate::ports::matrix::{
     AuthPort, AuthenticatedSession, CleanupReport, InterruptedLogin, LocalDataOwnership, MediaPort,
-    ProgressSink, RestoreStep, SessionPort, SpaceIndexPort, SpaceOrderPort, StickerCatalog,
-    StickerPort, StoreAdoption, SyncPort, SyncSink, TimelinePort, VerificationPort,
+    PinnedPort, ProgressSink, RestoreStep, SessionPort, SpaceIndexPort, SpaceOrderPort,
+    StickerCatalog, StickerPort, StoreAdoption, SyncPort, SyncSink, TimelinePort, VerificationPort,
 };
 use crate::ports::media::MediaCache;
 
@@ -201,6 +203,7 @@ fn authenticated(session: Session) -> AuthenticatedSession {
     let authed = Arc::new(DemoAuthed::default());
     let sync = Arc::clone(&authed);
     let timeline = Arc::clone(&authed);
+    let pinned = Arc::clone(&authed);
     let media = Arc::clone(&authed);
     let verification = Arc::clone(&authed);
     let space_order = Arc::clone(&authed);
@@ -210,6 +213,7 @@ fn authenticated(session: Session) -> AuthenticatedSession {
         session,
         sync,
         timeline,
+        pinned,
         media,
         verification,
         space_order,
@@ -460,6 +464,10 @@ impl SyncPort for DemoAuthed {
                 }
             }
         }
+    }
+
+    fn set_selected_room(&self, room_id: Option<&RoomId>) {
+        tracing::debug!(?room_id, "demo: the selected room needs no subscription");
     }
 }
 
@@ -741,6 +749,58 @@ impl TimelinePort for DemoAuthed {
             spawn_upload_progress(timeline_tx, index, settled, total);
         }
         Ok(())
+    }
+}
+
+#[async_trait]
+impl PinnedPort for DemoAuthed {
+    async fn subscribe_pinned(
+        &self,
+        room_id: &RoomId,
+        pinned_tx: mpsc::Sender<Vec<PinnedMessage>>,
+    ) -> Result<()> {
+        pinned::pause_arrival().await;
+        let pins = data::pinned_messages(room_id);
+        if pinned_tx.send(pins.clone()).await.is_err() {
+            return Ok(());
+        }
+        if pinned::scenario().repins
+            && let Some(newest) = data::latest_pinnable(room_id)
+        {
+            repin(&pinned_tx, &pins, newest).await;
+        }
+        pinned_tx.closed().await;
+        Ok(())
+    }
+}
+
+async fn repin(
+    pinned_tx: &mpsc::Sender<Vec<PinnedMessage>>,
+    pins: &[PinnedMessage],
+    newest: PinnedMessage,
+) {
+    let unpinned: Vec<PinnedMessage> = pins
+        .iter()
+        .filter(|pin| pin.event_id != newest.event_id)
+        .cloned()
+        .collect();
+    let mut repinned = unpinned.clone();
+    repinned.push(newest);
+    let mut pinned_now = false;
+    loop {
+        tokio::select! {
+            () = sleep(pinned::REPIN_INTERVAL) => {}
+            () = pinned_tx.closed() => return,
+        }
+        pinned_now = !pinned_now;
+        let next = if pinned_now {
+            repinned.clone()
+        } else {
+            unpinned.clone()
+        };
+        if pinned_tx.send(next).await.is_err() {
+            return;
+        }
     }
 }
 

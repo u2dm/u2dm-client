@@ -13,6 +13,7 @@ import { Actions } from "../../../../actions.slint";
 import { Composer, DeliveryTip, Reactions, ReplySwipe, Shell } from "../../../../local.slint";
 import { StatusPill } from "./status-pill.slint";
 import { NowPlayingBar } from "./now-playing-bar.slint";
+import { PinnedBar } from "./pinned-bar.slint";
 import { HeaderTitle } from "../header-title.slint";
 
 export component TimelineView inherits Rectangle {
@@ -28,6 +29,9 @@ export component TimelineView inherits Rectangle {
     property <length> header-height: Metrics.header-row;
     property <length> spacing: Metrics.timeline-gap;
     property <length> nav-button-width: Size.target;
+    property <bool> has-pins: RoomView.pinned-count > 0;
+    property <length> pinned-height: root.has-pins ? Metrics.pinned-bar : 0px;
+    property <length> now-playing-height: AudioView.visible ? Metrics.now-playing-bar : 0px;
 
     property <bool> has-room: RoomView.selected-room-name != "";
     property <bool> is-loading: RoomView.timeline-status == TimelineState.loading
@@ -135,14 +139,20 @@ export component TimelineView inherits Rectangle {
             width: parent.width;
             height: parent.height - root.header-height;
             available-width: parent.width;
-            top-inset: AudioView.visible ? Metrics.now-playing-bar : 0px;
+            top-inset: root.pinned-height + root.now-playing-height;
             bottom-inset: input.height + root.spacing;
             composer-top: parent.height - input.height;
         }
 
-        if AudioView.visible: NowPlayingBar {
+        if root.has-pins: PinnedBar {
             x: 0;
             y: root.header-height;
+            width: parent.width;
+        }
+
+        if AudioView.visible: NowPlayingBar {
+            x: 0;
+            y: root.header-height + root.pinned-height;
             width: parent.width;
         }
 

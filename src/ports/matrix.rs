@@ -8,6 +8,7 @@ use tokio_util::sync::CancellationToken;
 use crate::domain::account::AccountScope;
 use crate::domain::auth::{LoginCredentials, OAuthLoginData, ServerInfo, Session};
 use crate::domain::media::{MediaRendition, OutgoingAttachment, WaveformNeed};
+use crate::domain::message::PinnedMessage;
 use crate::domain::room::RoomId;
 use crate::domain::space_index::HierarchyPage;
 use crate::domain::sticker::{PackId, StickerPack};
@@ -110,6 +111,7 @@ pub struct AuthenticatedSession {
     pub session: Session,
     pub sync: Arc<dyn SyncPort>,
     pub timeline: Arc<dyn TimelinePort>,
+    pub pinned: Arc<dyn PinnedPort>,
     pub media: Arc<dyn MediaPort>,
     pub verification: Arc<dyn VerificationPort>,
     pub space_order: Arc<dyn SpaceOrderPort>,
@@ -166,6 +168,7 @@ pub trait StoreAdoption: Send + Sync {
 #[async_trait]
 pub trait SyncPort: Send + Sync {
     async fn start_sync(&self, on_sync: SyncSink, cancel: CancellationToken) -> SyncOutcome;
+    fn set_selected_room(&self, room_id: Option<&RoomId>);
 }
 
 #[async_trait]
@@ -198,6 +201,15 @@ pub trait TimelinePort: Send + Sync {
     ) -> Result<()>;
     async fn resend(&self, room_id: &RoomId, local_id: &str) -> Result<()>;
     async fn discard_send(&self, room_id: &RoomId, local_id: &str) -> Result<()>;
+}
+
+#[async_trait]
+pub trait PinnedPort: Send + Sync {
+    async fn subscribe_pinned(
+        &self,
+        room_id: &RoomId,
+        pinned_tx: mpsc::Sender<Vec<PinnedMessage>>,
+    ) -> Result<()>;
 }
 
 #[async_trait]

@@ -8,6 +8,7 @@ mod event;
 pub mod input;
 mod lifecycle;
 mod media;
+mod pinned;
 mod recover;
 mod room_directory;
 mod selection;
@@ -31,6 +32,7 @@ use event::{AppEvent, EndReason, SessionEvent, TimelineEvent};
 use input::{CommandSender, EventSender, Inbox, Input};
 use lifecycle::Lifecycle;
 use media::MediaActions;
+use pinned::PinnedMessages;
 use recover::Recovery;
 use room_directory::{RoomDirectory, RoomMeta};
 use selection::Selection;
@@ -142,6 +144,7 @@ pub struct AppService {
     session: SessionController,
     room_directory: RoomDirectory,
     active_timeline: ActiveTimeline,
+    pinned: PinnedMessages,
     verification: VerificationController,
     media: MediaActions,
     audio: AudioController,
@@ -179,6 +182,7 @@ impl AppService {
             ),
             room_directory: RoomDirectory::new(Arc::clone(&output)),
             active_timeline: ActiveTimeline::new(events.clone(), Arc::clone(&output)),
+            pinned: PinnedMessages::new(Arc::clone(&output), events.clone()),
             verification: VerificationController::new(Arc::clone(&output), events.clone()),
             media: MediaActions::new(Arc::clone(&media_files), Arc::clone(&output)),
             audio: AudioController::new(Arc::clone(&output), events.clone()),
@@ -424,6 +428,9 @@ impl AppService {
             }
             UiCommand::JumpToEvent { event_id } => {
                 self.active_timeline.jump_to_event(event_id);
+            }
+            UiCommand::OpenPinned { event_id } => {
+                self.open_pinned(event_id);
             }
             UiCommand::RetrySend { local_id } => {
                 self.resolve_failed_send(local_id, FailedSend::Retry);
@@ -748,6 +755,9 @@ impl AppService {
             } => {
                 self.submissions
                     .settled(submission, enqueue, self.selection.room.as_ref());
+            }
+            AppEvent::PinnedChanged { watch, messages } => {
+                self.pinned.changed(watch, messages);
             }
             AppEvent::SpaceIndexPaged {
                 generation,
@@ -1100,7 +1110,26 @@ impl AppService {
 
     async fn select_room(&mut self, room_id: RoomId) {
         self.space_index.close();
+        self.sync_selected_room(Some(&room_id));
+        self.follow_pinned(room_id.clone());
         self.open_room(room_id, TimelineFocus::ReadPosition).await;
+    }
+
+    fn sync_selected_room(&self, room_id: Option<&RoomId>) {
+        if let Some(sync) = self.port(|a| &a.sync) {
+            sync.set_selected_room(room_id);
+        }
+    }
+
+    fn follow_pinned(&mut self, room_id: RoomId) {
+        if let Some(pinned) = self.port(|a| &a.pinned) {
+            self.pinned.follow(pinned, room_id);
+        }
+    }
+
+    fn open_pinned(&mut self, event_id: String) {
+        self.pinned.opened(&event_id);
+        self.active_timeline.jump_to_event(event_id);
     }
 
     async fn open_room(&mut self, room_id: RoomId, focus: TimelineFocus) {
@@ -1168,6 +1197,8 @@ impl AppService {
         })
         .await;
         self.stickers.clear_room();
+        self.sync_selected_room(None);
+        self.pinned.clear();
         self.active_timeline.clear_room(generation).await;
     }
 
@@ -1207,6 +1238,7 @@ impl AppService {
         tokio::join!(
             self.background.shutdown(),
             self.active_timeline.shutdown(),
+            self.pinned.restart(),
             self.operations.restart(),
             self.send_lanes.restart(),
             self.media.cancel_and_drain(),
@@ -1292,6 +1324,7 @@ impl AppService {
         tokio::join!(
             self.background.shutdown(),
             self.active_timeline.shutdown(),
+            self.pinned.shutdown(),
             self.operations.shutdown(),
             self.send_lanes.shutdown(),
             self.media.drain(),

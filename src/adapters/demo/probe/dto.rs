@@ -4,8 +4,10 @@ use super::names;
 use crate::commands::messages::UserMessage;
 use crate::commands::view::{
     AppViewState, AttachmentView, AudioView, DirectoryView, LifecycleView, PaginationView,
-    SpaceIndexRow, SpaceIndexView, StickerView, Toast, TrackFile, UnsentMessage, VideoView,
+    PinnedView, SpaceIndexRow, SpaceIndexView, StickerView, Toast, TrackFile, UnsentMessage,
+    VideoView,
 };
+use crate::domain::message::PinnedMessage;
 use crate::domain::room::{Room, Space};
 use crate::domain::space_index::{ChildKind, JoinRule};
 use crate::domain::sticker::StickerPack;
@@ -18,6 +20,7 @@ pub struct ViewDto {
     directory: DirectoryDto,
     space_index: SpaceIndexDto,
     pagination: PaginationDto,
+    pinned: PinnedDto,
     stickers: StickersDto,
     attachment: AttachmentDto,
     video: VideoDto,
@@ -134,6 +137,20 @@ struct PaginationDto {
 }
 
 #[derive(Serialize)]
+struct PinnedMessageDto {
+    event_id: String,
+    kind: &'static str,
+    body: String,
+}
+
+#[derive(Serialize)]
+struct PinnedDto {
+    room_id: Option<String>,
+    shown: usize,
+    messages: Vec<PinnedMessageDto>,
+}
+
+#[derive(Serialize)]
 struct PackDto {
     id: String,
     title: String,
@@ -207,6 +224,7 @@ pub fn view(source: &AppViewState) -> ViewDto {
         directory: directory(&source.directory),
         space_index: space_index(&source.space_index),
         pagination: pagination(source.pagination),
+        pinned: pinned(&source.pinned),
         stickers: stickers(&source.stickers),
         attachment: attachment(&source.attachment),
         video: video(&source.video),
@@ -345,6 +363,22 @@ fn pagination(source: PaginationView) -> PaginationDto {
         backwards_loading: source.backwards_loading,
         forwards_loading: source.forwards_loading,
         new_messages: source.new_messages,
+    }
+}
+
+fn pinned_message(source: &PinnedMessage) -> PinnedMessageDto {
+    PinnedMessageDto {
+        event_id: source.event_id.clone(),
+        kind: names::preview_kind(source.kind),
+        body: source.body.plain.clone(),
+    }
+}
+
+fn pinned(source: &PinnedView) -> PinnedDto {
+    PinnedDto {
+        room_id: source.room_id.as_ref().map(ToString::to_string),
+        shown: source.shown,
+        messages: source.messages.iter().map(pinned_message).collect(),
     }
 }
 

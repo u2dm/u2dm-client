@@ -24,6 +24,8 @@ macro_rules! string_props {
         VerificationErrorDetail VerificationView "VerificationView" "error-detail" set_error_detail get_error_detail;
         SelectedRoomName RoomView "RoomView" "selected-room-name" set_selected_room_name get_selected_room_name;
         FocusEventId RoomView "RoomView" "focus-event-id" set_focus_event_id get_focus_event_id;
+        PinnedEventId RoomView "RoomView" "pinned-event-id" set_pinned_event_id get_pinned_event_id;
+        PinnedBody RoomView "RoomView" "pinned-body" set_pinned_body get_pinned_body;
         SelectedRoomId DirectoryView "DirectoryView" "selected-room-id" set_selected_room_id get_selected_room_id;
         SelectedSpaceId DirectoryView "DirectoryView" "selected-space-id" set_selected_space_id get_selected_space_id;
         SelectedSubspaceId DirectoryView "DirectoryView" "selected-subspace-id" set_selected_subspace_id get_selected_subspace_id;
@@ -96,6 +98,7 @@ macro_rules! simple_callbacks {
         on_close_audio "close-audio" close_audio plain CloseAudio;
         on_open_link "open-link" open_link manual_string OpenLink;
         on_jump_to_event "jump-to-event" jump_to_event manual_string JumpToEvent;
+        on_open_pinned "open-pinned" open_pinned manual_string OpenPinned;
         on_pick_photo "pick-photo" pick_photo manual_string PickAttachment;
         on_pick_document "pick-document" pick_document manual_string PickAttachment;
         on_cancel_attachment "cancel-attachment" cancel_attachment plain CancelAttachment;
@@ -144,6 +147,8 @@ macro_rules! int_props {
         TimelineToken RoomView "RoomView" "timeline-token" set_timeline_token get_timeline_token;
         PrependToken RoomView "RoomView" "prepend-token" set_prepend_token get_prepend_token;
         SelectedRoomMembers RoomView "RoomView" "selected-room-members" set_selected_room_members get_selected_room_members;
+        PinnedCount RoomView "RoomView" "pinned-count" set_pinned_count get_pinned_count;
+        PinnedIndex RoomView "RoomView" "pinned-index" set_pinned_index get_pinned_index;
         SelectedGeneration DirectoryView "DirectoryView" "selected-generation" set_selected_generation get_selected_generation;
         ListedSpaceMembers DirectoryView "DirectoryView" "listed-space-members" set_listed_space_members get_listed_space_members;
         StickerColumns StickerView "StickerView" "columns" set_columns get_columns;
@@ -175,6 +180,8 @@ macro_rules! enum_props {
             RoomView "RoomView" "timeline-status" set_timeline_status get_timeline_status;
         ToastMessage set_toast_message(UserMessageKind)
             RoomView "RoomView" "toast-message" set_toast_message get_toast_message;
+        PinnedKind set_pinned_kind(MessagePreviewKind)
+            RoomView "RoomView" "pinned-kind" set_pinned_kind get_pinned_kind;
         VerificationPhase set_verification_phase(VerifyStep)
             VerificationView "VerificationView" "step" set_step get_step;
         VerificationActivity set_verification_activity(VerificationActivity)
@@ -485,6 +492,7 @@ macro_rules! preview_kinds {
         Location  Location  "location";
         Encrypted Encrypted "encrypted";
         Sticker   Sticker   "sticker";
+        Poll      Poll      "poll";
     } };
 }
 pub(crate) use preview_kinds;

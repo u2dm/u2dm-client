@@ -198,6 +198,7 @@ pub(super) fn command_allowed(phase: AppPhase, cmd: &UiCommand) -> bool {
         | UiCommand::PaginateForwards { .. }
         | UiCommand::JumpToLatest { .. }
         | UiCommand::JumpToEvent { .. }
+        | UiCommand::OpenPinned { .. }
         | UiCommand::ToggleReaction { .. }
         | UiCommand::RetrySend { .. }
         | UiCommand::DiscardSend { .. }

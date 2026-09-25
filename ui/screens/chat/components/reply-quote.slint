@@ -1,6 +1,34 @@
 import { Palette } from "std-widgets.slint";
 import { AppStyle, Fonts, Space, Stroke, Weight } from "../../../theme.slint";
 
+export component QuoteLines inherits VerticalLayout {
+    in property <string> title;
+    in property <string> preview;
+    in property <color> accent: Palette.accent-background;
+    in property <AccessibleLiveness> liveness: AccessibleLiveness.off;
+
+    alignment: center;
+    spacing: Space.xs;
+
+    Text {
+        text: root.title;
+        font-size: Fonts.body-small;
+        font-weight: Weight.bold;
+        color: root.accent;
+        overflow: elide;
+        accessible-live-region: root.liveness;
+    }
+
+    Text {
+        text: root.preview;
+        font-family: Fonts.emoji;
+        font-size: Fonts.body-small;
+        color: AppStyle.overlay-foreground-muted;
+        overflow: elide;
+        accessible-live-region: root.liveness;
+    }
+}
+
 export component ReplyQuote inherits HorizontalLayout {
     in property <string> sender;
     in property <string> preview;
@@ -15,27 +43,11 @@ export component ReplyQuote inherits HorizontalLayout {
         background: root.accent;
     }
 
-    VerticalLayout {
+    QuoteLines {
         horizontal-stretch: 1;
-        alignment: center;
-        spacing: Space.xs;
-
-        Text {
-            text: root.sender;
-            font-size: Fonts.body-small;
-            font-weight: Weight.bold;
-            color: root.accent;
-            overflow: elide;
-            accessible-live-region: root.liveness;
-        }
-
-        Text {
-            text: root.preview;
-            font-family: Fonts.emoji;
-            font-size: Fonts.body-small;
-            color: AppStyle.overlay-foreground-muted;
-            overflow: elide;
-            accessible-live-region: root.liveness;
-        }
+        title: root.sender;
+        preview: root.preview;
+        accent: root.accent;
+        liveness: root.liveness;
     }
 }

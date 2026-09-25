@@ -16,6 +16,7 @@ scenario_env() {
     reactions-late)  echo 'U2DM_DEMO_TIMELINE=deep U2DM_DEMO_REACTIONS=late,overflow,crowd' ;;
     sticker-trickle) echo 'U2DM_DEMO_STICKERS=trickle,slow,encrypted' ;;
     jump-to-reply)   echo 'U2DM_DEMO_TIMELINE=deep,jump-far' ;;
+    pinned-bar)      echo 'U2DM_DEMO_TIMELINE=deep,jump-far U2DM_DEMO_PINNED=slow' ;;
     media-failures)  echo 'U2DM_DEMO_TIMELINE=deep' ;;
     compact-layout)  echo 'U2DM_DEMO_WINDOW=700x900 U2DM_DEMO_TIMELINE=deep' ;;
     login-oauth)     echo 'U2DM_DEMO_LOGIN=oauth-ok' ;;
@@ -36,6 +37,13 @@ scenario_steps() {
       echo '{"op":"select_room","room_id":"!stickers:demo.local"}' ;;
     media-failures)
       echo '{"op":"select_room","room_id":"!sarah:demo.local"}' ;;
+    pinned-bar)
+      echo '{"op":"select_room","room_id":"!rust:demo.local"}'
+      echo 'sleep 3'
+      echo '{"op":"open_pinned","event_id":"demo-rust-chart-copy5"}'
+      echo 'sleep 2'
+      echo '{"op":"open_pinned","event_id":"demo-rust-13-copy5"}'
+      echo 'sleep 3' ;;
     audio-track)
       echo '{"op":"select_room","room_id":"!music:demo.local"}'
       echo 'sleep 2'
@@ -72,6 +80,7 @@ scenario_note() {
     reactions-late)  echo 'every chip arrives as a Set, with an overflow run and a crowd of reactors' ;;
     sticker-trickle) echo 'images arrive one batch at a time over a slow catalog, in an encrypted room' ;;
     jump-to-reply)   echo 'a short live window, so a reply quote must take the focused /context path' ;;
+    pinned-bar)      echo 'three pins arrive late; the newest opens in the live window, the next through /context, and the bar steps back from #3 to #1' ;;
     media-failures)  echo 'every MediaFailure variant on one timeline' ;;
     compact-layout)  echo 'below the 720px breakpoint; run with --headless, a compositor clamps the width' ;;
     login-oauth)     echo 'starts logged out on an OAuth flow that succeeds slowly' ;;
@@ -96,7 +105,7 @@ check_window() {
 
 names() {
   printf '%s\n' unread-anchor all-unread unread-unresolved reactions-late sticker-trickle jump-to-reply \
-    media-failures compact-layout login-oauth verify-self audio-track voice-notes delivery-marks \
+    pinned-bar media-failures compact-layout login-oauth verify-self audio-track voice-notes delivery-marks \
     space-index
 }
 
@@ -151,6 +160,7 @@ cmd_run() {
   echo "# wrote $out"
   jq -r '"  rooms=\(.view.directory.rooms|length) step=\(.view.lifecycle.step) toast=\(.view.toast.kind)"' "$out/state.json"
   jq -r 'if .rows then "  timeline rows=\(.rows|length) anchor=\(.anchor_index) unread=\([.rows[]|select(.first_unread)|.row])" else "  timeline unavailable" end' "$out/timeline.json"
+  jq -r 'if .pinned.count > 0 then "  pinned bar #\(.pinned.index + 1) of \(.pinned.count) event=\(.pinned.event_id) focus=\(.focus_event_id)" else empty end' "$out/timeline.json"
   jq -r 'if .audio then "  audio state=\(.audio.state) event=\(.audio.event_id) position=\(.audio.position_ms)/\(.audio.duration_ms) output=\(.audio.output)" else empty end' "$out/timeline.json"
 }
 

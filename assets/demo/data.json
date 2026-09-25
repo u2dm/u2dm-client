@@ -23,6 +23,7 @@
       "avatar": "rust-programming",
       "members": 1243,
       "minutes_ago": 3,
+      "pinned": ["demo-rust-3", "demo-rust-13", "demo-rust-chart"],
       "last_message": {
         "sender": "Sarah",
         "sender_id": "@sarah:matrix.org",
@@ -49,6 +50,7 @@
       "members": 892,
       "unread": 4,
       "minutes_ago": 18,
+      "pinned": ["demo-matrixhq-1"],
       "last_message": {
         "sender": "Vera 🏳️‍⚧️",
         "sender_id": "@vera:matrix.org",
@@ -109,6 +111,7 @@
       "members": 6,
       "unread": 5,
       "days_ago": 1,
+      "pinned": ["demo-trip-1", "demo-trip-clip"],
       "last_message": {
         "sender": "Marcus",
         "sender_id": "@marcus:matrix.org",

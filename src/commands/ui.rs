@@ -86,6 +86,10 @@ pub enum UiCommand {
     JumpToEvent {
         event_id: String,
     },
+    #[strum(to_string = "OpenPinned({event_id})")]
+    OpenPinned {
+        event_id: String,
+    },
     #[strum(to_string = "ToggleReaction({event_id})")]
     ToggleReaction {
         event_id: String,

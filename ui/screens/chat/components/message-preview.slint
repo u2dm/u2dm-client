@@ -26,6 +26,9 @@ export global MessagePreview {
         if kind == PreviewKind.sticker {
             return @tr("Sticker");
         }
+        if kind == PreviewKind.poll {
+            return @tr("📊 {}", body);
+        }
         return body;
     }
 }
