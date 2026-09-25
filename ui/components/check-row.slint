@@ -1,0 +1,49 @@
+import { Palette } from "std-widgets.slint";
+import { IconDisplay, IconSet } from "@lucide";
+
+import { ClickArea } from "./a11y.slint";
+import { AppStyle, Fonts, IconSize, Radius, Size, Space, Stroke } from "../theme.slint";
+
+export component CheckRow inherits Rectangle {
+    in property <string> label;
+    in-out property <bool> checked: false;
+
+    height: Size.sm;
+
+    touch := ClickArea {
+        above-modal: true;
+        label: root.label;
+        ring-radius: Radius.sm;
+        clicked => {
+            root.checked = !root.checked;
+        }
+    }
+
+    HorizontalLayout {
+        spacing: Space.md;
+
+        Rectangle {
+            cross-axis-self-alignment: center;
+            width: Size.xs;
+            height: Size.xs;
+            border-radius: Radius.xs;
+            border-width: Stroke.hairline;
+            border-color: root.checked ? Palette.accent-background : AppStyle.foreground-faint;
+            background: root.checked ? Palette.accent-background : transparent;
+
+            if root.checked: IconDisplay {
+                icon: IconSet.Check;
+                size: IconSize.xs;
+                stroke: Palette.accent-foreground;
+            }
+        }
+
+        Text {
+            text: root.label;
+            font-size: Fonts.label;
+            vertical-alignment: center;
+            horizontal-stretch: 1;
+            color: Palette.foreground;
+        }
+    }
+}

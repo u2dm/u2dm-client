@@ -2,6 +2,7 @@ pub mod account;
 pub mod auth;
 pub mod media;
 pub mod message;
+pub mod poll;
 pub mod room;
 pub mod space_index;
 pub mod sticker;

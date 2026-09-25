@@ -70,6 +70,10 @@ impl TimelineItems {
         })
     }
 
+    pub(super) fn message_of_event(&self, event_id: &EventId) -> Option<&TimelineMessage> {
+        self.message_at(self.position_of_event(event_id)?)
+    }
+
     pub(super) fn row_of_event(&self, event_id: &EventId) -> JumpTarget {
         let Some(raw) = self.position_of_event(event_id) else {
             return JumpTarget::NotLoaded;

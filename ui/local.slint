@@ -58,6 +58,7 @@ export global Shell {
     in-out property <bool> nav-open: false;
     in-out property <bool> picker-open: false;
     in-out property <bool> attach-open: false;
+    in-out property <bool> poll-open: false;
 
     out property <bool> verification-open: VerificationView.visible
         && LoginView.step == LoginPhase.logged-in;
@@ -68,7 +69,8 @@ export global Shell {
     out property <bool> modal-over-nav: root.drawer-open
         || root.verification-open
         || root.attachment-open
-        || root.video-open;
+        || root.video-open
+        || root.poll-open;
     out property <bool> modal-open: root.nav-open || root.modal-over-nav;
     out property <bool> nav-on-top: root.nav-open && !root.modal-over-nav;
     out property <bool> background-reachable: !root.modal-open;
@@ -78,6 +80,7 @@ export global Shell {
         self.nav-open = false;
         self.picker-open = false;
         self.attach-open = false;
+        self.poll-open = false;
     }
 }
 
@@ -258,5 +261,17 @@ export global ReplySwipe {
         Composer.reply-event-id = root.event-id;
         Composer.reply-sender = root.target.sender;
         Composer.reply-preview = MessagePreview.label(root.target.preview-kind, root.target.preview-body);
+    }
+}
+
+export global Polls {
+    in-out property <string> ending;
+
+    public function ask-end(event-id: string) {
+        self.ending = event-id;
+    }
+
+    public function clear() {
+        self.ending = "";
     }
 }

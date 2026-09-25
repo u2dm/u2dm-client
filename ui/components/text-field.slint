@@ -1,9 +1,9 @@
 import { Palette } from "std-widgets.slint";
 import { IconDisplay, IconSet, Icon } from "@lucide";
 
-import { ClickArea } from "../../components/a11y.slint";
-import { AppStyle, Fonts, IconSize, Motion, Radius, Size, Space, Stroke } from "../../theme.slint";
-import { IconButton } from "../../components/button.slint";
+import { ClickArea } from "./a11y.slint";
+import { AppStyle, Fonts, IconSize, Motion, Radius, Size, Space, Stroke } from "../theme.slint";
+import { IconButton } from "./button.slint";
 
 component ScrollingInput inherits Rectangle {
     in-out property <string> text;
@@ -83,7 +83,7 @@ component RevealedInput inherits Rectangle {
     }
 }
 
-export component LoginField inherits Rectangle {
+export component TextField inherits Rectangle {
     in-out property <string> text;
     in property <Icon> icon;
     in property <string> placeholder;
@@ -96,6 +96,14 @@ export component LoginField inherits Rectangle {
 
     property <bool> revealed: false;
     property <bool> shows-reveal: root.secret && root.text != "";
+
+    public function focus-input() {
+        if root.revealed {
+            revealed-input.focus();
+        } else {
+            input.focus();
+        }
+    }
 
     height: AppStyle.control-height;
     border-radius: Radius.md;

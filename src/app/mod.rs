@@ -9,6 +9,7 @@ pub mod input;
 mod lifecycle;
 mod media;
 mod pinned;
+mod polls;
 mod recover;
 mod room_directory;
 mod selection;
@@ -54,6 +55,7 @@ use crate::commands::view::{AppViewState, LoginActivity, LoginStep, Toast};
 use crate::domain::account::AccountScope;
 use crate::domain::auth::ServerInfo;
 use crate::domain::media::AttachmentPick;
+use crate::domain::poll::PollDraft;
 use crate::domain::room::{RoomId, RoomList, Space};
 use crate::domain::sticker::PackId;
 use crate::domain::sync::ConnectionStatus;
@@ -407,6 +409,9 @@ impl AppService {
             } => {
                 self.send_sticker(room_id, pack, shortcode, reply_to);
             }
+            UiCommand::SendPoll { room_id, draft } => {
+                self.send_poll(room_id, draft);
+            }
             UiCommand::PaginateBackwards {
                 room_id,
                 generation,
@@ -440,6 +445,15 @@ impl AppService {
             }
             UiCommand::ToggleReaction { event_id, key } => {
                 self.active_timeline.toggle_reaction(event_id, key);
+            }
+            UiCommand::VotePoll {
+                event_id,
+                answer_id,
+            } => {
+                self.active_timeline.vote_poll(event_id, answer_id);
+            }
+            UiCommand::EndPoll { event_id } => {
+                self.active_timeline.end_poll(event_id);
             }
             UiCommand::OpenMedia { event_id } => {
                 self.open_media(event_id);
@@ -998,6 +1012,19 @@ impl AppService {
                 reply_to,
             );
         }
+    }
+
+    fn send_poll(&mut self, room_id: RoomId, draft: PollDraft) {
+        let Some(timeline) = self.port(|a| &a.timeline) else {
+            return;
+        };
+        polls::send(
+            &mut self.send_lanes,
+            Arc::clone(&self.output),
+            timeline,
+            room_id,
+            draft,
+        );
     }
 
     fn pick_attachment(&mut self, room_id: RoomId, pick: AttachmentPick) {

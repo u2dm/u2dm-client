@@ -17,27 +17,27 @@ use names::{
 use super::backend::{self, Models, UiBackend, reorder_spaces, selected_room_key, unread_below};
 use super::decode::{AvatarSlot, request_avatar, request_media, request_sticker};
 use super::dto::{
-    MediaFailureKind, MediaState, MessageDto, ReactionDto, ReactorAvatarDto, RoomDto,
-    SpaceChildDto, SpaceDto, StickerCellDto, StickerPackDto, StickerRowDto,
+    MediaFailureKind, MediaState, MessageDto, PollAnswerDto, ReactionDto, ReactorAvatarDto,
+    RoomDto, SpaceChildDto, SpaceDto, StickerCellDto, StickerPackDto, StickerRowDto,
 };
 #[cfg(feature = "demo")]
 use super::dump;
 use super::fields::{
-    MessageFields, ReactionFields, ReactorFields, RoomFields, SpaceChildFields, SpaceFields,
-    StickerCellFields, StickerPackFields, StickerRowFields,
+    MessageFields, PollAnswerFields, ReactionFields, ReactorFields, RoomFields, SpaceChildFields,
+    SpaceFields, StickerCellFields, StickerPackFields, StickerRowFields,
 };
-use super::present::{Delivery, MessageKind, ServiceKind, VerifyStep};
+use super::present::{Delivery, MessageKind, PollPhase, ServiceKind, VerifyStep};
 #[cfg(feature = "demo")]
 use super::props::EnumProp;
 use super::props::{BoolProp, IntProp, StringProp, UiProps};
 use super::schema::{
     attachment_kinds, audio_kinds, child_accesses, connection_states, deliveries, enum_props,
     login_activities, login_methods, login_phases, media_failures, media_states, message_fields,
-    message_kinds, model_props, preview_kinds, reaction_fields, reaction_sends, reactor_fields,
-    room_fields, room_scopes, send_states, service_kinds, simple_callbacks, space_child_fields,
-    space_fields, space_index_statuses, sticker_cell_fields, sticker_pack_fields,
-    sticker_row_fields, timeline_states, user_message_kinds, verification_activities,
-    verification_phases,
+    message_kinds, model_props, poll_answer_fields, poll_phases, preview_kinds, reaction_fields,
+    reaction_sends, reactor_fields, room_fields, room_scopes, send_states, service_kinds,
+    simple_callbacks, space_child_fields, space_fields, space_index_statuses, sticker_cell_fields,
+    sticker_pack_fields, sticker_row_fields, timeline_states, user_message_kinds,
+    verification_activities, verification_phases,
 };
 use super::session::active_models;
 use super::video::{self, millis_to_duration};
@@ -171,6 +171,7 @@ reaction_sends!(impl_slint_enum ReactionSend "ReactionSend";);
 deliveries!(impl_slint_enum Delivery "Delivery";);
 media_failures!(impl_slint_enum MediaFailureKind "MediaFailure";);
 message_kinds!(impl_slint_enum MessageKind "MessageKind";);
+poll_phases!(impl_slint_enum PollPhase "PollPhase";);
 attachment_kinds!(impl_slint_enum AttachmentKind "AttachmentKind";);
 room_scopes!(impl_slint_enum RoomScope "RoomScope";);
 space_index_statuses!(impl_slint_enum SpaceIndexStatus "SpaceIndexStatus";);
@@ -238,6 +239,13 @@ fn flag(s: &Struct, name: &str) -> bool {
         .unwrap_or_default()
 }
 
+fn strings(s: &Struct, name: &str) -> Vec<String> {
+    strings_of(s.get_field(name))
+        .into_iter()
+        .map(String::from)
+        .collect()
+}
+
 fn field(s: &Struct, name: &str) -> String {
     s.get_field(name)
         .and_then(|v| match v {
@@ -300,8 +308,7 @@ macro_rules! bind_interpreted_callbacks {
             let Some(s) = struct_arg(args, 0) else {
                 return Value::Void;
             };
-            router::$fn(&tx, $(bind_interpreted_callbacks!(@field s $name $field_kind)),*);
-            Value::Void
+            Value::from(router::$fn(&tx, $(bind_interpreted_callbacks!(@field s $name $field_kind)),*))
         })
     }};
     (@unit $inst:expr, $tx:ident, $lit:literal, $fn:ident) => {{
@@ -317,6 +324,7 @@ macro_rules! bind_interpreted_callbacks {
     }};
     (@field $s:ident $name:literal text) => { field($s, $name) };
     (@field $s:ident $name:literal flag) => { flag($s, $name) };
+    (@field $s:ident $name:literal list) => { strings($s, $name) };
 }
 
 macro_rules! impl_enum_setters {
@@ -483,6 +491,7 @@ impl UiBackend for InterpretedBackend {
     type Message = Value;
     type Reaction = Value;
     type Reactor = Value;
+    type PollAnswer = Value;
     type Room = Value;
     type Space = Value;
     type SpaceChild = Value;
@@ -940,6 +949,7 @@ macro_rules! impl_value {
 message_fields!(impl_value MessageDto MessageFields;);
 reaction_fields!(impl_value ReactionDto ReactionFields;);
 reactor_fields!(impl_value ReactorAvatarDto ReactorFields;);
+poll_answer_fields!(impl_value PollAnswerDto PollAnswerFields;);
 room_fields!(impl_value RoomDto RoomFields;);
 space_fields!(impl_value SpaceDto SpaceFields;);
 space_child_fields!(impl_value SpaceChildDto SpaceChildFields;);

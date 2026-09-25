@@ -10,6 +10,7 @@ use crate::commands::ui::{
 };
 use crate::domain::auth::LoginCredentials;
 use crate::domain::media::AttachmentPick;
+use crate::domain::poll::{ChoiceMode, PollDisclosure, PollDraft};
 use crate::domain::room::RoomId;
 use crate::domain::sticker::PackId;
 
@@ -176,6 +177,45 @@ pub fn send_attachment(
     );
 }
 
+pub fn send_poll(
+    tx: &Tx,
+    room_id: String,
+    question: String,
+    answers: Vec<String>,
+    multiple: bool,
+    hide_results: bool,
+) -> bool {
+    if room_id.is_empty() {
+        return false;
+    }
+    let mode = if multiple {
+        ChoiceMode::Multiple
+    } else {
+        ChoiceMode::Single
+    };
+    let disclosure = if hide_results {
+        PollDisclosure::Undisclosed
+    } else {
+        PollDisclosure::Disclosed
+    };
+    match PollDraft::parse(question, answers, mode, disclosure) {
+        Ok(draft) => {
+            send_command(
+                tx,
+                UiCommand::SendPoll {
+                    room_id: RoomId::new(room_id),
+                    draft,
+                },
+            );
+            true
+        }
+        Err(reason) => {
+            tracing::debug!(?reason, "refusing a poll draft");
+            false
+        }
+    }
+}
+
 pub fn open_media(tx: &Tx, event_id: String) {
     if event_id.is_empty() {
         return;
@@ -251,6 +291,26 @@ pub fn toggle_reaction(tx: &Tx, event_id: String, key: String) {
         return;
     }
     send_command(tx, UiCommand::ToggleReaction { event_id, key });
+}
+
+pub fn vote_poll(tx: &Tx, event_id: String, answer_id: String) {
+    if event_id.is_empty() || answer_id.is_empty() {
+        return;
+    }
+    send_command(
+        tx,
+        UiCommand::VotePoll {
+            event_id,
+            answer_id,
+        },
+    );
+}
+
+pub fn end_poll(tx: &Tx, event_id: String) {
+    if event_id.is_empty() {
+        return;
+    }
+    send_command(tx, UiCommand::EndPoll { event_id });
 }
 
 pub fn scroll_position(

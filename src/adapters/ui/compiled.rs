@@ -15,40 +15,41 @@ use u2dm_ui::{
     Delivery as UiDelivery, DirectoryView, EmojiEntry, EmojiGroup, EmojiInsert, EmojiStore,
     LoginActivity as UiLoginActivity, LoginMethodKind as UiLoginMethodKind, LoginPhase, LoginView,
     MediaFailure as UiMediaFailure, MediaState as UiMediaState, MessageEntry,
-    MessageKind as UiMessageKind, PreviewKind as UiPreviewKind, ReactionEntry,
-    ReactionSend as UiReactionSend, ReactorAvatar, ReplySwipe, RoomEntry, RoomScope as UiRoomScope,
-    RoomView, SendState as UiSendState, ServiceKind as UiServiceKind, SessionView, SpaceChildEntry,
-    SpaceEntry, SpaceIndexStatus as UiSpaceIndexStatus, SpaceIndexView, StickerCell,
-    StickerPackTab, StickerRow, StickerView, TimelineState, UnsentView,
-    UserMessage as UiUserMessage, UserMessageKind as UiUserMessageKind,
-    VerificationActivity as UiVerificationActivity, VerificationEmoji, VerificationPhase,
-    VerificationView, VideoView, WindowView,
+    MessageKind as UiMessageKind, PollAnswerEntry, PollPhase as UiPollPhase,
+    PreviewKind as UiPreviewKind, ReactionEntry, ReactionSend as UiReactionSend, ReactorAvatar,
+    ReplySwipe, RoomEntry, RoomScope as UiRoomScope, RoomView, SendState as UiSendState,
+    ServiceKind as UiServiceKind, SessionView, SpaceChildEntry, SpaceEntry,
+    SpaceIndexStatus as UiSpaceIndexStatus, SpaceIndexView, StickerCell, StickerPackTab,
+    StickerRow, StickerView, TimelineState, UnsentView, UserMessage as UiUserMessage,
+    UserMessageKind as UiUserMessageKind, VerificationActivity as UiVerificationActivity,
+    VerificationEmoji, VerificationPhase, VerificationView, VideoView, WindowView,
 };
 
 use super::backend::{self, Models, UiBackend, reorder_spaces, selected_room_key, unread_below};
 use super::decode::{AvatarSlot, request_avatar, request_media, request_sticker};
 use super::dto::{
-    MediaFailureKind, MediaState, MessageDto, ReactionDto, ReactorAvatarDto, RoomDto,
-    SpaceChildDto, SpaceDto, StickerCellDto, StickerPackDto, StickerRowDto,
+    MediaFailureKind, MediaState, MessageDto, PollAnswerDto, ReactionDto, ReactorAvatarDto,
+    RoomDto, SpaceChildDto, SpaceDto, StickerCellDto, StickerPackDto, StickerRowDto,
 };
 #[cfg(feature = "demo")]
 use super::dump;
 use super::fields::{
-    MessageFields, ReactionFields, ReactorFields, RoomFields, SpaceChildFields, SpaceFields,
-    StickerCellFields, StickerPackFields, StickerRowFields,
+    MessageFields, PollAnswerFields, ReactionFields, ReactorFields, RoomFields, SpaceChildFields,
+    SpaceFields, StickerCellFields, StickerPackFields, StickerRowFields,
 };
-use super::present::{Delivery, MessageKind, ServiceKind, VerifyStep};
+use super::present::{Delivery, MessageKind, PollPhase, ServiceKind, VerifyStep};
 #[cfg(feature = "demo")]
 use super::props::EnumProp;
 use super::props::{BoolProp, IntProp, StringProp, UiProps};
 use super::schema::{
     attachment_kinds, audio_kinds, bool_props, child_accesses, connection_states, deliveries,
     enum_props, int_props, login_activities, login_methods, login_phases, media_failures,
-    media_states, message_fields, message_kinds, model_props, preview_kinds, reaction_fields,
-    reaction_sends, reactor_fields, room_fields, room_scopes, send_states, service_kinds,
-    simple_callbacks, space_child_fields, space_fields, space_index_statuses, sticker_cell_fields,
-    sticker_pack_fields, sticker_row_fields, string_props, timeline_states, user_message_kinds,
-    verification_activities, verification_phases,
+    media_states, message_fields, message_kinds, model_props, poll_answer_fields, poll_phases,
+    preview_kinds, reaction_fields, reaction_sends, reactor_fields, room_fields, room_scopes,
+    send_states, service_kinds, simple_callbacks, space_child_fields, space_fields,
+    space_index_statuses, sticker_cell_fields, sticker_pack_fields, sticker_row_fields,
+    string_props, timeline_states, user_message_kinds, verification_activities,
+    verification_phases,
 };
 use super::session::active_models;
 use super::video::{self, millis_to_duration};
@@ -136,7 +137,7 @@ macro_rules! bind_compiled_callbacks {
         request($($field:ident $name:literal $field_kind:ident),*)) => {{
         let tx = $tx.clone();
         actions($win).$on(move |req| {
-            router::$fn(&tx, $(bind_compiled_callbacks!(@field req $field $field_kind)),*);
+            router::$fn(&tx, $(bind_compiled_callbacks!(@field req $field $field_kind)),*)
         });
     }};
     (@unit $win:ident $tx:ident $on:ident $fn:ident) => {{
@@ -149,6 +150,7 @@ macro_rules! bind_compiled_callbacks {
     }};
     (@field $req:ident $field:ident text) => { $req.$field.to_string() };
     (@field $req:ident $field:ident flag) => { $req.$field };
+    (@field $req:ident $field:ident list) => { $req.$field.iter().map(String::from).collect() };
 }
 
 impl UiProps for AppWindow {
@@ -272,6 +274,7 @@ reaction_sends!(impl_slint_enum ReactionSend UiReactionSend;);
 deliveries!(impl_slint_enum Delivery UiDelivery;);
 media_failures!(impl_slint_enum MediaFailureKind UiMediaFailure;);
 message_kinds!(impl_slint_enum MessageKind UiMessageKind;);
+poll_phases!(impl_slint_enum PollPhase UiPollPhase;);
 attachment_kinds!(impl_slint_enum AttachmentKind UiAttachmentKind;);
 room_scopes!(impl_slint_enum RoomScope UiRoomScope;);
 space_index_statuses!(impl_slint_enum SpaceIndexStatus UiSpaceIndexStatus;);
@@ -374,6 +377,7 @@ macro_rules! impl_entry {
 message_fields!(impl_entry MessageDto MessageFields MessageEntry;);
 reaction_fields!(impl_entry ReactionDto ReactionFields ReactionEntry;);
 reactor_fields!(impl_entry ReactorAvatarDto ReactorFields ReactorAvatar;);
+poll_answer_fields!(impl_entry PollAnswerDto PollAnswerFields PollAnswerEntry;);
 room_fields!(impl_entry RoomDto RoomFields RoomEntry;);
 space_fields!(impl_entry SpaceDto SpaceFields SpaceEntry;);
 space_child_fields!(impl_entry SpaceChildDto SpaceChildFields SpaceChildEntry;);
@@ -395,6 +399,7 @@ impl UiBackend for CompiledBackend {
     type Message = MessageEntry;
     type Reaction = ReactionEntry;
     type Reactor = ReactorAvatar;
+    type PollAnswer = PollAnswerEntry;
     type Room = RoomEntry;
     type Space = SpaceEntry;
     type SpaceChild = SpaceChildEntry;

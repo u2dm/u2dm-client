@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 use std::time::Duration;
 
 use serde::Deserialize;
@@ -10,6 +10,7 @@ use crate::domain::message::{
     MessageBody, MessagePreviewKind, Reaction, ReactionSend, ReadBy, ReplyInfo, RichText,
     SendState, ServiceEvent, TimelineMessage,
 };
+use crate::domain::poll::{Poll, PollAnswer, PollChoice, PollDisclosure, PollStatus};
 use crate::domain::room::{NotifyMode, Room, RoomId, Space};
 use crate::domain::space_index::{ChildKind, JoinRule, SpaceChild};
 use crate::domain::sticker::{PackId, StickerImage, StickerPack};
@@ -161,6 +162,7 @@ enum KindDto {
     Location,
     Encrypted,
     Sticker,
+    Poll,
     None,
 }
 
@@ -234,10 +236,74 @@ pub struct MessageDto {
     sticker: Option<StickerDto>,
     video: Option<VideoDto>,
     audio: Option<AudioDto>,
+    poll: Option<PollDto>,
     reply: Option<ReplyDto>,
     service: Option<ServiceDto>,
     #[serde(default)]
     reactions: Vec<ReactionDto>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PollDto {
+    #[serde(default)]
+    kind: PollKindDto,
+    #[serde(default)]
+    max: usize,
+    #[serde(default)]
+    ended: bool,
+    answers: Vec<PollAnswerDto>,
+}
+
+#[derive(Deserialize, Default, Clone, Copy)]
+#[serde(rename_all = "lowercase")]
+enum PollKindDto {
+    #[default]
+    Disclosed,
+    Undisclosed,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PollAnswerDto {
+    id: String,
+    text: String,
+    #[serde(default)]
+    voters: Vec<String>,
+}
+
+impl PollDto {
+    fn to_poll(&self, question: &str, own_user: &str) -> Poll {
+        Poll {
+            question: question.to_owned(),
+            disclosure: match self.kind {
+                PollKindDto::Disclosed => PollDisclosure::Disclosed,
+                PollKindDto::Undisclosed => PollDisclosure::Undisclosed,
+            },
+            choice: PollChoice::up_to(self.max),
+            answers: self
+                .answers
+                .iter()
+                .map(|answer| PollAnswer {
+                    id: answer.id.clone(),
+                    text: answer.text.clone(),
+                    votes: answer.voters.len(),
+                    mine: answer.voters.iter().any(|voter| voter == own_user),
+                })
+                .collect(),
+            voters: self
+                .answers
+                .iter()
+                .flat_map(|answer| &answer.voters)
+                .collect::<BTreeSet<_>>()
+                .len(),
+            status: if self.ended {
+                PollStatus::Ended
+            } else {
+                PollStatus::Open
+            },
+        }
+    }
 }
 
 #[derive(Deserialize)]
@@ -611,7 +677,7 @@ impl MessageDto {
             sender: self.sender.clone(),
             sender_display_name: Some(self.name.clone()),
             sender_avatar_url: Some(self.sender.clone()),
-            body: self.to_body(),
+            body: self.to_body(own_user),
             timestamp: ago_ms(now_ms, self.minutes_ago, self.days_ago),
             is_own: self.sender == own_user,
             reply: self.reply.as_ref().map(|reply| ReplyInfo {
@@ -641,9 +707,12 @@ impl MessageDto {
         }
     }
 
-    fn to_body(&self) -> MessageBody {
+    fn to_body(&self, own_user: &str) -> MessageBody {
         if let Some(service) = &self.service {
             return MessageBody::Service(service.to_event());
+        }
+        if let Some(poll) = &self.poll {
+            return MessageBody::Poll(poll.to_poll(&self.body, own_user));
         }
         if let Some(sticker) = &self.sticker {
             return MessageBody::Sticker {
@@ -713,6 +782,7 @@ impl KindDto {
             Self::Location => MessagePreviewKind::Location,
             Self::Encrypted => MessagePreviewKind::Encrypted,
             Self::Sticker => MessagePreviewKind::Sticker,
+            Self::Poll => MessagePreviewKind::Poll,
             Self::None => MessagePreviewKind::None,
         }
     }

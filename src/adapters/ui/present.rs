@@ -7,13 +7,14 @@ use chrono::{Locale, Timelike};
 use pure_rust_locales::locale_match;
 
 use super::schema::{
-    define_ui_enum, deliveries, message_kinds, service_kinds, verification_phases,
+    define_ui_enum, deliveries, message_kinds, poll_phases, service_kinds, verification_phases,
 };
 use crate::commands::messages::{UserMessage, UserMessageKind};
 use crate::domain::media::{AudioKind, AudioMeta, Waveform};
 use crate::domain::message::{
     MessageBody, Reactor, ReadBy, SendState, ServiceEvent, TimelineMessage,
 };
+use crate::domain::poll::{Poll, PollDisclosure, PollStatus};
 use crate::domain::verification::VerificationCancellation;
 use crate::locale::{self, LocaleRequest};
 
@@ -270,6 +271,7 @@ pub fn message_body_text(body: &MessageBody) -> &str {
         }
         MessageBody::Sticker { alt, .. } => alt,
         MessageBody::File { meta, .. } => &meta.filename,
+        MessageBody::Poll(poll) => &poll.question,
         MessageBody::Service(_) | MessageBody::UnableToDecrypt => "",
         MessageBody::Unsupported { fallback, .. } => fallback,
     }
@@ -285,6 +287,7 @@ pub fn message_body_html(body: &MessageBody) -> Option<&str> {
         }
         MessageBody::Sticker { .. }
         | MessageBody::File { .. }
+        | MessageBody::Poll(_)
         | MessageBody::Service(_)
         | MessageBody::UnableToDecrypt
         | MessageBody::Unsupported { .. } => None,
@@ -303,9 +306,20 @@ pub fn message_kind(body: &MessageBody) -> MessageKind {
         MessageBody::Audio { .. } => MessageKind::Audio,
         MessageBody::Sticker { .. } => MessageKind::Sticker,
         MessageBody::File { .. } => MessageKind::File,
+        MessageBody::Poll(_) => MessageKind::Poll,
         MessageBody::Service(_) => MessageKind::Service,
         MessageBody::UnableToDecrypt => MessageKind::Utd,
         MessageBody::Unsupported { .. } => MessageKind::Unsupported,
+    }
+}
+
+poll_phases!(define_ui_enum PollPhase;);
+
+pub fn poll_phase(poll: &Poll) -> PollPhase {
+    match (poll.status, poll.disclosure) {
+        (PollStatus::Ended, _) => PollPhase::Ended,
+        (PollStatus::Open, PollDisclosure::Disclosed) => PollPhase::Open,
+        (PollStatus::Open, PollDisclosure::Undisclosed) => PollPhase::Sealed,
     }
 }
 

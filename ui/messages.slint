@@ -112,6 +112,12 @@ export global UserMessages {
         if kind == UserMessageKind.send-attachment-failed {
             return @tr("Failed to send attachment");
         }
+        if kind == UserMessageKind.poll-vote-failed {
+            return @tr("Your vote couldn't be sent");
+        }
+        if kind == UserMessageKind.poll-end-failed {
+            return @tr("The poll couldn't be ended");
+        }
         if kind == UserMessageKind.video-playback-failed {
             return @tr("This video could not be played");
         }

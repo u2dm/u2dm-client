@@ -14,6 +14,7 @@ use crate::domain::media::{
 use crate::domain::message::{
     MessageBody, PinnedMessage, ReadBy, ReplyInfo, RichText, SendState, TimelineMessage,
 };
+use crate::domain::poll::{Poll, PollAnswer, PollDraft, PollStatus};
 use crate::domain::room::{Room, RoomId, Space};
 use crate::domain::space_index::SpaceChild;
 use crate::domain::sticker::{StickerImage, StickerPack};
@@ -199,6 +200,7 @@ pub fn messages(room_id: &RoomId) -> Vec<TimelineMessage> {
     }
     super::richtext::apply_scenario(&mut messages);
     super::reactions::apply_scenario(&mut messages);
+    super::polls::apply_scenario(&mut messages);
     super::receipts::apply_scenario(&mut messages);
     mark_first_unread(room_id, &mut messages);
     messages
@@ -330,6 +332,31 @@ pub fn own_message(
         send_state,
         reactions: Vec::new(),
         read_by: ReadBy::default(),
+    }
+}
+
+pub fn own_poll(sequence: u64, draft: &PollDraft, send_state: SendState) -> TimelineMessage {
+    let poll = Poll {
+        question: draft.question().to_owned(),
+        disclosure: draft.disclosure(),
+        choice: draft.choice(),
+        answers: draft
+            .answers()
+            .iter()
+            .enumerate()
+            .map(|(index, text)| PollAnswer {
+                id: format!("demo-sent-{sequence}-answer-{index}"),
+                text: text.clone(),
+                votes: 0,
+                mine: false,
+            })
+            .collect(),
+        voters: 0,
+        status: PollStatus::Open,
+    };
+    TimelineMessage {
+        body: MessageBody::Poll(poll),
+        ..own_message(sequence, draft.question(), None, send_state)
     }
 }
 
@@ -473,6 +500,7 @@ pub fn body_preview(body: &MessageBody) -> RichText {
         | MessageBody::Audio { caption, .. } => caption.clone().unwrap_or_default(),
         MessageBody::Sticker { alt, .. } => RichText::plain(alt.clone()),
         MessageBody::File { meta } => RichText::plain(meta.filename.clone()),
+        MessageBody::Poll(poll) => RichText::plain(poll.question.clone()),
         MessageBody::Service(_) | MessageBody::UnableToDecrypt => RichText::default(),
         MessageBody::Unsupported { fallback, .. } => RichText::plain(fallback.clone()),
     }

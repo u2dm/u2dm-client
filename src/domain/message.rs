@@ -4,6 +4,7 @@ use std::hash::{DefaultHasher, Hash, Hasher};
 use crate::domain::media::{
     AudioKind, AudioMeta, ContentKey, FileMeta, ImageMeta, MediaKind, VideoMeta,
 };
+use crate::domain::poll::Poll;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum MessagePreviewKind {
@@ -90,6 +91,7 @@ pub enum MessageBody {
     File {
         meta: FileMeta,
     },
+    Poll(Poll),
     Service(ServiceEvent),
     UnableToDecrypt,
     Unsupported {
@@ -121,6 +123,7 @@ impl MessageBody {
                 AudioKind::Track => MessagePreviewKind::Audio,
             },
             Self::File { .. } => MessagePreviewKind::File,
+            Self::Poll(_) => MessagePreviewKind::Poll,
             Self::UnableToDecrypt => MessagePreviewKind::Encrypted,
         }
     }
@@ -128,6 +131,13 @@ impl MessageBody {
     pub fn audio(&self) -> Option<&AudioMeta> {
         match self {
             Self::Audio { meta, .. } => Some(meta),
+            _ => None,
+        }
+    }
+
+    pub fn poll(&self) -> Option<&Poll> {
+        match self {
+            Self::Poll(poll) => Some(poll),
             _ => None,
         }
     }
@@ -142,6 +152,7 @@ impl MessageBody {
             | Self::Emote(_)
             | Self::Audio { .. }
             | Self::File { .. }
+            | Self::Poll(_)
             | Self::Service(_)
             | Self::UnableToDecrypt
             | Self::Unsupported { .. } => None,

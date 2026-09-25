@@ -9,6 +9,7 @@ use crate::domain::account::AccountScope;
 use crate::domain::auth::{LoginCredentials, OAuthLoginData, ServerInfo, Session};
 use crate::domain::media::{MediaRendition, OutgoingAttachment, WaveformNeed};
 use crate::domain::message::PinnedMessage;
+use crate::domain::poll::PollDraft;
 use crate::domain::room::RoomId;
 use crate::domain::space_index::HierarchyPage;
 use crate::domain::sticker::{PackId, StickerPack};
@@ -194,6 +195,7 @@ pub trait TimelinePort: Send + Sync {
     ) -> Result<()>;
     async fn send_text(&self, room_id: &RoomId, body: &str) -> Result<()>;
     async fn send_reply(&self, room_id: &RoomId, body: &str, in_reply_to: &str) -> Result<()>;
+    async fn send_poll(&self, room_id: &RoomId, draft: &PollDraft) -> Result<()>;
     async fn send_attachment(
         &self,
         room_id: &RoomId,

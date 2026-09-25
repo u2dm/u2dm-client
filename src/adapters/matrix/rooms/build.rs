@@ -7,6 +7,7 @@ use matrix_sdk::latest_events::LatestEventValue;
 use matrix_sdk::notification_settings::{
     IsEncrypted, IsOneToOne, NotificationSettings, RoomNotificationMode,
 };
+use matrix_sdk::ruma::events::poll::unstable_start::SyncUnstablePollStartEvent;
 use matrix_sdk::ruma::events::room::member::MembershipState;
 use matrix_sdk::ruma::events::room::message::{Relation, RoomMessageEventContent};
 use matrix_sdk::ruma::events::space::child::SpaceChildEventContent;
@@ -182,6 +183,9 @@ fn latest_message_preview(
             AnyMessageLikeEventContent::RoomMessage(message) => {
                 Some((preview_from_message_content(&message), None))
             }
+            AnyMessageLikeEventContent::UnstablePollStart(poll) => {
+                Some((preview::poll_start(&poll), None))
+            }
             _ => None,
         },
         LatestEventValue::None | LatestEventValue::RemoteInvite { .. } => None,
@@ -199,6 +203,9 @@ fn preview_from_event(event: &AnySyncTimelineEvent) -> Option<MessagePreview> {
         AnySyncTimelineEvent::MessageLike(AnySyncMessageLikeEvent::Sticker(_)) => {
             Some(MessagePreview::labelled(MessagePreviewKind::Sticker))
         }
+        AnySyncTimelineEvent::MessageLike(AnySyncMessageLikeEvent::UnstablePollStart(
+            SyncUnstablePollStartEvent::Original(poll),
+        )) => Some(preview::poll_start(&poll.content)),
         AnySyncTimelineEvent::MessageLike(AnySyncMessageLikeEvent::CallInvite(_)) => {
             Some(MessagePreview::service(ServiceEvent::CallStarted))
         }

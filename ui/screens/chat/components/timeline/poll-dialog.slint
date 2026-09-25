@@ -1,0 +1,223 @@
+import { ScrollView } from "std-widgets.slint";
+import { Icon, IconSet } from "@lucide";
+
+import { Actions } from "../../../../actions.slint";
+import { AppStyle, Fonts, Opacity, Size, Space, Weight } from "../../../../theme.slint";
+import { AppButton, IconButton } from "../../../../components/button.slint";
+import { CheckRow } from "../../../../components/check-row.slint";
+import { DialogCard, ModalHost } from "../../../../components/overlay.slint";
+import { TextField } from "../../../../components/text-field.slint";
+
+component AnswerField inherits HorizontalLayout {
+    in-out property <string> text;
+    in property <int> number;
+    in property <Icon> icon;
+    in property <bool> removable;
+    in property <bool> takes-focus;
+
+    callback remove();
+    callback accepted();
+    callback edited();
+
+    init => {
+        if root.takes-focus {
+            field.focus-input();
+        }
+    }
+
+    spacing: Space.md;
+
+    changed text => {
+        root.edited();
+    }
+
+    field := TextField {
+        horizontal-stretch: 1;
+        icon: root.icon;
+        label: @tr("Answer {}", root.number);
+        placeholder: @tr("Answer {}", root.number);
+        text <=> root.text;
+        accepted => {
+            root.accepted();
+        }
+    }
+
+    if root.removable: IconButton {
+        cross-axis-self-alignment: center;
+        size: Size.lg;
+        icon: IconSet.X;
+        label: @tr("Remove answer {}", root.number);
+        above-modal: true;
+        clicked => {
+            root.remove();
+        }
+    }
+}
+
+export component PollDialog inherits ModalHost {
+    in property <string> room-id;
+
+    callback closed();
+
+    property <length> card-width: min(AppStyle.card-width-wide, root.width - AppStyle.card-inset);
+    property <length> card-height: clamp(
+        root.height - AppStyle.card-inset,
+        card-body.min-height,
+        card-body.preferred-height,
+    );
+    property <length> card-padding: Space.xl;
+
+    property <int> fewest-answers: 2;
+    property <int> most-answers: 20;
+    property <string> question;
+    property <[string]> answers: ["", ""];
+    property <bool> multiple: false;
+    property <bool> hide-results: false;
+    property <bool> refused: false;
+    property <int> fresh-answer: -1;
+
+    function add-answer() {
+        if root.answers.length < root.most-answers {
+            root.fresh-answer = root.answers.length;
+            root.answers.push("");
+        }
+    }
+
+    function remove-answer(index: int) {
+        root.fresh-answer = -1;
+        root.answers.remove(index);
+        question-field.focus-input();
+    }
+
+    changed question => {
+        root.refused = false;
+    }
+
+    function submit() {
+        if Actions.send-poll({
+            room-id: root.room-id,
+            question: root.question,
+            answers: root.answers,
+            multiple: root.multiple,
+            hide-results: root.hide-results,
+        }) {
+            root.closed();
+        } else {
+            root.refused = true;
+        }
+    }
+
+    dim-opacity: AppStyle.dark ? Opacity.scrim-strong : Opacity.scrim;
+    light-dismiss: false;
+    label: @tr("Create a poll");
+    dismissed => {
+        root.closed();
+    }
+    opened => {
+        question-field.focus-input();
+    }
+
+    scroll := ScrollView {
+        x: 0;
+        y: 0;
+        width: 100%;
+        height: 100%;
+        content-width: self.width;
+        content-height: max(self.height, root.card-height + AppStyle.card-inset);
+
+        DialogCard {
+            x: (root.width - self.width) / 2;
+            y: (scroll.content-height - self.height) / 2;
+            width: root.card-width;
+            height: root.card-height;
+
+            card-body := VerticalLayout {
+                padding: root.card-padding;
+                spacing: Space.lg;
+
+                Text {
+                    text: @tr("Create a poll");
+                    font-size: Fonts.heading;
+                    font-weight: Weight.bold;
+                    overflow: elide;
+                }
+
+                question-field := TextField {
+                    icon: IconSet.ChartBar;
+                    label: @tr("Question");
+                    placeholder: @tr("Ask a question");
+                    text <=> root.question;
+                }
+
+                for answer[index] in root.answers: AnswerField {
+                    number: index + 1;
+                    icon: root.multiple ? IconSet.Square : IconSet.Circle;
+                    removable: root.answers.length > root.fewest-answers;
+                    takes-focus: index == root.fresh-answer;
+                    text <=> answer;
+                    remove => {
+                        root.remove-answer(index);
+                    }
+                    edited => {
+                        root.refused = false;
+                    }
+                    accepted => {
+                        if index == root.answers.length - 1 {
+                            root.add-answer();
+                        }
+                    }
+                }
+
+                if root.answers.length < root.most-answers: AppButton {
+                    text: @tr("Add an answer");
+                    icon: IconSet.Plus;
+                    filled: false;
+                    above-modal: true;
+                    clicked => {
+                        root.add-answer();
+                    }
+                }
+
+                CheckRow {
+                    label: @tr("Allow multiple answers");
+                    checked <=> root.multiple;
+                }
+
+                CheckRow {
+                    label: @tr("Hide results until the poll ends");
+                    checked <=> root.hide-results;
+                }
+
+                if root.refused: Text {
+                    text: @tr("A poll needs a question and at least two answers");
+                    font-size: Fonts.label;
+                    color: AppStyle.danger;
+                    wrap: word-wrap;
+                    accessible-live-region: AccessibleLiveness.assertive;
+                }
+
+                HorizontalLayout {
+                    alignment: end;
+                    spacing: Space.md;
+
+                    AppButton {
+                        text: @tr("Cancel");
+                        filled: false;
+                        above-modal: true;
+                        clicked => {
+                            root.closed();
+                        }
+                    }
+
+                    AppButton {
+                        text: @tr("Create poll");
+                        above-modal: true;
+                        clicked => {
+                            root.submit();
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

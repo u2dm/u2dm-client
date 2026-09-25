@@ -11,7 +11,7 @@ import { AppStyle, IconSize, Metrics, Radius, Size, Space } from "../../theme.sl
 import { IconButton } from "../../components/button.slint";
 import { DirectoryView, RoomView, SpaceIndexView, WindowView } from "../../views.slint";
 import { Actions } from "../../actions.slint";
-import { Composer, DeliveryTip, Reactions, ReplySwipe, Shell, TextSelection } from "../../local.slint";
+import { Composer, DeliveryTip, Polls, Reactions, ReplySwipe, Shell, TextSelection } from "../../local.slint";
 
 export component ChatScreen inherits Rectangle {
     in-out property <string> input-message: "";
@@ -24,6 +24,7 @@ export component ChatScreen inherits Rectangle {
         Reactions.close();
         ReplySwipe.clear();
         DeliveryTip.clear();
+        Polls.clear();
         Actions.timeline-visibility-changed(root.timeline-visible);
     }
 

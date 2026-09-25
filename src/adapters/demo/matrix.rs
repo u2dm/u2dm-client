@@ -12,8 +12,8 @@ use tokio::time::sleep;
 use tokio_util::sync::CancellationToken;
 
 use super::{
-    attachments, audio, data, login, media, pinned, reactions, receipts, space_index, stickers,
-    timeline, verification, videos,
+    attachments, audio, data, login, media, pinned, polls, reactions, receipts, space_index,
+    stickers, timeline, verification, videos,
 };
 use crate::adapters::video;
 use crate::domain::auth::{AuthMethod, LoginCredentials, OAuthLoginData, ServerInfo, Session};
@@ -21,6 +21,7 @@ use crate::domain::media::{MediaRendition, OutgoingAttachment, WaveformNeed};
 use crate::domain::message::{
     MessageBody, PinnedMessage, ReplyInfo, RichText, SendState, TimelineMessage,
 };
+use crate::domain::poll::{PollAction, PollDraft};
 use crate::domain::room::RoomId;
 use crate::domain::space_index::HierarchyPage;
 use crate::domain::sticker::{PackId, StickerImage};
@@ -313,6 +314,29 @@ impl DemoAuthed {
         }
     }
 
+    async fn append_own_poll(&self, room_id: &RoomId, draft: &PollDraft) {
+        let prepared = {
+            let Ok(mut guard) = self.active.lock() else {
+                return;
+            };
+            let Some(active) = guard.as_mut() else {
+                return;
+            };
+            if &active.room_id != room_id {
+                return;
+            }
+            let message = data::own_poll(
+                self.sent.fetch_add(1, Ordering::Relaxed),
+                draft,
+                outgoing_send_state(),
+            );
+            active.messages.push(message.clone());
+            (active.timeline_tx.clone(), message)
+        };
+        let (timeline_tx, message) = prepared;
+        send_patch(&timeline_tx, TimelinePatch::PushBack(message)).await;
+    }
+
     async fn append_own_sticker(
         &self,
         room_id: &RoomId,
@@ -409,6 +433,102 @@ impl DemoAuthed {
         let (timeline_tx, index, message) = prepared;
 
         send_patch(&timeline_tx, TimelinePatch::Set { index, message }).await;
+    }
+
+    async fn run_command(
+        &self,
+        command: TimelineCommand,
+        timeline_tx: &mpsc::Sender<TimelineUpdate>,
+    ) -> Option<PaginationDirection> {
+        match command {
+            TimelineCommand::PaginateBackwards => return Some(PaginationDirection::Backwards),
+            TimelineCommand::PaginateForwards => return Some(PaginationDirection::Forwards),
+            TimelineCommand::MarkRead => {}
+            TimelineCommand::JumpTo(event_id) => {
+                let target = self.loaded_row_of(&event_id);
+                drop(
+                    timeline_tx
+                        .send(TimelineUpdate::JumpOutcome { event_id, target })
+                        .await,
+                );
+            }
+            TimelineCommand::ToggleReaction { event_id, key } => {
+                self.toggle_reaction(&event_id, &key).await;
+            }
+            TimelineCommand::VotePoll {
+                event_id,
+                answer_id,
+            } => self.vote_poll(&event_id, &answer_id).await,
+            TimelineCommand::EndPoll { event_id } => self.end_poll(&event_id).await,
+            TimelineCommand::LocateAudio { request, lookup } => {
+                let track = self.locate_audio(&lookup);
+                drop(
+                    timeline_tx
+                        .send(TimelineUpdate::AudioLocated {
+                            request,
+                            track: track.map(Box::new),
+                        })
+                        .await,
+                );
+            }
+        }
+        None
+    }
+
+    fn patch_poll(
+        &self,
+        event_id: &str,
+        change: impl FnOnce(&mut TimelineMessage) -> bool,
+    ) -> Option<(mpsc::Sender<TimelineUpdate>, usize, TimelineMessage)> {
+        let mut guard = self.active.lock().ok()?;
+        let active = guard.as_mut()?;
+        let offset = active
+            .messages
+            .iter()
+            .position(|message| message.event_id.as_deref() == Some(event_id))?;
+        let row = active.prepended.saturating_add(offset);
+        let message = active.messages.get_mut(offset)?;
+        change(message).then(|| (active.timeline_tx.clone(), row, message.clone()))
+    }
+
+    async fn vote_poll(&self, event_id: &str, answer_id: &str) {
+        let mut previous = None;
+        let Some((timeline_tx, index, message)) = self.patch_poll(event_id, |message| {
+            previous = polls::cast(message, answer_id);
+            previous.is_some()
+        }) else {
+            tracing::debug!(event_id, "demo: a vote that changes nothing");
+            return;
+        };
+        send_patch(&timeline_tx, TimelinePatch::Set { index, message }).await;
+        if polls::scenario().votes_fail
+            && let Some(previous) = previous
+        {
+            spawn_poll_refusal(
+                Arc::clone(&self.active),
+                timeline_tx,
+                event_id.to_owned(),
+                Some(previous),
+                PollAction::Vote,
+            );
+        }
+    }
+
+    async fn end_poll(&self, event_id: &str) {
+        let Some((timeline_tx, index, message)) = self.patch_poll(event_id, polls::end_own) else {
+            tracing::debug!(event_id, "demo: only an own open poll can be ended");
+            return;
+        };
+        send_patch(&timeline_tx, TimelinePatch::Set { index, message }).await;
+        if polls::scenario().ends_fail {
+            spawn_poll_refusal(
+                Arc::clone(&self.active),
+                timeline_tx,
+                event_id.to_owned(),
+                None,
+                PollAction::End,
+            );
+        }
     }
 
     fn loaded_row_of(&self, event_id: &str) -> JumpTarget {
@@ -552,6 +672,11 @@ fn reset_messages(messages: &[TimelineMessage]) -> Vec<TimelineMessage> {
     } else {
         messages.to_vec()
     };
+    let messages = if polls::scenario().tallies_arrive_late {
+        polls::strip_tallies(&messages)
+    } else {
+        messages
+    };
     if receipts::scenario().marks_arrive_late {
         receipts::strip_read_marks(&messages)
     } else {
@@ -622,38 +747,12 @@ impl TimelinePort for DemoAuthed {
         }
 
         spawn_scenario_tasks(scenario, &focus, &timeline_tx, &messages, reset_messages);
+        spawn_poll_activity(&self.active, &timeline_tx);
 
         let mut history = 0_u64;
         while let Some(command) = cmd_rx.recv().await {
-            let direction = match command {
-                TimelineCommand::PaginateBackwards => PaginationDirection::Backwards,
-                TimelineCommand::PaginateForwards => PaginationDirection::Forwards,
-                TimelineCommand::MarkRead => continue,
-                TimelineCommand::JumpTo(event_id) => {
-                    let target = self.loaded_row_of(&event_id);
-                    drop(
-                        timeline_tx
-                            .send(TimelineUpdate::JumpOutcome { event_id, target })
-                            .await,
-                    );
-                    continue;
-                }
-                TimelineCommand::ToggleReaction { event_id, key } => {
-                    self.toggle_reaction(&event_id, &key).await;
-                    continue;
-                }
-                TimelineCommand::LocateAudio { request, lookup } => {
-                    let track = self.locate_audio(&lookup);
-                    drop(
-                        timeline_tx
-                            .send(TimelineUpdate::AudioLocated {
-                                request,
-                                track: track.map(Box::new),
-                            })
-                            .await,
-                    );
-                    continue;
-                }
+            let Some(direction) = self.run_command(command, &timeline_tx).await else {
+                continue;
             };
             let mut hit_end = true;
             if scenario.pagination_returns_history
@@ -696,6 +795,14 @@ impl TimelinePort for DemoAuthed {
         }
         self.append_own_message(room_id, body, Some(in_reply_to))
             .await;
+        Ok(())
+    }
+
+    async fn send_poll(&self, room_id: &RoomId, draft: &PollDraft) -> Result<()> {
+        if timeline::scenario().sends_are_refused {
+            return Err(unavailable("sending polls"));
+        }
+        self.append_own_poll(room_id, draft).await;
         Ok(())
     }
 
@@ -1097,6 +1204,14 @@ fn spawn_scenario_tasks(
             reactions::LATE_INTERVAL,
         );
     }
+    if polls::scenario().tallies_arrive_late {
+        spawn_late_sets(
+            timeline_tx.clone(),
+            messages.to_vec(),
+            polls::poll_indices(messages),
+            polls::LATE_INTERVAL,
+        );
+    }
     if receipts::scenario().marks_arrive_late {
         spawn_late_sets(
             timeline_tx.clone(),
@@ -1161,6 +1276,112 @@ fn spawn_late_sets(
             let message = message.clone();
             send_patch(&timeline_tx, TimelinePatch::Set { index, message }).await;
         }
+    });
+}
+
+fn spawn_poll_activity(active: &SharedActiveRoom, timeline_tx: &mpsc::Sender<TimelineUpdate>) {
+    let scenario = polls::scenario();
+    if scenario.members_keep_voting {
+        let active = Arc::clone(active);
+        let timeline_tx = timeline_tx.clone();
+        tokio::spawn(async move {
+            for round in 0..polls::LIVE_ROUNDS {
+                sleep(polls::LIVE_INTERVAL).await;
+                let voted = patch_newest_open_poll(&active, &timeline_tx, |message| {
+                    polls::member_votes(message, round)
+                });
+                if !voted.await {
+                    return;
+                }
+            }
+        });
+    }
+    if scenario.newest_poll_ends {
+        let active = Arc::clone(active);
+        let timeline_tx = timeline_tx.clone();
+        tokio::spawn(async move {
+            sleep(polls::ENDS_AFTER).await;
+            patch_newest_open_poll(&active, &timeline_tx, polls::close).await;
+        });
+    }
+}
+
+async fn patch_newest_open_poll(
+    active: &SharedActiveRoom,
+    timeline_tx: &mpsc::Sender<TimelineUpdate>,
+    change: impl FnOnce(&mut TimelineMessage) -> bool + Send,
+) -> bool {
+    let prepared = {
+        let Ok(mut guard) = active.lock() else {
+            return false;
+        };
+        let Some(room) = guard.as_mut() else {
+            return false;
+        };
+        if !room.timeline_tx.same_channel(timeline_tx) {
+            return false;
+        }
+        let Some(offset) = polls::newest_open_poll(&room.messages) else {
+            return false;
+        };
+        let row = room.prepended.saturating_add(offset);
+        let Some(message) = room.messages.get_mut(offset) else {
+            return false;
+        };
+        if !change(message) {
+            return false;
+        }
+        (row, message.clone())
+    };
+    let (index, message) = prepared;
+    send_patch(timeline_tx, TimelinePatch::Set { index, message }).await;
+    true
+}
+
+fn spawn_poll_refusal(
+    active: SharedActiveRoom,
+    timeline_tx: mpsc::Sender<TimelineUpdate>,
+    event_id: String,
+    restore: Option<Vec<String>>,
+    action: PollAction,
+) {
+    tokio::spawn(async move {
+        sleep(polls::REFUSAL_DELAY).await;
+        if let Some(selection) = restore {
+            let reverted = {
+                let Ok(mut guard) = active.lock() else {
+                    return;
+                };
+                let Some(room) = guard.as_mut() else {
+                    return;
+                };
+                if !room.timeline_tx.same_channel(&timeline_tx) {
+                    return;
+                }
+                let Some(offset) = room
+                    .messages
+                    .iter()
+                    .position(|message| message.event_id.as_deref() == Some(event_id.as_str()))
+                else {
+                    return;
+                };
+                let row = room.prepended.saturating_add(offset);
+                let Some(message) = room.messages.get_mut(offset) else {
+                    return;
+                };
+                if !polls::restore(message, &selection) {
+                    return;
+                }
+                (row, message.clone())
+            };
+            let (index, message) = reverted;
+            send_patch(&timeline_tx, TimelinePatch::Set { index, message }).await;
+        }
+        drop(
+            timeline_tx
+                .send(TimelineUpdate::PollSendFailed(action))
+                .await,
+        );
     });
 }
 

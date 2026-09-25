@@ -2,10 +2,10 @@ use slint::{Image, ModelRc, SharedString, StyledText};
 
 use super::backend::UiBackend;
 use super::dto::{MediaFailureKind, MediaState};
-use super::present::{Delivery, MessageKind, ServiceKind};
+use super::present::{Delivery, MessageKind, PollPhase, ServiceKind};
 use super::schema::{
-    message_fields, reaction_fields, reactor_fields, room_fields, space_child_fields, space_fields,
-    sticker_cell_fields, sticker_pack_fields, sticker_row_fields,
+    message_fields, poll_answer_fields, reaction_fields, reactor_fields, room_fields,
+    space_child_fields, space_fields, sticker_cell_fields, sticker_pack_fields, sticker_row_fields,
 };
 use crate::commands::view::ChildAccess;
 use crate::domain::media::AudioKind;
@@ -48,6 +48,7 @@ macro_rules! declare_fields {
 message_fields!(declare_fields MessageFields;);
 reaction_fields!(declare_fields ReactionFields;);
 reactor_fields!(declare_fields ReactorFields;);
+poll_answer_fields!(declare_fields PollAnswerFields;);
 room_fields!(declare_fields RoomFields;);
 space_fields!(declare_fields SpaceFields;);
 space_child_fields!(declare_fields SpaceChildFields;);

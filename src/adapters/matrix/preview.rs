@@ -1,3 +1,4 @@
+use matrix_sdk::ruma::events::poll::unstable_start::UnstablePollStartEventContent;
 use matrix_sdk::ruma::events::room::message::{MessageFormat, MessageType};
 
 use crate::domain::message::{MessagePreviewKind, RichText, ServiceEvent};
@@ -27,6 +28,10 @@ impl MessagePreview {
             edited: false,
         }
     }
+}
+
+fn one_line(text: &str) -> String {
+    text.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
 fn formatted_html(msgtype: &MessageType) -> Option<String> {
@@ -60,10 +65,19 @@ pub(super) fn from_msgtype(msgtype: &MessageType) -> MessagePreview {
     MessagePreview {
         kind,
         body: RichText {
-            plain: body.split_whitespace().collect::<Vec<_>>().join(" "),
+            plain: one_line(body),
             html: formatted_html(msgtype),
         },
         service: None,
         edited: false,
+    }
+}
+
+pub(super) fn poll_start(content: &UnstablePollStartEventContent) -> MessagePreview {
+    MessagePreview {
+        kind: MessagePreviewKind::Poll,
+        body: RichText::plain(one_line(&content.poll_start().question.text)),
+        service: None,
+        edited: matches!(content, UnstablePollStartEventContent::Replacement(_)),
     }
 }

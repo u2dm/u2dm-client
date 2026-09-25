@@ -1,4 +1,4 @@
-import { AudioKind, ChildAccess, Delivery, MediaFailure, MediaState, MessageKind, PreviewKind, ReactionSend, SendState, ServiceKind } from "../../../enums.slint";
+import { AudioKind, ChildAccess, Delivery, MediaFailure, MediaState, MessageKind, PollPhase, PreviewKind, ReactionSend, SendState, ServiceKind } from "../../../enums.slint";
 
 export struct RoomEntry {
     id: string,
@@ -67,6 +67,16 @@ export struct ReactionEntry {
     avatars: [ReactorAvatar],
 }
 
+export struct PollAnswerEntry {
+    id: string,
+    label: string,
+    count: int,
+    share: float,
+    mine: bool,
+    leading: bool,
+    votable: bool,
+}
+
 export struct MessageEntry {
     unique-id: string,
     local-id: string,
@@ -119,6 +129,10 @@ export struct MessageEntry {
     service-target: string,
     reactions: [ReactionEntry],
     all-reactions: [ReactionEntry],
+    poll-phase: PollPhase,
+    poll-choices: int,
+    poll-voters: int,
+    poll-answers: [PollAnswerEntry],
 }
 
 export struct EmojiEntry {
@@ -184,4 +198,17 @@ export struct SendAttachmentRequest {
 export struct SaveFileRequest {
     event-id: string,
     filename: string,
+}
+
+export struct VotePollRequest {
+    event-id: string,
+    answer-id: string,
+}
+
+export struct SendPollRequest {
+    room-id: string,
+    question: string,
+    answers: [string],
+    multiple: bool,
+    hide-results: bool,
 }

@@ -8,6 +8,7 @@ import { AudioMessage } from "./messages/audio-message.slint";
 import { TextMessage } from "./messages/text-message.slint";
 import { UtdMessage } from "./messages/utd-message.slint";
 import { UnsupportedMessage } from "./messages/unsupported-message.slint";
+import { PollMessage } from "./messages/poll-message.slint";
 import { MediaState, MessageKind } from "../../../../enums.slint";
 
 export global MessageShape {
@@ -80,6 +81,11 @@ export component MessageBody inherits VerticalLayout {
 
     if root.kind == MessageKind.audio && root.has-caption: TextMessage {
         msg: root.msg;
+    }
+
+    if root.kind == MessageKind.poll: PollMessage {
+        msg: root.msg;
+        frame-limit: root.frame-limit;
     }
 
     if root.kind == MessageKind.utd: UtdMessage { }

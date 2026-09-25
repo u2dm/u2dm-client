@@ -110,7 +110,7 @@ export component MessageInput inherits Rectangle {
         width: root.overlay-width;
         height: root.overlay-height;
         dim: false;
-        label: @tr("Attach a photo or a file");
+        label: @tr("Attach a file or create a poll");
         dismissed => {
             root.close-attach();
         }
@@ -123,6 +123,9 @@ export component MessageInput inherits Rectangle {
             }
             document-picked => {
                 root.pick(true);
+            }
+            poll-picked => {
+                root.open-poll();
             }
         }
     }
@@ -143,6 +146,11 @@ export component MessageInput inherits Rectangle {
         field.focus-input();
     }
 
+    function open-poll() {
+        Shell.attach-open = false;
+        Shell.poll-open = true;
+    }
+
     function pick(document: bool) {
         root.close-attach();
         if (document) {
@@ -160,7 +168,7 @@ export component MessageInput inherits Rectangle {
         placeholder: @tr("Send a message...");
         input-label: @tr("Message");
         lead-icon: IconSet.Paperclip;
-        lead-label: @tr("Attach a photo or a file");
+        lead-label: @tr("Attach a file or create a poll");
         lead-active: Shell.attach-open;
         emoji-label: @tr("Emoji and stickers");
         emoji-active: Shell.picker-open;

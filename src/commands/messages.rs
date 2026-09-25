@@ -60,6 +60,8 @@ pub enum UserMessageKind {
     AttachmentUnreadable,
     AttachmentTooLarge,
     SendAttachmentFailed,
+    PollVoteFailed,
+    PollEndFailed,
     VideoPlaybackFailed,
     AudioPlaybackFailed,
     FileSaveFailed,

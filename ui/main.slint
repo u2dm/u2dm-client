@@ -28,7 +28,7 @@ import {
     WindowView,
 } from "views.slint";
 import { Actions } from "actions.slint";
-import { Probe, ReplySwipe } from "local.slint";
+import { Probe, ReplySwipe, Shell } from "local.slint";
 import { Metrics } from "theme.slint";
 import {
     EmojiStore,
@@ -47,6 +47,7 @@ import { ReauthenticateScreen } from "screens/login/reauthenticate.slint";
 import { ChatScreen } from "screens/chat/chat.slint";
 import { VerificationDialog } from "components/verification.slint";
 import { AttachmentDialog } from "screens/chat/components/timeline/attachment-dialog.slint";
+import { PollDialog } from "screens/chat/components/timeline/poll-dialog.slint";
 import { VideoPlayer } from "screens/chat/components/timeline/video-player.slint";
 
 export component AppWindow inherits Window {
@@ -78,6 +79,12 @@ export component AppWindow inherits Window {
     }
 
     if AttachmentView.visible && LoginView.step == LoginPhase.logged-in: AttachmentDialog { }
+    if Shell.poll-open && LoginView.step == LoginPhase.logged-in: PollDialog {
+        room-id: DirectoryView.selected-room-id;
+        closed => {
+            Shell.poll-open = false;
+        }
+    }
     if VideoView.visible && LoginView.step == LoginPhase.logged-in: VideoPlayer { }
 
     if VerificationView.visible && LoginView.step == LoginPhase.logged-in: VerificationDialog { }

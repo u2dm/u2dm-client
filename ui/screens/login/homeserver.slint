@@ -7,7 +7,7 @@ import {
     StatusRow,
     StepDots,
 } from "./common.slint";
-import { LoginField } from "./field.slint";
+import { TextField } from "../../components/text-field.slint";
 import { AppStyle, Fonts, Metrics, Space } from "../../theme.slint";
 import { AppButton } from "../../components/button.slint";
 import { ErrorBanner } from "../../components/banner.slint";
@@ -38,7 +38,7 @@ export component HomeserverScreen inherits LoginPage {
             text: @tr("HOMESERVER");
         }
 
-        LoginField {
+        TextField {
             icon: IconSet.Globe;
             label: @tr("Homeserver");
             placeholder: "matrix.org";

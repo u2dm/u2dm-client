@@ -1,5 +1,6 @@
 use crate::domain::media::{AudioKind, AudioMeta, ContentKey, ThumbnailOutcome};
 use crate::domain::message::TimelineMessage;
+use crate::domain::poll::PollAction;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct UnreadAnchor {
@@ -155,6 +156,8 @@ pub enum TimelineCommand {
     MarkRead,
     JumpTo(String),
     ToggleReaction { event_id: String, key: String },
+    VotePoll { event_id: String, answer_id: String },
+    EndPoll { event_id: String },
     LocateAudio { request: u64, lookup: AudioLookup },
 }
 
@@ -296,6 +299,7 @@ pub enum TimelineUpdate {
         request: u64,
         track: Option<Box<AudioTrack>>,
     },
+    PollSendFailed(PollAction),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -314,6 +318,7 @@ impl TimelineUpdate {
             Self::Pagination { .. } => "Pagination",
             Self::JumpOutcome { .. } => "JumpOutcome",
             Self::AudioLocated { .. } => "AudioLocated",
+            Self::PollSendFailed(_) => "PollSendFailed",
         }
     }
 }

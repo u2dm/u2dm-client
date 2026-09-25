@@ -2,6 +2,8 @@ mod convert;
 mod diff;
 mod filter;
 mod pinned;
+mod poll_sends;
+mod polls;
 mod reactors;
 mod subscribe;
 
@@ -14,6 +16,7 @@ use matrix_sdk::attachment::AttachmentConfig;
 use matrix_sdk::send_queue::{LocalEchoContent, SendHandle};
 use matrix_sdk::{Client, Room};
 use matrix_sdk::room::reply::{EnforceThread, Reply};
+use matrix_sdk::ruma::events::AnyMessageLikeEventContent;
 use matrix_sdk::ruma::events::room::message::{
     AddMentions, RoomMessageEventContent, RoomMessageEventContentWithoutRelation,
     TextMessageEventContent,
@@ -33,6 +36,7 @@ use super::media::MediaService;
 use super::profile::PronounCache;
 use super::session::ClientHandle;
 use crate::domain::media::OutgoingAttachment;
+use crate::domain::poll::PollDraft;
 use crate::domain::room::RoomId;
 use crate::domain::timeline::{TimelineCommand, TimelineFocus, TimelineUpdate};
 use crate::error::{AppError, Result};
@@ -184,9 +188,9 @@ async fn queued_send(room: &Room, local_id: &str) -> Result<SendHandle> {
         .ok_or_else(|| AppError::Other(format!("no queued send for {local_id}")))
 }
 
-async fn queue(room: &Room, content: RoomMessageEventContent) -> Result<()> {
+async fn queue(room: &Room, content: AnyMessageLikeEventContent) -> Result<()> {
     room.send_queue()
-        .send(content.into())
+        .send(content)
         .await
         .map(|_handle| ())
         .map_err(|e| AppError::Other(e.to_string()))
@@ -237,7 +241,7 @@ impl TimelinePort for MatrixTimeline {
     async fn send_text(&self, room_id: &RoomId, body: &str) -> Result<()> {
         let room = self.matrix.room(room_id).await?;
         let content = RoomMessageEventContent::text_plain(body);
-        queue(&room, content).await
+        queue(&room, content.into()).await
     }
 
     async fn send_reply(&self, room_id: &RoomId, body: &str, in_reply_to: &str) -> Result<()> {
@@ -248,7 +252,17 @@ impl TimelinePort for MatrixTimeline {
             .make_reply_event(content, reply)
             .await
             .map_err(|e| AppError::Other(e.to_string()))?;
-        queue(&room, content).await
+        queue(&room, content.into()).await
+    }
+
+    async fn send_poll(&self, room_id: &RoomId, draft: &PollDraft) -> Result<()> {
+        let room = self.matrix.room(room_id).await?;
+        tracing::info!(
+            %room_id,
+            answers = draft.answers().len(),
+            "queueing a poll"
+        );
+        queue(&room, polls::start_content(draft)?).await
     }
 
     async fn send_attachment(

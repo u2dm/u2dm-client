@@ -48,6 +48,7 @@ component AttachRow inherits Rectangle {
 export component AttachMenu inherits PickerCard {
     callback photo-picked();
     callback document-picked();
+    callback poll-picked();
 
     width: Metrics.attach-menu-width;
     height: layout.preferred-height;
@@ -69,6 +70,14 @@ export component AttachMenu inherits PickerCard {
             label: @tr("Document");
             clicked => {
                 root.document-picked();
+            }
+        }
+
+        AttachRow {
+            icon: IconSet.ChartBar;
+            label: @tr("Poll");
+            clicked => {
+                root.poll-picked();
             }
         }
     }

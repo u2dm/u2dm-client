@@ -1,0 +1,384 @@
+import { Palette } from "std-widgets.slint";
+import { IconDisplay, IconSet } from "@lucide";
+import { MessageEntry, PollAnswerEntry } from "../../types.slint";
+import { ClickArea, Interaction } from "../../../../../components/a11y.slint";
+import { PollPhase } from "../../../../../enums.slint";
+import { Actions } from "../../../../../actions.slint";
+import { Polls } from "../../../../../local.slint";
+import { AppStyle, Fonts, IconSize, Metrics, Radius, Space, Stroke, Weight } from "../../../../../theme.slint";
+
+component RadioArea inherits ClickArea {
+    accessible-role: radio-button;
+}
+
+component CheckArea inherits ClickArea {
+    accessible-role: checkbox;
+}
+
+component CheckKeys inherits FocusScope {
+    in property <int> count;
+    in-out property <int> cursor;
+
+    callback activate();
+
+    x: 0;
+    y: 0;
+    width: 0;
+    height: 0;
+    focus-on-click: false;
+    focus-on-tab-navigation: Interaction.actionable(root.count > 0, false);
+    accessible-role: checkbox;
+    accessible-checkable: true;
+    accessible-action-default => {
+        root.activate();
+    }
+    key-pressed(event) => {
+        if root.count == 0 {
+            return reject;
+        }
+        if event.text == Key.DownArrow {
+            root.cursor = mod(root.cursor + 1, root.count);
+            return accept;
+        }
+        if event.text == Key.UpArrow {
+            root.cursor = mod(root.cursor + root.count - 1, root.count);
+            return accept;
+        }
+        if Interaction.activates(event.text) {
+            root.activate();
+            return accept;
+        }
+        return reject;
+    }
+}
+
+component RadioKeys inherits CheckKeys {
+    accessible-role: radio-button;
+}
+
+component PollMark inherits Rectangle {
+    in property <bool> checked;
+    in property <bool> multiple;
+    in property <bool> is-own;
+
+    width: Metrics.poll-indicator;
+    height: Metrics.poll-indicator;
+    border-radius: root.multiple ? Radius.xs : self.width / 2;
+    border-width: root.checked ? 0 : Stroke.emphasis;
+    border-color: AppStyle.overlay-foreground-muted;
+    background: !root.checked ? transparent : (root.is-own ? AppStyle.poll-mark-own : AppStyle.poll-mark);
+
+    if root.checked: IconDisplay {
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+        icon: IconSet.Check;
+        size: IconSize.xs;
+        stroke: root.is-own ? AppStyle.poll-check-own : AppStyle.poll-check;
+    }
+}
+
+component PollAnswerRow inherits Rectangle {
+    in property <PollAnswerEntry> answer;
+    in property <bool> multiple;
+    in property <bool> is-own;
+    in property <bool> reveals;
+    in property <bool> ended;
+    in property <bool> cursor;
+    in property <string> description;
+
+    callback activated();
+
+    property <color> fill: root.ended && !root.answer.leading
+        ? AppStyle.poll-mark-faded
+        : (root.is-own ? AppStyle.poll-mark-own : AppStyle.poll-mark);
+
+    height: layout.preferred-height;
+
+    if root.multiple: CheckArea {
+        width: 100%;
+        height: 100%;
+        enabled: root.answer.votable;
+        focusable: false;
+        roving-focus: root.cursor;
+        label: root.description;
+        accessible-checkable: true;
+        accessible-checked: root.answer.mine;
+        border-radius: Radius.sm;
+        background: self.has-hover ? AppStyle.overlay-hover : transparent;
+        clicked => {
+            root.activated();
+        }
+    }
+
+    if !root.multiple: RadioArea {
+        width: 100%;
+        height: 100%;
+        enabled: root.answer.votable;
+        focusable: false;
+        roving-focus: root.cursor;
+        label: root.description;
+        accessible-checkable: true;
+        accessible-checked: root.answer.mine;
+        border-radius: Radius.sm;
+        background: self.has-hover ? AppStyle.overlay-hover : transparent;
+        clicked => {
+            root.activated();
+        }
+    }
+
+    layout := VerticalLayout {
+        padding: Space.xs;
+        spacing: Space.xs;
+
+        HorizontalLayout {
+            spacing: Space.md;
+
+            PollMark {
+                cross-axis-self-alignment: start;
+                checked: root.answer.mine;
+                multiple: root.multiple;
+                is-own: root.is-own;
+            }
+
+            Text {
+                text: root.answer.label;
+                font-size: Fonts.body;
+                color: Palette.foreground;
+                wrap: word-wrap;
+                horizontal-stretch: 1;
+            }
+        }
+
+        HorizontalLayout {
+            padding-left: Metrics.poll-indicator + Space.md;
+            spacing: Space.md;
+
+            Rectangle {
+                cross-axis-self-alignment: center;
+                height: Metrics.poll-bar;
+                horizontal-stretch: 1;
+                border-radius: self.height / 2;
+                background: AppStyle.poll-bar-rest;
+
+                Rectangle {
+                    x: 0;
+                    width: parent.width * root.answer.share;
+                    height: parent.height;
+                    border-radius: parent.border-radius;
+                    background: root.fill;
+                }
+            }
+
+            Text {
+                width: Metrics.poll-count;
+                text: root.reveals ? root.answer.count : "";
+                font-size: Fonts.caption;
+                font-weight: root.answer.leading ? Weight.bold : Weight.regular;
+                color: AppStyle.overlay-foreground-muted;
+                horizontal-alignment: right;
+                vertical-alignment: center;
+                overflow: elide;
+            }
+        }
+    }
+}
+
+component PollFooterButton inherits ClickArea {
+    in property <string> text;
+    in property <bool> destructive;
+    in property <bool> is-own;
+
+    width: caption.preferred-width + 2 * Space.md;
+    height: Metrics.poll-footer;
+    border-radius: self.height / 2;
+    ring-radius: self.height / 2;
+    label: root.text;
+    background: root.destructive
+        ? AppStyle.poll-end-fill
+        : (self.has-hover ? AppStyle.overlay-hover : transparent);
+
+    caption := Text {
+        text: root.text;
+        font-size: Fonts.caption;
+        font-weight: Weight.semibold;
+        color: root.destructive
+            ? AppStyle.poll-end-text
+            : (root.is-own ? AppStyle.poll-mark-own : AppStyle.poll-mark);
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+}
+
+export component PollMessage inherits Rectangle {
+    in property <MessageEntry> msg;
+    in property <length> frame-limit;
+
+    property <length> body-width: min(Metrics.poll-width, root.frame-limit - 2 * Space.lg);
+    property <bool> multiple: root.msg.poll-choices > 1;
+    property <int> answer-count: root.msg.poll-answers.length;
+    property <int> cursor: 0;
+    property <bool> keyboard-focus: false;
+    property <PollAnswerEntry> focused-answer: root.msg.poll-answers[clamp(root.cursor, 0, max(root.answer-count - 1, 0))];
+    property <bool> can-end: root.msg.is-own
+        && root.msg.event-id != ""
+        && root.msg.poll-phase != PollPhase.ended;
+    property <bool> confirming-end: root.can-end && Polls.ending == root.msg.event-id;
+
+    pure function votes-label(count: int) -> string {
+        return @tr("{n} vote" | "{n} votes" % count);
+    }
+
+    pure function summary() -> string {
+        if root.msg.poll-phase == PollPhase.sealed {
+            return @tr("Results will be visible when the poll ends");
+        }
+        if root.msg.poll-phase == PollPhase.ended {
+            return @tr("Final results · {}", root.votes-label(root.msg.poll-voters));
+        }
+        if root.msg.poll-phase == PollPhase.open && root.msg.poll-voters > 0 {
+            return root.votes-label(root.msg.poll-voters);
+        }
+        return @tr("No votes yet");
+    }
+
+    pure function describe(answer: PollAnswerEntry) -> string {
+        if root.msg.poll-phase == PollPhase.sealed {
+            return answer.label;
+        }
+        if answer.leading {
+            return @tr("{}, {}, top answer", answer.label, root.votes-label(answer.count));
+        }
+        return @tr("{}, {}", answer.label, root.votes-label(answer.count));
+    }
+
+    function vote(answer: PollAnswerEntry) {
+        if answer.votable {
+            Actions.vote-poll({ event-id: root.msg.event-id, answer-id: answer.id });
+        }
+    }
+
+    function toggle-end-confirmation() {
+        if root.confirming-end {
+            Polls.clear();
+        } else {
+            Polls.ask-end(root.msg.event-id);
+        }
+    }
+
+    function end-poll() {
+        Polls.clear();
+        Actions.end-poll(root.msg.event-id);
+    }
+
+    min-width: root.body-width;
+    preferred-width: root.body-width;
+    max-width: root.body-width;
+    height: layout.preferred-height;
+
+    if root.multiple: CheckKeys {
+        count: root.answer-count;
+        cursor <=> root.cursor;
+        accessible-label: root.describe(root.focused-answer);
+        accessible-checked: root.focused-answer.mine;
+        accessible-enabled: root.focused-answer.votable;
+        activate => {
+            root.vote(root.focused-answer);
+        }
+        changed has-focus => {
+            root.keyboard-focus = self.has-focus;
+        }
+    }
+
+    if !root.multiple: RadioKeys {
+        count: root.answer-count;
+        cursor <=> root.cursor;
+        accessible-label: root.describe(root.focused-answer);
+        accessible-checked: root.focused-answer.mine;
+        accessible-enabled: root.focused-answer.votable;
+        activate => {
+            root.vote(root.focused-answer);
+        }
+        changed has-focus => {
+            root.keyboard-focus = self.has-focus;
+        }
+    }
+
+    layout := VerticalLayout {
+        padding-top: Space.xs;
+        spacing: Space.sm;
+
+        HorizontalLayout {
+            spacing: Space.md;
+
+            IconDisplay {
+                cross-axis-self-alignment: start;
+                icon: IconSet.ChartBar;
+                size: IconSize.sm;
+                stroke: root.msg.is-own ? AppStyle.poll-mark-own : AppStyle.poll-mark;
+            }
+
+            Text {
+                text: root.msg.body;
+                font-size: Fonts.body;
+                font-weight: Weight.semibold;
+                color: Palette.foreground;
+                wrap: word-wrap;
+                horizontal-stretch: 1;
+            }
+        }
+
+        if root.multiple: Text {
+            text: root.msg.poll-choices >= root.answer-count
+                ? @tr("Choose any number of answers")
+                : @tr("Choose up to {n} answer" | "Choose up to {n} answers" % root.msg.poll-choices);
+            font-size: Fonts.caption;
+            color: AppStyle.overlay-foreground-muted;
+            wrap: word-wrap;
+        }
+
+        for answer[index] in root.msg.poll-answers: PollAnswerRow {
+            answer: answer;
+            multiple: root.multiple;
+            is-own: root.msg.is-own;
+            reveals: root.msg.poll-phase != PollPhase.sealed;
+            ended: root.msg.poll-phase == PollPhase.ended;
+            cursor: root.keyboard-focus && root.cursor == index;
+            description: root.describe(answer);
+            activated => {
+                root.cursor = index;
+                root.vote(answer);
+            }
+        }
+
+        HorizontalLayout {
+            height: Metrics.poll-footer;
+            spacing: Space.xs;
+
+            Text {
+                text: root.confirming-end ? @tr("End the poll for everyone?") : root.summary();
+                font-size: Fonts.caption;
+                color: AppStyle.overlay-foreground-muted;
+                vertical-alignment: center;
+                overflow: elide;
+                horizontal-stretch: 1;
+            }
+
+            if root.can-end: PollFooterButton {
+                text: root.confirming-end ? @tr("Keep it open") : @tr("End poll");
+                is-own: root.msg.is-own;
+                clicked => {
+                    root.toggle-end-confirmation();
+                }
+            }
+
+            if root.confirming-end: PollFooterButton {
+                text: @tr("End poll");
+                destructive: true;
+                is-own: root.msg.is-own;
+                clicked => {
+                    root.end-poll();
+                }
+            }
+        }
+    }
+}

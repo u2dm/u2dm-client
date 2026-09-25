@@ -194,12 +194,15 @@ pub(super) fn command_allowed(phase: AppPhase, cmd: &UiCommand) -> bool {
         | UiCommand::SendAttachment { .. }
         | UiCommand::CancelAttachment
         | UiCommand::SendSticker { .. }
+        | UiCommand::SendPoll { .. }
         | UiCommand::PaginateBackwards { .. }
         | UiCommand::PaginateForwards { .. }
         | UiCommand::JumpToLatest { .. }
         | UiCommand::JumpToEvent { .. }
         | UiCommand::OpenPinned { .. }
         | UiCommand::ToggleReaction { .. }
+        | UiCommand::VotePoll { .. }
+        | UiCommand::EndPoll { .. }
         | UiCommand::RetrySend { .. }
         | UiCommand::DiscardSend { .. }
         | UiCommand::RetryTimeline

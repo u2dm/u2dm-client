@@ -16,8 +16,8 @@ use super::dto::{
     room_to_dto, space_child_to_dto, space_to_dto,
 };
 use super::fields::{
-    MessageFields, ReactionFields, ReactorFields, RoomFields, SpaceChildFields, SpaceFields,
-    StickerCellFields, StickerPackFields, StickerRowFields,
+    MessageFields, PollAnswerFields, ReactionFields, ReactorFields, RoomFields, SpaceChildFields,
+    SpaceFields, StickerCellFields, StickerPackFields, StickerRowFields,
 };
 use super::multiplex::spawn_event_multiplexer;
 use super::props::{IntProp, StringProp, UiProps};
@@ -40,6 +40,7 @@ pub trait UiBackend: Sized + 'static {
     type Message: MessageFields<Self> + Clone + From<MessageDto> + 'static;
     type Reaction: ReactionFields<Self> + Clone + 'static;
     type Reactor: ReactorFields<Self> + Clone + 'static;
+    type PollAnswer: PollAnswerFields<Self> + Clone + 'static;
     type Room: RoomFields<Self> + Clone + PartialEq + From<RoomDto> + 'static;
     type Space: SpaceFields<Self> + Clone + PartialEq + From<SpaceDto> + 'static;
     type SpaceChild: SpaceChildFields<Self> + Clone + PartialEq + From<SpaceChildDto> + 'static;

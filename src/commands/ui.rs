@@ -2,6 +2,7 @@ use strum::Display as StrumDisplay;
 
 use crate::domain::auth::LoginCredentials;
 use crate::domain::media::AttachmentPick;
+use crate::domain::poll::PollDraft;
 use crate::domain::room::RoomId;
 use crate::domain::sticker::PackId;
 
@@ -60,6 +61,11 @@ pub enum UiCommand {
         reply_to: Option<String>,
     },
     CancelAttachment,
+    #[strum(to_string = "SendPoll({room_id})")]
+    SendPoll {
+        room_id: RoomId,
+        draft: PollDraft,
+    },
     #[strum(to_string = "SendSticker({room_id},{shortcode})")]
     SendSticker {
         room_id: RoomId,
@@ -94,6 +100,15 @@ pub enum UiCommand {
     ToggleReaction {
         event_id: String,
         key: String,
+    },
+    #[strum(to_string = "VotePoll({event_id})")]
+    VotePoll {
+        event_id: String,
+        answer_id: String,
+    },
+    #[strum(to_string = "EndPoll({event_id})")]
+    EndPoll {
+        event_id: String,
     },
     #[strum(to_string = "RetrySend({local_id})")]
     RetrySend { local_id: String },

@@ -143,6 +143,14 @@ export global AppStyle {
     out property <color> audio-wave-rest: Palette.foreground.transparentize(0.7);
     out property <color> scrub-track: Palette.foreground.transparentize(0.75);
     out property <color> pinned-marker-rest: Palette.accent-background.transparentize(0.6);
+    out property <color> poll-mark: root.audio-wave-played;
+    out property <color> poll-mark-own: root.audio-wave-played-own;
+    out property <color> poll-mark-faded: Palette.foreground.transparentize(0.55);
+    out property <color> poll-check: Palette.accent-foreground;
+    out property <color> poll-check-own: root.own-bubble;
+    out property <color> poll-bar-rest: root.scrub-track;
+    out property <color> poll-end-fill: root.delivery-failed;
+    out property <color> poll-end-text: root.delivery-failed-glyph;
 
     out property <color> chip-fill: Palette.background.transparentize(0.78);
     out property <color> chip-fill-mine: Palette.accent-background.transparentize(0.72);
@@ -266,6 +274,11 @@ export global Metrics {
     out property <length> audio-track-line: Stroke.emphasis;
     out property <length> now-playing-bar: Size.xl;
     out property <length> pinned-bar: root.reply-bar;
+    out property <length> poll-width: 300px;
+    out property <length> poll-indicator: Size.xs;
+    out property <length> poll-bar: Space.sm;
+    out property <length> poll-count: Size.xl;
+    out property <length> poll-footer: Size.target-min;
 
     out property <length> toast-min-width: 200px;
     out property <length> toast-max-width: 500px;

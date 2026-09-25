@@ -9,6 +9,7 @@ mod login;
 mod matrix;
 mod media;
 mod pinned;
+mod polls;
 pub mod probe;
 mod reactions;
 mod receipts;

@@ -7,55 +7,11 @@ import { Actions } from "../../../../actions.slint";
 import { Composer, ReplyDraft } from "../../../../local.slint";
 import { AppStyle, Fonts, IconSize, Metrics, Opacity, Radius, Size, Space, Stroke, Weight } from "../../../../theme.slint";
 import { ErrorBanner } from "../../../../components/banner.slint";
-import { ClickArea } from "../../../../components/a11y.slint";
+import { CheckRow } from "../../../../components/check-row.slint";
 import { DialogCard, ModalHost, PickerCard } from "../../../../components/overlay.slint";
 import { ComposerField } from "./composer-field.slint";
 import { EmojiPicker } from "./emoji-picker.slint";
 import { ReplyBar } from "./reply-bar.slint";
-
-component CheckRow inherits Rectangle {
-    in property <string> label;
-    in-out property <bool> checked: false;
-
-    height: Size.sm;
-
-    touch := ClickArea {
-        above-modal: true;
-        label: root.label;
-        ring-radius: Radius.sm;
-        clicked => {
-            root.checked = !root.checked;
-        }
-    }
-
-    HorizontalLayout {
-        spacing: Space.md;
-
-        Rectangle {
-            cross-axis-self-alignment: center;
-            width: Size.xs;
-            height: Size.xs;
-            border-radius: Radius.xs;
-            border-width: Stroke.hairline;
-            border-color: root.checked ? Palette.accent-background : AppStyle.foreground-faint;
-            background: root.checked ? Palette.accent-background : transparent;
-
-            if root.checked: IconDisplay {
-                icon: IconSet.Check;
-                size: IconSize.xs;
-                stroke: Palette.accent-foreground;
-            }
-        }
-
-        Text {
-            text: root.label;
-            font-size: Fonts.label;
-            vertical-alignment: center;
-            horizontal-stretch: 1;
-            color: Palette.foreground;
-        }
-    }
-}
 
 component FileChip inherits Rectangle {
     in property <Icon> icon: IconSet.File;

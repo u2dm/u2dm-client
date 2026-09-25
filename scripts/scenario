@@ -25,6 +25,7 @@ scenario_env() {
     voice-notes)     echo 'U2DM_DEMO_AUDIO=silent' ;;
     delivery-marks)  echo 'U2DM_DEMO_RECEIPTS=late,crowd,seen' ;;
     space-index)     echo 'U2DM_DEMO_SPACE_INDEX=slow' ;;
+    polls)           echo 'U2DM_DEMO_TIMELINE=deep U2DM_DEMO_POLLS=late,live,ended' ;;
     *) return 1 ;;
   esac
 }
@@ -67,6 +68,14 @@ scenario_steps() {
       echo 'sleep 3'
       echo '{"op":"join_space_child","room_id":"!matrix-dev:demo.local"}'
       echo 'sleep 4' ;;
+    polls)
+      echo '{"op":"select_room","room_id":"!trip:demo.local"}'
+      echo 'sleep 2'
+      echo '{"op":"vote_poll","event_id":"demo-trip-poll","answer_id":"train"}'
+      echo 'sleep 1'
+      echo '{"op":"vote_poll","event_id":"demo-trip-snacks","answer_id":"pierogi"}'
+      echo 'sleep 1'
+      echo '{"op":"end_poll","event_id":"demo-trip-snacks"}' ;;
     login-oauth|verify-self)
       : ;;
   esac
@@ -89,6 +98,7 @@ scenario_note() {
     voice-notes)     echo 'a voice note advances to the next one, whose download then fails' ;;
     delivery-marks)  echo 'read marks arrive as Sets, a crowd has read the newest, and a sent text turns read live' ;;
     space-index)     echo 'the Matrix space index loads slowly, pages, and joins a room that turns to Open on the sync echo' ;;
+    polls)           echo 'tallies arrive as Sets while members keep voting; an own vote and an own multi-choice change land, then the own poll is ended' ;;
   esac
 }
 
@@ -106,7 +116,7 @@ check_window() {
 names() {
   printf '%s\n' unread-anchor all-unread unread-unresolved reactions-late sticker-trickle jump-to-reply \
     pinned-bar media-failures compact-layout login-oauth verify-self audio-track voice-notes delivery-marks \
-    space-index
+    space-index polls
 }
 
 cmd_list() {
@@ -162,6 +172,7 @@ cmd_run() {
   jq -r 'if .rows then "  timeline rows=\(.rows|length) anchor=\(.anchor_index) unread=\([.rows[]|select(.first_unread)|.row])" else "  timeline unavailable" end' "$out/timeline.json"
   jq -r 'if .pinned.count > 0 then "  pinned bar #\(.pinned.index + 1) of \(.pinned.count) event=\(.pinned.event_id) focus=\(.focus_event_id)" else empty end' "$out/timeline.json"
   jq -r 'if .audio then "  audio state=\(.audio.state) event=\(.audio.event_id) position=\(.audio.position_ms)/\(.audio.duration_ms) output=\(.audio.output)" else empty end' "$out/timeline.json"
+  jq -r '.rows[]? | select(.message_type == "poll") | "  poll \(.event_id) \(.poll_phase) voters=\(.poll_voters) [\([.poll_answers[] | "\(.id)=\(.count)\(if .mine then "*" else "" end)"] | join(" "))]"' "$out/timeline.json"
 }
 
 case "${1:-}" in

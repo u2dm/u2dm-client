@@ -111,7 +111,7 @@
       "members": 6,
       "unread": 5,
       "days_ago": 1,
-      "pinned": ["demo-trip-1", "demo-trip-clip"],
+      "pinned": ["demo-trip-1", "demo-trip-clip", "demo-trip-poll"],
       "last_message": {
         "sender": "Marcus",
         "sender_id": "@marcus:matrix.org",
@@ -213,11 +213,13 @@
       "encrypted": true,
       "avatar": "book-club",
       "members": 12,
-      "days_ago": 4,
+      "days_ago": 3,
+      "minutes_ago": 30,
       "last_message": {
-        "sender": "Priya",
-        "sender_id": "@priya:matrix.org",
-        "body": "chapter 7 was a full crashout and i mean that as praise"
+        "sender": "Marcus",
+        "sender_id": "@marcus:matrix.org",
+        "kind": "poll",
+        "body": "snacks for the meetup"
       }
     },
     {
@@ -662,6 +664,25 @@
         "name": "Priya",
         "body": "you cannot name a runtime in this room without someone rewriting it in a different executor by friday",
         "minutes_ago": 15
+      },
+      {
+        "id": "demo-rust-poll",
+        "sender": "@priya:matrix.org",
+        "name": "Priya",
+        "body": "settle it then. which executor",
+        "minutes_ago": 15,
+        "poll": {
+          "answers": [
+            {
+              "id": "tokio",
+              "text": "tokio",
+              "voters": ["@kai:matrix.org", "@marcus:matrix.org", "@sarah:matrix.org", "@nina:matrix.org"]
+            },
+            { "id": "smol", "text": "smol", "voters": ["@priya:matrix.org"] },
+            { "id": "embassy", "text": "embassy, i write firmware now", "voters": ["@leo:matrix.org"] },
+            { "id": "block-on", "text": "block_on everything and go home", "voters": ["@alex:matrix.org"] }
+          ]
+        }
       },
       {
         "id": "demo-rust-15",
@@ -1168,6 +1189,26 @@
         "minutes_ago": 30
       },
       {
+        "id": "demo-trip-poll",
+        "sender": "@nadia:matrix.org",
+        "name": "Nadia",
+        "body": "so who is actually driving",
+        "days_ago": 1,
+        "minutes_ago": 26,
+        "poll": {
+          "answers": [
+            { "id": "nadia", "text": "me, reluctantly", "voters": ["@nadia:matrix.org"] },
+            {
+              "id": "priya",
+              "text": "priya, in a car that is not that car",
+              "voters": ["@kai:matrix.org", "@sarah:matrix.org"]
+            },
+            { "id": "train", "text": "we take the train like adults", "voters": ["@marcus:matrix.org"] },
+            { "id": "manifest", "text": "manifest the mountain" }
+          ]
+        }
+      },
+      {
         "id": "demo-trip-6",
         "sender": "@marcus:matrix.org",
         "name": "Marcus",
@@ -1200,6 +1241,26 @@
           "duration_secs": 3671,
           "mimetype": "video/quicktime",
           "filename": "IMG_4410.MOV"
+        }
+      },
+      {
+        "id": "demo-trip-snacks",
+        "sender": "@alex:matrix.org",
+        "name": "You",
+        "body": "what are we bringing, pick all that apply",
+        "minutes_ago": 6,
+        "poll": {
+          "max": 4,
+          "answers": [
+            { "id": "trail-mix", "text": "trail mix", "voters": ["@alex:matrix.org", "@nadia:matrix.org"] },
+            {
+              "id": "cheese",
+              "text": "an entire wheel of cheese",
+              "voters": ["@marcus:matrix.org", "@alex:matrix.org", "@kai:matrix.org"]
+            },
+            { "id": "pierogi", "text": "emergency pierogi", "voters": ["@priya:matrix.org"] },
+            { "id": "forage", "text": "nothing, we forage" }
+          ]
         }
       }
     ],
@@ -1332,6 +1393,56 @@
         "name": "Priya",
         "body": "chapter 7 was a full crashout and i mean that as praise",
         "days_ago": 4
+      },
+      {
+        "id": "demo-book-poll",
+        "sender": "@priya:matrix.org",
+        "name": "Priya",
+        "body": "next month's pick, votes stay secret until friday",
+        "days_ago": 3,
+        "minutes_ago": 50,
+        "poll": {
+          "kind": "undisclosed",
+          "answers": [
+            { "id": "piranesi", "text": "Piranesi", "voters": ["@nina:matrix.org", "@alex:matrix.org"] },
+            { "id": "left-hand", "text": "The Left Hand of Darkness", "voters": ["@marcus:matrix.org"] },
+            { "id": "hail-mary", "text": "Project Hail Mary" }
+          ]
+        }
+      },
+      {
+        "id": "demo-book-6",
+        "sender": "@nina:matrix.org",
+        "name": "Nina",
+        "body": "voted. not telling",
+        "days_ago": 3,
+        "minutes_ago": 44,
+        "reply": {
+          "sender": "Priya",
+          "event_id": "demo-book-poll",
+          "kind": "poll",
+          "body": "next month's pick, votes stay secret until friday"
+        }
+      },
+      {
+        "id": "demo-book-snacks",
+        "sender": "@marcus:matrix.org",
+        "name": "Marcus",
+        "body": "snacks for the meetup",
+        "days_ago": 3,
+        "minutes_ago": 30,
+        "poll": {
+          "ended": true,
+          "answers": [
+            {
+              "id": "dumplings",
+              "text": "dumplings",
+              "voters": ["@marcus:matrix.org", "@nina:matrix.org", "@priya:matrix.org"]
+            },
+            { "id": "churros", "text": "churros", "voters": ["@alex:matrix.org"] },
+            { "id": "tea", "text": "just tea, we are adults", "voters": ["@kai:matrix.org"] }
+          ]
+        }
       }
     ],
     "!music:demo.local": [

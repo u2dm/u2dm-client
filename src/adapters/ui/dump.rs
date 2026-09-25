@@ -7,7 +7,7 @@ use tokio::sync::oneshot;
 
 use super::audio;
 use super::backend::UiBackend;
-use super::fields::{MessageFields, ReactionFields};
+use super::fields::{MessageFields, PollAnswerFields, ReactionFields};
 use super::props::{BoolProp, EnumProp, IntProp, StringProp, UiProps};
 
 #[derive(Serialize)]
@@ -19,6 +19,17 @@ pub struct ReactionRowDump {
     pub send: String,
     pub overflow: bool,
     pub hidden_reactors: i32,
+}
+
+#[derive(Serialize)]
+pub struct PollAnswerRowDump {
+    pub id: String,
+    pub label: String,
+    pub count: i32,
+    pub share: f32,
+    pub mine: bool,
+    pub leading: bool,
+    pub votable: bool,
 }
 
 #[derive(Serialize)]
@@ -62,6 +73,10 @@ pub struct TimelineRowDump {
     pub reply_sender: String,
     pub reply_body: String,
     pub reactions: Vec<ReactionRowDump>,
+    pub poll_phase: String,
+    pub poll_choices: i32,
+    pub poll_voters: i32,
+    pub poll_answers: Vec<PollAnswerRowDump>,
 }
 
 #[derive(Serialize)]
@@ -244,6 +259,26 @@ fn timeline_row<B: UiBackend>(row: usize, entry: &B::Message) -> TimelineRowDump
             .iter()
             .map(|reaction| reaction_row::<B>(&reaction))
             .collect(),
+        poll_phase: entry.poll_phase().to_owned(),
+        poll_choices: entry.poll_choices(),
+        poll_voters: entry.poll_voters(),
+        poll_answers: entry
+            .poll_answers()
+            .iter()
+            .map(|answer| poll_answer_row::<B>(&answer))
+            .collect(),
+    }
+}
+
+fn poll_answer_row<B: UiBackend>(entry: &B::PollAnswer) -> PollAnswerRowDump {
+    PollAnswerRowDump {
+        id: entry.id().to_owned(),
+        label: entry.label().to_owned(),
+        count: entry.count(),
+        share: entry.share(),
+        mine: entry.mine(),
+        leading: entry.leading(),
+        votable: entry.votable(),
     }
 }
 

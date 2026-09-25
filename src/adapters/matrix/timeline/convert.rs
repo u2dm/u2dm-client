@@ -1,7 +1,8 @@
-use std::collections::HashSet;
+use std::collections::{BTreeSet, HashSet};
 
 use matrix_sdk::ruma::UInt;
 use matrix_sdk::ruma::events::StateEventContentChange;
+use matrix_sdk::ruma::events::poll::start::PollKind;
 use matrix_sdk::ruma::events::room::ImageInfo;
 use matrix_sdk::ruma::events::room::message::{
     AudioMessageEventContent, FileMessageEventContent, FormattedBody, ImageMessageEventContent,
@@ -11,8 +12,8 @@ use matrix_sdk::ruma::events::room::name::RoomNameEventContent;
 use matrix_sdk::ruma::events::sticker::StickerEventContent;
 use matrix_sdk_ui::timeline::{
     AnyOtherStateEventContentChange, EventSendState, EventTimelineItem, MemberProfileChange,
-    MembershipChange, Message, ReactionInfo, RoomMembershipChange, Sticker, TimelineDetails,
-    TimelineItem, TimelineItemContent,
+    MembershipChange, Message, PollState, ReactionInfo, RoomMembershipChange, Sticker,
+    TimelineDetails, TimelineItem, TimelineItemContent,
 };
 
 use super::TimelineContext;
@@ -25,6 +26,7 @@ use crate::domain::message::{
     MessageBody, MessagePreviewKind, REACTOR_AVATAR_LIMIT, Reaction, ReactionSend, Reactor, ReadBy,
     ReplyInfo, RichText, SendState, ServiceEvent, TimelineMessage,
 };
+use crate::domain::poll::{Poll, PollAnswer, PollChoice, PollDisclosure, PollStatus};
 
 fn extract_sender_profile(event: &EventTimelineItem) -> (Option<String>, Option<String>) {
     match event.sender_profile() {
@@ -264,6 +266,7 @@ fn service_event_from_content(content: &TimelineItemContent) -> Option<ServiceEv
 pub(super) enum Renderable<'a> {
     Message(&'a Message),
     Sticker(&'a Sticker),
+    Poll(&'a PollState),
     Utd,
     Service(ServiceEvent),
 }
@@ -274,6 +277,9 @@ pub(super) fn classify(content: &TimelineItemContent) -> Option<Renderable<'_>> 
     }
     if let Some(sticker) = content.as_sticker() {
         return Some(Renderable::Sticker(sticker));
+    }
+    if let Some(poll) = content.as_poll() {
+        return Some(Renderable::Poll(poll));
     }
     if content.as_unable_to_decrypt().is_some() {
         return Some(Renderable::Utd);
@@ -290,7 +296,7 @@ pub(super) fn event_media(item: &TimelineItem) -> Option<EventMedia> {
     match classify(item.as_event()?.content())? {
         Renderable::Message(message) => EventMedia::of_message(message.msgtype()),
         Renderable::Sticker(sticker) => Some(EventMedia::of_sticker(sticker.content())),
-        Renderable::Utd | Renderable::Service(_) => None,
+        Renderable::Poll(_) | Renderable::Utd | Renderable::Service(_) => None,
     }
 }
 
@@ -301,19 +307,12 @@ pub(super) fn content_preview(content: &TimelineItemContent) -> (MessagePreviewK
             (preview.kind, preview.body)
         }
         Some(Renderable::Sticker(_)) => (MessagePreviewKind::Sticker, RichText::default()),
-        Some(Renderable::Utd) => (MessagePreviewKind::Encrypted, RichText::default()),
-        Some(Renderable::Service(_)) => (MessagePreviewKind::None, RichText::default()),
-        None => poll_preview(content),
-    }
-}
-
-fn poll_preview(content: &TimelineItemContent) -> (MessagePreviewKind, RichText) {
-    match content.as_poll() {
-        Some(poll) => (
+        Some(Renderable::Poll(poll)) => (
             MessagePreviewKind::Poll,
             RichText::plain(poll.results().question),
         ),
-        None => (MessagePreviewKind::None, RichText::default()),
+        Some(Renderable::Utd) => (MessagePreviewKind::Encrypted, RichText::default()),
+        Some(Renderable::Service(_)) | None => (MessagePreviewKind::None, RichText::default()),
     }
 }
 
@@ -440,6 +439,46 @@ fn extract_sticker_body(sticker: &StickerEventContent) -> MessageBody {
     }
 }
 
+fn extract_poll_body(poll: &PollState, own_user_id: Option<&str>) -> MessageBody {
+    let results = poll.results();
+    let voters = results
+        .votes
+        .values()
+        .flatten()
+        .map(String::as_str)
+        .collect::<BTreeSet<_>>()
+        .len();
+    let answers = results
+        .answers
+        .iter()
+        .map(|answer| {
+            let backers = results.votes.get(&answer.id).map_or(&[][..], Vec::as_slice);
+            PollAnswer {
+                id: answer.id.clone(),
+                text: answer.text.clone(),
+                votes: backers.len(),
+                mine: own_user_id.is_some_and(|own| backers.iter().any(|backer| backer == own)),
+            }
+        })
+        .collect();
+    MessageBody::Poll(Poll {
+        disclosure: if results.kind == PollKind::Disclosed {
+            PollDisclosure::Disclosed
+        } else {
+            PollDisclosure::Undisclosed
+        },
+        choice: PollChoice::up_to(usize::try_from(results.max_selections).unwrap_or(usize::MAX)),
+        answers,
+        voters,
+        status: if results.end_time.is_some() {
+            PollStatus::Ended
+        } else {
+            PollStatus::Open
+        },
+        question: results.question,
+    })
+}
+
 fn extract_file_body(file: &FileMessageEventContent) -> MessageBody {
     let (mimetype, size) = file.info.as_ref().map_or((None, None), |info| {
         (info.mimetype.clone(), info.size.map(Into::into))
@@ -518,6 +557,12 @@ pub(super) fn convert_event_item_with_uid(
                 ..base_message(unique_id, event, event_id_str, ctx)
             })
         }
+        Some(Renderable::Poll(poll)) => Some(TimelineMessage {
+            body: extract_poll_body(poll, ctx.own_user_id),
+            reply,
+            edited: poll.is_edit(),
+            ..base_message(unique_id, event, event_id_str, ctx)
+        }),
         Some(Renderable::Utd) => Some(build_utd_message(
             unique_id,
             event,

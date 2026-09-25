@@ -17,6 +17,8 @@ use tokio::task::JoinSet;
 use super::convert::event_media;
 use super::diff::{diff_to_patch, stamp_read_marks};
 use super::filter::TimelineItems;
+use super::poll_sends::PollSendGuard;
+use super::polls;
 use super::reactors::{ReactorAvatars, Resolution, resolve_reactor_avatars};
 use super::{EnrichmentClaim, EnrichmentPool, TimelineContext};
 use crate::adapters::matrix::media::{MediaService, ThumbnailRequest};
@@ -290,6 +292,17 @@ async fn handle_timeline_command(
             toggle_reaction(timeline, &event_id, &key).await;
             return;
         }
+        TimelineCommand::VotePoll {
+            event_id,
+            answer_id,
+        } => {
+            polls::vote(timeline, items, &event_id, &answer_id, timeline_tx).await;
+            return;
+        }
+        TimelineCommand::EndPoll { event_id } => {
+            polls::end(timeline, items, &event_id, timeline_tx).await;
+            return;
+        }
         TimelineCommand::LocateAudio { request, lookup } => {
             report_audio(request, &lookup, items, ctx).await;
             return;
@@ -376,20 +389,20 @@ async fn paginate_forwards(timeline: &Timeline) -> PaginationOutcome {
     }
 }
 
-async fn setup_timeline(
-    client: &Client,
-    room_id: &RoomId,
-    focus: &TimelineFocus,
-) -> Result<(Arc<Timeline>, OwnedRoomId, PaginationOutcome)> {
+fn resolve_room(client: &Client, room_id: &RoomId) -> Result<Room> {
     let room_id_parsed: OwnedRoomId = room_id
         .as_ref()
         .try_into()
         .map_err(|e: IdParseError| AppError::Other(e.to_string()))?;
-
-    let room = client
+    client
         .get_room(&room_id_parsed)
-        .ok_or_else(|| AppError::Other("Room not found".into()))?;
+        .ok_or_else(|| AppError::Other("Room not found".into()))
+}
 
+async fn setup_timeline(
+    room: &Room,
+    focus: &TimelineFocus,
+) -> Result<(Arc<Timeline>, PaginationOutcome)> {
     let Some(target) = focus.target() else {
         let timeline = Arc::new(
             room.timeline()
@@ -397,15 +410,11 @@ async fn setup_timeline(
                 .map_err(|e| AppError::Other(e.to_string()))?,
         );
         let backwards_outcome = paginate_backwards(&timeline).await;
-        return Ok((timeline, room_id_parsed, backwards_outcome));
+        return Ok((timeline, backwards_outcome));
     };
 
-    let timeline = Arc::new(build_focused_timeline(&room, target).await?);
-    Ok((
-        timeline,
-        room_id_parsed,
-        PaginationOutcome::Completed { hit_end: false },
-    ))
+    let timeline = Arc::new(build_focused_timeline(room, target).await?);
+    Ok((timeline, PaginationOutcome::Completed { hit_end: false }))
 }
 
 async fn build_focused_timeline(room: &Room, target: &str) -> Result<Timeline> {
@@ -636,8 +645,9 @@ pub(crate) async fn subscribe_timeline(
     timeline_tx: mpsc::Sender<TimelineUpdate>,
     mut cmd_rx: mpsc::UnboundedReceiver<TimelineCommand>,
 ) -> Result<()> {
-    let (timeline, room_id_parsed, backwards_outcome) =
-        setup_timeline(client, room_id, focus).await?;
+    let room = resolve_room(client, room_id)?;
+    let sends = PollSendGuard::watch(room.clone(), &timeline_tx).await;
+    let (timeline, backwards_outcome) = setup_timeline(&room, focus).await?;
 
     media.ensure_dirs().await;
 
@@ -712,7 +722,7 @@ pub(crate) async fn subscribe_timeline(
     run_timeline_loop(
         &ctx,
         &timeline,
-        &room_id_parsed,
+        sends,
         items,
         side_tasks,
         &mut cmd_rx,
@@ -725,17 +735,15 @@ pub(crate) async fn subscribe_timeline(
 
 fn spawn_reactor_avatar_fetch(
     ctx: &TimelineContext<'_>,
-    room: Option<&Room>,
+    room: &Room,
     side_tasks: &mut JoinSet<()>,
     resolved_tx: &mpsc::Sender<Vec<(String, Resolution)>>,
 ) {
-    let Some(room) = room.cloned() else {
-        return;
-    };
     let wanted = ctx.reactor_avatars.take_wanted();
     if wanted.is_empty() {
         return;
     }
+    let room = room.clone();
     let client = ctx.client.clone();
     let media = Arc::clone(ctx.media);
     let resolved_tx = resolved_tx.clone();
@@ -779,7 +787,7 @@ fn reactor_avatar_patch(
 async fn run_timeline_loop<S>(
     ctx: &TimelineContext<'_>,
     timeline: &Arc<Timeline>,
-    room_id_parsed: &OwnedRoomId,
+    mut sends: PollSendGuard,
     mut items: TimelineItems,
     mut side_tasks: JoinSet<()>,
     cmd_rx: &mut mpsc::UnboundedReceiver<TimelineCommand>,
@@ -797,18 +805,19 @@ async fn run_timeline_loop<S>(
         &mut side_tasks,
     );
 
-    let room = ctx.client.get_room(room_id_parsed);
+    let room = sends.room().clone();
+    let room_id = room.room_id().to_owned();
     let (reactor_tx, mut reactor_rx) =
         mpsc::channel::<Vec<(String, Resolution)>>(REACTOR_AVATAR_BATCHES);
-    spawn_reactor_avatar_fetch(ctx, room.as_ref(), &mut side_tasks, &reactor_tx);
+    spawn_reactor_avatar_fetch(ctx, &room, &mut side_tasks, &reactor_tx);
 
     let mut key_stream = std::pin::pin!(
         ctx.client
             .encryption()
             .backups()
-            .room_keys_for_room_stream(room_id_parsed)
+            .room_keys_for_room_stream(&room_id)
     );
-    spawn_backup_key_download(&mut side_tasks, ctx.client, room_id_parsed);
+    spawn_backup_key_download(&mut side_tasks, ctx.client, &room_id);
 
     let mut key_stream_done = false;
 
@@ -827,6 +836,7 @@ async fn run_timeline_loop<S>(
                 }
             }
             Some(_) = side_tasks.join_next(), if !side_tasks.is_empty() => {}
+            update = sends.next() => sends.settle(update, ctx.timeline_tx).await,
             Some(resolved) = reactor_rx.recv() => {
                 let arrived = ctx.reactor_avatars.record(resolved);
                 if let Some(patch) = reactor_avatar_patch(&mut items, &arrived, ctx)
@@ -849,7 +859,7 @@ async fn run_timeline_loop<S>(
                     break;
                 }
                 spawn_reply_detail_fetches(items.items(), timeline, &mut fetched_reply_details, &reply_limit, &mut side_tasks);
-                spawn_reactor_avatar_fetch(ctx, room.as_ref(), &mut side_tasks, &reactor_tx);
+                spawn_reactor_avatar_fetch(ctx, &room, &mut side_tasks, &reactor_tx);
             }
         }
     }

@@ -89,8 +89,14 @@ macro_rules! simple_callbacks {
         on_send_attachment "send-attachment" send_attachment
             request(room_id "room-id" text, caption "caption" text, as_document "as-document" flag,
                 reply_to "reply-to" text) SendAttachment;
+        on_send_poll "send-poll" send_poll
+            request(room_id "room-id" text, question "question" text, answers "answers" list,
+                multiple "multiple" flag, hide_results "hide-results" flag) SendPoll;
         on_save_file "save-file" save_file
             request(event_id "event-id" text, filename "filename" text) SaveFile;
+        on_vote_poll "vote-poll" vote_poll
+            request(event_id "event-id" text, answer_id "answer-id" text) VotePoll;
+        on_end_poll "end-poll" end_poll manual_string EndPoll;
         on_open_media "open-media" open_media manual_string OpenMedia;
         on_open_video "open-video" open_video manual_string OpenVideo;
         on_close_video "close-video" close_video plain CloseVideo;
@@ -343,6 +349,8 @@ macro_rules! user_message_kinds {
         AttachmentUnreadable      AttachmentUnreadable    "attachment-unreadable";
         AttachmentTooLarge        AttachmentTooLarge      "attachment-too-large";
         SendAttachmentFailed      SendAttachmentFailed    "send-attachment-failed";
+        PollVoteFailed            PollVoteFailed          "poll-vote-failed";
+        PollEndFailed             PollEndFailed           "poll-end-failed";
         VideoPlaybackFailed       VideoPlaybackFailed     "video-playback-failed";
         AudioPlaybackFailed       AudioPlaybackFailed     "audio-playback-failed";
         FileSaveFailed            FileSaveFailed          "file-save-failed";
@@ -476,9 +484,19 @@ macro_rules! message_kinds {
         Service     Service     "service";
         Utd         Utd         "utd";
         Unsupported Unsupported "unsupported";
+        Poll        Poll        "poll";
     } };
 }
 pub(crate) use message_kinds;
+
+macro_rules! poll_phases {
+    ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
+        Open   Open   "open";
+        Sealed Sealed "sealed";
+        Ended  Ended  "ended";
+    } };
+}
+pub(crate) use poll_phases;
 
 macro_rules! preview_kinds {
     ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
@@ -587,9 +605,26 @@ macro_rules! message_fields {
         avatar set_avatar "avatar" image;
         reactions set_reactions "reactions" structs(Reaction);
         all_reactions set_all_reactions "all-reactions" structs(Reaction);
+        poll_phase set_poll_phase "poll-phase" enumk(PollPhase);
+        poll_choices set_poll_choices "poll-choices" int;
+        poll_voters set_poll_voters "poll-voters" int;
+        poll_answers set_poll_answers "poll-answers" structs(PollAnswer);
     } };
 }
 pub(crate) use message_fields;
+
+macro_rules! poll_answer_fields {
+    ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
+        id set_id "id" text;
+        label set_label "label" text;
+        count set_count "count" int;
+        share set_share "share" ratio;
+        mine set_mine "mine" flag;
+        leading set_leading "leading" flag;
+        votable set_votable "votable" flag;
+    } };
+}
+pub(crate) use poll_answer_fields;
 
 macro_rules! reaction_fields {
     ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*

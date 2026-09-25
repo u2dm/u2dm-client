@@ -10,6 +10,7 @@ use crate::commands::messages::{UserMessage, UserMessageKind};
 use crate::commands::ui::TimelineVisibility;
 use crate::commands::view::Toast;
 use crate::domain::message::TimelineMessage;
+use crate::domain::poll::PollAction;
 use crate::domain::room::RoomId;
 use crate::domain::timeline::{
     AudioLookup, FailedSend, JumpTarget, PaginationDirection, PaginationOutcome, TimelineAdvance,
@@ -358,13 +359,25 @@ impl ActiveTimeline {
     }
 
     pub(super) fn toggle_reaction(&mut self, event_id: String, key: String) {
+        self.forward(TimelineCommand::ToggleReaction { event_id, key });
+    }
+
+    pub(super) fn vote_poll(&mut self, event_id: String, answer_id: String) {
+        self.forward(TimelineCommand::VotePoll {
+            event_id,
+            answer_id,
+        });
+    }
+
+    pub(super) fn end_poll(&mut self, event_id: String) {
+        self.forward(TimelineCommand::EndPoll { event_id });
+    }
+
+    fn forward(&self, command: TimelineCommand) {
         let Some(tx) = &self.timeline_cmd_tx else {
             return;
         };
-        if tx
-            .send(TimelineCommand::ToggleReaction { event_id, key })
-            .is_err()
-        {
+        if tx.send(command).is_err() {
             tracing::debug!("timeline command channel closed");
         }
     }
@@ -545,6 +558,9 @@ impl Forwarder {
             TimelineUpdate::JumpOutcome { event_id, target } => {
                 self.forward_jump(event_id, target).await;
             }
+            TimelineUpdate::PollSendFailed(action) => {
+                report_poll_failure(self.output.as_ref(), action);
+            }
             TimelineUpdate::AudioLocated { request, track } => {
                 let located = TimelineEvent::AudioLocated {
                     room_id: self.room_id.clone(),
@@ -652,6 +668,14 @@ impl Forwarder {
         };
         drop(self.events.send(AppEvent::Timeline(refocus)));
     }
+}
+
+fn report_poll_failure(output: &dyn AppOutputPort, action: PollAction) {
+    let kind = match action {
+        PollAction::Vote => UserMessageKind::PollVoteFailed,
+        PollAction::End => UserMessageKind::PollEndFailed,
+    };
+    super::show_toast(output, Toast::Error(UserMessage::new(kind)));
 }
 
 fn read_position_advance(patch: &TimelinePatch, snapshot: Snapshot) -> Option<TimelineAdvance> {

@@ -8,11 +8,11 @@ use super::decode::{
     record_sticker_need,
 };
 use super::present::{
-    Delivery, MessageKind, ServiceKind, avatar_color_index, avatar_initials, delivery,
+    Delivery, MessageKind, PollPhase, ServiceKind, avatar_color_index, avatar_initials, delivery,
     duration_label, file_extension, message_body_html, message_body_text, message_kind,
-    message_sender_label, message_sent_at_label, message_timestamp_label, pronoun_labels,
-    reaction_key_label, reactor_labels, reader_labels, room_activity_label, sender_initial,
-    service_kind, service_target, unsupported_kind, user_initial, voice_bars,
+    message_sender_label, message_sent_at_label, message_timestamp_label, poll_phase,
+    pronoun_labels, reaction_key_label, reactor_labels, reader_labels, room_activity_label,
+    sender_initial, service_kind, service_target, unsupported_kind, user_initial, voice_bars,
 };
 use super::richtext;
 use super::schema::{define_ui_enum, media_failures, media_states};
@@ -24,6 +24,7 @@ use crate::domain::message::{
     MessageBody, MessagePreviewKind, Reaction, ReactionSend, Reactor, RichText, SendState,
     TimelineMessage,
 };
+use crate::domain::poll::{Poll, PollAnswer};
 use crate::domain::room::{Room, Space};
 use crate::domain::space_index::{ChildKind, SpaceChild};
 use crate::domain::sticker::{PackId, StickerImage, StickerPack};
@@ -224,6 +225,17 @@ pub struct ReactionDto {
     pub avatars: Vec<ReactorAvatarDto>,
 }
 
+#[derive(Clone)]
+pub struct PollAnswerDto {
+    pub id: SharedString,
+    pub label: SharedString,
+    pub count: i32,
+    pub share: f32,
+    pub mine: bool,
+    pub leading: bool,
+    pub votable: bool,
+}
+
 #[allow(clippy::struct_excessive_bools)]
 pub struct MessageDto {
     pub unique_id: SharedString,
@@ -277,6 +289,10 @@ pub struct MessageDto {
     pub needs_media: bool,
     pub reactions: Vec<ReactionDto>,
     pub all_reactions: Vec<ReactionDto>,
+    pub poll_phase: PollPhase,
+    pub poll_choices: i32,
+    pub poll_voters: i32,
+    pub poll_answers: Vec<PollAnswerDto>,
 }
 
 #[allow(clippy::struct_excessive_bools)]
@@ -482,6 +498,38 @@ fn apply_audio(dto: &mut MessageDto, meta: &AudioMeta, media: &dyn MediaCache) {
     dto.waveform = voice_bars(meta, media.audio_waveform(&meta.file).as_ref());
 }
 
+fn poll_answer_dto(poll: &Poll, answer: &PollAnswer, votable: bool) -> PollAnswerDto {
+    let reveals = poll.reveals_results();
+    PollAnswerDto {
+        id: SharedString::from(&answer.id),
+        label: SharedString::from(&answer.text),
+        count: if reveals { count(answer.votes) } else { 0 },
+        share: if reveals {
+            answer.share(poll.voters)
+        } else {
+            0.0
+        },
+        mine: answer.mine,
+        leading: !poll.is_open() && poll.is_leading(answer),
+        votable: votable && poll.can_toggle(answer),
+    }
+}
+
+fn apply_poll(dto: &mut MessageDto, poll: &Poll, votable: bool) {
+    dto.poll_phase = poll_phase(poll);
+    dto.poll_choices = count(poll.choice.max().min(poll.answers.len()));
+    dto.poll_voters = if poll.reveals_results() {
+        count(poll.voters)
+    } else {
+        0
+    };
+    dto.poll_answers = poll
+        .answers
+        .iter()
+        .map(|answer| poll_answer_dto(poll, answer, votable))
+        .collect();
+}
+
 fn apply_media(
     dto: &mut MessageDto,
     m: &TimelineMessage,
@@ -498,6 +546,9 @@ fn apply_media(
     }
     if let MessageBody::File { meta } = &m.body {
         apply_file(dto, meta);
+    }
+    if let Some(poll) = m.body.poll() {
+        apply_poll(dto, poll, m.event_id.is_some());
     }
 
     let (_, meta) = m.body.media()?;
@@ -626,6 +677,10 @@ pub fn message_to_dto(m: &TimelineMessage, media: &dyn MediaCache) -> MessageDto
         needs_media: false,
         reactions,
         all_reactions,
+        poll_phase: PollPhase::Open,
+        poll_choices: 0,
+        poll_voters: 0,
+        poll_answers: Vec::new(),
     };
 
     let thumbnail_path = apply_media(&mut dto, m, &item, media);

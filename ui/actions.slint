@@ -4,6 +4,8 @@ import {
     SendStickerRequest,
     SendAttachmentRequest,
     SaveFileRequest,
+    VotePollRequest,
+    SendPollRequest,
 } from "screens/chat/components/types.slint";
 
 export global Actions {
@@ -36,6 +38,7 @@ export global Actions {
     callback pick-document(string);
     callback paste-attachment(string) -> bool;
     callback send-attachment(SendAttachmentRequest);
+    callback send-poll(SendPollRequest) -> bool;
     callback cancel-attachment();
     callback request-sticker(string);
     callback search-stickers(string);
@@ -60,6 +63,8 @@ export global Actions {
     callback jump-to-event(string);
     callback open-pinned(string);
     callback toggle-reaction(string, string);
+    callback vote-poll(VotePollRequest);
+    callback end-poll(string);
     callback retry-send(string);
     callback discard-send(string);
     callback retry-timeline();

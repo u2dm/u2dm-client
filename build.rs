@@ -78,6 +78,11 @@ const ENUM_COVERAGE: &[EnumCoverage] = &[
         branches_in: "ui/screens/chat/components/timeline/message-body.slint",
         falls_through: &["service"],
     },
+    EnumCoverage {
+        slint_enum: "PollPhase",
+        branches_in: "ui/screens/chat/components/timeline/messages/poll-message.slint",
+        falls_through: &[],
+    },
 ];
 
 const SCHEMA_FILE: &str = "src/adapters/ui/schema.rs";
@@ -87,6 +92,7 @@ const ENUM_TABLES: &[(&str, &str)] = &[
     ("ServiceKind", "service_kinds"),
     ("PreviewKind", "preview_kinds"),
     ("MessageKind", "message_kinds"),
+    ("PollPhase", "poll_phases"),
     ("AttachmentKind", "attachment_kinds"),
     ("RoomScope", "room_scopes"),
     ("SpaceIndexStatus", "space_index_statuses"),
@@ -131,6 +137,11 @@ const SCENARIO_SOURCES: &[ScenarioSource] = &[
     },
     ScenarioSource {
         file: "src/adapters/demo/reactions.rs",
+        arms_between: ("fn apply(scenario: &mut Scenario, flag: &str) {", "\n}"),
+        ignored: &[],
+    },
+    ScenarioSource {
+        file: "src/adapters/demo/polls.rs",
         arms_between: ("fn apply(scenario: &mut Scenario, flag: &str) {", "\n}"),
         ignored: &[],
     },

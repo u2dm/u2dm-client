@@ -8,6 +8,7 @@ use crate::adapters::demo::attachments;
 use crate::adapters::ui::dump::Poke;
 use crate::commands::ui::{MessageDraft, ReplyDraft, UiCommand};
 use crate::domain::media::AttachmentPick;
+use crate::domain::poll::{ChoiceMode, PollDisclosure, PollDraft};
 use crate::domain::room::RoomId;
 use crate::domain::sticker::PackId;
 
@@ -61,6 +62,17 @@ pub enum ProbeCommand {
     DismissUnsent {
         submission: i32,
     },
+    SendPoll {
+        #[serde(default)]
+        room_id: Option<String>,
+        question: String,
+        #[serde(default)]
+        answers: Vec<String>,
+        #[serde(default)]
+        multiple: bool,
+        #[serde(default)]
+        hide_results: bool,
+    },
     SendSticker {
         #[serde(default)]
         room_id: Option<String>,
@@ -113,6 +125,13 @@ pub enum ProbeCommand {
     ToggleReaction {
         event_id: String,
         key: String,
+    },
+    VotePoll {
+        event_id: String,
+        answer_id: String,
+    },
+    EndPoll {
+        event_id: String,
     },
     RetrySend {
         local_id: String,
@@ -246,6 +265,29 @@ pub fn to_driven(command: ProbeCommand, selected: Selection<'_>) -> Result<Drive
             },
         },
         ProbeCommand::DismissUnsent { submission } => UiCommand::DismissUnsent { submission },
+        ProbeCommand::SendPoll {
+            room_id,
+            question,
+            answers,
+            multiple,
+            hide_results,
+        } => {
+            let mode = if multiple {
+                ChoiceMode::Multiple
+            } else {
+                ChoiceMode::Single
+            };
+            let disclosure = if hide_results {
+                PollDisclosure::Undisclosed
+            } else {
+                PollDisclosure::Disclosed
+            };
+            UiCommand::SendPoll {
+                room_id: room(room_id, selected)?,
+                draft: PollDraft::parse(question, answers, mode, disclosure)
+                    .map_err(|reason| Rejected(format!("the poll draft is invalid: {reason:?}")))?,
+            }
+        }
         ProbeCommand::SendSticker {
             room_id,
             pack,
@@ -321,6 +363,14 @@ pub fn to_driven(command: ProbeCommand, selected: Selection<'_>) -> Result<Drive
         ProbeCommand::ToggleReaction { event_id, key } => {
             UiCommand::ToggleReaction { event_id, key }
         }
+        ProbeCommand::VotePoll {
+            event_id,
+            answer_id,
+        } => UiCommand::VotePoll {
+            event_id,
+            answer_id,
+        },
+        ProbeCommand::EndPoll { event_id } => UiCommand::EndPoll { event_id },
         ProbeCommand::RetrySend { local_id } => UiCommand::RetrySend { local_id },
         ProbeCommand::DiscardSend { local_id } => UiCommand::DiscardSend { local_id },
         ProbeCommand::RetryTimeline => UiCommand::RetryTimeline,
