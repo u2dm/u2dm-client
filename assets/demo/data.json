@@ -58,6 +58,7 @@
     {
       "id": "!sarah:demo.local",
       "name": "Sarah Chen",
+      "encrypted": true,
       "avatar": "@sarah:matrix.org",
       "direct": true,
       "members": 2,
@@ -88,6 +89,7 @@
     {
       "id": "!design:demo.local",
       "name": "Design Team",
+      "encrypted": true,
       "avatar": "design-team",
       "members": 34,
       "mentions": 1,
@@ -102,6 +104,7 @@
     {
       "id": "!trip:demo.local",
       "name": "weekend-trip 🏔️",
+      "encrypted": true,
       "avatar": "weekend-trip",
       "members": 6,
       "unread": 5,
@@ -150,6 +153,7 @@
     {
       "id": "!priya:demo.local",
       "name": "Priya Raman",
+      "encrypted": true,
       "avatar": "@priya:matrix.org",
       "direct": true,
       "members": 2,
@@ -163,6 +167,7 @@
     {
       "id": "!nina:demo.local",
       "name": "Nina Kowalski",
+      "encrypted": true,
       "avatar": "@nina:matrix.org",
       "direct": true,
       "members": 2,
@@ -176,6 +181,7 @@
     {
       "id": "!gym:demo.local",
       "name": "gym bros 💪",
+      "encrypted": true,
       "members": 15,
       "unread": 3,
       "notify": "mentions",
@@ -189,6 +195,7 @@
     {
       "id": "!jobs:demo.local",
       "name": "job hunt crashout",
+      "encrypted": true,
       "members": 23,
       "days_ago": 3,
       "last_message": {
@@ -200,6 +207,7 @@
     {
       "id": "!book:demo.local",
       "name": "Book Club 📚",
+      "encrypted": true,
       "avatar": "book-club",
       "members": 12,
       "days_ago": 4,
@@ -224,6 +232,7 @@
     {
       "id": "!devops:demo.local",
       "name": "devops on-call",
+      "encrypted": true,
       "avatar": "devops",
       "members": 19,
       "days_ago": 6,

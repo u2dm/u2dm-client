@@ -803,7 +803,7 @@ impl StickerPort for DemoAuthed {
         };
         Ok(StickerCatalog {
             packs,
-            room_encrypted: demo.room_is_encrypted,
+            room_encrypted: demo.room_is_encrypted || data::room_is_encrypted(room_id),
         })
     }
 

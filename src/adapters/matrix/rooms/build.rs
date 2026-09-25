@@ -104,6 +104,7 @@ pub(super) async fn build_single_room(room: &Room, settings: &NotificationSettin
         display_name,
         avatar_mxc: room_avatar_mxc(room, is_direct).await,
         is_direct,
+        is_encrypted: room.encryption_state().is_encrypted(),
         member_count,
         has_unread: flags.has_unread,
         has_mentions: flags.has_mentions,

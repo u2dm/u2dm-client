@@ -143,6 +143,7 @@ pub fn dispatch_effect<B: UiBackend>(w: &B::Window, event: Effect, ctx: &UiEvent
             id,
             name,
             member_count,
+            encrypted,
             generation,
         } => {
             if adopt_selected_generation(generation) {
@@ -155,6 +156,7 @@ pub fn dispatch_effect<B: UiBackend>(w: &B::Window, event: Effect, ctx: &UiEvent
                 IntProp::SelectedRoomMembers,
                 i32::try_from(member_count).unwrap_or(i32::MAX),
             );
+            w.set_bool(BoolProp::SelectedRoomEncrypted, encrypted);
             let pagination =
                 with_session(|session| session.snapshot.as_ref().map(|view| view.pagination))
                     .unwrap_or_default();
@@ -858,6 +860,7 @@ fn clear_selected_room(w: &impl UiProps) {
     w.set_string(StringProp::SelectedRoomId, SharedString::default());
     w.set_string(StringProp::SelectedRoomName, SharedString::default());
     w.set_int(IntProp::SelectedRoomMembers, 0);
+    w.set_bool(BoolProp::SelectedRoomEncrypted, false);
     w.set_int(IntProp::AnchorIndex, NO_ANCHOR);
     publish_room_cursor(w);
     apply_timeline_status(w, TimelineStatus::None);

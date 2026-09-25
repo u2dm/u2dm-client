@@ -1,18 +1,34 @@
-import { AppStyle, Fonts, Space, Weight } from "../../../theme.slint";
+import { IconDisplay, IconSet } from "@lucide";
+import { AppStyle, Fonts, IconSize, Space, Weight } from "../../../theme.slint";
 
 export component HeaderTitle inherits VerticalLayout {
     in property <string> title;
     in property <int> members;
+    in property <bool> encrypted;
 
     alignment: center;
     spacing: Space.xs;
 
-    Text {
-        text: root.title;
-        font-family: Fonts.emoji;
-        font-size: Fonts.title;
-        font-weight: Weight.bold;
-        overflow: elide;
+    HorizontalLayout {
+        alignment: start;
+        spacing: Space.sm;
+
+        Text {
+            text: root.title;
+            font-family: Fonts.emoji;
+            font-size: Fonts.title;
+            font-weight: Weight.bold;
+            overflow: elide;
+        }
+
+        if root.encrypted: IconDisplay {
+            cross-axis-self-alignment: center;
+            icon: IconSet.LockKeyhole;
+            size: IconSize.xs;
+            stroke: AppStyle.foreground-muted;
+            accessible-role: image;
+            accessible-label: @tr("End-to-end encrypted");
+        }
     }
 
     if root.members > 0: Text {

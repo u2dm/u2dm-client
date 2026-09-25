@@ -112,6 +112,8 @@ pub struct RoomDto {
     #[serde(default)]
     direct: bool,
     #[serde(default)]
+    pub encrypted: bool,
+    #[serde(default)]
     members: u64,
     #[serde(default)]
     pub unread: u64,
@@ -446,6 +448,7 @@ impl RoomDto {
             display_name: self.name.clone(),
             avatar_mxc: self.avatar.clone(),
             is_direct: self.direct,
+            is_encrypted: self.encrypted,
             member_count: self.members,
             has_unread: self.unread > 0 && matches!(self.notify, NotifyDto::All),
             has_mentions: self.mentions > 0,
@@ -497,6 +500,7 @@ impl UnjoinedDto {
             display_name: self.name.clone(),
             avatar_mxc: self.avatar.clone(),
             is_direct: false,
+            is_encrypted: false,
             member_count: self.members.saturating_add(1),
             has_unread: false,
             has_mentions: false,

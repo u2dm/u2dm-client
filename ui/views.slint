@@ -57,6 +57,7 @@ export global SpaceIndexView {
 export global RoomView {
     in property <string> selected-room-name;
     in property <int> selected-room-members;
+    in property <bool> selected-room-encrypted;
     in property <[MessageEntry]> timeline;
     in property <TimelineState> timeline-status: TimelineState.none;
     in property <bool> timeline-retryable;

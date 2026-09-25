@@ -26,9 +26,11 @@ const BACKOFF_RESET_AFTER: Duration = Duration::from_mins(1);
 const ORDER_WRITE_ATTEMPTS: u32 = 3;
 const ORDER_WRITE_BACKOFF: Duration = Duration::from_millis(400);
 
+#[derive(Default, PartialEq, Eq)]
 pub(super) struct RoomMeta {
     pub(super) name: String,
     pub(super) member_count: u64,
+    pub(super) encrypted: bool,
 }
 
 #[derive(Default)]
@@ -548,6 +550,7 @@ impl RoomDirectory {
         Some(RoomMeta {
             name: room.display_name.clone(),
             member_count: if room.is_direct { 0 } else { room.member_count },
+            encrypted: room.is_encrypted,
         })
     }
 

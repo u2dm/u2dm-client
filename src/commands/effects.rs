@@ -12,6 +12,7 @@ pub enum Effect {
         id: RoomId,
         name: String,
         member_count: u64,
+        encrypted: bool,
         generation: i32,
     },
     Timeline {

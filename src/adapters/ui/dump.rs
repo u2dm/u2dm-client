@@ -81,6 +81,7 @@ pub struct AudioDump {
 pub struct TimelineDump {
     pub selected_room_id: String,
     pub selected_room_name: String,
+    pub selected_room_encrypted: bool,
     pub generation: i32,
     pub timeline_token: i32,
     pub prepend_token: i32,
@@ -167,6 +168,7 @@ fn collect<B: UiBackend>(window: &B::Window) -> TimelineDump {
     TimelineDump {
         selected_room_id: window.get_string(StringProp::SelectedRoomId).to_string(),
         selected_room_name: window.get_string(StringProp::SelectedRoomName).to_string(),
+        selected_room_encrypted: window.get_bool(BoolProp::SelectedRoomEncrypted),
         generation: window.get_int(IntProp::SelectedGeneration),
         timeline_token: window.get_int(IntProp::TimelineToken),
         prepend_token: window.get_int(IntProp::PrependToken),

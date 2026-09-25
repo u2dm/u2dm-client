@@ -47,6 +47,7 @@ pub struct Room {
     pub display_name: String,
     pub avatar_mxc: Option<String>,
     pub is_direct: bool,
+    pub is_encrypted: bool,
     pub member_count: u64,
     pub has_unread: bool,
     pub has_mentions: bool,

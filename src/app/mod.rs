@@ -32,7 +32,7 @@ use input::{CommandSender, EventSender, Inbox, Input};
 use lifecycle::Lifecycle;
 use media::MediaActions;
 use recover::Recovery;
-use room_directory::RoomDirectory;
+use room_directory::{RoomDirectory, RoomMeta};
 use selection::Selection;
 use send_lanes::SendLanes;
 use session::{SessionController, SuspendedSession};
@@ -65,8 +65,7 @@ use crate::ports::storage::StoragePort;
 #[derive(PartialEq, Eq)]
 struct EmittedRoom {
     id: RoomId,
-    name: String,
-    member_count: u64,
+    meta: RoomMeta,
     generation: i32,
 }
 
@@ -560,27 +559,16 @@ impl AppService {
         }));
     }
 
-    async fn emit_selected_room(
-        &mut self,
-        id: RoomId,
-        name: String,
-        member_count: u64,
-        generation: i32,
-    ) {
-        self.last_selected_room = Some(EmittedRoom {
-            id: id.clone(),
-            name: name.clone(),
-            member_count,
-            generation,
-        });
-        self.output
-            .emit(Effect::SelectedRoom {
-                id,
-                name,
-                member_count,
-                generation,
-            })
-            .await;
+    async fn emit_selected_room(&mut self, room: EmittedRoom) {
+        let effect = Effect::SelectedRoom {
+            id: room.id.clone(),
+            name: room.meta.name.clone(),
+            member_count: room.meta.member_count,
+            encrypted: room.meta.encrypted,
+            generation: room.generation,
+        };
+        self.last_selected_room = Some(room);
+        self.output.emit(effect).await;
     }
 
     fn move_space(&mut self, from: usize, to: usize) {
@@ -1121,12 +1109,16 @@ impl AppService {
         self.selection.room = Some(room_id.clone());
         self.submissions.offer(self.selection.room.as_ref());
         let generation = self.selection.next_generation();
-        let (name, member_count) = self
+        let meta = self
             .room_directory
             .selected_room_meta(&self.selection)
-            .map_or_else(|| (String::new(), 0), |m| (m.name, m.member_count));
-        self.emit_selected_room(room_id.clone(), name, member_count, generation)
-            .await;
+            .unwrap_or_default();
+        self.emit_selected_room(EmittedRoom {
+            id: room_id.clone(),
+            meta,
+            generation,
+        })
+        .await;
         if let Some(stickers) = self.port(|a| &a.stickers) {
             self.stickers
                 .select_room(stickers, room_id.clone(), generation);
@@ -1156,23 +1148,25 @@ impl AppService {
         };
         let next = EmittedRoom {
             id: room_id,
-            name: meta.name,
-            member_count: meta.member_count,
+            meta,
             generation: self.selection.generation,
         };
         if self.last_selected_room.as_ref() == Some(&next) {
             return;
         }
-        self.emit_selected_room(next.id, next.name, next.member_count, next.generation)
-            .await;
+        self.emit_selected_room(next).await;
     }
 
     async fn drop_selected_room(&mut self) {
         self.selection.room = None;
         self.submissions.offer(None);
         let generation = self.selection.next_generation();
-        self.emit_selected_room(RoomId::new(String::new()), String::new(), 0, generation)
-            .await;
+        self.emit_selected_room(EmittedRoom {
+            id: RoomId::new(String::new()),
+            meta: RoomMeta::default(),
+            generation,
+        })
+        .await;
         self.stickers.clear_room();
         self.active_timeline.clear_room(generation).await;
     }

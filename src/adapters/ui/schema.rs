@@ -115,6 +115,7 @@ macro_rules! bool_props {
         TimelineRetryable RoomView "RoomView" "timeline-retryable" set_timeline_retryable get_timeline_retryable;
         BackwardsLoading RoomView "RoomView" "backwards-loading" set_backwards_loading get_backwards_loading;
         ForwardsLoading RoomView "RoomView" "forwards-loading" set_forwards_loading get_forwards_loading;
+        SelectedRoomEncrypted RoomView "RoomView" "selected-room-encrypted" set_selected_room_encrypted get_selected_room_encrypted;
         StickerRoomEncrypted StickerView "StickerView" "room-encrypted" set_room_encrypted get_room_encrypted;
         #[cfg(feature = "demo")] ProbeEnabled Probe "Probe" "enabled" set_enabled get_enabled;
         StickerLoading StickerView "StickerView" "loading" set_loading get_loading;

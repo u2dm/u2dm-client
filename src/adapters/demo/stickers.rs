@@ -39,7 +39,7 @@ pub const CATALOG: Scenarios = Scenarios {
         },
         Flag {
             value: "encrypted",
-            effect: "forces room_encrypted, so the warning strip renders",
+            effect: "forces room_encrypted in every room, so the warning strip renders",
             note: "",
         },
         Flag {

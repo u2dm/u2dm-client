@@ -157,6 +157,13 @@ pub fn is_unjoined_avatar(mxc: &str) -> bool {
         .any(|entry| entry.avatar() == Some(mxc))
 }
 
+pub fn room_is_encrypted(room_id: &RoomId) -> bool {
+    data()
+        .rooms
+        .iter()
+        .any(|room| room.id == room_id.as_ref() && room.encrypted)
+}
+
 pub fn sticker_packs(room_id: &RoomId) -> Vec<StickerPack> {
     data()
         .sticker_packs
