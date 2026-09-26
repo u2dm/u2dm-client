@@ -22,6 +22,7 @@ use url::Url;
 use super::store::StorePaths;
 use crate::adapters::private_fs;
 use crate::domain::auth::{AuthMethod, LoginCredentials, OAuthLoginData, ServerInfo, Session};
+use crate::domain::link::LauncherSafeUrl;
 use crate::error::{AppError, AuthFailure, Result};
 use crate::ports::matrix::RestoreStep;
 
@@ -224,11 +225,10 @@ pub(super) async fn login_oauth_start(
         .await
         .map_err(|e| AppError::Other(e.to_string()))?;
 
+    let auth_url = LauncherSafeUrl::sign_in_page(auth_data.url)?;
     *redirect_handle.lock().await = Some(server_handle);
 
-    Ok(OAuthLoginData {
-        auth_url: auth_data.url.to_string(),
-    })
+    Ok(OAuthLoginData { auth_url })
 }
 
 async fn await_oauth_callback(

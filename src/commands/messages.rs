@@ -34,6 +34,7 @@ pub enum UserMessageKind {
     InvalidUsername,
     RateLimited,
     LoginMethodUnsupported,
+    InsecureSignInPage,
     SessionUnreadable,
     SessionRestoreFailed,
     StoreKeyMissing,

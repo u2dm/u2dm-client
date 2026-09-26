@@ -1,5 +1,7 @@
 use std::fmt;
 
+use crate::domain::link::LauncherSafeUrl;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AuthMethod {
     Password,
@@ -62,7 +64,7 @@ impl fmt::Debug for LoginCredentials {
 
 #[derive(Debug, Clone)]
 pub struct OAuthLoginData {
-    pub auth_url: String,
+    pub auth_url: LauncherSafeUrl,
 }
 
 #[derive(Clone)]

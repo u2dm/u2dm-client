@@ -1,5 +1,6 @@
 pub mod account;
 pub mod auth;
+pub mod link;
 pub mod media;
 pub mod message;
 pub mod poll;

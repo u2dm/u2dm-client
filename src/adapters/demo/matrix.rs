@@ -10,6 +10,7 @@ use tokio::sync::mpsc;
 use tokio::task::spawn_blocking;
 use tokio::time::sleep;
 use tokio_util::sync::CancellationToken;
+use url::Url;
 
 use super::{
     attachments, audio, data, login, media, pinned, polls, reactions, receipts, space_index,
@@ -17,6 +18,7 @@ use super::{
 };
 use crate::adapters::video;
 use crate::domain::auth::{AuthMethod, LoginCredentials, OAuthLoginData, ServerInfo, Session};
+use crate::domain::link::LauncherSafeUrl;
 use crate::domain::media::{MediaRendition, OutgoingAttachment, WaveformNeed};
 use crate::domain::message::{
     MessageBody, PinnedMessage, ReplyInfo, RichText, SendState, TimelineMessage,
@@ -62,13 +64,7 @@ impl AuthPort for DemoMatrix {
     }
 
     async fn login_oauth_start(&self) -> Result<OAuthLoginData> {
-        if !login::oauth_succeeds() {
-            return Err(unavailable("OAuth login"));
-        }
-        login::pause().await;
-        Ok(OAuthLoginData {
-            auth_url: "https://example.invalid/demo-oauth".to_owned(),
-        })
+        demo_oauth_start().await
     }
 
     async fn login_oauth_finish(&self) -> Result<Session> {
@@ -121,13 +117,7 @@ impl AuthPort for DemoMatrix {
         _prior: &Session,
         _passphrase: &str,
     ) -> Result<OAuthLoginData> {
-        if !login::oauth_succeeds() {
-            return Err(unavailable("OAuth login"));
-        }
-        login::pause().await;
-        Ok(OAuthLoginData {
-            auth_url: "https://example.invalid/demo-oauth".to_owned(),
-        })
+        demo_oauth_start().await
     }
 
     async fn reauth_oauth_finish(&self, prior: &Session) -> Result<AuthenticatedSession> {
@@ -1543,6 +1533,15 @@ async fn send_patch(timeline_tx: &mpsc::Sender<TimelineUpdate>, patch: TimelineP
     {
         tracing::debug!("demo timeline receiver closed: {e}");
     }
+}
+
+async fn demo_oauth_start() -> Result<OAuthLoginData> {
+    let page = login::sign_in_page().ok_or_else(|| unavailable("OAuth login"))?;
+    login::pause().await;
+    let page = Url::parse(page).map_err(|e| AppError::Other(e.to_string()))?;
+    Ok(OAuthLoginData {
+        auth_url: LauncherSafeUrl::sign_in_page(page)?,
+    })
 }
 
 fn unavailable(action: &str) -> AppError {

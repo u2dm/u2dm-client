@@ -329,6 +329,7 @@ macro_rules! user_message_kinds {
         InvalidUsername           InvalidUsername         "invalid-username";
         RateLimited               RateLimited             "rate-limited";
         LoginMethodUnsupported    LoginMethodUnsupported  "login-method-unsupported";
+        InsecureSignInPage        InsecureSignInPage      "insecure-sign-in-page";
         SessionUnreadable         SessionUnreadable       "session-unreadable";
         SessionRestoreFailed      SessionRestoreFailed    "session-restore-failed";
         StoreKeyMissing           StoreKeyMissing         "store-key-missing";

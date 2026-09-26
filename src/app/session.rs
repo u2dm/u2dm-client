@@ -14,6 +14,7 @@ use crate::commands::messages::{UserMessage, UserMessageKind};
 use crate::commands::view::{LoginActivity, LoginStep};
 use crate::domain::account::AccountScope;
 use crate::domain::auth::{LoginCredentials, LoginMethod, ServerInfo, Session};
+use crate::domain::link::LauncherSafeUrl;
 use crate::error::{AppError, AuthFailure, Result};
 use crate::ports::browser::BrowserPort;
 use crate::ports::matrix::{
@@ -64,6 +65,7 @@ fn login_failure(err: &AppError) -> UserMessageKind {
         AuthFailure::MethodUnsupported => UserMessageKind::LoginMethodUnsupported,
         AuthFailure::IdentityDiverged => UserMessageKind::IdentityDiverged,
         AuthFailure::SessionNotReusable => UserMessageKind::ReauthNotPossible,
+        AuthFailure::InsecureSignInPage => UserMessageKind::InsecureSignInPage,
         AuthFailure::Unknown => UserMessageKind::LoginFailed,
     }
 }
@@ -218,7 +220,7 @@ impl SessionController {
         group.spawn(async move { tasks.reauth_oauth(prior, cancel, attempt).await });
     }
 
-    pub(super) fn spawn_open_link(&self, group: &mut TaskGroup, url: String) {
+    pub(super) fn spawn_open_link(&self, group: &mut TaskGroup, url: LauncherSafeUrl) {
         let browser = Arc::clone(&self.tasks.browser);
         group.spawn(async move {
             if let Err(e) = browser.open_url(&url).await {

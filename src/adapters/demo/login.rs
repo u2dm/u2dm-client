@@ -30,6 +30,11 @@ pub const CATALOG: Scenarios = Scenarios {
             note: "the only way to reach the durable transaction in establish_session",
         },
         Flag {
+            value: "oauth-insecure",
+            effect: "OAuth whose sign-in page is an smb: URL, which U2DM refuses to open",
+            note: "the only way to see the insecure sign-in page banner",
+        },
+        Flag {
             value: "both",
             effect: "both methods, so the divider and second button render",
             note: "",
@@ -51,12 +56,21 @@ pub const CATALOG: Scenarios = Scenarios {
     ],
 };
 const STEP_DELAY: Duration = Duration::from_millis(900);
+const SIGN_IN_PAGE: &str = "https://example.invalid/demo-oauth";
+const INSECURE_SIGN_IN_PAGE: &str = "smb://example.invalid/demo-oauth";
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum OAuthFlow {
+    Fails,
+    Succeeds,
+    OffersInsecurePage,
+}
 
 pub struct LoginDemo {
     pub methods: Vec<AuthMethod>,
     pub unsupported_flows: Vec<String>,
     pub keeps_session: bool,
-    pub oauth_succeeds: bool,
+    pub oauth: OAuthFlow,
 }
 
 pub fn requested() -> Option<&'static LoginDemo> {
@@ -65,7 +79,15 @@ pub fn requested() -> Option<&'static LoginDemo> {
 }
 
 pub fn oauth_succeeds() -> bool {
-    requested().is_some_and(|demo| demo.oauth_succeeds)
+    requested().is_some_and(|demo| demo.oauth == OAuthFlow::Succeeds)
+}
+
+pub fn sign_in_page() -> Option<&'static str> {
+    match requested()?.oauth {
+        OAuthFlow::Fails => None,
+        OAuthFlow::Succeeds => Some(SIGN_IN_PAGE),
+        OAuthFlow::OffersInsecurePage => Some(INSECURE_SIGN_IN_PAGE),
+    }
 }
 
 impl Default for LoginDemo {
@@ -74,7 +96,7 @@ impl Default for LoginDemo {
             methods: vec![AuthMethod::Password],
             unsupported_flows: Vec::new(),
             keeps_session: false,
-            oauth_succeeds: false,
+            oauth: OAuthFlow::Fails,
         }
     }
 }
@@ -87,7 +109,12 @@ fn from_env() -> Option<LoginDemo> {
         },
         "oauth-ok" => LoginDemo {
             methods: vec![AuthMethod::OAuth],
-            oauth_succeeds: true,
+            oauth: OAuthFlow::Succeeds,
+            ..LoginDemo::default()
+        },
+        "oauth-insecure" => LoginDemo {
+            methods: vec![AuthMethod::OAuth],
+            oauth: OAuthFlow::OffersInsecurePage,
             ..LoginDemo::default()
         },
         "both" => LoginDemo {
@@ -125,8 +152,15 @@ fn announce_start(demo: &LoginDemo) {
 }
 
 fn announce_methods(demo: &LoginDemo) {
-    if demo.oauth_succeeds {
-        tracing::info!("demo mode: the OAuth flow completes slowly so cancelling it is reachable");
+    match demo.oauth {
+        OAuthFlow::Fails => {}
+        OAuthFlow::Succeeds => tracing::info!(
+            "demo mode: the OAuth flow completes slowly so cancelling it is reachable"
+        ),
+        OAuthFlow::OffersInsecurePage => tracing::info!(
+            page = INSECURE_SIGN_IN_PAGE,
+            "demo mode: the server offers a sign-in page U2DM must refuse to open"
+        ),
     }
     if demo.methods.is_empty() {
         tracing::info!(

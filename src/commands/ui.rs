@@ -1,6 +1,7 @@
 use strum::Display as StrumDisplay;
 
 use crate::domain::auth::LoginCredentials;
+use crate::domain::link::LauncherSafeUrl;
 use crate::domain::media::AttachmentPick;
 use crate::domain::poll::PollDraft;
 use crate::domain::room::RoomId;
@@ -146,7 +147,7 @@ pub enum UiCommand {
     },
     #[strum(to_string = "OpenLink")]
     OpenLink {
-        url: String,
+        url: LauncherSafeUrl,
     },
     #[strum(to_string = "SaveFile({filename})")]
     SaveFile {

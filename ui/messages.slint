@@ -34,6 +34,9 @@ export global UserMessages {
         if kind == UserMessageKind.login-method-unsupported {
             return @tr("This homeserver does not support this way of signing in.");
         }
+        if kind == UserMessageKind.insecure-sign-in-page {
+            return @tr("This homeserver's sign-in page is not a secure web address, so U2DM did not open it.");
+        }
         if kind == UserMessageKind.session-unreadable {
             return @tr("The saved session could not be read. Please log in again.");
         }

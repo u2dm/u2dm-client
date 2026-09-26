@@ -1,5 +1,4 @@
 use tokio::sync::watch;
-use url::Url;
 
 use super::clipboard;
 use super::props::send_command;
@@ -9,6 +8,7 @@ use crate::commands::ui::{
     MessageDraft, ReplyDraft, TimelineVisibility, UiCommand, ViewportChanged,
 };
 use crate::domain::auth::LoginCredentials;
+use crate::domain::link::LauncherSafeUrl;
 use crate::domain::media::AttachmentPick;
 use crate::domain::poll::{ChoiceMode, PollDisclosure, PollDraft};
 use crate::domain::room::RoomId;
@@ -256,17 +256,11 @@ pub fn play_audio(tx: &Tx, event_id: String) {
     send_command(tx, UiCommand::PlayAudio { event_id });
 }
 
-const OPENABLE_SCHEMES: &[&str] = &["http", "https", "mailto"];
-
 pub fn open_link(tx: &Tx, url: String) {
-    let Ok(parsed) = Url::parse(&url) else {
-        tracing::debug!("ignoring a message link that is not a URL");
+    let Some(url) = LauncherSafeUrl::message_link(url) else {
+        tracing::debug!("ignoring a message link U2DM does not open");
         return;
     };
-    if !OPENABLE_SCHEMES.contains(&parsed.scheme()) {
-        tracing::debug!(scheme = parsed.scheme(), "ignoring a message link");
-        return;
-    }
     send_command(tx, UiCommand::OpenLink { url });
 }
 

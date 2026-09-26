@@ -7,6 +7,7 @@ use std::time::Duration;
 use crate::adapters::demo::attachments;
 use crate::adapters::ui::dump::Poke;
 use crate::commands::ui::{MessageDraft, ReplyDraft, UiCommand};
+use crate::domain::link::LauncherSafeUrl;
 use crate::domain::media::AttachmentPick;
 use crate::domain::poll::{ChoiceMode, PollDisclosure, PollDraft};
 use crate::domain::room::RoomId;
@@ -426,7 +427,10 @@ pub fn to_driven(command: ProbeCommand, selected: Selection<'_>) -> Result<Drive
             return Ok(Driven::Poke(Poke::WindowFocus(focused)));
         }
         ProbeCommand::SwipeTravel { px } => return Ok(Driven::Poke(Poke::SwipeTravel(px))),
-        ProbeCommand::OpenLink { url } => UiCommand::OpenLink { url },
+        ProbeCommand::OpenLink { url } => UiCommand::OpenLink {
+            url: LauncherSafeUrl::message_link(&url)
+                .ok_or_else(|| Rejected(format!("{url} is not a link U2DM opens")))?,
+        },
         ProbeCommand::AcceptVerification => UiCommand::AcceptVerification,
         ProbeCommand::RejectVerification => UiCommand::RejectVerification,
         ProbeCommand::ConfirmVerification => UiCommand::ConfirmVerification,

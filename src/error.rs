@@ -2,6 +2,8 @@ use std::{fmt, io, result};
 
 use thiserror::Error;
 
+use crate::domain::link::InsecureSignInPage;
+
 #[derive(Debug, Error)]
 pub enum AppError {
     #[error("UI: {0}")]
@@ -48,6 +50,7 @@ pub enum AuthFailure {
     MethodUnsupported,
     IdentityDiverged,
     SessionNotReusable,
+    InsecureSignInPage,
     Unknown,
 }
 
@@ -62,9 +65,19 @@ impl fmt::Display for AuthFailure {
             Self::MethodUnsupported => "method unsupported",
             Self::IdentityDiverged => "local signing key diverged from the published one",
             Self::SessionNotReusable => "the sign-in did not return the device it was asked for",
+            Self::InsecureSignInPage => "insecure sign-in page",
             Self::Unknown => "unknown",
         };
         f.write_str(name)
+    }
+}
+
+impl From<InsecureSignInPage> for AppError {
+    fn from(refused: InsecureSignInPage) -> Self {
+        Self::Auth {
+            kind: AuthFailure::InsecureSignInPage,
+            detail: refused.to_string(),
+        }
     }
 }
 
