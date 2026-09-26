@@ -103,7 +103,14 @@ export component TimelineScroller inherits Rectangle {
                 return;
             }
             self.first-unseen-row = row;
-            Actions.scroll-position-changed(self.at-bottom, row);
+            if !self.anchor-held {
+                self.report-position();
+            }
+        }
+
+        function report-position() {
+            Actions.scroll-position-changed(self.at-bottom, self.first-unseen-row,
+                self.seen-timeline-token);
         }
 
         property <int> seen-prepend-token: 0;
@@ -180,7 +187,7 @@ export component TimelineScroller inherits Rectangle {
                 && ((self.at-top != self.was-at-top) || (self.at-bottom != self.was-at-bottom)) {
                 self.was-at-top = self.at-top;
                 self.was-at-bottom = self.at-bottom;
-                Actions.scroll-position-changed(self.at-bottom, self.first-unseen-row);
+                self.report-position();
             }
         }
 
@@ -241,7 +248,7 @@ export component TimelineScroller inherits Rectangle {
             self.auto-scroll = self.at-bottom;
             self.was-at-top = self.at-top;
             self.was-at-bottom = self.at-bottom;
-            Actions.scroll-position-changed(self.at-bottom, self.first-unseen-row);
+            self.report-position();
             if RoomView.focus-event-id != "" {
                 root.blink-focus();
             }

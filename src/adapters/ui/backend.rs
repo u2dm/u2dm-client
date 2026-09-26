@@ -22,7 +22,7 @@ use super::fields::{
 use super::multiplex::spawn_event_multiplexer;
 use super::props::{IntProp, StringProp, UiProps};
 use super::reconcile::{reorder_rows, sticker_cell_row, sticker_pack_row, timeline_row_of};
-use super::reduce::{dispatch_effect, set_sticker_query};
+use super::reduce::{dispatch_effect, is_latest_adoption, set_sticker_query};
 use super::rows::{locate_row, patch_rows_by_id};
 use super::schema::model_props;
 use super::session::begin_session;
@@ -191,6 +191,14 @@ pub fn selected_room_key<B: UiBackend>(weak: &slint::Weak<B::Window>) -> Option<
         return None;
     }
     Some((RoomId::new(room_id), w.get_int(IntProp::SelectedGeneration)))
+}
+
+pub fn adopted_room_key<B: UiBackend>(
+    weak: &slint::Weak<B::Window>,
+    seen_timeline_token: i32,
+) -> Option<(RoomId, i32)> {
+    selected_room_key::<B>(weak)
+        .filter(|(_, generation)| is_latest_adoption(*generation, seen_timeline_token))
 }
 
 pub fn unread_below<B: UiBackend>(first_unseen_row: i32) -> u32 {

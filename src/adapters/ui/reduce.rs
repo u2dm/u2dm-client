@@ -71,6 +71,13 @@ fn is_new_generation(generation: i32) -> bool {
     with_session(|session| session.room.adopted_generation != generation)
 }
 
+pub(super) fn is_latest_adoption(generation: i32, seen_timeline_token: i32) -> bool {
+    with_session(|session| {
+        let room = &session.room;
+        room.adopted_generation == generation && room.timeline_token == seen_timeline_token
+    })
+}
+
 fn readopt_timeline(w: &impl UiProps, generation: i32) {
     let next = with_session(|session| {
         let room = &mut session.room;
