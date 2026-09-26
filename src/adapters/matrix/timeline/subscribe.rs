@@ -14,12 +14,12 @@ use matrix_sdk_ui::timeline::{
 use tokio::sync::{Semaphore, mpsc};
 use tokio::task::JoinSet;
 
-use super::convert::event_media;
+use super::convert::{event_media, involves};
 use super::diff::{diff_to_patch, stamp_read_marks};
 use super::filter::TimelineItems;
+use super::members::{Arrived, Batch, Members, resolve_members};
 use super::poll_sends::PollSendGuard;
 use super::polls;
-use super::reactors::{ReactorAvatars, Resolution, resolve_reactor_avatars};
 use super::{EnrichmentClaim, EnrichmentPool, TimelineContext};
 use crate::adapters::matrix::media::{MediaService, ThumbnailRequest};
 use crate::adapters::matrix::profile::PronounCache;
@@ -36,7 +36,7 @@ use crate::error::{AppError, Result};
 const REPLY_FETCH_INFLIGHT: usize = 4;
 const UNREAD_LOOKBACK_BATCHES: usize = 4;
 const FOCUS_CONTEXT_EVENTS: u16 = 50;
-const REACTOR_AVATAR_BATCHES: usize = 4;
+const MEMBER_BATCHES: usize = 4;
 
 fn needs_pronouns(msg: &TimelineMessage, pronouns: &PronounCache) -> bool {
     !msg.is_own && pronouns.needs_fetch(&msg.sender)
@@ -301,6 +301,10 @@ async fn handle_timeline_command(
         }
         TimelineCommand::EndPoll { event_id } => {
             polls::end(timeline, items, &event_id, timeline_tx).await;
+            return;
+        }
+        TimelineCommand::EditPoll { event_id, draft } => {
+            polls::edit(timeline, items, &event_id, &draft, timeline_tx).await;
             return;
         }
         TimelineCommand::LocateAudio { request, lookup } => {
@@ -698,13 +702,14 @@ pub(crate) async fn subscribe_timeline(
 
     let own_user_id = client.user_id().map(ToString::to_string);
     let enrich = EnrichmentPool::new();
-    let reactor_avatars = Arc::new(ReactorAvatars::default());
+    let members = Arc::new(Members::default());
     let ctx = TimelineContext {
         client,
         media,
         pronouns,
-        reactor_avatars: &reactor_avatars,
+        members: &members,
         own_user_id: own_user_id.as_deref(),
+        focused: focus.target().is_some(),
         first_unread: unread.first_unread(),
         timeline_tx: &timeline_tx,
         enrich: &enrich,
@@ -733,43 +738,42 @@ pub(crate) async fn subscribe_timeline(
     Ok(())
 }
 
-fn spawn_reactor_avatar_fetch(
+fn spawn_member_fetch(
     ctx: &TimelineContext<'_>,
     room: &Room,
     side_tasks: &mut JoinSet<()>,
-    resolved_tx: &mpsc::Sender<Vec<(String, Resolution)>>,
+    batches: &mpsc::Sender<Batch>,
 ) {
-    let wanted = ctx.reactor_avatars.take_wanted();
+    let wanted = ctx.members.take_wanted();
     if wanted.is_empty() {
         return;
     }
     let room = room.clone();
     let client = ctx.client.clone();
     let media = Arc::clone(ctx.media);
-    let resolved_tx = resolved_tx.clone();
+    let batches = batches.clone();
     side_tasks.spawn(async move {
-        let resolved = resolve_reactor_avatars(&room, &client, &media, wanted).await;
-        drop(resolved_tx.send(resolved).await);
+        resolve_members(&room, &client, &media, wanted, &batches).await;
     });
 }
 
-fn reactor_avatar_patch(
+fn member_patch(
     items: &mut TimelineItems,
-    arrived: &HashSet<String>,
+    arrived: &Arrived,
     ctx: &TimelineContext<'_>,
 ) -> Option<TimelinePatch> {
-    if arrived.is_empty() {
+    if arrived.users.is_empty() {
         return None;
     }
-    let reacted: Vec<usize> = items
+    let involved: Vec<usize> = items
         .items()
         .iter()
         .enumerate()
-        .filter(|(_, item)| super::convert::reacted_by(item, arrived))
+        .filter(|(raw_index, item)| involves(item, items.message_at(*raw_index), arrived))
         .map(|(raw_index, _)| raw_index)
         .collect();
     let mut patches: Vec<TimelinePatch> = Vec::new();
-    for raw_index in reacted {
+    for raw_index in involved {
         if let Some(message) = items.reconvert(raw_index, ctx) {
             patches.push(TimelinePatch::Set {
                 index: items.msg_index_at(raw_index),
@@ -807,9 +811,8 @@ async fn run_timeline_loop<S>(
 
     let room = sends.room().clone();
     let room_id = room.room_id().to_owned();
-    let (reactor_tx, mut reactor_rx) =
-        mpsc::channel::<Vec<(String, Resolution)>>(REACTOR_AVATAR_BATCHES);
-    spawn_reactor_avatar_fetch(ctx, &room, &mut side_tasks, &reactor_tx);
+    let (member_tx, mut member_rx) = mpsc::channel::<Batch>(MEMBER_BATCHES);
+    spawn_member_fetch(ctx, &room, &mut side_tasks, &member_tx);
 
     let mut key_stream = std::pin::pin!(
         ctx.client
@@ -837,9 +840,9 @@ async fn run_timeline_loop<S>(
             }
             Some(_) = side_tasks.join_next(), if !side_tasks.is_empty() => {}
             update = sends.next() => sends.settle(update, ctx.timeline_tx).await,
-            Some(resolved) = reactor_rx.recv() => {
-                let arrived = ctx.reactor_avatars.record(resolved);
-                if let Some(patch) = reactor_avatar_patch(&mut items, &arrived, ctx)
+            Some(batch) = member_rx.recv() => {
+                let arrived = ctx.members.record(batch);
+                if let Some(patch) = member_patch(&mut items, &arrived, ctx)
                     && ctx.timeline_tx
                         .send(TimelineUpdate::Patch(Box::new(patch)))
                         .await
@@ -859,7 +862,7 @@ async fn run_timeline_loop<S>(
                     break;
                 }
                 spawn_reply_detail_fetches(items.items(), timeline, &mut fetched_reply_details, &reply_limit, &mut side_tasks);
-                spawn_reactor_avatar_fetch(ctx, &room, &mut side_tasks, &reactor_tx);
+                spawn_member_fetch(ctx, &room, &mut side_tasks, &member_tx);
             }
         }
     }

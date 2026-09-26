@@ -75,6 +75,8 @@ export struct PollAnswerEntry {
     mine: bool,
     leading: bool,
     votable: bool,
+    voters: string,
+    hidden-voters: int,
 }
 
 export struct MessageEntry {
@@ -130,6 +132,7 @@ export struct MessageEntry {
     reactions: [ReactionEntry],
     all-reactions: [ReactionEntry],
     poll-phase: PollPhase,
+    poll-editable: bool,
     poll-choices: int,
     poll-voters: int,
     poll-answers: [PollAnswerEntry],
@@ -207,6 +210,14 @@ export struct VotePollRequest {
 
 export struct SendPollRequest {
     room-id: string,
+    question: string,
+    answers: [string],
+    multiple: bool,
+    hide-results: bool,
+}
+
+export struct EditPollRequest {
+    event-id: string,
     question: string,
     answers: [string],
     multiple: bool,

@@ -32,6 +32,7 @@ use crate::commands::view::{
     VideoView,
 };
 use crate::domain::message::MessagePreviewKind;
+use crate::domain::poll::PollPermissions;
 use crate::domain::room::{RoomId, RoomList};
 use crate::domain::timeline::{TimelinePatch, TimelineStatus};
 use crate::domain::verification::VerificationEvent as DomainVerificationEvent;
@@ -146,6 +147,7 @@ pub fn dispatch_effect<B: UiBackend>(w: &B::Window, event: Effect, ctx: &UiEvent
             name,
             member_count,
             encrypted,
+            polls,
             generation,
         } => {
             if adopt_selected_generation(generation) {
@@ -159,6 +161,7 @@ pub fn dispatch_effect<B: UiBackend>(w: &B::Window, event: Effect, ctx: &UiEvent
                 i32::try_from(member_count).unwrap_or(i32::MAX),
             );
             w.set_bool(BoolProp::SelectedRoomEncrypted, encrypted);
+            apply_poll_permissions(w, polls);
             let (pagination, pinned) = with_session(|session| {
                 session
                     .snapshot
@@ -900,7 +903,14 @@ fn clear_selected_room(w: &impl UiProps) {
     w.set_string(StringProp::SelectedRoomName, SharedString::default());
     w.set_int(IntProp::SelectedRoomMembers, 0);
     w.set_bool(BoolProp::SelectedRoomEncrypted, false);
+    apply_poll_permissions(w, PollPermissions::UNRESTRICTED);
     w.set_int(IntProp::AnchorIndex, NO_ANCHOR);
     publish_room_cursor(w);
     apply_timeline_status(w, TimelineStatus::None);
+}
+
+fn apply_poll_permissions(w: &impl UiProps, polls: PollPermissions) {
+    w.set_bool(BoolProp::MayVote, polls.vote);
+    w.set_bool(BoolProp::MayEndPolls, polls.end);
+    w.set_bool(BoolProp::MayStartPolls, polls.start);
 }

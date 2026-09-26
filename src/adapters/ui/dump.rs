@@ -30,6 +30,8 @@ pub struct PollAnswerRowDump {
     pub mine: bool,
     pub leading: bool,
     pub votable: bool,
+    pub voters: String,
+    pub hidden_voters: i32,
 }
 
 #[derive(Serialize)]
@@ -74,6 +76,7 @@ pub struct TimelineRowDump {
     pub reply_body: String,
     pub reactions: Vec<ReactionRowDump>,
     pub poll_phase: String,
+    pub poll_editable: bool,
     pub poll_choices: i32,
     pub poll_voters: i32,
     pub poll_answers: Vec<PollAnswerRowDump>,
@@ -102,10 +105,18 @@ pub struct PinnedDump {
 }
 
 #[derive(Serialize)]
+pub struct PollPermissionsDump {
+    pub vote: bool,
+    pub end: bool,
+    pub start: bool,
+}
+
+#[derive(Serialize)]
 pub struct TimelineDump {
     pub selected_room_id: String,
     pub selected_room_name: String,
     pub selected_room_encrypted: bool,
+    pub poll_permissions: PollPermissionsDump,
     pub generation: i32,
     pub timeline_token: i32,
     pub prepend_token: i32,
@@ -194,6 +205,11 @@ fn collect<B: UiBackend>(window: &B::Window) -> TimelineDump {
         selected_room_id: window.get_string(StringProp::SelectedRoomId).to_string(),
         selected_room_name: window.get_string(StringProp::SelectedRoomName).to_string(),
         selected_room_encrypted: window.get_bool(BoolProp::SelectedRoomEncrypted),
+        poll_permissions: PollPermissionsDump {
+            vote: window.get_bool(BoolProp::MayVote),
+            end: window.get_bool(BoolProp::MayEndPolls),
+            start: window.get_bool(BoolProp::MayStartPolls),
+        },
         generation: window.get_int(IntProp::SelectedGeneration),
         timeline_token: window.get_int(IntProp::TimelineToken),
         prepend_token: window.get_int(IntProp::PrependToken),
@@ -260,6 +276,7 @@ fn timeline_row<B: UiBackend>(row: usize, entry: &B::Message) -> TimelineRowDump
             .map(|reaction| reaction_row::<B>(&reaction))
             .collect(),
         poll_phase: entry.poll_phase().to_owned(),
+        poll_editable: entry.poll_editable(),
         poll_choices: entry.poll_choices(),
         poll_voters: entry.poll_voters(),
         poll_answers: entry
@@ -279,6 +296,8 @@ fn poll_answer_row<B: UiBackend>(entry: &B::PollAnswer) -> PollAnswerRowDump {
         mine: entry.mine(),
         leading: entry.leading(),
         votable: entry.votable(),
+        voters: entry.voters().to_owned(),
+        hidden_voters: entry.hidden_voters(),
     }
 }
 

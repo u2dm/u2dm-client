@@ -1,4 +1,4 @@
-use std::collections::{BTreeSet, HashSet};
+use std::collections::HashSet;
 
 use matrix_sdk::ruma::UInt;
 use matrix_sdk::ruma::events::StateEventContentChange;
@@ -17,6 +17,7 @@ use matrix_sdk_ui::timeline::{
 };
 
 use super::TimelineContext;
+use super::members::{Arrived, Need};
 use crate::adapters::matrix::media::{EventMedia, file_content, thumbnail_content};
 use crate::adapters::matrix::preview;
 use crate::domain::media::{
@@ -26,7 +27,7 @@ use crate::domain::message::{
     MessageBody, MessagePreviewKind, REACTOR_AVATAR_LIMIT, Reaction, ReactionSend, Reactor, ReadBy,
     ReplyInfo, RichText, SendState, ServiceEvent, TimelineMessage,
 };
-use crate::domain::poll::{Poll, PollAnswer, PollChoice, PollDisclosure, PollStatus};
+use crate::domain::poll::{Poll, PollAnswer, PollChoice, PollDisclosure, PollStatus, Voter};
 
 fn extract_sender_profile(event: &EventTimelineItem) -> (Option<String>, Option<String>) {
     match event.sender_profile() {
@@ -103,14 +104,34 @@ fn extract_reactions(content: &TimelineItemContent, ctx: &TimelineContext<'_>) -
 
 fn attach_reactor_avatars(reaction: &mut Reaction, ctx: &TimelineContext<'_>) {
     for reactor in &mut reaction.senders {
-        reactor.avatar_url = ctx.reactor_avatars.avatar(&reactor.user_id);
+        reactor.avatar_url = ctx.members.avatars.get(&reactor.user_id);
         if reactor.avatar_url.is_none() {
-            ctx.reactor_avatars.want(&reactor.user_id);
+            ctx.members.avatars.want(&reactor.user_id);
         }
     }
 }
 
-pub(super) fn reacted_by(item: &TimelineItem, users: &HashSet<String>) -> bool {
+pub(super) fn involves(
+    item: &TimelineItem,
+    message: Option<&TimelineMessage>,
+    arrived: &Arrived,
+) -> bool {
+    match arrived.need {
+        Need::Avatar => reacted_by(item, &arrived.users),
+        Need::Name => voted_by(message, &arrived.users),
+    }
+}
+
+fn voted_by(message: Option<&TimelineMessage>, users: &HashSet<String>) -> bool {
+    message
+        .and_then(|message| message.body.poll())
+        .is_some_and(|poll| {
+            poll.named_voters()
+                .any(|voter| users.contains(&voter.user_id))
+        })
+}
+
+fn reacted_by(item: &TimelineItem, users: &HashSet<String>) -> bool {
     let Some(by_key) = item
         .as_event()
         .and_then(|event| event.content().reactions())
@@ -439,29 +460,24 @@ fn extract_sticker_body(sticker: &StickerEventContent) -> MessageBody {
     }
 }
 
-fn extract_poll_body(poll: &PollState, own_user_id: Option<&str>) -> MessageBody {
+fn extract_poll_body(poll: &PollState, editable: bool, ctx: &TimelineContext<'_>) -> MessageBody {
     let results = poll.results();
-    let voters = results
-        .votes
-        .values()
-        .flatten()
-        .map(String::as_str)
-        .collect::<BTreeSet<_>>()
-        .len();
     let answers = results
         .answers
         .iter()
-        .map(|answer| {
-            let backers = results.votes.get(&answer.id).map_or(&[][..], Vec::as_slice);
-            PollAnswer {
-                id: answer.id.clone(),
-                text: answer.text.clone(),
-                votes: backers.len(),
-                mine: own_user_id.is_some_and(|own| backers.iter().any(|backer| backer == own)),
-            }
+        .map(|answer| PollAnswer {
+            id: answer.id.clone(),
+            text: answer.text.clone(),
+            voters: results
+                .votes
+                .get(&answer.id)
+                .map_or(&[][..], Vec::as_slice)
+                .iter()
+                .map(|user_id| Voter::new(user_id.clone(), ctx.own_user_id))
+                .collect(),
         })
         .collect();
-    MessageBody::Poll(Poll {
+    let mut poll = Poll {
         disclosure: if results.kind == PollKind::Disclosed {
             PollDisclosure::Disclosed
         } else {
@@ -469,14 +485,25 @@ fn extract_poll_body(poll: &PollState, own_user_id: Option<&str>) -> MessageBody
         },
         choice: PollChoice::up_to(usize::try_from(results.max_selections).unwrap_or(usize::MAX)),
         answers,
-        voters,
         status: if results.end_time.is_some() {
             PollStatus::Ended
         } else {
             PollStatus::Open
         },
+        editable,
         question: results.question,
-    })
+    };
+    name_voters(&mut poll, ctx);
+    MessageBody::Poll(poll)
+}
+
+fn name_voters(poll: &mut Poll, ctx: &TimelineContext<'_>) {
+    for voter in poll.named_voters_mut() {
+        voter.name = ctx.members.names.get(&voter.user_id);
+        if voter.name.is_none() {
+            ctx.members.names.want(&voter.user_id);
+        }
+    }
 }
 
 fn extract_file_body(file: &FileMessageEventContent) -> MessageBody {
@@ -558,7 +585,7 @@ pub(super) fn convert_event_item_with_uid(
             })
         }
         Some(Renderable::Poll(poll)) => Some(TimelineMessage {
-            body: extract_poll_body(poll, ctx.own_user_id),
+            body: extract_poll_body(poll, event.is_editable() && !ctx.focused, ctx),
             reply,
             edited: poll.is_edit(),
             ..base_message(unique_id, event, event_id_str, ctx)

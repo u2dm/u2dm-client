@@ -53,12 +53,20 @@ struct ConnectionDto {
 }
 
 #[derive(Serialize)]
+struct PollPermissionsDto {
+    vote: bool,
+    end: bool,
+    start: bool,
+}
+
+#[derive(Serialize)]
 #[allow(clippy::struct_excessive_bools)]
 struct RoomDto {
     id: String,
     name: String,
     is_direct: bool,
     is_encrypted: bool,
+    poll_permissions: PollPermissionsDto,
     member_count: u64,
     has_unread: bool,
     has_mentions: bool,
@@ -269,6 +277,11 @@ fn room(source: &Room) -> RoomDto {
         name: source.display_name.clone(),
         is_direct: source.is_direct,
         is_encrypted: source.is_encrypted,
+        poll_permissions: PollPermissionsDto {
+            vote: source.poll_permissions.vote,
+            end: source.poll_permissions.end,
+            start: source.poll_permissions.start,
+        },
         member_count: source.member_count,
         has_unread: source.has_unread,
         has_mentions: source.has_mentions,

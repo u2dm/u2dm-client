@@ -1,4 +1,8 @@
+use std::collections::BTreeSet;
+
 const SHARE_SCALE: u16 = 1000;
+
+pub const VOTERS_NAMED: usize = 10;
 
 const POLL_ANSWERS_MIN: usize = 2;
 const POLL_ANSWERS_MAX: usize = 20;
@@ -7,6 +11,16 @@ const POLL_ANSWERS_MAX: usize = 20;
 pub enum PollDisclosure {
     Disclosed,
     Undisclosed,
+}
+
+impl PollDisclosure {
+    pub fn from_hidden(results_hidden: bool) -> Self {
+        if results_hidden {
+            Self::Undisclosed
+        } else {
+            Self::Disclosed
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -38,6 +52,28 @@ impl PollChoice {
 pub enum PollAction {
     Vote,
     End,
+    Edit,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PollPermissions {
+    pub vote: bool,
+    pub end: bool,
+    pub start: bool,
+}
+
+impl PollPermissions {
+    pub const UNRESTRICTED: Self = Self {
+        vote: true,
+        end: true,
+        start: true,
+    };
+}
+
+impl Default for PollPermissions {
+    fn default() -> Self {
+        Self::UNRESTRICTED
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -47,20 +83,62 @@ pub enum PollStatus {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Voter {
+    pub user_id: String,
+    pub name: Option<String>,
+    pub is_own: bool,
+}
+
+impl Voter {
+    pub fn new(user_id: String, own_user_id: Option<&str>) -> Self {
+        Self {
+            is_own: own_user_id == Some(user_id.as_str()),
+            user_id,
+            name: None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PollAnswer {
     pub id: String,
     pub text: String,
-    pub votes: usize,
-    pub mine: bool,
+    pub voters: Vec<Voter>,
 }
 
 impl PollAnswer {
+    pub fn votes(&self) -> usize {
+        self.voters.len()
+    }
+
+    pub fn mine(&self) -> bool {
+        self.voters.iter().any(|voter| voter.is_own)
+    }
+
+    pub fn others(&self) -> usize {
+        self.voters.iter().filter(|voter| !voter.is_own).count()
+    }
+
+    pub fn named(&self) -> impl Iterator<Item = &Voter> {
+        self.voters
+            .iter()
+            .filter(|voter| !voter.is_own)
+            .take(VOTERS_NAMED)
+    }
+
+    fn named_mut(&mut self) -> impl Iterator<Item = &mut Voter> {
+        self.voters
+            .iter_mut()
+            .filter(|voter| !voter.is_own)
+            .take(VOTERS_NAMED)
+    }
+
     pub fn share(&self, voters: usize) -> f32 {
         if voters == 0 {
             return 0.0;
         }
         let scaled = self
-            .votes
+            .votes()
             .min(voters)
             .saturating_mul(usize::from(SHARE_SCALE))
             / voters;
@@ -74,8 +152,22 @@ pub struct Poll {
     pub disclosure: PollDisclosure,
     pub choice: PollChoice,
     pub answers: Vec<PollAnswer>,
-    pub voters: usize,
     pub status: PollStatus,
+    pub editable: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RevisedAnswer {
+    pub id: Option<String>,
+    pub text: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PollRevision {
+    pub question: String,
+    pub answers: Vec<RevisedAnswer>,
+    pub choice: PollChoice,
+    pub disclosure: PollDisclosure,
 }
 
 impl Poll {
@@ -85,6 +177,31 @@ impl Poll {
 
     pub fn reveals_results(&self) -> bool {
         self.disclosure == PollDisclosure::Disclosed || !self.is_open()
+    }
+
+    pub fn voter_count(&self) -> usize {
+        self.answers
+            .iter()
+            .flat_map(|answer| &answer.voters)
+            .map(|voter| voter.user_id.as_str())
+            .collect::<BTreeSet<_>>()
+            .len()
+    }
+
+    pub fn named_voters(&self) -> impl Iterator<Item = &Voter> {
+        let reveals = self.reveals_results();
+        self.answers
+            .iter()
+            .filter(move |_| reveals)
+            .flat_map(PollAnswer::named)
+    }
+
+    pub fn named_voters_mut(&mut self) -> impl Iterator<Item = &mut Voter> {
+        let reveals = self.reveals_results();
+        self.answers
+            .iter_mut()
+            .filter(move |_| reveals)
+            .flat_map(PollAnswer::named_mut)
     }
 
     pub fn next_selection(&self, answer_id: &str) -> Option<Vec<String>> {
@@ -97,7 +214,7 @@ impl Poll {
             PollChoice::Multiple { .. } => self
                 .answers
                 .iter()
-                .filter(|candidate| (candidate.id == answer_id) != candidate.mine)
+                .filter(|candidate| (candidate.id == answer_id) != candidate.mine())
                 .map(|candidate| candidate.id.clone())
                 .collect(),
         })
@@ -110,25 +227,69 @@ impl Poll {
     pub fn can_toggle(&self, answer: &PollAnswer) -> bool {
         self.is_open()
             && match self.choice {
-                PollChoice::Single => !answer.mine,
-                PollChoice::Multiple { .. } => answer.mine || self.accepts_another(),
+                PollChoice::Single => !answer.mine(),
+                PollChoice::Multiple { .. } => answer.mine() || self.accepts_another(),
             }
     }
 
     fn accepts_another(&self) -> bool {
-        self.answers.iter().filter(|answer| answer.mine).count() < self.choice.max()
+        self.answers.iter().filter(|answer| answer.mine()).count() < self.choice.max()
     }
 
     pub fn is_leading(&self, answer: &PollAnswer) -> bool {
-        answer.votes > 0 && answer.votes == self.leading_votes()
+        answer.votes() > 0 && answer.votes() == self.leading_votes()
     }
 
     fn leading_votes(&self) -> usize {
         self.answers
             .iter()
-            .map(|answer| answer.votes)
+            .map(PollAnswer::votes)
             .max()
             .unwrap_or_default()
+    }
+
+    pub fn revise(&self, draft: &PollDraft) -> Option<PollRevision> {
+        let choice = self.revised_choice(draft);
+        let restated = self.question == draft.question()
+            && self.disclosure == draft.disclosure()
+            && self.choice == choice
+            && self
+                .answers
+                .iter()
+                .map(|answer| answer.text.as_str())
+                .eq(draft.answers().iter().map(String::as_str));
+        if restated {
+            return None;
+        }
+        let mut unclaimed: Vec<&PollAnswer> = self.answers.iter().collect();
+        let answers = draft
+            .answers()
+            .iter()
+            .map(|text| RevisedAnswer {
+                id: unclaimed
+                    .iter()
+                    .position(|answer| &answer.text == text)
+                    .map(|index| unclaimed.remove(index).id.clone()),
+                text: text.clone(),
+            })
+            .collect();
+        Some(PollRevision {
+            question: draft.question().to_owned(),
+            answers,
+            choice,
+            disclosure: draft.disclosure(),
+        })
+    }
+
+    fn revised_choice(&self, draft: &PollDraft) -> PollChoice {
+        match (self.choice, draft.choice()) {
+            (PollChoice::Multiple { max }, PollChoice::Multiple { max: offered })
+                if max < self.answers.len() =>
+            {
+                PollChoice::up_to(max.min(offered))
+            }
+            (_, choice) => choice,
+        }
     }
 }
 
@@ -136,6 +297,16 @@ impl Poll {
 pub enum ChoiceMode {
     Single,
     Multiple,
+}
+
+impl ChoiceMode {
+    pub fn from_multiple(multiple: bool) -> Self {
+        if multiple {
+            Self::Multiple
+        } else {
+            Self::Single
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

@@ -177,6 +177,22 @@ pub fn send_attachment(
     );
 }
 
+fn poll_draft(
+    question: String,
+    answers: Vec<String>,
+    multiple: bool,
+    hide_results: bool,
+) -> Option<PollDraft> {
+    PollDraft::parse(
+        question,
+        answers,
+        ChoiceMode::from_multiple(multiple),
+        PollDisclosure::from_hidden(hide_results),
+    )
+    .inspect_err(|reason| tracing::debug!(?reason, "refusing a poll draft"))
+    .ok()
+}
+
 pub fn send_poll(
     tx: &Tx,
     room_id: String,
@@ -188,32 +204,35 @@ pub fn send_poll(
     if room_id.is_empty() {
         return false;
     }
-    let mode = if multiple {
-        ChoiceMode::Multiple
-    } else {
-        ChoiceMode::Single
+    let Some(draft) = poll_draft(question, answers, multiple, hide_results) else {
+        return false;
     };
-    let disclosure = if hide_results {
-        PollDisclosure::Undisclosed
-    } else {
-        PollDisclosure::Disclosed
-    };
-    match PollDraft::parse(question, answers, mode, disclosure) {
-        Ok(draft) => {
-            send_command(
-                tx,
-                UiCommand::SendPoll {
-                    room_id: RoomId::new(room_id),
-                    draft,
-                },
-            );
-            true
-        }
-        Err(reason) => {
-            tracing::debug!(?reason, "refusing a poll draft");
-            false
-        }
+    send_command(
+        tx,
+        UiCommand::SendPoll {
+            room_id: RoomId::new(room_id),
+            draft,
+        },
+    );
+    true
+}
+
+pub fn edit_poll(
+    tx: &Tx,
+    event_id: String,
+    question: String,
+    answers: Vec<String>,
+    multiple: bool,
+    hide_results: bool,
+) -> bool {
+    if event_id.is_empty() {
+        return false;
     }
+    let Some(draft) = poll_draft(question, answers, multiple, hide_results) else {
+        return false;
+    };
+    send_command(tx, UiCommand::EditPoll { event_id, draft });
+    true
 }
 
 pub fn open_media(tx: &Tx, event_id: String) {

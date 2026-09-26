@@ -452,6 +452,9 @@ impl AppService {
             } => {
                 self.active_timeline.vote_poll(event_id, answer_id);
             }
+            UiCommand::EditPoll { event_id, draft } => {
+                self.active_timeline.edit_poll(event_id, draft);
+            }
             UiCommand::EndPoll { event_id } => {
                 self.active_timeline.end_poll(event_id);
             }
@@ -586,6 +589,7 @@ impl AppService {
             name: room.meta.name.clone(),
             member_count: room.meta.member_count,
             encrypted: room.meta.encrypted,
+            polls: room.meta.polls,
             generation: room.generation,
         };
         self.last_selected_room = Some(room);

@@ -13,6 +13,7 @@ use super::present::{
     message_sender_label, message_sent_at_label, message_timestamp_label, poll_phase,
     pronoun_labels, reaction_key_label, reactor_labels, reader_labels, room_activity_label,
     sender_initial, service_kind, service_target, unsupported_kind, user_initial, voice_bars,
+    voter_labels,
 };
 use super::richtext;
 use super::schema::{define_ui_enum, media_failures, media_states};
@@ -234,6 +235,8 @@ pub struct PollAnswerDto {
     pub mine: bool,
     pub leading: bool,
     pub votable: bool,
+    pub voters: SharedString,
+    pub hidden_voters: i32,
 }
 
 #[allow(clippy::struct_excessive_bools)]
@@ -290,6 +293,7 @@ pub struct MessageDto {
     pub reactions: Vec<ReactionDto>,
     pub all_reactions: Vec<ReactionDto>,
     pub poll_phase: PollPhase,
+    pub poll_editable: bool,
     pub poll_choices: i32,
     pub poll_voters: i32,
     pub poll_answers: Vec<PollAnswerDto>,
@@ -498,35 +502,52 @@ fn apply_audio(dto: &mut MessageDto, meta: &AudioMeta, media: &dyn MediaCache) {
     dto.waveform = voice_bars(meta, media.audio_waveform(&meta.file).as_ref());
 }
 
-fn poll_answer_dto(poll: &Poll, answer: &PollAnswer, votable: bool) -> PollAnswerDto {
-    let reveals = poll.reveals_results();
-    PollAnswerDto {
+fn poll_answer_dto(
+    poll: &Poll,
+    answer: &PollAnswer,
+    turnout: usize,
+    votable: bool,
+) -> PollAnswerDto {
+    let (voters, hidden_voters) = voter_labels(answer);
+    let sealed = PollAnswerDto {
         id: SharedString::from(&answer.id),
         label: SharedString::from(&answer.text),
-        count: if reveals { count(answer.votes) } else { 0 },
-        share: if reveals {
-            answer.share(poll.voters)
-        } else {
-            0.0
-        },
-        mine: answer.mine,
-        leading: !poll.is_open() && poll.is_leading(answer),
+        count: 0,
+        share: 0.0,
+        mine: answer.mine(),
+        leading: false,
         votable: votable && poll.can_toggle(answer),
+        voters: SharedString::new(),
+        hidden_voters: 0,
+    };
+    if !poll.reveals_results() {
+        return sealed;
+    }
+    PollAnswerDto {
+        count: count(answer.votes()),
+        share: answer.share(turnout),
+        leading: !poll.is_open() && poll.is_leading(answer),
+        voters: SharedString::from(voters),
+        hidden_voters: count(hidden_voters),
+        ..sealed
     }
 }
 
-fn apply_poll(dto: &mut MessageDto, poll: &Poll, votable: bool) {
+fn apply_poll(dto: &mut MessageDto, poll: &Poll, message: &TimelineMessage) {
+    let sent = message.event_id.is_some();
+    let turnout = poll.voter_count();
     dto.poll_phase = poll_phase(poll);
+    dto.poll_editable = sent && message.is_own && poll.editable;
     dto.poll_choices = count(poll.choice.max().min(poll.answers.len()));
     dto.poll_voters = if poll.reveals_results() {
-        count(poll.voters)
+        count(turnout)
     } else {
         0
     };
     dto.poll_answers = poll
         .answers
         .iter()
-        .map(|answer| poll_answer_dto(poll, answer, votable))
+        .map(|answer| poll_answer_dto(poll, answer, turnout, sent))
         .collect();
 }
 
@@ -548,7 +569,7 @@ fn apply_media(
         apply_file(dto, meta);
     }
     if let Some(poll) = m.body.poll() {
-        apply_poll(dto, poll, m.event_id.is_some());
+        apply_poll(dto, poll, m);
     }
 
     let (_, meta) = m.body.media()?;
@@ -678,6 +699,7 @@ pub fn message_to_dto(m: &TimelineMessage, media: &dyn MediaCache) -> MessageDto
         reactions,
         all_reactions,
         poll_phase: PollPhase::Open,
+        poll_editable: false,
         poll_choices: 0,
         poll_voters: 0,
         poll_answers: Vec::new(),

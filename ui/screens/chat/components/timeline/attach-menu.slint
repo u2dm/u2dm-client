@@ -4,6 +4,7 @@ import { IconDisplay, IconSet, Icon } from "@lucide";
 import { ClickArea } from "../../../../components/a11y.slint";
 import { PickerCard } from "../../../../components/overlay.slint";
 import { AppStyle, Fonts, IconSize, Metrics, Radius, Space } from "../../../../theme.slint";
+import { RoomView } from "../../../../views.slint";
 
 component AttachRow inherits Rectangle {
     in property <Icon> icon;
@@ -73,7 +74,7 @@ export component AttachMenu inherits PickerCard {
             }
         }
 
-        AttachRow {
+        if RoomView.may-start-polls: AttachRow {
             icon: IconSet.ChartBar;
             label: @tr("Poll");
             clicked => {

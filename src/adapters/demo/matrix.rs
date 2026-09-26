@@ -458,8 +458,11 @@ impl DemoAuthed {
             TimelineCommand::VotePoll {
                 event_id,
                 answer_id,
-            } => self.vote_poll(&event_id, &answer_id).await,
-            TimelineCommand::EndPoll { event_id } => self.end_poll(&event_id).await,
+            } => self.vote_poll(&event_id, &answer_id, timeline_tx).await,
+            TimelineCommand::EndPoll { event_id } => self.end_poll(&event_id, timeline_tx).await,
+            TimelineCommand::EditPoll { event_id, draft } => {
+                self.edit_poll(&event_id, &draft, timeline_tx).await;
+            }
             TimelineCommand::LocateAudio { request, lookup } => {
                 let track = self.locate_audio(&lookup);
                 drop(
@@ -491,7 +494,16 @@ impl DemoAuthed {
         change(message).then(|| (active.timeline_tx.clone(), row, message.clone()))
     }
 
-    async fn vote_poll(&self, event_id: &str, answer_id: &str) {
+    async fn vote_poll(
+        &self,
+        event_id: &str,
+        answer_id: &str,
+        timeline_tx: &mpsc::Sender<TimelineUpdate>,
+    ) {
+        if !polls::permissions().vote {
+            refuse_poll_action(timeline_tx, PollAction::Vote).await;
+            return;
+        }
         let mut previous = None;
         let Some((timeline_tx, index, message)) = self.patch_poll(event_id, |message| {
             previous = polls::cast(message, answer_id);
@@ -514,7 +526,11 @@ impl DemoAuthed {
         }
     }
 
-    async fn end_poll(&self, event_id: &str) {
+    async fn end_poll(&self, event_id: &str, timeline_tx: &mpsc::Sender<TimelineUpdate>) {
+        if !polls::permissions().end {
+            refuse_poll_action(timeline_tx, PollAction::End).await;
+            return;
+        }
         let Some((timeline_tx, index, message)) = self.patch_poll(event_id, polls::end_own) else {
             tracing::debug!(event_id, "demo: only an own open poll can be ended");
             return;
@@ -527,6 +543,39 @@ impl DemoAuthed {
                 event_id.to_owned(),
                 None,
                 PollAction::End,
+            );
+        }
+    }
+
+    async fn edit_poll(
+        &self,
+        event_id: &str,
+        draft: &PollDraft,
+        timeline_tx: &mpsc::Sender<TimelineUpdate>,
+    ) {
+        if !polls::permissions().start {
+            refuse_poll_action(timeline_tx, PollAction::Edit).await;
+            return;
+        }
+        let sequence = self.sent.fetch_add(1, Ordering::Relaxed);
+        let mut revised = polls::Revised::Refused;
+        let Some((timeline_tx, index, message)) = self.patch_poll(event_id, |message| {
+            revised = polls::revise(message, draft, sequence);
+            revised == polls::Revised::Applied
+        }) else {
+            if revised == polls::Revised::Refused {
+                refuse_poll_action(timeline_tx, PollAction::Edit).await;
+            }
+            return;
+        };
+        send_patch(&timeline_tx, TimelinePatch::Set { index, message }).await;
+        if polls::scenario().edits_fail {
+            spawn_poll_refusal(
+                Arc::clone(&self.active),
+                timeline_tx,
+                event_id.to_owned(),
+                None,
+                PollAction::Edit,
             );
         }
     }
@@ -607,6 +656,22 @@ impl DemoAuthed {
             joined.push(room_id.clone());
         }
         joined.clone()
+    }
+
+    fn spawn_poll_revocation(&self) {
+        if !polls::scenario().permissions_get_revoked {
+            return;
+        }
+        let Some(sink) = self.sync_sink.lock().ok().and_then(|sink| sink.clone()) else {
+            return;
+        };
+        let joined = self.joined_rooms();
+        tokio::spawn(async move {
+            sleep(polls::REVOKED_AFTER).await;
+            if polls::revoke() {
+                sink(SyncEvent::Rooms(data::rooms_with(&joined).into()));
+            }
+        });
     }
 
     fn echo_join(&self, joined: Vec<RoomId>) {
@@ -748,6 +813,7 @@ impl TimelinePort for DemoAuthed {
 
         spawn_scenario_tasks(scenario, &focus, &timeline_tx, &messages, reset_messages);
         spawn_poll_activity(&self.active, &timeline_tx);
+        self.spawn_poll_revocation();
 
         let mut history = 0_u64;
         while let Some(command) = cmd_rx.recv().await {
@@ -1336,6 +1402,18 @@ async fn patch_newest_open_poll(
     let (index, message) = prepared;
     send_patch(timeline_tx, TimelinePatch::Set { index, message }).await;
     true
+}
+
+async fn refuse_poll_action(timeline_tx: &mpsc::Sender<TimelineUpdate>, action: PollAction) {
+    tracing::debug!(
+        ?action,
+        "demo: the room's power levels refuse this poll action"
+    );
+    drop(
+        timeline_tx
+            .send(TimelineUpdate::PollSendFailed(action))
+            .await,
+    );
 }
 
 fn spawn_poll_refusal(

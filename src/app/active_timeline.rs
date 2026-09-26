@@ -10,7 +10,7 @@ use crate::commands::messages::{UserMessage, UserMessageKind};
 use crate::commands::ui::TimelineVisibility;
 use crate::commands::view::Toast;
 use crate::domain::message::TimelineMessage;
-use crate::domain::poll::PollAction;
+use crate::domain::poll::{PollAction, PollDraft};
 use crate::domain::room::RoomId;
 use crate::domain::timeline::{
     AudioLookup, FailedSend, JumpTarget, PaginationDirection, PaginationOutcome, TimelineAdvance,
@@ -373,6 +373,10 @@ impl ActiveTimeline {
         self.forward(TimelineCommand::EndPoll { event_id });
     }
 
+    pub(super) fn edit_poll(&mut self, event_id: String, draft: PollDraft) {
+        self.forward(TimelineCommand::EditPoll { event_id, draft });
+    }
+
     fn forward(&self, command: TimelineCommand) {
         let Some(tx) = &self.timeline_cmd_tx else {
             return;
@@ -674,6 +678,7 @@ fn report_poll_failure(output: &dyn AppOutputPort, action: PollAction) {
     let kind = match action {
         PollAction::Vote => UserMessageKind::PollVoteFailed,
         PollAction::End => UserMessageKind::PollEndFailed,
+        PollAction::Edit => UserMessageKind::PollEditFailed,
     };
     super::show_toast(output, Toast::Error(UserMessage::new(kind)));
 }

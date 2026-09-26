@@ -6,6 +6,8 @@ import {
     SaveFileRequest,
     VotePollRequest,
     SendPollRequest,
+    EditPollRequest,
+    PollAnswerEntry,
 } from "screens/chat/components/types.slint";
 
 export global Actions {
@@ -39,6 +41,8 @@ export global Actions {
     callback paste-attachment(string) -> bool;
     callback send-attachment(SendAttachmentRequest);
     callback send-poll(SendPollRequest) -> bool;
+    callback edit-poll(EditPollRequest) -> bool;
+    pure callback poll-answer-texts([PollAnswerEntry]) -> [string];
     callback cancel-attachment();
     callback request-sticker(string);
     callback search-stickers(string);

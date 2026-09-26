@@ -67,6 +67,7 @@ mod names {
         pub const DISMISS_UNSENT: &str = "dismiss-unsent";
         pub const PASTE_ATTACHMENT: &str = "paste-attachment";
         pub const TOGGLE_REACTION: &str = "toggle-reaction";
+        pub const POLL_ANSWER_TEXTS: &str = "poll-answer-texts";
         pub const REQUEST_MEDIA: &str = "request-media";
         pub const REQUEST_ROOM_AVATAR: &str = "request-room-avatar";
         pub const REQUEST_STICKER: &str = "request-sticker";
@@ -633,6 +634,18 @@ impl SlintUiAdapter {
         let tx = cmd_tx.clone();
         bind_action(&self.instance, callback::PASTE_ATTACHMENT, move |args| {
             Value::Bool(router::paste_attachment(&tx, string_arg(args, 0)))
+        })?;
+
+        bind_action(&self.instance, callback::POLL_ANSWER_TEXTS, |args| {
+            Value::Model(ModelRc::new(
+                model_of(args.first())
+                    .iter()
+                    .map(|answer| match answer {
+                        Value::Struct(entry) => Value::String(field(&entry, "label").into()),
+                        _ => Value::String(SharedString::new()),
+                    })
+                    .collect::<VecModel<Value>>(),
+            ))
         })?;
 
         let tx = cmd_tx.clone();

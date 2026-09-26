@@ -2,6 +2,8 @@ import { ScrollView } from "std-widgets.slint";
 import { Icon, IconSet } from "@lucide";
 
 import { Actions } from "../../../../actions.slint";
+import { PollPhase } from "../../../../enums.slint";
+import { MessageEntry } from "../types.slint";
 import { AppStyle, Fonts, Opacity, Size, Space, Weight } from "../../../../theme.slint";
 import { AppButton, IconButton } from "../../../../components/button.slint";
 import { CheckRow } from "../../../../components/check-row.slint";
@@ -56,6 +58,7 @@ component AnswerField inherits HorizontalLayout {
 
 export component PollDialog inherits ModalHost {
     in property <string> room-id;
+    in property <MessageEntry> source;
 
     callback closed();
 
@@ -75,6 +78,8 @@ export component PollDialog inherits ModalHost {
     property <bool> hide-results: false;
     property <bool> refused: false;
     property <int> fresh-answer: -1;
+    property <bool> editing: root.source.event-id != "";
+    property <string> title: root.editing ? @tr("Edit poll") : @tr("Create a poll");
 
     function add-answer() {
         if root.answers.length < root.most-answers {
@@ -93,14 +98,34 @@ export component PollDialog inherits ModalHost {
         root.refused = false;
     }
 
-    function submit() {
-        if Actions.send-poll({
+    function prefill() {
+        root.question = root.source.body;
+        root.answers = Actions.poll-answer-texts(root.source.poll-answers);
+        root.multiple = root.source.poll-choices > 1;
+        root.hide-results = root.source.poll-phase == PollPhase.sealed;
+    }
+
+    function send-draft() -> bool {
+        if root.editing {
+            return Actions.edit-poll({
+                event-id: root.source.event-id,
+                question: root.question,
+                answers: root.answers,
+                multiple: root.multiple,
+                hide-results: root.hide-results,
+            });
+        }
+        return Actions.send-poll({
             room-id: root.room-id,
             question: root.question,
             answers: root.answers,
             multiple: root.multiple,
             hide-results: root.hide-results,
-        }) {
+        });
+    }
+
+    function submit() {
+        if root.send-draft() {
             root.closed();
         } else {
             root.refused = true;
@@ -109,11 +134,14 @@ export component PollDialog inherits ModalHost {
 
     dim-opacity: AppStyle.dark ? Opacity.scrim-strong : Opacity.scrim;
     light-dismiss: false;
-    label: @tr("Create a poll");
+    label: root.title;
     dismissed => {
         root.closed();
     }
     opened => {
+        if root.editing {
+            root.prefill();
+        }
         question-field.focus-input();
     }
 
@@ -136,7 +164,7 @@ export component PollDialog inherits ModalHost {
                 spacing: Space.lg;
 
                 Text {
-                    text: @tr("Create a poll");
+                    text: root.title;
                     font-size: Fonts.heading;
                     font-weight: Weight.bold;
                     overflow: elide;
@@ -210,7 +238,7 @@ export component PollDialog inherits ModalHost {
                     }
 
                     AppButton {
-                        text: @tr("Create poll");
+                        text: root.editing ? @tr("Save") : @tr("Create poll");
                         above-modal: true;
                         clicked => {
                             root.submit();

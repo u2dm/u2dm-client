@@ -510,6 +510,15 @@ impl SlintUiAdapter {
 
         actions(win).on_request_sticker(move |key| request_sticker(&key));
 
+        actions(win).on_poll_answer_texts(|answers| {
+            ModelRc::new(
+                answers
+                    .iter()
+                    .map(|answer| answer.label)
+                    .collect::<VecModel<SharedString>>(),
+            )
+        });
+
         let tx = cmd_tx.clone();
         actions(win).on_toggle_reaction(move |event_id, key| {
             router::toggle_reaction(&tx, event_id.to_string(), key.to_string());

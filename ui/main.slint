@@ -28,7 +28,7 @@ import {
     WindowView,
 } from "views.slint";
 import { Actions } from "actions.slint";
-import { Probe, ReplySwipe, Shell } from "local.slint";
+import { Polls, Probe, ReplySwipe, Shell } from "local.slint";
 import { Metrics } from "theme.slint";
 import {
     EmojiStore,
@@ -81,8 +81,10 @@ export component AppWindow inherits Window {
     if AttachmentView.visible && LoginView.step == LoginPhase.logged-in: AttachmentDialog { }
     if Shell.poll-open && LoginView.step == LoginPhase.logged-in: PollDialog {
         room-id: DirectoryView.selected-room-id;
+        source: Polls.edit-source;
         closed => {
             Shell.poll-open = false;
+            Polls.stop-editing();
         }
     }
     if VideoView.visible && LoginView.step == LoginPhase.logged-in: VideoPlayer { }

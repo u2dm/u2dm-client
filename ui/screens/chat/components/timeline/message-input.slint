@@ -12,8 +12,8 @@ import { AppStyle, Fonts, Metrics, Radius, Space, Weight } from "../../../../the
 import { ClickArea } from "../../../../components/a11y.slint";
 import { ModalHost } from "../../../../components/overlay.slint";
 import { Actions } from "../../../../actions.slint";
-import { Composer, Reactions, Shell } from "../../../../local.slint";
-import { UnsentView } from "../../../../views.slint";
+import { Composer, Polls, Reactions, Shell } from "../../../../local.slint";
+import { RoomView, UnsentView } from "../../../../views.slint";
 
 export component MessageInput inherits Rectangle {
     in property <string> room-id;
@@ -25,6 +25,9 @@ export component MessageInput inherits Rectangle {
     in property <length> overlay-height;
 
     property <int> picker-tab: 0;
+    property <string> attach-label: RoomView.may-start-polls
+        ? @tr("Attach a file or create a poll")
+        : @tr("Attach a photo or a file");
     property <bool> is-replying: Composer.reply-event-id != "";
     property <int> settled-submission: 0;
     property <bool> has-unsent: UnsentView.visible
@@ -110,7 +113,7 @@ export component MessageInput inherits Rectangle {
         width: root.overlay-width;
         height: root.overlay-height;
         dim: false;
-        label: @tr("Attach a file or create a poll");
+        label: root.attach-label;
         dismissed => {
             root.close-attach();
         }
@@ -147,6 +150,7 @@ export component MessageInput inherits Rectangle {
     }
 
     function open-poll() {
+        Polls.stop-editing();
         Shell.attach-open = false;
         Shell.poll-open = true;
     }
@@ -168,7 +172,7 @@ export component MessageInput inherits Rectangle {
         placeholder: @tr("Send a message...");
         input-label: @tr("Message");
         lead-icon: IconSet.Paperclip;
-        lead-label: @tr("Attach a file or create a poll");
+        lead-label: root.attach-label;
         lead-active: Shell.attach-open;
         emoji-label: @tr("Emoji and stickers");
         emoji-active: Shell.picker-open;

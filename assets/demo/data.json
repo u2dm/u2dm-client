@@ -1425,6 +1425,21 @@
         }
       },
       {
+        "id": "demo-book-venue",
+        "sender": "@alex:matrix.org",
+        "name": "Alex",
+        "body": "where do we meet next time",
+        "days_ago": 3,
+        "minutes_ago": 38,
+        "poll": {
+          "answers": [
+            { "id": "cafe", "text": "the café again" },
+            { "id": "library", "text": "the library basement" },
+            { "id": "couch", "text": "someone's flat, the one with the good couch" }
+          ]
+        }
+      },
+      {
         "id": "demo-book-snacks",
         "sender": "@marcus:matrix.org",
         "name": "Marcus",

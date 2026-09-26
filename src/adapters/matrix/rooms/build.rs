@@ -19,6 +19,7 @@ use matrix_sdk::ruma::events::{
 use matrix_sdk::ruma::{OwnedUserId, UserId};
 use matrix_sdk::{Client, Room};
 
+use crate::adapters::matrix::permissions::poll_permissions;
 use crate::adapters::matrix::preview::{self, MessagePreview};
 use crate::domain::message::{MessagePreviewKind, RichText, ServiceEvent};
 use crate::domain::room::{NotifyMode, Room as DomainRoom, RoomId, Space as DomainSpace};
@@ -106,6 +107,7 @@ pub(super) async fn build_single_room(room: &Room, settings: &NotificationSettin
         avatar_mxc: room_avatar_mxc(room, is_direct).await,
         is_direct,
         is_encrypted: room.encryption_state().is_encrypted(),
+        poll_permissions: poll_permissions(room).await,
         member_count,
         has_unread: flags.has_unread,
         has_mentions: flags.has_mentions,

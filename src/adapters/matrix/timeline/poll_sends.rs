@@ -1,9 +1,11 @@
 use std::future::pending;
 
 use matrix_sdk::Room;
-use matrix_sdk::ruma::events::StaticEventContent;
 use matrix_sdk::ruma::events::poll::unstable_end::UnstablePollEndEventContent;
 use matrix_sdk::ruma::events::poll::unstable_response::UnstablePollResponseEventContent;
+use matrix_sdk::ruma::events::poll::unstable_start::UnstablePollStartEventContent;
+use matrix_sdk::ruma::events::{AnyMessageLikeEventContent, StaticEventContent};
+use matrix_sdk::ruma::serde::Raw;
 use matrix_sdk::send_queue::{LocalEcho, LocalEchoContent, RoomSendQueueUpdate, SendHandle};
 use tokio::sync::broadcast::Receiver;
 use tokio::sync::broadcast::error::RecvError;
@@ -100,13 +102,22 @@ fn wedged_poll_send(echo: &LocalEcho) -> Option<(PollAction, &SendHandle)> {
     else {
         return None;
     };
-    let (_, event_type) = serialized_event.raw();
+    let (content, event_type) = serialized_event.raw();
     let action = if event_type == UnstablePollResponseEventContent::TYPE {
         PollAction::Vote
     } else if event_type == UnstablePollEndEventContent::TYPE {
         PollAction::End
+    } else if event_type == UnstablePollStartEventContent::TYPE && replaces_a_poll(content) {
+        PollAction::Edit
     } else {
         return None;
     };
     Some((action, send_handle))
+}
+
+fn replaces_a_poll(content: &Raw<AnyMessageLikeEventContent>) -> bool {
+    matches!(
+        content.deserialize_as_unchecked::<UnstablePollStartEventContent>(),
+        Ok(UnstablePollStartEventContent::Replacement(_))
+    )
 }

@@ -1,4 +1,4 @@
-import { Delivery, LoginPhase } from "enums.slint";
+import { Delivery, LoginPhase, PollPhase } from "enums.slint";
 import { AttachmentView, LoginView, RoomView, VerificationView, VideoView, WindowView } from "views.slint";
 import { MessageEntry, ReactionEntry } from "screens/chat/components/types.slint";
 import { MessagePreview } from "screens/chat/components/message-preview.slint";
@@ -127,6 +127,7 @@ export global Reactions {
     in-out property <ReactionAnchor> anchor: { row: -1 };
     in-out property <bool> picker-open: false;
     in-out property <bool> detail-open: false;
+    in-out property <bool> voters-open: false;
 
     in-out property <ReactionAnchor> strip-anchor: { row: -1 };
     in-out property <bool> bubble-hovered: false;
@@ -147,7 +148,10 @@ export global Reactions {
     out property <[ReactionEntry]> items: root.target.all-reactions;
 
     out property <bool> detail-visible: root.detail-open && root.target-valid;
-    out property <bool> open: root.picker-open || root.detail-visible;
+    out property <bool> voters-visible: root.voters-open
+        && root.target-valid
+        && root.target.poll-phase != PollPhase.sealed;
+    out property <bool> open: root.picker-open || root.detail-visible || root.voters-visible;
     out property <bool> strip-pending: root.strip-anchor.event-id != "" && !root.open;
     out property <bool> strip-visible: root.strip-pending && root.strip-revealed;
 
@@ -183,6 +187,7 @@ export global Reactions {
     public function open-picker(a: ReactionAnchor) {
         self.anchor = a;
         self.detail-open = false;
+        self.voters-open = false;
         self.picker-open = true;
         self.close-strip();
         self.tooltip-row = -1;
@@ -191,7 +196,17 @@ export global Reactions {
     public function open-detail(a: ReactionAnchor) {
         self.anchor = a;
         self.picker-open = false;
+        self.voters-open = false;
         self.detail-open = true;
+        self.close-strip();
+        self.tooltip-row = -1;
+    }
+
+    public function open-voters(a: ReactionAnchor) {
+        self.anchor = a;
+        self.picker-open = false;
+        self.detail-open = false;
+        self.voters-open = true;
         self.close-strip();
         self.tooltip-row = -1;
     }
@@ -199,6 +214,7 @@ export global Reactions {
     public function close() {
         self.picker-open = false;
         self.detail-open = false;
+        self.voters-open = false;
         self.anchor = { row: -1 };
         self.tooltip-row = -1;
         self.close-strip();
@@ -266,12 +282,27 @@ export global ReplySwipe {
 
 export global Polls {
     in-out property <string> ending;
+    in-out property <MessageEntry> edit-source;
 
     public function ask-end(event-id: string) {
         self.ending = event-id;
     }
 
+    public function cancel-end() {
+        self.ending = "";
+    }
+
+    public function start-edit(msg: MessageEntry) {
+        self.ending = "";
+        self.edit-source = msg;
+    }
+
+    public function stop-editing() {
+        self.edit-source = { };
+    }
+
     public function clear() {
         self.ending = "";
+        self.edit-source = { };
     }
 }

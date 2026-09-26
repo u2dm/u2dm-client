@@ -14,7 +14,7 @@ use crate::domain::media::{AudioKind, AudioMeta, Waveform};
 use crate::domain::message::{
     MessageBody, Reactor, ReadBy, SendState, ServiceEvent, TimelineMessage,
 };
-use crate::domain::poll::{Poll, PollDisclosure, PollStatus};
+use crate::domain::poll::{Poll, PollAnswer, PollDisclosure, PollStatus};
 use crate::domain::verification::VerificationCancellation;
 use crate::locale::{self, LocaleRequest};
 
@@ -118,6 +118,20 @@ pub fn reactor_labels(senders: &[Reactor]) -> (String, usize) {
 
 pub fn reader_labels(read_by: &ReadBy) -> (String, usize) {
     named_localparts(read_by.named.iter().map(String::as_str), read_by.total)
+}
+
+pub fn voter_labels(answer: &PollAnswer) -> (String, usize) {
+    let named: Vec<&str> = answer
+        .named()
+        .map(|voter| {
+            voter
+                .name
+                .as_deref()
+                .unwrap_or_else(|| user_localpart(&voter.user_id))
+        })
+        .collect();
+    let hidden = answer.others().saturating_sub(named.len());
+    (named.join(", "), hidden)
 }
 
 fn named_localparts<'a>(user_ids: impl Iterator<Item = &'a str>, total: usize) -> (String, usize) {

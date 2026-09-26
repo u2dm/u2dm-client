@@ -118,6 +118,9 @@ export global UserMessages {
         if kind == UserMessageKind.poll-end-failed {
             return @tr("The poll couldn't be ended");
         }
+        if kind == UserMessageKind.poll-edit-failed {
+            return @tr("Your changes to the poll couldn't be saved");
+        }
         if kind == UserMessageKind.video-playback-failed {
             return @tr("This video could not be played");
         }

@@ -1,0 +1,98 @@
+import { Palette } from "std-widgets.slint";
+
+import { PollAnswerEntry } from "../types.slint";
+import { PickerCard } from "../../../../components/overlay.slint";
+import { AppStyle, Fonts, Radius, Size, Space, Weight } from "../../../../theme.slint";
+
+component VoterRow inherits Rectangle {
+    in property <PollAnswerEntry> answer;
+
+    pure function voters-line() -> string {
+        if root.answer.count == 0 {
+            return @tr("No votes");
+        }
+        if root.answer.mine && root.answer.voters == "" {
+            return @tr("You");
+        }
+        if root.answer.mine && root.answer.hidden-voters > 0 {
+            return @tr("You, {} and {} more", root.answer.voters, root.answer.hidden-voters);
+        }
+        if root.answer.mine {
+            return @tr("You, {}", root.answer.voters);
+        }
+        if root.answer.hidden-voters > 0 {
+            return @tr("{} and {} more", root.answer.voters, root.answer.hidden-voters);
+        }
+        return root.answer.voters;
+    }
+
+    height: layout.preferred-height;
+    border-radius: Radius.sm;
+    background: root.answer.mine ? AppStyle.accent-background-soft : transparent;
+
+    layout := VerticalLayout {
+        padding: Space.md;
+        spacing: Space.xs;
+
+        HorizontalLayout {
+            spacing: Space.md;
+
+            Text {
+                text: root.answer.label;
+                font-size: Fonts.body-small;
+                font-weight: Weight.semibold;
+                color: Palette.foreground;
+                wrap: word-wrap;
+                horizontal-stretch: 1;
+            }
+
+            Text {
+                text: root.answer.count;
+                font-size: Fonts.body-small;
+                font-weight: root.answer.leading ? Weight.bold : Weight.regular;
+                color: root.answer.mine ? Palette.accent-background : AppStyle.foreground-strong;
+                horizontal-alignment: right;
+            }
+        }
+
+        Text {
+            text: root.voters-line();
+            font-size: Fonts.caption;
+            color: AppStyle.foreground-muted;
+            wrap: word-wrap;
+        }
+    }
+}
+
+export component PollVoters inherits PickerCard {
+    in property <[PollAnswerEntry]> answers;
+
+    VerticalLayout {
+        padding: Space.md;
+        spacing: Space.xs;
+
+        Text {
+            text: @tr("Votes");
+            font-size: Fonts.caption;
+            font-weight: Weight.semibold;
+            color: AppStyle.foreground-muted;
+            horizontal-alignment: left;
+            vertical-alignment: center;
+            height: Size.xs;
+        }
+
+        Flickable {
+            vertical-stretch: 1;
+            content-height: rows.preferred-height;
+
+            rows := VerticalLayout {
+                alignment: start;
+                spacing: Space.xs;
+
+                for answer in root.answers: VoterRow {
+                    answer: answer;
+                }
+            }
+        }
+    }
+}

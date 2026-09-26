@@ -62,6 +62,7 @@ pub enum UserMessageKind {
     SendAttachmentFailed,
     PollVoteFailed,
     PollEndFailed,
+    PollEditFailed,
     VideoPlaybackFailed,
     AudioPlaybackFailed,
     FileSaveFailed,

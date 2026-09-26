@@ -110,6 +110,11 @@ pub enum UiCommand {
     EndPoll {
         event_id: String,
     },
+    #[strum(to_string = "EditPoll({event_id})")]
+    EditPoll {
+        event_id: String,
+        draft: PollDraft,
+    },
     #[strum(to_string = "RetrySend({local_id})")]
     RetrySend { local_id: String },
     #[strum(to_string = "DiscardSend({local_id})")]

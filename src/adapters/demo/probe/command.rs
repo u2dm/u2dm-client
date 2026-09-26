@@ -73,6 +73,16 @@ pub enum ProbeCommand {
         #[serde(default)]
         hide_results: bool,
     },
+    EditPoll {
+        event_id: String,
+        question: String,
+        #[serde(default)]
+        answers: Vec<String>,
+        #[serde(default)]
+        multiple: bool,
+        #[serde(default)]
+        hide_results: bool,
+    },
     SendSticker {
         #[serde(default)]
         room_id: Option<String>,
@@ -226,6 +236,21 @@ fn room(explicit: Option<String>, selected: Selection<'_>) -> Result<RoomId, Rej
     Ok(target(explicit, None, selected)?.room_id)
 }
 
+fn poll_draft(
+    question: String,
+    answers: Vec<String>,
+    multiple: bool,
+    hide_results: bool,
+) -> Result<PollDraft, Rejected> {
+    PollDraft::parse(
+        question,
+        answers,
+        ChoiceMode::from_multiple(multiple),
+        PollDisclosure::from_hidden(hide_results),
+    )
+    .map_err(|reason| Rejected(format!("the poll draft is invalid: {reason:?}")))
+}
+
 #[allow(clippy::too_many_lines)]
 pub fn to_driven(command: ProbeCommand, selected: Selection<'_>) -> Result<Driven, Rejected> {
     Ok(Driven::Command(match command {
@@ -271,23 +296,20 @@ pub fn to_driven(command: ProbeCommand, selected: Selection<'_>) -> Result<Drive
             answers,
             multiple,
             hide_results,
-        } => {
-            let mode = if multiple {
-                ChoiceMode::Multiple
-            } else {
-                ChoiceMode::Single
-            };
-            let disclosure = if hide_results {
-                PollDisclosure::Undisclosed
-            } else {
-                PollDisclosure::Disclosed
-            };
-            UiCommand::SendPoll {
-                room_id: room(room_id, selected)?,
-                draft: PollDraft::parse(question, answers, mode, disclosure)
-                    .map_err(|reason| Rejected(format!("the poll draft is invalid: {reason:?}")))?,
-            }
-        }
+        } => UiCommand::SendPoll {
+            room_id: room(room_id, selected)?,
+            draft: poll_draft(question, answers, multiple, hide_results)?,
+        },
+        ProbeCommand::EditPoll {
+            event_id,
+            question,
+            answers,
+            multiple,
+            hide_results,
+        } => UiCommand::EditPoll {
+            event_id,
+            draft: poll_draft(question, answers, multiple, hide_results)?,
+        },
         ProbeCommand::SendSticker {
             room_id,
             pack,

@@ -94,6 +94,9 @@ macro_rules! simple_callbacks {
                 multiple "multiple" flag, hide_results "hide-results" flag) SendPoll;
         on_save_file "save-file" save_file
             request(event_id "event-id" text, filename "filename" text) SaveFile;
+        on_edit_poll "edit-poll" edit_poll
+            request(event_id "event-id" text, question "question" text, answers "answers" list,
+                multiple "multiple" flag, hide_results "hide-results" flag) EditPoll;
         on_vote_poll "vote-poll" vote_poll
             request(event_id "event-id" text, answer_id "answer-id" text) VotePoll;
         on_end_poll "end-poll" end_poll manual_string EndPoll;
@@ -125,6 +128,9 @@ macro_rules! bool_props {
         BackwardsLoading RoomView "RoomView" "backwards-loading" set_backwards_loading get_backwards_loading;
         ForwardsLoading RoomView "RoomView" "forwards-loading" set_forwards_loading get_forwards_loading;
         SelectedRoomEncrypted RoomView "RoomView" "selected-room-encrypted" set_selected_room_encrypted get_selected_room_encrypted;
+        MayVote RoomView "RoomView" "may-vote" set_may_vote get_may_vote;
+        MayEndPolls RoomView "RoomView" "may-end-polls" set_may_end_polls get_may_end_polls;
+        MayStartPolls RoomView "RoomView" "may-start-polls" set_may_start_polls get_may_start_polls;
         StickerRoomEncrypted StickerView "StickerView" "room-encrypted" set_room_encrypted get_room_encrypted;
         #[cfg(feature = "demo")] ProbeEnabled Probe "Probe" "enabled" set_enabled get_enabled;
         StickerLoading StickerView "StickerView" "loading" set_loading get_loading;
@@ -351,6 +357,7 @@ macro_rules! user_message_kinds {
         SendAttachmentFailed      SendAttachmentFailed    "send-attachment-failed";
         PollVoteFailed            PollVoteFailed          "poll-vote-failed";
         PollEndFailed             PollEndFailed           "poll-end-failed";
+        PollEditFailed            PollEditFailed          "poll-edit-failed";
         VideoPlaybackFailed       VideoPlaybackFailed     "video-playback-failed";
         AudioPlaybackFailed       AudioPlaybackFailed     "audio-playback-failed";
         FileSaveFailed            FileSaveFailed          "file-save-failed";
@@ -606,6 +613,7 @@ macro_rules! message_fields {
         reactions set_reactions "reactions" structs(Reaction);
         all_reactions set_all_reactions "all-reactions" structs(Reaction);
         poll_phase set_poll_phase "poll-phase" enumk(PollPhase);
+        poll_editable set_poll_editable "poll-editable" flag;
         poll_choices set_poll_choices "poll-choices" int;
         poll_voters set_poll_voters "poll-voters" int;
         poll_answers set_poll_answers "poll-answers" structs(PollAnswer);
@@ -622,6 +630,8 @@ macro_rules! poll_answer_fields {
         mine set_mine "mine" flag;
         leading set_leading "leading" flag;
         votable set_votable "votable" flag;
+        voters set_voters "voters" text;
+        hidden_voters set_hidden_voters "hidden-voters" int;
     } };
 }
 pub(crate) use poll_answer_fields;

@@ -1,16 +1,16 @@
-use std::collections::{BTreeSet, HashMap};
+use std::collections::HashMap;
 use std::time::Duration;
 
 use serde::Deserialize;
 
-use super::{media, reactions};
+use super::{media, polls, reactions};
 use crate::domain::auth::Session;
 use crate::domain::media::{AudioKind, AudioMeta, ImageMeta, VideoMeta, Waveform};
 use crate::domain::message::{
     MessageBody, MessagePreviewKind, Reaction, ReactionSend, ReadBy, ReplyInfo, RichText,
     SendState, ServiceEvent, TimelineMessage,
 };
-use crate::domain::poll::{Poll, PollAnswer, PollChoice, PollDisclosure, PollStatus};
+use crate::domain::poll::{Poll, PollAnswer, PollChoice, PollDisclosure, PollStatus, Voter};
 use crate::domain::room::{NotifyMode, Room, RoomId, Space};
 use crate::domain::space_index::{ChildKind, JoinRule, SpaceChild};
 use crate::domain::sticker::{PackId, StickerImage, StickerPack};
@@ -273,7 +273,8 @@ struct PollAnswerDto {
 }
 
 impl PollDto {
-    fn to_poll(&self, question: &str, own_user: &str) -> Poll {
+    fn to_poll(&self, question: &str, own_user: &str, is_own: bool) -> Poll {
+        let answered = self.answers.iter().any(|answer| !answer.voters.is_empty());
         Poll {
             question: question.to_owned(),
             disclosure: match self.kind {
@@ -287,21 +288,19 @@ impl PollDto {
                 .map(|answer| PollAnswer {
                     id: answer.id.clone(),
                     text: answer.text.clone(),
-                    votes: answer.voters.len(),
-                    mine: answer.voters.iter().any(|voter| voter == own_user),
+                    voters: answer
+                        .voters
+                        .iter()
+                        .map(|voter| Voter::new(voter.clone(), Some(own_user)))
+                        .collect(),
                 })
                 .collect(),
-            voters: self
-                .answers
-                .iter()
-                .flat_map(|answer| &answer.voters)
-                .collect::<BTreeSet<_>>()
-                .len(),
             status: if self.ended {
                 PollStatus::Ended
             } else {
                 PollStatus::Open
             },
+            editable: is_own && !self.ended && !answered,
         }
     }
 }
@@ -517,6 +516,7 @@ impl RoomDto {
             avatar_mxc: self.avatar.clone(),
             is_direct: self.direct,
             is_encrypted: self.encrypted,
+            poll_permissions: polls::permissions(),
             member_count: self.members,
             has_unread: self.unread > 0 && matches!(self.notify, NotifyDto::All),
             has_mentions: self.mentions > 0,
@@ -569,6 +569,7 @@ impl UnjoinedDto {
             avatar_mxc: self.avatar.clone(),
             is_direct: false,
             is_encrypted: false,
+            poll_permissions: polls::permissions(),
             member_count: self.members.saturating_add(1),
             has_unread: false,
             has_mentions: false,
@@ -712,7 +713,7 @@ impl MessageDto {
             return MessageBody::Service(service.to_event());
         }
         if let Some(poll) = &self.poll {
-            return MessageBody::Poll(poll.to_poll(&self.body, own_user));
+            return MessageBody::Poll(poll.to_poll(&self.body, own_user, self.sender == own_user));
         }
         if let Some(sticker) = &self.sticker {
             return MessageBody::Sticker {

@@ -85,6 +85,7 @@ export component MessageBody inherits VerticalLayout {
 
     if root.kind == MessageKind.poll: PollMessage {
         msg: root.msg;
+        timeline-row: root.timeline-row;
         frame-limit: root.frame-limit;
     }
 

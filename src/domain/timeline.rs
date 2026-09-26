@@ -1,6 +1,6 @@
 use crate::domain::media::{AudioKind, AudioMeta, ContentKey, ThumbnailOutcome};
 use crate::domain::message::TimelineMessage;
-use crate::domain::poll::PollAction;
+use crate::domain::poll::{PollAction, PollDraft};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct UnreadAnchor {
@@ -158,6 +158,7 @@ pub enum TimelineCommand {
     ToggleReaction { event_id: String, key: String },
     VotePoll { event_id: String, answer_id: String },
     EndPoll { event_id: String },
+    EditPoll { event_id: String, draft: PollDraft },
     LocateAudio { request: u64, lookup: AudioLookup },
 }
 

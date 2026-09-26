@@ -347,12 +347,11 @@ pub fn own_poll(sequence: u64, draft: &PollDraft, send_state: SendState) -> Time
             .map(|(index, text)| PollAnswer {
                 id: format!("demo-sent-{sequence}-answer-{index}"),
                 text: text.clone(),
-                votes: 0,
-                mine: false,
+                voters: Vec::new(),
             })
             .collect(),
-        voters: 0,
         status: PollStatus::Open,
+        editable: true,
     };
     TimelineMessage {
         body: MessageBody::Poll(poll),

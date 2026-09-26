@@ -2,6 +2,7 @@ use std::sync::Arc;
 use std::{fmt, ops};
 
 use crate::domain::message::{MessagePreviewKind, RichText, ServiceEvent};
+use crate::domain::poll::PollPermissions;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct RoomId(String);
@@ -48,6 +49,7 @@ pub struct Room {
     pub avatar_mxc: Option<String>,
     pub is_direct: bool,
     pub is_encrypted: bool,
+    pub poll_permissions: PollPermissions,
     pub member_count: u64,
     pub has_unread: bool,
     pub has_mentions: bool,

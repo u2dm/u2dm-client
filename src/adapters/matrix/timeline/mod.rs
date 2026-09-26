@@ -1,10 +1,10 @@
 mod convert;
 mod diff;
 mod filter;
+mod members;
 mod pinned;
 mod poll_sends;
 mod polls;
-mod reactors;
 mod subscribe;
 
 use std::collections::HashMap;
@@ -28,8 +28,8 @@ use tokio::task::spawn_blocking;
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
 
+use self::members::Members;
 pub(super) use self::pinned::MatrixPinned;
-use self::reactors::ReactorAvatars;
 use self::subscribe::subscribe_timeline;
 use super::attachment;
 use super::media::MediaService;
@@ -48,8 +48,9 @@ pub(super) struct TimelineContext<'a> {
     pub(super) client: &'a Client,
     pub(super) media: &'a Arc<MediaService>,
     pub(super) pronouns: &'a Arc<PronounCache>,
-    pub(super) reactor_avatars: &'a Arc<ReactorAvatars>,
+    pub(super) members: &'a Arc<Members>,
     pub(super) own_user_id: Option<&'a str>,
+    pub(super) focused: bool,
     pub(super) first_unread: Option<&'a str>,
     pub(super) timeline_tx: &'a mpsc::Sender<TimelineUpdate>,
     pub(super) enrich: &'a EnrichmentPool,

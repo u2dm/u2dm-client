@@ -203,6 +203,7 @@ pub(super) fn command_allowed(phase: AppPhase, cmd: &UiCommand) -> bool {
         | UiCommand::ToggleReaction { .. }
         | UiCommand::VotePoll { .. }
         | UiCommand::EndPoll { .. }
+        | UiCommand::EditPoll { .. }
         | UiCommand::RetrySend { .. }
         | UiCommand::DiscardSend { .. }
         | UiCommand::RetryTimeline

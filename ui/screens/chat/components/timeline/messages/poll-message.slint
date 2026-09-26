@@ -4,7 +4,8 @@ import { MessageEntry, PollAnswerEntry } from "../../types.slint";
 import { ClickArea, Interaction } from "../../../../../components/a11y.slint";
 import { PollPhase } from "../../../../../enums.slint";
 import { Actions } from "../../../../../actions.slint";
-import { Polls } from "../../../../../local.slint";
+import { Polls, Reactions, Shell } from "../../../../../local.slint";
+import { RoomView } from "../../../../../views.slint";
 import { AppStyle, Fonts, IconSize, Metrics, Radius, Space, Stroke, Weight } from "../../../../../theme.slint";
 
 component RadioArea inherits ClickArea {
@@ -58,13 +59,14 @@ component RadioKeys inherits CheckKeys {
 
 component PollMark inherits Rectangle {
     in property <bool> checked;
+    in property <bool> shown;
     in property <bool> multiple;
     in property <bool> is-own;
 
     width: Metrics.poll-indicator;
     height: Metrics.poll-indicator;
     border-radius: root.multiple ? Radius.xs : self.width / 2;
-    border-width: root.checked ? 0 : Stroke.emphasis;
+    border-width: root.checked || !root.shown ? 0 : Stroke.emphasis;
     border-color: AppStyle.overlay-foreground-muted;
     background: !root.checked ? transparent : (root.is-own ? AppStyle.poll-mark-own : AppStyle.poll-mark);
 
@@ -79,6 +81,8 @@ component PollMark inherits Rectangle {
 
 component PollAnswerRow inherits Rectangle {
     in property <PollAnswerEntry> answer;
+    in property <bool> votable;
+    in property <bool> marked;
     in property <bool> multiple;
     in property <bool> is-own;
     in property <bool> reveals;
@@ -97,7 +101,7 @@ component PollAnswerRow inherits Rectangle {
     if root.multiple: CheckArea {
         width: 100%;
         height: 100%;
-        enabled: root.answer.votable;
+        enabled: root.votable;
         focusable: false;
         roving-focus: root.cursor;
         label: root.description;
@@ -113,7 +117,7 @@ component PollAnswerRow inherits Rectangle {
     if !root.multiple: RadioArea {
         width: 100%;
         height: 100%;
-        enabled: root.answer.votable;
+        enabled: root.votable;
         focusable: false;
         roving-focus: root.cursor;
         label: root.description;
@@ -136,6 +140,7 @@ component PollAnswerRow inherits Rectangle {
             PollMark {
                 cross-axis-self-alignment: start;
                 checked: root.answer.mine;
+                shown: root.marked;
                 multiple: root.multiple;
                 is-own: root.is-own;
             }
@@ -211,6 +216,7 @@ component PollFooterButton inherits ClickArea {
 
 export component PollMessage inherits Rectangle {
     in property <MessageEntry> msg;
+    in property <int> timeline-row;
     in property <length> frame-limit;
 
     property <length> body-width: min(Metrics.poll-width, root.frame-limit - 2 * Space.lg);
@@ -219,16 +225,29 @@ export component PollMessage inherits Rectangle {
     property <int> cursor: 0;
     property <bool> keyboard-focus: false;
     property <PollAnswerEntry> focused-answer: root.msg.poll-answers[clamp(root.cursor, 0, max(root.answer-count - 1, 0))];
+    property <bool> voting: root.msg.poll-phase != PollPhase.ended && RoomView.may-vote;
+    property <bool> barred: root.msg.poll-phase != PollPhase.ended && !RoomView.may-vote;
     property <bool> can-end: root.msg.is-own
         && root.msg.event-id != ""
-        && root.msg.poll-phase != PollPhase.ended;
+        && root.msg.poll-phase != PollPhase.ended
+        && RoomView.may-end-polls;
     property <bool> confirming-end: root.can-end && Polls.ending == root.msg.event-id;
+    property <bool> can-edit: root.msg.poll-editable
+        && RoomView.may-start-polls
+        && !root.confirming-end;
+    property <bool> shows-voters: root.msg.poll-phase != PollPhase.sealed
+        && root.msg.poll-voters > 0
+        && root.msg.event-id != ""
+        && !root.confirming-end;
 
     pure function votes-label(count: int) -> string {
         return @tr("{n} vote" | "{n} votes" % count);
     }
 
     pure function summary() -> string {
+        if root.barred {
+            return @tr("You can't vote in this room");
+        }
         if root.msg.poll-phase == PollPhase.sealed {
             return @tr("Results will be visible when the poll ends");
         }
@@ -252,21 +271,21 @@ export component PollMessage inherits Rectangle {
     }
 
     function vote(answer: PollAnswerEntry) {
-        if answer.votable {
+        if answer.votable && root.voting {
             Actions.vote-poll({ event-id: root.msg.event-id, answer-id: answer.id });
         }
     }
 
     function toggle-end-confirmation() {
         if root.confirming-end {
-            Polls.clear();
+            Polls.cancel-end();
         } else {
             Polls.ask-end(root.msg.event-id);
         }
     }
 
     function end-poll() {
-        Polls.clear();
+        Polls.cancel-end();
         Actions.end-poll(root.msg.event-id);
     }
 
@@ -280,7 +299,7 @@ export component PollMessage inherits Rectangle {
         cursor <=> root.cursor;
         accessible-label: root.describe(root.focused-answer);
         accessible-checked: root.focused-answer.mine;
-        accessible-enabled: root.focused-answer.votable;
+        accessible-enabled: root.focused-answer.votable && root.voting;
         activate => {
             root.vote(root.focused-answer);
         }
@@ -294,7 +313,7 @@ export component PollMessage inherits Rectangle {
         cursor <=> root.cursor;
         accessible-label: root.describe(root.focused-answer);
         accessible-checked: root.focused-answer.mine;
-        accessible-enabled: root.focused-answer.votable;
+        accessible-enabled: root.focused-answer.votable && root.voting;
         activate => {
             root.vote(root.focused-answer);
         }
@@ -338,6 +357,8 @@ export component PollMessage inherits Rectangle {
 
         for answer[index] in root.msg.poll-answers: PollAnswerRow {
             answer: answer;
+            votable: answer.votable && root.voting;
+            marked: answer.mine || root.voting;
             multiple: root.multiple;
             is-own: root.msg.is-own;
             reveals: root.msg.poll-phase != PollPhase.sealed;
@@ -361,6 +382,33 @@ export component PollMessage inherits Rectangle {
                 vertical-alignment: center;
                 overflow: elide;
                 horizontal-stretch: 1;
+            }
+
+            if root.can-edit: PollFooterButton {
+                text: @tr("Edit");
+                label: @tr("Edit poll");
+                is-own: root.msg.is-own;
+                clicked => {
+                    Reactions.close();
+                    Polls.start-edit(root.msg);
+                    Shell.poll-open = true;
+                }
+            }
+
+            if root.shows-voters: PollFooterButton {
+                text: @tr("View votes");
+                is-own: root.msg.is-own;
+                clicked => {
+                    Reactions.open-voters({
+                        event-id: root.msg.event-id,
+                        row: root.timeline-row,
+                        is-own: root.msg.is-own,
+                        x: self.absolute-position.x,
+                        y: self.absolute-position.y,
+                        width: self.width,
+                        height: self.height,
+                    });
+                }
             }
 
             if root.can-end: PollFooterButton {

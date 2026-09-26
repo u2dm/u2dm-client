@@ -4,6 +4,7 @@ import {
 
 import { ReactionPicker, ReactionStrip } from "reaction-picker.slint";
 import { ReactionDetail } from "reaction-detail.slint";
+import { PollVoters } from "poll-voters.slint";
 import { ModalHost, PickerCard } from "../../../../components/overlay.slint";
 import { DeliveryTip, Reactions, Shell } from "../../../../local.slint";
 import { Actions } from "../../../../actions.slint";
@@ -48,6 +49,8 @@ export component ReactionOverlay inherits Rectangle {
     property <length> pane-h: min(Metrics.picker-height, root.height - 2 * root.edge);
     property <length> detail-w: min(Metrics.reaction-detail-width, root.width - 2 * root.edge);
     property <length> detail-h: min(Metrics.reaction-detail-height, root.height - 2 * root.edge);
+    property <length> voters-w: min(Metrics.poll-voters-width, root.width - 2 * root.edge);
+    property <length> voters-h: min(Metrics.poll-voters-height, root.height - 2 * root.edge);
 
     pure function place-x(anchor-x: length, anchor-w: length, is-own: bool, w: length) -> length {
         return clamp(
@@ -148,6 +151,26 @@ export component ReactionOverlay inherits Rectangle {
             toggled(key) => {
                 Actions.toggle-reaction(Reactions.anchor.event-id, key);
             }
+        }
+    }
+
+    if Reactions.voters-visible: ModalHost {
+        width: 100%;
+        height: 100%;
+        dim: false;
+        label: @tr("Who voted");
+        dismissed => {
+            Reactions.close();
+            root.closed();
+        }
+
+        PollVoters {
+            x: root.place-x(Reactions.anchor.x, Reactions.anchor.width,
+                            Reactions.anchor.is-own, root.voters-w);
+            y: root.place-y(Reactions.anchor.y, Reactions.anchor.height, root.voters-h);
+            width: root.voters-w;
+            height: root.voters-h;
+            answers: Reactions.target.poll-answers;
         }
     }
 

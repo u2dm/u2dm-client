@@ -3,6 +3,7 @@ mod auth;
 mod identity;
 mod journal;
 mod media;
+mod permissions;
 mod preview;
 mod profile;
 mod rooms;
