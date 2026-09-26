@@ -30,13 +30,31 @@ export component TimelineScroller inherits Rectangle {
 
     property <int> max-anchor-scrolls: 20;
     property <duration> settle-interval: 60ms;
+    property <float> far-seek-screens: 1.5;
     property <length> list-height: 0;
 
+    property <int> focus-blinks: 3;
+    property <duration> blink-interval: 400ms;
+    property <int> blink-phases-left: 0;
+    property <bool> focus-lit: mod(root.blink-phases-left, 2) == 1;
+
     public function jump-to-latest() {
-        flickable.anchor-held = false;
+        flickable.release-anchor();
         flickable.scroll-to-bottom();
         flickable.auto-scroll = true;
         Actions.jump-to-latest();
+    }
+
+    function blink-focus() {
+        root.blink-phases-left = 2 * root.focus-blinks - 1;
+    }
+
+    blink := Timer {
+        interval: root.blink-interval;
+        running: root.blink-phases-left > 0;
+        triggered => {
+            root.blink-phases-left -= 1;
+        }
     }
 
     settle := Timer {
@@ -44,7 +62,7 @@ export component TimelineScroller inherits Rectangle {
         running: false;
         triggered => {
             self.running = false;
-            flickable.finish-anchor();
+            flickable.settle-anchor();
         }
     }
 
@@ -107,8 +125,11 @@ export component TimelineScroller inherits Rectangle {
         property <int> seen-timeline-token: 0;
         property <bool> anchor-held: false;
         property <int> anchor-scrolls: 0;
+        property <int> measured-anchor: -1;
+        property <int> reported-anchor: -1;
+        property <length> reported-target: 0;
         property <length> anchor-target: -min(
-            max(root.anchor-index * ((self.content-height - root.top-inset) / max(self.item-count, 1)) - root.top-inset, 0px),
+            max(root.anchor-index * (self.content-height / max(self.item-count, 1)), 0px),
             max(self.max-scroll-y, 0px));
 
         changed content-height => {
@@ -182,21 +203,29 @@ export component TimelineScroller inherits Rectangle {
             }
             self.seen-timeline-token = root.timeline-token;
             self.seen-prepend-token = root.prepend-token;
+            root.blink-phases-left = 0;
             self.first-unseen-row = 0;
             self.anchor-scrolls = 0;
+            self.measured-anchor = -1;
             self.prev-content-height = 0;
             self.prev-content-y = 0;
             self.prev-item-count = 0;
-            self.anchor-held = root.anchor-index >= 0;
-            if self.anchor-held {
+            if root.anchor-index >= 0 {
+                self.anchor-held = true;
                 self.auto-scroll = false;
                 self.settling = false;
                 self.delay-settle();
             } else {
+                self.release-anchor();
                 self.auto-scroll = true;
                 self.settling = true;
                 self.scroll-to-bottom();
             }
+        }
+
+        public function release-anchor() {
+            self.anchor-held = false;
+            self.reported-anchor = -1;
         }
 
         function delay-settle() {
@@ -208,15 +237,19 @@ export component TimelineScroller inherits Rectangle {
             if !self.anchor-held {
                 return;
             }
-            self.anchor-held = false;
+            self.release-anchor();
             self.auto-scroll = self.at-bottom;
             self.was-at-top = self.at-top;
             self.was-at-bottom = self.at-bottom;
             Actions.scroll-position-changed(self.at-bottom, self.first-unseen-row);
+            if RoomView.focus-event-id != "" {
+                root.blink-focus();
+            }
         }
 
         public pure function anchor-pending() -> bool {
             return self.anchor-held
+                && self.measured-anchor != root.anchor-index
                 && root.anchor-index >= 0
                 && root.anchor-index < self.item-count
                 && self.content-height > 0px
@@ -232,6 +265,43 @@ export component TimelineScroller inherits Rectangle {
                 self.content-y = self.anchor-target;
             }
             self.delay-settle();
+        }
+
+        public function note-anchor(row: int, target: length) {
+            if !self.anchor-held || row != root.anchor-index
+                || Math.abs(self.clamped-content-y(target) - self.content-y)
+                    >= root.far-seek-screens * self.visible-height {
+                return;
+            }
+            self.measured-anchor = row;
+            self.reported-anchor = row;
+            self.reported-target = target;
+        }
+
+        public function settle-anchor() {
+            if !self.place-reported-anchor() {
+                self.finish-anchor();
+            }
+        }
+
+        function place-reported-anchor() -> bool {
+            if !self.anchor-held || self.reported-anchor != root.anchor-index
+                || self.anchor-scrolls >= root.max-anchor-scrolls {
+                return false;
+            }
+            self.reported-anchor = -1;
+            if Math.abs(self.clamped-content-y(self.reported-target) - self.content-y) <= 0.5px {
+                return false;
+            }
+            self.anchor-scrolls += 1;
+            self.programmatic-scroll = true;
+            self.content-y = self.clamped-content-y(self.reported-target);
+            self.delay-settle();
+            return true;
+        }
+
+        pure function clamped-content-y(target: length) -> length {
+            max(min(target, 0px), -max(self.max-scroll-y, 0px))
         }
 
         pure function anchor-content-y() -> length {
@@ -250,6 +320,7 @@ export component TimelineScroller inherits Rectangle {
                 timeline-row: row;
                 available-width: root.available-width;
                 composer-top: root.composer-top;
+                focus-lit: root.focus-lit;
 
                 property <bool> crosses-reading-edge: self.height > 0
                     && self.absolute-position.y < root.composer-top
@@ -258,6 +329,23 @@ export component TimelineScroller inherits Rectangle {
                 changed crosses-reading-edge => {
                     if self.crosses-reading-edge {
                         flickable.note-reading-edge(row);
+                    }
+                }
+
+                property <bool> holds-anchor: row == root.anchor-index && flickable.anchor-held;
+                property <length> content-y-at-top: self.holds-anchor
+                    ? root.top-inset - flickable.y - parent.y - self.y
+                    : 0px;
+
+                changed holds-anchor => {
+                    if self.holds-anchor {
+                        flickable.note-anchor(row, self.content-y-at-top);
+                    }
+                }
+
+                changed content-y-at-top => {
+                    if self.holds-anchor {
+                        flickable.note-anchor(row, self.content-y-at-top);
                     }
                 }
 

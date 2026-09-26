@@ -86,6 +86,7 @@ export component MessageBubble inherits VerticalLayout {
     in property <length> available-width;
     in property <int> timeline-row;
     in property <length> composer-top;
+    in property <bool> focus-lit;
 
     property <color> bubble-color: root.is-own
         ? AppStyle.own-bubble
@@ -129,7 +130,7 @@ export component MessageBubble inherits VerticalLayout {
     property <bool> send-failed: msg.send-state == SendState.failed;
     property <bool> chips-outside: root.is-photo-only && root.has-reactions;
     property <length> outside-chips-gap: Space.sm;
-    property <bool> outlined: root.is-focused || root.send-failed;
+    property <bool> outlined: (root.is-focused && root.focus-lit) || root.send-failed;
     property <color> outline-color: root.send-failed
         ? AppStyle.danger-border
         : Palette.accent-background;
