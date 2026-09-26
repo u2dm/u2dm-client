@@ -30,7 +30,6 @@ export component TimelineScroller inherits Rectangle {
 
     property <int> max-anchor-scrolls: 20;
     property <duration> settle-interval: 60ms;
-    property <float> far-seek-screens: 1.5;
     property <length> list-height: 0;
 
     property <int> focus-blinks: 3;
@@ -66,14 +65,20 @@ export component TimelineScroller inherits Rectangle {
         }
     }
 
+    step := Timer {
+        interval: 1ms;
+        running: false;
+        triggered => {
+            self.running = false;
+            flickable.step-anchor();
+        }
+    }
+
     adopt-unseen-token := Timer {
         interval: 1ms;
         running: root.timeline-token != flickable.seen-timeline-token;
         triggered => {
             flickable.adopt-timeline();
-            if flickable.anchor-pending() {
-                flickable.scroll-to-anchor();
-            }
         }
     }
 
@@ -132,9 +137,9 @@ export component TimelineScroller inherits Rectangle {
         property <int> seen-timeline-token: 0;
         property <bool> anchor-held: false;
         property <int> anchor-scrolls: 0;
-        property <int> measured-anchor: -1;
-        property <int> reported-anchor: -1;
-        property <length> reported-target: 0;
+        property <int> reported-row: -1;
+        property <length> reported-drift: 0;
+        property <bool> last-move-corrected: false;
         property <length> anchor-target: -min(
             max(root.anchor-index * (self.content-height / max(self.item-count, 1)), 0px),
             max(self.max-scroll-y, 0px));
@@ -145,8 +150,8 @@ export component TimelineScroller inherits Rectangle {
                 self.finish-anchor();
             }
             root.list-height = self.content-height;
-            if self.anchor-pending() {
-                self.scroll-to-anchor();
+            if self.anchor-held {
+                self.request-anchor-step();
             } else if (self.settling || self.auto-scroll) && self.scrollable
                 && self.content-y <= self.prev-content-y {
                 self.scroll-to-bottom();
@@ -193,7 +198,7 @@ export component TimelineScroller inherits Rectangle {
 
         changed item-count => {
             self.adopt-timeline();
-            if self.auto-scroll && !self.anchor-pending() {
+            if self.auto-scroll && !self.anchor-held {
                 self.settling = true;
                 self.scroll-to-bottom();
             }
@@ -213,7 +218,7 @@ export component TimelineScroller inherits Rectangle {
             root.blink-phases-left = 0;
             self.first-unseen-row = 0;
             self.anchor-scrolls = 0;
-            self.measured-anchor = -1;
+            self.reported-row = -1;
             self.prev-content-height = 0;
             self.prev-content-y = 0;
             self.prev-item-count = 0;
@@ -221,6 +226,8 @@ export component TimelineScroller inherits Rectangle {
                 self.anchor-held = true;
                 self.auto-scroll = false;
                 self.settling = false;
+                self.last-move-corrected = false;
+                self.request-anchor-step();
                 self.delay-settle();
             } else {
                 self.release-anchor();
@@ -232,12 +239,17 @@ export component TimelineScroller inherits Rectangle {
 
         public function release-anchor() {
             self.anchor-held = false;
-            self.reported-anchor = -1;
+            self.reported-row = -1;
         }
 
         function delay-settle() {
             settle.running = true;
             settle.restart();
+        }
+
+        function request-anchor-step() {
+            step.running = true;
+            step.restart();
         }
 
         public function finish-anchor() {
@@ -254,57 +266,74 @@ export component TimelineScroller inherits Rectangle {
             }
         }
 
-        public pure function anchor-pending() -> bool {
-            return self.anchor-held
-                && self.measured-anchor != root.anchor-index
-                && root.anchor-index >= 0
-                && root.anchor-index < self.item-count
-                && self.content-height > 0px
-                && self.anchor-scrolls < root.max-anchor-scrolls;
-        }
-
-        public function scroll-to-anchor() {
-            self.settling = false;
-            self.auto-scroll = false;
-            if Math.abs(self.anchor-target - self.content-y) > 0.5px {
-                self.anchor-scrolls += 1;
-                self.programmatic-scroll = true;
-                self.content-y = self.anchor-target;
-            }
-            self.delay-settle();
-        }
-
-        public function note-anchor(row: int, target: length) {
-            if !self.anchor-held || row != root.anchor-index
-                || Math.abs(self.clamped-content-y(target) - self.content-y)
-                    >= root.far-seek-screens * self.visible-height {
+        public function note-anchor(row: int, drift: length) {
+            if !self.anchor-held || row != root.anchor-index {
                 return;
             }
-            self.measured-anchor = row;
-            self.reported-anchor = row;
-            self.reported-target = target;
+            self.reported-row = row;
+            self.reported-drift = drift;
+        }
+
+        pure function anchor-reported() -> bool {
+            return self.reported-row == root.anchor-index;
+        }
+
+        public function step-anchor() {
+            if !self.anchor-held {
+                return;
+            }
+            if self.anchor-reported() {
+                self.correct-anchor();
+            } else if !self.last-move-corrected {
+                self.approach-anchor();
+            }
         }
 
         public function settle-anchor() {
-            if !self.place-reported-anchor() {
+            if !self.anchor-held {
+                return;
+            }
+            if self.anchor-reported() {
+                if !self.correct-anchor() {
+                    self.finish-anchor();
+                }
+            } else if self.last-move-corrected || !self.approach-anchor() {
                 self.finish-anchor();
             }
         }
 
-        function place-reported-anchor() -> bool {
-            if !self.anchor-held || self.reported-anchor != root.anchor-index
-                || self.anchor-scrolls >= root.max-anchor-scrolls {
+        function correct-anchor() -> bool {
+            if !self.moves-view(self.content-y - self.reported-drift) {
                 return false;
             }
-            self.reported-anchor = -1;
-            if Math.abs(self.clamped-content-y(self.reported-target) - self.content-y) <= 0.5px {
-                return false;
-            }
-            self.anchor-scrolls += 1;
-            self.programmatic-scroll = true;
-            self.content-y = self.clamped-content-y(self.reported-target);
-            self.delay-settle();
+            self.move-anchor-view(self.content-y - self.reported-drift);
+            self.last-move-corrected = true;
             return true;
+        }
+
+        function approach-anchor() -> bool {
+            if root.anchor-index < 0 || root.anchor-index >= self.item-count
+                || self.content-height <= 0px || !self.moves-view(self.anchor-target) {
+                return false;
+            }
+            self.move-anchor-view(self.anchor-target);
+            self.last-move-corrected = false;
+            return true;
+        }
+
+        pure function moves-view(target: length) -> bool {
+            return self.anchor-scrolls < root.max-anchor-scrolls
+                && Math.abs(self.clamped-content-y(target) - self.content-y) > 0.5px;
+        }
+
+        function move-anchor-view(target: length) {
+            self.settling = false;
+            self.auto-scroll = false;
+            self.anchor-scrolls += 1;
+            self.reported-row = -1;
+            self.programmatic-scroll = true;
+            self.content-y = self.clamped-content-y(target);
+            self.delay-settle();
         }
 
         pure function clamped-content-y(target: length) -> length {
@@ -340,23 +369,26 @@ export component TimelineScroller inherits Rectangle {
                 }
 
                 property <bool> holds-anchor: row == root.anchor-index && flickable.anchor-held;
-                property <length> content-y-at-top: self.holds-anchor
-                    ? root.top-inset - flickable.y - parent.y - self.y
+                property <length> anchor-drift: self.holds-anchor
+                    ? self.absolute-position.y - root.absolute-position.y - root.top-inset
                     : 0px;
 
                 changed holds-anchor => {
                     if self.holds-anchor {
-                        flickable.note-anchor(row, self.content-y-at-top);
+                        flickable.note-anchor(row, self.anchor-drift);
                     }
                 }
 
-                changed content-y-at-top => {
+                changed anchor-drift => {
                     if self.holds-anchor {
-                        flickable.note-anchor(row, self.content-y-at-top);
+                        flickable.note-anchor(row, self.anchor-drift);
                     }
                 }
 
                 init => {
+                    if self.holds-anchor {
+                        flickable.note-anchor(row, self.anchor-drift);
+                    }
                     if msg.needs-media {
                         Actions.request-media(msg.unique-id);
                     }
