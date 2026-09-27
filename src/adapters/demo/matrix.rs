@@ -1,5 +1,6 @@
 use std::fs;
 use std::future::pending;
+use std::ops::Range;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
@@ -583,6 +584,22 @@ impl DemoAuthed {
         row.map_or(JumpTarget::NotLoaded, JumpTarget::Row)
     }
 
+    async fn append_newer(
+        &self,
+        page: Vec<TimelineMessage>,
+        timeline_tx: &mpsc::Sender<TimelineUpdate>,
+    ) {
+        if page.is_empty() {
+            return;
+        }
+        if let Ok(mut guard) = self.active.lock()
+            && let Some(active) = guard.as_mut()
+        {
+            active.messages.extend(page.iter().cloned());
+        }
+        send_patch(timeline_tx, TimelinePatch::Append(page)).await;
+    }
+
     fn locate_audio(&self, lookup: &AudioLookup) -> Option<AudioTrack> {
         let guard = self.active.lock().ok()?;
         let active = guard.as_ref()?;
@@ -762,7 +779,9 @@ impl TimelinePort for DemoAuthed {
         let scenario = timeline::scenario();
         let all = data::messages(room_id);
         let seeded_receipts = receipts::seed_receipts(&all);
-        let messages = opening_window(all, &focus, scenario)?;
+        let window = opening_window(&all, &focus, scenario)?;
+        let mut newer = window.end;
+        let messages = window_messages(&all, window, &focus);
 
         if scenario.resolving_unread && focus.opens_at_read_position() {
             drop(timeline_tx.send(TimelineUpdate::ResolvingUnread).await);
@@ -825,6 +844,11 @@ impl TimelinePort for DemoAuthed {
                 }
                 let page = page.into_iter().map(TimelinePatch::PushFront).collect();
                 send_patch(&timeline_tx, TimelinePatch::Batch(page)).await;
+            }
+            if matches!(direction, PaginationDirection::Forwards) {
+                let page = newer_page(&all, &mut newer);
+                hit_end = page.is_empty();
+                self.append_newer(page, &timeline_tx).await;
             }
             let update = TimelineUpdate::Pagination {
                 direction,
@@ -1163,19 +1187,27 @@ fn reply_info(messages: &[TimelineMessage], event_id: &str) -> Option<ReplyInfo>
 }
 
 fn opening_window(
-    all: Vec<TimelineMessage>,
+    all: &[TimelineMessage],
     focus: &TimelineFocus,
     scenario: timeline::Scenario,
-) -> Result<Vec<TimelineMessage>> {
-    let mut messages = match focus.target() {
-        Some(target) => focused_window(&all, target)?,
-        None if scenario.window_is_short => newest(&all, timeline::SHORT_WINDOW),
-        None => all,
-    };
+) -> Result<Range<usize>> {
+    match focus.target() {
+        Some(target) => focused_window(all, target),
+        None if scenario.window_is_short => Ok(newest(all, timeline::SHORT_WINDOW)),
+        None => Ok(0..all.len()),
+    }
+}
+
+fn window_messages(
+    all: &[TimelineMessage],
+    window: Range<usize>,
+    focus: &TimelineFocus,
+) -> Vec<TimelineMessage> {
+    let mut messages = all.get(window).unwrap_or(all).to_vec();
     if matches!(focus, TimelineFocus::Latest) {
         clear_unread_divider(&mut messages);
     }
-    Ok(messages)
+    messages
 }
 
 fn clear_unread_divider(messages: &mut [TimelineMessage]) {
@@ -1184,12 +1216,11 @@ fn clear_unread_divider(messages: &mut [TimelineMessage]) {
     }
 }
 
-fn newest(messages: &[TimelineMessage], count: usize) -> Vec<TimelineMessage> {
-    let start = messages.len().saturating_sub(count);
-    messages.get(start..).unwrap_or(messages).to_vec()
+fn newest(messages: &[TimelineMessage], count: usize) -> Range<usize> {
+    messages.len().saturating_sub(count)..messages.len()
 }
 
-fn focused_window(messages: &[TimelineMessage], target: &str) -> Result<Vec<TimelineMessage>> {
+fn focused_window(messages: &[TimelineMessage], target: &str) -> Result<Range<usize>> {
     let index = messages
         .iter()
         .position(|message| message.event_id.as_deref() == Some(target))
@@ -1198,7 +1229,14 @@ fn focused_window(messages: &[TimelineMessage], target: &str) -> Result<Vec<Time
     let end = messages
         .len()
         .min(index.saturating_add(timeline::FOCUS_CONTEXT));
-    Ok(messages.get(start..end).unwrap_or(messages).to_vec())
+    Ok(start..end)
+}
+
+fn newer_page(all: &[TimelineMessage], newer: &mut usize) -> Vec<TimelineMessage> {
+    let end = all.len().min(newer.saturating_add(timeline::NEWER_PAGE));
+    let page = all.get(*newer..end).unwrap_or_default().to_vec();
+    *newer = end;
+    page
 }
 
 fn opening_patch(scenario: timeline::Scenario, messages: Vec<TimelineMessage>) -> TimelinePatch {

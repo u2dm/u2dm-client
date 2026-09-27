@@ -1,7 +1,8 @@
-use super::timeline::{PaginationDirection, PaginationState, ScrollMode};
+use super::timeline::{PaginationDirection, PaginationState, ScrollMode, TimelineFocus};
 
 pub const PAGINATION_BATCH_SIZE: u16 = 50;
 
+#[derive(Default)]
 #[allow(clippy::struct_excessive_bools)]
 pub struct ViewportController {
     mode: ScrollMode,
@@ -12,13 +13,15 @@ pub struct ViewportController {
 }
 
 impl ViewportController {
-    pub fn new() -> Self {
+    pub fn new(focus: &TimelineFocus) -> Self {
+        let mode = if focus.is_live() {
+            ScrollMode::FollowLive
+        } else {
+            ScrollMode::PreserveAnchor
+        };
         Self {
-            mode: ScrollMode::FollowLive,
-            backwards_loading: false,
-            forwards_loading: false,
-            backwards_ended: false,
-            forwards_ended: false,
+            mode,
+            ..Self::default()
         }
     }
 

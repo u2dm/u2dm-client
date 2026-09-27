@@ -101,6 +101,7 @@ pub const RESIZE_ROUNDS: usize = 8;
 pub const ROOM_LIST_INTERVAL: Duration = Duration::from_millis(400);
 pub const LATE_MESSAGE_DELAY: Duration = Duration::from_millis(300);
 pub const HISTORY_PAGE: usize = 12;
+pub const NEWER_PAGE: usize = 12;
 pub const FOCUS_CONTEXT: usize = 15;
 pub const SHORT_WINDOW: usize = 8;
 pub const HISTORY_COPIES: usize = 6;

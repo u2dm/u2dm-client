@@ -71,6 +71,7 @@ struct EmittedRoom {
     id: RoomId,
     meta: RoomMeta,
     generation: i32,
+    live: bool,
 }
 
 pub(super) fn show_toast(output: &dyn AppOutputPort, toast: Toast) {
@@ -592,6 +593,7 @@ impl AppService {
             encrypted: room.meta.encrypted,
             polls: room.meta.polls,
             generation: room.generation,
+            live: room.live,
         };
         self.last_selected_room = Some(room);
         self.output.emit(effect).await;
@@ -1187,6 +1189,7 @@ impl AppService {
             id: room_id.clone(),
             meta,
             generation,
+            live: focus.is_live(),
         })
         .await;
         if let Some(stickers) = self.port(|a| &a.stickers) {
@@ -1220,6 +1223,7 @@ impl AppService {
             id: room_id,
             meta,
             generation: self.selection.generation,
+            live: self.active_timeline.is_live(),
         };
         if self.last_selected_room.as_ref() == Some(&next) {
             return;
@@ -1235,6 +1239,7 @@ impl AppService {
             id: RoomId::new(String::new()),
             meta: RoomMeta::default(),
             generation,
+            live: true,
         })
         .await;
         self.stickers.clear_room();

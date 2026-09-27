@@ -25,6 +25,7 @@ export component TimelineContent inherits Rectangle {
         prepend-token: RoomView.prepend-token;
         backwards-loading: RoomView.backwards-loading;
         forwards-loading: RoomView.forwards-loading;
+        detached: RoomView.timeline-detached;
         top-inset: root.top-inset;
         bottom-inset: root.bottom-inset;
         composer-top: root.composer-top;
@@ -41,6 +42,7 @@ export component TimelineContent inherits Rectangle {
         accessible-description: "at-top=\{scroller.at-top ? 1 : 0} "
             + "at-bottom=\{scroller.at-bottom ? 1 : 0} "
             + "following=\{scroller.following ? 1 : 0} "
+            + "detached=\{RoomView.timeline-detached ? 1 : 0} "
             + "anchor-held=\{scroller.anchor-held ? 1 : 0} "
             + "settling=\{scroller.settling ? 1 : 0} "
             + "anchor-scrolls=\{scroller.anchor-scrolls} "

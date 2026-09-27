@@ -156,10 +156,12 @@ pub fn dispatch_effect<B: UiBackend>(w: &B::Window, event: Effect, ctx: &UiEvent
             encrypted,
             polls,
             generation,
+            live,
         } => {
             if adopt_selected_generation(generation) {
                 set_focus(w, None);
             }
+            w.set_bool(BoolProp::TimelineDetached, !live);
             w.set_int(IntProp::SelectedGeneration, generation);
             w.set_string(StringProp::SelectedRoomId, SharedString::from(id.as_ref()));
             w.set_string(StringProp::SelectedRoomName, SharedString::from(&name));
@@ -912,6 +914,7 @@ fn clear_selected_room(w: &impl UiProps) {
     w.set_bool(BoolProp::SelectedRoomEncrypted, false);
     apply_poll_permissions(w, PollPermissions::UNRESTRICTED);
     w.set_int(IntProp::AnchorIndex, NO_ANCHOR);
+    w.set_bool(BoolProp::TimelineDetached, false);
     publish_room_cursor(w);
     apply_timeline_status(w, TimelineStatus::None);
 }

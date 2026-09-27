@@ -11,6 +11,7 @@ export component TimelineScroller inherits Rectangle {
     in property <int> prepend-token;
     in property <bool> backwards-loading;
     in property <bool> forwards-loading;
+    in property <bool> detached;
     in property <length> top-inset;
     in property <length> bottom-inset;
     in property <length> composer-top;
@@ -39,8 +40,10 @@ export component TimelineScroller inherits Rectangle {
 
     public function jump-to-latest() {
         flickable.release-anchor();
-        flickable.scroll-to-bottom();
-        flickable.auto-scroll = true;
+        if !root.detached {
+            flickable.scroll-to-bottom();
+            flickable.auto-scroll = true;
+        }
         Actions.jump-to-latest();
     }
 
@@ -118,6 +121,12 @@ export component TimelineScroller inherits Rectangle {
                 self.seen-timeline-token);
         }
 
+        function request-newer-page() {
+            if !root.forwards-loading {
+                Actions.paginate-forwards();
+            }
+        }
+
         property <int> seen-prepend-token: 0;
         property <length> prev-content-height: 0;
         property <length> prev-content-y: 0;
@@ -162,6 +171,10 @@ export component TimelineScroller inherits Rectangle {
             self.seen-prepend-token = root.prepend-token;
             self.prev-content-height = self.content-height;
             self.prev-item-count = self.item-count;
+            if root.detached && self.was-at-bottom && !self.at-bottom && !self.anchor-held {
+                self.was-at-bottom = false;
+                self.report-position();
+            }
         }
 
         changed content-y => {
@@ -173,14 +186,13 @@ export component TimelineScroller inherits Rectangle {
                     && !root.backwards-loading {
                     Actions.paginate-backwards();
                 }
-                if self.scrollable && self.at-bottom && !self.was-at-bottom
-                    && !root.forwards-loading {
-                    Actions.paginate-forwards();
+                if self.scrollable && self.at-bottom && !self.was-at-bottom {
+                    self.request-newer-page();
                 }
                 if self.scrollable {
                     if self.content-y > self.prev-content-y && !self.at-scroll-end {
                         self.auto-scroll = false;
-                    } else if self.at-bottom {
+                    } else if self.at-bottom && !root.detached {
                         self.auto-scroll = true;
                     }
                 }
@@ -231,7 +243,7 @@ export component TimelineScroller inherits Rectangle {
                 self.delay-settle();
             } else {
                 self.release-anchor();
-                self.auto-scroll = true;
+                self.auto-scroll = !root.detached;
                 self.settling = true;
                 self.scroll-to-bottom();
             }
@@ -257,10 +269,13 @@ export component TimelineScroller inherits Rectangle {
                 return;
             }
             self.release-anchor();
-            self.auto-scroll = self.at-bottom;
+            self.auto-scroll = self.at-bottom && !root.detached;
             self.was-at-top = self.at-top;
             self.was-at-bottom = self.at-bottom;
             self.report-position();
+            if root.detached && self.at-bottom {
+                self.request-newer-page();
+            }
             if RoomView.focus-event-id != "" {
                 root.blink-focus();
             }

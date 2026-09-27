@@ -50,7 +50,7 @@ impl ActiveTimeline {
             events,
             output,
             tasks: TaskGroup::new("timeline"),
-            viewport: ViewportController::new(),
+            viewport: ViewportController::default(),
             timeline_cmd_tx: None,
             active_room_id: None,
             generation: 0,
@@ -84,7 +84,7 @@ impl ActiveTimeline {
         self.tasks.cancel_and_detach();
 
         let live = focus.is_live();
-        self.viewport = ViewportController::new();
+        self.viewport = ViewportController::new(&focus);
         self.active_room_id = Some(room_id.clone());
         self.generation = generation;
         self.at_bottom = true;
@@ -471,7 +471,7 @@ impl ActiveTimeline {
     }
 
     fn reset_state(&mut self) {
-        self.viewport = ViewportController::new();
+        self.viewport = ViewportController::default();
         self.timeline_cmd_tx = None;
         self.active_room_id = None;
         self.generation = 0;

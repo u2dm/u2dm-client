@@ -16,6 +16,7 @@ pub enum Effect {
         encrypted: bool,
         polls: PollPermissions,
         generation: i32,
+        live: bool,
     },
     Timeline {
         room_id: RoomId,
