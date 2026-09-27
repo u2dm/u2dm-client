@@ -110,7 +110,7 @@ impl ActiveTimeline {
             events,
             room_id: rid.clone(),
             generation,
-            live,
+            focus: focus.clone(),
             next_snapshot: Snapshot::Opening,
         };
 
@@ -526,7 +526,7 @@ struct Forwarder {
     events: EventSender,
     room_id: RoomId,
     generation: i32,
-    live: bool,
+    focus: TimelineFocus,
     next_snapshot: Snapshot,
 }
 
@@ -653,14 +653,14 @@ impl Forwarder {
     }
 
     fn widen_search_for(&self, event_id: String) {
-        let searched_live_window = self.live;
-        if searched_live_window {
-            self.refocus(TimelineFocus::Event(event_id));
-        } else {
+        let window_opened_around_it = self.focus.target() == Some(event_id.as_str());
+        if window_opened_around_it {
             super::show_toast(
                 self.output.as_ref(),
                 Toast::Error(UserMessage::new(UserMessageKind::MessageNotFound)),
             );
+        } else {
+            self.refocus(TimelineFocus::Event(event_id));
         }
     }
 
