@@ -1,0 +1,26 @@
+import { IconSet } from "@lucide";
+
+import { LoginPage, BrandHeader } from "./common.slint";
+import { AppButton } from "../../components/button.slint";
+import { ErrorBanner } from "../../components/banner.slint";
+import { Metrics } from "../../theme.slint";
+import { LoginView } from "../../views.slint";
+import { Actions } from "../../actions.slint";
+
+export component RestorePausedScreen inherits LoginPage {
+    BrandHeader {
+        mark-size: root.dense ? Metrics.login-mark-dense : Metrics.login-mark;
+    }
+
+    ErrorBanner {
+        messages: LoginView.messages;
+    }
+
+    AppButton {
+        text: @tr("Try again");
+        icon: IconSet.RotateCw;
+        clicked => {
+            Actions.retry-restore();
+        }
+    }
+}

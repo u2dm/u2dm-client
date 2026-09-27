@@ -49,6 +49,11 @@ pub const CATALOG: Scenarios = Scenarios {
             effect: "keeps the saved session but restores it slowly",
             note: "the only way to see the loading screen",
         },
+        Flag {
+            value: "keyring-locked",
+            effect: "the keyring refuses the saved session at startup and its store key at the first Try again; the second restores it",
+            note: "the only way to see the paused restore",
+        },
     ],
     notes: &[
         "merely SETTING this variable switches the demo from logged-in to logged-out",
@@ -66,10 +71,17 @@ pub enum OAuthFlow {
     OffersInsecurePage,
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum SavedSession {
+    Absent,
+    Restorable,
+    BehindLockedKeyring,
+}
+
 pub struct LoginDemo {
     pub methods: Vec<AuthMethod>,
     pub unsupported_flows: Vec<String>,
-    pub keeps_session: bool,
+    pub saved_session: SavedSession,
     pub oauth: OAuthFlow,
 }
 
@@ -95,7 +107,7 @@ impl Default for LoginDemo {
         Self {
             methods: vec![AuthMethod::Password],
             unsupported_flows: Vec::new(),
-            keeps_session: false,
+            saved_session: SavedSession::Absent,
             oauth: OAuthFlow::Fails,
         }
     }
@@ -127,7 +139,11 @@ fn from_env() -> Option<LoginDemo> {
             ..LoginDemo::default()
         },
         "restore" => LoginDemo {
-            keeps_session: true,
+            saved_session: SavedSession::Restorable,
+            ..LoginDemo::default()
+        },
+        "keyring-locked" => LoginDemo {
+            saved_session: SavedSession::BehindLockedKeyring,
             ..LoginDemo::default()
         },
         _ => LoginDemo::default(),
@@ -142,12 +158,20 @@ fn announce(demo: &LoginDemo) {
 }
 
 fn announce_start(demo: &LoginDemo) {
-    if demo.keeps_session {
-        tracing::info!(
-            "demo mode: restoring the saved session slowly so the loading step is visible"
-        );
-    } else {
-        tracing::info!("demo mode: starting logged out so the login steps are reachable");
+    match demo.saved_session {
+        SavedSession::Absent => {
+            tracing::info!("demo mode: starting logged out so the login steps are reachable");
+        }
+        SavedSession::Restorable => {
+            tracing::info!(
+                "demo mode: restoring the saved session slowly so the loading step is visible"
+            );
+        }
+        SavedSession::BehindLockedKeyring => {
+            tracing::info!(
+                "demo mode: the keyring refuses the saved session, then its store key, so the restore pauses twice"
+            );
+        }
     }
 }
 

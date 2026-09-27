@@ -52,6 +52,7 @@ pub(crate) use string_props;
 
 macro_rules! simple_callbacks {
     ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
+        on_retry_restore "retry-restore" retry_restore plain RestoreSession;
         on_check_server "check-server" check_server pass CheckServer;
         on_login_password "login-password" login_password
             request(username "username" text, password "password" text) LoginPassword;
@@ -238,6 +239,7 @@ pub(crate) use define_ui_enum;
 macro_rules! login_phases {
     ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
         Loading     Loading     "loading";
+        RestorePaused RestorePaused "restore-paused";
         Homeserver  Homeserver  "homeserver";
         Credentials Credentials "credentials";
         Reauthenticate Reauthenticate "reauthenticate";

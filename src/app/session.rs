@@ -81,6 +81,13 @@ fn restore_failure(err: &AppError) -> UserMessageKind {
     UserMessageKind::SessionRestoreFailed
 }
 
+fn keyring_unreadable(kind: UserMessageKind, cause: &AppError) -> UserMessage {
+    if let AppError::Keyring { source, .. } = cause {
+        return UserMessage::about(kind, source);
+    }
+    UserMessage::about(kind, cause)
+}
+
 fn restore_activity(step: RestoreStep) -> LoginActivity {
     match step {
         RestoreStep::Connecting => LoginActivity::Connecting,
@@ -157,6 +164,10 @@ impl SessionController {
     }
 
     pub(super) fn spawn_restore_session(&self, group: &mut TaskGroup) {
+        self.output.publish(Box::new(|view| {
+            view.lifecycle.step = LoginStep::Loading;
+            view.lifecycle.messages.clear();
+        }));
         let tasks = self.tasks.clone();
         group.spawn(async move { tasks.restore_session().await });
     }
@@ -381,6 +392,14 @@ impl SessionController {
         }));
     }
 
+    pub(super) fn show_restore_paused(&self, message: UserMessage) {
+        self.output.publish(Box::new(move |view| {
+            view.lifecycle.step = LoginStep::RestorePaused;
+            view.lifecycle.activity = LoginActivity::Idle;
+            view.lifecycle.messages = vec![message];
+        }));
+    }
+
     pub(super) fn fail_login(&self, messages: Vec<UserMessage>) {
         self.output.publish(Box::new(move |view| {
             view.lifecycle.activity = LoginActivity::Idle;
@@ -435,6 +454,11 @@ impl SessionTasks {
         None
     }
 
+    fn report_restore_paused<T>(&self, kind: UserMessageKind, cause: &AppError) -> Option<T> {
+        self.send(SessionEvent::RestorePaused(keyring_unreadable(kind, cause)));
+        None
+    }
+
     async fn load_saved_session(&self) -> Option<Session> {
         match self.storage.load_session().await {
             Ok(StoredSession::Present(session)) => {
@@ -448,7 +472,7 @@ impl SessionTasks {
                     return self.report_restore_failed(None);
                 };
                 tracing::warn!("{reason}, preserving local data: {e}");
-                self.report_restore_failed(Some(UserMessageKind::SessionUnreadable))
+                self.report_restore_paused(UserMessageKind::SessionUnreadable, &e)
             }
         }
     }
@@ -461,8 +485,8 @@ impl SessionTasks {
                 self.report_restore_failed(Some(UserMessageKind::StoreKeyMissing))
             }
             Err(e) => {
-                tracing::warn!("failed to read the store key: {e}");
-                self.report_restore_failed(Some(UserMessageKind::StoreKeyUnreadable))
+                tracing::warn!("failed to read the store key, preserving local data: {e}");
+                self.report_restore_paused(UserMessageKind::StoreKeyUnreadable, &e)
             }
         }
     }
@@ -638,7 +662,10 @@ impl SessionTasks {
             }
             Err(e) => {
                 tracing::warn!("failed to read the store key: {e}");
-                self.reject(attempt, UserMessageKind::StoreKeyUnreadable);
+                self.send(SessionEvent::AuthRejected {
+                    attempt,
+                    message: keyring_unreadable(UserMessageKind::StoreKeyUnreadable, &e),
+                });
                 None
             }
         }

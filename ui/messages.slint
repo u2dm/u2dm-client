@@ -38,7 +38,7 @@ export global UserMessages {
             return @tr("This homeserver's sign-in page is not a secure web address, so U2DM did not open it.");
         }
         if kind == UserMessageKind.session-unreadable {
-            return @tr("The saved session could not be read. Please log in again.");
+            return @tr("U2DM keeps your session in your credential store, which could not be read. Nothing was deleted. Unlock the credential store, then try again. ({})", detail);
         }
         if kind == UserMessageKind.session-restore-failed {
             return @tr("The saved session could not be restored. Please log in again.");
@@ -47,7 +47,7 @@ export global UserMessages {
             return @tr("The key to the local store is missing. Please log in again.");
         }
         if kind == UserMessageKind.store-key-unreadable {
-            return @tr("The key to the local store could not be read. Please log in again.");
+            return @tr("The key to this device's encrypted data could not be read from your credential store. Nothing was deleted. Unlock the credential store, then try again. ({})", detail);
         }
         if kind == UserMessageKind.identity-diverged {
             return @tr("This session's encryption keys no longer match the ones the server has for it. Please log in again to create a new session.");

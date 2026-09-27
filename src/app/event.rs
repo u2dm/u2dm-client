@@ -138,6 +138,7 @@ impl TimelineEvent {
 pub(super) enum SessionEvent {
     RestoreProgress(LoginActivity),
     RestoreFailed(Option<UserMessage>),
+    RestorePaused(UserMessage),
     Restored(Box<AuthenticatedSession>),
     ServerDiscovered {
         attempt: u64,
@@ -182,6 +183,7 @@ impl SessionEvent {
         match self {
             Self::RestoreProgress(_) => "RestoreProgress",
             Self::RestoreFailed(_) => "RestoreFailed",
+            Self::RestorePaused(_) => "RestorePaused",
             Self::Restored(_) => "Restored",
             Self::ServerDiscovered { .. } => "ServerDiscovered",
             Self::AuthActivity { .. } => "AuthActivity",

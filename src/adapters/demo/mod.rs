@@ -55,7 +55,7 @@ pub fn log_data_source() {
 }
 
 pub fn storage() -> Arc<dyn StoragePort> {
-    Arc::new(storage::DemoStorage)
+    Arc::new(storage::DemoStorage::from_env())
 }
 
 pub fn media_cache() -> Arc<dyn MediaCache> {

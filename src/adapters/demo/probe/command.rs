@@ -16,6 +16,7 @@ use crate::domain::sticker::PackId;
 #[derive(Deserialize)]
 #[serde(tag = "op", rename_all = "snake_case", deny_unknown_fields)]
 pub enum ProbeCommand {
+    RetryRestore,
     CheckServer {
         homeserver: String,
     },
@@ -255,6 +256,7 @@ fn poll_draft(
 #[allow(clippy::too_many_lines)]
 pub fn to_driven(command: ProbeCommand, selected: Selection<'_>) -> Result<Driven, Rejected> {
     Ok(Driven::Command(match command {
+        ProbeCommand::RetryRestore => UiCommand::RestoreSession,
         ProbeCommand::CheckServer { homeserver } => UiCommand::CheckServer(homeserver),
         ProbeCommand::LoginOauth => UiCommand::LoginOAuth,
         ProbeCommand::CancelOauth => UiCommand::CancelOAuth,

@@ -311,6 +311,7 @@ impl AppService {
         }
         match cmd {
             UiCommand::RestoreSession => {
+                self.lifecycle.begin_restore();
                 self.session.spawn_restore_session(&mut self.operations);
             }
             UiCommand::CheckServer(homeserver) => {
@@ -831,6 +832,7 @@ impl AppService {
         match event {
             SessionEvent::RestoreProgress(activity) => self.settle_restore_progress(activity),
             SessionEvent::RestoreFailed(message) => self.settle_restore_failure(message),
+            SessionEvent::RestorePaused(message) => self.settle_restore_pause(message),
             SessionEvent::Restored(capability) => self.settle_restore(*capability).await,
             SessionEvent::ServerDiscovered { attempt, info } => {
                 self.settle_discovery(attempt, *info);
@@ -881,6 +883,14 @@ impl AppService {
             self.session.show_login(message);
         } else {
             tracing::debug!("restore failure for a superseded restore, dropping");
+        }
+    }
+
+    fn settle_restore_pause(&mut self, message: UserMessage) {
+        if self.lifecycle.pause_restore() {
+            self.session.show_restore_paused(message);
+        } else {
+            tracing::debug!("restore pause for a superseded restore, dropping");
         }
     }
 

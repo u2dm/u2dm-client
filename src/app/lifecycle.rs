@@ -2,7 +2,9 @@ use crate::commands::ui::UiCommand;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub(super) enum AppPhase {
+    Starting,
     Restoring,
+    RestorePaused,
     Blocked,
     LoggedOut,
     Authenticating,
@@ -22,7 +24,7 @@ pub(super) struct Lifecycle {
 impl Lifecycle {
     pub(super) fn new() -> Self {
         Self {
-            phase: AppPhase::Restoring,
+            phase: AppPhase::Starting,
             attempt: 0,
             session: 0,
         }
@@ -42,6 +44,19 @@ impl Lifecycle {
 
     pub(super) fn is_restoring(&self) -> bool {
         self.phase == AppPhase::Restoring
+    }
+
+    pub(super) fn begin_restore(&mut self) {
+        self.phase = AppPhase::Restoring;
+    }
+
+    pub(super) fn pause_restore(&mut self) -> bool {
+        if self.phase == AppPhase::Restoring {
+            self.phase = AppPhase::RestorePaused;
+            true
+        } else {
+            false
+        }
     }
 
     pub(super) fn begin_auth(&mut self) -> u64 {
@@ -167,7 +182,7 @@ impl Lifecycle {
 pub(super) fn command_allowed(phase: AppPhase, cmd: &UiCommand) -> bool {
     match cmd {
         UiCommand::Quit => true,
-        UiCommand::RestoreSession => phase == AppPhase::Restoring,
+        UiCommand::RestoreSession => matches!(phase, AppPhase::Starting | AppPhase::RestorePaused),
         UiCommand::CheckServer(_)
         | UiCommand::LoginPassword(_)
         | UiCommand::LoginOAuth

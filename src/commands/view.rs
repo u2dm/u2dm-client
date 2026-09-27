@@ -202,6 +202,7 @@ pub struct LifecycleView {
 pub enum LoginStep {
     #[default]
     Loading,
+    RestorePaused,
     Homeserver,
     Credentials,
     Reauthenticate,
