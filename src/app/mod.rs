@@ -1174,9 +1174,9 @@ impl AppService {
     }
 
     async fn open_room(&mut self, room_id: RoomId, focus: TimelineFocus) {
-        self.attachments.clear();
         self.audio.abandon_lookup();
         self.selection.room = Some(room_id.clone());
+        self.attachments.follow(self.selection.room.as_ref());
         self.submissions.offer(self.selection.room.as_ref());
         let generation = self.selection.next_generation();
         let meta = self

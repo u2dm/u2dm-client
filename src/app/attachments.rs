@@ -212,6 +212,16 @@ impl Attachments {
         }
     }
 
+    pub(super) fn follow(&mut self, selected: Option<&RoomId>) {
+        if self
+            .draft
+            .as_ref()
+            .is_some_and(|draft| Some(&draft.room_id) != selected)
+        {
+            self.clear();
+        }
+    }
+
     pub(super) fn clear(&mut self) {
         let Some(draft) = self.draft.take() else {
             return;
