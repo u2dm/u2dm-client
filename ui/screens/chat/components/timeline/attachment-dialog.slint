@@ -168,9 +168,7 @@ export component AttachmentDialog inherits ModalHost {
     }
 
     function cancel() {
-        if (!AttachmentView.sending) {
-            Actions.cancel-attachment();
-        }
+        Actions.cancel-attachment();
     }
 
     function close-picker() {

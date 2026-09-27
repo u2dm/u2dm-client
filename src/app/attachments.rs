@@ -1,5 +1,7 @@
 use std::sync::Arc;
 
+use tokio_util::sync::CancellationToken;
+
 use super::event::{AppEvent, AttachmentPicked};
 use super::input::EventSender;
 use super::send_lanes::SendLanes;
@@ -10,21 +12,26 @@ use crate::commands::view::{AttachmentKind, AttachmentView, Toast};
 use crate::domain::media::{AttachmentPick, OutgoingAttachment, PickedAttachment};
 use crate::domain::room::RoomId;
 use crate::error::AppError;
-use crate::ports::matrix::TimelinePort;
+use crate::ports::matrix::{AttachmentHandoff, TimelinePort};
 use crate::ports::media::MediaFilePort;
 use crate::ports::output::AppOutputPort;
 use crate::util::format_bytes;
+
+struct InFlight {
+    submission: u64,
+    abandon: CancellationToken,
+}
 
 struct Draft {
     pick: u64,
     room_id: RoomId,
     attachment: PickedAttachment,
-    submission: Option<u64>,
+    send: Option<InFlight>,
 }
 
 impl Draft {
     fn is_sending(&self) -> bool {
-        self.submission.is_some()
+        self.send.is_some()
     }
 
     fn accepts_send(&self, room_id: &RoomId) -> bool {
@@ -32,11 +39,20 @@ impl Draft {
     }
 
     fn awaits(&self, submission: u64) -> bool {
-        self.submission == Some(submission)
+        self.send
+            .as_ref()
+            .is_some_and(|send| send.submission == submission)
     }
 
     fn into_unused_attachment(self) -> Option<PickedAttachment> {
         (!self.is_sending()).then_some(self.attachment)
+    }
+
+    fn into_abandoned_attachment(self) -> PickedAttachment {
+        if let Some(send) = self.send {
+            send.abandon.cancel();
+        }
+        self.attachment
     }
 }
 
@@ -112,7 +128,7 @@ impl Attachments {
                     pick: picked.pick,
                     room_id: picked.room_id,
                     attachment,
-                    submission: None,
+                    send: None,
                 };
                 self.publish(describe(&draft, UserMessage::default()));
                 self.draft = Some(draft);
@@ -139,7 +155,11 @@ impl Attachments {
         else {
             return;
         };
-        draft.submission = Some(submission);
+        let abandon = CancellationToken::new();
+        draft.send = Some(InFlight {
+            submission,
+            abandon: abandon.clone(),
+        });
         let attachment = OutgoingAttachment {
             picked: draft.attachment.clone(),
             caption: (!caption.is_empty()).then_some(caption),
@@ -151,9 +171,15 @@ impl Attachments {
 
         let events = self.events.clone();
         lanes.spawn(room_id.clone(), async move {
-            let outcome = timeline.send_attachment(&room_id, &attachment).await;
+            let outcome = timeline
+                .send_attachment(&room_id, &attachment, abandon)
+                .await;
             let failure = match outcome {
-                Ok(()) => None,
+                Ok(AttachmentHandoff::Queued) => None,
+                Ok(AttachmentHandoff::Abandoned) => {
+                    tracing::debug!("the attachment was abandoned before it reached the queue");
+                    return;
+                }
                 Err(e) => {
                     tracing::warn!("failed to queue the attachment: {e}");
                     Some(failure_message(&e))
@@ -176,7 +202,7 @@ impl Attachments {
             tracing::debug!("dropping the outcome of an abandoned attachment send");
             return;
         };
-        draft.submission = None;
+        draft.send = None;
         match failure {
             Some(failure) => {
                 let failed = describe(draft, failure);
@@ -193,6 +219,14 @@ impl Attachments {
         if let Some(attachment) = draft.into_unused_attachment() {
             self.release(attachment);
         }
+        self.publish(AttachmentView::default());
+    }
+
+    pub(super) fn cancel(&mut self) {
+        let Some(draft) = self.draft.take() else {
+            return;
+        };
+        self.release(draft.into_abandoned_attachment());
         self.publish(AttachmentView::default());
     }
 

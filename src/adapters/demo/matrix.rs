@@ -35,9 +35,10 @@ use crate::domain::timeline::{
 use crate::domain::verification::{VerificationCancellation, VerificationEvent};
 use crate::error::{AppError, Result};
 use crate::ports::matrix::{
-    AuthPort, AuthenticatedSession, CleanupReport, InterruptedLogin, LocalDataOwnership, MediaPort,
-    PinnedPort, ProgressSink, RestoreStep, SessionPort, SpaceIndexPort, SpaceOrderPort,
-    StickerCatalog, StickerPort, StoreAdoption, SyncPort, SyncSink, TimelinePort, VerificationPort,
+    AttachmentHandoff, AuthPort, AuthenticatedSession, CleanupReport, InterruptedLogin,
+    LocalDataOwnership, MediaPort, PinnedPort, ProgressSink, RestoreStep, SessionPort,
+    SpaceIndexPort, SpaceOrderPort, StickerCatalog, StickerPort, StoreAdoption, SyncPort, SyncSink,
+    TimelinePort, VerificationPort,
 };
 use crate::ports::media::MediaCache;
 
@@ -874,14 +875,19 @@ impl TimelinePort for DemoAuthed {
         &self,
         room_id: &RoomId,
         attachment: &OutgoingAttachment,
-    ) -> Result<()> {
+        abandon: CancellationToken,
+    ) -> Result<AttachmentHandoff> {
         if attachments::scenario().refuses_size {
             return Err(AppError::AttachmentTooLarge {
                 limit: attachments::upload_limit(),
             });
         }
         if attachments::scenario().send_fails {
-            attachments::pause_upload().await;
+            tokio::select! {
+                biased;
+                () = abandon.cancelled() => return Ok(AttachmentHandoff::Abandoned),
+                () = attachments::pause_upload() => {}
+            }
             return Err(unavailable("sending attachments"));
         }
 
@@ -896,7 +902,7 @@ impl TimelinePort for DemoAuthed {
             .append_own_attachment(room_id, attachment, opening)
             .await
         else {
-            return Ok(());
+            return Ok(AttachmentHandoff::Queued);
         };
         if let Some(event_id) = settled.event_id.as_deref()
             && !attachment.as_document
@@ -911,7 +917,7 @@ impl TimelinePort for DemoAuthed {
         if uploads_slowly && let Some(timeline_tx) = self.timeline_sender(room_id) {
             spawn_upload_progress(timeline_tx, index, settled, total);
         }
-        Ok(())
+        Ok(AttachmentHandoff::Queued)
     }
 }
 

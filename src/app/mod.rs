@@ -399,7 +399,7 @@ impl AppService {
                 self.send_attachment(room_id, caption, as_document, reply_to);
             }
             UiCommand::CancelAttachment => {
-                self.attachments.clear();
+                self.attachments.cancel();
             }
             UiCommand::SendSticker {
                 room_id,

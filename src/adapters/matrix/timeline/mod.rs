@@ -10,6 +10,7 @@ mod subscribe;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex as StdMutex};
+use std::time::Duration;
 
 use async_trait::async_trait;
 use matrix_sdk::attachment::AttachmentConfig;
@@ -21,10 +22,14 @@ use matrix_sdk::ruma::events::room::message::{
     AddMentions, RoomMessageEventContent, RoomMessageEventContentWithoutRelation,
     TextMessageEventContent,
 };
+use matrix_sdk::ruma::serde::Raw;
 use matrix_sdk::ruma::{IdParseError, OwnedEventId};
+use mime::Mime;
+use serde_json::{Map, Value};
 use tokio::fs;
 use tokio::sync::{Semaphore, mpsc};
 use tokio::task::spawn_blocking;
+use tokio::time::timeout;
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
 
@@ -40,9 +45,11 @@ use crate::domain::poll::PollDraft;
 use crate::domain::room::RoomId;
 use crate::domain::timeline::{TimelineCommand, TimelineFocus, TimelineUpdate};
 use crate::error::{AppError, Result};
-use crate::ports::matrix::TimelinePort;
+use crate::ports::matrix::{AttachmentHandoff, TimelinePort};
 
 const ENRICH_INFLIGHT: usize = 8;
+const PRE_QUEUE_LOOKUP_WAIT: Duration = Duration::from_secs(5);
+const RELATION_FIELD: &str = "m.relates_to";
 
 pub(super) struct TimelineContext<'a> {
     pub(super) client: &'a Client,
@@ -170,6 +177,13 @@ pub(super) struct MatrixTimeline {
     pronouns: Arc<PronounCache>,
 }
 
+struct QueueableAttachment {
+    filename: String,
+    content_type: Mime,
+    data: Vec<u8>,
+    config: AttachmentConfig,
+}
+
 async fn queued_send(room: &Room, local_id: &str) -> Result<SendHandle> {
     let txn = local_id
         .strip_prefix(convert::LOCAL_ID_PREFIX)
@@ -197,23 +211,157 @@ async fn queue(room: &Room, content: AnyMessageLikeEventContent) -> Result<()> {
         .map_err(|e| AppError::Other(e.to_string()))
 }
 
+fn reply_relation(in_reply_to: &str) -> Result<Reply> {
+    let event_id: OwnedEventId = in_reply_to
+        .try_into()
+        .map_err(|e: IdParseError| AppError::Other(e.to_string()))?;
+    Ok(Reply {
+        event_id,
+        enforce_thread: EnforceThread::MaybeThreaded,
+        add_mentions: AddMentions::Yes,
+    })
+}
+
+async fn reply_event(
+    room: &Room,
+    content: RoomMessageEventContentWithoutRelation,
+    in_reply_to: &str,
+) -> Result<RoomMessageEventContent> {
+    let reply = reply_relation(in_reply_to)?;
+    timeout(PRE_QUEUE_LOOKUP_WAIT, room.make_reply_event(content, reply))
+        .await
+        .map_err(|_| {
+            AppError::Other(format!(
+                "the replied-to event {in_reply_to} did not arrive in time"
+            ))
+        })?
+        .map_err(|e| AppError::Other(e.to_string()))
+}
+
+async fn with_resolved_reply(
+    room: &Room,
+    config: AttachmentConfig,
+    in_reply_to: &str,
+) -> Result<AttachmentConfig> {
+    let reply = reply_event(
+        room,
+        RoomMessageEventContentWithoutRelation::text_plain(""),
+        in_reply_to,
+    )
+    .await?;
+    let relation = Raw::new(&reply)?
+        .get_field::<Value>(RELATION_FIELD)?
+        .ok_or_else(|| AppError::Other(format!("the reply to {in_reply_to} has no relation")))?;
+    Ok(config
+        .mentions(reply.mentions)
+        .extra_content(Some(relation_content(relation))))
+}
+
+fn relation_content(relation: Value) -> Map<String, Value> {
+    [(RELATION_FIELD.to_owned(), relation)]
+        .into_iter()
+        .collect()
+}
+
+async fn upload_limit(client: &Client) -> Option<u64> {
+    let lookup = client.load_or_fetch_max_upload_size();
+    match timeout(PRE_QUEUE_LOOKUP_WAIT, lookup).await {
+        Ok(Ok(limit)) => Some(u64::from(limit)),
+        Ok(Err(e)) => {
+            tracing::warn!("sending without the server's upload limit, which failed to load: {e}");
+            None
+        }
+        Err(_) => {
+            tracing::warn!(
+                waited = ?PRE_QUEUE_LOOKUP_WAIT,
+                "sending without the server's upload limit, which did not arrive in time"
+            );
+            None
+        }
+    }
+}
+
+async fn queueable_attachment(
+    room: &Room,
+    attachment: &OutgoingAttachment,
+) -> Result<QueueableAttachment> {
+    let picked = &attachment.picked;
+    if let Some(limit) = upload_limit(&room.client()).await
+        && picked.size > limit
+    {
+        return Err(AppError::AttachmentTooLarge { limit });
+    }
+
+    let content_type = attachment::content_type(picked, attachment.as_document);
+    let mut config =
+        AttachmentConfig::new().info(attachment::attachment_info(picked, &content_type));
+    if let Some(caption) = attachment.caption.as_deref() {
+        config = config.caption(Some(TextMessageEventContent::plain(caption)));
+    }
+    if let Some(in_reply_to) = attachment.reply_to.as_deref() {
+        config = with_resolved_reply(room, config, in_reply_to).await?;
+    }
+
+    let data = fs::read(&picked.path).await?;
+    let thumbnail = match attachment::thumbnail_source(picked, &content_type) {
+        Some(source) => {
+            let bytes = if source == picked.path {
+                data.clone()
+            } else {
+                fs::read(&source).await?
+            };
+            spawn_blocking(move || attachment::make_thumbnail(&bytes))
+                .await
+                .ok()
+                .flatten()
+        }
+        None => None,
+    };
+
+    Ok(QueueableAttachment {
+        filename: picked.filename.clone(),
+        content_type,
+        data,
+        config: config.thumbnail(thumbnail),
+    })
+}
+
+async fn queue_attachment(
+    room: &Room,
+    attachment: &OutgoingAttachment,
+    abandon: &CancellationToken,
+) -> Result<AttachmentHandoff> {
+    let queueable = tokio::select! {
+        biased;
+        () = abandon.cancelled() => return Ok(AttachmentHandoff::Abandoned),
+        queueable = queueable_attachment(room, attachment) => queueable?,
+    };
+
+    tracing::info!(
+        room_id = %room.room_id(),
+        filename = queueable.filename,
+        content_type = %queueable.content_type,
+        size = attachment.picked.size,
+        "queueing an attachment"
+    );
+    room.send_queue()
+        .send_attachment(
+            queueable.filename,
+            queueable.content_type,
+            queueable.data,
+            queueable.config,
+        )
+        .await
+        .map_err(|e| AppError::Other(e.to_string()))?;
+    Ok(AttachmentHandoff::Queued)
+}
+
 impl MatrixTimeline {
     pub(super) fn new(matrix: Arc<ClientHandle>) -> Self {
         Self {
             matrix,
             pronouns: Arc::new(PronounCache::default()),
         }
-    }
-
-    fn reply_relation(in_reply_to: &str) -> Result<Reply> {
-        let event_id: OwnedEventId = in_reply_to
-            .try_into()
-            .map_err(|e: IdParseError| AppError::Other(e.to_string()))?;
-        Ok(Reply {
-            event_id,
-            enforce_thread: EnforceThread::MaybeThreaded,
-            add_mentions: AddMentions::Yes,
-        })
     }
 }
 
@@ -248,11 +396,7 @@ impl TimelinePort for MatrixTimeline {
     async fn send_reply(&self, room_id: &RoomId, body: &str, in_reply_to: &str) -> Result<()> {
         let room = self.matrix.room(room_id).await?;
         let content = RoomMessageEventContentWithoutRelation::text_plain(body);
-        let reply = Self::reply_relation(in_reply_to)?;
-        let content = room
-            .make_reply_event(content, reply)
-            .await
-            .map_err(|e| AppError::Other(e.to_string()))?;
+        let content = reply_event(&room, content, in_reply_to).await?;
         queue(&room, content.into()).await
     }
 
@@ -270,57 +414,10 @@ impl TimelinePort for MatrixTimeline {
         &self,
         room_id: &RoomId,
         attachment: &OutgoingAttachment,
-    ) -> Result<()> {
-        let client = self.matrix.client().await?;
+        abandon: CancellationToken,
+    ) -> Result<AttachmentHandoff> {
         let room = self.matrix.room(room_id).await?;
-        let picked = &attachment.picked;
-
-        if let Ok(limit) = client.load_or_fetch_max_upload_size().await {
-            let limit = u64::from(limit);
-            if picked.size > limit {
-                return Err(AppError::AttachmentTooLarge { limit });
-            }
-        }
-
-        let data = fs::read(&picked.path).await?;
-        let content_type = attachment::content_type(picked, attachment.as_document);
-        let thumbnail = match attachment::thumbnail_source(picked, &content_type) {
-            Some(source) => {
-                let bytes = if source == picked.path {
-                    data.clone()
-                } else {
-                    fs::read(&source).await?
-                };
-                spawn_blocking(move || attachment::make_thumbnail(&bytes))
-                    .await
-                    .ok()
-                    .flatten()
-            }
-            None => None,
-        };
-
-        let mut config = AttachmentConfig::new()
-            .info(attachment::attachment_info(picked, &content_type))
-            .thumbnail(thumbnail);
-        if let Some(caption) = attachment.caption.as_deref() {
-            config = config.caption(Some(TextMessageEventContent::plain(caption)));
-        }
-        if let Some(in_reply_to) = attachment.reply_to.as_deref() {
-            config = config.reply(Some(Self::reply_relation(in_reply_to)?));
-        }
-
-        tracing::info!(
-            %room_id,
-            filename = picked.filename,
-            %content_type,
-            size = picked.size,
-            "queueing an attachment"
-        );
-        room.send_queue()
-            .send_attachment(picked.filename.clone(), content_type, data, config)
-            .await
-            .map_err(|e| AppError::Other(e.to_string()))?;
-        Ok(())
+        queue_attachment(&room, attachment, &abandon).await
     }
 
     async fn resend(&self, room_id: &RoomId, local_id: &str) -> Result<()> {

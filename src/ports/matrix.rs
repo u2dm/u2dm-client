@@ -28,6 +28,12 @@ pub enum RestoreStep {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum AttachmentHandoff {
+    Queued,
+    Abandoned,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum LoginResolution {
     RollBack,
     RollForward,
@@ -200,7 +206,8 @@ pub trait TimelinePort: Send + Sync {
         &self,
         room_id: &RoomId,
         attachment: &OutgoingAttachment,
-    ) -> Result<()>;
+        abandon: CancellationToken,
+    ) -> Result<AttachmentHandoff>;
     async fn resend(&self, room_id: &RoomId, local_id: &str) -> Result<()>;
     async fn discard_send(&self, room_id: &RoomId, local_id: &str) -> Result<()>;
 }
