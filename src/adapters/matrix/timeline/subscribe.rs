@@ -50,13 +50,22 @@ struct EnrichmentJob {
 }
 
 impl EnrichmentJob {
-    fn of(item: &TimelineItem, msg: &TimelineMessage, pronouns: &PronounCache) -> Self {
+    fn of(item: &TimelineItem, msg: &TimelineMessage, ctx: &TimelineContext<'_>) -> Self {
+        let media = ctx.media;
         Self {
             unique_id: msg.unique_id.clone(),
-            thumbnail: ThumbnailRequest::of(msg, event_media(item)),
-            sender_avatar: msg.sender_avatar_url.clone(),
-            pronouns_of: needs_pronouns(msg, pronouns).then(|| msg.sender.clone()),
+            thumbnail: ThumbnailRequest::of(msg, event_media(item))
+                .filter(|request| media.needs_thumbnail_download(&request.content)),
+            sender_avatar: msg
+                .sender_avatar_url
+                .clone()
+                .filter(|mxc| media.needs_avatar_download(mxc)),
+            pronouns_of: needs_pronouns(msg, ctx.pronouns).then(|| msg.sender.clone()),
         }
+    }
+
+    fn has_work(&self) -> bool {
+        self.thumbnail.is_some() || self.sender_avatar.is_some() || self.pronouns_of.is_some()
     }
 
     async fn fetch_thumbnail(&self, client: &Client, media: &MediaService) -> ThumbnailOutcome {
@@ -88,13 +97,7 @@ impl EnrichmentJob {
     }
 }
 
-fn spawn_enrichment(
-    ctx: &TimelineContext<'_>,
-    item: &TimelineItem,
-    msg: &TimelineMessage,
-    claim: EnrichmentClaim,
-) {
-    let job = EnrichmentJob::of(item, msg, ctx.pronouns);
+fn spawn_enrichment(ctx: &TimelineContext<'_>, job: EnrichmentJob, claim: EnrichmentClaim) {
     let client = ctx.client.clone();
     let media = Arc::clone(ctx.media);
     let pronouns = Arc::clone(ctx.pronouns);
@@ -142,22 +145,17 @@ fn spawn_enrichment(
     });
 }
 
-fn has_enrichment_work(msg: &TimelineMessage, ctx: &TimelineContext<'_>) -> bool {
-    ctx.media.needs_media_download(msg) || needs_pronouns(msg, ctx.pronouns)
-}
-
 pub(super) fn enrich_message(
     item: &TimelineItem,
     msg: &TimelineMessage,
     ctx: &TimelineContext<'_>,
 ) {
-    let claim = ctx.enrich.claim(
-        &msg.unique_id,
-        msg.enrichment_fingerprint(),
-        has_enrichment_work(msg, ctx),
-    );
+    let job = EnrichmentJob::of(item, msg, ctx);
+    let claim = ctx
+        .enrich
+        .claim(&msg.unique_id, msg.enrichment_fingerprint(), job.has_work());
     if let Some(claim) = claim {
-        spawn_enrichment(ctx, item, msg, claim);
+        spawn_enrichment(ctx, job, claim);
     }
 }
 

@@ -26,7 +26,6 @@ use crate::domain::account::AccountScope;
 use crate::domain::media::{
     ContentKey, MediaFailure, MediaRendition, MediaResult, ThumbnailOutcome, Waveform,
 };
-use crate::domain::message::TimelineMessage;
 use crate::error::{AppError, Result};
 use crate::ports::matrix::CleanupReport;
 use crate::util::hex_encode_id;
@@ -447,11 +446,6 @@ impl MediaService {
             source,
         } = request;
         let cache_key = thumb_key(content);
-
-        if self.cache_get(&cache_key).is_some() {
-            return ThumbnailOutcome::Unchanged;
-        }
-
         let materialized = match self.session() {
             Some(session) => {
                 let cache_stem = session.media_dir.join(content.as_str());
@@ -474,11 +468,7 @@ impl MediaService {
     }
 
     pub(crate) async fn enrich_avatar(&self, client: &Client, mxc: &str) -> Option<String> {
-        let cache_key = mxc_avatar_key(mxc);
-        if self.cache_get(&cache_key).is_some() {
-            return None;
-        }
-        self.fetch_avatar_by_mxc(client, &cache_key, mxc.into())
+        self.fetch_avatar_by_mxc(client, &mxc_avatar_key(mxc), mxc.into())
             .await
             .map(|_| mxc.to_owned())
     }
@@ -586,16 +576,16 @@ impl MediaService {
             })
     }
 
-    pub(crate) fn needs_media_download(&self, msg: &TimelineMessage) -> bool {
-        let needs_thumbnail = msg.thumbnail_content().is_some_and(|content| {
-            let key = thumb_key(content);
-            self.cache_get(&key).is_none() && !self.is_failed(&key)
-        });
-        let needs_avatar = msg.sender_avatar_url.as_deref().is_some_and(|mxc| {
-            let key = mxc_avatar_key(mxc);
-            self.cache_get(&key).is_none() && !self.is_failed(&key)
-        });
-        needs_thumbnail || needs_avatar
+    pub(crate) fn needs_thumbnail_download(&self, content: &ContentKey) -> bool {
+        self.needs_download(&thumb_key(content))
+    }
+
+    pub(crate) fn needs_avatar_download(&self, mxc: &str) -> bool {
+        self.needs_download(&mxc_avatar_key(mxc))
+    }
+
+    fn needs_download(&self, cache_key: &str) -> bool {
+        self.cache_get(cache_key).is_none() && !self.is_failed(cache_key)
     }
 
     fn avatars_dir(&self) -> Option<PathBuf> {
