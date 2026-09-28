@@ -7,7 +7,7 @@ use matrix_sdk_ui::timeline::{EventTimelineItem, TimelineItem};
 use super::TimelineContext;
 use super::convert::convert_timeline_item;
 use crate::domain::message::{ReadScan, TimelineMessage};
-use crate::domain::timeline::JumpTarget;
+use crate::domain::timeline::{JumpTarget, Landing};
 
 pub(super) struct TimelineItems {
     items: Vec<Arc<TimelineItem>>,
@@ -62,6 +62,22 @@ impl TimelineItems {
             .iter()
             .filter(|message| message.is_some())
             .count()
+    }
+
+    pub(super) fn landing_at(&self, raw_index: usize) -> Landing {
+        let later = self
+            .items
+            .get(raw_index.saturating_add(1)..)
+            .unwrap_or_default();
+        let remote_event_later = later.iter().any(|item| {
+            item.as_event()
+                .is_some_and(EventTimelineItem::is_remote_event)
+        });
+        if remote_event_later {
+            Landing::AmongRemoteEvents
+        } else {
+            Landing::AfterRemoteEvents
+        }
     }
 
     pub(super) fn position_of_event(&self, event_id: &EventId) -> Option<usize> {

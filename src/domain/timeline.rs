@@ -14,6 +14,12 @@ pub enum FailedSend {
     Discard,
 }
 
+#[derive(Debug, Clone, Copy)]
+pub enum Landing {
+    AmongRemoteEvents,
+    AfterRemoteEvents,
+}
+
 #[derive(Debug, Clone, strum::IntoStaticStr)]
 pub enum TimelinePatch {
     Reset(Vec<TimelineMessage>),
@@ -23,6 +29,7 @@ pub enum TimelinePatch {
     Insert {
         index: usize,
         message: TimelineMessage,
+        landing: Landing,
     },
     Set {
         index: usize,

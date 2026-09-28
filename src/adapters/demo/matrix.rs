@@ -31,8 +31,8 @@ use crate::domain::space_index::HierarchyPage;
 use crate::domain::sticker::{PackId, StickerImage};
 use crate::domain::sync::{SyncEvent, SyncOutcome};
 use crate::domain::timeline::{
-    AudioLookup, AudioTrack, JumpTarget, PaginationDirection, PaginationOutcome, TimelineCommand,
-    TimelineFocus, TimelinePatch, TimelineUpdate, locate_audio,
+    AudioLookup, AudioTrack, JumpTarget, Landing, PaginationDirection, PaginationOutcome,
+    TimelineCommand, TimelineFocus, TimelinePatch, TimelineUpdate, locate_audio,
 };
 use crate::domain::verification::{VerificationCancellation, VerificationEvent};
 use crate::error::{AppError, Result};
@@ -934,7 +934,14 @@ impl TimelinePort for DemoAuthed {
             );
         }
 
-        spawn_scenario_tasks(scenario, &focus, &timeline_tx, &messages, reset_messages);
+        spawn_scenario_tasks(
+            &self.active,
+            scenario,
+            &focus,
+            &timeline_tx,
+            &messages,
+            reset_messages,
+        );
         spawn_poll_activity(&self.active, &timeline_tx);
         self.spawn_poll_revocation();
 
@@ -1384,6 +1391,7 @@ fn spawn_row_churn(timeline_tx: mpsc::Sender<TimelineUpdate>, messages: Vec<Time
 }
 
 fn spawn_scenario_tasks(
+    active: &SharedActiveRoom,
     scenario: timeline::Scenario,
     focus: &TimelineFocus,
     timeline_tx: &mpsc::Sender<TimelineUpdate>,
@@ -1397,7 +1405,7 @@ fn spawn_scenario_tasks(
         spawn_row_churn(timeline_tx.clone(), messages.to_vec());
     }
     if scenario.message_arrives_late {
-        spawn_late_append(timeline_tx.clone());
+        spawn_late_append(Arc::clone(active), timeline_tx.clone());
     }
     if reactions::scenario().reactions_arrive_late {
         spawn_late_sets(
@@ -1600,7 +1608,7 @@ fn spawn_poll_refusal(
     });
 }
 
-fn spawn_late_append(timeline_tx: mpsc::Sender<TimelineUpdate>) {
+fn spawn_late_append(active: SharedActiveRoom, timeline_tx: mpsc::Sender<TimelineUpdate>) {
     tokio::spawn(async move {
         sleep(timeline::LATE_MESSAGE_DELAY).await;
         let mut message = data::own_message(
@@ -1612,8 +1620,37 @@ fn spawn_late_append(timeline_tx: mpsc::Sender<TimelineUpdate>) {
         message.is_own = false;
         "@sarah:matrix.org".clone_into(&mut message.sender);
         message.sender_display_name = Some("Sarah Chen".to_owned());
-        send_patch(&timeline_tx, TimelinePatch::PushBack(message)).await;
+        let above_pending = active.lock().ok().and_then(|mut guard| {
+            let room = guard
+                .as_mut()
+                .filter(|room| room.timeline_tx.same_channel(&timeline_tx))?;
+            land_above_pending_sends(room, &message)
+        });
+        let patch = above_pending.unwrap_or(TimelinePatch::PushBack(message));
+        send_patch(&timeline_tx, patch).await;
     });
+}
+
+fn land_above_pending_sends(
+    room: &mut ActiveRoom,
+    arrival: &TimelineMessage,
+) -> Option<TimelinePatch> {
+    let pending_sends = room
+        .messages
+        .iter()
+        .rev()
+        .take_while(|message| message.local_id.is_some())
+        .count();
+    if pending_sends == 0 {
+        return None;
+    }
+    let offset = room.messages.len().saturating_sub(pending_sends);
+    room.messages.insert(offset, arrival.clone());
+    Some(TimelinePatch::Insert {
+        index: room.prepended.saturating_add(offset),
+        message: arrival.clone(),
+        landing: Landing::AfterRemoteEvents,
+    })
 }
 
 fn older_history(round: u64, messages: &[TimelineMessage]) -> Vec<TimelineMessage> {

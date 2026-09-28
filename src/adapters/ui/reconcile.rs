@@ -225,7 +225,9 @@ fn apply_patch<T: Clone + 'static>(
         TimelinePatch::Append(messages) => splice_rows(model, before, &messages, index, convert),
         TimelinePatch::PushFront(m) => splice_rows(model, 0, &[m], index, convert),
         TimelinePatch::PushBack(m) => splice_rows(model, before, &[m], index, convert),
-        TimelinePatch::Insert { index: at, message } => {
+        TimelinePatch::Insert {
+            index: at, message, ..
+        } => {
             splice_rows(model, at.min(before), &[message], index, convert);
         }
         TimelinePatch::Set { index: at, message } => {
@@ -289,7 +291,10 @@ struct EdgeInsertions {
 impl EdgeInsertions {
     fn absorb(&mut self, patch: TimelinePatch) -> Option<TimelinePatch> {
         match patch {
-            TimelinePatch::PushFront(message) | TimelinePatch::Insert { index: 0, message } => {
+            TimelinePatch::PushFront(message)
+            | TimelinePatch::Insert {
+                index: 0, message, ..
+            } => {
                 self.newest_first_at_front.push(message);
             }
             TimelinePatch::PushBack(message) => self.at_back.push(message),

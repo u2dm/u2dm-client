@@ -43,7 +43,7 @@ pub const CATALOG: Scenarios = Scenarios {
         Flag {
             value: "append",
             effect: "somebody posts while the timeline is still settling",
-            note: "",
+            note: "lands above your sends still pending at the bottom, as the SDK inserts it; reopen a room holding a send-fails send to see that",
         },
         Flag {
             value: "prepend",

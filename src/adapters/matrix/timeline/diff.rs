@@ -9,7 +9,7 @@ use super::convert::convert_timeline_item;
 use super::filter::TimelineItems;
 use super::subscribe::{enrich_message, enrich_messages};
 use crate::domain::message::TimelineMessage;
-use crate::domain::timeline::TimelinePatch;
+use crate::domain::timeline::{Landing, TimelinePatch};
 
 fn apply_append(
     items: &mut TimelineItems,
@@ -38,7 +38,15 @@ fn apply_push_front(
 ) -> Option<TimelinePatch> {
     let msg = convert_and_enrich(&value, ctx);
     items.push_front(value, msg.clone());
-    msg.map(TimelinePatch::PushFront)
+    let message = msg?;
+    Some(match items.landing_at(0) {
+        Landing::AmongRemoteEvents => TimelinePatch::PushFront(message),
+        landing @ Landing::AfterRemoteEvents => TimelinePatch::Insert {
+            index: 0,
+            message,
+            landing,
+        },
+    })
 }
 
 fn apply_push_back(
@@ -72,6 +80,7 @@ fn apply_insert(
     Some(TimelinePatch::Insert {
         index: mi,
         message: msg,
+        landing: items.landing_at(index),
     })
 }
 
@@ -113,6 +122,7 @@ fn apply_set(
             Some(TimelinePatch::Insert {
                 index: items.msg_index_at(index),
                 message: new.clone(),
+                landing: items.landing_at(index),
             })
         }
         (None, None) => None,

@@ -13,8 +13,8 @@ use crate::domain::message::TimelineMessage;
 use crate::domain::poll::{PollAction, PollDraft};
 use crate::domain::room::RoomId;
 use crate::domain::timeline::{
-    AudioLookup, FailedSend, JumpTarget, PaginationDirection, PaginationOutcome, TimelineAdvance,
-    TimelineCommand, TimelineFocus, TimelinePatch, TimelineStatus, TimelineUpdate,
+    AudioLookup, FailedSend, JumpTarget, Landing, PaginationDirection, PaginationOutcome,
+    TimelineAdvance, TimelineCommand, TimelineFocus, TimelinePatch, TimelineStatus, TimelineUpdate,
 };
 use crate::domain::viewport::ViewportController;
 use crate::ports::matrix::TimelinePort;
@@ -736,7 +736,12 @@ fn count_appended(patch: &TimelinePatch) -> Appended {
             .iter()
             .map(Appended::of)
             .fold(Appended::default(), Appended::merge),
-        TimelinePatch::PushBack(message) => Appended::of(message),
+        TimelinePatch::PushBack(message)
+        | TimelinePatch::Insert {
+            message,
+            landing: Landing::AfterRemoteEvents,
+            ..
+        } => Appended::of(message),
         TimelinePatch::Batch(patches) => patches
             .iter()
             .map(count_appended)
