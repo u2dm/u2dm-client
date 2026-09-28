@@ -190,20 +190,30 @@ component PollAnswerRow inherits Rectangle {
 
 component PollFooterButton inherits ClickArea {
     in property <string> text;
+    in property <string> flipped-text;
+    in property <bool> flipped;
     in property <bool> destructive;
     in property <bool> is-own;
 
-    width: caption.preferred-width + 2 * Space.md;
+    width: max(caption.preferred-width, other-caption.preferred-width) + 2 * Space.md;
     height: Metrics.poll-footer;
     border-radius: self.height / 2;
     ring-radius: self.height / 2;
-    label: root.text;
+    label: caption.text;
     background: root.destructive
         ? AppStyle.poll-end-fill
         : (self.has-hover ? AppStyle.overlay-hover : transparent);
 
+    other-caption := Text {
+        visible: false;
+        accessible-role: none;
+        text: root.flipped ? root.text : root.flipped-text;
+        font-size: caption.font-size;
+        font-weight: caption.font-weight;
+    }
+
     caption := Text {
-        text: root.text;
+        text: root.flipped ? root.flipped-text : root.text;
         font-size: Fonts.caption;
         font-weight: Weight.semibold;
         color: root.destructive
@@ -411,20 +421,22 @@ export component PollMessage inherits Rectangle {
                 }
             }
 
-            if root.can-end: PollFooterButton {
-                text: root.confirming-end ? @tr("Keep it open") : @tr("End poll");
-                is-own: root.msg.is-own;
-                clicked => {
-                    root.toggle-end-confirmation();
-                }
-            }
-
             if root.confirming-end: PollFooterButton {
                 text: @tr("End poll");
                 destructive: true;
                 is-own: root.msg.is-own;
                 clicked => {
                     root.end-poll();
+                }
+            }
+
+            if root.can-end: PollFooterButton {
+                text: @tr("End poll");
+                flipped-text: @tr("Keep it open");
+                flipped: root.confirming-end;
+                is-own: root.msg.is-own;
+                clicked => {
+                    root.toggle-end-confirmation();
                 }
             }
         }
