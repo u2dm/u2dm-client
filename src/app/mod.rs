@@ -364,14 +364,10 @@ impl AppService {
                 self.space_index.close();
             }
             UiCommand::PageSpaceIndex => {
-                if let Some(port) = self.port(|a| &a.space_index) {
-                    self.space_index.page(port);
-                }
+                self.page_space_index();
             }
             UiCommand::RetrySpaceIndex => {
-                if let Some(port) = self.port(|a| &a.space_index) {
-                    self.space_index.retry(port);
-                }
+                self.retry_space_index();
             }
             UiCommand::JoinSpaceChild(room_id) => {
                 self.join_space_child(room_id);
@@ -383,7 +379,7 @@ impl AppService {
                 self.retry_timeline().await;
             }
             UiCommand::SendMessage { room_id, draft } => {
-                self.send_message(room_id, draft);
+                self.send_message(room_id, draft).await;
             }
             UiCommand::DismissUnsent { submission } => {
                 self.submissions
@@ -398,7 +394,8 @@ impl AppService {
                 as_document,
                 reply_to,
             } => {
-                self.send_attachment(room_id, caption, as_document, reply_to);
+                self.send_attachment(room_id, caption, as_document, reply_to)
+                    .await;
             }
             UiCommand::CancelAttachment => {
                 self.attachments.cancel();
@@ -409,10 +406,10 @@ impl AppService {
                 shortcode,
                 reply_to,
             } => {
-                self.send_sticker(room_id, pack, shortcode, reply_to);
+                self.send_sticker(room_id, pack, shortcode, reply_to).await;
             }
             UiCommand::SendPoll { room_id, draft } => {
-                self.send_poll(room_id, draft);
+                self.send_poll(room_id, draft).await;
             }
             UiCommand::PaginateBackwards {
                 room_id,
@@ -553,6 +550,12 @@ impl AppService {
         }
     }
 
+    async fn return_to_live_for_send(&mut self, room_id: RoomId) {
+        if !self.active_timeline.is_live() && self.active_timeline.is_active_room(&room_id) {
+            self.open_room(room_id, TimelineFocus::Latest).await;
+        }
+    }
+
     fn port<P: ?Sized>(
         &self,
         pick: impl FnOnce(&AuthenticatedSession) -> &Arc<P>,
@@ -688,6 +691,18 @@ impl AppService {
         if let Some(port) = self.port(|a| &a.space_index) {
             let target = self.listed_space();
             self.space_index.open(port, target);
+        }
+    }
+
+    fn page_space_index(&mut self) {
+        if let Some(port) = self.port(|a| &a.space_index) {
+            self.space_index.page(port);
+        }
+    }
+
+    fn retry_space_index(&mut self) {
+        if let Some(port) = self.port(|a| &a.space_index) {
+            self.space_index.retry(port);
         }
     }
 
@@ -987,12 +1002,13 @@ impl AppService {
         self.start_syncing().await;
     }
 
-    fn send_message(&mut self, room_id: RoomId, draft: MessageDraft) {
+    async fn send_message(&mut self, room_id: RoomId, draft: MessageDraft) {
         let Some(timeline) = self.port(|a| &a.timeline) else {
             return;
         };
         self.submissions
-            .send(&mut self.send_lanes, timeline, room_id, draft);
+            .send(&mut self.send_lanes, timeline, room_id.clone(), draft);
+        self.return_to_live_for_send(room_id).await;
     }
 
     fn resolve_failed_send(&mut self, local_id: String, action: FailedSend) {
@@ -1011,26 +1027,28 @@ impl AppService {
         );
     }
 
-    fn send_sticker(
+    async fn send_sticker(
         &mut self,
         room_id: RoomId,
         pack: PackId,
         shortcode: String,
         reply_to: Option<String>,
     ) {
-        if let Some(stickers) = self.port(|a| &a.stickers) {
-            self.stickers.send(
-                &mut self.send_lanes,
-                stickers,
-                room_id,
-                pack,
-                shortcode,
-                reply_to,
-            );
-        }
+        let Some(stickers) = self.port(|a| &a.stickers) else {
+            return;
+        };
+        self.stickers.send(
+            &mut self.send_lanes,
+            stickers,
+            room_id.clone(),
+            pack,
+            shortcode,
+            reply_to,
+        );
+        self.return_to_live_for_send(room_id).await;
     }
 
-    fn send_poll(&mut self, room_id: RoomId, draft: PollDraft) {
+    async fn send_poll(&mut self, room_id: RoomId, draft: PollDraft) {
         let Some(timeline) = self.port(|a| &a.timeline) else {
             return;
         };
@@ -1038,16 +1056,17 @@ impl AppService {
             &mut self.send_lanes,
             Arc::clone(&self.output),
             timeline,
-            room_id,
+            room_id.clone(),
             draft,
         );
+        self.return_to_live_for_send(room_id).await;
     }
 
     fn pick_attachment(&mut self, room_id: RoomId, pick: AttachmentPick) {
         self.attachments.pick(&mut self.operations, room_id, pick);
     }
 
-    fn send_attachment(
+    async fn send_attachment(
         &mut self,
         room_id: RoomId,
         caption: String,
@@ -1057,14 +1076,17 @@ impl AppService {
         let Some(timeline) = self.port(|a| &a.timeline) else {
             return;
         };
-        self.attachments.send(
+        let sent = self.attachments.send(
             &mut self.send_lanes,
             timeline,
-            room_id,
+            room_id.clone(),
             caption,
             as_document,
             reply_to,
         );
+        if sent {
+            self.return_to_live_for_send(room_id).await;
+        }
     }
 
     fn media_in_active_room(&self) -> Option<(Arc<dyn MediaPort>, RoomId)> {

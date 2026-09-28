@@ -145,7 +145,7 @@ impl Attachments {
         caption: String,
         as_document: bool,
         reply_to: Option<String>,
-    ) {
+    ) -> bool {
         self.submissions = self.submissions.saturating_add(1);
         let submission = self.submissions;
         let Some(draft) = self
@@ -153,7 +153,7 @@ impl Attachments {
             .as_mut()
             .filter(|draft| draft.accepts_send(&room_id))
         else {
-            return;
+            return false;
         };
         let abandon = CancellationToken::new();
         draft.send = Some(InFlight {
@@ -195,6 +195,7 @@ impl Attachments {
                 tracing::debug!("app event channel closed; dropping the attachment outcome");
             }
         });
+        true
     }
 
     pub(super) fn settle(&mut self, submission: u64, failure: Option<UserMessage>) {

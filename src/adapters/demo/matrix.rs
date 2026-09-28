@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::fs;
 use std::future::pending;
 use std::ops::Range;
@@ -218,6 +219,7 @@ fn authenticated(session: Session) -> AuthenticatedSession {
 
 struct ActiveRoom {
     room_id: RoomId,
+    live: bool,
     timeline_tx: mpsc::Sender<TimelineUpdate>,
     messages: Vec<TimelineMessage>,
     prepended: usize,
@@ -226,16 +228,103 @@ struct ActiveRoom {
 
 type SharedActiveRoom = Arc<Mutex<Option<ActiveRoom>>>;
 
+struct OpenedWindow {
+    all: Vec<TimelineMessage>,
+    newer: usize,
+    messages: Vec<TimelineMessage>,
+    reset_messages: Vec<TimelineMessage>,
+}
+
 #[derive(Default)]
 struct DemoAuthed {
     active: SharedActiveRoom,
     sent: AtomicU64,
+    own_sends: Mutex<HashMap<RoomId, Vec<TimelineMessage>>>,
     verification_tx: Mutex<Option<mpsc::UnboundedSender<VerificationEvent>>>,
     sync_sink: Mutex<Option<SyncSink>>,
     joined: Mutex<Vec<RoomId>>,
 }
 
 impl DemoAuthed {
+    fn room_history(&self, room_id: &RoomId) -> Vec<TimelineMessage> {
+        let mut history = data::messages(room_id);
+        if let Ok(own_sends) = self.own_sends.lock()
+            && let Some(sent) = own_sends.get(room_id)
+        {
+            history.extend(sent.iter().cloned());
+        }
+        history
+    }
+
+    fn keep_own_send(&self, room_id: &RoomId, message: &TimelineMessage) {
+        if let Ok(mut own_sends) = self.own_sends.lock() {
+            own_sends
+                .entry(room_id.clone())
+                .or_default()
+                .push(message.clone());
+        }
+    }
+
+    fn settle_own_send(&self, room_id: &RoomId, local_id: &str, resend: bool) {
+        let Ok(mut own_sends) = self.own_sends.lock() else {
+            return;
+        };
+        let Some(sent) = own_sends.get_mut(room_id) else {
+            return;
+        };
+        if resend {
+            if let Some(message) = sent
+                .iter_mut()
+                .find(|m| m.local_id.as_deref() == Some(local_id))
+            {
+                mark_sent(message);
+            }
+        } else {
+            sent.retain(|m| m.local_id.as_deref() != Some(local_id));
+        }
+    }
+
+    fn reply_in_room(&self, active: &ActiveRoom, event_id: &str) -> Option<ReplyInfo> {
+        reply_info(&active.messages, event_id)
+            .or_else(|| reply_info(&self.room_history(&active.room_id), event_id))
+    }
+
+    async fn open_window(
+        &self,
+        room_id: &RoomId,
+        focus: &TimelineFocus,
+        scenario: timeline::Scenario,
+        timeline_tx: &mpsc::Sender<TimelineUpdate>,
+    ) -> Result<Option<OpenedWindow>> {
+        let Ok(reset_slot) = timeline_tx.reserve().await else {
+            return Ok(None);
+        };
+        let Ok(mut active) = self.active.lock() else {
+            return Err(unavailable("the demo timeline"));
+        };
+        let all = self.room_history(room_id);
+        let window = opening_window(&all, focus, scenario)?;
+        let newer = window.end;
+        let messages = window_messages(&all, window, focus);
+        let reset_messages = reset_messages(&messages);
+        let reset = opening_patch(scenario, reset_messages.clone());
+        reset_slot.send(TimelineUpdate::Patch(Box::new(reset)));
+        *active = Some(ActiveRoom {
+            room_id: room_id.clone(),
+            live: focus.is_live(),
+            timeline_tx: timeline_tx.clone(),
+            messages: messages.clone(),
+            prepended: 0,
+            receipts: receipts::seed_receipts(&all),
+        });
+        Ok(Some(OpenedWindow {
+            all,
+            newer,
+            messages,
+            reset_messages,
+        }))
+    }
+
     async fn patch_queued_send(&self, room_id: &RoomId, local_id: &str, resend: bool) -> Result<()> {
         let prepared = {
             let Ok(mut guard) = self.active.lock() else {
@@ -256,9 +345,7 @@ impl DemoAuthed {
                 let Some(message) = active.messages.get_mut(index) else {
                     return Err(unavailable("the demo timeline"));
                 };
-                message.send_state = SendState::Sent;
-                message.event_id = Some(message.unique_id.clone());
-                message.local_id = None;
+                mark_sent(message);
                 TimelinePatch::Set {
                     index,
                     message: message.clone(),
@@ -267,6 +354,7 @@ impl DemoAuthed {
                 active.messages.remove(index);
                 TimelinePatch::Remove { index }
             };
+            self.settle_own_send(room_id, local_id, resend);
             (active.timeline_tx.clone(), patch)
         };
         let (timeline_tx, patch) = prepared;
@@ -286,13 +374,17 @@ impl DemoAuthed {
                 return;
             }
 
-            let reply = in_reply_to.and_then(|event_id| reply_info(&active.messages, event_id));
+            let reply = in_reply_to.and_then(|event_id| self.reply_in_room(active, event_id));
             let message = data::own_message(
                 self.sent.fetch_add(1, Ordering::Relaxed),
                 body,
                 reply,
                 outgoing_send_state(),
             );
+            self.keep_own_send(room_id, &message);
+            if !active.live {
+                return;
+            }
             active.messages.push(message.clone());
             (active.timeline_tx.clone(), message)
         };
@@ -322,6 +414,10 @@ impl DemoAuthed {
                 draft,
                 outgoing_send_state(),
             );
+            self.keep_own_send(room_id, &message);
+            if !active.live {
+                return;
+            }
             active.messages.push(message.clone());
             (active.timeline_tx.clone(), message)
         };
@@ -346,9 +442,13 @@ impl DemoAuthed {
                 return;
             }
 
-            let reply = in_reply_to.and_then(|event_id| reply_info(&active.messages, event_id));
+            let reply = in_reply_to.and_then(|event_id| self.reply_in_room(active, event_id));
             let message =
                 data::own_sticker(self.sent.fetch_add(1, Ordering::Relaxed), image, reply);
+            self.keep_own_send(room_id, &message);
+            if !active.live {
+                return;
+            }
             active.messages.push(message.clone());
             (active.timeline_tx.clone(), message)
         };
@@ -381,9 +481,14 @@ impl DemoAuthed {
             let reply = attachment
                 .reply_to
                 .as_deref()
-                .and_then(|event_id| reply_info(&active.messages, event_id));
+                .and_then(|event_id| self.reply_in_room(active, event_id));
             let settled =
                 data::own_attachment(self.sent.fetch_add(1, Ordering::Relaxed), attachment, reply);
+            remember_sent_media(&settled, attachment);
+            self.keep_own_send(room_id, &settled);
+            if !active.live {
+                return None;
+            }
             active.messages.push(settled.clone());
             let index = active.messages.len() - 1;
             (active.timeline_tx.clone(), index, settled)
@@ -767,6 +872,25 @@ fn outgoing_send_state() -> SendState {
     }
 }
 
+fn mark_sent(message: &mut TimelineMessage) {
+    message.send_state = SendState::Sent;
+    message.event_id = Some(message.unique_id.clone());
+    message.local_id = None;
+}
+
+fn remember_sent_media(settled: &TimelineMessage, attachment: &OutgoingAttachment) {
+    if let Some(event_id) = settled.event_id.as_deref()
+        && !attachment.as_document
+    {
+        if let Some(preview) = attachment.picked.preview_path() {
+            attachments::remember_preview(event_id, preview);
+        }
+        if attachment.picked.is_audio() {
+            attachments::remember_sent_audio(event_id, &attachment.picked.path);
+        }
+    }
+}
+
 #[async_trait]
 impl TimelinePort for DemoAuthed {
     async fn subscribe_timeline(
@@ -777,12 +901,6 @@ impl TimelinePort for DemoAuthed {
         mut cmd_rx: mpsc::UnboundedReceiver<TimelineCommand>,
     ) -> Result<()> {
         let scenario = timeline::scenario();
-        let all = data::messages(room_id);
-        let seeded_receipts = receipts::seed_receipts(&all);
-        let window = opening_window(&all, &focus, scenario)?;
-        let mut newer = window.end;
-        let messages = window_messages(&all, window, &focus);
-
         if scenario.resolving_unread && focus.opens_at_read_position() {
             drop(timeline_tx.send(TimelineUpdate::ResolvingUnread).await);
         }
@@ -792,22 +910,17 @@ impl TimelinePort for DemoAuthed {
         if scenario.reset_is_slow {
             sleep(timeline::SLOW_RESET_DELAY).await;
         }
-        let reset_messages = reset_messages(&messages);
-        send_patch(
-            &timeline_tx,
-            opening_patch(scenario, reset_messages.clone()),
-        )
-        .await;
-
-        if let Ok(mut active) = self.active.lock() {
-            *active = Some(ActiveRoom {
-                room_id: room_id.clone(),
-                timeline_tx: timeline_tx.clone(),
-                messages: messages.clone(),
-                prepended: 0,
-                receipts: seeded_receipts,
-            });
-        }
+        let Some(OpenedWindow {
+            all,
+            mut newer,
+            messages,
+            reset_messages,
+        }) = self
+            .open_window(room_id, &focus, scenario, &timeline_tx)
+            .await?
+        else {
+            return Ok(());
+        };
 
         if let Some(target) = focus.target() {
             let target_row = self.loaded_row_of(target);
@@ -928,16 +1041,6 @@ impl TimelinePort for DemoAuthed {
         else {
             return Ok(AttachmentHandoff::Queued);
         };
-        if let Some(event_id) = settled.event_id.as_deref()
-            && !attachment.as_document
-        {
-            if let Some(preview) = attachment.picked.preview_path() {
-                attachments::remember_preview(event_id, preview);
-            }
-            if attachment.picked.is_audio() {
-                attachments::remember_sent_audio(event_id, &attachment.picked.path);
-            }
-        }
         if uploads_slowly && let Some(timeline_tx) = self.timeline_sender(room_id) {
             spawn_upload_progress(timeline_tx, index, settled, total);
         }
