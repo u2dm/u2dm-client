@@ -10,7 +10,7 @@ import { TimelineState } from "../../../../enums.slint";
 import { ClickArea } from "../../../../components/a11y.slint";
 import { AudioView, DirectoryView, RoomView } from "../../../../views.slint";
 import { Actions } from "../../../../actions.slint";
-import { Composer, DeliveryTip, Polls, Reactions, ReplySwipe, Shell } from "../../../../local.slint";
+import { Composer, DeliveryTip, Polls, Reactions, ReplySwipe, Shell, TextSelection } from "../../../../local.slint";
 import { StatusPill } from "./status-pill.slint";
 import { NowPlayingBar } from "./now-playing-bar.slint";
 import { PinnedBar } from "./pinned-bar.slint";
@@ -65,6 +65,7 @@ export component TimelineView inherits Rectangle {
     changed room-id => {
         root.input-message = "";
         Composer.clear();
+        TextSelection.clear();
         Reactions.close();
         ReplySwipe.clear();
         DeliveryTip.clear();

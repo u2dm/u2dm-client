@@ -42,10 +42,32 @@ export global Composer {
 }
 
 export global TextSelection {
-    in-out property <string> active-id;
+    property <string> active-id;
+    property <int> timeline-token;
+    property <bool> taken;
+
+    public pure function holds(id: string) -> bool {
+        return id != ""
+            && id == self.active-id
+            && self.timeline-token == RoomView.timeline-token;
+    }
 
     public function select(id: string) {
+        if (self.holds(id)) {
+            return;
+        }
         self.active-id = id;
+        self.timeline-token = RoomView.timeline-token;
+        self.taken = false;
+    }
+
+    public function take() -> bool {
+        if (self.taken) {
+            self.clear();
+            return false;
+        }
+        self.taken = true;
+        return true;
     }
 
     public function clear() {

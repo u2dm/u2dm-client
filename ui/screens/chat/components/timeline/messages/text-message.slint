@@ -8,7 +8,7 @@ import { AppStyle, Fonts } from "../../../../../theme.slint";
 export component TextMessage inherits Rectangle {
     in property <MessageEntry> msg;
 
-    property <bool> selecting: TextSelection.active-id == root.msg.unique-id && root.msg.unique-id != "";
+    property <bool> selecting: TextSelection.holds(root.msg.unique-id);
 
     preferred-width: content.preferred-width;
     height: content.preferred-height;
@@ -43,8 +43,10 @@ export component TextMessage inherits Rectangle {
             selection-foreground-color: Palette.selection-foreground;
 
             init => {
-                self.focus();
-                self.select-all();
+                if (TextSelection.take()) {
+                    self.focus();
+                    self.select-all();
+                }
             }
             changed has-focus => {
                 if (!self.has-focus) {
