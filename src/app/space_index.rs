@@ -88,6 +88,7 @@ pub(super) struct SpaceIndex {
     tasks: TaskGroup,
     joins: TaskGroup,
     generation: u64,
+    pages_landed: i32,
     open: Option<OpenIndex>,
     pending: HashMap<RoomId, JoinStage>,
 }
@@ -100,6 +101,7 @@ impl SpaceIndex {
             tasks: TaskGroup::new("space-index"),
             joins: TaskGroup::new("space-joins"),
             generation: 0,
+            pages_landed: 0,
             open: None,
             pending: HashMap::new(),
         }
@@ -234,6 +236,7 @@ impl SpaceIndex {
                 );
                 open.children.extend(fresh);
                 open.fetch = Fetch::Idle { next };
+                self.pages_landed = self.pages_landed.wrapping_add(1);
                 self.rederive(membership);
                 self.publish();
                 self.spawn_avatars(port, generation, avatars);
@@ -480,6 +483,7 @@ impl SpaceIndex {
                 space_name: open.space.name.clone(),
                 rows: Arc::clone(&open.rows),
                 avatars_ready: open.avatars_ready,
+                pages_landed: self.pages_landed,
             });
         self.output
             .publish(Box::new(move |state| state.space_index = view));

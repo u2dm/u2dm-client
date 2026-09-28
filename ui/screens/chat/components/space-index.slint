@@ -227,8 +227,11 @@ export component SpaceIndexPane inherits Rectangle {
     property <bool> has-rows: SpaceIndexView.rows.length > 0;
     property <bool> shows-footer: root.status == SpaceIndexStatus.loading-more
         || root.status == SpaceIndexStatus.more-failed;
+    property <length> rows-height: SpaceIndexView.rows.length * Metrics.index-row;
+    property <int> asked-after: -1;
     property <bool> wants-page: root.status == SpaceIndexStatus.partial
-        && rows-view.content-height + rows-view.content-y - rows-view.visible-height <= Metrics.index-page-ahead;
+        && root.asked-after != SpaceIndexView.pages-landed
+        && root.rows-height + rows-view.content-y - rows-view.visible-height <= Metrics.index-page-ahead;
 
     pure function title(name: string) -> string {
         if name == "" {
@@ -239,6 +242,7 @@ export component SpaceIndexPane inherits Rectangle {
 
     function page-if-wanted() {
         if root.wants-page {
+            root.asked-after = SpaceIndexView.pages-landed;
             Actions.page-space-index();
         }
     }

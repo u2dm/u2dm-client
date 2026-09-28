@@ -52,6 +52,7 @@ export global SpaceIndexView {
     out property <bool> visible: self.status != SpaceIndexStatus.closed;
     in property <string> space-name;
     in property <[SpaceChildEntry]> rows;
+    in property <int> pages-landed;
 }
 
 export global RoomView {

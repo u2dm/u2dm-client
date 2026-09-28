@@ -423,17 +423,26 @@ fn apply_space_index<B: UiBackend>(
     space_index: &SpaceIndexView,
     ctx: &UiEventContext<'_, B>,
 ) {
-    if last.is_none_or(|l| l.status != space_index.status) {
-        w.set_space_index_status(space_index.status);
+    let SpaceIndexView {
+        status,
+        space_name,
+        rows,
+        avatars_ready,
+        pages_landed,
+    } = space_index;
+
+    if last.is_none_or(|l| l.status != *status) {
+        w.set_space_index_status(*status);
     }
-    if last.is_none_or(|l| l.space_name != space_index.space_name) {
-        w.set_string(
-            StringProp::SpaceIndexName,
-            SharedString::from(&space_index.space_name),
-        );
+    if last.is_none_or(|l| l.space_name != *space_name) {
+        w.set_string(StringProp::SpaceIndexName, SharedString::from(space_name));
     }
-    let rows_changed = last.is_none_or(|l| !Arc::ptr_eq(&l.rows, &space_index.rows));
-    let avatars_landed = last.is_some_and(|l| l.avatars_ready != space_index.avatars_ready);
+    if last.is_none_or(|l| l.pages_landed != *pages_landed) {
+        w.set_int(IntProp::SpaceIndexPagesLanded, *pages_landed);
+        run_change_handlers_next_frame(w);
+    }
+    let rows_changed = last.is_none_or(|l| !Arc::ptr_eq(&l.rows, rows));
+    let avatars_landed = last.is_some_and(|l| l.avatars_ready != *avatars_ready);
     if !rows_changed && !avatars_landed {
         return;
     }
@@ -442,12 +451,16 @@ fn apply_space_index<B: UiBackend>(
         .map_or(&[] as &[_], |l| l.rows.as_ref());
     apply_space_children(
         &ctx.models.space_children,
-        space_index.rows.as_ref(),
+        rows.as_ref(),
         previous,
         ctx.media,
         &|row| B::convert_space_child(row, ctx.media),
         &|entry| entry.id(),
     );
+}
+
+fn run_change_handlers_next_frame(w: &impl ComponentHandle) {
+    w.window().request_redraw();
 }
 
 fn apply_stickers<B: UiBackend>(

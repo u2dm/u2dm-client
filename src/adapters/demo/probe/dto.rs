@@ -120,6 +120,7 @@ struct SpaceIndexDto {
     status: &'static str,
     space_name: String,
     avatars_ready: usize,
+    pages_landed: i32,
     rows: Vec<SpaceChildDto>,
 }
 
@@ -335,6 +336,7 @@ fn space_index(source: &SpaceIndexView) -> SpaceIndexDto {
         status: names::space_index_status(source.status),
         space_name: source.space_name.clone(),
         avatars_ready: source.avatars_ready,
+        pages_landed: source.pages_landed,
         rows: source.rows.iter().map(space_child).collect(),
     }
 }

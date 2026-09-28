@@ -296,6 +296,7 @@ pub struct SpaceIndexView {
     pub space_name: String,
     pub rows: Arc<[SpaceIndexRow]>,
     pub avatars_ready: usize,
+    pub pages_landed: i32,
 }
 
 impl Default for SpaceIndexView {
@@ -305,6 +306,7 @@ impl Default for SpaceIndexView {
             space_name: String::new(),
             rows: Arc::from(Vec::new()),
             avatars_ready: 0,
+            pages_landed: 0,
         }
     }
 }
