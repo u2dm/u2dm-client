@@ -221,6 +221,7 @@ pub enum LoginActivity {
     LoggingIn,
     OpeningBrowser,
     WaitingAuth,
+    Cancelling,
     Syncing,
     CleaningUp,
 }

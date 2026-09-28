@@ -31,7 +31,7 @@ use audio::AudioController;
 use establish::{EstablishedSession, Rollback};
 use event::{AppEvent, EndReason, SessionEvent, TimelineEvent};
 use input::{CommandSender, EventSender, Inbox, Input};
-use lifecycle::Lifecycle;
+use lifecycle::{Lifecycle, Settled};
 use media::MediaActions;
 use pinned::PinnedMessages;
 use recover::Recovery;
@@ -920,33 +920,37 @@ impl AppService {
     }
 
     fn settle_discovery(&mut self, attempt: u64, info: ServerInfo) {
-        if self.lifecycle.settle_auth(attempt) {
-            self.session.show_credentials(info);
-        } else {
-            tracing::debug!("server info for a superseded attempt, dropping");
+        match self.lifecycle.settle_auth(attempt) {
+            Some(Settled::Awaited) => self.session.show_credentials(info),
+            Some(Settled::Cancelled) => self.session.set_activity(LoginActivity::Idle),
+            None => tracing::debug!("server info for a superseded attempt, dropping"),
         }
     }
 
     fn settle_auth_activity(&self, attempt: u64, activity: LoginActivity) {
-        if self.lifecycle.is_current_attempt(attempt) {
+        if self.lifecycle.awaits(attempt) {
             self.session.set_activity(activity);
         } else {
-            tracing::debug!("activity update for a superseded attempt, dropping");
+            tracing::debug!("activity update for a cancelled or superseded attempt, dropping");
         }
     }
 
     fn settle_auth_rejection(&mut self, attempt: u64, message: UserMessage) {
         self.session.finish_oauth();
-        if self.lifecycle.settle_auth(attempt) {
-            self.session.fail_login(vec![message]);
-        } else {
-            tracing::debug!("auth failure for a superseded attempt, dropping");
+        match self.lifecycle.settle_auth(attempt) {
+            Some(Settled::Awaited) => self.session.fail_login(vec![message]),
+            Some(Settled::Cancelled) => self.session.set_activity(LoginActivity::Idle),
+            None => tracing::debug!("auth failure for a superseded attempt, dropping"),
         }
     }
 
     fn settle_auth_cancel(&mut self, attempt: u64) {
         self.session.finish_oauth();
-        if self.lifecycle.is_current_attempt(attempt) {
+        self.return_to_idle(attempt);
+    }
+
+    fn return_to_idle(&mut self, attempt: u64) {
+        if self.lifecycle.settle_auth(attempt).is_some() {
             self.session.set_activity(LoginActivity::Idle);
         }
     }
@@ -976,8 +980,8 @@ impl AppService {
         if self.lifecycle.promote_to_syncing(attempt).is_none() {
             if let Some(message) = undo_superseded_login(established).await {
                 self.block_sign_in(message);
-            } else if self.lifecycle.is_logged_out() {
-                self.session.set_activity(LoginActivity::Idle);
+            } else {
+                self.return_to_idle(attempt);
             }
             return;
         }
@@ -989,6 +993,7 @@ impl AppService {
         if self.lifecycle.resume_syncing(attempt).is_none() {
             tracing::info!("re-authentication superseded, releasing the session it produced");
             capability.lifecycle.suspend().await;
+            self.return_to_idle(attempt);
             return;
         }
         self.activate(capability).await;

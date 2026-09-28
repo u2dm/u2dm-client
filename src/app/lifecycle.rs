@@ -8,11 +8,18 @@ pub(super) enum AppPhase {
     Blocked,
     LoggedOut,
     Authenticating,
+    CancellingAuth,
     Syncing,
     SoftLoggedOut,
     Reauthenticating,
+    CancellingReauth,
     LoggingOut,
     CleaningUp,
+}
+
+pub(super) enum Settled {
+    Awaited,
+    Cancelled,
 }
 
 pub(super) struct Lifecycle {
@@ -36,10 +43,6 @@ impl Lifecycle {
 
     pub(super) fn block(&mut self) {
         self.phase = AppPhase::Blocked;
-    }
-
-    pub(super) fn is_logged_out(&self) -> bool {
-        self.phase == AppPhase::LoggedOut
     }
 
     pub(super) fn is_restoring(&self) -> bool {
@@ -74,32 +77,35 @@ impl Lifecycle {
         Some(self.attempt)
     }
 
-    fn idle_after_auth(phase: AppPhase) -> Option<AppPhase> {
+    fn idle_after_auth(phase: AppPhase) -> Option<(AppPhase, Settled)> {
         match phase {
-            AppPhase::Authenticating => Some(AppPhase::LoggedOut),
-            AppPhase::Reauthenticating => Some(AppPhase::SoftLoggedOut),
+            AppPhase::Authenticating => Some((AppPhase::LoggedOut, Settled::Awaited)),
+            AppPhase::CancellingAuth => Some((AppPhase::LoggedOut, Settled::Cancelled)),
+            AppPhase::Reauthenticating => Some((AppPhase::SoftLoggedOut, Settled::Awaited)),
+            AppPhase::CancellingReauth => Some((AppPhase::SoftLoggedOut, Settled::Cancelled)),
             _ => None,
         }
     }
 
-    pub(super) fn settle_auth(&mut self, attempt: u64) -> bool {
-        let Some(idle) = Self::idle_after_auth(self.phase).filter(|_| self.attempt == attempt)
-        else {
-            return false;
-        };
+    pub(super) fn settle_auth(&mut self, attempt: u64) -> Option<Settled> {
+        let (idle, settled) =
+            Self::idle_after_auth(self.phase).filter(|_| self.attempt == attempt)?;
         self.phase = idle;
-        true
+        Some(settled)
     }
 
-    pub(super) fn is_current_attempt(&self, attempt: u64) -> bool {
+    pub(super) fn awaits(&self, attempt: u64) -> bool {
         self.attempt == attempt
+            && matches!(self.phase, AppPhase::Authenticating | AppPhase::Reauthenticating)
     }
 
     pub(super) fn cancel_auth(&mut self) -> bool {
-        let Some(idle) = Self::idle_after_auth(self.phase) else {
-            return false;
+        let cancelling = match self.phase {
+            AppPhase::Authenticating => AppPhase::CancellingAuth,
+            AppPhase::Reauthenticating => AppPhase::CancellingReauth,
+            _ => return false,
         };
-        self.phase = idle;
+        self.phase = cancelling;
         true
     }
 

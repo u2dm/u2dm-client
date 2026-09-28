@@ -181,6 +181,9 @@ export component StatusRow inherits HorizontalLayout {
         if root.activity == LoginActivity.waiting-auth {
             return { label: @tr("Waiting for authentication..."), icon: IconSet.Hourglass };
         }
+        if root.activity == LoginActivity.cancelling {
+            return { label: @tr("Cancelling..."), icon: IconSet.CircleX };
+        }
         if root.activity == LoginActivity.cleaning-up {
             return { label: @tr("Erasing local account data..."), icon: IconSet.Trash2 };
         }

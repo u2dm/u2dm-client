@@ -241,6 +241,7 @@ impl SessionController {
     }
 
     pub(super) fn cancel_oauth(&mut self) {
+        self.set_activity(LoginActivity::Cancelling);
         if let Some(token) = self.oauth_cancel.take() {
             tracing::info!("cancelling OAuth login");
             token.cancel();

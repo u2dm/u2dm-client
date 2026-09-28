@@ -260,6 +260,7 @@ macro_rules! login_activities {
         LoggingIn      LoggingIn      "logging-in";
         OpeningBrowser OpeningBrowser "opening-browser";
         WaitingAuth    WaitingAuth    "waiting-auth";
+        Cancelling     Cancelling     "cancelling";
         Syncing        Syncing        "syncing";
         CleaningUp     CleaningUp     "cleaning-up";
     } };
