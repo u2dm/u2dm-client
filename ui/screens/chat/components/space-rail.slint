@@ -10,6 +10,12 @@ import { Actions } from "../../../actions.slint";
 import { Shell } from "../../../local.slint";
 import { AppStyle, Glyph, IconSize, Metrics, Motion, Radius, Size, Space, Stroke } from "../../../theme.slint";
 
+enum SpaceDrag {
+    idle,
+    held,
+    moved,
+}
+
 component SpaceTile inherits ListItemArea {
     in property <string> initial;
     in property <bool> has-avatar;
@@ -82,10 +88,10 @@ export component SpaceRail inherits Rectangle {
     property <length> row-height: Metrics.rail-row;
     property <int> fixed-tiles: 2;
     property <length> drag-threshold: Space.md;
-    property <bool> dragging: false;
+    property <SpaceDrag> drag: SpaceDrag.idle;
+    property <bool> dragging: root.drag != SpaceDrag.idle;
     property <int> drag-from: -1;
     property <length> drag-dy: 0;
-    property <bool> did-drag: false;
     property <int> drag-to: clamp(
         root.drag-from + round(root.drag-dy / root.row-height),
         0,
@@ -104,28 +110,25 @@ export component SpaceRail inherits Rectangle {
     function begin-drag(idx: int, entry: SpaceEntry, selected: bool) {
         root.drag-from = idx;
         root.drag-dy = 0;
-        root.did-drag = false;
         root.drag-entry = entry;
         root.drag-selected = selected;
-        root.dragging = true;
+        root.drag = SpaceDrag.held;
     }
 
     function update-drag(dy: length) {
         root.drag-dy = dy;
-        if (dy > root.drag-threshold || dy < -root.drag-threshold) {
-            root.did-drag = true;
+        if (root.drag == SpaceDrag.held && abs(dy) > root.drag-threshold) {
+            root.drag = SpaceDrag.moved;
         }
     }
 
     function end-drag() {
-        if (root.dragging) {
-            if (root.did-drag && root.drag-to != root.drag-from) {
-                Actions.move-space(root.drag-from, root.drag-to);
-            }
-            root.dragging = false;
-            root.drag-from = -1;
-            root.drag-dy = 0;
+        if (root.drag == SpaceDrag.moved && root.drag-to != root.drag-from) {
+            Actions.move-space(root.drag-from, root.drag-to);
         }
+        root.drag = SpaceDrag.idle;
+        root.drag-from = -1;
+        root.drag-dy = 0;
     }
 
     pure function drag-rank(idx: int) -> int {
@@ -193,15 +196,8 @@ export component SpaceRail inherits Rectangle {
             has-icon: true;
             icon: IconSet.MessagesSquare;
             selected: DirectoryView.room-scope == RoomScope.all;
-            changed pressed => {
-                if (self.pressed) {
-                    root.did-drag = false;
-                }
-            }
             clicked => {
-                if (!root.did-drag) {
-                    Actions.select-space("");
-                }
+                Actions.select-space("");
             }
         }
 
@@ -220,15 +216,8 @@ export component SpaceRail inherits Rectangle {
             mention: DirectoryView.direct-mention;
             hint: DirectoryView.direct-hint;
             selected: DirectoryView.room-scope == RoomScope.direct;
-            changed pressed => {
-                if (self.pressed) {
-                    root.did-drag = false;
-                }
-            }
             clicked => {
-                if (!root.did-drag) {
-                    Actions.select-direct();
-                }
+                Actions.select-direct();
             }
         }
 
@@ -264,7 +253,7 @@ export component SpaceRail inherits Rectangle {
                 root.update-drag(dy);
             }
             clicked => {
-                if (!root.did-drag) {
+                if (root.drag != SpaceDrag.moved) {
                     Actions.select-space(space.id);
                 }
             }
