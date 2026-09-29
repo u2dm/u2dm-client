@@ -11,6 +11,7 @@ use serde::Deserialize;
 use tokio::sync::broadcast::error::RecvError;
 use tokio::sync::mpsc;
 use tokio::time::timeout;
+use tokio_util::task::TaskTracker;
 
 use super::RELATION_FIELD;
 
@@ -127,11 +128,12 @@ pub(super) fn send_end(
     room: Room,
     ending: &EndingPolls,
     content: UnstablePollEndEventContent,
+    ends: &TaskTracker,
     unsent_tx: mpsc::UnboundedSender<OwnedEventId>,
 ) {
     let poll = content.relates_to.event_id.clone();
     ending.begin(&poll);
-    tokio::spawn(async move {
+    ends.spawn(async move {
         if !end_after_queued_relations(&room, &poll, content).await {
             drop(unsent_tx.send(poll));
         }

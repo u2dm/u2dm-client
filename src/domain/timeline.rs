@@ -169,6 +169,22 @@ pub enum TimelineCommand {
     LocateAudio { request: u64, lookup: AudioLookup },
 }
 
+impl TimelineCommand {
+    pub fn sends_an_event(&self) -> bool {
+        match self {
+            Self::ToggleReaction { .. }
+            | Self::VotePoll { .. }
+            | Self::EndPoll { .. }
+            | Self::EditPoll { .. } => true,
+            Self::PaginateBackwards
+            | Self::PaginateForwards
+            | Self::MarkRead
+            | Self::JumpTo(_)
+            | Self::LocateAudio { .. } => false,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AudioLookup {
     Event(String),

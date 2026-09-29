@@ -716,6 +716,95 @@ impl DemoAuthed {
         locate_audio(lookup, active.messages.iter().cloned())
     }
 
+    async fn run_timeline(
+        &self,
+        room_id: &RoomId,
+        focus: TimelineFocus,
+        timeline_tx: mpsc::Sender<TimelineUpdate>,
+        mut cmd_rx: mpsc::UnboundedReceiver<TimelineCommand>,
+    ) -> Result<()> {
+        let scenario = timeline::scenario();
+        if scenario.resolving_unread && focus.opens_at_read_position() {
+            drop(timeline_tx.send(TimelineUpdate::ResolvingUnread).await);
+        }
+        if scenario.unread_boundary_is_unresolved && focus.opens_at_read_position() {
+            drop(timeline_tx.send(TimelineUpdate::UnreadUnresolved).await);
+        }
+        if scenario.reset_is_slow {
+            sleep(timeline::SLOW_RESET_DELAY).await;
+        }
+        let Some(OpenedWindow {
+            all,
+            mut newer,
+            messages,
+            reset_messages,
+        }) = self
+            .open_window(room_id, &focus, scenario, &timeline_tx)
+            .await?
+        else {
+            return Ok(());
+        };
+
+        if let Some(target) = focus.target() {
+            let target_row = self.loaded_row_of(target);
+            drop(
+                timeline_tx
+                    .send(TimelineUpdate::JumpOutcome {
+                        event_id: target.to_owned(),
+                        target: target_row,
+                    })
+                    .await,
+            );
+        }
+
+        spawn_scenario_tasks(
+            &self.active,
+            scenario,
+            &focus,
+            &timeline_tx,
+            &messages,
+            reset_messages,
+        );
+        spawn_poll_activity(&self.active, &timeline_tx);
+        self.spawn_poll_revocation();
+
+        let mut history = 0_u64;
+        while let Some(command) = cmd_rx.recv().await {
+            let Some(direction) = self.run_command(command, &timeline_tx).await else {
+                continue;
+            };
+            let mut hit_end = true;
+            if scenario.pagination_returns_history
+                && matches!(direction, PaginationDirection::Backwards)
+            {
+                history += 1;
+                hit_end = history > 2;
+                let page = older_history(history, &messages);
+                if let Ok(mut guard) = self.active.lock()
+                    && let Some(active) = guard.as_mut()
+                {
+                    active.prepended = active.prepended.saturating_add(page.len());
+                }
+                let page = page.into_iter().map(TimelinePatch::PushFront).collect();
+                send_patch(&timeline_tx, TimelinePatch::Batch(page)).await;
+            }
+            if matches!(direction, PaginationDirection::Forwards) {
+                let page = newer_page(&all, &mut newer);
+                hit_end = page.is_empty();
+                self.append_newer(page, &timeline_tx).await;
+            }
+            let update = TimelineUpdate::Pagination {
+                direction,
+                outcome: PaginationOutcome::Completed { hit_end },
+            };
+            if timeline_tx.send(update).await.is_err() {
+                break;
+            }
+        }
+
+        Ok(())
+    }
+
     fn emit_verification(&self, event: VerificationEvent) {
         let Ok(guard) = self.verification_tx.lock() else {
             return;
@@ -915,88 +1004,14 @@ impl TimelinePort for DemoAuthed {
         room_id: &RoomId,
         focus: TimelineFocus,
         timeline_tx: mpsc::Sender<TimelineUpdate>,
-        mut cmd_rx: mpsc::UnboundedReceiver<TimelineCommand>,
+        cmd_rx: mpsc::UnboundedReceiver<TimelineCommand>,
+        close: CancellationToken,
     ) -> Result<()> {
-        let scenario = timeline::scenario();
-        if scenario.resolving_unread && focus.opens_at_read_position() {
-            drop(timeline_tx.send(TimelineUpdate::ResolvingUnread).await);
-        }
-        if scenario.unread_boundary_is_unresolved && focus.opens_at_read_position() {
-            drop(timeline_tx.send(TimelineUpdate::UnreadUnresolved).await);
-        }
-        if scenario.reset_is_slow {
-            sleep(timeline::SLOW_RESET_DELAY).await;
-        }
-        let Some(OpenedWindow {
-            all,
-            mut newer,
-            messages,
-            reset_messages,
-        }) = self
-            .open_window(room_id, &focus, scenario, &timeline_tx)
-            .await?
-        else {
-            return Ok(());
-        };
-
-        if let Some(target) = focus.target() {
-            let target_row = self.loaded_row_of(target);
-            drop(
-                timeline_tx
-                    .send(TimelineUpdate::JumpOutcome {
-                        event_id: target.to_owned(),
-                        target: target_row,
-                    })
-                    .await,
-            );
-        }
-
-        spawn_scenario_tasks(
-            &self.active,
-            scenario,
-            &focus,
-            &timeline_tx,
-            &messages,
-            reset_messages,
-        );
-        spawn_poll_activity(&self.active, &timeline_tx);
-        self.spawn_poll_revocation();
-
-        let mut history = 0_u64;
-        while let Some(command) = cmd_rx.recv().await {
-            let Some(direction) = self.run_command(command, &timeline_tx).await else {
-                continue;
-            };
-            let mut hit_end = true;
-            if scenario.pagination_returns_history
-                && matches!(direction, PaginationDirection::Backwards)
-            {
-                history += 1;
-                hit_end = history > 2;
-                let page = older_history(history, &messages);
-                if let Ok(mut guard) = self.active.lock()
-                    && let Some(active) = guard.as_mut()
-                {
-                    active.prepended = active.prepended.saturating_add(page.len());
-                }
-                let page = page.into_iter().map(TimelinePatch::PushFront).collect();
-                send_patch(&timeline_tx, TimelinePatch::Batch(page)).await;
-            }
-            if matches!(direction, PaginationDirection::Forwards) {
-                let page = newer_page(&all, &mut newer);
-                hit_end = page.is_empty();
-                self.append_newer(page, &timeline_tx).await;
-            }
-            let update = TimelineUpdate::Pagination {
-                direction,
-                outcome: PaginationOutcome::Completed { hit_end },
-            };
-            if timeline_tx.send(update).await.is_err() {
-                break;
-            }
-        }
-
-        Ok(())
+        let subscription = self.run_timeline(room_id, focus, timeline_tx, cmd_rx);
+        close
+            .run_until_cancelled(subscription)
+            .await
+            .unwrap_or(Ok(()))
     }
 
     async fn send_text(&self, room_id: &RoomId, body: &str) -> Result<()> {

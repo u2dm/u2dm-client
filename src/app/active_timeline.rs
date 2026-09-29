@@ -1,3 +1,4 @@
+use std::future::Future;
 use std::sync::Arc;
 
 use tokio::sync::mpsc;
@@ -115,11 +116,16 @@ impl ActiveTimeline {
         };
 
         self.tasks.spawn(async move {
-            let subscribe = timeline.subscribe_timeline(&room_id, focus, tl_tx, tl_cmd_rx);
-            let forward = forwarder.run(&mut tl_rx);
+            let mut subscribe =
+                timeline.subscribe_timeline(&room_id, focus, tl_tx, tl_cmd_rx, token.clone());
 
             tokio::select! {
-                result = subscribe => {
+                biased;
+                () = token.cancelled() => {
+                    tracing::debug!("timeline subscription cancelled");
+                    forwarder.report_failures_until(subscribe, &mut tl_rx).await;
+                }
+                result = &mut subscribe => {
                     if let Err(e) = result {
                         tracing::warn!("timeline subscription failed: {e}");
                         output.emit(Effect::TimelineStatus {
@@ -138,11 +144,8 @@ impl ActiveTimeline {
                             .await;
                     }
                 }
-                () = forward => {
+                () = forwarder.run(&mut tl_rx) => {
                     tracing::debug!("timeline forwarder stopped");
-                }
-                () = token.cancelled() => {
-                    tracing::debug!("timeline subscription cancelled");
                 }
             }
         });
@@ -547,6 +550,32 @@ impl Forwarder {
             if !self.dispatch(update).await {
                 break;
             }
+        }
+    }
+
+    async fn report_failures_until(
+        &self,
+        subscription: impl Future + Send,
+        rx: &mut mpsc::Receiver<TimelineUpdate>,
+    ) {
+        tokio::select! {
+            _ = subscription => {}
+            () = self.report_failures(rx) => {}
+        }
+        while let Ok(update) = rx.try_recv() {
+            self.report_failure(&update);
+        }
+    }
+
+    async fn report_failures(&self, rx: &mut mpsc::Receiver<TimelineUpdate>) {
+        while let Some(update) = rx.recv().await {
+            self.report_failure(&update);
+        }
+    }
+
+    fn report_failure(&self, update: &TimelineUpdate) {
+        if let TimelineUpdate::PollSendFailed(action) = update {
+            report_poll_failure(self.output.as_ref(), *action);
         }
     }
 

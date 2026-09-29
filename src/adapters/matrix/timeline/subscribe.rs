@@ -14,6 +14,7 @@ use matrix_sdk_ui::timeline::{
 use tokio::sync::{Semaphore, mpsc};
 use tokio::task::JoinSet;
 
+use super::commands::Commands;
 use super::convert::{event_media, involves};
 use super::diff::{diff_to_patch, stamp_read_marks};
 use super::filter::TimelineItems;
@@ -351,6 +352,46 @@ async fn handle_timeline_command(
     {
         tracing::debug!("timeline update channel closed");
     }
+}
+
+async fn run_command(
+    command: TimelineCommand,
+    commands: &Commands,
+    timeline: &Timeline,
+    items: &mut TimelineItems,
+    ctx: &TimelineContext<'_>,
+    sends: &PollSendGuard,
+) {
+    if command.sends_an_event() {
+        handle_timeline_command(command, timeline, items, ctx, sends).await;
+        return;
+    }
+    tokio::select! {
+        biased;
+        () = commands.closed() => {
+            tracing::debug!("the timeline closed during a command, abandoning it");
+        }
+        () = handle_timeline_command(command, timeline, items, ctx, sends) => {}
+    }
+}
+
+async fn hand_over_event_sends(
+    commands: &mut Commands,
+    timeline: &Timeline,
+    items: &mut TimelineItems,
+    ctx: &TimelineContext<'_>,
+    sends: &mut PollSendGuard,
+) {
+    let mut handed_over = 0_usize;
+    for command in commands.close_and_take_event_sends() {
+        handle_timeline_command(command, timeline, items, ctx, sends).await;
+        handed_over += 1;
+    }
+    sends.report_unsent_ends(ctx.timeline_tx).await;
+    tracing::debug!(
+        handed_over,
+        "the closed timeline handed over its queued event sends"
+    );
 }
 
 async fn report_jump(
@@ -697,18 +738,23 @@ async fn handle_room_keys(timeline: &Timeline, keys: BTreeMap<String, BTreeSet<S
     }
 }
 
-pub(crate) async fn subscribe_timeline(
+struct OpenedTimeline<S> {
+    sends: PollSendGuard,
+    timeline: Arc<Timeline>,
+    acknowledged: Option<OwnedEventId>,
+    view: InitialView<S>,
+    backwards_outcome: PaginationOutcome,
+}
+
+async fn open_timeline(
     client: &Client,
-    media: &Arc<MediaService>,
-    pronouns: &Arc<PronounCache>,
-    room_id: &RoomId,
+    media: &MediaService,
+    room: Room,
+    ending: &Arc<EndingPolls>,
     focus: &TimelineFocus,
-    timeline_tx: mpsc::Sender<TimelineUpdate>,
-    mut cmd_rx: mpsc::UnboundedReceiver<TimelineCommand>,
-) -> Result<()> {
-    let room = resolve_room(client, room_id)?;
-    let ending = Arc::new(EndingPolls::default());
-    let sends = PollSendGuard::watch(room.clone(), Arc::clone(&ending), &timeline_tx).await;
+    timeline_tx: &mpsc::Sender<TimelineUpdate>,
+) -> Result<OpenedTimeline<impl Stream<Item = Vec<VectorDiff<Arc<TimelineItem>>>> + use<>>> {
+    let sends = PollSendGuard::watch(room.clone(), Arc::clone(ending), timeline_tx).await;
     let (timeline, backwards_outcome) = setup_timeline(&room, focus).await?;
 
     media.ensure_dirs().await;
@@ -724,9 +770,41 @@ pub(crate) async fn subscribe_timeline(
         acknowledged.as_deref(),
         client.user_id(),
         backwards_outcome,
-        &timeline_tx,
+        timeline_tx,
     )
     .await;
+    Ok(OpenedTimeline {
+        sends,
+        timeline,
+        acknowledged,
+        view,
+        backwards_outcome,
+    })
+}
+
+pub(crate) async fn subscribe_timeline(
+    client: &Client,
+    media: &Arc<MediaService>,
+    pronouns: &Arc<PronounCache>,
+    room_id: &RoomId,
+    focus: &TimelineFocus,
+    timeline_tx: mpsc::Sender<TimelineUpdate>,
+    commands: Commands,
+) -> Result<()> {
+    let room = resolve_room(client, room_id)?;
+    let ending = Arc::new(EndingPolls::default());
+    let opened = tokio::select! {
+        biased;
+        () = commands.closed() => return Ok(()),
+        opened = open_timeline(client, media, room, &ending, focus, &timeline_tx) => opened?,
+    };
+    let OpenedTimeline {
+        sends,
+        timeline,
+        acknowledged,
+        view,
+        backwards_outcome,
+    } = opened;
     let InitialView {
         items: initial_items,
         updates: stream,
@@ -775,16 +853,7 @@ pub(crate) async fn subscribe_timeline(
         report_jump(target.to_owned(), &items, &timeline_tx).await;
     }
 
-    run_timeline_loop(
-        &ctx,
-        &timeline,
-        sends,
-        items,
-        side_tasks,
-        &mut cmd_rx,
-        stream,
-    )
-    .await;
+    run_timeline_loop(&ctx, &timeline, sends, items, side_tasks, commands, stream).await;
 
     Ok(())
 }
@@ -845,7 +914,7 @@ async fn run_timeline_loop<S>(
     mut sends: PollSendGuard,
     mut items: TimelineItems,
     mut side_tasks: JoinSet<()>,
-    cmd_rx: &mut mpsc::UnboundedReceiver<TimelineCommand>,
+    mut commands: Commands,
     mut stream: S,
 ) where
     S: Stream<Item = Vec<VectorDiff<Arc<TimelineItem>>>> + Unpin,
@@ -878,9 +947,9 @@ async fn run_timeline_loop<S>(
     loop {
         tokio::select! {
             biased;
-            cmd = cmd_rx.recv() => {
-                let Some(cmd) = cmd else { break };
-                handle_timeline_command(cmd, timeline, &mut items, ctx, &sends).await;
+            command = commands.recv() => {
+                let Some(command) = command else { break };
+                run_command(command, &commands, timeline, &mut items, ctx, &sends).await;
             }
             result = key_stream.next(), if !key_stream_done => {
                 match result {
@@ -917,4 +986,6 @@ async fn run_timeline_loop<S>(
             }
         }
     }
+
+    hand_over_event_sends(&mut commands, timeline, &mut items, ctx, &mut sends).await;
 }

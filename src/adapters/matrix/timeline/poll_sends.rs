@@ -12,6 +12,7 @@ use matrix_sdk::send_queue::{LocalEcho, LocalEchoContent, RoomSendQueueUpdate, S
 use tokio::sync::broadcast::Receiver;
 use tokio::sync::broadcast::error::RecvError;
 use tokio::sync::mpsc;
+use tokio_util::task::TaskTracker;
 
 use super::poll_ends::{EndingPolls, send_end};
 use crate::domain::poll::PollAction;
@@ -26,6 +27,7 @@ pub(super) struct PollSendGuard {
     room: Room,
     updates: Option<Receiver<RoomSendQueueUpdate>>,
     ending: Arc<EndingPolls>,
+    ends: TaskTracker,
     unsent_end_tx: mpsc::UnboundedSender<OwnedEventId>,
     unsent_end_rx: mpsc::UnboundedReceiver<OwnedEventId>,
 }
@@ -51,6 +53,7 @@ impl PollSendGuard {
             room,
             updates,
             ending,
+            ends: TaskTracker::new(),
             unsent_end_tx,
             unsent_end_rx,
         }
@@ -65,8 +68,17 @@ impl PollSendGuard {
             self.room.clone(),
             &self.ending,
             content,
+            &self.ends,
             self.unsent_end_tx.clone(),
         );
+    }
+
+    pub(super) async fn report_unsent_ends(&mut self, timeline_tx: &mpsc::Sender<TimelineUpdate>) {
+        self.ends.close();
+        self.ends.wait().await;
+        while self.unsent_end_rx.try_recv().is_ok() {
+            report(PollAction::End, timeline_tx).await;
+        }
     }
 
     pub(super) async fn next(&mut self) -> PollSendEvent {

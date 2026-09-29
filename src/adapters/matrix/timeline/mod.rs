@@ -1,3 +1,4 @@
+mod commands;
 mod convert;
 mod diff;
 mod filter;
@@ -34,6 +35,7 @@ use tokio::time::timeout;
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
 
+use self::commands::Commands;
 use self::members::Members;
 pub(super) use self::pinned::MatrixPinned;
 use self::poll_ends::EndingPolls;
@@ -376,6 +378,7 @@ impl TimelinePort for MatrixTimeline {
         focus: TimelineFocus,
         timeline_tx: mpsc::Sender<TimelineUpdate>,
         cmd_rx: mpsc::UnboundedReceiver<TimelineCommand>,
+        close: CancellationToken,
     ) -> Result<()> {
         tracing::info!(%room_id, ?focus, "subscribing to timeline");
         subscribe_timeline(
@@ -385,7 +388,7 @@ impl TimelinePort for MatrixTimeline {
             room_id,
             &focus,
             timeline_tx,
-            cmd_rx,
+            Commands::new(cmd_rx, close),
         )
         .await
     }
