@@ -18,7 +18,8 @@ use super::convert::{event_media, involves};
 use super::diff::{diff_to_patch, stamp_read_marks};
 use super::filter::TimelineItems;
 use super::members::{Arrived, Batch, Members, resolve_members};
-use super::poll_sends::PollSendGuard;
+use super::poll_ends::EndingPolls;
+use super::poll_sends::{PollSendEvent, PollSendGuard};
 use super::polls;
 use super::{EnrichmentClaim, EnrichmentPool, TimelineContext};
 use crate::adapters::matrix::media::{MediaService, ThumbnailRequest};
@@ -262,11 +263,41 @@ async fn toggle_reaction(timeline: &Timeline, event_id: &str, key: &str) {
     }
 }
 
+async fn refresh_row(items: &mut TimelineItems, event_id: &EventId, ctx: &TimelineContext<'_>) {
+    let Some(raw_index) = items.position_of_event(event_id) else {
+        return;
+    };
+    let Some(message) = items.reconvert(raw_index, ctx) else {
+        return;
+    };
+    let patch = TimelinePatch::Set {
+        index: items.msg_index_at(raw_index),
+        message,
+    };
+    drop(
+        ctx.timeline_tx
+            .send(TimelineUpdate::Patch(Box::new(patch)))
+            .await,
+    );
+}
+
+async fn settle_poll_send(
+    sends: &mut PollSendGuard,
+    event: PollSendEvent,
+    items: &mut TimelineItems,
+    ctx: &TimelineContext<'_>,
+) {
+    if let Some(poll) = sends.settle(event, ctx.timeline_tx).await {
+        refresh_row(items, &poll, ctx).await;
+    }
+}
+
 async fn handle_timeline_command(
     cmd: TimelineCommand,
     timeline: &Timeline,
-    items: &TimelineItems,
+    items: &mut TimelineItems,
     ctx: &TimelineContext<'_>,
+    sends: &PollSendGuard,
 ) {
     let timeline_tx = ctx.timeline_tx;
     let (direction, outcome) = match cmd {
@@ -298,7 +329,9 @@ async fn handle_timeline_command(
             return;
         }
         TimelineCommand::EndPoll { event_id } => {
-            polls::end(timeline, items, &event_id, timeline_tx).await;
+            if let Some(poll) = polls::end(timeline, items, &event_id, sends, timeline_tx).await {
+                refresh_row(items, &poll, ctx).await;
+            }
             return;
         }
         TimelineCommand::EditPoll { event_id, draft } => {
@@ -674,7 +707,8 @@ pub(crate) async fn subscribe_timeline(
     mut cmd_rx: mpsc::UnboundedReceiver<TimelineCommand>,
 ) -> Result<()> {
     let room = resolve_room(client, room_id)?;
-    let sends = PollSendGuard::watch(room.clone(), &timeline_tx).await;
+    let ending = Arc::new(EndingPolls::default());
+    let sends = PollSendGuard::watch(room.clone(), Arc::clone(&ending), &timeline_tx).await;
     let (timeline, backwards_outcome) = setup_timeline(&room, focus).await?;
 
     media.ensure_dirs().await;
@@ -724,6 +758,7 @@ pub(crate) async fn subscribe_timeline(
         media,
         pronouns,
         members: &members,
+        ending: &ending,
         own_user_id: own_user_id.as_deref(),
         focused: focus.target().is_some(),
         first_unread: unread.first_unread(),
@@ -845,7 +880,7 @@ async fn run_timeline_loop<S>(
             biased;
             cmd = cmd_rx.recv() => {
                 let Some(cmd) = cmd else { break };
-                handle_timeline_command(cmd, timeline, &items, ctx).await;
+                handle_timeline_command(cmd, timeline, &mut items, ctx, &sends).await;
             }
             result = key_stream.next(), if !key_stream_done => {
                 match result {
@@ -855,7 +890,7 @@ async fn run_timeline_loop<S>(
                 }
             }
             Some(_) = side_tasks.join_next(), if !side_tasks.is_empty() => {}
-            update = sends.next() => sends.settle(update, ctx.timeline_tx).await,
+            event = sends.next() => settle_poll_send(&mut sends, event, &mut items, ctx).await,
             Some(batch) = member_rx.recv() => {
                 let arrived = ctx.members.record(batch);
                 if let Some(patch) = member_patch(&mut items, &arrived, ctx)

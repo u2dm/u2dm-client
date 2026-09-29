@@ -618,7 +618,7 @@ impl DemoAuthed {
                 Arc::clone(&self.active),
                 timeline_tx,
                 event_id.to_owned(),
-                Some(previous),
+                Some(polls::Undo::Selection(previous)),
                 PollAction::Vote,
             );
         }
@@ -629,7 +629,11 @@ impl DemoAuthed {
             refuse_poll_action(timeline_tx, PollAction::End).await;
             return;
         }
-        let Some((timeline_tx, index, message)) = self.patch_poll(event_id, polls::end_own) else {
+        let mut editable = false;
+        let Some((timeline_tx, index, message)) = self.patch_poll(event_id, |message| {
+            editable = message.body.poll().is_some_and(|poll| poll.editable);
+            polls::end_own(message)
+        }) else {
             tracing::debug!(event_id, "demo: only an own open poll can be ended");
             return;
         };
@@ -639,7 +643,7 @@ impl DemoAuthed {
                 Arc::clone(&self.active),
                 timeline_tx,
                 event_id.to_owned(),
-                None,
+                Some(polls::Undo::End { editable }),
                 PollAction::End,
             );
         }
@@ -1580,12 +1584,12 @@ fn spawn_poll_refusal(
     active: SharedActiveRoom,
     timeline_tx: mpsc::Sender<TimelineUpdate>,
     event_id: String,
-    restore: Option<Vec<String>>,
+    undo: Option<polls::Undo>,
     action: PollAction,
 ) {
     tokio::spawn(async move {
         sleep(polls::REFUSAL_DELAY).await;
-        if let Some(selection) = restore {
+        if let Some(undo) = undo {
             let reverted = {
                 let Ok(mut guard) = active.lock() else {
                     return;
@@ -1607,7 +1611,7 @@ fn spawn_poll_refusal(
                 let Some(message) = room.messages.get_mut(offset) else {
                     return;
                 };
-                if !polls::restore(message, &selection) {
+                if !undo.apply(message) {
                     return;
                 }
                 (row, message.clone())

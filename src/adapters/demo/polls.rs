@@ -47,7 +47,7 @@ pub const CATALOG: Scenarios = Scenarios {
         },
         Flag {
             value: "end-fails",
-            effect: "ending a poll is refused a second later; the row stays ended, as the SDK cannot undo an end",
+            effect: "ending a poll is refused a second later, so the row reopens and a toast explains",
             note: "excluded from `all`",
         },
         Flag {
@@ -304,12 +304,25 @@ pub fn cast(message: &mut TimelineMessage, answer_id: &str) -> Option<Vec<String
     Some(previous)
 }
 
-pub fn restore(message: &mut TimelineMessage, selection: &[String]) -> bool {
-    let Some(poll) = poll_mut(message) else {
-        return false;
-    };
-    select(poll, selection);
-    true
+pub enum Undo {
+    Selection(Vec<String>),
+    End { editable: bool },
+}
+
+impl Undo {
+    pub fn apply(&self, message: &mut TimelineMessage) -> bool {
+        let Some(poll) = poll_mut(message) else {
+            return false;
+        };
+        match self {
+            Self::Selection(selection) => select(poll, selection),
+            Self::End { editable } => {
+                poll.status = PollStatus::Open;
+                poll.editable = *editable;
+            }
+        }
+        true
+    }
 }
 
 pub fn close(message: &mut TimelineMessage) -> bool {

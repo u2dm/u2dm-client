@@ -460,8 +460,20 @@ fn extract_sticker_body(sticker: &StickerEventContent) -> MessageBody {
     }
 }
 
-fn extract_poll_body(poll: &PollState, editable: bool, ctx: &TimelineContext<'_>) -> MessageBody {
+fn extract_poll_body(
+    event: &EventTimelineItem,
+    poll: &PollState,
+    ctx: &TimelineContext<'_>,
+) -> MessageBody {
     let results = poll.results();
+    let ending = event
+        .event_id()
+        .is_some_and(|event_id| ctx.ending.contains(event_id.as_str()));
+    let status = if results.end_time.is_some() || ending {
+        PollStatus::Ended
+    } else {
+        PollStatus::Open
+    };
     let answers = results
         .answers
         .iter()
@@ -485,12 +497,8 @@ fn extract_poll_body(poll: &PollState, editable: bool, ctx: &TimelineContext<'_>
         },
         choice: PollChoice::up_to(usize::try_from(results.max_selections).unwrap_or(usize::MAX)),
         answers,
-        status: if results.end_time.is_some() {
-            PollStatus::Ended
-        } else {
-            PollStatus::Open
-        },
-        editable,
+        editable: status == PollStatus::Open && event.is_editable() && !ctx.focused,
+        status,
         question: results.question,
     };
     name_voters(&mut poll, ctx);
@@ -585,7 +593,7 @@ pub(super) fn convert_event_item_with_uid(
             })
         }
         Some(Renderable::Poll(poll)) => Some(TimelineMessage {
-            body: extract_poll_body(poll, event.is_editable() && !ctx.focused, ctx),
+            body: extract_poll_body(event, poll, ctx),
             reply,
             edited: poll.is_edit(),
             ..base_message(unique_id, event, event_id_str, ctx)

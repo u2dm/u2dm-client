@@ -3,6 +3,7 @@ mod diff;
 mod filter;
 mod members;
 mod pinned;
+mod poll_ends;
 mod poll_sends;
 mod polls;
 mod subscribe;
@@ -35,6 +36,7 @@ use tokio_util::task::TaskTracker;
 
 use self::members::Members;
 pub(super) use self::pinned::MatrixPinned;
+use self::poll_ends::EndingPolls;
 use self::subscribe::subscribe_timeline;
 use super::attachment;
 use super::media::MediaService;
@@ -56,6 +58,7 @@ pub(super) struct TimelineContext<'a> {
     pub(super) media: &'a Arc<MediaService>,
     pub(super) pronouns: &'a Arc<PronounCache>,
     pub(super) members: &'a Arc<Members>,
+    pub(super) ending: &'a EndingPolls,
     pub(super) own_user_id: Option<&'a str>,
     pub(super) focused: bool,
     pub(super) first_unread: Option<&'a str>,

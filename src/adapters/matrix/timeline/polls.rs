@@ -14,6 +14,7 @@ use matrix_sdk_ui::timeline::{Timeline, TimelineEventItemId};
 use tokio::sync::mpsc;
 
 use super::filter::TimelineItems;
+use super::poll_sends::{PollSendGuard, report};
 use crate::adapters::matrix::permissions::poll_permissions;
 use crate::domain::poll::{
     Poll, PollAction, PollChoice, PollDisclosure, PollDraft, PollRevision, RevisedAnswer,
@@ -178,11 +179,12 @@ pub(super) async fn end(
     timeline: &Timeline,
     items: &TimelineItems,
     event_id: &str,
+    sends: &PollSendGuard,
     timeline_tx: &mpsc::Sender<TimelineUpdate>,
-) {
+) -> Option<OwnedEventId> {
     let Ok(target) = OwnedEventId::try_from(event_id) else {
         tracing::warn!(event_id, "ignoring a poll end for a malformed event id");
-        return;
+        return None;
     };
     let Some(poll) = items
         .message_of_event(&target)
@@ -194,15 +196,18 @@ pub(super) async fn end(
             event_id,
             "ignoring a poll end for anything but an own open poll"
         );
-        return;
+        return None;
     };
     if !poll_permissions(timeline.room()).await.end {
         tracing::debug!(event_id, "the room's power levels refuse this poll end");
         report(PollAction::End, timeline_tx).await;
-        return;
+        return None;
     }
-    let content = UnstablePollEndEventContent::new(end_fallback(poll), target);
-    queue(timeline, content.into(), PollAction::End, timeline_tx).await;
+    sends.end(UnstablePollEndEventContent::new(
+        end_fallback(poll),
+        target.clone(),
+    ));
+    Some(target)
 }
 
 async fn queue(
@@ -215,14 +220,6 @@ async fn queue(
         tracing::warn!(?action, "the send queue refused a poll send: {e}");
         report(action, timeline_tx).await;
     }
-}
-
-async fn report(action: PollAction, timeline_tx: &mpsc::Sender<TimelineUpdate>) {
-    drop(
-        timeline_tx
-            .send(TimelineUpdate::PollSendFailed(action))
-            .await,
-    );
 }
 
 fn end_fallback(poll: &Poll) -> String {
