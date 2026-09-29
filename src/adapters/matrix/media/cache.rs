@@ -80,11 +80,6 @@ impl ClassBytes {
             CacheClass::Other => self.other = self.other.saturating_sub(bytes),
         }
     }
-
-    fn reset(&mut self) {
-        self.playable = 0;
-        self.other = 0;
-    }
 }
 
 struct CacheEntry {
@@ -109,7 +104,7 @@ enum CacheCommand {
         bytes: u64,
         ack: oneshot::Sender<()>,
     },
-    Clear(oneshot::Sender<()>),
+    Stop(oneshot::Sender<()>),
 }
 
 pub(super) struct CacheHandle {
@@ -181,12 +176,9 @@ impl CacheHandle {
         }
     }
 
-    pub(super) async fn clear(&self) {
-        if let Ok(mut last) = self.last_touch.lock() {
-            last.clear();
-        }
+    pub(super) async fn stop(&self) {
         let (ack_tx, ack_rx) = oneshot::channel();
-        if self.tx.send(CacheCommand::Clear(ack_tx)).is_ok() {
+        if self.tx.send(CacheCommand::Stop(ack_tx)).is_ok() {
             ack_rx.await.ok();
         }
     }
@@ -269,44 +261,33 @@ impl CacheActor {
         let mut ticker = interval(FLUSH_INTERVAL);
         ticker.set_missed_tick_behavior(MissedTickBehavior::Delay);
         ticker.tick().await;
-        loop {
+        let stopped = loop {
             tokio::select! {
-                maybe = rx.recv() => {
-                    let Some(cmd) = maybe else { break };
-                    self.handle(cmd, &shared).await;
-                }
+                maybe = rx.recv() => match maybe {
+                    Some(CacheCommand::Touch(key)) => self.touch(&key, &shared).await,
+                    Some(CacheCommand::Insert {
+                        key,
+                        path,
+                        bytes,
+                        ack,
+                    }) => self.publish_insert(key, path, bytes, ack, &shared).await,
+                    Some(CacheCommand::Stop(ack)) => break Some(ack),
+                    None => break None,
+                },
                 _ = ticker.tick() => {
                     if self.dirty {
                         self.flush().await;
                     }
                 }
             }
-        }
+        };
         if self.dirty {
             self.flush().await;
         }
-    }
-
-    async fn handle(&mut self, cmd: CacheCommand, shared: &RwLock<Index>) {
-        match cmd {
-            CacheCommand::Touch(key) => self.touch(&key, shared).await,
-            CacheCommand::Insert {
-                key,
-                path,
-                bytes,
-                ack,
-            } => self.publish_insert(key, path, bytes, ack, shared).await,
-            CacheCommand::Clear(ack) => {
-                self.entries.clear();
-                self.bytes.reset();
-                if let Ok(mut guard) = shared.write() {
-                    guard.clear();
-                }
-                self.flush().await;
-                if ack.send(()).is_err() {
-                    tracing::trace!("media cache clear requester dropped before ack");
-                }
-            }
+        if let Some(ack) = stopped
+            && ack.send(()).is_err()
+        {
+            tracing::trace!("media cache stop requester dropped before ack");
         }
     }
 

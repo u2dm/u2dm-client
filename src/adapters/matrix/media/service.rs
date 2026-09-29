@@ -227,7 +227,7 @@ impl MediaService {
         let Some(session) = previous else {
             return;
         };
-        session.cache.clear().await;
+        session.cache.stop().await;
     }
 
     pub(crate) async fn sweep(&self, keep: Option<&AccountScope>) {
