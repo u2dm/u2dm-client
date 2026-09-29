@@ -118,8 +118,27 @@ impl TimelineItems {
     ) -> Vec<TimelineMessage> {
         self.clear();
         self.store(values, ctx);
+        self.check_editable_polls(ctx, |_, _| {});
         self.stamp_read_by(ctx.own_user_id, |_, _| {});
         self.messages_from(0).cloned().collect()
+    }
+
+    pub(super) fn check_editable_polls(
+        &mut self,
+        ctx: &TimelineContext<'_>,
+        mut on_change: impl FnMut(usize, TimelineMessage),
+    ) {
+        for poll in ctx.undecrypted.refresh(&self.items) {
+            let Some(raw_index) = self.position_of_event(&poll) else {
+                continue;
+            };
+            let previous = self.message_at(raw_index).cloned();
+            if let Some(message) = self.reconvert(raw_index, ctx)
+                && previous.as_ref() != Some(&message)
+            {
+                on_change(self.msg_index_at(raw_index), message);
+            }
+        }
     }
 
     pub(super) fn restamp_read_by(

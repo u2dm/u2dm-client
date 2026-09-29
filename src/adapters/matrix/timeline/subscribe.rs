@@ -16,12 +16,13 @@ use tokio::task::JoinSet;
 
 use super::commands::Commands;
 use super::convert::{event_media, involves};
-use super::diff::{diff_to_patch, stamp_read_marks};
+use super::diff::{diff_to_patch, stamp_editable_polls, stamp_read_marks};
 use super::filter::TimelineItems;
 use super::members::{Arrived, Batch, Members, resolve_members};
 use super::poll_ends::EndingPolls;
 use super::poll_sends::{PollSendEvent, PollSendGuard};
 use super::polls;
+use super::undecrypted::UndecryptedResponses;
 use super::{EnrichmentClaim, EnrichmentPool, TimelineContext};
 use crate::adapters::matrix::media::{MediaService, ThumbnailRequest};
 use crate::adapters::matrix::profile::PronounCache;
@@ -214,6 +215,7 @@ fn process_diffs(
             batch.push(patch);
         }
     }
+    stamp_editable_polls(items, &mut batch, ctx);
     stamp_read_marks(items, &mut batch, ctx);
     let result = match batch.len() {
         0 => None,
@@ -831,12 +833,14 @@ pub(crate) async fn subscribe_timeline(
     let own_user_id = client.user_id().map(ToString::to_string);
     let enrich = EnrichmentPool::new();
     let members = Arc::new(Members::default());
+    let undecrypted = UndecryptedResponses::default();
     let ctx = TimelineContext {
         client,
         media,
         pronouns,
         members: &members,
         ending: &ending,
+        undecrypted: &undecrypted,
         own_user_id: own_user_id.as_deref(),
         focused: focus.target().is_some(),
         first_unread: unread.first_unread(),

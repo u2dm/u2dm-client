@@ -181,6 +181,31 @@ pub(crate) fn diff_to_patch(
     }
 }
 
+pub(crate) fn stamp_editable_polls(
+    items: &mut TimelineItems,
+    batch: &mut Vec<TimelinePatch>,
+    ctx: &TimelineContext<'_>,
+) {
+    items.check_editable_polls(ctx, |index, message| {
+        if !carry_message(batch, &message) {
+            batch.push(TimelinePatch::Set { index, message });
+        }
+    });
+}
+
+fn carry_message(batch: &mut [TimelinePatch], message: &TimelineMessage) -> bool {
+    let mut carried = false;
+    for patch in batch {
+        patch.visit_messages_mut(&mut |pending| {
+            if pending.unique_id == message.unique_id {
+                pending.clone_from(message);
+                carried = true;
+            }
+        });
+    }
+    carried
+}
+
 struct ReadStamp {
     row: usize,
     message: TimelineMessage,

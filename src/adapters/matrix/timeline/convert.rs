@@ -474,6 +474,9 @@ fn extract_poll_body(
     } else {
         PollStatus::Open
     };
+    let answered_undecrypted = event
+        .event_id()
+        .is_some_and(|event_id| ctx.undecrypted.respond_to(event_id));
     let answers = results
         .answers
         .iter()
@@ -497,7 +500,10 @@ fn extract_poll_body(
         },
         choice: PollChoice::up_to(usize::try_from(results.max_selections).unwrap_or(usize::MAX)),
         answers,
-        editable: status == PollStatus::Open && event.is_editable() && !ctx.focused,
+        editable: status == PollStatus::Open
+            && event.is_editable()
+            && !answered_undecrypted
+            && !ctx.focused,
         status,
         question: results.question,
     };

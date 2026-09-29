@@ -8,6 +8,7 @@ mod poll_ends;
 mod poll_sends;
 mod polls;
 mod subscribe;
+mod undecrypted;
 
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -40,6 +41,7 @@ use self::members::Members;
 pub(super) use self::pinned::MatrixPinned;
 use self::poll_ends::EndingPolls;
 use self::subscribe::subscribe_timeline;
+use self::undecrypted::UndecryptedResponses;
 use super::attachment;
 use super::media::MediaService;
 use super::profile::PronounCache;
@@ -61,6 +63,7 @@ pub(super) struct TimelineContext<'a> {
     pub(super) pronouns: &'a Arc<PronounCache>,
     pub(super) members: &'a Arc<Members>,
     pub(super) ending: &'a EndingPolls,
+    pub(super) undecrypted: &'a UndecryptedResponses,
     pub(super) own_user_id: Option<&'a str>,
     pub(super) focused: bool,
     pub(super) first_unread: Option<&'a str>,
