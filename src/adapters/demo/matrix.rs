@@ -3,7 +3,7 @@ use std::fs;
 use std::future::pending;
 use std::ops::Range;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -241,6 +241,7 @@ struct DemoAuthed {
     sent: AtomicU64,
     own_sends: Mutex<HashMap<RoomId, Vec<TimelineMessage>>>,
     verification_tx: Mutex<Option<mpsc::UnboundedSender<VerificationEvent>>>,
+    sas_started: AtomicBool,
     sync_sink: Mutex<Option<SyncSink>>,
     joined: Mutex<Vec<RoomId>>,
 }
@@ -721,6 +722,18 @@ impl DemoAuthed {
         if tx.send(event).is_err() {
             tracing::debug!("demo: verification listener is gone");
         }
+    }
+
+    async fn stop_verification(&self, reason: VerificationCancellation) -> Result<()> {
+        let Some(demo) = verification::requested() else {
+            return Err(unavailable("Verification"));
+        };
+        verification::pause().await;
+        if demo.fails == verification::FailingStep::Reject {
+            return Err(unavailable("Declining a verification"));
+        }
+        self.emit_verification(VerificationEvent::Cancelled(reason));
+        Ok(())
     }
 }
 
@@ -1206,6 +1219,7 @@ impl VerificationPort for DemoAuthed {
         }
 
         verification::wait_for_request().await;
+        self.sas_started.store(false, Ordering::Relaxed);
         self.emit_verification(verification::request(demo));
 
         if demo.times_out {
@@ -1227,6 +1241,7 @@ impl VerificationPort for DemoAuthed {
         if demo.fails == verification::FailingStep::Accept {
             return Err(unavailable("Accepting a verification"));
         }
+        self.sas_started.store(true, Ordering::Relaxed);
         self.emit_verification(verification::emojis());
         Ok(())
     }
@@ -1246,17 +1261,17 @@ impl VerificationPort for DemoAuthed {
     }
 
     async fn reject_verification(&self) -> Result<()> {
-        let Some(demo) = verification::requested() else {
-            return Err(unavailable("Verification"));
+        let reason = if self.sas_started.load(Ordering::Relaxed) {
+            VerificationCancellation::Mismatch
+        } else {
+            VerificationCancellation::Declined
         };
-        verification::pause().await;
-        if demo.fails == verification::FailingStep::Reject {
-            return Err(unavailable("Declining a verification"));
-        }
-        self.emit_verification(VerificationEvent::Cancelled(
-            VerificationCancellation::Declined,
-        ));
-        Ok(())
+        self.stop_verification(reason).await
+    }
+
+    async fn cancel_verification(&self) -> Result<()> {
+        self.stop_verification(VerificationCancellation::Declined)
+            .await
     }
 }
 

@@ -504,6 +504,12 @@ async fn reject_verification(
         sas.mismatch().await?;
         return Ok(());
     }
+    cancel_verification(verification_request).await
+}
+
+async fn cancel_verification(
+    verification_request: &Mutex<Option<VerificationRequest>>,
+) -> Result<()> {
     let request = verification_request.lock().await.clone();
     let request =
         request.ok_or_else(|| AppError::Other("No pending verification request".into()))?;
@@ -566,5 +572,9 @@ impl VerificationPort for MatrixVerification {
 
     async fn reject_verification(&self) -> Result<()> {
         reject_verification(&self.sas, &self.request).await
+    }
+
+    async fn cancel_verification(&self) -> Result<()> {
+        cancel_verification(&self.request).await
     }
 }

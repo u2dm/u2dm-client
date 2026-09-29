@@ -146,11 +146,22 @@ impl VerificationController {
             && let Some(verification) = verification
         {
             tracing::info!("dismissing a live verification; cancelling it first");
-            self.reject(group, verification).await;
+            self.cancel(group, verification).await;
             return;
         }
         self.flow = FlowState::Idle;
         self.emit(VerificationUpdate::Dismissed).await;
+    }
+
+    async fn cancel(&self, group: &mut TaskGroup, verification: Arc<dyn VerificationPort>) {
+        self.act(
+            group,
+            verification,
+            VerificationActivity::Declining,
+            UserMessageKind::VerificationRejectFailed,
+            |v| async move { v.cancel_verification().await },
+        )
+        .await;
     }
 
     pub(super) fn reset(&mut self) {

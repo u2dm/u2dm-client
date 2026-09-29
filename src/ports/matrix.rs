@@ -266,6 +266,7 @@ pub trait VerificationPort: Send + Sync {
     async fn accept_verification(&self) -> Result<()>;
     async fn confirm_verification(&self) -> Result<()>;
     async fn reject_verification(&self) -> Result<()>;
+    async fn cancel_verification(&self) -> Result<()>;
 }
 
 #[async_trait]
