@@ -1259,6 +1259,7 @@ impl AppService {
     }
 
     async fn drop_selected_room(&mut self) {
+        self.audio.abandon_lookup();
         self.selection.room = None;
         self.submissions.offer(None);
         let generation = self.selection.next_generation();

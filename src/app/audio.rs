@@ -16,15 +16,15 @@ use crate::ports::matrix::MediaPort;
 use crate::ports::output::AppOutputPort;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
-enum LocateFor {
-    Click,
-    Advance,
+enum Fallback {
+    KeepTrack,
+    Close,
 }
 
 struct Locating {
     request: u64,
     room_id: RoomId,
-    purpose: LocateFor,
+    fallback: Fallback,
 }
 
 pub(super) struct AudioController {
@@ -56,10 +56,14 @@ impl AudioController {
         {
             return;
         }
-        self.locate(timeline, AudioLookup::Event(event_id), LocateFor::Click);
+        let fallback = self
+            .locating
+            .as_ref()
+            .map_or(Fallback::KeepTrack, |pending| pending.fallback);
+        self.locate(timeline, AudioLookup::Event(event_id), fallback);
     }
 
-    fn locate(&mut self, timeline: &ActiveTimeline, lookup: AudioLookup, purpose: LocateFor) {
+    fn locate(&mut self, timeline: &ActiveTimeline, lookup: AudioLookup, fallback: Fallback) {
         self.issued = self.issued.saturating_add(1);
         let request = self.issued;
         match timeline.locate_audio(request, lookup) {
@@ -67,10 +71,10 @@ impl AudioController {
                 self.locating = Some(Locating {
                     request,
                     room_id,
-                    purpose,
+                    fallback,
                 });
             }
-            None if purpose == LocateFor::Advance => self.close(),
+            None if fallback == Fallback::Close => self.close(),
             None => tracing::debug!("no open timeline to find that audio message in"),
         }
     }
@@ -90,7 +94,7 @@ impl AudioController {
         };
         let Some(track) = track else {
             tracing::debug!(request, "the lookup found no audio message to play");
-            if locating.purpose == LocateFor::Advance {
+            if locating.fallback == Fallback::Close {
                 self.close();
             }
             return;
@@ -154,6 +158,10 @@ impl AudioController {
                 self.publish();
             }
             Err(kind) => {
+                if let Some(pending) = &mut self.locating {
+                    pending.fallback = Fallback::Close;
+                    return;
+                }
                 show_toast(self.output.as_ref(), Toast::Error(UserMessage::new(kind)));
                 self.close();
             }
@@ -169,6 +177,10 @@ impl AudioController {
             tracing::debug!(request, "dropping the end of a superseded track");
             return;
         };
+        if let Some(pending) = &mut self.locating {
+            pending.fallback = Fallback::Close;
+            return;
+        }
         let advances = end == AudioEnd::Finished
             && now.meta.kind == AudioKind::Voice
             && timeline.is_active_room(&now.room_id);
@@ -182,7 +194,7 @@ impl AudioController {
             }
             AudioEnd::Finished if advances => {
                 let lookup = AudioLookup::VoiceAfter(now.event_id.clone());
-                self.locate(timeline, lookup, LocateFor::Advance);
+                self.locate(timeline, lookup, Fallback::Close);
             }
             AudioEnd::Finished => self.close(),
         }
@@ -215,7 +227,7 @@ impl AudioController {
 
     pub(super) fn abandon_lookup(&mut self) {
         if let Some(Locating {
-            purpose: LocateFor::Advance,
+            fallback: Fallback::Close,
             ..
         }) = self.locating.take()
         {
