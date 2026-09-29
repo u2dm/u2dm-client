@@ -526,10 +526,6 @@ fn event_id_of(item: &TimelineItem) -> Option<&EventId> {
     item.as_event().and_then(EventTimelineItem::event_id)
 }
 
-fn contains_event(items: &[Arc<TimelineItem>], event_id: &EventId) -> bool {
-    items.iter().any(|item| event_id_of(item) == Some(event_id))
-}
-
 async fn locate_unread(
     timeline: &Timeline,
     items: &[Arc<TimelineItem>],
@@ -605,30 +601,60 @@ fn first_unread_event_id(
         .and_then(|event| event.event_id().map(ToString::to_string))
 }
 
+struct InitialView<S> {
+    items: Vec<Arc<TimelineItem>>,
+    updates: S,
+    unread: UnreadBoundary,
+}
+
+async fn subscribe_initial_view(
+    timeline: &Timeline,
+    focus: &TimelineFocus,
+    acknowledged: Option<&EventId>,
+    own_user_id: Option<&UserId>,
+) -> InitialView<impl Stream<Item = Vec<VectorDiff<Arc<TimelineItem>>>> + use<>> {
+    let (items, updates) = timeline.subscribe().await;
+    let items: Vec<Arc<TimelineItem>> = items.into_iter().collect();
+    let unread = match focus {
+        TimelineFocus::Latest => UnreadBoundary::CaughtUp,
+        TimelineFocus::ReadPosition | TimelineFocus::Event(_) => {
+            locate_unread(timeline, &items, acknowledged, own_user_id).await
+        }
+    };
+    InitialView {
+        items,
+        updates,
+        unread,
+    }
+}
+
 async fn paginate_to_read_boundary(
     timeline: &Timeline,
-    boundary: &EventId,
+    focus: &TimelineFocus,
+    acknowledged: Option<&EventId>,
+    own_user_id: Option<&UserId>,
     outcome: PaginationOutcome,
     timeline_tx: &mpsc::Sender<TimelineUpdate>,
-) -> PaginationOutcome {
+) -> (
+    InitialView<impl Stream<Item = Vec<VectorDiff<Arc<TimelineItem>>>> + use<>>,
+    PaginationOutcome,
+) {
     let mut outcome = outcome;
-    let mut announced = false;
-    for _ in 0..UNREAD_LOOKBACK_BATCHES {
-        if !matches!(outcome, PaginationOutcome::Completed { hit_end: false }) {
-            return outcome;
+    for batch in 0..UNREAD_LOOKBACK_BATCHES {
+        let view = subscribe_initial_view(timeline, focus, acknowledged, own_user_id).await;
+        if !view.unread.is_unresolved()
+            || !matches!(outcome, PaginationOutcome::Completed { hit_end: false })
+        {
+            return (view, outcome);
         }
-        let items: Vec<Arc<TimelineItem>> = timeline.items().await.into_iter().collect();
-        if contains_event(&items, boundary) {
-            return outcome;
-        }
-        if !announced {
-            announced = true;
+        if batch == 0 {
             drop(timeline_tx.send(TimelineUpdate::ResolvingUnread).await);
         }
-        tracing::debug!("the read position is older than the loaded timeline, paginating");
+        tracing::debug!("the read position is not among the subscribed items, paginating");
         outcome = paginate_backwards(timeline).await;
     }
-    outcome
+    let view = subscribe_initial_view(timeline, focus, acknowledged, own_user_id).await;
+    (view, outcome)
 }
 
 async fn handle_room_keys(timeline: &Timeline, keys: BTreeMap<String, BTreeSet<String>>) {
@@ -658,15 +684,20 @@ pub(crate) async fn subscribe_timeline(
     } else {
         None
     };
-    let backwards_outcome = match acknowledged.as_deref() {
-        Some(acknowledged) => {
-            paginate_to_read_boundary(&timeline, acknowledged, backwards_outcome, &timeline_tx)
-                .await
-        }
-        None => backwards_outcome,
-    };
-
-    let (initial_items, stream) = timeline.subscribe().await;
+    let (view, backwards_outcome) = paginate_to_read_boundary(
+        &timeline,
+        focus,
+        acknowledged.as_deref(),
+        client.user_id(),
+        backwards_outcome,
+        &timeline_tx,
+    )
+    .await;
+    let InitialView {
+        items: initial_items,
+        updates: stream,
+        unread,
+    } = view;
 
     let mut side_tasks = JoinSet::new();
     side_tasks.spawn({
@@ -674,19 +705,6 @@ pub(crate) async fn subscribe_timeline(
         async move { timeline.fetch_members().await }
     });
 
-    let initial_items: Vec<Arc<TimelineItem>> = initial_items.into_iter().collect();
-    let unread = match focus {
-        TimelineFocus::Latest => UnreadBoundary::CaughtUp,
-        TimelineFocus::ReadPosition | TimelineFocus::Event(_) => {
-            locate_unread(
-                &timeline,
-                &initial_items,
-                acknowledged.as_deref(),
-                client.user_id(),
-            )
-            .await
-        }
-    };
     tracing::debug!(
         ?acknowledged,
         ?unread,
