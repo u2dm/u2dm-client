@@ -9,6 +9,7 @@ use std::path::{Path, PathBuf};
 use rustix::process::geteuid;
 use tokio::fs;
 use tokio::io::AsyncWriteExt;
+use tokio::task::spawn_blocking;
 
 use crate::util::random_hex;
 
@@ -78,7 +79,10 @@ fn is_exposed(_metadata: &std_fs::Metadata) -> bool {
 }
 
 pub(crate) async fn write_private(path: &Path, data: &[u8]) -> io::Result<()> {
-    write_owner_only(path, data, Durability::Buffered).await
+    let file = fs::OpenOptions::from(create_new_owner_only())
+        .open(path)
+        .await?;
+    fill(file, data, Durability::Buffered).await
 }
 
 pub(crate) async fn write_atomically(path: &Path, data: &[u8]) -> io::Result<()> {
@@ -96,12 +100,15 @@ enum Durability {
     Synced,
 }
 
-async fn write_owner_only(path: &Path, data: &[u8], durability: Durability) -> io::Result<()> {
-    let mut options = fs::OpenOptions::new();
+fn create_new_owner_only() -> std_fs::OpenOptions {
+    let mut options = std_fs::OpenOptions::new();
     options.write(true).create_new(true);
     #[cfg(unix)]
     options.mode(OWNER_ONLY_FILE);
-    let mut file = options.open(path).await?;
+    options
+}
+
+async fn fill(mut file: fs::File, data: &[u8], durability: Durability) -> io::Result<()> {
     file.write_all(data).await?;
     file.flush().await?;
     if durability == Durability::Synced {
@@ -111,16 +118,51 @@ async fn write_owner_only(path: &Path, data: &[u8], durability: Durability) -> i
 }
 
 async fn stage_and_rename(path: &Path, data: &[u8], durability: Durability) -> io::Result<()> {
-    let tmp = unique_tmp_path(path);
-    if let Err(e) = write_owner_only(&tmp, data, durability).await {
-        discard_temp(&tmp).await;
-        return Err(e);
+    let (staged, file) = StagedTemp::beside(path).await?;
+    fill(file, data, durability).await?;
+    staged.rename_to(path).await
+}
+
+struct StagedTemp {
+    path: PathBuf,
+    renamed: bool,
+}
+
+impl StagedTemp {
+    async fn beside(target: &Path) -> io::Result<(Self, fs::File)> {
+        let path = unique_tmp_path(target);
+        spawn_blocking(move || {
+            let file = create_new_owner_only().open(&path)?;
+            let staged = Self {
+                path,
+                renamed: false,
+            };
+            Ok((staged, fs::File::from_std(file)))
+        })
+        .await?
     }
-    if let Err(e) = fs::rename(&tmp, path).await {
-        discard_temp(&tmp).await;
-        return Err(e);
+
+    async fn rename_to(mut self, target: &Path) -> io::Result<()> {
+        fs::rename(&self.path, target).await?;
+        self.renamed = true;
+        Ok(())
     }
-    Ok(())
+}
+
+impl Drop for StagedTemp {
+    fn drop(&mut self) {
+        if self.renamed {
+            return;
+        }
+        if let Err(e) = std_fs::remove_file(&self.path)
+            && e.kind() != ErrorKind::NotFound
+        {
+            tracing::debug!(
+                "failed to remove staged temp file {}: {e}",
+                self.path.display()
+            );
+        }
+    }
 }
 
 pub(crate) async fn sync_containing_dir(path: &Path) -> io::Result<()> {
@@ -138,14 +180,6 @@ pub(crate) async fn sync_dir(dir: &Path) -> io::Result<()> {
 #[cfg(not(unix))]
 pub(crate) async fn sync_dir(_dir: &Path) -> io::Result<()> {
     Ok(())
-}
-
-async fn discard_temp(tmp: &Path) {
-    if let Err(e) = fs::remove_file(tmp).await
-        && e.kind() != ErrorKind::NotFound
-    {
-        tracing::debug!("failed to remove staged temp file {}: {e}", tmp.display());
-    }
 }
 
 fn unique_tmp_path(path: &Path) -> PathBuf {
