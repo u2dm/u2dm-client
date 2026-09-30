@@ -409,7 +409,7 @@ impl Writer {
         let bracket_at = self.markdown.len();
         self.markdown.push('[');
         self.text(&plain_label);
-        write!(self.markdown, "](<{href}>)").ok();
+        self.close_link(&href);
         self.link_open = false;
 
         if self.spans_one_line(bracket_at + 1) {
@@ -516,11 +516,17 @@ impl Writer {
             self.push_escaped(before);
             self.markdown.push('[');
             self.push_escaped(label);
-            write!(self.markdown, "](<{destination}>)").ok();
+            self.close_link(&destination);
             self.has_links = true;
             written = span.end;
         }
         self.push_escaped(text.get(written..).unwrap_or_default());
+    }
+
+    fn close_link(&mut self, destination: &str) {
+        self.markdown.push_str("](<");
+        self.push_escaped(destination);
+        self.markdown.push_str(">)");
     }
 
     fn push_escaped(&mut self, text: &str) {
