@@ -16,7 +16,9 @@ const TAB_AS_SPACES: &str = "    ";
 const LIST_INDENT: &str = "    ";
 const FIRST_LIST_NUMBER: usize = 1;
 const BULLET: &str = "\u{2022} ";
+const QUOTE_MARKER: &str = "> ";
 const DELIMITER_GUARD: &str = "<u></u>";
+const EMPTY_ITEM_CONTENT: &str = "<u></u>";
 
 #[derive(Clone)]
 pub struct StyledBody {
@@ -200,19 +202,28 @@ struct OpenStyle {
     written_on_this_line: bool,
 }
 
+#[derive(Clone, Copy, Default, PartialEq, Eq)]
+enum Line {
+    #[default]
+    Empty,
+    MarkersOnly,
+    HasContent,
+}
+
 #[derive(Default)]
-#[allow(clippy::struct_excessive_bools)]
 struct Writer {
     markdown: String,
     plain: String,
     has_links: bool,
     overflowed: bool,
     nodes: usize,
-    line_has_content: bool,
+    line: Line,
     link_open: bool,
     list_depth: usize,
     item_content_column: usize,
     list_markers: ListMarkers,
+    quote_depth: usize,
+    quotes_on_line: usize,
     open_styles: Vec<OpenStyle>,
 }
 
@@ -253,7 +264,7 @@ impl Writer {
                 self.block(node, depth, |w, n, d| w.styled(InlineStyle::Strong, n, d));
             }
             "code" => self.code_span(collapse_whitespace(&node_text(node)).trim()),
-            "pre" => self.preformatted(node),
+            "pre" => self.block(node, depth, |w, n, _| w.preformatted(n)),
             "a" => self.link(node, depth),
             "blockquote" => self.block(node, depth, Self::quote),
             "ul" | "ol" => self.list(node, depth),
@@ -271,9 +282,9 @@ impl Writer {
     }
 
     fn block(&mut self, node: &NodeRef, depth: usize, body: impl Fn(&mut Self, &NodeRef, usize)) {
-        self.finish_line();
+        self.finish_content_line();
         body(self, node, depth);
-        self.finish_line();
+        self.finish_content_line();
     }
 
     fn styled(&mut self, style: InlineStyle, node: &NodeRef, depth: usize) {
@@ -292,6 +303,20 @@ impl Writer {
         {
             self.markdown.push_str(&open.style.closer());
         }
+    }
+
+    fn write_pending_prefix(&mut self) {
+        self.write_pending_quote_markers();
+        self.write_pending_openers();
+    }
+
+    fn write_pending_quote_markers(&mut self) {
+        for _ in self.quotes_on_line..self.quote_depth {
+            self.push_escaped(QUOTE_MARKER);
+            self.plain.push_str(QUOTE_MARKER);
+            self.line = Line::MarkersOnly;
+        }
+        self.quotes_on_line = self.quote_depth;
     }
 
     fn write_pending_openers(&mut self) {
@@ -328,12 +353,13 @@ impl Writer {
     }
 
     fn quote(&mut self, node: &NodeRef, depth: usize) {
-        self.text("> ");
+        self.quote_depth += 1;
         self.children(node, depth);
+        self.quote_depth -= 1;
     }
 
     fn cell(&mut self, node: &NodeRef, depth: usize) {
-        if self.line_has_content {
+        if self.line == Line::HasContent {
             self.markdown.push_str(CELL_GAP);
             self.plain.push_str(CELL_GAP);
         }
@@ -344,7 +370,7 @@ impl Writer {
         if text.is_empty() || self.exceeded_limits() {
             return;
         }
-        self.write_pending_openers();
+        self.write_pending_prefix();
         let fence = "`".repeat(longest_backtick_run(text) + 1);
         let padding = if text.starts_with('`') || text.ends_with('`') {
             " "
@@ -353,14 +379,13 @@ impl Writer {
         };
         write!(self.markdown, "{fence}{padding}{text}{padding}{fence}").ok();
         self.plain.push_str(text);
-        self.line_has_content = true;
+        self.line = Line::HasContent;
     }
 
     fn preformatted(&mut self, node: &NodeRef) {
-        self.finish_line();
         for line in node_text(node).lines() {
             self.code_span(line.replace('\t', TAB_AS_SPACES).trim_end());
-            self.finish_line();
+            self.finish_content_line();
         }
     }
 
@@ -378,7 +403,7 @@ impl Writer {
             self.text(&plain_label);
             return;
         }
-        self.write_pending_openers();
+        self.write_pending_prefix();
 
         self.link_open = true;
         let bracket_at = self.markdown.len();
@@ -430,22 +455,30 @@ impl Writer {
 
     fn item(&mut self, node: &NodeRef, depth: usize, number: Option<usize>) {
         self.finish_line();
-        let markdown_indent = " ".repeat(self.item_content_column);
-        let plain_indent = LIST_INDENT.repeat(self.list_depth.saturating_sub(1));
-        let markdown_marker = self.list_markers.marker(number);
-        let plain_marker = number.map_or_else(|| BULLET.to_owned(), |n| format!("{n}. "));
-
-        self.markdown.push_str(&markdown_indent);
-        self.markdown.push_str(&markdown_marker);
-        self.plain.push_str(&plain_indent);
-        self.plain.push_str(&plain_marker);
-        self.line_has_content = true;
-
         let parent_content_column = self.item_content_column;
-        self.item_content_column = markdown_indent.len() + markdown_marker.len();
+        self.write_item_marker(number);
         self.children(node, depth);
         self.item_content_column = parent_content_column;
         self.finish_line();
+    }
+
+    fn write_item_marker(&mut self, number: Option<usize>) {
+        self.write_pending_quote_markers();
+        let plain_indent = LIST_INDENT.repeat(self.list_depth.saturating_sub(1));
+        let plain_marker = number.map_or_else(|| BULLET.to_owned(), |n| format!("{n}. "));
+        if self.quotes_on_line > 0 {
+            self.push_escaped(&plain_indent);
+            self.push_escaped(&plain_marker);
+        } else {
+            let markdown_indent = " ".repeat(self.item_content_column);
+            let markdown_marker = self.list_markers.marker(number);
+            self.markdown.push_str(&markdown_indent);
+            self.markdown.push_str(&markdown_marker);
+            self.item_content_column = markdown_indent.len() + markdown_marker.len();
+        }
+        self.plain.push_str(&plain_indent);
+        self.plain.push_str(&plain_marker);
+        self.line = Line::MarkersOnly;
     }
 
     fn text(&mut self, raw: &str) {
@@ -453,7 +486,7 @@ impl Writer {
             return;
         }
         let collapsed = collapse_whitespace(raw);
-        let text = if self.line_has_content {
+        let text = if self.line == Line::HasContent {
             collapsed.as_str()
         } else {
             collapsed.trim_start()
@@ -462,14 +495,14 @@ impl Writer {
             return;
         }
 
-        self.write_pending_openers();
+        self.write_pending_prefix();
         if self.link_open {
             self.push_escaped(text);
         } else {
             self.push_linkified(text);
         }
         self.plain.push_str(text);
-        self.line_has_content = true;
+        self.line = Line::HasContent;
     }
 
     fn push_linkified(&mut self, text: &str) {
@@ -499,14 +532,24 @@ impl Writer {
         }
     }
 
+    fn finish_content_line(&mut self) {
+        if self.line == Line::HasContent {
+            self.finish_line();
+        }
+    }
+
     fn finish_line(&mut self) {
-        if !self.line_has_content {
+        if self.line == Line::Empty {
             return;
+        }
+        if self.line == Line::MarkersOnly {
+            self.markdown.push_str(EMPTY_ITEM_CONTENT);
         }
         self.write_closers_before_line_end();
         self.markdown.push('\n');
         self.plain.push('\n');
-        self.line_has_content = false;
+        self.line = Line::Empty;
+        self.quotes_on_line = 0;
     }
 }
 

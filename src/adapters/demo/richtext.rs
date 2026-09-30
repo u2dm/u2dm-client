@@ -89,6 +89,17 @@ const HARD: &[(&str, &str)] = &[
         "Unclosed markup that must not blank the message.",
         "<strong>bold without an end <em>and emphasis",
     ),
+    (
+        "A reply quoting two lines, as Element sends it.",
+        "<blockquote>\n<p>They said this<br />\nover two lines</p>\n</blockquote>\n\
+         <p>and this is my answer</p>\n",
+    ),
+    (
+        "Loose lists, as Element sends them.",
+        "<ul>\n<li>\n<p>first point</p>\n</li>\n<li>\n<p>second point</p>\n\
+         <ol>\n<li>a detail</li>\n<li>another</li>\n</ol>\n</li>\n</ul>\n\
+         <ol start=\"3\">\n<li>\n<p>third</p>\n</li>\n<li>\n<p><strong>fourth</strong></p>\n</li>\n</ol>\n",
+    ),
 ];
 
 const LINKS: &[(&str, &str)] = &[
