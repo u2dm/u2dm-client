@@ -7,62 +7,43 @@
 
 # u2dm
 
-Unable to Decrypt Message: a Matrix chat client built with Slint UI.
+Unable to Decrypt Message: a Matrix client built with Rust and Slint.
 
 </div>
 
-![u2dm chat window showing](docs/screenshot.png)
+![u2dm screenshot](docs/screenshot.png)
 
-## Status
-
-Early development. Expect incomplete features, rough edges, and breaking changes.
+Early development.
 
 ## Features
 
 - Password and OAuth login
-- Room list with message previews and unread and mention badges
-- Spaces shown as a reorderable rail that filters the room list
-- Message timeline
-- Pronoun badges next to sender names (MSC4247 profile field)
-- Emoji picker
-- Media showing and download
-- SAS device verification for encrypted rooms
-- Encrypted session storage using SQLite and the OS keyring
+- End-to-end encryption, device verification
+- Reactions, polls, stickers
+- Video and audio playback
+- Pronouns ([MSC4247](https://github.com/matrix-org/matrix-spec-proposals/pull/4247))
+- Touch gestures
+
+## Planned
+
+- More gestures
+- Calls
+- Multiple accounts
+- User, room and space management
+- More responsive layouts
+- Android support
+- Theming
 
 ## Building
 
 ```sh
 cargo run
+cargo run --features demo                                     # fake data, no account
+cargo run --no-default-features --features interpreted,video  # if you want to edit the UI without rebuilding
 ```
 
-The first build downloads the bundled color emoji font from the [`u2dm/twemoji`](https://github.com/u2dm/twemoji) release. It is cached at `ui/fonts/Twemoji.ttf` afterwards.
+The first build downloads the emoji font from [u2dm/twemoji](https://github.com/u2dm/twemoji). Run `just` for shortcuts.
 
-### Optional: `just`
+## License
 
-The [`justfile`](justfile) wraps the common commands and routes each feature combination to its own directory under `target/modes/`, keeping them out of the default `target/debug` so they can be wiped wholesale (`just clean-modes`) without disturbing the `cargo run` loop. Needs [`just`](https://github.com/casey/just).
-
-Plain `cargo` works the same as always.
-
-## Feature flags
-
-Both are off by default, so a plain `cargo run` gives you the compiled UI talking to a real homeserver.
-
-- `interpreted` load the `.slint` files at runtime instead of compiling them into the binary. Edit the UI and relaunch without a rebuild, at the cost of a slower start. It replaces the default `compiled` backend rather than adding to it, so it turns the defaults off:
-
-  ```sh
-  cargo run --no-default-features --features interpreted,video
-  ```
-
-- `demo` run against fake rooms, spaces and timelines instead of a real account, useful for screenshots and UI work. The data lives in `assets/demo/data.json` and is read at runtime. Avatars and thumbnails are fetched on first build and fall back to initials if unavailable.
-
-  ```sh
-  cargo run --features demo
-  ```
-
-`just run-interpreted` and `just demo` run these with isolated build directories.
-
-## Licenses
-
-- Code: **AGPL-3.0-or-later**.
-- Bundled third-party assets (the Twemoji emoji font): see
-  [`THIRD-PARTY-LICENSES.md`](THIRD-PARTY-LICENSES.md).
+AGPL-3.0-or-later. Third-party assets: [THIRD-PARTY-LICENSES.md](THIRD-PARTY-LICENSES.md).
