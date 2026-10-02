@@ -2,23 +2,24 @@ use std::collections::HashSet;
 use std::mem;
 use std::sync::Arc;
 
-use slint::{ComponentHandle, Model, SharedString};
+use slint::{ComponentHandle, Model, SharedString, StyledText};
 
 use super::audio;
 use super::backend::{UiBackend, UiEventContext, apply_sticker_art, enrich_message};
 use super::decode::{AvatarSlot, load_attachment_preview, load_avatar_async, request_sticker};
 use super::dto::{
-    GRID_COLUMNS, StickerArt, StickerPackDto, StickerRowDto, audio_row_update, preview_line,
-    sticker_art, sticker_grid, sticker_needle,
+    GRID_COLUMNS, StickerArt, StickerPackDto, StickerRowDto, audio_row_update,
+    load_room_info_avatar, preview_line, rich_body, sticker_art, sticker_grid, sticker_needle,
 };
-use super::fields::{MessageFields, RoomFields, SpaceChildFields, SpaceFields};
+use super::fields::{MemberRowFields, MessageFields, RoomFields, SpaceChildFields, SpaceFields};
 use super::present::{
-    VerifyStep, duration_label, file_extension, user_initial, verification_cancellation,
+    VerifyStep, avatar_color_index, avatar_initials, duration_label, file_extension,
+    message_sent_at_label, user_initial, verification_cancellation,
 };
 use super::props::{BoolProp, IntProp, StringProp, UiProps};
 use super::reconcile::{
-    RowReplacements, apply_rooms, apply_space_children, apply_spaces, apply_timeline_patch,
-    index_sticker_grid, retain_awaited_downloads,
+    RowReplacements, apply_member_rows, apply_rooms, apply_space_children, apply_spaces,
+    apply_timeline_patch, index_sticker_grid, retain_awaited_downloads,
 };
 use super::rows::patch_rows_by_id;
 use super::session::{begin_session, with_session};
@@ -28,12 +29,13 @@ use crate::commands::effects::{Effect, VerificationActivity, VerificationUpdate}
 use crate::commands::messages::{UserMessage, UserMessageKind};
 use crate::commands::view::{
     AppViewState, AttachmentView, AudioView, DirectoryView, LifecycleView, NowPlaying,
-    PaginationView, PinnedView, SpaceIndexView, StickerView, Toast, TrackFile, UnsentMessage,
-    VideoView,
+    PaginationView, PinnedView, RoomCard, RoomInfoView, SpaceIndexView, StickerView, Toast,
+    TrackFile, UnsentMessage, VideoView,
 };
-use crate::domain::message::MessagePreviewKind;
+use crate::domain::message::{MessagePreviewKind, RichText};
 use crate::domain::poll::PollPermissions;
 use crate::domain::room::{RoomId, RoomList};
+use crate::domain::room_info::RoomAbout;
 use crate::domain::timeline::{TimelinePatch, TimelineStatus};
 use crate::domain::verification::VerificationEvent as DomainVerificationEvent;
 use crate::ports::media::MediaCache;
@@ -294,6 +296,7 @@ fn apply_snapshot<B: UiBackend>(
         connection,
         directory,
         space_index,
+        room_info,
         pagination,
         pinned,
         stickers,
@@ -310,6 +313,7 @@ fn apply_snapshot<B: UiBackend>(
     }
     apply_directory::<B>(w, last.map(|l| &l.directory), directory, ctx);
     apply_space_index::<B>(w, last.map(|l| &l.space_index), space_index, ctx);
+    apply_room_info::<B>(w, last.map(|l| &l.room_info), room_info, ctx);
     if last.is_none_or(|l| l.pagination != *pagination) {
         sync_timeline_chrome(w, pagination);
     }
@@ -457,6 +461,136 @@ fn apply_space_index<B: UiBackend>(
         &|row| B::convert_space_child(row, ctx.media),
         &|entry| entry.id(),
     );
+}
+
+fn apply_room_info<B: UiBackend>(
+    w: &B::Window,
+    last: Option<&RoomInfoView>,
+    room_info: &RoomInfoView,
+    ctx: &UiEventContext<'_, B>,
+) {
+    let RoomInfoView {
+        card,
+        about,
+        roster,
+        rows,
+        has_more,
+        pages_landed,
+        avatars_ready,
+        notify,
+        notify_busy,
+        leaving,
+        error,
+    } = room_info;
+
+    if last.is_none_or(|l| l.card != *card) {
+        apply_room_card(w, card.as_ref(), ctx.media);
+    }
+    if last.is_none_or(|l| l.card != *card || l.about != *about) {
+        apply_room_topic(w, card.as_ref(), about.as_ref());
+    }
+    if last.is_none_or(|l| l.about != *about) {
+        let joined_on = about
+            .as_ref()
+            .and_then(|about| about.joined_at)
+            .map(message_sent_at_label)
+            .unwrap_or_default();
+        let link = about.as_ref().map_or("", |about| about.link.as_str());
+        w.set_string(StringProp::RoomInfoJoinedOn, SharedString::from(joined_on));
+        w.set_string(StringProp::RoomInfoLink, SharedString::from(link));
+    }
+    if last.is_none_or(|l| l.roster != *roster) {
+        w.set_room_info_roster(*roster);
+    }
+    if last.is_none_or(|l| l.has_more != *has_more) {
+        w.set_bool(BoolProp::RoomInfoHasMore, *has_more);
+    }
+    if last.is_none_or(|l| l.notify != *notify) {
+        w.set_room_info_notify(*notify);
+    }
+    if last.is_none_or(|l| l.notify_busy != *notify_busy) {
+        w.set_bool(BoolProp::RoomInfoNotifyBusy, *notify_busy);
+    }
+    if last.is_none_or(|l| l.leaving != *leaving) {
+        w.set_bool(BoolProp::RoomInfoLeaving, *leaving);
+    }
+    if last.is_none_or(|l| l.error != *error) {
+        w.set_room_info_error(error.kind);
+        w.set_string(
+            StringProp::RoomInfoErrorDetail,
+            SharedString::from(&error.detail),
+        );
+    }
+    if last.is_none_or(|l| l.pages_landed != *pages_landed) {
+        w.set_int(IntProp::RoomInfoPagesLanded, *pages_landed);
+        run_change_handlers_next_frame(w);
+    }
+    let rows_changed = last.is_none_or(|l| !Arc::ptr_eq(&l.rows, rows));
+    let avatars_landed = last.is_some_and(|l| l.avatars_ready != *avatars_ready);
+    if !rows_changed && !avatars_landed {
+        return;
+    }
+    let previous = last
+        .filter(|_| !avatars_landed)
+        .map_or(&[] as &[_], |l| l.rows.as_ref());
+    apply_member_rows(
+        &ctx.models.room_members,
+        rows.as_ref(),
+        previous,
+        ctx.media,
+        &|row| B::convert_member_row(row, ctx.media),
+        &|entry| entry.user_id(),
+    );
+}
+
+fn apply_room_card(w: &impl UiProps, card: Option<&RoomCard>, media: &dyn MediaCache) {
+    let Some(card) = card else {
+        w.set_bool(BoolProp::RoomInfoVisible, false);
+        w.apply_room_info_avatar(None);
+        return;
+    };
+    w.set_string(
+        StringProp::RoomInfoRoomId,
+        SharedString::from(card.id.as_ref()),
+    );
+    w.set_string(StringProp::RoomInfoName, SharedString::from(&card.name));
+    w.set_string(
+        StringProp::RoomInfoInitial,
+        SharedString::from(avatar_initials(&card.name)),
+    );
+    w.set_int(IntProp::RoomInfoColorIndex, avatar_color_index(&card.id));
+    w.set_int(
+        IntProp::RoomInfoMembers,
+        i32::try_from(card.member_count).unwrap_or(i32::MAX),
+    );
+    w.set_bool(BoolProp::RoomInfoIsDirect, card.is_direct);
+    w.set_string(
+        StringProp::RoomInfoAlias,
+        SharedString::from(card.alias.as_deref().unwrap_or_default()),
+    );
+    w.apply_room_info_avatar(load_room_info_avatar(card, media));
+    w.set_bool(BoolProp::RoomInfoVisible, true);
+}
+
+fn apply_room_topic(w: &impl UiProps, card: Option<&RoomCard>, about: Option<&RoomAbout>) {
+    let Some(topic) = shown_topic(card, about) else {
+        w.set_string(StringProp::RoomInfoTopic, SharedString::default());
+        w.set_bool(BoolProp::RoomInfoTopicHasLinks, false);
+        w.apply_room_info_topic(StyledText::default());
+        return;
+    };
+    let body = rich_body(&topic);
+    w.set_string(StringProp::RoomInfoTopic, body.plain);
+    w.set_bool(BoolProp::RoomInfoTopicHasLinks, body.has_links);
+    w.apply_room_info_topic(body.styled);
+}
+
+fn shown_topic(card: Option<&RoomCard>, about: Option<&RoomAbout>) -> Option<RichText> {
+    let plain = card?.topic.as_ref()?;
+    match about.and_then(|about| about.topic.as_ref()) {
+        Some(rich) if rich.plain == *plain => Some(rich.clone()),
+        _ => Some(RichText::plain(plain.clone())),
+    }
 }
 
 fn run_change_handlers_next_frame(w: &impl ComponentHandle) {

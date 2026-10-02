@@ -4,7 +4,7 @@ use crate::domain::auth::LoginCredentials;
 use crate::domain::link::LauncherSafeUrl;
 use crate::domain::media::AttachmentPick;
 use crate::domain::poll::PollDraft;
-use crate::domain::room::RoomId;
+use crate::domain::room::{NotifyMode, RoomId};
 use crate::domain::sticker::PackId;
 
 #[derive(StrumDisplay)]
@@ -40,6 +40,17 @@ pub enum UiCommand {
     JoinSpaceChild(RoomId),
     #[strum(to_string = "OpenSpaceChild({0})")]
     OpenSpaceChild(RoomId),
+    #[strum(to_string = "OpenRoomInfo({0})")]
+    OpenRoomInfo(RoomId),
+    CloseRoomInfo,
+    PageRoomMembers,
+    RetryRoomMembers,
+    #[strum(to_string = "FilterRoomMembers")]
+    FilterRoomMembers(String),
+    #[strum(to_string = "SetRoomNotify")]
+    SetRoomNotify(NotifyMode),
+    #[strum(to_string = "LeaveRoom({0})")]
+    LeaveRoom(RoomId),
     #[strum(to_string = "SendMessage({room_id})")]
     SendMessage {
         room_id: RoomId,

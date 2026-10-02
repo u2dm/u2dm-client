@@ -14,6 +14,7 @@ pub mod probe;
 mod reactions;
 mod receipts;
 mod richtext;
+mod room_info;
 mod space_index;
 mod stickers;
 mod storage;

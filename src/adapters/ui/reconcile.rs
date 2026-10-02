@@ -6,13 +6,13 @@ use slint::{Model, SharedString, VecModel};
 
 use super::decode::forget_all_media_needs;
 use super::dto::{
-    StickerGrid, StickerRowDto, prefetch_space_avatar, record_room_avatar_need,
-    request_space_child_avatar,
+    INVITED_HEADING_ROW, StickerGrid, StickerRowDto, prefetch_space_avatar,
+    record_room_avatar_need, request_member_avatar, request_space_child_avatar,
 };
 use super::richtext::forget_styled_bodies;
 use super::session::with_session;
 use super::splice_model::SpliceModel;
-use crate::commands::view::SpaceIndexRow;
+use crate::commands::view::{RosterRow, SpaceIndexRow};
 use crate::domain::message::TimelineMessage;
 use crate::domain::room::{Room, Space};
 use crate::domain::timeline::{EnrichmentDelta, TimelinePatch};
@@ -475,6 +475,33 @@ pub fn apply_spaces<T: Clone + PartialEq + 'static>(
 impl SameItem for SpaceIndexRow {
     fn same_item(&self, other: &Self) -> bool {
         self == other
+    }
+}
+
+impl SameItem for RosterRow {
+    fn same_item(&self, other: &Self) -> bool {
+        self == other
+    }
+}
+
+pub fn apply_member_rows<T: Clone + PartialEq + 'static>(
+    model: &VecModel<T>,
+    rows: &[RosterRow],
+    previous: &[RosterRow],
+    media: &dyn MediaCache,
+    convert: &dyn Fn(&RosterRow) -> T,
+    get_id: &dyn Fn(&T) -> &str,
+) {
+    for row in rows {
+        request_member_avatar(row, media);
+    }
+    apply_reconcile(model, rows, previous, &roster_row_id, convert, get_id);
+}
+
+fn roster_row_id(row: &RosterRow) -> &str {
+    match row {
+        RosterRow::Member(member) => &member.user_id,
+        RosterRow::InvitedHeading => INVITED_HEADING_ROW,
     }
 }
 

@@ -27,6 +27,9 @@ scenario_env() {
     space-index)     echo 'U2DM_DEMO_SPACE_INDEX=slow' ;;
     polls)           echo 'U2DM_DEMO_TIMELINE=deep U2DM_DEMO_POLLS=late,live,ended' ;;
     poll-edits)      echo 'U2DM_DEMO_POLLS=late,revoked' ;;
+    room-info)       echo 'U2DM_DEMO_ROOM_INFO=slow' ;;
+    room-leave)      echo 'U2DM_DEMO_ROOM_INFO=slow' ;;
+    room-info-failures) echo 'U2DM_DEMO_ROOM_INFO=roster-fails,notify-fails,leave-fails' ;;
     *) return 1 ;;
   esac
 }
@@ -82,6 +85,35 @@ scenario_steps() {
       echo 'sleep 1'
       echo '{"op":"edit_poll","event_id":"demo-book-venue","question":"where do we meet next month","answers":["the café again","the library basement","the park, weather permitting"],"multiple":true}'
       echo 'sleep 4' ;;
+    room-info)
+      echo '{"op":"select_room","room_id":"!rust:demo.local"}'
+      echo 'sleep 1'
+      echo '{"op":"open_room_info"}'
+      echo 'sleep 3'
+      echo '{"op":"page_room_members"}'
+      echo 'sleep 2'
+      echo '{"op":"filter_room_members","query":"sa"}'
+      echo 'sleep 1'
+      echo '{"op":"set_room_notify","mode":"mentions-only"}'
+      echo 'sleep 3' ;;
+    room-leave)
+      echo '{"op":"select_room","room_id":"!ohio:demo.local"}'
+      echo 'sleep 1'
+      echo '{"op":"open_room_info"}'
+      echo 'sleep 2'
+      echo '{"op":"leave_room"}'
+      echo 'sleep 3' ;;
+    room-info-failures)
+      echo '{"op":"select_room","room_id":"!trip:demo.local"}'
+      echo 'sleep 1'
+      echo '{"op":"open_room_info"}'
+      echo 'sleep 1'
+      echo '{"op":"retry_room_members"}'
+      echo 'sleep 1'
+      echo '{"op":"set_room_notify","mode":"muted"}'
+      echo 'sleep 1'
+      echo '{"op":"leave_room"}'
+      echo 'sleep 1' ;;
     login-oauth|verify-self)
       : ;;
   esac
@@ -106,6 +138,9 @@ scenario_note() {
     space-index)     echo 'the Matrix space index loads slowly, pages, and joins a room that turns to Open on the sync echo' ;;
     polls)           echo 'tallies arrive as Sets while members keep voting; an own vote and an own multi-choice change land, then the own poll is ended' ;;
     poll-edits)      echo 'an own unanswered poll is edited, keeping two answer ids, then the room list bars voting in every poll' ;;
+    room-info)       echo 'the room info of a 1243-member room loads slowly, pages, filters, and turns notifications to mentions' ;;
+    room-leave)      echo 'a room is left from its room info; it drops from the list on the sync echo and the timeline closes' ;;
+    room-info-failures) echo 'the member list fails once and is retried, then a notification change and a leave fail inline' ;;
   esac
 }
 
@@ -123,7 +158,7 @@ check_window() {
 names() {
   printf '%s\n' unread-anchor all-unread unread-unresolved reactions-late sticker-trickle jump-to-reply \
     pinned-bar media-failures compact-layout login-oauth verify-self audio-track voice-notes delivery-marks \
-    space-index polls poll-edits
+    space-index polls poll-edits room-info room-leave room-info-failures
 }
 
 cmd_list() {

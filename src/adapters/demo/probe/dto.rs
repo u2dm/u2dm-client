@@ -4,11 +4,12 @@ use super::names;
 use crate::commands::messages::UserMessage;
 use crate::commands::view::{
     AppViewState, AttachmentView, AudioView, DirectoryView, LifecycleView, PaginationView,
-    PinnedView, SpaceIndexRow, SpaceIndexView, StickerView, Toast, TrackFile, UnsentMessage,
-    VideoView,
+    PinnedView, RoomInfoView, RosterRow, SpaceIndexRow, SpaceIndexView, StickerView, Toast,
+    TrackFile, UnsentMessage, VideoView,
 };
 use crate::domain::message::PinnedMessage;
 use crate::domain::room::{Room, Space};
+use crate::domain::room_info::RosterSection;
 use crate::domain::space_index::{ChildKind, JoinRule};
 use crate::domain::sticker::StickerPack;
 use crate::domain::sync::ConnectionStatus;
@@ -19,6 +20,7 @@ pub struct ViewDto {
     connection: ConnectionDto,
     directory: DirectoryDto,
     space_index: SpaceIndexDto,
+    room_info: RoomInfoDto,
     pagination: PaginationDto,
     pinned: PinnedDto,
     stickers: StickersDto,
@@ -138,6 +140,40 @@ struct SpaceChildDto {
 }
 
 #[derive(Serialize)]
+#[allow(clippy::struct_excessive_bools)]
+struct RoomInfoDto {
+    open: bool,
+    room_id: Option<String>,
+    name: Option<String>,
+    member_count: Option<u64>,
+    is_direct: bool,
+    topic: Option<String>,
+    topic_html: Option<String>,
+    alias: Option<String>,
+    joined_at: Option<u64>,
+    link: Option<String>,
+    notify: &'static str,
+    notify_busy: bool,
+    leaving: bool,
+    roster: &'static str,
+    has_more: bool,
+    pages_landed: i32,
+    avatars_ready: usize,
+    error: MessageDto,
+    rows: Vec<MemberRowDto>,
+}
+
+#[derive(Serialize)]
+struct MemberRowDto {
+    kind: &'static str,
+    user_id: Option<String>,
+    name: Option<String>,
+    role: Option<&'static str>,
+    invited: bool,
+    has_avatar_mxc: bool,
+}
+
+#[derive(Serialize)]
 struct PaginationDto {
     generation: i32,
     backwards_loading: bool,
@@ -232,6 +268,7 @@ pub fn view(source: &AppViewState) -> ViewDto {
         connection: connection(&source.connection),
         directory: directory(&source.directory),
         space_index: space_index(&source.space_index),
+        room_info: room_info(&source.room_info),
         pagination: pagination(source.pagination),
         pinned: pinned(&source.pinned),
         stickers: stickers(&source.stickers),
@@ -338,6 +375,55 @@ fn space_index(source: &SpaceIndexView) -> SpaceIndexDto {
         avatars_ready: source.avatars_ready,
         pages_landed: source.pages_landed,
         rows: source.rows.iter().map(space_child).collect(),
+    }
+}
+
+fn room_info(source: &RoomInfoView) -> RoomInfoDto {
+    let card = source.card.as_ref();
+    let about = source.about.as_ref();
+    RoomInfoDto {
+        open: card.is_some(),
+        room_id: card.map(|card| card.id.to_string()),
+        name: card.map(|card| card.name.clone()),
+        member_count: card.map(|card| card.member_count),
+        is_direct: card.is_some_and(|card| card.is_direct),
+        topic: card.and_then(|card| card.topic.clone()),
+        topic_html: about
+            .and_then(|about| about.topic.as_ref())
+            .and_then(|topic| topic.html.clone()),
+        alias: card.and_then(|card| card.alias.clone()),
+        joined_at: about.and_then(|about| about.joined_at),
+        link: about.map(|about| about.link.clone()),
+        notify: names::notify_mode(source.notify),
+        notify_busy: source.notify_busy,
+        leaving: source.leaving,
+        roster: names::roster_status(source.roster),
+        has_more: source.has_more,
+        pages_landed: source.pages_landed,
+        avatars_ready: source.avatars_ready,
+        error: message(&source.error),
+        rows: source.rows.iter().map(member_row).collect(),
+    }
+}
+
+fn member_row(source: &RosterRow) -> MemberRowDto {
+    match source {
+        RosterRow::InvitedHeading => MemberRowDto {
+            kind: "invited-heading",
+            user_id: None,
+            name: None,
+            role: None,
+            invited: true,
+            has_avatar_mxc: false,
+        },
+        RosterRow::Member(member) => MemberRowDto {
+            kind: "member",
+            user_id: Some(member.user_id.clone()),
+            name: Some(member.label().to_owned()),
+            role: Some(names::member_role(member.role)),
+            invited: member.section == RosterSection::Invited,
+            has_avatar_mxc: member.avatar_mxc.is_some(),
+        },
     }
 }
 

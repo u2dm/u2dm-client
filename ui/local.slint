@@ -1,5 +1,5 @@
 import { Delivery, LoginPhase, PollPhase } from "enums.slint";
-import { AttachmentView, LoginView, RoomView, VerificationView, VideoView, WindowView } from "views.slint";
+import { AttachmentView, LoginView, RoomInfoView, RoomView, VerificationView, VideoView, WindowView } from "views.slint";
 import { MessageEntry, ReactionEntry } from "screens/chat/components/types.slint";
 import { MessagePreview } from "screens/chat/components/message-preview.slint";
 import { Metrics } from "theme.slint";
@@ -88,11 +88,14 @@ export global Shell {
         && LoginView.step == LoginPhase.logged-in;
     out property <bool> video-open: VideoView.visible
         && LoginView.step == LoginPhase.logged-in;
+    out property <bool> room-info-open: RoomInfoView.visible
+        && LoginView.step == LoginPhase.logged-in;
     out property <bool> modal-over-nav: root.drawer-open
         || root.verification-open
         || root.attachment-open
         || root.video-open
-        || root.poll-open;
+        || root.poll-open
+        || root.room-info-open;
     out property <bool> modal-open: root.nav-open || root.modal-over-nav;
     out property <bool> nav-on-top: root.nav-open && !root.modal-over-nav;
     out property <bool> background-reachable: !root.modal-open;

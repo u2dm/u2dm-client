@@ -3,6 +3,7 @@ mod build;
 mod directory;
 mod health;
 mod hierarchy;
+mod info;
 mod send_queue;
 
 use std::future;
@@ -27,6 +28,7 @@ use self::avatars::AvatarFetcher;
 use self::directory::Directory;
 use self::health::{SyncHealth, session_loss};
 pub(super) use self::hierarchy::MatrixSpaceIndex;
+pub(super) use self::info::MatrixRoomInfo;
 use self::send_queue::SendQueueRecovery;
 use super::media::MediaService;
 use super::session::ClientHandle;

@@ -209,6 +209,13 @@ pub(super) fn command_allowed(phase: AppPhase, cmd: &UiCommand) -> bool {
         | UiCommand::RetrySpaceIndex
         | UiCommand::JoinSpaceChild(_)
         | UiCommand::OpenSpaceChild(_)
+        | UiCommand::OpenRoomInfo(_)
+        | UiCommand::CloseRoomInfo
+        | UiCommand::PageRoomMembers
+        | UiCommand::RetryRoomMembers
+        | UiCommand::FilterRoomMembers(_)
+        | UiCommand::SetRoomNotify(_)
+        | UiCommand::LeaveRoom(_)
         | UiCommand::SendMessage { .. }
         | UiCommand::DismissUnsent { .. }
         | UiCommand::PickAttachment { .. }

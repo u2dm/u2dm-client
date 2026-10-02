@@ -4,6 +4,7 @@ use serde::Deserialize;
 
 use std::time::Duration;
 
+use super::names;
 use crate::adapters::demo::attachments;
 use crate::adapters::ui::dump::Poke;
 use crate::commands::ui::{MessageDraft, ReplyDraft, UiCommand};
@@ -49,6 +50,23 @@ pub enum ProbeCommand {
     },
     OpenSpaceChild {
         room_id: String,
+    },
+    OpenRoomInfo {
+        #[serde(default)]
+        room_id: Option<String>,
+    },
+    CloseRoomInfo,
+    PageRoomMembers,
+    RetryRoomMembers,
+    FilterRoomMembers {
+        query: String,
+    },
+    SetRoomNotify {
+        mode: String,
+    },
+    LeaveRoom {
+        #[serde(default)]
+        room_id: Option<String>,
     },
     SendMessage {
         #[serde(default)]
@@ -275,6 +293,19 @@ pub fn to_driven(command: ProbeCommand, selected: Selection<'_>) -> Result<Drive
         ProbeCommand::RetrySpaceIndex => UiCommand::RetrySpaceIndex,
         ProbeCommand::JoinSpaceChild { room_id } => UiCommand::JoinSpaceChild(RoomId::new(room_id)),
         ProbeCommand::OpenSpaceChild { room_id } => UiCommand::OpenSpaceChild(RoomId::new(room_id)),
+        ProbeCommand::OpenRoomInfo { room_id } => UiCommand::OpenRoomInfo(room(room_id, selected)?),
+        ProbeCommand::CloseRoomInfo => UiCommand::CloseRoomInfo,
+        ProbeCommand::PageRoomMembers => UiCommand::PageRoomMembers,
+        ProbeCommand::RetryRoomMembers => UiCommand::RetryRoomMembers,
+        ProbeCommand::FilterRoomMembers { query } => UiCommand::FilterRoomMembers(query),
+        ProbeCommand::SetRoomNotify { mode } => {
+            UiCommand::SetRoomNotify(names::notify_mode_named(&mode).ok_or_else(|| {
+                Rejected(format!(
+                    "{mode} is not a notification mode; use all-messages, mentions-only or muted"
+                ))
+            })?)
+        }
+        ProbeCommand::LeaveRoom { room_id } => UiCommand::LeaveRoom(room(room_id, selected)?),
         ProbeCommand::SendMessage {
             room_id,
             body,

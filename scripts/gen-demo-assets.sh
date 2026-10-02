@@ -87,6 +87,7 @@ photo_url() {
 user_ids() {
   jq -r '[.session.user_id] + [.rooms[].last_message.sender_id // empty]
          + [.rooms[].avatar // empty | select(startswith("@"))]
+         + [.rooms[].invited[]?] + [.rooms[].roles // {} | keys[]]
          + [.timelines[][].sender] | unique | .[]' "$data"
 }
 

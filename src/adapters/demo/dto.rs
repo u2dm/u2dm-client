@@ -12,6 +12,7 @@ use crate::domain::message::{
 };
 use crate::domain::poll::{Poll, PollAnswer, PollChoice, PollDisclosure, PollStatus, Voter};
 use crate::domain::room::{NotifyMode, Room, RoomId, Space};
+use crate::domain::room_info::MemberRole;
 use crate::domain::space_index::{ChildKind, JoinRule, SpaceChild};
 use crate::domain::sticker::{PackId, StickerImage, StickerPack};
 
@@ -104,6 +105,24 @@ impl NotifyDto {
     }
 }
 
+#[derive(Deserialize, Clone, Copy)]
+#[serde(rename_all = "lowercase")]
+pub enum RoleDto {
+    Owner,
+    Admin,
+    Moderator,
+}
+
+impl RoleDto {
+    pub fn to_role(self) -> MemberRole {
+        match self {
+            Self::Owner => MemberRole::Owner,
+            Self::Admin => MemberRole::Admin,
+            Self::Moderator => MemberRole::Moderator,
+        }
+    }
+}
+
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct RoomDto {
@@ -111,11 +130,23 @@ pub struct RoomDto {
     name: String,
     avatar: Option<String>,
     #[serde(default)]
+    topic: Option<String>,
+    #[serde(default)]
+    topic_html: Option<String>,
+    #[serde(default)]
+    pub alias: Option<String>,
+    #[serde(default)]
+    joined_days_ago: Option<u64>,
+    #[serde(default)]
+    pub roles: HashMap<String, RoleDto>,
+    #[serde(default)]
+    pub invited: Vec<String>,
+    #[serde(default)]
     direct: bool,
     #[serde(default)]
     pub encrypted: bool,
     #[serde(default)]
-    members: u64,
+    pub members: u64,
     #[serde(default)]
     pub unread: u64,
     #[serde(default)]
@@ -509,19 +540,22 @@ impl SessionDto {
 }
 
 impl RoomDto {
-    pub fn to_room(&self, now_ms: u64) -> Room {
+    pub fn to_room(&self, now_ms: u64, notify: Option<NotifyMode>) -> Room {
+        let notify = notify.unwrap_or_else(|| self.notify.to_mode());
         Room {
             id: RoomId::new(&self.id),
             display_name: self.name.clone(),
             avatar_mxc: self.avatar.clone(),
+            topic: self.topic.clone(),
+            canonical_alias: self.alias.clone(),
             is_direct: self.direct,
             is_encrypted: self.encrypted,
             poll_permissions: polls::permissions(),
             member_count: self.members,
-            has_unread: self.unread > 0 && matches!(self.notify, NotifyDto::All),
+            has_unread: self.unread > 0 && notify == NotifyMode::AllMessages,
             has_mentions: self.mentions > 0,
             has_activity: self.unread > 0,
-            notify: self.notify.to_mode(),
+            notify,
             last_activity_ts: ago_ms(now_ms, self.minutes_ago, self.days_ago),
             last_message_sender: self.last_message.sender.clone(),
             last_message_kind: self.last_message.kind.to_kind(),
@@ -530,6 +564,18 @@ impl RoomDto {
             last_message_is_own: self.last_message.own,
             last_message_edited: self.last_message.edited,
         }
+    }
+
+    pub fn joined_at(&self, now_ms: u64) -> Option<u64> {
+        self.joined_days_ago.map(|days| ago_ms(now_ms, 0, days))
+    }
+
+    pub fn rich_topic(&self) -> Option<RichText> {
+        let plain = self.topic.clone()?;
+        Some(match &self.topic_html {
+            Some(html) => RichText::formatted(plain, html.clone()),
+            None => RichText::plain(plain),
+        })
     }
 }
 
@@ -567,10 +613,12 @@ impl UnjoinedDto {
             id: RoomId::new(&self.id),
             display_name: self.name.clone(),
             avatar_mxc: self.avatar.clone(),
+            topic: self.topic.clone(),
+            canonical_alias: self.alias.clone(),
             is_direct: false,
             is_encrypted: false,
             poll_permissions: polls::permissions(),
-            member_count: self.members.saturating_add(1),
+            member_count: self.joined_members(),
             has_unread: false,
             has_mentions: false,
             has_activity: false,
@@ -604,6 +652,18 @@ impl UnjoinedDto {
 impl UnjoinedDto {
     pub fn avatar(&self) -> Option<&str> {
         self.avatar.as_deref()
+    }
+
+    pub fn alias(&self) -> Option<&str> {
+        self.alias.as_deref()
+    }
+
+    pub fn rich_topic(&self) -> Option<RichText> {
+        self.topic.clone().map(RichText::plain)
+    }
+
+    pub fn joined_members(&self) -> u64 {
+        self.members.saturating_add(1)
     }
 }
 
@@ -669,6 +729,10 @@ impl SpaceDto {
 }
 
 impl MessageDto {
+    pub fn author(&self) -> (&str, &str) {
+        (&self.sender, &self.name)
+    }
+
     pub fn to_message(&self, own_user: &str, now_ms: u64) -> TimelineMessage {
         TimelineMessage {
             unique_id: self.id.clone(),

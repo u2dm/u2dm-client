@@ -47,25 +47,38 @@ pub(super) struct UnreadFlags {
     pub(super) notify: NotifyMode,
 }
 
+pub(super) async fn default_notification_mode(
+    room: &Room,
+    settings: &NotificationSettings,
+) -> RoomNotificationMode {
+    settings
+        .get_default_room_notification_mode(
+            IsEncrypted::from(room.encryption_state().is_encrypted()),
+            IsOneToOne::from(room.active_members_count() == 2),
+        )
+        .await
+}
+
 async fn notify_mode(room: &Room, settings: &NotificationSettings) -> NotifyMode {
     let mode = match settings
         .get_user_defined_room_notification_mode(room.room_id())
         .await
     {
         Some(mode) => mode,
-        None => {
-            settings
-                .get_default_room_notification_mode(
-                    IsEncrypted::from(room.encryption_state().is_encrypted()),
-                    IsOneToOne::from(room.active_members_count() == 2),
-                )
-                .await
-        }
+        None => default_notification_mode(room, settings).await,
     };
     match mode {
         RoomNotificationMode::AllMessages => NotifyMode::AllMessages,
         RoomNotificationMode::MentionsAndKeywordsOnly => NotifyMode::MentionsOnly,
         RoomNotificationMode::Mute => NotifyMode::Muted,
+    }
+}
+
+pub(super) fn notification_mode_for(mode: NotifyMode) -> RoomNotificationMode {
+    match mode {
+        NotifyMode::AllMessages => RoomNotificationMode::AllMessages,
+        NotifyMode::MentionsOnly => RoomNotificationMode::MentionsAndKeywordsOnly,
+        NotifyMode::Muted => RoomNotificationMode::Mute,
     }
 }
 
@@ -105,6 +118,8 @@ pub(super) async fn build_single_room(room: &Room, settings: &NotificationSettin
         id: RoomId::new(room.room_id().to_string()),
         display_name,
         avatar_mxc: room_avatar_mxc(room, is_direct).await,
+        topic: room.topic().filter(|topic| !topic.trim().is_empty()),
+        canonical_alias: room.canonical_alias().map(|alias| alias.to_string()),
         is_direct,
         is_encrypted: room.encryption_state().is_encrypted(),
         poll_permissions: poll_permissions(room).await,

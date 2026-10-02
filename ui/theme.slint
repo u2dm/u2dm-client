@@ -36,6 +36,7 @@ export global Motion {
     out property <duration> slow: 200ms;
     out property <duration> close-delay: 160ms;
     out property <duration> reveal-delay: 350ms;
+    out property <duration> feedback-hold: 1500ms;
 }
 
 export global Glyph {
@@ -204,6 +205,18 @@ export global Metrics {
     out property <length> index-action-min-width: 88px;
     out property <length> index-footer: Size.target;
     out property <length> index-page-ahead: root.index-row * 3;
+
+    out property <length> room-info-max-height: 680px;
+    out property <length> room-info-roomy: 560px;
+    out property <length> room-info-avatar: 72px;
+    out property <length> room-info-avatar-compact: Size.xl;
+    out property <length> room-info-action: 56px;
+    out property <length> room-info-row: 56px;
+    out property <length> room-info-member-avatar: Size.xl;
+    out property <length> room-info-page-ahead: root.room-info-row * 3;
+    out property <length> room-info-picker-width: 240px;
+    out property <length> room-info-picker-row: Size.target;
+    out property <int> room-info-topic-lines: 3;
 
     out property <length> bubble-max: 460px;
     out property <length> bubble-gutter-base: 52px;

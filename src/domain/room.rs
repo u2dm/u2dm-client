@@ -47,6 +47,8 @@ pub struct Room {
     pub id: RoomId,
     pub display_name: String,
     pub avatar_mxc: Option<String>,
+    pub topic: Option<String>,
+    pub canonical_alias: Option<String>,
     pub is_direct: bool,
     pub is_encrypted: bool,
     pub poll_permissions: PollPermissions,

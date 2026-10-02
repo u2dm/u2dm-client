@@ -12,6 +12,7 @@ mod pinned;
 mod polls;
 mod recover;
 mod room_directory;
+mod room_info;
 mod selection;
 mod send_lanes;
 mod session;
@@ -36,6 +37,7 @@ use media::MediaActions;
 use pinned::PinnedMessages;
 use recover::Recovery;
 use room_directory::{RoomDirectory, RoomMeta};
+use room_info::RoomInfo;
 use selection::Selection;
 use send_lanes::SendLanes;
 use session::{SessionController, SuspendedSession};
@@ -56,7 +58,7 @@ use crate::domain::account::AccountScope;
 use crate::domain::auth::ServerInfo;
 use crate::domain::media::AttachmentPick;
 use crate::domain::poll::PollDraft;
-use crate::domain::room::{RoomId, RoomList, Space};
+use crate::domain::room::{NotifyMode, RoomId, RoomList, Space};
 use crate::domain::sticker::PackId;
 use crate::domain::sync::ConnectionStatus;
 use crate::domain::timeline::{AudioTrack, FailedSend, TimelineFocus};
@@ -154,6 +156,7 @@ pub struct AppService {
     video: VideoController,
     stickers: Stickers,
     space_index: SpaceIndex,
+    room_info: RoomInfo,
     attachments: Attachments,
     submissions: Submissions,
     selection: Selection,
@@ -192,6 +195,7 @@ impl AppService {
             video: VideoController::new(Arc::clone(&output), events.clone()),
             stickers: Stickers::new(Arc::clone(&output)),
             space_index: SpaceIndex::new(Arc::clone(&output), events.clone()),
+            room_info: RoomInfo::new(Arc::clone(&output), events.clone()),
             attachments: Attachments::new(media_files, Arc::clone(&output), events.clone()),
             submissions: Submissions::new(Arc::clone(&output), events.clone()),
             events,
@@ -374,6 +378,27 @@ impl AppService {
             }
             UiCommand::OpenSpaceChild(room_id) => {
                 self.open_space_child(room_id).await;
+            }
+            UiCommand::OpenRoomInfo(room_id) => {
+                self.open_room_info(&room_id);
+            }
+            UiCommand::CloseRoomInfo => {
+                self.room_info.close();
+            }
+            UiCommand::PageRoomMembers => {
+                self.page_room_members();
+            }
+            UiCommand::RetryRoomMembers => {
+                self.retry_room_members();
+            }
+            UiCommand::FilterRoomMembers(query) => {
+                self.filter_room_members(query);
+            }
+            UiCommand::SetRoomNotify(mode) => {
+                self.set_room_notify(mode);
+            }
+            UiCommand::LeaveRoom(room_id) => {
+                self.leave_room(room_id);
             }
             UiCommand::RetryTimeline => {
                 self.retry_timeline().await;
@@ -635,6 +660,7 @@ impl AppService {
             self.refresh_selected_room().await;
             self.room_directory.emit_directory(&self.selection);
             self.refresh_space_index();
+            self.follow_room_info();
         }
     }
 
@@ -758,6 +784,52 @@ impl AppService {
         }
     }
 
+    fn open_room_info(&mut self, room_id: &RoomId) {
+        if self.selection.room.as_ref() != Some(room_id) {
+            tracing::debug!(%room_id, "ignoring room info for a room that is not selected");
+            return;
+        }
+        if let Some(port) = self.port(|a| &a.room_info) {
+            self.room_info.open(port, self.room_directory.room(room_id));
+        }
+    }
+
+    fn page_room_members(&mut self) {
+        if let Some(port) = self.port(|a| &a.room_info) {
+            self.room_info.page(port);
+        }
+    }
+
+    fn retry_room_members(&mut self) {
+        if let Some(port) = self.port(|a| &a.room_info) {
+            self.room_info.retry(port);
+        }
+    }
+
+    fn filter_room_members(&mut self, query: String) {
+        if let Some(port) = self.port(|a| &a.room_info) {
+            self.room_info.filter(port, query);
+        }
+    }
+
+    fn set_room_notify(&mut self, mode: NotifyMode) {
+        if let Some(port) = self.port(|a| &a.room_info) {
+            self.room_info.set_notify(port, mode);
+        }
+    }
+
+    fn leave_room(&mut self, room_id: RoomId) {
+        if let Some(port) = self.port(|a| &a.room_info) {
+            self.room_info.leave(port, room_id);
+        }
+    }
+
+    fn follow_room_info(&mut self) {
+        if let Some(port) = self.port(|a| &a.room_info) {
+            self.room_info.follow(port, self.room_directory.rooms());
+        }
+    }
+
     async fn handle_event(&mut self, event: AppEvent) {
         match event {
             AppEvent::Session(event) => self.handle_session_event(event).await,
@@ -810,6 +882,37 @@ impl AppService {
                 outcome,
             } => {
                 self.settle_space_child_join(room_id, &name, outcome);
+            }
+            AppEvent::RoomRosterFetched {
+                generation,
+                outcome,
+            } => {
+                if let Some(port) = self.port(|a| &a.room_info) {
+                    self.room_info.roster_fetched(port, generation, outcome);
+                }
+            }
+            AppEvent::RoomAboutFetched { generation, about } => {
+                self.room_info.about_fetched(generation, about);
+            }
+            AppEvent::RoomInfoAvatarsReady { generation, ready } => {
+                self.room_info.avatars_ready(generation, ready);
+            }
+            AppEvent::RoomNotifySettled {
+                request,
+                room_id,
+                name,
+                outcome,
+            } => {
+                let listed = self.room_directory.room(&room_id).map(|room| room.notify);
+                self.room_info
+                    .notify_settled(request, room_id, &name, outcome, listed);
+            }
+            AppEvent::RoomLeaveSettled {
+                room_id,
+                name,
+                outcome,
+            } => {
+                self.room_info.leave_settled(&room_id, &name, outcome);
             }
         }
     }
@@ -1180,6 +1283,7 @@ impl AppService {
 
     async fn select_room(&mut self, room_id: RoomId) {
         self.space_index.close();
+        self.room_info.close();
         self.sync_selected_room(Some(&room_id));
         self.follow_pinned(room_id.clone());
         self.open_room(room_id, TimelineFocus::ReadPosition).await;
@@ -1259,6 +1363,7 @@ impl AppService {
     }
 
     async fn drop_selected_room(&mut self) {
+        self.room_info.close();
         self.audio.abandon_lookup();
         self.selection.room = None;
         self.submissions.offer(None);
@@ -1320,6 +1425,7 @@ impl AppService {
             self.video.restart(),
             self.stickers.restart(),
             self.space_index.restart(),
+            self.room_info.restart(),
         );
     }
 
@@ -1406,6 +1512,7 @@ impl AppService {
             self.video.shutdown(),
             self.stickers.shutdown(),
             self.space_index.shutdown(),
+            self.room_info.shutdown(),
         );
     }
 }

@@ -8,12 +8,15 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use matrix_sdk::Client;
 use matrix_sdk::media::{MediaFormat, MediaThumbnailSettings, UniqueKey};
+use matrix_sdk::ruma::OwnedMxcUri;
 use matrix_sdk::ruma::events::room::MediaSource;
 use service::Materialized;
 pub(crate) use service::{MediaService, Playable};
 use sha2::{Digest, Sha256};
 pub(crate) use source::EventMedia;
+use tokio::task::JoinSet;
 
 use super::session::ClientHandle;
 use crate::domain::media::{
@@ -32,6 +35,7 @@ pub(super) const VIDEOS_DIR: &str = "videos";
 pub(super) const VIDEO_KEY_PREFIX: &str = "video:";
 pub(super) const AUDIO_DIR: &str = "audio";
 pub(super) const AUDIO_KEY_PREFIX: &str = "audio:";
+const MAX_INFLIGHT_AVATARS: usize = 8;
 
 pub(super) fn thumb_key(content: &ContentKey) -> String {
     format!("thumb:{}", content.as_str())
@@ -39,6 +43,34 @@ pub(super) fn thumb_key(content: &ContentKey) -> String {
 
 pub(super) fn mxc_avatar_key(mxc: &str) -> String {
     format!("mxc-avatar:{mxc}")
+}
+
+pub(super) async fn fetch_avatar_thumbnails(
+    client: &Client,
+    media: &Arc<MediaService>,
+    mxcs: &[String],
+) -> usize {
+    let mut fetched = 0;
+    let mut tasks: JoinSet<bool> = JoinSet::new();
+    for mxc in mxcs {
+        let key = mxc_avatar_key(mxc);
+        let uri: OwnedMxcUri = mxc.as_str().into();
+        let client = client.clone();
+        let media = Arc::clone(media);
+        tasks.spawn(async move {
+            media
+                .fetch_avatar_by_mxc(&client, &key, uri)
+                .await
+                .is_some()
+        });
+        if tasks.len() >= MAX_INFLIGHT_AVATARS {
+            fetched += usize::from(matches!(tasks.join_next().await, Some(Ok(true))));
+        }
+    }
+    while let Some(result) = tasks.join_next().await {
+        fetched += usize::from(matches!(result, Ok(true)));
+    }
+    fetched
 }
 
 pub(super) fn video_key(content: &ContentKey) -> String {

@@ -5,13 +5,10 @@ use async_trait::async_trait;
 use matrix_sdk::Client;
 use matrix_sdk::ruma::api::client::space::{SpaceHierarchyRoomsChunk, get_hierarchy};
 use matrix_sdk::ruma::room::{JoinRuleSummary, RestrictedSummary, RoomType};
-use matrix_sdk::ruma::{
-    IdParseError, OwnedMxcUri, OwnedRoomId, OwnedServerName, RoomOrAliasId, UInt,
-};
-use tokio::task::JoinSet;
+use matrix_sdk::ruma::{IdParseError, OwnedRoomId, OwnedServerName, RoomOrAliasId, UInt};
 
 use super::build::space_child_vias;
-use crate::adapters::matrix::media::mxc_avatar_key;
+use crate::adapters::matrix::media::fetch_avatar_thumbnails;
 use crate::adapters::matrix::session::ClientHandle;
 use crate::domain::room::RoomId;
 use crate::domain::space_index::{ChildKind, HierarchyPage, JoinRule, SpaceChild};
@@ -19,7 +16,6 @@ use crate::error::{AppError, Result};
 use crate::ports::matrix::SpaceIndexPort;
 
 const DIRECT_CHILDREN_ONLY: u32 = 1;
-const MAX_INFLIGHT_AVATARS: usize = 8;
 
 type Vias = HashMap<String, Vec<String>>;
 
@@ -85,28 +81,7 @@ impl SpaceIndexPort for MatrixSpaceIndex {
         let Ok(client) = self.matrix.client().await else {
             return 0;
         };
-
-        let mut fetched = 0;
-        let mut tasks: JoinSet<bool> = JoinSet::new();
-        for mxc in mxcs {
-            let key = mxc_avatar_key(mxc);
-            let uri: OwnedMxcUri = mxc.as_str().into();
-            let client = client.clone();
-            let media = Arc::clone(self.matrix.media());
-            tasks.spawn(async move {
-                media
-                    .fetch_avatar_by_mxc(&client, &key, uri)
-                    .await
-                    .is_some()
-            });
-            if tasks.len() >= MAX_INFLIGHT_AVATARS {
-                fetched += usize::from(matches!(tasks.join_next().await, Some(Ok(true))));
-            }
-        }
-        while let Some(result) = tasks.join_next().await {
-            fetched += usize::from(matches!(result, Ok(true)));
-        }
-        fetched
+        fetch_avatar_thumbnails(&client, self.matrix.media(), mxcs).await
     }
 }
 

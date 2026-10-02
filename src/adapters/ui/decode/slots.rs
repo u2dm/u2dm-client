@@ -41,6 +41,8 @@ pub enum AvatarSlot {
     Room(String),
     Space(String),
     SpaceChild(String),
+    Member(String),
+    RoomInfo,
     User,
     AttachmentPreview {
         pick: u64,

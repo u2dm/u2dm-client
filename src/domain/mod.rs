@@ -5,6 +5,7 @@ pub mod media;
 pub mod message;
 pub mod poll;
 pub mod room;
+pub mod room_info;
 pub mod space_index;
 pub mod sticker;
 pub mod sync;

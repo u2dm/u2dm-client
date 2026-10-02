@@ -7,7 +7,8 @@ use super::ui::MessageDraft;
 use crate::domain::auth::{LoginMethod, Session};
 use crate::domain::media::AudioMeta;
 use crate::domain::message::PinnedMessage;
-use crate::domain::room::{RoomId, RoomList, Space, UnreadFlags};
+use crate::domain::room::{NotifyMode, RoomId, RoomList, Space, UnreadFlags};
+use crate::domain::room_info::{RoomAbout, RosterMember};
 use crate::domain::space_index::SpaceChild;
 use crate::domain::sticker::StickerPacks;
 use crate::domain::sync::ConnectionStatus;
@@ -18,6 +19,7 @@ pub struct AppViewState {
     pub connection: ConnectionStatus,
     pub directory: DirectoryView,
     pub space_index: SpaceIndexView,
+    pub room_info: RoomInfoView,
     pub pagination: PaginationView,
     pub pinned: PinnedView,
     pub stickers: StickerView,
@@ -309,4 +311,45 @@ impl Default for SpaceIndexView {
             pages_landed: 0,
         }
     }
+}
+
+#[derive(Clone, PartialEq, Eq)]
+pub struct RoomCard {
+    pub id: RoomId,
+    pub name: String,
+    pub avatar_mxc: Option<String>,
+    pub member_count: u64,
+    pub is_direct: bool,
+    pub topic: Option<String>,
+    pub alias: Option<String>,
+    pub notify: NotifyMode,
+}
+
+#[derive(Clone, Copy, Default, PartialEq, Eq)]
+pub enum RosterStatus {
+    #[default]
+    Loading,
+    Ready,
+    Failed,
+}
+
+#[derive(Clone, PartialEq, Eq)]
+pub enum RosterRow {
+    Member(Arc<RosterMember>),
+    InvitedHeading,
+}
+
+#[derive(Clone, Default)]
+pub struct RoomInfoView {
+    pub card: Option<RoomCard>,
+    pub about: Option<RoomAbout>,
+    pub roster: RosterStatus,
+    pub rows: Arc<[RosterRow]>,
+    pub has_more: bool,
+    pub pages_landed: i32,
+    pub avatars_ready: usize,
+    pub notify: NotifyMode,
+    pub notify_busy: bool,
+    pub leaving: bool,
+    pub error: UserMessage,
 }

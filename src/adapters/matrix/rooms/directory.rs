@@ -6,7 +6,7 @@ use std::time::Duration;
 use matrix_sdk::notification_settings::NotificationSettings;
 use matrix_sdk::ruma::{OwnedRoomId, RoomId as MatrixRoomId};
 use matrix_sdk::sync::{JoinedRoomUpdate, RoomUpdates, State};
-use matrix_sdk::{Client, Room};
+use matrix_sdk::{Client, Room, RoomState};
 use matrix_sdk_base::{RoomInfoNotableUpdate, RoomInfoNotableUpdateReasons};
 use tokio::time::Instant;
 
@@ -202,6 +202,10 @@ impl Directory {
             let Some(room) = client.get_room(&room_id) else {
                 continue;
             };
+            if room.state() != RoomState::Joined {
+                self.remove_room(&room_id);
+                continue;
+            }
             match refresh {
                 RoomRefresh::Full => {
                     let built = build_single_room(&room, &self.notifications).await;

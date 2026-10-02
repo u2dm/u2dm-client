@@ -10,7 +10,8 @@ use crate::domain::auth::{LoginCredentials, OAuthLoginData, ServerInfo, Session}
 use crate::domain::media::{MediaRendition, OutgoingAttachment, WaveformNeed};
 use crate::domain::message::PinnedMessage;
 use crate::domain::poll::PollDraft;
-use crate::domain::room::RoomId;
+use crate::domain::room::{NotifyMode, RoomId};
+use crate::domain::room_info::{RoomAbout, RosterMember};
 use crate::domain::space_index::HierarchyPage;
 use crate::domain::sticker::{PackId, StickerPack};
 use crate::domain::sync::{SyncEvent, SyncOutcome};
@@ -123,6 +124,7 @@ pub struct AuthenticatedSession {
     pub verification: Arc<dyn VerificationPort>,
     pub space_order: Arc<dyn SpaceOrderPort>,
     pub space_index: Arc<dyn SpaceIndexPort>,
+    pub room_info: Arc<dyn RoomInfoPort>,
     pub stickers: Arc<dyn StickerPort>,
     pub lifecycle: Arc<dyn SessionPort>,
 }
@@ -187,6 +189,15 @@ pub trait SpaceOrderPort: Send + Sync {
 pub trait SpaceIndexPort: Send + Sync {
     async fn hierarchy_page(&self, space_id: &RoomId, from: Option<&str>) -> Result<HierarchyPage>;
     async fn join(&self, room_id: &RoomId, via: &[String]) -> Result<()>;
+    async fn fetch_avatars(&self, mxcs: &[String]) -> usize;
+}
+
+#[async_trait]
+pub trait RoomInfoPort: Send + Sync {
+    async fn about(&self, room_id: &RoomId) -> Result<RoomAbout>;
+    async fn roster(&self, room_id: &RoomId) -> Result<Vec<RosterMember>>;
+    async fn set_notify(&self, room_id: &RoomId, mode: NotifyMode) -> Result<()>;
+    async fn leave(&self, room_id: &RoomId) -> Result<()>;
     async fn fetch_avatars(&self, mxcs: &[String]) -> usize;
 }
 

@@ -3,7 +3,7 @@ use std::env;
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
 
-use super::{attachments, data, space_index, stickers};
+use super::{attachments, data, room_info, space_index, stickers};
 use crate::domain::media::{ContentKey, MediaFailure, Waveform};
 use crate::ports::media::MediaCache;
 
@@ -48,7 +48,8 @@ impl MediaCache for DemoMediaCache {
     }
 
     fn user_avatar_path(&self, mxc: &str) -> Option<PathBuf> {
-        asset(&format!("avatar-{}.png", localpart(mxc)))
+        let user_id = room_info::avatar_owner(mxc)?;
+        asset(&format!("avatar-{}.png", localpart(user_id)))
     }
 
     fn room_avatar_path(&self, mxc: &str) -> Option<PathBuf> {
@@ -161,6 +162,14 @@ pub(super) fn fetch_unjoined_avatars(mxcs: &[String]) -> usize {
             asset(&format!("room-{mxc}.png")).is_some()
                 || asset(&format!("space-{mxc}.png")).is_some()
         })
+        .count()
+}
+
+pub(super) fn fetch_member_avatars(mxcs: &[String]) -> usize {
+    room_info::remember_fetched_avatars(mxcs);
+    mxcs.iter()
+        .filter_map(|mxc| room_info::avatar_owner(mxc))
+        .filter(|user_id| asset(&format!("avatar-{}.png", localpart(user_id))).is_some())
         .count()
 }
 

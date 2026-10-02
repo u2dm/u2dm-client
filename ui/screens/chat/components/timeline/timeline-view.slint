@@ -88,12 +88,23 @@ export component TimelineView inherits Rectangle {
         height: root.header-height;
         background: Palette.alternate-background;
 
-        HeaderTitle {
-            x: root.compact ? root.nav-button-width : Space.lg;
-            width: parent.width - self.x - Space.lg;
-            title: RoomView.selected-room-name;
-            members: RoomView.selected-room-members;
-            encrypted: RoomView.selected-room-encrypted;
+        ClickArea {
+            x: root.compact ? root.nav-button-width : 0;
+            width: parent.width - self.x;
+            height: parent.height;
+            background: self.has-hover ? AppStyle.overlay-subtle : transparent;
+            label: @tr("Room info");
+            clicked => {
+                Actions.open-room-info(DirectoryView.selected-room-id);
+            }
+
+            HeaderTitle {
+                x: root.compact ? 0 : Space.lg;
+                width: parent.width - self.x - Space.lg;
+                title: RoomView.selected-room-name;
+                members: RoomView.selected-room-members;
+                encrypted: RoomView.selected-room-encrypted;
+            }
         }
     }
 
@@ -132,6 +143,14 @@ export component TimelineView inherits Rectangle {
         changed swipe-within-reach => {
             if (self.swipe-within-reach) {
                 ReplySwipe.commit();
+                input.focus-input();
+            }
+        }
+
+        property <bool> room-info-open: Shell.room-info-open;
+
+        changed room-info-open => {
+            if (!self.room-info-open && Shell.background-reachable) {
                 input.focus-input();
             }
         }

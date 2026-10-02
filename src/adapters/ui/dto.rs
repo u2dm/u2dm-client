@@ -16,8 +16,8 @@ use super::present::{
     voter_labels,
 };
 use super::richtext;
-use super::schema::{define_ui_enum, media_failures, media_states};
-use crate::commands::view::{ChildAccess, SpaceIndexRow};
+use super::schema::{define_ui_enum, media_failures, media_states, member_row_kinds};
+use crate::commands::view::{ChildAccess, RoomCard, RosterRow, SpaceIndexRow};
 use crate::domain::media::{
     AudioKind, AudioMeta, ContentKey, FileMeta, MediaFailure, ThumbnailOutcome,
 };
@@ -27,6 +27,7 @@ use crate::domain::message::{
 };
 use crate::domain::poll::{Poll, PollAnswer};
 use crate::domain::room::{Room, Space};
+use crate::domain::room_info::{MemberRole, RosterMember};
 use crate::domain::space_index::{ChildKind, SpaceChild};
 use crate::domain::sticker::{PackId, StickerImage, StickerPack};
 use crate::domain::timeline::EnrichmentDelta;
@@ -35,6 +36,9 @@ use crate::util::format_bytes;
 
 media_states!(define_ui_enum MediaState;);
 media_failures!(define_ui_enum MediaFailureKind;);
+member_row_kinds!(define_ui_enum MemberRowKind;);
+
+pub const INVITED_HEADING_ROW: &str = "invited-heading";
 
 fn failure_kind(failure: MediaFailure) -> MediaFailureKind {
     match failure {
@@ -348,6 +352,17 @@ pub struct SpaceChildDto {
     pub has_avatar: bool,
 }
 
+pub struct MemberRowDto {
+    pub user_id: SharedString,
+    pub kind: MemberRowKind,
+    pub name: SharedString,
+    pub initial: SharedString,
+    pub color_index: i32,
+    pub role: MemberRole,
+    pub avatar: Option<Image>,
+    pub has_avatar: bool,
+}
+
 pub enum ThumbUpdate {
     Unchanged,
     Failed(MediaFailureKind),
@@ -614,6 +629,13 @@ fn one_line(text: &str) -> SharedString {
     SharedString::from(text.split_whitespace().collect::<Vec<_>>().join(" "))
 }
 
+pub fn rich_body(text: &RichText) -> richtext::StyledBody {
+    match text.html.as_deref() {
+        Some(html) => richtext::styled_body(html, &text.plain),
+        None => richtext::plain_body(&text.plain),
+    }
+}
+
 pub fn preview_line(text: &RichText) -> SharedString {
     match text.html.as_deref() {
         Some(html) => one_line(&richtext::styled_body(html, &text.plain).plain),
@@ -878,6 +900,52 @@ pub fn request_space_child_avatar(row: &SpaceIndexRow, media: &dyn MediaCache) {
         path.as_deref(),
         AvatarSlot::SpaceChild(row.child.id.to_string()),
     );
+}
+
+pub fn member_row_to_dto(row: &RosterRow, media: &dyn MediaCache) -> MemberRowDto {
+    let RosterRow::Member(member) = row else {
+        return MemberRowDto {
+            user_id: SharedString::from(INVITED_HEADING_ROW),
+            kind: MemberRowKind::InvitedHeading,
+            name: SharedString::new(),
+            initial: SharedString::new(),
+            color_index: 0,
+            role: MemberRole::Member,
+            avatar: None,
+            has_avatar: false,
+        };
+    };
+    let avatar = member_avatar_path(member, media).and_then(|path| peek_avatar(&path));
+    MemberRowDto {
+        user_id: SharedString::from(&member.user_id),
+        kind: MemberRowKind::Member,
+        name: SharedString::from(member.label()),
+        initial: SharedString::from(avatar_initials(member.label())),
+        color_index: avatar_color_index(&member.user_id),
+        role: member.role,
+        has_avatar: avatar.is_some(),
+        avatar,
+    }
+}
+
+pub fn request_member_avatar(row: &RosterRow, media: &dyn MediaCache) {
+    let RosterRow::Member(member) = row else {
+        return;
+    };
+    let path = member_avatar_path(member, media);
+    load_avatar_async(path.as_deref(), AvatarSlot::Member(member.user_id.clone()));
+}
+
+fn member_avatar_path(member: &RosterMember, media: &dyn MediaCache) -> Option<PathBuf> {
+    media.user_avatar_path(member.avatar_mxc.as_deref()?)
+}
+
+pub fn load_room_info_avatar(card: &RoomCard, media: &dyn MediaCache) -> Option<Image> {
+    let path = card
+        .avatar_mxc
+        .as_deref()
+        .and_then(|mxc| media.room_avatar_path(mxc));
+    load_avatar_async(path.as_deref(), AvatarSlot::RoomInfo)
 }
 
 fn space_child_avatar_path(child: &SpaceChild, media: &dyn MediaCache) -> Option<PathBuf> {

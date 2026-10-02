@@ -1,4 +1,5 @@
 import { LoginRequest } from "screens/login/types.slint";
+import { NotifyMode } from "enums.slint";
 import {
     SendMessageRequest,
     SendStickerRequest,
@@ -33,6 +34,13 @@ export global Actions {
     callback retry-space-index();
     callback join-space-child(string);
     callback open-space-child(string);
+    callback open-room-info(string);
+    callback close-room-info();
+    callback page-room-members();
+    callback retry-room-members();
+    callback filter-room-members(string);
+    callback set-room-notify(NotifyMode);
+    callback leave-room(string);
 
     callback send-message(SendMessageRequest);
     callback dismiss-unsent(int);

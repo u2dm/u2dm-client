@@ -85,6 +85,8 @@ export enum UserMessageKind {
     message-not-showable,
     space-order-save-failed,
     join-room-failed,
+    leave-room-failed,
+    notify-change-failed,
     media-download-failed,
     file-download-failed,
     media-open-failed,
@@ -166,6 +168,30 @@ export enum ChildAccess {
     knock,
     members-only,
     unavailable,
+}
+
+export enum NotifyMode {
+    all-messages,
+    mentions-only,
+    muted,
+}
+
+export enum MemberRole {
+    member,
+    moderator,
+    admin,
+    owner,
+}
+
+export enum MemberRowKind {
+    member,
+    invited-heading,
+}
+
+export enum RosterStatus {
+    loading,
+    ready,
+    failed,
 }
 
 export enum MediaState {

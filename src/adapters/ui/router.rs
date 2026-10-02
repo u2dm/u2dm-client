@@ -2,7 +2,7 @@ use tokio::sync::watch;
 
 use super::clipboard;
 use super::props::send_command;
-use super::schema::simple_callbacks;
+use super::schema::{notify_modes, simple_callbacks, variant_named};
 use crate::app::input::CommandSender;
 use crate::commands::ui::{
     MessageDraft, ReplyDraft, TimelineVisibility, UiCommand, ViewportChanged,
@@ -11,7 +11,7 @@ use crate::domain::auth::LoginCredentials;
 use crate::domain::link::LauncherSafeUrl;
 use crate::domain::media::AttachmentPick;
 use crate::domain::poll::{ChoiceMode, PollDisclosure, PollDraft};
-use crate::domain::room::RoomId;
+use crate::domain::room::{NotifyMode, RoomId};
 use crate::domain::sticker::PackId;
 
 type Tx = CommandSender;
@@ -101,6 +101,16 @@ pub fn send_message(
 
 pub fn dismiss_unsent(tx: &Tx, submission: i32) {
     send_command(tx, UiCommand::DismissUnsent { submission });
+}
+
+notify_modes!(variant_named notify_mode_named NotifyMode;);
+
+pub fn set_room_notify(tx: &Tx, mode: &str) {
+    let Some(mode) = notify_mode_named(mode) else {
+        tracing::warn!(mode, "ignoring an unknown notification mode");
+        return;
+    };
+    send_command(tx, UiCommand::SetRoomNotify(mode));
 }
 
 pub fn send_sticker(

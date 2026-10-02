@@ -1,4 +1,4 @@
-use slint::{Image, Rgb8Pixel, SharedPixelBuffer, SharedString};
+use slint::{Image, Rgb8Pixel, SharedPixelBuffer, SharedString, StyledText};
 
 use super::present::VerifyStep;
 use super::schema::{bool_props, enum_props, int_props, string_props};
@@ -7,11 +7,12 @@ use crate::commands::effects::VerificationActivity;
 use crate::commands::messages::{UserMessage, UserMessageKind};
 use crate::commands::ui::UiCommand;
 use crate::commands::view::{
-    AttachmentKind, LoginActivity, LoginStep, RoomScope, SpaceIndexStatus,
+    AttachmentKind, LoginActivity, LoginStep, RoomScope, RosterStatus, SpaceIndexStatus,
 };
 use crate::domain::auth::LoginMethod;
 use crate::domain::media::AudioKind;
 use crate::domain::message::MessagePreviewKind;
+use crate::domain::room::NotifyMode;
 use crate::domain::sync::ConnectionStatus;
 use crate::domain::timeline::TimelineStatus;
 use crate::domain::verification::VerificationEmoji as DomainVerificationEmoji;
@@ -73,6 +74,8 @@ pub trait UiProps {
     fn get_enum(&self, prop: EnumProp) -> SharedString;
     fn apply_user_avatar(&self, avatar: Option<Image>);
     fn apply_attachment_preview(&self, preview: Option<Image>);
+    fn apply_room_info_avatar(&self, avatar: Option<Image>);
+    fn apply_room_info_topic(&self, topic: StyledText);
     fn apply_login_messages(&self, messages: &[UserMessage]);
     fn apply_emoji_model(&self, emojis: &[DomainVerificationEmoji]);
     fn clear_emoji_model(&self);

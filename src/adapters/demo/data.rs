@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::mem;
 use std::sync::{Arc, OnceLock};
@@ -15,7 +15,8 @@ use crate::domain::message::{
     MessageBody, PinnedMessage, ReadBy, ReplyInfo, RichText, SendState, TimelineMessage,
 };
 use crate::domain::poll::{Poll, PollAnswer, PollDraft, PollStatus};
-use crate::domain::room::{Room, RoomId, Space};
+use crate::domain::room::{NotifyMode, Room, RoomId, Space};
+use crate::domain::room_info::{MemberRole, RoomAbout, RosterMember, RosterSection, sort_roster};
 use crate::domain::space_index::SpaceChild;
 use crate::domain::sticker::{StickerImage, StickerPack};
 
@@ -24,6 +25,8 @@ const SENT_STICKER_EXTENT: u32 = 512;
 const STICKER_ASSET_MARKER: char = '#';
 const DEMO_VIA: &str = "demo.local";
 const COPY_SUFFIX: &str = "-copy";
+const OWN_NAME_IN_TIMELINES: &str = "You";
+const MATRIX_TO: &str = "https://matrix.to/#/";
 
 static DATA: OnceLock<DemoData> = OnceLock::new();
 static LOAD_ERROR: OnceLock<String> = OnceLock::new();
@@ -73,19 +76,148 @@ pub fn session() -> Session {
     data().session.to_session()
 }
 
-pub fn rooms_with(joined: &[RoomId]) -> Vec<Arc<Room>> {
+#[derive(Default, Clone)]
+pub struct RoomOverrides {
+    pub left: HashSet<String>,
+    pub notify: HashMap<String, NotifyMode>,
+}
+
+pub fn rooms_with(joined: &[RoomId], overrides: &RoomOverrides) -> Vec<Arc<Room>> {
     let now = now_ms();
     let data = data();
     data.rooms
         .iter()
-        .map(|room| Arc::new(room.to_room(now)))
+        .map(|room| room.to_room(now, overrides.notify.get(&room.id).copied()))
         .chain(
             data.unjoined
                 .iter()
                 .filter(|entry| !entry.space && was_joined(joined, &entry.id))
-                .map(|entry| Arc::new(entry.to_room(now))),
+                .map(|entry| {
+                    let mut room = entry.to_room(now);
+                    if let Some(notify) = overrides.notify.get(&entry.id) {
+                        room.notify = *notify;
+                    }
+                    room
+                }),
         )
+        .filter(|room| !overrides.left.contains(room.id.as_ref()))
+        .map(Arc::new)
         .collect()
+}
+
+pub fn room_about(room_id: &RoomId) -> Option<RoomAbout> {
+    let data = data();
+    if let Some(room) = data.rooms.iter().find(|room| room.id == room_id.as_ref()) {
+        return Some(RoomAbout {
+            joined_at: room.joined_at(now_ms()),
+            link: room_link(room_id, room.alias.as_deref()),
+            topic: room.rich_topic(),
+        });
+    }
+    let entry = data
+        .unjoined
+        .iter()
+        .find(|entry| entry.id == room_id.as_ref())?;
+    Some(RoomAbout {
+        joined_at: None,
+        link: room_link(room_id, entry.alias()),
+        topic: entry.rich_topic(),
+    })
+}
+
+fn room_link(room_id: &RoomId, alias: Option<&str>) -> String {
+    match alias.and_then(|alias| alias.strip_prefix('#')) {
+        Some(alias) => format!("{MATRIX_TO}%23{alias}"),
+        None => format!("{MATRIX_TO}{room_id}?via={DEMO_VIA}"),
+    }
+}
+
+pub fn roster(room_id: &RoomId, avatar_of: impl Fn(&str) -> String) -> Vec<RosterMember> {
+    let data = data();
+    let names = people_names(data);
+    let own = own_user();
+    let fixture = data.rooms.iter().find(|room| room.id == room_id.as_ref());
+    let joined_count = fixture.map(|room| room.members).or_else(|| {
+        data.unjoined
+            .iter()
+            .find(|entry| entry.id == room_id.as_ref())
+            .map(UnjoinedDto::joined_members)
+    });
+    let Some(joined_count) = joined_count else {
+        return Vec::new();
+    };
+    let mut joined: Vec<String> = vec![own.to_owned()];
+    let mut invited: Vec<String> = Vec::new();
+    let mut roles: HashMap<String, MemberRole> = HashMap::new();
+    if let Some(room) = fixture {
+        let senders = data
+            .timelines
+            .get(&room.id)
+            .into_iter()
+            .flatten()
+            .map(|message| message.author().0.to_owned());
+        for user_id in senders.chain(room.roles.keys().cloned()) {
+            if !joined.contains(&user_id) {
+                joined.push(user_id);
+            }
+        }
+        roles.extend(
+            room.roles
+                .iter()
+                .map(|(user, role)| (user.clone(), role.to_role())),
+        );
+        invited.extend(room.invited.iter().cloned());
+    }
+    let guests = usize::try_from(joined_count)
+        .unwrap_or(usize::MAX)
+        .saturating_sub(joined.len());
+    let mut roster: Vec<RosterMember> = joined
+        .into_iter()
+        .map(|user_id| (user_id, RosterSection::Joined))
+        .chain((1..=guests).map(|n| (guest_id(n), RosterSection::Joined)))
+        .chain(
+            invited
+                .into_iter()
+                .map(|user_id| (user_id, RosterSection::Invited)),
+        )
+        .map(|(user_id, section)| RosterMember {
+            display_name: names
+                .get(&user_id)
+                .cloned()
+                .or_else(|| guest_name(&user_id)),
+            avatar_mxc: Some(avatar_of(&user_id)),
+            role: roles.get(&user_id).copied().unwrap_or(MemberRole::Member),
+            section,
+            user_id,
+        })
+        .collect();
+    sort_roster(&mut roster);
+    roster
+}
+
+const GUEST_PREFIX: &str = "@guest-";
+
+fn guest_id(n: usize) -> String {
+    format!("{GUEST_PREFIX}{n}:{DEMO_VIA}")
+}
+
+fn guest_name(user_id: &str) -> Option<String> {
+    let rest = user_id.strip_prefix(GUEST_PREFIX)?;
+    let (n, _) = rest.split_once(':')?;
+    Some(format!("Guest {n}"))
+}
+
+fn people_names(data: &DemoData) -> HashMap<String, String> {
+    let mut names = HashMap::new();
+    for message in data.timelines.values().flatten() {
+        let (sender, name) = message.author();
+        if name != OWN_NAME_IN_TIMELINES && !name.is_empty() {
+            names
+                .entry(sender.to_owned())
+                .or_insert_with(|| name.to_owned());
+        }
+    }
+    names
 }
 
 pub fn spaces_with(joined: &[RoomId]) -> Vec<Space> {
@@ -520,7 +652,7 @@ fn last_message_only(room_id: &RoomId) -> Vec<TimelineMessage> {
         return Vec::new();
     }
 
-    vec![synthesized_message(dto, &dto.to_room(now_ms()))]
+    vec![synthesized_message(dto, &dto.to_room(now_ms(), None))]
 }
 
 fn synthesized_message(dto: &RoomDto, room: &Room) -> TimelineMessage {

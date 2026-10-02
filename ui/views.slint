@@ -1,4 +1,5 @@
 import {
+    MemberEntry,
     RoomEntry,
     SpaceChildEntry,
     SpaceEntry,
@@ -8,7 +9,7 @@ import {
 } from "screens/chat/components/types.slint";
 import { VerificationEmoji } from "components/types.slint";
 import { UserMessage } from "messages.slint";
-import { AttachmentKind, AudioKind, ConnectionState, LoginActivity, LoginMethodKind, LoginPhase, PreviewKind, RoomScope, SpaceIndexStatus, TimelineState, UserMessageKind, VerificationActivity, VerificationPhase } from "enums.slint";
+import { AttachmentKind, AudioKind, ConnectionState, LoginActivity, LoginMethodKind, LoginPhase, NotifyMode, PreviewKind, RoomScope, RosterStatus, SpaceIndexStatus, TimelineState, UserMessageKind, VerificationActivity, VerificationPhase } from "enums.slint";
 
 export global LoginView {
     in property <LoginPhase> step: LoginPhase.loading;
@@ -53,6 +54,33 @@ export global SpaceIndexView {
     in property <string> space-name;
     in property <[SpaceChildEntry]> rows;
     in property <int> pages-landed;
+}
+
+export global RoomInfoView {
+    in property <bool> visible;
+    in property <string> room-id;
+    in property <string> name;
+    in property <string> initial;
+    in property <int> color-index;
+    in property <image> avatar;
+    in property <bool> has-avatar;
+    in property <int> members;
+    in property <bool> is-direct;
+    in property <string> topic;
+    in property <styled-text> topic-styled;
+    in property <bool> topic-has-links;
+    in property <string> alias;
+    in property <string> joined-on;
+    in property <string> link;
+    in property <NotifyMode> notify: NotifyMode.all-messages;
+    in property <bool> notify-busy;
+    in property <bool> leaving;
+    in property <RosterStatus> roster: RosterStatus.loading;
+    in property <[MemberEntry]> rows;
+    in property <bool> has-more;
+    in property <int> pages-landed;
+    in property <UserMessageKind> error: UserMessageKind.none;
+    in property <string> error-detail;
 }
 
 export global RoomView {

@@ -13,7 +13,7 @@ use crate::domain::space_index::{HierarchyPage, JoinRule, SpaceChild};
 use crate::ports::matrix::SpaceIndexPort;
 use crate::ports::output::AppOutputPort;
 
-const AVATAR_BATCH: usize = 8;
+pub(super) const AVATAR_BATCH: usize = 8;
 
 pub(super) struct ListedSpace {
     pub(super) id: RoomId,

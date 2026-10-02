@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 
 use super::establish::EstablishedSession;
+use super::room_info::{ActionOutcome, RosterOutcome};
 use super::space_index::{JoinOutcome, PageOutcome};
 use crate::commands::messages::{UserMessage, UserMessageKind};
 use crate::commands::view::LoginActivity;
@@ -8,6 +9,7 @@ use crate::domain::auth::ServerInfo;
 use crate::domain::media::PickedAttachment;
 use crate::domain::message::PinnedMessage;
 use crate::domain::room::RoomId;
+use crate::domain::room_info::RoomAbout;
 use crate::domain::timeline::{
     AudioTrack, PaginationDirection, PaginationOutcome, TimelineAdvance, TimelineFocus,
 };
@@ -70,6 +72,29 @@ pub(super) enum AppEvent {
         name: String,
         outcome: JoinOutcome,
     },
+    RoomRosterFetched {
+        generation: u64,
+        outcome: RosterOutcome,
+    },
+    RoomAboutFetched {
+        generation: u64,
+        about: Option<RoomAbout>,
+    },
+    RoomInfoAvatarsReady {
+        generation: u64,
+        ready: usize,
+    },
+    RoomNotifySettled {
+        request: u64,
+        room_id: RoomId,
+        name: String,
+        outcome: ActionOutcome,
+    },
+    RoomLeaveSettled {
+        room_id: RoomId,
+        name: String,
+        outcome: ActionOutcome,
+    },
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -95,6 +120,11 @@ impl AppEvent {
             Self::SpaceIndexPaged { .. } => "SpaceIndexPaged",
             Self::SpaceIndexAvatarsReady { .. } => "SpaceIndexAvatarsReady",
             Self::SpaceChildJoinSettled { .. } => "SpaceChildJoinSettled",
+            Self::RoomRosterFetched { .. } => "RoomRosterFetched",
+            Self::RoomAboutFetched { .. } => "RoomAboutFetched",
+            Self::RoomInfoAvatarsReady { .. } => "RoomInfoAvatarsReady",
+            Self::RoomNotifySettled { .. } => "RoomNotifySettled",
+            Self::RoomLeaveSettled { .. } => "RoomLeaveSettled",
         }
     }
 }

@@ -14,10 +14,12 @@ use u2dm_ui::{
     AudioKind as UiAudioKind, AudioView, ChildAccess as UiChildAccess, ConnectionState,
     Delivery as UiDelivery, DirectoryView, EmojiEntry, EmojiGroup, EmojiInsert, EmojiStore,
     LoginActivity as UiLoginActivity, LoginMethodKind as UiLoginMethodKind, LoginPhase, LoginView,
-    MediaFailure as UiMediaFailure, MediaState as UiMediaState, MessageEntry,
-    MessageKind as UiMessageKind, PollAnswerEntry, PollPhase as UiPollPhase,
-    PreviewKind as UiPreviewKind, ReactionEntry, ReactionSend as UiReactionSend, ReactorAvatar,
-    ReplySwipe, RoomEntry, RoomScope as UiRoomScope, RoomView, SendState as UiSendState,
+    MediaFailure as UiMediaFailure, MediaState as UiMediaState, MemberEntry,
+    MemberRole as UiMemberRole, MemberRowKind as UiMemberRowKind, MessageEntry,
+    MessageKind as UiMessageKind, NotifyMode as UiNotifyMode, PollAnswerEntry,
+    PollPhase as UiPollPhase, PreviewKind as UiPreviewKind, ReactionEntry,
+    ReactionSend as UiReactionSend, ReactorAvatar, ReplySwipe, RoomEntry, RoomInfoView,
+    RoomScope as UiRoomScope, RoomView, RosterStatus as UiRosterStatus, SendState as UiSendState,
     ServiceKind as UiServiceKind, SessionView, SpaceChildEntry, SpaceEntry,
     SpaceIndexStatus as UiSpaceIndexStatus, SpaceIndexView, StickerCell, StickerPackTab,
     StickerRow, StickerView, TimelineState, UnsentView, UserMessage as UiUserMessage,
@@ -30,14 +32,15 @@ use super::backend::{
 };
 use super::decode::{AvatarSlot, request_avatar, request_media, request_sticker};
 use super::dto::{
-    MediaFailureKind, MediaState, MessageDto, PollAnswerDto, ReactionDto, ReactorAvatarDto,
-    RoomDto, SpaceChildDto, SpaceDto, StickerCellDto, StickerPackDto, StickerRowDto,
+    MediaFailureKind, MediaState, MemberRowDto, MemberRowKind, MessageDto, PollAnswerDto,
+    ReactionDto, ReactorAvatarDto, RoomDto, SpaceChildDto, SpaceDto, StickerCellDto,
+    StickerPackDto, StickerRowDto,
 };
 #[cfg(feature = "demo")]
 use super::dump;
 use super::fields::{
-    MessageFields, PollAnswerFields, ReactionFields, ReactorFields, RoomFields, SpaceChildFields,
-    SpaceFields, StickerCellFields, StickerPackFields, StickerRowFields,
+    MemberRowFields, MessageFields, PollAnswerFields, ReactionFields, ReactorFields, RoomFields,
+    SpaceChildFields, SpaceFields, StickerCellFields, StickerPackFields, StickerRowFields,
 };
 use super::present::{Delivery, MessageKind, PollPhase, ServiceKind, VerifyStep};
 #[cfg(feature = "demo")]
@@ -46,12 +49,12 @@ use super::props::{BoolProp, IntProp, StringProp, UiProps};
 use super::schema::{
     attachment_kinds, audio_kinds, bool_props, child_accesses, connection_states, deliveries,
     enum_props, int_props, login_activities, login_methods, login_phases, media_failures,
-    media_states, message_fields, message_kinds, model_props, poll_answer_fields, poll_phases,
-    preview_kinds, reaction_fields, reaction_sends, reactor_fields, room_fields, room_scopes,
-    send_states, service_kinds, simple_callbacks, space_child_fields, space_fields,
-    space_index_statuses, sticker_cell_fields, sticker_pack_fields, sticker_row_fields,
-    string_props, timeline_states, user_message_kinds, verification_activities,
-    verification_phases,
+    media_states, member_roles, member_row_fields, member_row_kinds, message_fields, message_kinds,
+    model_props, notify_modes, poll_answer_fields, poll_phases, preview_kinds, reaction_fields,
+    reaction_sends, reactor_fields, room_fields, room_scopes, roster_statuses, send_states,
+    service_kinds, simple_callbacks, space_child_fields, space_fields, space_index_statuses,
+    sticker_cell_fields, sticker_pack_fields, sticker_row_fields, string_props, timeline_states,
+    user_message_kinds, verification_activities, verification_phases,
 };
 use super::session::active_models;
 use super::video::{self, millis_to_duration};
@@ -61,12 +64,14 @@ use crate::commands::effects::{Effect, VerificationActivity};
 use crate::commands::messages::{UserMessage, UserMessageKind};
 use crate::commands::ui::{TimelineVisibility, ViewportChanged};
 use crate::commands::view::{
-    AppViewState, AttachmentKind, ChildAccess, LoginActivity, LoginStep, RoomScope,
+    AppViewState, AttachmentKind, ChildAccess, LoginActivity, LoginStep, RoomScope, RosterStatus,
     SpaceIndexStatus,
 };
 use crate::domain::auth::LoginMethod;
 use crate::domain::media::AudioKind;
 use crate::domain::message::{MessagePreviewKind, ReactionSend, SendState};
+use crate::domain::room::NotifyMode;
+use crate::domain::room_info::MemberRole;
 use crate::domain::sync::ConnectionStatus;
 use crate::domain::timeline::TimelineStatus;
 use crate::domain::verification::VerificationEmoji as DomainVerificationEmoji;
@@ -200,6 +205,21 @@ impl UiProps for AppWindow {
         }
     }
 
+    fn apply_room_info_avatar(&self, avatar: Option<Image>) {
+        let room_info = self.global::<RoomInfoView>();
+        match avatar {
+            Some(img) => {
+                room_info.set_avatar(img);
+                room_info.set_has_avatar(true);
+            }
+            None => room_info.set_has_avatar(false),
+        }
+    }
+
+    fn apply_room_info_topic(&self, topic: StyledText) {
+        self.global::<RoomInfoView>().set_topic_styled(topic);
+    }
+
     fn apply_login_messages(&self, messages: &[UserMessage]) {
         let entries: Vec<UiUserMessage> = messages
             .iter()
@@ -281,6 +301,10 @@ attachment_kinds!(impl_slint_enum AttachmentKind UiAttachmentKind;);
 room_scopes!(impl_slint_enum RoomScope UiRoomScope;);
 space_index_statuses!(impl_slint_enum SpaceIndexStatus UiSpaceIndexStatus;);
 child_accesses!(impl_slint_enum ChildAccess UiChildAccess;);
+notify_modes!(impl_slint_enum NotifyMode UiNotifyMode;);
+member_roles!(impl_slint_enum MemberRole UiMemberRole;);
+member_row_kinds!(impl_slint_enum MemberRowKind UiMemberRowKind;);
+roster_statuses!(impl_slint_enum RosterStatus UiRosterStatus;);
 preview_kinds!(impl_slint_enum MessagePreviewKind UiPreviewKind;);
 audio_kinds!(impl_slint_enum AudioKind UiAudioKind;);
 service_kinds!(impl_slint_enum ServiceKind UiServiceKind;);
@@ -383,6 +407,7 @@ poll_answer_fields!(impl_entry PollAnswerDto PollAnswerFields PollAnswerEntry;);
 room_fields!(impl_entry RoomDto RoomFields RoomEntry;);
 space_fields!(impl_entry SpaceDto SpaceFields SpaceEntry;);
 space_child_fields!(impl_entry SpaceChildDto SpaceChildFields SpaceChildEntry;);
+member_row_fields!(impl_entry MemberRowDto MemberRowFields MemberEntry;);
 sticker_cell_fields!(impl_entry StickerCellDto StickerCellFields StickerCell;);
 sticker_pack_fields!(impl_entry StickerPackDto StickerPackFields StickerPackTab;);
 sticker_row_fields!(impl_entry StickerRowDto StickerRowFields StickerRow;);
@@ -405,6 +430,7 @@ impl UiBackend for CompiledBackend {
     type Room = RoomEntry;
     type Space = SpaceEntry;
     type SpaceChild = SpaceChildEntry;
+    type MemberRow = MemberEntry;
     type StickerRow = StickerRow;
     type StickerCell = StickerCell;
     type StickerPack = StickerPackTab;
@@ -496,6 +522,10 @@ impl SlintUiAdapter {
 
         let tx = cmd_tx.clone();
         actions(win).on_dismiss_unsent(move |submission| router::dismiss_unsent(&tx, submission));
+
+        let tx = cmd_tx.clone();
+        actions(win)
+            .on_set_room_notify(move |mode| router::set_room_notify(&tx, mode.slint_name()));
 
         let tx = cmd_tx.clone();
         actions(win)

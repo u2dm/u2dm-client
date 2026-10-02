@@ -94,6 +94,12 @@ export global UserMessages {
         if kind == UserMessageKind.join-room-failed {
             return @tr("Could not join {}", detail);
         }
+        if kind == UserMessageKind.leave-room-failed {
+            return @tr("Could not leave {}", detail);
+        }
+        if kind == UserMessageKind.notify-change-failed {
+            return @tr("Could not change the notifications for {}", detail);
+        }
         if kind == UserMessageKind.media-download-failed {
             return @tr("Failed to download media");
         }

@@ -19,14 +19,15 @@ use super::backend::{
 };
 use super::decode::{AvatarSlot, request_avatar, request_media, request_sticker};
 use super::dto::{
-    MediaFailureKind, MediaState, MessageDto, PollAnswerDto, ReactionDto, ReactorAvatarDto,
-    RoomDto, SpaceChildDto, SpaceDto, StickerCellDto, StickerPackDto, StickerRowDto,
+    MediaFailureKind, MediaState, MemberRowDto, MemberRowKind, MessageDto, PollAnswerDto,
+    ReactionDto, ReactorAvatarDto, RoomDto, SpaceChildDto, SpaceDto, StickerCellDto,
+    StickerPackDto, StickerRowDto,
 };
 #[cfg(feature = "demo")]
 use super::dump;
 use super::fields::{
-    MessageFields, PollAnswerFields, ReactionFields, ReactorFields, RoomFields, SpaceChildFields,
-    SpaceFields, StickerCellFields, StickerPackFields, StickerRowFields,
+    MemberRowFields, MessageFields, PollAnswerFields, ReactionFields, ReactorFields, RoomFields,
+    SpaceChildFields, SpaceFields, StickerCellFields, StickerPackFields, StickerRowFields,
 };
 use super::present::{Delivery, MessageKind, PollPhase, ServiceKind, VerifyStep};
 #[cfg(feature = "demo")]
@@ -34,9 +35,10 @@ use super::props::EnumProp;
 use super::props::{BoolProp, IntProp, StringProp, UiProps};
 use super::schema::{
     attachment_kinds, audio_kinds, child_accesses, connection_states, deliveries, enum_props,
-    login_activities, login_methods, login_phases, media_failures, media_states, message_fields,
-    message_kinds, model_props, poll_answer_fields, poll_phases, preview_kinds, reaction_fields,
-    reaction_sends, reactor_fields, room_fields, room_scopes, send_states, service_kinds,
+    login_activities, login_methods, login_phases, media_failures, media_states, member_roles,
+    member_row_fields, member_row_kinds, message_fields, message_kinds, model_props, notify_modes,
+    poll_answer_fields, poll_phases, preview_kinds, reaction_fields, reaction_sends,
+    reactor_fields, room_fields, room_scopes, roster_statuses, send_states, service_kinds,
     simple_callbacks, space_child_fields, space_fields, space_index_statuses, sticker_cell_fields,
     sticker_pack_fields, sticker_row_fields, timeline_states, user_message_kinds,
     verification_activities, verification_phases,
@@ -49,12 +51,14 @@ use crate::commands::effects::{Effect, VerificationActivity};
 use crate::commands::messages::{UserMessage, UserMessageKind};
 use crate::commands::ui::{TimelineVisibility, ViewportChanged};
 use crate::commands::view::{
-    AppViewState, AttachmentKind, ChildAccess, LoginActivity, LoginStep, RoomScope,
+    AppViewState, AttachmentKind, ChildAccess, LoginActivity, LoginStep, RoomScope, RosterStatus,
     SpaceIndexStatus,
 };
 use crate::domain::auth::LoginMethod;
 use crate::domain::media::AudioKind;
 use crate::domain::message::{MessagePreviewKind, ReactionSend, SendState};
+use crate::domain::room::NotifyMode;
+use crate::domain::room_info::MemberRole;
 use crate::domain::sync::ConnectionStatus;
 use crate::domain::timeline::TimelineStatus;
 use crate::domain::verification::VerificationEmoji as DomainVerificationEmoji;
@@ -67,6 +71,7 @@ mod names {
         pub const GLOBAL: &str = "Actions";
         pub const MOVE_SPACE: &str = "move-space";
         pub const DISMISS_UNSENT: &str = "dismiss-unsent";
+        pub const SET_ROOM_NOTIFY: &str = "set-room-notify";
         pub const PASTE_ATTACHMENT: &str = "paste-attachment";
         pub const TOGGLE_REACTION: &str = "toggle-reaction";
         pub const POLL_ANSWER_TEXTS: &str = "poll-answer-texts";
@@ -179,6 +184,10 @@ attachment_kinds!(impl_slint_enum AttachmentKind "AttachmentKind";);
 room_scopes!(impl_slint_enum RoomScope "RoomScope";);
 space_index_statuses!(impl_slint_enum SpaceIndexStatus "SpaceIndexStatus";);
 child_accesses!(impl_slint_enum ChildAccess "ChildAccess";);
+notify_modes!(impl_slint_enum NotifyMode "NotifyMode";);
+member_roles!(impl_slint_enum MemberRole "MemberRole";);
+member_row_kinds!(impl_slint_enum MemberRowKind "MemberRowKind";);
+roster_statuses!(impl_slint_enum RosterStatus "RosterStatus";);
 preview_kinds!(impl_slint_enum MessagePreviewKind "PreviewKind";);
 audio_kinds!(impl_slint_enum AudioKind "AudioKind";);
 service_kinds!(impl_slint_enum ServiceKind "ServiceKind";);
@@ -412,6 +421,25 @@ impl UiProps for ComponentInstance {
         }
     }
 
+    fn apply_room_info_avatar(&self, avatar: Option<slint::Image>) {
+        match avatar {
+            Some(img) => {
+                set_global(self, "RoomInfoView", "avatar", Value::Image(img));
+                set_global(self, "RoomInfoView", "has-avatar", Value::Bool(true));
+            }
+            None => set_global(self, "RoomInfoView", "has-avatar", Value::Bool(false)),
+        }
+    }
+
+    fn apply_room_info_topic(&self, topic: StyledText) {
+        set_global(
+            self,
+            "RoomInfoView",
+            "topic-styled",
+            Value::StyledText(topic),
+        );
+    }
+
     fn apply_login_messages(&self, messages: &[UserMessage]) {
         let entries: Vec<Value> = messages
             .iter()
@@ -498,6 +526,7 @@ impl UiBackend for InterpretedBackend {
     type Room = Value;
     type Space = Value;
     type SpaceChild = Value;
+    type MemberRow = Value;
     type StickerRow = Value;
     type StickerCell = Value;
     type StickerPack = Value;
@@ -630,6 +659,12 @@ impl SlintUiAdapter {
             if let Some(submission) = int_arg(args, 0) {
                 router::dismiss_unsent(&tx, submission);
             }
+            Value::Void
+        })?;
+
+        let tx = cmd_tx.clone();
+        bind_action(&self.instance, callback::SET_ROOM_NOTIFY, move |args| {
+            router::set_room_notify(&tx, variant_of(args.first()));
             Value::Void
         })?;
 
@@ -970,6 +1005,7 @@ poll_answer_fields!(impl_value PollAnswerDto PollAnswerFields;);
 room_fields!(impl_value RoomDto RoomFields;);
 space_fields!(impl_value SpaceDto SpaceFields;);
 space_child_fields!(impl_value SpaceChildDto SpaceChildFields;);
+member_row_fields!(impl_value MemberRowDto MemberRowFields;);
 sticker_cell_fields!(impl_value StickerCellDto StickerCellFields;);
 sticker_pack_fields!(impl_value StickerPackDto StickerPackFields;);
 sticker_row_fields!(impl_value StickerRowDto StickerRowFields;);

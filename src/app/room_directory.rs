@@ -653,7 +653,11 @@ impl RoomDirectory {
         })
     }
 
-    fn room(&self, id: &str) -> Option<&Room> {
+    pub(super) fn rooms(&self) -> &[Arc<Room>] {
+        &self.all_rooms
+    }
+
+    pub(super) fn room(&self, id: &str) -> Option<&Room> {
         self.all_rooms
             .iter()
             .find(|room| room.id.as_ref() == id)

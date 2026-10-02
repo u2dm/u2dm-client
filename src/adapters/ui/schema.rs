@@ -46,6 +46,14 @@ macro_rules! string_props {
         UnsentReplySender UnsentView "UnsentView" "reply-sender" set_reply_sender get_reply_sender;
         UnsentReplyPreview UnsentView "UnsentView" "reply-preview" set_reply_preview get_reply_preview;
         SpaceIndexName SpaceIndexView "SpaceIndexView" "space-name" set_space_name get_space_name;
+        RoomInfoRoomId RoomInfoView "RoomInfoView" "room-id" set_room_id get_room_id;
+        RoomInfoName RoomInfoView "RoomInfoView" "name" set_name get_name;
+        RoomInfoInitial RoomInfoView "RoomInfoView" "initial" set_initial get_initial;
+        RoomInfoTopic RoomInfoView "RoomInfoView" "topic" set_topic get_topic;
+        RoomInfoAlias RoomInfoView "RoomInfoView" "alias" set_alias get_alias;
+        RoomInfoJoinedOn RoomInfoView "RoomInfoView" "joined-on" set_joined_on get_joined_on;
+        RoomInfoLink RoomInfoView "RoomInfoView" "link" set_link get_link;
+        RoomInfoErrorDetail RoomInfoView "RoomInfoView" "error-detail" set_error_detail get_error_detail;
     } };
 }
 pub(crate) use string_props;
@@ -78,6 +86,12 @@ macro_rules! simple_callbacks {
         on_retry_space_index "retry-space-index" retry_space_index plain RetrySpaceIndex;
         on_join_space_child "join-space-child" join_space_child room JoinSpaceChild;
         on_open_space_child "open-space-child" open_space_child room OpenSpaceChild;
+        on_open_room_info "open-room-info" open_room_info room OpenRoomInfo;
+        on_close_room_info "close-room-info" close_room_info plain CloseRoomInfo;
+        on_page_room_members "page-room-members" page_room_members plain PageRoomMembers;
+        on_retry_room_members "retry-room-members" retry_room_members plain RetryRoomMembers;
+        on_filter_room_members "filter-room-members" filter_room_members pass FilterRoomMembers;
+        on_leave_room "leave-room" leave_room room LeaveRoom;
         on_paginate_backwards "paginate-backwards" paginate_backwards room_key PaginateBackwards;
         on_paginate_forwards "paginate-forwards" paginate_forwards room_key PaginateForwards;
         on_jump_to_latest "jump-to-latest" jump_to_latest room_key JumpToLatest;
@@ -150,6 +164,12 @@ macro_rules! bool_props {
         UnsentVisible UnsentView "UnsentView" "visible" set_visible get_visible;
         WindowFocused WindowView "WindowView" "focused" set_focused get_focused;
         ReplySwipeArmed ReplySwipe "ReplySwipe" "armed" set_armed get_armed;
+        RoomInfoVisible RoomInfoView "RoomInfoView" "visible" set_visible get_visible;
+        RoomInfoIsDirect RoomInfoView "RoomInfoView" "is-direct" set_is_direct get_is_direct;
+        RoomInfoTopicHasLinks RoomInfoView "RoomInfoView" "topic-has-links" set_topic_has_links get_topic_has_links;
+        RoomInfoNotifyBusy RoomInfoView "RoomInfoView" "notify-busy" set_notify_busy get_notify_busy;
+        RoomInfoLeaving RoomInfoView "RoomInfoView" "leaving" set_leaving get_leaving;
+        RoomInfoHasMore RoomInfoView "RoomInfoView" "has-more" set_has_more get_has_more;
     } };
 }
 pub(crate) use bool_props;
@@ -175,6 +195,9 @@ macro_rules! int_props {
         AudioDurationMs AudioView "AudioView" "duration-ms" set_duration_ms get_duration_ms;
         UnsentSubmission UnsentView "UnsentView" "submission" set_submission get_submission;
         SwipeTravel WindowView "WindowView" "swipe-travel" set_swipe_travel get_swipe_travel;
+        RoomInfoMembers RoomInfoView "RoomInfoView" "members" set_members get_members;
+        RoomInfoColorIndex RoomInfoView "RoomInfoView" "color-index" set_color_index get_color_index;
+        RoomInfoPagesLanded RoomInfoView "RoomInfoView" "pages-landed" set_pages_landed get_pages_landed;
     } };
 }
 pub(crate) use int_props;
@@ -213,6 +236,12 @@ macro_rules! enum_props {
             AudioView "AudioView" "kind" set_kind get_kind;
         SpaceIndexStatus set_space_index_status(SpaceIndexStatus)
             SpaceIndexView "SpaceIndexView" "status" set_status get_status;
+        RoomInfoNotify set_room_info_notify(NotifyMode)
+            RoomInfoView "RoomInfoView" "notify" set_notify get_notify;
+        RoomInfoRoster set_room_info_roster(RosterStatus)
+            RoomInfoView "RoomInfoView" "roster" set_roster get_roster;
+        RoomInfoError set_room_info_error(UserMessageKind)
+            RoomInfoView "RoomInfoView" "error" set_error get_error;
     } };
 }
 pub(crate) use enum_props;
@@ -226,6 +255,7 @@ macro_rules! model_props {
         sticker_rows StickerRow SpliceModel StickerView "StickerView" "rows" set_rows;
         sticker_packs StickerPack VecModel StickerView "StickerView" "packs" set_packs;
         space_children SpaceChild VecModel SpaceIndexView "SpaceIndexView" "rows" set_rows;
+        room_members MemberRow VecModel RoomInfoView "RoomInfoView" "rows" set_rows;
     } };
 }
 pub(crate) use model_props;
@@ -354,6 +384,8 @@ macro_rules! user_message_kinds {
         MessageNotShowable        MessageNotShowable      "message-not-showable";
         SpaceOrderSaveFailed      SpaceOrderSaveFailed    "space-order-save-failed";
         JoinRoomFailed            JoinRoomFailed          "join-room-failed";
+        LeaveRoomFailed           LeaveRoomFailed         "leave-room-failed";
+        NotifyChangeFailed        NotifyChangeFailed      "notify-change-failed";
         MediaDownloadFailed       MediaDownloadFailed     "media-download-failed";
         FileDownloadFailed        FileDownloadFailed      "file-download-failed";
         MediaOpenFailed           MediaOpenFailed         "media-open-failed";
@@ -459,6 +491,51 @@ macro_rules! child_accesses {
     } };
 }
 pub(crate) use child_accesses;
+
+macro_rules! notify_modes {
+    ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
+        AllMessages  AllMessages  "all-messages";
+        MentionsOnly MentionsOnly "mentions-only";
+        Muted        Muted        "muted";
+    } };
+}
+pub(crate) use notify_modes;
+
+macro_rules! member_roles {
+    ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
+        Member    Member    "member";
+        Moderator Moderator "moderator";
+        Admin     Admin     "admin";
+        Owner     Owner     "owner";
+    } };
+}
+pub(crate) use member_roles;
+
+macro_rules! member_row_kinds {
+    ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
+        Member         Member         "member";
+        InvitedHeading InvitedHeading "invited-heading";
+    } };
+}
+pub(crate) use member_row_kinds;
+
+macro_rules! roster_statuses {
+    ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
+        Loading Loading "loading";
+        Ready   Ready   "ready";
+        Failed  Failed  "failed";
+    } };
+}
+pub(crate) use roster_statuses;
+
+macro_rules! variant_named {
+    ($fn:ident $src:ident; $($rust:ident $ui:ident $lit:literal;)*) => {
+        pub fn $fn(name: &str) -> Option<$src> {
+            match name { $($lit => Some($src::$rust),)* _ => None }
+        }
+    };
+}
+pub(crate) use variant_named;
 
 macro_rules! media_states {
     ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
@@ -723,6 +800,20 @@ macro_rules! space_child_fields {
     } };
 }
 pub(crate) use space_child_fields;
+
+macro_rules! member_row_fields {
+    ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
+        user_id set_user_id "user-id" text;
+        kind set_kind "kind" enumk(MemberRowKind);
+        name set_name "name" text;
+        initial set_initial "initial" text;
+        color_index set_color_index "color-index" int;
+        role set_role "role" enumk(MemberRole);
+        has_avatar set_has_avatar "has-avatar" flag;
+        avatar set_avatar "avatar" image;
+    } };
+}
+pub(crate) use member_row_fields;
 
 macro_rules! sticker_cell_fields {
     ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
