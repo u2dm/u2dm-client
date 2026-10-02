@@ -4,38 +4,42 @@ import { LoginActivity } from "../../enums.slint";
 import { AppStyle, Fonts, IconSize, Metrics, Motion, Radius, Size, Space, Stroke, Tracking, Weight } from "../../theme.slint";
 
 
+component MatrixBracket inherits Rectangle {
+    in property <bool> closing;
+
+    Rectangle {
+        x: root.closing ? root.width - self.width : 0;
+        width: Stroke.hairline;
+        background: AppStyle.login-bracket;
+    }
+
+    Rectangle {
+        y: 0;
+        height: Stroke.hairline;
+        background: AppStyle.login-bracket;
+    }
+
+    Rectangle {
+        y: root.height - self.height;
+        height: Stroke.hairline;
+        background: AppStyle.login-bracket;
+    }
+}
+
 export component LoginPage inherits Rectangle {
     width: 100%;
     height: 100%;
     background: AppStyle.page;
 
-
-    property <float> glow-primary-x: -0.24;
-    property <float> glow-primary-y: -0.3;
-    property <float> glow-primary-extent: 0.9;
-    property <float> glow-secondary-x: 0.5;
-    property <float> glow-secondary-y: 0.45;
-    property <float> glow-secondary-extent: 0.75;
-
-    Rectangle {
-        x: root.glow-primary-x * root.width;
-        y: root.glow-primary-y * root.height;
-        width: max(AppStyle.card-width-wide, root.width * root.glow-primary-extent);
-        height: self.width;
-        background: AppStyle.brand-glow-primary;
-    }
-
-    Rectangle {
-        x: root.width - root.glow-secondary-x * self.width;
-        y: root.height - root.glow-secondary-y * self.height;
-        width: max(Metrics.login-glow-min-width, root.width * root.glow-secondary-extent);
-        height: self.width;
-        background: AppStyle.brand-glow-secondary;
-    }
-
     out property <bool> dense: root.height < Metrics.login-dense-below;
     property <length> card-height: card-body.preferred-height;
     property <length> card-margin: root.dense ? Space.xl : Metrics.login-card-margin;
+
+    property <length> bracket-gap: Space.xl;
+    property <length> bracket-tick: Space.lg;
+    property <length> bracket-overshoot: root.dense ? Space.md : Space.lg;
+    property <length> bracket-room: root.bracket-gap + root.bracket-tick + Space.lg;
+    property <bool> bracketed: card.x >= root.bracket-room;
 
     scroll := ScrollView {
         x: 0;
@@ -44,6 +48,21 @@ export component LoginPage inherits Rectangle {
         height: 100%;
         content-width: self.width;
         content-height: max(self.height, root.card-height + 2 * root.card-margin);
+
+        if root.bracketed: MatrixBracket {
+            x: card.x - root.bracket-gap - self.width;
+            y: card.y - root.bracket-overshoot;
+            width: root.bracket-tick;
+            height: card.height + 2 * root.bracket-overshoot;
+        }
+
+        if root.bracketed: MatrixBracket {
+            closing: true;
+            x: card.x + card.width + root.bracket-gap;
+            y: card.y - root.bracket-overshoot;
+            width: root.bracket-tick;
+            height: card.height + 2 * root.bracket-overshoot;
+        }
 
         card := Rectangle {
             x: (root.width - self.width) / 2;
@@ -65,22 +84,14 @@ export component LoginPage inherits Rectangle {
     }
 }
 
-export component BrandMark inherits Rectangle {
+export component BrandMark inherits Image {
     in property <length> size: Metrics.login-mark;
-
-    property <float> radius-scale: 0.3;
-    property <float> glyph-scale: 0.5;
 
     width: root.size;
     height: root.size;
-    border-radius: root.size * root.radius-scale;
-    background: AppStyle.brand-gradient;
-
-    IconDisplay {
-        icon: IconSet.MessagesSquare;
-        size: root.size * root.glyph-scale;
-        stroke: Palette.accent-foreground;
-    }
+    source: @image-url("../../../assets/logo.svg");
+    colorize: Palette.foreground;
+    accessible-role: none;
 }
 
 export component BrandHeader inherits VerticalLayout {

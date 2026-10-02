@@ -179,12 +179,14 @@ export component VerificationDialog inherits ModalHost {
                         width: Size.xl;
                         height: Size.xl;
                         border-radius: Radius.md;
-                        background: AppStyle.brand-gradient;
+                        background: AppStyle.overlay-subtle;
+                        border-width: Stroke.hairline;
+                        border-color: AppStyle.border;
 
                         IconDisplay {
                             icon: IconSet.ShieldCheck;
                             size: IconSize.md;
-                            stroke: Palette.accent-foreground;
+                            stroke: Palette.foreground;
                         }
                     }
 

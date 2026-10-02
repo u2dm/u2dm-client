@@ -166,8 +166,7 @@ export global AppStyle {
         Palette.background.transparentize(1) 0%,
         Palette.background.transparentize(0) 100%);
 
-    out property <brush> brand-glow-primary: @radial-gradient(circle, Palette.accent-background.transparentize(0.78) 0%, Palette.accent-background.transparentize(1) 62%);
-    out property <brush> brand-glow-secondary: @radial-gradient(circle, root.accent-background-soft 0%, Palette.accent-background.transparentize(1) 60%);
+    out property <color> login-bracket: Palette.foreground.mix(Palette.background, 0.32);
 
     out property <length> card-width: 400px;
     out property <length> card-width-wide: 420px;
@@ -175,7 +174,6 @@ export global AppStyle {
     out property <length> card-padding: 32px;
     out property <length> card-padding-dense: Space.xxl;
     out property <length> control-height: 48px;
-    out property <brush> brand-gradient: @linear-gradient(140deg, Palette.accent-background.brighter(0.25) 0%, Palette.accent-background.darker(0.15) 100%);
 }
 
 export global Metrics {
@@ -285,12 +283,12 @@ export global Metrics {
     out property <length> toast-min-width: 200px;
     out property <length> toast-max-width: 500px;
 
-    out property <length> login-glow-min-width: 360px;
     out property <length> login-dense-below: 620px;
     out property <length> login-card-margin: 40px;
-    out property <length> login-mark: 60px;
-    out property <length> login-mark-dense: 48px;
-    out property <length> login-mark-compact: 52px;
+    out property <length> login-mark: 80px;
+    out property <length> login-mark-dense: 64px;
+    out property <length> login-mark-compact: 68px;
+    out property <length> login-mark-compact-dense: 52px;
 
     out property <length> verify-status-circle: 56px;
     out property <length> verify-tile-min: 52px;
