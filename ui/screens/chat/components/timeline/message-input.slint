@@ -6,13 +6,13 @@ import { IconSet } from "@lucide";
 import { PickerPanel } from "./picker-panel.slint";
 import { AttachMenu } from "./attach-menu.slint";
 import { ComposerField } from "./composer-field.slint";
-import { ReplyBar } from "./reply-bar.slint";
+import { EditBar, ReplyBar } from "./reply-bar.slint";
 import { ReplyQuote } from "../reply-quote.slint";
 import { AppStyle, Fonts, Metrics, Radius, Space, Weight } from "../../../../theme.slint";
 import { ClickArea } from "../../../../components/a11y.slint";
 import { ModalHost } from "../../../../components/overlay.slint";
 import { Actions } from "../../../../actions.slint";
-import { Composer, Polls, Reactions, Shell } from "../../../../local.slint";
+import { Composer, EditedMessage, Polls, Reactions, ReplyDraft, Shell } from "../../../../local.slint";
 import { RoomView, UnsentView } from "../../../../views.slint";
 
 export component MessageInput inherits Rectangle {
@@ -28,18 +28,31 @@ export component MessageInput inherits Rectangle {
     property <string> attach-label: RoomView.may-start-polls
         ? @tr("Attach a file or create a poll")
         : @tr("Attach a photo or a file");
+    property <string> picker-label: Composer.editing ? @tr("Emoji") : @tr("Emoji and stickers");
+    property <string> placeholder: !Composer.editing
+        ? @tr("Send a message...")
+        : (Composer.edited.caption ? @tr("Add a caption...") : @tr("Edit the message..."));
     property <bool> is-replying: Composer.reply-event-id != "";
     property <int> settled-submission: 0;
     property <bool> has-unsent: UnsentView.visible
         && UnsentView.room-id == root.room-id
-        && UnsentView.submission != root.settled-submission;
+        && UnsentView.submission != root.settled-submission
+        && !Composer.editing;
     property <length> picker-headroom: root.overlay-height - root.height
         - Metrics.header-row - Space.xl;
+
+    property <string> stashed-text;
+    property <ReplyDraft> stashed-reply;
+    property <int> edit-requests: Composer.edit-requests;
 
     property <length> surface-inset: Metrics.timeline-inset;
 
     background: AppStyle.composer-gradient;
     height: field.height + root.surface-inset;
+
+    changed edit-requests => {
+        root.begin-edit(Composer.requested-edit, Composer.requested-edit.original);
+    }
 
     function submit() {
         Actions.send-message({
@@ -50,10 +63,88 @@ export component MessageInput inherits Rectangle {
             reply-preview: Composer.reply-preview,
         });
         field.clear();
-        Composer.clear();
+        Composer.clear-reply();
+    }
+
+    function begin-edit(target: EditedMessage, text: string) {
+        Shell.picker-open = false;
+        Shell.attach-open = false;
+        if Composer.is-being-edited(target.event-id, target.local-id) {
+            field.focus-input();
+            return;
+        }
+        if !Composer.editing {
+            root.stashed-text = root.message;
+            root.stashed-reply = Composer.reply;
+            Composer.clear-reply();
+        }
+        Composer.edited = target;
+        field.replace-text(text);
+        field.focus-input();
+    }
+
+    function finish-edit() {
+        Shell.picker-open = false;
+        Composer.edited = { };
+        Composer.restore-reply(root.stashed-reply);
+        field.replace-text(root.stashed-text);
+        root.stashed-text = "";
+        root.stashed-reply = { };
+        field.focus-input();
+    }
+
+    function save-edit() {
+        if Actions.edit-message({
+            room-id: root.room-id,
+            unique-id: Composer.edited.unique-id,
+            timeline-token: Composer.edited.timeline-token,
+            event-id: Composer.edited.event-id,
+            local-id: Composer.edited.local-id,
+            caption: Composer.edited.caption,
+            restored: Composer.edited.restored,
+            original: Composer.edited.original,
+            body: root.message,
+        }) {
+            root.finish-edit();
+        }
+    }
+
+    function edit-latest() -> bool {
+        if RoomView.timeline-detached {
+            return false;
+        }
+        let row = Actions.last-editable-row();
+        if row < 0 {
+            return false;
+        }
+        root.begin-edit(Composer.edit-of(RoomView.timeline[row]), RoomView.timeline[row].body);
+        return true;
+    }
+
+    pure function is-bare(event: KeyEvent) -> bool {
+        !event.modifiers.shift && !event.modifiers.control && !event.modifiers.alt
+            && !event.modifiers.meta
     }
 
     function restore-unsent() {
+        if UnsentView.is-edit {
+            let row = Actions.row-of-message(UnsentView.edit-event-id, UnsentView.edit-local-id);
+            let loaded = row >= 0;
+            root.begin-edit({
+                event-id: UnsentView.edit-event-id,
+                local-id: UnsentView.edit-local-id,
+                unique-id: loaded ? RoomView.timeline[row].unique-id : "",
+                timeline-token: RoomView.timeline-token,
+                caption: UnsentView.edit-caption,
+                restored: true,
+                original: "",
+                preview: loaded
+                    ? Composer.edit-of(RoomView.timeline[row]).preview
+                    : UnsentView.edit-preview,
+            }, UnsentView.body);
+            root.settle-unsent();
+            return;
+        }
         if !root.is-replying {
             Composer.reply-event-id = UnsentView.reply-event-id;
             Composer.reply-sender = UnsentView.reply-sender;
@@ -84,7 +175,7 @@ export component MessageInput inherits Rectangle {
         width: root.overlay-width;
         height: root.overlay-height;
         dim: false;
-        label: @tr("Emoji and sticker picker");
+        label: Composer.editing ? @tr("Emoji picker") : @tr("Emoji and sticker picker");
         dismissed => {
             root.close-picker();
         }
@@ -98,6 +189,7 @@ export component MessageInput inherits Rectangle {
             x: root.width - self.width - Space.md - root.overlay-x;
             y: -self.height - Space.md - root.overlay-y;
             tab <=> root.picker-tab;
+            stickers: !Composer.editing;
             emoji-picked(glyph) => {
                 field.insert-at-caret(glyph);
             }
@@ -140,7 +232,7 @@ export component MessageInput inherits Rectangle {
             shortcode: shortcode,
             reply-to: Composer.reply-event-id,
         });
-        Composer.clear();
+        Composer.clear-reply();
         root.close-picker();
     }
 
@@ -169,13 +261,17 @@ export component MessageInput inherits Rectangle {
         y: 0;
         width: root.width - 2 * root.surface-inset;
         text <=> root.message;
-        placeholder: @tr("Send a message...");
-        input-label: @tr("Message");
+        placeholder: root.placeholder;
+        input-label: Composer.editing && Composer.edited.caption ? @tr("Caption") : @tr("Message");
         lead-icon: IconSet.Paperclip;
         lead-label: root.attach-label;
         lead-active: Shell.attach-open;
-        emoji-label: @tr("Emoji and stickers");
+        lead-enabled: !Composer.editing;
+        emoji-label: root.picker-label;
         emoji-active: Shell.picker-open;
+        text-optional: Composer.editing && Composer.edited.caption;
+        send-icon: Composer.editing ? IconSet.Check : IconSet.SendHorizontal;
+        send-label: Composer.editing ? @tr("Save") : @tr("Send");
         lead-clicked => {
             Reactions.close();
             Shell.picker-open = false;
@@ -187,10 +283,28 @@ export component MessageInput inherits Rectangle {
             Shell.picker-open = !Shell.picker-open;
         }
         submitted => {
-            root.submit();
+            if Composer.editing {
+                root.save-edit();
+            } else {
+                root.submit();
+            }
         }
         paste-pressed => {
+            if Composer.editing {
+                return EventResult.reject;
+            }
             return Actions.paste-attachment(root.room-id) ? EventResult.accept : EventResult.reject;
+        }
+        key-captured(event) => {
+            if event.text == Key.Escape && Composer.editing {
+                root.finish-edit();
+                return EventResult.accept;
+            }
+            if event.text == Key.UpArrow && root.is-bare(event) && root.message == ""
+                && !Composer.editing {
+                return root.edit-latest() ? EventResult.accept : EventResult.reject;
+            }
+            return EventResult.reject;
         }
 
         if root.has-unsent: Rectangle {
@@ -208,14 +322,18 @@ export component MessageInput inherits Rectangle {
                     horizontal-stretch: 1;
                     accent: AppStyle.danger;
                     liveness: AccessibleLiveness.assertive;
-                    sender: @tr("Not sent");
-                    preview: UnsentView.body;
+                    sender: UnsentView.is-edit ? @tr("Edit not saved") : @tr("Not sent");
+                    preview: UnsentView.edit-caption && UnsentView.body == ""
+                        ? @tr("No caption")
+                        : UnsentView.body;
                 }
 
                 restore-touch := ClickArea {
                     width: restore-label.preferred-width + 2 * Space.sm;
                     ring-radius: Radius.sm;
-                    label: @tr("Put the unsent message back in the composer");
+                    label: UnsentView.is-edit
+                        ? @tr("Put the unsaved edit back in the composer")
+                        : @tr("Put the unsent message back in the composer");
                     clicked => {
                         root.restore-unsent();
                     }
@@ -233,7 +351,9 @@ export component MessageInput inherits Rectangle {
                 discard-touch := ClickArea {
                     width: discard-label.preferred-width + 2 * Space.sm;
                     ring-radius: Radius.sm;
-                    label: @tr("Discard the unsent message");
+                    label: UnsentView.is-edit
+                        ? @tr("Discard the unsaved edit")
+                        : @tr("Discard the unsent message");
                     clicked => {
                         root.settle-unsent();
                     }
@@ -250,11 +370,19 @@ export component MessageInput inherits Rectangle {
             }
         }
 
-        if root.is-replying: ReplyBar {
+        if Composer.editing: EditBar {
+            caption: Composer.edited.caption;
+            preview: Composer.edited.preview;
+            cancel-clicked => {
+                root.finish-edit();
+            }
+        }
+
+        if root.is-replying && !Composer.editing: ReplyBar {
             sender: Composer.reply-sender;
             preview: Composer.reply-preview;
             cancel-clicked => {
-                Composer.clear();
+                Composer.clear-reply();
             }
         }
     }

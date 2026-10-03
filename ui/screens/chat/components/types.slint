@@ -125,6 +125,7 @@ export struct MessageEntry {
     color-index: int,
     is-own: bool,
     edited: bool,
+    text-editable: bool,
     first-unread: bool,
     counts-as-unread: bool,
     send-state: SendState,
@@ -193,6 +194,18 @@ export struct SendMessageRequest {
     reply-to: string,
     reply-sender: string,
     reply-preview: string,
+}
+
+export struct EditMessageRequest {
+    room-id: string,
+    unique-id: string,
+    timeline-token: int,
+    event-id: string,
+    local-id: string,
+    caption: bool,
+    restored: bool,
+    original: string,
+    body: string,
 }
 
 export struct SendStickerRequest {

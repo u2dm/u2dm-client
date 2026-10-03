@@ -45,6 +45,9 @@ macro_rules! string_props {
         UnsentReplyEventId UnsentView "UnsentView" "reply-event-id" set_reply_event_id get_reply_event_id;
         UnsentReplySender UnsentView "UnsentView" "reply-sender" set_reply_sender get_reply_sender;
         UnsentReplyPreview UnsentView "UnsentView" "reply-preview" set_reply_preview get_reply_preview;
+        UnsentEditEventId UnsentView "UnsentView" "edit-event-id" set_edit_event_id get_edit_event_id;
+        UnsentEditLocalId UnsentView "UnsentView" "edit-local-id" set_edit_local_id get_edit_local_id;
+        UnsentEditPreview UnsentView "UnsentView" "edit-preview" set_edit_preview get_edit_preview;
         SpaceIndexName SpaceIndexView "SpaceIndexView" "space-name" set_space_name get_space_name;
         RoomInfoRoomId RoomInfoView "RoomInfoView" "room-id" set_room_id get_room_id;
         RoomInfoName RoomInfoView "RoomInfoView" "name" set_name get_name;
@@ -162,6 +165,8 @@ macro_rules! bool_props {
         AudioPlaying AudioView "AudioView" "playing" set_playing get_playing;
         AudioSilent AudioView "AudioView" "silent" set_silent get_silent;
         UnsentVisible UnsentView "UnsentView" "visible" set_visible get_visible;
+        UnsentIsEdit UnsentView "UnsentView" "is-edit" set_is_edit get_is_edit;
+        UnsentEditCaption UnsentView "UnsentView" "edit-caption" set_edit_caption get_edit_caption;
         WindowFocused WindowView "WindowView" "focused" set_focused get_focused;
         ReplySwipeArmed ReplySwipe "ReplySwipe" "armed" set_armed get_armed;
         RoomInfoVisible RoomInfoView "RoomInfoView" "visible" set_visible get_visible;
@@ -663,6 +668,7 @@ macro_rules! message_fields {
         color_index set_color_index "color-index" int;
         is_own set_is_own "is-own" flag;
         edited set_edited "edited" flag;
+        text_editable set_text_editable "text-editable" flag;
         first_unread set_first_unread "first-unread" flag;
         counts_as_unread set_counts_as_unread "counts-as-unread" flag;
         send_state set_send_state "send-state" enumk(SendState);

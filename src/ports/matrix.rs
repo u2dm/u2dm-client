@@ -8,7 +8,7 @@ use tokio_util::sync::CancellationToken;
 use crate::domain::account::AccountScope;
 use crate::domain::auth::{LoginCredentials, OAuthLoginData, ServerInfo, Session};
 use crate::domain::media::{MediaRendition, OutgoingAttachment, WaveformNeed};
-use crate::domain::message::PinnedMessage;
+use crate::domain::message::{MessageEdit, PinnedMessage};
 use crate::domain::poll::PollDraft;
 use crate::domain::room::{NotifyMode, RoomId};
 use crate::domain::room_info::{RoomAbout, RosterMember};
@@ -213,6 +213,7 @@ pub trait TimelinePort: Send + Sync {
     ) -> Result<()>;
     async fn send_text(&self, room_id: &RoomId, body: &str) -> Result<()>;
     async fn send_reply(&self, room_id: &RoomId, body: &str, in_reply_to: &str) -> Result<()>;
+    async fn edit_message(&self, room_id: &RoomId, edit: &MessageEdit) -> Result<()>;
     async fn send_poll(&self, room_id: &RoomId, draft: &PollDraft) -> Result<()>;
     async fn send_attachment(
         &self,

@@ -752,6 +752,7 @@ impl MessageDto {
                 body: RichText::plain(reply.body.clone()),
             }),
             edited: self.edited,
+            editable: self.sender == own_user,
             is_first_unread: false,
             send_state: SendState::default(),
             reactions: self

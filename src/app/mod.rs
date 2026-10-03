@@ -57,6 +57,7 @@ use crate::commands::view::{AppViewState, LoginActivity, LoginStep, Toast};
 use crate::domain::account::AccountScope;
 use crate::domain::auth::ServerInfo;
 use crate::domain::media::AttachmentPick;
+use crate::domain::message::MessageEdit;
 use crate::domain::poll::PollDraft;
 use crate::domain::room::{NotifyMode, RoomId, RoomList, Space};
 use crate::domain::sticker::PackId;
@@ -405,6 +406,9 @@ impl AppService {
             }
             UiCommand::SendMessage { room_id, draft } => {
                 self.send_message(room_id, draft).await;
+            }
+            UiCommand::EditMessage { room_id, edit } => {
+                self.edit_message(room_id, edit);
             }
             UiCommand::DismissUnsent { submission } => {
                 self.submissions
@@ -864,6 +868,9 @@ impl AppService {
                 self.submissions
                     .settled(submission, enqueue, self.selection.room.as_ref());
             }
+            AppEvent::EditUnsaved { room_id, edit } => {
+                self.hold_unsaved_edit(&room_id, edit);
+            }
             AppEvent::PinnedChanged { watch, messages } => {
                 self.pinned.changed(watch, messages);
             }
@@ -1117,6 +1124,23 @@ impl AppService {
         self.submissions
             .send(&mut self.send_lanes, timeline, room_id.clone(), draft);
         self.return_to_live_for_send(room_id).await;
+    }
+
+    fn edit_message(&mut self, room_id: RoomId, edit: MessageEdit) {
+        let Some(timeline) = self.port(|a| &a.timeline) else {
+            return;
+        };
+        self.submissions
+            .edit(&mut self.send_lanes, timeline, room_id, edit);
+    }
+
+    fn hold_unsaved_edit(&mut self, room_id: &RoomId, edit: MessageEdit) {
+        if self.held_session.running().is_none() {
+            tracing::debug!(%room_id, "dropping an unsaved edit from a session that ended");
+            return;
+        }
+        self.submissions
+            .unsaved(room_id, edit, self.selection.room.as_ref());
     }
 
     fn resolve_failed_send(&mut self, local_id: String, action: FailedSend) {

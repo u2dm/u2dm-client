@@ -3,7 +3,7 @@ use std::time::Duration;
 use std::sync::Arc;
 
 use super::messages::{UserMessage, UserMessageKind};
-use super::ui::MessageDraft;
+use super::ui::Draft;
 use crate::domain::auth::{LoginMethod, Session};
 use crate::domain::media::AudioMeta;
 use crate::domain::message::PinnedMessage;
@@ -84,7 +84,7 @@ pub struct VideoView {
 pub struct UnsentMessage {
     pub submission: i32,
     pub room_id: RoomId,
-    pub draft: MessageDraft,
+    pub draft: Draft,
 }
 
 #[derive(Clone, Default, PartialEq)]

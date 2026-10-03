@@ -19,6 +19,7 @@ import { SenderLine } from "./sender-line.slint";
 import { Avatar } from "../../../../components/avatar.slint";
 import { ClickArea } from "../../../../components/a11y.slint";
 import {
+    Composer,
     ReactionAnchor,
     Reactions,
     ReplySwipe,
@@ -130,7 +131,10 @@ export component MessageBubble inherits VerticalLayout {
     property <bool> send-failed: msg.send-state == SendState.failed;
     property <bool> chips-outside: root.is-photo-only && root.has-reactions;
     property <length> outside-chips-gap: Space.sm;
-    property <bool> outlined: (root.is-focused && root.focus-lit) || root.send-failed;
+    property <bool> being-edited: Composer.is-being-edited(msg.event-id, msg.local-id);
+    property <bool> outlined: (root.is-focused && root.focus-lit)
+        || root.send-failed
+        || root.being-edited;
     property <color> outline-color: root.send-failed
         ? AppStyle.danger-border
         : Palette.accent-background;

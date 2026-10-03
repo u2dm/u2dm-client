@@ -1,4 +1,4 @@
-import { Delivery, LoginPhase, PollPhase } from "enums.slint";
+import { Delivery, LoginPhase, MessageKind, PollPhase } from "enums.slint";
 import { AttachmentView, LoginView, RoomInfoView, RoomView, VerificationView, VideoView, WindowView } from "views.slint";
 import { MessageEntry, ReactionEntry } from "screens/chat/components/types.slint";
 import { MessagePreview } from "screens/chat/components/message-preview.slint";
@@ -20,6 +20,17 @@ export struct ReplyDraft {
     preview: string,
 }
 
+export struct EditedMessage {
+    event-id: string,
+    local-id: string,
+    unique-id: string,
+    timeline-token: int,
+    caption: bool,
+    restored: bool,
+    original: string,
+    preview: string,
+}
+
 export global Probe {
     in property <bool> enabled: false;
 }
@@ -34,10 +45,51 @@ export global Composer {
         preview: root.reply-preview,
     };
 
-    public function clear() {
+    in-out property <EditedMessage> edited;
+    in-out property <EditedMessage> requested-edit;
+    in-out property <int> edit-requests;
+    out property <bool> editing: root.edited.event-id != "" || root.edited.local-id != "";
+
+    public pure function edit-of(msg: MessageEntry) -> EditedMessage {
+        return {
+            event-id: msg.event-id,
+            local-id: msg.local-id,
+            unique-id: msg.unique-id,
+            timeline-token: RoomView.timeline-token,
+            caption: msg.message-type != MessageKind.text,
+            restored: false,
+            original: msg.body,
+            preview: MessagePreview.label(msg.preview-kind, msg.preview-body),
+        };
+    }
+
+    public pure function is-being-edited(event-id: string, local-id: string) -> bool {
+        return root.editing
+            && ((event-id != "" && event-id == root.edited.event-id)
+                || (local-id != "" && local-id == root.edited.local-id));
+    }
+
+    public function request-edit(msg: MessageEntry) {
+        self.requested-edit = self.edit-of(msg);
+        self.edit-requests += 1;
+    }
+
+    public function restore-reply(draft: ReplyDraft) {
+        self.reply-event-id = draft.event-id;
+        self.reply-sender = draft.sender;
+        self.reply-preview = draft.preview;
+    }
+
+    public function clear-reply() {
         self.reply-event-id = "";
         self.reply-sender = "";
         self.reply-preview = "";
+    }
+
+    public function clear() {
+        self.clear-reply();
+        self.edited = { };
+        self.requested-edit = { };
     }
 }
 
@@ -264,7 +316,8 @@ export global ReplySwipe {
 
     in-out property <bool> armed: root.anchor.event-id != ""
         && !Reactions.open
-        && !Shell.modal-open;
+        && !Shell.modal-open
+        && !Composer.editing;
 
     out property <MessageEntry> target: (root.anchor.row >= 0
         && root.anchor.row < RoomView.timeline.length)

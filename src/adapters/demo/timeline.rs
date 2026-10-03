@@ -86,9 +86,19 @@ pub const CATALOG: Scenarios = Scenarios {
             note: "excluded from `all`",
         },
         Flag {
+            value: "edit-refused",
+            effect: "every edit is refused before the send queue holds it, so the composer offers the edited text back",
+            note: "excluded from `all`",
+        },
+        Flag {
+            value: "edit-fails",
+            effect: "every edit of a sent message shows, then the queue wedges on it a second later: the row reverts and the composer offers the edited text back",
+            note: "excluded from `all`; an edit of a message still waiting in the queue replaces it and cannot fail this way",
+        },
+        Flag {
             value: "all",
             effect: "slow, batch, late-reset, churn, sync, append, prepend and deep",
-            note: "excludes drop-anchor, all-unread, unread-resolving, unread-unresolved, jump-far, send-fails and send-refused",
+            note: "excludes drop-anchor, all-unread, unread-resolving, unread-unresolved, jump-far, send-fails, send-refused, edit-refused and edit-fails",
         },
     ],
     notes: &["unknown flags warn and are ignored, never rejected"],
@@ -107,6 +117,7 @@ pub const SHORT_WINDOW: usize = 8;
 pub const HISTORY_COPIES: usize = 6;
 pub const UNREAD_PORTION_NUMERATOR: usize = 3;
 pub const UNREAD_PORTION_DENOMINATOR: usize = 5;
+pub const EDIT_REFUSAL_DELAY: Duration = Duration::from_secs(1);
 
 #[derive(Default, Clone, Copy)]
 #[allow(clippy::struct_excessive_bools)]
@@ -126,6 +137,8 @@ pub struct Scenario {
     pub window_is_short: bool,
     pub sends_fail: bool,
     pub sends_are_refused: bool,
+    pub edits_are_refused: bool,
+    pub edits_fail: bool,
 }
 
 pub fn scenario() -> Scenario {
@@ -157,6 +170,8 @@ fn from_env() -> Scenario {
         window_is_short = scenario.window_is_short,
         sends_fail = scenario.sends_fail,
         sends_are_refused = scenario.sends_are_refused,
+        edits_are_refused = scenario.edits_are_refused,
+        edits_fail = scenario.edits_fail,
         "demo mode: reproducing real-account timeline timing"
     );
     scenario
@@ -182,6 +197,8 @@ fn apply(scenario: &mut Scenario, flag: &str) {
         "jump-far" => scenario.window_is_short = true,
         "send-fails" => scenario.sends_fail = true,
         "send-refused" => scenario.sends_are_refused = true,
+        "edit-refused" => scenario.edits_are_refused = true,
+        "edit-fails" => scenario.edits_fail = true,
         "all" => {
             *scenario = Scenario {
                 reset_is_slow: true,
@@ -199,6 +216,8 @@ fn apply(scenario: &mut Scenario, flag: &str) {
                 window_is_short: false,
                 sends_fail: false,
                 sends_are_refused: false,
+                edits_are_refused: false,
+                edits_fail: false,
             };
         }
         other => tracing::warn!(flag = other, "demo mode: unknown timeline scenario flag"),

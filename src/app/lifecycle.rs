@@ -217,6 +217,7 @@ pub(super) fn command_allowed(phase: AppPhase, cmd: &UiCommand) -> bool {
         | UiCommand::SetRoomNotify(_)
         | UiCommand::LeaveRoom(_)
         | UiCommand::SendMessage { .. }
+        | UiCommand::EditMessage { .. }
         | UiCommand::DismissUnsent { .. }
         | UiCommand::PickAttachment { .. }
         | UiCommand::SendAttachment { .. }

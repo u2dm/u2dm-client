@@ -10,7 +10,7 @@ use crate::commands::effects::Effect;
 use crate::commands::messages::{UserMessage, UserMessageKind};
 use crate::commands::ui::TimelineVisibility;
 use crate::commands::view::Toast;
-use crate::domain::message::TimelineMessage;
+use crate::domain::message::{MessageEdit, TimelineMessage};
 use crate::domain::poll::{PollAction, PollDraft};
 use crate::domain::room::RoomId;
 use crate::domain::timeline::{
@@ -563,20 +563,39 @@ impl Forwarder {
             () = self.report_failures(rx) => {}
         }
         while let Ok(update) = rx.try_recv() {
-            self.report_failure(&update);
+            self.report_failure(update);
         }
     }
 
     async fn report_failures(&self, rx: &mut mpsc::Receiver<TimelineUpdate>) {
         while let Some(update) = rx.recv().await {
-            self.report_failure(&update);
+            self.report_failure(update);
         }
     }
 
-    fn report_failure(&self, update: &TimelineUpdate) {
-        if let TimelineUpdate::PollSendFailed(action) = update {
-            report_poll_failure(self.output.as_ref(), *action);
+    fn report_failure(&self, update: TimelineUpdate) {
+        match update {
+            TimelineUpdate::PollSendFailed(action) => {
+                report_poll_failure(self.output.as_ref(), action);
+            }
+            TimelineUpdate::EditUnsaved(edit) => {
+                self.offer_unsaved_edit(edit);
+            }
+            TimelineUpdate::Patch(_)
+            | TimelineUpdate::ResolvingUnread
+            | TimelineUpdate::UnreadUnresolved
+            | TimelineUpdate::Pagination { .. }
+            | TimelineUpdate::JumpOutcome { .. }
+            | TimelineUpdate::AudioLocated { .. } => {}
         }
+    }
+
+    fn offer_unsaved_edit(&self, edit: MessageEdit) -> bool {
+        let unsaved = AppEvent::EditUnsaved {
+            room_id: self.room_id.clone(),
+            edit,
+        };
+        self.events.send(unsaved).is_ok()
     }
 
     async fn dispatch(&mut self, update: TimelineUpdate) -> bool {
@@ -593,6 +612,11 @@ impl Forwarder {
             }
             TimelineUpdate::PollSendFailed(action) => {
                 report_poll_failure(self.output.as_ref(), action);
+            }
+            TimelineUpdate::EditUnsaved(edit) => {
+                if !self.offer_unsaved_edit(edit) {
+                    return false;
+                }
             }
             TimelineUpdate::AudioLocated { request, track } => {
                 let located = TimelineEvent::AudioLocated {

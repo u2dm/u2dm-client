@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::fs;
 use std::future::pending;
+use std::mem;
 use std::ops::Range;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -23,7 +24,8 @@ use crate::domain::auth::{AuthMethod, LoginCredentials, OAuthLoginData, ServerIn
 use crate::domain::link::LauncherSafeUrl;
 use crate::domain::media::{MediaRendition, OutgoingAttachment, WaveformNeed};
 use crate::domain::message::{
-    MessageBody, PinnedMessage, ReplyInfo, RichText, SendState, TimelineMessage,
+    EditTarget, MessageBody, MessageEdit, PinnedMessage, ReplyInfo, RichText, SendState,
+    TimelineMessage,
 };
 use crate::domain::poll::{PollAction, PollDraft};
 use crate::domain::room::{NotifyMode, Room, RoomId, Space};
@@ -251,6 +253,40 @@ fn current_lists(lists: &Mutex<RoomLists>) -> RoomLists {
     lists.lock().map(|lists| lists.clone()).unwrap_or_default()
 }
 
+struct RevisedText {
+    timeline_tx: mpsc::Sender<TimelineUpdate>,
+    row: usize,
+    previous: (MessageBody, bool),
+    message: TimelineMessage,
+}
+
+fn edit_names(target: &EditTarget, message: &TimelineMessage) -> bool {
+    match target {
+        EditTarget::Sent(event_id) => message.event_id.as_deref() == Some(event_id),
+        EditTarget::Queued(local_id) => message.local_id.as_deref() == Some(local_id),
+    }
+}
+
+fn revised_body(body: &MessageBody, text: &str) -> Option<MessageBody> {
+    let caption = (!text.is_empty()).then(|| RichText::plain(text.to_owned()));
+    match body {
+        MessageBody::Text(_) => Some(MessageBody::Text(RichText::plain(text.to_owned()))),
+        MessageBody::Image { meta, .. } => Some(MessageBody::Image {
+            caption,
+            meta: meta.clone(),
+        }),
+        MessageBody::Video { meta, .. } => Some(MessageBody::Video {
+            caption,
+            meta: meta.clone(),
+        }),
+        MessageBody::Audio { meta, .. } => Some(MessageBody::Audio {
+            caption,
+            meta: meta.clone(),
+        }),
+        _ => None,
+    }
+}
+
 struct OpenedWindow {
     all: Vec<TimelineMessage>,
     newer: usize,
@@ -306,6 +342,47 @@ impl DemoAuthed {
         } else {
             sent.retain(|m| m.local_id.as_deref() != Some(local_id));
         }
+    }
+
+    fn keep_own_edit(&self, room_id: &RoomId, revised: &TimelineMessage) {
+        let Ok(mut own_sends) = self.own_sends.lock() else {
+            return;
+        };
+        let Some(sent) = own_sends
+            .get_mut(room_id)
+            .and_then(|sent| sent.iter_mut().find(|m| m.unique_id == revised.unique_id))
+        else {
+            return;
+        };
+        sent.body = revised.body.clone();
+        sent.edited = revised.edited;
+    }
+
+    fn revise_own_text(&self, room_id: &RoomId, edit: &MessageEdit) -> Option<RevisedText> {
+        let mut guard = self.active.lock().ok()?;
+        let active = guard.as_mut()?;
+        if &active.room_id != room_id {
+            return None;
+        }
+        let offset = active
+            .messages
+            .iter()
+            .position(|message| edit_names(&edit.target, message))?;
+        let row = active.prepended.saturating_add(offset);
+        let message = active.messages.get_mut(offset)?;
+        message.editable_text()?;
+        let revised = revised_body(&message.body, &edit.body)?;
+        let previous = (mem::replace(&mut message.body, revised), message.edited);
+        message.edited |= edit.target.event_id().is_some();
+        if !timeline::scenario().edits_fail {
+            self.keep_own_edit(room_id, message);
+        }
+        Some(RevisedText {
+            timeline_tx: active.timeline_tx.clone(),
+            row,
+            previous,
+            message: message.clone(),
+        })
     }
 
     fn reply_in_room(&self, active: &ActiveRoom, event_id: &str) -> Option<ReplyInfo> {
@@ -1119,6 +1196,39 @@ impl TimelinePort for DemoAuthed {
         Ok(())
     }
 
+    async fn edit_message(&self, room_id: &RoomId, edit: &MessageEdit) -> Result<()> {
+        if timeline::scenario().edits_are_refused {
+            return Err(unavailable("editing messages"));
+        }
+        let RevisedText {
+            timeline_tx,
+            row,
+            previous,
+            message,
+        } = self.revise_own_text(room_id, edit).ok_or_else(|| {
+            AppError::Other(
+                "demo mode edits only an own text or caption in the open window".to_owned(),
+            )
+        })?;
+        send_patch(
+            &timeline_tx,
+            TimelinePatch::Set {
+                index: row,
+                message,
+            },
+        )
+        .await;
+        if timeline::scenario().edits_fail && edit.target.event_id().is_some() {
+            spawn_edit_refusal(
+                Arc::clone(&self.active),
+                timeline_tx,
+                edit.clone(),
+                previous,
+            );
+        }
+        Ok(())
+    }
+
     async fn send_poll(&self, room_id: &RoomId, draft: &PollDraft) -> Result<()> {
         if timeline::scenario().sends_are_refused {
             return Err(unavailable("sending polls"));
@@ -1727,6 +1837,41 @@ fn spawn_poll_refusal(
                 .send(TimelineUpdate::PollSendFailed(action))
                 .await,
         );
+    });
+}
+
+fn spawn_edit_refusal(
+    active: SharedActiveRoom,
+    timeline_tx: mpsc::Sender<TimelineUpdate>,
+    edit: MessageEdit,
+    previous: (MessageBody, bool),
+) {
+    tokio::spawn(async move {
+        sleep(timeline::EDIT_REFUSAL_DELAY).await;
+        let reverted = active.lock().ok().and_then(|mut guard| {
+            let room = guard
+                .as_mut()
+                .filter(|room| room.timeline_tx.same_channel(&timeline_tx))?;
+            let offset = room
+                .messages
+                .iter()
+                .position(|message| edit_names(&edit.target, message))?;
+            let row = room.prepended.saturating_add(offset);
+            let message = room.messages.get_mut(offset)?;
+            if message.editable_text() != Some(edit.body.as_str()) {
+                return None;
+            }
+            (message.body, message.edited) = previous;
+            Some((row, message.clone()))
+        });
+        if let Some((index, message)) = reverted {
+            send_patch(&timeline_tx, TimelinePatch::Set { index, message }).await;
+        }
+        let unsaved = MessageEdit {
+            original: None,
+            ..edit
+        };
+        drop(timeline_tx.send(TimelineUpdate::EditUnsaved(unsaved)).await);
     });
 }
 

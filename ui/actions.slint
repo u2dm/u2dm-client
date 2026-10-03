@@ -2,6 +2,7 @@ import { LoginRequest } from "screens/login/types.slint";
 import { NotifyMode } from "enums.slint";
 import {
     SendMessageRequest,
+    EditMessageRequest,
     SendStickerRequest,
     SendAttachmentRequest,
     SaveFileRequest,
@@ -43,6 +44,9 @@ export global Actions {
     callback leave-room(string);
 
     callback send-message(SendMessageRequest);
+    callback edit-message(EditMessageRequest) -> bool;
+    callback last-editable-row() -> int;
+    callback row-of-message(string, string) -> int;
     callback dismiss-unsent(int);
     callback send-sticker(SendStickerRequest);
     callback pick-photo(string);

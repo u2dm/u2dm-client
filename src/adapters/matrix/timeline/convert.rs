@@ -170,6 +170,7 @@ fn base_message(
         is_own,
         reply: None,
         edited: false,
+        editable: event.is_editable(),
         is_first_unread,
         send_state: send_state(event),
         reactions: extract_reactions(event.content(), ctx),
@@ -582,11 +583,14 @@ pub(super) fn convert_event_item_with_uid(
 
     match classify(content) {
         Some(Renderable::Message(message)) => {
-            let body = message_type_to_body(message.msgtype());
+            let (body, edited) = match ctx.discarded.original_msgtype(event) {
+                Some(original) => (message_type_to_body(&original), false),
+                None => (message_type_to_body(message.msgtype()), message.is_edited()),
+            };
             Some(TimelineMessage {
                 body,
                 reply,
-                edited: message.is_edited(),
+                edited,
                 ..base_message(unique_id, event, event_id_str, ctx)
             })
         }

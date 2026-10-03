@@ -23,6 +23,7 @@ use super::multiplex::spawn_event_multiplexer;
 use super::props::{IntProp, StringProp, UiProps};
 use super::reconcile::{reorder_rows, sticker_cell_row, sticker_pack_row, timeline_row_of};
 use super::reduce::{dispatch_effect, is_latest_adoption, set_sticker_query};
+use super::router::EditedRow;
 use super::rows::{locate_row, patch_rows_by_id};
 use super::schema::model_props;
 use super::session::begin_session;
@@ -212,6 +213,45 @@ pub fn unread_below<B: UiBackend>(first_unseen_row: i32) -> u32 {
         timeline.count_tail(from, |entry: &B::Message| entry.counts_as_unread())
     });
     u32::try_from(below).unwrap_or(u32::MAX)
+}
+
+const NO_ROW: i32 = -1;
+
+pub fn last_editable_row<B: UiBackend>() -> i32 {
+    B::with_timeline(|timeline| timeline.last_position(|entry: &B::Message| entry.text_editable()))
+        .and_then(|row| i32::try_from(row).ok())
+        .unwrap_or(NO_ROW)
+}
+
+pub fn row_of_message<B: UiBackend>(event_id: &str, local_id: &str) -> i32 {
+    let names = |entry: &B::Message| {
+        (!event_id.is_empty() && entry.event_id() == event_id)
+            || (!local_id.is_empty() && entry.local_id() == local_id)
+    };
+    B::with_timeline(|timeline| timeline.last_position(names))
+        .and_then(|row| i32::try_from(row).ok())
+        .unwrap_or(NO_ROW)
+}
+
+pub fn current_edited_row<B: UiBackend>(
+    weak: &slint::Weak<B::Window>,
+    unique_id: &str,
+    timeline_token: i32,
+) -> Option<EditedRow> {
+    if unique_id.is_empty() {
+        return None;
+    }
+    let w = weak.upgrade()?;
+    if w.get_int(IntProp::TimelineToken) != timeline_token {
+        return None;
+    }
+    B::with_timeline(|timeline| {
+        let entry = timeline.row_data(indexed_timeline_row::<B>(timeline, unique_id)?)?;
+        Some(EditedRow {
+            event_id: entry.event_id().to_owned(),
+            local_id: entry.local_id().to_owned(),
+        })
+    })
 }
 
 pub fn enrich_message<B: UiBackend>(

@@ -15,7 +15,8 @@ use names::{
 };
 
 use super::backend::{
-    self, Models, UiBackend, adopted_room_key, reorder_spaces, selected_room_key, unread_below,
+    self, Models, UiBackend, adopted_room_key, current_edited_row, last_editable_row,
+    reorder_spaces, row_of_message, selected_room_key, unread_below,
 };
 use super::decode::{AvatarSlot, request_avatar, request_media, request_sticker};
 use super::dto::{
@@ -33,6 +34,7 @@ use super::present::{Delivery, MessageKind, PollPhase, ServiceKind, VerifyStep};
 #[cfg(feature = "demo")]
 use super::props::EnumProp;
 use super::props::{BoolProp, IntProp, StringProp, UiProps};
+use super::router::{EditedRow, EditedText};
 use super::schema::{
     attachment_kinds, audio_kinds, child_accesses, connection_states, deliveries, enum_props,
     login_activities, login_methods, login_phases, media_failures, media_states, member_roles,
@@ -71,6 +73,9 @@ mod names {
         pub const GLOBAL: &str = "Actions";
         pub const MOVE_SPACE: &str = "move-space";
         pub const DISMISS_UNSENT: &str = "dismiss-unsent";
+        pub const EDIT_MESSAGE: &str = "edit-message";
+        pub const LAST_EDITABLE_ROW: &str = "last-editable-row";
+        pub const ROW_OF_MESSAGE: &str = "row-of-message";
         pub const SET_ROOM_NOTIFY: &str = "set-room-notify";
         pub const PASTE_ATTACHMENT: &str = "paste-attachment";
         pub const TOGGLE_REACTION: &str = "toggle-reaction";
@@ -265,6 +270,10 @@ fn field(s: &Struct, name: &str) -> String {
             _ => None,
         })
         .unwrap_or_default()
+}
+
+fn number(s: &Struct, name: &str) -> i32 {
+    int_of(s.get_field(name))
 }
 
 fn bind(
@@ -595,6 +604,47 @@ impl SlintUiAdapter {
         })
     }
 
+    fn bind_edit_callbacks(&self, cmd_tx: &CommandSender) -> Result<()> {
+        let tx = cmd_tx.clone();
+        let weak = self.instance.as_weak();
+        bind_action(&self.instance, callback::EDIT_MESSAGE, move |args| {
+            let Some(req) = struct_arg(args, 0) else {
+                return Value::Bool(false);
+            };
+            let row = current_edited_row::<InterpretedBackend>(
+                &weak,
+                &field(req, "unique-id"),
+                number(req, "timeline-token"),
+            )
+            .unwrap_or_else(|| EditedRow {
+                event_id: field(req, "event-id"),
+                local_id: field(req, "local-id"),
+            });
+            Value::Bool(router::edit_message(
+                &tx,
+                field(req, "room-id"),
+                row,
+                EditedText {
+                    caption: flag(req, "caption"),
+                    restored: flag(req, "restored"),
+                    original: field(req, "original"),
+                    body: field(req, "body"),
+                },
+            ))
+        })?;
+
+        bind_action(&self.instance, callback::LAST_EDITABLE_ROW, |_| {
+            num(last_editable_row::<InterpretedBackend>())
+        })?;
+
+        bind_action(&self.instance, callback::ROW_OF_MESSAGE, |args| {
+            num(row_of_message::<InterpretedBackend>(
+                &string_arg(args, 0),
+                &string_arg(args, 1),
+            ))
+        })
+    }
+
     fn bind_decode_requests(&self) -> Result<()> {
         bind_action(&self.instance, callback::REQUEST_MEDIA, move |args| {
             request_media(&string_arg(args, 0));
@@ -691,6 +741,7 @@ impl SlintUiAdapter {
             Value::Void
         })?;
 
+        self.bind_edit_callbacks(cmd_tx)?;
         self.bind_decode_requests()?;
         self.bind_audio_callbacks(cmd_tx)?;
 

@@ -27,12 +27,13 @@ use super::splice_model::SpliceModel;
 use super::video;
 use crate::commands::effects::{Effect, VerificationActivity, VerificationUpdate};
 use crate::commands::messages::{UserMessage, UserMessageKind};
+use crate::commands::ui::Draft;
 use crate::commands::view::{
     AppViewState, AttachmentView, AudioView, DirectoryView, LifecycleView, NowPlaying,
     PaginationView, PinnedView, RoomCard, RoomInfoView, SpaceIndexView, StickerView, Toast,
     TrackFile, UnsentMessage, VideoView,
 };
-use crate::domain::message::{MessagePreviewKind, RichText};
+use crate::domain::message::{EditKind, MessageEdit, MessagePreviewKind, RichText};
 use crate::domain::poll::PollPermissions;
 use crate::domain::room::{RoomId, RoomList};
 use crate::domain::room_info::RoomAbout;
@@ -924,7 +925,14 @@ fn refresh_audio_row<B: UiBackend>(now: &NowPlaying, ctx: &UiEventContext<'_, B>
 
 fn apply_unsent(w: &impl UiProps, unsent: Option<&UnsentMessage>) {
     let draft = unsent.map(|unsent| &unsent.draft);
-    let reply = draft.and_then(|draft| draft.reply.as_ref());
+    let reply = match draft {
+        Some(Draft::Message(message)) => message.reply.as_ref(),
+        Some(Draft::Edit(_)) | None => None,
+    };
+    let edit = match draft {
+        Some(Draft::Edit(edit)) => Some(edit),
+        Some(Draft::Message(_)) | None => None,
+    };
     w.set_bool(BoolProp::UnsentVisible, unsent.is_some());
     w.set_int(
         IntProp::UnsentSubmission,
@@ -936,7 +944,7 @@ fn apply_unsent(w: &impl UiProps, unsent: Option<&UnsentMessage>) {
     );
     w.set_string(
         StringProp::UnsentBody,
-        SharedString::from(draft.map_or("", |draft| draft.body.as_str())),
+        SharedString::from(draft.map_or("", Draft::body)),
     );
     w.set_string(
         StringProp::UnsentReplyEventId,
@@ -949,6 +957,35 @@ fn apply_unsent(w: &impl UiProps, unsent: Option<&UnsentMessage>) {
     w.set_string(
         StringProp::UnsentReplyPreview,
         SharedString::from(reply.map_or("", |reply| reply.preview.as_str())),
+    );
+    apply_unsent_edit(w, edit);
+}
+
+fn apply_unsent_edit(w: &impl UiProps, edit: Option<&MessageEdit>) {
+    w.set_bool(BoolProp::UnsentIsEdit, edit.is_some());
+    w.set_bool(
+        BoolProp::UnsentEditCaption,
+        edit.is_some_and(|edit| edit.kind == EditKind::Caption),
+    );
+    w.set_string(
+        StringProp::UnsentEditEventId,
+        SharedString::from(
+            edit.and_then(|edit| edit.target.event_id())
+                .unwrap_or_default(),
+        ),
+    );
+    w.set_string(
+        StringProp::UnsentEditLocalId,
+        SharedString::from(
+            edit.and_then(|edit| edit.target.local_id())
+                .unwrap_or_default(),
+        ),
+    );
+    w.set_string(
+        StringProp::UnsentEditPreview,
+        edit.and_then(|edit| edit.original.clone())
+            .map(|original| preview_line(&RichText::plain(original)))
+            .unwrap_or_default(),
     );
 }
 

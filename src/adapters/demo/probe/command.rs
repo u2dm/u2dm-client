@@ -10,6 +10,7 @@ use crate::adapters::ui::dump::Poke;
 use crate::commands::ui::{MessageDraft, ReplyDraft, UiCommand};
 use crate::domain::link::LauncherSafeUrl;
 use crate::domain::media::AttachmentPick;
+use crate::domain::message::{EditKind, EditTarget, MessageEdit, TextRevision};
 use crate::domain::poll::{ChoiceMode, PollDisclosure, PollDraft};
 use crate::domain::room::RoomId;
 use crate::domain::sticker::PackId;
@@ -78,6 +79,19 @@ pub enum ProbeCommand {
         reply_sender: String,
         #[serde(default)]
         reply_preview: String,
+    },
+    EditMessage {
+        #[serde(default)]
+        room_id: Option<String>,
+        #[serde(default)]
+        event_id: String,
+        #[serde(default)]
+        local_id: String,
+        #[serde(default)]
+        caption: bool,
+        body: String,
+        #[serde(default)]
+        original: Option<String>,
     },
     DismissUnsent {
         submission: i32,
@@ -256,6 +270,34 @@ fn room(explicit: Option<String>, selected: Selection<'_>) -> Result<RoomId, Rej
     Ok(target(explicit, None, selected)?.room_id)
 }
 
+fn message_edit(
+    target: Option<EditTarget>,
+    caption: bool,
+    body: String,
+    original: Option<String>,
+) -> Result<MessageEdit, Rejected> {
+    let target = target.ok_or_else(|| {
+        Rejected("an edit needs the event_id or the local_id it edits".to_owned())
+    })?;
+    let kind = if caption {
+        EditKind::Caption
+    } else {
+        EditKind::Message
+    };
+    match TextRevision::of(kind, original.as_deref(), body) {
+        TextRevision::Blank => Err(Rejected("an edit to blank text is refused".to_owned())),
+        TextRevision::Unchanged => Err(Rejected(
+            "the edit restates the original, so nothing would be sent".to_owned(),
+        )),
+        TextRevision::Changed(body) => Ok(MessageEdit {
+            target,
+            kind,
+            body,
+            original,
+        }),
+    }
+}
+
 fn poll_draft(
     question: String,
     answers: Vec<String>,
@@ -322,6 +364,17 @@ pub fn to_driven(command: ProbeCommand, selected: Selection<'_>) -> Result<Drive
                     preview: reply_preview,
                 }),
             },
+        },
+        ProbeCommand::EditMessage {
+            room_id,
+            event_id,
+            local_id,
+            caption,
+            body,
+            original,
+        } => UiCommand::EditMessage {
+            room_id: room(room_id, selected)?,
+            edit: message_edit(EditTarget::of(event_id, local_id), caption, body, original)?,
         },
         ProbeCommand::DismissUnsent { submission } => UiCommand::DismissUnsent { submission },
         ProbeCommand::SendPoll {

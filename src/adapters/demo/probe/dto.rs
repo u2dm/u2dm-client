@@ -2,12 +2,13 @@ use serde::Serialize;
 
 use super::names;
 use crate::commands::messages::UserMessage;
+use crate::commands::ui::Draft;
 use crate::commands::view::{
     AppViewState, AttachmentView, AudioView, DirectoryView, LifecycleView, PaginationView,
     PinnedView, RoomInfoView, RosterRow, SpaceIndexRow, SpaceIndexView, StickerView, Toast,
     TrackFile, UnsentMessage, VideoView,
 };
-use crate::domain::message::PinnedMessage;
+use crate::domain::message::{EditKind, PinnedMessage};
 use crate::domain::room::{Room, Space};
 use crate::domain::room_info::RosterSection;
 use crate::domain::space_index::{ChildKind, JoinRule};
@@ -241,6 +242,8 @@ struct UnsentDto {
     room_id: String,
     body: String,
     reply_to: Option<String>,
+    edits: Option<String>,
+    caption: bool,
 }
 
 #[derive(Serialize)]
@@ -532,15 +535,28 @@ fn video(source: &VideoView) -> VideoDto {
 }
 
 fn unsent(source: &UnsentMessage) -> UnsentDto {
+    let (reply_to, edits, caption) = match &source.draft {
+        Draft::Message(message) => (
+            message.reply.as_ref().map(|reply| reply.event_id.clone()),
+            None,
+            false,
+        ),
+        Draft::Edit(edit) => (
+            None,
+            edit.target
+                .event_id()
+                .or_else(|| edit.target.local_id())
+                .map(str::to_owned),
+            edit.kind == EditKind::Caption,
+        ),
+    };
     UnsentDto {
         submission: source.submission,
         room_id: source.room_id.to_string(),
-        body: source.draft.body.clone(),
-        reply_to: source
-            .draft
-            .reply
-            .as_ref()
-            .map(|reply| reply.event_id.clone()),
+        body: source.draft.body().to_owned(),
+        reply_to,
+        edits,
+        caption,
     }
 }
 

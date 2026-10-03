@@ -180,14 +180,14 @@ export component AttachmentDialog inherits ModalHost {
         if (!root.holds-reply) {
             root.holds-reply = true;
             root.held-reply = Composer.reply;
-            Composer.clear();
+            Composer.clear-reply();
         }
     }
 
     function cancel-reply() {
         root.holds-reply = true;
         root.held-reply = { };
-        Composer.clear();
+        Composer.clear-reply();
         field.focus-input();
     }
 

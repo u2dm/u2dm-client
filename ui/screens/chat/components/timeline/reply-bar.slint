@@ -4,9 +4,10 @@ import { ReplyQuote } from "../reply-quote.slint";
 import { AppStyle, IconSize, Metrics, Radius, Size, Space } from "../../../../theme.slint";
 import { ClickArea } from "../../../../components/a11y.slint";
 
-export component ReplyBar inherits Rectangle {
-    in property <string> sender;
+component QuoteBar inherits Rectangle {
+    in property <string> title;
     in property <string> preview;
+    in property <string> cancel-label;
     in property <bool> enabled: true;
     in property <bool> above-modal: false;
 
@@ -24,14 +25,14 @@ export component ReplyBar inherits Rectangle {
 
         ReplyQuote {
             horizontal-stretch: 1;
-            sender: @tr("Reply to {}", root.sender);
+            sender: root.title;
             preview: root.preview;
         }
 
         cancel-touch := ClickArea {
             width: Size.md;
             ring-radius: Radius.sm;
-            label: @tr("Cancel reply");
+            label: root.cancel-label;
             enabled: root.enabled;
             above-modal: root.above-modal;
             clicked => {
@@ -47,4 +48,18 @@ export component ReplyBar inherits Rectangle {
             }
         }
     }
+}
+
+export component ReplyBar inherits QuoteBar {
+    in property <string> sender;
+
+    title: @tr("Reply to {}", root.sender);
+    cancel-label: @tr("Cancel reply");
+}
+
+export component EditBar inherits QuoteBar {
+    in property <bool> caption;
+
+    title: root.caption ? @tr("Edit caption") : @tr("Edit message");
+    cancel-label: @tr("Cancel editing");
 }

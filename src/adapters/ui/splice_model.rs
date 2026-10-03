@@ -59,6 +59,10 @@ impl<T: Clone + 'static> SpliceModel<T> {
             .count()
     }
 
+    pub fn last_position(&self, matches: impl Fn(&T) -> bool) -> Option<usize> {
+        self.rows.borrow().iter().rposition(matches)
+    }
+
     pub fn truncate(&self, length: usize) {
         let removed = {
             let mut all = self.rows.borrow_mut();

@@ -7,7 +7,7 @@ use crate::commands::messages::{UserMessage, UserMessageKind};
 use crate::commands::view::LoginActivity;
 use crate::domain::auth::ServerInfo;
 use crate::domain::media::PickedAttachment;
-use crate::domain::message::PinnedMessage;
+use crate::domain::message::{MessageEdit, PinnedMessage};
 use crate::domain::room::RoomId;
 use crate::domain::room_info::RoomAbout;
 use crate::domain::timeline::{
@@ -54,6 +54,10 @@ pub(super) enum AppEvent {
     SubmissionSettled {
         submission: i32,
         enqueue: Enqueue,
+    },
+    EditUnsaved {
+        room_id: RoomId,
+        edit: MessageEdit,
     },
     PinnedChanged {
         watch: u64,
@@ -116,6 +120,7 @@ impl AppEvent {
             Self::AudioFetched { .. } => "AudioFetched",
             Self::VideoFetched { .. } => "VideoFetched",
             Self::SubmissionSettled { .. } => "SubmissionSettled",
+            Self::EditUnsaved { .. } => "EditUnsaved",
             Self::PinnedChanged { .. } => "PinnedChanged",
             Self::SpaceIndexPaged { .. } => "SpaceIndexPaged",
             Self::SpaceIndexAvatarsReady { .. } => "SpaceIndexAvatarsReady",

@@ -1,11 +1,14 @@
+use std::future::Future;
 use std::sync::Arc;
 
 use super::event::{AppEvent, Enqueue};
 use super::input::EventSender;
 use super::send_lanes::SendLanes;
-use crate::commands::ui::MessageDraft;
+use crate::commands::ui::{Draft, MessageDraft};
 use crate::commands::view::UnsentMessage;
+use crate::domain::message::MessageEdit;
 use crate::domain::room::RoomId;
+use crate::error::Result;
 use crate::ports::matrix::TimelinePort;
 use crate::ports::output::AppOutputPort;
 
@@ -50,28 +53,69 @@ impl Submissions {
         room_id: RoomId,
         draft: MessageDraft,
     ) {
-        self.issued = self.issued.wrapping_add(1);
-        let submission = self.issued;
         let body = draft.body.clone();
         let reply_to = draft.reply.as_ref().map(|reply| reply.event_id.clone());
+        let submission = self.hold(&room_id, Draft::Message(draft), Stage::Enqueueing);
+        let lane_room = room_id.clone();
+        self.settle_on_lane(lanes, room_id, submission, async move {
+            match reply_to {
+                Some(event_id) => timeline.send_reply(&lane_room, &body, &event_id).await,
+                None => timeline.send_text(&lane_room, &body).await,
+            }
+        });
+    }
+
+    pub(super) fn edit(
+        &mut self,
+        lanes: &mut SendLanes,
+        timeline: Arc<dyn TimelinePort>,
+        room_id: RoomId,
+        edit: MessageEdit,
+    ) {
+        let queued = edit.clone();
+        let submission = self.hold(&room_id, Draft::Edit(edit), Stage::Enqueueing);
+        let lane_room = room_id.clone();
+        self.settle_on_lane(lanes, room_id, submission, async move {
+            timeline.edit_message(&lane_room, &queued).await
+        });
+    }
+
+    pub(super) fn unsaved(
+        &mut self,
+        room_id: &RoomId,
+        edit: MessageEdit,
+        selected: Option<&RoomId>,
+    ) {
+        self.hold(room_id, Draft::Edit(edit), Stage::Refused);
+        self.offer(selected);
+    }
+
+    fn hold(&mut self, room_id: &RoomId, draft: Draft, stage: Stage) -> i32 {
+        self.issued = self.issued.wrapping_add(1);
         self.held.push(Submission {
             message: UnsentMessage {
-                submission,
+                submission: self.issued,
                 room_id: room_id.clone(),
                 draft,
             },
-            stage: Stage::Enqueueing,
+            stage,
         });
+        self.issued
+    }
+
+    fn settle_on_lane(
+        &self,
+        lanes: &mut SendLanes,
+        room_id: RoomId,
+        submission: i32,
+        enqueue: impl Future<Output = Result<()>> + Send + 'static,
+    ) {
         let events = self.events.clone();
-        lanes.spawn(room_id.clone(), async move {
-            let enqueued = match reply_to {
-                Some(event_id) => timeline.send_reply(&room_id, &body, &event_id).await,
-                None => timeline.send_text(&room_id, &body).await,
-            };
-            let enqueue = match enqueued {
+        lanes.spawn(room_id, async move {
+            let enqueue = match enqueue.await {
                 Ok(()) => Enqueue::Accepted,
                 Err(e) => {
-                    tracing::warn!("failed to enqueue message: {e}");
+                    tracing::warn!("failed to enqueue a submission: {e}");
                     Enqueue::Refused
                 }
             };

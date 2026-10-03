@@ -10,6 +10,7 @@ use crate::commands::ui::{
 use crate::domain::auth::LoginCredentials;
 use crate::domain::link::LauncherSafeUrl;
 use crate::domain::media::AttachmentPick;
+use crate::domain::message::{EditKind, EditTarget, MessageEdit, TextRevision};
 use crate::domain::poll::{ChoiceMode, PollDisclosure, PollDraft};
 use crate::domain::room::{NotifyMode, RoomId};
 use crate::domain::sticker::PackId;
@@ -97,6 +98,52 @@ pub fn send_message(
             draft: MessageDraft { body, reply },
         },
     );
+}
+
+pub struct EditedRow {
+    pub event_id: String,
+    pub local_id: String,
+}
+
+pub struct EditedText {
+    pub caption: bool,
+    pub restored: bool,
+    pub original: String,
+    pub body: String,
+}
+
+pub fn edit_message(tx: &Tx, room_id: String, row: EditedRow, text: EditedText) -> bool {
+    if room_id.is_empty() {
+        return false;
+    }
+    let Some(target) = EditTarget::of(row.event_id, row.local_id) else {
+        return false;
+    };
+    let kind = if text.caption {
+        EditKind::Caption
+    } else {
+        EditKind::Message
+    };
+    let original = (!text.restored).then_some(text.original);
+    match TextRevision::of(kind, original.as_deref(), text.body) {
+        TextRevision::Blank => false,
+        TextRevision::Unchanged => true,
+        TextRevision::Changed(body) => {
+            send_command(
+                tx,
+                UiCommand::EditMessage {
+                    room_id: RoomId::new(room_id),
+                    edit: MessageEdit {
+                        target,
+                        kind,
+                        body,
+                        original,
+                    },
+                },
+            );
+            true
+        }
+    }
 }
 
 pub fn dismiss_unsent(tx: &Tx, submission: i32) {

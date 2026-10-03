@@ -65,6 +65,10 @@ impl RichText {
             html: Some(html),
         }
     }
+
+    pub fn unformatted(&self) -> Option<&str> {
+        self.html.is_none().then_some(self.plain.as_str())
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -315,7 +319,73 @@ impl SendState {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum EditTarget {
+    Sent(String),
+    Queued(String),
+}
+
+impl EditTarget {
+    pub fn of(event_id: String, local_id: String) -> Option<Self> {
+        if !event_id.is_empty() {
+            return Some(Self::Sent(event_id));
+        }
+        (!local_id.is_empty()).then_some(Self::Queued(local_id))
+    }
+
+    pub fn event_id(&self) -> Option<&str> {
+        match self {
+            Self::Sent(event_id) => Some(event_id),
+            Self::Queued(_) => None,
+        }
+    }
+
+    pub fn local_id(&self) -> Option<&str> {
+        match self {
+            Self::Sent(_) => None,
+            Self::Queued(local_id) => Some(local_id),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EditKind {
+    Message,
+    Caption,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MessageEdit {
+    pub target: EditTarget,
+    pub kind: EditKind,
+    pub body: String,
+    pub original: Option<String>,
+}
+
+pub enum TextRevision {
+    Blank,
+    Unchanged,
+    Changed(String),
+}
+
+impl TextRevision {
+    pub fn of(kind: EditKind, original: Option<&str>, edited: String) -> Self {
+        let blank = edited.trim().is_empty();
+        let edited = match kind {
+            EditKind::Message if blank => return Self::Blank,
+            EditKind::Caption if blank => String::new(),
+            EditKind::Message | EditKind::Caption => edited,
+        };
+        if original == Some(edited.as_str()) {
+            Self::Unchanged
+        } else {
+            Self::Changed(edited)
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
+#[allow(clippy::struct_excessive_bools)]
 pub struct TimelineMessage {
     pub unique_id: String,
     pub event_id: Option<String>,
@@ -329,6 +399,7 @@ pub struct TimelineMessage {
     pub is_own: bool,
     pub reply: Option<ReplyInfo>,
     pub edited: bool,
+    pub editable: bool,
     pub is_first_unread: bool,
     pub send_state: SendState,
     pub reactions: Vec<Reaction>,
@@ -338,6 +409,21 @@ pub struct TimelineMessage {
 impl TimelineMessage {
     pub fn counts_as_unread(&self) -> bool {
         !self.is_own && self.body.service().is_none()
+    }
+
+    pub fn editable_text(&self) -> Option<&str> {
+        if !self.editable || self.send_state == SendState::Failed {
+            return None;
+        }
+        match &self.body {
+            MessageBody::Text(text) => text.unformatted(),
+            MessageBody::Image { caption, .. }
+            | MessageBody::Video { caption, .. }
+            | MessageBody::Audio { caption, .. } => {
+                caption.as_ref().map_or(Some(""), RichText::unformatted)
+            }
+            _ => None,
+        }
     }
 
     pub fn tracks_readers(&self) -> bool {

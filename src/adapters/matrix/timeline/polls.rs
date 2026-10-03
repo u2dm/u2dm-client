@@ -14,7 +14,7 @@ use matrix_sdk_ui::timeline::{Timeline, TimelineEventItemId};
 use tokio::sync::mpsc;
 
 use super::filter::TimelineItems;
-use super::poll_sends::{PollSendGuard, report};
+use super::rowless_sends::{RowlessSendGuard, report};
 use crate::adapters::matrix::permissions::poll_permissions;
 use crate::domain::poll::{
     Poll, PollAction, PollChoice, PollDisclosure, PollDraft, PollRevision, RevisedAnswer,
@@ -179,7 +179,7 @@ pub(super) async fn end(
     timeline: &Timeline,
     items: &TimelineItems,
     event_id: &str,
-    sends: &PollSendGuard,
+    sends: &RowlessSendGuard,
     timeline_tx: &mpsc::Sender<TimelineUpdate>,
 ) -> Option<OwnedEventId> {
     let Ok(target) = OwnedEventId::try_from(event_id) else {

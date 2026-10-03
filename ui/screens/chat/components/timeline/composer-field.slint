@@ -65,8 +65,11 @@ export component ComposerField inherits Rectangle {
     in property <string> lead-label;
     in property <bool> lead-active: false;
     in property <bool> lead-destructive: false;
+    in property <bool> lead-enabled: true;
     in property <string> emoji-label;
     in property <bool> emoji-active: false;
+    in property <Icon> send-icon: IconSet.SendHorizontal;
+    in property <string> send-label: @tr("Send");
     in property <bool> text-optional: false;
     in property <bool> busy: false;
     in property <bool> above-modal: false;
@@ -76,6 +79,7 @@ export component ComposerField inherits Rectangle {
     callback emoji-clicked();
     callback submitted();
     callback paste-pressed() -> EventResult;
+    callback key-captured(KeyEvent) -> EventResult;
 
     property <bool> has-text: root.text != "";
     property <bool> can-send: !root.busy && (root.has-text || root.text-optional);
@@ -108,6 +112,13 @@ export component ComposerField inherits Rectangle {
     public function clear() {
         root.text = "";
         scroll.content-y = 0px;
+    }
+
+    public function replace-text(text: string) {
+        root.text = text;
+        text-input.select-all();
+        text-input.clear-selection();
+        root.keep-scroll-in-range();
     }
 
     public function insert-at-caret(glyph: string) {
@@ -172,6 +183,7 @@ export component ComposerField inherits Rectangle {
                 label: root.lead-label;
                 active: root.lead-active;
                 destructive: root.lead-destructive;
+                enabled: root.lead-enabled;
                 above-modal: root.above-modal;
                 clicked => {
                     root.lead-clicked();
@@ -190,7 +202,7 @@ export component ComposerField inherits Rectangle {
                     if (root.is-paste(event)) {
                         return root.paste-pressed();
                     }
-                    return reject;
+                    return root.key-captured(event);
                 }
 
                 Rectangle {
@@ -255,8 +267,8 @@ export component ComposerField inherits Rectangle {
 
             ComposerButton {
                 cross-axis-self-alignment: end;
-                icon: IconSet.SendHorizontal;
-                label: @tr("Send");
+                icon: root.send-icon;
+                label: root.send-label;
                 active: true;
                 busy: root.busy;
                 enabled: root.can-send;

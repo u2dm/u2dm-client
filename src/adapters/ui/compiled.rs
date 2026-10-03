@@ -28,7 +28,8 @@ use u2dm_ui::{
 };
 
 use super::backend::{
-    self, Models, UiBackend, adopted_room_key, reorder_spaces, selected_room_key, unread_below,
+    self, Models, UiBackend, adopted_room_key, current_edited_row, last_editable_row,
+    reorder_spaces, row_of_message, selected_room_key, unread_below,
 };
 use super::decode::{AvatarSlot, request_avatar, request_media, request_sticker};
 use super::dto::{
@@ -46,6 +47,7 @@ use super::present::{Delivery, MessageKind, PollPhase, ServiceKind, VerifyStep};
 #[cfg(feature = "demo")]
 use super::props::EnumProp;
 use super::props::{BoolProp, IntProp, StringProp, UiProps};
+use super::router::{EditedRow, EditedText};
 use super::schema::{
     attachment_kinds, audio_kinds, bool_props, child_accesses, connection_states, deliveries,
     enum_props, int_props, login_activities, login_methods, login_phases, media_failures,
@@ -482,6 +484,35 @@ impl SlintUiAdapter {
         });
     }
 
+    fn bind_edit_callbacks(win: &AppWindow, cmd_tx: &CommandSender) {
+        let tx = cmd_tx.clone();
+        let weak = win.as_weak();
+        actions(win).on_edit_message(move |req| {
+            let row =
+                current_edited_row::<CompiledBackend>(&weak, &req.unique_id, req.timeline_token)
+                    .unwrap_or_else(|| EditedRow {
+                        event_id: req.event_id.to_string(),
+                        local_id: req.local_id.to_string(),
+                    });
+            router::edit_message(
+                &tx,
+                req.room_id.to_string(),
+                row,
+                EditedText {
+                    caption: req.caption,
+                    restored: req.restored,
+                    original: req.original.to_string(),
+                    body: req.body.to_string(),
+                },
+            )
+        });
+
+        actions(win).on_last_editable_row(last_editable_row::<CompiledBackend>);
+        actions(win).on_row_of_message(|event_id, local_id| {
+            row_of_message::<CompiledBackend>(&event_id, &local_id)
+        });
+    }
+
     fn bind_audio_callbacks(win: &AppWindow, cmd_tx: &CommandSender) {
         audio::install_commands(cmd_tx);
 
@@ -533,6 +564,7 @@ impl SlintUiAdapter {
 
         actions(win).on_request_media(move |unique_id| request_media(&unique_id));
 
+        Self::bind_edit_callbacks(win, cmd_tx);
         Self::bind_video_callbacks(win);
         Self::bind_audio_callbacks(win, cmd_tx);
 

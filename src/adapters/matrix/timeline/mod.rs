@@ -1,12 +1,13 @@
 mod commands;
 mod convert;
 mod diff;
+mod edits;
 mod filter;
 mod members;
 mod pinned;
 mod poll_ends;
-mod poll_sends;
 mod polls;
+mod rowless_sends;
 mod subscribe;
 mod undecrypted;
 
@@ -37,6 +38,7 @@ use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
 
 use self::commands::Commands;
+use self::edits::DiscardedEdits;
 use self::members::Members;
 pub(super) use self::pinned::MatrixPinned;
 use self::poll_ends::EndingPolls;
@@ -47,6 +49,7 @@ use super::media::MediaService;
 use super::profile::PronounCache;
 use super::session::ClientHandle;
 use crate::domain::media::OutgoingAttachment;
+use crate::domain::message::MessageEdit;
 use crate::domain::poll::PollDraft;
 use crate::domain::room::RoomId;
 use crate::domain::timeline::{TimelineCommand, TimelineFocus, TimelineUpdate};
@@ -64,6 +67,7 @@ pub(super) struct TimelineContext<'a> {
     pub(super) members: &'a Arc<Members>,
     pub(super) ending: &'a EndingPolls,
     pub(super) undecrypted: &'a UndecryptedResponses,
+    pub(super) discarded: &'a DiscardedEdits,
     pub(super) own_user_id: Option<&'a str>,
     pub(super) focused: bool,
     pub(super) first_unread: Option<&'a str>,
@@ -192,10 +196,14 @@ struct QueueableAttachment {
     config: AttachmentConfig,
 }
 
-async fn queued_send(room: &Room, local_id: &str) -> Result<SendHandle> {
-    let txn = local_id
+fn local_transaction(local_id: &str) -> &str {
+    local_id
         .strip_prefix(convert::LOCAL_ID_PREFIX)
-        .unwrap_or(local_id);
+        .unwrap_or(local_id)
+}
+
+async fn queued_send(room: &Room, local_id: &str) -> Result<SendHandle> {
+    let txn = local_transaction(local_id);
     let (echoes, _updates) = room
         .send_queue()
         .subscribe()
@@ -407,6 +415,12 @@ impl TimelinePort for MatrixTimeline {
         let content = RoomMessageEventContentWithoutRelation::text_plain(body);
         let content = reply_event(&room, content, in_reply_to).await?;
         queue(&room, content.into()).await
+    }
+
+    async fn edit_message(&self, room_id: &RoomId, edit: &MessageEdit) -> Result<()> {
+        let room = self.matrix.room(room_id).await?;
+        tracing::info!(%room_id, edited = ?edit.target, "queueing an edit");
+        edits::edit(&room, edit).await
     }
 
     async fn send_poll(&self, room_id: &RoomId, draft: &PollDraft) -> Result<()> {

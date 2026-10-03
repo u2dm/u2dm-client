@@ -17,11 +17,12 @@ use tokio::task::JoinSet;
 use super::commands::Commands;
 use super::convert::{event_media, involves};
 use super::diff::{diff_to_patch, stamp_editable_polls, stamp_read_marks};
+use super::edits::DiscardedEdits;
 use super::filter::TimelineItems;
 use super::members::{Arrived, Batch, Members, resolve_members};
 use super::poll_ends::EndingPolls;
-use super::poll_sends::{PollSendEvent, PollSendGuard};
 use super::polls;
+use super::rowless_sends::{RowlessSendEvent, RowlessSendGuard};
 use super::undecrypted::UndecryptedResponses;
 use super::{EnrichmentClaim, EnrichmentPool, TimelineContext};
 use crate::adapters::matrix::media::{MediaService, ThumbnailRequest};
@@ -284,9 +285,9 @@ async fn refresh_row(items: &mut TimelineItems, event_id: &EventId, ctx: &Timeli
     );
 }
 
-async fn settle_poll_send(
-    sends: &mut PollSendGuard,
-    event: PollSendEvent,
+async fn settle_rowless_send(
+    sends: &mut RowlessSendGuard,
+    event: RowlessSendEvent,
     items: &mut TimelineItems,
     ctx: &TimelineContext<'_>,
 ) {
@@ -300,7 +301,7 @@ async fn handle_timeline_command(
     timeline: &Timeline,
     items: &mut TimelineItems,
     ctx: &TimelineContext<'_>,
-    sends: &PollSendGuard,
+    sends: &RowlessSendGuard,
 ) {
     let timeline_tx = ctx.timeline_tx;
     let (direction, outcome) = match cmd {
@@ -362,7 +363,7 @@ async fn run_command(
     timeline: &Timeline,
     items: &mut TimelineItems,
     ctx: &TimelineContext<'_>,
-    sends: &PollSendGuard,
+    sends: &RowlessSendGuard,
 ) {
     if command.sends_an_event() {
         handle_timeline_command(command, timeline, items, ctx, sends).await;
@@ -382,7 +383,7 @@ async fn hand_over_event_sends(
     timeline: &Timeline,
     items: &mut TimelineItems,
     ctx: &TimelineContext<'_>,
-    sends: &mut PollSendGuard,
+    sends: &mut RowlessSendGuard,
 ) {
     let mut handed_over = 0_usize;
     for command in commands.close_and_take_event_sends() {
@@ -741,7 +742,7 @@ async fn handle_room_keys(timeline: &Timeline, keys: BTreeMap<String, BTreeSet<S
 }
 
 struct OpenedTimeline<S> {
-    sends: PollSendGuard,
+    sends: RowlessSendGuard,
     timeline: Arc<Timeline>,
     acknowledged: Option<OwnedEventId>,
     view: InitialView<S>,
@@ -753,10 +754,17 @@ async fn open_timeline(
     media: &MediaService,
     room: Room,
     ending: &Arc<EndingPolls>,
+    discarded: &Arc<DiscardedEdits>,
     focus: &TimelineFocus,
     timeline_tx: &mpsc::Sender<TimelineUpdate>,
 ) -> Result<OpenedTimeline<impl Stream<Item = Vec<VectorDiff<Arc<TimelineItem>>>> + use<>>> {
-    let sends = PollSendGuard::watch(room.clone(), Arc::clone(ending), timeline_tx).await;
+    let sends = RowlessSendGuard::watch(
+        room.clone(),
+        Arc::clone(ending),
+        Arc::clone(discarded),
+        timeline_tx,
+    )
+    .await;
     let (timeline, backwards_outcome) = setup_timeline(&room, focus).await?;
 
     media.ensure_dirs().await;
@@ -795,10 +803,20 @@ pub(crate) async fn subscribe_timeline(
 ) -> Result<()> {
     let room = resolve_room(client, room_id)?;
     let ending = Arc::new(EndingPolls::default());
+    let discarded = Arc::new(DiscardedEdits::default());
+    let opening = open_timeline(
+        client,
+        media,
+        room,
+        &ending,
+        &discarded,
+        focus,
+        &timeline_tx,
+    );
     let opened = tokio::select! {
         biased;
         () = commands.closed() => return Ok(()),
-        opened = open_timeline(client, media, room, &ending, focus, &timeline_tx) => opened?,
+        opened = opening => opened?,
     };
     let OpenedTimeline {
         sends,
@@ -841,6 +859,7 @@ pub(crate) async fn subscribe_timeline(
         members: &members,
         ending: &ending,
         undecrypted: &undecrypted,
+        discarded: &discarded,
         own_user_id: own_user_id.as_deref(),
         focused: focus.target().is_some(),
         first_unread: unread.first_unread(),
@@ -915,7 +934,7 @@ fn member_patch(
 async fn run_timeline_loop<S>(
     ctx: &TimelineContext<'_>,
     timeline: &Arc<Timeline>,
-    mut sends: PollSendGuard,
+    mut sends: RowlessSendGuard,
     mut items: TimelineItems,
     mut side_tasks: JoinSet<()>,
     mut commands: Commands,
@@ -963,7 +982,7 @@ async fn run_timeline_loop<S>(
                 }
             }
             Some(_) = side_tasks.join_next(), if !side_tasks.is_empty() => {}
-            event = sends.next() => settle_poll_send(&mut sends, event, &mut items, ctx).await,
+            event = sends.next() => settle_rowless_send(&mut sends, event, &mut items, ctx).await,
             Some(batch) = member_rx.recv() => {
                 let arrived = ctx.members.record(batch);
                 if let Some(patch) = member_patch(&mut items, &arrived, ctx)

@@ -20,6 +20,7 @@ import { Actions } from "../../../../actions.slint";
 import { Fonts, Glyph, IconSize, Metrics, Motion, Size, Space, Weight } from "../../../../theme.slint";
 
 enum RowAction {
+    edit,
     select-text,
     reply,
     react,
@@ -33,6 +34,8 @@ export component RowActions inherits Rectangle {
     callback anchor() -> ReactionAnchor;
 
     property <bool> has-remote-id: root.msg.event-id != "";
+    property <bool> can-edit: root.msg.text-editable;
+    property <bool> can-reply: root.has-remote-id && !Composer.editing;
     property <bool> can-select-text: MessageShape.has-selectable-text(root.msg);
     property <[RowAction]> row-actions: root.offered-actions();
     property <bool> has-actions: root.row-actions.length > 0;
@@ -54,6 +57,9 @@ export component RowActions inherits Rectangle {
         || action-focus.has-focus);
 
     pure function action-label(action: RowAction) -> string {
+        if action == RowAction.edit {
+            return @tr("Edit this message");
+        }
         if action == RowAction.select-text {
             return @tr("Select the text of this message");
         }
@@ -64,11 +70,35 @@ export component RowActions inherits Rectangle {
     }
 
     pure function offered-actions() -> [RowAction] {
-        if root.has-remote-id && root.can-select-text {
-            return [RowAction.select-text, RowAction.reply, RowAction.react];
+        if root.can-reply {
+            if root.can-edit && root.can-select-text {
+                return [RowAction.edit, RowAction.select-text, RowAction.reply, RowAction.react];
+            }
+            if root.can-edit {
+                return [RowAction.edit, RowAction.reply, RowAction.react];
+            }
+            if root.can-select-text {
+                return [RowAction.select-text, RowAction.reply, RowAction.react];
+            }
+            return [RowAction.reply, RowAction.react];
         }
         if root.has-remote-id {
-            return [RowAction.reply, RowAction.react];
+            if root.can-edit && root.can-select-text {
+                return [RowAction.edit, RowAction.select-text, RowAction.react];
+            }
+            if root.can-edit {
+                return [RowAction.edit, RowAction.react];
+            }
+            if root.can-select-text {
+                return [RowAction.select-text, RowAction.react];
+            }
+            return [RowAction.react];
+        }
+        if root.can-edit && root.can-select-text {
+            return [RowAction.edit, RowAction.select-text];
+        }
+        if root.can-edit {
+            return [RowAction.edit];
         }
         if root.can-select-text {
             return [RowAction.select-text];
@@ -77,14 +107,25 @@ export component RowActions inherits Rectangle {
     }
 
     pure function available(action: RowAction) -> bool {
-        return action == RowAction.select-text ? root.can-select-text : root.has-remote-id;
+        if action == RowAction.edit {
+            return root.can-edit;
+        }
+        if action == RowAction.select-text {
+            return root.can-select-text;
+        }
+        if action == RowAction.reply {
+            return root.can-reply;
+        }
+        return root.has-remote-id;
     }
 
     function run-action(action: RowAction) {
         if !root.available(action) {
             return;
         }
-        if action == RowAction.select-text {
+        if action == RowAction.edit {
+            Composer.request-edit(root.msg);
+        } else if action == RowAction.select-text {
             TextSelection.select(root.msg.unique-id);
         } else if action == RowAction.reply {
             Composer.reply-event-id = root.msg.event-id;
@@ -125,7 +166,8 @@ export component RowActions inherits Rectangle {
     }
 
     if root.hovered: Rectangle {
-        property <bool> any-hovered: select-pill.has-hover
+        property <bool> any-hovered: edit-pill.has-hover
+            || select-pill.has-hover
             || reply-pill.has-hover
             || react-btn.has-hover;
 
@@ -144,6 +186,31 @@ export component RowActions inherits Rectangle {
 
         changed any-hovered => {
             root.action-hovered = self.any-hovered;
+        }
+
+        edit-pill := Pill {
+            x: select-pill.visible
+                ? select-pill.x - self.width - root.pill-gap
+                : (reply-pill.visible ? reply-pill.x - self.width - root.pill-gap : root.width - self.width);
+            y: reply-pill.y;
+            width: root.pill-height;
+            height: root.pill-height;
+            pad: 0;
+            fill: root.pill-fill;
+            label: root.action-label(RowAction.edit);
+            enabled: root.available(RowAction.edit);
+            visible: self.enabled;
+            focusable: false;
+            roving-focus: action-focus.has-focus && root.focused-action == RowAction.edit;
+            clicked => {
+                root.run-action(RowAction.edit);
+            }
+
+            IconDisplay {
+                icon: IconSet.Pencil;
+                size: IconSize.sm;
+                stroke: root.pill-foreground;
+            }
         }
 
         select-pill := Pill {

@@ -3,6 +3,7 @@ use strum::Display as StrumDisplay;
 use crate::domain::auth::LoginCredentials;
 use crate::domain::link::LauncherSafeUrl;
 use crate::domain::media::AttachmentPick;
+use crate::domain::message::MessageEdit;
 use crate::domain::poll::PollDraft;
 use crate::domain::room::{NotifyMode, RoomId};
 use crate::domain::sticker::PackId;
@@ -55,6 +56,11 @@ pub enum UiCommand {
     SendMessage {
         room_id: RoomId,
         draft: MessageDraft,
+    },
+    #[strum(to_string = "EditMessage({room_id})")]
+    EditMessage {
+        room_id: RoomId,
+        edit: MessageEdit,
     },
     #[strum(to_string = "DismissUnsent({submission})")]
     DismissUnsent {
@@ -181,6 +187,21 @@ pub struct ReplyDraft {
     pub event_id: String,
     pub sender: String,
     pub preview: String,
+}
+
+#[derive(Clone, PartialEq, Eq)]
+pub enum Draft {
+    Message(MessageDraft),
+    Edit(MessageEdit),
+}
+
+impl Draft {
+    pub fn body(&self) -> &str {
+        match self {
+            Self::Message(message) => &message.body,
+            Self::Edit(edit) => &edit.body,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, StrumDisplay)]

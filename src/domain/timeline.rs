@@ -1,5 +1,5 @@
 use crate::domain::media::{AudioKind, AudioMeta, ContentKey, ThumbnailOutcome};
-use crate::domain::message::TimelineMessage;
+use crate::domain::message::{MessageEdit, TimelineMessage};
 use crate::domain::poll::{PollAction, PollDraft};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -324,6 +324,7 @@ pub enum TimelineUpdate {
         track: Option<Box<AudioTrack>>,
     },
     PollSendFailed(PollAction),
+    EditUnsaved(MessageEdit),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -343,6 +344,7 @@ impl TimelineUpdate {
             Self::JumpOutcome { .. } => "JumpOutcome",
             Self::AudioLocated { .. } => "AudioLocated",
             Self::PollSendFailed(_) => "PollSendFailed",
+            Self::EditUnsaved(_) => "EditUnsaved",
         }
     }
 }
