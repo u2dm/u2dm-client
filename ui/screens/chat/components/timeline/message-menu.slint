@@ -5,6 +5,7 @@ import { MessageEntry } from "../types.slint";
 import { MessagePreview } from "../message-preview.slint";
 import { MessageShape } from "./message-body.slint";
 import { QuickReactions, StripCell } from "./reaction-picker.slint";
+import { ServiceLabel } from "./messages/service-message.slint";
 import { ClickArea, Interaction } from "../../../../components/a11y.slint";
 import { MenuRow } from "../../../../components/menu-row.slint";
 import { ModalHost, PickerCard } from "../../../../components/overlay.slint";
@@ -155,6 +156,8 @@ component MessageMenuCard inherits PickerCard {
     property <int> confirm-delete: 0;
 
     property <bool> has-remote-id: root.msg.event-id != "";
+    property <bool> is-service: root.msg.message-type == MessageKind.service;
+    property <bool> is-remote-message: root.has-remote-id && !root.is-service;
     property <bool> send-failed: root.msg.send-state == SendState.failed && root.msg.local-id != "";
     property <bool> is-poll: root.msg.message-type == MessageKind.poll;
 
@@ -173,22 +176,25 @@ component MessageMenuCard inherits PickerCard {
 
     public pure function available(action: MenuAction) -> bool {
         if action == MenuAction.reply {
-            return root.has-remote-id && !Composer.editing;
+            return root.is-remote-message && !Composer.editing;
         }
         if action == MenuAction.edit {
             return root.msg.text-editable || (root.msg.poll-editable && RoomView.may-start-polls);
         }
-        if action == MenuAction.copy-text || action == MenuAction.select-text {
+        if action == MenuAction.copy-text {
+            return root.is-service || MessageShape.has-selectable-text(root.msg);
+        }
+        if action == MenuAction.select-text {
             return MessageShape.has-selectable-text(root.msg);
         }
         if action == MenuAction.copy-link || action == MenuAction.view-source {
             return root.has-remote-id;
         }
         if action == MenuAction.pin {
-            return root.has-remote-id && RoomView.may-pin;
+            return root.is-remote-message && RoomView.may-pin;
         }
         if action == MenuAction.delete {
-            return root.has-remote-id
+            return root.is-remote-message
                 && (root.msg.is-own ? RoomView.may-delete-own : RoomView.may-delete-others)
                 && !Composer.is-being-edited(root.msg.event-id, root.msg.local-id);
         }
@@ -486,7 +492,14 @@ export component MessageMenuOverlay inherits Rectangle {
     property <length> edge: Space.md;
     property <length> gap: Space.sm;
     property <MessageEntry> msg: MessageMenu.target;
-    property <bool> shows-bar: root.msg.event-id != "";
+    property <bool> shows-bar: root.msg.event-id != "" && root.msg.message-type != MessageKind.service;
+
+    pure function text-of(msg: MessageEntry) -> string {
+        if msg.message-type == MessageKind.service {
+            return ServiceLabel.label(msg.service-kind, msg.sender, msg.service-target);
+        }
+        return msg.body;
+    }
 
     pure function card-left(width: length) -> length {
         return clamp(
@@ -564,7 +577,7 @@ export component MessageMenuOverlay inherits Rectangle {
         } else if action == MenuAction.edit {
             Composer.request-edit(msg);
         } else if action == MenuAction.copy-text {
-            root.copy-text(msg.body);
+            root.copy-text(root.text-of(msg));
         } else if action == MenuAction.copy-link {
             Actions.copy-message-link(msg.event-id);
         } else if action == MenuAction.pin && msg.pinned {

@@ -149,9 +149,33 @@ export component MessageBubble inherits VerticalLayout {
 
     if msg.first-unread: UnreadDivider { }
 
-    if is-service: ServiceMessage {
-        msg: root.msg;
-        timeline-row: root.timeline-row;
+    if is-service: service-row := TouchArea {
+        property <int> context-presses: WindowView.context-presses;
+
+        height: service.preferred-height;
+
+        changed context-presses => {
+            if self.has-hover {
+                MessageMenu.open(
+                    {
+                        event-id: msg.event-id,
+                        row: root.timeline-row,
+                        x: self.absolute-position.x,
+                        y: self.absolute-position.y,
+                        width: self.width,
+                        height: self.height,
+                    },
+                    msg.unique-id,
+                    self.absolute-position.x + self.mouse-x,
+                    self.absolute-position.y + self.mouse-y,
+                    false);
+            }
+        }
+
+        service := ServiceMessage {
+            msg: root.msg;
+            timeline-row: root.timeline-row;
+        }
     }
 
     if !is-service: message-row := Rectangle {
