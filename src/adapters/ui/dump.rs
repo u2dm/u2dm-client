@@ -7,6 +7,7 @@ use tokio::sync::oneshot;
 
 use super::audio;
 use super::backend::UiBackend;
+use super::context_press;
 use super::fields::{MessageFields, PollAnswerFields, ReactionFields};
 use super::props::{BoolProp, EnumProp, IntProp, StringProp, UiProps};
 
@@ -61,6 +62,7 @@ pub struct TimelineRowDump {
     pub is_own: bool,
     pub edited: bool,
     pub text_editable: bool,
+    pub pinned: bool,
     pub first_unread: bool,
     pub needs_media: bool,
     pub has_avatar: bool,
@@ -113,11 +115,19 @@ pub struct PollPermissionsDump {
 }
 
 #[derive(Serialize)]
+pub struct MessagePermissionsDump {
+    pub delete_own: bool,
+    pub delete_others: bool,
+    pub pin: bool,
+}
+
+#[derive(Serialize)]
 pub struct TimelineDump {
     pub selected_room_id: String,
     pub selected_room_name: String,
     pub selected_room_encrypted: bool,
     pub poll_permissions: PollPermissionsDump,
+    pub message_permissions: MessagePermissionsDump,
     pub generation: i32,
     pub timeline_token: i32,
     pub prepend_token: i32,
@@ -144,6 +154,7 @@ pub enum Poke {
     SeekAudio(Duration),
     WindowFocus(bool),
     SwipeTravel(i32),
+    ContextPress,
 }
 
 type Poker = Box<dyn Fn(Poke) + Send + Sync>;
@@ -187,6 +198,7 @@ pub fn install_probe<B: UiBackend>(window: &B::Window) {
             Poke::SeekAudio(position) => audio::seek(&window, position),
             Poke::WindowFocus(focused) => window.set_bool(BoolProp::WindowFocused, focused),
             Poke::SwipeTravel(px) => window.set_int(IntProp::SwipeTravel, px),
+            Poke::ContextPress => context_press::announce(&window),
         });
         if let Err(e) = queued {
             tracing::debug!("a probe poke could not reach the event loop: {e}");
@@ -210,6 +222,11 @@ fn collect<B: UiBackend>(window: &B::Window) -> TimelineDump {
             vote: window.get_bool(BoolProp::MayVote),
             end: window.get_bool(BoolProp::MayEndPolls),
             start: window.get_bool(BoolProp::MayStartPolls),
+        },
+        message_permissions: MessagePermissionsDump {
+            delete_own: window.get_bool(BoolProp::MayDeleteOwn),
+            delete_others: window.get_bool(BoolProp::MayDeleteOthers),
+            pin: window.get_bool(BoolProp::MayPin),
         },
         generation: window.get_int(IntProp::SelectedGeneration),
         timeline_token: window.get_int(IntProp::TimelineToken),
@@ -258,6 +275,7 @@ fn timeline_row<B: UiBackend>(row: usize, entry: &B::Message) -> TimelineRowDump
         is_own: entry.is_own(),
         edited: entry.edited(),
         text_editable: entry.text_editable(),
+        pinned: entry.pinned(),
         first_unread: entry.first_unread(),
         needs_media: entry.needs_media(),
         has_avatar: entry.has_avatar(),

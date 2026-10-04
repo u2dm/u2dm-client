@@ -5,6 +5,7 @@ mod autolink;
 mod backend;
 mod clipboard;
 mod clock;
+mod context_press;
 mod decode;
 mod dto;
 #[cfg(feature = "demo")]

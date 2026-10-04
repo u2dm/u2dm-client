@@ -15,8 +15,9 @@ export global QuickReactions {
     out property <string> default-key: root.keys[root.default-index];
 }
 
-component StripCell inherits ClickArea {
+export component StripCell inherits ClickArea {
     in property <string> key;
+    in property <length> glyph: Glyph.xs;
 
     height: Metrics.reaction-strip-cell;
     border-radius: self.height / 2;
@@ -32,7 +33,7 @@ component StripCell inherits ClickArea {
         height: parent.height;
         text: root.key;
         font-family: Fonts.emoji;
-        font-size: Glyph.xs;
+        font-size: root.glyph;
         horizontal-alignment: center;
         vertical-alignment: center;
     }

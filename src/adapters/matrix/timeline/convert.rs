@@ -323,6 +323,9 @@ pub(super) fn event_media(item: &TimelineItem) -> Option<EventMedia> {
 }
 
 pub(super) fn content_preview(content: &TimelineItemContent) -> (MessagePreviewKind, RichText) {
+    if content.is_redacted() {
+        return (MessagePreviewKind::Deleted, RichText::default());
+    }
     match classify(content) {
         Some(Renderable::Message(message)) => {
             let preview = preview::from_msgtype(message.msgtype());

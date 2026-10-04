@@ -25,6 +25,7 @@ export component ModalHost inherits Rectangle {
     in property <bool> dim: true;
     in property <float> dim-opacity: Opacity.scrim;
     in property <bool> light-dismiss: true;
+    in property <bool> any-button-dismisses: false;
     in property <string> label;
 
     callback dismissed();
@@ -67,6 +68,14 @@ export component ModalHost inherits Rectangle {
                 mouse-cursor: default;
                 clicked => {
                     if (root.light-dismiss) {
+                        root.dismissed();
+                    }
+                }
+                pointer-event(event) => {
+                    if (root.light-dismiss
+                        && root.any-button-dismisses
+                        && event.kind == PointerEventKind.down
+                        && event.button != PointerEventButton.left) {
                         root.dismissed();
                     }
                 }

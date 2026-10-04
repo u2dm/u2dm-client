@@ -1,0 +1,18 @@
+export component Copier inherits TextInput {
+    x: 0;
+    y: 0;
+    width: 0;
+    height: 0;
+    visible: false;
+    enabled: false;
+    read-only: true;
+    single-line: false;
+    accessible-role: none;
+
+    public function copy-text(text: string) {
+        self.text = text;
+        self.select-all();
+        self.copy();
+        self.clear-selection();
+    }
+}

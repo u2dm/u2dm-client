@@ -3,8 +3,8 @@ use std::io::{self, Write};
 use std::process::ExitCode;
 
 use super::{
-    attachments, audio, login, pinned, polls, reactions, receipts, richtext, room_info,
-    space_index, stickers, timeline, verification, videos,
+    attachments, audio, login, message_menu, pinned, polls, reactions, receipts, richtext,
+    room_info, space_index, stickers, timeline, verification, videos,
 };
 
 pub struct Flag {
@@ -35,6 +35,7 @@ pub fn all() -> &'static [&'static Scenarios] {
         &videos::CATALOG,
         &space_index::CATALOG,
         &room_info::CATALOG,
+        &message_menu::CATALOG,
         &login::CATALOG,
         &verification::CATALOG,
         &WINDOW,

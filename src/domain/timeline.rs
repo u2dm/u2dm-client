@@ -167,6 +167,7 @@ pub enum TimelineCommand {
     EndPoll { event_id: String },
     EditPoll { event_id: String, draft: PollDraft },
     LocateAudio { request: u64, lookup: AudioLookup },
+    LocateSource { request: u64, event_id: String },
 }
 
 impl TimelineCommand {
@@ -180,7 +181,8 @@ impl TimelineCommand {
             | Self::PaginateForwards
             | Self::MarkRead
             | Self::JumpTo(_)
-            | Self::LocateAudio { .. } => false,
+            | Self::LocateAudio { .. }
+            | Self::LocateSource { .. } => false,
         }
     }
 }
@@ -234,6 +236,21 @@ where
             .filter_map(AudioTrack::of)
             .find(|track| track.meta.kind == AudioKind::Voice),
     }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SourceEncryption {
+    Plain,
+    Decrypted { details: String },
+    Undecryptable,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EventSource {
+    pub event_id: String,
+    pub json: String,
+    pub edit_json: Option<String>,
+    pub encryption: SourceEncryption,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -323,8 +340,13 @@ pub enum TimelineUpdate {
         request: u64,
         track: Option<Box<AudioTrack>>,
     },
+    SourceLocated {
+        request: u64,
+        source: Option<Box<EventSource>>,
+    },
     PollSendFailed(PollAction),
     EditUnsaved(MessageEdit),
+    DeleteFailed,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -343,8 +365,10 @@ impl TimelineUpdate {
             Self::Pagination { .. } => "Pagination",
             Self::JumpOutcome { .. } => "JumpOutcome",
             Self::AudioLocated { .. } => "AudioLocated",
+            Self::SourceLocated { .. } => "SourceLocated",
             Self::PollSendFailed(_) => "PollSendFailed",
             Self::EditUnsaved(_) => "EditUnsaved",
+            Self::DeleteFailed => "DeleteFailed",
         }
     }
 }

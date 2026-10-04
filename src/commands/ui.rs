@@ -114,6 +114,27 @@ pub enum UiCommand {
     OpenPinned {
         event_id: String,
     },
+    #[strum(to_string = "CopyMessageLink({event_id})")]
+    CopyMessageLink {
+        event_id: String,
+    },
+    #[strum(to_string = "OpenEventSource({event_id})")]
+    OpenEventSource {
+        event_id: String,
+    },
+    CloseEventSource,
+    #[strum(to_string = "PinMessage({event_id})")]
+    PinMessage {
+        event_id: String,
+    },
+    #[strum(to_string = "UnpinMessage({event_id})")]
+    UnpinMessage {
+        event_id: String,
+    },
+    #[strum(to_string = "DeleteMessage({event_id})")]
+    DeleteMessage {
+        event_id: String,
+    },
     #[strum(to_string = "ToggleReaction({event_id})")]
     ToggleReaction {
         event_id: String,

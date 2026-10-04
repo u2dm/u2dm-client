@@ -9,7 +9,10 @@ use matrix_sdk::ruma::events::poll::unstable_start::UnstablePollStartEventConten
 use matrix_sdk::ruma::events::room::message::RoomMessageEventContent;
 use matrix_sdk::ruma::events::{AnyMessageLikeEventContent, StaticEventContent};
 use matrix_sdk::ruma::serde::Raw;
-use matrix_sdk::send_queue::{LocalEcho, LocalEchoContent, RoomSendQueueUpdate, SendHandle};
+use matrix_sdk::send_queue::{
+    LocalEcho, LocalEchoContent, RoomSendQueueStorageError, RoomSendQueueUpdate, SendHandle,
+    SendRedactionHandle,
+};
 use tokio::sync::broadcast::Receiver;
 use tokio::sync::broadcast::error::RecvError;
 use tokio::sync::mpsc;
@@ -30,6 +33,21 @@ pub(super) enum RowlessSendEvent {
 enum Rowless {
     Poll(PollAction),
     Edit(MessageEdit),
+    Deletion(OwnedEventId),
+}
+
+enum Wedged<'a> {
+    Event(&'a SendHandle),
+    Redaction(&'a SendRedactionHandle),
+}
+
+impl Wedged<'_> {
+    async fn abort(&self) -> Result<bool, RoomSendQueueStorageError> {
+        match self {
+            Self::Event(handle) => handle.abort().await,
+            Self::Redaction(handle) => handle.abort().await,
+        }
+    }
 }
 
 pub(super) struct RowlessSendGuard {
@@ -191,30 +209,61 @@ async fn report_reaped(
             tracing::warn!(?action, room_id = %room.room_id(), "discarded a wedged poll send");
             report(action, timeline_tx).await;
         }
-        Rowless::Edit(edit) => {
-            tracing::warn!(
-                edited = ?edit.target,
-                room_id = %room.room_id(),
-                "discarded a wedged edit"
-            );
-            if let Some(target) = edit.target.event_id() {
-                discarded.record(target);
-            }
-            drop(timeline_tx.send(TimelineUpdate::EditUnsaved(edit)).await);
+        Rowless::Edit(edit) => report_reaped_edit(room, edit, discarded, timeline_tx).await,
+        Rowless::Deletion(redacts) => {
+            tracing::warn!(%redacts, room_id = %room.room_id(), "discarded a wedged deletion");
+            drop(timeline_tx.send(TimelineUpdate::DeleteFailed).await);
         }
     }
 }
 
-fn wedged_rowless_send(echo: &LocalEcho) -> Option<(Rowless, &SendHandle)> {
-    let LocalEchoContent::Event {
-        serialized_event,
-        send_handle,
-        send_error: Some(_),
-    } = &echo.content
-    else {
-        return None;
-    };
-    let (content, event_type) = serialized_event.raw();
+async fn report_reaped_edit(
+    room: &Room,
+    edit: MessageEdit,
+    discarded: &DiscardedEdits,
+    timeline_tx: &mpsc::Sender<TimelineUpdate>,
+) {
+    tracing::warn!(
+        edited = ?edit.target,
+        room_id = %room.room_id(),
+        "discarded a wedged edit"
+    );
+    if let Some(target) = edit.target.event_id() {
+        discarded.record(target);
+    }
+    drop(timeline_tx.send(TimelineUpdate::EditUnsaved(edit)).await);
+}
+
+fn wedged_rowless_send(echo: &LocalEcho) -> Option<(Rowless, Wedged<'_>)> {
+    match &echo.content {
+        LocalEchoContent::Event {
+            serialized_event,
+            send_handle,
+            send_error: Some(_),
+        } => wedged_event(serialized_event.raw())
+            .map(|rowless| (rowless, Wedged::Event(send_handle))),
+        LocalEchoContent::Redaction {
+            redacts,
+            send_handle,
+            send_error: Some(_),
+            ..
+        } => Some((
+            Rowless::Deletion(redacts.clone()),
+            Wedged::Redaction(send_handle),
+        )),
+        LocalEchoContent::Event {
+            send_error: None, ..
+        }
+        | LocalEchoContent::Redaction {
+            send_error: None, ..
+        }
+        | LocalEchoContent::React { .. } => None,
+    }
+}
+
+fn wedged_event(
+    (content, event_type): (&Raw<AnyMessageLikeEventContent>, &str),
+) -> Option<Rowless> {
     let rowless = if event_type == UnstablePollResponseEventContent::TYPE {
         Rowless::Poll(PollAction::Vote)
     } else if event_type == UnstablePollEndEventContent::TYPE {
@@ -226,7 +275,7 @@ fn wedged_rowless_send(echo: &LocalEcho) -> Option<(Rowless, &SendHandle)> {
     } else {
         return None;
     };
-    Some((rowless, send_handle))
+    Some(rowless)
 }
 
 fn replaces_a_poll(content: &Raw<AnyMessageLikeEventContent>) -> bool {

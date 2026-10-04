@@ -376,6 +376,41 @@ pub fn vote_poll(tx: &Tx, event_id: String, answer_id: String) {
     );
 }
 
+pub fn copy_message_link(tx: &Tx, event_id: String) {
+    if event_id.is_empty() {
+        return;
+    }
+    send_command(tx, UiCommand::CopyMessageLink { event_id });
+}
+
+pub fn open_event_source(tx: &Tx, event_id: String) {
+    if event_id.is_empty() {
+        return;
+    }
+    send_command(tx, UiCommand::OpenEventSource { event_id });
+}
+
+pub fn pin_message(tx: &Tx, event_id: String) {
+    if event_id.is_empty() {
+        return;
+    }
+    send_command(tx, UiCommand::PinMessage { event_id });
+}
+
+pub fn unpin_message(tx: &Tx, event_id: String) {
+    if event_id.is_empty() {
+        return;
+    }
+    send_command(tx, UiCommand::UnpinMessage { event_id });
+}
+
+pub fn delete_message(tx: &Tx, event_id: String) {
+    if event_id.is_empty() {
+        return;
+    }
+    send_command(tx, UiCommand::DeleteMessage { event_id });
+}
+
 pub fn end_poll(tx: &Tx, event_id: String) {
     if event_id.is_empty() {
         return;

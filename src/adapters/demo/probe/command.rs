@@ -166,6 +166,22 @@ pub enum ProbeCommand {
     OpenPinned {
         event_id: String,
     },
+    CopyMessageLink {
+        event_id: String,
+    },
+    OpenEventSource {
+        event_id: String,
+    },
+    CloseEventSource,
+    PinMessage {
+        event_id: String,
+    },
+    UnpinMessage {
+        event_id: String,
+    },
+    DeleteMessage {
+        event_id: String,
+    },
     ToggleReaction {
         event_id: String,
         key: String,
@@ -202,6 +218,7 @@ pub enum ProbeCommand {
     SwipeTravel {
         px: i32,
     },
+    ContextPress,
     OpenLink {
         url: String,
     },
@@ -237,6 +254,7 @@ impl fmt::Display for Driven {
             }
             Self::Poke(Poke::WindowFocus(focused)) => write!(f, "WindowFocus({focused})"),
             Self::Poke(Poke::SwipeTravel(px)) => write!(f, "SwipeTravel({px}px)"),
+            Self::Poke(Poke::ContextPress) => f.write_str("ContextPress"),
         }
     }
 }
@@ -469,6 +487,12 @@ pub fn to_driven(command: ProbeCommand, selected: Selection<'_>) -> Result<Drive
         }
         ProbeCommand::JumpToEvent { event_id } => UiCommand::JumpToEvent { event_id },
         ProbeCommand::OpenPinned { event_id } => UiCommand::OpenPinned { event_id },
+        ProbeCommand::CopyMessageLink { event_id } => UiCommand::CopyMessageLink { event_id },
+        ProbeCommand::OpenEventSource { event_id } => UiCommand::OpenEventSource { event_id },
+        ProbeCommand::CloseEventSource => UiCommand::CloseEventSource,
+        ProbeCommand::PinMessage { event_id } => UiCommand::PinMessage { event_id },
+        ProbeCommand::UnpinMessage { event_id } => UiCommand::UnpinMessage { event_id },
+        ProbeCommand::DeleteMessage { event_id } => UiCommand::DeleteMessage { event_id },
         ProbeCommand::ToggleReaction { event_id, key } => {
             UiCommand::ToggleReaction { event_id, key }
         }
@@ -513,6 +537,7 @@ pub fn to_driven(command: ProbeCommand, selected: Selection<'_>) -> Result<Drive
             return Ok(Driven::Poke(Poke::WindowFocus(focused)));
         }
         ProbeCommand::SwipeTravel { px } => return Ok(Driven::Poke(Poke::SwipeTravel(px))),
+        ProbeCommand::ContextPress => return Ok(Driven::Poke(Poke::ContextPress)),
         ProbeCommand::OpenLink { url } => UiCommand::OpenLink {
             url: LauncherSafeUrl::message_link(&url)
                 .ok_or_else(|| Rejected(format!("{url} is not a link U2DM opens")))?,

@@ -20,6 +20,7 @@ pub enum MessagePreviewKind {
     Encrypted,
     Sticker,
     Poll,
+    Deleted,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -177,6 +178,33 @@ pub struct PinnedMessage {
     pub event_id: String,
     pub kind: MessagePreviewKind,
     pub body: RichText,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PinChange {
+    Pin,
+    Unpin,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct MessagePermissions {
+    pub delete_own: bool,
+    pub delete_others: bool,
+    pub pin: bool,
+}
+
+impl MessagePermissions {
+    pub const UNRESTRICTED: Self = Self {
+        delete_own: true,
+        delete_others: true,
+        pin: true,
+    };
+}
+
+impl Default for MessagePermissions {
+    fn default() -> Self {
+        Self::UNRESTRICTED
+    }
 }
 
 pub const REACTOR_AVATAR_LIMIT: usize = 3;

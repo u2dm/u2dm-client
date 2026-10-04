@@ -3,6 +3,7 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use matrix_sdk::deserialized_responses::SyncOrStrippedState;
 use matrix_sdk::room::RoomMember;
+use matrix_sdk::ruma::OwnedEventId;
 use matrix_sdk::ruma::events::SyncStateEvent;
 use matrix_sdk::ruma::events::room::member::{MembershipChange, MembershipState};
 use matrix_sdk::ruma::events::room::power_levels::UserPowerLevel;
@@ -93,6 +94,20 @@ impl RoomInfoPort for MatrixRoomInfo {
             return 0;
         };
         fetch_avatar_thumbnails(&client, self.matrix.media(), mxcs).await
+    }
+
+    async fn event_link(&self, room_id: &RoomId, event_id: &str) -> Result<String> {
+        let room = self.matrix.room(room_id).await?;
+        let event_id = OwnedEventId::try_from(event_id)
+            .map_err(|e| AppError::Other(format!("not an event id: {e}")))?;
+        let link = match room.matrix_to_event_permalink(event_id.clone()).await {
+            Ok(link) => link.to_string(),
+            Err(e) => {
+                tracing::debug!(%room_id, %event_id, "linking the event without via servers: {e}");
+                room.room_id().matrix_to_event_uri(event_id).to_string()
+            }
+        };
+        Ok(link)
     }
 }
 

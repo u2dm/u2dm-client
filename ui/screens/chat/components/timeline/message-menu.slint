@@ -1,0 +1,634 @@
+import { Palette } from "std-widgets.slint";
+import { IconDisplay, IconSet, Icon } from "@lucide";
+
+import { MessageEntry } from "../types.slint";
+import { MessagePreview } from "../message-preview.slint";
+import { MessageShape } from "./message-body.slint";
+import { QuickReactions, StripCell } from "./reaction-picker.slint";
+import { ClickArea, Interaction } from "../../../../components/a11y.slint";
+import { MenuRow } from "../../../../components/menu-row.slint";
+import { ModalHost, PickerCard } from "../../../../components/overlay.slint";
+import { Composer, DeliveryTip, MessageMenu, Polls, Reactions, Shell, TextSelection } from "../../../../local.slint";
+import { Actions } from "../../../../actions.slint";
+import { RoomView } from "../../../../views.slint";
+import { MessageKind, SendState } from "../../../../enums.slint";
+import { AppStyle, Fonts, Glyph, IconSize, Metrics, Motion, Size, Space } from "../../../../theme.slint";
+
+enum MenuAction {
+    reply,
+    edit,
+    copy-text,
+    copy-link,
+    pin,
+    select-text,
+    view-source,
+    retry,
+    discard,
+    delete,
+}
+
+component QuickReactionBar inherits PickerCard {
+    callback picked(string);
+    callback more-clicked();
+
+    property <length> cell: Metrics.message-menu-reaction;
+    property <length> pad: Space.sm;
+    property <length> gap: Space.xs;
+    property <int> more-index: QuickReactions.keys.length;
+    property <int> count: root.more-index + 1;
+    property <int> cursor: -1;
+
+    width: root.count * root.cell + (root.count - 1) * root.gap + 2 * root.pad;
+    height: root.cell + 2 * root.pad;
+    border-radius: self.height / 2;
+
+    function run(index: int) {
+        if index == root.more-index {
+            root.more-clicked();
+        } else if index >= 0 && index < root.more-index {
+            root.picked(QuickReactions.keys[index]);
+        }
+    }
+
+    keys := FocusScope {
+        x: 0;
+        y: 0;
+        width: 0;
+        height: 0;
+        enabled: root.visible;
+        focus-on-click: false;
+        accessible-role: button;
+        accessible-label: root.cursor == root.more-index
+            ? @tr("More reactions")
+            : @tr("React with {}", QuickReactions.keys[max(root.cursor, 0)]);
+        accessible-action-default => {
+            root.run(max(root.cursor, 0));
+        }
+        focus-gained(reason) => {
+            if root.cursor < 0 {
+                root.cursor = 0;
+            }
+        }
+        key-pressed(event) => {
+            if event.text == Key.RightArrow {
+                root.cursor = mod(max(root.cursor, -1) + 1, root.count);
+                return accept;
+            }
+            if event.text == Key.LeftArrow {
+                root.cursor = root.cursor <= 0 ? root.count - 1 : root.cursor - 1;
+                return accept;
+            }
+            if event.text == Key.Home {
+                root.cursor = 0;
+                return accept;
+            }
+            if event.text == Key.End {
+                root.cursor = root.count - 1;
+                return accept;
+            }
+            if Interaction.activates(event.text) {
+                root.run(max(root.cursor, 0));
+                return accept;
+            }
+            return reject;
+        }
+    }
+
+    TouchArea { }
+
+    HorizontalLayout {
+        padding: root.pad;
+        spacing: root.gap;
+
+        for key[index] in QuickReactions.keys: StripCell {
+            width: root.cell;
+            height: root.cell;
+            key: key;
+            label: @tr("React with {}", key);
+            glyph: Glyph.lg;
+            focusable: false;
+            roving-focus: keys.has-focus && root.cursor == index;
+            clicked => {
+                root.picked(key);
+            }
+        }
+
+        ClickArea {
+            width: root.cell;
+            height: root.cell;
+            border-radius: self.height / 2;
+            ring-radius: self.height / 2;
+            label: @tr("More reactions");
+            focusable: false;
+            roving-focus: keys.has-focus && root.cursor == root.more-index;
+            background: self.has-hover ? AppStyle.overlay-pressed : transparent;
+            clicked => {
+                root.more-clicked();
+            }
+
+            IconDisplay {
+                x: (parent.width - self.width) / 2;
+                y: (parent.height - self.height) / 2;
+                width: Size.xs;
+                height: Size.xs;
+                icon: IconSet.ChevronDown;
+                size: IconSize.sm;
+                stroke: AppStyle.foreground-strong;
+            }
+        }
+    }
+}
+
+component MessageMenuCard inherits PickerCard {
+    in property <MessageEntry> msg;
+    out property <[MenuAction]> offered;
+
+    callback chose(MenuAction);
+    callback delete-confirmed();
+    callback delete-cancelled();
+
+    property <length> row-height: Metrics.message-menu-row;
+    property <length> pad: Space.sm;
+    property <int> cursor: -1;
+    property <bool> asking: MessageMenu.asking-delete;
+    property <int> confirm-cursor: 1;
+    property <int> confirm-delete: 0;
+
+    property <bool> has-remote-id: root.msg.event-id != "";
+    property <bool> send-failed: root.msg.send-state == SendState.failed && root.msg.local-id != "";
+    property <bool> is-poll: root.msg.message-type == MessageKind.poll;
+
+    width: Metrics.message-menu-width;
+    height: root.offered.length * root.row-height + 2 * root.pad;
+    opacity: 0;
+
+    animate opacity {
+        duration: Motion.fast;
+        easing: ease-out;
+    }
+
+    init => {
+        self.opacity = 1;
+    }
+
+    public pure function available(action: MenuAction) -> bool {
+        if action == MenuAction.reply {
+            return root.has-remote-id && !Composer.editing;
+        }
+        if action == MenuAction.edit {
+            return root.msg.text-editable || (root.msg.poll-editable && RoomView.may-start-polls);
+        }
+        if action == MenuAction.copy-text || action == MenuAction.select-text {
+            return MessageShape.has-selectable-text(root.msg);
+        }
+        if action == MenuAction.copy-link || action == MenuAction.view-source {
+            return root.has-remote-id;
+        }
+        if action == MenuAction.pin {
+            return root.has-remote-id && RoomView.may-pin;
+        }
+        if action == MenuAction.delete {
+            return root.has-remote-id
+                && (root.msg.is-own ? RoomView.may-delete-own : RoomView.may-delete-others)
+                && !Composer.is-being-edited(root.msg.event-id, root.msg.local-id);
+        }
+        return root.send-failed;
+    }
+
+    public function open(keyboard: bool) {
+        root.offered = [];
+        if root.available(MenuAction.reply) {
+            root.offered.push(MenuAction.reply);
+        }
+        if root.available(MenuAction.edit) {
+            root.offered.push(MenuAction.edit);
+        }
+        if root.available(MenuAction.copy-text) {
+            root.offered.push(MenuAction.copy-text);
+        }
+        if root.available(MenuAction.copy-link) {
+            root.offered.push(MenuAction.copy-link);
+        }
+        if root.available(MenuAction.pin) {
+            root.offered.push(MenuAction.pin);
+        }
+        if root.available(MenuAction.select-text) {
+            root.offered.push(MenuAction.select-text);
+        }
+        if root.available(MenuAction.view-source) {
+            root.offered.push(MenuAction.view-source);
+        }
+        if root.available(MenuAction.retry) {
+            root.offered.push(MenuAction.retry);
+        }
+        if root.available(MenuAction.discard) {
+            root.offered.push(MenuAction.discard);
+        }
+        if root.available(MenuAction.delete) {
+            root.offered.push(MenuAction.delete);
+        }
+        root.cursor = keyboard ? 0 : -1;
+        keys.focus();
+    }
+
+    pure function label-of(action: MenuAction) -> string {
+        if action == MenuAction.reply {
+            return @tr("Reply");
+        }
+        if action == MenuAction.edit {
+            if root.is-poll {
+                return @tr("Edit poll");
+            }
+            if root.msg.message-type != MessageKind.text {
+                return @tr("Edit caption");
+            }
+            return @tr("Edit");
+        }
+        if action == MenuAction.copy-text {
+            return @tr("Copy text");
+        }
+        if action == MenuAction.copy-link {
+            return @tr("Copy link");
+        }
+        if action == MenuAction.pin {
+            return root.msg.pinned ? @tr("Unpin") : @tr("Pin");
+        }
+        if action == MenuAction.select-text {
+            return @tr("Select text");
+        }
+        if action == MenuAction.view-source {
+            return @tr("View source");
+        }
+        if action == MenuAction.retry {
+            return @tr("Retry sending");
+        }
+        if action == MenuAction.discard {
+            return @tr("Discard");
+        }
+        return @tr("Delete");
+    }
+
+    pure function delete-prompt() -> string {
+        if root.msg.is-own {
+            return @tr("Delete this message for everyone?");
+        }
+        return @tr("Delete {}'s message for everyone?", root.msg.sender);
+    }
+
+    pure function icon-of(action: MenuAction) -> Icon {
+        if action == MenuAction.reply {
+            return IconSet.Reply;
+        }
+        if action == MenuAction.edit {
+            return IconSet.Pencil;
+        }
+        if action == MenuAction.copy-text {
+            return IconSet.Copy;
+        }
+        if action == MenuAction.copy-link {
+            return IconSet.Link;
+        }
+        if action == MenuAction.pin {
+            return root.msg.pinned ? IconSet.PinOff : IconSet.Pin;
+        }
+        if action == MenuAction.select-text {
+            return IconSet.TextCursor;
+        }
+        if action == MenuAction.view-source {
+            return IconSet.Code;
+        }
+        if action == MenuAction.retry {
+            return IconSet.RotateCw;
+        }
+        if action == MenuAction.discard {
+            return IconSet.X;
+        }
+        return IconSet.Trash2;
+    }
+
+    pure function destructive(action: MenuAction) -> bool {
+        return action == MenuAction.discard || action == MenuAction.delete;
+    }
+
+    function answer-confirm(index: int) {
+        if index == root.confirm-delete {
+            root.delete-confirmed();
+        } else {
+            root.delete-cancelled();
+        }
+    }
+
+    changed asking => {
+        root.confirm-cursor = 1;
+    }
+
+    function choose-at(index: int) {
+        if index >= 0 && index < root.offered.length {
+            root.choose(root.offered[index]);
+        }
+    }
+
+    function choose(action: MenuAction) {
+        if root.available(action) {
+            root.chose(action);
+        }
+    }
+
+    TouchArea { }
+
+    keys := FocusScope {
+        x: 0;
+        y: 0;
+        width: 0;
+        height: 0;
+        focus-on-click: false;
+        accessible-role: button;
+        accessible-label: root.asking
+            ? (root.confirm-cursor == root.confirm-delete ? @tr("Delete for everyone") : @tr("Cancel"))
+            : (root.cursor >= 0 && root.cursor < root.offered.length
+                ? root.label-of(root.offered[root.cursor])
+                : @tr("Message actions"));
+        accessible-action-default => {
+            if root.asking {
+                root.answer-confirm(root.confirm-cursor);
+            } else {
+                root.choose-at(max(root.cursor, 0));
+            }
+        }
+        focus-gained(reason) => {
+            if reason == FocusReason.tab-navigation && root.cursor < 0 {
+                root.cursor = 0;
+            }
+        }
+        key-pressed(event) => {
+            if root.asking {
+                if event.text == Key.DownArrow || event.text == Key.UpArrow {
+                    root.confirm-cursor = 1 - root.confirm-cursor;
+                    return accept;
+                }
+                if Interaction.activates(event.text) {
+                    root.answer-confirm(root.confirm-cursor);
+                    return accept;
+                }
+                return reject;
+            }
+            if root.offered.length == 0 {
+                return reject;
+            }
+            if event.text == Key.DownArrow {
+                root.cursor = mod(max(root.cursor, -1) + 1, root.offered.length);
+                return accept;
+            }
+            if event.text == Key.UpArrow {
+                root.cursor = root.cursor <= 0 ? root.offered.length - 1 : root.cursor - 1;
+                return accept;
+            }
+            if event.text == Key.Home {
+                root.cursor = 0;
+                return accept;
+            }
+            if event.text == Key.End {
+                root.cursor = root.offered.length - 1;
+                return accept;
+            }
+            if Interaction.activates(event.text) {
+                root.choose-at(max(root.cursor, 0));
+                return accept;
+            }
+            return reject;
+        }
+    }
+
+    Rectangle {
+        visible: !root.asking;
+
+        VerticalLayout {
+            padding: root.pad;
+
+            for action[index] in root.offered: MenuRow {
+                height: root.row-height;
+                icon: root.icon-of(action);
+                label: root.label-of(action);
+                tint: root.destructive(action) ? AppStyle.danger-muted : AppStyle.foreground-muted;
+                text-color: root.destructive(action) ? AppStyle.danger-muted : Palette.foreground;
+                focusable: false;
+                roving-focus: keys.has-focus && root.cursor == index;
+                clicked => {
+                    root.choose(action);
+                }
+            }
+        }
+    }
+
+    if root.asking: VerticalLayout {
+        padding: root.pad;
+
+        Text {
+            vertical-stretch: 1;
+            text: root.delete-prompt();
+            font-size: Fonts.label;
+            color: Palette.foreground;
+            wrap: word-wrap;
+            vertical-alignment: center;
+            horizontal-alignment: center;
+        }
+
+        MenuRow {
+            height: root.row-height;
+            icon: IconSet.Trash2;
+            label: @tr("Delete for everyone");
+            tint: AppStyle.danger-muted;
+            text-color: AppStyle.danger-muted;
+            focusable: false;
+            roving-focus: keys.has-focus && root.cursor >= 0 && root.confirm-cursor == root.confirm-delete;
+            clicked => {
+                root.answer-confirm(root.confirm-delete);
+            }
+        }
+
+        MenuRow {
+            height: root.row-height;
+            icon: IconSet.X;
+            label: @tr("Cancel");
+            focusable: false;
+            roving-focus: keys.has-focus && root.cursor >= 0 && root.confirm-cursor != root.confirm-delete;
+            clicked => {
+                root.answer-confirm(1 - root.confirm-delete);
+            }
+        }
+    }
+}
+
+export component CopyNotice inherits PickerCard {
+    in property <string> text;
+
+    width: notice-text.preferred-width + 2 * Space.xl;
+    height: Size.lg;
+    border-radius: self.height / 2;
+
+    notice-text := Text {
+        x: Space.xl;
+        width: parent.width - 2 * Space.xl;
+        height: parent.height;
+        text: root.text;
+        font-size: Fonts.label;
+        color: Palette.foreground;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+        accessible-live-region: AccessibleLiveness.polite;
+    }
+}
+
+export component MessageMenuOverlay inherits Rectangle {
+    callback closed();
+    callback copy-text(string);
+
+    property <length> edge: Space.md;
+    property <length> gap: Space.sm;
+    property <MessageEntry> msg: MessageMenu.target;
+    property <bool> shows-bar: root.msg.event-id != "";
+
+    pure function card-left(width: length) -> length {
+        return clamp(
+            MessageMenu.at-x + width + root.edge > root.width ? MessageMenu.at-x - width : MessageMenu.at-x,
+            root.edge,
+            max(root.edge, root.width - width - root.edge));
+    }
+
+    pure function card-top(height: length, headroom: length) -> length {
+        return clamp(
+            MessageMenu.at-y + height + root.edge > root.height ? MessageMenu.at-y - height : MessageMenu.at-y,
+            root.edge + headroom,
+            max(root.edge + headroom, root.height - height - root.edge));
+    }
+
+    pure function bar-left(card-x: length, card-width: length, width: length) -> length {
+        return clamp(
+            card-x + (card-width - width) / 2,
+            root.edge,
+            max(root.edge, root.width - width - root.edge));
+    }
+
+    function dismiss() {
+        MessageMenu.close();
+        root.closed();
+    }
+
+    function react(key: string) {
+        Actions.toggle-reaction(root.msg.event-id, key);
+        root.dismiss();
+    }
+
+    function delete-confirmed() {
+        let msg = root.msg;
+        if Composer.reply-event-id != "" && Composer.reply-event-id == msg.event-id {
+            Composer.clear-reply();
+        }
+        Actions.delete-message(msg.event-id);
+        root.dismiss();
+    }
+
+    function more-reactions() {
+        let anchor = MessageMenu.anchor;
+        MessageMenu.close();
+        Reactions.open-picker(anchor);
+    }
+
+    function run(action: MenuAction) {
+        let msg = root.msg;
+        if action == MenuAction.select-text {
+            MessageMenu.close();
+            TextSelection.select(msg.unique-id);
+            return;
+        }
+        if action == MenuAction.view-source {
+            MessageMenu.close();
+            Actions.open-event-source(msg.event-id);
+            return;
+        }
+        if action == MenuAction.delete {
+            MessageMenu.asking-delete = true;
+            return;
+        }
+        if action == MenuAction.edit && msg.poll-editable && msg.message-type == MessageKind.poll {
+            MessageMenu.close();
+            Reactions.close();
+            Polls.start-edit(msg);
+            Shell.poll-open = true;
+            return;
+        }
+        if action == MenuAction.reply {
+            Composer.reply-event-id = msg.event-id;
+            Composer.reply-sender = msg.sender;
+            Composer.reply-preview = MessagePreview.label(msg.preview-kind, msg.preview-body);
+        } else if action == MenuAction.edit {
+            Composer.request-edit(msg);
+        } else if action == MenuAction.copy-text {
+            root.copy-text(msg.body);
+        } else if action == MenuAction.copy-link {
+            Actions.copy-message-link(msg.event-id);
+        } else if action == MenuAction.pin && msg.pinned {
+            Actions.unpin-message(msg.event-id);
+        } else if action == MenuAction.pin {
+            Actions.pin-message(msg.event-id);
+        } else if action == MenuAction.retry {
+            Actions.retry-send(msg.local-id);
+        } else if action == MenuAction.discard {
+            Actions.discard-send(msg.local-id);
+        }
+        root.dismiss();
+    }
+
+    if MessageMenu.visible: host := ModalHost {
+        property <length> headroom: root.shows-bar ? bar.height + root.gap : 0;
+        property <length> card-x: root.card-left(card.width);
+        property <length> card-y: root.card-top(card.height, self.headroom);
+
+        width: 100%;
+        height: 100%;
+        dim: false;
+        any-button-dismisses: true;
+        label: @tr("Message actions");
+        opened => {
+            Reactions.close();
+            DeliveryTip.clear();
+            Shell.picker-open = false;
+            Shell.attach-open = false;
+            card.open(MessageMenu.by-keyboard);
+        }
+        dismissed => {
+            if MessageMenu.asking-delete {
+                MessageMenu.asking-delete = false;
+            } else {
+                root.dismiss();
+            }
+        }
+
+        bar := QuickReactionBar {
+            x: root.bar-left(host.card-x, card.width, self.width);
+            y: host.card-y - root.gap - self.height;
+            visible: root.shows-bar;
+            picked(key) => {
+                root.react(key);
+            }
+            more-clicked => {
+                root.more-reactions();
+            }
+        }
+
+        card := MessageMenuCard {
+            x: host.card-x;
+            y: host.card-y;
+            msg: root.msg;
+            chose(action) => {
+                root.run(action);
+            }
+            delete-confirmed => {
+                root.delete-confirmed();
+            }
+            delete-cancelled => {
+                MessageMenu.asking-delete = false;
+            }
+        }
+    }
+}

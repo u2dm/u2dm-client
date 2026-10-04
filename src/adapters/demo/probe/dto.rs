@@ -5,8 +5,8 @@ use crate::commands::messages::UserMessage;
 use crate::commands::ui::Draft;
 use crate::commands::view::{
     AppViewState, AttachmentView, AudioView, DirectoryView, LifecycleView, PaginationView,
-    PinnedView, RoomInfoView, RosterRow, SpaceIndexRow, SpaceIndexView, StickerView, Toast,
-    TrackFile, UnsentMessage, VideoView,
+    PinnedView, RoomInfoView, RosterRow, SourceState, SpaceIndexRow, SpaceIndexView, StickerView,
+    Toast, TrackFile, UnsentMessage, VideoView,
 };
 use crate::domain::message::{EditKind, PinnedMessage};
 use crate::domain::room::{Room, Space};
@@ -14,6 +14,7 @@ use crate::domain::room_info::RosterSection;
 use crate::domain::space_index::{ChildKind, JoinRule};
 use crate::domain::sticker::StickerPack;
 use crate::domain::sync::ConnectionStatus;
+use crate::domain::timeline::SourceEncryption;
 
 #[derive(Serialize)]
 pub struct ViewDto {
@@ -30,6 +31,24 @@ pub struct ViewDto {
     audio: Option<NowPlayingDto>,
     unsent: Option<UnsentDto>,
     toast: ToastDto,
+    message_link: MessageLinkDto,
+    source: SourceDto,
+}
+
+#[derive(Serialize)]
+struct SourceDto {
+    status: &'static str,
+    event_id: Option<String>,
+    encryption: Option<&'static str>,
+    json: Option<String>,
+    edit_json: Option<String>,
+    encryption_json: Option<String>,
+}
+
+#[derive(Serialize)]
+struct MessageLinkDto {
+    serial: i32,
+    url: String,
 }
 
 #[derive(Serialize)]
@@ -63,6 +82,13 @@ struct PollPermissionsDto {
 }
 
 #[derive(Serialize)]
+struct MessagePermissionsDto {
+    delete_own: bool,
+    delete_others: bool,
+    pin: bool,
+}
+
+#[derive(Serialize)]
 #[allow(clippy::struct_excessive_bools)]
 struct RoomDto {
     id: String,
@@ -70,6 +96,7 @@ struct RoomDto {
     is_direct: bool,
     is_encrypted: bool,
     poll_permissions: PollPermissionsDto,
+    message_permissions: MessagePermissionsDto,
     member_count: u64,
     has_unread: bool,
     has_mentions: bool,
@@ -194,6 +221,7 @@ struct PinnedDto {
     room_id: Option<String>,
     shown: usize,
     messages: Vec<PinnedMessageDto>,
+    pinned_ids: Vec<String>,
 }
 
 #[derive(Serialize)]
@@ -280,6 +308,44 @@ pub fn view(source: &AppViewState) -> ViewDto {
         audio: audio(&source.audio),
         unsent: source.unsent.as_ref().map(unsent),
         toast: toast(&source.toast),
+        message_link: MessageLinkDto {
+            serial: source.message_link.serial,
+            url: source.message_link.url.clone(),
+        },
+        source: event_source(&source.source),
+    }
+}
+
+fn event_source(state: &SourceState) -> SourceDto {
+    let status = names::source_status(state);
+    match state {
+        SourceState::Closed => SourceDto {
+            status,
+            event_id: None,
+            encryption: None,
+            json: None,
+            edit_json: None,
+            encryption_json: None,
+        },
+        SourceState::Locating { event_id } | SourceState::Unavailable { event_id } => SourceDto {
+            status,
+            event_id: Some(event_id.clone()),
+            encryption: None,
+            json: None,
+            edit_json: None,
+            encryption_json: None,
+        },
+        SourceState::Ready(source) => SourceDto {
+            status,
+            event_id: Some(source.event_id.clone()),
+            encryption: Some(names::source_encryption(&source.encryption)),
+            json: Some(source.json.clone()),
+            edit_json: source.edit_json.clone(),
+            encryption_json: match &source.encryption {
+                SourceEncryption::Decrypted { details } => Some(details.clone()),
+                SourceEncryption::Plain | SourceEncryption::Undecryptable => None,
+            },
+        },
     }
 }
 
@@ -322,6 +388,11 @@ fn room(source: &Room) -> RoomDto {
             vote: source.poll_permissions.vote,
             end: source.poll_permissions.end,
             start: source.poll_permissions.start,
+        },
+        message_permissions: MessagePermissionsDto {
+            delete_own: source.message_permissions.delete_own,
+            delete_others: source.message_permissions.delete_others,
+            pin: source.message_permissions.pin,
         },
         member_count: source.member_count,
         has_unread: source.has_unread,
@@ -483,6 +554,7 @@ fn pinned(source: &PinnedView) -> PinnedDto {
         room_id: source.room_id.as_ref().map(ToString::to_string),
         shown: source.shown,
         messages: source.messages.iter().map(pinned_message).collect(),
+        pinned_ids: source.pinned_ids.iter().cloned().collect(),
     }
 }
 

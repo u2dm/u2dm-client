@@ -11,7 +11,7 @@ use crate::domain::message::{MessageEdit, PinnedMessage};
 use crate::domain::room::RoomId;
 use crate::domain::room_info::RoomAbout;
 use crate::domain::timeline::{
-    AudioTrack, PaginationDirection, PaginationOutcome, TimelineAdvance, TimelineFocus,
+    AudioTrack, EventSource, PaginationDirection, PaginationOutcome, TimelineAdvance, TimelineFocus,
 };
 use crate::domain::verification::VerificationEvent;
 use crate::ports::matrix::{AuthenticatedSession, CleanupReport};
@@ -99,6 +99,33 @@ pub(super) enum AppEvent {
         name: String,
         outcome: ActionOutcome,
     },
+    MessageAction(MessageActionEvent),
+}
+
+pub(super) enum MessageActionEvent {
+    LinkResolved {
+        request: i32,
+        link: Option<String>,
+    },
+    PinSettled {
+        request: u64,
+        event_id: String,
+        outcome: ActionOutcome,
+    },
+    DeletionSettled {
+        event_id: String,
+        outcome: ActionOutcome,
+    },
+}
+
+impl MessageActionEvent {
+    fn label(&self) -> &'static str {
+        match self {
+            Self::LinkResolved { .. } => "MessageLinkResolved",
+            Self::PinSettled { .. } => "PinChangeSettled",
+            Self::DeletionSettled { .. } => "DeletionSettled",
+        }
+    }
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -130,6 +157,7 @@ impl AppEvent {
             Self::RoomInfoAvatarsReady { .. } => "RoomInfoAvatarsReady",
             Self::RoomNotifySettled { .. } => "RoomNotifySettled",
             Self::RoomLeaveSettled { .. } => "RoomLeaveSettled",
+            Self::MessageAction(event) => event.label(),
         }
     }
 }
@@ -157,6 +185,12 @@ pub(super) enum TimelineEvent {
         request: u64,
         track: Option<Box<AudioTrack>>,
     },
+    SourceLocated {
+        room_id: RoomId,
+        generation: i32,
+        request: u64,
+        source: Option<Box<EventSource>>,
+    },
 }
 
 impl TimelineEvent {
@@ -166,6 +200,7 @@ impl TimelineEvent {
             Self::PaginationCompleted { .. } => "TimelinePaginationCompleted",
             Self::Refocus { .. } => "RefocusTimeline",
             Self::AudioLocated { .. } => "AudioLocated",
+            Self::SourceLocated { .. } => "SourceLocated",
         }
     }
 }

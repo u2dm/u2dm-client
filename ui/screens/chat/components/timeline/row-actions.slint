@@ -12,6 +12,7 @@ import { Interaction } from "../../../../components/a11y.slint";
 import { Pill } from "../../../../components/pill.slint";
 import {
     Composer,
+    MessageMenu,
     ReactionAnchor,
     Reactions,
     TextSelection,
@@ -119,6 +120,16 @@ export component RowActions inherits Rectangle {
         return root.has-remote-id;
     }
 
+    function open-menu() {
+        let anchor = root.anchor();
+        MessageMenu.open(
+            anchor,
+            root.msg.unique-id,
+            root.msg.is-own ? anchor.x + anchor.width - Metrics.message-menu-width : anchor.x,
+            anchor.y,
+            true);
+    }
+
     function run-action(action: RowAction) {
         if !root.available(action) {
             return;
@@ -149,6 +160,10 @@ export component RowActions inherits Rectangle {
             root.run-action(root.focused-action);
         }
         key-pressed(event) => {
+            if event.text == Key.Menu || (event.modifiers.shift && event.text == Key.F10) {
+                root.open-menu();
+                return accept;
+            }
             if event.text == Key.RightArrow {
                 root.action-cursor = mod(root.action-cursor + 1, root.row-actions.length);
                 return accept;

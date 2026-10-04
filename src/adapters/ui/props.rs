@@ -7,14 +7,15 @@ use crate::commands::effects::VerificationActivity;
 use crate::commands::messages::{UserMessage, UserMessageKind};
 use crate::commands::ui::UiCommand;
 use crate::commands::view::{
-    AttachmentKind, LoginActivity, LoginStep, RoomScope, RosterStatus, SpaceIndexStatus,
+    AttachmentKind, LoginActivity, LoginStep, RoomScope, RosterStatus, SourceState,
+    SpaceIndexStatus,
 };
 use crate::domain::auth::LoginMethod;
 use crate::domain::media::AudioKind;
 use crate::domain::message::MessagePreviewKind;
 use crate::domain::room::NotifyMode;
 use crate::domain::sync::ConnectionStatus;
-use crate::domain::timeline::TimelineStatus;
+use crate::domain::timeline::{SourceEncryption, TimelineStatus};
 use crate::domain::verification::VerificationEmoji as DomainVerificationEmoji;
 
 pub const SLINT_INFLIGHT: usize = 32;

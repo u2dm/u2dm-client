@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use super::messages::UserMessage;
 use super::view::AppViewState;
+use crate::domain::message::MessagePermissions;
 use crate::domain::poll::PollPermissions;
 use crate::domain::room::RoomId;
 use crate::domain::timeline::{TimelinePatch, TimelineStatus};
@@ -15,6 +16,7 @@ pub enum Effect {
         member_count: u64,
         encrypted: bool,
         polls: PollPermissions,
+        messages: MessagePermissions,
         generation: i32,
         live: bool,
     },

@@ -30,6 +30,12 @@ scenario_env() {
     room-info)       echo 'U2DM_DEMO_ROOM_INFO=slow' ;;
     room-leave)      echo 'U2DM_DEMO_ROOM_INFO=slow' ;;
     room-info-failures) echo 'U2DM_DEMO_ROOM_INFO=roster-fails,notify-fails,leave-fails' ;;
+    message-link)    echo 'U2DM_DEMO_MESSAGE_MENU=slow' ;;
+    message-source)  echo 'U2DM_DEMO_MESSAGE_MENU=slow' ;;
+    message-pins)    echo 'U2DM_DEMO_MESSAGE_MENU=slow U2DM_DEMO_PINNED=slow' ;;
+    message-pin-failures) echo 'U2DM_DEMO_MESSAGE_MENU=pin-fails' ;;
+    message-delete)  echo 'U2DM_DEMO_MESSAGE_MENU=slow U2DM_DEMO_PINNED=slow' ;;
+    message-delete-failures) echo 'U2DM_DEMO_MESSAGE_MENU=delete-fails,member' ;;
     *) return 1 ;;
   esac
 }
@@ -114,6 +120,45 @@ scenario_steps() {
       echo 'sleep 1'
       echo '{"op":"leave_room"}'
       echo 'sleep 1' ;;
+    message-link)
+      echo '{"op":"select_room","room_id":"!rust:demo.local"}'
+      echo 'sleep 2'
+      echo '{"op":"copy_message_link","event_id":"demo-rust-3"}'
+      echo '{"op":"copy_message_link","event_id":"demo-rust-13"}'
+      echo 'sleep 3' ;;
+    message-source)
+      echo '{"op":"select_room","room_id":"!sarah:demo.local"}'
+      echo 'sleep 2'
+      echo '{"op":"open_event_source","event_id":"demo-sarah-1"}'
+      echo 'sleep 1' ;;
+    message-pins)
+      echo '{"op":"select_room","room_id":"!rust:demo.local"}'
+      echo 'sleep 3'
+      echo '{"op":"pin_message","event_id":"demo-rust-24"}'
+      echo 'sleep 3'
+      echo '{"op":"unpin_message","event_id":"demo-rust-3"}'
+      echo 'sleep 3' ;;
+    message-pin-failures)
+      echo '{"op":"select_room","room_id":"!rust:demo.local"}'
+      echo 'sleep 2'
+      echo '{"op":"pin_message","event_id":"demo-rust-24"}'
+      echo 'sleep 2' ;;
+    message-delete)
+      echo '{"op":"select_room","room_id":"!rust:demo.local"}'
+      echo 'sleep 3'
+      echo '{"op":"delete_message","event_id":"demo-rust-5"}'
+      echo '{"op":"delete_message","event_id":"demo-rust-5"}'
+      echo 'sleep 3'
+      echo '{"op":"delete_message","event_id":"demo-rust-3"}'
+      echo 'sleep 3' ;;
+    message-delete-failures)
+      echo '{"op":"select_room","room_id":"!rust:demo.local"}'
+      echo 'sleep 2'
+      echo '{"op":"delete_message","event_id":"demo-rust-5"}'
+      echo 'sleep 3'
+      echo '{"op":"dismiss_toast"}'
+      echo '{"op":"delete_message","event_id":"demo-rust-3"}'
+      echo 'sleep 2' ;;
     login-oauth|verify-self)
       : ;;
   esac
@@ -141,6 +186,12 @@ scenario_note() {
     room-info)       echo 'the room info of a 1243-member room loads slowly, pages, filters, and turns notifications to mentions' ;;
     room-leave)      echo 'a room is left from its room info; it drops from the list on the sync echo and the timeline closes' ;;
     room-info-failures) echo 'the member list fails once and is retried, then a notification change and a leave fail inline' ;;
+    message-link)    echo 'two quick message links, slowly: only the second reaches the copy serial' ;;
+    message-source)  echo 'the source of a message in an encrypted DM, decrypted, with its decryption details' ;;
+    message-pins)    echo 'an unpinned message is pinned and a pinned one unpinned, slowly; rows and the bar follow' ;;
+    message-pin-failures) echo 'a pin is refused, so the row stays unpinned and the toast shows' ;;
+    message-delete)  echo 'an own quoted message is deleted twice (one deletion), then a pinned message of someone else' ;;
+    message-delete-failures) echo 'an own deletion comes back with the toast; a member may not delete someone else'"'"'s message' ;;
   esac
 }
 
@@ -158,7 +209,8 @@ check_window() {
 names() {
   printf '%s\n' unread-anchor all-unread unread-unresolved reactions-late sticker-trickle jump-to-reply \
     pinned-bar media-failures compact-layout login-oauth verify-self audio-track voice-notes delivery-marks \
-    space-index polls poll-edits room-info room-leave room-info-failures
+    space-index polls poll-edits room-info room-leave room-info-failures message-link message-source \
+    message-pins message-pin-failures message-delete message-delete-failures
 }
 
 cmd_list() {
@@ -216,6 +268,9 @@ cmd_run() {
   jq -r 'if .audio then "  audio state=\(.audio.state) event=\(.audio.event_id) position=\(.audio.position_ms)/\(.audio.duration_ms) output=\(.audio.output)" else empty end' "$out/timeline.json"
   jq -r 'if .poll_permissions then "  polls vote=\(.poll_permissions.vote) end=\(.poll_permissions.end) start=\(.poll_permissions.start)" else empty end' "$out/timeline.json"
   jq -r '.rows[]? | select(.message_type == "poll") | "  poll \(.event_id) \(.poll_phase)\(if .poll_editable then " editable" else "" end) voters=\(.poll_voters) [\([.poll_answers[] | "\(.id)=\(.count)\(if .mine then "*" else "" end)"] | join(" "))]"' "$out/timeline.json"
+  jq -r 'if .message_permissions then "  messages delete_own=\(.message_permissions.delete_own) delete_others=\(.message_permissions.delete_others) pin=\(.message_permissions.pin) pinned_rows=\([.rows[]? | select(.pinned) | .event_id])" else empty end' "$out/timeline.json"
+  jq -r 'if .view.message_link.serial > 0 then "  message link #\(.view.message_link.serial) \(.view.message_link.url)" else empty end' "$out/state.json"
+  jq -r 'if .view.source.status != "closed" then "  source \(.view.source.status) \(.view.source.event_id) encryption=\(.view.source.encryption)" else empty end' "$out/state.json"
 }
 
 case "${1:-}" in

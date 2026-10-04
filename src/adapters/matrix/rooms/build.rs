@@ -19,7 +19,7 @@ use matrix_sdk::ruma::events::{
 use matrix_sdk::ruma::{OwnedUserId, UserId};
 use matrix_sdk::{Client, Room};
 
-use crate::adapters::matrix::permissions::poll_permissions;
+use crate::adapters::matrix::permissions::room_permissions;
 use crate::adapters::matrix::preview::{self, MessagePreview};
 use crate::domain::message::{MessagePreviewKind, RichText, ServiceEvent};
 use crate::domain::room::{NotifyMode, Room as DomainRoom, RoomId, Space as DomainSpace};
@@ -114,6 +114,7 @@ pub(super) async fn build_single_room(room: &Room, settings: &NotificationSettin
     let member_count = room.joined_members_count();
     let last_activity_ts: u64 = room.latest_event_timestamp().map_or(0, |ts| ts.0.into());
     let last_message = build_last_message(room, is_direct).await;
+    let (poll_permissions, message_permissions) = room_permissions(room).await;
     DomainRoom {
         id: RoomId::new(room.room_id().to_string()),
         display_name,
@@ -122,7 +123,8 @@ pub(super) async fn build_single_room(room: &Room, settings: &NotificationSettin
         canonical_alias: room.canonical_alias().map(|alias| alias.to_string()),
         is_direct,
         is_encrypted: room.encryption_state().is_encrypted(),
-        poll_permissions: poll_permissions(room).await,
+        poll_permissions,
+        message_permissions,
         member_count,
         has_unread: flags.has_unread,
         has_mentions: flags.has_mentions,

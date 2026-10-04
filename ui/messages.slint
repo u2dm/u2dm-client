@@ -88,6 +88,18 @@ export global UserMessages {
         if kind == UserMessageKind.message-not-showable {
             return @tr("That message can't be shown");
         }
+        if kind == UserMessageKind.message-link-failed {
+            return @tr("Couldn't copy the link to that message");
+        }
+        if kind == UserMessageKind.message-pin-failed {
+            return @tr("Couldn't pin that message");
+        }
+        if kind == UserMessageKind.message-unpin-failed {
+            return @tr("Couldn't unpin that message");
+        }
+        if kind == UserMessageKind.message-delete-failed {
+            return @tr("Couldn't delete that message");
+        }
         if kind == UserMessageKind.space-order-save-failed {
             return @tr("Failed to save space order");
         }

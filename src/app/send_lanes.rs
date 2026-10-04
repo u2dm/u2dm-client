@@ -12,9 +12,9 @@ pub(super) struct SendLanes {
 }
 
 impl SendLanes {
-    pub(super) fn new() -> Self {
+    pub(super) fn new(name: &'static str) -> Self {
         Self {
-            tasks: TaskGroup::new("sends"),
+            tasks: TaskGroup::new(name),
             tails: HashMap::new(),
         }
     }

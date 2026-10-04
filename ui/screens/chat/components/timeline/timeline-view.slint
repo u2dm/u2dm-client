@@ -4,13 +4,15 @@ import { IconDisplay, IconSet } from "@lucide";
 import { TimelineContent } from "./timeline-content.slint";
 import { MessageInput } from "./message-input.slint";
 import { ReactionOverlay } from "./reaction-overlay.slint";
-import { AppStyle, Fonts, IconSize, Metrics, Radius, Size, Space } from "../../../../theme.slint";
+import { CopyNotice, MessageMenuOverlay } from "./message-menu.slint";
+import { AppStyle, Fonts, IconSize, Metrics, Motion, Radius, Size, Space } from "../../../../theme.slint";
 import { IconButton } from "../../../../components/button.slint";
 import { TimelineState } from "../../../../enums.slint";
 import { ClickArea } from "../../../../components/a11y.slint";
+import { Copier } from "../../../../components/copier.slint";
 import { AudioView, DirectoryView, RoomView } from "../../../../views.slint";
 import { Actions } from "../../../../actions.slint";
-import { Composer, DeliveryTip, Polls, Reactions, ReplySwipe, Shell, TextSelection } from "../../../../local.slint";
+import { Composer, DeliveryTip, MessageMenu, Polls, Reactions, ReplySwipe, Shell, TextSelection } from "../../../../local.slint";
 import { StatusPill } from "./status-pill.slint";
 import { NowPlayingBar } from "./now-playing-bar.slint";
 import { PinnedBar } from "./pinned-bar.slint";
@@ -62,11 +64,40 @@ export component TimelineView inherits Rectangle {
         nav-touch.take-focus();
     }
 
+    property <string> copy-notice;
+
+    function copy(text: string, notice: string) {
+        copier.copy-text(text);
+        root.copy-notice = notice;
+        notice-timer.running = true;
+        notice-timer.restart();
+    }
+
+    property <int> link-serial: RoomView.message-link-serial;
+
+    changed link-serial => {
+        if RoomView.message-link != "" {
+            root.copy(RoomView.message-link, @tr("Link copied"));
+        }
+    }
+
+    copier := Copier { }
+
+    notice-timer := Timer {
+        interval: Motion.feedback-hold;
+        running: false;
+        triggered => {
+            self.running = false;
+            root.copy-notice = "";
+        }
+    }
+
     changed room-id => {
         root.input-message = "";
         Composer.clear();
         TextSelection.clear();
         Reactions.close();
+        MessageMenu.close();
         ReplySwipe.clear();
         DeliveryTip.clear();
         Polls.clear();
@@ -155,6 +186,14 @@ export component TimelineView inherits Rectangle {
             }
         }
 
+        property <bool> source-open: Shell.source-open;
+
+        changed source-open => {
+            if (!self.source-open && Shell.background-reachable) {
+                input.focus-input();
+            }
+        }
+
         content := TimelineContent {
             x: 0;
             y: root.header-height;
@@ -209,6 +248,25 @@ export component TimelineView inherits Rectangle {
             timeline-bottom: content.y + content.height - input.height;
             closed => {
                 input.focus-input();
+            }
+        }
+
+        if root.copy-notice != "": CopyNotice {
+            x: (parent.width - self.width) / 2;
+            y: parent.height - input.height - root.spacing - self.height - Space.xl;
+            text: root.copy-notice;
+        }
+
+        MessageMenuOverlay {
+            x: -root.x;
+            y: 0;
+            width: root.overlay-width;
+            height: root.height;
+            closed => {
+                input.focus-input();
+            }
+            copy-text(text) => {
+                root.copy(text, @tr("Text copied"));
             }
         }
     }

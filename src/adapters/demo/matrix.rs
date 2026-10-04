@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::future::pending;
 use std::mem;
@@ -9,23 +9,23 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use async_trait::async_trait;
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, watch};
 use tokio::task::spawn_blocking;
 use tokio::time::sleep;
 use tokio_util::sync::CancellationToken;
 use url::Url;
 
 use super::{
-    attachments, audio, data, login, media, pinned, polls, reactions, receipts, room_info,
-    space_index, stickers, timeline, verification, videos,
+    attachments, audio, data, login, media, message_menu, pinned, polls, reactions, receipts,
+    room_info, source, space_index, stickers, timeline, verification, videos,
 };
 use crate::adapters::video;
 use crate::domain::auth::{AuthMethod, LoginCredentials, OAuthLoginData, ServerInfo, Session};
 use crate::domain::link::LauncherSafeUrl;
 use crate::domain::media::{MediaRendition, OutgoingAttachment, WaveformNeed};
 use crate::domain::message::{
-    EditTarget, MessageBody, MessageEdit, PinnedMessage, ReplyInfo, RichText, SendState,
-    TimelineMessage,
+    EditTarget, MessageBody, MessageEdit, MessagePreviewKind, PinChange, PinnedMessage, ReplyInfo,
+    RichText, SendState, TimelineMessage,
 };
 use crate::domain::poll::{PollAction, PollDraft};
 use crate::domain::room::{NotifyMode, Room, RoomId, Space};
@@ -34,8 +34,8 @@ use crate::domain::space_index::HierarchyPage;
 use crate::domain::sticker::{PackId, StickerImage};
 use crate::domain::sync::{SyncEvent, SyncOutcome};
 use crate::domain::timeline::{
-    AudioLookup, AudioTrack, JumpTarget, Landing, PaginationDirection, PaginationOutcome,
-    TimelineCommand, TimelineFocus, TimelinePatch, TimelineUpdate, locate_audio,
+    AudioLookup, AudioTrack, EventSource, JumpTarget, Landing, PaginationDirection,
+    PaginationOutcome, TimelineCommand, TimelineFocus, TimelinePatch, TimelineUpdate, locate_audio,
 };
 use crate::domain::verification::{VerificationCancellation, VerificationEvent};
 use crate::error::{AppError, Result};
@@ -303,6 +303,8 @@ struct DemoAuthed {
     sas_started: AtomicBool,
     sync_sink: Mutex<Option<SyncSink>>,
     lists: Arc<Mutex<RoomLists>>,
+    pin_boards: Mutex<HashMap<RoomId, watch::Sender<Vec<String>>>>,
+    deleted: Arc<Mutex<HashSet<String>>>,
 }
 
 impl DemoAuthed {
@@ -312,6 +314,19 @@ impl DemoAuthed {
             && let Some(sent) = own_sends.get(room_id)
         {
             history.extend(sent.iter().cloned());
+        }
+        if let Ok(deleted) = self.deleted.lock()
+            && !deleted.is_empty()
+        {
+            history.retain(|message| {
+                message
+                    .event_id
+                    .as_ref()
+                    .is_none_or(|event_id| !deleted.contains(event_id))
+            });
+            for message in &mut history {
+                stamp_deleted_reply(message, &deleted);
+            }
         }
         history
     }
@@ -424,6 +439,40 @@ impl DemoAuthed {
             messages,
             reset_messages,
         }))
+    }
+
+    fn remove_from_window(
+        &self,
+        room_id: &RoomId,
+        event_id: &str,
+        restamp_replies: bool,
+    ) -> Option<RemovedMessage> {
+        let mut guard = self.active.lock().ok()?;
+        let active = guard.as_mut()?;
+        if &active.room_id != room_id {
+            return None;
+        }
+        let offset = active
+            .messages
+            .iter()
+            .position(|message| message.event_id.as_deref() == Some(event_id))?;
+        let message = active.messages.remove(offset);
+        let mut replies = Vec::new();
+        if restamp_replies {
+            let deleted = HashSet::from([event_id.to_owned()]);
+            for (index, reply) in active.messages.iter_mut().enumerate() {
+                if stamp_deleted_reply(reply, &deleted) {
+                    replies.push((active.prepended.saturating_add(index), reply.clone()));
+                }
+            }
+        }
+        Some(RemovedMessage {
+            timeline_tx: active.timeline_tx.clone(),
+            offset,
+            row: active.prepended.saturating_add(offset),
+            message,
+            replies,
+        })
     }
 
     async fn patch_queued_send(&self, room_id: &RoomId, local_id: &str, resend: bool) -> Result<()> {
@@ -672,8 +721,32 @@ impl DemoAuthed {
                         .await,
                 );
             }
+            TimelineCommand::LocateSource { request, event_id } => {
+                let source = self.locate_source(&event_id);
+                drop(
+                    timeline_tx
+                        .send(TimelineUpdate::SourceLocated {
+                            request,
+                            source: source.map(Box::new),
+                        })
+                        .await,
+                );
+            }
         }
         None
+    }
+
+    fn locate_source(&self, event_id: &str) -> Option<EventSource> {
+        if message_menu::scenario().source_unavailable {
+            return None;
+        }
+        let guard = self.active.lock().ok()?;
+        let active = guard.as_ref()?;
+        let message = active
+            .messages
+            .iter()
+            .find(|message| message.event_id.as_deref() == Some(event_id))?;
+        source::event_source(&active.room_id, message)
     }
 
     fn patch_poll(
@@ -1105,6 +1178,14 @@ impl RoomInfoPort for DemoAuthed {
         room_info::pause_avatars().await;
         media::fetch_member_avatars(mxcs)
     }
+
+    async fn event_link(&self, room_id: &RoomId, event_id: &str) -> Result<String> {
+        message_menu::pause().await;
+        if message_menu::scenario().link_fails {
+            return Err(unavailable("message links"));
+        }
+        Ok(data::event_link(room_id, event_id))
+    }
 }
 
 #[async_trait]
@@ -1245,6 +1326,55 @@ impl TimelinePort for DemoAuthed {
         self.patch_queued_send(room_id, local_id, false).await
     }
 
+    async fn delete_message(&self, room_id: &RoomId, event_id: &str) -> Result<()> {
+        message_menu::pause().await;
+        if self
+            .deleted
+            .lock()
+            .is_ok_and(|deleted| deleted.contains(event_id))
+        {
+            tracing::debug!(event_id, "demo: the message is already deleted");
+            return Ok(());
+        }
+        let own = self
+            .room_history(room_id)
+            .iter()
+            .find(|message| message.event_id.as_deref() == Some(event_id))
+            .map(|message| message.is_own)
+            .ok_or_else(|| AppError::Other(format!("{event_id} is not in {room_id}")))?;
+        let permissions = message_menu::permissions();
+        let allowed = if own {
+            permissions.delete_own
+        } else {
+            permissions.delete_others
+        };
+        if !allowed {
+            return Err(unavailable("deleting this message"));
+        }
+        if message_menu::scenario().delete_refused {
+            return Err(unavailable("deleting messages"));
+        }
+        tracing::debug!(%room_id, event_id, "demo: deleting a message");
+        let fails = message_menu::scenario().delete_fails;
+        if !fails && let Ok(mut deleted) = self.deleted.lock() {
+            deleted.insert(event_id.to_owned());
+        }
+        let Some(removed) = self.remove_from_window(room_id, event_id, !fails) else {
+            return Ok(());
+        };
+        let timeline_tx = removed.timeline_tx.clone();
+        send_patch(&timeline_tx, TimelinePatch::Remove { index: removed.row }).await;
+        for (index, message) in removed.replies.clone() {
+            send_patch(&timeline_tx, TimelinePatch::Set { index, message }).await;
+        }
+        if fails {
+            spawn_deletion_refusal(Arc::clone(&self.active), removed);
+        } else {
+            self.change_board(room_id, |_| {});
+        }
+        Ok(())
+    }
+
     async fn send_attachment(
         &self,
         room_id: &RoomId,
@@ -1293,46 +1423,113 @@ impl PinnedPort for DemoAuthed {
         pinned_tx: mpsc::Sender<Vec<PinnedMessage>>,
     ) -> Result<()> {
         pinned::pause_arrival().await;
-        let pins = data::pinned_messages(room_id);
-        if pinned_tx.send(pins.clone()).await.is_err() {
-            return Ok(());
+        let forward = self.forward_pins(room_id, &pinned_tx);
+        let repinned = pinned::scenario()
+            .repins
+            .then(|| data::latest_pinnable(room_id))
+            .flatten();
+        match repinned {
+            Some(newest) => {
+                tokio::select! {
+                    () = forward => {}
+                    () = self.repin(room_id, &newest.event_id) => {}
+                }
+            }
+            None => forward.await,
         }
-        if pinned::scenario().repins
-            && let Some(newest) = data::latest_pinnable(room_id)
-        {
-            repin(&pinned_tx, &pins, newest).await;
+        Ok(())
+    }
+
+    async fn change_pin(&self, room_id: &RoomId, event_id: &str, change: PinChange) -> Result<()> {
+        message_menu::pause().await;
+        if !message_menu::permissions().pin {
+            return Err(unavailable("pinning in this room"));
         }
-        pinned_tx.closed().await;
+        if message_menu::scenario().pin_fails {
+            return Err(unavailable("changing pins"));
+        }
+        tracing::debug!(%room_id, event_id, ?change, "demo: changing a pin");
+        self.change_board(room_id, |pins| match change {
+            PinChange::Pin => {
+                if !pins.iter().any(|pin| pin == event_id) {
+                    pins.push(event_id.to_owned());
+                }
+            }
+            PinChange::Unpin => pins.retain(|pin| pin != event_id),
+        });
         Ok(())
     }
 }
 
-async fn repin(
-    pinned_tx: &mpsc::Sender<Vec<PinnedMessage>>,
-    pins: &[PinnedMessage],
-    newest: PinnedMessage,
-) {
-    let unpinned: Vec<PinnedMessage> = pins
-        .iter()
-        .filter(|pin| pin.event_id != newest.event_id)
-        .cloned()
-        .collect();
-    let mut repinned = unpinned.clone();
-    repinned.push(newest);
-    let mut pinned_now = false;
-    loop {
-        tokio::select! {
-            () = sleep(pinned::REPIN_INTERVAL) => {}
-            () = pinned_tx.closed() => return,
+impl DemoAuthed {
+    fn pin_board(&self, room_id: &RoomId) -> Option<watch::Receiver<Vec<String>>> {
+        let mut boards = self.pin_boards.lock().ok()?;
+        let board = boards.entry(room_id.clone()).or_insert_with(|| {
+            let pins = data::pinned_messages(room_id)
+                .into_iter()
+                .map(|pin| pin.event_id)
+                .collect();
+            watch::channel(pins).0
+        });
+        Some(board.subscribe())
+    }
+
+    fn change_board(&self, room_id: &RoomId, change: impl FnOnce(&mut Vec<String>)) {
+        drop(self.pin_board(room_id));
+        if let Ok(boards) = self.pin_boards.lock()
+            && let Some(board) = boards.get(room_id)
+        {
+            board.send_modify(change);
         }
-        pinned_now = !pinned_now;
-        let next = if pinned_now {
-            repinned.clone()
-        } else {
-            unpinned.clone()
-        };
-        if pinned_tx.send(next).await.is_err() {
+    }
+
+    fn pinned_from(&self, room_id: &RoomId, pins: &[String]) -> Vec<PinnedMessage> {
+        let history = self.room_history(room_id);
+        pins.iter()
+            .filter_map(|pin| {
+                history
+                    .iter()
+                    .rev()
+                    .find(|message| message.event_id.as_deref() == Some(pin.as_str()))
+            })
+            .filter_map(data::pinned_message)
+            .collect()
+    }
+
+    async fn forward_pins(&self, room_id: &RoomId, pinned_tx: &mpsc::Sender<Vec<PinnedMessage>>) {
+        let Some(mut board) = self.pin_board(room_id) else {
             return;
+        };
+        loop {
+            let pins = board.borrow_and_update().clone();
+            if pinned_tx
+                .send(self.pinned_from(room_id, &pins))
+                .await
+                .is_err()
+            {
+                return;
+            }
+            tokio::select! {
+                changed = board.changed() => {
+                    if changed.is_err() {
+                        return;
+                    }
+                }
+                () = pinned_tx.closed() => return,
+            }
+        }
+    }
+
+    async fn repin(&self, room_id: &RoomId, event_id: &str) {
+        loop {
+            sleep(pinned::REPIN_INTERVAL).await;
+            self.change_board(room_id, |pins| {
+                if pins.iter().any(|pin| pin == event_id) {
+                    pins.retain(|pin| pin != event_id);
+                } else {
+                    pins.push(event_id.to_owned());
+                }
+            });
         }
     }
 }
@@ -1974,6 +2171,56 @@ fn spawn_upload_progress(
             },
         )
         .await;
+    });
+}
+
+struct RemovedMessage {
+    timeline_tx: mpsc::Sender<TimelineUpdate>,
+    offset: usize,
+    row: usize,
+    message: TimelineMessage,
+    replies: Vec<(usize, TimelineMessage)>,
+}
+
+fn stamp_deleted_reply(message: &mut TimelineMessage, deleted: &HashSet<String>) -> bool {
+    let Some(reply) = message.reply.as_mut() else {
+        return false;
+    };
+    if !deleted.contains(&reply.event_id) || reply.kind == MessagePreviewKind::Deleted {
+        return false;
+    }
+    reply.kind = MessagePreviewKind::Deleted;
+    reply.body = RichText::default();
+    true
+}
+
+fn spawn_deletion_refusal(active: SharedActiveRoom, removed: RemovedMessage) {
+    tokio::spawn(async move {
+        sleep(message_menu::REFUSAL_DELAY).await;
+        let restored = {
+            let Ok(mut guard) = active.lock() else {
+                return;
+            };
+            let Some(room) = guard.as_mut() else {
+                return;
+            };
+            if !room.timeline_tx.same_channel(&removed.timeline_tx) {
+                return;
+            }
+            let offset = removed.offset.min(room.messages.len());
+            room.messages.insert(offset, removed.message.clone());
+            room.prepended.saturating_add(offset)
+        };
+        send_patch(
+            &removed.timeline_tx,
+            TimelinePatch::Insert {
+                index: restored,
+                message: removed.message,
+                landing: Landing::AmongRemoteEvents,
+            },
+        )
+        .await;
+        drop(removed.timeline_tx.send(TimelineUpdate::DeleteFailed).await);
     });
 }
 

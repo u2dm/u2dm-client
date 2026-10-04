@@ -106,6 +106,8 @@ const ENUM_TABLES: &[(&str, &str)] = &[
     ("AttachmentKind", "attachment_kinds"),
     ("RoomScope", "room_scopes"),
     ("SpaceIndexStatus", "space_index_statuses"),
+    ("SourceStatus", "source_statuses"),
+    ("SourceEncryption", "source_encryptions"),
     ("ChildAccess", "child_accesses"),
     ("NotifyMode", "notify_modes"),
     ("MemberRole", "member_roles"),
@@ -191,6 +193,11 @@ const SCENARIO_SOURCES: &[ScenarioSource] = &[
     },
     ScenarioSource {
         file: "src/adapters/demo/room_info.rs",
+        arms_between: ("fn apply(scenario: &mut Scenario, flag: &str) {", "\n}"),
+        ignored: &[],
+    },
+    ScenarioSource {
+        file: "src/adapters/demo/message_menu.rs",
         arms_between: ("fn apply(scenario: &mut Scenario, flag: &str) {", "\n}"),
         ignored: &[],
     },

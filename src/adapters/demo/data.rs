@@ -125,6 +125,10 @@ pub fn room_about(room_id: &RoomId) -> Option<RoomAbout> {
     })
 }
 
+pub fn event_link(room_id: &RoomId, event_id: &str) -> String {
+    format!("{MATRIX_TO}{room_id}/{event_id}?via={DEMO_VIA}")
+}
+
 fn room_link(room_id: &RoomId, alias: Option<&str>) -> String {
     match alias.and_then(|alias| alias.strip_prefix('#')) {
         Some(alias) => format!("{MATRIX_TO}%23{alias}"),
@@ -396,7 +400,7 @@ fn fixture_id(message: &TimelineMessage) -> Option<&str> {
     Some(copied.map_or(event_id, |(id, _)| id))
 }
 
-fn pinned_message(message: &TimelineMessage) -> Option<PinnedMessage> {
+pub fn pinned_message(message: &TimelineMessage) -> Option<PinnedMessage> {
     if message.body.service().is_some() {
         return None;
     }

@@ -79,6 +79,12 @@ export global Actions {
     callback jump-to-latest();
     callback jump-to-event(string);
     callback open-pinned(string);
+    callback copy-message-link(string);
+    callback open-event-source(string);
+    callback close-event-source();
+    callback pin-message(string);
+    callback unpin-message(string);
+    callback delete-message(string);
     callback toggle-reaction(string, string);
     callback vote-poll(VotePollRequest);
     callback end-poll(string);

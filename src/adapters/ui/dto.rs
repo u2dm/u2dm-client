@@ -265,6 +265,7 @@ pub struct MessageDto {
     pub is_own: bool,
     pub edited: bool,
     pub text_editable: bool,
+    pub pinned: bool,
     pub first_unread: bool,
     pub counts_as_unread: bool,
     pub send_state: SendState,
@@ -644,7 +645,7 @@ pub fn preview_line(text: &RichText) -> SharedString {
     }
 }
 
-pub fn message_to_dto(m: &TimelineMessage, media: &dyn MediaCache) -> MessageDto {
+pub fn message_to_dto(m: &TimelineMessage, pinned: bool, media: &dyn MediaCache) -> MessageDto {
     let item = TimelineItemKey::current(&m.unique_id);
     let sender_label = message_sender_label(m);
     let (reactions, all_reactions) = reaction_dtos(&item, &m.reactions, media);
@@ -683,6 +684,7 @@ pub fn message_to_dto(m: &TimelineMessage, media: &dyn MediaCache) -> MessageDto
         is_own: m.is_own,
         edited: m.edited,
         text_editable: m.editable_text().is_some(),
+        pinned,
         first_unread: m.is_first_unread,
         counts_as_unread: m.counts_as_unread(),
         send_state: m.send_state,

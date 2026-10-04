@@ -54,8 +54,12 @@ pub trait UiBackend: Sized + 'static {
     fn attach_models(window: &Self::Window, models: &Models<Self>);
     fn bind_sticker_search(window: &Self::Window, search: impl Fn(&str) + 'static);
 
-    fn convert_message(message: &TimelineMessage, media: &dyn MediaCache) -> Self::Message {
-        message_to_dto(message, media).into()
+    fn convert_message(
+        message: &TimelineMessage,
+        pinned: bool,
+        media: &dyn MediaCache,
+    ) -> Self::Message {
+        message_to_dto(message, pinned, media).into()
     }
 
     fn convert_room(room: &Room, media: &dyn MediaCache) -> Self::Room {

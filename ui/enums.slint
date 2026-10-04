@@ -83,6 +83,10 @@ export enum UserMessageKind {
     load-more-failed,
     message-not-found,
     message-not-showable,
+    message-link-failed,
+    message-pin-failed,
+    message-unpin-failed,
+    message-delete-failed,
     space-order-save-failed,
     join-room-failed,
     leave-room-failed,
@@ -146,6 +150,19 @@ export enum RoomScope {
     all,
     direct,
     space,
+}
+
+export enum SourceStatus {
+    closed,
+    locating,
+    ready,
+    unavailable,
+}
+
+export enum SourceEncryption {
+    plain,
+    decrypted,
+    undecryptable,
 }
 
 export enum SpaceIndexStatus {
@@ -245,6 +262,7 @@ export enum PreviewKind {
     encrypted,
     sticker,
     poll,
+    deleted,
 }
 
 export enum AudioKind {

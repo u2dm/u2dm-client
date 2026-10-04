@@ -1,11 +1,12 @@
 use crate::adapters::ui::schema::{
     attachment_kinds, audio_kinds, child_accesses, connection_states, enum_names, login_activities,
     login_methods, login_phases, member_roles, notify_modes, preview_kinds, room_scopes,
-    roster_statuses, space_index_statuses, user_message_kinds, variant_named,
+    roster_statuses, source_encryptions, source_statuses, space_index_statuses, user_message_kinds,
+    variant_named,
 };
 use crate::commands::messages::UserMessageKind;
 use crate::commands::view::{
-    AttachmentKind, ChildAccess, LoginActivity, LoginStep, RoomScope, RosterStatus,
+    AttachmentKind, ChildAccess, LoginActivity, LoginStep, RoomScope, RosterStatus, SourceState,
     SpaceIndexStatus,
 };
 use crate::domain::auth::LoginMethod;
@@ -14,6 +15,7 @@ use crate::domain::message::MessagePreviewKind;
 use crate::domain::room::NotifyMode;
 use crate::domain::room_info::MemberRole;
 use crate::domain::sync::ConnectionStatus;
+use crate::domain::timeline::SourceEncryption;
 
 login_phases!(enum_names val login_step LoginStep;);
 login_activities!(enum_names val login_activity LoginActivity;);
@@ -30,3 +32,5 @@ notify_modes!(enum_names val notify_mode NotifyMode;);
 notify_modes!(variant_named notify_mode_named NotifyMode;);
 member_roles!(enum_names val member_role MemberRole;);
 roster_statuses!(enum_names val roster_status RosterStatus;);
+source_statuses!(enum_names ref source_status SourceState;);
+source_encryptions!(enum_names ref source_encryption SourceEncryption;);

@@ -29,6 +29,9 @@ export global MessagePreview {
         if kind == PreviewKind.poll {
             return @tr("📊 {}", body);
         }
+        if kind == PreviewKind.deleted {
+            return @tr("🗑 Deleted message");
+        }
         return body;
     }
 }

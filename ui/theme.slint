@@ -2,6 +2,7 @@ import { Palette } from "std-widgets.slint";
 
 export global Fonts {
     in property <string> emoji: "Twemoji";
+    out property <string> mono: "monospace";
 
     out property <length> caption-small: 9px;
     out property <length> caption: 11px;
@@ -215,6 +216,8 @@ export global Metrics {
     out property <length> room-info-member-avatar: Size.xl;
     out property <length> room-info-page-ahead: root.room-info-row * 3;
     out property <length> room-info-picker-width: 240px;
+    out property <length> source-width: 560px;
+    out property <length> source-max-height: 600px;
     out property <length> room-info-picker-row: Size.target;
     out property <int> room-info-topic-lines: 3;
 
@@ -230,6 +233,9 @@ export global Metrics {
     out property <length> upload-bar: Space.sm;
     out property <length> attach-menu-width: 232px;
     out property <length> attach-row: 44px;
+    out property <length> message-menu-width: 240px;
+    out property <length> message-menu-row: Size.xl;
+    out property <length> message-menu-reaction: Size.md;
     out property <length> attachment-preview-max: 320px;
     out property <length> attachment-preview-min: 120px;
     out property <length> attachment-chip: 56px;

@@ -9,7 +9,7 @@ import {
 } from "screens/chat/components/types.slint";
 import { VerificationEmoji } from "components/types.slint";
 import { UserMessage } from "messages.slint";
-import { AttachmentKind, AudioKind, ConnectionState, LoginActivity, LoginMethodKind, LoginPhase, NotifyMode, PreviewKind, RoomScope, RosterStatus, SpaceIndexStatus, TimelineState, UserMessageKind, VerificationActivity, VerificationPhase } from "enums.slint";
+import { AttachmentKind, AudioKind, ConnectionState, LoginActivity, LoginMethodKind, LoginPhase, NotifyMode, PreviewKind, RoomScope, RosterStatus, SourceEncryption, SourceStatus, SpaceIndexStatus, TimelineState, UserMessageKind, VerificationActivity, VerificationPhase } from "enums.slint";
 
 export global LoginView {
     in property <LoginPhase> step: LoginPhase.loading;
@@ -30,6 +30,7 @@ export global SessionView {
 export global WindowView {
     in property <bool> focused: true;
     in property <int> swipe-travel;
+    in property <int> context-presses;
 }
 
 export global DirectoryView {
@@ -54,6 +55,16 @@ export global SpaceIndexView {
     in property <string> space-name;
     in property <[SpaceChildEntry]> rows;
     in property <int> pages-landed;
+}
+
+export global SourceView {
+    in property <SourceStatus> status: SourceStatus.closed;
+    out property <bool> visible: self.status != SourceStatus.closed;
+    in property <string> event-id;
+    in property <string> json;
+    in property <string> edit-json;
+    in property <SourceEncryption> encryption: SourceEncryption.plain;
+    in property <string> encryption-json;
 }
 
 export global RoomInfoView {
@@ -90,6 +101,9 @@ export global RoomView {
     in property <bool> may-vote: true;
     in property <bool> may-end-polls: true;
     in property <bool> may-start-polls: true;
+    in property <bool> may-delete-own: true;
+    in property <bool> may-delete-others: true;
+    in property <bool> may-pin: true;
     in property <[MessageEntry]> timeline;
     in property <TimelineState> timeline-status: TimelineState.none;
     in property <bool> timeline-retryable;
@@ -108,6 +122,8 @@ export global RoomView {
     in property <bool> forwards-loading;
     in property <UserMessageKind> toast-message: UserMessageKind.none;
     in property <string> toast-detail;
+    in property <string> message-link;
+    in property <int> message-link-serial;
 }
 
 export global StickerView {

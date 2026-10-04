@@ -5,9 +5,11 @@ mod conclude;
 mod credentials;
 mod establish;
 mod event;
+mod event_source;
 pub mod input;
 mod lifecycle;
 mod media;
+mod message_actions;
 mod pinned;
 mod polls;
 mod recover;
@@ -30,10 +32,12 @@ use active_timeline::ActiveTimeline;
 use attachments::Attachments;
 use audio::AudioController;
 use establish::{EstablishedSession, Rollback};
-use event::{AppEvent, EndReason, SessionEvent, TimelineEvent};
+use event::{AppEvent, EndReason, MessageActionEvent, SessionEvent, TimelineEvent};
+use event_source::EventSourceViewer;
 use input::{CommandSender, EventSender, Inbox, Input};
 use lifecycle::{Lifecycle, Settled};
 use media::MediaActions;
+use message_actions::MessageActions;
 use pinned::PinnedMessages;
 use recover::Recovery;
 use room_directory::{RoomDirectory, RoomMeta};
@@ -57,7 +61,7 @@ use crate::commands::view::{AppViewState, LoginActivity, LoginStep, Toast};
 use crate::domain::account::AccountScope;
 use crate::domain::auth::ServerInfo;
 use crate::domain::media::AttachmentPick;
-use crate::domain::message::MessageEdit;
+use crate::domain::message::{MessageEdit, PinChange};
 use crate::domain::poll::PollDraft;
 use crate::domain::room::{NotifyMode, RoomId, RoomList, Space};
 use crate::domain::sticker::PackId;
@@ -158,6 +162,8 @@ pub struct AppService {
     stickers: Stickers,
     space_index: SpaceIndex,
     room_info: RoomInfo,
+    message_actions: MessageActions,
+    event_source: EventSourceViewer,
     attachments: Attachments,
     submissions: Submissions,
     selection: Selection,
@@ -197,6 +203,8 @@ impl AppService {
             stickers: Stickers::new(Arc::clone(&output)),
             space_index: SpaceIndex::new(Arc::clone(&output), events.clone()),
             room_info: RoomInfo::new(Arc::clone(&output), events.clone()),
+            message_actions: MessageActions::new(Arc::clone(&output), events.clone()),
+            event_source: EventSourceViewer::new(Arc::clone(&output)),
             attachments: Attachments::new(media_files, Arc::clone(&output), events.clone()),
             submissions: Submissions::new(Arc::clone(&output), events.clone()),
             events,
@@ -204,7 +212,7 @@ impl AppService {
             output,
             background: TaskGroup::new("background"),
             operations: TaskGroup::new("operations"),
-            send_lanes: SendLanes::new(),
+            send_lanes: SendLanes::new("sends"),
             selection: Selection::default(),
             last_selected_room: None,
             lifecycle: Lifecycle::new(),
@@ -465,6 +473,24 @@ impl AppService {
             UiCommand::OpenPinned { event_id } => {
                 self.open_pinned(event_id);
             }
+            UiCommand::CopyMessageLink { event_id } => {
+                self.copy_message_link(event_id);
+            }
+            UiCommand::OpenEventSource { event_id } => {
+                self.event_source.open(&self.active_timeline, event_id);
+            }
+            UiCommand::CloseEventSource => {
+                self.event_source.close();
+            }
+            UiCommand::PinMessage { event_id } => {
+                self.change_pin(event_id, PinChange::Pin);
+            }
+            UiCommand::UnpinMessage { event_id } => {
+                self.change_pin(event_id, PinChange::Unpin);
+            }
+            UiCommand::DeleteMessage { event_id } => {
+                self.delete_message(event_id);
+            }
             UiCommand::RetrySend { local_id } => {
                 self.resolve_failed_send(local_id, FailedSend::Retry);
             }
@@ -624,6 +650,7 @@ impl AppService {
             member_count: room.meta.member_count,
             encrypted: room.meta.encrypted,
             polls: room.meta.polls,
+            messages: room.meta.messages,
             generation: room.generation,
             live: room.live,
         };
@@ -921,6 +948,23 @@ impl AppService {
             } => {
                 self.room_info.leave_settled(&room_id, &name, outcome);
             }
+            AppEvent::MessageAction(event) => self.handle_message_action(event),
+        }
+    }
+
+    fn handle_message_action(&mut self, event: MessageActionEvent) {
+        match event {
+            MessageActionEvent::LinkResolved { request, link } => {
+                self.message_actions.link_resolved(request, link);
+            }
+            MessageActionEvent::PinSettled {
+                request,
+                event_id,
+                outcome,
+            } => self.pinned.pin_settled(request, &event_id, outcome),
+            MessageActionEvent::DeletionSettled { event_id, outcome } => {
+                self.message_actions.deletion_settled(&event_id, outcome);
+            }
         }
     }
 
@@ -952,6 +996,16 @@ impl AppService {
                 request,
                 track,
             } => self.settle_audio_lookup(&room_id, generation, request, track),
+            TimelineEvent::SourceLocated {
+                room_id,
+                generation,
+                request,
+                source,
+            } => {
+                if self.active_timeline.is_current(&room_id, generation) {
+                    self.event_source.located(request, source);
+                }
+            }
         }
     }
 
@@ -1227,6 +1281,38 @@ impl AppService {
         Some((media, room_id))
     }
 
+    fn delete_message(&mut self, event_id: String) {
+        let Some(port) = self.port(|a| &a.timeline) else {
+            return;
+        };
+        let Some(room_id) = self.active_timeline.room_id().cloned() else {
+            return;
+        };
+        self.message_actions
+            .delete(&mut self.send_lanes, port, room_id, event_id);
+    }
+
+    fn change_pin(&mut self, event_id: String, change: PinChange) {
+        let Some(port) = self.port(|a| &a.pinned) else {
+            return;
+        };
+        let Some(room_id) = self.active_timeline.room_id().cloned() else {
+            return;
+        };
+        self.pinned.change(port, room_id, event_id, change);
+    }
+
+    fn copy_message_link(&mut self, event_id: String) {
+        let Some(port) = self.port(|a| &a.room_info) else {
+            return;
+        };
+        let Some(room_id) = self.active_timeline.room_id().cloned() else {
+            return;
+        };
+        self.message_actions
+            .copy_link(&mut self.operations, port, room_id, event_id);
+    }
+
     fn open_media(&mut self, event_id: String) {
         if let Some((media, room_id)) = self.media_in_active_room() {
             self.media.open_media(media, room_id, event_id);
@@ -1308,6 +1394,7 @@ impl AppService {
     async fn select_room(&mut self, room_id: RoomId) {
         self.space_index.close();
         self.room_info.close();
+        self.event_source.close();
         self.sync_selected_room(Some(&room_id));
         self.follow_pinned(room_id.clone());
         self.open_room(room_id, TimelineFocus::ReadPosition).await;
@@ -1357,6 +1444,7 @@ impl AppService {
         self.active_timeline
             .select_room(timeline, room_id, generation, focus)
             .await;
+        self.event_source.retarget(&self.active_timeline);
     }
 
     async fn retry_timeline(&mut self) {
@@ -1388,6 +1476,7 @@ impl AppService {
 
     async fn drop_selected_room(&mut self) {
         self.room_info.close();
+        self.event_source.close();
         self.audio.abandon_lookup();
         self.selection.room = None;
         self.submissions.offer(None);
@@ -1511,6 +1600,8 @@ impl AppService {
     async fn tear_down_session(&mut self, view: AppViewState) {
         self.attachments.clear();
         self.submissions.forget_all();
+        self.message_actions.forget();
+        self.event_source.reset();
         self.output
             .emit(Effect::SessionReset(Box::new(view.clone())))
             .await;

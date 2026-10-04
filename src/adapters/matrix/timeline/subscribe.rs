@@ -23,6 +23,7 @@ use super::members::{Arrived, Batch, Members, resolve_members};
 use super::poll_ends::EndingPolls;
 use super::polls;
 use super::rowless_sends::{RowlessSendEvent, RowlessSendGuard};
+use super::source;
 use super::undecrypted::UndecryptedResponses;
 use super::{EnrichmentClaim, EnrichmentPool, TimelineContext};
 use crate::adapters::matrix::media::{MediaService, ThumbnailRequest};
@@ -346,6 +347,10 @@ async fn handle_timeline_command(
             report_audio(request, &lookup, items, ctx).await;
             return;
         }
+        TimelineCommand::LocateSource { request, event_id } => {
+            report_source(request, &event_id, items, ctx).await;
+            return;
+        }
     };
 
     if timeline_tx
@@ -429,6 +434,34 @@ async fn report_audio(
             .send(TimelineUpdate::AudioLocated {
                 request,
                 track: track.map(Box::new),
+            })
+            .await,
+    );
+}
+
+async fn report_source(
+    request: u64,
+    event_id: &str,
+    items: &TimelineItems,
+    ctx: &TimelineContext<'_>,
+) {
+    let source = OwnedEventId::try_from(event_id)
+        .ok()
+        .and_then(|id| items.position_of_event(&id))
+        .and_then(|raw| items.items().get(raw))
+        .and_then(|item| item.as_event())
+        .and_then(source::of);
+    tracing::debug!(
+        request,
+        event_id,
+        found = source.is_some(),
+        "resolved a source lookup"
+    );
+    drop(
+        ctx.timeline_tx
+            .send(TimelineUpdate::SourceLocated {
+                request,
+                source: source.map(Box::new),
             })
             .await,
     );

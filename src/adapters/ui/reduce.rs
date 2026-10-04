@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{BTreeSet, HashSet};
 use std::mem;
 use std::sync::Arc;
 
@@ -29,15 +29,17 @@ use crate::commands::effects::{Effect, VerificationActivity, VerificationUpdate}
 use crate::commands::messages::{UserMessage, UserMessageKind};
 use crate::commands::ui::Draft;
 use crate::commands::view::{
-    AppViewState, AttachmentView, AudioView, DirectoryView, LifecycleView, NowPlaying,
-    PaginationView, PinnedView, RoomCard, RoomInfoView, SpaceIndexView, StickerView, Toast,
-    TrackFile, UnsentMessage, VideoView,
+    AppViewState, AttachmentView, AudioView, DirectoryView, LifecycleView, MessageLink, NowPlaying,
+    PaginationView, PinnedView, RoomCard, RoomInfoView, SourceState, SpaceIndexView, StickerView,
+    Toast, TrackFile, UnsentMessage, VideoView,
 };
-use crate::domain::message::{EditKind, MessageEdit, MessagePreviewKind, RichText};
+use crate::domain::message::{
+    EditKind, MessageEdit, MessagePermissions, MessagePreviewKind, RichText, TimelineMessage,
+};
 use crate::domain::poll::PollPermissions;
 use crate::domain::room::{RoomId, RoomList};
 use crate::domain::room_info::RoomAbout;
-use crate::domain::timeline::{TimelinePatch, TimelineStatus};
+use crate::domain::timeline::{SourceEncryption, TimelinePatch, TimelineStatus};
 use crate::domain::verification::VerificationEvent as DomainVerificationEvent;
 use crate::ports::media::MediaCache;
 use crate::util::format_bytes;
@@ -158,6 +160,7 @@ pub fn dispatch_effect<B: UiBackend>(w: &B::Window, event: Effect, ctx: &UiEvent
             member_count,
             encrypted,
             polls,
+            messages,
             generation,
             live,
         } => {
@@ -174,6 +177,7 @@ pub fn dispatch_effect<B: UiBackend>(w: &B::Window, event: Effect, ctx: &UiEvent
             );
             w.set_bool(BoolProp::SelectedRoomEncrypted, encrypted);
             apply_poll_permissions(w, polls);
+            apply_message_permissions(w, messages);
             let (pagination, pinned) = with_session(|session| {
                 session
                     .snapshot
@@ -273,10 +277,17 @@ fn apply_timeline<B: UiBackend>(
     }
 
     let anchor_row_moved = patch.shifts_rows() || replaces_loaded_window;
+    let pinned_ids = with_session(|session| {
+        session
+            .snapshot
+            .as_ref()
+            .map(|view| Arc::clone(&view.pinned.pinned_ids))
+    })
+    .unwrap_or_default();
     apply_timeline_patch(
         &ctx.models.timeline,
         *patch,
-        &|m| B::convert_message(m, ctx.media),
+        &|m| B::convert_message(m, is_pinned(&pinned_ids, m), ctx.media),
         &|entry, delta| enrich_message::<B>(entry, delta, ctx.media),
         &|entry| entry.unique_id(),
     );
@@ -306,6 +317,8 @@ fn apply_snapshot<B: UiBackend>(
         audio,
         unsent,
         toast,
+        message_link,
+        source,
     } = view.as_ref();
 
     apply_lifecycle(w, last.map(|l| &l.lifecycle), lifecycle);
@@ -320,6 +333,10 @@ fn apply_snapshot<B: UiBackend>(
     }
     if last.is_none_or(|l| l.pinned != *pinned) {
         apply_pinned(w, pinned);
+    }
+    let last_pinned_ids = last.map(|l| Arc::clone(&l.pinned.pinned_ids));
+    if last_pinned_ids.as_ref() != Some(&pinned.pinned_ids) {
+        apply_pin_marks::<B>(last_pinned_ids.as_deref(), &pinned.pinned_ids, ctx);
     }
     if last.is_none_or(|l| {
         !Arc::ptr_eq(&l.stickers.packs, &stickers.packs)
@@ -345,7 +362,89 @@ fn apply_snapshot<B: UiBackend>(
     if last.is_none_or(|l| l.toast != *toast) {
         apply_toast(w, toast);
     }
+    if last.is_none_or(|l| l.message_link != *message_link) {
+        apply_message_link(w, message_link);
+    }
+    if last.is_none_or(|l| l.source != *source) {
+        apply_source(w, source);
+    }
     with_session(|session| session.snapshot = Some(Arc::clone(view)));
+}
+
+fn is_pinned(pinned_ids: &BTreeSet<String>, message: &TimelineMessage) -> bool {
+    message
+        .event_id
+        .as_ref()
+        .is_some_and(|event_id| pinned_ids.contains(event_id))
+}
+
+fn apply_pin_marks<B: UiBackend>(
+    last: Option<&BTreeSet<String>>,
+    next: &BTreeSet<String>,
+    ctx: &UiEventContext<'_, B>,
+) {
+    let changed: HashSet<&str> = match last {
+        Some(last) => last
+            .symmetric_difference(next)
+            .map(String::as_str)
+            .collect(),
+        None => next.iter().map(String::as_str).collect(),
+    };
+    if changed.is_empty() {
+        return;
+    }
+    patch_rows_by_id(
+        &*ctx.models.timeline,
+        &changed,
+        &B::Message::event_id,
+        |entry| {
+            let pinned = next.contains(entry.event_id());
+            entry.set_pinned(pinned);
+        },
+    );
+}
+
+fn apply_source(w: &impl UiProps, state: &SourceState) {
+    let (event_id, source) = match state {
+        SourceState::Closed => ("", None),
+        SourceState::Locating { event_id } | SourceState::Unavailable { event_id } => {
+            (event_id.as_str(), None)
+        }
+        SourceState::Ready(source) => (source.event_id.as_str(), Some(source.as_ref())),
+    };
+    let encryption = source.map_or(&SourceEncryption::Plain, |source| &source.encryption);
+    let encryption_json = match encryption {
+        SourceEncryption::Decrypted { details } => details.as_str(),
+        SourceEncryption::Plain | SourceEncryption::Undecryptable => "",
+    };
+    w.set_string(StringProp::SourceEventId, SharedString::from(event_id));
+    w.set_string(
+        StringProp::SourceJson,
+        SharedString::from(source.map_or("", |source| source.json.as_str())),
+    );
+    w.set_string(
+        StringProp::SourceEditJson,
+        SharedString::from(
+            source
+                .and_then(|source| source.edit_json.as_deref())
+                .unwrap_or(""),
+        ),
+    );
+    w.set_string(
+        StringProp::SourceEncryptionJson,
+        SharedString::from(encryption_json),
+    );
+    w.set_source_encryption(encryption);
+    w.set_source_status(state);
+}
+
+fn apply_message_link(w: &(impl UiProps + ComponentHandle), link: &MessageLink) {
+    w.set_string(
+        StringProp::MessageLink,
+        SharedString::from(link.url.as_str()),
+    );
+    w.set_int(IntProp::MessageLinkSerial, link.serial);
+    run_change_handlers_next_frame(w);
 }
 
 fn apply_directory<B: UiBackend>(
@@ -1097,6 +1196,7 @@ fn clear_selected_room(w: &impl UiProps) {
     w.set_int(IntProp::SelectedRoomMembers, 0);
     w.set_bool(BoolProp::SelectedRoomEncrypted, false);
     apply_poll_permissions(w, PollPermissions::UNRESTRICTED);
+    apply_message_permissions(w, MessagePermissions::UNRESTRICTED);
     w.set_int(IntProp::AnchorIndex, NO_ANCHOR);
     w.set_bool(BoolProp::TimelineDetached, false);
     publish_room_cursor(w);
@@ -1107,4 +1207,10 @@ fn apply_poll_permissions(w: &impl UiProps, polls: PollPermissions) {
     w.set_bool(BoolProp::MayVote, polls.vote);
     w.set_bool(BoolProp::MayEndPolls, polls.end);
     w.set_bool(BoolProp::MayStartPolls, polls.start);
+}
+
+fn apply_message_permissions(w: &impl UiProps, messages: MessagePermissions) {
+    w.set_bool(BoolProp::MayDeleteOwn, messages.delete_own);
+    w.set_bool(BoolProp::MayDeleteOthers, messages.delete_others);
+    w.set_bool(BoolProp::MayPin, messages.pin);
 }

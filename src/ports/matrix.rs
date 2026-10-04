@@ -8,7 +8,7 @@ use tokio_util::sync::CancellationToken;
 use crate::domain::account::AccountScope;
 use crate::domain::auth::{LoginCredentials, OAuthLoginData, ServerInfo, Session};
 use crate::domain::media::{MediaRendition, OutgoingAttachment, WaveformNeed};
-use crate::domain::message::{MessageEdit, PinnedMessage};
+use crate::domain::message::{MessageEdit, PinChange, PinnedMessage};
 use crate::domain::poll::PollDraft;
 use crate::domain::room::{NotifyMode, RoomId};
 use crate::domain::room_info::{RoomAbout, RosterMember};
@@ -199,6 +199,7 @@ pub trait RoomInfoPort: Send + Sync {
     async fn set_notify(&self, room_id: &RoomId, mode: NotifyMode) -> Result<()>;
     async fn leave(&self, room_id: &RoomId) -> Result<()>;
     async fn fetch_avatars(&self, mxcs: &[String]) -> usize;
+    async fn event_link(&self, room_id: &RoomId, event_id: &str) -> Result<String>;
 }
 
 #[async_trait]
@@ -223,6 +224,7 @@ pub trait TimelinePort: Send + Sync {
     ) -> Result<AttachmentHandoff>;
     async fn resend(&self, room_id: &RoomId, local_id: &str) -> Result<()>;
     async fn discard_send(&self, room_id: &RoomId, local_id: &str) -> Result<()>;
+    async fn delete_message(&self, room_id: &RoomId, event_id: &str) -> Result<()>;
 }
 
 #[async_trait]
@@ -232,6 +234,7 @@ pub trait PinnedPort: Send + Sync {
         room_id: &RoomId,
         pinned_tx: mpsc::Sender<Vec<PinnedMessage>>,
     ) -> Result<()>;
+    async fn change_pin(&self, room_id: &RoomId, event_id: &str, change: PinChange) -> Result<()>;
 }
 
 #[async_trait]

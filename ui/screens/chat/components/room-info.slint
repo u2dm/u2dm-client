@@ -4,6 +4,7 @@ import { IconDisplay, IconSet, Icon } from "@lucide";
 import { Avatar } from "../../../components/avatar.slint";
 import { AppButton, IconButton } from "../../../components/button.slint";
 import { ClickArea, ListItemArea } from "../../../components/a11y.slint";
+import { Copier } from "../../../components/copier.slint";
 import { DialogCard, ModalHost, PickerCard } from "../../../components/overlay.slint";
 import { ErrorBanner } from "../../../components/banner.slint";
 import { DotPulse } from "../../../components/dot-pulse.slint";
@@ -480,9 +481,7 @@ export component RoomInfoDialog inherits ModalHost {
     }
 
     function copy-link() {
-        link-copier.select-all();
-        link-copier.copy();
-        link-copier.clear-selection();
+        link-copier.copy-text(RoomInfoView.link);
         root.copied = true;
     }
 
@@ -507,18 +506,7 @@ export component RoomInfoDialog inherits ModalHost {
         }
     }
 
-    link-copier := TextInput {
-        x: 0;
-        y: 0;
-        width: 0;
-        height: 0;
-        visible: false;
-        enabled: false;
-        read-only: true;
-        single-line: true;
-        accessible-role: none;
-        text: RoomInfoView.link;
-    }
+    link-copier := Copier { }
 
     DialogCard {
         x: (root.width - self.width) / 2;

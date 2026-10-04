@@ -1,0 +1,52 @@
+import { Palette } from "std-widgets.slint";
+import { IconDisplay, Icon } from "@lucide";
+
+import { ClickArea } from "a11y.slint";
+import { AppStyle, Fonts, IconSize, Radius, Space } from "../theme.slint";
+
+export component MenuRow inherits Rectangle {
+    in property <Icon> icon;
+    in property <string> label;
+    in property <color> tint: AppStyle.foreground-muted;
+    in property <color> text-color: Palette.foreground;
+    in property <bool> focusable: true;
+    in property <bool> roving-focus: false;
+    out property <bool> has-hover: touch.has-hover;
+
+    callback clicked();
+
+    border-radius: Radius.sm;
+    background: touch.has-hover ? AppStyle.overlay-hover : transparent;
+
+    touch := ClickArea {
+        label: root.label;
+        ring-radius: Radius.sm;
+        focusable: root.focusable;
+        roving-focus: root.roving-focus;
+        clicked => {
+            root.clicked();
+        }
+    }
+
+    HorizontalLayout {
+        padding-left: Space.lg;
+        padding-right: Space.lg;
+        spacing: Space.lg;
+
+        IconDisplay {
+            cross-axis-self-alignment: center;
+            icon: root.icon;
+            size: IconSize.md;
+            stroke: root.tint;
+        }
+
+        Text {
+            text: root.label;
+            font-size: Fonts.body;
+            vertical-alignment: center;
+            horizontal-stretch: 1;
+            color: root.text-color;
+            overflow: elide;
+        }
+    }
+}

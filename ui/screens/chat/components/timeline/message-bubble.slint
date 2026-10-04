@@ -20,6 +20,7 @@ import { Avatar } from "../../../../components/avatar.slint";
 import { ClickArea } from "../../../../components/a11y.slint";
 import {
     Composer,
+    MessageMenu,
     ReactionAnchor,
     Reactions,
     ReplySwipe,
@@ -27,7 +28,7 @@ import {
     TextSelection,
 } from "../../../../local.slint";
 import { Actions } from "../../../../actions.slint";
-import { RoomView } from "../../../../views.slint";
+import { RoomView, WindowView } from "../../../../views.slint";
 import { AppStyle, Avatars, Fonts, Glyph, IconSize, Metrics, Motion, Opacity, Radius, Size, Space, Stroke } from "../../../../theme.slint";
 import { Delivery, MessageKind, SendState } from "../../../../enums.slint";
 
@@ -188,6 +189,19 @@ export component MessageBubble inherits VerticalLayout {
 
         changed tracked-anchor => {
             Reactions.follow-bubble(self.tracked-anchor);
+        }
+
+        property <int> context-presses: WindowView.context-presses;
+
+        changed context-presses => {
+            if hover-row.has-hover {
+                MessageMenu.open(
+                    bubble.anchor(),
+                    msg.unique-id,
+                    self.absolute-position.x + hover-row.mouse-x,
+                    self.absolute-position.y + hover-row.mouse-y,
+                    false);
+            }
         }
 
         if message-row.swipe-mine: IconDisplay {

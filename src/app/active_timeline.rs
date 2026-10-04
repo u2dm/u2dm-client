@@ -357,6 +357,13 @@ impl ActiveTimeline {
             .map(|()| room_id)
     }
 
+    pub(super) fn locate_source(&self, request: u64, event_id: String) -> bool {
+        self.timeline_cmd_tx.as_ref().is_some_and(|tx| {
+            tx.send(TimelineCommand::LocateSource { request, event_id })
+                .is_ok()
+        })
+    }
+
     pub(super) fn is_active_room(&self, room_id: &RoomId) -> bool {
         self.active_room_id.as_ref() == Some(room_id)
     }
@@ -581,12 +588,14 @@ impl Forwarder {
             TimelineUpdate::EditUnsaved(edit) => {
                 self.offer_unsaved_edit(edit);
             }
+            TimelineUpdate::DeleteFailed => report_delete_failure(self.output.as_ref()),
             TimelineUpdate::Patch(_)
             | TimelineUpdate::ResolvingUnread
             | TimelineUpdate::UnreadUnresolved
             | TimelineUpdate::Pagination { .. }
             | TimelineUpdate::JumpOutcome { .. }
-            | TimelineUpdate::AudioLocated { .. } => {}
+            | TimelineUpdate::AudioLocated { .. }
+            | TimelineUpdate::SourceLocated { .. } => {}
         }
     }
 
@@ -618,12 +627,24 @@ impl Forwarder {
                     return false;
                 }
             }
+            TimelineUpdate::DeleteFailed => report_delete_failure(self.output.as_ref()),
             TimelineUpdate::AudioLocated { request, track } => {
                 let located = TimelineEvent::AudioLocated {
                     room_id: self.room_id.clone(),
                     generation: self.generation,
                     request,
                     track,
+                };
+                if self.events.send(AppEvent::Timeline(located)).is_err() {
+                    return false;
+                }
+            }
+            TimelineUpdate::SourceLocated { request, source } => {
+                let located = TimelineEvent::SourceLocated {
+                    room_id: self.room_id.clone(),
+                    generation: self.generation,
+                    request,
+                    source,
                 };
                 if self.events.send(AppEvent::Timeline(located)).is_err() {
                     return false;
@@ -734,6 +755,13 @@ fn report_poll_failure(output: &dyn AppOutputPort, action: PollAction) {
         PollAction::Edit => UserMessageKind::PollEditFailed,
     };
     super::show_toast(output, Toast::Error(UserMessage::new(kind)));
+}
+
+pub(super) fn report_delete_failure(output: &dyn AppOutputPort) {
+    super::show_toast(
+        output,
+        Toast::Error(UserMessage::new(UserMessageKind::MessageDeleteFailed)),
+    );
 }
 
 fn read_position_advance(patch: &TimelinePatch, snapshot: Snapshot) -> Option<TimelineAdvance> {

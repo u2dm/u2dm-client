@@ -56,6 +56,11 @@ macro_rules! string_props {
         RoomInfoAlias RoomInfoView "RoomInfoView" "alias" set_alias get_alias;
         RoomInfoJoinedOn RoomInfoView "RoomInfoView" "joined-on" set_joined_on get_joined_on;
         RoomInfoLink RoomInfoView "RoomInfoView" "link" set_link get_link;
+        MessageLink RoomView "RoomView" "message-link" set_message_link get_message_link;
+        SourceEventId SourceView "SourceView" "event-id" set_event_id get_event_id;
+        SourceJson SourceView "SourceView" "json" set_json get_json;
+        SourceEditJson SourceView "SourceView" "edit-json" set_edit_json get_edit_json;
+        SourceEncryptionJson SourceView "SourceView" "encryption-json" set_encryption_json get_encryption_json;
         RoomInfoErrorDetail RoomInfoView "RoomInfoView" "error-detail" set_error_detail get_error_detail;
     } };
 }
@@ -126,6 +131,12 @@ macro_rules! simple_callbacks {
         on_open_link "open-link" open_link manual_string OpenLink;
         on_jump_to_event "jump-to-event" jump_to_event manual_string JumpToEvent;
         on_open_pinned "open-pinned" open_pinned manual_string OpenPinned;
+        on_copy_message_link "copy-message-link" copy_message_link manual_string CopyMessageLink;
+        on_open_event_source "open-event-source" open_event_source manual_string OpenEventSource;
+        on_close_event_source "close-event-source" close_event_source plain CloseEventSource;
+        on_pin_message "pin-message" pin_message manual_string PinMessage;
+        on_unpin_message "unpin-message" unpin_message manual_string UnpinMessage;
+        on_delete_message "delete-message" delete_message manual_string DeleteMessage;
         on_pick_photo "pick-photo" pick_photo manual_string PickAttachment;
         on_pick_document "pick-document" pick_document manual_string PickAttachment;
         on_cancel_attachment "cancel-attachment" cancel_attachment plain CancelAttachment;
@@ -150,6 +161,9 @@ macro_rules! bool_props {
         MayVote RoomView "RoomView" "may-vote" set_may_vote get_may_vote;
         MayEndPolls RoomView "RoomView" "may-end-polls" set_may_end_polls get_may_end_polls;
         MayStartPolls RoomView "RoomView" "may-start-polls" set_may_start_polls get_may_start_polls;
+        MayDeleteOwn RoomView "RoomView" "may-delete-own" set_may_delete_own get_may_delete_own;
+        MayDeleteOthers RoomView "RoomView" "may-delete-others" set_may_delete_others get_may_delete_others;
+        MayPin RoomView "RoomView" "may-pin" set_may_pin get_may_pin;
         StickerRoomEncrypted StickerView "StickerView" "room-encrypted" set_room_encrypted get_room_encrypted;
         #[cfg(feature = "demo")] ProbeEnabled Probe "Probe" "enabled" set_enabled get_enabled;
         StickerLoading StickerView "StickerView" "loading" set_loading get_loading;
@@ -200,6 +214,8 @@ macro_rules! int_props {
         AudioDurationMs AudioView "AudioView" "duration-ms" set_duration_ms get_duration_ms;
         UnsentSubmission UnsentView "UnsentView" "submission" set_submission get_submission;
         SwipeTravel WindowView "WindowView" "swipe-travel" set_swipe_travel get_swipe_travel;
+        ContextPresses WindowView "WindowView" "context-presses" set_context_presses get_context_presses;
+        MessageLinkSerial RoomView "RoomView" "message-link-serial" set_message_link_serial get_message_link_serial;
         RoomInfoMembers RoomInfoView "RoomInfoView" "members" set_members get_members;
         RoomInfoColorIndex RoomInfoView "RoomInfoView" "color-index" set_color_index get_color_index;
         RoomInfoPagesLanded RoomInfoView "RoomInfoView" "pages-landed" set_pages_landed get_pages_landed;
@@ -247,6 +263,10 @@ macro_rules! enum_props {
             RoomInfoView "RoomInfoView" "roster" set_roster get_roster;
         RoomInfoError set_room_info_error(UserMessageKind)
             RoomInfoView "RoomInfoView" "error" set_error get_error;
+        SourceStatus set_source_status(&SourceState)
+            SourceView "SourceView" "status" set_status get_status;
+        SourceEncryption set_source_encryption(&SourceEncryption)
+            SourceView "SourceView" "encryption" set_encryption get_encryption;
     } };
 }
 pub(crate) use enum_props;
@@ -387,6 +407,10 @@ macro_rules! user_message_kinds {
         LoadMoreFailed            LoadMoreFailed          "load-more-failed";
         MessageNotFound           MessageNotFound         "message-not-found";
         MessageNotShowable        MessageNotShowable      "message-not-showable";
+        MessageLinkFailed         MessageLinkFailed       "message-link-failed";
+        MessagePinFailed          MessagePinFailed        "message-pin-failed";
+        MessageUnpinFailed        MessageUnpinFailed      "message-unpin-failed";
+        MessageDeleteFailed       MessageDeleteFailed     "message-delete-failed";
         SpaceOrderSaveFailed      SpaceOrderSaveFailed    "space-order-save-failed";
         JoinRoomFailed            JoinRoomFailed          "join-room-failed";
         LeaveRoomFailed           LeaveRoomFailed         "leave-room-failed";
@@ -481,6 +505,25 @@ macro_rules! space_index_statuses {
     } };
 }
 pub(crate) use space_index_statuses;
+
+macro_rules! source_statuses {
+    ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
+        Closed          Closed      "closed";
+        Locating{..}    Locating    "locating";
+        Ready(_)        Ready       "ready";
+        Unavailable{..} Unavailable "unavailable";
+    } };
+}
+pub(crate) use source_statuses;
+
+macro_rules! source_encryptions {
+    ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
+        Plain         Plain         "plain";
+        Decrypted{..} Decrypted     "decrypted";
+        Undecryptable Undecryptable "undecryptable";
+    } };
+}
+pub(crate) use source_encryptions;
 
 macro_rules! child_accesses {
     ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
@@ -606,6 +649,7 @@ macro_rules! preview_kinds {
         Encrypted Encrypted "encrypted";
         Sticker   Sticker   "sticker";
         Poll      Poll      "poll";
+        Deleted   Deleted   "deleted";
     } };
 }
 pub(crate) use preview_kinds;
@@ -669,6 +713,7 @@ macro_rules! message_fields {
         is_own set_is_own "is-own" flag;
         edited set_edited "edited" flag;
         text_editable set_text_editable "text-editable" flag;
+        pinned set_pinned "pinned" flag;
         first_unread set_first_unread "first-unread" flag;
         counts_as_unread set_counts_as_unread "counts-as-unread" flag;
         send_state set_send_state "send-state" enumk(SendState);

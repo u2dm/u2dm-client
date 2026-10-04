@@ -15,6 +15,7 @@ use super::space_order;
 use super::task_group::TaskGroup;
 use crate::commands::sync::DirectoryUpdate;
 use crate::commands::view::SpaceHeading;
+use crate::domain::message::MessagePermissions;
 use crate::domain::poll::PollPermissions;
 use crate::domain::room::{Room, RoomId, RoomList, Space, UnreadFlags};
 use crate::domain::sync::{ConnectionStatus, SessionLoss, SyncEvent, SyncOutcome};
@@ -33,6 +34,7 @@ pub(super) struct RoomMeta {
     pub(super) member_count: u64,
     pub(super) encrypted: bool,
     pub(super) polls: PollPermissions,
+    pub(super) messages: MessagePermissions,
 }
 
 #[derive(Default)]
@@ -554,6 +556,7 @@ impl RoomDirectory {
             member_count: if room.is_direct { 0 } else { room.member_count },
             encrypted: room.is_encrypted,
             polls: room.poll_permissions,
+            messages: room.message_permissions,
         })
     }
 

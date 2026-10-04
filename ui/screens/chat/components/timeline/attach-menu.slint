@@ -1,50 +1,9 @@
-import { Palette } from "std-widgets.slint";
-import { IconDisplay, IconSet, Icon } from "@lucide";
+import { IconSet } from "@lucide";
 
-import { ClickArea } from "../../../../components/a11y.slint";
+import { MenuRow } from "../../../../components/menu-row.slint";
 import { PickerCard } from "../../../../components/overlay.slint";
-import { AppStyle, Fonts, IconSize, Metrics, Radius, Space } from "../../../../theme.slint";
+import { Metrics, Space } from "../../../../theme.slint";
 import { RoomView } from "../../../../views.slint";
-
-component AttachRow inherits Rectangle {
-    in property <Icon> icon;
-    in property <string> label;
-
-    callback clicked();
-
-    height: Metrics.attach-row;
-    border-radius: Radius.sm;
-    background: touch.has-hover ? AppStyle.overlay-hover : transparent;
-
-    touch := ClickArea {
-        label: root.label;
-        ring-radius: Radius.sm;
-        clicked => {
-            root.clicked();
-        }
-    }
-
-    HorizontalLayout {
-        padding-left: Space.lg;
-        padding-right: Space.lg;
-        spacing: Space.lg;
-
-        IconDisplay {
-            cross-axis-self-alignment: center;
-            icon: root.icon;
-            size: IconSize.md;
-            stroke: AppStyle.foreground-muted;
-        }
-
-        Text {
-            text: root.label;
-            font-size: Fonts.body;
-            vertical-alignment: center;
-            horizontal-stretch: 1;
-            color: Palette.foreground;
-        }
-    }
-}
 
 export component AttachMenu inherits PickerCard {
     callback photo-picked();
@@ -58,7 +17,8 @@ export component AttachMenu inherits PickerCard {
         padding: Space.sm;
         spacing: Space.xs;
 
-        AttachRow {
+        MenuRow {
+            height: Metrics.attach-row;
             icon: IconSet.Image;
             label: @tr("Photo or video");
             clicked => {
@@ -66,7 +26,8 @@ export component AttachMenu inherits PickerCard {
             }
         }
 
-        AttachRow {
+        MenuRow {
+            height: Metrics.attach-row;
             icon: IconSet.File;
             label: @tr("Document");
             clicked => {
@@ -74,7 +35,8 @@ export component AttachMenu inherits PickerCard {
             }
         }
 
-        if RoomView.may-start-polls: AttachRow {
+        if RoomView.may-start-polls: MenuRow {
+            height: Metrics.attach-row;
             icon: IconSet.ChartBar;
             label: @tr("Poll");
             clicked => {

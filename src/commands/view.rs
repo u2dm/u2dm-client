@@ -1,3 +1,4 @@
+use std::collections::BTreeSet;
 use std::path::PathBuf;
 use std::time::Duration;
 use std::sync::Arc;
@@ -12,6 +13,7 @@ use crate::domain::room_info::{RoomAbout, RosterMember};
 use crate::domain::space_index::SpaceChild;
 use crate::domain::sticker::StickerPacks;
 use crate::domain::sync::ConnectionStatus;
+use crate::domain::timeline::EventSource;
 
 #[derive(Clone, Default)]
 pub struct AppViewState {
@@ -28,6 +30,8 @@ pub struct AppViewState {
     pub audio: AudioView,
     pub unsent: Option<UnsentMessage>,
     pub toast: Toast,
+    pub message_link: MessageLink,
+    pub source: SourceState,
 }
 
 impl AppViewState {
@@ -53,6 +57,25 @@ impl AppViewState {
             ..Self::default()
         }
     }
+}
+
+#[derive(Clone, Default, PartialEq, Eq)]
+pub enum SourceState {
+    #[default]
+    Closed,
+    Locating {
+        event_id: String,
+    },
+    Ready(Arc<EventSource>),
+    Unavailable {
+        event_id: String,
+    },
+}
+
+#[derive(Clone, Default, PartialEq, Eq)]
+pub struct MessageLink {
+    pub serial: i32,
+    pub url: String,
 }
 
 #[derive(Clone, Default, PartialEq, Eq)]
@@ -157,6 +180,7 @@ pub struct PinnedView {
     pub room_id: Option<RoomId>,
     pub messages: Arc<[PinnedMessage]>,
     pub shown: usize,
+    pub pinned_ids: Arc<BTreeSet<String>>,
 }
 
 impl PinnedView {

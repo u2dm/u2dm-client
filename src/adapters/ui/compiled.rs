@@ -20,7 +20,8 @@ use u2dm_ui::{
     PollPhase as UiPollPhase, PreviewKind as UiPreviewKind, ReactionEntry,
     ReactionSend as UiReactionSend, ReactorAvatar, ReplySwipe, RoomEntry, RoomInfoView,
     RoomScope as UiRoomScope, RoomView, RosterStatus as UiRosterStatus, SendState as UiSendState,
-    ServiceKind as UiServiceKind, SessionView, SpaceChildEntry, SpaceEntry,
+    ServiceKind as UiServiceKind, SessionView, SourceEncryption as UiSourceEncryption,
+    SourceStatus as UiSourceStatus, SourceView, SpaceChildEntry, SpaceEntry,
     SpaceIndexStatus as UiSpaceIndexStatus, SpaceIndexView, StickerCell, StickerPackTab,
     StickerRow, StickerView, TimelineState, UnsentView, UserMessage as UiUserMessage,
     UserMessageKind as UiUserMessageKind, VerificationActivity as UiVerificationActivity,
@@ -54,9 +55,10 @@ use super::schema::{
     media_states, member_roles, member_row_fields, member_row_kinds, message_fields, message_kinds,
     model_props, notify_modes, poll_answer_fields, poll_phases, preview_kinds, reaction_fields,
     reaction_sends, reactor_fields, room_fields, room_scopes, roster_statuses, send_states,
-    service_kinds, simple_callbacks, space_child_fields, space_fields, space_index_statuses,
-    sticker_cell_fields, sticker_pack_fields, sticker_row_fields, string_props, timeline_states,
-    user_message_kinds, verification_activities, verification_phases,
+    service_kinds, simple_callbacks, source_encryptions, source_statuses, space_child_fields,
+    space_fields, space_index_statuses, sticker_cell_fields, sticker_pack_fields,
+    sticker_row_fields, string_props, timeline_states, user_message_kinds, verification_activities,
+    verification_phases,
 };
 use super::session::active_models;
 use super::video::{self, millis_to_duration};
@@ -67,7 +69,7 @@ use crate::commands::messages::{UserMessage, UserMessageKind};
 use crate::commands::ui::{TimelineVisibility, ViewportChanged};
 use crate::commands::view::{
     AppViewState, AttachmentKind, ChildAccess, LoginActivity, LoginStep, RoomScope, RosterStatus,
-    SpaceIndexStatus,
+    SourceState, SpaceIndexStatus,
 };
 use crate::domain::auth::LoginMethod;
 use crate::domain::media::AudioKind;
@@ -75,7 +77,7 @@ use crate::domain::message::{MessagePreviewKind, ReactionSend, SendState};
 use crate::domain::room::NotifyMode;
 use crate::domain::room_info::MemberRole;
 use crate::domain::sync::ConnectionStatus;
-use crate::domain::timeline::TimelineStatus;
+use crate::domain::timeline::{SourceEncryption, TimelineStatus};
 use crate::domain::verification::VerificationEmoji as DomainVerificationEmoji;
 use crate::error::Result;
 use crate::ports::media::MediaCache;
@@ -302,6 +304,8 @@ poll_phases!(impl_slint_enum PollPhase UiPollPhase;);
 attachment_kinds!(impl_slint_enum AttachmentKind UiAttachmentKind;);
 room_scopes!(impl_slint_enum RoomScope UiRoomScope;);
 space_index_statuses!(impl_slint_enum SpaceIndexStatus UiSpaceIndexStatus;);
+source_statuses!(impl_slint_enum SourceState UiSourceStatus;);
+source_encryptions!(impl_slint_enum SourceEncryption UiSourceEncryption;);
 child_accesses!(impl_slint_enum ChildAccess UiChildAccess;);
 notify_modes!(impl_slint_enum NotifyMode UiNotifyMode;);
 member_roles!(impl_slint_enum MemberRole UiMemberRole;);

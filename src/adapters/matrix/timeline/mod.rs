@@ -1,5 +1,6 @@
 mod commands;
 mod convert;
+mod deletions;
 mod diff;
 mod edits;
 mod filter;
@@ -8,6 +9,7 @@ mod pinned;
 mod poll_ends;
 mod polls;
 mod rowless_sends;
+mod source;
 mod subscribe;
 mod undecrypted;
 
@@ -462,6 +464,13 @@ impl TimelinePort for MatrixTimeline {
             .await
             .map_err(|e| AppError::Other(e.to_string()))?;
         room.send_queue().set_enabled(true);
+        Ok(())
+    }
+
+    async fn delete_message(&self, room_id: &RoomId, event_id: &str) -> Result<()> {
+        let room = self.matrix.room(room_id).await?;
+        deletions::delete(&room, event_id).await?;
+        tracing::info!(%room_id, event_id, "queued a deletion");
         Ok(())
     }
 }

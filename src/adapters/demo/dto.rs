@@ -3,7 +3,7 @@ use std::time::Duration;
 
 use serde::Deserialize;
 
-use super::{media, polls, reactions};
+use super::{media, message_menu, polls, reactions};
 use crate::domain::auth::Session;
 use crate::domain::media::{AudioKind, AudioMeta, ImageMeta, VideoMeta, Waveform};
 use crate::domain::message::{
@@ -551,6 +551,7 @@ impl RoomDto {
             is_direct: self.direct,
             is_encrypted: self.encrypted,
             poll_permissions: polls::permissions(),
+            message_permissions: message_menu::permissions(),
             member_count: self.members,
             has_unread: self.unread > 0 && notify == NotifyMode::AllMessages,
             has_mentions: self.mentions > 0,
@@ -618,6 +619,7 @@ impl UnjoinedDto {
             is_direct: false,
             is_encrypted: false,
             poll_permissions: polls::permissions(),
+            message_permissions: message_menu::permissions(),
             member_count: self.joined_members(),
             has_unread: false,
             has_mentions: false,
