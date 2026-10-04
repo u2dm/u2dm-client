@@ -94,6 +94,17 @@ export global RoomInfoView {
     in property <string> error-detail;
 }
 
+export global RoomMenuView {
+    in property <string> room-id;
+    in property <string> name;
+    in property <bool> unread;
+    in property <NotifyMode> notify: NotifyMode.all-messages;
+    in property <bool> notify-busy;
+    in property <bool> leaving;
+    in property <string> link;
+    in property <int> link-serial;
+}
+
 export global RoomView {
     in property <string> selected-room-name;
     in property <int> selected-room-members;

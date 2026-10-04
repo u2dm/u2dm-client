@@ -152,12 +152,15 @@ pub fn dismiss_unsent(tx: &Tx, submission: i32) {
 
 notify_modes!(variant_named notify_mode_named NotifyMode;);
 
-pub fn set_room_notify(tx: &Tx, mode: &str) {
+pub fn set_room_notify(tx: &Tx, room_id: String, mode: &str) {
+    let Some(room_id) = optional_room(room_id) else {
+        return;
+    };
     let Some(mode) = notify_mode_named(mode) else {
         tracing::warn!(mode, "ignoring an unknown notification mode");
         return;
     };
-    send_command(tx, UiCommand::SetRoomNotify(mode));
+    send_command(tx, UiCommand::SetRoomNotify { room_id, mode });
 }
 
 pub fn send_sticker(

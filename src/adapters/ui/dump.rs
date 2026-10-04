@@ -122,6 +122,13 @@ pub struct MessagePermissionsDump {
 }
 
 #[derive(Serialize)]
+pub struct RoomMenuDump {
+    pub key: String,
+    pub room_id: String,
+    pub shown: bool,
+}
+
+#[derive(Serialize)]
 pub struct TimelineDump {
     pub selected_room_id: String,
     pub selected_room_name: String,
@@ -136,6 +143,7 @@ pub struct TimelineDump {
     pub pinned: PinnedDump,
     pub rows: Vec<TimelineRowDump>,
     pub audio: AudioDump,
+    pub room_menu: RoomMenuDump,
 }
 
 type Requester = Box<dyn Fn(oneshot::Sender<TimelineDump>) + Send + Sync>;
@@ -236,6 +244,17 @@ fn collect<B: UiBackend>(window: &B::Window) -> TimelineDump {
         pinned: pinned_view(window),
         rows,
         audio: audio_view(window),
+        room_menu: room_menu_view(window),
+    }
+}
+
+fn room_menu_view(window: &impl UiProps) -> RoomMenuDump {
+    let key = window.get_string(StringProp::RoomMenuKey).to_string();
+    let room_id = window.get_string(StringProp::RoomMenuRoomId).to_string();
+    RoomMenuDump {
+        shown: !key.is_empty() && key == room_id,
+        key,
+        room_id,
     }
 }
 

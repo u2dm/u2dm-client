@@ -80,6 +80,7 @@ pub fn session() -> Session {
 pub struct RoomOverrides {
     pub left: HashSet<String>,
     pub notify: HashMap<String, NotifyMode>,
+    pub read: HashSet<String>,
 }
 
 pub fn rooms_with(joined: &[RoomId], overrides: &RoomOverrides) -> Vec<Arc<Room>> {
@@ -101,8 +102,18 @@ pub fn rooms_with(joined: &[RoomId], overrides: &RoomOverrides) -> Vec<Arc<Room>
                 }),
         )
         .filter(|room| !overrides.left.contains(room.id.as_ref()))
+        .map(|room| read_when_marked(room, &overrides.read))
         .map(Arc::new)
         .collect()
+}
+
+fn read_when_marked(mut room: Room, read: &HashSet<String>) -> Room {
+    if read.contains(room.id.as_ref()) {
+        room.has_unread = false;
+        room.has_mentions = false;
+        room.has_activity = false;
+    }
+    room
 }
 
 pub fn room_about(room_id: &RoomId) -> Option<RoomAbout> {
@@ -127,6 +138,10 @@ pub fn room_about(room_id: &RoomId) -> Option<RoomAbout> {
 
 pub fn event_link(room_id: &RoomId, event_id: &str) -> String {
     format!("{MATRIX_TO}{room_id}/{event_id}?via={DEMO_VIA}")
+}
+
+pub fn room_link_of(room_id: &RoomId) -> Option<String> {
+    room_about(room_id).map(|about| about.link)
 }
 
 fn room_link(room_id: &RoomId, alias: Option<&str>) -> String {

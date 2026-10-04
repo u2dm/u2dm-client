@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use matrix_sdk::deserialized_responses::SyncOrStrippedState;
-use matrix_sdk::room::RoomMember;
+use matrix_sdk::room::{Receipts, RoomMember};
 use matrix_sdk::ruma::OwnedEventId;
 use matrix_sdk::ruma::events::SyncStateEvent;
 use matrix_sdk::ruma::events::room::member::{MembershipChange, MembershipState};
@@ -40,16 +40,9 @@ impl RoomInfoPort for MatrixRoomInfo {
                 None
             }
         };
-        let link = match room.matrix_to_permalink().await {
-            Ok(link) => link.to_string(),
-            Err(e) => {
-                tracing::debug!(%room_id, "linking the bare room id: {e}");
-                room.room_id().matrix_to_uri().to_string()
-            }
-        };
         Ok(RoomAbout {
             joined_at,
-            link,
+            link: permalink(&room).await,
             topic: rich_topic(&room).await,
         })
     }
@@ -89,11 +82,29 @@ impl RoomInfoPort for MatrixRoomInfo {
             .map_err(|e| AppError::Other(e.to_string()))
     }
 
+    async fn mark_read(&self, room_id: &RoomId) -> Result<()> {
+        let room = self.matrix.room(room_id).await?;
+        let event_id = newest_event_id(&room)
+            .await
+            .ok_or_else(|| AppError::Other("the room has no event to mark as read".to_owned()))?;
+        let receipts = Receipts::new()
+            .public_read_receipt(event_id.clone())
+            .fully_read_marker(event_id);
+        room.send_multiple_receipts(receipts)
+            .await
+            .map_err(|e| AppError::Other(e.to_string()))
+    }
+
     async fn fetch_avatars(&self, mxcs: &[String]) -> usize {
         let Ok(client) = self.matrix.client().await else {
             return 0;
         };
         fetch_avatar_thumbnails(&client, self.matrix.media(), mxcs).await
+    }
+
+    async fn room_link(&self, room_id: &RoomId) -> Result<String> {
+        let room = self.matrix.room(room_id).await?;
+        Ok(permalink(&room).await)
     }
 
     async fn event_link(&self, room_id: &RoomId, event_id: &str) -> Result<String> {
@@ -109,6 +120,33 @@ impl RoomInfoPort for MatrixRoomInfo {
         };
         Ok(link)
     }
+}
+
+async fn permalink(room: &Room) -> String {
+    match room.matrix_to_permalink().await {
+        Ok(link) => link.to_string(),
+        Err(e) => {
+            tracing::debug!(room_id = %room.room_id(), "linking the bare room id: {e}");
+            room.room_id().matrix_to_uri().to_string()
+        }
+    }
+}
+
+async fn newest_event_id(room: &Room) -> Option<OwnedEventId> {
+    let cached = match room.event_cache().await {
+        Ok((cache, _drop_handles)) => cache
+            .rfind_map_event_in_memory_by(|event| event.event_id().map(ToOwned::to_owned))
+            .await
+            .unwrap_or_else(|e| {
+                tracing::debug!(room_id = %room.room_id(), "could not read the event cache: {e}");
+                None
+            }),
+        Err(e) => {
+            tracing::debug!(room_id = %room.room_id(), "the room has no event cache: {e}");
+            None
+        }
+    };
+    cached.or_else(|| room.latest_event().event_id())
 }
 
 async fn rich_topic(room: &Room) -> Option<RichText> {

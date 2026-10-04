@@ -11,6 +11,10 @@ export global Interaction {
     public pure function activates(key: string) -> bool {
         return key == " " || key == "\n";
     }
+
+    public pure function requests-menu(event: KeyEvent) -> bool {
+        return event.text == Key.Menu || (event.modifiers.shift && event.text == Key.F10);
+    }
 }
 
 export component FocusRing inherits Rectangle {
@@ -33,9 +37,12 @@ export component ClickArea inherits Rectangle {
     out property <bool> has-hover: touch.has-hover;
     out property <bool> pressed: touch.pressed;
     out property <bool> has-focus: fs.has-focus;
+    out property <length> mouse-x: touch.mouse-x;
+    out property <length> mouse-y: touch.mouse-y;
 
     callback clicked();
     callback moved(length);
+    callback context-menu-requested() -> EventResult;
 
     property <bool> actionable: Interaction.actionable(root.enabled, root.above-modal);
 
@@ -62,6 +69,9 @@ export component ClickArea inherits Rectangle {
             if (root.enabled && Interaction.activates(event.text)) {
                 root.clicked();
                 return accept;
+            }
+            if (root.enabled && Interaction.requests-menu(event)) {
+                return root.context-menu-requested();
             }
             return reject;
         }

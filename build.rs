@@ -80,7 +80,7 @@ const ENUM_COVERAGE: &[EnumCoverage] = &[
     },
     EnumCoverage {
         slint_enum: "NotifyMode",
-        branches_in: "ui/screens/chat/components/room-info.slint",
+        branches_in: "ui/screens/chat/components/notify-modes.slint",
         falls_through: &[],
     },
     EnumCoverage {

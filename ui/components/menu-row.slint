@@ -2,7 +2,8 @@ import { Palette } from "std-widgets.slint";
 import { IconDisplay, Icon } from "@lucide";
 
 import { ClickArea } from "a11y.slint";
-import { AppStyle, Fonts, IconSize, Radius, Space } from "../theme.slint";
+import { DotPulse } from "dot-pulse.slint";
+import { AppStyle, Fonts, IconSize, Opacity, Radius, Space } from "../theme.slint";
 
 export component MenuRow inherits Rectangle {
     in property <Icon> icon;
@@ -11,14 +12,24 @@ export component MenuRow inherits Rectangle {
     in property <color> text-color: Palette.foreground;
     in property <bool> focusable: true;
     in property <bool> roving-focus: false;
+    in property <bool> above-modal: false;
+    in property <bool> enabled: true;
+    in property <bool> busy: false;
+    in property <bool> highlighted: false;
+    in property <Icon> trailing;
     out property <bool> has-hover: touch.has-hover;
 
     callback clicked();
 
+    property <bool> has-trailing: root.trailing.paths.length > 0;
+
     border-radius: Radius.sm;
-    background: touch.has-hover ? AppStyle.overlay-hover : transparent;
+    background: touch.has-hover || root.highlighted ? AppStyle.overlay-hover : transparent;
+    opacity: root.enabled || root.busy ? 1.0 : Opacity.disabled;
 
     touch := ClickArea {
+        enabled: root.enabled;
+        above-modal: root.above-modal;
         label: root.label;
         ring-radius: Radius.sm;
         focusable: root.focusable;
@@ -33,7 +44,13 @@ export component MenuRow inherits Rectangle {
         padding-right: Space.lg;
         spacing: Space.lg;
 
-        IconDisplay {
+        if root.busy: DotPulse {
+            width: IconSize.md;
+            dot-size: Space.sm;
+            tint: root.tint;
+        }
+
+        if !root.busy: IconDisplay {
             cross-axis-self-alignment: center;
             icon: root.icon;
             size: IconSize.md;
@@ -47,6 +64,13 @@ export component MenuRow inherits Rectangle {
             horizontal-stretch: 1;
             color: root.text-color;
             overflow: elide;
+        }
+
+        if root.has-trailing: IconDisplay {
+            cross-axis-self-alignment: center;
+            icon: root.trailing;
+            size: IconSize.sm;
+            stroke: root.tint;
         }
     }
 }

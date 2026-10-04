@@ -28,9 +28,10 @@ import {
     UnsentView,
     WindowView,
     SourceView,
+    RoomMenuView,
 } from "views.slint";
 import { Actions } from "actions.slint";
-import { Polls, Probe, ReplySwipe, Shell } from "local.slint";
+import { Polls, Probe, ReplySwipe, RoomMenu, Shell } from "local.slint";
 import { Metrics } from "theme.slint";
 import {
     EmojiStore,
@@ -39,9 +40,9 @@ export { EmojiStore }
 export { LoginPhase, ConnectionState, TimelineState, VerificationPhase, MediaState, MediaFailure }
 export { MessageKind, PreviewKind, ServiceKind, LoginMethodKind, AudioKind }
 export { LoginView, SessionView, DirectoryView, SpaceIndexView, RoomView, StickerView, VerificationView }
-export { AttachmentView, VideoView, AudioView, UnsentView, WindowView, RoomInfoView, SourceView }
+export { AttachmentView, VideoView, AudioView, UnsentView, WindowView, RoomInfoView, SourceView, RoomMenuView }
 export { Actions }
-export { Probe, ReplySwipe }
+export { Probe, ReplySwipe, RoomMenu }
 import { LoadingScreen } from "screens/login/loading.slint";
 import { RestorePausedScreen } from "screens/login/restore-paused.slint";
 import { HomeserverScreen } from "screens/login/homeserver.slint";

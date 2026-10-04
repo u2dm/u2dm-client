@@ -8,6 +8,7 @@ mod event;
 mod event_source;
 pub mod input;
 mod lifecycle;
+mod link_requests;
 mod media;
 mod message_actions;
 mod pinned;
@@ -32,7 +33,9 @@ use active_timeline::ActiveTimeline;
 use attachments::Attachments;
 use audio::AudioController;
 use establish::{EstablishedSession, Rollback};
-use event::{AppEvent, EndReason, MessageActionEvent, SessionEvent, TimelineEvent};
+use event::{
+    AppEvent, EndReason, MessageActionEvent, RoomActionEvent, SessionEvent, TimelineEvent,
+};
 use event_source::EventSourceViewer;
 use input::{CommandSender, EventSender, Inbox, Input};
 use lifecycle::{Lifecycle, Settled};
@@ -403,11 +406,23 @@ impl AppService {
             UiCommand::FilterRoomMembers(query) => {
                 self.filter_room_members(query);
             }
-            UiCommand::SetRoomNotify(mode) => {
-                self.set_room_notify(mode);
+            UiCommand::SetRoomNotify { room_id, mode } => {
+                self.set_room_notify(&room_id, mode);
             }
             UiCommand::LeaveRoom(room_id) => {
-                self.leave_room(room_id);
+                self.leave_room(&room_id);
+            }
+            UiCommand::OpenRoomMenu(room_id) => {
+                self.room_info.open_menu(self.room_directory.room(&room_id));
+            }
+            UiCommand::CloseRoomMenu => {
+                self.room_info.close_menu();
+            }
+            UiCommand::MarkRoomRead(room_id) => {
+                self.mark_room_read(&room_id);
+            }
+            UiCommand::CopyRoomLink(room_id) => {
+                self.copy_room_link(&room_id);
             }
             UiCommand::RetryTimeline => {
                 self.retry_timeline().await;
@@ -843,15 +858,31 @@ impl AppService {
         }
     }
 
-    fn set_room_notify(&mut self, mode: NotifyMode) {
+    fn set_room_notify(&mut self, room_id: &RoomId, mode: NotifyMode) {
         if let Some(port) = self.port(|a| &a.room_info) {
-            self.room_info.set_notify(port, mode);
+            self.room_info
+                .set_notify(port, self.room_directory.room(room_id), mode);
         }
     }
 
-    fn leave_room(&mut self, room_id: RoomId) {
+    fn leave_room(&mut self, room_id: &RoomId) {
         if let Some(port) = self.port(|a| &a.room_info) {
-            self.room_info.leave(port, room_id);
+            self.room_info
+                .leave(port, self.room_directory.room(room_id));
+        }
+    }
+
+    fn mark_room_read(&mut self, room_id: &RoomId) {
+        if let Some(port) = self.port(|a| &a.room_info) {
+            self.room_info
+                .mark_read(port, self.room_directory.room(room_id));
+        }
+    }
+
+    fn copy_room_link(&mut self, room_id: &RoomId) {
+        if let Some(port) = self.port(|a| &a.room_info) {
+            self.room_info
+                .copy_link(port, self.room_directory.room(room_id));
         }
     }
 
@@ -931,7 +962,14 @@ impl AppService {
             AppEvent::RoomInfoAvatarsReady { generation, ready } => {
                 self.room_info.avatars_ready(generation, ready);
             }
-            AppEvent::RoomNotifySettled {
+            AppEvent::RoomAction(event) => self.handle_room_action(event),
+            AppEvent::MessageAction(event) => self.handle_message_action(event),
+        }
+    }
+
+    fn handle_room_action(&mut self, event: RoomActionEvent) {
+        match event {
+            RoomActionEvent::NotifySettled {
                 request,
                 room_id,
                 name,
@@ -941,14 +979,27 @@ impl AppService {
                 self.room_info
                     .notify_settled(request, room_id, &name, outcome, listed);
             }
-            AppEvent::RoomLeaveSettled {
+            RoomActionEvent::LeaveSettled {
                 room_id,
                 name,
                 outcome,
             } => {
                 self.room_info.leave_settled(&room_id, &name, outcome);
             }
-            AppEvent::MessageAction(event) => self.handle_message_action(event),
+            RoomActionEvent::ReadSettled {
+                room_id,
+                name,
+                outcome,
+            } => {
+                self.room_info.read_settled(&room_id, &name, outcome);
+            }
+            RoomActionEvent::LinkResolved {
+                request,
+                name,
+                link,
+            } => {
+                self.room_info.link_resolved(request, &name, link);
+            }
         }
     }
 

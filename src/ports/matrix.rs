@@ -198,7 +198,9 @@ pub trait RoomInfoPort: Send + Sync {
     async fn roster(&self, room_id: &RoomId) -> Result<Vec<RosterMember>>;
     async fn set_notify(&self, room_id: &RoomId, mode: NotifyMode) -> Result<()>;
     async fn leave(&self, room_id: &RoomId) -> Result<()>;
+    async fn mark_read(&self, room_id: &RoomId) -> Result<()>;
     async fn fetch_avatars(&self, mxcs: &[String]) -> usize;
+    async fn room_link(&self, room_id: &RoomId) -> Result<String>;
     async fn event_link(&self, room_id: &RoomId, event_id: &str) -> Result<String>;
 }
 

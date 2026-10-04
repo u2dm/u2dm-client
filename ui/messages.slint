@@ -112,6 +112,12 @@ export global UserMessages {
         if kind == UserMessageKind.notify-change-failed {
             return @tr("Could not change the notifications for {}", detail);
         }
+        if kind == UserMessageKind.mark-read-failed {
+            return @tr("Could not mark {} as read", detail);
+        }
+        if kind == UserMessageKind.room-link-failed {
+            return @tr("Could not copy the link to {}", detail);
+        }
         if kind == UserMessageKind.media-download-failed {
             return @tr("Failed to download media");
         }

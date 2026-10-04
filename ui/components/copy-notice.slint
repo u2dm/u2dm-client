@@ -1,0 +1,24 @@
+import { Palette } from "std-widgets.slint";
+
+import { PickerCard } from "overlay.slint";
+import { Fonts, Size, Space } from "../theme.slint";
+
+export component CopyNotice inherits PickerCard {
+    in property <string> text;
+
+    width: notice-text.preferred-width + 2 * Space.xl;
+    height: Size.lg;
+    border-radius: self.height / 2;
+
+    notice-text := Text {
+        x: Space.xl;
+        width: parent.width - 2 * Space.xl;
+        height: parent.height;
+        text: root.text;
+        font-size: Fonts.label;
+        color: Palette.foreground;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+        accessible-live-region: AccessibleLiveness.polite;
+    }
+}

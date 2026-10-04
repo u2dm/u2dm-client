@@ -160,7 +160,7 @@ export component RowActions inherits Rectangle {
             root.run-action(root.focused-action);
         }
         key-pressed(event) => {
-            if event.text == Key.Menu || (event.modifiers.shift && event.text == Key.F10) {
+            if Interaction.requests-menu(event) {
                 root.open-menu();
                 return accept;
             }

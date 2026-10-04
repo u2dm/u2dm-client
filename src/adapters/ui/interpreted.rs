@@ -716,7 +716,7 @@ impl SlintUiAdapter {
 
         let tx = cmd_tx.clone();
         bind_action(&self.instance, callback::SET_ROOM_NOTIFY, move |args| {
-            router::set_room_notify(&tx, variant_of(args.first()));
+            router::set_room_notify(&tx, string_arg(args, 0), variant_of(args.get(1)));
             Value::Void
         })?;
 

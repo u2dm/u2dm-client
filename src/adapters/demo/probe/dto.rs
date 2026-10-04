@@ -4,9 +4,9 @@ use super::names;
 use crate::commands::messages::UserMessage;
 use crate::commands::ui::Draft;
 use crate::commands::view::{
-    AppViewState, AttachmentView, AudioView, DirectoryView, LifecycleView, PaginationView,
-    PinnedView, RoomInfoView, RosterRow, SourceState, SpaceIndexRow, SpaceIndexView, StickerView,
-    Toast, TrackFile, UnsentMessage, VideoView,
+    AppViewState, AttachmentView, AudioView, CopiedLink, DirectoryView, LifecycleView,
+    PaginationView, PinnedView, RoomInfoView, RoomMenuTarget, RosterRow, SourceState,
+    SpaceIndexRow, SpaceIndexView, StickerView, Toast, TrackFile, UnsentMessage, VideoView,
 };
 use crate::domain::message::{EditKind, PinnedMessage};
 use crate::domain::room::{Room, Space};
@@ -23,6 +23,7 @@ pub struct ViewDto {
     directory: DirectoryDto,
     space_index: SpaceIndexDto,
     room_info: RoomInfoDto,
+    room_menu: Option<RoomMenuDto>,
     pagination: PaginationDto,
     pinned: PinnedDto,
     stickers: StickersDto,
@@ -31,7 +32,8 @@ pub struct ViewDto {
     audio: Option<NowPlayingDto>,
     unsent: Option<UnsentDto>,
     toast: ToastDto,
-    message_link: MessageLinkDto,
+    message_link: LinkDto,
+    room_link: LinkDto,
     source: SourceDto,
 }
 
@@ -46,9 +48,19 @@ struct SourceDto {
 }
 
 #[derive(Serialize)]
-struct MessageLinkDto {
+struct LinkDto {
     serial: i32,
     url: String,
+}
+
+#[derive(Serialize)]
+struct RoomMenuDto {
+    room_id: String,
+    name: String,
+    unread: bool,
+    notify: &'static str,
+    notify_busy: bool,
+    leaving: bool,
 }
 
 #[derive(Serialize)]
@@ -300,6 +312,7 @@ pub fn view(source: &AppViewState) -> ViewDto {
         directory: directory(&source.directory),
         space_index: space_index(&source.space_index),
         room_info: room_info(&source.room_info),
+        room_menu: source.room_menu.as_ref().map(room_menu),
         pagination: pagination(source.pagination),
         pinned: pinned(&source.pinned),
         stickers: stickers(&source.stickers),
@@ -308,11 +321,27 @@ pub fn view(source: &AppViewState) -> ViewDto {
         audio: audio(&source.audio),
         unsent: source.unsent.as_ref().map(unsent),
         toast: toast(&source.toast),
-        message_link: MessageLinkDto {
-            serial: source.message_link.serial,
-            url: source.message_link.url.clone(),
-        },
+        message_link: link(&source.message_link),
+        room_link: link(&source.room_link),
         source: event_source(&source.source),
+    }
+}
+
+fn link(source: &CopiedLink) -> LinkDto {
+    LinkDto {
+        serial: source.serial,
+        url: source.url.clone(),
+    }
+}
+
+fn room_menu(source: &RoomMenuTarget) -> RoomMenuDto {
+    RoomMenuDto {
+        room_id: source.room_id.to_string(),
+        name: source.name.clone(),
+        unread: source.unread,
+        notify: names::notify_mode(source.notify),
+        notify_busy: source.notify_busy,
+        leaving: source.leaving,
     }
 }
 

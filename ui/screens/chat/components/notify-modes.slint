@@ -1,0 +1,47 @@
+import { IconSet, Icon } from "@lucide";
+
+import { NotifyMode } from "../../../enums.slint";
+
+export global NotifyModes {
+    out property <[NotifyMode]> all: [NotifyMode.all-messages, NotifyMode.mentions-only, NotifyMode.muted];
+
+    public pure function position(mode: NotifyMode) -> int {
+        if mode == NotifyMode.mentions-only {
+            return 1;
+        }
+        if mode == NotifyMode.muted {
+            return 2;
+        }
+        return 0;
+    }
+
+    public pure function icon(mode: NotifyMode) -> Icon {
+        if mode == NotifyMode.muted {
+            return IconSet.BellOff;
+        }
+        if mode == NotifyMode.mentions-only {
+            return IconSet.AtSign;
+        }
+        return IconSet.Bell;
+    }
+
+    public pure function state(mode: NotifyMode) -> string {
+        if mode == NotifyMode.muted {
+            return @tr("Muted");
+        }
+        if mode == NotifyMode.mentions-only {
+            return @tr("Mentions");
+        }
+        return @tr("All messages");
+    }
+
+    public pure function choice(mode: NotifyMode) -> string {
+        if mode == NotifyMode.all-messages {
+            return @tr("All messages");
+        }
+        if mode == NotifyMode.mentions-only {
+            return @tr("Mentions and keywords");
+        }
+        return @tr("Mute");
+    }
+}

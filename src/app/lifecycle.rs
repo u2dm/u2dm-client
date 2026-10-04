@@ -214,8 +214,12 @@ pub(super) fn command_allowed(phase: AppPhase, cmd: &UiCommand) -> bool {
         | UiCommand::PageRoomMembers
         | UiCommand::RetryRoomMembers
         | UiCommand::FilterRoomMembers(_)
-        | UiCommand::SetRoomNotify(_)
+        | UiCommand::SetRoomNotify { .. }
         | UiCommand::LeaveRoom(_)
+        | UiCommand::OpenRoomMenu(_)
+        | UiCommand::CloseRoomMenu
+        | UiCommand::MarkRoomRead(_)
+        | UiCommand::CopyRoomLink(_)
         | UiCommand::SendMessage { .. }
         | UiCommand::EditMessage { .. }
         | UiCommand::DismissUnsent { .. }

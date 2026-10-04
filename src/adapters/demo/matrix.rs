@@ -1174,9 +1174,30 @@ impl RoomInfoPort for DemoAuthed {
         Ok(())
     }
 
+    async fn mark_read(&self, room_id: &RoomId) -> Result<()> {
+        room_info::pause().await;
+        if room_info::scenario().read_fails {
+            return Err(unavailable("marking rooms as read"));
+        }
+        tracing::debug!(%room_id, "demo: marking a room as read");
+        self.change_lists(|lists| {
+            lists.overrides.read.insert(room_id.to_string());
+        });
+        self.echo_rooms();
+        Ok(())
+    }
+
     async fn fetch_avatars(&self, mxcs: &[String]) -> usize {
         room_info::pause_avatars().await;
         media::fetch_member_avatars(mxcs)
+    }
+
+    async fn room_link(&self, room_id: &RoomId) -> Result<String> {
+        room_info::pause().await;
+        if room_info::scenario().link_fails {
+            return Err(unavailable("room links"));
+        }
+        data::room_link_of(room_id).ok_or_else(|| unavailable("this room's link"))
     }
 
     async fn event_link(&self, room_id: &RoomId, event_id: &str) -> Result<String> {

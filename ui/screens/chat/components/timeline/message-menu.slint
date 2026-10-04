@@ -9,7 +9,7 @@ import { ServiceLabel } from "./messages/service-message.slint";
 import { ClickArea, Interaction } from "../../../../components/a11y.slint";
 import { MenuRow } from "../../../../components/menu-row.slint";
 import { ModalHost, PickerCard } from "../../../../components/overlay.slint";
-import { Composer, DeliveryTip, MessageMenu, Polls, Reactions, Shell, TextSelection } from "../../../../local.slint";
+import { Composer, DeliveryTip, MessageMenu, Polls, Reactions, RoomMenu, Shell, TextSelection } from "../../../../local.slint";
 import { Actions } from "../../../../actions.slint";
 import { RoomView } from "../../../../views.slint";
 import { MessageKind, SendState } from "../../../../enums.slint";
@@ -465,26 +465,6 @@ component MessageMenuCard inherits PickerCard {
     }
 }
 
-export component CopyNotice inherits PickerCard {
-    in property <string> text;
-
-    width: notice-text.preferred-width + 2 * Space.xl;
-    height: Size.lg;
-    border-radius: self.height / 2;
-
-    notice-text := Text {
-        x: Space.xl;
-        width: parent.width - 2 * Space.xl;
-        height: parent.height;
-        text: root.text;
-        font-size: Fonts.label;
-        color: Palette.foreground;
-        horizontal-alignment: center;
-        vertical-alignment: center;
-        accessible-live-region: AccessibleLiveness.polite;
-    }
-}
-
 export component MessageMenuOverlay inherits Rectangle {
     callback closed();
     callback copy-text(string);
@@ -603,6 +583,7 @@ export component MessageMenuOverlay inherits Rectangle {
         any-button-dismisses: true;
         label: @tr("Message actions");
         opened => {
+            RoomMenu.close();
             Reactions.close();
             DeliveryTip.clear();
             Shell.picker-open = false;

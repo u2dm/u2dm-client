@@ -37,6 +37,7 @@ export global Motion {
     out property <duration> slow: 200ms;
     out property <duration> close-delay: 160ms;
     out property <duration> reveal-delay: 350ms;
+    out property <duration> submenu-delay: 200ms;
     out property <duration> feedback-hold: 1500ms;
 }
 
@@ -236,6 +237,9 @@ export global Metrics {
     out property <length> message-menu-width: 240px;
     out property <length> message-menu-row: Size.xl;
     out property <length> message-menu-reaction: Size.md;
+    out property <length> room-menu-width: root.message-menu-width;
+    out property <length> room-menu-row: root.message-menu-row;
+    out property <length> room-menu-flyout-width: root.room-info-picker-width;
     out property <length> attachment-preview-max: 320px;
     out property <length> attachment-preview-min: 120px;
     out property <length> attachment-chip: 56px;

@@ -16,8 +16,9 @@ import { RoomEntry } from "./types.slint";
 import { IconButton } from "../../../components/button.slint";
 import { AppStyle, Avatars, Fonts, IconSize, Metrics, Radius, Size, Space, Weight } from "../../../theme.slint";
 import { RoomScope, ServiceKind } from "../../../enums.slint";
-import { DirectoryView, SpaceIndexView } from "../../../views.slint";
+import { DirectoryView, SpaceIndexView, WindowView } from "../../../views.slint";
 import { Actions } from "../../../actions.slint";
+import { RoomMenu, RoomMenuOrigin, RoomMenuReturn } from "../../../local.slint";
 
 component SidebarSearch inherits Rectangle {
     in property <bool> above-modal: false;
@@ -73,6 +74,8 @@ component RoomRow inherits ListItemArea {
         : root.entry.last-message-sender;
     property <bool> is-service: root.entry.last-message-service-kind != ServiceKind.none;
     property <bool> has-unread: root.entry.alert || root.entry.mention || root.entry.hint;
+    property <int> context-presses: WindowView.context-presses;
+    property <int> menu-returns: RoomMenu.focus-returns;
 
     pure function describe(entry: RoomEntry) -> string {
         if entry.mention {
@@ -106,12 +109,39 @@ component RoomRow inherits ListItemArea {
     clip: true;
     ring-inset: Space.xs;
     label: root.describe(root.entry);
-    background: root.fill(root.selected, root.has-hover);
+    background: root.fill(root.selected, root.has-hover || RoomMenu.shows(root.entry.id));
 
     init => {
         if (!root.entry.has-avatar) {
             Actions.request-room-avatar(root.entry.id);
         }
+    }
+
+    changed context-presses => {
+        if root.has-hover && Interaction.actionable(root.enabled, root.above-modal) {
+            RoomMenu.open(
+                root.entry.id,
+                RoomMenuOrigin.list,
+                root.absolute-position.x + root.mouse-x,
+                root.absolute-position.y + root.mouse-y,
+                false);
+        }
+    }
+
+    changed menu-returns => {
+        if RoomMenu.returns-to(RoomMenuReturn.row, root.entry.id) {
+            root.take-focus();
+        }
+    }
+
+    context-menu-requested => {
+        RoomMenu.open(
+            root.entry.id,
+            RoomMenuOrigin.list,
+            root.absolute-position.x + Space.lg,
+            root.absolute-position.y + root.height,
+            true);
+        return EventResult.accept;
     }
 
     if root.collapsed: Rectangle {

@@ -83,6 +83,10 @@ impl Room {
     pub fn hint(&self) -> bool {
         self.has_activity && !self.alert()
     }
+
+    pub fn shows_unread(&self) -> bool {
+        self.alert() || self.mention() || self.hint()
+    }
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]

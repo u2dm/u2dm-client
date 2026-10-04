@@ -7,8 +7,6 @@ use slint::{
 };
 use tokio::runtime::Runtime;
 use tokio::sync::{mpsc, watch};
-#[cfg(feature = "demo")]
-use u2dm_ui::Probe;
 use u2dm_ui::{
     Actions, AppWindow, AttachmentKind as UiAttachmentKind, AttachmentView,
     AudioKind as UiAudioKind, AudioView, ChildAccess as UiChildAccess, ConnectionState,
@@ -19,14 +17,17 @@ use u2dm_ui::{
     MessageKind as UiMessageKind, NotifyMode as UiNotifyMode, PollAnswerEntry,
     PollPhase as UiPollPhase, PreviewKind as UiPreviewKind, ReactionEntry,
     ReactionSend as UiReactionSend, ReactorAvatar, ReplySwipe, RoomEntry, RoomInfoView,
-    RoomScope as UiRoomScope, RoomView, RosterStatus as UiRosterStatus, SendState as UiSendState,
-    ServiceKind as UiServiceKind, SessionView, SourceEncryption as UiSourceEncryption,
-    SourceStatus as UiSourceStatus, SourceView, SpaceChildEntry, SpaceEntry,
-    SpaceIndexStatus as UiSpaceIndexStatus, SpaceIndexView, StickerCell, StickerPackTab,
-    StickerRow, StickerView, TimelineState, UnsentView, UserMessage as UiUserMessage,
-    UserMessageKind as UiUserMessageKind, VerificationActivity as UiVerificationActivity,
-    VerificationEmoji, VerificationPhase, VerificationView, VideoView, WindowView,
+    RoomMenuView, RoomScope as UiRoomScope, RoomView, RosterStatus as UiRosterStatus,
+    SendState as UiSendState, ServiceKind as UiServiceKind, SessionView,
+    SourceEncryption as UiSourceEncryption, SourceStatus as UiSourceStatus, SourceView,
+    SpaceChildEntry, SpaceEntry, SpaceIndexStatus as UiSpaceIndexStatus, SpaceIndexView,
+    StickerCell, StickerPackTab, StickerRow, StickerView, TimelineState, UnsentView,
+    UserMessage as UiUserMessage, UserMessageKind as UiUserMessageKind,
+    VerificationActivity as UiVerificationActivity, VerificationEmoji, VerificationPhase,
+    VerificationView, VideoView, WindowView,
 };
+#[cfg(feature = "demo")]
+use u2dm_ui::{Probe, RoomMenu};
 
 use super::backend::{
     self, Models, UiBackend, adopted_room_key, current_edited_row, last_editable_row,
@@ -559,8 +560,9 @@ impl SlintUiAdapter {
         actions(win).on_dismiss_unsent(move |submission| router::dismiss_unsent(&tx, submission));
 
         let tx = cmd_tx.clone();
-        actions(win)
-            .on_set_room_notify(move |mode| router::set_room_notify(&tx, mode.slint_name()));
+        actions(win).on_set_room_notify(move |room_id, mode| {
+            router::set_room_notify(&tx, room_id.to_string(), mode.slint_name());
+        });
 
         let tx = cmd_tx.clone();
         actions(win)

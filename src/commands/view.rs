@@ -22,6 +22,7 @@ pub struct AppViewState {
     pub directory: DirectoryView,
     pub space_index: SpaceIndexView,
     pub room_info: RoomInfoView,
+    pub room_menu: Option<RoomMenuTarget>,
     pub pagination: PaginationView,
     pub pinned: PinnedView,
     pub stickers: StickerView,
@@ -30,7 +31,8 @@ pub struct AppViewState {
     pub audio: AudioView,
     pub unsent: Option<UnsentMessage>,
     pub toast: Toast,
-    pub message_link: MessageLink,
+    pub message_link: CopiedLink,
+    pub room_link: CopiedLink,
     pub source: SourceState,
 }
 
@@ -73,7 +75,7 @@ pub enum SourceState {
 }
 
 #[derive(Clone, Default, PartialEq, Eq)]
-pub struct MessageLink {
+pub struct CopiedLink {
     pub serial: i32,
     pub url: String,
 }
@@ -361,6 +363,16 @@ pub enum RosterStatus {
 pub enum RosterRow {
     Member(Arc<RosterMember>),
     InvitedHeading,
+}
+
+#[derive(Clone, PartialEq, Eq)]
+pub struct RoomMenuTarget {
+    pub room_id: RoomId,
+    pub name: String,
+    pub unread: bool,
+    pub notify: NotifyMode,
+    pub notify_busy: bool,
+    pub leaving: bool,
 }
 
 #[derive(Clone, Default)]

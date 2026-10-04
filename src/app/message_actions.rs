@@ -4,12 +4,13 @@ use std::sync::Arc;
 use super::active_timeline::report_delete_failure;
 use super::event::{AppEvent, MessageActionEvent};
 use super::input::EventSender;
+use super::link_requests::LinkRequests;
 use super::room_info::ActionOutcome;
 use super::send_lanes::SendLanes;
 use super::show_toast;
 use super::task_group::TaskGroup;
 use crate::commands::messages::{UserMessage, UserMessageKind};
-use crate::commands::view::{MessageLink, Toast};
+use crate::commands::view::{CopiedLink, Toast};
 use crate::domain::room::RoomId;
 use crate::ports::matrix::{RoomInfoPort, TimelinePort};
 use crate::ports::output::AppOutputPort;
@@ -17,8 +18,7 @@ use crate::ports::output::AppOutputPort;
 pub(super) struct MessageActions {
     output: Arc<dyn AppOutputPort>,
     events: EventSender,
-    links: i32,
-    awaited_link: Option<i32>,
+    links: LinkRequests,
     deleting: HashSet<String>,
 }
 
@@ -27,8 +27,7 @@ impl MessageActions {
         Self {
             output,
             events,
-            links: 0,
-            awaited_link: None,
+            links: LinkRequests::default(),
             deleting: HashSet::new(),
         }
     }
@@ -74,9 +73,7 @@ impl MessageActions {
         room_id: RoomId,
         event_id: String,
     ) {
-        self.links = self.links.wrapping_add(1);
-        let request = self.links;
-        self.awaited_link = Some(request);
+        let request = self.links.issue();
         let events = self.events.clone();
         let cancel = group.token();
         group.spawn(async move {
@@ -92,14 +89,13 @@ impl MessageActions {
     }
 
     pub(super) fn link_resolved(&mut self, request: i32, link: Option<String>) {
-        if self.awaited_link != Some(request) {
+        if !self.links.settle(request) {
             tracing::debug!(request, "dropping a message link a later copy replaced");
             return;
         }
-        self.awaited_link = None;
         match link {
             Some(url) => self.output.publish(Box::new(move |view| {
-                view.message_link = MessageLink {
+                view.message_link = CopiedLink {
                     serial: request,
                     url,
                 };
@@ -112,7 +108,7 @@ impl MessageActions {
     }
 
     pub(super) fn forget(&mut self) {
-        self.awaited_link = None;
+        self.links.forget();
         self.deleting.clear();
     }
 }

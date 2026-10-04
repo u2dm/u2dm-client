@@ -1,5 +1,6 @@
 import { Delivery, LoginPhase, MessageKind, PollPhase } from "enums.slint";
-import { AttachmentView, LoginView, RoomInfoView, RoomView, SourceView, VerificationView, VideoView, WindowView } from "views.slint";
+import { AttachmentView, LoginView, RoomInfoView, RoomMenuView, RoomView, SourceView, VerificationView, VideoView, WindowView } from "views.slint";
+import { Actions } from "actions.slint";
 import { MessageEntry, ReactionEntry } from "screens/chat/components/types.slint";
 import { MessagePreview } from "screens/chat/components/message-preview.slint";
 import { Metrics } from "theme.slint";
@@ -348,12 +349,74 @@ export global MessageMenu {
     }
 }
 
+export enum RoomMenuOrigin { list, header }
+
+export enum RoomMenuReturn { composer, row, header }
+
+export global RoomMenu {
+    in-out property <string> key;
+    in-out property <RoomMenuOrigin> origin: RoomMenuOrigin.list;
+    in-out property <length> at-x;
+    in-out property <length> at-y;
+    in-out property <bool> by-keyboard;
+    in-out property <bool> asking-leave;
+    in-out property <bool> flyout-open;
+    in-out property <RoomMenuReturn> return-to: RoomMenuReturn.composer;
+    in-out property <string> return-room;
+    in-out property <int> focus-returns;
+
+    out property <bool> visible: root.key != "" && RoomMenuView.room-id == root.key;
+
+    public pure function shows(id: string) -> bool {
+        return root.visible && root.key == id;
+    }
+
+    public pure function returns-to(target: RoomMenuReturn, id: string) -> bool {
+        return root.return-to == target && root.return-room == id;
+    }
+
+    public function open(id: string, origin: RoomMenuOrigin, x: length, y: length, keyboard: bool) {
+        root.key = id;
+        root.origin = origin;
+        root.at-x = x;
+        root.at-y = y;
+        root.by-keyboard = keyboard;
+        root.asking-leave = false;
+        root.flyout-open = false;
+        Actions.open-room-menu(id);
+    }
+
+    public function close() {
+        if root.key == "" {
+            return;
+        }
+        root.key = "";
+        root.asking-leave = false;
+        root.flyout-open = false;
+        Actions.close-room-menu();
+    }
+
+    public function dismiss() {
+        if !root.by-keyboard {
+            root.return-to = RoomMenuReturn.composer;
+        } else if root.origin == RoomMenuOrigin.list {
+            root.return-to = RoomMenuReturn.row;
+        } else {
+            root.return-to = RoomMenuReturn.header;
+        }
+        root.return-room = root.key;
+        root.close();
+        root.focus-returns += 1;
+    }
+}
+
 export global ReplySwipe {
     in-out property <ReactionAnchor> anchor: { row: -1 };
 
     in-out property <bool> armed: root.anchor.event-id != ""
         && !Reactions.open
         && !MessageMenu.visible
+        && !RoomMenu.visible
         && !Shell.modal-open
         && !Composer.editing;
 

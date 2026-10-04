@@ -88,18 +88,43 @@ pub(super) enum AppEvent {
         generation: u64,
         ready: usize,
     },
-    RoomNotifySettled {
+    RoomAction(RoomActionEvent),
+    MessageAction(MessageActionEvent),
+}
+
+pub(super) enum RoomActionEvent {
+    NotifySettled {
         request: u64,
         room_id: RoomId,
         name: String,
         outcome: ActionOutcome,
     },
-    RoomLeaveSettled {
+    LeaveSettled {
         room_id: RoomId,
         name: String,
         outcome: ActionOutcome,
     },
-    MessageAction(MessageActionEvent),
+    ReadSettled {
+        room_id: RoomId,
+        name: String,
+        outcome: ActionOutcome,
+    },
+    LinkResolved {
+        request: i32,
+        name: String,
+        link: Option<String>,
+    },
+}
+
+impl RoomActionEvent {
+    fn label(&self) -> &'static str {
+        match self {
+            Self::NotifySettled { .. } => "RoomNotifySettled",
+            Self::LeaveSettled { .. } => "RoomLeaveSettled",
+            Self::ReadSettled { .. } => "RoomReadSettled",
+            Self::LinkResolved { .. } => "RoomLinkResolved",
+        }
+    }
 }
 
 pub(super) enum MessageActionEvent {
@@ -155,8 +180,7 @@ impl AppEvent {
             Self::RoomRosterFetched { .. } => "RoomRosterFetched",
             Self::RoomAboutFetched { .. } => "RoomAboutFetched",
             Self::RoomInfoAvatarsReady { .. } => "RoomInfoAvatarsReady",
-            Self::RoomNotifySettled { .. } => "RoomNotifySettled",
-            Self::RoomLeaveSettled { .. } => "RoomLeaveSettled",
+            Self::RoomAction(event) => event.label(),
             Self::MessageAction(event) => event.label(),
         }
     }

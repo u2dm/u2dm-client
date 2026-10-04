@@ -9,9 +9,10 @@ import { DialogCard, ModalHost, PickerCard } from "../../../components/overlay.s
 import { ErrorBanner } from "../../../components/banner.slint";
 import { DotPulse } from "../../../components/dot-pulse.slint";
 import { PickerSearch } from "./timeline/picker-search.slint";
+import { NotifyModes } from "./notify-modes.slint";
 import { MemberEntry } from "./types.slint";
 import { AppStyle, Avatars, Fonts, Glyph, IconSize, Metrics, Motion, Opacity, Radius, Size, Space, Weight } from "../../../theme.slint";
-import { MemberRole, MemberRowKind, NotifyMode, RosterStatus, UserMessageKind } from "../../../enums.slint";
+import { MemberRole, MemberRowKind, RosterStatus, UserMessageKind } from "../../../enums.slint";
 import { RoomInfoView } from "../../../views.slint";
 import { Actions } from "../../../actions.slint";
 
@@ -433,36 +434,6 @@ export component RoomInfoDialog inherits ModalHost {
         max(Space.md, root.width - Metrics.room-info-picker-width - Space.md));
     property <length> picker-top: notify-tile.absolute-position.y - root.absolute-position.y + notify-tile.height + Space.sm;
 
-    pure function notify-icon(mode: NotifyMode) -> Icon {
-        if mode == NotifyMode.muted {
-            return IconSet.BellOff;
-        }
-        if mode == NotifyMode.mentions-only {
-            return IconSet.AtSign;
-        }
-        return IconSet.Bell;
-    }
-
-    pure function notify-state(mode: NotifyMode) -> string {
-        if mode == NotifyMode.muted {
-            return @tr("Muted");
-        }
-        if mode == NotifyMode.mentions-only {
-            return @tr("Mentions");
-        }
-        return @tr("All messages");
-    }
-
-    pure function notify-choice(mode: NotifyMode) -> string {
-        if mode == NotifyMode.all-messages {
-            return @tr("All messages");
-        }
-        if mode == NotifyMode.mentions-only {
-            return @tr("Mentions and keywords");
-        }
-        return @tr("Mute");
-    }
-
     function page-if-wanted() {
         if root.wants-page {
             root.asked-after = RoomInfoView.pages-landed;
@@ -620,9 +591,9 @@ export component RoomInfoDialog inherits ModalHost {
                                 visible: !root.asking-leave;
                                 enabled: !root.asking-leave && !RoomInfoView.leaving && !RoomInfoView.notify-busy;
                                 busy: RoomInfoView.notify-busy;
-                                icon: root.notify-icon(RoomInfoView.notify);
-                                text: root.notify-state(RoomInfoView.notify);
-                                label: @tr("Notifications: {}", root.notify-state(RoomInfoView.notify));
+                                icon: NotifyModes.icon(RoomInfoView.notify);
+                                text: NotifyModes.state(RoomInfoView.notify);
+                                label: @tr("Notifications: {}", NotifyModes.state(RoomInfoView.notify));
                                 clicked => {
                                     root.picker-open = true;
                                 }
@@ -856,13 +827,13 @@ export component RoomInfoDialog inherits ModalHost {
                 padding: Space.sm;
                 spacing: Space.xs;
 
-                for mode[index] in [NotifyMode.all-messages, NotifyMode.mentions-only, NotifyMode.muted]: NotifyRow {
+                for mode[index] in NotifyModes.all: NotifyRow {
                     index: index;
-                    icon: root.notify-icon(mode);
-                    text: root.notify-choice(mode);
+                    icon: NotifyModes.icon(mode);
+                    text: NotifyModes.choice(mode);
                     current: RoomInfoView.notify == mode;
                     clicked => {
-                        Actions.set-room-notify(mode);
+                        Actions.set-room-notify(RoomInfoView.room-id, mode);
                         root.close-picker();
                     }
                 }

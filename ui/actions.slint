@@ -40,8 +40,12 @@ export global Actions {
     callback page-room-members();
     callback retry-room-members();
     callback filter-room-members(string);
-    callback set-room-notify(NotifyMode);
+    callback set-room-notify(string, NotifyMode);
     callback leave-room(string);
+    callback open-room-menu(string);
+    callback close-room-menu();
+    callback mark-room-read(string);
+    callback copy-room-link(string);
 
     callback send-message(SendMessageRequest);
     callback edit-message(EditMessageRequest) -> bool;

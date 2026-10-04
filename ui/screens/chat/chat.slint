@@ -4,6 +4,7 @@ import { Sidebar } from "components/sidebar.slint";
 import { Drawer } from "components/drawer.slint";
 import { TimelineView } from "components/timeline/timeline-view.slint";
 import { SpaceIndexPane } from "components/space-index.slint";
+import { RoomMenuOverlay } from "components/room-menu.slint";
 import { ClickArea, FocusRing } from "../../components/a11y.slint";
 import { UserMessageKind } from "../../enums.slint";
 import { UserMessages } from "../../messages.slint";
@@ -11,7 +12,7 @@ import { AppStyle, IconSize, Metrics, Radius, Size, Space } from "../../theme.sl
 import { IconButton } from "../../components/button.slint";
 import { DirectoryView, RoomView, SpaceIndexView, WindowView } from "../../views.slint";
 import { Actions } from "../../actions.slint";
-import { Composer, DeliveryTip, MessageMenu, Polls, Reactions, ReplySwipe, Shell, TextSelection } from "../../local.slint";
+import { Composer, DeliveryTip, MessageMenu, Polls, Reactions, ReplySwipe, RoomMenu, Shell, TextSelection } from "../../local.slint";
 
 export component ChatScreen inherits Rectangle {
     in-out property <string> input-message: "";
@@ -23,6 +24,7 @@ export component ChatScreen inherits Rectangle {
         TextSelection.clear();
         Reactions.close();
         MessageMenu.close();
+        RoomMenu.close();
         ReplySwipe.clear();
         DeliveryTip.clear();
         Polls.clear();
@@ -204,6 +206,13 @@ export component ChatScreen inherits Rectangle {
             height: 100%;
             border-radius: 0;
         }
+    }
+
+    RoomMenuOverlay {
+        x: 0;
+        y: 0;
+        width: root.width;
+        height: root.height;
     }
 
     if has-toast: Rectangle {

@@ -27,11 +27,18 @@ export component ModalHost inherits Rectangle {
     in property <bool> light-dismiss: true;
     in property <bool> any-button-dismisses: false;
     in property <string> label;
+    out property <bool> dismissing-by-pointer: false;
 
     callback dismissed();
     callback opened();
 
     property <bool> entered: false;
+
+    function dismiss-by-pointer() {
+        root.dismissing-by-pointer = true;
+        root.dismissed();
+        root.dismissing-by-pointer = false;
+    }
 
     accessible-role: AccessibleRole.groupbox;
     accessible-label: root.label;
@@ -68,7 +75,7 @@ export component ModalHost inherits Rectangle {
                 mouse-cursor: default;
                 clicked => {
                     if (root.light-dismiss) {
-                        root.dismissed();
+                        root.dismiss-by-pointer();
                     }
                 }
                 pointer-event(event) => {
@@ -76,7 +83,7 @@ export component ModalHost inherits Rectangle {
                         && root.any-button-dismisses
                         && event.kind == PointerEventKind.down
                         && event.button != PointerEventButton.left) {
-                        root.dismissed();
+                        root.dismiss-by-pointer();
                     }
                 }
                 scroll-event(event) => {

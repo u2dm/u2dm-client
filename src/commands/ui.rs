@@ -48,10 +48,20 @@ pub enum UiCommand {
     RetryRoomMembers,
     #[strum(to_string = "FilterRoomMembers")]
     FilterRoomMembers(String),
-    #[strum(to_string = "SetRoomNotify")]
-    SetRoomNotify(NotifyMode),
+    #[strum(to_string = "SetRoomNotify({room_id})")]
+    SetRoomNotify {
+        room_id: RoomId,
+        mode: NotifyMode,
+    },
     #[strum(to_string = "LeaveRoom({0})")]
     LeaveRoom(RoomId),
+    #[strum(to_string = "OpenRoomMenu({0})")]
+    OpenRoomMenu(RoomId),
+    CloseRoomMenu,
+    #[strum(to_string = "MarkRoomRead({0})")]
+    MarkRoomRead(RoomId),
+    #[strum(to_string = "CopyRoomLink({0})")]
+    CopyRoomLink(RoomId),
     #[strum(to_string = "SendMessage({room_id})")]
     SendMessage {
         room_id: RoomId,

@@ -60,6 +60,8 @@ pub enum UserMessageKind {
     JoinRoomFailed,
     LeaveRoomFailed,
     NotifyChangeFailed,
+    MarkReadFailed,
+    RoomLinkFailed,
     MediaDownloadFailed,
     FileDownloadFailed,
     MediaOpenFailed,

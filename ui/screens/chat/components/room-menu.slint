@@ -1,0 +1,655 @@
+import { Palette } from "std-widgets.slint";
+import { IconSet, Icon } from "@lucide";
+
+import { NotifyModes } from "notify-modes.slint";
+import { Interaction } from "../../../components/a11y.slint";
+import { Copier } from "../../../components/copier.slint";
+import { CopyNotice } from "../../../components/copy-notice.slint";
+import { MenuRow } from "../../../components/menu-row.slint";
+import { ModalHost, PickerCard } from "../../../components/overlay.slint";
+import { DeliveryTip, MessageMenu, Reactions, RoomMenu, RoomMenuOrigin, Shell } from "../../../local.slint";
+import { Actions } from "../../../actions.slint";
+import { DirectoryView, RoomMenuView, SpaceIndexView } from "../../../views.slint";
+import { NotifyMode } from "../../../enums.slint";
+import { AppStyle, Fonts, Metrics, Motion, Space } from "../../../theme.slint";
+
+enum RoomMenuAction {
+    info,
+    mark-read,
+    notifications,
+    copy-link,
+    leave,
+}
+
+component NotifyFlyout inherits PickerCard {
+    in property <int> cursor: -1;
+    in property <bool> rings: false;
+    out property <bool> hovered: area.has-hover;
+
+    callback picked(NotifyMode);
+
+    property <length> row-height: Metrics.room-menu-row;
+    property <length> pad: Space.sm;
+
+    width: Metrics.room-menu-flyout-width;
+    height: NotifyModes.all.length * root.row-height + 2 * root.pad;
+    opacity: 0;
+
+    animate opacity {
+        duration: Motion.fast;
+        easing: ease-out;
+    }
+
+    init => {
+        self.opacity = 1;
+    }
+
+    area := TouchArea {
+        VerticalLayout {
+            padding: root.pad;
+
+            for mode[index] in NotifyModes.all: MenuRow {
+                height: root.row-height;
+                icon: NotifyModes.icon(mode);
+                label: NotifyModes.choice(mode);
+                trailing: RoomMenuView.notify == mode ? IconSet.Check : { };
+                above-modal: true;
+                focusable: false;
+                roving-focus: root.rings && root.cursor == index;
+                clicked => {
+                    root.picked(mode);
+                }
+            }
+        }
+    }
+}
+
+component RoomMenuCard inherits PickerCard {
+    out property <[RoomMenuAction]> offered;
+    out property <int> notify-index: -1;
+    out property <length> row-height: Metrics.room-menu-row;
+    out property <length> pad: Space.sm;
+    out property <length> notify-row-y: root.pad + max(root.notify-index, 0) * root.row-height;
+    out property <bool> keys-focused: keys.has-focus;
+    out property <bool> in-flyout: false;
+    out property <int> flyout-cursor: -1;
+
+    callback chose(RoomMenuAction);
+    callback mode-chosen(NotifyMode);
+    callback leave-confirmed();
+
+    property <int> cursor: -1;
+    property <bool> asking: RoomMenu.asking-leave;
+    property <int> confirm-cursor: 1;
+    property <int> confirm-leave: 0;
+    property <RoomMenuAction> intent: RoomMenuAction.info;
+    property <bool> flyout-hovered: false;
+
+    width: Metrics.room-menu-width;
+    height: root.offered.length * root.row-height + 2 * root.pad;
+    opacity: 0;
+
+    animate opacity {
+        duration: Motion.fast;
+        easing: ease-out;
+    }
+
+    init => {
+        self.opacity = 1;
+    }
+
+    changed asking => {
+        root.confirm-cursor = 1;
+    }
+
+    public pure function available(action: RoomMenuAction) -> bool {
+        if action == RoomMenuAction.mark-read {
+            return RoomMenuView.unread;
+        }
+        if action == RoomMenuAction.notifications {
+            return !RoomMenuView.notify-busy && !RoomMenuView.leaving;
+        }
+        if action == RoomMenuAction.leave {
+            return !RoomMenuView.leaving;
+        }
+        return true;
+    }
+
+    public function open(keyboard: bool) {
+        root.offered = [];
+        root.offered.push(RoomMenuAction.info);
+        if RoomMenuView.unread {
+            root.offered.push(RoomMenuAction.mark-read);
+        }
+        root.notify-index = root.offered.length;
+        root.offered.push(RoomMenuAction.notifications);
+        root.offered.push(RoomMenuAction.copy-link);
+        if !RoomMenuView.leaving {
+            root.offered.push(RoomMenuAction.leave);
+        }
+        root.cursor = keyboard ? 0 : -1;
+        root.in-flyout = false;
+        root.flyout-cursor = -1;
+        keys.focus();
+    }
+
+    public function open-flyout(by-keys: bool) {
+        hover-timer.running = false;
+        if !root.available(RoomMenuAction.notifications) {
+            return;
+        }
+        RoomMenu.flyout-open = true;
+        root.in-flyout = by-keys;
+        root.flyout-cursor = by-keys ? NotifyModes.position(RoomMenuView.notify) : -1;
+    }
+
+    public function close-flyout() {
+        hover-timer.running = false;
+        RoomMenu.flyout-open = false;
+        root.in-flyout = false;
+        root.flyout-cursor = -1;
+    }
+
+    public function cancel-leave() {
+        RoomMenu.asking-leave = false;
+    }
+
+    public function flyout-hover(on: bool) {
+        root.flyout-hovered = on;
+        if on {
+            root.intent = RoomMenuAction.notifications;
+            hover-timer.running = false;
+        }
+    }
+
+    pure function label-of(action: RoomMenuAction) -> string {
+        if action == RoomMenuAction.info {
+            return @tr("Room info");
+        }
+        if action == RoomMenuAction.mark-read {
+            return @tr("Mark as read");
+        }
+        if action == RoomMenuAction.notifications {
+            return @tr("Notifications");
+        }
+        if action == RoomMenuAction.copy-link {
+            return @tr("Copy link");
+        }
+        return @tr("Leave");
+    }
+
+    pure function spoken-label-of(action: RoomMenuAction) -> string {
+        if action == RoomMenuAction.notifications {
+            return @tr("Notifications: {}", NotifyModes.state(RoomMenuView.notify));
+        }
+        return root.label-of(action);
+    }
+
+    pure function icon-of(action: RoomMenuAction) -> Icon {
+        if action == RoomMenuAction.info {
+            return IconSet.Info;
+        }
+        if action == RoomMenuAction.mark-read {
+            return IconSet.CheckCheck;
+        }
+        if action == RoomMenuAction.notifications {
+            return NotifyModes.icon(RoomMenuView.notify);
+        }
+        if action == RoomMenuAction.copy-link {
+            return IconSet.Link;
+        }
+        return IconSet.LogOut;
+    }
+
+    pure function destructive(action: RoomMenuAction) -> bool {
+        return action == RoomMenuAction.leave;
+    }
+
+    pure function spoken-label() -> string {
+        if root.asking {
+            return root.confirm-cursor == root.confirm-leave ? @tr("Leave") : @tr("Cancel");
+        }
+        if root.in-flyout && root.flyout-cursor >= 0 && root.flyout-cursor < NotifyModes.all.length {
+            return NotifyModes.choice(NotifyModes.all[root.flyout-cursor]);
+        }
+        if root.cursor >= 0 && root.cursor < root.offered.length {
+            return root.spoken-label-of(root.offered[root.cursor]);
+        }
+        return @tr("Room actions");
+    }
+
+    function row-hovered(action: RoomMenuAction) {
+        root.intent = action;
+        if (action == RoomMenuAction.notifications) != RoomMenu.flyout-open {
+            hover-timer.running = true;
+            hover-timer.restart();
+        } else {
+            hover-timer.running = false;
+        }
+    }
+
+    function move-cursor(index: int) {
+        root.cursor = index;
+        if RoomMenu.flyout-open && index != root.notify-index {
+            root.close-flyout();
+        }
+    }
+
+    function choose(action: RoomMenuAction, by-keys: bool) {
+        if !root.available(action) {
+            return;
+        }
+        if action == RoomMenuAction.notifications {
+            root.open-flyout(by-keys);
+            return;
+        }
+        if action == RoomMenuAction.leave {
+            root.close-flyout();
+            RoomMenu.asking-leave = true;
+            return;
+        }
+        root.chose(action);
+    }
+
+    function choose-at(index: int) {
+        if index >= 0 && index < root.offered.length {
+            root.choose(root.offered[index], true);
+        }
+    }
+
+    function pick-at(index: int) {
+        if index >= 0 && index < NotifyModes.all.length {
+            root.mode-chosen(NotifyModes.all[index]);
+        }
+    }
+
+    function answer-confirm(index: int) {
+        if index == root.confirm-leave {
+            root.leave-confirmed();
+        } else {
+            root.cancel-leave();
+        }
+    }
+
+    function confirm-key(event: KeyEvent) -> EventResult {
+        if event.text == Key.DownArrow || event.text == Key.UpArrow {
+            root.confirm-cursor = 1 - root.confirm-cursor;
+            return accept;
+        }
+        if Interaction.activates(event.text) {
+            root.answer-confirm(root.confirm-cursor);
+            return accept;
+        }
+        return reject;
+    }
+
+    function flyout-key(event: KeyEvent) -> EventResult {
+        let count = NotifyModes.all.length;
+        if event.text == Key.DownArrow {
+            root.flyout-cursor = mod(max(root.flyout-cursor, -1) + 1, count);
+            return accept;
+        }
+        if event.text == Key.UpArrow {
+            root.flyout-cursor = root.flyout-cursor <= 0 ? count - 1 : root.flyout-cursor - 1;
+            return accept;
+        }
+        if event.text == Key.Home {
+            root.flyout-cursor = 0;
+            return accept;
+        }
+        if event.text == Key.End {
+            root.flyout-cursor = count - 1;
+            return accept;
+        }
+        if event.text == Key.LeftArrow {
+            root.close-flyout();
+            return accept;
+        }
+        if Interaction.activates(event.text) {
+            root.pick-at(max(root.flyout-cursor, 0));
+            return accept;
+        }
+        return reject;
+    }
+
+    function list-key(event: KeyEvent) -> EventResult {
+        let count = root.offered.length;
+        if count == 0 {
+            return reject;
+        }
+        if event.text == Key.DownArrow {
+            root.move-cursor(mod(max(root.cursor, -1) + 1, count));
+            return accept;
+        }
+        if event.text == Key.UpArrow {
+            root.move-cursor(root.cursor <= 0 ? count - 1 : root.cursor - 1);
+            return accept;
+        }
+        if event.text == Key.Home {
+            root.move-cursor(0);
+            return accept;
+        }
+        if event.text == Key.End {
+            root.move-cursor(count - 1);
+            return accept;
+        }
+        if event.text == Key.RightArrow && root.cursor == root.notify-index {
+            root.open-flyout(true);
+            return accept;
+        }
+        if Interaction.activates(event.text) {
+            root.choose-at(max(root.cursor, 0));
+            return accept;
+        }
+        return reject;
+    }
+
+    hover-timer := Timer {
+        interval: Motion.submenu-delay;
+        running: false;
+        triggered => {
+            self.running = false;
+            if root.intent == RoomMenuAction.notifications {
+                if !RoomMenu.flyout-open {
+                    root.open-flyout(false);
+                }
+            } else if RoomMenu.flyout-open && !root.flyout-hovered {
+                root.close-flyout();
+            }
+        }
+    }
+
+    TouchArea { }
+
+    keys := FocusScope {
+        x: 0;
+        y: 0;
+        width: 0;
+        height: 0;
+        focus-on-click: false;
+        accessible-role: button;
+        accessible-label: root.spoken-label();
+        accessible-checkable: root.in-flyout && !root.asking;
+        accessible-checked: root.in-flyout
+            && root.flyout-cursor >= 0
+            && root.flyout-cursor == NotifyModes.position(RoomMenuView.notify);
+        accessible-action-default => {
+            if root.asking {
+                root.answer-confirm(root.confirm-cursor);
+            } else if root.in-flyout {
+                root.pick-at(max(root.flyout-cursor, 0));
+            } else {
+                root.choose-at(max(root.cursor, 0));
+            }
+        }
+        focus-gained(reason) => {
+            if reason == FocusReason.tab-navigation && root.cursor < 0 {
+                root.cursor = 0;
+            }
+        }
+        key-pressed(event) => {
+            if event.text == Key.Tab || event.text == Key.Backtab {
+                return accept;
+            }
+            if root.asking {
+                return root.confirm-key(event);
+            }
+            if root.in-flyout && RoomMenu.flyout-open {
+                return root.flyout-key(event);
+            }
+            return root.list-key(event);
+        }
+    }
+
+    Rectangle {
+        visible: !root.asking;
+
+        VerticalLayout {
+            padding: root.pad;
+
+            for action[index] in root.offered: MenuRow {
+                height: root.row-height;
+                icon: root.icon-of(action);
+                label: root.label-of(action);
+                tint: root.destructive(action) ? AppStyle.danger-muted : AppStyle.foreground-muted;
+                text-color: root.destructive(action) ? AppStyle.danger-muted : Palette.foreground;
+                trailing: action == RoomMenuAction.notifications ? IconSet.ChevronRight : { };
+                busy: action == RoomMenuAction.notifications && RoomMenuView.notify-busy;
+                enabled: root.available(action);
+                highlighted: action == RoomMenuAction.notifications && RoomMenu.flyout-open;
+                above-modal: true;
+                focusable: false;
+                roving-focus: root.keys-focused && !root.in-flyout && root.cursor == index;
+                changed has-hover => {
+                    if self.has-hover {
+                        root.row-hovered(action);
+                    }
+                }
+                clicked => {
+                    root.choose(action, false);
+                }
+            }
+        }
+    }
+
+    if root.asking: VerticalLayout {
+        padding: root.pad;
+
+        Text {
+            vertical-stretch: 1;
+            text: @tr("Leave {}?", RoomMenuView.name);
+            font-size: Fonts.label;
+            color: Palette.foreground;
+            wrap: word-wrap;
+            overflow: elide;
+            vertical-alignment: center;
+            horizontal-alignment: center;
+        }
+
+        MenuRow {
+            height: root.row-height;
+            icon: IconSet.LogOut;
+            label: @tr("Leave");
+            tint: AppStyle.danger-muted;
+            text-color: AppStyle.danger-muted;
+            above-modal: true;
+            focusable: false;
+            roving-focus: root.keys-focused && root.cursor >= 0 && root.confirm-cursor == root.confirm-leave;
+            clicked => {
+                root.answer-confirm(root.confirm-leave);
+            }
+        }
+
+        MenuRow {
+            height: root.row-height;
+            icon: IconSet.X;
+            label: @tr("Cancel");
+            above-modal: true;
+            focusable: false;
+            roving-focus: root.keys-focused && root.cursor >= 0 && root.confirm-cursor != root.confirm-leave;
+            clicked => {
+                root.answer-confirm(1 - root.confirm-leave);
+            }
+        }
+    }
+}
+
+export component RoomMenuOverlay inherits Rectangle {
+    property <length> edge: Space.md;
+    property <length> gap: Space.xs;
+    property <string> notice;
+    property <length> notice-x;
+    property <length> notice-y;
+    property <int> link-serial: RoomMenuView.link-serial;
+    property <bool> covered: Shell.modal-over-nav;
+
+    changed link-serial => {
+        if RoomMenuView.link != "" {
+            copier.copy-text(RoomMenuView.link);
+            root.notice = @tr("Link copied");
+            notice-timer.running = true;
+            notice-timer.restart();
+        }
+    }
+
+    changed covered => {
+        if root.covered {
+            RoomMenu.close();
+        }
+    }
+
+    pure function card-left(width: length) -> length {
+        if RoomMenu.origin == RoomMenuOrigin.header {
+            return clamp(RoomMenu.at-x - width, root.edge, max(root.edge, root.width - width - root.edge));
+        }
+        return clamp(
+            RoomMenu.at-x + width + root.edge > root.width ? RoomMenu.at-x - width : RoomMenu.at-x,
+            root.edge,
+            max(root.edge, root.width - width - root.edge));
+    }
+
+    pure function card-top(height: length) -> length {
+        let below = RoomMenu.origin == RoomMenuOrigin.header ? RoomMenu.at-y + root.gap : RoomMenu.at-y;
+        return clamp(
+            below + height + root.edge > root.height ? RoomMenu.at-y - height : below,
+            root.edge,
+            max(root.edge, root.height - height - root.edge));
+    }
+
+    pure function flyout-fits-right(card-x: length, card-width: length, width: length) -> bool {
+        return card-x + card-width + root.gap + width + root.edge <= root.width;
+    }
+
+    pure function flyout-fits-left(card-x: length, width: length) -> bool {
+        return card-x - root.gap - width >= root.edge;
+    }
+
+    pure function flyout-left(card-x: length, card-width: length, width: length) -> length {
+        if root.flyout-fits-right(card-x, card-width, width) {
+            return card-x + card-width + root.gap;
+        }
+        if root.flyout-fits-left(card-x, width) {
+            return card-x - root.gap - width;
+        }
+        return clamp(card-x + card-width - width, root.edge, max(root.edge, root.width - width - root.edge));
+    }
+
+    pure function flyout-top(wanted: length, height: length) -> length {
+        return clamp(wanted, root.edge, max(root.edge, root.height - height - root.edge));
+    }
+
+    function run(action: RoomMenuAction) {
+        let id = RoomMenu.key;
+        if action == RoomMenuAction.info {
+            RoomMenu.close();
+            if id != DirectoryView.selected-room-id {
+                Actions.select-room(id);
+            } else if SpaceIndexView.visible {
+                Actions.close-space-index();
+            }
+            Shell.nav-open = false;
+            Actions.open-room-info(id);
+            return;
+        }
+        if action == RoomMenuAction.mark-read {
+            Actions.mark-room-read(id);
+        } else if action == RoomMenuAction.copy-link {
+            Actions.copy-room-link(id);
+        }
+        RoomMenu.dismiss();
+    }
+
+    function pick(mode: NotifyMode) {
+        Actions.set-room-notify(RoomMenu.key, mode);
+        RoomMenu.dismiss();
+    }
+
+    function leave() {
+        Actions.leave-room(RoomMenu.key);
+        RoomMenu.dismiss();
+    }
+
+    copier := Copier { }
+
+    notice-timer := Timer {
+        interval: Motion.feedback-hold;
+        running: false;
+        triggered => {
+            self.running = false;
+            root.notice = "";
+        }
+    }
+
+    if RoomMenu.visible: host := ModalHost {
+        property <length> card-x: root.card-left(card.width);
+        property <length> card-y: root.card-top(card.height);
+        property <bool> beside: root.flyout-fits-right(self.card-x, card.width, Metrics.room-menu-flyout-width)
+            || root.flyout-fits-left(self.card-x, Metrics.room-menu-flyout-width);
+
+        width: 100%;
+        height: 100%;
+        dim: false;
+        any-button-dismisses: true;
+        label: @tr("Actions for {}", RoomMenuView.name);
+        opened => {
+            MessageMenu.close();
+            Reactions.close();
+            DeliveryTip.clear();
+            Shell.picker-open = false;
+            Shell.attach-open = false;
+            card.open(RoomMenu.by-keyboard);
+        }
+        dismissed => {
+            if self.dismissing-by-pointer {
+                RoomMenu.dismiss();
+            } else if RoomMenu.flyout-open {
+                card.close-flyout();
+            } else if RoomMenu.asking-leave {
+                card.cancel-leave();
+            } else {
+                RoomMenu.dismiss();
+            }
+        }
+
+        card := RoomMenuCard {
+            x: host.card-x;
+            y: host.card-y;
+            chose(action) => {
+                if action == RoomMenuAction.copy-link {
+                    root.notice-x = host.card-x + self.width / 2;
+                    root.notice-y = host.card-y + self.height / 2;
+                }
+                root.run(action);
+            }
+            mode-chosen(mode) => {
+                root.pick(mode);
+            }
+            leave-confirmed => {
+                root.leave();
+            }
+        }
+
+        if RoomMenu.flyout-open: flyout := NotifyFlyout {
+            x: root.flyout-left(host.card-x, card.width, self.width);
+            y: root.flyout-top(
+                host.beside
+                    ? host.card-y + card.notify-row-y - card.pad
+                    : host.card-y + card.notify-row-y + card.row-height,
+                self.height);
+            cursor: card.flyout-cursor;
+            rings: card.keys-focused && card.in-flyout;
+            picked(mode) => {
+                root.pick(mode);
+            }
+            changed hovered => {
+                card.flyout-hover(self.hovered);
+            }
+        }
+    }
+
+    if root.notice != "": CopyNotice {
+        x: clamp(root.notice-x - self.width / 2, root.edge, max(root.edge, root.width - self.width - root.edge));
+        y: clamp(root.notice-y - self.height / 2, root.edge, max(root.edge, root.height - self.height - root.edge));
+        text: root.notice;
+    }
+}

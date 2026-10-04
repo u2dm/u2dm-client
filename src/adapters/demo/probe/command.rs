@@ -63,9 +63,24 @@ pub enum ProbeCommand {
         query: String,
     },
     SetRoomNotify {
+        #[serde(default)]
+        room_id: Option<String>,
         mode: String,
     },
     LeaveRoom {
+        #[serde(default)]
+        room_id: Option<String>,
+    },
+    OpenRoomMenu {
+        #[serde(default)]
+        room_id: Option<String>,
+    },
+    CloseRoomMenu,
+    MarkRoomRead {
+        #[serde(default)]
+        room_id: Option<String>,
+    },
+    CopyRoomLink {
         #[serde(default)]
         room_id: Option<String>,
     },
@@ -288,6 +303,22 @@ fn room(explicit: Option<String>, selected: Selection<'_>) -> Result<RoomId, Rej
     Ok(target(explicit, None, selected)?.room_id)
 }
 
+fn room_notify(
+    explicit: Option<String>,
+    mode: &str,
+    selected: Selection<'_>,
+) -> Result<UiCommand, Rejected> {
+    let mode = names::notify_mode_named(mode).ok_or_else(|| {
+        Rejected(format!(
+            "{mode} is not a notification mode; use all-messages, mentions-only or muted"
+        ))
+    })?;
+    Ok(UiCommand::SetRoomNotify {
+        room_id: room(explicit, selected)?,
+        mode,
+    })
+}
+
 fn message_edit(
     target: Option<EditTarget>,
     caption: bool,
@@ -358,14 +389,12 @@ pub fn to_driven(command: ProbeCommand, selected: Selection<'_>) -> Result<Drive
         ProbeCommand::PageRoomMembers => UiCommand::PageRoomMembers,
         ProbeCommand::RetryRoomMembers => UiCommand::RetryRoomMembers,
         ProbeCommand::FilterRoomMembers { query } => UiCommand::FilterRoomMembers(query),
-        ProbeCommand::SetRoomNotify { mode } => {
-            UiCommand::SetRoomNotify(names::notify_mode_named(&mode).ok_or_else(|| {
-                Rejected(format!(
-                    "{mode} is not a notification mode; use all-messages, mentions-only or muted"
-                ))
-            })?)
-        }
+        ProbeCommand::SetRoomNotify { room_id, mode } => room_notify(room_id, &mode, selected)?,
         ProbeCommand::LeaveRoom { room_id } => UiCommand::LeaveRoom(room(room_id, selected)?),
+        ProbeCommand::OpenRoomMenu { room_id } => UiCommand::OpenRoomMenu(room(room_id, selected)?),
+        ProbeCommand::CloseRoomMenu => UiCommand::CloseRoomMenu,
+        ProbeCommand::MarkRoomRead { room_id } => UiCommand::MarkRoomRead(room(room_id, selected)?),
+        ProbeCommand::CopyRoomLink { room_id } => UiCommand::CopyRoomLink(room(room_id, selected)?),
         ProbeCommand::SendMessage {
             room_id,
             body,

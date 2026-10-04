@@ -29,9 +29,9 @@ use crate::commands::effects::{Effect, VerificationActivity, VerificationUpdate}
 use crate::commands::messages::{UserMessage, UserMessageKind};
 use crate::commands::ui::Draft;
 use crate::commands::view::{
-    AppViewState, AttachmentView, AudioView, DirectoryView, LifecycleView, MessageLink, NowPlaying,
-    PaginationView, PinnedView, RoomCard, RoomInfoView, SourceState, SpaceIndexView, StickerView,
-    Toast, TrackFile, UnsentMessage, VideoView,
+    AppViewState, AttachmentView, AudioView, CopiedLink, DirectoryView, LifecycleView, NowPlaying,
+    PaginationView, PinnedView, RoomCard, RoomInfoView, RoomMenuTarget, SourceState,
+    SpaceIndexView, StickerView, Toast, TrackFile, UnsentMessage, VideoView,
 };
 use crate::domain::message::{
     EditKind, MessageEdit, MessagePermissions, MessagePreviewKind, RichText, TimelineMessage,
@@ -309,6 +309,7 @@ fn apply_snapshot<B: UiBackend>(
         directory,
         space_index,
         room_info,
+        room_menu,
         pagination,
         pinned,
         stickers,
@@ -318,6 +319,7 @@ fn apply_snapshot<B: UiBackend>(
         unsent,
         toast,
         message_link,
+        room_link,
         source,
     } = view.as_ref();
 
@@ -328,6 +330,9 @@ fn apply_snapshot<B: UiBackend>(
     apply_directory::<B>(w, last.map(|l| &l.directory), directory, ctx);
     apply_space_index::<B>(w, last.map(|l| &l.space_index), space_index, ctx);
     apply_room_info::<B>(w, last.map(|l| &l.room_info), room_info, ctx);
+    if last.is_none_or(|l| l.room_menu != *room_menu) {
+        apply_room_menu(w, room_menu.as_ref());
+    }
     if last.is_none_or(|l| l.pagination != *pagination) {
         sync_timeline_chrome(w, pagination);
     }
@@ -364,6 +369,9 @@ fn apply_snapshot<B: UiBackend>(
     }
     if last.is_none_or(|l| l.message_link != *message_link) {
         apply_message_link(w, message_link);
+    }
+    if last.is_none_or(|l| l.room_link != *room_link) {
+        apply_room_link(w, room_link);
     }
     if last.is_none_or(|l| l.source != *source) {
         apply_source(w, source);
@@ -438,12 +446,36 @@ fn apply_source(w: &impl UiProps, state: &SourceState) {
     w.set_source_status(state);
 }
 
-fn apply_message_link(w: &(impl UiProps + ComponentHandle), link: &MessageLink) {
+fn apply_message_link(w: &(impl UiProps + ComponentHandle), link: &CopiedLink) {
     w.set_string(
         StringProp::MessageLink,
         SharedString::from(link.url.as_str()),
     );
     w.set_int(IntProp::MessageLinkSerial, link.serial);
+    run_change_handlers_next_frame(w);
+}
+
+fn apply_room_link(w: &(impl UiProps + ComponentHandle), link: &CopiedLink) {
+    w.set_string(StringProp::RoomLink, SharedString::from(link.url.as_str()));
+    w.set_int(IntProp::RoomLinkSerial, link.serial);
+    run_change_handlers_next_frame(w);
+}
+
+fn apply_room_menu(w: &(impl UiProps + ComponentHandle), menu: Option<&RoomMenuTarget>) {
+    let Some(menu) = menu else {
+        w.set_string(StringProp::RoomMenuRoomId, SharedString::default());
+        run_change_handlers_next_frame(w);
+        return;
+    };
+    w.set_string(StringProp::RoomMenuName, SharedString::from(&menu.name));
+    w.set_bool(BoolProp::RoomMenuUnread, menu.unread);
+    w.set_room_menu_notify(menu.notify);
+    w.set_bool(BoolProp::RoomMenuNotifyBusy, menu.notify_busy);
+    w.set_bool(BoolProp::RoomMenuLeaving, menu.leaving);
+    w.set_string(
+        StringProp::RoomMenuRoomId,
+        SharedString::from(menu.room_id.as_ref()),
+    );
     run_change_handlers_next_frame(w);
 }
 

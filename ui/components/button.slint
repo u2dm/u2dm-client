@@ -112,6 +112,7 @@ export component IconButton inherits Rectangle {
     in property <length> icon-size: root.size * root.icon-scale;
     in property <length> radius: Radius.md;
     in property <color> tint: AppStyle.foreground-muted;
+    out property <bool> has-focus: touch.has-focus;
 
     callback clicked();
 

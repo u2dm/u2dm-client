@@ -30,6 +30,9 @@ scenario_env() {
     room-info)       echo 'U2DM_DEMO_ROOM_INFO=slow' ;;
     room-leave)      echo 'U2DM_DEMO_ROOM_INFO=slow' ;;
     room-info-failures) echo 'U2DM_DEMO_ROOM_INFO=roster-fails,notify-fails,leave-fails' ;;
+    room-menu)       echo 'U2DM_DEMO_ROOM_INFO=slow' ;;
+    room-menu-leave) echo 'U2DM_DEMO_ROOM_INFO=slow' ;;
+    room-menu-failures) echo 'U2DM_DEMO_ROOM_INFO=read-fails,link-fails,notify-fails,leave-fails' ;;
     message-link)    echo 'U2DM_DEMO_MESSAGE_MENU=slow' ;;
     message-source)  echo 'U2DM_DEMO_MESSAGE_MENU=slow' ;;
     message-pins)    echo 'U2DM_DEMO_MESSAGE_MENU=slow U2DM_DEMO_PINNED=slow' ;;
@@ -120,6 +123,33 @@ scenario_steps() {
       echo 'sleep 1'
       echo '{"op":"leave_room"}'
       echo 'sleep 1' ;;
+    room-menu)
+      echo '{"op":"select_room","room_id":"!rust:demo.local"}'
+      echo 'sleep 1'
+      echo '{"op":"open_room_menu","room_id":"!trip:demo.local"}'
+      echo 'sleep 1'
+      echo '{"op":"mark_room_read","room_id":"!trip:demo.local"}'
+      echo '{"op":"set_room_notify","room_id":"!trip:demo.local","mode":"mentions-only"}'
+      echo 'sleep 1'
+      echo '{"op":"copy_room_link","room_id":"!matrixhq:demo.local"}'
+      echo '{"op":"copy_room_link","room_id":"!trip:demo.local"}'
+      echo 'sleep 3' ;;
+    room-menu-leave)
+      echo '{"op":"select_room","room_id":"!rust:demo.local"}'
+      echo 'sleep 1'
+      echo '{"op":"open_room_menu","room_id":"!ohio:demo.local"}'
+      echo '{"op":"leave_room","room_id":"!ohio:demo.local"}'
+      echo 'sleep 3' ;;
+    room-menu-failures)
+      echo '{"op":"open_room_menu","room_id":"!trip:demo.local"}'
+      echo '{"op":"mark_room_read","room_id":"!trip:demo.local"}'
+      echo 'sleep 1'
+      echo '{"op":"copy_room_link","room_id":"!trip:demo.local"}'
+      echo 'sleep 1'
+      echo '{"op":"set_room_notify","room_id":"!trip:demo.local","mode":"muted"}'
+      echo 'sleep 1'
+      echo '{"op":"leave_room","room_id":"!trip:demo.local"}'
+      echo 'sleep 1' ;;
     message-link)
       echo '{"op":"select_room","room_id":"!rust:demo.local"}'
       echo 'sleep 2'
@@ -186,6 +216,9 @@ scenario_note() {
     room-info)       echo 'the room info of a 1243-member room loads slowly, pages, filters, and turns notifications to mentions' ;;
     room-leave)      echo 'a room is left from its room info; it drops from the list on the sync echo and the timeline closes' ;;
     room-info-failures) echo 'the member list fails once and is retried, then a notification change and a leave fail inline' ;;
+    room-menu)       echo 'from !rust, the room menu marks !trip read, mutes it to mentions, and two quick room links coalesce to the second' ;;
+    room-menu-leave) echo 'from !rust, the room menu leaves !ohio: it drops from the list and from the menu, and the selection stays' ;;
+    room-menu-failures) echo 'with no sheet open, a mark-as-read, a room link, a notification change and a leave each fail as a toast' ;;
     message-link)    echo 'two quick message links, slowly: only the second reaches the copy serial' ;;
     message-source)  echo 'the source of a message in an encrypted DM, decrypted, with its decryption details' ;;
     message-pins)    echo 'an unpinned message is pinned and a pinned one unpinned, slowly; rows and the bar follow' ;;
@@ -209,8 +242,9 @@ check_window() {
 names() {
   printf '%s\n' unread-anchor all-unread unread-unresolved reactions-late sticker-trickle jump-to-reply \
     pinned-bar media-failures compact-layout login-oauth verify-self audio-track voice-notes delivery-marks \
-    space-index polls poll-edits room-info room-leave room-info-failures message-link message-source \
-    message-pins message-pin-failures message-delete message-delete-failures
+    space-index polls poll-edits room-info room-leave room-info-failures room-menu room-menu-leave \
+    room-menu-failures message-link message-source message-pins message-pin-failures message-delete \
+    message-delete-failures
 }
 
 cmd_list() {
@@ -270,6 +304,8 @@ cmd_run() {
   jq -r '.rows[]? | select(.message_type == "poll") | "  poll \(.event_id) \(.poll_phase)\(if .poll_editable then " editable" else "" end) voters=\(.poll_voters) [\([.poll_answers[] | "\(.id)=\(.count)\(if .mine then "*" else "" end)"] | join(" "))]"' "$out/timeline.json"
   jq -r 'if .message_permissions then "  messages delete_own=\(.message_permissions.delete_own) delete_others=\(.message_permissions.delete_others) pin=\(.message_permissions.pin) pinned_rows=\([.rows[]? | select(.pinned) | .event_id])" else empty end' "$out/timeline.json"
   jq -r 'if .view.message_link.serial > 0 then "  message link #\(.view.message_link.serial) \(.view.message_link.url)" else empty end' "$out/state.json"
+  jq -r 'if .view.room_menu then "  room menu \(.view.room_menu.room_id) unread=\(.view.room_menu.unread) notify=\(.view.room_menu.notify) busy=\(.view.room_menu.notify_busy) leaving=\(.view.room_menu.leaving)" else empty end' "$out/state.json"
+  jq -r 'if .view.room_link.serial > 0 then "  room link #\(.view.room_link.serial) \(.view.room_link.url)" else empty end' "$out/state.json"
   jq -r 'if .view.source.status != "closed" then "  source \(.view.source.status) \(.view.source.event_id) encryption=\(.view.source.encryption)" else empty end' "$out/state.json"
 }
 

@@ -1,13 +1,16 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
-use super::event::AppEvent;
+use super::event::{AppEvent, RoomActionEvent};
 use super::input::EventSender;
+use super::link_requests::LinkRequests;
 use super::show_toast;
 use super::space_index::AVATAR_BATCH;
 use super::task_group::TaskGroup;
 use crate::commands::messages::{UserMessage, UserMessageKind};
-use crate::commands::view::{RoomCard, RoomInfoView, RosterRow, RosterStatus, Toast};
+use crate::commands::view::{
+    CopiedLink, RoomCard, RoomInfoView, RoomMenuTarget, RosterRow, RosterStatus, Toast,
+};
 use crate::domain::room::{NotifyMode, Room, RoomId};
 use crate::domain::room_info::{MemberQuery, RoomAbout, RosterMember, RosterSection};
 use crate::ports::matrix::RoomInfoPort;
@@ -65,6 +68,14 @@ enum Fetch {
     InFlightThenAgain,
 }
 
+#[derive(Clone, PartialEq, Eq)]
+struct MenuCard {
+    id: RoomId,
+    name: String,
+    unread: bool,
+    notify: NotifyMode,
+}
+
 struct OpenSheet {
     card: RoomCard,
     generation: u64,
@@ -108,8 +119,11 @@ pub(super) struct RoomInfo {
     requests: u64,
     pages_landed: i32,
     open: Option<OpenSheet>,
+    menu: Option<MenuCard>,
     notify: HashMap<RoomId, NotifyChange>,
     leaving: HashSet<RoomId>,
+    marking: HashSet<RoomId>,
+    links: LinkRequests,
 }
 
 impl RoomInfo {
@@ -123,8 +137,11 @@ impl RoomInfo {
             requests: 0,
             pages_landed: 0,
             open: None,
+            menu: None,
             notify: HashMap::new(),
             leaving: HashSet::new(),
+            marking: HashSet::new(),
+            links: LinkRequests::default(),
         }
     }
 
@@ -151,27 +168,28 @@ impl RoomInfo {
         self.publish();
     }
 
+    pub(super) fn open_menu(&mut self, room: Option<&Room>) {
+        let menu = room.map(menu_card_of);
+        if menu.is_none() {
+            tracing::debug!("the room is not listed, not opening its menu");
+        }
+        if self.menu != menu {
+            self.menu = menu;
+            self.publish();
+        }
+    }
+
+    pub(super) fn close_menu(&mut self) {
+        if self.menu.take().is_some() {
+            self.publish();
+        }
+    }
+
     pub(super) fn follow(&mut self, port: Arc<dyn RoomInfoPort>, rooms: &[Arc<Room>]) {
         let echoed = self.settle_echoes(rooms);
-        let Some(open) = self.open.as_mut() else {
-            return;
-        };
-        let Some(room) = rooms.iter().find(|room| room.id == open.card.id) else {
-            self.close();
-            return;
-        };
-        let card = card_of(room);
-        let members_moved = card.member_count != open.card.member_count;
-        let about_moved = card.alias != open.card.alias || card.topic != open.card.topic;
-        let changed = card != open.card;
-        open.card = card;
-        if members_moved {
-            self.refetch_roster(Arc::clone(&port));
-        }
-        if about_moved {
-            self.refetch_about(port);
-        }
-        if changed || echoed {
+        let menu_moved = self.follow_menu(rooms);
+        let sheet_moved = self.follow_sheet(port, rooms);
+        if echoed || menu_moved || sheet_moved {
             self.publish();
         }
     }
@@ -255,15 +273,21 @@ impl RoomInfo {
         self.publish();
     }
 
-    pub(super) fn set_notify(&mut self, port: Arc<dyn RoomInfoPort>, mode: NotifyMode) {
-        let Some(open) = self.open.as_mut() else {
+    pub(super) fn set_notify(
+        &mut self,
+        port: Arc<dyn RoomInfoPort>,
+        room: Option<&Room>,
+        mode: NotifyMode,
+    ) {
+        let Some(room) = room else {
+            tracing::debug!(?mode, "the room is not listed, not changing its mode");
             return;
         };
-        let room_id = open.card.id.clone();
+        let room_id = room.id.clone();
         let change = self.notify.get(&room_id).copied();
         if self.leaving.contains(&room_id)
             || matches!(change, Some(NotifyChange::Requested { .. }))
-            || change.map_or(open.card.notify, NotifyChange::target) == mode
+            || change.map_or(room.notify, NotifyChange::target) == mode
         {
             tracing::debug!(%room_id, ?mode, "ignoring a notification change that has nothing to do");
             return;
@@ -277,8 +301,8 @@ impl RoomInfo {
                 target: mode,
             },
         );
-        open.error = UserMessage::default();
-        let name = open.card.name.clone();
+        self.clear_error(&room_id);
+        let name = room.display_name.clone();
         self.publish();
 
         let events = self.events.clone();
@@ -294,12 +318,13 @@ impl RoomInfo {
                     }
                 },
             };
-            drop(events.send(AppEvent::RoomNotifySettled {
+            let settled = RoomActionEvent::NotifySettled {
                 request,
                 room_id,
                 name,
                 outcome,
-            }));
+            };
+            drop(events.send(AppEvent::RoomAction(settled)));
         });
     }
 
@@ -342,16 +367,17 @@ impl RoomInfo {
         self.publish();
     }
 
-    pub(super) fn leave(&mut self, port: Arc<dyn RoomInfoPort>, room_id: RoomId) {
-        let Some(open) = self.open.as_mut().filter(|open| open.card.id == room_id) else {
-            tracing::debug!(%room_id, "ignoring a leave for a room the room info does not show");
+    pub(super) fn leave(&mut self, port: Arc<dyn RoomInfoPort>, room: Option<&Room>) {
+        let Some(room) = room else {
+            tracing::debug!("the room is not listed, not leaving it");
             return;
         };
+        let room_id = room.id.clone();
         if !self.leaving.insert(room_id.clone()) {
             return;
         }
-        open.error = UserMessage::default();
-        let name = open.card.name.clone();
+        self.clear_error(&room_id);
+        let name = room.display_name.clone();
         self.publish();
 
         let events = self.events.clone();
@@ -367,11 +393,12 @@ impl RoomInfo {
                     }
                 },
             };
-            drop(events.send(AppEvent::RoomLeaveSettled {
+            let settled = RoomActionEvent::LeaveSettled {
                 room_id,
                 name,
                 outcome,
-            }));
+            };
+            drop(events.send(AppEvent::RoomAction(settled)));
         });
     }
 
@@ -382,12 +409,13 @@ impl RoomInfo {
         }
         match outcome {
             ActionOutcome::Done => {
-                if self
-                    .open
-                    .as_ref()
-                    .is_some_and(|open| open.card.id == *room_id)
-                {
-                    self.close();
+                let sheet_closed = self.drop_sheet_of(room_id);
+                let menu_closed = self.menu.as_ref().is_some_and(|menu| menu.id == *room_id);
+                if menu_closed {
+                    self.menu = None;
+                }
+                if sheet_closed || menu_closed {
+                    self.publish();
                 }
             }
             ActionOutcome::Failed => {
@@ -400,11 +428,105 @@ impl RoomInfo {
         }
     }
 
+    pub(super) fn mark_read(&mut self, port: Arc<dyn RoomInfoPort>, room: Option<&Room>) {
+        let Some(room) = room else {
+            tracing::debug!("the room is not listed, not marking it read");
+            return;
+        };
+        let room_id = room.id.clone();
+        if !self.marking.insert(room_id.clone()) {
+            return;
+        }
+        let name = room.display_name.clone();
+        let events = self.events.clone();
+        let cancel = self.actions.token();
+        self.actions.spawn(async move {
+            let outcome = tokio::select! {
+                () = cancel.cancelled() => return,
+                marked = port.mark_read(&room_id) => match marked {
+                    Ok(()) => ActionOutcome::Done,
+                    Err(e) => {
+                        tracing::warn!(%room_id, "failed to mark the room as read: {e}");
+                        ActionOutcome::Failed
+                    }
+                },
+            };
+            let settled = RoomActionEvent::ReadSettled {
+                room_id,
+                name,
+                outcome,
+            };
+            drop(events.send(AppEvent::RoomAction(settled)));
+        });
+    }
+
+    pub(super) fn read_settled(&mut self, room_id: &RoomId, name: &str, outcome: ActionOutcome) {
+        if !self.marking.remove(room_id) {
+            tracing::debug!(%room_id, "dropping a read marker nobody is waiting for");
+            return;
+        }
+        if outcome == ActionOutcome::Failed {
+            self.report(
+                room_id,
+                UserMessage::about(UserMessageKind::MarkReadFailed, &name),
+            );
+            self.publish();
+        }
+    }
+
+    pub(super) fn copy_link(&mut self, port: Arc<dyn RoomInfoPort>, room: Option<&Room>) {
+        let Some(room) = room else {
+            tracing::debug!("the room is not listed, not linking it");
+            return;
+        };
+        let room_id = room.id.clone();
+        let name = room.display_name.clone();
+        let request = self.links.issue();
+        let events = self.events.clone();
+        let cancel = self.actions.token();
+        self.actions.spawn(async move {
+            let link = tokio::select! {
+                () = cancel.cancelled() => return,
+                link = port.room_link(&room_id) => link
+                    .inspect_err(|e| tracing::warn!(%room_id, "failed to link the room: {e}"))
+                    .ok(),
+            };
+            let resolved = RoomActionEvent::LinkResolved {
+                request,
+                name,
+                link,
+            };
+            drop(events.send(AppEvent::RoomAction(resolved)));
+        });
+    }
+
+    pub(super) fn link_resolved(&mut self, request: i32, name: &str, link: Option<String>) {
+        if !self.links.settle(request) {
+            tracing::debug!(request, "dropping a room link a later copy replaced");
+            return;
+        }
+        match link {
+            Some(url) => self.output.publish(Box::new(move |view| {
+                view.room_link = CopiedLink {
+                    serial: request,
+                    url,
+                };
+            })),
+            None => show_toast(
+                self.output.as_ref(),
+                Toast::Error(UserMessage::about(UserMessageKind::RoomLinkFailed, &name)),
+            ),
+        }
+    }
+
     pub(super) async fn restart(&mut self) {
         tokio::join!(self.tasks.restart(), self.actions.restart());
         self.open = None;
+        self.menu = None;
         self.notify.clear();
         self.leaving.clear();
+        self.marking.clear();
+        self.links.forget();
     }
 
     pub(super) async fn shutdown(&mut self) {
@@ -434,6 +556,57 @@ impl RoomInfo {
         self.publish();
         self.spawn_about(Arc::clone(&port), room_id.clone(), generation);
         self.spawn_roster(port, room_id, generation);
+    }
+
+    fn follow_menu(&mut self, rooms: &[Arc<Room>]) -> bool {
+        let Some(menu) = self.menu.as_ref() else {
+            return false;
+        };
+        let next = rooms
+            .iter()
+            .find(|room| room.id == menu.id)
+            .map(|room| menu_card_of(room));
+        if self.menu == next {
+            return false;
+        }
+        self.menu = next;
+        true
+    }
+
+    fn follow_sheet(&mut self, port: Arc<dyn RoomInfoPort>, rooms: &[Arc<Room>]) -> bool {
+        let Some(open) = self.open.as_mut() else {
+            return false;
+        };
+        let Some(room) = rooms.iter().find(|room| room.id == open.card.id) else {
+            self.open = None;
+            self.tasks.cancel_and_detach();
+            return true;
+        };
+        let card = card_of(room);
+        let members_moved = card.member_count != open.card.member_count;
+        let about_moved = card.alias != open.card.alias || card.topic != open.card.topic;
+        let changed = card != open.card;
+        open.card = card;
+        if members_moved {
+            self.refetch_roster(Arc::clone(&port));
+        }
+        if about_moved {
+            self.refetch_about(port);
+        }
+        changed
+    }
+
+    fn drop_sheet_of(&mut self, room_id: &RoomId) -> bool {
+        if !self
+            .open
+            .as_ref()
+            .is_some_and(|open| open.card.id == *room_id)
+        {
+            return false;
+        }
+        self.open = None;
+        self.tasks.cancel_and_detach();
+        true
     }
 
     fn settle_echoes(&mut self, rooms: &[Arc<Room>]) -> bool {
@@ -493,6 +666,12 @@ impl RoomInfo {
         }
     }
 
+    fn clear_error(&mut self, room_id: &RoomId) {
+        if let Some(open) = self.open.as_mut().filter(|open| open.card.id == *room_id) {
+            open.error = UserMessage::default();
+        }
+    }
+
     fn spawn_roster(&mut self, port: Arc<dyn RoomInfoPort>, room_id: RoomId, generation: u64) {
         let events = self.events.clone();
         let cancel = self.tasks.token();
@@ -547,12 +726,20 @@ impl RoomInfo {
         });
     }
 
+    fn pending_notify(&self, room_id: &RoomId, listed: NotifyMode) -> (NotifyMode, bool) {
+        let change = self.notify.get(room_id).copied();
+        (
+            change.map_or(listed, NotifyChange::target),
+            matches!(change, Some(NotifyChange::Requested { .. })),
+        )
+    }
+
     fn publish(&self) {
-        let view = self
+        let sheet = self
             .open
             .as_ref()
             .map_or_else(RoomInfoView::default, |open| {
-                let change = self.notify.get(&open.card.id).copied();
+                let (notify, notify_busy) = self.pending_notify(&open.card.id, open.card.notify);
                 RoomInfoView {
                     card: Some(open.card.clone()),
                     about: open.about.clone(),
@@ -561,14 +748,36 @@ impl RoomInfo {
                     has_more: open.has_more,
                     pages_landed: self.pages_landed,
                     avatars_ready: open.avatars_ready,
-                    notify: change.map_or(open.card.notify, NotifyChange::target),
-                    notify_busy: matches!(change, Some(NotifyChange::Requested { .. })),
+                    notify,
+                    notify_busy,
                     leaving: self.leaving.contains(&open.card.id),
                     error: open.error.clone(),
                 }
             });
-        self.output
-            .publish(Box::new(move |state| state.room_info = view));
+        let menu = self.menu.as_ref().map(|menu| {
+            let (notify, notify_busy) = self.pending_notify(&menu.id, menu.notify);
+            RoomMenuTarget {
+                room_id: menu.id.clone(),
+                name: menu.name.clone(),
+                unread: menu.unread,
+                notify,
+                notify_busy,
+                leaving: self.leaving.contains(&menu.id),
+            }
+        });
+        self.output.publish(Box::new(move |state| {
+            state.room_info = sheet;
+            state.room_menu = menu;
+        }));
+    }
+}
+
+fn menu_card_of(room: &Room) -> MenuCard {
+    MenuCard {
+        id: room.id.clone(),
+        name: room.display_name.clone(),
+        unread: room.shows_unread(),
+        notify: room.notify,
     }
 }
 
