@@ -21,6 +21,7 @@ mod space_index;
 mod stickers;
 mod storage;
 mod timeline;
+mod user_info;
 mod verification;
 mod videos;
 

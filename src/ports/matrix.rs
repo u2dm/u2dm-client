@@ -16,6 +16,7 @@ use crate::domain::space_index::HierarchyPage;
 use crate::domain::sticker::{PackId, StickerPack};
 use crate::domain::sync::{SyncEvent, SyncOutcome};
 use crate::domain::timeline::{TimelineCommand, TimelineFocus, TimelineUpdate};
+use crate::domain::user_info::{GlobalProfile, IgnoreChange, Moderation, UserId, UserProfile};
 use crate::domain::verification::VerificationEvent;
 use crate::error::Result;
 
@@ -125,6 +126,7 @@ pub struct AuthenticatedSession {
     pub space_order: Arc<dyn SpaceOrderPort>,
     pub space_index: Arc<dyn SpaceIndexPort>,
     pub room_info: Arc<dyn RoomInfoPort>,
+    pub user_info: Arc<dyn UserInfoPort>,
     pub stickers: Arc<dyn StickerPort>,
     pub lifecycle: Arc<dyn SessionPort>,
 }
@@ -202,6 +204,17 @@ pub trait RoomInfoPort: Send + Sync {
     async fn fetch_avatars(&self, mxcs: &[String]) -> usize;
     async fn room_link(&self, room_id: &RoomId) -> Result<String>;
     async fn event_link(&self, room_id: &RoomId, event_id: &str) -> Result<String>;
+}
+
+#[async_trait]
+pub trait UserInfoPort: Send + Sync {
+    async fn profile(&self, room_id: &RoomId, user_id: &UserId) -> Result<UserProfile>;
+    async fn pronouns(&self, user_id: &UserId) -> Vec<String>;
+    async fn global_profile(&self, user_id: &UserId) -> Result<GlobalProfile>;
+    async fn fetch_avatars(&self, mxcs: &[String]) -> usize;
+    async fn start_dm(&self, user_id: &UserId) -> Result<RoomId>;
+    async fn set_ignored(&self, user_id: &UserId, change: IgnoreChange) -> Result<()>;
+    async fn moderate(&self, room_id: &RoomId, user_id: &UserId, action: Moderation) -> Result<()>;
 }
 
 #[async_trait]

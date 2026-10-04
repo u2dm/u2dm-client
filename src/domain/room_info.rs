@@ -1,6 +1,7 @@
 use std::cmp::Reverse;
 
 use crate::domain::message::RichText;
+use crate::domain::user_info::localpart;
 
 pub const ADMIN_LEVEL: i64 = 100;
 pub const MODERATOR_LEVEL: i64 = 50;
@@ -87,9 +88,4 @@ pub struct RoomAbout {
     pub joined_at: Option<u64>,
     pub link: String,
     pub topic: Option<RichText>,
-}
-
-fn localpart(user_id: &str) -> &str {
-    let name = user_id.strip_prefix('@').unwrap_or(user_id);
-    name.split_once(':').map_or(name, |(local, _)| local)
 }

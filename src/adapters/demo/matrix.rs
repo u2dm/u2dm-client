@@ -17,7 +17,7 @@ use url::Url;
 
 use super::{
     attachments, audio, data, login, media, message_menu, pinned, polls, reactions, receipts,
-    room_info, source, space_index, stickers, timeline, verification, videos,
+    room_info, source, space_index, stickers, timeline, user_info, verification, videos,
 };
 use crate::adapters::video;
 use crate::domain::auth::{AuthMethod, LoginCredentials, OAuthLoginData, ServerInfo, Session};
@@ -37,13 +37,16 @@ use crate::domain::timeline::{
     AudioLookup, AudioTrack, EventSource, JumpTarget, Landing, PaginationDirection,
     PaginationOutcome, TimelineCommand, TimelineFocus, TimelinePatch, TimelineUpdate, locate_audio,
 };
+use crate::domain::user_info::{
+    GlobalProfile, IgnoreChange, Moderation, RoomMembership, UserId, UserProfile,
+};
 use crate::domain::verification::{VerificationCancellation, VerificationEvent};
 use crate::error::{AppError, Result};
 use crate::ports::matrix::{
     AttachmentHandoff, AuthPort, AuthenticatedSession, CleanupReport, InterruptedLogin,
     LocalDataOwnership, MediaPort, PinnedPort, ProgressSink, RestoreStep, RoomInfoPort,
     SessionPort, SpaceIndexPort, SpaceOrderPort, StickerCatalog, StickerPort, StoreAdoption,
-    SyncPort, SyncSink, TimelinePort, VerificationPort,
+    SyncPort, SyncSink, TimelinePort, UserInfoPort, VerificationPort,
 };
 use crate::ports::media::MediaCache;
 
@@ -206,6 +209,7 @@ fn authenticated(session: Session) -> AuthenticatedSession {
     let space_order = Arc::clone(&authed);
     let space_index = Arc::clone(&authed);
     let room_info = Arc::clone(&authed);
+    let user_info = Arc::clone(&authed);
     let stickers = Arc::clone(&authed);
     AuthenticatedSession {
         session,
@@ -217,6 +221,7 @@ fn authenticated(session: Session) -> AuthenticatedSession {
         space_order,
         space_index,
         room_info,
+        user_info,
         stickers,
         lifecycle: authed,
     }
@@ -305,6 +310,8 @@ struct DemoAuthed {
     lists: Arc<Mutex<RoomLists>>,
     pin_boards: Mutex<HashMap<RoomId, watch::Sender<Vec<String>>>>,
     deleted: Arc<Mutex<HashSet<String>>>,
+    ignored: Mutex<HashSet<String>>,
+    memberships: Mutex<HashMap<(RoomId, String), RoomMembership>>,
 }
 
 impl DemoAuthed {
@@ -328,7 +335,36 @@ impl DemoAuthed {
                 stamp_deleted_reply(message, &deleted);
             }
         }
+        if let Ok(ignored) = self.ignored.lock()
+            && !ignored.is_empty()
+        {
+            history.retain(|message| !ignored.contains(&message.sender));
+        }
         history
+    }
+
+    fn is_ignored(&self, user_id: &str) -> bool {
+        self.ignored
+            .lock()
+            .is_ok_and(|ignored| ignored.contains(user_id))
+    }
+
+    fn replay_live_window(&self) {
+        let Some((timeline_tx, messages)) = self.refiltered_window() else {
+            return;
+        };
+        tokio::spawn(async move {
+            sleep(room_info::ECHO_LAG).await;
+            send_patch(&timeline_tx, TimelinePatch::Reset(messages)).await;
+        });
+    }
+
+    fn refiltered_window(&self) -> Option<(mpsc::Sender<TimelineUpdate>, Vec<TimelineMessage>)> {
+        let mut guard = self.active.lock().ok()?;
+        let active = guard.as_mut().filter(|active| active.live)?;
+        active.messages = self.room_history(&active.room_id);
+        active.prepended = 0;
+        Some((active.timeline_tx.clone(), active.messages.clone()))
     }
 
     fn keep_own_send(&self, room_id: &RoomId, message: &TimelineMessage) {
@@ -1081,6 +1117,36 @@ impl DemoAuthed {
         });
     }
 
+    fn person(&self, room_id: &RoomId, user_id: &UserId) -> UserProfile {
+        let mut profile = data::profile(room_id, user_id, user_info::avatar);
+        profile.direct_room = self.chat_with(user_id);
+        profile.ignored = self.is_ignored(user_id);
+        user_info::shape(&mut profile);
+        if let Some(membership) = self.membership_override(room_id, user_id) {
+            profile.membership = membership;
+        }
+        profile.powers = user_info::powers(data::role_of(room_id, data::own_user()), &profile);
+        profile
+    }
+
+    fn membership_override(&self, room_id: &RoomId, user_id: &str) -> Option<RoomMembership> {
+        let memberships = self.memberships.lock().ok()?;
+        memberships
+            .get(&(room_id.clone(), user_id.to_owned()))
+            .copied()
+    }
+
+    fn chat_with(&self, user_id: &str) -> Option<RoomId> {
+        data::direct_room_with(user_id).or_else(|| {
+            current_lists(&self.lists)
+                .overrides
+                .started_chats
+                .iter()
+                .find(|(_, person)| person.as_str() == user_id)
+                .map(|(room_id, _)| RoomId::new(room_id))
+        })
+    }
+
     fn echo_rooms(&self) {
         let Some(sink) = self.sync_sink() else {
             return;
@@ -1206,6 +1272,93 @@ impl RoomInfoPort for DemoAuthed {
             return Err(unavailable("message links"));
         }
         Ok(data::event_link(room_id, event_id))
+    }
+}
+
+#[async_trait]
+impl UserInfoPort for DemoAuthed {
+    async fn profile(&self, room_id: &RoomId, user_id: &UserId) -> Result<UserProfile> {
+        if user_info::profile_fails_now(user_id) {
+            return Err(unavailable("this profile"));
+        }
+        Ok(self.person(room_id, user_id))
+    }
+
+    async fn pronouns(&self, user_id: &UserId) -> Vec<String> {
+        user_info::pause().await;
+        data::pronouns(user_id)
+    }
+
+    async fn global_profile(&self, user_id: &UserId) -> Result<GlobalProfile> {
+        user_info::pause().await;
+        Ok(GlobalProfile {
+            display_name: data::person_name(user_id),
+            avatar_mxc: Some(user_info::avatar(user_id)),
+            pronouns: data::pronouns(user_id),
+        })
+    }
+
+    async fn fetch_avatars(&self, mxcs: &[String]) -> usize {
+        user_info::pause().await;
+        media::fetch_member_avatars(mxcs)
+    }
+
+    async fn start_dm(&self, user_id: &UserId) -> Result<RoomId> {
+        user_info::pause().await;
+        if user_info::scenario().dm_fails {
+            return Err(unavailable("starting chats"));
+        }
+        if let Some(existing) = self.chat_with(user_id) {
+            return Ok(existing);
+        }
+        let room_id = RoomId::new(data::started_chat_id(user_id));
+        tracing::debug!(%room_id, %user_id, "demo: starting a chat");
+        if user_info::scenario().dm_echo_lost {
+            return Ok(room_id);
+        }
+        self.change_lists(|lists| {
+            lists
+                .overrides
+                .started_chats
+                .insert(room_id.to_string(), user_id.to_string());
+        });
+        self.echo_rooms();
+        Ok(room_id)
+    }
+
+    async fn moderate(&self, room_id: &RoomId, user_id: &UserId, action: Moderation) -> Result<()> {
+        user_info::pause().await;
+        if user_info::moderation_fails(action) {
+            return Err(unavailable("moderating this room"));
+        }
+        if !self.person(room_id, user_id).offers(action) {
+            return Err(unavailable("that moderation"));
+        }
+        tracing::debug!(%room_id, %user_id, ?action, "demo: moderating");
+        if let Ok(mut memberships) = self.memberships.lock() {
+            memberships.insert((room_id.clone(), user_id.to_string()), action.leaves());
+        }
+        Ok(())
+    }
+
+    async fn set_ignored(&self, user_id: &UserId, change: IgnoreChange) -> Result<()> {
+        user_info::pause().await;
+        if user_info::scenario().ignore_fails {
+            return Err(unavailable("changing the ignore list"));
+        }
+        tracing::debug!(%user_id, ?change, "demo: changing the ignore list");
+        if let Ok(mut ignored) = self.ignored.lock() {
+            match change {
+                IgnoreChange::Ignore => {
+                    ignored.insert(user_id.to_string());
+                }
+                IgnoreChange::Unignore => {
+                    ignored.remove(user_id.as_ref());
+                }
+            }
+        }
+        self.replay_live_window();
+        Ok(())
     }
 }
 

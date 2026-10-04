@@ -20,6 +20,7 @@ enum MenuAction {
     edit,
     copy-text,
     copy-link,
+    view-profile,
     pin,
     select-text,
     view-source,
@@ -190,6 +191,9 @@ component MessageMenuCard inherits PickerCard {
         if action == MenuAction.copy-link || action == MenuAction.view-source {
             return root.has-remote-id;
         }
+        if action == MenuAction.view-profile {
+            return !root.msg.is-own && !root.is-service && root.msg.sender-id != "";
+        }
         if action == MenuAction.pin {
             return root.is-remote-message && RoomView.may-pin;
         }
@@ -214,6 +218,9 @@ component MessageMenuCard inherits PickerCard {
         }
         if root.available(MenuAction.copy-link) {
             root.offered.push(MenuAction.copy-link);
+        }
+        if root.available(MenuAction.view-profile) {
+            root.offered.push(MenuAction.view-profile);
         }
         if root.available(MenuAction.pin) {
             root.offered.push(MenuAction.pin);
@@ -256,6 +263,9 @@ component MessageMenuCard inherits PickerCard {
         if action == MenuAction.copy-link {
             return @tr("Copy link");
         }
+        if action == MenuAction.view-profile {
+            return @tr("View profile");
+        }
         if action == MenuAction.pin {
             return root.msg.pinned ? @tr("Unpin") : @tr("Pin");
         }
@@ -293,6 +303,9 @@ component MessageMenuCard inherits PickerCard {
         }
         if action == MenuAction.copy-link {
             return IconSet.Link;
+        }
+        if action == MenuAction.view-profile {
+            return IconSet.UserRound;
         }
         if action == MenuAction.pin {
             return root.msg.pinned ? IconSet.PinOff : IconSet.Pin;
@@ -537,6 +550,11 @@ export component MessageMenuOverlay inherits Rectangle {
         if action == MenuAction.view-source {
             MessageMenu.close();
             Actions.open-event-source(msg.event-id);
+            return;
+        }
+        if action == MenuAction.view-profile {
+            MessageMenu.close();
+            Actions.open-user-info(msg.sender-id);
             return;
         }
         if action == MenuAction.delete {

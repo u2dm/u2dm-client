@@ -278,6 +278,10 @@ export component MessageBubble inherits VerticalLayout {
                     if !is-own && !root.continues-previous: SenderLine {
                         sender: msg.sender;
                         pronouns: msg.pronouns;
+                        clickable: msg.sender-id != "";
+                        name-clicked => {
+                            Actions.open-user-info(msg.sender-id);
+                        }
                     }
 
                     bubble := Rectangle {
@@ -421,29 +425,47 @@ export component MessageBubble inherits VerticalLayout {
                     }
                 }
             }
-        }
 
-        if !is-own: Avatar {
-            property <length> resting: message-row.bubble-top + bubble.height - root.avatar-size;
-            property <length> floor: root.composer-top - Space.sm - row.padding-bottom;
-            property <length> lifted: self.floor
-                - message-row.row-top
-                - root.avatar-size;
+            if !is-own: avatar-target := ClickArea {
+                property <length> resting: message-row.bubble-top + bubble.height - root.avatar-size;
+                property <length> floor: root.composer-top - Space.sm - row.padding-bottom;
+                property <length> lifted: self.floor
+                    - message-row.row-top
+                    - root.avatar-size;
 
-            visible: message-row.shows-avatar;
-            x: Metrics.timeline-inset + row.x;
-            y: !message-row.has-composer
-                ? self.resting
-                : (root.continues-previous
-                    ? min(self.resting, self.lifted)
-                    : max(bubble-column.y, min(self.resting, self.lifted)));
-            width: root.avatar-size;
-            height: root.avatar-size;
-            background: Avatars.color(msg.color-index);
-            has-image: msg.has-avatar;
-            image: msg.avatar;
-            initial: msg.sender-initial;
-            initial-size: Glyph.xs;
+                visible: message-row.shows-avatar;
+                x: Metrics.timeline-inset + row.x;
+                y: !message-row.has-composer
+                    ? self.resting
+                    : (root.continues-previous
+                        ? min(self.resting, self.lifted)
+                        : max(bubble-column.y, min(self.resting, self.lifted)));
+                width: root.avatar-size;
+                height: root.avatar-size;
+                enabled: msg.sender-id != "";
+                focusable: false;
+                label: @tr("View profile of {}", msg.sender);
+                clicked => {
+                    Actions.open-user-info(msg.sender-id);
+                }
+
+                Avatar {
+                    width: 100%;
+                    height: 100%;
+                    background: Avatars.color(msg.color-index);
+                    has-image: msg.has-avatar;
+                    image: msg.avatar;
+                    initial: msg.sender-initial;
+                    initial-size: Glyph.xs;
+                }
+
+                if avatar-target.has-hover: Rectangle {
+                    width: 100%;
+                    height: 100%;
+                    border-radius: self.width / 2;
+                    background: AppStyle.overlay-hover;
+                }
+            }
         }
 
         if root.chips-outside: BubbleReactions {

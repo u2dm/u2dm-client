@@ -6,16 +6,16 @@ use matrix_sdk::room::{Receipts, RoomMember};
 use matrix_sdk::ruma::OwnedEventId;
 use matrix_sdk::ruma::events::SyncStateEvent;
 use matrix_sdk::ruma::events::room::member::{MembershipChange, MembershipState};
-use matrix_sdk::ruma::events::room::power_levels::UserPowerLevel;
 use matrix_sdk::ruma::events::room::topic::RoomTopicEventContent;
 use matrix_sdk::{Room, RoomMemberships};
 
 use super::build::{default_notification_mode, notification_mode_for};
 use crate::adapters::matrix::media::fetch_avatar_thumbnails;
+use crate::adapters::matrix::permissions::member_role;
 use crate::adapters::matrix::session::ClientHandle;
 use crate::domain::message::RichText;
 use crate::domain::room::{NotifyMode, RoomId};
-use crate::domain::room_info::{MemberRole, RoomAbout, RosterMember, RosterSection, sort_roster};
+use crate::domain::room_info::{RoomAbout, RosterMember, RosterSection, sort_roster};
 use crate::error::{AppError, Result};
 use crate::ports::matrix::RoomInfoPort;
 
@@ -191,15 +191,7 @@ fn roster_member(member: &RoomMember) -> Option<RosterMember> {
         user_id: member.user_id().to_string(),
         display_name: member.display_name().map(ToOwned::to_owned),
         avatar_mxc: member.avatar_url().map(ToString::to_string),
-        role: role(member.power_level()),
+        role: member_role(member.power_level()),
         section,
     })
-}
-
-fn role(level: UserPowerLevel) -> MemberRole {
-    match level {
-        UserPowerLevel::Infinite => MemberRole::Owner,
-        UserPowerLevel::Int(level) => MemberRole::for_level(level.into()),
-        _ => MemberRole::Member,
-    }
 }

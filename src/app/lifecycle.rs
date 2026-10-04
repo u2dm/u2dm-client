@@ -220,6 +220,15 @@ pub(super) fn command_allowed(phase: AppPhase, cmd: &UiCommand) -> bool {
         | UiCommand::CloseRoomMenu
         | UiCommand::MarkRoomRead(_)
         | UiCommand::CopyRoomLink(_)
+        | UiCommand::OpenUserInfo(_)
+        | UiCommand::CloseUserInfo
+        | UiCommand::RetryUserInfo
+        | UiCommand::MessageUser(_)
+        | UiCommand::IgnoreUser(_)
+        | UiCommand::UnignoreUser(_)
+        | UiCommand::KickUser(_)
+        | UiCommand::BanUser(_)
+        | UiCommand::UnbanUser(_)
         | UiCommand::SendMessage { .. }
         | UiCommand::EditMessage { .. }
         | UiCommand::DismissUnsent { .. }

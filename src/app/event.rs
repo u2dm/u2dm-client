@@ -3,6 +3,7 @@ use std::path::PathBuf;
 use super::establish::EstablishedSession;
 use super::room_info::{ActionOutcome, RosterOutcome};
 use super::space_index::{JoinOutcome, PageOutcome};
+use super::user_info::{DmOutcome, ReadOutcome};
 use crate::commands::messages::{UserMessage, UserMessageKind};
 use crate::commands::view::LoginActivity;
 use crate::domain::auth::ServerInfo;
@@ -13,6 +14,7 @@ use crate::domain::room_info::RoomAbout;
 use crate::domain::timeline::{
     AudioTrack, EventSource, PaginationDirection, PaginationOutcome, TimelineAdvance, TimelineFocus,
 };
+use crate::domain::user_info::{GlobalProfile, IgnoreChange, Moderation, UserId};
 use crate::domain::verification::VerificationEvent;
 use crate::ports::matrix::{AuthenticatedSession, CleanupReport};
 
@@ -90,6 +92,57 @@ pub(super) enum AppEvent {
     },
     RoomAction(RoomActionEvent),
     MessageAction(MessageActionEvent),
+    UserInfo(UserInfoEvent),
+}
+
+pub(super) enum UserInfoEvent {
+    Read {
+        generation: u64,
+        outcome: ReadOutcome,
+    },
+    PronounsFetched {
+        generation: u64,
+        pronouns: Vec<String>,
+    },
+    ProfileFetched {
+        generation: u64,
+        profile: Option<GlobalProfile>,
+    },
+    AvatarReady {
+        generation: u64,
+    },
+    DmStarted {
+        user_id: UserId,
+        name: String,
+        outcome: DmOutcome,
+    },
+    IgnoreSettled {
+        user_id: UserId,
+        name: String,
+        change: IgnoreChange,
+        outcome: ActionOutcome,
+    },
+    ModerationSettled {
+        room_id: RoomId,
+        user_id: UserId,
+        name: String,
+        action: Moderation,
+        outcome: ActionOutcome,
+    },
+}
+
+impl UserInfoEvent {
+    fn label(&self) -> &'static str {
+        match self {
+            Self::Read { .. } => "UserInfoRead",
+            Self::PronounsFetched { .. } => "UserPronounsFetched",
+            Self::ProfileFetched { .. } => "UserProfileFetched",
+            Self::AvatarReady { .. } => "UserInfoAvatarReady",
+            Self::DmStarted { .. } => "DmStarted",
+            Self::IgnoreSettled { .. } => "IgnoreSettled",
+            Self::ModerationSettled { .. } => "ModerationSettled",
+        }
+    }
 }
 
 pub(super) enum RoomActionEvent {
@@ -182,6 +235,7 @@ impl AppEvent {
             Self::RoomInfoAvatarsReady { .. } => "RoomInfoAvatarsReady",
             Self::RoomAction(event) => event.label(),
             Self::MessageAction(event) => event.label(),
+            Self::UserInfo(event) => event.label(),
         }
     }
 }

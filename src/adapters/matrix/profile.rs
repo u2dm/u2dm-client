@@ -4,6 +4,7 @@ use std::time::{Duration, Instant};
 
 use matrix_sdk::Client;
 use matrix_sdk::ruma::OwnedUserId;
+use matrix_sdk::ruma::api::client::profile::get_profile;
 use serde::Deserialize;
 use serde_json::Value as JsonValue;
 use tokio::sync::OnceCell;
@@ -143,10 +144,14 @@ async fn fetch_pronouns(client: &Client, sender: &str) -> Result<Vec<String>, Fe
         }
     };
 
-    Ok(profile
+    Ok(pronouns_of(&profile))
+}
+
+pub(super) fn pronouns_of(profile: &get_profile::v3::Response) -> Vec<String> {
+    profile
         .get(PRONOUNS_FIELD)
         .or_else(|| profile.get(PRONOUNS_FIELD_UNSTABLE))
-        .map_or_else(Vec::new, summaries))
+        .map_or_else(Vec::new, summaries)
 }
 
 fn summaries(value: &JsonValue) -> Vec<String> {

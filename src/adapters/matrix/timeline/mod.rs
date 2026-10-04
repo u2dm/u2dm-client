@@ -375,11 +375,8 @@ async fn queue_attachment(
 }
 
 impl MatrixTimeline {
-    pub(super) fn new(matrix: Arc<ClientHandle>) -> Self {
-        Self {
-            matrix,
-            pronouns: Arc::new(PronounCache::default()),
-        }
+    pub(super) fn new(matrix: Arc<ClientHandle>, pronouns: Arc<PronounCache>) -> Self {
+        Self { matrix, pronouns }
     }
 }
 

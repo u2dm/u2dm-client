@@ -33,6 +33,14 @@ scenario_env() {
     room-menu)       echo 'U2DM_DEMO_ROOM_INFO=slow' ;;
     room-menu-leave) echo 'U2DM_DEMO_ROOM_INFO=slow' ;;
     room-menu-failures) echo 'U2DM_DEMO_ROOM_INFO=read-fails,link-fails,notify-fails,leave-fails' ;;
+    user-info)       echo 'U2DM_DEMO_USER_INFO=slow,verified' ;;
+    user-info-failures) echo 'U2DM_DEMO_USER_INFO=profile-fails' ;;
+    user-dm)         echo 'U2DM_DEMO_USER_INFO=verified' ;;
+    user-dm-start)   echo 'U2DM_DEMO_USER_INFO=slow' ;;
+    user-dm-failures) echo 'U2DM_DEMO_USER_INFO=dm-fails' ;;
+    user-ignore)     echo 'U2DM_DEMO_USER_INFO=slow' ;;
+    user-moderation) echo 'U2DM_DEMO_USER_INFO=admin,slow' ;;
+    user-moderation-failures) echo 'U2DM_DEMO_USER_INFO=admin,kick-fails' ;;
     message-link)    echo 'U2DM_DEMO_MESSAGE_MENU=slow' ;;
     message-source)  echo 'U2DM_DEMO_MESSAGE_MENU=slow' ;;
     message-pins)    echo 'U2DM_DEMO_MESSAGE_MENU=slow U2DM_DEMO_PINNED=slow' ;;
@@ -150,6 +158,66 @@ scenario_steps() {
       echo 'sleep 1'
       echo '{"op":"leave_room","room_id":"!trip:demo.local"}'
       echo 'sleep 1' ;;
+    user-info)
+      echo '{"op":"select_room","room_id":"!rust:demo.local"}'
+      echo 'sleep 1'
+      echo '{"op":"open_user_info","user_id":"@leo:matrix.org"}'
+      echo 'sleep 1'
+      echo '{"op":"open_user_info","user_id":"@nadia:matrix.org"}'
+      echo 'sleep 3'
+      echo '{"op":"open_user_info","user_id":"@sarah:matrix.org"}'
+      echo 'sleep 3' ;;
+    user-info-failures)
+      echo '{"op":"select_room","room_id":"!rust:demo.local"}'
+      echo 'sleep 1'
+      echo '{"op":"open_user_info","user_id":"@marcus:matrix.org"}'
+      echo 'sleep 1'
+      echo '{"op":"retry_user_info"}'
+      echo 'sleep 2' ;;
+    user-dm)
+      echo '{"op":"select_room","room_id":"!rust:demo.local"}'
+      echo 'sleep 1'
+      echo '{"op":"open_user_info","user_id":"@sarah:matrix.org"}'
+      echo 'sleep 1'
+      echo '{"op":"message_user","user_id":"@sarah:matrix.org"}'
+      echo 'sleep 2' ;;
+    user-dm-start)
+      echo '{"op":"select_room","room_id":"!rust:demo.local"}'
+      echo 'sleep 1'
+      echo '{"op":"open_user_info","user_id":"@marcus:matrix.org"}'
+      echo 'sleep 1'
+      echo '{"op":"message_user","user_id":"@marcus:matrix.org"}'
+      echo 'sleep 4' ;;
+    user-dm-failures)
+      echo '{"op":"select_room","room_id":"!rust:demo.local"}'
+      echo 'sleep 1'
+      echo '{"op":"open_user_info","user_id":"@marcus:matrix.org"}'
+      echo 'sleep 1'
+      echo '{"op":"message_user","user_id":"@marcus:matrix.org"}'
+      echo 'sleep 1' ;;
+    user-ignore)
+      echo '{"op":"select_room","room_id":"!rust:demo.local"}'
+      echo 'sleep 1'
+      echo '{"op":"open_user_info","user_id":"@marcus:matrix.org"}'
+      echo 'sleep 1'
+      echo '{"op":"ignore_user","user_id":"@marcus:matrix.org"}'
+      echo 'sleep 3' ;;
+    user-moderation)
+      echo '{"op":"select_room","room_id":"!rust:demo.local"}'
+      echo 'sleep 1'
+      echo '{"op":"open_user_info","user_id":"@kai:matrix.org"}'
+      echo 'sleep 1'
+      echo '{"op":"kick_user","user_id":"@kai:matrix.org"}'
+      echo 'sleep 2'
+      echo '{"op":"ban_user","user_id":"@kai:matrix.org"}'
+      echo 'sleep 2' ;;
+    user-moderation-failures)
+      echo '{"op":"select_room","room_id":"!rust:demo.local"}'
+      echo 'sleep 1'
+      echo '{"op":"open_user_info","user_id":"@kai:matrix.org"}'
+      echo 'sleep 1'
+      echo '{"op":"kick_user","user_id":"@kai:matrix.org"}'
+      echo 'sleep 1' ;;
     message-link)
       echo '{"op":"select_room","room_id":"!rust:demo.local"}'
       echo 'sleep 2'
@@ -219,6 +287,14 @@ scenario_note() {
     room-menu)       echo 'from !rust, the room menu marks !trip read, mutes it to mentions, and two quick room links coalesce to the second' ;;
     room-menu-leave) echo 'from !rust, the room menu leaves !ohio: it drops from the list and from the menu, and the selection stays' ;;
     room-menu-failures) echo 'with no sheet open, a mark-as-read, a room link, a notification change and a leave each fail as a toast' ;;
+    user-info)       echo 'in !rust the user sheet opens on an invited member, someone outside the room named from their global profile, then a verified moderator whose pronouns arrive late' ;;
+    user-info-failures) echo 'the first profile read fails, so the sheet opens on its Retry card, and the retry loads it' ;;
+    user-dm)         echo 'from !rust, Message on a member you already share a DM with opens that DM and closes the sheet' ;;
+    user-dm-start)   echo 'Message on an admin you have no DM with starts one slowly, shows Starting, and opens the new room once the room list shows it' ;;
+    user-dm-failures) echo 'starting a chat fails, so the sheet shows the error inline and the Message tile comes back' ;;
+    user-ignore)     echo 'an admin of !rust is ignored slowly from the sheet; the row turns to Stop ignoring and the timeline replays without their messages' ;;
+    user-moderation) echo 'as an admin, a member of !rust is removed, then banned, slowly; the sheet follows to Banned and offers Unban' ;;
+    user-moderation-failures) echo 'removing a member fails, so the sheet shows the error inline and keeps offering Remove' ;;
     message-link)    echo 'two quick message links, slowly: only the second reaches the copy serial' ;;
     message-source)  echo 'the source of a message in an encrypted DM, decrypted, with its decryption details' ;;
     message-pins)    echo 'an unpinned message is pinned and a pinned one unpinned, slowly; rows and the bar follow' ;;
@@ -243,7 +319,8 @@ names() {
   printf '%s\n' unread-anchor all-unread unread-unresolved reactions-late sticker-trickle jump-to-reply \
     pinned-bar media-failures compact-layout login-oauth verify-self audio-track voice-notes delivery-marks \
     space-index polls poll-edits room-info room-leave room-info-failures room-menu room-menu-leave \
-    room-menu-failures message-link message-source message-pins message-pin-failures message-delete \
+    room-menu-failures user-info user-info-failures user-dm user-dm-start user-dm-failures user-ignore user-moderation \
+    user-moderation-failures message-link message-source message-pins message-pin-failures message-delete \
     message-delete-failures
 }
 
@@ -305,6 +382,8 @@ cmd_run() {
   jq -r 'if .message_permissions then "  messages delete_own=\(.message_permissions.delete_own) delete_others=\(.message_permissions.delete_others) pin=\(.message_permissions.pin) pinned_rows=\([.rows[]? | select(.pinned) | .event_id])" else empty end' "$out/timeline.json"
   jq -r 'if .view.message_link.serial > 0 then "  message link #\(.view.message_link.serial) \(.view.message_link.url)" else empty end' "$out/state.json"
   jq -r 'if .view.room_menu then "  room menu \(.view.room_menu.room_id) unread=\(.view.room_menu.unread) notify=\(.view.room_menu.notify) busy=\(.view.room_menu.notify_busy) leaving=\(.view.room_menu.leaving)" else empty end' "$out/state.json"
+  jq -r 'if .view.user_info.open then "  user info \(.view.user_info.user_id) in \(.view.user_info.room_id) \(.view.user_info.status) membership=\(.view.user_info.membership) role=\(.view.user_info.role) verified=\(.view.user_info.verified) pronouns=\(.view.user_info.pronouns) direct=\(.view.user_info.direct) ignored=\(.view.user_info.ignored) kick=\(.view.user_info.may_kick) ban=\(.view.user_info.may_ban) unban=\(.view.user_info.may_unban)" else empty end' "$out/state.json"
+  jq -r '"  selected room \(.selected_room_id // "none")"' "$out/timeline.json"
   jq -r 'if .view.room_link.serial > 0 then "  room link #\(.view.room_link.serial) \(.view.room_link.url)" else empty end' "$out/state.json"
   jq -r 'if .view.source.status != "closed" then "  source \(.view.source.status) \(.view.source.event_id) encryption=\(.view.source.encryption)" else empty end' "$out/state.json"
 }

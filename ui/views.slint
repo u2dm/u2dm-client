@@ -9,7 +9,7 @@ import {
 } from "screens/chat/components/types.slint";
 import { VerificationEmoji } from "components/types.slint";
 import { UserMessage } from "messages.slint";
-import { AttachmentKind, AudioKind, ConnectionState, LoginActivity, LoginMethodKind, LoginPhase, NotifyMode, PreviewKind, RoomScope, RosterStatus, SourceEncryption, SourceStatus, SpaceIndexStatus, TimelineState, UserMessageKind, VerificationActivity, VerificationPhase } from "enums.slint";
+import { AttachmentKind, AudioKind, ConnectionState, DirectChat, LoginActivity, LoginMethodKind, LoginPhase, MemberRole, Moderation, NotifyMode, PreviewKind, RoomMembership, RoomScope, RosterStatus, SourceEncryption, SourceStatus, SpaceIndexStatus, TimelineState, UserMessageKind, VerificationActivity, VerificationPhase } from "enums.slint";
 
 export global LoginView {
     in property <LoginPhase> step: LoginPhase.loading;
@@ -103,6 +103,33 @@ export global RoomMenuView {
     in property <bool> leaving;
     in property <string> link;
     in property <int> link-serial;
+}
+
+export global UserInfoView {
+    in property <bool> visible;
+    in property <string> user-id;
+    in property <string> name;
+    in property <string> initial;
+    in property <int> color-index;
+    in property <image> avatar;
+    in property <bool> has-avatar;
+    in property <string> pronouns;
+    in property <MemberRole> role: MemberRole.member;
+    in property <RoomMembership> membership: RoomMembership.joined;
+    in property <bool> verified;
+    in property <bool> is-self;
+    in property <string> link;
+    in property <bool> read-failed;
+    in property <bool> retrying;
+    in property <DirectChat> direct: DirectChat.hidden;
+    in property <bool> ignored;
+    in property <bool> ignore-busy;
+    in property <bool> may-kick;
+    in property <bool> may-ban;
+    in property <bool> may-unban;
+    in property <Moderation> moderating: Moderation.none;
+    in property <UserMessageKind> error: UserMessageKind.none;
+    in property <string> error-detail;
 }
 
 export global RoomView {

@@ -540,6 +540,10 @@ impl SessionDto {
 }
 
 impl RoomDto {
+    pub fn is_direct(&self) -> bool {
+        self.direct
+    }
+
     pub fn to_room(&self, now_ms: u64, notify: Option<NotifyMode>) -> Room {
         let notify = notify.unwrap_or_else(|| self.notify.to_mode());
         Room {

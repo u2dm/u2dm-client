@@ -10,6 +10,7 @@ export component PickerSearch inherits Rectangle {
     in property <string> placeholder;
     in-out property <string> query: "";
     in property <bool> above-modal: false;
+    in property <bool> enabled: true;
     callback edited(string);
 
     height: Size.md;
@@ -43,6 +44,7 @@ export component PickerSearch inherits Rectangle {
                 width: parent.width;
                 height: parent.height;
                 text <=> root.query;
+                enabled: root.enabled;
                 color: Palette.foreground;
                 font-size: Fonts.label;
                 vertical-alignment: center;

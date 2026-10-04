@@ -138,10 +138,14 @@ pub fn roster_fails_now(room_id: &RoomId) -> bool {
 
 pub fn member_avatar(user_id: &str) -> String {
     if scenario().is_slow {
-        format!("{MEMBER_AVATAR_PREFIX}{user_id}")
+        withheld_avatar(user_id)
     } else {
         user_id.to_owned()
     }
+}
+
+pub fn withheld_avatar(user_id: &str) -> String {
+    format!("{MEMBER_AVATAR_PREFIX}{user_id}")
 }
 
 fn fetched_member_avatars() -> &'static Mutex<HashSet<String>> {

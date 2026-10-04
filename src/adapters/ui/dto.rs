@@ -31,6 +31,7 @@ use crate::domain::room_info::{MemberRole, RosterMember};
 use crate::domain::space_index::{ChildKind, SpaceChild};
 use crate::domain::sticker::{PackId, StickerImage, StickerPack};
 use crate::domain::timeline::EnrichmentDelta;
+use crate::domain::user_info::{Pronouns, UserProfile};
 use crate::ports::media::MediaCache;
 use crate::util::format_bytes;
 
@@ -39,6 +40,7 @@ media_failures!(define_ui_enum MediaFailureKind;);
 member_row_kinds!(define_ui_enum MemberRowKind;);
 
 pub const INVITED_HEADING_ROW: &str = "invited-heading";
+const PRONOUN_SEPARATOR: &str = " · ";
 
 fn failure_kind(failure: MediaFailure) -> MediaFailureKind {
     match failure {
@@ -950,6 +952,23 @@ pub fn load_room_info_avatar(card: &RoomCard, media: &dyn MediaCache) -> Option<
         .as_deref()
         .and_then(|mxc| media.room_avatar_path(mxc));
     load_avatar_async(path.as_deref(), AvatarSlot::RoomInfo)
+}
+
+pub fn load_user_info_avatar(profile: &UserProfile, media: &dyn MediaCache) -> Option<Image> {
+    let path = profile
+        .avatar_mxc
+        .as_deref()
+        .and_then(|mxc| media.user_avatar_path(mxc));
+    load_avatar_async(path.as_deref(), AvatarSlot::UserInfo)
+}
+
+pub fn user_info_pronouns(profile: &UserProfile) -> SharedString {
+    match &profile.pronouns {
+        Pronouns::Known(pronouns) => {
+            SharedString::from(pronoun_labels(pronouns).join(PRONOUN_SEPARATOR))
+        }
+        Pronouns::Unknown => SharedString::new(),
+    }
 }
 
 fn space_child_avatar_path(child: &SpaceChild, media: &dyn MediaCache) -> Option<PathBuf> {

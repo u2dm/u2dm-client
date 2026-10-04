@@ -5,20 +5,24 @@ use std::sync::{Arc, OnceLock};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use super::dto::{DemoData, RoomDto, SpaceDto, StickerPackDto, UnjoinedDto};
-use super::media;
 use super::timeline::{self, scenario};
+use super::{media, message_menu, polls};
 use crate::domain::auth::Session;
 use crate::domain::media::{
     AudioKind, AudioMeta, FileMeta, ImageMeta, OutgoingAttachment, VideoMeta,
 };
 use crate::domain::message::{
-    MessageBody, PinnedMessage, ReadBy, ReplyInfo, RichText, SendState, TimelineMessage,
+    MessageBody, MessagePreviewKind, PinnedMessage, ReadBy, ReplyInfo, RichText, SendState,
+    TimelineMessage,
 };
 use crate::domain::poll::{Poll, PollAnswer, PollDraft, PollStatus};
 use crate::domain::room::{NotifyMode, Room, RoomId, Space};
 use crate::domain::room_info::{MemberRole, RoomAbout, RosterMember, RosterSection, sort_roster};
 use crate::domain::space_index::SpaceChild;
 use crate::domain::sticker::{StickerImage, StickerPack};
+use crate::domain::user_info::{
+    IdentityTrust, ModerationPowers, Pronouns, RoomMembership, UserId, UserProfile, localpart,
+};
 
 const UNKNOWN_SENDER: &str = "@member:matrix.org";
 const SENT_STICKER_EXTENT: u32 = 512;
@@ -81,6 +85,7 @@ pub struct RoomOverrides {
     pub left: HashSet<String>,
     pub notify: HashMap<String, NotifyMode>,
     pub read: HashSet<String>,
+    pub started_chats: HashMap<String, String>,
 }
 
 pub fn rooms_with(joined: &[RoomId], overrides: &RoomOverrides) -> Vec<Arc<Room>> {
@@ -101,10 +106,46 @@ pub fn rooms_with(joined: &[RoomId], overrides: &RoomOverrides) -> Vec<Arc<Room>
                     room
                 }),
         )
+        .chain(
+            overrides
+                .started_chats
+                .iter()
+                .map(|(room_id, user_id)| started_chat(room_id, user_id, now)),
+        )
         .filter(|room| !overrides.left.contains(room.id.as_ref()))
         .map(|room| read_when_marked(room, &overrides.read))
         .map(Arc::new)
         .collect()
+}
+
+fn started_chat(room_id: &str, user_id: &str, now: u64) -> Room {
+    Room {
+        id: RoomId::new(room_id),
+        display_name: person_name(user_id).unwrap_or_else(|| localpart(user_id).to_owned()),
+        avatar_mxc: Some(user_id.to_owned()),
+        topic: None,
+        canonical_alias: None,
+        is_direct: true,
+        is_encrypted: true,
+        poll_permissions: polls::permissions(),
+        message_permissions: message_menu::permissions(),
+        member_count: 2,
+        has_unread: false,
+        has_mentions: false,
+        has_activity: false,
+        notify: NotifyMode::AllMessages,
+        last_activity_ts: now,
+        last_message_sender: None,
+        last_message_kind: MessagePreviewKind::None,
+        last_message_body: RichText::plain(String::new()),
+        last_message_service: None,
+        last_message_is_own: false,
+        last_message_edited: false,
+    }
+}
+
+pub fn started_chat_id(user_id: &str) -> String {
+    format!("!chat-{}:{DEMO_VIA}", localpart(user_id))
 }
 
 fn read_when_marked(mut room: Room, read: &HashSet<String>) -> Room {
@@ -212,6 +253,79 @@ pub fn roster(room_id: &RoomId, avatar_of: impl Fn(&str) -> String) -> Vec<Roste
         .collect();
     sort_roster(&mut roster);
     roster
+}
+
+pub fn profile(
+    room_id: &RoomId,
+    user_id: &UserId,
+    avatar_of: impl Fn(&str) -> String,
+) -> UserProfile {
+    let member = roster(room_id, &avatar_of)
+        .into_iter()
+        .find(|member| member.user_id == user_id.as_ref());
+    let membership = match member.as_ref().map(|member| member.section) {
+        Some(RosterSection::Joined) => RoomMembership::Joined,
+        Some(RosterSection::Invited) => RoomMembership::Invited,
+        None => RoomMembership::Outside,
+    };
+    UserProfile {
+        user_id: user_id.clone(),
+        display_name: member
+            .as_ref()
+            .and_then(|member| member.display_name.clone()),
+        avatar_mxc: member.as_ref().and_then(|member| member.avatar_mxc.clone()),
+        role: member
+            .as_ref()
+            .map_or(MemberRole::Member, |member| member.role),
+        membership,
+        trust: IdentityTrust::Unverified,
+        is_self: user_id.as_ref() == own_user(),
+        pronouns: Pronouns::Known(pronouns(user_id)),
+        link: user_link(user_id),
+        direct_room: None,
+        ignored: false,
+        powers: ModerationPowers::default(),
+    }
+}
+
+pub fn role_of(room_id: &RoomId, user_id: &str) -> MemberRole {
+    data()
+        .rooms
+        .iter()
+        .find(|room| room.id == room_id.as_ref())
+        .and_then(|room| room.roles.get(user_id))
+        .map_or(MemberRole::Member, |role| role.to_role())
+}
+
+pub fn person_name(user_id: &str) -> Option<String> {
+    people_names(data())
+        .remove(user_id)
+        .or_else(|| guest_name(user_id))
+}
+
+pub fn user_link(user_id: &str) -> String {
+    format!("{MATRIX_TO}{user_id}")
+}
+
+pub fn direct_room_with(user_id: &str) -> Option<RoomId> {
+    let own = own_user();
+    data()
+        .rooms
+        .iter()
+        .filter(|room| room.is_direct())
+        .find_map(|room| {
+            let room_id = RoomId::new(&room.id);
+            let others: Vec<String> = roster(&room_id, str::to_owned)
+                .into_iter()
+                .map(|member| member.user_id)
+                .filter(|member| member != own)
+                .collect();
+            (others == [user_id]).then_some(room_id)
+        })
+}
+
+pub fn guest_user(n: usize) -> String {
+    guest_id(n)
 }
 
 const GUEST_PREFIX: &str = "@guest-";

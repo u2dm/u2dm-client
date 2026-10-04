@@ -85,8 +85,18 @@ const ENUM_COVERAGE: &[EnumCoverage] = &[
     },
     EnumCoverage {
         slint_enum: "MemberRole",
-        branches_in: "ui/screens/chat/components/room-info.slint",
+        branches_in: "ui/screens/chat/components/member-roles.slint",
         falls_through: &["member"],
+    },
+    EnumCoverage {
+        slint_enum: "RoomMembership",
+        branches_in: "ui/screens/chat/components/user-info.slint",
+        falls_through: &["joined", "unknown"],
+    },
+    EnumCoverage {
+        slint_enum: "DirectChat",
+        branches_in: "ui/screens/chat/components/user-info.slint",
+        falls_through: &["hidden"],
     },
     EnumCoverage {
         slint_enum: "PollPhase",
@@ -111,6 +121,9 @@ const ENUM_TABLES: &[(&str, &str)] = &[
     ("ChildAccess", "child_accesses"),
     ("NotifyMode", "notify_modes"),
     ("MemberRole", "member_roles"),
+    ("RoomMembership", "room_memberships"),
+    ("DirectChat", "direct_chats"),
+    ("Moderation", "pending_moderations"),
     ("MemberRowKind", "member_row_kinds"),
     ("RosterStatus", "roster_statuses"),
     ("AudioKind", "audio_kinds"),
@@ -193,6 +206,11 @@ const SCENARIO_SOURCES: &[ScenarioSource] = &[
     },
     ScenarioSource {
         file: "src/adapters/demo/room_info.rs",
+        arms_between: ("fn apply(scenario: &mut Scenario, flag: &str) {", "\n}"),
+        ignored: &[],
+    },
+    ScenarioSource {
+        file: "src/adapters/demo/user_info.rs",
         arms_between: ("fn apply(scenario: &mut Scenario, flag: &str) {", "\n}"),
         ignored: &[],
     },

@@ -7,15 +7,17 @@ use crate::commands::effects::VerificationActivity;
 use crate::commands::messages::{UserMessage, UserMessageKind};
 use crate::commands::ui::UiCommand;
 use crate::commands::view::{
-    AttachmentKind, LoginActivity, LoginStep, RoomScope, RosterStatus, SourceState,
-    SpaceIndexStatus,
+    AttachmentKind, DirectChat, LoginActivity, LoginStep, PendingModeration, RoomScope,
+    RosterStatus, SourceState, SpaceIndexStatus,
 };
 use crate::domain::auth::LoginMethod;
 use crate::domain::media::AudioKind;
 use crate::domain::message::MessagePreviewKind;
 use crate::domain::room::NotifyMode;
+use crate::domain::room_info::MemberRole;
 use crate::domain::sync::ConnectionStatus;
 use crate::domain::timeline::{SourceEncryption, TimelineStatus};
+use crate::domain::user_info::RoomMembership;
 use crate::domain::verification::VerificationEmoji as DomainVerificationEmoji;
 
 pub const SLINT_INFLIGHT: usize = 32;
@@ -77,6 +79,7 @@ pub trait UiProps {
     fn apply_attachment_preview(&self, preview: Option<Image>);
     fn apply_room_info_avatar(&self, avatar: Option<Image>);
     fn apply_room_info_topic(&self, topic: StyledText);
+    fn apply_user_info_avatar(&self, avatar: Option<Image>);
     fn apply_login_messages(&self, messages: &[UserMessage]);
     fn apply_emoji_model(&self, emojis: &[DomainVerificationEmoji]);
     fn clear_emoji_model(&self);

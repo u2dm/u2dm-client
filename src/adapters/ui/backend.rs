@@ -402,6 +402,14 @@ pub(super) fn apply_sticker_art<B: UiBackend>(key: &str, art: Option<&Image>) {
     }
 }
 
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+enum SingleAvatar {
+    RoomInfo,
+    UserInfo,
+    User,
+    AttachmentPreview,
+}
+
 #[derive(Default)]
 struct AvatarTargets<'a> {
     messages: HashSet<&'a str>,
@@ -410,9 +418,7 @@ struct AvatarTargets<'a> {
     spaces: HashSet<&'a str>,
     space_children: HashSet<&'a str>,
     members: HashSet<&'a str>,
-    room_info: bool,
-    user: bool,
-    attachment_preview: bool,
+    singles: HashSet<SingleAvatar>,
 }
 
 fn group_slots(slots: &[AvatarSlot]) -> AvatarTargets<'_> {
@@ -441,9 +447,18 @@ fn group_slots(slots: &[AvatarSlot]) -> AvatarTargets<'_> {
             AvatarSlot::Member(user_id) => {
                 targets.members.insert(user_id.as_str());
             }
-            AvatarSlot::RoomInfo => targets.room_info = true,
-            AvatarSlot::User => targets.user = true,
-            AvatarSlot::AttachmentPreview { .. } => targets.attachment_preview = true,
+            AvatarSlot::RoomInfo => {
+                targets.singles.insert(SingleAvatar::RoomInfo);
+            }
+            AvatarSlot::UserInfo => {
+                targets.singles.insert(SingleAvatar::UserInfo);
+            }
+            AvatarSlot::User => {
+                targets.singles.insert(SingleAvatar::User);
+            }
+            AvatarSlot::AttachmentPreview { .. } => {
+                targets.singles.insert(SingleAvatar::AttachmentPreview);
+            }
         }
     }
     targets
@@ -523,17 +538,17 @@ fn apply_avatar_ready<B: UiBackend>(
         return;
     };
     let targets = group_slots(slots);
-    if (targets.user || targets.attachment_preview || targets.room_info)
+    if !targets.singles.is_empty()
         && let Some(w) = weak.upgrade()
     {
-        if targets.user {
-            w.apply_user_avatar(Some(image.clone()));
-        }
-        if targets.attachment_preview {
-            w.apply_attachment_preview(Some(image.clone()));
-        }
-        if targets.room_info {
-            w.apply_room_info_avatar(Some(image.clone()));
+        for single in &targets.singles {
+            let avatar = Some(image.clone());
+            match single {
+                SingleAvatar::User => w.apply_user_avatar(avatar),
+                SingleAvatar::AttachmentPreview => w.apply_attachment_preview(avatar),
+                SingleAvatar::RoomInfo => w.apply_room_info_avatar(avatar),
+                SingleAvatar::UserInfo => w.apply_user_info_avatar(avatar),
+            }
         }
     }
     B::with_models(|timeline, rooms, spaces, subspaces| {

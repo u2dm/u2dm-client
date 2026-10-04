@@ -1,0 +1,66 @@
+import { Palette } from "std-widgets.slint";
+import { IconDisplay, Icon } from "@lucide";
+
+import { ClickArea } from "../../../components/a11y.slint";
+import { DotPulse } from "../../../components/dot-pulse.slint";
+import { AppStyle, Fonts, IconSize, Opacity, Radius, Space, Weight } from "../../../theme.slint";
+
+export component ActionTile inherits ClickArea {
+    in property <Icon> icon;
+    in property <string> text;
+    in property <bool> busy;
+    in property <bool> destructive;
+
+    pure function tint() -> color {
+        return root.destructive ? AppStyle.danger : Palette.foreground;
+    }
+
+    pure function fill() -> brush {
+        if root.destructive {
+            return root.has-hover || root.pressed ? AppStyle.danger-border : AppStyle.danger-background;
+        }
+        if root.pressed {
+            return AppStyle.overlay-pressed;
+        }
+        return root.has-hover ? AppStyle.overlay-hover : AppStyle.overlay-subtle;
+    }
+
+    above-modal: true;
+    label: root.text;
+    ring-radius: Radius.md;
+    border-radius: Radius.md;
+    background: root.fill();
+    opacity: root.enabled || root.busy ? 1.0 : Opacity.disabled;
+
+    VerticalLayout {
+        alignment: center;
+        spacing: Space.xs;
+        padding-left: Space.sm;
+        padding-right: Space.sm;
+
+        HorizontalLayout {
+            alignment: center;
+            height: IconSize.md;
+
+            if root.busy: DotPulse {
+                tint: root.tint();
+            }
+
+            if !root.busy: IconDisplay {
+                icon: root.icon;
+                size: IconSize.md;
+                stroke: root.tint();
+            }
+        }
+
+        Text {
+            text: root.text;
+            font-size: Fonts.caption;
+            font-weight: Weight.semibold;
+            horizontal-alignment: center;
+            overflow: elide;
+            color: root.tint();
+            accessible-role: none;
+        }
+    }
+}

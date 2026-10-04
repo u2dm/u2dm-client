@@ -10,5 +10,6 @@ pub mod space_index;
 pub mod sticker;
 pub mod sync;
 pub mod timeline;
+pub mod user_info;
 pub mod verification;
 pub mod viewport;

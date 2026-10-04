@@ -1,0 +1,507 @@
+import { Palette, ScrollView } from "std-widgets.slint";
+import { IconDisplay, IconSet, Icon } from "@lucide";
+
+import { Avatar } from "../../../components/avatar.slint";
+import { AppButton, IconButton } from "../../../components/button.slint";
+import { Copier } from "../../../components/copier.slint";
+import { DialogCard, ModalHost } from "../../../components/overlay.slint";
+import { ErrorBanner } from "../../../components/banner.slint";
+import { MenuRow } from "../../../components/menu-row.slint";
+import { ActionTile } from "./action-tile.slint";
+import { DetailLine } from "./detail-line.slint";
+import { MemberRoles } from "./member-roles.slint";
+import { AppStyle, Avatars, Fonts, Glyph, IconSize, Metrics, Motion, Opacity, Size, Space, Weight } from "../../../theme.slint";
+import { DirectChat, Moderation, RoomMembership, UserMessageKind } from "../../../enums.slint";
+import { UserInfoView } from "../../../views.slint";
+import { Actions } from "../../../actions.slint";
+import { DeliveryTip, Reactions } from "../../../local.slint";
+
+enum Asking {
+    none,
+    ignore,
+    remove,
+    ban,
+}
+
+component Badge inherits Rectangle {
+    in property <Icon> icon;
+    in property <string> text;
+    in property <color> tint: AppStyle.foreground-muted;
+
+    width: badge-row.preferred-width;
+    height: badge-row.preferred-height;
+    border-radius: self.height / 2;
+    background: AppStyle.overlay-hover;
+
+    badge-row := HorizontalLayout {
+        padding-left: Space.md;
+        padding-right: Space.md;
+        padding-top: Space.xs;
+        padding-bottom: Space.xs;
+        spacing: Space.xs;
+
+        if root.icon.paths.length > 0: IconDisplay {
+            cross-axis-self-alignment: center;
+            icon: root.icon;
+            size: IconSize.xs;
+            stroke: root.tint;
+        }
+
+        Text {
+            text: root.text;
+            font-size: Fonts.caption;
+            font-weight: Weight.semibold;
+            color: root.tint;
+            vertical-alignment: center;
+            accessible-role: none;
+        }
+    }
+}
+
+export component UserInfoDialog inherits ModalHost {
+    dim-opacity: AppStyle.dark ? Opacity.scrim-strong : Opacity.scrim;
+    label: @tr("Profile of {}", UserInfoView.name);
+    dismissed => {
+        if root.asking != Asking.none {
+            root.cancel-asking();
+        } else {
+            Actions.close-user-info();
+        }
+    }
+    opened => {
+        Reactions.close();
+        DeliveryTip.clear();
+    }
+
+    pure function membership-note(membership: RoomMembership) -> string {
+        if membership == RoomMembership.invited {
+            return @tr("Invited to this room");
+        }
+        if membership == RoomMembership.knocking {
+            return @tr("Asked to join this room");
+        }
+        if membership == RoomMembership.left {
+            return @tr("Not in this room anymore");
+        }
+        if membership == RoomMembership.banned {
+            return @tr("Banned from this room");
+        }
+        if membership == RoomMembership.outside {
+            return @tr("Not in this room");
+        }
+        return "";
+    }
+
+    pure function direct-text(direct: DirectChat) -> string {
+        if direct == DirectChat.starting {
+            return @tr("Starting…");
+        }
+        return @tr("Message");
+    }
+
+    pure function direct-label(direct: DirectChat) -> string {
+        if direct == DirectChat.open {
+            return @tr("Open your chat with {}", UserInfoView.name);
+        }
+        if direct == DirectChat.start {
+            return @tr("Start a chat with {}", UserInfoView.name);
+        }
+        if direct == DirectChat.starting {
+            return @tr("Starting a chat with {}", UserInfoView.name);
+        }
+        return "";
+    }
+
+    pure function prompt(asking: Asking) -> string {
+        if asking == Asking.ignore {
+            return @tr("Ignore {}? Their messages and invites will be hidden.", UserInfoView.name);
+        }
+        if asking == Asking.remove {
+            return @tr("Remove {} from this room?", UserInfoView.name);
+        }
+        if asking == Asking.ban {
+            return @tr("Ban {} from this room? They cannot rejoin until unbanned.", UserInfoView.name);
+        }
+        return "";
+    }
+
+    pure function confirm-text(asking: Asking) -> string {
+        if asking == Asking.ignore {
+            return @tr("Ignore");
+        }
+        if asking == Asking.remove {
+            return @tr("Remove");
+        }
+        if asking == Asking.ban {
+            return @tr("Ban");
+        }
+        return "";
+    }
+
+    pure function confirm-label(asking: Asking) -> string {
+        if asking == Asking.ignore {
+            return @tr("Confirm ignoring {}", UserInfoView.name);
+        }
+        if asking == Asking.remove {
+            return @tr("Confirm removing {} from this room", UserInfoView.name);
+        }
+        if asking == Asking.ban {
+            return @tr("Confirm banning {} from this room", UserInfoView.name);
+        }
+        return "";
+    }
+
+    pure function confirm-icon(asking: Asking) -> Icon {
+        if asking == Asking.remove {
+            return IconSet.UserMinus;
+        }
+        if asking == Asking.ban {
+            return IconSet.Ban;
+        }
+        return IconSet.EyeOff;
+    }
+
+    property <length> card-width: min(AppStyle.card-width-wide, root.width - AppStyle.card-inset);
+    property <length> card-height: min(
+        body.preferred-height,
+        root.height - AppStyle.card-inset,
+        Metrics.user-info-max-height);
+    property <length> tile-width: (root.card-width - 2 * Space.xl - 2 * Space.md) / 3;
+    property <string> role-label: MemberRoles.label(UserInfoView.role);
+    property <string> note: root.membership-note(UserInfoView.membership);
+
+    property <bool> offers-actions: !UserInfoView.is-self
+        && !UserInfoView.read-failed
+        && !UserInfoView.retrying;
+
+    property <string> shown-user: UserInfoView.user-id;
+    property <bool> copied: false;
+    property <Asking> asking: Asking.none;
+
+    function copy-link() {
+        link-copier.copy-text(UserInfoView.link);
+        root.copied = true;
+    }
+
+    function cancel-asking() {
+        root.asking = Asking.none;
+        root.focus();
+    }
+
+    function ignore-clicked() {
+        if root.asking == Asking.ignore {
+            root.asking = Asking.none;
+        } else if UserInfoView.ignored {
+            Actions.unignore-user(UserInfoView.user-id);
+        } else {
+            root.asking = Asking.ignore;
+        }
+    }
+
+    function remove-clicked() {
+        if root.asking == Asking.remove {
+            root.asking = Asking.none;
+        } else {
+            root.asking = Asking.remove;
+        }
+    }
+
+    function ban-clicked() {
+        if root.asking == Asking.ban {
+            root.asking = Asking.none;
+        } else if UserInfoView.may-unban {
+            Actions.unban-user(UserInfoView.user-id);
+        } else {
+            root.asking = Asking.ban;
+        }
+    }
+
+    function confirm() {
+        let asking = root.asking;
+        root.focus();
+        root.asking = Asking.none;
+        if asking == Asking.ignore {
+            Actions.ignore-user(UserInfoView.user-id);
+        } else if asking == Asking.remove {
+            Actions.kick-user(UserInfoView.user-id);
+        } else if asking == Asking.ban {
+            Actions.ban-user(UserInfoView.user-id);
+        }
+    }
+
+    changed shown-user => {
+        root.copied = false;
+        root.asking = Asking.none;
+    }
+
+    Timer {
+        interval: Motion.feedback-hold;
+        running: root.copied;
+        triggered => {
+            root.copied = false;
+        }
+    }
+
+    link-copier := Copier { }
+
+    DialogCard {
+        x: (root.width - self.width) / 2;
+        y: (root.height - self.height) / 2;
+        width: root.card-width;
+        height: root.card-height;
+        clip: true;
+
+        scroll := ScrollView {
+            width: 100%;
+            height: 100%;
+            content-width: root.card-width;
+            content-height: body.preferred-height;
+
+            body := VerticalLayout {
+                width: root.card-width;
+                padding-top: Space.xl;
+                padding-bottom: Space.xl;
+                spacing: Space.lg;
+
+                VerticalLayout {
+                    padding-left: Space.xl;
+                    padding-right: Space.xl;
+                    spacing: Space.sm;
+
+                    HorizontalLayout {
+                        alignment: center;
+
+                        Avatar {
+                            width: Metrics.user-info-avatar;
+                            height: Metrics.user-info-avatar;
+                            background: Avatars.color(UserInfoView.color-index);
+                            has-image: UserInfoView.has-avatar;
+                            image: UserInfoView.avatar;
+                            initial: UserInfoView.initial;
+                            initial-size: Glyph.xxl;
+                            initial-weight: Weight.bold;
+                            initial-font-family: "";
+                        }
+                    }
+
+                    Text {
+                        text: UserInfoView.name;
+                        font-family: Fonts.emoji;
+                        font-size: Fonts.heading;
+                        font-weight: Weight.bold;
+                        horizontal-alignment: center;
+                        overflow: elide;
+                    }
+
+                    if UserInfoView.pronouns != "": Text {
+                        text: UserInfoView.pronouns;
+                        font-size: Fonts.body-small;
+                        color: AppStyle.foreground-muted;
+                        horizontal-alignment: center;
+                        overflow: elide;
+                    }
+
+                    if root.role-label != "" || UserInfoView.verified: HorizontalLayout {
+                        alignment: center;
+                        spacing: Space.sm;
+
+                        if root.role-label != "": Badge {
+                            text: root.role-label;
+                        }
+
+                        if UserInfoView.verified: Badge {
+                            icon: IconSet.ShieldCheck;
+                            text: @tr("Verified");
+                            tint: AppStyle.accent-on-surface;
+                        }
+                    }
+
+                    if root.note != "": Text {
+                        text: root.note;
+                        font-size: Fonts.body-small;
+                        color: AppStyle.foreground-muted;
+                        horizontal-alignment: center;
+                        wrap: word-wrap;
+                    }
+                }
+
+                HorizontalLayout {
+                    alignment: center;
+                    padding-left: Space.xl;
+                    padding-right: Space.xl;
+                    spacing: Space.md;
+                    height: Metrics.user-info-action;
+
+                    if root.asking == Asking.none && UserInfoView.direct != DirectChat.hidden: ActionTile {
+                        width: root.tile-width;
+                        enabled: UserInfoView.direct != DirectChat.starting;
+                        busy: UserInfoView.direct == DirectChat.starting;
+                        icon: IconSet.MessageCircle;
+                        text: root.direct-text(UserInfoView.direct);
+                        label: root.direct-label(UserInfoView.direct);
+                        clicked => {
+                            Actions.message-user(UserInfoView.user-id);
+                        }
+                    }
+
+                    if root.asking == Asking.none: ActionTile {
+                        width: root.tile-width;
+                        enabled: UserInfoView.link != "";
+                        icon: root.copied ? IconSet.Check : IconSet.Link;
+                        text: root.copied ? @tr("Copied") : @tr("Copy link");
+                        label: root.copied ? @tr("Link copied") : @tr("Copy the link to this profile");
+                        clicked => {
+                            root.copy-link();
+                        }
+                    }
+
+                    if root.asking != Asking.none: Text {
+                        width: 2 * root.tile-width + Space.md;
+                        text: root.prompt(root.asking);
+                        font-size: Fonts.body-small;
+                        font-weight: Weight.semibold;
+                        vertical-alignment: center;
+                        wrap: word-wrap;
+                        overflow: elide;
+                        accessible-live-region: AccessibleLiveness.polite;
+                    }
+
+                    if root.asking != Asking.none: ActionTile {
+                        width: root.tile-width;
+                        destructive: true;
+                        icon: root.confirm-icon(root.asking);
+                        text: root.confirm-text(root.asking);
+                        label: root.confirm-label(root.asking);
+                        clicked => {
+                            root.confirm();
+                        }
+                    }
+                }
+
+                if UserInfoView.error != UserMessageKind.none: HorizontalLayout {
+                    padding-left: Space.xl;
+                    padding-right: Space.xl;
+
+                    ErrorBanner {
+                        messages: [{ kind: UserInfoView.error, detail: UserInfoView.error-detail }];
+                    }
+                }
+
+                if UserInfoView.read-failed || UserInfoView.retrying: HorizontalLayout {
+                    alignment: center;
+
+                    AppButton {
+                        text: @tr("Retry");
+                        filled: false;
+                        above-modal: true;
+                        enabled: !UserInfoView.retrying;
+                        busy: UserInfoView.retrying;
+                        clicked => {
+                            Actions.retry-user-info();
+                        }
+                    }
+                }
+
+                VerticalLayout {
+                    padding-left: Space.xl;
+                    padding-right: Space.xl;
+
+                    DetailLine {
+                        value: UserInfoView.user-id;
+                        caption: @tr("Matrix ID");
+                    }
+                }
+
+                if root.offers-actions: VerticalLayout {
+                    padding-left: Space.md;
+                    padding-right: Space.md;
+
+                    MenuRow {
+                        height: Metrics.user-info-row;
+                        above-modal: true;
+                        enabled: root.asking == Asking.none
+                            ? !UserInfoView.ignore-busy
+                            : root.asking == Asking.ignore;
+                        busy: UserInfoView.ignore-busy;
+                        icon: root.asking == Asking.ignore
+                            ? IconSet.X
+                            : (UserInfoView.ignored ? IconSet.Eye : IconSet.EyeOff);
+                        label: root.asking == Asking.ignore
+                            ? @tr("Cancel")
+                            : (UserInfoView.ignored ? @tr("Stop ignoring") : @tr("Ignore"));
+                        tint: root.asking == Asking.none && !UserInfoView.ignored
+                            ? AppStyle.danger
+                            : AppStyle.foreground-muted;
+                        text-color: root.asking == Asking.none && !UserInfoView.ignored
+                            ? AppStyle.danger
+                            : Palette.foreground;
+                        clicked => {
+                            root.ignore-clicked();
+                        }
+                    }
+
+                    if UserInfoView.may-kick || root.asking == Asking.remove: MenuRow {
+                        height: Metrics.user-info-row;
+                        above-modal: true;
+                        enabled: root.asking == Asking.none
+                            ? UserInfoView.moderating == Moderation.none
+                            : root.asking == Asking.remove;
+                        busy: UserInfoView.moderating == Moderation.kick;
+                        icon: root.asking == Asking.remove ? IconSet.X : IconSet.UserMinus;
+                        label: root.asking == Asking.remove ? @tr("Cancel") : @tr("Remove from room");
+                        tint: root.asking == Asking.none ? AppStyle.danger : AppStyle.foreground-muted;
+                        text-color: root.asking == Asking.none ? AppStyle.danger : Palette.foreground;
+                        clicked => {
+                            root.remove-clicked();
+                        }
+                    }
+
+                    if UserInfoView.may-ban || UserInfoView.may-unban || root.asking == Asking.ban: MenuRow {
+                        height: Metrics.user-info-row;
+                        above-modal: true;
+                        enabled: root.asking == Asking.none
+                            ? UserInfoView.moderating == Moderation.none
+                            : root.asking == Asking.ban;
+                        busy: UserInfoView.moderating == Moderation.ban
+                            || UserInfoView.moderating == Moderation.unban;
+                        icon: root.asking == Asking.ban
+                            ? IconSet.X
+                            : (UserInfoView.may-unban ? IconSet.UserCheck : IconSet.Ban);
+                        label: root.asking == Asking.ban
+                            ? @tr("Cancel")
+                            : (UserInfoView.may-unban ? @tr("Unban") : @tr("Ban from room"));
+                        tint: root.asking == Asking.none && !UserInfoView.may-unban
+                            ? AppStyle.danger
+                            : AppStyle.foreground-muted;
+                        text-color: root.asking == Asking.none && !UserInfoView.may-unban
+                            ? AppStyle.danger
+                            : Palette.foreground;
+                        clicked => {
+                            root.ban-clicked();
+                        }
+                    }
+                }
+            }
+        }
+
+        Rectangle {
+            x: parent.width - self.width - Space.md;
+            y: Space.md;
+            width: Size.md;
+            height: Size.md;
+            border-radius: self.width / 2;
+            background: AppStyle.card;
+
+            IconButton {
+                size: Size.md;
+                radius: Size.md / 2;
+                icon: IconSet.X;
+                above-modal: true;
+                label: @tr("Close the profile");
+                clicked => {
+                    Actions.close-user-info();
+                }
+            }
+        }
+    }
+}

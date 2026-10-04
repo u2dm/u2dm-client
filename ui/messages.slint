@@ -118,6 +118,27 @@ export global UserMessages {
         if kind == UserMessageKind.room-link-failed {
             return @tr("Could not copy the link to {}", detail);
         }
+        if kind == UserMessageKind.user-info-failed {
+            return @tr("Could not load the profile of {}", detail);
+        }
+        if kind == UserMessageKind.direct-chat-failed {
+            return @tr("Could not start a chat with {}", detail);
+        }
+        if kind == UserMessageKind.ignore-failed {
+            return @tr("Could not ignore {}", detail);
+        }
+        if kind == UserMessageKind.unignore-failed {
+            return @tr("Could not stop ignoring {}", detail);
+        }
+        if kind == UserMessageKind.kick-failed {
+            return @tr("Could not remove {} from the room", detail);
+        }
+        if kind == UserMessageKind.ban-failed {
+            return @tr("Could not ban {}", detail);
+        }
+        if kind == UserMessageKind.unban-failed {
+            return @tr("Could not unban {}", detail);
+        }
         if kind == UserMessageKind.media-download-failed {
             return @tr("Failed to download media");
         }

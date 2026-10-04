@@ -24,6 +24,7 @@ mod space_order;
 mod stickers;
 mod submissions;
 mod task_group;
+mod user_info;
 mod verification;
 mod video;
 
@@ -35,6 +36,7 @@ use audio::AudioController;
 use establish::{EstablishedSession, Rollback};
 use event::{
     AppEvent, EndReason, MessageActionEvent, RoomActionEvent, SessionEvent, TimelineEvent,
+    UserInfoEvent,
 };
 use event_source::EventSourceViewer;
 use input::{CommandSender, EventSender, Inbox, Input};
@@ -53,6 +55,7 @@ use stickers::Stickers;
 use submissions::Submissions;
 use task_group::TaskGroup;
 use tokio::sync::{mpsc, watch};
+use user_info::UserInfo;
 use verification::VerificationController;
 use video::VideoController;
 
@@ -70,6 +73,7 @@ use crate::domain::room::{NotifyMode, RoomId, RoomList, Space};
 use crate::domain::sticker::PackId;
 use crate::domain::sync::ConnectionStatus;
 use crate::domain::timeline::{AudioTrack, FailedSend, TimelineFocus};
+use crate::domain::user_info::{IgnoreChange, Moderation, UserId};
 use crate::ports::browser::BrowserPort;
 use crate::ports::matrix::{AuthPort, AuthenticatedSession, CleanupReport, MediaPort, SessionPort};
 use crate::ports::media::MediaFilePort;
@@ -165,6 +169,7 @@ pub struct AppService {
     stickers: Stickers,
     space_index: SpaceIndex,
     room_info: RoomInfo,
+    user_info: UserInfo,
     message_actions: MessageActions,
     event_source: EventSourceViewer,
     attachments: Attachments,
@@ -206,6 +211,7 @@ impl AppService {
             stickers: Stickers::new(Arc::clone(&output)),
             space_index: SpaceIndex::new(Arc::clone(&output), events.clone()),
             room_info: RoomInfo::new(Arc::clone(&output), events.clone()),
+            user_info: UserInfo::new(Arc::clone(&output), events.clone()),
             message_actions: MessageActions::new(Arc::clone(&output), events.clone()),
             event_source: EventSourceViewer::new(Arc::clone(&output)),
             attachments: Attachments::new(media_files, Arc::clone(&output), events.clone()),
@@ -423,6 +429,33 @@ impl AppService {
             }
             UiCommand::CopyRoomLink(room_id) => {
                 self.copy_room_link(&room_id);
+            }
+            UiCommand::OpenUserInfo(user_id) => {
+                self.open_user_info(user_id);
+            }
+            UiCommand::CloseUserInfo => {
+                self.user_info.close();
+            }
+            UiCommand::RetryUserInfo => {
+                self.retry_user_info();
+            }
+            UiCommand::MessageUser(user_id) => {
+                self.message_user(&user_id).await;
+            }
+            UiCommand::IgnoreUser(user_id) => {
+                self.set_ignored(&user_id, IgnoreChange::Ignore);
+            }
+            UiCommand::UnignoreUser(user_id) => {
+                self.set_ignored(&user_id, IgnoreChange::Unignore);
+            }
+            UiCommand::KickUser(user_id) => {
+                self.moderate(&user_id, Moderation::Kick);
+            }
+            UiCommand::BanUser(user_id) => {
+                self.moderate(&user_id, Moderation::Ban);
+            }
+            UiCommand::UnbanUser(user_id) => {
+                self.moderate(&user_id, Moderation::Unban);
             }
             UiCommand::RetryTimeline => {
                 self.retry_timeline().await;
@@ -707,6 +740,9 @@ impl AppService {
             self.room_directory.emit_directory(&self.selection);
             self.refresh_space_index();
             self.follow_room_info();
+            if let Some(room_id) = self.user_info.follow(self.room_directory.rooms()) {
+                self.select_room(room_id).await;
+            }
         }
     }
 
@@ -886,6 +922,40 @@ impl AppService {
         }
     }
 
+    fn open_user_info(&mut self, user_id: UserId) {
+        if let Some(port) = self.port(|a| &a.user_info) {
+            self.user_info
+                .open(port, self.selection.room.clone(), user_id);
+        }
+    }
+
+    fn retry_user_info(&mut self) {
+        if let Some(port) = self.port(|a| &a.user_info) {
+            self.user_info.retry(port);
+        }
+    }
+
+    fn set_ignored(&mut self, user_id: &UserId, change: IgnoreChange) {
+        if let Some(port) = self.port(|a| &a.user_info) {
+            self.user_info.set_ignored(port, user_id, change);
+        }
+    }
+
+    fn moderate(&mut self, user_id: &UserId, action: Moderation) {
+        if let Some(port) = self.port(|a| &a.user_info) {
+            self.user_info.moderate(port, user_id, action);
+        }
+    }
+
+    async fn message_user(&mut self, user_id: &UserId) {
+        let Some(port) = self.port(|a| &a.user_info) else {
+            return;
+        };
+        if let Some(room_id) = self.user_info.message(port, user_id) {
+            self.select_room(room_id).await;
+        }
+    }
+
     fn follow_room_info(&mut self) {
         if let Some(port) = self.port(|a| &a.room_info) {
             self.room_info.follow(port, self.room_directory.rooms());
@@ -964,6 +1034,68 @@ impl AppService {
             }
             AppEvent::RoomAction(event) => self.handle_room_action(event),
             AppEvent::MessageAction(event) => self.handle_message_action(event),
+            AppEvent::UserInfo(event) => self.handle_user_info(event).await,
+        }
+    }
+
+    async fn handle_user_info(&mut self, event: UserInfoEvent) {
+        let Some(port) = self.port(|a| &a.user_info) else {
+            return;
+        };
+        match event {
+            UserInfoEvent::Read {
+                generation,
+                outcome,
+            } => {
+                self.user_info
+                    .read_landed(port, generation, outcome, self.room_directory.rooms());
+            }
+            UserInfoEvent::PronounsFetched {
+                generation,
+                pronouns,
+            } => {
+                self.user_info.pronouns_landed(generation, pronouns);
+            }
+            UserInfoEvent::ProfileFetched {
+                generation,
+                profile,
+            } => {
+                self.user_info.profile_landed(port, generation, profile);
+            }
+            UserInfoEvent::AvatarReady { generation } => {
+                self.user_info.avatar_ready(generation);
+            }
+            UserInfoEvent::DmStarted {
+                user_id,
+                name,
+                outcome,
+            } => {
+                let opened =
+                    self.user_info
+                        .dm_started(user_id, &name, outcome, self.room_directory.rooms());
+                if let Some(room_id) = opened {
+                    self.select_room(room_id).await;
+                }
+            }
+            UserInfoEvent::IgnoreSettled {
+                user_id,
+                name,
+                change,
+                outcome,
+            } => {
+                self.user_info
+                    .ignore_settled(&user_id, &name, change, outcome);
+            }
+            UserInfoEvent::ModerationSettled {
+                room_id,
+                user_id,
+                name,
+                action,
+                outcome,
+            } => {
+                self.user_info
+                    .moderation_settled((room_id, user_id), &name, action, outcome);
+            }
         }
     }
 
@@ -1445,6 +1577,7 @@ impl AppService {
     async fn select_room(&mut self, room_id: RoomId) {
         self.space_index.close();
         self.room_info.close();
+        self.user_info.close();
         self.event_source.close();
         self.sync_selected_room(Some(&room_id));
         self.follow_pinned(room_id.clone());
@@ -1527,6 +1660,7 @@ impl AppService {
 
     async fn drop_selected_room(&mut self) {
         self.room_info.close();
+        self.user_info.close();
         self.event_source.close();
         self.audio.abandon_lookup();
         self.selection.room = None;
@@ -1590,6 +1724,7 @@ impl AppService {
             self.stickers.restart(),
             self.space_index.restart(),
             self.room_info.restart(),
+            self.user_info.restart(),
         );
     }
 
@@ -1679,6 +1814,7 @@ impl AppService {
             self.stickers.shutdown(),
             self.space_index.shutdown(),
             self.room_info.shutdown(),
+            self.user_info.shutdown(),
         );
     }
 }

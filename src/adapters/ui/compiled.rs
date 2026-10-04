@@ -10,19 +10,20 @@ use tokio::sync::{mpsc, watch};
 use u2dm_ui::{
     Actions, AppWindow, AttachmentKind as UiAttachmentKind, AttachmentView,
     AudioKind as UiAudioKind, AudioView, ChildAccess as UiChildAccess, ConnectionState,
-    Delivery as UiDelivery, DirectoryView, EmojiEntry, EmojiGroup, EmojiInsert, EmojiStore,
-    LoginActivity as UiLoginActivity, LoginMethodKind as UiLoginMethodKind, LoginPhase, LoginView,
-    MediaFailure as UiMediaFailure, MediaState as UiMediaState, MemberEntry,
-    MemberRole as UiMemberRole, MemberRowKind as UiMemberRowKind, MessageEntry,
-    MessageKind as UiMessageKind, NotifyMode as UiNotifyMode, PollAnswerEntry,
+    Delivery as UiDelivery, DirectChat as UiDirectChat, DirectoryView, EmojiEntry, EmojiGroup,
+    EmojiInsert, EmojiStore, LoginActivity as UiLoginActivity,
+    LoginMethodKind as UiLoginMethodKind, LoginPhase, LoginView, MediaFailure as UiMediaFailure,
+    MediaState as UiMediaState, MemberEntry, MemberRole as UiMemberRole,
+    MemberRowKind as UiMemberRowKind, MessageEntry, MessageKind as UiMessageKind,
+    Moderation as UiModeration, NotifyMode as UiNotifyMode, PollAnswerEntry,
     PollPhase as UiPollPhase, PreviewKind as UiPreviewKind, ReactionEntry,
     ReactionSend as UiReactionSend, ReactorAvatar, ReplySwipe, RoomEntry, RoomInfoView,
-    RoomMenuView, RoomScope as UiRoomScope, RoomView, RosterStatus as UiRosterStatus,
-    SendState as UiSendState, ServiceKind as UiServiceKind, SessionView,
-    SourceEncryption as UiSourceEncryption, SourceStatus as UiSourceStatus, SourceView,
-    SpaceChildEntry, SpaceEntry, SpaceIndexStatus as UiSpaceIndexStatus, SpaceIndexView,
-    StickerCell, StickerPackTab, StickerRow, StickerView, TimelineState, UnsentView,
-    UserMessage as UiUserMessage, UserMessageKind as UiUserMessageKind,
+    RoomMembership as UiRoomMembership, RoomMenuView, RoomScope as UiRoomScope, RoomView,
+    RosterStatus as UiRosterStatus, SendState as UiSendState, ServiceKind as UiServiceKind,
+    SessionView, SourceEncryption as UiSourceEncryption, SourceStatus as UiSourceStatus,
+    SourceView, SpaceChildEntry, SpaceEntry, SpaceIndexStatus as UiSpaceIndexStatus,
+    SpaceIndexView, StickerCell, StickerPackTab, StickerRow, StickerView, TimelineState,
+    UnsentView, UserInfoView, UserMessage as UiUserMessage, UserMessageKind as UiUserMessageKind,
     VerificationActivity as UiVerificationActivity, VerificationEmoji, VerificationPhase,
     VerificationView, VideoView, WindowView,
 };
@@ -52,10 +53,11 @@ use super::props::{BoolProp, IntProp, StringProp, UiProps};
 use super::router::{EditedRow, EditedText};
 use super::schema::{
     attachment_kinds, audio_kinds, bool_props, child_accesses, connection_states, deliveries,
-    enum_props, int_props, login_activities, login_methods, login_phases, media_failures,
-    media_states, member_roles, member_row_fields, member_row_kinds, message_fields, message_kinds,
-    model_props, notify_modes, poll_answer_fields, poll_phases, preview_kinds, reaction_fields,
-    reaction_sends, reactor_fields, room_fields, room_scopes, roster_statuses, send_states,
+    direct_chats, enum_props, int_props, login_activities, login_methods, login_phases,
+    media_failures, media_states, member_roles, member_row_fields, member_row_kinds,
+    message_fields, message_kinds, model_props, notify_modes, pending_moderations,
+    poll_answer_fields, poll_phases, preview_kinds, reaction_fields, reaction_sends,
+    reactor_fields, room_fields, room_memberships, room_scopes, roster_statuses, send_states,
     service_kinds, simple_callbacks, source_encryptions, source_statuses, space_child_fields,
     space_fields, space_index_statuses, sticker_cell_fields, sticker_pack_fields,
     sticker_row_fields, string_props, timeline_states, user_message_kinds, verification_activities,
@@ -69,8 +71,8 @@ use crate::commands::effects::{Effect, VerificationActivity};
 use crate::commands::messages::{UserMessage, UserMessageKind};
 use crate::commands::ui::{TimelineVisibility, ViewportChanged};
 use crate::commands::view::{
-    AppViewState, AttachmentKind, ChildAccess, LoginActivity, LoginStep, RoomScope, RosterStatus,
-    SourceState, SpaceIndexStatus,
+    AppViewState, AttachmentKind, ChildAccess, DirectChat, LoginActivity, LoginStep,
+    PendingModeration, RoomScope, RosterStatus, SourceState, SpaceIndexStatus,
 };
 use crate::domain::auth::LoginMethod;
 use crate::domain::media::AudioKind;
@@ -79,6 +81,7 @@ use crate::domain::room::NotifyMode;
 use crate::domain::room_info::MemberRole;
 use crate::domain::sync::ConnectionStatus;
 use crate::domain::timeline::{SourceEncryption, TimelineStatus};
+use crate::domain::user_info::RoomMembership;
 use crate::domain::verification::VerificationEmoji as DomainVerificationEmoji;
 use crate::error::Result;
 use crate::ports::media::MediaCache;
@@ -135,6 +138,9 @@ macro_rules! bind_compiled_callbacks {
         bind_compiled_callbacks!(@string $win $tx $on $fn)
     };
     (@one $win:ident $tx:ident $on:ident $fn:ident opt_room) => {
+        bind_compiled_callbacks!(@string $win $tx $on $fn)
+    };
+    (@one $win:ident $tx:ident $on:ident $fn:ident user) => {
         bind_compiled_callbacks!(@string $win $tx $on $fn)
     };
     (@one $win:ident $tx:ident $on:ident $fn:ident manual_string) => {
@@ -225,6 +231,17 @@ impl UiProps for AppWindow {
         self.global::<RoomInfoView>().set_topic_styled(topic);
     }
 
+    fn apply_user_info_avatar(&self, avatar: Option<Image>) {
+        let user_info = self.global::<UserInfoView>();
+        match avatar {
+            Some(img) => {
+                user_info.set_avatar(img);
+                user_info.set_has_avatar(true);
+            }
+            None => user_info.set_has_avatar(false),
+        }
+    }
+
     fn apply_login_messages(&self, messages: &[UserMessage]) {
         let entries: Vec<UiUserMessage> = messages
             .iter()
@@ -312,6 +329,9 @@ notify_modes!(impl_slint_enum NotifyMode UiNotifyMode;);
 member_roles!(impl_slint_enum MemberRole UiMemberRole;);
 member_row_kinds!(impl_slint_enum MemberRowKind UiMemberRowKind;);
 roster_statuses!(impl_slint_enum RosterStatus UiRosterStatus;);
+room_memberships!(impl_slint_enum RoomMembership UiRoomMembership;);
+direct_chats!(impl_slint_enum DirectChat UiDirectChat;);
+pending_moderations!(impl_slint_enum PendingModeration UiModeration;);
 preview_kinds!(impl_slint_enum MessagePreviewKind UiPreviewKind;);
 audio_kinds!(impl_slint_enum AudioKind UiAudioKind;);
 service_kinds!(impl_slint_enum ServiceKind UiServiceKind;);

@@ -46,6 +46,15 @@ export global Actions {
     callback close-room-menu();
     callback mark-room-read(string);
     callback copy-room-link(string);
+    callback open-user-info(string);
+    callback close-user-info();
+    callback retry-user-info();
+    callback message-user(string);
+    callback ignore-user(string);
+    callback unignore-user(string);
+    callback kick-user(string);
+    callback ban-user(string);
+    callback unban-user(string);
 
     callback send-message(SendMessageRequest);
     callback edit-message(EditMessageRequest) -> bool;

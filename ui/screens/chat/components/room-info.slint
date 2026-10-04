@@ -7,74 +7,17 @@ import { ClickArea, ListItemArea } from "../../../components/a11y.slint";
 import { Copier } from "../../../components/copier.slint";
 import { DialogCard, ModalHost, PickerCard } from "../../../components/overlay.slint";
 import { ErrorBanner } from "../../../components/banner.slint";
-import { DotPulse } from "../../../components/dot-pulse.slint";
+import { ActionTile } from "./action-tile.slint";
+import { DetailLine } from "./detail-line.slint";
+import { MemberRoles } from "./member-roles.slint";
 import { PickerSearch } from "./timeline/picker-search.slint";
 import { NotifyModes } from "./notify-modes.slint";
 import { MemberEntry } from "./types.slint";
 import { AppStyle, Avatars, Fonts, Glyph, IconSize, Metrics, Motion, Opacity, Radius, Size, Space, Weight } from "../../../theme.slint";
-import { MemberRole, MemberRowKind, RosterStatus, UserMessageKind } from "../../../enums.slint";
+import { MemberRowKind, RosterStatus, UserMessageKind } from "../../../enums.slint";
 import { RoomInfoView } from "../../../views.slint";
+import { Shell } from "../../../local.slint";
 import { Actions } from "../../../actions.slint";
-
-component ActionTile inherits ClickArea {
-    in property <Icon> icon;
-    in property <string> text;
-    in property <bool> busy;
-    in property <bool> destructive;
-
-    pure function tint() -> color {
-        return root.destructive ? AppStyle.danger : Palette.foreground;
-    }
-
-    pure function fill() -> brush {
-        if root.destructive {
-            return root.has-hover || root.pressed ? AppStyle.danger-border : AppStyle.danger-background;
-        }
-        if root.pressed {
-            return AppStyle.overlay-pressed;
-        }
-        return root.has-hover ? AppStyle.overlay-hover : AppStyle.overlay-subtle;
-    }
-
-    above-modal: true;
-    label: root.text;
-    ring-radius: Radius.md;
-    border-radius: Radius.md;
-    background: root.fill();
-    opacity: root.enabled || root.busy ? 1.0 : Opacity.disabled;
-
-    VerticalLayout {
-        alignment: center;
-        spacing: Space.xs;
-        padding-left: Space.sm;
-        padding-right: Space.sm;
-
-        HorizontalLayout {
-            alignment: center;
-            height: IconSize.md;
-
-            if root.busy: DotPulse {
-                tint: root.tint();
-            }
-
-            if !root.busy: IconDisplay {
-                icon: root.icon;
-                size: IconSize.md;
-                stroke: root.tint();
-            }
-        }
-
-        Text {
-            text: root.text;
-            font-size: Fonts.caption;
-            font-weight: Weight.semibold;
-            horizontal-alignment: center;
-            overflow: elide;
-            color: root.tint();
-            accessible-role: none;
-        }
-    }
-}
 
 component NotifyRow inherits ListItemArea {
     in property <Icon> icon;
@@ -116,39 +59,6 @@ component NotifyRow inherits ListItemArea {
             size: IconSize.sm;
             stroke: Palette.accent-background;
         }
-    }
-}
-
-component DetailLine inherits VerticalLayout {
-    in property <string> value;
-    in property <string> caption;
-    in property <bool> selectable: true;
-
-    spacing: Space.xs;
-
-    if root.selectable: TextInput {
-        text: root.value;
-        read-only: true;
-        single-line: false;
-        wrap: word-wrap;
-        font-size: Fonts.body;
-        color: Palette.foreground;
-        selection-background-color: Palette.selection-background;
-        selection-foreground-color: Palette.selection-foreground;
-        accessible-label: root.caption;
-    }
-
-    if !root.selectable: Text {
-        text: root.value;
-        font-size: Fonts.body;
-        wrap: word-wrap;
-    }
-
-    Text {
-        text: root.caption;
-        font-size: Fonts.caption;
-        color: AppStyle.foreground-muted;
-        accessible-role: none;
     }
 }
 
@@ -266,36 +176,25 @@ component TopicAction inherits ClickArea {
     }
 }
 
-component MemberRow inherits Rectangle {
+component MemberRow inherits ListItemArea {
     in property <MemberEntry> entry;
-    in property <int> index;
-
-    pure function role-label(role: MemberRole) -> string {
-        if role == MemberRole.owner {
-            return @tr("Owner");
-        }
-        if role == MemberRole.admin {
-            return @tr("Admin");
-        }
-        if role == MemberRole.moderator {
-            return @tr("Moderator");
-        }
-        return "";
-    }
 
     pure function describe(entry: MemberEntry) -> string {
         if entry.kind == MemberRowKind.invited-heading {
             return @tr("Invited");
         }
-        if root.role-label(entry.role) == "" {
+        if MemberRoles.label(entry.role) == "" {
             return @tr("{}, {}", entry.name, entry.user-id);
         }
-        return @tr("{}, {}, {}", entry.name, entry.user-id, root.role-label(entry.role));
+        return @tr("{}, {}, {}", entry.name, entry.user-id, MemberRoles.label(entry.role));
     }
 
-    accessible-role: list-item;
-    accessible-item-index: root.index;
-    accessible-label: root.describe(root.entry);
+    enabled: root.entry.kind == MemberRowKind.member;
+    label: root.describe(root.entry);
+    background: root.has-hover && root.enabled ? AppStyle.overlay-hover : transparent;
+    clicked => {
+        Actions.open-user-info(root.entry.user-id);
+    }
 
     if root.entry.kind == MemberRowKind.invited-heading: HorizontalLayout {
         padding-left: Space.xl;
@@ -350,9 +249,9 @@ component MemberRow inherits Rectangle {
             }
         }
 
-        if root.role-label(root.entry.role) != "": Text {
+        if MemberRoles.label(root.entry.role) != "": Text {
             cross-axis-self-alignment: center;
-            text: root.role-label(root.entry.role);
+            text: MemberRoles.label(root.entry.role);
             font-size: Fonts.caption;
             color: AppStyle.foreground-muted;
             accessible-role: none;
@@ -363,6 +262,7 @@ component MemberRow inherits Rectangle {
 component RosterNotice inherits VerticalLayout {
     in property <string> text;
     in property <bool> failed;
+    in property <bool> covered;
 
     alignment: center;
     spacing: Space.lg;
@@ -383,7 +283,7 @@ component RosterNotice inherits VerticalLayout {
         AppButton {
             text: @tr("Retry");
             filled: false;
-            above-modal: true;
+            above-modal: !root.covered;
             clicked => {
                 Actions.retry-room-members();
             }
@@ -395,7 +295,9 @@ export component RoomInfoDialog inherits ModalHost {
     dim-opacity: AppStyle.dark ? Opacity.scrim-strong : Opacity.scrim;
     label: @tr("Room info");
     dismissed => {
-        if (root.picker-open) {
+        if (Shell.user-info-open) {
+            Actions.close-user-info();
+        } else if (root.picker-open) {
             root.close-picker();
         } else if (root.topic-selecting) {
             root.topic-selecting = false;
@@ -421,6 +323,8 @@ export component RoomInfoDialog inherits ModalHost {
     property <bool> copied: false;
     property <bool> topic-expanded: false;
     property <bool> topic-selecting: false;
+    property <bool> covered: Shell.user-info-open || Shell.verification-open;
+    property <bool> user-info-open: Shell.user-info-open;
 
     property <length> rows-bottom: member-list.y + RoomInfoView.rows.length * Metrics.room-info-row;
     property <int> asked-after: -1;
@@ -458,6 +362,12 @@ export component RoomInfoDialog inherits ModalHost {
 
     changed wants-page => {
         root.page-if-wanted();
+    }
+
+    changed user-info-open => {
+        if !self.user-info-open && !Shell.verification-open {
+            root.focus();
+        }
     }
 
     changed shown-room => {
@@ -588,6 +498,7 @@ export component RoomInfoDialog inherits ModalHost {
                             notify-tile := ActionTile {
                                 width: 100%;
                                 height: 100%;
+                                above-modal: !root.covered;
                                 visible: !root.asking-leave;
                                 enabled: !root.asking-leave && !RoomInfoView.leaving && !RoomInfoView.notify-busy;
                                 busy: RoomInfoView.notify-busy;
@@ -618,6 +529,7 @@ export component RoomInfoDialog inherits ModalHost {
                             leave-tile := ActionTile {
                                 width: 100%;
                                 height: 100%;
+                                above-modal: !root.covered;
                                 enabled: !RoomInfoView.leaving;
                                 icon: root.asking-leave ? IconSet.X : IconSet.LogOut;
                                 text: root.asking-leave ? @tr("Cancel") : @tr("Leave");
@@ -636,6 +548,7 @@ export component RoomInfoDialog inherits ModalHost {
                             ActionTile {
                                 width: 100%;
                                 height: 100%;
+                                above-modal: !root.covered;
                                 visible: !root.asking-leave;
                                 enabled: !root.asking-leave && RoomInfoView.link != "";
                                 icon: root.copied ? IconSet.Check : IconSet.Link;
@@ -649,6 +562,7 @@ export component RoomInfoDialog inherits ModalHost {
                             if root.asking-leave: ActionTile {
                                 width: 100%;
                                 height: 100%;
+                                above-modal: !root.covered;
                                 destructive: true;
                                 enabled: !RoomInfoView.leaving;
                                 busy: RoomInfoView.leaving;
@@ -702,6 +616,7 @@ export component RoomInfoDialog inherits ModalHost {
                             }
 
                             if RoomInfoView.topic-has-links && !root.topic-selecting: TopicAction {
+                                above-modal: !root.covered;
                                 icon: IconSet.TextCursor;
                                 text: @tr("Select text");
                                 label: @tr("Select the text of the topic");
@@ -711,6 +626,7 @@ export component RoomInfoDialog inherits ModalHost {
                             }
 
                             if (topic-text.clamped || root.topic-expanded) && !root.topic-selecting: TopicAction {
+                                above-modal: !root.covered;
                                 icon: root.topic-expanded ? IconSet.ChevronUp : IconSet.ChevronDown;
                                 text: root.topic-expanded ? @tr("Show less") : @tr("Show more");
                                 label: root.topic-expanded ? @tr("Show less of the topic") : @tr("Show the whole topic");
@@ -722,11 +638,13 @@ export component RoomInfoDialog inherits ModalHost {
                     }
 
                     if RoomInfoView.alias != "": DetailLine {
+                        enabled: !root.covered;
                         value: RoomInfoView.alias;
                         caption: @tr("Address");
                     }
 
                     DetailLine {
+                        enabled: !root.covered;
                         value: RoomInfoView.room-id;
                         caption: @tr("Room ID");
                     }
@@ -744,7 +662,8 @@ export component RoomInfoDialog inherits ModalHost {
 
                     PickerSearch {
                         placeholder: @tr("Search members");
-                        above-modal: true;
+                        above-modal: !root.covered;
+                        enabled: !root.covered;
                         edited(text) => {
                             if (-scroll.content-y > search-row.y) {
                                 scroll.content-y = -search-row.y;
@@ -766,6 +685,7 @@ export component RoomInfoDialog inherits ModalHost {
                 if RoomInfoView.roster == RosterStatus.failed: RosterNotice {
                     text: @tr("Couldn't load the members of this room.");
                     failed: true;
+                    covered: root.covered;
                 }
 
                 if RoomInfoView.roster == RosterStatus.ready && RoomInfoView.rows.length == 0: RosterNotice {
@@ -783,6 +703,7 @@ export component RoomInfoDialog inherits ModalHost {
                             height: Metrics.room-info-row;
                             index: idx;
                             entry: entry;
+                            above-modal: !root.covered;
                         }
                     }
                 }
@@ -801,7 +722,7 @@ export component RoomInfoDialog inherits ModalHost {
                 size: Size.md;
                 radius: Size.md / 2;
                 icon: IconSet.X;
-                above-modal: true;
+                above-modal: !root.covered;
                 label: @tr("Close the room info");
                 clicked => {
                     Actions.close-room-info();

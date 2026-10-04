@@ -2,7 +2,8 @@ import {
     Palette,
 } from "std-widgets.slint";
 
-import { AppStyle, Fonts, Space, Weight } from "../../../../theme.slint";
+import { ClickArea } from "../../../../components/a11y.slint";
+import { AppStyle, Fonts, Space, Stroke, Weight } from "../../../../theme.slint";
 
 component PronounBadge inherits Rectangle {
     in property <string> text;
@@ -25,17 +26,45 @@ component PronounBadge inherits Rectangle {
 export component SenderLine inherits HorizontalLayout {
     in property <string> sender;
     in property <[string]> pronouns;
+    in property <bool> clickable;
+
+    callback name-clicked();
 
     alignment: start;
     spacing: Space.sm;
 
-    Text {
-        text: root.sender;
-        font-size: Fonts.body-small;
-        font-weight: Weight.bold;
-        color: Palette.accent-background;
-        vertical-alignment: center;
-        overflow: elide;
+    name-target := ClickArea {
+        horizontal-stretch: 0;
+        preferred-width: name.preferred-width;
+        max-width: name.preferred-width;
+        min-height: name.preferred-height;
+        preferred-height: name.preferred-height;
+        enabled: root.clickable;
+        focusable: false;
+        label: @tr("View profile of {}", root.sender);
+        clicked => {
+            root.name-clicked();
+        }
+
+        name := Text {
+            width: parent.width;
+            height: parent.height;
+            text: root.sender;
+            font-size: Fonts.body-small;
+            font-weight: Weight.bold;
+            color: Palette.accent-background;
+            vertical-alignment: center;
+            overflow: elide;
+            accessible-role: none;
+        }
+
+        if name-target.has-hover && root.clickable: Rectangle {
+            x: 0;
+            y: (parent.height + name.preferred-height) / 2 - Stroke.hairline;
+            width: parent.width;
+            height: Stroke.hairline;
+            background: Palette.accent-background;
+        }
     }
 
     for pronoun in root.pronouns: PronounBadge {

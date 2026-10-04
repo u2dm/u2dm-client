@@ -14,6 +14,7 @@ use crate::domain::message::{EditKind, EditTarget, MessageEdit, TextRevision};
 use crate::domain::poll::{ChoiceMode, PollDisclosure, PollDraft};
 use crate::domain::room::RoomId;
 use crate::domain::sticker::PackId;
+use crate::domain::user_info::UserId;
 
 #[derive(Deserialize)]
 #[serde(tag = "op", rename_all = "snake_case", deny_unknown_fields)]
@@ -83,6 +84,29 @@ pub enum ProbeCommand {
     CopyRoomLink {
         #[serde(default)]
         room_id: Option<String>,
+    },
+    OpenUserInfo {
+        user_id: String,
+    },
+    CloseUserInfo,
+    RetryUserInfo,
+    MessageUser {
+        user_id: String,
+    },
+    IgnoreUser {
+        user_id: String,
+    },
+    UnignoreUser {
+        user_id: String,
+    },
+    KickUser {
+        user_id: String,
+    },
+    BanUser {
+        user_id: String,
+    },
+    UnbanUser {
+        user_id: String,
     },
     SendMessage {
         #[serde(default)]
@@ -303,6 +327,13 @@ fn room(explicit: Option<String>, selected: Selection<'_>) -> Result<RoomId, Rej
     Ok(target(explicit, None, selected)?.room_id)
 }
 
+fn person(user_id: String, command: impl FnOnce(UserId) -> UiCommand) -> Result<Driven, Rejected> {
+    if user_id.is_empty() {
+        return Err(Rejected("an empty user_id names nobody".to_owned()));
+    }
+    Ok(Driven::Command(command(UserId::new(user_id))))
+}
+
 fn room_notify(
     explicit: Option<String>,
     mode: &str,
@@ -395,6 +426,15 @@ pub fn to_driven(command: ProbeCommand, selected: Selection<'_>) -> Result<Drive
         ProbeCommand::CloseRoomMenu => UiCommand::CloseRoomMenu,
         ProbeCommand::MarkRoomRead { room_id } => UiCommand::MarkRoomRead(room(room_id, selected)?),
         ProbeCommand::CopyRoomLink { room_id } => UiCommand::CopyRoomLink(room(room_id, selected)?),
+        ProbeCommand::OpenUserInfo { user_id } => return person(user_id, UiCommand::OpenUserInfo),
+        ProbeCommand::CloseUserInfo => UiCommand::CloseUserInfo,
+        ProbeCommand::RetryUserInfo => UiCommand::RetryUserInfo,
+        ProbeCommand::MessageUser { user_id } => return person(user_id, UiCommand::MessageUser),
+        ProbeCommand::IgnoreUser { user_id } => return person(user_id, UiCommand::IgnoreUser),
+        ProbeCommand::UnignoreUser { user_id } => return person(user_id, UiCommand::UnignoreUser),
+        ProbeCommand::KickUser { user_id } => return person(user_id, UiCommand::KickUser),
+        ProbeCommand::BanUser { user_id } => return person(user_id, UiCommand::BanUser),
+        ProbeCommand::UnbanUser { user_id } => return person(user_id, UiCommand::UnbanUser),
         ProbeCommand::SendMessage {
             room_id,
             body,

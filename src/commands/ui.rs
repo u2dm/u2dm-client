@@ -7,6 +7,7 @@ use crate::domain::message::MessageEdit;
 use crate::domain::poll::PollDraft;
 use crate::domain::room::{NotifyMode, RoomId};
 use crate::domain::sticker::PackId;
+use crate::domain::user_info::UserId;
 
 #[derive(StrumDisplay)]
 pub enum UiCommand {
@@ -62,6 +63,22 @@ pub enum UiCommand {
     MarkRoomRead(RoomId),
     #[strum(to_string = "CopyRoomLink({0})")]
     CopyRoomLink(RoomId),
+    #[strum(to_string = "OpenUserInfo({0})")]
+    OpenUserInfo(UserId),
+    CloseUserInfo,
+    RetryUserInfo,
+    #[strum(to_string = "MessageUser({0})")]
+    MessageUser(UserId),
+    #[strum(to_string = "IgnoreUser({0})")]
+    IgnoreUser(UserId),
+    #[strum(to_string = "UnignoreUser({0})")]
+    UnignoreUser(UserId),
+    #[strum(to_string = "KickUser({0})")]
+    KickUser(UserId),
+    #[strum(to_string = "BanUser({0})")]
+    BanUser(UserId),
+    #[strum(to_string = "UnbanUser({0})")]
+    UnbanUser(UserId),
     #[strum(to_string = "SendMessage({room_id})")]
     SendMessage {
         room_id: RoomId,

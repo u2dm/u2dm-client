@@ -1,0 +1,16 @@
+import { MemberRole } from "../../../enums.slint";
+
+export global MemberRoles {
+    public pure function label(role: MemberRole) -> string {
+        if role == MemberRole.owner {
+            return @tr("Owner");
+        }
+        if role == MemberRole.admin {
+            return @tr("Admin");
+        }
+        if role == MemberRole.moderator {
+            return @tr("Moderator");
+        }
+        return "";
+    }
+}

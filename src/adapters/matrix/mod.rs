@@ -11,6 +11,7 @@ mod session;
 mod stickers;
 mod store;
 mod timeline;
+mod user_info;
 mod verification;
 
 use std::path::PathBuf;

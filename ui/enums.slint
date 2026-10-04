@@ -93,6 +93,13 @@ export enum UserMessageKind {
     notify-change-failed,
     mark-read-failed,
     room-link-failed,
+    user-info-failed,
+    direct-chat-failed,
+    ignore-failed,
+    unignore-failed,
+    kick-failed,
+    ban-failed,
+    unban-failed,
     media-download-failed,
     file-download-failed,
     media-open-failed,
@@ -200,6 +207,30 @@ export enum MemberRole {
     moderator,
     admin,
     owner,
+}
+
+export enum RoomMembership {
+    joined,
+    invited,
+    knocking,
+    left,
+    banned,
+    outside,
+    unknown,
+}
+
+export enum DirectChat {
+    hidden,
+    open,
+    start,
+    starting,
+}
+
+export enum Moderation {
+    none,
+    kick,
+    ban,
+    unban,
 }
 
 export enum MemberRowKind {

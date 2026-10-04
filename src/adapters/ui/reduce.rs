@@ -9,7 +9,8 @@ use super::backend::{UiBackend, UiEventContext, apply_sticker_art, enrich_messag
 use super::decode::{AvatarSlot, load_attachment_preview, load_avatar_async, request_sticker};
 use super::dto::{
     GRID_COLUMNS, StickerArt, StickerPackDto, StickerRowDto, audio_row_update,
-    load_room_info_avatar, preview_line, rich_body, sticker_art, sticker_grid, sticker_needle,
+    load_room_info_avatar, load_user_info_avatar, preview_line, rich_body, sticker_art,
+    sticker_grid, sticker_needle, user_info_pronouns,
 };
 use super::fields::{MemberRowFields, MessageFields, RoomFields, SpaceChildFields, SpaceFields};
 use super::present::{
@@ -29,9 +30,10 @@ use crate::commands::effects::{Effect, VerificationActivity, VerificationUpdate}
 use crate::commands::messages::{UserMessage, UserMessageKind};
 use crate::commands::ui::Draft;
 use crate::commands::view::{
-    AppViewState, AttachmentView, AudioView, CopiedLink, DirectoryView, LifecycleView, NowPlaying,
-    PaginationView, PinnedView, RoomCard, RoomInfoView, RoomMenuTarget, SourceState,
-    SpaceIndexView, StickerView, Toast, TrackFile, UnsentMessage, VideoView,
+    AppViewState, AttachmentView, AudioView, CardStatus, CopiedLink, DirectoryView, LifecycleView,
+    NowPlaying, PaginationView, PinnedView, RoomCard, RoomInfoView, RoomMenuTarget, SourceState,
+    SpaceIndexView, StickerView, Toast, TrackFile, UnsentMessage, UserCard, UserInfoView,
+    VideoView,
 };
 use crate::domain::message::{
     EditKind, MessageEdit, MessagePermissions, MessagePreviewKind, RichText, TimelineMessage,
@@ -40,6 +42,7 @@ use crate::domain::poll::PollPermissions;
 use crate::domain::room::{RoomId, RoomList};
 use crate::domain::room_info::RoomAbout;
 use crate::domain::timeline::{SourceEncryption, TimelinePatch, TimelineStatus};
+use crate::domain::user_info::{IdentityTrust, Moderation};
 use crate::domain::verification::VerificationEvent as DomainVerificationEvent;
 use crate::ports::media::MediaCache;
 use crate::util::format_bytes;
@@ -310,6 +313,7 @@ fn apply_snapshot<B: UiBackend>(
         space_index,
         room_info,
         room_menu,
+        user_info,
         pagination,
         pinned,
         stickers,
@@ -333,6 +337,7 @@ fn apply_snapshot<B: UiBackend>(
     if last.is_none_or(|l| l.room_menu != *room_menu) {
         apply_room_menu(w, room_menu.as_ref());
     }
+    apply_user_info(w, last.map(|l| &l.user_info), user_info, ctx.media);
     if last.is_none_or(|l| l.pagination != *pagination) {
         sync_timeline_chrome(w, pagination);
     }
@@ -723,6 +728,96 @@ fn shown_topic(card: Option<&RoomCard>, about: Option<&RoomAbout>) -> Option<Ric
         Some(rich) if rich.plain == *plain => Some(rich.clone()),
         _ => Some(RichText::plain(plain.clone())),
     }
+}
+
+fn apply_user_info(
+    w: &impl UiProps,
+    last: Option<&UserInfoView>,
+    user_info: &UserInfoView,
+    media: &dyn MediaCache,
+) {
+    let UserInfoView {
+        card,
+        direct,
+        ignore_busy,
+        moderating,
+        avatars_ready,
+        error,
+    } = user_info;
+
+    if last.is_none_or(|l| l.direct != *direct) {
+        w.set_user_info_direct(*direct);
+    }
+    if last.is_none_or(|l| l.ignore_busy != *ignore_busy) {
+        w.set_bool(BoolProp::UserInfoIgnoreBusy, *ignore_busy);
+    }
+    if last.is_none_or(|l| l.moderating != *moderating) {
+        w.set_user_info_moderating(*moderating);
+    }
+    if last.is_none_or(|l| l.card != *card) {
+        apply_user_card(w, card.as_ref(), media);
+    } else if last.is_some_and(|l| l.avatars_ready != *avatars_ready) {
+        let avatar = card
+            .as_ref()
+            .and_then(|card| load_user_info_avatar(&card.profile, media));
+        w.apply_user_info_avatar(avatar);
+    }
+    if last.is_none_or(|l| l.error != *error) {
+        w.set_user_info_error(error.kind);
+        w.set_string(
+            StringProp::UserInfoErrorDetail,
+            SharedString::from(&error.detail),
+        );
+    }
+}
+
+fn apply_user_card(w: &impl UiProps, card: Option<&UserCard>, media: &dyn MediaCache) {
+    let Some(card) = card else {
+        w.set_bool(BoolProp::UserInfoVisible, false);
+        w.apply_user_info_avatar(None);
+        return;
+    };
+    let profile = &card.profile;
+    let label = profile.label();
+    w.set_string(
+        StringProp::UserInfoUserId,
+        SharedString::from(profile.user_id.as_ref()),
+    );
+    w.set_string(StringProp::UserInfoName, SharedString::from(label));
+    w.set_string(
+        StringProp::UserInfoInitial,
+        SharedString::from(avatar_initials(label)),
+    );
+    w.set_int(
+        IntProp::UserInfoColorIndex,
+        avatar_color_index(&profile.user_id),
+    );
+    w.set_string(StringProp::UserInfoPronouns, user_info_pronouns(profile));
+    w.set_string(StringProp::UserInfoLink, SharedString::from(&profile.link));
+    w.set_user_info_role(profile.role);
+    w.set_user_info_membership(profile.membership);
+    w.set_bool(
+        BoolProp::UserInfoVerified,
+        profile.trust == IdentityTrust::Verified,
+    );
+    w.set_bool(BoolProp::UserInfoIsSelf, profile.is_self);
+    w.set_bool(BoolProp::UserInfoIgnored, profile.ignored);
+    w.set_bool(BoolProp::UserInfoMayKick, profile.offers(Moderation::Kick));
+    w.set_bool(BoolProp::UserInfoMayBan, profile.offers(Moderation::Ban));
+    w.set_bool(
+        BoolProp::UserInfoMayUnban,
+        profile.offers(Moderation::Unban),
+    );
+    w.set_bool(
+        BoolProp::UserInfoReadFailed,
+        card.status == CardStatus::ReadFailed,
+    );
+    w.set_bool(
+        BoolProp::UserInfoRetrying,
+        card.status == CardStatus::Retrying,
+    );
+    w.apply_user_info_avatar(load_user_info_avatar(profile, media));
+    w.set_bool(BoolProp::UserInfoVisible, true);
 }
 
 fn run_change_handlers_next_frame(w: &impl ComponentHandle) {

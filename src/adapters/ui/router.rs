@@ -14,6 +14,7 @@ use crate::domain::message::{EditKind, EditTarget, MessageEdit, TextRevision};
 use crate::domain::poll::{ChoiceMode, PollDisclosure, PollDraft};
 use crate::domain::room::{NotifyMode, RoomId};
 use crate::domain::sticker::PackId;
+use crate::domain::user_info::UserId;
 
 type Tx = CommandSender;
 
@@ -45,6 +46,14 @@ macro_rules! gen_router_fns {
     (@one $fn:ident opt_room $cmd:ident) => {
         pub fn $fn(tx: &Tx, arg: String) {
             send_command(tx, UiCommand::$cmd(optional_room(arg)));
+        }
+    };
+    (@one $fn:ident user $cmd:ident) => {
+        pub fn $fn(tx: &Tx, arg: String) {
+            if arg.is_empty() {
+                return;
+            }
+            send_command(tx, UiCommand::$cmd(UserId::new(arg)));
         }
     };
     (@one $fn:ident room_key $cmd:ident) => {

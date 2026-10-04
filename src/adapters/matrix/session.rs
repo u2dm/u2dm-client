@@ -8,10 +8,12 @@ use tokio::sync::{RwLock, mpsc};
 
 use super::auth;
 use super::media::{MatrixMedia, MediaService};
+use super::profile::PronounCache;
 use super::rooms::{MatrixRoomInfo, MatrixSpaceIndex, MatrixSpaceOrder, MatrixSync};
 use super::stickers::MatrixStickers;
 use super::store::StoreLayout;
 use super::timeline::{MatrixPinned, MatrixTimeline};
+use super::user_info::MatrixUserInfo;
 use super::verification::MatrixVerification;
 use crate::domain::account::AccountScope;
 use crate::domain::auth::Session;
@@ -140,19 +142,24 @@ pub(super) async fn authenticate(
     });
 
     let verification = Arc::new(MatrixVerification::new(Arc::clone(&matrix)));
+    let pronouns = Arc::new(PronounCache::default());
     let resources: Vec<Arc<dyn SessionResource>> =
         vec![Arc::clone(&verification) as Arc<dyn SessionResource>];
 
     AuthenticatedSession {
         session,
         sync: Arc::new(MatrixSync::new(Arc::clone(&matrix))),
-        timeline: Arc::new(MatrixTimeline::new(Arc::clone(&matrix))),
+        timeline: Arc::new(MatrixTimeline::new(
+            Arc::clone(&matrix),
+            Arc::clone(&pronouns),
+        )),
         pinned: Arc::new(MatrixPinned::new(Arc::clone(&matrix))),
         media: Arc::new(MatrixMedia::new(Arc::clone(&matrix))),
         verification,
         space_order: Arc::new(MatrixSpaceOrder::new(Arc::clone(&matrix))),
         space_index: Arc::new(MatrixSpaceIndex::new(Arc::clone(&matrix))),
         room_info: Arc::new(MatrixRoomInfo::new(Arc::clone(&matrix))),
+        user_info: Arc::new(MatrixUserInfo::new(Arc::clone(&matrix), pronouns)),
         stickers: Arc::new(MatrixStickers::new(Arc::clone(&matrix))),
         lifecycle: Arc::new(MatrixLifecycle { matrix, resources }),
     }

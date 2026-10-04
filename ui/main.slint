@@ -29,6 +29,7 @@ import {
     WindowView,
     SourceView,
     RoomMenuView,
+    UserInfoView,
 } from "views.slint";
 import { Actions } from "actions.slint";
 import { Polls, Probe, ReplySwipe, RoomMenu, Shell } from "local.slint";
@@ -40,7 +41,7 @@ export { EmojiStore }
 export { LoginPhase, ConnectionState, TimelineState, VerificationPhase, MediaState, MediaFailure }
 export { MessageKind, PreviewKind, ServiceKind, LoginMethodKind, AudioKind }
 export { LoginView, SessionView, DirectoryView, SpaceIndexView, RoomView, StickerView, VerificationView }
-export { AttachmentView, VideoView, AudioView, UnsentView, WindowView, RoomInfoView, SourceView, RoomMenuView }
+export { AttachmentView, VideoView, AudioView, UnsentView, WindowView, RoomInfoView, SourceView, RoomMenuView, UserInfoView }
 export { Actions }
 export { Probe, ReplySwipe, RoomMenu }
 import { LoadingScreen } from "screens/login/loading.slint";
@@ -55,6 +56,7 @@ import { PollDialog } from "screens/chat/components/timeline/poll-dialog.slint";
 import { VideoPlayer } from "screens/chat/components/timeline/video-player.slint";
 import { RoomInfoDialog } from "screens/chat/components/room-info.slint";
 import { EventSourceDialog } from "screens/chat/components/event-source.slint";
+import { UserInfoDialog } from "screens/chat/components/user-info.slint";
 
 export component AppWindow inherits Window {
     title: @tr("U2DM Matrix Client");
@@ -97,6 +99,7 @@ export component AppWindow inherits Window {
     }
     if VideoView.visible && LoginView.step == LoginPhase.logged-in: VideoPlayer { }
     if RoomInfoView.visible && LoginView.step == LoginPhase.logged-in: RoomInfoDialog { }
+    if UserInfoView.visible && LoginView.step == LoginPhase.logged-in: UserInfoDialog { }
     if SourceView.visible && LoginView.step == LoginPhase.logged-in: EventSourceDialog { }
 
     if VerificationView.visible && LoginView.step == LoginPhase.logged-in: VerificationDialog { }

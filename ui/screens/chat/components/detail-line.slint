@@ -1,0 +1,38 @@
+import { Palette } from "std-widgets.slint";
+
+import { AppStyle, Fonts, Space } from "../../../theme.slint";
+
+export component DetailLine inherits VerticalLayout {
+    in property <string> value;
+    in property <string> caption;
+    in property <bool> selectable: true;
+    in property <bool> enabled: true;
+
+    spacing: Space.xs;
+
+    if root.selectable: TextInput {
+        text: root.value;
+        enabled: root.enabled;
+        read-only: true;
+        single-line: false;
+        wrap: word-wrap;
+        font-size: Fonts.body;
+        color: Palette.foreground;
+        selection-background-color: Palette.selection-background;
+        selection-foreground-color: Palette.selection-foreground;
+        accessible-label: root.caption;
+    }
+
+    if !root.selectable: Text {
+        text: root.value;
+        font-size: Fonts.body;
+        wrap: word-wrap;
+    }
+
+    Text {
+        text: root.caption;
+        font-size: Fonts.caption;
+        color: AppStyle.foreground-muted;
+        accessible-role: none;
+    }
+}

@@ -14,6 +14,7 @@ use crate::domain::space_index::SpaceChild;
 use crate::domain::sticker::StickerPacks;
 use crate::domain::sync::ConnectionStatus;
 use crate::domain::timeline::EventSource;
+use crate::domain::user_info::UserProfile;
 
 #[derive(Clone, Default)]
 pub struct AppViewState {
@@ -23,6 +24,7 @@ pub struct AppViewState {
     pub space_index: SpaceIndexView,
     pub room_info: RoomInfoView,
     pub room_menu: Option<RoomMenuTarget>,
+    pub user_info: UserInfoView,
     pub pagination: PaginationView,
     pub pinned: PinnedView,
     pub stickers: StickerView,
@@ -373,6 +375,48 @@ pub struct RoomMenuTarget {
     pub notify: NotifyMode,
     pub notify_busy: bool,
     pub leaving: bool,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum CardStatus {
+    Loaded,
+    ReadFailed,
+    Retrying,
+}
+
+#[derive(Clone, PartialEq, Eq)]
+pub struct UserCard {
+    pub room_id: RoomId,
+    pub profile: UserProfile,
+    pub status: CardStatus,
+}
+
+#[derive(Clone, Copy, Default, PartialEq, Eq)]
+pub enum DirectChat {
+    #[default]
+    Hidden,
+    Open,
+    Start,
+    Starting,
+}
+
+#[derive(Clone, Copy, Default, PartialEq, Eq)]
+pub enum PendingModeration {
+    #[default]
+    None,
+    Kick,
+    Ban,
+    Unban,
+}
+
+#[derive(Clone, Default, PartialEq, Eq)]
+pub struct UserInfoView {
+    pub card: Option<UserCard>,
+    pub direct: DirectChat,
+    pub ignore_busy: bool,
+    pub moderating: PendingModeration,
+    pub avatars_ready: usize,
+    pub error: UserMessage,
 }
 
 #[derive(Clone, Default)]

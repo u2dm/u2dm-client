@@ -4,9 +4,10 @@ use super::names;
 use crate::commands::messages::UserMessage;
 use crate::commands::ui::Draft;
 use crate::commands::view::{
-    AppViewState, AttachmentView, AudioView, CopiedLink, DirectoryView, LifecycleView,
+    AppViewState, AttachmentView, AudioView, CardStatus, CopiedLink, DirectoryView, LifecycleView,
     PaginationView, PinnedView, RoomInfoView, RoomMenuTarget, RosterRow, SourceState,
-    SpaceIndexRow, SpaceIndexView, StickerView, Toast, TrackFile, UnsentMessage, VideoView,
+    SpaceIndexRow, SpaceIndexView, StickerView, Toast, TrackFile, UnsentMessage, UserInfoView,
+    VideoView,
 };
 use crate::domain::message::{EditKind, PinnedMessage};
 use crate::domain::room::{Room, Space};
@@ -15,6 +16,7 @@ use crate::domain::space_index::{ChildKind, JoinRule};
 use crate::domain::sticker::StickerPack;
 use crate::domain::sync::ConnectionStatus;
 use crate::domain::timeline::SourceEncryption;
+use crate::domain::user_info::{IdentityTrust, Moderation, Pronouns};
 
 #[derive(Serialize)]
 pub struct ViewDto {
@@ -24,6 +26,7 @@ pub struct ViewDto {
     space_index: SpaceIndexDto,
     room_info: RoomInfoDto,
     room_menu: Option<RoomMenuDto>,
+    user_info: UserInfoDto,
     pagination: PaginationDto,
     pinned: PinnedDto,
     stickers: StickersDto,
@@ -204,6 +207,33 @@ struct RoomInfoDto {
 }
 
 #[derive(Serialize)]
+#[allow(clippy::struct_excessive_bools)]
+struct UserInfoDto {
+    open: bool,
+    status: Option<&'static str>,
+    room_id: Option<String>,
+    user_id: Option<String>,
+    name: Option<String>,
+    has_avatar_mxc: bool,
+    pronouns: Option<Vec<String>>,
+    role: Option<&'static str>,
+    membership: Option<&'static str>,
+    verified: bool,
+    is_self: bool,
+    link: Option<String>,
+    direct_room: Option<String>,
+    direct: &'static str,
+    ignored: bool,
+    ignore_busy: bool,
+    may_kick: bool,
+    may_ban: bool,
+    may_unban: bool,
+    moderating: &'static str,
+    avatars_ready: usize,
+    error: MessageDto,
+}
+
+#[derive(Serialize)]
 struct MemberRowDto {
     kind: &'static str,
     user_id: Option<String>,
@@ -313,6 +343,7 @@ pub fn view(source: &AppViewState) -> ViewDto {
         space_index: space_index(&source.space_index),
         room_info: room_info(&source.room_info),
         room_menu: source.room_menu.as_ref().map(room_menu),
+        user_info: user_info(&source.user_info),
         pagination: pagination(source.pagination),
         pinned: pinned(&source.pinned),
         stickers: stickers(&source.stickers),
@@ -506,6 +537,47 @@ fn room_info(source: &RoomInfoView) -> RoomInfoDto {
         avatars_ready: source.avatars_ready,
         error: message(&source.error),
         rows: source.rows.iter().map(member_row).collect(),
+    }
+}
+
+fn user_info(source: &UserInfoView) -> UserInfoDto {
+    let card = source.card.as_ref();
+    let profile = card.map(|card| &card.profile);
+    UserInfoDto {
+        open: card.is_some(),
+        status: card.map(|card| card_status(card.status)),
+        room_id: card.map(|card| card.room_id.to_string()),
+        user_id: profile.map(|profile| profile.user_id.to_string()),
+        name: profile.and_then(|profile| profile.display_name.clone()),
+        has_avatar_mxc: profile.is_some_and(|profile| profile.avatar_mxc.is_some()),
+        pronouns: profile.and_then(|profile| match &profile.pronouns {
+            Pronouns::Known(pronouns) => Some(pronouns.clone()),
+            Pronouns::Unknown => None,
+        }),
+        role: profile.map(|profile| names::member_role(profile.role)),
+        membership: profile.map(|profile| names::room_membership(profile.membership)),
+        verified: profile.is_some_and(|profile| profile.trust == IdentityTrust::Verified),
+        is_self: profile.is_some_and(|profile| profile.is_self),
+        link: profile.map(|profile| profile.link.clone()),
+        direct_room: profile
+            .and_then(|profile| profile.direct_room.as_ref().map(ToString::to_string)),
+        direct: names::direct_chat(source.direct),
+        ignored: profile.is_some_and(|profile| profile.ignored),
+        ignore_busy: source.ignore_busy,
+        may_kick: profile.is_some_and(|profile| profile.offers(Moderation::Kick)),
+        may_ban: profile.is_some_and(|profile| profile.offers(Moderation::Ban)),
+        may_unban: profile.is_some_and(|profile| profile.offers(Moderation::Unban)),
+        moderating: names::pending_moderation(source.moderating),
+        avatars_ready: source.avatars_ready,
+        error: message(&source.error),
+    }
+}
+
+fn card_status(status: CardStatus) -> &'static str {
+    match status {
+        CardStatus::Loaded => "loaded",
+        CardStatus::ReadFailed => "read-failed",
+        CardStatus::Retrying => "retrying",
     }
 }
 

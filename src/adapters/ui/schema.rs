@@ -65,6 +65,12 @@ macro_rules! string_props {
         RoomMenuRoomId RoomMenuView "RoomMenuView" "room-id" set_room_id get_room_id;
         RoomMenuName RoomMenuView "RoomMenuView" "name" set_name get_name;
         RoomLink RoomMenuView "RoomMenuView" "link" set_link get_link;
+        UserInfoUserId UserInfoView "UserInfoView" "user-id" set_user_id get_user_id;
+        UserInfoName UserInfoView "UserInfoView" "name" set_name get_name;
+        UserInfoInitial UserInfoView "UserInfoView" "initial" set_initial get_initial;
+        UserInfoPronouns UserInfoView "UserInfoView" "pronouns" set_pronouns get_pronouns;
+        UserInfoLink UserInfoView "UserInfoView" "link" set_link get_link;
+        UserInfoErrorDetail UserInfoView "UserInfoView" "error-detail" set_error_detail get_error_detail;
         #[cfg(feature = "demo")] RoomMenuKey RoomMenu "RoomMenu" "key" set_key get_key;
     } };
 }
@@ -108,6 +114,15 @@ macro_rules! simple_callbacks {
         on_close_room_menu "close-room-menu" close_room_menu plain CloseRoomMenu;
         on_mark_room_read "mark-room-read" mark_room_read room MarkRoomRead;
         on_copy_room_link "copy-room-link" copy_room_link room CopyRoomLink;
+        on_open_user_info "open-user-info" open_user_info user OpenUserInfo;
+        on_close_user_info "close-user-info" close_user_info plain CloseUserInfo;
+        on_retry_user_info "retry-user-info" retry_user_info plain RetryUserInfo;
+        on_message_user "message-user" message_user user MessageUser;
+        on_ignore_user "ignore-user" ignore_user user IgnoreUser;
+        on_unignore_user "unignore-user" unignore_user user UnignoreUser;
+        on_kick_user "kick-user" kick_user user KickUser;
+        on_ban_user "ban-user" ban_user user BanUser;
+        on_unban_user "unban-user" unban_user user UnbanUser;
         on_paginate_backwards "paginate-backwards" paginate_backwards room_key PaginateBackwards;
         on_paginate_forwards "paginate-forwards" paginate_forwards room_key PaginateForwards;
         on_jump_to_latest "jump-to-latest" jump_to_latest room_key JumpToLatest;
@@ -200,6 +215,16 @@ macro_rules! bool_props {
         RoomMenuUnread RoomMenuView "RoomMenuView" "unread" set_unread get_unread;
         RoomMenuNotifyBusy RoomMenuView "RoomMenuView" "notify-busy" set_notify_busy get_notify_busy;
         RoomMenuLeaving RoomMenuView "RoomMenuView" "leaving" set_leaving get_leaving;
+        UserInfoVisible UserInfoView "UserInfoView" "visible" set_visible get_visible;
+        UserInfoVerified UserInfoView "UserInfoView" "verified" set_verified get_verified;
+        UserInfoIsSelf UserInfoView "UserInfoView" "is-self" set_is_self get_is_self;
+        UserInfoReadFailed UserInfoView "UserInfoView" "read-failed" set_read_failed get_read_failed;
+        UserInfoRetrying UserInfoView "UserInfoView" "retrying" set_retrying get_retrying;
+        UserInfoIgnored UserInfoView "UserInfoView" "ignored" set_ignored get_ignored;
+        UserInfoIgnoreBusy UserInfoView "UserInfoView" "ignore-busy" set_ignore_busy get_ignore_busy;
+        UserInfoMayKick UserInfoView "UserInfoView" "may-kick" set_may_kick get_may_kick;
+        UserInfoMayBan UserInfoView "UserInfoView" "may-ban" set_may_ban get_may_ban;
+        UserInfoMayUnban UserInfoView "UserInfoView" "may-unban" set_may_unban get_may_unban;
     } };
 }
 pub(crate) use bool_props;
@@ -231,6 +256,7 @@ macro_rules! int_props {
         RoomInfoColorIndex RoomInfoView "RoomInfoView" "color-index" set_color_index get_color_index;
         RoomInfoPagesLanded RoomInfoView "RoomInfoView" "pages-landed" set_pages_landed get_pages_landed;
         RoomLinkSerial RoomMenuView "RoomMenuView" "link-serial" set_link_serial get_link_serial;
+        UserInfoColorIndex UserInfoView "UserInfoView" "color-index" set_color_index get_color_index;
     } };
 }
 pub(crate) use int_props;
@@ -277,6 +303,16 @@ macro_rules! enum_props {
             RoomInfoView "RoomInfoView" "error" set_error get_error;
         RoomMenuNotify set_room_menu_notify(NotifyMode)
             RoomMenuView "RoomMenuView" "notify" set_notify get_notify;
+        UserInfoRole set_user_info_role(MemberRole)
+            UserInfoView "UserInfoView" "role" set_role get_role;
+        UserInfoMembership set_user_info_membership(RoomMembership)
+            UserInfoView "UserInfoView" "membership" set_membership get_membership;
+        UserInfoError set_user_info_error(UserMessageKind)
+            UserInfoView "UserInfoView" "error" set_error get_error;
+        UserInfoDirect set_user_info_direct(DirectChat)
+            UserInfoView "UserInfoView" "direct" set_direct get_direct;
+        UserInfoModerating set_user_info_moderating(PendingModeration)
+            UserInfoView "UserInfoView" "moderating" set_moderating get_moderating;
         SourceStatus set_source_status(&SourceState)
             SourceView "SourceView" "status" set_status get_status;
         SourceEncryption set_source_encryption(&SourceEncryption)
@@ -431,6 +467,13 @@ macro_rules! user_message_kinds {
         NotifyChangeFailed        NotifyChangeFailed      "notify-change-failed";
         MarkReadFailed            MarkReadFailed          "mark-read-failed";
         RoomLinkFailed            RoomLinkFailed          "room-link-failed";
+        UserInfoFailed            UserInfoFailed          "user-info-failed";
+        DirectChatFailed          DirectChatFailed        "direct-chat-failed";
+        IgnoreFailed              IgnoreFailed            "ignore-failed";
+        UnignoreFailed            UnignoreFailed          "unignore-failed";
+        KickFailed                KickFailed              "kick-failed";
+        BanFailed                 BanFailed               "ban-failed";
+        UnbanFailed               UnbanFailed             "unban-failed";
         MediaDownloadFailed       MediaDownloadFailed     "media-download-failed";
         FileDownloadFailed        FileDownloadFailed      "file-download-failed";
         MediaOpenFailed           MediaOpenFailed         "media-open-failed";
@@ -574,6 +617,39 @@ macro_rules! member_roles {
     } };
 }
 pub(crate) use member_roles;
+
+macro_rules! room_memberships {
+    ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
+        Joined   Joined   "joined";
+        Invited  Invited  "invited";
+        Knocking Knocking "knocking";
+        Left     Left     "left";
+        Banned   Banned   "banned";
+        Outside  Outside  "outside";
+        Unknown  Unknown  "unknown";
+    } };
+}
+pub(crate) use room_memberships;
+
+macro_rules! direct_chats {
+    ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
+        Hidden   Hidden   "hidden";
+        Open     Open     "open";
+        Start    Start    "start";
+        Starting Starting "starting";
+    } };
+}
+pub(crate) use direct_chats;
+
+macro_rules! pending_moderations {
+    ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
+        None  None  "none";
+        Kick  Kick  "kick";
+        Ban   Ban   "ban";
+        Unban Unban "unban";
+    } };
+}
+pub(crate) use pending_moderations;
 
 macro_rules! member_row_kinds {
     ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*

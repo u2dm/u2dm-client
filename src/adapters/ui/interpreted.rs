@@ -36,14 +36,15 @@ use super::props::EnumProp;
 use super::props::{BoolProp, IntProp, StringProp, UiProps};
 use super::router::{EditedRow, EditedText};
 use super::schema::{
-    attachment_kinds, audio_kinds, child_accesses, connection_states, deliveries, enum_props,
-    login_activities, login_methods, login_phases, media_failures, media_states, member_roles,
-    member_row_fields, member_row_kinds, message_fields, message_kinds, model_props, notify_modes,
-    poll_answer_fields, poll_phases, preview_kinds, reaction_fields, reaction_sends,
-    reactor_fields, room_fields, room_scopes, roster_statuses, send_states, service_kinds,
-    simple_callbacks, source_encryptions, source_statuses, space_child_fields, space_fields,
-    space_index_statuses, sticker_cell_fields, sticker_pack_fields, sticker_row_fields,
-    timeline_states, user_message_kinds, verification_activities, verification_phases,
+    attachment_kinds, audio_kinds, child_accesses, connection_states, deliveries, direct_chats,
+    enum_props, login_activities, login_methods, login_phases, media_failures, media_states,
+    member_roles, member_row_fields, member_row_kinds, message_fields, message_kinds, model_props,
+    notify_modes, pending_moderations, poll_answer_fields, poll_phases, preview_kinds,
+    reaction_fields, reaction_sends, reactor_fields, room_fields, room_memberships, room_scopes,
+    roster_statuses, send_states, service_kinds, simple_callbacks, source_encryptions,
+    source_statuses, space_child_fields, space_fields, space_index_statuses, sticker_cell_fields,
+    sticker_pack_fields, sticker_row_fields, timeline_states, user_message_kinds,
+    verification_activities, verification_phases,
 };
 use super::session::active_models;
 use super::video::{self, millis_to_duration};
@@ -53,8 +54,8 @@ use crate::commands::effects::{Effect, VerificationActivity};
 use crate::commands::messages::{UserMessage, UserMessageKind};
 use crate::commands::ui::{TimelineVisibility, ViewportChanged};
 use crate::commands::view::{
-    AppViewState, AttachmentKind, ChildAccess, LoginActivity, LoginStep, RoomScope, RosterStatus,
-    SourceState, SpaceIndexStatus,
+    AppViewState, AttachmentKind, ChildAccess, DirectChat, LoginActivity, LoginStep,
+    PendingModeration, RoomScope, RosterStatus, SourceState, SpaceIndexStatus,
 };
 use crate::domain::auth::LoginMethod;
 use crate::domain::media::AudioKind;
@@ -63,6 +64,7 @@ use crate::domain::room::NotifyMode;
 use crate::domain::room_info::MemberRole;
 use crate::domain::sync::ConnectionStatus;
 use crate::domain::timeline::{SourceEncryption, TimelineStatus};
+use crate::domain::user_info::RoomMembership;
 use crate::domain::verification::VerificationEmoji as DomainVerificationEmoji;
 use crate::error::{AppError, Result};
 use crate::ports::media::MediaCache;
@@ -195,6 +197,9 @@ notify_modes!(impl_slint_enum NotifyMode "NotifyMode";);
 member_roles!(impl_slint_enum MemberRole "MemberRole";);
 member_row_kinds!(impl_slint_enum MemberRowKind "MemberRowKind";);
 roster_statuses!(impl_slint_enum RosterStatus "RosterStatus";);
+room_memberships!(impl_slint_enum RoomMembership "RoomMembership";);
+direct_chats!(impl_slint_enum DirectChat "DirectChat";);
+pending_moderations!(impl_slint_enum PendingModeration "Moderation";);
 preview_kinds!(impl_slint_enum MessagePreviewKind "PreviewKind";);
 audio_kinds!(impl_slint_enum AudioKind "AudioKind";);
 service_kinds!(impl_slint_enum ServiceKind "ServiceKind";);
@@ -311,6 +316,9 @@ macro_rules! bind_interpreted_callbacks {
         bind_interpreted_callbacks!(@string $inst, $tx, $lit, $fn)
     };
     (@one $inst:expr, $tx:ident, $lit:literal, $fn:ident, opt_room) => {
+        bind_interpreted_callbacks!(@string $inst, $tx, $lit, $fn)
+    };
+    (@one $inst:expr, $tx:ident, $lit:literal, $fn:ident, user) => {
         bind_interpreted_callbacks!(@string $inst, $tx, $lit, $fn)
     };
     (@one $inst:expr, $tx:ident, $lit:literal, $fn:ident, manual_string) => {
@@ -449,6 +457,16 @@ impl UiProps for ComponentInstance {
             "topic-styled",
             Value::StyledText(topic),
         );
+    }
+
+    fn apply_user_info_avatar(&self, avatar: Option<slint::Image>) {
+        match avatar {
+            Some(img) => {
+                set_global(self, "UserInfoView", "avatar", Value::Image(img));
+                set_global(self, "UserInfoView", "has-avatar", Value::Bool(true));
+            }
+            None => set_global(self, "UserInfoView", "has-avatar", Value::Bool(false)),
+        }
     }
 
     fn apply_login_messages(&self, messages: &[UserMessage]) {
