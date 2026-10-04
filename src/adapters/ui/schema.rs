@@ -106,6 +106,8 @@ macro_rules! simple_callbacks {
         on_open_space_child "open-space-child" open_space_child room OpenSpaceChild;
         on_open_room_info "open-room-info" open_room_info room OpenRoomInfo;
         on_close_room_info "close-room-info" close_room_info plain CloseRoomInfo;
+        on_show_room_info_pane "show-room-info-pane" show_room_info_pane plain ShowRoomInfoPane;
+        on_hide_room_info_pane "hide-room-info-pane" hide_room_info_pane plain HideRoomInfoPane;
         on_page_room_members "page-room-members" page_room_members plain PageRoomMembers;
         on_retry_room_members "retry-room-members" retry_room_members plain RetryRoomMembers;
         on_filter_room_members "filter-room-members" filter_room_members pass FilterRoomMembers;
@@ -206,7 +208,6 @@ macro_rules! bool_props {
         UnsentEditCaption UnsentView "UnsentView" "edit-caption" set_edit_caption get_edit_caption;
         WindowFocused WindowView "WindowView" "focused" set_focused get_focused;
         ReplySwipeArmed ReplySwipe "ReplySwipe" "armed" set_armed get_armed;
-        RoomInfoVisible RoomInfoView "RoomInfoView" "visible" set_visible get_visible;
         RoomInfoIsDirect RoomInfoView "RoomInfoView" "is-direct" set_is_direct get_is_direct;
         RoomInfoTopicHasLinks RoomInfoView "RoomInfoView" "topic-has-links" set_topic_has_links get_topic_has_links;
         RoomInfoNotifyBusy RoomInfoView "RoomInfoView" "notify-busy" set_notify_busy get_notify_busy;
@@ -295,6 +296,8 @@ macro_rules! enum_props {
             AudioView "AudioView" "kind" set_kind get_kind;
         SpaceIndexStatus set_space_index_status(SpaceIndexStatus)
             SpaceIndexView "SpaceIndexView" "status" set_status get_status;
+        RoomInfoPlacement set_room_info_placement(RoomInfoPlacement)
+            RoomInfoView "RoomInfoView" "placement" set_placement get_placement;
         RoomInfoNotify set_room_info_notify(NotifyMode)
             RoomInfoView "RoomInfoView" "notify" set_notify get_notify;
         RoomInfoRoster set_room_info_roster(RosterStatus)
@@ -667,6 +670,15 @@ macro_rules! roster_statuses {
     } };
 }
 pub(crate) use roster_statuses;
+
+macro_rules! room_info_placements {
+    ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
+        Closed Closed "closed";
+        Dialog Dialog "dialog";
+        Pane   Pane   "pane";
+    } };
+}
+pub(crate) use room_info_placements;
 
 macro_rules! variant_named {
     ($fn:ident $src:ident; $($rust:ident $ui:ident $lit:literal;)*) => {

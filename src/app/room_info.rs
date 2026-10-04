@@ -9,7 +9,8 @@ use super::space_index::AVATAR_BATCH;
 use super::task_group::TaskGroup;
 use crate::commands::messages::{UserMessage, UserMessageKind};
 use crate::commands::view::{
-    CopiedLink, RoomCard, RoomInfoView, RoomMenuTarget, RosterRow, RosterStatus, Toast,
+    CopiedLink, RoomCard, RoomInfoPlacement, RoomInfoView, RoomMenuTarget, RosterRow, RosterStatus,
+    Toast,
 };
 use crate::domain::room::{NotifyMode, Room, RoomId};
 use crate::domain::room_info::{MemberQuery, RoomAbout, RosterMember, RosterSection};
@@ -119,6 +120,7 @@ pub(super) struct RoomInfo {
     requests: u64,
     pages_landed: i32,
     open: Option<OpenSheet>,
+    pane_up: bool,
     menu: Option<MenuCard>,
     notify: HashMap<RoomId, NotifyChange>,
     leaving: HashSet<RoomId>,
@@ -137,6 +139,7 @@ impl RoomInfo {
             requests: 0,
             pages_landed: 0,
             open: None,
+            pane_up: false,
             menu: None,
             notify: HashMap::new(),
             leaving: HashSet::new(),
@@ -150,14 +153,9 @@ impl RoomInfo {
             tracing::debug!("the room is not listed, not opening its room info");
             return;
         };
-        if self
-            .open
-            .as_ref()
-            .is_some_and(|open| open.card.id == room.id)
-        {
-            return;
+        if !self.shows(&room.id) {
+            self.begin(port, card_of(room));
         }
-        self.begin(port, card_of(room));
     }
 
     pub(super) fn close(&mut self) {
@@ -166,6 +164,45 @@ impl RoomInfo {
         }
         self.tasks.cancel_and_detach();
         self.publish();
+    }
+
+    pub(super) fn close_dialog(&mut self) {
+        if self.pane_up {
+            tracing::debug!("the room info is in the pane, which only its toggle closes");
+            return;
+        }
+        self.close();
+    }
+
+    pub(super) fn show_pane(&mut self, port: Arc<dyn RoomInfoPort>, selected: Option<&Room>) {
+        if self.pane_up {
+            return;
+        }
+        self.pane_up = true;
+        if self.open.is_some() {
+            self.publish();
+        }
+        self.follow_selection(port, selected);
+    }
+
+    pub(super) fn hide_pane(&mut self) {
+        if !self.pane_up {
+            return;
+        }
+        self.pane_up = false;
+        self.close();
+    }
+
+    pub(super) fn follow_selection(
+        &mut self,
+        port: Arc<dyn RoomInfoPort>,
+        selected: Option<&Room>,
+    ) {
+        match selected.filter(|_| self.pane_up) {
+            Some(room) if !self.shows(&room.id) => self.begin(port, card_of(room)),
+            Some(_) => {}
+            None => self.close(),
+        }
     }
 
     pub(super) fn open_menu(&mut self, room: Option<&Room>) {
@@ -522,6 +559,7 @@ impl RoomInfo {
     pub(super) async fn restart(&mut self) {
         tokio::join!(self.tasks.restart(), self.actions.restart());
         self.open = None;
+        self.pane_up = false;
         self.menu = None;
         self.notify.clear();
         self.leaving.clear();
@@ -596,12 +634,14 @@ impl RoomInfo {
         changed
     }
 
-    fn drop_sheet_of(&mut self, room_id: &RoomId) -> bool {
-        if !self
-            .open
+    fn shows(&self, room_id: &RoomId) -> bool {
+        self.open
             .as_ref()
             .is_some_and(|open| open.card.id == *room_id)
-        {
+    }
+
+    fn drop_sheet_of(&mut self, room_id: &RoomId) -> bool {
+        if !self.shows(room_id) {
             return false;
         }
         self.open = None;
@@ -741,6 +781,11 @@ impl RoomInfo {
             .map_or_else(RoomInfoView::default, |open| {
                 let (notify, notify_busy) = self.pending_notify(&open.card.id, open.card.notify);
                 RoomInfoView {
+                    placement: if self.pane_up {
+                        RoomInfoPlacement::Pane
+                    } else {
+                        RoomInfoPlacement::Dialog
+                    },
                     card: Some(open.card.clone()),
                     about: open.about.clone(),
                     roster: open.roster.status(),

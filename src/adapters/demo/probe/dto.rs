@@ -186,6 +186,7 @@ struct SpaceChildDto {
 #[allow(clippy::struct_excessive_bools)]
 struct RoomInfoDto {
     open: bool,
+    placement: &'static str,
     room_id: Option<String>,
     name: Option<String>,
     member_count: Option<u64>,
@@ -517,6 +518,7 @@ fn room_info(source: &RoomInfoView) -> RoomInfoDto {
     let about = source.about.as_ref();
     RoomInfoDto {
         open: card.is_some(),
+        placement: names::room_info_placement(source.placement),
         room_id: card.map(|card| card.id.to_string()),
         name: card.map(|card| card.name.clone()),
         member_count: card.map(|card| card.member_count),

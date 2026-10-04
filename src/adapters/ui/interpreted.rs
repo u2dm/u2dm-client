@@ -40,11 +40,11 @@ use super::schema::{
     enum_props, login_activities, login_methods, login_phases, media_failures, media_states,
     member_roles, member_row_fields, member_row_kinds, message_fields, message_kinds, model_props,
     notify_modes, pending_moderations, poll_answer_fields, poll_phases, preview_kinds,
-    reaction_fields, reaction_sends, reactor_fields, room_fields, room_memberships, room_scopes,
-    roster_statuses, send_states, service_kinds, simple_callbacks, source_encryptions,
-    source_statuses, space_child_fields, space_fields, space_index_statuses, sticker_cell_fields,
-    sticker_pack_fields, sticker_row_fields, timeline_states, user_message_kinds,
-    verification_activities, verification_phases,
+    reaction_fields, reaction_sends, reactor_fields, room_fields, room_info_placements,
+    room_memberships, room_scopes, roster_statuses, send_states, service_kinds, simple_callbacks,
+    source_encryptions, source_statuses, space_child_fields, space_fields, space_index_statuses,
+    sticker_cell_fields, sticker_pack_fields, sticker_row_fields, timeline_states,
+    user_message_kinds, verification_activities, verification_phases,
 };
 use super::session::active_models;
 use super::video::{self, millis_to_duration};
@@ -55,7 +55,7 @@ use crate::commands::messages::{UserMessage, UserMessageKind};
 use crate::commands::ui::{TimelineVisibility, ViewportChanged};
 use crate::commands::view::{
     AppViewState, AttachmentKind, ChildAccess, DirectChat, LoginActivity, LoginStep,
-    PendingModeration, RoomScope, RosterStatus, SourceState, SpaceIndexStatus,
+    PendingModeration, RoomInfoPlacement, RoomScope, RosterStatus, SourceState, SpaceIndexStatus,
 };
 use crate::domain::auth::LoginMethod;
 use crate::domain::media::AudioKind;
@@ -197,6 +197,7 @@ notify_modes!(impl_slint_enum NotifyMode "NotifyMode";);
 member_roles!(impl_slint_enum MemberRole "MemberRole";);
 member_row_kinds!(impl_slint_enum MemberRowKind "MemberRowKind";);
 roster_statuses!(impl_slint_enum RosterStatus "RosterStatus";);
+room_info_placements!(impl_slint_enum RoomInfoPlacement "RoomInfoPlacement";);
 room_memberships!(impl_slint_enum RoomMembership "RoomMembership";);
 direct_chats!(impl_slint_enum DirectChat "DirectChat";);
 pending_moderations!(impl_slint_enum PendingModeration "Moderation";);

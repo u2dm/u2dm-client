@@ -1,4 +1,4 @@
-import { Delivery, LoginPhase, MessageKind, PollPhase } from "enums.slint";
+import { Delivery, LoginPhase, MessageKind, PollPhase, RoomInfoPlacement } from "enums.slint";
 import { AttachmentView, LoginView, RoomInfoView, RoomMenuView, RoomView, SourceView, UserInfoView, VerificationView, VideoView, WindowView } from "views.slint";
 import { Actions } from "actions.slint";
 import { MessageEntry, ReactionEntry } from "screens/chat/components/types.slint";
@@ -134,6 +134,7 @@ export global Shell {
     in-out property <bool> picker-open: false;
     in-out property <bool> attach-open: false;
     in-out property <bool> poll-open: false;
+    in-out property <bool> room-info-pane-open: false;
 
     out property <bool> verification-open: VerificationView.visible
         && LoginView.step == LoginPhase.logged-in;
@@ -141,7 +142,7 @@ export global Shell {
         && LoginView.step == LoginPhase.logged-in;
     out property <bool> video-open: VideoView.visible
         && LoginView.step == LoginPhase.logged-in;
-    out property <bool> room-info-open: RoomInfoView.visible
+    out property <bool> room-info-open: RoomInfoView.placement == RoomInfoPlacement.dialog
         && LoginView.step == LoginPhase.logged-in;
     out property <bool> source-open: SourceView.visible
         && LoginView.step == LoginPhase.logged-in;

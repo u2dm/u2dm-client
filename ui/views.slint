@@ -9,7 +9,7 @@ import {
 } from "screens/chat/components/types.slint";
 import { VerificationEmoji } from "components/types.slint";
 import { UserMessage } from "messages.slint";
-import { AttachmentKind, AudioKind, ConnectionState, DirectChat, LoginActivity, LoginMethodKind, LoginPhase, MemberRole, Moderation, NotifyMode, PreviewKind, RoomMembership, RoomScope, RosterStatus, SourceEncryption, SourceStatus, SpaceIndexStatus, TimelineState, UserMessageKind, VerificationActivity, VerificationPhase } from "enums.slint";
+import { AttachmentKind, AudioKind, ConnectionState, DirectChat, LoginActivity, LoginMethodKind, LoginPhase, MemberRole, Moderation, NotifyMode, PreviewKind, RoomInfoPlacement, RoomMembership, RoomScope, RosterStatus, SourceEncryption, SourceStatus, SpaceIndexStatus, TimelineState, UserMessageKind, VerificationActivity, VerificationPhase } from "enums.slint";
 
 export global LoginView {
     in property <LoginPhase> step: LoginPhase.loading;
@@ -68,7 +68,7 @@ export global SourceView {
 }
 
 export global RoomInfoView {
-    in property <bool> visible;
+    in property <RoomInfoPlacement> placement: RoomInfoPlacement.closed;
     in property <string> room-id;
     in property <string> name;
     in property <string> initial;

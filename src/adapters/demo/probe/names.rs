@@ -1,13 +1,13 @@
 use crate::adapters::ui::schema::{
     attachment_kinds, audio_kinds, child_accesses, connection_states, direct_chats, enum_names,
     login_activities, login_methods, login_phases, member_roles, notify_modes, pending_moderations,
-    preview_kinds, room_memberships, room_scopes, roster_statuses, source_encryptions,
-    source_statuses, space_index_statuses, user_message_kinds, variant_named,
+    preview_kinds, room_info_placements, room_memberships, room_scopes, roster_statuses,
+    source_encryptions, source_statuses, space_index_statuses, user_message_kinds, variant_named,
 };
 use crate::commands::messages::UserMessageKind;
 use crate::commands::view::{
     AttachmentKind, ChildAccess, DirectChat, LoginActivity, LoginStep, PendingModeration,
-    RoomScope, RosterStatus, SourceState, SpaceIndexStatus,
+    RoomInfoPlacement, RoomScope, RosterStatus, SourceState, SpaceIndexStatus,
 };
 use crate::domain::auth::LoginMethod;
 use crate::domain::media::AudioKind;
@@ -33,6 +33,7 @@ notify_modes!(enum_names val notify_mode NotifyMode;);
 notify_modes!(variant_named notify_mode_named NotifyMode;);
 member_roles!(enum_names val member_role MemberRole;);
 roster_statuses!(enum_names val roster_status RosterStatus;);
+room_info_placements!(enum_names val room_info_placement RoomInfoPlacement;);
 room_memberships!(enum_names val room_membership RoomMembership;);
 direct_chats!(enum_names val direct_chat DirectChat;);
 pending_moderations!(enum_names val pending_moderation PendingModeration;);

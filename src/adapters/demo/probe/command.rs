@@ -58,6 +58,8 @@ pub enum ProbeCommand {
         room_id: Option<String>,
     },
     CloseRoomInfo,
+    ShowRoomInfoPane,
+    HideRoomInfoPane,
     PageRoomMembers,
     RetryRoomMembers,
     FilterRoomMembers {
@@ -417,6 +419,8 @@ pub fn to_driven(command: ProbeCommand, selected: Selection<'_>) -> Result<Drive
         ProbeCommand::OpenSpaceChild { room_id } => UiCommand::OpenSpaceChild(RoomId::new(room_id)),
         ProbeCommand::OpenRoomInfo { room_id } => UiCommand::OpenRoomInfo(room(room_id, selected)?),
         ProbeCommand::CloseRoomInfo => UiCommand::CloseRoomInfo,
+        ProbeCommand::ShowRoomInfoPane => UiCommand::ShowRoomInfoPane,
+        ProbeCommand::HideRoomInfoPane => UiCommand::HideRoomInfoPane,
         ProbeCommand::PageRoomMembers => UiCommand::PageRoomMembers,
         ProbeCommand::RetryRoomMembers => UiCommand::RetryRoomMembers,
         ProbeCommand::FilterRoomMembers { query } => UiCommand::FilterRoomMembers(query),

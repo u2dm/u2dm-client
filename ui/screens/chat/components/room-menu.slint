@@ -475,6 +475,8 @@ component RoomMenuCard inherits PickerCard {
 }
 
 export component RoomMenuOverlay inherits Rectangle {
+    in property <bool> room-info-in-pane: false;
+
     property <length> edge: Space.md;
     property <length> gap: Space.xs;
     property <string> notice;
@@ -541,7 +543,11 @@ export component RoomMenuOverlay inherits Rectangle {
     function run(action: RoomMenuAction) {
         let id = RoomMenu.key;
         if action == RoomMenuAction.info {
-            RoomMenu.close();
+            if root.room-info-in-pane {
+                RoomMenu.dismiss();
+            } else {
+                RoomMenu.close();
+            }
             if id != DirectoryView.selected-room-id {
                 Actions.select-room(id);
             } else if SpaceIndexView.visible {

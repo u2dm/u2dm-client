@@ -401,7 +401,13 @@ impl AppService {
                 self.open_room_info(&room_id);
             }
             UiCommand::CloseRoomInfo => {
-                self.room_info.close();
+                self.room_info.close_dialog();
+            }
+            UiCommand::ShowRoomInfoPane => {
+                self.show_room_info_pane();
+            }
+            UiCommand::HideRoomInfoPane => {
+                self.room_info.hide_pane();
             }
             UiCommand::PageRoomMembers => {
                 self.page_room_members();
@@ -873,6 +879,27 @@ impl AppService {
         }
         if let Some(port) = self.port(|a| &a.room_info) {
             self.room_info.open(port, self.room_directory.room(room_id));
+        }
+    }
+
+    fn show_room_info_pane(&mut self) {
+        let Some(port) = self.port(|a| &a.room_info) else {
+            return;
+        };
+        let selected = self
+            .selection
+            .room
+            .as_ref()
+            .and_then(|room_id| self.room_directory.room(room_id));
+        self.room_info.show_pane(port, selected);
+    }
+
+    fn retarget_room_info(&mut self, room_id: &RoomId) {
+        match self.port(|a| &a.room_info) {
+            Some(port) => self
+                .room_info
+                .follow_selection(port, self.room_directory.room(room_id)),
+            None => self.room_info.close(),
         }
     }
 
@@ -1576,7 +1603,7 @@ impl AppService {
 
     async fn select_room(&mut self, room_id: RoomId) {
         self.space_index.close();
-        self.room_info.close();
+        self.retarget_room_info(&room_id);
         self.user_info.close();
         self.event_source.close();
         self.sync_selected_room(Some(&room_id));

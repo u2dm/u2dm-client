@@ -211,6 +211,8 @@ pub(super) fn command_allowed(phase: AppPhase, cmd: &UiCommand) -> bool {
         | UiCommand::OpenSpaceChild(_)
         | UiCommand::OpenRoomInfo(_)
         | UiCommand::CloseRoomInfo
+        | UiCommand::ShowRoomInfoPane
+        | UiCommand::HideRoomInfoPane
         | UiCommand::PageRoomMembers
         | UiCommand::RetryRoomMembers
         | UiCommand::FilterRoomMembers(_)

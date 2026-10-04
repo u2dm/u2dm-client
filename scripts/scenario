@@ -30,6 +30,7 @@ scenario_env() {
     room-info)       echo 'U2DM_DEMO_ROOM_INFO=slow' ;;
     room-leave)      echo 'U2DM_DEMO_ROOM_INFO=slow' ;;
     room-info-failures) echo 'U2DM_DEMO_ROOM_INFO=roster-fails,notify-fails,leave-fails' ;;
+    room-info-pane)  echo 'U2DM_DEMO_ROOM_INFO=slow' ;;
     room-menu)       echo 'U2DM_DEMO_ROOM_INFO=slow' ;;
     room-menu-leave) echo 'U2DM_DEMO_ROOM_INFO=slow' ;;
     room-menu-failures) echo 'U2DM_DEMO_ROOM_INFO=read-fails,link-fails,notify-fails,leave-fails' ;;
@@ -131,6 +132,16 @@ scenario_steps() {
       echo 'sleep 1'
       echo '{"op":"leave_room"}'
       echo 'sleep 1' ;;
+    room-info-pane)
+      echo '{"op":"select_room","room_id":"!rust:demo.local"}'
+      echo 'sleep 1'
+      echo '{"op":"show_room_info_pane"}'
+      echo 'sleep 2'
+      echo '{"op":"select_room","room_id":"!trip:demo.local"}'
+      echo 'sleep 2'
+      echo '{"op":"close_room_info"}'
+      echo '{"op":"select_room","room_id":"!matrixhq:demo.local"}'
+      echo 'sleep 3' ;;
     room-menu)
       echo '{"op":"select_room","room_id":"!rust:demo.local"}'
       echo 'sleep 1'
@@ -284,6 +295,7 @@ scenario_note() {
     room-info)       echo 'the room info of a 1243-member room loads slowly, pages, filters, and turns notifications to mentions' ;;
     room-leave)      echo 'a room is left from its room info; it drops from the list on the sync echo and the timeline closes' ;;
     room-info-failures) echo 'the member list fails once and is retried, then a notification change and a leave fail inline' ;;
+    room-info-pane)  echo 'with the docked pane up, the sheet follows two room switches and ignores a close meant for the dialog' ;;
     room-menu)       echo 'from !rust, the room menu marks !trip read, mutes it to mentions, and two quick room links coalesce to the second' ;;
     room-menu-leave) echo 'from !rust, the room menu leaves !ohio: it drops from the list and from the menu, and the selection stays' ;;
     room-menu-failures) echo 'with no sheet open, a mark-as-read, a room link, a notification change and a leave each fail as a toast' ;;
@@ -318,7 +330,7 @@ check_window() {
 names() {
   printf '%s\n' unread-anchor all-unread unread-unresolved reactions-late sticker-trickle jump-to-reply \
     pinned-bar media-failures compact-layout login-oauth verify-self audio-track voice-notes delivery-marks \
-    space-index polls poll-edits room-info room-leave room-info-failures room-menu room-menu-leave \
+    space-index polls poll-edits room-info room-leave room-info-failures room-info-pane room-menu room-menu-leave \
     room-menu-failures user-info user-info-failures user-dm user-dm-start user-dm-failures user-ignore user-moderation \
     user-moderation-failures message-link message-source message-pins message-pin-failures message-delete \
     message-delete-failures

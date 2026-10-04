@@ -12,6 +12,7 @@ import {
     ServiceKind,
     LoginMethodKind,
     AudioKind,
+    RoomInfoPlacement,
 } from "enums.slint";
 import {
     LoginView,
@@ -98,7 +99,7 @@ export component AppWindow inherits Window {
         }
     }
     if VideoView.visible && LoginView.step == LoginPhase.logged-in: VideoPlayer { }
-    if RoomInfoView.visible && LoginView.step == LoginPhase.logged-in: RoomInfoDialog { }
+    if RoomInfoView.placement == RoomInfoPlacement.dialog && LoginView.step == LoginPhase.logged-in: RoomInfoDialog { }
     if UserInfoView.visible && LoginView.step == LoginPhase.logged-in: UserInfoDialog { }
     if SourceView.visible && LoginView.step == LoginPhase.logged-in: EventSourceDialog { }
 

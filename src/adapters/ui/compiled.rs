@@ -17,13 +17,14 @@ use u2dm_ui::{
     MemberRowKind as UiMemberRowKind, MessageEntry, MessageKind as UiMessageKind,
     Moderation as UiModeration, NotifyMode as UiNotifyMode, PollAnswerEntry,
     PollPhase as UiPollPhase, PreviewKind as UiPreviewKind, ReactionEntry,
-    ReactionSend as UiReactionSend, ReactorAvatar, ReplySwipe, RoomEntry, RoomInfoView,
-    RoomMembership as UiRoomMembership, RoomMenuView, RoomScope as UiRoomScope, RoomView,
-    RosterStatus as UiRosterStatus, SendState as UiSendState, ServiceKind as UiServiceKind,
-    SessionView, SourceEncryption as UiSourceEncryption, SourceStatus as UiSourceStatus,
-    SourceView, SpaceChildEntry, SpaceEntry, SpaceIndexStatus as UiSpaceIndexStatus,
-    SpaceIndexView, StickerCell, StickerPackTab, StickerRow, StickerView, TimelineState,
-    UnsentView, UserInfoView, UserMessage as UiUserMessage, UserMessageKind as UiUserMessageKind,
+    ReactionSend as UiReactionSend, ReactorAvatar, ReplySwipe, RoomEntry,
+    RoomInfoPlacement as UiRoomInfoPlacement, RoomInfoView, RoomMembership as UiRoomMembership,
+    RoomMenuView, RoomScope as UiRoomScope, RoomView, RosterStatus as UiRosterStatus,
+    SendState as UiSendState, ServiceKind as UiServiceKind, SessionView,
+    SourceEncryption as UiSourceEncryption, SourceStatus as UiSourceStatus, SourceView,
+    SpaceChildEntry, SpaceEntry, SpaceIndexStatus as UiSpaceIndexStatus, SpaceIndexView,
+    StickerCell, StickerPackTab, StickerRow, StickerView, TimelineState, UnsentView, UserInfoView,
+    UserMessage as UiUserMessage, UserMessageKind as UiUserMessageKind,
     VerificationActivity as UiVerificationActivity, VerificationEmoji, VerificationPhase,
     VerificationView, VideoView, WindowView,
 };
@@ -57,11 +58,11 @@ use super::schema::{
     media_failures, media_states, member_roles, member_row_fields, member_row_kinds,
     message_fields, message_kinds, model_props, notify_modes, pending_moderations,
     poll_answer_fields, poll_phases, preview_kinds, reaction_fields, reaction_sends,
-    reactor_fields, room_fields, room_memberships, room_scopes, roster_statuses, send_states,
-    service_kinds, simple_callbacks, source_encryptions, source_statuses, space_child_fields,
-    space_fields, space_index_statuses, sticker_cell_fields, sticker_pack_fields,
-    sticker_row_fields, string_props, timeline_states, user_message_kinds, verification_activities,
-    verification_phases,
+    reactor_fields, room_fields, room_info_placements, room_memberships, room_scopes,
+    roster_statuses, send_states, service_kinds, simple_callbacks, source_encryptions,
+    source_statuses, space_child_fields, space_fields, space_index_statuses, sticker_cell_fields,
+    sticker_pack_fields, sticker_row_fields, string_props, timeline_states, user_message_kinds,
+    verification_activities, verification_phases,
 };
 use super::session::active_models;
 use super::video::{self, millis_to_duration};
@@ -72,7 +73,7 @@ use crate::commands::messages::{UserMessage, UserMessageKind};
 use crate::commands::ui::{TimelineVisibility, ViewportChanged};
 use crate::commands::view::{
     AppViewState, AttachmentKind, ChildAccess, DirectChat, LoginActivity, LoginStep,
-    PendingModeration, RoomScope, RosterStatus, SourceState, SpaceIndexStatus,
+    PendingModeration, RoomInfoPlacement, RoomScope, RosterStatus, SourceState, SpaceIndexStatus,
 };
 use crate::domain::auth::LoginMethod;
 use crate::domain::media::AudioKind;
@@ -329,6 +330,7 @@ notify_modes!(impl_slint_enum NotifyMode UiNotifyMode;);
 member_roles!(impl_slint_enum MemberRole UiMemberRole;);
 member_row_kinds!(impl_slint_enum MemberRowKind UiMemberRowKind;);
 roster_statuses!(impl_slint_enum RosterStatus UiRosterStatus;);
+room_info_placements!(impl_slint_enum RoomInfoPlacement UiRoomInfoPlacement;);
 room_memberships!(impl_slint_enum RoomMembership UiRoomMembership;);
 direct_chats!(impl_slint_enum DirectChat UiDirectChat;);
 pending_moderations!(impl_slint_enum PendingModeration UiModeration;);

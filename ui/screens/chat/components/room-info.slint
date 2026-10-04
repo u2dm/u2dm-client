@@ -3,7 +3,7 @@ import { IconDisplay, IconSet, Icon } from "@lucide";
 
 import { Avatar } from "../../../components/avatar.slint";
 import { AppButton, IconButton } from "../../../components/button.slint";
-import { ClickArea, ListItemArea } from "../../../components/a11y.slint";
+import { ClickArea, Interaction, ListItemArea } from "../../../components/a11y.slint";
 import { Copier } from "../../../components/copier.slint";
 import { DialogCard, ModalHost, PickerCard } from "../../../components/overlay.slint";
 import { ErrorBanner } from "../../../components/banner.slint";
@@ -13,7 +13,7 @@ import { MemberRoles } from "./member-roles.slint";
 import { PickerSearch } from "./timeline/picker-search.slint";
 import { NotifyModes } from "./notify-modes.slint";
 import { MemberEntry } from "./types.slint";
-import { AppStyle, Avatars, Fonts, Glyph, IconSize, Metrics, Motion, Opacity, Radius, Size, Space, Weight } from "../../../theme.slint";
+import { AppStyle, Avatars, Fonts, Glyph, IconSize, Metrics, Motion, Opacity, Radius, Size, Space, Stroke, Weight } from "../../../theme.slint";
 import { MemberRowKind, RosterStatus, UserMessageKind } from "../../../enums.slint";
 import { RoomInfoView } from "../../../views.slint";
 import { Shell } from "../../../local.slint";
@@ -262,7 +262,7 @@ component MemberRow inherits ListItemArea {
 component RosterNotice inherits VerticalLayout {
     in property <string> text;
     in property <bool> failed;
-    in property <bool> covered;
+    in property <bool> above-modal;
 
     alignment: center;
     spacing: Space.lg;
@@ -283,7 +283,7 @@ component RosterNotice inherits VerticalLayout {
         AppButton {
             text: @tr("Retry");
             filled: false;
-            above-modal: !root.covered;
+            above-modal: root.above-modal;
             clicked => {
                 Actions.retry-room-members();
             }
@@ -291,40 +291,59 @@ component RosterNotice inherits VerticalLayout {
     }
 }
 
-export component RoomInfoDialog inherits ModalHost {
-    dim-opacity: AppStyle.dark ? Opacity.scrim-strong : Opacity.scrim;
-    label: @tr("Room info");
-    dismissed => {
-        if (Shell.user-info-open) {
-            Actions.close-user-info();
-        } else if (root.picker-open) {
-            root.close-picker();
-        } else if (root.topic-selecting) {
-            root.topic-selecting = false;
-            root.focus();
-        } else if (root.asking-leave && !RoomInfoView.leaving) {
-            root.cancel-leave();
-        } else {
-            Actions.close-room-info();
+component NotifyPickerHost inherits ModalHost {
+    in property <length> anchor-x;
+    in property <length> anchor-y;
+
+    dim: false;
+    label: @tr("Notifications");
+
+    PickerCard {
+        x: clamp(
+            root.anchor-x - root.absolute-position.x,
+            Space.md,
+            max(Space.md, root.width - self.width - Space.md));
+        y: min(
+            root.anchor-y - root.absolute-position.y + Space.sm,
+            max(Space.md, root.height - self.height - Space.md));
+        width: Metrics.room-info-picker-width;
+        height: picker-rows.preferred-height;
+
+        picker-rows := VerticalLayout {
+            padding: Space.sm;
+            spacing: Space.xs;
+
+            for mode[index] in NotifyModes.all: NotifyRow {
+                index: index;
+                icon: NotifyModes.icon(mode);
+                text: NotifyModes.choice(mode);
+                current: RoomInfoView.notify == mode;
+                clicked => {
+                    Actions.set-room-notify(RoomInfoView.room-id, mode);
+                    root.dismissed();
+                }
+            }
         }
     }
-    opened => {
-        root.page-if-wanted();
-    }
+}
 
-    property <length> card-width: min(AppStyle.card-width-wide, root.width - AppStyle.card-inset);
-    property <length> card-height: min(root.height - AppStyle.card-inset, Metrics.room-info-max-height);
-    property <bool> roomy: root.card-height >= Metrics.room-info-roomy;
-    property <length> tile-width: (root.card-width - 2 * Space.xl - 2 * Space.md) / 3;
+component RoomInfoSheet inherits Rectangle {
+    in property <bool> above-modal;
+    in property <brush> surface: AppStyle.card;
+    out property <bool> picker-open: false;
+    out property <length> picker-x;
+    out property <length> picker-y;
+
+    callback dismissed();
+
+    property <bool> roomy: root.height >= Metrics.room-info-roomy;
+    property <length> tile-width: (root.width - 2 * Space.xl - 2 * Space.md) / 3;
 
     property <string> shown-room: RoomInfoView.room-id;
-    property <bool> picker-open: false;
     property <bool> asking-leave: false;
     property <bool> copied: false;
     property <bool> topic-expanded: false;
     property <bool> topic-selecting: false;
-    property <bool> covered: Shell.user-info-open || Shell.verification-open;
-    property <bool> user-info-open: Shell.user-info-open;
 
     property <length> rows-bottom: member-list.y + RoomInfoView.rows.length * Metrics.room-info-row;
     property <int> asked-after: -1;
@@ -332,11 +351,33 @@ export component RoomInfoDialog inherits ModalHost {
         && root.asked-after != RoomInfoView.pages-landed
         && root.rows-bottom + scroll.content-y - scroll.visible-height <= Metrics.room-info-page-ahead;
 
-    property <length> picker-x: clamp(
-        notify-tile.absolute-position.x - root.absolute-position.x,
-        Space.md,
-        max(Space.md, root.width - Metrics.room-info-picker-width - Space.md));
-    property <length> picker-top: notify-tile.absolute-position.y - root.absolute-position.y + notify-tile.height + Space.sm;
+    forward-focus: keys;
+
+    init => {
+        root.page-if-wanted();
+    }
+
+    public function close-picker() {
+        root.picker-open = false;
+        notify-tile.take-focus();
+    }
+
+    public function peel() -> bool {
+        if root.picker-open {
+            root.close-picker();
+            return true;
+        }
+        if root.topic-selecting {
+            root.topic-selecting = false;
+            root.focus();
+            return true;
+        }
+        if root.asking-leave && !RoomInfoView.leaving {
+            root.cancel-leave();
+            return true;
+        }
+        return false;
+    }
 
     function page-if-wanted() {
         if root.wants-page {
@@ -345,9 +386,10 @@ export component RoomInfoDialog inherits ModalHost {
         }
     }
 
-    function close-picker() {
-        root.picker-open = false;
-        notify-tile.take-focus();
+    function open-picker() {
+        root.picker-x = notify-tile.absolute-position.x;
+        root.picker-y = notify-tile.absolute-position.y + notify-tile.height;
+        root.picker-open = true;
     }
 
     function cancel-leave() {
@@ -364,12 +406,6 @@ export component RoomInfoDialog inherits ModalHost {
         root.page-if-wanted();
     }
 
-    changed user-info-open => {
-        if !self.user-info-open && !Shell.verification-open {
-            root.focus();
-        }
-    }
-
     changed shown-room => {
         root.picker-open = false;
         root.asking-leave = false;
@@ -377,6 +413,8 @@ export component RoomInfoDialog inherits ModalHost {
         root.topic-expanded = false;
         root.topic-selecting = false;
         root.asked-after = -1;
+        search.query = "";
+        scroll.content-y = 0;
     }
 
     Timer {
@@ -389,12 +427,15 @@ export component RoomInfoDialog inherits ModalHost {
 
     link-copier := Copier { }
 
-    DialogCard {
-        x: (root.width - self.width) / 2;
-        y: (root.height - self.height) / 2;
-        width: root.card-width;
-        height: root.card-height;
-        clip: true;
+    keys := FocusScope {
+        focus-on-click: false;
+        focus-on-tab-navigation: false;
+        capture-key-pressed(event) => {
+            if event.text == Key.Escape && root.peel() {
+                return accept;
+            }
+            return reject;
+        }
 
         scroll := ScrollView {
             width: 100%;
@@ -498,7 +539,7 @@ export component RoomInfoDialog inherits ModalHost {
                             notify-tile := ActionTile {
                                 width: 100%;
                                 height: 100%;
-                                above-modal: !root.covered;
+                                above-modal: root.above-modal;
                                 visible: !root.asking-leave;
                                 enabled: !root.asking-leave && !RoomInfoView.leaving && !RoomInfoView.notify-busy;
                                 busy: RoomInfoView.notify-busy;
@@ -506,7 +547,7 @@ export component RoomInfoDialog inherits ModalHost {
                                 text: NotifyModes.state(RoomInfoView.notify);
                                 label: @tr("Notifications: {}", NotifyModes.state(RoomInfoView.notify));
                                 clicked => {
-                                    root.picker-open = true;
+                                    root.open-picker();
                                 }
                             }
 
@@ -529,7 +570,7 @@ export component RoomInfoDialog inherits ModalHost {
                             leave-tile := ActionTile {
                                 width: 100%;
                                 height: 100%;
-                                above-modal: !root.covered;
+                                above-modal: root.above-modal;
                                 enabled: !RoomInfoView.leaving;
                                 icon: root.asking-leave ? IconSet.X : IconSet.LogOut;
                                 text: root.asking-leave ? @tr("Cancel") : @tr("Leave");
@@ -548,7 +589,7 @@ export component RoomInfoDialog inherits ModalHost {
                             ActionTile {
                                 width: 100%;
                                 height: 100%;
-                                above-modal: !root.covered;
+                                above-modal: root.above-modal;
                                 visible: !root.asking-leave;
                                 enabled: !root.asking-leave && RoomInfoView.link != "";
                                 icon: root.copied ? IconSet.Check : IconSet.Link;
@@ -562,7 +603,7 @@ export component RoomInfoDialog inherits ModalHost {
                             if root.asking-leave: ActionTile {
                                 width: 100%;
                                 height: 100%;
-                                above-modal: !root.covered;
+                                above-modal: root.above-modal;
                                 destructive: true;
                                 enabled: !RoomInfoView.leaving;
                                 busy: RoomInfoView.leaving;
@@ -616,7 +657,7 @@ export component RoomInfoDialog inherits ModalHost {
                             }
 
                             if RoomInfoView.topic-has-links && !root.topic-selecting: TopicAction {
-                                above-modal: !root.covered;
+                                above-modal: root.above-modal;
                                 icon: IconSet.TextCursor;
                                 text: @tr("Select text");
                                 label: @tr("Select the text of the topic");
@@ -626,7 +667,7 @@ export component RoomInfoDialog inherits ModalHost {
                             }
 
                             if (topic-text.clamped || root.topic-expanded) && !root.topic-selecting: TopicAction {
-                                above-modal: !root.covered;
+                                above-modal: root.above-modal;
                                 icon: root.topic-expanded ? IconSet.ChevronUp : IconSet.ChevronDown;
                                 text: root.topic-expanded ? @tr("Show less") : @tr("Show more");
                                 label: root.topic-expanded ? @tr("Show less of the topic") : @tr("Show the whole topic");
@@ -638,13 +679,13 @@ export component RoomInfoDialog inherits ModalHost {
                     }
 
                     if RoomInfoView.alias != "": DetailLine {
-                        enabled: !root.covered;
+                        enabled: Interaction.actionable(true, root.above-modal);
                         value: RoomInfoView.alias;
                         caption: @tr("Address");
                     }
 
                     DetailLine {
-                        enabled: !root.covered;
+                        enabled: Interaction.actionable(true, root.above-modal);
                         value: RoomInfoView.room-id;
                         caption: @tr("Room ID");
                     }
@@ -660,10 +701,10 @@ export component RoomInfoDialog inherits ModalHost {
                     padding-left: Space.xl;
                     padding-right: Space.xl;
 
-                    PickerSearch {
+                    search := PickerSearch {
                         placeholder: @tr("Search members");
-                        above-modal: !root.covered;
-                        enabled: !root.covered;
+                        above-modal: root.above-modal;
+                        enabled: Interaction.actionable(true, root.above-modal);
                         edited(text) => {
                             if (-scroll.content-y > search-row.y) {
                                 scroll.content-y = -search-row.y;
@@ -685,7 +726,7 @@ export component RoomInfoDialog inherits ModalHost {
                 if RoomInfoView.roster == RosterStatus.failed: RosterNotice {
                     text: @tr("Couldn't load the members of this room.");
                     failed: true;
-                    covered: root.covered;
+                    above-modal: root.above-modal;
                 }
 
                 if RoomInfoView.roster == RosterStatus.ready && RoomInfoView.rows.length == 0: RosterNotice {
@@ -703,7 +744,7 @@ export component RoomInfoDialog inherits ModalHost {
                             height: Metrics.room-info-row;
                             index: idx;
                             entry: entry;
-                            above-modal: !root.covered;
+                            above-modal: root.above-modal;
                         }
                     }
                 }
@@ -716,49 +757,94 @@ export component RoomInfoDialog inherits ModalHost {
             width: Size.md;
             height: Size.md;
             border-radius: self.width / 2;
-            background: AppStyle.card;
+            background: root.surface;
 
             IconButton {
                 size: Size.md;
                 radius: Size.md / 2;
                 icon: IconSet.X;
-                above-modal: !root.covered;
+                above-modal: root.above-modal;
                 label: @tr("Close the room info");
                 clicked => {
-                    Actions.close-room-info();
+                    root.dismissed();
                 }
             }
         }
     }
+}
 
-    if root.picker-open: ModalHost {
-        dim: false;
-        label: @tr("Notifications");
+export component RoomInfoDialog inherits ModalHost {
+    dim-opacity: AppStyle.dark ? Opacity.scrim-strong : Opacity.scrim;
+    label: @tr("Room info");
+    dismissed => {
+        if (Shell.user-info-open) {
+            Actions.close-user-info();
+        } else if (!sheet.peel()) {
+            Actions.close-room-info();
+        }
+    }
+
+    property <bool> covered: Shell.user-info-open || Shell.verification-open;
+    property <bool> user-info-open: Shell.user-info-open;
+
+    changed user-info-open => {
+        if !self.user-info-open && !Shell.verification-open {
+            root.focus();
+        }
+    }
+
+    DialogCard {
+        x: (root.width - self.width) / 2;
+        y: (root.height - self.height) / 2;
+        width: min(AppStyle.card-width-wide, root.width - AppStyle.card-inset);
+        height: min(root.height - AppStyle.card-inset, Metrics.room-info-max-height);
+        clip: true;
+
+        sheet := RoomInfoSheet {
+            width: 100%;
+            height: 100%;
+            above-modal: !root.covered;
+            surface: AppStyle.card;
+            dismissed => {
+                Actions.close-room-info();
+            }
+        }
+    }
+
+    if sheet.picker-open: NotifyPickerHost {
+        anchor-x: sheet.picker-x;
+        anchor-y: sheet.picker-y;
+        dismissed => {
+            sheet.close-picker();
+        }
+    }
+}
+
+export component RoomInfoPane inherits RoomInfoSheet {
+    in property <length> overlay-width;
+    in property <length> overlay-height;
+
+    background: Palette.alternate-background;
+    surface: Palette.alternate-background;
+    dismissed => {
+        Shell.room-info-pane-open = false;
+    }
+
+    Rectangle {
+        x: 0;
+        width: Stroke.hairline;
+        background: AppStyle.border;
+    }
+
+    if root.picker-open: NotifyPickerHost {
+        x: -root.absolute-position.x;
+        y: -root.absolute-position.y;
+        width: root.overlay-width;
+        height: root.overlay-height;
+        anchor-x: root.picker-x;
+        anchor-y: root.picker-y;
         dismissed => {
             root.close-picker();
-        }
-
-        PickerCard {
-            x: root.picker-x;
-            y: min(root.picker-top, max(Space.md, root.height - self.height - Space.md));
-            width: Metrics.room-info-picker-width;
-            height: picker-rows.preferred-height;
-
-            picker-rows := VerticalLayout {
-                padding: Space.sm;
-                spacing: Space.xs;
-
-                for mode[index] in NotifyModes.all: NotifyRow {
-                    index: index;
-                    icon: NotifyModes.icon(mode);
-                    text: NotifyModes.choice(mode);
-                    current: RoomInfoView.notify == mode;
-                    clicked => {
-                        Actions.set-room-notify(RoomInfoView.room-id, mode);
-                        root.close-picker();
-                    }
-                }
-            }
         }
     }
 }

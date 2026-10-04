@@ -7,8 +7,8 @@ use crate::commands::effects::VerificationActivity;
 use crate::commands::messages::{UserMessage, UserMessageKind};
 use crate::commands::ui::UiCommand;
 use crate::commands::view::{
-    AttachmentKind, DirectChat, LoginActivity, LoginStep, PendingModeration, RoomScope,
-    RosterStatus, SourceState, SpaceIndexStatus,
+    AttachmentKind, DirectChat, LoginActivity, LoginStep, PendingModeration, RoomInfoPlacement,
+    RoomScope, RosterStatus, SourceState, SpaceIndexStatus,
 };
 use crate::domain::auth::LoginMethod;
 use crate::domain::media::AudioKind;

@@ -1,0 +1,62 @@
+import { FocusRing } from "a11y.slint";
+import { Shell } from "../local.slint";
+
+export enum ResizeEdge { right, left }
+
+export component ResizeHandle inherits Rectangle {
+    in property <ResizeEdge> edge: ResizeEdge.right;
+    in property <string> label;
+    in property <length> value;
+    in property <length> minimum;
+    in property <length> maximum;
+    in property <length> step;
+
+    callback dragged(length);
+    callback stepped(length);
+
+    property <float> outward: root.edge == ResizeEdge.right ? 1 : -1;
+
+    accessible-role: AccessibleRole.slider;
+    accessible-label: root.label;
+    accessible-value: root.value / 1px;
+    accessible-value-minimum: root.minimum / 1px;
+    accessible-value-maximum: root.maximum / 1px;
+    accessible-value-step: root.step / 1px;
+    accessible-enabled: Shell.background-reachable;
+    accessible-action-increment => {
+        root.stepped(root.step);
+    }
+    accessible-action-decrement => {
+        root.stepped(-root.step);
+    }
+    forward-focus: keys;
+
+    keys := FocusScope {
+        width: 0;
+        focus-on-tab-navigation: Shell.background-reachable;
+        key-pressed(event) => {
+            if (event.text == Key.LeftArrow) {
+                root.stepped(-root.step * root.outward);
+                return accept;
+            }
+            if (event.text == Key.RightArrow) {
+                root.stepped(root.step * root.outward);
+                return accept;
+            }
+            return reject;
+        }
+    }
+
+    TouchArea {
+        mouse-cursor: col-resize;
+        moved => {
+            root.dragged((self.mouse-x - self.pressed-x) * root.outward);
+        }
+    }
+
+    if keys.has-focus: FocusRing {
+        width: 100%;
+        height: 100%;
+        border-radius: 0;
+    }
+}

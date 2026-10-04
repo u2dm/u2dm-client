@@ -45,6 +45,8 @@ pub enum UiCommand {
     #[strum(to_string = "OpenRoomInfo({0})")]
     OpenRoomInfo(RoomId),
     CloseRoomInfo,
+    ShowRoomInfoPane,
+    HideRoomInfoPane,
     PageRoomMembers,
     RetryRoomMembers,
     #[strum(to_string = "FilterRoomMembers")]

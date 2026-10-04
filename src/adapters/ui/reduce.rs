@@ -607,6 +607,7 @@ fn apply_room_info<B: UiBackend>(
     ctx: &UiEventContext<'_, B>,
 ) {
     let RoomInfoView {
+        placement,
         card,
         about,
         roster,
@@ -622,6 +623,9 @@ fn apply_room_info<B: UiBackend>(
 
     if last.is_none_or(|l| l.card != *card) {
         apply_room_card(w, card.as_ref(), ctx.media);
+    }
+    if last.is_none_or(|l| l.placement != *placement) {
+        w.set_room_info_placement(*placement);
     }
     if last.is_none_or(|l| l.card != *card || l.about != *about) {
         apply_room_topic(w, card.as_ref(), about.as_ref());
@@ -682,7 +686,6 @@ fn apply_room_info<B: UiBackend>(
 
 fn apply_room_card(w: &impl UiProps, card: Option<&RoomCard>, media: &dyn MediaCache) {
     let Some(card) = card else {
-        w.set_bool(BoolProp::RoomInfoVisible, false);
         w.apply_room_info_avatar(None);
         return;
     };
@@ -706,7 +709,6 @@ fn apply_room_card(w: &impl UiProps, card: Option<&RoomCard>, media: &dyn MediaC
         SharedString::from(card.alias.as_deref().unwrap_or_default()),
     );
     w.apply_room_info_avatar(load_room_info_avatar(card, media));
-    w.set_bool(BoolProp::RoomInfoVisible, true);
 }
 
 fn apply_room_topic(w: &impl UiProps, card: Option<&RoomCard>, about: Option<&RoomAbout>) {

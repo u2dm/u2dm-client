@@ -5,12 +5,12 @@ import { Drawer } from "components/drawer.slint";
 import { TimelineView } from "components/timeline/timeline-view.slint";
 import { SpaceIndexPane } from "components/space-index.slint";
 import { RoomMenuOverlay } from "components/room-menu.slint";
-import { ClickArea, FocusRing } from "../../components/a11y.slint";
-import { UserMessageKind } from "../../enums.slint";
+import { ResizeEdge, ResizeHandle } from "../../components/resize-handle.slint";
+import { RoomInfoPlacement, UserMessageKind } from "../../enums.slint";
 import { UserMessages } from "../../messages.slint";
 import { AppStyle, IconSize, Metrics, Radius, Size, Space } from "../../theme.slint";
 import { IconButton } from "../../components/button.slint";
-import { DirectoryView, RoomView, SpaceIndexView, WindowView } from "../../views.slint";
+import { DirectoryView, RoomInfoView, RoomView, SpaceIndexView, WindowView } from "../../views.slint";
 import { Actions } from "../../actions.slint";
 import { Composer, DeliveryTip, MessageMenu, Polls, Reactions, ReplySwipe, RoomMenu, Shell, TextSelection } from "../../local.slint";
 
@@ -21,6 +21,7 @@ export component ChatScreen inherits Rectangle {
     init => {
         Composer.clear();
         Shell.close-overlays();
+        Shell.room-info-pane-open = false;
         TextSelection.clear();
         Reactions.close();
         MessageMenu.close();
@@ -43,6 +44,7 @@ export component ChatScreen inherits Rectangle {
         && !Shell.modal-open;
 
     property <length> sidebar-width: Metrics.sidebar-default;
+    property <length> room-info-pane-width: Metrics.room-info-pane-default;
     property <bool> nav-collapsed: root.sidebar-width <= Metrics.sidebar-collapsed;
     property <length> divider-width: Space.sm;
     property <length> resize-step: Space.xl;
@@ -51,15 +53,30 @@ export component ChatScreen inherits Rectangle {
     property <length> subrail-width: Metrics.subspace-rail;
     property <length> subrail-inset: root.has-subspaces ? root.subrail-width : 0;
 
+    property <bool> room-info-pane-fits: root.width >= Metrics.room-info-pane-breakpoint;
+    property <bool> room-info-pane-up: Shell.room-info-pane-open && root.room-info-pane-fits;
+    property <bool> room-info-pane-shown: root.room-info-pane-up
+        && root.has-room
+        && RoomInfoView.placement == RoomInfoPlacement.pane
+        && !SpaceIndexView.visible;
+    property <length> room-info-pane-floor: root.room-info-pane-shown ? Metrics.room-info-pane-min : 0;
+
     property <length> widest-usable-sidebar: max(
         Metrics.sidebar-min,
-        root.width - Metrics.timeline-min - root.subrail-inset,
+        root.width - Metrics.timeline-min - root.subrail-inset - root.room-info-pane-floor,
     );
     property <length> nav-width: min(root.sidebar-width, root.widest-usable-sidebar)
         + root.subrail-inset;
 
     property <length> timeline-x: root.compact ? 0 : root.nav-width;
-    property <length> timeline-width: root.width - root.timeline-x;
+    property <length> widest-usable-pane: max(
+        Metrics.room-info-pane-min,
+        root.width - root.timeline-x - Metrics.timeline-min,
+    );
+    property <length> room-info-pane-inset: root.room-info-pane-shown
+        ? clamp(root.room-info-pane-width, Metrics.room-info-pane-min, root.widest-usable-pane)
+        : 0;
+    property <length> timeline-width: root.width - root.timeline-x - root.room-info-pane-inset;
 
     property <bool> has-toast: RoomView.toast-message != UserMessageKind.none;
     property <bool> is-file-saved-toast: RoomView.toast-message == UserMessageKind.file-saved;
@@ -99,6 +116,14 @@ export component ChatScreen inherits Rectangle {
             );
     }
 
+    function resize-room-info-pane(grow: length) {
+        root.room-info-pane-width = clamp(
+                root.room-info-pane-inset + grow,
+                Metrics.room-info-pane-min,
+                Metrics.room-info-pane-max,
+            );
+    }
+
     function close-nav() {
         Shell.nav-open = false;
         timeline.focus-nav();
@@ -112,6 +137,14 @@ export component ChatScreen inherits Rectangle {
 
     changed timeline-visible => {
         Actions.timeline-visibility-changed(root.timeline-visible);
+    }
+
+    changed room-info-pane-up => {
+        if root.room-info-pane-up {
+            Actions.show-room-info-pane();
+        } else {
+            Actions.hide-room-info-pane();
+        }
     }
 
     if !root.compact: Sidebar {
@@ -131,6 +164,9 @@ export component ChatScreen inherits Rectangle {
         visible: !SpaceIndexView.visible;
         compact: root.compact && root.has-room;
         overlay-width: root.width;
+        room-info-pane-fits: root.room-info-pane-fits;
+        room-info-pane-shown: root.room-info-pane-shown;
+        room-info-pane-width: root.room-info-pane-inset;
         input-message <=> root.input-message;
     }
 
@@ -157,54 +193,40 @@ export component ChatScreen inherits Rectangle {
         }
     }
 
-    if !root.compact: Rectangle {
+    if !root.compact: ResizeHandle {
         x: root.nav-width - root.divider-width / 2;
         y: 0;
         width: root.divider-width;
         height: root.height;
-
-        accessible-role: AccessibleRole.slider;
-        accessible-label: @tr("Sidebar width");
-        accessible-value: root.sidebar-width / 1px;
-        accessible-value-minimum: Metrics.sidebar-collapsed / 1px;
-        accessible-value-maximum: Metrics.sidebar-max / 1px;
-        accessible-value-step: root.resize-step / 1px;
-        accessible-enabled: Shell.background-reachable;
-        accessible-action-increment => {
-            root.step-sidebar(root.resize-step);
+        label: @tr("Sidebar width");
+        value: root.sidebar-width;
+        minimum: Metrics.sidebar-collapsed;
+        maximum: Metrics.sidebar-max;
+        step: root.resize-step;
+        dragged(delta) => {
+            root.drag-sidebar(delta);
         }
-        accessible-action-decrement => {
-            root.step-sidebar(-root.resize-step);
+        stepped(delta) => {
+            root.step-sidebar(delta);
         }
-        forward-focus: divider-focus;
+    }
 
-        divider-focus := FocusScope {
-            width: 0;
-            focus-on-tab-navigation: Shell.background-reachable;
-            key-pressed(event) => {
-                if (event.text == Key.LeftArrow) {
-                    root.step-sidebar(-root.resize-step);
-                    return accept;
-                }
-                if (event.text == Key.RightArrow) {
-                    root.step-sidebar(root.resize-step);
-                    return accept;
-                }
-                return reject;
-            }
+    if root.room-info-pane-shown: ResizeHandle {
+        x: root.width - root.room-info-pane-inset - root.divider-width / 2;
+        y: 0;
+        width: root.divider-width;
+        height: root.height;
+        edge: ResizeEdge.left;
+        label: @tr("Room info panel width");
+        value: root.room-info-pane-inset;
+        minimum: Metrics.room-info-pane-min;
+        maximum: Metrics.room-info-pane-max;
+        step: root.resize-step;
+        dragged(grow) => {
+            root.resize-room-info-pane(grow);
         }
-
-        TouchArea {
-            mouse-cursor: col-resize;
-            moved => {
-                root.drag-sidebar(self.mouse-x - self.pressed-x);
-            }
-        }
-
-        if divider-focus.has-focus: FocusRing {
-            width: 100%;
-            height: 100%;
-            border-radius: 0;
+        stepped(grow) => {
+            root.resize-room-info-pane(grow);
         }
     }
 
@@ -213,6 +235,7 @@ export component ChatScreen inherits Rectangle {
         y: 0;
         width: root.width;
         height: root.height;
+        room-info-in-pane: root.room-info-pane-up;
     }
 
     if has-toast: Rectangle {

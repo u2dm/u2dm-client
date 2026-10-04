@@ -18,6 +18,7 @@ import { StatusPill } from "./status-pill.slint";
 import { NowPlayingBar } from "./now-playing-bar.slint";
 import { PinnedBar } from "./pinned-bar.slint";
 import { HeaderTitle } from "../header-title.slint";
+import { RoomInfoPane } from "../room-info.slint";
 
 export component TimelineView inherits Rectangle {
     background: Palette.background;
@@ -28,6 +29,9 @@ export component TimelineView inherits Rectangle {
 
     in property <bool> compact: false;
     in property <length> overlay-width;
+    in property <bool> room-info-pane-fits: false;
+    in property <bool> room-info-pane-shown: false;
+    in property <length> room-info-pane-width;
 
     property <length> header-height: Metrics.header-row;
     property <length> spacing: Metrics.timeline-gap;
@@ -121,6 +125,7 @@ export component TimelineView inherits Rectangle {
         background: Palette.alternate-background;
 
         property <length> menu-slot: Size.lg + 2 * Space.sm;
+        property <length> pane-slot: root.room-info-pane-fits ? Size.lg + Space.sm : 0;
         property <int> menu-returns: RoomMenu.focus-returns;
 
         changed menu-returns => {
@@ -131,8 +136,9 @@ export component TimelineView inherits Rectangle {
 
         ClickArea {
             x: root.compact ? root.nav-button-width : 0;
-            width: parent.width - self.x - parent.menu-slot;
+            width: parent.width - self.x - parent.menu-slot - parent.pane-slot;
             height: parent.height;
+            enabled: !root.room-info-pane-shown;
             background: self.has-hover ? AppStyle.overlay-subtle : transparent;
             label: @tr("Room info");
             clicked => {
@@ -145,6 +151,22 @@ export component TimelineView inherits Rectangle {
                 title: RoomView.selected-room-name;
                 members: RoomView.selected-room-members;
                 encrypted: RoomView.selected-room-encrypted;
+            }
+        }
+
+        if root.room-info-pane-fits: IconButton {
+            x: parent.width - parent.menu-slot - self.width;
+            y: (parent.height - self.height) / 2;
+            size: Size.lg;
+            radius: Radius.sm;
+            icon-size: IconSize.md;
+            icon: IconSet.PanelRight;
+            tint: Shell.room-info-pane-open ? Palette.accent-background : AppStyle.foreground-strong;
+            label: Shell.room-info-pane-open
+                ? @tr("Hide the room info panel")
+                : @tr("Show the room info panel");
+            clicked => {
+                Shell.room-info-pane-open = !Shell.room-info-pane-open;
             }
         }
 
@@ -215,6 +237,14 @@ export component TimelineView inherits Rectangle {
             }
         }
 
+        property <bool> room-info-pane-open: Shell.room-info-pane-open;
+
+        changed room-info-pane-open => {
+            if (!self.room-info-pane-open && Shell.background-reachable) {
+                input.focus-input();
+            }
+        }
+
         property <bool> source-open: Shell.source-open;
 
         changed source-open => {
@@ -281,6 +311,15 @@ export component TimelineView inherits Rectangle {
             message <=> root.input-message;
             overlay-x: -root.x;
             overlay-y: -self.y;
+            overlay-width: root.overlay-width;
+            overlay-height: root.height;
+        }
+
+        if root.room-info-pane-shown: RoomInfoPane {
+            x: parent.width;
+            y: 0;
+            width: root.room-info-pane-width;
+            height: parent.height;
             overlay-width: root.overlay-width;
             overlay-height: root.height;
         }

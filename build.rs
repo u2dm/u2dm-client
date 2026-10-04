@@ -126,6 +126,7 @@ const ENUM_TABLES: &[(&str, &str)] = &[
     ("Moderation", "pending_moderations"),
     ("MemberRowKind", "member_row_kinds"),
     ("RosterStatus", "roster_statuses"),
+    ("RoomInfoPlacement", "room_info_placements"),
     ("AudioKind", "audio_kinds"),
     ("MediaState", "media_states"),
     ("SendState", "send_states"),

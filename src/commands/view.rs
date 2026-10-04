@@ -361,6 +361,14 @@ pub enum RosterStatus {
     Failed,
 }
 
+#[derive(Clone, Copy, Default, PartialEq, Eq)]
+pub enum RoomInfoPlacement {
+    #[default]
+    Closed,
+    Dialog,
+    Pane,
+}
+
 #[derive(Clone, PartialEq, Eq)]
 pub enum RosterRow {
     Member(Arc<RosterMember>),
@@ -421,6 +429,7 @@ pub struct UserInfoView {
 
 #[derive(Clone, Default)]
 pub struct RoomInfoView {
+    pub placement: RoomInfoPlacement,
     pub card: Option<RoomCard>,
     pub about: Option<RoomAbout>,
     pub roster: RosterStatus,
