@@ -16,7 +16,9 @@ use super::present::{
     voter_labels,
 };
 use super::richtext;
-use super::schema::{define_ui_enum, media_failures, media_states, member_row_kinds};
+use super::schema::{
+    define_ui_enum, define_ui_names, media_failures, media_states, member_row_kinds,
+};
 use crate::commands::view::{ChildAccess, RoomCard, RosterRow, SpaceIndexRow};
 use crate::domain::media::{
     AudioKind, AudioMeta, ContentKey, FileMeta, MediaFailure, ThumbnailOutcome,
@@ -36,6 +38,7 @@ use crate::ports::media::MediaCache;
 use crate::util::format_bytes;
 
 media_states!(define_ui_enum MediaState;);
+media_states!(define_ui_names MediaState;);
 media_failures!(define_ui_enum MediaFailureKind;);
 member_row_kinds!(define_ui_enum MemberRowKind;);
 

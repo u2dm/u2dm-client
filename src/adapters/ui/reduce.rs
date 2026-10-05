@@ -5,7 +5,9 @@ use std::sync::Arc;
 use slint::{ComponentHandle, Model, SharedString, StyledText};
 
 use super::audio;
-use super::backend::{UiBackend, UiEventContext, apply_sticker_art, enrich_message};
+use super::backend::{
+    UiBackend, UiEventContext, apply_sticker_art, enrich_message, keep_shown_media,
+};
 use super::decode::{AvatarSlot, load_attachment_preview, load_avatar_async, request_sticker};
 use super::dto::{
     GRID_COLUMNS, StickerArt, StickerPackDto, StickerRowDto, audio_row_update,
@@ -291,6 +293,7 @@ fn apply_timeline<B: UiBackend>(
         &ctx.models.timeline,
         *patch,
         &|m| B::convert_message(m, is_pinned(&pinned_ids, m), ctx.media),
+        &keep_shown_media::<B>,
         &|entry, delta| enrich_message::<B>(entry, delta, ctx.media),
         &|entry| entry.unique_id(),
     );

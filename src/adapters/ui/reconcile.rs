@@ -95,6 +95,11 @@ impl TimelineIndex {
         self.fingerprint_of.get(&delta.unique_id) == Some(&delta.fingerprint)
     }
 
+    fn shows_same_media(&self, unique_id: &str, message: &TimelineMessage) -> bool {
+        unique_id == message.unique_id
+            && self.fingerprint_of.get(unique_id) == Some(&message.enrichment_fingerprint())
+    }
+
     fn row_for(&self, delta: &EnrichmentDelta) -> Option<usize> {
         self.row_of
             .get(&delta.unique_id)
@@ -194,11 +199,14 @@ pub fn apply_timeline_patch<T: Clone + 'static>(
     model: &SpliceModel<T>,
     patch: TimelinePatch,
     convert: &dyn Fn(&TimelineMessage) -> T,
+    keep_shown: &dyn Fn(&T, &mut T),
     enrich: &dyn Fn(&mut T, &EnrichmentDelta),
     entry_id: &dyn Fn(&T) -> &str,
 ) {
     let mut index = with_session(|session| mem::take(&mut session.timeline_index));
-    apply_patch(model, patch, &mut index, convert, enrich, entry_id);
+    apply_patch(
+        model, patch, &mut index, convert, keep_shown, enrich, entry_id,
+    );
     with_session(|session| session.timeline_index = index);
 }
 
@@ -207,6 +215,7 @@ fn apply_patch<T: Clone + 'static>(
     patch: TimelinePatch,
     index: &mut TimelineIndex,
     convert: &dyn Fn(&TimelineMessage) -> T,
+    keep_shown: &dyn Fn(&T, &mut T),
     enrich: &dyn Fn(&mut T, &EnrichmentDelta),
     entry_id: &dyn Fn(&T) -> &str,
 ) {
@@ -233,7 +242,9 @@ fn apply_patch<T: Clone + 'static>(
             splice_rows(model, at.min(before), &[message], index, convert);
         }
         TimelinePatch::Set { index: at, message } => {
-            set_row(model, at, before, index, &message, convert, entry_id);
+            set_row(
+                model, at, before, index, &message, convert, keep_shown, entry_id,
+            );
         }
         TimelinePatch::Remove { index: at } => remove_row(model, at, before, index, entry_id),
         TimelinePatch::PopFront => remove_row(model, 0, before, index, entry_id),
@@ -248,7 +259,7 @@ fn apply_patch<T: Clone + 'static>(
             model.set_vec(Vec::new());
         }
         TimelinePatch::Batch(patches) => {
-            apply_batch(model, patches, index, convert, enrich, entry_id);
+            apply_batch(model, patches, index, convert, keep_shown, enrich, entry_id);
         }
         TimelinePatch::Enrich(delta) => enrich_target(model, &delta, index, enrich, entry_id),
     }
@@ -325,6 +336,7 @@ fn apply_batch<T: Clone + 'static>(
     patches: Vec<TimelinePatch>,
     index: &mut TimelineIndex,
     convert: &dyn Fn(&TimelineMessage) -> T,
+    keep_shown: &dyn Fn(&T, &mut T),
     enrich: &dyn Fn(&mut T, &EnrichmentDelta),
     entry_id: &dyn Fn(&T) -> &str,
 ) {
@@ -332,7 +344,9 @@ fn apply_batch<T: Clone + 'static>(
     for patch in patches {
         if let Some(positional) = edges.absorb(patch) {
             edges.flush(model, index, convert);
-            apply_patch(model, positional, index, convert, enrich, entry_id);
+            apply_patch(
+                model, positional, index, convert, keep_shown, enrich, entry_id,
+            );
         }
     }
     edges.flush(model, index, convert);
@@ -346,13 +360,23 @@ fn set_row<T: Clone + 'static>(
     index: &mut TimelineIndex,
     message: &TimelineMessage,
     convert: &dyn Fn(&TimelineMessage) -> T,
+    keep_shown: &dyn Fn(&T, &mut T),
     entry_id: &dyn Fn(&T) -> &str,
 ) {
     if row >= row_count {
         return;
     }
-    index.replaced_at(row, id_at(model, row, entry_id).as_deref(), message);
-    model.set_row_data(row, convert(message));
+    let shown = model.row_data(row);
+    let shown_id = shown.as_ref().map(|entry| entry_id(entry).to_owned());
+    let same_media = shown_id
+        .as_deref()
+        .is_some_and(|id| index.shows_same_media(id, message));
+    index.replaced_at(row, shown_id.as_deref(), message);
+    let mut rebuilt = convert(message);
+    if same_media && let Some(shown) = &shown {
+        keep_shown(shown, &mut rebuilt);
+    }
+    model.set_row_data(row, rebuilt);
 }
 
 fn remove_row<T: Clone + 'static>(

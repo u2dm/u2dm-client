@@ -283,6 +283,18 @@ fn show_thumbnail<B: UiBackend>(entry: &mut B::Message, image: Image) {
     entry.set_media_state(MediaState::Ready);
 }
 
+pub fn keep_shown_media<B: UiBackend>(shown: &B::Message, rebuilt: &mut B::Message) {
+    if shown.has_avatar() && !rebuilt.has_avatar() {
+        rebuilt.set_avatar(shown.avatar());
+        rebuilt.set_has_avatar(true);
+    }
+    if shown.media_state() == MediaState::Ready.ui_name()
+        && rebuilt.media_state() == MediaState::Idle.ui_name()
+    {
+        show_thumbnail::<B>(rebuilt, shown.thumbnail());
+    }
+}
+
 fn show_media_failure<B: UiBackend>(entry: &mut B::Message, reason: MediaFailureKind) {
     entry.set_media_state(MediaState::Failed);
     entry.set_media_failure(reason);

@@ -346,6 +346,17 @@ macro_rules! define_ui_enum {
 }
 pub(crate) use define_ui_enum;
 
+macro_rules! define_ui_names {
+    ($name:ident; $($rust:ident $ui:ident $lit:literal;)*) => {
+        impl $name {
+            pub fn ui_name(self) -> &'static str {
+                match self { $(Self::$rust => $lit,)* }
+            }
+        }
+    };
+}
+pub(crate) use define_ui_names;
+
 macro_rules! login_phases {
     ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
         Loading     Loading     "loading";

@@ -29,6 +29,7 @@ pub enum ShownAvatar {
 pub(super) struct Needs {
     media: HashMap<MediaSlot, PathBuf>,
     avatars: HashMap<AvatarSlot, PathBuf>,
+    avatars_asked: HashSet<AvatarSlot>,
     stickers_asked_before_download: HashSet<String>,
 }
 
@@ -94,16 +95,19 @@ pub fn record_media_need(item: &TimelineItemKey, thumbnail: Option<&Path>, avata
 }
 
 pub fn record_avatar_need(slot: &AvatarSlot, path: Option<&Path>) -> ShownAvatar {
-    with_media(|media| {
+    let (shown, asked) = with_media(|media| {
         let needs = &mut media.needs;
-        let unchanged = path.is_some_and(|path| needs.expects_avatar(slot, path));
+        let shown = match path {
+            Some(path) if needs.expects_avatar(slot, path) => ShownAvatar::StillExpected,
+            _ => ShownAvatar::Outdated,
+        };
         needs.expect_avatar(slot, path);
-        if unchanged {
-            ShownAvatar::StillExpected
-        } else {
-            ShownAvatar::Outdated
-        }
-    })
+        (shown, needs.avatars_asked.contains(slot))
+    });
+    if shown == ShownAvatar::Outdated && asked && path.is_some() {
+        request_avatar(slot);
+    }
+    shown
 }
 
 pub fn record_sticker_need(key: &str, path: Option<&Path>) {
@@ -185,7 +189,12 @@ fn announce(slot: &MediaSlot, decoded: &Decoded) {
 }
 
 fn resolve_avatar(slot: &AvatarSlot) {
-    let Some(path) = with_media(|media| media.needs.avatars.get(slot).cloned()) else {
+    let path = with_media(|media| {
+        let needs = &mut media.needs;
+        needs.avatars_asked.insert(slot.clone());
+        needs.avatars.get(slot).cloned()
+    });
+    let Some(path) = path else {
         return;
     };
     show_resolved_avatar(&path, slot);
