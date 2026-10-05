@@ -317,9 +317,19 @@ pub enum TimelineStatus {
     Disconnected,
 }
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum OlderHistory {
+    #[default]
+    Unknown,
+    Available,
+    Loading,
+    Failed,
+    Ended,
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct PaginationState {
-    pub backwards_loading: bool,
+    pub older_history: OlderHistory,
     pub forwards_loading: bool,
 }
 

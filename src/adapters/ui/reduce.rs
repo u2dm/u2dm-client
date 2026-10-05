@@ -44,7 +44,7 @@ use crate::domain::poll::PollPermissions;
 use crate::domain::room::{RoomId, RoomList};
 use crate::domain::room_info::RoomAbout;
 use crate::domain::room_log::RoomLog;
-use crate::domain::timeline::{SourceEncryption, TimelinePatch, TimelineStatus};
+use crate::domain::timeline::{OlderHistory, SourceEncryption, TimelinePatch, TimelineStatus};
 use crate::domain::user_info::{IdentityTrust, Moderation};
 use crate::domain::verification::VerificationEvent as DomainVerificationEvent;
 use crate::ports::media::MediaCache;
@@ -990,22 +990,30 @@ fn packs_missing_icons(packs: &[StickerPackDto]) -> Vec<SharedString> {
         .collect()
 }
 
-fn sync_timeline_chrome(w: &impl UiProps, pagination: &PaginationView) {
-    let (backwards, forwards, badge) = if pagination.generation == active_generation() {
+fn sync_timeline_chrome(w: &(impl UiProps + ComponentHandle), pagination: &PaginationView) {
+    let (older_history, forwards, badge) = if pagination.generation == active_generation() {
         (
-            pagination.backwards_loading,
+            pagination.older_history,
             pagination.forwards_loading,
             pagination.new_messages,
         )
     } else {
-        (false, false, 0)
+        (OlderHistory::Unknown, false, 0)
     };
-    w.set_bool(BoolProp::BackwardsLoading, backwards);
+    w.set_bool(
+        BoolProp::BackwardsLoading,
+        older_history == OlderHistory::Loading,
+    );
+    w.set_bool(
+        BoolProp::OlderHistoryAvailable,
+        older_history == OlderHistory::Available,
+    );
     w.set_bool(BoolProp::ForwardsLoading, forwards);
     w.set_int(
         IntProp::NewMessagesCount,
         i32::try_from(badge).unwrap_or(i32::MAX),
     );
+    run_change_handlers_next_frame(w);
 }
 
 fn apply_pinned(w: &impl UiProps, pinned: &PinnedView) {

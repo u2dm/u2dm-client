@@ -1,14 +1,14 @@
-use super::timeline::{PaginationDirection, PaginationState, ScrollMode, TimelineFocus};
+use super::timeline::{
+    OlderHistory, PaginationDirection, PaginationState, ScrollMode, TimelineFocus,
+};
 
 pub const PAGINATION_BATCH_SIZE: u16 = 50;
 
 #[derive(Default)]
-#[allow(clippy::struct_excessive_bools)]
 pub struct ViewportController {
     mode: ScrollMode,
-    backwards_loading: bool,
+    older_history: OlderHistory,
     forwards_loading: bool,
-    backwards_ended: bool,
     forwards_ended: bool,
 }
 
@@ -39,15 +39,18 @@ impl ViewportController {
     }
 
     pub fn should_paginate_backwards(&self) -> bool {
-        !self.backwards_loading && !self.backwards_ended
+        matches!(
+            self.older_history,
+            OlderHistory::Unknown | OlderHistory::Available | OlderHistory::Failed
+        )
     }
 
     pub fn should_paginate_forwards(&self) -> bool {
         !self.forwards_loading && !self.forwards_ended && self.mode == ScrollMode::PreserveAnchor
     }
 
-    pub fn set_backwards_loading(&mut self, loading: bool) {
-        self.backwards_loading = loading;
+    pub fn start_backwards(&mut self) {
+        self.older_history = OlderHistory::Loading;
     }
 
     pub fn set_forwards_loading(&mut self, loading: bool) {
@@ -57,8 +60,11 @@ impl ViewportController {
     pub fn complete_pagination(&mut self, direction: PaginationDirection, hit_end: bool) {
         match direction {
             PaginationDirection::Backwards => {
-                self.backwards_loading = false;
-                self.backwards_ended |= hit_end;
+                self.older_history = if hit_end {
+                    OlderHistory::Ended
+                } else {
+                    OlderHistory::Available
+                };
             }
             PaginationDirection::Forwards => {
                 self.forwards_loading = false;
@@ -74,14 +80,14 @@ impl ViewportController {
 
     pub fn fail_pagination(&mut self, direction: PaginationDirection) {
         match direction {
-            PaginationDirection::Backwards => self.backwards_loading = false,
+            PaginationDirection::Backwards => self.older_history = OlderHistory::Failed,
             PaginationDirection::Forwards => self.forwards_loading = false,
         }
     }
 
     pub fn state(&self) -> PaginationState {
         PaginationState {
-            backwards_loading: self.backwards_loading,
+            older_history: self.older_history,
             forwards_loading: self.forwards_loading,
         }
     }

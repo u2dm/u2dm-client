@@ -24,6 +24,7 @@ export component TimelineContent inherits Rectangle {
         timeline-token: RoomView.timeline-token;
         prepend-token: RoomView.prepend-token;
         backwards-loading: RoomView.backwards-loading;
+        older-history-available: RoomView.older-history-available;
         forwards-loading: RoomView.forwards-loading;
         detached: RoomView.timeline-detached;
         top-inset: root.top-inset;
@@ -52,7 +53,8 @@ export component TimelineContent inherits Rectangle {
             + "seen-prepend-token=\{scroller.seen-prepend-token} "
             + "timeline-token=\{RoomView.timeline-token} "
             + "prepend-token=\{RoomView.prepend-token} "
-            + "anchor-index=\{RoomView.anchor-index}";
+            + "anchor-index=\{RoomView.anchor-index} "
+            + "needs-older-rows=\{scroller.needs-older-rows ? 1 : 0}";
     }
 
     if RoomView.backwards-loading && RoomView.timeline.length > 0: StatusPill {

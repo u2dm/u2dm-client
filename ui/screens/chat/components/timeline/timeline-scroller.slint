@@ -10,6 +10,7 @@ export component TimelineScroller inherits Rectangle {
     in property <int> timeline-token;
     in property <int> prepend-token;
     in property <bool> backwards-loading;
+    in property <bool> older-history-available;
     in property <bool> forwards-loading;
     in property <bool> detached;
     in property <length> top-inset;
@@ -28,6 +29,7 @@ export component TimelineScroller inherits Rectangle {
     out property <int> seen-timeline-token: flickable.seen-timeline-token;
     out property <int> seen-prepend-token: flickable.seen-prepend-token;
     out property <length> anchor-target: flickable.anchor-target;
+    out property <bool> needs-older-rows: flickable.needs-older-rows;
 
     property <int> max-anchor-scrolls: 20;
     property <duration> settle-interval: 60ms;
@@ -85,6 +87,16 @@ export component TimelineScroller inherits Rectangle {
         }
     }
 
+    fill-from-history := Timer {
+        interval: root.settle-interval;
+        running: flickable.needs-older-rows;
+        triggered => {
+            if flickable.needs-older-rows {
+                Actions.paginate-backwards();
+            }
+        }
+    }
+
     flickable := ListView {
         width: parent.width;
         height: root.list-height > 0 ? min(parent.height, root.list-height) : parent.height;
@@ -136,6 +148,10 @@ export component TimelineScroller inherits Rectangle {
             self.content-height - self.visible-height;
         property <bool> scrollable:
             self.content-height > self.visible-height;
+        property <bool> needs-older-rows: root.older-history-available
+            && self.max-scroll-y <= self.scroll-threshold
+            && !self.anchor-held
+            && root.timeline-token == self.seen-timeline-token;
         property <int> item-count: RoomView.timeline.length;
         property <bool> history-prepended: root.prepend-token != self.seen-prepend-token
             && self.scrollable

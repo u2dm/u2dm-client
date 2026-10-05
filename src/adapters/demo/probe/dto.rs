@@ -15,7 +15,7 @@ use crate::domain::room_info::RosterSection;
 use crate::domain::space_index::{ChildKind, JoinRule};
 use crate::domain::sticker::StickerPack;
 use crate::domain::sync::ConnectionStatus;
-use crate::domain::timeline::SourceEncryption;
+use crate::domain::timeline::{OlderHistory, SourceEncryption};
 use crate::domain::user_info::{IdentityTrust, Moderation, Pronouns};
 
 #[derive(Serialize)]
@@ -259,6 +259,7 @@ struct MemberRowDto {
 struct PaginationDto {
     generation: i32,
     backwards_loading: bool,
+    older_history: &'static str,
     forwards_loading: bool,
     new_messages: u32,
 }
@@ -675,9 +676,20 @@ fn join_rule(source: &JoinRule) -> &'static str {
 fn pagination(source: PaginationView) -> PaginationDto {
     PaginationDto {
         generation: source.generation,
-        backwards_loading: source.backwards_loading,
+        backwards_loading: source.older_history == OlderHistory::Loading,
+        older_history: older_history(source.older_history),
         forwards_loading: source.forwards_loading,
         new_messages: source.new_messages,
+    }
+}
+
+fn older_history(source: OlderHistory) -> &'static str {
+    match source {
+        OlderHistory::Unknown => "unknown",
+        OlderHistory::Available => "available",
+        OlderHistory::Loading => "loading",
+        OlderHistory::Failed => "failed",
+        OlderHistory::Ended => "ended",
     }
 }
 

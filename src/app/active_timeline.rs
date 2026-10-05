@@ -209,10 +209,11 @@ impl ActiveTimeline {
         let Some(tx) = &self.timeline_cmd_tx else {
             return;
         };
-        self.viewport.set_backwards_loading(true);
+        self.viewport.start_backwards();
         if tx.send(TimelineCommand::PaginateBackwards).is_err() {
             tracing::debug!("timeline command channel closed");
-            self.viewport.set_backwards_loading(false);
+            self.viewport
+                .fail_pagination(PaginationDirection::Backwards);
         }
         self.emit_pagination_state();
     }
@@ -497,7 +498,7 @@ impl ActiveTimeline {
         let state = self.viewport.state();
         self.output.publish(Box::new(move |view| {
             view.pagination.retarget(generation);
-            view.pagination.backwards_loading = state.backwards_loading;
+            view.pagination.older_history = state.older_history;
             view.pagination.forwards_loading = state.forwards_loading;
         }));
     }

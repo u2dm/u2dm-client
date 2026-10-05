@@ -14,7 +14,7 @@ use crate::domain::room_log::RoomLog;
 use crate::domain::space_index::SpaceChild;
 use crate::domain::sticker::StickerPacks;
 use crate::domain::sync::ConnectionStatus;
-use crate::domain::timeline::EventSource;
+use crate::domain::timeline::{EventSource, OlderHistory};
 use crate::domain::user_info::UserProfile;
 
 #[derive(Clone, Default)]
@@ -173,7 +173,7 @@ pub enum Toast {
 #[derive(Clone, Copy, Default, PartialEq, Eq)]
 pub struct PaginationView {
     pub generation: i32,
-    pub backwards_loading: bool,
+    pub older_history: OlderHistory,
     pub forwards_loading: bool,
     pub new_messages: u32,
 }

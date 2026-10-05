@@ -185,6 +185,7 @@ macro_rules! bool_props {
         TimelineRetryable RoomView "RoomView" "timeline-retryable" set_timeline_retryable get_timeline_retryable;
         TimelineDetached RoomView "RoomView" "timeline-detached" set_timeline_detached get_timeline_detached;
         BackwardsLoading RoomView "RoomView" "backwards-loading" set_backwards_loading get_backwards_loading;
+        OlderHistoryAvailable RoomView "RoomView" "older-history-available" set_older_history_available get_older_history_available;
         ForwardsLoading RoomView "RoomView" "forwards-loading" set_forwards_loading get_forwards_loading;
         SelectedRoomEncrypted RoomView "RoomView" "selected-room-encrypted" set_selected_room_encrypted get_selected_room_encrypted;
         MayVote RoomView "RoomView" "may-vote" set_may_vote get_may_vote;

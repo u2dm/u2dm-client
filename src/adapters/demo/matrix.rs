@@ -954,6 +954,14 @@ impl DemoAuthed {
             return Ok(());
         };
 
+        let opening_page = TimelineUpdate::Pagination {
+            direction: PaginationDirection::Backwards,
+            outcome: PaginationOutcome::Completed {
+                hit_end: !scenario.pagination_returns_history,
+            },
+        };
+        drop(timeline_tx.send(opening_page).await);
+
         if let Some(target) = focus.target() {
             let target_row = self.loaded_row_of(target);
             drop(
