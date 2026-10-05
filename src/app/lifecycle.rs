@@ -222,6 +222,8 @@ pub(super) fn command_allowed(phase: AppPhase, cmd: &UiCommand) -> bool {
         | UiCommand::CloseRoomMenu
         | UiCommand::MarkRoomRead(_)
         | UiCommand::CopyRoomLink(_)
+        | UiCommand::OpenRoomLog(_)
+        | UiCommand::CloseRoomLog
         | UiCommand::OpenUserInfo(_)
         | UiCommand::CloseUserInfo
         | UiCommand::RetryUserInfo

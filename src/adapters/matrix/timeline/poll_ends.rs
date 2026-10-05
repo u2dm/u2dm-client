@@ -12,6 +12,7 @@ use tokio::sync::broadcast::error::RecvError;
 use tokio::sync::mpsc;
 use tokio::time::timeout;
 use tokio_util::task::TaskTracker;
+use tracing::Instrument;
 
 use super::RELATION_FIELD;
 
@@ -133,9 +134,10 @@ pub(super) fn send_end(
 ) {
     let poll = content.relates_to.event_id.clone();
     ending.begin(&poll);
-    ends.spawn(async move {
+    let end = async move {
         if !end_after_queued_relations(&room, &poll, content).await {
             drop(unsent_tx.send(poll));
         }
-    });
+    };
+    ends.spawn(end.in_current_span());
 }

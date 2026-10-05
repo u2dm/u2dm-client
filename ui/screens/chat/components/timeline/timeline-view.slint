@@ -261,6 +261,14 @@ export component TimelineView inherits Rectangle {
             }
         }
 
+        property <bool> room-log-open: Shell.room-log-open;
+
+        changed room-log-open => {
+            if (!self.room-log-open && Shell.background-reachable) {
+                input.focus-input();
+            }
+        }
+
         property <int> menu-returns: RoomMenu.focus-returns;
 
         changed menu-returns => {

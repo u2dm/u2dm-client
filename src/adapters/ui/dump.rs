@@ -1,3 +1,4 @@
+use std::rc::Rc;
 use std::sync::OnceLock;
 use std::time::Duration;
 
@@ -8,7 +9,7 @@ use tokio::sync::oneshot;
 use super::audio;
 use super::backend::UiBackend;
 use super::context_press;
-use super::fields::{MessageFields, PollAnswerFields, ReactionFields};
+use super::fields::{LogLineFields, MessageFields, PollAnswerFields, ReactionFields};
 use super::props::{BoolProp, EnumProp, IntProp, StringProp, UiProps};
 
 #[derive(Serialize)]
@@ -129,6 +130,17 @@ pub struct RoomMenuDump {
 }
 
 #[derive(Serialize)]
+pub struct RoomLogDump {
+    pub visible: bool,
+    pub room_id: String,
+    pub name: String,
+    pub rows: usize,
+    pub dropped: i32,
+    pub lines_landed: i32,
+    pub newest: Vec<String>,
+}
+
+#[derive(Serialize)]
 pub struct TimelineDump {
     pub selected_room_id: String,
     pub selected_room_name: String,
@@ -144,6 +156,7 @@ pub struct TimelineDump {
     pub rows: Vec<TimelineRowDump>,
     pub audio: AudioDump,
     pub room_menu: RoomMenuDump,
+    pub room_log: RoomLogDump,
 }
 
 type Requester = Box<dyn Fn(oneshot::Sender<TimelineDump>) + Send + Sync>;
@@ -245,6 +258,36 @@ fn collect<B: UiBackend>(window: &B::Window) -> TimelineDump {
         rows,
         audio: audio_view(window),
         room_menu: room_menu_view(window),
+        room_log: room_log_view::<B>(window),
+    }
+}
+
+const NEWEST_LOG_ROWS: usize = 12;
+
+fn room_log_view<B: UiBackend>(window: &B::Window) -> RoomLogDump {
+    let lines = Rc::clone(&B::models().room_log);
+    let rows = lines.row_count();
+    let newest = lines
+        .iter()
+        .skip(rows.saturating_sub(NEWEST_LOG_ROWS))
+        .map(|line| {
+            format!(
+                "{} {} {}: {}",
+                line.time(),
+                line.level_name(),
+                line.target(),
+                line.text()
+            )
+        })
+        .collect();
+    RoomLogDump {
+        visible: window.get_bool(BoolProp::RoomLogVisible),
+        room_id: window.get_string(StringProp::RoomLogRoomId).to_string(),
+        name: window.get_string(StringProp::RoomLogName).to_string(),
+        rows,
+        dropped: window.get_int(IntProp::RoomLogDropped),
+        lines_landed: window.get_int(IntProp::RoomLogLinesLanded),
+        newest,
     }
 }
 

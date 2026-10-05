@@ -87,6 +87,11 @@ pub enum ProbeCommand {
         #[serde(default)]
         room_id: Option<String>,
     },
+    OpenRoomLog {
+        #[serde(default)]
+        room_id: Option<String>,
+    },
+    CloseRoomLog,
     OpenUserInfo {
         user_id: String,
     },
@@ -329,6 +334,14 @@ fn room(explicit: Option<String>, selected: Selection<'_>) -> Result<RoomId, Rej
     Ok(target(explicit, None, selected)?.room_id)
 }
 
+fn in_room(
+    explicit: Option<String>,
+    selected: Selection<'_>,
+    command: impl FnOnce(RoomId) -> UiCommand,
+) -> Result<Driven, Rejected> {
+    Ok(Driven::Command(command(room(explicit, selected)?)))
+}
+
 fn person(user_id: String, command: impl FnOnce(UserId) -> UiCommand) -> Result<Driven, Rejected> {
     if user_id.is_empty() {
         return Err(Rejected("an empty user_id names nobody".to_owned()));
@@ -417,7 +430,9 @@ pub fn to_driven(command: ProbeCommand, selected: Selection<'_>) -> Result<Drive
         ProbeCommand::RetrySpaceIndex => UiCommand::RetrySpaceIndex,
         ProbeCommand::JoinSpaceChild { room_id } => UiCommand::JoinSpaceChild(RoomId::new(room_id)),
         ProbeCommand::OpenSpaceChild { room_id } => UiCommand::OpenSpaceChild(RoomId::new(room_id)),
-        ProbeCommand::OpenRoomInfo { room_id } => UiCommand::OpenRoomInfo(room(room_id, selected)?),
+        ProbeCommand::OpenRoomInfo { room_id } => {
+            return in_room(room_id, selected, UiCommand::OpenRoomInfo);
+        }
         ProbeCommand::CloseRoomInfo => UiCommand::CloseRoomInfo,
         ProbeCommand::ShowRoomInfoPane => UiCommand::ShowRoomInfoPane,
         ProbeCommand::HideRoomInfoPane => UiCommand::HideRoomInfoPane,
@@ -425,11 +440,23 @@ pub fn to_driven(command: ProbeCommand, selected: Selection<'_>) -> Result<Drive
         ProbeCommand::RetryRoomMembers => UiCommand::RetryRoomMembers,
         ProbeCommand::FilterRoomMembers { query } => UiCommand::FilterRoomMembers(query),
         ProbeCommand::SetRoomNotify { room_id, mode } => room_notify(room_id, &mode, selected)?,
-        ProbeCommand::LeaveRoom { room_id } => UiCommand::LeaveRoom(room(room_id, selected)?),
-        ProbeCommand::OpenRoomMenu { room_id } => UiCommand::OpenRoomMenu(room(room_id, selected)?),
+        ProbeCommand::LeaveRoom { room_id } => {
+            return in_room(room_id, selected, UiCommand::LeaveRoom);
+        }
+        ProbeCommand::OpenRoomMenu { room_id } => {
+            return in_room(room_id, selected, UiCommand::OpenRoomMenu);
+        }
         ProbeCommand::CloseRoomMenu => UiCommand::CloseRoomMenu,
-        ProbeCommand::MarkRoomRead { room_id } => UiCommand::MarkRoomRead(room(room_id, selected)?),
-        ProbeCommand::CopyRoomLink { room_id } => UiCommand::CopyRoomLink(room(room_id, selected)?),
+        ProbeCommand::MarkRoomRead { room_id } => {
+            return in_room(room_id, selected, UiCommand::MarkRoomRead);
+        }
+        ProbeCommand::CopyRoomLink { room_id } => {
+            return in_room(room_id, selected, UiCommand::CopyRoomLink);
+        }
+        ProbeCommand::OpenRoomLog { room_id } => {
+            return in_room(room_id, selected, UiCommand::OpenRoomLog);
+        }
+        ProbeCommand::CloseRoomLog => UiCommand::CloseRoomLog,
         ProbeCommand::OpenUserInfo { user_id } => return person(user_id, UiCommand::OpenUserInfo),
         ProbeCommand::CloseUserInfo => UiCommand::CloseUserInfo,
         ProbeCommand::RetryUserInfo => UiCommand::RetryUserInfo,

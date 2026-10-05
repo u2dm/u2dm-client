@@ -10,6 +10,7 @@ use crate::domain::media::AudioMeta;
 use crate::domain::message::PinnedMessage;
 use crate::domain::room::{NotifyMode, RoomId, RoomList, Space, UnreadFlags};
 use crate::domain::room_info::{RoomAbout, RosterMember};
+use crate::domain::room_log::RoomLog;
 use crate::domain::space_index::SpaceChild;
 use crate::domain::sticker::StickerPacks;
 use crate::domain::sync::ConnectionStatus;
@@ -36,6 +37,7 @@ pub struct AppViewState {
     pub message_link: CopiedLink,
     pub room_link: CopiedLink,
     pub source: SourceState,
+    pub room_log: Option<RoomLogView>,
 }
 
 impl AppViewState {
@@ -74,6 +76,14 @@ pub enum SourceState {
     Unavailable {
         event_id: String,
     },
+}
+
+#[derive(Clone, PartialEq, Eq)]
+pub struct RoomLogView {
+    pub room_id: RoomId,
+    pub name: String,
+    pub log: RoomLog,
+    pub lines_landed: i32,
 }
 
 #[derive(Clone, Default, PartialEq, Eq)]

@@ -33,9 +33,9 @@ use crate::commands::messages::{UserMessage, UserMessageKind};
 use crate::commands::ui::Draft;
 use crate::commands::view::{
     AppViewState, AttachmentView, AudioView, CardStatus, CopiedLink, DirectoryView, LifecycleView,
-    NowPlaying, PaginationView, PinnedView, RoomCard, RoomInfoView, RoomMenuTarget, SourceState,
-    SpaceIndexView, StickerView, Toast, TrackFile, UnsentMessage, UserCard, UserInfoView,
-    VideoView,
+    NowPlaying, PaginationView, PinnedView, RoomCard, RoomInfoView, RoomLogView, RoomMenuTarget,
+    SourceState, SpaceIndexView, StickerView, Toast, TrackFile, UnsentMessage, UserCard,
+    UserInfoView, VideoView,
 };
 use crate::domain::message::{
     EditKind, MessageEdit, MessagePermissions, MessagePreviewKind, RichText, TimelineMessage,
@@ -43,6 +43,7 @@ use crate::domain::message::{
 use crate::domain::poll::PollPermissions;
 use crate::domain::room::{RoomId, RoomList};
 use crate::domain::room_info::RoomAbout;
+use crate::domain::room_log::RoomLog;
 use crate::domain::timeline::{SourceEncryption, TimelinePatch, TimelineStatus};
 use crate::domain::user_info::{IdentityTrust, Moderation};
 use crate::domain::verification::VerificationEvent as DomainVerificationEvent;
@@ -328,6 +329,7 @@ fn apply_snapshot<B: UiBackend>(
         message_link,
         room_link,
         source,
+        room_log,
     } = view.as_ref();
 
     apply_lifecycle(w, last.map(|l| &l.lifecycle), lifecycle);
@@ -384,7 +386,68 @@ fn apply_snapshot<B: UiBackend>(
     if last.is_none_or(|l| l.source != *source) {
         apply_source(w, source);
     }
+    if last.is_none_or(|l| l.room_log != *room_log) {
+        apply_room_log::<B>(
+            w,
+            last.and_then(|l| l.room_log.as_ref()),
+            room_log.as_ref(),
+            ctx,
+        );
+    }
     with_session(|session| session.snapshot = Some(Arc::clone(view)));
+}
+
+fn apply_room_log<B: UiBackend>(
+    w: &B::Window,
+    last: Option<&RoomLogView>,
+    next: Option<&RoomLogView>,
+    ctx: &UiEventContext<'_, B>,
+) {
+    let lines = &ctx.models.room_log;
+    let Some(next) = next else {
+        w.set_bool(BoolProp::RoomLogVisible, false);
+        lines.set_vec(Vec::new());
+        return;
+    };
+    if let Some(last) = last.filter(|last| last.room_id == next.room_id) {
+        follow_room_log::<B>(lines, &last.log, &next.log);
+    } else {
+        w.set_string(
+            StringProp::RoomLogRoomId,
+            SharedString::from(next.room_id.as_ref()),
+        );
+        lines.set_vec(
+            next.log
+                .lines
+                .iter()
+                .map(|line| B::convert_log_line(line))
+                .collect(),
+        );
+    }
+    w.set_string(StringProp::RoomLogName, SharedString::from(&next.name));
+    w.set_int(
+        IntProp::RoomLogDropped,
+        i32::try_from(next.log.dropped).unwrap_or(i32::MAX),
+    );
+    w.set_int(IntProp::RoomLogLinesLanded, next.lines_landed);
+    w.set_bool(BoolProp::RoomLogVisible, true);
+    run_change_handlers_next_frame(w);
+}
+
+fn follow_room_log<B: UiBackend>(lines: &SpliceModel<B::LogLine>, shown: &RoomLog, next: &RoomLog) {
+    let oldest_kept = next.oldest().unwrap_or(u64::MAX);
+    lines.remove_front(shown.lines.partition_point(|line| line.seq < oldest_kept));
+    let newest_shown = shown.newest();
+    let arrived_from = next
+        .lines
+        .partition_point(|line| newest_shown.is_some_and(|newest| line.seq <= newest));
+    let arrived: Vec<B::LogLine> = next
+        .lines
+        .iter()
+        .skip(arrived_from)
+        .map(|line| B::convert_log_line(line))
+        .collect();
+    lines.insert_rows(lines.row_count(), arrived);
 }
 
 fn is_pinned(pinned_ids: &BTreeSet<String>, message: &TimelineMessage) -> bool {

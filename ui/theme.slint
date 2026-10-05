@@ -39,6 +39,8 @@ export global Motion {
     out property <duration> reveal-delay: 350ms;
     out property <duration> submenu-delay: 200ms;
     out property <duration> feedback-hold: 1500ms;
+    out property <duration> scroll-settle: 60ms;
+    out property <duration> scroll-judge: 250ms;
 }
 
 export global Glyph {
@@ -122,6 +124,7 @@ export global AppStyle {
     out property <color> danger-muted: Colors.tomato.mix(Palette.foreground, 0.55);
     out property <color> danger-background: Colors.tomato.mix(Palette.background, 0.1);
     out property <color> danger-border: Colors.tomato.mix(Palette.background, 0.22);
+    out property <color> warning: Colors.goldenrod.mix(Palette.foreground, 0.55);
     out property <color> success: Colors.mediumseagreen.mix(Palette.foreground, 0.8);
     out property <color> success-background: Colors.mediumseagreen.mix(Palette.background, 0.1);
 
@@ -223,6 +226,10 @@ export global Metrics {
     out property <length> room-info-pane-breakpoint: root.compact-breakpoint + root.room-info-pane-min;
     out property <length> source-width: 560px;
     out property <length> source-max-height: 600px;
+    out property <length> room-log-width: 760px;
+    out property <length> room-log-max-height: 720px;
+    out property <length> room-log-follow-slack: 64px;
+    out property <int> room-log-settle-pins: 8;
     out property <length> room-info-picker-row: Size.target;
     out property <int> room-info-topic-lines: 3;
     out property <length> user-info-max-height: 600px;

@@ -93,6 +93,7 @@ pub(super) enum AppEvent {
     RoomAction(RoomActionEvent),
     MessageAction(MessageActionEvent),
     UserInfo(UserInfoEvent),
+    RoomLogGrew,
 }
 
 pub(super) enum UserInfoEvent {
@@ -236,6 +237,7 @@ impl AppEvent {
             Self::RoomAction(event) => event.label(),
             Self::MessageAction(event) => event.label(),
             Self::UserInfo(event) => event.label(),
+            Self::RoomLogGrew => "RoomLogGrew",
         }
     }
 }

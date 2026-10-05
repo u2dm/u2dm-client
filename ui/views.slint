@@ -1,4 +1,5 @@
 import {
+    LogLineEntry,
     MemberEntry,
     RoomEntry,
     SpaceChildEntry,
@@ -92,6 +93,15 @@ export global RoomInfoView {
     in property <int> pages-landed;
     in property <UserMessageKind> error: UserMessageKind.none;
     in property <string> error-detail;
+}
+
+export global RoomLogView {
+    in property <bool> visible;
+    in property <string> room-id;
+    in property <string> name;
+    in property <[LogLineEntry]> lines;
+    in property <int> dropped;
+    in property <int> lines-landed;
 }
 
 export global RoomMenuView {

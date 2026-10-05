@@ -63,7 +63,11 @@ async fn subscribe_selected_room(sync_service: &SyncService, room_id: Option<&Ro
         .room_list_service()
         .set_room_subscriptions(subscribed.as_deref().as_slice())
         .await;
-    tracing::debug!(room_id = ?subscribed, "subscribed the selected room");
+    if let Some(room_id) = subscribed {
+        tracing::debug!(%room_id, "subscribed the selected room");
+    } else {
+        tracing::debug!("no room is selected, so no room is subscribed");
+    }
 }
 
 async fn start_with_selected_room(sync_service: &SyncService, selected: &mut SelectedRoom) {

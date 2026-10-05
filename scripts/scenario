@@ -34,6 +34,7 @@ scenario_env() {
     room-menu)       echo 'U2DM_DEMO_ROOM_INFO=slow' ;;
     room-menu-leave) echo 'U2DM_DEMO_ROOM_INFO=slow' ;;
     room-menu-failures) echo 'U2DM_DEMO_ROOM_INFO=read-fails,link-fails,notify-fails,leave-fails' ;;
+    room-log)        echo 'U2DM_DEMO_ROOM_INFO=slow' ;;
     user-info)       echo 'U2DM_DEMO_USER_INFO=slow,verified' ;;
     user-info-failures) echo 'U2DM_DEMO_USER_INFO=profile-fails' ;;
     user-dm)         echo 'U2DM_DEMO_USER_INFO=verified' ;;
@@ -159,6 +160,13 @@ scenario_steps() {
       echo '{"op":"open_room_menu","room_id":"!ohio:demo.local"}'
       echo '{"op":"leave_room","room_id":"!ohio:demo.local"}'
       echo 'sleep 3' ;;
+    room-log)
+      echo '{"op":"select_room","room_id":"!rust:demo.local"}'
+      echo 'sleep 1'
+      echo '{"op":"open_room_log"}'
+      echo 'sleep 1'
+      echo '{"op":"mark_room_read","room_id":"!rust:demo.local"}'
+      echo 'sleep 2' ;;
     room-menu-failures)
       echo '{"op":"open_room_menu","room_id":"!trip:demo.local"}'
       echo '{"op":"mark_room_read","room_id":"!trip:demo.local"}'
@@ -299,6 +307,7 @@ scenario_note() {
     room-menu)       echo 'from !rust, the room menu marks !trip read, mutes it to mentions, and two quick room links coalesce to the second' ;;
     room-menu-leave) echo 'from !rust, the room menu leaves !ohio: it drops from the list and from the menu, and the selection stays' ;;
     room-menu-failures) echo 'with no sheet open, a mark-as-read, a room link, a notification change and a leave each fail as a toast' ;;
+    room-log)        echo 'from !rust, the room logs show what named !rust since launch, and a mark-as-read lands in them live' ;;
     user-info)       echo 'in !rust the user sheet opens on an invited member, someone outside the room named from their global profile, then a verified moderator whose pronouns arrive late' ;;
     user-info-failures) echo 'the first profile read fails, so the sheet opens on its Retry card, and the retry loads it' ;;
     user-dm)         echo 'from !rust, Message on a member you already share a DM with opens that DM and closes the sheet' ;;
@@ -331,7 +340,7 @@ names() {
   printf '%s\n' unread-anchor all-unread unread-unresolved reactions-late sticker-trickle jump-to-reply \
     pinned-bar media-failures compact-layout login-oauth verify-self audio-track voice-notes delivery-marks \
     space-index polls poll-edits room-info room-leave room-info-failures room-info-pane room-menu room-menu-leave \
-    room-menu-failures user-info user-info-failures user-dm user-dm-start user-dm-failures user-ignore user-moderation \
+    room-menu-failures room-log user-info user-info-failures user-dm user-dm-start user-dm-failures user-ignore user-moderation \
     user-moderation-failures message-link message-source message-pins message-pin-failures message-delete \
     message-delete-failures
 }
@@ -397,6 +406,7 @@ cmd_run() {
   jq -r 'if .view.user_info.open then "  user info \(.view.user_info.user_id) in \(.view.user_info.room_id) \(.view.user_info.status) membership=\(.view.user_info.membership) role=\(.view.user_info.role) verified=\(.view.user_info.verified) pronouns=\(.view.user_info.pronouns) direct=\(.view.user_info.direct) ignored=\(.view.user_info.ignored) kick=\(.view.user_info.may_kick) ban=\(.view.user_info.may_ban) unban=\(.view.user_info.may_unban)" else empty end' "$out/state.json"
   jq -r '"  selected room \(.selected_room_id // "none")"' "$out/timeline.json"
   jq -r 'if .view.room_link.serial > 0 then "  room link #\(.view.room_link.serial) \(.view.room_link.url)" else empty end' "$out/state.json"
+  jq -r 'if .view.room_log then "  room log \(.view.room_log.room_id) lines=\(.view.room_log.lines) dropped=\(.view.room_log.dropped) newest=\(.view.room_log.newest[-1] // "none")" else empty end' "$out/state.json"
   jq -r 'if .view.source.status != "closed" then "  source \(.view.source.status) \(.view.source.event_id) encryption=\(.view.source.encryption)" else empty end' "$out/state.json"
 }
 

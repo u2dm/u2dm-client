@@ -65,6 +65,9 @@ pub enum UiCommand {
     MarkRoomRead(RoomId),
     #[strum(to_string = "CopyRoomLink({0})")]
     CopyRoomLink(RoomId),
+    #[strum(to_string = "OpenRoomLog({0})")]
+    OpenRoomLog(RoomId),
+    CloseRoomLog,
     #[strum(to_string = "OpenUserInfo({0})")]
     OpenUserInfo(UserId),
     CloseUserInfo,
@@ -224,6 +227,97 @@ pub enum UiCommand {
     DismissToast,
     Logout,
     Quit,
+}
+
+impl UiCommand {
+    pub fn room_id(&self) -> Option<&RoomId> {
+        match self {
+            Self::SelectRoom(room_id)
+            | Self::JoinSpaceChild(room_id)
+            | Self::OpenSpaceChild(room_id)
+            | Self::OpenRoomInfo(room_id)
+            | Self::LeaveRoom(room_id)
+            | Self::OpenRoomMenu(room_id)
+            | Self::MarkRoomRead(room_id)
+            | Self::CopyRoomLink(room_id)
+            | Self::OpenRoomLog(room_id)
+            | Self::SetRoomNotify { room_id, .. }
+            | Self::SendMessage { room_id, .. }
+            | Self::EditMessage { room_id, .. }
+            | Self::PickAttachment { room_id, .. }
+            | Self::SendAttachment { room_id, .. }
+            | Self::SendPoll { room_id, .. }
+            | Self::SendSticker { room_id, .. }
+            | Self::PaginateBackwards { room_id, .. }
+            | Self::PaginateForwards { room_id, .. }
+            | Self::JumpToLatest { room_id, .. } => Some(room_id),
+            Self::RestoreSession
+            | Self::CheckServer(_)
+            | Self::LoginPassword(_)
+            | Self::LoginOAuth
+            | Self::CancelOAuth
+            | Self::BackToHomeserver
+            | Self::ReauthPassword(_)
+            | Self::ReauthOAuth
+            | Self::SelectSpace(_)
+            | Self::SelectDirect
+            | Self::SelectSubspace(_)
+            | Self::MoveSpace { .. }
+            | Self::OpenSpaceIndex
+            | Self::CloseSpaceIndex
+            | Self::PageSpaceIndex
+            | Self::RetrySpaceIndex
+            | Self::CloseRoomInfo
+            | Self::ShowRoomInfoPane
+            | Self::HideRoomInfoPane
+            | Self::PageRoomMembers
+            | Self::RetryRoomMembers
+            | Self::FilterRoomMembers(_)
+            | Self::CloseRoomMenu
+            | Self::CloseRoomLog
+            | Self::OpenUserInfo(_)
+            | Self::CloseUserInfo
+            | Self::RetryUserInfo
+            | Self::MessageUser(_)
+            | Self::IgnoreUser(_)
+            | Self::UnignoreUser(_)
+            | Self::KickUser(_)
+            | Self::BanUser(_)
+            | Self::UnbanUser(_)
+            | Self::DismissUnsent { .. }
+            | Self::CancelAttachment
+            | Self::JumpToEvent { .. }
+            | Self::OpenPinned { .. }
+            | Self::CopyMessageLink { .. }
+            | Self::OpenEventSource { .. }
+            | Self::CloseEventSource
+            | Self::PinMessage { .. }
+            | Self::UnpinMessage { .. }
+            | Self::DeleteMessage { .. }
+            | Self::ToggleReaction { .. }
+            | Self::VotePoll { .. }
+            | Self::EndPoll { .. }
+            | Self::EditPoll { .. }
+            | Self::RetrySend { .. }
+            | Self::DiscardSend { .. }
+            | Self::RetryTimeline
+            | Self::AcceptVerification
+            | Self::RejectVerification
+            | Self::ConfirmVerification
+            | Self::DismissVerification
+            | Self::OpenMedia { .. }
+            | Self::OpenVideo { .. }
+            | Self::CloseVideo
+            | Self::PlayAudio { .. }
+            | Self::CloseAudio
+            | Self::AudioEnded { .. }
+            | Self::OpenLink { .. }
+            | Self::SaveFile { .. }
+            | Self::DismissToast
+            | Self::Logout
+            | Self::Quit => None,
+        }
+    }
 }
 
 #[derive(Clone, PartialEq, Eq)]

@@ -71,6 +71,8 @@ macro_rules! string_props {
         UserInfoPronouns UserInfoView "UserInfoView" "pronouns" set_pronouns get_pronouns;
         UserInfoLink UserInfoView "UserInfoView" "link" set_link get_link;
         UserInfoErrorDetail UserInfoView "UserInfoView" "error-detail" set_error_detail get_error_detail;
+        RoomLogRoomId RoomLogView "RoomLogView" "room-id" set_room_id get_room_id;
+        RoomLogName RoomLogView "RoomLogView" "name" set_name get_name;
         #[cfg(feature = "demo")] RoomMenuKey RoomMenu "RoomMenu" "key" set_key get_key;
     } };
 }
@@ -116,6 +118,8 @@ macro_rules! simple_callbacks {
         on_close_room_menu "close-room-menu" close_room_menu plain CloseRoomMenu;
         on_mark_room_read "mark-room-read" mark_room_read room MarkRoomRead;
         on_copy_room_link "copy-room-link" copy_room_link room CopyRoomLink;
+        on_open_room_log "open-room-log" open_room_log room OpenRoomLog;
+        on_close_room_log "close-room-log" close_room_log plain CloseRoomLog;
         on_open_user_info "open-user-info" open_user_info user OpenUserInfo;
         on_close_user_info "close-user-info" close_user_info plain CloseUserInfo;
         on_retry_user_info "retry-user-info" retry_user_info plain RetryUserInfo;
@@ -226,6 +230,7 @@ macro_rules! bool_props {
         UserInfoMayKick UserInfoView "UserInfoView" "may-kick" set_may_kick get_may_kick;
         UserInfoMayBan UserInfoView "UserInfoView" "may-ban" set_may_ban get_may_ban;
         UserInfoMayUnban UserInfoView "UserInfoView" "may-unban" set_may_unban get_may_unban;
+        RoomLogVisible RoomLogView "RoomLogView" "visible" set_visible get_visible;
     } };
 }
 pub(crate) use bool_props;
@@ -258,6 +263,8 @@ macro_rules! int_props {
         RoomInfoPagesLanded RoomInfoView "RoomInfoView" "pages-landed" set_pages_landed get_pages_landed;
         RoomLinkSerial RoomMenuView "RoomMenuView" "link-serial" set_link_serial get_link_serial;
         UserInfoColorIndex UserInfoView "UserInfoView" "color-index" set_color_index get_color_index;
+        RoomLogDropped RoomLogView "RoomLogView" "dropped" set_dropped get_dropped;
+        RoomLogLinesLanded RoomLogView "RoomLogView" "lines-landed" set_lines_landed get_lines_landed;
     } };
 }
 pub(crate) use int_props;
@@ -334,6 +341,7 @@ macro_rules! model_props {
         sticker_packs StickerPack VecModel StickerView "StickerView" "packs" set_packs;
         space_children SpaceChild VecModel SpaceIndexView "SpaceIndexView" "rows" set_rows;
         room_members MemberRow VecModel RoomInfoView "RoomInfoView" "rows" set_rows;
+        room_log LogLine SpliceModel RoomLogView "RoomLogView" "lines" set_lines;
     } };
 }
 pub(crate) use model_props;
@@ -691,6 +699,17 @@ macro_rules! room_info_placements {
 }
 pub(crate) use room_info_placements;
 
+macro_rules! log_levels {
+    ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
+        Error Error "error";
+        Warn  Warn  "warn";
+        Info  Info  "info";
+        Debug Debug "debug";
+        Trace Trace "trace";
+    } };
+}
+pub(crate) use log_levels;
+
 macro_rules! variant_named {
     ($fn:ident $src:ident; $($rust:ident $ui:ident $lit:literal;)*) => {
         pub fn $fn(name: &str) -> Option<$src> {
@@ -980,6 +999,17 @@ macro_rules! member_row_fields {
     } };
 }
 pub(crate) use member_row_fields;
+
+macro_rules! log_line_fields {
+    ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
+        time set_time "time" text;
+        level set_level "level" enumk(LogLevel);
+        level_name set_level_name "level-name" text;
+        target set_target "target" text;
+        text set_text "text" text;
+    } };
+}
+pub(crate) use log_line_fields;
 
 macro_rules! sticker_cell_fields {
     ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*

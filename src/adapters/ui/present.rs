@@ -1,20 +1,23 @@
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::fmt::Write;
 use std::sync::OnceLock;
-use std::time::Duration;
+use std::time::{Duration, SystemTime};
 
-use chrono::{Locale, Timelike};
+use chrono::{Locale, SecondsFormat, Timelike};
 use pure_rust_locales::locale_match;
 
 use super::schema::{
     define_ui_enum, deliveries, message_kinds, poll_phases, service_kinds, verification_phases,
 };
 use crate::commands::messages::{UserMessage, UserMessageKind};
+use crate::commands::view::RoomLogView;
 use crate::domain::media::{AudioKind, AudioMeta, Waveform};
 use crate::domain::message::{
     MessageBody, Reactor, ReadBy, SendState, ServiceEvent, TimelineMessage,
 };
 use crate::domain::poll::{Poll, PollAnswer, PollDisclosure, PollStatus};
+use crate::domain::room_log::{LogLevel, LogLine};
 use crate::domain::verification::VerificationCancellation;
 use crate::locale::{self, LocaleRequest};
 
@@ -211,6 +214,50 @@ pub fn message_sent_at_label(timestamp: u64) -> String {
         local.format_localized("%x", locale),
         short_time(&local, locale)
     )
+}
+
+const LOG_TIME_FORMAT: &str = "%H:%M:%S%.3f";
+
+fn local_time(at: SystemTime) -> chrono::DateTime<chrono::Local> {
+    chrono::DateTime::from(at)
+}
+
+pub fn log_time_label(at: SystemTime) -> String {
+    local_time(at).format(LOG_TIME_FORMAT).to_string()
+}
+
+pub fn log_level_name(level: LogLevel) -> &'static str {
+    match level {
+        LogLevel::Error => "ERROR",
+        LogLevel::Warn => "WARN",
+        LogLevel::Info => "INFO",
+        LogLevel::Debug => "DEBUG",
+        LogLevel::Trace => "TRACE",
+    }
+}
+
+pub fn room_log_text(shown: &RoomLogView) -> String {
+    let heading = if shown.name.is_empty() {
+        format!("{}\n", shown.room_id)
+    } else {
+        format!("{} ({})\n", shown.name, shown.room_id)
+    };
+    shown.log.lines.iter().fold(heading, |mut text, line| {
+        write_log_line(&mut text, line);
+        text
+    })
+}
+
+fn write_log_line(text: &mut String, line: &LogLine) {
+    writeln!(
+        text,
+        "{} {:<5} {}: {}",
+        local_time(line.at).to_rfc3339_opts(SecondsFormat::Millis, false),
+        log_level_name(line.level),
+        line.target,
+        line.text
+    )
+    .ok();
 }
 
 pub fn duration_label(duration: Duration) -> String {

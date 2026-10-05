@@ -9,6 +9,7 @@ use std::time::Duration;
 #[cfg(feature = "demo")]
 use adapters::demo;
 use adapters::private_fs;
+use adapters::room_log::{self, RoomLogs};
 #[cfg(feature = "demo")]
 use adapters::ui::install_timeline_dump;
 use adapters::ui::{SlintUiAdapter, UiEventOutput};
@@ -25,7 +26,9 @@ use tokio::runtime::Runtime;
 use tokio::sync::{mpsc, watch};
 use tokio::task::JoinHandle;
 use tokio::time::timeout;
-use tracing_subscriber::EnvFilter;
+use tracing_subscriber::layer::SubscriberExt;
+use tracing_subscriber::util::SubscriberInitExt;
+use tracing_subscriber::{EnvFilter, Layer, fmt};
 
 const ASSERT_DEMO_ENV: &str = "U2DM_ASSERT_DEMO";
 const DEMO_SCENARIOS_FLAG: &str = "--demo-scenarios";
@@ -46,14 +49,14 @@ mod ports;
 mod util;
 
 fn main() -> ExitCode {
-    init_tracing();
+    let room_logs = init_tracing();
     if let Some(code) = demo_scenarios_cli() {
         return code;
     }
     if demo_was_required_but_missing() {
         return ExitCode::FAILURE;
     }
-    match run() {
+    match run(room_logs) {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) => {
             tracing::error!("Error: {e}");
@@ -76,28 +79,34 @@ fn demo_was_required_but_missing() -> bool {
     true
 }
 
-fn init_tracing() {
+fn init_tracing() -> Arc<RoomLogs> {
+    let room_logs = Arc::new(RoomLogs::new());
     let filter = EnvFilter::from_default_env();
-    if env::var(LOG_FORMAT_ENV).is_ok_and(|format| format == "json") {
-        drop(
-            tracing_subscriber::fmt()
-                .json()
-                .with_current_span(false)
-                .with_span_list(false)
-                .with_env_filter(filter)
-                .try_init(),
-        );
+    let subscriber = tracing_subscriber::registry().with(room_log::capture(Arc::clone(&room_logs)));
+    let installed = if env::var(LOG_FORMAT_ENV).is_ok_and(|format| format == "json") {
+        subscriber
+            .with(
+                fmt::layer()
+                    .json()
+                    .with_current_span(false)
+                    .with_span_list(false)
+                    .with_filter(filter),
+            )
+            .try_init()
     } else {
-        drop(
-            tracing_subscriber::fmt()
-                .with_ansi(io::stdout().is_terminal())
-                .with_env_filter(filter)
-                .try_init(),
-        );
-    }
+        subscriber
+            .with(
+                fmt::layer()
+                    .with_ansi(io::stdout().is_terminal())
+                    .with_filter(filter),
+            )
+            .try_init()
+    };
+    drop(installed);
+    room_logs
 }
 
-fn run() -> Result<()> {
+fn run(room_logs: Arc<RoomLogs>) -> Result<()> {
     let catalog_dir = locale::catalog_dir();
     tracing::debug!(dir = %catalog_dir.display(), "loading translation catalogs");
     slint::init_translations!(catalog_dir);
@@ -139,6 +148,7 @@ fn run() -> Result<()> {
         backend.storage,
         media_files,
         browser,
+        room_logs,
         &cmd_tx,
         dir_in_tx,
         output,

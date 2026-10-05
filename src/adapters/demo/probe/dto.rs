@@ -5,7 +5,7 @@ use crate::commands::messages::UserMessage;
 use crate::commands::ui::Draft;
 use crate::commands::view::{
     AppViewState, AttachmentView, AudioView, CardStatus, CopiedLink, DirectoryView, LifecycleView,
-    PaginationView, PinnedView, RoomInfoView, RoomMenuTarget, RosterRow, SourceState,
+    PaginationView, PinnedView, RoomInfoView, RoomLogView, RoomMenuTarget, RosterRow, SourceState,
     SpaceIndexRow, SpaceIndexView, StickerView, Toast, TrackFile, UnsentMessage, UserInfoView,
     VideoView,
 };
@@ -38,6 +38,17 @@ pub struct ViewDto {
     message_link: LinkDto,
     room_link: LinkDto,
     source: SourceDto,
+    room_log: Option<RoomLogDto>,
+}
+
+#[derive(Serialize)]
+struct RoomLogDto {
+    room_id: String,
+    name: String,
+    lines: usize,
+    dropped: u64,
+    lines_landed: i32,
+    newest: Vec<String>,
 }
 
 #[derive(Serialize)]
@@ -356,6 +367,32 @@ pub fn view(source: &AppViewState) -> ViewDto {
         message_link: link(&source.message_link),
         room_link: link(&source.room_link),
         source: event_source(&source.source),
+        room_log: source.room_log.as_ref().map(room_log),
+    }
+}
+
+const NEWEST_LOG_LINES: usize = 12;
+
+fn room_log(source: &RoomLogView) -> RoomLogDto {
+    let lines = &source.log.lines;
+    RoomLogDto {
+        room_id: source.room_id.to_string(),
+        name: source.name.clone(),
+        lines: lines.len(),
+        dropped: source.log.dropped,
+        lines_landed: source.lines_landed,
+        newest: lines
+            .iter()
+            .skip(lines.len().saturating_sub(NEWEST_LOG_LINES))
+            .map(|line| {
+                format!(
+                    "{} {}: {}",
+                    names::log_level(line.level),
+                    line.target,
+                    line.text
+                )
+            })
+            .collect(),
     }
 }
 

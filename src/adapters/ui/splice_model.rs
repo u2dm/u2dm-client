@@ -50,6 +50,18 @@ impl<T: Clone + 'static> SpliceModel<T> {
         removed
     }
 
+    pub fn remove_front(&self, count: usize) {
+        let removed = {
+            let mut all = self.rows.borrow_mut();
+            let removed = count.min(all.len());
+            drop(all.drain(..removed));
+            removed
+        };
+        if removed > 0 {
+            self.notify.row_removed(0, removed);
+        }
+    }
+
     pub fn count_tail(&self, from: usize, matches: impl Fn(&T) -> bool) -> usize {
         self.rows
             .borrow()

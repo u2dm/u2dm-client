@@ -87,6 +87,7 @@ impl RoomInfoPort for MatrixRoomInfo {
         let event_id = newest_event_id(&room)
             .await
             .ok_or_else(|| AppError::Other("the room has no event to mark as read".to_owned()))?;
+        tracing::info!(%room_id, %event_id, "marking the room as read");
         let receipts = Receipts::new()
             .public_read_receipt(event_id.clone())
             .fully_read_marker(event_id);

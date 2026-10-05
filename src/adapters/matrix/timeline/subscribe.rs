@@ -13,6 +13,7 @@ use matrix_sdk_ui::timeline::{
 };
 use tokio::sync::{Semaphore, mpsc};
 use tokio::task::JoinSet;
+use tracing::Instrument;
 
 use super::commands::Commands;
 use super::convert::{event_media, involves};
@@ -115,7 +116,7 @@ fn spawn_enrichment(ctx: &TimelineContext<'_>, job: EnrichmentJob, claim: Enrich
     } = claim;
     let tx = ctx.timeline_tx.clone();
 
-    ctx.enrich.tracker.spawn(async move {
+    let enrichment = async move {
         let work = async {
             let _permit = semaphore.acquire().await.ok()?;
             let (thumbnail, avatar_mxc, pronouns) = tokio::join!(
@@ -147,7 +148,8 @@ fn spawn_enrichment(ctx: &TimelineContext<'_>, job: EnrichmentJob, claim: Enrich
                 .await,
             );
         }
-    });
+    };
+    ctx.enrich.tracker.spawn(enrichment.in_current_span());
 }
 
 pub(super) fn enrich_message(
@@ -239,7 +241,7 @@ fn spawn_backup_key_download(
 ) {
     let backup_client = client.clone();
     let backup_room_id = room_id_parsed.clone();
-    side_tasks.spawn(async move {
+    let download = async move {
         if let Err(e) = backup_client
             .encryption()
             .backups()
@@ -248,7 +250,8 @@ fn spawn_backup_key_download(
         {
             tracing::debug!("backup key download for {backup_room_id}: {e}");
         }
-    });
+    };
+    side_tasks.spawn(download.in_current_span());
 }
 
 async fn toggle_reaction(timeline: &Timeline, event_id: &str, key: &str) {
@@ -473,16 +476,20 @@ async fn mark_read(timeline: &Timeline) {
     };
     let receipts = Receipts::new()
         .public_read_receipt(event_id.clone())
-        .fully_read_marker(event_id);
-    if let Err(e) = timeline.send_multiple_receipts(receipts).await {
-        tracing::warn!("failed to mark the room as read: {e}");
+        .fully_read_marker(event_id.clone());
+    match timeline.send_multiple_receipts(receipts).await {
+        Ok(()) => tracing::debug!(%event_id, "sent the read receipt"),
+        Err(e) => tracing::warn!(%event_id, "failed to mark the room as read: {e}"),
     }
 }
 
 async fn paginate_backwards(timeline: &Timeline) -> PaginationOutcome {
     tracing::debug!("paginating backwards");
     match timeline.paginate_backwards(PAGINATION_BATCH_SIZE).await {
-        Ok(hit_start) => PaginationOutcome::Completed { hit_end: hit_start },
+        Ok(hit_start) => {
+            tracing::debug!(hit_start, "paginated backwards");
+            PaginationOutcome::Completed { hit_end: hit_start }
+        }
         Err(e) => {
             tracing::warn!("backward pagination failed: {e}");
             PaginationOutcome::Failed
@@ -493,7 +500,10 @@ async fn paginate_backwards(timeline: &Timeline) -> PaginationOutcome {
 async fn paginate_forwards(timeline: &Timeline) -> PaginationOutcome {
     tracing::debug!("paginating forwards");
     match timeline.paginate_forwards(PAGINATION_BATCH_SIZE).await {
-        Ok(hit_end) => PaginationOutcome::Completed { hit_end },
+        Ok(hit_end) => {
+            tracing::debug!(hit_end, "paginated forwards");
+            PaginationOutcome::Completed { hit_end }
+        }
         Err(e) => {
             tracing::warn!("forward pagination failed: {e}");
             PaginationOutcome::Failed
@@ -571,7 +581,7 @@ fn spawn_reply_detail_fetches(
         }
         let timeline = Arc::clone(timeline);
         let reply_limit = Arc::clone(reply_limit);
-        side_tasks.spawn(async move {
+        let fetch = async move {
             let Ok(_permit) = reply_limit.acquire().await else {
                 return;
             };
@@ -581,7 +591,8 @@ fn spawn_reply_detail_fetches(
             if let Err(e) = timeline.fetch_details_for_event(&id).await {
                 tracing::debug!("failed to fetch reply details: {e}");
             }
-        });
+        };
+        side_tasks.spawn(fetch.in_current_span());
     }
 }
 
@@ -867,7 +878,7 @@ pub(crate) async fn subscribe_timeline(
     let mut side_tasks = JoinSet::new();
     side_tasks.spawn({
         let timeline = Arc::clone(&timeline);
-        async move { timeline.fetch_members().await }
+        async move { timeline.fetch_members().await }.in_current_span()
     });
 
     tracing::debug!(
@@ -928,9 +939,10 @@ fn spawn_member_fetch(
     let client = ctx.client.clone();
     let media = Arc::clone(ctx.media);
     let batches = batches.clone();
-    side_tasks.spawn(async move {
+    let resolve = async move {
         resolve_members(&room, &client, &media, wanted, &batches).await;
-    });
+    };
+    side_tasks.spawn(resolve.in_current_span());
 }
 
 fn member_patch(

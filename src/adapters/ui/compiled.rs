@@ -11,20 +11,20 @@ use u2dm_ui::{
     Actions, AppWindow, AttachmentKind as UiAttachmentKind, AttachmentView,
     AudioKind as UiAudioKind, AudioView, ChildAccess as UiChildAccess, ConnectionState,
     Delivery as UiDelivery, DirectChat as UiDirectChat, DirectoryView, EmojiEntry, EmojiGroup,
-    EmojiInsert, EmojiStore, LoginActivity as UiLoginActivity,
-    LoginMethodKind as UiLoginMethodKind, LoginPhase, LoginView, MediaFailure as UiMediaFailure,
-    MediaState as UiMediaState, MemberEntry, MemberRole as UiMemberRole,
-    MemberRowKind as UiMemberRowKind, MessageEntry, MessageKind as UiMessageKind,
-    Moderation as UiModeration, NotifyMode as UiNotifyMode, PollAnswerEntry,
-    PollPhase as UiPollPhase, PreviewKind as UiPreviewKind, ReactionEntry,
+    EmojiInsert, EmojiStore, LogLevel as UiLogLevel, LogLineEntry,
+    LoginActivity as UiLoginActivity, LoginMethodKind as UiLoginMethodKind, LoginPhase, LoginView,
+    MediaFailure as UiMediaFailure, MediaState as UiMediaState, MemberEntry,
+    MemberRole as UiMemberRole, MemberRowKind as UiMemberRowKind, MessageEntry,
+    MessageKind as UiMessageKind, Moderation as UiModeration, NotifyMode as UiNotifyMode,
+    PollAnswerEntry, PollPhase as UiPollPhase, PreviewKind as UiPreviewKind, ReactionEntry,
     ReactionSend as UiReactionSend, ReactorAvatar, ReplySwipe, RoomEntry,
-    RoomInfoPlacement as UiRoomInfoPlacement, RoomInfoView, RoomMembership as UiRoomMembership,
-    RoomMenuView, RoomScope as UiRoomScope, RoomView, RosterStatus as UiRosterStatus,
-    SendState as UiSendState, ServiceKind as UiServiceKind, SessionView,
-    SourceEncryption as UiSourceEncryption, SourceStatus as UiSourceStatus, SourceView,
-    SpaceChildEntry, SpaceEntry, SpaceIndexStatus as UiSpaceIndexStatus, SpaceIndexView,
-    StickerCell, StickerPackTab, StickerRow, StickerView, TimelineState, UnsentView, UserInfoView,
-    UserMessage as UiUserMessage, UserMessageKind as UiUserMessageKind,
+    RoomInfoPlacement as UiRoomInfoPlacement, RoomInfoView, RoomLogView,
+    RoomMembership as UiRoomMembership, RoomMenuView, RoomScope as UiRoomScope, RoomView,
+    RosterStatus as UiRosterStatus, SendState as UiSendState, ServiceKind as UiServiceKind,
+    SessionView, SourceEncryption as UiSourceEncryption, SourceStatus as UiSourceStatus,
+    SourceView, SpaceChildEntry, SpaceEntry, SpaceIndexStatus as UiSpaceIndexStatus,
+    SpaceIndexView, StickerCell, StickerPackTab, StickerRow, StickerView, TimelineState,
+    UnsentView, UserInfoView, UserMessage as UiUserMessage, UserMessageKind as UiUserMessageKind,
     VerificationActivity as UiVerificationActivity, VerificationEmoji, VerificationPhase,
     VerificationView, VideoView, WindowView,
 };
@@ -33,19 +33,20 @@ use u2dm_ui::{Probe, RoomMenu};
 
 use super::backend::{
     self, Models, UiBackend, adopted_room_key, current_edited_row, last_editable_row,
-    reorder_spaces, row_of_message, selected_room_key, unread_below,
+    reorder_spaces, row_of_message, selected_room_key, shown_room_log_text, unread_below,
 };
 use super::decode::{AvatarSlot, request_avatar, request_media, request_sticker};
 use super::dto::{
-    MediaFailureKind, MediaState, MemberRowDto, MemberRowKind, MessageDto, PollAnswerDto,
-    ReactionDto, ReactorAvatarDto, RoomDto, SpaceChildDto, SpaceDto, StickerCellDto,
+    LogLineDto, MediaFailureKind, MediaState, MemberRowDto, MemberRowKind, MessageDto,
+    PollAnswerDto, ReactionDto, ReactorAvatarDto, RoomDto, SpaceChildDto, SpaceDto, StickerCellDto,
     StickerPackDto, StickerRowDto,
 };
 #[cfg(feature = "demo")]
 use super::dump;
 use super::fields::{
-    MemberRowFields, MessageFields, PollAnswerFields, ReactionFields, ReactorFields, RoomFields,
-    SpaceChildFields, SpaceFields, StickerCellFields, StickerPackFields, StickerRowFields,
+    LogLineFields, MemberRowFields, MessageFields, PollAnswerFields, ReactionFields, ReactorFields,
+    RoomFields, SpaceChildFields, SpaceFields, StickerCellFields, StickerPackFields,
+    StickerRowFields,
 };
 use super::present::{Delivery, MessageKind, PollPhase, ServiceKind, VerifyStep};
 #[cfg(feature = "demo")]
@@ -54,12 +55,12 @@ use super::props::{BoolProp, IntProp, StringProp, UiProps};
 use super::router::{EditedRow, EditedText};
 use super::schema::{
     attachment_kinds, audio_kinds, bool_props, child_accesses, connection_states, deliveries,
-    direct_chats, enum_props, int_props, login_activities, login_methods, login_phases,
-    media_failures, media_states, member_roles, member_row_fields, member_row_kinds,
-    message_fields, message_kinds, model_props, notify_modes, pending_moderations,
-    poll_answer_fields, poll_phases, preview_kinds, reaction_fields, reaction_sends,
-    reactor_fields, room_fields, room_info_placements, room_memberships, room_scopes,
-    roster_statuses, send_states, service_kinds, simple_callbacks, source_encryptions,
+    direct_chats, enum_props, int_props, log_levels, log_line_fields, login_activities,
+    login_methods, login_phases, media_failures, media_states, member_roles, member_row_fields,
+    member_row_kinds, message_fields, message_kinds, model_props, notify_modes,
+    pending_moderations, poll_answer_fields, poll_phases, preview_kinds, reaction_fields,
+    reaction_sends, reactor_fields, room_fields, room_info_placements, room_memberships,
+    room_scopes, roster_statuses, send_states, service_kinds, simple_callbacks, source_encryptions,
     source_statuses, space_child_fields, space_fields, space_index_statuses, sticker_cell_fields,
     sticker_pack_fields, sticker_row_fields, string_props, timeline_states, user_message_kinds,
     verification_activities, verification_phases,
@@ -80,6 +81,7 @@ use crate::domain::media::AudioKind;
 use crate::domain::message::{MessagePreviewKind, ReactionSend, SendState};
 use crate::domain::room::NotifyMode;
 use crate::domain::room_info::MemberRole;
+use crate::domain::room_log::LogLevel;
 use crate::domain::sync::ConnectionStatus;
 use crate::domain::timeline::{SourceEncryption, TimelineStatus};
 use crate::domain::user_info::RoomMembership;
@@ -337,6 +339,7 @@ pending_moderations!(impl_slint_enum PendingModeration UiModeration;);
 preview_kinds!(impl_slint_enum MessagePreviewKind UiPreviewKind;);
 audio_kinds!(impl_slint_enum AudioKind UiAudioKind;);
 service_kinds!(impl_slint_enum ServiceKind UiServiceKind;);
+log_levels!(impl_slint_enum LogLevel UiLogLevel;);
 
 fn string_model(items: Vec<SharedString>) -> ModelRc<SharedString> {
     ModelRc::new(VecModel::from(items))
@@ -437,6 +440,7 @@ room_fields!(impl_entry RoomDto RoomFields RoomEntry;);
 space_fields!(impl_entry SpaceDto SpaceFields SpaceEntry;);
 space_child_fields!(impl_entry SpaceChildDto SpaceChildFields SpaceChildEntry;);
 member_row_fields!(impl_entry MemberRowDto MemberRowFields MemberEntry;);
+log_line_fields!(impl_entry LogLineDto LogLineFields LogLineEntry;);
 sticker_cell_fields!(impl_entry StickerCellDto StickerCellFields StickerCell;);
 sticker_pack_fields!(impl_entry StickerPackDto StickerPackFields StickerPackTab;);
 sticker_row_fields!(impl_entry StickerRowDto StickerRowFields StickerRow;);
@@ -460,6 +464,7 @@ impl UiBackend for CompiledBackend {
     type Space = SpaceEntry;
     type SpaceChild = SpaceChildEntry;
     type MemberRow = MemberEntry;
+    type LogLine = LogLineEntry;
     type StickerRow = StickerRow;
     type StickerCell = StickerCell;
     type StickerPack = StickerPackTab;
@@ -601,6 +606,8 @@ impl SlintUiAdapter {
         });
 
         actions(win).on_request_sticker(move |key| request_sticker(&key));
+
+        actions(win).on_room_log_text(|| SharedString::from(shown_room_log_text()));
 
         actions(win).on_poll_answer_texts(|answers| {
             ModelRc::new(

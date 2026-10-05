@@ -1,0 +1,298 @@
+import { ListView, Palette } from "std-widgets.slint";
+import { IconSet } from "@lucide";
+
+import { IconButton } from "../../../components/button.slint";
+import { Copier } from "../../../components/copier.slint";
+import { DialogCard, ModalHost } from "../../../components/overlay.slint";
+import { LogLevel } from "../../../enums.slint";
+import { RoomLogView } from "../../../views.slint";
+import { Actions } from "../../../actions.slint";
+import { LogLineEntry } from "types.slint";
+import { AppStyle, Fonts, Metrics, Motion, Opacity, Radius, Size, Space, Weight } from "../../../theme.slint";
+
+component LogRow inherits Rectangle {
+    in property <LogLineEntry> line;
+
+    pure function level-tint(level: LogLevel) -> color {
+        if level == LogLevel.error {
+            return AppStyle.danger-muted;
+        }
+        if level == LogLevel.warn {
+            return AppStyle.warning;
+        }
+        if level == LogLevel.info {
+            return Palette.foreground;
+        }
+        return AppStyle.foreground-muted;
+    }
+
+    pure function text-tint(level: LogLevel) -> color {
+        if level == LogLevel.debug || level == LogLevel.trace {
+            return AppStyle.foreground-muted;
+        }
+        return Palette.foreground;
+    }
+
+    accessible-role: list-item;
+    accessible-label: root.line.time + " " + root.line.level-name + " " + root.line.target + ": " + root.line.text;
+
+    VerticalLayout {
+        padding-left: Space.md;
+        padding-right: Space.md;
+        padding-top: Space.sm;
+        padding-bottom: Space.sm;
+
+        HorizontalLayout {
+            spacing: Space.md;
+
+            Text {
+                text: root.line.time;
+                font-family: Fonts.mono;
+                font-size: Fonts.caption;
+                color: AppStyle.foreground-muted;
+                accessible-role: none;
+            }
+
+            Text {
+                text: root.line.level-name;
+                font-family: Fonts.mono;
+                font-size: Fonts.caption;
+                font-weight: Weight.semibold;
+                color: root.level-tint(root.line.level);
+                accessible-role: none;
+            }
+
+            Text {
+                horizontal-stretch: 1;
+                text: root.line.target;
+                font-family: Fonts.mono;
+                font-size: Fonts.caption;
+                color: AppStyle.foreground-muted;
+                overflow: elide;
+                accessible-role: none;
+            }
+        }
+
+        Text {
+            text: root.line.text;
+            font-family: Fonts.mono;
+            font-size: Fonts.body-small;
+            color: root.text-tint(root.line.level);
+            wrap: word-wrap;
+            accessible-role: none;
+        }
+    }
+}
+
+export component RoomLogDialog inherits ModalHost {
+    dim-opacity: AppStyle.dark ? Opacity.scrim-strong : Opacity.scrim;
+    label: @tr("Room logs");
+    dismissed => {
+        Actions.close-room-log();
+    }
+    opened => {
+        close-button.take-focus();
+    }
+
+    property <int> line-count: RoomLogView.lines.length;
+    property <bool> copied: false;
+
+    pure function summary(count: int, dropped: int) -> string {
+        if dropped > 0 {
+            return @tr("The newest {n} line for this room. Older lines were dropped." | "The newest {n} lines for this room. Older lines were dropped." % count);
+        }
+        return @tr("{n} line for this room since U2DM started." | "{n} lines for this room since U2DM started." % count);
+    }
+
+    Timer {
+        interval: Motion.feedback-hold;
+        running: root.copied;
+        triggered => {
+            root.copied = false;
+        }
+    }
+
+    log-copier := Copier { }
+
+    DialogCard {
+        x: (root.width - self.width) / 2;
+        y: (root.height - self.height) / 2;
+        width: min(Metrics.room-log-width, root.width - AppStyle.card-inset);
+        height: min(root.height - AppStyle.card-inset, Metrics.room-log-max-height);
+        clip: true;
+
+        VerticalLayout {
+            padding: Space.xl;
+            spacing: Space.md;
+
+            HorizontalLayout {
+                spacing: Space.sm;
+
+                VerticalLayout {
+                    horizontal-stretch: 1;
+                    spacing: Space.xs;
+
+                    Text {
+                        text: @tr("Room logs");
+                        font-size: Fonts.title;
+                        font-weight: Weight.bold;
+                    }
+
+                    if RoomLogView.name != "": Text {
+                        text: RoomLogView.name;
+                        font-family: Fonts.emoji;
+                        font-size: Fonts.label;
+                        overflow: elide;
+                    }
+
+                    Text {
+                        text: RoomLogView.room-id;
+                        font-family: Fonts.mono;
+                        font-size: Fonts.caption;
+                        color: AppStyle.foreground-muted;
+                        overflow: elide;
+                    }
+                }
+
+                IconButton {
+                    size: Size.md;
+                    icon: root.copied ? IconSet.Check : IconSet.Copy;
+                    enabled: root.line-count > 0;
+                    above-modal: true;
+                    label: root.copied ? @tr("Logs copied") : @tr("Copy the logs");
+                    clicked => {
+                        log-copier.copy-text(Actions.room-log-text());
+                        root.copied = true;
+                    }
+                }
+
+                close-button := IconButton {
+                    size: Size.md;
+                    icon: IconSet.X;
+                    above-modal: true;
+                    label: @tr("Close the room logs");
+                    clicked => {
+                        Actions.close-room-log();
+                    }
+                }
+            }
+
+            Rectangle {
+                vertical-stretch: 1;
+                border-radius: Radius.sm;
+                background: AppStyle.overlay-subtle;
+                clip: true;
+
+                settle := Timer {
+                    interval: Motion.scroll-settle;
+                    running: false;
+                    triggered => {
+                        lines-view.pin-step();
+                    }
+                }
+
+                judge := Timer {
+                    interval: Motion.scroll-judge;
+                    running: false;
+                    triggered => {
+                        self.running = false;
+                        lines-view.judge();
+                    }
+                }
+
+                lines-view := ListView {
+                    property <bool> following: true;
+                    property <bool> judging: false;
+                    property <length> judged-from;
+                    property <int> pins-left;
+                    property <length> end-y: min(0px, self.visible-height - self.content-height);
+                    property <int> landed: RoomLogView.lines-landed;
+
+                    accessible-label: @tr("Log lines, newest last");
+                    accessible-item-count: root.line-count;
+
+                    public function pin-step() {
+                        if self.judging || !self.following || self.pins-left <= 0 || self.content-y == self.end-y {
+                            settle.running = false;
+                            return;
+                        }
+                        self.pins-left -= 1;
+                        self.content-y = self.end-y;
+                    }
+
+                    public function judge() {
+                        self.judging = false;
+                        self.following = self.content-y <= self.judged-from
+                            && self.content-y <= self.end-y + Metrics.room-log-follow-slack;
+                        self.keep-up();
+                    }
+
+                    function keep-up() {
+                        if self.judging || !self.following {
+                            return;
+                        }
+                        self.pins-left = Metrics.room-log-settle-pins;
+                        self.content-y = self.end-y;
+                        settle.running = true;
+                    }
+
+                    init => {
+                        self.keep-up();
+                    }
+
+                    scrolled => {
+                        if !self.judging {
+                            self.judging = true;
+                            self.judged-from = self.content-y;
+                        }
+                        judge.running = true;
+                        judge.restart();
+                    }
+
+                    changed content-y => {
+                        if self.judging {
+                            judge.restart();
+                        }
+                    }
+
+                    changed landed => {
+                        self.keep-up();
+                    }
+
+                    changed visible-height => {
+                        self.keep-up();
+                    }
+
+                    changed content-height => {
+                        if self.following && !self.judging {
+                            settle.running = true;
+                        }
+                    }
+
+                    for line in RoomLogView.lines: LogRow {
+                        line: line;
+                    }
+                }
+
+                if root.line-count == 0: Text {
+                    x: Space.xl;
+                    width: parent.width - 2 * Space.xl;
+                    height: parent.height;
+                    text: @tr("Nothing has been logged for this room yet.");
+                    font-size: Fonts.body;
+                    color: AppStyle.foreground-muted;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                    wrap: word-wrap;
+                }
+            }
+
+            Text {
+                text: root.summary(root.line-count, RoomLogView.dropped);
+                font-size: Fonts.caption;
+                color: AppStyle.foreground-muted;
+                wrap: word-wrap;
+            }
+        }
+    }
+}

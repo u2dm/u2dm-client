@@ -18,6 +18,7 @@ enum RoomMenuAction {
     mark-read,
     notifications,
     copy-link,
+    logs,
     leave,
 }
 
@@ -124,6 +125,7 @@ component RoomMenuCard inherits PickerCard {
         root.notify-index = root.offered.length;
         root.offered.push(RoomMenuAction.notifications);
         root.offered.push(RoomMenuAction.copy-link);
+        root.offered.push(RoomMenuAction.logs);
         if !RoomMenuView.leaving {
             root.offered.push(RoomMenuAction.leave);
         }
@@ -175,6 +177,9 @@ component RoomMenuCard inherits PickerCard {
         if action == RoomMenuAction.copy-link {
             return @tr("Copy link");
         }
+        if action == RoomMenuAction.logs {
+            return @tr("Room logs");
+        }
         return @tr("Leave");
     }
 
@@ -197,6 +202,9 @@ component RoomMenuCard inherits PickerCard {
         }
         if action == RoomMenuAction.copy-link {
             return IconSet.Link;
+        }
+        if action == RoomMenuAction.logs {
+            return IconSet.Logs;
         }
         return IconSet.LogOut;
     }
@@ -555,6 +563,11 @@ export component RoomMenuOverlay inherits Rectangle {
             }
             Shell.nav-open = false;
             Actions.open-room-info(id);
+            return;
+        }
+        if action == RoomMenuAction.logs {
+            RoomMenu.close();
+            Actions.open-room-log(id);
             return;
         }
         if action == RoomMenuAction.mark-read {

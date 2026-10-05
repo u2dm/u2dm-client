@@ -16,19 +16,20 @@ use names::{
 
 use super::backend::{
     self, Models, UiBackend, adopted_room_key, current_edited_row, last_editable_row,
-    reorder_spaces, row_of_message, selected_room_key, unread_below,
+    reorder_spaces, row_of_message, selected_room_key, shown_room_log_text, unread_below,
 };
 use super::decode::{AvatarSlot, request_avatar, request_media, request_sticker};
 use super::dto::{
-    MediaFailureKind, MediaState, MemberRowDto, MemberRowKind, MessageDto, PollAnswerDto,
-    ReactionDto, ReactorAvatarDto, RoomDto, SpaceChildDto, SpaceDto, StickerCellDto,
+    LogLineDto, MediaFailureKind, MediaState, MemberRowDto, MemberRowKind, MessageDto,
+    PollAnswerDto, ReactionDto, ReactorAvatarDto, RoomDto, SpaceChildDto, SpaceDto, StickerCellDto,
     StickerPackDto, StickerRowDto,
 };
 #[cfg(feature = "demo")]
 use super::dump;
 use super::fields::{
-    MemberRowFields, MessageFields, PollAnswerFields, ReactionFields, ReactorFields, RoomFields,
-    SpaceChildFields, SpaceFields, StickerCellFields, StickerPackFields, StickerRowFields,
+    LogLineFields, MemberRowFields, MessageFields, PollAnswerFields, ReactionFields, ReactorFields,
+    RoomFields, SpaceChildFields, SpaceFields, StickerCellFields, StickerPackFields,
+    StickerRowFields,
 };
 use super::present::{Delivery, MessageKind, PollPhase, ServiceKind, VerifyStep};
 #[cfg(feature = "demo")]
@@ -37,14 +38,15 @@ use super::props::{BoolProp, IntProp, StringProp, UiProps};
 use super::router::{EditedRow, EditedText};
 use super::schema::{
     attachment_kinds, audio_kinds, child_accesses, connection_states, deliveries, direct_chats,
-    enum_props, login_activities, login_methods, login_phases, media_failures, media_states,
-    member_roles, member_row_fields, member_row_kinds, message_fields, message_kinds, model_props,
-    notify_modes, pending_moderations, poll_answer_fields, poll_phases, preview_kinds,
-    reaction_fields, reaction_sends, reactor_fields, room_fields, room_info_placements,
-    room_memberships, room_scopes, roster_statuses, send_states, service_kinds, simple_callbacks,
-    source_encryptions, source_statuses, space_child_fields, space_fields, space_index_statuses,
-    sticker_cell_fields, sticker_pack_fields, sticker_row_fields, timeline_states,
-    user_message_kinds, verification_activities, verification_phases,
+    enum_props, log_levels, log_line_fields, login_activities, login_methods, login_phases,
+    media_failures, media_states, member_roles, member_row_fields, member_row_kinds,
+    message_fields, message_kinds, model_props, notify_modes, pending_moderations,
+    poll_answer_fields, poll_phases, preview_kinds, reaction_fields, reaction_sends,
+    reactor_fields, room_fields, room_info_placements, room_memberships, room_scopes,
+    roster_statuses, send_states, service_kinds, simple_callbacks, source_encryptions,
+    source_statuses, space_child_fields, space_fields, space_index_statuses, sticker_cell_fields,
+    sticker_pack_fields, sticker_row_fields, timeline_states, user_message_kinds,
+    verification_activities, verification_phases,
 };
 use super::session::active_models;
 use super::video::{self, millis_to_duration};
@@ -62,6 +64,7 @@ use crate::domain::media::AudioKind;
 use crate::domain::message::{MessagePreviewKind, ReactionSend, SendState};
 use crate::domain::room::NotifyMode;
 use crate::domain::room_info::MemberRole;
+use crate::domain::room_log::LogLevel;
 use crate::domain::sync::ConnectionStatus;
 use crate::domain::timeline::{SourceEncryption, TimelineStatus};
 use crate::domain::user_info::RoomMembership;
@@ -82,6 +85,7 @@ mod names {
         pub const PASTE_ATTACHMENT: &str = "paste-attachment";
         pub const TOGGLE_REACTION: &str = "toggle-reaction";
         pub const POLL_ANSWER_TEXTS: &str = "poll-answer-texts";
+        pub const ROOM_LOG_TEXT: &str = "room-log-text";
         pub const REQUEST_MEDIA: &str = "request-media";
         pub const REQUEST_ROOM_AVATAR: &str = "request-room-avatar";
         pub const REQUEST_STICKER: &str = "request-sticker";
@@ -204,6 +208,7 @@ pending_moderations!(impl_slint_enum PendingModeration "Moderation";);
 preview_kinds!(impl_slint_enum MessagePreviewKind "PreviewKind";);
 audio_kinds!(impl_slint_enum AudioKind "AudioKind";);
 service_kinds!(impl_slint_enum ServiceKind "ServiceKind";);
+log_levels!(impl_slint_enum LogLevel "LogLevel";);
 
 fn string_arg(args: &[Value], index: usize) -> String {
     args.get(index)
@@ -557,6 +562,7 @@ impl UiBackend for InterpretedBackend {
     type Space = Value;
     type SpaceChild = Value;
     type MemberRow = Value;
+    type LogLine = Value;
     type StickerRow = Value;
     type StickerCell = Value;
     type StickerPack = Value;
@@ -754,6 +760,10 @@ impl SlintUiAdapter {
                     })
                     .collect::<VecModel<Value>>(),
             ))
+        })?;
+
+        bind_action(&self.instance, callback::ROOM_LOG_TEXT, |_| {
+            Value::String(SharedString::from(shown_room_log_text()))
         })?;
 
         let tx = cmd_tx.clone();
@@ -1078,6 +1088,7 @@ room_fields!(impl_value RoomDto RoomFields;);
 space_fields!(impl_value SpaceDto SpaceFields;);
 space_child_fields!(impl_value SpaceChildDto SpaceChildFields;);
 member_row_fields!(impl_value MemberRowDto MemberRowFields;);
+log_line_fields!(impl_value LogLineDto LogLineFields;);
 sticker_cell_fields!(impl_value StickerCellDto StickerCellFields;);
 sticker_pack_fields!(impl_value StickerPackDto StickerPackFields;);
 sticker_row_fields!(impl_value StickerRowDto StickerRowFields;);

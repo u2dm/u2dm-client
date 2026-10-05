@@ -24,7 +24,7 @@ const REBUILD_REASONS: RoomInfoNotableUpdateReasons = RoomInfoNotableUpdateReaso
     .union(RoomInfoNotableUpdateReasons::ACTIVE_SERVICE_MEMBERS)
     .union(RoomInfoNotableUpdateReasons::NONE);
 
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 enum RoomRefresh {
     Flags,
     Full,
@@ -45,6 +45,85 @@ fn refresh_for_joined(update: &JoinedRoomUpdate) -> Option<RoomRefresh> {
     let rewrites_room =
         !update.timeline.events.is_empty() || !state.is_empty() || !update.account_data.is_empty();
     rewrites_room.then_some(RoomRefresh::Full)
+}
+
+fn log_joined_update(
+    room_id: &MatrixRoomId,
+    update: &JoinedRoomUpdate,
+    refresh: Option<RoomRefresh>,
+) {
+    let (State::Before(state) | State::After(state)) = &update.state;
+    tracing::debug!(
+        %room_id,
+        events = update.timeline.events.len(),
+        limited = update.timeline.limited,
+        state = state.len(),
+        account_data = update.account_data.len(),
+        ephemeral = update.ephemeral.len(),
+        notifications = update.unread_notifications.notification_count,
+        highlights = update.unread_notifications.highlight_count,
+        ?refresh,
+        "sync updated the room"
+    );
+}
+
+fn changed_facets(before: &DomainRoom, after: &DomainRoom) -> Vec<&'static str> {
+    let DomainRoom {
+        id: _,
+        display_name,
+        avatar_mxc,
+        topic,
+        canonical_alias,
+        is_direct,
+        is_encrypted,
+        poll_permissions,
+        message_permissions,
+        member_count,
+        has_unread,
+        has_mentions,
+        has_activity,
+        notify,
+        last_activity_ts,
+        last_message_sender,
+        last_message_kind,
+        last_message_body,
+        last_message_service,
+        last_message_is_own,
+        last_message_edited,
+    } = after;
+    let preview_changed = before.last_message_sender != *last_message_sender
+        || before.last_message_kind != *last_message_kind
+        || before.last_message_body != *last_message_body
+        || before.last_message_service != *last_message_service
+        || before.last_message_is_own != *last_message_is_own
+        || before.last_message_edited != *last_message_edited;
+    let unread_changed = before.has_unread != *has_unread
+        || before.has_mentions != *has_mentions
+        || before.has_activity != *has_activity;
+    [
+        ("name", before.display_name != *display_name),
+        ("avatar", before.avatar_mxc != *avatar_mxc),
+        ("topic", before.topic != *topic),
+        ("alias", before.canonical_alias != *canonical_alias),
+        ("direct", before.is_direct != *is_direct),
+        ("encryption", before.is_encrypted != *is_encrypted),
+        (
+            "poll permissions",
+            before.poll_permissions != *poll_permissions,
+        ),
+        (
+            "message permissions",
+            before.message_permissions != *message_permissions,
+        ),
+        ("members", before.member_count != *member_count),
+        ("unread", unread_changed),
+        ("notifications", before.notify != *notify),
+        ("activity", before.last_activity_ts != *last_activity_ts),
+        ("preview", preview_changed),
+    ]
+    .into_iter()
+    .filter_map(|(facet, changed)| changed.then_some(facet))
+    .collect()
 }
 
 #[allow(clippy::struct_excessive_bools)]
@@ -137,13 +216,24 @@ impl Directory {
     fn upsert_room(&mut self, room: DomainRoom) {
         let key = room.id.to_string();
         match self.rooms.get(&key) {
-            Some(current) if **current == room => return,
+            Some(current) if **current == room => {
+                tracing::debug!(room_id = %room.id, "the rebuilt room shows nothing new");
+                return;
+            }
             Some(current) => {
+                tracing::debug!(
+                    room_id = %room.id,
+                    changed = ?changed_facets(current, &room),
+                    "the room changed"
+                );
                 if current.last_activity_ts != room.last_activity_ts {
                     self.order_dirty = true;
                 }
             }
-            None => self.order_dirty = true,
+            None => {
+                tracing::debug!(room_id = %room.id, "listing the room");
+                self.order_dirty = true;
+            }
         }
         self.rooms.insert(key, Arc::new(room));
         self.mark_rooms();
@@ -154,22 +244,27 @@ impl Directory {
         if self.rooms.remove(room_id.as_str()).is_none() {
             return;
         }
+        tracing::debug!(%room_id, "dropped the room from the list");
         self.order_dirty = true;
         self.mark_rooms();
     }
 
     pub(super) fn note_room_updates(&mut self, client: &Client, updates: &RoomUpdates) {
         for room_id in updates.left.keys() {
+            tracing::debug!(%room_id, "sync reported the room as left");
             self.remove_room(room_id);
             if self.spaces.iter().any(|space| space.id == room_id.as_str()) {
                 self.mark_spaces_structural();
             }
         }
         for (room_id, update) in &updates.joined {
-            let Some(refresh) = refresh_for_joined(update) else {
+            let refresh = refresh_for_joined(update);
+            log_joined_update(room_id, update, refresh);
+            let Some(refresh) = refresh else {
                 continue;
             };
             let Some(room) = client.get_room(room_id) else {
+                tracing::debug!(%room_id, "the client does not know the room sync updated");
                 continue;
             };
             if room.is_space() {
@@ -181,7 +276,14 @@ impl Directory {
     }
 
     pub(super) fn note_room_info(&mut self, client: &Client, update: &RoomInfoNotableUpdate) {
-        let Some(refresh) = refresh_for(update.reasons) else {
+        let refresh = refresh_for(update.reasons);
+        tracing::debug!(
+            room_id = %update.room_id,
+            reasons = ?update.reasons,
+            ?refresh,
+            "the room info changed"
+        );
+        let Some(refresh) = refresh else {
             return;
         };
         let Some(room) = client.get_room(&update.room_id) else {
@@ -192,6 +294,10 @@ impl Directory {
             return;
         }
         if !self.rooms.contains_key(update.room_id.as_str()) {
+            tracing::debug!(
+                room_id = %update.room_id,
+                "the room is not listed yet, so it waits for sync to list it"
+            );
             return;
         }
         self.mark_room(update.room_id.clone(), refresh);
@@ -199,20 +305,33 @@ impl Directory {
 
     async fn apply_pending(&mut self, client: &Client) {
         for (room_id, refresh) in mem::take(&mut self.pending) {
-            let Some(room) = client.get_room(&room_id) else {
-                continue;
-            };
-            if room.state() != RoomState::Joined {
-                self.remove_room(&room_id);
-                continue;
+            self.refresh_room(client, &room_id, refresh).await;
+        }
+    }
+
+    async fn refresh_room(
+        &mut self,
+        client: &Client,
+        room_id: &MatrixRoomId,
+        refresh: RoomRefresh,
+    ) {
+        let Some(room) = client.get_room(room_id) else {
+            tracing::debug!(%room_id, ?refresh, "the client no longer knows the room");
+            return;
+        };
+        let state = room.state();
+        if state != RoomState::Joined {
+            tracing::debug!(%room_id, ?state, "the room is no longer joined");
+            self.remove_room(room_id);
+            return;
+        }
+        tracing::debug!(%room_id, ?refresh, "refreshing the room");
+        match refresh {
+            RoomRefresh::Full => {
+                let built = build_single_room(&room, &self.notifications).await;
+                self.upsert_room(built);
             }
-            match refresh {
-                RoomRefresh::Full => {
-                    let built = build_single_room(&room, &self.notifications).await;
-                    self.upsert_room(built);
-                }
-                RoomRefresh::Flags => self.refresh_flags(&room).await,
-            }
+            RoomRefresh::Flags => self.refresh_flags(&room).await,
         }
     }
 
@@ -230,8 +349,17 @@ impl Directory {
             && entry.has_activity == flags.has_activity
             && entry.notify == flags.notify
         {
+            tracing::debug!(room_id = key, "the unread flags did not change");
             return;
         }
+        tracing::debug!(
+            room_id = key,
+            unread = flags.has_unread,
+            mentions = flags.has_mentions,
+            activity = flags.has_activity,
+            notify = ?flags.notify,
+            "the unread flags changed"
+        );
         let current = Arc::make_mut(entry);
         current.has_unread = flags.has_unread;
         current.has_mentions = flags.has_mentions;

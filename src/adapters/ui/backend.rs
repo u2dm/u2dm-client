@@ -11,28 +11,32 @@ use super::decode::{
     set_image_ready,
 };
 use super::dto::{
-    MediaFailureKind, MediaState, MemberRowDto, MessageDto, RoomDto, SpaceChildDto, SpaceDto,
-    StickerPackDto, StickerRowDto, ThumbUpdate, cell_pack, decode_failure_kind, enrich_to_update,
-    member_row_to_dto, message_to_dto, room_to_dto, space_child_to_dto, space_to_dto,
+    LogLineDto, MediaFailureKind, MediaState, MemberRowDto, MessageDto, RoomDto, SpaceChildDto,
+    SpaceDto, StickerPackDto, StickerRowDto, ThumbUpdate, cell_pack, decode_failure_kind,
+    enrich_to_update, log_line_to_dto, member_row_to_dto, message_to_dto, room_to_dto,
+    space_child_to_dto, space_to_dto,
 };
 use super::fields::{
-    MemberRowFields, MessageFields, PollAnswerFields, ReactionFields, ReactorFields, RoomFields,
-    SpaceChildFields, SpaceFields, StickerCellFields, StickerPackFields, StickerRowFields,
+    LogLineFields, MemberRowFields, MessageFields, PollAnswerFields, ReactionFields, ReactorFields,
+    RoomFields, SpaceChildFields, SpaceFields, StickerCellFields, StickerPackFields,
+    StickerRowFields,
 };
 use super::multiplex::spawn_event_multiplexer;
+use super::present::room_log_text;
 use super::props::{IntProp, StringProp, UiProps};
 use super::reconcile::{reorder_rows, sticker_cell_row, sticker_pack_row, timeline_row_of};
 use super::reduce::{dispatch_effect, is_latest_adoption, set_sticker_query};
 use super::router::EditedRow;
 use super::rows::{locate_row, patch_rows_by_id};
 use super::schema::model_props;
-use super::session::begin_session;
+use super::session::{begin_session, with_session};
 use super::splice_model::SpliceModel;
 use super::window_events::install_window_events;
 use crate::commands::effects::Effect;
 use crate::commands::view::{AppViewState, RosterRow, SpaceIndexRow};
 use crate::domain::message::TimelineMessage;
 use crate::domain::room::{Room, RoomId, Space};
+use crate::domain::room_log::LogLine;
 use crate::domain::timeline::EnrichmentDelta;
 use crate::ports::media::MediaCache;
 
@@ -46,6 +50,7 @@ pub trait UiBackend: Sized + 'static {
     type Space: SpaceFields<Self> + Clone + PartialEq + From<SpaceDto> + 'static;
     type SpaceChild: SpaceChildFields<Self> + Clone + PartialEq + From<SpaceChildDto> + 'static;
     type MemberRow: MemberRowFields<Self> + Clone + PartialEq + From<MemberRowDto> + 'static;
+    type LogLine: LogLineFields<Self> + Clone + From<LogLineDto> + 'static;
     type StickerRow: StickerRowFields<Self> + Clone + From<StickerRowDto> + 'static;
     type StickerCell: StickerCellFields<Self> + Clone + 'static;
     type StickerPack: StickerPackFields<Self> + Clone + From<StickerPackDto> + 'static;
@@ -76,6 +81,10 @@ pub trait UiBackend: Sized + 'static {
 
     fn convert_member_row(row: &RosterRow, media: &dyn MediaCache) -> Self::MemberRow {
         member_row_to_dto(row, media).into()
+    }
+
+    fn convert_log_line(line: &LogLine) -> Self::LogLine {
+        log_line_to_dto(line).into()
     }
 
     fn with_models<R>(
@@ -235,6 +244,17 @@ pub fn row_of_message<B: UiBackend>(event_id: &str, local_id: &str) -> i32 {
     B::with_timeline(|timeline| timeline.last_position(names))
         .and_then(|row| i32::try_from(row).ok())
         .unwrap_or(NO_ROW)
+}
+
+pub fn shown_room_log_text() -> String {
+    with_session(|session| {
+        session
+            .snapshot
+            .as_ref()
+            .and_then(|view| view.room_log.clone())
+    })
+    .map(|shown| room_log_text(&shown))
+    .unwrap_or_default()
 }
 
 pub fn current_edited_row<B: UiBackend>(

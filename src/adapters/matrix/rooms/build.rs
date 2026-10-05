@@ -18,6 +18,7 @@ use matrix_sdk::ruma::events::{
 };
 use matrix_sdk::ruma::{OwnedUserId, UserId};
 use matrix_sdk::{Client, Room};
+use tracing::Instrument;
 
 use crate::adapters::matrix::permissions::room_permissions;
 use crate::adapters::matrix::preview::{self, MessagePreview};
@@ -105,6 +106,12 @@ pub(super) async fn unread_flags(room: &Room, settings: &NotificationSettings) -
 }
 
 pub(super) async fn build_single_room(room: &Room, settings: &NotificationSettings) -> DomainRoom {
+    build_room(room, settings)
+        .instrument(tracing::debug_span!("room_build", room_id = %room.room_id()))
+        .await
+}
+
+async fn build_room(room: &Room, settings: &NotificationSettings) -> DomainRoom {
     let display_name = room
         .cached_display_name()
         .map(|dn| dn.to_string())

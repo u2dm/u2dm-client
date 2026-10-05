@@ -9,11 +9,11 @@ use super::decode::{
 };
 use super::present::{
     Delivery, MessageKind, PollPhase, ServiceKind, avatar_color_index, avatar_initials, delivery,
-    duration_label, file_extension, message_body_html, message_body_text, message_kind,
-    message_sender_label, message_sent_at_label, message_timestamp_label, poll_phase,
-    pronoun_labels, reaction_key_label, reactor_labels, reader_labels, room_activity_label,
-    sender_initial, service_kind, service_target, unsupported_kind, user_initial, voice_bars,
-    voter_labels,
+    duration_label, file_extension, log_level_name, log_time_label, message_body_html,
+    message_body_text, message_kind, message_sender_label, message_sent_at_label,
+    message_timestamp_label, poll_phase, pronoun_labels, reaction_key_label, reactor_labels,
+    reader_labels, room_activity_label, sender_initial, service_kind, service_target,
+    unsupported_kind, user_initial, voice_bars, voter_labels,
 };
 use super::richtext;
 use super::schema::{
@@ -30,6 +30,7 @@ use crate::domain::message::{
 use crate::domain::poll::{Poll, PollAnswer};
 use crate::domain::room::{Room, Space};
 use crate::domain::room_info::{MemberRole, RosterMember};
+use crate::domain::room_log::{LogLevel, LogLine};
 use crate::domain::space_index::{ChildKind, SpaceChild};
 use crate::domain::sticker::{PackId, StickerImage, StickerPack};
 use crate::domain::timeline::EnrichmentDelta;
@@ -368,6 +369,14 @@ pub struct MemberRowDto {
     pub role: MemberRole,
     pub avatar: Option<Image>,
     pub has_avatar: bool,
+}
+
+pub struct LogLineDto {
+    pub time: SharedString,
+    pub level: LogLevel,
+    pub level_name: SharedString,
+    pub target: SharedString,
+    pub text: SharedString,
 }
 
 pub enum ThumbUpdate {
@@ -934,6 +943,16 @@ pub fn member_row_to_dto(row: &RosterRow, media: &dyn MediaCache) -> MemberRowDt
         role: member.role,
         has_avatar: avatar.is_some(),
         avatar,
+    }
+}
+
+pub fn log_line_to_dto(line: &LogLine) -> LogLineDto {
+    LogLineDto {
+        time: SharedString::from(log_time_label(line.at)),
+        level: line.level,
+        level_name: SharedString::from(log_level_name(line.level)),
+        target: SharedString::from(line.target),
+        text: SharedString::from(line.text.as_str()),
     }
 }
 

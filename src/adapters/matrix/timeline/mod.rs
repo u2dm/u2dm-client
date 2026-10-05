@@ -38,6 +38,7 @@ use tokio::task::spawn_blocking;
 use tokio::time::timeout;
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
+use tracing::Instrument;
 
 use self::commands::Commands;
 use self::edits::DiscardedEdits;
@@ -400,6 +401,7 @@ impl TimelinePort for MatrixTimeline {
             timeline_tx,
             Commands::new(cmd_rx, close),
         )
+        .instrument(tracing::debug_span!("timeline", %room_id))
         .await
     }
 

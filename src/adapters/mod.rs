@@ -6,6 +6,7 @@ pub mod instance;
 pub mod matrix;
 pub mod media;
 pub mod private_fs;
+pub mod room_log;
 pub mod storage;
 pub mod ui;
 pub mod video;

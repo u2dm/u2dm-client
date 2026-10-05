@@ -16,6 +16,7 @@ mod polls;
 mod recover;
 mod room_directory;
 mod room_info;
+mod room_log;
 mod selection;
 mod send_lanes;
 mod session;
@@ -47,6 +48,7 @@ use pinned::PinnedMessages;
 use recover::Recovery;
 use room_directory::{RoomDirectory, RoomMeta};
 use room_info::RoomInfo;
+use room_log::RoomLogViewer;
 use selection::Selection;
 use send_lanes::SendLanes;
 use session::{SessionController, SuspendedSession};
@@ -78,6 +80,7 @@ use crate::ports::browser::BrowserPort;
 use crate::ports::matrix::{AuthPort, AuthenticatedSession, CleanupReport, MediaPort, SessionPort};
 use crate::ports::media::MediaFilePort;
 use crate::ports::output::AppOutputPort;
+use crate::ports::room_log::RoomLogPort;
 use crate::ports::storage::StoragePort;
 
 #[derive(PartialEq, Eq)]
@@ -86,6 +89,14 @@ struct EmittedRoom {
     meta: RoomMeta,
     generation: i32,
     live: bool,
+}
+
+fn log_command(cmd: &UiCommand) {
+    if let Some(room_id) = cmd.room_id() {
+        tracing::info!(command = %cmd, %room_id, "handling command");
+    } else {
+        tracing::info!(command = %cmd, "handling command");
+    }
 }
 
 pub(super) fn show_toast(output: &dyn AppOutputPort, toast: Toast) {
@@ -172,6 +183,7 @@ pub struct AppService {
     user_info: UserInfo,
     message_actions: MessageActions,
     event_source: EventSourceViewer,
+    room_log: RoomLogViewer,
     attachments: Attachments,
     submissions: Submissions,
     selection: Selection,
@@ -188,6 +200,7 @@ impl AppService {
         storage: Arc<dyn StoragePort>,
         media_files: Arc<dyn MediaFilePort>,
         browser: Arc<dyn BrowserPort>,
+        room_logs: Arc<dyn RoomLogPort>,
         commands: &CommandSender,
         dir_in_tx: mpsc::UnboundedSender<DirectoryUpdate>,
         output: Arc<dyn AppOutputPort>,
@@ -214,6 +227,7 @@ impl AppService {
             user_info: UserInfo::new(Arc::clone(&output), events.clone()),
             message_actions: MessageActions::new(Arc::clone(&output), events.clone()),
             event_source: EventSourceViewer::new(Arc::clone(&output)),
+            room_log: RoomLogViewer::new(room_logs, Arc::clone(&output), events.clone()),
             attachments: Attachments::new(media_files, Arc::clone(&output), events.clone()),
             submissions: Submissions::new(Arc::clone(&output), events.clone()),
             events,
@@ -290,7 +304,7 @@ impl AppService {
     async fn handle_input(&mut self, input: Input) -> bool {
         match input {
             Input::Ui(cmd) => {
-                tracing::info!(command = %cmd, "handling command");
+                log_command(&cmd);
                 self.dispatch(cmd).await
             }
             Input::Internal(event) => {
@@ -435,6 +449,12 @@ impl AppService {
             }
             UiCommand::CopyRoomLink(room_id) => {
                 self.copy_room_link(&room_id);
+            }
+            UiCommand::OpenRoomLog(room_id) => {
+                self.open_room_log(room_id);
+            }
+            UiCommand::CloseRoomLog => {
+                self.room_log.close();
             }
             UiCommand::OpenUserInfo(user_id) => {
                 self.open_user_info(user_id);
@@ -949,6 +969,15 @@ impl AppService {
         }
     }
 
+    fn open_room_log(&mut self, room_id: RoomId) {
+        let name = self
+            .room_directory
+            .room(&room_id)
+            .map(|room| room.display_name.clone())
+            .unwrap_or_default();
+        self.room_log.open(room_id, name);
+    }
+
     fn open_user_info(&mut self, user_id: UserId) {
         if let Some(port) = self.port(|a| &a.user_info) {
             self.user_info
@@ -1062,6 +1091,7 @@ impl AppService {
             AppEvent::RoomAction(event) => self.handle_room_action(event),
             AppEvent::MessageAction(event) => self.handle_message_action(event),
             AppEvent::UserInfo(event) => self.handle_user_info(event).await,
+            AppEvent::RoomLogGrew => self.room_log.reread(),
         }
     }
 
@@ -1752,6 +1782,7 @@ impl AppService {
             self.space_index.restart(),
             self.room_info.restart(),
             self.user_info.restart(),
+            self.room_log.restart(),
         );
     }
 
@@ -1826,6 +1857,7 @@ impl AppService {
         self.selection = Selection::default();
         self.last_selected_room = None;
         self.held_session = HeldSession::None;
+        self.room_log.forget();
     }
 
     async fn handle_quit(&mut self) {
@@ -1842,6 +1874,7 @@ impl AppService {
             self.space_index.shutdown(),
             self.room_info.shutdown(),
             self.user_info.shutdown(),
+            self.room_log.shutdown(),
         );
     }
 }
