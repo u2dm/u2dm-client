@@ -17,6 +17,7 @@ Early development.
 
 ## Features
 
+- 🫃 as default reaction
 - Password and OAuth login
 - End-to-end encryption, device verification
 - Reactions, polls, stickers
@@ -26,6 +27,7 @@ Early development.
 
 ## Planned
 
+- Settings
 - More gestures
 - Calls
 - Multiple accounts
