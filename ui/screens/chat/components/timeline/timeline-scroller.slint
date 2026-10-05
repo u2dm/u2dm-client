@@ -33,6 +33,7 @@ export component TimelineScroller inherits Rectangle {
 
     property <int> max-anchor-scrolls: 20;
     property <duration> settle-interval: 60ms;
+    property <duration> wheel-glide: 250ms;
     property <length> list-height: 0;
 
     property <int> focus-blinks: 3;
@@ -97,6 +98,15 @@ export component TimelineScroller inherits Rectangle {
         }
     }
 
+    forget-user-scroll := Timer {
+        interval: root.wheel-glide;
+        running: false;
+        triggered => {
+            self.running = false;
+            flickable.user-scrolling = false;
+        }
+    }
+
     flickable := ListView {
         width: parent.width;
         height: root.list-height > 0 ? min(parent.height, root.list-height) : parent.height;
@@ -106,15 +116,21 @@ export component TimelineScroller inherits Rectangle {
         property <length> scroll-end-epsilon: 0.5px;
         property <bool> auto-scroll: true;
         property <bool> programmatic-scroll: false;
+        property <bool> user-scrolling: false;
         property <bool> settling: false;
 
         property <bool> was-at-top: false;
         property <bool> was-at-bottom: true;
+        property <length> distance-to-end: self.max-scroll-y + self.content-y;
         property <bool> at-top: self.content-y >= -self.scroll-threshold;
-        property <bool> at-bottom:
-            self.content-y <= -(self.max-scroll-y - self.scroll-threshold);
-        property <bool> at-scroll-end:
-            self.content-y <= -(self.max-scroll-y - self.scroll-end-epsilon);
+        property <bool> at-bottom: self.distance-to-end <= self.scroll-threshold;
+        property <bool> at-scroll-end: self.distance-to-end <= self.scroll-end-epsilon;
+
+        scrolled => {
+            self.user-scrolling = true;
+            forget-user-scroll.running = true;
+            forget-user-scroll.restart();
+        }
 
         property <int> first-unseen-row: 0;
 
@@ -142,6 +158,7 @@ export component TimelineScroller inherits Rectangle {
         property <int> seen-prepend-token: 0;
         property <length> prev-content-height: 0;
         property <length> prev-content-y: 0;
+        property <length> prev-distance-to-end: 0;
         property <int> prev-item-count: 0;
 
         property <length> max-scroll-y:
@@ -178,11 +195,10 @@ export component TimelineScroller inherits Rectangle {
             if self.anchor-held {
                 self.request-anchor-step();
             } else if (self.settling || self.auto-scroll) && self.scrollable
-                && self.content-y <= self.prev-content-y {
+                && !self.moved-off-end() {
                 self.scroll-to-bottom();
             } else if self.history-prepended {
-                self.programmatic-scroll = true;
-                self.content-y = self.anchor-content-y();
+                self.scroll-content-to(self.anchor-content-y());
             }
             self.seen-prepend-token = root.prepend-token;
             self.prev-content-height = self.content-height;
@@ -206,15 +222,18 @@ export component TimelineScroller inherits Rectangle {
                     self.request-newer-page();
                 }
                 if self.scrollable {
-                    if self.content-y > self.prev-content-y && !self.at-scroll-end {
+                    if self.moved-off-end() {
                         self.auto-scroll = false;
-                    } else if self.at-bottom && !root.detached {
+                    } else if self.at-bottom && !root.detached
+                        && (self.at-scroll-end
+                        || self.distance-to-end <= self.prev-distance-to-end) {
                         self.auto-scroll = true;
                     }
                 }
             }
 
             self.prev-content-y = self.content-y;
+            self.prev-distance-to-end = self.distance-to-end;
 
             if !self.anchor-held
                 && ((self.at-top != self.was-at-top) || (self.at-bottom != self.was-at-bottom)) {
@@ -232,9 +251,24 @@ export component TimelineScroller inherits Rectangle {
             }
         }
 
+        pure function moved-off-end() -> bool {
+            return self.content-y != self.prev-content-y
+                && self.item-count == self.prev-item-count
+                && !self.at-scroll-end
+                && (self.user-scrolling
+                    ? self.distance-to-end > self.prev-distance-to-end
+                    : self.content-y > self.prev-content-y);
+        }
+
+        function scroll-content-to(target: length) {
+            if self.content-y != target {
+                self.programmatic-scroll = true;
+                self.content-y = target;
+            }
+        }
+
         function scroll-to-bottom() {
-            self.programmatic-scroll = true;
-            self.content-y = -max(self.max-scroll-y, 0px);
+            self.scroll-content-to(-max(self.max-scroll-y, 0px));
         }
 
         public function adopt-timeline() {
@@ -247,8 +281,10 @@ export component TimelineScroller inherits Rectangle {
             self.first-unseen-row = 0;
             self.anchor-scrolls = 0;
             self.reported-row = -1;
+            self.user-scrolling = false;
             self.prev-content-height = 0;
             self.prev-content-y = 0;
+            self.prev-distance-to-end = 0;
             self.prev-item-count = 0;
             if root.anchor-index >= 0 {
                 self.anchor-held = true;
@@ -362,8 +398,7 @@ export component TimelineScroller inherits Rectangle {
             self.auto-scroll = false;
             self.anchor-scrolls += 1;
             self.reported-row = -1;
-            self.programmatic-scroll = true;
-            self.content-y = self.clamped-content-y(target);
+            self.scroll-content-to(self.clamped-content-y(target));
             self.delay-settle();
         }
 
