@@ -19,6 +19,12 @@ pub(super) enum PreviewPick {
     New,
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum ShownAvatar {
+    StillExpected,
+    Outdated,
+}
+
 #[derive(Default)]
 pub(super) struct Needs {
     media: HashMap<MediaSlot, PathBuf>,
@@ -87,8 +93,17 @@ pub fn record_media_need(item: &TimelineItemKey, thumbnail: Option<&Path>, avata
     });
 }
 
-pub fn record_avatar_need(slot: &AvatarSlot, path: Option<&Path>) {
-    with_media(|media| media.needs.expect_avatar(slot, path));
+pub fn record_avatar_need(slot: &AvatarSlot, path: Option<&Path>) -> ShownAvatar {
+    with_media(|media| {
+        let needs = &mut media.needs;
+        let unchanged = path.is_some_and(|path| needs.expects_avatar(slot, path));
+        needs.expect_avatar(slot, path);
+        if unchanged {
+            ShownAvatar::StillExpected
+        } else {
+            ShownAvatar::Outdated
+        }
+    })
 }
 
 pub fn record_sticker_need(key: &str, path: Option<&Path>) {

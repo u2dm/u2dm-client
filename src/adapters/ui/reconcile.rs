@@ -1,14 +1,16 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::mem;
 use std::sync::Arc;
 
-use slint::{Model, SharedString, VecModel};
+use slint::{Image, Model, SharedString, VecModel};
 
-use super::decode::forget_all_media_needs;
+use super::backend::UiBackend;
+use super::decode::{ShownAvatar, forget_all_media_needs};
 use super::dto::{
     INVITED_HEADING_ROW, StickerGrid, StickerRowDto, prefetch_space_avatar,
     record_room_avatar_need, request_member_avatar, request_space_child_avatar,
 };
+use super::fields::RoomFields;
 use super::richtext::forget_styled_bodies;
 use super::session::with_session;
 use super::splice_model::SpliceModel;
@@ -422,25 +424,48 @@ pub fn reorder_rows<T: Clone + 'static>(model: &VecModel<T>, from: usize, to: us
     }
 }
 
-pub fn apply_rooms<T: Clone + PartialEq + 'static>(
-    model: &VecModel<T>,
+pub fn apply_rooms<B: UiBackend>(
+    model: &VecModel<B::Room>,
     rooms: &[Arc<Room>],
     previous: &[Arc<Room>],
     media: &dyn MediaCache,
-    convert: &dyn Fn(&Room) -> T,
-    get_id: &dyn Fn(&T) -> &str,
 ) {
+    let mut still_expected = HashSet::new();
     for room in rooms {
-        record_room_avatar_need(room, media);
+        if record_room_avatar_need(room, media) == ShownAvatar::StillExpected {
+            still_expected.insert(room.id.as_ref());
+        }
     }
+    let shown = avatars_still_shown::<B>(model, &still_expected);
     apply_reconcile(
         model,
         rooms,
         previous,
         &|r| r.id.as_ref(),
-        &|r| convert(r),
-        get_id,
+        &|r| keep_shown_avatar::<B>(B::convert_room(r, media), &shown),
+        &|entry| entry.id(),
     );
+}
+
+fn avatars_still_shown<'a, B: UiBackend>(
+    model: &VecModel<B::Room>,
+    still_expected: &HashSet<&'a str>,
+) -> HashMap<&'a str, Image> {
+    model
+        .iter()
+        .filter(B::Room::has_avatar)
+        .filter_map(|row| still_expected.get(row.id()).map(|id| (*id, row.avatar())))
+        .collect()
+}
+
+fn keep_shown_avatar<B: UiBackend>(mut row: B::Room, shown: &HashMap<&str, Image>) -> B::Room {
+    if !row.has_avatar()
+        && let Some(image) = shown.get(row.id())
+    {
+        row.set_avatar(image.clone());
+        row.set_has_avatar(true);
+    }
+    row
 }
 
 pub(super) trait SameItem {

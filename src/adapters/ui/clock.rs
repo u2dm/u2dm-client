@@ -5,7 +5,6 @@ use chrono::Timelike;
 use slint::{Timer, TimerMode};
 
 use super::backend::UiBackend;
-use super::fields::RoomFields;
 use super::present::invalidate_activity_labels;
 use super::reconcile::apply_rooms;
 use super::reduce::latest_rooms;
@@ -35,14 +34,7 @@ fn refresh_room_labels<B: UiBackend>(media: &dyn MediaCache) {
         return;
     };
     B::with_models(|_timeline, rooms_model, _spaces, _subspaces| {
-        apply_rooms(
-            rooms_model,
-            rooms.as_ref(),
-            &[],
-            media,
-            &|room| B::convert_room(room, media),
-            &|entry| entry.id(),
-        );
+        apply_rooms::<B>(rooms_model, rooms.as_ref(), &[], media);
     });
 }
 

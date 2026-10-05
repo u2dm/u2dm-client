@@ -12,7 +12,7 @@ use super::dto::{
     load_room_info_avatar, load_user_info_avatar, preview_line, rich_body, sticker_art,
     sticker_grid, sticker_needle, user_info_pronouns,
 };
-use super::fields::{MemberRowFields, MessageFields, RoomFields, SpaceChildFields, SpaceFields};
+use super::fields::{MemberRowFields, MessageFields, SpaceChildFields, SpaceFields};
 use super::present::{
     VerifyStep, avatar_color_index, avatar_initials, duration_label, file_extension,
     message_sent_at_label, user_initial, verification_cancellation,
@@ -502,13 +502,11 @@ fn apply_directory<B: UiBackend>(
     } = directory;
 
     if last.is_none_or(|l| !Arc::ptr_eq(&l.rooms, rooms)) {
-        apply_rooms(
+        apply_rooms::<B>(
             &ctx.models.rooms,
             rooms.as_ref(),
             last.map_or(&[], |l| l.rooms.as_ref()),
             ctx.media,
-            &|room| B::convert_room(room, ctx.media),
-            &|entry| entry.id(),
         );
     }
     if last.is_none_or(|l| !Arc::ptr_eq(&l.spaces, spaces)) {

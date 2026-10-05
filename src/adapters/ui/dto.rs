@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use slint::{Image, SharedString, StyledText};
 
 use super::decode::{
-    AvatarSlot, DecodeFailure, Decoded, MediaSlot, TimelineItemKey, load_avatar_async,
+    AvatarSlot, DecodeFailure, Decoded, MediaSlot, ShownAvatar, TimelineItemKey, load_avatar_async,
     load_thumbnail, peek_avatar, peek_thumbnail, record_avatar_need, record_media_need,
     record_sticker_need,
 };
@@ -836,7 +836,7 @@ pub fn room_to_dto(r: &Room, media: &dyn MediaCache) -> RoomDto {
     dto
 }
 
-pub fn record_room_avatar_need(r: &Room, media: &dyn MediaCache) {
+pub fn record_room_avatar_need(r: &Room, media: &dyn MediaCache) -> ShownAvatar {
     let avatar_path = r
         .avatar_mxc
         .as_deref()
@@ -844,7 +844,7 @@ pub fn record_room_avatar_need(r: &Room, media: &dyn MediaCache) {
     record_avatar_need(
         &AvatarSlot::Room(r.id.as_ref().to_owned()),
         avatar_path.as_deref(),
-    );
+    )
 }
 
 pub fn space_to_dto(s: &Space, media: &dyn MediaCache) -> SpaceDto {
