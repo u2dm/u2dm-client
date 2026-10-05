@@ -6,7 +6,7 @@ use matrix_sdk::authentication::oauth::registration::{
     ApplicationType, ClientMetadata, Localized, OAuthGrantType,
 };
 use matrix_sdk::authentication::oauth::{ClientId, OAuthSession, UserSession};
-use matrix_sdk::encryption::CryptoStoreError;
+use matrix_sdk::encryption::{BackupDownloadStrategy, CryptoStoreError, EncryptionSettings};
 use matrix_sdk::media::MediaRetentionPolicy;
 use matrix_sdk::ruma::api::client::session::get_login_types::v3::LoginType;
 use matrix_sdk::ruma::api::error::ErrorKind;
@@ -38,6 +38,10 @@ async fn open_store(
         .handle_refresh_tokens()
         .respect_login_well_known(true)
         .with_enable_automatic_back_pagination(true)
+        .with_encryption_settings(EncryptionSettings {
+            backup_download_strategy: BackupDownloadStrategy::AfterDecryptionFailure,
+            ..EncryptionSettings::default()
+        })
         .sqlite_store_with_cache_path(&paths.data, &paths.cache, Some(passphrase))
         .build()
         .await

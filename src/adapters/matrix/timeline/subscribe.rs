@@ -234,26 +234,6 @@ fn process_diffs(
     result
 }
 
-fn spawn_backup_key_download(
-    side_tasks: &mut JoinSet<()>,
-    client: &Client,
-    room_id_parsed: &OwnedRoomId,
-) {
-    let backup_client = client.clone();
-    let backup_room_id = room_id_parsed.clone();
-    let download = async move {
-        if let Err(e) = backup_client
-            .encryption()
-            .backups()
-            .download_room_keys_for_room(&backup_room_id)
-            .await
-        {
-            tracing::debug!("backup key download for {backup_room_id}: {e}");
-        }
-    };
-    side_tasks.spawn(download.in_current_span());
-}
-
 async fn toggle_reaction(timeline: &Timeline, event_id: &str, key: &str) {
     let Ok(target) = OwnedEventId::try_from(event_id) else {
         tracing::warn!(
@@ -781,6 +761,10 @@ async fn paginate_to_read_boundary(
 async fn handle_room_keys(timeline: &Timeline, keys: BTreeMap<String, BTreeSet<String>>) {
     let session_ids: Vec<String> = keys.into_values().flatten().collect();
     if !session_ids.is_empty() {
+        tracing::debug!(
+            sessions = session_ids.len(),
+            "room keys arrived from the key backup"
+        );
         timeline.retry_decryption(session_ids).await;
     }
 }
@@ -1008,7 +992,6 @@ async fn run_timeline_loop<S>(
             .backups()
             .room_keys_for_room_stream(&room_id)
     );
-    spawn_backup_key_download(&mut side_tasks, ctx.client, &room_id);
 
     let mut key_stream_done = false;
 
