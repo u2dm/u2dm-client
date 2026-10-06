@@ -14,7 +14,7 @@ import { ClickArea } from "../../../../components/a11y.slint";
 import { CopyNotifier } from "../../../../components/copier.slint";
 import { AudioView, DirectoryView, RoomView } from "../../../../views.slint";
 import { Actions } from "../../../../actions.slint";
-import { LocalState, ReplySwipe, RoomMenu, RoomMenuOrigin, RoomMenuReturn, Shell } from "../../../../local.slint";
+import { LocalState, ReplySwipe, RoomMenu, RoomMenuOrigin, RoomMenuReturn, RoomSearch, Shell } from "../../../../local.slint";
 import { StatusPill } from "../../../../components/status-pill.slint";
 import { NowPlayingBar } from "./now-playing-bar.slint";
 import { PinnedBar } from "./pinned-bar.slint";
@@ -59,6 +59,9 @@ export component TimelineView inherits Rectangle {
     changed room-id => {
         root.input-message = "";
         LocalState.forget-room();
+        if !RoomSearch.opened(root.room-id) {
+            RoomSearch.opened-room = "";
+        }
     }
 
     pure function status-message(status: TimelineState) -> string {
@@ -180,11 +183,29 @@ export component TimelineView inherits Rectangle {
     if root.has-room: stage := Rectangle {
         property <bool> swipe-within-reach: ReplySwipe.within-reach;
         property <int> menu-returns: RoomMenu.focus-returns;
+        property <bool> opened-from-search: RoomSearch.opened(root.room-id) && Shell.background-reachable;
 
         x: 0;
         y: 0;
         width: root.width;
         height: root.height;
+
+        init => {
+            if self.opened-from-search {
+                self.take-keyboard-from-search();
+            }
+        }
+
+        changed opened-from-search => {
+            if self.opened-from-search {
+                self.take-keyboard-from-search();
+            }
+        }
+
+        function take-keyboard-from-search() {
+            RoomSearch.opened-room = "";
+            input.focus-input();
+        }
 
         changed swipe-within-reach => {
             if self.swipe-within-reach {

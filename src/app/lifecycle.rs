@@ -203,6 +203,8 @@ pub(super) fn command_allowed(phase: AppPhase, cmd: &UiCommand) -> bool {
         | UiCommand::SelectSubspace(_)
         | UiCommand::MoveSpace { .. }
         | UiCommand::SelectRoom(_)
+        | UiCommand::FilterRooms(_)
+        | UiCommand::OpenSpace(_)
         | UiCommand::OpenSpaceIndex
         | UiCommand::CloseSpaceIndex
         | UiCommand::PageSpaceIndex

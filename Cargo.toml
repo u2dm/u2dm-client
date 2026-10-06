@@ -98,6 +98,7 @@ tokio-util = { version = "0.7.19", features = ["rt"] }
 tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.23", features = ["env-filter", "json"] }
 u2dm-ui = { path = "crates/ui", default-features = false }
+unicode-normalization = "0.1.25"
 url = "2.5.8"
 
 [target.'cfg(target_os = "linux")'.dependencies]

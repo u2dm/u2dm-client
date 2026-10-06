@@ -74,6 +74,7 @@ use crate::domain::media::AttachmentPick;
 use crate::domain::message::{MessageEdit, PinChange};
 use crate::domain::poll::PollDraft;
 use crate::domain::room::{NotifyMode, RoomId, RoomList, Space};
+use crate::domain::room_search::TitleQuery;
 use crate::domain::sticker::PackId;
 use crate::domain::sync::ConnectionStatus;
 use crate::domain::timeline::{AudioTrack, FailedSend, MessageReaders, TimelineFocus};
@@ -396,6 +397,12 @@ impl AppService {
             }
             UiCommand::SelectRoom(room_id) => {
                 self.select_room(room_id).await;
+            }
+            UiCommand::FilterRooms(query) => {
+                self.filter_rooms(&query);
+            }
+            UiCommand::OpenSpace(space) => {
+                self.open_space(&space);
             }
             UiCommand::OpenSpaceIndex => {
                 self.open_space_index();
@@ -821,6 +828,23 @@ impl AppService {
         self.selection.set_subspace(subspace);
         self.publish_selection();
         self.room_directory.emit_rooms(&self.selection);
+        self.follow_space_index();
+    }
+
+    fn filter_rooms(&mut self, query: &str) {
+        if self.room_directory.search(TitleQuery::new(query)) {
+            self.room_directory.emit_rooms(&self.selection);
+        }
+    }
+
+    fn open_space(&mut self, space: &RoomId) {
+        let Some(route) = self.room_directory.rail_route(space) else {
+            tracing::debug!(%space, "ignoring an open for a space the rail does not show");
+            return;
+        };
+        self.selection.set_space(Some(route.space));
+        self.selection.set_subspace(route.subspace);
+        self.show_selected_scope();
         self.follow_space_index();
     }
 

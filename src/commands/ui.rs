@@ -34,6 +34,10 @@ pub enum UiCommand {
     },
     #[strum(to_string = "SelectRoom({0})")]
     SelectRoom(RoomId),
+    #[strum(to_string = "FilterRooms")]
+    FilterRooms(String),
+    #[strum(to_string = "OpenSpace({0})")]
+    OpenSpace(RoomId),
     OpenSpaceIndex,
     CloseSpaceIndex,
     PageSpaceIndex,
@@ -239,6 +243,7 @@ impl UiCommand {
     pub fn room_id(&self) -> Option<&RoomId> {
         match self {
             Self::SelectRoom(room_id)
+            | Self::OpenSpace(room_id)
             | Self::JoinSpaceChild(room_id)
             | Self::OpenSpaceChild(room_id)
             | Self::OpenRoomInfo(room_id)
@@ -269,6 +274,7 @@ impl UiCommand {
             | Self::SelectDirect
             | Self::SelectSubspace(_)
             | Self::MoveSpace { .. }
+            | Self::FilterRooms(_)
             | Self::OpenSpaceIndex
             | Self::CloseSpaceIndex
             | Self::PageSpaceIndex

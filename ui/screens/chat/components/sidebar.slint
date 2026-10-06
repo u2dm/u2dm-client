@@ -11,55 +11,54 @@ import { HeaderTitle } from "./header-title.slint";
 import { Avatar } from "../../../components/avatar.slint";
 import { Interaction, ListItemArea } from "../../../components/a11y.slint";
 import { UnreadDot } from "./unread-dot.slint";
+import { SpaceBadge } from "./space-badge.slint";
 import { RoomEntry } from "../../../types.slint";
 import { HeaderIconButton } from "../../../components/button.slint";
+import { RetryNotice } from "../../../components/retry-notice.slint";
+import { SearchField } from "../../../components/search-field.slint";
 import { ContextPress } from "./context-press.slint";
 import { AppStyle, Fonts, IconSize, Metrics, Size, Space, Weight } from "../../../theme.slint";
-import { RoomScope, ServiceKind } from "../../../enums.slint";
+import { RoomRowKind, RoomScope, ServiceKind } from "../../../enums.slint";
 import { DirectoryView, SpaceIndexView } from "../../../views.slint";
 import { Actions } from "../../../actions.slint";
-import { RoomMenu, RoomMenuOrigin, RoomMenuReturn } from "../../../local.slint";
+import { RoomMenu, RoomMenuOrigin, RoomMenuReturn, RoomSearch } from "../../../local.slint";
 
-component SidebarSearch inherits Rectangle {
+component SidebarSearch inherits FocusScope {
     in property <bool> above-modal: false;
+    out property <bool> field-focused: field.has-focus;
 
-    height: Size.lg;
-    background: transparent;
+    callback accepted();
 
-    Rectangle {
-        x: Space.lg;
-        width: parent.width - 2 * Space.lg;
-        height: parent.height;
+    height: Size.md;
+    focus-on-click: false;
+    focus-on-tab-navigation: false;
 
-        if input.text == "": Text {
-            x: 0;
-            width: 100%;
-            text: @tr("Search");
-            font-size: Fonts.body;
-            vertical-alignment: center;
-            color: AppStyle.foreground-muted;
+    key-pressed(event) => {
+        if event.text == Key.Escape && RoomSearch.query != "" {
+            RoomSearch.clear();
+            return accept;
         }
-
-        input := TextInput {
-            width: 100%;
-            height: 100%;
-            font-size: Fonts.body;
-            vertical-alignment: center;
-            single-line: true;
-            color: Palette.foreground;
-            text: "";
-            enabled: Interaction.actionable(true, root.above-modal);
-            accessible-role: AccessibleRole.text-input;
-            accessible-label: @tr("Search rooms");
-            accessible-placeholder-text: @tr("Search");
-            accessible-value <=> self.text;
-        }
+        return reject;
     }
 
-    TouchArea {
-        mouse-cursor: text;
-        clicked => {
-            input.focus();
+    field := SearchField {
+        width: 100%;
+        height: 100%;
+        border-radius: self.height / 2;
+        border-width: 0;
+        shows-icon: false;
+        placeholder: @tr("Search");
+        label: DirectoryView.room-scope == RoomScope.direct
+            ? @tr("Search direct messages")
+            : @tr("Search rooms and spaces");
+        query <=> RoomSearch.query;
+        above-modal: root.above-modal;
+        enabled: Interaction.actionable(true, root.above-modal);
+        edited(text) => {
+            Actions.filter-rooms(text);
+        }
+        accepted => {
+            root.accepted();
         }
     }
 }
@@ -151,15 +150,66 @@ component RoomSummary inherits VerticalLayout {
     }
 }
 
+component SpaceSummary inherits VerticalLayout {
+    in property <RoomEntry> entry;
+    in property <bool> has-unread;
+
+    alignment: center;
+    spacing: Space.sm;
+
+    Text {
+        text: root.entry.name;
+        font-family: Fonts.emoji;
+        font-size: Fonts.body;
+        font-weight: Weight.semibold;
+        vertical-alignment: center;
+        overflow: elide;
+    }
+
+    HorizontalLayout {
+        spacing: Space.md;
+
+        Text {
+            horizontal-stretch: 1;
+            text: root.entry.space-parent == ""
+                ? @tr("{n} room" | "{n} rooms" % root.entry.space-rooms)
+                : @tr("In {} · {n} room" | "In {} · {n} rooms" % root.entry.space-rooms, root.entry.space-parent);
+            font-family: Fonts.emoji;
+            font-size: Fonts.body-small;
+            vertical-alignment: center;
+            overflow: elide;
+            color: AppStyle.foreground-muted;
+        }
+
+        if root.has-unread: UnreadDot {
+            cross-axis-self-alignment: center;
+            alert: root.entry.alert;
+            mention: root.entry.mention;
+        }
+    }
+}
+
 component RoomRow inherits ListItemArea {
     in property <RoomEntry> entry;
     in property <bool> collapsed;
     in property <length> avatar-size;
 
+    property <bool> is-room: root.entry.kind == RoomRowKind.room;
+    property <bool> is-space: root.entry.kind == RoomRowKind.space;
+    property <bool> is-heading: root.entry.kind == RoomRowKind.spaces-heading;
     property <bool> has-unread: root.entry.alert || root.entry.mention || root.entry.hint;
     property <int> menu-returns: RoomMenu.focus-returns;
 
     pure function describe(entry: RoomEntry) -> string {
+        if entry.kind == RoomRowKind.spaces-heading {
+            return @tr("Spaces");
+        }
+        if entry.kind == RoomRowKind.space && entry.space-parent != "" {
+            return @tr("{}, space in {}", entry.name, entry.space-parent);
+        }
+        if entry.kind == RoomRowKind.space {
+            return @tr("{}, space", entry.name);
+        }
         if entry.mention {
             return @tr("{}, mentions you", entry.name);
         }
@@ -189,12 +239,15 @@ component RoomRow inherits ListItemArea {
     }
 
     clip: true;
+    enabled: !root.is-heading;
     ring-inset: Space.xs;
     label: root.describe(root.entry);
-    background: root.fill(root.selected, root.has-hover || RoomMenu.shows(root.entry.id));
+    background: root.fill(
+        root.selected,
+        root.enabled && (root.has-hover || RoomMenu.shows(root.entry.id)));
 
     init => {
-        if !root.entry.has-avatar {
+        if root.is-room && !root.entry.has-avatar {
             Actions.request-room-avatar(root.entry.id);
         }
     }
@@ -206,6 +259,9 @@ component RoomRow inherits ListItemArea {
     }
 
     context-menu-requested => {
+        if !root.is-room {
+            return EventResult.reject;
+        }
         RoomMenu.open(
             root.entry.id,
             RoomMenuOrigin.list,
@@ -215,7 +271,7 @@ component RoomRow inherits ListItemArea {
         return EventResult.accept;
     }
 
-    ContextPress {
+    if root.is-room: ContextPress {
         hovered: root.has-hover && Interaction.actionable(root.enabled, root.above-modal);
         pressed => {
             RoomMenu.open(
@@ -227,7 +283,7 @@ component RoomRow inherits ListItemArea {
         }
     }
 
-    if root.collapsed: Rectangle {
+    if root.collapsed && !root.is-heading: Rectangle {
         width: 100%;
         height: 100%;
 
@@ -251,7 +307,7 @@ component RoomRow inherits ListItemArea {
         }
     }
 
-    if !root.collapsed: HorizontalLayout {
+    if !root.collapsed && root.is-room: HorizontalLayout {
         padding-left: Space.lg;
         padding-right: Space.lg;
         spacing: Space.lg;
@@ -271,22 +327,76 @@ component RoomRow inherits ListItemArea {
             has-unread: root.has-unread;
         }
     }
+
+    if !root.collapsed && root.is-space: HorizontalLayout {
+        padding-left: Space.lg;
+        padding-right: Space.lg;
+        spacing: Space.lg;
+
+        Rectangle {
+            cross-axis-self-alignment: center;
+            width: root.avatar-size;
+            height: root.avatar-size;
+
+            Avatar {
+                width: 100%;
+                height: 100%;
+                color-index: root.entry.color-index;
+                has-image: root.entry.has-avatar;
+                image: root.entry.avatar;
+                initial: root.entry.initial;
+            }
+
+            SpaceBadge {
+                x: parent.width - self.width + Space.xs;
+                y: parent.height - self.height + Space.xs;
+                cutout: Palette.alternate-background;
+            }
+        }
+
+        SpaceSummary {
+            entry: root.entry;
+            has-unread: root.has-unread;
+        }
+    }
+
+    if !root.collapsed && root.is-heading: HorizontalLayout {
+        padding-left: Space.lg;
+        padding-right: Space.lg;
+        padding-bottom: Space.sm;
+
+        Text {
+            text: @tr("Spaces");
+            font-size: Fonts.caption;
+            font-weight: Weight.semibold;
+            color: AppStyle.foreground-muted;
+            vertical-alignment: bottom;
+            accessible-role: none;
+        }
+    }
 }
 
 component RoomColumnHeader inherits Rectangle {
     in property <bool> collapsed;
     in property <bool> above-modal;
+    out property <bool> search-focused: search.visible && search.field-focused;
+
+    callback search-accepted();
 
     property <bool> in-space: DirectoryView.room-scope == RoomScope.space;
     property <length> index-button-inset: Space.md;
 
     height: Metrics.header-row;
 
-    if !root.collapsed && !root.in-space: SidebarSearch {
-        x: Space.md;
+    search := SidebarSearch {
+        x: Space.lg;
         y: (parent.height - self.height) / 2;
-        width: parent.width - 2 * Space.md;
+        width: parent.width - 2 * Space.lg;
+        visible: !root.collapsed && !root.in-space;
         above-modal: root.above-modal;
+        accepted => {
+            root.search-accepted();
+        }
     }
 
     if !root.collapsed && root.in-space: HeaderTitle {
@@ -325,10 +435,38 @@ export component Sidebar inherits Rectangle {
     callback room-selected();
 
     property <length> row-height: Metrics.sidebar-row;
+    property <length> heading-height: Metrics.sidebar-heading;
     property <length> rail-width: Metrics.space-rail;
     property <length> avatar-size: Metrics.sidebar-avatar;
+    property <bool> finds-nothing: RoomSearch.query != ""
+        && !root.collapsed
+        && DirectoryView.room-scope != RoomScope.space
+        && DirectoryView.rooms.length == 0;
 
     background: Palette.alternate-background;
+
+    function open-row(row: RoomEntry) {
+        if row.kind == RoomRowKind.room {
+            Actions.select-room(row.id);
+            RoomSearch.clear();
+            root.room-selected();
+        }
+        if row.kind == RoomRowKind.space {
+            Actions.open-space(row.id);
+            RoomSearch.clear();
+        }
+    }
+
+    function open-first-match() {
+        if RoomSearch.query == "" || DirectoryView.rooms.length == 0 {
+            return;
+        }
+        let first = DirectoryView.rooms[0].kind == RoomRowKind.spaces-heading ? 1 : 0;
+        if DirectoryView.rooms[first].kind == RoomRowKind.room {
+            RoomSearch.opened-room = DirectoryView.rooms[first].id;
+        }
+        root.open-row(DirectoryView.rooms[first]);
+    }
 
     HorizontalLayout {
         rail := SpaceRail {
@@ -343,9 +481,20 @@ export component Sidebar inherits Rectangle {
 
         room-column := Rectangle {
             VerticalLayout {
-                RoomColumnHeader {
+                header := RoomColumnHeader {
                     collapsed: root.collapsed;
                     above-modal: root.above-modal;
+                    search-accepted => {
+                        root.open-first-match();
+                    }
+                }
+
+                if root.finds-nothing: RetryNotice {
+                    text: DirectoryView.room-scope == RoomScope.direct
+                        ? @tr("No direct messages match your search.")
+                        : @tr("No rooms or spaces match your search.");
+                    shows-icon: true;
+                    icon: IconSet.SearchX;
                 }
 
                 ListView {
@@ -354,16 +503,18 @@ export component Sidebar inherits Rectangle {
                     accessible-item-count: DirectoryView.rooms.length;
 
                     for room[idx] in DirectoryView.rooms: RoomRow {
-                        height: root.row-height;
+                        height: room.kind == RoomRowKind.spaces-heading ? root.heading-height : root.row-height;
                         index: idx;
                         above-modal: root.above-modal;
                         collapsed: root.collapsed;
                         avatar-size: root.avatar-size;
                         entry: room;
-                        selected: room.id == DirectoryView.selected-room-id;
+                        selected: room.kind == RoomRowKind.room && room.id == DirectoryView.selected-room-id;
                         clicked => {
-                            Actions.select-room(room.id);
-                            root.room-selected();
+                            if room.kind == RoomRowKind.room && header.search-focused {
+                                RoomSearch.opened-room = room.id;
+                            }
+                            root.open-row(room);
                         }
                     }
                 }

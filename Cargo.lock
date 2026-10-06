@@ -7820,6 +7820,7 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "u2dm-ui",
+ "unicode-normalization",
  "url",
  "wayland-client",
  "windows-native-keyring-store",

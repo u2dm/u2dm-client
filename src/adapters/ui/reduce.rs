@@ -21,8 +21,9 @@ use super::present::{
 };
 use super::props::{BoolProp, IntProp, StringProp, UiProps};
 use super::reconcile::{
-    RowReplacements, apply_member_rows, apply_reader_rows, apply_rooms, apply_space_children,
-    apply_spaces, apply_timeline_patch, index_sticker_grid, retain_awaited_downloads,
+    RoomListing, RowReplacements, apply_member_rows, apply_reader_rows, apply_rooms,
+    apply_space_children, apply_spaces, apply_timeline_patch, index_sticker_grid,
+    retain_awaited_downloads,
 };
 use super::rows::patch_rows_by_id;
 use super::session::{begin_session, with_session};
@@ -41,7 +42,7 @@ use crate::domain::message::{
     EditKind, MessageEdit, MessagePermissions, MessagePreviewKind, RichText, TimelineMessage,
 };
 use crate::domain::poll::PollPermissions;
-use crate::domain::room::{RoomId, RoomList};
+use crate::domain::room::RoomId;
 use crate::domain::room_info::RoomAbout;
 use crate::domain::room_log::RoomLog;
 use crate::domain::timeline::{OlderHistory, SourceEncryption, TimelinePatch, TimelineStatus};
@@ -134,13 +135,8 @@ fn publish_room_cursor(w: &impl UiProps) {
     );
 }
 
-pub(super) fn latest_rooms() -> Option<RoomList> {
-    with_session(|session| {
-        session
-            .snapshot
-            .as_ref()
-            .map(|view| Arc::clone(&view.directory.rooms))
-    })
+pub(super) fn latest_directory() -> Option<DirectoryView> {
+    with_session(|session| session.snapshot.as_ref().map(|view| view.directory.clone()))
 }
 
 pub(super) fn set_sticker_query<B: UiBackend>(query: &str, media: &dyn MediaCache) {
@@ -629,6 +625,7 @@ fn apply_directory<B: UiBackend>(
 ) {
     let DirectoryView {
         rooms,
+        space_matches,
         spaces,
         subspaces,
         scope,
@@ -638,11 +635,11 @@ fn apply_directory<B: UiBackend>(
         direct_flags,
     } = directory;
 
-    if last.is_none_or(|l| !Arc::ptr_eq(&l.rooms, rooms)) {
+    if last.is_none_or(|l| !Arc::ptr_eq(&l.rooms, rooms) || l.space_matches != *space_matches) {
         apply_rooms::<B>(
             &ctx.models.rooms,
-            rooms.as_ref(),
-            last.map_or(&[], |l| l.rooms.as_ref()),
+            RoomListing::of(directory),
+            last.map_or_else(RoomListing::default, RoomListing::of),
             ctx.media,
         );
     }

@@ -6,8 +6,8 @@ use crate::commands::ui::Draft;
 use crate::commands::view::{
     AppViewState, AttachmentView, AudioView, CardStatus, CopiedLink, DirectoryView, LifecycleView,
     PaginationView, PinnedView, ReadersView, RoomInfoView, RoomLogView, RoomMenuTarget, RosterRow,
-    SourceState, SpaceIndexRow, SpaceIndexView, StickerView, Toast, TrackFile, UnsentMessage,
-    UserInfoView, VideoView,
+    SourceState, SpaceIndexRow, SpaceIndexView, SpaceMatch, StickerView, Toast, TrackFile,
+    UnsentMessage, UserInfoView, VideoView,
 };
 use crate::domain::message::{EditKind, PinnedMessage};
 use crate::domain::room::{Room, Space};
@@ -180,6 +180,17 @@ struct SpaceHeadingDto {
 }
 
 #[derive(Serialize)]
+struct SpaceMatchDto {
+    id: String,
+    name: String,
+    parent: Option<String>,
+    rooms: usize,
+    alert: bool,
+    mention: bool,
+    hint: bool,
+}
+
+#[derive(Serialize)]
 struct DirectoryDto {
     scope: &'static str,
     space_id: String,
@@ -189,6 +200,7 @@ struct DirectoryDto {
     direct_mention: bool,
     direct_hint: bool,
     rooms: Vec<RoomDto>,
+    space_matches: Vec<SpaceMatchDto>,
     spaces: Vec<SpaceDto>,
     subspaces: Vec<SpaceDto>,
 }
@@ -582,6 +594,18 @@ fn space(source: &Space) -> SpaceDto {
     }
 }
 
+fn space_match(source: &SpaceMatch) -> SpaceMatchDto {
+    SpaceMatchDto {
+        id: source.id.clone(),
+        name: source.name.clone(),
+        parent: source.parent.clone(),
+        rooms: source.rooms,
+        alert: source.flags.alert,
+        mention: source.flags.mention,
+        hint: source.flags.hint,
+    }
+}
+
 fn directory(source: &DirectoryView) -> DirectoryDto {
     DirectoryDto {
         scope: names::room_scope(source.scope),
@@ -595,6 +619,7 @@ fn directory(source: &DirectoryView) -> DirectoryDto {
         direct_mention: source.direct_flags.mention,
         direct_hint: source.direct_flags.hint,
         rooms: source.rooms.iter().map(|entry| room(entry)).collect(),
+        space_matches: source.space_matches.iter().map(space_match).collect(),
         spaces: source.spaces.iter().map(space).collect(),
         subspaces: source.subspaces.iter().map(space).collect(),
     }

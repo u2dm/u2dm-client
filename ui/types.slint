@@ -1,7 +1,8 @@
-import { AudioKind, ChildAccess, Delivery, LogLevel, MediaFailure, MediaState, MemberRole, MemberRowKind, MessageKind, PollPhase, PreviewKind, ReactionSend, SendState, ServiceKind, UserMessageKind } from "./enums.slint";
+import { AudioKind, ChildAccess, Delivery, LogLevel, MediaFailure, MediaState, MemberRole, MemberRowKind, MessageKind, PollPhase, PreviewKind, ReactionSend, RoomRowKind, SendState, ServiceKind, UserMessageKind } from "./enums.slint";
 
 export struct RoomEntry {
     id: string,
+    kind: RoomRowKind,
     name: string,
     initial: string,
     avatar: image,
@@ -20,6 +21,8 @@ export struct RoomEntry {
     last-message-is-own: bool,
     last-message-edited: bool,
     last-message-time: string,
+    space-rooms: int,
+    space-parent: string,
 }
 
 export struct SpaceEntry {

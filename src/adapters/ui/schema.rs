@@ -104,6 +104,8 @@ macro_rules! simple_callbacks {
         on_select_space "select-space" select_space opt_room SelectSpace;
         on_select_direct "select-direct" select_direct plain SelectDirect;
         on_select_subspace "select-subspace" select_subspace opt_room SelectSubspace;
+        on_filter_rooms "filter-rooms" filter_rooms pass FilterRooms;
+        on_open_space "open-space" open_space room OpenSpace;
         on_open_space_index "open-space-index" open_space_index plain OpenSpaceIndex;
         on_close_space_index "close-space-index" close_space_index plain CloseSpaceIndex;
         on_page_space_index "page-space-index" page_space_index plain PageSpaceIndex;
@@ -709,6 +711,15 @@ macro_rules! member_row_kinds {
 }
 pub(crate) use member_row_kinds;
 
+macro_rules! room_row_kinds {
+    ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
+        Room          Room          "room";
+        SpacesHeading SpacesHeading "spaces-heading";
+        Space         Space         "space";
+    } };
+}
+pub(crate) use room_row_kinds;
+
 macro_rules! roster_statuses {
     ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
         Loading Loading "loading";
@@ -961,6 +972,7 @@ pub(crate) use reactor_fields;
 macro_rules! room_fields {
     ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
         id set_id "id" text;
+        kind set_kind "kind" enumk(RoomRowKind);
         name set_name "name" text;
         initial set_initial "initial" text;
         color_index set_color_index "color-index" int;
@@ -977,6 +989,8 @@ macro_rules! room_fields {
         last_message_is_own set_last_message_is_own "last-message-is-own" flag;
         last_message_edited set_last_message_edited "last-message-edited" flag;
         last_message_time set_last_message_time "last-message-time" text;
+        space_rooms set_space_rooms "space-rooms" int;
+        space_parent set_space_parent "space-parent" text;
         has_avatar set_has_avatar "has-avatar" flag;
         avatar set_avatar "avatar" image;
     } };

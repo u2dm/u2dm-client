@@ -1,12 +1,13 @@
 import { ListView, Palette, Spinner } from "std-widgets.slint";
-import { IconDisplay, IconSet } from "@lucide";
+import { IconSet } from "@lucide";
 
 import { Avatar } from "../../../components/avatar.slint";
 import { AppButton, HeaderIconButton } from "../../../components/button.slint";
 import { RetryNotice } from "../../../components/retry-notice.slint";
 import { StatusPill } from "../../../components/status-pill.slint";
+import { SpaceBadge } from "./space-badge.slint";
 import { SpaceChildEntry } from "../../../types.slint";
-import { AppStyle, Fonts, IconSize, Metrics, Space, Stroke, Weight } from "../../../theme.slint";
+import { AppStyle, Fonts, Metrics, Space, Weight } from "../../../theme.slint";
 import { ChildAccess, SpaceIndexStatus } from "../../../enums.slint";
 import { SpaceIndexView } from "../../../views.slint";
 import { Actions } from "../../../actions.slint";
@@ -48,21 +49,9 @@ component ChildAvatar inherits Rectangle {
         initial: root.entry.initial;
     }
 
-    if root.entry.is-space: Rectangle {
+    if root.entry.is-space: SpaceBadge {
         x: parent.width - self.width + Space.xs;
         y: parent.height - self.height + Space.xs;
-        width: Metrics.index-badge;
-        height: Metrics.index-badge;
-        border-radius: self.height / 2;
-        border-width: Stroke.emphasis;
-        border-color: Palette.background;
-        background: Palette.alternate-background;
-
-        IconDisplay {
-            icon: IconSet.Layers;
-            size: IconSize.xs;
-            stroke: AppStyle.foreground-muted;
-        }
     }
 }
 

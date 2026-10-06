@@ -21,8 +21,8 @@ use super::backend::{
 use super::decode::{AvatarSlot, request_avatar, request_media, request_sticker};
 use super::dto::{
     LogLineDto, MediaFailureKind, MediaState, MemberRowDto, MemberRowKind, MessageDto,
-    PollAnswerDto, ReactionDto, ReactorAvatarDto, RoomDto, SpaceChildDto, SpaceDto, StickerCellDto,
-    StickerPackDto, StickerRowDto,
+    PollAnswerDto, ReactionDto, ReactorAvatarDto, RoomDto, RoomRowKind, SpaceChildDto, SpaceDto,
+    StickerCellDto, StickerPackDto, StickerRowDto,
 };
 #[cfg(feature = "demo")]
 use super::dump;
@@ -43,10 +43,10 @@ use super::schema::{
     message_fields, message_kinds, model_props, notify_modes, pending_moderations,
     poll_answer_fields, poll_phases, preview_kinds, reaction_fields, reaction_sends,
     reactor_fields, readers_statuses, room_fields, room_info_placements, room_memberships,
-    room_scopes, roster_statuses, send_states, service_kinds, simple_callbacks, source_encryptions,
-    source_statuses, space_child_fields, space_fields, space_index_statuses, sticker_cell_fields,
-    sticker_pack_fields, sticker_row_fields, timeline_states, user_message_kinds,
-    verification_activities, verification_phases,
+    room_row_kinds, room_scopes, roster_statuses, send_states, service_kinds, simple_callbacks,
+    source_encryptions, source_statuses, space_child_fields, space_fields, space_index_statuses,
+    sticker_cell_fields, sticker_pack_fields, sticker_row_fields, timeline_states,
+    user_message_kinds, verification_activities, verification_phases,
 };
 use super::session::active_models;
 use super::video::{self, millis_to_duration};
@@ -202,6 +202,7 @@ child_accesses!(impl_slint_enum ChildAccess "ChildAccess";);
 notify_modes!(impl_slint_enum NotifyMode "NotifyMode";);
 member_roles!(impl_slint_enum MemberRole "MemberRole";);
 member_row_kinds!(impl_slint_enum MemberRowKind "MemberRowKind";);
+room_row_kinds!(impl_slint_enum RoomRowKind "RoomRowKind";);
 roster_statuses!(impl_slint_enum RosterStatus "RosterStatus";);
 room_info_placements!(impl_slint_enum RoomInfoPlacement "RoomInfoPlacement";);
 room_memberships!(impl_slint_enum RoomMembership "RoomMembership";);

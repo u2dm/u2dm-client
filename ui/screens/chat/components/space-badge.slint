@@ -1,0 +1,22 @@
+import { Palette } from "std-widgets.slint";
+import { IconDisplay, IconSet } from "@lucide";
+
+import { AppStyle, IconSize, Metrics, Stroke } from "../../../theme.slint";
+
+export component SpaceBadge inherits Rectangle {
+    in property <brush> cutout: Palette.background;
+    in property <brush> fill: Palette.alternate-background;
+
+    width: Metrics.space-badge;
+    height: Metrics.space-badge;
+    border-radius: self.height / 2;
+    border-width: Stroke.emphasis;
+    border-color: root.cutout;
+    background: root.fill;
+
+    IconDisplay {
+        icon: IconSet.Layers;
+        size: IconSize.xs;
+        stroke: AppStyle.foreground-muted;
+    }
+}

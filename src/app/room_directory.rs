@@ -14,10 +14,11 @@ use super::selection::{RoomFilter, Selection};
 use super::space_order;
 use super::task_group::TaskGroup;
 use crate::commands::sync::DirectoryUpdate;
-use crate::commands::view::SpaceHeading;
+use crate::commands::view::{SpaceHeading, SpaceMatch};
 use crate::domain::message::MessagePermissions;
 use crate::domain::poll::PollPermissions;
 use crate::domain::room::{Room, RoomId, RoomList, Space, UnreadFlags};
+use crate::domain::room_search::TitleQuery;
 use crate::domain::sync::{ConnectionStatus, SessionLoss, SyncEvent, SyncOutcome};
 use crate::ports::matrix::{SpaceOrderPort, SyncPort, SyncSink};
 use crate::ports::output::AppOutputPort;
@@ -41,6 +42,17 @@ pub(super) struct RoomMeta {
 pub(super) struct ReconcileOutcome {
     pub(super) space_dropped: bool,
     pub(super) subspace_dropped: bool,
+}
+
+pub(super) struct RailRoute {
+    pub(super) space: RoomId,
+    pub(super) subspace: Option<RoomId>,
+}
+
+#[derive(Clone, Copy)]
+struct RailPlace {
+    space: usize,
+    parent: Option<usize>,
 }
 
 pub(super) struct Membership<'a> {
@@ -229,6 +241,7 @@ pub(super) struct RoomDirectory {
     pending_orders: HashMap<String, PendingOrder>,
     order_writes: Arc<OrderWrites>,
     connected: bool,
+    query: TitleQuery,
 }
 
 impl RoomDirectory {
@@ -245,6 +258,7 @@ impl RoomDirectory {
             pending_orders: HashMap::new(),
             order_writes: Arc::default(),
             connected: false,
+            query: TitleQuery::default(),
         }
     }
 
@@ -423,6 +437,15 @@ impl RoomDirectory {
         self.orders.clear();
         self.pending_orders.clear();
         self.order_writes.latest_op.fetch_add(1, Ordering::Relaxed);
+        self.query = TitleQuery::default();
+    }
+
+    pub(super) fn search(&mut self, query: TitleQuery) -> bool {
+        if self.query == query {
+            return false;
+        }
+        self.query = query;
+        true
     }
 
     pub(super) fn spawn_order_write(
@@ -571,9 +594,21 @@ impl RoomDirectory {
     }
 
     pub(super) fn emit_rooms(&self, sel: &Selection) {
-        let rooms = match &sel.filter {
-            RoomFilter::All => Arc::clone(&self.all_rooms),
-            RoomFilter::Direct => self.rooms_where(|room| room.is_direct),
+        let rooms = self.listed_rooms(sel);
+        let space_matches = self.space_matches(sel);
+        self.output.publish(Box::new(move |view| {
+            view.directory.rooms = rooms;
+            view.directory.space_matches = space_matches;
+        }));
+    }
+
+    fn listed_rooms(&self, sel: &Selection) -> RoomList {
+        match &sel.filter {
+            RoomFilter::All if self.query.is_empty() => Arc::clone(&self.all_rooms),
+            RoomFilter::All => self.rooms_where(|room| self.query.matches(&room.display_name)),
+            RoomFilter::Direct => {
+                self.rooms_where(|room| room.is_direct && self.query.matches(&room.display_name))
+            }
             RoomFilter::Space { space, subspace } => {
                 let space_id = subspace.as_ref().unwrap_or(space);
                 match self.graph.index.get(space_id.as_ref()).copied() {
@@ -583,9 +618,91 @@ impl RoomDirectory {
                     None => Arc::from(Vec::new()),
                 }
             }
+        }
+    }
+
+    fn space_matches(&self, sel: &Selection) -> Arc<[SpaceMatch]> {
+        if self.query.is_empty() || !matches!(sel.filter, RoomFilter::All) {
+            return Arc::from(Vec::new());
+        }
+        self.rail_places()
+            .into_iter()
+            .filter_map(|place| self.space_match(place))
+            .collect::<Vec<SpaceMatch>>()
+            .into()
+    }
+
+    fn space_match(&self, place: RailPlace) -> Option<SpaceMatch> {
+        let space = self
+            .spaces
+            .get(place.space)
+            .filter(|space| self.query.matches(&space.name))?;
+        Some(SpaceMatch {
+            id: space.id.clone(),
+            name: space.name.clone(),
+            avatar_mxc: space.avatar_mxc.clone(),
+            parent: place
+                .parent
+                .and_then(|parent| self.spaces.get(parent))
+                .map(|parent| parent.name.clone()),
+            rooms: self.joined_rooms_in(place.space),
+            flags: self.flags.get(place.space).copied().unwrap_or_default(),
+        })
+    }
+
+    fn joined_rooms_in(&self, space_index: usize) -> usize {
+        self.all_rooms
+            .iter()
+            .filter(|room| self.graph.contains_room(space_index, room.id.as_ref()))
+            .count()
+    }
+
+    pub(super) fn rail_route(&self, id: &RoomId) -> Option<RailRoute> {
+        let index = self.graph.index.get(id.as_ref()).copied()?;
+        let place = self
+            .rail_places()
+            .into_iter()
+            .find(|place| place.space == index)?;
+        let route = match place.parent.and_then(|parent| self.spaces.get(parent)) {
+            Some(parent) => RailRoute {
+                space: RoomId::new(parent.id.clone()),
+                subspace: Some(id.clone()),
+            },
+            None => RailRoute {
+                space: id.clone(),
+                subspace: None,
+            },
         };
-        self.output
-            .publish(Box::new(move |view| view.directory.rooms = rooms));
+        Some(route)
+    }
+
+    fn rail_places(&self) -> Vec<RailPlace> {
+        let roots = self.ordered_root_indices();
+        let mut claimed: HashSet<usize> = roots.iter().copied().collect();
+        let mut places = Vec::with_capacity(self.spaces.len());
+        for root in roots {
+            places.push(RailPlace {
+                space: root,
+                parent: None,
+            });
+            for child in self.child_space_indices(root) {
+                if claimed.insert(child) {
+                    places.push(RailPlace {
+                        space: child,
+                        parent: Some(root),
+                    });
+                }
+            }
+        }
+        places
+    }
+
+    fn child_space_indices(&self, space_index: usize) -> impl Iterator<Item = usize> + '_ {
+        self.spaces
+            .get(space_index)
+            .into_iter()
+            .flat_map(|space| space.child_space_ids.iter())
+            .filter_map(|id| self.graph.index.get(id).copied())
     }
 
     fn rooms_where(&self, keep: impl Fn(&Room) -> bool) -> RoomList {

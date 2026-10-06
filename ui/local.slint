@@ -474,11 +474,30 @@ export global Polls {
     }
 }
 
+export global RoomSearch {
+    in-out property <string> query;
+    in-out property <string> opened-room;
+
+    public pure function opened(room-id: string) -> bool {
+        return root.opened-room != "" && root.opened-room == room-id;
+    }
+
+    public function clear() {
+        if root.query == "" {
+            return;
+        }
+        root.query = "";
+        Actions.filter-rooms("");
+    }
+}
+
 export global LocalState {
     public function forget-session() {
         Composer.clear();
         Shell.close-overlays();
         Shell.room-info-pane-open = false;
+        RoomSearch.query = "";
+        RoomSearch.opened-room = "";
         TextSelection.clear();
         Reactions.close();
         MessageMenu.close();

@@ -43,6 +43,12 @@ pub enum ProbeCommand {
     SelectRoom {
         room_id: String,
     },
+    FilterRooms {
+        query: String,
+    },
+    OpenSpace {
+        space_id: String,
+    },
     OpenSpaceIndex,
     CloseSpaceIndex,
     PageSpaceIndex,
@@ -429,6 +435,8 @@ pub fn to_driven(command: ProbeCommand, selected: Selection<'_>) -> Result<Drive
         }
         ProbeCommand::MoveSpace { from, to } => UiCommand::MoveSpace { from, to },
         ProbeCommand::SelectRoom { room_id } => UiCommand::SelectRoom(RoomId::new(room_id)),
+        ProbeCommand::FilterRooms { query } => UiCommand::FilterRooms(query),
+        ProbeCommand::OpenSpace { space_id } => UiCommand::OpenSpace(RoomId::new(space_id)),
         ProbeCommand::OpenSpaceIndex => UiCommand::OpenSpaceIndex,
         ProbeCommand::CloseSpaceIndex => UiCommand::CloseSpaceIndex,
         ProbeCommand::PageSpaceIndex => UiCommand::PageSpaceIndex,

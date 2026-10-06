@@ -293,9 +293,20 @@ pub struct SpaceHeading {
     pub member_count: u64,
 }
 
+#[derive(Clone, PartialEq, Eq)]
+pub struct SpaceMatch {
+    pub id: String,
+    pub name: String,
+    pub avatar_mxc: Option<String>,
+    pub parent: Option<String>,
+    pub rooms: usize,
+    pub flags: UnreadFlags,
+}
+
 #[derive(Clone)]
 pub struct DirectoryView {
     pub rooms: RoomList,
+    pub space_matches: Arc<[SpaceMatch]>,
     pub spaces: Arc<[Space]>,
     pub subspaces: Arc<[Space]>,
     pub scope: RoomScope,
@@ -309,6 +320,7 @@ impl Default for DirectoryView {
     fn default() -> Self {
         Self {
             rooms: Arc::from(Vec::new()),
+            space_matches: Arc::from(Vec::new()),
             spaces: Arc::from(Vec::new()),
             subspaces: Arc::from(Vec::new()),
             scope: RoomScope::default(),

@@ -7,15 +7,15 @@ use slint::{Image, Model, SharedString, VecModel};
 use super::backend::UiBackend;
 use super::decode::{ShownAvatar, forget_all_media_needs};
 use super::dto::{
-    INVITED_HEADING_ROW, StickerGrid, StickerRowDto, prefetch_space_avatar,
+    INVITED_HEADING_ROW, SPACES_HEADING_ROW, StickerGrid, StickerRowDto, prefetch_space_avatar,
     record_room_avatar_need, request_member_avatar, request_reader_avatar,
-    request_space_child_avatar,
+    request_space_child_avatar, request_space_match_avatar,
 };
 use super::fields::RoomFields;
 use super::richtext::forget_styled_bodies;
 use super::session::with_session;
 use super::splice_model::SpliceModel;
-use crate::commands::view::{RosterRow, SpaceIndexRow};
+use crate::commands::view::{DirectoryView, RosterRow, SpaceIndexRow, SpaceMatch};
 use crate::domain::message::TimelineMessage;
 use crate::domain::room::{Room, Space};
 use crate::domain::room_info::Reader;
@@ -450,25 +450,91 @@ pub fn reorder_rows<T: Clone + 'static>(model: &VecModel<T>, from: usize, to: us
     }
 }
 
+#[derive(Clone, Copy, Default)]
+pub struct RoomListing<'a> {
+    pub rooms: &'a [Arc<Room>],
+    pub spaces: &'a [SpaceMatch],
+}
+
+impl<'a> RoomListing<'a> {
+    pub fn of(directory: &'a DirectoryView) -> Self {
+        Self {
+            rooms: &directory.rooms,
+            spaces: &directory.space_matches,
+        }
+    }
+
+    fn rows(self) -> Vec<ListedRow<'a>> {
+        let heading = (!self.spaces.is_empty()).then_some(ListedRow::SpacesHeading);
+        self.rooms
+            .iter()
+            .map(ListedRow::Room)
+            .chain(heading)
+            .chain(self.spaces.iter().map(ListedRow::Space))
+            .collect()
+    }
+}
+
+#[derive(Clone, Copy)]
+enum ListedRow<'a> {
+    Room(&'a Arc<Room>),
+    SpacesHeading,
+    Space(&'a SpaceMatch),
+}
+
+impl ListedRow<'_> {
+    fn id(&self) -> &str {
+        match self {
+            Self::Room(room) => room.id.as_ref(),
+            Self::SpacesHeading => SPACES_HEADING_ROW,
+            Self::Space(space) => &space.id,
+        }
+    }
+
+    fn to_row<B: UiBackend>(self, media: &dyn MediaCache) -> B::Room {
+        match self {
+            Self::Room(room) => B::convert_room(room, media),
+            Self::SpacesHeading => B::spaces_heading(),
+            Self::Space(space) => B::convert_space_match(space, media),
+        }
+    }
+}
+
+impl SameItem for ListedRow<'_> {
+    fn same_item(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::Room(room), Self::Room(other)) => room.same_item(other),
+            (Self::SpacesHeading, Self::SpacesHeading) => true,
+            (Self::Space(space), Self::Space(other)) => space == other,
+            _ => false,
+        }
+    }
+}
+
 pub fn apply_rooms<B: UiBackend>(
     model: &VecModel<B::Room>,
-    rooms: &[Arc<Room>],
-    previous: &[Arc<Room>],
+    listing: RoomListing<'_>,
+    previous: RoomListing<'_>,
     media: &dyn MediaCache,
 ) {
     let mut still_expected = HashSet::new();
-    for room in rooms {
+    for room in listing.rooms {
         if record_room_avatar_need(room, media) == ShownAvatar::StillExpected {
             still_expected.insert(room.id.as_ref());
+        }
+    }
+    for space in listing.spaces {
+        if request_space_match_avatar(space, media) == ShownAvatar::StillExpected {
+            still_expected.insert(space.id.as_str());
         }
     }
     let shown = avatars_still_shown::<B>(model, &still_expected);
     apply_reconcile(
         model,
-        rooms,
-        previous,
-        &|r| r.id.as_ref(),
-        &|r| keep_shown_avatar::<B>(B::convert_room(r, media), &shown),
+        &listing.rows(),
+        &previous.rows(),
+        &ListedRow::id,
+        &|row| keep_shown_avatar::<B>(row.to_row::<B>(media), &shown),
         &|entry| entry.id(),
     );
 }

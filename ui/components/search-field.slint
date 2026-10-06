@@ -6,10 +6,14 @@ import { IconButton } from "./button.slint";
 
 export component SearchField inherits Rectangle {
     in property <string> placeholder;
+    in property <string> label: root.placeholder;
+    in property <bool> shows-icon: true;
     in-out property <string> query: "";
     in property <bool> above-modal: false;
     in property <bool> enabled: true;
+    out property <bool> has-focus: input.has-focus;
     callback edited(string);
+    callback accepted();
 
     height: Size.md;
     border-radius: Radius.sm;
@@ -22,11 +26,11 @@ export component SearchField inherits Rectangle {
     forward-focus: input;
 
     HorizontalLayout {
-        padding-left: Space.md;
+        padding-left: root.shows-icon ? Space.md : Space.lg;
         padding-right: Space.sm;
         spacing: Space.md;
 
-        IconDisplay {
+        if root.shows-icon: IconDisplay {
             cross-axis-self-alignment: center;
             icon: IconSet.Search;
             size: IconSize.sm;
@@ -47,10 +51,13 @@ export component SearchField inherits Rectangle {
                 font-size: Fonts.label;
                 vertical-alignment: center;
                 single-line: true;
-                accessible-label: root.placeholder;
+                accessible-label: root.label;
                 accessible-placeholder-text: root.placeholder;
                 edited => {
                     root.edited(self.text);
+                }
+                accepted => {
+                    root.accepted();
                 }
             }
 

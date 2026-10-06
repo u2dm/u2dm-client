@@ -6,13 +6,13 @@ import { TimelineView } from "./components/timeline/timeline-view.slint";
 import { SpaceIndexPane } from "./components/space-index.slint";
 import { RoomMenuOverlay } from "./components/room-menu.slint";
 import { ResizeEdge, ResizeHandle } from "../../components/resize-handle.slint";
-import { RoomInfoPlacement, UserMessageKind } from "../../enums.slint";
+import { RoomInfoPlacement, RoomScope, UserMessageKind } from "../../enums.slint";
 import { UserMessages } from "../../messages.slint";
 import { AppStyle, IconSize, Metrics, Radius, Size, Space } from "../../theme.slint";
 import { IconButton } from "../../components/button.slint";
 import { DirectoryView, RoomInfoView, RoomView, SpaceIndexView, WindowView } from "../../views.slint";
 import { Actions } from "../../actions.slint";
-import { LocalState, Shell } from "../../local.slint";
+import { LocalState, RoomSearch, Shell } from "../../local.slint";
 
 component Toast inherits Rectangle {
     property <bool> is-file-saved: RoomView.toast-message == UserMessageKind.file-saved;
@@ -65,6 +65,7 @@ export component ChatScreen inherits Rectangle {
     property <length> sidebar-width: Metrics.sidebar-default;
     property <length> room-info-pane-width: Metrics.room-info-pane-default;
     property <bool> nav-collapsed: root.sidebar-width <= Metrics.sidebar-collapsed;
+    property <bool> in-space: DirectoryView.room-scope == RoomScope.space;
     property <length> divider-width: Space.sm;
     property <length> resize-step: Space.xl;
 
@@ -112,6 +113,18 @@ export component ChatScreen inherits Rectangle {
 
     changed timeline-visible => {
         Actions.timeline-visibility-changed(root.timeline-visible);
+    }
+
+    changed in-space => {
+        if root.in-space {
+            RoomSearch.clear();
+        }
+    }
+
+    changed nav-collapsed => {
+        if root.nav-collapsed {
+            RoomSearch.clear();
+        }
     }
 
     changed room-info-pane-up => {

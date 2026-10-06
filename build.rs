@@ -108,6 +108,11 @@ const ENUM_COVERAGE: &[EnumCoverage] = &[
         branches_in: "ui/screens/chat/components/room-log.slint",
         falls_through: &[],
     },
+    EnumCoverage {
+        slint_enum: "RoomRowKind",
+        branches_in: "ui/screens/chat/components/sidebar.slint",
+        falls_through: &[],
+    },
 ];
 
 const SCHEMA_FILE: &str = "src/adapters/ui/schema.rs";
@@ -131,6 +136,7 @@ const ENUM_TABLES: &[(&str, &str)] = &[
     ("DirectChat", "direct_chats"),
     ("Moderation", "pending_moderations"),
     ("MemberRowKind", "member_row_kinds"),
+    ("RoomRowKind", "room_row_kinds"),
     ("RosterStatus", "roster_statuses"),
     ("RoomInfoPlacement", "room_info_placements"),
     ("LogLevel", "log_levels"),

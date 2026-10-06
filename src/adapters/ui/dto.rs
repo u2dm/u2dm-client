@@ -17,9 +17,9 @@ use super::present::{
 };
 use super::richtext;
 use super::schema::{
-    define_ui_enum, define_ui_names, media_failures, media_states, member_row_kinds,
+    define_ui_enum, define_ui_names, media_failures, media_states, member_row_kinds, room_row_kinds,
 };
-use crate::commands::view::{ChildAccess, RoomCard, RosterRow, SpaceIndexRow};
+use crate::commands::view::{ChildAccess, RoomCard, RosterRow, SpaceIndexRow, SpaceMatch};
 use crate::domain::media::{
     AudioKind, AudioMeta, ContentKey, FileMeta, MediaFailure, ThumbnailOutcome,
 };
@@ -42,8 +42,10 @@ media_states!(define_ui_enum MediaState;);
 media_states!(define_ui_names MediaState;);
 media_failures!(define_ui_enum MediaFailureKind;);
 member_row_kinds!(define_ui_enum MemberRowKind;);
+room_row_kinds!(define_ui_enum RoomRowKind;);
 
 pub const INVITED_HEADING_ROW: &str = "invited-heading";
+pub const SPACES_HEADING_ROW: &str = "spaces-heading";
 const PRONOUN_SEPARATOR: &str = " · ";
 
 fn failure_kind(failure: MediaFailure) -> MediaFailureKind {
@@ -314,6 +316,7 @@ pub struct MessageDto {
 #[allow(clippy::struct_excessive_bools)]
 pub struct RoomDto {
     pub id: SharedString,
+    pub kind: RoomRowKind,
     pub name: SharedString,
     pub initial: SharedString,
     pub color_index: i32,
@@ -330,6 +333,8 @@ pub struct RoomDto {
     pub last_message_is_own: bool,
     pub last_message_edited: bool,
     pub last_message_time: SharedString,
+    pub space_rooms: i32,
+    pub space_parent: SharedString,
     pub avatar: Option<Image>,
     pub has_avatar: bool,
 }
@@ -841,6 +846,7 @@ pub fn enrich_to_update(delta: &EnrichmentDelta, media: &dyn MediaCache) -> Enri
 pub fn room_to_dto(r: &Room, media: &dyn MediaCache) -> RoomDto {
     let mut dto = RoomDto {
         id: SharedString::from(r.id.as_ref()),
+        kind: RoomRowKind::Room,
         name: SharedString::from(&r.display_name),
         initial: SharedString::from(avatar_initials(&r.display_name)),
         color_index: avatar_color_index(r.id.as_ref()),
@@ -868,6 +874,8 @@ pub fn room_to_dto(r: &Room, media: &dyn MediaCache) -> RoomDto {
         last_message_is_own: r.last_message_is_own,
         last_message_edited: r.last_message_edited,
         last_message_time: SharedString::from(&room_activity_label(r.last_activity_ts)),
+        space_rooms: 0,
+        space_parent: SharedString::new(),
         avatar: None,
         has_avatar: false,
     };
@@ -892,6 +900,66 @@ pub fn record_room_avatar_need(r: &Room, media: &dyn MediaCache) -> ShownAvatar 
         &AvatarSlot::Room(r.id.as_ref().to_owned()),
         avatar_path.as_deref(),
     )
+}
+
+pub fn spaces_heading_to_dto() -> RoomDto {
+    bare_row_dto(SPACES_HEADING_ROW, RoomRowKind::SpacesHeading)
+}
+
+pub fn space_match_to_dto(m: &SpaceMatch, media: &dyn MediaCache) -> RoomDto {
+    let avatar = space_match_avatar_path(m, media).and_then(|path| peek_avatar(&path));
+    RoomDto {
+        name: SharedString::from(&m.name),
+        initial: SharedString::from(avatar_initials(&m.name)),
+        color_index: avatar_color_index(&m.id),
+        alert: m.flags.alert,
+        mention: m.flags.mention,
+        hint: m.flags.hint,
+        space_rooms: count(m.rooms),
+        space_parent: SharedString::from(m.parent.as_deref().unwrap_or_default()),
+        has_avatar: avatar.is_some(),
+        avatar,
+        ..bare_row_dto(&m.id, RoomRowKind::Space)
+    }
+}
+
+fn bare_row_dto(id: &str, kind: RoomRowKind) -> RoomDto {
+    RoomDto {
+        id: SharedString::from(id),
+        kind,
+        name: SharedString::new(),
+        initial: SharedString::new(),
+        color_index: 0,
+        members: 0,
+        alert: false,
+        mention: false,
+        hint: false,
+        muted: false,
+        last_message_sender: SharedString::new(),
+        last_message_kind: MessagePreviewKind::None,
+        last_message_body: SharedString::new(),
+        last_message_service_kind: ServiceKind::None,
+        last_message_service_target: SharedString::new(),
+        last_message_is_own: false,
+        last_message_edited: false,
+        last_message_time: SharedString::new(),
+        space_rooms: 0,
+        space_parent: SharedString::new(),
+        avatar: None,
+        has_avatar: false,
+    }
+}
+
+pub fn request_space_match_avatar(m: &SpaceMatch, media: &dyn MediaCache) -> ShownAvatar {
+    let path = space_match_avatar_path(m, media);
+    let slot = AvatarSlot::Space(m.id.clone());
+    let shown = record_avatar_need(&slot, path.as_deref());
+    load_avatar_async(path.as_deref(), slot);
+    shown
+}
+
+fn space_match_avatar_path(m: &SpaceMatch, media: &dyn MediaCache) -> Option<PathBuf> {
+    media.space_avatar_path(m.avatar_mxc.as_deref()?)
 }
 
 pub fn space_to_dto(s: &Space, media: &dyn MediaCache) -> SpaceDto {

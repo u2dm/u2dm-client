@@ -50,6 +50,8 @@ scenario_env() {
     message-delete)  echo 'U2DM_DEMO_MESSAGE_MENU=slow U2DM_DEMO_PINNED=slow' ;;
     message-delete-failures) echo 'U2DM_DEMO_MESSAGE_MENU=delete-fails,member' ;;
     readers)         echo 'U2DM_DEMO_RECEIPTS=late,throng U2DM_DEMO_ROOM_INFO=slow' ;;
+    room-search)     echo 'U2DM_DEMO_WINDOW=900x760' ;;
+    room-search-open) echo 'U2DM_DEMO_WINDOW=900x760' ;;
     *) return 1 ;;
   esac
 }
@@ -287,6 +289,14 @@ scenario_steps() {
       echo 'sleep 3'
       echo '{"op":"page_readers"}'
       echo 'sleep 3' ;;
+    room-search)
+      echo '{"op":"filter_rooms","query":"design"}'
+      echo 'sleep 1' ;;
+    room-search-open)
+      echo '{"op":"filter_rooms","query":"web"}'
+      echo 'sleep 1'
+      echo '{"op":"open_space","space_id":"!space-rust-web:demo.local"}'
+      echo 'sleep 2' ;;
     login-oauth|verify-self)
       : ;;
   esac
@@ -334,6 +344,8 @@ scenario_note() {
     message-delete)  echo 'an own quoted message is deleted twice (one deletion), then a pinned message of someone else' ;;
     message-delete-failures) echo 'an own deletion comes back with the toast; a member may not delete someone else'"'"'s message' ;;
     readers)         echo 'in !rust, the 123 readers of an older message load slowly, then the 121 readers of your newest message page in fifty at a time' ;;
+    room-search)     echo 'in All Rooms, "design" lists the Design Team room, then the Design space' ;;
+    room-search-open) echo '"web" matches only the Web space under Rust (Web Accessibility is too deep to open); opening it selects Rust and its Web subspace' ;;
   esac
 }
 
@@ -354,7 +366,7 @@ names() {
     space-index polls poll-edits room-info room-leave room-info-failures room-info-pane room-menu room-menu-leave \
     room-menu-failures room-log user-info user-info-failures user-dm user-dm-start user-dm-failures user-ignore user-moderation \
     user-moderation-failures message-link message-source message-pins message-pin-failures message-delete \
-    message-delete-failures readers
+    message-delete-failures readers room-search room-search-open
 }
 
 cmd_list() {
@@ -407,6 +419,8 @@ cmd_run() {
 
   echo "# wrote $out"
   jq -r '"  rooms=\(.view.directory.rooms|length) step=\(.view.lifecycle.step) toast=\(.view.toast.kind)"' "$out/state.json"
+  jq -r '.view.directory | if (.space_matches|length) > 0 then "  space matches \([.space_matches[] | "\(.name)\(if .parent then " in \(.parent)" else "" end) (\(.rooms) rooms)"] | join(", "))" else empty end' "$out/state.json"
+  jq -r '.view.directory | if .scope == "space" then "  listing space \(.space_id)\(if .subspace_id != "" then " > \(.subspace_id)" else "" end): \([.rooms[].name] | join(", "))" else empty end' "$out/state.json"
   jq -r 'if .rows then "  timeline rows=\(.rows|length) anchor=\(.anchor_index) unread=\([.rows[]|select(.first_unread)|.row])" else "  timeline unavailable" end' "$out/timeline.json"
   jq -r 'if .pinned.count > 0 then "  pinned bar #\(.pinned.index + 1) of \(.pinned.count) event=\(.pinned.event_id) focus=\(.focus_event_id)" else empty end' "$out/timeline.json"
   jq -r 'if .audio then "  audio state=\(.audio.state) event=\(.audio.event_id) position=\(.audio.position_ms)/\(.audio.duration_ms) output=\(.audio.output)" else empty end' "$out/timeline.json"

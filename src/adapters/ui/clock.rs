@@ -6,8 +6,8 @@ use slint::{Timer, TimerMode};
 
 use super::backend::UiBackend;
 use super::present::invalidate_activity_labels;
-use super::reconcile::apply_rooms;
-use super::reduce::latest_rooms;
+use super::reconcile::{RoomListing, apply_rooms};
+use super::reduce::latest_directory;
 use crate::ports::media::MediaCache;
 
 thread_local! {
@@ -30,11 +30,16 @@ fn schedule_next<B: UiBackend>(media: Arc<dyn MediaCache>) {
 
 fn refresh_room_labels<B: UiBackend>(media: &dyn MediaCache) {
     invalidate_activity_labels();
-    let Some(rooms) = latest_rooms() else {
+    let Some(directory) = latest_directory() else {
         return;
     };
     B::with_models(|_timeline, rooms_model, _spaces, _subspaces| {
-        apply_rooms::<B>(rooms_model, rooms.as_ref(), &[], media);
+        apply_rooms::<B>(
+            rooms_model,
+            RoomListing::of(&directory),
+            RoomListing::default(),
+            media,
+        );
     });
 }
 

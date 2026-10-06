@@ -14,7 +14,7 @@ use super::dto::{
     LogLineDto, MediaFailureKind, MediaState, MemberRowDto, MessageDto, RoomDto, SpaceChildDto,
     SpaceDto, StickerPackDto, StickerRowDto, ThumbUpdate, cell_pack, decode_failure_kind,
     enrich_to_update, log_line_to_dto, member_row_to_dto, message_to_dto, reader_to_dto,
-    room_to_dto, space_child_to_dto, space_to_dto,
+    room_to_dto, space_child_to_dto, space_match_to_dto, space_to_dto, spaces_heading_to_dto,
 };
 use super::fields::{
     LogLineFields, MemberRowFields, MessageFields, PollAnswerFields, ReactionFields, ReactorFields,
@@ -33,7 +33,7 @@ use super::session::{begin_session, with_session};
 use super::splice_model::SpliceModel;
 use super::window_events::install_window_events;
 use crate::commands::effects::Effect;
-use crate::commands::view::{AppViewState, RosterRow, SpaceIndexRow};
+use crate::commands::view::{AppViewState, RosterRow, SpaceIndexRow, SpaceMatch};
 use crate::domain::message::TimelineMessage;
 use crate::domain::room::{Room, RoomId, Space};
 use crate::domain::room_info::Reader;
@@ -70,6 +70,14 @@ pub trait UiBackend: Sized + 'static {
 
     fn convert_room(room: &Room, media: &dyn MediaCache) -> Self::Room {
         room_to_dto(room, media).into()
+    }
+
+    fn convert_space_match(space: &SpaceMatch, media: &dyn MediaCache) -> Self::Room {
+        space_match_to_dto(space, media).into()
+    }
+
+    fn spaces_heading() -> Self::Room {
+        spaces_heading_to_dto().into()
     }
 
     fn convert_space(space: &Space, media: &dyn MediaCache) -> Self::Space {
@@ -596,6 +604,10 @@ fn apply_avatar_ready<B: UiBackend>(
         patch_message_avatars::<B>(timeline, &targets.messages, image);
         patch_reactor_avatars::<B>(timeline, &targets.reactors_by_message, image);
         patch_rows_by_id(rooms, &targets.rooms, &B::Room::id, |entry| {
+            entry.set_avatar(image.clone());
+            entry.set_has_avatar(true);
+        });
+        patch_rows_by_id(rooms, &targets.spaces, &B::Room::id, |entry| {
             entry.set_avatar(image.clone());
             entry.set_has_avatar(true);
         });
