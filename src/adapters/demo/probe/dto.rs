@@ -5,13 +5,13 @@ use crate::commands::messages::UserMessage;
 use crate::commands::ui::Draft;
 use crate::commands::view::{
     AppViewState, AttachmentView, AudioView, CardStatus, CopiedLink, DirectoryView, LifecycleView,
-    PaginationView, PinnedView, RoomInfoView, RoomLogView, RoomMenuTarget, RosterRow, SourceState,
-    SpaceIndexRow, SpaceIndexView, StickerView, Toast, TrackFile, UnsentMessage, UserInfoView,
-    VideoView,
+    PaginationView, PinnedView, ReadersView, RoomInfoView, RoomLogView, RoomMenuTarget, RosterRow,
+    SourceState, SpaceIndexRow, SpaceIndexView, StickerView, Toast, TrackFile, UnsentMessage,
+    UserInfoView, VideoView,
 };
 use crate::domain::message::{EditKind, PinnedMessage};
 use crate::domain::room::{Room, Space};
-use crate::domain::room_info::RosterSection;
+use crate::domain::room_info::{Reader, RosterSection};
 use crate::domain::space_index::{ChildKind, JoinRule};
 use crate::domain::sticker::StickerPack;
 use crate::domain::sync::ConnectionStatus;
@@ -38,7 +38,29 @@ pub struct ViewDto {
     message_link: LinkDto,
     room_link: LinkDto,
     source: SourceDto,
+    readers: ReadersDto,
     room_log: Option<RoomLogDto>,
+}
+
+#[derive(Serialize)]
+struct ReadersDto {
+    status: &'static str,
+    event_id: Option<String>,
+    sender: Option<String>,
+    kind: Option<&'static str>,
+    total: usize,
+    has_more: bool,
+    pages_landed: i32,
+    avatars_ready: usize,
+    rows: Vec<ReaderDto>,
+}
+
+#[derive(Serialize)]
+struct ReaderDto {
+    user_id: String,
+    name: String,
+    role: &'static str,
+    has_avatar_mxc: bool,
 }
 
 #[derive(Serialize)]
@@ -368,7 +390,44 @@ pub fn view(source: &AppViewState) -> ViewDto {
         message_link: link(&source.message_link),
         room_link: link(&source.room_link),
         source: event_source(&source.source),
+        readers: readers(&source.readers),
         room_log: source.room_log.as_ref().map(room_log),
+    }
+}
+
+fn readers(source: &ReadersView) -> ReadersDto {
+    ReadersDto {
+        status: names::readers_status(source.status),
+        event_id: source
+            .message
+            .as_ref()
+            .and_then(|message| message.event_id.clone()),
+        sender: source
+            .message
+            .as_ref()
+            .map(|message| message.sender.clone()),
+        kind: source
+            .message
+            .as_ref()
+            .map(|message| names::preview_kind(message.body.preview_kind())),
+        total: source.total,
+        has_more: source.has_more,
+        pages_landed: source.pages_landed,
+        avatars_ready: source.avatars_ready,
+        rows: source
+            .rows
+            .iter()
+            .map(|reader| reader_row(reader))
+            .collect(),
+    }
+}
+
+fn reader_row(source: &Reader) -> ReaderDto {
+    ReaderDto {
+        user_id: source.user_id.clone(),
+        name: source.label().to_owned(),
+        role: names::member_role(source.role),
+        has_avatar_mxc: source.avatar_mxc.is_some(),
     }
 }
 

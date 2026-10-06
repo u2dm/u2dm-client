@@ -402,6 +402,13 @@ pub fn open_event_source(tx: &Tx, event_id: String) {
     send_command(tx, UiCommand::OpenEventSource { event_id });
 }
 
+pub fn open_readers(tx: &Tx, event_id: String) {
+    if event_id.is_empty() {
+        return;
+    }
+    send_command(tx, UiCommand::OpenReaders { event_id });
+}
+
 pub fn pin_message(tx: &Tx, event_id: String) {
     if event_id.is_empty() {
         return;

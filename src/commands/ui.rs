@@ -155,6 +155,12 @@ pub enum UiCommand {
         event_id: String,
     },
     CloseEventSource,
+    #[strum(to_string = "OpenReaders({event_id})")]
+    OpenReaders {
+        event_id: String,
+    },
+    CloseReaders,
+    PageReaders,
     #[strum(to_string = "PinMessage({event_id})")]
     PinMessage {
         event_id: String,
@@ -291,6 +297,9 @@ impl UiCommand {
             | Self::CopyMessageLink { .. }
             | Self::OpenEventSource { .. }
             | Self::CloseEventSource
+            | Self::OpenReaders { .. }
+            | Self::CloseReaders
+            | Self::PageReaders
             | Self::PinMessage { .. }
             | Self::UnpinMessage { .. }
             | Self::DeleteMessage { .. }

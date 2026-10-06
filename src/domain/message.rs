@@ -305,6 +305,14 @@ impl<'own> ReadScan<'own> {
         }
     }
 
+    pub fn readers(&self, sender: &str) -> Vec<String> {
+        self.readers
+            .iter()
+            .filter(|reader| reader.as_str() != sender)
+            .cloned()
+            .collect()
+    }
+
     fn total(&self, sender: &str) -> usize {
         self.readers
             .len()

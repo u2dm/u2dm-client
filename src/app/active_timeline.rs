@@ -365,6 +365,13 @@ impl ActiveTimeline {
         })
     }
 
+    pub(super) fn locate_readers(&self, request: u64, event_id: String) -> bool {
+        self.timeline_cmd_tx.as_ref().is_some_and(|tx| {
+            tx.send(TimelineCommand::LocateReaders { request, event_id })
+                .is_ok()
+        })
+    }
+
     pub(super) fn is_active_room(&self, room_id: &RoomId) -> bool {
         self.active_room_id.as_ref() == Some(room_id)
     }
@@ -596,7 +603,8 @@ impl Forwarder {
             | TimelineUpdate::Pagination { .. }
             | TimelineUpdate::JumpOutcome { .. }
             | TimelineUpdate::AudioLocated { .. }
-            | TimelineUpdate::SourceLocated { .. } => {}
+            | TimelineUpdate::SourceLocated { .. }
+            | TimelineUpdate::ReadersLocated { .. } => {}
         }
     }
 
@@ -646,6 +654,17 @@ impl Forwarder {
                     generation: self.generation,
                     request,
                     source,
+                };
+                if self.events.send(AppEvent::Timeline(located)).is_err() {
+                    return false;
+                }
+            }
+            TimelineUpdate::ReadersLocated { request, readers } => {
+                let located = TimelineEvent::ReadersLocated {
+                    room_id: self.room_id.clone(),
+                    generation: self.generation,
+                    request,
+                    readers,
                 };
                 if self.events.send(AppEvent::Timeline(located)).is_err() {
                     return false;

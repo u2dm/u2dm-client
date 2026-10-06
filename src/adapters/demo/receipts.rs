@@ -5,6 +5,7 @@ use std::time::Duration;
 
 use super::data;
 use crate::domain::message::{ReadBy, ReadScan, TimelineMessage};
+use crate::domain::timeline::MessageReaders;
 
 const ENV_VAR: &str = "U2DM_DEMO_RECEIPTS";
 
@@ -22,6 +23,11 @@ pub const CATALOG: Scenarios = Scenarios {
             value: "crowd",
             effect: "forty members have read up to your newest message, so \"and N more\" renders",
             note: "",
+        },
+        Flag {
+            value: "throng",
+            effect: "a hundred and twenty members have read up to your newest message, so its list of readers pages",
+            note: "excluded from `all`; wins over `crowd`",
         },
         Flag {
             value: "seen",
@@ -48,6 +54,7 @@ pub const LATE_INTERVAL: Duration = Duration::from_millis(350);
 pub const SEEN_DELAY: Duration = Duration::from_millis(1500);
 
 const CROWD_SIZE: usize = 40;
+const THRONG_SIZE: usize = 120;
 const FALLBACK_READER: &str = "@member:matrix.org";
 
 #[derive(Default, Clone, Copy)]
@@ -55,6 +62,7 @@ const FALLBACK_READER: &str = "@member:matrix.org";
 pub struct Scenario {
     pub marks_arrive_late: bool,
     pub crowd_reads: bool,
+    pub throng_reads: bool,
     pub member_sees_sends: bool,
     pub sends_stay_pending: bool,
 }
@@ -75,6 +83,7 @@ fn from_env() -> Scenario {
     tracing::info!(
         marks_arrive_late = scenario.marks_arrive_late,
         crowd_reads = scenario.crowd_reads,
+        throng_reads = scenario.throng_reads,
         member_sees_sends = scenario.member_sees_sends,
         sends_stay_pending = scenario.sends_stay_pending,
         "demo mode: reproducing real-account read receipts"
@@ -86,6 +95,7 @@ fn apply(scenario: &mut Scenario, flag: &str) {
     match flag {
         "late" => scenario.marks_arrive_late = true,
         "crowd" => scenario.crowd_reads = true,
+        "throng" => scenario.throng_reads = true,
         "seen" => scenario.member_sees_sends = true,
         "pending" => scenario.sends_stay_pending = true,
         "all" => {
@@ -102,8 +112,20 @@ pub struct Receipt {
     pub reader: String,
 }
 
+fn crowd_size() -> usize {
+    let scenario = scenario();
+    if scenario.throng_reads {
+        THRONG_SIZE
+    } else if scenario.crowd_reads {
+        CROWD_SIZE
+    } else {
+        0
+    }
+}
+
 pub fn seed_receipts(messages: &[TimelineMessage]) -> Vec<Receipt> {
-    if !scenario().crowd_reads {
+    let size = crowd_size();
+    if size == 0 {
         return Vec::new();
     }
     let Some(newest) = messages
@@ -113,7 +135,7 @@ pub fn seed_receipts(messages: &[TimelineMessage]) -> Vec<Receipt> {
     else {
         return Vec::new();
     };
-    (0..CROWD_SIZE)
+    (0..size)
         .map(|n| Receipt {
             unique_id: newest.unique_id.clone(),
             reader: format!("@reader{n}:matrix.org"),
@@ -130,12 +152,7 @@ pub fn stamp(messages: &mut [TimelineMessage], receipts: &[Receipt]) -> Vec<usiz
     let mut scan = ReadScan::excluding(Some(data::own_user()));
     let mut changed = Vec::new();
     for (index, message) in messages.iter_mut().enumerate().rev() {
-        scan.observe(
-            receipts
-                .iter()
-                .filter(|receipt| receipt.unique_id == message.unique_id)
-                .map(|receipt| receipt.reader.as_str()),
-        );
+        scan.observe(receipts_on(receipts, message));
         if message.tracks_readers() && !scan.describes(&message.read_by, &message.sender) {
             message.read_by = scan.read_by(&message.sender);
             changed.push(index);
@@ -143,6 +160,37 @@ pub fn stamp(messages: &mut [TimelineMessage], receipts: &[Receipt]) -> Vec<usiz
         scan.observe([message.sender.as_str()]);
     }
     changed
+}
+
+fn receipts_on<'a>(
+    receipts: &'a [Receipt],
+    message: &'a TimelineMessage,
+) -> impl Iterator<Item = &'a str> {
+    receipts
+        .iter()
+        .filter(|receipt| receipt.unique_id == message.unique_id)
+        .map(|receipt| receipt.reader.as_str())
+}
+
+pub fn readers_of(
+    messages: &[TimelineMessage],
+    receipts: &[Receipt],
+    event_id: &str,
+) -> Option<MessageReaders> {
+    let position = messages
+        .iter()
+        .position(|message| message.event_id.as_deref() == Some(event_id))?;
+    let (target, later) = messages.get(position..)?.split_first()?;
+    let mut scan = ReadScan::excluding(Some(data::own_user()));
+    scan.observe(receipts_on(receipts, target));
+    for message in later {
+        scan.observe(receipts_on(receipts, message));
+        scan.observe([message.sender.as_str()]);
+    }
+    Some(MessageReaders {
+        readers: scan.readers(&target.sender),
+        message: target.clone(),
+    })
 }
 
 pub fn likely_reader(messages: &[TimelineMessage]) -> String {

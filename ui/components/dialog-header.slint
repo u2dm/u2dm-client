@@ -5,11 +5,13 @@ import { Fonts, Size, Space, Weight } from "../theme.slint";
 
 export component DialogHeader inherits HorizontalLayout {
     in property <string> title;
+    in property <bool> copyable: true;
     in property <bool> copied;
     in property <bool> copy-enabled: true;
     in property <string> copy-label;
     in property <string> copied-label;
     in property <string> close-label;
+    in property <bool> above-modal: true;
 
     callback copy-clicked();
     callback close-clicked();
@@ -33,11 +35,11 @@ export component DialogHeader inherits HorizontalLayout {
         @children
     }
 
-    IconButton {
+    if root.copyable: IconButton {
         size: Size.md;
         icon: root.copied ? IconSet.Check : IconSet.Copy;
         enabled: root.copy-enabled;
-        above-modal: true;
+        above-modal: root.above-modal;
         label: root.copied ? root.copied-label : root.copy-label;
         clicked => {
             root.copy-clicked();
@@ -47,7 +49,7 @@ export component DialogHeader inherits HorizontalLayout {
     close-button := IconButton {
         size: Size.md;
         icon: IconSet.X;
-        above-modal: true;
+        above-modal: root.above-modal;
         label: root.close-label;
         clicked => {
             root.close-clicked();

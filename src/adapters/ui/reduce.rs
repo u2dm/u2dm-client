@@ -10,9 +10,9 @@ use super::backend::{
 };
 use super::decode::{AvatarSlot, load_attachment_preview, load_avatar_async, request_sticker};
 use super::dto::{
-    GRID_COLUMNS, StickerArt, StickerPackDto, StickerRowDto, audio_row_update,
-    load_room_info_avatar, load_user_info_avatar, preview_line, rich_body, sticker_art,
-    sticker_grid, sticker_needle, user_info_pronouns,
+    GRID_COLUMNS, QuotedMessage, StickerArt, StickerPackDto, StickerRowDto, audio_row_update,
+    load_room_info_avatar, load_user_info_avatar, preview_line, quoted_message, rich_body,
+    sticker_art, sticker_grid, sticker_needle, user_info_pronouns,
 };
 use super::fields::{MemberRowFields, MessageFields, SpaceChildFields, SpaceFields};
 use super::present::{
@@ -21,8 +21,8 @@ use super::present::{
 };
 use super::props::{BoolProp, IntProp, StringProp, UiProps};
 use super::reconcile::{
-    RowReplacements, apply_member_rows, apply_rooms, apply_space_children, apply_spaces,
-    apply_timeline_patch, index_sticker_grid, retain_awaited_downloads,
+    RowReplacements, apply_member_rows, apply_reader_rows, apply_rooms, apply_space_children,
+    apply_spaces, apply_timeline_patch, index_sticker_grid, retain_awaited_downloads,
 };
 use super::rows::patch_rows_by_id;
 use super::session::{begin_session, with_session};
@@ -33,9 +33,9 @@ use crate::commands::messages::{UserMessage, UserMessageKind};
 use crate::commands::ui::Draft;
 use crate::commands::view::{
     AppViewState, AttachmentView, AudioView, CardStatus, CopiedLink, DirectoryView, LifecycleView,
-    NowPlaying, PaginationView, PinnedView, RoomCard, RoomInfoView, RoomLogView, RoomMenuTarget,
-    SourceState, SpaceIndexView, StickerView, Toast, TrackFile, UnsentMessage, UserCard,
-    UserInfoView, VideoView,
+    NowPlaying, PaginationView, PinnedView, ReadersView, RoomCard, RoomInfoView, RoomLogView,
+    RoomMenuTarget, SourceState, SpaceIndexView, StickerView, Toast, TrackFile, UnsentMessage,
+    UserCard, UserInfoView, VideoView,
 };
 use crate::domain::message::{
     EditKind, MessageEdit, MessagePermissions, MessagePreviewKind, RichText, TimelineMessage,
@@ -329,6 +329,7 @@ fn apply_snapshot<B: UiBackend>(
         message_link,
         room_link,
         source,
+        readers,
         room_log,
     } = view.as_ref();
 
@@ -386,6 +387,7 @@ fn apply_snapshot<B: UiBackend>(
     if last.is_none_or(|l| l.source != *source) {
         apply_source(w, source);
     }
+    apply_readers::<B>(w, last.map(|l| &l.readers), readers, ctx);
     if last.is_none_or(|l| l.room_log != *room_log) {
         apply_room_log::<B>(
             w,
@@ -515,6 +517,75 @@ fn apply_source(w: &impl UiProps, state: &SourceState) {
     );
     w.set_source_encryption(encryption);
     w.set_source_status(state);
+}
+
+fn apply_readers<B: UiBackend>(
+    w: &B::Window,
+    last: Option<&ReadersView>,
+    readers: &ReadersView,
+    ctx: &UiEventContext<'_, B>,
+) {
+    let ReadersView {
+        status,
+        message,
+        total,
+        rows,
+        has_more,
+        pages_landed,
+        avatars_ready,
+    } = readers;
+
+    if last.is_none_or(|l| l.message != *message) {
+        apply_quoted_message(w, quoted_message(message.as_deref()));
+    }
+    if last.is_none_or(|l| l.total != *total) {
+        w.set_int(
+            IntProp::ReadersCount,
+            i32::try_from(*total).unwrap_or(i32::MAX),
+        );
+    }
+    if last.is_none_or(|l| l.has_more != *has_more) {
+        w.set_bool(BoolProp::ReadersHasMore, *has_more);
+    }
+    if last.is_none_or(|l| l.pages_landed != *pages_landed) {
+        w.set_int(IntProp::ReadersPagesLanded, *pages_landed);
+        run_change_handlers_next_frame(w);
+    }
+    let rows_changed = last.is_none_or(|l| !Arc::ptr_eq(&l.rows, rows));
+    let avatars_landed = last.is_some_and(|l| l.avatars_ready != *avatars_ready);
+    if rows_changed || avatars_landed {
+        let previous = last
+            .filter(|_| !avatars_landed)
+            .map_or(&[] as &[_], |l| l.rows.as_ref());
+        apply_reader_rows(
+            &ctx.models.readers,
+            rows.as_ref(),
+            previous,
+            ctx.media,
+            &|reader| B::convert_reader(reader, ctx.media),
+            &|entry| entry.user_id(),
+        );
+    }
+    if last.is_none_or(|l| l.status != *status) {
+        w.set_readers_status(*status);
+    }
+}
+
+fn apply_quoted_message(w: &impl UiProps, quoted: QuotedMessage) {
+    let QuotedMessage {
+        sender,
+        sent_at,
+        kind,
+        body,
+        service_kind,
+        service_target,
+    } = quoted;
+    w.set_string(StringProp::ReadersSender, sender);
+    w.set_string(StringProp::ReadersSentAt, sent_at);
+    w.set_readers_kind(kind);
+    w.set_string(StringProp::ReadersBody, body);
+    w.set_readers_service_kind(service_kind);
+    w.set_string(StringProp::ReadersServiceTarget, service_target);
 }
 
 fn apply_message_link(w: &(impl UiProps + ComponentHandle), link: &CopiedLink) {

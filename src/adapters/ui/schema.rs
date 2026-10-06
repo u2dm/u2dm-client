@@ -61,6 +61,10 @@ macro_rules! string_props {
         SourceJson SourceView "SourceView" "json" set_json get_json;
         SourceEditJson SourceView "SourceView" "edit-json" set_edit_json get_edit_json;
         SourceEncryptionJson SourceView "SourceView" "encryption-json" set_encryption_json get_encryption_json;
+        ReadersSender ReadersView "ReadersView" "sender" set_sender get_sender;
+        ReadersSentAt ReadersView "ReadersView" "sent-at" set_sent_at get_sent_at;
+        ReadersBody ReadersView "ReadersView" "body" set_body get_body;
+        ReadersServiceTarget ReadersView "ReadersView" "service-target" set_service_target get_service_target;
         RoomInfoErrorDetail RoomInfoView "RoomInfoView" "error-detail" set_error_detail get_error_detail;
         RoomMenuRoomId RoomMenuView "RoomMenuView" "room-id" set_room_id get_room_id;
         RoomMenuName RoomMenuView "RoomMenuView" "name" set_name get_name;
@@ -163,6 +167,9 @@ macro_rules! simple_callbacks {
         on_copy_message_link "copy-message-link" copy_message_link manual_string CopyMessageLink;
         on_open_event_source "open-event-source" open_event_source manual_string OpenEventSource;
         on_close_event_source "close-event-source" close_event_source plain CloseEventSource;
+        on_open_readers "open-readers" open_readers manual_string OpenReaders;
+        on_close_readers "close-readers" close_readers plain CloseReaders;
+        on_page_readers "page-readers" page_readers plain PageReaders;
         on_pin_message "pin-message" pin_message manual_string PinMessage;
         on_unpin_message "unpin-message" unpin_message manual_string UnpinMessage;
         on_delete_message "delete-message" delete_message manual_string DeleteMessage;
@@ -232,6 +239,7 @@ macro_rules! bool_props {
         UserInfoMayBan UserInfoView "UserInfoView" "may-ban" set_may_ban get_may_ban;
         UserInfoMayUnban UserInfoView "UserInfoView" "may-unban" set_may_unban get_may_unban;
         RoomLogVisible RoomLogView "RoomLogView" "visible" set_visible get_visible;
+        ReadersHasMore ReadersView "ReadersView" "has-more" set_has_more get_has_more;
     } };
 }
 pub(crate) use bool_props;
@@ -266,6 +274,8 @@ macro_rules! int_props {
         UserInfoColorIndex UserInfoView "UserInfoView" "color-index" set_color_index get_color_index;
         RoomLogDropped RoomLogView "RoomLogView" "dropped" set_dropped get_dropped;
         RoomLogLinesLanded RoomLogView "RoomLogView" "lines-landed" set_lines_landed get_lines_landed;
+        ReadersCount ReadersView "ReadersView" "count" set_count get_count;
+        ReadersPagesLanded ReadersView "ReadersView" "pages-landed" set_pages_landed get_pages_landed;
     } };
 }
 pub(crate) use int_props;
@@ -328,6 +338,12 @@ macro_rules! enum_props {
             SourceView "SourceView" "status" set_status get_status;
         SourceEncryption set_source_encryption(&SourceEncryption)
             SourceView "SourceView" "encryption" set_encryption get_encryption;
+        ReadersStatus set_readers_status(ReadersStatus)
+            ReadersView "ReadersView" "status" set_status get_status;
+        ReadersKind set_readers_kind(MessagePreviewKind)
+            ReadersView "ReadersView" "kind" set_kind get_kind;
+        ReadersServiceKind set_readers_service_kind(ServiceKind)
+            ReadersView "ReadersView" "service-kind" set_service_kind get_service_kind;
     } };
 }
 pub(crate) use enum_props;
@@ -342,6 +358,7 @@ macro_rules! model_props {
         sticker_packs StickerPack VecModel StickerView "StickerView" "packs" set_packs;
         space_children SpaceChild VecModel SpaceIndexView "SpaceIndexView" "rows" set_rows;
         room_members MemberRow VecModel RoomInfoView "RoomInfoView" "rows" set_rows;
+        readers MemberRow VecModel ReadersView "ReadersView" "rows" set_rows;
         room_log LogLine SpliceModel RoomLogView "RoomLogView" "lines" set_lines;
     } };
 }
@@ -597,6 +614,16 @@ macro_rules! source_statuses {
     } };
 }
 pub(crate) use source_statuses;
+
+macro_rules! readers_statuses {
+    ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
+        Closed      Closed      "closed";
+        Locating    Locating    "locating";
+        Ready       Ready       "ready";
+        Unavailable Unavailable "unavailable";
+    } };
+}
+pub(crate) use readers_statuses;
 
 macro_rules! source_encryptions {
     ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*

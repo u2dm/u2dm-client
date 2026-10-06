@@ -334,6 +334,10 @@ async fn handle_timeline_command(
             report_source(request, &event_id, items, ctx).await;
             return;
         }
+        TimelineCommand::LocateReaders { request, event_id } => {
+            report_readers(request, &event_id, items, ctx).await;
+            return;
+        }
     };
 
     if timeline_tx
@@ -445,6 +449,31 @@ async fn report_source(
             .send(TimelineUpdate::SourceLocated {
                 request,
                 source: source.map(Box::new),
+            })
+            .await,
+    );
+}
+
+async fn report_readers(
+    request: u64,
+    event_id: &str,
+    items: &TimelineItems,
+    ctx: &TimelineContext<'_>,
+) {
+    let readers = OwnedEventId::try_from(event_id)
+        .ok()
+        .and_then(|id| items.readers_of(&id, ctx.own_user_id));
+    tracing::debug!(
+        request,
+        event_id,
+        readers = readers.as_ref().map(|found| found.readers.len()),
+        "resolved a readers lookup"
+    );
+    drop(
+        ctx.timeline_tx
+            .send(TimelineUpdate::ReadersLocated {
+                request,
+                readers: readers.map(Box::new),
             })
             .await,
     );

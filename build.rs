@@ -122,6 +122,7 @@ const ENUM_TABLES: &[(&str, &str)] = &[
     ("RoomScope", "room_scopes"),
     ("SpaceIndexStatus", "space_index_statuses"),
     ("SourceStatus", "source_statuses"),
+    ("ReadersStatus", "readers_statuses"),
     ("SourceEncryption", "source_encryptions"),
     ("ChildAccess", "child_accesses"),
     ("NotifyMode", "notify_modes"),

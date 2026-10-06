@@ -11,12 +11,11 @@ import { RetryNotice } from "../../../components/retry-notice.slint";
 import { ActionTile } from "./action-tile.slint";
 import { DetailLine } from "./detail-line.slint";
 import { CopyLinkTile, SheetCloseChip, SheetCover, TilePrompt, TileRow } from "./sheet.slint";
-import { MemberRoles } from "./member-roles.slint";
+import { MemberRow } from "./member-row.slint";
 import { SearchField } from "../../../components/search-field.slint";
 import { NotifyModes } from "./notify-modes.slint";
-import { MemberEntry } from "../../../types.slint";
 import { AppStyle, Fonts, IconSize, Metrics, Radius, Size, Space, Stroke, Weight } from "../../../theme.slint";
-import { MemberRowKind, RosterStatus, UserMessageKind } from "../../../enums.slint";
+import { RosterStatus, UserMessageKind } from "../../../enums.slint";
 import { RoomInfoView } from "../../../views.slint";
 import { Shell } from "../../../local.slint";
 import { Actions } from "../../../actions.slint";
@@ -173,89 +172,6 @@ component TopicAction inherits ClickArea {
             font-weight: Weight.semibold;
             color: AppStyle.link;
             vertical-alignment: center;
-            accessible-role: none;
-        }
-    }
-}
-
-component MemberRow inherits ListItemArea {
-    in property <MemberEntry> entry;
-
-    pure function describe(entry: MemberEntry) -> string {
-        if entry.kind == MemberRowKind.invited-heading {
-            return @tr("Invited");
-        }
-        if MemberRoles.label(entry.role) == "" {
-            return @tr("{}, {}", entry.name, entry.user-id);
-        }
-        return @tr("{}, {}, {}", entry.name, entry.user-id, MemberRoles.label(entry.role));
-    }
-
-    enabled: root.entry.kind == MemberRowKind.member;
-    label: root.describe(root.entry);
-    background: root.has-hover && root.enabled ? AppStyle.overlay-hover : transparent;
-    clicked => {
-        Actions.open-user-info(root.entry.user-id);
-    }
-
-    if root.entry.kind == MemberRowKind.invited-heading: HorizontalLayout {
-        padding-left: Space.xl;
-        padding-right: Space.xl;
-        padding-bottom: Space.sm;
-
-        Text {
-            text: @tr("Invited");
-            font-size: Fonts.caption;
-            font-weight: Weight.semibold;
-            color: AppStyle.foreground-muted;
-            vertical-alignment: bottom;
-            accessible-role: none;
-        }
-    }
-
-    if root.entry.kind == MemberRowKind.member: HorizontalLayout {
-        padding-left: Space.xl;
-        padding-right: Space.xl;
-        spacing: Space.lg;
-
-        Avatar {
-            cross-axis-self-alignment: center;
-            width: Metrics.room-info-member-avatar;
-            height: Metrics.room-info-member-avatar;
-            color-index: root.entry.color-index;
-            has-image: root.entry.has-avatar;
-            image: root.entry.avatar;
-            initial: root.entry.initial;
-        }
-
-        VerticalLayout {
-            horizontal-stretch: 1;
-            alignment: center;
-            spacing: Space.xs;
-
-            Text {
-                text: root.entry.name;
-                font-family: Fonts.emoji;
-                font-size: Fonts.body;
-                font-weight: Weight.semibold;
-                overflow: elide;
-                accessible-role: none;
-            }
-
-            Text {
-                text: root.entry.user-id;
-                font-size: Fonts.body-small;
-                color: AppStyle.foreground-muted;
-                overflow: elide;
-                accessible-role: none;
-            }
-        }
-
-        if MemberRoles.label(root.entry.role) != "": Text {
-            cross-axis-self-alignment: center;
-            text: MemberRoles.label(root.entry.role);
-            font-size: Fonts.caption;
-            color: AppStyle.foreground-muted;
             accessible-role: none;
         }
     }

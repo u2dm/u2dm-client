@@ -49,6 +49,7 @@ scenario_env() {
     message-pin-failures) echo 'U2DM_DEMO_MESSAGE_MENU=pin-fails' ;;
     message-delete)  echo 'U2DM_DEMO_MESSAGE_MENU=slow U2DM_DEMO_PINNED=slow' ;;
     message-delete-failures) echo 'U2DM_DEMO_MESSAGE_MENU=delete-fails,member' ;;
+    readers)         echo 'U2DM_DEMO_RECEIPTS=late,throng U2DM_DEMO_ROOM_INFO=slow' ;;
     *) return 1 ;;
   esac
 }
@@ -276,6 +277,16 @@ scenario_steps() {
       echo '{"op":"dismiss_toast"}'
       echo '{"op":"delete_message","event_id":"demo-rust-3"}'
       echo 'sleep 2' ;;
+    readers)
+      echo '{"op":"select_room","room_id":"!rust:demo.local"}'
+      echo 'sleep 3'
+      echo '{"op":"open_readers","event_id":"demo-rust-15"}'
+      echo 'sleep 3'
+      echo '{"op":"close_readers"}'
+      echo '{"op":"open_readers","event_id":"demo-rust-24"}'
+      echo 'sleep 3'
+      echo '{"op":"page_readers"}'
+      echo 'sleep 3' ;;
     login-oauth|verify-self)
       : ;;
   esac
@@ -322,6 +333,7 @@ scenario_note() {
     message-pin-failures) echo 'a pin is refused, so the row stays unpinned and the toast shows' ;;
     message-delete)  echo 'an own quoted message is deleted twice (one deletion), then a pinned message of someone else' ;;
     message-delete-failures) echo 'an own deletion comes back with the toast; a member may not delete someone else'"'"'s message' ;;
+    readers)         echo 'in !rust, the 123 readers of an older message load slowly, then the 121 readers of your newest message page in fifty at a time' ;;
   esac
 }
 
@@ -342,7 +354,7 @@ names() {
     space-index polls poll-edits room-info room-leave room-info-failures room-info-pane room-menu room-menu-leave \
     room-menu-failures room-log user-info user-info-failures user-dm user-dm-start user-dm-failures user-ignore user-moderation \
     user-moderation-failures message-link message-source message-pins message-pin-failures message-delete \
-    message-delete-failures
+    message-delete-failures readers
 }
 
 cmd_list() {

@@ -42,6 +42,7 @@ pub enum AvatarSlot {
     Space(String),
     SpaceChild(String),
     Member(String),
+    Reader(String),
     RoomInfo,
     UserInfo,
     User,

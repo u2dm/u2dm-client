@@ -249,6 +249,9 @@ pub(super) fn command_allowed(phase: AppPhase, cmd: &UiCommand) -> bool {
         | UiCommand::CopyMessageLink { .. }
         | UiCommand::OpenEventSource { .. }
         | UiCommand::CloseEventSource
+        | UiCommand::OpenReaders { .. }
+        | UiCommand::CloseReaders
+        | UiCommand::PageReaders
         | UiCommand::PinMessage { .. }
         | UiCommand::UnpinMessage { .. }
         | UiCommand::DeleteMessage { .. }

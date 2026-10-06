@@ -29,12 +29,12 @@ use crate::domain::message::{
 };
 use crate::domain::poll::{PollAction, PollDraft};
 use crate::domain::room::{NotifyMode, Room, RoomId, Space};
-use crate::domain::room_info::{RoomAbout, RosterMember};
+use crate::domain::room_info::{Reader, RoomAbout, RosterMember};
 use crate::domain::space_index::HierarchyPage;
 use crate::domain::sticker::{PackId, StickerImage};
 use crate::domain::sync::{SyncEvent, SyncOutcome};
 use crate::domain::timeline::{
-    AudioLookup, AudioTrack, EventSource, JumpTarget, Landing, PaginationDirection,
+    AudioLookup, AudioTrack, EventSource, JumpTarget, Landing, MessageReaders, PaginationDirection,
     PaginationOutcome, TimelineCommand, TimelineFocus, TimelinePatch, TimelineUpdate, locate_audio,
 };
 use crate::domain::user_info::{
@@ -768,8 +768,25 @@ impl DemoAuthed {
                         .await,
                 );
             }
+            TimelineCommand::LocateReaders { request, event_id } => {
+                let readers = self.locate_readers(&event_id);
+                drop(
+                    timeline_tx
+                        .send(TimelineUpdate::ReadersLocated {
+                            request,
+                            readers: readers.map(Box::new),
+                        })
+                        .await,
+                );
+            }
         }
         None
+    }
+
+    fn locate_readers(&self, event_id: &str) -> Option<MessageReaders> {
+        let guard = self.active.lock().ok()?;
+        let active = guard.as_ref()?;
+        receipts::readers_of(&active.messages, &active.receipts, event_id)
     }
 
     fn locate_source(&self, event_id: &str) -> Option<EventSource> {
@@ -1216,6 +1233,11 @@ impl RoomInfoPort for DemoAuthed {
             return Err(unavailable("this room's member list"));
         }
         Ok(data::roster(room_id, room_info::member_avatar))
+    }
+
+    async fn readers(&self, room_id: &RoomId, user_ids: &[String]) -> Result<Vec<Reader>> {
+        room_info::pause().await;
+        Ok(data::readers(room_id, user_ids, room_info::member_avatar))
     }
 
     async fn set_notify(&self, room_id: &RoomId, mode: NotifyMode) -> Result<()> {

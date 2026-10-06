@@ -4,6 +4,7 @@ import { MessageEntry } from "../../../../types.slint";
 import { ServiceLabel } from "../../../../messages.slint";
 import { MessageShape } from "./message-body.slint";
 import { QuickReactions, StripCell } from "./quick-reactions.slint";
+import { Readers } from "./delivery-mark.slint";
 import { ClickArea, Interaction, RovingKeys } from "../../../../components/a11y.slint";
 import { ConfirmChoice, Confirmations, MenuCard, MenuConfirmation } from "../../../../components/menu.slint";
 import { MenuRow } from "../../../../components/menu-row.slint";
@@ -20,6 +21,7 @@ enum MenuAction {
     copy-text,
     copy-link,
     view-profile,
+    read-by,
     pin,
     select-text,
     view-source,
@@ -158,6 +160,9 @@ component MessageMenuCard inherits MenuCard {
         if action == MenuAction.view-profile {
             return !root.msg.is-own && !root.is-service && root.msg.sender-id != "";
         }
+        if action == MenuAction.read-by {
+            return root.has-remote-id && Readers.counted(root.msg);
+        }
         if action == MenuAction.pin {
             return root.is-remote-message && RoomView.may-pin;
         }
@@ -185,6 +190,9 @@ component MessageMenuCard inherits MenuCard {
         }
         if root.available(MenuAction.view-profile) {
             root.offered.push(MenuAction.view-profile);
+        }
+        if root.available(MenuAction.read-by) {
+            root.offered.push(MenuAction.read-by);
         }
         if root.available(MenuAction.pin) {
             root.offered.push(MenuAction.pin);
@@ -230,6 +238,9 @@ component MessageMenuCard inherits MenuCard {
         if action == MenuAction.view-profile {
             return @tr("View profile");
         }
+        if action == MenuAction.read-by {
+            return @tr("Read by {n} person" | "Read by {n} people" % root.msg.reader-count);
+        }
         if action == MenuAction.pin {
             return root.msg.pinned ? @tr("Unpin") : @tr("Pin");
         }
@@ -270,6 +281,9 @@ component MessageMenuCard inherits MenuCard {
         }
         if action == MenuAction.view-profile {
             return IconSet.UserRound;
+        }
+        if action == MenuAction.read-by {
+            return IconSet.Eye;
         }
         if action == MenuAction.pin {
             return root.msg.pinned ? IconSet.PinOff : IconSet.Pin;
@@ -463,6 +477,11 @@ export component MessageMenuOverlay inherits Rectangle {
         if action == MenuAction.view-profile {
             MessageMenu.close();
             Actions.open-user-info(msg.sender-id);
+            return;
+        }
+        if action == MenuAction.read-by {
+            MessageMenu.close();
+            Actions.open-readers(msg.event-id);
             return;
         }
         if action == MenuAction.delete {

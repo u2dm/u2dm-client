@@ -13,6 +13,7 @@ mod media;
 mod message_actions;
 mod pinned;
 mod polls;
+mod readers;
 mod recover;
 mod room_directory;
 mod room_info;
@@ -36,8 +37,8 @@ use attachments::Attachments;
 use audio::AudioController;
 use establish::{EstablishedSession, Rollback};
 use event::{
-    AppEvent, EndReason, MessageActionEvent, RoomActionEvent, SessionEvent, TimelineEvent,
-    UserInfoEvent,
+    AppEvent, EndReason, MessageActionEvent, ReadersEvent, RoomActionEvent, SessionEvent,
+    TimelineEvent, UserInfoEvent,
 };
 use event_source::EventSourceViewer;
 use input::{CommandSender, EventSender, Inbox, Input};
@@ -45,6 +46,7 @@ use lifecycle::{Lifecycle, Settled};
 use media::MediaActions;
 use message_actions::MessageActions;
 use pinned::PinnedMessages;
+use readers::ReaderList;
 use recover::Recovery;
 use room_directory::{RoomDirectory, RoomMeta};
 use room_info::RoomInfo;
@@ -74,7 +76,7 @@ use crate::domain::poll::PollDraft;
 use crate::domain::room::{NotifyMode, RoomId, RoomList, Space};
 use crate::domain::sticker::PackId;
 use crate::domain::sync::ConnectionStatus;
-use crate::domain::timeline::{AudioTrack, FailedSend, TimelineFocus};
+use crate::domain::timeline::{AudioTrack, FailedSend, MessageReaders, TimelineFocus};
 use crate::domain::user_info::{IgnoreChange, Moderation, UserId};
 use crate::ports::browser::BrowserPort;
 use crate::ports::matrix::{AuthPort, AuthenticatedSession, CleanupReport, MediaPort, SessionPort};
@@ -183,6 +185,7 @@ pub struct AppService {
     user_info: UserInfo,
     message_actions: MessageActions,
     event_source: EventSourceViewer,
+    readers: ReaderList,
     room_log: RoomLogViewer,
     attachments: Attachments,
     submissions: Submissions,
@@ -227,6 +230,7 @@ impl AppService {
             user_info: UserInfo::new(Arc::clone(&output), events.clone()),
             message_actions: MessageActions::new(Arc::clone(&output), events.clone()),
             event_source: EventSourceViewer::new(Arc::clone(&output)),
+            readers: ReaderList::new(Arc::clone(&output), events.clone()),
             room_log: RoomLogViewer::new(room_logs, Arc::clone(&output), events.clone()),
             attachments: Attachments::new(media_files, Arc::clone(&output), events.clone()),
             submissions: Submissions::new(Arc::clone(&output), events.clone()),
@@ -555,6 +559,15 @@ impl AppService {
             }
             UiCommand::CloseEventSource => {
                 self.event_source.close();
+            }
+            UiCommand::OpenReaders { event_id } => {
+                self.readers.open(&self.active_timeline, event_id);
+            }
+            UiCommand::CloseReaders => {
+                self.readers.close();
+            }
+            UiCommand::PageReaders => {
+                self.page_readers();
             }
             UiCommand::PinMessage { event_id } => {
                 self.change_pin(event_id, PinChange::Pin);
@@ -978,6 +991,40 @@ impl AppService {
         self.room_log.open(room_id, name);
     }
 
+    fn page_readers(&mut self) {
+        if let Some(port) = self.port(|a| &a.room_info) {
+            self.readers.page(port);
+        }
+    }
+
+    fn settle_readers_lookup(
+        &mut self,
+        room_id: RoomId,
+        generation: i32,
+        request: u64,
+        readers: Option<Box<MessageReaders>>,
+    ) {
+        if !self.active_timeline.is_current(&room_id, generation) {
+            return;
+        }
+        if let Some(port) = self.port(|a| &a.room_info) {
+            self.readers.located(port, room_id, request, readers);
+        }
+    }
+
+    fn handle_readers(&mut self, event: ReadersEvent) {
+        match event {
+            ReadersEvent::Named { request, readers } => {
+                if let Some(port) = self.port(|a| &a.room_info) {
+                    self.readers.named(port, request, readers);
+                }
+            }
+            ReadersEvent::AvatarsReady { request, ready } => {
+                self.readers.avatars_ready(request, ready);
+            }
+        }
+    }
+
     fn open_user_info(&mut self, user_id: UserId) {
         if let Some(port) = self.port(|a| &a.user_info) {
             self.user_info
@@ -1091,6 +1138,7 @@ impl AppService {
             AppEvent::RoomAction(event) => self.handle_room_action(event),
             AppEvent::MessageAction(event) => self.handle_message_action(event),
             AppEvent::UserInfo(event) => self.handle_user_info(event).await,
+            AppEvent::Readers(event) => self.handle_readers(event),
             AppEvent::RoomLogGrew => self.room_log.reread(),
         }
     }
@@ -1246,6 +1294,12 @@ impl AppService {
                     self.event_source.located(request, source);
                 }
             }
+            TimelineEvent::ReadersLocated {
+                room_id,
+                generation,
+                request,
+                readers,
+            } => self.settle_readers_lookup(room_id, generation, request, readers),
         }
     }
 
@@ -1636,6 +1690,7 @@ impl AppService {
         self.retarget_room_info(&room_id);
         self.user_info.close();
         self.event_source.close();
+        self.readers.close();
         self.sync_selected_room(Some(&room_id));
         self.follow_pinned(room_id.clone());
         self.open_room(room_id, TimelineFocus::ReadPosition).await;
@@ -1686,6 +1741,7 @@ impl AppService {
             .select_room(timeline, room_id, generation, focus)
             .await;
         self.event_source.retarget(&self.active_timeline);
+        self.readers.retarget(&self.active_timeline);
     }
 
     async fn retry_timeline(&mut self) {
@@ -1719,6 +1775,7 @@ impl AppService {
         self.room_info.close();
         self.user_info.close();
         self.event_source.close();
+        self.readers.close();
         self.audio.abandon_lookup();
         self.selection.room = None;
         self.submissions.offer(None);
@@ -1782,6 +1839,7 @@ impl AppService {
             self.space_index.restart(),
             self.room_info.restart(),
             self.user_info.restart(),
+            self.readers.restart(),
             self.room_log.restart(),
         );
     }
@@ -1874,6 +1932,7 @@ impl AppService {
             self.space_index.shutdown(),
             self.room_info.shutdown(),
             self.user_info.shutdown(),
+            self.readers.shutdown(),
             self.room_log.shutdown(),
         );
     }

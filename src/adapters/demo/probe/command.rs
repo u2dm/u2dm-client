@@ -219,6 +219,11 @@ pub enum ProbeCommand {
         event_id: String,
     },
     CloseEventSource,
+    OpenReaders {
+        event_id: String,
+    },
+    CloseReaders,
+    PageReaders,
     PinMessage {
         event_id: String,
     },
@@ -590,6 +595,9 @@ pub fn to_driven(command: ProbeCommand, selected: Selection<'_>) -> Result<Drive
         ProbeCommand::CopyMessageLink { event_id } => UiCommand::CopyMessageLink { event_id },
         ProbeCommand::OpenEventSource { event_id } => UiCommand::OpenEventSource { event_id },
         ProbeCommand::CloseEventSource => UiCommand::CloseEventSource,
+        ProbeCommand::OpenReaders { event_id } => UiCommand::OpenReaders { event_id },
+        ProbeCommand::CloseReaders => UiCommand::CloseReaders,
+        ProbeCommand::PageReaders => UiCommand::PageReaders,
         ProbeCommand::PinMessage { event_id } => UiCommand::PinMessage { event_id },
         ProbeCommand::UnpinMessage { event_id } => UiCommand::UnpinMessage { event_id },
         ProbeCommand::DeleteMessage { event_id } => UiCommand::DeleteMessage { event_id },

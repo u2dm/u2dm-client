@@ -10,7 +10,7 @@ import {
     VerificationEmoji,
     UserMessage,
 } from "./types.slint";
-import { AttachmentKind, AudioKind, ConnectionState, DirectChat, LoginActivity, LoginMethodKind, LoginPhase, MemberRole, Moderation, NotifyMode, PreviewKind, RoomInfoPlacement, RoomMembership, RoomScope, RosterStatus, SourceEncryption, SourceStatus, SpaceIndexStatus, TimelineState, UserMessageKind, VerificationActivity, VerificationPhase } from "./enums.slint";
+import { AttachmentKind, AudioKind, ConnectionState, DirectChat, LoginActivity, LoginMethodKind, LoginPhase, MemberRole, Moderation, NotifyMode, PreviewKind, ReadersStatus, RoomInfoPlacement, RoomMembership, RoomScope, RosterStatus, ServiceKind, SourceEncryption, SourceStatus, SpaceIndexStatus, TimelineState, UserMessageKind, VerificationActivity, VerificationPhase } from "./enums.slint";
 
 export global LoginView {
     in property <LoginPhase> step: LoginPhase.loading;
@@ -66,6 +66,21 @@ export global SourceView {
     in property <string> edit-json;
     in property <SourceEncryption> encryption: SourceEncryption.plain;
     in property <string> encryption-json;
+}
+
+export global ReadersView {
+    in property <ReadersStatus> status: ReadersStatus.closed;
+    out property <bool> visible: root.status != ReadersStatus.closed;
+    in property <string> sender;
+    in property <string> sent-at;
+    in property <PreviewKind> kind: PreviewKind.none;
+    in property <string> body;
+    in property <ServiceKind> service-kind: ServiceKind.none;
+    in property <string> service-target;
+    in property <int> count;
+    in property <[MemberEntry]> rows;
+    in property <bool> has-more;
+    in property <int> pages-landed;
 }
 
 export global RoomInfoView {

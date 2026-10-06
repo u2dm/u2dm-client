@@ -10,9 +10,10 @@ use crate::domain::auth::ServerInfo;
 use crate::domain::media::PickedAttachment;
 use crate::domain::message::{MessageEdit, PinnedMessage};
 use crate::domain::room::RoomId;
-use crate::domain::room_info::RoomAbout;
+use crate::domain::room_info::{Reader, RoomAbout};
 use crate::domain::timeline::{
-    AudioTrack, EventSource, PaginationDirection, PaginationOutcome, TimelineAdvance, TimelineFocus,
+    AudioTrack, EventSource, MessageReaders, PaginationDirection, PaginationOutcome,
+    TimelineAdvance, TimelineFocus,
 };
 use crate::domain::user_info::{GlobalProfile, IgnoreChange, Moderation, UserId};
 use crate::domain::verification::VerificationEvent;
@@ -93,7 +94,22 @@ pub(super) enum AppEvent {
     RoomAction(RoomActionEvent),
     MessageAction(MessageActionEvent),
     UserInfo(UserInfoEvent),
+    Readers(ReadersEvent),
     RoomLogGrew,
+}
+
+pub(super) enum ReadersEvent {
+    Named { request: u64, readers: Vec<Reader> },
+    AvatarsReady { request: u64, ready: usize },
+}
+
+impl ReadersEvent {
+    fn label(&self) -> &'static str {
+        match self {
+            Self::Named { .. } => "ReadersNamed",
+            Self::AvatarsReady { .. } => "ReaderAvatarsReady",
+        }
+    }
 }
 
 pub(super) enum UserInfoEvent {
@@ -237,6 +253,7 @@ impl AppEvent {
             Self::RoomAction(event) => event.label(),
             Self::MessageAction(event) => event.label(),
             Self::UserInfo(event) => event.label(),
+            Self::Readers(event) => event.label(),
             Self::RoomLogGrew => "RoomLogGrew",
         }
     }
@@ -271,6 +288,12 @@ pub(super) enum TimelineEvent {
         request: u64,
         source: Option<Box<EventSource>>,
     },
+    ReadersLocated {
+        room_id: RoomId,
+        generation: i32,
+        request: u64,
+        readers: Option<Box<MessageReaders>>,
+    },
 }
 
 impl TimelineEvent {
@@ -281,6 +304,7 @@ impl TimelineEvent {
             Self::Refocus { .. } => "RefocusTimeline",
             Self::AudioLocated { .. } => "AudioLocated",
             Self::SourceLocated { .. } => "SourceLocated",
+            Self::ReadersLocated { .. } => "ReadersLocated",
         }
     }
 }

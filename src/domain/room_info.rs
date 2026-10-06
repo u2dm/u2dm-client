@@ -41,12 +41,15 @@ pub struct RosterMember {
     pub section: RosterSection,
 }
 
+fn shown_name<'a>(display_name: Option<&'a str>, user_id: &'a str) -> &'a str {
+    display_name
+        .filter(|name| !name.trim().is_empty())
+        .unwrap_or_else(|| localpart(user_id))
+}
+
 impl RosterMember {
     pub fn label(&self) -> &str {
-        self.display_name
-            .as_deref()
-            .filter(|name| !name.trim().is_empty())
-            .unwrap_or_else(|| localpart(&self.user_id))
+        shown_name(self.display_name.as_deref(), &self.user_id)
     }
 
     pub fn matches(&self, query: &MemberQuery) -> bool {
@@ -81,6 +84,33 @@ pub fn sort_roster(members: &mut [RosterMember]) {
             member.user_id.clone(),
         )
     });
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Reader {
+    pub user_id: String,
+    pub display_name: Option<String>,
+    pub avatar_mxc: Option<String>,
+    pub role: MemberRole,
+}
+
+impl Reader {
+    pub fn unknown(user_id: String) -> Self {
+        Self {
+            user_id,
+            display_name: None,
+            avatar_mxc: None,
+            role: MemberRole::Member,
+        }
+    }
+
+    pub fn label(&self) -> &str {
+        shown_name(self.display_name.as_deref(), &self.user_id)
+    }
+}
+
+pub fn sort_readers(readers: &mut [Reader]) {
+    readers.sort_by_cached_key(|reader| (reader.label().to_lowercase(), reader.user_id.clone()));
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

@@ -1,0 +1,233 @@
+import { Palette, ScrollView, Spinner } from "std-widgets.slint";
+
+import { CloseWatch } from "../../../components/close-watch.slint";
+import { DialogHeader } from "../../../components/dialog-header.slint";
+import { DialogCard, ModalHost } from "../../../components/overlay.slint";
+import { RetryNotice } from "../../../components/retry-notice.slint";
+import { MemberRow } from "./member-row.slint";
+import { MessagePreview, ServiceLabel } from "../../../messages.slint";
+import { PreviewKind, ReadersStatus, ServiceKind } from "../../../enums.slint";
+import { ReadersView } from "../../../views.slint";
+import { DeliveryTip, Reactions, Shell } from "../../../local.slint";
+import { Actions } from "../../../actions.slint";
+import { AppStyle, Fonts, Metrics, Radius, Space, Stroke, Weight } from "../../../theme.slint";
+
+component QuotedMessage inherits Rectangle {
+    property <bool> is-service: ReadersView.service-kind != ServiceKind.none;
+    property <bool> is-text: ReadersView.kind == PreviewKind.text || ReadersView.kind == PreviewKind.none;
+    property <string> kind-line: root.is-service || root.is-text
+        ? ""
+        : MessagePreview.label(ReadersView.kind, ReadersView.body);
+    property <string> text-line: root.is-service
+        ? ServiceLabel.label(ReadersView.service-kind, ReadersView.sender, ReadersView.service-target)
+        : (root.is-text || root.captioned(ReadersView.kind) ? ReadersView.body : "");
+
+    pure function captioned(kind: PreviewKind) -> bool {
+        return kind == PreviewKind.image
+            || kind == PreviewKind.video
+            || kind == PreviewKind.audio
+            || kind == PreviewKind.voice;
+    }
+
+    border-radius: Radius.sm;
+    background: AppStyle.overlay-subtle;
+
+    HorizontalLayout {
+        padding: Space.md;
+        spacing: Space.md;
+
+        Rectangle {
+            width: Stroke.marker;
+            border-radius: self.width / 2;
+            background: Palette.accent-background;
+        }
+
+        VerticalLayout {
+            horizontal-stretch: 1;
+            spacing: Space.xs;
+
+            HorizontalLayout {
+                spacing: Space.md;
+
+                if !root.is-service: Text {
+                    horizontal-stretch: 1;
+                    text: ReadersView.sender;
+                    font-family: Fonts.emoji;
+                    font-size: Fonts.body-small;
+                    font-weight: Weight.bold;
+                    color: Palette.accent-background;
+                    overflow: elide;
+                }
+
+                Text {
+                    text: ReadersView.sent-at;
+                    font-size: Fonts.caption;
+                    color: AppStyle.foreground-muted;
+                    vertical-alignment: center;
+                }
+            }
+
+            if root.kind-line != "": Text {
+                text: root.kind-line;
+                font-family: Fonts.emoji;
+                font-size: Fonts.body-small;
+                color: AppStyle.foreground-muted;
+                overflow: elide;
+            }
+
+            if root.text-line != "": Text {
+                text: root.text-line;
+                font-family: Fonts.emoji;
+                font-size: Fonts.body-small;
+                wrap: word-wrap;
+                overflow: elide;
+                max-lines: Metrics.readers-quote-lines;
+            }
+        }
+    }
+}
+
+component ReaderRows inherits Rectangle {
+    in property <bool> above-modal;
+
+    property <length> rows-bottom: ReadersView.rows.length * Metrics.readers-row;
+    property <int> asked-after: -1;
+    property <bool> wants-page: ReadersView.has-more
+        && root.asked-after != ReadersView.pages-landed
+        && root.rows-bottom + scroll.content-y - scroll.visible-height <= Metrics.readers-page-ahead;
+
+    preferred-height: root.rows-bottom;
+    min-height: min(root.rows-bottom, Metrics.readers-row);
+    accessible-role: list;
+    accessible-label: @tr("Readers");
+    accessible-item-count: ReadersView.rows.length;
+
+    init => {
+        root.page-if-wanted();
+    }
+
+    changed wants-page => {
+        root.page-if-wanted();
+    }
+
+    function page-if-wanted() {
+        if root.wants-page {
+            root.asked-after = ReadersView.pages-landed;
+            Actions.page-readers();
+        }
+    }
+
+    scroll := ScrollView {
+        width: 100%;
+        height: 100%;
+        content-width: self.visible-width;
+        content-height: rows.preferred-height;
+
+        rows := VerticalLayout {
+            width: scroll.visible-width;
+
+            for entry[idx] in ReadersView.rows: MemberRow {
+                height: Metrics.readers-row;
+                index: idx;
+                entry: entry;
+                above-modal: root.above-modal;
+            }
+        }
+    }
+}
+
+export component ReadersDialog inherits ModalHost {
+    property <bool> covered: Shell.user-info-open || Shell.verification-open;
+    property <bool> ready: ReadersView.status == ReadersStatus.ready;
+    property <length> card-width: min(AppStyle.card-width-wide, root.width - AppStyle.card-inset);
+    property <length> card-height: min(
+        body.preferred-height,
+        root.height - AppStyle.card-inset,
+        Metrics.readers-max-height);
+
+    dim-opacity: AppStyle.dialog-scrim;
+    label: @tr("Read by");
+    dismissed => {
+        if Shell.user-info-open {
+            Actions.close-user-info();
+        } else {
+            Actions.close-readers();
+        }
+    }
+    opened => {
+        Reactions.close();
+        DeliveryTip.clear();
+        header.focus-close();
+    }
+
+    CloseWatch {
+        open: Shell.user-info-open;
+        closed => {
+            if !Shell.verification-open {
+                root.focus();
+            }
+        }
+    }
+
+    DialogCard {
+        x: (root.width - self.width) / 2;
+        y: (root.height - self.height) / 2;
+        width: root.card-width;
+        height: root.card-height;
+        clip: true;
+
+        body := VerticalLayout {
+            width: 100%;
+            height: 100%;
+            padding-top: Space.xl;
+            padding-bottom: Space.md;
+            spacing: Space.lg;
+
+            VerticalLayout {
+                padding-left: Space.xl;
+                padding-right: Space.xl;
+                spacing: Space.lg;
+
+                header := DialogHeader {
+                    title: @tr("Read by");
+                    copyable: false;
+                    above-modal: !root.covered;
+                    close-label: @tr("Close the list of readers");
+                    close-clicked => {
+                        Actions.close-readers();
+                    }
+
+                    if root.ready && ReadersView.count > 0: Text {
+                        text: @tr("{n} person" | "{n} people" % ReadersView.count);
+                        font-size: Fonts.caption;
+                        color: AppStyle.foreground-muted;
+                    }
+                }
+
+                if root.ready: QuotedMessage { }
+            }
+
+            if ReadersView.status == ReadersStatus.locating: HorizontalLayout {
+                alignment: center;
+                padding: Space.xl;
+
+                Spinner {
+                    indeterminate: true;
+                }
+            }
+
+            if ReadersView.status == ReadersStatus.unavailable: RetryNotice {
+                text: @tr("This message is no longer loaded, so its readers can't be listed.");
+            }
+
+            if root.ready && ReadersView.rows.length == 0: RetryNotice {
+                text: @tr("No one else has read this message yet.");
+            }
+
+            if root.ready && ReadersView.rows.length > 0: ReaderRows {
+                vertical-stretch: 1;
+                above-modal: !root.covered;
+            }
+        }
+    }
+}

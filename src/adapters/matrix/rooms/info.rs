@@ -3,10 +3,10 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use matrix_sdk::deserialized_responses::SyncOrStrippedState;
 use matrix_sdk::room::{Receipts, RoomMember};
-use matrix_sdk::ruma::OwnedEventId;
 use matrix_sdk::ruma::events::SyncStateEvent;
 use matrix_sdk::ruma::events::room::member::{MembershipChange, MembershipState};
 use matrix_sdk::ruma::events::room::topic::RoomTopicEventContent;
+use matrix_sdk::ruma::{OwnedEventId, OwnedUserId};
 use matrix_sdk::{Room, RoomMemberships};
 
 use super::build::{default_notification_mode, notification_mode_for};
@@ -15,7 +15,7 @@ use crate::adapters::matrix::permissions::member_role;
 use crate::adapters::matrix::session::ClientHandle;
 use crate::domain::message::RichText;
 use crate::domain::room::{NotifyMode, RoomId};
-use crate::domain::room_info::{RoomAbout, RosterMember, RosterSection, sort_roster};
+use crate::domain::room_info::{Reader, RoomAbout, RosterMember, RosterSection, sort_roster};
 use crate::error::{AppError, Result};
 use crate::ports::matrix::RoomInfoPort;
 
@@ -56,6 +56,15 @@ impl RoomInfoPort for MatrixRoomInfo {
         let mut roster: Vec<RosterMember> = members.iter().filter_map(roster_member).collect();
         sort_roster(&mut roster);
         Ok(roster)
+    }
+
+    async fn readers(&self, room_id: &RoomId, user_ids: &[String]) -> Result<Vec<Reader>> {
+        let room = self.matrix.room(room_id).await?;
+        let mut readers = Vec::with_capacity(user_ids.len());
+        for user_id in user_ids {
+            readers.push(stored_reader(&room, user_id).await);
+        }
+        Ok(readers)
     }
 
     async fn set_notify(&self, room_id: &RoomId, mode: NotifyMode) -> Result<()> {
@@ -180,6 +189,25 @@ fn joined_at(member: &RoomMember) -> Option<u64> {
         MembershipChange::Joined | MembershipChange::InvitationAccepted
     )
     .then(|| u64::from(event.origin_server_ts.0))
+}
+
+async fn stored_reader(room: &Room, user_id: &str) -> Reader {
+    let Ok(parsed) = OwnedUserId::try_from(user_id) else {
+        return Reader::unknown(user_id.to_owned());
+    };
+    match room.get_member_no_sync(&parsed).await {
+        Ok(Some(member)) => Reader {
+            user_id: user_id.to_owned(),
+            display_name: member.display_name().map(ToOwned::to_owned),
+            avatar_mxc: member.avatar_url().map(ToString::to_string),
+            role: member_role(member.power_level()),
+        },
+        Ok(None) => Reader::unknown(user_id.to_owned()),
+        Err(e) => {
+            tracing::debug!(user_id, "could not read a reader's membership: {e}");
+            Reader::unknown(user_id.to_owned())
+        }
+    }
 }
 
 fn roster_member(member: &RoomMember) -> Option<RosterMember> {

@@ -31,6 +31,7 @@ import {
     RoomMenuView,
     RoomLogView,
     UserInfoView,
+    ReadersView,
 } from "./views.slint";
 import { Actions } from "./actions.slint";
 import { EmojiStore } from "./emoji-store.slint";
@@ -50,12 +51,13 @@ import { RoomInfoDialog } from "./screens/chat/components/room-info.slint";
 import { EventSourceDialog } from "./screens/chat/components/event-source.slint";
 import { UserInfoDialog } from "./screens/chat/components/user-info.slint";
 import { RoomLogDialog } from "./screens/chat/components/room-log.slint";
+import { ReadersDialog } from "./screens/chat/components/readers.slint";
 
 export { EmojiStore }
 export { LoginPhase, ConnectionState, TimelineState, VerificationPhase, MediaState, MediaFailure }
 export { MessageKind, PreviewKind, ServiceKind, LoginMethodKind, AudioKind }
 export { LoginView, SessionView, DirectoryView, SpaceIndexView, RoomView, StickerView, VerificationView }
-export { AttachmentView, VideoView, AudioView, UnsentView, WindowView, RoomInfoView, SourceView, RoomMenuView, RoomLogView, UserInfoView }
+export { AttachmentView, VideoView, AudioView, UnsentView, WindowView, RoomInfoView, SourceView, RoomMenuView, RoomLogView, UserInfoView, ReadersView }
 export { Actions }
 export { Probe, ReplySwipe, RoomMenu }
 
@@ -100,6 +102,7 @@ export component AppWindow inherits Window {
     }
     if Shell.video-open: VideoPlayer { }
     if Shell.room-info-open: RoomInfoDialog { }
+    if Shell.readers-open: ReadersDialog { }
     if Shell.user-info-open: UserInfoDialog { }
     if Shell.source-open: EventSourceDialog { }
     if Shell.room-log-open: RoomLogDialog { }

@@ -7,7 +7,7 @@ use matrix_sdk_ui::timeline::{EventTimelineItem, TimelineItem};
 use super::TimelineContext;
 use super::convert::convert_timeline_item;
 use crate::domain::message::{ReadScan, TimelineMessage};
-use crate::domain::timeline::{JumpTarget, Landing};
+use crate::domain::timeline::{JumpTarget, Landing, MessageReaders};
 
 pub(super) struct TimelineItems {
     items: Vec<Arc<TimelineItem>>,
@@ -88,6 +88,24 @@ impl TimelineItems {
 
     pub(super) fn message_of_event(&self, event_id: &EventId) -> Option<&TimelineMessage> {
         self.message_at(self.position_of_event(event_id)?)
+    }
+
+    pub(super) fn readers_of(
+        &self,
+        event_id: &EventId,
+        own_user_id: Option<&str>,
+    ) -> Option<MessageReaders> {
+        let raw_index = self.position_of_event(event_id)?;
+        let message = self.message_at(raw_index)?.clone();
+        let mut scan = ReadScan::excluding(own_user_id);
+        let at_or_after = self.items.get(raw_index..).unwrap_or_default();
+        for event in at_or_after.iter().filter_map(|item| item.as_event()) {
+            scan.observe(event.read_receipts().keys().map(|user_id| user_id.as_str()));
+        }
+        Some(MessageReaders {
+            readers: scan.readers(&message.sender),
+            message,
+        })
     }
 
     pub(super) fn row_of_event(&self, event_id: &EventId) -> JumpTarget {

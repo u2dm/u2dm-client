@@ -17,7 +17,9 @@ use crate::domain::message::{
 };
 use crate::domain::poll::{Poll, PollAnswer, PollDraft, PollStatus};
 use crate::domain::room::{NotifyMode, Room, RoomId, Space};
-use crate::domain::room_info::{MemberRole, RoomAbout, RosterMember, RosterSection, sort_roster};
+use crate::domain::room_info::{
+    MemberRole, Reader, RoomAbout, RosterMember, RosterSection, sort_roster,
+};
 use crate::domain::space_index::SpaceChild;
 use crate::domain::sticker::{StickerImage, StickerPack};
 use crate::domain::user_info::{
@@ -286,6 +288,36 @@ pub fn profile(
         ignored: false,
         powers: ModerationPowers::default(),
     }
+}
+
+pub fn readers(
+    room_id: &RoomId,
+    user_ids: &[String],
+    avatar_of: impl Fn(&str) -> String,
+) -> Vec<Reader> {
+    let members = roster(room_id, &avatar_of);
+    user_ids
+        .iter()
+        .map(|user_id| {
+            members
+                .iter()
+                .find(|member| member.user_id == *user_id)
+                .map_or_else(
+                    || Reader {
+                        user_id: user_id.clone(),
+                        display_name: person_name(user_id),
+                        avatar_mxc: Some(avatar_of(user_id)),
+                        role: role_of(room_id, user_id),
+                    },
+                    |member| Reader {
+                        user_id: member.user_id.clone(),
+                        display_name: member.display_name.clone(),
+                        avatar_mxc: member.avatar_mxc.clone(),
+                        role: member.role,
+                    },
+                )
+        })
+        .collect()
 }
 
 pub fn role_of(room_id: &RoomId, user_id: &str) -> MemberRole {

@@ -11,7 +11,7 @@ use crate::domain::media::{MediaRendition, OutgoingAttachment, WaveformNeed};
 use crate::domain::message::{MessageEdit, PinChange, PinnedMessage};
 use crate::domain::poll::PollDraft;
 use crate::domain::room::{NotifyMode, RoomId};
-use crate::domain::room_info::{RoomAbout, RosterMember};
+use crate::domain::room_info::{Reader, RoomAbout, RosterMember};
 use crate::domain::space_index::HierarchyPage;
 use crate::domain::sticker::{PackId, StickerPack};
 use crate::domain::sync::{SyncEvent, SyncOutcome};
@@ -198,6 +198,7 @@ pub trait SpaceIndexPort: Send + Sync {
 pub trait RoomInfoPort: Send + Sync {
     async fn about(&self, room_id: &RoomId) -> Result<RoomAbout>;
     async fn roster(&self, room_id: &RoomId) -> Result<Vec<RosterMember>>;
+    async fn readers(&self, room_id: &RoomId, user_ids: &[String]) -> Result<Vec<Reader>>;
     async fn set_notify(&self, room_id: &RoomId, mode: NotifyMode) -> Result<()>;
     async fn leave(&self, room_id: &RoomId) -> Result<()>;
     async fn mark_read(&self, room_id: &RoomId) -> Result<()>;

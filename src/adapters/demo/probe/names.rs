@@ -1,14 +1,14 @@
 use crate::adapters::ui::schema::{
     attachment_kinds, audio_kinds, child_accesses, connection_states, direct_chats, enum_names,
     log_levels, login_activities, login_methods, login_phases, member_roles, notify_modes,
-    pending_moderations, preview_kinds, room_info_placements, room_memberships, room_scopes,
-    roster_statuses, source_encryptions, source_statuses, space_index_statuses, user_message_kinds,
-    variant_named,
+    pending_moderations, preview_kinds, readers_statuses, room_info_placements, room_memberships,
+    room_scopes, roster_statuses, source_encryptions, source_statuses, space_index_statuses,
+    user_message_kinds, variant_named,
 };
 use crate::commands::messages::UserMessageKind;
 use crate::commands::view::{
     AttachmentKind, ChildAccess, DirectChat, LoginActivity, LoginStep, PendingModeration,
-    RoomInfoPlacement, RoomScope, RosterStatus, SourceState, SpaceIndexStatus,
+    ReadersStatus, RoomInfoPlacement, RoomScope, RosterStatus, SourceState, SpaceIndexStatus,
 };
 use crate::domain::auth::LoginMethod;
 use crate::domain::media::AudioKind;
@@ -41,4 +41,5 @@ direct_chats!(enum_names val direct_chat DirectChat;);
 pending_moderations!(enum_names val pending_moderation PendingModeration;);
 source_statuses!(enum_names ref source_status SourceState;);
 source_encryptions!(enum_names ref source_encryption SourceEncryption;);
+readers_statuses!(enum_names val readers_status ReadersStatus;);
 log_levels!(enum_names val log_level LogLevel;);

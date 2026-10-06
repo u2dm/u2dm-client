@@ -1,14 +1,14 @@
 use slint::{Image, Rgb8Pixel, SharedPixelBuffer, SharedString, StyledText};
 
-use super::present::VerifyStep;
+use super::present::{ServiceKind, VerifyStep};
 use super::schema::{bool_props, enum_props, int_props, string_props};
 use crate::app::input::CommandSender;
 use crate::commands::effects::VerificationActivity;
 use crate::commands::messages::{UserMessage, UserMessageKind};
 use crate::commands::ui::UiCommand;
 use crate::commands::view::{
-    AttachmentKind, DirectChat, LoginActivity, LoginStep, PendingModeration, RoomInfoPlacement,
-    RoomScope, RosterStatus, SourceState, SpaceIndexStatus,
+    AttachmentKind, DirectChat, LoginActivity, LoginStep, PendingModeration, ReadersStatus,
+    RoomInfoPlacement, RoomScope, RosterStatus, SourceState, SpaceIndexStatus,
 };
 use crate::domain::auth::LoginMethod;
 use crate::domain::media::AudioKind;

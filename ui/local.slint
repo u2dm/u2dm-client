@@ -1,5 +1,5 @@
 import { Delivery, LoginPhase, MessageKind, PollPhase, RoomInfoPlacement } from "./enums.slint";
-import { AttachmentView, LoginView, RoomInfoView, RoomLogView, RoomMenuView, RoomView, SourceView, UserInfoView, VerificationView, VideoView, WindowView } from "./views.slint";
+import { AttachmentView, LoginView, ReadersView, RoomInfoView, RoomLogView, RoomMenuView, RoomView, SourceView, UserInfoView, VerificationView, VideoView, WindowView } from "./views.slint";
 import { Actions } from "./actions.slint";
 import { MessageEntry, ReactionEntry } from "./types.slint";
 import { MessagePreview } from "./messages.slint";
@@ -162,6 +162,8 @@ export global Shell {
         && LoginView.step == LoginPhase.logged-in;
     out property <bool> room-log-open: RoomLogView.visible
         && LoginView.step == LoginPhase.logged-in;
+    out property <bool> readers-open: ReadersView.visible
+        && LoginView.step == LoginPhase.logged-in;
     out property <bool> modal-over-nav: root.drawer-open
         || root.verification-open
         || root.attachment-open
@@ -170,7 +172,8 @@ export global Shell {
         || root.room-info-open
         || root.user-info-open
         || root.source-open
-        || root.room-log-open;
+        || root.room-log-open
+        || root.readers-open;
     out property <bool> modal-open: root.nav-open || root.modal-over-nav;
     out property <bool> nav-on-top: root.nav-open && !root.modal-over-nav;
     out property <bool> background-reachable: !root.modal-open;

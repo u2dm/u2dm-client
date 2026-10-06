@@ -29,7 +29,7 @@ use crate::domain::message::{
 };
 use crate::domain::poll::{Poll, PollAnswer};
 use crate::domain::room::{Room, Space};
-use crate::domain::room_info::{MemberRole, RosterMember};
+use crate::domain::room_info::{MemberRole, Reader, RosterMember};
 use crate::domain::room_log::{LogLevel, LogLine};
 use crate::domain::space_index::{ChildKind, SpaceChild};
 use crate::domain::sticker::{PackId, StickerImage, StickerPack};
@@ -659,16 +659,51 @@ pub fn preview_line(text: &RichText) -> SharedString {
     }
 }
 
+pub fn message_body(body: &MessageBody) -> richtext::StyledBody {
+    let plain = message_body_text(body);
+    match message_body_html(body) {
+        Some(html) => richtext::styled_body(html, plain),
+        None => richtext::plain_body(plain),
+    }
+}
+
+pub struct QuotedMessage {
+    pub sender: SharedString,
+    pub sent_at: SharedString,
+    pub kind: MessagePreviewKind,
+    pub body: SharedString,
+    pub service_kind: ServiceKind,
+    pub service_target: SharedString,
+}
+
+pub fn quoted_message(message: Option<&TimelineMessage>) -> QuotedMessage {
+    let Some(m) = message else {
+        return QuotedMessage {
+            sender: SharedString::new(),
+            sent_at: SharedString::new(),
+            kind: MessagePreviewKind::None,
+            body: SharedString::new(),
+            service_kind: ServiceKind::None,
+            service_target: SharedString::new(),
+        };
+    };
+    let service = m.body.service();
+    QuotedMessage {
+        sender: SharedString::from(message_sender_label(m)),
+        sent_at: SharedString::from(message_sent_at_label(m.timestamp)),
+        kind: m.body.preview_kind(),
+        body: message_body(&m.body).plain,
+        service_kind: service.map_or(ServiceKind::None, service_kind),
+        service_target: SharedString::from(service.map_or("", service_target)),
+    }
+}
+
 pub fn message_to_dto(m: &TimelineMessage, pinned: bool, media: &dyn MediaCache) -> MessageDto {
     let item = TimelineItemKey::current(&m.unique_id);
     let sender_label = message_sender_label(m);
     let (reactions, all_reactions) = reaction_dtos(&item, &m.reactions, media);
     let (readers, hidden_readers) = reader_labels(&m.read_by);
-    let plain = message_body_text(&m.body);
-    let rich = match message_body_html(&m.body) {
-        Some(html) => richtext::styled_body(html, plain),
-        None => richtext::plain_body(plain),
-    };
+    let rich = message_body(&m.body);
     let preview_body = one_line(&rich.plain);
     let mut dto = MessageDto {
         unique_id: SharedString::from(&m.unique_id),
@@ -944,6 +979,30 @@ pub fn member_row_to_dto(row: &RosterRow, media: &dyn MediaCache) -> MemberRowDt
         has_avatar: avatar.is_some(),
         avatar,
     }
+}
+
+pub fn reader_to_dto(reader: &Reader, media: &dyn MediaCache) -> MemberRowDto {
+    let avatar = reader_avatar_path(reader, media).and_then(|path| peek_avatar(&path));
+    let label = reader.label();
+    MemberRowDto {
+        user_id: SharedString::from(&reader.user_id),
+        kind: MemberRowKind::Member,
+        name: SharedString::from(label),
+        initial: SharedString::from(avatar_initials(label)),
+        color_index: avatar_color_index(&reader.user_id),
+        role: reader.role,
+        has_avatar: avatar.is_some(),
+        avatar,
+    }
+}
+
+pub fn request_reader_avatar(reader: &Reader, media: &dyn MediaCache) {
+    let path = reader_avatar_path(reader, media);
+    load_avatar_async(path.as_deref(), AvatarSlot::Reader(reader.user_id.clone()));
+}
+
+fn reader_avatar_path(reader: &Reader, media: &dyn MediaCache) -> Option<PathBuf> {
+    media.user_avatar_path(reader.avatar_mxc.as_deref()?)
 }
 
 pub fn log_line_to_dto(line: &LogLine) -> LogLineDto {

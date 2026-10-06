@@ -7,9 +7,9 @@ use super::messages::{UserMessage, UserMessageKind};
 use super::ui::Draft;
 use crate::domain::auth::{LoginMethod, Session};
 use crate::domain::media::AudioMeta;
-use crate::domain::message::PinnedMessage;
+use crate::domain::message::{PinnedMessage, TimelineMessage};
 use crate::domain::room::{NotifyMode, RoomId, RoomList, Space, UnreadFlags};
-use crate::domain::room_info::{RoomAbout, RosterMember};
+use crate::domain::room_info::{Reader, RoomAbout, RosterMember};
 use crate::domain::room_log::RoomLog;
 use crate::domain::space_index::SpaceChild;
 use crate::domain::sticker::StickerPacks;
@@ -37,6 +37,7 @@ pub struct AppViewState {
     pub message_link: CopiedLink,
     pub room_link: CopiedLink,
     pub source: SourceState,
+    pub readers: ReadersView,
     pub room_log: Option<RoomLogView>,
 }
 
@@ -76,6 +77,26 @@ pub enum SourceState {
     Unavailable {
         event_id: String,
     },
+}
+
+#[derive(Clone, Copy, Default, PartialEq, Eq)]
+pub enum ReadersStatus {
+    #[default]
+    Closed,
+    Locating,
+    Ready,
+    Unavailable,
+}
+
+#[derive(Clone, Default)]
+pub struct ReadersView {
+    pub status: ReadersStatus,
+    pub message: Option<Arc<TimelineMessage>>,
+    pub total: usize,
+    pub rows: Arc<[Arc<Reader>]>,
+    pub has_more: bool,
+    pub pages_landed: i32,
+    pub avatars_ready: usize,
 }
 
 #[derive(Clone, PartialEq, Eq)]

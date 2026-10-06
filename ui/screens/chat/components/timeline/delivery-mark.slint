@@ -3,8 +3,9 @@ import { IconDisplay, IconSet } from "@lucide";
 import { MessageEntry } from "../../../../types.slint";
 import { Delivery } from "../../../../enums.slint";
 import { Deliveries } from "../../../../messages.slint";
-import { DeliveryTip, AnchorRect } from "../../../../local.slint";
+import { DeliveryTip, AnchorRect, Shell } from "../../../../local.slint";
 import { RoomView } from "../../../../views.slint";
+import { Actions } from "../../../../actions.slint";
 import { AppStyle, Fonts, IconSize, Space } from "../../../../theme.slint";
 
 export global Readers {
@@ -22,6 +23,9 @@ component TipTrigger inherits Rectangle {
     in property <int> timeline-row;
     in property <bool> on-counter;
     in property <bool> has-tip;
+    in property <bool> clickable;
+
+    callback clicked();
 
     property <bool> tip-mine: DeliveryTip.key != ""
         && DeliveryTip.key == root.msg.unique-id
@@ -52,6 +56,12 @@ component TipTrigger inherits Rectangle {
 
     TouchArea {
         enabled: root.has-tip;
+        mouse-cursor: root.clickable ? pointer : default;
+        clicked => {
+            if root.clickable {
+                root.clicked();
+            }
+        }
         changed has-hover => {
             if self.has-hover {
                 DeliveryTip.show(root.msg.unique-id, root.anchor(), root.on-counter);
@@ -95,7 +105,23 @@ export component ReaderCount inherits TipTrigger {
     width: row.preferred-width;
     on-counter: true;
     has-tip: true;
+    clickable: root.msg.event-id != "";
+    accessible-role: button;
+    accessible-enabled: root.clickable && Shell.background-reachable;
     accessible-label: Deliveries.label(root.msg.delivery, root.msg.readers, root.msg.hidden-readers);
+    accessible-action-default => {
+        root.open-readers();
+    }
+    clicked => {
+        root.open-readers();
+    }
+
+    function open-readers() {
+        if root.clickable && Shell.background-reachable {
+            DeliveryTip.clear();
+            Actions.open-readers(root.msg.event-id);
+        }
+    }
 
     row := HorizontalLayout {
         spacing: Space.xs;

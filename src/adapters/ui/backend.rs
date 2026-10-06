@@ -13,8 +13,8 @@ use super::decode::{
 use super::dto::{
     LogLineDto, MediaFailureKind, MediaState, MemberRowDto, MessageDto, RoomDto, SpaceChildDto,
     SpaceDto, StickerPackDto, StickerRowDto, ThumbUpdate, cell_pack, decode_failure_kind,
-    enrich_to_update, log_line_to_dto, member_row_to_dto, message_to_dto, room_to_dto,
-    space_child_to_dto, space_to_dto,
+    enrich_to_update, log_line_to_dto, member_row_to_dto, message_to_dto, reader_to_dto,
+    room_to_dto, space_child_to_dto, space_to_dto,
 };
 use super::fields::{
     LogLineFields, MemberRowFields, MessageFields, PollAnswerFields, ReactionFields, ReactorFields,
@@ -36,6 +36,7 @@ use crate::commands::effects::Effect;
 use crate::commands::view::{AppViewState, RosterRow, SpaceIndexRow};
 use crate::domain::message::TimelineMessage;
 use crate::domain::room::{Room, RoomId, Space};
+use crate::domain::room_info::Reader;
 use crate::domain::room_log::LogLine;
 use crate::domain::timeline::EnrichmentDelta;
 use crate::ports::media::MediaCache;
@@ -81,6 +82,10 @@ pub trait UiBackend: Sized + 'static {
 
     fn convert_member_row(row: &RosterRow, media: &dyn MediaCache) -> Self::MemberRow {
         member_row_to_dto(row, media).into()
+    }
+
+    fn convert_reader(reader: &Reader, media: &dyn MediaCache) -> Self::MemberRow {
+        reader_to_dto(reader, media).into()
     }
 
     fn convert_log_line(line: &LogLine) -> Self::LogLine {
@@ -450,6 +455,7 @@ struct AvatarTargets<'a> {
     spaces: HashSet<&'a str>,
     space_children: HashSet<&'a str>,
     members: HashSet<&'a str>,
+    readers: HashSet<&'a str>,
     singles: HashSet<SingleAvatar>,
 }
 
@@ -478,6 +484,9 @@ fn group_slots(slots: &[AvatarSlot]) -> AvatarTargets<'_> {
             }
             AvatarSlot::Member(user_id) => {
                 targets.members.insert(user_id.as_str());
+            }
+            AvatarSlot::Reader(user_id) => {
+                targets.readers.insert(user_id.as_str());
             }
             AvatarSlot::RoomInfo => {
                 targets.singles.insert(SingleAvatar::RoomInfo);
@@ -616,6 +625,18 @@ fn apply_avatar_ready<B: UiBackend>(
         patch_rows_by_id(
             &*models.room_members,
             &targets.members,
+            &B::MemberRow::user_id,
+            |entry| {
+                entry.set_avatar(image.clone());
+                entry.set_has_avatar(true);
+            },
+        );
+    }
+    if !targets.readers.is_empty() {
+        let models = B::models();
+        patch_rows_by_id(
+            &*models.readers,
+            &targets.readers,
             &B::MemberRow::user_id,
             |entry| {
                 entry.set_avatar(image.clone());

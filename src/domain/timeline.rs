@@ -168,6 +168,7 @@ pub enum TimelineCommand {
     EditPoll { event_id: String, draft: PollDraft },
     LocateAudio { request: u64, lookup: AudioLookup },
     LocateSource { request: u64, event_id: String },
+    LocateReaders { request: u64, event_id: String },
 }
 
 impl TimelineCommand {
@@ -182,7 +183,8 @@ impl TimelineCommand {
             | Self::MarkRead
             | Self::JumpTo(_)
             | Self::LocateAudio { .. }
-            | Self::LocateSource { .. } => false,
+            | Self::LocateSource { .. }
+            | Self::LocateReaders { .. } => false,
         }
     }
 }
@@ -251,6 +253,12 @@ pub struct EventSource {
     pub json: String,
     pub edit_json: Option<String>,
     pub encryption: SourceEncryption,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct MessageReaders {
+    pub message: TimelineMessage,
+    pub readers: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -354,6 +362,10 @@ pub enum TimelineUpdate {
         request: u64,
         source: Option<Box<EventSource>>,
     },
+    ReadersLocated {
+        request: u64,
+        readers: Option<Box<MessageReaders>>,
+    },
     PollSendFailed(PollAction),
     EditUnsaved(MessageEdit),
     DeleteFailed,
@@ -376,6 +388,7 @@ impl TimelineUpdate {
             Self::JumpOutcome { .. } => "JumpOutcome",
             Self::AudioLocated { .. } => "AudioLocated",
             Self::SourceLocated { .. } => "SourceLocated",
+            Self::ReadersLocated { .. } => "ReadersLocated",
             Self::PollSendFailed(_) => "PollSendFailed",
             Self::EditUnsaved(_) => "EditUnsaved",
             Self::DeleteFailed => "DeleteFailed",

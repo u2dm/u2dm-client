@@ -42,8 +42,8 @@ use super::schema::{
     media_failures, media_states, member_roles, member_row_fields, member_row_kinds,
     message_fields, message_kinds, model_props, notify_modes, pending_moderations,
     poll_answer_fields, poll_phases, preview_kinds, reaction_fields, reaction_sends,
-    reactor_fields, room_fields, room_info_placements, room_memberships, room_scopes,
-    roster_statuses, send_states, service_kinds, simple_callbacks, source_encryptions,
+    reactor_fields, readers_statuses, room_fields, room_info_placements, room_memberships,
+    room_scopes, roster_statuses, send_states, service_kinds, simple_callbacks, source_encryptions,
     source_statuses, space_child_fields, space_fields, space_index_statuses, sticker_cell_fields,
     sticker_pack_fields, sticker_row_fields, timeline_states, user_message_kinds,
     verification_activities, verification_phases,
@@ -57,7 +57,8 @@ use crate::commands::messages::{UserMessage, UserMessageKind};
 use crate::commands::ui::{TimelineVisibility, ViewportChanged};
 use crate::commands::view::{
     AppViewState, AttachmentKind, ChildAccess, DirectChat, LoginActivity, LoginStep,
-    PendingModeration, RoomInfoPlacement, RoomScope, RosterStatus, SourceState, SpaceIndexStatus,
+    PendingModeration, ReadersStatus, RoomInfoPlacement, RoomScope, RosterStatus, SourceState,
+    SpaceIndexStatus,
 };
 use crate::domain::auth::LoginMethod;
 use crate::domain::media::AudioKind;
@@ -195,6 +196,7 @@ attachment_kinds!(impl_slint_enum AttachmentKind "AttachmentKind";);
 room_scopes!(impl_slint_enum RoomScope "RoomScope";);
 space_index_statuses!(impl_slint_enum SpaceIndexStatus "SpaceIndexStatus";);
 source_statuses!(impl_slint_enum SourceState "SourceStatus";);
+readers_statuses!(impl_slint_enum ReadersStatus "ReadersStatus";);
 source_encryptions!(impl_slint_enum SourceEncryption "SourceEncryption";);
 child_accesses!(impl_slint_enum ChildAccess "ChildAccess";);
 notify_modes!(impl_slint_enum NotifyMode "NotifyMode";);
