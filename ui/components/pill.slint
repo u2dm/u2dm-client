@@ -5,7 +5,6 @@ export component Pill inherits ClickArea {
     in property <color> fill;
     in property <float> hover-lift: 0;
     in property <length> pad: Space.md;
-    in property <length> gap: Space.sm;
 
     width: content.preferred-width;
     border-radius: self.height / 2;
@@ -19,7 +18,7 @@ export component Pill inherits ClickArea {
 
         HorizontalLayout {
             alignment: center;
-            spacing: root.gap;
+            spacing: Space.sm;
             padding-left: root.pad;
             padding-right: root.pad;
 

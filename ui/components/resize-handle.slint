@@ -1,4 +1,4 @@
-import { FocusRing } from "a11y.slint";
+import { FocusRing } from "./a11y.slint";
 import { Shell } from "../local.slint";
 
 export enum ResizeEdge { right, left }
@@ -35,11 +35,11 @@ export component ResizeHandle inherits Rectangle {
         width: 0;
         focus-on-tab-navigation: Shell.background-reachable;
         key-pressed(event) => {
-            if (event.text == Key.LeftArrow) {
+            if event.text == Key.LeftArrow {
                 root.stepped(-root.step * root.outward);
                 return accept;
             }
-            if (event.text == Key.RightArrow) {
+            if event.text == Key.RightArrow {
                 root.stepped(root.step * root.outward);
                 return accept;
             }

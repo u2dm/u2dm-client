@@ -1,10 +1,12 @@
 import { Palette } from "std-widgets.slint";
 
-import { EmojiPicker } from "emoji-picker.slint";
-import { StickerPicker } from "sticker-picker.slint";
-import { PickerTab } from "picker-tab.slint";
+import { EmojiPicker } from "./emoji-picker.slint";
+import { StickerPicker } from "./sticker-picker.slint";
+import { PickerTab } from "./picker-tab.slint";
 import { AppStyle, Fonts, Size, Space } from "../../../../theme.slint";
 import { PickerCard } from "../../../../components/overlay.slint";
+
+export enum PickerSection { emoji, stickers }
 
 component PanelTab inherits PickerTab {
     horizontal-stretch: 1;
@@ -25,10 +27,11 @@ export component PickerPanel inherits PickerCard {
     callback emoji-picked(string);
     callback sticker-picked(string, string);
 
-    in-out property <int> tab: 0;
+    in-out property <PickerSection> section: PickerSection.emoji;
     in property <bool> stickers: true;
+    in property <bool> above-modal: false;
 
-    property <bool> shows-stickers: root.stickers && root.tab == 1;
+    property <bool> shows-stickers: root.stickers && root.section == PickerSection.stickers;
 
     VerticalLayout {
         padding: Space.md;
@@ -41,17 +44,19 @@ export component PickerPanel inherits PickerCard {
 
             PanelTab {
                 label: @tr("Emoji");
-                selected: root.tab == 0;
+                selected: root.section == PickerSection.emoji;
+                above-modal: root.above-modal;
                 clicked => {
-                    root.tab = 0;
+                    root.section = PickerSection.emoji;
                 }
             }
 
             PanelTab {
                 label: @tr("Stickers");
-                selected: root.tab == 1;
+                selected: root.section == PickerSection.stickers;
+                above-modal: root.above-modal;
                 clicked => {
-                    root.tab = 1;
+                    root.section = PickerSection.stickers;
                 }
             }
         }
@@ -62,6 +67,7 @@ export component PickerPanel inherits PickerCard {
             if !root.shows-stickers: EmojiPicker {
                 width: 100%;
                 height: 100%;
+                above-modal: root.above-modal;
                 picked(glyph) => {
                     root.emoji-picked(glyph);
                 }

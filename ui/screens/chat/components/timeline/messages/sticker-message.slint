@@ -1,6 +1,6 @@
 import { Palette, Spinner } from "std-widgets.slint";
 import { IconDisplay, IconSet } from "@lucide";
-import { MessageEntry } from "../../types.slint";
+import { MessageEntry } from "../../../../../types.slint";
 import { MediaState } from "../../../../../enums.slint";
 import { MediaFailures } from "../../../../../messages.slint";
 import { AppStyle, Fonts, IconSize, Metrics, Motion, Radius, Space } from "../../../../../theme.slint";
@@ -22,10 +22,10 @@ export component StickerMessage inherits HorizontalLayout {
         ? min(root.intrinsic-long-edge, root.max-long-edge)
         : root.max-long-edge;
 
-    out property <length> display-width: root.is-landscape
+    property <length> display-width: root.is-landscape
         ? root.display-long-edge
         : root.display-long-edge * root.aspect;
-    out property <length> display-height: root.is-landscape
+    property <length> display-height: root.is-landscape
         ? root.display-long-edge / max(root.aspect, 0.01)
         : root.display-long-edge;
 

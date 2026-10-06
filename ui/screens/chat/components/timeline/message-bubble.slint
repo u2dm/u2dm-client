@@ -1,41 +1,41 @@
-import {
-    Palette,
-} from "std-widgets.slint";
+import { Palette } from "std-widgets.slint";
 import { IconDisplay, IconSet } from "@lucide";
 
-import { MessageEntry } from "../types.slint";
+import { MessageEntry } from "../../../../types.slint";
 
-import { MessagePreview } from "../message-preview.slint";
-import { ReplyQuote } from "../reply-quote.slint";
+import { MessagePreview } from "../../../../messages.slint";
+import { ReplyQuote } from "./reply-quote.slint";
 import { ServiceMessage } from "./messages/service-message.slint";
-import { UnreadDivider } from "./messages/unread-divider.slint";
+import { UnreadDivider } from "./unread-divider.slint";
 import { MessageBody, MessageShape } from "./message-body.slint";
 import { BubbleTail } from "./bubble-tail.slint";
-import { DeliveryMark, ReaderCount, Readers } from "./delivery-mark.slint";
 import { ReactionRow } from "./reaction-row.slint";
 import { RowActions } from "./row-actions.slint";
 import { SendFailedRow } from "./send-failed-row.slint";
 import { SenderLine } from "./sender-line.slint";
+import { MessageMeta } from "./message-meta.slint";
+import { ContextPress } from "../context-press.slint";
 import { Avatar } from "../../../../components/avatar.slint";
 import { ClickArea } from "../../../../components/a11y.slint";
 import {
+    AnchorRect,
     Composer,
     MessageMenu,
-    ReactionAnchor,
+    ReactionPopup,
     Reactions,
     ReplySwipe,
     Shell,
     TextSelection,
 } from "../../../../local.slint";
 import { Actions } from "../../../../actions.slint";
-import { RoomView, WindowView } from "../../../../views.slint";
-import { AppStyle, Avatars, Fonts, Glyph, IconSize, Metrics, Motion, Opacity, Radius, Size, Space, Stroke } from "../../../../theme.slint";
-import { Delivery, MessageKind, SendState } from "../../../../enums.slint";
+import { RoomView } from "../../../../views.slint";
+import { AppStyle, Glyph, IconSize, Metrics, Motion, Opacity, Radius, Size, Space, Stroke } from "../../../../theme.slint";
+import { MessageKind, SendState } from "../../../../enums.slint";
 
 component BubbleReactions inherits ReactionRow {
     in property <string> event-id;
 
-    callback detail-anchor() -> ReactionAnchor;
+    callback detail-anchor() -> AnchorRect;
 
     tracked-index: Reactions.tooltip-event-id == root.event-id ? Reactions.tooltip-row : -1;
 
@@ -44,7 +44,7 @@ component BubbleReactions inherits ReactionRow {
     }
     overflow-clicked => {
         Shell.picker-open = false;
-        Reactions.open-detail(root.detail-anchor());
+        Reactions.open-popup(root.detail-anchor(), ReactionPopup.detail);
     }
     hovered(index, text, rect) => {
         Reactions.show-tooltip(root.event-id, index, text, rect);
@@ -82,6 +82,73 @@ component BubbleReply inherits ClickArea {
     }
 }
 
+component BubbleFooter inherits HorizontalLayout {
+    in property <MessageEntry> msg;
+    in property <int> timeline-row;
+    in property <bool> is-own;
+    in property <bool> has-remote-id;
+    in property <bool> has-reactions;
+
+    callback detail-anchor() -> AnchorRect;
+
+    spacing: Space.md;
+    padding-left: Space.lg;
+    padding-right: Space.lg;
+    padding-top: root.has-reactions ? Space.sm : 0;
+
+    if root.has-reactions: BubbleReactions {
+        horizontal-stretch: 0;
+        padding-bottom: Space.sm;
+        reactions: root.msg.reactions;
+        is-own: root.is-own;
+        can-react: root.has-remote-id;
+        event-id: root.msg.event-id;
+        detail-anchor() => {
+            return root.detail-anchor();
+        }
+    }
+
+    Rectangle {
+        horizontal-stretch: 1;
+    }
+
+    MessageMeta {
+        cross-axis-self-alignment: end;
+        alignment: end;
+        msg: root.msg;
+        timeline-row: root.timeline-row;
+        tint: AppStyle.overlay-foreground-muted;
+    }
+}
+
+component SenderAvatar inherits ClickArea {
+    in property <MessageEntry> msg;
+
+    enabled: root.msg.sender-id != "";
+    focusable: false;
+    label: @tr("View profile of {}", root.msg.sender);
+    clicked => {
+        Actions.open-user-info(root.msg.sender-id);
+    }
+
+    Avatar {
+        width: 100%;
+        height: 100%;
+        color-index: root.msg.color-index;
+        has-image: root.msg.has-avatar;
+        image: root.msg.avatar;
+        initial: root.msg.sender-initial;
+        initial-size: Glyph.xs;
+    }
+
+    if root.has-hover: Rectangle {
+        width: 100%;
+        height: 100%;
+        border-radius: self.width / 2;
+        background: AppStyle.overlay-hover;
+    }
+}
+
 export component MessageBubble inherits VerticalLayout {
     in property <bool> is-own;
     in property <MessageEntry> msg;
@@ -104,35 +171,27 @@ export component MessageBubble inherits VerticalLayout {
     property <MessageEntry> previous: RoomView.timeline[max(root.timeline-row - 1, 0)];
     property <MessageEntry> following: RoomView.timeline[min(root.timeline-row + 1, root.last-row)];
 
-    property <bool> is-service: msg.message-type == MessageKind.service;
-    property <bool> has-remote-id: msg.event-id != "";
-    property <bool> is-focused: root.has-remote-id && msg.event-id == RoomView.focus-event-id;
+    property <bool> is-service: root.msg.message-type == MessageKind.service;
+    property <bool> has-remote-id: root.msg.event-id != "";
+    property <bool> is-focused: root.has-remote-id && root.msg.event-id == RoomView.focus-event-id;
     property <bool> strip-mine: root.has-remote-id
-        && Reactions.strip-anchor.event-id == msg.event-id;
+        && Reactions.strip-anchor.event-id == root.msg.event-id;
 
     property <bool> continues-previous: root.timeline-row > 0
-        && !root.is-service
-        && !msg.first-unread
-        && root.previous.message-type != MessageKind.service
-        && root.previous.sender-id != ""
-        && root.previous.sender-id == msg.sender-id;
+        && MessageShape.joins-run(root.previous, root.msg);
     property <bool> continued-by-next: root.timeline-row < root.last-row
-        && !root.is-service
-        && !root.following.first-unread
-        && root.following.message-type != MessageKind.service
-        && root.following.sender-id != ""
-        && root.following.sender-id == msg.sender-id;
+        && MessageShape.joins-run(root.msg, root.following);
 
-    property <bool> is-sticker: msg.message-type == MessageKind.sticker;
-    property <bool> has-photo: MessageShape.has-photo(msg);
-    property <bool> is-photo-only: MessageShape.is-photo-only(msg);
-    property <bool> is-unsent: msg.send-state != SendState.sent;
+    property <bool> is-sticker: root.msg.message-type == MessageKind.sticker;
+    property <bool> has-photo: MessageShape.has-photo(root.msg);
+    property <bool> is-photo-only: MessageShape.is-photo-only(root.msg);
+    property <bool> is-unsent: root.msg.send-state != SendState.sent;
     property <bool> dims-while-unsent: root.is-unsent && !root.send-failed && !root.has-photo;
-    property <bool> has-reactions: msg.reactions.length > 0;
-    property <bool> send-failed: msg.send-state == SendState.failed;
+    property <bool> has-reactions: root.msg.reactions.length > 0;
+    property <bool> send-failed: root.msg.send-state == SendState.failed;
     property <bool> chips-outside: root.is-photo-only && root.has-reactions;
     property <length> outside-chips-gap: Space.sm;
-    property <bool> being-edited: Composer.is-being-edited(msg.event-id, msg.local-id);
+    property <bool> being-edited: Composer.is-being-edited(root.msg.event-id, root.msg.local-id);
     property <bool> outlined: (root.is-focused && root.focus-lit)
         || root.send-failed
         || root.being-edited;
@@ -147,27 +206,26 @@ export component MessageBubble inherits VerticalLayout {
         ? 0
         : (root.continued-by-next ? Radius.xs : Radius.md);
 
-    if msg.first-unread: UnreadDivider { }
+    if root.msg.first-unread: UnreadDivider { }
 
-    if is-service: service-row := TouchArea {
-        property <int> context-presses: WindowView.context-presses;
-
+    if root.is-service: service-row := TouchArea {
         height: service.preferred-height;
 
-        changed context-presses => {
-            if self.has-hover {
+        ContextPress {
+            hovered: service-row.has-hover;
+            pressed => {
                 MessageMenu.open(
                     {
-                        event-id: msg.event-id,
+                        event-id: root.msg.event-id,
                         row: root.timeline-row,
-                        x: self.absolute-position.x,
-                        y: self.absolute-position.y,
-                        width: self.width,
-                        height: self.height,
+                        x: service-row.absolute-position.x,
+                        y: service-row.absolute-position.y,
+                        width: service-row.width,
+                        height: service-row.height,
                     },
-                    msg.unique-id,
-                    self.absolute-position.x + self.mouse-x,
-                    self.absolute-position.y + self.mouse-y,
+                    root.msg.unique-id,
+                    service-row.absolute-position.x + service-row.mouse-x,
+                    service-row.absolute-position.y + service-row.mouse-y,
                     false);
             }
         }
@@ -178,7 +236,7 @@ export component MessageBubble inherits VerticalLayout {
         }
     }
 
-    if !is-service: message-row := Rectangle {
+    if !root.is-service: message-row := Rectangle {
         property <bool> has-composer: root.composer-top > 0px;
         property <length> row-top: self.absolute-position.y;
         property <bool> starts-above-composer: !self.has-composer
@@ -191,11 +249,12 @@ export component MessageBubble inherits VerticalLayout {
 
         property <bool> bubble-hovered: false;
 
-        property <bool> swipe-mine: root.has-remote-id && ReplySwipe.event-id == msg.event-id;
+        property <bool> swipe-mine: root.has-remote-id && ReplySwipe.event-id == root.msg.event-id;
         property <length> swipe-pull: self.swipe-mine ? ReplySwipe.pull : 0px;
 
         property <length> bubble-left: bubble-column.x + bubble.x;
         property <length> bubble-top: bubble-column.y + bubble.y;
+        property <length> bubble-x: self.bubble-left + row.x;
 
         property <length> outside-chips-height: root.chips-outside
             ? Metrics.reaction-chip + root.outside-chips-gap
@@ -207,7 +266,7 @@ export component MessageBubble inherits VerticalLayout {
             ? Metrics.reaction-chip + root.outside-chips-gap
             : 0);
 
-        property <ReactionAnchor> tracked-anchor: root.strip-mine
+        property <AnchorRect> tracked-anchor: root.strip-mine
             ? bubble.anchor()
             : { row: -1 };
 
@@ -215,15 +274,14 @@ export component MessageBubble inherits VerticalLayout {
             Reactions.follow-bubble(self.tracked-anchor);
         }
 
-        property <int> context-presses: WindowView.context-presses;
-
-        changed context-presses => {
-            if hover-row.has-hover {
+        ContextPress {
+            hovered: hover-row.has-hover;
+            pressed => {
                 MessageMenu.open(
                     bubble.anchor(),
-                    msg.unique-id,
-                    self.absolute-position.x + hover-row.mouse-x,
-                    self.absolute-position.y + hover-row.mouse-y,
+                    root.msg.unique-id,
+                    message-row.absolute-position.x + hover-row.mouse-x,
+                    message-row.absolute-position.y + hover-row.mouse-y,
                     false);
             }
         }
@@ -243,10 +301,10 @@ export component MessageBubble inherits VerticalLayout {
             width: 100%;
             height: 100%;
             changed has-hover => {
-                if (self.has-hover && root.has-remote-id) {
+                if self.has-hover && root.has-remote-id {
                     ReplySwipe.hover(bubble.anchor());
                 } else {
-                    ReplySwipe.leave(msg.event-id);
+                    ReplySwipe.leave(root.msg.event-id);
                 }
             }
 
@@ -257,17 +315,17 @@ export component MessageBubble inherits VerticalLayout {
                     easing: ease-out;
                 }
 
-                alignment: is-own ? end : start;
-                padding-left: is-own ? 0 : Metrics.timeline-inset;
-                padding-right: is-own ? Metrics.bubble-tail-width + Metrics.timeline-inset : 0;
+                alignment: root.is-own ? end : start;
+                padding-left: root.is-own ? 0 : Metrics.timeline-inset;
+                padding-right: root.is-own ? Metrics.bubble-tail-width + Metrics.timeline-inset : 0;
                 padding-top: root.continues-previous ? 0 : Space.sm;
                 padding-bottom: Space.xs;
 
-                if !is-own: Rectangle {
+                if !root.is-own: Rectangle {
                     width: root.avatar-size;
                 }
 
-                if !is-own: Rectangle {
+                if !root.is-own: Rectangle {
                     width: Space.md;
                 }
 
@@ -275,19 +333,19 @@ export component MessageBubble inherits VerticalLayout {
                     alignment: start;
                     spacing: Space.xs;
 
-                    if !is-own && !root.continues-previous: SenderLine {
-                        sender: msg.sender;
-                        pronouns: msg.pronouns;
-                        clickable: msg.sender-id != "";
+                    if !root.is-own && !root.continues-previous: SenderLine {
+                        sender: root.msg.sender;
+                        pronouns: root.msg.pronouns;
+                        clickable: root.msg.sender-id != "";
                         name-clicked => {
-                            Actions.open-user-info(msg.sender-id);
+                            Actions.open-user-info(root.msg.sender-id);
                         }
                     }
 
                     bubble := Rectangle {
-                        pure function anchor() -> ReactionAnchor {
+                        pure function anchor() -> AnchorRect {
                             return {
-                                event-id: msg.event-id,
+                                event-id: root.msg.event-id,
                                 row: root.timeline-row,
                                 is-own: root.is-own,
                                 x: self.absolute-position.x,
@@ -327,7 +385,7 @@ export component MessageBubble inherits VerticalLayout {
 
                             animate border-width { duration: Motion.normal; }
 
-                            hover-bg := TouchArea {
+                            surface-touch := TouchArea {
                                 width: 100%;
                                 height: 100%;
                                 clicked => {
@@ -335,17 +393,17 @@ export component MessageBubble inherits VerticalLayout {
                                 }
                                 changed has-hover => {
                                     message-row.bubble-hovered = self.has-hover;
-                                    if (self.has-hover && root.has-remote-id) {
+                                    if self.has-hover && root.has-remote-id {
                                         Reactions.hover-bubble(bubble.anchor());
                                     } else {
-                                        Reactions.leave-bubble(msg.event-id);
+                                        Reactions.leave-bubble(root.msg.event-id);
                                     }
                                 }
 
                                 bubble-content := VerticalLayout {
                                     padding-bottom: root.is-photo-only ? 0 : Space.sm;
 
-                                    if msg.has-reply: BubbleReply {
+                                    if root.msg.has-reply: BubbleReply {
                                         msg: root.msg;
                                         background: root.is-sticker ? root.bubble-color : transparent;
                                         border-radius: root.is-sticker ? Radius.md : 0;
@@ -361,62 +419,14 @@ export component MessageBubble inherits VerticalLayout {
                                         hovered: actions.hovered;
                                     }
 
-                                    if !root.is-photo-only: HorizontalLayout {
-                                        spacing: Space.md;
-                                        padding-left: Space.lg;
-                                        padding-right: Space.lg;
-                                        padding-top: root.has-reactions ? Space.sm : 0;
-
-                                        if root.has-reactions: BubbleReactions {
-                                            horizontal-stretch: 0;
-                                            padding-bottom: Space.sm;
-                                            reactions: msg.reactions;
-                                            is-own: root.is-own;
-                                            can-react: root.has-remote-id;
-                                            event-id: msg.event-id;
-                                            detail-anchor() => {
-                                                return bubble.anchor();
-                                            }
-                                        }
-
-                                        Rectangle {
-                                            horizontal-stretch: 1;
-                                        }
-
-                                        HorizontalLayout {
-                                            cross-axis-self-alignment: end;
-                                            alignment: end;
-                                            spacing: Space.sm;
-
-                                            if msg.edited: IconDisplay {
-                                                y: (parent.height - self.height) / 2;
-                                                icon: IconSet.Pencil;
-                                                size: IconSize.xs;
-                                                stroke: AppStyle.overlay-foreground-muted;
-                                            }
-
-                                            if Readers.counted(msg): ReaderCount {
-                                                y: (parent.height - self.height) / 2;
-                                                msg: root.msg;
-                                                timeline-row: root.timeline-row;
-                                                tint: AppStyle.overlay-foreground-muted;
-                                            }
-
-                                            Text {
-                                                text: msg.timestamp;
-                                                font-size: Fonts.body-small;
-                                                color: AppStyle.overlay-foreground-muted;
-                                                horizontal-alignment: right;
-                                                vertical-alignment: center;
-                                            }
-
-                                            if msg.delivery != Delivery.none && msg.delivery != Delivery.seen: DeliveryMark {
-                                                y: (parent.height - self.height) / 2;
-                                                msg: root.msg;
-                                                timeline-row: root.timeline-row;
-                                                tint: AppStyle.overlay-foreground-muted;
-                                                counted: Readers.counted(msg);
-                                            }
+                                    if !root.is-photo-only: BubbleFooter {
+                                        msg: root.msg;
+                                        timeline-row: root.timeline-row;
+                                        is-own: root.is-own;
+                                        has-remote-id: root.has-remote-id;
+                                        has-reactions: root.has-reactions;
+                                        detail-anchor() => {
+                                            return bubble.anchor();
                                         }
                                     }
                                 }
@@ -426,7 +436,7 @@ export component MessageBubble inherits VerticalLayout {
                 }
             }
 
-            if !is-own: avatar-target := ClickArea {
+            if !root.is-own: avatar-target := SenderAvatar {
                 property <length> resting: message-row.bubble-top + bubble.height - root.avatar-size;
                 property <length> floor: root.composer-top - Space.sm - row.padding-bottom;
                 property <length> lifted: self.floor
@@ -442,57 +452,35 @@ export component MessageBubble inherits VerticalLayout {
                         : max(bubble-column.y, min(self.resting, self.lifted)));
                 width: root.avatar-size;
                 height: root.avatar-size;
-                enabled: msg.sender-id != "";
-                focusable: false;
-                label: @tr("View profile of {}", msg.sender);
-                clicked => {
-                    Actions.open-user-info(msg.sender-id);
-                }
-
-                Avatar {
-                    width: 100%;
-                    height: 100%;
-                    background: Avatars.color(msg.color-index);
-                    has-image: msg.has-avatar;
-                    image: msg.avatar;
-                    initial: msg.sender-initial;
-                    initial-size: Glyph.xs;
-                }
-
-                if avatar-target.has-hover: Rectangle {
-                    width: 100%;
-                    height: 100%;
-                    border-radius: self.width / 2;
-                    background: AppStyle.overlay-hover;
-                }
+                msg: root.msg;
             }
         }
 
         if root.chips-outside: BubbleReactions {
-            x: message-row.bubble-left + row.x;
+            x: message-row.bubble-x;
             y: message-row.bubble-top + bubble.height + root.outside-chips-gap;
             width: bubble.width;
             flex-wrap: FlexboxLayoutWrap.no-wrap;
-            reactions: msg.reactions;
+            reactions: root.msg.reactions;
             is-own: root.is-own;
             can-react: root.has-remote-id;
-            event-id: msg.event-id;
+            event-id: root.msg.event-id;
             detail-anchor() => {
                 return bubble.anchor();
             }
         }
 
         if root.send-failed: SendFailedRow {
-            x: message-row.bubble-left + row.x;
+            x: message-row.bubble-x;
             y: message-row.bubble-top + bubble.height + root.outside-chips-gap + parent.outside-chips-height;
             width: bubble.width;
             height: Metrics.reaction-chip;
             alignment: root.is-own ? end : start;
-            local-id: msg.local-id;
+            local-id: root.msg.local-id;
         }
 
         actions := RowActions {
-            x: message-row.bubble-left + row.x;
+            x: message-row.bubble-x;
             y: message-row.bubble-top;
             width: bubble.width;
             height: bubble.height;

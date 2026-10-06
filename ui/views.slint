@@ -7,10 +7,10 @@ import {
     MessageEntry,
     StickerRow,
     StickerPackTab,
-} from "screens/chat/components/types.slint";
-import { VerificationEmoji } from "components/types.slint";
-import { UserMessage } from "messages.slint";
-import { AttachmentKind, AudioKind, ConnectionState, DirectChat, LoginActivity, LoginMethodKind, LoginPhase, MemberRole, Moderation, NotifyMode, PreviewKind, RoomInfoPlacement, RoomMembership, RoomScope, RosterStatus, SourceEncryption, SourceStatus, SpaceIndexStatus, TimelineState, UserMessageKind, VerificationActivity, VerificationPhase } from "enums.slint";
+    VerificationEmoji,
+    UserMessage,
+} from "./types.slint";
+import { AttachmentKind, AudioKind, ConnectionState, DirectChat, LoginActivity, LoginMethodKind, LoginPhase, MemberRole, Moderation, NotifyMode, PreviewKind, RoomInfoPlacement, RoomMembership, RoomScope, RosterStatus, SourceEncryption, SourceStatus, SpaceIndexStatus, TimelineState, UserMessageKind, VerificationActivity, VerificationPhase } from "./enums.slint";
 
 export global LoginView {
     in property <LoginPhase> step: LoginPhase.loading;
@@ -52,7 +52,7 @@ export global DirectoryView {
 
 export global SpaceIndexView {
     in property <SpaceIndexStatus> status: SpaceIndexStatus.closed;
-    out property <bool> visible: self.status != SpaceIndexStatus.closed;
+    out property <bool> visible: root.status != SpaceIndexStatus.closed;
     in property <string> space-name;
     in property <[SpaceChildEntry]> rows;
     in property <int> pages-landed;
@@ -60,7 +60,7 @@ export global SpaceIndexView {
 
 export global SourceView {
     in property <SourceStatus> status: SourceStatus.closed;
-    out property <bool> visible: self.status != SourceStatus.closed;
+    out property <bool> visible: root.status != SourceStatus.closed;
     in property <string> event-id;
     in property <string> json;
     in property <string> edit-json;

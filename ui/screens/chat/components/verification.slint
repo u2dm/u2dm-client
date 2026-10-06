@@ -1,16 +1,16 @@
 import { Palette, ScrollView } from "std-widgets.slint";
 import { IconDisplay, IconSet, Icon } from "@lucide";
 
-import { VerificationPhase, VerificationActivity, UserMessageKind } from "../enums.slint";
-import { VerificationEmoji } from "./types.slint";
-import { UserMessages } from "../messages.slint";
-import { VerificationView } from "../views.slint";
-import { Actions } from "../actions.slint";
-import { AppStyle, Fonts, Glyph, IconSize, Metrics, Opacity, Radius, Size, Space, Stroke, Weight } from "../theme.slint";
-import { ErrorBanner } from "banner.slint";
-import { AppButton, IconButton } from "./button.slint";
-import { DotPulse } from "./dot-pulse.slint";
-import { DialogCard, ModalHost } from "./overlay.slint";
+import { VerificationPhase, VerificationActivity, UserMessageKind } from "../../../enums.slint";
+import { VerificationEmoji } from "../../../types.slint";
+import { UserMessages } from "../../../messages.slint";
+import { VerificationView } from "../../../views.slint";
+import { Actions } from "../../../actions.slint";
+import { AppStyle, Fonts, Glyph, IconSize, Metrics, Radius, Size, Space, Stroke, Weight } from "../../../theme.slint";
+import { ErrorBanner } from "../../../components/banner.slint";
+import { AppButton, IconButton } from "../../../components/button.slint";
+import { DotPulse } from "../../../components/dot-pulse.slint";
+import { DialogCard, ModalHost } from "../../../components/overlay.slint";
 
 component DialogNote inherits Text {
     font-size: Fonts.body-small;
@@ -143,8 +143,103 @@ component BusyRow inherits Text {
     }
 }
 
+component VerificationHeader inherits HorizontalLayout {
+    in property <string> title;
+    in property <string> subtitle;
+    in property <string> close-label;
+
+    callback close-clicked();
+
+    spacing: Space.lg;
+
+    Rectangle {
+        cross-axis-self-alignment: center;
+        width: Size.xl;
+        height: Size.xl;
+        border-radius: Radius.md;
+        background: AppStyle.overlay-subtle;
+        border-width: Stroke.hairline;
+        border-color: AppStyle.border;
+
+        IconDisplay {
+            icon: IconSet.ShieldCheck;
+            size: IconSize.md;
+            stroke: Palette.foreground;
+        }
+    }
+
+    VerticalLayout {
+        alignment: center;
+        spacing: Space.xs;
+        horizontal-stretch: 1;
+
+        Text {
+            text: root.title;
+            font-size: Fonts.heading;
+            font-weight: Weight.bold;
+        }
+
+        Text {
+            text: root.subtitle;
+            font-size: Fonts.body-small;
+            overflow: elide;
+            color: AppStyle.foreground-muted;
+        }
+    }
+
+    IconButton {
+        cross-axis-self-alignment: center;
+        icon: IconSet.X;
+        above-modal: true;
+        label: root.close-label;
+        size: Size.md;
+        clicked => {
+            root.close-clicked();
+        }
+    }
+}
+
+component AnswerPair inherits HorizontalLayout {
+    in property <string> refuse-text;
+    in property <color> refuse-tint: Palette.accent-background;
+    in property <bool> refusing;
+    in property <string> agree-text;
+    in property <bool> agreeing;
+
+    callback refused();
+    callback agreed();
+
+    spacing: Space.lg;
+
+    AppButton {
+        horizontal-stretch: 1;
+        above-modal: true;
+        text: root.refuse-text;
+        icon: IconSet.X;
+        filled: false;
+        tint: root.refuse-tint;
+        enabled: !VerificationView.busy;
+        busy: root.refusing;
+        clicked => {
+            root.refused();
+        }
+    }
+
+    AppButton {
+        horizontal-stretch: 1;
+        above-modal: true;
+        text: root.agree-text;
+        icon: IconSet.Check;
+        enabled: !VerificationView.busy;
+        busy: root.agreeing;
+        clicked => {
+            root.agreed();
+        }
+    }
+}
+
 export component VerificationDialog inherits ModalHost {
-    dim-opacity: AppStyle.dark ? Opacity.scrim-strong : Opacity.scrim;
+    dim-opacity: AppStyle.dialog-scrim;
     label: @tr("Device verification");
     dismissed => {
         Actions.dismiss-verification();
@@ -171,55 +266,14 @@ export component VerificationDialog inherits ModalHost {
                 padding: Space.xxl;
                 spacing: Space.xl;
 
-                HorizontalLayout {
-                    spacing: Space.lg;
-
-                    Rectangle {
-                        cross-axis-self-alignment: center;
-                        width: Size.xl;
-                        height: Size.xl;
-                        border-radius: Radius.md;
-                        background: AppStyle.overlay-subtle;
-                        border-width: Stroke.hairline;
-                        border-color: AppStyle.border;
-
-                        IconDisplay {
-                            icon: IconSet.ShieldCheck;
-                            size: IconSize.md;
-                            stroke: Palette.foreground;
-                        }
-                    }
-
-                    VerticalLayout {
-                        alignment: center;
-                        spacing: Space.xs;
-                        horizontal-stretch: 1;
-
-                        Text {
-                            text: @tr("Device verification");
-                            font-size: Fonts.heading;
-                            font-weight: Weight.bold;
-                        }
-
-                        Text {
-                            text: VerificationView.is-self
-                                ? @tr("One of your own sessions")
-                                : VerificationView.sender;
-                            font-size: Fonts.body-small;
-                            overflow: elide;
-                            color: AppStyle.foreground-muted;
-                        }
-                    }
-
-                    IconButton {
-                        cross-axis-self-alignment: center;
-                        icon: IconSet.X;
-                        above-modal: true;
-                        label: @tr("Close the verification dialog");
-                        size: Size.md;
-                        clicked => {
-                            Actions.dismiss-verification();
-                        }
+                VerificationHeader {
+                    title: @tr("Device verification");
+                    subtitle: VerificationView.is-self
+                        ? @tr("One of your own sessions")
+                        : VerificationView.sender;
+                    close-label: @tr("Close the verification dialog");
+                    close-clicked => {
+                        Actions.dismiss-verification();
                     }
                 }
 
@@ -237,32 +291,16 @@ export component VerificationDialog inherits ModalHost {
                             : @tr("{} wants to verify this session. Accept to compare a row of emoji with them.", VerificationView.sender);
                     }
 
-                    HorizontalLayout {
-                        spacing: Space.lg;
-
-                        AppButton {
-                            horizontal-stretch: 1;
-                            above-modal: true;
-                            text: @tr("Decline");
-                            icon: IconSet.X;
-                            filled: false;
-                            enabled: !VerificationView.busy;
-                            busy: VerificationView.activity == VerificationActivity.declining;
-                            clicked => {
-                                Actions.reject-verification();
-                            }
+                    AnswerPair {
+                        refuse-text: @tr("Decline");
+                        refusing: VerificationView.activity == VerificationActivity.declining;
+                        agree-text: @tr("Accept");
+                        agreeing: VerificationView.activity == VerificationActivity.accepting;
+                        refused => {
+                            Actions.reject-verification();
                         }
-
-                        AppButton {
-                            horizontal-stretch: 1;
-                            above-modal: true;
-                            text: @tr("Accept");
-                            icon: IconSet.Check;
-                            enabled: !VerificationView.busy;
-                            busy: VerificationView.activity == VerificationActivity.accepting;
-                            clicked => {
-                                Actions.accept-verification();
-                            }
+                        agreed => {
+                            Actions.accept-verification();
                         }
                     }
                 }
@@ -278,33 +316,17 @@ export component VerificationDialog inherits ModalHost {
                         available-width: root.card-width - AppStyle.card-inset;
                     }
 
-                    HorizontalLayout {
-                        spacing: Space.lg;
-
-                        AppButton {
-                            horizontal-stretch: 1;
-                            above-modal: true;
-                            text: @tr("They don't match");
-                            icon: IconSet.X;
-                            filled: false;
-                            tint: AppStyle.danger;
-                            enabled: !VerificationView.busy;
-                            busy: VerificationView.activity == VerificationActivity.declining;
-                            clicked => {
-                                Actions.reject-verification();
-                            }
+                    AnswerPair {
+                        refuse-text: @tr("They don't match");
+                        refuse-tint: AppStyle.danger;
+                        refusing: VerificationView.activity == VerificationActivity.declining;
+                        agree-text: @tr("They match");
+                        agreeing: VerificationView.activity == VerificationActivity.confirming;
+                        refused => {
+                            Actions.reject-verification();
                         }
-
-                        AppButton {
-                            horizontal-stretch: 1;
-                            above-modal: true;
-                            text: @tr("They match");
-                            icon: IconSet.Check;
-                            enabled: !VerificationView.busy;
-                            busy: VerificationView.activity == VerificationActivity.confirming;
-                            clicked => {
-                                Actions.confirm-verification();
-                            }
+                        agreed => {
+                            Actions.confirm-verification();
                         }
                     }
                 }

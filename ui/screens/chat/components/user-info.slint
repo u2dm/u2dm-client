@@ -1,16 +1,16 @@
 import { Palette, ScrollView } from "std-widgets.slint";
 import { IconDisplay, IconSet, Icon } from "@lucide";
 
-import { Avatar } from "../../../components/avatar.slint";
-import { AppButton, IconButton } from "../../../components/button.slint";
-import { Copier } from "../../../components/copier.slint";
+import { AppButton } from "../../../components/button.slint";
+import { CopyFeedback } from "../../../components/copier.slint";
 import { DialogCard, ModalHost } from "../../../components/overlay.slint";
 import { ErrorBanner } from "../../../components/banner.slint";
 import { MenuRow } from "../../../components/menu-row.slint";
 import { ActionTile } from "./action-tile.slint";
 import { DetailLine } from "./detail-line.slint";
 import { MemberRoles } from "./member-roles.slint";
-import { AppStyle, Avatars, Fonts, Glyph, IconSize, Metrics, Motion, Opacity, Size, Space, Weight } from "../../../theme.slint";
+import { CopyLinkTile, SheetCloseChip, SheetCover, TilePrompt, TileRow } from "./sheet.slint";
+import { AppStyle, Fonts, IconSize, Metrics, Space, Weight } from "../../../theme.slint";
 import { DirectChat, Moderation, RoomMembership, UserMessageKind } from "../../../enums.slint";
 import { UserInfoView } from "../../../views.slint";
 import { Actions } from "../../../actions.slint";
@@ -21,6 +21,13 @@ enum Asking {
     ignore,
     remove,
     ban,
+}
+
+struct AskingCopy {
+    prompt: string,
+    confirm-text: string,
+    confirm-label: string,
+    confirm-icon: Icon,
 }
 
 component Badge inherits Rectangle {
@@ -58,20 +65,28 @@ component Badge inherits Rectangle {
     }
 }
 
-export component UserInfoDialog inherits ModalHost {
-    dim-opacity: AppStyle.dark ? Opacity.scrim-strong : Opacity.scrim;
-    label: @tr("Profile of {}", UserInfoView.name);
-    dismissed => {
-        if root.asking != Asking.none {
-            root.cancel-asking();
-        } else {
-            Actions.close-user-info();
-        }
-    }
-    opened => {
-        Reactions.close();
-        DeliveryTip.clear();
-    }
+component ModerationRow inherits MenuRow {
+    in property <bool> anyone-asking;
+    in property <bool> asking-this;
+    in property <bool> idle-enabled;
+    in property <Icon> idle-icon;
+    in property <string> idle-label;
+    in property <bool> idle-destructive;
+
+    property <bool> warns: !root.anyone-asking && root.idle-destructive;
+
+    height: Metrics.user-info-row;
+    above-modal: true;
+    enabled: root.anyone-asking ? root.asking-this : root.idle-enabled;
+    icon: root.asking-this ? IconSet.X : root.idle-icon;
+    label: root.asking-this ? @tr("Cancel") : root.idle-label;
+    tint: root.warns ? AppStyle.danger : AppStyle.foreground-muted;
+    text-color: root.warns ? AppStyle.danger : Palette.foreground;
+}
+
+component ProfileCover inherits SheetCover {
+    property <string> role-label: MemberRoles.label(UserInfoView.role);
+    property <string> note: root.membership-note(UserInfoView.membership);
 
     pure function membership-note(membership: RoomMembership) -> string {
         if membership == RoomMembership.invited {
@@ -90,6 +105,129 @@ export component UserInfoDialog inherits ModalHost {
             return @tr("Not in this room");
         }
         return "";
+    }
+
+    avatar-size: Metrics.user-info-avatar;
+    color-index: UserInfoView.color-index;
+    has-avatar: UserInfoView.has-avatar;
+    avatar: UserInfoView.avatar;
+    initial: UserInfoView.initial;
+    name: UserInfoView.name;
+
+    if UserInfoView.pronouns != "": Text {
+        text: UserInfoView.pronouns;
+        font-size: Fonts.body-small;
+        color: AppStyle.foreground-muted;
+        horizontal-alignment: center;
+        overflow: elide;
+    }
+
+    if root.role-label != "" || UserInfoView.verified: HorizontalLayout {
+        alignment: center;
+        spacing: Space.sm;
+
+        if root.role-label != "": Badge {
+            text: root.role-label;
+        }
+
+        if UserInfoView.verified: Badge {
+            icon: IconSet.ShieldCheck;
+            text: @tr("Verified");
+            tint: AppStyle.accent-on-surface;
+        }
+    }
+
+    if root.note != "": Text {
+        text: root.note;
+        font-size: Fonts.body-small;
+        color: AppStyle.foreground-muted;
+        horizontal-alignment: center;
+        wrap: word-wrap;
+    }
+}
+
+component ModerationRows inherits VerticalLayout {
+    in property <Asking> asking;
+
+    callback ignore-clicked();
+    callback remove-clicked();
+    callback ban-clicked();
+
+    padding-left: Space.md;
+    padding-right: Space.md;
+
+    ModerationRow {
+        anyone-asking: root.asking != Asking.none;
+        asking-this: root.asking == Asking.ignore;
+        idle-enabled: !UserInfoView.ignore-busy;
+        busy: UserInfoView.ignore-busy;
+        idle-icon: UserInfoView.ignored ? IconSet.Eye : IconSet.EyeOff;
+        idle-label: UserInfoView.ignored ? @tr("Stop ignoring") : @tr("Ignore");
+        idle-destructive: !UserInfoView.ignored;
+        clicked => {
+            root.ignore-clicked();
+        }
+    }
+
+    if UserInfoView.may-kick || root.asking == Asking.remove: ModerationRow {
+        anyone-asking: root.asking != Asking.none;
+        asking-this: root.asking == Asking.remove;
+        idle-enabled: UserInfoView.moderating == Moderation.none;
+        busy: UserInfoView.moderating == Moderation.kick;
+        idle-icon: IconSet.UserMinus;
+        idle-label: @tr("Remove from room");
+        idle-destructive: true;
+        clicked => {
+            root.remove-clicked();
+        }
+    }
+
+    if UserInfoView.may-ban || UserInfoView.may-unban || root.asking == Asking.ban: ModerationRow {
+        anyone-asking: root.asking != Asking.none;
+        asking-this: root.asking == Asking.ban;
+        idle-enabled: UserInfoView.moderating == Moderation.none;
+        busy: UserInfoView.moderating == Moderation.ban
+            || UserInfoView.moderating == Moderation.unban;
+        idle-icon: UserInfoView.may-unban ? IconSet.UserCheck : IconSet.Ban;
+        idle-label: UserInfoView.may-unban ? @tr("Unban") : @tr("Ban from room");
+        idle-destructive: !UserInfoView.may-unban;
+        clicked => {
+            root.ban-clicked();
+        }
+    }
+}
+
+export component UserInfoDialog inherits ModalHost {
+    property <length> card-width: min(AppStyle.card-width-wide, root.width - AppStyle.card-inset);
+    property <length> card-height: min(
+        body.preferred-height,
+        root.height - AppStyle.card-inset,
+        Metrics.user-info-max-height);
+    property <bool> offers-actions: !UserInfoView.is-self
+        && !UserInfoView.read-failed
+        && !UserInfoView.retrying;
+
+    property <string> shown-user: UserInfoView.user-id;
+    property <Asking> asking: Asking.none;
+    property <AskingCopy> asking-copy: root.copy-for(root.asking);
+
+    dim-opacity: AppStyle.dialog-scrim;
+    label: @tr("Profile of {}", UserInfoView.name);
+    dismissed => {
+        if root.asking != Asking.none {
+            root.cancel-asking();
+        } else {
+            Actions.close-user-info();
+        }
+    }
+    opened => {
+        Reactions.close();
+        DeliveryTip.clear();
+    }
+
+    changed shown-user => {
+        link-copy.reset();
+        root.asking = Asking.none;
     }
 
     pure function direct-text(direct: DirectChat) -> string {
@@ -112,75 +250,32 @@ export component UserInfoDialog inherits ModalHost {
         return "";
     }
 
-    pure function prompt(asking: Asking) -> string {
+    pure function copy-for(asking: Asking) -> AskingCopy {
         if asking == Asking.ignore {
-            return @tr("Ignore {}? Their messages and invites will be hidden.", UserInfoView.name);
+            return {
+                prompt: @tr("Ignore {}? Their messages and invites will be hidden.", UserInfoView.name),
+                confirm-text: @tr("Ignore"),
+                confirm-label: @tr("Confirm ignoring {}", UserInfoView.name),
+                confirm-icon: IconSet.EyeOff,
+            };
         }
         if asking == Asking.remove {
-            return @tr("Remove {} from this room?", UserInfoView.name);
+            return {
+                prompt: @tr("Remove {} from this room?", UserInfoView.name),
+                confirm-text: @tr("Remove"),
+                confirm-label: @tr("Confirm removing {} from this room", UserInfoView.name),
+                confirm-icon: IconSet.UserMinus,
+            };
         }
         if asking == Asking.ban {
-            return @tr("Ban {} from this room? They cannot rejoin until unbanned.", UserInfoView.name);
+            return {
+                prompt: @tr("Ban {} from this room? They cannot rejoin until unbanned.", UserInfoView.name),
+                confirm-text: @tr("Ban"),
+                confirm-label: @tr("Confirm banning {} from this room", UserInfoView.name),
+                confirm-icon: IconSet.Ban,
+            };
         }
-        return "";
-    }
-
-    pure function confirm-text(asking: Asking) -> string {
-        if asking == Asking.ignore {
-            return @tr("Ignore");
-        }
-        if asking == Asking.remove {
-            return @tr("Remove");
-        }
-        if asking == Asking.ban {
-            return @tr("Ban");
-        }
-        return "";
-    }
-
-    pure function confirm-label(asking: Asking) -> string {
-        if asking == Asking.ignore {
-            return @tr("Confirm ignoring {}", UserInfoView.name);
-        }
-        if asking == Asking.remove {
-            return @tr("Confirm removing {} from this room", UserInfoView.name);
-        }
-        if asking == Asking.ban {
-            return @tr("Confirm banning {} from this room", UserInfoView.name);
-        }
-        return "";
-    }
-
-    pure function confirm-icon(asking: Asking) -> Icon {
-        if asking == Asking.remove {
-            return IconSet.UserMinus;
-        }
-        if asking == Asking.ban {
-            return IconSet.Ban;
-        }
-        return IconSet.EyeOff;
-    }
-
-    property <length> card-width: min(AppStyle.card-width-wide, root.width - AppStyle.card-inset);
-    property <length> card-height: min(
-        body.preferred-height,
-        root.height - AppStyle.card-inset,
-        Metrics.user-info-max-height);
-    property <length> tile-width: (root.card-width - 2 * Space.xl - 2 * Space.md) / 3;
-    property <string> role-label: MemberRoles.label(UserInfoView.role);
-    property <string> note: root.membership-note(UserInfoView.membership);
-
-    property <bool> offers-actions: !UserInfoView.is-self
-        && !UserInfoView.read-failed
-        && !UserInfoView.retrying;
-
-    property <string> shown-user: UserInfoView.user-id;
-    property <bool> copied: false;
-    property <Asking> asking: Asking.none;
-
-    function copy-link() {
-        link-copier.copy-text(UserInfoView.link);
-        root.copied = true;
+        return { confirm-icon: IconSet.EyeOff };
     }
 
     function cancel-asking() {
@@ -229,20 +324,7 @@ export component UserInfoDialog inherits ModalHost {
         }
     }
 
-    changed shown-user => {
-        root.copied = false;
-        root.asking = Asking.none;
-    }
-
-    Timer {
-        interval: Motion.feedback-hold;
-        running: root.copied;
-        triggered => {
-            root.copied = false;
-        }
-    }
-
-    link-copier := Copier { }
+    link-copy := CopyFeedback { }
 
     DialogCard {
         x: (root.width - self.width) / 2;
@@ -263,77 +345,13 @@ export component UserInfoDialog inherits ModalHost {
                 padding-bottom: Space.xl;
                 spacing: Space.lg;
 
-                VerticalLayout {
-                    padding-left: Space.xl;
-                    padding-right: Space.xl;
-                    spacing: Space.sm;
+                ProfileCover { }
 
-                    HorizontalLayout {
-                        alignment: center;
-
-                        Avatar {
-                            width: Metrics.user-info-avatar;
-                            height: Metrics.user-info-avatar;
-                            background: Avatars.color(UserInfoView.color-index);
-                            has-image: UserInfoView.has-avatar;
-                            image: UserInfoView.avatar;
-                            initial: UserInfoView.initial;
-                            initial-size: Glyph.xxl;
-                            initial-weight: Weight.bold;
-                            initial-font-family: "";
-                        }
-                    }
-
-                    Text {
-                        text: UserInfoView.name;
-                        font-family: Fonts.emoji;
-                        font-size: Fonts.heading;
-                        font-weight: Weight.bold;
-                        horizontal-alignment: center;
-                        overflow: elide;
-                    }
-
-                    if UserInfoView.pronouns != "": Text {
-                        text: UserInfoView.pronouns;
-                        font-size: Fonts.body-small;
-                        color: AppStyle.foreground-muted;
-                        horizontal-alignment: center;
-                        overflow: elide;
-                    }
-
-                    if root.role-label != "" || UserInfoView.verified: HorizontalLayout {
-                        alignment: center;
-                        spacing: Space.sm;
-
-                        if root.role-label != "": Badge {
-                            text: root.role-label;
-                        }
-
-                        if UserInfoView.verified: Badge {
-                            icon: IconSet.ShieldCheck;
-                            text: @tr("Verified");
-                            tint: AppStyle.accent-on-surface;
-                        }
-                    }
-
-                    if root.note != "": Text {
-                        text: root.note;
-                        font-size: Fonts.body-small;
-                        color: AppStyle.foreground-muted;
-                        horizontal-alignment: center;
-                        wrap: word-wrap;
-                    }
-                }
-
-                HorizontalLayout {
-                    alignment: center;
-                    padding-left: Space.xl;
-                    padding-right: Space.xl;
-                    spacing: Space.md;
+                tiles := TileRow {
                     height: Metrics.user-info-action;
 
                     if root.asking == Asking.none && UserInfoView.direct != DirectChat.hidden: ActionTile {
-                        width: root.tile-width;
+                        width: tiles.slot-width;
                         enabled: UserInfoView.direct != DirectChat.starting;
                         busy: UserInfoView.direct == DirectChat.starting;
                         icon: IconSet.MessageCircle;
@@ -344,34 +362,28 @@ export component UserInfoDialog inherits ModalHost {
                         }
                     }
 
-                    if root.asking == Asking.none: ActionTile {
-                        width: root.tile-width;
+                    if root.asking == Asking.none: CopyLinkTile {
+                        width: tiles.slot-width;
                         enabled: UserInfoView.link != "";
-                        icon: root.copied ? IconSet.Check : IconSet.Link;
-                        text: root.copied ? @tr("Copied") : @tr("Copy link");
-                        label: root.copied ? @tr("Link copied") : @tr("Copy the link to this profile");
+                        copied: link-copy.copied;
+                        copy-label: @tr("Copy the link to this profile");
                         clicked => {
-                            root.copy-link();
+                            link-copy.copy(UserInfoView.link);
                         }
                     }
 
-                    if root.asking != Asking.none: Text {
-                        width: 2 * root.tile-width + Space.md;
-                        text: root.prompt(root.asking);
-                        font-size: Fonts.body-small;
-                        font-weight: Weight.semibold;
-                        vertical-alignment: center;
-                        wrap: word-wrap;
+                    if root.asking != Asking.none: TilePrompt {
+                        width: 2 * tiles.slot-width + Space.md;
+                        text: root.asking-copy.prompt;
                         overflow: elide;
-                        accessible-live-region: AccessibleLiveness.polite;
                     }
 
                     if root.asking != Asking.none: ActionTile {
-                        width: root.tile-width;
+                        width: tiles.slot-width;
                         destructive: true;
-                        icon: root.confirm-icon(root.asking);
-                        text: root.confirm-text(root.asking);
-                        label: root.confirm-label(root.asking);
+                        icon: root.asking-copy.confirm-icon;
+                        text: root.asking-copy.confirm-text;
+                        label: root.asking-copy.confirm-label;
                         clicked => {
                             root.confirm();
                         }
@@ -412,95 +424,29 @@ export component UserInfoDialog inherits ModalHost {
                     }
                 }
 
-                if root.offers-actions: VerticalLayout {
-                    padding-left: Space.md;
-                    padding-right: Space.md;
-
-                    MenuRow {
-                        height: Metrics.user-info-row;
-                        above-modal: true;
-                        enabled: root.asking == Asking.none
-                            ? !UserInfoView.ignore-busy
-                            : root.asking == Asking.ignore;
-                        busy: UserInfoView.ignore-busy;
-                        icon: root.asking == Asking.ignore
-                            ? IconSet.X
-                            : (UserInfoView.ignored ? IconSet.Eye : IconSet.EyeOff);
-                        label: root.asking == Asking.ignore
-                            ? @tr("Cancel")
-                            : (UserInfoView.ignored ? @tr("Stop ignoring") : @tr("Ignore"));
-                        tint: root.asking == Asking.none && !UserInfoView.ignored
-                            ? AppStyle.danger
-                            : AppStyle.foreground-muted;
-                        text-color: root.asking == Asking.none && !UserInfoView.ignored
-                            ? AppStyle.danger
-                            : Palette.foreground;
-                        clicked => {
-                            root.ignore-clicked();
-                        }
+                if root.offers-actions: ModerationRows {
+                    asking: root.asking;
+                    ignore-clicked => {
+                        root.ignore-clicked();
                     }
-
-                    if UserInfoView.may-kick || root.asking == Asking.remove: MenuRow {
-                        height: Metrics.user-info-row;
-                        above-modal: true;
-                        enabled: root.asking == Asking.none
-                            ? UserInfoView.moderating == Moderation.none
-                            : root.asking == Asking.remove;
-                        busy: UserInfoView.moderating == Moderation.kick;
-                        icon: root.asking == Asking.remove ? IconSet.X : IconSet.UserMinus;
-                        label: root.asking == Asking.remove ? @tr("Cancel") : @tr("Remove from room");
-                        tint: root.asking == Asking.none ? AppStyle.danger : AppStyle.foreground-muted;
-                        text-color: root.asking == Asking.none ? AppStyle.danger : Palette.foreground;
-                        clicked => {
-                            root.remove-clicked();
-                        }
+                    remove-clicked => {
+                        root.remove-clicked();
                     }
-
-                    if UserInfoView.may-ban || UserInfoView.may-unban || root.asking == Asking.ban: MenuRow {
-                        height: Metrics.user-info-row;
-                        above-modal: true;
-                        enabled: root.asking == Asking.none
-                            ? UserInfoView.moderating == Moderation.none
-                            : root.asking == Asking.ban;
-                        busy: UserInfoView.moderating == Moderation.ban
-                            || UserInfoView.moderating == Moderation.unban;
-                        icon: root.asking == Asking.ban
-                            ? IconSet.X
-                            : (UserInfoView.may-unban ? IconSet.UserCheck : IconSet.Ban);
-                        label: root.asking == Asking.ban
-                            ? @tr("Cancel")
-                            : (UserInfoView.may-unban ? @tr("Unban") : @tr("Ban from room"));
-                        tint: root.asking == Asking.none && !UserInfoView.may-unban
-                            ? AppStyle.danger
-                            : AppStyle.foreground-muted;
-                        text-color: root.asking == Asking.none && !UserInfoView.may-unban
-                            ? AppStyle.danger
-                            : Palette.foreground;
-                        clicked => {
-                            root.ban-clicked();
-                        }
+                    ban-clicked => {
+                        root.ban-clicked();
                     }
                 }
             }
         }
 
-        Rectangle {
+        SheetCloseChip {
             x: parent.width - self.width - Space.md;
             y: Space.md;
-            width: Size.md;
-            height: Size.md;
-            border-radius: self.width / 2;
-            background: AppStyle.card;
-
-            IconButton {
-                size: Size.md;
-                radius: Size.md / 2;
-                icon: IconSet.X;
-                above-modal: true;
-                label: @tr("Close the profile");
-                clicked => {
-                    Actions.close-user-info();
-                }
+            surface: AppStyle.card;
+            label: @tr("Close the profile");
+            above-modal: true;
+            clicked => {
+                Actions.close-user-info();
             }
         }
     }

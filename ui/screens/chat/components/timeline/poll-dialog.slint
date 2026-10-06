@@ -3,8 +3,8 @@ import { Icon, IconSet } from "@lucide";
 
 import { Actions } from "../../../../actions.slint";
 import { PollPhase } from "../../../../enums.slint";
-import { MessageEntry } from "../types.slint";
-import { AppStyle, Fonts, Opacity, Size, Space, Weight } from "../../../../theme.slint";
+import { MessageEntry } from "../../../../types.slint";
+import { AppStyle, Fonts, Size, Space, Weight } from "../../../../theme.slint";
 import { AppButton, IconButton } from "../../../../components/button.slint";
 import { CheckRow } from "../../../../components/check-row.slint";
 import { DialogCard, ModalHost } from "../../../../components/overlay.slint";
@@ -17,7 +17,7 @@ component AnswerField inherits HorizontalLayout {
     in property <bool> removable;
     in property <bool> takes-focus;
 
-    callback remove();
+    callback remove-requested();
     callback accepted();
     callback edited();
 
@@ -51,7 +51,7 @@ component AnswerField inherits HorizontalLayout {
         label: @tr("Remove answer {}", root.number);
         above-modal: true;
         clicked => {
-            root.remove();
+            root.remove-requested();
         }
     }
 }
@@ -132,7 +132,7 @@ export component PollDialog inherits ModalHost {
         }
     }
 
-    dim-opacity: AppStyle.dark ? Opacity.scrim-strong : Opacity.scrim;
+    dim-opacity: AppStyle.dialog-scrim;
     light-dismiss: false;
     label: root.title;
     dismissed => {
@@ -183,7 +183,7 @@ export component PollDialog inherits ModalHost {
                     removable: root.answers.length > root.fewest-answers;
                     takes-focus: index == root.fresh-answer;
                     text <=> answer;
-                    remove => {
+                    remove-requested => {
                         root.remove-answer(index);
                     }
                     edited => {

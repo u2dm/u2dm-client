@@ -1,8 +1,8 @@
 import { Palette } from "std-widgets.slint";
 
-import { PollAnswerEntry } from "../types.slint";
-import { PickerCard } from "../../../../components/overlay.slint";
-import { AppStyle, Fonts, Radius, Size, Space, Weight } from "../../../../theme.slint";
+import { PollAnswerEntry } from "../../../../types.slint";
+import { AppStyle, Fonts, Radius, Space, Weight } from "../../../../theme.slint";
+import { ListPopup } from "./list-popup.slint";
 
 component VoterRow inherits Rectangle {
     in property <PollAnswerEntry> answer;
@@ -64,35 +64,12 @@ component VoterRow inherits Rectangle {
     }
 }
 
-export component PollVoters inherits PickerCard {
+export component PollVoters inherits ListPopup {
     in property <[PollAnswerEntry]> answers;
 
-    VerticalLayout {
-        padding: Space.md;
-        spacing: Space.xs;
+    title: @tr("Votes");
 
-        Text {
-            text: @tr("Votes");
-            font-size: Fonts.caption;
-            font-weight: Weight.semibold;
-            color: AppStyle.foreground-muted;
-            horizontal-alignment: left;
-            vertical-alignment: center;
-            height: Size.xs;
-        }
-
-        Flickable {
-            vertical-stretch: 1;
-            content-height: rows.preferred-height;
-
-            rows := VerticalLayout {
-                alignment: start;
-                spacing: Space.xs;
-
-                for answer in root.answers: VoterRow {
-                    answer: answer;
-                }
-            }
-        }
+    for answer in root.answers: VoterRow {
+        answer: answer;
     }
 }

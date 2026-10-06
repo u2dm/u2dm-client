@@ -1,0 +1,9 @@
+import { EmojiEntry, EmojiGroup, EmojiInsert } from "./types.slint";
+
+export global EmojiStore {
+    in property <[EmojiGroup]> groups: [];
+    in property <[EmojiEntry]> results: [];
+    in-out property <int> tone: 0;
+    callback search(string);
+    pure callback insert(string, int, string) -> EmojiInsert;
+}

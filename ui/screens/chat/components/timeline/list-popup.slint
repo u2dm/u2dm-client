@@ -1,0 +1,33 @@
+import { PickerCard } from "../../../../components/overlay.slint";
+import { AppStyle, Fonts, Size, Space, Weight } from "../../../../theme.slint";
+
+export component ListPopup inherits PickerCard {
+    in property <string> title;
+
+    VerticalLayout {
+        padding: Space.md;
+        spacing: Space.xs;
+
+        Text {
+            text: root.title;
+            font-size: Fonts.caption;
+            font-weight: Weight.semibold;
+            color: AppStyle.foreground-muted;
+            horizontal-alignment: left;
+            vertical-alignment: center;
+            height: Size.xs;
+        }
+
+        Flickable {
+            vertical-stretch: 1;
+            content-height: rows.preferred-height;
+
+            rows := VerticalLayout {
+                alignment: start;
+                spacing: Space.xs;
+
+                @children
+            }
+        }
+    }
+}

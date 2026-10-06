@@ -1,12 +1,49 @@
 import { Palette } from "std-widgets.slint";
 import { IconDisplay, IconSet } from "@lucide";
-import { StatusPill } from "./status-pill.slint";
 
+import { StatusPill } from "../../../../components/status-pill.slint";
 import { TimelineScroller } from "./timeline-scroller.slint";
 import { Probe } from "../../../../local.slint";
 import { ClickArea } from "../../../../components/a11y.slint";
 import { RoomView } from "../../../../views.slint";
 import { Fonts, IconSize, Radius, Size, Space, Weight } from "../../../../theme.slint";
+
+component JumpToLatestButton inherits ClickArea {
+    width: Size.xl;
+    height: Size.xl;
+    border-radius: Radius.xl;
+    ring-radius: Radius.xl;
+    background: Palette.alternate-background;
+    label: @tr("Jump to latest messages");
+
+    IconDisplay {
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+        icon: IconSet.ChevronDown;
+        size: IconSize.md;
+        stroke: Palette.alternate-foreground;
+    }
+
+    if RoomView.new-messages-count > 0: Rectangle {
+        x: (parent.width - self.width) / 2;
+        y: -self.height / 2 + Space.xs;
+        width: Math.max(Size.xs, badge-text.preferred-width + Space.md);
+        height: Size.xs;
+        border-radius: Radius.md;
+        background: Palette.accent-background;
+
+        badge-text := Text {
+            width: parent.width;
+            height: parent.height;
+            text: RoomView.new-messages-count;
+            font-size: Fonts.caption;
+            font-weight: Weight.bold;
+            color: Palette.accent-foreground;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+        }
+    }
+}
 
 export component TimelineContent inherits Rectangle {
     in property <length> available-width;
@@ -71,45 +108,11 @@ export component TimelineContent inherits Rectangle {
         loading: true;
     }
 
-    if !scroller.following && RoomView.timeline.length > 0: ClickArea {
+    if !scroller.following && RoomView.timeline.length > 0: JumpToLatestButton {
         x: parent.width - self.width - Space.xl;
         y: parent.height - self.height - Space.xl - root.bottom-inset;
-        width: Size.xl;
-        height: Size.xl;
-        border-radius: Radius.xl;
-        ring-radius: Radius.xl;
-        background: Palette.alternate-background;
-        label: @tr("Jump to latest messages");
         clicked => {
             scroller.jump-to-latest();
-        }
-
-        IconDisplay {
-            x: (parent.width - self.width) / 2;
-            y: (parent.height - self.height) / 2;
-            icon: IconSet.ChevronDown;
-            size: IconSize.md;
-            stroke: Palette.alternate-foreground;
-        }
-
-        if RoomView.new-messages-count > 0: Rectangle {
-            x: (parent.width - self.width) / 2;
-            y: -self.height / 2 + Space.xs;
-            width: Math.max(Size.xs, badge-text.preferred-width + Space.md);
-            height: Size.xs;
-            border-radius: Radius.md;
-            background: Palette.accent-background;
-
-            badge-text := Text {
-                width: parent.width;
-                height: parent.height;
-                text: RoomView.new-messages-count;
-                font-size: Fonts.caption;
-                font-weight: Weight.bold;
-                color: Palette.accent-foreground;
-                horizontal-alignment: center;
-                vertical-alignment: center;
-            }
         }
     }
 }

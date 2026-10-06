@@ -1,19 +1,65 @@
-import {
-    Palette,
-} from "std-widgets.slint";
 import { IconSet } from "@lucide";
 
-import { PickerPanel } from "./picker-panel.slint";
+import { PickerPanel, PickerSection } from "./picker-panel.slint";
 import { AttachMenu } from "./attach-menu.slint";
 import { ComposerField } from "./composer-field.slint";
 import { EditBar, ReplyBar } from "./reply-bar.slint";
-import { ReplyQuote } from "../reply-quote.slint";
-import { AppStyle, Fonts, Metrics, Radius, Space, Weight } from "../../../../theme.slint";
-import { ClickArea } from "../../../../components/a11y.slint";
+import { ReplyQuote } from "./reply-quote.slint";
+import { AppStyle, Metrics, Space } from "../../../../theme.slint";
+import { LinkButton } from "../../../../components/button.slint";
 import { ModalHost } from "../../../../components/overlay.slint";
 import { Actions } from "../../../../actions.slint";
 import { Composer, EditedMessage, Polls, Reactions, ReplyDraft, Shell } from "../../../../local.slint";
 import { RoomView, UnsentView } from "../../../../views.slint";
+
+component UnsentBanner inherits Rectangle {
+    callback restore-clicked();
+    callback discard-clicked();
+
+    height: Metrics.reply-bar;
+    background: AppStyle.danger-background;
+
+    HorizontalLayout {
+        padding-left: Space.lg;
+        padding-right: Space.md;
+        padding-top: Space.md;
+        padding-bottom: Space.md;
+        spacing: Space.md;
+
+        ReplyQuote {
+            horizontal-stretch: 1;
+            accent: AppStyle.danger;
+            liveness: AccessibleLiveness.assertive;
+            sender: UnsentView.is-edit ? @tr("Edit not saved") : @tr("Not sent");
+            preview: UnsentView.edit-caption && UnsentView.body == ""
+                ? @tr("No caption")
+                : UnsentView.body;
+        }
+
+        LinkButton {
+            text: @tr("Restore");
+            pad: 2 * Space.sm;
+            label: UnsentView.is-edit
+                ? @tr("Put the unsaved edit back in the composer")
+                : @tr("Put the unsent message back in the composer");
+            clicked => {
+                root.restore-clicked();
+            }
+        }
+
+        LinkButton {
+            text: @tr("Discard");
+            tint: AppStyle.danger-muted;
+            pad: 2 * Space.sm;
+            label: UnsentView.is-edit
+                ? @tr("Discard the unsaved edit")
+                : @tr("Discard the unsent message");
+            clicked => {
+                root.discard-clicked();
+            }
+        }
+    }
+}
 
 export component MessageInput inherits Rectangle {
     in property <string> room-id;
@@ -24,14 +70,15 @@ export component MessageInput inherits Rectangle {
     in property <length> overlay-width;
     in property <length> overlay-height;
 
-    property <int> picker-tab: 0;
+    property <PickerSection> picker-section;
     property <string> attach-label: RoomView.may-start-polls
         ? @tr("Attach a file or create a poll")
         : @tr("Attach a photo or a file");
     property <string> picker-label: Composer.editing ? @tr("Emoji") : @tr("Emoji and stickers");
+    property <bool> edits-caption: Composer.editing && Composer.edited.caption;
     property <string> placeholder: !Composer.editing
         ? @tr("Send a message...")
-        : (Composer.edited.caption ? @tr("Add a caption...") : @tr("Edit the message..."));
+        : (root.edits-caption ? @tr("Add a caption...") : @tr("Edit the message..."));
     property <bool> is-replying: Composer.reply-event-id != "";
     property <int> settled-submission: 0;
     property <bool> has-unsent: UnsentView.visible
@@ -169,62 +216,6 @@ export component MessageInput inherits Rectangle {
         field.focus-input();
     }
 
-    if Shell.picker-open: ModalHost {
-        x: root.overlay-x;
-        y: root.overlay-y;
-        width: root.overlay-width;
-        height: root.overlay-height;
-        dim: false;
-        label: Composer.editing ? @tr("Emoji picker") : @tr("Emoji and sticker picker");
-        dismissed => {
-            root.close-picker();
-        }
-
-        PickerPanel {
-            width: min(root.width - Space.xl, Metrics.picker-width);
-            height: max(
-                Metrics.picker-min-height,
-                min(Metrics.picker-height, root.picker-headroom),
-            );
-            x: root.width - self.width - Space.md - root.overlay-x;
-            y: -self.height - Space.md - root.overlay-y;
-            tab <=> root.picker-tab;
-            stickers: !Composer.editing;
-            emoji-picked(glyph) => {
-                field.insert-at-caret(glyph);
-            }
-            sticker-picked(pack-id, shortcode) => {
-                root.send-sticker(pack-id, shortcode);
-            }
-        }
-    }
-
-    if Shell.attach-open: ModalHost {
-        x: root.overlay-x;
-        y: root.overlay-y;
-        width: root.overlay-width;
-        height: root.overlay-height;
-        dim: false;
-        label: root.attach-label;
-        dismissed => {
-            root.close-attach();
-        }
-
-        AttachMenu {
-            x: root.surface-inset + field.row-inset - root.overlay-x;
-            y: -self.height - Space.md - root.overlay-y;
-            photo-picked => {
-                root.pick(false);
-            }
-            document-picked => {
-                root.pick(true);
-            }
-            poll-picked => {
-                root.open-poll();
-            }
-        }
-    }
-
     function send-sticker(pack-id: string, shortcode: string) {
         Actions.send-sticker({
             room-id: root.room-id,
@@ -249,10 +240,66 @@ export component MessageInput inherits Rectangle {
 
     function pick(document: bool) {
         root.close-attach();
-        if (document) {
+        if document {
             Actions.pick-document(root.room-id);
         } else {
             Actions.pick-photo(root.room-id);
+        }
+    }
+
+    if Shell.picker-open: ModalHost {
+        x: root.overlay-x;
+        y: root.overlay-y;
+        width: root.overlay-width;
+        height: root.overlay-height;
+        dim: false;
+        label: Composer.editing ? @tr("Emoji picker") : @tr("Emoji and sticker picker");
+        dismissed => {
+            root.close-picker();
+        }
+
+        PickerPanel {
+            width: min(root.width - Space.xl, Metrics.picker-width);
+            height: max(
+                Metrics.picker-min-height,
+                min(Metrics.picker-height, root.picker-headroom),
+            );
+            x: root.width - self.width - Space.md - root.overlay-x;
+            y: -self.height - Space.md - root.overlay-y;
+            section <=> root.picker-section;
+            stickers: !Composer.editing;
+            emoji-picked(glyph) => {
+                field.insert-at-caret(glyph);
+            }
+            sticker-picked(pack-id, shortcode) => {
+                root.send-sticker(pack-id, shortcode);
+            }
+        }
+    }
+
+    if Shell.attach-open: ModalHost {
+        x: root.overlay-x;
+        y: root.overlay-y;
+        width: root.overlay-width;
+        height: root.overlay-height;
+        dim: false;
+        label: root.attach-label;
+        dismissed => {
+            root.close-attach();
+        }
+
+        AttachMenu {
+            x: root.surface-inset + field.row-inset - root.overlay-x;
+            y: -self.height - Space.md - root.overlay-y;
+            photo-chosen => {
+                root.pick(false);
+            }
+            document-chosen => {
+                root.pick(true);
+            }
+            poll-chosen => {
+                root.open-poll();
+            }
         }
     }
 
@@ -262,14 +309,14 @@ export component MessageInput inherits Rectangle {
         width: root.width - 2 * root.surface-inset;
         text <=> root.message;
         placeholder: root.placeholder;
-        input-label: Composer.editing && Composer.edited.caption ? @tr("Caption") : @tr("Message");
+        input-label: root.edits-caption ? @tr("Caption") : @tr("Message");
         lead-icon: IconSet.Paperclip;
         lead-label: root.attach-label;
         lead-active: Shell.attach-open;
         lead-enabled: !Composer.editing;
         emoji-label: root.picker-label;
         emoji-active: Shell.picker-open;
-        text-optional: Composer.editing && Composer.edited.caption;
+        text-optional: root.edits-caption;
         send-icon: Composer.editing ? IconSet.Check : IconSet.SendHorizontal;
         send-label: Composer.editing ? @tr("Save") : @tr("Send");
         lead-clicked => {
@@ -307,66 +354,12 @@ export component MessageInput inherits Rectangle {
             return EventResult.reject;
         }
 
-        if root.has-unsent: Rectangle {
-            height: Metrics.reply-bar;
-            background: AppStyle.danger-background;
-
-            HorizontalLayout {
-                padding-left: Space.lg;
-                padding-right: Space.md;
-                padding-top: Space.md;
-                padding-bottom: Space.md;
-                spacing: Space.md;
-
-                ReplyQuote {
-                    horizontal-stretch: 1;
-                    accent: AppStyle.danger;
-                    liveness: AccessibleLiveness.assertive;
-                    sender: UnsentView.is-edit ? @tr("Edit not saved") : @tr("Not sent");
-                    preview: UnsentView.edit-caption && UnsentView.body == ""
-                        ? @tr("No caption")
-                        : UnsentView.body;
-                }
-
-                restore-touch := ClickArea {
-                    width: restore-label.preferred-width + 2 * Space.sm;
-                    ring-radius: Radius.sm;
-                    label: UnsentView.is-edit
-                        ? @tr("Put the unsaved edit back in the composer")
-                        : @tr("Put the unsent message back in the composer");
-                    clicked => {
-                        root.restore-unsent();
-                    }
-
-                    restore-label := Text {
-                        text: @tr("Restore");
-                        color: Palette.accent-background;
-                        font-size: Fonts.body-small;
-                        font-weight: Weight.semibold;
-                        horizontal-alignment: center;
-                        vertical-alignment: center;
-                    }
-                }
-
-                discard-touch := ClickArea {
-                    width: discard-label.preferred-width + 2 * Space.sm;
-                    ring-radius: Radius.sm;
-                    label: UnsentView.is-edit
-                        ? @tr("Discard the unsaved edit")
-                        : @tr("Discard the unsent message");
-                    clicked => {
-                        root.settle-unsent();
-                    }
-
-                    discard-label := Text {
-                        text: @tr("Discard");
-                        color: AppStyle.danger-muted;
-                        font-size: Fonts.body-small;
-                        font-weight: Weight.semibold;
-                        horizontal-alignment: center;
-                        vertical-alignment: center;
-                    }
-                }
+        if root.has-unsent: UnsentBanner {
+            restore-clicked => {
+                root.restore-unsent();
+            }
+            discard-clicked => {
+                root.settle-unsent();
             }
         }
 

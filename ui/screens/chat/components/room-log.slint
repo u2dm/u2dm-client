@@ -1,14 +1,13 @@
 import { ListView, Palette } from "std-widgets.slint";
-import { IconSet } from "@lucide";
 
-import { IconButton } from "../../../components/button.slint";
-import { Copier } from "../../../components/copier.slint";
+import { CopyFeedback } from "../../../components/copier.slint";
+import { DialogHeader } from "../../../components/dialog-header.slint";
 import { DialogCard, ModalHost } from "../../../components/overlay.slint";
 import { LogLevel } from "../../../enums.slint";
 import { RoomLogView } from "../../../views.slint";
 import { Actions } from "../../../actions.slint";
-import { LogLineEntry } from "types.slint";
-import { AppStyle, Fonts, Metrics, Motion, Opacity, Radius, Size, Space, Weight } from "../../../theme.slint";
+import { LogLineEntry } from "../../../types.slint";
+import { AppStyle, Fonts, Metrics, Motion, Radius, Space, Weight } from "../../../theme.slint";
 
 component LogRow inherits Rectangle {
     in property <LogLineEntry> line;
@@ -85,17 +84,16 @@ component LogRow inherits Rectangle {
 }
 
 export component RoomLogDialog inherits ModalHost {
-    dim-opacity: AppStyle.dark ? Opacity.scrim-strong : Opacity.scrim;
+    dim-opacity: AppStyle.dialog-scrim;
     label: @tr("Room logs");
     dismissed => {
         Actions.close-room-log();
     }
     opened => {
-        close-button.take-focus();
+        header.focus-close();
     }
 
     property <int> line-count: RoomLogView.lines.length;
-    property <bool> copied: false;
 
     pure function summary(count: int, dropped: int) -> string {
         if dropped > 0 {
@@ -104,15 +102,7 @@ export component RoomLogDialog inherits ModalHost {
         return @tr("{n} line for this room since U2DM started." | "{n} lines for this room since U2DM started." % count);
     }
 
-    Timer {
-        interval: Motion.feedback-hold;
-        running: root.copied;
-        triggered => {
-            root.copied = false;
-        }
-    }
-
-    log-copier := Copier { }
+    log-copy := CopyFeedback { }
 
     DialogCard {
         x: (root.width - self.width) / 2;
@@ -125,55 +115,33 @@ export component RoomLogDialog inherits ModalHost {
             padding: Space.xl;
             spacing: Space.md;
 
-            HorizontalLayout {
-                spacing: Space.sm;
-
-                VerticalLayout {
-                    horizontal-stretch: 1;
-                    spacing: Space.xs;
-
-                    Text {
-                        text: @tr("Room logs");
-                        font-size: Fonts.title;
-                        font-weight: Weight.bold;
-                    }
-
-                    if RoomLogView.name != "": Text {
-                        text: RoomLogView.name;
-                        font-family: Fonts.emoji;
-                        font-size: Fonts.label;
-                        overflow: elide;
-                    }
-
-                    Text {
-                        text: RoomLogView.room-id;
-                        font-family: Fonts.mono;
-                        font-size: Fonts.caption;
-                        color: AppStyle.foreground-muted;
-                        overflow: elide;
-                    }
+            header := DialogHeader {
+                title: @tr("Room logs");
+                copied: log-copy.copied;
+                copy-enabled: root.line-count > 0;
+                copy-label: @tr("Copy the logs");
+                copied-label: @tr("Logs copied");
+                close-label: @tr("Close the room logs");
+                copy-clicked => {
+                    log-copy.copy(Actions.room-log-text());
+                }
+                close-clicked => {
+                    Actions.close-room-log();
                 }
 
-                IconButton {
-                    size: Size.md;
-                    icon: root.copied ? IconSet.Check : IconSet.Copy;
-                    enabled: root.line-count > 0;
-                    above-modal: true;
-                    label: root.copied ? @tr("Logs copied") : @tr("Copy the logs");
-                    clicked => {
-                        log-copier.copy-text(Actions.room-log-text());
-                        root.copied = true;
-                    }
+                if RoomLogView.name != "": Text {
+                    text: RoomLogView.name;
+                    font-family: Fonts.emoji;
+                    font-size: Fonts.label;
+                    overflow: elide;
                 }
 
-                close-button := IconButton {
-                    size: Size.md;
-                    icon: IconSet.X;
-                    above-modal: true;
-                    label: @tr("Close the room logs");
-                    clicked => {
-                        Actions.close-room-log();
-                    }
+                Text {
+                    text: RoomLogView.room-id;
+                    font-family: Fonts.mono;
+                    font-size: Fonts.caption;
+                    color: AppStyle.foreground-muted;
+                    overflow: elide;
                 }
             }
 

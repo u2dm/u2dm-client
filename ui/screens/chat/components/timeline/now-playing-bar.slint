@@ -44,7 +44,7 @@ export component NowPlayingBar inherits Rectangle {
                 ? @tr("Go to the message that is playing")
                 : @tr("Go to the room that is playing");
             clicked => {
-                if (root.in-this-room) {
+                if root.in-this-room {
                     Actions.jump-to-event(AudioView.event-id);
                 } else {
                     Actions.select-room(AudioView.room-id);
@@ -117,7 +117,7 @@ export component NowPlayingBar inherits Rectangle {
         position-ms: AudioView.position-ms;
         duration-ms: AudioView.duration-ms;
         label: @tr("Playback position");
-        seek(ms) => {
+        seek-requested(ms) => {
             Actions.seek-audio(ms);
         }
     }

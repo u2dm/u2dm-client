@@ -1,8 +1,8 @@
-import { Palette } from "std-widgets.slint";
 import { IconDisplay, IconSet } from "@lucide";
 
 import { AppStyle, Fonts, IconSize, Radius, Space, Stroke } from "../theme.slint";
-import { UserMessage, UserMessages } from "../messages.slint";
+import { UserMessage } from "../types.slint";
+import { UserMessages } from "../messages.slint";
 
 export component NoticeBanner inherits Rectangle {
     in property <string> text;

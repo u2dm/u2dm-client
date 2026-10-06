@@ -1,19 +1,18 @@
-import { Palette } from "std-widgets.slint";
 import { IconDisplay, IconSet, Icon } from "@lucide";
 
-import { MessageEntry } from "../types.slint";
-import { MessagePreview } from "../message-preview.slint";
+import { MessageEntry } from "../../../../types.slint";
+import { ServiceLabel } from "../../../../messages.slint";
 import { MessageShape } from "./message-body.slint";
-import { QuickReactions, StripCell } from "./reaction-picker.slint";
-import { ServiceLabel } from "./messages/service-message.slint";
-import { ClickArea, Interaction } from "../../../../components/a11y.slint";
+import { QuickReactions, StripCell } from "./quick-reactions.slint";
+import { ClickArea, Interaction, RovingKeys } from "../../../../components/a11y.slint";
+import { ConfirmChoice, Confirmations, MenuCard, MenuConfirmation } from "../../../../components/menu.slint";
 import { MenuRow } from "../../../../components/menu-row.slint";
-import { ModalHost, PickerCard } from "../../../../components/overlay.slint";
-import { Composer, DeliveryTip, MessageMenu, Polls, Reactions, RoomMenu, Shell, TextSelection } from "../../../../local.slint";
+import { ModalHost, PickerCard, Placement } from "../../../../components/overlay.slint";
+import { Composer, LocalState, MessageMenu, Polls, ReactionPopup, Reactions, RoomMenu, TextSelection } from "../../../../local.slint";
 import { Actions } from "../../../../actions.slint";
 import { RoomView } from "../../../../views.slint";
 import { MessageKind, SendState } from "../../../../enums.slint";
-import { AppStyle, Fonts, Glyph, IconSize, Metrics, Motion, Size, Space } from "../../../../theme.slint";
+import { AppStyle, Glyph, IconSize, Metrics, Size, Space } from "../../../../theme.slint";
 
 enum MenuAction {
     reply,
@@ -52,47 +51,20 @@ component QuickReactionBar inherits PickerCard {
         }
     }
 
-    keys := FocusScope {
-        x: 0;
-        y: 0;
-        width: 0;
-        height: 0;
+    keys := RovingKeys {
+        count: root.count;
+        cursor <=> root.cursor;
+        horizontal: true;
+        ring-on-any-focus: true;
         enabled: root.visible;
-        focus-on-click: false;
-        accessible-role: button;
         accessible-label: root.cursor == root.more-index
             ? @tr("More reactions")
             : @tr("React with {}", QuickReactions.keys[max(root.cursor, 0)]);
         accessible-action-default => {
             root.run(max(root.cursor, 0));
         }
-        focus-gained(reason) => {
-            if root.cursor < 0 {
-                root.cursor = 0;
-            }
-        }
-        key-pressed(event) => {
-            if event.text == Key.RightArrow {
-                root.cursor = mod(max(root.cursor, -1) + 1, root.count);
-                return accept;
-            }
-            if event.text == Key.LeftArrow {
-                root.cursor = root.cursor <= 0 ? root.count - 1 : root.cursor - 1;
-                return accept;
-            }
-            if event.text == Key.Home {
-                root.cursor = 0;
-                return accept;
-            }
-            if event.text == Key.End {
-                root.cursor = root.count - 1;
-                return accept;
-            }
-            if Interaction.activates(event.text) {
-                root.run(max(root.cursor, 0));
-                return accept;
-            }
-            return reject;
+        activated(index) => {
+            root.run(index);
         }
     }
 
@@ -141,20 +113,17 @@ component QuickReactionBar inherits PickerCard {
     }
 }
 
-component MessageMenuCard inherits PickerCard {
+component MessageMenuCard inherits MenuCard {
     in property <MessageEntry> msg;
-    out property <[MenuAction]> offered;
 
     callback chose(MenuAction);
-    callback delete-confirmed();
-    callback delete-cancelled();
+    callback confirmed();
+    callback cancelled();
 
-    property <length> row-height: Metrics.message-menu-row;
-    property <length> pad: Space.sm;
+    property <[MenuAction]> offered;
     property <int> cursor: -1;
     property <bool> asking: MessageMenu.asking-delete;
-    property <int> confirm-cursor: 1;
-    property <int> confirm-delete: 0;
+    property <ConfirmChoice> confirm-cursor: ConfirmChoice.cancel;
 
     property <bool> has-remote-id: root.msg.event-id != "";
     property <bool> is-service: root.msg.message-type == MessageKind.service;
@@ -163,16 +132,11 @@ component MessageMenuCard inherits PickerCard {
     property <bool> is-poll: root.msg.message-type == MessageKind.poll;
 
     width: Metrics.message-menu-width;
-    height: root.offered.length * root.row-height + 2 * root.pad;
-    opacity: 0;
+    row-count: root.offered.length;
+    row-height: Metrics.message-menu-row;
 
-    animate opacity {
-        duration: Motion.fast;
-        easing: ease-out;
-    }
-
-    init => {
-        self.opacity = 1;
+    changed asking => {
+        root.confirm-cursor = ConfirmChoice.cancel;
     }
 
     public pure function available(action: MenuAction) -> bool {
@@ -329,16 +293,34 @@ component MessageMenuCard inherits PickerCard {
         return action == MenuAction.discard || action == MenuAction.delete;
     }
 
-    function answer-confirm(index: int) {
-        if index == root.confirm-delete {
-            root.delete-confirmed();
+    pure function spoken-label() -> string {
+        if root.asking {
+            return root.confirm-cursor == ConfirmChoice.confirm ? @tr("Delete for everyone") : @tr("Cancel");
+        }
+        if root.cursor >= 0 && root.cursor < root.offered.length {
+            return root.label-of(root.offered[root.cursor]);
+        }
+        return @tr("Message actions");
+    }
+
+    function answer(choice: ConfirmChoice) {
+        if choice == ConfirmChoice.confirm {
+            root.confirmed();
         } else {
-            root.delete-cancelled();
+            root.cancelled();
         }
     }
 
-    changed asking => {
-        root.confirm-cursor = 1;
+    function confirm-key(event: KeyEvent) -> EventResult {
+        if event.text == Key.DownArrow || event.text == Key.UpArrow {
+            root.confirm-cursor = Confirmations.other(root.confirm-cursor);
+            return accept;
+        }
+        if Interaction.activates(event.text) {
+            root.answer(root.confirm-cursor);
+            return accept;
+        }
+        return reject;
     }
 
     function choose-at(index: int) {
@@ -353,68 +335,26 @@ component MessageMenuCard inherits PickerCard {
         }
     }
 
-    TouchArea { }
-
-    keys := FocusScope {
-        x: 0;
-        y: 0;
-        width: 0;
-        height: 0;
-        focus-on-click: false;
-        accessible-role: button;
-        accessible-label: root.asking
-            ? (root.confirm-cursor == root.confirm-delete ? @tr("Delete for everyone") : @tr("Cancel"))
-            : (root.cursor >= 0 && root.cursor < root.offered.length
-                ? root.label-of(root.offered[root.cursor])
-                : @tr("Message actions"));
+    keys := RovingKeys {
+        count: root.offered.length;
+        cursor <=> root.cursor;
+        paused: root.asking;
+        accessible-label: root.spoken-label();
         accessible-action-default => {
             if root.asking {
-                root.answer-confirm(root.confirm-cursor);
+                root.answer(root.confirm-cursor);
             } else {
                 root.choose-at(max(root.cursor, 0));
             }
         }
-        focus-gained(reason) => {
-            if reason == FocusReason.tab-navigation && root.cursor < 0 {
-                root.cursor = 0;
-            }
-        }
-        key-pressed(event) => {
+        intercept(event) => {
             if root.asking {
-                if event.text == Key.DownArrow || event.text == Key.UpArrow {
-                    root.confirm-cursor = 1 - root.confirm-cursor;
-                    return accept;
-                }
-                if Interaction.activates(event.text) {
-                    root.answer-confirm(root.confirm-cursor);
-                    return accept;
-                }
-                return reject;
-            }
-            if root.offered.length == 0 {
-                return reject;
-            }
-            if event.text == Key.DownArrow {
-                root.cursor = mod(max(root.cursor, -1) + 1, root.offered.length);
-                return accept;
-            }
-            if event.text == Key.UpArrow {
-                root.cursor = root.cursor <= 0 ? root.offered.length - 1 : root.cursor - 1;
-                return accept;
-            }
-            if event.text == Key.Home {
-                root.cursor = 0;
-                return accept;
-            }
-            if event.text == Key.End {
-                root.cursor = root.offered.length - 1;
-                return accept;
-            }
-            if Interaction.activates(event.text) {
-                root.choose-at(max(root.cursor, 0));
-                return accept;
+                return root.confirm-key(event);
             }
             return reject;
+        }
+        activated(index) => {
+            root.choose-at(index);
         }
     }
 
@@ -428,8 +368,7 @@ component MessageMenuCard inherits PickerCard {
                 height: root.row-height;
                 icon: root.icon-of(action);
                 label: root.label-of(action);
-                tint: root.destructive(action) ? AppStyle.danger-muted : AppStyle.foreground-muted;
-                text-color: root.destructive(action) ? AppStyle.danger-muted : Palette.foreground;
+                destructive: root.destructive(action);
                 focusable: false;
                 roving-focus: keys.has-focus && root.cursor == index;
                 clicked => {
@@ -439,48 +378,23 @@ component MessageMenuCard inherits PickerCard {
         }
     }
 
-    if root.asking: VerticalLayout {
+    if root.asking: MenuConfirmation {
         padding: root.pad;
-
-        Text {
-            vertical-stretch: 1;
-            text: root.delete-prompt();
-            font-size: Fonts.label;
-            color: Palette.foreground;
-            wrap: word-wrap;
-            vertical-alignment: center;
-            horizontal-alignment: center;
-        }
-
-        MenuRow {
-            height: root.row-height;
-            icon: IconSet.Trash2;
-            label: @tr("Delete for everyone");
-            tint: AppStyle.danger-muted;
-            text-color: AppStyle.danger-muted;
-            focusable: false;
-            roving-focus: keys.has-focus && root.cursor >= 0 && root.confirm-cursor == root.confirm-delete;
-            clicked => {
-                root.answer-confirm(root.confirm-delete);
-            }
-        }
-
-        MenuRow {
-            height: root.row-height;
-            icon: IconSet.X;
-            label: @tr("Cancel");
-            focusable: false;
-            roving-focus: keys.has-focus && root.cursor >= 0 && root.confirm-cursor != root.confirm-delete;
-            clicked => {
-                root.answer-confirm(1 - root.confirm-delete);
-            }
+        prompt: root.delete-prompt();
+        confirm-icon: IconSet.Trash2;
+        confirm-label: @tr("Delete for everyone");
+        row-height: root.row-height;
+        cursor: root.confirm-cursor;
+        rings: keys.has-focus && root.cursor >= 0;
+        answered(choice) => {
+            root.answer(choice);
         }
     }
 }
 
 export component MessageMenuOverlay inherits Rectangle {
     callback closed();
-    callback copy-text(string);
+    callback copy-requested(string);
 
     property <length> edge: Space.md;
     property <length> gap: Space.sm;
@@ -495,10 +409,7 @@ export component MessageMenuOverlay inherits Rectangle {
     }
 
     pure function card-left(width: length) -> length {
-        return clamp(
-            MessageMenu.at-x + width + root.edge > root.width ? MessageMenu.at-x - width : MessageMenu.at-x,
-            root.edge,
-            max(root.edge, root.width - width - root.edge));
+        return Placement.flip(MessageMenu.at-x, width, root.width, root.edge);
     }
 
     pure function card-top(height: length, headroom: length) -> length {
@@ -509,10 +420,7 @@ export component MessageMenuOverlay inherits Rectangle {
     }
 
     pure function bar-left(card-x: length, card-width: length, width: length) -> length {
-        return clamp(
-            card-x + (card-width - width) / 2,
-            root.edge,
-            max(root.edge, root.width - width - root.edge));
+        return Placement.fit(card-x + (card-width - width) / 2, width, root.width, root.edge);
     }
 
     function dismiss() {
@@ -537,7 +445,7 @@ export component MessageMenuOverlay inherits Rectangle {
     function more-reactions() {
         let anchor = MessageMenu.anchor;
         MessageMenu.close();
-        Reactions.open-picker(anchor);
+        Reactions.open-popup(anchor, ReactionPopup.picker);
     }
 
     function run(action: MenuAction) {
@@ -563,19 +471,15 @@ export component MessageMenuOverlay inherits Rectangle {
         }
         if action == MenuAction.edit && msg.poll-editable && msg.message-type == MessageKind.poll {
             MessageMenu.close();
-            Reactions.close();
-            Polls.start-edit(msg);
-            Shell.poll-open = true;
+            Polls.edit(msg);
             return;
         }
         if action == MenuAction.reply {
-            Composer.reply-event-id = msg.event-id;
-            Composer.reply-sender = msg.sender;
-            Composer.reply-preview = MessagePreview.label(msg.preview-kind, msg.preview-body);
+            Composer.reply-to(msg);
         } else if action == MenuAction.edit {
             Composer.request-edit(msg);
         } else if action == MenuAction.copy-text {
-            root.copy-text(root.text-of(msg));
+            root.copy-requested(root.text-of(msg));
         } else if action == MenuAction.copy-link {
             Actions.copy-message-link(msg.event-id);
         } else if action == MenuAction.pin && msg.pinned {
@@ -602,10 +506,7 @@ export component MessageMenuOverlay inherits Rectangle {
         label: @tr("Message actions");
         opened => {
             RoomMenu.close();
-            Reactions.close();
-            DeliveryTip.clear();
-            Shell.picker-open = false;
-            Shell.attach-open = false;
+            LocalState.close-popovers();
             card.open(MessageMenu.by-keyboard);
         }
         dismissed => {
@@ -635,10 +536,10 @@ export component MessageMenuOverlay inherits Rectangle {
             chose(action) => {
                 root.run(action);
             }
-            delete-confirmed => {
+            confirmed => {
                 root.delete-confirmed();
             }
-            delete-cancelled => {
+            cancelled => {
                 MessageMenu.asking-delete = false;
             }
         }

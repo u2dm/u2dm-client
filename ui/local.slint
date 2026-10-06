@@ -1,11 +1,11 @@
-import { Delivery, LoginPhase, MessageKind, PollPhase, RoomInfoPlacement } from "enums.slint";
-import { AttachmentView, LoginView, RoomInfoView, RoomLogView, RoomMenuView, RoomView, SourceView, UserInfoView, VerificationView, VideoView, WindowView } from "views.slint";
-import { Actions } from "actions.slint";
-import { MessageEntry, ReactionEntry } from "screens/chat/components/types.slint";
-import { MessagePreview } from "screens/chat/components/message-preview.slint";
-import { Metrics } from "theme.slint";
+import { Delivery, LoginPhase, MessageKind, PollPhase, RoomInfoPlacement } from "./enums.slint";
+import { AttachmentView, LoginView, RoomInfoView, RoomLogView, RoomMenuView, RoomView, SourceView, UserInfoView, VerificationView, VideoView, WindowView } from "./views.slint";
+import { Actions } from "./actions.slint";
+import { MessageEntry, ReactionEntry } from "./types.slint";
+import { MessagePreview } from "./messages.slint";
+import { Metrics } from "./theme.slint";
 
-export struct ReactionAnchor {
+export struct AnchorRect {
     event-id: string,
     row: int,
     is-own: bool,
@@ -30,6 +30,12 @@ export struct EditedMessage {
     restored: bool,
     original: string,
     preview: string,
+}
+
+global TimelineRows {
+    public pure function at(row: int) -> MessageEntry {
+        return row >= 0 && row < RoomView.timeline.length ? RoomView.timeline[row] : { };
+    }
 }
 
 export global Probe {
@@ -71,26 +77,32 @@ export global Composer {
     }
 
     public function request-edit(msg: MessageEntry) {
-        self.requested-edit = self.edit-of(msg);
-        self.edit-requests += 1;
+        root.requested-edit = root.edit-of(msg);
+        root.edit-requests += 1;
+    }
+
+    public function reply-to(msg: MessageEntry) {
+        root.reply-event-id = msg.event-id;
+        root.reply-sender = msg.sender;
+        root.reply-preview = MessagePreview.label(msg.preview-kind, msg.preview-body);
     }
 
     public function restore-reply(draft: ReplyDraft) {
-        self.reply-event-id = draft.event-id;
-        self.reply-sender = draft.sender;
-        self.reply-preview = draft.preview;
+        root.reply-event-id = draft.event-id;
+        root.reply-sender = draft.sender;
+        root.reply-preview = draft.preview;
     }
 
     public function clear-reply() {
-        self.reply-event-id = "";
-        self.reply-sender = "";
-        self.reply-preview = "";
+        root.reply-event-id = "";
+        root.reply-sender = "";
+        root.reply-preview = "";
     }
 
     public function clear() {
-        self.clear-reply();
-        self.edited = { };
-        self.requested-edit = { };
+        root.clear-reply();
+        root.edited = { };
+        root.requested-edit = { };
     }
 }
 
@@ -101,30 +113,30 @@ export global TextSelection {
 
     public pure function holds(id: string) -> bool {
         return id != ""
-            && id == self.active-id
-            && self.timeline-token == RoomView.timeline-token;
+            && id == root.active-id
+            && root.timeline-token == RoomView.timeline-token;
     }
 
     public function select(id: string) {
-        if (self.holds(id)) {
+        if root.holds(id) {
             return;
         }
-        self.active-id = id;
-        self.timeline-token = RoomView.timeline-token;
-        self.taken = false;
+        root.active-id = id;
+        root.timeline-token = RoomView.timeline-token;
+        root.taken = false;
     }
 
     public function take() -> bool {
-        if (self.taken) {
-            self.clear();
+        if root.taken {
+            root.clear();
             return false;
         }
-        self.taken = true;
+        root.taken = true;
         return true;
     }
 
     public function clear() {
-        self.active-id = "";
+        root.active-id = "";
     }
 }
 
@@ -164,60 +176,57 @@ export global Shell {
     out property <bool> background-reachable: !root.modal-open;
 
     public function close-overlays() {
-        self.drawer-open = false;
-        self.nav-open = false;
-        self.picker-open = false;
-        self.attach-open = false;
-        self.poll-open = false;
+        root.drawer-open = false;
+        root.nav-open = false;
+        root.picker-open = false;
+        root.attach-open = false;
+        root.poll-open = false;
     }
 }
 
 export global DeliveryTip {
     in-out property <string> key;
     in-out property <bool> on-counter;
-    in-out property <ReactionAnchor> anchor: { row: -1 };
+    in-out property <AnchorRect> anchor: { row: -1 };
 
-    out property <MessageEntry> target: (root.anchor.row >= 0
-        && root.anchor.row < RoomView.timeline.length)
-        ? RoomView.timeline[root.anchor.row]
-        : { };
+    out property <MessageEntry> target: TimelineRows.at(root.anchor.row);
     out property <bool> names-readers: root.target.delivery == Delivery.read
         || root.target.delivery == Delivery.seen;
     out property <bool> showing: root.key != ""
         && root.target.unique-id == root.key
         && (root.on-counter ? root.names-readers : root.target.delivery != Delivery.none);
 
-    public function show(key: string, a: ReactionAnchor, on-counter: bool) {
-        self.key = key;
-        self.anchor = a;
-        self.on-counter = on-counter;
+    public function show(key: string, a: AnchorRect, on-counter: bool) {
+        root.key = key;
+        root.anchor = a;
+        root.on-counter = on-counter;
     }
 
-    public function follow(key: string, a: ReactionAnchor, on-counter: bool) {
-        if (self.key == key && self.on-counter == on-counter) {
-            self.anchor = a;
+    public function follow(key: string, a: AnchorRect, on-counter: bool) {
+        if root.key == key && root.on-counter == on-counter {
+            root.anchor = a;
         }
     }
 
     public function hide(key: string, on-counter: bool) {
-        if (self.key == key && self.on-counter == on-counter) {
-            self.clear();
+        if root.key == key && root.on-counter == on-counter {
+            root.clear();
         }
     }
 
     public function clear() {
-        self.key = "";
-        self.anchor = { row: -1 };
+        root.key = "";
+        root.anchor = { row: -1 };
     }
 }
 
-export global Reactions {
-    in-out property <ReactionAnchor> anchor: { row: -1 };
-    in-out property <bool> picker-open: false;
-    in-out property <bool> detail-open: false;
-    in-out property <bool> voters-open: false;
+export enum ReactionPopup { none, picker, detail, voters }
 
-    in-out property <ReactionAnchor> strip-anchor: { row: -1 };
+export global Reactions {
+    in-out property <AnchorRect> anchor: { row: -1 };
+    in-out property <ReactionPopup> popup: ReactionPopup.none;
+
+    in-out property <AnchorRect> strip-anchor: { row: -1 };
     in-out property <bool> bubble-hovered: false;
     in-out property <bool> strip-hovered: false;
     in-out property <bool> strip-revealed: false;
@@ -225,105 +234,80 @@ export global Reactions {
     in-out property <int> tooltip-row: -1;
     in-out property <string> tooltip-event-id;
     in-out property <string> tooltip-text;
-    in-out property <ReactionAnchor> tooltip-anchor;
+    in-out property <AnchorRect> tooltip-anchor;
 
-    out property <MessageEntry> target: (root.anchor.row >= 0
-        && root.anchor.row < RoomView.timeline.length)
-        ? RoomView.timeline[root.anchor.row]
-        : { };
+    out property <MessageEntry> target: TimelineRows.at(root.anchor.row);
     out property <bool> target-valid: root.anchor.event-id != ""
         && root.target.event-id == root.anchor.event-id;
     out property <[ReactionEntry]> items: root.target.all-reactions;
 
-    out property <bool> detail-visible: root.detail-open && root.target-valid;
-    out property <bool> voters-visible: root.voters-open
+    out property <bool> detail-visible: root.popup == ReactionPopup.detail && root.target-valid;
+    out property <bool> voters-visible: root.popup == ReactionPopup.voters
         && root.target-valid
         && root.target.poll-phase != PollPhase.sealed;
-    out property <bool> open: root.picker-open || root.detail-visible || root.voters-visible;
+    out property <bool> open: root.popup == ReactionPopup.picker || root.detail-visible || root.voters-visible;
     out property <bool> strip-pending: root.strip-anchor.event-id != "" && !root.open;
     out property <bool> strip-visible: root.strip-pending && root.strip-revealed;
 
-    public function hover-bubble(a: ReactionAnchor) {
-        if (!self.open) {
-            if (self.strip-anchor.event-id != a.event-id) {
-                self.strip-revealed = false;
+    public function hover-bubble(a: AnchorRect) {
+        if !root.open {
+            if root.strip-anchor.event-id != a.event-id {
+                root.strip-revealed = false;
             }
-            self.strip-anchor = a;
-            self.bubble-hovered = true;
+            root.strip-anchor = a;
+            root.bubble-hovered = true;
         }
     }
 
-    public function follow-bubble(a: ReactionAnchor) {
-        if (self.strip-anchor.event-id == a.event-id) {
-            self.strip-anchor = a;
+    public function follow-bubble(a: AnchorRect) {
+        if root.strip-anchor.event-id == a.event-id {
+            root.strip-anchor = a;
         }
     }
 
     public function leave-bubble(event-id: string) {
-        if (self.strip-anchor.event-id == event-id) {
-            self.bubble-hovered = false;
+        if root.strip-anchor.event-id == event-id {
+            root.bubble-hovered = false;
         }
     }
 
     public function close-strip() {
-        self.strip-anchor = { row: -1 };
-        self.bubble-hovered = false;
-        self.strip-hovered = false;
-        self.strip-revealed = false;
+        root.strip-anchor = { row: -1 };
+        root.bubble-hovered = false;
+        root.strip-hovered = false;
+        root.strip-revealed = false;
     }
 
-    public function open-picker(a: ReactionAnchor) {
-        self.anchor = a;
-        self.detail-open = false;
-        self.voters-open = false;
-        self.picker-open = true;
-        self.close-strip();
-        self.tooltip-row = -1;
-    }
-
-    public function open-detail(a: ReactionAnchor) {
-        self.anchor = a;
-        self.picker-open = false;
-        self.voters-open = false;
-        self.detail-open = true;
-        self.close-strip();
-        self.tooltip-row = -1;
-    }
-
-    public function open-voters(a: ReactionAnchor) {
-        self.anchor = a;
-        self.picker-open = false;
-        self.detail-open = false;
-        self.voters-open = true;
-        self.close-strip();
-        self.tooltip-row = -1;
+    public function open-popup(a: AnchorRect, popup: ReactionPopup) {
+        root.anchor = a;
+        root.popup = popup;
+        root.close-strip();
+        root.tooltip-row = -1;
     }
 
     public function close() {
-        self.picker-open = false;
-        self.detail-open = false;
-        self.voters-open = false;
-        self.anchor = { row: -1 };
-        self.tooltip-row = -1;
-        self.close-strip();
+        root.popup = ReactionPopup.none;
+        root.anchor = { row: -1 };
+        root.tooltip-row = -1;
+        root.close-strip();
     }
 
-    public function show-tooltip(event-id: string, row: int, text: string, a: ReactionAnchor) {
-        self.tooltip-event-id = event-id;
-        self.tooltip-row = row;
-        self.tooltip-text = text;
-        self.tooltip-anchor = a;
+    public function show-tooltip(event-id: string, row: int, text: string, a: AnchorRect) {
+        root.tooltip-event-id = event-id;
+        root.tooltip-row = row;
+        root.tooltip-text = text;
+        root.tooltip-anchor = a;
     }
 
     public function hide-tooltip(event-id: string, row: int) {
-        if (self.tooltip-row == row && self.tooltip-event-id == event-id) {
-            self.tooltip-row = -1;
+        if root.tooltip-row == row && root.tooltip-event-id == event-id {
+            root.tooltip-row = -1;
         }
     }
 }
 
 export global MessageMenu {
-    in-out property <ReactionAnchor> anchor: { row: -1 };
+    in-out property <AnchorRect> anchor: { row: -1 };
     in-out property <string> key;
     in-out property <int> timeline-token;
     in-out property <length> at-x;
@@ -331,28 +315,25 @@ export global MessageMenu {
     in-out property <bool> by-keyboard;
     in-out property <bool> asking-delete;
 
-    out property <MessageEntry> target: (root.anchor.row >= 0
-        && root.anchor.row < RoomView.timeline.length)
-        ? RoomView.timeline[root.anchor.row]
-        : { };
+    out property <MessageEntry> target: TimelineRows.at(root.anchor.row);
     out property <bool> visible: root.key != ""
         && root.target.unique-id == root.key
         && root.timeline-token == RoomView.timeline-token;
 
-    public function open(a: ReactionAnchor, key: string, x: length, y: length, keyboard: bool) {
-        self.anchor = a;
-        self.key = key;
-        self.timeline-token = RoomView.timeline-token;
-        self.at-x = x;
-        self.at-y = y;
-        self.by-keyboard = keyboard;
-        self.asking-delete = false;
+    public function open(a: AnchorRect, key: string, x: length, y: length, keyboard: bool) {
+        root.anchor = a;
+        root.key = key;
+        root.timeline-token = RoomView.timeline-token;
+        root.at-x = x;
+        root.at-y = y;
+        root.by-keyboard = keyboard;
+        root.asking-delete = false;
     }
 
     public function close() {
-        self.key = "";
-        self.anchor = { row: -1 };
-        self.asking-delete = false;
+        root.key = "";
+        root.anchor = { row: -1 };
+        root.asking-delete = false;
     }
 }
 
@@ -418,7 +399,7 @@ export global RoomMenu {
 }
 
 export global ReplySwipe {
-    in-out property <ReactionAnchor> anchor: { row: -1 };
+    in-out property <AnchorRect> anchor: { row: -1 };
 
     in-out property <bool> armed: root.anchor.event-id != ""
         && !Reactions.open
@@ -427,10 +408,7 @@ export global ReplySwipe {
         && !Shell.modal-open
         && !Composer.editing;
 
-    out property <MessageEntry> target: (root.anchor.row >= 0
-        && root.anchor.row < RoomView.timeline.length)
-        ? RoomView.timeline[root.anchor.row]
-        : { };
+    out property <MessageEntry> target: TimelineRows.at(root.anchor.row);
     out property <string> event-id: (root.armed
         && root.target.event-id != ""
         && root.target.event-id == root.anchor.event-id)
@@ -442,27 +420,25 @@ export global ReplySwipe {
     out property <bool> within-reach: root.reach >= 1.0;
     out property <bool> settling: WindowView.swipe-travel == 0;
 
-    public function hover(a: ReactionAnchor) {
-        self.anchor = a;
+    public function hover(a: AnchorRect) {
+        root.anchor = a;
     }
 
     public function leave(event-id: string) {
-        if (self.anchor.event-id == event-id) {
-            self.clear();
+        if root.anchor.event-id == event-id {
+            root.clear();
         }
     }
 
     public function clear() {
-        self.anchor = { row: -1 };
+        root.anchor = { row: -1 };
     }
 
     public function commit() {
-        if (root.event-id == "") {
+        if root.event-id == "" {
             return;
         }
-        Composer.reply-event-id = root.event-id;
-        Composer.reply-sender = root.target.sender;
-        Composer.reply-preview = MessagePreview.label(root.target.preview-kind, root.target.preview-body);
+        Composer.reply-to(root.target);
     }
 }
 
@@ -471,24 +447,59 @@ export global Polls {
     in-out property <MessageEntry> edit-source;
 
     public function ask-end(event-id: string) {
-        self.ending = event-id;
+        root.ending = event-id;
     }
 
     public function cancel-end() {
-        self.ending = "";
+        root.ending = "";
     }
 
-    public function start-edit(msg: MessageEntry) {
-        self.ending = "";
-        self.edit-source = msg;
+    public function edit(msg: MessageEntry) {
+        Reactions.close();
+        root.ending = "";
+        root.edit-source = msg;
+        Shell.poll-open = true;
     }
 
     public function stop-editing() {
-        self.edit-source = { };
+        root.edit-source = { };
     }
 
     public function clear() {
-        self.ending = "";
-        self.edit-source = { };
+        root.ending = "";
+        root.edit-source = { };
+    }
+}
+
+export global LocalState {
+    public function forget-session() {
+        Composer.clear();
+        Shell.close-overlays();
+        Shell.room-info-pane-open = false;
+        TextSelection.clear();
+        Reactions.close();
+        MessageMenu.close();
+        RoomMenu.close();
+        ReplySwipe.clear();
+        DeliveryTip.clear();
+        Polls.clear();
+    }
+
+    public function forget-room() {
+        Composer.clear();
+        TextSelection.clear();
+        Reactions.close();
+        MessageMenu.close();
+        ReplySwipe.clear();
+        DeliveryTip.clear();
+        Polls.clear();
+        Shell.poll-open = false;
+    }
+
+    public function close-popovers() {
+        Reactions.close();
+        DeliveryTip.clear();
+        Shell.picker-open = false;
+        Shell.attach-open = false;
     }
 }

@@ -1,5 +1,5 @@
 import { Palette } from "std-widgets.slint";
-import { FocusRing, Interaction } from "a11y.slint";
+import { FocusRing, Interaction } from "./a11y.slint";
 import { AppStyle, Metrics } from "../theme.slint";
 
 export enum ScrubCommit {
@@ -13,13 +13,13 @@ export component ScrubBar inherits Rectangle {
     in property <ScrubCommit> commit: ScrubCommit.live;
     in property <bool> above-modal: false;
     in property <length> track-height: Metrics.video-scrub-track;
-    in property <length> knob-size: Metrics.video-scrub-knob;
+    property <length> knob-size: Metrics.video-scrub-knob;
     in property <color> played: Palette.accent-background;
     in property <color> rest: AppStyle.scrub-track;
     in property <string> label: @tr("Seek");
     in property <float> resting-knob-opacity: 0;
 
-    callback seek(int);
+    callback seek-requested(int);
 
     property <int> step-ms: 5000;
     property <bool> actionable: Interaction.actionable(root.duration-ms > 0, root.above-modal);
@@ -30,14 +30,14 @@ export component ScrubBar inherits Rectangle {
         : (root.duration-ms > 0 ? clamp(root.position-ms / root.duration-ms, 0.0, 1.0) : 0.0);
 
     function seek-to-pointer() {
-        if (root.actionable) {
-            root.seek(root.pointer-fraction * root.duration-ms);
+        if root.actionable {
+            root.seek-requested(root.pointer-fraction * root.duration-ms);
         }
     }
 
     function nudge(delta-ms: int) {
-        if (root.actionable) {
-            root.seek(clamp(root.position-ms + delta-ms, 0, root.duration-ms));
+        if root.actionable {
+            root.seek-requested(clamp(root.position-ms + delta-ms, 0, root.duration-ms));
         }
     }
 
@@ -86,11 +86,11 @@ export component ScrubBar inherits Rectangle {
         enabled: root.actionable;
         focus-on-tab-navigation: root.actionable;
         key-pressed(event) => {
-            if (event.text == Key.RightArrow) {
+            if event.text == Key.RightArrow {
                 root.nudge(root.step-ms);
                 return accept;
             }
-            if (event.text == Key.LeftArrow) {
+            if event.text == Key.LeftArrow {
                 root.nudge(-root.step-ms);
                 return accept;
             }
@@ -104,17 +104,17 @@ export component ScrubBar inherits Rectangle {
         enabled: root.actionable;
         mouse-cursor: pointer;
         pointer-event(event) => {
-            if (root.commit == ScrubCommit.live && self.pressed) {
+            if root.commit == ScrubCommit.live && self.pressed {
                 root.seek-to-pointer();
             }
-            if (root.commit == ScrubCommit.on-release
+            if root.commit == ScrubCommit.on-release
                 && event.kind == PointerEventKind.up
-                && event.button == PointerEventButton.left) {
+                && event.button == PointerEventButton.left {
                 root.seek-to-pointer();
             }
         }
         clicked => {
-            if (root.commit == ScrubCommit.live) {
+            if root.commit == ScrubCommit.live {
                 root.seek-to-pointer();
             }
         }

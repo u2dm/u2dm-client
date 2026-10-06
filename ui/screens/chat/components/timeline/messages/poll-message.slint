@@ -1,10 +1,10 @@
 import { Palette } from "std-widgets.slint";
 import { IconDisplay, IconSet } from "@lucide";
-import { MessageEntry, PollAnswerEntry } from "../../types.slint";
+import { MessageEntry, PollAnswerEntry } from "../../../../../types.slint";
 import { ClickArea, Interaction } from "../../../../../components/a11y.slint";
 import { PollPhase } from "../../../../../enums.slint";
 import { Actions } from "../../../../../actions.slint";
-import { Polls, Reactions, Shell } from "../../../../../local.slint";
+import { Polls, ReactionPopup, Reactions } from "../../../../../local.slint";
 import { RoomView } from "../../../../../views.slint";
 import { AppStyle, Fonts, IconSize, Metrics, Radius, Space, Stroke, Weight } from "../../../../../theme.slint";
 
@@ -20,7 +20,7 @@ component CheckKeys inherits FocusScope {
     in property <int> count;
     in-out property <int> cursor;
 
-    callback activate();
+    callback activated();
 
     x: 0;
     y: 0;
@@ -31,22 +31,22 @@ component CheckKeys inherits FocusScope {
     accessible-role: checkbox;
     accessible-checkable: true;
     accessible-action-default => {
-        root.activate();
+        root.activated();
     }
     key-pressed(event) => {
         if root.count == 0 {
             return reject;
         }
         if event.text == Key.DownArrow {
-            root.cursor = mod(root.cursor + 1, root.count);
+            root.cursor = Interaction.next(root.cursor, root.count);
             return accept;
         }
         if event.text == Key.UpArrow {
-            root.cursor = mod(root.cursor + root.count - 1, root.count);
+            root.cursor = Interaction.previous(root.cursor, root.count);
             return accept;
         }
         if Interaction.activates(event.text) {
-            root.activate();
+            root.activated();
             return accept;
         }
         return reject;
@@ -55,6 +55,12 @@ component CheckKeys inherits FocusScope {
 
 component RadioKeys inherits CheckKeys {
     accessible-role: radio-button;
+}
+
+global PollColors {
+    public pure function mark(is-own: bool) -> color {
+        return is-own ? AppStyle.poll-mark-own : AppStyle.poll-mark;
+    }
 }
 
 component PollMark inherits Rectangle {
@@ -68,7 +74,7 @@ component PollMark inherits Rectangle {
     border-radius: root.multiple ? Radius.xs : self.width / 2;
     border-width: root.checked || !root.shown ? 0 : Stroke.emphasis;
     border-color: AppStyle.overlay-foreground-muted;
-    background: !root.checked ? transparent : (root.is-own ? AppStyle.poll-mark-own : AppStyle.poll-mark);
+    background: !root.checked ? transparent : PollColors.mark(root.is-own);
 
     if root.checked: IconDisplay {
         x: (parent.width - self.width) / 2;
@@ -76,6 +82,42 @@ component PollMark inherits Rectangle {
         icon: IconSet.Check;
         size: IconSize.xs;
         stroke: root.is-own ? AppStyle.poll-check-own : AppStyle.poll-check;
+    }
+}
+
+component PollTally inherits HorizontalLayout {
+    in property <PollAnswerEntry> answer;
+    in property <bool> reveals;
+    in property <color> fill;
+
+    padding-left: Metrics.poll-indicator + Space.md;
+    spacing: Space.md;
+
+    Rectangle {
+        cross-axis-self-alignment: center;
+        height: Metrics.poll-bar;
+        horizontal-stretch: 1;
+        border-radius: self.height / 2;
+        background: AppStyle.poll-bar-rest;
+
+        Rectangle {
+            x: 0;
+            width: parent.width * root.answer.share;
+            height: parent.height;
+            border-radius: parent.border-radius;
+            background: root.fill;
+        }
+    }
+
+    Text {
+        width: Metrics.poll-count;
+        text: root.reveals ? root.answer.count : "";
+        font-size: Fonts.caption;
+        font-weight: root.answer.leading ? Weight.bold : Weight.regular;
+        color: AppStyle.overlay-foreground-muted;
+        horizontal-alignment: right;
+        vertical-alignment: center;
+        overflow: elide;
     }
 }
 
@@ -94,7 +136,7 @@ component PollAnswerRow inherits Rectangle {
 
     property <color> fill: root.ended && !root.answer.leading
         ? AppStyle.poll-mark-faded
-        : (root.is-own ? AppStyle.poll-mark-own : AppStyle.poll-mark);
+        : PollColors.mark(root.is-own);
 
     height: layout.preferred-height;
 
@@ -154,36 +196,10 @@ component PollAnswerRow inherits Rectangle {
             }
         }
 
-        HorizontalLayout {
-            padding-left: Metrics.poll-indicator + Space.md;
-            spacing: Space.md;
-
-            Rectangle {
-                cross-axis-self-alignment: center;
-                height: Metrics.poll-bar;
-                horizontal-stretch: 1;
-                border-radius: self.height / 2;
-                background: AppStyle.poll-bar-rest;
-
-                Rectangle {
-                    x: 0;
-                    width: parent.width * root.answer.share;
-                    height: parent.height;
-                    border-radius: parent.border-radius;
-                    background: root.fill;
-                }
-            }
-
-            Text {
-                width: Metrics.poll-count;
-                text: root.reveals ? root.answer.count : "";
-                font-size: Fonts.caption;
-                font-weight: root.answer.leading ? Weight.bold : Weight.regular;
-                color: AppStyle.overlay-foreground-muted;
-                horizontal-alignment: right;
-                vertical-alignment: center;
-                overflow: elide;
-            }
+        PollTally {
+            answer: root.answer;
+            reveals: root.reveals;
+            fill: root.fill;
         }
     }
 }
@@ -218,7 +234,7 @@ component PollFooterButton inherits ClickArea {
         font-weight: Weight.semibold;
         color: root.destructive
             ? AppStyle.poll-end-text
-            : (root.is-own ? AppStyle.poll-mark-own : AppStyle.poll-mark);
+            : PollColors.mark(root.is-own);
         horizontal-alignment: center;
         vertical-alignment: center;
     }
@@ -310,7 +326,7 @@ export component PollMessage inherits Rectangle {
         accessible-label: root.describe(root.focused-answer);
         accessible-checked: root.focused-answer.mine;
         accessible-enabled: root.focused-answer.votable && root.voting;
-        activate => {
+        activated => {
             root.vote(root.focused-answer);
         }
         changed has-focus => {
@@ -324,7 +340,7 @@ export component PollMessage inherits Rectangle {
         accessible-label: root.describe(root.focused-answer);
         accessible-checked: root.focused-answer.mine;
         accessible-enabled: root.focused-answer.votable && root.voting;
-        activate => {
+        activated => {
             root.vote(root.focused-answer);
         }
         changed has-focus => {
@@ -343,7 +359,7 @@ export component PollMessage inherits Rectangle {
                 cross-axis-self-alignment: start;
                 icon: IconSet.ChartBar;
                 size: IconSize.sm;
-                stroke: root.msg.is-own ? AppStyle.poll-mark-own : AppStyle.poll-mark;
+                stroke: PollColors.mark(root.msg.is-own);
             }
 
             Text {
@@ -399,9 +415,7 @@ export component PollMessage inherits Rectangle {
                 label: @tr("Edit poll");
                 is-own: root.msg.is-own;
                 clicked => {
-                    Reactions.close();
-                    Polls.start-edit(root.msg);
-                    Shell.poll-open = true;
+                    Polls.edit(root.msg);
                 }
             }
 
@@ -409,7 +423,7 @@ export component PollMessage inherits Rectangle {
                 text: @tr("View votes");
                 is-own: root.msg.is-own;
                 clicked => {
-                    Reactions.open-voters({
+                    Reactions.open-popup({
                         event-id: root.msg.event-id,
                         row: root.timeline-row,
                         is-own: root.msg.is-own,
@@ -417,7 +431,7 @@ export component PollMessage inherits Rectangle {
                         y: self.absolute-position.y,
                         width: self.width,
                         height: self.height,
-                    });
+                    }, ReactionPopup.voters);
                 }
             }
 

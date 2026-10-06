@@ -1,43 +1,11 @@
-import {
-    Palette,
-} from "std-widgets.slint";
 import { IconDisplay, IconSet } from "@lucide";
 
-import { EmojiPicker } from "emoji-picker.slint";
+import { EmojiPicker } from "./emoji-picker.slint";
 import { ClickArea } from "../../../../components/a11y.slint";
 import { PickerCard } from "../../../../components/overlay.slint";
-import { UnencryptedNotice } from "picker-tab.slint";
-import { AppStyle, Fonts, Glyph, IconSize, Metrics, Motion, Size, Space } from "../../../../theme.slint";
-
-export global QuickReactions {
-    out property <[string]> keys: ["❤️", "😕", "🎉", "😭", "😄", "👎", "👍", "🫃"];
-    out property <int> default-index: root.keys.length - 1;
-    out property <string> default-key: root.keys[root.default-index];
-}
-
-export component StripCell inherits ClickArea {
-    in property <string> key;
-    in property <length> glyph: Glyph.xs;
-
-    height: Metrics.reaction-strip-cell;
-    border-radius: self.height / 2;
-    ring-radius: self.height / 2;
-    background: root.has-hover
-        ? AppStyle.overlay-pressed
-        : transparent;
-
-    Text {
-        x: 0;
-        y: 0;
-        width: parent.width;
-        height: parent.height;
-        text: root.key;
-        font-family: Fonts.emoji;
-        font-size: root.glyph;
-        horizontal-alignment: center;
-        vertical-alignment: center;
-    }
-}
+import { UnencryptedNotice } from "./picker-grid.slint";
+import { QuickReactions, StripCell } from "./quick-reactions.slint";
+import { AppStyle, IconSize, Metrics, Motion, Size, Space } from "../../../../theme.slint";
 
 export component ReactionStrip inherits PickerCard {
     callback picked(string);
@@ -78,7 +46,7 @@ export component ReactionStrip inherits PickerCard {
     }
 
     changed open => {
-        if (!root.open) {
+        if !root.open {
             root.show-default();
         }
     }
@@ -88,7 +56,7 @@ export component ReactionStrip inherits PickerCard {
         height: 100%;
         mouse-cursor: default;
         scroll-event(event) => {
-            if (root.open) {
+            if root.open {
                 return accept;
             }
             return reject;

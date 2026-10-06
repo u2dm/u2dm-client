@@ -6,17 +6,17 @@ import { IconDisplay, IconSet } from "@lucide";
 
 import { SpaceRail } from "./space-rail.slint";
 import { SubspaceRail } from "./subspace-rail.slint";
-import { MessagePreview } from "./message-preview.slint";
+import { MessagePreview, ServiceLabel } from "../../../messages.slint";
 import { HeaderTitle } from "./header-title.slint";
-import { ServiceLabel } from "./timeline/messages/service-message.slint";
 import { Avatar } from "../../../components/avatar.slint";
 import { Interaction, ListItemArea } from "../../../components/a11y.slint";
-import { UnreadDot } from "./tile.slint";
-import { RoomEntry } from "./types.slint";
-import { IconButton } from "../../../components/button.slint";
-import { AppStyle, Avatars, Fonts, IconSize, Metrics, Radius, Size, Space, Weight } from "../../../theme.slint";
+import { UnreadDot } from "./unread-dot.slint";
+import { RoomEntry } from "../../../types.slint";
+import { HeaderIconButton } from "../../../components/button.slint";
+import { ContextPress } from "./context-press.slint";
+import { AppStyle, Fonts, IconSize, Metrics, Size, Space, Weight } from "../../../theme.slint";
 import { RoomScope, ServiceKind } from "../../../enums.slint";
-import { DirectoryView, SpaceIndexView, WindowView } from "../../../views.slint";
+import { DirectoryView, SpaceIndexView } from "../../../views.slint";
 import { Actions } from "../../../actions.slint";
 import { RoomMenu, RoomMenuOrigin, RoomMenuReturn } from "../../../local.slint";
 
@@ -64,17 +64,99 @@ component SidebarSearch inherits Rectangle {
     }
 }
 
-component RoomRow inherits ListItemArea {
+component RoomSummary inherits VerticalLayout {
     in property <RoomEntry> entry;
-    in property <bool> collapsed;
-    in property <length> avatar-size;
+    in property <bool> has-unread;
 
     property <string> sender-label: root.entry.last-message-is-own
         ? @tr("You")
         : root.entry.last-message-sender;
     property <bool> is-service: root.entry.last-message-service-kind != ServiceKind.none;
+
+    alignment: center;
+    spacing: Space.sm;
+
+    HorizontalLayout {
+        spacing: Space.md;
+
+        Text {
+            horizontal-stretch: 1;
+            text: root.entry.name;
+            font-family: Fonts.emoji;
+            font-size: Fonts.body;
+            font-weight: Weight.semibold;
+            vertical-alignment: center;
+            overflow: elide;
+        }
+
+        if root.entry.last-message-time != "": Text {
+            text: root.entry.last-message-time;
+            font-size: Fonts.caption;
+            vertical-alignment: center;
+            color: AppStyle.foreground-muted;
+        }
+    }
+
+    HorizontalLayout {
+        spacing: Space.md;
+
+        HorizontalLayout {
+            horizontal-stretch: 1;
+
+            if !root.is-service && root.sender-label != "": Text {
+                text: root.sender-label + ": ";
+                font-size: Fonts.body-small;
+                vertical-alignment: center;
+                color: Palette.accent-background;
+                overflow: elide;
+            }
+
+            if !root.is-service && root.entry.last-message-edited: Rectangle {
+                width: Size.xxs;
+
+                IconDisplay {
+                    x: 0;
+                    y: (parent.height - self.height) / 2;
+                    icon: IconSet.Pencil;
+                    size: IconSize.xs;
+                    stroke: AppStyle.foreground-muted;
+                }
+            }
+
+            Text {
+                horizontal-stretch: 1;
+                text: root.is-service
+                    ? ServiceLabel.label(root.entry.last-message-service-kind, root.sender-label, root.entry.last-message-service-target)
+                    : MessagePreview.label(root.entry.last-message-kind, root.entry.last-message-body);
+                font-family: Fonts.emoji;
+                font-size: Fonts.body-small;
+                vertical-alignment: center;
+                overflow: elide;
+                color: AppStyle.foreground-muted;
+            }
+        }
+
+        if root.entry.muted: IconDisplay {
+            cross-axis-self-alignment: center;
+            icon: IconSet.BellOff;
+            size: IconSize.sm;
+            stroke: AppStyle.foreground-faint;
+        }
+
+        if root.has-unread: UnreadDot {
+            cross-axis-self-alignment: center;
+            alert: root.entry.alert;
+            mention: root.entry.mention;
+        }
+    }
+}
+
+component RoomRow inherits ListItemArea {
+    in property <RoomEntry> entry;
+    in property <bool> collapsed;
+    in property <length> avatar-size;
+
     property <bool> has-unread: root.entry.alert || root.entry.mention || root.entry.hint;
-    property <int> context-presses: WindowView.context-presses;
     property <int> menu-returns: RoomMenu.focus-returns;
 
     pure function describe(entry: RoomEntry) -> string {
@@ -112,19 +194,8 @@ component RoomRow inherits ListItemArea {
     background: root.fill(root.selected, root.has-hover || RoomMenu.shows(root.entry.id));
 
     init => {
-        if (!root.entry.has-avatar) {
+        if !root.entry.has-avatar {
             Actions.request-room-avatar(root.entry.id);
-        }
-    }
-
-    changed context-presses => {
-        if root.has-hover && Interaction.actionable(root.enabled, root.above-modal) {
-            RoomMenu.open(
-                root.entry.id,
-                RoomMenuOrigin.list,
-                root.absolute-position.x + root.mouse-x,
-                root.absolute-position.y + root.mouse-y,
-                false);
         }
     }
 
@@ -144,6 +215,18 @@ component RoomRow inherits ListItemArea {
         return EventResult.accept;
     }
 
+    ContextPress {
+        hovered: root.has-hover && Interaction.actionable(root.enabled, root.above-modal);
+        pressed => {
+            RoomMenu.open(
+                root.entry.id,
+                RoomMenuOrigin.list,
+                root.absolute-position.x + root.mouse-x,
+                root.absolute-position.y + root.mouse-y,
+                false);
+        }
+    }
+
     if root.collapsed: Rectangle {
         width: 100%;
         height: 100%;
@@ -153,7 +236,7 @@ component RoomRow inherits ListItemArea {
             y: (parent.height - self.height) / 2;
             width: root.avatar-size;
             height: root.avatar-size;
-            background: Avatars.color(root.entry.color-index);
+            color-index: root.entry.color-index;
             has-image: root.entry.has-avatar;
             image: root.entry.avatar;
             initial: root.entry.initial;
@@ -165,7 +248,6 @@ component RoomRow inherits ListItemArea {
             ringed: true;
             alert: root.entry.alert;
             mention: root.entry.mention;
-            hint: root.entry.hint;
         }
     }
 
@@ -178,97 +260,64 @@ component RoomRow inherits ListItemArea {
             cross-axis-self-alignment: center;
             width: root.avatar-size;
             height: root.avatar-size;
-            background: Avatars.color(root.entry.color-index);
+            color-index: root.entry.color-index;
             has-image: root.entry.has-avatar;
             image: root.entry.avatar;
             initial: root.entry.initial;
         }
 
-        VerticalLayout {
-            alignment: center;
-            spacing: Space.sm;
+        RoomSummary {
+            entry: root.entry;
+            has-unread: root.has-unread;
+        }
+    }
+}
 
-            HorizontalLayout {
-                spacing: Space.md;
+component RoomColumnHeader inherits Rectangle {
+    in property <bool> collapsed;
+    in property <bool> above-modal;
 
-                Text {
-                    horizontal-stretch: 1;
-                    text: root.entry.name;
-                    font-family: Fonts.emoji;
-                    font-size: Fonts.body;
-                    font-weight: Weight.semibold;
-                    vertical-alignment: center;
-                    overflow: elide;
-                }
+    property <bool> in-space: DirectoryView.room-scope == RoomScope.space;
+    property <length> index-button-inset: Space.md;
 
-                if root.entry.last-message-time != "": Text {
-                    text: root.entry.last-message-time;
-                    font-size: Fonts.caption;
-                    vertical-alignment: center;
-                    color: AppStyle.foreground-muted;
-                }
-            }
+    height: Metrics.header-row;
 
-            HorizontalLayout {
-                spacing: Space.md;
+    if !root.collapsed && !root.in-space: SidebarSearch {
+        x: Space.md;
+        y: (parent.height - self.height) / 2;
+        width: parent.width - 2 * Space.md;
+        above-modal: root.above-modal;
+    }
 
-                HorizontalLayout {
-                    horizontal-stretch: 1;
+    if !root.collapsed && root.in-space: HeaderTitle {
+        x: Space.lg;
+        width: parent.width - self.x - Size.lg - 2 * root.index-button-inset;
+        title: DirectoryView.listed-space-name;
+        members: DirectoryView.listed-space-members;
+    }
 
-                    if !root.is-service && root.sender-label != "": Text {
-                        text: root.sender-label + ": ";
-                        font-size: Fonts.body-small;
-                        vertical-alignment: center;
-                        color: Palette.accent-background;
-                        overflow: elide;
-                    }
-
-                    if !root.is-service && root.entry.last-message-edited: Rectangle {
-                        width: Size.xxs;
-
-                        IconDisplay {
-                            x: 0;
-                            y: (parent.height - self.height) / 2;
-                            icon: IconSet.Pencil;
-                            size: IconSize.xs;
-                            stroke: AppStyle.foreground-muted;
-                        }
-                    }
-
-                    Text {
-                        horizontal-stretch: 1;
-                        text: root.is-service
-                            ? ServiceLabel.label(root.entry.last-message-service-kind, root.sender-label, root.entry.last-message-service-target)
-                            : MessagePreview.label(root.entry.last-message-kind, root.entry.last-message-body);
-                        font-family: Fonts.emoji;
-                        font-size: Fonts.body-small;
-                        vertical-alignment: center;
-                        overflow: elide;
-                        color: AppStyle.foreground-muted;
-                    }
-                }
-
-                if root.entry.muted: IconDisplay {
-                    cross-axis-self-alignment: center;
-                    icon: IconSet.BellOff;
-                    size: IconSize.sm;
-                    stroke: AppStyle.foreground-faint;
-                }
-
-                if root.has-unread: UnreadDot {
-                    cross-axis-self-alignment: center;
-                    alert: root.entry.alert;
-                    mention: root.entry.mention;
-                    hint: root.entry.hint;
-                }
+    if root.in-space: HeaderIconButton {
+        x: root.collapsed
+            ? (parent.width - self.width) / 2
+            : parent.width - self.width - root.index-button-inset;
+        y: (parent.height - self.height) / 2;
+        icon: IconSet.Compass;
+        tint: SpaceIndexView.visible ? Palette.accent-background : AppStyle.foreground-muted;
+        above-modal: root.above-modal;
+        label: SpaceIndexView.visible
+            ? @tr("Close the room index")
+            : @tr("Browse rooms in this space");
+        clicked => {
+            if SpaceIndexView.visible {
+                Actions.close-space-index();
+            } else {
+                Actions.open-space-index();
             }
         }
     }
 }
 
 export component Sidebar inherits Rectangle {
-    background: Palette.alternate-background;
-
     in property <length> subrail-width: Metrics.subspace-rail;
     in property <bool> above-modal: false;
     in property <bool> collapsed: false;
@@ -278,11 +327,8 @@ export component Sidebar inherits Rectangle {
     property <length> row-height: Metrics.sidebar-row;
     property <length> rail-width: Metrics.space-rail;
     property <length> avatar-size: Metrics.sidebar-avatar;
-    property <bool> in-space: DirectoryView.room-scope == RoomScope.space;
 
-    public function focus-menu() {
-        rail.focus-menu();
-    }
+    background: Palette.alternate-background;
 
     HorizontalLayout {
         rail := SpaceRail {
@@ -297,47 +343,9 @@ export component Sidebar inherits Rectangle {
 
         room-column := Rectangle {
             VerticalLayout {
-                Rectangle {
-                    height: Metrics.header-row;
-
-                    property <length> index-button-inset: Space.md;
-
-                    if !root.collapsed && !root.in-space: SidebarSearch {
-                        x: Space.md;
-                        y: (parent.height - self.height) / 2;
-                        width: parent.width - 2 * Space.md;
-                        above-modal: root.above-modal;
-                    }
-
-                    if !root.collapsed && root.in-space: HeaderTitle {
-                        x: Space.lg;
-                        width: parent.width - self.x - Size.lg - 2 * parent.index-button-inset;
-                        title: DirectoryView.listed-space-name;
-                        members: DirectoryView.listed-space-members;
-                    }
-
-                    if root.in-space: IconButton {
-                        x: root.collapsed
-                            ? (parent.width - self.width) / 2
-                            : parent.width - self.width - parent.index-button-inset;
-                        y: (parent.height - self.height) / 2;
-                        size: Size.lg;
-                        radius: Radius.sm;
-                        icon-size: IconSize.md;
-                        icon: IconSet.Compass;
-                        tint: SpaceIndexView.visible ? Palette.accent-background : AppStyle.foreground-muted;
-                        above-modal: root.above-modal;
-                        label: SpaceIndexView.visible
-                            ? @tr("Close the room index")
-                            : @tr("Browse rooms in this space");
-                        clicked => {
-                            if SpaceIndexView.visible {
-                                Actions.close-space-index();
-                            } else {
-                                Actions.open-space-index();
-                            }
-                        }
-                    }
+                RoomColumnHeader {
+                    collapsed: root.collapsed;
+                    above-modal: root.above-modal;
                 }
 
                 ListView {

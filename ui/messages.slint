@@ -1,9 +1,4 @@
-import { Delivery, MediaFailure, UserMessageKind } from "enums.slint";
-
-export struct UserMessage {
-    kind: UserMessageKind,
-    detail: string,
-}
+import { Delivery, MediaFailure, PreviewKind, ServiceKind, UserMessageKind } from "./enums.slint";
 
 export global UserMessages {
     public pure function text(kind: UserMessageKind, detail: string) -> string {
@@ -329,5 +324,116 @@ export global MediaFailures {
             root.join(extension, mimetype),
             width > 0 && height > 0 ? @tr("{}×{}", width, height) : "",
         );
+    }
+}
+
+export global MessagePreview {
+    public pure function label(kind: PreviewKind, body: string) -> string {
+        if kind == PreviewKind.image {
+            return @tr("📷 Photo");
+        }
+        if kind == PreviewKind.video {
+            return @tr("🎬 Video");
+        }
+        if kind == PreviewKind.audio {
+            return @tr("🎵 Audio");
+        }
+        if kind == PreviewKind.voice {
+            return @tr("🎤 Voice message");
+        }
+        if kind == PreviewKind.file {
+            return @tr("📎 {}", body);
+        }
+        if kind == PreviewKind.location {
+            return @tr("📍 Location");
+        }
+        if kind == PreviewKind.encrypted {
+            return @tr("🔒 Encrypted message");
+        }
+        if kind == PreviewKind.sticker {
+            return @tr("Sticker");
+        }
+        if kind == PreviewKind.poll {
+            return @tr("📊 {}", body);
+        }
+        if kind == PreviewKind.deleted {
+            return @tr("🗑 Deleted message");
+        }
+        return body;
+    }
+}
+
+export global ServiceLabel {
+    public pure function label(kind: ServiceKind, actor: string, target: string) -> string {
+        if kind == ServiceKind.joined {
+            return @tr("{} joined the room", actor);
+        }
+        if kind == ServiceKind.left {
+            return @tr("{} left the room", actor);
+        }
+        if kind == ServiceKind.invited {
+            return @tr("{} invited {}", actor, target);
+        }
+        if kind == ServiceKind.invitation-accepted {
+            return @tr("{} accepted the invitation", actor);
+        }
+        if kind == ServiceKind.invitation-rejected {
+            return @tr("{} rejected the invitation", actor);
+        }
+        if kind == ServiceKind.invitation-revoked {
+            return @tr("{} revoked the invitation for {}", actor, target);
+        }
+        if kind == ServiceKind.kicked {
+            return @tr("{} removed {}", actor, target);
+        }
+        if kind == ServiceKind.banned {
+            return @tr("{} banned {}", actor, target);
+        }
+        if kind == ServiceKind.unbanned {
+            return @tr("{} unbanned {}", actor, target);
+        }
+        if kind == ServiceKind.knocked {
+            return @tr("{} requested to join", actor);
+        }
+        if kind == ServiceKind.knock-accepted {
+            return @tr("{} allowed {} to join", actor, target);
+        }
+        if kind == ServiceKind.name-set {
+            return @tr("{} set their name to {}", actor, target);
+        }
+        if kind == ServiceKind.name-changed {
+            return @tr("{} changed their name to {}", actor, target);
+        }
+        if kind == ServiceKind.name-removed {
+            return @tr("{} removed their name", actor);
+        }
+        if kind == ServiceKind.avatar-changed {
+            return @tr("{} changed their avatar", actor);
+        }
+        if kind == ServiceKind.room-name {
+            return @tr("{} changed the room name to {}", actor, target);
+        }
+        if kind == ServiceKind.room-topic {
+            return @tr("{} changed the room topic", actor);
+        }
+        if kind == ServiceKind.room-avatar {
+            return @tr("{} changed the room avatar", actor);
+        }
+        if kind == ServiceKind.room-created {
+            return @tr("{} created the room", actor);
+        }
+        if kind == ServiceKind.encryption {
+            return @tr("{} enabled end-to-end encryption", actor);
+        }
+        if kind == ServiceKind.call-started {
+            return @tr("{} started a call", actor);
+        }
+        if kind == ServiceKind.call-notification {
+            return @tr("{} is calling", actor);
+        }
+        if target != "" {
+            return target;
+        }
+        return actor;
     }
 }

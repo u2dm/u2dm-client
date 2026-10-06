@@ -98,6 +98,7 @@ export global Size {
 
 export global AppStyle {
     out property <bool> dark: Palette.color-scheme == ColorScheme.dark;
+    out property <float> dialog-scrim: root.dark ? Opacity.scrim-strong : Opacity.scrim;
 
     out property <brush> page: root.dark ? Palette.background : Palette.alternate-background;
     out property <brush> card: root.dark ? Palette.alternate-background : Palette.background;
@@ -134,7 +135,6 @@ export global AppStyle {
 
     out property <color> surface-raised: Palette.background.mix(Palette.alternate-background, 0.5);
     out property <color> surface-panel: Palette.background.mix(Palette.alternate-background, 0.6);
-    out property <color> surface-sunken: Palette.background.mix(Palette.alternate-background, 0.7);
     out property <color> surface-rail: Palette.alternate-background.mix(Palette.background, 0.35);
 
     out property <color> media-button: Palette.accent-background;
@@ -185,6 +185,7 @@ export global AppStyle {
 export global Metrics {
     out property <length> header-row: 52px;
     out property <length> composer-row: Size.xl;
+    out property <int> composer-max-lines: 6;
     out property <length> reply-bar: 44px;
     out property <length> timeline-gap: Space.md;
     out property <length> timeline-inset: Space.lg;
@@ -246,7 +247,6 @@ export global Metrics {
     out property <length> swipe-reply-travel: 64px;
     out property <length> swipe-reply-pull: 32px;
 
-    out property <length> upload-bar: Space.sm;
     out property <length> attach-menu-width: 232px;
     out property <length> attach-row: 44px;
     out property <length> message-menu-width: 240px;
@@ -349,9 +349,9 @@ export global Avatars {
 
     public pure function color(index: int) -> color {
         return Colors.hsv(
-            self.hues[clamp(index, 0, self.hues.length - 1)],
-            self.saturation,
-            self.brightness,
+            root.hues[clamp(index, 0, root.hues.length - 1)],
+            root.saturation,
+            root.brightness,
         );
     }
 }

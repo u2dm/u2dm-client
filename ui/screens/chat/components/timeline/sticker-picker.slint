@@ -1,19 +1,18 @@
-import { Palette, Spinner, ListView } from "std-widgets.slint";
+import { Spinner, ListView } from "std-widgets.slint";
 import { IconDisplay, IconSet } from "@lucide";
 
 import { MediaState } from "../../../../enums.slint";
-import { StickerCell, StickerRow, StickerPackTab } from "../types.slint";
-import { PickerSearch } from "picker-search.slint";
+import { SearchField } from "../../../../components/search-field.slint";
 import { StickerView } from "../../../../views.slint";
 import { Actions } from "../../../../actions.slint";
-import { ClickArea } from "../../../../components/a11y.slint";
-import { AppStyle, Fonts, IconSize, Radius, Size, Space } from "../../../../theme.slint";
-import { GridCellHover, PickerTab, UnencryptedNotice } from "picker-tab.slint";
+import { AppStyle, Fonts, IconSize, Size, Space } from "../../../../theme.slint";
+import { PickerTab } from "./picker-tab.slint";
+import { PickerCell, UnencryptedNotice } from "./picker-grid.slint";
 
 component StickerCellArt inherits Rectangle {
     in property <image> art;
     in property <MediaState> state;
-    in property <length> inset: Space.sm;
+    property <length> inset: Space.sm;
 
     Image {
         x: root.inset;
@@ -41,7 +40,6 @@ component PackTab inherits PickerTab {
 
     width: Size.lg;
     height: Size.lg;
-    radius: Radius.sm;
 
     Image {
         x: Space.sm;
@@ -69,7 +67,7 @@ component PackTab inherits PickerTab {
 export component StickerPicker inherits Rectangle {
     callback picked(string, string);
 
-    in-out property <string> query: "";
+    property <string> query: "";
 
     property <length> edge: Space.md;
     property <length> tab-inset: Space.xs;
@@ -94,7 +92,7 @@ export component StickerPicker inherits Rectangle {
         padding: root.edge;
         spacing: Space.md;
 
-        if StickerView.has-packs: PickerSearch {
+        if StickerView.has-packs: SearchField {
             placeholder: @tr("Search stickers");
             query <=> root.query;
             edited(text) => {
@@ -126,12 +124,9 @@ export component StickerPicker inherits Rectangle {
                         visible: row.is-header;
                     }
 
-                    for entry[idx] in row.cells: ClickArea {
-                        x: idx * root.cell;
-                        y: 0;
-                        width: root.cell;
-                        height: root.cell;
-                        ring-radius: Radius.sm;
+                    for entry[idx] in row.cells: PickerCell {
+                        cell: root.cell;
+                        column: idx;
                         label: entry.label;
 
                         init => {
@@ -142,12 +137,6 @@ export component StickerPicker inherits Rectangle {
 
                         clicked => {
                             root.picked(entry.pack-id, entry.shortcode);
-                        }
-
-                        GridCellHover {
-                            cell: root.cell;
-                            lit: parent.has-hover;
-                            border-radius: Radius.sm;
                         }
 
                         StickerCellArt {

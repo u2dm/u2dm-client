@@ -1,30 +1,27 @@
 import { Palette } from "std-widgets.slint";
-import { IconDisplay, IconSet } from "@lucide";
+import { IconSet } from "@lucide";
 
 import { TimelineContent } from "./timeline-content.slint";
 import { MessageInput } from "./message-input.slint";
 import { ReactionOverlay } from "./reaction-overlay.slint";
 import { MessageMenuOverlay } from "./message-menu.slint";
 import { CopyNotice } from "../../../../components/copy-notice.slint";
-import { AppStyle, Fonts, IconSize, Metrics, Motion, Radius, Size, Space } from "../../../../theme.slint";
-import { IconButton } from "../../../../components/button.slint";
+import { AppStyle, Fonts, Metrics, Size, Space } from "../../../../theme.slint";
+import { HeaderIconButton } from "../../../../components/button.slint";
+import { CloseWatch } from "../../../../components/close-watch.slint";
 import { TimelineState } from "../../../../enums.slint";
 import { ClickArea } from "../../../../components/a11y.slint";
-import { Copier } from "../../../../components/copier.slint";
+import { CopyNotifier } from "../../../../components/copier.slint";
 import { AudioView, DirectoryView, RoomView } from "../../../../views.slint";
 import { Actions } from "../../../../actions.slint";
-import { Composer, DeliveryTip, MessageMenu, Polls, Reactions, ReplySwipe, RoomMenu, RoomMenuOrigin, RoomMenuReturn, Shell, TextSelection } from "../../../../local.slint";
-import { StatusPill } from "./status-pill.slint";
+import { LocalState, ReplySwipe, RoomMenu, RoomMenuOrigin, RoomMenuReturn, Shell } from "../../../../local.slint";
+import { StatusPill } from "../../../../components/status-pill.slint";
 import { NowPlayingBar } from "./now-playing-bar.slint";
 import { PinnedBar } from "./pinned-bar.slint";
 import { HeaderTitle } from "../header-title.slint";
 import { RoomInfoPane } from "../room-info.slint";
 
 export component TimelineView inherits Rectangle {
-    background: Palette.background;
-
-    property <string> room-id: DirectoryView.selected-room-id;
-
     in-out property <string> input-message: "";
 
     in property <bool> compact: false;
@@ -33,13 +30,13 @@ export component TimelineView inherits Rectangle {
     in property <bool> room-info-pane-shown: false;
     in property <length> room-info-pane-width;
 
+    property <string> room-id: DirectoryView.selected-room-id;
     property <length> header-height: Metrics.header-row;
     property <length> spacing: Metrics.timeline-gap;
     property <length> nav-button-width: Size.target;
     property <bool> has-pins: RoomView.pinned-count > 0;
     property <length> pinned-height: root.has-pins ? Metrics.pinned-bar : 0px;
     property <length> now-playing-height: AudioView.visible ? Metrics.now-playing-bar : 0px;
-
     property <bool> has-room: RoomView.selected-room-name != "";
     property <bool> is-loading: RoomView.timeline-status == TimelineState.loading
         || RoomView.timeline-status == TimelineState.loading-unread
@@ -49,6 +46,21 @@ export component TimelineView inherits Rectangle {
         || RoomView.timeline-status == TimelineState.disconnected;
     property <bool> can-retry: (RoomView.timeline-status == TimelineState.failed && RoomView.timeline-retryable)
         || RoomView.timeline-status == TimelineState.disconnected;
+    property <int> link-serial: RoomView.message-link-serial;
+
+    background: Palette.background;
+
+    changed link-serial => {
+        if RoomView.message-link != "" {
+            notifier.copy(RoomView.message-link, @tr("Link copied"));
+        }
+    }
+
+    changed room-id => {
+        root.input-message = "";
+        LocalState.forget-room();
+    }
+
     pure function status-message(status: TimelineState) -> string {
         if status == TimelineState.loading {
             return @tr("Loading messages...");
@@ -66,50 +78,12 @@ export component TimelineView inherits Rectangle {
     }
 
     public function focus-nav() {
-        nav-touch.take-focus();
+        nav-button.take-focus();
     }
 
-    property <string> copy-notice;
+    notifier := CopyNotifier { }
 
-    function copy(text: string, notice: string) {
-        copier.copy-text(text);
-        root.copy-notice = notice;
-        notice-timer.running = true;
-        notice-timer.restart();
-    }
-
-    property <int> link-serial: RoomView.message-link-serial;
-
-    changed link-serial => {
-        if RoomView.message-link != "" {
-            root.copy(RoomView.message-link, @tr("Link copied"));
-        }
-    }
-
-    copier := Copier { }
-
-    notice-timer := Timer {
-        interval: Motion.feedback-hold;
-        running: false;
-        triggered => {
-            self.running = false;
-            root.copy-notice = "";
-        }
-    }
-
-    changed room-id => {
-        root.input-message = "";
-        Composer.clear();
-        TextSelection.clear();
-        Reactions.close();
-        MessageMenu.close();
-        ReplySwipe.clear();
-        DeliveryTip.clear();
-        Polls.clear();
-        Shell.poll-open = false;
-    }
-
-    if !has-room: Text {
+    if !root.has-room: Text {
         text: @tr("Select a room");
         font-size: Fonts.title;
         color: AppStyle.foreground-muted;
@@ -117,16 +91,16 @@ export component TimelineView inherits Rectangle {
         vertical-alignment: center;
     }
 
-    if has-room: Rectangle {
+    if root.has-room: Rectangle {
+        property <length> menu-slot: Size.lg + 2 * Space.sm;
+        property <length> pane-slot: root.room-info-pane-fits ? Size.lg + Space.sm : 0;
+        property <int> menu-returns: RoomMenu.focus-returns;
+
         x: 0;
         y: 0;
         width: root.width;
         height: root.header-height;
         background: Palette.alternate-background;
-
-        property <length> menu-slot: Size.lg + 2 * Space.sm;
-        property <length> pane-slot: root.room-info-pane-fits ? Size.lg + Space.sm : 0;
-        property <int> menu-returns: RoomMenu.focus-returns;
 
         changed menu-returns => {
             if RoomMenu.returns-to(RoomMenuReturn.header, DirectoryView.selected-room-id) {
@@ -154,14 +128,11 @@ export component TimelineView inherits Rectangle {
             }
         }
 
-        if root.room-info-pane-fits: IconButton {
+        if root.room-info-pane-fits: HeaderIconButton {
             x: parent.width - parent.menu-slot - self.width;
             y: (parent.height - self.height) / 2;
-            size: Size.lg;
-            radius: Radius.sm;
-            icon-size: IconSize.md;
             icon: IconSet.PanelRight;
-            tint: Shell.room-info-pane-open ? Palette.accent-background : AppStyle.foreground-strong;
+            active: Shell.room-info-pane-open;
             label: Shell.room-info-pane-open
                 ? @tr("Hide the room info panel")
                 : @tr("Show the room info panel");
@@ -170,14 +141,10 @@ export component TimelineView inherits Rectangle {
             }
         }
 
-        room-menu-button := IconButton {
+        room-menu-button := HeaderIconButton {
             x: parent.width - self.width - Space.sm;
             y: (parent.height - self.height) / 2;
-            size: Size.lg;
-            radius: Radius.sm;
-            icon-size: IconSize.md;
             icon: IconSet.EllipsisVertical;
-            tint: AppStyle.foreground-strong;
             label: @tr("Room options");
             clicked => {
                 RoomMenu.open(
@@ -198,15 +165,11 @@ export component TimelineView inherits Rectangle {
         visible: root.compact;
         background: Palette.alternate-background;
 
-        nav-touch := IconButton {
+        nav-button := HeaderIconButton {
             x: Space.sm;
             y: (parent.height - self.height) / 2;
-            size: Size.lg;
-            radius: Radius.sm;
-            icon-size: IconSize.md;
             enabled: root.compact;
             icon: IconSet.ArrowLeft;
-            tint: AppStyle.foreground-strong;
             label: @tr("Back to the room list");
             clicked => {
                 Shell.nav-open = true;
@@ -214,66 +177,66 @@ export component TimelineView inherits Rectangle {
         }
     }
 
-    if has-room: Rectangle {
+    if root.has-room: stage := Rectangle {
+        property <bool> swipe-within-reach: ReplySwipe.within-reach;
+        property <int> menu-returns: RoomMenu.focus-returns;
+
         x: 0;
         y: 0;
         width: root.width;
         height: root.height;
 
-        property <bool> swipe-within-reach: ReplySwipe.within-reach;
-
         changed swipe-within-reach => {
-            if (self.swipe-within-reach) {
+            if self.swipe-within-reach {
                 ReplySwipe.commit();
                 input.focus-input();
             }
         }
 
-        property <bool> room-info-open: Shell.room-info-open;
-
-        changed room-info-open => {
-            if (!self.room-info-open && Shell.background-reachable) {
-                input.focus-input();
-            }
-        }
-
-        property <bool> room-info-pane-open: Shell.room-info-pane-open;
-
-        changed room-info-pane-open => {
-            if (!self.room-info-pane-open && Shell.background-reachable) {
-                input.focus-input();
-            }
-        }
-
-        property <bool> source-open: Shell.source-open;
-
-        changed source-open => {
-            if (!self.source-open && Shell.background-reachable) {
-                input.focus-input();
-            }
-        }
-
-        property <bool> user-info-open: Shell.user-info-open;
-
-        changed user-info-open => {
-            if (!self.user-info-open && Shell.background-reachable) {
-                input.focus-input();
-            }
-        }
-
-        property <bool> room-log-open: Shell.room-log-open;
-
-        changed room-log-open => {
-            if (!self.room-log-open && Shell.background-reachable) {
-                input.focus-input();
-            }
-        }
-
-        property <int> menu-returns: RoomMenu.focus-returns;
-
         changed menu-returns => {
-            if RoomMenu.return-to == RoomMenuReturn.composer && Shell.background-reachable {
+            if RoomMenu.return-to == RoomMenuReturn.composer {
+                self.refocus-composer();
+            }
+        }
+
+        function refocus-composer() {
+            if Shell.background-reachable {
                 input.focus-input();
+            }
+        }
+
+        CloseWatch {
+            open: Shell.room-info-open;
+            closed => {
+                stage.refocus-composer();
+            }
+        }
+
+        CloseWatch {
+            open: Shell.room-info-pane-open;
+            closed => {
+                stage.refocus-composer();
+            }
+        }
+
+        CloseWatch {
+            open: Shell.source-open;
+            closed => {
+                stage.refocus-composer();
+            }
+        }
+
+        CloseWatch {
+            open: Shell.user-info-open;
+            closed => {
+                stage.refocus-composer();
+            }
+        }
+
+        CloseWatch {
+            open: Shell.room-log-open;
+            closed => {
+                stage.refocus-composer();
             }
         }
 
@@ -306,6 +269,7 @@ export component TimelineView inherits Rectangle {
             text: root.status-message(RoomView.timeline-status);
             loading: root.is-loading;
             show-retry: root.can-retry;
+            retry-label: @tr("Retry loading messages");
             retry => {
                 Actions.retry-timeline();
             }
@@ -343,10 +307,10 @@ export component TimelineView inherits Rectangle {
             }
         }
 
-        if root.copy-notice != "": CopyNotice {
+        if notifier.notice != "": CopyNotice {
             x: (parent.width - self.width) / 2;
             y: parent.height - input.height - root.spacing - self.height - Space.xl;
-            text: root.copy-notice;
+            text: notifier.notice;
         }
 
         MessageMenuOverlay {
@@ -357,8 +321,8 @@ export component TimelineView inherits Rectangle {
             closed => {
                 input.focus-input();
             }
-            copy-text(text) => {
-                root.copy(text, @tr("Text copied"));
+            copy-requested(text) => {
+                notifier.copy(text, @tr("Text copied"));
             }
         }
     }

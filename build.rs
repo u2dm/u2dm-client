@@ -30,7 +30,7 @@ const ENUM_COVERAGE: &[EnumCoverage] = &[
     },
     EnumCoverage {
         slint_enum: "ServiceKind",
-        branches_in: "ui/screens/chat/components/timeline/messages/service-message.slint",
+        branches_in: "ui/messages.slint",
         falls_through: &["none"],
     },
     EnumCoverage {
@@ -40,7 +40,7 @@ const ENUM_COVERAGE: &[EnumCoverage] = &[
     },
     EnumCoverage {
         slint_enum: "PreviewKind",
-        branches_in: "ui/screens/chat/components/message-preview.slint",
+        branches_in: "ui/messages.slint",
         falls_through: &["none", "text"],
     },
     EnumCoverage {

@@ -1,12 +1,10 @@
 import { Palette } from "std-widgets.slint";
 import { IconDisplay, IconSet } from "@lucide";
 
-import { AppStyle, Fonts, IconSize, Radius, Size, Space, Stroke } from "../../../../theme.slint";
-import { IconButton } from "../../../../components/button.slint";
+import { AppStyle, Fonts, IconSize, Radius, Size, Space, Stroke } from "../theme.slint";
+import { IconButton } from "./button.slint";
 
-import { ClickArea } from "../../../../components/a11y.slint";
-
-export component PickerSearch inherits Rectangle {
+export component SearchField inherits Rectangle {
     in property <string> placeholder;
     in-out property <string> query: "";
     in property <bool> above-modal: false;

@@ -1,9 +1,10 @@
 import { Palette } from "std-widgets.slint";
-import { Icon, IconDisplay, IconSet } from "@lucide";
+import { Icon, IconDisplay } from "@lucide";
 
-import { AppStyle, Fonts, Glyph, IconSize, Metrics, Motion, Size, Space, Stroke, Weight } from "../../../theme.slint";
+import { AppStyle, Fonts, Glyph, IconSize, Metrics, Motion, Space, Weight } from "../../../theme.slint";
+import { UnreadDot } from "./unread-dot.slint";
 
-export component TileGlyph inherits Rectangle {
+component TileGlyph inherits Rectangle {
     in property <bool> has-avatar;
     in property <image> avatar;
     in property <bool> has-icon;
@@ -12,7 +13,6 @@ export component TileGlyph inherits Rectangle {
     in property <color> foreground;
     in property <length> icon-size: IconSize.md;
     in property <length> initial-size: Glyph.sm;
-    in property <int> initial-weight: Weight.bold;
     in property <string> initial-font-family: Fonts.emoji;
 
     clip: true;
@@ -38,36 +38,11 @@ export component TileGlyph inherits Rectangle {
         text: root.initial;
         font-family: root.initial-font-family;
         font-size: root.initial-size;
-        font-weight: root.initial-weight;
+        font-weight: Weight.bold;
         horizontal-alignment: center;
         vertical-alignment: center;
         overflow: clip;
         color: root.foreground;
-    }
-}
-
-export component UnreadDot inherits Rectangle {
-    in property <bool> alert;
-    in property <bool> mention;
-    in property <bool> hint;
-    in property <length> diameter: Metrics.unread-dot;
-    in property <bool> ringed;
-
-    height: root.mention ? Size.xs : root.diameter + (root.ringed ? Space.sm : 0);
-    width: self.height;
-    border-radius: self.height / 2;
-    background: root.mention || root.alert
-        ? Palette.accent-background
-        : Palette.foreground;
-    border-width: root.ringed || root.mention ? Stroke.emphasis : 0;
-    border-color: Palette.alternate-background;
-
-    if root.mention: IconDisplay {
-        x: (parent.width - self.width) / 2;
-        y: (parent.height - self.height) / 2;
-        icon: IconSet.AtSign;
-        size: IconSize.xs;
-        stroke: Palette.accent-foreground;
     }
 }
 
@@ -145,6 +120,5 @@ export component RailTileFace inherits Rectangle {
         ringed: true;
         alert: root.alert;
         mention: root.mention;
-        hint: root.hint;
     }
 }

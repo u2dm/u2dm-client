@@ -1,9 +1,9 @@
 import { IconDisplay, IconSet } from "@lucide";
 
-import { MessageEntry } from "../types.slint";
+import { MessageEntry } from "../../../../types.slint";
 import { Delivery } from "../../../../enums.slint";
 import { Deliveries } from "../../../../messages.slint";
-import { DeliveryTip, ReactionAnchor } from "../../../../local.slint";
+import { DeliveryTip, AnchorRect } from "../../../../local.slint";
 import { RoomView } from "../../../../views.slint";
 import { AppStyle, Fonts, IconSize, Space } from "../../../../theme.slint";
 
@@ -27,7 +27,7 @@ component TipTrigger inherits Rectangle {
         && DeliveryTip.key == root.msg.unique-id
         && DeliveryTip.on-counter == root.on-counter;
 
-    pure function anchor() -> ReactionAnchor {
+    pure function anchor() -> AnchorRect {
         return {
             event-id: root.msg.event-id,
             row: root.timeline-row,
@@ -39,7 +39,7 @@ component TipTrigger inherits Rectangle {
         };
     }
 
-    property <ReactionAnchor> tracked-anchor: root.tip-mine ? root.anchor() : { row: -1 };
+    property <AnchorRect> tracked-anchor: root.tip-mine ? root.anchor() : { row: -1 };
 
     changed tracked-anchor => {
         DeliveryTip.follow(root.msg.unique-id, self.tracked-anchor, root.on-counter);
@@ -53,7 +53,7 @@ component TipTrigger inherits Rectangle {
     TouchArea {
         enabled: root.has-tip;
         changed has-hover => {
-            if (self.has-hover) {
+            if self.has-hover {
                 DeliveryTip.show(root.msg.unique-id, root.anchor(), root.on-counter);
             } else {
                 DeliveryTip.hide(root.msg.unique-id, root.on-counter);

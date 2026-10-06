@@ -1,13 +1,11 @@
-import {
-    Palette,
-} from "std-widgets.slint";
+import { Palette } from "std-widgets.slint";
 
-import { ReactionEntry, ReactorAvatar } from "../types.slint";
+import { ReactionEntry, ReactorAvatar } from "../../../../types.slint";
 import { ReactionSend } from "../../../../enums.slint";
 import { Avatar } from "../../../../components/avatar.slint";
 import { Pill } from "../../../../components/pill.slint";
-import { ReactionAnchor } from "../../../../local.slint";
-import { AppStyle, Avatars, Fonts, Glyph, Metrics, Opacity, Space, Stroke, Weight } from "../../../../theme.slint";
+import { AnchorRect } from "../../../../local.slint";
+import { AppStyle, Fonts, Glyph, Metrics, Opacity, Space, Stroke, Weight } from "../../../../theme.slint";
 
 component ReactorFaces inherits Rectangle {
     in property <[ReactorAvatar]> reactors;
@@ -21,7 +19,7 @@ component ReactorFaces inherits Rectangle {
         y: (parent.height - self.height) / 2;
         width: Metrics.reactor-avatar;
         height: self.width;
-        background: Avatars.color(reactor.color-index);
+        color-index: reactor.color-index;
         has-image: reactor.has-avatar;
         image: reactor.avatar;
         initial: reactor.initial;
@@ -29,7 +27,7 @@ component ReactorFaces inherits Rectangle {
     }
 }
 
-export component ReactionChip inherits Pill {
+component ReactionChip inherits Pill {
     in property <ReactionEntry> entry;
     in property <bool> is-own;
     property <bool> shows-faces: root.entry.avatars.length > 0;
@@ -41,7 +39,7 @@ export component ReactionChip inherits Pill {
         : AppStyle.overlay-hover;
 
     height: Metrics.reaction-chip;
-    border-width: entry.mine || root.failed ? Stroke.hairline : 0;
+    border-width: root.entry.mine || root.failed ? Stroke.hairline : 0;
     border-color: root.failed ? AppStyle.danger-border : AppStyle.accent-border;
     fill: root.failed
         ? AppStyle.danger-background
@@ -49,8 +47,8 @@ export component ReactionChip inherits Pill {
     hover-lift: root.entry.mine ? 0.15 : 0.25;
     opacity: root.entry.send == ReactionSend.sending ? Opacity.pending : 1;
 
-    if !entry.overflow: Text {
-        text: entry.label;
+    if !root.entry.overflow: Text {
+        text: root.entry.label;
         font-family: Fonts.emoji;
         font-size: Glyph.xs;
         vertical-alignment: center;
@@ -61,10 +59,10 @@ export component ReactionChip inherits Pill {
     }
 
     if !root.shows-faces: Text {
-        text: entry.overflow ? "+" + entry.count : entry.count;
+        text: root.entry.overflow ? "+" + root.entry.count : root.entry.count;
         font-size: Fonts.body-small;
         font-weight: Weight.semibold;
-        color: entry.mine
+        color: root.entry.mine
             ? Palette.accent-background
             : AppStyle.foreground-strong;
         vertical-alignment: center;
@@ -79,13 +77,13 @@ export component ReactionRow inherits FlexboxLayout {
 
     callback toggled(string);
     callback overflow-clicked();
-    callback hovered(int, string, ReactionAnchor);
+    callback hovered(int, string, AnchorRect);
     callback unhovered(int);
 
     alignment: start;
     spacing: Space.sm;
 
-    pure function anchor(index: int, x: length, y: length, w: length, h: length) -> ReactionAnchor {
+    pure function anchor(index: int, x: length, y: length, w: length, h: length) -> AnchorRect {
         return {
             row: index,
             x: x,
@@ -96,12 +94,12 @@ export component ReactionRow inherits FlexboxLayout {
     }
 
     for entry[index] in root.reactions: chip := ReactionChip {
-        property <ReactionAnchor> tracked-anchor: root.tracked-index == index
+        property <AnchorRect> tracked-anchor: root.tracked-index == index
             ? root.anchor(index, chip.absolute-position.x, chip.absolute-position.y, chip.width, chip.height)
             : { row: -1 };
 
         changed tracked-anchor => {
-            if (root.tracked-index == index) {
+            if root.tracked-index == index {
                 root.hovered(index, root.reactor-text(entry), self.tracked-anchor);
             }
         }
@@ -111,14 +109,14 @@ export component ReactionRow inherits FlexboxLayout {
         enabled: entry.overflow || root.can-react;
         label: root.chip-label(entry);
         clicked => {
-            if (entry.overflow) {
+            if entry.overflow {
                 root.overflow-clicked();
             } else {
                 root.toggled(entry.key);
             }
         }
         changed has-hover => {
-            if (self.has-hover && !entry.overflow) {
+            if self.has-hover && !entry.overflow {
                 root.hovered(index, root.reactor-text(entry),
                              root.anchor(index, chip.absolute-position.x, chip.absolute-position.y, chip.width, chip.height));
             } else {
@@ -134,10 +132,10 @@ export component ReactionRow inherits FlexboxLayout {
     }
 
     pure function chip-label(entry: ReactionEntry) -> string {
-        if (entry.overflow) {
+        if entry.overflow {
             return @tr("Show {} more reactions", entry.count);
         }
-        if (entry.mine) {
+        if entry.mine {
             return @tr("Remove your {} reaction, reacted by {}", entry.label, root.reactor-text(entry));
         }
         return @tr("React with {}, reacted by {}", entry.label, root.reactor-text(entry));

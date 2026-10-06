@@ -1,0 +1,11 @@
+export component CloseWatch {
+    in property <bool> open;
+
+    callback closed();
+
+    changed open => {
+        if !root.open {
+            root.closed();
+        }
+    }
+}

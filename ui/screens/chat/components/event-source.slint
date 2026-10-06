@@ -1,13 +1,12 @@
 import { Palette, ScrollView, Spinner } from "std-widgets.slint";
-import { IconSet } from "@lucide";
 
-import { IconButton } from "../../../components/button.slint";
-import { Copier } from "../../../components/copier.slint";
+import { CopyFeedback } from "../../../components/copier.slint";
+import { DialogHeader } from "../../../components/dialog-header.slint";
 import { DialogCard, ModalHost } from "../../../components/overlay.slint";
 import { SourceEncryption, SourceStatus } from "../../../enums.slint";
 import { SourceView } from "../../../views.slint";
 import { Actions } from "../../../actions.slint";
-import { AppStyle, Fonts, Metrics, Motion, Opacity, Radius, Size, Space, Weight } from "../../../theme.slint";
+import { AppStyle, Fonts, Metrics, Radius, Size, Space, Weight } from "../../../theme.slint";
 
 component SourceSection inherits VerticalLayout {
     in property <string> title;
@@ -45,19 +44,18 @@ component SourceSection inherits VerticalLayout {
 }
 
 export component EventSourceDialog inherits ModalHost {
-    dim-opacity: AppStyle.dark ? Opacity.scrim-strong : Opacity.scrim;
+    dim-opacity: AppStyle.dialog-scrim;
     label: @tr("Message source");
     dismissed => {
         Actions.close-event-source();
     }
     opened => {
-        close-button.take-focus();
+        header.focus-close();
     }
 
     property <length> card-width: min(Metrics.source-width, root.width - AppStyle.card-inset);
     property <length> card-height: min(root.height - AppStyle.card-inset, Metrics.source-max-height);
     property <bool> ready: SourceView.status == SourceStatus.ready;
-    property <bool> copied: false;
 
     pure function encryption-note(encryption: SourceEncryption) -> string {
         if encryption == SourceEncryption.decrypted {
@@ -70,18 +68,10 @@ export component EventSourceDialog inherits ModalHost {
     }
 
     changed ready => {
-        root.copied = false;
+        source-copy.reset();
     }
 
-    Timer {
-        interval: Motion.feedback-hold;
-        running: root.copied;
-        triggered => {
-            root.copied = false;
-        }
-    }
-
-    source-copier := Copier { }
+    source-copy := CopyFeedback { }
 
     DialogCard {
         x: (root.width - self.width) / 2;
@@ -94,47 +84,25 @@ export component EventSourceDialog inherits ModalHost {
             padding: Space.xl;
             spacing: Space.md;
 
-            HorizontalLayout {
-                spacing: Space.sm;
-
-                VerticalLayout {
-                    horizontal-stretch: 1;
-                    spacing: Space.xs;
-
-                    Text {
-                        text: @tr("Message source");
-                        font-size: Fonts.title;
-                        font-weight: Weight.bold;
-                    }
-
-                    Text {
-                        text: SourceView.event-id;
-                        font-size: Fonts.caption;
-                        color: AppStyle.foreground-muted;
-                        overflow: elide;
-                    }
+            header := DialogHeader {
+                title: @tr("Message source");
+                copied: source-copy.copied;
+                copy-enabled: root.ready;
+                copy-label: @tr("Copy the source");
+                copied-label: @tr("Source copied");
+                close-label: @tr("Close the message source");
+                copy-clicked => {
+                    source-copy.copy(SourceView.json);
+                }
+                close-clicked => {
+                    Actions.close-event-source();
                 }
 
-                IconButton {
-                    size: Size.md;
-                    icon: root.copied ? IconSet.Check : IconSet.Copy;
-                    enabled: root.ready;
-                    above-modal: true;
-                    label: root.copied ? @tr("Source copied") : @tr("Copy the source");
-                    clicked => {
-                        source-copier.copy-text(SourceView.json);
-                        root.copied = true;
-                    }
-                }
-
-                close-button := IconButton {
-                    size: Size.md;
-                    icon: IconSet.X;
-                    above-modal: true;
-                    label: @tr("Close the message source");
-                    clicked => {
-                        Actions.close-event-source();
-                    }
+                Text {
+                    text: SourceView.event-id;
+                    font-size: Fonts.caption;
+                    color: AppStyle.foreground-muted;
+                    overflow: elide;
                 }
             }
 

@@ -1,12 +1,12 @@
 import { Palette, Spinner } from "std-widgets.slint";
-import { ClickArea } from "../../../../components/a11y.slint";
-import { Fonts, Radius, Size, Space, Weight } from "../../../../theme.slint";
+import { LinkButton } from "./button.slint";
+import { Fonts, Size, Space } from "../theme.slint";
 
 export component StatusPill inherits Rectangle {
     in property <string> text;
     in property <bool> loading;
     in property <bool> show-retry;
-    in property <string> retry-label: @tr("Retry loading messages");
+    in property <string> retry-label;
     in property <bool> above-modal: false;
 
     callback retry();
@@ -37,22 +37,14 @@ export component StatusPill inherits Rectangle {
             accessible-live-region: AccessibleLiveness.polite;
         }
 
-        if root.show-retry: ClickArea {
-            width: retry-label.preferred-width + Space.lg;
-            ring-radius: Radius.sm;
+        if root.show-retry: LinkButton {
+            text: @tr("Retry");
+            font-size: Fonts.label;
+            pad: Space.lg;
             label: root.retry-label;
             above-modal: root.above-modal;
             clicked => {
                 root.retry();
-            }
-
-            retry-label := Text {
-                x: (parent.width - self.width) / 2;
-                text: @tr("Retry");
-                font-size: Fonts.label;
-                font-weight: Weight.semibold;
-                color: Palette.accent-background;
-                vertical-alignment: center;
             }
         }
     }

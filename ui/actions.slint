@@ -1,6 +1,5 @@
-import { LoginRequest } from "screens/login/types.slint";
-import { NotifyMode } from "enums.slint";
 import {
+    LoginRequest,
     SendMessageRequest,
     EditMessageRequest,
     SendStickerRequest,
@@ -10,7 +9,8 @@ import {
     SendPollRequest,
     EditPollRequest,
     PollAnswerEntry,
-} from "screens/chat/components/types.slint";
+} from "./types.slint";
+import { NotifyMode } from "./enums.slint";
 
 export global Actions {
     callback retry-restore();

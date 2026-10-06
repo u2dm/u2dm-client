@@ -1,7 +1,8 @@
-import { MessageEntry } from "../types.slint";
+import { MessageEntry } from "../../../../types.slint";
 
-import { ImageMessage, ImagePlaceholder } from "./messages/image-message.slint";
-import { VideoMessage, VideoPlaceholder } from "./messages/video-message.slint";
+import { ImageMessage } from "./messages/image-message.slint";
+import { VideoMessage } from "./messages/video-message.slint";
+import { MediaPlaceholder } from "./messages/media-frame.slint";
 import { StickerMessage } from "./messages/sticker-message.slint";
 import { FileMessage } from "./messages/file-message.slint";
 import { AudioMessage } from "./messages/audio-message.slint";
@@ -21,6 +22,14 @@ export global MessageShape {
     public pure function has-photo(msg: MessageEntry) -> bool {
         return (msg.message-type == MessageKind.image || msg.message-type == MessageKind.video)
             && (msg.media-state != MediaState.idle || (msg.image-width > 0 && msg.image-height > 0));
+    }
+
+    public pure function joins-run(earlier: MessageEntry, later: MessageEntry) -> bool {
+        return earlier.message-type != MessageKind.service
+            && later.message-type != MessageKind.service
+            && !later.first-unread
+            && earlier.sender-id != ""
+            && earlier.sender-id == later.sender-id;
     }
 
     public pure function is-photo-only(msg: MessageEntry) -> bool {
@@ -46,7 +55,7 @@ export component MessageBody inherits VerticalLayout {
         msg: root.msg;
         timeline-row: root.timeline-row;
         frame-limit: root.frame-limit;
-        show-timestamp: MessageShape.is-photo-only(root.msg);
+        shows-meta: MessageShape.is-photo-only(root.msg);
         bubble-hovered: root.hovered;
     }
 
@@ -54,15 +63,11 @@ export component MessageBody inherits VerticalLayout {
         msg: root.msg;
         timeline-row: root.timeline-row;
         frame-limit: root.frame-limit;
-        show-timestamp: MessageShape.is-photo-only(root.msg);
+        shows-meta: MessageShape.is-photo-only(root.msg);
         bubble-hovered: root.hovered;
     }
 
-    if !root.has-photo && root.kind == MessageKind.image: ImagePlaceholder {
-        msg: root.msg;
-    }
-
-    if !root.has-photo && root.kind == MessageKind.video: VideoPlaceholder {
+    if !root.has-photo && (root.kind == MessageKind.image || root.kind == MessageKind.video): MediaPlaceholder {
         msg: root.msg;
     }
 

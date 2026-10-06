@@ -1,6 +1,6 @@
 import { Palette } from "std-widgets.slint";
 import { IconSet } from "@lucide";
-import { MessageEntry } from "../../types.slint";
+import { MessageEntry } from "../../../../../types.slint";
 import { Interaction } from "../../../../../components/a11y.slint";
 import { Actions } from "../../../../../actions.slint";
 import { AppStyle, Fonts, IconSize, Space, Weight } from "../../../../../theme.slint";
@@ -22,11 +22,9 @@ export component FileMessage inherits HorizontalLayout {
     MediaButton {
         cross-axis-self-alignment: center;
         enabled: root.can-save;
-        is-own: root.msg.is-own;
+        msg: root.msg;
         icon: IconSet.ArrowDown;
         glyph-size: IconSize.lg;
-        send-state: root.msg.send-state;
-        send-progress: root.msg.send-progress;
         label: @tr("Save {}", root.msg.filename);
         clicked => {
             root.save();

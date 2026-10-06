@@ -1,0 +1,32 @@
+import { ClickArea } from "../../../../components/a11y.slint";
+import { AppStyle, Fonts, Glyph, Metrics } from "../../../../theme.slint";
+
+export global QuickReactions {
+    out property <[string]> keys: ["❤️", "😕", "🎉", "😭", "😄", "👎", "👍", "🫃"];
+    out property <int> default-index: root.keys.length - 1;
+    out property <string> default-key: root.keys[root.default-index];
+}
+
+export component StripCell inherits ClickArea {
+    in property <string> key;
+    in property <length> glyph: Glyph.xs;
+
+    height: Metrics.reaction-strip-cell;
+    border-radius: self.height / 2;
+    ring-radius: self.height / 2;
+    background: root.has-hover
+        ? AppStyle.overlay-pressed
+        : transparent;
+
+    Text {
+        x: 0;
+        y: 0;
+        width: parent.width;
+        height: parent.height;
+        text: root.key;
+        font-family: Fonts.emoji;
+        font-size: root.glyph;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+}

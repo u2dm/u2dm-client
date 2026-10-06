@@ -1,6 +1,16 @@
 import { Palette } from "std-widgets.slint";
 import { AppStyle, Motion, Opacity, Radius, Stroke } from "../theme.slint";
 
+export global Placement {
+    public pure function fit(start: length, size: length, extent: length, edge: length) -> length {
+        return clamp(start, edge, max(edge, extent - size - edge));
+    }
+
+    public pure function flip(at: length, size: length, extent: length, edge: length) -> length {
+        return root.fit(at + size + edge > extent ? at - size : at, size, extent, edge);
+    }
+}
+
 export component PickerCard inherits Rectangle {
     background: Palette.alternate-background;
     border-radius: Radius.md;
@@ -54,7 +64,7 @@ export component ModalHost inherits Rectangle {
     keys := FocusScope {
         focus-on-tab-navigation: false;
         capture-key-pressed(event) => {
-            if (event.text == Key.Escape) {
+            if event.text == Key.Escape {
                 root.dismissed();
                 return accept;
             }
@@ -74,15 +84,15 @@ export component ModalHost inherits Rectangle {
             TouchArea {
                 mouse-cursor: default;
                 clicked => {
-                    if (root.light-dismiss) {
+                    if root.light-dismiss {
                         root.dismiss-by-pointer();
                     }
                 }
                 pointer-event(event) => {
-                    if (root.light-dismiss
+                    if root.light-dismiss
                         && root.any-button-dismisses
                         && event.kind == PointerEventKind.down
-                        && event.button != PointerEventButton.left) {
+                        && event.button != PointerEventButton.left {
                         root.dismiss-by-pointer();
                     }
                 }

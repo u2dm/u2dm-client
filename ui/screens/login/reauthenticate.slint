@@ -3,12 +3,11 @@ import { IconDisplay, IconSet } from "@lucide";
 import {
     LoginPage,
     BrandHeader,
-    FieldLabel,
+    LabelledField,
     StatusRow,
     ServerChip,
     OrDivider,
 } from "./common.slint";
-import { TextField } from "../../components/text-field.slint";
 import { AppButton } from "../../components/button.slint";
 import { ErrorBanner, NoticeBanner } from "../../components/banner.slint";
 import { LoginActivity, LoginMethodKind } from "../../enums.slint";
@@ -25,7 +24,7 @@ export component ReauthenticateScreen inherits LoginPage {
     private property <bool> wants-oauth: LoginView.method == LoginMethodKind.oauth || LoginView.method == LoginMethodKind.both;
 
     function submit-password() {
-        if (!root.is-busy && root.input-password != "") {
+        if !root.is-busy && root.input-password != "" {
             Actions.reauth-password(root.input-password);
             root.input-password = "";
         }
@@ -79,23 +78,16 @@ export component ReauthenticateScreen inherits LoginPage {
     if root.wants-password: VerticalLayout {
         spacing: Space.xl;
 
-        VerticalLayout {
-            spacing: Space.md;
-
-            FieldLabel {
-                text: @tr("PASSWORD");
-            }
-
-            TextField {
-                icon: IconSet.LockKeyhole;
-                label: @tr("Password");
-                placeholder: @tr("password");
-                secret: true;
-                enabled: !root.is-busy;
-                text <=> root.input-password;
-                accepted => {
-                    root.submit-password();
-                }
+        LabelledField {
+            heading: @tr("PASSWORD");
+            icon: IconSet.LockKeyhole;
+            label: @tr("Password");
+            placeholder: @tr("password");
+            secret: true;
+            enabled: !root.is-busy;
+            text <=> root.input-password;
+            accepted => {
+                root.submit-password();
             }
         }
 

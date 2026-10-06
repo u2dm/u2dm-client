@@ -1,0 +1,50 @@
+import { Icon, IconDisplay } from "@lucide";
+
+import { AppButton } from "./button.slint";
+import { AppStyle, Fonts, IconSize, Space } from "../theme.slint";
+
+export component RetryNotice inherits VerticalLayout {
+    in property <string> text;
+    in property <bool> failed;
+    in property <bool> above-modal;
+    in property <bool> shows-icon: false;
+    in property <Icon> icon;
+
+    callback retry();
+
+    alignment: center;
+    spacing: Space.lg;
+    padding: Space.xxl;
+
+    if root.shows-icon: HorizontalLayout {
+        alignment: center;
+
+        IconDisplay {
+            icon: root.icon;
+            size: IconSize.lg;
+            stroke: AppStyle.foreground-faint;
+        }
+    }
+
+    Text {
+        text: root.text;
+        color: AppStyle.foreground-muted;
+        font-size: Fonts.body-small;
+        horizontal-alignment: center;
+        wrap: word-wrap;
+        accessible-live-region: root.failed ? AccessibleLiveness.assertive : AccessibleLiveness.polite;
+    }
+
+    if root.failed: HorizontalLayout {
+        alignment: center;
+
+        AppButton {
+            text: @tr("Retry");
+            filled: false;
+            above-modal: root.above-modal;
+            clicked => {
+                root.retry();
+            }
+        }
+    }
+}

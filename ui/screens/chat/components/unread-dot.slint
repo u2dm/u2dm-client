@@ -1,0 +1,28 @@
+import { Palette } from "std-widgets.slint";
+import { IconDisplay, IconSet } from "@lucide";
+
+import { IconSize, Metrics, Size, Space, Stroke } from "../../../theme.slint";
+
+export component UnreadDot inherits Rectangle {
+    in property <bool> alert;
+    in property <bool> mention;
+    in property <length> diameter: Metrics.unread-dot;
+    in property <bool> ringed;
+
+    height: root.mention ? Size.xs : root.diameter + (root.ringed ? Space.sm : 0);
+    width: self.height;
+    border-radius: self.height / 2;
+    background: root.mention || root.alert
+        ? Palette.accent-background
+        : Palette.foreground;
+    border-width: root.ringed || root.mention ? Stroke.emphasis : 0;
+    border-color: Palette.alternate-background;
+
+    if root.mention: IconDisplay {
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+        icon: IconSet.AtSign;
+        size: IconSize.xs;
+        stroke: Palette.accent-foreground;
+    }
+}

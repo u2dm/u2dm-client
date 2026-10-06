@@ -15,6 +15,14 @@ export global Interaction {
     public pure function requests-menu(event: KeyEvent) -> bool {
         return event.text == Key.Menu || (event.modifiers.shift && event.text == Key.F10);
     }
+
+    public pure function next(cursor: int, count: int) -> int {
+        return mod(max(cursor, -1) + 1, count);
+    }
+
+    public pure function previous(cursor: int, count: int) -> int {
+        return cursor < 0 ? count - 1 : mod(cursor + count - 1, count);
+    }
 }
 
 export component FocusRing inherits Rectangle {
@@ -29,7 +37,6 @@ export component ClickArea inherits Rectangle {
     in property <bool> above-modal: false;
     in property <bool> draggable: false;
     in property <string> label;
-    in property <bool> show-focus-ring: true;
     in property <bool> focusable: true;
     in property <bool> roving-focus: false;
     in property <length> ring-radius: Radius.sm;
@@ -54,7 +61,7 @@ export component ClickArea inherits Rectangle {
     accessible-enabled: root.actionable;
     accessible-label: root.label;
     accessible-action-default => {
-        if (root.actionable) {
+        if root.actionable {
             root.clicked();
         }
     }
@@ -66,11 +73,11 @@ export component ClickArea inherits Rectangle {
         enabled: root.enabled && root.focusable;
         focus-on-tab-navigation: root.actionable && root.focusable;
         key-pressed(event) => {
-            if (root.enabled && Interaction.activates(event.text)) {
+            if root.enabled && Interaction.activates(event.text) {
                 root.clicked();
                 return accept;
             }
-            if (root.enabled && Interaction.requests-menu(event)) {
+            if root.enabled && Interaction.requests-menu(event) {
                 return root.context-menu-requested();
             }
             return reject;
@@ -81,7 +88,7 @@ export component ClickArea inherits Rectangle {
         enabled: root.enabled;
         mouse-cursor: root.enabled ? pointer : default;
         moved => {
-            if (root.draggable) {
+            if root.draggable {
                 root.moved(self.mouse-y - self.pressed-y);
             }
         }
@@ -92,7 +99,7 @@ export component ClickArea inherits Rectangle {
 
     @children
 
-    if root.show-focus-ring && (fs.has-focus || root.roving-focus): FocusRing {
+    if fs.has-focus || root.roving-focus: FocusRing {
         x: root.ring-inset;
         y: root.ring-inset;
         width: root.width - root.ring-inset * 2;
@@ -109,4 +116,64 @@ export component ListItemArea inherits ClickArea {
     accessible-item-selectable: true;
     accessible-item-selected: root.selected;
     accessible-item-index: root.index;
+}
+
+export component RovingKeys inherits FocusScope {
+    in property <int> count;
+    in property <bool> horizontal: false;
+    in property <bool> ring-on-any-focus: false;
+    in property <bool> paused: false;
+    in-out property <int> cursor: -1;
+
+    callback activated(int);
+    callback moved(int);
+    callback intercept(KeyEvent) -> EventResult;
+
+    x: 0;
+    y: 0;
+    width: 0;
+    height: 0;
+    focus-on-click: false;
+    accessible-role: button;
+
+    focus-gained(reason) => {
+        if root.cursor < 0 && (root.ring-on-any-focus || reason == FocusReason.tab-navigation) {
+            root.cursor = 0;
+        }
+    }
+
+    key-pressed(event) => {
+        if root.intercept(event) == EventResult.accept {
+            return accept;
+        }
+        if root.paused || root.count == 0 {
+            return reject;
+        }
+        if event.text == (root.horizontal ? Key.RightArrow : Key.DownArrow) {
+            root.move-to(Interaction.next(root.cursor, root.count));
+            return accept;
+        }
+        if event.text == (root.horizontal ? Key.LeftArrow : Key.UpArrow) {
+            root.move-to(Interaction.previous(root.cursor, root.count));
+            return accept;
+        }
+        if event.text == Key.Home {
+            root.move-to(0);
+            return accept;
+        }
+        if event.text == Key.End {
+            root.move-to(root.count - 1);
+            return accept;
+        }
+        if Interaction.activates(event.text) {
+            root.activated(max(root.cursor, 0));
+            return accept;
+        }
+        return reject;
+    }
+
+    function move-to(index: int) {
+        root.cursor = index;
+        root.moved(index);
+    }
 }

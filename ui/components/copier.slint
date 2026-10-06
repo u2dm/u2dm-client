@@ -1,3 +1,5 @@
+import { Motion } from "../theme.slint";
+
 export component Copier inherits TextInput {
     x: 0;
     y: 0;
@@ -14,5 +16,50 @@ export component Copier inherits TextInput {
         self.select-all();
         self.copy();
         self.clear-selection();
+    }
+}
+
+export component CopyNotifier {
+    out property <string> notice;
+
+    public function copy(text: string, message: string) {
+        copier.copy-text(text);
+        root.notice = message;
+        timer.running = true;
+        timer.restart();
+    }
+
+    copier := Copier { }
+
+    timer := Timer {
+        interval: Motion.feedback-hold;
+        running: false;
+        triggered => {
+            self.running = false;
+            root.notice = "";
+        }
+    }
+}
+
+export component CopyFeedback {
+    out property <bool> copied: false;
+
+    public function copy(text: string) {
+        copier.copy-text(text);
+        root.copied = true;
+    }
+
+    public function reset() {
+        root.copied = false;
+    }
+
+    copier := Copier { }
+
+    Timer {
+        interval: Motion.feedback-hold;
+        running: root.copied;
+        triggered => {
+            root.copied = false;
+        }
     }
 }

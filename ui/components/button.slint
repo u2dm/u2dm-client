@@ -142,3 +142,29 @@ export component IconButton inherits Rectangle {
         stroke: root.tint;
     }
 }
+
+export component HeaderIconButton inherits IconButton {
+    in property <bool> active;
+
+    radius: Radius.sm;
+    icon-size: IconSize.md;
+    tint: root.active ? Palette.accent-background : AppStyle.foreground-strong;
+}
+
+export component LinkButton inherits ClickArea {
+    in property <string> text;
+    in property <color> tint: Palette.accent-background;
+    in property <length> font-size: Fonts.body-small;
+    in property <length> pad;
+
+    width: caption.preferred-width + root.pad;
+
+    caption := Text {
+        text: root.text;
+        color: root.tint;
+        font-size: root.font-size;
+        font-weight: Weight.semibold;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+}

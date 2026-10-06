@@ -5,7 +5,7 @@ import { ScrubBar } from "../../../../components/scrub-bar.slint";
 import { ModalHost } from "../../../../components/overlay.slint";
 import { UserMessageKind } from "../../../../enums.slint";
 import { Clocks, UserMessages } from "../../../../messages.slint";
-import { AppStyle, Fonts, IconSize, Metrics, Opacity, Radius, Size, Space, Stroke } from "../../../../theme.slint";
+import { AppStyle, Fonts, IconSize, Metrics, Opacity, Radius, Size, Space } from "../../../../theme.slint";
 import { Actions } from "../../../../actions.slint";
 import { VideoView } from "../../../../views.slint";
 
@@ -98,7 +98,7 @@ export component VideoPlayer inherits ModalHost {
                     resting-knob-opacity: Opacity.scrim-strong;
                     position-ms: VideoView.position-ms;
                     duration-ms: VideoView.duration-ms;
-                    seek(ms) => {
+                    seek-requested(ms) => {
                         Actions.seek-video(ms);
                     }
                 }

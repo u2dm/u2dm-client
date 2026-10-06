@@ -2,18 +2,20 @@ import { Palette, ScrollView, Spinner } from "std-widgets.slint";
 import { IconDisplay, IconSet, Icon } from "@lucide";
 
 import { Avatar } from "../../../components/avatar.slint";
-import { AppButton, IconButton } from "../../../components/button.slint";
 import { ClickArea, Interaction, ListItemArea } from "../../../components/a11y.slint";
-import { Copier } from "../../../components/copier.slint";
-import { DialogCard, ModalHost, PickerCard } from "../../../components/overlay.slint";
+import { CopyFeedback } from "../../../components/copier.slint";
+import { CloseWatch } from "../../../components/close-watch.slint";
+import { DialogCard, ModalHost, PickerCard, Placement } from "../../../components/overlay.slint";
 import { ErrorBanner } from "../../../components/banner.slint";
+import { RetryNotice } from "../../../components/retry-notice.slint";
 import { ActionTile } from "./action-tile.slint";
 import { DetailLine } from "./detail-line.slint";
+import { CopyLinkTile, SheetCloseChip, SheetCover, TilePrompt, TileRow } from "./sheet.slint";
 import { MemberRoles } from "./member-roles.slint";
-import { PickerSearch } from "./timeline/picker-search.slint";
+import { SearchField } from "../../../components/search-field.slint";
 import { NotifyModes } from "./notify-modes.slint";
-import { MemberEntry } from "./types.slint";
-import { AppStyle, Avatars, Fonts, Glyph, IconSize, Metrics, Motion, Opacity, Radius, Size, Space, Stroke, Weight } from "../../../theme.slint";
+import { MemberEntry } from "../../../types.slint";
+import { AppStyle, Fonts, IconSize, Metrics, Radius, Size, Space, Stroke, Weight } from "../../../theme.slint";
 import { MemberRowKind, RosterStatus, UserMessageKind } from "../../../enums.slint";
 import { RoomInfoView } from "../../../views.slint";
 import { Shell } from "../../../local.slint";
@@ -124,7 +126,7 @@ component TopicText inherits Rectangle {
                 self.select-all();
             }
             changed has-focus => {
-                if (!self.has-focus) {
+                if !self.has-focus {
                     root.selecting = false;
                 }
             }
@@ -220,7 +222,7 @@ component MemberRow inherits ListItemArea {
             cross-axis-self-alignment: center;
             width: Metrics.room-info-member-avatar;
             height: Metrics.room-info-member-avatar;
-            background: Avatars.color(root.entry.color-index);
+            color-index: root.entry.color-index;
             has-image: root.entry.has-avatar;
             image: root.entry.avatar;
             initial: root.entry.initial;
@@ -259,38 +261,6 @@ component MemberRow inherits ListItemArea {
     }
 }
 
-component RosterNotice inherits VerticalLayout {
-    in property <string> text;
-    in property <bool> failed;
-    in property <bool> above-modal;
-
-    alignment: center;
-    spacing: Space.lg;
-    padding: Space.xxl;
-
-    Text {
-        text: root.text;
-        color: AppStyle.foreground-muted;
-        font-size: Fonts.body-small;
-        horizontal-alignment: center;
-        wrap: word-wrap;
-        accessible-live-region: root.failed ? AccessibleLiveness.assertive : AccessibleLiveness.polite;
-    }
-
-    if root.failed: HorizontalLayout {
-        alignment: center;
-
-        AppButton {
-            text: @tr("Retry");
-            filled: false;
-            above-modal: root.above-modal;
-            clicked => {
-                Actions.retry-room-members();
-            }
-        }
-    }
-}
-
 component NotifyPickerHost inherits ModalHost {
     in property <length> anchor-x;
     in property <length> anchor-y;
@@ -299,10 +269,7 @@ component NotifyPickerHost inherits ModalHost {
     label: @tr("Notifications");
 
     PickerCard {
-        x: clamp(
-            root.anchor-x - root.absolute-position.x,
-            Space.md,
-            max(Space.md, root.width - self.width - Space.md));
+        x: Placement.fit(root.anchor-x - root.absolute-position.x, self.width, root.width, Space.md);
         y: min(
             root.anchor-y - root.absolute-position.y + Space.sm,
             max(Space.md, root.height - self.height - Space.md));
@@ -327,25 +294,275 @@ component NotifyPickerHost inherits ModalHost {
     }
 }
 
+component CompactRoomCover inherits HorizontalLayout {
+    in property <length> reserve;
+
+    padding-left: Space.xl;
+    padding-right: root.reserve;
+    spacing: Space.lg;
+
+    Avatar {
+        cross-axis-self-alignment: center;
+        width: Metrics.room-info-avatar-compact;
+        height: Metrics.room-info-avatar-compact;
+        color-index: RoomInfoView.color-index;
+        has-image: RoomInfoView.has-avatar;
+        image: RoomInfoView.avatar;
+        initial: RoomInfoView.initial;
+    }
+
+    VerticalLayout {
+        horizontal-stretch: 1;
+        alignment: center;
+        spacing: Space.xs;
+
+        Text {
+            text: RoomInfoView.name;
+            font-family: Fonts.emoji;
+            font-size: Fonts.title;
+            font-weight: Weight.bold;
+            overflow: elide;
+        }
+
+        if !RoomInfoView.is-direct: Text {
+            text: @tr("{n} member" | "{n} members" % RoomInfoView.members);
+            font-size: Fonts.body-small;
+            color: AppStyle.foreground-muted;
+            overflow: elide;
+        }
+    }
+}
+
+component RoomActionTiles inherits TileRow {
+    in property <bool> above-modal;
+    in property <bool> copied;
+    in property <bool> asking-leave;
+    out property <length> notify-x: notify-tile.absolute-position.x;
+    out property <length> notify-bottom: notify-tile.absolute-position.y + notify-tile.height;
+
+    callback notifications-clicked();
+    callback leave-clicked();
+    callback leave-confirmed();
+    callback copy-clicked();
+
+    height: Metrics.room-info-action;
+
+    public function focus-notifications() {
+        notify-tile.take-focus();
+    }
+
+    public function focus-leave() {
+        leave-tile.take-focus();
+    }
+
+    Rectangle {
+        width: root.slot-width;
+
+        notify-tile := ActionTile {
+            width: 100%;
+            height: 100%;
+            above-modal: root.above-modal;
+            visible: !root.asking-leave;
+            enabled: !root.asking-leave && !RoomInfoView.leaving && !RoomInfoView.notify-busy;
+            busy: RoomInfoView.notify-busy;
+            icon: NotifyModes.icon(RoomInfoView.notify);
+            text: NotifyModes.state(RoomInfoView.notify);
+            label: @tr("Notifications: {}", NotifyModes.state(RoomInfoView.notify));
+            clicked => {
+                root.notifications-clicked();
+            }
+        }
+
+        if root.asking-leave: TilePrompt {
+            width: 100%;
+            height: 100%;
+            text: @tr("Leave this room?");
+            horizontal-alignment: center;
+        }
+    }
+
+    Rectangle {
+        width: root.slot-width;
+
+        leave-tile := ActionTile {
+            width: 100%;
+            height: 100%;
+            above-modal: root.above-modal;
+            enabled: !RoomInfoView.leaving;
+            icon: root.asking-leave ? IconSet.X : IconSet.LogOut;
+            text: root.asking-leave ? @tr("Cancel") : @tr("Leave");
+            label: root.asking-leave ? @tr("Stay in the room") : @tr("Leave the room");
+            clicked => {
+                root.leave-clicked();
+            }
+        }
+    }
+
+    Rectangle {
+        width: root.slot-width;
+
+        CopyLinkTile {
+            width: 100%;
+            height: 100%;
+            above-modal: root.above-modal;
+            visible: !root.asking-leave;
+            enabled: !root.asking-leave && RoomInfoView.link != "";
+            copied: root.copied;
+            copy-label: @tr("Copy the room link");
+            clicked => {
+                root.copy-clicked();
+            }
+        }
+
+        if root.asking-leave: ActionTile {
+            width: 100%;
+            height: 100%;
+            above-modal: root.above-modal;
+            destructive: true;
+            enabled: !RoomInfoView.leaving;
+            busy: RoomInfoView.leaving;
+            icon: IconSet.LogOut;
+            text: @tr("Leave");
+            label: @tr("Confirm leaving the room");
+            clicked => {
+                root.leave-confirmed();
+            }
+        }
+    }
+}
+
+component TopicSection inherits VerticalLayout {
+    in property <bool> above-modal;
+    in-out property <bool> expanded;
+    in-out property <bool> selecting;
+
+    spacing: Space.xs;
+
+    topic-text := TopicText {
+        styled: RoomInfoView.topic-styled;
+        plain: RoomInfoView.topic;
+        has-links: RoomInfoView.topic-has-links;
+        expanded: root.expanded;
+        selecting <=> root.selecting;
+    }
+
+    HorizontalLayout {
+        spacing: Space.sm;
+
+        Text {
+            horizontal-stretch: 1;
+            text: @tr("Topic");
+            font-size: Fonts.caption;
+            color: AppStyle.foreground-muted;
+            vertical-alignment: center;
+            accessible-role: none;
+        }
+
+        if RoomInfoView.topic-has-links && !root.selecting: TopicAction {
+            above-modal: root.above-modal;
+            icon: IconSet.TextCursor;
+            text: @tr("Select text");
+            label: @tr("Select the text of the topic");
+            clicked => {
+                root.selecting = true;
+            }
+        }
+
+        if (topic-text.clamped || root.expanded) && !root.selecting: TopicAction {
+            above-modal: root.above-modal;
+            icon: root.expanded ? IconSet.ChevronUp : IconSet.ChevronDown;
+            text: root.expanded ? @tr("Show less") : @tr("Show more");
+            label: root.expanded ? @tr("Show less of the topic") : @tr("Show the whole topic");
+            clicked => {
+                root.expanded = !root.expanded;
+            }
+        }
+    }
+}
+
+component MemberSection inherits VerticalLayout {
+    in property <bool> above-modal;
+    out property <length> search-top: search-row.y;
+    out property <length> list-top: member-list.y;
+
+    callback search-edited(string);
+
+    spacing: Space.lg;
+
+    public function clear-search() {
+        search.query = "";
+    }
+
+    search-row := HorizontalLayout {
+        padding-left: Space.xl;
+        padding-right: Space.xl;
+
+        search := SearchField {
+            placeholder: @tr("Search members");
+            above-modal: root.above-modal;
+            enabled: Interaction.actionable(true, root.above-modal);
+            edited(text) => {
+                root.search-edited(text);
+            }
+        }
+    }
+
+    if RoomInfoView.roster == RosterStatus.loading: HorizontalLayout {
+        alignment: center;
+        padding: Space.xl;
+
+        Spinner {
+            indeterminate: true;
+        }
+    }
+
+    if RoomInfoView.roster == RosterStatus.failed: RetryNotice {
+        text: @tr("Couldn't load the members of this room.");
+        failed: true;
+        above-modal: root.above-modal;
+        retry => {
+            Actions.retry-room-members();
+        }
+    }
+
+    if RoomInfoView.roster == RosterStatus.ready && RoomInfoView.rows.length == 0: RetryNotice {
+        text: @tr("No member matches your search.");
+    }
+
+    member-list := Rectangle {
+        height: member-rows.preferred-height;
+        accessible-role: list;
+        accessible-label: @tr("Members");
+        accessible-item-count: RoomInfoView.rows.length;
+
+        member-rows := VerticalLayout {
+            for entry[idx] in RoomInfoView.rows: MemberRow {
+                height: Metrics.room-info-row;
+                index: idx;
+                entry: entry;
+                above-modal: root.above-modal;
+            }
+        }
+    }
+}
+
 component RoomInfoSheet inherits Rectangle {
     in property <bool> above-modal;
     in property <brush> surface: AppStyle.card;
-    out property <bool> picker-open: false;
+    out property <bool> notify-picker-open: false;
     out property <length> picker-x;
     out property <length> picker-y;
 
     callback dismissed();
 
     property <bool> roomy: root.height >= Metrics.room-info-roomy;
-    property <length> tile-width: (root.width - 2 * Space.xl - 2 * Space.md) / 3;
 
     property <string> shown-room: RoomInfoView.room-id;
     property <bool> asking-leave: false;
-    property <bool> copied: false;
     property <bool> topic-expanded: false;
     property <bool> topic-selecting: false;
 
-    property <length> rows-bottom: member-list.y + RoomInfoView.rows.length * Metrics.room-info-row;
+    property <length> rows-bottom: members.y + members.list-top + RoomInfoView.rows.length * Metrics.room-info-row;
     property <int> asked-after: -1;
     property <bool> wants-page: RoomInfoView.has-more
         && root.asked-after != RoomInfoView.pages-landed
@@ -357,13 +574,28 @@ component RoomInfoSheet inherits Rectangle {
         root.page-if-wanted();
     }
 
+    changed wants-page => {
+        root.page-if-wanted();
+    }
+
+    changed shown-room => {
+        root.notify-picker-open = false;
+        root.asking-leave = false;
+        link-copy.reset();
+        root.topic-expanded = false;
+        root.topic-selecting = false;
+        root.asked-after = -1;
+        members.clear-search();
+        scroll.content-y = 0;
+    }
+
     public function close-picker() {
-        root.picker-open = false;
-        notify-tile.take-focus();
+        root.notify-picker-open = false;
+        tiles.focus-notifications();
     }
 
     public function peel() -> bool {
-        if root.picker-open {
+        if root.notify-picker-open {
             root.close-picker();
             return true;
         }
@@ -387,45 +619,24 @@ component RoomInfoSheet inherits Rectangle {
     }
 
     function open-picker() {
-        root.picker-x = notify-tile.absolute-position.x;
-        root.picker-y = notify-tile.absolute-position.y + notify-tile.height;
-        root.picker-open = true;
+        root.picker-x = tiles.notify-x;
+        root.picker-y = tiles.notify-bottom;
+        root.notify-picker-open = true;
     }
 
     function cancel-leave() {
         root.asking-leave = false;
-        leave-tile.take-focus();
+        tiles.focus-leave();
     }
 
-    function copy-link() {
-        link-copier.copy-text(RoomInfoView.link);
-        root.copied = true;
-    }
-
-    changed wants-page => {
-        root.page-if-wanted();
-    }
-
-    changed shown-room => {
-        root.picker-open = false;
-        root.asking-leave = false;
-        root.copied = false;
-        root.topic-expanded = false;
-        root.topic-selecting = false;
-        root.asked-after = -1;
-        search.query = "";
-        scroll.content-y = 0;
-    }
-
-    Timer {
-        interval: Motion.feedback-hold;
-        running: root.copied;
-        triggered => {
-            root.copied = false;
+    function scroll-search-into-view() {
+        let top = members.y + members.search-top;
+        if -scroll.content-y > top {
+            scroll.content-y = -top;
         }
     }
 
-    link-copier := Copier { }
+    link-copy := CopyFeedback { }
 
     keys := FocusScope {
         focus-on-click: false;
@@ -452,35 +663,13 @@ component RoomInfoSheet inherits Rectangle {
                 head := VerticalLayout {
                     spacing: Space.lg;
 
-                    if root.roomy: VerticalLayout {
-                        padding-left: Space.xl;
-                        padding-right: Space.xl;
-                        spacing: Space.sm;
-
-                        HorizontalLayout {
-                            alignment: center;
-
-                            Avatar {
-                                width: Metrics.room-info-avatar;
-                                height: Metrics.room-info-avatar;
-                                background: Avatars.color(RoomInfoView.color-index);
-                                has-image: RoomInfoView.has-avatar;
-                                image: RoomInfoView.avatar;
-                                initial: RoomInfoView.initial;
-                                initial-size: Glyph.xxl;
-                                initial-weight: Weight.bold;
-                                initial-font-family: "";
-                            }
-                        }
-
-                        Text {
-                            text: RoomInfoView.name;
-                            font-family: Fonts.emoji;
-                            font-size: Fonts.heading;
-                            font-weight: Weight.bold;
-                            horizontal-alignment: center;
-                            overflow: elide;
-                        }
+                    if root.roomy: SheetCover {
+                        avatar-size: Metrics.room-info-avatar;
+                        color-index: RoomInfoView.color-index;
+                        has-avatar: RoomInfoView.has-avatar;
+                        avatar: RoomInfoView.avatar;
+                        initial: RoomInfoView.initial;
+                        name: RoomInfoView.name;
 
                         if !RoomInfoView.is-direct: Text {
                             text: @tr("{n} member" | "{n} members" % RoomInfoView.members);
@@ -490,131 +679,28 @@ component RoomInfoSheet inherits Rectangle {
                         }
                     }
 
-                    if !root.roomy: HorizontalLayout {
-                        padding-left: Space.xl;
-                        padding-right: Size.md + Space.lg;
-                        spacing: Space.lg;
-
-                        Avatar {
-                            cross-axis-self-alignment: center;
-                            width: Metrics.room-info-avatar-compact;
-                            height: Metrics.room-info-avatar-compact;
-                            background: Avatars.color(RoomInfoView.color-index);
-                            has-image: RoomInfoView.has-avatar;
-                            image: RoomInfoView.avatar;
-                            initial: RoomInfoView.initial;
-                        }
-
-                        VerticalLayout {
-                            horizontal-stretch: 1;
-                            alignment: center;
-                            spacing: Space.xs;
-
-                            Text {
-                                text: RoomInfoView.name;
-                                font-family: Fonts.emoji;
-                                font-size: Fonts.title;
-                                font-weight: Weight.bold;
-                                overflow: elide;
-                            }
-
-                            if !RoomInfoView.is-direct: Text {
-                                text: @tr("{n} member" | "{n} members" % RoomInfoView.members);
-                                font-size: Fonts.body-small;
-                                color: AppStyle.foreground-muted;
-                                overflow: elide;
-                            }
-                        }
+                    if !root.roomy: CompactRoomCover {
+                        reserve: close-chip.reserve;
                     }
 
-                    HorizontalLayout {
-                        padding-left: Space.xl;
-                        padding-right: Space.xl;
-                        spacing: Space.md;
-                        height: Metrics.room-info-action;
-
-                        Rectangle {
-                            width: root.tile-width;
-
-                            notify-tile := ActionTile {
-                                width: 100%;
-                                height: 100%;
-                                above-modal: root.above-modal;
-                                visible: !root.asking-leave;
-                                enabled: !root.asking-leave && !RoomInfoView.leaving && !RoomInfoView.notify-busy;
-                                busy: RoomInfoView.notify-busy;
-                                icon: NotifyModes.icon(RoomInfoView.notify);
-                                text: NotifyModes.state(RoomInfoView.notify);
-                                label: @tr("Notifications: {}", NotifyModes.state(RoomInfoView.notify));
-                                clicked => {
-                                    root.open-picker();
-                                }
-                            }
-
-                            if root.asking-leave: Text {
-                                width: 100%;
-                                height: 100%;
-                                text: @tr("Leave this room?");
-                                font-size: Fonts.body-small;
-                                font-weight: Weight.semibold;
-                                horizontal-alignment: center;
-                                vertical-alignment: center;
-                                wrap: word-wrap;
-                                accessible-live-region: AccessibleLiveness.polite;
-                            }
+                    tiles := RoomActionTiles {
+                        above-modal: root.above-modal;
+                        copied: link-copy.copied;
+                        asking-leave: root.asking-leave;
+                        notifications-clicked => {
+                            root.open-picker();
                         }
-
-                        Rectangle {
-                            width: root.tile-width;
-
-                            leave-tile := ActionTile {
-                                width: 100%;
-                                height: 100%;
-                                above-modal: root.above-modal;
-                                enabled: !RoomInfoView.leaving;
-                                icon: root.asking-leave ? IconSet.X : IconSet.LogOut;
-                                text: root.asking-leave ? @tr("Cancel") : @tr("Leave");
-                                label: root.asking-leave ? @tr("Stay in the room") : @tr("Leave the room");
-                                clicked => {
-                                    root.picker-open = false;
-                                    root.asking-leave = !root.asking-leave;
-                                    leave-tile.take-focus();
-                                }
-                            }
+                        leave-clicked => {
+                            root.notify-picker-open = false;
+                            root.asking-leave = !root.asking-leave;
+                            tiles.focus-leave();
                         }
-
-                        Rectangle {
-                            width: root.tile-width;
-
-                            ActionTile {
-                                width: 100%;
-                                height: 100%;
-                                above-modal: root.above-modal;
-                                visible: !root.asking-leave;
-                                enabled: !root.asking-leave && RoomInfoView.link != "";
-                                icon: root.copied ? IconSet.Check : IconSet.Link;
-                                text: root.copied ? @tr("Copied") : @tr("Copy link");
-                                label: root.copied ? @tr("Link copied") : @tr("Copy the room link");
-                                clicked => {
-                                    root.copy-link();
-                                }
-                            }
-
-                            if root.asking-leave: ActionTile {
-                                width: 100%;
-                                height: 100%;
-                                above-modal: root.above-modal;
-                                destructive: true;
-                                enabled: !RoomInfoView.leaving;
-                                busy: RoomInfoView.leaving;
-                                icon: IconSet.LogOut;
-                                text: @tr("Leave");
-                                label: @tr("Confirm leaving the room");
-                                clicked => {
-                                    root.focus();
-                                    Actions.leave-room(RoomInfoView.room-id);
-                                }
-                            }
+                        leave-confirmed => {
+                            root.focus();
+                            Actions.leave-room(RoomInfoView.room-id);
+                        }
+                        copy-clicked => {
+                            link-copy.copy(RoomInfoView.link);
                         }
                     }
 
@@ -633,49 +719,10 @@ component RoomInfoSheet inherits Rectangle {
                     padding-right: Space.xl;
                     spacing: Space.lg;
 
-                    if RoomInfoView.topic != "": VerticalLayout {
-                        spacing: Space.xs;
-
-                        topic-text := TopicText {
-                            styled: RoomInfoView.topic-styled;
-                            plain: RoomInfoView.topic;
-                            has-links: RoomInfoView.topic-has-links;
-                            expanded: root.topic-expanded;
-                            selecting <=> root.topic-selecting;
-                        }
-
-                        HorizontalLayout {
-                            spacing: Space.sm;
-
-                            Text {
-                                horizontal-stretch: 1;
-                                text: @tr("Topic");
-                                font-size: Fonts.caption;
-                                color: AppStyle.foreground-muted;
-                                vertical-alignment: center;
-                                accessible-role: none;
-                            }
-
-                            if RoomInfoView.topic-has-links && !root.topic-selecting: TopicAction {
-                                above-modal: root.above-modal;
-                                icon: IconSet.TextCursor;
-                                text: @tr("Select text");
-                                label: @tr("Select the text of the topic");
-                                clicked => {
-                                    root.topic-selecting = true;
-                                }
-                            }
-
-                            if (topic-text.clamped || root.topic-expanded) && !root.topic-selecting: TopicAction {
-                                above-modal: root.above-modal;
-                                icon: root.topic-expanded ? IconSet.ChevronUp : IconSet.ChevronDown;
-                                text: root.topic-expanded ? @tr("Show less") : @tr("Show more");
-                                label: root.topic-expanded ? @tr("Show less of the topic") : @tr("Show the whole topic");
-                                clicked => {
-                                    root.topic-expanded = !root.topic-expanded;
-                                }
-                            }
-                        }
+                    if RoomInfoView.topic != "": TopicSection {
+                        above-modal: root.above-modal;
+                        expanded <=> root.topic-expanded;
+                        selecting <=> root.topic-selecting;
                     }
 
                     if RoomInfoView.alias != "": DetailLine {
@@ -697,99 +744,48 @@ component RoomInfoSheet inherits Rectangle {
                     }
                 }
 
-                search-row := HorizontalLayout {
-                    padding-left: Space.xl;
-                    padding-right: Space.xl;
-
-                    search := PickerSearch {
-                        placeholder: @tr("Search members");
-                        above-modal: root.above-modal;
-                        enabled: Interaction.actionable(true, root.above-modal);
-                        edited(text) => {
-                            if (-scroll.content-y > search-row.y) {
-                                scroll.content-y = -search-row.y;
-                            }
-                            Actions.filter-room-members(text);
-                        }
-                    }
-                }
-
-                if RoomInfoView.roster == RosterStatus.loading: HorizontalLayout {
-                    alignment: center;
-                    padding: Space.xl;
-
-                    Spinner {
-                        indeterminate: true;
-                    }
-                }
-
-                if RoomInfoView.roster == RosterStatus.failed: RosterNotice {
-                    text: @tr("Couldn't load the members of this room.");
-                    failed: true;
+                members := MemberSection {
                     above-modal: root.above-modal;
-                }
-
-                if RoomInfoView.roster == RosterStatus.ready && RoomInfoView.rows.length == 0: RosterNotice {
-                    text: @tr("No member matches your search.");
-                }
-
-                member-list := Rectangle {
-                    height: member-rows.preferred-height;
-                    accessible-role: list;
-                    accessible-label: @tr("Members");
-                    accessible-item-count: RoomInfoView.rows.length;
-
-                    member-rows := VerticalLayout {
-                        for entry[idx] in RoomInfoView.rows: MemberRow {
-                            height: Metrics.room-info-row;
-                            index: idx;
-                            entry: entry;
-                            above-modal: root.above-modal;
-                        }
+                    search-edited(text) => {
+                        root.scroll-search-into-view();
+                        Actions.filter-room-members(text);
                     }
                 }
             }
         }
 
-        Rectangle {
+        close-chip := SheetCloseChip {
             x: parent.width - self.width - Space.md;
             y: Space.md;
-            width: Size.md;
-            height: Size.md;
-            border-radius: self.width / 2;
-            background: root.surface;
-
-            IconButton {
-                size: Size.md;
-                radius: Size.md / 2;
-                icon: IconSet.X;
-                above-modal: root.above-modal;
-                label: @tr("Close the room info");
-                clicked => {
-                    root.dismissed();
-                }
+            surface: root.surface;
+            label: @tr("Close the room info");
+            above-modal: root.above-modal;
+            clicked => {
+                root.dismissed();
             }
         }
     }
 }
 
 export component RoomInfoDialog inherits ModalHost {
-    dim-opacity: AppStyle.dark ? Opacity.scrim-strong : Opacity.scrim;
+    property <bool> covered: Shell.user-info-open || Shell.verification-open;
+
+    dim-opacity: AppStyle.dialog-scrim;
     label: @tr("Room info");
     dismissed => {
-        if (Shell.user-info-open) {
+        if Shell.user-info-open {
             Actions.close-user-info();
-        } else if (!sheet.peel()) {
+        } else if !sheet.peel() {
             Actions.close-room-info();
         }
     }
 
-    property <bool> covered: Shell.user-info-open || Shell.verification-open;
-    property <bool> user-info-open: Shell.user-info-open;
-
-    changed user-info-open => {
-        if !self.user-info-open && !Shell.verification-open {
-            root.focus();
+    CloseWatch {
+        open: Shell.user-info-open;
+        closed => {
+            if !Shell.verification-open {
+                root.focus();
+            }
         }
     }
 
@@ -804,14 +800,13 @@ export component RoomInfoDialog inherits ModalHost {
             width: 100%;
             height: 100%;
             above-modal: !root.covered;
-            surface: AppStyle.card;
             dismissed => {
                 Actions.close-room-info();
             }
         }
     }
 
-    if sheet.picker-open: NotifyPickerHost {
+    if sheet.notify-picker-open: NotifyPickerHost {
         anchor-x: sheet.picker-x;
         anchor-y: sheet.picker-y;
         dismissed => {
@@ -836,7 +831,7 @@ export component RoomInfoPane inherits RoomInfoSheet {
         background: AppStyle.border;
     }
 
-    if root.picker-open: NotifyPickerHost {
+    if root.notify-picker-open: NotifyPickerHost {
         x: -root.absolute-position.x;
         y: -root.absolute-position.y;
         width: root.overlay-width;

@@ -6,9 +6,9 @@ import { Metrics, Space } from "../../../../theme.slint";
 import { RoomView } from "../../../../views.slint";
 
 export component AttachMenu inherits PickerCard {
-    callback photo-picked();
-    callback document-picked();
-    callback poll-picked();
+    callback photo-chosen();
+    callback document-chosen();
+    callback poll-chosen();
 
     width: Metrics.attach-menu-width;
     height: layout.preferred-height;
@@ -22,7 +22,7 @@ export component AttachMenu inherits PickerCard {
             icon: IconSet.Image;
             label: @tr("Photo or video");
             clicked => {
-                root.photo-picked();
+                root.photo-chosen();
             }
         }
 
@@ -31,7 +31,7 @@ export component AttachMenu inherits PickerCard {
             icon: IconSet.File;
             label: @tr("Document");
             clicked => {
-                root.document-picked();
+                root.document-chosen();
             }
         }
 
@@ -40,7 +40,7 @@ export component AttachMenu inherits PickerCard {
             icon: IconSet.ChartBar;
             label: @tr("Poll");
             clicked => {
-                root.poll-picked();
+                root.poll-chosen();
             }
         }
     }

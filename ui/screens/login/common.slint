@@ -1,8 +1,8 @@
 import { Palette, ScrollView, Spinner } from "std-widgets.slint";
 import { IconDisplay, IconSet, Icon } from "@lucide";
 import { LoginActivity } from "../../enums.slint";
+import { TextField } from "../../components/text-field.slint";
 import { AppStyle, Fonts, IconSize, Metrics, Motion, Radius, Size, Space, Stroke, Tracking, Weight } from "../../theme.slint";
-
 
 component MatrixBracket inherits Rectangle {
     in property <bool> closing;
@@ -84,7 +84,7 @@ export component LoginPage inherits Rectangle {
     }
 }
 
-export component BrandMark inherits Image {
+component BrandMark inherits Image {
     in property <length> size: Metrics.login-mark;
 
     width: root.size;
@@ -130,6 +130,38 @@ export component FieldLabel inherits Text {
     font-weight: Weight.semibold;
     letter-spacing: Tracking.wide;
     color: AppStyle.foreground-muted;
+}
+
+export component LabelledField inherits VerticalLayout {
+    in property <string> heading;
+    in property <Icon> icon;
+    in property <string> label;
+    in property <string> placeholder;
+    in property <bool> secret;
+    in property <bool> enabled: true;
+    in-out property <string> text;
+
+    callback accepted();
+
+    spacing: Space.md;
+
+    FieldLabel {
+        text: root.heading;
+    }
+
+    TextField {
+        icon: root.icon;
+        label: root.label;
+        placeholder: root.placeholder;
+        secret: root.secret;
+        enabled: root.enabled;
+        text <=> root.text;
+        accepted => {
+            root.accepted();
+        }
+    }
+
+    @children
 }
 
 export component StepDots inherits HorizontalLayout {

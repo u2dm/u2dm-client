@@ -1,0 +1,99 @@
+import { IconSet } from "@lucide";
+
+import { Avatar } from "../../../components/avatar.slint";
+import { IconButton } from "../../../components/button.slint";
+import { ActionTile } from "./action-tile.slint";
+import { Fonts, Glyph, Size, Space, Weight } from "../../../theme.slint";
+
+export component SheetCover inherits VerticalLayout {
+    in property <length> avatar-size;
+    in property <int> color-index;
+    in property <bool> has-avatar;
+    in property <image> avatar;
+    in property <string> initial;
+    in property <string> name;
+
+    padding-left: Space.xl;
+    padding-right: Space.xl;
+    spacing: Space.sm;
+
+    HorizontalLayout {
+        alignment: center;
+
+        Avatar {
+            width: root.avatar-size;
+            height: root.avatar-size;
+            color-index: root.color-index;
+            has-image: root.has-avatar;
+            image: root.avatar;
+            initial: root.initial;
+            initial-size: Glyph.xxl;
+            initial-weight: Weight.bold;
+            initial-font-family: "";
+        }
+    }
+
+    Text {
+        text: root.name;
+        font-family: Fonts.emoji;
+        font-size: Fonts.heading;
+        font-weight: Weight.bold;
+        horizontal-alignment: center;
+        overflow: elide;
+    }
+
+    @children
+}
+
+export component SheetCloseChip inherits Rectangle {
+    in property <brush> surface;
+    in property <string> label;
+    in property <bool> above-modal;
+    out property <length> reserve: root.width + Space.lg;
+
+    callback clicked();
+
+    width: Size.md;
+    height: Size.md;
+    border-radius: self.width / 2;
+    background: root.surface;
+
+    IconButton {
+        size: Size.md;
+        radius: Size.md / 2;
+        icon: IconSet.X;
+        above-modal: root.above-modal;
+        label: root.label;
+        clicked => {
+            root.clicked();
+        }
+    }
+}
+
+export component TileRow inherits HorizontalLayout {
+    out property <length> slot-width: (root.width - root.padding-left - root.padding-right - 2 * root.spacing) / 3;
+
+    alignment: center;
+    padding-left: Space.xl;
+    padding-right: Space.xl;
+    spacing: Space.md;
+
+    @children
+}
+
+export component TilePrompt inherits Text {
+    font-size: Fonts.body-small;
+    font-weight: Weight.semibold;
+    vertical-alignment: center;
+    wrap: word-wrap;
+    accessible-live-region: AccessibleLiveness.polite;
+}
+
+export component CopyLinkTile inherits ActionTile {
+    in property <bool> copied;
+    in property <string> copy-label;
+
+    icon: root.copied ? IconSet.Check : IconSet.Link;
+    text: root.copied ? @tr("Copied") : @tr("Copy link");
+    label: root.copied ? @tr("Link copied") : root.copy-label;
+}

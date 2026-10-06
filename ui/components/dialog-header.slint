@@ -1,0 +1,56 @@
+import { IconSet } from "@lucide";
+
+import { IconButton } from "./button.slint";
+import { Fonts, Size, Space, Weight } from "../theme.slint";
+
+export component DialogHeader inherits HorizontalLayout {
+    in property <string> title;
+    in property <bool> copied;
+    in property <bool> copy-enabled: true;
+    in property <string> copy-label;
+    in property <string> copied-label;
+    in property <string> close-label;
+
+    callback copy-clicked();
+    callback close-clicked();
+
+    spacing: Space.sm;
+
+    public function focus-close() {
+        close-button.take-focus();
+    }
+
+    VerticalLayout {
+        horizontal-stretch: 1;
+        spacing: Space.xs;
+
+        Text {
+            text: root.title;
+            font-size: Fonts.title;
+            font-weight: Weight.bold;
+        }
+
+        @children
+    }
+
+    IconButton {
+        size: Size.md;
+        icon: root.copied ? IconSet.Check : IconSet.Copy;
+        enabled: root.copy-enabled;
+        above-modal: true;
+        label: root.copied ? root.copied-label : root.copy-label;
+        clicked => {
+            root.copy-clicked();
+        }
+    }
+
+    close-button := IconButton {
+        size: Size.md;
+        icon: IconSet.X;
+        above-modal: true;
+        label: root.close-label;
+        clicked => {
+            root.close-clicked();
+        }
+    }
+}

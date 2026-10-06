@@ -1,6 +1,6 @@
 import { Palette } from "std-widgets.slint";
 import { IconSet } from "@lucide";
-import { MessageEntry } from "../../types.slint";
+import { MessageEntry } from "../../../../../types.slint";
 import { Interaction } from "../../../../../components/a11y.slint";
 import { ScrubBar, ScrubCommit } from "../../../../../components/scrub-bar.slint";
 import { AudioKind, MediaState } from "../../../../../enums.slint";
@@ -17,8 +17,8 @@ component VoiceWaveform inherits Rectangle {
     in property <bool> seekable;
     in property <int> duration-ms;
 
-    callback seek(int);
-    callback activate();
+    callback seek-requested(int);
+    callback activated();
 
     property <int> step-ms: 5000;
     property <bool> actionable: Interaction.actionable(true, false);
@@ -29,8 +29,8 @@ component VoiceWaveform inherits Rectangle {
     property <color> played: root.is-own ? AppStyle.audio-wave-played-own : AppStyle.audio-wave-played;
 
     function nudge(delta-ms: int) {
-        if (root.seekable && root.duration-ms > 0) {
-            root.seek(clamp(root.progress * root.duration-ms + delta-ms, 0, root.duration-ms));
+        if root.seekable && root.duration-ms > 0 {
+            root.seek-requested(clamp(root.progress * root.duration-ms + delta-ms, 0, root.duration-ms));
         }
     }
 
@@ -65,13 +65,13 @@ component VoiceWaveform inherits Rectangle {
         enabled: root.actionable;
         mouse-cursor: pointer;
         pointer-event(event) => {
-            if (event.kind != PointerEventKind.up || event.button != PointerEventButton.left) {
+            if event.kind != PointerEventKind.up || event.button != PointerEventButton.left {
                 return;
             }
-            if (root.seekable && root.duration-ms > 0) {
-                root.seek(root.pointer-fraction * root.duration-ms);
-            } else if (!root.seekable) {
-                root.activate();
+            if root.seekable && root.duration-ms > 0 {
+                root.seek-requested(root.pointer-fraction * root.duration-ms);
+            } else if !root.seekable {
+                root.activated();
             }
         }
     }
@@ -101,8 +101,8 @@ export component AudioMessage inherits HorizontalLayout {
         : root.resting-details;
 
     function press() {
-        if (root.is-active) {
-            if (!AudioView.loading) {
+        if root.is-active {
+            if !AudioView.loading {
                 Actions.toggle-audio();
             }
         } else {
@@ -117,12 +117,10 @@ export component AudioMessage inherits HorizontalLayout {
     MediaButton {
         cross-axis-self-alignment: center;
         enabled: root.msg.event-id != "";
-        is-own: root.msg.is-own;
+        msg: root.msg;
         icon: root.shows-failure ? IconSet.CircleAlert : (root.is-playing ? IconSet.Pause : IconSet.Play);
         solid: !root.shows-failure;
         loading: root.is-loading;
-        send-state: root.msg.send-state;
-        send-progress: root.msg.send-progress;
         label: root.is-playing
             ? @tr("Pause")
             : (root.is-voice ? @tr("Play voice message") : @tr("Play {}", root.msg.filename));
@@ -141,11 +139,11 @@ export component AudioMessage inherits HorizontalLayout {
             is-own: root.msg.is-own;
             seekable: root.is-seekable;
             duration-ms: AudioView.duration-ms;
-            seek(ms) => {
+            seek-requested(ms) => {
                 Actions.seek-audio(ms);
             }
-            activate => {
-                if (root.msg.event-id != "") {
+            activated => {
+                if root.msg.event-id != "" {
                     root.press();
                 }
             }
@@ -179,7 +177,7 @@ export component AudioMessage inherits HorizontalLayout {
             position-ms: AudioView.position-ms;
             duration-ms: AudioView.duration-ms;
             label: @tr("Track position");
-            seek(ms) => {
+            seek-requested(ms) => {
                 Actions.seek-audio(ms);
             }
         }

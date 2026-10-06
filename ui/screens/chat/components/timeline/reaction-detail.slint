@@ -1,11 +1,9 @@
-import {
-    Palette,
-} from "std-widgets.slint";
+import { Palette } from "std-widgets.slint";
 
-import { ReactionEntry } from "../types.slint";
+import { ReactionEntry } from "../../../../types.slint";
 import { ClickArea } from "../../../../components/a11y.slint";
-import { PickerCard } from "../../../../components/overlay.slint";
 import { AppStyle, Fonts, Radius, Size, Space, Weight } from "../../../../theme.slint";
+import { ListPopup } from "./list-popup.slint";
 
 component DetailRow inherits ClickArea {
     in property <ReactionEntry> entry;
@@ -15,7 +13,7 @@ component DetailRow inherits ClickArea {
     ring-radius: Radius.sm;
     background: root.has-hover
         ? AppStyle.overlay-hover
-        : (entry.mine ? AppStyle.accent-background-soft : transparent);
+        : (root.entry.mine ? AppStyle.accent-background-soft : transparent);
 
     HorizontalLayout {
         padding-left: Space.md;
@@ -53,43 +51,20 @@ component DetailRow inherits ClickArea {
     }
 }
 
-export component ReactionDetail inherits PickerCard {
+export component ReactionDetail inherits ListPopup {
     in property <[ReactionEntry]> items;
 
     callback toggled(string);
 
-    VerticalLayout {
-        padding: Space.md;
-        spacing: Space.xs;
+    title: @tr("Reactions");
 
-        Text {
-            text: @tr("Reactions");
-            font-size: Fonts.caption;
-            font-weight: Weight.semibold;
-            color: AppStyle.foreground-muted;
-            horizontal-alignment: left;
-            vertical-alignment: center;
-            height: Size.xs;
-        }
-
-        Flickable {
-            vertical-stretch: 1;
-            content-height: rows.preferred-height;
-
-            rows := VerticalLayout {
-                alignment: start;
-                spacing: Space.xs;
-
-                for entry in root.items: DetailRow {
-                    entry: entry;
-                    label: entry.mine
-                        ? @tr("Remove your {} reaction", entry.label)
-                        : @tr("React with {}", entry.label);
-                    clicked => {
-                        root.toggled(entry.key);
-                    }
-                }
-            }
+    for entry in root.items: DetailRow {
+        entry: entry;
+        label: entry.mine
+            ? @tr("Remove your {} reaction", entry.label)
+            : @tr("React with {}", entry.label);
+        clicked => {
+            root.toggled(entry.key);
         }
     }
 }

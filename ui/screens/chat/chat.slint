@@ -1,10 +1,10 @@
 import { Palette } from "std-widgets.slint";
-import { IconDisplay, IconSet } from "@lucide";
-import { Sidebar } from "components/sidebar.slint";
-import { Drawer } from "components/drawer.slint";
-import { TimelineView } from "components/timeline/timeline-view.slint";
-import { SpaceIndexPane } from "components/space-index.slint";
-import { RoomMenuOverlay } from "components/room-menu.slint";
+import { IconSet } from "@lucide";
+import { Sidebar } from "./components/sidebar.slint";
+import { Drawer } from "./components/drawer.slint";
+import { TimelineView } from "./components/timeline/timeline-view.slint";
+import { SpaceIndexPane } from "./components/space-index.slint";
+import { RoomMenuOverlay } from "./components/room-menu.slint";
 import { ResizeEdge, ResizeHandle } from "../../components/resize-handle.slint";
 import { RoomInfoPlacement, UserMessageKind } from "../../enums.slint";
 import { UserMessages } from "../../messages.slint";
@@ -12,25 +12,44 @@ import { AppStyle, IconSize, Metrics, Radius, Size, Space } from "../../theme.sl
 import { IconButton } from "../../components/button.slint";
 import { DirectoryView, RoomInfoView, RoomView, SpaceIndexView, WindowView } from "../../views.slint";
 import { Actions } from "../../actions.slint";
-import { Composer, DeliveryTip, MessageMenu, Polls, Reactions, ReplySwipe, RoomMenu, Shell, TextSelection } from "../../local.slint";
+import { LocalState, Shell } from "../../local.slint";
+
+component Toast inherits Rectangle {
+    property <bool> is-file-saved: RoomView.toast-message == UserMessageKind.file-saved;
+
+    height: toast-layout.preferred-height;
+    border-radius: Radius.sm;
+    background: Palette.alternate-background;
+
+    toast-layout := HorizontalLayout {
+        padding: Space.lg;
+        spacing: Space.md;
+        alignment: space-between;
+
+        Text {
+            text: UserMessages.text(RoomView.toast-message, RoomView.toast-detail);
+            color: root.is-file-saved ? Palette.foreground : AppStyle.danger;
+            wrap: word-wrap;
+            vertical-alignment: center;
+            accessible-live-region: root.is-file-saved ? AccessibleLiveness.polite : AccessibleLiveness.assertive;
+        }
+
+        IconButton {
+            size: Size.target-min;
+            radius: Radius.sm;
+            icon-size: IconSize.sm;
+            icon: IconSet.X;
+            label: @tr("Dismiss");
+            clicked => {
+                Actions.dismiss-toast();
+            }
+        }
+    }
+}
 
 export component ChatScreen inherits Rectangle {
     in-out property <string> input-message: "";
     in property <bool> window-minimized;
-
-    init => {
-        Composer.clear();
-        Shell.close-overlays();
-        Shell.room-info-pane-open = false;
-        TextSelection.clear();
-        Reactions.close();
-        MessageMenu.close();
-        RoomMenu.close();
-        ReplySwipe.clear();
-        DeliveryTip.clear();
-        Polls.clear();
-        Actions.timeline-visibility-changed(root.timeline-visible);
-    }
 
     property <bool> compact: root.width < Metrics.compact-breakpoint;
     property <bool> has-room: RoomView.selected-room-name != "";
@@ -79,13 +98,29 @@ export component ChatScreen inherits Rectangle {
     property <length> timeline-width: root.width - root.timeline-x - root.room-info-pane-inset;
 
     property <bool> has-toast: RoomView.toast-message != UserMessageKind.none;
-    property <bool> is-file-saved-toast: RoomView.toast-message == UserMessageKind.file-saved;
-    property <color> toast-color: root.is-file-saved-toast
-        ? Palette.foreground
-        : AppStyle.danger;
-    property <AccessibleLiveness> toast-liveness: root.is-file-saved-toast
-        ? AccessibleLiveness.polite
-        : AccessibleLiveness.assertive;
+
+    init => {
+        LocalState.forget-session();
+        Actions.timeline-visibility-changed(root.timeline-visible);
+    }
+
+    changed compact => {
+        if !root.compact {
+            Shell.nav-open = false;
+        }
+    }
+
+    changed timeline-visible => {
+        Actions.timeline-visibility-changed(root.timeline-visible);
+    }
+
+    changed room-info-pane-up => {
+        if root.room-info-pane-up {
+            Actions.show-room-info-pane();
+        } else {
+            Actions.hide-room-info-pane();
+        }
+    }
 
     pure function snapped-width(width: length) -> length {
         if width < Metrics.sidebar-collapse-at {
@@ -129,24 +164,6 @@ export component ChatScreen inherits Rectangle {
         timeline.focus-nav();
     }
 
-    changed compact => {
-        if !root.compact {
-            Shell.nav-open = false;
-        }
-    }
-
-    changed timeline-visible => {
-        Actions.timeline-visibility-changed(root.timeline-visible);
-    }
-
-    changed room-info-pane-up => {
-        if root.room-info-pane-up {
-            Actions.show-room-info-pane();
-        } else {
-            Actions.hide-room-info-pane();
-        }
-    }
-
     if !root.compact: Sidebar {
         x: 0;
         y: 0;
@@ -188,9 +205,6 @@ export component ChatScreen inherits Rectangle {
         width: root.timeline-width;
         height: root.height;
         above-modal: Shell.nav-on-top;
-        room-opened => {
-            Shell.nav-open = false;
-        }
     }
 
     if !root.compact: ResizeHandle {
@@ -238,38 +252,10 @@ export component ChatScreen inherits Rectangle {
         room-info-in-pane: root.room-info-pane-up;
     }
 
-    if has-toast: Rectangle {
-        width: min(max(Metrics.toast-min-width, root.timeline-width - 2 * Space.xl), Metrics.toast-max-width);
+    if root.has-toast: Toast {
+        width: clamp(root.timeline-width - 2 * Space.xl, Metrics.toast-min-width, Metrics.toast-max-width);
         x: root.timeline-x + (root.timeline-width - self.width) / 2;
         y: root.height - self.height - Space.xl;
-        height: toast-layout.preferred-height;
-        border-radius: Radius.sm;
-        background: Palette.alternate-background;
-
-        toast-layout := HorizontalLayout {
-            padding: Space.lg;
-            spacing: Space.md;
-            alignment: space-between;
-
-            Text {
-                text: UserMessages.text(RoomView.toast-message, RoomView.toast-detail);
-                color: root.toast-color;
-                wrap: word-wrap;
-                vertical-alignment: center;
-                accessible-live-region: root.toast-liveness;
-            }
-
-            IconButton {
-                size: Size.target-min;
-                radius: Radius.sm;
-                icon-size: IconSize.sm;
-                icon: IconSet.X;
-                label: @tr("Dismiss");
-                clicked => {
-                    Actions.dismiss-toast();
-                }
-            }
-        }
     }
 
     Drawer {

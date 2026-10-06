@@ -1,12 +1,10 @@
-import {
-    Palette,
-} from "std-widgets.slint";
+import { Palette } from "std-widgets.slint";
 
-import { ReactionPicker, ReactionStrip } from "reaction-picker.slint";
-import { ReactionDetail } from "reaction-detail.slint";
-import { PollVoters } from "poll-voters.slint";
-import { ModalHost, PickerCard } from "../../../../components/overlay.slint";
-import { DeliveryTip, Reactions, Shell } from "../../../../local.slint";
+import { ReactionPicker, ReactionStrip } from "./reaction-picker.slint";
+import { ReactionDetail } from "./reaction-detail.slint";
+import { PollVoters } from "./poll-voters.slint";
+import { ModalHost, PickerCard, Placement } from "../../../../components/overlay.slint";
+import { DeliveryTip, ReactionPopup, Reactions, Shell } from "../../../../local.slint";
 import { Actions } from "../../../../actions.slint";
 import { Deliveries, DeliveryStatus } from "../../../../messages.slint";
 import { StickerView } from "../../../../views.slint";
@@ -31,41 +29,58 @@ component TipCard inherits PickerCard {
     }
 }
 
+component ReactionPopover inherits ModalHost {
+    in property <length> card-max-width;
+    in property <length> card-max-height;
+
+    callback closed();
+
+    property <length> edge: Space.md;
+    property <length> gap: Space.md;
+    property <length> card-width: min(root.card-max-width, root.width - 2 * root.edge);
+    property <length> card-height: min(root.card-max-height, root.height - 2 * root.edge);
+    property <length> above-y: Reactions.anchor.y - root.card-height - root.gap;
+
+    width: 100%;
+    height: 100%;
+    dim: false;
+    dismissed => {
+        Reactions.close();
+        root.closed();
+    }
+
+    Rectangle {
+        x: Placement.fit(
+            Reactions.anchor.is-own
+                ? Reactions.anchor.x + Reactions.anchor.width - root.card-width
+                : Reactions.anchor.x,
+            root.card-width,
+            root.width,
+            root.edge);
+        y: root.above-y >= root.edge
+            ? root.above-y
+            : clamp(Reactions.anchor.y + Reactions.anchor.height + root.gap,
+                    root.edge,
+                    max(root.edge, root.height - root.card-height - root.edge));
+        width: root.card-width;
+        height: root.card-height;
+
+        @children
+    }
+}
+
 export component ReactionOverlay inherits Rectangle {
     in property <length> timeline-bottom: root.height;
 
     callback closed();
 
     property <length> edge: Space.md;
-    property <length> gap: Space.md;
     property <duration> strip-close-delay: Motion.close-delay;
     property <length> timeline-top: Metrics.header-row;
 
     property <bool> strip-in-view:
         Reactions.strip-anchor.y + Reactions.strip-anchor.height > root.timeline-top
         && Reactions.strip-anchor.y < root.timeline-bottom;
-
-    property <length> pane-w: min(Metrics.picker-width, root.width - 2 * root.edge);
-    property <length> pane-h: min(Metrics.picker-height, root.height - 2 * root.edge);
-    property <length> detail-w: min(Metrics.reaction-detail-width, root.width - 2 * root.edge);
-    property <length> detail-h: min(Metrics.reaction-detail-height, root.height - 2 * root.edge);
-    property <length> voters-w: min(Metrics.poll-voters-width, root.width - 2 * root.edge);
-    property <length> voters-h: min(Metrics.poll-voters-height, root.height - 2 * root.edge);
-
-    pure function place-x(anchor-x: length, anchor-w: length, is-own: bool, w: length) -> length {
-        return clamp(
-            is-own ? anchor-x + anchor-w - w : anchor-x,
-            root.edge,
-            max(root.edge, root.width - w - root.edge));
-    }
-
-    pure function place-y(anchor-y: length, anchor-h: length, h: length) -> length {
-        return (anchor-y - h - root.gap >= root.edge)
-            ? anchor-y - h - root.gap
-            : clamp(anchor-y + anchor-h + root.gap,
-                    root.edge,
-                    max(root.edge, root.height - h - root.edge));
-    }
 
     Timer {
         interval: Motion.reveal-delay;
@@ -102,26 +117,19 @@ export component ReactionOverlay inherits Rectangle {
         more-clicked => {
             Shell.picker-open = false;
             Shell.attach-open = false;
-            Reactions.open-picker(Reactions.strip-anchor);
+            Reactions.open-popup(Reactions.strip-anchor, ReactionPopup.picker);
         }
     }
 
-    if Reactions.picker-open: ModalHost {
-        width: 100%;
-        height: 100%;
-        dim: false;
+    if Reactions.popup == ReactionPopup.picker: ReactionPopover {
         label: @tr("React to a message");
-        dismissed => {
-            Reactions.close();
+        card-max-width: Metrics.picker-width;
+        card-max-height: Metrics.picker-height;
+        closed => {
             root.closed();
         }
 
         ReactionPicker {
-            x: root.place-x(Reactions.anchor.x, Reactions.anchor.width,
-                            Reactions.anchor.is-own, root.pane-w);
-            y: root.place-y(Reactions.anchor.y, Reactions.anchor.height, root.pane-h);
-            width: root.pane-w;
-            height: root.pane-h;
             encrypted: StickerView.room-encrypted;
             picked(key) => {
                 Actions.toggle-reaction(Reactions.anchor.event-id, key);
@@ -131,22 +139,15 @@ export component ReactionOverlay inherits Rectangle {
         }
     }
 
-    if Reactions.detail-visible: ModalHost {
-        width: 100%;
-        height: 100%;
-        dim: false;
+    if Reactions.detail-visible: ReactionPopover {
         label: @tr("Everyone who reacted");
-        dismissed => {
-            Reactions.close();
+        card-max-width: Metrics.reaction-detail-width;
+        card-max-height: Metrics.reaction-detail-height;
+        closed => {
             root.closed();
         }
 
         ReactionDetail {
-            x: root.place-x(Reactions.anchor.x, Reactions.anchor.width,
-                            Reactions.anchor.is-own, root.detail-w);
-            y: root.place-y(Reactions.anchor.y, Reactions.anchor.height, root.detail-h);
-            width: root.detail-w;
-            height: root.detail-h;
             items: Reactions.items;
             toggled(key) => {
                 Actions.toggle-reaction(Reactions.anchor.event-id, key);
@@ -154,36 +155,27 @@ export component ReactionOverlay inherits Rectangle {
         }
     }
 
-    if Reactions.voters-visible: ModalHost {
-        width: 100%;
-        height: 100%;
-        dim: false;
+    if Reactions.voters-visible: ReactionPopover {
         label: @tr("Who voted");
-        dismissed => {
-            Reactions.close();
+        card-max-width: Metrics.poll-voters-width;
+        card-max-height: Metrics.poll-voters-height;
+        closed => {
             root.closed();
         }
 
         PollVoters {
-            x: root.place-x(Reactions.anchor.x, Reactions.anchor.width,
-                            Reactions.anchor.is-own, root.voters-w);
-            y: root.place-y(Reactions.anchor.y, Reactions.anchor.height, root.voters-h);
-            width: root.voters-w;
-            height: root.voters-h;
             answers: Reactions.target.poll-answers;
         }
     }
 
     if Reactions.tooltip-row >= 0 && !Reactions.open: TipCard {
-        x: clamp(Reactions.tooltip-anchor.x, root.edge,
-                 max(root.edge, root.width - self.width - root.edge));
+        x: Placement.fit(Reactions.tooltip-anchor.x, self.width, root.width, root.edge);
         y: max(root.edge, Reactions.tooltip-anchor.y - self.height - Space.sm);
         text: Reactions.tooltip-text;
     }
 
     if DeliveryTip.showing && !Reactions.open: TipCard {
-        x: clamp(DeliveryTip.anchor.x + DeliveryTip.anchor.width - self.width, root.edge,
-                 max(root.edge, root.width - self.width - root.edge));
+        x: Placement.fit(DeliveryTip.anchor.x + DeliveryTip.anchor.width - self.width, self.width, root.width, root.edge);
         y: max(root.edge, DeliveryTip.anchor.y - self.height - Space.sm);
         text: DeliveryTip.on-counter
             ? Deliveries.label(DeliveryTip.target.delivery, DeliveryTip.target.readers,

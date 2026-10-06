@@ -1,4 +1,4 @@
-import { AudioKind, ChildAccess, Delivery, LogLevel, MediaFailure, MediaState, MemberRole, MemberRowKind, MessageKind, PollPhase, PreviewKind, ReactionSend, SendState, ServiceKind } from "../../../enums.slint";
+import { AudioKind, ChildAccess, Delivery, LogLevel, MediaFailure, MediaState, MemberRole, MemberRowKind, MessageKind, PollPhase, PreviewKind, ReactionSend, SendState, ServiceKind, UserMessageKind } from "./enums.slint";
 
 export struct RoomEntry {
     id: string,
@@ -195,6 +195,22 @@ export struct StickerPackTab {
     header-row: int,
     icon: image,
     has-icon: bool,
+}
+
+export struct UserMessage {
+    kind: UserMessageKind,
+    detail: string,
+}
+
+export struct VerificationEmoji {
+    symbol: string,
+    description: string,
+}
+
+export struct LoginRequest {
+    homeserver: string,
+    username: string,
+    password: string,
 }
 
 export struct SendMessageRequest {

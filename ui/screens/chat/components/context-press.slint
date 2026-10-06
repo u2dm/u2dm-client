@@ -1,0 +1,15 @@
+import { WindowView } from "../../../views.slint";
+
+export component ContextPress {
+    in property <bool> hovered;
+
+    callback pressed();
+
+    property <int> presses: WindowView.context-presses;
+
+    changed presses => {
+        if root.hovered {
+            root.pressed();
+        }
+    }
+}

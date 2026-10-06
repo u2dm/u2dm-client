@@ -1,0 +1,43 @@
+import { IconDisplay, IconSet } from "@lucide";
+import { MessageEntry } from "../../../../types.slint";
+import { Delivery } from "../../../../enums.slint";
+import { Fonts, IconSize, Space } from "../../../../theme.slint";
+import { DeliveryMark, ReaderCount, Readers } from "./delivery-mark.slint";
+
+export component MessageMeta inherits HorizontalLayout {
+    in property <MessageEntry> msg;
+    in property <int> timeline-row;
+    in property <color> tint;
+
+    spacing: Space.sm;
+
+    if root.msg.edited: IconDisplay {
+        y: (parent.height - self.height) / 2;
+        icon: IconSet.Pencil;
+        size: IconSize.xs;
+        stroke: root.tint;
+    }
+
+    if Readers.counted(root.msg): ReaderCount {
+        y: (parent.height - self.height) / 2;
+        msg: root.msg;
+        timeline-row: root.timeline-row;
+        tint: root.tint;
+    }
+
+    Text {
+        text: root.msg.timestamp;
+        font-size: Fonts.body-small;
+        color: root.tint;
+        horizontal-alignment: right;
+        vertical-alignment: center;
+    }
+
+    if root.msg.delivery != Delivery.none && root.msg.delivery != Delivery.seen: DeliveryMark {
+        y: (parent.height - self.height) / 2;
+        msg: root.msg;
+        timeline-row: root.timeline-row;
+        tint: root.tint;
+        counted: Readers.counted(root.msg);
+    }
+}

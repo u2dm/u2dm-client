@@ -12,8 +12,7 @@ import {
     ServiceKind,
     LoginMethodKind,
     AudioKind,
-    RoomInfoPlacement,
-} from "enums.slint";
+} from "./enums.slint";
 import {
     LoginView,
     SessionView,
@@ -32,13 +31,26 @@ import {
     RoomMenuView,
     RoomLogView,
     UserInfoView,
-} from "views.slint";
-import { Actions } from "actions.slint";
-import { Polls, Probe, ReplySwipe, RoomMenu, Shell } from "local.slint";
-import { Metrics } from "theme.slint";
-import {
-    EmojiStore,
-} from "screens/chat/components/timeline/emoji-picker.slint";
+} from "./views.slint";
+import { Actions } from "./actions.slint";
+import { EmojiStore } from "./emoji-store.slint";
+import { Polls, Probe, ReplySwipe, RoomMenu, Shell } from "./local.slint";
+import { Metrics } from "./theme.slint";
+import { LoadingScreen } from "./screens/login/loading.slint";
+import { RestorePausedScreen } from "./screens/login/restore-paused.slint";
+import { HomeserverScreen } from "./screens/login/homeserver.slint";
+import { CredentialsScreen } from "./screens/login/credentials.slint";
+import { ReauthenticateScreen } from "./screens/login/reauthenticate.slint";
+import { ChatScreen } from "./screens/chat/chat.slint";
+import { VerificationDialog } from "./screens/chat/components/verification.slint";
+import { AttachmentDialog } from "./screens/chat/components/timeline/attachment-dialog.slint";
+import { PollDialog } from "./screens/chat/components/timeline/poll-dialog.slint";
+import { VideoPlayer } from "./screens/chat/components/timeline/video-player.slint";
+import { RoomInfoDialog } from "./screens/chat/components/room-info.slint";
+import { EventSourceDialog } from "./screens/chat/components/event-source.slint";
+import { UserInfoDialog } from "./screens/chat/components/user-info.slint";
+import { RoomLogDialog } from "./screens/chat/components/room-log.slint";
+
 export { EmojiStore }
 export { LoginPhase, ConnectionState, TimelineState, VerificationPhase, MediaState, MediaFailure }
 export { MessageKind, PreviewKind, ServiceKind, LoginMethodKind, AudioKind }
@@ -46,20 +58,6 @@ export { LoginView, SessionView, DirectoryView, SpaceIndexView, RoomView, Sticke
 export { AttachmentView, VideoView, AudioView, UnsentView, WindowView, RoomInfoView, SourceView, RoomMenuView, RoomLogView, UserInfoView }
 export { Actions }
 export { Probe, ReplySwipe, RoomMenu }
-import { LoadingScreen } from "screens/login/loading.slint";
-import { RestorePausedScreen } from "screens/login/restore-paused.slint";
-import { HomeserverScreen } from "screens/login/homeserver.slint";
-import { CredentialsScreen } from "screens/login/credentials.slint";
-import { ReauthenticateScreen } from "screens/login/reauthenticate.slint";
-import { ChatScreen } from "screens/chat/chat.slint";
-import { VerificationDialog } from "components/verification.slint";
-import { AttachmentDialog } from "screens/chat/components/timeline/attachment-dialog.slint";
-import { PollDialog } from "screens/chat/components/timeline/poll-dialog.slint";
-import { VideoPlayer } from "screens/chat/components/timeline/video-player.slint";
-import { RoomInfoDialog } from "screens/chat/components/room-info.slint";
-import { EventSourceDialog } from "screens/chat/components/event-source.slint";
-import { UserInfoDialog } from "screens/chat/components/user-info.slint";
-import { RoomLogDialog } from "screens/chat/components/room-log.slint";
 
 export component AppWindow inherits Window {
     title: @tr("U2DM Matrix Client");
@@ -91,7 +89,7 @@ export component AppWindow inherits Window {
         window-minimized: root.minimized;
     }
 
-    if AttachmentView.visible && LoginView.step == LoginPhase.logged-in: AttachmentDialog { }
+    if Shell.attachment-open: AttachmentDialog { }
     if Shell.poll-open && LoginView.step == LoginPhase.logged-in: PollDialog {
         room-id: DirectoryView.selected-room-id;
         source: Polls.edit-source;
@@ -100,11 +98,11 @@ export component AppWindow inherits Window {
             Polls.stop-editing();
         }
     }
-    if VideoView.visible && LoginView.step == LoginPhase.logged-in: VideoPlayer { }
-    if RoomInfoView.placement == RoomInfoPlacement.dialog && LoginView.step == LoginPhase.logged-in: RoomInfoDialog { }
-    if UserInfoView.visible && LoginView.step == LoginPhase.logged-in: UserInfoDialog { }
-    if SourceView.visible && LoginView.step == LoginPhase.logged-in: EventSourceDialog { }
-    if RoomLogView.visible && LoginView.step == LoginPhase.logged-in: RoomLogDialog { }
+    if Shell.video-open: VideoPlayer { }
+    if Shell.room-info-open: RoomInfoDialog { }
+    if Shell.user-info-open: UserInfoDialog { }
+    if Shell.source-open: EventSourceDialog { }
+    if Shell.room-log-open: RoomLogDialog { }
 
-    if VerificationView.visible && LoginView.step == LoginPhase.logged-in: VerificationDialog { }
+    if Shell.verification-open: VerificationDialog { }
 }

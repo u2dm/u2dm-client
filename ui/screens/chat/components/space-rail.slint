@@ -1,8 +1,8 @@
 import { Palette } from "std-widgets.slint";
 import { Icon, IconDisplay, IconSet } from "@lucide";
 
-import { SpaceEntry } from "./types.slint";
-import { RailTileFace } from "./tile.slint";
+import { SpaceEntry } from "../../../types.slint";
+import { RailTileFace } from "./rail-tile.slint";
 import { ClickArea, ListItemArea } from "../../../components/a11y.slint";
 import { DirectoryView } from "../../../views.slint";
 import { RoomScope } from "../../../enums.slint";
@@ -17,14 +17,9 @@ enum SpaceDrag {
 }
 
 component SpaceTile inherits ListItemArea {
-    in property <string> initial;
-    in property <bool> has-avatar;
-    in property <image> avatar;
+    in property <SpaceEntry> entry;
     in property <bool> has-icon;
     in property <Icon> icon;
-    in property <bool> alert;
-    in property <bool> mention;
-    in property <bool> hint;
     in property <bool> elevated;
     in property <bool> hidden;
 
@@ -32,6 +27,7 @@ component SpaceTile inherits ListItemArea {
     property <length> marker-height: Size.lg;
 
     height: Metrics.rail-row;
+    label: root.entry.name;
     ring-radius: Radius.md;
     ring-inset: Metrics.rail-tile-inset;
 
@@ -59,14 +55,14 @@ component SpaceTile inherits ListItemArea {
             width: 100%;
             height: 100%;
             caption: root.label;
-            initial: root.initial;
-            has-avatar: root.has-avatar;
-            avatar: root.avatar;
+            initial: root.entry.initial;
+            has-avatar: root.entry.has-avatar;
+            avatar: root.entry.avatar;
             has-icon: root.has-icon;
             icon: root.icon;
-            alert: root.alert;
-            mention: root.mention;
-            hint: root.hint;
+            alert: root.entry.alert;
+            mention: root.entry.mention;
+            hint: root.entry.hint;
             selected: root.selected;
             glyph-extent: root.glyph-size;
             glyph-top: Space.sm;
@@ -103,10 +99,6 @@ export component SpaceRail inherits Rectangle {
 
     background: AppStyle.surface-rail;
 
-    public function focus-menu() {
-        menu-touch.take-focus();
-    }
-
     function begin-drag(idx: int, entry: SpaceEntry, selected: bool) {
         root.drag-from = idx;
         root.drag-dy = 0;
@@ -117,13 +109,13 @@ export component SpaceRail inherits Rectangle {
 
     function update-drag(dy: length) {
         root.drag-dy = dy;
-        if (root.drag == SpaceDrag.held && abs(dy) > root.drag-threshold) {
+        if root.drag == SpaceDrag.held && abs(dy) > root.drag-threshold {
             root.drag = SpaceDrag.moved;
         }
     }
 
     function end-drag() {
-        if (root.drag == SpaceDrag.moved && root.drag-to != root.drag-from) {
+        if root.drag == SpaceDrag.moved && root.drag-to != root.drag-from {
             Actions.move-space(root.drag-from, root.drag-to);
         }
         root.drag = SpaceDrag.idle;
@@ -136,7 +128,7 @@ export component SpaceRail inherits Rectangle {
     }
 
     pure function slot-for(idx: int) -> int {
-        if (!root.dragging || idx == root.drag-from) {
+        if !root.dragging || idx == root.drag-from {
             return idx;
         }
         return root.drag-rank(idx) < root.drag-to
@@ -192,7 +184,7 @@ export component SpaceRail inherits Rectangle {
             draggable: false;
             above-modal: root.above-modal;
             index: 0;
-            label: @tr("All Rooms");
+            entry: { name: @tr("All Rooms") };
             has-icon: true;
             icon: IconSet.MessagesSquare;
             selected: DirectoryView.room-scope == RoomScope.all;
@@ -209,12 +201,14 @@ export component SpaceRail inherits Rectangle {
             draggable: false;
             above-modal: root.above-modal;
             index: 1;
-            label: @tr("DMs");
+            entry: {
+                name: @tr("DMs"),
+                alert: DirectoryView.direct-alert,
+                mention: DirectoryView.direct-mention,
+                hint: DirectoryView.direct-hint,
+            };
             has-icon: true;
             icon: IconSet.UserRound;
-            alert: DirectoryView.direct-alert;
-            mention: DirectoryView.direct-mention;
-            hint: DirectoryView.direct-hint;
             selected: DirectoryView.room-scope == RoomScope.direct;
             clicked => {
                 Actions.select-direct();
@@ -230,20 +224,14 @@ export component SpaceRail inherits Rectangle {
             above-modal: root.above-modal;
             index: idx + root.fixed-tiles;
             hidden: root.dragging && idx == root.drag-from;
-            label: space.name;
-            initial: space.initial;
-            has-avatar: space.has-avatar;
-            avatar: space.avatar;
-            alert: space.alert;
-            mention: space.mention;
-            hint: space.hint;
+            entry: space;
             selected: DirectoryView.selected-space-id == space.id;
             animate y {
                 duration: Motion.fast;
                 easing: ease-out;
             }
             changed pressed => {
-                if (self.pressed) {
+                if self.pressed {
                     root.begin-drag(idx, space, DirectoryView.selected-space-id == space.id);
                 } else {
                     root.end-drag();
@@ -253,7 +241,7 @@ export component SpaceRail inherits Rectangle {
                 root.update-drag(dy);
             }
             clicked => {
-                if (root.drag != SpaceDrag.moved) {
+                if root.drag != SpaceDrag.moved {
                     Actions.select-space(space.id);
                 }
             }
@@ -266,13 +254,7 @@ export component SpaceRail inherits Rectangle {
             height: root.row-height;
             enabled: false;
             elevated: true;
-            label: root.drag-entry.name;
-            initial: root.drag-entry.initial;
-            has-avatar: root.drag-entry.has-avatar;
-            avatar: root.drag-entry.avatar;
-            alert: root.drag-entry.alert;
-            mention: root.drag-entry.mention;
-            hint: root.drag-entry.hint;
+            entry: root.drag-entry;
             selected: root.drag-selected;
         }
     }

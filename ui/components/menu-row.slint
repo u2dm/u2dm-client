@@ -1,15 +1,16 @@
 import { Palette } from "std-widgets.slint";
 import { IconDisplay, Icon } from "@lucide";
 
-import { ClickArea } from "a11y.slint";
-import { DotPulse } from "dot-pulse.slint";
+import { ClickArea } from "./a11y.slint";
+import { DotPulse } from "./dot-pulse.slint";
 import { AppStyle, Fonts, IconSize, Opacity, Radius, Space } from "../theme.slint";
 
 export component MenuRow inherits Rectangle {
     in property <Icon> icon;
     in property <string> label;
-    in property <color> tint: AppStyle.foreground-muted;
-    in property <color> text-color: Palette.foreground;
+    in property <bool> destructive: false;
+    in property <color> tint: root.destructive ? AppStyle.danger-muted : AppStyle.foreground-muted;
+    in property <color> text-color: root.destructive ? AppStyle.danger-muted : Palette.foreground;
     in property <bool> focusable: true;
     in property <bool> roving-focus: false;
     in property <bool> above-modal: false;

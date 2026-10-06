@@ -1,6 +1,7 @@
-import { Fonts, Glyph, Weight } from "../theme.slint";
+import { Avatars, Fonts, Glyph, Weight } from "../theme.slint";
 
 export component Avatar inherits Rectangle {
+    in property <int> color-index;
     in property <bool> has-image;
     in property <image> image;
     in property <string> initial;
@@ -10,6 +11,7 @@ export component Avatar inherits Rectangle {
     in property <string> initial-font-family: Fonts.emoji;
 
     border-radius: self.width / 2;
+    background: Avatars.color(root.color-index);
     clip: true;
 
     if root.has-image: Image {

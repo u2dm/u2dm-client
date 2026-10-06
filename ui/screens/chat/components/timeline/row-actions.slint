@@ -1,19 +1,16 @@
-import {
-    Palette,
-} from "std-widgets.slint";
+import { Palette } from "std-widgets.slint";
 import { IconDisplay, IconSet } from "@lucide";
 
-import { MessageEntry } from "../types.slint";
+import { MessageEntry } from "../../../../types.slint";
 
-import { MessagePreview } from "../message-preview.slint";
 import { MessageShape } from "./message-body.slint";
-import { QuickReactions } from "./reaction-picker.slint";
+import { QuickReactions } from "./quick-reactions.slint";
 import { Interaction } from "../../../../components/a11y.slint";
 import { Pill } from "../../../../components/pill.slint";
 import {
     Composer,
     MessageMenu,
-    ReactionAnchor,
+    AnchorRect,
     Reactions,
     TextSelection,
 } from "../../../../local.slint";
@@ -32,7 +29,7 @@ export component RowActions inherits Rectangle {
     in property <bool> bubble-hovered;
     in property <bool> strip-mine;
 
-    callback anchor() -> ReactionAnchor;
+    callback anchor() -> AnchorRect;
 
     property <bool> has-remote-id: root.msg.event-id != "";
     property <bool> can-edit: root.msg.text-editable;
@@ -139,9 +136,7 @@ export component RowActions inherits Rectangle {
         } else if action == RowAction.select-text {
             TextSelection.select(root.msg.unique-id);
         } else if action == RowAction.reply {
-            Composer.reply-event-id = root.msg.event-id;
-            Composer.reply-sender = root.msg.sender;
-            Composer.reply-preview = MessagePreview.label(root.msg.preview-kind, root.msg.preview-body);
+            Composer.reply-to(root.msg);
         } else {
             Actions.toggle-reaction(root.msg.event-id, QuickReactions.default-key);
         }
@@ -165,11 +160,11 @@ export component RowActions inherits Rectangle {
                 return accept;
             }
             if event.text == Key.RightArrow {
-                root.action-cursor = mod(root.action-cursor + 1, root.row-actions.length);
+                root.action-cursor = Interaction.next(root.action-cursor, root.row-actions.length);
                 return accept;
             }
             if event.text == Key.LeftArrow {
-                root.action-cursor = mod(root.action-cursor + root.row-actions.length - 1, root.row-actions.length);
+                root.action-cursor = Interaction.previous(root.action-cursor, root.row-actions.length);
                 return accept;
             }
             if Interaction.activates(event.text) {
@@ -299,7 +294,7 @@ export component RowActions inherits Rectangle {
                 root.run-action(RowAction.react);
             }
             changed has-hover => {
-                if (self.has-hover && root.has-remote-id) {
+                if self.has-hover && root.has-remote-id {
                     Reactions.hover-bubble(root.anchor());
                 } else {
                     Reactions.leave-bubble(root.msg.event-id);

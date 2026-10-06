@@ -1,8 +1,8 @@
 import { Palette, Spinner } from "std-widgets.slint";
 import { Icon, IconDisplay, IconSet } from "@lucide";
 
-import { EmojiInsert } from "../types.slint";
-import { EmojiStore } from "./emoji-picker.slint";
+import { EmojiInsert } from "../../../../types.slint";
+import { EmojiStore } from "../../../../emoji-store.slint";
 import { AppStyle, Fonts, IconSize, Metrics, Motion, Radius, Size, Space, Stroke } from "../../../../theme.slint";
 import { ClickArea, Interaction } from "../../../../components/a11y.slint";
 
@@ -86,12 +86,11 @@ export component ComposerField inherits Rectangle {
     property <int> caret: 0;
     property <EmojiInsert> pending-insert;
 
-    property <int> max-lines: 6;
     property <length> text-inset: Space.md;
     property <length> line-height: line-probe.preferred-height;
     property <length> text-height: min(
         max(text-input.preferred-height, root.line-height),
-        root.line-height * root.max-lines,
+        root.line-height * Metrics.composer-max-lines,
     );
     property <length> row-height: max(
         Metrics.composer-row,
@@ -138,27 +137,19 @@ export component ComposerField inherits Rectangle {
         event.modifiers.control && !event.modifiers.shift && event.text == "v"
     }
 
+    pure function scroll-in-range(content-y: length) -> length {
+        return min(0px, max(scroll.height - scroll.content-height, content-y));
+    }
+
     function keep-scroll-in-range() {
-        scroll.content-y = min(
-            0px,
-            max(scroll.height - scroll.content-height, scroll.content-y),
-        );
+        scroll.content-y = root.scroll-in-range(scroll.content-y);
     }
 
     function reveal-caret(caret-y: length) {
         if caret-y + scroll.content-y < 0px {
-            scroll.content-y = min(
-                0px,
-                max(scroll.height - scroll.content-height, -caret-y),
-            );
+            scroll.content-y = root.scroll-in-range(-caret-y);
         } else if caret-y + scroll.content-y > scroll.height - root.line-height {
-            scroll.content-y = min(
-                0px,
-                max(
-                    scroll.height - scroll.content-height,
-                    scroll.height - caret-y - root.line-height,
-                ),
-            );
+            scroll.content-y = root.scroll-in-range(scroll.height - caret-y - root.line-height);
         }
     }
 
@@ -195,11 +186,11 @@ export component ComposerField inherits Rectangle {
                 focus-on-click: false;
                 focus-on-tab-navigation: false;
                 capture-key-pressed(event) => {
-                    if (event.text == Key.Return && !event.modifiers.shift) {
+                    if event.text == Key.Return && !event.modifiers.shift {
                         root.send();
                         return accept;
                     }
-                    if (root.is-paste(event)) {
+                    if root.is-paste(event) {
                         return root.paste-pressed();
                     }
                     return root.key-captured(event);

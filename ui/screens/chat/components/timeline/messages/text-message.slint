@@ -1,6 +1,6 @@
 import { Palette } from "std-widgets.slint";
 
-import { MessageEntry } from "../../types.slint";
+import { MessageEntry } from "../../../../../types.slint";
 import { Actions } from "../../../../../actions.slint";
 import { TextSelection } from "../../../../../local.slint";
 import { AppStyle, Fonts } from "../../../../../theme.slint";
@@ -43,18 +43,18 @@ export component TextMessage inherits Rectangle {
             selection-foreground-color: Palette.selection-foreground;
 
             init => {
-                if (TextSelection.take()) {
+                if TextSelection.take() {
                     self.focus();
                     self.select-all();
                 }
             }
             changed has-focus => {
-                if (!self.has-focus) {
+                if !self.has-focus {
                     TextSelection.clear();
                 }
             }
             key-pressed(event) => {
-                if (event.text == Key.Escape) {
+                if event.text == Key.Escape {
                     TextSelection.clear();
                     return accept;
                 }

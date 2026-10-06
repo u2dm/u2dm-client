@@ -1,0 +1,84 @@
+import { Palette } from "std-widgets.slint";
+import { Icon, IconSet } from "@lucide";
+
+import { MenuRow } from "./menu-row.slint";
+import { PickerCard } from "./overlay.slint";
+import { Fonts, Motion, Space } from "../theme.slint";
+
+export enum ConfirmChoice { confirm, cancel }
+
+export global Confirmations {
+    public pure function other(choice: ConfirmChoice) -> ConfirmChoice {
+        return choice == ConfirmChoice.confirm ? ConfirmChoice.cancel : ConfirmChoice.confirm;
+    }
+}
+
+export component MenuCard inherits PickerCard {
+    in property <int> row-count;
+    in property <length> row-height;
+    in property <length> pad: Space.sm;
+
+    height: root.row-count * root.row-height + 2 * root.pad;
+    opacity: 0;
+
+    animate opacity {
+        duration: Motion.fast;
+        easing: ease-out;
+    }
+
+    init => {
+        self.opacity = 1;
+    }
+
+    TouchArea { }
+
+    @children
+}
+
+export component MenuConfirmation inherits VerticalLayout {
+    in property <string> prompt;
+    in property <Icon> confirm-icon;
+    in property <string> confirm-label;
+    in property <length> row-height;
+    in property <ConfirmChoice> cursor: ConfirmChoice.cancel;
+    in property <bool> rings;
+    in property <bool> above-modal;
+
+    callback answered(ConfirmChoice);
+
+    Text {
+        vertical-stretch: 1;
+        text: root.prompt;
+        font-size: Fonts.label;
+        color: Palette.foreground;
+        wrap: word-wrap;
+        overflow: elide;
+        vertical-alignment: center;
+        horizontal-alignment: center;
+    }
+
+    MenuRow {
+        height: root.row-height;
+        icon: root.confirm-icon;
+        label: root.confirm-label;
+        destructive: true;
+        above-modal: root.above-modal;
+        focusable: false;
+        roving-focus: root.rings && root.cursor == ConfirmChoice.confirm;
+        clicked => {
+            root.answered(ConfirmChoice.confirm);
+        }
+    }
+
+    MenuRow {
+        height: root.row-height;
+        icon: IconSet.X;
+        label: @tr("Cancel");
+        above-modal: root.above-modal;
+        focusable: false;
+        roving-focus: root.rings && root.cursor == ConfirmChoice.cancel;
+        clicked => {
+            root.answered(ConfirmChoice.cancel);
+        }
+    }
+}
