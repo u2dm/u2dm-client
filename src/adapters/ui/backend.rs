@@ -342,7 +342,7 @@ fn show_thumbnail<B: UiBackend>(entry: &mut B::Message, image: Image) {
     entry.set_media_state(MediaState::Ready);
 }
 
-pub fn keep_shown_media<B: UiBackend>(shown: &B::Message, rebuilt: &mut B::Message) {
+pub fn keep_shown_enrichment<B: UiBackend>(shown: &B::Message, rebuilt: &mut B::Message) {
     if shown.has_avatar() && !rebuilt.has_avatar() {
         rebuilt.set_avatar(shown.avatar());
         rebuilt.set_has_avatar(true);
@@ -351,6 +351,10 @@ pub fn keep_shown_media<B: UiBackend>(shown: &B::Message, rebuilt: &mut B::Messa
         && rebuilt.media_state() == MediaState::Idle.ui_name()
     {
         show_thumbnail::<B>(rebuilt, shown.thumbnail());
+    }
+    let pronouns = shown.pronouns();
+    if !pronouns.is_empty() && rebuilt.pronouns().is_empty() {
+        rebuilt.set_pronouns(pronouns);
     }
 }
 
