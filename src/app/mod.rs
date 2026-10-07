@@ -31,6 +31,7 @@ mod user_info;
 mod verification;
 mod video;
 
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use active_timeline::ActiveTimeline;
@@ -39,7 +40,7 @@ use audio::AudioController;
 use establish::{EstablishedSession, Rollback};
 use event::{
     AppEvent, EndReason, MentionsEvent, MessageActionEvent, ReadersEvent, RoomActionEvent,
-    SessionEvent, TimelineEvent, UserInfoEvent,
+    SessionEvent, StickersEvent, TimelineEvent, UserInfoEvent,
 };
 use event_source::EventSourceViewer;
 use input::{CommandSender, EventSender, Inbox, Input};
@@ -81,6 +82,7 @@ use crate::domain::sticker::PackId;
 use crate::domain::sync::ConnectionStatus;
 use crate::domain::timeline::{AudioTrack, FailedSend, MessageReaders, TimelineFocus};
 use crate::domain::user_info::{IgnoreChange, Moderation, UserId};
+use crate::domain::verification::VerificationEvent;
 use crate::ports::browser::BrowserPort;
 use crate::ports::matrix::{AuthPort, AuthenticatedSession, CleanupReport, MediaPort, SessionPort};
 use crate::ports::media::MediaFilePort;
@@ -228,7 +230,7 @@ impl AppService {
             media: MediaActions::new(Arc::clone(&media_files), Arc::clone(&output)),
             audio: AudioController::new(Arc::clone(&output), events.clone()),
             video: VideoController::new(Arc::clone(&output), events.clone()),
-            stickers: Stickers::new(Arc::clone(&output)),
+            stickers: Stickers::new(Arc::clone(&output), events.clone()),
             space_index: SpaceIndex::new(Arc::clone(&output), events.clone()),
             room_info: RoomInfo::new(Arc::clone(&output), events.clone()),
             user_info: UserInfo::new(Arc::clone(&output), events.clone()),
@@ -1093,6 +1095,18 @@ impl AppService {
         }
     }
 
+    fn handle_stickers(&mut self, event: StickersEvent) {
+        match event {
+            StickersEvent::CatalogLoaded {
+                generation,
+                catalog,
+            } => self.stickers.catalog_loaded(generation, catalog),
+            StickersEvent::ImagesReady { generation, ready } => {
+                self.stickers.images_ready(generation, ready);
+            }
+        }
+    }
+
     fn handle_readers(&mut self, event: ReadersEvent) {
         match event {
             ReadersEvent::Named { request, readers } => {
@@ -1153,9 +1167,11 @@ impl AppService {
             AppEvent::SpaceOrderWriteFailed { op, spaces, error } => {
                 self.revert_space_orders(op, &spaces, &error);
             }
-            AppEvent::VerificationFlow(event) => self.verification.flow_advanced(event).await,
-            AppEvent::VerificationActionFailed(failure) => {
-                self.verification.action_failed(failure).await;
+            AppEvent::VerificationFlow { session, event } => {
+                self.settle_verification_flow(session, event).await;
+            }
+            AppEvent::VerificationActionFailed { session, failure } => {
+                self.settle_verification_failure(session, failure).await;
             }
             AppEvent::AttachmentPicked(picked) => {
                 self.attachments
@@ -1221,6 +1237,7 @@ impl AppService {
             AppEvent::UserInfo(event) => self.handle_user_info(event).await,
             AppEvent::Readers(event) => self.handle_readers(event),
             AppEvent::Mentions(event) => self.handle_mentions(event),
+            AppEvent::Stickers(event) => self.handle_stickers(event),
             AppEvent::RoomLogGrew => self.room_log.reread(),
         }
     }
@@ -1412,14 +1429,10 @@ impl AppService {
                 reason,
                 report,
             } => self.settle_erasure(session, reason, &report),
-            SessionEvent::TokensNotPersisted => show_toast(
-                self.output.as_ref(),
-                Toast::Error(UserMessage::new(UserMessageKind::SessionSaveFailed)),
-            ),
-            SessionEvent::UserAvatar(path) => {
-                self.output
-                    .publish(Box::new(move |view| view.lifecycle.avatar_path = path));
+            SessionEvent::TokensNotPersisted { session } => {
+                self.settle_tokens_not_persisted(session);
             }
+            SessionEvent::UserAvatar { session, path } => self.settle_user_avatar(session, path),
             SessionEvent::Resumed {
                 attempt,
                 capability,
@@ -1452,11 +1465,11 @@ impl AppService {
     }
 
     async fn settle_restore(&mut self, capability: AuthenticatedSession) {
-        if self.lifecycle.restore_succeeded().is_none() {
+        let Some(session) = self.lifecycle.restore_succeeded() else {
             tracing::info!("restore superseded, dropping session");
             return;
-        }
-        self.activate(capability).await;
+        };
+        self.activate(capability, session).await;
     }
 
     fn settle_discovery(&mut self, attempt: u64, info: ServerInfo) {
@@ -1514,37 +1527,57 @@ impl AppService {
         self.session.settle_logout(messages);
     }
 
+    fn settle_tokens_not_persisted(&self, session: u64) {
+        if self.lifecycle.runs(session) {
+            show_toast(
+                self.output.as_ref(),
+                Toast::Error(UserMessage::new(UserMessageKind::SessionSaveFailed)),
+            );
+        } else {
+            tracing::debug!("token save failure for a session that no longer runs, dropping");
+        }
+    }
+
+    fn settle_user_avatar(&self, session: u64, path: Option<PathBuf>) {
+        if self.lifecycle.runs(session) {
+            self.output
+                .publish(Box::new(move |view| view.lifecycle.avatar_path = path));
+        } else {
+            tracing::debug!("user avatar for a session that no longer runs, dropping");
+        }
+    }
+
     async fn settle_login(&mut self, attempt: u64, established: EstablishedSession) {
         self.session.finish_oauth();
         self.session.spend_pending_passphrase();
-        if self.lifecycle.promote_to_syncing(attempt).is_none() {
+        let Some(session) = self.lifecycle.promote_to_syncing(attempt) else {
             if let Some(message) = undo_superseded_login(established).await {
                 self.block_sign_in(message);
             } else {
                 self.return_to_idle(attempt);
             }
             return;
-        }
-        self.activate(established.commit().await).await;
+        };
+        self.activate(established.commit().await, session).await;
     }
 
     async fn settle_resume(&mut self, attempt: u64, capability: AuthenticatedSession) {
         self.session.finish_oauth();
-        if self.lifecycle.resume_syncing(attempt).is_none() {
+        let Some(session) = self.lifecycle.resume_syncing(attempt) else {
             tracing::info!("re-authentication superseded, releasing the session it produced");
             capability.lifecycle.suspend().await;
             self.return_to_idle(attempt);
             return;
-        }
-        self.activate(capability).await;
+        };
+        self.activate(capability, session).await;
     }
 
-    async fn activate(&mut self, capability: AuthenticatedSession) {
+    async fn activate(&mut self, capability: AuthenticatedSession, session: u64) {
         let user_id = capability.session.user_id.clone();
         tracing::info!(%user_id, "authenticated");
         self.held_session = HeldSession::Running(Box::new(capability));
         self.emit_login_success(user_id);
-        self.start_syncing().await;
+        self.start_syncing(session).await;
     }
 
     async fn send_message(&mut self, room_id: RoomId, draft: MessageDraft) {
@@ -1736,6 +1769,22 @@ impl AppService {
         }
     }
 
+    async fn settle_verification_flow(&mut self, session: u64, event: VerificationEvent) {
+        if self.lifecycle.runs(session) {
+            self.verification.flow_advanced(event).await;
+        } else {
+            tracing::debug!("verification update for a session that no longer runs, dropping");
+        }
+    }
+
+    async fn settle_verification_failure(&self, session: u64, failure: UserMessageKind) {
+        if self.lifecycle.runs(session) {
+            self.verification.action_failed(failure).await;
+        } else {
+            tracing::debug!("verification failure for a session that no longer runs, dropping");
+        }
+    }
+
     async fn accept_verification(&mut self) {
         if let Some(verification) = self.port(|a| &a.verification) {
             self.verification
@@ -1877,7 +1926,7 @@ impl AppService {
         self.active_timeline.clear_room(generation).await;
     }
 
-    async fn start_syncing(&mut self) {
+    async fn start_syncing(&mut self, session: u64) {
         let Some((sync, verification, lifecycle_port)) = self.held_session.running().map(|a| {
             (
                 Arc::clone(&a.sync),
@@ -1893,10 +1942,13 @@ impl AppService {
             view.lifecycle.activity = LoginActivity::Syncing;
         }));
         self.background.restart().await;
-        self.session
-            .spawn_session_persister(&mut self.background, Arc::clone(&lifecycle_port));
+        self.session.spawn_session_persister(
+            &mut self.background,
+            Arc::clone(&lifecycle_port),
+            session,
+        );
         self.verification
-            .spawn_listener(&mut self.background, verification);
+            .spawn_listener(&mut self.background, verification, session);
         self.set_connection(ConnectionStatus::Connecting);
         RoomDirectory::spawn_sync_pipeline(
             &mut self.background,
@@ -1906,7 +1958,7 @@ impl AppService {
             self.dir_in_tx.clone(),
         );
         self.session
-            .spawn_user_avatar_fetch(&mut self.background, lifecycle_port);
+            .spawn_user_avatar_fetch(&mut self.background, lifecycle_port, session);
     }
 
     async fn shutdown_all_tasks(&mut self) {

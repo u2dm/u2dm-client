@@ -99,6 +99,10 @@ impl Lifecycle {
             && matches!(self.phase, AppPhase::Authenticating | AppPhase::Reauthenticating)
     }
 
+    pub(super) fn runs(&self, session: u64) -> bool {
+        self.phase == AppPhase::Syncing && self.session == session
+    }
+
     pub(super) fn cancel_auth(&mut self) -> bool {
         let cancelling = match self.phase {
             AppPhase::Authenticating => AppPhase::CancellingAuth,

@@ -287,9 +287,13 @@ impl SessionController {
         &self,
         group: &mut TaskGroup,
         lifecycle_port: Arc<dyn SessionPort>,
+        session: u64,
     ) {
-        let storage = Arc::clone(&self.tasks.storage);
-        let events = self.tasks.events.clone();
+        let mut persister = SessionPersister::new(
+            Arc::clone(&self.tasks.storage),
+            self.tasks.events.clone(),
+            session,
+        );
         let token = group.token();
         group.spawn(async move {
             let (session_tx, mut session_rx) = mpsc::unbounded_channel::<Session>();
@@ -309,7 +313,6 @@ impl SessionController {
             };
 
             let persist = async move {
-                let mut persister = SessionPersister::new(storage, events);
                 let mut dirty: Option<Session> = None;
                 let mut retry_in = None;
 
@@ -343,11 +346,12 @@ impl SessionController {
         &self,
         group: &mut TaskGroup,
         lifecycle_port: Arc<dyn SessionPort>,
+        session: u64,
     ) {
         let events = self.tasks.events.clone();
         group.spawn(async move {
             match lifecycle_port.fetch_user_avatar().await {
-                Ok(path) => send(&events, SessionEvent::UserAvatar(path)),
+                Ok(path) => send(&events, SessionEvent::UserAvatar { session, path }),
                 Err(e) => tracing::debug!("user avatar fetch failed: {e}"),
             }
         });
@@ -805,15 +809,17 @@ impl SessionTasks {
 struct SessionPersister {
     storage: Arc<dyn StoragePort>,
     events: EventSender,
+    session: u64,
     retry_in: Duration,
     reported: bool,
 }
 
 impl SessionPersister {
-    fn new(storage: Arc<dyn StoragePort>, events: EventSender) -> Self {
+    fn new(storage: Arc<dyn StoragePort>, events: EventSender, session: u64) -> Self {
         Self {
             storage,
             events,
+            session,
             retry_in: PERSIST_RETRY_FLOOR,
             reported: false,
         }
@@ -848,7 +854,12 @@ impl SessionPersister {
             return;
         }
         self.reported = true;
-        send(&self.events, SessionEvent::TokensNotPersisted);
+        send(
+            &self.events,
+            SessionEvent::TokensNotPersisted {
+                session: self.session,
+            },
+        );
     }
 
     async fn flush(&mut self, session: &Session) {

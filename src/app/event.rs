@@ -18,7 +18,7 @@ use crate::domain::timeline::{
 use crate::domain::user_info::{GlobalProfile, IgnoreChange, Moderation, UserId};
 use crate::domain::verification::VerificationEvent;
 use crate::error::AppError;
-use crate::ports::matrix::{AuthenticatedSession, CleanupReport};
+use crate::ports::matrix::{AuthenticatedSession, CleanupReport, StickerCatalog};
 
 #[derive(Clone, Copy)]
 pub(super) enum EndReason {
@@ -40,8 +40,14 @@ pub(super) enum AppEvent {
         spaces: Vec<String>,
         error: String,
     },
-    VerificationFlow(VerificationEvent),
-    VerificationActionFailed(UserMessageKind),
+    VerificationFlow {
+        session: u64,
+        event: VerificationEvent,
+    },
+    VerificationActionFailed {
+        session: u64,
+        failure: UserMessageKind,
+    },
     AttachmentPicked(Box<AttachmentPicked>),
     AttachmentSettled {
         submission: u64,
@@ -97,7 +103,28 @@ pub(super) enum AppEvent {
     UserInfo(UserInfoEvent),
     Readers(ReadersEvent),
     Mentions(MentionsEvent),
+    Stickers(StickersEvent),
     RoomLogGrew,
+}
+
+pub(super) enum StickersEvent {
+    CatalogLoaded {
+        generation: i32,
+        catalog: StickerCatalog,
+    },
+    ImagesReady {
+        generation: i32,
+        ready: usize,
+    },
+}
+
+impl StickersEvent {
+    fn label(&self) -> &'static str {
+        match self {
+            Self::CatalogLoaded { .. } => "StickerCatalogLoaded",
+            Self::ImagesReady { .. } => "StickerImagesReady",
+        }
+    }
 }
 
 pub(super) enum MentionsEvent {
@@ -258,8 +285,8 @@ impl AppEvent {
             Self::Session(event) => event.label(),
             Self::Timeline(event) => event.label(),
             Self::SpaceOrderWriteFailed { .. } => "SpaceOrderWriteFailed",
-            Self::VerificationFlow(_) => "VerificationFlow",
-            Self::VerificationActionFailed(_) => "VerificationActionFailed",
+            Self::VerificationFlow { .. } => "VerificationFlow",
+            Self::VerificationActionFailed { .. } => "VerificationActionFailed",
             Self::AttachmentPicked(_) => "AttachmentPicked",
             Self::AttachmentSettled { .. } => "AttachmentSettled",
             Self::AudioFetched { .. } => "AudioFetched",
@@ -278,6 +305,7 @@ impl AppEvent {
             Self::UserInfo(event) => event.label(),
             Self::Readers(event) => event.label(),
             Self::Mentions(event) => event.label(),
+            Self::Stickers(event) => event.label(),
             Self::RoomLogGrew => "RoomLogGrew",
         }
     }
@@ -370,8 +398,13 @@ pub(super) enum SessionEvent {
         reason: EndReason,
         report: CleanupReport,
     },
-    TokensNotPersisted,
-    UserAvatar(Option<PathBuf>),
+    TokensNotPersisted {
+        session: u64,
+    },
+    UserAvatar {
+        session: u64,
+        path: Option<PathBuf>,
+    },
     Suspended,
     Expired,
 }
@@ -392,8 +425,8 @@ impl SessionEvent {
             Self::Resumed { .. } => "Resumed",
             Self::ErasingLocalState { .. } => "ErasingLocalState",
             Self::LocalStateCleared { .. } => "LocalStateCleared",
-            Self::TokensNotPersisted => "TokensNotPersisted",
-            Self::UserAvatar(_) => "UserAvatar",
+            Self::TokensNotPersisted { .. } => "TokensNotPersisted",
+            Self::UserAvatar { .. } => "UserAvatar",
             Self::Suspended => "SessionSuspended",
             Self::Expired => "SessionExpired",
         }

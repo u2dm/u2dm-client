@@ -35,6 +35,7 @@ impl FlowState {
 pub(super) struct VerificationController {
     output: Arc<dyn AppOutputPort>,
     events: EventSender,
+    session: u64,
     flow: FlowState,
 }
 
@@ -43,6 +44,7 @@ impl VerificationController {
         Self {
             output,
             events,
+            session: 0,
             flow: FlowState::Idle,
         }
     }
@@ -51,7 +53,9 @@ impl VerificationController {
         &mut self,
         group: &mut TaskGroup,
         verification: Arc<dyn VerificationPort>,
+        session: u64,
     ) {
+        self.session = session;
         self.flow = FlowState::Idle;
         let events = self.events.clone();
         let token = group.token();
@@ -60,7 +64,10 @@ impl VerificationController {
             let listen = verification.listen_for_verification(verif_tx);
             let forward = async {
                 while let Some(event) = verif_rx.recv().await {
-                    if events.send(AppEvent::VerificationFlow(event)).is_err() {
+                    if events
+                        .send(AppEvent::VerificationFlow { session, event })
+                        .is_err()
+                    {
                         break;
                     }
                 }
@@ -181,11 +188,12 @@ impl VerificationController {
     {
         self.emit(VerificationUpdate::Busy(activity)).await;
         let events = self.events.clone();
+        let session = self.session;
         group.spawn(async move {
             if let Err(e) = action(verification).await {
                 tracing::warn!("verification action failed: {e}");
                 if events
-                    .send(AppEvent::VerificationActionFailed(failure))
+                    .send(AppEvent::VerificationActionFailed { session, failure })
                     .is_err()
                 {
                     tracing::debug!("the app event loop is gone; dropping a verification failure");

@@ -1,27 +1,33 @@
 use std::sync::Arc;
 
+use super::event::{AppEvent, StickersEvent};
+use super::input::EventSender;
 use super::send_lanes::SendLanes;
 use super::show_toast;
 use super::task_group::TaskGroup;
 use crate::commands::messages::{UserMessage, UserMessageKind};
 use crate::commands::view::{StickerView, Toast};
 use crate::domain::room::RoomId;
-use crate::domain::sticker::{PackId, StickerPacks};
-use crate::ports::matrix::StickerPort;
+use crate::domain::sticker::PackId;
+use crate::ports::matrix::{StickerCatalog, StickerPort};
 use crate::ports::output::AppOutputPort;
 
 const PREFETCH_BATCH: usize = 12;
 
 pub(super) struct Stickers {
     output: Arc<dyn AppOutputPort>,
+    events: EventSender,
     tasks: TaskGroup,
+    shown: StickerView,
 }
 
 impl Stickers {
-    pub(super) fn new(output: Arc<dyn AppOutputPort>) -> Self {
+    pub(super) fn new(output: Arc<dyn AppOutputPort>, events: EventSender) -> Self {
         Self {
             output,
+            events,
             tasks: TaskGroup::new("stickers"),
+            shown: StickerView::default(),
         }
     }
 
@@ -32,21 +38,45 @@ impl Stickers {
         generation: i32,
     ) {
         self.tasks.cancel_and_detach();
-        self.publish(StickerView {
+        self.show(StickerView {
             generation,
             loading: true,
             ..StickerView::default()
         });
 
-        let output = Arc::clone(&self.output);
+        let events = self.events.clone();
         let cancel = self.tasks.token();
         self.tasks.spawn(async move {
-            let work = load_catalog(port, output, room_id, generation);
+            let work = load_catalog(port, events, room_id, generation);
             tokio::select! {
                 () = cancel.cancelled() => {}
                 () = work => {}
             }
         });
+    }
+
+    pub(super) fn catalog_loaded(&mut self, generation: i32, catalog: StickerCatalog) {
+        if !self.loads(generation) {
+            tracing::debug!(generation, "dropping a superseded sticker catalog");
+            return;
+        }
+        self.show(StickerView {
+            generation,
+            packs: Arc::from(catalog.packs),
+            ready_images: 0,
+            room_encrypted: catalog.room_encrypted,
+            loading: false,
+        });
+    }
+
+    pub(super) fn images_ready(&mut self, generation: i32, ready: usize) {
+        if !self.shows(generation) {
+            tracing::debug!(generation, "dropping superseded sticker downloads");
+            return;
+        }
+        let mut view = self.shown.clone();
+        view.ready_images = view.ready_images.saturating_add(ready);
+        self.show(view);
     }
 
     pub(super) fn send(
@@ -75,18 +105,28 @@ impl Stickers {
 
     pub(super) fn clear_room(&mut self) {
         self.tasks.cancel_and_detach();
-        self.publish(StickerView::default());
+        self.show(StickerView::default());
     }
 
     pub(super) async fn restart(&mut self) {
         self.tasks.restart().await;
+        self.shown = StickerView::default();
     }
 
     pub(super) async fn shutdown(&mut self) {
         self.tasks.shutdown().await;
     }
 
-    fn publish(&self, view: StickerView) {
+    fn loads(&self, generation: i32) -> bool {
+        self.shown.loading && self.shown.generation == generation
+    }
+
+    fn shows(&self, generation: i32) -> bool {
+        !self.shown.loading && self.shown.generation == generation
+    }
+
+    fn show(&mut self, view: StickerView) {
+        self.shown = view.clone();
         self.output
             .publish(Box::new(move |state| state.stickers = view));
     }
@@ -94,7 +134,7 @@ impl Stickers {
 
 async fn load_catalog(
     port: Arc<dyn StickerPort>,
-    output: Arc<dyn AppOutputPort>,
+    events: EventSender,
     room_id: RoomId,
     generation: i32,
 ) {
@@ -102,57 +142,41 @@ async fn load_catalog(
         Ok(catalog) => catalog,
         Err(e) => {
             tracing::warn!(%room_id, "failed to load sticker packs: {e}");
-            publish_packs(&output, generation, Arc::from(Vec::new()), 0, false);
+            let failed = StickersEvent::CatalogLoaded {
+                generation,
+                catalog: StickerCatalog::default(),
+            };
+            report(&events, failed);
             return;
         }
     };
 
-    let room_encrypted = catalog.room_encrypted;
     let mxcs: Vec<String> = catalog
         .packs
         .iter()
         .flat_map(|pack| pack.images.iter().map(|image| image.mxc.clone()))
         .collect();
-    let packs: StickerPacks = Arc::from(catalog.packs);
 
     tracing::debug!(
         %room_id,
-        packs = packs.len(),
+        packs = catalog.packs.len(),
         stickers = mxcs.len(),
         "loaded the sticker catalog"
     );
-    publish_packs(&output, generation, Arc::clone(&packs), 0, room_encrypted);
+    let loaded = StickersEvent::CatalogLoaded {
+        generation,
+        catalog,
+    };
+    report(&events, loaded);
 
-    let mut ready_images = 0;
     for batch in mxcs.chunks(PREFETCH_BATCH) {
-        let landed = port.prefetch(batch).await;
-        if landed > 0 {
-            ready_images += landed;
-            publish_packs(
-                &output,
-                generation,
-                Arc::clone(&packs),
-                ready_images,
-                room_encrypted,
-            );
+        let ready = port.prefetch(batch).await;
+        if ready > 0 {
+            report(&events, StickersEvent::ImagesReady { generation, ready });
         }
     }
 }
 
-fn publish_packs(
-    output: &Arc<dyn AppOutputPort>,
-    generation: i32,
-    packs: StickerPacks,
-    ready_images: usize,
-    room_encrypted: bool,
-) {
-    output.publish(Box::new(move |state| {
-        state.stickers = StickerView {
-            generation,
-            packs,
-            ready_images,
-            room_encrypted,
-            loading: false,
-        };
-    }));
+fn report(events: &EventSender, event: StickersEvent) {
+    drop(events.send(AppEvent::Stickers(event)));
 }
