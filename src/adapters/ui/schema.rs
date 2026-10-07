@@ -65,6 +65,7 @@ macro_rules! string_props {
         ReadersSentAt ReadersView "ReadersView" "sent-at" set_sent_at get_sent_at;
         ReadersBody ReadersView "ReadersView" "body" set_body get_body;
         ReadersServiceTarget ReadersView "ReadersView" "service-target" set_service_target get_service_target;
+        MentionsRoomId MentionsView "MentionsView" "room-id" set_room_id get_room_id;
         RoomInfoErrorDetail RoomInfoView "RoomInfoView" "error-detail" set_error_detail get_error_detail;
         RoomMenuRoomId RoomMenuView "RoomMenuView" "room-id" set_room_id get_room_id;
         RoomMenuName RoomMenuView "RoomMenuView" "name" set_name get_name;
@@ -172,6 +173,7 @@ macro_rules! simple_callbacks {
         on_open_readers "open-readers" open_readers manual_string OpenReaders;
         on_close_readers "close-readers" close_readers plain CloseReaders;
         on_page_readers "page-readers" page_readers plain PageReaders;
+        on_end_mentions "end-mentions" end_mentions plain EndMentions;
         on_pin_message "pin-message" pin_message manual_string PinMessage;
         on_unpin_message "unpin-message" unpin_message manual_string UnpinMessage;
         on_delete_message "delete-message" delete_message manual_string DeleteMessage;
@@ -242,6 +244,7 @@ macro_rules! bool_props {
         UserInfoMayUnban UserInfoView "UserInfoView" "may-unban" set_may_unban get_may_unban;
         RoomLogVisible RoomLogView "RoomLogView" "visible" set_visible get_visible;
         ReadersHasMore ReadersView "ReadersView" "has-more" set_has_more get_has_more;
+        MentionsOfferRoom MentionsView "MentionsView" "offers-room" set_offers_room get_offers_room;
     } };
 }
 pub(crate) use bool_props;
@@ -361,6 +364,7 @@ macro_rules! model_props {
         space_children SpaceChild VecModel SpaceIndexView "SpaceIndexView" "rows" set_rows;
         room_members MemberRow VecModel RoomInfoView "RoomInfoView" "rows" set_rows;
         readers MemberRow VecModel ReadersView "ReadersView" "rows" set_rows;
+        mentions MemberRow VecModel MentionsView "MentionsView" "rows" set_rows;
         room_log LogLine SpliceModel RoomLogView "RoomLogView" "lines" set_lines;
     } };
 }
@@ -887,6 +891,7 @@ macro_rules! message_fields {
         is_own set_is_own "is-own" flag;
         edited set_edited "edited" flag;
         text_editable set_text_editable "text-editable" flag;
+        edit_text set_edit_text "edit-text" text;
         pinned set_pinned "pinned" flag;
         first_unread set_first_unread "first-unread" flag;
         counts_as_unread set_counts_as_unread "counts-as-unread" flag;

@@ -1,0 +1,285 @@
+import { Palette, ScrollView } from "std-widgets.slint";
+import { IconDisplay, IconSet } from "@lucide";
+
+import { Actions } from "../../../../actions.slint";
+import { Avatar } from "../../../../components/avatar.slint";
+import { Interaction, ListItemArea } from "../../../../components/a11y.slint";
+import { PickerCard } from "../../../../components/overlay.slint";
+import { AppStyle, Fonts, IconSize, Metrics, Space, Weight } from "../../../../theme.slint";
+import { MemberEntry, MentionWord } from "../../../../types.slint";
+import { MentionsView } from "../../../../views.slint";
+
+component SuggestionRow inherits ListItemArea {
+    in property <bool> highlighted;
+
+    callback hovered();
+
+    height: Metrics.mention-row;
+    focusable: false;
+    selected: root.highlighted;
+    background: root.highlighted ? AppStyle.overlay-hover : transparent;
+
+    changed has-hover => {
+        if self.has-hover {
+            root.hovered();
+        }
+    }
+}
+
+component MemberSuggestion inherits SuggestionRow {
+    in property <MemberEntry> entry;
+
+    label: @tr("{}, {}", root.entry.name, root.entry.user-id);
+
+    HorizontalLayout {
+        padding-left: Space.lg;
+        padding-right: Space.lg;
+        spacing: Space.md;
+
+        Avatar {
+            cross-axis-self-alignment: center;
+            width: Metrics.mention-avatar;
+            height: Metrics.mention-avatar;
+            color-index: root.entry.color-index;
+            has-image: root.entry.has-avatar;
+            image: root.entry.avatar;
+            initial: root.entry.initial;
+        }
+
+        Text {
+            text: root.entry.name;
+            font-family: Fonts.emoji;
+            font-size: Fonts.body;
+            font-weight: Weight.semibold;
+            overflow: elide;
+            vertical-alignment: center;
+            accessible-role: none;
+        }
+
+        Text {
+            horizontal-stretch: 1;
+            text: root.entry.user-id;
+            font-size: Fonts.body-small;
+            color: AppStyle.foreground-muted;
+            overflow: elide;
+            vertical-alignment: center;
+            accessible-role: none;
+        }
+    }
+}
+
+component RoomSuggestion inherits SuggestionRow {
+    label: @tr("@room, notify everyone in this room");
+
+    HorizontalLayout {
+        padding-left: Space.lg;
+        padding-right: Space.lg;
+        spacing: Space.md;
+
+        Rectangle {
+            cross-axis-self-alignment: center;
+            width: Metrics.mention-avatar;
+            height: Metrics.mention-avatar;
+            border-radius: self.width / 2;
+            background: Palette.accent-background;
+
+            IconDisplay {
+                x: (parent.width - self.width) / 2;
+                y: (parent.height - self.height) / 2;
+                icon: IconSet.AtSign;
+                size: IconSize.sm;
+                stroke: Palette.accent-foreground;
+            }
+        }
+
+        Text {
+            text: "@room";
+            font-size: Fonts.body;
+            font-weight: Weight.semibold;
+            vertical-alignment: center;
+            accessible-role: none;
+        }
+
+        Text {
+            horizontal-stretch: 1;
+            text: @tr("Notify everyone in this room");
+            font-size: Fonts.body-small;
+            color: AppStyle.foreground-muted;
+            overflow: elide;
+            vertical-alignment: center;
+            accessible-role: none;
+        }
+    }
+}
+
+component SuggestionCard inherits PickerCard {
+    in property <bool> room-row;
+    in property <int> highlight;
+    in property <bool> above-modal;
+
+    callback hovered(int);
+    callback picked(int);
+
+    property <int> offset: root.room-row ? 1 : 0;
+    property <int> count: root.offset + MentionsView.rows.length;
+
+    accessible-role: list;
+    accessible-label: @tr("Mention suggestions");
+    accessible-item-count: root.count;
+
+    changed highlight => {
+        root.reveal(root.highlight);
+    }
+
+    function reveal(index: int) {
+        if index * Metrics.mention-row < -scroll.content-y {
+            scroll.content-y = -index * Metrics.mention-row;
+        } else if (index + 1) * Metrics.mention-row > scroll.visible-height - scroll.content-y {
+            scroll.content-y = scroll.visible-height - (index + 1) * Metrics.mention-row;
+        }
+    }
+
+    TouchArea { }
+
+    scroll := ScrollView {
+        x: 0;
+        y: Space.xs;
+        width: parent.width;
+        height: parent.height - 2 * Space.xs;
+        content-width: self.visible-width;
+        content-height: rows.preferred-height;
+
+        rows := VerticalLayout {
+            width: scroll.visible-width;
+
+            if root.room-row: RoomSuggestion {
+                index: 0;
+                above-modal: root.above-modal;
+                highlighted: root.highlight == 0;
+                hovered => {
+                    root.hovered(0);
+                }
+                clicked => {
+                    root.picked(0);
+                }
+            }
+
+            for entry[row] in MentionsView.rows: MemberSuggestion {
+                index: row + root.offset;
+                above-modal: root.above-modal;
+                entry: entry;
+                highlighted: root.highlight == row + root.offset;
+                hovered => {
+                    root.hovered(row + root.offset);
+                }
+                clicked => {
+                    root.picked(row + root.offset);
+                }
+            }
+        }
+    }
+}
+
+export component MentionPopup {
+    in property <string> room-id;
+    in property <string> text;
+    in property <int> caret;
+    in property <bool> active;
+    in property <length> headroom;
+    in property <bool> above-modal: false;
+    out property <bool> shown: root.suggesting && MentionsView.room-id == root.room-id
+        && root.count > 0;
+
+    callback complete(string);
+
+    property <MentionWord> word: Actions.mention-at(root.text, root.caret);
+    property <int> dismissed-at: -1;
+    property <int> highlight: 0;
+    property <bool> suggesting: root.word.start >= 0 && root.word.start != root.dismissed-at
+        && root.active;
+    property <bool> room-row: MentionsView.offers-room;
+    property <int> count: (root.room-row ? 1 : 0) + MentionsView.rows.length;
+    property <MentionWord> ask: {
+        start: root.suggesting ? root.word.start : -1,
+        query: root.word.query,
+    };
+
+    height: root.shown
+        ? min(
+            root.count * Metrics.mention-row + 2 * Space.xs,
+            Metrics.mention-max-height,
+            root.headroom,
+        )
+        : 0px;
+
+    changed word => {
+        if root.word.start < 0 {
+            root.dismissed-at = -1;
+        }
+    }
+
+    changed ask => {
+        root.highlight = 0;
+        if root.ask.start >= 0 {
+            Actions.suggest-mentions(root.ask.query);
+        } else {
+            Actions.end-mentions();
+        }
+    }
+
+    public function key(event: KeyEvent) -> EventResult {
+        if !root.shown || !Interaction.unmodified(event) {
+            return reject;
+        }
+        if event.text == Key.DownArrow {
+            root.highlight = Interaction.next(root.highlight, root.count);
+            return accept;
+        }
+        if event.text == Key.UpArrow {
+            root.highlight = Interaction.previous(root.highlight, root.count);
+            return accept;
+        }
+        if event.text == Key.Return || event.text == Key.Tab {
+            root.pick(min(root.highlight, root.count - 1));
+            return accept;
+        }
+        if event.text == Key.Escape {
+            root.dismiss();
+            return accept;
+        }
+        return reject;
+    }
+
+    public function dismiss() {
+        root.dismissed-at = root.word.start;
+    }
+
+    public function release() {
+        if root.ask.start >= 0 {
+            Actions.end-mentions();
+        }
+    }
+
+    function pick(index: int) {
+        root.dismiss();
+        if root.room-row && index == 0 {
+            root.complete("@room");
+        } else {
+            root.complete(MentionsView.rows[index - (root.room-row ? 1 : 0)].user-id);
+        }
+    }
+
+    if root.shown: SuggestionCard {
+        width: root.width;
+        height: root.height;
+        room-row: root.room-row;
+        highlight: root.highlight;
+        above-modal: root.above-modal;
+        hovered(index) => {
+            root.highlight = index;
+        }
+        picked(index) => {
+            root.pick(index);
+        }
+    }
+}

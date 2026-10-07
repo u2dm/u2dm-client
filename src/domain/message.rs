@@ -50,25 +50,57 @@ pub enum ServiceEvent {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub enum Markup {
+    #[default]
+    Plain,
+    Html(String),
+    Markdown {
+        html: String,
+        composer: String,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct RichText {
     pub plain: String,
-    pub html: Option<String>,
+    pub markup: Markup,
 }
 
 impl RichText {
     pub fn plain(plain: String) -> Self {
-        Self { plain, html: None }
+        Self {
+            plain,
+            markup: Markup::Plain,
+        }
     }
 
     pub fn formatted(plain: String, html: String) -> Self {
         Self {
             plain,
-            html: Some(html),
+            markup: Markup::Html(html),
         }
     }
 
-    pub fn unformatted(&self) -> Option<&str> {
-        self.html.is_none().then_some(self.plain.as_str())
+    pub fn authored(plain: String, html: String, composer: String) -> Self {
+        Self {
+            plain,
+            markup: Markup::Markdown { html, composer },
+        }
+    }
+
+    pub fn html(&self) -> Option<&str> {
+        match &self.markup {
+            Markup::Plain => None,
+            Markup::Html(html) | Markup::Markdown { html, .. } => Some(html),
+        }
+    }
+
+    pub fn composer_text(&self) -> Option<&str> {
+        match &self.markup {
+            Markup::Plain => Some(&self.plain),
+            Markup::Markdown { composer, .. } => Some(composer),
+            Markup::Html(_) => None,
+        }
     }
 }
 
@@ -187,10 +219,12 @@ pub enum PinChange {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[allow(clippy::struct_excessive_bools)]
 pub struct MessagePermissions {
     pub delete_own: bool,
     pub delete_others: bool,
     pub pin: bool,
+    pub notify_room: bool,
 }
 
 impl MessagePermissions {
@@ -198,6 +232,7 @@ impl MessagePermissions {
         delete_own: true,
         delete_others: true,
         pin: true,
+        notify_room: true,
     };
 }
 
@@ -431,6 +466,7 @@ pub struct TimelineMessage {
     pub sender_avatar_url: Option<String>,
     pub sender_pronouns: Vec<String>,
     pub body: MessageBody,
+    pub mentions_room: bool,
     pub timestamp: u64,
     pub is_own: bool,
     pub reply: Option<ReplyInfo>,
@@ -452,11 +488,11 @@ impl TimelineMessage {
             return None;
         }
         match &self.body {
-            MessageBody::Text(text) => text.unformatted(),
+            MessageBody::Text(text) => text.composer_text(),
             MessageBody::Image { caption, .. }
             | MessageBody::Video { caption, .. }
             | MessageBody::Audio { caption, .. } => {
-                caption.as_ref().map_or(Some(""), RichText::unformatted)
+                caption.as_ref().map_or(Some(""), RichText::composer_text)
             }
             _ => None,
         }

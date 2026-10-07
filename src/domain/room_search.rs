@@ -22,7 +22,7 @@ impl TitleQuery {
     }
 }
 
-fn folded(text: &str) -> String {
+pub(crate) fn folded(text: &str) -> String {
     text.to_lowercase()
         .nfd()
         .filter(|c| !is_combining_mark(*c))

@@ -56,6 +56,7 @@ matrix-sdk = { version = "0.19.0", default-features = false, features = [
     "e2e-encryption",
     "sqlite",
     "local-server",
+    "markdown",
     "rustls-aws-lc-rs",
 ] }
 matrix-sdk-base = { version = "0.19.0", default-features = false }
@@ -64,6 +65,7 @@ mime = "0.3.17"
 mime_guess = { version = "2.0.5", default-features = false }
 open = "5.4.3"
 percent-encoding = "2.3.2"
+pulldown-cmark = { version = "0.13.1", default-features = false }
 pure-rust-locales = "0.8.2"
 rand = "0.10.2"
 rfd = "0.17.2"

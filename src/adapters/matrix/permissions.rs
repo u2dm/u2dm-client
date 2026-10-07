@@ -38,6 +38,7 @@ fn messages(own: &UserId, levels: &RoomPowerLevels) -> MessagePermissions {
         delete_own: levels.user_can_redact_own_event(own),
         delete_others: levels.user_can_redact_event_of_other(own),
         pin: levels.user_can_send_state(own, StateEventType::RoomPinnedEvents),
+        notify_room: levels.user_can_trigger_room_notification(own),
     }
 }
 

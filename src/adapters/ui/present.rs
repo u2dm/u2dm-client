@@ -14,7 +14,7 @@ use crate::commands::messages::{UserMessage, UserMessageKind};
 use crate::commands::view::RoomLogView;
 use crate::domain::media::{AudioKind, AudioMeta, Waveform};
 use crate::domain::message::{
-    MessageBody, Reactor, ReadBy, SendState, ServiceEvent, TimelineMessage,
+    MessageBody, Reactor, ReadBy, RichText, SendState, ServiceEvent, TimelineMessage,
 };
 use crate::domain::poll::{Poll, PollAnswer, PollDisclosure, PollStatus};
 use crate::domain::room_log::{LogLevel, LogLine};
@@ -340,12 +340,10 @@ pub fn message_body_text(body: &MessageBody) -> &str {
 
 pub fn message_body_html(body: &MessageBody) -> Option<&str> {
     match body {
-        MessageBody::Text(t) | MessageBody::Notice(t) | MessageBody::Emote(t) => t.html.as_deref(),
+        MessageBody::Text(t) | MessageBody::Notice(t) | MessageBody::Emote(t) => t.html(),
         MessageBody::Image { caption, .. }
         | MessageBody::Video { caption, .. }
-        | MessageBody::Audio { caption, .. } => {
-            caption.as_ref().and_then(|text| text.html.as_deref())
-        }
+        | MessageBody::Audio { caption, .. } => caption.as_ref().and_then(RichText::html),
         MessageBody::Sticker { .. }
         | MessageBody::File { .. }
         | MessageBody::Poll(_)

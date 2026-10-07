@@ -263,6 +263,8 @@ pub struct MessageDto {
     days_ago: u64,
     #[serde(default)]
     edited: bool,
+    #[serde(default)]
+    mentions_room: bool,
     image: Option<ImageDto>,
     sticker: Option<StickerDto>,
     video: Option<VideoDto>,
@@ -749,6 +751,7 @@ impl MessageDto {
             sender_display_name: Some(self.name.clone()),
             sender_avatar_url: Some(self.sender.clone()),
             body: self.to_body(own_user),
+            mentions_room: self.mentions_room,
             timestamp: ago_ms(now_ms, self.minutes_ago, self.days_ago),
             is_own: self.sender == own_user,
             reply: self.reply.as_ref().map(|reply| ReplyInfo {

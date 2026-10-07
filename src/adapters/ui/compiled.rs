@@ -11,10 +11,10 @@ use u2dm_ui::{
     Actions, AppWindow, AttachmentKind as UiAttachmentKind, AttachmentView,
     AudioKind as UiAudioKind, AudioView, ChildAccess as UiChildAccess, ConnectionState,
     Delivery as UiDelivery, DirectChat as UiDirectChat, DirectoryView, EmojiEntry, EmojiGroup,
-    EmojiInsert, EmojiStore, LogLevel as UiLogLevel, LogLineEntry,
-    LoginActivity as UiLoginActivity, LoginMethodKind as UiLoginMethodKind, LoginPhase, LoginView,
-    MediaFailure as UiMediaFailure, MediaState as UiMediaState, MemberEntry,
-    MemberRole as UiMemberRole, MemberRowKind as UiMemberRowKind, MessageEntry,
+    EmojiStore, LogLevel as UiLogLevel, LogLineEntry, LoginActivity as UiLoginActivity,
+    LoginMethodKind as UiLoginMethodKind, LoginPhase, LoginView, MediaFailure as UiMediaFailure,
+    MediaState as UiMediaState, MemberEntry, MemberRole as UiMemberRole,
+    MemberRowKind as UiMemberRowKind, MentionWord, MentionsView, MessageEntry,
     MessageKind as UiMessageKind, Moderation as UiModeration, NotifyMode as UiNotifyMode,
     PollAnswerEntry, PollPhase as UiPollPhase, PreviewKind as UiPreviewKind, ReactionEntry,
     ReactionSend as UiReactionSend, ReactorAvatar, ReadersStatus as UiReadersStatus, ReadersView,
@@ -24,16 +24,18 @@ use u2dm_ui::{
     ServiceKind as UiServiceKind, SessionView, SourceEncryption as UiSourceEncryption,
     SourceStatus as UiSourceStatus, SourceView, SpaceChildEntry, SpaceEntry,
     SpaceIndexStatus as UiSpaceIndexStatus, SpaceIndexView, StickerCell, StickerPackTab,
-    StickerRow, StickerView, TimelineState, UnsentView, UserInfoView, UserMessage as UiUserMessage,
-    UserMessageKind as UiUserMessageKind, VerificationActivity as UiVerificationActivity,
-    VerificationEmoji, VerificationPhase, VerificationView, VideoView, WindowView,
+    StickerRow, StickerView, TextSplice, TimelineState, UnsentView, UserInfoView,
+    UserMessage as UiUserMessage, UserMessageKind as UiUserMessageKind,
+    VerificationActivity as UiVerificationActivity, VerificationEmoji, VerificationPhase,
+    VerificationView, VideoView, WindowView,
 };
 #[cfg(feature = "demo")]
 use u2dm_ui::{Probe, RoomMenu};
 
 use super::backend::{
-    self, Models, UiBackend, adopted_room_key, current_edited_row, last_editable_row,
-    reorder_spaces, row_of_message, selected_room_key, shown_room_log_text, unread_below,
+    self, Models, RECENT_SPEAKERS, UiBackend, adopted_room_key, current_edited_row,
+    last_editable_row, recent_speakers, reorder_spaces, row_of_message, selected_room_key,
+    shown_room_log_text, unread_below,
 };
 use super::decode::{AvatarSlot, request_avatar, request_media, request_sticker};
 use super::dto::{
@@ -68,7 +70,7 @@ use super::schema::{
 };
 use super::session::active_models;
 use super::video::{self, millis_to_duration};
-use super::{audio, emoji, router};
+use super::{audio, emoji, mention, router};
 use crate::app::input::CommandSender;
 use crate::commands::effects::{Effect, VerificationActivity};
 use crate::commands::messages::{UserMessage, UserMessageKind};
@@ -549,6 +551,35 @@ impl SlintUiAdapter {
         });
     }
 
+    fn bind_mention_callbacks(win: &AppWindow, cmd_tx: &CommandSender) {
+        let tx = cmd_tx.clone();
+        let weak = win.as_weak();
+        actions(win).on_suggest_mentions(move |query| {
+            router::suggest_mentions(
+                &tx,
+                selected_room_key::<CompiledBackend>(&weak),
+                query.to_string(),
+                recent_speakers::<CompiledBackend>(RECENT_SPEAKERS),
+            );
+        });
+
+        actions(win).on_mention_at(|text, caret| {
+            let (start, query) = mention::word_at(&text, caret);
+            MentionWord {
+                start,
+                query: SharedString::from(query),
+            }
+        });
+
+        actions(win).on_complete_mention(|text, caret, insert| {
+            let (text, caret) = mention::complete(&text, caret, &insert);
+            TextSplice {
+                text: SharedString::from(text),
+                caret,
+            }
+        });
+    }
+
     fn bind_audio_callbacks(win: &AppWindow, cmd_tx: &CommandSender) {
         audio::install_commands(cmd_tx);
 
@@ -602,6 +633,7 @@ impl SlintUiAdapter {
         actions(win).on_request_media(move |unique_id| request_media(&unique_id));
 
         Self::bind_edit_callbacks(win, cmd_tx);
+        Self::bind_mention_callbacks(win, cmd_tx);
         Self::bind_video_callbacks(win);
         Self::bind_audio_callbacks(win, cmd_tx);
 
@@ -726,7 +758,7 @@ fn setup_emoji_store(window: &AppWindow) {
 
     store.on_insert(|text, offset, glyph| {
         let (inserted, caret) = emoji::insert_at(text.as_str(), offset, glyph.as_str());
-        EmojiInsert {
+        TextSplice {
             text: SharedString::from(inserted),
             caret,
         }

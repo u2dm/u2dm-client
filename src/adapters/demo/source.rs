@@ -8,6 +8,8 @@ use crate::domain::timeline::{EventSource, SourceEncryption};
 const DEMO_DEVICE: &str = "DEMODEVICE";
 const MEGOLM: &str = "m.megolm.v1.aes-sha2";
 const DEMO_MEDIA: &str = "mxc://demo.local/media";
+const MENTIONS_FIELD: &str = "m.mentions";
+const HTML_FORMAT: &str = "org.matrix.custom.html";
 
 pub fn event_source(room_id: &RoomId, message: &TimelineMessage) -> Option<EventSource> {
     let event_id = message.event_id.clone()?;
@@ -15,7 +17,7 @@ pub fn event_source(room_id: &RoomId, message: &TimelineMessage) -> Option<Event
     let (event_type, content) = if undecryptable {
         ("m.room.encrypted", ciphertext())
     } else {
-        (event_type(&message.body), content(&message.body))
+        (event_type(&message.body), content(message))
     };
     let mut event = json!({
         "type": event_type,
@@ -70,7 +72,22 @@ fn event_type(body: &MessageBody) -> &'static str {
     }
 }
 
-fn content(body: &MessageBody) -> Value {
+fn content(message: &TimelineMessage) -> Value {
+    let mut content = body_content(&message.body);
+    let mentions = if message.is_own {
+        own_mentions(&message.body)
+    } else {
+        message.mentions_room.then(|| json!({ "room": true }))
+    };
+    if let Some(mentions) = mentions
+        && let Some(fields) = content.as_object_mut()
+    {
+        fields.insert(MENTIONS_FIELD.to_owned(), mentions);
+    }
+    content
+}
+
+fn body_content(body: &MessageBody) -> Value {
     match body {
         MessageBody::Text(text) => text_content("m.text", text),
         MessageBody::Notice(text) => text_content("m.notice", text),
@@ -182,12 +199,23 @@ fn service_content(service: &ServiceEvent) -> Value {
     }
 }
 
+fn own_mentions(body: &MessageBody) -> Option<Value> {
+    let composer = match body {
+        MessageBody::Text(text) => text.composer_text(),
+        MessageBody::Image { caption, .. }
+        | MessageBody::Video { caption, .. }
+        | MessageBody::Audio { caption, .. } => caption.as_ref().and_then(RichText::composer_text),
+        _ => None,
+    }?;
+    serde_json::to_value(data::own_composition(composer).mentions).ok()
+}
+
 fn text_content(msgtype: &str, text: &RichText) -> Value {
-    match &text.html {
+    match text.html() {
         Some(html) => json!({
             "msgtype": msgtype,
             "body": text.plain,
-            "format": "org.matrix.custom.html",
+            "format": HTML_FORMAT,
             "formatted_body": html,
         }),
         None => json!({ "msgtype": msgtype, "body": text.plain }),
@@ -195,11 +223,18 @@ fn text_content(msgtype: &str, text: &RichText) -> Value {
 }
 
 fn media_content(msgtype: &str, caption: Option<&RichText>) -> Value {
-    json!({
+    let mut content = json!({
         "msgtype": msgtype,
         "body": caption.map_or("", |caption| caption.plain.as_str()),
         "url": DEMO_MEDIA,
-    })
+    });
+    if let Some(html) = caption.and_then(RichText::html)
+        && let Some(fields) = content.as_object_mut()
+    {
+        fields.insert("format".to_owned(), Value::from(HTML_FORMAT));
+        fields.insert("formatted_body".to_owned(), Value::from(html));
+    }
+    content
 }
 
 fn ciphertext() -> Value {

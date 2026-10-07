@@ -3,30 +3,17 @@ use std::ops::Range;
 use url::Url;
 
 use super::permalink;
+use crate::domain::mention::{candidates, is_named_host, is_user_tag};
 
-const OPENING: &[char] = &[
-    '(', '[', '{', '<', '"', '\'', '\u{201c}', '\u{2018}', '\u{00ab}',
-];
-const TRAILING: &[char] = &[
-    '.', ',', ';', ':', '!', '?', '"', '\'', '>', '\u{201d}', '\u{2019}', '\u{00bb}',
-];
-const BRACKETS: [(char, char); 3] = [('(', ')'), ('[', ']'), ('{', '}')];
 const SCHEMES: &[&str] = &["https://", "http://", "mailto:"];
 const HOST_PREFIX: &str = "www.";
 const LOCAL_PART_PUNCTUATION: &[char] = &['.', '_', '%', '+', '-'];
-const USER_SIGIL: char = '@';
-const USER_LOCALPART_PUNCTUATION: &[char] = &['.', '_', '=', '-', '/', '+'];
-const SERVER_SEPARATOR: char = ':';
-const PORT_SEPARATOR: char = ':';
 
 pub fn find(text: &str) -> Vec<(Range<usize>, String)> {
-    let mut links = Vec::new();
-    for (offset, word) in words(text) {
-        if let Some((span, destination)) = link_in(word) {
-            links.push((offset + span.start..offset + span.end, destination));
-        }
-    }
-    links
+    candidates(text)
+        .into_iter()
+        .filter_map(|(span, candidate)| Some((span, destination(candidate)?)))
+        .collect()
 }
 
 pub fn is_safe_destination(href: &str) -> bool {
@@ -34,68 +21,6 @@ pub fn is_safe_destination(href: &str) -> bool {
         && !href
             .chars()
             .any(|ch| ch.is_whitespace() || ch.is_control() || matches!(ch, '<' | '>' | '\\'))
-}
-
-fn words(text: &str) -> Vec<(usize, &str)> {
-    let mut words = Vec::new();
-    let mut start = None;
-    for (index, ch) in text.char_indices() {
-        if ch.is_whitespace() {
-            if let Some(from) = start.take() {
-                words.push((from, text.get(from..index).unwrap_or_default()));
-            }
-        } else if start.is_none() {
-            start = Some(index);
-        }
-    }
-    if let Some(from) = start {
-        words.push((from, text.get(from..).unwrap_or_default()));
-    }
-    words
-}
-
-fn link_in(word: &str) -> Option<(Range<usize>, String)> {
-    let opened = word.trim_start_matches(OPENING);
-    let start = word.len() - opened.len();
-    let candidate = trim_trailing(opened);
-    let destination = destination(candidate)?;
-    Some((start..start + candidate.len(), destination))
-}
-
-fn trim_trailing(candidate: &str) -> &str {
-    let mut unmatched =
-        BRACKETS.map(|(open, close)| (close, unmatched_closers(candidate, open, close)));
-    let mut kept = candidate;
-    while let Some(last) = kept.chars().last() {
-        let droppable = TRAILING.contains(&last) || take_unmatched_closer(&mut unmatched, last);
-        if !droppable {
-            break;
-        }
-        match kept.get(..kept.len() - last.len_utf8()) {
-            Some(shorter) => kept = shorter,
-            None => break,
-        }
-    }
-    kept
-}
-
-fn unmatched_closers(text: &str, open: char, close: char) -> usize {
-    let opened = text.chars().filter(|&ch| ch == open).count();
-    let closed = text.chars().filter(|&ch| ch == close).count();
-    closed.saturating_sub(opened)
-}
-
-fn take_unmatched_closer(unmatched: &mut [(char, usize)], last: char) -> bool {
-    match unmatched
-        .iter_mut()
-        .find(|(close, count)| *close == last && *count > 0)
-    {
-        Some((_, count)) => {
-            *count -= 1;
-            true
-        }
-        None => false,
-    }
 }
 
 fn destination(candidate: &str) -> Option<String> {
@@ -112,24 +37,10 @@ fn destination(candidate: &str) -> Option<String> {
 }
 
 fn user_mention(candidate: &str) -> Option<String> {
-    let (localpart, server) = candidate
-        .strip_prefix(USER_SIGIL)?
-        .split_once(SERVER_SEPARATOR)?;
-    let linkable = !localpart.is_empty()
-        && localpart
-            .chars()
-            .all(|ch| ch.is_ascii_alphanumeric() || USER_LOCALPART_PUNCTUATION.contains(&ch));
-    if !linkable || !is_server_name(server) {
+    if !is_user_tag(candidate) {
         return None;
     }
     accepted(permalink::user_link(candidate)?, false)
-}
-
-fn is_server_name(server: &str) -> bool {
-    match server.split_once(PORT_SEPARATOR) {
-        Some((host, port)) => is_named_host(host) && port.parse::<u16>().is_ok(),
-        None => is_named_host(server),
-    }
 }
 
 fn mailbox(candidate: &str) -> Option<String> {
@@ -160,18 +71,6 @@ fn accepted(destination: String, needs_named_host: bool) -> Option<String> {
         _ => return None,
     }
     Some(destination)
-}
-
-fn is_named_host(host: &str) -> bool {
-    let Some((labels, top_level)) = host.rsplit_once('.') else {
-        return false;
-    };
-    !labels.is_empty()
-        && top_level.len() >= 2
-        && top_level.chars().all(|ch| ch.is_ascii_alphabetic())
-        && host
-            .chars()
-            .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '.' | '-'))
 }
 
 fn starts_with_ignoring_case(text: &str, prefix: &str) -> bool {

@@ -23,11 +23,10 @@ use matrix_sdk::attachment::AttachmentConfig;
 use matrix_sdk::send_queue::{LocalEchoContent, SendHandle};
 use matrix_sdk::{Client, Room};
 use matrix_sdk::room::reply::{EnforceThread, Reply};
-use matrix_sdk::ruma::events::AnyMessageLikeEventContent;
 use matrix_sdk::ruma::events::room::message::{
-    AddMentions, RoomMessageEventContent, RoomMessageEventContentWithoutRelation,
-    TextMessageEventContent,
+    AddMentions, MessageType, RoomMessageEventContent, RoomMessageEventContentWithoutRelation,
 };
+use matrix_sdk::ruma::events::{AnyMessageLikeEventContent, Mentions};
 use matrix_sdk::ruma::serde::Raw;
 use matrix_sdk::ruma::{IdParseError, OwnedEventId};
 use mime::Mime;
@@ -49,8 +48,10 @@ use self::subscribe::subscribe_timeline;
 use self::undecrypted::UndecryptedResponses;
 use super::attachment;
 use super::media::MediaService;
+use super::permissions::message_permissions;
 use super::profile::PronounCache;
 use super::session::ClientHandle;
+use crate::adapters::markdown::{self, Composed, RoomMentions};
 use crate::domain::media::OutgoingAttachment;
 use crate::domain::message::MessageEdit;
 use crate::domain::poll::PollDraft;
@@ -222,6 +223,15 @@ async fn queued_send(room: &Room, local_id: &str) -> Result<SendHandle> {
         .ok_or_else(|| AppError::Other(format!("no queued send for {local_id}")))
 }
 
+async fn composed(room: &Room, text: &str) -> Composed {
+    let notify_room = message_permissions(room).await.notify_room;
+    markdown::compose(
+        text,
+        room.own_user_id().as_str(),
+        RoomMentions::when(notify_room),
+    )
+}
+
 async fn queue(room: &Room, content: AnyMessageLikeEventContent) -> Result<()> {
     room.send_queue()
         .send(content)
@@ -261,13 +271,11 @@ async fn with_resolved_reply(
     room: &Room,
     config: AttachmentConfig,
     in_reply_to: &str,
+    mentions: Option<Mentions>,
 ) -> Result<AttachmentConfig> {
-    let reply = reply_event(
-        room,
-        RoomMessageEventContentWithoutRelation::text_plain(""),
-        in_reply_to,
-    )
-    .await?;
+    let mut content = RoomMessageEventContentWithoutRelation::text_plain("");
+    content.mentions = mentions;
+    let reply = reply_event(room, content, in_reply_to).await?;
     let relation = Raw::new(&reply)?
         .get_field::<Value>(RELATION_FIELD)?
         .ok_or_else(|| AppError::Other(format!("the reply to {in_reply_to} has no relation")))?;
@@ -314,12 +322,16 @@ async fn queueable_attachment(
     let content_type = attachment::content_type(picked, attachment.as_document);
     let mut config =
         AttachmentConfig::new().info(attachment::attachment_info(picked, &content_type));
+    let mut mentions = None;
     if let Some(caption) = attachment.caption.as_deref() {
-        config = config.caption(Some(TextMessageEventContent::plain(caption)));
+        let composed = composed(room, caption).await;
+        config = config.caption(Some(composed.content()));
+        mentions = Some(composed.mentions);
     }
-    if let Some(in_reply_to) = attachment.reply_to.as_deref() {
-        config = with_resolved_reply(room, config, in_reply_to).await?;
-    }
+    config = match attachment.reply_to.as_deref() {
+        Some(in_reply_to) => with_resolved_reply(room, config, in_reply_to, mentions).await?,
+        None => config.mentions(mentions),
+    };
 
     let data = fs::read(&picked.path).await?;
     let thumbnail = match attachment::thumbnail_source(picked, &content_type) {
@@ -407,13 +419,18 @@ impl TimelinePort for MatrixTimeline {
 
     async fn send_text(&self, room_id: &RoomId, body: &str) -> Result<()> {
         let room = self.matrix.room(room_id).await?;
-        let content = RoomMessageEventContent::text_plain(body);
+        let composed = composed(&room, body).await;
+        let content = RoomMessageEventContent::new(MessageType::Text(composed.content()))
+            .add_mentions(composed.mentions);
         queue(&room, content.into()).await
     }
 
     async fn send_reply(&self, room_id: &RoomId, body: &str, in_reply_to: &str) -> Result<()> {
         let room = self.matrix.room(room_id).await?;
-        let content = RoomMessageEventContentWithoutRelation::text_plain(body);
+        let composed = composed(&room, body).await;
+        let content =
+            RoomMessageEventContentWithoutRelation::new(MessageType::Text(composed.content()))
+                .add_mentions(composed.mentions);
         let content = reply_event(&room, content, in_reply_to).await?;
         queue(&room, content.into()).await
     }

@@ -138,6 +138,7 @@ export struct MessageEntry {
     is-own: bool,
     edited: bool,
     text-editable: bool,
+    edit-text: string,
     pinned: bool,
     first-unread: bool,
     counts-as-unread: bool,
@@ -173,9 +174,14 @@ export struct EmojiGroup {
     items: [EmojiEntry],
 }
 
-export struct EmojiInsert {
+export struct TextSplice {
     text: string,
     caret: int,
+}
+
+export struct MentionWord {
+    start: int,
+    query: string,
 }
 
 export struct StickerCell {

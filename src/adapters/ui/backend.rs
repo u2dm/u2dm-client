@@ -1,4 +1,5 @@
 use std::collections::{HashMap, HashSet};
+use std::ops::ControlFlow;
 use std::rc::Rc;
 use std::sync::Arc;
 
@@ -13,8 +14,9 @@ use super::decode::{
 use super::dto::{
     LogLineDto, MediaFailureKind, MediaState, MemberRowDto, MessageDto, RoomDto, SpaceChildDto,
     SpaceDto, StickerPackDto, StickerRowDto, ThumbUpdate, cell_pack, decode_failure_kind,
-    enrich_to_update, log_line_to_dto, member_row_to_dto, message_to_dto, reader_to_dto,
-    room_to_dto, space_child_to_dto, space_match_to_dto, space_to_dto, spaces_heading_to_dto,
+    enrich_to_update, log_line_to_dto, member_row_to_dto, mention_to_dto, message_to_dto,
+    reader_to_dto, room_to_dto, space_child_to_dto, space_match_to_dto, space_to_dto,
+    spaces_heading_to_dto,
 };
 use super::fields::{
     LogLineFields, MemberRowFields, MessageFields, PollAnswerFields, ReactionFields, ReactorFields,
@@ -36,7 +38,7 @@ use crate::commands::effects::Effect;
 use crate::commands::view::{AppViewState, RosterRow, SpaceIndexRow, SpaceMatch};
 use crate::domain::message::TimelineMessage;
 use crate::domain::room::{Room, RoomId, Space};
-use crate::domain::room_info::Reader;
+use crate::domain::room_info::{Reader, RosterMember};
 use crate::domain::room_log::LogLine;
 use crate::domain::timeline::EnrichmentDelta;
 use crate::ports::media::MediaCache;
@@ -94,6 +96,10 @@ pub trait UiBackend: Sized + 'static {
 
     fn convert_reader(reader: &Reader, media: &dyn MediaCache) -> Self::MemberRow {
         reader_to_dto(reader, media).into()
+    }
+
+    fn convert_mention(member: &RosterMember, media: &dyn MediaCache) -> Self::MemberRow {
+        mention_to_dto(member, media).into()
     }
 
     fn convert_log_line(line: &LogLine) -> Self::LogLine {
@@ -247,6 +253,26 @@ pub fn last_editable_row<B: UiBackend>() -> i32 {
     B::with_timeline(|timeline| timeline.last_position(|entry: &B::Message| entry.text_editable()))
         .and_then(|row| i32::try_from(row).ok())
         .unwrap_or(NO_ROW)
+}
+
+pub const RECENT_SPEAKERS: usize = 12;
+
+pub fn recent_speakers<B: UiBackend>(limit: usize) -> Vec<String> {
+    let mut speakers: Vec<String> = Vec::new();
+    B::with_timeline(|timeline| {
+        timeline.visit_newest_first(|entry: &B::Message| {
+            let speaker = entry.sender_id();
+            if entry.counts_as_unread() && !speakers.iter().any(|known| known == speaker) {
+                speakers.push(speaker.to_owned());
+            }
+            if speakers.len() >= limit {
+                ControlFlow::Break(())
+            } else {
+                ControlFlow::Continue(())
+            }
+        });
+    });
+    speakers
 }
 
 pub fn row_of_message<B: UiBackend>(event_id: &str, local_id: &str) -> i32 {
@@ -464,6 +490,7 @@ struct AvatarTargets<'a> {
     space_children: HashSet<&'a str>,
     members: HashSet<&'a str>,
     readers: HashSet<&'a str>,
+    mentions: HashSet<&'a str>,
     singles: HashSet<SingleAvatar>,
 }
 
@@ -495,6 +522,9 @@ fn group_slots(slots: &[AvatarSlot]) -> AvatarTargets<'_> {
             }
             AvatarSlot::Reader(user_id) => {
                 targets.readers.insert(user_id.as_str());
+            }
+            AvatarSlot::Mention(user_id) => {
+                targets.mentions.insert(user_id.as_str());
             }
             AvatarSlot::RoomInfo => {
                 targets.singles.insert(SingleAvatar::RoomInfo);
@@ -649,6 +679,18 @@ fn apply_avatar_ready<B: UiBackend>(
         patch_rows_by_id(
             &*models.readers,
             &targets.readers,
+            &B::MemberRow::user_id,
+            |entry| {
+                entry.set_avatar(image.clone());
+                entry.set_has_avatar(true);
+            },
+        );
+    }
+    if !targets.mentions.is_empty() {
+        let models = B::models();
+        patch_rows_by_id(
+            &*models.mentions,
+            &targets.mentions,
             &B::MemberRow::user_id,
             |entry| {
                 entry.set_avatar(image.clone());

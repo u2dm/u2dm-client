@@ -38,6 +38,7 @@ pub struct AppViewState {
     pub room_link: CopiedLink,
     pub source: SourceState,
     pub readers: ReadersView,
+    pub mentions: MentionsView,
     pub room_log: Option<RoomLogView>,
 }
 
@@ -96,6 +97,14 @@ pub struct ReadersView {
     pub rows: Arc<[Arc<Reader>]>,
     pub has_more: bool,
     pub pages_landed: i32,
+    pub avatars_ready: usize,
+}
+
+#[derive(Clone, Default)]
+pub struct MentionsView {
+    pub room_id: Option<RoomId>,
+    pub offers_room: bool,
+    pub rows: Arc<[Arc<RosterMember>]>,
     pub avatars_ready: usize,
 }
 

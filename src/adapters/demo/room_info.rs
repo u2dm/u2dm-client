@@ -12,17 +12,17 @@ const ENV_VAR: &str = "U2DM_DEMO_ROOM_INFO";
 
 pub const CATALOG: Scenarios = Scenarios {
     env: ENV_VAR,
-    summary: "shapes the room info sheet and the room menu: the member list, notification changes, leaving, marking read and room links",
+    summary: "shapes the room info sheet, the room menu and the composer's @ suggestions: the member list, notification changes, leaving, marking read and room links",
     combinable: true,
     flags: &[
         Flag {
             value: "slow",
-            effect: "the member list, each notification change, leave, mark-as-read and room link wait ~1.5s, and a member's avatar exists only once its fetch batch lands",
+            effect: "the member list (so also the first @ suggestions), each notification change, leave, mark-as-read and room link wait ~1.5s, and a member's avatar exists only once its fetch batch lands",
             note: "the loading, busy and leaving states are only reachable with `slow`",
         },
         Flag {
             value: "roster-fails",
-            effect: "the first member list of each room fails once, so the retry notice is reachable",
+            effect: "the first member list of each room fails once, so the retry notice is reachable and the first @ word suggests nobody",
             note: "",
         },
         Flag {

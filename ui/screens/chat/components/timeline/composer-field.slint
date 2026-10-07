@@ -1,7 +1,8 @@
 import { Palette, Spinner } from "std-widgets.slint";
 import { Icon, IconDisplay, IconSet } from "@lucide";
 
-import { EmojiInsert } from "../../../../types.slint";
+import { TextSplice } from "../../../../types.slint";
+import { Actions } from "../../../../actions.slint";
 import { EmojiStore } from "../../../../emoji-store.slint";
 import { AppStyle, Fonts, IconSize, Metrics, Motion, Radius, Size, Space, Stroke } from "../../../../theme.slint";
 import { ClickArea, Interaction } from "../../../../components/a11y.slint";
@@ -74,6 +75,8 @@ export component ComposerField inherits Rectangle {
     in property <bool> busy: false;
     in property <bool> above-modal: false;
     out property <length> row-inset: Space.sm;
+    out property <int> caret: 0;
+    out property <bool> input-focused: text-input.has-focus;
 
     callback lead-clicked();
     callback emoji-clicked();
@@ -83,8 +86,7 @@ export component ComposerField inherits Rectangle {
 
     property <bool> has-text: root.text != "";
     property <bool> can-send: !root.busy && (root.has-text || root.text-optional);
-    property <int> caret: 0;
-    property <EmojiInsert> pending-insert;
+    property <TextSplice> pending-insert;
 
     property <length> text-inset: Space.md;
     property <length> line-height: line-probe.preferred-height;
@@ -122,6 +124,15 @@ export component ComposerField inherits Rectangle {
 
     public function insert-at-caret(glyph: string) {
         root.pending-insert = EmojiStore.insert(root.text, root.caret, glyph);
+        root.apply-pending-insert();
+    }
+
+    public function complete-mention(insert: string) {
+        root.pending-insert = Actions.complete-mention(root.text, root.caret, insert);
+        root.apply-pending-insert();
+    }
+
+    function apply-pending-insert() {
         root.text = root.pending-insert.text;
         root.caret = root.pending-insert.caret;
         text-input.set-selection-offsets(root.pending-insert.caret, root.pending-insert.caret);
@@ -186,6 +197,9 @@ export component ComposerField inherits Rectangle {
                 focus-on-click: false;
                 focus-on-tab-navigation: false;
                 capture-key-pressed(event) => {
+                    if root.key-captured(event) == EventResult.accept {
+                        return accept;
+                    }
                     if event.text == Key.Return && !event.modifiers.shift {
                         root.send();
                         return accept;
@@ -193,7 +207,7 @@ export component ComposerField inherits Rectangle {
                     if root.is-paste(event) {
                         return root.paste-pressed();
                     }
-                    return root.key-captured(event);
+                    return reject;
                 }
 
                 Rectangle {

@@ -98,6 +98,13 @@ pub enum UiCommand {
         room_id: RoomId,
         edit: MessageEdit,
     },
+    #[strum(to_string = "SuggestMentions")]
+    SuggestMentions {
+        room_id: RoomId,
+        query: String,
+        recent: Vec<UserId>,
+    },
+    EndMentions,
     #[strum(to_string = "DismissUnsent({submission})")]
     DismissUnsent {
         submission: i32,
@@ -296,6 +303,8 @@ impl UiCommand {
             | Self::KickUser(_)
             | Self::BanUser(_)
             | Self::UnbanUser(_)
+            | Self::SuggestMentions { .. }
+            | Self::EndMentions
             | Self::DismissUnsent { .. }
             | Self::CancelAttachment
             | Self::JumpToEvent { .. }

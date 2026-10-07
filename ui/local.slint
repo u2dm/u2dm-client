@@ -65,7 +65,7 @@ export global Composer {
             timeline-token: RoomView.timeline-token,
             caption: msg.message-type != MessageKind.text,
             restored: false,
-            original: msg.body,
+            original: msg.edit-text,
             preview: MessagePreview.label(msg.preview-kind, msg.preview-body),
         };
     }

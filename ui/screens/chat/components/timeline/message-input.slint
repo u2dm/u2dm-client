@@ -3,11 +3,13 @@ import { IconSet } from "@lucide";
 import { PickerPanel, PickerSection } from "./picker-panel.slint";
 import { AttachMenu } from "./attach-menu.slint";
 import { ComposerField } from "./composer-field.slint";
+import { MentionPopup } from "./mention-popup.slint";
 import { EditBar, ReplyBar } from "./reply-bar.slint";
 import { ReplyQuote } from "./reply-quote.slint";
 import { AppStyle, Metrics, Space } from "../../../../theme.slint";
 import { LinkButton } from "../../../../components/button.slint";
 import { ModalHost } from "../../../../components/overlay.slint";
+import { Interaction } from "../../../../components/a11y.slint";
 import { Actions } from "../../../../actions.slint";
 import { Composer, EditedMessage, Polls, Reactions, ReplyDraft, Shell } from "../../../../local.slint";
 import { RoomView, UnsentView } from "../../../../views.slint";
@@ -164,13 +166,8 @@ export component MessageInput inherits Rectangle {
         if row < 0 {
             return false;
         }
-        root.begin-edit(Composer.edit-of(RoomView.timeline[row]), RoomView.timeline[row].body);
+        root.begin-edit(Composer.edit-of(RoomView.timeline[row]), RoomView.timeline[row].edit-text);
         return true;
-    }
-
-    pure function is-bare(event: KeyEvent) -> bool {
-        !event.modifiers.shift && !event.modifiers.control && !event.modifiers.alt
-            && !event.modifiers.meta
     }
 
     function restore-unsent() {
@@ -303,6 +300,20 @@ export component MessageInput inherits Rectangle {
         }
     }
 
+    mentions := MentionPopup {
+        x: field.x;
+        y: -self.height - Space.sm;
+        width: field.width;
+        room-id: root.room-id;
+        text: root.message;
+        caret: field.caret;
+        active: field.input-focused && Shell.background-reachable;
+        headroom: root.picker-headroom;
+        complete(insert) => {
+            field.complete-mention(insert);
+        }
+    }
+
     field := ComposerField {
         x: root.surface-inset;
         y: 0;
@@ -343,11 +354,14 @@ export component MessageInput inherits Rectangle {
             return Actions.paste-attachment(root.room-id) ? EventResult.accept : EventResult.reject;
         }
         key-captured(event) => {
+            if mentions.key(event) == EventResult.accept {
+                return EventResult.accept;
+            }
             if event.text == Key.Escape && Composer.editing {
                 root.finish-edit();
                 return EventResult.accept;
             }
-            if event.text == Key.UpArrow && root.is-bare(event) && root.message == ""
+            if event.text == Key.UpArrow && Interaction.unmodified(event) && root.message == ""
                 && !Composer.editing {
                 return root.edit-latest() ? EventResult.accept : EventResult.reject;
             }

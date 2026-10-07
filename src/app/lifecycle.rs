@@ -237,6 +237,8 @@ pub(super) fn command_allowed(phase: AppPhase, cmd: &UiCommand) -> bool {
         | UiCommand::UnbanUser(_)
         | UiCommand::SendMessage { .. }
         | UiCommand::EditMessage { .. }
+        | UiCommand::SuggestMentions { .. }
+        | UiCommand::EndMentions
         | UiCommand::DismissUnsent { .. }
         | UiCommand::PickAttachment { .. }
         | UiCommand::SendAttachment { .. }

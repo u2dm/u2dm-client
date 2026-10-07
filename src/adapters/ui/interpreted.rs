@@ -11,12 +11,14 @@ use tokio::runtime::Runtime;
 use tokio::sync::{mpsc, watch};
 
 use names::{
-    callback, emoji_entry, emoji_group, emoji_insert, emoji_store, user_message, verification_emoji,
+    callback, emoji_entry, emoji_group, emoji_store, mention_word, text_splice, user_message,
+    verification_emoji,
 };
 
 use super::backend::{
-    self, Models, UiBackend, adopted_room_key, current_edited_row, last_editable_row,
-    reorder_spaces, row_of_message, selected_room_key, shown_room_log_text, unread_below,
+    self, Models, RECENT_SPEAKERS, UiBackend, adopted_room_key, current_edited_row,
+    last_editable_row, recent_speakers, reorder_spaces, row_of_message, selected_room_key,
+    shown_room_log_text, unread_below,
 };
 use super::decode::{AvatarSlot, request_avatar, request_media, request_sticker};
 use super::dto::{
@@ -50,7 +52,7 @@ use super::schema::{
 };
 use super::session::active_models;
 use super::video::{self, millis_to_duration};
-use super::{audio, emoji, router};
+use super::{audio, emoji, mention, router};
 use crate::app::input::CommandSender;
 use crate::commands::effects::{Effect, VerificationActivity};
 use crate::commands::messages::{UserMessage, UserMessageKind};
@@ -82,6 +84,9 @@ mod names {
         pub const EDIT_MESSAGE: &str = "edit-message";
         pub const LAST_EDITABLE_ROW: &str = "last-editable-row";
         pub const ROW_OF_MESSAGE: &str = "row-of-message";
+        pub const SUGGEST_MENTIONS: &str = "suggest-mentions";
+        pub const MENTION_AT: &str = "mention-at";
+        pub const COMPLETE_MENTION: &str = "complete-mention";
         pub const SET_ROOM_NOTIFY: &str = "set-room-notify";
         pub const PASTE_ATTACHMENT: &str = "paste-attachment";
         pub const TOGGLE_REACTION: &str = "toggle-reaction";
@@ -118,9 +123,14 @@ mod names {
         pub const ITEMS: &str = "items";
     }
 
-    pub mod emoji_insert {
+    pub mod text_splice {
         pub const TEXT: &str = "text";
         pub const CARET: &str = "caret";
+    }
+
+    pub mod mention_word {
+        pub const START: &str = "start";
+        pub const QUERY: &str = "query";
     }
 
     pub mod user_message {
@@ -675,6 +685,33 @@ impl SlintUiAdapter {
         })
     }
 
+    fn bind_mention_callbacks(&self, cmd_tx: &CommandSender) -> Result<()> {
+        let tx = cmd_tx.clone();
+        let weak = self.instance.as_weak();
+        bind_action(&self.instance, callback::SUGGEST_MENTIONS, move |args| {
+            router::suggest_mentions(
+                &tx,
+                selected_room_key::<InterpretedBackend>(&weak),
+                string_arg(args, 0),
+                recent_speakers::<InterpretedBackend>(RECENT_SPEAKERS),
+            );
+            Value::Void
+        })?;
+
+        bind_action(&self.instance, callback::MENTION_AT, |args| {
+            mention_word_value(&string_arg(args, 0), int_arg(args, 1).unwrap_or_default())
+        })?;
+
+        bind_action(&self.instance, callback::COMPLETE_MENTION, |args| {
+            let (text, caret) = mention::complete(
+                &string_arg(args, 0),
+                int_arg(args, 1).unwrap_or_default(),
+                &string_arg(args, 2),
+            );
+            text_splice_value(text, caret)
+        })
+    }
+
     fn bind_decode_requests(&self) -> Result<()> {
         bind_action(&self.instance, callback::REQUEST_MEDIA, move |args| {
             request_media(&string_arg(args, 0));
@@ -776,6 +813,7 @@ impl SlintUiAdapter {
         })?;
 
         self.bind_edit_callbacks(cmd_tx)?;
+        self.bind_mention_callbacks(cmd_tx)?;
         self.bind_decode_requests()?;
         self.bind_audio_callbacks(cmd_tx)?;
 
@@ -944,21 +982,39 @@ fn setup_emoji_store(inst: &ComponentInstance) -> Result<()> {
                 .unwrap_or_default();
             let glyph = string_arg(args, 2);
             let (inserted, caret) = emoji::insert_at(&text, offset, &glyph);
-            Value::Struct(Struct::from_iter([
-                (
-                    emoji_insert::TEXT.to_string(),
-                    Value::String(SharedString::from(inserted)),
-                ),
-                (
-                    emoji_insert::CARET.to_string(),
-                    Value::Number(f64::from(caret)),
-                ),
-            ]))
+            text_splice_value(inserted, caret)
         },
     )
     .map_err(|e| AppError::Ui(format!("{e:?}")))?;
 
     Ok(())
+}
+
+fn text_splice_value(text: String, caret: i32) -> Value {
+    Value::Struct(Struct::from_iter([
+        (
+            text_splice::TEXT.to_string(),
+            Value::String(SharedString::from(text)),
+        ),
+        (
+            text_splice::CARET.to_string(),
+            Value::Number(f64::from(caret)),
+        ),
+    ]))
+}
+
+fn mention_word_value(text: &str, caret: i32) -> Value {
+    let (start, query) = mention::word_at(text, caret);
+    Value::Struct(Struct::from_iter([
+        (
+            mention_word::START.to_string(),
+            Value::Number(f64::from(start)),
+        ),
+        (
+            mention_word::QUERY.to_string(),
+            Value::String(SharedString::from(query)),
+        ),
+    ]))
 }
 
 fn num(value: i32) -> Value {

@@ -83,6 +83,12 @@ export global ReadersView {
     in property <int> pages-landed;
 }
 
+export global MentionsView {
+    in property <string> room-id;
+    in property <bool> offers-room;
+    in property <[MemberEntry]> rows;
+}
+
 export global RoomInfoView {
     in property <RoomInfoPlacement> placement: RoomInfoPlacement.closed;
     in property <string> room-id;

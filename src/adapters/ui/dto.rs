@@ -15,7 +15,7 @@ use super::present::{
     reader_labels, room_activity_label, sender_initial, service_kind, service_target,
     unsupported_kind, user_initial, voice_bars, voter_labels,
 };
-use super::richtext;
+use super::richtext::{self, RoomWord};
 use super::schema::{
     define_ui_enum, define_ui_names, media_failures, media_states, member_row_kinds, room_row_kinds,
 };
@@ -274,6 +274,7 @@ pub struct MessageDto {
     pub is_own: bool,
     pub edited: bool,
     pub text_editable: bool,
+    pub edit_text: SharedString,
     pub pinned: bool,
     pub first_unread: bool,
     pub counts_as_unread: bool,
@@ -652,24 +653,25 @@ fn one_line(text: &str) -> SharedString {
 }
 
 pub fn rich_body(text: &RichText) -> richtext::StyledBody {
-    match text.html.as_deref() {
-        Some(html) => richtext::styled_body(html, &text.plain),
-        None => richtext::plain_body(&text.plain),
+    match text.html() {
+        Some(html) => richtext::styled_body(html, &text.plain, RoomWord::Text),
+        None => richtext::plain_body(&text.plain, RoomWord::Text),
     }
 }
 
 pub fn preview_line(text: &RichText) -> SharedString {
-    match text.html.as_deref() {
-        Some(html) => one_line(&richtext::styled_body(html, &text.plain).plain),
+    match text.html() {
+        Some(html) => one_line(&richtext::styled_body(html, &text.plain, RoomWord::Text).plain),
         None => one_line(&text.plain),
     }
 }
 
-pub fn message_body(body: &MessageBody) -> richtext::StyledBody {
-    let plain = message_body_text(body);
-    match message_body_html(body) {
-        Some(html) => richtext::styled_body(html, plain),
-        None => richtext::plain_body(plain),
+pub fn message_body(message: &TimelineMessage) -> richtext::StyledBody {
+    let plain = message_body_text(&message.body);
+    let room_word = RoomWord::when(message.mentions_room);
+    match message_body_html(&message.body) {
+        Some(html) => richtext::styled_body(html, plain, room_word),
+        None => richtext::plain_body(plain, room_word),
     }
 }
 
@@ -698,7 +700,7 @@ pub fn quoted_message(message: Option<&TimelineMessage>) -> QuotedMessage {
         sender: SharedString::from(message_sender_label(m)),
         sent_at: SharedString::from(message_sent_at_label(m.timestamp)),
         kind: m.body.preview_kind(),
-        body: message_body(&m.body).plain,
+        body: message_body(m).plain,
         service_kind: service.map_or(ServiceKind::None, service_kind),
         service_target: SharedString::from(service.map_or("", service_target)),
     }
@@ -709,7 +711,7 @@ pub fn message_to_dto(m: &TimelineMessage, pinned: bool, media: &dyn MediaCache)
     let sender_label = message_sender_label(m);
     let (reactions, all_reactions) = reaction_dtos(&item, &m.reactions, media);
     let (readers, hidden_readers) = reader_labels(&m.read_by);
-    let rich = message_body(&m.body);
+    let rich = message_body(m);
     let preview_body = one_line(&rich.plain);
     let mut dto = MessageDto {
         unique_id: SharedString::from(&m.unique_id),
@@ -740,6 +742,7 @@ pub fn message_to_dto(m: &TimelineMessage, pinned: bool, media: &dyn MediaCache)
         is_own: m.is_own,
         edited: m.edited,
         text_editable: m.editable_text().is_some(),
+        edit_text: SharedString::from(m.editable_text().unwrap_or_default()),
         pinned,
         first_unread: m.is_first_unread,
         counts_as_unread: m.counts_as_unread(),
@@ -1073,6 +1076,26 @@ pub fn request_reader_avatar(reader: &Reader, media: &dyn MediaCache) {
 
 fn reader_avatar_path(reader: &Reader, media: &dyn MediaCache) -> Option<PathBuf> {
     media.user_avatar_path(reader.avatar_mxc.as_deref()?)
+}
+
+pub fn mention_to_dto(member: &RosterMember, media: &dyn MediaCache) -> MemberRowDto {
+    let avatar = member_avatar_path(member, media).and_then(|path| peek_avatar(&path));
+    let label = member.label();
+    MemberRowDto {
+        user_id: SharedString::from(&member.user_id),
+        kind: MemberRowKind::Member,
+        name: SharedString::from(label),
+        initial: SharedString::from(avatar_initials(label)),
+        color_index: avatar_color_index(&member.user_id),
+        role: member.role,
+        has_avatar: avatar.is_some(),
+        avatar,
+    }
+}
+
+pub fn request_mention_avatar(member: &RosterMember, media: &dyn MediaCache) {
+    let path = member_avatar_path(member, media);
+    load_avatar_async(path.as_deref(), AvatarSlot::Mention(member.user_id.clone()));
 }
 
 pub fn log_line_to_dto(line: &LogLine) -> LogLineDto {

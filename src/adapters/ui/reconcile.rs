@@ -8,7 +8,7 @@ use super::backend::UiBackend;
 use super::decode::{ShownAvatar, forget_all_media_needs};
 use super::dto::{
     INVITED_HEADING_ROW, SPACES_HEADING_ROW, StickerGrid, StickerRowDto, prefetch_space_avatar,
-    record_room_avatar_need, request_member_avatar, request_reader_avatar,
+    record_room_avatar_need, request_member_avatar, request_mention_avatar, request_reader_avatar,
     request_space_child_avatar, request_space_match_avatar,
 };
 use super::fields::RoomFields;
@@ -18,7 +18,7 @@ use super::splice_model::SpliceModel;
 use crate::commands::view::{DirectoryView, RosterRow, SpaceIndexRow, SpaceMatch};
 use crate::domain::message::TimelineMessage;
 use crate::domain::room::{Room, Space};
-use crate::domain::room_info::Reader;
+use crate::domain::room_info::{Reader, RosterMember};
 use crate::domain::timeline::{EnrichmentDelta, TimelinePatch};
 use crate::ports::media::MediaCache;
 
@@ -640,6 +640,33 @@ pub fn apply_reader_rows<T: Clone + PartialEq + 'static>(
         convert,
         get_id,
     );
+}
+
+pub fn apply_mention_rows<T: Clone + PartialEq + 'static>(
+    model: &VecModel<T>,
+    rows: &[Arc<RosterMember>],
+    previous: &[Arc<RosterMember>],
+    media: &dyn MediaCache,
+    convert: &dyn Fn(&Arc<RosterMember>) -> T,
+    get_id: &dyn Fn(&T) -> &str,
+) {
+    for member in rows {
+        request_mention_avatar(member, media);
+    }
+    apply_reconcile(
+        model,
+        rows,
+        previous,
+        &|member| member.user_id.as_str(),
+        convert,
+        get_id,
+    );
+}
+
+impl SameItem for Arc<RosterMember> {
+    fn same_item(&self, other: &Self) -> bool {
+        Arc::ptr_eq(self, other) || **self == **other
+    }
 }
 
 fn roster_row_id(row: &RosterRow) -> &str {

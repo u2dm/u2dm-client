@@ -16,6 +16,11 @@ export global Interaction {
         return event.text == Key.Menu || (event.modifiers.shift && event.text == Key.F10);
     }
 
+    public pure function unmodified(event: KeyEvent) -> bool {
+        return !event.modifiers.shift && !event.modifiers.control && !event.modifiers.alt
+            && !event.modifiers.meta;
+    }
+
     public pure function next(cursor: int, count: int) -> int {
         return mod(max(cursor, -1) + 1, count);
     }

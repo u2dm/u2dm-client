@@ -10,6 +10,7 @@ import { ErrorBanner } from "../../../../components/banner.slint";
 import { CheckRow } from "../../../../components/check-row.slint";
 import { DialogCard, ModalHost } from "../../../../components/overlay.slint";
 import { ComposerField } from "./composer-field.slint";
+import { MentionPopup } from "./mention-popup.slint";
 import { PickerPanel } from "./picker-panel.slint";
 import { ReplyBar } from "./reply-bar.slint";
 import { DurationChip } from "./messages/media-frame.slint";
@@ -93,7 +94,9 @@ export component AttachmentDialog inherits ModalHost {
     dim-opacity: AppStyle.dialog-scrim;
     label: @tr("Send an attachment");
     dismissed => {
-        if root.emoji-picker-open {
+        if mentions.shown && !root.dismissing-by-pointer {
+            mentions.dismiss();
+        } else if root.emoji-picker-open {
             root.close-picker();
         } else {
             root.cancel();
@@ -142,6 +145,8 @@ export component AttachmentDialog inherits ModalHost {
         max(Metrics.attachment-preview-min, root.preview-width / max(root.aspect, 0.01)),
     );
     property <length> picker-headroom: field.absolute-position.y - 2 * Space.md;
+    property <length> field-x: field.absolute-position.x - root.absolute-position.x;
+    property <length> field-y: field.absolute-position.y - root.absolute-position.y;
 
     pure function heading() -> string {
         if root.as-document || AttachmentView.kind == AttachmentKind.file {
@@ -157,6 +162,7 @@ export component AttachmentDialog inherits ModalHost {
     }
 
     function cancel() {
+        mentions.release();
         Actions.cancel-attachment();
     }
 
@@ -260,6 +266,9 @@ export component AttachmentDialog inherits ModalHost {
                     submitted => {
                         root.submit();
                     }
+                    key-captured(event) => {
+                        return mentions.key(event);
+                    }
 
                     if root.is-replying: ReplyBar {
                         sender: root.reply.sender;
@@ -272,6 +281,21 @@ export component AttachmentDialog inherits ModalHost {
                     }
                 }
             }
+        }
+    }
+
+    mentions := MentionPopup {
+        x: root.field-x;
+        y: root.field-y - self.height - Space.sm;
+        width: field.width;
+        room-id: DirectoryView.selected-room-id;
+        text: root.caption;
+        caret: field.caret;
+        active: field.input-focused && !AttachmentView.sending;
+        headroom: root.field-y - 2 * Space.md;
+        above-modal: true;
+        complete(insert) => {
+            field.complete-mention(insert);
         }
     }
 

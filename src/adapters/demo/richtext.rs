@@ -272,6 +272,7 @@ fn message(
         event_id: Some(id),
         local_id: None,
         body: MessageBody::Text(body),
+        mentions_room: false,
         reply: None,
         edited: false,
         is_first_unread: false,

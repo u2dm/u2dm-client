@@ -129,11 +129,13 @@ pub fn permissions() -> MessagePermissions {
             delete_own: true,
             delete_others: false,
             pin: false,
+            notify_room: false,
         },
         Powers::Barred => MessagePermissions {
             delete_own: false,
             delete_others: false,
             pin: false,
+            notify_room: false,
         },
     }
 }

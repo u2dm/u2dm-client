@@ -156,6 +156,20 @@ pub fn edit_message(tx: &Tx, room_id: String, row: EditedRow, text: EditedText) 
     }
 }
 
+pub fn suggest_mentions(tx: &Tx, key: RoomKey, query: String, recent: Vec<String>) {
+    let Some((room_id, _)) = key else {
+        return;
+    };
+    send_command(
+        tx,
+        UiCommand::SuggestMentions {
+            room_id,
+            query,
+            recent: recent.into_iter().map(UserId::new).collect(),
+        },
+    );
+}
+
 pub fn dismiss_unsent(tx: &Tx, submission: i32) {
     send_command(tx, UiCommand::DismissUnsent { submission });
 }

@@ -64,9 +64,9 @@ pub(super) fn from_msgtype(msgtype: &MessageType) -> MessagePreview {
     };
     MessagePreview {
         kind,
-        body: RichText {
-            plain: one_line(body),
-            html: formatted_html(msgtype),
+        body: match formatted_html(msgtype) {
+            Some(html) => RichText::formatted(one_line(body), html),
+            None => RichText::plain(one_line(body)),
         },
         service: None,
         edited: false,

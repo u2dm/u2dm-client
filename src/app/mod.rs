@@ -10,6 +10,7 @@ pub mod input;
 mod lifecycle;
 mod link_requests;
 mod media;
+mod mentions;
 mod message_actions;
 mod pinned;
 mod polls;
@@ -37,13 +38,14 @@ use attachments::Attachments;
 use audio::AudioController;
 use establish::{EstablishedSession, Rollback};
 use event::{
-    AppEvent, EndReason, MessageActionEvent, ReadersEvent, RoomActionEvent, SessionEvent,
-    TimelineEvent, UserInfoEvent,
+    AppEvent, EndReason, MentionsEvent, MessageActionEvent, ReadersEvent, RoomActionEvent,
+    SessionEvent, TimelineEvent, UserInfoEvent,
 };
 use event_source::EventSourceViewer;
 use input::{CommandSender, EventSender, Inbox, Input};
 use lifecycle::{Lifecycle, Settled};
 use media::MediaActions;
+use mentions::{MentionSuggestions, Suggestion};
 use message_actions::MessageActions;
 use pinned::PinnedMessages;
 use readers::ReaderList;
@@ -187,6 +189,7 @@ pub struct AppService {
     message_actions: MessageActions,
     event_source: EventSourceViewer,
     readers: ReaderList,
+    mentions: MentionSuggestions,
     room_log: RoomLogViewer,
     attachments: Attachments,
     submissions: Submissions,
@@ -232,6 +235,7 @@ impl AppService {
             message_actions: MessageActions::new(Arc::clone(&output), events.clone()),
             event_source: EventSourceViewer::new(Arc::clone(&output)),
             readers: ReaderList::new(Arc::clone(&output), events.clone()),
+            mentions: MentionSuggestions::new(Arc::clone(&output), events.clone()),
             room_log: RoomLogViewer::new(room_logs, Arc::clone(&output), events.clone()),
             attachments: Attachments::new(media_files, Arc::clone(&output), events.clone()),
             submissions: Submissions::new(Arc::clone(&output), events.clone()),
@@ -502,6 +506,16 @@ impl AppService {
             }
             UiCommand::EditMessage { room_id, edit } => {
                 self.edit_message(room_id, edit);
+            }
+            UiCommand::SuggestMentions {
+                room_id,
+                query,
+                recent,
+            } => {
+                self.suggest_mentions(room_id, query, &recent);
+            }
+            UiCommand::EndMentions => {
+                self.mentions.end();
             }
             UiCommand::DismissUnsent { submission } => {
                 self.submissions
@@ -1036,6 +1050,49 @@ impl AppService {
         }
     }
 
+    fn suggest_mentions(&mut self, room_id: RoomId, query: String, recent: &[UserId]) {
+        if self.selection.room.as_ref() != Some(&room_id) {
+            return;
+        }
+        let Some(port) = self.port(|a| &a.room_info) else {
+            return;
+        };
+        let Some(room) = self.room_directory.room(room_id.as_ref()) else {
+            return;
+        };
+        let suggestion = Suggestion {
+            joined_count: room.member_count,
+            offers_room: room.message_permissions.notify_room,
+            own_user: self
+                .held_session
+                .running()
+                .map(|session| session.session.user_id.clone())
+                .unwrap_or_default(),
+            room_id,
+            query,
+            recent: recent.iter().map(ToString::to_string).collect(),
+        };
+        self.mentions.suggest(port, suggestion);
+    }
+
+    fn handle_mentions(&mut self, event: MentionsEvent) {
+        match event {
+            MentionsEvent::RosterLoaded {
+                request,
+                joined_count,
+                roster,
+            } => {
+                if let Some(port) = self.port(|a| &a.room_info) {
+                    self.mentions
+                        .roster_loaded(port, request, joined_count, roster);
+                }
+            }
+            MentionsEvent::AvatarsReady { request, ready } => {
+                self.mentions.avatars_ready(request, ready);
+            }
+        }
+    }
+
     fn handle_readers(&mut self, event: ReadersEvent) {
         match event {
             ReadersEvent::Named { request, readers } => {
@@ -1163,6 +1220,7 @@ impl AppService {
             AppEvent::MessageAction(event) => self.handle_message_action(event),
             AppEvent::UserInfo(event) => self.handle_user_info(event).await,
             AppEvent::Readers(event) => self.handle_readers(event),
+            AppEvent::Mentions(event) => self.handle_mentions(event),
             AppEvent::RoomLogGrew => self.room_log.reread(),
         }
     }
@@ -1715,6 +1773,7 @@ impl AppService {
         self.user_info.close();
         self.event_source.close();
         self.readers.close();
+        self.mentions.reset();
         self.sync_selected_room(Some(&room_id));
         self.follow_pinned(room_id.clone());
         self.open_room(room_id, TimelineFocus::ReadPosition).await;
@@ -1800,6 +1859,7 @@ impl AppService {
         self.user_info.close();
         self.event_source.close();
         self.readers.close();
+        self.mentions.reset();
         self.audio.abandon_lookup();
         self.selection.room = None;
         self.submissions.offer(None);
@@ -1864,6 +1924,7 @@ impl AppService {
             self.room_info.restart(),
             self.user_info.restart(),
             self.readers.restart(),
+            self.mentions.restart(),
             self.room_log.restart(),
         );
     }
@@ -1957,6 +2018,7 @@ impl AppService {
             self.room_info.shutdown(),
             self.user_info.shutdown(),
             self.readers.shutdown(),
+            self.mentions.shutdown(),
             self.room_log.shutdown(),
         );
     }

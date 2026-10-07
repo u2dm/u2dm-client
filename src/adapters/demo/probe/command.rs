@@ -230,6 +230,14 @@ pub enum ProbeCommand {
     },
     CloseReaders,
     PageReaders,
+    SuggestMentions {
+        #[serde(default)]
+        room_id: Option<String>,
+        query: String,
+        #[serde(default)]
+        recent: Vec<String>,
+    },
+    EndMentions,
     PinMessage {
         event_id: String,
     },
@@ -606,6 +614,16 @@ pub fn to_driven(command: ProbeCommand, selected: Selection<'_>) -> Result<Drive
         ProbeCommand::OpenReaders { event_id } => UiCommand::OpenReaders { event_id },
         ProbeCommand::CloseReaders => UiCommand::CloseReaders,
         ProbeCommand::PageReaders => UiCommand::PageReaders,
+        ProbeCommand::SuggestMentions {
+            room_id,
+            query,
+            recent,
+        } => UiCommand::SuggestMentions {
+            room_id: room(room_id, selected)?,
+            query,
+            recent: recent.into_iter().map(UserId::new).collect(),
+        },
+        ProbeCommand::EndMentions => UiCommand::EndMentions,
         ProbeCommand::PinMessage { event_id } => UiCommand::PinMessage { event_id },
         ProbeCommand::UnpinMessage { event_id } => UiCommand::UnpinMessage { event_id },
         ProbeCommand::DeleteMessage { event_id } => UiCommand::DeleteMessage { event_id },

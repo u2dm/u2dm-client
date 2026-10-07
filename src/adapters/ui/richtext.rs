@@ -6,6 +6,7 @@ use slint::{SharedString, StyledText};
 
 use super::session::with_session;
 use super::{autolink, permalink};
+use crate::domain::mention;
 
 const MAX_DEPTH: usize = 16;
 const MAX_NODES: usize = 4096;
@@ -28,10 +29,23 @@ pub struct StyledBody {
     pub mentions_you: bool,
 }
 
+#[derive(Clone, Copy, Default, PartialEq, Eq, Hash)]
+pub enum RoomWord {
+    Tag,
+    #[default]
+    Text,
+}
+
+impl RoomWord {
+    pub fn when(tagged: bool) -> Self {
+        if tagged { Self::Tag } else { Self::Text }
+    }
+}
+
 #[derive(PartialEq, Eq, Hash)]
 enum Source {
-    Formatted(String),
-    Unformatted(String),
+    Formatted(String, RoomWord),
+    Unformatted(String, RoomWord),
 }
 
 #[derive(Default)]
@@ -54,17 +68,19 @@ pub fn recognise_own_user(user_id: &str) {
     });
 }
 
-pub fn styled_body(html: &str, plain_fallback: &str) -> StyledBody {
-    rendered(Source::Formatted(html.to_owned()), |own_user_id| {
-        build(html, own_user_id)
-    })
+pub fn styled_body(html: &str, plain_fallback: &str, room_word: RoomWord) -> StyledBody {
+    rendered(
+        Source::Formatted(html.to_owned(), room_word),
+        |own_user_id| build(html, Writer::reading_as(own_user_id, room_word)),
+    )
     .unwrap_or_else(|| unstyled_body(plain_fallback))
 }
 
-pub fn plain_body(text: &str) -> StyledBody {
-    rendered(Source::Unformatted(text.to_owned()), |own_user_id| {
-        build_plain(text, own_user_id)
-    })
+pub fn plain_body(text: &str, room_word: RoomWord) -> StyledBody {
+    rendered(
+        Source::Unformatted(text.to_owned(), room_word),
+        |own_user_id| build_plain(text, Writer::reading_as(own_user_id, room_word)),
+    )
     .unwrap_or_else(|| unstyled_body(text))
 }
 
@@ -106,8 +122,7 @@ fn remember(source: Source, built: Option<StyledBody>) {
     });
 }
 
-fn build(html: &str, own_user_id: &str) -> Option<StyledBody> {
-    let mut writer = Writer::reading_as(own_user_id);
+fn build(html: &str, mut writer: Writer<'_>) -> Option<StyledBody> {
     let document = Html::parse(html);
     for node in document.children() {
         writer.node(&node, 0);
@@ -139,19 +154,18 @@ fn build(html: &str, own_user_id: &str) -> Option<StyledBody> {
     }
 }
 
-fn build_plain(text: &str, own_user_id: &str) -> Option<StyledBody> {
+fn build_plain(text: &str, mut writer: Writer<'_>) -> Option<StyledBody> {
     if text.len() > MAX_MARKDOWN_LEN {
         return None;
     }
 
-    let mut writer = Writer::reading_as(own_user_id);
     for (index, line) in text.lines().enumerate() {
         if index > 0 {
             writer.markdown.push('\n');
         }
         writer.push_linkified(line);
     }
-    if !writer.has_links || writer.exceeded_limits() {
+    if !(writer.has_links || writer.tags_room) || writer.exceeded_limits() {
         return None;
     }
 
@@ -159,7 +173,7 @@ fn build_plain(text: &str, own_user_id: &str) -> Option<StyledBody> {
         Ok(styled) => Some(StyledBody {
             styled,
             plain: SharedString::from(text),
-            has_links: true,
+            has_links: writer.has_links,
             mentions_you: writer.mentions_you,
         }),
         Err(e) => {
@@ -244,10 +258,12 @@ enum Line {
 #[derive(Default)]
 struct Writer<'own> {
     own_user_id: &'own str,
+    room_word: RoomWord,
     markdown: String,
     plain: String,
     has_links: bool,
     mentions_you: bool,
+    tags_room: bool,
     overflowed: bool,
     nodes: usize,
     line: Line,
@@ -261,9 +277,10 @@ struct Writer<'own> {
 }
 
 impl<'own> Writer<'own> {
-    fn reading_as(own_user_id: &'own str) -> Self {
+    fn reading_as(own_user_id: &'own str, room_word: RoomWord) -> Self {
         Self {
             own_user_id,
+            room_word,
             ..Self::default()
         }
     }
@@ -467,17 +484,21 @@ impl<'own> Writer<'own> {
     }
 
     fn link_to(&mut self, destination: &str, write_link: impl FnOnce(&mut Self)) {
-        if !self.names_you(destination) {
+        if self.names_you(destination) {
+            self.bold_mention(write_link);
+        } else {
             write_link(self);
-            return;
         }
+    }
+
+    fn bold_mention(&mut self, write_mention: impl FnOnce(&mut Self)) {
         self.mentions_you = true;
         if self.is_open(&InlineStyle::Strong) {
-            write_link(self);
+            write_mention(self);
             return;
         }
         self.markdown.push_str(&InlineStyle::Strong.opener());
-        write_link(self);
+        write_mention(self);
         self.markdown.push_str(&InlineStyle::Strong.closer());
     }
 
@@ -580,13 +601,32 @@ impl<'own> Writer<'own> {
             else {
                 continue;
             };
-            self.push_escaped(before);
+            self.push_words(before);
             self.link_to(&destination, |w| {
                 w.markdown.push('[');
                 w.push_escaped(label);
                 w.close_link(&destination);
             });
             self.has_links = true;
+            written = span.end;
+        }
+        self.push_words(text.get(written..).unwrap_or_default());
+    }
+
+    fn push_words(&mut self, text: &str) {
+        if self.room_word == RoomWord::Text {
+            self.push_escaped(text);
+            return;
+        }
+        let mut written = 0;
+        for span in mention::room_mentions(text) {
+            let (Some(before), Some(tag)) = (text.get(written..span.start), text.get(span.clone()))
+            else {
+                continue;
+            };
+            self.push_escaped(before);
+            self.tags_room = true;
+            self.bold_mention(|w| w.push_escaped(tag));
             written = span.end;
         }
         self.push_escaped(text.get(written..).unwrap_or_default());

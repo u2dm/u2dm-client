@@ -21,8 +21,8 @@ use super::present::{
 };
 use super::props::{BoolProp, IntProp, StringProp, UiProps};
 use super::reconcile::{
-    RoomListing, RowReplacements, apply_member_rows, apply_reader_rows, apply_rooms,
-    apply_space_children, apply_spaces, apply_timeline_patch, index_sticker_grid,
+    RoomListing, RowReplacements, apply_member_rows, apply_mention_rows, apply_reader_rows,
+    apply_rooms, apply_space_children, apply_spaces, apply_timeline_patch, index_sticker_grid,
     retain_awaited_downloads,
 };
 use super::richtext::recognise_own_user;
@@ -35,9 +35,9 @@ use crate::commands::messages::{UserMessage, UserMessageKind};
 use crate::commands::ui::Draft;
 use crate::commands::view::{
     AppViewState, AttachmentView, AudioView, CardStatus, CopiedLink, DirectoryView, LifecycleView,
-    NowPlaying, PaginationView, PinnedView, ReadersView, RoomCard, RoomInfoView, RoomLogView,
-    RoomMenuTarget, SourceState, SpaceIndexView, StickerView, Toast, TrackFile, UnsentMessage,
-    UserCard, UserInfoView, VideoView,
+    MentionsView, NowPlaying, PaginationView, PinnedView, ReadersView, RoomCard, RoomInfoView,
+    RoomLogView, RoomMenuTarget, SourceState, SpaceIndexView, StickerView, Toast, TrackFile,
+    UnsentMessage, UserCard, UserInfoView, VideoView,
 };
 use crate::domain::message::{
     EditKind, MessageEdit, MessagePermissions, MessagePreviewKind, RichText, TimelineMessage,
@@ -327,6 +327,7 @@ fn apply_snapshot<B: UiBackend>(
         room_link,
         source,
         readers,
+        mentions,
         room_log,
     } = view.as_ref();
 
@@ -385,6 +386,7 @@ fn apply_snapshot<B: UiBackend>(
         apply_source(w, source);
     }
     apply_readers::<B>(w, last.map(|l| &l.readers), readers, ctx);
+    apply_mentions::<B>(w, last.map(|l| &l.mentions), mentions, ctx);
     if last.is_none_or(|l| l.room_log != *room_log) {
         apply_room_log::<B>(
             w,
@@ -565,6 +567,48 @@ fn apply_readers<B: UiBackend>(
     }
     if last.is_none_or(|l| l.status != *status) {
         w.set_readers_status(*status);
+    }
+}
+
+fn apply_mentions<B: UiBackend>(
+    w: &B::Window,
+    last: Option<&MentionsView>,
+    mentions: &MentionsView,
+    ctx: &UiEventContext<'_, B>,
+) {
+    let MentionsView {
+        room_id,
+        offers_room,
+        rows,
+        avatars_ready,
+    } = mentions;
+
+    if last.is_none_or(|l| l.room_id != *room_id) {
+        w.set_string(
+            StringProp::MentionsRoomId,
+            room_id
+                .as_ref()
+                .map(|room| SharedString::from(room.as_ref()))
+                .unwrap_or_default(),
+        );
+    }
+    if last.is_none_or(|l| l.offers_room != *offers_room) {
+        w.set_bool(BoolProp::MentionsOfferRoom, *offers_room);
+    }
+    let rows_changed = last.is_none_or(|l| !Arc::ptr_eq(&l.rows, rows));
+    let avatars_landed = last.is_some_and(|l| l.avatars_ready != *avatars_ready);
+    if rows_changed || avatars_landed {
+        let previous = last
+            .filter(|_| !avatars_landed)
+            .map_or(&[] as &[_], |l| l.rows.as_ref());
+        apply_mention_rows(
+            &ctx.models.mentions,
+            rows.as_ref(),
+            previous,
+            ctx.media,
+            &|member| B::convert_mention(member, ctx.media),
+            &|entry| entry.user_id(),
+        );
     }
 }
 

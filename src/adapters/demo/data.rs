@@ -7,6 +7,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use super::dto::{DemoData, RoomDto, SpaceDto, StickerPackDto, UnjoinedDto};
 use super::timeline::{self, scenario};
 use super::{media, message_menu, polls};
+use crate::adapters::markdown::{self, Composed, RoomMentions};
 use crate::domain::auth::Session;
 use crate::domain::media::{
     AudioKind, AudioMeta, FileMeta, ImageMeta, OutgoingAttachment, VideoMeta,
@@ -604,6 +605,28 @@ pub fn pronouns(user_id: &str) -> Vec<String> {
     data().pronouns.get(user_id).cloned().unwrap_or_default()
 }
 
+pub fn own_composition(composer: &str) -> Composed {
+    let notify_room = message_menu::permissions().notify_room;
+    markdown::compose(composer, own_user(), RoomMentions::when(notify_room))
+}
+
+pub struct SentText {
+    pub text: RichText,
+    pub mentions_room: bool,
+}
+
+pub fn sent_text(composer: &str) -> SentText {
+    let sent = own_composition(composer);
+    let text = match sent.html {
+        Some(html) => RichText::authored(sent.markdown, html, composer.to_owned()),
+        None => RichText::plain(sent.markdown),
+    };
+    SentText {
+        text,
+        mentions_room: sent.mentions.room,
+    }
+}
+
 pub fn own_message(
     sequence: u64,
     body: &str,
@@ -612,6 +635,7 @@ pub fn own_message(
 ) -> TimelineMessage {
     let id = format!("demo-sent-{sequence}");
     let settled = send_state == SendState::Sent;
+    let sent = sent_text(body);
     TimelineMessage {
         unique_id: id.clone(),
         event_id: settled.then(|| id.clone()),
@@ -620,7 +644,8 @@ pub fn own_message(
         sender: own_user().to_owned(),
         sender_display_name: Some("You".to_owned()),
         sender_avatar_url: Some(own_user().to_owned()),
-        body: MessageBody::Text(RichText::plain(body.to_owned())),
+        body: MessageBody::Text(sent.text),
+        mentions_room: sent.mentions_room,
         timestamp: now_ms(),
         is_own: true,
         reply,
@@ -653,6 +678,7 @@ pub fn own_poll(sequence: u64, draft: &PollDraft, send_state: SendState) -> Time
     };
     TimelineMessage {
         body: MessageBody::Poll(poll),
+        mentions_room: false,
         ..own_message(sequence, draft.question(), None, send_state)
     }
 }
@@ -685,6 +711,7 @@ pub fn own_sticker(
                 thumbnail: Some(content),
             },
         },
+        mentions_room: false,
         timestamp: now_ms(),
         is_own: true,
         reply,
@@ -704,12 +731,9 @@ pub fn own_attachment(
 ) -> TimelineMessage {
     let id = format!("demo-sent-{sequence}");
     let picked = &attachment.picked;
-    let caption = || {
-        attachment
-            .caption
-            .as_ref()
-            .map(|text| RichText::plain(text.clone()))
-    };
+    let sent = attachment.caption.as_deref().map(sent_text);
+    let mentions_room = sent.as_ref().is_some_and(|sent| sent.mentions_room);
+    let caption = || sent.as_ref().map(|sent| sent.text.clone());
     let (width, height) = picked.dimensions.unzip();
     let image_meta = || ImageMeta {
         width,
@@ -771,6 +795,7 @@ pub fn own_attachment(
         sender_display_name: Some("You".to_owned()),
         sender_avatar_url: Some(own_user().to_owned()),
         body,
+        mentions_room,
         timestamp: now_ms(),
         is_own: true,
         reply,
@@ -846,6 +871,7 @@ fn synthesized_message(dto: &RoomDto, room: &Room) -> TimelineMessage {
         sender,
         sender_display_name: Some(display_name),
         body: MessageBody::Text(room.last_message_body.clone()),
+        mentions_room: false,
         timestamp: room.last_activity_ts,
         is_own: dto.last_message.own,
         reply: None,

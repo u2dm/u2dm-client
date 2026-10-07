@@ -5,9 +5,9 @@ use crate::commands::messages::UserMessage;
 use crate::commands::ui::Draft;
 use crate::commands::view::{
     AppViewState, AttachmentView, AudioView, CardStatus, CopiedLink, DirectoryView, LifecycleView,
-    PaginationView, PinnedView, ReadersView, RoomInfoView, RoomLogView, RoomMenuTarget, RosterRow,
-    SourceState, SpaceIndexRow, SpaceIndexView, SpaceMatch, StickerView, Toast, TrackFile,
-    UnsentMessage, UserInfoView, VideoView,
+    MentionsView, PaginationView, PinnedView, ReadersView, RoomInfoView, RoomLogView,
+    RoomMenuTarget, RosterRow, SourceState, SpaceIndexRow, SpaceIndexView, SpaceMatch, StickerView,
+    Toast, TrackFile, UnsentMessage, UserInfoView, VideoView,
 };
 use crate::domain::message::{EditKind, PinnedMessage};
 use crate::domain::room::{Room, Space};
@@ -39,7 +39,22 @@ pub struct ViewDto {
     room_link: LinkDto,
     source: SourceDto,
     readers: ReadersDto,
+    mentions: MentionsDto,
     room_log: Option<RoomLogDto>,
+}
+
+#[derive(Serialize)]
+struct MentionsDto {
+    room_id: Option<String>,
+    offers_room: bool,
+    avatars_ready: usize,
+    rows: Vec<MentionDto>,
+}
+
+#[derive(Serialize)]
+struct MentionDto {
+    user_id: String,
+    name: String,
 }
 
 #[derive(Serialize)]
@@ -403,7 +418,24 @@ pub fn view(source: &AppViewState) -> ViewDto {
         room_link: link(&source.room_link),
         source: event_source(&source.source),
         readers: readers(&source.readers),
+        mentions: mentions(&source.mentions),
         room_log: source.room_log.as_ref().map(room_log),
+    }
+}
+
+fn mentions(source: &MentionsView) -> MentionsDto {
+    MentionsDto {
+        room_id: source.room_id.as_ref().map(ToString::to_string),
+        offers_room: source.offers_room,
+        avatars_ready: source.avatars_ready,
+        rows: source
+            .rows
+            .iter()
+            .map(|member| MentionDto {
+                user_id: member.user_id.clone(),
+                name: member.label().to_owned(),
+            })
+            .collect(),
     }
 }
 
@@ -648,7 +680,7 @@ fn room_info(source: &RoomInfoView) -> RoomInfoDto {
         topic: card.and_then(|card| card.topic.clone()),
         topic_html: about
             .and_then(|about| about.topic.as_ref())
-            .and_then(|topic| topic.html.clone()),
+            .and_then(|topic| topic.html().map(str::to_owned)),
         alias: card.and_then(|card| card.alias.clone()),
         joined_at: about.and_then(|about| about.joined_at),
         link: about.map(|about| about.link.clone()),

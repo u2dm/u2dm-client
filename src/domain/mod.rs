@@ -2,6 +2,7 @@ pub mod account;
 pub mod auth;
 pub mod link;
 pub mod media;
+pub mod mention;
 pub mod message;
 pub mod poll;
 pub mod room;

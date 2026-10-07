@@ -1,5 +1,6 @@
 use std::any::Any;
 use std::cell::RefCell;
+use std::ops::ControlFlow;
 
 use slint::{Model, ModelNotify, ModelTracker};
 
@@ -73,6 +74,14 @@ impl<T: Clone + 'static> SpliceModel<T> {
 
     pub fn last_position(&self, matches: impl Fn(&T) -> bool) -> Option<usize> {
         self.rows.borrow().iter().rposition(matches)
+    }
+
+    pub fn visit_newest_first(&self, mut visit: impl FnMut(&T) -> ControlFlow<()>) {
+        for row in self.rows.borrow().iter().rev() {
+            if visit(row).is_break() {
+                return;
+            }
+        }
     }
 
     pub fn truncate(&self, length: usize) {

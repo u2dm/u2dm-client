@@ -1,7 +1,6 @@
 use std::collections::HashSet;
 
 use matrix_sdk::ruma::UInt;
-use matrix_sdk::ruma::events::StateEventContentChange;
 use matrix_sdk::ruma::events::poll::start::PollKind;
 use matrix_sdk::ruma::events::room::ImageInfo;
 use matrix_sdk::ruma::events::room::message::{
@@ -10,6 +9,7 @@ use matrix_sdk::ruma::events::room::message::{
 };
 use matrix_sdk::ruma::events::room::name::RoomNameEventContent;
 use matrix_sdk::ruma::events::sticker::StickerEventContent;
+use matrix_sdk::ruma::events::{Mentions, StateEventContentChange};
 use matrix_sdk_ui::timeline::{
     AnyOtherStateEventContentChange, EventSendState, EventTimelineItem, MemberProfileChange,
     MembershipChange, Message, PollState, ReactionInfo, RoomMembershipChange, Sticker,
@@ -18,6 +18,7 @@ use matrix_sdk_ui::timeline::{
 
 use super::TimelineContext;
 use super::members::{Arrived, Need};
+use crate::adapters::markdown;
 use crate::adapters::matrix::media::{EventMedia, file_content, thumbnail_content};
 use crate::adapters::matrix::preview;
 use crate::domain::media::{
@@ -166,6 +167,7 @@ fn base_message(
         sender_display_name,
         sender_avatar_url,
         body: MessageBody::UnableToDecrypt,
+        mentions_room: false,
         timestamp: ts,
         is_own,
         reply: None,
@@ -546,6 +548,34 @@ fn rich_body(plain: &str, formatted: Option<&FormattedBody>) -> RichText {
     }
 }
 
+fn names_room(mentions: Option<&Mentions>) -> bool {
+    mentions.is_some_and(|mentions| mentions.room)
+}
+
+fn is_own(event: &EventTimelineItem, ctx: &TimelineContext<'_>) -> bool {
+    ctx.own_user_id
+        .is_some_and(|own| own == event.sender().as_str())
+}
+
+fn authored(body: MessageBody) -> MessageBody {
+    match body {
+        MessageBody::Text(text) => MessageBody::Text(markdown::own_text(&text.plain, text.html())),
+        MessageBody::Image { caption, meta } => MessageBody::Image {
+            caption: caption.map(markdown::own_caption),
+            meta,
+        },
+        MessageBody::Video { caption, meta } => MessageBody::Video {
+            caption: caption.map(markdown::own_caption),
+            meta,
+        },
+        MessageBody::Audio { caption, meta } => MessageBody::Audio {
+            caption: caption.map(markdown::own_caption),
+            meta,
+        },
+        other => other,
+    }
+}
+
 fn message_type_to_body(msgtype: &MessageType) -> MessageBody {
     match msgtype {
         MessageType::Text(t) => MessageBody::Text(rich_body(&t.body, t.formatted.as_ref())),
@@ -586,12 +616,26 @@ pub(super) fn convert_event_item_with_uid(
 
     match classify(content) {
         Some(Renderable::Message(message)) => {
-            let (body, edited) = match ctx.discarded.original_msgtype(event) {
-                Some(original) => (message_type_to_body(&original), false),
-                None => (message_type_to_body(message.msgtype()), message.is_edited()),
+            let (body, mentions_room, edited) = match ctx.discarded.original_content(event) {
+                Some(original) => (
+                    message_type_to_body(&original.msgtype),
+                    names_room(original.mentions.as_ref()),
+                    false,
+                ),
+                None => (
+                    message_type_to_body(message.msgtype()),
+                    names_room(message.mentions()),
+                    message.is_edited(),
+                ),
+            };
+            let body = if is_own(event, ctx) {
+                authored(body)
+            } else {
+                body
             };
             Some(TimelineMessage {
                 body,
+                mentions_room,
                 reply,
                 edited,
                 ..base_message(unique_id, event, event_id_str, ctx)

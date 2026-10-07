@@ -14,6 +14,7 @@ mod emoji;
 mod fields;
 mod finger_direction;
 mod focus;
+mod mention;
 mod multiplex;
 mod output;
 mod permalink;

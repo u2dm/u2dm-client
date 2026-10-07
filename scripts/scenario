@@ -53,6 +53,8 @@ scenario_env() {
     readers)         echo 'U2DM_DEMO_RECEIPTS=late,throng U2DM_DEMO_ROOM_INFO=slow' ;;
     room-search)     echo 'U2DM_DEMO_WINDOW=900x760' ;;
     room-search-open) echo 'U2DM_DEMO_WINDOW=900x760' ;;
+    mentions)        echo 'U2DM_DEMO_ROOM_INFO=slow' ;;
+    room-mention)    echo 'U2DM_DEMO_WINDOW=900x760' ;;
     *) return 1 ;;
   esac
 }
@@ -306,6 +308,18 @@ scenario_steps() {
       echo 'sleep 1'
       echo '{"op":"open_space","space_id":"!space-rust-web:demo.local"}'
       echo 'sleep 2' ;;
+    mentions)
+      echo '{"op":"select_room","room_id":"!design:demo.local"}'
+      echo 'sleep 1'
+      echo '{"op":"suggest_mentions","query":"pr"}'
+      echo 'sleep 3'
+      echo '{"op":"suggest_mentions","query":"","recent":["@nadia:matrix.org","@priya:matrix.org"]}'
+      echo 'sleep 1'
+      echo '{"op":"suggest_mentions","query":"ro"}'
+      echo 'sleep 1' ;;
+    room-mention)
+      echo '{"op":"select_room","room_id":"!matrixhq:demo.local"}'
+      echo 'sleep 2' ;;
     login-oauth|verify-self)
       : ;;
   esac
@@ -356,6 +370,8 @@ scenario_note() {
     readers)         echo 'in !rust, the 123 readers of an older message load slowly, then the 121 readers of your newest message page in fifty at a time' ;;
     room-search)     echo 'in All Rooms, "design" lists the Design Team room, then the Design space' ;;
     room-search-open) echo '"web" matches only the Web space under Rust (Web Accessibility is too deep to open); opening it selects Rust and its Web subspace' ;;
+    mentions)        echo 'in !design the roster loads slowly, then "pr" suggests Priya, "" puts the recent speakers first, and "ro" offers @room' ;;
+    room-mention)    echo 'in !matrixhq, Vera'"'"'s announcement mentions the room: its @room is bold and its bubble tinted (mentions_you)' ;;
   esac
 }
 
@@ -376,7 +392,7 @@ names() {
     space-index polls poll-edits room-info room-leave room-info-failures room-info-pane room-menu room-menu-leave \
     room-menu-failures room-log user-info user-info-failures user-dm user-dm-start user-dm-failures user-ignore user-moderation \
     user-moderation-failures user-tags message-link message-source message-pins message-pin-failures message-delete \
-    message-delete-failures readers room-search room-search-open
+    message-delete-failures readers room-search room-search-open mentions room-mention
 }
 
 cmd_list() {
@@ -444,6 +460,8 @@ cmd_run() {
   jq -r 'if .view.room_link.serial > 0 then "  room link #\(.view.room_link.serial) \(.view.room_link.url)" else empty end' "$out/state.json"
   jq -r 'if .view.room_log then "  room log \(.view.room_log.room_id) lines=\(.view.room_log.lines) dropped=\(.view.room_log.dropped) newest=\(.view.room_log.newest[-1] // "none")" else empty end' "$out/state.json"
   jq -r 'if .view.source.status != "closed" then "  source \(.view.source.status) \(.view.source.event_id) encryption=\(.view.source.encryption)" else empty end' "$out/state.json"
+  jq -r '[.rows[]? | select(.mentions_you) | .event_id] | if length > 0 then "  tinted rows \(join(", "))" else empty end' "$out/timeline.json"
+  jq -r 'if (.view.mentions.rows|length) > 0 or .view.mentions.offers_room then "  mentions in \(.view.mentions.room_id) room=\(.view.mentions.offers_room) rows=\([.view.mentions.rows[].user_id] | join(", "))" else empty end' "$out/state.json"
 }
 
 case "${1:-}" in

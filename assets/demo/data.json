@@ -840,6 +840,14 @@
         "minutes_ago": 39
       },
       {
+        "id": "demo-matrixhq-11",
+        "sender": "@vera:matrix.org",
+        "name": "Vera 🏳️‍⚧️",
+        "body": "@room release notes are up. read them before you ask me anything",
+        "mentions_room": true,
+        "minutes_ago": 35
+      },
+      {
         "id": "demo-matrixhq-4",
         "sender": "@kai:matrix.org",
         "name": "Kai",

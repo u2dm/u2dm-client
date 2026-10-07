@@ -3,6 +3,7 @@ pub mod container;
 #[cfg(feature = "demo")]
 pub mod demo;
 pub mod instance;
+pub mod markdown;
 pub mod matrix;
 pub mod media;
 pub mod private_fs;

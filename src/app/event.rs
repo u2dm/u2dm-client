@@ -10,13 +10,14 @@ use crate::domain::auth::ServerInfo;
 use crate::domain::media::PickedAttachment;
 use crate::domain::message::{MessageEdit, PinnedMessage};
 use crate::domain::room::RoomId;
-use crate::domain::room_info::{Reader, RoomAbout};
+use crate::domain::room_info::{Reader, RoomAbout, RosterMember};
 use crate::domain::timeline::{
     AudioTrack, EventSource, MessageReaders, PaginationDirection, PaginationOutcome,
     TimelineAdvance, TimelineFocus,
 };
 use crate::domain::user_info::{GlobalProfile, IgnoreChange, Moderation, UserId};
 use crate::domain::verification::VerificationEvent;
+use crate::error::AppError;
 use crate::ports::matrix::{AuthenticatedSession, CleanupReport};
 
 #[derive(Clone, Copy)]
@@ -95,7 +96,29 @@ pub(super) enum AppEvent {
     MessageAction(MessageActionEvent),
     UserInfo(UserInfoEvent),
     Readers(ReadersEvent),
+    Mentions(MentionsEvent),
     RoomLogGrew,
+}
+
+pub(super) enum MentionsEvent {
+    RosterLoaded {
+        request: u64,
+        joined_count: u64,
+        roster: Result<Vec<RosterMember>, AppError>,
+    },
+    AvatarsReady {
+        request: u64,
+        ready: usize,
+    },
+}
+
+impl MentionsEvent {
+    fn label(&self) -> &'static str {
+        match self {
+            Self::RosterLoaded { .. } => "MentionRosterLoaded",
+            Self::AvatarsReady { .. } => "MentionAvatarsReady",
+        }
+    }
 }
 
 pub(super) enum ReadersEvent {
@@ -254,6 +277,7 @@ impl AppEvent {
             Self::MessageAction(event) => event.label(),
             Self::UserInfo(event) => event.label(),
             Self::Readers(event) => event.label(),
+            Self::Mentions(event) => event.label(),
             Self::RoomLogGrew => "RoomLogGrew",
         }
     }

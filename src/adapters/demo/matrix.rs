@@ -258,10 +258,24 @@ fn current_lists(lists: &Mutex<RoomLists>) -> RoomLists {
     lists.lock().map(|lists| lists.clone()).unwrap_or_default()
 }
 
+struct Revision {
+    body: MessageBody,
+    mentions_room: bool,
+    edited: bool,
+}
+
+impl Revision {
+    fn restore(self, message: &mut TimelineMessage) {
+        message.body = self.body;
+        message.mentions_room = self.mentions_room;
+        message.edited = self.edited;
+    }
+}
+
 struct RevisedText {
     timeline_tx: mpsc::Sender<TimelineUpdate>,
     row: usize,
-    previous: (MessageBody, bool),
+    previous: Revision,
     message: TimelineMessage,
 }
 
@@ -272,24 +286,27 @@ fn edit_names(target: &EditTarget, message: &TimelineMessage) -> bool {
     }
 }
 
-fn revised_body(body: &MessageBody, text: &str) -> Option<MessageBody> {
-    let caption = (!text.is_empty()).then(|| RichText::plain(text.to_owned()));
+fn revised_body(body: &MessageBody, text: &str, sent: RichText) -> Option<MessageBody> {
     match body {
-        MessageBody::Text(_) => Some(MessageBody::Text(RichText::plain(text.to_owned()))),
+        MessageBody::Text(_) => Some(MessageBody::Text(sent)),
         MessageBody::Image { meta, .. } => Some(MessageBody::Image {
-            caption,
+            caption: revised_caption(text, sent),
             meta: meta.clone(),
         }),
         MessageBody::Video { meta, .. } => Some(MessageBody::Video {
-            caption,
+            caption: revised_caption(text, sent),
             meta: meta.clone(),
         }),
         MessageBody::Audio { meta, .. } => Some(MessageBody::Audio {
-            caption,
+            caption: revised_caption(text, sent),
             meta: meta.clone(),
         }),
         _ => None,
     }
+}
+
+fn revised_caption(text: &str, sent: RichText) -> Option<RichText> {
+    (!text.is_empty()).then_some(sent)
 }
 
 struct OpenedWindow {
@@ -406,6 +423,7 @@ impl DemoAuthed {
             return;
         };
         sent.body = revised.body.clone();
+        sent.mentions_room = revised.mentions_room;
         sent.edited = revised.edited;
     }
 
@@ -422,8 +440,14 @@ impl DemoAuthed {
         let row = active.prepended.saturating_add(offset);
         let message = active.messages.get_mut(offset)?;
         message.editable_text()?;
-        let revised = revised_body(&message.body, &edit.body)?;
-        let previous = (mem::replace(&mut message.body, revised), message.edited);
+        let sent = data::sent_text(&edit.body);
+        let revised = revised_body(&message.body, &edit.body, sent.text)?;
+        let previous = Revision {
+            body: mem::replace(&mut message.body, revised),
+            mentions_room: message.mentions_room,
+            edited: message.edited,
+        };
+        message.mentions_room |= sent.mentions_room;
         message.edited |= edit.target.event_id().is_some();
         if !timeline::scenario().edits_fail {
             self.keep_own_edit(room_id, message);
@@ -2245,7 +2269,7 @@ fn spawn_edit_refusal(
     active: SharedActiveRoom,
     timeline_tx: mpsc::Sender<TimelineUpdate>,
     edit: MessageEdit,
-    previous: (MessageBody, bool),
+    previous: Revision,
 ) {
     tokio::spawn(async move {
         sleep(timeline::EDIT_REFUSAL_DELAY).await;
@@ -2262,7 +2286,7 @@ fn spawn_edit_refusal(
             if message.editable_text() != Some(edit.body.as_str()) {
                 return None;
             }
-            (message.body, message.edited) = previous;
+            previous.restore(message);
             Some((row, message.clone()))
         });
         if let Some((index, message)) = reverted {
@@ -2343,7 +2367,7 @@ fn older_history(round: u64, messages: &[TimelineMessage]) -> Vec<TimelineMessag
 fn grown_body(body: &MessageBody, round: usize) -> MessageBody {
     let padding = " and it keeps going".repeat(round % 4);
     match body {
-        MessageBody::Text(text) if text.html.is_none() => {
+        MessageBody::Text(text) if text.html().is_none() => {
             MessageBody::Text(RichText::plain(format!("{}{padding}", text.plain)))
         }
         other => other.clone(),
