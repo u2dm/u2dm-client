@@ -1,6 +1,7 @@
 use tokio::sync::watch;
 
 use super::clipboard;
+use super::permalink;
 use super::props::send_command;
 use super::schema::{notify_modes, simple_callbacks, variant_named};
 use crate::app::input::CommandSender;
@@ -326,11 +327,19 @@ pub fn play_audio(tx: &Tx, event_id: String) {
 }
 
 pub fn open_link(tx: &Tx, url: String) {
-    let Some(url) = LauncherSafeUrl::message_link(url) else {
+    let Some(command) = link_command(url) else {
         tracing::debug!("ignoring a message link U2DM does not open");
         return;
     };
-    send_command(tx, UiCommand::OpenLink { url });
+    send_command(tx, command);
+}
+
+pub fn link_command(url: impl AsRef<str>) -> Option<UiCommand> {
+    let url = url.as_ref();
+    if let Some(user_id) = permalink::linked_user(url) {
+        return Some(UiCommand::OpenUserInfo(user_id));
+    }
+    LauncherSafeUrl::message_link(url).map(|url| UiCommand::OpenLink { url })
 }
 
 pub fn jump_to_event(tx: &Tx, event_id: String) {

@@ -7,8 +7,8 @@ use std::time::Duration;
 use super::names;
 use crate::adapters::demo::attachments;
 use crate::adapters::ui::dump::Poke;
+use crate::adapters::ui::link_command;
 use crate::commands::ui::{MessageDraft, ReplyDraft, UiCommand};
-use crate::domain::link::LauncherSafeUrl;
 use crate::domain::media::AttachmentPick;
 use crate::domain::message::{EditKind, EditTarget, MessageEdit, TextRevision};
 use crate::domain::poll::{ChoiceMode, PollDisclosure, PollDraft};
@@ -654,10 +654,9 @@ pub fn to_driven(command: ProbeCommand, selected: Selection<'_>) -> Result<Drive
         }
         ProbeCommand::SwipeTravel { px } => return Ok(Driven::Poke(Poke::SwipeTravel(px))),
         ProbeCommand::ContextPress => return Ok(Driven::Poke(Poke::ContextPress)),
-        ProbeCommand::OpenLink { url } => UiCommand::OpenLink {
-            url: LauncherSafeUrl::message_link(&url)
-                .ok_or_else(|| Rejected(format!("{url} is not a link U2DM opens")))?,
-        },
+        ProbeCommand::OpenLink { url } => {
+            link_command(&url).ok_or_else(|| Rejected(format!("{url} is not a link U2DM opens")))?
+        }
         ProbeCommand::AcceptVerification => UiCommand::AcceptVerification,
         ProbeCommand::RejectVerification => UiCommand::RejectVerification,
         ProbeCommand::ConfirmVerification => UiCommand::ConfirmVerification,

@@ -261,6 +261,7 @@ pub struct MessageDto {
     pub body: SharedString,
     pub styled: StyledText,
     pub has_links: bool,
+    pub mentions_you: bool,
     pub timestamp: SharedString,
     pub sent_at: SharedString,
     pub message_type: MessageKind,
@@ -722,6 +723,7 @@ pub fn message_to_dto(m: &TimelineMessage, pinned: bool, media: &dyn MediaCache)
         body: rich.plain,
         styled: rich.styled,
         has_links: rich.has_links,
+        mentions_you: rich.mentions_you,
         timestamp: SharedString::from(&message_timestamp_label(m.timestamp)),
         sent_at: if m.is_own {
             SharedString::from(message_sent_at_label(m.timestamp))

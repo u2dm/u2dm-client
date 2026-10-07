@@ -159,7 +159,7 @@ export component MessageBubble inherits VerticalLayout {
 
     property <color> bubble-color: root.is-own
         ? AppStyle.own-bubble
-        : Palette.alternate-background;
+        : (root.msg.mentions-you ? AppStyle.mention-bubble : Palette.alternate-background);
     property <length> bubble-max-width: max(
         Metrics.bubble-max / 2,
         min(Metrics.bubble-max, root.available-width - Metrics.bubble-gutter),

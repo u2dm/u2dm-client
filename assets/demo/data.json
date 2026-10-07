@@ -843,7 +843,7 @@
         "id": "demo-matrixhq-4",
         "sender": "@kai:matrix.org",
         "name": "Kai",
-        "body": "nadia solo carried this entire release 🫃",
+        "body": "@nadia:matrix.org solo carried this entire release 🫃",
         "minutes_ago": 31
       },
       {
@@ -855,7 +855,7 @@
         "reply": {
           "sender": "Kai",
           "event_id": "demo-matrixhq-4",
-          "body": "nadia solo carried this entire release 🫃"
+          "body": "@nadia:matrix.org solo carried this entire release 🫃"
         }
       },
       {
@@ -1024,7 +1024,8 @@
         "id": "demo-design-3",
         "sender": "@priya:matrix.org",
         "name": "Priya",
-        "body": "the drop shadow is fighting for its life and losing",
+        "body": "Alex: the drop shadow is fighting for its life and losing",
+        "html": "<a href=\"https://matrix.to/#/@alex:matrix.org\">Alex</a>: the drop shadow is fighting for its life and losing",
         "days_ago": 1,
         "minutes_ago": 15
       },
@@ -1032,7 +1033,8 @@
         "id": "demo-design-5",
         "sender": "@nadia:matrix.org",
         "name": "Nadia",
-        "body": "that drop shadow is load bearing. remove it and the whole screen collapses",
+        "body": "Priya: that drop shadow is load bearing. remove it and the whole screen collapses",
+        "html": "<a href=\"https://matrix.to/#/@priya:matrix.org\">Priya</a>: that drop shadow is load bearing. remove it and the whole screen collapses",
         "days_ago": 1,
         "minutes_ago": 10
       },

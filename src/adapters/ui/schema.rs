@@ -874,6 +874,7 @@ macro_rules! message_fields {
         body set_body "body" text;
         styled set_styled "styled" styled;
         has_links set_has_links "has-links" flag;
+        mentions_you set_mentions_you "mentions-you" flag;
         timestamp set_timestamp "timestamp" text;
         sent_at set_sent_at "sent-at" text;
         message_type set_message_type "message-type" enumk(MessageKind);

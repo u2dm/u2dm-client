@@ -4,8 +4,8 @@ use std::fmt::Write;
 use matrix_sdk::ruma::html::{Html, NodeRef};
 use slint::{SharedString, StyledText};
 
-use super::autolink;
 use super::session::with_session;
+use super::{autolink, permalink};
 
 const MAX_DEPTH: usize = 16;
 const MAX_NODES: usize = 4096;
@@ -25,6 +25,7 @@ pub struct StyledBody {
     pub styled: StyledText,
     pub plain: SharedString,
     pub has_links: bool,
+    pub mentions_you: bool,
 }
 
 #[derive(PartialEq, Eq, Hash)]
@@ -34,28 +35,54 @@ enum Source {
 }
 
 #[derive(Default)]
-pub struct StyledBodies(HashMap<Source, Option<StyledBody>>);
+pub struct StyledBodies {
+    own_user_id: String,
+    rendered: HashMap<Source, Option<StyledBody>>,
+}
 
 pub fn forget_styled_bodies() {
-    with_session(|session| session.bodies.0.clear());
+    with_session(|session| session.bodies.rendered.clear());
+}
+
+pub fn recognise_own_user(user_id: &str) {
+    with_session(|session| {
+        let bodies = &mut session.bodies;
+        if bodies.own_user_id != user_id {
+            user_id.clone_into(&mut bodies.own_user_id);
+            bodies.rendered.clear();
+        }
+    });
 }
 
 pub fn styled_body(html: &str, plain_fallback: &str) -> StyledBody {
-    rendered(Source::Formatted(html.to_owned()), || build(html))
-        .unwrap_or_else(|| unstyled_body(plain_fallback))
+    rendered(Source::Formatted(html.to_owned()), |own_user_id| {
+        build(html, own_user_id)
+    })
+    .unwrap_or_else(|| unstyled_body(plain_fallback))
 }
 
 pub fn plain_body(text: &str) -> StyledBody {
-    rendered(Source::Unformatted(text.to_owned()), || build_plain(text))
-        .unwrap_or_else(|| unstyled_body(text))
+    rendered(Source::Unformatted(text.to_owned()), |own_user_id| {
+        build_plain(text, own_user_id)
+    })
+    .unwrap_or_else(|| unstyled_body(text))
 }
 
-fn rendered(source: Source, render: impl FnOnce() -> Option<StyledBody>) -> Option<StyledBody> {
-    if let Some(hit) = with_session(|session| session.bodies.0.get(&source).cloned()) {
-        return hit;
-    }
+fn rendered(source: Source, render: impl FnOnce(&str) -> Option<StyledBody>) -> Option<StyledBody> {
+    let lookup = with_session(|session| {
+        let bodies = &session.bodies;
+        bodies
+            .rendered
+            .get(&source)
+            .cloned()
+            .ok_or_else(|| bodies.own_user_id.clone())
+    });
+    let own_user_id = match lookup {
+        Ok(hit) => return hit,
+        Err(own_user_id) => own_user_id,
+    };
 
-    let built = render();
+    let built = render(&own_user_id);
     remember(source, built.clone());
     built
 }
@@ -65,12 +92,13 @@ fn unstyled_body(text: &str) -> StyledBody {
         styled: StyledText::from_plain_text(text),
         plain: SharedString::from(text),
         has_links: false,
+        mentions_you: false,
     }
 }
 
 fn remember(source: Source, built: Option<StyledBody>) {
     with_session(|session| {
-        let memo = &mut session.bodies.0;
+        let memo = &mut session.bodies.rendered;
         if memo.len() >= MAX_MEMO_ENTRIES {
             memo.clear();
         }
@@ -78,8 +106,8 @@ fn remember(source: Source, built: Option<StyledBody>) {
     });
 }
 
-fn build(html: &str) -> Option<StyledBody> {
-    let mut writer = Writer::default();
+fn build(html: &str, own_user_id: &str) -> Option<StyledBody> {
+    let mut writer = Writer::reading_as(own_user_id);
     let document = Html::parse(html);
     for node in document.children() {
         writer.node(&node, 0);
@@ -102,6 +130,7 @@ fn build(html: &str) -> Option<StyledBody> {
             styled,
             plain: SharedString::from(plain),
             has_links: writer.has_links,
+            mentions_you: writer.mentions_you,
         }),
         Err(e) => {
             tracing::debug!("a formatted message did not render, showing it plain: {e}");
@@ -110,12 +139,12 @@ fn build(html: &str) -> Option<StyledBody> {
     }
 }
 
-fn build_plain(text: &str) -> Option<StyledBody> {
+fn build_plain(text: &str, own_user_id: &str) -> Option<StyledBody> {
     if text.len() > MAX_MARKDOWN_LEN {
         return None;
     }
 
-    let mut writer = Writer::default();
+    let mut writer = Writer::reading_as(own_user_id);
     for (index, line) in text.lines().enumerate() {
         if index > 0 {
             writer.markdown.push('\n');
@@ -131,6 +160,7 @@ fn build_plain(text: &str) -> Option<StyledBody> {
             styled,
             plain: SharedString::from(text),
             has_links: true,
+            mentions_you: writer.mentions_you,
         }),
         Err(e) => {
             tracing::debug!("a message with links did not render, showing it plain: {e}");
@@ -210,11 +240,14 @@ enum Line {
     HasContent,
 }
 
+#[allow(clippy::struct_excessive_bools)]
 #[derive(Default)]
-struct Writer {
+struct Writer<'own> {
+    own_user_id: &'own str,
     markdown: String,
     plain: String,
     has_links: bool,
+    mentions_you: bool,
     overflowed: bool,
     nodes: usize,
     line: Line,
@@ -227,7 +260,14 @@ struct Writer {
     open_styles: Vec<OpenStyle>,
 }
 
-impl Writer {
+impl<'own> Writer<'own> {
+    fn reading_as(own_user_id: &'own str) -> Self {
+        Self {
+            own_user_id,
+            ..Self::default()
+        }
+    }
+
     fn exceeded_limits(&mut self) -> bool {
         self.overflowed |= self.markdown.len() > MAX_MARKDOWN_LEN;
         self.overflowed
@@ -288,7 +328,7 @@ impl Writer {
     }
 
     fn styled(&mut self, style: InlineStyle, node: &NodeRef, depth: usize) {
-        if self.open_styles.iter().any(|open| open.style == style) {
+        if self.is_open(&style) {
             self.children(node, depth);
             return;
         }
@@ -303,6 +343,10 @@ impl Writer {
         {
             self.markdown.push_str(&open.style.closer());
         }
+    }
+
+    fn is_open(&self, style: &InlineStyle) -> bool {
+        self.open_styles.iter().any(|open| open.style == *style)
     }
 
     fn write_pending_prefix(&mut self) {
@@ -404,12 +448,15 @@ impl Writer {
             return;
         }
         self.write_pending_prefix();
+        self.link_to(&href, |w| w.labelled_link(&plain_label, &href));
+    }
 
+    fn labelled_link(&mut self, label: &str, href: &str) {
         self.link_open = true;
         let bracket_at = self.markdown.len();
         self.markdown.push('[');
-        self.text(&plain_label);
-        self.close_link(&href);
+        self.text(label);
+        self.close_link(href);
         self.link_open = false;
 
         if self.spans_one_line(bracket_at + 1) {
@@ -417,6 +464,26 @@ impl Writer {
         } else {
             self.markdown.replace_range(bracket_at..=bracket_at, "");
         }
+    }
+
+    fn link_to(&mut self, destination: &str, write_link: impl FnOnce(&mut Self)) {
+        if !self.names_you(destination) {
+            write_link(self);
+            return;
+        }
+        self.mentions_you = true;
+        if self.is_open(&InlineStyle::Strong) {
+            write_link(self);
+            return;
+        }
+        self.markdown.push_str(&InlineStyle::Strong.opener());
+        write_link(self);
+        self.markdown.push_str(&InlineStyle::Strong.closer());
+    }
+
+    fn names_you(&self, destination: &str) -> bool {
+        !self.own_user_id.is_empty()
+            && permalink::linked_user(destination).is_some_and(|user| *user == *self.own_user_id)
     }
 
     fn list(&mut self, node: &NodeRef, depth: usize) {
@@ -514,9 +581,11 @@ impl Writer {
                 continue;
             };
             self.push_escaped(before);
-            self.markdown.push('[');
-            self.push_escaped(label);
-            self.close_link(&destination);
+            self.link_to(&destination, |w| {
+                w.markdown.push('[');
+                w.push_escaped(label);
+                w.close_link(&destination);
+            });
             self.has_links = true;
             written = span.end;
         }

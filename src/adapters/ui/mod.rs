@@ -16,6 +16,7 @@ mod finger_direction;
 mod focus;
 mod multiplex;
 mod output;
+mod permalink;
 mod present;
 mod props;
 mod reconcile;
@@ -31,6 +32,8 @@ mod video;
 mod window_events;
 
 pub use output::UiEventOutput;
+#[cfg(feature = "demo")]
+pub(crate) use router::link_command;
 use slint::PlatformError;
 
 use crate::error::AppError;

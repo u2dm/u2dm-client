@@ -118,6 +118,17 @@ const LINKS: &[(&str, &str)] = &[
         "a refused scheme",
         "<a href=\"matrix:r/demo:demo.local\">a refused scheme</a>",
     ),
+    (
+        "Sarah, Alex and Nadia, tagged three ways.",
+        "<a href=\"https://matrix.to/#/@sarah:matrix.org\">Sarah</a>, \
+         <a href=\"https://matrix.to/#/%40alex%3Amatrix.org?via=matrix.org\">Alex</a> and \
+         <a href=\"matrix:u/nadia:matrix.org?action=chat\">Nadia</a>, tagged three ways.",
+    ),
+    (
+        "Alex, in bold and in italics.",
+        "<strong><a href=\"https://matrix.to/#/@alex:matrix.org\">Alex</a></strong>, in bold and \
+         <em>in <a href=\"https://matrix.to/#/@alex:matrix.org\">Alex</a> italics</em>.",
+    ),
 ];
 
 const BARE: &[&str] = &[
@@ -125,7 +136,8 @@ const BARE: &[&str] = &[
     "trailing punctuation: see https://example.invalid/docs. Then (https://example.invalid/more), \
      and <https://example.invalid/angled>",
     "www.example.invalid/path and nobody@example.invalid and mailto:someone@example.invalid",
-    "not links: @sarah:matrix.org, notes.rs, 3:2, nothttps://example.invalid",
+    "user tags: @sarah:matrix.org, (@alex:matrix.org) and @nadia:matrix.org: hi",
+    "not links: notes.rs, 3:2, @12:30, @room, @everyone: and nothttps://example.invalid",
 ];
 
 #[derive(Default, Clone, Copy)]

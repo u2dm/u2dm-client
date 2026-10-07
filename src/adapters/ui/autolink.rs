@@ -2,6 +2,8 @@ use std::ops::Range;
 
 use url::Url;
 
+use super::permalink;
+
 const OPENING: &[char] = &[
     '(', '[', '{', '<', '"', '\'', '\u{201c}', '\u{2018}', '\u{00ab}',
 ];
@@ -12,6 +14,10 @@ const BRACKETS: [(char, char); 3] = [('(', ')'), ('[', ']'), ('{', '}')];
 const SCHEMES: &[&str] = &["https://", "http://", "mailto:"];
 const HOST_PREFIX: &str = "www.";
 const LOCAL_PART_PUNCTUATION: &[char] = &['.', '_', '%', '+', '-'];
+const USER_SIGIL: char = '@';
+const USER_LOCALPART_PUNCTUATION: &[char] = &['.', '_', '=', '-', '/', '+'];
+const SERVER_SEPARATOR: char = ':';
+const PORT_SEPARATOR: char = ':';
 
 pub fn find(text: &str) -> Vec<(Range<usize>, String)> {
     let mut links = Vec::new();
@@ -102,7 +108,28 @@ fn destination(candidate: &str) -> Option<String> {
     if starts_with_ignoring_case(candidate, HOST_PREFIX) {
         return accepted(format!("https://{candidate}"), true);
     }
-    mailbox(candidate)
+    user_mention(candidate).or_else(|| mailbox(candidate))
+}
+
+fn user_mention(candidate: &str) -> Option<String> {
+    let (localpart, server) = candidate
+        .strip_prefix(USER_SIGIL)?
+        .split_once(SERVER_SEPARATOR)?;
+    let linkable = !localpart.is_empty()
+        && localpart
+            .chars()
+            .all(|ch| ch.is_ascii_alphanumeric() || USER_LOCALPART_PUNCTUATION.contains(&ch));
+    if !linkable || !is_server_name(server) {
+        return None;
+    }
+    accepted(permalink::user_link(candidate)?, false)
+}
+
+fn is_server_name(server: &str) -> bool {
+    match server.split_once(PORT_SEPARATOR) {
+        Some((host, port)) => is_named_host(host) && port.parse::<u16>().is_ok(),
+        None => is_named_host(server),
+    }
 }
 
 fn mailbox(candidate: &str) -> Option<String> {

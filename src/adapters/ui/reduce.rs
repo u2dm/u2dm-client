@@ -25,6 +25,7 @@ use super::reconcile::{
     apply_space_children, apply_spaces, apply_timeline_patch, index_sticker_grid,
     retain_awaited_downloads,
 };
+use super::richtext::recognise_own_user;
 use super::rows::patch_rows_by_id;
 use super::session::{begin_session, with_session};
 use super::splice_model::SpliceModel;
@@ -1142,6 +1143,7 @@ fn apply_lifecycle(w: &impl UiProps, last: Option<&LifecycleView>, next: &Lifecy
         );
     }
     if last.is_none_or(|l| l.user_id != *user_id) {
+        recognise_own_user(user_id);
         w.set_string(StringProp::UserId, SharedString::from(user_id));
         w.set_string(
             StringProp::UserInitial,
