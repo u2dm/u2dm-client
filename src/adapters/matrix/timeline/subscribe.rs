@@ -8,8 +8,8 @@ use matrix_sdk::ruma::{EventId, IdParseError, OwnedEventId, OwnedRoomId, UserId}
 use matrix_sdk::{Client, Room};
 use matrix_sdk_ui::eyeball_im::VectorDiff;
 use matrix_sdk_ui::timeline::{
-    EventTimelineItem, RoomExt as _, Timeline, TimelineEventFocusThreadMode, TimelineEventItemId,
-    TimelineFocus as SdkTimelineFocus, TimelineItem, VirtualTimelineItem,
+    EventSendState, EventTimelineItem, RoomExt as _, Timeline, TimelineEventFocusThreadMode,
+    TimelineEventItemId, TimelineFocus as SdkTimelineFocus, TimelineItem, VirtualTimelineItem,
 };
 use tokio::sync::{Semaphore, mpsc};
 use tokio::task::JoinSet;
@@ -234,6 +234,50 @@ fn process_diffs(
     result
 }
 
+async fn own_reaction_failed(timeline: &Timeline, target: &EventId, key: &str) -> bool {
+    let Some(item) = timeline.item_by_event_id(target).await else {
+        return false;
+    };
+    let own = timeline.room().own_user_id();
+    item.content()
+        .reactions()
+        .and_then(|by_key| by_key.get(key))
+        .and_then(|by_sender| by_sender.get(own))
+        .is_some_and(|info| matches!(info.send_state, Some(EventSendState::SendingFailed { .. })))
+}
+
+#[derive(Debug)]
+enum ReactionToggle {
+    Added,
+    Removed,
+    DiscardedFailedSend,
+}
+
+async fn toggle_own_reaction(
+    timeline: &Timeline,
+    target: OwnedEventId,
+    key: &str,
+) -> Result<ReactionToggle> {
+    let failed = own_reaction_failed(timeline, &target, key).await;
+    let added = timeline
+        .toggle_reaction(&TimelineEventItemId::EventId(target), key)
+        .await
+        .map_err(|e| AppError::Other(e.to_string()))?;
+    Ok(match (added, failed) {
+        (true, _) => ReactionToggle::Added,
+        (false, true) => ReactionToggle::DiscardedFailedSend,
+        (false, false) => ReactionToggle::Removed,
+    })
+}
+
+fn resume_after_discarded_reaction(room: &Room, event_id: &str) {
+    room.send_queue().set_enabled(true);
+    tracing::info!(
+        event_id,
+        "discarded a failed reaction, resuming the room's send queue"
+    );
+}
+
 async fn toggle_reaction(timeline: &Timeline, event_id: &str, key: &str) {
     let Ok(target) = OwnedEventId::try_from(event_id) else {
         tracing::warn!(
@@ -242,11 +286,11 @@ async fn toggle_reaction(timeline: &Timeline, event_id: &str, key: &str) {
         );
         return;
     };
-    match timeline
-        .toggle_reaction(&TimelineEventItemId::EventId(target), key)
-        .await
-    {
-        Ok(added) => tracing::debug!(event_id, added, "toggled a reaction"),
+    match toggle_own_reaction(timeline, target, key).await {
+        Ok(ReactionToggle::DiscardedFailedSend) => {
+            resume_after_discarded_reaction(timeline.room(), event_id);
+        }
+        Ok(toggle) => tracing::debug!(event_id, ?toggle, "toggled a reaction"),
         Err(e) => tracing::warn!("failed to toggle a reaction: {e}"),
     }
 }
