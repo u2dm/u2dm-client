@@ -21,6 +21,8 @@ const COMMAND_POLL: Duration = Duration::from_millis(4);
 const MAX_PENDING_FRAMES: usize = 4;
 const AUDIO_INTERLEAVE_SLACK: Duration = Duration::from_secs(1);
 const MAX_LOOKAHEAD_PACKETS: usize = 120;
+const PACKETS_PER_TURN: usize = 16;
+const MAX_BACKLOG_BYTES: usize = 16 * 1024 * 1024;
 
 enum AudioSupply {
     Buffered,
@@ -33,6 +35,55 @@ enum Stage {
     Demuxed,
     Flushing,
     Decoded,
+}
+
+#[derive(Clone, Copy)]
+enum Demand {
+    Met,
+    Outstanding,
+}
+
+enum Held {
+    Packet(Packet),
+    EndOfInput,
+}
+
+#[derive(Default)]
+struct AudioBacklog {
+    held: VecDeque<Held>,
+    bytes: usize,
+}
+
+impl AudioBacklog {
+    fn hold(&mut self, packet: Packet) {
+        self.bytes = self.bytes.saturating_add(packet.size());
+        self.held.push_back(Held::Packet(packet));
+    }
+
+    fn close(&mut self) {
+        self.held.push_back(Held::EndOfInput);
+    }
+
+    fn pop(&mut self) -> Option<Held> {
+        let next = self.held.pop_front();
+        if let Some(Held::Packet(packet)) = &next {
+            self.bytes = self.bytes.saturating_sub(packet.size());
+        }
+        next
+    }
+
+    fn is_empty(&self) -> bool {
+        self.held.is_empty()
+    }
+
+    fn is_full(&self) -> bool {
+        self.bytes >= MAX_BACKLOG_BYTES
+    }
+
+    fn clear(&mut self) {
+        self.held.clear();
+        self.bytes = 0;
+    }
 }
 
 struct Pending {
@@ -86,6 +137,7 @@ struct Session {
     audio: Option<AudioFeed>,
     pending: VecDeque<Pending>,
     stashed: VecDeque<Packet>,
+    backlog: AudioBacklog,
     demuxed: Duration,
     stage: Stage,
 }
@@ -140,6 +192,7 @@ impl Session {
             audio,
             pending: VecDeque::new(),
             stashed: VecDeque::new(),
+            backlog: AudioBacklog::default(),
             demuxed: Duration::ZERO,
             stage: Stage::Demuxing,
         })
@@ -170,7 +223,9 @@ impl Session {
         };
         if audio.output().queued_frames() > 0 {
             AudioSupply::Buffered
-        } else if !self.is_demuxing() || self.looked_past_the_audio(audio) {
+        } else if self.backlog.is_empty()
+            && (!self.is_demuxing() || self.looked_past_the_audio(audio))
+        {
             AudioSupply::Exhausted
         } else {
             AudioSupply::Starving
@@ -191,6 +246,7 @@ impl Session {
         self.decoder.flush();
         self.pending.clear();
         self.stashed.clear();
+        self.backlog.clear();
         self.stage = Stage::Demuxing;
         self.demuxed = position;
         if let Some(audio) = self.audio.as_mut() {
@@ -292,31 +348,37 @@ impl Session {
         }
     }
 
-    fn audio_is_full(&self) -> bool {
-        self.audio
-            .as_ref()
-            .is_some_and(|audio| audio.output().is_full())
-    }
-
-    fn top_up(&mut self) {
-        loop {
+    fn top_up(&mut self) -> Demand {
+        for _ in 0..PACKETS_PER_TURN {
+            self.decode_backlog();
             self.decode_stashed();
             if !self.wants_packet() {
-                return;
+                return Demand::Met;
             }
-            match self.next_packet() {
-                Some(packet) => self.stashed.push_back(packet),
-                None => self.close_input(),
-            }
+            self.demux_packet();
         }
+        Demand::Outstanding
     }
 
     fn wants_packet(&self) -> bool {
-        if !self.is_demuxing() || self.audio_is_full() {
+        if !self.is_demuxing() || self.backlog.is_full() {
             return false;
         }
         self.pending.len() + self.stashed.len() < MAX_PENDING_FRAMES
             || matches!(self.audio_supply(), AudioSupply::Starving)
+    }
+
+    fn decode_backlog(&mut self) {
+        let Some(audio) = self.audio.as_mut() else {
+            return;
+        };
+        while !audio.output().is_full() {
+            match self.backlog.pop() {
+                Some(Held::Packet(packet)) => audio.feed(&packet),
+                Some(Held::EndOfInput) => audio.finish(),
+                None => return,
+            }
+        }
     }
 
     fn decode_stashed(&mut self) {
@@ -334,8 +396,8 @@ impl Session {
     }
 
     fn close_input(&mut self) {
-        if let Some(audio) = self.audio.as_mut() {
-            audio.finish();
+        if self.audio.is_some() {
+            self.backlog.close();
         }
         self.stage = Stage::Demuxed;
     }
@@ -389,14 +451,14 @@ impl Session {
             return self.wait_for_command(inbox, clock);
         }
 
-        self.top_up();
+        let demand = self.top_up();
         self.sync_clock(clock);
 
         let Some(next) = self.pending.front() else {
             return if self.has_finished() {
                 Flow::Ended
             } else {
-                self.wait_briefly_for_command(inbox, clock)
+                self.end_turn(demand, inbox, clock)
             };
         };
         let position = next.position;
@@ -417,7 +479,14 @@ impl Session {
             return Flow::Continue;
         }
 
-        self.wait_briefly_for_command(inbox, clock)
+        self.end_turn(demand, inbox, clock)
+    }
+
+    fn end_turn(&mut self, demand: Demand, inbox: &Receiver<Command>, clock: &mut Clock) -> Flow {
+        match demand {
+            Demand::Outstanding => Flow::Continue,
+            Demand::Met => self.wait_briefly_for_command(inbox, clock),
+        }
     }
 
     fn wait_briefly_for_command(&mut self, inbox: &Receiver<Command>, clock: &mut Clock) -> Flow {
@@ -443,22 +512,26 @@ impl Session {
         RgbImage::from_raw(self.width, self.height, packed)
     }
 
-    fn next_packet(&mut self) -> Option<Packet> {
-        loop {
-            let (index, time_base, packet) = {
-                let (stream, packet) = self.input.packets().next()?;
-                (stream.index(), stream.time_base(), packet)
-            };
-            self.demuxed = self.demuxed.max(packet_position(&packet, time_base));
-            if index == self.stream_index {
-                return Some(packet);
-            }
-            if let Some(audio) = self.audio.as_mut()
-                && index == audio.stream_index()
-            {
-                audio.feed(&packet);
-            }
+    fn demux_packet(&mut self) {
+        let Some((index, time_base, packet)) = self.read_packet() else {
+            self.close_input();
+            return;
+        };
+        self.demuxed = self.demuxed.max(packet_position(&packet, time_base));
+        if index == self.stream_index {
+            self.stashed.push_back(packet);
+        } else if self
+            .audio
+            .as_ref()
+            .is_some_and(|audio| index == audio.stream_index())
+        {
+            self.backlog.hold(packet);
         }
+    }
+
+    fn read_packet(&mut self) -> Option<(usize, Rational, Packet)> {
+        let (stream, packet) = self.input.packets().next()?;
+        Some((stream.index(), stream.time_base(), packet))
     }
 }
 
