@@ -10,11 +10,11 @@ use crate::commands::effects::Effect;
 use crate::commands::messages::{UserMessage, UserMessageKind};
 use crate::commands::ui::TimelineVisibility;
 use crate::commands::view::Toast;
-use crate::domain::message::{MessageEdit, TimelineMessage};
+use crate::domain::message::MessageEdit;
 use crate::domain::poll::{PollAction, PollDraft};
 use crate::domain::room::RoomId;
 use crate::domain::timeline::{
-    AudioLookup, FailedSend, JumpTarget, Landing, PaginationDirection, PaginationOutcome,
+    Arrivals, AudioLookup, FailedSend, JumpTarget, PaginationDirection, PaginationOutcome,
     TimelineAdvance, TimelineCommand, TimelineFocus, TimelinePatch, TimelineStatus, TimelineUpdate,
 };
 use crate::domain::viewport::ViewportController;
@@ -296,17 +296,16 @@ impl ActiveTimeline {
                 self.at_bottom = false;
                 self.add_new_messages(generation, count);
             }
-            TimelineAdvance::Appended {
-                new_messages,
-                from_others,
+            TimelineAdvance::Arrived {
+                arrivals,
                 opens_room,
             } => {
                 if self.at_bottom {
-                    if opens_room || from_others {
+                    if opens_room || arrivals.from_others {
                         self.mark_read_if_resolved();
                     }
-                } else if new_messages > 0 {
-                    self.add_new_messages(generation, new_messages);
+                } else if arrivals.new_messages > 0 {
+                    self.add_new_messages(generation, arrivals.new_messages);
                 }
             }
         }
@@ -597,7 +596,7 @@ impl Forwarder {
                 self.offer_unsaved_edit(edit);
             }
             TimelineUpdate::DeleteFailed => report_delete_failure(self.output.as_ref()),
-            TimelineUpdate::Patch(_)
+            TimelineUpdate::Patch { .. }
             | TimelineUpdate::ResolvingUnread
             | TimelineUpdate::UnreadUnresolved
             | TimelineUpdate::Pagination { .. }
@@ -618,7 +617,7 @@ impl Forwarder {
 
     async fn dispatch(&mut self, update: TimelineUpdate) -> bool {
         match update {
-            TimelineUpdate::Patch(patch) => self.forward_patch(patch).await,
+            TimelineUpdate::Patch { patch, arrivals } => self.forward_patch(patch, arrivals).await,
             TimelineUpdate::ResolvingUnread => {
                 self.emit_status(TimelineStatus::LoadingUnread).await;
             }
@@ -685,8 +684,8 @@ impl Forwarder {
         true
     }
 
-    async fn forward_patch(&mut self, patch: Box<TimelinePatch>) {
-        if let Some(advance) = read_position_advance(patch.as_ref(), self.next_snapshot) {
+    async fn forward_patch(&mut self, patch: Box<TimelinePatch>, arrivals: Arrivals) {
+        if let Some(advance) = read_position_advance(patch.as_ref(), arrivals, self.next_snapshot) {
             self.send_advance(advance);
         }
         if patch.opens_room() {
@@ -784,7 +783,11 @@ pub(super) fn report_delete_failure(output: &dyn AppOutputPort) {
     );
 }
 
-fn read_position_advance(patch: &TimelinePatch, snapshot: Snapshot) -> Option<TimelineAdvance> {
+fn read_position_advance(
+    patch: &TimelinePatch,
+    arrivals: Arrivals,
+    snapshot: Snapshot,
+) -> Option<TimelineAdvance> {
     if snapshot == Snapshot::Opening
         && let Some(anchor) = patch.unread_anchor()
     {
@@ -793,60 +796,12 @@ fn read_position_advance(patch: &TimelinePatch, snapshot: Snapshot) -> Option<Ti
         });
     }
 
-    let appended = count_appended(patch);
     let opens_room = patch.opens_room();
-    if appended.is_silent() && !opens_room {
+    if arrivals.is_silent() && !opens_room {
         return None;
     }
-    Some(TimelineAdvance::Appended {
-        new_messages: appended.new_messages,
-        from_others: appended.from_others,
+    Some(TimelineAdvance::Arrived {
+        arrivals,
         opens_room,
     })
-}
-
-#[derive(Default, Clone, Copy)]
-struct Appended {
-    new_messages: u32,
-    from_others: bool,
-}
-
-impl Appended {
-    fn of(message: &TimelineMessage) -> Self {
-        Self {
-            new_messages: u32::from(message.counts_as_unread()),
-            from_others: !message.is_own,
-        }
-    }
-
-    fn is_silent(self) -> bool {
-        self.new_messages == 0 && !self.from_others
-    }
-
-    fn merge(self, other: Self) -> Self {
-        Self {
-            new_messages: self.new_messages.saturating_add(other.new_messages),
-            from_others: self.from_others || other.from_others,
-        }
-    }
-}
-
-fn count_appended(patch: &TimelinePatch) -> Appended {
-    match patch {
-        TimelinePatch::Append(messages) => messages
-            .iter()
-            .map(Appended::of)
-            .fold(Appended::default(), Appended::merge),
-        TimelinePatch::PushBack(message)
-        | TimelinePatch::Insert {
-            message,
-            landing: Landing::AfterRemoteEvents,
-            ..
-        } => Appended::of(message),
-        TimelinePatch::Batch(patches) => patches
-            .iter()
-            .map(count_appended)
-            .fold(Appended::default(), Appended::merge),
-        _ => Appended::default(),
-    }
 }

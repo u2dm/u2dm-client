@@ -34,8 +34,9 @@ use crate::domain::space_index::HierarchyPage;
 use crate::domain::sticker::{PackId, StickerImage};
 use crate::domain::sync::{SyncEvent, SyncOutcome};
 use crate::domain::timeline::{
-    AudioLookup, AudioTrack, EventSource, JumpTarget, Landing, MessageReaders, PaginationDirection,
-    PaginationOutcome, TimelineCommand, TimelineFocus, TimelinePatch, TimelineUpdate, locate_audio,
+    Arrivals, AudioLookup, AudioTrack, EventSource, JumpTarget, MessageReaders,
+    PaginationDirection, PaginationOutcome, TimelineCommand, TimelineFocus, TimelinePatch,
+    TimelineUpdate, locate_audio,
 };
 use crate::domain::user_info::{
     GlobalProfile, IgnoreChange, Moderation, RoomMembership, UserId, UserProfile,
@@ -484,7 +485,7 @@ impl DemoAuthed {
         let messages = window_messages(&all, window, focus);
         let reset_messages = reset_messages(&messages);
         let reset = opening_patch(scenario, reset_messages.clone());
-        reset_slot.send(TimelineUpdate::Patch(Box::new(reset)));
+        reset_slot.send(TimelineUpdate::patch(reset));
         *active = Some(ActiveRoom {
             room_id: room_id.clone(),
             live: focus.is_live(),
@@ -2318,8 +2319,13 @@ fn spawn_late_append(active: SharedActiveRoom, timeline_tx: mpsc::Sender<Timelin
                 .filter(|room| room.timeline_tx.same_channel(&timeline_tx))?;
             land_above_pending_sends(room, &message)
         });
+        let arrivals = Arrivals::of([&message]);
         let patch = above_pending.unwrap_or(TimelinePatch::PushBack(message));
-        send_patch(&timeline_tx, patch).await;
+        let arrival = TimelineUpdate::Patch {
+            patch: Box::new(patch),
+            arrivals,
+        };
+        send_update(&timeline_tx, arrival).await;
     });
 }
 
@@ -2341,7 +2347,6 @@ fn land_above_pending_sends(
     Some(TimelinePatch::Insert {
         index: room.prepended.saturating_add(offset),
         message: arrival.clone(),
-        landing: Landing::AfterRemoteEvents,
     })
 }
 
@@ -2444,7 +2449,6 @@ fn spawn_deletion_refusal(active: SharedActiveRoom, removed: RemovedMessage) {
             TimelinePatch::Insert {
                 index: restored,
                 message: removed.message,
-                landing: Landing::AmongRemoteEvents,
             },
         )
         .await;
@@ -2453,10 +2457,11 @@ fn spawn_deletion_refusal(active: SharedActiveRoom, removed: RemovedMessage) {
 }
 
 async fn send_patch(timeline_tx: &mpsc::Sender<TimelineUpdate>, patch: TimelinePatch) {
-    if let Err(e) = timeline_tx
-        .send(TimelineUpdate::Patch(Box::new(patch)))
-        .await
-    {
+    send_update(timeline_tx, TimelineUpdate::patch(patch)).await;
+}
+
+async fn send_update(timeline_tx: &mpsc::Sender<TimelineUpdate>, update: TimelineUpdate) {
+    if let Err(e) = timeline_tx.send(update).await {
         tracing::debug!("demo timeline receiver closed: {e}");
     }
 }

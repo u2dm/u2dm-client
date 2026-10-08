@@ -14,10 +14,27 @@ pub enum FailedSend {
     Discard,
 }
 
-#[derive(Debug, Clone, Copy)]
-pub enum Landing {
-    AmongRemoteEvents,
-    AfterRemoteEvents,
+#[derive(Debug, Clone, Copy, Default)]
+pub struct Arrivals {
+    pub new_messages: u32,
+    pub from_others: bool,
+}
+
+impl Arrivals {
+    pub fn of<'a>(messages: impl IntoIterator<Item = &'a TimelineMessage>) -> Self {
+        messages
+            .into_iter()
+            .fold(Self::default(), |arrivals, message| Self {
+                new_messages: arrivals
+                    .new_messages
+                    .saturating_add(u32::from(message.counts_as_unread())),
+                from_others: arrivals.from_others || !message.is_own,
+            })
+    }
+
+    pub fn is_silent(self) -> bool {
+        self.new_messages == 0 && !self.from_others
+    }
 }
 
 #[derive(Debug, Clone, strum::IntoStaticStr)]
@@ -29,7 +46,6 @@ pub enum TimelinePatch {
     Insert {
         index: usize,
         message: TimelineMessage,
-        landing: Landing,
     },
     Set {
         index: usize,
@@ -291,9 +307,8 @@ pub enum TimelineAdvance {
         count: u32,
     },
     UnreadUnresolved,
-    Appended {
-        new_messages: u32,
-        from_others: bool,
+    Arrived {
+        arrivals: Arrivals,
         opens_room: bool,
     },
     Focused,
@@ -343,7 +358,10 @@ pub struct PaginationState {
 
 #[derive(Debug, Clone)]
 pub enum TimelineUpdate {
-    Patch(Box<TimelinePatch>),
+    Patch {
+        patch: Box<TimelinePatch>,
+        arrivals: Arrivals,
+    },
     ResolvingUnread,
     UnreadUnresolved,
     Pagination {
@@ -379,9 +397,16 @@ pub enum JumpTarget {
 }
 
 impl TimelineUpdate {
+    pub fn patch(patch: TimelinePatch) -> Self {
+        Self::Patch {
+            patch: Box::new(patch),
+            arrivals: Arrivals::default(),
+        }
+    }
+
     pub fn label(&self) -> &'static str {
         match self {
-            Self::Patch(patch) => patch.label(),
+            Self::Patch { patch, .. } => patch.label(),
             Self::ResolvingUnread => "ResolvingUnread",
             Self::UnreadUnresolved => "UnreadUnresolved",
             Self::Pagination { .. } => "Pagination",

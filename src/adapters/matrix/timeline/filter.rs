@@ -1,13 +1,14 @@
+use std::collections::HashSet;
 use std::mem;
 use std::sync::Arc;
 
 use matrix_sdk::ruma::EventId;
-use matrix_sdk_ui::timeline::{EventTimelineItem, TimelineItem};
+use matrix_sdk_ui::timeline::{EventItemOrigin, EventTimelineItem, TimelineItem};
 
 use super::TimelineContext;
 use super::convert::convert_timeline_item;
 use crate::domain::message::{ReadScan, TimelineMessage};
-use crate::domain::timeline::{JumpTarget, Landing, MessageReaders};
+use crate::domain::timeline::{Arrivals, JumpTarget, MessageReaders};
 
 pub(super) struct TimelineItems {
     items: Vec<Arc<TimelineItem>>,
@@ -64,20 +65,26 @@ impl TimelineItems {
             .count()
     }
 
-    pub(super) fn landing_at(&self, raw_index: usize) -> Landing {
-        let later = self
-            .items
-            .get(raw_index.saturating_add(1)..)
-            .unwrap_or_default();
-        let remote_event_later = later.iter().any(|item| {
-            item.as_event()
-                .is_some_and(EventTimelineItem::is_remote_event)
-        });
-        if remote_event_later {
-            Landing::AmongRemoteEvents
-        } else {
-            Landing::AfterRemoteEvents
-        }
+    pub(super) fn arrivals_since(&self, earlier: &[Arc<TimelineItem>]) -> Arrivals {
+        let held: HashSet<&EventId> = earlier
+            .iter()
+            .filter_map(|item| remote_event_id(item))
+            .collect();
+        let after_newest_held = earlier
+            .iter()
+            .rev()
+            .find_map(|item| remote_event_id(item))
+            .and_then(|newest| {
+                self.items
+                    .iter()
+                    .rposition(|item| remote_event_id(item) == Some(newest))
+            })
+            .map_or(0, |raw_index| raw_index.saturating_add(1));
+        Arrivals::of(
+            self.rendered_from(after_newest_held)
+                .filter(|(item, _)| arrived(item, &held))
+                .map(|(_, message)| message),
+        )
     }
 
     pub(super) fn position_of_event(&self, event_id: &EventId) -> Option<usize> {
@@ -278,6 +285,20 @@ impl TimelineItems {
             .extend(values.iter().map(|item| convert_timeline_item(item, ctx)));
         self.items.extend(values);
     }
+}
+
+fn remote_event_id(item: &TimelineItem) -> Option<&EventId> {
+    item.as_event()
+        .filter(|event| event.is_remote_event())
+        .and_then(EventTimelineItem::event_id)
+}
+
+fn arrived(item: &TimelineItem, held: &HashSet<&EventId>) -> bool {
+    let paginated = matches!(
+        item.as_event().and_then(EventTimelineItem::origin),
+        Some(EventItemOrigin::Pagination)
+    );
+    !paginated && remote_event_id(item).is_some_and(|event_id| !held.contains(event_id))
 }
 
 fn carrying_read_by(

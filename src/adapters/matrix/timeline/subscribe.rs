@@ -142,10 +142,8 @@ fn spawn_enrichment(ctx: &TimelineContext<'_>, job: EnrichmentJob, claim: Enrich
             && !delta.is_noop()
         {
             drop(
-                tx.send(TimelineUpdate::Patch(Box::new(TimelinePatch::Enrich(
-                    delta,
-                ))))
-                .await,
+                tx.send(TimelineUpdate::patch(TimelinePatch::Enrich(delta)))
+                    .await,
             );
         }
     };
@@ -191,9 +189,7 @@ async fn send_initial_timeline(
     );
     enrich_messages(items.rendered_from(0), ctx);
     ctx.timeline_tx
-        .send(TimelineUpdate::Patch(Box::new(TimelinePatch::Reset(
-            messages,
-        ))))
+        .send(TimelineUpdate::patch(TimelinePatch::Reset(messages)))
         .await
         .ok()?;
     ctx.timeline_tx
@@ -210,8 +206,9 @@ fn process_diffs(
     items: &mut TimelineItems,
     diffs: Vec<VectorDiff<Arc<TimelineItem>>>,
     ctx: &TimelineContext<'_>,
-) -> Option<TimelinePatch> {
+) -> Option<TimelineUpdate> {
     tracing::debug!(num_diffs = diffs.len(), "processing incoming diffs");
+    let earlier = items.items().to_vec();
     let mut batch = Vec::new();
     for diff in diffs {
         if let Some(patch) = diff_to_patch(items, diff, ctx) {
@@ -219,6 +216,7 @@ fn process_diffs(
             batch.push(patch);
         }
     }
+    let arrivals = items.arrivals_since(&earlier);
     stamp_editable_polls(items, &mut batch, ctx);
     stamp_read_marks(items, &mut batch, ctx);
     let result = match batch.len() {
@@ -229,9 +227,14 @@ fn process_diffs(
     tracing::debug!(
         produced = result.is_some(),
         label = result.as_ref().map(TimelinePatch::label),
+        new_messages = arrivals.new_messages,
+        from_others = arrivals.from_others,
         "process_diffs result"
     );
-    result
+    result.map(|patch| TimelineUpdate::Patch {
+        patch: Box::new(patch),
+        arrivals,
+    })
 }
 
 async fn own_reaction_failed(timeline: &Timeline, target: &EventId, key: &str) -> bool {
@@ -306,11 +309,7 @@ async fn refresh_row(items: &mut TimelineItems, event_id: &EventId, ctx: &Timeli
         index: items.msg_index_at(raw_index),
         message,
     };
-    drop(
-        ctx.timeline_tx
-            .send(TimelineUpdate::Patch(Box::new(patch)))
-            .await,
-    );
+    drop(ctx.timeline_tx.send(TimelineUpdate::patch(patch)).await);
 }
 
 async fn settle_rowless_send(
@@ -1077,7 +1076,7 @@ async fn run_timeline_loop<S>(
                 let arrived = ctx.members.record(batch);
                 if let Some(patch) = member_patch(&mut items, &arrived, ctx)
                     && ctx.timeline_tx
-                        .send(TimelineUpdate::Patch(Box::new(patch)))
+                        .send(TimelineUpdate::patch(patch))
                         .await
                         .is_err()
                 {
@@ -1086,11 +1085,8 @@ async fn run_timeline_loop<S>(
             }
             diffs = stream.next() => {
                 let Some(diffs) = diffs else { break };
-                if let Some(patch) = process_diffs(&mut items, diffs, ctx)
-                    && ctx.timeline_tx
-                        .send(TimelineUpdate::Patch(Box::new(patch)))
-                        .await
-                        .is_err()
+                if let Some(update) = process_diffs(&mut items, diffs, ctx)
+                    && ctx.timeline_tx.send(update).await.is_err()
                 {
                     break;
                 }
