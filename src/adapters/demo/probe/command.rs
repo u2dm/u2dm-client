@@ -218,6 +218,12 @@ pub enum ProbeCommand {
     OpenPinned {
         event_id: String,
     },
+    PreviousPinned {
+        event_id: String,
+    },
+    NextPinned {
+        event_id: String,
+    },
     CopyMessageLink {
         event_id: String,
     },
@@ -608,6 +614,8 @@ pub fn to_driven(command: ProbeCommand, selected: Selection<'_>) -> Result<Drive
         }
         ProbeCommand::JumpToEvent { event_id } => UiCommand::JumpToEvent { event_id },
         ProbeCommand::OpenPinned { event_id } => UiCommand::OpenPinned { event_id },
+        ProbeCommand::PreviousPinned { event_id } => UiCommand::PreviousPinned { event_id },
+        ProbeCommand::NextPinned { event_id } => UiCommand::NextPinned { event_id },
         ProbeCommand::CopyMessageLink { event_id } => UiCommand::CopyMessageLink { event_id },
         ProbeCommand::OpenEventSource { event_id } => UiCommand::OpenEventSource { event_id },
         ProbeCommand::CloseEventSource => UiCommand::CloseEventSource,

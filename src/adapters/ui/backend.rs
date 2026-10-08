@@ -479,6 +479,7 @@ pub(super) fn apply_sticker_art<B: UiBackend>(key: &str, art: Option<&Image>) {
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 enum SingleAvatar {
+    SelectedRoom,
     RoomInfo,
     UserInfo,
     User,
@@ -529,6 +530,9 @@ fn group_slots(slots: &[AvatarSlot]) -> AvatarTargets<'_> {
             }
             AvatarSlot::Mention(user_id) => {
                 targets.mentions.insert(user_id.as_str());
+            }
+            AvatarSlot::SelectedRoom => {
+                targets.singles.insert(SingleAvatar::SelectedRoom);
             }
             AvatarSlot::RoomInfo => {
                 targets.singles.insert(SingleAvatar::RoomInfo);
@@ -629,6 +633,7 @@ fn apply_avatar_ready<B: UiBackend>(
             match single {
                 SingleAvatar::User => w.apply_user_avatar(avatar),
                 SingleAvatar::AttachmentPreview => w.apply_attachment_preview(avatar),
+                SingleAvatar::SelectedRoom => w.apply_selected_room_avatar(avatar),
                 SingleAvatar::RoomInfo => w.apply_room_info_avatar(avatar),
                 SingleAvatar::UserInfo => w.apply_user_info_avatar(avatar),
             }

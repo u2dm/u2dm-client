@@ -23,6 +23,7 @@ macro_rules! string_props {
         VerificationSender VerificationView "VerificationView" "sender" set_sender get_sender;
         VerificationErrorDetail VerificationView "VerificationView" "error-detail" set_error_detail get_error_detail;
         SelectedRoomName RoomView "RoomView" "selected-room-name" set_selected_room_name get_selected_room_name;
+        SelectedRoomInitial RoomView "RoomView" "selected-room-initial" set_selected_room_initial get_selected_room_initial;
         FocusEventId RoomView "RoomView" "focus-event-id" set_focus_event_id get_focus_event_id;
         PinnedEventId RoomView "RoomView" "pinned-event-id" set_pinned_event_id get_pinned_event_id;
         PinnedBody RoomView "RoomView" "pinned-body" set_pinned_body get_pinned_body;
@@ -167,6 +168,8 @@ macro_rules! simple_callbacks {
         on_open_link "open-link" open_link manual_string OpenLink;
         on_jump_to_event "jump-to-event" jump_to_event manual_string JumpToEvent;
         on_open_pinned "open-pinned" open_pinned manual_string OpenPinned;
+        on_previous_pinned "previous-pinned" previous_pinned manual_string PreviousPinned;
+        on_next_pinned "next-pinned" next_pinned manual_string NextPinned;
         on_copy_message_link "copy-message-link" copy_message_link manual_string CopyMessageLink;
         on_open_event_source "open-event-source" open_event_source manual_string OpenEventSource;
         on_close_event_source "close-event-source" close_event_source plain CloseEventSource;
@@ -256,6 +259,7 @@ macro_rules! int_props {
         TimelineToken RoomView "RoomView" "timeline-token" set_timeline_token get_timeline_token;
         PrependToken RoomView "RoomView" "prepend-token" set_prepend_token get_prepend_token;
         SelectedRoomMembers RoomView "RoomView" "selected-room-members" set_selected_room_members get_selected_room_members;
+        SelectedRoomColorIndex RoomView "RoomView" "selected-room-color-index" set_selected_room_color_index get_selected_room_color_index;
         PinnedCount RoomView "RoomView" "pinned-count" set_pinned_count get_pinned_count;
         PinnedIndex RoomView "RoomView" "pinned-index" set_pinned_index get_pinned_index;
         SelectedGeneration DirectoryView "DirectoryView" "selected-generation" set_selected_generation get_selected_generation;

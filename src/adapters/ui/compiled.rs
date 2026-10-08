@@ -223,6 +223,17 @@ impl UiProps for AppWindow {
         }
     }
 
+    fn apply_selected_room_avatar(&self, avatar: Option<Image>) {
+        let room = self.global::<RoomView>();
+        match avatar {
+            Some(img) => {
+                room.set_selected_room_avatar(img);
+                room.set_selected_room_has_avatar(true);
+            }
+            None => room.set_selected_room_has_avatar(false),
+        }
+    }
+
     fn apply_room_info_avatar(&self, avatar: Option<Image>) {
         let room_info = self.global::<RoomInfoView>();
         match avatar {

@@ -76,6 +76,7 @@ pub trait UiProps {
     #[cfg(feature = "demo")]
     fn get_enum(&self, prop: EnumProp) -> SharedString;
     fn apply_user_avatar(&self, avatar: Option<Image>);
+    fn apply_selected_room_avatar(&self, avatar: Option<Image>);
     fn apply_attachment_preview(&self, preview: Option<Image>);
     fn apply_room_info_avatar(&self, avatar: Option<Image>);
     fn apply_room_info_topic(&self, topic: StyledText);

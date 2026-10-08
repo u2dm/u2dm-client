@@ -165,6 +165,10 @@ export global UserInfoView {
 
 export global RoomView {
     in property <string> selected-room-name;
+    in property <string> selected-room-initial;
+    in property <int> selected-room-color-index;
+    in property <image> selected-room-avatar;
+    in property <bool> selected-room-has-avatar;
     in property <int> selected-room-members;
     in property <bool> selected-room-encrypted;
     in property <bool> may-vote: true;

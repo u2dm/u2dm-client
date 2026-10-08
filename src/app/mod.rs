@@ -48,7 +48,7 @@ use lifecycle::{Lifecycle, Settled};
 use media::MediaActions;
 use mentions::{MentionSuggestions, Suggestion};
 use message_actions::MessageActions;
-use pinned::PinnedMessages;
+use pinned::{PinDirection, PinnedMessages};
 use readers::ReaderList;
 use recover::Recovery;
 use room_directory::{RoomDirectory, RoomMeta};
@@ -574,6 +574,12 @@ impl AppService {
             UiCommand::OpenPinned { event_id } => {
                 self.open_pinned(event_id);
             }
+            UiCommand::PreviousPinned { event_id } => {
+                self.step_pinned(&event_id, PinDirection::Older);
+            }
+            UiCommand::NextPinned { event_id } => {
+                self.step_pinned(&event_id, PinDirection::Newer);
+            }
             UiCommand::CopyMessageLink { event_id } => {
                 self.copy_message_link(event_id);
             }
@@ -757,6 +763,7 @@ impl AppService {
         let effect = Effect::SelectedRoom {
             id: room.id.clone(),
             name: room.meta.name.clone(),
+            avatar_mxc: room.meta.avatar_mxc.clone(),
             member_count: room.meta.member_count,
             encrypted: room.meta.encrypted,
             polls: room.meta.polls,
@@ -1841,8 +1848,22 @@ impl AppService {
     }
 
     fn open_pinned(&mut self, event_id: String) {
-        self.pinned.opened(&event_id);
+        let Some(room_id) = self.active_timeline.room_id() else {
+            return;
+        };
+        if !self.pinned.contains(room_id, &event_id) {
+            return;
+        }
         self.active_timeline.jump_to_event(event_id);
+    }
+
+    fn step_pinned(&mut self, event_id: &str, direction: PinDirection) {
+        let Some(room_id) = self.active_timeline.room_id() else {
+            return;
+        };
+        if let Some(target) = self.pinned.step(room_id, event_id, direction) {
+            self.active_timeline.jump_to_event(target);
+        }
     }
 
     async fn open_room(&mut self, room_id: RoomId, focus: TimelineFocus) {

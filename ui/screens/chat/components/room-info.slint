@@ -12,7 +12,7 @@ import { ActionTile } from "./action-tile.slint";
 import { DetailLine } from "./detail-line.slint";
 import { CopyLinkTile, SheetCloseChip, SheetCover, TilePrompt, TileRow } from "./sheet.slint";
 import { MemberRow } from "./member-row.slint";
-import { SearchField } from "../../../components/search-field.slint";
+import { PillSearchField } from "../../../components/search-field.slint";
 import { NotifyModes } from "./notify-modes.slint";
 import { AppStyle, Fonts, IconSize, Metrics, Radius, Size, Space, Stroke, Weight } from "../../../theme.slint";
 import { RosterStatus, UserMessageKind } from "../../../enums.slint";
@@ -413,7 +413,7 @@ component MemberSection inherits VerticalLayout {
         padding-left: Space.xl;
         padding-right: Space.xl;
 
-        search := SearchField {
+        search := PillSearchField {
             placeholder: @tr("Search members");
             above-modal: root.above-modal;
             enabled: Interaction.actionable(true, root.above-modal);

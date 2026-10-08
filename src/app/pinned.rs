@@ -25,6 +25,12 @@ enum Shown {
     Event(String),
 }
 
+#[derive(Clone, Copy)]
+pub(super) enum PinDirection {
+    Older,
+    Newer,
+}
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum PinPhase {
     Requested(u64),
@@ -117,14 +123,33 @@ impl PinnedMessages {
         self.publish();
     }
 
-    pub(super) fn opened(&mut self, event_id: &str) {
-        let Some(opened) = self.position_of(event_id) else {
-            return;
+    pub(super) fn contains(&self, room_id: &RoomId, event_id: &str) -> bool {
+        self.room_id.as_ref() == Some(room_id) && self.loaded(event_id)
+    }
+
+    pub(super) fn step(
+        &mut self,
+        room_id: &RoomId,
+        event_id: &str,
+        direction: PinDirection,
+    ) -> Option<String> {
+        if self.room_id.as_ref() != Some(room_id) {
+            return None;
+        }
+        let current = self.position_of(event_id)?;
+        let next = match direction {
+            PinDirection::Older => current.checked_sub(1)?,
+            PinDirection::Newer => current.checked_add(1)?,
         };
-        let older = opened.checked_sub(1).and_then(|row| self.messages.get(row));
-        self.shown = older.map_or(Shown::Newest, |older| Shown::Event(older.event_id.clone()));
-        tracing::debug!(opened, "showing the pinned message before the one opened");
+        let event_id = self.messages.get(next)?.event_id.clone();
+        self.shown = if next + 1 == self.messages.len() {
+            Shown::Newest
+        } else {
+            Shown::Event(event_id.clone())
+        };
+        tracing::debug!(current, next, "showing the adjacent pinned message");
         self.publish();
+        Some(event_id)
     }
 
     pub(super) fn change(

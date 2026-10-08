@@ -15,7 +15,7 @@ import { SpaceBadge } from "./space-badge.slint";
 import { RoomEntry } from "../../../types.slint";
 import { HeaderIconButton } from "../../../components/button.slint";
 import { RetryNotice } from "../../../components/retry-notice.slint";
-import { SearchField } from "../../../components/search-field.slint";
+import { PillSearchField } from "../../../components/search-field.slint";
 import { ContextPress } from "./context-press.slint";
 import { AppStyle, Fonts, IconSize, Metrics, Size, Space, Weight } from "../../../theme.slint";
 import { RoomRowKind, RoomScope, ServiceKind } from "../../../enums.slint";
@@ -41,12 +41,9 @@ component SidebarSearch inherits FocusScope {
         return reject;
     }
 
-    field := SearchField {
+    field := PillSearchField {
         width: 100%;
         height: 100%;
-        border-radius: self.height / 2;
-        border-width: 0;
-        shows-icon: false;
         placeholder: @tr("Search");
         label: DirectoryView.room-scope == RoomScope.direct
             ? @tr("Search direct messages")

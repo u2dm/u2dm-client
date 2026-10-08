@@ -459,6 +459,26 @@ impl UiProps for ComponentInstance {
         }
     }
 
+    fn apply_selected_room_avatar(&self, avatar: Option<slint::Image>) {
+        match avatar {
+            Some(img) => {
+                set_global(self, "RoomView", "selected-room-avatar", Value::Image(img));
+                set_global(
+                    self,
+                    "RoomView",
+                    "selected-room-has-avatar",
+                    Value::Bool(true),
+                );
+            }
+            None => set_global(
+                self,
+                "RoomView",
+                "selected-room-has-avatar",
+                Value::Bool(false),
+            ),
+        }
+    }
+
     fn apply_room_info_avatar(&self, avatar: Option<slint::Image>) {
         match avatar {
             Some(img) => {

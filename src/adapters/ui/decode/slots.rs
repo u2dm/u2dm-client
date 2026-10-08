@@ -44,6 +44,7 @@ pub enum AvatarSlot {
     Member(String),
     Reader(String),
     Mention(String),
+    SelectedRoom,
     RoomInfo,
     UserInfo,
     User,

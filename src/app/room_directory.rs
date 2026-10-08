@@ -32,6 +32,7 @@ const ORDER_WRITE_BACKOFF: Duration = Duration::from_millis(400);
 #[derive(Default, PartialEq, Eq)]
 pub(super) struct RoomMeta {
     pub(super) name: String,
+    pub(super) avatar_mxc: Option<String>,
     pub(super) member_count: u64,
     pub(super) encrypted: bool,
     pub(super) polls: PollPermissions,
@@ -576,6 +577,7 @@ impl RoomDirectory {
         let room = self.room(id)?;
         Some(RoomMeta {
             name: room.display_name.clone(),
+            avatar_mxc: room.avatar_mxc.clone(),
             member_count: if room.is_direct { 0 } else { room.member_count },
             encrypted: room.is_encrypted,
             polls: room.poll_permissions,

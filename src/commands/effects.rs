@@ -13,6 +13,7 @@ pub enum Effect {
     SelectedRoom {
         id: RoomId,
         name: String,
+        avatar_mxc: Option<String>,
         member_count: u64,
         encrypted: bool,
         polls: PollPermissions,

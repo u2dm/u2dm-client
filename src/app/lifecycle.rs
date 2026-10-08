@@ -254,6 +254,8 @@ pub(super) fn command_allowed(phase: AppPhase, cmd: &UiCommand) -> bool {
         | UiCommand::JumpToLatest { .. }
         | UiCommand::JumpToEvent { .. }
         | UiCommand::OpenPinned { .. }
+        | UiCommand::PreviousPinned { .. }
+        | UiCommand::NextPinned { .. }
         | UiCommand::CopyMessageLink { .. }
         | UiCommand::OpenEventSource { .. }
         | UiCommand::CloseEventSource

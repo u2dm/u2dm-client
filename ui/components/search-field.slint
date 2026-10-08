@@ -93,3 +93,9 @@ export component SearchField inherits Rectangle {
         }
     }
 }
+
+export component PillSearchField inherits SearchField {
+    border-radius: root.height / 2;
+    border-width: 0;
+    shows-icon: false;
+}

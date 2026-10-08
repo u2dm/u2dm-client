@@ -6,7 +6,7 @@ import { MessageInput } from "./message-input.slint";
 import { ReactionOverlay } from "./reaction-overlay.slint";
 import { MessageMenuOverlay } from "./message-menu.slint";
 import { CopyNotice } from "../../../../components/copy-notice.slint";
-import { AppStyle, Fonts, Metrics, Size, Space } from "../../../../theme.slint";
+import { AppStyle, Fonts, Glyph, Metrics, Size, Space, Stroke } from "../../../../theme.slint";
 import { HeaderIconButton } from "../../../../components/button.slint";
 import { CloseWatch } from "../../../../components/close-watch.slint";
 import { TimelineState } from "../../../../enums.slint";
@@ -19,7 +19,13 @@ import { StatusPill } from "../../../../components/status-pill.slint";
 import { NowPlayingBar } from "./now-playing-bar.slint";
 import { PinnedBar } from "./pinned-bar.slint";
 import { HeaderTitle } from "../header-title.slint";
+import { Avatar } from "../../../../components/avatar.slint";
 import { RoomInfoPane } from "../room-info.slint";
+
+component RoomHeaderButton inherits HeaderIconButton {
+    radius: root.size / 2;
+    fill: Palette.alternate-background;
+}
 
 export component TimelineView inherits Rectangle {
     in-out property <string> input-message: "";
@@ -32,10 +38,11 @@ export component TimelineView inherits Rectangle {
 
     property <string> room-id: DirectoryView.selected-room-id;
     property <length> header-height: Metrics.header-row;
+    property <length> header-avatar-size: Size.md;
     property <length> spacing: Metrics.timeline-gap;
-    property <length> nav-button-width: Size.target;
+    property <length> nav-slot: Space.lg + Size.lg + Space.md;
     property <bool> has-pins: RoomView.pinned-count > 0;
-    property <length> pinned-height: root.has-pins ? Metrics.pinned-bar : 0px;
+    property <length> pinned-height: root.has-pins ? Metrics.pinned-bar + Space.md : 0px;
     property <length> now-playing-height: AudioView.visible ? Metrics.now-playing-bar : 0px;
     property <bool> has-room: RoomView.selected-room-name != "";
     property <bool> is-loading: RoomView.timeline-status == TimelineState.loading
@@ -95,15 +102,15 @@ export component TimelineView inherits Rectangle {
     }
 
     if root.has-room: Rectangle {
-        property <length> menu-slot: Size.lg + 2 * Space.sm;
-        property <length> pane-slot: root.room-info-pane-fits ? Size.lg + Space.sm : 0;
+        property <length> menu-slot: Space.md + Size.lg + Space.lg;
+        property <length> pane-slot: root.room-info-pane-fits ? Space.md + Size.lg : 0;
         property <int> menu-returns: RoomMenu.focus-returns;
 
         x: 0;
         y: 0;
         width: root.width;
         height: root.header-height;
-        background: Palette.alternate-background;
+        background: root.background;
 
         changed menu-returns => {
             if RoomMenu.returns-to(RoomMenuReturn.header, DirectoryView.selected-room-id) {
@@ -112,26 +119,42 @@ export component TimelineView inherits Rectangle {
         }
 
         ClickArea {
-            x: root.compact ? root.nav-button-width : 0;
+            x: root.compact ? root.nav-slot : 0;
             width: parent.width - self.x - parent.menu-slot - parent.pane-slot;
             height: parent.height;
             enabled: !root.room-info-pane-shown;
-            background: self.has-hover ? AppStyle.overlay-subtle : transparent;
             label: @tr("Room info");
             clicked => {
                 Actions.open-room-info(DirectoryView.selected-room-id);
             }
 
-            HeaderTitle {
+            HorizontalLayout {
                 x: root.compact ? 0 : Space.lg;
                 width: parent.width - self.x - Space.sm;
-                title: RoomView.selected-room-name;
-                members: RoomView.selected-room-members;
-                encrypted: RoomView.selected-room-encrypted;
+                height: parent.height;
+                spacing: Space.md;
+
+                Avatar {
+                    cross-axis-self-alignment: center;
+                    width: root.header-avatar-size;
+                    height: root.header-avatar-size;
+                    color-index: RoomView.selected-room-color-index;
+                    has-image: RoomView.selected-room-has-avatar;
+                    image: RoomView.selected-room-avatar;
+                    initial: RoomView.selected-room-initial;
+                    initial-size: Glyph.xs;
+                }
+
+                HeaderTitle {
+                    horizontal-stretch: 1;
+                    title: RoomView.selected-room-name;
+                    members: RoomView.selected-room-members;
+                    encrypted: RoomView.selected-room-encrypted;
+                }
             }
         }
 
-        if root.room-info-pane-fits: HeaderIconButton {
+        if root.room-info-pane-fits: RoomHeaderButton {
             x: parent.width - parent.menu-slot - self.width;
             y: (parent.height - self.height) / 2;
             icon: IconSet.PanelRight;
@@ -144,8 +167,8 @@ export component TimelineView inherits Rectangle {
             }
         }
 
-        room-menu-button := HeaderIconButton {
-            x: parent.width - self.width - Space.sm;
+        room-menu-button := RoomHeaderButton {
+            x: parent.width - self.width - Space.lg;
             y: (parent.height - self.height) / 2;
             icon: IconSet.EllipsisVertical;
             label: @tr("Room options");
@@ -163,13 +186,13 @@ export component TimelineView inherits Rectangle {
     nav-bar := Rectangle {
         x: 0;
         y: 0;
-        width: root.compact ? root.nav-button-width : 0;
+        width: root.compact ? root.nav-slot : 0;
         height: root.header-height;
         visible: root.compact;
-        background: Palette.alternate-background;
+        background: root.background;
 
-        nav-button := HeaderIconButton {
-            x: Space.sm;
+        nav-button := RoomHeaderButton {
+            x: Space.lg;
             y: (parent.height - self.height) / 2;
             enabled: root.compact;
             icon: IconSet.ArrowLeft;
@@ -279,10 +302,28 @@ export component TimelineView inherits Rectangle {
             composer-top: parent.height - input.height;
         }
 
-        if root.has-pins: PinnedBar {
+        if root.has-pins: Rectangle {
             x: 0;
             y: root.header-height;
             width: parent.width;
+            height: root.pinned-height;
+            background: root.background;
+
+            TouchArea { }
+
+            PinnedBar {
+                x: Metrics.timeline-inset;
+                y: 0;
+                width: parent.width - 2 * Metrics.timeline-inset;
+            }
+        }
+
+        header-separator := Rectangle {
+            x: 0;
+            y: root.header-height + root.pinned-height - self.height;
+            width: parent.width;
+            height: Stroke.hairline;
+            background: AppStyle.border;
         }
 
         if AudioView.visible: NowPlayingBar {

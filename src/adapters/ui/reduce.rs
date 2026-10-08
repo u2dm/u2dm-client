@@ -1,5 +1,6 @@
 use std::collections::{BTreeSet, HashSet};
 use std::mem;
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use slint::{ComponentHandle, Model, SharedString, StyledText};
@@ -61,6 +62,20 @@ pub struct RoomCursor {
     timeline_token: i32,
     prepend_token: i32,
     focus_event_id: Option<String>,
+    avatar: SelectedRoomAvatar,
+}
+
+#[derive(Clone, Default, PartialEq, Eq)]
+struct SelectedRoomAvatar {
+    room_id: String,
+    mxc: Option<String>,
+    path: Option<PathBuf>,
+}
+
+impl SelectedRoomAvatar {
+    fn same_source(&self, other: &Self) -> bool {
+        self.room_id == other.room_id && self.mxc == other.mxc
+    }
 }
 
 impl RoomCursor {
@@ -160,6 +175,7 @@ pub fn dispatch_effect<B: UiBackend>(w: &B::Window, event: Effect, ctx: &UiEvent
         Effect::SelectedRoom {
             id,
             name,
+            avatar_mxc,
             member_count,
             encrypted,
             polls,
@@ -174,6 +190,15 @@ pub fn dispatch_effect<B: UiBackend>(w: &B::Window, event: Effect, ctx: &UiEvent
             w.set_int(IntProp::SelectedGeneration, generation);
             w.set_string(StringProp::SelectedRoomId, SharedString::from(id.as_ref()));
             w.set_string(StringProp::SelectedRoomName, SharedString::from(&name));
+            w.set_string(
+                StringProp::SelectedRoomInitial,
+                SharedString::from(avatar_initials(&name)),
+            );
+            w.set_int(
+                IntProp::SelectedRoomColorIndex,
+                avatar_color_index(id.as_ref()),
+            );
+            show_selected_room_avatar(w, id.as_ref(), avatar_mxc.as_deref(), ctx.media);
             w.set_int(
                 IntProp::SelectedRoomMembers,
                 i32::try_from(member_count).unwrap_or(i32::MAX),
@@ -687,6 +712,7 @@ fn apply_directory<B: UiBackend>(
             last.map_or_else(RoomListing::default, RoomListing::of),
             ctx.media,
         );
+        refresh_selected_room_avatar(w, ctx.media);
     }
     if last.is_none_or(|l| !Arc::ptr_eq(&l.spaces, spaces)) {
         apply_spaces(
@@ -1505,9 +1531,38 @@ fn set_verification_error(w: &impl UiProps, message: &UserMessage) {
     );
 }
 
+fn show_selected_room_avatar(
+    w: &impl UiProps,
+    room_id: &str,
+    mxc: Option<&str>,
+    media: &dyn MediaCache,
+) {
+    let next = SelectedRoomAvatar {
+        room_id: room_id.to_owned(),
+        mxc: mxc.map(str::to_owned),
+        path: mxc.and_then(|mxc| media.room_avatar_path(mxc)),
+    };
+    let previous = with_session(|session| mem::replace(&mut session.room.avatar, next.clone()));
+    if previous == next {
+        return;
+    }
+    let image = load_avatar_async(next.path.as_deref(), AvatarSlot::SelectedRoom);
+    if image.is_some() || !previous.same_source(&next) {
+        w.apply_selected_room_avatar(image);
+    }
+}
+
+fn refresh_selected_room_avatar(w: &impl UiProps, media: &dyn MediaCache) {
+    let shown = with_session(|session| session.room.avatar.clone());
+    show_selected_room_avatar(w, &shown.room_id, shown.mxc.as_deref(), media);
+}
+
 fn clear_selected_room(w: &impl UiProps) {
     w.set_string(StringProp::SelectedRoomId, SharedString::default());
     w.set_string(StringProp::SelectedRoomName, SharedString::default());
+    w.set_string(StringProp::SelectedRoomInitial, SharedString::default());
+    w.set_int(IntProp::SelectedRoomColorIndex, 0);
+    w.apply_selected_room_avatar(None);
     w.set_int(IntProp::SelectedRoomMembers, 0);
     w.set_bool(BoolProp::SelectedRoomEncrypted, false);
     apply_poll_permissions(w, PollPermissions::UNRESTRICTED);

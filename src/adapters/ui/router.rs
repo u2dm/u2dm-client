@@ -370,6 +370,20 @@ pub fn open_pinned(tx: &Tx, event_id: String) {
     send_command(tx, UiCommand::OpenPinned { event_id });
 }
 
+pub fn previous_pinned(tx: &Tx, event_id: String) {
+    if event_id.is_empty() {
+        return;
+    }
+    send_command(tx, UiCommand::PreviousPinned { event_id });
+}
+
+pub fn next_pinned(tx: &Tx, event_id: String) {
+    if event_id.is_empty() {
+        return;
+    }
+    send_command(tx, UiCommand::NextPinned { event_id });
+}
+
 pub fn retry_send(tx: &Tx, local_id: String) {
     if local_id.is_empty() {
         return;

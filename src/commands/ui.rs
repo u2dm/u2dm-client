@@ -157,6 +157,14 @@ pub enum UiCommand {
     OpenPinned {
         event_id: String,
     },
+    #[strum(to_string = "PreviousPinned({event_id})")]
+    PreviousPinned {
+        event_id: String,
+    },
+    #[strum(to_string = "NextPinned({event_id})")]
+    NextPinned {
+        event_id: String,
+    },
     #[strum(to_string = "CopyMessageLink({event_id})")]
     CopyMessageLink {
         event_id: String,
@@ -309,6 +317,8 @@ impl UiCommand {
             | Self::CancelAttachment
             | Self::JumpToEvent { .. }
             | Self::OpenPinned { .. }
+            | Self::PreviousPinned { .. }
+            | Self::NextPinned { .. }
             | Self::CopyMessageLink { .. }
             | Self::OpenEventSource { .. }
             | Self::CloseEventSource

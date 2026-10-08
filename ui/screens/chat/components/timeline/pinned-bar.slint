@@ -1,76 +1,114 @@
 import { Palette } from "std-widgets.slint";
+import { IconDisplay, IconSet } from "@lucide";
 
 import { MessagePreview } from "../../../../messages.slint";
-import { QuoteLines } from "./reply-quote.slint";
 import { ClickArea } from "../../../../components/a11y.slint";
+import { IconButton } from "../../../../components/button.slint";
 import { Actions } from "../../../../actions.slint";
 import { RoomView } from "../../../../views.slint";
-import { AppStyle, Metrics, Radius, Space, Stroke } from "../../../../theme.slint";
+import { AppStyle, Fonts, IconSize, Metrics, Motion, Radius, Size, Space } from "../../../../theme.slint";
 
-component PinnedMarker inherits Rectangle {
-    in property <int> count;
-    in property <int> index;
+export component PinnedBar inherits Rectangle {
+    property <bool> multiple: RoomView.pinned-count > 1;
+    property <string> preview: MessagePreview.label(RoomView.pinned-kind, RoomView.pinned-body);
 
-    property <int> most-segments: 4;
-    property <int> older-in-view: 1;
-    property <int> segments: min(root.count, root.most-segments);
-    property <int> first-segment: clamp(root.index - root.older-in-view, 0, root.count - root.segments);
-    property <length> gap: Space.xs;
-    property <length> segment-height: (root.height - (root.segments - 1) * root.gap) / max(root.segments, 1);
-
-    width: Stroke.marker;
-
-    for segment in root.segments: Rectangle {
-        y: segment * (root.segment-height + root.gap);
-        width: root.width;
-        height: root.segment-height;
-        border-radius: self.width / 2;
-        background: root.first-segment + segment == root.index
-            ? Palette.accent-background
-            : AppStyle.pinned-marker-rest;
-    }
-}
-
-export component PinnedBar inherits ClickArea {
     height: Metrics.pinned-bar;
-    background: AppStyle.surface-raised;
-    label: @tr("Go to the pinned message");
-    ring-inset: Space.xs;
-    ring-radius: Radius.sm;
-    clicked => {
-        Actions.open-pinned(RoomView.pinned-event-id);
-    }
+    border-radius: Radius.md;
+    background: Palette.alternate-background;
+    accessible-role: groupbox;
+    accessible-label: @tr("Pinned messages");
 
     Rectangle {
-        background: root.pressed
+        border-radius: root.border-radius;
+        background: pinned-preview.pressed
             ? AppStyle.overlay-pressed
-            : (root.has-hover ? AppStyle.overlay-hover : transparent);
+            : (pinned-preview.has-hover ? AppStyle.overlay-hover : transparent);
+
+        animate background {
+            duration: Motion.fast;
+            easing: ease-out;
+        }
     }
 
     HorizontalLayout {
-        padding-left: Space.lg;
-        padding-right: Space.lg;
-        padding-top: Space.md;
-        padding-bottom: Space.md;
-        spacing: Space.md;
+        padding-right: root.multiple ? Space.md : 0;
+        spacing: Space.sm;
 
-        PinnedMarker {
-            count: RoomView.pinned-count;
-            index: RoomView.pinned-index;
-        }
-
-        QuoteLines {
+        pinned-preview := ClickArea {
             horizontal-stretch: 1;
-            title: RoomView.pinned-count > 1
-                ? @tr("Pinned message #{}", RoomView.pinned-index + 1)
-                : @tr("Pinned message");
-            preview: MessagePreview.label(RoomView.pinned-kind, RoomView.pinned-body);
-        }
-    }
+            min-width: 0;
+            ring-inset: Space.xs;
+            ring-radius: root.border-radius - self.ring-inset;
+            label: @tr("Go to pinned message {} of {}: {}",
+                RoomView.pinned-index + 1, RoomView.pinned-count, root.preview);
+            clicked => {
+                Actions.open-pinned(RoomView.pinned-event-id);
+            }
 
-    Rectangle {
-        y: parent.height - self.height;
-        height: Stroke.hairline;
-        background: AppStyle.border;
+            HorizontalLayout {
+                padding-left: Space.lg;
+                padding-right: Space.lg;
+                spacing: Space.lg;
+
+                IconDisplay {
+                    cross-axis-self-alignment: center;
+                    icon: IconSet.Pin;
+                    size: IconSize.sm;
+                    stroke: Palette.accent-background;
+                }
+
+                Text {
+                    horizontal-stretch: 1;
+                    min-width: 0;
+                    text: root.preview;
+                    font-family: Fonts.emoji;
+                    font-size: Fonts.body-small;
+                    color: AppStyle.foreground-strong;
+                    vertical-alignment: center;
+                    wrap: no-wrap;
+                    overflow: elide;
+                }
+            }
+        }
+
+        if root.multiple: HorizontalLayout {
+            horizontal-stretch: 0;
+            spacing: Space.sm;
+
+            Text {
+                horizontal-stretch: 0;
+                text: @tr("{} / {}", RoomView.pinned-index + 1, RoomView.pinned-count);
+                font-size: Fonts.caption;
+                color: AppStyle.foreground-muted;
+                vertical-alignment: center;
+                accessible-label: @tr("Pinned message {} of {}",
+                    RoomView.pinned-index + 1, RoomView.pinned-count);
+                accessible-live-region: polite;
+            }
+
+            previous-pin := IconButton {
+                cross-axis-self-alignment: center;
+                size: Size.target-min;
+                icon-size: IconSize.sm;
+                icon: IconSet.ChevronUp;
+                label: @tr("Previous pinned message");
+                enabled: RoomView.pinned-index > 0;
+                clicked => {
+                    Actions.previous-pinned(RoomView.pinned-event-id);
+                }
+            }
+
+            next-pin := IconButton {
+                cross-axis-self-alignment: center;
+                size: Size.target-min;
+                icon-size: IconSize.sm;
+                icon: IconSet.ChevronDown;
+                label: @tr("Next pinned message");
+                enabled: RoomView.pinned-index + 1 < RoomView.pinned-count;
+                clicked => {
+                    Actions.next-pinned(RoomView.pinned-event-id);
+                }
+            }
+        }
     }
 }

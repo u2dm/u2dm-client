@@ -72,7 +72,13 @@ scenario_steps() {
       echo 'sleep 3'
       echo '{"op":"open_pinned","event_id":"demo-rust-chart-copy5"}'
       echo 'sleep 2'
-      echo '{"op":"open_pinned","event_id":"demo-rust-13-copy5"}'
+      echo '{"op":"previous_pinned","event_id":"demo-rust-chart-copy5"}'
+      echo 'sleep 2'
+      echo '{"op":"next_pinned","event_id":"demo-rust-13-copy5"}'
+      echo 'sleep 2'
+      echo '{"op":"previous_pinned","event_id":"demo-rust-chart-copy5"}'
+      echo 'sleep 2'
+      echo '{"op":"previous_pinned","event_id":"demo-rust-13-copy5"}'
       echo 'sleep 3' ;;
     audio-track)
       echo '{"op":"select_room","room_id":"!music:demo.local"}'
@@ -333,7 +339,7 @@ scenario_note() {
     reactions-late)  echo 'every chip arrives as a Set, with an overflow run and a crowd of reactors' ;;
     sticker-trickle) echo 'images arrive one batch at a time over a slow catalog, in an encrypted room' ;;
     jump-to-reply)   echo 'a short live window, so a reply quote must take the focused /context path' ;;
-    pinned-bar)      echo 'three pins arrive late; the newest opens in the live window, the next through /context, and the bar steps back from #3 to #1' ;;
+    pinned-bar)      echo 'three pins arrive late; opening keeps the newest preview, previous/next navigate through focused windows, then previous finishes on pin 1 / 3' ;;
     media-failures)  echo 'every MediaFailure variant on one timeline' ;;
     compact-layout)  echo 'below the 720px breakpoint; run with --headless, a compositor clamps the width' ;;
     login-oauth)     echo 'starts logged out on an OAuth flow that succeeds slowly' ;;
