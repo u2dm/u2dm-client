@@ -2,7 +2,6 @@ use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::sync::Arc;
 
 use futures_util::{Stream, StreamExt};
-use matrix_sdk::room::Receipts;
 use matrix_sdk::ruma::events::fully_read::FullyReadEventContent;
 use matrix_sdk::ruma::{EventId, IdParseError, OwnedEventId, OwnedRoomId, UserId};
 use matrix_sdk::{Client, Room};
@@ -23,6 +22,7 @@ use super::filter::TimelineItems;
 use super::members::{Arrived, Batch, Members, resolve_members};
 use super::poll_ends::EndingPolls;
 use super::polls;
+use super::receipts::ReceiptLane;
 use super::rowless_sends::{RowlessSendEvent, RowlessSendGuard};
 use super::source;
 use super::undecrypted::UndecryptedResponses;
@@ -342,7 +342,7 @@ async fn handle_timeline_command(
             paginate_forwards(timeline).await,
         ),
         TimelineCommand::MarkRead => {
-            mark_read(timeline).await;
+            ctx.receipts.mark_read(timeline).await;
             return;
         }
         TimelineCommand::JumpTo(event_id) => {
@@ -521,19 +521,6 @@ async fn report_readers(
             })
             .await,
     );
-}
-
-async fn mark_read(timeline: &Timeline) {
-    let Some(event_id) = timeline.latest_event_id().await else {
-        return;
-    };
-    let receipts = Receipts::new()
-        .public_read_receipt(event_id.clone())
-        .fully_read_marker(event_id.clone());
-    match timeline.send_multiple_receipts(receipts).await {
-        Ok(()) => tracing::debug!(%event_id, "sent the read receipt"),
-        Err(e) => tracing::warn!(%event_id, "failed to mark the room as read: {e}"),
-    }
 }
 
 async fn paginate_backwards(timeline: &Timeline) -> PaginationOutcome {
@@ -951,6 +938,7 @@ pub(crate) async fn subscribe_timeline(
 
     let own_user_id = client.user_id().map(ToString::to_string);
     let enrich = EnrichmentPool::new();
+    let receipts = ReceiptLane::spawn(&timeline);
     let members = Arc::new(Members::default());
     let undecrypted = UndecryptedResponses::default();
     let ctx = TimelineContext {
@@ -966,6 +954,7 @@ pub(crate) async fn subscribe_timeline(
         first_unread: unread.first_unread(),
         timeline_tx: &timeline_tx,
         enrich: &enrich,
+        receipts: &receipts,
     };
 
     let Some(items) = send_initial_timeline(initial_items, backwards_outcome, &ctx, room_id).await
@@ -1111,5 +1100,6 @@ async fn run_timeline_loop<S>(
         }
     }
 
+    ctx.receipts.abandon();
     hand_over_event_sends(&mut commands, timeline, &mut items, ctx, &mut sends).await;
 }

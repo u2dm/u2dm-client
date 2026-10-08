@@ -8,6 +8,7 @@ mod members;
 mod pinned;
 mod poll_ends;
 mod polls;
+mod receipts;
 mod rowless_sends;
 mod source;
 mod subscribe;
@@ -44,6 +45,7 @@ use self::edits::DiscardedEdits;
 use self::members::Members;
 pub(super) use self::pinned::MatrixPinned;
 use self::poll_ends::EndingPolls;
+use self::receipts::ReceiptLane;
 use self::subscribe::subscribe_timeline;
 use self::undecrypted::UndecryptedResponses;
 use super::attachment;
@@ -77,6 +79,7 @@ pub(super) struct TimelineContext<'a> {
     pub(super) first_unread: Option<&'a str>,
     pub(super) timeline_tx: &'a mpsc::Sender<TimelineUpdate>,
     pub(super) enrich: &'a EnrichmentPool,
+    pub(super) receipts: &'a ReceiptLane,
 }
 
 pub(super) struct InflightEnrichment {
