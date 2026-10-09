@@ -1,9 +1,11 @@
 import { Palette } from "std-widgets.slint";
 
 import { ReactionEntry } from "../../../../types.slint";
+import { ReactionKeys } from "../../../../messages.slint";
 import { ClickArea } from "../../../../components/a11y.slint";
-import { AppStyle, Fonts, Radius, Size, Space, Weight } from "../../../../theme.slint";
+import { AppStyle, Fonts, IconSize, Metrics, Radius, Size, Space, Weight } from "../../../../theme.slint";
 import { ListPopup } from "./list-popup.slint";
+import { ReactionGlyph } from "./reaction-row.slint";
 
 component DetailRow inherits ClickArea {
     in property <ReactionEntry> entry;
@@ -20,11 +22,11 @@ component DetailRow inherits ClickArea {
         padding-right: Space.md;
         spacing: Space.md;
 
-        Text {
-            text: root.entry.label;
-            font-family: Fonts.emoji;
-            font-size: Fonts.title;
-            vertical-alignment: center;
+        ReactionGlyph {
+            entry: root.entry;
+            glyph-size: Fonts.title;
+            image-size: Metrics.reaction-detail-image;
+            icon-size: IconSize.sm;
         }
 
         Text {
@@ -61,8 +63,8 @@ export component ReactionDetail inherits ListPopup {
     for entry in root.items: DetailRow {
         entry: entry;
         label: entry.mine
-            ? @tr("Remove your {} reaction", entry.label)
-            : @tr("React with {}", entry.label);
+            ? @tr("Remove your {} reaction", ReactionKeys.label(entry.art, entry.label))
+            : @tr("React with {}", ReactionKeys.label(entry.art, entry.label));
         clicked => {
             root.toggled(entry.key);
         }

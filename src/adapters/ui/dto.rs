@@ -5,7 +5,7 @@ use slint::{Image, SharedString, StyledText};
 use super::decode::{
     AvatarSlot, DecodeFailure, Decoded, MediaSlot, ShownAvatar, TimelineItemKey, load_avatar_async,
     load_thumbnail, peek_avatar, peek_thumbnail, record_avatar_need, record_media_need,
-    record_sticker_need,
+    record_reaction_need, record_sticker_need,
 };
 use super::present::{
     Delivery, MessageKind, PollPhase, ServiceKind, avatar_color_index, avatar_initials, delivery,
@@ -17,15 +17,16 @@ use super::present::{
 };
 use super::richtext::{self, RoomWord};
 use super::schema::{
-    define_ui_enum, define_ui_names, media_failures, media_states, member_row_kinds, room_row_kinds,
+    define_ui_enum, define_ui_names, media_failures, media_states, member_row_kinds, reaction_arts,
+    room_row_kinds,
 };
 use crate::commands::view::{ChildAccess, RoomCard, RosterRow, SpaceIndexRow, SpaceMatch};
 use crate::domain::media::{
     AudioKind, AudioMeta, ContentKey, FileMeta, MediaFailure, ThumbnailOutcome,
 };
 use crate::domain::message::{
-    MessageBody, MessagePreviewKind, Reaction, ReactionSend, Reactor, RichText, SendState,
-    TimelineMessage,
+    MessageBody, MessagePreviewKind, Reaction, ReactionImage, ReactionSend, Reactor, RichText,
+    SendState, TimelineMessage,
 };
 use crate::domain::poll::{Poll, PollAnswer};
 use crate::domain::room::{Room, Space};
@@ -43,6 +44,7 @@ media_states!(define_ui_names MediaState;);
 media_failures!(define_ui_enum MediaFailureKind;);
 member_row_kinds!(define_ui_enum MemberRowKind;);
 room_row_kinds!(define_ui_enum RoomRowKind;);
+reaction_arts!(define_ui_enum ReactionArt;);
 
 pub const INVITED_HEADING_ROW: &str = "invited-heading";
 pub const SPACES_HEADING_ROW: &str = "spaces-heading";
@@ -229,6 +231,8 @@ pub struct ReactorAvatarDto {
 pub struct ReactionDto {
     pub key: SharedString,
     pub label: SharedString,
+    pub art: ReactionArt,
+    pub image: Option<Image>,
     pub count: i32,
     pub mine: bool,
     pub send: ReactionSend,
@@ -440,15 +444,51 @@ fn reactor_avatar_dtos(
         .collect()
 }
 
+fn downloaded_reaction_art(
+    item: &TimelineItemKey,
+    key: &str,
+    media: &dyn MediaCache,
+) -> (ReactionArt, Option<Image>) {
+    let Some(path) = media.reaction_image_path(key) else {
+        return (ReactionArt::Pending, None);
+    };
+    record_reaction_need(item, key, &path);
+    match peek_thumbnail(&path, &MediaSlot::Reaction(key.to_owned())) {
+        Decoded::Ready(image) => (ReactionArt::Ready, Some(image)),
+        Decoded::Failed(_) => (ReactionArt::Failed, None),
+        Decoded::Pending => (ReactionArt::Pending, None),
+    }
+}
+
+fn reaction_art(
+    item: &TimelineItemKey,
+    reaction: &Reaction,
+    media: &dyn MediaCache,
+) -> (ReactionArt, Option<Image>) {
+    match reaction.image {
+        None => (ReactionArt::Text, None),
+        Some(ReactionImage::Downloading) => (ReactionArt::Pending, None),
+        Some(ReactionImage::Unavailable) => (ReactionArt::Failed, None),
+        Some(ReactionImage::Downloaded) => downloaded_reaction_art(item, &reaction.key, media),
+    }
+}
+
 fn reaction_dto(
     item: &TimelineItemKey,
     reaction: &Reaction,
     media: &dyn MediaCache,
 ) -> ReactionDto {
     let (reactors, hidden) = reactor_labels(&reaction.senders);
+    let (art, image) = reaction_art(item, reaction, media);
+    let label = match art {
+        ReactionArt::Text => SharedString::from(reaction_key_label(&reaction.key)),
+        ReactionArt::Pending | ReactionArt::Ready | ReactionArt::Failed => SharedString::new(),
+    };
     ReactionDto {
         key: SharedString::from(&reaction.key),
-        label: SharedString::from(reaction_key_label(&reaction.key)),
+        label,
+        art,
+        image,
         count: count(reaction.count()),
         mine: reaction.mine,
         send: reaction.send,
@@ -463,6 +503,8 @@ fn overflow_dto(hidden: usize) -> ReactionDto {
     ReactionDto {
         key: SharedString::new(),
         label: SharedString::new(),
+        art: ReactionArt::Text,
+        image: None,
         count: count(hidden),
         mine: false,
         send: ReactionSend::default(),

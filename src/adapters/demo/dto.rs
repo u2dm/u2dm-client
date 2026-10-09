@@ -769,6 +769,7 @@ impl MessageDto {
                 .iter()
                 .map(|reaction| Reaction {
                     key: reaction.key.clone(),
+                    image: media::reaction_image(&reaction.key),
                     mine: reaction.senders.iter().any(|sender| sender == own_user),
                     senders: reaction
                         .senders

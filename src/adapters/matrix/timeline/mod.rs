@@ -8,6 +8,7 @@ mod members;
 mod pinned;
 mod poll_ends;
 mod polls;
+mod reaction_images;
 mod receipts;
 mod rowless_sends;
 mod source;
@@ -45,6 +46,7 @@ use self::edits::DiscardedEdits;
 use self::members::Members;
 pub(super) use self::pinned::MatrixPinned;
 use self::poll_ends::EndingPolls;
+use self::reaction_images::ReactionImages;
 use self::receipts::ReceiptLane;
 use self::subscribe::subscribe_timeline;
 use self::undecrypted::UndecryptedResponses;
@@ -71,6 +73,7 @@ pub(super) struct TimelineContext<'a> {
     pub(super) media: &'a Arc<MediaService>,
     pub(super) pronouns: &'a Arc<PronounCache>,
     pub(super) members: &'a Arc<Members>,
+    pub(super) reaction_images: &'a ReactionImages,
     pub(super) ending: &'a EndingPolls,
     pub(super) undecrypted: &'a UndecryptedResponses,
     pub(super) discarded: &'a DiscardedEdits,

@@ -584,6 +584,10 @@ impl MediaService {
         self.needs_download(&mxc_avatar_key(mxc))
     }
 
+    pub(crate) fn has_sticker(&self, mxc: &str) -> bool {
+        self.cache_get(&sticker_key(mxc)).is_some()
+    }
+
     fn needs_download(&self, cache_key: &str) -> bool {
         self.cache_get(cache_key).is_none() && !self.is_failed(cache_key)
     }

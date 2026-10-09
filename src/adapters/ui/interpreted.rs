@@ -20,11 +20,11 @@ use super::backend::{
     last_editable_row, recent_speakers, reorder_spaces, row_of_message, selected_room_key,
     shown_room_log_text, unread_below,
 };
-use super::decode::{AvatarSlot, request_avatar, request_media, request_sticker};
+use super::decode::{AvatarSlot, request_avatar, request_media, request_reaction, request_sticker};
 use super::dto::{
     LogLineDto, MediaFailureKind, MediaState, MemberRowDto, MemberRowKind, MessageDto,
-    PollAnswerDto, ReactionDto, ReactorAvatarDto, RoomDto, RoomRowKind, SpaceChildDto, SpaceDto,
-    StickerCellDto, StickerPackDto, StickerRowDto,
+    PollAnswerDto, ReactionArt, ReactionDto, ReactorAvatarDto, RoomDto, RoomRowKind, SpaceChildDto,
+    SpaceDto, StickerCellDto, StickerPackDto, StickerRowDto,
 };
 #[cfg(feature = "demo")]
 use super::dump;
@@ -43,7 +43,7 @@ use super::schema::{
     enum_props, log_levels, log_line_fields, login_activities, login_methods, login_phases,
     media_failures, media_states, member_roles, member_row_fields, member_row_kinds,
     message_fields, message_kinds, model_props, notify_modes, pending_moderations,
-    poll_answer_fields, poll_phases, preview_kinds, reaction_fields, reaction_sends,
+    poll_answer_fields, poll_phases, preview_kinds, reaction_arts, reaction_fields, reaction_sends,
     reactor_fields, readers_statuses, room_fields, room_info_placements, room_memberships,
     room_row_kinds, room_scopes, roster_statuses, send_states, service_kinds, simple_callbacks,
     source_encryptions, source_statuses, space_child_fields, space_fields, space_index_statuses,
@@ -95,6 +95,7 @@ mod names {
         pub const REQUEST_MEDIA: &str = "request-media";
         pub const REQUEST_ROOM_AVATAR: &str = "request-room-avatar";
         pub const REQUEST_STICKER: &str = "request-sticker";
+        pub const REQUEST_REACTION_ART: &str = "request-reaction-art";
         pub const TOGGLE_VIDEO: &str = "toggle-video";
         pub const TOGGLE_VIDEO_MUTED: &str = "toggle-video-muted";
         pub const SEEK_VIDEO: &str = "seek-video";
@@ -198,6 +199,7 @@ user_message_kinds!(impl_slint_enum UserMessageKind "UserMessageKind";);
 media_states!(impl_slint_enum MediaState "MediaState";);
 send_states!(impl_slint_enum SendState "SendState";);
 reaction_sends!(impl_slint_enum ReactionSend "ReactionSend";);
+reaction_arts!(impl_slint_enum ReactionArt "ReactionArt";);
 deliveries!(impl_slint_enum Delivery "Delivery";);
 media_failures!(impl_slint_enum MediaFailureKind "MediaFailure";);
 message_kinds!(impl_slint_enum MessageKind "MessageKind";);
@@ -747,6 +749,15 @@ impl SlintUiAdapter {
             request_sticker(&string_arg(args, 0));
             Value::Void
         })?;
+
+        bind_action(
+            &self.instance,
+            callback::REQUEST_REACTION_ART,
+            move |args| {
+                request_reaction(&string_arg(args, 0));
+                Value::Void
+            },
+        )?;
 
         let weak = self.instance.as_weak();
         bind_action(&self.instance, callback::TOGGLE_VIDEO, move |_| {

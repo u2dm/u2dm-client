@@ -5,11 +5,13 @@ use std::sync::{Mutex, OnceLock};
 
 use super::{attachments, data, room_info, space_index, stickers};
 use crate::domain::media::{ContentKey, MediaFailure, Waveform};
+use crate::domain::message::ReactionImage;
 use crate::ports::media::MediaCache;
 
 const DATA_ENV: &str = "U2DM_DEMO_DATA";
 const AUDIO_ASSET_EXTENSIONS: &[&str] = &["ogg", "m4a", "mp3"];
 const IMAGE_ASSET_EXTENSIONS: &[&str] = &["gif", "webp", "png", "jpg", "heif"];
+const MXC_SCHEME: &str = "mxc://";
 
 const FAILURE_SUFFIXES: &[(&str, MediaFailure)] = &[
     ("-missing-download", MediaFailure::Download),
@@ -81,6 +83,10 @@ impl MediaCache for DemoMediaCache {
             && sticker_asset_path(mxc_asset(mxc)).is_none()
     }
 
+    fn reaction_image_path(&self, mxc: &str) -> Option<PathBuf> {
+        sticker_asset_path(mxc_asset(mxc))
+    }
+
     fn audio_path(&self, content: &ContentKey) -> Option<PathBuf> {
         let event_id = content.as_str();
         was_fetched(event_id)
@@ -138,6 +144,16 @@ pub(super) fn prefetch_stickers(mxcs: &[String]) -> usize {
     mxcs.iter()
         .filter(|mxc| sticker_asset_path(mxc_asset(mxc)).is_some())
         .count()
+}
+
+pub(super) fn reaction_image(key: &str) -> Option<ReactionImage> {
+    if !key.starts_with(MXC_SCHEME) {
+        return None;
+    }
+    Some(match sticker_asset_path(mxc_asset(key)) {
+        Some(_) => ReactionImage::Downloaded,
+        None => ReactionImage::Unavailable,
+    })
 }
 
 fn fetched_unjoined_avatars() -> &'static Mutex<HashSet<String>> {

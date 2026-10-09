@@ -16,7 +16,8 @@ pub use cache::{
 use requests::{Needs, Request};
 pub use requests::{
     ShownAvatar, forget_all_media_needs, record_avatar_need, record_media_need,
-    record_sticker_need, request_avatar, request_media, request_sticker,
+    record_reaction_need, record_sticker_need, request_avatar, request_media, request_reaction,
+    request_sticker, rows_showing_reaction,
 };
 use slint::{Image, Rgba8Pixel, SharedPixelBuffer};
 pub use slots::{AvatarSlot, MediaSlot, TimelineItemKey};

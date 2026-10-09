@@ -12,6 +12,7 @@ pub(super) enum Request {
     Media(TimelineItemKey),
     Avatar(AvatarSlot),
     Sticker(String),
+    Reaction(String),
 }
 
 pub(super) enum PreviewPick {
@@ -31,6 +32,7 @@ pub(super) struct Needs {
     avatars: HashMap<AvatarSlot, PathBuf>,
     avatars_asked: HashSet<AvatarSlot>,
     stickers_asked_before_download: HashSet<String>,
+    rows_showing_reaction: HashMap<String, HashSet<String>>,
 }
 
 impl Needs {
@@ -82,6 +84,7 @@ impl Needs {
     fn forget_timeline(&mut self) {
         self.media.retain(|slot, _| !slot.belongs_to_timeline());
         self.avatars.retain(|slot, _| !slot.belongs_to_timeline());
+        self.rows_showing_reaction.clear();
     }
 }
 
@@ -122,6 +125,30 @@ pub fn record_sticker_need(key: &str, path: Option<&Path>) {
     }
 }
 
+pub fn record_reaction_need(item: &TimelineItemKey, key: &str, path: &Path) {
+    let slot = MediaSlot::Reaction(key.to_owned());
+    with_media(|media| {
+        let needs = &mut media.needs;
+        needs.expect_media(&slot, Some(path));
+        needs
+            .rows_showing_reaction
+            .entry(key.to_owned())
+            .or_default()
+            .insert(item.unique_id().to_owned());
+    });
+}
+
+pub fn rows_showing_reaction(key: &str) -> Vec<String> {
+    with_media(|media| {
+        media
+            .needs
+            .rows_showing_reaction
+            .get(key)
+            .map(|rows| rows.iter().cloned().collect())
+            .unwrap_or_default()
+    })
+}
+
 pub fn forget_all_media_needs() {
     with_media(|media| media.needs.forget_timeline());
 }
@@ -136,6 +163,10 @@ pub fn request_media(unique_id: &str) {
 
 pub fn request_sticker(key: &str) {
     queue(Request::Sticker(key.to_owned()));
+}
+
+pub fn request_reaction(key: &str) {
+    queue(Request::Reaction(key.to_owned()));
 }
 
 fn queue(request: Request) {
@@ -159,6 +190,7 @@ fn flush() {
             Request::Media(item) => resolve_media(&item),
             Request::Avatar(slot) => resolve_avatar(&slot),
             Request::Sticker(key) => resolve_sticker(&key),
+            Request::Reaction(key) => resolve_reaction(&key),
         }
     }
 }
@@ -174,6 +206,14 @@ fn resolve_sticker(key: &str) {
         path
     });
     let Some(path) = path else {
+        return;
+    };
+    announce(&slot, &animation::load_thumbnail(&path, &slot));
+}
+
+fn resolve_reaction(key: &str) {
+    let slot = MediaSlot::Reaction(key.to_owned());
+    let Some(path) = with_media(|media| media.needs.media.get(&slot).cloned()) else {
         return;
     };
     announce(&slot, &animation::load_thumbnail(&path, &slot));

@@ -1,4 +1,4 @@
-import { Delivery, MediaFailure, PreviewKind, ServiceKind, UserMessageKind } from "./enums.slint";
+import { Delivery, MediaFailure, PreviewKind, ReactionArt, ServiceKind, UserMessageKind } from "./enums.slint";
 
 export global UserMessages {
     public pure function text(kind: UserMessageKind, detail: string) -> string {
@@ -360,6 +360,15 @@ export global MessagePreview {
             return @tr("🗑 Deleted message");
         }
         return body;
+    }
+}
+
+export global ReactionKeys {
+    public pure function label(art: ReactionArt, text: string) -> string {
+        if art == ReactionArt.text {
+            return text;
+        }
+        return @tr("custom emoji");
     }
 }
 

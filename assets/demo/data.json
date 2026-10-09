@@ -1771,7 +1771,8 @@
         },
         "reactions": [
           { "key": "🚀", "senders": ["@marcus:matrix.org", "@kai:matrix.org"] },
-          { "key": "🎉", "senders": ["@sarah:matrix.org"] }
+          { "key": "🎉", "senders": ["@sarah:matrix.org"] },
+          { "key": "mxc://demo.local/demo-sticker-small", "senders": ["@alex:matrix.org", "@sarah:matrix.org"] }
         ]
       },
       {
@@ -1798,7 +1799,8 @@
         },
         "reactions": [
           { "key": "😄", "senders": ["@priya:matrix.org", "@alex:matrix.org"] },
-          { "key": "🔥", "senders": ["@kai:matrix.org"] }
+          { "key": "🔥", "senders": ["@kai:matrix.org"] },
+          { "key": "mxc://demo.local/demo-sticker-missing", "senders": ["@kai:matrix.org"] }
         ]
       },
       {
@@ -1813,7 +1815,8 @@
         },
         "reactions": [
           { "key": "👀", "senders": ["@kai:matrix.org"] },
-          { "key": "🐢", "senders": ["@marcus:matrix.org", "@priya:matrix.org"] }
+          { "key": "🐢", "senders": ["@marcus:matrix.org", "@priya:matrix.org"] },
+          { "key": "mxc://demo.local/demo-sticker-anim", "senders": ["@priya:matrix.org"] }
         ]
       },
       {

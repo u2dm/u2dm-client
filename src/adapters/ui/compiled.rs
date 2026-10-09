@@ -16,9 +16,10 @@ use u2dm_ui::{
     MediaState as UiMediaState, MemberEntry, MemberRole as UiMemberRole,
     MemberRowKind as UiMemberRowKind, MentionWord, MentionsView, MessageEntry,
     MessageKind as UiMessageKind, Moderation as UiModeration, NotifyMode as UiNotifyMode,
-    PollAnswerEntry, PollPhase as UiPollPhase, PreviewKind as UiPreviewKind, ReactionEntry,
-    ReactionSend as UiReactionSend, ReactorAvatar, ReadersStatus as UiReadersStatus, ReadersView,
-    ReplySwipe, RoomEntry, RoomInfoPlacement as UiRoomInfoPlacement, RoomInfoView, RoomLogView,
+    PollAnswerEntry, PollPhase as UiPollPhase, PreviewKind as UiPreviewKind,
+    ReactionArt as UiReactionArt, ReactionEntry, ReactionSend as UiReactionSend, ReactorAvatar,
+    ReadersStatus as UiReadersStatus, ReadersView, ReplySwipe, RoomEntry,
+    RoomInfoPlacement as UiRoomInfoPlacement, RoomInfoView, RoomLogView,
     RoomMembership as UiRoomMembership, RoomMenuView, RoomRowKind as UiRoomRowKind,
     RoomScope as UiRoomScope, RoomView, RosterStatus as UiRosterStatus, SendState as UiSendState,
     ServiceKind as UiServiceKind, SessionView, SourceEncryption as UiSourceEncryption,
@@ -37,11 +38,11 @@ use super::backend::{
     last_editable_row, recent_speakers, reorder_spaces, row_of_message, selected_room_key,
     shown_room_log_text, unread_below,
 };
-use super::decode::{AvatarSlot, request_avatar, request_media, request_sticker};
+use super::decode::{AvatarSlot, request_avatar, request_media, request_reaction, request_sticker};
 use super::dto::{
     LogLineDto, MediaFailureKind, MediaState, MemberRowDto, MemberRowKind, MessageDto,
-    PollAnswerDto, ReactionDto, ReactorAvatarDto, RoomDto, RoomRowKind, SpaceChildDto, SpaceDto,
-    StickerCellDto, StickerPackDto, StickerRowDto,
+    PollAnswerDto, ReactionArt, ReactionDto, ReactorAvatarDto, RoomDto, RoomRowKind, SpaceChildDto,
+    SpaceDto, StickerCellDto, StickerPackDto, StickerRowDto,
 };
 #[cfg(feature = "demo")]
 use super::dump;
@@ -60,13 +61,13 @@ use super::schema::{
     direct_chats, enum_props, int_props, log_levels, log_line_fields, login_activities,
     login_methods, login_phases, media_failures, media_states, member_roles, member_row_fields,
     member_row_kinds, message_fields, message_kinds, model_props, notify_modes,
-    pending_moderations, poll_answer_fields, poll_phases, preview_kinds, reaction_fields,
-    reaction_sends, reactor_fields, readers_statuses, room_fields, room_info_placements,
-    room_memberships, room_row_kinds, room_scopes, roster_statuses, send_states, service_kinds,
-    simple_callbacks, source_encryptions, source_statuses, space_child_fields, space_fields,
-    space_index_statuses, sticker_cell_fields, sticker_pack_fields, sticker_row_fields,
-    string_props, timeline_states, user_message_kinds, verification_activities,
-    verification_phases,
+    pending_moderations, poll_answer_fields, poll_phases, preview_kinds, reaction_arts,
+    reaction_fields, reaction_sends, reactor_fields, readers_statuses, room_fields,
+    room_info_placements, room_memberships, room_row_kinds, room_scopes, roster_statuses,
+    send_states, service_kinds, simple_callbacks, source_encryptions, source_statuses,
+    space_child_fields, space_fields, space_index_statuses, sticker_cell_fields,
+    sticker_pack_fields, sticker_row_fields, string_props, timeline_states, user_message_kinds,
+    verification_activities, verification_phases,
 };
 use super::session::active_models;
 use super::video::{self, millis_to_duration};
@@ -333,6 +334,7 @@ user_message_kinds!(impl_slint_enum UserMessageKind UiUserMessageKind;);
 media_states!(impl_slint_enum MediaState UiMediaState;);
 send_states!(impl_slint_enum SendState UiSendState;);
 reaction_sends!(impl_slint_enum ReactionSend UiReactionSend;);
+reaction_arts!(impl_slint_enum ReactionArt UiReactionArt;);
 deliveries!(impl_slint_enum Delivery UiDelivery;);
 media_failures!(impl_slint_enum MediaFailureKind UiMediaFailure;);
 message_kinds!(impl_slint_enum MessageKind UiMessageKind;);
@@ -653,6 +655,8 @@ impl SlintUiAdapter {
         });
 
         actions(win).on_request_sticker(move |key| request_sticker(&key));
+
+        actions(win).on_request_reaction_art(move |key| request_reaction(&key));
 
         actions(win).on_room_log_text(|| SharedString::from(shown_room_log_text()));
 

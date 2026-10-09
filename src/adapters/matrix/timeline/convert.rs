@@ -88,6 +88,7 @@ fn extract_reactions(content: &TimelineItemContent, ctx: &TimelineContext<'_>) -
             });
             let mut reaction = Reaction {
                 key: key.clone(),
+                image: ctx.reaction_images.image(key, ctx.media),
                 senders: by_sender
                     .keys()
                     .map(|user_id| Reactor::new(user_id.to_string()))
@@ -130,6 +131,12 @@ fn voted_by(message: Option<&TimelineMessage>, users: &HashSet<String>) -> bool 
             poll.named_voters()
                 .any(|voter| users.contains(&voter.user_id))
         })
+}
+
+pub(super) fn reacted_with(item: &TimelineItem, key: &str) -> bool {
+    item.as_event()
+        .and_then(|event| event.content().reactions())
+        .is_some_and(|by_key| by_key.contains_key(key))
 }
 
 fn reacted_by(item: &TimelineItem, users: &HashSet<String>) -> bool {

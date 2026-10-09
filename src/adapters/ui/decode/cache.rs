@@ -5,6 +5,7 @@ use std::path::{Path, PathBuf};
 use image::{DynamicImage, ImageError, ImageReader, ImageResult};
 use slint::Image;
 
+use super::animation::Peek;
 use super::requests::PreviewPick;
 use super::slots::{AvatarSlot, MediaSlot};
 use super::waiters::DecodeOutcome;
@@ -176,9 +177,10 @@ fn cached(path: &Path) -> Decoded {
 }
 
 pub fn peek_thumbnail(path: &Path, slot: &MediaSlot) -> Decoded {
-    match animation::playing_frame(path, slot) {
-        Some(frame) => Decoded::Ready(frame),
-        None => cached(path),
+    match animation::peek(path, slot) {
+        Peek::Frame(frame) => Decoded::Ready(frame),
+        Peek::Still => cached(path),
+        Peek::Undecided => Decoded::Pending,
     }
 }
 

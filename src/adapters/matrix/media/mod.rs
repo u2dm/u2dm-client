@@ -149,6 +149,10 @@ impl MediaCache for MaterializedMedia {
         self.service.is_failed(&sticker_key(mxc))
     }
 
+    fn reaction_image_path(&self, mxc: &str) -> Option<PathBuf> {
+        self.service.cache_get(&sticker_key(mxc))
+    }
+
     fn audio_path(&self, content: &ContentKey) -> Option<PathBuf> {
         self.service.cache_get(&audio_key(content))
     }

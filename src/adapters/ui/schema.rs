@@ -572,6 +572,16 @@ macro_rules! reaction_sends {
 }
 pub(crate) use reaction_sends;
 
+macro_rules! reaction_arts {
+    ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
+        Text    Text    "text";
+        Pending Pending "pending";
+        Ready   Ready   "ready";
+        Failed  Failed  "failed";
+    } };
+}
+pub(crate) use reaction_arts;
+
 macro_rules! deliveries {
     ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
         None    None    "none";
@@ -958,6 +968,8 @@ macro_rules! reaction_fields {
     ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
         key set_key "key" text;
         label set_label "label" text;
+        art set_art "art" enumk(ReactionArt);
+        image set_image "image" image;
         count set_count "count" int;
         mine set_mine "mine" flag;
         send set_send "send" enumk(ReactionSend);

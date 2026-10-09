@@ -3,20 +3,20 @@ use std::ops::ControlFlow;
 use std::rc::Rc;
 use std::sync::Arc;
 
-use slint::{ComponentHandle, Image, Model, VecModel};
+use slint::{ComponentHandle, Image, Model, ModelRc, VecModel};
 use tokio::sync::{OwnedSemaphorePermit, mpsc, watch};
 
 use super::clock::install_clock_invalidation;
 use super::decode::{
-    AvatarSlot, DecodeOutcome, MediaSlot, advance_animations, set_animation_tick, set_avatar_ready,
-    set_image_ready,
+    AvatarSlot, DecodeFailure, DecodeOutcome, MediaSlot, advance_animations, rows_showing_reaction,
+    set_animation_tick, set_avatar_ready, set_image_ready,
 };
 use super::dto::{
-    LogLineDto, MediaFailureKind, MediaState, MemberRowDto, MessageDto, RoomDto, SpaceChildDto,
-    SpaceDto, StickerPackDto, StickerRowDto, ThumbUpdate, cell_pack, decode_failure_kind,
-    enrich_to_update, log_line_to_dto, member_row_to_dto, mention_to_dto, message_to_dto,
-    reader_to_dto, room_to_dto, space_child_to_dto, space_match_to_dto, space_to_dto,
-    spaces_heading_to_dto,
+    LogLineDto, MediaFailureKind, MediaState, MemberRowDto, MessageDto, ReactionArt, RoomDto,
+    SpaceChildDto, SpaceDto, StickerPackDto, StickerRowDto, ThumbUpdate, cell_pack,
+    decode_failure_kind, enrich_to_update, log_line_to_dto, member_row_to_dto, mention_to_dto,
+    message_to_dto, reader_to_dto, room_to_dto, space_child_to_dto, space_match_to_dto,
+    space_to_dto, spaces_heading_to_dto,
 };
 use super::fields::{
     LogLineFields, MemberRowFields, MessageFields, PollAnswerFields, ReactionFields, ReactorFields,
@@ -369,6 +369,7 @@ fn tick_animations<B: UiBackend>() {
             show_thumbnail::<B>(entry, frame);
         }),
         MediaSlot::StickerCell(key) => place_sticker_cell::<B>(key, Some(&frame)),
+        MediaSlot::Reaction(key) => place_reaction_art::<B>(key, Ok(&frame)),
     });
 }
 
@@ -385,6 +386,52 @@ fn patch_timeline_row<B: UiBackend>(
         timeline.set_row_data(row, entry);
         Some(row)
     })
+}
+
+fn place_reaction_art<B: UiBackend>(
+    key: &str,
+    art: Result<&Image, DecodeFailure>,
+) -> Option<usize> {
+    let rows = rows_showing_reaction(key);
+    B::with_timeline(|timeline| {
+        let mut placed = None;
+        for unique_id in &rows {
+            let Some(row) = indexed_timeline_row::<B>(timeline, unique_id) else {
+                continue;
+            };
+            let Some(entry) = timeline.row_data(row) else {
+                continue;
+            };
+            let in_chips = patch_reaction_art::<B>(&entry.reactions(), key, art);
+            let in_detail = patch_reaction_art::<B>(&entry.all_reactions(), key, art);
+            if in_chips || in_detail {
+                placed = Some(row);
+            }
+        }
+        placed
+    })
+}
+
+fn patch_reaction_art<B: UiBackend>(
+    reactions: &ModelRc<B::Reaction>,
+    key: &str,
+    art: Result<&Image, DecodeFailure>,
+) -> bool {
+    let Some(index) = reactions.iter().position(|reaction| reaction.key() == key) else {
+        return false;
+    };
+    let Some(mut reaction) = reactions.row_data(index) else {
+        return false;
+    };
+    match art {
+        Ok(image) => {
+            reaction.set_image(image.clone());
+            reaction.set_art(ReactionArt::Ready);
+        }
+        Err(_) => reaction.set_art(ReactionArt::Failed),
+    }
+    reactions.set_row_data(index, reaction);
+    true
 }
 
 fn place_sticker_cell<B: UiBackend>(key: &str, art: Option<&Image>) -> Option<usize> {
@@ -465,6 +512,11 @@ pub(super) fn apply_thumbnail_ready<B: UiBackend>(slot: &MediaSlot, outcome: Dec
             }
         }
         MediaSlot::StickerCell(key) => apply_sticker_art::<B>(key, art.ok()),
+        MediaSlot::Reaction(key) => {
+            if place_reaction_art::<B>(key, art).is_none() {
+                tracing::debug!("dropped a decoded image with no live reaction chip");
+            }
+        }
     }
 }
 

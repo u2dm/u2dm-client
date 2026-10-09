@@ -16,6 +16,7 @@ use super::props::{BoolProp, EnumProp, IntProp, StringProp, UiProps};
 pub struct ReactionRowDump {
     pub key: String,
     pub label: String,
+    pub art: String,
     pub count: i32,
     pub mine: bool,
     pub send: String,
@@ -391,6 +392,7 @@ fn reaction_row<B: UiBackend>(entry: &B::Reaction) -> ReactionRowDump {
     ReactionRowDump {
         key: entry.key().to_owned(),
         label: entry.label().to_owned(),
+        art: entry.art().to_owned(),
         count: entry.count(),
         mine: entry.mine(),
         send: entry.send().to_owned(),

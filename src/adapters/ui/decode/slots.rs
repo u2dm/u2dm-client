@@ -23,11 +23,25 @@ impl TimelineItemKey {
 pub enum MediaSlot {
     Thumbnail(TimelineItemKey),
     StickerCell(String),
+    Reaction(String),
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+pub(super) enum Surface {
+    Timeline,
+    StickerPicker,
 }
 
 impl MediaSlot {
+    pub(super) fn surface(&self) -> Surface {
+        match self {
+            Self::Thumbnail(_) | Self::Reaction(_) => Surface::Timeline,
+            Self::StickerCell(_) => Surface::StickerPicker,
+        }
+    }
+
     pub(super) fn belongs_to_timeline(&self) -> bool {
-        matches!(self, Self::Thumbnail(_))
+        self.surface() == Surface::Timeline
     }
 }
 

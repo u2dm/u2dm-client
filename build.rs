@@ -145,6 +145,7 @@ const ENUM_TABLES: &[(&str, &str)] = &[
     ("SendState", "send_states"),
     ("Delivery", "deliveries"),
     ("ReactionSend", "reaction_sends"),
+    ("ReactionArt", "reaction_arts"),
     ("MediaFailure", "media_failures"),
     ("TimelineState", "timeline_states"),
 ];

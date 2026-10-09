@@ -1,7 +1,7 @@
 use slint::{Image, ModelRc, SharedString, StyledText};
 
 use super::backend::UiBackend;
-use super::dto::{MediaFailureKind, MediaState, MemberRowKind, RoomRowKind};
+use super::dto::{MediaFailureKind, MediaState, MemberRowKind, ReactionArt, RoomRowKind};
 use super::present::{Delivery, MessageKind, PollPhase, ServiceKind};
 use super::schema::{
     log_line_fields, member_row_fields, message_fields, poll_answer_fields, reaction_fields,

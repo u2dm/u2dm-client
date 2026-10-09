@@ -2,6 +2,7 @@ use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::fs::File;
 use std::io::BufReader;
+use std::mem;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::time::{Duration, Instant};
@@ -13,7 +14,7 @@ use slint::{Image, Timer, TimerMode};
 
 use super::cache::{DecodeFailure, Decoded};
 use super::requests::Needs;
-use super::slots::MediaSlot;
+use super::slots::{MediaSlot, Surface};
 use super::waiters::DecodeOutcome;
 use super::workers::Lane;
 use super::{
@@ -24,7 +25,11 @@ const ANIMATION_MEMORY_BUDGET: usize = 128 * 1024 * 1024;
 const ANIM_PER_ITEM_BUDGET: usize = 64 * 1024 * 1024;
 const ANIM_MAX_DIMENSION: u32 = 2048;
 const ANIM_MAX_FRAMES: usize = 600;
+const ANIM_MAX_SOURCE_FRAMES: usize = 2400;
 const ANIM_MAX_SOURCE_PIXELS: u64 = 128 * 1024 * 1024;
+const ANIM_SMOOTH_DELAY: Duration = Duration::from_millis(50);
+const ANIM_SHRINK_PERCENT: u32 = 70;
+const ANIM_MIN_DIMENSION: u32 = 128;
 const ANIM_CANVAS_BYTES: u64 = 4 * ANIM_MAX_DIMENSION as u64 * ANIM_MAX_DIMENSION as u64;
 const ANIM_CONCURRENT_CANVASES: u64 = 4;
 const ANIM_MAX_ALLOC: u64 = ANIM_CONCURRENT_CANVASES * ANIM_CANVAS_BYTES;
@@ -40,8 +45,30 @@ thread_local! {
 
 #[derive(Default)]
 pub(super) struct AnimationState {
-    clips: HashMap<PathBuf, Option<Rc<Animation>>>,
+    clips: HashMap<PathBuf, Clip>,
     playbacks: HashMap<MediaSlot, Playback>,
+}
+
+#[derive(Clone)]
+enum Clip {
+    Animated(Rc<Animation>),
+    Still,
+    OverBudget(Surface),
+}
+
+impl Clip {
+    fn animation(&self) -> Option<&Rc<Animation>> {
+        match self {
+            Self::Animated(animation) => Some(animation),
+            Self::Still | Self::OverBudget(_) => None,
+        }
+    }
+}
+
+pub(super) enum Peek {
+    Frame(Image),
+    Still,
+    Undecided,
 }
 
 fn with_animations<R>(f: impl FnOnce(&mut AnimationState) -> R) -> R {
@@ -58,10 +85,11 @@ fn with_animations_and_needs<R>(f: impl FnOnce(&mut AnimationState, &Needs) -> R
 }
 
 impl AnimationState {
-    fn retained_bytes(&self) -> usize {
+    fn retained_bytes(&self, surface: Surface) -> usize {
         self.clips
             .values()
-            .filter_map(Option::as_ref)
+            .filter_map(Clip::animation)
+            .filter(|animation| animation.surface == surface)
             .map(|animation| animation.bytes)
             .sum()
     }
@@ -80,7 +108,9 @@ impl AnimationState {
             .playbacks
             .iter()
             .filter(|&(other, playback)| {
-                other != slot && needs.expects_media(other, &playback.path)
+                other != slot
+                    && other.surface() == slot.surface()
+                    && needs.expects_media(other, &playback.path)
             })
             .count();
         if others_expected >= MAX_ACTIVE_ANIMATIONS {
@@ -115,6 +145,7 @@ struct Animation {
     frames: Vec<Image>,
     delays: Vec<Duration>,
     bytes: usize,
+    surface: Surface,
 }
 
 impl Animation {
@@ -133,6 +164,34 @@ struct RawFrame {
     height: u32,
 }
 
+impl RawFrame {
+    fn fitted(buffer: RgbaImage, max_dimension: u32) -> Self {
+        let (width, height) = buffer.dimensions();
+        let buffer = if width > max_dimension || height > max_dimension {
+            DynamicImage::ImageRgba8(buffer)
+                .thumbnail(max_dimension, max_dimension)
+                .into_rgba8()
+        } else {
+            buffer
+        };
+        let (width, height) = buffer.dimensions();
+        Self {
+            rgba: buffer.into_raw(),
+            width,
+            height,
+        }
+    }
+
+    fn largest_side(&self) -> u32 {
+        self.width.max(self.height)
+    }
+
+    fn shrunk(self, max_dimension: u32) -> Option<Self> {
+        RgbaImage::from_raw(self.width, self.height, self.rgba)
+            .map(|buffer| Self::fitted(buffer, max_dimension))
+    }
+}
+
 pub(super) struct RawAnimation {
     frames: Vec<RawFrame>,
     delays: Vec<Duration>,
@@ -140,7 +199,7 @@ pub(super) struct RawAnimation {
 }
 
 impl RawAnimation {
-    fn into_animation(self) -> Animation {
+    fn into_animation(self, surface: Surface) -> Animation {
         let Self {
             frames: raw,
             delays,
@@ -154,6 +213,7 @@ impl RawAnimation {
             frames,
             delays,
             bytes,
+            surface,
         }
     }
 }
@@ -230,95 +290,158 @@ fn frames_of(path: &Path) -> Option<Frames<'static>> {
     }
 }
 
-#[derive(Default)]
-struct AnimationBudget {
+struct Reel {
+    frames: Vec<RawFrame>,
+    delays: Vec<Duration>,
+    stride: usize,
+    max_dimension: u32,
     source_pixels: u64,
-    retained_bytes: usize,
 }
 
-impl AnimationBudget {
-    fn admit(&mut self, buffer: RgbaImage) -> Option<RawFrame> {
-        let (source_width, source_height) = buffer.dimensions();
-        if source_width > ANIM_MAX_DIMENSION || source_height > ANIM_MAX_DIMENSION {
+impl Reel {
+    fn new() -> Self {
+        Self {
+            frames: Vec::new(),
+            delays: Vec::new(),
+            stride: 1,
+            max_dimension: DISPLAY_MAX_DIMENSION,
+            source_pixels: 0,
+        }
+    }
+
+    fn bytes(&self) -> usize {
+        self.frames.iter().map(|frame| frame.rgba.len()).sum()
+    }
+
+    fn fits(&self) -> bool {
+        self.frames.len() <= ANIM_MAX_FRAMES && self.bytes() <= ANIM_PER_ITEM_BUDGET
+    }
+
+    fn take(&mut self, index: usize, buffer: RgbaImage, delay: Duration) -> Option<()> {
+        let (width, height) = buffer.dimensions();
+        if width > ANIM_MAX_DIMENSION || height > ANIM_MAX_DIMENSION {
             return None;
         }
         self.source_pixels = self
             .source_pixels
-            .saturating_add(u64::from(source_width) * u64::from(source_height));
+            .saturating_add(u64::from(width) * u64::from(height));
         if self.source_pixels > ANIM_MAX_SOURCE_PIXELS {
             return None;
         }
+        if !index.is_multiple_of(self.stride) {
+            if let Some(last) = self.delays.last_mut() {
+                *last += delay;
+            }
+            return Some(());
+        }
+        self.frames
+            .push(RawFrame::fitted(buffer, self.max_dimension));
+        self.delays.push(delay);
+        while !self.fits() {
+            self.reduce()?;
+        }
+        Some(())
+    }
 
-        let buffer =
-            if source_width > DISPLAY_MAX_DIMENSION || source_height > DISPLAY_MAX_DIMENSION {
-                DynamicImage::ImageRgba8(buffer)
-                    .thumbnail(DISPLAY_MAX_DIMENSION, DISPLAY_MAX_DIMENSION)
-                    .into_rgba8()
-            } else {
-                buffer
-            };
-        let (width, height) = buffer.dimensions();
-
-        self.retained_bytes = self
-            .retained_bytes
-            .saturating_add(width as usize * height as usize * 4);
-        if self.retained_bytes > ANIM_PER_ITEM_BUDGET {
+    fn reduce(&mut self) -> Option<()> {
+        let smooth = self
+            .delays
+            .split_last()
+            .and_then(|(_, settled)| settled.iter().min())
+            .is_some_and(|delay| *delay < ANIM_SMOOTH_DELAY);
+        if smooth || self.frames.len() > ANIM_MAX_FRAMES {
+            self.halve_frame_rate();
+            return Some(());
+        }
+        let largest = self.frames.iter().map(RawFrame::largest_side).max()?;
+        self.max_dimension = largest * ANIM_SHRINK_PERCENT / 100;
+        if self.max_dimension < ANIM_MIN_DIMENSION {
             return None;
         }
+        let max_dimension = self.max_dimension;
+        self.frames = mem::take(&mut self.frames)
+            .into_iter()
+            .map(|frame| frame.shrunk(max_dimension))
+            .collect::<Option<Vec<_>>>()?;
+        Some(())
+    }
 
-        Some(RawFrame {
-            rgba: buffer.into_raw(),
-            width,
-            height,
+    fn halve_frame_rate(&mut self) {
+        let frames = mem::take(&mut self.frames);
+        let delays = mem::take(&mut self.delays);
+        for (index, (frame, delay)) in frames.into_iter().zip(delays).enumerate() {
+            if index % 2 == 0 {
+                self.frames.push(frame);
+                self.delays.push(delay);
+            } else if let Some(last) = self.delays.last_mut() {
+                *last += delay;
+            }
+        }
+        self.stride *= 2;
+    }
+
+    fn into_raw(self) -> Option<RawAnimation> {
+        let bytes = self.bytes();
+        (self.frames.len() > 1).then_some(RawAnimation {
+            frames: self.frames,
+            delays: self.delays,
+            bytes,
         })
     }
 }
 
 pub(super) fn decode_raw(path: &Path) -> Option<RawAnimation> {
-    let mut frames = Vec::new();
-    let mut delays = Vec::new();
-    let mut budget = AnimationBudget::default();
-
-    for frame in frames_of(path)? {
-        if frames.len() >= ANIM_MAX_FRAMES {
-            break;
-        }
+    let mut reel = Reel::new();
+    for (index, frame) in frames_of(path)?.enumerate().take(ANIM_MAX_SOURCE_FRAMES) {
         let Ok(frame) = frame else { break };
         let delay = frame_delay(Duration::from(frame.delay()));
-        let Some(raw) = budget.admit(frame.into_buffer()) else {
+        if reel.take(index, frame.into_buffer(), delay).is_none() {
             tracing::debug!(
                 "animation at {} exceeds the decode budget, showing a still",
                 path.display()
             );
             return None;
-        };
-
-        frames.push(raw);
-        delays.push(delay);
+        }
     }
+    if reel.stride > 1 || reel.max_dimension < DISPLAY_MAX_DIMENSION {
+        tracing::debug!(
+            stride = reel.stride,
+            max_dimension = reel.max_dimension,
+            "animation at {} reduced to fit the decode budget",
+            path.display()
+        );
+    }
+    reel.into_raw()
+}
 
-    (frames.len() > 1).then_some(RawAnimation {
-        frames,
-        delays,
-        bytes: budget.retained_bytes,
-    })
+fn surface_paying_for(slots: &[MediaSlot]) -> Surface {
+    if slots.iter().any(MediaSlot::belongs_to_timeline) {
+        Surface::Timeline
+    } else {
+        Surface::StickerPicker
+    }
 }
 
 pub(super) fn on_decoded(path: &Path, decoded: Option<RawAnimation>, epoch: Epoch) {
     if !epoch.is_current() {
         return;
     }
-    let animation = with_animations(|state| {
-        let remaining = ANIMATION_MEMORY_BUDGET.saturating_sub(state.retained_bytes());
-        let animation = decoded
-            .filter(|raw| raw.bytes <= remaining)
-            .map(|raw| Rc::new(raw.into_animation()));
-        state.clips.insert(path.to_path_buf(), animation.clone());
-        animation
-    });
     let waiting = waiters::take_media(path);
+    let surface = surface_paying_for(waiting.media_slots());
+    let clip = with_animations(|state| {
+        let remaining = ANIMATION_MEMORY_BUDGET.saturating_sub(state.retained_bytes(surface));
+        let clip = match decoded {
+            None => Clip::Still,
+            Some(raw) if raw.bytes <= remaining => {
+                Clip::Animated(Rc::new(raw.into_animation(surface)))
+            }
+            Some(_) => Clip::OverBudget(surface),
+        };
+        state.clips.insert(path.to_path_buf(), clip.clone());
+        clip
+    });
 
-    let Some(animation) = animation else {
+    let Clip::Animated(animation) = clip else {
         for slot in waiting.media_slots() {
             waiters::enqueue_media(path, slot, Lane::Static);
         }
@@ -327,12 +450,7 @@ pub(super) fn on_decoded(path: &Path, decoded: Option<RawAnimation>, epoch: Epoc
 
     with_animations_and_needs(|state, needs| {
         for slot in waiting.media_slots() {
-            if matches!(
-                state.start_playback(needs, slot, path, &animation),
-                PlaybackStart::AtCapacity
-            ) {
-                break;
-            }
+            state.start_playback(needs, slot, path, &animation);
         }
     });
     reschedule();
@@ -344,11 +462,18 @@ pub(super) fn on_decoded(path: &Path, decoded: Option<RawAnimation>, epoch: Epoc
     waiting.notify(first);
 }
 
-pub(super) fn playing_frame(path: &Path, slot: &MediaSlot) -> Option<Image> {
-    with_animations(|state| {
-        let animation = state.clips.get(path)?.as_ref()?;
-        let playback = state.playing(slot, path)?;
-        animation.frame(playback.frame).cloned()
+pub(super) fn peek(path: &Path, slot: &MediaSlot) -> Peek {
+    if !is_animatable(path) {
+        return Peek::Still;
+    }
+    with_animations(|state| match state.clips.get(path) {
+        Some(Clip::Animated(animation)) => state
+            .playing(slot, path)
+            .and_then(|playback| animation.frame(playback.frame).cloned())
+            .map_or(Peek::Undecided, Peek::Frame),
+        Some(Clip::Still) => Peek::Still,
+        Some(Clip::OverBudget(surface)) if *surface == slot.surface() => Peek::Still,
+        Some(Clip::OverBudget(_)) | None => Peek::Undecided,
     })
 }
 
@@ -358,9 +483,12 @@ pub fn load_thumbnail(path: &Path, slot: &MediaSlot) -> Decoded {
         return cache::request_thumbnail(path, slot);
     }
     let animation = match with_animations(|state| state.clips.get(path).cloned()) {
-        Some(Some(animation)) => animation,
-        Some(None) => return cache::request_thumbnail(path, slot),
-        None => {
+        Some(Clip::Animated(animation)) => animation,
+        Some(Clip::Still) => return cache::request_thumbnail(path, slot),
+        Some(Clip::OverBudget(surface)) if surface == slot.surface() => {
+            return cache::request_thumbnail(path, slot);
+        }
+        Some(Clip::OverBudget(_)) | None => {
             waiters::enqueue_media(path, slot, Lane::Animation);
             return Decoded::Pending;
         }
@@ -396,7 +524,7 @@ fn due_frames(now: Instant) -> Tick {
             if playback.next_at > now {
                 continue;
             }
-            let Some(animation) = clips.get(&playback.path).and_then(Option::as_ref) else {
+            let Some(animation) = clips.get(&playback.path).and_then(Clip::animation) else {
                 continue;
             };
             playback.frame = (playback.frame + 1) % animation.frames.len();
@@ -426,7 +554,17 @@ fn forget_playbacks(gone: &[MediaSlot]) {
             .values()
             .map(|playback| &playback.path)
             .collect::<HashSet<&PathBuf>>();
-        clips.retain(|path, _| live_paths.contains(path));
+        let mut freed = HashSet::new();
+        clips.retain(|path, clip| match clip {
+            Clip::Animated(animation) if !live_paths.contains(path) => {
+                freed.insert(animation.surface);
+                false
+            }
+            Clip::Animated(_) | Clip::Still | Clip::OverBudget(_) => true,
+        });
+        clips.retain(
+            |_, clip| !matches!(clip, Clip::OverBudget(surface) if freed.contains(surface)),
+        );
     });
 }
 

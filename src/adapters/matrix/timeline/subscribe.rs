@@ -1,4 +1,5 @@
 use std::collections::{BTreeMap, BTreeSet, HashSet};
+use std::ops::ControlFlow;
 use std::sync::Arc;
 
 use futures_util::{Stream, StreamExt};
@@ -15,13 +16,14 @@ use tokio::task::JoinSet;
 use tracing::Instrument;
 
 use super::commands::Commands;
-use super::convert::{event_media, involves};
+use super::convert::{event_media, involves, reacted_with};
 use super::diff::{diff_to_patch, stamp_editable_polls, stamp_read_marks};
 use super::edits::DiscardedEdits;
 use super::filter::TimelineItems;
 use super::members::{Arrived, Batch, Members, resolve_members};
 use super::poll_ends::EndingPolls;
 use super::polls;
+use super::reaction_images::{ReactionImages, Settled, download_reaction_images};
 use super::receipts::ReceiptLane;
 use super::rowless_sends::{RowlessSendEvent, RowlessSendGuard};
 use super::source;
@@ -43,6 +45,7 @@ const REPLY_FETCH_INFLIGHT: usize = 4;
 const UNREAD_LOOKBACK_BATCHES: usize = 4;
 const FOCUS_CONTEXT_EVENTS: u16 = 50;
 const MEMBER_BATCHES: usize = 4;
+const SETTLED_IMAGES: usize = 8;
 
 fn needs_pronouns(msg: &TimelineMessage, pronouns: &PronounCache) -> bool {
     !msg.is_own && pronouns.needs_fetch(&msg.sender)
@@ -939,12 +942,14 @@ pub(crate) async fn subscribe_timeline(
     let enrich = EnrichmentPool::new();
     let receipts = ReceiptLane::spawn(&timeline);
     let members = Arc::new(Members::default());
+    let reaction_images = ReactionImages::default();
     let undecrypted = UndecryptedResponses::default();
     let ctx = TimelineContext {
         client,
         media,
         pronouns,
         members: &members,
+        reaction_images: &reaction_images,
         ending: &ending,
         undecrypted: &undecrypted,
         discarded: &discarded,
@@ -990,6 +995,73 @@ fn spawn_member_fetch(
     side_tasks.spawn(resolve.in_current_span());
 }
 
+fn spawn_reaction_image_downloads(
+    ctx: &TimelineContext<'_>,
+    side_tasks: &mut JoinSet<()>,
+    settled: &mpsc::Sender<Settled>,
+) {
+    let wanted = ctx.reaction_images.take_wanted();
+    if wanted.is_empty() {
+        return;
+    }
+    let client = ctx.client.clone();
+    let media = Arc::clone(ctx.media);
+    let settled = settled.clone();
+    let download = async move {
+        download_reaction_images(&client, &media, wanted, &settled).await;
+    };
+    side_tasks.spawn(download.in_current_span());
+}
+
+enum Fetched {
+    Members(Batch),
+    Image(Settled),
+}
+
+struct RowFetches {
+    members_tx: mpsc::Sender<Batch>,
+    members_rx: mpsc::Receiver<Batch>,
+    images_tx: mpsc::Sender<Settled>,
+    images_rx: mpsc::Receiver<Settled>,
+}
+
+impl RowFetches {
+    fn new() -> Self {
+        let (members_tx, members_rx) = mpsc::channel(MEMBER_BATCHES);
+        let (images_tx, images_rx) = mpsc::channel(SETTLED_IMAGES);
+        Self {
+            members_tx,
+            members_rx,
+            images_tx,
+            images_rx,
+        }
+    }
+
+    fn spawn(&self, ctx: &TimelineContext<'_>, room: &Room, side_tasks: &mut JoinSet<()>) {
+        spawn_member_fetch(ctx, room, side_tasks, &self.members_tx);
+        spawn_reaction_image_downloads(ctx, side_tasks, &self.images_tx);
+    }
+
+    async fn next(&mut self) -> Option<Fetched> {
+        tokio::select! {
+            Some(batch) = self.members_rx.recv() => Some(Fetched::Members(batch)),
+            Some(settled) = self.images_rx.recv() => Some(Fetched::Image(settled)),
+            else => None,
+        }
+    }
+}
+
+fn fetched_patch(
+    items: &mut TimelineItems,
+    fetched: Fetched,
+    ctx: &TimelineContext<'_>,
+) -> Option<TimelinePatch> {
+    match fetched {
+        Fetched::Members(batch) => member_patch(items, &ctx.members.record(batch), ctx),
+        Fetched::Image(settled) => image_patch(items, settled, ctx),
+    }
+}
+
 fn member_patch(
     items: &mut TimelineItems,
     arrived: &Arrived,
@@ -998,15 +1070,42 @@ fn member_patch(
     if arrived.users.is_empty() {
         return None;
     }
-    let involved: Vec<usize> = items
+    reconvert_rows(items, ctx, |item, message| involves(item, message, arrived))
+}
+
+fn image_patch(
+    items: &mut TimelineItems,
+    settled: Settled,
+    ctx: &TimelineContext<'_>,
+) -> Option<TimelinePatch> {
+    let key = ctx.reaction_images.record(settled);
+    reconvert_rows(items, ctx, |item, _| reacted_with(item, &key))
+}
+
+async fn send_patch(ctx: &TimelineContext<'_>, patch: Option<TimelinePatch>) -> ControlFlow<()> {
+    let Some(patch) = patch else {
+        return ControlFlow::Continue(());
+    };
+    match ctx.timeline_tx.send(TimelineUpdate::patch(patch)).await {
+        Ok(()) => ControlFlow::Continue(()),
+        Err(_) => ControlFlow::Break(()),
+    }
+}
+
+fn reconvert_rows(
+    items: &mut TimelineItems,
+    ctx: &TimelineContext<'_>,
+    involved: impl Fn(&TimelineItem, Option<&TimelineMessage>) -> bool,
+) -> Option<TimelinePatch> {
+    let rows: Vec<usize> = items
         .items()
         .iter()
         .enumerate()
-        .filter(|(raw_index, item)| involves(item, items.message_at(*raw_index), arrived))
+        .filter(|(raw_index, item)| involved(item, items.message_at(*raw_index)))
         .map(|(raw_index, _)| raw_index)
         .collect();
     let mut patches: Vec<TimelinePatch> = Vec::new();
-    for raw_index in involved {
+    for raw_index in rows {
         if let Some(message) = items.reconvert(raw_index, ctx) {
             patches.push(TimelinePatch::Set {
                 index: items.msg_index_at(raw_index),
@@ -1044,8 +1143,8 @@ async fn run_timeline_loop<S>(
 
     let room = sends.room().clone();
     let room_id = room.room_id().to_owned();
-    let (member_tx, mut member_rx) = mpsc::channel::<Batch>(MEMBER_BATCHES);
-    spawn_member_fetch(ctx, &room, &mut side_tasks, &member_tx);
+    let mut row_fetches = RowFetches::new();
+    row_fetches.spawn(ctx, &room, &mut side_tasks);
 
     let mut key_stream = std::pin::pin!(
         ctx.client
@@ -1072,14 +1171,8 @@ async fn run_timeline_loop<S>(
             }
             Some(_) = side_tasks.join_next(), if !side_tasks.is_empty() => {}
             event = sends.next() => settle_rowless_send(&mut sends, event, &mut items, ctx).await,
-            Some(batch) = member_rx.recv() => {
-                let arrived = ctx.members.record(batch);
-                if let Some(patch) = member_patch(&mut items, &arrived, ctx)
-                    && ctx.timeline_tx
-                        .send(TimelineUpdate::patch(patch))
-                        .await
-                        .is_err()
-                {
+            Some(fetched) = row_fetches.next() => {
+                if send_patch(ctx, fetched_patch(&mut items, fetched, ctx)).await.is_break() {
                     break;
                 }
             }
@@ -1091,7 +1184,7 @@ async fn run_timeline_loop<S>(
                     break;
                 }
                 spawn_reply_detail_fetches(items.items(), timeline, &mut fetched_reply_details, &reply_limit, &mut side_tasks);
-                spawn_member_fetch(ctx, &room, &mut side_tasks, &member_tx);
+                row_fetches.spawn(ctx, &room, &mut side_tasks);
             }
         }
     }

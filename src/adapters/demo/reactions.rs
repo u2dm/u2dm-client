@@ -1,4 +1,5 @@
 use super::catalog::{Flag, Scenarios};
+use super::media;
 use std::env;
 use std::sync::OnceLock;
 use std::time::Duration;
@@ -161,6 +162,7 @@ pub fn apply_scenario(messages: &mut [TimelineMessage]) {
     if scenario.key_is_long {
         message.reactions.push(Reaction {
             key: LONG_KEY.to_owned(),
+            image: None,
             senders: vec![reactor("@kai:matrix.org")],
             mine: false,
             send: ReactionSend::Sent,
@@ -173,6 +175,7 @@ pub fn apply_scenario(messages: &mut [TimelineMessage]) {
             }
             message.reactions.push(Reaction {
                 key: (*key).to_owned(),
+                image: None,
                 senders: vec![reactor("@priya:matrix.org")],
                 mine: false,
                 send: ReactionSend::Sent,
@@ -216,6 +219,7 @@ pub fn toggle(message: &mut TimelineMessage, key: &str, own_user: &str) {
     let Some(position) = message.reactions.iter().position(|r| r.key == key) else {
         message.reactions.push(Reaction {
             key: key.to_owned(),
+            image: media::reaction_image(key),
             senders: vec![reactor(own_user)],
             mine: true,
             send,

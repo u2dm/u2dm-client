@@ -262,9 +262,17 @@ impl Reactor {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Reaction {
     pub key: String,
+    pub image: Option<ReactionImage>,
     pub senders: Vec<Reactor>,
     pub mine: bool,
     pub send: ReactionSend,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ReactionImage {
+    Downloading,
+    Downloaded,
+    Unavailable,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
