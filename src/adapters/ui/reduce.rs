@@ -44,7 +44,7 @@ use crate::domain::message::{
     EditKind, MessageEdit, MessagePermissions, MessagePreviewKind, RichText, TimelineMessage,
 };
 use crate::domain::poll::PollPermissions;
-use crate::domain::room::RoomId;
+use crate::domain::room::{Room, RoomId};
 use crate::domain::room_info::RoomAbout;
 use crate::domain::room_log::RoomLog;
 use crate::domain::timeline::{OlderHistory, SourceEncryption, TimelinePatch, TimelineStatus};
@@ -54,6 +54,7 @@ use crate::ports::media::MediaCache;
 use crate::util::format_bytes;
 
 const NO_ANCHOR: i32 = -1;
+const NO_SELECTED_ROW: i32 = -1;
 
 #[derive(Default)]
 pub struct RoomCursor {
@@ -189,6 +190,13 @@ pub fn dispatch_effect<B: UiBackend>(w: &B::Window, event: Effect, ctx: &UiEvent
             w.set_bool(BoolProp::TimelineDetached, !live);
             w.set_int(IntProp::SelectedGeneration, generation);
             w.set_string(StringProp::SelectedRoomId, SharedString::from(id.as_ref()));
+            let listed = with_session(|session| {
+                session
+                    .snapshot
+                    .as_ref()
+                    .map(|view| Arc::clone(&view.directory.rooms))
+            });
+            publish_selected_room_row(w, listed.as_deref().unwrap_or_default());
             w.set_string(StringProp::SelectedRoomName, SharedString::from(&name));
             w.set_string(
                 StringProp::SelectedRoomInitial,
@@ -713,6 +721,7 @@ fn apply_directory<B: UiBackend>(
             ctx.media,
         );
         refresh_selected_room_avatar(w, ctx.media);
+        publish_selected_room_row(w, rooms);
     }
     if last.is_none_or(|l| !Arc::ptr_eq(&l.spaces, spaces)) {
         apply_spaces(
@@ -1552,6 +1561,16 @@ fn show_selected_room_avatar(
     }
 }
 
+fn publish_selected_room_row(w: &impl UiProps, listed: &[Arc<Room>]) {
+    let selected = w.get_string(StringProp::SelectedRoomId);
+    let row = listed
+        .iter()
+        .position(|room| room.id.as_ref() == selected.as_str())
+        .and_then(|row| i32::try_from(row).ok())
+        .unwrap_or(NO_SELECTED_ROW);
+    w.set_int(IntProp::SelectedRoomRow, row);
+}
+
 fn refresh_selected_room_avatar(w: &impl UiProps, media: &dyn MediaCache) {
     let shown = with_session(|session| session.room.avatar.clone());
     show_selected_room_avatar(w, &shown.room_id, shown.mxc.as_deref(), media);
@@ -1563,6 +1582,7 @@ fn clear_selected_room(w: &impl UiProps) {
     w.set_string(StringProp::SelectedRoomInitial, SharedString::default());
     w.set_int(IntProp::SelectedRoomColorIndex, 0);
     w.apply_selected_room_avatar(None);
+    w.set_int(IntProp::SelectedRoomRow, NO_SELECTED_ROW);
     w.set_int(IntProp::SelectedRoomMembers, 0);
     w.set_bool(BoolProp::SelectedRoomEncrypted, false);
     apply_poll_permissions(w, PollPermissions::UNRESTRICTED);

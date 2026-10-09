@@ -263,6 +263,7 @@ macro_rules! int_props {
         PinnedCount RoomView "RoomView" "pinned-count" set_pinned_count get_pinned_count;
         PinnedIndex RoomView "RoomView" "pinned-index" set_pinned_index get_pinned_index;
         SelectedGeneration DirectoryView "DirectoryView" "selected-generation" set_selected_generation get_selected_generation;
+        SelectedRoomRow DirectoryView "DirectoryView" "selected-room-row" set_selected_room_row get_selected_room_row;
         ListedSpaceMembers DirectoryView "DirectoryView" "listed-space-members" set_listed_space_members get_listed_space_members;
         SpaceIndexPagesLanded SpaceIndexView "SpaceIndexView" "pages-landed" set_pages_landed get_pages_landed;
         StickerColumns StickerView "StickerView" "columns" set_columns get_columns;

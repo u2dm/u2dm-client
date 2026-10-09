@@ -184,6 +184,7 @@ export component ChatScreen inherits Rectangle {
         height: root.height;
         subrail-width: root.subrail-width;
         collapsed: root.nav-collapsed;
+        joins-timeline: !SpaceIndexView.visible;
     }
 
     timeline := TimelineView {

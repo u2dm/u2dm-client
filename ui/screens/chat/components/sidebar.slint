@@ -17,7 +17,7 @@ import { HeaderIconButton } from "../../../components/button.slint";
 import { RetryNotice } from "../../../components/retry-notice.slint";
 import { PillSearchField } from "../../../components/search-field.slint";
 import { ContextPress } from "./context-press.slint";
-import { AppStyle, Fonts, IconSize, Metrics, Size, Space, Weight } from "../../../theme.slint";
+import { AppStyle, Fonts, IconSize, Metrics, Motion, Size, Space, Stroke, Weight } from "../../../theme.slint";
 import { RoomRowKind, RoomScope, ServiceKind } from "../../../enums.slint";
 import { DirectoryView, SpaceIndexView } from "../../../views.slint";
 import { Actions } from "../../../actions.slint";
@@ -186,15 +186,34 @@ component SpaceSummary inherits VerticalLayout {
     }
 }
 
+component SelectionCorner inherits Path {
+    in property <bool> below;
+
+    property <float> radius: Metrics.sidebar-tab-radius / 1px;
+    property <float> overlap: Stroke.hairline / 1px;
+    property <float> side: root.radius + root.overlap;
+
+    width: Metrics.sidebar-tab-radius + Stroke.hairline;
+    height: root.width;
+    viewbox-width: root.side;
+    viewbox-height: root.side;
+    fill: Palette.background;
+    commands: root.below
+        ? "M 0 0 L \{root.side} 0 L \{root.side} \{root.side} L \{root.radius} \{root.side} A \{root.radius} \{root.radius} 0 0 0 0 \{root.overlap} Z"
+        : "M 0 \{root.radius} A \{root.radius} \{root.radius} 0 0 0 \{root.radius} 0 L \{root.side} 0 L \{root.side} \{root.side} L 0 \{root.side} Z";
+}
+
 component RoomRow inherits ListItemArea {
     in property <RoomEntry> entry;
     in property <bool> collapsed;
+    in property <bool> joins-timeline;
     in property <length> avatar-size;
 
     property <bool> is-room: root.entry.kind == RoomRowKind.room;
     property <bool> is-space: root.entry.kind == RoomRowKind.space;
     property <bool> is-heading: root.entry.kind == RoomRowKind.spaces-heading;
     property <bool> has-unread: root.entry.alert || root.entry.mention || root.entry.hint;
+    property <bool> joined: root.selected && root.joins-timeline;
     property <int> menu-returns: RoomMenu.focus-returns;
 
     pure function describe(entry: RoomEntry) -> string {
@@ -237,11 +256,20 @@ component RoomRow inherits ListItemArea {
 
     clip: true;
     enabled: !root.is-heading;
-    ring-inset: Space.xs;
+    ring-inset: Space.sm;
+    ring-radius: Metrics.sidebar-tab-radius;
     label: root.describe(root.entry);
-    background: root.fill(
-        root.selected,
-        root.enabled && (root.has-hover || RoomMenu.shows(root.entry.id)));
+
+    Rectangle {
+        x: Space.sm;
+        width: parent.width - self.x - (root.joined ? 0 : Space.sm);
+        border-radius: Metrics.sidebar-tab-radius;
+        border-top-right-radius: root.joined ? 0 : Metrics.sidebar-tab-radius;
+        border-bottom-right-radius: root.joined ? 0 : Metrics.sidebar-tab-radius;
+        background: root.fill(
+            root.selected,
+            root.enabled && (root.has-hover || RoomMenu.shows(root.entry.id)));
+    }
 
     init => {
         if root.is-room && !root.entry.has-avatar {
@@ -428,6 +456,7 @@ export component Sidebar inherits Rectangle {
     in property <length> subrail-width: Metrics.subspace-rail;
     in property <bool> above-modal: false;
     in property <bool> collapsed: false;
+    in property <bool> joins-timeline: false;
 
     callback room-selected();
 
@@ -477,6 +506,39 @@ export component Sidebar inherits Rectangle {
         }
 
         room-column := Rectangle {
+            property <length> selected-top: list-area.y + room-list.content-y
+                + DirectoryView.selected-room-row * root.row-height;
+            property <length> selected-bottom: self.selected-top + root.row-height;
+            property <length> list-bottom: list-area.y + list-area.height;
+            property <bool> shows-junction: root.joins-timeline && DirectoryView.selected-room-row >= 0;
+            property <bool> scrolled-lately: false;
+            property <bool> pointer-at-scrollbar: list-area.has-hover
+                && list-area.mouse-x >= list-area.width - Space.lg;
+
+            scrollbar-linger := Timer {
+                interval: Motion.scrollbar-linger;
+                running: false;
+                triggered => {
+                    self.running = false;
+                    room-column.scrolled-lately = false;
+                }
+            }
+
+            if room-column.shows-junction
+                && room-column.selected-top >= list-area.y
+                && room-column.selected-top < room-column.list-bottom: SelectionCorner {
+                x: room-column.width - Metrics.sidebar-tab-radius;
+                y: room-column.selected-top - Metrics.sidebar-tab-radius;
+            }
+
+            if room-column.shows-junction
+                && room-column.selected-bottom > list-area.y
+                && room-column.selected-bottom <= room-column.list-bottom: SelectionCorner {
+                x: room-column.width - Metrics.sidebar-tab-radius;
+                y: room-column.selected-bottom - Stroke.hairline;
+                below: true;
+            }
+
             VerticalLayout {
                 header := RoomColumnHeader {
                     collapsed: root.collapsed;
@@ -494,24 +556,39 @@ export component Sidebar inherits Rectangle {
                     icon: IconSet.SearchX;
                 }
 
-                ListView {
-                    accessible-role: list;
-                    accessible-label: @tr("Rooms");
-                    accessible-item-count: DirectoryView.rooms.length;
+                list-area := TouchArea {
+                    vertical-stretch: 1;
 
-                    for room[idx] in DirectoryView.rooms: RoomRow {
-                        height: room.kind == RoomRowKind.spaces-heading ? root.heading-height : root.row-height;
-                        index: idx;
-                        above-modal: root.above-modal;
-                        collapsed: root.collapsed;
-                        avatar-size: root.avatar-size;
-                        entry: room;
-                        selected: room.kind == RoomRowKind.room && room.id == DirectoryView.selected-room-id;
-                        clicked => {
-                            if room.kind == RoomRowKind.room && header.search-focused {
-                                RoomSearch.opened-room = room.id;
+                    room-list := ListView {
+                        width: 100%;
+                        height: 100%;
+                        vertical-scrollbar-policy: room-column.scrolled-lately || room-column.pointer-at-scrollbar
+                            ? ScrollBarPolicy.as-needed
+                            : ScrollBarPolicy.always-off;
+                        accessible-role: list;
+                        accessible-label: @tr("Rooms");
+                        accessible-item-count: DirectoryView.rooms.length;
+                        scrolled => {
+                            room-column.scrolled-lately = true;
+                            scrollbar-linger.running = true;
+                            scrollbar-linger.restart();
+                        }
+
+                        for room[idx] in DirectoryView.rooms: RoomRow {
+                            height: room.kind == RoomRowKind.spaces-heading ? root.heading-height : root.row-height;
+                            index: idx;
+                            above-modal: root.above-modal;
+                            collapsed: root.collapsed;
+                            joins-timeline: root.joins-timeline;
+                            avatar-size: root.avatar-size;
+                            entry: room;
+                            selected: room.kind == RoomRowKind.room && room.id == DirectoryView.selected-room-id;
+                            clicked => {
+                                if room.kind == RoomRowKind.room && header.search-focused {
+                                    RoomSearch.opened-room = room.id;
+                                }
+                                root.open-row(room);
                             }
-                            root.open-row(room);
                         }
                     }
                 }
