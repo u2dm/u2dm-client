@@ -1,17 +1,21 @@
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::{Arc, Mutex as StdMutex};
 use std::time::{Duration, Instant};
+use std::{iter, result};
 
 use async_trait::async_trait;
 use futures_util::future::join_all;
 use futures_util::{StreamExt, stream};
+use matrix_sdk::deserialized_responses::SyncOrStrippedState;
 use matrix_sdk::ruma::api::client::state::get_state_event_for_key;
 use matrix_sdk::ruma::api::error::ErrorKind;
-use matrix_sdk::ruma::events::{GlobalAccountDataEventType, StateEventType};
+use matrix_sdk::ruma::events::space::parent::SpaceParentEventContent;
+use matrix_sdk::ruma::events::{GlobalAccountDataEventType, StateEventType, SyncStateEvent};
 use matrix_sdk::ruma::serde::Raw;
 use matrix_sdk::ruma::{OwnedMxcUri, OwnedRoomId};
-use matrix_sdk::{Client, HttpError};
-use serde::Deserialize;
+use matrix_sdk::{Client, HttpError, Room, RoomState};
+use serde::de::DeserializeOwned;
+use serde::{Deserialize, Deserializer};
 use serde_json::{Map, Value, json};
 use tokio::task::JoinSet;
 
@@ -26,7 +30,9 @@ const ACCOUNT_PACK_TYPES: [&str; 2] = ["m.image_pack", "im.ponies.user_emotes"];
 const ROOM_PACK_TYPES: [&str; 2] = ["m.room.image_pack", "im.ponies.room_emotes"];
 const STICKER_EVENT_TYPE: &str = "m.sticker";
 const STICKER_USAGE: &str = "sticker";
+const MXC_SCHEME: &str = "mxc://";
 const MAX_INFLIGHT_FETCHES: usize = 8;
+const MAX_CANONICAL_SPACES: usize = 8;
 const PACK_FRESHNESS: Duration = Duration::from_mins(10);
 
 type StickerSources = StdMutex<HashMap<PackId, PackSources>>;
@@ -66,40 +72,59 @@ enum PackState {
 struct StickerSource {
     body: String,
     url: String,
-    info: Option<Value>,
+    info: Option<Map<String, Value>>,
 }
 
 #[derive(Deserialize, Default)]
 struct PackRoomsDto {
-    #[serde(default)]
-    rooms: BTreeMap<String, BTreeMap<String, Value>>,
+    #[serde(default, deserialize_with = "lenient")]
+    rooms: Option<BTreeMap<String, Value>>,
 }
 
 #[derive(Deserialize)]
 struct PackDto {
-    #[serde(default)]
-    images: BTreeMap<String, PackImageDto>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "lenient")]
+    images: Option<BTreeMap<String, Value>>,
+    #[serde(default, deserialize_with = "lenient")]
     pack: Option<PackInfoDto>,
 }
 
 #[derive(Deserialize)]
 struct PackImageDto {
     url: String,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "lenient")]
     body: Option<String>,
-    #[serde(default)]
-    info: Option<Value>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "lenient")]
+    info: Option<Map<String, Value>>,
+    #[serde(default, deserialize_with = "lenient")]
     usage: Option<Vec<String>>,
 }
 
 #[derive(Deserialize)]
 struct PackInfoDto {
-    #[serde(default)]
+    #[serde(default, deserialize_with = "lenient")]
     display_name: Option<String>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "lenient")]
+    avatar_url: Option<String>,
+    #[serde(default, deserialize_with = "lenient")]
     usage: Option<Vec<String>>,
+}
+
+struct PackDefaults {
+    title: String,
+    avatar: Option<String>,
+}
+
+fn lenient<'de, D, T>(deserializer: D) -> result::Result<Option<T>, D::Error>
+where
+    D: Deserializer<'de>,
+    T: DeserializeOwned,
+{
+    Ok(T::deserialize(Value::deserialize(deserializer)?).ok())
+}
+
+fn is_mxc(url: &str) -> bool {
+    url.starts_with(MXC_SCHEME)
 }
 
 fn allows_stickers(usage: Option<&Vec<String>>) -> bool {
@@ -107,20 +132,26 @@ fn allows_stickers(usage: Option<&Vec<String>>) -> bool {
 }
 
 impl PackDto {
-    fn into_pack(self, id: PackId, fallback_title: &str) -> Option<(StickerPack, PackSources)> {
+    fn into_pack(self, id: PackId, defaults: PackDefaults) -> Option<(StickerPack, PackSources)> {
         if !allows_stickers(self.pack.as_ref().and_then(|p| p.usage.as_ref())) {
             return None;
         }
-        let title = self
+        let (title, avatar) = self
             .pack
-            .and_then(|p| p.display_name)
+            .map(|info| (info.display_name, info.avatar_url))
+            .unwrap_or_default();
+        let title = title
             .filter(|name| !name.is_empty())
-            .unwrap_or_else(|| fallback_title.to_owned());
+            .unwrap_or(defaults.title);
+        let avatar = avatar.filter(|url| is_mxc(url)).or(defaults.avatar);
 
         let mut images = Vec::new();
         let mut sources = PackSources::new();
-        for (shortcode, image) in self.images {
-            if !allows_stickers(image.usage.as_ref()) || !image.url.starts_with("mxc://") {
+        for (shortcode, image) in self.images.unwrap_or_default() {
+            let Ok(image) = PackImageDto::deserialize(image) else {
+                continue;
+            };
+            if !allows_stickers(image.usage.as_ref()) || !is_mxc(&image.url) {
                 continue;
             }
             let body = image
@@ -145,7 +176,13 @@ impl PackDto {
         if images.is_empty() {
             return None;
         }
-        Some((StickerPack { id, title, images }, sources))
+        let pack = StickerPack {
+            id,
+            title,
+            avatar,
+            images,
+        };
+        Some((pack, sources))
     }
 }
 
@@ -179,8 +216,12 @@ impl MatrixStickers {
             else {
                 continue;
             };
+            let defaults = PackDefaults {
+                title: "Your stickers".to_owned(),
+                avatar: None,
+            };
             if let Ok(dto) = raw.deserialize_as_unchecked::<PackDto>()
-                && let Some(pack) = dto.into_pack(PackId::new("account"), "Your stickers")
+                && let Some(pack) = dto.into_pack(PackId::new("account"), defaults)
             {
                 return Some(pack);
             }
@@ -202,9 +243,11 @@ impl MatrixStickers {
             };
             let refs: Vec<PackRef> = dto
                 .rooms
+                .unwrap_or_default()
                 .into_iter()
                 .filter_map(|(room, keys)| {
                     let room: OwnedRoomId = room.try_into().ok()?;
+                    let keys = BTreeMap::<String, Value>::deserialize(keys).ok()?;
                     Some((room, keys))
                 })
                 .flat_map(|(room, keys)| {
@@ -270,12 +313,21 @@ impl MatrixStickers {
     }
 }
 
-async fn fetch_room_pack(client: &Client, reference: &PackRef) -> PackFetch {
-    let fallback = client
-        .get_room(&reference.room)
-        .and_then(|room| room.cached_display_name())
-        .map_or_else(|| reference.room.to_string(), |name| name.to_string());
+fn room_defaults(client: &Client, room_id: &OwnedRoomId) -> PackDefaults {
+    let room = client.get_room(room_id);
+    PackDefaults {
+        title: room
+            .as_ref()
+            .and_then(|room| room.cached_display_name())
+            .map_or_else(|| room_id.to_string(), |name| name.to_string()),
+        avatar: room
+            .as_ref()
+            .and_then(|room| room.avatar_url())
+            .map(|url| url.to_string()),
+    }
+}
 
+async fn fetch_room_pack(client: &Client, reference: &PackRef) -> PackFetch {
     let answers =
         join_all(ROOM_PACK_TYPES.map(|event_type| fetch_pack_state(client, reference, event_type)))
             .await;
@@ -284,7 +336,8 @@ async fn fetch_room_pack(client: &Client, reference: &PackRef) -> PackFetch {
     for answer in answers {
         match answer {
             PackState::Published(dto) => {
-                if let Some((pack, sources)) = dto.into_pack(reference.pack_id(), &fallback) {
+                let defaults = room_defaults(client, &reference.room);
+                if let Some((pack, sources)) = dto.into_pack(reference.pack_id(), defaults) {
                     return PackFetch::Found(pack, sources);
                 }
             }
@@ -325,6 +378,47 @@ fn rules_out_a_pack(error: &HttpError) -> bool {
     )
 }
 
+async fn canonical_spaces(client: &Client, room: &Room) -> Vec<OwnedRoomId> {
+    let mut spaces = Vec::new();
+    let mut seen = HashSet::from([room.room_id().to_owned()]);
+    let mut child = room.clone();
+    while spaces.len() < MAX_CANONICAL_SPACES {
+        let Some(parent) = canonical_parent(&child).await else {
+            break;
+        };
+        if !seen.insert(parent.clone()) {
+            break;
+        }
+        let Some(space) = client
+            .get_room(&parent)
+            .filter(|space| space.state() == RoomState::Joined)
+        else {
+            break;
+        };
+        spaces.push(parent);
+        child = space;
+    }
+    spaces
+}
+
+async fn canonical_parent(room: &Room) -> Option<OwnedRoomId> {
+    let parents = room
+        .get_state_events_static::<SpaceParentEventContent>()
+        .await
+        .ok()?;
+    parents
+        .into_iter()
+        .filter_map(|raw| match raw.deserialize().ok()? {
+            SyncOrStrippedState::Sync(SyncStateEvent::Original(event))
+                if event.content.canonical && !event.content.via.is_empty() =>
+            {
+                Some(event.state_key)
+            }
+            _ => None,
+        })
+        .min()
+}
+
 #[async_trait]
 impl StickerPort for MatrixStickers {
     async fn catalog(&self, room_id: &RoomId) -> Result<StickerCatalog> {
@@ -339,12 +433,15 @@ impl StickerPort for MatrixStickers {
         }
 
         let mut references = self.pack_references(&client).await;
-        let own_pack = PackRef {
-            room: room.room_id().to_owned(),
-            state_key: String::new(),
-        };
-        if !references.contains(&own_pack) {
-            references.push(own_pack);
+        let spaces = canonical_spaces(&client, &room).await;
+        for room in iter::once(room.room_id().to_owned()).chain(spaces) {
+            let own_pack = PackRef {
+                room,
+                state_key: String::new(),
+            };
+            if !references.contains(&own_pack) {
+                references.push(own_pack);
+            }
         }
         packs.extend(self.room_packs(&client, references).await);
 
@@ -419,7 +516,7 @@ impl MatrixStickers {
         content.insert("url".to_owned(), json!(source.url));
         content.insert(
             "info".to_owned(),
-            source.info.clone().unwrap_or_else(|| json!({})),
+            source.info.clone().map_or_else(|| json!({}), Value::Object),
         );
         if let Some(event_id) = in_reply_to {
             content.insert(

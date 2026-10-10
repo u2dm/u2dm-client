@@ -7,7 +7,8 @@ use slint::{ComponentHandle, Model, SharedString, StyledText};
 
 use super::audio;
 use super::backend::{
-    UiBackend, UiEventContext, apply_sticker_art, enrich_message, keep_shown_enrichment,
+    UiBackend, UiEventContext, apply_pack_avatar, apply_sticker_art, enrich_message,
+    keep_shown_enrichment,
 };
 use super::decode::{AvatarSlot, load_attachment_preview, load_avatar_async, request_sticker};
 use super::dto::{
@@ -23,8 +24,8 @@ use super::present::{
 use super::props::{BoolProp, IntProp, StringProp, UiProps};
 use super::reconcile::{
     RoomListing, RowReplacements, apply_member_rows, apply_mention_rows, apply_reader_rows,
-    apply_rooms, apply_space_children, apply_spaces, apply_timeline_patch, index_sticker_grid,
-    retain_awaited_downloads,
+    apply_rooms, apply_space_children, apply_spaces, apply_timeline_patch,
+    downloading_pack_avatars, index_sticker_grid, pack_avatar_downloaded, retain_awaited_downloads,
 };
 use super::richtext::recognise_own_user;
 use super::rows::patch_rows_by_id;
@@ -1126,6 +1127,21 @@ fn settle_sticker_downloads<B: UiBackend>(media: &dyn MediaCache) {
             StickerArt::Ready(image) => apply_sticker_art::<B>(&key, Some(&image)),
             StickerArt::Failed => apply_sticker_art::<B>(&key, None),
             StickerArt::Decoding | StickerArt::Downloading => {}
+        }
+    }
+    settle_pack_avatars::<B>(media);
+}
+
+fn settle_pack_avatars<B: UiBackend>(media: &dyn MediaCache) {
+    for (pack_id, mxc) in downloading_pack_avatars() {
+        if let Some(path) = media.sticker_path(&mxc) {
+            pack_avatar_downloaded(&pack_id);
+            let slot = AvatarSlot::StickerPack(pack_id.clone());
+            if let Some(image) = load_avatar_async(Some(&path), slot) {
+                apply_pack_avatar::<B>(&pack_id, Some(&image));
+            }
+        } else if media.sticker_failed(&mxc) {
+            apply_pack_avatar::<B>(&pack_id, None);
         }
     }
 }

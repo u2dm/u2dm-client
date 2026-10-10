@@ -96,6 +96,18 @@ pub struct StickerPackDto {
     pub icon: Option<Image>,
     pub has_icon: bool,
     pub icon_cell_key: SharedString,
+    pub avatar: Option<PackAvatarDto>,
+}
+
+pub struct PackAvatarDto {
+    pub downloading_mxc: Option<String>,
+    pub fallback_cell_key: SharedString,
+}
+
+struct PackIcon {
+    image: Option<Image>,
+    cell_key: SharedString,
+    avatar: Option<PackAvatarDto>,
 }
 
 pub struct StickerGrid {
@@ -137,17 +149,15 @@ pub fn sticker_grid(packs: &[StickerPack], needle: &str, media: &dyn MediaCache)
             continue;
         }
 
-        let icon = cells.first().and_then(|cell| cell.image.clone());
+        let icon = pack_icon(pack, &cells, media);
         grid.packs.push(StickerPackDto {
             id: SharedString::from(pack.id.as_ref()),
             title: SharedString::from(&pack.title),
             header_row: i32::try_from(grid.rows.len()).unwrap_or(0),
-            has_icon: icon.is_some(),
-            icon,
-            icon_cell_key: cells
-                .first()
-                .map(|cell| cell.key.clone())
-                .unwrap_or_default(),
+            has_icon: icon.image.is_some(),
+            icon: icon.image,
+            icon_cell_key: icon.cell_key,
+            avatar: icon.avatar,
         });
         grid.rows.push(StickerRowDto {
             title: SharedString::from(&pack.title),
@@ -164,6 +174,33 @@ pub fn sticker_grid(packs: &[StickerPack], needle: &str, media: &dyn MediaCache)
     }
 
     grid
+}
+
+fn pack_icon(pack: &StickerPack, cells: &[StickerCellDto], media: &dyn MediaCache) -> PackIcon {
+    let first = cells.first();
+    let first_cell_key = first.map(|cell| cell.key.clone()).unwrap_or_default();
+    let avatar_file = pack
+        .avatar
+        .as_ref()
+        .map(|mxc| (mxc, media.sticker_path(mxc)));
+    match avatar_file {
+        Some((mxc, path)) if path.is_some() || !media.sticker_failed(mxc) => PackIcon {
+            image: load_avatar_async(
+                path.as_deref(),
+                AvatarSlot::StickerPack(pack.id.to_string()),
+            ),
+            cell_key: SharedString::new(),
+            avatar: Some(PackAvatarDto {
+                downloading_mxc: path.is_none().then(|| mxc.clone()),
+                fallback_cell_key: first_cell_key,
+            }),
+        },
+        _ => PackIcon {
+            image: first.and_then(|cell| cell.image.clone()),
+            cell_key: first_cell_key,
+            avatar: None,
+        },
+    }
 }
 
 fn sticker_matches(image: &StickerImage, needle: &str) -> bool {

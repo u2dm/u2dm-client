@@ -116,6 +116,12 @@ pub struct StickerIndex {
     row_of_pack: HashMap<String, usize>,
     row_shapes: Vec<StickerRowShape>,
     awaited_downloads: HashMap<String, String>,
+    pack_avatars: HashMap<String, PackAvatarWatch>,
+}
+
+struct PackAvatarWatch {
+    downloading_mxc: Option<String>,
+    fallback_cell_key: String,
 }
 
 #[derive(PartialEq)]
@@ -170,8 +176,16 @@ pub fn index_sticker_grid(grid: &StickerGrid) -> RowReplacements {
                 }
             }
         }
+        index.pack_avatars.clear();
         for (row, pack) in grid.packs.iter().enumerate() {
             index.row_of_pack.insert(pack.id.to_string(), row);
+            if let Some(avatar) = &pack.avatar {
+                let watch = PackAvatarWatch {
+                    downloading_mxc: avatar.downloading_mxc.clone(),
+                    fallback_cell_key: avatar.fallback_cell_key.to_string(),
+                };
+                index.pack_avatars.insert(pack.id.to_string(), watch);
+            }
         }
         index.row_shapes = shapes;
         replaced
@@ -183,6 +197,34 @@ pub fn retain_awaited_downloads(mut still_awaited: impl FnMut(&str, &str) -> boo
         with_session(|session| mem::take(&mut session.sticker_index.awaited_downloads));
     awaited.retain(|key, mxc| still_awaited(key, mxc));
     with_session(|session| session.sticker_index.awaited_downloads = awaited);
+}
+
+pub fn shows_pack_avatar(pack_id: &str) -> bool {
+    with_session(|session| session.sticker_index.pack_avatars.contains_key(pack_id))
+}
+
+pub fn forget_pack_avatar(pack_id: &str) -> Option<String> {
+    with_session(|session| session.sticker_index.pack_avatars.remove(pack_id))
+        .map(|watch| watch.fallback_cell_key)
+}
+
+pub fn downloading_pack_avatars() -> Vec<(String, String)> {
+    with_session(|session| {
+        session
+            .sticker_index
+            .pack_avatars
+            .iter()
+            .filter_map(|(pack, watch)| Some((pack.clone(), watch.downloading_mxc.clone()?)))
+            .collect()
+    })
+}
+
+pub fn pack_avatar_downloaded(pack_id: &str) {
+    with_session(|session| {
+        if let Some(watch) = session.sticker_index.pack_avatars.get_mut(pack_id) {
+            watch.downloading_mxc = None;
+        }
+    });
 }
 
 pub fn sticker_cell_row(key: &str) -> Option<usize> {

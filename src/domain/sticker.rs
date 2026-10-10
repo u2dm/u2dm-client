@@ -41,6 +41,7 @@ pub struct StickerImage {
 pub struct StickerPack {
     pub id: PackId,
     pub title: String,
+    pub avatar: Option<String>,
     pub images: Vec<StickerImage>,
 }
 

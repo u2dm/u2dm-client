@@ -151,16 +151,17 @@ async fn load_catalog(
         }
     };
 
-    let mxcs: Vec<String> = catalog
+    let avatars = catalog.packs.iter().filter_map(|pack| pack.avatar.clone());
+    let images = catalog
         .packs
         .iter()
-        .flat_map(|pack| pack.images.iter().map(|image| image.mxc.clone()))
-        .collect();
+        .flat_map(|pack| pack.images.iter().map(|image| image.mxc.clone()));
+    let mxcs: Vec<String> = avatars.chain(images).collect();
 
     tracing::debug!(
         %room_id,
         packs = catalog.packs.len(),
-        stickers = mxcs.len(),
+        files = mxcs.len(),
         "loaded the sticker catalog"
     );
     let loaded = StickersEvent::CatalogLoaded {

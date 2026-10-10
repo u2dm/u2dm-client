@@ -1848,6 +1848,7 @@
     {
       "id": "cats",
       "title": "Cat Tax",
+      "avatar": "demo-sarah-desk",
       "images": [
         {
           "shortcode": "ship",
@@ -1882,6 +1883,7 @@
     {
       "id": "rustaceans",
       "title": "Rustaceans",
+      "avatar": "demo-rust-chart",
       "rooms": ["!rust:demo.local"],
       "images": [
         {
@@ -1903,6 +1905,7 @@
     {
       "id": "reactions",
       "title": "Reactions",
+      "avatar": "demo-sticker-missing",
       "images": [
         {
           "shortcode": "yes",

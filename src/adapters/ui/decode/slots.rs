@@ -65,6 +65,7 @@ pub enum AvatarSlot {
     AttachmentPreview {
         pick: u64,
     },
+    StickerPack(String),
 }
 
 impl AvatarSlot {

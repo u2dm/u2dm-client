@@ -8,7 +8,7 @@ use tokio::sync::{OwnedSemaphorePermit, mpsc, watch};
 
 use super::clock::install_clock_invalidation;
 use super::decode::{
-    AvatarSlot, DecodeFailure, DecodeOutcome, MediaSlot, advance_animations,
+    AvatarSlot, DecodeFailure, DecodeOutcome, MediaSlot, advance_animations, request_sticker,
     rows_showing_custom_emoji, set_animation_tick, set_avatar_ready, set_image_ready,
 };
 use super::dto::{
@@ -26,7 +26,10 @@ use super::fields::{
 use super::multiplex::spawn_event_multiplexer;
 use super::present::room_log_text;
 use super::props::{IntProp, StringProp, UiProps};
-use super::reconcile::{reorder_rows, sticker_cell_row, sticker_pack_row, timeline_row_of};
+use super::reconcile::{
+    forget_pack_avatar, reorder_rows, shows_pack_avatar, sticker_cell_row, sticker_pack_row,
+    timeline_row_of,
+};
 use super::reduce::{dispatch_effect, is_latest_adoption, set_sticker_query};
 use super::router::EditedRow;
 use super::rows::{locate_row, patch_rows_by_id};
@@ -556,8 +559,30 @@ pub(super) fn apply_sticker_art<B: UiBackend>(key: &str, art: Option<&Image>) {
     if place_sticker_cell::<B>(key, art).is_none() {
         tracing::debug!(key, "dropped a decoded image with no live sticker cell");
     }
-    if let Some(image) = art {
-        adopt_pack_icon::<B>(cell_pack(key), image);
+    let pack = cell_pack(key);
+    if let Some(image) = art
+        && !shows_pack_avatar(pack)
+    {
+        adopt_pack_icon::<B>(pack, image);
+    }
+}
+
+pub(super) fn apply_pack_avatar<B: UiBackend>(pack_id: &str, art: Option<&Image>) {
+    match art {
+        Some(image) => adopt_pack_icon::<B>(pack_id, image),
+        None => {
+            if let Some(first_cell) = forget_pack_avatar(pack_id) {
+                request_sticker(&first_cell);
+            }
+        }
+    }
+}
+
+fn apply_pack_avatars<B: UiBackend>(slots: &[AvatarSlot], art: Option<&Image>) {
+    for slot in slots {
+        if let AvatarSlot::StickerPack(pack_id) = slot {
+            apply_pack_avatar::<B>(pack_id, art);
+        }
     }
 }
 
@@ -630,6 +655,7 @@ fn group_slots(slots: &[AvatarSlot]) -> AvatarTargets<'_> {
             AvatarSlot::AttachmentPreview { .. } => {
                 targets.singles.insert(SingleAvatar::AttachmentPreview);
             }
+            AvatarSlot::StickerPack(_) => {}
         }
     }
     targets
@@ -705,9 +731,15 @@ fn apply_avatar_ready<B: UiBackend>(
     slots: &[AvatarSlot],
     outcome: DecodeOutcome<'_>,
 ) {
-    let DecodeOutcome::Ready(image) = outcome else {
-        return;
+    let image = match outcome {
+        DecodeOutcome::Ready(image) => image,
+        DecodeOutcome::Failed(_) => {
+            apply_pack_avatars::<B>(slots, None);
+            return;
+        }
+        DecodeOutcome::Deferred => return,
     };
+    apply_pack_avatars::<B>(slots, Some(image));
     let targets = group_slots(slots);
     if !targets.singles.is_empty()
         && let Some(w) = weak.upgrade()

@@ -40,6 +40,8 @@ pub struct StickerPackDto {
     pub id: String,
     pub title: String,
     #[serde(default)]
+    pub avatar: Option<String>,
+    #[serde(default)]
     pub rooms: Vec<String>,
     #[serde(default)]
     pub images: Vec<PackImageDto>,
@@ -63,6 +65,7 @@ impl StickerPackDto {
         StickerPack {
             id: PackId::new(self.id.clone()),
             title: self.title.clone(),
+            avatar: self.avatar.as_deref().map(demo_mxc),
             images: self.images.iter().map(PackImageDto::to_image).collect(),
         }
     }
@@ -73,9 +76,13 @@ impl PackImageDto {
         StickerImage {
             shortcode: self.shortcode.clone(),
             body: self.body.clone().unwrap_or_else(|| self.shortcode.clone()),
-            mxc: format!("mxc://demo.local/{}", self.asset),
+            mxc: demo_mxc(&self.asset),
         }
     }
+}
+
+fn demo_mxc(asset: &str) -> String {
+    format!("mxc://demo.local/{asset}")
 }
 
 #[derive(Deserialize, Default)]
