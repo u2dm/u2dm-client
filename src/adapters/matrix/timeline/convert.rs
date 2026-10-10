@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashSet};
 
 use matrix_sdk::ruma::UInt;
 use matrix_sdk::ruma::events::poll::start::PollKind;
@@ -15,6 +15,7 @@ use matrix_sdk_ui::timeline::{
     MembershipChange, Message, PollState, ReactionInfo, RoomMembershipChange, Sticker,
     TimelineDetails, TimelineItem, TimelineItemContent,
 };
+use serde::Deserialize;
 
 use super::TimelineContext;
 use super::members::{Arrived, Need};
@@ -556,17 +557,70 @@ fn rich_body(plain: &str, formatted: Option<&FormattedBody>) -> RichText {
     }
 }
 
-fn emoji_states(body: &MessageBody, ctx: &TimelineContext<'_>) -> BTreeMap<String, CustomEmoji> {
+#[derive(Deserialize)]
+struct EventJson<C> {
+    content: C,
+}
+
+#[derive(Deserialize)]
+struct FormattedJson {
+    #[serde(default)]
+    formatted_body: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct EditJson {
+    #[serde(rename = "m.new_content")]
+    new_content: FormattedJson,
+}
+
+fn emoji_states(
+    body: &MessageBody,
+    event: &EventTimelineItem,
+    ctx: &TimelineContext<'_>,
+) -> BTreeMap<String, CustomEmoji> {
     let Some(html) = body.html() else {
         return BTreeMap::new();
     };
-    body_emoji::sources(html)
+    let images = body_emoji::image_sources(html);
+    if images.is_empty() {
+        return BTreeMap::new();
+    }
+    let emoticons = emoticons_as_sent(event);
+    images
         .into_iter()
+        .filter(|mxc| emoticons.contains(mxc))
         .filter_map(|mxc| {
             let state = ctx.emoji_files.state(&mxc, ctx.media)?;
             Some((mxc, state))
         })
         .collect()
+}
+
+fn emoticons_as_sent(event: &EventTimelineItem) -> BTreeSet<String> {
+    unsanitized_html(event)
+        .map(|html| body_emoji::emoticon_sources(&html))
+        .unwrap_or_default()
+}
+
+fn unsanitized_html(event: &EventTimelineItem) -> Option<String> {
+    match event.latest_edit_json() {
+        Some(edit) => {
+            edit.deserialize_as_unchecked::<EventJson<EditJson>>()
+                .ok()?
+                .content
+                .new_content
+                .formatted_body
+        }
+        None => {
+            event
+                .original_json()?
+                .deserialize_as_unchecked::<EventJson<FormattedJson>>()
+                .ok()?
+                .content
+                .formatted_body
+        }
+    }
 }
 
 fn names_room(mentions: Option<&Mentions>) -> bool {
@@ -655,7 +709,7 @@ pub(super) fn convert_event_item_with_uid(
                 body
             };
             Some(TimelineMessage {
-                body_emoji: emoji_states(&body, ctx),
+                body_emoji: emoji_states(&body, event, ctx),
                 body,
                 mentions_room,
                 reply,

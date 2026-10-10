@@ -161,7 +161,7 @@ pub(super) fn emoji_states(body: &MessageBody) -> BTreeMap<String, CustomEmoji> 
     let Some(html) = body.html() else {
         return BTreeMap::new();
     };
-    body_emoji::sources(html)
+    body_emoji::emoticon_sources(html)
         .into_iter()
         .filter_map(|mxc| {
             let state = custom_emoji(&mxc)?;

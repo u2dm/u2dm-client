@@ -2,7 +2,15 @@ import { IconDisplay, IconSet } from "@lucide";
 
 import { EmojiArt } from "../../../../enums.slint";
 import { Actions } from "../../../../actions.slint";
-import { AppStyle, Radius } from "../../../../theme.slint";
+import { AppStyle, Metrics, Radius } from "../../../../theme.slint";
+
+export global EmojiBox {
+    public pure function width(art: EmojiArt, source: image, size: length) -> length {
+        art == EmojiArt.ready && source.height > 0
+            ? min(size * source.width / source.height, Metrics.body-emoji-max-width)
+            : size
+    }
+}
 
 export component CustomEmojiImage inherits Rectangle {
     in property <string> key;

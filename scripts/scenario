@@ -376,7 +376,7 @@ scenario_note() {
     message-pin-failures) echo 'a pin is refused, so the row stays unpinned and the toast shows' ;;
     message-delete)  echo 'an own quoted message is deleted twice (one deletion), then a pinned message of someone else' ;;
     user-tags)       echo 'in !design, tags naming you are bold and tint their bubble (mentions_you), and a matrix.to user link opens the user sheet, yours and then Sarah'"'"'s, instead of the browser' ;;
-    custom-emoji)    echo 'in !design, custom emoji flow among the words at text height and an emote-only body is large (emote_only, body_emoji); a missing one reads as its shortcode' ;;
+    custom-emoji)    echo 'in !design, custom emoji flow among the words at text height, a wide one as wide as its image, and an emote-only body is large (emote_only, body_emoji); a missing one, and an image without data-mx-emoticon, read as their shortcodes' ;;
     message-delete-failures) echo 'an own deletion comes back with the toast; a member may not delete someone else'"'"'s message' ;;
     readers)         echo 'in !rust, the 123 readers of an older message load slowly, then the 121 readers of your newest message page in fifty at a time' ;;
     room-search)     echo 'in All Rooms, "design" lists the Design Team room, then the Design space' ;;

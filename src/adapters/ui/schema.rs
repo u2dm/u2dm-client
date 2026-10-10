@@ -955,7 +955,6 @@ macro_rules! body_line_fields {
     ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
         pieces set_pieces "pieces" structs(BodyPiece);
         words set_words "words" styled;
-        emoji set_emoji "emoji" int;
         gaps set_gaps "gaps" int;
     } };
 }

@@ -50,7 +50,6 @@ pub struct InlinePiece {
 pub struct InlineLine {
     pub pieces: Vec<InlinePiece>,
     pub words: StyledText,
-    pub emoji: usize,
     pub gaps: usize,
 }
 
@@ -361,15 +360,11 @@ impl Piece {
 
 fn render_line(pieces: Vec<Piece>) -> Result<InlineLine, StyledTextFromMarkdownError> {
     let mut words = String::new();
-    let mut emoji = 0;
     let mut gaps = 0;
     for piece in &pieces {
-        match &piece.content {
-            Content::Markdown(markdown) => {
-                words.push_str(DELIMITER_GUARD);
-                words.push_str(markdown);
-            }
-            Content::Emoji(_) => emoji += 1,
+        if let Content::Markdown(markdown) = &piece.content {
+            words.push_str(DELIMITER_GUARD);
+            words.push_str(markdown);
         }
         gaps += usize::from(piece.spaced);
     }
@@ -379,7 +374,6 @@ fn render_line(pieces: Vec<Piece>) -> Result<InlineLine, StyledTextFromMarkdownE
             .into_iter()
             .map(Piece::render)
             .collect::<Result<_, _>>()?,
-        emoji,
         gaps,
     })
 }

@@ -144,15 +144,17 @@ const EMOJI: &[(&str, &str)] = &[
          title=\":small:\" height=\"32\">",
     ),
     (
-        ":ship: :anim: :tall:",
+        ":ship: :anim: :tall: :wide:",
         "<img data-mx-emoticon src=\"mxc://demo.local/demo-sticker-ship\" alt=\":ship:\"> \
          <img data-mx-emoticon src=\"mxc://demo.local/demo-sticker-anim\" alt=\":anim:\"> \
-         <img data-mx-emoticon src=\"mxc://demo.local/demo-sticker-tall\" alt=\":tall:\">",
+         <img data-mx-emoticon src=\"mxc://demo.local/demo-sticker-tall\" alt=\":tall:\"> \
+         <img data-mx-emoticon src=\"mxc://demo.local/demo-rust-chart\" alt=\":wide:\">",
     ),
     (
-        "nice work :anim:",
+        "nice work :anim: and a wide :wide: one",
         "nice work <img data-mx-emoticon src=\"mxc://demo.local/demo-sticker-anim\" \
-         alt=\":anim:\">",
+         alt=\":anim:\"> and a wide <img data-mx-emoticon \
+         src=\"mxc://demo.local/demo-rust-chart\" alt=\":wide:\"> one",
     ),
     (
         ":ship: ships today, :small: so good, with the release notes and cargo run",
@@ -184,10 +186,11 @@ const EMOJI: &[(&str, &str)] = &[
          next",
     ),
     (
-        "missing :missing: and remote :remote:",
+        "missing :missing:, remote :remote: and not an emote :plain:",
         "missing <img data-mx-emoticon src=\"mxc://demo.local/demo-sticker-missing\" \
-         alt=\":missing:\"> and remote <img src=\"https://example.invalid/remote.png\" \
-         alt=\":remote:\">",
+         alt=\":missing:\">, remote <img src=\"https://example.invalid/remote.png\" \
+         alt=\":remote:\"> and not an emote <img src=\"mxc://demo.local/demo-sticker-ship\" \
+         alt=\":plain:\">",
     ),
 ];
 

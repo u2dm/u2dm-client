@@ -256,7 +256,6 @@ pub struct BodyPieceDto {
 pub struct BodyLineDto {
     pub pieces: Vec<BodyPieceDto>,
     pub words: StyledText,
-    pub emoji: i32,
     pub gaps: i32,
 }
 
@@ -791,7 +790,6 @@ fn body_line_dto(
             .map(|piece| body_piece_dto(item, piece, body_emoji, media))
             .collect(),
         words: line.words.clone(),
-        emoji: count(line.emoji),
         gaps: count(line.gaps),
     }
 }

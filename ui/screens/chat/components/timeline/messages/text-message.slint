@@ -5,7 +5,7 @@ import { EmojiArt } from "../../../../../enums.slint";
 import { Actions } from "../../../../../actions.slint";
 import { TextSelection } from "../../../../../local.slint";
 import { AppStyle, Fonts, IconSize, Metrics, Space } from "../../../../../theme.slint";
-import { CustomEmojiImage } from "../custom-emoji.slint";
+import { CustomEmojiImage, EmojiBox } from "../custom-emoji.slint";
 
 component BodyPieceView inherits HorizontalLayout {
     in property <BodyPiece> piece;
@@ -27,6 +27,7 @@ component BodyPieceView inherits HorizontalLayout {
     }
 
     if root.piece.art != EmojiArt.text: CustomEmojiImage {
+        width: EmojiBox.width(root.piece.art, root.piece.image, root.emoji-size);
         key: root.piece.key;
         art: root.piece.art;
         image: root.piece.image;
@@ -72,8 +73,14 @@ component UnwrappedLines inherits VerticalLayout {
             default-font-size: Fonts.body;
         }
 
+        for piece in line.pieces: Rectangle {
+            width: piece.art == EmojiArt.text
+                ? 0px
+                : EmojiBox.width(piece.art, piece.image, root.emoji-size);
+        }
+
         Rectangle {
-            width: line.emoji * root.emoji-size + line.gaps * Metrics.word-space;
+            width: line.gaps * Metrics.word-space;
         }
     }
 }
