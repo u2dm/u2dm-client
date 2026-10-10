@@ -1,11 +1,12 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::env;
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
 
 use super::{attachments, data, room_info, space_index, stickers};
+use crate::adapters::body_emoji;
 use crate::domain::media::{ContentKey, MediaFailure, Waveform};
-use crate::domain::message::ReactionImage;
+use crate::domain::message::{CustomEmoji, MessageBody};
 use crate::ports::media::MediaCache;
 
 const DATA_ENV: &str = "U2DM_DEMO_DATA";
@@ -83,7 +84,7 @@ impl MediaCache for DemoMediaCache {
             && sticker_asset_path(mxc_asset(mxc)).is_none()
     }
 
-    fn reaction_image_path(&self, mxc: &str) -> Option<PathBuf> {
+    fn custom_emoji_path(&self, mxc: &str) -> Option<PathBuf> {
         sticker_asset_path(mxc_asset(mxc))
     }
 
@@ -146,14 +147,27 @@ pub(super) fn prefetch_stickers(mxcs: &[String]) -> usize {
         .count()
 }
 
-pub(super) fn reaction_image(key: &str) -> Option<ReactionImage> {
+pub(super) fn custom_emoji(key: &str) -> Option<CustomEmoji> {
     if !key.starts_with(MXC_SCHEME) {
         return None;
     }
     Some(match sticker_asset_path(mxc_asset(key)) {
-        Some(_) => ReactionImage::Downloaded,
-        None => ReactionImage::Unavailable,
+        Some(_) => CustomEmoji::Downloaded,
+        None => CustomEmoji::Unavailable,
     })
+}
+
+pub(super) fn emoji_states(body: &MessageBody) -> BTreeMap<String, CustomEmoji> {
+    let Some(html) = body.html() else {
+        return BTreeMap::new();
+    };
+    body_emoji::sources(html)
+        .into_iter()
+        .filter_map(|mxc| {
+            let state = custom_emoji(&mxc)?;
+            Some((mxc, state))
+        })
+        .collect()
 }
 
 fn fetched_unjoined_avatars() -> &'static Mutex<HashSet<String>> {

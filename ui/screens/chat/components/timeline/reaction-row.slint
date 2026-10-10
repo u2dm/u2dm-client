@@ -1,14 +1,13 @@
 import { Palette } from "std-widgets.slint";
-import { IconDisplay, IconSet } from "@lucide";
 
 import { ReactionEntry, ReactorAvatar } from "../../../../types.slint";
-import { ReactionArt, ReactionSend } from "../../../../enums.slint";
-import { Actions } from "../../../../actions.slint";
+import { EmojiArt, ReactionSend } from "../../../../enums.slint";
 import { ReactionKeys } from "../../../../messages.slint";
 import { Avatar } from "../../../../components/avatar.slint";
 import { Pill } from "../../../../components/pill.slint";
 import { AnchorRect } from "../../../../local.slint";
-import { AppStyle, Fonts, Glyph, IconSize, Metrics, Opacity, Radius, Space, Stroke, Weight } from "../../../../theme.slint";
+import { AppStyle, Fonts, Glyph, IconSize, Metrics, Opacity, Space, Stroke, Weight } from "../../../../theme.slint";
+import { CustomEmojiImage } from "./custom-emoji.slint";
 
 export component ReactionGlyph inherits HorizontalLayout {
     in property <ReactionEntry> entry;
@@ -16,39 +15,19 @@ export component ReactionGlyph inherits HorizontalLayout {
     in property <length> image-size;
     in property <length> icon-size;
 
-    init => {
-        if root.entry.art == ReactionArt.pending {
-            Actions.request-reaction-art(root.entry.key);
-        }
-    }
-
-    if root.entry.art == ReactionArt.text: Text {
+    if root.entry.art == EmojiArt.text: Text {
         text: root.entry.label;
         font-family: Fonts.emoji;
         font-size: root.glyph-size;
         vertical-alignment: center;
     }
 
-    if root.entry.art != ReactionArt.text: Rectangle {
-        width: root.image-size;
-        height: root.image-size;
-        border-radius: Radius.xs;
-        background: root.entry.art == ReactionArt.pending ? AppStyle.overlay-hover : transparent;
-
-        if root.entry.art == ReactionArt.ready: Image {
-            width: 100%;
-            height: 100%;
-            source: root.entry.image;
-            image-fit: contain;
-        }
-
-        if root.entry.art == ReactionArt.failed: IconDisplay {
-            x: (parent.width - self.width) / 2;
-            y: (parent.height - self.height) / 2;
-            icon: IconSet.ImageOff;
-            size: root.icon-size;
-            stroke: AppStyle.foreground-faint;
-        }
+    if root.entry.art != EmojiArt.text: CustomEmojiImage {
+        key: root.entry.key;
+        art: root.entry.art;
+        image: root.entry.image;
+        size: root.image-size;
+        icon-size: root.icon-size;
     }
 }
 

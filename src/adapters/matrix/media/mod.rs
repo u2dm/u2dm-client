@@ -149,7 +149,7 @@ impl MediaCache for MaterializedMedia {
         self.service.is_failed(&sticker_key(mxc))
     }
 
-    fn reaction_image_path(&self, mxc: &str) -> Option<PathBuf> {
+    fn custom_emoji_path(&self, mxc: &str) -> Option<PathBuf> {
         self.service.cache_get(&sticker_key(mxc))
     }
 

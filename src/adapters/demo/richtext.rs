@@ -1,4 +1,5 @@
 use super::catalog::{Flag, Scenarios};
+use super::media;
 use std::env;
 use std::sync::OnceLock;
 
@@ -37,8 +38,13 @@ pub const CATALOG: Scenarios = Scenarios {
             note: "",
         },
         Flag {
+            value: "emoji",
+            effect: "custom emoji alone and among words, one animated and one missing",
+            note: "",
+        },
+        Flag {
             value: "all",
-            effect: "adversarial, hard, links, bare and long",
+            effect: "adversarial, hard, links, bare, long and emoji",
             note: "",
         },
     ],
@@ -131,6 +137,60 @@ const LINKS: &[(&str, &str)] = &[
     ),
 ];
 
+const EMOJI: &[(&str, &str)] = &[
+    (
+        ":small:",
+        "<img data-mx-emoticon=\"\" src=\"mxc://demo.local/demo-sticker-small\" alt=\":small:\" \
+         title=\":small:\" height=\"32\">",
+    ),
+    (
+        ":ship: :anim: :tall:",
+        "<img data-mx-emoticon src=\"mxc://demo.local/demo-sticker-ship\" alt=\":ship:\"> \
+         <img data-mx-emoticon src=\"mxc://demo.local/demo-sticker-anim\" alt=\":anim:\"> \
+         <img data-mx-emoticon src=\"mxc://demo.local/demo-sticker-tall\" alt=\":tall:\">",
+    ),
+    (
+        "nice work :anim:",
+        "nice work <img data-mx-emoticon src=\"mxc://demo.local/demo-sticker-anim\" \
+         alt=\":anim:\">",
+    ),
+    (
+        ":ship: ships today, :small: so good, with the release notes and cargo run",
+        "<img data-mx-emoticon src=\"mxc://demo.local/demo-sticker-ship\" alt=\":ship:\"> ships \
+         <strong>today</strong>, <em><img data-mx-emoticon \
+         src=\"mxc://demo.local/demo-sticker-small\" alt=\":small:\"> so good</em>, with \
+         <a href=\"https://example.invalid/notes\">the release notes</a> and \
+         <code>cargo run</code>",
+    ),
+    (
+        "A paragraph long enough to wrap across several lines of the bubble, so the emote \
+         :anim: in its middle must flow with the words around it, and one more at the very end \
+         :small:",
+        "A paragraph long enough to wrap across several lines of the bubble, so the emote \
+         <img data-mx-emoticon src=\"mxc://demo.local/demo-sticker-anim\" alt=\":anim:\"> in its \
+         middle must flow with the words around it, and one more at the very end \
+         <img data-mx-emoticon src=\"mxc://demo.local/demo-sticker-small\" alt=\":small:\">",
+    ),
+    (
+        "A quote, lists and two lines.",
+        "<blockquote>quoted <img data-mx-emoticon src=\"mxc://demo.local/demo-sticker-small\" \
+         alt=\":small:\"></blockquote><ul><li>first <img data-mx-emoticon \
+         src=\"mxc://demo.local/demo-sticker-ship\" alt=\":ship:\"></li><li><img data-mx-emoticon \
+         src=\"mxc://demo.local/demo-sticker-anim\" alt=\":anim:\"> second<ul><li>nested \
+         <img data-mx-emoticon src=\"mxc://demo.local/demo-sticker-tall\" alt=\":tall:\"></li></ul>\
+         </li></ul><ol start=\"4\"><li>fourth <img data-mx-emoticon \
+         src=\"mxc://demo.local/demo-sticker-small\" alt=\":small:\"></li></ol>one line<br>\
+         <img data-mx-emoticon src=\"mxc://demo.local/demo-sticker-ship\" alt=\":ship:\"> and the \
+         next",
+    ),
+    (
+        "missing :missing: and remote :remote:",
+        "missing <img data-mx-emoticon src=\"mxc://demo.local/demo-sticker-missing\" \
+         alt=\":missing:\"> and remote <img src=\"https://example.invalid/remote.png\" \
+         alt=\":remote:\">",
+    ),
+];
+
 const BARE: &[&str] = &[
     "no formatting at all, just https://spec.matrix.org/latest/ in the middle",
     "trailing punctuation: see https://example.invalid/docs. Then (https://example.invalid/more), \
@@ -148,11 +208,12 @@ pub struct Scenario {
     pub links: bool,
     pub bare: bool,
     pub oversized: bool,
+    pub emoji: bool,
 }
 
 impl Scenario {
     fn any(self) -> bool {
-        self.adversarial || self.hard || self.links || self.bare || self.oversized
+        self.adversarial || self.hard || self.links || self.bare || self.oversized || self.emoji
     }
 }
 
@@ -175,6 +236,7 @@ fn from_env() -> Scenario {
         links = scenario.links,
         bare = scenario.bare,
         oversized = scenario.oversized,
+        emoji = scenario.emoji,
         "demo mode: injecting formatted messages"
     );
     scenario
@@ -187,12 +249,14 @@ fn apply(scenario: &mut Scenario, flag: &str) {
         "links" => scenario.links = true,
         "bare" => scenario.bare = true,
         "long" => scenario.oversized = true,
+        "emoji" => scenario.emoji = true,
         "all" => {
             scenario.adversarial = true;
             scenario.hard = true;
             scenario.links = true;
             scenario.bare = true;
             scenario.oversized = true;
+            scenario.emoji = true;
         }
         other => tracing::warn!("unknown {ENV_VAR} flag: {other}"),
     }
@@ -228,6 +292,9 @@ pub fn apply_scenario(messages: &mut Vec<TimelineMessage>) {
             "long",
             &[("An oversized formatted body.", html.as_str())],
         );
+    }
+    if scenario.emoji {
+        extend(&mut injected, &template, "emoji", EMOJI);
     }
     messages.extend(injected);
 }
@@ -267,11 +334,13 @@ fn message(
     body: RichText,
 ) -> TimelineMessage {
     let id = format!("demo-richtext-{group}-{index}");
+    let body = MessageBody::Text(body);
     TimelineMessage {
         unique_id: id.clone(),
         event_id: Some(id),
         local_id: None,
-        body: MessageBody::Text(body),
+        body_emoji: media::emoji_states(&body),
+        body,
         mentions_room: false,
         reply: None,
         edited: false,

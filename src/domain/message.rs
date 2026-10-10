@@ -1,4 +1,4 @@
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::hash::{DefaultHasher, Hash, Hasher};
 
 use crate::domain::media::{
@@ -165,6 +165,21 @@ impl MessageBody {
         }
     }
 
+    pub fn html(&self) -> Option<&str> {
+        match self {
+            Self::Text(text) | Self::Notice(text) | Self::Emote(text) => text.html(),
+            Self::Image { caption, .. }
+            | Self::Video { caption, .. }
+            | Self::Audio { caption, .. } => caption.as_ref().and_then(RichText::html),
+            Self::Sticker { .. }
+            | Self::File { .. }
+            | Self::Poll(_)
+            | Self::Service(_)
+            | Self::UnableToDecrypt
+            | Self::Unsupported { .. } => None,
+        }
+    }
+
     pub fn audio(&self) -> Option<&AudioMeta> {
         match self {
             Self::Audio { meta, .. } => Some(meta),
@@ -262,14 +277,14 @@ impl Reactor {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Reaction {
     pub key: String,
-    pub image: Option<ReactionImage>,
+    pub image: Option<CustomEmoji>,
     pub senders: Vec<Reactor>,
     pub mine: bool,
     pub send: ReactionSend,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ReactionImage {
+pub enum CustomEmoji {
     Downloading,
     Downloaded,
     Unavailable,
@@ -474,6 +489,7 @@ pub struct TimelineMessage {
     pub sender_avatar_url: Option<String>,
     pub sender_pronouns: Vec<String>,
     pub body: MessageBody,
+    pub body_emoji: BTreeMap<String, CustomEmoji>,
     pub mentions_room: bool,
     pub timestamp: u64,
     pub is_own: bool,

@@ -20,18 +20,20 @@ use super::backend::{
     last_editable_row, recent_speakers, reorder_spaces, row_of_message, selected_room_key,
     shown_room_log_text, unread_below,
 };
-use super::decode::{AvatarSlot, request_avatar, request_media, request_reaction, request_sticker};
+use super::decode::{
+    AvatarSlot, request_avatar, request_custom_emoji, request_media, request_sticker,
+};
 use super::dto::{
-    LogLineDto, MediaFailureKind, MediaState, MemberRowDto, MemberRowKind, MessageDto,
-    PollAnswerDto, ReactionArt, ReactionDto, ReactorAvatarDto, RoomDto, RoomRowKind, SpaceChildDto,
-    SpaceDto, StickerCellDto, StickerPackDto, StickerRowDto,
+    BodyLineDto, BodyPieceDto, EmojiArt, LogLineDto, MediaFailureKind, MediaState, MemberRowDto,
+    MemberRowKind, MessageDto, PollAnswerDto, ReactionDto, ReactorAvatarDto, RoomDto, RoomRowKind,
+    SpaceChildDto, SpaceDto, StickerCellDto, StickerPackDto, StickerRowDto,
 };
 #[cfg(feature = "demo")]
 use super::dump;
 use super::fields::{
-    LogLineFields, MemberRowFields, MessageFields, PollAnswerFields, ReactionFields, ReactorFields,
-    RoomFields, SpaceChildFields, SpaceFields, StickerCellFields, StickerPackFields,
-    StickerRowFields,
+    BodyLineFields, BodyPieceFields, LogLineFields, MemberRowFields, MessageFields,
+    PollAnswerFields, ReactionFields, ReactorFields, RoomFields, SpaceChildFields, SpaceFields,
+    StickerCellFields, StickerPackFields, StickerRowFields,
 };
 use super::present::{Delivery, MessageKind, PollPhase, ServiceKind, VerifyStep};
 #[cfg(feature = "demo")]
@@ -39,16 +41,17 @@ use super::props::EnumProp;
 use super::props::{BoolProp, IntProp, StringProp, UiProps};
 use super::router::{EditedRow, EditedText};
 use super::schema::{
-    attachment_kinds, audio_kinds, child_accesses, connection_states, deliveries, direct_chats,
-    enum_props, log_levels, log_line_fields, login_activities, login_methods, login_phases,
-    media_failures, media_states, member_roles, member_row_fields, member_row_kinds,
-    message_fields, message_kinds, model_props, notify_modes, pending_moderations,
-    poll_answer_fields, poll_phases, preview_kinds, reaction_arts, reaction_fields, reaction_sends,
-    reactor_fields, readers_statuses, room_fields, room_info_placements, room_memberships,
-    room_row_kinds, room_scopes, roster_statuses, send_states, service_kinds, simple_callbacks,
-    source_encryptions, source_statuses, space_child_fields, space_fields, space_index_statuses,
-    sticker_cell_fields, sticker_pack_fields, sticker_row_fields, timeline_states,
-    user_message_kinds, verification_activities, verification_phases,
+    attachment_kinds, audio_kinds, body_line_fields, body_piece_fields, child_accesses,
+    connection_states, deliveries, direct_chats, emoji_arts, enum_props, log_levels,
+    log_line_fields, login_activities, login_methods, login_phases, media_failures, media_states,
+    member_roles, member_row_fields, member_row_kinds, message_fields, message_kinds, model_props,
+    notify_modes, pending_moderations, poll_answer_fields, poll_phases, preview_kinds,
+    reaction_fields, reaction_sends, reactor_fields, readers_statuses, room_fields,
+    room_info_placements, room_memberships, room_row_kinds, room_scopes, roster_statuses,
+    send_states, service_kinds, simple_callbacks, source_encryptions, source_statuses,
+    space_child_fields, space_fields, space_index_statuses, sticker_cell_fields,
+    sticker_pack_fields, sticker_row_fields, timeline_states, user_message_kinds,
+    verification_activities, verification_phases,
 };
 use super::session::active_models;
 use super::video::{self, millis_to_duration};
@@ -95,7 +98,7 @@ mod names {
         pub const REQUEST_MEDIA: &str = "request-media";
         pub const REQUEST_ROOM_AVATAR: &str = "request-room-avatar";
         pub const REQUEST_STICKER: &str = "request-sticker";
-        pub const REQUEST_REACTION_ART: &str = "request-reaction-art";
+        pub const REQUEST_CUSTOM_EMOJI: &str = "request-custom-emoji";
         pub const TOGGLE_VIDEO: &str = "toggle-video";
         pub const TOGGLE_VIDEO_MUTED: &str = "toggle-video-muted";
         pub const SEEK_VIDEO: &str = "seek-video";
@@ -199,7 +202,7 @@ user_message_kinds!(impl_slint_enum UserMessageKind "UserMessageKind";);
 media_states!(impl_slint_enum MediaState "MediaState";);
 send_states!(impl_slint_enum SendState "SendState";);
 reaction_sends!(impl_slint_enum ReactionSend "ReactionSend";);
-reaction_arts!(impl_slint_enum ReactionArt "ReactionArt";);
+emoji_arts!(impl_slint_enum EmojiArt "EmojiArt";);
 deliveries!(impl_slint_enum Delivery "Delivery";);
 media_failures!(impl_slint_enum MediaFailureKind "MediaFailure";);
 message_kinds!(impl_slint_enum MessageKind "MessageKind";);
@@ -590,6 +593,8 @@ pub struct InterpretedBackend;
 impl UiBackend for InterpretedBackend {
     type Window = ComponentInstance;
     type Message = Value;
+    type BodyLine = Value;
+    type BodyPiece = Value;
     type Reaction = Value;
     type Reactor = Value;
     type PollAnswer = Value;
@@ -752,9 +757,9 @@ impl SlintUiAdapter {
 
         bind_action(
             &self.instance,
-            callback::REQUEST_REACTION_ART,
+            callback::REQUEST_CUSTOM_EMOJI,
             move |args| {
-                request_reaction(&string_arg(args, 0));
+                request_custom_emoji(&string_arg(args, 0));
                 Value::Void
             },
         )?;
@@ -1171,6 +1176,8 @@ macro_rules! impl_value {
 }
 
 message_fields!(impl_value MessageDto MessageFields;);
+body_line_fields!(impl_value BodyLineDto BodyLineFields;);
+body_piece_fields!(impl_value BodyPieceDto BodyPieceFields;);
 reaction_fields!(impl_value ReactionDto ReactionFields;);
 reactor_fields!(impl_value ReactorAvatarDto ReactorFields;);
 poll_answer_fields!(impl_value PollAnswerDto PollAnswerFields;);

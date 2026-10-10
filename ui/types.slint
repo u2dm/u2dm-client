@@ -1,4 +1,4 @@
-import { AudioKind, ChildAccess, Delivery, LogLevel, MediaFailure, MediaState, MemberRole, MemberRowKind, MessageKind, PollPhase, PreviewKind, ReactionArt, ReactionSend, RoomRowKind, SendState, ServiceKind, UserMessageKind } from "./enums.slint";
+import { AudioKind, ChildAccess, Delivery, EmojiArt, LogLevel, MediaFailure, MediaState, MemberRole, MemberRowKind, MessageKind, PollPhase, PreviewKind, ReactionSend, RoomRowKind, SendState, ServiceKind, UserMessageKind } from "./enums.slint";
 
 export struct RoomEntry {
     id: string,
@@ -80,7 +80,7 @@ export struct ReactorAvatar {
 export struct ReactionEntry {
     key: string,
     label: string,
-    art: ReactionArt,
+    art: EmojiArt,
     image: image,
     count: int,
     mine: bool,
@@ -103,6 +103,21 @@ export struct PollAnswerEntry {
     hidden-voters: int,
 }
 
+export struct BodyPiece {
+    styled: styled-text,
+    key: string,
+    art: EmojiArt,
+    image: image,
+    spaced: bool,
+}
+
+export struct BodyLine {
+    pieces: [BodyPiece],
+    words: styled-text,
+    emoji: int,
+    gaps: int,
+}
+
 export struct MessageEntry {
     unique-id: string,
     local-id: string,
@@ -113,6 +128,8 @@ export struct MessageEntry {
     styled: styled-text,
     has-links: bool,
     mentions-you: bool,
+    body-lines: [BodyLine],
+    emote-only: bool,
     timestamp: string,
     sent-at: string,
     message-type: MessageKind,

@@ -9,15 +9,15 @@ use tokio::runtime::Runtime;
 use tokio::sync::{mpsc, watch};
 use u2dm_ui::{
     Actions, AppWindow, AttachmentKind as UiAttachmentKind, AttachmentView,
-    AudioKind as UiAudioKind, AudioView, ChildAccess as UiChildAccess, ConnectionState,
-    Delivery as UiDelivery, DirectChat as UiDirectChat, DirectoryView, EmojiEntry, EmojiGroup,
-    EmojiStore, LogLevel as UiLogLevel, LogLineEntry, LoginActivity as UiLoginActivity,
-    LoginMethodKind as UiLoginMethodKind, LoginPhase, LoginView, MediaFailure as UiMediaFailure,
-    MediaState as UiMediaState, MemberEntry, MemberRole as UiMemberRole,
-    MemberRowKind as UiMemberRowKind, MentionWord, MentionsView, MessageEntry,
-    MessageKind as UiMessageKind, Moderation as UiModeration, NotifyMode as UiNotifyMode,
-    PollAnswerEntry, PollPhase as UiPollPhase, PreviewKind as UiPreviewKind,
-    ReactionArt as UiReactionArt, ReactionEntry, ReactionSend as UiReactionSend, ReactorAvatar,
+    AudioKind as UiAudioKind, AudioView, BodyLine, BodyPiece, ChildAccess as UiChildAccess,
+    ConnectionState, Delivery as UiDelivery, DirectChat as UiDirectChat, DirectoryView,
+    EmojiArt as UiEmojiArt, EmojiEntry, EmojiGroup, EmojiStore, LogLevel as UiLogLevel,
+    LogLineEntry, LoginActivity as UiLoginActivity, LoginMethodKind as UiLoginMethodKind,
+    LoginPhase, LoginView, MediaFailure as UiMediaFailure, MediaState as UiMediaState, MemberEntry,
+    MemberRole as UiMemberRole, MemberRowKind as UiMemberRowKind, MentionWord, MentionsView,
+    MessageEntry, MessageKind as UiMessageKind, Moderation as UiModeration,
+    NotifyMode as UiNotifyMode, PollAnswerEntry, PollPhase as UiPollPhase,
+    PreviewKind as UiPreviewKind, ReactionEntry, ReactionSend as UiReactionSend, ReactorAvatar,
     ReadersStatus as UiReadersStatus, ReadersView, ReplySwipe, RoomEntry,
     RoomInfoPlacement as UiRoomInfoPlacement, RoomInfoView, RoomLogView,
     RoomMembership as UiRoomMembership, RoomMenuView, RoomRowKind as UiRoomRowKind,
@@ -38,18 +38,20 @@ use super::backend::{
     last_editable_row, recent_speakers, reorder_spaces, row_of_message, selected_room_key,
     shown_room_log_text, unread_below,
 };
-use super::decode::{AvatarSlot, request_avatar, request_media, request_reaction, request_sticker};
+use super::decode::{
+    AvatarSlot, request_avatar, request_custom_emoji, request_media, request_sticker,
+};
 use super::dto::{
-    LogLineDto, MediaFailureKind, MediaState, MemberRowDto, MemberRowKind, MessageDto,
-    PollAnswerDto, ReactionArt, ReactionDto, ReactorAvatarDto, RoomDto, RoomRowKind, SpaceChildDto,
-    SpaceDto, StickerCellDto, StickerPackDto, StickerRowDto,
+    BodyLineDto, BodyPieceDto, EmojiArt, LogLineDto, MediaFailureKind, MediaState, MemberRowDto,
+    MemberRowKind, MessageDto, PollAnswerDto, ReactionDto, ReactorAvatarDto, RoomDto, RoomRowKind,
+    SpaceChildDto, SpaceDto, StickerCellDto, StickerPackDto, StickerRowDto,
 };
 #[cfg(feature = "demo")]
 use super::dump;
 use super::fields::{
-    LogLineFields, MemberRowFields, MessageFields, PollAnswerFields, ReactionFields, ReactorFields,
-    RoomFields, SpaceChildFields, SpaceFields, StickerCellFields, StickerPackFields,
-    StickerRowFields,
+    BodyLineFields, BodyPieceFields, LogLineFields, MemberRowFields, MessageFields,
+    PollAnswerFields, ReactionFields, ReactorFields, RoomFields, SpaceChildFields, SpaceFields,
+    StickerCellFields, StickerPackFields, StickerRowFields,
 };
 use super::present::{Delivery, MessageKind, PollPhase, ServiceKind, VerifyStep};
 #[cfg(feature = "demo")]
@@ -57,11 +59,11 @@ use super::props::EnumProp;
 use super::props::{BoolProp, IntProp, StringProp, UiProps};
 use super::router::{EditedRow, EditedText};
 use super::schema::{
-    attachment_kinds, audio_kinds, bool_props, child_accesses, connection_states, deliveries,
-    direct_chats, enum_props, int_props, log_levels, log_line_fields, login_activities,
-    login_methods, login_phases, media_failures, media_states, member_roles, member_row_fields,
-    member_row_kinds, message_fields, message_kinds, model_props, notify_modes,
-    pending_moderations, poll_answer_fields, poll_phases, preview_kinds, reaction_arts,
+    attachment_kinds, audio_kinds, body_line_fields, body_piece_fields, bool_props, child_accesses,
+    connection_states, deliveries, direct_chats, emoji_arts, enum_props, int_props, log_levels,
+    log_line_fields, login_activities, login_methods, login_phases, media_failures, media_states,
+    member_roles, member_row_fields, member_row_kinds, message_fields, message_kinds, model_props,
+    notify_modes, pending_moderations, poll_answer_fields, poll_phases, preview_kinds,
     reaction_fields, reaction_sends, reactor_fields, readers_statuses, room_fields,
     room_info_placements, room_memberships, room_row_kinds, room_scopes, roster_statuses,
     send_states, service_kinds, simple_callbacks, source_encryptions, source_statuses,
@@ -334,7 +336,7 @@ user_message_kinds!(impl_slint_enum UserMessageKind UiUserMessageKind;);
 media_states!(impl_slint_enum MediaState UiMediaState;);
 send_states!(impl_slint_enum SendState UiSendState;);
 reaction_sends!(impl_slint_enum ReactionSend UiReactionSend;);
-reaction_arts!(impl_slint_enum ReactionArt UiReactionArt;);
+emoji_arts!(impl_slint_enum EmojiArt UiEmojiArt;);
 deliveries!(impl_slint_enum Delivery UiDelivery;);
 media_failures!(impl_slint_enum MediaFailureKind UiMediaFailure;);
 message_kinds!(impl_slint_enum MessageKind UiMessageKind;);
@@ -452,6 +454,8 @@ macro_rules! impl_entry {
 }
 
 message_fields!(impl_entry MessageDto MessageFields MessageEntry;);
+body_line_fields!(impl_entry BodyLineDto BodyLineFields BodyLine;);
+body_piece_fields!(impl_entry BodyPieceDto BodyPieceFields BodyPiece;);
 reaction_fields!(impl_entry ReactionDto ReactionFields ReactionEntry;);
 reactor_fields!(impl_entry ReactorAvatarDto ReactorFields ReactorAvatar;);
 poll_answer_fields!(impl_entry PollAnswerDto PollAnswerFields PollAnswerEntry;);
@@ -476,6 +480,8 @@ pub struct CompiledBackend;
 impl UiBackend for CompiledBackend {
     type Window = AppWindow;
     type Message = MessageEntry;
+    type BodyLine = BodyLine;
+    type BodyPiece = BodyPiece;
     type Reaction = ReactionEntry;
     type Reactor = ReactorAvatar;
     type PollAnswer = PollAnswerEntry;
@@ -656,7 +662,7 @@ impl SlintUiAdapter {
 
         actions(win).on_request_sticker(move |key| request_sticker(&key));
 
-        actions(win).on_request_reaction_art(move |key| request_reaction(&key));
+        actions(win).on_request_custom_emoji(move |mxc| request_custom_emoji(&mxc));
 
         actions(win).on_room_log_text(|| SharedString::from(shown_room_log_text()));
 

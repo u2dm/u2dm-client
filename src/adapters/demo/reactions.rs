@@ -219,7 +219,7 @@ pub fn toggle(message: &mut TimelineMessage, key: &str, own_user: &str) {
     let Some(position) = message.reactions.iter().position(|r| r.key == key) else {
         message.reactions.push(Reaction {
             key: key.to_owned(),
-            image: media::reaction_image(key),
+            image: media::custom_emoji(key),
             senders: vec![reactor(own_user)],
             mine: true,
             send,

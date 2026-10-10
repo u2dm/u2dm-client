@@ -23,7 +23,7 @@ pub trait MediaCache: Send + Sync {
     fn space_avatar_path(&self, mxc: &str) -> Option<PathBuf>;
     fn sticker_path(&self, mxc: &str) -> Option<PathBuf>;
     fn sticker_failed(&self, mxc: &str) -> bool;
-    fn reaction_image_path(&self, mxc: &str) -> Option<PathBuf>;
+    fn custom_emoji_path(&self, mxc: &str) -> Option<PathBuf>;
     fn audio_path(&self, content: &ContentKey) -> Option<PathBuf>;
     fn audio_failure(&self, content: &ContentKey) -> Option<MediaFailure>;
     fn audio_waveform(&self, content: &ContentKey) -> Option<Waveform>;

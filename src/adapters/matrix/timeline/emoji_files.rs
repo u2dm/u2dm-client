@@ -7,7 +7,7 @@ use matrix_sdk::ruma::{MxcUri, OwnedMxcUri};
 use tokio::sync::mpsc;
 
 use crate::adapters::matrix::media::MediaService;
-use crate::domain::message::ReactionImage;
+use crate::domain::message::CustomEmoji;
 
 const DOWNLOADS_INFLIGHT: usize = 4;
 
@@ -24,28 +24,28 @@ struct Store {
 }
 
 #[derive(Default)]
-pub(in crate::adapters::matrix) struct ReactionImages {
+pub(in crate::adapters::matrix) struct EmojiFiles {
     store: StdMutex<Store>,
 }
 
-impl ReactionImages {
-    pub(super) fn image(&self, key: &str, media: &MediaService) -> Option<ReactionImage> {
+impl EmojiFiles {
+    pub(super) fn state(&self, key: &str, media: &MediaService) -> Option<CustomEmoji> {
         if !<&MxcUri>::from(key).is_valid() {
             return None;
         }
         if media.has_sticker(key) {
-            return Some(ReactionImage::Downloaded);
+            return Some(CustomEmoji::Downloaded);
         }
         let Ok(mut store) = self.store.lock() else {
-            return Some(ReactionImage::Downloading);
+            return Some(CustomEmoji::Downloading);
         };
         if store.unavailable.contains(key) {
-            return Some(ReactionImage::Unavailable);
+            return Some(CustomEmoji::Unavailable);
         }
         if !store.downloading.contains(key) {
             store.wanted.insert(key.to_owned());
         }
-        Some(ReactionImage::Downloading)
+        Some(CustomEmoji::Downloading)
     }
 
     pub(super) fn take_wanted(&self) -> Vec<String> {
@@ -69,7 +69,7 @@ impl ReactionImages {
     }
 }
 
-pub(super) async fn download_reaction_images(
+pub(super) async fn download_emoji_files(
     client: &Client,
     media: &MediaService,
     wanted: Vec<String>,

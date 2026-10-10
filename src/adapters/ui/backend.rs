@@ -8,20 +8,20 @@ use tokio::sync::{OwnedSemaphorePermit, mpsc, watch};
 
 use super::clock::install_clock_invalidation;
 use super::decode::{
-    AvatarSlot, DecodeFailure, DecodeOutcome, MediaSlot, advance_animations, rows_showing_reaction,
-    set_animation_tick, set_avatar_ready, set_image_ready,
+    AvatarSlot, DecodeFailure, DecodeOutcome, MediaSlot, advance_animations,
+    rows_showing_custom_emoji, set_animation_tick, set_avatar_ready, set_image_ready,
 };
 use super::dto::{
-    LogLineDto, MediaFailureKind, MediaState, MemberRowDto, MessageDto, ReactionArt, RoomDto,
+    EmojiArt, LogLineDto, MediaFailureKind, MediaState, MemberRowDto, MessageDto, RoomDto,
     SpaceChildDto, SpaceDto, StickerPackDto, StickerRowDto, ThumbUpdate, cell_pack,
     decode_failure_kind, enrich_to_update, log_line_to_dto, member_row_to_dto, mention_to_dto,
     message_to_dto, reader_to_dto, room_to_dto, space_child_to_dto, space_match_to_dto,
     space_to_dto, spaces_heading_to_dto,
 };
 use super::fields::{
-    LogLineFields, MemberRowFields, MessageFields, PollAnswerFields, ReactionFields, ReactorFields,
-    RoomFields, SpaceChildFields, SpaceFields, StickerCellFields, StickerPackFields,
-    StickerRowFields,
+    BodyLineFields, BodyPieceFields, LogLineFields, MemberRowFields, MessageFields,
+    PollAnswerFields, ReactionFields, ReactorFields, RoomFields, SpaceChildFields, SpaceFields,
+    StickerCellFields, StickerPackFields, StickerRowFields,
 };
 use super::multiplex::spawn_event_multiplexer;
 use super::present::room_log_text;
@@ -46,6 +46,8 @@ use crate::ports::media::MediaCache;
 pub trait UiBackend: Sized + 'static {
     type Window: ComponentHandle + UiProps + 'static;
     type Message: MessageFields<Self> + Clone + From<MessageDto> + 'static;
+    type BodyLine: BodyLineFields<Self> + Clone + 'static;
+    type BodyPiece: BodyPieceFields<Self> + Clone + 'static;
     type Reaction: ReactionFields<Self> + Clone + 'static;
     type Reactor: ReactorFields<Self> + Clone + 'static;
     type PollAnswer: PollAnswerFields<Self> + Clone + 'static;
@@ -369,7 +371,7 @@ fn tick_animations<B: UiBackend>() {
             show_thumbnail::<B>(entry, frame);
         }),
         MediaSlot::StickerCell(key) => place_sticker_cell::<B>(key, Some(&frame)),
-        MediaSlot::Reaction(key) => place_reaction_art::<B>(key, Ok(&frame)),
+        MediaSlot::CustomEmoji(mxc) => place_custom_emoji::<B>(mxc, Ok(&frame)),
     });
 }
 
@@ -388,11 +390,11 @@ fn patch_timeline_row<B: UiBackend>(
     })
 }
 
-fn place_reaction_art<B: UiBackend>(
-    key: &str,
+fn place_custom_emoji<B: UiBackend>(
+    mxc: &str,
     art: Result<&Image, DecodeFailure>,
 ) -> Option<usize> {
-    let rows = rows_showing_reaction(key);
+    let rows = rows_showing_custom_emoji(mxc);
     B::with_timeline(|timeline| {
         let mut placed = None;
         for unique_id in &rows {
@@ -402,14 +404,44 @@ fn place_reaction_art<B: UiBackend>(
             let Some(entry) = timeline.row_data(row) else {
                 continue;
             };
-            let in_chips = patch_reaction_art::<B>(&entry.reactions(), key, art);
-            let in_detail = patch_reaction_art::<B>(&entry.all_reactions(), key, art);
-            if in_chips || in_detail {
+            let in_chips = patch_reaction_art::<B>(&entry.reactions(), mxc, art);
+            let in_detail = patch_reaction_art::<B>(&entry.all_reactions(), mxc, art);
+            let in_body = patch_body_emoji::<B>(&entry.body_lines(), mxc, art);
+            if in_chips || in_detail || in_body {
                 placed = Some(row);
             }
         }
         placed
     })
+}
+
+fn patch_body_emoji<B: UiBackend>(
+    lines: &ModelRc<B::BodyLine>,
+    mxc: &str,
+    art: Result<&Image, DecodeFailure>,
+) -> bool {
+    let mut patched = false;
+    for line in lines.iter() {
+        let pieces = line.pieces();
+        for index in 0..pieces.row_count() {
+            let Some(mut piece) = pieces.row_data(index) else {
+                continue;
+            };
+            if piece.key() != mxc {
+                continue;
+            }
+            match art {
+                Ok(image) => {
+                    piece.set_image(image.clone());
+                    piece.set_art(EmojiArt::Ready);
+                }
+                Err(_) => piece.set_art(EmojiArt::Failed),
+            }
+            pieces.set_row_data(index, piece);
+            patched = true;
+        }
+    }
+    patched
 }
 
 fn patch_reaction_art<B: UiBackend>(
@@ -426,9 +458,9 @@ fn patch_reaction_art<B: UiBackend>(
     match art {
         Ok(image) => {
             reaction.set_image(image.clone());
-            reaction.set_art(ReactionArt::Ready);
+            reaction.set_art(EmojiArt::Ready);
         }
-        Err(_) => reaction.set_art(ReactionArt::Failed),
+        Err(_) => reaction.set_art(EmojiArt::Failed),
     }
     reactions.set_row_data(index, reaction);
     true
@@ -512,9 +544,9 @@ pub(super) fn apply_thumbnail_ready<B: UiBackend>(slot: &MediaSlot, outcome: Dec
             }
         }
         MediaSlot::StickerCell(key) => apply_sticker_art::<B>(key, art.ok()),
-        MediaSlot::Reaction(key) => {
-            if place_reaction_art::<B>(key, art).is_none() {
-                tracing::debug!("dropped a decoded image with no live reaction chip");
+        MediaSlot::CustomEmoji(mxc) => {
+            if place_custom_emoji::<B>(mxc, art).is_none() {
+                tracing::debug!("dropped a decoded custom emoji with no live row showing it");
             }
         }
     }

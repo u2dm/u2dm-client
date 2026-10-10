@@ -1,0 +1,39 @@
+import { IconDisplay, IconSet } from "@lucide";
+
+import { EmojiArt } from "../../../../enums.slint";
+import { Actions } from "../../../../actions.slint";
+import { AppStyle, Radius } from "../../../../theme.slint";
+
+export component CustomEmojiImage inherits Rectangle {
+    in property <string> key;
+    in property <EmojiArt> art;
+    in property <image> image;
+    in property <length> size;
+    in property <length> icon-size;
+
+    width: root.size;
+    height: root.size;
+    border-radius: Radius.xs;
+    background: root.art == EmojiArt.pending ? AppStyle.overlay-hover : transparent;
+
+    init => {
+        if root.art == EmojiArt.pending {
+            Actions.request-custom-emoji(root.key);
+        }
+    }
+
+    if root.art == EmojiArt.ready: Image {
+        width: 100%;
+        height: 100%;
+        source: root.image;
+        image-fit: contain;
+    }
+
+    if root.art == EmojiArt.failed: IconDisplay {
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+        icon: IconSet.ImageOff;
+        size: root.icon-size;
+        stroke: AppStyle.foreground-faint;
+    }
+}

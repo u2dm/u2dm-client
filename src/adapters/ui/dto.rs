@@ -1,23 +1,24 @@
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
 
 use slint::{Image, SharedString, StyledText};
 
 use super::decode::{
     AvatarSlot, DecodeFailure, Decoded, MediaSlot, ShownAvatar, TimelineItemKey, load_avatar_async,
-    load_thumbnail, peek_avatar, peek_thumbnail, record_avatar_need, record_media_need,
-    record_reaction_need, record_sticker_need,
+    load_thumbnail, peek_avatar, peek_thumbnail, record_avatar_need, record_custom_emoji_need,
+    record_media_need, record_sticker_need,
 };
 use super::present::{
     Delivery, MessageKind, PollPhase, ServiceKind, avatar_color_index, avatar_initials, delivery,
-    duration_label, file_extension, log_level_name, log_time_label, message_body_html,
-    message_body_text, message_kind, message_sender_label, message_sent_at_label,
-    message_timestamp_label, poll_phase, pronoun_labels, reaction_key_label, reactor_labels,
-    reader_labels, room_activity_label, sender_initial, service_kind, service_target,
-    unsupported_kind, user_initial, voice_bars, voter_labels,
+    duration_label, file_extension, log_level_name, log_time_label, message_body_text,
+    message_kind, message_sender_label, message_sent_at_label, message_timestamp_label, poll_phase,
+    pronoun_labels, reaction_key_label, reactor_labels, reader_labels, room_activity_label,
+    sender_initial, service_kind, service_target, unsupported_kind, user_initial, voice_bars,
+    voter_labels,
 };
-use super::richtext::{self, RoomWord};
+use super::richtext::{self, InlineContent, InlineLine, InlinePiece, RoomWord};
 use super::schema::{
-    define_ui_enum, define_ui_names, media_failures, media_states, member_row_kinds, reaction_arts,
+    define_ui_enum, define_ui_names, emoji_arts, media_failures, media_states, member_row_kinds,
     room_row_kinds,
 };
 use crate::commands::view::{ChildAccess, RoomCard, RosterRow, SpaceIndexRow, SpaceMatch};
@@ -25,7 +26,7 @@ use crate::domain::media::{
     AudioKind, AudioMeta, ContentKey, FileMeta, MediaFailure, ThumbnailOutcome,
 };
 use crate::domain::message::{
-    MessageBody, MessagePreviewKind, Reaction, ReactionImage, ReactionSend, Reactor, RichText,
+    CustomEmoji, MessageBody, MessagePreviewKind, Reaction, ReactionSend, Reactor, RichText,
     SendState, TimelineMessage,
 };
 use crate::domain::poll::{Poll, PollAnswer};
@@ -44,7 +45,7 @@ media_states!(define_ui_names MediaState;);
 media_failures!(define_ui_enum MediaFailureKind;);
 member_row_kinds!(define_ui_enum MemberRowKind;);
 room_row_kinds!(define_ui_enum RoomRowKind;);
-reaction_arts!(define_ui_enum ReactionArt;);
+emoji_arts!(define_ui_enum EmojiArt;);
 
 pub const INVITED_HEADING_ROW: &str = "invited-heading";
 pub const SPACES_HEADING_ROW: &str = "spaces-heading";
@@ -231,7 +232,7 @@ pub struct ReactorAvatarDto {
 pub struct ReactionDto {
     pub key: SharedString,
     pub label: SharedString,
-    pub art: ReactionArt,
+    pub art: EmojiArt,
     pub image: Option<Image>,
     pub count: i32,
     pub mine: bool,
@@ -240,6 +241,23 @@ pub struct ReactionDto {
     pub reactors: SharedString,
     pub hidden_reactors: i32,
     pub avatars: Vec<ReactorAvatarDto>,
+}
+
+#[derive(Clone)]
+pub struct BodyPieceDto {
+    pub styled: StyledText,
+    pub key: SharedString,
+    pub art: EmojiArt,
+    pub image: Option<Image>,
+    pub spaced: bool,
+}
+
+#[derive(Clone)]
+pub struct BodyLineDto {
+    pub pieces: Vec<BodyPieceDto>,
+    pub words: StyledText,
+    pub emoji: i32,
+    pub gaps: i32,
 }
 
 #[derive(Clone)]
@@ -266,6 +284,8 @@ pub struct MessageDto {
     pub styled: StyledText,
     pub has_links: bool,
     pub mentions_you: bool,
+    pub body_lines: Vec<BodyLineDto>,
+    pub emote_only: bool,
     pub timestamp: SharedString,
     pub sent_at: SharedString,
     pub message_type: MessageKind,
@@ -444,19 +464,32 @@ fn reactor_avatar_dtos(
         .collect()
 }
 
-fn downloaded_reaction_art(
+fn downloaded_emoji_art(
     item: &TimelineItemKey,
-    key: &str,
+    mxc: &str,
     media: &dyn MediaCache,
-) -> (ReactionArt, Option<Image>) {
-    let Some(path) = media.reaction_image_path(key) else {
-        return (ReactionArt::Pending, None);
+) -> (EmojiArt, Option<Image>) {
+    let Some(path) = media.custom_emoji_path(mxc) else {
+        return (EmojiArt::Pending, None);
     };
-    record_reaction_need(item, key, &path);
-    match peek_thumbnail(&path, &MediaSlot::Reaction(key.to_owned())) {
-        Decoded::Ready(image) => (ReactionArt::Ready, Some(image)),
-        Decoded::Failed(_) => (ReactionArt::Failed, None),
-        Decoded::Pending => (ReactionArt::Pending, None),
+    record_custom_emoji_need(item, mxc, &path);
+    match peek_thumbnail(&path, &MediaSlot::CustomEmoji(mxc.to_owned())) {
+        Decoded::Ready(image) => (EmojiArt::Ready, Some(image)),
+        Decoded::Failed(_) => (EmojiArt::Failed, None),
+        Decoded::Pending => (EmojiArt::Pending, None),
+    }
+}
+
+fn emoji_art(
+    item: &TimelineItemKey,
+    mxc: &str,
+    state: CustomEmoji,
+    media: &dyn MediaCache,
+) -> (EmojiArt, Option<Image>) {
+    match state {
+        CustomEmoji::Downloading => (EmojiArt::Pending, None),
+        CustomEmoji::Unavailable => (EmojiArt::Failed, None),
+        CustomEmoji::Downloaded => downloaded_emoji_art(item, mxc, media),
     }
 }
 
@@ -464,12 +497,10 @@ fn reaction_art(
     item: &TimelineItemKey,
     reaction: &Reaction,
     media: &dyn MediaCache,
-) -> (ReactionArt, Option<Image>) {
+) -> (EmojiArt, Option<Image>) {
     match reaction.image {
-        None => (ReactionArt::Text, None),
-        Some(ReactionImage::Downloading) => (ReactionArt::Pending, None),
-        Some(ReactionImage::Unavailable) => (ReactionArt::Failed, None),
-        Some(ReactionImage::Downloaded) => downloaded_reaction_art(item, &reaction.key, media),
+        None => (EmojiArt::Text, None),
+        Some(state) => emoji_art(item, &reaction.key, state, media),
     }
 }
 
@@ -481,8 +512,8 @@ fn reaction_dto(
     let (reactors, hidden) = reactor_labels(&reaction.senders);
     let (art, image) = reaction_art(item, reaction, media);
     let label = match art {
-        ReactionArt::Text => SharedString::from(reaction_key_label(&reaction.key)),
-        ReactionArt::Pending | ReactionArt::Ready | ReactionArt::Failed => SharedString::new(),
+        EmojiArt::Text => SharedString::from(reaction_key_label(&reaction.key)),
+        EmojiArt::Pending | EmojiArt::Ready | EmojiArt::Failed => SharedString::new(),
     };
     ReactionDto {
         key: SharedString::from(&reaction.key),
@@ -503,7 +534,7 @@ fn overflow_dto(hidden: usize) -> ReactionDto {
     ReactionDto {
         key: SharedString::new(),
         label: SharedString::new(),
-        art: ReactionArt::Text,
+        art: EmojiArt::Text,
         image: None,
         count: count(hidden),
         mine: false,
@@ -711,9 +742,88 @@ pub fn preview_line(text: &RichText) -> SharedString {
 pub fn message_body(message: &TimelineMessage) -> richtext::StyledBody {
     let plain = message_body_text(&message.body);
     let room_word = RoomWord::when(message.mentions_room);
-    match message_body_html(&message.body) {
+    match message.body.html() {
         Some(html) => richtext::styled_body(html, plain, room_word),
         None => richtext::plain_body(plain, room_word),
+    }
+}
+
+fn inline_body_lines(
+    item: &TimelineItemKey,
+    message: &TimelineMessage,
+    media: &dyn MediaCache,
+) -> (Vec<BodyLineDto>, bool) {
+    let drawn: BTreeSet<String> = message
+        .body_emoji
+        .iter()
+        .filter(|(_, state)| **state != CustomEmoji::Unavailable)
+        .map(|(mxc, _)| mxc.clone())
+        .collect();
+    if drawn.is_empty() {
+        return (Vec::new(), false);
+    }
+    let room_word = RoomWord::when(message.mentions_room);
+    let Some(inline) = message
+        .body
+        .html()
+        .and_then(|html| richtext::inline_body(html, room_word, drawn))
+    else {
+        return (Vec::new(), false);
+    };
+    let lines = inline
+        .lines
+        .iter()
+        .map(|line| body_line_dto(item, line, &message.body_emoji, media))
+        .collect();
+    (lines, inline.emote_only)
+}
+
+fn body_line_dto(
+    item: &TimelineItemKey,
+    line: &InlineLine,
+    body_emoji: &BTreeMap<String, CustomEmoji>,
+    media: &dyn MediaCache,
+) -> BodyLineDto {
+    BodyLineDto {
+        pieces: line
+            .pieces
+            .iter()
+            .map(|piece| body_piece_dto(item, piece, body_emoji, media))
+            .collect(),
+        words: line.words.clone(),
+        emoji: count(line.emoji),
+        gaps: count(line.gaps),
+    }
+}
+
+fn body_piece_dto(
+    item: &TimelineItemKey,
+    piece: &InlinePiece,
+    body_emoji: &BTreeMap<String, CustomEmoji>,
+    media: &dyn MediaCache,
+) -> BodyPieceDto {
+    let (styled, key, (art, image)) = match &piece.content {
+        InlineContent::Text(styled) => {
+            (styled.clone(), SharedString::new(), (EmojiArt::Text, None))
+        }
+        InlineContent::Emoji(mxc) => {
+            let state = body_emoji
+                .get(mxc)
+                .copied()
+                .unwrap_or(CustomEmoji::Unavailable);
+            (
+                StyledText::default(),
+                SharedString::from(mxc),
+                emoji_art(item, mxc, state, media),
+            )
+        }
+    };
+    BodyPieceDto {
+        styled,
+        key,
+        art,
+        image,
+        spaced: piece.spaced,
     }
 }
 
@@ -753,7 +863,9 @@ pub fn message_to_dto(m: &TimelineMessage, pinned: bool, media: &dyn MediaCache)
     let sender_label = message_sender_label(m);
     let (reactions, all_reactions) = reaction_dtos(&item, &m.reactions, media);
     let (readers, hidden_readers) = reader_labels(&m.read_by);
+    let reply = m.reply.as_ref();
     let rich = message_body(m);
+    let (body_lines, emote_only) = inline_body_lines(&item, m, media);
     let preview_body = one_line(&rich.plain);
     let mut dto = MessageDto {
         unique_id: SharedString::from(&m.unique_id),
@@ -768,6 +880,8 @@ pub fn message_to_dto(m: &TimelineMessage, pinned: bool, media: &dyn MediaCache)
         styled: rich.styled,
         has_links: rich.has_links,
         mentions_you: rich.mentions_you,
+        body_lines,
+        emote_only,
         timestamp: SharedString::from(&message_timestamp_label(m.timestamp)),
         sent_at: if m.is_own {
             SharedString::from(message_sent_at_label(m.timestamp))
@@ -794,18 +908,11 @@ pub fn message_to_dto(m: &TimelineMessage, pinned: bool, media: &dyn MediaCache)
         readers: SharedString::from(readers),
         hidden_readers: count(hidden_readers),
         reader_count: count(m.read_by.total),
-        has_reply: m.reply.is_some(),
-        reply_event_id: SharedString::from(m.reply.as_ref().map_or("", |r| r.event_id.as_str())),
-        reply_sender: SharedString::from(m.reply.as_ref().map_or("", |r| r.sender.as_str())),
-        reply_kind: m
-            .reply
-            .as_ref()
-            .map_or(MessagePreviewKind::None, |r| r.kind),
-        reply_body: m
-            .reply
-            .as_ref()
-            .map(|r| preview_line(&r.body))
-            .unwrap_or_default(),
+        has_reply: reply.is_some(),
+        reply_event_id: SharedString::from(reply.map_or("", |r| r.event_id.as_str())),
+        reply_sender: SharedString::from(reply.map_or("", |r| r.sender.as_str())),
+        reply_kind: reply.map_or(MessagePreviewKind::None, |r| r.kind),
+        reply_body: reply.map(|r| preview_line(&r.body)).unwrap_or_default(),
         service_kind: m.body.service().map_or(ServiceKind::None, service_kind),
         service_target: SharedString::from(m.body.service().map_or("", service_target)),
         image_width: 0,

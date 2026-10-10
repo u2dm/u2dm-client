@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fs;
 use std::future::pending;
 use std::mem;
@@ -24,8 +24,8 @@ use crate::domain::auth::{AuthMethod, LoginCredentials, OAuthLoginData, ServerIn
 use crate::domain::link::LauncherSafeUrl;
 use crate::domain::media::{MediaRendition, OutgoingAttachment, WaveformNeed};
 use crate::domain::message::{
-    EditTarget, MessageBody, MessageEdit, MessagePreviewKind, PinChange, PinnedMessage, ReplyInfo,
-    RichText, SendState, TimelineMessage,
+    CustomEmoji, EditTarget, MessageBody, MessageEdit, MessagePreviewKind, PinChange,
+    PinnedMessage, ReplyInfo, RichText, SendState, TimelineMessage,
 };
 use crate::domain::poll::{PollAction, PollDraft};
 use crate::domain::room::{NotifyMode, Room, RoomId, Space};
@@ -261,6 +261,7 @@ fn current_lists(lists: &Mutex<RoomLists>) -> RoomLists {
 
 struct Revision {
     body: MessageBody,
+    body_emoji: BTreeMap<String, CustomEmoji>,
     mentions_room: bool,
     edited: bool,
 }
@@ -268,6 +269,7 @@ struct Revision {
 impl Revision {
     fn restore(self, message: &mut TimelineMessage) {
         message.body = self.body;
+        message.body_emoji = self.body_emoji;
         message.mentions_room = self.mentions_room;
         message.edited = self.edited;
     }
@@ -424,6 +426,7 @@ impl DemoAuthed {
             return;
         };
         sent.body = revised.body.clone();
+        sent.body_emoji = revised.body_emoji.clone();
         sent.mentions_room = revised.mentions_room;
         sent.edited = revised.edited;
     }
@@ -443,8 +446,10 @@ impl DemoAuthed {
         message.editable_text()?;
         let sent = data::sent_text(&edit.body);
         let revised = revised_body(&message.body, &edit.body, sent.text)?;
+        let revised_emoji = media::emoji_states(&revised);
         let previous = Revision {
             body: mem::replace(&mut message.body, revised),
+            body_emoji: mem::replace(&mut message.body_emoji, revised_emoji),
             mentions_room: message.mentions_room,
             edited: message.edited,
         };

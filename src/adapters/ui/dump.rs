@@ -9,7 +9,9 @@ use tokio::sync::oneshot;
 use super::audio;
 use super::backend::UiBackend;
 use super::context_press;
-use super::fields::{LogLineFields, MessageFields, PollAnswerFields, ReactionFields};
+use super::fields::{
+    BodyLineFields, BodyPieceFields, LogLineFields, MessageFields, PollAnswerFields, ReactionFields,
+};
 use super::props::{BoolProp, EnumProp, IntProp, StringProp, UiProps};
 
 #[derive(Serialize)]
@@ -22,6 +24,13 @@ pub struct ReactionRowDump {
     pub send: String,
     pub overflow: bool,
     pub hidden_reactors: i32,
+}
+
+#[derive(Serialize)]
+pub struct BodyEmojiDump {
+    pub line: usize,
+    pub key: String,
+    pub art: String,
 }
 
 #[derive(Serialize)]
@@ -48,6 +57,9 @@ pub struct TimelineRowDump {
     pub sender_id: String,
     pub body: String,
     pub mentions_you: bool,
+    pub emote_only: bool,
+    pub body_lines: Vec<usize>,
+    pub body_emoji: Vec<BodyEmojiDump>,
     pub timestamp: String,
     pub sent_at: String,
     pub message_type: String,
@@ -324,6 +336,13 @@ fn timeline_row<B: UiBackend>(row: usize, entry: &B::Message) -> TimelineRowDump
         sender_id: entry.sender_id().to_owned(),
         body: entry.body().to_owned(),
         mentions_you: entry.mentions_you(),
+        emote_only: entry.emote_only(),
+        body_lines: entry
+            .body_lines()
+            .iter()
+            .map(|line| line.pieces().row_count())
+            .collect(),
+        body_emoji: body_emoji::<B>(entry),
         timestamp: entry.timestamp().to_owned(),
         sent_at: entry.sent_at().to_owned(),
         message_type: entry.message_type().to_owned(),
@@ -372,6 +391,25 @@ fn timeline_row<B: UiBackend>(row: usize, entry: &B::Message) -> TimelineRowDump
             .map(|answer| poll_answer_row::<B>(&answer))
             .collect(),
     }
+}
+
+fn body_emoji<B: UiBackend>(entry: &B::Message) -> Vec<BodyEmojiDump> {
+    entry
+        .body_lines()
+        .iter()
+        .enumerate()
+        .flat_map(|(index, line)| {
+            line.pieces()
+                .iter()
+                .filter(|piece| !piece.key().is_empty())
+                .map(|piece| BodyEmojiDump {
+                    line: index,
+                    key: piece.key().to_owned(),
+                    art: piece.art().to_owned(),
+                })
+                .collect::<Vec<_>>()
+        })
+        .collect()
 }
 
 fn poll_answer_row<B: UiBackend>(entry: &B::PollAnswer) -> PollAnswerRowDump {

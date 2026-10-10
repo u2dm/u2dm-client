@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{BTreeMap, HashSet};
 
 use matrix_sdk::ruma::UInt;
 use matrix_sdk::ruma::events::poll::start::PollKind;
@@ -18,15 +18,15 @@ use matrix_sdk_ui::timeline::{
 
 use super::TimelineContext;
 use super::members::{Arrived, Need};
-use crate::adapters::markdown;
 use crate::adapters::matrix::media::{EventMedia, file_content, thumbnail_content};
 use crate::adapters::matrix::preview;
+use crate::adapters::{body_emoji, markdown};
 use crate::domain::media::{
     AudioKind, AudioMeta, FileMeta, ImageMeta, MediaKind, VideoMeta, Waveform,
 };
 use crate::domain::message::{
-    MessageBody, MessagePreviewKind, REACTOR_AVATAR_LIMIT, Reaction, ReactionSend, Reactor, ReadBy,
-    ReplyInfo, RichText, SendState, ServiceEvent, TimelineMessage,
+    CustomEmoji, MessageBody, MessagePreviewKind, REACTOR_AVATAR_LIMIT, Reaction, ReactionSend,
+    Reactor, ReadBy, ReplyInfo, RichText, SendState, ServiceEvent, TimelineMessage,
 };
 use crate::domain::poll::{Poll, PollAnswer, PollChoice, PollDisclosure, PollStatus, Voter};
 
@@ -88,7 +88,7 @@ fn extract_reactions(content: &TimelineItemContent, ctx: &TimelineContext<'_>) -
             });
             let mut reaction = Reaction {
                 key: key.clone(),
-                image: ctx.reaction_images.image(key, ctx.media),
+                image: ctx.emoji_files.state(key, ctx.media),
                 senders: by_sender
                     .keys()
                     .map(|user_id| Reactor::new(user_id.to_string()))
@@ -174,6 +174,7 @@ fn base_message(
         sender_display_name,
         sender_avatar_url,
         body: MessageBody::UnableToDecrypt,
+        body_emoji: BTreeMap::new(),
         mentions_room: false,
         timestamp: ts,
         is_own,
@@ -555,6 +556,19 @@ fn rich_body(plain: &str, formatted: Option<&FormattedBody>) -> RichText {
     }
 }
 
+fn emoji_states(body: &MessageBody, ctx: &TimelineContext<'_>) -> BTreeMap<String, CustomEmoji> {
+    let Some(html) = body.html() else {
+        return BTreeMap::new();
+    };
+    body_emoji::sources(html)
+        .into_iter()
+        .filter_map(|mxc| {
+            let state = ctx.emoji_files.state(&mxc, ctx.media)?;
+            Some((mxc, state))
+        })
+        .collect()
+}
+
 fn names_room(mentions: Option<&Mentions>) -> bool {
     mentions.is_some_and(|mentions| mentions.room)
 }
@@ -641,6 +655,7 @@ pub(super) fn convert_event_item_with_uid(
                 body
             };
             Some(TimelineMessage {
+                body_emoji: emoji_states(&body, ctx),
                 body,
                 mentions_room,
                 reply,

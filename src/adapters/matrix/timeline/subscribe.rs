@@ -19,11 +19,11 @@ use super::commands::Commands;
 use super::convert::{event_media, involves, reacted_with};
 use super::diff::{diff_to_patch, stamp_editable_polls, stamp_read_marks};
 use super::edits::DiscardedEdits;
+use super::emoji_files::{EmojiFiles, Settled, download_emoji_files};
 use super::filter::TimelineItems;
 use super::members::{Arrived, Batch, Members, resolve_members};
 use super::poll_ends::EndingPolls;
 use super::polls;
-use super::reaction_images::{ReactionImages, Settled, download_reaction_images};
 use super::receipts::ReceiptLane;
 use super::rowless_sends::{RowlessSendEvent, RowlessSendGuard};
 use super::source;
@@ -942,14 +942,14 @@ pub(crate) async fn subscribe_timeline(
     let enrich = EnrichmentPool::new();
     let receipts = ReceiptLane::spawn(&timeline);
     let members = Arc::new(Members::default());
-    let reaction_images = ReactionImages::default();
+    let emoji_files = EmojiFiles::default();
     let undecrypted = UndecryptedResponses::default();
     let ctx = TimelineContext {
         client,
         media,
         pronouns,
         members: &members,
-        reaction_images: &reaction_images,
+        emoji_files: &emoji_files,
         ending: &ending,
         undecrypted: &undecrypted,
         discarded: &discarded,
@@ -995,12 +995,12 @@ fn spawn_member_fetch(
     side_tasks.spawn(resolve.in_current_span());
 }
 
-fn spawn_reaction_image_downloads(
+fn spawn_emoji_downloads(
     ctx: &TimelineContext<'_>,
     side_tasks: &mut JoinSet<()>,
     settled: &mpsc::Sender<Settled>,
 ) {
-    let wanted = ctx.reaction_images.take_wanted();
+    let wanted = ctx.emoji_files.take_wanted();
     if wanted.is_empty() {
         return;
     }
@@ -1008,7 +1008,7 @@ fn spawn_reaction_image_downloads(
     let media = Arc::clone(ctx.media);
     let settled = settled.clone();
     let download = async move {
-        download_reaction_images(&client, &media, wanted, &settled).await;
+        download_emoji_files(&client, &media, wanted, &settled).await;
     };
     side_tasks.spawn(download.in_current_span());
 }
@@ -1039,7 +1039,7 @@ impl RowFetches {
 
     fn spawn(&self, ctx: &TimelineContext<'_>, room: &Room, side_tasks: &mut JoinSet<()>) {
         spawn_member_fetch(ctx, room, side_tasks, &self.members_tx);
-        spawn_reaction_image_downloads(ctx, side_tasks, &self.images_tx);
+        spawn_emoji_downloads(ctx, side_tasks, &self.images_tx);
     }
 
     async fn next(&mut self) -> Option<Fetched> {
@@ -1078,8 +1078,11 @@ fn image_patch(
     settled: Settled,
     ctx: &TimelineContext<'_>,
 ) -> Option<TimelinePatch> {
-    let key = ctx.reaction_images.record(settled);
-    reconvert_rows(items, ctx, |item, _| reacted_with(item, &key))
+    let mxc = ctx.emoji_files.record(settled);
+    reconvert_rows(items, ctx, |item, message| {
+        reacted_with(item, &mxc)
+            || message.is_some_and(|message| message.body_emoji.contains_key(&mxc))
+    })
 }
 
 async fn send_patch(ctx: &TimelineContext<'_>, patch: Option<TimelinePatch>) -> ControlFlow<()> {

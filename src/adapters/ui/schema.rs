@@ -572,7 +572,7 @@ macro_rules! reaction_sends {
 }
 pub(crate) use reaction_sends;
 
-macro_rules! reaction_arts {
+macro_rules! emoji_arts {
     ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
         Text    Text    "text";
         Pending Pending "pending";
@@ -580,7 +580,7 @@ macro_rules! reaction_arts {
         Failed  Failed  "failed";
     } };
 }
-pub(crate) use reaction_arts;
+pub(crate) use emoji_arts;
 
 macro_rules! deliveries {
     ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
@@ -894,6 +894,8 @@ macro_rules! message_fields {
         styled set_styled "styled" styled;
         has_links set_has_links "has-links" flag;
         mentions_you set_mentions_you "mentions-you" flag;
+        body_lines set_body_lines "body-lines" structs(BodyLine);
+        emote_only set_emote_only "emote-only" flag;
         timestamp set_timestamp "timestamp" text;
         sent_at set_sent_at "sent-at" text;
         message_type set_message_type "message-type" enumk(MessageKind);
@@ -949,6 +951,27 @@ macro_rules! message_fields {
 }
 pub(crate) use message_fields;
 
+macro_rules! body_line_fields {
+    ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
+        pieces set_pieces "pieces" structs(BodyPiece);
+        words set_words "words" styled;
+        emoji set_emoji "emoji" int;
+        gaps set_gaps "gaps" int;
+    } };
+}
+pub(crate) use body_line_fields;
+
+macro_rules! body_piece_fields {
+    ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
+        styled set_styled "styled" styled;
+        key set_key "key" text;
+        art set_art "art" enumk(EmojiArt);
+        image set_image "image" image;
+        spaced set_spaced "spaced" flag;
+    } };
+}
+pub(crate) use body_piece_fields;
+
 macro_rules! poll_answer_fields {
     ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
         id set_id "id" text;
@@ -968,7 +991,7 @@ macro_rules! reaction_fields {
     ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
         key set_key "key" text;
         label set_label "label" text;
-        art set_art "art" enumk(ReactionArt);
+        art set_art "art" enumk(EmojiArt);
         image set_image "image" image;
         count set_count "count" int;
         mine set_mine "mine" flag;

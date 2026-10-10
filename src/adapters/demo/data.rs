@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fs;
 use std::mem;
 use std::sync::{Arc, OnceLock};
@@ -636,6 +636,7 @@ pub fn own_message(
     let id = format!("demo-sent-{sequence}");
     let settled = send_state == SendState::Sent;
     let sent = sent_text(body);
+    let body = MessageBody::Text(sent.text);
     TimelineMessage {
         unique_id: id.clone(),
         event_id: settled.then(|| id.clone()),
@@ -644,7 +645,8 @@ pub fn own_message(
         sender: own_user().to_owned(),
         sender_display_name: Some("You".to_owned()),
         sender_avatar_url: Some(own_user().to_owned()),
-        body: MessageBody::Text(sent.text),
+        body_emoji: media::emoji_states(&body),
+        body,
         mentions_room: sent.mentions_room,
         timestamp: now_ms(),
         is_own: true,
@@ -711,6 +713,7 @@ pub fn own_sticker(
                 thumbnail: Some(content),
             },
         },
+        body_emoji: BTreeMap::new(),
         mentions_room: false,
         timestamp: now_ms(),
         is_own: true,
@@ -794,6 +797,7 @@ pub fn own_attachment(
         sender: own_user().to_owned(),
         sender_display_name: Some("You".to_owned()),
         sender_avatar_url: Some(own_user().to_owned()),
+        body_emoji: media::emoji_states(&body),
         body,
         mentions_room,
         timestamp: now_ms(),
@@ -861,6 +865,7 @@ fn synthesized_message(dto: &RoomDto, room: &Room) -> TimelineMessage {
         )
     };
     let id = format!("demo-{}-last", dto.id.trim_start_matches('!'));
+    let body = MessageBody::Text(room.last_message_body.clone());
 
     TimelineMessage {
         unique_id: id.clone(),
@@ -870,7 +875,8 @@ fn synthesized_message(dto: &RoomDto, room: &Room) -> TimelineMessage {
         sender_avatar_url: Some(sender.clone()),
         sender,
         sender_display_name: Some(display_name),
-        body: MessageBody::Text(room.last_message_body.clone()),
+        body_emoji: media::emoji_states(&body),
+        body,
         mentions_room: false,
         timestamp: room.last_activity_ts,
         is_own: dto.last_message.own,

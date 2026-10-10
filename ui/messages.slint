@@ -1,4 +1,4 @@
-import { Delivery, MediaFailure, PreviewKind, ReactionArt, ServiceKind, UserMessageKind } from "./enums.slint";
+import { Delivery, EmojiArt, MediaFailure, PreviewKind, ServiceKind, UserMessageKind } from "./enums.slint";
 
 export global UserMessages {
     public pure function text(kind: UserMessageKind, detail: string) -> string {
@@ -364,8 +364,8 @@ export global MessagePreview {
 }
 
 export global ReactionKeys {
-    public pure function label(art: ReactionArt, text: string) -> string {
-        if art == ReactionArt.text {
+    public pure function label(art: EmojiArt, text: string) -> string {
+        if art == EmojiArt.text {
             return text;
         }
         return @tr("custom emoji");

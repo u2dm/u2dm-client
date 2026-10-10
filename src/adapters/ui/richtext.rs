@@ -1,17 +1,21 @@
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 use std::fmt::Write;
+use std::hash::Hash;
+use std::mem;
 
 use ruma::html::{Html, NodeRef};
-use slint::{SharedString, StyledText};
+use slint::{SharedString, StyledText, StyledTextFromMarkdownError};
 
 use super::session::with_session;
 use super::{autolink, permalink};
+use crate::adapters::body_emoji;
 use crate::domain::mention;
 
 const MAX_DEPTH: usize = 16;
 const MAX_NODES: usize = 4096;
 const MAX_MARKDOWN_LEN: usize = 64 * 1024;
 const MAX_MEMO_ENTRIES: usize = 512;
+const MAX_INLINE_PIECES: usize = 512;
 const CELL_GAP: &str = "   ";
 const TAB_AS_SPACES: &str = "    ";
 const LIST_INDENT: &str = "    ";
@@ -20,6 +24,7 @@ const BULLET: &str = "\u{2022} ";
 const QUOTE_MARKER: &str = "> ";
 const DELIMITER_GUARD: &str = "<u></u>";
 const EMPTY_ITEM_CONTENT: &str = "<u></u>";
+const NBSP: &str = "\u{a0}";
 
 #[derive(Clone)]
 pub struct StyledBody {
@@ -27,6 +32,32 @@ pub struct StyledBody {
     pub plain: SharedString,
     pub has_links: bool,
     pub mentions_you: bool,
+}
+
+#[derive(Clone)]
+pub enum InlineContent {
+    Text(StyledText),
+    Emoji(String),
+}
+
+#[derive(Clone)]
+pub struct InlinePiece {
+    pub content: InlineContent,
+    pub spaced: bool,
+}
+
+#[derive(Clone)]
+pub struct InlineLine {
+    pub pieces: Vec<InlinePiece>,
+    pub words: StyledText,
+    pub emoji: usize,
+    pub gaps: usize,
+}
+
+#[derive(Clone)]
+pub struct InlineBody {
+    pub lines: Vec<InlineLine>,
+    pub emote_only: bool,
 }
 
 #[derive(Clone, Copy, Default, PartialEq, Eq, Hash)]
@@ -48,14 +79,31 @@ enum Source {
     Unformatted(String, RoomWord),
 }
 
+#[derive(PartialEq, Eq, Hash)]
+struct InlineSource {
+    html: String,
+    room_word: RoomWord,
+    drawn: BTreeSet<String>,
+}
+
+type Memo<K, T> = HashMap<K, Option<T>>;
+
 #[derive(Default)]
 pub struct StyledBodies {
     own_user_id: String,
-    rendered: HashMap<Source, Option<StyledBody>>,
+    rendered: Memo<Source, StyledBody>,
+    inline: Memo<InlineSource, InlineBody>,
+}
+
+impl StyledBodies {
+    fn forget(&mut self) {
+        self.rendered.clear();
+        self.inline.clear();
+    }
 }
 
 pub fn forget_styled_bodies() {
-    with_session(|session| session.bodies.rendered.clear());
+    with_session(|session| session.bodies.forget());
 }
 
 pub fn recognise_own_user(user_id: &str) {
@@ -63,32 +111,53 @@ pub fn recognise_own_user(user_id: &str) {
         let bodies = &mut session.bodies;
         if bodies.own_user_id != user_id {
             user_id.clone_into(&mut bodies.own_user_id);
-            bodies.rendered.clear();
+            bodies.forget();
         }
     });
 }
 
 pub fn styled_body(html: &str, plain_fallback: &str, room_word: RoomWord) -> StyledBody {
-    rendered(
+    memoised(
         Source::Formatted(html.to_owned(), room_word),
-        |own_user_id| build(html, Writer::reading_as(own_user_id, room_word)),
+        |bodies| &mut bodies.rendered,
+        |own_user_id, _| build(html, Writer::reading_as(own_user_id, room_word)),
     )
     .unwrap_or_else(|| unstyled_body(plain_fallback))
 }
 
 pub fn plain_body(text: &str, room_word: RoomWord) -> StyledBody {
-    rendered(
+    memoised(
         Source::Unformatted(text.to_owned(), room_word),
-        |own_user_id| build_plain(text, Writer::reading_as(own_user_id, room_word)),
+        |bodies| &mut bodies.rendered,
+        |own_user_id, _| build_plain(text, Writer::reading_as(own_user_id, room_word)),
     )
     .unwrap_or_else(|| unstyled_body(text))
 }
 
-fn rendered(source: Source, render: impl FnOnce(&str) -> Option<StyledBody>) -> Option<StyledBody> {
+pub fn inline_body(html: &str, room_word: RoomWord, drawn: BTreeSet<String>) -> Option<InlineBody> {
+    let source = InlineSource {
+        html: html.to_owned(),
+        room_word,
+        drawn,
+    };
+    memoised(
+        source,
+        |bodies| &mut bodies.inline,
+        |own_user_id, source| {
+            let writer = Writer::inline_as(own_user_id, room_word, source.drawn.clone());
+            build_inline(html, writer)
+        },
+    )
+}
+
+fn memoised<K: Hash + Eq, T: Clone>(
+    source: K,
+    memo: fn(&mut StyledBodies) -> &mut Memo<K, T>,
+    render: impl FnOnce(&str, &K) -> Option<T>,
+) -> Option<T> {
     let lookup = with_session(|session| {
-        let bodies = &session.bodies;
-        bodies
-            .rendered
+        let bodies = &mut session.bodies;
+        memo(bodies)
             .get(&source)
             .cloned()
             .ok_or_else(|| bodies.own_user_id.clone())
@@ -98,8 +167,14 @@ fn rendered(source: Source, render: impl FnOnce(&str) -> Option<StyledBody>) -> 
         Err(own_user_id) => own_user_id,
     };
 
-    let built = render(&own_user_id);
-    remember(source, built.clone());
+    let built = render(&own_user_id, &source);
+    with_session(|session| {
+        let memo = memo(&mut session.bodies);
+        if memo.len() >= MAX_MEMO_ENTRIES {
+            memo.clear();
+        }
+        memo.insert(source, built.clone());
+    });
     built
 }
 
@@ -112,22 +187,8 @@ fn unstyled_body(text: &str) -> StyledBody {
     }
 }
 
-fn remember(source: Source, built: Option<StyledBody>) {
-    with_session(|session| {
-        let memo = &mut session.bodies.rendered;
-        if memo.len() >= MAX_MEMO_ENTRIES {
-            memo.clear();
-        }
-        memo.insert(source, built);
-    });
-}
-
 fn build(html: &str, mut writer: Writer<'_>) -> Option<StyledBody> {
-    let document = Html::parse(html);
-    for node in document.children() {
-        writer.node(&node, 0);
-    }
-    writer.finish_line();
+    writer.document(html);
 
     if writer.exceeded_limits() {
         tracing::debug!("a formatted message exceeded the rich-text limits, showing it plain");
@@ -150,6 +211,33 @@ fn build(html: &str, mut writer: Writer<'_>) -> Option<StyledBody> {
         Err(e) => {
             tracing::debug!("a formatted message did not render, showing it plain: {e}");
             (!plain.is_empty()).then(|| unstyled_body(plain))
+        }
+    }
+}
+
+fn build_inline(html: &str, mut writer: Writer<'_>) -> Option<InlineBody> {
+    writer.document(html);
+
+    if writer.exceeded_limits() {
+        tracing::debug!("a body with custom emoji is over the inline limits, showing shortcodes");
+        return None;
+    }
+
+    let emote_only = writer.plain.trim().is_empty();
+    let inline = writer.inline?;
+    if !inline.has_emoji {
+        return None;
+    }
+    let lines = inline
+        .lines
+        .into_iter()
+        .map(render_line)
+        .collect::<Result<Vec<_>, _>>();
+    match lines {
+        Ok(lines) => Some(InlineBody { lines, emote_only }),
+        Err(e) => {
+            tracing::debug!("a word beside a custom emoji did not render, showing shortcodes: {e}");
+            None
         }
     }
 }
@@ -246,6 +334,67 @@ struct OpenStyle {
     written_on_this_line: bool,
 }
 
+enum Content {
+    Markdown(String),
+    Emoji(String),
+}
+
+struct Piece {
+    content: Content,
+    spaced: bool,
+}
+
+impl Piece {
+    fn render(self) -> Result<InlinePiece, StyledTextFromMarkdownError> {
+        let content = match self.content {
+            Content::Markdown(markdown) => {
+                InlineContent::Text(StyledText::from_markdown(&markdown)?)
+            }
+            Content::Emoji(mxc) => InlineContent::Emoji(mxc),
+        };
+        Ok(InlinePiece {
+            content,
+            spaced: self.spaced,
+        })
+    }
+}
+
+fn render_line(pieces: Vec<Piece>) -> Result<InlineLine, StyledTextFromMarkdownError> {
+    let mut words = String::new();
+    let mut emoji = 0;
+    let mut gaps = 0;
+    for piece in &pieces {
+        match &piece.content {
+            Content::Markdown(markdown) => {
+                words.push_str(DELIMITER_GUARD);
+                words.push_str(markdown);
+            }
+            Content::Emoji(_) => emoji += 1,
+        }
+        gaps += usize::from(piece.spaced);
+    }
+    Ok(InlineLine {
+        words: StyledText::from_markdown(&words)?,
+        pieces: pieces
+            .into_iter()
+            .map(Piece::render)
+            .collect::<Result<_, _>>()?,
+        emoji,
+        gaps,
+    })
+}
+
+#[derive(Default)]
+struct InlineLines {
+    drawn: BTreeSet<String>,
+    lines: Vec<Vec<Piece>>,
+    pieces: Vec<Piece>,
+    pieces_written: usize,
+    has_content: bool,
+    word_break: bool,
+    has_emoji: bool,
+}
+
 #[derive(Clone, Copy, Default, PartialEq, Eq)]
 enum Line {
     #[default]
@@ -274,6 +423,7 @@ struct Writer<'own> {
     quote_depth: usize,
     quotes_on_line: usize,
     open_styles: Vec<OpenStyle>,
+    inline: Option<InlineLines>,
 }
 
 impl<'own> Writer<'own> {
@@ -285,9 +435,30 @@ impl<'own> Writer<'own> {
         }
     }
 
+    fn inline_as(own_user_id: &'own str, room_word: RoomWord, drawn: BTreeSet<String>) -> Self {
+        Self {
+            inline: Some(InlineLines {
+                drawn,
+                ..InlineLines::default()
+            }),
+            ..Self::reading_as(own_user_id, room_word)
+        }
+    }
+
     fn exceeded_limits(&mut self) -> bool {
-        self.overflowed |= self.markdown.len() > MAX_MARKDOWN_LEN;
+        let pieces = self
+            .inline
+            .as_ref()
+            .map_or(0, |inline| inline.pieces_written);
+        self.overflowed |= self.markdown.len() > MAX_MARKDOWN_LEN || pieces > MAX_INLINE_PIECES;
         self.overflowed
+    }
+
+    fn document(&mut self, html: &str) {
+        for node in Html::parse(html).children() {
+            self.node(&node, 0);
+        }
+        self.finish_line();
     }
 
     fn node(&mut self, node: &NodeRef, depth: usize) {
@@ -311,7 +482,7 @@ impl<'own> Writer<'own> {
             "mx-reply" => (),
             "br" => self.finish_line(),
             "hr" => self.block(node, depth, |w, _, _| w.text("---")),
-            "img" => self.text(&image_text(node)),
+            "img" => self.image(node),
             "b" | "strong" => self.styled(InlineStyle::Strong, node, depth),
             "i" | "em" => self.styled(InlineStyle::Italic, node, depth),
             "del" | "s" | "strike" => self.styled(InlineStyle::Struck, node, depth),
@@ -336,6 +507,80 @@ impl<'own> Writer<'own> {
         for child in node.children() {
             self.node(&child, depth + 1);
         }
+    }
+
+    fn image(&mut self, node: &NodeRef) {
+        let emoji = body_emoji::source(node).filter(|mxc| {
+            self.inline
+                .as_ref()
+                .is_some_and(|inline| inline.drawn.contains(mxc))
+        });
+        match emoji {
+            Some(mxc) => self.emoji(mxc),
+            None => self.text(&image_text(node)),
+        }
+    }
+
+    fn emoji(&mut self, mxc: String) {
+        self.write_pending_quote_markers();
+        self.end_piece();
+        self.line = Line::HasContent;
+        if let Some(inline) = self.inline.as_mut() {
+            inline.pieces.push(Piece {
+                content: Content::Emoji(mxc),
+                spaced: false,
+            });
+            inline.pieces_written += 1;
+            inline.has_emoji = true;
+        }
+    }
+
+    fn end_piece(&mut self) {
+        if self.inline.is_none() {
+            return;
+        }
+        self.write_closers_before_line_end();
+        let markdown = mem::take(&mut self.markdown);
+        let Some(inline) = self.inline.as_mut() else {
+            return;
+        };
+        let spaced = mem::take(&mut inline.word_break);
+        if mem::take(&mut inline.has_content) {
+            inline.pieces.push(Piece {
+                content: Content::Markdown(markdown),
+                spaced,
+            });
+            inline.pieces_written += 1;
+        }
+    }
+
+    fn note_content(&mut self) {
+        if let Some(inline) = self.inline.as_mut() {
+            inline.has_content = true;
+        }
+    }
+
+    fn mark_word_break(&mut self) {
+        let Some(inline) = self.inline.as_mut() else {
+            return;
+        };
+        if inline.has_content {
+            inline.word_break = true;
+        } else if let Some(last) = inline.pieces.last_mut() {
+            last.spaced = true;
+        }
+    }
+
+    fn break_pending_word(&mut self) {
+        let pending = self.inline.as_ref().is_some_and(|inline| inline.word_break);
+        if pending {
+            self.end_piece();
+        }
+    }
+
+    fn start_word(&mut self) {
+        self.break_pending_word();
+        self.write_pending_openers();
     }
 
     fn block(&mut self, node: &NodeRef, depth: usize, body: impl Fn(&mut Self, &NodeRef, usize)) {
@@ -368,16 +613,29 @@ impl<'own> Writer<'own> {
 
     fn write_pending_prefix(&mut self) {
         self.write_pending_quote_markers();
-        self.write_pending_openers();
+        self.start_word();
     }
 
     fn write_pending_quote_markers(&mut self) {
         for _ in self.quotes_on_line..self.quote_depth {
-            self.push_escaped(QUOTE_MARKER);
+            self.push_marker(QUOTE_MARKER);
             self.plain.push_str(QUOTE_MARKER);
             self.line = Line::MarkersOnly;
         }
         self.quotes_on_line = self.quote_depth;
+    }
+
+    fn push_marker(&mut self, marker: &str) {
+        if self.inline.is_none() {
+            self.push_escaped(marker);
+            return;
+        }
+        let glyphs = marker.trim_end_matches(' ');
+        self.break_pending_word();
+        self.push_escaped(glyphs);
+        if glyphs.len() < marker.len() {
+            self.mark_word_break();
+        }
     }
 
     fn write_pending_openers(&mut self) {
@@ -439,6 +697,7 @@ impl<'own> Writer<'own> {
             ""
         };
         write!(self.markdown, "{fence}{padding}{text}{padding}{fence}").ok();
+        self.note_content();
         self.plain.push_str(text);
         self.line = Line::HasContent;
     }
@@ -536,7 +795,7 @@ impl<'own> Writer<'own> {
     }
 
     fn leave_blank_line(&mut self) {
-        if !self.markdown.is_empty() && !self.markdown.ends_with("\n\n") {
+        if self.inline.is_none() && !self.markdown.is_empty() && !self.markdown.ends_with("\n\n") {
             self.markdown.push('\n');
         }
     }
@@ -554,7 +813,11 @@ impl<'own> Writer<'own> {
         self.write_pending_quote_markers();
         let plain_indent = LIST_INDENT.repeat(self.list_depth.saturating_sub(1));
         let plain_marker = number.map_or_else(|| BULLET.to_owned(), |n| format!("{n}. "));
-        if self.quotes_on_line > 0 {
+        if self.inline.is_some() {
+            self.break_pending_word();
+            self.push_escaped(&plain_indent.replace(' ', NBSP));
+            self.push_marker(&plain_marker);
+        } else if self.quotes_on_line > 0 {
             self.push_escaped(&plain_indent);
             self.push_escaped(&plain_marker);
         } else {
@@ -602,6 +865,7 @@ impl<'own> Writer<'own> {
                 continue;
             };
             self.push_words(before);
+            self.start_word();
             self.link_to(&destination, |w| {
                 w.markdown.push('[');
                 w.push_escaped(label);
@@ -615,7 +879,7 @@ impl<'own> Writer<'own> {
 
     fn push_words(&mut self, text: &str) {
         if self.room_word == RoomWord::Text {
-            self.push_escaped(text);
+            self.push_spaced(text);
             return;
         }
         let mut written = 0;
@@ -624,12 +888,29 @@ impl<'own> Writer<'own> {
             else {
                 continue;
             };
-            self.push_escaped(before);
+            self.push_spaced(before);
             self.tags_room = true;
+            self.start_word();
             self.bold_mention(|w| w.push_escaped(tag));
             written = span.end;
         }
-        self.push_escaped(text.get(written..).unwrap_or_default());
+        self.push_spaced(text.get(written..).unwrap_or_default());
+    }
+
+    fn push_spaced(&mut self, text: &str) {
+        if self.inline.is_none() {
+            self.push_escaped(text);
+            return;
+        }
+        for (index, word) in text.split(' ').enumerate() {
+            if index > 0 {
+                self.mark_word_break();
+            }
+            if !word.is_empty() {
+                self.start_word();
+                self.push_escaped(word);
+            }
+        }
     }
 
     fn close_link(&mut self, destination: &str) {
@@ -645,6 +926,23 @@ impl<'own> Writer<'own> {
             }
             self.markdown.push(ch);
         }
+        if !text.is_empty() {
+            self.note_content();
+        }
+    }
+
+    fn finish_inline_line(&mut self) {
+        if let Some(inline) = self.inline.as_mut() {
+            inline.word_break = false;
+        }
+        self.end_piece();
+        if let Some(inline) = self.inline.as_mut() {
+            let mut line = mem::take(&mut inline.pieces);
+            if let Some(last) = line.last_mut() {
+                last.spaced = false;
+            }
+            inline.lines.push(line);
+        }
     }
 
     fn finish_content_line(&mut self) {
@@ -657,11 +955,15 @@ impl<'own> Writer<'own> {
         if self.line == Line::Empty {
             return;
         }
-        if self.line == Line::MarkersOnly {
-            self.markdown.push_str(EMPTY_ITEM_CONTENT);
+        if self.inline.is_some() {
+            self.finish_inline_line();
+        } else {
+            if self.line == Line::MarkersOnly {
+                self.markdown.push_str(EMPTY_ITEM_CONTENT);
+            }
+            self.write_closers_before_line_end();
+            self.markdown.push('\n');
         }
-        self.write_closers_before_line_end();
-        self.markdown.push('\n');
         self.plain.push('\n');
         self.line = Line::Empty;
         self.quotes_on_line = 0;

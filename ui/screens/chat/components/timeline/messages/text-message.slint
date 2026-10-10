@@ -1,17 +1,112 @@
 import { Palette } from "std-widgets.slint";
 
-import { MessageEntry } from "../../../../../types.slint";
+import { BodyLine, BodyPiece, MessageEntry } from "../../../../../types.slint";
+import { EmojiArt } from "../../../../../enums.slint";
 import { Actions } from "../../../../../actions.slint";
 import { TextSelection } from "../../../../../local.slint";
-import { AppStyle, Fonts } from "../../../../../theme.slint";
+import { AppStyle, Fonts, IconSize, Metrics, Space } from "../../../../../theme.slint";
+import { CustomEmojiImage } from "../custom-emoji.slint";
+
+component BodyPieceView inherits HorizontalLayout {
+    in property <BodyPiece> piece;
+    in property <length> emoji-size;
+    in property <length> icon-size;
+    in property <color> link-color;
+
+    padding-right: root.piece.spaced ? Metrics.word-space : 0;
+
+    if root.piece.art == EmojiArt.text: StyledText {
+        text: root.piece.styled;
+        default-font-family: Fonts.emoji;
+        default-font-size: Fonts.body;
+        default-color: Palette.foreground;
+        link-color: root.link-color;
+        link-clicked(url) => {
+            Actions.open-link(url);
+        }
+    }
+
+    if root.piece.art != EmojiArt.text: CustomEmojiImage {
+        key: root.piece.key;
+        art: root.piece.art;
+        image: root.piece.image;
+        size: root.emoji-size;
+        icon-size: root.icon-size;
+    }
+}
+
+component InlineBody inherits VerticalLayout {
+    in property <[BodyLine]> lines;
+    in property <length> emoji-size;
+    in property <length> icon-size;
+    in property <color> link-color;
+    out property <length> laid-out-height: end.y;
+
+    alignment: start;
+
+    for line in root.lines: FlexboxLayout {
+        alignment: start;
+        cross-axis-alignment: center;
+
+        for piece in line.pieces: BodyPieceView {
+            piece: piece;
+            emoji-size: root.emoji-size;
+            icon-size: root.icon-size;
+            link-color: root.link-color;
+        }
+    }
+
+    end := Rectangle {
+        height: 0;
+    }
+}
+
+component UnwrappedLines inherits VerticalLayout {
+    in property <[BodyLine]> lines;
+    in property <length> emoji-size;
+
+    for line in root.lines: HorizontalLayout {
+        StyledText {
+            text: line.words;
+            default-font-family: Fonts.emoji;
+            default-font-size: Fonts.body;
+        }
+
+        Rectangle {
+            width: line.emoji * root.emoji-size + line.gaps * Metrics.word-space;
+        }
+    }
+}
 
 export component TextMessage inherits Rectangle {
     in property <MessageEntry> msg;
 
     property <bool> selecting: TextSelection.holds(root.msg.unique-id);
+    property <bool> inline: !root.selecting && root.msg.body-lines.length > 0;
+    property <length> emoji-size: root.msg.emote-only ? Metrics.jumbo-emoji : Metrics.inline-emoji;
 
-    preferred-width: content.preferred-width;
-    height: content.preferred-height;
+    preferred-width: root.inline ? unwrapped.preferred-width + Space.sm : content.preferred-width;
+    height: root.inline ? inline-body.laid-out-height : content.preferred-height;
+
+    unwrapped := UnwrappedLines {
+        x: 0;
+        y: 0;
+        visible: false;
+        lines: root.inline ? root.msg.body-lines : [];
+        emoji-size: root.emoji-size;
+    }
+
+    inline-body := InlineBody {
+        x: 0;
+        y: 0;
+        width: root.width;
+        height: Metrics.inline-body-room;
+        visible: root.inline;
+        lines: root.inline ? root.msg.body-lines : [];
+        emoji-size: root.emoji-size;
+        icon-size: root.msg.emote-only ? IconSize.lg : IconSize.xs;
+        link-color: root.msg.is-own ? AppStyle.own-link : AppStyle.link;
+    }
 
     accessible-role: text;
     accessible-label: root.msg.body;
@@ -20,7 +115,7 @@ export component TextMessage inherits Rectangle {
     }
 
     content := VerticalLayout {
-        if !root.selecting: StyledText {
+        if !root.selecting && !root.inline: StyledText {
             text: root.msg.styled;
             default-font-family: Fonts.emoji;
             default-font-size: Fonts.body;

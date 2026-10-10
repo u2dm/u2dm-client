@@ -742,6 +742,7 @@ impl MessageDto {
     }
 
     pub fn to_message(&self, own_user: &str, now_ms: u64) -> TimelineMessage {
+        let body = self.to_body(own_user);
         TimelineMessage {
             unique_id: self.id.clone(),
             event_id: Some(self.id.clone()),
@@ -750,7 +751,8 @@ impl MessageDto {
             sender: self.sender.clone(),
             sender_display_name: Some(self.name.clone()),
             sender_avatar_url: Some(self.sender.clone()),
-            body: self.to_body(own_user),
+            body_emoji: media::emoji_states(&body),
+            body,
             mentions_room: self.mentions_room,
             timestamp: ago_ms(now_ms, self.minutes_ago, self.days_ago),
             is_own: self.sender == own_user,
@@ -769,7 +771,7 @@ impl MessageDto {
                 .iter()
                 .map(|reaction| Reaction {
                     key: reaction.key.clone(),
-                    image: media::reaction_image(&reaction.key),
+                    image: media::custom_emoji(&reaction.key),
                     mine: reaction.senders.iter().any(|sender| sender == own_user),
                     senders: reaction
                         .senders

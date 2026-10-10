@@ -44,6 +44,7 @@ scenario_env() {
     user-moderation) echo 'U2DM_DEMO_USER_INFO=admin,slow' ;;
     user-moderation-failures) echo 'U2DM_DEMO_USER_INFO=admin,kick-fails' ;;
     user-tags)       echo 'U2DM_DEMO_RICHTEXT=links,bare' ;;
+    custom-emoji)    echo 'U2DM_DEMO_RICHTEXT=emoji U2DM_DEMO_WINDOW=900x1400' ;;
     message-link)    echo 'U2DM_DEMO_MESSAGE_MENU=slow' ;;
     message-source)  echo 'U2DM_DEMO_MESSAGE_MENU=slow' ;;
     message-pins)    echo 'U2DM_DEMO_MESSAGE_MENU=slow U2DM_DEMO_PINNED=slow' ;;
@@ -198,6 +199,9 @@ scenario_steps() {
       echo 'sleep 3'
       echo '{"op":"open_user_info","user_id":"@sarah:matrix.org"}'
       echo 'sleep 3' ;;
+    custom-emoji)
+      echo '{"op":"select_room","room_id":"!design:demo.local"}'
+      echo 'sleep 2' ;;
     user-tags)
       echo '{"op":"select_room","room_id":"!design:demo.local"}'
       echo 'sleep 1'
@@ -372,6 +376,7 @@ scenario_note() {
     message-pin-failures) echo 'a pin is refused, so the row stays unpinned and the toast shows' ;;
     message-delete)  echo 'an own quoted message is deleted twice (one deletion), then a pinned message of someone else' ;;
     user-tags)       echo 'in !design, tags naming you are bold and tint their bubble (mentions_you), and a matrix.to user link opens the user sheet, yours and then Sarah'"'"'s, instead of the browser' ;;
+    custom-emoji)    echo 'in !design, custom emoji flow among the words at text height and an emote-only body is large (emote_only, body_emoji); a missing one reads as its shortcode' ;;
     message-delete-failures) echo 'an own deletion comes back with the toast; a member may not delete someone else'"'"'s message' ;;
     readers)         echo 'in !rust, the 123 readers of an older message load slowly, then the 121 readers of your newest message page in fifty at a time' ;;
     room-search)     echo 'in All Rooms, "design" lists the Design Team room, then the Design space' ;;
@@ -397,7 +402,7 @@ names() {
     pinned-bar media-failures compact-layout login-oauth verify-self audio-track voice-notes delivery-marks \
     space-index polls poll-edits room-info room-leave room-info-failures room-info-pane room-menu room-menu-leave \
     room-menu-failures room-log user-info user-info-failures user-dm user-dm-start user-dm-failures user-ignore user-moderation \
-    user-moderation-failures user-tags message-link message-source message-pins message-pin-failures message-delete \
+    user-moderation-failures user-tags custom-emoji message-link message-source message-pins message-pin-failures message-delete \
     message-delete-failures readers room-search room-search-open mentions room-mention
 }
 
