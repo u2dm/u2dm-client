@@ -1,5 +1,6 @@
 MODES := "target/modes"
-INTERPRETED := "--no-default-features --features interpreted,video"
+INTERPRETED := "--no-default-features --features interpreted,video,matrix"
+DEMO := "--no-default-features --features compiled,demo,video"
 
 default:
     @just --list
@@ -17,7 +18,7 @@ run-interpreted *ARGS:
     CARGO_TARGET_DIR={{ MODES }}/interpreted cargo run {{ INTERPRETED }} {{ ARGS }}
 
 demo *ARGS:
-    CARGO_TARGET_DIR={{ MODES }}/demo cargo run --features demo {{ ARGS }}
+    CARGO_TARGET_DIR={{ MODES }}/demo cargo run {{ DEMO }} {{ ARGS }}
 
 screenshot *ARGS:
     ./scripts/gen-screenshot.sh {{ ARGS }}

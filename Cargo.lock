@@ -7816,6 +7816,7 @@ dependencies = [
  "pure-rust-locales",
  "rand 0.10.2",
  "rfd",
+ "ruma",
  "rustix 1.1.4",
  "serde",
  "serde_json",

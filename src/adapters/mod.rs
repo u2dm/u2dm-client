@@ -1,13 +1,16 @@
+#[cfg(feature = "matrix")]
 pub mod browser;
 pub mod container;
 #[cfg(feature = "demo")]
 pub mod demo;
 pub mod instance;
 pub mod markdown;
+#[cfg(feature = "matrix")]
 pub mod matrix;
 pub mod media;
 pub mod private_fs;
 pub mod room_log;
+#[cfg(feature = "matrix")]
 pub mod storage;
 pub mod ui;
 pub mod video;

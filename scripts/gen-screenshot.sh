@@ -6,7 +6,7 @@ destination="${1:-$root/docs/screenshot.png}"
 
 readonly MCP_PORT=8080
 readonly APP_NAME="u2dm"
-readonly FEATURES="demo slint/mcp"
+readonly FEATURES="compiled demo video slint/mcp"
 readonly PROFILE="inspect"
 readonly ROOM_ROW=${ROOM_ROW:-0}
 readonly READY_TIMEOUT=60
@@ -40,12 +40,13 @@ require_tools() {
 
 build_demo_app() {
   echo "building the demo app with the Slint inspector"
-  cargo build --profile "$PROFILE" --features "$FEATURES"
+  cargo build --profile "$PROFILE" --no-default-features --features "$FEATURES"
 }
 
 launch_demo_app() {
   pkill -x "$APP_NAME" 2>/dev/null && sleep 1
-  setsid env SLINT_MCP_PORT=$MCP_PORT cargo run --profile "$PROFILE" --features "$FEATURES" >"$log" 2>&1 &
+  setsid env SLINT_MCP_PORT=$MCP_PORT cargo run --profile "$PROFILE" --no-default-features \
+    --features "$FEATURES" >"$log" 2>&1 &
   app_pid=$!
   echo "launched the demo app, inspector on $MCP_URL"
 }

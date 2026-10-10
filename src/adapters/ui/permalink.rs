@@ -1,5 +1,5 @@
-use matrix_sdk::ruma::{OwnedUserId, UserId as MatrixUserId};
 use percent_encoding::percent_decode_str;
+use ruma::{OwnedUserId, UserId as MatrixUserId};
 use url::Url;
 
 use crate::domain::user_info::UserId;

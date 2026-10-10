@@ -1,10 +1,10 @@
 use std::ops::Range;
 
-use matrix_sdk::ruma::events::Mentions;
-use matrix_sdk::ruma::events::room::message::{FormattedBody, TextMessageEventContent};
-use matrix_sdk::ruma::html::{HtmlSanitizerMode, RemoveReplyFallback, sanitize_html};
-use matrix_sdk::ruma::{OwnedUserId, UserId};
 use pulldown_cmark::{Event, Options, Parser, Tag, TagEnd};
+use ruma::events::Mentions;
+use ruma::events::room::message::{FormattedBody, TextMessageEventContent};
+use ruma::html::{HtmlSanitizerMode, RemoveReplyFallback, sanitize_html};
+use ruma::{OwnedUserId, UserId};
 
 use crate::domain::mention::{is_user_tag, mentions_room, user_tags};
 use crate::domain::message::RichText;

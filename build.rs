@@ -279,7 +279,7 @@ fn check_scenario_catalogs() {
             missing.is_empty() && extra.is_empty(),
             "{} and its CATALOG disagree: the match accepts {missing:?} that the catalog does not \
              list, and the catalog lists {extra:?} that the match does not accept. The catalog is \
-             what `--demo-scenarios` reports, so a flag missing from it is one no agent will find.",
+             what `--demo-scenarios` reports.",
             source.file
         );
     }

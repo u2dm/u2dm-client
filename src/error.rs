@@ -12,6 +12,7 @@ pub enum AppError {
     #[error(transparent)]
     Io(#[from] io::Error),
 
+    #[cfg(feature = "matrix")]
     #[error(transparent)]
     Matrix(#[from] matrix_sdk::Error),
 

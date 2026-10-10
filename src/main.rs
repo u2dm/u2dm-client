@@ -1,4 +1,5 @@
 #![recursion_limit = "256"]
+#![cfg_attr(not(feature = "matrix"), allow(dead_code))]
 
 use std::env;
 use std::io::{self, IsTerminal};

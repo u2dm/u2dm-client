@@ -5,6 +5,7 @@ readonly PROBE_PORT=${U2DM_PROBE_PORT:-9090}
 readonly MCP_PORT=${SLINT_MCP_PORT:-8080}
 readonly PROBE="http://127.0.0.1:$PROBE_PORT"
 readonly PROFILE=${PROFILE:-inspect}
+readonly FEATURES=${U2DM_DRIVE_FEATURES:-compiled demo video slint/mcp}
 readonly ROOT=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 readonly LOG=${U2DM_DRIVE_LOG:-$ROOT/target/u2dm-drive.log}
 
@@ -37,7 +38,8 @@ usage: u2dm-drive <command> [args]
   scroll                 the timeline scroll state machine (needs --mcp)
   shot <file>            screenshot via the Slint MCP inspector (needs --mcp)
 
-Environment: U2DM_PROBE_PORT (9090), SLINT_MCP_PORT (8080), and any U2DM_DEMO_*
+Environment: U2DM_PROBE_PORT (9090), SLINT_MCP_PORT (8080), U2DM_DRIVE_FEATURES
+(compiled demo video slint/mcp, built without the default features), and any U2DM_DEMO_*
 scenario variable, which is passed straight through to the app.
 USAGE
 }
@@ -58,14 +60,11 @@ cmd_up() {
   pkill -x u2dm 2>/dev/null || true
   sleep 1
 
-  local features="demo"
   local -a env=(U2DM_ASSERT_DEMO=1 "U2DM_PROBE_PORT=$PROBE_PORT" "U2DM_LOG_FORMAT=json")
   [[ -n ${RUST_LOG:-} ]] && env+=("RUST_LOG=$RUST_LOG") || env+=("RUST_LOG=u2dm=debug")
   if (( with_mcp )); then
-    features="demo slint/mcp"
     env+=("SLINT_MCP_PORT=$MCP_PORT" "SLINT_EMIT_DEBUG_INFO=1")
     if (( headless )); then
-      features="demo slint/mcp slint/renderer-software"
       env+=("SLINT_BACKEND=headless")
     elif [[ -z ${DISPLAY:-}${WAYLAND_DISPLAY:-} ]]; then
       die "no graphical session; use --headless"
@@ -73,7 +72,8 @@ cmd_up() {
   fi
 
   ( cd "$ROOT" && SLINT_EMIT_DEBUG_INFO=${SLINT_EMIT_DEBUG_INFO:-1} \
-      cargo build --profile "$PROFILE" --features "$features" ) || die "build failed"
+      cargo build --profile "$PROFILE" --no-default-features --features "$FEATURES" ) ||
+    die "build failed"
 
   mkdir -p "$(dirname "$LOG")"
   local -a launcher=(setsid env)

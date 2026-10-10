@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::fmt::Write;
 
-use matrix_sdk::ruma::html::{Html, NodeRef};
+use ruma::html::{Html, NodeRef};
 use slint::{SharedString, StyledText};
 
 use super::session::with_session;

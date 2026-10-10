@@ -40,8 +40,8 @@ Early development.
 
 ```sh
 cargo run
-cargo run --features demo                                     # fake data, no account
-cargo run --no-default-features --features interpreted,video  # if you want to edit the UI without rebuilding
+cargo run --features demo                                            # fake data, no account
+cargo run --no-default-features --features interpreted,video,matrix  # if you want to edit the UI without rebuilding
 ```
 
 The first build downloads the emoji font from [u2dm/twemoji](https://github.com/u2dm/twemoji). Run `just` for shortcuts.

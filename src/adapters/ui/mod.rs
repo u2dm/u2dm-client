@@ -46,10 +46,7 @@ impl From<PlatformError> for AppError {
 }
 
 #[cfg(not(any(feature = "compiled", feature = "interpreted")))]
-compile_error!(
-    "no UI backend is enabled: build with the default `compiled` feature, which compiles \
-     ui/*.slint ahead of time, or with `interpreted`, which loads them at runtime"
-);
+compile_error!("enable the `compiled` or `interpreted` feature");
 
 #[cfg(not(feature = "interpreted"))]
 mod compiled;
