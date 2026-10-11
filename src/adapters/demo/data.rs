@@ -18,7 +18,7 @@ use crate::domain::media::{
 use crate::domain::member_name::{MemberName, NamedUser};
 use crate::domain::message::{
     MessageBody, MessagePreviewKind, PinnedMessage, Reaction, ReadBy, ReplyInfo, RichText,
-    SendState, TimelineMessage,
+    SendState, Shield, TimelineMessage,
 };
 use crate::domain::poll::{Poll, PollAnswer, PollDraft, PollStatus};
 use crate::domain::room::{NotifyMode, Room, RoomId, Space};
@@ -554,6 +554,7 @@ pub fn messages(room_id: &RoomId) -> Vec<TimelineMessage> {
     super::reactions::apply_scenario(&mut messages);
     super::polls::apply_scenario(&mut messages);
     names::apply_scenario(room_id, &mut messages, now);
+    super::shields::apply_scenario(room_id, &mut messages, now);
     name_messages(room_id, &mut messages);
     super::receipts::apply_scenario(&mut messages);
     mark_first_unread(room_id, &mut messages);
@@ -770,6 +771,7 @@ pub fn own_message(
         editable: true,
         is_first_unread: false,
         send_state,
+        shield: Shield::None,
         reactions: Vec::new(),
         read_by: ReadBy::default(),
     }
@@ -833,6 +835,7 @@ pub fn own_sticker(sequence: u64, image: &PackImage, reply: Option<ReplyInfo>) -
         editable: false,
         is_first_unread: false,
         send_state: SendState::default(),
+        shield: Shield::None,
         reactions: Vec::new(),
         read_by: ReadBy::default(),
     }
@@ -921,6 +924,7 @@ pub fn own_attachment(
         editable: true,
         is_first_unread: false,
         send_state: SendState::default(),
+        shield: Shield::None,
         reactions: Vec::new(),
         read_by: ReadBy::default(),
     }
@@ -943,7 +947,7 @@ pub fn body_preview(body: &MessageBody) -> RichText {
         MessageBody::Sticker { alt, .. } => RichText::plain(alt.clone()),
         MessageBody::File { meta } => RichText::plain(meta.filename.clone()),
         MessageBody::Poll(poll) => RichText::plain(poll.question.clone()),
-        MessageBody::Service(_) | MessageBody::UnableToDecrypt => RichText::default(),
+        MessageBody::Service(_) | MessageBody::UnableToDecrypt(_) => RichText::default(),
         MessageBody::Unsupported { fallback, .. } => RichText::plain(fallback.clone()),
     }
 }
@@ -1000,6 +1004,7 @@ fn synthesized_message(dto: &RoomDto, room: &Room) -> TimelineMessage {
         editable: dto.last_message.own,
         is_first_unread: false,
         send_state: SendState::default(),
+        shield: Shield::None,
         reactions: Vec::new(),
         read_by: ReadBy::default(),
     }

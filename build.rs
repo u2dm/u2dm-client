@@ -64,6 +64,21 @@ const ENUM_COVERAGE: &[EnumCoverage] = &[
         falls_through: &["none"],
     },
     EnumCoverage {
+        slint_enum: "ShieldReason",
+        branches_in: "ui/messages.slint",
+        falls_through: &["none"],
+    },
+    EnumCoverage {
+        slint_enum: "Shield",
+        branches_in: "ui/screens/chat/components/timeline/shield-mark.slint",
+        falls_through: &["none"],
+    },
+    EnumCoverage {
+        slint_enum: "DecryptionFailure",
+        branches_in: "ui/screens/chat/components/timeline/messages/utd-message.slint",
+        falls_through: &["unexplained"],
+    },
+    EnumCoverage {
         slint_enum: "ChildAccess",
         branches_in: "ui/screens/chat/components/space-index.slint",
         falls_through: &[],
@@ -144,6 +159,9 @@ const ENUM_TABLES: &[(&str, &str)] = &[
     ("MediaState", "media_states"),
     ("SendState", "send_states"),
     ("Delivery", "deliveries"),
+    ("Shield", "shields"),
+    ("ShieldReason", "shield_reasons"),
+    ("DecryptionFailure", "decryption_failures"),
     ("ReactionSend", "reaction_sends"),
     ("EmojiArt", "emoji_arts"),
     ("MediaFailure", "media_failures"),
@@ -198,6 +216,11 @@ const SCENARIO_SOURCES: &[ScenarioSource] = &[
     },
     ScenarioSource {
         file: "src/adapters/demo/names.rs",
+        arms_between: ("fn apply(scenario: &mut Scenario, flag: &str) {", "\n}"),
+        ignored: &[],
+    },
+    ScenarioSource {
+        file: "src/adapters/demo/shields.rs",
         arms_between: ("fn apply(scenario: &mut Scenario, flag: &str) {", "\n}"),
         ignored: &[],
     },

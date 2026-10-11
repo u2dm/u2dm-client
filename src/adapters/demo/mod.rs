@@ -17,6 +17,7 @@ mod reactions;
 mod receipts;
 mod richtext;
 mod room_info;
+mod shields;
 mod source;
 mod space_index;
 mod stickers;

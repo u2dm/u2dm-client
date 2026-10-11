@@ -14,7 +14,7 @@ import { AppStyle, Fonts, IconSize, Metrics, Space, Weight } from "../../../them
 import { DirectChat, Moderation, RoomMembership, UserMessageKind } from "../../../enums.slint";
 import { UserInfoView } from "../../../views.slint";
 import { Actions } from "../../../actions.slint";
-import { DeliveryTip, Reactions } from "../../../local.slint";
+import { MetaTip, Reactions } from "../../../local.slint";
 
 enum Asking {
     none,
@@ -222,7 +222,7 @@ export component UserInfoDialog inherits ModalHost {
     }
     opened => {
         Reactions.close();
-        DeliveryTip.clear();
+        MetaTip.clear();
     }
 
     changed shown-user => {

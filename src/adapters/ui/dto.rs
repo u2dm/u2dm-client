@@ -10,12 +10,12 @@ use super::decode::{
 };
 use super::emote::slug;
 use super::present::{
-    Delivery, MessageKind, PollPhase, ServiceKind, avatar_color_index, avatar_initials, delivery,
-    duration_label, file_extension, log_level_name, log_time_label, message_body_text,
-    message_kind, message_sender_label, message_sent_at_label, message_timestamp_label,
-    name_initials, poll_phase, pronoun_labels, reaction_key_label, reactor_labels, reader_labels,
-    room_activity_label, sender_initial, service_kind, service_target, unsupported_kind,
-    voice_bars, voter_labels,
+    Delivery, MessageKind, PollPhase, ServiceKind, ShieldReason, avatar_color_index,
+    avatar_initials, decryption_failure, delivery, duration_label, file_extension, log_level_name,
+    log_time_label, message_body_text, message_kind, message_sender_label, message_sent_at_label,
+    message_timestamp_label, name_initials, poll_phase, pronoun_labels, reaction_key_label,
+    reactor_labels, reader_labels, room_activity_label, sender_initial, service_kind,
+    service_target, shield_reason, unsupported_kind, voice_bars, voter_labels,
 };
 use super::richtext::{self, InlineContent, InlineLine, InlinePiece, RoomWord};
 use super::schema::{
@@ -29,8 +29,8 @@ use crate::domain::media::{
 };
 use crate::domain::member_name::{MemberName, isolated};
 use crate::domain::message::{
-    CustomEmoji, MessageBody, MessagePreviewKind, Reaction, ReactionSend, Reactor, RichText,
-    SendState, TimelineMessage,
+    CustomEmoji, DecryptionFailure, MessageBody, MessagePreviewKind, Reaction, ReactionSend,
+    Reactor, RichText, SendState, Shield, TimelineMessage,
 };
 use crate::domain::poll::{Poll, PollAnswer};
 use crate::domain::room::{Room, Space};
@@ -464,6 +464,9 @@ pub struct MessageDto {
     pub send_state: SendState,
     pub send_progress: f32,
     pub delivery: Delivery,
+    pub shield: Shield,
+    pub shield_reason: ShieldReason,
+    pub decryption_failure: DecryptionFailure,
     pub readers: SharedString,
     pub hidden_readers: i32,
     pub reader_count: i32,
@@ -1062,6 +1065,9 @@ pub fn message_to_dto(m: &TimelineMessage, pinned: bool, media: &dyn MediaCache)
         send_state: m.send_state,
         send_progress: m.send_state.fraction(),
         delivery: delivery(m),
+        shield: m.shield,
+        shield_reason: shield_reason(m.shield),
+        decryption_failure: decryption_failure(&m.body),
         readers: SharedString::from(readers),
         hidden_readers: count(hidden_readers),
         reader_count: count(m.read_by.total),
@@ -1101,7 +1107,20 @@ pub fn message_to_dto(m: &TimelineMessage, pinned: bool, media: &dyn MediaCache)
     };
 
     let thumbnail_path = apply_media(&mut dto, m, &item, media);
+    let avatar_path = apply_sender_avatar(&mut dto, m, media);
 
+    let thumbnail_undecoded = thumbnail_path.is_some() && dto.media_state == MediaState::Idle;
+    let avatar_undecoded = avatar_path.is_some() && !dto.has_avatar;
+    dto.needs_media = thumbnail_undecoded || avatar_undecoded;
+    record_media_need(&item, thumbnail_path.as_deref(), avatar_path.as_deref());
+    dto
+}
+
+fn apply_sender_avatar(
+    dto: &mut MessageDto,
+    m: &TimelineMessage,
+    media: &dyn MediaCache,
+) -> Option<PathBuf> {
     let avatar_path = m
         .sender_avatar_url
         .as_deref()
@@ -1112,12 +1131,7 @@ pub fn message_to_dto(m: &TimelineMessage, pinned: bool, media: &dyn MediaCache)
         dto.avatar = Some(img);
         dto.has_avatar = true;
     }
-
-    let thumbnail_undecoded = thumbnail_path.is_some() && dto.media_state == MediaState::Idle;
-    let avatar_undecoded = avatar_path.is_some() && !dto.has_avatar;
-    dto.needs_media = thumbnail_undecoded || avatar_undecoded;
-    record_media_need(&item, thumbnail_path.as_deref(), avatar_path.as_deref());
-    dto
+    avatar_path
 }
 
 pub fn enrich_to_update(delta: &EnrichmentDelta, media: &dyn MediaCache) -> EnrichUpdate {

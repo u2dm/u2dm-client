@@ -7,7 +7,7 @@ use super::reactions;
 use crate::domain::member_name::{MemberName, NamedUser};
 use crate::domain::message::{
     MessageBody, MessagePreviewKind, Reaction, ReactionSend, ReadBy, ReplyInfo, RichText,
-    SendState, ServiceEvent, TimelineMessage,
+    SendState, ServiceEvent, Shield, TimelineMessage,
 };
 use crate::domain::room::RoomId;
 
@@ -135,6 +135,7 @@ fn post(id: &str, sender: &str, at: u64, body: MessageBody) -> TimelineMessage {
         editable: false,
         is_first_unread: false,
         send_state: SendState::Sent,
+        shield: Shield::None,
         reactions: Vec::new(),
         read_by: ReadBy::default(),
     }

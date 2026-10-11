@@ -1,4 +1,4 @@
-import { AudioKind, ChildAccess, Delivery, EmojiArt, LogLevel, MediaFailure, MediaState, MemberRole, MemberRowKind, MessageKind, PackOrigin, PollPhase, PreviewKind, ReactionSend, RoomRowKind, SendState, ServiceKind, UserMessageKind } from "./enums.slint";
+import { AudioKind, ChildAccess, DecryptionFailure, Delivery, EmojiArt, LogLevel, MediaFailure, MediaState, MemberRole, MemberRowKind, MessageKind, PackOrigin, PollPhase, PreviewKind, ReactionSend, RoomRowKind, SendState, ServiceKind, Shield, ShieldReason, UserMessageKind } from "./enums.slint";
 
 export struct RoomEntry {
     id: string,
@@ -163,6 +163,9 @@ export struct MessageEntry {
     send-state: SendState,
     send-progress: float,
     delivery: Delivery,
+    shield: Shield,
+    shield-reason: ShieldReason,
+    decryption-failure: DecryptionFailure,
     readers: string,
     hidden-readers: int,
     reader-count: int,

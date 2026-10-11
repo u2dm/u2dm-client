@@ -1,4 +1,4 @@
-import { Delivery, LoginPhase, MessageKind, PollPhase, RoomInfoPlacement } from "./enums.slint";
+import { Delivery, LoginPhase, MessageKind, PollPhase, RoomInfoPlacement, Shield } from "./enums.slint";
 import { AttachmentView, LoginView, ReadersView, RoomInfoView, RoomLogView, RoomMenuView, RoomView, SourceView, UserInfoView, VerificationView, VideoView, WindowView } from "./views.slint";
 import { Actions } from "./actions.slint";
 import { MessageEntry, ReactionEntry } from "./types.slint";
@@ -187,32 +187,37 @@ export global Shell {
     }
 }
 
-export global DeliveryTip {
+export enum MetaMark { delivery, readers, shield }
+
+export global MetaTip {
     in-out property <string> key;
-    in-out property <bool> on-counter;
+    in-out property <MetaMark> mark;
     in-out property <AnchorRect> anchor: { row: -1 };
 
     out property <MessageEntry> target: TimelineRows.at(root.anchor.row);
     out property <bool> names-readers: root.target.delivery == Delivery.read
         || root.target.delivery == Delivery.seen;
+    property <bool> target-has-mark: root.mark == MetaMark.readers ? root.names-readers
+        : root.mark == MetaMark.shield ? root.target.shield != Shield.none
+        : root.target.delivery != Delivery.none;
     out property <bool> showing: root.key != ""
         && root.target.unique-id == root.key
-        && (root.on-counter ? root.names-readers : root.target.delivery != Delivery.none);
+        && root.target-has-mark;
 
-    public function show(key: string, a: AnchorRect, on-counter: bool) {
+    public function show(key: string, a: AnchorRect, mark: MetaMark) {
         root.key = key;
         root.anchor = a;
-        root.on-counter = on-counter;
+        root.mark = mark;
     }
 
-    public function follow(key: string, a: AnchorRect, on-counter: bool) {
-        if root.key == key && root.on-counter == on-counter {
+    public function follow(key: string, a: AnchorRect, mark: MetaMark) {
+        if root.key == key && root.mark == mark {
             root.anchor = a;
         }
     }
 
-    public function hide(key: string, on-counter: bool) {
-        if root.key == key && root.on-counter == on-counter {
+    public function hide(key: string, mark: MetaMark) {
+        if root.key == key && root.mark == mark {
             root.clear();
         }
     }
@@ -503,7 +508,7 @@ export global LocalState {
         MessageMenu.close();
         RoomMenu.close();
         ReplySwipe.clear();
-        DeliveryTip.clear();
+        MetaTip.clear();
         Polls.clear();
     }
 
@@ -513,14 +518,14 @@ export global LocalState {
         Reactions.close();
         MessageMenu.close();
         ReplySwipe.clear();
-        DeliveryTip.clear();
+        MetaTip.clear();
         Polls.clear();
         Shell.poll-open = false;
     }
 
     public function close-popovers() {
         Reactions.close();
-        DeliveryTip.clear();
+        MetaTip.clear();
         Shell.picker-open = false;
         Shell.attach-open = false;
     }

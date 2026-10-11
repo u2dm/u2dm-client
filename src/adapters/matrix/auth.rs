@@ -15,6 +15,7 @@ use matrix_sdk::ruma::{IdParseError, OwnedDeviceId, OwnedUserId};
 use matrix_sdk::utils::UrlOrQuery;
 use matrix_sdk::utils::local_server::{LocalServerBuilder, LocalServerRedirectHandle};
 use matrix_sdk::{Client, ClientBuilder, HttpError, SessionChange, SessionMeta};
+use matrix_sdk_base::crypto::{DecryptionSettings, TrustRequirement};
 use tokio::sync::broadcast::error::RecvError;
 use tokio::sync::{Mutex, mpsc};
 use url::Url;
@@ -41,6 +42,9 @@ async fn open_store(
         .with_encryption_settings(EncryptionSettings {
             backup_download_strategy: BackupDownloadStrategy::AfterDecryptionFailure,
             ..EncryptionSettings::default()
+        })
+        .with_decryption_settings(DecryptionSettings {
+            sender_device_trust_requirement: TrustRequirement::CrossSignedOrLegacy,
         })
         .sqlite_store_with_cache_path(&paths.data, &paths.cache, Some(passphrase))
         .build()

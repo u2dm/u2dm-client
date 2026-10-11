@@ -3,7 +3,7 @@ import { IconDisplay, IconSet } from "@lucide";
 import { MessageEntry } from "../../../../types.slint";
 import { Delivery } from "../../../../enums.slint";
 import { Deliveries } from "../../../../messages.slint";
-import { DeliveryTip, AnchorRect, Shell } from "../../../../local.slint";
+import { AnchorRect, MetaMark, MetaTip, Shell } from "../../../../local.slint";
 import { RoomView } from "../../../../views.slint";
 import { Actions } from "../../../../actions.slint";
 import { AppStyle, Fonts, IconSize, Space } from "../../../../theme.slint";
@@ -18,18 +18,18 @@ export global Readers {
     }
 }
 
-component TipTrigger inherits Rectangle {
+export component TipTrigger inherits Rectangle {
     in property <MessageEntry> msg;
     in property <int> timeline-row;
-    in property <bool> on-counter;
+    in property <MetaMark> mark;
     in property <bool> has-tip;
     in property <bool> clickable;
 
     callback clicked();
 
-    property <bool> tip-mine: DeliveryTip.key != ""
-        && DeliveryTip.key == root.msg.unique-id
-        && DeliveryTip.on-counter == root.on-counter;
+    property <bool> tip-mine: MetaTip.key != ""
+        && MetaTip.key == root.msg.unique-id
+        && MetaTip.mark == root.mark;
 
     pure function anchor() -> AnchorRect {
         return {
@@ -46,7 +46,7 @@ component TipTrigger inherits Rectangle {
     property <AnchorRect> tracked-anchor: root.tip-mine ? root.anchor() : { row: -1 };
 
     changed tracked-anchor => {
-        DeliveryTip.follow(root.msg.unique-id, self.tracked-anchor, root.on-counter);
+        MetaTip.follow(root.msg.unique-id, self.tracked-anchor, root.mark);
     }
 
     height: IconSize.sm;
@@ -64,9 +64,9 @@ component TipTrigger inherits Rectangle {
         }
         changed has-hover => {
             if self.has-hover {
-                DeliveryTip.show(root.msg.unique-id, root.anchor(), root.on-counter);
+                MetaTip.show(root.msg.unique-id, root.anchor(), root.mark);
             } else {
-                DeliveryTip.hide(root.msg.unique-id, root.on-counter);
+                MetaTip.hide(root.msg.unique-id, root.mark);
             }
         }
     }
@@ -79,6 +79,7 @@ export component DeliveryMark inherits TipTrigger {
     property <Delivery> delivery: root.msg.delivery;
 
     width: IconSize.sm;
+    mark: MetaMark.delivery;
     has-tip: root.delivery != Delivery.none;
     accessible-label: Deliveries.label(root.delivery, root.counted ? "" : root.msg.readers,
                                        root.msg.hidden-readers);
@@ -103,7 +104,7 @@ export component ReaderCount inherits TipTrigger {
     in property <length> trailing-gap: Space.sm;
 
     width: row.preferred-width;
-    on-counter: true;
+    mark: MetaMark.readers;
     has-tip: true;
     clickable: root.msg.event-id != "";
     accessible-role: button;
@@ -118,7 +119,7 @@ export component ReaderCount inherits TipTrigger {
 
     function open-readers() {
         if root.clickable && Shell.background-reachable {
-            DeliveryTip.clear();
+            MetaTip.clear();
             Actions.open-readers(root.msg.event-id);
         }
     }

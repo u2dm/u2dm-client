@@ -1,4 +1,4 @@
-import { Delivery, EmojiArt, MediaFailure, PreviewKind, ServiceKind, UserMessageKind } from "./enums.slint";
+import { Delivery, EmojiArt, MediaFailure, PreviewKind, ServiceKind, ShieldReason, UserMessageKind } from "./enums.slint";
 
 export global UserMessages {
     public pure function text(kind: UserMessageKind, detail: string) -> string {
@@ -266,6 +266,33 @@ export global DeliveryStatus {
         }
         if delivery == Delivery.failed {
             return @tr("Not sent");
+        }
+        return "";
+    }
+}
+
+export global ShieldReasons {
+    public pure function text(reason: ShieldReason) -> string {
+        if reason == ShieldReason.sent-in-clear {
+            return @tr("Not encrypted");
+        }
+        if reason == ShieldReason.mismatched-sender {
+            return @tr("Encrypted by a device that doesn't belong to the sender");
+        }
+        if reason == ShieldReason.unknown-device {
+            return @tr("Encrypted by an unknown or deleted device");
+        }
+        if reason == ShieldReason.unsigned-device {
+            return @tr("Encrypted by a device not verified by its owner");
+        }
+        if reason == ShieldReason.verification-violation {
+            return @tr("Encrypted by a user whose verified identity changed");
+        }
+        if reason == ShieldReason.unverified-identity {
+            return @tr("Encrypted by an unverified user");
+        }
+        if reason == ShieldReason.authenticity-not-guaranteed {
+            return @tr("Authenticity can't be guaranteed on this device");
         }
         return "";
     }

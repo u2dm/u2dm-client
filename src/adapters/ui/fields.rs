@@ -2,7 +2,7 @@ use slint::{Image, ModelRc, SharedString, StyledText};
 
 use super::backend::UiBackend;
 use super::dto::{EmojiArt, MediaFailureKind, MediaState, MemberRowKind, RoomRowKind};
-use super::present::{Delivery, MessageKind, PollPhase, ServiceKind};
+use super::present::{Delivery, MessageKind, PollPhase, ServiceKind, ShieldReason};
 use super::schema::{
     body_line_fields, body_piece_fields, log_line_fields, member_row_fields, message_fields,
     pack_cell_fields, pack_row_fields, pack_tab_fields, poll_answer_fields, reaction_fields,
@@ -11,7 +11,9 @@ use super::schema::{
 use crate::commands::view::ChildAccess;
 use crate::domain::image_pack::PackOrigin;
 use crate::domain::media::AudioKind;
-use crate::domain::message::{MessagePreviewKind, ReactionSend, SendState};
+use crate::domain::message::{
+    DecryptionFailure, MessagePreviewKind, ReactionSend, SendState, Shield,
+};
 use crate::domain::room_info::MemberRole;
 use crate::domain::room_log::LogLevel;
 

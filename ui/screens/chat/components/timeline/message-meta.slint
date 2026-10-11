@@ -1,8 +1,9 @@
 import { IconDisplay, IconSet } from "@lucide";
 import { MessageEntry } from "../../../../types.slint";
-import { Delivery } from "../../../../enums.slint";
+import { Delivery, Shield } from "../../../../enums.slint";
 import { Fonts, IconSize, Space } from "../../../../theme.slint";
 import { DeliveryMark, ReaderCount, Readers } from "./delivery-mark.slint";
+import { ShieldMark } from "./shield-mark.slint";
 
 export component MessageMeta inherits HorizontalLayout {
     in property <MessageEntry> msg;
@@ -10,6 +11,13 @@ export component MessageMeta inherits HorizontalLayout {
     in property <color> tint;
 
     spacing: Space.sm;
+
+    if root.msg.shield != Shield.none: ShieldMark {
+        y: (parent.height - self.height) / 2;
+        msg: root.msg;
+        timeline-row: root.timeline-row;
+        tint: root.tint;
+    }
 
     if root.msg.edited: IconDisplay {
         y: (parent.height - self.height) / 2;

@@ -596,6 +596,39 @@ macro_rules! deliveries {
 }
 pub(crate) use deliveries;
 
+macro_rules! shields {
+    ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
+        None       None    "none";
+        Warning(_) Warning "warning";
+        Notice(_)  Notice  "notice";
+    } };
+}
+pub(crate) use shields;
+
+macro_rules! shield_reasons {
+    ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
+        None                      None                      "none";
+        SentInClear               SentInClear               "sent-in-clear";
+        MismatchedSender          MismatchedSender          "mismatched-sender";
+        UnknownDevice             UnknownDevice             "unknown-device";
+        UnsignedDevice            UnsignedDevice            "unsigned-device";
+        VerificationViolation     VerificationViolation     "verification-violation";
+        UnverifiedIdentity        UnverifiedIdentity        "unverified-identity";
+        AuthenticityNotGuaranteed AuthenticityNotGuaranteed "authenticity-not-guaranteed";
+    } };
+}
+pub(crate) use shield_reasons;
+
+macro_rules! decryption_failures {
+    ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
+        Unexplained           Unexplained           "unexplained";
+        UnsignedDevice        UnsignedDevice        "unsigned-device";
+        UnknownDevice         UnknownDevice         "unknown-device";
+        VerificationViolation VerificationViolation "verification-violation";
+    } };
+}
+pub(crate) use decryption_failures;
+
 macro_rules! attachment_kinds {
     ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
         File  File  "file";
@@ -935,6 +968,9 @@ macro_rules! message_fields {
         send_state set_send_state "send-state" enumk(SendState);
         send_progress set_send_progress "send-progress" ratio;
         delivery set_delivery "delivery" enumk(Delivery);
+        shield set_shield "shield" enumk(Shield);
+        shield_reason set_shield_reason "shield-reason" enumk(ShieldReason);
+        decryption_failure set_decryption_failure "decryption-failure" enumk(DecryptionFailure);
         readers set_readers "readers" text;
         hidden_readers set_hidden_readers "hidden-readers" int;
         reader_count set_reader_count "reader-count" int;

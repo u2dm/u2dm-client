@@ -132,11 +132,39 @@ pub enum MessageBody {
     },
     Poll(Poll),
     Service(ServiceEvent),
-    UnableToDecrypt,
+    UnableToDecrypt(DecryptionFailure),
     Unsupported {
         kind: String,
         fallback: String,
     },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum DecryptionFailure {
+    #[default]
+    Unexplained,
+    UnsignedDevice,
+    UnknownDevice,
+    VerificationViolation,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ShieldCode {
+    AuthenticityNotGuaranteed,
+    UnknownDevice,
+    UnsignedDevice,
+    UnverifiedIdentity,
+    VerificationViolation,
+    MismatchedSender,
+    SentInClear,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Shield {
+    #[default]
+    None,
+    Warning(ShieldCode),
+    Notice(ShieldCode),
 }
 
 impl ServiceEvent {
@@ -189,7 +217,7 @@ impl MessageBody {
             },
             Self::File { .. } => MessagePreviewKind::File,
             Self::Poll(_) => MessagePreviewKind::Poll,
-            Self::UnableToDecrypt => MessagePreviewKind::Encrypted,
+            Self::UnableToDecrypt(_) => MessagePreviewKind::Encrypted,
         }
     }
 
@@ -203,7 +231,7 @@ impl MessageBody {
             | Self::File { .. }
             | Self::Poll(_)
             | Self::Service(_)
-            | Self::UnableToDecrypt
+            | Self::UnableToDecrypt(_)
             | Self::Unsupported { .. } => None,
         }
     }
@@ -234,7 +262,7 @@ impl MessageBody {
             | Self::File { .. }
             | Self::Poll(_)
             | Self::Service(_)
-            | Self::UnableToDecrypt
+            | Self::UnableToDecrypt(_)
             | Self::Unsupported { .. } => None,
         }
     }
@@ -538,6 +566,7 @@ pub struct TimelineMessage {
     pub editable: bool,
     pub is_first_unread: bool,
     pub send_state: SendState,
+    pub shield: Shield,
     pub reactions: Vec<Reaction>,
     pub read_by: ReadBy,
 }

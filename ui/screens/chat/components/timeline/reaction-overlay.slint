@@ -2,9 +2,9 @@ import { ReactionPicker, ReactionStrip } from "./reaction-picker.slint";
 import { ReactionDetail } from "./reaction-detail.slint";
 import { PollVoters } from "./poll-voters.slint";
 import { ModalHost, Placement, TipCard } from "../../../../components/overlay.slint";
-import { DeliveryTip, ReactionPopup, Reactions, Shell } from "../../../../local.slint";
+import { MetaMark, MetaTip, ReactionPopup, Reactions, Shell } from "../../../../local.slint";
 import { Actions } from "../../../../actions.slint";
-import { Deliveries, DeliveryStatus } from "../../../../messages.slint";
+import { Deliveries, DeliveryStatus, ShieldReasons } from "../../../../messages.slint";
 import { PackView } from "../../../../views.slint";
 import { Metrics, Motion, Space } from "../../../../theme.slint";
 
@@ -158,12 +158,14 @@ export component ReactionOverlay inherits Rectangle {
         text: Reactions.tooltip-text;
     }
 
-    if DeliveryTip.showing && !Reactions.open: TipCard {
-        x: Placement.fit(DeliveryTip.anchor.x + DeliveryTip.anchor.width - self.width, self.width, root.width, root.edge);
-        y: max(root.edge, DeliveryTip.anchor.y - self.height - Space.sm);
-        text: DeliveryTip.on-counter
-            ? Deliveries.label(DeliveryTip.target.delivery, DeliveryTip.target.readers,
-                               DeliveryTip.target.hidden-readers)
-            : DeliveryStatus.text(DeliveryTip.target.delivery, DeliveryTip.target.sent-at);
+    if MetaTip.showing && !Reactions.open: TipCard {
+        x: Placement.fit(MetaTip.anchor.x + MetaTip.anchor.width - self.width, self.width, root.width, root.edge);
+        y: max(root.edge, MetaTip.anchor.y - self.height - Space.sm);
+        text: MetaTip.mark == MetaMark.readers
+            ? Deliveries.label(MetaTip.target.delivery, MetaTip.target.readers,
+                               MetaTip.target.hidden-readers)
+            : MetaTip.mark == MetaMark.shield
+            ? ShieldReasons.text(MetaTip.target.shield-reason)
+            : DeliveryStatus.text(MetaTip.target.delivery, MetaTip.target.sent-at);
     }
 }

@@ -94,7 +94,9 @@ export component MessageBody inherits VerticalLayout {
         frame-limit: root.frame-limit;
     }
 
-    if root.kind == MessageKind.utd: UtdMessage { }
+    if root.kind == MessageKind.utd: UtdMessage {
+        msg: root.msg;
+    }
 
     if root.kind == MessageKind.unsupported: UnsupportedMessage {
         msg: root.msg;

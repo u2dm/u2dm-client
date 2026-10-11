@@ -10,7 +10,7 @@ use crate::domain::media::{AudioKind, AudioMeta, ImageMeta, VideoMeta, Waveform}
 use crate::domain::member_name::{MemberName, NamedUser};
 use crate::domain::message::{
     MessageBody, MessagePreviewKind, Reaction, ReactionSend, ReadBy, ReplyInfo, RichText,
-    SendState, ServiceEvent, TimelineMessage,
+    SendState, ServiceEvent, Shield, TimelineMessage,
 };
 use crate::domain::poll::{Poll, PollAnswer, PollChoice, PollDisclosure, PollStatus, Voter};
 use crate::domain::room::{NotifyMode, Room, RoomId, Space};
@@ -823,6 +823,7 @@ impl MessageDto {
             editable: self.sender == own_user,
             is_first_unread: false,
             send_state: SendState::default(),
+            shield: Shield::None,
             reactions: self
                 .reactions
                 .iter()

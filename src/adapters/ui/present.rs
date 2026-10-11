@@ -8,14 +8,16 @@ use chrono::{Locale, SecondsFormat, Timelike};
 use pure_rust_locales::locale_match;
 
 use super::schema::{
-    define_ui_enum, deliveries, message_kinds, poll_phases, service_kinds, verification_phases,
+    define_ui_enum, deliveries, message_kinds, poll_phases, service_kinds, shield_reasons,
+    verification_phases,
 };
 use crate::commands::messages::{UserMessage, UserMessageKind};
 use crate::commands::view::RoomLogView;
 use crate::domain::media::{AudioKind, AudioMeta, Waveform};
 use crate::domain::member_name::{MemberName, NamedUser, isolated};
 use crate::domain::message::{
-    MessageBody, Reaction, ReadBy, SendState, ServiceEvent, TimelineMessage,
+    DecryptionFailure, MessageBody, Reaction, ReadBy, SendState, ServiceEvent, Shield, ShieldCode,
+    TimelineMessage,
 };
 use crate::domain::poll::{Poll, PollAnswer, PollDisclosure, PollStatus};
 use crate::domain::room_log::{LogLevel, LogLine};
@@ -329,7 +331,7 @@ pub fn message_body_text(body: &MessageBody) -> &str {
         MessageBody::Sticker { alt, .. } => alt,
         MessageBody::File { meta, .. } => &meta.filename,
         MessageBody::Poll(poll) => &poll.question,
-        MessageBody::Service(_) | MessageBody::UnableToDecrypt => "",
+        MessageBody::Service(_) | MessageBody::UnableToDecrypt(_) => "",
         MessageBody::Unsupported { fallback, .. } => fallback,
     }
 }
@@ -348,7 +350,7 @@ pub fn message_kind(body: &MessageBody) -> MessageKind {
         MessageBody::File { .. } => MessageKind::File,
         MessageBody::Poll(_) => MessageKind::Poll,
         MessageBody::Service(_) => MessageKind::Service,
-        MessageBody::UnableToDecrypt => MessageKind::Utd,
+        MessageBody::UnableToDecrypt(_) => MessageKind::Utd,
         MessageBody::Unsupported { .. } => MessageKind::Unsupported,
     }
 }
@@ -380,6 +382,30 @@ pub fn delivery(message: &TimelineMessage) -> Delivery {
         SendState::Failed => Delivery::Failed,
         SendState::Sent if message.read_by.is_read() => Delivery::Read,
         SendState::Sent => Delivery::Sent,
+    }
+}
+
+shield_reasons!(define_ui_enum ShieldReason;);
+
+pub fn shield_reason(shield: Shield) -> ShieldReason {
+    let (Shield::Warning(code) | Shield::Notice(code)) = shield else {
+        return ShieldReason::None;
+    };
+    match code {
+        ShieldCode::SentInClear => ShieldReason::SentInClear,
+        ShieldCode::MismatchedSender => ShieldReason::MismatchedSender,
+        ShieldCode::UnknownDevice => ShieldReason::UnknownDevice,
+        ShieldCode::UnsignedDevice => ShieldReason::UnsignedDevice,
+        ShieldCode::VerificationViolation => ShieldReason::VerificationViolation,
+        ShieldCode::UnverifiedIdentity => ShieldReason::UnverifiedIdentity,
+        ShieldCode::AuthenticityNotGuaranteed => ShieldReason::AuthenticityNotGuaranteed,
+    }
+}
+
+pub fn decryption_failure(body: &MessageBody) -> DecryptionFailure {
+    match body {
+        MessageBody::UnableToDecrypt(failure) => *failure,
+        _ => DecryptionFailure::default(),
     }
 }
 

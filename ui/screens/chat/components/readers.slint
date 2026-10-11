@@ -8,7 +8,7 @@ import { MemberRow } from "./member-row.slint";
 import { MessagePreview, ServiceLabel } from "../../../messages.slint";
 import { PreviewKind, ReadersStatus, ServiceKind } from "../../../enums.slint";
 import { ReadersView } from "../../../views.slint";
-import { DeliveryTip, Reactions, Shell } from "../../../local.slint";
+import { MetaTip, Reactions, Shell } from "../../../local.slint";
 import { Actions } from "../../../actions.slint";
 import { AppStyle, Fonts, Metrics, Radius, Space, Stroke, Weight } from "../../../theme.slint";
 
@@ -156,7 +156,7 @@ export component ReadersDialog inherits ModalHost {
     }
     opened => {
         Reactions.close();
-        DeliveryTip.clear();
+        MetaTip.clear();
         header.focus-close();
     }
 

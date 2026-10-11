@@ -11,10 +11,12 @@ use matrix_sdk::ruma::events::room::name::RoomNameEventContent;
 use matrix_sdk::ruma::events::sticker::StickerEventContent;
 use matrix_sdk::ruma::events::{Mentions, StateEventContentChange};
 use matrix_sdk::ruma::html::{HtmlSanitizerMode, RemoveReplyFallback, sanitize_html};
+use matrix_sdk_base::crypto::types::events::UtdCause;
 use matrix_sdk_ui::timeline::{
-    AnyOtherStateEventContentChange, EventSendState, EventTimelineItem, MemberProfileChange,
-    MembershipChange, Message, PollState, Profile, ReactionInfo, RoomMembershipChange, Sticker,
-    TimelineDetails, TimelineItem, TimelineItemContent,
+    AnyOtherStateEventContentChange, EncryptedMessage, EventSendState, EventTimelineItem,
+    MemberProfileChange, MembershipChange, Message, PollState, Profile, ReactionInfo,
+    RoomMembershipChange, Sticker, TimelineDetails, TimelineEventShieldState,
+    TimelineEventShieldStateCode, TimelineItem, TimelineItemContent,
 };
 use serde::Deserialize;
 
@@ -28,8 +30,9 @@ use crate::domain::media::{
 };
 use crate::domain::member_name::{MemberName, NamedUser};
 use crate::domain::message::{
-    CustomEmoji, MessageBody, MessagePreviewKind, REACTOR_AVATAR_LIMIT, Reaction, ReactionSend,
-    Reactor, ReadBy, ReplyInfo, RichText, SendState, ServiceEvent, TimelineMessage,
+    CustomEmoji, DecryptionFailure, MessageBody, MessagePreviewKind, REACTOR_AVATAR_LIMIT,
+    Reaction, ReactionSend, Reactor, ReadBy, ReplyInfo, RichText, SendState, ServiceEvent, Shield,
+    ShieldCode, TimelineMessage,
 };
 use crate::domain::poll::{Poll, PollAnswer, PollChoice, PollDisclosure, PollStatus, Voter};
 
@@ -67,6 +70,47 @@ fn send_state(event: &EventTimelineItem) -> SendState {
             sent: upload.progress.current as u64,
             total: upload.progress.total as u64,
         },
+    }
+}
+
+const STRICT_SHIELDS: bool = false;
+
+fn shield(event: &EventTimelineItem) -> Shield {
+    match event.get_shield(STRICT_SHIELDS) {
+        TimelineEventShieldState::None => Shield::None,
+        TimelineEventShieldState::Red { code } => Shield::Warning(shield_code(code)),
+        TimelineEventShieldState::Grey { code } => Shield::Notice(shield_code(code)),
+    }
+}
+
+fn shield_code(code: TimelineEventShieldStateCode) -> ShieldCode {
+    match code {
+        TimelineEventShieldStateCode::AuthenticityNotGuaranteed => {
+            ShieldCode::AuthenticityNotGuaranteed
+        }
+        TimelineEventShieldStateCode::UnknownDevice => ShieldCode::UnknownDevice,
+        TimelineEventShieldStateCode::UnsignedDevice => ShieldCode::UnsignedDevice,
+        TimelineEventShieldStateCode::UnverifiedIdentity => ShieldCode::UnverifiedIdentity,
+        TimelineEventShieldStateCode::VerificationViolation => ShieldCode::VerificationViolation,
+        TimelineEventShieldStateCode::MismatchedSender => ShieldCode::MismatchedSender,
+        TimelineEventShieldStateCode::SentInClear => ShieldCode::SentInClear,
+    }
+}
+
+fn decryption_failure(encrypted: &EncryptedMessage) -> DecryptionFailure {
+    let EncryptedMessage::MegolmV1AesSha2 { cause, .. } = encrypted else {
+        return DecryptionFailure::Unexplained;
+    };
+    match cause {
+        UtdCause::UnsignedDevice => DecryptionFailure::UnsignedDevice,
+        UtdCause::UnknownDevice => DecryptionFailure::UnknownDevice,
+        UtdCause::VerificationViolation => DecryptionFailure::VerificationViolation,
+        UtdCause::Unknown
+        | UtdCause::SentBeforeWeJoined
+        | UtdCause::HistoricalMessageAndBackupIsDisabled
+        | UtdCause::HistoricalMessageAndDeviceIsUnverified
+        | UtdCause::WithheldForUnverifiedOrInsecureDevice
+        | UtdCause::WithheldBySender => DecryptionFailure::Unexplained,
     }
 }
 
@@ -214,7 +258,7 @@ fn base_message(
         sender: sender_str,
         sender_name,
         sender_avatar_url: sender_avatar_url(event),
-        body: MessageBody::UnableToDecrypt,
+        body: MessageBody::UnableToDecrypt(DecryptionFailure::Unexplained),
         body_emoji: BTreeMap::new(),
         mentions_room: false,
         timestamp: ts,
@@ -224,6 +268,7 @@ fn base_message(
         editable: event.is_editable(),
         is_first_unread,
         send_state: send_state(event),
+        shield: Shield::None,
         reactions: extract_reactions(event.content(), ctx),
         read_by: ReadBy::default(),
     }
@@ -234,9 +279,11 @@ fn build_utd_message(
     event: &EventTimelineItem,
     event_id_str: String,
     ctx: &TimelineContext<'_>,
+    encrypted: &EncryptedMessage,
     reply: Option<ReplyInfo>,
 ) -> TimelineMessage {
     TimelineMessage {
+        body: MessageBody::UnableToDecrypt(decryption_failure(encrypted)),
         reply,
         ..base_message(unique_id, event, event_id_str, ctx)
     }
@@ -332,7 +379,7 @@ pub(super) enum Renderable<'a> {
     Message(&'a Message),
     Sticker(&'a Sticker),
     Poll(&'a PollState),
-    Utd,
+    Utd(&'a EncryptedMessage),
     Service(ServiceEvent),
 }
 
@@ -346,8 +393,8 @@ pub(super) fn classify(content: &TimelineItemContent) -> Option<Renderable<'_>> 
     if let Some(poll) = content.as_poll() {
         return Some(Renderable::Poll(poll));
     }
-    if content.as_unable_to_decrypt().is_some() {
-        return Some(Renderable::Utd);
+    if let Some(encrypted) = content.as_unable_to_decrypt() {
+        return Some(Renderable::Utd(encrypted));
     }
     service_event_from_content(content).map(Renderable::Service)
 }
@@ -361,7 +408,7 @@ pub(super) fn event_media(item: &TimelineItem) -> Option<EventMedia> {
     match classify(item.as_event()?.content())? {
         Renderable::Message(message) => EventMedia::of_message(message.msgtype()),
         Renderable::Sticker(sticker) => Some(EventMedia::of_sticker(sticker.content())),
-        Renderable::Poll(_) | Renderable::Utd | Renderable::Service(_) => None,
+        Renderable::Poll(_) | Renderable::Utd(_) | Renderable::Service(_) => None,
     }
 }
 
@@ -379,7 +426,7 @@ pub(super) fn content_preview(content: &TimelineItemContent) -> (MessagePreviewK
             MessagePreviewKind::Poll,
             RichText::plain(poll.results().question),
         ),
-        Some(Renderable::Utd) => (MessagePreviewKind::Encrypted, RichText::default()),
+        Some(Renderable::Utd(_)) => (MessagePreviewKind::Encrypted, RichText::default()),
         Some(Renderable::Service(_)) | None => (MessagePreviewKind::None, RichText::default()),
     }
 }
@@ -773,6 +820,7 @@ pub(super) fn convert_event_item_with_uid(
                 mentions_room,
                 reply,
                 edited,
+                shield: shield(event),
                 ..base_message(unique_id, event, event_id_str, ctx)
             })
         }
@@ -781,6 +829,7 @@ pub(super) fn convert_event_item_with_uid(
             Some(TimelineMessage {
                 body,
                 reply,
+                shield: shield(event),
                 ..base_message(unique_id, event, event_id_str, ctx)
             })
         }
@@ -788,13 +837,15 @@ pub(super) fn convert_event_item_with_uid(
             body: extract_poll_body(event, poll, ctx),
             reply,
             edited: poll.is_edit(),
+            shield: shield(event),
             ..base_message(unique_id, event, event_id_str, ctx)
         }),
-        Some(Renderable::Utd) => Some(build_utd_message(
+        Some(Renderable::Utd(encrypted)) => Some(build_utd_message(
             unique_id,
             event,
             event_id_str,
             ctx,
+            encrypted,
             reply,
         )),
         Some(Renderable::Service(service)) => Some(build_service_message(

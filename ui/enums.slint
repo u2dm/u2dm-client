@@ -143,6 +143,30 @@ export enum Delivery {
     failed,
 }
 
+export enum Shield {
+    none,
+    warning,
+    notice,
+}
+
+export enum ShieldReason {
+    none,
+    sent-in-clear,
+    mismatched-sender,
+    unknown-device,
+    unsigned-device,
+    verification-violation,
+    unverified-identity,
+    authenticity-not-guaranteed,
+}
+
+export enum DecryptionFailure {
+    unexplained,
+    unsigned-device,
+    unknown-device,
+    verification-violation,
+}
+
 export enum ReactionSend {
     sent,
     sending,

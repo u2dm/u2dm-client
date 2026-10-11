@@ -1,7 +1,28 @@
 import { IconDisplay, IconSet } from "@lucide";
+import { MessageEntry } from "../../../../../types.slint";
+import { DecryptionFailure } from "../../../../../enums.slint";
 import { AppStyle, Fonts, IconSize, Radius, Space } from "../../../../../theme.slint";
 
 export component UtdMessage inherits Rectangle {
+    in property <MessageEntry> msg;
+
+    property <DecryptionFailure> failure: root.msg.decryption-failure;
+
+    pure function reason() -> string {
+        if root.failure == DecryptionFailure.unsigned-device {
+            return root.msg.is-own
+                ? @tr("Not shown: sent from one of your devices that isn't verified")
+                : @tr("Not shown: sent from a device its owner hasn't verified");
+        }
+        if root.failure == DecryptionFailure.unknown-device {
+            return @tr("Not shown: sent from an unknown or deleted device");
+        }
+        if root.failure == DecryptionFailure.verification-violation {
+            return @tr("Not shown: the sender's verified identity has changed");
+        }
+        return @tr("Unable to decrypt message");
+    }
+
     height: layout.preferred-height;
     border-radius: Radius.xs;
     background: AppStyle.overlay-hover;
@@ -14,17 +35,18 @@ export component UtdMessage inherits Rectangle {
         alignment: start;
 
         IconDisplay {
-            icon: IconSet.LockKeyhole;
+            icon: root.failure == DecryptionFailure.unexplained ? IconSet.LockKeyhole : IconSet.ShieldAlert;
             size: IconSize.sm;
-            stroke: AppStyle.foreground-muted;
+            stroke: AppStyle.overlay-foreground-muted;
         }
 
         Text {
-            text: @tr("Unable to decrypt message");
+            text: root.reason();
             font-size: Fonts.label;
             font-italic: true;
-            color: AppStyle.foreground-muted;
+            color: AppStyle.overlay-foreground-muted;
             vertical-alignment: center;
+            wrap: word-wrap;
         }
     }
 }

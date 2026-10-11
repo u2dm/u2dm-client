@@ -1,7 +1,9 @@
 use serde_json::{Value, json};
 
 use super::data;
-use crate::domain::message::{MessageBody, RichText, ServiceEvent, TimelineMessage};
+use crate::domain::message::{
+    MessageBody, RichText, ServiceEvent, Shield, ShieldCode, TimelineMessage,
+};
 use crate::domain::room::RoomId;
 use crate::domain::timeline::{EventSource, SourceEncryption};
 
@@ -13,7 +15,7 @@ const HTML_FORMAT: &str = "org.matrix.custom.html";
 
 pub fn event_source(room_id: &RoomId, message: &TimelineMessage) -> Option<EventSource> {
     let event_id = message.event_id.clone()?;
-    let undecryptable = matches!(message.body, MessageBody::UnableToDecrypt);
+    let undecryptable = matches!(message.body, MessageBody::UnableToDecrypt(_));
     let (event_type, content) = if undecryptable {
         ("m.room.encrypted", ciphertext())
     } else {
@@ -35,13 +37,16 @@ pub fn event_source(room_id: &RoomId, message: &TimelineMessage) -> Option<Event
     }
     let encryption = if undecryptable {
         SourceEncryption::Undecryptable
-    } else if data::room_is_encrypted(room_id) && !is_state_event(&message.body) {
+    } else if data::room_is_encrypted(room_id)
+        && !is_state_event(&message.body)
+        && let Some(verification_state) = verification_state(message.shield)
+    {
         SourceEncryption::Decrypted {
             details: pretty(&json!({
                 "sender": message.sender,
                 "sender_device": DEMO_DEVICE,
                 "algorithm_info": { "MegolmV1AesSha2": { "curve25519_key": "demo" } },
-                "verification_state": "Verified",
+                "verification_state": verification_state,
             })),
         }
     } else {
@@ -55,12 +60,28 @@ pub fn event_source(room_id: &RoomId, message: &TimelineMessage) -> Option<Event
     })
 }
 
+fn verification_state(shield: Shield) -> Option<Value> {
+    let (Shield::Warning(code) | Shield::Notice(code)) = shield else {
+        return Some(json!("Verified"));
+    };
+    let level = match code {
+        ShieldCode::SentInClear => return None,
+        ShieldCode::AuthenticityNotGuaranteed => json!({ "None": "InsecureSource" }),
+        ShieldCode::UnknownDevice => json!({ "None": "MissingDevice" }),
+        ShieldCode::UnsignedDevice => json!("UnsignedDevice"),
+        ShieldCode::UnverifiedIdentity => json!("UnverifiedIdentity"),
+        ShieldCode::VerificationViolation => json!("VerificationViolation"),
+        ShieldCode::MismatchedSender => json!("MismatchedSender"),
+    };
+    Some(json!({ "Unverified": level }))
+}
+
 fn event_type(body: &MessageBody) -> &'static str {
     match body {
         MessageBody::Sticker { .. } => "m.sticker",
         MessageBody::Poll(_) => "org.matrix.msc3381.poll.start",
         MessageBody::Service(service) => service_type(service),
-        MessageBody::UnableToDecrypt => "m.room.encrypted",
+        MessageBody::UnableToDecrypt(_) => "m.room.encrypted",
         MessageBody::Text(_)
         | MessageBody::Notice(_)
         | MessageBody::Emote(_)
@@ -101,7 +122,7 @@ fn body_content(body: &MessageBody) -> Value {
             json!({ "org.matrix.msc3381.poll.start": { "question": { "body": poll.question } } })
         }
         MessageBody::Service(service) => service_content(service),
-        MessageBody::UnableToDecrypt => ciphertext(),
+        MessageBody::UnableToDecrypt(_) => ciphertext(),
         MessageBody::Unsupported { kind, fallback } => json!({ "msgtype": kind, "body": fallback }),
     }
 }

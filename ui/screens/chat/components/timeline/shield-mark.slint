@@ -1,0 +1,26 @@
+import { IconDisplay, IconSet } from "@lucide";
+
+import { Shield } from "../../../../enums.slint";
+import { ShieldReasons } from "../../../../messages.slint";
+import { MetaMark } from "../../../../local.slint";
+import { AppStyle, IconSize } from "../../../../theme.slint";
+import { TipTrigger } from "./delivery-mark.slint";
+
+export component ShieldMark inherits TipTrigger {
+    in property <color> tint;
+
+    width: IconSize.sm;
+    mark: MetaMark.shield;
+    has-tip: true;
+    accessible-label: ShieldReasons.text(root.msg.shield-reason);
+
+    IconDisplay {
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+        icon: root.msg.shield == Shield.notice ? IconSet.ShieldQuestion : IconSet.ShieldAlert;
+        size: IconSize.sm;
+        stroke: root.msg.shield != Shield.warning
+            ? root.tint
+            : (root.msg.is-own ? AppStyle.shield-warning-own : AppStyle.shield-warning);
+    }
+}
