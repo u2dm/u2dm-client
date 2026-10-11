@@ -10,6 +10,7 @@ use crate::commands::view::{
     TrackFile, UnsentMessage, UserInfoView, VideoView,
 };
 use crate::domain::image_pack::{ImagePack, ImageUsage, PackOrigin, PackTitle};
+use crate::domain::member_name::NamedUser;
 use crate::domain::message::{EditKind, PinnedMessage};
 use crate::domain::room::{Room, Space};
 use crate::domain::room_info::{Reader, RosterSection};
@@ -437,7 +438,7 @@ fn mentions(source: &MentionsView) -> MentionsDto {
             .iter()
             .map(|member| MentionDto {
                 user_id: member.user_id.clone(),
-                name: member.label().to_owned(),
+                name: member.name.shown(&member.user_id),
             })
             .collect(),
     }
@@ -473,7 +474,7 @@ fn readers(source: &ReadersView) -> ReadersDto {
 fn reader_row(source: &Reader) -> ReaderDto {
     ReaderDto {
         user_id: source.user_id.clone(),
-        name: source.label().to_owned(),
+        name: source.name.shown(&source.user_id),
         role: names::member_role(source.role),
         has_avatar_mxc: source.avatar_mxc.is_some(),
     }
@@ -609,7 +610,7 @@ fn room(source: &Room) -> RoomDto {
         mention: source.mention(),
         hint: source.hint(),
         last_activity_ts: source.last_activity_ts,
-        last_message_sender: source.last_message_sender.clone(),
+        last_message_sender: source.last_message_sender.as_ref().map(NamedUser::shown),
         last_message_body: source.last_message_body.plain.clone(),
         last_message_is_own: source.last_message_is_own,
         last_message_edited: source.last_message_edited,
@@ -708,7 +709,7 @@ fn user_info(source: &UserInfoView) -> UserInfoDto {
         status: card.map(|card| card_status(card.status)),
         room_id: card.map(|card| card.room_id.to_string()),
         user_id: profile.map(|profile| profile.user_id.to_string()),
-        name: profile.and_then(|profile| profile.display_name.clone()),
+        name: profile.and_then(|profile| profile.name.set().map(str::to_owned)),
         has_avatar_mxc: profile.is_some_and(|profile| profile.avatar_mxc.is_some()),
         pronouns: profile.and_then(|profile| match &profile.pronouns {
             Pronouns::Known(pronouns) => Some(pronouns.clone()),
@@ -754,7 +755,7 @@ fn member_row(source: &RosterRow) -> MemberRowDto {
         RosterRow::Member(member) => MemberRowDto {
             kind: "member",
             user_id: Some(member.user_id.clone()),
-            name: Some(member.label().to_owned()),
+            name: Some(member.name.shown(&member.user_id)),
             role: Some(names::member_role(member.role)),
             invited: member.section == RosterSection::Invited,
             has_avatar_mxc: member.avatar_mxc.is_some(),

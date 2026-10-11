@@ -18,9 +18,11 @@ use matrix_sdk::{Client, Room};
 use tokio::sync::Semaphore;
 
 use super::media::fetch_avatar_thumbnails;
+use super::member_name::member_name;
 use super::permissions::{member_role, moderation_powers};
 use super::profile::{PronounCache, pronouns_of};
 use super::session::ClientHandle;
+use crate::domain::member_name::MemberName;
 use crate::domain::room::RoomId;
 use crate::domain::user_info::{
     GlobalProfile, IdentityTrust, IgnoreChange, Moderation, Pronouns, RoomMembership, UserId,
@@ -112,12 +114,13 @@ impl UserInfoPort for MatrixUserInfo {
         } else {
             self.trust(&user).await
         };
+        let name = match &member {
+            Some(member) => member_name(&room, member).await,
+            None => MemberName::Unset,
+        };
         Ok(UserProfile {
             user_id: user_id.clone(),
-            display_name: member
-                .as_ref()
-                .and_then(|member| member.display_name())
-                .map(ToOwned::to_owned),
+            name,
             avatar_mxc: member
                 .as_ref()
                 .and_then(|member| member.avatar_url())

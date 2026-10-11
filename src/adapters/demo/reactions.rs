@@ -4,6 +4,7 @@ use std::env;
 use std::sync::OnceLock;
 use std::time::Duration;
 
+use crate::domain::member_name::MemberName;
 use crate::domain::message::{Reaction, ReactionSend, Reactor, TimelineMessage};
 
 const ENV_VAR: &str = "U2DM_DEMO_REACTIONS";
@@ -125,7 +126,15 @@ fn apply(scenario: &mut Scenario, flag: &str) {
 pub fn reactor(user_id: &str) -> Reactor {
     Reactor {
         user_id: user_id.to_owned(),
+        name: MemberName::Unset,
         avatar_url: Some(user_id.to_owned()),
+    }
+}
+
+fn own_reactor(own_user: &str) -> Reactor {
+    Reactor {
+        name: super::data::own_member_name(),
+        ..reactor(own_user)
     }
 }
 
@@ -220,7 +229,7 @@ pub fn toggle(message: &mut TimelineMessage, key: &str, own_user: &str) {
         message.reactions.push(Reaction {
             key: key.to_owned(),
             image: media::custom_emoji(key),
-            senders: vec![reactor(own_user)],
+            senders: vec![own_reactor(own_user)],
             mine: true,
             send,
         });
@@ -242,7 +251,7 @@ pub fn toggle(message: &mut TimelineMessage, key: &str, own_user: &str) {
         }
         return;
     }
-    reaction.senders.push(reactor(own_user));
+    reaction.senders.push(own_reactor(own_user));
     reaction.mine = true;
     reaction.send = send;
 }

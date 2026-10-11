@@ -13,8 +13,9 @@ use super::schema::{
 use crate::commands::messages::{UserMessage, UserMessageKind};
 use crate::commands::view::RoomLogView;
 use crate::domain::media::{AudioKind, AudioMeta, Waveform};
+use crate::domain::member_name::{MemberName, NamedUser, isolated};
 use crate::domain::message::{
-    MessageBody, Reactor, ReadBy, SendState, ServiceEvent, TimelineMessage,
+    MessageBody, Reaction, ReadBy, SendState, ServiceEvent, TimelineMessage,
 };
 use crate::domain::poll::{Poll, PollAnswer, PollDisclosure, PollStatus};
 use crate::domain::room_log::{LogLevel, LogLine};
@@ -60,8 +61,13 @@ pub fn user_initial(user_id: &str) -> String {
         .unwrap_or_default()
 }
 
-pub fn message_sender_label(m: &TimelineMessage) -> &str {
-    m.sender_display_name.as_deref().unwrap_or(&m.sender)
+pub fn name_initials(name: &MemberName, user_id: &str) -> String {
+    name.set()
+        .map_or_else(|| user_initial(user_id), avatar_initials)
+}
+
+pub fn message_sender_label(m: &TimelineMessage) -> String {
+    m.sender_name.shown(&m.sender)
 }
 
 const PRONOUNS_SHOWN: usize = 3;
@@ -85,7 +91,7 @@ fn truncate_chars(text: &str, max: usize) -> &str {
 }
 
 const REACTION_KEY_MAX_LEN: usize = 12;
-const NAMES_SHOWN: usize = 6;
+const NAME_SEPARATOR: &str = ", ";
 
 pub fn reaction_key_label(key: &str) -> String {
     let short = truncate_chars(key, REACTION_KEY_MAX_LEN);
@@ -107,40 +113,30 @@ pub fn file_extension(filename: &str) -> &str {
     if plausible { extension } else { "" }
 }
 
-pub fn user_localpart(user_id: &str) -> &str {
-    let name = user_id.strip_prefix('@').unwrap_or(user_id);
-    name.split_once(':').map_or(name, |(local, _)| local)
+fn listed_names(shown: impl Iterator<Item = String>, total: usize) -> (String, usize) {
+    let shown: Vec<String> = shown.collect();
+    let hidden = total.saturating_sub(shown.len());
+    (shown.join(NAME_SEPARATOR), hidden)
 }
 
-pub fn reactor_labels(senders: &[Reactor]) -> (String, usize) {
-    named_localparts(
-        senders.iter().map(|reactor| reactor.user_id.as_str()),
-        senders.len(),
+pub fn reactor_labels(reaction: &Reaction) -> (String, usize) {
+    listed_names(
+        reaction
+            .named()
+            .map(|reactor| reactor.name.shown(&reactor.user_id)),
+        reaction.count(),
     )
 }
 
 pub fn reader_labels(read_by: &ReadBy) -> (String, usize) {
-    named_localparts(read_by.named.iter().map(String::as_str), read_by.total)
+    listed_names(read_by.named.iter().map(NamedUser::shown), read_by.total)
 }
 
 pub fn voter_labels(answer: &PollAnswer) -> (String, usize) {
-    let named: Vec<&str> = answer
-        .named()
-        .map(|voter| {
-            voter
-                .name
-                .as_deref()
-                .unwrap_or_else(|| user_localpart(&voter.user_id))
-        })
-        .collect();
-    let hidden = answer.others().saturating_sub(named.len());
-    (named.join(", "), hidden)
-}
-
-fn named_localparts<'a>(user_ids: impl Iterator<Item = &'a str>, total: usize) -> (String, usize) {
-    let shown: Vec<&str> = user_ids.take(NAMES_SHOWN).map(user_localpart).collect();
-    let hidden = total.saturating_sub(shown.len());
-    (shown.join(", "), hidden)
+    listed_names(
+        answer.named().map(|voter| voter.name.shown(&voter.user_id)),
+        answer.others(),
+    )
 }
 
 fn active_locale() -> Locale {
@@ -414,18 +410,18 @@ pub fn service_kind(event: &ServiceEvent) -> ServiceKind {
     }
 }
 
-pub fn service_target(event: &ServiceEvent) -> &str {
+pub fn service_target(event: &ServiceEvent) -> String {
     match event {
         ServiceEvent::Invited { target }
         | ServiceEvent::InvitationRevoked { target }
         | ServiceEvent::Kicked { target }
         | ServiceEvent::Banned { target }
         | ServiceEvent::Unbanned { target }
-        | ServiceEvent::KnockAccepted { target } => target.as_deref().unwrap_or_default(),
+        | ServiceEvent::KnockAccepted { target } => target.shown(),
         ServiceEvent::DisplayNameSet { name }
         | ServiceEvent::DisplayNameChanged { name }
-        | ServiceEvent::RoomNameChanged { name } => name,
-        _ => "",
+        | ServiceEvent::RoomNameChanged { name } => isolated(name),
+        _ => String::new(),
     }
 }
 

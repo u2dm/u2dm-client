@@ -12,10 +12,10 @@ use super::emote::slug;
 use super::present::{
     Delivery, MessageKind, PollPhase, ServiceKind, avatar_color_index, avatar_initials, delivery,
     duration_label, file_extension, log_level_name, log_time_label, message_body_text,
-    message_kind, message_sender_label, message_sent_at_label, message_timestamp_label, poll_phase,
-    pronoun_labels, reaction_key_label, reactor_labels, reader_labels, room_activity_label,
-    sender_initial, service_kind, service_target, unsupported_kind, user_initial, voice_bars,
-    voter_labels,
+    message_kind, message_sender_label, message_sent_at_label, message_timestamp_label,
+    name_initials, poll_phase, pronoun_labels, reaction_key_label, reactor_labels, reader_labels,
+    room_activity_label, sender_initial, service_kind, service_target, unsupported_kind,
+    voice_bars, voter_labels,
 };
 use super::richtext::{self, InlineContent, InlineLine, InlinePiece, RoomWord};
 use super::schema::{
@@ -27,6 +27,7 @@ use crate::domain::image_pack::{ImagePack, ImageUsage, PackId, PackImage, PackOr
 use crate::domain::media::{
     AudioKind, AudioMeta, ContentKey, FileMeta, MediaFailure, ThumbnailOutcome,
 };
+use crate::domain::member_name::{MemberName, isolated};
 use crate::domain::message::{
     CustomEmoji, MessageBody, MessagePreviewKind, Reaction, ReactionSend, Reactor, RichText,
     SendState, TimelineMessage,
@@ -600,7 +601,7 @@ fn reactor_avatar_dto(
     let avatar = load_avatar_async(path.as_deref(), slot);
     ReactorAvatarDto {
         user_id: SharedString::from(&reactor.user_id),
-        initial: SharedString::from(user_initial(&reactor.user_id)),
+        initial: SharedString::from(name_initials(&reactor.name, &reactor.user_id)),
         color_index: avatar_color_index(&reactor.user_id),
         has_avatar: avatar.is_some(),
         avatar,
@@ -667,7 +668,7 @@ fn reaction_dto(
     reaction: &Reaction,
     media: &dyn MediaCache,
 ) -> ReactionDto {
-    let (reactors, hidden) = reactor_labels(&reaction.senders);
+    let (reactors, hidden) = reactor_labels(reaction);
     let (art, image) = reaction_art(item, reaction, media);
     let label = match art {
         EmojiArt::Text => SharedString::from(reaction_key_label(&reaction.key)),
@@ -1011,13 +1012,12 @@ pub fn quoted_message(message: Option<&TimelineMessage>) -> QuotedMessage {
         kind: m.body.preview_kind(),
         body: message_body(m).plain,
         service_kind: service.map_or(ServiceKind::None, service_kind),
-        service_target: SharedString::from(service.map_or("", service_target)),
+        service_target: SharedString::from(service.map(service_target).unwrap_or_default()),
     }
 }
 
 pub fn message_to_dto(m: &TimelineMessage, pinned: bool, media: &dyn MediaCache) -> MessageDto {
     let item = TimelineItemKey::current(&m.unique_id);
-    let sender_label = message_sender_label(m);
     let (reactions, all_reactions) = reaction_dtos(&item, &m.reactions, media);
     let (readers, hidden_readers) = reader_labels(&m.read_by);
     let reply = m.reply.as_ref();
@@ -1027,7 +1027,7 @@ pub fn message_to_dto(m: &TimelineMessage, pinned: bool, media: &dyn MediaCache)
     let mut dto = MessageDto {
         unique_id: SharedString::from(&m.unique_id),
         local_id: m.local_id.as_deref().map(SharedString::from).unwrap_or_default(),
-        sender: SharedString::from(sender_label),
+        sender: SharedString::from(message_sender_label(m)),
         sender_id: SharedString::from(&m.sender),
         pronouns: pronoun_labels(&m.sender_pronouns)
             .into_iter()
@@ -1050,7 +1050,7 @@ pub fn message_to_dto(m: &TimelineMessage, pinned: bool, media: &dyn MediaCache)
         preview_body,
         unsupported_kind: SharedString::from(unsupported_kind(&m.body)),
         event_id: SharedString::from(m.event_id.as_deref().unwrap_or_default()),
-        sender_initial: SharedString::from(avatar_initials(sender_label)),
+        sender_initial: SharedString::from(name_initials(&m.sender_name, &m.sender)),
         color_index: avatar_color_index(&m.sender),
         is_own: m.is_own,
         edited: m.edited,
@@ -1067,11 +1067,15 @@ pub fn message_to_dto(m: &TimelineMessage, pinned: bool, media: &dyn MediaCache)
         reader_count: count(m.read_by.total),
         has_reply: reply.is_some(),
         reply_event_id: SharedString::from(reply.map_or("", |r| r.event_id.as_str())),
-        reply_sender: SharedString::from(reply.map_or("", |r| r.sender.as_str())),
+        reply_sender: reply
+            .map(|r| SharedString::from(r.sender.shown()))
+            .unwrap_or_default(),
         reply_kind: reply.map_or(MessagePreviewKind::None, |r| r.kind),
         reply_body: reply.map(|r| preview_line(&r.body)).unwrap_or_default(),
         service_kind: m.body.service().map_or(ServiceKind::None, service_kind),
-        service_target: SharedString::from(m.body.service().map_or("", service_target)),
+        service_target: SharedString::from(
+            m.body.service().map(service_target).unwrap_or_default(),
+        ),
         image_width: 0,
         image_height: 0,
         duration: SharedString::new(),
@@ -1170,9 +1174,11 @@ pub fn room_to_dto(r: &Room, media: &dyn MediaCache) -> RoomDto {
         mention: r.mention(),
         hint: r.hint(),
         muted: r.muted(),
-        last_message_sender: SharedString::from(
-            r.last_message_sender.as_deref().unwrap_or_default(),
-        ),
+        last_message_sender: r
+            .last_message_sender
+            .as_ref()
+            .map(|sender| SharedString::from(sender.shown()))
+            .unwrap_or_default(),
         last_message_kind: r.last_message_kind,
         last_message_body: preview_line(&r.last_message_body),
         last_message_service_kind: r
@@ -1180,7 +1186,10 @@ pub fn room_to_dto(r: &Room, media: &dyn MediaCache) -> RoomDto {
             .as_ref()
             .map_or(ServiceKind::None, service_kind),
         last_message_service_target: SharedString::from(
-            r.last_message_service.as_ref().map_or("", service_target),
+            r.last_message_service
+                .as_ref()
+                .map(service_target)
+                .unwrap_or_default(),
         ),
         last_message_is_own: r.last_message_is_own,
         last_message_edited: r.last_message_edited,
@@ -1348,13 +1357,25 @@ pub fn member_row_to_dto(row: &RosterRow, media: &dyn MediaCache) -> MemberRowDt
         };
     };
     let avatar = member_avatar_path(member, media).and_then(|path| peek_avatar(&path));
+    person_row(&member.user_id, &member.name, member.role, avatar)
+}
+
+fn person_row(
+    user_id: &str,
+    name: &MemberName,
+    role: MemberRole,
+    avatar: Option<Image>,
+) -> MemberRowDto {
     MemberRowDto {
-        user_id: SharedString::from(&member.user_id),
+        user_id: SharedString::from(user_id),
         kind: MemberRowKind::Member,
-        name: SharedString::from(member.label()),
-        initial: SharedString::from(avatar_initials(member.label())),
-        color_index: avatar_color_index(&member.user_id),
-        role: member.role,
+        name: name
+            .set()
+            .map(|name| SharedString::from(isolated(name)))
+            .unwrap_or_default(),
+        initial: SharedString::from(name_initials(name, user_id)),
+        color_index: avatar_color_index(user_id),
+        role,
         has_avatar: avatar.is_some(),
         avatar,
     }
@@ -1362,17 +1383,7 @@ pub fn member_row_to_dto(row: &RosterRow, media: &dyn MediaCache) -> MemberRowDt
 
 pub fn reader_to_dto(reader: &Reader, media: &dyn MediaCache) -> MemberRowDto {
     let avatar = reader_avatar_path(reader, media).and_then(|path| peek_avatar(&path));
-    let label = reader.label();
-    MemberRowDto {
-        user_id: SharedString::from(&reader.user_id),
-        kind: MemberRowKind::Member,
-        name: SharedString::from(label),
-        initial: SharedString::from(avatar_initials(label)),
-        color_index: avatar_color_index(&reader.user_id),
-        role: reader.role,
-        has_avatar: avatar.is_some(),
-        avatar,
-    }
+    person_row(&reader.user_id, &reader.name, reader.role, avatar)
 }
 
 pub fn request_reader_avatar(reader: &Reader, media: &dyn MediaCache) {
@@ -1386,17 +1397,7 @@ fn reader_avatar_path(reader: &Reader, media: &dyn MediaCache) -> Option<PathBuf
 
 pub fn mention_to_dto(member: &RosterMember, media: &dyn MediaCache) -> MemberRowDto {
     let avatar = member_avatar_path(member, media).and_then(|path| peek_avatar(&path));
-    let label = member.label();
-    MemberRowDto {
-        user_id: SharedString::from(&member.user_id),
-        kind: MemberRowKind::Member,
-        name: SharedString::from(label),
-        initial: SharedString::from(avatar_initials(label)),
-        color_index: avatar_color_index(&member.user_id),
-        role: member.role,
-        has_avatar: avatar.is_some(),
-        avatar,
-    }
+    person_row(&member.user_id, &member.name, member.role, avatar)
 }
 
 pub fn request_mention_avatar(member: &RosterMember, media: &dyn MediaCache) {

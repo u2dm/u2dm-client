@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use std::env;
 use std::sync::OnceLock;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -185,11 +184,7 @@ fn poll_mut(message: &mut TimelineMessage) -> Option<&mut Poll> {
 }
 
 fn guest(number: usize) -> Voter {
-    Voter {
-        user_id: format!("@guest-{number}:matrix.org"),
-        name: Some(format!("Guest {number}")),
-        is_own: false,
-    }
+    Voter::new(format!("@guest-{number}:matrix.org"), None)
 }
 
 fn own_voter() -> Voter {
@@ -198,7 +193,6 @@ fn own_voter() -> Voter {
 }
 
 pub fn apply_scenario(messages: &mut [TimelineMessage]) {
-    name_voters(messages);
     let scenario = scenario();
     let Some(poll) = messages.iter_mut().rev().find_map(poll_mut) else {
         return;
@@ -222,25 +216,6 @@ pub fn apply_scenario(messages: &mut [TimelineMessage]) {
         answer
             .voters
             .extend((CROWD_FIRST_GUEST..CROWD_FIRST_GUEST + CROWD_VOTERS).map(guest));
-    }
-}
-
-fn name_voters(messages: &mut [TimelineMessage]) {
-    let names: HashMap<String, String> = messages
-        .iter()
-        .filter(|message| !message.is_own)
-        .filter_map(|message| Some((message.sender.clone(), message.sender_display_name.clone()?)))
-        .collect();
-    for poll in messages.iter_mut().filter_map(poll_mut) {
-        for voter in poll
-            .answers
-            .iter_mut()
-            .flat_map(|answer| &mut answer.voters)
-        {
-            if voter.name.is_none() {
-                voter.name = names.get(&voter.user_id).cloned();
-            }
-        }
     }
 }
 

@@ -29,7 +29,7 @@ component SuggestionRow inherits ListItemArea {
 component MemberSuggestion inherits SuggestionRow {
     in property <MemberEntry> entry;
 
-    label: @tr("{}, {}", root.entry.name, root.entry.user-id);
+    label: root.entry.name == "" ? root.entry.user-id : @tr("{}, {}", root.entry.name, root.entry.user-id);
 
     HorizontalLayout {
         padding-left: Space.lg;
@@ -47,7 +47,7 @@ component MemberSuggestion inherits SuggestionRow {
         }
 
         Text {
-            text: root.entry.name;
+            text: root.entry.name == "" ? root.entry.user-id : root.entry.name;
             font-family: Fonts.emoji;
             font-size: Fonts.body;
             font-weight: Weight.semibold;
@@ -56,7 +56,7 @@ component MemberSuggestion inherits SuggestionRow {
             accessible-role: none;
         }
 
-        Text {
+        if root.entry.name != "": Text {
             horizontal-stretch: 1;
             text: root.entry.user-id;
             font-size: Fonts.body-small;

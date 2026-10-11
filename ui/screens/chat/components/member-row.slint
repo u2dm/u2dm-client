@@ -14,9 +14,11 @@ export component MemberRow inherits ListItemArea {
             return @tr("Invited");
         }
         if MemberRoles.label(entry.role) == "" {
-            return @tr("{}, {}", entry.name, entry.user-id);
+            return entry.name == "" ? entry.user-id : @tr("{}, {}", entry.name, entry.user-id);
         }
-        return @tr("{}, {}, {}", entry.name, entry.user-id, MemberRoles.label(entry.role));
+        return entry.name == ""
+            ? @tr("{}, {}", entry.user-id, MemberRoles.label(entry.role))
+            : @tr("{}, {}, {}", entry.name, entry.user-id, MemberRoles.label(entry.role));
     }
 
     enabled: root.entry.kind == MemberRowKind.member;
@@ -62,7 +64,7 @@ export component MemberRow inherits ListItemArea {
             spacing: Space.xs;
 
             Text {
-                text: root.entry.name;
+                text: root.entry.name == "" ? root.entry.user-id : root.entry.name;
                 font-family: Fonts.emoji;
                 font-size: Fonts.body;
                 font-weight: Weight.semibold;
@@ -70,7 +72,7 @@ export component MemberRow inherits ListItemArea {
                 accessible-role: none;
             }
 
-            Text {
+            if root.entry.name != "": Text {
                 text: root.entry.user-id;
                 font-size: Fonts.body-small;
                 color: AppStyle.foreground-muted;

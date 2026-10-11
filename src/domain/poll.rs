@@ -1,5 +1,7 @@
 use std::collections::BTreeSet;
 
+use crate::domain::member_name::MemberName;
+
 const SHARE_SCALE: u16 = 1000;
 
 pub const VOTERS_NAMED: usize = 10;
@@ -85,7 +87,7 @@ pub enum PollStatus {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Voter {
     pub user_id: String,
-    pub name: Option<String>,
+    pub name: MemberName,
     pub is_own: bool,
 }
 
@@ -94,7 +96,7 @@ impl Voter {
         Self {
             is_own: own_user_id == Some(user_id.as_str()),
             user_id,
-            name: None,
+            name: MemberName::Unset,
         }
     }
 }

@@ -208,7 +208,7 @@ pub(crate) fn stamp_read_marks(
     ctx: &TimelineContext<'_>,
 ) {
     let mut stamps: HashMap<String, ReadStamp> = items
-        .restamp_read_by(ctx.own_user_id)
+        .restamp_read_by(ctx)
         .into_iter()
         .map(|(row, message)| {
             let stamp = ReadStamp {

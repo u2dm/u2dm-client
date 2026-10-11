@@ -4,6 +4,7 @@ mod identity;
 mod image_packs;
 mod journal;
 mod media;
+mod member_name;
 mod permissions;
 mod preview;
 mod profile;

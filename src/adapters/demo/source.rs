@@ -179,7 +179,7 @@ fn service_content(service: &ServiceEvent) -> Value {
         | ServiceEvent::Kicked { .. }
         | ServiceEvent::Unbanned { .. } => json!({ "membership": "leave" }),
         ServiceEvent::Invited { target } | ServiceEvent::KnockAccepted { target } => {
-            json!({ "membership": "invite", "displayname": target })
+            json!({ "membership": "invite", "displayname": target.name.set() })
         }
         ServiceEvent::Banned { .. } => json!({ "membership": "ban" }),
         ServiceEvent::Knocked => json!({ "membership": "knock" }),

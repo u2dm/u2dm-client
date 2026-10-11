@@ -13,32 +13,40 @@ use matrix_sdk::ruma::events::{Mentions, StateEventContentChange};
 use matrix_sdk::ruma::html::{HtmlSanitizerMode, RemoveReplyFallback, sanitize_html};
 use matrix_sdk_ui::timeline::{
     AnyOtherStateEventContentChange, EventSendState, EventTimelineItem, MemberProfileChange,
-    MembershipChange, Message, PollState, ReactionInfo, RoomMembershipChange, Sticker,
+    MembershipChange, Message, PollState, Profile, ReactionInfo, RoomMembershipChange, Sticker,
     TimelineDetails, TimelineItem, TimelineItemContent,
 };
 use serde::Deserialize;
 
 use super::TimelineContext;
-use super::members::{Arrived, Need};
+use super::members::{Arrived, MemberCache, Need};
 use crate::adapters::matrix::media::{EventMedia, file_content, thumbnail_content};
 use crate::adapters::matrix::preview;
 use crate::adapters::{body_emoji, markdown};
 use crate::domain::media::{
     AudioKind, AudioMeta, FileMeta, ImageMeta, MediaKind, VideoMeta, Waveform,
 };
+use crate::domain::member_name::{MemberName, NamedUser};
 use crate::domain::message::{
     CustomEmoji, MessageBody, MessagePreviewKind, REACTOR_AVATAR_LIMIT, Reaction, ReactionSend,
     Reactor, ReadBy, ReplyInfo, RichText, SendState, ServiceEvent, TimelineMessage,
 };
 use crate::domain::poll::{Poll, PollAnswer, PollChoice, PollDisclosure, PollStatus, Voter};
 
-fn extract_sender_profile(event: &EventTimelineItem) -> (Option<String>, Option<String>) {
-    match event.sender_profile() {
-        TimelineDetails::Ready(profile) => (
-            profile.display_name.clone(),
-            profile.avatar_url.as_ref().map(ToString::to_string),
+fn reported_name(profile: &TimelineDetails<Profile>) -> MemberName {
+    match profile {
+        TimelineDetails::Ready(profile) => MemberName::new(
+            profile.display_name.as_deref(),
+            profile.display_name_ambiguous,
         ),
-        _ => (None, None),
+        _ => MemberName::Unset,
+    }
+}
+
+fn sender_avatar_url(event: &EventTimelineItem) -> Option<String> {
+    match event.sender_profile() {
+        TimelineDetails::Ready(profile) => profile.avatar_url.as_ref().map(ToString::to_string),
+        _ => None,
     }
 }
 
@@ -98,6 +106,9 @@ fn extract_reactions(content: &TimelineItemContent, ctx: &TimelineContext<'_>) -
                 mine: own.is_some(),
                 send: reaction_send(own),
             };
+            for reactor in reaction.named_mut() {
+                reactor.name = ctx.members.names.name_of(&reactor.user_id);
+            }
             if reaction.shows_reactors() {
                 attach_reactor_avatars(&mut reaction, ctx);
             }
@@ -119,20 +130,45 @@ pub(super) fn involves(
     item: &TimelineItem,
     message: Option<&TimelineMessage>,
     arrived: &Arrived,
+    names: &MemberCache<MemberName>,
 ) -> bool {
     match arrived.need {
         Need::Avatar => reacted_by(item, &arrived.users),
-        Need::Name => voted_by(message, &arrived.users),
+        Need::Name => message.is_some_and(|message| renamed(message, &arrived.users, names)),
     }
 }
 
-fn voted_by(message: Option<&TimelineMessage>, users: &HashSet<String>) -> bool {
-    message
-        .and_then(|message| message.body.poll())
-        .is_some_and(|poll| {
-            poll.named_voters()
-                .any(|voter| users.contains(&voter.user_id))
-        })
+fn renamed(
+    message: &TimelineMessage,
+    users: &HashSet<String>,
+    names: &MemberCache<MemberName>,
+) -> bool {
+    let differs = |user_id: &str, shown: &MemberName| {
+        users.contains(user_id) && names.confirm(user_id, shown.clone()) != *shown
+    };
+    differs(&message.sender, &message.sender_name)
+        || message
+            .reply
+            .as_ref()
+            .is_some_and(|reply| differs(&reply.sender.user_id, &reply.sender.name))
+        || message
+            .reactions
+            .iter()
+            .flat_map(Reaction::named)
+            .any(|reactor| users.contains(&reactor.user_id))
+        || voted_by(message, users)
+        || message
+            .body
+            .service()
+            .and_then(ServiceEvent::target)
+            .is_some_and(|target| users.contains(&target.user_id))
+}
+
+fn voted_by(message: &TimelineMessage, users: &HashSet<String>) -> bool {
+    message.body.poll().is_some_and(|poll| {
+        poll.named_voters()
+            .any(|voter| users.contains(&voter.user_id))
+    })
 }
 
 pub(super) fn reacted_with(item: &TimelineItem, key: &str) -> bool {
@@ -162,9 +198,12 @@ fn base_message(
     event_id_str: String,
     ctx: &TimelineContext<'_>,
 ) -> TimelineMessage {
-    let (sender_display_name, sender_avatar_url) = extract_sender_profile(event);
     let ts: u64 = event.timestamp().0.into();
     let sender_str = event.sender().to_string();
+    let sender_name = ctx
+        .members
+        .names
+        .confirm(&sender_str, reported_name(event.sender_profile()));
     let is_own = ctx.own_user_id.is_some_and(|uid| uid == sender_str);
     let is_first_unread = ctx.first_unread.is_some_and(|id| id == event_id_str);
     TimelineMessage {
@@ -173,8 +212,8 @@ fn base_message(
         local_id: local_id(event),
         sender_pronouns: ctx.pronouns.resolved(&sender_str),
         sender: sender_str,
-        sender_display_name,
-        sender_avatar_url,
+        sender_name,
+        sender_avatar_url: sender_avatar_url(event),
         body: MessageBody::UnableToDecrypt,
         body_emoji: BTreeMap::new(),
         mentions_room: false,
@@ -217,16 +256,8 @@ fn build_service_message(
     }
 }
 
-fn membership_target(change: &RoomMembershipChange) -> Option<String> {
-    change.display_name().or_else(|| {
-        let user_id = change.user_id();
-        let local = user_id.localpart();
-        (!local.is_empty()).then(|| local.to_owned())
-    })
-}
-
 fn membership_to_service(change: &RoomMembershipChange) -> Option<ServiceEvent> {
-    let target = membership_target(change);
+    let target = NamedUser::unnamed(change.user_id().as_str());
     Some(match change.change()? {
         MembershipChange::Joined => ServiceEvent::Joined,
         MembershipChange::Left => ServiceEvent::Left,
@@ -353,19 +384,19 @@ pub(super) fn content_preview(content: &TimelineItemContent) -> (MessagePreviewK
     }
 }
 
-fn extract_reply(content: &TimelineItemContent) -> Option<ReplyInfo> {
+fn extract_reply(content: &TimelineItemContent, ctx: &TimelineContext<'_>) -> Option<ReplyInfo> {
     let details = content.in_reply_to()?;
     let event_id = details.event_id.to_string();
     let TimelineDetails::Ready(embedded) = details.event else {
         return None;
     };
-    let sender = match &embedded.sender_profile {
-        TimelineDetails::Ready(profile) => profile
-            .display_name
-            .clone()
-            .unwrap_or_else(|| embedded.sender.to_string()),
-        _ => embedded.sender.to_string(),
-    };
+    let sender_id = embedded.sender.as_str();
+    let sender = NamedUser::new(
+        sender_id,
+        ctx.members
+            .names
+            .confirm(sender_id, reported_name(&embedded.sender_profile)),
+    );
     let (kind, body) = content_preview(&embedded.content);
     Some(ReplyInfo {
         event_id,
@@ -529,11 +560,15 @@ fn extract_poll_body(
 
 fn name_voters(poll: &mut Poll, ctx: &TimelineContext<'_>) {
     for voter in poll.named_voters_mut() {
-        voter.name = ctx.members.names.get(&voter.user_id);
-        if voter.name.is_none() {
-            ctx.members.names.want(&voter.user_id);
-        }
+        voter.name = ctx.members.names.name_of(&voter.user_id);
     }
+}
+
+fn name_target(mut service: ServiceEvent, ctx: &TimelineContext<'_>) -> ServiceEvent {
+    if let Some(target) = service.target_mut() {
+        target.name = ctx.members.names.name_of(&target.user_id);
+    }
+    service
 }
 
 fn extract_file_body(file: &FileMessageEventContent) -> MessageBody {
@@ -710,7 +745,7 @@ pub(super) fn convert_event_item_with_uid(
         .unwrap_or_default();
 
     let content = event.content();
-    let reply = extract_reply(content);
+    let reply = extract_reply(content, ctx);
 
     match classify(content) {
         Some(Renderable::Message(message)) => {
@@ -767,7 +802,7 @@ pub(super) fn convert_event_item_with_uid(
             event,
             event_id_str,
             ctx,
-            service,
+            name_target(service, ctx),
         )),
         None => {
             tracing::debug!(

@@ -23,6 +23,7 @@ pub struct ReactionRowDump {
     pub mine: bool,
     pub send: String,
     pub overflow: bool,
+    pub reactors: String,
     pub hidden_reactors: i32,
 }
 
@@ -435,6 +436,7 @@ fn reaction_row<B: UiBackend>(entry: &B::Reaction) -> ReactionRowDump {
         mine: entry.mine(),
         send: entry.send().to_owned(),
         overflow: entry.overflow(),
+        reactors: entry.reactors().to_owned(),
         hidden_reactors: entry.hidden_reactors(),
     }
 }

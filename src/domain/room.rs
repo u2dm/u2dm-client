@@ -1,6 +1,7 @@
 use std::sync::Arc;
 use std::{fmt, ops};
 
+use crate::domain::member_name::NamedUser;
 use crate::domain::message::{MessagePermissions, MessagePreviewKind, RichText, ServiceEvent};
 use crate::domain::poll::PollPermissions;
 
@@ -59,7 +60,7 @@ pub struct Room {
     pub has_activity: bool,
     pub notify: NotifyMode,
     pub last_activity_ts: u64,
-    pub last_message_sender: Option<String>,
+    pub last_message_sender: Option<NamedUser>,
     pub last_message_kind: MessagePreviewKind,
     pub last_message_body: RichText,
     pub last_message_service: Option<ServiceEvent>,

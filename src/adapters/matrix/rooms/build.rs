@@ -20,8 +20,10 @@ use matrix_sdk::ruma::{OwnedUserId, UserId};
 use matrix_sdk::{Client, Room};
 use tracing::Instrument;
 
+use crate::adapters::matrix::member_name::member_name;
 use crate::adapters::matrix::permissions::room_permissions;
 use crate::adapters::matrix::preview::{self, MessagePreview};
+use crate::domain::member_name::{MemberName, NamedUser};
 use crate::domain::message::{MessagePreviewKind, RichText, ServiceEvent};
 use crate::domain::room::{NotifyMode, Room as DomainRoom, RoomId, Space as DomainSpace};
 
@@ -149,7 +151,7 @@ async fn build_room(room: &Room, settings: &NotificationSettings) -> DomainRoom 
 
 #[derive(Default)]
 struct LastMessage {
-    sender: Option<String>,
+    sender: Option<NamedUser>,
     kind: MessagePreviewKind,
     body: RichText,
     service: Option<ServiceEvent>,
@@ -171,7 +173,7 @@ async fn build_last_message(room: &Room, is_direct: bool) -> LastMessage {
         None
     } else {
         match &sender_id {
-            Some(sender) => Some(resolve_sender_name(room, sender).await),
+            Some(sender) => Some(named_sender(room, sender).await),
             None => None,
         }
     };
@@ -186,13 +188,12 @@ async fn build_last_message(room: &Room, is_direct: bool) -> LastMessage {
     }
 }
 
-async fn resolve_sender_name(room: &Room, user_id: &UserId) -> String {
-    if let Ok(Some(member)) = room.get_member_no_sync(user_id).await
-        && let Some(name) = member.display_name()
-    {
-        return name.to_owned();
-    }
-    user_id.localpart().to_owned()
+async fn named_sender(room: &Room, user_id: &UserId) -> NamedUser {
+    let name = match room.get_member_no_sync(user_id).await {
+        Ok(Some(member)) => member_name(room, &member).await,
+        Ok(None) | Err(_) => MemberName::Unset,
+    };
+    NamedUser::new(user_id.as_str(), name)
 }
 
 fn latest_message_preview(

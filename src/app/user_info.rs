@@ -311,7 +311,7 @@ impl UserInfo {
         match direct {
             DirectChat::Open => profile.direct_room.clone(),
             DirectChat::Start => {
-                let name = profile.label().to_owned();
+                let name = profile.shown();
                 self.start_dm(port, user_id.clone(), name);
                 None
             }
@@ -406,7 +406,7 @@ impl UserInfo {
             tracing::debug!(%user_id, ?change, "ignoring an ignore change that has nothing to do");
             return;
         }
-        let name = profile.label().to_owned();
+        let name = profile.shown();
         self.ignoring.insert(user_id.clone(), change);
         self.clear_error(user_id);
         self.publish();
@@ -487,7 +487,7 @@ impl UserInfo {
             tracing::debug!(%user_id, ?action, "ignoring a moderation the sheet does not offer");
             return;
         }
-        let name = profile.label().to_owned();
+        let name = profile.shown();
         self.moderating.insert(seat.clone(), action);
         self.clear_error(user_id);
         self.publish();

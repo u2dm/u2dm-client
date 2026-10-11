@@ -144,7 +144,7 @@ impl TimelineItems {
         self.clear();
         self.store(values, ctx);
         self.check_editable_polls(ctx, |_, _| {});
-        self.stamp_read_by(ctx.own_user_id, |_, _| {});
+        self.stamp_read_by(ctx, |_, _| {});
         self.messages_from(0).cloned().collect()
     }
 
@@ -168,10 +168,10 @@ impl TimelineItems {
 
     pub(super) fn restamp_read_by(
         &mut self,
-        own_user_id: Option<&str>,
+        ctx: &TimelineContext<'_>,
     ) -> Vec<(usize, TimelineMessage)> {
         let mut changed = Vec::new();
-        self.stamp_read_by(own_user_id, |row, message| {
+        self.stamp_read_by(ctx, |row, message| {
             changed.push((row, message.clone()));
         });
         changed
@@ -179,11 +179,11 @@ impl TimelineItems {
 
     fn stamp_read_by(
         &mut self,
-        own_user_id: Option<&str>,
+        ctx: &TimelineContext<'_>,
         mut on_change: impl FnMut(usize, &TimelineMessage),
     ) {
         let Self { items, messages } = self;
-        let mut scan = ReadScan::excluding(own_user_id);
+        let mut scan = ReadScan::excluding(ctx.own_user_id);
         let mut row = messages.iter().flatten().count();
         for (item, slot) in items.iter().zip(messages.iter_mut()).rev() {
             if let Some(event) = item.as_event() {
@@ -193,8 +193,15 @@ impl TimelineItems {
                 continue;
             };
             row = row.saturating_sub(1);
-            if message.tracks_readers() && !scan.describes(&message.read_by, &message.sender) {
+            if !message.tracks_readers() {
+                continue;
+            }
+            let moved = !scan.describes(&message.read_by, &message.sender);
+            if moved {
                 message.read_by = scan.read_by(&message.sender);
+            }
+            let renamed = ctx.members.names.name_all(&mut message.read_by.named);
+            if moved || renamed {
                 on_change(row, message);
             }
         }

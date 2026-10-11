@@ -7,9 +7,11 @@ use matrix_sdk::{Client, Room};
 use tokio::sync::mpsc;
 
 use crate::adapters::matrix::media::{MediaService, mxc_avatar_key};
+use crate::adapters::matrix::member_name::member_name;
+use crate::domain::member_name::{MemberName, NamedUser};
 
-pub(super) enum Lookup {
-    Found(String),
+pub(super) enum Lookup<T> {
+    Found(T),
     Missing,
     Unresolved,
 }
@@ -20,9 +22,9 @@ pub(super) enum Need {
     Name,
 }
 
-pub(super) struct Batch {
-    need: Need,
-    lookups: Vec<(String, Lookup)>,
+pub(super) enum Batch {
+    Avatars(Vec<(String, Lookup<String>)>),
+    Names(Vec<(String, Lookup<MemberName>)>),
 }
 
 pub(super) struct Arrived {
@@ -41,20 +43,44 @@ impl Wanted {
     }
 }
 
-#[derive(Default)]
-struct Store {
-    known: HashMap<String, Option<String>>,
+struct Store<T> {
+    known: HashMap<String, Option<T>>,
     wanted: HashSet<String>,
     resolving: HashSet<String>,
 }
 
-#[derive(Default)]
-pub(in crate::adapters::matrix) struct MemberCache {
-    store: StdMutex<Store>,
+impl<T> Default for Store<T> {
+    fn default() -> Self {
+        Self {
+            known: HashMap::new(),
+            wanted: HashSet::new(),
+            resolving: HashSet::new(),
+        }
+    }
 }
 
-impl MemberCache {
-    pub(super) fn get(&self, user_id: &str) -> Option<String> {
+impl<T> Store<T> {
+    fn want(&mut self, user_id: &str) {
+        if !self.known.contains_key(user_id) && !self.resolving.contains(user_id) {
+            self.wanted.insert(user_id.to_owned());
+        }
+    }
+}
+
+pub(in crate::adapters::matrix) struct MemberCache<T> {
+    store: StdMutex<Store<T>>,
+}
+
+impl<T> Default for MemberCache<T> {
+    fn default() -> Self {
+        Self {
+            store: StdMutex::new(Store::default()),
+        }
+    }
+}
+
+impl<T: Clone> MemberCache<T> {
+    pub(super) fn get(&self, user_id: &str) -> Option<T> {
         self.store
             .lock()
             .ok()?
@@ -65,11 +91,8 @@ impl MemberCache {
     }
 
     pub(super) fn want(&self, user_id: &str) {
-        if let Ok(mut store) = self.store.lock()
-            && !store.known.contains_key(user_id)
-            && !store.resolving.contains(user_id)
-        {
-            store.wanted.insert(user_id.to_owned());
+        if let Ok(mut store) = self.store.lock() {
+            store.want(user_id);
         }
     }
 
@@ -82,7 +105,7 @@ impl MemberCache {
         wanted
     }
 
-    fn record(&self, lookups: Vec<(String, Lookup)>) -> HashSet<String> {
+    fn record(&self, lookups: Vec<(String, Lookup<T>)>) -> HashSet<String> {
         let Ok(mut store) = self.store.lock() else {
             return HashSet::new();
         };
@@ -104,10 +127,60 @@ impl MemberCache {
     }
 }
 
+const NO_NAME: MemberName = MemberName::Unset;
+
+impl MemberCache<MemberName> {
+    pub(super) fn name_of(&self, user_id: &str) -> MemberName {
+        self.get(user_id).unwrap_or_else(|| {
+            self.want(user_id);
+            MemberName::Unset
+        })
+    }
+
+    pub(super) fn confirm(&self, user_id: &str, reported: MemberName) -> MemberName {
+        let MemberName::Unique(name) = &reported else {
+            return reported;
+        };
+        let Ok(mut store) = self.store.lock() else {
+            return reported;
+        };
+        match store.known.get(user_id) {
+            Some(Some(MemberName::Shared(shared))) if shared == name => {
+                MemberName::Shared(shared.clone())
+            }
+            Some(_) => reported,
+            None => {
+                store.want(user_id);
+                reported
+            }
+        }
+    }
+
+    pub(super) fn name_all(&self, users: &mut [NamedUser]) -> bool {
+        let Ok(mut store) = self.store.lock() else {
+            return false;
+        };
+        let mut renamed = false;
+        for user in users {
+            let current = if let Some(known) = store.known.get(&user.user_id) {
+                known.as_ref().unwrap_or(&NO_NAME)
+            } else {
+                store.want(&user.user_id);
+                &NO_NAME
+            };
+            if user.name != *current {
+                user.name = current.clone();
+                renamed = true;
+            }
+        }
+        renamed
+    }
+}
+
 #[derive(Default)]
 pub(in crate::adapters::matrix) struct Members {
-    pub(super) avatars: MemberCache,
-    pub(super) names: MemberCache,
+    pub(super) avatars: MemberCache<String>,
+    pub(super) names: MemberCache<MemberName>,
 }
 
 impl Members {
@@ -119,13 +192,15 @@ impl Members {
     }
 
     pub(super) fn record(&self, batch: Batch) -> Arrived {
-        let cache = match batch.need {
-            Need::Avatar => &self.avatars,
-            Need::Name => &self.names,
-        };
-        Arrived {
-            need: batch.need,
-            users: cache.record(batch.lookups),
+        match batch {
+            Batch::Avatars(lookups) => Arrived {
+                need: Need::Avatar,
+                users: self.avatars.record(lookups),
+            },
+            Batch::Names(lookups) => Arrived {
+                need: Need::Name,
+                users: self.names.record(lookups),
+            },
         }
     }
 }
@@ -143,11 +218,7 @@ pub(super) async fn resolve_members(
             let lookup = resolve_name(room, &user_id).await;
             lookups.push((user_id, lookup));
         }
-        let batch = Batch {
-            need: Need::Name,
-            lookups,
-        };
-        if batches.send(batch).await.is_err() {
+        if batches.send(Batch::Names(lookups)).await.is_err() {
             return;
         }
     }
@@ -157,11 +228,7 @@ pub(super) async fn resolve_members(
             let lookup = resolve_avatar(room, client, media, &user_id).await;
             lookups.push((user_id, lookup));
         }
-        let batch = Batch {
-            need: Need::Avatar,
-            lookups,
-        };
-        drop(batches.send(batch).await);
+        drop(batches.send(Batch::Avatars(lookups)).await);
     }
 }
 
@@ -185,11 +252,12 @@ async fn member(room: &Room, user_id: &str) -> Member {
     }
 }
 
-async fn resolve_name(room: &Room, user_id: &str) -> Lookup {
+async fn resolve_name(room: &Room, user_id: &str) -> Lookup<MemberName> {
     match member(room, user_id).await {
-        Member::Found(member) => member
-            .display_name()
-            .map_or(Lookup::Missing, |name| Lookup::Found(name.to_owned())),
+        Member::Found(member) => match member_name(room, &member).await {
+            MemberName::Unset => Lookup::Missing,
+            name => Lookup::Found(name),
+        },
         Member::Absent => Lookup::Missing,
         Member::Unreadable => Lookup::Unresolved,
     }
@@ -200,7 +268,7 @@ async fn resolve_avatar(
     client: &Client,
     media: &MediaService,
     user_id: &str,
-) -> Lookup {
+) -> Lookup<String> {
     let member = match member(room, user_id).await {
         Member::Found(member) => member,
         Member::Absent => return Lookup::Missing,

@@ -1,9 +1,11 @@
 use super::catalog::{Flag, Scenarios};
+use std::collections::HashMap;
 use std::env;
 use std::sync::OnceLock;
 use std::time::Duration;
 
 use super::data;
+use crate::domain::member_name::MemberName;
 use crate::domain::message::{ReadBy, ReadScan, TimelineMessage};
 use crate::domain::timeline::MessageReaders;
 
@@ -148,13 +150,24 @@ pub fn apply_scenario(messages: &mut [TimelineMessage]) {
     stamp(messages, &receipts);
 }
 
+fn sender_names(messages: &[TimelineMessage]) -> HashMap<String, MemberName> {
+    messages
+        .iter()
+        .map(|message| (message.sender.clone(), message.sender_name.clone()))
+        .collect()
+}
+
 pub fn stamp(messages: &mut [TimelineMessage], receipts: &[Receipt]) -> Vec<usize> {
+    let names = sender_names(messages);
     let mut scan = ReadScan::excluding(Some(data::own_user()));
     let mut changed = Vec::new();
     for (index, message) in messages.iter_mut().enumerate().rev() {
         scan.observe(receipts_on(receipts, message));
         if message.tracks_readers() && !scan.describes(&message.read_by, &message.sender) {
             message.read_by = scan.read_by(&message.sender);
+            for reader in &mut message.read_by.named {
+                reader.name = names.get(&reader.user_id).cloned().unwrap_or_default();
+            }
             changed.push(index);
         }
         scan.observe([message.sender.as_str()]);

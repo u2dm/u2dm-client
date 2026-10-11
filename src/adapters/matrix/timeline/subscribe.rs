@@ -22,7 +22,7 @@ use super::diff::{diff_to_patch, stamp_editable_polls, stamp_read_marks};
 use super::edits::DiscardedEdits;
 use super::emoji_files::{EmojiFiles, Settled, download_emoji_files};
 use super::filter::TimelineItems;
-use super::members::{Arrived, Batch, Members, resolve_members};
+use super::members::{Arrived, Batch, Members, Need, resolve_members};
 use super::poll_ends::EndingPolls;
 use super::polls;
 use super::receipts::ReceiptLane;
@@ -1089,7 +1089,13 @@ fn member_patch(
     if arrived.users.is_empty() {
         return None;
     }
-    reconvert_rows(items, ctx, |item, message| involves(item, message, arrived))
+    let mut batch = reconvert_rows(items, ctx, |item, message| {
+        involves(item, message, arrived, &ctx.members.names)
+    });
+    if matches!(arrived.need, Need::Name) {
+        stamp_read_marks(items, &mut batch, ctx);
+    }
+    bundled(batch)
 }
 
 fn image_patch(
@@ -1098,10 +1104,10 @@ fn image_patch(
     ctx: &TimelineContext<'_>,
 ) -> Option<TimelinePatch> {
     let mxc = ctx.emoji_files.record(settled);
-    reconvert_rows(items, ctx, |item, message| {
+    bundled(reconvert_rows(items, ctx, |item, message| {
         reacted_with(item, &mxc)
             || message.is_some_and(|message| message.body_emoji.contains_key(&mxc))
-    })
+    }))
 }
 
 async fn send_patch(ctx: &TimelineContext<'_>, patch: Option<TimelinePatch>) -> ControlFlow<()> {
@@ -1118,7 +1124,7 @@ fn reconvert_rows(
     items: &mut TimelineItems,
     ctx: &TimelineContext<'_>,
     involved: impl Fn(&TimelineItem, Option<&TimelineMessage>) -> bool,
-) -> Option<TimelinePatch> {
+) -> Vec<TimelinePatch> {
     let rows: Vec<usize> = items
         .items()
         .iter()
@@ -1135,6 +1141,10 @@ fn reconvert_rows(
             });
         }
     }
+    patches
+}
+
+fn bundled(mut patches: Vec<TimelinePatch>) -> Option<TimelinePatch> {
     match patches.len() {
         0 => None,
         1 => patches.pop(),

@@ -233,9 +233,7 @@ pub struct AudioTrack {
 impl AudioTrack {
     fn of(message: TimelineMessage) -> Option<Self> {
         let meta = message.body.audio()?.clone();
-        let sender = message
-            .sender_display_name
-            .unwrap_or_else(|| message.sender.clone());
+        let sender = message.sender_name.shown(&message.sender);
         Some(Self {
             event_id: message.event_id?,
             sender,

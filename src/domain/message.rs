@@ -5,6 +5,7 @@ use crate::domain::emote::Emote;
 use crate::domain::media::{
     AudioKind, AudioMeta, ContentKey, FileMeta, ImageMeta, MediaKind, VideoMeta,
 };
+use crate::domain::member_name::{MemberName, NamedUser};
 use crate::domain::poll::Poll;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -28,15 +29,15 @@ pub enum MessagePreviewKind {
 pub enum ServiceEvent {
     Joined,
     Left,
-    Invited { target: Option<String> },
+    Invited { target: NamedUser },
     InvitationAccepted,
     InvitationRejected,
-    InvitationRevoked { target: Option<String> },
-    Kicked { target: Option<String> },
-    Banned { target: Option<String> },
-    Unbanned { target: Option<String> },
+    InvitationRevoked { target: NamedUser },
+    Kicked { target: NamedUser },
+    Banned { target: NamedUser },
+    Unbanned { target: NamedUser },
     Knocked,
-    KnockAccepted { target: Option<String> },
+    KnockAccepted { target: NamedUser },
     DisplayNameSet { name: String },
     DisplayNameChanged { name: String },
     DisplayNameRemoved,
@@ -138,6 +139,32 @@ pub enum MessageBody {
     },
 }
 
+impl ServiceEvent {
+    pub fn target(&self) -> Option<&NamedUser> {
+        match self {
+            Self::Invited { target }
+            | Self::InvitationRevoked { target }
+            | Self::Kicked { target }
+            | Self::Banned { target }
+            | Self::Unbanned { target }
+            | Self::KnockAccepted { target } => Some(target),
+            _ => None,
+        }
+    }
+
+    pub fn target_mut(&mut self) -> Option<&mut NamedUser> {
+        match self {
+            Self::Invited { target }
+            | Self::InvitationRevoked { target }
+            | Self::Kicked { target }
+            | Self::Banned { target }
+            | Self::Unbanned { target }
+            | Self::KnockAccepted { target } => Some(target),
+            _ => None,
+        }
+    }
+}
+
 impl MessageBody {
     pub fn service(&self) -> Option<&ServiceEvent> {
         match self {
@@ -216,7 +243,7 @@ impl MessageBody {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ReplyInfo {
     pub event_id: String,
-    pub sender: String,
+    pub sender: NamedUser,
     pub kind: MessagePreviewKind,
     pub body: RichText,
 }
@@ -259,10 +286,12 @@ impl Default for MessagePermissions {
 }
 
 pub const REACTOR_AVATAR_LIMIT: usize = 3;
+pub const REACTORS_NAMED: usize = 6;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Reactor {
     pub user_id: String,
+    pub name: MemberName,
     pub avatar_url: Option<String>,
 }
 
@@ -270,6 +299,7 @@ impl Reactor {
     pub fn new(user_id: String) -> Self {
         Self {
             user_id,
+            name: MemberName::Unset,
             avatar_url: None,
         }
     }
@@ -307,13 +337,21 @@ impl Reaction {
     pub fn shows_reactors(&self) -> bool {
         self.senders.len() < REACTOR_AVATAR_LIMIT
     }
+
+    pub fn named(&self) -> impl Iterator<Item = &Reactor> {
+        self.senders.iter().take(REACTORS_NAMED)
+    }
+
+    pub fn named_mut(&mut self) -> impl Iterator<Item = &mut Reactor> {
+        self.senders.iter_mut().take(REACTORS_NAMED)
+    }
 }
 
 pub const READERS_NAMED: usize = 6;
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct ReadBy {
-    pub named: Vec<String>,
+    pub named: Vec<NamedUser>,
     pub total: usize,
 }
 
@@ -353,13 +391,13 @@ impl<'own> ReadScan<'own> {
             && read_by
                 .named
                 .iter()
-                .map(String::as_str)
+                .map(|reader| reader.user_id.as_str())
                 .eq(self.named(sender))
     }
 
     pub fn read_by(&self, sender: &str) -> ReadBy {
         ReadBy {
-            named: self.named(sender).map(str::to_owned).collect(),
+            named: self.named(sender).map(NamedUser::unnamed).collect(),
             total: self.total(sender),
         }
     }
@@ -487,7 +525,7 @@ pub struct TimelineMessage {
     pub event_id: Option<String>,
     pub local_id: Option<String>,
     pub sender: String,
-    pub sender_display_name: Option<String>,
+    pub sender_name: MemberName,
     pub sender_avatar_url: Option<String>,
     pub sender_pronouns: Vec<String>,
     pub body: MessageBody,

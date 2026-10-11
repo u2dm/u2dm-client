@@ -11,6 +11,7 @@ use matrix_sdk::{Room, RoomMemberships};
 
 use super::build::{default_notification_mode, notification_mode_for};
 use crate::adapters::matrix::media::fetch_avatar_thumbnails;
+use crate::adapters::matrix::member_name::member_name;
 use crate::adapters::matrix::permissions::member_role;
 use crate::adapters::matrix::session::ClientHandle;
 use crate::domain::message::RichText;
@@ -53,7 +54,12 @@ impl RoomInfoPort for MatrixRoomInfo {
             .members(RoomMemberships::ACTIVE)
             .await
             .map_err(|e| AppError::Other(e.to_string()))?;
-        let mut roster: Vec<RosterMember> = members.iter().filter_map(roster_member).collect();
+        let mut roster = Vec::with_capacity(members.len());
+        for member in &members {
+            if let Some(section) = roster_section(member) {
+                roster.push(roster_member(&room, member, section).await);
+            }
+        }
         sort_roster(&mut roster);
         Ok(roster)
     }
@@ -198,7 +204,7 @@ async fn stored_reader(room: &Room, user_id: &str) -> Reader {
     match room.get_member_no_sync(&parsed).await {
         Ok(Some(member)) => Reader {
             user_id: user_id.to_owned(),
-            display_name: member.display_name().map(ToOwned::to_owned),
+            name: member_name(room, &member).await,
             avatar_mxc: member.avatar_url().map(ToString::to_string),
             role: member_role(member.power_level()),
         },
@@ -210,17 +216,20 @@ async fn stored_reader(room: &Room, user_id: &str) -> Reader {
     }
 }
 
-fn roster_member(member: &RoomMember) -> Option<RosterMember> {
-    let section = match member.membership() {
-        MembershipState::Join => RosterSection::Joined,
-        MembershipState::Invite => RosterSection::Invited,
-        _ => return None,
-    };
-    Some(RosterMember {
+fn roster_section(member: &RoomMember) -> Option<RosterSection> {
+    match member.membership() {
+        MembershipState::Join => Some(RosterSection::Joined),
+        MembershipState::Invite => Some(RosterSection::Invited),
+        _ => None,
+    }
+}
+
+async fn roster_member(room: &Room, member: &RoomMember, section: RosterSection) -> RosterMember {
+    RosterMember {
         user_id: member.user_id().to_string(),
-        display_name: member.display_name().map(ToOwned::to_owned),
+        name: member_name(room, member).await,
         avatar_mxc: member.avatar_url().map(ToString::to_string),
         role: member_role(member.power_level()),
         section,
-    })
+    }
 }

@@ -7,6 +7,7 @@ use super::{media, message_menu, polls, reactions};
 use crate::domain::auth::Session;
 use crate::domain::image_pack::{ImagePack, ImageUsage, PackId, PackImage, PackOrigin, PackTitle};
 use crate::domain::media::{AudioKind, AudioMeta, ImageMeta, VideoMeta, Waveform};
+use crate::domain::member_name::{MemberName, NamedUser};
 use crate::domain::message::{
     MessageBody, MessagePreviewKind, Reaction, ReactionSend, ReadBy, ReplyInfo, RichText,
     SendState, ServiceEvent, TimelineMessage,
@@ -545,13 +546,13 @@ impl ServiceDto {
             Self::Joined => ServiceEvent::Joined,
             Self::Left => ServiceEvent::Left,
             Self::Invited { target } => ServiceEvent::Invited {
-                target: optional(target),
+                target: named_only(target),
             },
             Self::Kicked { target } => ServiceEvent::Kicked {
-                target: optional(target),
+                target: named_only(target),
             },
             Self::Banned { target } => ServiceEvent::Banned {
-                target: optional(target),
+                target: named_only(target),
             },
             Self::NameChanged { target } => ServiceEvent::DisplayNameChanged {
                 name: target.clone(),
@@ -568,8 +569,8 @@ impl ServiceDto {
     }
 }
 
-fn optional(value: &str) -> Option<String> {
-    (!value.is_empty()).then(|| value.to_owned())
+fn named_only(name: &str) -> NamedUser {
+    NamedUser::new(String::new(), MemberName::new(Some(name), false))
 }
 
 #[derive(Deserialize)]
@@ -620,7 +621,7 @@ impl RoomDto {
             has_activity: self.unread > 0,
             notify,
             last_activity_ts: ago_ms(now_ms, self.minutes_ago, self.days_ago),
-            last_message_sender: self.last_message.sender.clone(),
+            last_message_sender: self.last_message.named_sender(&self.id),
             last_message_kind: self.last_message.kind.to_kind(),
             last_message_body: self.last_message.rich_body(),
             last_message_service: self.last_message.service.as_ref().map(ServiceDto::to_event),
@@ -805,7 +806,7 @@ impl MessageDto {
             local_id: None,
             sender_pronouns: super::data::pronouns(&self.sender),
             sender: self.sender.clone(),
-            sender_display_name: Some(self.name.clone()),
+            sender_name: MemberName::new(Some(&self.name), false),
             sender_avatar_url: Some(self.sender.clone()),
             body_emoji: media::emoji_states(&body),
             body,
@@ -814,7 +815,7 @@ impl MessageDto {
             is_own: self.sender == own_user,
             reply: self.reply.as_ref().map(|reply| ReplyInfo {
                 event_id: reply.event_id.clone(),
-                sender: reply.sender.clone(),
+                sender: named_only(&reply.sender),
                 kind: reply.kind.to_kind(),
                 body: RichText::plain(reply.body.clone()),
             }),
@@ -894,6 +895,16 @@ impl MessageDto {
 impl LastMessageDto {
     fn rich_body(&self) -> RichText {
         rich_text(&self.body, self.html.as_deref())
+    }
+
+    fn named_sender(&self, room_id: &str) -> Option<NamedUser> {
+        if self.sender.is_none() && self.sender_id.is_none() {
+            return None;
+        }
+        let user_id = self.sender_id.clone().unwrap_or_default();
+        let book = super::data::names_in(&RoomId::new(room_id), []);
+        let name = book.name(&user_id, self.sender.as_deref());
+        Some(NamedUser::new(user_id, name))
     }
 }
 

@@ -197,6 +197,11 @@ const SCENARIO_SOURCES: &[ScenarioSource] = &[
         ignored: &[],
     },
     ScenarioSource {
+        file: "src/adapters/demo/names.rs",
+        arms_between: ("fn apply(scenario: &mut Scenario, flag: &str) {", "\n}"),
+        ignored: &[],
+    },
+    ScenarioSource {
         file: "src/adapters/demo/richtext.rs",
         arms_between: ("fn apply(scenario: &mut Scenario, flag: &str) {", "\n}"),
         ignored: &[],

@@ -4,6 +4,7 @@ pub mod emote;
 pub mod image_pack;
 pub mod link;
 pub mod media;
+pub mod member_name;
 pub mod mention;
 pub mod message;
 pub mod poll;

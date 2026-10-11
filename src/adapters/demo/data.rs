@@ -5,6 +5,7 @@ use std::sync::{Arc, OnceLock};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use super::dto::{DemoData, RoomDto, SpaceDto, UnjoinedDto};
+use super::names::{self, NameBook};
 use super::timeline::{self, scenario};
 use super::{media, message_menu, polls};
 use crate::adapters::markdown::{self, Composed, RoomMentions};
@@ -14,9 +15,10 @@ use crate::domain::image_pack::{ImagePack, PackImage, PackOrigin};
 use crate::domain::media::{
     AudioKind, AudioMeta, FileMeta, ImageMeta, OutgoingAttachment, VideoMeta,
 };
+use crate::domain::member_name::{MemberName, NamedUser};
 use crate::domain::message::{
-    MessageBody, MessagePreviewKind, PinnedMessage, ReadBy, ReplyInfo, RichText, SendState,
-    TimelineMessage,
+    MessageBody, MessagePreviewKind, PinnedMessage, Reaction, ReadBy, ReplyInfo, RichText,
+    SendState, TimelineMessage,
 };
 use crate::domain::poll::{Poll, PollAnswer, PollDraft, PollStatus};
 use crate::domain::room::{NotifyMode, Room, RoomId, Space};
@@ -196,10 +198,8 @@ fn room_link(room_id: &RoomId, alias: Option<&str>) -> String {
     }
 }
 
-pub fn roster(room_id: &RoomId, avatar_of: impl Fn(&str) -> String) -> Vec<RosterMember> {
+fn room_members(room_id: &RoomId) -> Vec<(String, RosterSection)> {
     let data = data();
-    let names = people_names(data);
-    let own = own_user();
     let fixture = data.rooms.iter().find(|room| room.id == room_id.as_ref());
     let joined_count = fixture.map(|room| room.members).or_else(|| {
         data.unjoined
@@ -210,9 +210,8 @@ pub fn roster(room_id: &RoomId, avatar_of: impl Fn(&str) -> String) -> Vec<Roste
     let Some(joined_count) = joined_count else {
         return Vec::new();
     };
-    let mut joined: Vec<String> = vec![own.to_owned()];
+    let mut joined: Vec<String> = vec![own_user().to_owned()];
     let mut invited: Vec<String> = Vec::new();
-    let mut roles: HashMap<String, MemberRole> = HashMap::new();
     if let Some(room) = fixture {
         let senders = data
             .timelines
@@ -220,22 +219,20 @@ pub fn roster(room_id: &RoomId, avatar_of: impl Fn(&str) -> String) -> Vec<Roste
             .into_iter()
             .flatten()
             .map(|message| message.author().0.to_owned());
-        for user_id in senders.chain(room.roles.keys().cloned()) {
+        let added = names::members(room_id)
+            .into_iter()
+            .map(|(user_id, _)| user_id.to_owned());
+        for user_id in senders.chain(room.roles.keys().cloned()).chain(added) {
             if !joined.contains(&user_id) {
                 joined.push(user_id);
             }
         }
-        roles.extend(
-            room.roles
-                .iter()
-                .map(|(user, role)| (user.clone(), role.to_role())),
-        );
         invited.extend(room.invited.iter().cloned());
     }
     let guests = usize::try_from(joined_count)
         .unwrap_or(usize::MAX)
         .saturating_sub(joined.len());
-    let mut roster: Vec<RosterMember> = joined
+    joined
         .into_iter()
         .map(|user_id| (user_id, RosterSection::Joined))
         .chain((1..=guests).map(|n| (guest_id(n), RosterSection::Joined)))
@@ -244,11 +241,53 @@ pub fn roster(room_id: &RoomId, avatar_of: impl Fn(&str) -> String) -> Vec<Roste
                 .into_iter()
                 .map(|user_id| (user_id, RosterSection::Invited)),
         )
+        .collect()
+}
+
+pub fn names_in(room_id: &RoomId, referenced: impl IntoIterator<Item = String>) -> NameBook {
+    let data = data();
+    let mut known = people_names(data);
+    for message in data.timelines.get(room_id.as_ref()).into_iter().flatten() {
+        let (sender, name) = message.author();
+        if names_a_person(name) {
+            known.insert(sender.to_owned(), name.to_owned());
+        }
+    }
+    for (user_id, name) in names::members(room_id) {
+        if let Some(name) = name {
+            known.insert(user_id.to_owned(), name.to_owned());
+        }
+    }
+    let users = room_members(room_id)
+        .into_iter()
+        .map(|(user_id, _)| user_id)
+        .chain(referenced);
+    NameBook::new(users.filter_map(|user_id| {
+        let name = known
+            .get(&user_id)
+            .cloned()
+            .or_else(|| guest_name(&user_id))?;
+        Some((user_id, name))
+    }))
+}
+
+pub fn roster(room_id: &RoomId, avatar_of: impl Fn(&str) -> String) -> Vec<RosterMember> {
+    let roles: HashMap<String, MemberRole> = data()
+        .rooms
+        .iter()
+        .find(|room| room.id == room_id.as_ref())
+        .map(|room| {
+            room.roles
+                .iter()
+                .map(|(user, role)| (user.clone(), role.to_role()))
+                .collect()
+        })
+        .unwrap_or_default();
+    let book = names_in(room_id, []);
+    let mut roster: Vec<RosterMember> = room_members(room_id)
+        .into_iter()
         .map(|(user_id, section)| RosterMember {
-            display_name: names
-                .get(&user_id)
-                .cloned()
-                .or_else(|| guest_name(&user_id)),
+            name: book.of(&user_id),
             avatar_mxc: Some(avatar_of(&user_id)),
             role: roles.get(&user_id).copied().unwrap_or(MemberRole::Member),
             section,
@@ -274,9 +313,10 @@ pub fn profile(
     };
     UserProfile {
         user_id: user_id.clone(),
-        display_name: member
+        name: member
             .as_ref()
-            .and_then(|member| member.display_name.clone()),
+            .map(|member| member.name.clone())
+            .unwrap_or_default(),
         avatar_mxc: member.as_ref().and_then(|member| member.avatar_mxc.clone()),
         role: member
             .as_ref()
@@ -298,6 +338,7 @@ pub fn readers(
     avatar_of: impl Fn(&str) -> String,
 ) -> Vec<Reader> {
     let members = roster(room_id, &avatar_of);
+    let book = names_in(room_id, user_ids.iter().cloned());
     user_ids
         .iter()
         .map(|user_id| {
@@ -307,13 +348,13 @@ pub fn readers(
                 .map_or_else(
                     || Reader {
                         user_id: user_id.clone(),
-                        display_name: person_name(user_id),
+                        name: book.of(user_id),
                         avatar_mxc: Some(avatar_of(user_id)),
                         role: role_of(room_id, user_id),
                     },
                     |member| Reader {
                         user_id: member.user_id.clone(),
-                        display_name: member.display_name.clone(),
+                        name: member.name.clone(),
                         avatar_mxc: member.avatar_mxc.clone(),
                         role: member.role,
                     },
@@ -374,11 +415,15 @@ fn guest_name(user_id: &str) -> Option<String> {
     Some(format!("Guest {n}"))
 }
 
+fn names_a_person(name: &str) -> bool {
+    name != OWN_NAME_IN_TIMELINES && !name.is_empty()
+}
+
 fn people_names(data: &DemoData) -> HashMap<String, String> {
     let mut names = HashMap::new();
     for message in data.timelines.values().flatten() {
         let (sender, name) = message.author();
-        if name != OWN_NAME_IN_TIMELINES && !name.is_empty() {
+        if names_a_person(name) {
             names
                 .entry(sender.to_owned())
                 .or_insert_with(|| name.to_owned());
@@ -508,9 +553,66 @@ pub fn messages(room_id: &RoomId) -> Vec<TimelineMessage> {
     super::richtext::apply_scenario(&mut messages);
     super::reactions::apply_scenario(&mut messages);
     super::polls::apply_scenario(&mut messages);
+    names::apply_scenario(room_id, &mut messages, now);
+    name_messages(room_id, &mut messages);
     super::receipts::apply_scenario(&mut messages);
     mark_first_unread(room_id, &mut messages);
     messages
+}
+
+fn referenced_users(messages: &[TimelineMessage]) -> Vec<String> {
+    let mut users = Vec::new();
+    for message in messages {
+        users.push(message.sender.clone());
+        users.extend(
+            message
+                .reactions
+                .iter()
+                .flat_map(Reaction::named)
+                .map(|reactor| reactor.user_id.clone()),
+        );
+        if let Some(poll) = message.body.poll() {
+            users.extend(poll.named_voters().map(|voter| voter.user_id.clone()));
+        }
+    }
+    users
+}
+
+fn name_messages(room_id: &RoomId, messages: &mut [TimelineMessage]) {
+    let book = names_in(room_id, referenced_users(messages));
+    let senders: HashMap<String, String> = messages
+        .iter()
+        .filter_map(|message| Some((message.event_id.clone()?, message.sender.clone())))
+        .collect();
+    for message in messages.iter_mut() {
+        message.sender_name = book.renamed(&message.sender, &message.sender_name);
+        if let Some(reply) = &mut message.reply {
+            let quoted = senders
+                .get(&reply.event_id)
+                .cloned()
+                .unwrap_or_else(|| reply.sender.user_id.clone());
+            if !quoted.is_empty() {
+                reply.sender =
+                    NamedUser::new(quoted.clone(), book.renamed(&quoted, &reply.sender.name));
+            }
+        }
+        for reactor in message.reactions.iter_mut().flat_map(Reaction::named_mut) {
+            reactor.name = book.of(&reactor.user_id);
+        }
+        if let MessageBody::Poll(poll) = &mut message.body {
+            for voter in poll.named_voters_mut() {
+                voter.name = book.of(&voter.user_id);
+            }
+        }
+    }
+}
+
+pub fn own_sender_name() -> MemberName {
+    MemberName::Unique(OWN_NAME_IN_TIMELINES.to_owned())
+}
+
+pub fn own_member_name() -> MemberName {
+    MemberName::new(person_name(own_user()).as_deref(), false)
 }
 
 fn repeated_history(messages: &[TimelineMessage]) -> Vec<TimelineMessage> {
@@ -656,7 +758,7 @@ pub fn own_message(
         local_id: (!settled).then(|| format!("local:{id}")),
         sender_pronouns: Vec::new(),
         sender: own_user().to_owned(),
-        sender_display_name: Some("You".to_owned()),
+        sender_name: own_sender_name(),
         sender_avatar_url: Some(own_user().to_owned()),
         body_emoji: media::emoji_states(&body),
         body,
@@ -710,7 +812,7 @@ pub fn own_sticker(sequence: u64, image: &PackImage, reply: Option<ReplyInfo>) -
         local_id: None,
         sender_pronouns: Vec::new(),
         sender: own_user().to_owned(),
-        sender_display_name: Some("You".to_owned()),
+        sender_name: own_sender_name(),
         sender_avatar_url: Some(own_user().to_owned()),
         body: MessageBody::Sticker {
             alt: image.body.clone(),
@@ -807,7 +909,7 @@ pub fn own_attachment(
         local_id: None,
         sender_pronouns: Vec::new(),
         sender: own_user().to_owned(),
-        sender_display_name: Some("You".to_owned()),
+        sender_name: own_sender_name(),
         sender_avatar_url: Some(own_user().to_owned()),
         body_emoji: media::emoji_states(&body),
         body,
@@ -846,11 +948,8 @@ pub fn body_preview(body: &MessageBody) -> RichText {
     }
 }
 
-pub fn sender_label(message: &TimelineMessage) -> String {
-    message
-        .sender_display_name
-        .clone()
-        .unwrap_or_else(|| message.sender.clone())
+pub fn sender_of(message: &TimelineMessage) -> NamedUser {
+    NamedUser::new(message.sender.clone(), message.sender_name.clone())
 }
 
 fn last_message_only(room_id: &RoomId) -> Vec<TimelineMessage> {
@@ -865,16 +964,20 @@ fn last_message_only(room_id: &RoomId) -> Vec<TimelineMessage> {
 }
 
 fn synthesized_message(dto: &RoomDto, room: &Room) -> TimelineMessage {
-    let (sender, display_name) = if dto.last_message.own {
-        (own_user().to_owned(), "You".to_owned())
+    let (sender, sender_name) = if dto.last_message.own {
+        (own_user().to_owned(), own_sender_name())
     } else {
-        (
-            dto.last_message
-                .sender_id
-                .clone()
-                .unwrap_or_else(|| UNKNOWN_SENDER.to_owned()),
-            dto.last_message.sender.clone().unwrap_or_default(),
-        )
+        let sender = dto
+            .last_message
+            .sender_id
+            .clone()
+            .unwrap_or_else(|| UNKNOWN_SENDER.to_owned());
+        let name = room
+            .last_message_sender
+            .as_ref()
+            .map(|named| named.name.clone())
+            .unwrap_or_default();
+        (sender, name)
     };
     let id = format!("demo-{}-last", dto.id.trim_start_matches('!'));
     let body = MessageBody::Text(room.last_message_body.clone());
@@ -886,7 +989,7 @@ fn synthesized_message(dto: &RoomDto, room: &Room) -> TimelineMessage {
         sender_pronouns: pronouns(&sender),
         sender_avatar_url: Some(sender.clone()),
         sender,
-        sender_display_name: Some(display_name),
+        sender_name,
         body_emoji: media::emoji_states(&body),
         body,
         mentions_room: false,

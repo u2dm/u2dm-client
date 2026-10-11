@@ -25,6 +25,7 @@ use crate::domain::emote::Emote;
 use crate::domain::image_pack::{PackId, PackImage};
 use crate::domain::link::LauncherSafeUrl;
 use crate::domain::media::{MediaRendition, OutgoingAttachment, WaveformNeed};
+use crate::domain::member_name::MemberName;
 use crate::domain::message::{
     CustomEmoji, EditTarget, MessageBody, MessageEdit, MessagePreviewKind, PinChange,
     PinnedMessage, ReplyInfo, RichText, SendState, TimelineMessage,
@@ -1997,7 +1998,7 @@ fn reply_info(messages: &[TimelineMessage], event_id: &str) -> Option<ReplyInfo>
         .find(|message| message.event_id.as_deref() == Some(event_id))
         .map(|message| ReplyInfo {
             event_id: event_id.to_owned(),
-            sender: data::sender_label(message),
+            sender: data::sender_of(message),
             kind: message.body.preview_kind(),
             body: data::body_preview(&message.body),
         })
@@ -2362,7 +2363,7 @@ fn spawn_late_append(active: SharedActiveRoom, timeline_tx: mpsc::Sender<Timelin
         );
         message.is_own = false;
         "@sarah:matrix.org".clone_into(&mut message.sender);
-        message.sender_display_name = Some("Sarah Chen".to_owned());
+        message.sender_name = MemberName::Unique("Sarah Chen".to_owned());
         let above_pending = active.lock().ok().and_then(|mut guard| {
             let room = guard
                 .as_mut()

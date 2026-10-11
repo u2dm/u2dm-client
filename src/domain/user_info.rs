@@ -1,5 +1,6 @@
 use std::{fmt, ops};
 
+use crate::domain::member_name::MemberName;
 use crate::domain::room::RoomId;
 use crate::domain::room_info::MemberRole;
 
@@ -9,10 +10,6 @@ pub struct UserId(String);
 impl UserId {
     pub fn new(id: impl Into<String>) -> Self {
         Self(id.into())
-    }
-
-    pub fn localpart(&self) -> &str {
-        localpart(&self.0)
     }
 }
 
@@ -97,7 +94,7 @@ pub enum Pronouns {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct UserProfile {
     pub user_id: UserId,
-    pub display_name: Option<String>,
+    pub name: MemberName,
     pub avatar_mxc: Option<String>,
     pub role: MemberRole,
     pub membership: RoomMembership,
@@ -114,7 +111,7 @@ impl UserProfile {
     pub fn placeholder(user_id: UserId) -> Self {
         Self {
             user_id,
-            display_name: None,
+            name: MemberName::Unset,
             avatar_mxc: None,
             role: MemberRole::Member,
             membership: RoomMembership::Unknown,
@@ -128,15 +125,12 @@ impl UserProfile {
         }
     }
 
-    pub fn label(&self) -> &str {
-        self.display_name
-            .as_deref()
-            .filter(|name| !name.trim().is_empty())
-            .unwrap_or_else(|| self.user_id.localpart())
+    pub fn shown(&self) -> String {
+        self.name.shown(&self.user_id)
     }
 
     pub fn wants_global_profile(&self) -> bool {
-        self.display_name.is_none()
+        self.name == MemberName::Unset
             && matches!(
                 self.membership,
                 RoomMembership::Outside | RoomMembership::Unknown
@@ -171,8 +165,8 @@ impl UserProfile {
     }
 
     pub fn adopt_global(&mut self, global: GlobalProfile) {
-        if self.display_name.is_none() {
-            self.display_name = global.display_name;
+        if self.name == MemberName::Unset {
+            self.name = MemberName::new(global.display_name.as_deref(), false);
         }
         if self.avatar_mxc.is_none() {
             self.avatar_mxc = global.avatar_mxc;

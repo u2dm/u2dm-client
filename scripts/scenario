@@ -56,6 +56,7 @@ scenario_env() {
     room-search-open) echo 'U2DM_DEMO_WINDOW=900x760' ;;
     mentions)        echo 'U2DM_DEMO_ROOM_INFO=slow' ;;
     room-mention)    echo 'U2DM_DEMO_WINDOW=900x760' ;;
+    display-names)   echo 'U2DM_DEMO_NAMES=all' ;;
     *) return 1 ;;
   esac
 }
@@ -313,6 +314,11 @@ scenario_steps() {
     room-search)
       echo '{"op":"filter_rooms","query":"design"}'
       echo 'sleep 1' ;;
+    display-names)
+      echo '{"op":"select_room","room_id":"!linux:demo.local"}'
+      echo 'sleep 3'
+      echo '{"op":"suggest_mentions","room_id":"!linux:demo.local","query":"ka","recent":[]}'
+      echo 'sleep 2' ;;
     room-search-open)
       echo '{"op":"filter_rooms","query":"web"}'
       echo 'sleep 1'
@@ -383,6 +389,7 @@ scenario_note() {
     room-search-open) echo '"web" matches only the Web space under Rust (Web Accessibility is too deep to open); opening it selects Rust and its Web subspace' ;;
     mentions)        echo 'in !design the roster loads slowly, then "pr" suggests Priya, "" puts the recent speakers first, and "ro" offers @room' ;;
     room-mention)    echo 'in !matrixhq, Vera'"'"'s announcement mentions the room: its @room is bold and its bubble tinted (mentions_you)' ;;
+    display-names)   echo 'in !linux, a second Kai, a right-to-left name, a Kai whose name ends in bidi controls and a nameless member post: every Kai, the sidebar preview and the "ka" suggestions carry user IDs' ;;
   esac
 }
 
@@ -403,7 +410,7 @@ names() {
     space-index polls poll-edits room-info room-leave room-info-failures room-info-pane room-menu room-menu-leave \
     room-menu-failures room-log user-info user-info-failures user-dm user-dm-start user-dm-failures user-ignore user-moderation \
     user-moderation-failures user-tags custom-emoji message-link message-source message-pins message-pin-failures message-delete \
-    message-delete-failures readers room-search room-search-open mentions room-mention
+    message-delete-failures readers room-search room-search-open mentions room-mention display-names
 }
 
 cmd_list() {

@@ -9,6 +9,7 @@ mod login;
 mod matrix;
 mod media;
 mod message_menu;
+mod names;
 mod pinned;
 mod polls;
 pub mod probe;

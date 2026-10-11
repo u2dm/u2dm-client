@@ -184,7 +184,7 @@ pub struct MentionCandidate {
 
 impl MentionCandidate {
     pub fn new(member: Arc<RosterMember>) -> Self {
-        let label = folded(member.label());
+        let label = folded(member.sort_name());
         let id = folded(member.user_id.trim_start_matches(USER_SIGIL));
         Self { member, label, id }
     }

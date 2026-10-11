@@ -20,7 +20,7 @@ use super::emote;
 use super::fields::{MemberRowFields, MessageFields, SpaceChildFields, SpaceFields};
 use super::present::{
     VerifyStep, avatar_color_index, avatar_initials, duration_label, file_extension,
-    message_sent_at_label, user_initial, verification_cancellation,
+    message_sent_at_label, name_initials, user_initial, verification_cancellation,
 };
 use super::props::{BoolProp, IntProp, StringProp, UiProps};
 use super::reconcile::{
@@ -1001,15 +1001,17 @@ fn apply_user_card(w: &impl UiProps, card: Option<&UserCard>, media: &dyn MediaC
         return;
     };
     let profile = &card.profile;
-    let label = profile.label();
     w.set_string(
         StringProp::UserInfoUserId,
         SharedString::from(profile.user_id.as_ref()),
     );
-    w.set_string(StringProp::UserInfoName, SharedString::from(label));
+    w.set_string(
+        StringProp::UserInfoName,
+        SharedString::from(profile.shown()),
+    );
     w.set_string(
         StringProp::UserInfoInitial,
-        SharedString::from(avatar_initials(label)),
+        SharedString::from(name_initials(&profile.name, &profile.user_id)),
     );
     w.set_int(
         IntProp::UserInfoColorIndex,
