@@ -1,18 +1,18 @@
 use std::collections::BTreeSet;
 use std::path::PathBuf;
-use std::time::Duration;
 use std::sync::Arc;
+use std::time::Duration;
 
 use super::messages::{UserMessage, UserMessageKind};
 use super::ui::Draft;
 use crate::domain::auth::{LoginMethod, Session};
+use crate::domain::image_pack::ImagePacks;
 use crate::domain::media::AudioMeta;
 use crate::domain::message::{PinnedMessage, TimelineMessage};
 use crate::domain::room::{NotifyMode, RoomId, RoomList, Space, UnreadFlags};
 use crate::domain::room_info::{Reader, RoomAbout, RosterMember};
 use crate::domain::room_log::RoomLog;
 use crate::domain::space_index::SpaceChild;
-use crate::domain::sticker::StickerPacks;
 use crate::domain::sync::ConnectionStatus;
 use crate::domain::timeline::{EventSource, OlderHistory};
 use crate::domain::user_info::UserProfile;
@@ -28,7 +28,7 @@ pub struct AppViewState {
     pub user_info: UserInfoView,
     pub pagination: PaginationView,
     pub pinned: PinnedView,
-    pub stickers: StickerView,
+    pub image_packs: PackView,
     pub attachment: AttachmentView,
     pub video: VideoView,
     pub audio: AudioView,
@@ -237,15 +237,15 @@ impl PinnedView {
 }
 
 #[derive(Clone)]
-pub struct StickerView {
+pub struct PackView {
     pub generation: i32,
-    pub packs: StickerPacks,
+    pub packs: ImagePacks,
     pub ready_images: usize,
     pub room_encrypted: bool,
     pub loading: bool,
 }
 
-impl Default for StickerView {
+impl Default for PackView {
     fn default() -> Self {
         Self {
             generation: 0,

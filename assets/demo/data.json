@@ -1846,9 +1846,43 @@
   },
   "sticker_packs": [
     {
+      "id": "account",
+      "origin": "personal",
+      "usage": [
+        "emoticon"
+      ],
+      "images": [
+        {
+          "shortcode": "wave",
+          "body": "waving hello",
+          "asset": "demo-sticker-small"
+        },
+        {
+          "shortcode": "party",
+          "body": "party time",
+          "asset": "demo-sticker-anim"
+        },
+        {
+          "shortcode": "ship",
+          "body": "my own ship",
+          "asset": "demo-sticker-ship"
+        },
+        {
+          "shortcode": "big_pin",
+          "body": "pinned for later",
+          "asset": "demo-sticker-tall",
+          "usage": [
+            "sticker"
+          ]
+        }
+      ]
+    },
+    {
       "id": "cats",
       "title": "Cat Tax",
+      "origin": "global",
       "avatar": "demo-sarah-desk",
+      "rooms": ["!cats:demo.local"],
       "images": [
         {
           "shortcode": "ship",
@@ -1905,7 +1939,9 @@
     {
       "id": "reactions",
       "title": "Reactions",
+      "origin": "global",
       "avatar": "demo-sticker-missing",
+      "rooms": ["!stickers:demo.local"],
       "images": [
         {
           "shortcode": "yes",
@@ -1941,6 +1977,66 @@
           "shortcode": "nice",
           "body": "nice",
           "asset": "demo-sticker-small"
+        }
+      ]
+    },
+    {
+      "id": "blobs",
+      "title": "Blob Emotes",
+      "origin": "global",
+      "usage": [
+        "emoticon"
+      ],
+      "images": [
+        {
+          "shortcode": "blob_ship",
+          "body": "a little ship",
+          "asset": "demo-sticker-ship"
+        },
+        {
+          "shortcode": "blob_spin",
+          "asset": "demo-sticker-anim"
+        },
+        {
+          "shortcode": "blob_small",
+          "asset": "demo-sticker-small"
+        },
+        {
+          "shortcode": "blob_tall",
+          "body": "a tall blob",
+          "asset": "demo-sticker-tall"
+        }
+      ]
+    },
+    {
+      "id": "mixed",
+      "title": "Mixed Bag",
+      "usage": [
+        "sticker"
+      ],
+      "rooms": [
+        "!stickers:demo.local"
+      ],
+      "images": [
+        {
+          "shortcode": "big_ship",
+          "asset": "demo-sticker-ship"
+        },
+        {
+          "shortcode": "tiny",
+          "body": "a tiny one",
+          "asset": "demo-sticker-small",
+          "usage": [
+            "emoticon"
+          ]
+        },
+        {
+          "shortcode": "both_spin",
+          "asset": "demo-sticker-anim",
+          "usage": [
+            "emoticon",
+            "sticker"
+          ]
         }
       ]
     }

@@ -132,6 +132,11 @@ export component ComposerField inherits Rectangle {
         root.apply-pending-insert();
     }
 
+    public function place-emote(pack-id: string, shortcode: string, replaces-word: bool) {
+        root.pending-insert = Actions.place-emote(root.text, root.caret, pack-id, shortcode, replaces-word);
+        root.apply-pending-insert();
+    }
+
     function apply-pending-insert() {
         root.text = root.pending-insert.text;
         root.caret = root.pending-insert.caret;

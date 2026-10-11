@@ -7,7 +7,7 @@ use slint::{Image, Model, SharedString, VecModel};
 use super::backend::UiBackend;
 use super::decode::{ShownAvatar, forget_all_media_needs};
 use super::dto::{
-    INVITED_HEADING_ROW, SPACES_HEADING_ROW, StickerGrid, StickerRowDto, prefetch_space_avatar,
+    INVITED_HEADING_ROW, PackGrid, PackRowDto, SPACES_HEADING_ROW, prefetch_space_avatar,
     record_room_avatar_need, request_member_avatar, request_mention_avatar, request_reader_avatar,
     request_space_child_avatar, request_space_match_avatar,
 };
@@ -16,6 +16,7 @@ use super::richtext::forget_styled_bodies;
 use super::session::with_session;
 use super::splice_model::SpliceModel;
 use crate::commands::view::{DirectoryView, RosterRow, SpaceIndexRow, SpaceMatch};
+use crate::domain::image_pack::PackOrigin;
 use crate::domain::message::TimelineMessage;
 use crate::domain::room::{Room, Space};
 use crate::domain::room_info::{Reader, RosterMember};
@@ -111,10 +112,10 @@ impl TimelineIndex {
 }
 
 #[derive(Default)]
-pub struct StickerIndex {
+pub struct PackIndex {
     row_of_cell: HashMap<String, usize>,
     row_of_pack: HashMap<String, usize>,
-    row_shapes: Vec<StickerRowShape>,
+    row_shapes: Vec<PackRowShape>,
     awaited_downloads: HashMap<String, String>,
     pack_avatars: HashMap<String, PackAvatarWatch>,
 }
@@ -125,17 +126,23 @@ struct PackAvatarWatch {
 }
 
 #[derive(PartialEq)]
-struct StickerRowShape {
+struct PackRowShape {
     is_header: bool,
     title: SharedString,
+    untitled: bool,
+    pack_id: SharedString,
+    origin: PackOrigin,
     cell_keys: Vec<SharedString>,
 }
 
-impl StickerRowShape {
-    fn of(row: &StickerRowDto) -> Self {
+impl PackRowShape {
+    fn of(row: &PackRowDto) -> Self {
         Self {
             is_header: row.is_header,
             title: row.title.clone(),
+            untitled: row.untitled,
+            pack_id: row.pack_id.clone(),
+            origin: row.origin,
             cell_keys: row.cells.iter().map(|cell| cell.key.clone()).collect(),
         }
     }
@@ -149,10 +156,10 @@ impl RowReplacements {
     }
 }
 
-pub fn index_sticker_grid(grid: &StickerGrid) -> RowReplacements {
+pub fn index_pack_grid(grid: &PackGrid) -> RowReplacements {
     with_session(|session| {
-        let index = &mut session.sticker_index;
-        let shapes: Vec<StickerRowShape> = grid.rows.iter().map(StickerRowShape::of).collect();
+        let index = &mut session.pack_index;
+        let shapes: Vec<PackRowShape> = grid.rows.iter().map(PackRowShape::of).collect();
         let replaced = RowReplacements(
             shapes
                 .iter()
@@ -193,25 +200,24 @@ pub fn index_sticker_grid(grid: &StickerGrid) -> RowReplacements {
 }
 
 pub fn retain_awaited_downloads(mut still_awaited: impl FnMut(&str, &str) -> bool) {
-    let mut awaited =
-        with_session(|session| mem::take(&mut session.sticker_index.awaited_downloads));
+    let mut awaited = with_session(|session| mem::take(&mut session.pack_index.awaited_downloads));
     awaited.retain(|key, mxc| still_awaited(key, mxc));
-    with_session(|session| session.sticker_index.awaited_downloads = awaited);
+    with_session(|session| session.pack_index.awaited_downloads = awaited);
 }
 
 pub fn shows_pack_avatar(pack_id: &str) -> bool {
-    with_session(|session| session.sticker_index.pack_avatars.contains_key(pack_id))
+    with_session(|session| session.pack_index.pack_avatars.contains_key(pack_id))
 }
 
 pub fn forget_pack_avatar(pack_id: &str) -> Option<String> {
-    with_session(|session| session.sticker_index.pack_avatars.remove(pack_id))
+    with_session(|session| session.pack_index.pack_avatars.remove(pack_id))
         .map(|watch| watch.fallback_cell_key)
 }
 
 pub fn downloading_pack_avatars() -> Vec<(String, String)> {
     with_session(|session| {
         session
-            .sticker_index
+            .pack_index
             .pack_avatars
             .iter()
             .filter_map(|(pack, watch)| Some((pack.clone(), watch.downloading_mxc.clone()?)))
@@ -221,18 +227,18 @@ pub fn downloading_pack_avatars() -> Vec<(String, String)> {
 
 pub fn pack_avatar_downloaded(pack_id: &str) {
     with_session(|session| {
-        if let Some(watch) = session.sticker_index.pack_avatars.get_mut(pack_id) {
+        if let Some(watch) = session.pack_index.pack_avatars.get_mut(pack_id) {
             watch.downloading_mxc = None;
         }
     });
 }
 
-pub fn sticker_cell_row(key: &str) -> Option<usize> {
-    with_session(|session| session.sticker_index.row_of_cell.get(key).copied())
+pub fn pack_cell_row(key: &str) -> Option<usize> {
+    with_session(|session| session.pack_index.row_of_cell.get(key).copied())
 }
 
-pub fn sticker_pack_row(pack_id: &str) -> Option<usize> {
-    with_session(|session| session.sticker_index.row_of_pack.get(pack_id).copied())
+pub fn pack_tab_row(pack_id: &str) -> Option<usize> {
+    with_session(|session| session.pack_index.row_of_pack.get(pack_id).copied())
 }
 
 pub fn timeline_row_of(unique_id: &str) -> Option<usize> {

@@ -9,6 +9,7 @@ use super::show_toast;
 use super::task_group::TaskGroup;
 use crate::commands::messages::{UserMessage, UserMessageKind};
 use crate::commands::view::{AttachmentKind, AttachmentView, Toast};
+use crate::domain::emote::ComposerText;
 use crate::domain::media::{AttachmentPick, OutgoingAttachment, PickedAttachment};
 use crate::domain::room::RoomId;
 use crate::error::AppError;
@@ -142,7 +143,7 @@ impl Attachments {
         lanes: &mut SendLanes,
         timeline: Arc<dyn TimelinePort>,
         room_id: RoomId,
-        caption: String,
+        caption: ComposerText,
         as_document: bool,
         reply_to: Option<String>,
     ) -> bool {
@@ -162,7 +163,8 @@ impl Attachments {
         });
         let attachment = OutgoingAttachment {
             picked: draft.attachment.clone(),
-            caption: (!caption.is_empty()).then_some(caption),
+            caption: (!caption.text.is_empty()).then_some(caption.text),
+            caption_emotes: caption.emotes,
             as_document,
             reply_to,
         };

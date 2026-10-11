@@ -5,10 +5,11 @@ use super::dto::{EmojiArt, MediaFailureKind, MediaState, MemberRowKind, RoomRowK
 use super::present::{Delivery, MessageKind, PollPhase, ServiceKind};
 use super::schema::{
     body_line_fields, body_piece_fields, log_line_fields, member_row_fields, message_fields,
-    poll_answer_fields, reaction_fields, reactor_fields, room_fields, space_child_fields,
-    space_fields, sticker_cell_fields, sticker_pack_fields, sticker_row_fields,
+    pack_cell_fields, pack_row_fields, pack_tab_fields, poll_answer_fields, reaction_fields,
+    reactor_fields, room_fields, space_child_fields, space_fields,
 };
 use crate::commands::view::ChildAccess;
+use crate::domain::image_pack::PackOrigin;
 use crate::domain::media::AudioKind;
 use crate::domain::message::{MessagePreviewKind, ReactionSend, SendState};
 use crate::domain::room_info::MemberRole;
@@ -59,6 +60,6 @@ space_fields!(declare_fields SpaceFields;);
 space_child_fields!(declare_fields SpaceChildFields;);
 member_row_fields!(declare_fields MemberRowFields;);
 log_line_fields!(declare_fields LogLineFields;);
-sticker_cell_fields!(declare_fields StickerCellFields;);
-sticker_pack_fields!(declare_fields StickerPackFields;);
-sticker_row_fields!(declare_fields StickerRowFields;);
+pack_cell_fields!(declare_fields PackCellFields;);
+pack_tab_fields!(declare_fields PackTabFields;);
+pack_row_fields!(declare_fields PackRowFields;);

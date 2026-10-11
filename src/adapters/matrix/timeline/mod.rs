@@ -22,8 +22,6 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use matrix_sdk::attachment::AttachmentConfig;
-use matrix_sdk::send_queue::{LocalEchoContent, SendHandle};
-use matrix_sdk::{Client, Room};
 use matrix_sdk::room::reply::{EnforceThread, Reply};
 use matrix_sdk::ruma::events::room::message::{
     AddMentions, MessageType, RoomMessageEventContent, RoomMessageEventContentWithoutRelation,
@@ -31,6 +29,8 @@ use matrix_sdk::ruma::events::room::message::{
 use matrix_sdk::ruma::events::{AnyMessageLikeEventContent, Mentions};
 use matrix_sdk::ruma::serde::Raw;
 use matrix_sdk::ruma::{IdParseError, OwnedEventId};
+use matrix_sdk::send_queue::{LocalEchoContent, SendHandle};
+use matrix_sdk::{Client, Room};
 use mime::Mime;
 use serde_json::{Map, Value};
 use tokio::fs;
@@ -56,6 +56,7 @@ use super::permissions::message_permissions;
 use super::profile::PronounCache;
 use super::session::ClientHandle;
 use crate::adapters::markdown::{self, Composed, RoomMentions};
+use crate::domain::emote::Emote;
 use crate::domain::media::OutgoingAttachment;
 use crate::domain::message::MessageEdit;
 use crate::domain::poll::PollDraft;
@@ -229,12 +230,13 @@ async fn queued_send(room: &Room, local_id: &str) -> Result<SendHandle> {
         .ok_or_else(|| AppError::Other(format!("no queued send for {local_id}")))
 }
 
-async fn composed(room: &Room, text: &str) -> Composed {
+async fn composed(room: &Room, text: &str, emotes: &[Emote]) -> Composed {
     let notify_room = message_permissions(room).await.notify_room;
     markdown::compose(
         text,
         room.own_user_id().as_str(),
         RoomMentions::when(notify_room),
+        emotes,
     )
 }
 
@@ -330,7 +332,7 @@ async fn queueable_attachment(
         AttachmentConfig::new().info(attachment::attachment_info(picked, &content_type));
     let mut mentions = None;
     if let Some(caption) = attachment.caption.as_deref() {
-        let composed = composed(room, caption).await;
+        let composed = composed(room, caption, &attachment.caption_emotes).await;
         config = config.caption(Some(composed.content()));
         mentions = Some(composed.mentions);
     }
@@ -423,17 +425,23 @@ impl TimelinePort for MatrixTimeline {
         .await
     }
 
-    async fn send_text(&self, room_id: &RoomId, body: &str) -> Result<()> {
+    async fn send_text(&self, room_id: &RoomId, body: &str, emotes: &[Emote]) -> Result<()> {
         let room = self.matrix.room(room_id).await?;
-        let composed = composed(&room, body).await;
+        let composed = composed(&room, body, emotes).await;
         let content = RoomMessageEventContent::new(MessageType::Text(composed.content()))
             .add_mentions(composed.mentions);
         queue(&room, content.into()).await
     }
 
-    async fn send_reply(&self, room_id: &RoomId, body: &str, in_reply_to: &str) -> Result<()> {
+    async fn send_reply(
+        &self,
+        room_id: &RoomId,
+        body: &str,
+        emotes: &[Emote],
+        in_reply_to: &str,
+    ) -> Result<()> {
         let room = self.matrix.room(room_id).await?;
-        let composed = composed(&room, body).await;
+        let composed = composed(&room, body, emotes).await;
         let content =
             RoomMessageEventContentWithoutRelation::new(MessageType::Text(composed.content()))
                 .add_mentions(composed.mentions);

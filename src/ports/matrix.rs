@@ -7,13 +7,14 @@ use tokio_util::sync::CancellationToken;
 
 use crate::domain::account::AccountScope;
 use crate::domain::auth::{LoginCredentials, OAuthLoginData, ServerInfo, Session};
+use crate::domain::emote::Emote;
+use crate::domain::image_pack::{ImagePack, PackId};
 use crate::domain::media::{MediaRendition, OutgoingAttachment, WaveformNeed};
 use crate::domain::message::{MessageEdit, PinChange, PinnedMessage};
 use crate::domain::poll::PollDraft;
 use crate::domain::room::{NotifyMode, RoomId};
 use crate::domain::room_info::{Reader, RoomAbout, RosterMember};
 use crate::domain::space_index::HierarchyPage;
-use crate::domain::sticker::{PackId, StickerPack};
 use crate::domain::sync::{SyncEvent, SyncOutcome};
 use crate::domain::timeline::{TimelineCommand, TimelineFocus, TimelineUpdate};
 use crate::domain::user_info::{GlobalProfile, IgnoreChange, Moderation, UserId, UserProfile};
@@ -127,7 +128,7 @@ pub struct AuthenticatedSession {
     pub space_index: Arc<dyn SpaceIndexPort>,
     pub room_info: Arc<dyn RoomInfoPort>,
     pub user_info: Arc<dyn UserInfoPort>,
-    pub stickers: Arc<dyn StickerPort>,
+    pub image_packs: Arc<dyn ImagePackPort>,
     pub lifecycle: Arc<dyn SessionPort>,
 }
 
@@ -228,8 +229,14 @@ pub trait TimelinePort: Send + Sync {
         cmd_rx: mpsc::UnboundedReceiver<TimelineCommand>,
         close: CancellationToken,
     ) -> Result<()>;
-    async fn send_text(&self, room_id: &RoomId, body: &str) -> Result<()>;
-    async fn send_reply(&self, room_id: &RoomId, body: &str, in_reply_to: &str) -> Result<()>;
+    async fn send_text(&self, room_id: &RoomId, body: &str, emotes: &[Emote]) -> Result<()>;
+    async fn send_reply(
+        &self,
+        room_id: &RoomId,
+        body: &str,
+        emotes: &[Emote],
+        in_reply_to: &str,
+    ) -> Result<()>;
     async fn edit_message(&self, room_id: &RoomId, edit: &MessageEdit) -> Result<()>;
     async fn send_poll(&self, room_id: &RoomId, draft: &PollDraft) -> Result<()>;
     async fn send_attachment(
@@ -271,14 +278,14 @@ pub trait MediaPort: Send + Sync {
 }
 
 #[derive(Debug, Default)]
-pub struct StickerCatalog {
-    pub packs: Vec<StickerPack>,
+pub struct PackCatalog {
+    pub packs: Vec<ImagePack>,
     pub room_encrypted: bool,
 }
 
 #[async_trait]
-pub trait StickerPort: Send + Sync {
-    async fn catalog(&self, room_id: &RoomId) -> Result<StickerCatalog>;
+pub trait ImagePackPort: Send + Sync {
+    async fn catalog(&self, room_id: &RoomId) -> Result<PackCatalog>;
     async fn prefetch(&self, mxcs: &[String]) -> usize;
     async fn send_sticker(
         &self,
@@ -287,6 +294,7 @@ pub trait StickerPort: Send + Sync {
         shortcode: &str,
         in_reply_to: Option<&str>,
     ) -> Result<()>;
+    async fn set_global(&self, pack: &PackId, global: bool) -> Result<()>;
 }
 
 #[async_trait]

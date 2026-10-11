@@ -9,12 +9,15 @@ use crate::adapters::demo::attachments;
 use crate::adapters::ui::dump::Poke;
 use crate::adapters::ui::link_command;
 use crate::commands::ui::{MessageDraft, ReplyDraft, UiCommand};
+use crate::domain::emote::{ComposerText, Emote};
+use crate::domain::image_pack::PackId;
 use crate::domain::media::AttachmentPick;
 use crate::domain::message::{EditKind, EditTarget, MessageEdit, TextRevision};
 use crate::domain::poll::{ChoiceMode, PollDisclosure, PollDraft};
 use crate::domain::room::RoomId;
-use crate::domain::sticker::PackId;
 use crate::domain::user_info::UserId;
+
+const PROBE_EMOTE_HEIGHT: &str = "32";
 
 #[derive(Deserialize)]
 #[serde(tag = "op", rename_all = "snake_case", deny_unknown_fields)]
@@ -126,6 +129,8 @@ pub enum ProbeCommand {
         room_id: Option<String>,
         body: String,
         #[serde(default)]
+        emotes: Vec<EmoteDto>,
+        #[serde(default)]
         reply_to: Option<String>,
         #[serde(default)]
         reply_sender: String,
@@ -144,6 +149,8 @@ pub enum ProbeCommand {
         body: String,
         #[serde(default)]
         original: Option<String>,
+        #[serde(default)]
+        emotes: Vec<EmoteDto>,
     },
     DismissUnsent {
         submission: i32,
@@ -188,6 +195,8 @@ pub enum ProbeCommand {
         room_id: Option<String>,
         #[serde(default)]
         caption: String,
+        #[serde(default)]
+        caption_emotes: Vec<EmoteDto>,
         #[serde(default)]
         as_document: bool,
         #[serde(default)]
@@ -256,6 +265,15 @@ pub enum ProbeCommand {
     ToggleReaction {
         event_id: String,
         key: String,
+    },
+    ReactWithEmote {
+        event_id: String,
+        pack: String,
+        shortcode: String,
+    },
+    SetPackGlobal {
+        pack: String,
+        global: bool,
     },
     VotePoll {
         event_id: String,
@@ -390,11 +408,35 @@ fn room_notify(
     })
 }
 
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct EmoteDto {
+    token: String,
+    mxc: String,
+    title: String,
+    #[serde(default)]
+    alt: Option<String>,
+}
+
+impl EmoteDto {
+    fn into_emote(self) -> Emote {
+        Emote {
+            token: self.token,
+            mxc: self.mxc,
+            title: self.title,
+            alt: self.alt,
+            height: Some(PROBE_EMOTE_HEIGHT.to_owned()),
+            width: None,
+        }
+    }
+}
+
 fn message_edit(
     target: Option<EditTarget>,
     caption: bool,
     body: String,
     original: Option<String>,
+    emotes: Vec<Emote>,
 ) -> Result<MessageEdit, Rejected> {
     let target = target.ok_or_else(|| {
         Rejected("an edit needs the event_id or the local_id it edits".to_owned())
@@ -414,6 +456,7 @@ fn message_edit(
             kind,
             body,
             original,
+            emotes,
         }),
     }
 }
@@ -496,6 +539,7 @@ pub fn to_driven(command: ProbeCommand, selected: Selection<'_>) -> Result<Drive
         ProbeCommand::SendMessage {
             room_id,
             body,
+            emotes,
             reply_to,
             reply_sender,
             reply_preview,
@@ -508,6 +552,7 @@ pub fn to_driven(command: ProbeCommand, selected: Selection<'_>) -> Result<Drive
                     sender: reply_sender,
                     preview: reply_preview,
                 }),
+                emotes: emotes.into_iter().map(EmoteDto::into_emote).collect(),
             },
         },
         ProbeCommand::EditMessage {
@@ -517,9 +562,16 @@ pub fn to_driven(command: ProbeCommand, selected: Selection<'_>) -> Result<Drive
             caption,
             body,
             original,
+            emotes,
         } => UiCommand::EditMessage {
             room_id: room(room_id, selected)?,
-            edit: message_edit(EditTarget::of(event_id, local_id), caption, body, original)?,
+            edit: message_edit(
+                EditTarget::of(event_id, local_id),
+                caption,
+                body,
+                original,
+                emotes.into_iter().map(EmoteDto::into_emote).collect(),
+            )?,
         },
         ProbeCommand::DismissUnsent { submission } => UiCommand::DismissUnsent { submission },
         ProbeCommand::SendPoll {
@@ -573,11 +625,18 @@ pub fn to_driven(command: ProbeCommand, selected: Selection<'_>) -> Result<Drive
         ProbeCommand::SendAttachment {
             room_id,
             caption,
+            caption_emotes,
             as_document,
             reply_to,
         } => UiCommand::SendAttachment {
             room_id: room(room_id, selected)?,
-            caption,
+            caption: ComposerText {
+                text: caption,
+                emotes: caption_emotes
+                    .into_iter()
+                    .map(EmoteDto::into_emote)
+                    .collect(),
+            },
             as_document,
             reply_to,
         },
@@ -638,6 +697,19 @@ pub fn to_driven(command: ProbeCommand, selected: Selection<'_>) -> Result<Drive
         ProbeCommand::ToggleReaction { event_id, key } => {
             UiCommand::ToggleReaction { event_id, key }
         }
+        ProbeCommand::ReactWithEmote {
+            event_id,
+            pack,
+            shortcode,
+        } => UiCommand::ReactWithEmote {
+            event_id,
+            pack: PackId::new(pack),
+            shortcode,
+        },
+        ProbeCommand::SetPackGlobal { pack, global } => UiCommand::SetPackGlobal {
+            pack: PackId::new(pack),
+            global,
+        },
         ProbeCommand::VotePoll {
             event_id,
             answer_id,

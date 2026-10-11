@@ -5,15 +5,15 @@ use crate::commands::messages::UserMessage;
 use crate::commands::ui::Draft;
 use crate::commands::view::{
     AppViewState, AttachmentView, AudioView, CardStatus, CopiedLink, DirectoryView, LifecycleView,
-    MentionsView, PaginationView, PinnedView, ReadersView, RoomInfoView, RoomLogView,
-    RoomMenuTarget, RosterRow, SourceState, SpaceIndexRow, SpaceIndexView, SpaceMatch, StickerView,
-    Toast, TrackFile, UnsentMessage, UserInfoView, VideoView,
+    MentionsView, PackView, PaginationView, PinnedView, ReadersView, RoomInfoView, RoomLogView,
+    RoomMenuTarget, RosterRow, SourceState, SpaceIndexRow, SpaceIndexView, SpaceMatch, Toast,
+    TrackFile, UnsentMessage, UserInfoView, VideoView,
 };
+use crate::domain::image_pack::{ImagePack, ImageUsage, PackOrigin, PackTitle};
 use crate::domain::message::{EditKind, PinnedMessage};
 use crate::domain::room::{Room, Space};
 use crate::domain::room_info::{Reader, RosterSection};
 use crate::domain::space_index::{ChildKind, JoinRule};
-use crate::domain::sticker::StickerPack;
 use crate::domain::sync::ConnectionStatus;
 use crate::domain::timeline::{OlderHistory, SourceEncryption};
 use crate::domain::user_info::{IdentityTrust, Moderation, Pronouns};
@@ -29,7 +29,7 @@ pub struct ViewDto {
     user_info: UserInfoDto,
     pagination: PaginationDto,
     pinned: PinnedDto,
-    stickers: StickersDto,
+    image_packs: PacksDto,
     attachment: AttachmentDto,
     video: VideoDto,
     audio: Option<NowPlayingDto>,
@@ -332,11 +332,14 @@ struct PinnedDto {
 struct PackDto {
     id: String,
     title: String,
+    untitled: bool,
+    origin: &'static str,
     shortcodes: Vec<String>,
+    stickers: Vec<String>,
 }
 
 #[derive(Serialize)]
-struct StickersDto {
+struct PacksDto {
     generation: i32,
     ready_images: usize,
     room_encrypted: bool,
@@ -376,6 +379,7 @@ struct UnsentDto {
     reply_to: Option<String>,
     edits: Option<String>,
     caption: bool,
+    emotes: Vec<String>,
 }
 
 #[derive(Serialize)]
@@ -408,7 +412,7 @@ pub fn view(source: &AppViewState) -> ViewDto {
         user_info: user_info(&source.user_info),
         pagination: pagination(source.pagination),
         pinned: pinned(&source.pinned),
-        stickers: stickers(&source.stickers),
+        image_packs: image_packs(&source.image_packs),
         attachment: attachment(&source.attachment),
         video: video(&source.video),
         audio: audio(&source.audio),
@@ -826,20 +830,36 @@ fn pinned(source: &PinnedView) -> PinnedDto {
     }
 }
 
-fn pack(source: &StickerPack) -> PackDto {
-    PackDto {
-        id: source.id.to_string(),
-        title: source.title.clone(),
-        shortcodes: source
+fn pack(source: &ImagePack) -> PackDto {
+    let (title, untitled) = match &source.title {
+        PackTitle::Named(name) => (name.clone(), false),
+        PackTitle::Personal => (String::new(), true),
+    };
+    let origin = match source.origin {
+        PackOrigin::Personal => "personal",
+        PackOrigin::Room => "room",
+        PackOrigin::Global => "global",
+    };
+    let shortcodes = |offered: fn(ImageUsage) -> bool| {
+        source
             .images
             .iter()
+            .filter(|image| offered(image.usage))
             .map(|image| image.shortcode.clone())
-            .collect(),
+            .collect()
+    };
+    PackDto {
+        id: source.id.to_string(),
+        title,
+        untitled,
+        origin,
+        shortcodes: shortcodes(|_| true),
+        stickers: shortcodes(ImageUsage::offers_sticker),
     }
 }
 
-fn stickers(source: &StickerView) -> StickersDto {
-    StickersDto {
+fn image_packs(source: &PackView) -> PacksDto {
+    PacksDto {
         generation: source.generation,
         ready_images: source.ready_images,
         room_encrypted: source.room_encrypted,
@@ -897,6 +917,12 @@ fn unsent(source: &UnsentMessage) -> UnsentDto {
         reply_to,
         edits,
         caption,
+        emotes: source
+            .draft
+            .emotes()
+            .iter()
+            .map(|emote| emote.token.clone())
+            .collect(),
     }
 }
 

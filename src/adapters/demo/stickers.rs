@@ -38,6 +38,11 @@ pub const CATALOG: Scenarios = Scenarios {
             note: "excluded from `all`",
         },
         Flag {
+            value: "global-fails",
+            effect: "set_global errors, so the failure toast and the catalog reload are reachable",
+            note: "excluded from `all`",
+        },
+        Flag {
             value: "encrypted",
             effect: "forces room_encrypted in every room, so the warning strip renders",
             note: "",
@@ -45,7 +50,7 @@ pub const CATALOG: Scenarios = Scenarios {
         Flag {
             value: "all",
             effect: "slow, trickle and encrypted",
-            note: "excludes empty, fails and send-fails",
+            note: "excludes empty, fails, send-fails and global-fails",
         },
     ],
     notes: &[],
@@ -61,6 +66,7 @@ pub struct Scenario {
     pub catalog_is_empty: bool,
     pub catalog_fails: bool,
     pub send_fails: bool,
+    pub global_fails: bool,
     pub room_is_encrypted: bool,
 }
 
@@ -83,6 +89,7 @@ fn from_env() -> Scenario {
         catalog_is_empty = scenario.catalog_is_empty,
         catalog_fails = scenario.catalog_fails,
         send_fails = scenario.send_fails,
+        global_fails = scenario.global_fails,
         room_is_encrypted = scenario.room_is_encrypted,
         "demo mode: reproducing real-account sticker pack timing"
     );
@@ -96,6 +103,7 @@ fn apply(scenario: &mut Scenario, flag: &str) {
         "empty" => scenario.catalog_is_empty = true,
         "fails" => scenario.catalog_fails = true,
         "send-fails" => scenario.send_fails = true,
+        "global-fails" => scenario.global_fails = true,
         "encrypted" => scenario.room_is_encrypted = true,
         "all" => {
             scenario.catalog_is_slow = true;

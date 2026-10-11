@@ -1,3 +1,5 @@
+use std::cell::{Cell, RefCell};
+use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::Arc;
 
@@ -11,22 +13,22 @@ use u2dm_ui::{
     Actions, AppWindow, AttachmentKind as UiAttachmentKind, AttachmentView,
     AudioKind as UiAudioKind, AudioView, BodyLine, BodyPiece, ChildAccess as UiChildAccess,
     ConnectionState, Delivery as UiDelivery, DirectChat as UiDirectChat, DirectoryView,
-    EmojiArt as UiEmojiArt, EmojiEntry, EmojiGroup, EmojiStore, LogLevel as UiLogLevel,
-    LogLineEntry, LoginActivity as UiLoginActivity, LoginMethodKind as UiLoginMethodKind,
-    LoginPhase, LoginView, MediaFailure as UiMediaFailure, MediaState as UiMediaState, MemberEntry,
+    EmojiArt as UiEmojiArt, EmojiEntry, EmojiRow, EmojiStore, LogLevel as UiLogLevel, LogLineEntry,
+    LoginActivity as UiLoginActivity, LoginMethodKind as UiLoginMethodKind, LoginPhase, LoginView,
+    MediaFailure as UiMediaFailure, MediaState as UiMediaState, MemberEntry,
     MemberRole as UiMemberRole, MemberRowKind as UiMemberRowKind, MentionWord, MentionsView,
     MessageEntry, MessageKind as UiMessageKind, Moderation as UiModeration,
-    NotifyMode as UiNotifyMode, PollAnswerEntry, PollPhase as UiPollPhase,
-    PreviewKind as UiPreviewKind, ReactionEntry, ReactionSend as UiReactionSend, ReactorAvatar,
-    ReadersStatus as UiReadersStatus, ReadersView, ReplySwipe, RoomEntry,
-    RoomInfoPlacement as UiRoomInfoPlacement, RoomInfoView, RoomLogView,
+    NotifyMode as UiNotifyMode, PackCell, PackOrigin as UiPackOrigin, PackRow,
+    PackSurface as UiPackSurface, PackTabEntry, PackView, PollAnswerEntry,
+    PollPhase as UiPollPhase, PreviewKind as UiPreviewKind, ReactionEntry,
+    ReactionSend as UiReactionSend, ReactorAvatar, ReadersStatus as UiReadersStatus, ReadersView,
+    ReplySwipe, RoomEntry, RoomInfoPlacement as UiRoomInfoPlacement, RoomInfoView, RoomLogView,
     RoomMembership as UiRoomMembership, RoomMenuView, RoomRowKind as UiRoomRowKind,
     RoomScope as UiRoomScope, RoomView, RosterStatus as UiRosterStatus, SendState as UiSendState,
     ServiceKind as UiServiceKind, SessionView, SourceEncryption as UiSourceEncryption,
     SourceStatus as UiSourceStatus, SourceView, SpaceChildEntry, SpaceEntry,
-    SpaceIndexStatus as UiSpaceIndexStatus, SpaceIndexView, StickerCell, StickerPackTab,
-    StickerRow, StickerView, TextSplice, TimelineState, UnsentView, UserInfoView,
-    UserMessage as UiUserMessage, UserMessageKind as UiUserMessageKind,
+    SpaceIndexStatus as UiSpaceIndexStatus, SpaceIndexView, TextSplice, TimelineState, UnsentView,
+    UserInfoView, UserMessage as UiUserMessage, UserMessageKind as UiUserMessageKind,
     VerificationActivity as UiVerificationActivity, VerificationEmoji, VerificationPhase,
     VerificationView, VideoView, WindowView,
 };
@@ -39,19 +41,20 @@ use super::backend::{
     shown_room_log_text, unread_below,
 };
 use super::decode::{
-    AvatarSlot, request_avatar, request_custom_emoji, request_media, request_sticker,
+    AvatarSlot, request_avatar, request_custom_emoji, request_media, request_pack_cell,
 };
 use super::dto::{
     BodyLineDto, BodyPieceDto, EmojiArt, LogLineDto, MediaFailureKind, MediaState, MemberRowDto,
-    MemberRowKind, MessageDto, PollAnswerDto, ReactionDto, ReactorAvatarDto, RoomDto, RoomRowKind,
-    SpaceChildDto, SpaceDto, StickerCellDto, StickerPackDto, StickerRowDto,
+    MemberRowKind, MessageDto, PackCellDto, PackRowDto, PackSurface, PackTabDto, PollAnswerDto,
+    ReactionDto, ReactorAvatarDto, RoomDto, RoomRowKind, SpaceChildDto, SpaceDto,
+    pack_surface_named,
 };
 #[cfg(feature = "demo")]
 use super::dump;
 use super::fields::{
-    BodyLineFields, BodyPieceFields, LogLineFields, MemberRowFields, MessageFields,
-    PollAnswerFields, ReactionFields, ReactorFields, RoomFields, SpaceChildFields, SpaceFields,
-    StickerCellFields, StickerPackFields, StickerRowFields,
+    BodyLineFields, BodyPieceFields, LogLineFields, MemberRowFields, MessageFields, PackCellFields,
+    PackRowFields, PackTabFields, PollAnswerFields, ReactionFields, ReactorFields, RoomFields,
+    SpaceChildFields, SpaceFields,
 };
 use super::present::{Delivery, MessageKind, PollPhase, ServiceKind, VerifyStep};
 #[cfg(feature = "demo")]
@@ -63,17 +66,17 @@ use super::schema::{
     connection_states, deliveries, direct_chats, emoji_arts, enum_props, int_props, log_levels,
     log_line_fields, login_activities, login_methods, login_phases, media_failures, media_states,
     member_roles, member_row_fields, member_row_kinds, message_fields, message_kinds, model_props,
-    notify_modes, pending_moderations, poll_answer_fields, poll_phases, preview_kinds,
-    reaction_fields, reaction_sends, reactor_fields, readers_statuses, room_fields,
-    room_info_placements, room_memberships, room_row_kinds, room_scopes, roster_statuses,
-    send_states, service_kinds, simple_callbacks, source_encryptions, source_statuses,
-    space_child_fields, space_fields, space_index_statuses, sticker_cell_fields,
-    sticker_pack_fields, sticker_row_fields, string_props, timeline_states, user_message_kinds,
+    notify_modes, pack_cell_fields, pack_origins, pack_row_fields, pack_surfaces, pack_tab_fields,
+    pending_moderations, poll_answer_fields, poll_phases, preview_kinds, reaction_fields,
+    reaction_sends, reactor_fields, readers_statuses, room_fields, room_info_placements,
+    room_memberships, room_row_kinds, room_scopes, roster_statuses, send_states, service_kinds,
+    simple_callbacks, source_encryptions, source_statuses, space_child_fields, space_fields,
+    space_index_statuses, string_props, timeline_states, user_message_kinds,
     verification_activities, verification_phases,
 };
 use super::session::active_models;
 use super::video::{self, millis_to_duration};
-use super::{audio, emoji, mention, router};
+use super::{audio, emoji, emote, mention, router};
 use crate::app::input::CommandSender;
 use crate::commands::effects::{Effect, VerificationActivity};
 use crate::commands::messages::{UserMessage, UserMessageKind};
@@ -84,6 +87,7 @@ use crate::commands::view::{
     SpaceIndexStatus,
 };
 use crate::domain::auth::LoginMethod;
+use crate::domain::image_pack::PackOrigin;
 use crate::domain::media::AudioKind;
 use crate::domain::message::{MessagePreviewKind, ReactionSend, SendState};
 use crate::domain::room::NotifyMode;
@@ -361,6 +365,8 @@ preview_kinds!(impl_slint_enum MessagePreviewKind UiPreviewKind;);
 audio_kinds!(impl_slint_enum AudioKind UiAudioKind;);
 service_kinds!(impl_slint_enum ServiceKind UiServiceKind;);
 log_levels!(impl_slint_enum LogLevel UiLogLevel;);
+pack_surfaces!(impl_slint_enum PackSurface UiPackSurface;);
+pack_origins!(impl_slint_enum PackOrigin UiPackOrigin;);
 
 fn string_model(items: Vec<SharedString>) -> ModelRc<SharedString> {
     ModelRc::new(VecModel::from(items))
@@ -464,9 +470,9 @@ space_fields!(impl_entry SpaceDto SpaceFields SpaceEntry;);
 space_child_fields!(impl_entry SpaceChildDto SpaceChildFields SpaceChildEntry;);
 member_row_fields!(impl_entry MemberRowDto MemberRowFields MemberEntry;);
 log_line_fields!(impl_entry LogLineDto LogLineFields LogLineEntry;);
-sticker_cell_fields!(impl_entry StickerCellDto StickerCellFields StickerCell;);
-sticker_pack_fields!(impl_entry StickerPackDto StickerPackFields StickerPackTab;);
-sticker_row_fields!(impl_entry StickerRowDto StickerRowFields StickerRow;);
+pack_cell_fields!(impl_entry PackCellDto PackCellFields PackCell;);
+pack_tab_fields!(impl_entry PackTabDto PackTabFields PackTabEntry;);
+pack_row_fields!(impl_entry PackRowDto PackRowFields PackRow;);
 
 macro_rules! attach_compiled_models {
     ($window:ident $models:ident;
@@ -490,9 +496,9 @@ impl UiBackend for CompiledBackend {
     type SpaceChild = SpaceChildEntry;
     type MemberRow = MemberEntry;
     type LogLine = LogLineEntry;
-    type StickerRow = StickerRow;
-    type StickerCell = StickerCell;
-    type StickerPack = StickerPackTab;
+    type PackRow = PackRow;
+    type PackCell = PackCell;
+    type PackTab = PackTabEntry;
 
     fn models() -> Rc<Models<Self>> {
         active_models()
@@ -502,8 +508,12 @@ impl UiBackend for CompiledBackend {
         model_props!(attach_compiled_models window models;);
     }
 
-    fn bind_sticker_search(window: &AppWindow, search: impl Fn(&str) + 'static) {
-        actions(window).on_search_stickers(move |query| search(&query));
+    fn bind_browse_packs(window: &AppWindow, browse: impl Fn(PackSurface, &str, i32) + 'static) {
+        actions(window).on_browse_packs(move |surface, query, emote_columns| {
+            if let Some(surface) = pack_surface_named(surface.slint_name()) {
+                browse(surface, &query, emote_columns);
+            }
+        });
     }
 }
 
@@ -597,6 +607,23 @@ impl SlintUiAdapter {
                 caret,
             }
         });
+
+        actions(win).on_emote_at(|text, caret| {
+            let (start, query) = emote::word_at(&text, caret);
+            MentionWord {
+                start,
+                query: SharedString::from(query),
+            }
+        });
+
+        actions(win).on_place_emote(|text, caret, pack_id, shortcode, replaces_word| {
+            let (text, caret) =
+                emote::place_picked(&text, caret, &pack_id, &shortcode, replaces_word);
+            TextSplice {
+                text: SharedString::from(text),
+                caret,
+            }
+        });
     }
 
     fn bind_audio_callbacks(win: &AppWindow, cmd_tx: &CommandSender) {
@@ -660,7 +687,7 @@ impl SlintUiAdapter {
             request_avatar(&AvatarSlot::Room(room_id.to_string()));
         });
 
-        actions(win).on_request_sticker(move |key| request_sticker(&key));
+        actions(win).on_request_pack_cell(move |key| request_pack_cell(&key));
 
         actions(win).on_request_custom_emoji(move |mxc| request_custom_emoji(&mxc));
 
@@ -678,6 +705,21 @@ impl SlintUiAdapter {
         let tx = cmd_tx.clone();
         actions(win).on_toggle_reaction(move |event_id, key| {
             router::toggle_reaction(&tx, event_id.to_string(), key.to_string());
+        });
+
+        let tx = cmd_tx.clone();
+        actions(win).on_react_with_emote(move |event_id, pack, shortcode| {
+            router::react_with_emote(
+                &tx,
+                event_id.to_string(),
+                pack.to_string(),
+                shortcode.to_string(),
+            );
+        });
+
+        let tx = cmd_tx.clone();
+        actions(win).on_set_pack_global(move |pack, global| {
+            router::set_pack_global(&tx, pack.to_string(), global);
         });
 
         let scroll_tx = scroll_tx.clone();
@@ -751,30 +793,66 @@ fn emoji_entry_to_ui(e: &emoji::EmojiEntry) -> EmojiEntry {
     }
 }
 
-fn setup_emoji_store(window: &AppWindow) {
-    let store = window.global::<EmojiStore>();
-    let groups: Vec<EmojiGroup> = emoji::groups()
+type LaidOutEmoji = HashMap<usize, (ModelRc<EmojiRow>, ModelRc<i32>)>;
+
+fn emoji_rows_to_ui(rows: &[emoji::EmojiRow]) -> ModelRc<EmojiRow> {
+    let rows: Vec<EmojiRow> = rows
         .iter()
-        .map(|items| {
-            let entries: Vec<EmojiEntry> = items.iter().map(emoji_entry_to_ui).collect();
-            EmojiGroup {
-                items: ModelRc::new(VecModel::from(entries)),
-            }
+        .map(|row| EmojiRow {
+            is_header: row.is_header,
+            group: i32::try_from(row.group).unwrap_or(0),
+            cells: ModelRc::new(VecModel::from(
+                row.cells.iter().map(emoji_entry_to_ui).collect::<Vec<_>>(),
+            )),
         })
         .collect();
-    store.set_groups(ModelRc::new(VecModel::from(groups)));
+    ModelRc::new(VecModel::from(rows))
+}
+
+fn header_rows_to_ui(header_rows: &[usize]) -> ModelRc<i32> {
+    let header_rows: Vec<i32> = header_rows
+        .iter()
+        .map(|row| i32::try_from(*row).unwrap_or(0))
+        .collect();
+    ModelRc::new(VecModel::from(header_rows))
+}
+
+fn setup_emoji_store(window: &AppWindow) {
+    let store = window.global::<EmojiStore>();
+    let columns = Rc::new(Cell::new(1_usize));
+    let laid_out: Rc<RefCell<LaidOutEmoji>> = Rc::default();
+
+    let weak = window.as_weak();
+    let layout_columns = Rc::clone(&columns);
+    store.on_layout(move |count| {
+        let Some(w) = weak.upgrade() else {
+            return;
+        };
+        let count = usize::try_from(count).unwrap_or(1).max(1);
+        layout_columns.set(count);
+        let (rows, header_rows) = laid_out
+            .borrow_mut()
+            .entry(count)
+            .or_insert_with(|| {
+                let laid = emoji::rows(count);
+                (
+                    emoji_rows_to_ui(&laid.rows),
+                    header_rows_to_ui(&laid.header_rows),
+                )
+            })
+            .clone();
+        let store = w.global::<EmojiStore>();
+        store.set_rows(rows);
+        store.set_header_rows(header_rows);
+    });
 
     let weak = window.as_weak();
     store.on_search(move |query| {
         let Some(w) = weak.upgrade() else {
             return;
         };
-        let results: Vec<EmojiEntry> = emoji::search(&query)
-            .iter()
-            .map(emoji_entry_to_ui)
-            .collect();
         w.global::<EmojiStore>()
-            .set_results(ModelRc::new(VecModel::from(results)));
+            .set_result_rows(emoji_rows_to_ui(&emoji::result_rows(&query, columns.get())));
     });
 
     store.on_insert(|text, offset, glyph| {

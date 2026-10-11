@@ -208,10 +208,10 @@ macro_rules! bool_props {
         MayDeleteOwn RoomView "RoomView" "may-delete-own" set_may_delete_own get_may_delete_own;
         MayDeleteOthers RoomView "RoomView" "may-delete-others" set_may_delete_others get_may_delete_others;
         MayPin RoomView "RoomView" "may-pin" set_may_pin get_may_pin;
-        StickerRoomEncrypted StickerView "StickerView" "room-encrypted" set_room_encrypted get_room_encrypted;
+        PackRoomEncrypted PackView "PackView" "room-encrypted" set_room_encrypted get_room_encrypted;
         #[cfg(feature = "demo")] ProbeEnabled Probe "Probe" "enabled" set_enabled get_enabled;
-        StickerLoading StickerView "StickerView" "loading" set_loading get_loading;
-        StickerHasPacks StickerView "StickerView" "has-packs" set_has_packs get_has_packs;
+        PackLoading PackView "PackView" "loading" set_loading get_loading;
+        PackHasPacks PackView "PackView" "has-packs" set_has_packs get_has_packs;
         AttachmentVisible AttachmentView "AttachmentView" "visible" set_visible get_visible;
         AttachmentSending AttachmentView "AttachmentView" "sending" set_sending get_sending;
         VideoVisible VideoView "VideoView" "visible" set_visible get_visible;
@@ -266,7 +266,6 @@ macro_rules! int_props {
         SelectedRoomRow DirectoryView "DirectoryView" "selected-room-row" set_selected_room_row get_selected_room_row;
         ListedSpaceMembers DirectoryView "DirectoryView" "listed-space-members" set_listed_space_members get_listed_space_members;
         SpaceIndexPagesLanded SpaceIndexView "SpaceIndexView" "pages-landed" set_pages_landed get_pages_landed;
-        StickerColumns StickerView "StickerView" "columns" set_columns get_columns;
         AttachmentWidth AttachmentView "AttachmentView" "width" set_width get_width;
         AttachmentHeight AttachmentView "AttachmentView" "height" set_height get_height;
         VideoPositionMs VideoView "VideoView" "position-ms" set_position_ms get_position_ms;
@@ -354,6 +353,8 @@ macro_rules! enum_props {
             ReadersView "ReadersView" "kind" set_kind get_kind;
         ReadersServiceKind set_readers_service_kind(ServiceKind)
             ReadersView "ReadersView" "service-kind" set_service_kind get_service_kind;
+        PackSurface set_pack_surface(PackSurface)
+            PackView "PackView" "surface" set_surface get_surface;
     } };
 }
 pub(crate) use enum_props;
@@ -364,8 +365,8 @@ macro_rules! model_props {
         rooms Room VecModel DirectoryView "DirectoryView" "rooms" set_rooms;
         spaces Space VecModel DirectoryView "DirectoryView" "spaces" set_spaces;
         subspaces Space VecModel DirectoryView "DirectoryView" "subspaces" set_subspaces;
-        sticker_rows StickerRow SpliceModel StickerView "StickerView" "rows" set_rows;
-        sticker_packs StickerPack VecModel StickerView "StickerView" "packs" set_packs;
+        pack_rows PackRow SpliceModel PackView "PackView" "rows" set_rows;
+        pack_tabs PackTab VecModel PackView "PackView" "packs" set_packs;
         space_children SpaceChild VecModel SpaceIndexView "SpaceIndexView" "rows" set_rows;
         room_members MemberRow VecModel RoomInfoView "RoomInfoView" "rows" set_rows;
         readers MemberRow VecModel ReadersView "ReadersView" "rows" set_rows;
@@ -513,6 +514,7 @@ macro_rules! user_message_kinds {
         MessageUnpinFailed        MessageUnpinFailed      "message-unpin-failed";
         MessageDeleteFailed       MessageDeleteFailed     "message-delete-failed";
         SpaceOrderSaveFailed      SpaceOrderSaveFailed    "space-order-save-failed";
+        PackSettingFailed         PackSettingFailed       "pack-setting-failed";
         JoinRoomFailed            JoinRoomFailed          "join-room-failed";
         LeaveRoomFailed           LeaveRoomFailed         "leave-room-failed";
         NotifyChangeFailed        NotifyChangeFailed      "notify-change-failed";
@@ -776,6 +778,24 @@ macro_rules! variant_named {
     };
 }
 pub(crate) use variant_named;
+
+macro_rules! pack_surfaces {
+    ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
+        StickerGrid      StickerGrid      "sticker-grid";
+        EmoteGrid        EmoteGrid        "emote-grid";
+        EmoteSuggestions EmoteSuggestions "emote-suggestions";
+    } };
+}
+pub(crate) use pack_surfaces;
+
+macro_rules! pack_origins {
+    ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
+        Personal Personal "personal";
+        Room     Room     "room";
+        Global   Global   "global";
+    } };
+}
+pub(crate) use pack_origins;
 
 macro_rules! media_states {
     ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
@@ -1098,7 +1118,7 @@ macro_rules! log_line_fields {
 }
 pub(crate) use log_line_fields;
 
-macro_rules! sticker_cell_fields {
+macro_rules! pack_cell_fields {
     ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
         key set_key "key" text;
         pack_id set_pack_id "pack-id" text;
@@ -1108,24 +1128,28 @@ macro_rules! sticker_cell_fields {
         image set_image "image" image;
     } };
 }
-pub(crate) use sticker_cell_fields;
+pub(crate) use pack_cell_fields;
 
-macro_rules! sticker_pack_fields {
+macro_rules! pack_tab_fields {
     ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
         id set_id "id" text;
         title set_title "title" text;
+        untitled set_untitled "untitled" flag;
         header_row set_header_row "header-row" int;
         icon set_icon "icon" image;
         has_icon set_has_icon "has-icon" flag;
     } };
 }
-pub(crate) use sticker_pack_fields;
+pub(crate) use pack_tab_fields;
 
-macro_rules! sticker_row_fields {
+macro_rules! pack_row_fields {
     ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
         title set_title "title" text;
+        untitled set_untitled "untitled" flag;
+        pack_id set_pack_id "pack-id" text;
+        origin set_origin "origin" enumk(PackOrigin);
         is_header set_is_header "is-header" flag;
-        cells set_cells "cells" structs(StickerCell);
+        cells set_cells "cells" structs(PackCell);
     } };
 }
-pub(crate) use sticker_row_fields;
+pub(crate) use pack_row_fields;

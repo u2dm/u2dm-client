@@ -266,6 +266,8 @@ pub(super) fn command_allowed(phase: AppPhase, cmd: &UiCommand) -> bool {
         | UiCommand::UnpinMessage { .. }
         | UiCommand::DeleteMessage { .. }
         | UiCommand::ToggleReaction { .. }
+        | UiCommand::ReactWithEmote { .. }
+        | UiCommand::SetPackGlobal { .. }
         | UiCommand::VotePoll { .. }
         | UiCommand::EndPoll { .. }
         | UiCommand::EditPoll { .. }

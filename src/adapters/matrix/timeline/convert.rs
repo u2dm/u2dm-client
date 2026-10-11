@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, BTreeSet, HashSet};
+use std::collections::{BTreeMap, HashSet};
 
 use matrix_sdk::ruma::UInt;
 use matrix_sdk::ruma::events::poll::start::PollKind;
@@ -10,6 +10,7 @@ use matrix_sdk::ruma::events::room::message::{
 use matrix_sdk::ruma::events::room::name::RoomNameEventContent;
 use matrix_sdk::ruma::events::sticker::StickerEventContent;
 use matrix_sdk::ruma::events::{Mentions, StateEventContentChange};
+use matrix_sdk::ruma::html::{HtmlSanitizerMode, RemoveReplyFallback, sanitize_html};
 use matrix_sdk_ui::timeline::{
     AnyOtherStateEventContentChange, EventSendState, EventTimelineItem, MemberProfileChange,
     MembershipChange, Message, PollState, ReactionInfo, RoomMembershipChange, Sticker,
@@ -557,6 +558,9 @@ fn rich_body(plain: &str, formatted: Option<&FormattedBody>) -> RichText {
     }
 }
 
+const REPLY_FALLBACKS: [RemoveReplyFallback; 2] =
+    [RemoveReplyFallback::Yes, RemoveReplyFallback::No];
+
 #[derive(Deserialize)]
 struct EventJson<C> {
     content: C,
@@ -574,22 +578,12 @@ struct EditJson {
     new_content: FormattedJson,
 }
 
-fn emoji_states(
-    body: &MessageBody,
-    event: &EventTimelineItem,
-    ctx: &TimelineContext<'_>,
-) -> BTreeMap<String, CustomEmoji> {
+fn emoji_states(body: &MessageBody, ctx: &TimelineContext<'_>) -> BTreeMap<String, CustomEmoji> {
     let Some(html) = body.html() else {
         return BTreeMap::new();
     };
-    let images = body_emoji::image_sources(html);
-    if images.is_empty() {
-        return BTreeMap::new();
-    }
-    let emoticons = emoticons_as_sent(event);
-    images
+    body_emoji::emoticon_sources(html)
         .into_iter()
-        .filter(|mxc| emoticons.contains(mxc))
         .filter_map(|mxc| {
             let state = ctx.emoji_files.state(&mxc, ctx.media)?;
             Some((mxc, state))
@@ -597,30 +591,59 @@ fn emoji_states(
         .collect()
 }
 
-fn emoticons_as_sent(event: &EventTimelineItem) -> BTreeSet<String> {
-    unsanitized_html(event)
-        .map(|html| body_emoji::emoticon_sources(&html))
-        .unwrap_or_default()
+fn with_emoticons_marked(
+    body: MessageBody,
+    event: &EventTimelineItem,
+    ctx: &TimelineContext<'_>,
+) -> MessageBody {
+    match body {
+        MessageBody::Text(text) => MessageBody::Text(emoticons_marked(text, event, ctx)),
+        MessageBody::Notice(text) => MessageBody::Notice(emoticons_marked(text, event, ctx)),
+        MessageBody::Emote(text) => MessageBody::Emote(emoticons_marked(text, event, ctx)),
+        other => other,
+    }
 }
 
-fn unsanitized_html(event: &EventTimelineItem) -> Option<String> {
-    match event.latest_edit_json() {
-        Some(edit) => {
-            edit.deserialize_as_unchecked::<EventJson<EditJson>>()
-                .ok()?
-                .content
-                .new_content
-                .formatted_body
-        }
-        None => {
-            event
-                .original_json()?
-                .deserialize_as_unchecked::<EventJson<FormattedJson>>()
-                .ok()?
-                .content
-                .formatted_body
-        }
+fn emoticons_marked(
+    text: RichText,
+    event: &EventTimelineItem,
+    ctx: &TimelineContext<'_>,
+) -> RichText {
+    let Some(shown) = text.html() else {
+        return text;
+    };
+    if body_emoji::image_sources(shown).is_empty() {
+        return text;
     }
+    let html = html_as_sent(shown, event)
+        .or_else(|| is_own(event, ctx).then(|| body_emoji::marked_as_emoticons(shown)))
+        .unwrap_or_else(|| shown.to_owned());
+    RichText::formatted(text.plain, html)
+}
+
+fn html_as_sent(shown: &str, event: &EventTimelineItem) -> Option<String> {
+    sent_versions(event).into_iter().find_map(|sent| {
+        REPLY_FALLBACKS.into_iter().find_map(|fallback| {
+            (sanitize_html(&sent, HtmlSanitizerMode::Compat, fallback) == shown)
+                .then(|| markdown::sanitized_with(&sent, fallback))
+        })
+    })
+}
+
+fn sent_versions(event: &EventTimelineItem) -> Vec<String> {
+    let edit = event
+        .latest_edit_json()
+        .and_then(|edit| edit.deserialize_as_unchecked::<EventJson<EditJson>>().ok())
+        .and_then(|edit| edit.content.new_content.formatted_body);
+    let original = event
+        .original_json()
+        .and_then(|original| {
+            original
+                .deserialize_as_unchecked::<EventJson<FormattedJson>>()
+                .ok()
+        })
+        .and_then(|original| original.content.formatted_body);
+    edit.into_iter().chain(original).collect()
 }
 
 fn names_room(mentions: Option<&Mentions>) -> bool {
@@ -703,13 +726,14 @@ pub(super) fn convert_event_item_with_uid(
                     message.is_edited(),
                 ),
             };
+            let body = with_emoticons_marked(body, event, ctx);
             let body = if is_own(event, ctx) {
                 authored(body)
             } else {
                 body
             };
             Some(TimelineMessage {
-                body_emoji: emoji_states(&body, event, ctx),
+                body_emoji: emoji_states(&body, ctx),
                 body,
                 mentions_room,
                 reply,

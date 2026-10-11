@@ -7,15 +7,16 @@ use slint::{ComponentHandle, Model, SharedString, StyledText};
 
 use super::audio;
 use super::backend::{
-    UiBackend, UiEventContext, apply_pack_avatar, apply_sticker_art, enrich_message,
+    UiBackend, UiEventContext, apply_pack_art, apply_pack_avatar, enrich_message,
     keep_shown_enrichment,
 };
-use super::decode::{AvatarSlot, load_attachment_preview, load_avatar_async, request_sticker};
+use super::decode::{AvatarSlot, load_attachment_preview, load_avatar_async, request_pack_cell};
 use super::dto::{
-    GRID_COLUMNS, QuotedMessage, StickerArt, StickerPackDto, StickerRowDto, audio_row_update,
-    load_room_info_avatar, load_user_info_avatar, preview_line, quoted_message, rich_body,
-    sticker_art, sticker_grid, sticker_needle, user_info_pronouns,
+    PackArt, PackBrowse, PackRowDto, PackTabDto, QuotedMessage, audio_row_update,
+    load_room_info_avatar, load_user_info_avatar, pack_art, pack_grid, preview_line,
+    quoted_message, rich_body, user_info_pronouns,
 };
+use super::emote;
 use super::fields::{MemberRowFields, MessageFields, SpaceChildFields, SpaceFields};
 use super::present::{
     VerifyStep, avatar_color_index, avatar_initials, duration_label, file_extension,
@@ -25,7 +26,7 @@ use super::props::{BoolProp, IntProp, StringProp, UiProps};
 use super::reconcile::{
     RoomListing, RowReplacements, apply_member_rows, apply_mention_rows, apply_reader_rows,
     apply_rooms, apply_space_children, apply_spaces, apply_timeline_patch,
-    downloading_pack_avatars, index_sticker_grid, pack_avatar_downloaded, retain_awaited_downloads,
+    downloading_pack_avatars, index_pack_grid, pack_avatar_downloaded, retain_awaited_downloads,
 };
 use super::richtext::recognise_own_user;
 use super::rows::patch_rows_by_id;
@@ -37,8 +38,8 @@ use crate::commands::messages::{UserMessage, UserMessageKind};
 use crate::commands::ui::Draft;
 use crate::commands::view::{
     AppViewState, AttachmentView, AudioView, CardStatus, CopiedLink, DirectoryView, LifecycleView,
-    MentionsView, NowPlaying, PaginationView, PinnedView, ReadersView, RoomCard, RoomInfoView,
-    RoomLogView, RoomMenuTarget, SourceState, SpaceIndexView, StickerView, Toast, TrackFile,
+    MentionsView, NowPlaying, PackView, PaginationView, PinnedView, ReadersView, RoomCard,
+    RoomInfoView, RoomLogView, RoomMenuTarget, SourceState, SpaceIndexView, Toast, TrackFile,
     UnsentMessage, UserCard, UserInfoView, VideoView,
 };
 use crate::domain::message::{
@@ -157,17 +158,23 @@ pub(super) fn latest_directory() -> Option<DirectoryView> {
     with_session(|session| session.snapshot.as_ref().map(|view| view.directory.clone()))
 }
 
-pub(super) fn set_sticker_query<B: UiBackend>(query: &str, media: &dyn MediaCache) {
-    let needle = sticker_needle(query);
-    let stickers = with_session(|session| {
-        if session.sticker_needle == needle {
+pub(super) fn set_pack_browse<B: UiBackend>(
+    w: &B::Window,
+    browse: PackBrowse,
+    media: &dyn MediaCache,
+) {
+    let packs = with_session(|session| {
+        if session.pack_browse.as_ref() == Some(&browse) {
             return None;
         }
-        session.sticker_needle = needle;
-        session.snapshot.as_ref().map(|view| view.stickers.clone())
+        session.pack_browse = Some(browse);
+        session
+            .snapshot
+            .as_ref()
+            .map(|view| view.image_packs.clone())
     });
-    if let Some(stickers) = stickers {
-        rebuild_sticker_grid::<B>(&stickers, media);
+    if let Some(packs) = packs {
+        rebuild_pack_grid::<B>(w, &packs, media);
     }
 }
 
@@ -185,6 +192,7 @@ pub fn dispatch_effect<B: UiBackend>(w: &B::Window, event: Effect, ctx: &UiEvent
             generation,
             live,
         } => {
+            emote::follow_room(id.as_ref());
             if adopt_selected_generation(generation) {
                 set_focus(w, None);
             }
@@ -351,7 +359,7 @@ fn apply_snapshot<B: UiBackend>(
         user_info,
         pagination,
         pinned,
-        stickers,
+        image_packs: stickers,
         attachment,
         video,
         audio,
@@ -387,13 +395,13 @@ fn apply_snapshot<B: UiBackend>(
         apply_pin_marks::<B>(last_pinned_ids.as_deref(), &pinned.pinned_ids, ctx);
     }
     if last.is_none_or(|l| {
-        !Arc::ptr_eq(&l.stickers.packs, &stickers.packs)
-            || l.stickers.generation != stickers.generation
-            || l.stickers.ready_images != stickers.ready_images
-            || l.stickers.room_encrypted != stickers.room_encrypted
-            || l.stickers.loading != stickers.loading
+        !Arc::ptr_eq(&l.image_packs.packs, &stickers.packs)
+            || l.image_packs.generation != stickers.generation
+            || l.image_packs.ready_images != stickers.ready_images
+            || l.image_packs.room_encrypted != stickers.room_encrypted
+            || l.image_packs.loading != stickers.loading
     }) {
-        apply_stickers::<B>(w, last.map(|l| &l.stickers), stickers, ctx.media);
+        apply_packs::<B>(w, last.map(|l| &l.image_packs), stickers, ctx.media);
     }
     if last.is_none_or(|l| l.attachment != *attachment) {
         apply_attachment(w, attachment);
@@ -1039,63 +1047,59 @@ fn run_change_handlers_next_frame(w: &impl ComponentHandle) {
     w.window().request_redraw();
 }
 
-fn apply_stickers<B: UiBackend>(
+fn apply_packs<B: UiBackend>(
     w: &B::Window,
-    last: Option<&StickerView>,
-    stickers: &StickerView,
+    last: Option<&PackView>,
+    stickers: &PackView,
     media: &dyn MediaCache,
 ) {
     let catalog_changed = last.is_none_or(|l| {
         !Arc::ptr_eq(&l.packs, &stickers.packs) || l.generation != stickers.generation
     });
     if catalog_changed {
-        rebuild_sticker_grid::<B>(stickers, media);
+        rebuild_pack_grid::<B>(w, stickers, media);
     } else if last.is_some_and(|l| l.ready_images != stickers.ready_images) {
-        settle_sticker_downloads::<B>(media);
+        settle_pack_downloads::<B>(media);
     }
-    let for_this_room = stickers.generation == active_generation();
-    w.set_int(IntProp::StickerColumns, GRID_COLUMNS);
-    w.set_bool(BoolProp::StickerRoomEncrypted, stickers.room_encrypted);
-    w.set_bool(BoolProp::StickerLoading, stickers.loading);
-    w.set_bool(
-        BoolProp::StickerHasPacks,
-        for_this_room && !stickers.packs.is_empty(),
-    );
+    w.set_bool(BoolProp::PackRoomEncrypted, stickers.room_encrypted);
+    w.set_bool(BoolProp::PackLoading, stickers.loading);
 }
 
-fn rebuild_sticker_grid<B: UiBackend>(stickers: &StickerView, media: &dyn MediaCache) {
-    let (active, needle) = with_session(|session| {
-        (
-            session.room.active_generation,
-            session.sticker_needle.clone(),
-        )
-    });
-    let grid = if stickers.generation == active {
-        sticker_grid(stickers.packs.as_ref(), &needle, media)
-    } else {
-        sticker_grid(&[], &needle, media)
+fn rebuild_pack_grid<B: UiBackend>(w: &B::Window, packs: &PackView, media: &dyn MediaCache) {
+    let (active, browse) =
+        with_session(|session| (session.room.active_generation, session.pack_browse.clone()));
+    let Some(browse) = browse else {
+        return;
     };
+    let for_this_room = packs.generation == active;
+    let grid = if for_this_room {
+        pack_grid(packs.packs.as_ref(), &browse, media)
+    } else {
+        pack_grid(&[], &browse, media)
+    };
+    w.set_pack_surface(browse.surface);
+    w.set_bool(BoolProp::PackHasPacks, for_this_room && grid.has_packs);
 
-    let replacements = index_sticker_grid(&grid);
+    let replacements = index_pack_grid(&grid);
     let missing_icons = packs_missing_icons(&grid.packs);
-    B::with_stickers(|rows, packs| {
+    B::with_pack_grid(|rows, packs| {
         replace_reshaped_rows::<B>(rows, grid.rows, &replacements);
         packs.set_vec(
             grid.packs
                 .into_iter()
-                .map(B::StickerPack::from)
+                .map(B::PackTab::from)
                 .collect::<Vec<_>>(),
         );
     });
     for icon_cell_key in &missing_icons {
-        request_sticker(icon_cell_key);
+        request_pack_cell(icon_cell_key);
     }
-    settle_sticker_downloads::<B>(media);
+    settle_pack_downloads::<B>(media);
 }
 
 fn replace_reshaped_rows<B: UiBackend>(
-    rows: &SpliceModel<B::StickerRow>,
-    grid_rows: Vec<StickerRowDto>,
+    rows: &SpliceModel<B::PackRow>,
+    grid_rows: Vec<PackRowDto>,
     replacements: &RowReplacements,
 ) {
     let kept = rows.row_count();
@@ -1103,20 +1107,20 @@ fn replace_reshaped_rows<B: UiBackend>(
     let mut appended = Vec::new();
     for (row, entry) in grid_rows.into_iter().enumerate() {
         if row >= kept {
-            appended.push(B::StickerRow::from(entry));
+            appended.push(B::PackRow::from(entry));
         } else if replacements.must_replace(row) {
-            rows.set_row_data(row, B::StickerRow::from(entry));
+            rows.set_row_data(row, B::PackRow::from(entry));
         }
     }
     rows.truncate(total);
     rows.insert_rows(kept, appended);
 }
 
-fn settle_sticker_downloads<B: UiBackend>(media: &dyn MediaCache) {
+fn settle_pack_downloads<B: UiBackend>(media: &dyn MediaCache) {
     let mut settled = Vec::new();
-    retain_awaited_downloads(|key, mxc| match sticker_art(key, mxc, media) {
-        StickerArt::Downloading => true,
-        StickerArt::Decoding => false,
+    retain_awaited_downloads(|key, mxc| match pack_art(key, mxc, media) {
+        PackArt::Downloading => true,
+        PackArt::Decoding => false,
         art => {
             settled.push((key.to_owned(), art));
             false
@@ -1124,9 +1128,9 @@ fn settle_sticker_downloads<B: UiBackend>(media: &dyn MediaCache) {
     });
     for (key, art) in settled {
         match art {
-            StickerArt::Ready(image) => apply_sticker_art::<B>(&key, Some(&image)),
-            StickerArt::Failed => apply_sticker_art::<B>(&key, None),
-            StickerArt::Decoding | StickerArt::Downloading => {}
+            PackArt::Ready(image) => apply_pack_art::<B>(&key, Some(&image)),
+            PackArt::Failed => apply_pack_art::<B>(&key, None),
+            PackArt::Decoding | PackArt::Downloading => {}
         }
     }
     settle_pack_avatars::<B>(media);
@@ -1136,7 +1140,7 @@ fn settle_pack_avatars<B: UiBackend>(media: &dyn MediaCache) {
     for (pack_id, mxc) in downloading_pack_avatars() {
         if let Some(path) = media.sticker_path(&mxc) {
             pack_avatar_downloaded(&pack_id);
-            let slot = AvatarSlot::StickerPack(pack_id.clone());
+            let slot = AvatarSlot::Pack(pack_id.clone());
             if let Some(image) = load_avatar_async(Some(&path), slot) {
                 apply_pack_avatar::<B>(&pack_id, Some(&image));
             }
@@ -1146,7 +1150,7 @@ fn settle_pack_avatars<B: UiBackend>(media: &dyn MediaCache) {
     }
 }
 
-fn packs_missing_icons(packs: &[StickerPackDto]) -> Vec<SharedString> {
+fn packs_missing_icons(packs: &[PackTabDto]) -> Vec<SharedString> {
     packs
         .iter()
         .filter(|pack| pack.icon.is_none() && !pack.icon_cell_key.is_empty())
@@ -1389,6 +1393,9 @@ fn refresh_audio_row<B: UiBackend>(now: &NowPlaying, ctx: &UiEventContext<'_, B>
 }
 
 fn apply_unsent(w: &impl UiProps, unsent: Option<&UnsentMessage>) {
+    if let Some(unsent) = unsent {
+        emote::rebind(unsent.room_id.as_ref(), unsent.draft.emotes());
+    }
     let draft = unsent.map(|unsent| &unsent.draft);
     let reply = match draft {
         Some(Draft::Message(message)) => message.reply.as_ref(),

@@ -1,6 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::hash::{DefaultHasher, Hash, Hasher};
 
+use crate::domain::emote::Emote;
 use crate::domain::media::{
     AudioKind, AudioMeta, ContentKey, FileMeta, ImageMeta, MediaKind, VideoMeta,
 };
@@ -454,6 +455,7 @@ pub struct MessageEdit {
     pub kind: EditKind,
     pub body: String,
     pub original: Option<String>,
+    pub emotes: Vec<Emote>,
 }
 
 pub enum TextRevision {

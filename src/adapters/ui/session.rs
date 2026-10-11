@@ -4,7 +4,9 @@ use std::sync::Arc;
 
 use super::backend::{Models, UiBackend};
 use super::decode::MediaSession;
-use super::reconcile::{StickerIndex, TimelineIndex};
+use super::dto::PackBrowse;
+use super::emote::EmoteBindings;
+use super::reconcile::{PackIndex, TimelineIndex};
 use super::reduce::RoomCursor;
 use super::richtext::StyledBodies;
 use crate::commands::view::AppViewState;
@@ -17,10 +19,11 @@ pub type ActiveBackend = super::interpreted::InterpretedBackend;
 pub struct UiSession<B: UiBackend> {
     pub models: Rc<Models<B>>,
     pub timeline_index: TimelineIndex,
-    pub sticker_index: StickerIndex,
+    pub pack_index: PackIndex,
     pub room: RoomCursor,
     pub snapshot: Option<Arc<AppViewState>>,
-    pub sticker_needle: String,
+    pub pack_browse: Option<PackBrowse>,
+    pub emotes: EmoteBindings,
     pub media: MediaSession,
     pub bodies: StyledBodies,
 }
@@ -30,10 +33,11 @@ impl<B: UiBackend> Default for UiSession<B> {
         Self {
             models: Rc::default(),
             timeline_index: TimelineIndex::default(),
-            sticker_index: StickerIndex::default(),
+            pack_index: PackIndex::default(),
             room: RoomCursor::default(),
             snapshot: None,
-            sticker_needle: String::new(),
+            pack_browse: None,
+            emotes: EmoteBindings::default(),
             media: MediaSession::default(),
             bodies: StyledBodies::default(),
         }

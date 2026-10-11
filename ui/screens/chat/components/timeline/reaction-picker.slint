@@ -119,6 +119,7 @@ export component ReactionStrip inherits PickerCard {
 
 export component ReactionPicker inherits PickerCard {
     callback picked(string);
+    callback emote-picked(string, string);
 
     in property <bool> encrypted: false;
 
@@ -132,8 +133,12 @@ export component ReactionPicker inherits PickerCard {
 
         EmojiPicker {
             vertical-stretch: 1;
+            notice: false;
             picked(glyph) => {
                 root.picked(glyph);
+            }
+            emote-picked(pack-id, shortcode) => {
+                root.emote-picked(pack-id, shortcode);
             }
         }
     }

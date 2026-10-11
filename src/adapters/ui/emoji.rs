@@ -43,6 +43,17 @@ const SINGLE_TONES: [SkinTone; 6] = [
 
 const MAX_SEARCH_RESULTS: usize = 90;
 
+pub struct EmojiRow {
+    pub is_header: bool,
+    pub group: usize,
+    pub cells: Vec<EmojiEntry>,
+}
+
+pub struct EmojiRows {
+    pub rows: Vec<EmojiRow>,
+    pub header_rows: Vec<usize>,
+}
+
 static GROUPS: OnceLock<Vec<Vec<EmojiEntry>>> = OnceLock::new();
 
 fn tone_variants(emoji: &emojis::Emoji) -> Vec<String> {
@@ -112,5 +123,40 @@ pub fn search(query: &str) -> Vec<EmojiEntry> {
         .filter(|entry| entry.keywords.contains(&needle))
         .take(MAX_SEARCH_RESULTS)
         .cloned()
+        .collect()
+}
+
+pub fn rows(columns: usize) -> EmojiRows {
+    let per_row = columns.max(1);
+    let mut laid_out = EmojiRows {
+        rows: Vec::new(),
+        header_rows: Vec::new(),
+    };
+    for (group, items) in groups().iter().enumerate() {
+        laid_out.header_rows.push(laid_out.rows.len());
+        laid_out.rows.push(EmojiRow {
+            is_header: true,
+            group,
+            cells: Vec::new(),
+        });
+        for chunk in items.chunks(per_row) {
+            laid_out.rows.push(EmojiRow {
+                is_header: false,
+                group,
+                cells: chunk.to_vec(),
+            });
+        }
+    }
+    laid_out
+}
+
+pub fn result_rows(query: &str, columns: usize) -> Vec<EmojiRow> {
+    search(query)
+        .chunks(columns.max(1))
+        .map(|chunk| EmojiRow {
+            is_header: false,
+            group: 0,
+            cells: chunk.to_vec(),
+        })
         .collect()
 }

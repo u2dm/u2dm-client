@@ -114,6 +114,7 @@ export component IconButton inherits Rectangle {
     in property <color> tint: AppStyle.foreground-muted;
     in property <brush> fill: transparent;
     out property <bool> has-focus: touch.has-focus;
+    out property <bool> has-hover: touch.has-hover;
 
     callback clicked();
 

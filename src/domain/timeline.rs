@@ -178,7 +178,11 @@ pub enum TimelineCommand {
     PaginateForwards,
     MarkRead,
     JumpTo(String),
-    ToggleReaction { event_id: String, key: String },
+    ToggleReaction {
+        event_id: String,
+        key: String,
+        shortcode: Option<String>,
+    },
     VotePoll { event_id: String, answer_id: String },
     EndPoll { event_id: String },
     EditPoll { event_id: String, draft: PollDraft },

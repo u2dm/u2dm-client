@@ -126,20 +126,20 @@ fn fetched_audio() -> &'static Mutex<HashSet<String>> {
     FETCHED.get_or_init(|| Mutex::new(HashSet::new()))
 }
 
-fn prefetched_stickers() -> &'static Mutex<HashSet<String>> {
+fn prefetched_pack_images() -> &'static Mutex<HashSet<String>> {
     static PREFETCHED: OnceLock<Mutex<HashSet<String>>> = OnceLock::new();
     PREFETCHED.get_or_init(|| Mutex::new(HashSet::new()))
 }
 
 fn sticker_downloaded(mxc: &str) -> bool {
     !stickers::scenario().images_trickle
-        || prefetched_stickers()
+        || prefetched_pack_images()
             .lock()
             .is_ok_and(|prefetched| prefetched.contains(mxc))
 }
 
-pub(super) fn prefetch_stickers(mxcs: &[String]) -> usize {
-    if let Ok(mut prefetched) = prefetched_stickers().lock() {
+pub(super) fn prefetch_pack_images(mxcs: &[String]) -> usize {
+    if let Ok(mut prefetched) = prefetched_pack_images().lock() {
         prefetched.extend(mxcs.iter().cloned());
     }
     mxcs.iter()

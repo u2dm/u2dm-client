@@ -207,7 +207,7 @@ fn own_mentions(body: &MessageBody) -> Option<Value> {
         | MessageBody::Audio { caption, .. } => caption.as_ref().and_then(RichText::composer_text),
         _ => None,
     }?;
-    serde_json::to_value(data::own_composition(composer).mentions).ok()
+    serde_json::to_value(data::own_composition(composer, &[]).mentions).ok()
 }
 
 fn text_content(msgtype: &str, text: &RichText) -> Value {

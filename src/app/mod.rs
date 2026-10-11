@@ -12,6 +12,7 @@ mod link_requests;
 mod media;
 mod mentions;
 mod message_actions;
+mod packs;
 mod pinned;
 mod polls;
 mod readers;
@@ -24,7 +25,6 @@ mod send_lanes;
 mod session;
 mod space_index;
 mod space_order;
-mod stickers;
 mod submissions;
 mod task_group;
 mod user_info;
@@ -39,8 +39,8 @@ use attachments::Attachments;
 use audio::AudioController;
 use establish::{EstablishedSession, Rollback};
 use event::{
-    AppEvent, EndReason, MentionsEvent, MessageActionEvent, ReadersEvent, RoomActionEvent,
-    SessionEvent, StickersEvent, TimelineEvent, UserInfoEvent,
+    AppEvent, EndReason, MentionsEvent, MessageActionEvent, PacksEvent, ReadersEvent,
+    RoomActionEvent, SessionEvent, TimelineEvent, UserInfoEvent,
 };
 use event_source::EventSourceViewer;
 use input::{CommandSender, EventSender, Inbox, Input};
@@ -48,6 +48,7 @@ use lifecycle::{Lifecycle, Settled};
 use media::MediaActions;
 use mentions::{MentionSuggestions, Suggestion};
 use message_actions::MessageActions;
+use packs::Packs;
 use pinned::{PinDirection, PinnedMessages};
 use readers::ReaderList;
 use recover::Recovery;
@@ -58,7 +59,6 @@ use selection::Selection;
 use send_lanes::SendLanes;
 use session::{SessionController, SuspendedSession};
 use space_index::{ChildTarget, JoinOutcome, ListedSpace, PageOutcome, SpaceIndex};
-use stickers::Stickers;
 use submissions::Submissions;
 use task_group::TaskGroup;
 use tokio::sync::{mpsc, watch};
@@ -73,12 +73,13 @@ use crate::commands::ui::{MessageDraft, TimelineVisibility, UiCommand, ViewportC
 use crate::commands::view::{AppViewState, LoginActivity, LoginStep, Toast};
 use crate::domain::account::AccountScope;
 use crate::domain::auth::ServerInfo;
+use crate::domain::emote::ComposerText;
+use crate::domain::image_pack::PackId;
 use crate::domain::media::AttachmentPick;
 use crate::domain::message::{MessageEdit, PinChange};
 use crate::domain::poll::PollDraft;
 use crate::domain::room::{NotifyMode, RoomId, RoomList, Space};
 use crate::domain::room_search::TitleQuery;
-use crate::domain::sticker::PackId;
 use crate::domain::sync::ConnectionStatus;
 use crate::domain::timeline::{AudioTrack, FailedSend, MessageReaders, TimelineFocus};
 use crate::domain::user_info::{IgnoreChange, Moderation, UserId};
@@ -184,7 +185,7 @@ pub struct AppService {
     media: MediaActions,
     audio: AudioController,
     video: VideoController,
-    stickers: Stickers,
+    packs: Packs,
     space_index: SpaceIndex,
     room_info: RoomInfo,
     user_info: UserInfo,
@@ -230,7 +231,7 @@ impl AppService {
             media: MediaActions::new(Arc::clone(&media_files), Arc::clone(&output)),
             audio: AudioController::new(Arc::clone(&output), events.clone()),
             video: VideoController::new(Arc::clone(&output), events.clone()),
-            stickers: Stickers::new(Arc::clone(&output), events.clone()),
+            packs: Packs::new(Arc::clone(&output), events.clone()),
             space_index: SpaceIndex::new(Arc::clone(&output), events.clone()),
             room_info: RoomInfo::new(Arc::clone(&output), events.clone()),
             user_info: UserInfo::new(Arc::clone(&output), events.clone()),
@@ -614,8 +615,14 @@ impl AppService {
                 self.resolve_failed_send(local_id, FailedSend::Discard);
             }
             UiCommand::ToggleReaction { event_id, key } => {
-                self.active_timeline.toggle_reaction(event_id, key);
+                self.active_timeline.toggle_reaction(event_id, key, None);
             }
+            UiCommand::ReactWithEmote {
+                event_id,
+                pack,
+                shortcode,
+            } => self.react_with_emote(event_id, &pack, shortcode),
+            UiCommand::SetPackGlobal { pack, global } => self.set_pack_global(pack, global),
             UiCommand::VotePoll {
                 event_id,
                 answer_id,
@@ -1102,14 +1109,19 @@ impl AppService {
         }
     }
 
-    fn handle_stickers(&mut self, event: StickersEvent) {
+    fn handle_packs(&mut self, event: PacksEvent) {
         match event {
-            StickersEvent::CatalogLoaded {
+            PacksEvent::CatalogLoaded {
                 generation,
                 catalog,
-            } => self.stickers.catalog_loaded(generation, catalog),
-            StickersEvent::ImagesReady { generation, ready } => {
-                self.stickers.images_ready(generation, ready);
+            } => self.packs.catalog_loaded(generation, catalog),
+            PacksEvent::ImagesReady { generation, ready } => {
+                self.packs.images_ready(generation, ready);
+            }
+            PacksEvent::GlobalFailed { op, pack } => {
+                if let Some(port) = self.port(|a| &a.image_packs) {
+                    self.packs.global_failed(port, op, &pack);
+                }
             }
         }
     }
@@ -1244,7 +1256,7 @@ impl AppService {
             AppEvent::UserInfo(event) => self.handle_user_info(event).await,
             AppEvent::Readers(event) => self.handle_readers(event),
             AppEvent::Mentions(event) => self.handle_mentions(event),
-            AppEvent::Stickers(event) => self.handle_stickers(event),
+            AppEvent::Packs(event) => self.handle_packs(event),
             AppEvent::RoomLogGrew => self.room_log.reread(),
         }
     }
@@ -1636,10 +1648,10 @@ impl AppService {
         shortcode: String,
         reply_to: Option<String>,
     ) {
-        let Some(stickers) = self.port(|a| &a.stickers) else {
+        let Some(stickers) = self.port(|a| &a.image_packs) else {
             return;
         };
-        self.stickers.send(
+        self.packs.send(
             &mut self.send_lanes,
             stickers,
             room_id.clone(),
@@ -1671,7 +1683,7 @@ impl AppService {
     async fn send_attachment(
         &mut self,
         room_id: RoomId,
-        caption: String,
+        caption: ComposerText,
         as_document: bool,
         reply_to: Option<String>,
     ) {
@@ -1695,6 +1707,21 @@ impl AppService {
         let media = self.port(|a| &a.media)?;
         let room_id = self.active_timeline.room_id()?.clone();
         Some((media, room_id))
+    }
+
+    fn set_pack_global(&mut self, pack: PackId, global: bool) {
+        if let Some(port) = self.port(|a| &a.image_packs) {
+            self.packs.set_global(port, pack, global);
+        }
+    }
+
+    fn react_with_emote(&mut self, event_id: String, pack: &PackId, shortcode: String) {
+        let Some(mxc) = self.packs.emote_mxc(pack, &shortcode) else {
+            tracing::debug!(%event_id, %pack, "the reacted emote is no longer shown");
+            return;
+        };
+        self.active_timeline
+            .toggle_reaction(event_id, mxc, Some(shortcode));
     }
 
     fn delete_message(&mut self, event_id: String) {
@@ -1883,8 +1910,8 @@ impl AppService {
             live: focus.is_live(),
         })
         .await;
-        if let Some(stickers) = self.port(|a| &a.stickers) {
-            self.stickers
+        if let Some(stickers) = self.port(|a| &a.image_packs) {
+            self.packs
                 .select_room(stickers, room_id.clone(), generation);
         }
         let Some(timeline) = self.port(|a| &a.timeline) else {
@@ -1941,7 +1968,7 @@ impl AppService {
             live: true,
         })
         .await;
-        self.stickers.clear_room();
+        self.packs.clear_room();
         self.sync_selected_room(None);
         self.pinned.clear();
         self.active_timeline.clear_room(generation).await;
@@ -1992,7 +2019,7 @@ impl AppService {
             self.media.cancel_and_drain(),
             self.audio.restart(),
             self.video.restart(),
-            self.stickers.restart(),
+            self.packs.restart(),
             self.space_index.restart(),
             self.room_info.restart(),
             self.user_info.restart(),
@@ -2086,7 +2113,7 @@ impl AppService {
             self.media.drain(),
             self.audio.shutdown(),
             self.video.shutdown(),
-            self.stickers.shutdown(),
+            self.packs.shutdown(),
             self.space_index.shutdown(),
             self.room_info.shutdown(),
             self.user_info.shutdown(),

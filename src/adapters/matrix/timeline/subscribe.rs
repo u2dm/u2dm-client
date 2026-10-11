@@ -11,6 +11,7 @@ use matrix_sdk_ui::timeline::{
     EventSendState, EventTimelineItem, RoomExt as _, Timeline, TimelineEventFocusThreadMode,
     TimelineEventItemId, TimelineFocus as SdkTimelineFocus, TimelineItem, VirtualTimelineItem,
 };
+use serde_json::{Map, Value};
 use tokio::sync::{Semaphore, mpsc};
 use tokio::task::JoinSet;
 use tracing::Instrument;
@@ -31,6 +32,7 @@ use super::undecrypted::UndecryptedResponses;
 use super::{EnrichmentClaim, EnrichmentPool, TimelineContext};
 use crate::adapters::matrix::media::{MediaService, ThumbnailRequest};
 use crate::adapters::matrix::profile::PronounCache;
+use crate::domain::emote::Emote;
 use crate::domain::media::{ContentKey, ThumbnailOutcome};
 use crate::domain::message::TimelineMessage;
 use crate::domain::room::RoomId;
@@ -42,6 +44,7 @@ use crate::domain::viewport::PAGINATION_BATCH_SIZE;
 use crate::error::{AppError, Result};
 
 const REPLY_FETCH_INFLIGHT: usize = 4;
+const REACTION_SHORTCODE_FIELD: &str = "com.beeper.reaction.shortcode";
 const UNREAD_LOOKBACK_BATCHES: usize = 4;
 const FOCUS_CONTEXT_EVENTS: u16 = 50;
 const MEMBER_BATCHES: usize = 4;
@@ -263,10 +266,15 @@ async fn toggle_own_reaction(
     timeline: &Timeline,
     target: OwnedEventId,
     key: &str,
+    shortcode: Option<&str>,
 ) -> Result<ReactionToggle> {
     let failed = own_reaction_failed(timeline, &target, key).await;
     let added = timeline
-        .toggle_reaction(&TimelineEventItemId::EventId(target), key)
+        .toggle_reaction_with_extra_content(
+            &TimelineEventItemId::EventId(target),
+            key,
+            shortcode.map(reaction_shortcode),
+        )
         .await
         .map_err(|e| AppError::Other(e.to_string()))?;
     Ok(match (added, failed) {
@@ -284,7 +292,14 @@ fn resume_after_discarded_reaction(room: &Room, event_id: &str) {
     );
 }
 
-async fn toggle_reaction(timeline: &Timeline, event_id: &str, key: &str) {
+fn reaction_shortcode(shortcode: &str) -> Map<String, Value> {
+    Map::from_iter([(
+        REACTION_SHORTCODE_FIELD.to_owned(),
+        Value::String(Emote::token_for_title(shortcode)),
+    )])
+}
+
+async fn toggle_reaction(timeline: &Timeline, event_id: &str, key: &str, shortcode: Option<&str>) {
     let Ok(target) = OwnedEventId::try_from(event_id) else {
         tracing::warn!(
             event_id,
@@ -292,7 +307,7 @@ async fn toggle_reaction(timeline: &Timeline, event_id: &str, key: &str) {
         );
         return;
     };
-    match toggle_own_reaction(timeline, target, key).await {
+    match toggle_own_reaction(timeline, target, key, shortcode).await {
         Ok(ReactionToggle::DiscardedFailedSend) => {
             resume_after_discarded_reaction(timeline.room(), event_id);
         }
@@ -351,8 +366,12 @@ async fn handle_timeline_command(
             report_jump(event_id, items, timeline_tx).await;
             return;
         }
-        TimelineCommand::ToggleReaction { event_id, key } => {
-            toggle_reaction(timeline, &event_id, &key).await;
+        TimelineCommand::ToggleReaction {
+            event_id,
+            key,
+            shortcode,
+        } => {
+            toggle_reaction(timeline, &event_id, &key, shortcode.as_deref()).await;
             return;
         }
         TimelineCommand::VotePoll {

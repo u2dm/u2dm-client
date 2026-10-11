@@ -54,13 +54,18 @@ impl Submissions {
         draft: MessageDraft,
     ) {
         let body = draft.body.clone();
+        let emotes = draft.emotes.clone();
         let reply_to = draft.reply.as_ref().map(|reply| reply.event_id.clone());
         let submission = self.hold(&room_id, Draft::Message(draft), Stage::Enqueueing);
         let lane_room = room_id.clone();
         self.settle_on_lane(lanes, room_id, submission, async move {
             match reply_to {
-                Some(event_id) => timeline.send_reply(&lane_room, &body, &event_id).await,
-                None => timeline.send_text(&lane_room, &body).await,
+                Some(event_id) => {
+                    timeline
+                        .send_reply(&lane_room, &body, &emotes, &event_id)
+                        .await
+                }
+                None => timeline.send_text(&lane_room, &body, &emotes).await,
             }
         });
     }

@@ -11,6 +11,7 @@ mod dto;
 #[cfg(feature = "demo")]
 pub(crate) mod dump;
 mod emoji;
+mod emote;
 mod fields;
 mod finger_direction;
 mod focus;

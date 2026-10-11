@@ -5,6 +5,7 @@ use serde::Deserialize;
 
 use super::{media, message_menu, polls, reactions};
 use crate::domain::auth::Session;
+use crate::domain::image_pack::{ImagePack, ImageUsage, PackId, PackImage, PackOrigin, PackTitle};
 use crate::domain::media::{AudioKind, AudioMeta, ImageMeta, VideoMeta, Waveform};
 use crate::domain::message::{
     MessageBody, MessagePreviewKind, Reaction, ReactionSend, ReadBy, ReplyInfo, RichText,
@@ -14,7 +15,6 @@ use crate::domain::poll::{Poll, PollAnswer, PollChoice, PollDisclosure, PollStat
 use crate::domain::room::{NotifyMode, Room, RoomId, Space};
 use crate::domain::room_info::MemberRole;
 use crate::domain::space_index::{ChildKind, JoinRule, SpaceChild};
-use crate::domain::sticker::{PackId, StickerImage, StickerPack};
 
 #[derive(Deserialize, Default)]
 #[serde(deny_unknown_fields)]
@@ -29,22 +29,36 @@ pub struct DemoData {
     #[serde(default)]
     pub pronouns: HashMap<String, Vec<String>>,
     #[serde(default)]
-    pub sticker_packs: Vec<StickerPackDto>,
+    pub sticker_packs: Vec<ImagePackDto>,
     #[serde(default)]
     pub unjoined: Vec<UnjoinedDto>,
 }
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct StickerPackDto {
+pub struct ImagePackDto {
     pub id: String,
-    pub title: String,
+    #[serde(default)]
+    pub title: Option<String>,
+    #[serde(default)]
+    pub origin: OriginDto,
     #[serde(default)]
     pub avatar: Option<String>,
     #[serde(default)]
     pub rooms: Vec<String>,
     #[serde(default)]
+    pub usage: Option<Vec<UsageDto>>,
+    #[serde(default)]
     pub images: Vec<PackImageDto>,
+}
+
+#[derive(Deserialize, Default, Clone, Copy, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum OriginDto {
+    Personal,
+    #[default]
+    Room,
+    Global,
 }
 
 #[derive(Deserialize)]
@@ -54,29 +68,64 @@ pub struct PackImageDto {
     #[serde(default)]
     pub body: Option<String>,
     pub asset: String,
+    #[serde(default)]
+    pub usage: Option<Vec<UsageDto>>,
 }
 
-impl StickerPackDto {
-    pub fn covers(&self, room_id: &str) -> bool {
-        self.rooms.is_empty() || self.rooms.iter().any(|id| id == room_id)
+#[derive(Deserialize, Clone, Copy, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum UsageDto {
+    Emoticon,
+    Sticker,
+}
+
+fn usage_of(kinds: Option<&Vec<UsageDto>>) -> Option<ImageUsage> {
+    let kinds = kinds?;
+    ImageUsage::named(
+        kinds.contains(&UsageDto::Emoticon),
+        kinds.contains(&UsageDto::Sticker),
+    )
+}
+
+impl ImagePackDto {
+    pub fn origin(&self, shared: Option<bool>) -> PackOrigin {
+        match self.origin {
+            OriginDto::Personal => PackOrigin::Personal,
+            OriginDto::Room => PackOrigin::room_pack(shared.unwrap_or(false)),
+            OriginDto::Global => PackOrigin::room_pack(shared.unwrap_or(true)),
+        }
     }
 
-    pub fn to_pack(&self) -> StickerPack {
-        StickerPack {
+    pub fn is_in_room(&self, room_id: &str) -> bool {
+        self.rooms.iter().any(|id| id == room_id)
+    }
+
+    pub fn to_pack(&self, origin: PackOrigin) -> ImagePack {
+        let pack_usage = usage_of(self.usage.as_ref());
+        ImagePack {
             id: PackId::new(self.id.clone()),
-            title: self.title.clone(),
+            title: self
+                .title
+                .clone()
+                .map_or(PackTitle::Personal, PackTitle::Named),
+            origin,
             avatar: self.avatar.as_deref().map(demo_mxc),
-            images: self.images.iter().map(PackImageDto::to_image).collect(),
+            images: self
+                .images
+                .iter()
+                .map(|image| image.to_image(pack_usage))
+                .collect(),
         }
     }
 }
 
 impl PackImageDto {
-    fn to_image(&self) -> StickerImage {
-        StickerImage {
+    fn to_image(&self, pack_usage: Option<ImageUsage>) -> PackImage {
+        PackImage {
             shortcode: self.shortcode.clone(),
             body: self.body.clone().unwrap_or_else(|| self.shortcode.clone()),
             mxc: demo_mxc(&self.asset),
+            usage: ImageUsage::resolved(usage_of(self.usage.as_ref()), pack_usage),
         }
     }
 }

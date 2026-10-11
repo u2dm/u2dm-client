@@ -1,14 +1,14 @@
 import { Palette } from "std-widgets.slint";
 
 import { EmojiPicker } from "./emoji-picker.slint";
-import { StickerPicker } from "./sticker-picker.slint";
+import { PackGrid } from "./pack-grid.slint";
 import { PickerTab } from "./picker-tab.slint";
 import { AppStyle, Fonts, Size, Space } from "../../../../theme.slint";
 import { PickerCard } from "../../../../components/overlay.slint";
 
 export enum PickerSection { emoji, stickers }
 
-component PanelTab inherits PickerTab {
+export component PanelTab inherits PickerTab {
     horizontal-stretch: 1;
     height: Size.md;
 
@@ -25,6 +25,7 @@ component PanelTab inherits PickerTab {
 
 export component PickerPanel inherits PickerCard {
     callback emoji-picked(string);
+    callback emote-picked(string, string);
     callback sticker-picked(string, string);
 
     in-out property <PickerSection> section: PickerSection.emoji;
@@ -44,7 +45,7 @@ export component PickerPanel inherits PickerCard {
 
             PanelTab {
                 label: @tr("Emoji");
-                selected: root.section == PickerSection.emoji;
+                selected: !root.shows-stickers;
                 above-modal: root.above-modal;
                 clicked => {
                     root.section = PickerSection.emoji;
@@ -53,7 +54,7 @@ export component PickerPanel inherits PickerCard {
 
             PanelTab {
                 label: @tr("Stickers");
-                selected: root.section == PickerSection.stickers;
+                selected: root.shows-stickers;
                 above-modal: root.above-modal;
                 clicked => {
                     root.section = PickerSection.stickers;
@@ -71,11 +72,15 @@ export component PickerPanel inherits PickerCard {
                 picked(glyph) => {
                     root.emoji-picked(glyph);
                 }
+                emote-picked(pack-id, shortcode) => {
+                    root.emote-picked(pack-id, shortcode);
+                }
             }
 
-            if root.shows-stickers: StickerPicker {
+            if root.shows-stickers: PackGrid {
                 width: 100%;
                 height: 100%;
+                above-modal: root.above-modal;
                 picked(pack-id, shortcode) => {
                     root.sticker-picked(pack-id, shortcode);
                 }

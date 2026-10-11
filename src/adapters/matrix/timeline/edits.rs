@@ -3,6 +3,9 @@ use std::mem;
 use std::sync::Mutex as StdMutex;
 
 use matrix_sdk::Room;
+use matrix_sdk::config::RequestConfig;
+use matrix_sdk::deserialized_responses::TimelineEvent;
+use matrix_sdk::ruma::events::relation::RelationType;
 use matrix_sdk::ruma::events::room::message::{
     FormattedBody, MessageFormat, MessageType, OriginalSyncRoomMessageEvent, Relation,
     ReplacementMetadata, RoomMessageEventContent, RoomMessageEventContentWithoutRelation,
@@ -12,47 +15,50 @@ use matrix_sdk::ruma::events::{
 };
 use matrix_sdk::ruma::html::{HtmlSanitizerMode, RemoveReplyFallback};
 use matrix_sdk::ruma::serde::Raw;
-use matrix_sdk::ruma::{EventId, OwnedEventId};
+use matrix_sdk::ruma::{EventId, OwnedEventId, UserId};
 use matrix_sdk::send_queue::{LocalEcho, LocalEchoContent, SendHandle};
 use matrix_sdk_ui::timeline::EventTimelineItem;
 use tokio::time::timeout;
 
 use super::{PRE_QUEUE_LOOKUP_WAIT, composed, local_transaction, queue};
+use crate::adapters::body_emoji;
 use crate::adapters::markdown::{self, Composed};
+use crate::domain::emote::Emote;
 use crate::domain::message::{EditKind, EditTarget, MessageEdit};
 use crate::error::{AppError, Result};
 
 const SANITIZER_MODE: HtmlSanitizerMode = HtmlSanitizerMode::Compat;
 
 pub(super) async fn edit(room: &Room, edit: &MessageEdit) -> Result<()> {
-    let composed = composed(room, &edit.body).await;
     match &edit.target {
         EditTarget::Sent(event_id) => {
             let target = OwnedEventId::try_from(event_id.as_str())
                 .map_err(|e| AppError::Other(e.to_string()))?;
-            let content = replacement(room, &target, &edit.body, &composed).await?;
+            let content = replacement(room, &target, edit).await?;
             queue(room, content).await
         }
-        EditTarget::Queued(local_id) => edit_queued(room, local_id, &edit.body, &composed).await,
+        EditTarget::Queued(local_id) => edit_queued(room, local_id, edit).await,
     }
 }
 
 async fn replacement(
     room: &Room,
     target: &EventId,
-    text: &str,
-    composed: &Composed,
+    edit: &MessageEdit,
 ) -> Result<AnyMessageLikeEventContent> {
-    let event = timeout(
-        PRE_QUEUE_LOOKUP_WAIT,
-        room.load_or_fetch_event(target, None),
-    )
-    .await
-    .map_err(|_| AppError::Other(format!("the edited event {target} did not arrive in time")))?
-    .map_err(|e| AppError::Other(e.to_string()))?;
+    let (event, related) = match cached_with_replacements(room, target).await {
+        Some(cached) => cached,
+        None => fetched_with_replacements(room, target).await?,
+    };
     let original = original_message(event.raw())
         .filter(|original| original.sender == room.own_user_id())
         .ok_or_else(|| AppError::Other(format!("{target} is not a message of yours")))?;
+    let replacements = own_replacements(&related, room.own_user_id());
+    let shown = latest_version(&original, &replacements);
+    let emotes = with_target_emotes(&edit.emotes, version_html(shown));
+    let composed = composed(room, &edit.body, &emotes).await;
+    let text = edit.body.as_str();
+    let composed = &composed;
     let previous = original.content.mentions;
     let msgtype = revised(original.content.msgtype, text, composed)
         .ok_or_else(|| AppError::Other(format!("{target} has no plain text or caption to edit")))?;
@@ -61,6 +67,35 @@ async fn replacement(
     Ok(revised
         .make_replacement(ReplacementMetadata::new(target.to_owned(), previous))
         .into())
+}
+
+async fn cached_with_replacements(
+    room: &Room,
+    target: &EventId,
+) -> Option<(TimelineEvent, Vec<TimelineEvent>)> {
+    let (cache, _drop_handles) = room.event_cache().await.ok()?;
+    cache
+        .find_event_with_relations(target, Some(vec![RelationType::Replacement]))
+        .await
+        .ok()
+        .flatten()
+}
+
+async fn fetched_with_replacements(
+    room: &Room,
+    target: &EventId,
+) -> Result<(TimelineEvent, Vec<TimelineEvent>)> {
+    timeout(
+        PRE_QUEUE_LOOKUP_WAIT,
+        room.load_or_fetch_event_with_relations(
+            target,
+            Some(vec![RelationType::Replacement]),
+            Some(RequestConfig::short_retry()),
+        ),
+    )
+    .await
+    .map_err(|_| AppError::Other(format!("the edited event {target} did not arrive in time")))?
+    .map_err(|e| AppError::Other(e.to_string()))
 }
 
 fn revised(msgtype: MessageType, text: &str, composed: &Composed) -> Option<MessageType> {
@@ -169,7 +204,7 @@ fn original_message(raw: &Raw<AnySyncTimelineEvent>) -> Option<OriginalSyncRoomM
     }
 }
 
-async fn edit_queued(room: &Room, local_id: &str, text: &str, composed: &Composed) -> Result<()> {
+async fn edit_queued(room: &Room, local_id: &str, edit: &MessageEdit) -> Result<()> {
     let transaction = local_transaction(local_id);
     let (echoes, _updates) = room
         .send_queue()
@@ -185,7 +220,9 @@ async fn edit_queued(room: &Room, local_id: &str, text: &str, composed: &Compose
                 "{local_id} is no longer a message waiting in the send queue"
             ))
         })?;
-    let replaced = match revised(queued.msgtype, text, composed) {
+    let emotes = with_target_emotes(&edit.emotes, version_html(&queued.msgtype));
+    let composed = &composed(room, &edit.body, &emotes).await;
+    let replaced = match revised(queued.msgtype, &edit.body, composed) {
         Some(msgtype @ MessageType::Text(_)) => {
             let mut revised = RoomMessageEventContentWithoutRelation::new(msgtype);
             revised.mentions = Some(markdown::merged(
@@ -219,6 +256,57 @@ async fn edit_queued(room: &Room, local_id: &str, text: &str, composed: &Compose
     }
 }
 
+fn own_replacements(
+    related: &[TimelineEvent],
+    own_user: &UserId,
+) -> Vec<OriginalSyncRoomMessageEvent> {
+    related
+        .iter()
+        .filter_map(|event| original_message(event.raw()))
+        .filter(|event| {
+            event.sender == own_user
+                && matches!(event.content.relates_to, Some(Relation::Replacement(_)))
+        })
+        .collect()
+}
+
+fn latest_version<'a>(
+    original: &'a OriginalSyncRoomMessageEvent,
+    replacements: &'a [OriginalSyncRoomMessageEvent],
+) -> &'a MessageType {
+    replacements
+        .iter()
+        .max_by_key(|replacement| replacement.origin_server_ts)
+        .and_then(|replacement| match &replacement.content.relates_to {
+            Some(Relation::Replacement(edit)) => Some(&edit.new_content.msgtype),
+            _ => None,
+        })
+        .unwrap_or(&original.content.msgtype)
+}
+
+fn version_html(msgtype: &MessageType) -> Option<&str> {
+    let formatted = match msgtype {
+        MessageType::Text(text) => text.formatted.as_ref(),
+        MessageType::Image(image) => image.formatted_caption(),
+        MessageType::Video(video) => video.formatted_caption(),
+        MessageType::Audio(audio) => audio.formatted_caption(),
+        _ => None,
+    }?;
+    (formatted.format == MessageFormat::Html).then_some(formatted.body.as_str())
+}
+
+fn with_target_emotes(picked: &[Emote], target_html: Option<&str>) -> Vec<Emote> {
+    let mut emotes = target_html
+        .map(|html| body_emoji::emotes_in(&markdown::sanitized(html)))
+        .unwrap_or_default();
+    for emote in picked {
+        if !emotes.iter().any(|known| known.token == emote.token) {
+            emotes.push(emote.clone());
+        }
+    }
+    emotes
+}
+
 fn queued_message(echo: &LocalEcho) -> Option<(RoomMessageEventContent, &SendHandle)> {
     let LocalEchoContent::Event {
         serialized_event,
@@ -242,6 +330,9 @@ pub(super) fn replaced_text(content: &Raw<AnyMessageLikeEventContent>) -> Option
     let Some(Relation::Replacement(replacement)) = content.relates_to else {
         return None;
     };
+    let emotes = version_html(&replacement.new_content.msgtype)
+        .map(|html| body_emoji::emotes_in(&markdown::sanitized(html)))
+        .unwrap_or_default();
     let (kind, body) = match &replacement.new_content.msgtype {
         MessageType::Text(text) => (
             EditKind::Message,
@@ -266,6 +357,7 @@ pub(super) fn replaced_text(content: &Raw<AnyMessageLikeEventContent>) -> Option
         kind,
         body,
         original: None,
+        emotes,
     })
 }
 

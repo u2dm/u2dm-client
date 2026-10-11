@@ -1,5 +1,7 @@
 pub mod account;
 pub mod auth;
+pub mod emote;
+pub mod image_pack;
 pub mod link;
 pub mod media;
 pub mod mention;
@@ -10,7 +12,6 @@ pub mod room_info;
 pub mod room_log;
 pub mod room_search;
 pub mod space_index;
-pub mod sticker;
 pub mod sync;
 pub mod timeline;
 pub mod user_info;

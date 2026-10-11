@@ -12,7 +12,7 @@ import {
     MentionWord,
     TextSplice,
 } from "./types.slint";
-import { NotifyMode } from "./enums.slint";
+import { NotifyMode, PackSurface } from "./enums.slint";
 
 export global Actions {
     callback retry-restore();
@@ -72,6 +72,8 @@ export global Actions {
     callback end-mentions();
     pure callback mention-at(string, int) -> MentionWord;
     pure callback complete-mention(string, int, string) -> TextSplice;
+    pure callback emote-at(string, int) -> MentionWord;
+    callback place-emote(string, int, string, string, bool) -> TextSplice;
     callback row-of-message(string, string) -> int;
     callback dismiss-unsent(int);
     callback send-sticker(SendStickerRequest);
@@ -83,9 +85,9 @@ export global Actions {
     callback edit-poll(EditPollRequest) -> bool;
     pure callback poll-answer-texts([PollAnswerEntry]) -> [string];
     callback cancel-attachment();
-    callback request-sticker(string);
+    callback request-pack-cell(string);
     callback request-custom-emoji(string);
-    callback search-stickers(string);
+    callback browse-packs(PackSurface, string, int);
     callback open-media(string);
     callback open-video(string);
     callback close-video();
@@ -118,6 +120,8 @@ export global Actions {
     callback unpin-message(string);
     callback delete-message(string);
     callback toggle-reaction(string, string);
+    callback react-with-emote(string, string, string);
+    callback set-pack-global(string, bool);
     callback vote-poll(VotePollRequest);
     callback end-poll(string);
     callback retry-send(string);

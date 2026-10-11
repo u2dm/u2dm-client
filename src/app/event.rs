@@ -7,6 +7,7 @@ use super::user_info::{DmOutcome, ReadOutcome};
 use crate::commands::messages::{UserMessage, UserMessageKind};
 use crate::commands::view::LoginActivity;
 use crate::domain::auth::ServerInfo;
+use crate::domain::image_pack::PackId;
 use crate::domain::media::PickedAttachment;
 use crate::domain::message::{MessageEdit, PinnedMessage};
 use crate::domain::room::RoomId;
@@ -18,7 +19,7 @@ use crate::domain::timeline::{
 use crate::domain::user_info::{GlobalProfile, IgnoreChange, Moderation, UserId};
 use crate::domain::verification::VerificationEvent;
 use crate::error::AppError;
-use crate::ports::matrix::{AuthenticatedSession, CleanupReport, StickerCatalog};
+use crate::ports::matrix::{AuthenticatedSession, CleanupReport, PackCatalog};
 
 #[derive(Clone, Copy)]
 pub(super) enum EndReason {
@@ -103,26 +104,31 @@ pub(super) enum AppEvent {
     UserInfo(UserInfoEvent),
     Readers(ReadersEvent),
     Mentions(MentionsEvent),
-    Stickers(StickersEvent),
+    Packs(PacksEvent),
     RoomLogGrew,
 }
 
-pub(super) enum StickersEvent {
+pub(super) enum PacksEvent {
     CatalogLoaded {
         generation: i32,
-        catalog: StickerCatalog,
+        catalog: PackCatalog,
     },
     ImagesReady {
         generation: i32,
         ready: usize,
     },
+    GlobalFailed {
+        op: u64,
+        pack: PackId,
+    },
 }
 
-impl StickersEvent {
+impl PacksEvent {
     fn label(&self) -> &'static str {
         match self {
-            Self::CatalogLoaded { .. } => "StickerCatalogLoaded",
-            Self::ImagesReady { .. } => "StickerImagesReady",
+            Self::CatalogLoaded { .. } => "PackCatalogLoaded",
+            Self::ImagesReady { .. } => "PackImagesReady",
+            Self::GlobalFailed { .. } => "PackGlobalFailed",
         }
     }
 }
@@ -305,7 +311,7 @@ impl AppEvent {
             Self::UserInfo(event) => event.label(),
             Self::Readers(event) => event.label(),
             Self::Mentions(event) => event.label(),
-            Self::Stickers(event) => event.label(),
+            Self::Packs(event) => event.label(),
             Self::RoomLogGrew => "RoomLogGrew",
         }
     }

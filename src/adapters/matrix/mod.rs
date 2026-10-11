@@ -1,6 +1,7 @@
 mod attachment;
 mod auth;
 mod identity;
+mod image_packs;
 mod journal;
 mod media;
 mod permissions;
@@ -8,7 +9,6 @@ mod preview;
 mod profile;
 mod rooms;
 mod session;
-mod stickers;
 mod store;
 mod timeline;
 mod user_info;

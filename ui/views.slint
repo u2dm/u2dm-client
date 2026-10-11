@@ -5,12 +5,12 @@ import {
     SpaceChildEntry,
     SpaceEntry,
     MessageEntry,
-    StickerRow,
-    StickerPackTab,
+    PackRow,
+    PackTabEntry,
     VerificationEmoji,
     UserMessage,
 } from "./types.slint";
-import { AttachmentKind, AudioKind, ConnectionState, DirectChat, LoginActivity, LoginMethodKind, LoginPhase, MemberRole, Moderation, NotifyMode, PreviewKind, ReadersStatus, RoomInfoPlacement, RoomMembership, RoomScope, RosterStatus, ServiceKind, SourceEncryption, SourceStatus, SpaceIndexStatus, TimelineState, UserMessageKind, VerificationActivity, VerificationPhase } from "./enums.slint";
+import { AttachmentKind, AudioKind, ConnectionState, DirectChat, LoginActivity, LoginMethodKind, LoginPhase, MemberRole, Moderation, NotifyMode, PackSurface, PreviewKind, ReadersStatus, RoomInfoPlacement, RoomMembership, RoomScope, RosterStatus, ServiceKind, SourceEncryption, SourceStatus, SpaceIndexStatus, TimelineState, UserMessageKind, VerificationActivity, VerificationPhase } from "./enums.slint";
 
 export global LoginView {
     in property <LoginPhase> step: LoginPhase.loading;
@@ -201,10 +201,10 @@ export global RoomView {
     in property <int> message-link-serial;
 }
 
-export global StickerView {
-    in property <[StickerRow]> rows;
-    in property <[StickerPackTab]> packs;
-    in property <int> columns: 5;
+export global PackView {
+    in property <[PackRow]> rows;
+    in property <[PackTabEntry]> packs;
+    in property <PackSurface> surface: PackSurface.sticker-grid;
     in property <bool> room-encrypted;
     in property <bool> loading;
     in property <bool> has-packs;

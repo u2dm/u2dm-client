@@ -505,9 +505,11 @@ impl<'own> Writer<'own> {
 
     fn image(&mut self, node: &NodeRef) {
         let emoji = body_emoji::source(node).filter(|mxc| {
-            self.inline
-                .as_ref()
-                .is_some_and(|inline| inline.drawn.contains(mxc))
+            body_emoji::is_emoticon(node)
+                && self
+                    .inline
+                    .as_ref()
+                    .is_some_and(|inline| inline.drawn.contains(mxc))
         });
         match emoji {
             Some(mxc) => self.emoji(mxc),

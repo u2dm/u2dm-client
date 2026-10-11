@@ -1,6 +1,7 @@
 use tokio::sync::watch;
 
 use super::clipboard;
+use super::emote;
 use super::permalink;
 use super::props::send_command;
 use super::schema::{notify_modes, simple_callbacks, variant_named};
@@ -9,12 +10,13 @@ use crate::commands::ui::{
     MessageDraft, ReplyDraft, TimelineVisibility, UiCommand, ViewportChanged,
 };
 use crate::domain::auth::LoginCredentials;
+use crate::domain::emote::ComposerText;
+use crate::domain::image_pack::PackId;
 use crate::domain::link::LauncherSafeUrl;
 use crate::domain::media::AttachmentPick;
 use crate::domain::message::{EditKind, EditTarget, MessageEdit, TextRevision};
 use crate::domain::poll::{ChoiceMode, PollDisclosure, PollDraft};
 use crate::domain::room::{NotifyMode, RoomId};
-use crate::domain::sticker::PackId;
 use crate::domain::user_info::UserId;
 
 type Tx = CommandSender;
@@ -105,7 +107,11 @@ pub fn send_message(
         tx,
         UiCommand::SendMessage {
             room_id: RoomId::new(room_id),
-            draft: MessageDraft { body, reply },
+            draft: MessageDraft {
+                emotes: emote::bound_in(&body),
+                body,
+                reply,
+            },
         },
     );
 }
@@ -146,6 +152,7 @@ pub fn edit_message(tx: &Tx, room_id: String, row: EditedRow, text: EditedText) 
                     edit: MessageEdit {
                         target,
                         kind,
+                        emotes: emote::bound_in(&body),
                         body,
                         original,
                     },
@@ -254,7 +261,10 @@ pub fn send_attachment(
         tx,
         UiCommand::SendAttachment {
             room_id: RoomId::new(room_id),
-            caption,
+            caption: ComposerText {
+                emotes: emote::bound_in(&caption),
+                text: caption,
+            },
             as_document,
             reply_to: (!reply_to.is_empty()).then_some(reply_to),
         },
@@ -410,6 +420,33 @@ pub fn toggle_reaction(tx: &Tx, event_id: String, key: String) {
         return;
     }
     send_command(tx, UiCommand::ToggleReaction { event_id, key });
+}
+
+pub fn react_with_emote(tx: &Tx, event_id: String, pack: String, shortcode: String) {
+    if event_id.is_empty() || pack.is_empty() || shortcode.is_empty() {
+        return;
+    }
+    send_command(
+        tx,
+        UiCommand::ReactWithEmote {
+            event_id,
+            pack: PackId::new(pack),
+            shortcode,
+        },
+    );
+}
+
+pub fn set_pack_global(tx: &Tx, pack: String, global: bool) {
+    if pack.is_empty() {
+        return;
+    }
+    send_command(
+        tx,
+        UiCommand::SetPackGlobal {
+            pack: PackId::new(pack),
+            global,
+        },
+    );
 }
 
 pub fn vote_poll(tx: &Tx, event_id: String, answer_id: String) {

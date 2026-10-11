@@ -4,11 +4,13 @@ use std::mem;
 use std::sync::{Arc, OnceLock};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use super::dto::{DemoData, RoomDto, SpaceDto, StickerPackDto, UnjoinedDto};
+use super::dto::{DemoData, RoomDto, SpaceDto, UnjoinedDto};
 use super::timeline::{self, scenario};
 use super::{media, message_menu, polls};
 use crate::adapters::markdown::{self, Composed, RoomMentions};
 use crate::domain::auth::Session;
+use crate::domain::emote::Emote;
+use crate::domain::image_pack::{ImagePack, PackImage, PackOrigin};
 use crate::domain::media::{
     AudioKind, AudioMeta, FileMeta, ImageMeta, OutgoingAttachment, VideoMeta,
 };
@@ -22,7 +24,6 @@ use crate::domain::room_info::{
     MemberRole, Reader, RoomAbout, RosterMember, RosterSection, sort_roster,
 };
 use crate::domain::space_index::SpaceChild;
-use crate::domain::sticker::{StickerImage, StickerPack};
 use crate::domain::user_info::{
     IdentityTrust, ModerationPowers, Pronouns, RoomMembership, UserId, UserProfile, localpart,
 };
@@ -464,21 +465,29 @@ pub fn room_is_encrypted(room_id: &RoomId) -> bool {
         .any(|room| room.id == room_id.as_ref() && room.encrypted)
 }
 
-pub fn sticker_packs(room_id: &RoomId) -> Vec<StickerPack> {
+pub fn image_packs(room_id: &RoomId, shared: &HashMap<String, bool>) -> Vec<ImagePack> {
     data()
         .sticker_packs
         .iter()
-        .filter(|pack| pack.covers(room_id))
-        .map(StickerPackDto::to_pack)
+        .map(|pack| (pack, pack.origin(shared.get(&pack.id).copied())))
+        .filter(|(pack, origin)| *origin != PackOrigin::Room || pack.is_in_room(room_id))
+        .map(|(pack, origin)| pack.to_pack(origin))
         .collect()
 }
 
-pub fn sticker_image(pack_id: &str, shortcode: &str) -> Option<StickerImage> {
+pub fn is_room_pack(pack_id: &str) -> bool {
     data()
         .sticker_packs
         .iter()
-        .find(|pack| pack.id == pack_id)?
-        .to_pack()
+        .any(|pack| pack.id == pack_id && pack.origin(None) != PackOrigin::Personal)
+}
+
+pub fn sticker_image(pack_id: &str, shortcode: &str) -> Option<PackImage> {
+    let pack = data()
+        .sticker_packs
+        .iter()
+        .find(|pack| pack.id == pack_id)?;
+    pack.to_pack(pack.origin(None))
         .images
         .into_iter()
         .find(|image| image.shortcode == shortcode)
@@ -605,9 +614,14 @@ pub fn pronouns(user_id: &str) -> Vec<String> {
     data().pronouns.get(user_id).cloned().unwrap_or_default()
 }
 
-pub fn own_composition(composer: &str) -> Composed {
+pub fn own_composition(composer: &str, emotes: &[Emote]) -> Composed {
     let notify_room = message_menu::permissions().notify_room;
-    markdown::compose(composer, own_user(), RoomMentions::when(notify_room))
+    markdown::compose(
+        composer,
+        own_user(),
+        RoomMentions::when(notify_room),
+        emotes,
+    )
 }
 
 pub struct SentText {
@@ -615,12 +629,10 @@ pub struct SentText {
     pub mentions_room: bool,
 }
 
-pub fn sent_text(composer: &str) -> SentText {
-    let sent = own_composition(composer);
-    let text = match sent.html {
-        Some(html) => RichText::authored(sent.markdown, html, composer.to_owned()),
-        None => RichText::plain(sent.markdown),
-    };
+pub fn sent_text(composer: &str, emotes: &[Emote]) -> SentText {
+    let sent = own_composition(composer, emotes);
+    let html = sent.html.as_deref().map(markdown::sanitized);
+    let text = markdown::own_text(&sent.markdown, html.as_deref());
     SentText {
         text,
         mentions_room: sent.mentions.room,
@@ -630,12 +642,13 @@ pub fn sent_text(composer: &str) -> SentText {
 pub fn own_message(
     sequence: u64,
     body: &str,
+    emotes: &[Emote],
     reply: Option<ReplyInfo>,
     send_state: SendState,
 ) -> TimelineMessage {
     let id = format!("demo-sent-{sequence}");
     let settled = send_state == SendState::Sent;
-    let sent = sent_text(body);
+    let sent = sent_text(body, emotes);
     let body = MessageBody::Text(sent.text);
     TimelineMessage {
         unique_id: id.clone(),
@@ -681,15 +694,11 @@ pub fn own_poll(sequence: u64, draft: &PollDraft, send_state: SendState) -> Time
     TimelineMessage {
         body: MessageBody::Poll(poll),
         mentions_room: false,
-        ..own_message(sequence, draft.question(), None, send_state)
+        ..own_message(sequence, draft.question(), &[], None, send_state)
     }
 }
 
-pub fn own_sticker(
-    sequence: u64,
-    image: &StickerImage,
-    reply: Option<ReplyInfo>,
-) -> TimelineMessage {
+pub fn own_sticker(sequence: u64, image: &PackImage, reply: Option<ReplyInfo>) -> TimelineMessage {
     let id = format!(
         "demo-sent-{sequence}{STICKER_ASSET_MARKER}{}",
         media::mxc_asset(&image.mxc)
@@ -734,7 +743,10 @@ pub fn own_attachment(
 ) -> TimelineMessage {
     let id = format!("demo-sent-{sequence}");
     let picked = &attachment.picked;
-    let sent = attachment.caption.as_deref().map(sent_text);
+    let sent = attachment
+        .caption
+        .as_deref()
+        .map(|caption| sent_text(caption, &attachment.caption_emotes));
     let mentions_room = sent.as_ref().is_some_and(|sent| sent.mentions_room);
     let caption = || sent.as_ref().map(|sent| sent.text.clone());
     let (width, height) = picked.dimensions.unzip();

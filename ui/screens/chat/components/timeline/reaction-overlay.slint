@@ -1,33 +1,12 @@
-import { Palette } from "std-widgets.slint";
-
 import { ReactionPicker, ReactionStrip } from "./reaction-picker.slint";
 import { ReactionDetail } from "./reaction-detail.slint";
 import { PollVoters } from "./poll-voters.slint";
-import { ModalHost, PickerCard, Placement } from "../../../../components/overlay.slint";
+import { ModalHost, Placement, TipCard } from "../../../../components/overlay.slint";
 import { DeliveryTip, ReactionPopup, Reactions, Shell } from "../../../../local.slint";
 import { Actions } from "../../../../actions.slint";
 import { Deliveries, DeliveryStatus } from "../../../../messages.slint";
-import { StickerView } from "../../../../views.slint";
-import { Fonts, Metrics, Motion, Radius, Size, Space } from "../../../../theme.slint";
-
-component TipCard inherits PickerCard {
-    in property <string> text;
-
-    width: tip-text.preferred-width + Space.xl;
-    height: Size.sm;
-    border-radius: Radius.sm;
-
-    tip-text := Text {
-        x: Space.md;
-        width: parent.width - Space.xl;
-        height: parent.height;
-        text: root.text;
-        font-size: Fonts.caption;
-        color: Palette.foreground;
-        vertical-alignment: center;
-        overflow: elide;
-    }
-}
+import { PackView } from "../../../../views.slint";
+import { Metrics, Motion, Space } from "../../../../theme.slint";
 
 component ReactionPopover inherits ModalHost {
     in property <length> card-max-width;
@@ -130,9 +109,14 @@ export component ReactionOverlay inherits Rectangle {
         }
 
         ReactionPicker {
-            encrypted: StickerView.room-encrypted;
+            encrypted: PackView.room-encrypted;
             picked(key) => {
                 Actions.toggle-reaction(Reactions.anchor.event-id, key);
+                Reactions.close();
+                root.closed();
+            }
+            emote-picked(pack-id, shortcode) => {
+                Actions.react-with-emote(Reactions.anchor.event-id, pack-id, shortcode);
                 Reactions.close();
                 root.closed();
             }

@@ -31,7 +31,7 @@ pub(super) struct Needs {
     media: HashMap<MediaSlot, PathBuf>,
     avatars: HashMap<AvatarSlot, PathBuf>,
     avatars_asked: HashSet<AvatarSlot>,
-    stickers_asked_before_download: HashSet<String>,
+    pack_cells_asked_before_download: HashSet<String>,
     rows_showing_custom_emoji: HashMap<String, HashSet<String>>,
 }
 
@@ -113,15 +113,15 @@ pub fn record_avatar_need(slot: &AvatarSlot, path: Option<&Path>) -> ShownAvatar
     shown
 }
 
-pub fn record_sticker_need(key: &str, path: Option<&Path>) {
-    let slot = MediaSlot::StickerCell(key.to_owned());
+pub fn record_pack_cell_need(key: &str, path: Option<&Path>) {
+    let slot = MediaSlot::PackCell(key.to_owned());
     let already_asked = with_media(|media| {
         let needs = &mut media.needs;
         needs.expect_media(&slot, path);
-        path.is_some() && needs.stickers_asked_before_download.remove(key)
+        path.is_some() && needs.pack_cells_asked_before_download.remove(key)
     });
     if already_asked {
-        request_sticker(key);
+        request_pack_cell(key);
     }
 }
 
@@ -161,7 +161,7 @@ pub fn request_media(unique_id: &str) {
     queue(Request::Media(TimelineItemKey::current(unique_id)));
 }
 
-pub fn request_sticker(key: &str) {
+pub fn request_pack_cell(key: &str) {
     queue(Request::Sticker(key.to_owned()));
 }
 
@@ -189,19 +189,21 @@ fn flush() {
         match request {
             Request::Media(item) => resolve_media(&item),
             Request::Avatar(slot) => resolve_avatar(&slot),
-            Request::Sticker(key) => resolve_sticker(&key),
+            Request::Sticker(key) => resolve_pack_cell(&key),
             Request::CustomEmoji(mxc) => resolve_custom_emoji(&mxc),
         }
     }
 }
 
-fn resolve_sticker(key: &str) {
-    let slot = MediaSlot::StickerCell(key.to_owned());
+fn resolve_pack_cell(key: &str) {
+    let slot = MediaSlot::PackCell(key.to_owned());
     let path = with_media(|media| {
         let needs = &mut media.needs;
         let path = needs.media.get(&slot).cloned();
         if path.is_none() {
-            needs.stickers_asked_before_download.insert(key.to_owned());
+            needs
+                .pack_cells_asked_before_download
+                .insert(key.to_owned());
         }
         path
     });

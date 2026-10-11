@@ -98,6 +98,9 @@ export global UserMessages {
         if kind == UserMessageKind.space-order-save-failed {
             return @tr("Failed to save space order");
         }
+        if kind == UserMessageKind.pack-setting-failed {
+            return @tr("Couldn't change where that pack is used");
+        }
         if kind == UserMessageKind.join-room-failed {
             return @tr("Could not join {}", detail);
         }

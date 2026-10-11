@@ -1,3 +1,4 @@
+use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::rc::Rc;
@@ -11,7 +12,7 @@ use tokio::runtime::Runtime;
 use tokio::sync::{mpsc, watch};
 
 use names::{
-    callback, emoji_entry, emoji_group, emoji_store, mention_word, text_splice, user_message,
+    callback, emoji_entry, emoji_row, emoji_store, mention_word, text_splice, user_message,
     verification_emoji,
 };
 
@@ -21,19 +22,20 @@ use super::backend::{
     shown_room_log_text, unread_below,
 };
 use super::decode::{
-    AvatarSlot, request_avatar, request_custom_emoji, request_media, request_sticker,
+    AvatarSlot, request_avatar, request_custom_emoji, request_media, request_pack_cell,
 };
 use super::dto::{
     BodyLineDto, BodyPieceDto, EmojiArt, LogLineDto, MediaFailureKind, MediaState, MemberRowDto,
-    MemberRowKind, MessageDto, PollAnswerDto, ReactionDto, ReactorAvatarDto, RoomDto, RoomRowKind,
-    SpaceChildDto, SpaceDto, StickerCellDto, StickerPackDto, StickerRowDto,
+    MemberRowKind, MessageDto, PackCellDto, PackRowDto, PackSurface, PackTabDto, PollAnswerDto,
+    ReactionDto, ReactorAvatarDto, RoomDto, RoomRowKind, SpaceChildDto, SpaceDto,
+    pack_surface_named,
 };
 #[cfg(feature = "demo")]
 use super::dump;
 use super::fields::{
-    BodyLineFields, BodyPieceFields, LogLineFields, MemberRowFields, MessageFields,
-    PollAnswerFields, ReactionFields, ReactorFields, RoomFields, SpaceChildFields, SpaceFields,
-    StickerCellFields, StickerPackFields, StickerRowFields,
+    BodyLineFields, BodyPieceFields, LogLineFields, MemberRowFields, MessageFields, PackCellFields,
+    PackRowFields, PackTabFields, PollAnswerFields, ReactionFields, ReactorFields, RoomFields,
+    SpaceChildFields, SpaceFields,
 };
 use super::present::{Delivery, MessageKind, PollPhase, ServiceKind, VerifyStep};
 #[cfg(feature = "demo")]
@@ -45,17 +47,17 @@ use super::schema::{
     connection_states, deliveries, direct_chats, emoji_arts, enum_props, log_levels,
     log_line_fields, login_activities, login_methods, login_phases, media_failures, media_states,
     member_roles, member_row_fields, member_row_kinds, message_fields, message_kinds, model_props,
-    notify_modes, pending_moderations, poll_answer_fields, poll_phases, preview_kinds,
-    reaction_fields, reaction_sends, reactor_fields, readers_statuses, room_fields,
-    room_info_placements, room_memberships, room_row_kinds, room_scopes, roster_statuses,
-    send_states, service_kinds, simple_callbacks, source_encryptions, source_statuses,
-    space_child_fields, space_fields, space_index_statuses, sticker_cell_fields,
-    sticker_pack_fields, sticker_row_fields, timeline_states, user_message_kinds,
-    verification_activities, verification_phases,
+    notify_modes, pack_cell_fields, pack_origins, pack_row_fields, pack_surfaces, pack_tab_fields,
+    pending_moderations, poll_answer_fields, poll_phases, preview_kinds, reaction_fields,
+    reaction_sends, reactor_fields, readers_statuses, room_fields, room_info_placements,
+    room_memberships, room_row_kinds, room_scopes, roster_statuses, send_states, service_kinds,
+    simple_callbacks, source_encryptions, source_statuses, space_child_fields, space_fields,
+    space_index_statuses, timeline_states, user_message_kinds, verification_activities,
+    verification_phases,
 };
 use super::session::active_models;
 use super::video::{self, millis_to_duration};
-use super::{audio, emoji, mention, router};
+use super::{audio, emoji, emote, mention, router};
 use crate::app::input::CommandSender;
 use crate::commands::effects::{Effect, VerificationActivity};
 use crate::commands::messages::{UserMessage, UserMessageKind};
@@ -66,6 +68,7 @@ use crate::commands::view::{
     SpaceIndexStatus,
 };
 use crate::domain::auth::LoginMethod;
+use crate::domain::image_pack::PackOrigin;
 use crate::domain::media::AudioKind;
 use crate::domain::message::{MessagePreviewKind, ReactionSend, SendState};
 use crate::domain::room::NotifyMode;
@@ -93,26 +96,32 @@ mod names {
         pub const SET_ROOM_NOTIFY: &str = "set-room-notify";
         pub const PASTE_ATTACHMENT: &str = "paste-attachment";
         pub const TOGGLE_REACTION: &str = "toggle-reaction";
+        pub const REACT_WITH_EMOTE: &str = "react-with-emote";
+        pub const SET_PACK_GLOBAL: &str = "set-pack-global";
         pub const POLL_ANSWER_TEXTS: &str = "poll-answer-texts";
         pub const ROOM_LOG_TEXT: &str = "room-log-text";
         pub const REQUEST_MEDIA: &str = "request-media";
         pub const REQUEST_ROOM_AVATAR: &str = "request-room-avatar";
-        pub const REQUEST_STICKER: &str = "request-sticker";
+        pub const REQUEST_PACK_CELL: &str = "request-pack-cell";
         pub const REQUEST_CUSTOM_EMOJI: &str = "request-custom-emoji";
         pub const TOGGLE_VIDEO: &str = "toggle-video";
         pub const TOGGLE_VIDEO_MUTED: &str = "toggle-video-muted";
         pub const SEEK_VIDEO: &str = "seek-video";
         pub const TOGGLE_AUDIO: &str = "toggle-audio";
         pub const SEEK_AUDIO: &str = "seek-audio";
-        pub const SEARCH_STICKERS: &str = "search-stickers";
+        pub const BROWSE_PACKS: &str = "browse-packs";
+        pub const EMOTE_AT: &str = "emote-at";
+        pub const PLACE_EMOTE: &str = "place-emote";
         pub const SCROLL_POSITION_CHANGED: &str = "scroll-position-changed";
         pub const TIMELINE_VISIBILITY_CHANGED: &str = "timeline-visibility-changed";
     }
 
     pub mod emoji_store {
         pub const NAME: &str = "EmojiStore";
-        pub const GROUPS: &str = "groups";
-        pub const RESULTS: &str = "results";
+        pub const ROWS: &str = "rows";
+        pub const HEADER_ROWS: &str = "header-rows";
+        pub const RESULT_ROWS: &str = "result-rows";
+        pub const LAYOUT: &str = "layout";
         pub const SEARCH: &str = "search";
         pub const INSERT: &str = "insert";
     }
@@ -123,8 +132,10 @@ mod names {
         pub const NAME: &str = "name";
     }
 
-    pub mod emoji_group {
-        pub const ITEMS: &str = "items";
+    pub mod emoji_row {
+        pub const IS_HEADER: &str = "is-header";
+        pub const GROUP: &str = "group";
+        pub const CELLS: &str = "cells";
     }
 
     pub mod text_splice {
@@ -152,11 +163,6 @@ fn set_prop(inst: &ComponentInstance, name: &str, value: Value) {
     if let Err(e) = inst.set_property(name, value) {
         tracing::warn!("failed to set property '{name}': {e:?}");
     }
-}
-
-fn set_global_prop(inst: &ComponentInstance, global: &str, name: &str, value: Value) -> Result<()> {
-    inst.set_global_property(global, name, value)
-        .map_err(|e| AppError::Ui(format!("{e:?}")))
 }
 
 fn set_global(inst: &ComponentInstance, global: &str, name: &str, value: Value) {
@@ -220,6 +226,8 @@ member_row_kinds!(impl_slint_enum MemberRowKind "MemberRowKind";);
 room_row_kinds!(impl_slint_enum RoomRowKind "RoomRowKind";);
 roster_statuses!(impl_slint_enum RosterStatus "RosterStatus";);
 room_info_placements!(impl_slint_enum RoomInfoPlacement "RoomInfoPlacement";);
+pack_surfaces!(impl_slint_enum PackSurface "PackSurface";);
+pack_origins!(impl_slint_enum PackOrigin "PackOrigin";);
 room_memberships!(impl_slint_enum RoomMembership "RoomMembership";);
 direct_chats!(impl_slint_enum DirectChat "DirectChat";);
 pending_moderations!(impl_slint_enum PendingModeration "Moderation";);
@@ -603,9 +611,9 @@ impl UiBackend for InterpretedBackend {
     type SpaceChild = Value;
     type MemberRow = Value;
     type LogLine = Value;
-    type StickerRow = Value;
-    type StickerCell = Value;
-    type StickerPack = Value;
+    type PackRow = Value;
+    type PackCell = Value;
+    type PackTab = Value;
 
     fn models() -> Rc<Models<Self>> {
         active_models()
@@ -615,13 +623,22 @@ impl UiBackend for InterpretedBackend {
         model_props!(attach_interpreted_models window models;);
     }
 
-    fn bind_sticker_search(window: &ComponentInstance, search: impl Fn(&str) + 'static) {
-        let bound = bind_action(window, callback::SEARCH_STICKERS, move |args| {
-            search(&string_arg(args, 0));
+    fn bind_browse_packs(
+        window: &ComponentInstance,
+        browse: impl Fn(PackSurface, &str, i32) + 'static,
+    ) {
+        let bound = bind_action(window, callback::BROWSE_PACKS, move |args| {
+            if let Some(surface) = pack_surface_named(variant_of(args.first())) {
+                browse(
+                    surface,
+                    &string_arg(args, 1),
+                    int_arg(args, 2).unwrap_or_default(),
+                );
+            }
             Value::Void
         });
         if let Err(e) = bound {
-            tracing::warn!("failed to bind the sticker search callback: {e}");
+            tracing::warn!("failed to bind the pack browsing callback: {e}");
         }
     }
 }
@@ -736,6 +753,23 @@ impl SlintUiAdapter {
                 &string_arg(args, 2),
             );
             text_splice_value(text, caret)
+        })?;
+
+        bind_action(&self.instance, callback::EMOTE_AT, |args| {
+            let (start, query) =
+                emote::word_at(&string_arg(args, 0), int_arg(args, 1).unwrap_or_default());
+            word_value(start, query)
+        })?;
+
+        bind_action(&self.instance, callback::PLACE_EMOTE, |args| {
+            let (text, caret) = emote::place_picked(
+                &string_arg(args, 0),
+                int_arg(args, 1).unwrap_or_default(),
+                &string_arg(args, 2),
+                &string_arg(args, 3),
+                bool_arg(args, 4),
+            );
+            text_splice_value(text, caret)
         })
     }
 
@@ -750,8 +784,8 @@ impl SlintUiAdapter {
             Value::Void
         })?;
 
-        bind_action(&self.instance, callback::REQUEST_STICKER, move |args| {
-            request_sticker(&string_arg(args, 0));
+        bind_action(&self.instance, callback::REQUEST_PACK_CELL, move |args| {
+            request_pack_cell(&string_arg(args, 0));
             Value::Void
         })?;
 
@@ -845,6 +879,23 @@ impl SlintUiAdapter {
         let tx = cmd_tx.clone();
         bind_action(&self.instance, callback::TOGGLE_REACTION, move |args| {
             router::toggle_reaction(&tx, string_arg(args, 0), string_arg(args, 1));
+            Value::Void
+        })?;
+
+        let tx = cmd_tx.clone();
+        bind_action(&self.instance, callback::REACT_WITH_EMOTE, move |args| {
+            router::react_with_emote(
+                &tx,
+                string_arg(args, 0),
+                string_arg(args, 1),
+                string_arg(args, 2),
+            );
+            Value::Void
+        })?;
+
+        let tx = cmd_tx.clone();
+        bind_action(&self.instance, callback::SET_PACK_GLOBAL, move |args| {
+            router::set_pack_global(&tx, string_arg(args, 0), bool_arg(args, 1));
             Value::Void
         })?;
 
@@ -947,50 +998,88 @@ fn emoji_entry_to_value(e: &emoji::EmojiEntry) -> Value {
     ]))
 }
 
-fn emoji_groups_to_value() -> Value {
-    let groups: Vec<Value> = emoji::groups()
+fn emoji_rows_to_value(rows: &[emoji::EmojiRow]) -> Value {
+    let rows: Vec<Value> = rows
         .iter()
-        .map(|items| {
-            let entries: Vec<Value> = items.iter().map(emoji_entry_to_value).collect();
-            Value::Struct(Struct::from_iter([(
-                emoji_group::ITEMS.to_string(),
-                Value::Model(ModelRc::new(VecModel::from(entries))),
-            )]))
+        .map(|row| {
+            let cells: Vec<Value> = row.cells.iter().map(emoji_entry_to_value).collect();
+            Value::Struct(Struct::from_iter([
+                (emoji_row::IS_HEADER.to_string(), Value::Bool(row.is_header)),
+                (
+                    emoji_row::GROUP.to_string(),
+                    Value::Number(f64::from(u32::try_from(row.group).unwrap_or(0))),
+                ),
+                (
+                    emoji_row::CELLS.to_string(),
+                    Value::Model(ModelRc::new(VecModel::from(cells))),
+                ),
+            ]))
         })
         .collect();
-
-    Value::Model(ModelRc::new(VecModel::from(groups)))
+    Value::Model(ModelRc::new(VecModel::from(rows)))
 }
 
-fn emoji_search_results_to_value(query: &str) -> Value {
-    let results: Vec<Value> = emoji::search(query)
+fn header_rows_to_value(header_rows: &[usize]) -> Value {
+    let header_rows: Vec<Value> = header_rows
         .iter()
-        .map(emoji_entry_to_value)
+        .map(|row| Value::Number(f64::from(u32::try_from(*row).unwrap_or(0))))
         .collect();
-    Value::Model(ModelRc::new(VecModel::from(results)))
+    Value::Model(ModelRc::new(VecModel::from(header_rows)))
 }
 
 fn setup_emoji_store(inst: &ComponentInstance) -> Result<()> {
-    set_global_prop(
-        inst,
+    let columns = Rc::new(Cell::new(1_usize));
+    let laid_out: Rc<RefCell<HashMap<usize, (Value, Value)>>> = Rc::default();
+
+    let weak = inst.as_weak();
+    let layout_columns = Rc::clone(&columns);
+    inst.set_global_callback(
         emoji_store::NAME,
-        emoji_store::GROUPS,
-        emoji_groups_to_value(),
-    )?;
+        emoji_store::LAYOUT,
+        move |args: &[Value]| {
+            let count = int_arg(args, 0)
+                .and_then(|count| usize::try_from(count).ok())
+                .unwrap_or(1)
+                .max(1);
+            layout_columns.set(count);
+            let (rows, header_rows) = laid_out
+                .borrow_mut()
+                .entry(count)
+                .or_insert_with(|| {
+                    let laid = emoji::rows(count);
+                    (
+                        emoji_rows_to_value(&laid.rows),
+                        header_rows_to_value(&laid.header_rows),
+                    )
+                })
+                .clone();
+            if let Some(inst) = weak.upgrade() {
+                set_global(&inst, emoji_store::NAME, emoji_store::ROWS, rows);
+                set_global(
+                    &inst,
+                    emoji_store::NAME,
+                    emoji_store::HEADER_ROWS,
+                    header_rows,
+                );
+            }
+            Value::Void
+        },
+    )
+    .map_err(|e| AppError::Ui(format!("{e:?}")))?;
 
     let weak = inst.as_weak();
     inst.set_global_callback(
         emoji_store::NAME,
         emoji_store::SEARCH,
         move |args: &[Value]| {
-            if let Some(inst) = weak.upgrade()
-                && let Err(e) = inst.set_global_property(
+            let rows = emoji::result_rows(&string_arg(args, 0), columns.get());
+            if let Some(inst) = weak.upgrade() {
+                set_global(
+                    &inst,
                     emoji_store::NAME,
-                    emoji_store::RESULTS,
-                    emoji_search_results_to_value(&string_arg(args, 0)),
-                )
-            {
-                tracing::warn!("failed to set EmojiStore.results: {e:?}");
+                    emoji_store::RESULT_ROWS,
+                    emoji_rows_to_value(&rows),
+                );
             }
             Value::Void
         },
@@ -1041,6 +1130,10 @@ fn text_splice_value(text: String, caret: i32) -> Value {
 
 fn mention_word_value(text: &str, caret: i32) -> Value {
     let (start, query) = mention::word_at(text, caret);
+    word_value(start, query)
+}
+
+fn word_value(start: i32, query: String) -> Value {
     Value::Struct(Struct::from_iter([
         (
             mention_word::START.to_string(),
@@ -1186,9 +1279,9 @@ space_fields!(impl_value SpaceDto SpaceFields;);
 space_child_fields!(impl_value SpaceChildDto SpaceChildFields;);
 member_row_fields!(impl_value MemberRowDto MemberRowFields;);
 log_line_fields!(impl_value LogLineDto LogLineFields;);
-sticker_cell_fields!(impl_value StickerCellDto StickerCellFields;);
-sticker_pack_fields!(impl_value StickerPackDto StickerPackFields;);
-sticker_row_fields!(impl_value StickerRowDto StickerRowFields;);
+pack_cell_fields!(impl_value PackCellDto PackCellFields;);
+pack_tab_fields!(impl_value PackTabDto PackTabFields;);
+pack_row_fields!(impl_value PackRowDto PackRowFields;);
 
 fn field_of<'a>(row: &'a Value, name: &str) -> Option<&'a Value> {
     match row {

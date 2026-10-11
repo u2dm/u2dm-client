@@ -22,21 +22,21 @@ impl TimelineItemKey {
 #[derive(Clone, PartialEq, Eq, Hash)]
 pub enum MediaSlot {
     Thumbnail(TimelineItemKey),
-    StickerCell(String),
+    PackCell(String),
     CustomEmoji(String),
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub(super) enum Surface {
     Timeline,
-    StickerPicker,
+    Picker,
 }
 
 impl MediaSlot {
     pub(super) fn surface(&self) -> Surface {
         match self {
             Self::Thumbnail(_) | Self::CustomEmoji(_) => Surface::Timeline,
-            Self::StickerCell(_) => Surface::StickerPicker,
+            Self::PackCell(_) => Surface::Picker,
         }
     }
 
@@ -65,7 +65,7 @@ pub enum AvatarSlot {
     AttachmentPreview {
         pick: u64,
     },
-    StickerPack(String),
+    Pack(String),
 }
 
 impl AvatarSlot {

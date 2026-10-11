@@ -1,0 +1,322 @@
+import { ListView, Palette, Spinner } from "std-widgets.slint";
+import { IconDisplay, IconSet } from "@lucide";
+
+import { MediaState, PackOrigin, PackSurface } from "../../../../enums.slint";
+import { IconButton } from "../../../../components/button.slint";
+import { Placement, TipCard } from "../../../../components/overlay.slint";
+import { SearchField } from "../../../../components/search-field.slint";
+import { PackRow, PackTabEntry } from "../../../../types.slint";
+import { PackView } from "../../../../views.slint";
+import { Actions } from "../../../../actions.slint";
+import { AppStyle, Fonts, IconSize, Size, Space } from "../../../../theme.slint";
+import { PickerTab } from "./picker-tab.slint";
+import { PickerCell, UnencryptedNotice } from "./picker-grid.slint";
+
+export component PackCellArt inherits Rectangle {
+    in property <image> art;
+    in property <MediaState> state;
+    in property <length> inset: Space.sm;
+
+    Image {
+        x: root.inset;
+        y: root.inset;
+        width: parent.width - 2 * root.inset;
+        height: parent.height - 2 * root.inset;
+        source: root.art;
+        image-fit: ImageFit.contain;
+        visible: root.state == MediaState.ready;
+    }
+
+    IconDisplay {
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+        icon: IconSet.ImageOff;
+        size: IconSize.sm;
+        stroke: AppStyle.foreground-faint;
+        visible: root.state == MediaState.failed;
+    }
+}
+
+export component PackTab inherits PickerTab {
+    in property <image> icon;
+    in property <bool> has-icon;
+
+    width: Size.md;
+    height: Size.md;
+
+    Image {
+        x: Space.sm;
+        y: Space.sm;
+        width: Size.sm;
+        height: Size.sm;
+        source: root.icon;
+        image-fit: ImageFit.contain;
+        visible: root.has-icon;
+    }
+
+    Text {
+        width: 100%;
+        height: 100%;
+        text: root.label;
+        font-size: Fonts.body-small;
+        color: AppStyle.foreground-strong;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+        overflow: elide;
+        visible: !root.has-icon;
+    }
+}
+
+export component SectionTitle inherits Text {
+    font-size: Fonts.caption;
+    color: AppStyle.foreground-muted;
+    vertical-alignment: center;
+    overflow: elide;
+}
+
+export component PackRowView inherits Rectangle {
+    in property <PackRow> line;
+    in property <length> cell;
+    in property <length> cell-inset: Space.sm;
+    in property <bool> above-modal: false;
+
+    callback picked(string, string);
+    callback tip-shown(string, string, length, length, length);
+    callback tip-hidden(string);
+
+    property <bool> shareable: root.line.origin != PackOrigin.personal;
+    property <bool> shared: root.line.origin == PackOrigin.global;
+    property <string> title: root.line.untitled ? @tr("Your pack") : root.line.title;
+    property <string> share-label: root.shared
+        ? @tr("Stop using {} in every room", root.title)
+        : @tr("Use {} in every room", root.title);
+
+    height: root.cell;
+
+    if root.line.is-header: HorizontalLayout {
+        x: 0;
+        y: root.height - Space.sm - Size.sm;
+        width: root.width;
+        height: Size.sm;
+        spacing: Space.xs;
+        alignment: start;
+
+        SectionTitle {
+            text: root.title;
+        }
+
+        if root.shareable: IconButton {
+            size: Size.sm;
+            icon: IconSet.Globe;
+            tint: root.shared ? Palette.accent-background : AppStyle.foreground-muted;
+            label: root.share-label;
+            above-modal: root.above-modal;
+            changed has-hover => {
+                if self.has-hover {
+                    root.tip-shown(root.line.pack-id, root.share-label,
+                                   self.absolute-position.x, self.absolute-position.y, self.width);
+                } else {
+                    root.tip-hidden(root.line.pack-id);
+                }
+            }
+            clicked => {
+                root.tip-hidden(root.line.pack-id);
+                Actions.set-pack-global(root.line.pack-id, !root.shared);
+            }
+        }
+    }
+
+    for entry[idx] in root.line.cells: PickerCell {
+        cell: root.cell;
+        column: idx;
+        label: entry.label;
+        above-modal: root.above-modal;
+
+        init => {
+            if entry.media-state == MediaState.idle {
+                Actions.request-pack-cell(entry.key);
+            }
+        }
+
+        clicked => {
+            root.picked(entry.pack-id, entry.shortcode);
+        }
+
+        PackCellArt {
+            width: root.cell;
+            height: root.cell;
+            inset: root.cell-inset;
+            art: entry.image;
+            state: entry.media-state;
+        }
+    }
+}
+
+export component TipHost inherits Rectangle {
+    in property <length> edge: Space.md;
+
+    property <string> pack;
+    property <string> text;
+    property <length> center;
+    property <length> top;
+
+    public function show(pack: string, text: string, x: length, y: length, width: length) {
+        root.pack = pack;
+        root.text = text;
+        root.center = x + width / 2 - root.absolute-position.x;
+        root.top = y - root.absolute-position.y;
+    }
+
+    public function hide(pack: string) {
+        if root.pack == pack {
+            root.pack = "";
+        }
+    }
+
+    public function clear() {
+        root.pack = "";
+    }
+
+    if root.pack != "": TipCard {
+        property <length> above: root.top - self.height - Space.sm;
+
+        x: Placement.fit(root.center - self.width / 2, self.width, root.width, root.edge);
+        y: self.above >= 0 ? self.above : root.top + Size.sm + Space.sm;
+        text: root.text;
+    }
+}
+
+export component PackGrid inherits Rectangle {
+    callback picked(string, string);
+
+    in property <bool> above-modal: false;
+
+    property <string> query: "";
+    property <int> columns: 5;
+
+    property <length> edge: Space.md;
+    property <length> tab-inset: Space.xs;
+    property <length> tab-pitch: Size.md + 2 * root.tab-inset;
+    property <length> cell: (root.width - 2 * root.edge) / root.columns;
+    property <bool> is-searching: root.query != "";
+    property <bool> holds-model: PackView.surface == PackSurface.sticker-grid;
+    property <[PackRow]> rows: root.holds-model ? PackView.rows : [];
+    property <[PackTabEntry]> packs: root.holds-model ? PackView.packs : [];
+    property <bool> is-empty: root.rows.length == 0;
+    property <length> viewport-middle: -grid.content-y + grid.visible-height / 2;
+    property <float> row-at-viewport-middle: floor(root.viewport-middle / max(1px, root.cell));
+
+    init => {
+        Actions.browse-packs(PackSurface.sticker-grid, root.query, root.columns);
+    }
+
+    changed viewport-middle => {
+        tips.clear();
+    }
+
+    function jump-to(header-row: int) {
+        grid.content-y = -min(
+            header-row * root.cell,
+            max(0px, grid.content-height - grid.visible-height));
+    }
+
+    VerticalLayout {
+        padding: root.edge;
+        spacing: Space.md;
+
+        if PackView.has-packs: SearchField {
+            placeholder: @tr("Search stickers");
+            above-modal: root.above-modal;
+            query <=> root.query;
+            edited(text) => {
+                grid.content-y = 0;
+                Actions.browse-packs(PackSurface.sticker-grid, text, root.columns);
+            }
+        }
+
+        if PackView.room-encrypted: UnencryptedNotice {
+            text: @tr("Stickers from packs are not encrypted.");
+        }
+
+        Rectangle {
+            vertical-stretch: 1;
+
+            grid := ListView {
+                for row in root.rows: PackRowView {
+                    line: row;
+                    cell: root.cell;
+                    above-modal: root.above-modal;
+                    picked(pack-id, shortcode) => {
+                        root.picked(pack-id, shortcode);
+                    }
+                    tip-shown(pack, text, x, y, width) => {
+                        tips.show(pack, text, x, y, width);
+                    }
+                    tip-hidden(pack) => {
+                        tips.hide(pack);
+                    }
+                }
+            }
+
+            if PackView.loading: Spinner {
+                x: (parent.width - self.width) / 2;
+                y: (parent.height - self.height) / 2;
+                indeterminate: true;
+            }
+
+            if !PackView.loading && root.is-empty: VerticalLayout {
+                alignment: center;
+                spacing: Space.md;
+
+                HorizontalLayout {
+                    alignment: center;
+
+                    IconDisplay {
+                        icon: root.is-searching ? IconSet.SearchX : IconSet.Sticker;
+                        size: IconSize.lg;
+                        stroke: AppStyle.foreground-faint;
+                    }
+                }
+
+                Text {
+                    text: root.is-searching
+                        ? @tr("No stickers match your search.")
+                        : @tr("No sticker packs yet. Join a room that shares one, or add it to your account.");
+                    color: AppStyle.foreground-muted;
+                    font-size: Fonts.body-small;
+                    horizontal-alignment: center;
+                    wrap: word-wrap;
+                }
+            }
+        }
+
+        if !root.is-searching && root.packs.length > 1: Rectangle {
+            height: root.tab-pitch;
+
+            footer := Flickable {
+                content-width: max(self.width, root.packs.length * root.tab-pitch);
+
+                for pack[idx] in root.packs: PackTab {
+                    x: idx * root.tab-pitch + root.tab-inset;
+                    y: root.tab-inset;
+                    label: pack.untitled ? @tr("Your pack") : pack.title;
+                    above-modal: root.above-modal;
+                    icon: pack.icon;
+                    has-icon: pack.has-icon;
+                    selected: pack.header-row <= root.row-at-viewport-middle
+                        && (idx == root.packs.length - 1
+                            || root.packs[idx + 1].header-row > root.row-at-viewport-middle);
+                    clicked => {
+                        root.jump-to(pack.header-row);
+                    }
+                }
+            }
+        }
+    }
+
+    tips := TipHost {
+        width: root.width;
+        height: root.height;
+        edge: root.edge;
+    }
+}

@@ -148,6 +148,8 @@ const ENUM_TABLES: &[(&str, &str)] = &[
     ("EmojiArt", "emoji_arts"),
     ("MediaFailure", "media_failures"),
     ("TimelineState", "timeline_states"),
+    ("PackSurface", "pack_surfaces"),
+    ("PackOrigin", "pack_origins"),
 ];
 
 fn main() {

@@ -1,9 +1,11 @@
-import { EmojiEntry, EmojiGroup, TextSplice } from "./types.slint";
+import { EmojiRow, TextSplice } from "./types.slint";
 
 export global EmojiStore {
-    in property <[EmojiGroup]> groups: [];
-    in property <[EmojiEntry]> results: [];
+    in property <[EmojiRow]> rows: [];
+    in property <[int]> header-rows: [];
+    in property <[EmojiRow]> result-rows: [];
     in-out property <int> tone: 0;
+    callback layout(int);
     callback search(string);
     pure callback insert(string, int, string) -> TextSplice;
 }

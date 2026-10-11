@@ -57,6 +57,7 @@ pub enum UserMessageKind {
     MessageUnpinFailed,
     MessageDeleteFailed,
     SpaceOrderSaveFailed,
+    PackSettingFailed,
     JoinRoomFailed,
     LeaveRoomFailed,
     NotifyChangeFailed,

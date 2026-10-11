@@ -418,7 +418,7 @@ fn surface_paying_for(slots: &[MediaSlot]) -> Surface {
     if slots.iter().any(MediaSlot::belongs_to_timeline) {
         Surface::Timeline
     } else {
-        Surface::StickerPicker
+        Surface::Picker
     }
 }
 

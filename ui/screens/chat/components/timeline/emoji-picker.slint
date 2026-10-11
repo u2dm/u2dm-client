@@ -1,12 +1,16 @@
 import { ListView, Palette } from "std-widgets.slint";
 import { IconDisplay, IconSet, Icon } from "@lucide";
 
-import { EmojiEntry } from "../../../../types.slint";
+import { PackSurface } from "../../../../enums.slint";
+import { EmojiEntry, EmojiRow, PackRow, PackTabEntry } from "../../../../types.slint";
 import { EmojiStore } from "../../../../emoji-store.slint";
+import { PackView } from "../../../../views.slint";
+import { Actions } from "../../../../actions.slint";
 import { SearchField } from "../../../../components/search-field.slint";
-import { AppStyle, Fonts, Glyph, IconSize, Radius, Size, Space, Stroke } from "../../../../theme.slint";
+import { AppStyle, Fonts, Glyph, IconSize, Motion, Radius, Size, Space, Stroke } from "../../../../theme.slint";
 import { PickerTab } from "./picker-tab.slint";
-import { PickerCell } from "./picker-grid.slint";
+import { PickerCell, UnencryptedNotice } from "./picker-grid.slint";
+import { PackRowView, PackTab, SectionTitle, TipHost } from "./pack-grid.slint";
 import { ClickArea } from "../../../../components/a11y.slint";
 
 component ToneSwatch inherits Rectangle {
@@ -38,39 +42,138 @@ component ToneSwatch inherits Rectangle {
 component CategoryTab inherits PickerTab {
     in property <Icon> icon;
 
-    horizontal-stretch: 1;
+    width: Size.md;
     height: Size.md;
+    background: root.has-hover ? AppStyle.overlay-hover : transparent;
 
     IconDisplay {
         x: (parent.width - self.width) / 2;
         y: (parent.height - self.height) / 2;
         icon: root.icon;
-        size: IconSize.sm;
+        size: IconSize.md;
         stroke: root.selected ? Palette.accent-background : AppStyle.foreground-strong;
+    }
+}
+
+component EmojiLine inherits Rectangle {
+    in property <EmojiRow> line;
+    in property <string> title;
+    in property <length> cell;
+    in property <bool> above-modal;
+
+    callback picked(string);
+
+    pure function glyph(entry: EmojiEntry) -> string {
+        return entry.tones.length > 0 ? entry.tones[EmojiStore.tone] : entry.base;
+    }
+
+    height: root.cell;
+
+    if root.line.is-header: SectionTitle {
+        x: 0;
+        y: root.height - Space.sm - Size.sm;
+        width: root.width;
+        height: Size.sm;
+        text: root.title;
+    }
+
+    for entry[column] in root.line.cells: PickerCell {
+        cell: root.cell;
+        column: column;
+        label: entry.name;
+        above-modal: root.above-modal;
+        clicked => {
+            root.picked(root.glyph(entry));
+        }
+
+        Text {
+            text: root.glyph(entry);
+            font-family: Fonts.emoji;
+            font-size: Glyph.lg;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+        }
     }
 }
 
 export component EmojiPicker inherits Rectangle {
     callback picked(string);
+    callback emote-picked(string, string);
 
-    property <int> category: 0;
-    property <string> query: "";
     in property <bool> above-modal: false;
+    in property <bool> notice: true;
 
+    property <string> query: "";
+
+    property <length> edge: Space.md;
     property <length> min-cell: Size.lg;
-    property <length> grid-width: root.width - Space.xl;
+    property <length> grid-width: root.width - 2 * root.edge;
     property <int> columns: max(1, floor(root.grid-width / root.min-cell));
+    property <int> laid-out-columns: 0;
     property <length> cell: root.grid-width / root.columns;
-    property <int> row-count: ceil(root.current-items.length / root.columns);
     property <bool> is-searching: root.query != "";
-    property <[EmojiEntry]> current-items: root.is-searching
-        ? EmojiStore.results
-        : (EmojiStore.groups.length > root.category
-        ? EmojiStore.groups[root.category].items
-        : []);
+    property <[EmojiRow]> emoji-rows: root.is-searching ? EmojiStore.result-rows : EmojiStore.rows;
+    property <bool> holds-packs: PackView.surface == PackSurface.emote-grid;
+    property <[PackRow]> pack-rows: root.holds-packs ? PackView.rows : [];
+    property <[PackTabEntry]> packs: root.holds-packs ? PackView.packs : [];
+    property <int> emoji-count: root.emoji-rows.length;
+    property <int> row-count: root.emoji-count + root.pack-rows.length;
+    property <length> viewport-middle: -grid.content-y + grid.visible-height / 2;
+    property <float> row-at-viewport-middle: floor(root.viewport-middle / max(1px, root.cell));
+    property <length> slot: Size.md;
+    property <length> slot-pitch: root.slot + Space.xs;
+    property <int> packs-kept-in-view: 3;
+    property <bool> browsing-emoji: root.row-at-viewport-middle < root.emoji-count || root.packs.length == 0;
+    property <length> pill-content: root.categories.length * root.slot-pitch;
+    property <length> pill-room: root.grid-width - min(root.packs.length, root.packs-kept-in-view) * root.slot-pitch - Space.sm;
+    property <length> pill-width: root.browsing-emoji
+        ? min(root.pill-content, max(root.slot-pitch, root.pill-room))
+        : root.slot-pitch;
 
-    pure function tone-glyph(entry: EmojiEntry) -> string {
-        return entry.tones.length > 0 ? entry.tones[EmojiStore.tone] : entry.base;
+    pure function shows(group: int) -> bool {
+        return EmojiStore.header-rows[group] <= root.row-at-viewport-middle
+            && (group == root.categories.length - 1
+                ? root.row-at-viewport-middle < root.emoji-count
+                : EmojiStore.header-rows[group + 1] > root.row-at-viewport-middle);
+    }
+
+    pure function shows-pack(index: int) -> bool {
+        return root.emoji-count + root.packs[index].header-row <= root.row-at-viewport-middle
+            && (index == root.packs.length - 1
+                || root.emoji-count + root.packs[index + 1].header-row > root.row-at-viewport-middle);
+    }
+
+    function lay-out() {
+        if root.width > 0 && root.columns != root.laid-out-columns {
+            root.laid-out-columns = root.columns;
+            EmojiStore.layout(root.columns);
+            if root.is-searching {
+                EmojiStore.search(root.query);
+            }
+            Actions.browse-packs(PackSurface.emote-grid, root.query, root.columns);
+        }
+    }
+
+    pure function in-view(index: int, visible: length, content: length) -> length {
+        return -clamp(index * root.slot-pitch - (visible - root.slot-pitch) / 2, 0px, max(0px, content - visible));
+    }
+
+    function jump-to(row: int) {
+        grid.content-y = -min(
+            row * root.cell,
+            max(0px, grid.content-height - grid.visible-height));
+    }
+
+    init => {
+        root.lay-out();
+    }
+
+    changed columns => {
+        root.lay-out();
+    }
+
+    changed viewport-middle => {
+        tips.clear();
     }
 
     property <[{ icon: Icon, label: string }]> categories: [
@@ -94,7 +197,7 @@ export component EmojiPicker inherits Rectangle {
     ];
 
     VerticalLayout {
-        padding: Space.md;
+        padding: root.edge;
         spacing: Space.md;
 
         HorizontalLayout {
@@ -107,7 +210,9 @@ export component EmojiPicker inherits Rectangle {
                 above-modal: root.above-modal;
                 query <=> root.query;
                 edited(text) => {
+                    grid.content-y = 0;
                     EmojiStore.search(text);
+                    Actions.browse-packs(PackSurface.emote-grid, text, root.columns);
                 }
             }
 
@@ -131,55 +236,130 @@ export component EmojiPicker inherits Rectangle {
             }
         }
 
-        if !root.is-searching: HorizontalLayout {
-            height: Size.md;
-            spacing: Space.xs;
-            for tab[idx] in root.categories: CategoryTab {
-                icon: tab.icon;
-                selected: idx == root.category;
-                label: tab.label;
-                above-modal: root.above-modal;
-                clicked => {
-                    root.category = idx;
-                }
-            }
+        if root.notice && root.holds-packs && PackView.has-packs && PackView.room-encrypted: UnencryptedNotice {
+            text: @tr("Emotes from packs are not encrypted.");
         }
 
         Rectangle {
             vertical-stretch: 1;
 
-            ListView {
-                for row in root.row-count: Rectangle {
+            grid := ListView {
+                for index in root.row-count: Rectangle {
                     height: root.cell;
 
-                    for column in min(root.columns, root.current-items.length - row * root.columns): emoji-cell := PickerCell {
-                        property <EmojiEntry> entry: root.current-items[row * root.columns + column];
-
+                    if index < root.emoji-count: EmojiLine {
+                        line: root.emoji-rows[index];
+                        title: root.categories[root.emoji-rows[index].group].label;
                         cell: root.cell;
-                        column: column;
-                        label: self.entry.name;
                         above-modal: root.above-modal;
-                        clicked => {
-                            root.picked(root.tone-glyph(self.entry));
+                        picked(glyph) => {
+                            root.picked(glyph);
                         }
+                    }
 
-                        Text {
-                            text: root.tone-glyph(emoji-cell.entry);
-                            font-family: Fonts.emoji;
-                            font-size: Glyph.lg;
-                            horizontal-alignment: center;
-                            vertical-alignment: center;
+                    if index >= root.emoji-count: PackRowView {
+                        line: root.pack-rows[index - root.emoji-count];
+                        cell: root.cell;
+                        cell-inset: Space.xs;
+                        above-modal: root.above-modal;
+                        picked(pack-id, shortcode) => {
+                            root.emote-picked(pack-id, shortcode);
+                        }
+                        tip-shown(pack, text, x, y, width) => {
+                            tips.show(pack, text, x, y, width);
+                        }
+                        tip-hidden(pack) => {
+                            tips.hide(pack);
                         }
                     }
                 }
             }
 
-            if root.is-searching && root.current-items.length == 0: Text {
+            if root.is-searching && root.row-count == 0: Text {
                 text: @tr("No emoji found");
                 color: AppStyle.foreground-muted;
                 horizontal-alignment: center;
                 vertical-alignment: center;
             }
         }
+
+        if !root.is-searching: Rectangle {
+            property <bool> collapsed: !root.browsing-emoji;
+
+            height: root.slot;
+
+            changed collapsed => {
+                if self.collapsed {
+                    pill.content-x = 0;
+                }
+            }
+
+            Rectangle {
+                x: 0;
+                width: pill.width;
+                height: root.slot;
+                border-radius: self.height / 2;
+                background: root.browsing-emoji ? AppStyle.overlay-subtle : transparent;
+            }
+
+            pill := Flickable {
+                x: 0;
+                width: root.pill-width;
+                height: root.slot;
+                content-width: root.pill-content;
+                interactive: root.browsing-emoji;
+
+                animate width {
+                    duration: Motion.normal;
+                    easing: ease-in-out;
+                }
+
+                for tab[idx] in root.categories: CategoryTab {
+                    x: idx * root.slot-pitch + (root.slot-pitch - self.width) / 2;
+                    icon: tab.icon;
+                    label: tab.label;
+                    selected: root.shows(idx);
+                    above-modal: root.above-modal;
+                    changed selected => {
+                        if self.selected {
+                            pill.content-x = root.in-view(idx, root.pill-width, root.pill-content);
+                        }
+                    }
+                    clicked => {
+                        root.jump-to(EmojiStore.header-rows[idx]);
+                    }
+                }
+            }
+
+            packs-strip := Flickable {
+                x: pill.width + Space.sm;
+                width: parent.width - self.x;
+                height: root.slot;
+                content-width: root.packs.length * root.slot-pitch;
+
+                for pack[idx] in root.packs: PackTab {
+                    x: idx * root.slot-pitch + (root.slot-pitch - self.width) / 2;
+                    label: pack.untitled ? @tr("Your pack") : pack.title;
+                    above-modal: root.above-modal;
+                    icon: pack.icon;
+                    has-icon: pack.has-icon;
+                    selected: root.shows-pack(idx);
+                    changed selected => {
+                        if self.selected {
+                            packs-strip.content-x = root.in-view(idx, packs-strip.width, packs-strip.content-width);
+                        }
+                    }
+                    clicked => {
+                        root.jump-to(root.emoji-count + pack.header-row);
+                    }
+                }
+            }
+        }
+    }
+
+    tips := TipHost {
+        width: root.width;
+        height: root.height;
+        edge: root.edge;
     }
 }

@@ -8,29 +8,29 @@ use tokio::sync::{OwnedSemaphorePermit, mpsc, watch};
 
 use super::clock::install_clock_invalidation;
 use super::decode::{
-    AvatarSlot, DecodeFailure, DecodeOutcome, MediaSlot, advance_animations, request_sticker,
+    AvatarSlot, DecodeFailure, DecodeOutcome, MediaSlot, advance_animations, request_pack_cell,
     rows_showing_custom_emoji, set_animation_tick, set_avatar_ready, set_image_ready,
 };
 use super::dto::{
-    EmojiArt, LogLineDto, MediaFailureKind, MediaState, MemberRowDto, MessageDto, RoomDto,
-    SpaceChildDto, SpaceDto, StickerPackDto, StickerRowDto, ThumbUpdate, cell_pack,
+    EmojiArt, LogLineDto, MediaFailureKind, MediaState, MemberRowDto, MessageDto, PackBrowse,
+    PackRowDto, PackSurface, PackTabDto, RoomDto, SpaceChildDto, SpaceDto, ThumbUpdate, cell_pack,
     decode_failure_kind, enrich_to_update, log_line_to_dto, member_row_to_dto, mention_to_dto,
     message_to_dto, reader_to_dto, room_to_dto, space_child_to_dto, space_match_to_dto,
     space_to_dto, spaces_heading_to_dto,
 };
 use super::fields::{
-    BodyLineFields, BodyPieceFields, LogLineFields, MemberRowFields, MessageFields,
-    PollAnswerFields, ReactionFields, ReactorFields, RoomFields, SpaceChildFields, SpaceFields,
-    StickerCellFields, StickerPackFields, StickerRowFields,
+    BodyLineFields, BodyPieceFields, LogLineFields, MemberRowFields, MessageFields, PackCellFields,
+    PackRowFields, PackTabFields, PollAnswerFields, ReactionFields, ReactorFields, RoomFields,
+    SpaceChildFields, SpaceFields,
 };
 use super::multiplex::spawn_event_multiplexer;
 use super::present::room_log_text;
 use super::props::{IntProp, StringProp, UiProps};
 use super::reconcile::{
-    forget_pack_avatar, reorder_rows, shows_pack_avatar, sticker_cell_row, sticker_pack_row,
+    forget_pack_avatar, pack_cell_row, pack_tab_row, reorder_rows, shows_pack_avatar,
     timeline_row_of,
 };
-use super::reduce::{dispatch_effect, is_latest_adoption, set_sticker_query};
+use super::reduce::{dispatch_effect, is_latest_adoption, set_pack_browse};
 use super::router::EditedRow;
 use super::rows::{locate_row, patch_rows_by_id};
 use super::schema::model_props;
@@ -59,13 +59,13 @@ pub trait UiBackend: Sized + 'static {
     type SpaceChild: SpaceChildFields<Self> + Clone + PartialEq + From<SpaceChildDto> + 'static;
     type MemberRow: MemberRowFields<Self> + Clone + PartialEq + From<MemberRowDto> + 'static;
     type LogLine: LogLineFields<Self> + Clone + From<LogLineDto> + 'static;
-    type StickerRow: StickerRowFields<Self> + Clone + From<StickerRowDto> + 'static;
-    type StickerCell: StickerCellFields<Self> + Clone + 'static;
-    type StickerPack: StickerPackFields<Self> + Clone + From<StickerPackDto> + 'static;
+    type PackRow: PackRowFields<Self> + Clone + From<PackRowDto> + 'static;
+    type PackCell: PackCellFields<Self> + Clone + 'static;
+    type PackTab: PackTabFields<Self> + Clone + From<PackTabDto> + 'static;
 
     fn models() -> Rc<Models<Self>>;
     fn attach_models(window: &Self::Window, models: &Models<Self>);
-    fn bind_sticker_search(window: &Self::Window, search: impl Fn(&str) + 'static);
+    fn bind_browse_packs(window: &Self::Window, browse: impl Fn(PackSurface, &str, i32) + 'static);
 
     fn convert_message(
         message: &TimelineMessage,
@@ -132,11 +132,11 @@ pub trait UiBackend: Sized + 'static {
         f(&Self::models().timeline)
     }
 
-    fn with_stickers<R>(
-        f: impl FnOnce(&SpliceModel<Self::StickerRow>, &VecModel<Self::StickerPack>) -> R,
+    fn with_pack_grid<R>(
+        f: impl FnOnce(&SpliceModel<Self::PackRow>, &VecModel<Self::PackTab>) -> R,
     ) -> R {
         let models = Self::models();
-        f(&models.sticker_rows, &models.sticker_packs)
+        f(&models.pack_rows, &models.pack_tabs)
     }
 }
 
@@ -169,8 +169,12 @@ pub fn spawn_event_handler<B: UiBackend>(
     install_window_events::<B>(window);
 
     let media = Arc::clone(&media_cache);
-    B::bind_sticker_search(window, move |query| {
-        set_sticker_query::<B>(query, media.as_ref());
+    let browsing = window.as_weak();
+    B::bind_browse_packs(window, move |surface, query, emote_columns| {
+        if let Some(window) = browsing.upgrade() {
+            let browse = PackBrowse::new(surface, query, emote_columns);
+            set_pack_browse::<B>(&window, browse, media.as_ref());
+        }
     });
 
     let weak = window.as_weak();
@@ -373,7 +377,7 @@ fn tick_animations<B: UiBackend>() {
         MediaSlot::Thumbnail(item) => patch_timeline_row::<B>(item.unique_id(), hint, |entry| {
             show_thumbnail::<B>(entry, frame);
         }),
-        MediaSlot::StickerCell(key) => place_sticker_cell::<B>(key, Some(&frame)),
+        MediaSlot::PackCell(key) => place_pack_cell::<B>(key, Some(&frame)),
         MediaSlot::CustomEmoji(mxc) => place_custom_emoji::<B>(mxc, Ok(&frame)),
     });
 }
@@ -469,15 +473,15 @@ fn patch_reaction_art<B: UiBackend>(
     true
 }
 
-fn place_sticker_cell<B: UiBackend>(key: &str, art: Option<&Image>) -> Option<usize> {
-    let row = sticker_cell_row(key)?;
-    B::with_stickers(|rows, _| {
+fn place_pack_cell<B: UiBackend>(key: &str, art: Option<&Image>) -> Option<usize> {
+    let row = pack_cell_row(key)?;
+    B::with_pack_grid(|rows, _| {
         let entry = rows.row_data(row)?;
-        patch_sticker_cell::<B>(&entry, key, art).then_some(row)
+        patch_pack_cell::<B>(&entry, key, art).then_some(row)
     })
 }
 
-fn patch_sticker_cell<B: UiBackend>(row: &B::StickerRow, key: &str, art: Option<&Image>) -> bool {
+fn patch_pack_cell<B: UiBackend>(row: &B::PackRow, key: &str, art: Option<&Image>) -> bool {
     let cells = row.cells();
     let Some(index) = cells.iter().position(|cell| cell.key() == key) else {
         return false;
@@ -497,10 +501,10 @@ fn patch_sticker_cell<B: UiBackend>(row: &B::StickerRow, key: &str, art: Option<
 }
 
 fn adopt_pack_icon<B: UiBackend>(pack_id: &str, image: &Image) {
-    let Some(row) = sticker_pack_row(pack_id) else {
+    let Some(row) = pack_tab_row(pack_id) else {
         return;
     };
-    B::with_stickers(|_, packs| {
+    B::with_pack_grid(|_, packs| {
         let Some(updated) = packs
             .row_data(row)
             .and_then(|tab| pack_with_icon::<B>(&tab, pack_id, image))
@@ -513,10 +517,10 @@ fn adopt_pack_icon<B: UiBackend>(pack_id: &str, image: &Image) {
 }
 
 fn pack_with_icon<B: UiBackend>(
-    pack: &B::StickerPack,
+    pack: &B::PackTab,
     pack_id: &str,
     image: &Image,
-) -> Option<B::StickerPack> {
+) -> Option<B::PackTab> {
     if pack.has_icon() || pack.id() != pack_id {
         return None;
     }
@@ -546,7 +550,7 @@ pub(super) fn apply_thumbnail_ready<B: UiBackend>(slot: &MediaSlot, outcome: Dec
                 );
             }
         }
-        MediaSlot::StickerCell(key) => apply_sticker_art::<B>(key, art.ok()),
+        MediaSlot::PackCell(key) => apply_pack_art::<B>(key, art.ok()),
         MediaSlot::CustomEmoji(mxc) => {
             if place_custom_emoji::<B>(mxc, art).is_none() {
                 tracing::debug!("dropped a decoded custom emoji with no live row showing it");
@@ -555,8 +559,8 @@ pub(super) fn apply_thumbnail_ready<B: UiBackend>(slot: &MediaSlot, outcome: Dec
     }
 }
 
-pub(super) fn apply_sticker_art<B: UiBackend>(key: &str, art: Option<&Image>) {
-    if place_sticker_cell::<B>(key, art).is_none() {
+pub(super) fn apply_pack_art<B: UiBackend>(key: &str, art: Option<&Image>) {
+    if place_pack_cell::<B>(key, art).is_none() {
         tracing::debug!(key, "dropped a decoded image with no live sticker cell");
     }
     let pack = cell_pack(key);
@@ -572,7 +576,7 @@ pub(super) fn apply_pack_avatar<B: UiBackend>(pack_id: &str, art: Option<&Image>
         Some(image) => adopt_pack_icon::<B>(pack_id, image),
         None => {
             if let Some(first_cell) = forget_pack_avatar(pack_id) {
-                request_sticker(&first_cell);
+                request_pack_cell(&first_cell);
             }
         }
     }
@@ -580,7 +584,7 @@ pub(super) fn apply_pack_avatar<B: UiBackend>(pack_id: &str, art: Option<&Image>
 
 fn apply_pack_avatars<B: UiBackend>(slots: &[AvatarSlot], art: Option<&Image>) {
     for slot in slots {
-        if let AvatarSlot::StickerPack(pack_id) = slot {
+        if let AvatarSlot::Pack(pack_id) = slot {
             apply_pack_avatar::<B>(pack_id, art);
         }
     }
@@ -655,7 +659,7 @@ fn group_slots(slots: &[AvatarSlot]) -> AvatarTargets<'_> {
             AvatarSlot::AttachmentPreview { .. } => {
                 targets.singles.insert(SingleAvatar::AttachmentPreview);
             }
-            AvatarSlot::StickerPack(_) => {}
+            AvatarSlot::Pack(_) => {}
         }
     }
     targets

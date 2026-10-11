@@ -3,6 +3,7 @@ import { IconSet } from "@lucide";
 import { PickerPanel, PickerSection } from "./picker-panel.slint";
 import { AttachMenu } from "./attach-menu.slint";
 import { ComposerField } from "./composer-field.slint";
+import { EmotePopup } from "./emote-popup.slint";
 import { MentionPopup } from "./mention-popup.slint";
 import { EditBar, ReplyBar } from "./reply-bar.slint";
 import { ReplyQuote } from "./reply-quote.slint";
@@ -76,7 +77,7 @@ export component MessageInput inherits Rectangle {
     property <string> attach-label: RoomView.may-start-polls
         ? @tr("Attach a file or create a poll")
         : @tr("Attach a photo or a file");
-    property <string> picker-label: Composer.editing ? @tr("Emoji") : @tr("Emoji and stickers");
+    property <string> picker-label: Composer.editing ? @tr("Emoji and emotes") : @tr("Emoji, emotes and stickers");
     property <bool> edits-caption: Composer.editing && Composer.edited.caption;
     property <string> placeholder: !Composer.editing
         ? @tr("Send a message...")
@@ -250,7 +251,7 @@ export component MessageInput inherits Rectangle {
         width: root.overlay-width;
         height: root.overlay-height;
         dim: false;
-        label: Composer.editing ? @tr("Emoji picker") : @tr("Emoji and sticker picker");
+        label: Composer.editing ? @tr("Emoji and emote picker") : @tr("Emoji, emote and sticker picker");
         dismissed => {
             root.close-picker();
         }
@@ -267,6 +268,9 @@ export component MessageInput inherits Rectangle {
             stickers: !Composer.editing;
             emoji-picked(glyph) => {
                 field.insert-at-caret(glyph);
+            }
+            emote-picked(pack-id, shortcode) => {
+                field.place-emote(pack-id, shortcode, false);
             }
             sticker-picked(pack-id, shortcode) => {
                 root.send-sticker(pack-id, shortcode);
@@ -314,6 +318,19 @@ export component MessageInput inherits Rectangle {
         }
     }
 
+    emotes := EmotePopup {
+        x: field.x;
+        y: -self.height - Space.sm;
+        width: field.width;
+        text: root.message;
+        caret: field.caret;
+        active: field.input-focused && Shell.background-reachable;
+        headroom: root.picker-headroom;
+        complete(pack-id, shortcode) => {
+            field.place-emote(pack-id, shortcode, true);
+        }
+    }
+
     field := ComposerField {
         x: root.surface-inset;
         y: 0;
@@ -355,6 +372,9 @@ export component MessageInput inherits Rectangle {
         }
         key-captured(event) => {
             if mentions.key(event) == EventResult.accept {
+                return EventResult.accept;
+            }
+            if emotes.key(event) == EventResult.accept {
                 return EventResult.accept;
             }
             if event.text == Key.Escape && Composer.editing {

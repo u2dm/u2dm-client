@@ -1,6 +1,8 @@
 use std::path::PathBuf;
 use std::time::Duration;
 
+use crate::domain::emote::Emote;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum MediaKind {
     Photo,
@@ -93,6 +95,7 @@ impl PickedAttachment {
 pub struct OutgoingAttachment {
     pub picked: PickedAttachment,
     pub caption: Option<String>,
+    pub caption_emotes: Vec<Emote>,
     pub as_document: bool,
     pub reply_to: Option<String>,
 }

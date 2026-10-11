@@ -1,12 +1,13 @@
 use strum::Display as StrumDisplay;
 
 use crate::domain::auth::LoginCredentials;
+use crate::domain::emote::{ComposerText, Emote};
+use crate::domain::image_pack::PackId;
 use crate::domain::link::LauncherSafeUrl;
 use crate::domain::media::AttachmentPick;
 use crate::domain::message::MessageEdit;
 use crate::domain::poll::PollDraft;
 use crate::domain::room::{NotifyMode, RoomId};
-use crate::domain::sticker::PackId;
 use crate::domain::user_info::UserId;
 
 #[derive(StrumDisplay)]
@@ -117,7 +118,7 @@ pub enum UiCommand {
     #[strum(to_string = "SendAttachment({room_id})")]
     SendAttachment {
         room_id: RoomId,
-        caption: String,
+        caption: ComposerText,
         as_document: bool,
         reply_to: Option<String>,
     },
@@ -196,6 +197,17 @@ pub enum UiCommand {
     ToggleReaction {
         event_id: String,
         key: String,
+    },
+    #[strum(to_string = "ReactWithEmote({event_id})")]
+    ReactWithEmote {
+        event_id: String,
+        pack: PackId,
+        shortcode: String,
+    },
+    #[strum(to_string = "SetPackGlobal({pack}, {global})")]
+    SetPackGlobal {
+        pack: PackId,
+        global: bool,
     },
     #[strum(to_string = "VotePoll({event_id})")]
     VotePoll {
@@ -329,6 +341,8 @@ impl UiCommand {
             | Self::UnpinMessage { .. }
             | Self::DeleteMessage { .. }
             | Self::ToggleReaction { .. }
+            | Self::ReactWithEmote { .. }
+            | Self::SetPackGlobal { .. }
             | Self::VotePoll { .. }
             | Self::EndPoll { .. }
             | Self::EditPoll { .. }
@@ -358,6 +372,7 @@ impl UiCommand {
 pub struct MessageDraft {
     pub body: String,
     pub reply: Option<ReplyDraft>,
+    pub emotes: Vec<Emote>,
 }
 
 #[derive(Clone, PartialEq, Eq)]
@@ -378,6 +393,13 @@ impl Draft {
         match self {
             Self::Message(message) => &message.body,
             Self::Edit(edit) => &edit.body,
+        }
+    }
+
+    pub fn emotes(&self) -> &[Emote] {
+        match self {
+            Self::Message(message) => &message.emotes,
+            Self::Edit(edit) => &edit.emotes,
         }
     }
 }

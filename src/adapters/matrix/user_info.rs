@@ -264,7 +264,7 @@ async fn send_moderation(room: &Room, user: OwnedUserId, action: Moderation) -> 
     sent.map_err(|e| AppError::Other(e.to_string()))
 }
 
-fn own_user(client: &Client) -> Result<OwnedUserId> {
+pub(super) fn own_user(client: &Client) -> Result<OwnedUserId> {
     client
         .user_id()
         .map(ToOwned::to_owned)

@@ -1,0 +1,225 @@
+import { ScrollView } from "std-widgets.slint";
+
+import { Actions } from "../../../../actions.slint";
+import { Interaction, ListItemArea } from "../../../../components/a11y.slint";
+import { PickerCard } from "../../../../components/overlay.slint";
+import { MediaState, PackSurface } from "../../../../enums.slint";
+import { AppStyle, Fonts, Metrics, Size, Space, Weight } from "../../../../theme.slint";
+import { MentionWord, PackCell } from "../../../../types.slint";
+import { PackView } from "../../../../views.slint";
+import { PackCellArt } from "./pack-grid.slint";
+import { UnencryptedNotice } from "./picker-grid.slint";
+
+component EmoteSuggestion inherits ListItemArea {
+    in property <PackCell> entry;
+    in property <string> pack;
+    in property <bool> highlighted;
+
+    callback hovered();
+
+    height: Metrics.mention-row;
+    focusable: false;
+    selected: root.highlighted;
+    background: root.highlighted ? AppStyle.overlay-hover : transparent;
+    label: @tr(":{}:, {}", root.entry.shortcode, root.pack);
+
+    init => {
+        if root.entry.media-state == MediaState.idle {
+            Actions.request-pack-cell(root.entry.key);
+        }
+    }
+
+    changed has-hover => {
+        if self.has-hover {
+            root.hovered();
+        }
+    }
+
+    HorizontalLayout {
+        padding-left: Space.lg;
+        padding-right: Space.lg;
+        spacing: Space.md;
+
+        PackCellArt {
+            cross-axis-self-alignment: center;
+            width: Metrics.mention-avatar;
+            height: Metrics.mention-avatar;
+            inset: 0;
+            art: root.entry.image;
+            state: root.entry.media-state;
+        }
+
+        Text {
+            text: ":" + root.entry.shortcode + ":";
+            font-size: Fonts.body;
+            font-weight: Weight.semibold;
+            overflow: elide;
+            vertical-alignment: center;
+            accessible-role: none;
+        }
+
+        Text {
+            horizontal-stretch: 1;
+            text: root.pack;
+            font-size: Fonts.body-small;
+            color: AppStyle.foreground-muted;
+            overflow: elide;
+            vertical-alignment: center;
+            accessible-role: none;
+        }
+    }
+}
+
+component EmoteSuggestionCard inherits PickerCard {
+    in property <int> highlight;
+    in property <bool> above-modal;
+    in property <length> notice-height;
+
+    callback hovered(int);
+    callback picked(int);
+
+    accessible-role: list;
+    accessible-label: @tr("Emote suggestions");
+    accessible-item-count: PackView.rows.length;
+
+    changed highlight => {
+        root.reveal(root.highlight);
+    }
+
+    function reveal(index: int) {
+        if index * Metrics.mention-row < -scroll.content-y {
+            scroll.content-y = -index * Metrics.mention-row;
+        } else if (index + 1) * Metrics.mention-row > scroll.visible-height - scroll.content-y {
+            scroll.content-y = scroll.visible-height - (index + 1) * Metrics.mention-row;
+        }
+    }
+
+    TouchArea { }
+
+    if PackView.room-encrypted: UnencryptedNotice {
+        x: Space.md;
+        y: Space.xs;
+        width: parent.width - 2 * Space.md;
+        height: root.notice-height;
+        text: @tr("Emotes from packs are not encrypted.");
+    }
+
+    scroll := ScrollView {
+        x: 0;
+        y: Space.xs + root.notice-height;
+        width: parent.width;
+        height: parent.height - 2 * Space.xs - root.notice-height;
+        content-width: self.visible-width;
+        content-height: rows.preferred-height;
+
+        rows := VerticalLayout {
+            width: scroll.visible-width;
+
+            for row[index] in PackView.rows: EmoteSuggestion {
+                index: index;
+                above-modal: root.above-modal;
+                entry: row.cells[0];
+                pack: row.untitled ? @tr("Your pack") : row.title;
+                highlighted: root.highlight == index;
+                hovered => {
+                    root.hovered(index);
+                }
+                clicked => {
+                    root.picked(index);
+                }
+            }
+        }
+    }
+}
+
+export component EmotePopup {
+    in property <string> text;
+    in property <int> caret;
+    in property <bool> active;
+    in property <length> headroom;
+    in property <bool> above-modal: false;
+    out property <bool> shown: root.suggesting
+        && PackView.surface == PackSurface.emote-suggestions
+        && root.count > 0;
+
+    callback complete(string, string);
+
+    property <MentionWord> word: Actions.emote-at(root.text, root.caret);
+    property <int> dismissed-at: -1;
+    property <int> highlight: 0;
+    property <bool> suggesting: root.word.start >= 0 && root.word.start != root.dismissed-at
+        && root.active;
+    property <int> count: PackView.rows.length;
+    property <length> notice-height: PackView.room-encrypted ? Size.sm : 0px;
+    property <MentionWord> ask: {
+        start: root.suggesting ? root.word.start : -1,
+        query: root.word.query,
+    };
+
+    height: root.shown
+        ? min(
+            root.count * Metrics.mention-row + root.notice-height + 2 * Space.xs,
+            Metrics.mention-max-height,
+            root.headroom,
+        )
+        : 0px;
+
+    changed word => {
+        if root.word.start < 0 {
+            root.dismissed-at = -1;
+        }
+    }
+
+    changed ask => {
+        root.highlight = 0;
+        if root.ask.start >= 0 {
+            Actions.browse-packs(PackSurface.emote-suggestions, root.ask.query, 1);
+        }
+    }
+
+    public function key(event: KeyEvent) -> EventResult {
+        if !root.shown || !Interaction.unmodified(event) {
+            return reject;
+        }
+        if event.text == Key.DownArrow {
+            root.highlight = Interaction.next(root.highlight, root.count);
+            return accept;
+        }
+        if event.text == Key.UpArrow {
+            root.highlight = Interaction.previous(root.highlight, root.count);
+            return accept;
+        }
+        if event.text == Key.Return || event.text == Key.Tab {
+            root.pick(min(root.highlight, root.count - 1));
+            return accept;
+        }
+        if event.text == Key.Escape {
+            root.dismiss();
+            return accept;
+        }
+        return reject;
+    }
+
+    public function dismiss() {
+        root.dismissed-at = root.word.start;
+    }
+
+    function pick(index: int) {
+        root.dismiss();
+        root.complete(PackView.rows[index].cells[0].pack-id, PackView.rows[index].cells[0].shortcode);
+    }
+
+    if root.shown: EmoteSuggestionCard {
+        width: root.width;
+        height: root.height;
+        highlight: root.highlight;
+        above-modal: root.above-modal;
+        notice-height: root.notice-height;
+        hovered(index) => {
+            root.highlight = index;
+        }
+        picked(index) => {
+            root.pick(index);
+        }
+    }
+}

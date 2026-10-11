@@ -19,8 +19,10 @@ use super::{
     attachments, audio, data, login, media, message_menu, pinned, polls, reactions, receipts,
     room_info, source, space_index, stickers, timeline, user_info, verification, videos,
 };
-use crate::adapters::video;
+use crate::adapters::{body_emoji, video};
 use crate::domain::auth::{AuthMethod, LoginCredentials, OAuthLoginData, ServerInfo, Session};
+use crate::domain::emote::Emote;
+use crate::domain::image_pack::{PackId, PackImage};
 use crate::domain::link::LauncherSafeUrl;
 use crate::domain::media::{MediaRendition, OutgoingAttachment, WaveformNeed};
 use crate::domain::message::{
@@ -31,7 +33,6 @@ use crate::domain::poll::{PollAction, PollDraft};
 use crate::domain::room::{NotifyMode, Room, RoomId, Space};
 use crate::domain::room_info::{Reader, RoomAbout, RosterMember};
 use crate::domain::space_index::HierarchyPage;
-use crate::domain::sticker::{PackId, StickerImage};
 use crate::domain::sync::{SyncEvent, SyncOutcome};
 use crate::domain::timeline::{
     Arrivals, AudioLookup, AudioTrack, EventSource, JumpTarget, MessageReaders,
@@ -44,9 +45,9 @@ use crate::domain::user_info::{
 use crate::domain::verification::{VerificationCancellation, VerificationEvent};
 use crate::error::{AppError, Result};
 use crate::ports::matrix::{
-    AttachmentHandoff, AuthPort, AuthenticatedSession, CleanupReport, InterruptedLogin,
-    LocalDataOwnership, MediaPort, PinnedPort, ProgressSink, RestoreStep, RoomInfoPort,
-    SessionPort, SpaceIndexPort, SpaceOrderPort, StickerCatalog, StickerPort, StoreAdoption,
+    AttachmentHandoff, AuthPort, AuthenticatedSession, CleanupReport, ImagePackPort,
+    InterruptedLogin, LocalDataOwnership, MediaPort, PackCatalog, PinnedPort, ProgressSink,
+    RestoreStep, RoomInfoPort, SessionPort, SpaceIndexPort, SpaceOrderPort, StoreAdoption,
     SyncPort, SyncSink, TimelinePort, UserInfoPort, VerificationPort,
 };
 use crate::ports::media::MediaCache;
@@ -211,7 +212,7 @@ fn authenticated(session: Session) -> AuthenticatedSession {
     let space_index = Arc::clone(&authed);
     let room_info = Arc::clone(&authed);
     let user_info = Arc::clone(&authed);
-    let stickers = Arc::clone(&authed);
+    let image_packs = Arc::clone(&authed);
     AuthenticatedSession {
         session,
         sync,
@@ -223,7 +224,7 @@ fn authenticated(session: Session) -> AuthenticatedSession {
         space_index,
         room_info,
         user_info,
-        stickers,
+        image_packs,
         lifecycle: authed,
     }
 }
@@ -332,6 +333,7 @@ struct DemoAuthed {
     deleted: Arc<Mutex<HashSet<String>>>,
     ignored: Mutex<HashSet<String>>,
     memberships: Mutex<HashMap<(RoomId, String), RoomMembership>>,
+    shared_packs: Mutex<HashMap<String, bool>>,
 }
 
 impl DemoAuthed {
@@ -444,7 +446,8 @@ impl DemoAuthed {
         let row = active.prepended.saturating_add(offset);
         let message = active.messages.get_mut(offset)?;
         message.editable_text()?;
-        let sent = data::sent_text(&edit.body);
+        let emotes = with_target_emotes(&edit.emotes, message.body.html());
+        let sent = data::sent_text(&edit.body, &emotes);
         let revised = revised_body(&message.body, &edit.body, sent.text)?;
         let revised_emoji = media::emoji_states(&revised);
         let previous = Revision {
@@ -578,7 +581,13 @@ impl DemoAuthed {
         Ok(())
     }
 
-    async fn append_own_message(&self, room_id: &RoomId, body: &str, in_reply_to: Option<&str>) {
+    async fn append_own_message(
+        &self,
+        room_id: &RoomId,
+        body: &str,
+        emotes: &[Emote],
+        in_reply_to: Option<&str>,
+    ) {
         let prepared = {
             let Ok(mut guard) = self.active.lock() else {
                 return;
@@ -594,6 +603,7 @@ impl DemoAuthed {
             let message = data::own_message(
                 self.sent.fetch_add(1, Ordering::Relaxed),
                 body,
+                emotes,
                 reply,
                 outgoing_send_state(),
             );
@@ -644,7 +654,7 @@ impl DemoAuthed {
     async fn append_own_sticker(
         &self,
         room_id: &RoomId,
-        image: &StickerImage,
+        image: &PackImage,
         in_reply_to: Option<&str>,
     ) {
         let prepared = {
@@ -765,7 +775,7 @@ impl DemoAuthed {
                         .await,
                 );
             }
-            TimelineCommand::ToggleReaction { event_id, key } => {
+            TimelineCommand::ToggleReaction { event_id, key, .. } => {
                 self.toggle_reaction(&event_id, &key).await;
             }
             TimelineCommand::VotePoll {
@@ -1448,6 +1458,16 @@ fn reset_messages(messages: &[TimelineMessage]) -> Vec<TimelineMessage> {
     }
 }
 
+fn with_target_emotes(picked: &[Emote], target_html: Option<&str>) -> Vec<Emote> {
+    let mut emotes = target_html.map(body_emoji::emotes_in).unwrap_or_default();
+    for emote in picked {
+        if !emotes.iter().any(|known| known.token == emote.token) {
+            emotes.push(emote.clone());
+        }
+    }
+    emotes
+}
+
 fn outgoing_send_state() -> SendState {
     if timeline::scenario().sends_fail {
         SendState::Failed
@@ -1494,19 +1514,25 @@ impl TimelinePort for DemoAuthed {
             .unwrap_or(Ok(()))
     }
 
-    async fn send_text(&self, room_id: &RoomId, body: &str) -> Result<()> {
+    async fn send_text(&self, room_id: &RoomId, body: &str, emotes: &[Emote]) -> Result<()> {
         if timeline::scenario().sends_are_refused {
             return Err(unavailable("sending messages"));
         }
-        self.append_own_message(room_id, body, None).await;
+        self.append_own_message(room_id, body, emotes, None).await;
         Ok(())
     }
 
-    async fn send_reply(&self, room_id: &RoomId, body: &str, in_reply_to: &str) -> Result<()> {
+    async fn send_reply(
+        &self,
+        room_id: &RoomId,
+        body: &str,
+        emotes: &[Emote],
+        in_reply_to: &str,
+    ) -> Result<()> {
         if timeline::scenario().sends_are_refused {
             return Err(unavailable("sending replies"));
         }
-        self.append_own_message(room_id, body, Some(in_reply_to))
+        self.append_own_message(room_id, body, emotes, Some(in_reply_to))
             .await;
         Ok(())
     }
@@ -1813,8 +1839,8 @@ impl MediaPort for DemoAuthed {
 }
 
 #[async_trait]
-impl StickerPort for DemoAuthed {
-    async fn catalog(&self, room_id: &RoomId) -> Result<StickerCatalog> {
+impl ImagePackPort for DemoAuthed {
+    async fn catalog(&self, room_id: &RoomId) -> Result<PackCatalog> {
         let demo = stickers::scenario();
         stickers::pause_catalog().await;
         if demo.catalog_fails {
@@ -1823,9 +1849,14 @@ impl StickerPort for DemoAuthed {
         let packs = if demo.catalog_is_empty {
             Vec::new()
         } else {
-            data::sticker_packs(room_id)
+            let shared = self
+                .shared_packs
+                .lock()
+                .map(|shared| shared.clone())
+                .unwrap_or_default();
+            data::image_packs(room_id, &shared)
         };
-        Ok(StickerCatalog {
+        Ok(PackCatalog {
             packs,
             room_encrypted: demo.room_is_encrypted || data::room_is_encrypted(room_id),
         })
@@ -1833,7 +1864,7 @@ impl StickerPort for DemoAuthed {
 
     async fn prefetch(&self, mxcs: &[String]) -> usize {
         stickers::pause_prefetch().await;
-        media::prefetch_stickers(mxcs)
+        media::prefetch_pack_images(mxcs)
     }
 
     async fn send_sticker(
@@ -1849,6 +1880,19 @@ impl StickerPort for DemoAuthed {
         let image = data::sticker_image(pack, shortcode)
             .ok_or_else(|| AppError::Other(format!("no demo sticker {pack}/{shortcode}")))?;
         self.append_own_sticker(room_id, &image, in_reply_to).await;
+        Ok(())
+    }
+
+    async fn set_global(&self, pack: &PackId, global: bool) -> Result<()> {
+        if stickers::scenario().global_fails {
+            return Err(unavailable("sharing image packs"));
+        }
+        if !data::is_room_pack(pack) {
+            return Err(AppError::Other(format!("no demo room pack {pack}")));
+        }
+        if let Ok(mut shared) = self.shared_packs.lock() {
+            shared.insert(pack.to_string(), global);
+        }
         Ok(())
     }
 }
@@ -2312,6 +2356,7 @@ fn spawn_late_append(active: SharedActiveRoom, timeline_tx: mpsc::Sender<Timelin
         let mut message = data::own_message(
             9_000,
             "posted while the timeline was settling",
+            &[],
             None,
             SendState::Sent,
         );

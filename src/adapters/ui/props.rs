@@ -1,5 +1,6 @@
 use slint::{Image, Rgb8Pixel, SharedPixelBuffer, SharedString, StyledText};
 
+use super::dto::PackSurface;
 use super::present::{ServiceKind, VerifyStep};
 use super::schema::{bool_props, enum_props, int_props, string_props};
 use crate::app::input::CommandSender;

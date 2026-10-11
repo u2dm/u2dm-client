@@ -88,6 +88,7 @@ export enum UserMessageKind {
     message-unpin-failed,
     message-delete-failed,
     space-order-save-failed,
+    pack-setting-failed,
     join-room-failed,
     leave-room-failed,
     notify-change-failed,
@@ -268,6 +269,18 @@ export enum RoomInfoPlacement {
     closed,
     dialog,
     pane,
+}
+
+export enum PackSurface {
+    sticker-grid,
+    emote-grid,
+    emote-suggestions,
+}
+
+export enum PackOrigin {
+    personal,
+    room,
+    global,
 }
 
 export enum LogLevel {

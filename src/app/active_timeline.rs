@@ -375,8 +375,17 @@ impl ActiveTimeline {
         self.active_room_id.as_ref() == Some(room_id)
     }
 
-    pub(super) fn toggle_reaction(&mut self, event_id: String, key: String) {
-        self.forward(TimelineCommand::ToggleReaction { event_id, key });
+    pub(super) fn toggle_reaction(
+        &mut self,
+        event_id: String,
+        key: String,
+        shortcode: Option<String>,
+    ) {
+        self.forward(TimelineCommand::ToggleReaction {
+            event_id,
+            key,
+            shortcode,
+        });
     }
 
     pub(super) fn vote_poll(&mut self, event_id: String, answer_id: String) {
