@@ -58,6 +58,8 @@ scenario_env() {
     room-mention)    echo 'U2DM_DEMO_WINDOW=900x760' ;;
     display-names)   echo 'U2DM_DEMO_NAMES=all' ;;
     message-shields) echo 'U2DM_DEMO_SHIELDS=all U2DM_DEMO_WINDOW=900x1400' ;;
+    identity-alerts) echo 'U2DM_DEMO_IDENTITY=reset,own-reset U2DM_DEMO_WINDOW=900x760' ;;
+    identity-held-sends) echo 'U2DM_DEMO_IDENTITY=verified-reset,unverified-sessions U2DM_DEMO_WINDOW=900x760' ;;
     *) return 1 ;;
   esac
 }
@@ -318,6 +320,25 @@ scenario_steps() {
     message-shields)
       echo '{"op":"select_room","room_id":"!design:demo.local"}'
       echo 'sleep 3' ;;
+    identity-alerts)
+      echo '{"op":"select_room","room_id":"!design:demo.local"}'
+      echo 'sleep 2'
+      echo '{"op":"acknowledge_identity_reset"}'
+      echo 'sleep 1'
+      echo '{"op":"accept_identity","user_id":"@jordan:matrix.org"}'
+      echo 'sleep 1' ;;
+    identity-held-sends)
+      echo '{"op":"select_room","room_id":"!sarah:demo.local"}'
+      echo 'sleep 2'
+      echo '{"op":"send_message","body":"held until you withdraw"}'
+      echo 'sleep 1'
+      echo '{"op":"open_user_info","user_id":"@sarah:matrix.org"}'
+      echo 'sleep 1'
+      echo '{"op":"close_user_info"}'
+      echo '{"op":"select_room","room_id":"!nina:demo.local"}'
+      echo 'sleep 2'
+      echo '{"op":"send_message","body":"held by her sessions"}'
+      echo 'sleep 1' ;;
     display-names)
       echo '{"op":"select_room","room_id":"!linux:demo.local"}'
       echo 'sleep 3'
@@ -395,6 +416,8 @@ scenario_note() {
     room-mention)    echo 'in !matrixhq, Vera'"'"'s announcement mentions the room: its @room is bold and its bubble tinted (mentions_you)' ;;
     display-names)   echo 'in !linux, a second Kai, a right-to-left name, a Kai whose name ends in bidi controls and a nameless member post: every Kai, the sidebar preview and the "ka" suggestions carry user IDs' ;;
     message-shields) echo 'in !design, every shield a decrypted row can carry (photo chip and sticker included), three refused messages beside an unexplained one, and your own warned and refused sends (shield, shield_reason, decryption_failure)' ;;
+    identity-alerts) echo 'your own identity reset shows first; acknowledged, !design shows Jordan'"'"'s reset, and accepting it brings up Nadia'"'"'s (identity_alert)' ;;
+    identity-held-sends) echo 'in !sarah a send waits behind Sarah'"'"'s lost verification and her sheet reads no longer verified; in !nina one waits behind Nina'"'"'s unverified sessions (identity_alert, send_state)' ;;
   esac
 }
 
@@ -416,7 +439,7 @@ names() {
     room-menu-failures room-log user-info user-info-failures user-dm user-dm-start user-dm-failures user-ignore user-moderation \
     user-moderation-failures user-tags custom-emoji message-link message-source message-pins message-pin-failures message-delete \
     message-delete-failures readers room-search room-search-open mentions room-mention display-names \
-    message-shields
+    message-shields identity-alerts identity-held-sends
 }
 
 cmd_list() {
@@ -479,7 +502,8 @@ cmd_run() {
   jq -r 'if .message_permissions then "  messages delete_own=\(.message_permissions.delete_own) delete_others=\(.message_permissions.delete_others) pin=\(.message_permissions.pin) pinned_rows=\([.rows[]? | select(.pinned) | .event_id])" else empty end' "$out/timeline.json"
   jq -r 'if .view.message_link.serial > 0 then "  message link #\(.view.message_link.serial) \(.view.message_link.url)" else empty end' "$out/state.json"
   jq -r 'if .view.room_menu then "  room menu \(.view.room_menu.room_id) unread=\(.view.room_menu.unread) notify=\(.view.room_menu.notify) busy=\(.view.room_menu.notify_busy) leaving=\(.view.room_menu.leaving)" else empty end' "$out/state.json"
-  jq -r 'if .view.user_info.open then "  user info \(.view.user_info.user_id) in \(.view.user_info.room_id) \(.view.user_info.status) membership=\(.view.user_info.membership) role=\(.view.user_info.role) verified=\(.view.user_info.verified) pronouns=\(.view.user_info.pronouns) direct=\(.view.user_info.direct) ignored=\(.view.user_info.ignored) kick=\(.view.user_info.may_kick) ban=\(.view.user_info.may_ban) unban=\(.view.user_info.may_unban)" else empty end' "$out/state.json"
+  jq -r 'if .view.user_info.open then "  user info \(.view.user_info.user_id) in \(.view.user_info.room_id) \(.view.user_info.status) membership=\(.view.user_info.membership) role=\(.view.user_info.role) identity=\(.view.user_info.identity) pronouns=\(.view.user_info.pronouns) direct=\(.view.user_info.direct) ignored=\(.view.user_info.ignored) kick=\(.view.user_info.may_kick) ban=\(.view.user_info.may_ban) unban=\(.view.user_info.may_unban)" else empty end' "$out/state.json"
+  jq -r 'if .view.identity_alert.kind != "none" then "  identity alert \(.view.identity_alert.kind) \(.view.identity_alert.user_id // "") busy=\(.view.identity_alert.busy)" else empty end' "$out/state.json"
   jq -r '"  selected room \(.selected_room_id // "none")"' "$out/timeline.json"
   jq -r 'if .view.room_link.serial > 0 then "  room link #\(.view.room_link.serial) \(.view.room_link.url)" else empty end' "$out/state.json"
   jq -r 'if .view.room_log then "  room log \(.view.room_log.room_id) lines=\(.view.room_log.lines) dropped=\(.view.room_log.dropped) newest=\(.view.room_log.newest[-1] // "none")" else empty end' "$out/state.json"

@@ -37,7 +37,9 @@ use super::fields::{
     PackRowFields, PackTabFields, PollAnswerFields, ReactionFields, ReactorFields, RoomFields,
     SpaceChildFields, SpaceFields,
 };
-use super::present::{Delivery, MessageKind, PollPhase, ServiceKind, ShieldReason, VerifyStep};
+use super::present::{
+    Delivery, IdentityAlertKind, MessageKind, PollPhase, ServiceKind, ShieldReason, VerifyStep,
+};
 #[cfg(feature = "demo")]
 use super::props::EnumProp;
 use super::props::{BoolProp, IntProp, StringProp, UiProps};
@@ -45,15 +47,16 @@ use super::router::{EditedRow, EditedText};
 use super::schema::{
     attachment_kinds, audio_kinds, body_line_fields, body_piece_fields, child_accesses,
     connection_states, decryption_failures, deliveries, direct_chats, emoji_arts, enum_props,
-    log_levels, log_line_fields, login_activities, login_methods, login_phases, media_failures,
-    media_states, member_roles, member_row_fields, member_row_kinds, message_fields, message_kinds,
-    model_props, notify_modes, pack_cell_fields, pack_origins, pack_row_fields, pack_surfaces,
-    pack_tab_fields, pending_moderations, poll_answer_fields, poll_phases, preview_kinds,
-    reaction_fields, reaction_sends, reactor_fields, readers_statuses, room_fields,
-    room_info_placements, room_memberships, room_row_kinds, room_scopes, roster_statuses,
-    send_states, service_kinds, shield_reasons, shields, simple_callbacks, source_encryptions,
-    source_statuses, space_child_fields, space_fields, space_index_statuses, timeline_states,
-    user_message_kinds, verification_activities, verification_phases,
+    identity_alert_kinds, identity_trusts, log_levels, log_line_fields, login_activities,
+    login_methods, login_phases, media_failures, media_states, member_roles, member_row_fields,
+    member_row_kinds, message_fields, message_kinds, model_props, notify_modes, pack_cell_fields,
+    pack_origins, pack_row_fields, pack_surfaces, pack_tab_fields, pending_moderations,
+    poll_answer_fields, poll_phases, preview_kinds, reaction_fields, reaction_sends,
+    reactor_fields, readers_statuses, room_fields, room_info_placements, room_memberships,
+    room_row_kinds, room_scopes, roster_statuses, send_states, service_kinds, shield_reasons,
+    shields, simple_callbacks, source_encryptions, source_statuses, space_child_fields,
+    space_fields, space_index_statuses, timeline_states, user_message_kinds,
+    verification_activities, verification_phases,
 };
 use super::session::active_models;
 use super::video::{self, millis_to_duration};
@@ -78,7 +81,7 @@ use crate::domain::room_info::MemberRole;
 use crate::domain::room_log::LogLevel;
 use crate::domain::sync::ConnectionStatus;
 use crate::domain::timeline::{SourceEncryption, TimelineStatus};
-use crate::domain::user_info::RoomMembership;
+use crate::domain::user_info::{IdentityTrust, RoomMembership};
 use crate::domain::verification::VerificationEmoji as DomainVerificationEmoji;
 use crate::error::{AppError, Result};
 use crate::ports::media::MediaCache;
@@ -236,6 +239,8 @@ pack_origins!(impl_slint_enum PackOrigin "PackOrigin";);
 room_memberships!(impl_slint_enum RoomMembership "RoomMembership";);
 direct_chats!(impl_slint_enum DirectChat "DirectChat";);
 pending_moderations!(impl_slint_enum PendingModeration "Moderation";);
+identity_trusts!(impl_slint_enum IdentityTrust "IdentityTrust";);
+identity_alert_kinds!(impl_slint_enum IdentityAlertKind "IdentityAlertKind";);
 preview_kinds!(impl_slint_enum MessagePreviewKind "PreviewKind";);
 audio_kinds!(impl_slint_enum AudioKind "AudioKind";);
 service_kinds!(impl_slint_enum ServiceKind "ServiceKind";);

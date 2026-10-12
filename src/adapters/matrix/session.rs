@@ -7,6 +7,7 @@ use matrix_sdk::ruma::{IdParseError, OwnedRoomId};
 use tokio::sync::{RwLock, mpsc};
 
 use super::auth;
+use super::identity_alerts::MatrixIdentityAlerts;
 use super::image_packs::MatrixImagePacks;
 use super::media::{MatrixMedia, MediaService};
 use super::profile::PronounCache;
@@ -156,6 +157,7 @@ pub(super) async fn authenticate(
         pinned: Arc::new(MatrixPinned::new(Arc::clone(&matrix))),
         media: Arc::new(MatrixMedia::new(Arc::clone(&matrix))),
         verification,
+        identity: Arc::new(MatrixIdentityAlerts::new(Arc::clone(&matrix))),
         space_order: Arc::new(MatrixSpaceOrder::new(Arc::clone(&matrix))),
         space_index: Arc::new(MatrixSpaceIndex::new(Arc::clone(&matrix))),
         room_info: Arc::new(MatrixRoomInfo::new(Arc::clone(&matrix))),

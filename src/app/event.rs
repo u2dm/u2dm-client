@@ -7,6 +7,7 @@ use super::user_info::{DmOutcome, ReadOutcome};
 use crate::commands::messages::{UserMessage, UserMessageKind};
 use crate::commands::view::LoginActivity;
 use crate::domain::auth::ServerInfo;
+use crate::domain::identity::{OwnIdentity, RoomAlert};
 use crate::domain::image_pack::PackId;
 use crate::domain::media::PickedAttachment;
 use crate::domain::message::{MessageEdit, PinnedMessage};
@@ -105,7 +106,33 @@ pub(super) enum AppEvent {
     Readers(ReadersEvent),
     Mentions(MentionsEvent),
     Packs(PacksEvent),
+    Identity(IdentityEvent),
     RoomLogGrew,
+}
+
+pub(super) enum IdentityEvent {
+    RoomAlerts {
+        watch: u64,
+        alerts: Vec<RoomAlert>,
+    },
+    OwnIdentity {
+        session: u64,
+        own: OwnIdentity,
+    },
+    Settled {
+        request: u64,
+        failure: Option<UserMessage>,
+    },
+}
+
+impl IdentityEvent {
+    fn label(&self) -> &'static str {
+        match self {
+            Self::RoomAlerts { .. } => "IdentityAlertsChanged",
+            Self::OwnIdentity { .. } => "OwnIdentityChanged",
+            Self::Settled { .. } => "IdentityResolutionSettled",
+        }
+    }
 }
 
 pub(super) enum PacksEvent {
@@ -312,6 +339,7 @@ impl AppEvent {
             Self::Readers(event) => event.label(),
             Self::Mentions(event) => event.label(),
             Self::Packs(event) => event.label(),
+            Self::Identity(event) => event.label(),
             Self::RoomLogGrew => "RoomLogGrew",
         }
     }

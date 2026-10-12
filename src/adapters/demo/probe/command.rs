@@ -124,6 +124,16 @@ pub enum ProbeCommand {
     UnbanUser {
         user_id: String,
     },
+    AcceptIdentity {
+        user_id: String,
+    },
+    WithdrawVerification {
+        user_id: String,
+    },
+    SendAnyway {
+        user_id: String,
+    },
+    AcknowledgeIdentityReset,
     SendMessage {
         #[serde(default)]
         room_id: Option<String>,
@@ -536,6 +546,14 @@ pub fn to_driven(command: ProbeCommand, selected: Selection<'_>) -> Result<Drive
         ProbeCommand::KickUser { user_id } => return person(user_id, UiCommand::KickUser),
         ProbeCommand::BanUser { user_id } => return person(user_id, UiCommand::BanUser),
         ProbeCommand::UnbanUser { user_id } => return person(user_id, UiCommand::UnbanUser),
+        ProbeCommand::AcceptIdentity { user_id } => {
+            return person(user_id, UiCommand::AcceptIdentity);
+        }
+        ProbeCommand::WithdrawVerification { user_id } => {
+            return person(user_id, UiCommand::WithdrawVerification);
+        }
+        ProbeCommand::SendAnyway { user_id } => return person(user_id, UiCommand::SendAnyway),
+        ProbeCommand::AcknowledgeIdentityReset => UiCommand::AcknowledgeIdentityReset,
         ProbeCommand::SendMessage {
             room_id,
             body,

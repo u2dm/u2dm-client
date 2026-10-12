@@ -8,11 +8,12 @@ use chrono::{Locale, SecondsFormat, Timelike};
 use pure_rust_locales::locale_match;
 
 use super::schema::{
-    define_ui_enum, deliveries, message_kinds, poll_phases, service_kinds, shield_reasons,
-    verification_phases,
+    define_ui_enum, deliveries, identity_alert_kinds, message_kinds, poll_phases, service_kinds,
+    shield_reasons, verification_phases,
 };
 use crate::commands::messages::{UserMessage, UserMessageKind};
 use crate::commands::view::RoomLogView;
+use crate::domain::identity::{IdentityAlert, RoomAlert, SessionsOf};
 use crate::domain::media::{AudioKind, AudioMeta, Waveform};
 use crate::domain::member_name::{MemberName, NamedUser, isolated};
 use crate::domain::message::{
@@ -382,6 +383,42 @@ pub fn delivery(message: &TimelineMessage) -> Delivery {
         SendState::Failed => Delivery::Failed,
         SendState::Sent if message.read_by.is_read() => Delivery::Read,
         SendState::Sent => Delivery::Sent,
+    }
+}
+
+identity_alert_kinds!(define_ui_enum IdentityAlertKind;);
+
+pub struct IdentityBanner<'a> {
+    pub kind: IdentityAlertKind,
+    pub user_id: &'a str,
+    pub name: String,
+}
+
+pub fn identity_banner(alert: Option<&IdentityAlert>) -> IdentityBanner<'_> {
+    let (kind, person) = match alert {
+        None => (IdentityAlertKind::None, None),
+        Some(IdentityAlert::OwnIdentityReset) => (IdentityAlertKind::OwnIdentityReset, None),
+        Some(IdentityAlert::Room(RoomAlert::UnverifiedSessions(SessionsOf::You(_)))) => {
+            (IdentityAlertKind::OwnUnverifiedSessions, None)
+        }
+        Some(IdentityAlert::Room(RoomAlert::NoLongerVerified(user))) => {
+            (IdentityAlertKind::NoLongerVerified, Some(user))
+        }
+        Some(IdentityAlert::Room(RoomAlert::UnverifiedSessions(SessionsOf::Member(user)))) => {
+            (IdentityAlertKind::UnverifiedSessions, Some(user))
+        }
+        Some(IdentityAlert::Room(RoomAlert::IdentityReset(user))) => {
+            (IdentityAlertKind::IdentityReset, Some(user))
+        }
+    };
+    let user_id = match alert {
+        Some(IdentityAlert::Room(alert)) => alert.user_id(),
+        Some(IdentityAlert::OwnIdentityReset) | None => "",
+    };
+    IdentityBanner {
+        kind,
+        user_id,
+        name: person.map(NamedUser::identified).unwrap_or_default(),
     }
 }
 

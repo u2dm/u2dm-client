@@ -137,6 +137,18 @@ export global UserMessages {
         if kind == UserMessageKind.unban-failed {
             return @tr("Could not unban {}", detail);
         }
+        if kind == UserMessageKind.identity-accept-failed {
+            return @tr("Could not accept the new identity of {}", detail);
+        }
+        if kind == UserMessageKind.verification-withdraw-failed {
+            return @tr("Could not withdraw the verification of {}", detail);
+        }
+        if kind == UserMessageKind.send-anyway-failed {
+            return @tr("Could not send the held messages");
+        }
+        if kind == UserMessageKind.identity-reset-acknowledge-failed {
+            return @tr("Could not save that you saw your identity was reset");
+        }
         if kind == UserMessageKind.media-download-failed {
             return @tr("Failed to download media");
         }

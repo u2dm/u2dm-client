@@ -101,6 +101,10 @@ export enum UserMessageKind {
     kick-failed,
     ban-failed,
     unban-failed,
+    identity-accept-failed,
+    verification-withdraw-failed,
+    send-anyway-failed,
+    identity-reset-acknowledge-failed,
     media-download-failed,
     file-download-failed,
     media-open-failed,
@@ -270,6 +274,21 @@ export enum Moderation {
     kick,
     ban,
     unban,
+}
+
+export enum IdentityTrust {
+    unverified,
+    verified,
+    no-longer-verified,
+}
+
+export enum IdentityAlertKind {
+    none,
+    own-identity-reset,
+    no-longer-verified,
+    own-unverified-sessions,
+    unverified-sessions,
+    identity-reset,
 }
 
 export enum MemberRowKind {

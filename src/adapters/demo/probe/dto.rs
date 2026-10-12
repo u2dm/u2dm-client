@@ -1,13 +1,14 @@
 use serde::Serialize;
 
 use super::names;
+use crate::adapters::ui::identity_banner;
 use crate::commands::messages::UserMessage;
 use crate::commands::ui::Draft;
 use crate::commands::view::{
-    AppViewState, AttachmentView, AudioView, CardStatus, CopiedLink, DirectoryView, LifecycleView,
-    MentionsView, PackView, PaginationView, PinnedView, ReadersView, RoomInfoView, RoomLogView,
-    RoomMenuTarget, RosterRow, SourceState, SpaceIndexRow, SpaceIndexView, SpaceMatch, Toast,
-    TrackFile, UnsentMessage, UserInfoView, VideoView,
+    AppViewState, AttachmentView, AudioView, CardStatus, CopiedLink, DirectoryView,
+    IdentityAlertView, LifecycleView, MentionsView, PackView, PaginationView, PinnedView,
+    ReadersView, RoomInfoView, RoomLogView, RoomMenuTarget, RosterRow, SourceState, SpaceIndexRow,
+    SpaceIndexView, SpaceMatch, Toast, TrackFile, UnsentMessage, UserInfoView, VideoView,
 };
 use crate::domain::image_pack::{ImagePack, ImageUsage, PackOrigin, PackTitle};
 use crate::domain::member_name::NamedUser;
@@ -17,7 +18,7 @@ use crate::domain::room_info::{Reader, RosterSection};
 use crate::domain::space_index::{ChildKind, JoinRule};
 use crate::domain::sync::ConnectionStatus;
 use crate::domain::timeline::{OlderHistory, SourceEncryption};
-use crate::domain::user_info::{IdentityTrust, Moderation, Pronouns};
+use crate::domain::user_info::{Moderation, Pronouns};
 
 #[derive(Serialize)]
 pub struct ViewDto {
@@ -35,6 +36,7 @@ pub struct ViewDto {
     video: VideoDto,
     audio: Option<NowPlayingDto>,
     unsent: Option<UnsentDto>,
+    identity_alert: IdentityAlertDto,
     toast: ToastDto,
     message_link: LinkDto,
     room_link: LinkDto,
@@ -42,6 +44,14 @@ pub struct ViewDto {
     readers: ReadersDto,
     mentions: MentionsDto,
     room_log: Option<RoomLogDto>,
+}
+
+#[derive(Serialize)]
+struct IdentityAlertDto {
+    kind: &'static str,
+    user_id: Option<String>,
+    name: Option<String>,
+    busy: bool,
 }
 
 #[derive(Serialize)]
@@ -280,7 +290,7 @@ struct UserInfoDto {
     pronouns: Option<Vec<String>>,
     role: Option<&'static str>,
     membership: Option<&'static str>,
-    verified: bool,
+    identity: &'static str,
     is_self: bool,
     link: Option<String>,
     direct_room: Option<String>,
@@ -418,6 +428,7 @@ pub fn view(source: &AppViewState) -> ViewDto {
         video: video(&source.video),
         audio: audio(&source.audio),
         unsent: source.unsent.as_ref().map(unsent),
+        identity_alert: identity_alert(&source.identity_alert),
         toast: toast(&source.toast),
         message_link: link(&source.message_link),
         room_link: link(&source.room_link),
@@ -425,6 +436,16 @@ pub fn view(source: &AppViewState) -> ViewDto {
         readers: readers(&source.readers),
         mentions: mentions(&source.mentions),
         room_log: source.room_log.as_ref().map(room_log),
+    }
+}
+
+fn identity_alert(source: &IdentityAlertView) -> IdentityAlertDto {
+    let banner = identity_banner(source.alert.as_ref());
+    IdentityAlertDto {
+        kind: names::identity_alert_kind(banner.kind),
+        user_id: (!banner.user_id.is_empty()).then(|| banner.user_id.to_owned()),
+        name: (!banner.name.is_empty()).then_some(banner.name),
+        busy: source.busy,
     }
 }
 
@@ -717,7 +738,7 @@ fn user_info(source: &UserInfoView) -> UserInfoDto {
         }),
         role: profile.map(|profile| names::member_role(profile.role)),
         membership: profile.map(|profile| names::room_membership(profile.membership)),
-        verified: profile.is_some_and(|profile| profile.trust == IdentityTrust::Verified),
+        identity: profile.map_or("unverified", |profile| names::identity_trust(profile.trust)),
         is_self: profile.is_some_and(|profile| profile.is_self),
         link: profile.map(|profile| profile.link.clone()),
         direct_room: profile

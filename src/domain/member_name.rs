@@ -72,6 +72,13 @@ impl MemberName {
             Self::Shared(name) => with_user_id(name, user_id),
         }
     }
+
+    pub fn identified(&self, user_id: &str) -> String {
+        match self.set() {
+            None => isolated(user_id),
+            Some(name) => with_user_id(name, user_id),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -94,5 +101,9 @@ impl NamedUser {
 
     pub fn shown(&self) -> String {
         self.name.shown(&self.user_id)
+    }
+
+    pub fn identified(&self) -> String {
+        self.name.identified(&self.user_id)
     }
 }

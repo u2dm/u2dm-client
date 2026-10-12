@@ -189,6 +189,7 @@ impl Lifecycle {
     }
 }
 
+#[allow(clippy::too_many_lines)]
 pub(super) fn command_allowed(phase: AppPhase, cmd: &UiCommand) -> bool {
     match cmd {
         UiCommand::Quit => true,
@@ -239,6 +240,10 @@ pub(super) fn command_allowed(phase: AppPhase, cmd: &UiCommand) -> bool {
         | UiCommand::KickUser(_)
         | UiCommand::BanUser(_)
         | UiCommand::UnbanUser(_)
+        | UiCommand::AcceptIdentity(_)
+        | UiCommand::WithdrawVerification(_)
+        | UiCommand::SendAnyway(_)
+        | UiCommand::AcknowledgeIdentityReset
         | UiCommand::SendMessage { .. }
         | UiCommand::EditMessage { .. }
         | UiCommand::SuggestMentions { .. }

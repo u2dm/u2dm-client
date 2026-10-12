@@ -76,6 +76,9 @@ impl MatrixUserInfo {
         };
         match client.encryption().get_user_identity(user).await {
             Ok(Some(identity)) if identity.is_verified() => IdentityTrust::Verified,
+            Ok(Some(identity)) if identity.has_verification_violation() => {
+                IdentityTrust::NoLongerVerified
+            }
             Ok(_) => IdentityTrust::Unverified,
             Err(e) => {
                 tracing::debug!(%user, "could not read the user's identity: {e}");
@@ -307,7 +310,7 @@ async fn current_direct(client: &Client, own: &OwnedUserId) -> Result<DirectEven
     }
 }
 
-fn parse_user(user_id: &UserId) -> Result<OwnedUserId> {
+pub(super) fn parse_user(user_id: &UserId) -> Result<OwnedUserId> {
     OwnedUserId::try_from(user_id.as_ref())
         .map_err(|e| AppError::Other(format!("not a user id: {e}")))
 }

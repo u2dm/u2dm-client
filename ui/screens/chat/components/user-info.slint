@@ -11,7 +11,7 @@ import { DetailLine } from "./detail-line.slint";
 import { MemberRoles } from "./member-roles.slint";
 import { CopyLinkTile, SheetCloseChip, SheetCover, TilePrompt, TileRow } from "./sheet.slint";
 import { AppStyle, Fonts, IconSize, Metrics, Space, Weight } from "../../../theme.slint";
-import { DirectChat, Moderation, RoomMembership, UserMessageKind } from "../../../enums.slint";
+import { DirectChat, IdentityTrust, Moderation, RoomMembership, UserMessageKind } from "../../../enums.slint";
 import { UserInfoView } from "../../../views.slint";
 import { Actions } from "../../../actions.slint";
 import { MetaTip, Reactions } from "../../../local.slint";
@@ -122,7 +122,7 @@ component ProfileCover inherits SheetCover {
         overflow: elide;
     }
 
-    if root.role-label != "" || UserInfoView.verified: HorizontalLayout {
+    if root.role-label != "" || UserInfoView.identity != IdentityTrust.unverified: HorizontalLayout {
         alignment: center;
         spacing: Space.sm;
 
@@ -130,10 +130,16 @@ component ProfileCover inherits SheetCover {
             text: root.role-label;
         }
 
-        if UserInfoView.verified: Badge {
+        if UserInfoView.identity == IdentityTrust.verified: Badge {
             icon: IconSet.ShieldCheck;
             text: @tr("Verified");
             tint: AppStyle.accent-on-surface;
+        }
+
+        if UserInfoView.identity == IdentityTrust.no-longer-verified: Badge {
+            icon: IconSet.ShieldAlert;
+            text: @tr("No longer verified");
+            tint: AppStyle.danger-muted;
         }
     }
 

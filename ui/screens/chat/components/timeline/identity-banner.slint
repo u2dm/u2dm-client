@@ -1,0 +1,134 @@
+import { AppStyle, Fonts, Space, Stroke, Weight } from "../../../../theme.slint";
+import { LinkButton } from "../../../../components/button.slint";
+import { DotPulse } from "../../../../components/dot-pulse.slint";
+import { Actions } from "../../../../actions.slint";
+import { IdentityAlertKind } from "../../../../enums.slint";
+import { IdentityAlertView } from "../../../../views.slint";
+
+struct AlertCopy {
+    title: string,
+    body: string,
+    action: string,
+    action-label: string,
+    grave: bool,
+}
+
+export component IdentityBanner inherits Rectangle {
+    property <AlertCopy> copy: root.copy-for(IdentityAlertView.kind, IdentityAlertView.name);
+    property <color> marker: root.copy.grave ? AppStyle.danger : AppStyle.warning;
+    property <color> title-color: root.copy.grave ? AppStyle.danger-muted : AppStyle.foreground-strong;
+
+    pure function copy-for(kind: IdentityAlertKind, name: string) -> AlertCopy {
+        if kind == IdentityAlertKind.own-identity-reset {
+            return {
+                title: @tr("Your identity was reset"),
+                body: @tr("If you didn't reset it on another device, someone else may have access to your account."),
+                action: @tr("OK"),
+                action-label: @tr("Acknowledge that your identity was reset"),
+                grave: true,
+            };
+        }
+        if kind == IdentityAlertKind.no-longer-verified {
+            return {
+                title: @tr("Verification lost"),
+                body: @tr("You verified {}, but their identity has changed since, or yours has. U2DM won't send encrypted messages here until you withdraw the verification.", name),
+                action: @tr("Withdraw verification"),
+                action-label: @tr("Withdraw your verification of {}", name),
+                grave: true,
+            };
+        }
+        if kind == IdentityAlertKind.own-unverified-sessions {
+            return {
+                title: @tr("Message not sent"),
+                body: @tr("Not all of your sessions are verified, so your message is waiting. Verify them, or send anyway."),
+                action: @tr("Send anyway"),
+                action-label: @tr("Send to your unverified sessions anyway"),
+                grave: true,
+            };
+        }
+        if kind == IdentityAlertKind.unverified-sessions {
+            return {
+                title: @tr("Message not sent"),
+                body: @tr("{} has not verified all of their sessions, so your message is waiting. Ask them to, or send anyway.", name),
+                action: @tr("Send anyway"),
+                action-label: @tr("Send to the unverified sessions of {} anyway", name),
+                grave: true,
+            };
+        }
+        return {
+            title: @tr("Identity reset"),
+            body: @tr("The identity of {} was reset. If you didn't expect that, check with them before you share anything sensitive.", name),
+            action: @tr("OK"),
+            action-label: @tr("Accept the new identity of {}", name),
+            grave: false,
+        };
+    }
+
+    function act() {
+        if IdentityAlertView.kind == IdentityAlertKind.own-identity-reset {
+            Actions.acknowledge-identity-reset();
+        } else if IdentityAlertView.kind == IdentityAlertKind.no-longer-verified {
+            Actions.withdraw-verification(IdentityAlertView.user-id);
+        } else if IdentityAlertView.kind == IdentityAlertKind.identity-reset {
+            Actions.accept-identity(IdentityAlertView.user-id);
+        } else {
+            Actions.send-anyway(IdentityAlertView.user-id);
+        }
+    }
+
+    height: layout.preferred-height;
+    background: root.copy.grave ? AppStyle.danger-background : AppStyle.overlay-subtle;
+
+    layout := HorizontalLayout {
+        padding-left: Space.lg;
+        padding-right: Space.md;
+        padding-top: Space.md;
+        padding-bottom: Space.md;
+        spacing: Space.md;
+
+        Rectangle {
+            width: Stroke.marker;
+            border-radius: self.width / 2;
+            background: root.marker;
+        }
+
+        VerticalLayout {
+            horizontal-stretch: 1;
+            alignment: center;
+            spacing: Space.xs;
+
+            Text {
+                text: root.copy.title;
+                font-size: Fonts.body-small;
+                font-weight: Weight.bold;
+                color: root.title-color;
+                wrap: word-wrap;
+                accessible-live-region: AccessibleLiveness.assertive;
+            }
+
+            Text {
+                text: root.copy.body;
+                font-size: Fonts.body-small;
+                color: AppStyle.overlay-foreground-muted;
+                wrap: word-wrap;
+                accessible-live-region: AccessibleLiveness.assertive;
+            }
+        }
+
+        if IdentityAlertView.busy: DotPulse {
+            tint: root.marker;
+            dot-size: Space.sm;
+        }
+
+        LinkButton {
+            text: root.copy.action;
+            label: root.copy.action-label;
+            enabled: !IdentityAlertView.busy;
+            tint: IdentityAlertView.busy ? AppStyle.foreground-disabled : AppStyle.link;
+            pad: 2 * Space.sm;
+            clicked => {
+                root.act();
+            }
+        }
+    }
+}

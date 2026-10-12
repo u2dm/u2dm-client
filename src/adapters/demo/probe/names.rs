@@ -1,9 +1,10 @@
+use crate::adapters::ui::IdentityAlertKind;
 use crate::adapters::ui::schema::{
     attachment_kinds, audio_kinds, child_accesses, connection_states, direct_chats, enum_names,
-    log_levels, login_activities, login_methods, login_phases, member_roles, notify_modes,
-    pending_moderations, preview_kinds, readers_statuses, room_info_placements, room_memberships,
-    room_scopes, roster_statuses, source_encryptions, source_statuses, space_index_statuses,
-    user_message_kinds, variant_named,
+    identity_alert_kinds, identity_trusts, log_levels, login_activities, login_methods, login_phases, member_roles,
+    notify_modes, pending_moderations, preview_kinds, readers_statuses, room_info_placements,
+    room_memberships, room_scopes, roster_statuses, source_encryptions, source_statuses,
+    space_index_statuses, user_message_kinds, variant_named,
 };
 use crate::commands::messages::UserMessageKind;
 use crate::commands::view::{
@@ -18,7 +19,7 @@ use crate::domain::room_info::MemberRole;
 use crate::domain::room_log::LogLevel;
 use crate::domain::sync::ConnectionStatus;
 use crate::domain::timeline::SourceEncryption;
-use crate::domain::user_info::RoomMembership;
+use crate::domain::user_info::{IdentityTrust, RoomMembership};
 
 login_phases!(enum_names val login_step LoginStep;);
 login_activities!(enum_names val login_activity LoginActivity;);
@@ -39,6 +40,8 @@ room_info_placements!(enum_names val room_info_placement RoomInfoPlacement;);
 room_memberships!(enum_names val room_membership RoomMembership;);
 direct_chats!(enum_names val direct_chat DirectChat;);
 pending_moderations!(enum_names val pending_moderation PendingModeration;);
+identity_trusts!(enum_names val identity_trust IdentityTrust;);
+identity_alert_kinds!(enum_names val identity_alert_kind IdentityAlertKind;);
 source_statuses!(enum_names ref source_status SourceState;);
 source_encryptions!(enum_names ref source_encryption SourceEncryption;);
 readers_statuses!(enum_names val readers_status ReadersStatus;);

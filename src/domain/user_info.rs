@@ -48,6 +48,7 @@ pub enum RoomMembership {
 pub enum IdentityTrust {
     Verified,
     Unverified,
+    NoLongerVerified,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

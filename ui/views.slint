@@ -10,7 +10,7 @@ import {
     VerificationEmoji,
     UserMessage,
 } from "./types.slint";
-import { AttachmentKind, AudioKind, ConnectionState, DirectChat, LoginActivity, LoginMethodKind, LoginPhase, MemberRole, Moderation, NotifyMode, PackSurface, PreviewKind, ReadersStatus, RoomInfoPlacement, RoomMembership, RoomScope, RosterStatus, ServiceKind, SourceEncryption, SourceStatus, SpaceIndexStatus, TimelineState, UserMessageKind, VerificationActivity, VerificationPhase } from "./enums.slint";
+import { AttachmentKind, AudioKind, ConnectionState, DirectChat, IdentityAlertKind, IdentityTrust, LoginActivity, LoginMethodKind, LoginPhase, MemberRole, Moderation, NotifyMode, PackSurface, PreviewKind, ReadersStatus, RoomInfoPlacement, RoomMembership, RoomScope, RosterStatus, ServiceKind, SourceEncryption, SourceStatus, SpaceIndexStatus, TimelineState, UserMessageKind, VerificationActivity, VerificationPhase } from "./enums.slint";
 
 export global LoginView {
     in property <LoginPhase> step: LoginPhase.loading;
@@ -148,7 +148,7 @@ export global UserInfoView {
     in property <string> pronouns;
     in property <MemberRole> role: MemberRole.member;
     in property <RoomMembership> membership: RoomMembership.joined;
-    in property <bool> verified;
+    in property <IdentityTrust> identity: IdentityTrust.unverified;
     in property <bool> is-self;
     in property <string> link;
     in property <bool> read-failed;
@@ -261,6 +261,13 @@ export global UnsentView {
     in property <string> edit-event-id;
     in property <string> edit-local-id;
     in property <string> edit-preview;
+}
+
+export global IdentityAlertView {
+    in property <IdentityAlertKind> kind: IdentityAlertKind.none;
+    in property <string> user-id;
+    in property <string> name;
+    in property <bool> busy;
 }
 
 export global AttachmentView {

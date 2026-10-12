@@ -5,6 +5,7 @@ pub mod catalog;
 mod data;
 mod dto;
 mod files;
+mod identity;
 mod login;
 mod matrix;
 mod media;

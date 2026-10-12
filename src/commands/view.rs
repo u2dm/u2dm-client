@@ -6,6 +6,7 @@ use std::time::Duration;
 use super::messages::{UserMessage, UserMessageKind};
 use super::ui::Draft;
 use crate::domain::auth::{LoginMethod, Session};
+use crate::domain::identity::IdentityAlert;
 use crate::domain::image_pack::ImagePacks;
 use crate::domain::media::AudioMeta;
 use crate::domain::message::{PinnedMessage, TimelineMessage};
@@ -33,6 +34,7 @@ pub struct AppViewState {
     pub video: VideoView,
     pub audio: AudioView,
     pub unsent: Option<UnsentMessage>,
+    pub identity_alert: IdentityAlertView,
     pub toast: Toast,
     pub message_link: CopiedLink,
     pub room_link: CopiedLink,
@@ -152,6 +154,12 @@ pub struct UnsentMessage {
     pub submission: i32,
     pub room_id: RoomId,
     pub draft: Draft,
+}
+
+#[derive(Clone, Default, PartialEq, Eq)]
+pub struct IdentityAlertView {
+    pub alert: Option<IdentityAlert>,
+    pub busy: bool,
 }
 
 #[derive(Clone, Default, PartialEq)]

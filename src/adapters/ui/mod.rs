@@ -35,6 +35,8 @@ mod window_events;
 
 pub use output::UiEventOutput;
 #[cfg(feature = "demo")]
+pub(crate) use present::{IdentityAlertKind, identity_banner};
+#[cfg(feature = "demo")]
 pub(crate) use router::link_command;
 use slint::PlatformError;
 

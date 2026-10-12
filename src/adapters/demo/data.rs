@@ -503,6 +503,12 @@ pub fn is_unjoined_avatar(mxc: &str) -> bool {
         .any(|entry| entry.avatar() == Some(mxc))
 }
 
+pub fn is_member(room_id: &RoomId, user_id: &str) -> bool {
+    room_members(room_id)
+        .iter()
+        .any(|(member, _)| member == user_id)
+}
+
 pub fn room_is_encrypted(room_id: &RoomId) -> bool {
     data()
         .rooms

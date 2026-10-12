@@ -15,6 +15,7 @@ use tokio::time::sleep;
 use tokio_util::sync::CancellationToken;
 use url::Url;
 
+use super::identity::{self, IdentityBook, SendHold};
 use super::{
     attachments, audio, data, login, media, message_menu, pinned, polls, reactions, receipts,
     room_info, source, space_index, stickers, timeline, user_info, verification, videos,
@@ -22,6 +23,7 @@ use super::{
 use crate::adapters::{body_emoji, video};
 use crate::domain::auth::{AuthMethod, LoginCredentials, OAuthLoginData, ServerInfo, Session};
 use crate::domain::emote::Emote;
+use crate::domain::identity::{OwnIdentity, RoomAlert};
 use crate::domain::image_pack::{PackId, PackImage};
 use crate::domain::link::LauncherSafeUrl;
 use crate::domain::media::{MediaRendition, OutgoingAttachment, WaveformNeed};
@@ -46,7 +48,7 @@ use crate::domain::user_info::{
 use crate::domain::verification::{VerificationCancellation, VerificationEvent};
 use crate::error::{AppError, Result};
 use crate::ports::matrix::{
-    AttachmentHandoff, AuthPort, AuthenticatedSession, CleanupReport, ImagePackPort,
+    AttachmentHandoff, AuthPort, AuthenticatedSession, CleanupReport, IdentityPort, ImagePackPort,
     InterruptedLogin, LocalDataOwnership, MediaPort, PackCatalog, PinnedPort, ProgressSink,
     RestoreStep, RoomInfoPort, SessionPort, SpaceIndexPort, SpaceOrderPort, StoreAdoption,
     SyncPort, SyncSink, TimelinePort, UserInfoPort, VerificationPort,
@@ -209,6 +211,7 @@ fn authenticated(session: Session) -> AuthenticatedSession {
     let pinned = Arc::clone(&authed);
     let media = Arc::clone(&authed);
     let verification = Arc::clone(&authed);
+    let identity = Arc::clone(&authed);
     let space_order = Arc::clone(&authed);
     let space_index = Arc::clone(&authed);
     let room_info = Arc::clone(&authed);
@@ -221,6 +224,7 @@ fn authenticated(session: Session) -> AuthenticatedSession {
         pinned,
         media,
         verification,
+        identity,
         space_order,
         space_index,
         room_info,
@@ -335,6 +339,7 @@ struct DemoAuthed {
     ignored: Mutex<HashSet<String>>,
     memberships: Mutex<HashMap<(RoomId, String), RoomMembership>>,
     shared_packs: Mutex<HashMap<String, bool>>,
+    identity: IdentityBook,
 }
 
 impl DemoAuthed {
@@ -388,6 +393,42 @@ impl DemoAuthed {
         active.messages = self.room_history(&active.room_id);
         active.prepended = 0;
         Some((active.timeline_tx.clone(), active.messages.clone()))
+    }
+
+    fn send_state_in(&self, room_id: &RoomId) -> SendState {
+        match self.identity.send_hold(room_id) {
+            SendHold::Clear => outgoing_send_state(),
+            SendHold::VerificationLost => SendState::Failed,
+            SendHold::UnverifiedSessions => {
+                self.identity.note_held_send(room_id);
+                SendState::Failed
+            }
+        }
+    }
+
+    fn failed_sends_in(&self, room_id: &RoomId) -> Vec<String> {
+        let Ok(own_sends) = self.own_sends.lock() else {
+            return Vec::new();
+        };
+        own_sends
+            .get(room_id)
+            .into_iter()
+            .flatten()
+            .filter(|message| message.send_state == SendState::Failed)
+            .filter_map(|message| message.local_id.clone())
+            .collect()
+    }
+
+    async fn resend_held(&self, room_id: &RoomId) {
+        for local_id in self.failed_sends_in(room_id) {
+            if self
+                .patch_queued_send(room_id, &local_id, true)
+                .await
+                .is_err()
+            {
+                self.settle_own_send(room_id, &local_id, true);
+            }
+        }
     }
 
     fn keep_own_send(&self, room_id: &RoomId, message: &TimelineMessage) {
@@ -606,7 +647,7 @@ impl DemoAuthed {
                 body,
                 emotes,
                 reply,
-                outgoing_send_state(),
+                self.send_state_in(room_id),
             );
             self.keep_own_send(room_id, &message);
             if !active.live {
@@ -639,7 +680,7 @@ impl DemoAuthed {
             let message = data::own_poll(
                 self.sent.fetch_add(1, Ordering::Relaxed),
                 draft,
-                outgoing_send_state(),
+                self.send_state_in(room_id),
             );
             self.keep_own_send(room_id, &message);
             if !active.live {
@@ -1188,6 +1229,9 @@ impl DemoAuthed {
         profile.direct_room = self.chat_with(user_id);
         profile.ignored = self.is_ignored(user_id);
         user_info::shape(&mut profile);
+        if let Some(trust) = self.identity.trust_of(user_id) {
+            profile.trust = trust;
+        }
         if let Some(membership) = self.membership_override(room_id, user_id) {
             profile.membership = membership;
         }
@@ -1434,6 +1478,93 @@ impl UserInfoPort for DemoAuthed {
 }
 
 #[async_trait]
+impl IdentityPort for DemoAuthed {
+    async fn follow_room(
+        &self,
+        room_id: &RoomId,
+        alerts_tx: mpsc::Sender<Vec<RoomAlert>>,
+    ) -> Result<()> {
+        if !data::room_is_encrypted(room_id) {
+            return Ok(());
+        }
+        identity::pause_room_alerts().await;
+        let mut revision = self.identity.subscribe();
+        let mut reported = None;
+        loop {
+            let alerts = self.identity.room_alerts(room_id);
+            if reported.as_ref() != Some(&alerts) {
+                if alerts_tx.send(alerts.clone()).await.is_err() {
+                    return Ok(());
+                }
+                reported = Some(alerts);
+            }
+            if revision.changed().await.is_err() {
+                return Ok(());
+            }
+        }
+    }
+
+    async fn follow_own(&self, own_tx: mpsc::Sender<OwnIdentity>) -> Result<()> {
+        identity::pause_own_identity().await;
+        let mut revision = self.identity.subscribe();
+        let mut reported = None;
+        loop {
+            let own = self.identity.own_identity();
+            if reported != Some(own) {
+                if own_tx.send(own).await.is_err() {
+                    return Ok(());
+                }
+                reported = Some(own);
+            }
+            if revision.changed().await.is_err() {
+                return Ok(());
+            }
+        }
+    }
+
+    async fn pin_identity(&self, user_id: &UserId) -> Result<()> {
+        identity::pause_action().await;
+        if identity::scenario().acks_fail {
+            return Err(unavailable("accepting a new identity"));
+        }
+        tracing::debug!(%user_id, "demo: accepting a new identity");
+        self.identity.accept(user_id).map_err(AppError::Other)
+    }
+
+    async fn withdraw_verification(&self, user_id: &UserId) -> Result<()> {
+        identity::pause_action().await;
+        if identity::scenario().acks_fail {
+            return Err(unavailable("withdrawing a verification"));
+        }
+        tracing::debug!(%user_id, "demo: withdrawing a verification");
+        self.identity.withdraw(user_id).map_err(AppError::Other)
+    }
+
+    async fn send_anyway(&self, room_id: &RoomId, user_id: &UserId) -> Result<()> {
+        identity::pause_action().await;
+        if identity::scenario().acks_fail {
+            return Err(unavailable("sending to unverified sessions"));
+        }
+        tracing::debug!(%room_id, %user_id, "demo: sending to unverified sessions anyway");
+        self.identity
+            .send_anyway(room_id, user_id)
+            .map_err(AppError::Other)?;
+        self.resend_held(room_id).await;
+        Ok(())
+    }
+
+    async fn acknowledge_own_reset(&self) -> Result<()> {
+        identity::pause_action().await;
+        if identity::scenario().acks_fail {
+            return Err(unavailable("acknowledging an identity reset"));
+        }
+        tracing::debug!("demo: acknowledging the reset of your identity");
+        self.identity.acknowledge_own_reset();
+        Ok(())
+    }
+}
+
+#[async_trait]
 impl SpaceOrderPort for DemoAuthed {
     async fn set_space_order(&self, space_id: &RoomId, order: &str) -> Result<()> {
         tracing::debug!(%space_id, order, "demo: ignoring space order write");
@@ -1580,11 +1711,22 @@ impl TimelinePort for DemoAuthed {
     }
 
     async fn resend(&self, room_id: &RoomId, local_id: &str) -> Result<()> {
-        self.patch_queued_send(room_id, local_id, true).await
+        match self.identity.send_hold(room_id) {
+            SendHold::Clear => self.patch_queued_send(room_id, local_id, true).await,
+            SendHold::VerificationLost | SendHold::UnverifiedSessions => {
+                tracing::debug!(%room_id, local_id, "demo: the retried send is held again");
+                self.identity.note_held_send(room_id);
+                Ok(())
+            }
+        }
     }
 
     async fn discard_send(&self, room_id: &RoomId, local_id: &str) -> Result<()> {
-        self.patch_queued_send(room_id, local_id, false).await
+        self.patch_queued_send(room_id, local_id, false).await?;
+        if self.failed_sends_in(room_id).is_empty() {
+            self.identity.release(room_id);
+        }
+        Ok(())
     }
 
     async fn delete_message(&self, room_id: &RoomId, event_id: &str) -> Result<()> {

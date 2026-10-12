@@ -64,6 +64,10 @@ export global Actions {
     callback kick-user(string);
     callback ban-user(string);
     callback unban-user(string);
+    callback accept-identity(string);
+    callback withdraw-verification(string);
+    callback send-anyway(string);
+    callback acknowledge-identity-reset();
 
     callback send-message(SendMessageRequest);
     callback edit-message(EditMessageRequest) -> bool;

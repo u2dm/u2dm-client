@@ -471,9 +471,11 @@ export component MessageBubble inherits VerticalLayout {
         }
 
         if root.send-failed: SendFailedRow {
-            x: message-row.bubble-x;
+            property <length> span: max(bubble.width, self.preferred-width);
+
+            x: root.is-own ? message-row.bubble-x + bubble.width - self.span : message-row.bubble-x;
             y: message-row.bubble-top + bubble.height + root.outside-chips-gap + parent.outside-chips-height;
-            width: bubble.width;
+            width: self.span;
             height: Metrics.reaction-chip;
             alignment: root.is-own ? end : start;
             local-id: root.msg.local-id;

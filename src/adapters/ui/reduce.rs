@@ -20,7 +20,7 @@ use super::emote;
 use super::fields::{MemberRowFields, MessageFields, SpaceChildFields, SpaceFields};
 use super::present::{
     VerifyStep, avatar_color_index, avatar_initials, duration_label, file_extension,
-    message_sent_at_label, name_initials, user_initial, verification_cancellation,
+    identity_banner, message_sent_at_label, name_initials, user_initial, verification_cancellation,
 };
 use super::props::{BoolProp, IntProp, StringProp, UiProps};
 use super::reconcile::{
@@ -37,10 +37,10 @@ use crate::commands::effects::{Effect, VerificationActivity, VerificationUpdate}
 use crate::commands::messages::{UserMessage, UserMessageKind};
 use crate::commands::ui::Draft;
 use crate::commands::view::{
-    AppViewState, AttachmentView, AudioView, CardStatus, CopiedLink, DirectoryView, LifecycleView,
-    MentionsView, NowPlaying, PackView, PaginationView, PinnedView, ReadersView, RoomCard,
-    RoomInfoView, RoomLogView, RoomMenuTarget, SourceState, SpaceIndexView, Toast, TrackFile,
-    UnsentMessage, UserCard, UserInfoView, VideoView,
+    AppViewState, AttachmentView, AudioView, CardStatus, CopiedLink, DirectoryView,
+    IdentityAlertView, LifecycleView, MentionsView, NowPlaying, PackView, PaginationView,
+    PinnedView, ReadersView, RoomCard, RoomInfoView, RoomLogView, RoomMenuTarget, SourceState,
+    SpaceIndexView, Toast, TrackFile, UnsentMessage, UserCard, UserInfoView, VideoView,
 };
 use crate::domain::message::{
     EditKind, MessageEdit, MessagePermissions, MessagePreviewKind, RichText, TimelineMessage,
@@ -50,7 +50,7 @@ use crate::domain::room::{Room, RoomId};
 use crate::domain::room_info::RoomAbout;
 use crate::domain::room_log::RoomLog;
 use crate::domain::timeline::{OlderHistory, SourceEncryption, TimelinePatch, TimelineStatus};
-use crate::domain::user_info::{IdentityTrust, Moderation};
+use crate::domain::user_info::Moderation;
 use crate::domain::verification::VerificationEvent as DomainVerificationEvent;
 use crate::ports::media::MediaCache;
 use crate::util::format_bytes;
@@ -364,6 +364,7 @@ fn apply_snapshot<B: UiBackend>(
         video,
         audio,
         unsent,
+        identity_alert,
         toast,
         message_link,
         room_link,
@@ -414,6 +415,9 @@ fn apply_snapshot<B: UiBackend>(
     }
     if last.is_none_or(|l| l.unsent != *unsent) {
         apply_unsent(w, unsent.as_ref());
+    }
+    if last.is_none_or(|l| l.identity_alert != *identity_alert) {
+        apply_identity_alert(w, identity_alert);
     }
     if last.is_none_or(|l| l.toast != *toast) {
         apply_toast(w, toast);
@@ -1021,10 +1025,7 @@ fn apply_user_card(w: &impl UiProps, card: Option<&UserCard>, media: &dyn MediaC
     w.set_string(StringProp::UserInfoLink, SharedString::from(&profile.link));
     w.set_user_info_role(profile.role);
     w.set_user_info_membership(profile.membership);
-    w.set_bool(
-        BoolProp::UserInfoVerified,
-        profile.trust == IdentityTrust::Verified,
-    );
+    w.set_user_info_identity(profile.trust);
     w.set_bool(BoolProp::UserInfoIsSelf, profile.is_self);
     w.set_bool(BoolProp::UserInfoIgnored, profile.ignored);
     w.set_bool(BoolProp::UserInfoMayKick, profile.offers(Moderation::Kick));
@@ -1433,6 +1434,20 @@ fn apply_unsent(w: &impl UiProps, unsent: Option<&UnsentMessage>) {
         SharedString::from(reply.map_or("", |reply| reply.preview.as_str())),
     );
     apply_unsent_edit(w, edit);
+}
+
+fn apply_identity_alert(w: &impl UiProps, view: &IdentityAlertView) {
+    let banner = identity_banner(view.alert.as_ref());
+    w.set_identity_alert_kind(banner.kind);
+    w.set_string(
+        StringProp::IdentityAlertUserId,
+        SharedString::from(banner.user_id),
+    );
+    w.set_string(
+        StringProp::IdentityAlertName,
+        SharedString::from(banner.name),
+    );
+    w.set_bool(BoolProp::IdentityAlertBusy, view.busy);
 }
 
 fn apply_unsent_edit(w: &impl UiProps, edit: Option<&MessageEdit>) {

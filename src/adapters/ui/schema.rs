@@ -49,6 +49,8 @@ macro_rules! string_props {
         UnsentEditEventId UnsentView "UnsentView" "edit-event-id" set_edit_event_id get_edit_event_id;
         UnsentEditLocalId UnsentView "UnsentView" "edit-local-id" set_edit_local_id get_edit_local_id;
         UnsentEditPreview UnsentView "UnsentView" "edit-preview" set_edit_preview get_edit_preview;
+        IdentityAlertUserId IdentityAlertView "IdentityAlertView" "user-id" set_user_id get_user_id;
+        IdentityAlertName IdentityAlertView "IdentityAlertView" "name" set_name get_name;
         SpaceIndexName SpaceIndexView "SpaceIndexView" "space-name" set_space_name get_space_name;
         RoomInfoRoomId RoomInfoView "RoomInfoView" "room-id" set_room_id get_room_id;
         RoomInfoName RoomInfoView "RoomInfoView" "name" set_name get_name;
@@ -137,6 +139,11 @@ macro_rules! simple_callbacks {
         on_kick_user "kick-user" kick_user user KickUser;
         on_ban_user "ban-user" ban_user user BanUser;
         on_unban_user "unban-user" unban_user user UnbanUser;
+        on_accept_identity "accept-identity" accept_identity user AcceptIdentity;
+        on_withdraw_verification "withdraw-verification" withdraw_verification user WithdrawVerification;
+        on_send_anyway "send-anyway" send_anyway user SendAnyway;
+        on_acknowledge_identity_reset "acknowledge-identity-reset" acknowledge_identity_reset plain
+            AcknowledgeIdentityReset;
         on_paginate_backwards "paginate-backwards" paginate_backwards room_key PaginateBackwards;
         on_paginate_forwards "paginate-forwards" paginate_forwards room_key PaginateForwards;
         on_jump_to_latest "jump-to-latest" jump_to_latest room_key JumpToLatest;
@@ -225,6 +232,7 @@ macro_rules! bool_props {
         UnsentVisible UnsentView "UnsentView" "visible" set_visible get_visible;
         UnsentIsEdit UnsentView "UnsentView" "is-edit" set_is_edit get_is_edit;
         UnsentEditCaption UnsentView "UnsentView" "edit-caption" set_edit_caption get_edit_caption;
+        IdentityAlertBusy IdentityAlertView "IdentityAlertView" "busy" set_busy get_busy;
         WindowFocused WindowView "WindowView" "focused" set_focused get_focused;
         ReplySwipeArmed ReplySwipe "ReplySwipe" "armed" set_armed get_armed;
         RoomInfoIsDirect RoomInfoView "RoomInfoView" "is-direct" set_is_direct get_is_direct;
@@ -236,7 +244,6 @@ macro_rules! bool_props {
         RoomMenuNotifyBusy RoomMenuView "RoomMenuView" "notify-busy" set_notify_busy get_notify_busy;
         RoomMenuLeaving RoomMenuView "RoomMenuView" "leaving" set_leaving get_leaving;
         UserInfoVisible UserInfoView "UserInfoView" "visible" set_visible get_visible;
-        UserInfoVerified UserInfoView "UserInfoView" "verified" set_verified get_verified;
         UserInfoIsSelf UserInfoView "UserInfoView" "is-self" set_is_self get_is_self;
         UserInfoReadFailed UserInfoView "UserInfoView" "read-failed" set_read_failed get_read_failed;
         UserInfoRetrying UserInfoView "UserInfoView" "retrying" set_retrying get_retrying;
@@ -343,6 +350,10 @@ macro_rules! enum_props {
             UserInfoView "UserInfoView" "direct" set_direct get_direct;
         UserInfoModerating set_user_info_moderating(PendingModeration)
             UserInfoView "UserInfoView" "moderating" set_moderating get_moderating;
+        UserInfoIdentity set_user_info_identity(IdentityTrust)
+            UserInfoView "UserInfoView" "identity" set_identity get_identity;
+        IdentityAlertKind set_identity_alert_kind(IdentityAlertKind)
+            IdentityAlertView "IdentityAlertView" "kind" set_kind get_kind;
         SourceStatus set_source_status(&SourceState)
             SourceView "SourceView" "status" set_status get_status;
         SourceEncryption set_source_encryption(&SourceEncryption)
@@ -527,6 +538,10 @@ macro_rules! user_message_kinds {
         KickFailed                KickFailed              "kick-failed";
         BanFailed                 BanFailed               "ban-failed";
         UnbanFailed               UnbanFailed             "unban-failed";
+        IdentityAcceptFailed      IdentityAcceptFailed    "identity-accept-failed";
+        VerificationWithdrawFailed VerificationWithdrawFailed "verification-withdraw-failed";
+        SendAnywayFailed          SendAnywayFailed        "send-anyway-failed";
+        IdentityResetAcknowledgeFailed IdentityResetAcknowledgeFailed "identity-reset-acknowledge-failed";
         MediaDownloadFailed       MediaDownloadFailed     "media-download-failed";
         FileDownloadFailed        FileDownloadFailed      "file-download-failed";
         MediaOpenFailed           MediaOpenFailed         "media-open-failed";
@@ -746,6 +761,27 @@ macro_rules! direct_chats {
     } };
 }
 pub(crate) use direct_chats;
+
+macro_rules! identity_trusts {
+    ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
+        Unverified       Unverified       "unverified";
+        Verified         Verified         "verified";
+        NoLongerVerified NoLongerVerified "no-longer-verified";
+    } };
+}
+pub(crate) use identity_trusts;
+
+macro_rules! identity_alert_kinds {
+    ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
+        None                  None                  "none";
+        OwnIdentityReset      OwnIdentityReset      "own-identity-reset";
+        NoLongerVerified      NoLongerVerified      "no-longer-verified";
+        OwnUnverifiedSessions OwnUnverifiedSessions "own-unverified-sessions";
+        UnverifiedSessions    UnverifiedSessions    "unverified-sessions";
+        IdentityReset         IdentityReset         "identity-reset";
+    } };
+}
+pub(crate) use identity_alert_kinds;
 
 macro_rules! pending_moderations {
     ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*

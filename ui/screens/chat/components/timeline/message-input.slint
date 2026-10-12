@@ -6,6 +6,7 @@ import { ComposerField } from "./composer-field.slint";
 import { EmotePopup } from "./emote-popup.slint";
 import { MentionPopup } from "./mention-popup.slint";
 import { EditBar, ReplyBar } from "./reply-bar.slint";
+import { IdentityBanner } from "./identity-banner.slint";
 import { ReplyQuote } from "./reply-quote.slint";
 import { AppStyle, Metrics, Space } from "../../../../theme.slint";
 import { LinkButton } from "../../../../components/button.slint";
@@ -13,7 +14,8 @@ import { ModalHost } from "../../../../components/overlay.slint";
 import { Interaction } from "../../../../components/a11y.slint";
 import { Actions } from "../../../../actions.slint";
 import { Composer, EditedMessage, Polls, Reactions, ReplyDraft, Shell } from "../../../../local.slint";
-import { RoomView, UnsentView } from "../../../../views.slint";
+import { IdentityAlertView, RoomView, UnsentView } from "../../../../views.slint";
+import { IdentityAlertKind } from "../../../../enums.slint";
 
 component UnsentBanner inherits Rectangle {
     callback restore-clicked();
@@ -387,6 +389,8 @@ export component MessageInput inherits Rectangle {
             }
             return EventResult.reject;
         }
+
+        if IdentityAlertView.kind != IdentityAlertKind.none: IdentityBanner { }
 
         if root.has-unsent: UnsentBanner {
             restore-clicked => {

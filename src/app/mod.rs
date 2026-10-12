@@ -6,6 +6,7 @@ mod credentials;
 mod establish;
 mod event;
 mod event_source;
+mod identity_alerts;
 pub mod input;
 mod lifecycle;
 mod link_requests;
@@ -39,10 +40,11 @@ use attachments::Attachments;
 use audio::AudioController;
 use establish::{EstablishedSession, Rollback};
 use event::{
-    AppEvent, EndReason, MentionsEvent, MessageActionEvent, PacksEvent, ReadersEvent,
-    RoomActionEvent, SessionEvent, TimelineEvent, UserInfoEvent,
+    AppEvent, EndReason, IdentityEvent, MentionsEvent, MessageActionEvent, PacksEvent,
+    ReadersEvent, RoomActionEvent, SessionEvent, TimelineEvent, UserInfoEvent,
 };
 use event_source::EventSourceViewer;
+use identity_alerts::{IdentityAlerts, Resolution};
 use input::{CommandSender, EventSender, Inbox, Input};
 use lifecycle::{Lifecycle, Settled};
 use media::MediaActions;
@@ -182,6 +184,7 @@ pub struct AppService {
     active_timeline: ActiveTimeline,
     pinned: PinnedMessages,
     verification: VerificationController,
+    identity_alerts: IdentityAlerts,
     media: MediaActions,
     audio: AudioController,
     video: VideoController,
@@ -228,6 +231,7 @@ impl AppService {
             active_timeline: ActiveTimeline::new(events.clone(), Arc::clone(&output)),
             pinned: PinnedMessages::new(Arc::clone(&output), events.clone()),
             verification: VerificationController::new(Arc::clone(&output), events.clone()),
+            identity_alerts: IdentityAlerts::new(Arc::clone(&output), events.clone()),
             media: MediaActions::new(Arc::clone(&media_files), Arc::clone(&output)),
             audio: AudioController::new(Arc::clone(&output), events.clone()),
             video: VideoController::new(Arc::clone(&output), events.clone()),
@@ -500,6 +504,18 @@ impl AppService {
             }
             UiCommand::UnbanUser(user_id) => {
                 self.moderate(&user_id, Moderation::Unban);
+            }
+            UiCommand::AcceptIdentity(user_id) => {
+                self.resolve_identity_alert(Resolution::Accept(user_id));
+            }
+            UiCommand::WithdrawVerification(user_id) => {
+                self.resolve_identity_alert(Resolution::Withdraw(user_id));
+            }
+            UiCommand::SendAnyway(user_id) => {
+                self.resolve_identity_alert(Resolution::SendAnyway(user_id));
+            }
+            UiCommand::AcknowledgeIdentityReset => {
+                self.resolve_identity_alert(Resolution::AcknowledgeOwnReset);
             }
             UiCommand::RetryTimeline => {
                 self.retry_timeline().await;
@@ -1126,6 +1142,38 @@ impl AppService {
         }
     }
 
+    fn handle_identity(&mut self, event: IdentityEvent) {
+        match event {
+            IdentityEvent::RoomAlerts { watch, alerts } => {
+                self.identity_alerts.room_alerts_changed(watch, alerts);
+            }
+            IdentityEvent::OwnIdentity { session, own } => {
+                if self.lifecycle.runs(session) {
+                    self.identity_alerts.own_identity_changed(own);
+                } else {
+                    tracing::debug!("own identity for a session that no longer runs, dropping");
+                }
+            }
+            IdentityEvent::Settled { request, failure } => {
+                if self.held_session.running().is_some() {
+                    self.identity_alerts.settled(request, failure);
+                }
+            }
+        }
+    }
+
+    fn resolve_identity_alert(&mut self, resolution: Resolution) {
+        if let Some(port) = self.port(|a| &a.identity) {
+            self.identity_alerts.resolve(port, resolution);
+        }
+    }
+
+    fn follow_identity_alerts(&mut self, room_id: RoomId) {
+        if let Some(port) = self.port(|a| &a.identity) {
+            self.identity_alerts.follow(port, room_id);
+        }
+    }
+
     fn handle_readers(&mut self, event: ReadersEvent) {
         match event {
             ReadersEvent::Named { request, readers } => {
@@ -1257,6 +1305,7 @@ impl AppService {
             AppEvent::Readers(event) => self.handle_readers(event),
             AppEvent::Mentions(event) => self.handle_mentions(event),
             AppEvent::Packs(event) => self.handle_packs(event),
+            AppEvent::Identity(event) => self.handle_identity(event),
             AppEvent::RoomLogGrew => self.room_log.reread(),
         }
     }
@@ -1859,6 +1908,7 @@ impl AppService {
         self.mentions.reset();
         self.sync_selected_room(Some(&room_id));
         self.follow_pinned(room_id.clone());
+        self.follow_identity_alerts(room_id.clone());
         self.open_room(room_id, TimelineFocus::ReadPosition).await;
     }
 
@@ -1948,6 +1998,14 @@ impl AppService {
         if self.last_selected_room.as_ref() == Some(&next) {
             return;
         }
+        let became_encrypted = next.meta.encrypted
+            && self
+                .last_selected_room
+                .as_ref()
+                .is_some_and(|last| last.id == next.id && !last.meta.encrypted);
+        if became_encrypted {
+            self.follow_identity_alerts(next.id.clone());
+        }
         self.emit_selected_room(next).await;
     }
 
@@ -1971,17 +2029,21 @@ impl AppService {
         self.packs.clear_room();
         self.sync_selected_room(None);
         self.pinned.clear();
+        self.identity_alerts.clear();
         self.active_timeline.clear_room(generation).await;
     }
 
     async fn start_syncing(&mut self, session: u64) {
-        let Some((sync, verification, lifecycle_port)) = self.held_session.running().map(|a| {
-            (
-                Arc::clone(&a.sync),
-                Arc::clone(&a.verification),
-                Arc::clone(&a.lifecycle),
-            )
-        }) else {
+        let Some((sync, verification, identity, lifecycle_port)) =
+            self.held_session.running().map(|a| {
+                (
+                    Arc::clone(&a.sync),
+                    Arc::clone(&a.verification),
+                    Arc::clone(&a.identity),
+                    Arc::clone(&a.lifecycle),
+                )
+            })
+        else {
             tracing::debug!("no authenticated session to sync, ignoring");
             return;
         };
@@ -1997,6 +2059,8 @@ impl AppService {
         );
         self.verification
             .spawn_listener(&mut self.background, verification, session);
+        self.identity_alerts
+            .spawn_own_listener(&mut self.background, identity, session);
         self.set_connection(ConnectionStatus::Connecting);
         RoomDirectory::spawn_sync_pipeline(
             &mut self.background,
@@ -2014,6 +2078,7 @@ impl AppService {
             self.background.shutdown(),
             self.active_timeline.shutdown(),
             self.pinned.restart(),
+            self.identity_alerts.restart(),
             self.operations.restart(),
             self.send_lanes.restart(),
             self.media.cancel_and_drain(),
@@ -2108,6 +2173,7 @@ impl AppService {
             self.background.shutdown(),
             self.active_timeline.shutdown(),
             self.pinned.shutdown(),
+            self.identity_alerts.shutdown(),
             self.operations.shutdown(),
             self.send_lanes.shutdown(),
             self.media.drain(),

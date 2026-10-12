@@ -8,6 +8,7 @@ use tokio_util::sync::CancellationToken;
 use crate::domain::account::AccountScope;
 use crate::domain::auth::{LoginCredentials, OAuthLoginData, ServerInfo, Session};
 use crate::domain::emote::Emote;
+use crate::domain::identity::{OwnIdentity, RoomAlert};
 use crate::domain::image_pack::{ImagePack, PackId};
 use crate::domain::media::{MediaRendition, OutgoingAttachment, WaveformNeed};
 use crate::domain::message::{MessageEdit, PinChange, PinnedMessage};
@@ -124,6 +125,7 @@ pub struct AuthenticatedSession {
     pub pinned: Arc<dyn PinnedPort>,
     pub media: Arc<dyn MediaPort>,
     pub verification: Arc<dyn VerificationPort>,
+    pub identity: Arc<dyn IdentityPort>,
     pub space_order: Arc<dyn SpaceOrderPort>,
     pub space_index: Arc<dyn SpaceIndexPort>,
     pub room_info: Arc<dyn RoomInfoPort>,
@@ -307,6 +309,20 @@ pub trait VerificationPort: Send + Sync {
     async fn confirm_verification(&self) -> Result<()>;
     async fn reject_verification(&self) -> Result<()>;
     async fn cancel_verification(&self) -> Result<()>;
+}
+
+#[async_trait]
+pub trait IdentityPort: Send + Sync {
+    async fn follow_room(
+        &self,
+        room_id: &RoomId,
+        alerts_tx: mpsc::Sender<Vec<RoomAlert>>,
+    ) -> Result<()>;
+    async fn follow_own(&self, own_tx: mpsc::Sender<OwnIdentity>) -> Result<()>;
+    async fn pin_identity(&self, user_id: &UserId) -> Result<()>;
+    async fn withdraw_verification(&self, user_id: &UserId) -> Result<()>;
+    async fn send_anyway(&self, room_id: &RoomId, user_id: &UserId) -> Result<()>;
+    async fn acknowledge_own_reset(&self) -> Result<()>;
 }
 
 #[async_trait]

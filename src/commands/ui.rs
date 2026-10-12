@@ -89,6 +89,13 @@ pub enum UiCommand {
     BanUser(UserId),
     #[strum(to_string = "UnbanUser({0})")]
     UnbanUser(UserId),
+    #[strum(to_string = "AcceptIdentity({0})")]
+    AcceptIdentity(UserId),
+    #[strum(to_string = "WithdrawVerification({0})")]
+    WithdrawVerification(UserId),
+    #[strum(to_string = "SendAnyway({0})")]
+    SendAnyway(UserId),
+    AcknowledgeIdentityReset,
     #[strum(to_string = "SendMessage({room_id})")]
     SendMessage {
         room_id: RoomId,
@@ -267,6 +274,7 @@ pub enum UiCommand {
 }
 
 impl UiCommand {
+    #[allow(clippy::too_many_lines)]
     pub fn room_id(&self) -> Option<&RoomId> {
         match self {
             Self::SelectRoom(room_id)
@@ -323,6 +331,10 @@ impl UiCommand {
             | Self::KickUser(_)
             | Self::BanUser(_)
             | Self::UnbanUser(_)
+            | Self::AcceptIdentity(_)
+            | Self::WithdrawVerification(_)
+            | Self::SendAnyway(_)
+            | Self::AcknowledgeIdentityReset
             | Self::SuggestMentions { .. }
             | Self::EndMentions
             | Self::DismissUnsent { .. }
