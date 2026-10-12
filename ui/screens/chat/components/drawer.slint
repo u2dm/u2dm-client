@@ -74,7 +74,7 @@ export component Drawer inherits Rectangle {
         if status == ConnectionState.connecting {
             return AppStyle.status-pending;
         }
-        if status == ConnectionState.error {
+        if status == ConnectionState.error || status == ConnectionState.sliding-sync-unsupported {
             return AppStyle.status-error;
         }
         return Palette.border;
@@ -89,6 +89,9 @@ export component Drawer inherits Rectangle {
         }
         if status == ConnectionState.error {
             return @tr("Connection error");
+        }
+        if status == ConnectionState.sliding-sync-unsupported {
+            return @tr("Homeserver lacks sliding sync");
         }
         return @tr("Offline");
     }

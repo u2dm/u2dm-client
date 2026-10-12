@@ -477,6 +477,7 @@ macro_rules! connection_states {
         Connecting   Connecting   "connecting";
         Connected    Connected    "connected";
         Error(_)     Error        "error";
+        SlidingSyncUnsupported SlidingSyncUnsupported "sliding-sync-unsupported";
     } };
 }
 pub(crate) use connection_states;
@@ -520,6 +521,7 @@ macro_rules! user_message_kinds {
     ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
         None                      None                    "none";
         ServerUnreachable         ServerUnreachable       "server-unreachable";
+        SlidingSyncUnsupported    SlidingSyncUnsupported  "sliding-sync-unsupported";
         UnsupportedLoginMethod    UnsupportedLoginMethod  "unsupported-login-method";
         LoginFailed               LoginFailed             "login-failed";
         InvalidCredentials        InvalidCredentials      "invalid-credentials";

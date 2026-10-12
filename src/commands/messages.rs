@@ -27,6 +27,7 @@ pub enum UserMessageKind {
     #[default]
     None,
     ServerUnreachable,
+    SlidingSyncUnsupported,
     UnsupportedLoginMethod,
     LoginFailed,
     InvalidCredentials,

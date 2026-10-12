@@ -18,7 +18,7 @@ use url::Url;
 use super::identity::{self, IdentityBook, SendHold};
 use super::{
     attachments, audio, data, invites, login, logout, media, message_menu, pinned, polls,
-    reactions, receipts, room_info, source, space_index, stickers, timeline, user_info,
+    reactions, receipts, room_info, source, space_index, stickers, sync, timeline, user_info,
     verification, videos,
 };
 use crate::adapters::{body_emoji, video};
@@ -38,7 +38,7 @@ use crate::domain::poll::{PollAction, PollDraft};
 use crate::domain::room::{NotifyMode, Room, RoomId, Space};
 use crate::domain::room_info::{Reader, RoomAbout, RosterMember};
 use crate::domain::space_index::HierarchyPage;
-use crate::domain::sync::{SyncEvent, SyncOutcome};
+use crate::domain::sync::{SyncEvent, SyncOutcome, SyncSupport};
 use crate::domain::timeline::{
     Arrivals, AudioLookup, AudioTrack, EventSource, JumpTarget, MessageReaders,
     PaginationDirection, PaginationOutcome, TimelineCommand, TimelineFocus, TimelinePatch,
@@ -72,6 +72,7 @@ impl AuthPort for DemoMatrix {
             auth_methods,
             unsupported_flows,
             homeserver_url: format!("https://{homeserver}"),
+            sync: sync::support(),
         })
     }
 
@@ -1175,10 +1176,13 @@ impl SyncPort for DemoAuthed {
         }
         self.hold_back_late_invites();
         let lists = current_lists(&self.lists);
-        on_sync(SyncEvent::Connected);
         on_sync(SyncEvent::Rooms(lists.rooms().into()));
         on_sync(SyncEvent::Invites(lists.invites().into()));
         on_sync(SyncEvent::Spaces(lists.spaces().into()));
+        if sync::support() == SyncSupport::ClassicOnly {
+            return sync::refuse_forever(&on_sync, &cancel).await;
+        }
+        on_sync(SyncEvent::Connected);
         self.spawn_invite_changes();
         if !timeline::scenario().room_list_keeps_updating {
             cancel.cancelled().await;

@@ -305,6 +305,11 @@ const SCENARIO_SOURCES: &[ScenarioSource] = &[
         ignored: &[],
     },
     ScenarioSource {
+        file: "src/adapters/demo/sync.rs",
+        arms_between: ("fn apply(scenario: &mut Scenario, flag: &str) {", "\n}"),
+        ignored: &[],
+    },
+    ScenarioSource {
         file: "src/adapters/demo/attachments.rs",
         arms_between: ("fn apply(scenario: &mut Scenario, flag: &str) {", "\n}"),
         ignored: &["pick=<path>"],

@@ -4,6 +4,7 @@ use std::time::Duration;
 use matrix_sdk::authentication::oauth::OAuthError;
 use matrix_sdk::authentication::oauth::error::{BasicErrorResponseType, RequestTokenError};
 use matrix_sdk::ruma::api::error::ErrorKind;
+use matrix_sdk::ruma::exports::http::StatusCode;
 use matrix_sdk::{HttpError, RefreshTokenError};
 use matrix_sdk_ui::encryption_sync_service::Error as EncryptionSyncError;
 use matrix_sdk_ui::room_list_service::Error as RoomListError;
@@ -70,6 +71,18 @@ pub(super) fn session_loss(err: &SyncServiceError) -> Option<SessionLoss> {
     }
 }
 
+pub(super) fn endpoint_missing(err: &SyncServiceError) -> bool {
+    let Some(matrix_sdk::Error::Http(http)) = extract_sdk_error(err) else {
+        return false;
+    };
+    http.as_client_api_error().is_some_and(|refusal| {
+        matches!(
+            refusal.status_code,
+            StatusCode::NOT_FOUND | StatusCode::METHOD_NOT_ALLOWED
+        ) || matches!(refusal.error_kind(), Some(ErrorKind::Unrecognized))
+    })
+}
+
 pub(super) struct SyncHealth {
     connected: bool,
     needs_resync: bool,
@@ -81,7 +94,7 @@ pub(super) struct SyncHealth {
 impl SyncHealth {
     pub(super) fn started() -> Self {
         Self {
-            connected: true,
+            connected: false,
             needs_resync: false,
             backoff: SYNC_RESTART_BACKOFF_START,
             restart_at: None,
@@ -99,7 +112,7 @@ impl SyncHealth {
         mem::take(&mut self.needs_resync)
     }
 
-    pub(super) fn should_announce_connected(&mut self) -> bool {
+    pub(super) fn on_response(&mut self) -> bool {
         !mem::replace(&mut self.connected, true)
     }
 

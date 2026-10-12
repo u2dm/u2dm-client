@@ -28,6 +28,7 @@ export enum ConnectionState {
     connecting,
     connected,
     error,
+    sliding-sync-unsupported,
 }
 
 export enum TimelineState {
@@ -59,6 +60,7 @@ export enum VerificationActivity {
 export enum UserMessageKind {
     none,
     server-unreachable,
+    sliding-sync-unsupported,
     unsupported-login-method,
     login-failed,
     invalid-credentials,

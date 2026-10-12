@@ -9,6 +9,7 @@ mod send_queue;
 
 use std::future;
 use std::sync::Arc;
+use std::time::Duration;
 
 use async_trait::async_trait;
 use matrix_sdk::Client;
@@ -18,7 +19,8 @@ use matrix_sdk::ruma::{OwnedRoomId, SpaceChildOrder};
 use matrix_sdk::send_queue::SendQueueRoomError;
 use matrix_sdk::sync::RoomUpdates;
 use matrix_sdk_base::RoomInfoNotableUpdate;
-use matrix_sdk_ui::sync_service::{State as SyncState, SyncService};
+use matrix_sdk_ui::room_list_service::State as RoomListState;
+use matrix_sdk_ui::sync_service::{Error as SyncServiceError, State as SyncState, SyncService};
 use tokio::sync::broadcast::Receiver;
 use tokio::sync::broadcast::error::RecvError;
 use tokio::sync::watch;
@@ -27,15 +29,16 @@ use tokio_util::sync::CancellationToken;
 
 use self::avatars::AvatarFetcher;
 use self::directory::Directory;
-use self::health::{SyncHealth, session_loss};
+use self::health::{SyncHealth, endpoint_missing, session_loss};
 pub(super) use self::hierarchy::MatrixSpaceIndex;
 pub(super) use self::info::MatrixRoomInfo;
 pub(super) use self::invites::MatrixInvites;
 use self::send_queue::SendQueueRecovery;
+use super::auth;
 use super::media::MediaService;
 use super::session::ClientHandle;
 use crate::domain::room::RoomId;
-use crate::domain::sync::{SyncEvent, SyncOutcome};
+use crate::domain::sync::{SyncEvent, SyncOutcome, SyncSupport};
 use crate::error::{AppError, Result as AppResult};
 use crate::ports::matrix::{SpaceOrderPort, SyncPort, SyncSink as OnSync};
 
@@ -148,48 +151,105 @@ async fn handle_room_info_update(
     }
 }
 
-#[allow(clippy::cognitive_complexity)]
+async fn lacks_sliding_sync(client: &Client, err: &SyncServiceError) -> bool {
+    if !endpoint_missing(err) {
+        return false;
+    }
+    match auth::sync_support(client).await {
+        Ok(support) => support == SyncSupport::ClassicOnly,
+        Err(e) => {
+            tracing::debug!("could not ask the homeserver whether it offers sliding sync: {e}");
+            false
+        }
+    }
+}
+
+async fn report_sync_error(
+    client: &Client,
+    err: &SyncServiceError,
+    delay: Duration,
+    on_sync: &OnSync,
+) {
+    let msg = err.to_string();
+    if lacks_sliding_sync(client, err).await {
+        tracing::warn!(
+            "the homeserver does not offer sliding sync, restarting in {delay:?}: {msg}"
+        );
+        on_sync(SyncEvent::SlidingSyncUnsupported);
+    } else {
+        tracing::warn!("sliding sync error, restarting in {delay:?}: {msg}");
+        on_sync(SyncEvent::ConnectionError(msg));
+    }
+}
+
+async fn handle_sync_error(
+    client: &Client,
+    err: &SyncServiceError,
+    health: &mut SyncHealth,
+    on_sync: &OnSync,
+) -> LoopAction {
+    if let Some(loss) = session_loss(err) {
+        tracing::warn!(?loss, "sliding sync error: {err}");
+        return LoopAction::Terminal(SyncOutcome::SessionLost(loss));
+    }
+    let delay = health.on_error();
+    report_sync_error(client, err, delay, on_sync).await;
+    LoopAction::Continue
+}
+
 async fn handle_sync_state(
     client: &Client,
-    state: SyncState,
+    state: Option<SyncState>,
     dir: &mut Directory,
     health: &mut SyncHealth,
     sends: &mut SendQueueRecovery,
     on_sync: &OnSync,
 ) -> LoopAction {
     match state {
-        SyncState::Running => {
+        Some(SyncState::Running) => {
             if health.on_running() {
-                tracing::info!("sliding sync reconnected");
+                tracing::info!("sliding sync restarted");
                 resync(client, dir).await;
                 sends.resume(client).await;
             }
-            if health.should_announce_connected() {
-                on_sync(SyncEvent::Connected);
-            }
             LoopAction::Continue
         }
-        SyncState::Error(err) => {
-            let msg = err.to_string();
-            if let Some(loss) = session_loss(&err) {
-                tracing::warn!(?loss, "sliding sync error: {msg}");
-                return LoopAction::Terminal(SyncOutcome::SessionLost(loss));
-            }
-            let delay = health.on_error();
-            tracing::warn!("sliding sync error, restarting in {delay:?}: {msg}");
-            on_sync(SyncEvent::ConnectionError(msg));
-            LoopAction::Continue
-        }
-        SyncState::Terminated => {
+        Some(SyncState::Error(err)) => handle_sync_error(client, &err, health, on_sync).await,
+        Some(SyncState::Terminated) => {
             tracing::info!("sliding sync terminated");
             LoopAction::Terminal(SyncOutcome::Recoverable("sliding sync terminated".into()))
         }
-        SyncState::Offline => {
+        Some(SyncState::Offline) => {
             health.on_offline();
             LoopAction::Continue
         }
-        SyncState::Idle => LoopAction::Continue,
+        Some(SyncState::Idle) => LoopAction::Continue,
+        None => LoopAction::Terminal(SyncOutcome::Recoverable("sync state stream ended".into())),
     }
+}
+
+fn set_by_a_response(state: &RoomListState) -> bool {
+    matches!(
+        state,
+        RoomListState::SettingUp | RoomListState::Running | RoomListState::Recovering
+    )
+}
+
+fn handle_room_list_state(
+    state: Option<RoomListState>,
+    health: &mut SyncHealth,
+    on_sync: &OnSync,
+) -> LoopAction {
+    let Some(state) = state else {
+        return LoopAction::Terminal(SyncOutcome::Recoverable(
+            "room list state stream ended".into(),
+        ));
+    };
+    if set_by_a_response(&state) && health.on_response() {
+        tracing::info!("the homeserver answered sliding sync");
+        on_sync(SyncEvent::Connected);
+    }
+    LoopAction::Continue
 }
 
 fn handle_push_rules_change(changed: &Result<(), RecvError>, dir: &mut Directory) -> LoopAction {
@@ -249,12 +309,13 @@ async fn run_sync_loop(
     let mut dir = Directory::new(notifications);
     let mut health = SyncHealth::started();
     let mut state_stream = sync_service.state();
+    let mut room_list_states = sync_service.room_list_service().state();
+    room_list_states.reset();
     let mut room_info_rx = client.room_info_notable_update_receiver();
     let mut sends = SendQueueRecovery::start(client).await;
 
     resync(client, &mut dir).await;
     dir.flush(client, on_sync, avatars).await;
-    on_sync(SyncEvent::Connected);
 
     loop {
         let flush_fut = wait_until(dir.flush_at());
@@ -263,12 +324,10 @@ async fn run_sync_loop(
         let resume_fut = wait_until(sends.resume_at());
         let action = tokio::select! {
             biased;
-            state = state_stream.next() => match state {
-                Some(state) => {
-                    handle_sync_state(client, state, &mut dir, &mut health, &mut sends, on_sync).await
-                }
-                None => LoopAction::Terminal(SyncOutcome::Recoverable("sync state stream ended".into())),
-            },
+            state = state_stream.next() => {
+                handle_sync_state(client, state, &mut dir, &mut health, &mut sends, on_sync).await
+            }
+            state = room_list_states.next() => handle_room_list_state(state, &mut health, on_sync),
             () = restart_fut => restart_sync(sync_service, &mut health).await,
             () = resume_fut => {
                 sends.resume(client).await;

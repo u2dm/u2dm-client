@@ -22,6 +22,8 @@ scenario_env() {
     login-oauth)     echo 'U2DM_DEMO_LOGIN=oauth-ok' ;;
     logout-left-behind) echo 'U2DM_DEMO_LOGOUT=slow,fails' ;;
     identity-diverged) echo 'U2DM_DEMO_LOGIN=diverged U2DM_DEMO_LOGOUT=fails' ;;
+    login-no-sliding-sync) echo 'U2DM_DEMO_LOGIN=password U2DM_DEMO_SYNC=no-sliding-sync' ;;
+    sync-unsupported) echo 'U2DM_DEMO_SYNC=no-sliding-sync' ;;
     verify-self)     echo 'U2DM_DEMO_VERIFY=self' ;;
     audio-track)     echo 'U2DM_DEMO_AUDIO=silent,slow' ;;
     voice-notes)     echo 'U2DM_DEMO_AUDIO=silent' ;;
@@ -390,6 +392,12 @@ scenario_steps() {
       echo 'sleep 2'
       echo '{"op":"logout"}'
       echo 'sleep 5' ;;
+    login-no-sliding-sync)
+      echo '{"op":"check_server","homeserver":"demo.local"}'
+      echo 'sleep 2' ;;
+    sync-unsupported)
+      echo 'sleep 2'
+      echo '{"op":"dismiss_toast"}' ;;
     login-oauth|verify-self|identity-diverged)
       : ;;
   esac
@@ -409,6 +417,8 @@ scenario_note() {
     login-oauth)     echo 'starts logged out on an OAuth flow that succeeds slowly' ;;
     logout-left-behind) echo 'Log Out shows signing-out for 3s, then the homeserver never confirms, so the login form names the device (device-left-behind)' ;;
     identity-diverged) echo 'the restore finds another signing key published for the device and cannot sign it out: identity-diverged and device-left-behind on the login form' ;;
+    login-no-sliding-sync) echo 'the homeserver offers no sliding sync, so the server check stays on the homeserver step with sliding-sync-unsupported' ;;
+    sync-unsupported) echo 'a restored session whose homeserver refuses sliding sync every 4s: the drawer status stays sliding-sync-unsupported, and the toast, dismissed, does not come back' ;;
     verify-self)     echo 'a scripted SAS verification arriving 3s after the chat opens' ;;
     audio-track)     echo 'a track downloads slowly, starts playing, and keeps playing after switching rooms' ;;
     voice-notes)     echo 'a voice note advances to the next one, whose download then fails' ;;
@@ -468,7 +478,8 @@ check_window() {
 
 names() {
   printf '%s\n' unread-anchor all-unread unread-unresolved reactions-late sticker-trickle jump-to-reply \
-    pinned-bar media-failures compact-layout login-oauth logout-left-behind identity-diverged verify-self \
+    pinned-bar media-failures compact-layout login-oauth logout-left-behind identity-diverged \
+    login-no-sliding-sync sync-unsupported verify-self \
     audio-track voice-notes delivery-marks \
     space-index polls poll-edits room-info room-leave room-info-failures room-info-pane room-menu room-menu-leave \
     room-menu-failures room-log user-info user-info-failures user-dm user-dm-start user-dm-failures user-ignore user-moderation \
@@ -526,7 +537,7 @@ cmd_run() {
   "$DRIVE" down >/dev/null
 
   echo "# wrote $out"
-  jq -r '"  rooms=\(.view.directory.rooms|length) step=\(.view.lifecycle.step) toast=\(.view.toast.kind)"' "$out/state.json"
+  jq -r '"  rooms=\(.view.directory.rooms|length) step=\(.view.lifecycle.step) toast=\(.view.toast.kind) connection=\(.view.connection.status)"' "$out/state.json"
   jq -r '.view.directory | if (.space_matches|length) > 0 then "  space matches \([.space_matches[] | "\(.name)\(if .parent then " in \(.parent)" else "" end) (\(.rooms) rooms)"] | join(", "))" else empty end' "$out/state.json"
   jq -r '.view.directory | if .scope == "space" then "  listing space \(.space_id)\(if .subspace_id != "" then " > \(.subspace_id)" else "" end): \([.rooms[].name] | join(", "))" else empty end' "$out/state.json"
   jq -r 'if .rows then "  timeline rows=\(.rows|length) anchor=\(.anchor_index) unread=\([.rows[]|select(.first_unread)|.row])" else "  timeline unavailable" end' "$out/timeline.json"

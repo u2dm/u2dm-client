@@ -5,6 +5,9 @@ export global UserMessages {
         if kind == UserMessageKind.server-unreachable {
             return @tr("Could not reach that homeserver. Check the address and your connection.");
         }
+        if kind == UserMessageKind.sliding-sync-unsupported {
+            return @tr("This homeserver does not offer sliding sync (MSC4186), which U2DM needs to receive messages. Ask its administrator to turn it on.");
+        }
         if kind == UserMessageKind.unsupported-login-method {
             if detail == "" {
                 return @tr("This homeserver did not offer any login method U2DM supports.");

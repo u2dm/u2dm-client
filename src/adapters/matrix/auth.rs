@@ -1,4 +1,5 @@
 use std::net::{Ipv4Addr, Ipv6Addr};
+use std::time::Duration;
 
 use matrix_sdk::authentication::SessionTokens;
 use matrix_sdk::authentication::matrix::MatrixSession;
@@ -6,26 +7,34 @@ use matrix_sdk::authentication::oauth::registration::{
     ApplicationType, ClientMetadata, Localized, OAuthGrantType,
 };
 use matrix_sdk::authentication::oauth::{ClientId, OAuthSession, UserSession};
+use matrix_sdk::config::RequestConfig;
 use matrix_sdk::encryption::{BackupDownloadStrategy, CryptoStoreError, EncryptionSettings};
 use matrix_sdk::media::MediaRetentionPolicy;
 use matrix_sdk::ruma::api::client::session::get_login_types::v3::LoginType;
 use matrix_sdk::ruma::api::error::ErrorKind;
 use matrix_sdk::ruma::serde::Raw;
 use matrix_sdk::ruma::{IdParseError, OwnedDeviceId, OwnedUserId};
+use matrix_sdk::sliding_sync::{
+    Version as SlidingSyncVersion, VersionBuilder as SlidingSyncVersionBuilder,
+};
 use matrix_sdk::utils::UrlOrQuery;
 use matrix_sdk::utils::local_server::{LocalServerBuilder, LocalServerRedirectHandle};
 use matrix_sdk::{Client, ClientBuilder, HttpError, SessionChange, SessionMeta};
 use matrix_sdk_base::crypto::{CollectStrategy, DecryptionSettings, TrustRequirement};
 use tokio::sync::broadcast::error::RecvError;
 use tokio::sync::{Mutex, mpsc};
+use tokio::time::timeout;
 use url::Url;
 
 use super::store::StorePaths;
 use crate::adapters::private_fs;
 use crate::domain::auth::{AuthMethod, LoginCredentials, OAuthLoginData, ServerInfo, Session};
 use crate::domain::link::LauncherSafeUrl;
+use crate::domain::sync::SyncSupport;
 use crate::error::{AppError, AuthFailure, Result};
 use crate::ports::matrix::RestoreStep;
+
+const VERSIONS_BUDGET: Duration = Duration::from_secs(10);
 
 async fn open_store(
     builder: ClientBuilder,
@@ -73,13 +82,15 @@ pub(super) async fn discover_auth(
     )
     .await?;
 
-    let (auth_methods, unsupported_flows) = probe_auth_methods(&client).await?;
+    let ((auth_methods, unsupported_flows), sync) =
+        tokio::try_join!(probe_auth_methods(&client), sync_support(&client))?;
 
     let homeserver_url = client.homeserver().to_string();
     tracing::info!(
         homeserver = %homeserver_url,
         methods = ?auth_methods,
         unsupported = ?unsupported_flows,
+        ?sync,
         "server discovery complete"
     );
 
@@ -89,8 +100,31 @@ pub(super) async fn discover_auth(
             auth_methods,
             unsupported_flows,
             homeserver_url,
+            sync,
         },
     ))
+}
+
+pub(super) async fn sync_support(client: &Client) -> Result<SyncSupport> {
+    let versions = timeout(
+        VERSIONS_BUDGET,
+        client.fetch_server_versions(Some(RequestConfig::short_retry())),
+    )
+    .await
+    .map_err(|_| {
+        AppError::Other(format!(
+            "/versions did not answer within {}s",
+            VERSIONS_BUDGET.as_secs()
+        ))
+    })?
+    .map_err(|e| AppError::Other(format!("/versions failed: {e}")))?;
+
+    let offered =
+        SlidingSyncVersionBuilder::DiscoverNative.build(Some(&versions.as_supported_versions()));
+    Ok(match offered {
+        Ok(SlidingSyncVersion::Native) => SyncSupport::SlidingSync,
+        Ok(SlidingSyncVersion::None) | Err(_) => SyncSupport::ClassicOnly,
+    })
 }
 
 async fn probe_auth_methods(client: &Client) -> Result<(Vec<AuthMethod>, Vec<String>)> {

@@ -1,6 +1,7 @@
 use std::fmt;
 
 use crate::domain::link::LauncherSafeUrl;
+use crate::domain::sync::SyncSupport;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AuthMethod {
@@ -45,6 +46,7 @@ pub struct ServerInfo {
     pub auth_methods: Vec<AuthMethod>,
     pub unsupported_flows: Vec<String>,
     pub homeserver_url: String,
+    pub sync: SyncSupport,
 }
 
 #[derive(Clone)]

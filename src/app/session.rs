@@ -15,6 +15,7 @@ use crate::commands::view::{LoginActivity, LoginStep};
 use crate::domain::account::AccountScope;
 use crate::domain::auth::{LoginCredentials, LoginMethod, ServerInfo, Session};
 use crate::domain::link::LauncherSafeUrl;
+use crate::domain::sync::SyncSupport;
 use crate::error::{AppError, AuthFailure, Result};
 use crate::ports::browser::BrowserPort;
 use crate::ports::matrix::{
@@ -59,6 +60,22 @@ pub(super) fn unconfirmed_device(removal: DeviceRemoval, device_id: &str) -> Opt
 
 pub(super) fn left_behind_notice(device_id: &str) -> UserMessage {
     UserMessage::about(UserMessageKind::DeviceLeftBehind, &device_id)
+}
+
+fn unusable_server(homeserver: &str, info: &ServerInfo) -> Option<UserMessage> {
+    if info.sync == SyncSupport::ClassicOnly {
+        tracing::warn!(homeserver, "the homeserver does not offer sliding sync");
+        return Some(UserMessage::new(UserMessageKind::SlidingSyncUnsupported));
+    }
+    if info.auth_methods.is_empty() {
+        let flows = info.unsupported_flows.join(", ");
+        tracing::warn!(homeserver, flows = %flows, "no supported login method");
+        return Some(UserMessage::about(
+            UserMessageKind::UnsupportedLoginMethod,
+            &flows,
+        ));
+    }
+    None
 }
 
 fn login_failure(err: &AppError) -> UserMessageKind {
@@ -545,21 +562,16 @@ impl SessionTasks {
     async fn check_server(&self, homeserver: &str, passphrase: &str, attempt: u64) {
         tracing::info!(homeserver, "checking server");
         match self.auth.discover_auth(homeserver, passphrase).await {
-            Ok(info) if info.auth_methods.is_empty() => {
-                let flows = info.unsupported_flows.join(", ");
-                tracing::warn!(homeserver, flows = %flows, "no supported login method");
-                self.send(SessionEvent::AuthRejected {
+            Ok(info) => match unusable_server(homeserver, &info) {
+                Some(refusal) => self.send(SessionEvent::AuthRejected {
                     attempt,
-                    messages: vec![UserMessage::about(
-                        UserMessageKind::UnsupportedLoginMethod,
-                        &flows,
-                    )],
-                });
-            }
-            Ok(info) => self.send(SessionEvent::ServerDiscovered {
-                attempt,
-                info: Box::new(info),
-            }),
+                    messages: vec![refusal],
+                }),
+                None => self.send(SessionEvent::ServerDiscovered {
+                    attempt,
+                    info: Box::new(info),
+                }),
+            },
             Err(e) => {
                 tracing::warn!(homeserver, "server discovery failed: {e}");
                 self.reject(attempt, UserMessageKind::ServerUnreachable);

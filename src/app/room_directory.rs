@@ -13,8 +13,9 @@ use super::input::EventSender;
 use super::selection::{RoomFilter, Selection};
 use super::space_order;
 use super::task_group::TaskGroup;
+use crate::commands::messages::{UserMessage, UserMessageKind};
 use crate::commands::sync::DirectoryUpdate;
-use crate::commands::view::{SpaceHeading, SpaceMatch};
+use crate::commands::view::{AppViewState, SpaceHeading, SpaceMatch, Toast};
 use crate::domain::invite::{Invite, InviteList};
 use crate::domain::message::MessagePermissions;
 use crate::domain::poll::PollPermissions;
@@ -571,6 +572,9 @@ impl RoomDirectory {
                     view.connection = ConnectionStatus::Error(msg);
                 }));
             }
+            SyncEvent::SlidingSyncUnsupported => {
+                sink_output.publish(Box::new(explain_missing_sliding_sync));
+            }
         });
 
         group.spawn(supervise_sync(sync, output, events, on_sync, token));
@@ -974,6 +978,13 @@ async fn write_space_order(
 
 fn publish_connection(output: &Arc<dyn AppOutputPort>, status: ConnectionStatus) {
     output.publish(Box::new(move |view| view.connection = status));
+}
+
+fn explain_missing_sliding_sync(view: &mut AppViewState) {
+    if view.connection != ConnectionStatus::SlidingSyncUnsupported {
+        view.toast = Toast::Error(UserMessage::new(UserMessageKind::SlidingSyncUnsupported));
+    }
+    view.connection = ConnectionStatus::SlidingSyncUnsupported;
 }
 
 async fn supervise_sync(
