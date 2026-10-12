@@ -6,6 +6,8 @@ use super::event::AppEvent;
 #[cfg(feature = "demo")]
 use super::event::SessionEvent;
 use crate::commands::ui::UiCommand;
+#[cfg(feature = "demo")]
+use crate::domain::sync::SessionLoss;
 
 pub(super) enum Input {
     Ui(UiCommand),
@@ -50,18 +52,10 @@ impl CommandSender {
     }
 
     #[cfg(feature = "demo")]
-    pub fn inject_session_expiry(&self) -> Result<(), Closed> {
+    pub fn inject_session_loss(&self, loss: SessionLoss) -> Result<(), Closed> {
         deliver(
             &self.tx,
-            Input::Internal(AppEvent::Session(SessionEvent::Expired)),
-        )
-    }
-
-    #[cfg(feature = "demo")]
-    pub fn inject_soft_logout(&self) -> Result<(), Closed> {
-        deliver(
-            &self.tx,
-            Input::Internal(AppEvent::Session(SessionEvent::Suspended)),
+            Input::Internal(AppEvent::Session(SessionEvent::from(loss))),
         )
     }
 

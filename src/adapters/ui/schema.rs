@@ -198,6 +198,7 @@ pub(crate) use simple_callbacks;
 
 macro_rules! bool_props {
     ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
+        SessionRefused LoginView "LoginView" "session-refused" set_session_refused get_session_refused;
         VerificationVisible VerificationView "VerificationView" "visible" set_visible get_visible;
         DirectAlert DirectoryView "DirectoryView" "direct-alert" set_direct_alert get_direct_alert;
         DirectMention DirectoryView "DirectoryView" "direct-mention" set_direct_mention get_direct_mention;
@@ -412,7 +413,7 @@ macro_rules! login_phases {
         RestorePaused RestorePaused "restore-paused";
         Homeserver  Homeserver  "homeserver";
         Credentials Credentials "credentials";
-        Reauthenticate Reauthenticate "reauthenticate";
+        Reauthenticate(_) Reauthenticate "reauthenticate";
         LoggedIn    LoggedIn    "logged-in";
     } };
 }

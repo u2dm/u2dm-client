@@ -18,6 +18,7 @@ export global LoginView {
     in property <[UserMessage]> messages;
     in property <LoginMethodKind> method: LoginMethodKind.none;
     in property <string> resolved-homeserver;
+    in property <bool> session-refused;
 }
 
 export global SessionView {

@@ -82,7 +82,7 @@ use crate::domain::message::{MessageEdit, PinChange};
 use crate::domain::poll::PollDraft;
 use crate::domain::room::{NotifyMode, RoomId, RoomList, Space};
 use crate::domain::room_search::TitleQuery;
-use crate::domain::sync::ConnectionStatus;
+use crate::domain::sync::{ConnectionStatus, ReauthReason};
 use crate::domain::timeline::{AudioTrack, FailedSend, MessageReaders, TimelineFocus};
 use crate::domain::user_info::{IgnoreChange, Moderation, UserId};
 use crate::domain::verification::VerificationEvent;
@@ -1505,7 +1505,7 @@ impl AppService {
                 attempt,
                 capability,
             } => self.settle_resume(attempt, *capability).await,
-            SessionEvent::Suspended => self.suspend_session().await,
+            SessionEvent::Suspended(reason) => self.suspend_session(reason).await,
             SessionEvent::Expired => self.end_session(EndReason::Expired).await,
         }
     }
@@ -2123,7 +2123,7 @@ impl AppService {
         }
     }
 
-    async fn suspend_session(&mut self) {
+    async fn suspend_session(&mut self, reason: ReauthReason) {
         let Some((session, lifecycle_port)) = self
             .held_session
             .running()
@@ -2137,9 +2137,10 @@ impl AppService {
         tracing::info!(
             user_id = %session.user_id,
             device_id = %session.device_id,
-            "the homeserver asked for re-authentication, keeping this device and its local data"
+            ?reason,
+            "the homeserver refused this session's token, keeping this device and its local data"
         );
-        self.tear_down_session(AppViewState::reauthenticating(&session))
+        self.tear_down_session(AppViewState::reauthenticating(&session, reason))
             .await;
         lifecycle_port.suspend().await;
         self.held_session = HeldSession::Suspended(Box::new(SuspendedSession {

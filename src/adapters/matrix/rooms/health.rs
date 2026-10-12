@@ -10,7 +10,7 @@ use matrix_sdk_ui::room_list_service::Error as RoomListError;
 use matrix_sdk_ui::sync_service::Error as SyncServiceError;
 use tokio::time::Instant;
 
-use crate::domain::sync::SessionLoss;
+use crate::domain::sync::{ReauthReason, SessionLoss};
 
 const SYNC_RESTART_BACKOFF_START: Duration = Duration::from_secs(1);
 const SYNC_RESTART_BACKOFF_MAX: Duration = Duration::from_secs(30);
@@ -26,9 +26,12 @@ fn extract_sdk_error(err: &SyncServiceError) -> Option<&matrix_sdk::Error> {
 
 fn rejected_credentials(kind: Option<&ErrorKind>) -> Option<SessionLoss> {
     match kind? {
-        ErrorKind::UnknownToken(data) if data.soft_logout => Some(SessionLoss::SoftLogout),
-        ErrorKind::UnknownToken(_) | ErrorKind::Unauthorized | ErrorKind::Forbidden => {
-            Some(SessionLoss::Expired)
+        ErrorKind::UnknownToken(data) if data.soft_logout => {
+            Some(SessionLoss::Suspended(ReauthReason::SoftLogout))
+        }
+        ErrorKind::UnknownToken(_) => Some(SessionLoss::Expired),
+        ErrorKind::Unauthorized | ErrorKind::Forbidden => {
+            Some(SessionLoss::Suspended(ReauthReason::Refused))
         }
         _ => None,
     }

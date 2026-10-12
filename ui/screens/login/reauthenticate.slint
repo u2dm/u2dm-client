@@ -72,7 +72,9 @@ export component ReauthenticateScreen inherits LoginPage {
     }
 
     NoticeBanner {
-        text: @tr("Your homeserver asked you to sign in again. This device and the messages it has already decrypted stay on it.");
+        text: LoginView.session-refused
+            ? @tr("Your homeserver refused this session. This device and the messages it has already decrypted stay on it.")
+            : @tr("Your homeserver asked you to sign in again. This device and the messages it has already decrypted stay on it.");
     }
 
     if root.wants-password: VerticalLayout {

@@ -38,9 +38,10 @@ use crate::commands::messages::{UserMessage, UserMessageKind};
 use crate::commands::ui::Draft;
 use crate::commands::view::{
     AppViewState, AttachmentView, AudioView, CardStatus, CopiedLink, DirectoryView,
-    IdentityAlertView, LifecycleView, MentionsView, NowPlaying, PackView, PaginationView,
-    PinnedView, ReadersView, RoomCard, RoomInfoView, RoomLogView, RoomMenuTarget, SourceState,
-    SpaceIndexView, Toast, TrackFile, UnsentMessage, UserCard, UserInfoView, VideoView,
+    IdentityAlertView, LifecycleView, LoginStep, MentionsView, NowPlaying, PackView,
+    PaginationView, PinnedView, ReadersView, RoomCard, RoomInfoView, RoomLogView, RoomMenuTarget,
+    SourceState, SpaceIndexView, Toast, TrackFile, UnsentMessage, UserCard, UserInfoView,
+    VideoView,
 };
 use crate::domain::message::{
     EditKind, MessageEdit, MessagePermissions, MessagePreviewKind, RichText, TimelineMessage,
@@ -49,6 +50,7 @@ use crate::domain::poll::PollPermissions;
 use crate::domain::room::{Room, RoomId};
 use crate::domain::room_info::RoomAbout;
 use crate::domain::room_log::RoomLog;
+use crate::domain::sync::ReauthReason;
 use crate::domain::timeline::{OlderHistory, SourceEncryption, TimelinePatch, TimelineStatus};
 use crate::domain::user_info::Moderation;
 use crate::domain::verification::VerificationEvent as DomainVerificationEvent;
@@ -1228,6 +1230,10 @@ fn apply_lifecycle(w: &impl UiProps, last: Option<&LifecycleView>, next: &Lifecy
 
     if last.is_none_or(|l| l.step != *step) {
         w.set_login_phase(*step);
+        w.set_bool(
+            BoolProp::SessionRefused,
+            matches!(step, LoginStep::Reauthenticate(ReauthReason::Refused)),
+        );
     }
     if last.is_none_or(|l| l.activity != *activity) {
         w.set_login_activity(*activity);

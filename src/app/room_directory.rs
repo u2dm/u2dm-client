@@ -19,7 +19,7 @@ use crate::domain::message::MessagePermissions;
 use crate::domain::poll::PollPermissions;
 use crate::domain::room::{Room, RoomId, RoomList, Space, UnreadFlags};
 use crate::domain::room_search::TitleQuery;
-use crate::domain::sync::{ConnectionStatus, SessionLoss, SyncEvent, SyncOutcome};
+use crate::domain::sync::{ConnectionStatus, SyncEvent, SyncOutcome};
 use crate::ports::matrix::{SpaceOrderPort, SyncPort, SyncSink};
 use crate::ports::output::AppOutputPort;
 
@@ -891,11 +891,7 @@ async fn supervise_sync(
         match sync.start_sync(Arc::clone(&on_sync), token.clone()).await {
             SyncOutcome::Cancelled => return,
             SyncOutcome::SessionLost(loss) => {
-                let event = match loss {
-                    SessionLoss::SoftLogout => SessionEvent::Suspended,
-                    SessionLoss::Expired => SessionEvent::Expired,
-                };
-                drop(events.send(AppEvent::Session(event)));
+                drop(events.send(AppEvent::Session(SessionEvent::from(loss))));
                 return;
             }
             SyncOutcome::Fatal(msg) => {

@@ -19,9 +19,15 @@ pub enum SyncEvent {
     ConnectionError(String),
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ReauthReason {
+    SoftLogout,
+    Refused,
+}
+
 #[derive(Debug, Clone, Copy)]
 pub enum SessionLoss {
-    SoftLogout,
+    Suspended(ReauthReason),
     Expired,
 }
 

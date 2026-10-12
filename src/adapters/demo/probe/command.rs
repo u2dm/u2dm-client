@@ -15,6 +15,7 @@ use crate::domain::media::AttachmentPick;
 use crate::domain::message::{EditKind, EditTarget, MessageEdit, TextRevision};
 use crate::domain::poll::{ChoiceMode, PollDisclosure, PollDraft};
 use crate::domain::room::RoomId;
+use crate::domain::sync::{ReauthReason, SessionLoss};
 use crate::domain::user_info::UserId;
 
 const PROBE_EMOTE_HEIGHT: &str = "32";
@@ -327,6 +328,7 @@ pub enum ProbeCommand {
     DismissVerification,
     SessionExpired,
     SoftLogout,
+    SessionRefused,
     DismissToast,
     Logout,
     Quit,
@@ -336,8 +338,7 @@ pub struct Rejected(pub String);
 
 pub enum Driven {
     Command(UiCommand),
-    SessionExpiry,
-    SoftLogout,
+    SessionLoss(SessionLoss),
     Poke(Poke),
 }
 
@@ -345,8 +346,13 @@ impl fmt::Display for Driven {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Command(cmd) => write!(f, "{cmd}"),
-            Self::SessionExpiry => f.write_str("SessionExpired"),
-            Self::SoftLogout => f.write_str("SoftLogout"),
+            Self::SessionLoss(SessionLoss::Expired) => f.write_str("SessionExpired"),
+            Self::SessionLoss(SessionLoss::Suspended(ReauthReason::SoftLogout)) => {
+                f.write_str("SoftLogout")
+            }
+            Self::SessionLoss(SessionLoss::Suspended(ReauthReason::Refused)) => {
+                f.write_str("SessionRefused")
+            }
             Self::Poke(Poke::ToggleAudio) => f.write_str("ToggleAudio"),
             Self::Poke(Poke::SeekAudio(position)) => {
                 write!(f, "SeekAudio({}ms)", position.as_millis())
@@ -777,8 +783,17 @@ pub fn to_driven(command: ProbeCommand, selected: Selection<'_>) -> Result<Drive
         ProbeCommand::RejectVerification => UiCommand::RejectVerification,
         ProbeCommand::ConfirmVerification => UiCommand::ConfirmVerification,
         ProbeCommand::DismissVerification => UiCommand::DismissVerification,
-        ProbeCommand::SessionExpired => return Ok(Driven::SessionExpiry),
-        ProbeCommand::SoftLogout => return Ok(Driven::SoftLogout),
+        ProbeCommand::SessionExpired => return Ok(Driven::SessionLoss(SessionLoss::Expired)),
+        ProbeCommand::SoftLogout => {
+            return Ok(Driven::SessionLoss(SessionLoss::Suspended(
+                ReauthReason::SoftLogout,
+            )));
+        }
+        ProbeCommand::SessionRefused => {
+            return Ok(Driven::SessionLoss(SessionLoss::Suspended(
+                ReauthReason::Refused,
+            )));
+        }
         ProbeCommand::DismissToast => UiCommand::DismissToast,
         ProbeCommand::Logout => UiCommand::Logout,
         ProbeCommand::Quit => UiCommand::Quit,

@@ -14,7 +14,7 @@ use crate::domain::room::{NotifyMode, RoomId, RoomList, Space, UnreadFlags};
 use crate::domain::room_info::{Reader, RoomAbout, RosterMember};
 use crate::domain::room_log::RoomLog;
 use crate::domain::space_index::SpaceChild;
-use crate::domain::sync::ConnectionStatus;
+use crate::domain::sync::{ConnectionStatus, ReauthReason};
 use crate::domain::timeline::{EventSource, OlderHistory};
 use crate::domain::user_info::UserProfile;
 
@@ -55,10 +55,10 @@ impl AppViewState {
         }
     }
 
-    pub fn reauthenticating(session: &Session) -> Self {
+    pub fn reauthenticating(session: &Session, reason: ReauthReason) -> Self {
         Self {
             lifecycle: LifecycleView {
-                step: LoginStep::Reauthenticate,
+                step: LoginStep::Reauthenticate(reason),
                 method: session.login_method(),
                 resolved_homeserver: session.homeserver.clone(),
                 user_id: session.user_id.clone(),
@@ -283,7 +283,7 @@ pub enum LoginStep {
     RestorePaused,
     Homeserver,
     Credentials,
-    Reauthenticate,
+    Reauthenticate(ReauthReason),
     LoggedIn,
 }
 

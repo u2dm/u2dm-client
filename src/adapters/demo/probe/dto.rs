@@ -6,9 +6,10 @@ use crate::commands::messages::UserMessage;
 use crate::commands::ui::Draft;
 use crate::commands::view::{
     AppViewState, AttachmentView, AudioView, CardStatus, CopiedLink, DirectoryView,
-    IdentityAlertView, LifecycleView, MentionsView, PackView, PaginationView, PinnedView,
-    ReadersView, RoomInfoView, RoomLogView, RoomMenuTarget, RosterRow, SourceState, SpaceIndexRow,
-    SpaceIndexView, SpaceMatch, Toast, TrackFile, UnsentMessage, UserInfoView, VideoView,
+    IdentityAlertView, LifecycleView, LoginStep, MentionsView, PackView, PaginationView,
+    PinnedView, ReadersView, RoomInfoView, RoomLogView, RoomMenuTarget, RosterRow, SourceState,
+    SpaceIndexRow, SpaceIndexView, SpaceMatch, Toast, TrackFile, UnsentMessage, UserInfoView,
+    VideoView,
 };
 use crate::domain::image_pack::{ImagePack, ImageUsage, PackOrigin, PackTitle};
 use crate::domain::member_name::NamedUser;
@@ -16,7 +17,7 @@ use crate::domain::message::{EditKind, PinnedMessage};
 use crate::domain::room::{Room, Space};
 use crate::domain::room_info::{Reader, RosterSection};
 use crate::domain::space_index::{ChildKind, JoinRule};
-use crate::domain::sync::ConnectionStatus;
+use crate::domain::sync::{ConnectionStatus, ReauthReason};
 use crate::domain::timeline::{OlderHistory, SourceEncryption};
 use crate::domain::user_info::{Moderation, Pronouns};
 
@@ -134,6 +135,7 @@ struct MessageDto {
 #[derive(Serialize)]
 struct LifecycleDto {
     step: &'static str,
+    reauth_reason: Option<&'static str>,
     activity: &'static str,
     method: &'static str,
     resolved_homeserver: String,
@@ -587,6 +589,7 @@ fn message(source: &UserMessage) -> MessageDto {
 fn lifecycle(source: &LifecycleView) -> LifecycleDto {
     LifecycleDto {
         step: names::login_step(source.step),
+        reauth_reason: reauth_reason(source.step),
         activity: names::login_activity(source.activity),
         method: names::login_method(source.method),
         resolved_homeserver: source.resolved_homeserver.clone(),
@@ -594,6 +597,16 @@ fn lifecycle(source: &LifecycleView) -> LifecycleDto {
         has_avatar: source.avatar_path.is_some(),
         messages: source.messages.iter().map(message).collect(),
     }
+}
+
+fn reauth_reason(step: LoginStep) -> Option<&'static str> {
+    let LoginStep::Reauthenticate(reason) = step else {
+        return None;
+    };
+    Some(match reason {
+        ReauthReason::SoftLogout => "soft-logout",
+        ReauthReason::Refused => "refused",
+    })
 }
 
 fn connection(source: &ConnectionStatus) -> ConnectionDto {

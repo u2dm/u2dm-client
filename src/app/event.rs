@@ -13,6 +13,7 @@ use crate::domain::media::PickedAttachment;
 use crate::domain::message::{MessageEdit, PinnedMessage};
 use crate::domain::room::RoomId;
 use crate::domain::room_info::{Reader, RoomAbout, RosterMember};
+use crate::domain::sync::{ReauthReason, SessionLoss};
 use crate::domain::timeline::{
     AudioTrack, EventSource, MessageReaders, PaginationDirection, PaginationOutcome,
     TimelineAdvance, TimelineFocus,
@@ -439,8 +440,17 @@ pub(super) enum SessionEvent {
         session: u64,
         path: Option<PathBuf>,
     },
-    Suspended,
+    Suspended(ReauthReason),
     Expired,
+}
+
+impl From<SessionLoss> for SessionEvent {
+    fn from(loss: SessionLoss) -> Self {
+        match loss {
+            SessionLoss::Suspended(reason) => Self::Suspended(reason),
+            SessionLoss::Expired => Self::Expired,
+        }
+    }
 }
 
 impl SessionEvent {
@@ -461,7 +471,7 @@ impl SessionEvent {
             Self::LocalStateCleared { .. } => "LocalStateCleared",
             Self::TokensNotPersisted { .. } => "TokensNotPersisted",
             Self::UserAvatar { .. } => "UserAvatar",
-            Self::Suspended => "SessionSuspended",
+            Self::Suspended(_) => "SessionSuspended",
             Self::Expired => "SessionExpired",
         }
     }
