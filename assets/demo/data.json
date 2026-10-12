@@ -275,7 +275,8 @@
         "!rust-internals:demo.local",
         "!rust-foundation:demo.local",
         "!rust-core:demo.local",
-        "!rust-archive:demo.local"
+        "!rust-archive:demo.local",
+        "!invite-rust-async:demo.local"
       ],
       "spaces": [
         "!space-rust-web:demo.local",
@@ -501,7 +502,56 @@
       "members": 154
     }
   ],
+  "invites": [
+    {
+      "id": "!invite-leo:demo.local",
+      "name": "Leo",
+      "avatar": "@leo:matrix.org",
+      "inviter": "@leo:matrix.org",
+      "direct": true,
+      "encrypted": true,
+      "members": 1,
+      "minutes_ago": 4
+    },
+    {
+      "id": "!invite-climbing:demo.local",
+      "name": "Climbing Crew",
+      "avatar": "climbing-crew",
+      "topic": "Bouldering on Thursdays, top rope when the weather holds",
+      "inviter": "@nina:matrix.org",
+      "encrypted": true,
+      "members": 9,
+      "minutes_ago": 42
+    },
+    {
+      "id": "!invite-rust-async:demo.local",
+      "name": "Async Rust",
+      "topic": "Executors, pinning and the occasional deadlock",
+      "inviter": "@marcus:matrix.org",
+      "members": 31,
+      "minutes_ago": 190
+    },
+    {
+      "id": "!invite-hiking:demo.local",
+      "name": "Hiking Club",
+      "avatar": "hiking-club",
+      "topic": "Trails, gear swaps and weekend plans",
+      "inviter": "@sarah:matrix.org",
+      "space": true,
+      "members": 46,
+      "minutes_ago": 1500
+    }
+  ],
   "timelines": {
+    "!invite-leo:demo.local": [
+      {
+        "id": "demo-invite-leo-1",
+        "sender": "@leo:matrix.org",
+        "name": "Leo",
+        "body": "made us a chat for the climbing trip, the crew room is getting noisy",
+        "minutes_ago": 4
+      }
+    ],
     "!rust:demo.local": [
       {
         "id": "demo-rust-svc-created",

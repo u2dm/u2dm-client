@@ -63,6 +63,8 @@ scenario_env() {
     message-shields) echo 'U2DM_DEMO_SHIELDS=all U2DM_DEMO_WINDOW=900x1400' ;;
     identity-alerts) echo 'U2DM_DEMO_IDENTITY=reset,own-reset U2DM_DEMO_WINDOW=900x760' ;;
     identity-held-sends) echo 'U2DM_DEMO_IDENTITY=verified-reset,unverified-sessions U2DM_DEMO_WINDOW=900x760' ;;
+    invites)         echo 'U2DM_DEMO_INVITES=slow,late U2DM_DEMO_WINDOW=900x760' ;;
+    invite-failures) echo 'U2DM_DEMO_INVITES=accept-fails,decline-fails,revoked U2DM_DEMO_WINDOW=900x760' ;;
     *) return 1 ;;
   esac
 }
@@ -330,6 +332,26 @@ scenario_steps() {
       echo 'sleep 1'
       echo '{"op":"accept_identity","user_id":"@jordan:matrix.org"}'
       echo 'sleep 1' ;;
+    invites)
+      echo 'sleep 3'
+      echo '{"op":"select_direct"}'
+      echo '{"op":"open_invite","room_id":"!invite-leo:demo.local"}'
+      echo '{"op":"accept_invite","room_id":"!invite-leo:demo.local"}'
+      echo 'sleep 3'
+      echo '{"op":"select_space"}'
+      echo '{"op":"decline_invite","room_id":"!invite-rust-async:demo.local"}'
+      echo '{"op":"open_invite","room_id":"!invite-hiking:demo.local"}'
+      echo '{"op":"accept_invite","room_id":"!invite-hiking:demo.local"}'
+      echo 'sleep 3' ;;
+    invite-failures)
+      echo '{"op":"open_invite","room_id":"!invite-hiking:demo.local"}'
+      echo '{"op":"accept_invite","room_id":"!invite-hiking:demo.local"}'
+      echo 'sleep 1'
+      echo '{"op":"close_invite"}'
+      echo '{"op":"decline_invite","room_id":"!invite-rust-async:demo.local"}'
+      echo 'sleep 1'
+      echo '{"op":"open_invite","room_id":"!invite-climbing:demo.local"}'
+      echo 'sleep 4' ;;
     identity-held-sends)
       echo '{"op":"select_room","room_id":"!sarah:demo.local"}'
       echo 'sleep 2'
@@ -428,6 +450,8 @@ scenario_note() {
     message-shields) echo 'in !design, every shield a decrypted row can carry (photo chip and sticker included), three refused messages beside an unexplained one, and your own warned and refused sends (shield, shield_reason, decryption_failure)' ;;
     identity-alerts) echo 'your own identity reset shows first; acknowledged, !design shows Jordan'"'"'s reset, and accepting it brings up Nadia'"'"'s (identity_alert)' ;;
     identity-held-sends) echo 'in !sarah a send waits behind Sarah'"'"'s lost verification and her sheet reads no longer verified; in !nina one waits behind Nina'"'"'s unverified sessions (identity_alert, send_state)' ;;
+    invites)         echo 'Leo'"'"'s chat invite arrives late and is accepted, opening the chat under DMs; Async Rust is declined; Hiking Club is accepted and opens in the rail (directory.invites, invite)' ;;
+    invite-failures) echo 'an accept fails inline on its sheet, a decline with the sheet closed fails as a toast, then the open Climbing Crew sheet closes when its invite is withdrawn (invite.error, toast)' ;;
   esac
 }
 
@@ -450,7 +474,7 @@ names() {
     room-menu-failures room-log user-info user-info-failures user-dm user-dm-start user-dm-failures user-ignore user-moderation \
     user-moderation-failures user-tags custom-emoji spoilers message-link message-source message-pins message-pin-failures message-delete \
     message-delete-failures readers room-search room-search-open mentions room-mention display-names \
-    message-shields identity-alerts identity-held-sends
+    message-shields identity-alerts identity-held-sends invites invite-failures
 }
 
 cmd_list() {

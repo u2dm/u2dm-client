@@ -139,6 +139,7 @@ pub struct AuthenticatedSession {
     pub identity: Arc<dyn IdentityPort>,
     pub space_order: Arc<dyn SpaceOrderPort>,
     pub space_index: Arc<dyn SpaceIndexPort>,
+    pub invites: Arc<dyn InvitePort>,
     pub room_info: Arc<dyn RoomInfoPort>,
     pub user_info: Arc<dyn UserInfoPort>,
     pub image_packs: Arc<dyn ImagePackPort>,
@@ -207,6 +208,12 @@ pub trait SpaceIndexPort: Send + Sync {
     async fn hierarchy_page(&self, space_id: &RoomId, from: Option<&str>) -> Result<HierarchyPage>;
     async fn join(&self, room_id: &RoomId, via: &[String]) -> Result<()>;
     async fn fetch_avatars(&self, mxcs: &[String]) -> usize;
+}
+
+#[async_trait]
+pub trait InvitePort: Send + Sync {
+    async fn accept(&self, room_id: &RoomId) -> Result<()>;
+    async fn decline(&self, room_id: &RoomId) -> Result<()>;
 }
 
 #[async_trait]

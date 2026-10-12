@@ -6,6 +6,7 @@ mod data;
 mod dto;
 mod files;
 mod identity;
+mod invites;
 mod login;
 mod logout;
 mod matrix;

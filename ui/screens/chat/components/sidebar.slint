@@ -18,7 +18,7 @@ import { RetryNotice } from "../../../components/retry-notice.slint";
 import { PillSearchField } from "../../../components/search-field.slint";
 import { ContextPress } from "./context-press.slint";
 import { AppStyle, Fonts, IconSize, Metrics, Motion, Size, Space, Stroke, Weight } from "../../../theme.slint";
-import { RoomRowKind, RoomScope, ServiceKind } from "../../../enums.slint";
+import { InviteKind, RoomRowKind, RoomScope, ServiceKind } from "../../../enums.slint";
 import { DirectoryView, SpaceIndexView } from "../../../views.slint";
 import { Actions } from "../../../actions.slint";
 import { RoomMenu, RoomMenuOrigin, RoomMenuReturn, RoomSearch } from "../../../local.slint";
@@ -147,6 +147,89 @@ component RoomSummary inherits VerticalLayout {
     }
 }
 
+global InviteLine {
+    public pure function from(entry: RoomEntry) -> string {
+        if entry.invite-kind == InviteKind.direct && entry.inviter-id != "" {
+            return entry.inviter-id;
+        }
+        if entry.inviter != "" {
+            return @tr("Invited by {}", entry.inviter);
+        }
+        return @tr("Invitation");
+    }
+
+    public pure function describe(entry: RoomEntry) -> string {
+        if entry.invite-kind == InviteKind.direct && entry.inviter-id != "" {
+            return @tr("{}, chat invitation from {}", entry.name, entry.inviter-id);
+        }
+        if entry.invite-kind == InviteKind.space && entry.inviter != "" {
+            return @tr("{}, space invitation from {}", entry.name, entry.inviter);
+        }
+        if entry.invite-kind == InviteKind.space {
+            return @tr("{}, space invitation", entry.name);
+        }
+        if entry.inviter != "" {
+            return @tr("{}, invitation from {}", entry.name, entry.inviter);
+        }
+        return @tr("{}, invitation", entry.name);
+    }
+}
+
+global RowHeadings {
+    public pure function is-heading(kind: RoomRowKind) -> bool {
+        return kind == RoomRowKind.invites-heading
+            || kind == RoomRowKind.rooms-heading
+            || kind == RoomRowKind.spaces-heading;
+    }
+}
+
+component InviteSummary inherits VerticalLayout {
+    in property <RoomEntry> entry;
+
+    alignment: center;
+    spacing: Space.sm;
+
+    HorizontalLayout {
+        spacing: Space.md;
+
+        Text {
+            horizontal-stretch: 1;
+            text: root.entry.name;
+            font-family: Fonts.emoji;
+            font-size: Fonts.body;
+            font-weight: Weight.semibold;
+            vertical-alignment: center;
+            overflow: elide;
+        }
+
+        if root.entry.last-message-time != "": Text {
+            text: root.entry.last-message-time;
+            font-size: Fonts.caption;
+            vertical-alignment: center;
+            color: AppStyle.foreground-muted;
+        }
+    }
+
+    HorizontalLayout {
+        spacing: Space.md;
+
+        Text {
+            horizontal-stretch: 1;
+            text: InviteLine.from(root.entry);
+            font-family: Fonts.emoji;
+            font-size: Fonts.body-small;
+            vertical-alignment: center;
+            overflow: elide;
+            color: AppStyle.foreground-muted;
+        }
+
+        UnreadDot {
+            cross-axis-self-alignment: center;
+            alert: true;
+        }
+    }
+}
+
 component SpaceSummary inherits VerticalLayout {
     in property <RoomEntry> entry;
     in property <bool> has-unread;
@@ -210,15 +293,32 @@ component RoomRow inherits ListItemArea {
     in property <length> avatar-size;
 
     property <bool> is-room: root.entry.kind == RoomRowKind.room;
+    property <bool> is-invite: root.entry.kind == RoomRowKind.invite;
     property <bool> is-space: root.entry.kind == RoomRowKind.space;
-    property <bool> is-heading: root.entry.kind == RoomRowKind.spaces-heading;
+    property <bool> is-heading: RowHeadings.is-heading(root.entry.kind);
     property <bool> has-unread: root.entry.alert || root.entry.mention || root.entry.hint;
     property <bool> joined: root.selected && root.joins-timeline;
     property <int> menu-returns: RoomMenu.focus-returns;
 
+    pure function heading-text(kind: RoomRowKind) -> string {
+        if kind == RoomRowKind.invites-heading {
+            return @tr("Invites");
+        }
+        if kind == RoomRowKind.rooms-heading && DirectoryView.room-scope == RoomScope.direct {
+            return @tr("Direct messages");
+        }
+        if kind == RoomRowKind.rooms-heading {
+            return @tr("Rooms");
+        }
+        return @tr("Spaces");
+    }
+
     pure function describe(entry: RoomEntry) -> string {
-        if entry.kind == RoomRowKind.spaces-heading {
-            return @tr("Spaces");
+        if RowHeadings.is-heading(entry.kind) {
+            return root.heading-text(entry.kind);
+        }
+        if entry.kind == RoomRowKind.invite {
+            return InviteLine.describe(entry);
         }
         if entry.kind == RoomRowKind.space && entry.space-parent != "" {
             return @tr("{}, space in {}", entry.name, entry.space-parent);
@@ -272,7 +372,7 @@ component RoomRow inherits ListItemArea {
     }
 
     init => {
-        if root.is-room && !root.entry.has-avatar {
+        if (root.is-room || root.is-invite) && !root.entry.has-avatar {
             Actions.request-room-avatar(root.entry.id);
         }
     }
@@ -353,6 +453,37 @@ component RoomRow inherits ListItemArea {
         }
     }
 
+    if !root.collapsed && root.is-invite: HorizontalLayout {
+        padding-left: Space.lg;
+        padding-right: Space.lg;
+        spacing: Space.lg;
+
+        Rectangle {
+            cross-axis-self-alignment: center;
+            width: root.avatar-size;
+            height: root.avatar-size;
+
+            Avatar {
+                width: 100%;
+                height: 100%;
+                color-index: root.entry.color-index;
+                has-image: root.entry.has-avatar;
+                image: root.entry.avatar;
+                initial: root.entry.initial;
+            }
+
+            if root.entry.invite-kind == InviteKind.space: SpaceBadge {
+                x: parent.width - self.width + Space.xs;
+                y: parent.height - self.height + Space.xs;
+                cutout: Palette.alternate-background;
+            }
+        }
+
+        InviteSummary {
+            entry: root.entry;
+        }
+    }
+
     if !root.collapsed && root.is-space: HorizontalLayout {
         padding-left: Space.lg;
         padding-right: Space.lg;
@@ -391,7 +522,7 @@ component RoomRow inherits ListItemArea {
         padding-bottom: Space.sm;
 
         Text {
-            text: @tr("Spaces");
+            text: root.heading-text(root.entry.kind);
             font-size: Fonts.caption;
             font-weight: Weight.semibold;
             color: AppStyle.foreground-muted;
@@ -477,6 +608,10 @@ export component Sidebar inherits Rectangle {
             RoomSearch.clear();
             root.room-selected();
         }
+        if row.kind == RoomRowKind.invite {
+            Actions.open-invite(row.id);
+            RoomSearch.clear();
+        }
         if row.kind == RoomRowKind.space {
             Actions.open-space(row.id);
             RoomSearch.clear();
@@ -487,7 +622,7 @@ export component Sidebar inherits Rectangle {
         if RoomSearch.query == "" || DirectoryView.rooms.length == 0 {
             return;
         }
-        let first = DirectoryView.rooms[0].kind == RoomRowKind.spaces-heading ? 1 : 0;
+        let first = RowHeadings.is-heading(DirectoryView.rooms[0].kind) ? 1 : 0;
         if DirectoryView.rooms[first].kind == RoomRowKind.room {
             RoomSearch.opened-room = DirectoryView.rooms[first].id;
         }
@@ -507,7 +642,8 @@ export component Sidebar inherits Rectangle {
 
         room-column := Rectangle {
             property <length> selected-top: list-area.y + room-list.content-y
-                + DirectoryView.selected-room-row * root.row-height;
+                + (DirectoryView.selected-room-row - DirectoryView.selected-room-headings) * root.row-height
+                + DirectoryView.selected-room-headings * root.heading-height;
             property <length> selected-bottom: self.selected-top + root.row-height;
             property <length> list-bottom: list-area.y + list-area.height;
             property <bool> shows-junction: root.joins-timeline && DirectoryView.selected-room-row >= 0;
@@ -575,7 +711,7 @@ export component Sidebar inherits Rectangle {
                         }
 
                         for room[idx] in DirectoryView.rooms: RoomRow {
-                            height: room.kind == RoomRowKind.spaces-heading ? root.heading-height : root.row-height;
+                            height: RowHeadings.is-heading(room.kind) ? root.heading-height : root.row-height;
                             index: idx;
                             above-modal: root.above-modal;
                             collapsed: root.collapsed;

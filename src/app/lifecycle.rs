@@ -216,6 +216,10 @@ pub(super) fn command_allowed(phase: AppPhase, cmd: &UiCommand) -> bool {
         | UiCommand::RetrySpaceIndex
         | UiCommand::JoinSpaceChild(_)
         | UiCommand::OpenSpaceChild(_)
+        | UiCommand::OpenInvite(_)
+        | UiCommand::CloseInvite
+        | UiCommand::AcceptInvite(_)
+        | UiCommand::DeclineInvite(_)
         | UiCommand::OpenRoomInfo(_)
         | UiCommand::CloseRoomInfo
         | UiCommand::ShowRoomInfoPane

@@ -63,6 +63,16 @@ pub enum ProbeCommand {
     OpenSpaceChild {
         room_id: String,
     },
+    OpenInvite {
+        room_id: String,
+    },
+    CloseInvite,
+    AcceptInvite {
+        room_id: String,
+    },
+    DeclineInvite {
+        room_id: String,
+    },
     OpenRoomInfo {
         #[serde(default)]
         room_id: Option<String>,
@@ -516,6 +526,10 @@ pub fn to_driven(command: ProbeCommand, selected: Selection<'_>) -> Result<Drive
         ProbeCommand::RetrySpaceIndex => UiCommand::RetrySpaceIndex,
         ProbeCommand::JoinSpaceChild { room_id } => UiCommand::JoinSpaceChild(RoomId::new(room_id)),
         ProbeCommand::OpenSpaceChild { room_id } => UiCommand::OpenSpaceChild(RoomId::new(room_id)),
+        ProbeCommand::OpenInvite { room_id } => UiCommand::OpenInvite(RoomId::new(room_id)),
+        ProbeCommand::CloseInvite => UiCommand::CloseInvite,
+        ProbeCommand::AcceptInvite { room_id } => UiCommand::AcceptInvite(RoomId::new(room_id)),
+        ProbeCommand::DeclineInvite { room_id } => UiCommand::DeclineInvite(RoomId::new(room_id)),
         ProbeCommand::OpenRoomInfo { room_id } => {
             return in_room(room_id, selected, UiCommand::OpenRoomInfo);
         }

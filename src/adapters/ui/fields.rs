@@ -12,6 +12,7 @@ use super::schema::{
 };
 use crate::commands::view::ChildAccess;
 use crate::domain::image_pack::PackOrigin;
+use crate::domain::invite::InviteKind;
 use crate::domain::media::AudioKind;
 use crate::domain::message::{
     DecryptionFailure, MessagePreviewKind, ReactionSend, SendState, Shield,

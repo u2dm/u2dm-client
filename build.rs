@@ -138,6 +138,16 @@ const ENUM_COVERAGE: &[EnumCoverage] = &[
         branches_in: "ui/screens/chat/components/sidebar.slint",
         falls_through: &[],
     },
+    EnumCoverage {
+        slint_enum: "InviteKind",
+        branches_in: "ui/screens/chat/components/invite.slint",
+        falls_through: &["room"],
+    },
+    EnumCoverage {
+        slint_enum: "InviteAnswer",
+        branches_in: "ui/screens/chat/components/invite.slint",
+        falls_through: &["none"],
+    },
 ];
 
 const SCHEMA_FILE: &str = "src/adapters/ui/schema.rs";
@@ -159,6 +169,8 @@ const ENUM_TABLES: &[(&str, &str)] = &[
     ("MemberRole", "member_roles"),
     ("RoomMembership", "room_memberships"),
     ("DirectChat", "direct_chats"),
+    ("InviteKind", "invite_kinds"),
+    ("InviteAnswer", "invite_answers"),
     ("Moderation", "pending_moderations"),
     ("IdentityTrust", "identity_trusts"),
     ("IdentityAlertKind", "identity_alert_kinds"),
@@ -259,6 +271,11 @@ const SCENARIO_SOURCES: &[ScenarioSource] = &[
     },
     ScenarioSource {
         file: "src/adapters/demo/space_index.rs",
+        arms_between: ("fn apply(scenario: &mut Scenario, flag: &str) {", "\n}"),
+        ignored: &[],
+    },
+    ScenarioSource {
+        file: "src/adapters/demo/invites.rs",
         arms_between: ("fn apply(scenario: &mut Scenario, flag: &str) {", "\n}"),
         ignored: &[],
     },

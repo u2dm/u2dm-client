@@ -4,7 +4,7 @@ use std::mem;
 use std::sync::{Arc, OnceLock};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use super::dto::{DemoData, RoomDto, SpaceDto, UnjoinedDto};
+use super::dto::{DemoData, InviteDto, RoomDto, SpaceDto, UnjoinedDto};
 use super::names::{self, NameBook};
 use super::timeline::{self, scenario};
 use super::{media, message_menu, polls};
@@ -12,6 +12,7 @@ use crate::adapters::markdown::{self, Composed, RoomMentions};
 use crate::domain::auth::Session;
 use crate::domain::emote::Emote;
 use crate::domain::image_pack::{ImagePack, PackImage, PackOrigin};
+use crate::domain::invite::Invite;
 use crate::domain::media::{
     AudioKind, AudioMeta, FileMeta, ImageMeta, OutgoingAttachment, VideoMeta,
 };
@@ -92,6 +93,9 @@ pub struct RoomOverrides {
     pub notify: HashMap<String, NotifyMode>,
     pub read: HashSet<String>,
     pub started_chats: HashMap<String, String>,
+    pub declined: HashSet<String>,
+    pub withdrawn: HashSet<String>,
+    pub held_back: HashSet<String>,
 }
 
 pub fn rooms_with(joined: &[RoomId], overrides: &RoomOverrides) -> Vec<Arc<Room>> {
@@ -117,6 +121,12 @@ pub fn rooms_with(joined: &[RoomId], overrides: &RoomOverrides) -> Vec<Arc<Room>
                 .started_chats
                 .iter()
                 .map(|(room_id, user_id)| started_chat(room_id, user_id, now)),
+        )
+        .chain(
+            data.invites
+                .iter()
+                .filter(|entry| !entry.space && was_joined(joined, &entry.id))
+                .map(|entry| entry.to_room(now)),
         )
         .filter(|room| !overrides.left.contains(room.id.as_ref()))
         .map(|room| read_when_marked(room, &overrides.read))
@@ -150,6 +160,31 @@ fn started_chat(room_id: &str, user_id: &str, now: u64) -> Room {
     }
 }
 
+pub fn invites_with(joined: &[RoomId], overrides: &RoomOverrides) -> Vec<Arc<Invite>> {
+    let now = now_ms();
+    data()
+        .invites
+        .iter()
+        .filter(|entry| !was_joined(joined, &entry.id))
+        .filter(|entry| {
+            [
+                &overrides.declined,
+                &overrides.withdrawn,
+                &overrides.held_back,
+            ]
+            .iter()
+            .all(|set| !set.contains(&entry.id))
+        })
+        .map(|entry| Arc::new(entry.to_invite(now, inviter_of(entry))))
+        .collect()
+}
+
+fn inviter_of(entry: &InviteDto) -> Option<NamedUser> {
+    let user_id = entry.inviter.as_deref()?;
+    let name = MemberName::new(person_name(user_id).as_deref(), false);
+    Some(NamedUser::new(user_id, name))
+}
+
 pub fn started_chat_id(user_id: &str) -> String {
     format!("!chat-{}:{DEMO_VIA}", localpart(user_id))
 }
@@ -170,6 +205,17 @@ pub fn room_about(room_id: &RoomId) -> Option<RoomAbout> {
             joined_at: room.joined_at(now_ms()),
             link: room_link(room_id, room.alias.as_deref()),
             topic: room.rich_topic(),
+        });
+    }
+    if let Some(entry) = data
+        .invites
+        .iter()
+        .find(|entry| entry.id == room_id.as_ref())
+    {
+        return Some(RoomAbout {
+            joined_at: None,
+            link: room_link(room_id, None),
+            topic: entry.rich_topic(),
         });
     }
     let entry = data
@@ -201,16 +247,24 @@ fn room_link(room_id: &RoomId, alias: Option<&str>) -> String {
 fn room_members(room_id: &RoomId) -> Vec<(String, RosterSection)> {
     let data = data();
     let fixture = data.rooms.iter().find(|room| room.id == room_id.as_ref());
-    let joined_count = fixture.map(|room| room.members).or_else(|| {
-        data.unjoined
-            .iter()
-            .find(|entry| entry.id == room_id.as_ref())
-            .map(UnjoinedDto::joined_members)
-    });
+    let invite = data
+        .invites
+        .iter()
+        .find(|entry| entry.id == room_id.as_ref());
+    let joined_count = fixture
+        .map(|room| room.members)
+        .or_else(|| {
+            data.unjoined
+                .iter()
+                .find(|entry| entry.id == room_id.as_ref())
+                .map(UnjoinedDto::joined_members)
+        })
+        .or_else(|| invite.map(InviteDto::joined_members));
     let Some(joined_count) = joined_count else {
         return Vec::new();
     };
     let mut joined: Vec<String> = vec![own_user().to_owned()];
+    joined.extend(invite.and_then(|entry| entry.inviter.clone()));
     let mut invited: Vec<String> = Vec::new();
     if let Some(room) = fixture {
         let senders = data
@@ -443,6 +497,12 @@ pub fn spaces_with(joined: &[RoomId]) -> Vec<Space> {
                 .iter()
                 .filter(|entry| entry.space && was_joined(joined, &entry.id))
                 .map(UnjoinedDto::to_space),
+        )
+        .chain(
+            data.invites
+                .iter()
+                .filter(|entry| entry.space && was_joined(joined, &entry.id))
+                .map(InviteDto::to_space),
         )
         .collect();
     let joined_spaces: HashSet<String> = spaces.iter().map(|space| space.id.clone()).collect();

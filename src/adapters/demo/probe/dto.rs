@@ -6,12 +6,13 @@ use crate::commands::messages::UserMessage;
 use crate::commands::ui::Draft;
 use crate::commands::view::{
     AppViewState, AttachmentView, AudioView, CardStatus, CopiedLink, DirectoryView,
-    IdentityAlertView, LifecycleView, LoginStep, MentionsView, PackView, PaginationView,
-    PinnedView, ReadersView, RoomInfoView, RoomLogView, RoomMenuTarget, RosterRow, SourceState,
-    SpaceIndexRow, SpaceIndexView, SpaceMatch, Toast, TrackFile, UnsentMessage, UserInfoView,
-    VideoView,
+    IdentityAlertView, InviteView, LifecycleView, LoginStep, MentionsView, PackView,
+    PaginationView, PinnedView, ReadersView, RoomInfoView, RoomLogView, RoomMenuTarget, RosterRow,
+    SourceState, SpaceIndexRow, SpaceIndexView, SpaceMatch, Toast, TrackFile, UnsentMessage,
+    UserInfoView, VideoView,
 };
 use crate::domain::image_pack::{ImagePack, ImageUsage, PackOrigin, PackTitle};
+use crate::domain::invite::Invite;
 use crate::domain::member_name::NamedUser;
 use crate::domain::message::{EditKind, PinnedMessage};
 use crate::domain::room::{Room, Space};
@@ -27,6 +28,7 @@ pub struct ViewDto {
     connection: ConnectionDto,
     directory: DirectoryDto,
     space_index: SpaceIndexDto,
+    invite: InviteSheetDto,
     room_info: RoomInfoDto,
     room_menu: Option<RoomMenuDto>,
     user_info: UserInfoDto,
@@ -219,6 +221,27 @@ struct SpaceMatchDto {
 }
 
 #[derive(Serialize)]
+struct InviteDto {
+    id: String,
+    name: String,
+    kind: &'static str,
+    inviter: Option<String>,
+    inviter_name: Option<String>,
+    topic: Option<String>,
+    has_avatar_mxc: bool,
+    received_ts: u64,
+}
+
+#[derive(Serialize)]
+struct InviteSheetDto {
+    open: bool,
+    invite: Option<InviteDto>,
+    answer: &'static str,
+    error: MessageDto,
+}
+
+#[derive(Serialize)]
+#[allow(clippy::struct_excessive_bools)]
 struct DirectoryDto {
     scope: &'static str,
     space_id: String,
@@ -227,6 +250,8 @@ struct DirectoryDto {
     direct_alert: bool,
     direct_mention: bool,
     direct_hint: bool,
+    invites_pending: bool,
+    invites: Vec<InviteDto>,
     rooms: Vec<RoomDto>,
     space_matches: Vec<SpaceMatchDto>,
     spaces: Vec<SpaceDto>,
@@ -420,6 +445,7 @@ pub fn view(source: &AppViewState) -> ViewDto {
         connection: connection(&source.connection),
         directory: directory(&source.directory),
         space_index: space_index(&source.space_index),
+        invite: invite_sheet(&source.invite),
         room_info: room_info(&source.room_info),
         room_menu: source.room_menu.as_ref().map(room_menu),
         user_info: user_info(&source.user_info),
@@ -689,10 +715,37 @@ fn directory(source: &DirectoryView) -> DirectoryDto {
         direct_alert: source.direct_flags.alert,
         direct_mention: source.direct_flags.mention,
         direct_hint: source.direct_flags.hint,
+        invites_pending: source.invites_pending,
+        invites: source.invites.iter().map(|entry| invite(entry)).collect(),
         rooms: source.rooms.iter().map(|entry| room(entry)).collect(),
         space_matches: source.space_matches.iter().map(space_match).collect(),
         spaces: source.spaces.iter().map(space).collect(),
         subspaces: source.subspaces.iter().map(space).collect(),
+    }
+}
+
+fn invite(source: &Invite) -> InviteDto {
+    InviteDto {
+        id: source.id.to_string(),
+        name: source.name.clone(),
+        kind: names::invite_kind(source.kind),
+        inviter: source
+            .inviter
+            .as_ref()
+            .map(|inviter| inviter.user_id.clone()),
+        inviter_name: source.inviter.as_ref().map(NamedUser::shown),
+        topic: source.topic.clone(),
+        has_avatar_mxc: source.avatar_mxc.is_some(),
+        received_ts: source.received_ts,
+    }
+}
+
+fn invite_sheet(source: &InviteView) -> InviteSheetDto {
+    InviteSheetDto {
+        open: source.invite.is_some(),
+        invite: source.invite.as_deref().map(invite),
+        answer: names::pending_answer(source.answer),
+        error: message(&source.error),
     }
 }
 

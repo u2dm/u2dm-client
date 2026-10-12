@@ -3,8 +3,8 @@ use std::io::{self, Write};
 use std::process::ExitCode;
 
 use super::{
-    attachments, audio, identity, login, logout, message_menu, names, pinned, polls, reactions,
-    receipts, richtext, room_info, shields, space_index, stickers, timeline, user_info,
+    attachments, audio, identity, invites, login, logout, message_menu, names, pinned, polls,
+    reactions, receipts, richtext, room_info, shields, space_index, stickers, timeline, user_info,
     verification, videos,
 };
 
@@ -37,6 +37,7 @@ pub fn all() -> &'static [&'static Scenarios] {
         &audio::CATALOG,
         &videos::CATALOG,
         &space_index::CATALOG,
+        &invites::CATALOG,
         &room_info::CATALOG,
         &user_info::CATALOG,
         &identity::CATALOG,

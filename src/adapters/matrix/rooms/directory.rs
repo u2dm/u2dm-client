@@ -9,9 +9,12 @@ use matrix_sdk::sync::{JoinedRoomUpdate, RoomUpdates, State};
 use matrix_sdk::{Client, Room, RoomState};
 use matrix_sdk_base::{RoomInfoNotableUpdate, RoomInfoNotableUpdateReasons};
 use tokio::time::Instant;
+use tracing::Instrument;
 
 use super::avatars::{AvatarFetcher, AvatarKind};
 use super::build::{build_rooms, build_single_room, build_spaces_meta, unread_flags};
+use super::invites::{build_invite, build_invites};
+use crate::domain::invite::Invite;
 use crate::domain::room::{Room as DomainRoom, Space as DomainSpace};
 use crate::domain::sync::SyncEvent;
 use crate::ports::matrix::SyncSink as OnSync;
@@ -130,11 +133,13 @@ fn changed_facets(before: &DomainRoom, after: &DomainRoom) -> Vec<&'static str> 
 pub(super) struct Directory {
     rooms: HashMap<String, Arc<DomainRoom>>,
     order: Vec<String>,
+    invites: HashMap<String, Arc<Invite>>,
     spaces: Vec<DomainSpace>,
     pending: HashMap<OwnedRoomId, RoomRefresh>,
     notifications: NotificationSettings,
     rooms_dirty: bool,
     order_dirty: bool,
+    invites_dirty: bool,
     spaces_dirty: bool,
     spaces_structural_dirty: bool,
     flush_at: Option<Instant>,
@@ -145,11 +150,13 @@ impl Directory {
         Self {
             rooms: HashMap::new(),
             order: Vec::new(),
+            invites: HashMap::new(),
             spaces: Vec::new(),
             pending: HashMap::new(),
             notifications,
             rooms_dirty: false,
             order_dirty: false,
+            invites_dirty: false,
             spaces_dirty: false,
             spaces_structural_dirty: false,
             flush_at: None,
@@ -171,6 +178,11 @@ impl Directory {
         self.arm();
     }
 
+    pub(super) fn mark_invites(&mut self) {
+        self.invites_dirty = true;
+        self.arm();
+    }
+
     pub(super) fn mark_spaces(&mut self) {
         self.spaces_dirty = true;
         self.arm();
@@ -184,6 +196,7 @@ impl Directory {
     pub(super) fn mark_kind(&mut self, kind: AvatarKind) {
         match kind {
             AvatarKind::Room => self.mark_rooms(),
+            AvatarKind::Invite => self.mark_invites(),
             AvatarKind::Space => self.mark_spaces(),
         }
     }
@@ -208,6 +221,7 @@ impl Directory {
     pub(super) async fn seed(&mut self, client: &Client) {
         let rooms = build_rooms(client, &self.notifications).await;
         self.rooms = rooms;
+        self.invites = build_invites(client).await;
         self.spaces = build_spaces_meta(client).await;
         self.pending.clear();
         self.order_dirty = true;
@@ -239,8 +253,28 @@ impl Directory {
         self.mark_rooms();
     }
 
+    fn upsert_invite(&mut self, invite: Invite) {
+        let key = invite.id.to_string();
+        if self
+            .invites
+            .get(&key)
+            .is_some_and(|current| **current == invite)
+        {
+            tracing::debug!(room_id = %invite.id, "the rebuilt invite shows nothing new");
+            return;
+        }
+        tracing::debug!(room_id = %invite.id, kind = ?invite.kind, "listing the invite");
+        self.invites.insert(key, Arc::new(invite));
+        self.mark_invites();
+    }
+
     fn remove_room(&mut self, room_id: &MatrixRoomId) {
         self.pending.remove(room_id);
+        self.unlist_room(room_id);
+        self.unlist_invite(room_id);
+    }
+
+    fn unlist_room(&mut self, room_id: &MatrixRoomId) {
         if self.rooms.remove(room_id.as_str()).is_none() {
             return;
         }
@@ -249,29 +283,55 @@ impl Directory {
         self.mark_rooms();
     }
 
+    fn unlist_invite(&mut self, room_id: &MatrixRoomId) {
+        if self.invites.remove(room_id.as_str()).is_none() {
+            return;
+        }
+        tracing::debug!(%room_id, "dropped the invite from the list");
+        self.mark_invites();
+    }
+
+    fn lists(&self, room_id: &MatrixRoomId) -> bool {
+        self.rooms.contains_key(room_id.as_str()) || self.invites.contains_key(room_id.as_str())
+    }
+
     pub(super) fn note_room_updates(&mut self, client: &Client, updates: &RoomUpdates) {
         for room_id in updates.left.keys() {
-            tracing::debug!(%room_id, "sync reported the room as left");
-            self.remove_room(room_id);
-            if self.spaces.iter().any(|space| space.id == room_id.as_str()) {
-                self.mark_spaces_structural();
-            }
+            self.note_left(room_id);
+        }
+        for room_id in updates.invited.keys() {
+            tracing::debug!(%room_id, "sync delivered an invite");
+            self.mark_room(room_id.clone(), RoomRefresh::Full);
         }
         for (room_id, update) in &updates.joined {
-            let refresh = refresh_for_joined(update);
-            log_joined_update(room_id, update, refresh);
-            let Some(refresh) = refresh else {
-                continue;
-            };
-            let Some(room) = client.get_room(room_id) else {
-                tracing::debug!(%room_id, "the client does not know the room sync updated");
-                continue;
-            };
-            if room.is_space() {
-                self.mark_spaces_structural();
-            } else {
-                self.mark_room(room_id.clone(), refresh);
-            }
+            self.note_joined(client, room_id, update);
+        }
+    }
+
+    fn note_left(&mut self, room_id: &MatrixRoomId) {
+        tracing::debug!(%room_id, "sync reported the room as left");
+        self.remove_room(room_id);
+        if self.spaces.iter().any(|space| space.id == room_id.as_str()) {
+            self.mark_spaces_structural();
+        }
+    }
+
+    fn note_joined(&mut self, client: &Client, room_id: &OwnedRoomId, update: &JoinedRoomUpdate) {
+        let refresh = refresh_for_joined(update);
+        log_joined_update(room_id, update, refresh);
+        let was_invited = self.invites.contains_key(room_id.as_str());
+        let Some(refresh) = refresh.or(was_invited.then_some(RoomRefresh::Full)) else {
+            return;
+        };
+        let Some(room) = client.get_room(room_id) else {
+            tracing::debug!(%room_id, "the client does not know the room sync updated");
+            return;
+        };
+        if room.is_space() {
+            self.mark_spaces_structural();
+        }
+        if !room.is_space() || was_invited {
+            self.mark_room(room_id.clone(), refresh);
         }
     }
 
@@ -286,21 +346,29 @@ impl Directory {
         let Some(refresh) = refresh else {
             return;
         };
-        let Some(room) = client.get_room(&update.room_id) else {
+        let room_id = &update.room_id;
+        let invited = self.invites.contains_key(room_id.as_str());
+        let Some(room) = client.get_room(room_id) else {
+            if self.lists(room_id) {
+                self.mark_room(room_id.clone(), RoomRefresh::Full);
+            }
             return;
         };
-        if room.is_space() {
+        if room.is_space() && room.state() != RoomState::Invited {
             self.mark_spaces_structural();
+        }
+        if invited {
+            self.mark_room(room_id.clone(), RoomRefresh::Full);
             return;
         }
-        if !self.rooms.contains_key(update.room_id.as_str()) {
-            tracing::debug!(
-                room_id = %update.room_id,
-                "the room is not listed yet, so it waits for sync to list it"
-            );
+        if room.is_space() {
             return;
         }
-        self.mark_room(update.room_id.clone(), refresh);
+        if !self.rooms.contains_key(room_id.as_str()) {
+            tracing::debug!(%room_id, "the room is not listed yet, so it waits for sync to list it");
+            return;
+        }
+        self.mark_room(room_id.clone(), refresh);
     }
 
     async fn apply_pending(&mut self, client: &Client) {
@@ -317,22 +385,39 @@ impl Directory {
     ) {
         let Some(room) = client.get_room(room_id) else {
             tracing::debug!(%room_id, ?refresh, "the client no longer knows the room");
-            return;
-        };
-        let state = room.state();
-        if state != RoomState::Joined {
-            tracing::debug!(%room_id, ?state, "the room is no longer joined");
             self.remove_room(room_id);
             return;
-        }
-        tracing::debug!(%room_id, ?refresh, "refreshing the room");
-        match refresh {
-            RoomRefresh::Full => {
-                let built = build_single_room(&room, &self.notifications).await;
-                self.upsert_room(built);
+        };
+        match room.state() {
+            RoomState::Invited => {
+                self.unlist_room(room_id);
+                let invite = build_invite(&room)
+                    .instrument(tracing::debug_span!("invite_build", %room_id))
+                    .await;
+                self.upsert_invite(invite);
             }
-            RoomRefresh::Flags => self.refresh_flags(&room).await,
+            RoomState::Joined => {
+                self.unlist_invite(room_id);
+                if !room.is_space() {
+                    self.refresh_joined(&room, refresh).await;
+                }
+            }
+            state => {
+                tracing::debug!(%room_id, ?state, "the room is no longer joined or invited");
+                self.remove_room(room_id);
+            }
         }
+    }
+
+    async fn refresh_joined(&mut self, room: &Room, refresh: RoomRefresh) {
+        let listed = self.rooms.contains_key(room.room_id().as_str());
+        tracing::debug!(room_id = %room.room_id(), ?refresh, listed, "refreshing the room");
+        if refresh == RoomRefresh::Flags && listed {
+            self.refresh_flags(room).await;
+            return;
+        }
+        let built = build_single_room(room, &self.notifications).await;
+        self.upsert_room(built);
     }
 
     async fn refresh_flags(&mut self, room: &Room) {
@@ -402,6 +487,10 @@ impl Directory {
             self.emit_rooms(client, on_sync, avatars);
             self.rooms_dirty = false;
         }
+        if self.invites_dirty {
+            self.emit_invites(client, on_sync, avatars);
+            self.invites_dirty = false;
+        }
         if self.spaces_dirty {
             self.emit_spaces(client, on_sync, avatars);
             self.spaces_dirty = false;
@@ -422,6 +511,23 @@ impl Directory {
             rooms.iter().filter_map(|room| room.avatar_mxc.as_deref()),
         );
         on_sync(SyncEvent::Rooms(rooms.into()));
+    }
+
+    fn emit_invites(&self, client: &Client, on_sync: &OnSync, avatars: &mut AvatarFetcher) {
+        let mut invites: Vec<Arc<Invite>> = self.invites.values().map(Arc::clone).collect();
+        invites.sort_by(|a, b| {
+            b.received_ts
+                .cmp(&a.received_ts)
+                .then_with(|| a.id.as_ref().cmp(b.id.as_ref()))
+        });
+        avatars.request(
+            client,
+            AvatarKind::Invite,
+            invites
+                .iter()
+                .filter_map(|invite| invite.avatar_mxc.as_deref()),
+        );
+        on_sync(SyncEvent::Invites(invites.into()));
     }
 
     fn emit_spaces(&self, client: &Client, on_sync: &OnSync, avatars: &mut AvatarFetcher) {

@@ -3,6 +3,7 @@ pub mod auth;
 pub mod emote;
 pub mod identity;
 pub mod image_pack;
+pub mod invite;
 pub mod link;
 pub mod media;
 pub mod member_name;

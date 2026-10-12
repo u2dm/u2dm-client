@@ -13,8 +13,8 @@ use super::backend::{
 use super::decode::{AvatarSlot, load_attachment_preview, load_avatar_async, request_pack_cell};
 use super::dto::{
     PackArt, PackBrowse, PackRowDto, PackTabDto, QuotedMessage, audio_row_update,
-    load_room_info_avatar, load_user_info_avatar, pack_art, pack_grid, preview_line,
-    quoted_message, rich_body, user_info_pronouns,
+    invite_avatar_path, load_room_info_avatar, load_user_info_avatar, pack_art, pack_grid,
+    preview_line, quoted_message, rich_body, user_info_pronouns,
 };
 use super::emote;
 use super::fields::{MemberRowFields, MessageFields, SpaceChildFields, SpaceFields};
@@ -38,16 +38,17 @@ use crate::commands::messages::{UserMessage, UserMessageKind};
 use crate::commands::ui::Draft;
 use crate::commands::view::{
     AppViewState, AttachmentView, AudioView, CardStatus, CopiedLink, DirectoryView,
-    IdentityAlertView, LifecycleView, LoginStep, MentionsView, NowPlaying, PackView,
+    IdentityAlertView, InviteView, LifecycleView, LoginStep, MentionsView, NowPlaying, PackView,
     PaginationView, PinnedView, ReadersView, RoomCard, RoomInfoView, RoomLogView, RoomMenuTarget,
     SourceState, SpaceIndexView, Toast, TrackFile, UnsentMessage, UserCard, UserInfoView,
     VideoView,
 };
+use crate::domain::invite::{Invite, InviteList};
 use crate::domain::message::{
     EditKind, MessageEdit, MessagePermissions, MessagePreviewKind, RichText, TimelineMessage,
 };
 use crate::domain::poll::PollPermissions;
-use crate::domain::room::{Room, RoomId};
+use crate::domain::room::RoomId;
 use crate::domain::room_info::RoomAbout;
 use crate::domain::room_log::RoomLog;
 use crate::domain::sync::ReauthReason;
@@ -87,6 +88,12 @@ impl RoomCursor {
     pub fn active_generation(&self) -> i32 {
         self.active_generation
     }
+}
+
+#[derive(Clone, Default, PartialEq, Eq)]
+pub struct InviteSheetAvatar {
+    room_id: String,
+    path: Option<PathBuf>,
 }
 
 fn active_generation() -> i32 {
@@ -201,13 +208,8 @@ pub fn dispatch_effect<B: UiBackend>(w: &B::Window, event: Effect, ctx: &UiEvent
             w.set_bool(BoolProp::TimelineDetached, !live);
             w.set_int(IntProp::SelectedGeneration, generation);
             w.set_string(StringProp::SelectedRoomId, SharedString::from(id.as_ref()));
-            let listed = with_session(|session| {
-                session
-                    .snapshot
-                    .as_ref()
-                    .map(|view| Arc::clone(&view.directory.rooms))
-            });
-            publish_selected_room_row(w, listed.as_deref().unwrap_or_default());
+            let listed = latest_directory().unwrap_or_default();
+            publish_selected_room_row(w, RoomListing::of(&listed));
             w.set_string(StringProp::SelectedRoomName, SharedString::from(&name));
             w.set_string(
                 StringProp::SelectedRoomInitial,
@@ -356,6 +358,7 @@ fn apply_snapshot<B: UiBackend>(
         connection,
         directory,
         space_index,
+        invite,
         room_info,
         room_menu,
         user_info,
@@ -382,6 +385,7 @@ fn apply_snapshot<B: UiBackend>(
     }
     apply_directory::<B>(w, last.map(|l| &l.directory), directory, ctx);
     apply_space_index::<B>(w, last.map(|l| &l.space_index), space_index, ctx);
+    apply_invite(w, last, invite, &directory.invites, ctx.media);
     apply_room_info::<B>(w, last.map(|l| &l.room_info), room_info, ctx);
     if last.is_none_or(|l| l.room_menu != *room_menu) {
         apply_room_menu(w, room_menu.as_ref());
@@ -718,6 +722,7 @@ fn apply_directory<B: UiBackend>(
 ) {
     let DirectoryView {
         rooms,
+        invites,
         space_matches,
         spaces,
         subspaces,
@@ -726,9 +731,14 @@ fn apply_directory<B: UiBackend>(
         subspace_id,
         listed_space,
         direct_flags,
+        invites_pending,
     } = directory;
 
-    if last.is_none_or(|l| !Arc::ptr_eq(&l.rooms, rooms) || l.space_matches != *space_matches) {
+    if last.is_none_or(|l| {
+        !Arc::ptr_eq(&l.rooms, rooms)
+            || !Arc::ptr_eq(&l.invites, invites)
+            || l.space_matches != *space_matches
+    }) {
         apply_rooms::<B>(
             &ctx.models.rooms,
             RoomListing::of(directory),
@@ -736,7 +746,7 @@ fn apply_directory<B: UiBackend>(
             ctx.media,
         );
         refresh_selected_room_avatar(w, ctx.media);
-        publish_selected_room_row(w, rooms);
+        publish_selected_room_row(w, RoomListing::of(directory));
     }
     if last.is_none_or(|l| !Arc::ptr_eq(&l.spaces, spaces)) {
         apply_spaces(
@@ -782,6 +792,94 @@ fn apply_directory<B: UiBackend>(
         w.set_bool(BoolProp::DirectAlert, direct_flags.alert);
         w.set_bool(BoolProp::DirectMention, direct_flags.mention);
         w.set_bool(BoolProp::DirectHint, direct_flags.hint);
+    }
+    if last.is_none_or(|l| l.invites_pending != *invites_pending) {
+        w.set_bool(BoolProp::InvitesPending, *invites_pending);
+    }
+}
+
+fn apply_invite(
+    w: &impl UiProps,
+    last_view: Option<&AppViewState>,
+    view: &InviteView,
+    listed: &InviteList,
+    media: &dyn MediaCache,
+) {
+    let InviteView {
+        invite,
+        answer,
+        error,
+    } = view;
+    let last = last_view.map(|l| &l.invite);
+
+    if last.is_none_or(|l| l.answer != *answer) {
+        w.set_invite_answer(*answer);
+    }
+    if last.is_none_or(|l| l.error != *error) {
+        w.set_invite_error(error.kind);
+        w.set_string(
+            StringProp::InviteErrorDetail,
+            SharedString::from(&error.detail),
+        );
+    }
+    if last.is_none_or(|l| l.invite != *invite) {
+        apply_invite_card(w, invite.as_deref());
+    }
+    if last_view.is_none_or(|l| l.invite != *view || !Arc::ptr_eq(&l.directory.invites, listed)) {
+        show_invite_avatar(w, invite.as_deref(), media);
+    }
+}
+
+fn apply_invite_card(w: &impl UiProps, invite: Option<&Invite>) {
+    let Some(invite) = invite else {
+        w.set_bool(BoolProp::InviteVisible, false);
+        return;
+    };
+    w.set_string(
+        StringProp::InviteRoomId,
+        SharedString::from(invite.id.as_ref()),
+    );
+    w.set_string(StringProp::InviteName, SharedString::from(&invite.name));
+    w.set_string(
+        StringProp::InviteInitial,
+        SharedString::from(avatar_initials(&invite.name)),
+    );
+    w.set_int(
+        IntProp::InviteColorIndex,
+        avatar_color_index(invite.id.as_ref()),
+    );
+    w.set_invite_kind(invite.kind);
+    w.set_string(
+        StringProp::InviteTopic,
+        SharedString::from(invite.topic.as_deref().unwrap_or_default()),
+    );
+    w.set_string(
+        StringProp::InviteInviter,
+        SharedString::from(
+            invite
+                .inviter
+                .as_ref()
+                .map(|inviter| inviter.name.identified(&inviter.user_id))
+                .unwrap_or_default(),
+        ),
+    );
+    w.set_bool(BoolProp::InviteVisible, true);
+}
+
+fn show_invite_avatar(w: &impl UiProps, invite: Option<&Invite>, media: &dyn MediaCache) {
+    let next = InviteSheetAvatar {
+        room_id: invite
+            .map(|invite| invite.id.to_string())
+            .unwrap_or_default(),
+        path: invite.and_then(|invite| invite_avatar_path(invite, media)),
+    };
+    let previous = with_session(|session| mem::replace(&mut session.invite_avatar, next.clone()));
+    if previous == next {
+        return;
+    }
+    let image = load_avatar_async(next.path.as_deref(), AvatarSlot::Invite);
+    if image.is_some() || previous.room_id != next.room_id {
+        w.apply_invite_avatar(image);
     }
 }
 
@@ -1607,13 +1705,17 @@ fn show_selected_room_avatar(
     }
 }
 
-fn publish_selected_room_row(w: &impl UiProps, listed: &[Arc<Room>]) {
+fn publish_selected_room_row(w: &impl UiProps, listing: RoomListing<'_>) {
     let selected = w.get_string(StringProp::SelectedRoomId);
-    let row = listed
-        .iter()
-        .position(|room| room.id.as_ref() == selected.as_str())
-        .and_then(|row| i32::try_from(row).ok())
+    let place = listing.place_of(selected.as_str());
+    let row = place
+        .as_ref()
+        .and_then(|place| i32::try_from(place.row).ok())
         .unwrap_or(NO_SELECTED_ROW);
+    let headings = place
+        .and_then(|place| i32::try_from(place.headings_above).ok())
+        .unwrap_or_default();
+    w.set_int(IntProp::SelectedRoomHeadings, headings);
     w.set_int(IntProp::SelectedRoomRow, row);
 }
 
@@ -1629,6 +1731,7 @@ fn clear_selected_room(w: &impl UiProps) {
     w.set_int(IntProp::SelectedRoomColorIndex, 0);
     w.apply_selected_room_avatar(None);
     w.set_int(IntProp::SelectedRoomRow, NO_SELECTED_ROW);
+    w.set_int(IntProp::SelectedRoomHeadings, 0);
     w.set_int(IntProp::SelectedRoomMembers, 0);
     w.set_bool(BoolProp::SelectedRoomEncrypted, false);
     apply_poll_permissions(w, PollPermissions::UNRESTRICTED);

@@ -92,6 +92,7 @@ export enum UserMessageKind {
     space-order-save-failed,
     pack-setting-failed,
     join-room-failed,
+    decline-invite-failed,
     leave-room-failed,
     notify-change-failed,
     mark-read-failed,
@@ -306,8 +307,23 @@ export enum MemberRowKind {
 
 export enum RoomRowKind {
     room,
+    invites-heading,
+    invite,
+    rooms-heading,
     spaces-heading,
     space,
+}
+
+export enum InviteKind {
+    room,
+    space,
+    direct,
+}
+
+export enum InviteAnswer {
+    none,
+    accept,
+    decline,
 }
 
 export enum RosterStatus {

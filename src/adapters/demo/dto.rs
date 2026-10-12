@@ -6,6 +6,7 @@ use serde::Deserialize;
 use super::{media, message_menu, polls, reactions};
 use crate::domain::auth::Session;
 use crate::domain::image_pack::{ImagePack, ImageUsage, PackId, PackImage, PackOrigin, PackTitle};
+use crate::domain::invite::{Invite, InviteKind};
 use crate::domain::media::{AudioKind, AudioMeta, ImageMeta, VideoMeta, Waveform};
 use crate::domain::member_name::{MemberName, NamedUser};
 use crate::domain::message::{
@@ -33,6 +34,33 @@ pub struct DemoData {
     pub sticker_packs: Vec<ImagePackDto>,
     #[serde(default)]
     pub unjoined: Vec<UnjoinedDto>,
+    #[serde(default)]
+    pub invites: Vec<InviteDto>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct InviteDto {
+    pub id: String,
+    name: String,
+    #[serde(default)]
+    avatar: Option<String>,
+    #[serde(default)]
+    topic: Option<String>,
+    #[serde(default)]
+    pub inviter: Option<String>,
+    #[serde(default)]
+    pub direct: bool,
+    #[serde(default)]
+    pub space: bool,
+    #[serde(default)]
+    encrypted: bool,
+    #[serde(default)]
+    members: u64,
+    #[serde(default)]
+    minutes_ago: u64,
+    #[serde(default)]
+    rooms: Vec<String>,
 }
 
 #[derive(Deserialize)]
@@ -706,6 +734,69 @@ impl UnjoinedDto {
             member_count: self.members.saturating_add(1),
             child_room_ids: self.rooms.clone(),
             child_space_ids: self.spaces.clone(),
+            order: None,
+            alert: false,
+            mention: false,
+            hint: false,
+        }
+    }
+}
+
+impl InviteDto {
+    pub fn to_invite(&self, now_ms: u64, inviter: Option<NamedUser>) -> Invite {
+        Invite {
+            id: RoomId::new(&self.id),
+            name: self.name.clone(),
+            avatar_mxc: self.avatar.clone(),
+            topic: self.topic.clone(),
+            kind: InviteKind::of(self.space, self.direct),
+            inviter,
+            received_ts: ago_ms(now_ms, self.minutes_ago, 0),
+        }
+    }
+
+    pub fn to_room(&self, now_ms: u64) -> Room {
+        Room {
+            id: RoomId::new(&self.id),
+            display_name: self.name.clone(),
+            avatar_mxc: self.avatar.clone(),
+            topic: self.topic.clone(),
+            canonical_alias: None,
+            is_direct: self.direct,
+            is_encrypted: self.encrypted,
+            poll_permissions: polls::permissions(),
+            message_permissions: message_menu::permissions(),
+            member_count: self.joined_members(),
+            has_unread: false,
+            has_mentions: false,
+            has_activity: false,
+            notify: NotifyMode::AllMessages,
+            last_activity_ts: now_ms,
+            last_message_sender: None,
+            last_message_kind: MessagePreviewKind::None,
+            last_message_body: RichText::default(),
+            last_message_service: None,
+            last_message_is_own: false,
+            last_message_edited: false,
+        }
+    }
+
+    pub fn joined_members(&self) -> u64 {
+        self.members.saturating_add(1)
+    }
+
+    pub fn rich_topic(&self) -> Option<RichText> {
+        self.topic.clone().map(RichText::plain)
+    }
+
+    pub fn to_space(&self) -> Space {
+        Space {
+            id: self.id.clone(),
+            name: self.name.clone(),
+            avatar_mxc: self.avatar.clone(),
+            member_count: self.joined_members(),
+            child_room_ids: self.rooms.clone(),
+            child_space_ids: Vec::new(),
             order: None,
             alert: false,
             mention: false,

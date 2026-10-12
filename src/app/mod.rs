@@ -8,6 +8,7 @@ mod event;
 mod event_source;
 mod identity_alerts;
 pub mod input;
+mod invites;
 mod lifecycle;
 mod link_requests;
 mod media;
@@ -46,6 +47,7 @@ use event::{
 use event_source::EventSourceViewer;
 use identity_alerts::{IdentityAlerts, Resolution};
 use input::{CommandSender, EventSender, Inbox, Input};
+use invites::{Answer, Arrival, Invites};
 use lifecycle::{Lifecycle, Settled};
 use media::MediaActions;
 use mentions::{MentionSuggestions, Suggestion};
@@ -55,7 +57,7 @@ use pinned::{PinDirection, PinnedMessages};
 use readers::ReaderList;
 use recover::Recovery;
 use room_directory::{RoomDirectory, RoomMeta};
-use room_info::RoomInfo;
+use room_info::{ActionOutcome, RoomInfo};
 use room_log::RoomLogViewer;
 use selection::Selection;
 use send_lanes::SendLanes;
@@ -77,6 +79,7 @@ use crate::domain::account::AccountScope;
 use crate::domain::auth::ServerInfo;
 use crate::domain::emote::ComposerText;
 use crate::domain::image_pack::PackId;
+use crate::domain::invite::InviteList;
 use crate::domain::media::AttachmentPick;
 use crate::domain::message::{MessageEdit, PinChange};
 use crate::domain::poll::PollDraft;
@@ -194,6 +197,7 @@ pub struct AppService {
     video: VideoController,
     packs: Packs,
     space_index: SpaceIndex,
+    invites: Invites,
     room_info: RoomInfo,
     user_info: UserInfo,
     message_actions: MessageActions,
@@ -241,6 +245,7 @@ impl AppService {
             video: VideoController::new(Arc::clone(&output), events.clone()),
             packs: Packs::new(Arc::clone(&output), events.clone()),
             space_index: SpaceIndex::new(Arc::clone(&output), events.clone()),
+            invites: Invites::new(Arc::clone(&output), events.clone()),
             room_info: RoomInfo::new(Arc::clone(&output), events.clone()),
             user_info: UserInfo::new(Arc::clone(&output), events.clone()),
             message_actions: MessageActions::new(Arc::clone(&output), events.clone()),
@@ -290,8 +295,11 @@ impl AppService {
                         Some(DirectoryUpdate::Rooms(rooms)) => {
                             self.handle_rooms_updated(rooms).await;
                         }
+                        Some(DirectoryUpdate::Invites(invites)) => {
+                            self.handle_invites_updated(invites).await;
+                        }
                         Some(DirectoryUpdate::Spaces(spaces)) => {
-                            self.handle_spaces_updated(spaces);
+                            self.handle_spaces_updated(spaces).await;
                         }
                         None => dir_done = true,
                     }
@@ -436,6 +444,18 @@ impl AppService {
             }
             UiCommand::OpenSpaceChild(room_id) => {
                 self.open_space_child(room_id).await;
+            }
+            UiCommand::OpenInvite(room_id) => {
+                self.invites.open(self.room_directory.invite(&room_id));
+            }
+            UiCommand::CloseInvite => {
+                self.invites.close();
+            }
+            UiCommand::AcceptInvite(room_id) => {
+                self.answer_invite(&room_id, Answer::Accept);
+            }
+            UiCommand::DeclineInvite(room_id) => {
+                self.answer_invite(&room_id, Answer::Decline);
             }
             UiCommand::OpenRoomInfo(room_id) => {
                 self.open_room_info(&room_id);
@@ -839,10 +859,21 @@ impl AppService {
             if let Some(room_id) = self.user_info.follow(self.room_directory.rooms()) {
                 self.select_room(room_id).await;
             }
+            self.follow_invites().await;
         }
     }
 
-    fn handle_spaces_updated(&mut self, spaces: Arc<[Space]>) {
+    async fn handle_invites_updated(&mut self, invites: InviteList) {
+        if self.held_session.running().is_none() {
+            return;
+        }
+        if self.room_directory.store_invites(invites) {
+            self.room_directory.emit_directory(&self.selection);
+            self.follow_invites().await;
+        }
+    }
+
+    async fn handle_spaces_updated(&mut self, spaces: Arc<[Space]>) {
         if self.held_session.running().is_none() {
             return;
         }
@@ -853,6 +884,44 @@ impl AppService {
             }
             self.room_directory.emit_directory(&self.selection);
             self.follow_space_index();
+            self.follow_invites().await;
+        }
+    }
+
+    async fn follow_invites(&mut self) {
+        let membership = self.room_directory.membership(&self.selection);
+        let arrival = self
+            .invites
+            .follow(self.room_directory.invites(), &membership);
+        self.open_arrival(arrival).await;
+    }
+
+    fn answer_invite(&mut self, room_id: &RoomId, answer: Answer) {
+        if let Some(port) = self.port(|a| &a.invites) {
+            self.invites
+                .answer(port, self.room_directory.invite(room_id), answer);
+        }
+    }
+
+    async fn settle_invite_answer(
+        &mut self,
+        room_id: &RoomId,
+        name: &str,
+        answer: Answer,
+        outcome: ActionOutcome,
+    ) {
+        let membership = self.room_directory.membership(&self.selection);
+        let arrival = self
+            .invites
+            .answered(room_id, name, answer, outcome, &membership);
+        self.open_arrival(arrival).await;
+    }
+
+    async fn open_arrival(&mut self, arrival: Option<Arrival>) {
+        match arrival {
+            Some(Arrival::Room(room_id)) => self.select_room(room_id).await,
+            Some(Arrival::Space(space_id)) => self.open_space(&space_id),
+            None => {}
         }
     }
 
@@ -1288,6 +1357,15 @@ impl AppService {
                 outcome,
             } => {
                 self.settle_space_child_join(room_id, &name, outcome);
+            }
+            AppEvent::InviteAnswered {
+                room_id,
+                name,
+                answer,
+                outcome,
+            } => {
+                self.settle_invite_answer(&room_id, &name, answer, outcome)
+                    .await;
             }
             AppEvent::RoomRosterFetched {
                 generation,
@@ -1925,6 +2003,7 @@ impl AppService {
 
     async fn select_room(&mut self, room_id: RoomId) {
         self.space_index.close();
+        self.invites.close();
         self.retarget_room_info(&room_id);
         self.user_info.close();
         self.event_source.close();
@@ -2110,6 +2189,7 @@ impl AppService {
             self.video.restart(),
             self.packs.restart(),
             self.space_index.restart(),
+            self.invites.restart(),
             self.room_info.restart(),
             self.user_info.restart(),
             self.readers.restart(),
@@ -2222,6 +2302,7 @@ impl AppService {
             self.video.shutdown(),
             self.packs.shutdown(),
             self.space_index.shutdown(),
+            self.invites.shutdown(),
             self.room_info.shutdown(),
             self.user_info.shutdown(),
             self.readers.shutdown(),

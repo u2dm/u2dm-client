@@ -4,6 +4,7 @@ mod directory;
 mod health;
 mod hierarchy;
 mod info;
+mod invites;
 mod send_queue;
 
 use std::future;
@@ -29,6 +30,7 @@ use self::directory::Directory;
 use self::health::{SyncHealth, session_loss};
 pub(super) use self::hierarchy::MatrixSpaceIndex;
 pub(super) use self::info::MatrixRoomInfo;
+pub(super) use self::invites::MatrixInvites;
 use self::send_queue::SendQueueRecovery;
 use super::media::MediaService;
 use super::session::ClientHandle;
@@ -91,6 +93,7 @@ async fn follow_selected_room(
 async fn resync(client: &Client, dir: &mut Directory) {
     dir.seed(client).await;
     dir.mark_rooms();
+    dir.mark_invites();
     dir.mark_spaces();
 }
 
@@ -101,12 +104,13 @@ async fn handle_room_update(
 ) -> LoopAction {
     match update {
         Ok(updates) => {
-            if updates.joined.is_empty() && updates.left.is_empty() {
+            if updates.joined.is_empty() && updates.left.is_empty() && updates.invited.is_empty() {
                 return LoopAction::Continue;
             }
             tracing::debug!(
                 joined = updates.joined.len(),
                 left = updates.left.len(),
+                invited = updates.invited.len(),
                 "processing room updates"
             );
             dir.note_room_updates(client, &updates);

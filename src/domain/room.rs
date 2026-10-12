@@ -103,6 +103,10 @@ impl UnreadFlags {
         self.mention |= room.mention();
         self.hint |= room.hint();
     }
+
+    pub fn absorb_invite(&mut self) {
+        self.alert = true;
+    }
 }
 
 pub type RoomList = Arc<[Arc<Room>]>;

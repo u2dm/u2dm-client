@@ -47,6 +47,13 @@ pub enum UiCommand {
     JoinSpaceChild(RoomId),
     #[strum(to_string = "OpenSpaceChild({0})")]
     OpenSpaceChild(RoomId),
+    #[strum(to_string = "OpenInvite({0})")]
+    OpenInvite(RoomId),
+    CloseInvite,
+    #[strum(to_string = "AcceptInvite({0})")]
+    AcceptInvite(RoomId),
+    #[strum(to_string = "DeclineInvite({0})")]
+    DeclineInvite(RoomId),
     #[strum(to_string = "OpenRoomInfo({0})")]
     OpenRoomInfo(RoomId),
     CloseRoomInfo,
@@ -281,6 +288,9 @@ impl UiCommand {
             | Self::OpenSpace(room_id)
             | Self::JoinSpaceChild(room_id)
             | Self::OpenSpaceChild(room_id)
+            | Self::OpenInvite(room_id)
+            | Self::AcceptInvite(room_id)
+            | Self::DeclineInvite(room_id)
             | Self::OpenRoomInfo(room_id)
             | Self::LeaveRoom(room_id)
             | Self::OpenRoomMenu(room_id)
@@ -314,6 +324,7 @@ impl UiCommand {
             | Self::CloseSpaceIndex
             | Self::PageSpaceIndex
             | Self::RetrySpaceIndex
+            | Self::CloseInvite
             | Self::CloseRoomInfo
             | Self::ShowRoomInfoPane
             | Self::HideRoomInfoPane

@@ -17,14 +17,16 @@ use url::Url;
 
 use super::identity::{self, IdentityBook, SendHold};
 use super::{
-    attachments, audio, data, login, logout, media, message_menu, pinned, polls, reactions,
-    receipts, room_info, source, space_index, stickers, timeline, user_info, verification, videos,
+    attachments, audio, data, invites, login, logout, media, message_menu, pinned, polls,
+    reactions, receipts, room_info, source, space_index, stickers, timeline, user_info,
+    verification, videos,
 };
 use crate::adapters::{body_emoji, video};
 use crate::domain::auth::{AuthMethod, LoginCredentials, OAuthLoginData, ServerInfo, Session};
 use crate::domain::emote::Emote;
 use crate::domain::identity::{OwnIdentity, RoomAlert};
 use crate::domain::image_pack::{PackId, PackImage};
+use crate::domain::invite::Invite;
 use crate::domain::link::LauncherSafeUrl;
 use crate::domain::media::{MediaRendition, OutgoingAttachment, WaveformNeed};
 use crate::domain::member_name::MemberName;
@@ -49,9 +51,9 @@ use crate::domain::verification::{VerificationCancellation, VerificationEvent};
 use crate::error::{AppError, Result};
 use crate::ports::matrix::{
     AttachmentHandoff, AuthPort, AuthenticatedSession, CleanupReport, DeviceRemoval, IdentityPort,
-    ImagePackPort, InterruptedLogin, LocalDataOwnership, MediaPort, PackCatalog, PinnedPort,
-    ProgressSink, RestoreOutcome, RestoreStep, RoomInfoPort, SessionPort, SpaceIndexPort,
-    SpaceOrderPort, StoreAdoption, SyncPort, SyncSink, TimelinePort, UserInfoPort,
+    ImagePackPort, InterruptedLogin, InvitePort, LocalDataOwnership, MediaPort, PackCatalog,
+    PinnedPort, ProgressSink, RestoreOutcome, RestoreStep, RoomInfoPort, SessionPort,
+    SpaceIndexPort, SpaceOrderPort, StoreAdoption, SyncPort, SyncSink, TimelinePort, UserInfoPort,
     VerificationPort,
 };
 use crate::ports::media::MediaCache;
@@ -227,6 +229,7 @@ fn authenticated(session: Session) -> AuthenticatedSession {
     let identity = Arc::clone(&authed);
     let space_order = Arc::clone(&authed);
     let space_index = Arc::clone(&authed);
+    let invites = Arc::clone(&authed);
     let room_info = Arc::clone(&authed);
     let user_info = Arc::clone(&authed);
     let image_packs = Arc::clone(&authed);
@@ -240,6 +243,7 @@ fn authenticated(session: Session) -> AuthenticatedSession {
         identity,
         space_order,
         space_index,
+        invites,
         room_info,
         user_info,
         image_packs,
@@ -271,6 +275,10 @@ impl RoomLists {
 
     fn spaces(&self) -> Vec<Space> {
         data::spaces_with(&self.joined)
+    }
+
+    fn invites(&self) -> Vec<Arc<Invite>> {
+        data::invites_with(&self.joined, &self.overrides)
     }
 }
 
@@ -1165,10 +1173,13 @@ impl SyncPort for DemoAuthed {
         if let Ok(mut sink) = self.sync_sink.lock() {
             *sink = Some(Arc::clone(&on_sync));
         }
+        self.hold_back_late_invites();
         let lists = current_lists(&self.lists);
         on_sync(SyncEvent::Connected);
         on_sync(SyncEvent::Rooms(lists.rooms().into()));
+        on_sync(SyncEvent::Invites(lists.invites().into()));
         on_sync(SyncEvent::Spaces(lists.spaces().into()));
+        self.spawn_invite_changes();
         if !timeline::scenario().room_list_keeps_updating {
             cancel.cancelled().await;
             return SyncOutcome::Cancelled;
@@ -1177,7 +1188,9 @@ impl SyncPort for DemoAuthed {
             tokio::select! {
                 () = cancel.cancelled() => return SyncOutcome::Cancelled,
                 () = sleep(timeline::ROOM_LIST_INTERVAL) => {
-                    on_sync(SyncEvent::Rooms(current_lists(&self.lists).rooms().into()));
+                    let lists = current_lists(&self.lists);
+                    on_sync(SyncEvent::Rooms(lists.rooms().into()));
+                    on_sync(SyncEvent::Invites(lists.invites().into()));
                 }
             }
         }
@@ -1233,7 +1246,55 @@ impl DemoAuthed {
             sleep(space_index::JOIN_ECHO_LAG).await;
             let lists = current_lists(&lists);
             sink(SyncEvent::Rooms(lists.rooms().into()));
+            sink(SyncEvent::Invites(lists.invites().into()));
             sink(SyncEvent::Spaces(lists.spaces().into()));
+        });
+    }
+
+    fn hold_back_late_invites(&self) {
+        if !invites::scenario().arrives_late {
+            return;
+        }
+        self.change_lists(|lists| {
+            lists
+                .overrides
+                .held_back
+                .insert(invites::LATE_INVITE.to_owned());
+        });
+    }
+
+    fn spawn_invite_changes(&self) {
+        let demo = invites::scenario();
+        if demo.arrives_late {
+            self.spawn_invite_change(invites::LATE_ARRIVAL, |overrides| {
+                overrides.held_back.remove(invites::LATE_INVITE);
+            });
+        }
+        if demo.gets_revoked {
+            self.spawn_invite_change(invites::REVOKED_AFTER, |overrides| {
+                overrides
+                    .withdrawn
+                    .insert(invites::REVOKED_INVITE.to_owned());
+            });
+        }
+    }
+
+    fn spawn_invite_change(
+        &self,
+        after: Duration,
+        change: impl FnOnce(&mut data::RoomOverrides) + Send + 'static,
+    ) {
+        let Some(sink) = self.sync_sink() else {
+            return;
+        };
+        let lists = Arc::clone(&self.lists);
+        tokio::spawn(async move {
+            sleep(after).await;
+            if let Ok(mut lists) = lists.lock() {
+                change(&mut lists.overrides);
+            }
+            tracing::debug!("demo: the invites changed");
+            sink(SyncEvent::Invites(current_lists(&lists).invites().into()));
         });
     }
 
@@ -1316,6 +1377,36 @@ impl SpaceIndexPort for DemoAuthed {
     async fn fetch_avatars(&self, mxcs: &[String]) -> usize {
         space_index::pause_avatars().await;
         media::fetch_unjoined_avatars(mxcs)
+    }
+}
+
+#[async_trait]
+impl InvitePort for DemoAuthed {
+    async fn accept(&self, room_id: &RoomId) -> Result<()> {
+        invites::pause().await;
+        if invites::scenario().accept_fails {
+            return Err(unavailable("accepting invites"));
+        }
+        tracing::debug!(%room_id, "demo: accepting an invite");
+        if invites::scenario().echo_lost {
+            return Ok(());
+        }
+        self.remember_join(room_id);
+        self.echo_join();
+        Ok(())
+    }
+
+    async fn decline(&self, room_id: &RoomId) -> Result<()> {
+        invites::pause().await;
+        if invites::scenario().decline_fails {
+            return Err(unavailable("declining invites"));
+        }
+        tracing::debug!(%room_id, "demo: declining an invite");
+        self.change_lists(|lists| {
+            lists.overrides.declined.insert(room_id.to_string());
+        });
+        self.echo_join();
+        Ok(())
     }
 }
 

@@ -107,6 +107,9 @@ export global UserMessages {
         if kind == UserMessageKind.join-room-failed {
             return @tr("Could not join {}", detail);
         }
+        if kind == UserMessageKind.decline-invite-failed {
+            return @tr("Could not decline the invitation to {}", detail);
+        }
         if kind == UserMessageKind.leave-room-failed {
             return @tr("Could not leave {}", detail);
         }

@@ -10,7 +10,7 @@ import {
     VerificationEmoji,
     UserMessage,
 } from "./types.slint";
-import { AttachmentKind, AudioKind, ConnectionState, DirectChat, IdentityAlertKind, IdentityTrust, LoginActivity, LoginMethodKind, LoginPhase, MemberRole, Moderation, NotifyMode, PackSurface, PreviewKind, ReadersStatus, RoomInfoPlacement, RoomMembership, RoomScope, RosterStatus, ServiceKind, SourceEncryption, SourceStatus, SpaceIndexStatus, TimelineState, UserMessageKind, VerificationActivity, VerificationPhase } from "./enums.slint";
+import { AttachmentKind, AudioKind, ConnectionState, DirectChat, IdentityAlertKind, IdentityTrust, InviteAnswer, InviteKind, LoginActivity, LoginMethodKind, LoginPhase, MemberRole, Moderation, NotifyMode, PackSurface, PreviewKind, ReadersStatus, RoomInfoPlacement, RoomMembership, RoomScope, RosterStatus, ServiceKind, SourceEncryption, SourceStatus, SpaceIndexStatus, TimelineState, UserMessageKind, VerificationActivity, VerificationPhase } from "./enums.slint";
 
 export global LoginView {
     in property <LoginPhase> step: LoginPhase.loading;
@@ -41,6 +41,7 @@ export global DirectoryView {
     in property <[SpaceEntry]> subspaces;
     in property <string> selected-room-id;
     in property <int> selected-room-row: -1;
+    in property <int> selected-room-headings;
     in property <RoomScope> room-scope: RoomScope.all;
     in property <string> selected-space-id;
     in property <string> selected-subspace-id;
@@ -49,6 +50,7 @@ export global DirectoryView {
     in property <bool> direct-alert;
     in property <bool> direct-mention;
     in property <bool> direct-hint;
+    in property <bool> invites-pending;
     in property <int> selected-generation;
 }
 
@@ -136,6 +138,22 @@ export global RoomMenuView {
     in property <bool> leaving;
     in property <string> link;
     in property <int> link-serial;
+}
+
+export global InviteView {
+    in property <bool> visible;
+    in property <string> room-id;
+    in property <string> name;
+    in property <string> initial;
+    in property <int> color-index;
+    in property <image> avatar;
+    in property <bool> has-avatar;
+    in property <InviteKind> kind: InviteKind.room;
+    in property <string> topic;
+    in property <string> inviter;
+    in property <InviteAnswer> answer: InviteAnswer.none;
+    in property <UserMessageKind> error: UserMessageKind.none;
+    in property <string> error-detail;
 }
 
 export global UserInfoView {

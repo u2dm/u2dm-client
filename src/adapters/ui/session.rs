@@ -8,7 +8,7 @@ use super::dto::PackBrowse;
 use super::emote::EmoteBindings;
 use super::props::{StringProp, UiProps};
 use super::reconcile::{PackIndex, TimelineIndex};
-use super::reduce::RoomCursor;
+use super::reduce::{InviteSheetAvatar, RoomCursor};
 use super::richtext::{CoverLabels, StyledBodies, recognise_cover_labels};
 use super::spoilers::SpoilerRows;
 use crate::commands::view::AppViewState;
@@ -23,6 +23,7 @@ pub struct UiSession<B: UiBackend> {
     pub timeline_index: TimelineIndex,
     pub pack_index: PackIndex,
     pub room: RoomCursor,
+    pub invite_avatar: InviteSheetAvatar,
     pub snapshot: Option<Arc<AppViewState>>,
     pub pack_browse: Option<PackBrowse>,
     pub emotes: EmoteBindings,
@@ -38,6 +39,7 @@ impl<B: UiBackend> Default for UiSession<B> {
             timeline_index: TimelineIndex::default(),
             pack_index: PackIndex::default(),
             room: RoomCursor::default(),
+            invite_avatar: InviteSheetAvatar::default(),
             snapshot: None,
             pack_browse: None,
             emotes: EmoteBindings::default(),

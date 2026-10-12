@@ -15,14 +15,14 @@ use u2dm_ui::{
     ConnectionState, DecryptionFailure as UiDecryptionFailure, Delivery as UiDelivery,
     DirectChat as UiDirectChat, DirectoryView, EmojiArt as UiEmojiArt, EmojiEntry, EmojiRow,
     EmojiStore, IdentityAlertKind as UiIdentityAlertKind, IdentityAlertView,
-    IdentityTrust as UiIdentityTrust, LogLevel as UiLogLevel, LogLineEntry,
-    LoginActivity as UiLoginActivity, LoginMethodKind as UiLoginMethodKind, LoginPhase, LoginView,
-    MediaFailure as UiMediaFailure, MediaState as UiMediaState, MemberEntry,
-    MemberRole as UiMemberRole, MemberRowKind as UiMemberRowKind, MentionWord, MentionsView,
-    MessageEntry, MessageKind as UiMessageKind, Moderation as UiModeration,
-    NotifyMode as UiNotifyMode, PackCell, PackOrigin as UiPackOrigin, PackRow,
-    PackSurface as UiPackSurface, PackTabEntry, PackView, PollAnswerEntry,
-    PollPhase as UiPollPhase, PreviewKind as UiPreviewKind, ReactionEntry,
+    IdentityTrust as UiIdentityTrust, InviteAnswer as UiInviteAnswer, InviteKind as UiInviteKind,
+    InviteView, LogLevel as UiLogLevel, LogLineEntry, LoginActivity as UiLoginActivity,
+    LoginMethodKind as UiLoginMethodKind, LoginPhase, LoginView, MediaFailure as UiMediaFailure,
+    MediaState as UiMediaState, MemberEntry, MemberRole as UiMemberRole,
+    MemberRowKind as UiMemberRowKind, MentionWord, MentionsView, MessageEntry,
+    MessageKind as UiMessageKind, Moderation as UiModeration, NotifyMode as UiNotifyMode, PackCell,
+    PackOrigin as UiPackOrigin, PackRow, PackSurface as UiPackSurface, PackTabEntry, PackView,
+    PollAnswerEntry, PollPhase as UiPollPhase, PreviewKind as UiPreviewKind, ReactionEntry,
     ReactionSend as UiReactionSend, ReactorAvatar, ReadersStatus as UiReadersStatus, ReadersView,
     ReplySwipe, RoomEntry, RoomInfoPlacement as UiRoomInfoPlacement, RoomInfoView, RoomLogView,
     RoomMembership as UiRoomMembership, RoomMenuView, RoomRowKind as UiRoomRowKind,
@@ -69,10 +69,10 @@ use super::router::{EditedRow, EditedText};
 use super::schema::{
     attachment_kinds, audio_kinds, body_line_fields, body_piece_fields, bool_props, child_accesses,
     connection_states, decryption_failures, deliveries, direct_chats, emoji_arts, enum_props,
-    identity_alert_kinds, identity_trusts, int_props, log_levels, log_line_fields,
-    login_activities, login_methods, login_phases, media_failures, media_states, member_roles,
-    member_row_fields, member_row_kinds, message_fields, message_kinds, model_props, notify_modes,
-    pack_cell_fields, pack_origins, pack_row_fields, pack_surfaces, pack_tab_fields,
+    identity_alert_kinds, identity_trusts, int_props, invite_answers, invite_kinds, log_levels,
+    log_line_fields, login_activities, login_methods, login_phases, media_failures, media_states,
+    member_roles, member_row_fields, member_row_kinds, message_fields, message_kinds, model_props,
+    notify_modes, pack_cell_fields, pack_origins, pack_row_fields, pack_surfaces, pack_tab_fields,
     pending_moderations, poll_answer_fields, poll_phases, preview_kinds, reaction_fields,
     reaction_sends, reactor_fields, readers_statuses, room_fields, room_info_placements,
     room_memberships, room_row_kinds, room_scopes, roster_statuses, send_states, service_kinds,
@@ -88,12 +88,13 @@ use crate::commands::effects::{Effect, VerificationActivity};
 use crate::commands::messages::{UserMessage, UserMessageKind};
 use crate::commands::ui::{TimelineVisibility, ViewportChanged};
 use crate::commands::view::{
-    AppViewState, AttachmentKind, ChildAccess, DirectChat, LoginActivity, LoginStep,
+    AppViewState, AttachmentKind, ChildAccess, DirectChat, LoginActivity, LoginStep, PendingAnswer,
     PendingModeration, ReadersStatus, RoomInfoPlacement, RoomScope, RosterStatus, SourceState,
     SpaceIndexStatus,
 };
 use crate::domain::auth::LoginMethod;
 use crate::domain::image_pack::PackOrigin;
+use crate::domain::invite::InviteKind;
 use crate::domain::media::AudioKind;
 use crate::domain::message::{
     DecryptionFailure, MessagePreviewKind, ReactionSend, SendState, Shield,
@@ -275,6 +276,17 @@ impl UiProps for AppWindow {
         }
     }
 
+    fn apply_invite_avatar(&self, avatar: Option<Image>) {
+        let invite = self.global::<InviteView>();
+        match avatar {
+            Some(img) => {
+                invite.set_avatar(img);
+                invite.set_has_avatar(true);
+            }
+            None => invite.set_has_avatar(false),
+        }
+    }
+
     fn apply_login_messages(&self, messages: &[UserMessage]) {
         let entries: Vec<UiUserMessage> = messages
             .iter()
@@ -372,6 +384,8 @@ roster_statuses!(impl_slint_enum RosterStatus UiRosterStatus;);
 room_info_placements!(impl_slint_enum RoomInfoPlacement UiRoomInfoPlacement;);
 room_memberships!(impl_slint_enum RoomMembership UiRoomMembership;);
 direct_chats!(impl_slint_enum DirectChat UiDirectChat;);
+invite_kinds!(impl_slint_enum InviteKind UiInviteKind;);
+invite_answers!(impl_slint_enum PendingAnswer UiInviteAnswer;);
 pending_moderations!(impl_slint_enum PendingModeration UiModeration;);
 identity_trusts!(impl_slint_enum IdentityTrust UiIdentityTrust;);
 identity_alert_kinds!(impl_slint_enum IdentityAlertKind UiIdentityAlertKind;);

@@ -15,6 +15,7 @@ use super::space_order;
 use super::task_group::TaskGroup;
 use crate::commands::sync::DirectoryUpdate;
 use crate::commands::view::{SpaceHeading, SpaceMatch};
+use crate::domain::invite::{Invite, InviteList};
 use crate::domain::message::MessagePermissions;
 use crate::domain::poll::PollPermissions;
 use crate::domain::room::{Room, RoomId, RoomList, Space, UnreadFlags};
@@ -233,6 +234,8 @@ enum OrderWriteStep {
 pub(super) struct RoomDirectory {
     output: Arc<dyn AppOutputPort>,
     all_rooms: RoomList,
+    received_invites: InviteList,
+    invites: InviteList,
     spaces: Arc<[Space]>,
     graph: SpaceGraph,
     flags: Vec<UnreadFlags>,
@@ -250,6 +253,8 @@ impl RoomDirectory {
         Self {
             output,
             all_rooms: Arc::from(Vec::new()),
+            received_invites: Arc::from(Vec::new()),
+            invites: Arc::from(Vec::new()),
             spaces: Arc::from(Vec::new()),
             graph: SpaceGraph::default(),
             flags: Vec::new(),
@@ -272,8 +277,44 @@ impl RoomDirectory {
             return false;
         }
         self.all_rooms = rooms;
-        self.rail_dirty |= self.recompute_flags();
+        let pending_changed = self.settle_invites();
+        self.rail_dirty |= self.recompute_flags() || pending_changed;
         true
+    }
+
+    pub(super) fn store_invites(&mut self, invites: InviteList) -> bool {
+        if !self.connected {
+            return false;
+        }
+        self.received_invites = invites;
+        let pending_changed = self.settle_invites();
+        self.rail_dirty |= self.recompute_flags() || pending_changed;
+        true
+    }
+
+    fn settle_invites(&mut self) -> bool {
+        let was_empty = self.invites.is_empty();
+        let joined: HashSet<&str> = self
+            .all_rooms
+            .iter()
+            .map(|room| room.id.as_ref())
+            .chain(self.spaces.iter().map(|space| space.id.as_str()))
+            .collect();
+        self.invites = if self
+            .received_invites
+            .iter()
+            .any(|invite| joined.contains(invite.id.as_ref()))
+        {
+            self.received_invites
+                .iter()
+                .filter(|invite| !joined.contains(invite.id.as_ref()))
+                .map(Arc::clone)
+                .collect::<Vec<Arc<Invite>>>()
+                .into()
+        } else {
+            Arc::clone(&self.received_invites)
+        };
+        was_empty != self.invites.is_empty()
     }
 
     pub(super) fn store_spaces(&mut self, spaces: Arc<[Space]>) -> bool {
@@ -283,6 +324,7 @@ impl RoomDirectory {
         self.spaces = spaces;
         self.reconcile_orders();
         self.graph = SpaceGraph::build(&self.spaces);
+        self.settle_invites();
         self.recompute_flags();
         self.rail_dirty = true;
         true
@@ -430,6 +472,8 @@ impl RoomDirectory {
     pub(super) fn reset(&mut self) {
         self.connected = false;
         self.all_rooms = Arc::from(Vec::new());
+        self.received_invites = Arc::from(Vec::new());
+        self.invites = Arc::from(Vec::new());
         self.spaces = Arc::from(Vec::new());
         self.graph = SpaceGraph::default();
         self.flags.clear();
@@ -516,6 +560,9 @@ impl RoomDirectory {
             SyncEvent::Rooms(rooms) => {
                 drop(dir_in_tx.send(DirectoryUpdate::Rooms(rooms)));
             }
+            SyncEvent::Invites(invites) => {
+                drop(dir_in_tx.send(DirectoryUpdate::Invites(invites)));
+            }
             SyncEvent::Spaces(spaces) => {
                 drop(dir_in_tx.send(DirectoryUpdate::Spaces(spaces)));
             }
@@ -590,18 +637,48 @@ impl RoomDirectory {
             self.emit_spaces();
             self.emit_subspaces(sel);
             self.emit_listed_space(sel);
-            self.emit_direct_flags();
+            self.emit_rail_flags();
         }
         self.emit_rooms(sel);
     }
 
     pub(super) fn emit_rooms(&self, sel: &Selection) {
         let rooms = self.listed_rooms(sel);
+        let invites = self.listed_invites(sel);
         let space_matches = self.space_matches(sel);
         self.output.publish(Box::new(move |view| {
             view.directory.rooms = rooms;
+            view.directory.invites = invites;
             view.directory.space_matches = space_matches;
         }));
+    }
+
+    fn listed_invites(&self, sel: &Selection) -> InviteList {
+        match &sel.filter {
+            RoomFilter::All if self.query.is_empty() => Arc::clone(&self.invites),
+            RoomFilter::All => self.invites_where(|invite| self.query.matches(&invite.name)),
+            RoomFilter::Direct => {
+                self.invites_where(|invite| invite.is_direct() && self.query.matches(&invite.name))
+            }
+            RoomFilter::Space { space, subspace } => {
+                let space_id = subspace.as_ref().unwrap_or(space);
+                match self.graph.index.get(space_id.as_ref()).copied() {
+                    Some(space_index) => self.invites_where(|invite| {
+                        self.graph.contains_room(space_index, invite.id.as_ref())
+                    }),
+                    None => Arc::from(Vec::new()),
+                }
+            }
+        }
+    }
+
+    fn invites_where(&self, keep: impl Fn(&Invite) -> bool) -> InviteList {
+        self.invites
+            .iter()
+            .filter(|invite| keep(invite))
+            .map(Arc::clone)
+            .collect::<Vec<Arc<Invite>>>()
+            .into()
     }
 
     fn listed_rooms(&self, sel: &Selection) -> RoomList {
@@ -758,10 +835,13 @@ impl RoomDirectory {
             .publish(Box::new(move |view| view.directory.listed_space = heading));
     }
 
-    fn emit_direct_flags(&self) {
+    fn emit_rail_flags(&self) {
         let flags = self.direct_flags;
-        self.output
-            .publish(Box::new(move |view| view.directory.direct_flags = flags));
+        let invites_pending = !self.invites.is_empty();
+        self.output.publish(Box::new(move |view| {
+            view.directory.direct_flags = flags;
+            view.directory.invites_pending = invites_pending;
+        }));
     }
 
     fn space_with_flags(&self, space_index: usize) -> Option<Space> {
@@ -777,6 +857,14 @@ impl RoomDirectory {
 
     pub(super) fn rooms(&self) -> &[Arc<Room>] {
         &self.all_rooms
+    }
+
+    pub(super) fn invites(&self) -> &[Arc<Invite>] {
+        &self.invites
+    }
+
+    pub(super) fn invite(&self, id: &str) -> Option<&Arc<Invite>> {
+        self.invites.iter().find(|invite| invite.id.as_ref() == id)
     }
 
     pub(super) fn room(&self, id: &str) -> Option<&Room> {
@@ -802,6 +890,16 @@ impl RoomDirectory {
             }
             if room.is_direct {
                 direct.absorb(room);
+            }
+        }
+        for invite in self.invites.iter() {
+            for &i in self.graph.ancestors_of(invite.id.as_ref()) {
+                if let Some(slot) = next.get_mut(i) {
+                    slot.absorb_invite();
+                }
+            }
+            if invite.is_direct() {
+                direct.absorb_invite();
             }
         }
         let changed = next != self.flags || direct != self.direct_flags;

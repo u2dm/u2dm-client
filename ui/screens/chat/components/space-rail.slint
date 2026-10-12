@@ -184,7 +184,10 @@ export component SpaceRail inherits Rectangle {
             draggable: false;
             above-modal: root.above-modal;
             index: 0;
-            entry: { name: @tr("All Rooms") };
+            entry: {
+                name: @tr("All Rooms"),
+                alert: DirectoryView.invites-pending,
+            };
             has-icon: true;
             icon: IconSet.MessagesSquare;
             selected: DirectoryView.room-scope == RoomScope.all;

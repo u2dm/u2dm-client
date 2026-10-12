@@ -79,6 +79,12 @@ macro_rules! string_props {
         UserInfoPronouns UserInfoView "UserInfoView" "pronouns" set_pronouns get_pronouns;
         UserInfoLink UserInfoView "UserInfoView" "link" set_link get_link;
         UserInfoErrorDetail UserInfoView "UserInfoView" "error-detail" set_error_detail get_error_detail;
+        InviteRoomId InviteView "InviteView" "room-id" set_room_id get_room_id;
+        InviteName InviteView "InviteView" "name" set_name get_name;
+        InviteInitial InviteView "InviteView" "initial" set_initial get_initial;
+        InviteTopic InviteView "InviteView" "topic" set_topic get_topic;
+        InviteInviter InviteView "InviteView" "inviter" set_inviter get_inviter;
+        InviteErrorDetail InviteView "InviteView" "error-detail" set_error_detail get_error_detail;
         RoomLogRoomId RoomLogView "RoomLogView" "room-id" set_room_id get_room_id;
         RoomLogName RoomLogView "RoomLogView" "name" set_name get_name;
         SpoilerLabel SpoilerCover "SpoilerCover" "label" set_label get_label;
@@ -119,6 +125,10 @@ macro_rules! simple_callbacks {
         on_retry_space_index "retry-space-index" retry_space_index plain RetrySpaceIndex;
         on_join_space_child "join-space-child" join_space_child room JoinSpaceChild;
         on_open_space_child "open-space-child" open_space_child room OpenSpaceChild;
+        on_open_invite "open-invite" open_invite room OpenInvite;
+        on_close_invite "close-invite" close_invite plain CloseInvite;
+        on_accept_invite "accept-invite" accept_invite room AcceptInvite;
+        on_decline_invite "decline-invite" decline_invite room DeclineInvite;
         on_open_room_info "open-room-info" open_room_info room OpenRoomInfo;
         on_close_room_info "close-room-info" close_room_info plain CloseRoomInfo;
         on_show_room_info_pane "show-room-info-pane" show_room_info_pane plain ShowRoomInfoPane;
@@ -206,6 +216,8 @@ macro_rules! bool_props {
         DirectAlert DirectoryView "DirectoryView" "direct-alert" set_direct_alert get_direct_alert;
         DirectMention DirectoryView "DirectoryView" "direct-mention" set_direct_mention get_direct_mention;
         DirectHint DirectoryView "DirectoryView" "direct-hint" set_direct_hint get_direct_hint;
+        InvitesPending DirectoryView "DirectoryView" "invites-pending" set_invites_pending get_invites_pending;
+        InviteVisible InviteView "InviteView" "visible" set_visible get_visible;
         VerificationIsSelf VerificationView "VerificationView" "is-self" set_is_self get_is_self;
         TimelineRetryable RoomView "RoomView" "timeline-retryable" set_timeline_retryable get_timeline_retryable;
         TimelineDetached RoomView "RoomView" "timeline-detached" set_timeline_detached get_timeline_detached;
@@ -275,6 +287,8 @@ macro_rules! int_props {
         PinnedIndex RoomView "RoomView" "pinned-index" set_pinned_index get_pinned_index;
         SelectedGeneration DirectoryView "DirectoryView" "selected-generation" set_selected_generation get_selected_generation;
         SelectedRoomRow DirectoryView "DirectoryView" "selected-room-row" set_selected_room_row get_selected_room_row;
+        SelectedRoomHeadings DirectoryView "DirectoryView" "selected-room-headings" set_selected_room_headings get_selected_room_headings;
+        InviteColorIndex InviteView "InviteView" "color-index" set_color_index get_color_index;
         ListedSpaceMembers DirectoryView "DirectoryView" "listed-space-members" set_listed_space_members get_listed_space_members;
         SpaceIndexPagesLanded SpaceIndexView "SpaceIndexView" "pages-landed" set_pages_landed get_pages_landed;
         AttachmentWidth AttachmentView "AttachmentView" "width" set_width get_width;
@@ -356,6 +370,12 @@ macro_rules! enum_props {
             UserInfoView "UserInfoView" "moderating" set_moderating get_moderating;
         UserInfoIdentity set_user_info_identity(IdentityTrust)
             UserInfoView "UserInfoView" "identity" set_identity get_identity;
+        InviteKind set_invite_kind(InviteKind)
+            InviteView "InviteView" "kind" set_kind get_kind;
+        InviteAnswer set_invite_answer(PendingAnswer)
+            InviteView "InviteView" "answer" set_answer get_answer;
+        InviteError set_invite_error(UserMessageKind)
+            InviteView "InviteView" "error" set_error get_error;
         IdentityAlertKind set_identity_alert_kind(IdentityAlertKind)
             IdentityAlertView "IdentityAlertView" "kind" set_kind get_kind;
         SourceStatus set_source_status(&SourceState)
@@ -533,6 +553,7 @@ macro_rules! user_message_kinds {
         SpaceOrderSaveFailed      SpaceOrderSaveFailed    "space-order-save-failed";
         PackSettingFailed         PackSettingFailed       "pack-setting-failed";
         JoinRoomFailed            JoinRoomFailed          "join-room-failed";
+        DeclineInviteFailed       DeclineInviteFailed     "decline-invite-failed";
         LeaveRoomFailed           LeaveRoomFailed         "leave-room-failed";
         NotifyChangeFailed        NotifyChangeFailed      "notify-change-failed";
         MarkReadFailed            MarkReadFailed          "mark-read-failed";
@@ -777,6 +798,24 @@ macro_rules! direct_chats {
 }
 pub(crate) use direct_chats;
 
+macro_rules! invite_kinds {
+    ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
+        Room   Room   "room";
+        Space  Space  "space";
+        Direct Direct "direct";
+    } };
+}
+pub(crate) use invite_kinds;
+
+macro_rules! invite_answers {
+    ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
+        None    None    "none";
+        Accept  Accept  "accept";
+        Decline Decline "decline";
+    } };
+}
+pub(crate) use invite_answers;
+
 macro_rules! identity_trusts {
     ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
         Unverified       Unverified       "unverified";
@@ -818,9 +857,12 @@ pub(crate) use member_row_kinds;
 
 macro_rules! room_row_kinds {
     ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
-        Room          Room          "room";
-        SpacesHeading SpacesHeading "spaces-heading";
-        Space         Space         "space";
+        Room           Room           "room";
+        InvitesHeading InvitesHeading "invites-heading";
+        Invite         Invite         "invite";
+        RoomsHeading   RoomsHeading   "rooms-heading";
+        SpacesHeading  SpacesHeading  "spaces-heading";
+        Space          Space          "space";
     } };
 }
 pub(crate) use room_row_kinds;
@@ -1144,6 +1186,9 @@ macro_rules! room_fields {
         last_message_time set_last_message_time "last-message-time" text;
         space_rooms set_space_rooms "space-rooms" int;
         space_parent set_space_parent "space-parent" text;
+        invite_kind set_invite_kind "invite-kind" enumk(InviteKind);
+        inviter set_inviter "inviter" text;
+        inviter_id set_inviter_id "inviter-id" text;
         has_avatar set_has_avatar "has-avatar" flag;
         avatar set_avatar "avatar" image;
     } };

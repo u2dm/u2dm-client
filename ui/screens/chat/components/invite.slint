@@ -1,0 +1,156 @@
+import { ScrollView } from "std-widgets.slint";
+import { IconSet } from "@lucide";
+
+import { AppButton } from "../../../components/button.slint";
+import { DialogCard, ModalHost } from "../../../components/overlay.slint";
+import { ErrorBanner } from "../../../components/banner.slint";
+import { DetailLine } from "./detail-line.slint";
+import { SheetCloseChip, SheetCover } from "./sheet.slint";
+import { AppStyle, Fonts, Metrics, Space } from "../../../theme.slint";
+import { InviteAnswer, InviteKind, UserMessageKind } from "../../../enums.slint";
+import { InviteView } from "../../../views.slint";
+import { Actions } from "../../../actions.slint";
+import { MetaTip, Reactions, Shell } from "../../../local.slint";
+
+component InviteCover inherits SheetCover {
+    property <string> kind-note: root.note-for(InviteView.kind);
+
+    pure function note-for(kind: InviteKind) -> string {
+        if kind == InviteKind.direct {
+            return @tr("Direct chat");
+        }
+        if kind == InviteKind.space {
+            return @tr("Space");
+        }
+        return "";
+    }
+
+    avatar-size: Metrics.invite-avatar;
+    color-index: InviteView.color-index;
+    has-avatar: InviteView.has-avatar;
+    avatar: InviteView.avatar;
+    initial: InviteView.initial;
+    name: InviteView.name;
+
+    if root.kind-note != "": Text {
+        text: root.kind-note;
+        font-size: Fonts.body-small;
+        color: AppStyle.foreground-muted;
+        horizontal-alignment: center;
+    }
+
+    if InviteView.topic != "": Text {
+        text: InviteView.topic;
+        font-family: Fonts.emoji;
+        font-size: Fonts.body-small;
+        color: AppStyle.foreground-muted;
+        horizontal-alignment: center;
+        wrap: word-wrap;
+    }
+}
+
+component AnswerButtons inherits HorizontalLayout {
+    padding-left: Space.xl;
+    padding-right: Space.xl;
+    spacing: Space.lg;
+
+    AppButton {
+        horizontal-stretch: 1;
+        above-modal: true;
+        text: @tr("Decline");
+        icon: IconSet.X;
+        filled: false;
+        enabled: InviteView.answer != InviteAnswer.accept;
+        busy: InviteView.answer == InviteAnswer.decline;
+        clicked => {
+            Actions.decline-invite(InviteView.room-id);
+        }
+    }
+
+    AppButton {
+        horizontal-stretch: 1;
+        above-modal: true;
+        text: @tr("Accept");
+        icon: IconSet.Check;
+        enabled: InviteView.answer != InviteAnswer.decline;
+        busy: InviteView.answer == InviteAnswer.accept;
+        clicked => {
+            Shell.nav-open = false;
+            Actions.accept-invite(InviteView.room-id);
+        }
+    }
+}
+
+export component InviteDialog inherits ModalHost {
+    property <length> card-width: min(AppStyle.card-width-wide, root.width - AppStyle.card-inset);
+    property <length> card-height: min(
+        body.preferred-height,
+        root.height - AppStyle.card-inset,
+        Metrics.invite-max-height);
+
+    dim-opacity: AppStyle.dialog-scrim;
+    label: @tr("Invitation to {}", InviteView.name);
+    dismissed => {
+        Actions.close-invite();
+    }
+    opened => {
+        Reactions.close();
+        MetaTip.clear();
+    }
+
+    DialogCard {
+        x: (root.width - self.width) / 2;
+        y: (root.height - self.height) / 2;
+        width: root.card-width;
+        height: root.card-height;
+        clip: true;
+
+        ScrollView {
+            width: 100%;
+            height: 100%;
+            content-width: root.card-width;
+            content-height: body.preferred-height;
+
+            body := VerticalLayout {
+                width: root.card-width;
+                padding-top: Space.xl;
+                padding-bottom: Space.xl;
+                spacing: Space.lg;
+
+                InviteCover { }
+
+                if InviteView.inviter != "": VerticalLayout {
+                    padding-left: Space.xl;
+                    padding-right: Space.xl;
+
+                    DetailLine {
+                        value: InviteView.inviter;
+                        caption: @tr("Invited by");
+                    }
+                }
+
+                AnswerButtons { }
+
+                if InviteView.error != UserMessageKind.none: HorizontalLayout {
+                    padding-left: Space.xl;
+                    padding-right: Space.xl;
+
+                    ErrorBanner {
+                        messages: [{ kind: InviteView.error, detail: InviteView.error-detail }];
+                    }
+                }
+            }
+        }
+
+        SheetCloseChip {
+            x: parent.width - self.width - Space.md;
+            y: Space.md;
+            surface: AppStyle.card;
+            label: @tr("Close the invitation");
+            above-modal: true;
+            clicked => {
+                Actions.close-invite();
+            }
+        }
+    }
+}

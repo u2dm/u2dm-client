@@ -16,6 +16,7 @@ const AVATAR_REVALIDATE: Duration = Duration::from_mins(5);
 #[derive(Clone, Copy)]
 pub(super) enum AvatarKind {
     Room,
+    Invite,
     Space,
 }
 

@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use crate::domain::invite::InviteList;
 use crate::domain::room::{RoomList, Space};
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -15,6 +16,7 @@ pub enum ConnectionStatus {
 pub enum SyncEvent {
     Connected,
     Rooms(RoomList),
+    Invites(InviteList),
     Spaces(Arc<[Space]>),
     ConnectionError(String),
 }

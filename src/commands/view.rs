@@ -8,6 +8,7 @@ use super::ui::Draft;
 use crate::domain::auth::{LoginMethod, Session};
 use crate::domain::identity::IdentityAlert;
 use crate::domain::image_pack::ImagePacks;
+use crate::domain::invite::{Invite, InviteList};
 use crate::domain::media::AudioMeta;
 use crate::domain::message::{PinnedMessage, TimelineMessage};
 use crate::domain::room::{NotifyMode, RoomId, RoomList, Space, UnreadFlags};
@@ -24,6 +25,7 @@ pub struct AppViewState {
     pub connection: ConnectionStatus,
     pub directory: DirectoryView,
     pub space_index: SpaceIndexView,
+    pub invite: InviteView,
     pub room_info: RoomInfoView,
     pub room_menu: Option<RoomMenuTarget>,
     pub user_info: UserInfoView,
@@ -335,6 +337,7 @@ pub struct SpaceMatch {
 #[derive(Clone)]
 pub struct DirectoryView {
     pub rooms: RoomList,
+    pub invites: InviteList,
     pub space_matches: Arc<[SpaceMatch]>,
     pub spaces: Arc<[Space]>,
     pub subspaces: Arc<[Space]>,
@@ -343,12 +346,14 @@ pub struct DirectoryView {
     pub subspace_id: String,
     pub listed_space: SpaceHeading,
     pub direct_flags: UnreadFlags,
+    pub invites_pending: bool,
 }
 
 impl Default for DirectoryView {
     fn default() -> Self {
         Self {
             rooms: Arc::from(Vec::new()),
+            invites: Arc::from(Vec::new()),
             space_matches: Arc::from(Vec::new()),
             spaces: Arc::from(Vec::new()),
             subspaces: Arc::from(Vec::new()),
@@ -357,8 +362,24 @@ impl Default for DirectoryView {
             subspace_id: String::new(),
             listed_space: SpaceHeading::default(),
             direct_flags: UnreadFlags::default(),
+            invites_pending: false,
         }
     }
+}
+
+#[derive(Clone, Copy, Default, PartialEq, Eq, Debug)]
+pub enum PendingAnswer {
+    #[default]
+    None,
+    Accept,
+    Decline,
+}
+
+#[derive(Clone, Default, PartialEq, Eq)]
+pub struct InviteView {
+    pub invite: Option<Arc<Invite>>,
+    pub answer: PendingAnswer,
+    pub error: UserMessage,
 }
 
 #[derive(Clone, Copy, Default, PartialEq, Eq)]

@@ -25,6 +25,7 @@ use super::schema::{
 use super::spoilers::{keep_covered_body, spoilers_on};
 use crate::commands::view::{ChildAccess, RoomCard, RosterRow, SpaceIndexRow, SpaceMatch};
 use crate::domain::image_pack::{ImagePack, ImageUsage, PackId, PackImage, PackOrigin, PackTitle};
+use crate::domain::invite::{Invite, InviteKind};
 use crate::domain::media::{
     AudioKind, AudioMeta, ContentKey, FileMeta, MediaFailure, ThumbnailOutcome,
 };
@@ -55,6 +56,8 @@ pack_surfaces!(variant_named pack_surface_named PackSurface;);
 
 pub const REVEALABLE: Spoilers = Spoilers::Covered(Cover::Link);
 pub const INVITED_HEADING_ROW: &str = "invited-heading";
+pub const INVITES_HEADING_ROW: &str = "invites-heading";
+pub const ROOMS_HEADING_ROW: &str = "rooms-heading";
 pub const SPACES_HEADING_ROW: &str = "spaces-heading";
 const PRONOUN_SEPARATOR: &str = " · ";
 
@@ -527,6 +530,9 @@ pub struct RoomDto {
     pub last_message_time: SharedString,
     pub space_rooms: i32,
     pub space_parent: SharedString,
+    pub invite_kind: InviteKind,
+    pub inviter: SharedString,
+    pub inviter_id: SharedString,
     pub avatar: Option<Image>,
     pub has_avatar: bool,
 }
@@ -1317,6 +1323,9 @@ pub fn room_to_dto(r: &Room, media: &dyn MediaCache) -> RoomDto {
         last_message_time: SharedString::from(&room_activity_label(r.last_activity_ts)),
         space_rooms: 0,
         space_parent: SharedString::new(),
+        invite_kind: InviteKind::Room,
+        inviter: SharedString::new(),
+        inviter_id: SharedString::new(),
         avatar: None,
         has_avatar: false,
     };
@@ -1343,8 +1352,47 @@ pub fn record_room_avatar_need(r: &Room, media: &dyn MediaCache) -> ShownAvatar 
     )
 }
 
-pub fn spaces_heading_to_dto() -> RoomDto {
-    bare_row_dto(SPACES_HEADING_ROW, RoomRowKind::SpacesHeading)
+pub fn heading_to_dto(id: &str, kind: RoomRowKind) -> RoomDto {
+    bare_row_dto(id, kind)
+}
+
+pub fn invite_to_dto(invite: &Invite, media: &dyn MediaCache) -> RoomDto {
+    let avatar = invite_avatar_path(invite, media).and_then(|path| peek_avatar(&path));
+    let inviter = invite.inviter.as_ref();
+    RoomDto {
+        name: SharedString::from(&invite.name),
+        initial: SharedString::from(avatar_initials(&invite.name)),
+        color_index: avatar_color_index(invite.id.as_ref()),
+        alert: true,
+        last_message_time: SharedString::from(&room_activity_label(invite.received_ts)),
+        invite_kind: invite.kind,
+        inviter: inviter
+            .map(|inviter| SharedString::from(inviter.shown()))
+            .unwrap_or_default(),
+        inviter_id: inviter
+            .map(|inviter| SharedString::from(isolated(&inviter.user_id)))
+            .unwrap_or_default(),
+        has_avatar: avatar.is_some(),
+        avatar,
+        ..bare_row_dto(invite.id.as_ref(), RoomRowKind::Invite)
+    }
+}
+
+pub fn invite_avatar_path(invite: &Invite, media: &dyn MediaCache) -> Option<PathBuf> {
+    let mxc = invite.avatar_mxc.as_deref()?;
+    if invite.is_space() {
+        media.space_avatar_path(mxc)
+    } else {
+        media.room_avatar_path(mxc)
+    }
+}
+
+pub fn record_invite_avatar_need(invite: &Invite, media: &dyn MediaCache) -> ShownAvatar {
+    let avatar_path = invite_avatar_path(invite, media);
+    record_avatar_need(
+        &AvatarSlot::Room(invite.id.as_ref().to_owned()),
+        avatar_path.as_deref(),
+    )
 }
 
 pub fn space_match_to_dto(m: &SpaceMatch, media: &dyn MediaCache) -> RoomDto {
@@ -1386,6 +1434,9 @@ fn bare_row_dto(id: &str, kind: RoomRowKind) -> RoomDto {
         last_message_time: SharedString::new(),
         space_rooms: 0,
         space_parent: SharedString::new(),
+        invite_kind: InviteKind::Room,
+        inviter: SharedString::new(),
+        inviter_id: SharedString::new(),
         avatar: None,
         has_avatar: false,
     }

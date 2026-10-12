@@ -14,10 +14,10 @@ use super::decode::{
 };
 use super::dto::{
     BodyLineDto, EmojiArt, LogLineDto, MediaFailureKind, MediaState, MemberRowDto, MessageDto,
-    PackBrowse, PackRowDto, PackSurface, PackTabDto, RoomDto, RowBody, SpaceChildDto, SpaceDto,
-    ThumbUpdate, cell_pack, decode_failure_kind, enrich_to_update, log_line_to_dto,
-    member_row_to_dto, mention_to_dto, message_to_dto, reader_to_dto, room_to_dto,
-    space_child_to_dto, space_match_to_dto, space_to_dto, spaces_heading_to_dto,
+    PackBrowse, PackRowDto, PackSurface, PackTabDto, RoomDto, RoomRowKind, RowBody, SpaceChildDto,
+    SpaceDto, ThumbUpdate, cell_pack, decode_failure_kind, enrich_to_update, heading_to_dto,
+    invite_to_dto, log_line_to_dto, member_row_to_dto, mention_to_dto, message_to_dto,
+    reader_to_dto, room_to_dto, space_child_to_dto, space_match_to_dto, space_to_dto,
 };
 use super::fields::{
     BodyLineFields, BodyPieceFields, LogLineFields, MemberRowFields, MessageFields, PackCellFields,
@@ -41,6 +41,7 @@ use super::spoilers::reveal_row;
 use super::window_events::install_window_events;
 use crate::commands::effects::Effect;
 use crate::commands::view::{AppViewState, RosterRow, SpaceIndexRow, SpaceMatch};
+use crate::domain::invite::Invite;
 use crate::domain::message::TimelineMessage;
 use crate::domain::room::{Room, RoomId, Space};
 use crate::domain::room_info::{Reader, RosterMember};
@@ -86,8 +87,12 @@ pub trait UiBackend: Sized + 'static {
         space_match_to_dto(space, media).into()
     }
 
-    fn spaces_heading() -> Self::Room {
-        spaces_heading_to_dto().into()
+    fn convert_invite(invite: &Invite, media: &dyn MediaCache) -> Self::Room {
+        invite_to_dto(invite, media).into()
+    }
+
+    fn heading(id: &str, kind: RoomRowKind) -> Self::Room {
+        heading_to_dto(id, kind).into()
     }
 
     fn convert_space(space: &Space, media: &dyn MediaCache) -> Self::Space {
@@ -622,6 +627,7 @@ enum SingleAvatar {
     SelectedRoom,
     RoomInfo,
     UserInfo,
+    Invite,
     User,
     AttachmentPreview,
 }
@@ -679,6 +685,9 @@ fn group_slots(slots: &[AvatarSlot]) -> AvatarTargets<'_> {
             }
             AvatarSlot::UserInfo => {
                 targets.singles.insert(SingleAvatar::UserInfo);
+            }
+            AvatarSlot::Invite => {
+                targets.singles.insert(SingleAvatar::Invite);
             }
             AvatarSlot::User => {
                 targets.singles.insert(SingleAvatar::User);
@@ -783,6 +792,7 @@ fn apply_avatar_ready<B: UiBackend>(
                 SingleAvatar::SelectedRoom => w.apply_selected_room_avatar(avatar),
                 SingleAvatar::RoomInfo => w.apply_room_info_avatar(avatar),
                 SingleAvatar::UserInfo => w.apply_user_info_avatar(avatar),
+                SingleAvatar::Invite => w.apply_invite_avatar(avatar),
             }
         }
     }

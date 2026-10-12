@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 
 use super::establish::EstablishedSession;
+use super::invites::Answer;
 use super::room_info::{ActionOutcome, RosterOutcome};
 use super::space_index::{JoinOutcome, PageOutcome};
 use super::user_info::{DmOutcome, ReadOutcome};
@@ -88,6 +89,12 @@ pub(super) enum AppEvent {
         room_id: RoomId,
         name: String,
         outcome: JoinOutcome,
+    },
+    InviteAnswered {
+        room_id: RoomId,
+        name: String,
+        answer: Answer,
+        outcome: ActionOutcome,
     },
     RoomRosterFetched {
         generation: u64,
@@ -331,6 +338,7 @@ impl AppEvent {
             Self::SpaceIndexPaged { .. } => "SpaceIndexPaged",
             Self::SpaceIndexAvatarsReady { .. } => "SpaceIndexAvatarsReady",
             Self::SpaceChildJoinSettled { .. } => "SpaceChildJoinSettled",
+            Self::InviteAnswered { .. } => "InviteAnswered",
             Self::RoomRosterFetched { .. } => "RoomRosterFetched",
             Self::RoomAboutFetched { .. } => "RoomAboutFetched",
             Self::RoomInfoAvatarsReady { .. } => "RoomInfoAvatarsReady",

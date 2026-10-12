@@ -88,16 +88,18 @@ user_ids() {
   jq -r '[.session.user_id] + [.rooms[].last_message.sender_id // empty]
          + [.rooms[].avatar // empty | select(startswith("@"))]
          + [.rooms[].invited[]?] + [.rooms[].roles // {} | keys[]]
+         + [.invites[]?.inviter // empty]
          + [.timelines[][].sender] | unique | .[]' "$data"
 }
 
 room_avatars() {
-  jq -r '(.rooms[], (.unjoined[]? | select(.space | not))) | .avatar // empty
-         | select(startswith("@") | not)' "$data"
+  jq -r '(.rooms[], (.unjoined[]? | select(.space | not)), (.invites[]? | select(.space | not)))
+         | .avatar // empty | select(startswith("@") | not)' "$data"
 }
 
 space_avatars() {
-  jq -r '(.spaces[], (.unjoined[]? | select(.space))) | select(.avatar) | .avatar' "$data"
+  jq -r '(.spaces[], (.unjoined[]? | select(.space)), (.invites[]? | select(.space)))
+         | select(.avatar) | .avatar' "$data"
 }
 
 photo_messages() {
