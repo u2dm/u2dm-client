@@ -25,6 +25,8 @@ const QUOTE_MARKER: &str = "> ";
 const DELIMITER_GUARD: &str = "<u></u>";
 const EMPTY_ITEM_CONTENT: &str = "<u></u>";
 const NBSP: &str = "\u{a0}";
+const SPOILER_ATTRIBUTE: &str = "data-mx-spoiler";
+const REVEAL_LINK: &str = "";
 
 #[derive(Clone)]
 pub struct StyledBody {
@@ -32,6 +34,7 @@ pub struct StyledBody {
     pub plain: SharedString,
     pub has_links: bool,
     pub mentions_you: bool,
+    pub has_spoilers: bool,
 }
 
 #[derive(Clone)]
@@ -72,9 +75,49 @@ impl RoomWord {
     }
 }
 
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Cover {
+    Link,
+    Text,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Spoilers {
+    Covered(Cover),
+    Shown,
+}
+
+impl Default for Spoilers {
+    fn default() -> Self {
+        Self::Covered(Cover::Text)
+    }
+}
+
+#[derive(Clone, Default)]
+pub struct CoverLabels {
+    pub label: String,
+    pub reason_label: String,
+    pub reason_slot: String,
+}
+
+impl CoverLabels {
+    fn text_for(&self, reason: Option<&str>) -> String {
+        match reason {
+            Some(reason) if self.shows_reasons() => {
+                self.reason_label.replacen(&self.reason_slot, reason, 1)
+            }
+            _ => self.label.clone(),
+        }
+    }
+
+    fn shows_reasons(&self) -> bool {
+        !self.reason_slot.is_empty() && self.reason_label.contains(&self.reason_slot)
+    }
+}
+
 #[derive(PartialEq, Eq, Hash)]
 enum Source {
-    Formatted(String, RoomWord),
+    Formatted(String, RoomWord, Spoilers),
     Unformatted(String, RoomWord),
 }
 
@@ -82,14 +125,21 @@ enum Source {
 struct InlineSource {
     html: String,
     room_word: RoomWord,
+    spoilers: Spoilers,
     drawn: BTreeSet<String>,
 }
 
 type Memo<K, T> = HashMap<K, Option<T>>;
 
+#[derive(Clone, Default)]
+struct Reading {
+    own_user_id: String,
+    covers: CoverLabels,
+}
+
 #[derive(Default)]
 pub struct StyledBodies {
-    own_user_id: String,
+    reading: Reading,
     rendered: Memo<Source, StyledBody>,
     inline: Memo<InlineSource, InlineBody>,
 }
@@ -108,18 +158,31 @@ pub fn forget_styled_bodies() {
 pub fn recognise_own_user(user_id: &str) {
     with_session(|session| {
         let bodies = &mut session.bodies;
-        if bodies.own_user_id != user_id {
-            user_id.clone_into(&mut bodies.own_user_id);
+        if bodies.reading.own_user_id != user_id {
+            user_id.clone_into(&mut bodies.reading.own_user_id);
             bodies.forget();
         }
     });
 }
 
-pub fn styled_body(html: &str, plain_fallback: &str, room_word: RoomWord) -> StyledBody {
+pub fn recognise_cover_labels(covers: CoverLabels) {
+    with_session(|session| {
+        let bodies = &mut session.bodies;
+        bodies.reading.covers = covers;
+        bodies.forget();
+    });
+}
+
+pub fn styled_body(
+    html: &str,
+    plain_fallback: &str,
+    room_word: RoomWord,
+    spoilers: Spoilers,
+) -> StyledBody {
     memoised(
-        Source::Formatted(html.to_owned(), room_word),
+        Source::Formatted(html.to_owned(), room_word, spoilers),
         |bodies| &mut bodies.rendered,
-        |own_user_id, _| build(html, Writer::reading_as(own_user_id, room_word)),
+        |reading, _| build(html, Writer::reading_as(reading, room_word, spoilers)),
     )
     .unwrap_or_else(|| unstyled_body(plain_fallback))
 }
@@ -128,22 +191,33 @@ pub fn plain_body(text: &str, room_word: RoomWord) -> StyledBody {
     memoised(
         Source::Unformatted(text.to_owned(), room_word),
         |bodies| &mut bodies.rendered,
-        |own_user_id, _| build_plain(text, Writer::reading_as(own_user_id, room_word)),
+        |reading, _| {
+            build_plain(
+                text,
+                Writer::reading_as(reading, room_word, Spoilers::Shown),
+            )
+        },
     )
     .unwrap_or_else(|| unstyled_body(text))
 }
 
-pub fn inline_body(html: &str, room_word: RoomWord, drawn: BTreeSet<String>) -> Option<InlineBody> {
+pub fn inline_body(
+    html: &str,
+    room_word: RoomWord,
+    spoilers: Spoilers,
+    drawn: BTreeSet<String>,
+) -> Option<InlineBody> {
     let source = InlineSource {
         html: html.to_owned(),
         room_word,
+        spoilers,
         drawn,
     };
     memoised(
         source,
         |bodies| &mut bodies.inline,
-        |own_user_id, source| {
-            let writer = Writer::inline_as(own_user_id, room_word, source.drawn.clone());
+        |reading, source| {
+            let writer = Writer::inline_as(reading, room_word, spoilers, source.drawn.clone());
             build_inline(html, writer)
         },
     )
@@ -152,21 +226,21 @@ pub fn inline_body(html: &str, room_word: RoomWord, drawn: BTreeSet<String>) -> 
 fn memoised<K: Hash + Eq, T: Clone>(
     source: K,
     memo: fn(&mut StyledBodies) -> &mut Memo<K, T>,
-    render: impl FnOnce(&str, &K) -> Option<T>,
+    render: impl FnOnce(&Reading, &K) -> Option<T>,
 ) -> Option<T> {
     let lookup = with_session(|session| {
         let bodies = &mut session.bodies;
         memo(bodies)
             .get(&source)
             .cloned()
-            .ok_or_else(|| bodies.own_user_id.clone())
+            .ok_or_else(|| bodies.reading.clone())
     });
-    let own_user_id = match lookup {
+    let reading = match lookup {
         Ok(hit) => return hit,
-        Err(own_user_id) => own_user_id,
+        Err(reading) => reading,
     };
 
-    let built = render(&own_user_id, &source);
+    let built = render(&reading, &source);
     with_session(|session| {
         let memo = memo(&mut session.bodies);
         if memo.len() >= MAX_MEMO_ENTRIES {
@@ -183,6 +257,7 @@ fn unstyled_body(text: &str) -> StyledBody {
         plain: SharedString::from(text),
         has_links: false,
         mentions_you: false,
+        has_spoilers: false,
     }
 }
 
@@ -206,10 +281,14 @@ fn build(html: &str, mut writer: Writer<'_>) -> Option<StyledBody> {
             plain: SharedString::from(plain),
             has_links: writer.has_links,
             mentions_you: writer.mentions_you,
+            has_spoilers: writer.has_spoilers,
         }),
         Err(e) => {
             tracing::debug!("a formatted message did not render, showing it plain: {e}");
-            (!plain.is_empty()).then(|| unstyled_body(plain))
+            (!plain.is_empty()).then(|| StyledBody {
+                has_spoilers: writer.has_spoilers,
+                ..unstyled_body(plain)
+            })
         }
     }
 }
@@ -262,6 +341,7 @@ fn build_plain(text: &str, mut writer: Writer<'_>) -> Option<StyledBody> {
             plain: SharedString::from(text),
             has_links: writer.has_links,
             mentions_you: writer.mentions_you,
+            has_spoilers: false,
         }),
         Err(e) => {
             tracing::debug!("a message with links did not render, showing it plain: {e}");
@@ -401,11 +481,14 @@ enum Line {
 #[derive(Default)]
 struct Writer<'own> {
     own_user_id: &'own str,
+    covers: CoverLabels,
     room_word: RoomWord,
+    spoilers: Spoilers,
     markdown: String,
     plain: String,
     has_links: bool,
     mentions_you: bool,
+    has_spoilers: bool,
     tags_room: bool,
     overflowed: bool,
     nodes: usize,
@@ -421,21 +504,28 @@ struct Writer<'own> {
 }
 
 impl<'own> Writer<'own> {
-    fn reading_as(own_user_id: &'own str, room_word: RoomWord) -> Self {
+    fn reading_as(reading: &'own Reading, room_word: RoomWord, spoilers: Spoilers) -> Self {
         Self {
-            own_user_id,
+            own_user_id: &reading.own_user_id,
+            covers: reading.covers.clone(),
             room_word,
+            spoilers,
             ..Self::default()
         }
     }
 
-    fn inline_as(own_user_id: &'own str, room_word: RoomWord, drawn: BTreeSet<String>) -> Self {
+    fn inline_as(
+        reading: &'own Reading,
+        room_word: RoomWord,
+        spoilers: Spoilers,
+        drawn: BTreeSet<String>,
+    ) -> Self {
         Self {
             inline: Some(InlineLines {
                 drawn,
                 ..InlineLines::default()
             }),
-            ..Self::reading_as(own_user_id, room_word)
+            ..Self::reading_as(reading, room_word, spoilers)
         }
     }
 
@@ -481,11 +571,12 @@ impl<'own> Writer<'own> {
             "i" | "em" => self.styled(InlineStyle::Italic, node, depth),
             "del" | "s" | "strike" => self.styled(InlineStyle::Struck, node, depth),
             "u" | "ins" => self.styled(InlineStyle::Underlined, node, depth),
+            "span" if is_spoiler(node) => self.spoiler(node, depth),
             "span" | "font" => self.coloured(node, depth),
             "h1" | "h2" | "h3" | "h4" | "h5" | "h6" => {
                 self.block(node, depth, |w, n, d| w.styled(InlineStyle::Strong, n, d));
             }
-            "code" => self.code_span(collapse_whitespace(&node_text(node)).trim()),
+            "code" => self.code(node),
             "pre" => self.block(node, depth, |w, n, _| w.preformatted(n)),
             "a" => self.link(node, depth),
             "blockquote" => self.block(node, depth, Self::quote),
@@ -667,6 +758,39 @@ impl<'own> Writer<'own> {
         }
     }
 
+    fn spoiler(&mut self, node: &NodeRef, depth: usize) {
+        self.has_spoilers = true;
+        match self.spoilers {
+            Spoilers::Shown => self.coloured(node, depth),
+            Spoilers::Covered(cover) => self.cover(spoiler_reason(node).as_deref(), cover),
+        }
+    }
+
+    fn covers_spoiler_in(&mut self, node: &NodeRef) -> bool {
+        let Some(spoiler) = first_spoiler(node, 0) else {
+            return false;
+        };
+        self.has_spoilers = true;
+        match self.spoilers {
+            Spoilers::Shown => false,
+            Spoilers::Covered(cover) => {
+                self.cover(spoiler_reason(&spoiler).as_deref(), cover);
+                true
+            }
+        }
+    }
+
+    fn cover(&mut self, reason: Option<&str>, cover: Cover) {
+        let label = self.covers.text_for(reason);
+        match cover {
+            Cover::Link => {
+                self.write_pending_prefix();
+                self.link_around(REVEAL_LINK, |w| w.code_span(&label));
+            }
+            Cover::Text => self.code_span(&label),
+        }
+    }
+
     fn quote(&mut self, node: &NodeRef, depth: usize) {
         self.quote_depth += 1;
         self.children(node, depth);
@@ -679,6 +803,12 @@ impl<'own> Writer<'own> {
             self.plain.push_str(CELL_GAP);
         }
         self.children(node, depth);
+    }
+
+    fn code(&mut self, node: &NodeRef) {
+        if !self.covers_spoiler_in(node) {
+            self.code_span(collapse_whitespace(&node_text(node)).trim());
+        }
     }
 
     fn code_span(&mut self, text: &str) {
@@ -699,6 +829,9 @@ impl<'own> Writer<'own> {
     }
 
     fn preformatted(&mut self, node: &NodeRef) {
+        if self.covers_spoiler_in(node) {
+            return;
+        }
         for line in node_text(node).lines() {
             self.code_span(line.replace('\t', TAB_AS_SPACES).trim_end());
             self.finish_content_line();
@@ -711,6 +844,9 @@ impl<'own> Writer<'own> {
             self.children(node, depth);
             return;
         };
+        if self.covers_spoiler_in(node) {
+            return;
+        }
         let plain_label = collapse_whitespace(&node_text(node)).trim().to_owned();
         if plain_label.is_empty() {
             return;
@@ -724,10 +860,14 @@ impl<'own> Writer<'own> {
     }
 
     fn labelled_link(&mut self, label: &str, href: &str) {
+        self.link_around(href, |w| w.text(label));
+    }
+
+    fn link_around(&mut self, href: &str, write_label: impl FnOnce(&mut Self)) {
         self.link_open = true;
         let bracket_at = self.markdown.len();
         self.markdown.push('[');
-        self.text(label);
+        write_label(self);
         self.close_link(href);
         self.link_open = false;
 
@@ -1018,6 +1158,29 @@ fn has_name(node: &NodeRef, name: &str) -> bool {
         .is_some_and(|element| element.name.local.as_ref() == name)
 }
 
+fn is_spoiler(node: &NodeRef) -> bool {
+    has_name(node, "span") && has_attribute(node, SPOILER_ATTRIBUTE)
+}
+
+fn first_spoiler(node: &NodeRef, depth: usize) -> Option<NodeRef> {
+    if depth > MAX_DEPTH {
+        return None;
+    }
+    node.children().find_map(|child| {
+        if is_spoiler(&child) {
+            Some(child)
+        } else {
+            first_spoiler(&child, depth + 1)
+        }
+    })
+}
+
+fn spoiler_reason(spoiler: &NodeRef) -> Option<String> {
+    attribute(spoiler, SPOILER_ATTRIBUTE)
+        .map(|reason| collapse_whitespace(&reason).trim().to_owned())
+        .filter(|reason| !reason.is_empty())
+}
+
 fn node_text(node: &NodeRef) -> String {
     let mut out = String::new();
     collect_text(node, &mut out, 0);
@@ -1045,6 +1208,16 @@ fn image_text(node: &NodeRef) -> String {
     attribute(node, "alt")
         .or_else(|| attribute(node, "title"))
         .unwrap_or_default()
+}
+
+fn has_attribute(node: &NodeRef, name: &str) -> bool {
+    node.as_element().is_some_and(|element| {
+        element
+            .attrs
+            .borrow()
+            .iter()
+            .any(|attr| attr.name.local.as_ref() == name)
+    })
 }
 
 fn attribute(node: &NodeRef, name: &str) -> Option<String> {

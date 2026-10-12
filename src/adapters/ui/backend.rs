@@ -8,15 +8,16 @@ use tokio::sync::{OwnedSemaphorePermit, mpsc, watch};
 
 use super::clock::install_clock_invalidation;
 use super::decode::{
-    AvatarSlot, DecodeFailure, DecodeOutcome, MediaSlot, advance_animations, request_pack_cell,
-    rows_showing_custom_emoji, set_animation_tick, set_avatar_ready, set_image_ready,
+    AvatarSlot, DecodeFailure, DecodeOutcome, MediaSlot, TimelineItemKey, advance_animations,
+    request_pack_cell, rows_showing_custom_emoji, set_animation_tick, set_avatar_ready,
+    set_image_ready,
 };
 use super::dto::{
-    EmojiArt, LogLineDto, MediaFailureKind, MediaState, MemberRowDto, MessageDto, PackBrowse,
-    PackRowDto, PackSurface, PackTabDto, RoomDto, SpaceChildDto, SpaceDto, ThumbUpdate, cell_pack,
-    decode_failure_kind, enrich_to_update, log_line_to_dto, member_row_to_dto, mention_to_dto,
-    message_to_dto, reader_to_dto, room_to_dto, space_child_to_dto, space_match_to_dto,
-    space_to_dto, spaces_heading_to_dto,
+    BodyLineDto, EmojiArt, LogLineDto, MediaFailureKind, MediaState, MemberRowDto, MessageDto,
+    PackBrowse, PackRowDto, PackSurface, PackTabDto, RoomDto, RowBody, SpaceChildDto, SpaceDto,
+    ThumbUpdate, cell_pack, decode_failure_kind, enrich_to_update, log_line_to_dto,
+    member_row_to_dto, mention_to_dto, message_to_dto, reader_to_dto, room_to_dto,
+    space_child_to_dto, space_match_to_dto, space_to_dto, spaces_heading_to_dto,
 };
 use super::fields::{
     BodyLineFields, BodyPieceFields, LogLineFields, MemberRowFields, MessageFields, PackCellFields,
@@ -36,6 +37,7 @@ use super::rows::{locate_row, patch_rows_by_id};
 use super::schema::model_props;
 use super::session::{begin_session, with_session};
 use super::splice_model::SpliceModel;
+use super::spoilers::reveal_row;
 use super::window_events::install_window_events;
 use crate::commands::effects::Effect;
 use crate::commands::view::{AppViewState, RosterRow, SpaceIndexRow, SpaceMatch};
@@ -49,7 +51,7 @@ use crate::ports::media::MediaCache;
 pub trait UiBackend: Sized + 'static {
     type Window: ComponentHandle + UiProps + 'static;
     type Message: MessageFields<Self> + Clone + From<MessageDto> + 'static;
-    type BodyLine: BodyLineFields<Self> + Clone + 'static;
+    type BodyLine: BodyLineFields<Self> + Clone + From<BodyLineDto> + 'static;
     type BodyPiece: BodyPieceFields<Self> + Clone + 'static;
     type Reaction: ReactionFields<Self> + Clone + 'static;
     type Reactor: ReactorFields<Self> + Clone + 'static;
@@ -66,6 +68,7 @@ pub trait UiBackend: Sized + 'static {
     fn models() -> Rc<Models<Self>>;
     fn attach_models(window: &Self::Window, models: &Models<Self>);
     fn bind_browse_packs(window: &Self::Window, browse: impl Fn(PackSurface, &str, i32) + 'static);
+    fn bind_reveal_spoilers(window: &Self::Window, reveal: impl Fn(&str) + 'static);
 
     fn convert_message(
         message: &TimelineMessage,
@@ -175,6 +178,11 @@ pub fn spawn_event_handler<B: UiBackend>(
             let browse = PackBrowse::new(surface, query, emote_columns);
             set_pack_browse::<B>(&window, browse, media.as_ref());
         }
+    });
+
+    let media = Arc::clone(&media_cache);
+    B::bind_reveal_spoilers(window, move |unique_id| {
+        reveal_spoilers::<B>(unique_id, media.as_ref());
     });
 
     let weak = window.as_weak();
@@ -395,6 +403,25 @@ fn patch_timeline_row<B: UiBackend>(
         timeline.set_row_data(row, entry);
         Some(row)
     })
+}
+
+fn reveal_spoilers<B: UiBackend>(unique_id: &str, media: &dyn MediaCache) {
+    let Some(covered) = reveal_row(unique_id) else {
+        return;
+    };
+    let body = covered.revealed(&TimelineItemKey::current(unique_id), media);
+    patch_timeline_row::<B>(unique_id, 0, |entry| show_row_body::<B>(entry, body));
+}
+
+fn show_row_body<B: UiBackend>(entry: &mut B::Message, body: RowBody) {
+    let lines: Vec<B::BodyLine> = body.lines.into_iter().map(B::BodyLine::from).collect();
+    entry.set_body(body.rich.plain);
+    entry.set_styled(body.rich.styled);
+    entry.set_has_links(body.rich.has_links);
+    entry.set_mentions_you(body.rich.mentions_you);
+    entry.set_body_lines(ModelRc::new(VecModel::from(lines)));
+    entry.set_emote_only(body.emote_only);
+    entry.set_spoilers(body.spoilers);
 }
 
 fn place_custom_emoji<B: UiBackend>(

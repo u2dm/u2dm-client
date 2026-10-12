@@ -176,6 +176,7 @@ const ENUM_TABLES: &[(&str, &str)] = &[
     ("DecryptionFailure", "decryption_failures"),
     ("ReactionSend", "reaction_sends"),
     ("EmojiArt", "emoji_arts"),
+    ("SpoilerState", "spoiler_states"),
     ("MediaFailure", "media_failures"),
     ("TimelineState", "timeline_states"),
     ("PackSurface", "pack_surfaces"),

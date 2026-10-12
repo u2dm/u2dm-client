@@ -17,11 +17,12 @@ use super::present::{
     reactor_labels, reader_labels, room_activity_label, sender_initial, service_kind,
     service_target, shield_reason, unsupported_kind, voice_bars, voter_labels,
 };
-use super::richtext::{self, InlineContent, InlineLine, InlinePiece, RoomWord};
+use super::richtext::{self, Cover, InlineContent, InlineLine, InlinePiece, RoomWord, Spoilers};
 use super::schema::{
     define_ui_enum, define_ui_names, emoji_arts, media_failures, media_states, member_row_kinds,
-    pack_surfaces, room_row_kinds, variant_named,
+    pack_surfaces, room_row_kinds, spoiler_states, variant_named,
 };
+use super::spoilers::{keep_covered_body, spoilers_on};
 use crate::commands::view::{ChildAccess, RoomCard, RosterRow, SpaceIndexRow, SpaceMatch};
 use crate::domain::image_pack::{ImagePack, ImageUsage, PackId, PackImage, PackOrigin, PackTitle};
 use crate::domain::media::{
@@ -48,9 +49,11 @@ media_failures!(define_ui_enum MediaFailureKind;);
 member_row_kinds!(define_ui_enum MemberRowKind;);
 room_row_kinds!(define_ui_enum RoomRowKind;);
 emoji_arts!(define_ui_enum EmojiArt;);
+spoiler_states!(define_ui_enum SpoilerState;);
 pack_surfaces!(define_ui_enum PackSurface;);
 pack_surfaces!(variant_named pack_surface_named PackSurface;);
 
+pub const REVEALABLE: Spoilers = Spoilers::Covered(Cover::Link);
 pub const INVITED_HEADING_ROW: &str = "invited-heading";
 pub const SPACES_HEADING_ROW: &str = "spaces-heading";
 const PRONOUN_SEPARATOR: &str = " · ";
@@ -445,6 +448,7 @@ pub struct MessageDto {
     pub mentions_you: bool,
     pub body_lines: Vec<BodyLineDto>,
     pub emote_only: bool,
+    pub spoilers: SpoilerState,
     pub timestamp: SharedString,
     pub sent_at: SharedString,
     pub message_type: MessageKind,
@@ -889,55 +893,159 @@ fn one_line(text: &str) -> SharedString {
 
 pub fn rich_body(text: &RichText) -> richtext::StyledBody {
     match text.html() {
-        Some(html) => richtext::styled_body(html, &text.plain, RoomWord::Text),
+        Some(html) => richtext::styled_body(
+            html,
+            &text.plain,
+            RoomWord::Text,
+            Spoilers::Covered(Cover::Text),
+        ),
         None => richtext::plain_body(&text.plain, RoomWord::Text),
     }
 }
 
 pub fn preview_line(text: &RichText) -> SharedString {
     match text.html() {
-        Some(html) => one_line(&richtext::styled_body(html, &text.plain, RoomWord::Text).plain),
+        Some(html) => {
+            one_line(&richtext::styled_body(html, &text.plain, RoomWord::Text, REVEALABLE).plain)
+        }
         None => one_line(&text.plain),
     }
 }
 
 pub fn message_body(message: &TimelineMessage) -> richtext::StyledBody {
-    let plain = message_body_text(&message.body);
-    let room_word = RoomWord::when(message.mentions_room);
-    match message.body.html() {
-        Some(html) => richtext::styled_body(html, plain, room_word),
-        None => richtext::plain_body(plain, room_word),
+    BodyText::of(message).styled(REVEALABLE)
+}
+
+pub struct RowBody {
+    pub rich: richtext::StyledBody,
+    pub lines: Vec<BodyLineDto>,
+    pub emote_only: bool,
+    pub spoilers: SpoilerState,
+}
+
+struct BodyText<'a> {
+    body: &'a MessageBody,
+    room_word: RoomWord,
+    emoji: &'a BTreeMap<String, CustomEmoji>,
+}
+
+impl<'a> BodyText<'a> {
+    fn of(message: &'a TimelineMessage) -> Self {
+        Self {
+            body: &message.body,
+            room_word: RoomWord::when(message.mentions_room),
+            emoji: &message.body_emoji,
+        }
+    }
+
+    fn styled(&self, spoilers: Spoilers) -> richtext::StyledBody {
+        let plain = message_body_text(self.body);
+        match self.body.html() {
+            Some(html) => richtext::styled_body(html, plain, self.room_word, spoilers),
+            None => richtext::plain_body(plain, self.room_word),
+        }
+    }
+
+    fn row_body(
+        &self,
+        item: &TimelineItemKey,
+        spoilers: Spoilers,
+        media: &dyn MediaCache,
+    ) -> RowBody {
+        let (lines, emote_only) = self.inline_lines(item, spoilers, media);
+        let rich = self.styled(spoilers);
+        RowBody {
+            spoilers: spoiler_state(rich.has_spoilers, spoilers),
+            rich,
+            lines,
+            emote_only,
+        }
+    }
+
+    fn inline_lines(
+        &self,
+        item: &TimelineItemKey,
+        spoilers: Spoilers,
+        media: &dyn MediaCache,
+    ) -> (Vec<BodyLineDto>, bool) {
+        let drawn: BTreeSet<String> = self
+            .emoji
+            .iter()
+            .filter(|(_, state)| **state != CustomEmoji::Unavailable)
+            .map(|(mxc, _)| mxc.clone())
+            .collect();
+        if drawn.is_empty() {
+            return (Vec::new(), false);
+        }
+        let Some(inline) = self
+            .body
+            .html()
+            .and_then(|html| richtext::inline_body(html, self.room_word, spoilers, drawn))
+        else {
+            return (Vec::new(), false);
+        };
+        let lines = inline
+            .lines
+            .iter()
+            .map(|line| body_line_dto(item, line, self.emoji, media))
+            .collect();
+        (lines, inline.emote_only)
     }
 }
 
-fn inline_body_lines(
+#[derive(Clone)]
+pub struct CoveredBody {
+    body: MessageBody,
+    room_word: RoomWord,
+    emoji: BTreeMap<String, CustomEmoji>,
+}
+
+impl CoveredBody {
+    fn of(message: &TimelineMessage) -> Self {
+        Self {
+            body: message.body.clone(),
+            room_word: RoomWord::when(message.mentions_room),
+            emoji: message.body_emoji.clone(),
+        }
+    }
+
+    fn text(&self) -> BodyText<'_> {
+        BodyText {
+            body: &self.body,
+            room_word: self.room_word,
+            emoji: &self.emoji,
+        }
+    }
+
+    pub fn revealed(&self, item: &TimelineItemKey, media: &dyn MediaCache) -> RowBody {
+        self.text().row_body(item, Spoilers::Shown, media)
+    }
+}
+
+fn row_body_and_preview(
     item: &TimelineItemKey,
     message: &TimelineMessage,
     media: &dyn MediaCache,
-) -> (Vec<BodyLineDto>, bool) {
-    let drawn: BTreeSet<String> = message
-        .body_emoji
-        .iter()
-        .filter(|(_, state)| **state != CustomEmoji::Unavailable)
-        .map(|(mxc, _)| mxc.clone())
-        .collect();
-    if drawn.is_empty() {
-        return (Vec::new(), false);
+) -> (RowBody, SharedString) {
+    let text = BodyText::of(message);
+    let spoilers = spoilers_on(&message.unique_id);
+    let body = text.row_body(item, spoilers, media);
+    if body.rich.has_spoilers {
+        keep_covered_body(&message.unique_id, CoveredBody::of(message));
     }
-    let room_word = RoomWord::when(message.mentions_room);
-    let Some(inline) = message
-        .body
-        .html()
-        .and_then(|html| richtext::inline_body(html, room_word, drawn))
-    else {
-        return (Vec::new(), false);
+    let preview = match spoilers {
+        Spoilers::Shown => text.styled(REVEALABLE).plain,
+        Spoilers::Covered(_) => body.rich.plain.clone(),
     };
-    let lines = inline
-        .lines
-        .iter()
-        .map(|line| body_line_dto(item, line, &message.body_emoji, media))
-        .collect();
-    (lines, inline.emote_only)
+    (body, one_line(&preview))
+}
+
+fn spoiler_state(has_spoilers: bool, spoilers: Spoilers) -> SpoilerState {
+    match (has_spoilers, spoilers) {
+        (false, _) => SpoilerState::None,
+        (true, Spoilers::Covered(_)) => SpoilerState::Covered,
+        (true, Spoilers::Shown) => SpoilerState::Shown,
+    }
 }
 
 fn body_line_dto(
@@ -1024,9 +1132,7 @@ pub fn message_to_dto(m: &TimelineMessage, pinned: bool, media: &dyn MediaCache)
     let (reactions, all_reactions) = reaction_dtos(&item, &m.reactions, media);
     let (readers, hidden_readers) = reader_labels(&m.read_by);
     let reply = m.reply.as_ref();
-    let rich = message_body(m);
-    let (body_lines, emote_only) = inline_body_lines(&item, m, media);
-    let preview_body = one_line(&rich.plain);
+    let (body, preview_body) = row_body_and_preview(&item, m, media);
     let mut dto = MessageDto {
         unique_id: SharedString::from(&m.unique_id),
         local_id: m.local_id.as_deref().map(SharedString::from).unwrap_or_default(),
@@ -1036,12 +1142,13 @@ pub fn message_to_dto(m: &TimelineMessage, pinned: bool, media: &dyn MediaCache)
             .into_iter()
             .map(SharedString::from)
             .collect(),
-        body: rich.plain,
-        styled: rich.styled,
-        has_links: rich.has_links,
-        mentions_you: rich.mentions_you,
-        body_lines,
-        emote_only,
+        body: body.rich.plain,
+        styled: body.rich.styled,
+        has_links: body.rich.has_links,
+        mentions_you: body.rich.mentions_you,
+        body_lines: body.lines,
+        emote_only: body.emote_only,
+        spoilers: body.spoilers,
         timestamp: SharedString::from(&message_timestamp_label(m.timestamp)),
         sent_at: if m.is_own {
             SharedString::from(message_sent_at_label(m.timestamp))

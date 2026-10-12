@@ -81,6 +81,9 @@ macro_rules! string_props {
         UserInfoErrorDetail UserInfoView "UserInfoView" "error-detail" set_error_detail get_error_detail;
         RoomLogRoomId RoomLogView "RoomLogView" "room-id" set_room_id get_room_id;
         RoomLogName RoomLogView "RoomLogView" "name" set_name get_name;
+        SpoilerLabel SpoilerCover "SpoilerCover" "label" set_label get_label;
+        SpoilerReasonLabel SpoilerCover "SpoilerCover" "reason-label" set_reason_label get_reason_label;
+        SpoilerReasonSlot SpoilerCover "SpoilerCover" "reason-slot" set_reason_slot get_reason_slot;
         #[cfg(feature = "demo")] RoomMenuKey RoomMenu "RoomMenu" "key" set_key get_key;
     } };
 }
@@ -600,6 +603,15 @@ macro_rules! emoji_arts {
 }
 pub(crate) use emoji_arts;
 
+macro_rules! spoiler_states {
+    ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
+        None    None    "none";
+        Covered Covered "covered";
+        Shown   Shown   "shown";
+    } };
+}
+pub(crate) use spoiler_states;
+
 macro_rules! deliveries {
     ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
         None    None    "none";
@@ -986,6 +998,7 @@ macro_rules! message_fields {
         mentions_you set_mentions_you "mentions-you" flag;
         body_lines set_body_lines "body-lines" structs(BodyLine);
         emote_only set_emote_only "emote-only" flag;
+        spoilers set_spoilers "spoilers" enumk(SpoilerState);
         timestamp set_timestamp "timestamp" text;
         sent_at set_sent_at "sent-at" text;
         message_type set_message_type "message-type" enumk(MessageKind);

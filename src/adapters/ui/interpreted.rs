@@ -27,7 +27,7 @@ use super::decode::{
 use super::dto::{
     BodyLineDto, BodyPieceDto, EmojiArt, LogLineDto, MediaFailureKind, MediaState, MemberRowDto,
     MemberRowKind, MessageDto, PackCellDto, PackRowDto, PackSurface, PackTabDto, PollAnswerDto,
-    ReactionDto, ReactorAvatarDto, RoomDto, RoomRowKind, SpaceChildDto, SpaceDto,
+    ReactionDto, ReactorAvatarDto, RoomDto, RoomRowKind, SpaceChildDto, SpaceDto, SpoilerState,
     pack_surface_named,
 };
 #[cfg(feature = "demo")]
@@ -55,7 +55,7 @@ use super::schema::{
     reactor_fields, readers_statuses, room_fields, room_info_placements, room_memberships,
     room_row_kinds, room_scopes, roster_statuses, send_states, service_kinds, shield_reasons,
     shields, simple_callbacks, source_encryptions, source_statuses, space_child_fields,
-    space_fields, space_index_statuses, timeline_states, user_message_kinds,
+    space_fields, space_index_statuses, spoiler_states, timeline_states, user_message_kinds,
     verification_activities, verification_phases,
 };
 use super::session::active_models;
@@ -115,6 +115,7 @@ mod names {
         pub const TOGGLE_AUDIO: &str = "toggle-audio";
         pub const SEEK_AUDIO: &str = "seek-audio";
         pub const BROWSE_PACKS: &str = "browse-packs";
+        pub const REVEAL_SPOILERS: &str = "reveal-spoilers";
         pub const EMOTE_AT: &str = "emote-at";
         pub const PLACE_EMOTE: &str = "place-emote";
         pub const SCROLL_POSITION_CHANGED: &str = "scroll-position-changed";
@@ -214,6 +215,7 @@ media_states!(impl_slint_enum MediaState "MediaState";);
 send_states!(impl_slint_enum SendState "SendState";);
 reaction_sends!(impl_slint_enum ReactionSend "ReactionSend";);
 emoji_arts!(impl_slint_enum EmojiArt "EmojiArt";);
+spoiler_states!(impl_slint_enum SpoilerState "SpoilerState";);
 deliveries!(impl_slint_enum Delivery "Delivery";);
 shields!(impl_slint_enum Shield "Shield";);
 shield_reasons!(impl_slint_enum ShieldReason "ShieldReason";);
@@ -649,6 +651,16 @@ impl UiBackend for InterpretedBackend {
         });
         if let Err(e) = bound {
             tracing::warn!("failed to bind the pack browsing callback: {e}");
+        }
+    }
+
+    fn bind_reveal_spoilers(window: &ComponentInstance, reveal: impl Fn(&str) + 'static) {
+        let bound = bind_action(window, callback::REVEAL_SPOILERS, move |args| {
+            reveal(&string_arg(args, 0));
+            Value::Void
+        });
+        if let Err(e) = bound {
+            tracing::warn!("failed to bind the spoiler reveal callback: {e}");
         }
     }
 }

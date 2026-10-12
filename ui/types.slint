@@ -1,4 +1,4 @@
-import { AudioKind, ChildAccess, DecryptionFailure, Delivery, EmojiArt, LogLevel, MediaFailure, MediaState, MemberRole, MemberRowKind, MessageKind, PackOrigin, PollPhase, PreviewKind, ReactionSend, RoomRowKind, SendState, ServiceKind, Shield, ShieldReason, UserMessageKind } from "./enums.slint";
+import { AudioKind, ChildAccess, DecryptionFailure, Delivery, EmojiArt, LogLevel, MediaFailure, MediaState, MemberRole, MemberRowKind, MessageKind, PackOrigin, PollPhase, PreviewKind, ReactionSend, RoomRowKind, SendState, ServiceKind, Shield, ShieldReason, SpoilerState, UserMessageKind } from "./enums.slint";
 
 export struct RoomEntry {
     id: string,
@@ -129,6 +129,7 @@ export struct MessageEntry {
     mentions-you: bool,
     body-lines: [BodyLine],
     emote-only: bool,
+    spoilers: SpoilerState,
     timestamp: string,
     sent-at: string,
     message-type: MessageKind,

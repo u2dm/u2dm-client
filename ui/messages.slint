@@ -369,6 +369,12 @@ export global MediaFailures {
     }
 }
 
+export global SpoilerCover {
+    in-out property <string> reason-slot: "{}";
+    in-out property <string> label: @tr("Spoiler");
+    in-out property <string> reason-label: @tr("Spoiler: {}", root.reason-slot);
+}
+
 export global MessagePreview {
     public pure function label(kind: PreviewKind, body: string) -> string {
         if kind == PreviewKind.image {

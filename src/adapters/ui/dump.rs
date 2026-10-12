@@ -57,8 +57,11 @@ pub struct TimelineRowDump {
     pub sender: String,
     pub sender_id: String,
     pub body: String,
+    pub has_links: bool,
     pub mentions_you: bool,
     pub emote_only: bool,
+    pub spoilers: String,
+    pub preview_body: String,
     pub body_lines: Vec<usize>,
     pub body_emoji: Vec<BodyEmojiDump>,
     pub timestamp: String,
@@ -339,8 +342,11 @@ fn timeline_row<B: UiBackend>(row: usize, entry: &B::Message) -> TimelineRowDump
         sender: entry.sender().to_owned(),
         sender_id: entry.sender_id().to_owned(),
         body: entry.body().to_owned(),
+        has_links: entry.has_links(),
         mentions_you: entry.mentions_you(),
         emote_only: entry.emote_only(),
+        spoilers: entry.spoilers().to_owned(),
+        preview_body: entry.preview_body().to_owned(),
         body_lines: entry
             .body_lines()
             .iter()

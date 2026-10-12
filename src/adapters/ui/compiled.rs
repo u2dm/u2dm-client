@@ -30,9 +30,10 @@ use u2dm_ui::{
     ServiceKind as UiServiceKind, SessionView, Shield as UiShield, ShieldReason as UiShieldReason,
     SourceEncryption as UiSourceEncryption, SourceStatus as UiSourceStatus, SourceView,
     SpaceChildEntry, SpaceEntry, SpaceIndexStatus as UiSpaceIndexStatus, SpaceIndexView,
-    TextSplice, TimelineState, UnsentView, UserInfoView, UserMessage as UiUserMessage,
-    UserMessageKind as UiUserMessageKind, VerificationActivity as UiVerificationActivity,
-    VerificationEmoji, VerificationPhase, VerificationView, VideoView, WindowView,
+    SpoilerCover, SpoilerState as UiSpoilerState, TextSplice, TimelineState, UnsentView,
+    UserInfoView, UserMessage as UiUserMessage, UserMessageKind as UiUserMessageKind,
+    VerificationActivity as UiVerificationActivity, VerificationEmoji, VerificationPhase,
+    VerificationView, VideoView, WindowView,
 };
 #[cfg(feature = "demo")]
 use u2dm_ui::{Probe, RoomMenu};
@@ -48,7 +49,7 @@ use super::decode::{
 use super::dto::{
     BodyLineDto, BodyPieceDto, EmojiArt, LogLineDto, MediaFailureKind, MediaState, MemberRowDto,
     MemberRowKind, MessageDto, PackCellDto, PackRowDto, PackSurface, PackTabDto, PollAnswerDto,
-    ReactionDto, ReactorAvatarDto, RoomDto, RoomRowKind, SpaceChildDto, SpaceDto,
+    ReactionDto, ReactorAvatarDto, RoomDto, RoomRowKind, SpaceChildDto, SpaceDto, SpoilerState,
     pack_surface_named,
 };
 #[cfg(feature = "demo")]
@@ -76,8 +77,8 @@ use super::schema::{
     reaction_sends, reactor_fields, readers_statuses, room_fields, room_info_placements,
     room_memberships, room_row_kinds, room_scopes, roster_statuses, send_states, service_kinds,
     shield_reasons, shields, simple_callbacks, source_encryptions, source_statuses,
-    space_child_fields, space_fields, space_index_statuses, string_props, timeline_states,
-    user_message_kinds, verification_activities, verification_phases,
+    space_child_fields, space_fields, space_index_statuses, spoiler_states, string_props,
+    timeline_states, user_message_kinds, verification_activities, verification_phases,
 };
 use super::session::active_models;
 use super::video::{self, millis_to_duration};
@@ -348,6 +349,7 @@ media_states!(impl_slint_enum MediaState UiMediaState;);
 send_states!(impl_slint_enum SendState UiSendState;);
 reaction_sends!(impl_slint_enum ReactionSend UiReactionSend;);
 emoji_arts!(impl_slint_enum EmojiArt UiEmojiArt;);
+spoiler_states!(impl_slint_enum SpoilerState UiSpoilerState;);
 deliveries!(impl_slint_enum Delivery UiDelivery;);
 shields!(impl_slint_enum Shield UiShield;);
 shield_reasons!(impl_slint_enum ShieldReason UiShieldReason;);
@@ -526,6 +528,10 @@ impl UiBackend for CompiledBackend {
                 browse(surface, &query, emote_columns);
             }
         });
+    }
+
+    fn bind_reveal_spoilers(window: &AppWindow, reveal: impl Fn(&str) + 'static) {
+        actions(window).on_reveal_spoilers(move |unique_id| reveal(&unique_id));
     }
 }
 

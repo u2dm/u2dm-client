@@ -37,6 +37,7 @@ import {
 } from "./views.slint";
 import { Actions } from "./actions.slint";
 import { EmojiStore } from "./emoji-store.slint";
+import { SpoilerCover } from "./messages.slint";
 import { Polls, Probe, ReplySwipe, RoomMenu, Shell } from "./local.slint";
 import { Metrics } from "./theme.slint";
 import { LoadingScreen } from "./screens/login/loading.slint";
@@ -62,6 +63,7 @@ export { LoginView, SessionView, DirectoryView, SpaceIndexView, RoomView, PackVi
 export { AttachmentView, VideoView, AudioView, UnsentView, IdentityAlertView, WindowView, RoomInfoView, SourceView, RoomMenuView, RoomLogView, UserInfoView, ReadersView, MentionsView }
 export { Actions }
 export { Probe, ReplySwipe, RoomMenu }
+export { SpoilerCover }
 
 export component AppWindow inherits Window {
     title: @tr("U2DM Matrix Client");

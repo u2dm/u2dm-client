@@ -1,9 +1,9 @@
 use super::catalog::{Flag, Scenarios};
-use super::media;
+use super::{data, media};
 use std::env;
 use std::sync::OnceLock;
 
-use crate::domain::message::{MessageBody, RichText, SendState, TimelineMessage};
+use crate::domain::message::{MessageBody, ReplyInfo, RichText, SendState, TimelineMessage};
 
 const ENV_VAR: &str = "U2DM_DEMO_RICHTEXT";
 
@@ -43,8 +43,14 @@ pub const CATALOG: Scenarios = Scenarios {
             note: "",
         },
         Flag {
+            value: "spoilers",
+            effect: "spoilers with and without a reason, inside links, code, lists and quotes, \
+                     hiding a tag naming you and custom emoji, and a reply quoting one",
+            note: "",
+        },
+        Flag {
             value: "all",
-            effect: "adversarial, hard, links, bare, long and emoji",
+            effect: "adversarial, hard, links, bare, long, emoji and spoilers",
             note: "",
         },
     ],
@@ -194,6 +200,51 @@ const EMOJI: &[(&str, &str)] = &[
     ),
 ];
 
+const SPOILERS: &[(&str, &str)] = &[
+    (
+        "Alice [Spoiler](mxc://demo.local/spoiler) in the movie.",
+        "Alice <span data-mx-spoiler>lived happily ever after</span> in the movie.",
+    ),
+    (
+        "Alice [Spoiler for health of Alice](mxc://demo.local/spoiler) in the movie.",
+        "Alice <span data-mx-spoiler=\"health of Alice\">lived happily ever after</span> in the \
+         movie.",
+    ),
+    (
+        "[Spoiler](mxc://demo.local/spoiler)",
+        "<span data-mx-spoiler>the butler did it</span>",
+    ),
+    (
+        "The killer is [Spoiler], with [Spoiler for weapon]. Reviews at the review site.",
+        "The killer is <span data-mx-spoiler>the butler</span>, with \
+         <span data-mx-spoiler=\"weapon\">the candlestick</span>. Reviews at \
+         <a href=\"https://example.invalid/reviews\">the review site</a>.",
+    ),
+    (
+        "And the winner is [Spoiler]!",
+        "And the winner is <span data-mx-spoiler><a href=\"https://matrix.to/#/@alex:matrix.org\">\
+         Alex</a> <img data-mx-emoticon src=\"mxc://demo.local/demo-sticker-small\" alt=\":small:\"> \
+         with <a href=\"https://example.invalid/final\">the final move</a></span>!",
+    ),
+    (
+        "Read the plot or run reveal.",
+        "Read <a href=\"https://example.invalid/plot\">the plot: <span data-mx-spoiler>a twist</span>\
+         </a> or run <code>reveal --answer=<span data-mx-spoiler>42</span></code>.",
+    ),
+    (
+        "Spoilers in a list and a quote.",
+        "<ul><li>season one: <span data-mx-spoiler=\"S1\">everyone lives</span></li><li>season two: \
+         <span data-mx-spoiler=\"S2\">nobody does</span></li></ul><blockquote>they said \
+         <span data-mx-spoiler>it was<br>all a dream</span></blockquote>",
+    ),
+    (
+        "[Spoiler](mxc://demo.local/spoiler)",
+        "<span data-mx-spoiler><img data-mx-emoticon src=\"mxc://demo.local/demo-sticker-ship\" \
+         alt=\":ship:\"></span>",
+    ),
+];
+const SPOILER_REPLY: &str = "no way, really?";
+
 const BARE: &[&str] = &[
     "no formatting at all, just https://spec.matrix.org/latest/ in the middle",
     "trailing punctuation: see https://example.invalid/docs. Then (https://example.invalid/more), \
@@ -212,11 +263,18 @@ pub struct Scenario {
     pub bare: bool,
     pub oversized: bool,
     pub emoji: bool,
+    pub spoilers: bool,
 }
 
 impl Scenario {
     fn any(self) -> bool {
-        self.adversarial || self.hard || self.links || self.bare || self.oversized || self.emoji
+        self.adversarial
+            || self.hard
+            || self.links
+            || self.bare
+            || self.oversized
+            || self.emoji
+            || self.spoilers
     }
 }
 
@@ -240,6 +298,7 @@ fn from_env() -> Scenario {
         bare = scenario.bare,
         oversized = scenario.oversized,
         emoji = scenario.emoji,
+        spoilers = scenario.spoilers,
         "demo mode: injecting formatted messages"
     );
     scenario
@@ -253,6 +312,7 @@ fn apply(scenario: &mut Scenario, flag: &str) {
         "bare" => scenario.bare = true,
         "long" => scenario.oversized = true,
         "emoji" => scenario.emoji = true,
+        "spoilers" => scenario.spoilers = true,
         "all" => {
             scenario.adversarial = true;
             scenario.hard = true;
@@ -260,6 +320,7 @@ fn apply(scenario: &mut Scenario, flag: &str) {
             scenario.bare = true;
             scenario.oversized = true;
             scenario.emoji = true;
+            scenario.spoilers = true;
         }
         other => tracing::warn!("unknown {ENV_VAR} flag: {other}"),
     }
@@ -299,7 +360,36 @@ pub fn apply_scenario(messages: &mut Vec<TimelineMessage>) {
     if scenario.emoji {
         extend(&mut injected, &template, "emoji", EMOJI);
     }
+    if scenario.spoilers {
+        extend(&mut injected, &template, "spoilers", SPOILERS);
+        injected.extend(reply_to_first(&template, "spoilers", &injected));
+    }
     messages.extend(injected);
+}
+
+fn reply_to_first(
+    template: &TimelineMessage,
+    group: &str,
+    injected: &[TimelineMessage],
+) -> Option<TimelineMessage> {
+    let quoted = injected.iter().find(|message| {
+        message
+            .unique_id
+            .starts_with(&format!("demo-richtext-{group}-"))
+    })?;
+    let mut reply = message(
+        template,
+        &format!("{group}-reply"),
+        0,
+        RichText::plain(SPOILER_REPLY.to_owned()),
+    );
+    reply.reply = Some(ReplyInfo {
+        event_id: quoted.unique_id.clone(),
+        sender: data::sender_of(quoted),
+        kind: quoted.body.preview_kind(),
+        body: data::body_preview(&quoted.body),
+    });
+    Some(reply)
 }
 
 fn extend(

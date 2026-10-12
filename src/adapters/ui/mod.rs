@@ -29,6 +29,7 @@ mod rows;
 pub(crate) mod schema;
 mod session;
 mod splice_model;
+mod spoilers;
 mod swipe;
 mod video;
 mod window_events;

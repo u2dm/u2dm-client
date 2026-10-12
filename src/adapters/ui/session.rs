@@ -6,9 +6,11 @@ use super::backend::{Models, UiBackend};
 use super::decode::MediaSession;
 use super::dto::PackBrowse;
 use super::emote::EmoteBindings;
+use super::props::{StringProp, UiProps};
 use super::reconcile::{PackIndex, TimelineIndex};
 use super::reduce::RoomCursor;
-use super::richtext::StyledBodies;
+use super::richtext::{CoverLabels, StyledBodies, recognise_cover_labels};
+use super::spoilers::SpoilerRows;
 use crate::commands::view::AppViewState;
 
 #[cfg(not(feature = "interpreted"))]
@@ -26,6 +28,7 @@ pub struct UiSession<B: UiBackend> {
     pub emotes: EmoteBindings,
     pub media: MediaSession,
     pub bodies: StyledBodies,
+    pub spoilers: SpoilerRows,
 }
 
 impl<B: UiBackend> Default for UiSession<B> {
@@ -40,6 +43,7 @@ impl<B: UiBackend> Default for UiSession<B> {
             emotes: EmoteBindings::default(),
             media: MediaSession::default(),
             bodies: StyledBodies::default(),
+            spoilers: SpoilerRows::default(),
         }
     }
 }
@@ -58,6 +62,13 @@ pub fn active_models() -> Rc<Models<ActiveBackend>> {
 
 pub fn begin_session<B: UiBackend>(window: &B::Window) -> Rc<Models<B>> {
     with_session(|session| *session = UiSession::default());
+    recognise_cover_labels(CoverLabels {
+        label: window.get_string(StringProp::SpoilerLabel).to_string(),
+        reason_label: window
+            .get_string(StringProp::SpoilerReasonLabel)
+            .to_string(),
+        reason_slot: window.get_string(StringProp::SpoilerReasonSlot).to_string(),
+    });
     let models = B::models();
     B::attach_models(window, &models);
     models

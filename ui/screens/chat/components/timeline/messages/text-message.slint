@@ -1,7 +1,7 @@
 import { Palette } from "std-widgets.slint";
 
 import { BodyLine, BodyPiece, MessageEntry } from "../../../../../types.slint";
-import { EmojiArt } from "../../../../../enums.slint";
+import { EmojiArt, SpoilerState } from "../../../../../enums.slint";
 import { Actions } from "../../../../../actions.slint";
 import { TextSelection } from "../../../../../local.slint";
 import { AppStyle, Fonts, IconSize, Metrics, Space } from "../../../../../theme.slint";
@@ -13,6 +13,8 @@ component BodyPieceView inherits HorizontalLayout {
     in property <length> icon-size;
     in property <color> link-color;
 
+    callback link-clicked(string);
+
     padding-right: root.piece.spaced ? Metrics.word-space : 0;
 
     if root.piece.art == EmojiArt.text: StyledText {
@@ -22,7 +24,7 @@ component BodyPieceView inherits HorizontalLayout {
         default-color: Palette.foreground;
         link-color: root.link-color;
         link-clicked(url) => {
-            Actions.open-link(url);
+            root.link-clicked(url);
         }
     }
 
@@ -43,6 +45,8 @@ component InlineBody inherits VerticalLayout {
     in property <color> link-color;
     out property <length> laid-out-height: end.y;
 
+    callback link-clicked(string);
+
     alignment: start;
 
     for line in root.lines: FlexboxLayout {
@@ -54,6 +58,9 @@ component InlineBody inherits VerticalLayout {
             emoji-size: root.emoji-size;
             icon-size: root.icon-size;
             link-color: root.link-color;
+            link-clicked(url) => {
+                root.link-clicked(url);
+            }
         }
     }
 
@@ -95,6 +102,18 @@ export component TextMessage inherits Rectangle {
     preferred-width: root.inline ? unwrapped.preferred-width + Space.sm : content.preferred-width;
     height: root.inline ? inline-body.laid-out-height : content.preferred-height;
 
+    pure function is-spoiler-cover(url: string) -> bool {
+        return url == "";
+    }
+
+    function follow-link(url: string) {
+        if root.is-spoiler-cover(url) {
+            Actions.reveal-spoilers(root.msg.unique-id);
+        } else {
+            Actions.open-link(url);
+        }
+    }
+
     unwrapped := UnwrappedLines {
         x: 0;
         y: 0;
@@ -113,12 +132,19 @@ export component TextMessage inherits Rectangle {
         emoji-size: root.emoji-size;
         icon-size: root.msg.emote-only ? IconSize.lg : IconSize.xs;
         link-color: root.msg.is-own ? AppStyle.own-link : AppStyle.link;
+        link-clicked(url) => {
+            root.follow-link(url);
+        }
     }
 
     accessible-role: text;
     accessible-label: root.msg.body;
     accessible-action-default => {
-        TextSelection.select(root.msg.unique-id);
+        if root.msg.spoilers == SpoilerState.covered {
+            Actions.reveal-spoilers(root.msg.unique-id);
+        } else {
+            TextSelection.select(root.msg.unique-id);
+        }
     }
 
     content := VerticalLayout {
@@ -129,7 +155,7 @@ export component TextMessage inherits Rectangle {
             default-color: Palette.foreground;
             link-color: root.msg.is-own ? AppStyle.own-link : AppStyle.link;
             link-clicked(url) => {
-                Actions.open-link(url);
+                root.follow-link(url);
             }
         }
 

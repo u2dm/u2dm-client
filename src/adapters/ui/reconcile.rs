@@ -15,6 +15,7 @@ use super::fields::RoomFields;
 use super::richtext::forget_styled_bodies;
 use super::session::with_session;
 use super::splice_model::SpliceModel;
+use super::spoilers::forget_spoiler_rows;
 use crate::commands::view::{DirectoryView, RosterRow, SpaceIndexRow, SpaceMatch};
 use crate::domain::image_pack::PackOrigin;
 use crate::domain::message::TimelineMessage;
@@ -279,6 +280,7 @@ fn apply_patch<T: Clone + 'static>(
         TimelinePatch::Reset(messages) => {
             forget_all_media_needs();
             forget_styled_bodies();
+            forget_spoiler_rows();
             index.reset(&messages);
             let entries: Vec<T> = messages.iter().map(convert).collect();
             model.set_vec(entries);
@@ -303,6 +305,7 @@ fn apply_patch<T: Clone + 'static>(
         TimelinePatch::Clear => {
             forget_all_media_needs();
             forget_styled_bodies();
+            forget_spoiler_rows();
             index.clear();
             model.set_vec(Vec::new());
         }
