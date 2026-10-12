@@ -9,7 +9,7 @@ use super::establish::{EstablishedSession, Establishing, LoginFailure};
 use super::event::{AppEvent, EndReason, SessionEvent};
 use super::input::EventSender;
 use super::recover::Recovery;
-use super::task_group::{self, TaskGroup};
+use super::task_group::TaskGroup;
 use crate::commands::messages::{UserMessage, UserMessageKind};
 use crate::commands::view::{LoginActivity, LoginStep};
 use crate::domain::account::AccountScope;
@@ -18,16 +18,14 @@ use crate::domain::link::LauncherSafeUrl;
 use crate::error::{AppError, AuthFailure, Result};
 use crate::ports::browser::BrowserPort;
 use crate::ports::matrix::{
-    AuthPort, AuthenticatedSession, CleanupReport, RestoreStep, SessionPort,
+    AuthPort, AuthenticatedSession, CleanupReport, DeviceRemoval, RestoreOutcome, RestoreStep,
+    SessionPort,
 };
 use crate::ports::output::AppOutputPort;
 use crate::ports::storage::{StoragePort, StoredSession};
 use crate::util::random_hex;
 
 const OAUTH_CALLBACK_TIMEOUT: Duration = Duration::from_mins(5);
-const LOCAL_ERASURE_RESERVE: Duration = Duration::from_secs(1);
-const SERVER_LOGOUT_TIMEOUT: Duration =
-    task_group::SHUTDOWN_GRACE.saturating_sub(LOCAL_ERASURE_RESERVE);
 const PERSIST_RETRY_FLOOR: Duration = Duration::from_secs(1);
 const PERSIST_RETRY_CEILING: Duration = Duration::from_mins(1);
 
@@ -52,6 +50,17 @@ pub(super) fn cleanup_problem(report: &CleanupReport) -> Option<UserMessage> {
     Some(UserMessage::new(UserMessageKind::DataNotErased))
 }
 
+pub(super) fn unconfirmed_device(removal: DeviceRemoval, device_id: &str) -> Option<String> {
+    match removal {
+        DeviceRemoval::Confirmed => None,
+        DeviceRemoval::Unconfirmed => Some(device_id.to_owned()),
+    }
+}
+
+pub(super) fn left_behind_notice(device_id: &str) -> UserMessage {
+    UserMessage::about(UserMessageKind::DeviceLeftBehind, &device_id)
+}
+
 fn login_failure(err: &AppError) -> UserMessageKind {
     let AppError::Auth { kind, .. } = err else {
         return UserMessageKind::LoginFailed;
@@ -70,17 +79,6 @@ fn login_failure(err: &AppError) -> UserMessageKind {
     }
 }
 
-fn restore_failure(err: &AppError) -> UserMessageKind {
-    if let AppError::Auth {
-        kind: AuthFailure::IdentityDiverged,
-        ..
-    } = err
-    {
-        return UserMessageKind::IdentityDiverged;
-    }
-    UserMessageKind::SessionRestoreFailed
-}
-
 fn keyring_unreadable(kind: UserMessageKind, cause: &AppError) -> UserMessage {
     if let AppError::Keyring { source, .. } = cause {
         return UserMessage::about(kind, source);
@@ -95,11 +93,17 @@ fn restore_activity(step: RestoreStep) -> LoginActivity {
     }
 }
 
-async fn end_server_session(lifecycle_port: &dyn SessionPort) {
-    match timeout(SERVER_LOGOUT_TIMEOUT, lifecycle_port.logout()).await {
-        Ok(Ok(())) => {}
-        Ok(Err(e)) => tracing::warn!("failed to logout from server: {e}"),
-        Err(_) => tracing::warn!("server logout timed out, erasing local state anyway"),
+async fn end_server_session(
+    lifecycle_port: &dyn SessionPort,
+    quit: &CancellationToken,
+) -> DeviceRemoval {
+    tokio::select! {
+        biased;
+        () = quit.cancelled() => {
+            tracing::warn!("quitting before the homeserver answered the logout, erasing local state anyway");
+            DeviceRemoval::Unconfirmed
+        }
+        removal = lifecycle_port.logout() => removal,
     }
 }
 
@@ -116,6 +120,12 @@ fn classify_unusable_session(loaded: Result<StoredSession>) -> (&'static str, Op
 pub(super) struct SuspendedSession {
     pub(super) session: Session,
     pub(super) account: AccountScope,
+    pub(super) lifecycle: Arc<dyn SessionPort>,
+}
+
+pub(super) struct EndingSession {
+    pub(super) account: AccountScope,
+    pub(super) device_id: String,
     pub(super) lifecycle: Arc<dyn SessionPort>,
 }
 
@@ -256,29 +266,24 @@ impl SessionController {
         self.pending_passphrase = None;
     }
 
-    pub(super) fn spawn_logout(
-        &self,
-        group: &mut TaskGroup,
-        session: u64,
-        account: AccountScope,
-        lifecycle_port: Arc<dyn SessionPort>,
-    ) {
+    pub(super) fn spawn_logout(&self, group: &mut TaskGroup, session: u64, ending: EndingSession) {
         let tasks = self.tasks.clone();
-        group.spawn(async move { tasks.logout(session, &account, lifecycle_port).await });
+        let quit = group.token();
+        group.spawn(async move { tasks.logout(session, &ending, &quit).await });
     }
 
     pub(super) fn spawn_erase_session(
         &self,
         group: &mut TaskGroup,
         session: u64,
-        account: AccountScope,
-        lifecycle_port: Arc<dyn SessionPort>,
+        ending: EndingSession,
         reason: EndReason,
+        left_behind: Option<String>,
     ) {
         let tasks = self.tasks.clone();
         group.spawn(async move {
             tasks
-                .erase_session(session, &account, lifecycle_port, reason)
+                .erase_session(session, &ending, reason, left_behind)
                 .await;
         });
     }
@@ -387,12 +392,12 @@ impl SessionController {
         }));
     }
 
-    pub(super) fn show_login(&self, message: Option<UserMessage>) {
+    pub(super) fn show_login(&self, messages: Vec<UserMessage>) {
         self.output.publish(Box::new(move |view| {
             view.lifecycle.step = LoginStep::Homeserver;
             view.lifecycle.activity = LoginActivity::Idle;
-            if let Some(message) = message {
-                view.lifecycle.messages = vec![message];
+            if !messages.is_empty() {
+                view.lifecycle.messages = messages;
             }
         }));
     }
@@ -446,17 +451,40 @@ impl SessionTasks {
         let passphrase = self.stored_passphrase(&account).await?;
 
         match self.restore_matrix_session(&session, &passphrase).await {
-            Ok(capability) => Some(capability),
+            Ok(RestoreOutcome::Restored(capability)) => Some(*capability),
+            Ok(RestoreOutcome::Diverged(removal)) => self.report_diverged(&session, removal).await,
             Err(e) => {
                 tracing::warn!("session restore failed, preserving local data: {e}");
-                self.report_restore_failed(Some(restore_failure(&e)))
+                self.report_restore_failed(vec![UserMessage::new(
+                    UserMessageKind::SessionRestoreFailed,
+                )])
             }
         }
     }
 
-    fn report_restore_failed<T>(&self, kind: Option<UserMessageKind>) -> Option<T> {
-        self.send(SessionEvent::RestoreFailed(kind.map(UserMessage::new)));
+    fn report_restore_failed<T>(&self, messages: Vec<UserMessage>) -> Option<T> {
+        self.send(SessionEvent::RestoreFailed(messages));
         None
+    }
+
+    async fn report_diverged<T>(&self, session: &Session, removal: DeviceRemoval) -> Option<T> {
+        let mut messages = vec![UserMessage::new(UserMessageKind::IdentityDiverged)];
+        match removal {
+            DeviceRemoval::Confirmed => self.forget_signed_out_session().await,
+            DeviceRemoval::Unconfirmed => messages.push(left_behind_notice(&session.device_id)),
+        }
+        self.report_restore_failed(messages)
+    }
+
+    async fn forget_signed_out_session(&self) {
+        match self.storage.clear_session().await {
+            Ok(()) => tracing::info!(
+                "forgot the session the homeserver signed out, keeping its store and store key"
+            ),
+            Err(e) => tracing::warn!(
+                "the session the homeserver signed out is still saved, so the next start restores a dead session: {e}"
+            ),
+        }
     }
 
     fn report_restore_paused<T>(&self, kind: UserMessageKind, cause: &AppError) -> Option<T> {
@@ -474,7 +502,7 @@ impl SessionTasks {
                 let (reason, error) = classify_unusable_session(unusable);
                 let Some(e) = error else {
                     tracing::info!("{reason}, showing login");
-                    return self.report_restore_failed(None);
+                    return self.report_restore_failed(Vec::new());
                 };
                 tracing::warn!("{reason}, preserving local data: {e}");
                 self.report_restore_paused(UserMessageKind::SessionUnreadable, &e)
@@ -487,7 +515,7 @@ impl SessionTasks {
             Ok(Some(passphrase)) => Some(passphrase),
             Ok(None) => {
                 tracing::warn!("no store key for the saved session, preserving local data");
-                self.report_restore_failed(Some(UserMessageKind::StoreKeyMissing))
+                self.report_restore_failed(vec![UserMessage::new(UserMessageKind::StoreKeyMissing)])
             }
             Err(e) => {
                 tracing::warn!("failed to read the store key, preserving local data: {e}");
@@ -500,7 +528,7 @@ impl SessionTasks {
         &self,
         session: &Session,
         passphrase: &str,
-    ) -> Result<AuthenticatedSession> {
+    ) -> Result<RestoreOutcome> {
         let events = self.events.clone();
         let on_progress = Box::new(move |step| {
             send(
@@ -522,7 +550,10 @@ impl SessionTasks {
                 tracing::warn!(homeserver, flows = %flows, "no supported login method");
                 self.send(SessionEvent::AuthRejected {
                     attempt,
-                    message: UserMessage::about(UserMessageKind::UnsupportedLoginMethod, &flows),
+                    messages: vec![UserMessage::about(
+                        UserMessageKind::UnsupportedLoginMethod,
+                        &flows,
+                    )],
                 });
             }
             Ok(info) => self.send(SessionEvent::ServerDiscovered {
@@ -578,9 +609,11 @@ impl SessionTasks {
 
     fn report_login_failure(&self, method: &str, attempt: u64, failure: LoginFailure) {
         match failure {
-            LoginFailure::Rejected(e) => {
-                tracing::warn!("{method} failed: {e}");
-                self.reject(attempt, login_failure(&e));
+            LoginFailure::Rejected { error, left_behind } => {
+                tracing::warn!("{method} failed: {error}");
+                let mut messages = vec![UserMessage::new(login_failure(&error))];
+                messages.extend(left_behind.as_deref().map(left_behind_notice));
+                self.send(SessionEvent::AuthRejected { attempt, messages });
             }
             LoginFailure::Unresolved(message) => {
                 self.send(SessionEvent::LoginUnresolved(message));
@@ -653,7 +686,7 @@ impl SessionTasks {
     fn reject(&self, attempt: u64, kind: UserMessageKind) {
         self.send(SessionEvent::AuthRejected {
             attempt,
-            message: UserMessage::new(kind),
+            messages: vec![UserMessage::new(kind)],
         });
     }
 
@@ -669,7 +702,7 @@ impl SessionTasks {
                 tracing::warn!("failed to read the store key: {e}");
                 self.send(SessionEvent::AuthRejected {
                     attempt,
-                    message: keyring_unreadable(UserMessageKind::StoreKeyUnreadable, &e),
+                    messages: vec![keyring_unreadable(UserMessageKind::StoreKeyUnreadable, &e)],
                 });
                 None
             }
@@ -760,29 +793,26 @@ impl SessionTasks {
     async fn erase_session(
         &self,
         session: u64,
-        account: &AccountScope,
-        lifecycle_port: Arc<dyn SessionPort>,
+        ending: &EndingSession,
         reason: EndReason,
+        left_behind: Option<String>,
     ) {
         let report = self
-            .clear_local_state(session, account, lifecycle_port.as_ref())
+            .clear_local_state(session, &ending.account, ending.lifecycle.as_ref())
             .await;
         self.send(SessionEvent::LocalStateCleared {
             session,
             reason,
+            left_behind,
             report,
         });
     }
 
-    async fn logout(
-        &self,
-        session: u64,
-        account: &AccountScope,
-        lifecycle_port: Arc<dyn SessionPort>,
-    ) {
+    async fn logout(&self, session: u64, ending: &EndingSession, quit: &CancellationToken) {
         tracing::info!("user initiated logout");
-        end_server_session(lifecycle_port.as_ref()).await;
-        self.erase_session(session, account, lifecycle_port, EndReason::UserLogout)
+        let removal = end_server_session(ending.lifecycle.as_ref(), quit).await;
+        let left_behind = unconfirmed_device(removal, &ending.device_id);
+        self.erase_session(session, ending, EndReason::UserLogout, left_behind)
             .await;
     }
 

@@ -44,6 +44,7 @@ pub enum UserMessageKind {
     ReauthNotPossible,
     DataQuarantined,
     DataNotErased,
+    DeviceLeftBehind,
     InterruptedLoginUnresolved,
     AnotherInstanceRunning,
     LocalDataClaimFailed,

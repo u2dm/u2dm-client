@@ -54,6 +54,11 @@ pub const CATALOG: Scenarios = Scenarios {
             effect: "the keyring refuses the saved session at startup and its store key at the first Try again; the second restores it",
             note: "the only way to see the paused restore",
         },
+        Flag {
+            value: "diverged",
+            effect: "keeps the saved session, whose restore finds another signing key published for this device",
+            note: "the only way to reach the diverged-identity sign-out; U2DM_DEMO_LOGOUT shapes its answer",
+        },
     ],
     notes: &[
         "merely SETTING this variable switches the demo from logged-in to logged-out",
@@ -76,6 +81,7 @@ pub enum SavedSession {
     Absent,
     Restorable,
     BehindLockedKeyring,
+    IdentityDiverged,
 }
 
 pub struct LoginDemo {
@@ -92,6 +98,10 @@ pub fn requested() -> Option<&'static LoginDemo> {
 
 pub fn oauth_succeeds() -> bool {
     requested().is_some_and(|demo| demo.oauth == OAuthFlow::Succeeds)
+}
+
+pub fn identity_diverged() -> bool {
+    requested().is_some_and(|demo| demo.saved_session == SavedSession::IdentityDiverged)
 }
 
 pub fn sign_in_page() -> Option<&'static str> {
@@ -146,6 +156,10 @@ fn from_env() -> Option<LoginDemo> {
             saved_session: SavedSession::BehindLockedKeyring,
             ..LoginDemo::default()
         },
+        "diverged" => LoginDemo {
+            saved_session: SavedSession::IdentityDiverged,
+            ..LoginDemo::default()
+        },
         _ => LoginDemo::default(),
     };
     announce(&demo);
@@ -158,21 +172,19 @@ fn announce(demo: &LoginDemo) {
 }
 
 fn announce_start(demo: &LoginDemo) {
-    match demo.saved_session {
-        SavedSession::Absent => {
-            tracing::info!("demo mode: starting logged out so the login steps are reachable");
-        }
+    let start = match demo.saved_session {
+        SavedSession::Absent => "starting logged out so the login steps are reachable",
         SavedSession::Restorable => {
-            tracing::info!(
-                "demo mode: restoring the saved session slowly so the loading step is visible"
-            );
+            "restoring the saved session slowly so the loading step is visible"
         }
         SavedSession::BehindLockedKeyring => {
-            tracing::info!(
-                "demo mode: the keyring refuses the saved session, then its store key, so the restore pauses twice"
-            );
+            "the keyring refuses the saved session, then its store key, so the restore pauses twice"
         }
-    }
+        SavedSession::IdentityDiverged => {
+            "the saved session's device has another signing key published, so the restore signs it out"
+        }
+    };
+    tracing::info!("demo mode: {start}");
 }
 
 fn announce_methods(demo: &LoginDemo) {

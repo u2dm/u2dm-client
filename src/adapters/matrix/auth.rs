@@ -157,7 +157,7 @@ fn holds_another_device(error: &CryptoStoreError) -> bool {
     matches!(error, CryptoStoreError::MismatchedAccount { .. })
 }
 
-fn is_transport_failure(error: &HttpError) -> bool {
+pub(super) fn is_transport_failure(error: &HttpError) -> bool {
     match error {
         HttpError::Reqwest(_) => true,
         HttpError::Cached(inner) => is_transport_failure(inner),
@@ -368,9 +368,6 @@ pub(super) async fn open_session(
         client.restore_session(matrix_session).await?;
     }
 
-    super::identity::ensure_identity_matches_server(&client).await?;
-
-    tracing::info!("session restored successfully");
     Ok(client)
 }
 

@@ -18,9 +18,11 @@ export component HomeserverScreen inherits LoginPage {
     in-out property <string> input-homeserver: "matrix.org";
 
     private property <bool> is-checking: LoginView.activity == LoginActivity.checking-server;
+    private property <bool> is-ending-session: LoginView.activity == LoginActivity.signing-out
+        || LoginView.activity == LoginActivity.cleaning-up;
 
     function submit() {
-        if !root.is-checking && root.input-homeserver != "" {
+        if !root.is-checking && !root.is-ending-session && root.input-homeserver != "" {
             Actions.check-server(root.input-homeserver);
         }
     }
@@ -54,7 +56,7 @@ export component HomeserverScreen inherits LoginPage {
         icon: IconSet.ArrowRight;
         trailing-icon: true;
         busy: root.is-checking;
-        enabled: root.input-homeserver != "";
+        enabled: root.input-homeserver != "" && !root.is-ending-session;
         clicked => {
             root.submit();
         }

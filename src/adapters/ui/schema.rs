@@ -435,6 +435,7 @@ macro_rules! login_activities {
         WaitingAuth    WaitingAuth    "waiting-auth";
         Cancelling     Cancelling     "cancelling";
         Syncing        Syncing        "syncing";
+        SigningOut     SigningOut     "signing-out";
         CleaningUp     CleaningUp     "cleaning-up";
     } };
 }
@@ -516,6 +517,7 @@ macro_rules! user_message_kinds {
         ReauthNotPossible         ReauthNotPossible       "reauth-not-possible";
         DataQuarantined           DataQuarantined         "data-quarantined";
         DataNotErased             DataNotErased           "data-not-erased";
+        DeviceLeftBehind          DeviceLeftBehind        "device-left-behind";
         InterruptedLoginUnresolved InterruptedLoginUnresolved "interrupted-login-unresolved";
         AnotherInstanceRunning    AnotherInstanceRunning  "another-instance-running";
         LocalDataClaimFailed      LocalDataClaimFailed    "local-data-claim-failed";

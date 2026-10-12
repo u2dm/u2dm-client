@@ -59,7 +59,7 @@ use room_info::RoomInfo;
 use room_log::RoomLogViewer;
 use selection::Selection;
 use send_lanes::SendLanes;
-use session::{SessionController, SuspendedSession};
+use session::{EndingSession, SessionController, SuspendedSession};
 use space_index::{ChildTarget, JoinOutcome, ListedSpace, PageOutcome, SpaceIndex};
 use submissions::Submissions;
 use task_group::TaskGroup;
@@ -87,7 +87,7 @@ use crate::domain::timeline::{AudioTrack, FailedSend, MessageReaders, TimelineFo
 use crate::domain::user_info::{IgnoreChange, Moderation, UserId};
 use crate::domain::verification::VerificationEvent;
 use crate::ports::browser::BrowserPort;
-use crate::ports::matrix::{AuthPort, AuthenticatedSession, CleanupReport, MediaPort, SessionPort};
+use crate::ports::matrix::{AuthPort, AuthenticatedSession, CleanupReport, MediaPort};
 use crate::ports::media::MediaFilePort;
 use crate::ports::output::AppOutputPort;
 use crate::ports::room_log::RoomLogPort;
@@ -125,8 +125,8 @@ enum HeldSession {
 }
 
 enum Ending {
-    Live(AccountScope, Arc<dyn SessionPort>),
-    Detached(AccountScope, Arc<dyn SessionPort>),
+    Live(EndingSession),
+    Detached(EndingSession),
 }
 
 impl HeldSession {
@@ -140,14 +140,16 @@ impl HeldSession {
     fn ending(&self) -> Option<Ending> {
         match self {
             Self::None => None,
-            Self::Running(capability) => Some(Ending::Live(
-                AccountScope::from_session(&capability.session),
-                Arc::clone(&capability.lifecycle),
-            )),
-            Self::Suspended(suspended) => Some(Ending::Detached(
-                suspended.account.clone(),
-                Arc::clone(&suspended.lifecycle),
-            )),
+            Self::Running(capability) => Some(Ending::Live(EndingSession {
+                account: AccountScope::from_session(&capability.session),
+                device_id: capability.session.device_id.clone(),
+                lifecycle: Arc::clone(&capability.lifecycle),
+            })),
+            Self::Suspended(suspended) => Some(Ending::Detached(EndingSession {
+                account: suspended.account.clone(),
+                device_id: suspended.session.device_id.clone(),
+                lifecycle: Arc::clone(&suspended.lifecycle),
+            })),
         }
     }
 
@@ -159,16 +161,18 @@ impl HeldSession {
     }
 }
 
-async fn undo_superseded_login(established: EstablishedSession) -> Option<UserMessage> {
+async fn undo_superseded_login(established: EstablishedSession) -> Rollback {
     tracing::info!("authentication superseded, undoing the login");
-    match established.roll_back().await {
-        Rollback::Complete(report) => {
-            if !report.is_clean() {
-                tracing::warn!("superseded login not fully undone: {}", report.summary());
-            }
-            None
-        }
-        Rollback::Unresolved(message) => Some(message),
+    let rollback = established.roll_back().await;
+    if let Rollback::Complete { report, .. } = &rollback {
+        warn_if_not_undone(report);
+    }
+    rollback
+}
+
+fn warn_if_not_undone(report: &CleanupReport) {
+    if !report.is_clean() {
+        tracing::warn!("superseded login not fully undone: {}", report.summary());
     }
 }
 
@@ -1482,8 +1486,8 @@ impl AppService {
             SessionEvent::AuthActivity { attempt, activity } => {
                 self.settle_auth_activity(attempt, activity);
             }
-            SessionEvent::AuthRejected { attempt, message } => {
-                self.settle_auth_rejection(attempt, message);
+            SessionEvent::AuthRejected { attempt, messages } => {
+                self.settle_auth_rejection(attempt, messages);
             }
             SessionEvent::AuthCancelled { attempt } => self.settle_auth_cancel(attempt),
             SessionEvent::LoggedIn {
@@ -1495,8 +1499,9 @@ impl AppService {
             SessionEvent::LocalStateCleared {
                 session,
                 reason,
+                left_behind,
                 report,
-            } => self.settle_erasure(session, reason, &report),
+            } => self.settle_erasure(session, reason, left_behind.as_deref(), &report),
             SessionEvent::TokensNotPersisted { session } => {
                 self.settle_tokens_not_persisted(session);
             }
@@ -1516,9 +1521,9 @@ impl AppService {
         }
     }
 
-    fn settle_restore_failure(&mut self, message: Option<UserMessage>) {
+    fn settle_restore_failure(&mut self, messages: Vec<UserMessage>) {
         if self.lifecycle.restore_failed() {
-            self.session.show_login(message);
+            self.session.show_login(messages);
         } else {
             tracing::debug!("restore failure for a superseded restore, dropping");
         }
@@ -1556,10 +1561,10 @@ impl AppService {
         }
     }
 
-    fn settle_auth_rejection(&mut self, attempt: u64, message: UserMessage) {
+    fn settle_auth_rejection(&mut self, attempt: u64, messages: Vec<UserMessage>) {
         self.session.finish_oauth();
         match self.lifecycle.settle_auth(attempt) {
-            Some(Settled::Awaited) => self.session.fail_login(vec![message]),
+            Some(Settled::Awaited) => self.session.fail_login(messages),
             Some(Settled::Cancelled) => self.session.set_activity(LoginActivity::Idle),
             None => tracing::debug!("auth failure for a superseded attempt, dropping"),
         }
@@ -1576,13 +1581,30 @@ impl AppService {
         }
     }
 
+    fn settle_undone_login(&mut self, attempt: u64, left_behind: Option<&str>) {
+        let Some(device_id) = left_behind else {
+            self.return_to_idle(attempt);
+            return;
+        };
+        if self.lifecycle.settle_auth(attempt).is_some() {
+            self.session
+                .fail_login(vec![session::left_behind_notice(device_id)]);
+        }
+    }
+
     fn settle_erasure_start(&mut self, session: u64) {
         if self.lifecycle.begin_cleanup(session) {
             self.session.set_activity(LoginActivity::CleaningUp);
         }
     }
 
-    fn settle_erasure(&mut self, session: u64, reason: EndReason, report: &CleanupReport) {
+    fn settle_erasure(
+        &mut self,
+        session: u64,
+        reason: EndReason,
+        left_behind: Option<&str>,
+        report: &CleanupReport,
+    ) {
         if !self.lifecycle.finish_logout(session) {
             tracing::debug!("cleanup finished for a superseded session, dropping");
             return;
@@ -1591,6 +1613,7 @@ impl AppService {
             EndReason::Expired => vec![UserMessage::new(UserMessageKind::SessionExpired)],
             EndReason::UserLogout => Vec::new(),
         };
+        messages.extend(left_behind.map(session::left_behind_notice));
         messages.extend(session::cleanup_problem(report));
         self.session.settle_logout(messages);
     }
@@ -1619,10 +1642,11 @@ impl AppService {
         self.session.finish_oauth();
         self.session.spend_pending_passphrase();
         let Some(session) = self.lifecycle.promote_to_syncing(attempt) else {
-            if let Some(message) = undo_superseded_login(established).await {
-                self.block_sign_in(message);
-            } else {
-                self.return_to_idle(attempt);
+            match undo_superseded_login(established).await {
+                Rollback::Complete { left_behind, .. } => {
+                    self.settle_undone_login(attempt, left_behind.as_deref());
+                }
+                Rollback::Unresolved(message) => self.block_sign_in(message),
             }
             return;
         };
@@ -2101,23 +2125,39 @@ impl AppService {
         if matches!(reason, EndReason::Expired) {
             tracing::info!("session expired, clearing local state");
         }
-        let ending = self.held_session.ending();
-        self.tear_down_session(AppViewState::logged_out()).await;
-        match ending {
-            Some(Ending::Live(account, port)) if matches!(reason, EndReason::UserLogout) => {
+        match (self.held_session.ending(), reason) {
+            (Some(Ending::Live(ending)), EndReason::UserLogout) => {
+                self.tear_down_session(AppViewState::signing_out()).await;
                 self.session
-                    .spawn_logout(&mut self.operations, session, account, port);
+                    .spawn_logout(&mut self.operations, session, ending);
             }
-            Some(Ending::Live(account, port) | Ending::Detached(account, port)) => {
+            (Some(Ending::Detached(ending)), EndReason::UserLogout) => {
+                tracing::info!(
+                    device_id = %ending.device_id,
+                    "erasing a suspended session without a homeserver logout, so the homeserver keeps this device"
+                );
+                self.tear_down_session(AppViewState::logged_out()).await;
+                let left_behind = Some(ending.device_id.clone());
                 self.session.spawn_erase_session(
                     &mut self.operations,
                     session,
-                    account,
-                    port,
+                    ending,
                     reason,
+                    left_behind,
                 );
             }
-            None => {
+            (Some(Ending::Live(ending) | Ending::Detached(ending)), EndReason::Expired) => {
+                self.tear_down_session(AppViewState::logged_out()).await;
+                self.session.spawn_erase_session(
+                    &mut self.operations,
+                    session,
+                    ending,
+                    reason,
+                    None,
+                );
+            }
+            (None, _) => {
+                self.tear_down_session(AppViewState::logged_out()).await;
                 self.lifecycle.finish_logout(session);
             }
         }

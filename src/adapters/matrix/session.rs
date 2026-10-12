@@ -12,6 +12,7 @@ use super::image_packs::MatrixImagePacks;
 use super::media::{MatrixMedia, MediaService};
 use super::profile::PronounCache;
 use super::rooms::{MatrixRoomInfo, MatrixSpaceIndex, MatrixSpaceOrder, MatrixSync};
+use super::server_logout;
 use super::store::StoreLayout;
 use super::timeline::{MatrixPinned, MatrixTimeline};
 use super::user_info::MatrixUserInfo;
@@ -20,7 +21,7 @@ use crate::domain::account::AccountScope;
 use crate::domain::auth::Session;
 use crate::domain::room::RoomId;
 use crate::error::{AppError, Result};
-use crate::ports::matrix::{AuthenticatedSession, CleanupReport, SessionPort};
+use crate::ports::matrix::{AuthenticatedSession, CleanupReport, DeviceRemoval, SessionPort};
 
 pub(super) struct ClientHandle {
     client: RwLock<Option<Client>>,
@@ -98,13 +99,16 @@ impl SessionPort for MatrixLifecycle {
         Ok(self.matrix.media().fetch_user_avatar(&client).await)
     }
 
-    async fn logout(&self) -> Result<()> {
+    async fn logout(&self) -> DeviceRemoval {
         tracing::info!("logging out");
         self.release_session_resources().await;
-        if let Err(e) = self.matrix.client().await?.logout().await {
-            tracing::warn!("failed to logout from server: {e}");
+        match self.matrix.client().await {
+            Ok(client) => server_logout::logout(&client).await,
+            Err(e) => {
+                tracing::warn!("the homeserver cannot be asked to sign this device out: {e}");
+                DeviceRemoval::Unconfirmed
+            }
         }
-        Ok(())
     }
 
     async fn suspend(&self) {

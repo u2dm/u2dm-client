@@ -10,6 +10,7 @@ mod permissions;
 mod preview;
 mod profile;
 mod rooms;
+mod server_logout;
 mod session;
 mod store;
 mod timeline;
@@ -34,8 +35,8 @@ use crate::domain::account::AccountScope;
 use crate::domain::auth::{LoginCredentials, OAuthLoginData, ServerInfo, Session};
 use crate::error::{AppError, Result};
 use crate::ports::matrix::{
-    AuthPort, AuthenticatedSession, CleanupReport, InterruptedLogin, LocalDataOwnership,
-    ProgressSink, StoreAdoption,
+    AuthPort, AuthenticatedSession, CleanupReport, DeviceRemoval, InterruptedLogin,
+    LocalDataOwnership, ProgressSink, RestoreOutcome, StoreAdoption,
 };
 use crate::ports::media::MediaCache;
 
@@ -170,6 +171,10 @@ impl StoreAdoption for UncommittedAdoption {
         self.adopted.rolling_back().await
     }
 
+    async fn logout(&self) -> DeviceRemoval {
+        server_logout::logout(&self.client).await
+    }
+
     async fn commit(self: Box<Self>) -> AuthenticatedSession {
         let Self {
             layout,
@@ -266,6 +271,12 @@ impl AuthPort for MatrixAdapter {
                 return Err(e);
             }
         };
+        if let Err(e) = identity::ensure_identity_matches_server(&client).await {
+            server_logout::logout(&client).await;
+            drop(client);
+            self.layout.abandon_adoption(adopted).await;
+            return Err(e);
+        }
 
         Ok(Box::new(UncommittedAdoption {
             layout: self.layout.clone(),
@@ -283,13 +294,23 @@ impl AuthPort for MatrixAdapter {
         session: &Session,
         passphrase: &str,
         on_progress: ProgressSink,
-    ) -> Result<AuthenticatedSession> {
+    ) -> Result<RestoreOutcome> {
         let account = AccountScope::from_session(session);
         self.sweep_stale_once(Some(&account)).await;
 
         let paths = self.layout.account(&account);
         let client = auth::open_session(&paths, session, passphrase, on_progress.as_ref()).await?;
-        Ok(self.authenticate(client, session.clone(), account).await)
+        if let Err(e) = identity::ensure_identity_matches_server(&client).await {
+            tracing::warn!("signing out the device this store can no longer serve: {e}");
+            return Ok(RestoreOutcome::Diverged(
+                server_logout::logout(&client).await,
+            ));
+        }
+
+        tracing::info!("session restored successfully");
+        Ok(RestoreOutcome::Restored(Box::new(
+            self.authenticate(client, session.clone(), account).await,
+        )))
     }
 
     async fn reauthenticate(

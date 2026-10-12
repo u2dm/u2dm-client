@@ -398,7 +398,7 @@ impl TimelineEvent {
 
 pub(super) enum SessionEvent {
     RestoreProgress(LoginActivity),
-    RestoreFailed(Option<UserMessage>),
+    RestoreFailed(Vec<UserMessage>),
     RestorePaused(UserMessage),
     Restored(Box<AuthenticatedSession>),
     ServerDiscovered {
@@ -411,7 +411,7 @@ pub(super) enum SessionEvent {
     },
     AuthRejected {
         attempt: u64,
-        message: UserMessage,
+        messages: Vec<UserMessage>,
     },
     AuthCancelled {
         attempt: u64,
@@ -431,6 +431,7 @@ pub(super) enum SessionEvent {
     LocalStateCleared {
         session: u64,
         reason: EndReason,
+        left_behind: Option<String>,
         report: CleanupReport,
     },
     TokensNotPersisted {

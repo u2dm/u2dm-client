@@ -19,6 +19,7 @@ export enum LoginActivity {
     waiting-auth,
     cancelling,
     syncing,
+    signing-out,
     cleaning-up,
 }
 
@@ -75,6 +76,7 @@ export enum UserMessageKind {
     reauth-not-possible,
     data-quarantined,
     data-not-erased,
+    device-left-behind,
     interrupted-login-unresolved,
     another-instance-running,
     local-data-claim-failed,

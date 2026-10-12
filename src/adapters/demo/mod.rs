@@ -7,6 +7,7 @@ mod dto;
 mod files;
 mod identity;
 mod login;
+mod logout;
 mod matrix;
 mod media;
 mod message_menu;

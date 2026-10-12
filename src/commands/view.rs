@@ -55,6 +55,17 @@ impl AppViewState {
         }
     }
 
+    pub fn signing_out() -> Self {
+        Self {
+            lifecycle: LifecycleView {
+                step: LoginStep::Homeserver,
+                activity: LoginActivity::SigningOut,
+                ..LifecycleView::default()
+            },
+            ..Self::default()
+        }
+    }
+
     pub fn reauthenticating(session: &Session, reason: ReauthReason) -> Self {
         Self {
             lifecycle: LifecycleView {
@@ -301,6 +312,7 @@ pub enum LoginActivity {
     WaitingAuth,
     Cancelling,
     Syncing,
+    SigningOut,
     CleaningUp,
 }
 

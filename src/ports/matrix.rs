@@ -118,6 +118,17 @@ impl CleanupReport {
     }
 }
 
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum DeviceRemoval {
+    Confirmed,
+    Unconfirmed,
+}
+
+pub enum RestoreOutcome {
+    Restored(Box<AuthenticatedSession>),
+    Diverged(DeviceRemoval),
+}
+
 pub struct AuthenticatedSession {
     pub session: Session,
     pub sync: Arc<dyn SyncPort>,
@@ -151,7 +162,7 @@ pub trait AuthPort: Send + Sync {
         session: &Session,
         passphrase: &str,
         on_progress: ProgressSink,
-    ) -> Result<AuthenticatedSession>;
+    ) -> Result<RestoreOutcome>;
     async fn reauthenticate(
         &self,
         prior: &Session,
@@ -175,6 +186,7 @@ pub trait StoreAdoption: Send + Sync {
     async fn credentials_staged(&self) -> Result<()>;
     async fn credentials_written(&self) -> Result<()>;
     async fn rolling_back(&self) -> Result<()>;
+    async fn logout(&self) -> DeviceRemoval;
     async fn commit(self: Box<Self>) -> AuthenticatedSession;
     async fn unwind(self: Box<Self>) -> CleanupReport;
 }
@@ -332,7 +344,7 @@ pub trait SessionPort: Send + Sync {
         session_tx: mpsc::UnboundedSender<Session>,
     ) -> Result<()>;
     async fn fetch_user_avatar(&self) -> Result<Option<PathBuf>>;
-    async fn logout(&self) -> Result<()>;
+    async fn logout(&self) -> DeviceRemoval;
     async fn suspend(&self);
     async fn clear_store(&self) -> CleanupReport;
 }

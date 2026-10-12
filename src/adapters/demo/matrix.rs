@@ -17,8 +17,8 @@ use url::Url;
 
 use super::identity::{self, IdentityBook, SendHold};
 use super::{
-    attachments, audio, data, login, media, message_menu, pinned, polls, reactions, receipts,
-    room_info, source, space_index, stickers, timeline, user_info, verification, videos,
+    attachments, audio, data, login, logout, media, message_menu, pinned, polls, reactions,
+    receipts, room_info, source, space_index, stickers, timeline, user_info, verification, videos,
 };
 use crate::adapters::{body_emoji, video};
 use crate::domain::auth::{AuthMethod, LoginCredentials, OAuthLoginData, ServerInfo, Session};
@@ -48,10 +48,11 @@ use crate::domain::user_info::{
 use crate::domain::verification::{VerificationCancellation, VerificationEvent};
 use crate::error::{AppError, Result};
 use crate::ports::matrix::{
-    AttachmentHandoff, AuthPort, AuthenticatedSession, CleanupReport, IdentityPort, ImagePackPort,
-    InterruptedLogin, LocalDataOwnership, MediaPort, PackCatalog, PinnedPort, ProgressSink,
-    RestoreStep, RoomInfoPort, SessionPort, SpaceIndexPort, SpaceOrderPort, StoreAdoption,
-    SyncPort, SyncSink, TimelinePort, UserInfoPort, VerificationPort,
+    AttachmentHandoff, AuthPort, AuthenticatedSession, CleanupReport, DeviceRemoval, IdentityPort,
+    ImagePackPort, InterruptedLogin, LocalDataOwnership, MediaPort, PackCatalog, PinnedPort,
+    ProgressSink, RestoreOutcome, RestoreStep, RoomInfoPort, SessionPort, SpaceIndexPort,
+    SpaceOrderPort, StoreAdoption, SyncPort, SyncSink, TimelinePort, UserInfoPort,
+    VerificationPort,
 };
 use crate::ports::media::MediaCache;
 
@@ -108,12 +109,20 @@ impl AuthPort for DemoMatrix {
         session: &Session,
         _passphrase: &str,
         on_progress: ProgressSink,
-    ) -> Result<AuthenticatedSession> {
+    ) -> Result<RestoreOutcome> {
         for step in [RestoreStep::Connecting, RestoreStep::RestoringAuth] {
             on_progress(step);
             login::pause().await;
         }
-        Ok(authenticated(session.clone()))
+        if login::identity_diverged() {
+            tracing::info!(
+                "demo mode: the homeserver publishes another signing key for this device"
+            );
+            return Ok(RestoreOutcome::Diverged(logout::answer().await));
+        }
+        Ok(RestoreOutcome::Restored(Box::new(authenticated(
+            session.clone(),
+        ))))
     }
 
     async fn reauthenticate(
@@ -186,6 +195,10 @@ impl StoreAdoption for DemoAdoption {
 
     async fn rolling_back(&self) -> Result<()> {
         Ok(())
+    }
+
+    async fn logout(&self) -> DeviceRemoval {
+        logout::answer().await
     }
 
     async fn commit(self: Box<Self>) -> AuthenticatedSession {
@@ -2123,8 +2136,8 @@ impl SessionPort for DemoAuthed {
         Ok(media::user_avatar_path())
     }
 
-    async fn logout(&self) -> Result<()> {
-        Ok(())
+    async fn logout(&self) -> DeviceRemoval {
+        logout::answer().await
     }
 
     async fn suspend(&self) {}

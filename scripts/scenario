@@ -20,6 +20,8 @@ scenario_env() {
     media-failures)  echo 'U2DM_DEMO_TIMELINE=deep' ;;
     compact-layout)  echo 'U2DM_DEMO_WINDOW=700x900 U2DM_DEMO_TIMELINE=deep' ;;
     login-oauth)     echo 'U2DM_DEMO_LOGIN=oauth-ok' ;;
+    logout-left-behind) echo 'U2DM_DEMO_LOGOUT=slow,fails' ;;
+    identity-diverged) echo 'U2DM_DEMO_LOGIN=diverged U2DM_DEMO_LOGOUT=fails' ;;
     verify-self)     echo 'U2DM_DEMO_VERIFY=self' ;;
     audio-track)     echo 'U2DM_DEMO_AUDIO=silent,slow' ;;
     voice-notes)     echo 'U2DM_DEMO_AUDIO=silent' ;;
@@ -362,7 +364,11 @@ scenario_steps() {
     room-mention)
       echo '{"op":"select_room","room_id":"!matrixhq:demo.local"}'
       echo 'sleep 2' ;;
-    login-oauth|verify-self)
+    logout-left-behind)
+      echo 'sleep 2'
+      echo '{"op":"logout"}'
+      echo 'sleep 5' ;;
+    login-oauth|verify-self|identity-diverged)
       : ;;
   esac
 }
@@ -379,6 +385,8 @@ scenario_note() {
     media-failures)  echo 'every MediaFailure variant on one timeline' ;;
     compact-layout)  echo 'below the 720px breakpoint; run with --headless, a compositor clamps the width' ;;
     login-oauth)     echo 'starts logged out on an OAuth flow that succeeds slowly' ;;
+    logout-left-behind) echo 'Log Out shows signing-out for 3s, then the homeserver never confirms, so the login form names the device (device-left-behind)' ;;
+    identity-diverged) echo 'the restore finds another signing key published for the device and cannot sign it out: identity-diverged and device-left-behind on the login form' ;;
     verify-self)     echo 'a scripted SAS verification arriving 3s after the chat opens' ;;
     audio-track)     echo 'a track downloads slowly, starts playing, and keeps playing after switching rooms' ;;
     voice-notes)     echo 'a voice note advances to the next one, whose download then fails' ;;
@@ -436,7 +444,8 @@ check_window() {
 
 names() {
   printf '%s\n' unread-anchor all-unread unread-unresolved reactions-late sticker-trickle jump-to-reply \
-    pinned-bar media-failures compact-layout login-oauth verify-self audio-track voice-notes delivery-marks \
+    pinned-bar media-failures compact-layout login-oauth logout-left-behind identity-diverged verify-self \
+    audio-track voice-notes delivery-marks \
     space-index polls poll-edits room-info room-leave room-info-failures room-info-pane room-menu room-menu-leave \
     room-menu-failures room-log user-info user-info-failures user-dm user-dm-start user-dm-failures user-ignore user-moderation \
     user-moderation-failures user-tags custom-emoji spoilers message-link message-source message-pins message-pin-failures message-delete \
