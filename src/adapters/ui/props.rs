@@ -8,10 +8,12 @@ use crate::commands::effects::VerificationActivity;
 use crate::commands::messages::{UserMessage, UserMessageKind};
 use crate::commands::ui::UiCommand;
 use crate::commands::view::{
-    AttachmentKind, DirectChat, LoginActivity, LoginStep, PendingAnswer, PendingModeration,
-    ReadersStatus, RoomInfoPlacement, RoomScope, RosterStatus, SourceState, SpaceIndexStatus,
+    AttachmentKind, DirectChat, EncryptionActivity, EncryptionStep, LoginActivity, LoginStep,
+    PendingAnswer, PendingModeration, ReadersStatus, RoomInfoPlacement, RoomScope, RosterStatus,
+    SourceState, SpaceIndexStatus,
 };
 use crate::domain::auth::LoginMethod;
+use crate::domain::encryption::{Recovery, Standing};
 use crate::domain::invite::InviteKind;
 use crate::domain::media::AudioKind;
 use crate::domain::message::MessagePreviewKind;

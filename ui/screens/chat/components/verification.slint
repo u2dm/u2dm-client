@@ -12,14 +12,14 @@ import { AppButton, IconButton } from "../../../components/button.slint";
 import { DotPulse } from "../../../components/dot-pulse.slint";
 import { DialogCard, ModalHost } from "../../../components/overlay.slint";
 
-component DialogNote inherits Text {
+export component DialogNote inherits Text {
     font-size: Fonts.body-small;
     horizontal-alignment: center;
     wrap: word-wrap;
     color: AppStyle.foreground-muted;
 }
 
-component Verdict inherits VerticalLayout {
+export component Verdict inherits VerticalLayout {
     in property <Icon> icon;
     in property <color> tint;
     in property <color> surface;
@@ -133,6 +133,10 @@ component BusyRow inherits Text {
         if VerificationView.activity == VerificationActivity.accepting {
             return @tr("Accepting...");
         }
+        if VerificationView.activity == VerificationActivity.declining
+            && VerificationView.step == VerificationPhase.waiting {
+            return @tr("Cancelling...");
+        }
         if VerificationView.activity == VerificationActivity.declining {
             return @tr("Declining...");
         }
@@ -143,7 +147,8 @@ component BusyRow inherits Text {
     }
 }
 
-component VerificationHeader inherits HorizontalLayout {
+export component VerificationHeader inherits HorizontalLayout {
+    in property <Icon> icon: IconSet.ShieldCheck;
     in property <string> title;
     in property <string> subtitle;
     in property <string> close-label;
@@ -162,7 +167,7 @@ component VerificationHeader inherits HorizontalLayout {
         border-color: AppStyle.border;
 
         IconDisplay {
-            icon: IconSet.ShieldCheck;
+            icon: root.icon;
             size: IconSize.md;
             stroke: Palette.foreground;
         }
@@ -301,6 +306,34 @@ export component VerificationDialog inherits ModalHost {
                         }
                         agreed => {
                             Actions.accept-verification();
+                        }
+                    }
+                }
+
+                if VerificationView.step == VerificationPhase.waiting: VerticalLayout {
+                    spacing: Space.xl;
+
+                    HorizontalLayout {
+                        alignment: center;
+
+                        DotPulse {
+                            tint: Palette.accent-background;
+                            dot-size: Space.md;
+                        }
+                    }
+
+                    DialogNote {
+                        text: @tr("Open one of your other sessions and accept the request there. Then compare the emoji it shows with the ones that appear here.");
+                    }
+
+                    AppButton {
+                        above-modal: true;
+                        text: @tr("Cancel");
+                        icon: IconSet.X;
+                        filled: false;
+                        enabled: !VerificationView.busy;
+                        clicked => {
+                            Actions.dismiss-verification();
                         }
                     }
                 }

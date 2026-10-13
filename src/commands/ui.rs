@@ -2,6 +2,7 @@ use strum::Display as StrumDisplay;
 
 use crate::domain::auth::LoginCredentials;
 use crate::domain::emote::{ComposerText, Emote};
+use crate::domain::encryption::RecoveryKey;
 use crate::domain::image_pack::PackId;
 use crate::domain::link::LauncherSafeUrl;
 use crate::domain::media::AttachmentPick;
@@ -100,9 +101,17 @@ pub enum UiCommand {
     AcceptIdentity(UserId),
     #[strum(to_string = "WithdrawVerification({0})")]
     WithdrawVerification(UserId),
-    #[strum(to_string = "SendAnyway({0})")]
-    SendAnyway(UserId),
     AcknowledgeIdentityReset,
+    OpenEncryption,
+    CloseEncryption,
+    ShowEncryptionOverview,
+    EnterRecoveryKey,
+    #[strum(to_string = "UseRecoveryKey(...)")]
+    UseRecoveryKey(RecoveryKey),
+    VerifyWithOtherSession,
+    SetUpRecovery,
+    ChangeRecoveryKey,
+    RetryEncryptionSetup,
     #[strum(to_string = "SendMessage({room_id})")]
     SendMessage {
         room_id: RoomId,
@@ -344,8 +353,16 @@ impl UiCommand {
             | Self::UnbanUser(_)
             | Self::AcceptIdentity(_)
             | Self::WithdrawVerification(_)
-            | Self::SendAnyway(_)
             | Self::AcknowledgeIdentityReset
+            | Self::OpenEncryption
+            | Self::CloseEncryption
+            | Self::ShowEncryptionOverview
+            | Self::EnterRecoveryKey
+            | Self::UseRecoveryKey(_)
+            | Self::VerifyWithOtherSession
+            | Self::SetUpRecovery
+            | Self::ChangeRecoveryKey
+            | Self::RetryEncryptionSetup
             | Self::SuggestMentions { .. }
             | Self::EndMentions
             | Self::DismissUnsent { .. }

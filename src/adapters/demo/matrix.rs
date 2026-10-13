@@ -15,6 +15,7 @@ use tokio::time::sleep;
 use tokio_util::sync::CancellationToken;
 use url::Url;
 
+use super::encryption::{self, EncryptionBook};
 use super::identity::{self, IdentityBook, SendHold};
 use super::{
     attachments, audio, data, invites, login, logout, media, message_menu, pinned, polls,
@@ -24,6 +25,9 @@ use super::{
 use crate::adapters::{body_emoji, video};
 use crate::domain::auth::{AuthMethod, LoginCredentials, OAuthLoginData, ServerInfo, Session};
 use crate::domain::emote::Emote;
+use crate::domain::encryption::{
+    AccountEncryption, IdentityOutcome, RecoveryAttempt, RecoveryKey, RecoverySetup,
+};
 use crate::domain::identity::{OwnIdentity, RoomAlert};
 use crate::domain::image_pack::{PackId, PackImage};
 use crate::domain::invite::Invite;
@@ -50,11 +54,11 @@ use crate::domain::user_info::{
 use crate::domain::verification::{VerificationCancellation, VerificationEvent};
 use crate::error::{AppError, Result};
 use crate::ports::matrix::{
-    AttachmentHandoff, AuthPort, AuthenticatedSession, CleanupReport, DeviceRemoval, IdentityPort,
-    ImagePackPort, InterruptedLogin, InvitePort, LocalDataOwnership, MediaPort, PackCatalog,
-    PinnedPort, ProgressSink, RestoreOutcome, RestoreStep, RoomInfoPort, SessionPort,
-    SpaceIndexPort, SpaceOrderPort, StoreAdoption, SyncPort, SyncSink, TimelinePort, UserInfoPort,
-    VerificationPort,
+    AttachmentHandoff, AuthPort, AuthenticatedSession, CleanupReport, DeviceRemoval,
+    EncryptionPort, IdentityPort, ImagePackPort, InterruptedLogin, InvitePort, LocalDataOwnership,
+    MediaPort, PackCatalog, PinnedPort, ProgressSink, RestoreOutcome, RestoreStep, RoomInfoPort,
+    SessionPort, SpaceIndexPort, SpaceOrderPort, StoreAdoption, SyncPort, SyncSink, TimelinePort,
+    UserInfoPort, VerificationPort,
 };
 use crate::ports::media::MediaCache;
 
@@ -228,6 +232,7 @@ fn authenticated(session: Session) -> AuthenticatedSession {
     let media = Arc::clone(&authed);
     let verification = Arc::clone(&authed);
     let identity = Arc::clone(&authed);
+    let encryption = Arc::clone(&authed);
     let space_order = Arc::clone(&authed);
     let space_index = Arc::clone(&authed);
     let invites = Arc::clone(&authed);
@@ -242,6 +247,7 @@ fn authenticated(session: Session) -> AuthenticatedSession {
         media,
         verification,
         identity,
+        encryption,
         space_order,
         space_index,
         invites,
@@ -353,7 +359,9 @@ struct DemoAuthed {
     sent: AtomicU64,
     own_sends: Mutex<HashMap<RoomId, Vec<TimelineMessage>>>,
     verification_tx: Mutex<Option<mpsc::UnboundedSender<VerificationEvent>>>,
-    sas_started: AtomicBool,
+    sas_started: Arc<AtomicBool>,
+    outgoing_flow: AtomicBool,
+    flows: Arc<AtomicU64>,
     sync_sink: Mutex<Option<SyncSink>>,
     lists: Arc<Mutex<RoomLists>>,
     pin_boards: Mutex<HashMap<RoomId, watch::Sender<Vec<String>>>>,
@@ -362,6 +370,7 @@ struct DemoAuthed {
     memberships: Mutex<HashMap<(RoomId, String), RoomMembership>>,
     shared_packs: Mutex<HashMap<String, bool>>,
     identity: IdentityBook,
+    encryption: EncryptionBook,
 }
 
 impl DemoAuthed {
@@ -418,39 +427,17 @@ impl DemoAuthed {
     }
 
     fn send_state_in(&self, room_id: &RoomId) -> SendState {
-        match self.identity.send_hold(room_id) {
-            SendHold::Clear => outgoing_send_state(),
-            SendHold::VerificationLost => SendState::Failed,
-            SendHold::UnverifiedSessions => {
-                self.identity.note_held_send(room_id);
-                SendState::Failed
-            }
+        if self.holds_sends_in(room_id) {
+            SendState::Failed
+        } else {
+            outgoing_send_state()
         }
     }
 
-    fn failed_sends_in(&self, room_id: &RoomId) -> Vec<String> {
-        let Ok(own_sends) = self.own_sends.lock() else {
-            return Vec::new();
-        };
-        own_sends
-            .get(room_id)
-            .into_iter()
-            .flatten()
-            .filter(|message| message.send_state == SendState::Failed)
-            .filter_map(|message| message.local_id.clone())
-            .collect()
-    }
-
-    async fn resend_held(&self, room_id: &RoomId) {
-        for local_id in self.failed_sends_in(room_id) {
-            if self
-                .patch_queued_send(room_id, &local_id, true)
-                .await
-                .is_err()
-            {
-                self.settle_own_send(room_id, &local_id, true);
-            }
-        }
+    fn holds_sends_in(&self, room_id: &RoomId) -> bool {
+        let unverified_here =
+            data::room_is_encrypted(room_id) && self.encryption.holds_encrypted_sends();
+        unverified_here || matches!(self.identity.send_hold(room_id), SendHold::VerificationLost)
     }
 
     fn keep_own_send(&self, room_id: &RoomId, message: &TimelineMessage) {
@@ -1156,6 +1143,16 @@ impl DemoAuthed {
     }
 
     async fn stop_verification(&self, reason: VerificationCancellation) -> Result<()> {
+        if self.outgoing_flow.swap(false, Ordering::Relaxed) {
+            self.flows.fetch_add(1, Ordering::Relaxed);
+            verification::pause().await;
+            let reason = match reason {
+                VerificationCancellation::Declined => VerificationCancellation::Withdrawn,
+                reason => reason,
+            };
+            self.emit_verification(VerificationEvent::Cancelled(reason));
+            return Ok(());
+        }
         let Some(demo) = verification::requested() else {
             return Err(unavailable("Verification"));
         };
@@ -1165,6 +1162,96 @@ impl DemoAuthed {
         }
         self.emit_verification(VerificationEvent::Cancelled(reason));
         Ok(())
+    }
+
+    async fn confirm_own_request(&self) -> Result<()> {
+        verification::pause().await;
+        if encryption::scenario().fails {
+            return Err(unavailable("Confirming a verification"));
+        }
+        self.emit_verification(VerificationEvent::Confirming);
+        verification::pause().await;
+        if !self.outgoing_flow.swap(false, Ordering::Relaxed) {
+            return Ok(());
+        }
+        self.encryption.verified_by_another_session();
+        tracing::debug!("demo: another session verified this one");
+        self.emit_verification(VerificationEvent::Done);
+        Ok(())
+    }
+}
+
+#[async_trait]
+impl EncryptionPort for DemoAuthed {
+    async fn follow(&self, state_tx: mpsc::Sender<AccountEncryption>) -> Result<()> {
+        encryption::pause_first_assessment().await;
+        let mut revision = self.encryption.subscribe();
+        let mut reported = None;
+        loop {
+            let state = self.encryption.state();
+            if reported != Some(state) {
+                if state_tx.send(state).await.is_err() {
+                    return Ok(());
+                }
+                reported = Some(state);
+            }
+            if revision.changed().await.is_err() {
+                return Ok(());
+            }
+        }
+    }
+
+    async fn set_up_identity(&self) -> Result<IdentityOutcome> {
+        if self.encryption.has_identity() {
+            return Ok(IdentityOutcome::Ready);
+        }
+        let attempt = self.encryption.count_setup_attempt();
+        encryption::pause_setup().await;
+        if encryption::identity_refused() {
+            tracing::debug!(
+                "demo: the homeserver wants a password for the first cross-signing keys"
+            );
+            return Ok(IdentityOutcome::NeedsAuthentication);
+        }
+        if encryption::first_setup_fails(attempt) {
+            return Err(unavailable("Creating the cross-signing identity"));
+        }
+        tracing::debug!("demo: created the account's cross-signing identity");
+        self.encryption.create_identity();
+        Ok(IdentityOutcome::Ready)
+    }
+
+    async fn recover(&self, key: &RecoveryKey) -> Result<RecoveryAttempt> {
+        encryption::pause_action().await;
+        if encryption::scenario().fails {
+            return Err(unavailable("Using a recovery key"));
+        }
+        if !encryption::opens(key) {
+            tracing::debug!("demo: the recovery key does not open the secret storage");
+            return Ok(RecoveryAttempt::WrongKey);
+        }
+        let attempt = encryption::unlock_attempt();
+        self.encryption.unlocked(attempt);
+        Ok(attempt)
+    }
+
+    async fn enable_recovery(&self) -> Result<RecoverySetup> {
+        encryption::pause_action().await;
+        if encryption::scenario().fails {
+            return Err(unavailable("Setting up recovery"));
+        }
+        self.encryption.recovery_enabled();
+        tracing::debug!("demo: set up recovery");
+        Ok(RecoverySetup::Created(encryption::created_key()))
+    }
+
+    async fn change_recovery_key(&self) -> Result<RecoveryKey> {
+        encryption::pause_action().await;
+        if encryption::scenario().fails {
+            return Err(unavailable("Changing the recovery key"));
+        }
+        tracing::debug!("demo: changed the recovery key");
+        Ok(encryption::changed_key())
     }
 }
 
@@ -1648,19 +1735,6 @@ impl IdentityPort for DemoAuthed {
         self.identity.withdraw(user_id).map_err(AppError::Other)
     }
 
-    async fn send_anyway(&self, room_id: &RoomId, user_id: &UserId) -> Result<()> {
-        identity::pause_action().await;
-        if identity::scenario().acks_fail {
-            return Err(unavailable("sending to unverified sessions"));
-        }
-        tracing::debug!(%room_id, %user_id, "demo: sending to unverified sessions anyway");
-        self.identity
-            .send_anyway(room_id, user_id)
-            .map_err(AppError::Other)?;
-        self.resend_held(room_id).await;
-        Ok(())
-    }
-
     async fn acknowledge_own_reset(&self) -> Result<()> {
         identity::pause_action().await;
         if identity::scenario().acks_fail {
@@ -1819,22 +1893,15 @@ impl TimelinePort for DemoAuthed {
     }
 
     async fn resend(&self, room_id: &RoomId, local_id: &str) -> Result<()> {
-        match self.identity.send_hold(room_id) {
-            SendHold::Clear => self.patch_queued_send(room_id, local_id, true).await,
-            SendHold::VerificationLost | SendHold::UnverifiedSessions => {
-                tracing::debug!(%room_id, local_id, "demo: the retried send is held again");
-                self.identity.note_held_send(room_id);
-                Ok(())
-            }
+        if self.holds_sends_in(room_id) {
+            tracing::debug!(%room_id, local_id, "demo: the retried send is held again");
+            return Ok(());
         }
+        self.patch_queued_send(room_id, local_id, true).await
     }
 
     async fn discard_send(&self, room_id: &RoomId, local_id: &str) -> Result<()> {
-        self.patch_queued_send(room_id, local_id, false).await?;
-        if self.failed_sends_in(room_id).is_empty() {
-            self.identity.release(room_id);
-        }
-        Ok(())
+        self.patch_queued_send(room_id, local_id, false).await
     }
 
     async fn delete_message(&self, room_id: &RoomId, event_id: &str) -> Result<()> {
@@ -2154,25 +2221,65 @@ impl VerificationPort for DemoAuthed {
         &self,
         tx: mpsc::UnboundedSender<VerificationEvent>,
     ) -> Result<()> {
-        let Some(demo) = verification::requested() else {
-            return Ok(());
-        };
         if let Ok(mut guard) = self.verification_tx.lock() {
             *guard = Some(tx);
         }
 
-        verification::wait_for_request().await;
-        self.sas_started.store(false, Ordering::Relaxed);
-        self.emit_verification(verification::request(demo));
-
-        if demo.times_out {
+        if let Some(demo) = verification::requested() {
             verification::wait_for_request().await;
-            self.emit_verification(VerificationEvent::Cancelled(
-                VerificationCancellation::TimedOut,
-            ));
+            self.sas_started.store(false, Ordering::Relaxed);
+            self.emit_verification(verification::request(demo));
+
+            if demo.times_out {
+                verification::wait_for_request().await;
+                self.emit_verification(VerificationEvent::Cancelled(
+                    VerificationCancellation::TimedOut,
+                ));
+            }
         }
 
         pending::<()>().await;
+        Ok(())
+    }
+
+    async fn verify_this_session(&self) -> Result<()> {
+        encryption::pause_action().await;
+        if encryption::scenario().fails {
+            return Err(unavailable("Asking your other sessions"));
+        }
+        if !self.encryption.state().verified_sessions {
+            return Err(AppError::Other(
+                "no other session of this account can verify this one".to_owned(),
+            ));
+        }
+        let Some(tx) = self
+            .verification_tx
+            .lock()
+            .ok()
+            .and_then(|guard| guard.clone())
+        else {
+            return Err(AppError::Other(
+                "verification requests are not followed".to_owned(),
+            ));
+        };
+        self.outgoing_flow.store(true, Ordering::Relaxed);
+        self.sas_started.store(false, Ordering::Relaxed);
+        let flow = self.flows.fetch_add(1, Ordering::Relaxed).wrapping_add(1);
+        tracing::debug!("demo: asked the account's other sessions to verify this one");
+        self.emit_verification(VerificationEvent::RequestSent {
+            own_user: data::own_user().to_owned(),
+        });
+        let flows = Arc::clone(&self.flows);
+        let sas_started = Arc::clone(&self.sas_started);
+        tokio::spawn(async move {
+            encryption::pause_sas().await;
+            if flows.load(Ordering::Relaxed) == flow {
+                sas_started.store(true, Ordering::Relaxed);
+                if tx.send(verification::emojis()).is_err() {
+                    tracing::debug!("demo: verification listener is gone");
+                }
+            }
+        });
         Ok(())
     }
 
@@ -2190,6 +2297,9 @@ impl VerificationPort for DemoAuthed {
     }
 
     async fn confirm_verification(&self) -> Result<()> {
+        if self.outgoing_flow.load(Ordering::Relaxed) {
+            return self.confirm_own_request().await;
+        }
         let Some(demo) = verification::requested() else {
             return Err(unavailable("Verification"));
         };

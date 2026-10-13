@@ -7,10 +7,11 @@ use async_trait::async_trait;
 use futures_util::{Stream, StreamExt, stream};
 use matrix_sdk::Client;
 use matrix_sdk::encryption::verification::{
-    CancelInfo, Emoji, EmojiShortAuthString, SasState, SasVerification, VerificationRequest,
-    VerificationRequestState,
+    CancelInfo, Emoji, EmojiShortAuthString, SasState, SasVerification, Verification,
+    VerificationRequest, VerificationRequestState,
 };
 use matrix_sdk::event_handler::EventHandlerDropGuard;
+use matrix_sdk::ruma::events::key::verification::VerificationMethod;
 use matrix_sdk::ruma::events::key::verification::cancel::CancelCode;
 use matrix_sdk::ruma::events::key::verification::request::ToDeviceKeyVerificationRequestEvent;
 use matrix_sdk::ruma::events::room::message::{MessageType, OriginalSyncRoomMessageEvent};
@@ -18,6 +19,7 @@ use tokio::sync::{Mutex, mpsc};
 use tokio::time::timeout;
 
 use super::session::{ClientHandle, SessionResource};
+use super::user_info::own_user;
 use crate::domain::verification::{VerificationCancellation, VerificationEmoji, VerificationEvent};
 use crate::error::{AppError, Result};
 use crate::ports::matrix::VerificationPort;
@@ -36,11 +38,13 @@ fn setup_verification_handlers(
     client: &Client,
     verification_req_rx: &mut Option<mpsc::Receiver<VerificationRequest>>,
     handler_guards: &mut Vec<EventHandlerDropGuard>,
+    outgoing: &mut Option<mpsc::Sender<VerificationRequest>>,
 ) {
     handler_guards.clear();
     *verification_req_rx = None;
 
     let (req_tx, rx) = mpsc::channel::<VerificationRequest>(VERIFICATION_QUEUE);
+    *outgoing = Some(req_tx.clone());
 
     let to_device_handle = client.add_event_handler({
         let req_tx = req_tx.clone();
@@ -83,13 +87,16 @@ async fn listen_for_verification(
     client: &Client,
     verification_req_rx: &Mutex<Option<mpsc::Receiver<VerificationRequest>>>,
     handler_guards: &Mutex<Vec<EventHandlerDropGuard>>,
+    outgoing: &Mutex<Option<mpsc::Sender<VerificationRequest>>>,
     verification_request: &Mutex<Option<VerificationRequest>>,
     sas_verification: &Mutex<Option<SasVerification>>,
     verification_tx: mpsc::UnboundedSender<VerificationEvent>,
 ) -> Result<()> {
     let mut rx_guard = verification_req_rx.lock().await;
     let mut guards = handler_guards.lock().await;
-    setup_verification_handlers(client, &mut rx_guard, &mut guards);
+    let mut sender = outgoing.lock().await;
+    setup_verification_handlers(client, &mut rx_guard, &mut guards, &mut sender);
+    drop(sender);
     drop(guards);
 
     let mut rx = rx_guard
@@ -99,7 +106,6 @@ async fn listen_for_verification(
 
     while let Some(request) = rx.recv().await {
         let sender = request.other_user_id().to_string();
-        let is_self = request.is_self_verification();
         let flow_id = request.flow_id().to_string();
 
         if is_settled(&request.state()) {
@@ -107,12 +113,9 @@ async fn listen_for_verification(
             continue;
         }
 
-        tracing::info!(%sender, is_self, %flow_id, "verification request received");
         *verification_request.lock().await = Some(request.clone());
 
-        verification_tx
-            .send(VerificationEvent::Requested { sender, is_self })
-            .ok();
+        verification_tx.send(announcement(&request, sender)).ok();
 
         run_verification(
             &request,
@@ -128,6 +131,17 @@ async fn listen_for_verification(
     }
 
     Ok(())
+}
+
+fn announcement(request: &VerificationRequest, sender: String) -> VerificationEvent {
+    let flow_id = request.flow_id();
+    if request.we_started() {
+        tracing::info!(%flow_id, "asked the account's other sessions to verify this one");
+        return VerificationEvent::RequestSent { own_user: sender };
+    }
+    let is_self = request.is_self_verification();
+    tracing::info!(%sender, is_self, %flow_id, "verification request received");
+    VerificationEvent::Requested { sender, is_self }
 }
 
 fn is_settled(state: &VerificationRequestState) -> bool {
@@ -211,7 +225,19 @@ async fn drive_flow(
         FlowEnd::Done => {
             tx.send(VerificationEvent::Done).ok();
         }
-        FlowEnd::Cancelled(reason) => send_cancelled(tx, reason),
+        FlowEnd::Cancelled(reason) => send_cancelled(tx, told_to_the_asker(reason, request)),
+    }
+}
+
+fn told_to_the_asker(
+    reason: VerificationCancellation,
+    request: &VerificationRequest,
+) -> VerificationCancellation {
+    match reason {
+        VerificationCancellation::Declined if request.we_started() => {
+            VerificationCancellation::Withdrawn
+        }
+        reason => reason,
     }
 }
 
@@ -244,13 +270,14 @@ async fn request_step(
 ) -> Option<SasArrival> {
     match state {
         VerificationRequestState::Transitioned { verification } => {
-            let Some(sas) = verification.sas() else {
-                tracing::warn!("the verification chose a method U2DM cannot drive; cancelling");
-                request.cancel().await.ok();
-                return None;
-            };
-            tracing::info!("the verification transitioned to SAS");
-            Some(SasArrival::Sas(sas))
+            transitioned(request, verification).await
+        }
+        VerificationRequestState::Ready { their_methods, .. } if request.we_started() => {
+            tracing::debug!(
+                ?their_methods,
+                "the other session is ready; starting the SAS"
+            );
+            start_sas(request).await
         }
         VerificationRequestState::Ready { their_methods, .. } => {
             tracing::debug!(
@@ -268,6 +295,35 @@ async fn request_step(
             None
         }
     }
+}
+
+async fn transitioned(
+    request: &VerificationRequest,
+    verification: Verification,
+) -> Option<SasArrival> {
+    let Some(sas) = verification.sas() else {
+        tracing::warn!("the verification chose a method U2DM cannot drive; cancelling");
+        request.cancel().await.ok();
+        return None;
+    };
+    tracing::info!("the verification transitioned to SAS");
+    Some(SasArrival::Sas(sas))
+}
+
+async fn start_sas(request: &VerificationRequest) -> Option<SasArrival> {
+    if !matches!(request.state(), VerificationRequestState::Ready { .. }) {
+        return None;
+    }
+    let failure = match request.start_sas().await {
+        Ok(Some(_)) => return None,
+        Ok(None) => "the other session cannot compare emoji".to_owned(),
+        Err(e) => e.to_string(),
+    };
+    tracing::warn!("could not start the SAS: {failure}; cancelling");
+    request.cancel().await.ok();
+    Some(SasArrival::Ended(FlowEnd::Cancelled(
+        VerificationCancellation::Failed,
+    )))
 }
 
 async fn follow_sas(
@@ -471,6 +527,47 @@ fn cancellation(info: &CancelInfo) -> VerificationCancellation {
     }
 }
 
+async fn verify_this_session(
+    client: &Client,
+    verification_request: &Mutex<Option<VerificationRequest>>,
+    outgoing: &Mutex<Option<mpsc::Sender<VerificationRequest>>>,
+) -> Result<()> {
+    if verification_request.lock().await.is_some() {
+        return Err(AppError::Other("a verification is already running".into()));
+    }
+    let queue = outgoing
+        .lock()
+        .await
+        .clone()
+        .ok_or_else(|| AppError::Other("verification requests are not followed".into()))?;
+    let encryption = client.encryption();
+    let can_answer = encryption
+        .has_devices_to_verify_against()
+        .await
+        .map_err(|e| AppError::Other(e.to_string()))?;
+    if !can_answer {
+        return Err(AppError::Other(
+            "no other session of this account can verify this one".into(),
+        ));
+    }
+    let identity = encryption
+        .get_user_identity(&own_user(client)?)
+        .await
+        .map_err(|e| AppError::Other(e.to_string()))?
+        .ok_or_else(|| AppError::Other("the account has no identity to verify against".into()))?;
+    let request = identity
+        .request_verification_with_methods(vec![VerificationMethod::SasV1])
+        .await
+        .map_err(|e| AppError::Other(format!("could not send the verification request: {e}")))?;
+    if let Err(refused) = queue.try_send(request) {
+        refused.into_inner().cancel().await.ok();
+        return Err(AppError::Other(
+            "the verification request could not be followed".into(),
+        ));
+    }
+    Ok(())
+}
+
 async fn accept_verification(
     verification_request: &Mutex<Option<VerificationRequest>>,
 ) -> Result<()> {
@@ -522,6 +619,7 @@ pub(super) struct MatrixVerification {
     request: Mutex<Option<VerificationRequest>>,
     sas: Mutex<Option<SasVerification>>,
     incoming: Mutex<Option<mpsc::Receiver<VerificationRequest>>>,
+    outgoing: Mutex<Option<mpsc::Sender<VerificationRequest>>>,
     handler_guards: Mutex<Vec<EventHandlerDropGuard>>,
 }
 
@@ -532,6 +630,7 @@ impl MatrixVerification {
             request: Mutex::new(None),
             sas: Mutex::new(None),
             incoming: Mutex::new(None),
+            outgoing: Mutex::new(None),
             handler_guards: Mutex::new(Vec::new()),
         }
     }
@@ -542,6 +641,7 @@ impl SessionResource for MatrixVerification {
     async fn release(&self) {
         self.handler_guards.lock().await.clear();
         *self.incoming.lock().await = None;
+        *self.outgoing.lock().await = None;
     }
 }
 
@@ -555,11 +655,16 @@ impl VerificationPort for MatrixVerification {
             &self.matrix.client().await?,
             &self.incoming,
             &self.handler_guards,
+            &self.outgoing,
             &self.request,
             &self.sas,
             tx,
         )
         .await
+    }
+
+    async fn verify_this_session(&self) -> Result<()> {
+        verify_this_session(&self.matrix.client().await?, &self.request, &self.outgoing).await
     }
 
     async fn accept_verification(&self) -> Result<()> {

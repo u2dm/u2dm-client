@@ -1,0 +1,446 @@
+import { Palette, ScrollView } from "std-widgets.slint";
+import { IconSet } from "@lucide";
+
+import { EncryptionActivity, EncryptionStanding, EncryptionStep, RecoveryStatus, UserMessageKind } from "../../../enums.slint";
+import { EncryptionView } from "../../../views.slint";
+import { Actions } from "../../../actions.slint";
+import { AppStyle, Fonts, Radius, Space, Stroke, Weight } from "../../../theme.slint";
+import { AppButton } from "../../../components/button.slint";
+import { ErrorBanner, NoticeBanner } from "../../../components/banner.slint";
+import { CopyFeedback } from "../../../components/copier.slint";
+import { DotPulse } from "../../../components/dot-pulse.slint";
+import { DialogCard, ModalHost } from "../../../components/overlay.slint";
+import { TextField } from "../../../components/text-field.slint";
+import { DialogNote, Verdict, VerificationHeader } from "./verification.slint";
+
+component ActivityRow inherits Text {
+    text: root.label-for(EncryptionView.activity);
+    font-size: Fonts.body-small;
+    horizontal-alignment: center;
+    color: AppStyle.foreground-muted;
+
+    accessible-live-region: AccessibleLiveness.polite;
+
+    pure function label-for(activity: EncryptionActivity) -> string {
+        if activity == EncryptionActivity.requesting {
+            return @tr("Asking your other sessions...");
+        }
+        if activity == EncryptionActivity.unlocking {
+            return @tr("Checking the recovery key...");
+        }
+        if activity == EncryptionActivity.setting-up-recovery {
+            return @tr("Setting up recovery...");
+        }
+        if activity == EncryptionActivity.changing-key {
+            return @tr("Changing the recovery key...");
+        }
+        if activity == EncryptionActivity.retrying-setup {
+            return @tr("Setting up encryption...");
+        }
+        return "";
+    }
+}
+
+component Checking inherits VerticalLayout {
+    spacing: Space.xl;
+
+    HorizontalLayout {
+        alignment: center;
+
+        DotPulse {
+            tint: Palette.accent-background;
+            dot-size: Space.md;
+        }
+    }
+
+    DialogNote {
+        text: @tr("Checking this session's encryption...");
+    }
+}
+
+component SetupProblem inherits VerticalLayout {
+    spacing: Space.xl;
+
+    Verdict {
+        icon: IconSet.ShieldAlert;
+        tint: AppStyle.danger-muted;
+        surface: AppStyle.danger-background;
+        title: @tr("Encryption isn't set up");
+    }
+
+    DialogNote {
+        text: EncryptionView.standing == EncryptionStanding.setup-refused
+            ? @tr("Your homeserver wants you to confirm with your password before U2DM can create the keys that let your sessions trust each other, and U2DM cannot ask for it yet. Set up encryption in another Matrix app, then come back.")
+            : @tr("U2DM couldn't create the keys that let your sessions trust each other.");
+    }
+
+    AppButton {
+        above-modal: true;
+        text: @tr("Try again");
+        icon: IconSet.RotateCcw;
+        filled: false;
+        enabled: !EncryptionView.busy;
+        busy: EncryptionView.activity == EncryptionActivity.retrying-setup;
+        clicked => {
+            Actions.retry-encryption-setup();
+        }
+    }
+}
+
+component Unverified inherits VerticalLayout {
+    property <bool> recovery-unlocks: EncryptionView.recovery == RecoveryStatus.on
+        || EncryptionView.recovery == RecoveryStatus.incomplete;
+
+    spacing: Space.xl;
+
+    Verdict {
+        icon: IconSet.ShieldAlert;
+        tint: AppStyle.warning;
+        surface: AppStyle.overlay-subtle;
+        title: @tr("This session isn't verified");
+    }
+
+    DialogNote {
+        text: @tr("Until you verify it, U2DM won't send encrypted messages from this session, and your contacts' apps may not share their keys with it.");
+    }
+
+    if EncryptionView.verified-sessions: AppButton {
+        above-modal: true;
+        text: @tr("Use another session");
+        icon: IconSet.MonitorSmartphone;
+        enabled: !EncryptionView.busy;
+        busy: EncryptionView.activity == EncryptionActivity.requesting;
+        clicked => {
+            Actions.verify-with-other-session();
+        }
+    }
+
+    if root.recovery-unlocks: AppButton {
+        above-modal: true;
+        text: @tr("Use your recovery key");
+        icon: IconSet.KeyRound;
+        filled: !EncryptionView.verified-sessions;
+        enabled: !EncryptionView.busy;
+        clicked => {
+            Actions.enter-recovery-key();
+        }
+    }
+
+    if !EncryptionView.verified-sessions && !root.recovery-unlocks: NoticeBanner {
+        text: @tr("You have no other verified session and no recovery key, so nothing can vouch for this one. To start again, reset your identity in another Matrix app; messages encrypted before then stay unreadable.");
+    }
+}
+
+component RecoverySection inherits VerticalLayout {
+    property <bool> off: EncryptionView.recovery == RecoveryStatus.off;
+    property <bool> on: EncryptionView.recovery == RecoveryStatus.on;
+    property <bool> incomplete: EncryptionView.recovery == RecoveryStatus.incomplete;
+
+    spacing: Space.xl;
+
+    if EncryptionView.recovery == RecoveryStatus.unknown: DialogNote {
+        text: @tr("Checking recovery...");
+    }
+
+    if root.off: DialogNote {
+        text: @tr("Set up recovery to verify new sessions with a recovery key and to keep your encrypted history if you lose every device.");
+    }
+
+    if root.off && EncryptionView.key-storage-off: NoticeBanner {
+        text: @tr("Key storage is turned off for your account, so your message keys are not backed up. Setting up recovery turns it back on.");
+    }
+
+    if root.off: AppButton {
+        above-modal: true;
+        text: EncryptionView.key-storage-off
+            ? @tr("Turn on key storage and set up recovery")
+            : @tr("Set up recovery");
+        icon: IconSet.KeyRound;
+        enabled: !EncryptionView.busy;
+        busy: EncryptionView.activity == EncryptionActivity.setting-up-recovery;
+        clicked => {
+            Actions.set-up-recovery();
+        }
+    }
+
+    if root.on: DialogNote {
+        text: @tr("Recovery is set up. Your recovery key can verify a new session and unlock your encrypted history.");
+    }
+
+    if root.on: AppButton {
+        above-modal: true;
+        text: @tr("Change recovery key");
+        icon: IconSet.RotateCcw;
+        filled: false;
+        enabled: !EncryptionView.busy;
+        busy: EncryptionView.activity == EncryptionActivity.changing-key;
+        clicked => {
+            Actions.change-recovery-key();
+        }
+    }
+
+    if root.incomplete: DialogNote {
+        text: @tr("Some of your keys are missing from this session. Enter your recovery key to restore them.");
+    }
+
+    if root.incomplete: AppButton {
+        above-modal: true;
+        text: @tr("Use your recovery key");
+        icon: IconSet.KeyRound;
+        enabled: !EncryptionView.busy;
+        clicked => {
+            Actions.enter-recovery-key();
+        }
+    }
+}
+
+component Verified inherits VerticalLayout {
+    spacing: Space.xl;
+
+    Verdict {
+        icon: IconSet.ShieldCheck;
+        tint: AppStyle.success;
+        surface: AppStyle.success-background;
+        title: @tr("This session is verified");
+    }
+
+    RecoverySection { }
+}
+
+component Overview inherits VerticalLayout {
+    spacing: Space.xl;
+
+    if EncryptionView.standing == EncryptionStanding.checking: Checking { }
+
+    if EncryptionView.standing == EncryptionStanding.setup-refused
+        || EncryptionView.standing == EncryptionStanding.setup-failed: SetupProblem { }
+
+    if EncryptionView.standing == EncryptionStanding.unverified: Unverified { }
+
+    if EncryptionView.standing == EncryptionStanding.verified: Verified { }
+}
+
+component KeyEntry inherits VerticalLayout {
+    property <string> typed;
+
+    function submit() {
+        if root.typed == "" || EncryptionView.busy {
+            return;
+        }
+        Actions.use-recovery-key(root.typed);
+        root.typed = "";
+    }
+
+    spacing: Space.xl;
+
+    init => {
+        field.focus-input();
+    }
+
+    DialogNote {
+        text: @tr("Enter your recovery key, or the passphrase you chose for it.");
+    }
+
+    field := TextField {
+        icon: IconSet.KeyRound;
+        secret: true;
+        above-modal: true;
+        enabled: !EncryptionView.busy;
+        placeholder: @tr("Recovery key or passphrase");
+        label: @tr("Recovery key or passphrase");
+        reveal-label: @tr("Show the recovery key");
+        conceal-label: @tr("Hide the recovery key");
+        text <=> root.typed;
+        accepted => {
+            root.submit();
+        }
+    }
+
+    HorizontalLayout {
+        spacing: Space.lg;
+
+        AppButton {
+            horizontal-stretch: 1;
+            above-modal: true;
+            text: @tr("Back");
+            icon: IconSet.ArrowLeft;
+            filled: false;
+            enabled: !EncryptionView.busy;
+            clicked => {
+                Actions.show-encryption-overview();
+            }
+        }
+
+        AppButton {
+            horizontal-stretch: 1;
+            above-modal: true;
+            text: @tr("Continue");
+            icon: IconSet.Check;
+            enabled: EncryptionView.busy || root.typed != "";
+            busy: EncryptionView.activity == EncryptionActivity.unlocking;
+            clicked => {
+                root.submit();
+            }
+        }
+    }
+}
+
+component Unlocked inherits VerticalLayout {
+    spacing: Space.xl;
+
+    Verdict {
+        icon: IconSet.ShieldCheck;
+        tint: AppStyle.success;
+        surface: AppStyle.success-background;
+        title: @tr("Session verified");
+    }
+
+    DialogNote {
+        text: EncryptionView.step == EncryptionStep.unlocked-without-backup
+            ? @tr("Your recovery key verified this session, but your key backup couldn't be restored, so older messages may stay unreadable here.")
+            : @tr("Your recovery key verified this session and unlocked your encrypted history.");
+    }
+
+    AppButton {
+        above-modal: true;
+        text: @tr("Done");
+        icon: IconSet.Check;
+        clicked => {
+            Actions.show-encryption-overview();
+        }
+    }
+}
+
+component KeyReveal inherits VerticalLayout {
+    in property <bool> copied;
+
+    callback copy-clicked();
+
+    spacing: Space.xl;
+
+    Text {
+        text: @tr("Save your recovery key");
+        font-size: Fonts.title;
+        font-weight: Weight.semibold;
+        horizontal-alignment: center;
+        wrap: word-wrap;
+    }
+
+    DialogNote {
+        text: @tr("Store it in a password manager or write it down. You need it to verify a new session when none of your other sessions is at hand. U2DM won't show it again.");
+    }
+
+    Rectangle {
+        height: key-text.preferred-height + 2 * Space.lg;
+        background: AppStyle.overlay-subtle;
+        border-radius: Radius.md;
+        border-width: Stroke.hairline;
+        border-color: AppStyle.border;
+
+        key-text := Text {
+            x: Space.lg;
+            width: parent.width - 2 * Space.lg;
+            text: EncryptionView.recovery-key;
+            font-family: Fonts.mono;
+            font-size: Fonts.title;
+            horizontal-alignment: center;
+            wrap: word-wrap;
+            accessible-label: @tr("Your recovery key: {}", EncryptionView.recovery-key);
+        }
+    }
+
+    HorizontalLayout {
+        spacing: Space.lg;
+
+        AppButton {
+            horizontal-stretch: 1;
+            above-modal: true;
+            text: root.copied ? @tr("Copied") : @tr("Copy");
+            icon: root.copied ? IconSet.Check : IconSet.Copy;
+            filled: false;
+            clicked => {
+                root.copy-clicked();
+            }
+        }
+
+        AppButton {
+            horizontal-stretch: 1;
+            above-modal: true;
+            text: @tr("I saved it");
+            icon: IconSet.Check;
+            clicked => {
+                Actions.show-encryption-overview();
+            }
+        }
+    }
+}
+
+export component EncryptionDialog inherits ModalHost {
+    dim-opacity: AppStyle.dialog-scrim;
+    light-dismiss: EncryptionView.step != EncryptionStep.showing-key;
+    label: @tr("Encryption");
+    dismissed => {
+        Actions.close-encryption();
+    }
+
+    property <length> card-width: min(AppStyle.card-width-wide, root.width - AppStyle.card-inset);
+    property <length> card-height: card-body.preferred-height;
+
+    copier := CopyFeedback { }
+
+    scroll := ScrollView {
+        x: 0;
+        y: 0;
+        width: 100%;
+        height: 100%;
+        content-width: self.width;
+        content-height: max(self.height, root.card-height + AppStyle.card-inset);
+
+        DialogCard {
+            x: (root.width - self.width) / 2;
+            y: (scroll.content-height - self.height) / 2;
+            width: root.card-width;
+            height: root.card-height;
+
+            card-body := VerticalLayout {
+                padding: Space.xxl;
+                spacing: Space.xl;
+
+                VerificationHeader {
+                    icon: IconSet.KeyRound;
+                    title: @tr("Encryption");
+                    subtitle: @tr("This session and your recovery key");
+                    close-label: @tr("Close the encryption settings");
+                    close-clicked => {
+                        Actions.close-encryption();
+                    }
+                }
+
+                Rectangle {
+                    height: Stroke.hairline;
+                    background: AppStyle.overlay-pressed;
+                }
+
+                if EncryptionView.step == EncryptionStep.overview: Overview { }
+
+                if EncryptionView.step == EncryptionStep.entering-key: KeyEntry { }
+
+                if EncryptionView.step == EncryptionStep.unlocked
+                    || EncryptionView.step == EncryptionStep.unlocked-without-backup: Unlocked { }
+
+                if EncryptionView.step == EncryptionStep.showing-key: KeyReveal {
+                    copied: copier.copied;
+                    copy-clicked => {
+                        copier.copy(EncryptionView.recovery-key);
+                    }
+                }
+
+                if EncryptionView.busy: ActivityRow { }
+
+                if !EncryptionView.busy && EncryptionView.error != UserMessageKind.none: ErrorBanner {
+                    messages: [{ kind: EncryptionView.error, detail: EncryptionView.error-detail }];
+                }
+            }
+        }
+    }
+}

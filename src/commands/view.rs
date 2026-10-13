@@ -6,6 +6,7 @@ use std::time::Duration;
 use super::messages::{UserMessage, UserMessageKind};
 use super::ui::Draft;
 use crate::domain::auth::{LoginMethod, Session};
+use crate::domain::encryption::{KeyStorage, Recovery, RecoveryKey, Standing};
 use crate::domain::identity::IdentityAlert;
 use crate::domain::image_pack::ImagePacks;
 use crate::domain::invite::{Invite, InviteList};
@@ -37,6 +38,7 @@ pub struct AppViewState {
     pub audio: AudioView,
     pub unsent: Option<UnsentMessage>,
     pub identity_alert: IdentityAlertView,
+    pub encryption: EncryptionView,
     pub toast: Toast,
     pub message_link: CopiedLink,
     pub room_link: CopiedLink,
@@ -173,6 +175,43 @@ pub struct UnsentMessage {
 pub struct IdentityAlertView {
     pub alert: Option<IdentityAlert>,
     pub busy: bool,
+}
+
+#[derive(Clone, Default, PartialEq, Eq)]
+pub struct EncryptionView {
+    pub standing: Standing,
+    pub verified_sessions: bool,
+    pub recovery: Recovery,
+    pub key_storage: KeyStorage,
+    pub dialog: Option<EncryptionDialog>,
+}
+
+#[derive(Clone, Default, PartialEq, Eq)]
+pub struct EncryptionDialog {
+    pub step: EncryptionStep,
+    pub activity: EncryptionActivity,
+    pub error: UserMessage,
+}
+
+#[derive(Clone, Default, PartialEq, Eq)]
+pub enum EncryptionStep {
+    #[default]
+    Overview,
+    EnteringKey,
+    Unlocked,
+    UnlockedWithoutBackup,
+    ShowingKey(RecoveryKey),
+}
+
+#[derive(Clone, Copy, Default, PartialEq, Eq)]
+pub enum EncryptionActivity {
+    #[default]
+    None,
+    Requesting,
+    Unlocking,
+    SettingUpRecovery,
+    ChangingKey,
+    RetryingSetup,
 }
 
 #[derive(Clone, Default, PartialEq)]

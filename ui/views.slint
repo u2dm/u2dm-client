@@ -10,7 +10,7 @@ import {
     VerificationEmoji,
     UserMessage,
 } from "./types.slint";
-import { AttachmentKind, AudioKind, ConnectionState, DirectChat, IdentityAlertKind, IdentityTrust, InviteAnswer, InviteKind, LoginActivity, LoginMethodKind, LoginPhase, MemberRole, Moderation, NotifyMode, PackSurface, PreviewKind, ReadersStatus, RoomInfoPlacement, RoomMembership, RoomScope, RosterStatus, ServiceKind, SourceEncryption, SourceStatus, SpaceIndexStatus, TimelineState, UserMessageKind, VerificationActivity, VerificationPhase } from "./enums.slint";
+import { AttachmentKind, AudioKind, ConnectionState, DirectChat, EncryptionActivity, EncryptionStanding, EncryptionStep, IdentityAlertKind, IdentityTrust, InviteAnswer, InviteKind, LoginActivity, LoginMethodKind, LoginPhase, MemberRole, Moderation, NotifyMode, PackSurface, PreviewKind, ReadersStatus, RecoveryStatus, RoomInfoPlacement, RoomMembership, RoomScope, RosterStatus, ServiceKind, SourceEncryption, SourceStatus, SpaceIndexStatus, TimelineState, UserMessageKind, VerificationActivity, VerificationPhase } from "./enums.slint";
 
 export global LoginView {
     in property <LoginPhase> step: LoginPhase.loading;
@@ -287,6 +287,20 @@ export global IdentityAlertView {
     in property <string> user-id;
     in property <string> name;
     in property <bool> busy;
+}
+
+export global EncryptionView {
+    in property <bool> visible;
+    in property <EncryptionStanding> standing: EncryptionStanding.checking;
+    in property <bool> verified-sessions;
+    in property <RecoveryStatus> recovery: RecoveryStatus.unknown;
+    in property <bool> key-storage-off;
+    in property <EncryptionStep> step: EncryptionStep.overview;
+    in property <EncryptionActivity> activity: EncryptionActivity.none;
+    out property <bool> busy: activity != EncryptionActivity.none;
+    in property <string> recovery-key;
+    in property <UserMessageKind> error: UserMessageKind.none;
+    in property <string> error-detail;
 }
 
 export global AttachmentView {

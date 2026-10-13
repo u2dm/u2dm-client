@@ -5,14 +5,16 @@ import { Avatar } from "../../../components/avatar.slint";
 import { ClickArea } from "../../../components/a11y.slint";
 import { ModalHost } from "../../../components/overlay.slint";
 import { AppStyle, Fonts, Glyph, IconSize, Metrics, Motion, Radius, Size, Space, Stroke, Weight } from "../../../theme.slint";
-import { ConnectionState } from "../../../enums.slint";
-import { SessionView } from "../../../views.slint";
+import { ConnectionState, EncryptionStanding } from "../../../enums.slint";
+import { EncryptionView, SessionView } from "../../../views.slint";
 import { Actions } from "../../../actions.slint";
 
 component DrawerRow inherits Rectangle {
     in property <Icon> icon;
     in property <string> label;
+    in property <string> description: root.label;
     in property <color> tint: Palette.foreground;
+    in property <color> icon-tint: root.tint;
 
     callback clicked();
 
@@ -21,7 +23,7 @@ component DrawerRow inherits Rectangle {
 
     touch := ClickArea {
         above-modal: true;
-        label: root.label;
+        label: root.description;
         ring-radius: 0;
         clicked => {
             root.clicked();
@@ -37,7 +39,7 @@ component DrawerRow inherits Rectangle {
             cross-axis-self-alignment: center;
             icon: root.icon;
             size: IconSize.md;
-            stroke: root.tint;
+            stroke: root.icon-tint;
         }
 
         Text {
@@ -61,6 +63,9 @@ export component Drawer inherits Rectangle {
     );
     property <bool> accounts-expanded: false;
     property <length> accounts-height: root.accounts-expanded ? Metrics.drawer-accounts-row : 0;
+    property <bool> encryption-needs-you: EncryptionView.standing == EncryptionStanding.unverified
+        || EncryptionView.standing == EncryptionStanding.setup-refused
+        || EncryptionView.standing == EncryptionStanding.setup-failed;
 
     function dismiss() {
         root.open = false;
@@ -234,6 +239,22 @@ export component Drawer inherits Rectangle {
                     clicked => {
                         root.add-account();
                     }
+                }
+            }
+
+            DrawerRow {
+                x: 0;
+                y: parent.height - 2 * self.height;
+                width: 100%;
+                icon: root.encryption-needs-you ? IconSet.ShieldAlert : IconSet.ShieldCheck;
+                icon-tint: root.encryption-needs-you ? AppStyle.warning : Palette.foreground;
+                label: @tr("Encryption");
+                description: root.encryption-needs-you
+                    ? @tr("Encryption, this session needs your attention")
+                    : @tr("Encryption");
+                clicked => {
+                    root.dismiss();
+                    Actions.open-encryption();
                 }
             }
 

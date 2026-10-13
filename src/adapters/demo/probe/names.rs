@@ -1,19 +1,21 @@
 use crate::adapters::ui::IdentityAlertKind;
 use crate::adapters::ui::schema::{
-    attachment_kinds, audio_kinds, child_accesses, connection_states, direct_chats, enum_names,
+    attachment_kinds, audio_kinds, child_accesses, connection_states, direct_chats,
+    encryption_activities, encryption_standings, encryption_steps, enum_names,
     identity_alert_kinds, identity_trusts, invite_answers, invite_kinds, log_levels,
     login_activities, login_methods, login_phases, member_roles, notify_modes, pending_moderations,
-    preview_kinds, readers_statuses, room_info_placements, room_memberships, room_scopes,
-    roster_statuses, source_encryptions, source_statuses, space_index_statuses, user_message_kinds,
-    variant_named,
+    preview_kinds, readers_statuses, recovery_statuses, room_info_placements, room_memberships,
+    room_scopes, roster_statuses, source_encryptions, source_statuses, space_index_statuses,
+    user_message_kinds, variant_named,
 };
 use crate::commands::messages::UserMessageKind;
 use crate::commands::view::{
-    AttachmentKind, ChildAccess, DirectChat, LoginActivity, LoginStep, PendingAnswer,
-    PendingModeration, ReadersStatus, RoomInfoPlacement, RoomScope, RosterStatus, SourceState,
-    SpaceIndexStatus,
+    AttachmentKind, ChildAccess, DirectChat, EncryptionActivity, EncryptionStep, LoginActivity,
+    LoginStep, PendingAnswer, PendingModeration, ReadersStatus, RoomInfoPlacement, RoomScope,
+    RosterStatus, SourceState, SpaceIndexStatus,
 };
 use crate::domain::auth::LoginMethod;
+use crate::domain::encryption::{Recovery, Standing};
 use crate::domain::invite::InviteKind;
 use crate::domain::media::AudioKind;
 use crate::domain::message::MessagePreviewKind;
@@ -47,6 +49,10 @@ invite_answers!(enum_names val pending_answer PendingAnswer;);
 pending_moderations!(enum_names val pending_moderation PendingModeration;);
 identity_trusts!(enum_names val identity_trust IdentityTrust;);
 identity_alert_kinds!(enum_names val identity_alert_kind IdentityAlertKind;);
+encryption_standings!(enum_names val encryption_standing Standing;);
+recovery_statuses!(enum_names val recovery_status Recovery;);
+encryption_steps!(enum_names ref encryption_step EncryptionStep;);
+encryption_activities!(enum_names val encryption_activity EncryptionActivity;);
 source_statuses!(enum_names ref source_status SourceState;);
 source_encryptions!(enum_names ref source_encryption SourceEncryption;);
 readers_statuses!(enum_names val readers_status ReadersStatus;);

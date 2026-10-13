@@ -27,6 +27,7 @@ import {
     AudioView,
     UnsentView,
     IdentityAlertView,
+    EncryptionView,
     WindowView,
     SourceView,
     RoomMenuView,
@@ -48,6 +49,7 @@ import { CredentialsScreen } from "./screens/login/credentials.slint";
 import { ReauthenticateScreen } from "./screens/login/reauthenticate.slint";
 import { ChatScreen } from "./screens/chat/chat.slint";
 import { VerificationDialog } from "./screens/chat/components/verification.slint";
+import { EncryptionDialog } from "./screens/chat/components/encryption.slint";
 import { AttachmentDialog } from "./screens/chat/components/timeline/attachment-dialog.slint";
 import { PollDialog } from "./screens/chat/components/timeline/poll-dialog.slint";
 import { VideoPlayer } from "./screens/chat/components/timeline/video-player.slint";
@@ -62,7 +64,7 @@ export { EmojiStore }
 export { LoginPhase, ConnectionState, TimelineState, VerificationPhase, MediaState, MediaFailure }
 export { MessageKind, PreviewKind, ServiceKind, LoginMethodKind, AudioKind }
 export { LoginView, SessionView, DirectoryView, SpaceIndexView, RoomView, PackView, VerificationView }
-export { AttachmentView, VideoView, AudioView, UnsentView, IdentityAlertView, WindowView, RoomInfoView, SourceView, RoomMenuView, RoomLogView, UserInfoView, InviteView, ReadersView, MentionsView }
+export { AttachmentView, VideoView, AudioView, UnsentView, IdentityAlertView, EncryptionView, WindowView, RoomInfoView, SourceView, RoomMenuView, RoomLogView, UserInfoView, InviteView, ReadersView, MentionsView }
 export { Actions }
 export { Probe, ReplySwipe, RoomMenu }
 export { SpoilerCover }
@@ -113,6 +115,7 @@ export component AppWindow inherits Window {
     if Shell.invite-open: InviteDialog { }
     if Shell.source-open: EventSourceDialog { }
     if Shell.room-log-open: RoomLogDialog { }
+    if Shell.encryption-open: EncryptionDialog { }
 
     if Shell.verification-open: VerificationDialog { }
 }

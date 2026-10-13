@@ -1,18 +1,15 @@
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 use std::pin::Pin;
 
 use futures_util::{Stream, StreamExt};
-use matrix_sdk::encryption::LocalTrust;
+use matrix_sdk::Room;
 use matrix_sdk::encryption::identities::IdentityUpdates;
 use matrix_sdk::ruma::{OwnedUserId, UserId};
-use matrix_sdk::send_queue::{LocalEcho, LocalEchoContent, RoomSendQueueUpdate};
-use matrix_sdk::{QueueWedgeError, Room};
 use matrix_sdk_base::crypto::{IdentityState, IdentityStatusChange, RoomIdentityState};
-use tokio::sync::broadcast::error::RecvError;
-use tokio::sync::{broadcast, mpsc};
+use tokio::sync::mpsc;
 
 use crate::adapters::matrix::member_name::member_name;
-use crate::domain::identity::{RoomAlert, SessionsOf};
+use crate::domain::identity::RoomAlert;
 use crate::domain::member_name::{MemberName, NamedUser};
 use crate::error::{AppError, Result};
 
@@ -23,16 +20,13 @@ enum Change {
 }
 
 type Changes = BTreeMap<OwnedUserId, Change>;
-type Holders = BTreeSet<OwnedUserId>;
 type Statuses = Pin<Box<dyn Stream<Item = Vec<IdentityStatusChange>> + Send>>;
 type Identities = Pin<Box<dyn Stream<Item = IdentityUpdates> + Send>>;
 
 struct RoomWatch {
     statuses: Statuses,
     identities: Identities,
-    queue: broadcast::Receiver<RoomSendQueueUpdate>,
     changes: Changes,
-    holders: Holders,
 }
 
 impl RoomWatch {
@@ -46,16 +40,6 @@ impl RoomWatch {
                 let Some(update) = update else { return Ok(false) };
                 if names(&update, room.own_user_id()) {
                     self.reassess_members(room).await?;
-                }
-            }
-            update = self.queue.recv() => {
-                let settled = match update {
-                    Ok(update) => settles_a_send(&update),
-                    Err(RecvError::Lagged(_)) => true,
-                    Err(RecvError::Closed) => return Ok(false),
-                };
-                if settled {
-                    self.holders = reread_holders(room).await?;
                 }
             }
         }
@@ -88,21 +72,14 @@ pub(super) async fn follow(room: &Room, alerts_tx: mpsc::Sender<Vec<RoomAlert>>)
         .await
         .map_err(|e| AppError::Other(e.to_string()))?;
     let statuses = statuses_of(room).await?;
-    let (echoes, queue) = room
-        .send_queue()
-        .subscribe()
-        .await
-        .map_err(|e| AppError::Other(e.to_string()))?;
     let mut watch = RoomWatch {
         statuses,
         identities: Box::pin(identities),
-        queue,
         changes: Changes::new(),
-        holders: holders_of(&echoes),
     };
     let mut reported = None;
     loop {
-        let alerts = alerts(room, &watch.changes, &watch.holders).await;
+        let alerts = alerts(room, &watch.changes).await;
         if reported.as_ref() != Some(&alerts) {
             if alerts_tx.send(alerts.clone()).await.is_err() {
                 return Ok(());
@@ -113,56 +90,6 @@ pub(super) async fn follow(room: &Room, alerts_tx: mpsc::Sender<Vec<RoomAlert>>)
             return Ok(());
         }
     }
-}
-
-pub(super) async fn send_anyway(room: &Room, user: &UserId) -> Result<()> {
-    let (echoes, _updates) = room
-        .send_queue()
-        .subscribe()
-        .await
-        .map_err(|e| AppError::Other(e.to_string()))?;
-    let encryption = room.client().encryption();
-    let mut released = 0_usize;
-    for echo in echoes {
-        let LocalEchoContent::Event {
-            send_handle,
-            send_error: Some(QueueWedgeError::InsecureDevices { user_device_map }),
-            ..
-        } = echo.content
-        else {
-            continue;
-        };
-        let Some(devices) = user_device_map.get(user) else {
-            continue;
-        };
-        for device_id in devices {
-            let device = encryption
-                .get_device(user, device_id)
-                .await
-                .map_err(|e| AppError::Other(e.to_string()))?;
-            if let Some(device) = device {
-                device
-                    .set_local_trust(LocalTrust::Ignored)
-                    .await
-                    .map_err(|e| AppError::Other(e.to_string()))?;
-            } else {
-                tracing::debug!(%user, %device_id, "the unverified session is gone");
-            }
-        }
-        send_handle
-            .unwedge()
-            .await
-            .map_err(|e| AppError::Other(e.to_string()))?;
-        released += 1;
-    }
-    if released == 0 {
-        return Err(AppError::Other(format!(
-            "no message is held by the unverified sessions of {user}"
-        )));
-    }
-    room.send_queue().set_enabled(true);
-    tracing::info!(%user, released, "sending to the user's unverified sessions anyway");
-    Ok(())
 }
 
 async fn statuses_of(room: &Room) -> Result<Statuses> {
@@ -208,59 +135,14 @@ fn note(changes: &mut Changes, batch: Vec<IdentityStatusChange>) {
     }
 }
 
-fn settles_a_send(update: &RoomSendQueueUpdate) -> bool {
-    match update {
-        RoomSendQueueUpdate::SendError { .. }
-        | RoomSendQueueUpdate::RetryEvent { .. }
-        | RoomSendQueueUpdate::SentEvent { .. }
-        | RoomSendQueueUpdate::CancelledLocalEvent { .. } => true,
-        RoomSendQueueUpdate::NewLocalEvent(_)
-        | RoomSendQueueUpdate::ReplacedLocalEvent { .. }
-        | RoomSendQueueUpdate::MediaUpload { .. } => false,
-    }
-}
-
-async fn reread_holders(room: &Room) -> Result<Holders> {
-    let (echoes, _updates) = room
-        .send_queue()
-        .subscribe()
-        .await
-        .map_err(|e| AppError::Other(e.to_string()))?;
-    Ok(holders_of(&echoes))
-}
-
-fn holders_of(echoes: &[LocalEcho]) -> Holders {
-    echoes
-        .iter()
-        .filter_map(|echo| match &echo.content {
-            LocalEchoContent::Event {
-                send_error: Some(QueueWedgeError::InsecureDevices { user_device_map }),
-                ..
-            } => Some(user_device_map.keys().cloned()),
-            LocalEchoContent::Event { .. }
-            | LocalEchoContent::React { .. }
-            | LocalEchoContent::Redaction { .. } => None,
-        })
-        .flatten()
-        .collect()
-}
-
-async fn alerts(room: &Room, changes: &Changes, holders: &Holders) -> Vec<RoomAlert> {
-    let mut alerts = Vec::with_capacity(changes.len() + holders.len());
+async fn alerts(room: &Room, changes: &Changes) -> Vec<RoomAlert> {
+    let mut alerts = Vec::with_capacity(changes.len());
     for (user, change) in changes {
         let user = named(room, user).await;
         alerts.push(match change {
             Change::NoLongerVerified => RoomAlert::NoLongerVerified(user),
             Change::Reset => RoomAlert::IdentityReset(user),
         });
-    }
-    for user in holders {
-        let sessions = if user == room.own_user_id() {
-            SessionsOf::You(user.to_string())
-        } else {
-            SessionsOf::Member(named(room, user).await)
-        };
-        alerts.push(RoomAlert::UnverifiedSessions(sessions));
     }
     alerts
 }

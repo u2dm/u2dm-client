@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, BTreeSet, HashSet};
+use std::collections::HashSet;
 use std::ops::ControlFlow;
 use std::sync::Arc;
 
@@ -23,6 +23,7 @@ use super::edits::DiscardedEdits;
 use super::emoji_files::{EmojiFiles, Settled, download_emoji_files};
 use super::filter::TimelineItems;
 use super::members::{Arrived, Batch, Members, Need, resolve_members};
+use super::missing_keys::MissingKeys;
 use super::poll_ends::EndingPolls;
 use super::polls;
 use super::receipts::ReceiptLane;
@@ -839,17 +840,6 @@ async fn paginate_to_read_boundary(
     (view, outcome)
 }
 
-async fn handle_room_keys(timeline: &Timeline, keys: BTreeMap<String, BTreeSet<String>>) {
-    let session_ids: Vec<String> = keys.into_values().flatten().collect();
-    if !session_ids.is_empty() {
-        tracing::debug!(
-            sessions = session_ids.len(),
-            "room keys arrived from the key backup"
-        );
-        timeline.retry_decryption(session_ids).await;
-    }
-}
-
 struct OpenedTimeline<S> {
     sends: RowlessSendGuard,
     timeline: Arc<Timeline>,
@@ -1174,18 +1164,9 @@ async fn run_timeline_loop<S>(
     );
 
     let room = sends.room().clone();
-    let room_id = room.room_id().to_owned();
     let mut row_fetches = RowFetches::new();
     row_fetches.spawn(ctx, &room, &mut side_tasks);
-
-    let mut key_stream = std::pin::pin!(
-        ctx.client
-            .encryption()
-            .backups()
-            .room_keys_for_room_stream(&room_id)
-    );
-
-    let mut key_stream_done = false;
+    let mut missing_keys = MissingKeys::new(ctx.client, room.room_id().to_owned());
 
     loop {
         tokio::select! {
@@ -1194,19 +1175,15 @@ async fn run_timeline_loop<S>(
                 let Some(command) = command else { break };
                 run_command(command, &commands, timeline, &mut items, ctx, &sends).await;
             }
-            result = key_stream.next(), if !key_stream_done => {
-                match result {
-                    Some(Ok(keys)) => handle_room_keys(timeline, keys).await,
-                    Some(Err(error)) => tracing::warn!(%error, "room key stream lagged"),
-                    None => key_stream_done = true,
-                }
-            }
             Some(_) = side_tasks.join_next(), if !side_tasks.is_empty() => {}
             event = sends.next() => settle_rowless_send(&mut sends, event, &mut items, ctx).await,
             Some(fetched) = row_fetches.next() => {
                 if send_patch(ctx, fetched_patch(&mut items, fetched, ctx)).await.is_break() {
                     break;
                 }
+            }
+            from_backup = missing_keys.step(ctx.client, items.items()) => {
+                from_backup.retry_decryption(timeline).await;
             }
             diffs = stream.next() => {
                 let Some(diffs) = diffs else { break };

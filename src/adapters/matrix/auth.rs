@@ -55,7 +55,7 @@ async fn open_store(
         .with_decryption_settings(DecryptionSettings {
             sender_device_trust_requirement: TrustRequirement::CrossSignedOrLegacy,
         })
-        .with_room_key_recipient_strategy(CollectStrategy::ErrorOnVerifiedUserProblem)
+        .with_room_key_recipient_strategy(CollectStrategy::IdentityBasedStrategy)
         .sqlite_store_with_cache_path(&paths.data, &paths.cache, Some(passphrase))
         .build()
         .await

@@ -298,6 +298,13 @@ export component TimelineView inherits Rectangle {
             }
         }
 
+        CloseWatch {
+            open: Shell.encryption-open;
+            closed => {
+                stage.refocus-composer();
+            }
+        }
+
         content := TimelineContent {
             x: 0;
             y: root.header-height;

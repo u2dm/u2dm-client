@@ -10,6 +10,7 @@ use crate::adapters::ui::dump::Poke;
 use crate::adapters::ui::link_command;
 use crate::commands::ui::{MessageDraft, ReplyDraft, UiCommand};
 use crate::domain::emote::{ComposerText, Emote};
+use crate::domain::encryption::RecoveryKey;
 use crate::domain::image_pack::PackId;
 use crate::domain::media::AttachmentPick;
 use crate::domain::message::{EditKind, EditTarget, MessageEdit, TextRevision};
@@ -141,10 +142,18 @@ pub enum ProbeCommand {
     WithdrawVerification {
         user_id: String,
     },
-    SendAnyway {
-        user_id: String,
-    },
     AcknowledgeIdentityReset,
+    OpenEncryption,
+    CloseEncryption,
+    ShowEncryptionOverview,
+    EnterRecoveryKey,
+    UseRecoveryKey {
+        key: String,
+    },
+    VerifyWithOtherSession,
+    SetUpRecovery,
+    ChangeRecoveryKey,
+    RetryEncryptionSetup,
     SendMessage {
         #[serde(default)]
         room_id: Option<String>,
@@ -572,8 +581,16 @@ pub fn to_driven(command: ProbeCommand, selected: Selection<'_>) -> Result<Drive
         ProbeCommand::WithdrawVerification { user_id } => {
             return person(user_id, UiCommand::WithdrawVerification);
         }
-        ProbeCommand::SendAnyway { user_id } => return person(user_id, UiCommand::SendAnyway),
         ProbeCommand::AcknowledgeIdentityReset => UiCommand::AcknowledgeIdentityReset,
+        ProbeCommand::OpenEncryption => UiCommand::OpenEncryption,
+        ProbeCommand::CloseEncryption => UiCommand::CloseEncryption,
+        ProbeCommand::ShowEncryptionOverview => UiCommand::ShowEncryptionOverview,
+        ProbeCommand::EnterRecoveryKey => UiCommand::EnterRecoveryKey,
+        ProbeCommand::UseRecoveryKey { key } => UiCommand::UseRecoveryKey(RecoveryKey::new(key)),
+        ProbeCommand::VerifyWithOtherSession => UiCommand::VerifyWithOtherSession,
+        ProbeCommand::SetUpRecovery => UiCommand::SetUpRecovery,
+        ProbeCommand::ChangeRecoveryKey => UiCommand::ChangeRecoveryKey,
+        ProbeCommand::RetryEncryptionSetup => UiCommand::RetryEncryptionSetup,
         ProbeCommand::SendMessage {
             room_id,
             body,

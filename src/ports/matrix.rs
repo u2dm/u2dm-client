@@ -8,6 +8,9 @@ use tokio_util::sync::CancellationToken;
 use crate::domain::account::AccountScope;
 use crate::domain::auth::{LoginCredentials, OAuthLoginData, ServerInfo, Session};
 use crate::domain::emote::Emote;
+use crate::domain::encryption::{
+    AccountEncryption, IdentityOutcome, RecoveryAttempt, RecoveryKey, RecoverySetup,
+};
 use crate::domain::identity::{OwnIdentity, RoomAlert};
 use crate::domain::image_pack::{ImagePack, PackId};
 use crate::domain::media::{MediaRendition, OutgoingAttachment, WaveformNeed};
@@ -137,6 +140,7 @@ pub struct AuthenticatedSession {
     pub media: Arc<dyn MediaPort>,
     pub verification: Arc<dyn VerificationPort>,
     pub identity: Arc<dyn IdentityPort>,
+    pub encryption: Arc<dyn EncryptionPort>,
     pub space_order: Arc<dyn SpaceOrderPort>,
     pub space_index: Arc<dyn SpaceIndexPort>,
     pub invites: Arc<dyn InvitePort>,
@@ -324,6 +328,7 @@ pub trait VerificationPort: Send + Sync {
         &self,
         tx: mpsc::UnboundedSender<VerificationEvent>,
     ) -> Result<()>;
+    async fn verify_this_session(&self) -> Result<()>;
     async fn accept_verification(&self) -> Result<()>;
     async fn confirm_verification(&self) -> Result<()>;
     async fn reject_verification(&self) -> Result<()>;
@@ -340,8 +345,16 @@ pub trait IdentityPort: Send + Sync {
     async fn follow_own(&self, own_tx: mpsc::Sender<OwnIdentity>) -> Result<()>;
     async fn pin_identity(&self, user_id: &UserId) -> Result<()>;
     async fn withdraw_verification(&self, user_id: &UserId) -> Result<()>;
-    async fn send_anyway(&self, room_id: &RoomId, user_id: &UserId) -> Result<()>;
     async fn acknowledge_own_reset(&self) -> Result<()>;
+}
+
+#[async_trait]
+pub trait EncryptionPort: Send + Sync {
+    async fn follow(&self, state_tx: mpsc::Sender<AccountEncryption>) -> Result<()>;
+    async fn set_up_identity(&self) -> Result<IdentityOutcome>;
+    async fn recover(&self, key: &RecoveryKey) -> Result<RecoveryAttempt>;
+    async fn enable_recovery(&self) -> Result<RecoverySetup>;
+    async fn change_recovery_key(&self) -> Result<RecoveryKey>;
 }
 
 #[async_trait]

@@ -1,5 +1,6 @@
 mod attachment;
 mod auth;
+mod encryption;
 mod identity;
 mod identity_alerts;
 mod image_packs;

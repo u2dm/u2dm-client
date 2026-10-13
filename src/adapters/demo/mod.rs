@@ -4,6 +4,7 @@ mod browser;
 pub mod catalog;
 mod data;
 mod dto;
+mod encryption;
 mod files;
 mod identity;
 mod invites;

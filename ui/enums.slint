@@ -44,6 +44,7 @@ export enum TimelineState {
 export enum VerificationPhase {
     none,
     requested,
+    waiting,
     emojis,
     confirming,
     done,
@@ -108,7 +109,6 @@ export enum UserMessageKind {
     unban-failed,
     identity-accept-failed,
     verification-withdraw-failed,
-    send-anyway-failed,
     identity-reset-acknowledge-failed,
     media-download-failed,
     file-download-failed,
@@ -131,9 +131,16 @@ export enum UserMessageKind {
     verification-sas-accept-failed,
     verification-cancelled,
     verification-declined,
+    verification-withdrawn,
     verification-mismatch,
     verification-accepted-elsewhere,
     verification-failed,
+    verification-request-failed,
+    recovery-key-wrong,
+    recovery-key-failed,
+    recovery-setup-failed,
+    recovery-backup-in-the-way,
+    recovery-key-change-failed,
 }
 
 export enum SendState {
@@ -296,10 +303,42 @@ export enum IdentityTrust {
 export enum IdentityAlertKind {
     none,
     own-identity-reset,
+    session-unverified,
+    encryption-not-set-up,
     no-longer-verified,
-    own-unverified-sessions,
-    unverified-sessions,
     identity-reset,
+}
+
+export enum EncryptionStanding {
+    checking,
+    setup-refused,
+    setup-failed,
+    unverified,
+    verified,
+}
+
+export enum RecoveryStatus {
+    unknown,
+    off,
+    on,
+    incomplete,
+}
+
+export enum EncryptionStep {
+    overview,
+    entering-key,
+    unlocked,
+    unlocked-without-backup,
+    showing-key,
+}
+
+export enum EncryptionActivity {
+    none,
+    requesting,
+    unlocking,
+    setting-up-recovery,
+    changing-key,
+    retrying-setup,
 }
 
 export enum MemberRowKind {

@@ -11,6 +11,7 @@ use crate::commands::ui::{
 };
 use crate::domain::auth::LoginCredentials;
 use crate::domain::emote::ComposerText;
+use crate::domain::encryption::RecoveryKey;
 use crate::domain::image_pack::PackId;
 use crate::domain::link::LauncherSafeUrl;
 use crate::domain::media::AttachmentPick;
@@ -77,6 +78,13 @@ pub fn login_password(tx: &Tx, username: String, password: String) {
         tx,
         UiCommand::LoginPassword(LoginCredentials { username, password }),
     );
+}
+
+pub fn use_recovery_key(tx: &Tx, key: String) {
+    if key.trim().is_empty() {
+        return;
+    }
+    send_command(tx, UiCommand::UseRecoveryKey(RecoveryKey::new(key)));
 }
 
 pub fn move_space(tx: &Tx, from: usize, to: usize, reorder: impl FnOnce(usize, usize)) {

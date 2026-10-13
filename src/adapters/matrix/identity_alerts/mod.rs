@@ -77,11 +77,6 @@ impl IdentityPort for MatrixIdentityAlerts {
         Ok(())
     }
 
-    async fn send_anyway(&self, room_id: &RoomId, user_id: &UserId) -> Result<()> {
-        let room = self.matrix.room(room_id).await?;
-        room::send_anyway(&room, &parse_user(user_id)?).await
-    }
-
     async fn acknowledge_own_reset(&self) -> Result<()> {
         own::acknowledge(&self.matrix.client().await?).await?;
         self.own_acknowledged.notify_one();

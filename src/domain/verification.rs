@@ -7,6 +7,7 @@ pub struct VerificationEmoji {
 #[derive(Debug, Clone)]
 pub enum VerificationEvent {
     Requested { sender: String, is_self: bool },
+    RequestSent { own_user: String },
     Emojis(Vec<VerificationEmoji>),
     Confirming,
     Done,
@@ -18,6 +19,7 @@ pub enum VerificationCancellation {
     TimedOut,
     AcceptFailed,
     Declined,
+    Withdrawn,
     Mismatch,
     AcceptedElsewhere,
     Remote,

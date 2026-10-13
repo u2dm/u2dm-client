@@ -89,6 +89,9 @@ export component TextField inherits Rectangle {
     in property <string> label;
     in property <bool> enabled: true;
     in property <bool> secret: false;
+    in property <bool> above-modal: false;
+    in property <string> reveal-label: @tr("Show password");
+    in property <string> conceal-label: @tr("Hide password");
     out property <bool> has-focus: input.has-focus || revealed-input.has-focus;
 
     callback accepted();
@@ -193,7 +196,8 @@ export component TextField inherits Rectangle {
             radius: Radius.sm;
             icon-size: IconSize.sm;
             icon: root.revealed ? IconSet.EyeOff : IconSet.Eye;
-            label: root.revealed ? @tr("Hide password") : @tr("Show password");
+            above-modal: root.above-modal;
+            label: root.revealed ? root.conceal-label : root.reveal-label;
             clicked => {
                 root.revealed = !root.revealed;
             }

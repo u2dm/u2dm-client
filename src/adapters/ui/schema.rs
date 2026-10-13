@@ -22,6 +22,8 @@ macro_rules! string_props {
         ToastDetail RoomView "RoomView" "toast-detail" set_toast_detail get_toast_detail;
         VerificationSender VerificationView "VerificationView" "sender" set_sender get_sender;
         VerificationErrorDetail VerificationView "VerificationView" "error-detail" set_error_detail get_error_detail;
+        EncryptionRecoveryKey EncryptionView "EncryptionView" "recovery-key" set_recovery_key get_recovery_key;
+        EncryptionErrorDetail EncryptionView "EncryptionView" "error-detail" set_error_detail get_error_detail;
         SelectedRoomName RoomView "RoomView" "selected-room-name" set_selected_room_name get_selected_room_name;
         SelectedRoomInitial RoomView "RoomView" "selected-room-initial" set_selected_room_initial get_selected_room_initial;
         FocusEventId RoomView "RoomView" "focus-event-id" set_focus_event_id get_focus_event_id;
@@ -112,6 +114,18 @@ macro_rules! simple_callbacks {
         on_confirm_verification "confirm-verification" confirm_verification plain ConfirmVerification;
         on_reject_verification "reject-verification" reject_verification plain RejectVerification;
         on_dismiss_verification "dismiss-verification" dismiss_verification plain DismissVerification;
+        on_open_encryption "open-encryption" open_encryption plain OpenEncryption;
+        on_close_encryption "close-encryption" close_encryption plain CloseEncryption;
+        on_show_encryption_overview "show-encryption-overview" show_encryption_overview plain
+            ShowEncryptionOverview;
+        on_enter_recovery_key "enter-recovery-key" enter_recovery_key plain EnterRecoveryKey;
+        on_use_recovery_key "use-recovery-key" use_recovery_key manual_string UseRecoveryKey;
+        on_verify_with_other_session "verify-with-other-session" verify_with_other_session plain
+            VerifyWithOtherSession;
+        on_set_up_recovery "set-up-recovery" set_up_recovery plain SetUpRecovery;
+        on_change_recovery_key "change-recovery-key" change_recovery_key plain ChangeRecoveryKey;
+        on_retry_encryption_setup "retry-encryption-setup" retry_encryption_setup plain
+            RetryEncryptionSetup;
         on_retry_timeline "retry-timeline" retry_timeline plain RetryTimeline;
         on_select_room "select-room" select_room room SelectRoom;
         on_select_space "select-space" select_space opt_room SelectSpace;
@@ -154,7 +168,6 @@ macro_rules! simple_callbacks {
         on_unban_user "unban-user" unban_user user UnbanUser;
         on_accept_identity "accept-identity" accept_identity user AcceptIdentity;
         on_withdraw_verification "withdraw-verification" withdraw_verification user WithdrawVerification;
-        on_send_anyway "send-anyway" send_anyway user SendAnyway;
         on_acknowledge_identity_reset "acknowledge-identity-reset" acknowledge_identity_reset plain
             AcknowledgeIdentityReset;
         on_paginate_backwards "paginate-backwards" paginate_backwards room_key PaginateBackwards;
@@ -213,6 +226,9 @@ macro_rules! bool_props {
     ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
         SessionRefused LoginView "LoginView" "session-refused" set_session_refused get_session_refused;
         VerificationVisible VerificationView "VerificationView" "visible" set_visible get_visible;
+        EncryptionVisible EncryptionView "EncryptionView" "visible" set_visible get_visible;
+        EncryptionVerifiedSessions EncryptionView "EncryptionView" "verified-sessions" set_verified_sessions get_verified_sessions;
+        EncryptionKeyStorageOff EncryptionView "EncryptionView" "key-storage-off" set_key_storage_off get_key_storage_off;
         DirectAlert DirectoryView "DirectoryView" "direct-alert" set_direct_alert get_direct_alert;
         DirectMention DirectoryView "DirectoryView" "direct-mention" set_direct_mention get_direct_mention;
         DirectHint DirectoryView "DirectoryView" "direct-hint" set_direct_hint get_direct_hint;
@@ -338,6 +354,16 @@ macro_rules! enum_props {
             VerificationView "VerificationView" "activity" set_activity get_activity;
         VerificationError set_verification_error(UserMessageKind)
             VerificationView "VerificationView" "error" set_error get_error;
+        EncryptionStanding set_encryption_standing(Standing)
+            EncryptionView "EncryptionView" "standing" set_standing get_standing;
+        EncryptionRecovery set_encryption_recovery(Recovery)
+            EncryptionView "EncryptionView" "recovery" set_recovery get_recovery;
+        EncryptionStep set_encryption_step(&EncryptionStep)
+            EncryptionView "EncryptionView" "step" set_step get_step;
+        EncryptionActivity set_encryption_activity(EncryptionActivity)
+            EncryptionView "EncryptionView" "activity" set_activity get_activity;
+        EncryptionError set_encryption_error(UserMessageKind)
+            EncryptionView "EncryptionView" "error" set_error get_error;
         AttachmentKind set_attachment_kind(AttachmentKind)
             AttachmentView "AttachmentView" "kind" set_kind get_kind;
         AttachmentError set_attachment_error(UserMessageKind)
@@ -499,6 +525,7 @@ macro_rules! verification_phases {
     ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
         None       None       "none";
         Requested  Requested  "requested";
+        Waiting    Waiting    "waiting";
         Emojis     Emojis     "emojis";
         Confirming Confirming "confirming";
         Done       Done       "done";
@@ -569,7 +596,6 @@ macro_rules! user_message_kinds {
         UnbanFailed               UnbanFailed             "unban-failed";
         IdentityAcceptFailed      IdentityAcceptFailed    "identity-accept-failed";
         VerificationWithdrawFailed VerificationWithdrawFailed "verification-withdraw-failed";
-        SendAnywayFailed          SendAnywayFailed        "send-anyway-failed";
         IdentityResetAcknowledgeFailed IdentityResetAcknowledgeFailed "identity-reset-acknowledge-failed";
         MediaDownloadFailed       MediaDownloadFailed     "media-download-failed";
         FileDownloadFailed        FileDownloadFailed      "file-download-failed";
@@ -592,9 +618,16 @@ macro_rules! user_message_kinds {
         VerificationSasAcceptFailed VerificationSasAcceptFailed "verification-sas-accept-failed";
         VerificationCancelled     VerificationCancelled   "verification-cancelled";
         VerificationDeclined      VerificationDeclined    "verification-declined";
+        VerificationWithdrawn     VerificationWithdrawn   "verification-withdrawn";
         VerificationMismatch      VerificationMismatch    "verification-mismatch";
         VerificationAcceptedElsewhere VerificationAcceptedElsewhere "verification-accepted-elsewhere";
         VerificationFailed        VerificationFailed      "verification-failed";
+        VerificationRequestFailed VerificationRequestFailed "verification-request-failed";
+        RecoveryKeyWrong          RecoveryKeyWrong        "recovery-key-wrong";
+        RecoveryKeyFailed         RecoveryKeyFailed       "recovery-key-failed";
+        RecoverySetupFailed       RecoverySetupFailed     "recovery-setup-failed";
+        RecoveryBackupInTheWay    RecoveryBackupInTheWay  "recovery-backup-in-the-way";
+        RecoveryKeyChangeFailed   RecoveryKeyChangeFailed "recovery-key-change-failed";
     } };
 }
 pub(crate) use user_message_kinds;
@@ -831,13 +864,57 @@ macro_rules! identity_alert_kinds {
     ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
         None                  None                  "none";
         OwnIdentityReset      OwnIdentityReset      "own-identity-reset";
+        SessionUnverified     SessionUnverified     "session-unverified";
+        EncryptionNotSetUp    EncryptionNotSetUp    "encryption-not-set-up";
         NoLongerVerified      NoLongerVerified      "no-longer-verified";
-        OwnUnverifiedSessions OwnUnverifiedSessions "own-unverified-sessions";
-        UnverifiedSessions    UnverifiedSessions    "unverified-sessions";
         IdentityReset         IdentityReset         "identity-reset";
     } };
 }
 pub(crate) use identity_alert_kinds;
+
+macro_rules! encryption_standings {
+    ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
+        Checking     Checking     "checking";
+        SetupRefused SetupRefused "setup-refused";
+        SetupFailed  SetupFailed  "setup-failed";
+        Unverified   Unverified   "unverified";
+        Verified     Verified     "verified";
+    } };
+}
+pub(crate) use encryption_standings;
+
+macro_rules! recovery_statuses {
+    ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
+        Unknown    Unknown    "unknown";
+        Off        Off        "off";
+        On         On         "on";
+        Incomplete Incomplete "incomplete";
+    } };
+}
+pub(crate) use recovery_statuses;
+
+macro_rules! encryption_steps {
+    ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
+        Overview              Overview              "overview";
+        EnteringKey           EnteringKey           "entering-key";
+        Unlocked              Unlocked              "unlocked";
+        UnlockedWithoutBackup UnlockedWithoutBackup "unlocked-without-backup";
+        ShowingKey(_)         ShowingKey            "showing-key";
+    } };
+}
+pub(crate) use encryption_steps;
+
+macro_rules! encryption_activities {
+    ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
+        None              None              "none";
+        Requesting        Requesting        "requesting";
+        Unlocking         Unlocking         "unlocking";
+        SettingUpRecovery SettingUpRecovery "setting-up-recovery";
+        ChangingKey       ChangingKey       "changing-key";
+        RetryingSetup     RetryingSetup     "retrying-setup";
+    } };
+}
+pub(crate) use encryption_activities;
 
 macro_rules! pending_moderations {
     ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*

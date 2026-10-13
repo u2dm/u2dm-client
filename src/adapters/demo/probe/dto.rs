@@ -5,12 +5,13 @@ use crate::adapters::ui::identity_banner;
 use crate::commands::messages::UserMessage;
 use crate::commands::ui::Draft;
 use crate::commands::view::{
-    AppViewState, AttachmentView, AudioView, CardStatus, CopiedLink, DirectoryView,
-    IdentityAlertView, InviteView, LifecycleView, LoginStep, MentionsView, PackView,
-    PaginationView, PinnedView, ReadersView, RoomInfoView, RoomLogView, RoomMenuTarget, RosterRow,
-    SourceState, SpaceIndexRow, SpaceIndexView, SpaceMatch, Toast, TrackFile, UnsentMessage,
-    UserInfoView, VideoView,
+    AppViewState, AttachmentView, AudioView, CardStatus, CopiedLink, DirectoryView, EncryptionStep,
+    EncryptionView, IdentityAlertView, InviteView, LifecycleView, LoginStep, MentionsView,
+    PackView, PaginationView, PinnedView, ReadersView, RoomInfoView, RoomLogView, RoomMenuTarget,
+    RosterRow, SourceState, SpaceIndexRow, SpaceIndexView, SpaceMatch, Toast, TrackFile,
+    UnsentMessage, UserInfoView, VideoView,
 };
+use crate::domain::encryption::KeyStorage;
 use crate::domain::image_pack::{ImagePack, ImageUsage, PackOrigin, PackTitle};
 use crate::domain::invite::Invite;
 use crate::domain::member_name::NamedUser;
@@ -40,6 +41,7 @@ pub struct ViewDto {
     audio: Option<NowPlayingDto>,
     unsent: Option<UnsentDto>,
     identity_alert: IdentityAlertDto,
+    encryption: EncryptionDto,
     toast: ToastDto,
     message_link: LinkDto,
     room_link: LinkDto,
@@ -55,6 +57,19 @@ struct IdentityAlertDto {
     user_id: Option<String>,
     name: Option<String>,
     busy: bool,
+}
+
+#[derive(Serialize)]
+struct EncryptionDto {
+    standing: &'static str,
+    verified_sessions: bool,
+    recovery: &'static str,
+    key_storage: &'static str,
+    open: bool,
+    step: Option<&'static str>,
+    activity: Option<&'static str>,
+    recovery_key: Option<String>,
+    error: Option<MessageDto>,
 }
 
 #[derive(Serialize)]
@@ -457,6 +472,7 @@ pub fn view(source: &AppViewState) -> ViewDto {
         audio: audio(&source.audio),
         unsent: source.unsent.as_ref().map(unsent),
         identity_alert: identity_alert(&source.identity_alert),
+        encryption: encryption(&source.encryption),
         toast: toast(&source.toast),
         message_link: link(&source.message_link),
         room_link: link(&source.room_link),
@@ -474,6 +490,30 @@ fn identity_alert(source: &IdentityAlertView) -> IdentityAlertDto {
         user_id: (!banner.user_id.is_empty()).then(|| banner.user_id.to_owned()),
         name: (!banner.name.is_empty()).then_some(banner.name),
         busy: source.busy,
+    }
+}
+
+fn encryption(source: &EncryptionView) -> EncryptionDto {
+    let dialog = source.dialog.as_ref();
+    EncryptionDto {
+        standing: names::encryption_standing(source.standing),
+        verified_sessions: source.verified_sessions,
+        recovery: names::recovery_status(source.recovery),
+        key_storage: match source.key_storage {
+            KeyStorage::Allowed => "allowed",
+            KeyStorage::TurnedOff => "turned-off",
+        },
+        open: dialog.is_some(),
+        step: dialog.map(|dialog| names::encryption_step(&dialog.step)),
+        activity: dialog.map(|dialog| names::encryption_activity(dialog.activity)),
+        recovery_key: dialog.and_then(|dialog| match &dialog.step {
+            EncryptionStep::ShowingKey(key) => Some(key.expose().to_owned()),
+            EncryptionStep::Overview
+            | EncryptionStep::EnteringKey
+            | EncryptionStep::Unlocked
+            | EncryptionStep::UnlockedWithoutBackup => None,
+        }),
+        error: dialog.map(|dialog| message(&dialog.error)),
     }
 }
 

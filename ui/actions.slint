@@ -70,7 +70,6 @@ export global Actions {
     callback unban-user(string);
     callback accept-identity(string);
     callback withdraw-verification(string);
-    callback send-anyway(string);
     callback acknowledge-identity-reset();
 
     callback send-message(SendMessageRequest);
@@ -142,4 +141,14 @@ export global Actions {
     callback confirm-verification();
     callback reject-verification();
     callback dismiss-verification();
+
+    callback open-encryption();
+    callback close-encryption();
+    callback show-encryption-overview();
+    callback enter-recovery-key();
+    callback use-recovery-key(string);
+    callback verify-with-other-session();
+    callback set-up-recovery();
+    callback change-recovery-key();
+    callback retry-encryption-setup();
 }

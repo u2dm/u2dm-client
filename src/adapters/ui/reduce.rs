@@ -38,11 +38,12 @@ use crate::commands::messages::{UserMessage, UserMessageKind};
 use crate::commands::ui::Draft;
 use crate::commands::view::{
     AppViewState, AttachmentView, AudioView, CardStatus, CopiedLink, DirectoryView,
-    IdentityAlertView, InviteView, LifecycleView, LoginStep, MentionsView, NowPlaying, PackView,
-    PaginationView, PinnedView, ReadersView, RoomCard, RoomInfoView, RoomLogView, RoomMenuTarget,
-    SourceState, SpaceIndexView, Toast, TrackFile, UnsentMessage, UserCard, UserInfoView,
-    VideoView,
+    EncryptionDialog, EncryptionStep, EncryptionView, IdentityAlertView, InviteView, LifecycleView,
+    LoginStep, MentionsView, NowPlaying, PackView, PaginationView, PinnedView, ReadersView,
+    RoomCard, RoomInfoView, RoomLogView, RoomMenuTarget, SourceState, SpaceIndexView, Toast,
+    TrackFile, UnsentMessage, UserCard, UserInfoView, VideoView,
 };
+use crate::domain::encryption::KeyStorage;
 use crate::domain::invite::{Invite, InviteList};
 use crate::domain::message::{
     EditKind, MessageEdit, MessagePermissions, MessagePreviewKind, RichText, TimelineMessage,
@@ -370,6 +371,7 @@ fn apply_snapshot<B: UiBackend>(
         audio,
         unsent,
         identity_alert,
+        encryption,
         toast,
         message_link,
         room_link,
@@ -424,6 +426,9 @@ fn apply_snapshot<B: UiBackend>(
     }
     if last.is_none_or(|l| l.identity_alert != *identity_alert) {
         apply_identity_alert(w, identity_alert);
+    }
+    if last.is_none_or(|l| l.encryption != *encryption) {
+        apply_encryption(w, encryption);
     }
     if last.is_none_or(|l| l.toast != *toast) {
         apply_toast(w, toast);
@@ -1554,6 +1559,35 @@ fn apply_identity_alert(w: &impl UiProps, view: &IdentityAlertView) {
     w.set_bool(BoolProp::IdentityAlertBusy, view.busy);
 }
 
+fn apply_encryption(w: &impl UiProps, view: &EncryptionView) {
+    w.set_encryption_standing(view.standing);
+    w.set_bool(BoolProp::EncryptionVerifiedSessions, view.verified_sessions);
+    w.set_encryption_recovery(view.recovery);
+    w.set_bool(
+        BoolProp::EncryptionKeyStorageOff,
+        view.key_storage == KeyStorage::TurnedOff,
+    );
+    let closed = EncryptionDialog::default();
+    let dialog = view.dialog.as_ref().unwrap_or(&closed);
+    w.set_bool(BoolProp::EncryptionVisible, view.dialog.is_some());
+    w.set_encryption_step(&dialog.step);
+    w.set_encryption_activity(dialog.activity);
+    w.set_encryption_error(dialog.error.kind);
+    w.set_string(
+        StringProp::EncryptionErrorDetail,
+        SharedString::from(&dialog.error.detail),
+    );
+    let shown_key = if let EncryptionStep::ShowingKey(key) = &dialog.step {
+        key.expose()
+    } else {
+        ""
+    };
+    w.set_string(
+        StringProp::EncryptionRecoveryKey,
+        SharedString::from(shown_key),
+    );
+}
+
 fn apply_unsent_edit(w: &impl UiProps, edit: Option<&MessageEdit>) {
     w.set_bool(BoolProp::UnsentIsEdit, edit.is_some());
     w.set_bool(
@@ -1640,14 +1674,10 @@ fn apply_verification_flow(w: &impl UiProps, event: &DomainVerificationEvent) {
     w.set_verification_activity(VerificationActivity::None);
     match event {
         DomainVerificationEvent::Requested { sender, is_self } => {
-            w.set_bool(BoolProp::VerificationVisible, true);
-            w.set_verification_phase(VerifyStep::Requested);
-            w.set_string(
-                StringProp::VerificationSender,
-                SharedString::from(sender.as_str()),
-            );
-            w.set_bool(BoolProp::VerificationIsSelf, *is_self);
-            set_verification_error(w, &UserMessage::default());
+            open_verification(w, VerifyStep::Requested, sender, *is_self);
+        }
+        DomainVerificationEvent::RequestSent { own_user } => {
+            open_verification(w, VerifyStep::Waiting, own_user, true);
         }
         DomainVerificationEvent::Emojis(emojis) => {
             w.set_verification_phase(VerifyStep::Emojis);
@@ -1664,6 +1694,14 @@ fn apply_verification_flow(w: &impl UiProps, event: &DomainVerificationEvent) {
             set_verification_error(w, &verification_cancellation(reason));
         }
     }
+}
+
+fn open_verification(w: &impl UiProps, step: VerifyStep, sender: &str, is_self: bool) {
+    w.set_bool(BoolProp::VerificationVisible, true);
+    w.set_verification_phase(step);
+    w.set_string(StringProp::VerificationSender, SharedString::from(sender));
+    w.set_bool(BoolProp::VerificationIsSelf, is_self);
+    set_verification_error(w, &UserMessage::default());
 }
 
 fn reset_verification(w: &impl UiProps) {

@@ -246,8 +246,16 @@ pub(super) fn command_allowed(phase: AppPhase, cmd: &UiCommand) -> bool {
         | UiCommand::UnbanUser(_)
         | UiCommand::AcceptIdentity(_)
         | UiCommand::WithdrawVerification(_)
-        | UiCommand::SendAnyway(_)
         | UiCommand::AcknowledgeIdentityReset
+        | UiCommand::OpenEncryption
+        | UiCommand::CloseEncryption
+        | UiCommand::ShowEncryptionOverview
+        | UiCommand::EnterRecoveryKey
+        | UiCommand::UseRecoveryKey(_)
+        | UiCommand::VerifyWithOtherSession
+        | UiCommand::SetUpRecovery
+        | UiCommand::ChangeRecoveryKey
+        | UiCommand::RetryEncryptionSetup
         | UiCommand::SendMessage { .. }
         | UiCommand::EditMessage { .. }
         | UiCommand::SuggestMentions { .. }

@@ -64,7 +64,11 @@ scenario_env() {
     display-names)   echo 'U2DM_DEMO_NAMES=all' ;;
     message-shields) echo 'U2DM_DEMO_SHIELDS=all U2DM_DEMO_WINDOW=900x1400' ;;
     identity-alerts) echo 'U2DM_DEMO_IDENTITY=reset,own-reset U2DM_DEMO_WINDOW=900x760' ;;
-    identity-held-sends) echo 'U2DM_DEMO_IDENTITY=verified-reset,unverified-sessions U2DM_DEMO_WINDOW=900x760' ;;
+    identity-held-sends) echo 'U2DM_DEMO_IDENTITY=verified-reset U2DM_DEMO_WINDOW=900x760' ;;
+    encryption-unverified) echo 'U2DM_DEMO_ENCRYPTION=unverified U2DM_DEMO_WINDOW=900x760' ;;
+    encryption-recovery-key) echo 'U2DM_DEMO_ENCRYPTION=unverified,no-sessions,slow U2DM_DEMO_WINDOW=900x760' ;;
+    encryption-new-account) echo 'U2DM_DEMO_ENCRYPTION=new-account,key-storage-off U2DM_DEMO_WINDOW=900x760' ;;
+    encryption-setup-refused) echo 'U2DM_DEMO_ENCRYPTION=setup-refused U2DM_DEMO_WINDOW=900x760' ;;
     invites)         echo 'U2DM_DEMO_INVITES=slow,late U2DM_DEMO_WINDOW=900x760' ;;
     invite-failures) echo 'U2DM_DEMO_INVITES=accept-fails,decline-fails,revoked U2DM_DEMO_WINDOW=900x760' ;;
     *) return 1 ;;
@@ -361,11 +365,37 @@ scenario_steps() {
       echo 'sleep 1'
       echo '{"op":"open_user_info","user_id":"@sarah:matrix.org"}'
       echo 'sleep 1'
-      echo '{"op":"close_user_info"}'
-      echo '{"op":"select_room","room_id":"!nina:demo.local"}'
+      echo '{"op":"close_user_info"}' ;;
+    encryption-unverified)
+      echo '{"op":"select_room","room_id":"!design:demo.local"}'
       echo 'sleep 2'
-      echo '{"op":"send_message","body":"held by her sessions"}'
+      echo '{"op":"send_message","body":"held until this session is verified"}'
+      echo 'sleep 1'
+      echo '{"op":"open_encryption"}'
+      echo '{"op":"verify_with_other_session"}'
+      echo 'sleep 3'
+      echo '{"op":"confirm_verification"}'
+      echo 'sleep 3'
+      echo '{"op":"dismiss_verification"}' ;;
+    encryption-recovery-key)
+      echo '{"op":"select_room","room_id":"!design:demo.local"}'
+      echo 'sleep 2'
+      echo '{"op":"open_encryption"}'
+      echo '{"op":"enter_recovery_key"}'
+      echo '{"op":"use_recovery_key","key":"not my key"}'
+      echo 'sleep 3'
+      echo '{"op":"use_recovery_key","key":"EsTk 7qXb 4Hsd N2Pw Lw3a mQ8R yZfJ 6uTe cHnV kB9o Xr5G wPq2"}'
+      echo 'sleep 3' ;;
+    encryption-new-account)
+      echo '{"op":"select_room","room_id":"!design:demo.local"}'
+      echo 'sleep 3'
+      echo '{"op":"open_encryption"}'
+      echo '{"op":"set_up_recovery"}'
       echo 'sleep 1' ;;
+    encryption-setup-refused)
+      echo '{"op":"select_room","room_id":"!design:demo.local"}'
+      echo 'sleep 3'
+      echo '{"op":"open_encryption"}' ;;
     display-names)
       echo '{"op":"select_room","room_id":"!linux:demo.local"}'
       echo 'sleep 3'
@@ -459,7 +489,11 @@ scenario_note() {
     display-names)   echo 'in !linux, a second Kai, a right-to-left name, a Kai whose name ends in bidi controls and a nameless member post: every Kai, the sidebar preview and the "ka" suggestions carry user IDs' ;;
     message-shields) echo 'in !design, every shield a decrypted row can carry (photo chip and sticker included), three refused messages beside an unexplained one, and your own warned and refused sends (shield, shield_reason, decryption_failure)' ;;
     identity-alerts) echo 'your own identity reset shows first; acknowledged, !design shows Jordan'"'"'s reset, and accepting it brings up Nadia'"'"'s (identity_alert)' ;;
-    identity-held-sends) echo 'in !sarah a send waits behind Sarah'"'"'s lost verification and her sheet reads no longer verified; in !nina one waits behind Nina'"'"'s unverified sessions (identity_alert, send_state)' ;;
+    identity-held-sends) echo 'in !sarah a send waits behind Sarah'"'"'s lost verification and her sheet reads no longer verified (identity_alert, send_state)' ;;
+    encryption-unverified) echo 'an unverified session: in !design a send is held and the banner reads session-unverified; another session verifies it through the encryption dialog, so the banner goes (encryption, identity_alert)' ;;
+    encryption-recovery-key) echo 'an unverified session with no other session: a wrong recovery key is refused inline, the right one verifies it, slowly (encryption.step, encryption.error)' ;;
+    encryption-new-account) echo 'an account without cross-signing: the session creates its identity, then sets up recovery with key storage turned off and shows the new key (encryption.recovery_key)' ;;
+    encryption-setup-refused) echo 'the homeserver refuses the first cross-signing upload without a password: the banner reads encryption-not-set-up and the dialog explains it (encryption.standing)' ;;
     invites)         echo 'Leo'"'"'s chat invite arrives late and is accepted, opening the chat under DMs; Async Rust is declined; Hiking Club is accepted and opens in the rail (directory.invites, invite)' ;;
     invite-failures) echo 'an accept fails inline on its sheet, a decline with the sheet closed fails as a toast, then the open Climbing Crew sheet closes when its invite is withdrawn (invite.error, toast)' ;;
   esac
@@ -485,7 +519,8 @@ names() {
     room-menu-failures room-log user-info user-info-failures user-dm user-dm-start user-dm-failures user-ignore user-moderation \
     user-moderation-failures user-tags custom-emoji spoilers message-link message-source message-pins message-pin-failures message-delete \
     message-delete-failures readers room-search room-search-open mentions room-mention display-names \
-    message-shields identity-alerts identity-held-sends invites invite-failures
+    message-shields identity-alerts identity-held-sends invites invite-failures \
+    encryption-unverified encryption-recovery-key encryption-new-account encryption-setup-refused
 }
 
 cmd_list() {
@@ -550,6 +585,7 @@ cmd_run() {
   jq -r 'if .view.room_menu then "  room menu \(.view.room_menu.room_id) unread=\(.view.room_menu.unread) notify=\(.view.room_menu.notify) busy=\(.view.room_menu.notify_busy) leaving=\(.view.room_menu.leaving)" else empty end' "$out/state.json"
   jq -r 'if .view.user_info.open then "  user info \(.view.user_info.user_id) in \(.view.user_info.room_id) \(.view.user_info.status) membership=\(.view.user_info.membership) role=\(.view.user_info.role) identity=\(.view.user_info.identity) pronouns=\(.view.user_info.pronouns) direct=\(.view.user_info.direct) ignored=\(.view.user_info.ignored) kick=\(.view.user_info.may_kick) ban=\(.view.user_info.may_ban) unban=\(.view.user_info.may_unban)" else empty end' "$out/state.json"
   jq -r 'if .view.identity_alert.kind != "none" then "  identity alert \(.view.identity_alert.kind) \(.view.identity_alert.user_id // "") busy=\(.view.identity_alert.busy)" else empty end' "$out/state.json"
+  jq -r '.view.encryption | "  encryption \(.standing) recovery=\(.recovery) sessions=\(.verified_sessions) key_storage=\(.key_storage)\(if .open then " dialog=\(.step) activity=\(.activity) error=\(.error.kind)\(if .recovery_key then " key shown" else "" end)" else "" end)"' "$out/state.json"
   jq -r '"  selected room \(.selected_room_id // "none")"' "$out/timeline.json"
   jq -r 'if .view.room_link.serial > 0 then "  room link #\(.view.room_link.serial) \(.view.room_link.url)" else empty end' "$out/state.json"
   jq -r 'if .view.room_log then "  room log \(.view.room_log.room_id) lines=\(.view.room_log.lines) dropped=\(.view.room_log.dropped) newest=\(.view.room_log.newest[-1] // "none")" else empty end' "$out/state.json"

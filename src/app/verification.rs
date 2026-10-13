@@ -25,6 +25,7 @@ impl FlowState {
     fn of(event: &VerificationEvent) -> Self {
         match event {
             VerificationEvent::Requested { .. }
+            | VerificationEvent::RequestSent { .. }
             | VerificationEvent::Emojis(_)
             | VerificationEvent::Confirming => Self::Active,
             VerificationEvent::Done | VerificationEvent::Cancelled(_) => Self::Terminal,

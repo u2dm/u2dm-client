@@ -6,6 +6,7 @@ mod edits;
 mod emoji_files;
 mod filter;
 mod members;
+mod missing_keys;
 mod pinned;
 mod poll_ends;
 mod polls;
@@ -412,16 +413,18 @@ impl TimelinePort for MatrixTimeline {
         close: CancellationToken,
     ) -> Result<()> {
         tracing::info!(%room_id, ?focus, "subscribing to timeline");
-        subscribe_timeline(
-            &self.matrix.client().await?,
-            self.matrix.media(),
-            &self.pronouns,
-            room_id,
-            &focus,
-            timeline_tx,
-            Commands::new(cmd_rx, close),
+        Box::pin(
+            subscribe_timeline(
+                &self.matrix.client().await?,
+                self.matrix.media(),
+                &self.pronouns,
+                room_id,
+                &focus,
+                timeline_tx,
+                Commands::new(cmd_rx, close),
+            )
+            .instrument(tracing::debug_span!("timeline", %room_id)),
         )
-        .instrument(tracing::debug_span!("timeline", %room_id))
         .await
     }
 

@@ -3,6 +3,7 @@ mod attachments;
 mod audio;
 mod conclude;
 mod credentials;
+mod encryption;
 mod establish;
 mod event;
 mod event_source;
@@ -39,10 +40,11 @@ use std::sync::Arc;
 use active_timeline::ActiveTimeline;
 use attachments::Attachments;
 use audio::AudioController;
+use encryption::Encryption;
 use establish::{EstablishedSession, Rollback};
 use event::{
-    AppEvent, EndReason, IdentityEvent, MentionsEvent, MessageActionEvent, PacksEvent,
-    ReadersEvent, RoomActionEvent, SessionEvent, TimelineEvent, UserInfoEvent,
+    AppEvent, EncryptionEvent, EndReason, IdentityEvent, MentionsEvent, MessageActionEvent,
+    PacksEvent, ReadersEvent, RoomActionEvent, SessionEvent, TimelineEvent, UserInfoEvent,
 };
 use event_source::EventSourceViewer;
 use identity_alerts::{IdentityAlerts, Resolution};
@@ -78,6 +80,7 @@ use crate::commands::view::{AppViewState, LoginActivity, LoginStep, Toast};
 use crate::domain::account::AccountScope;
 use crate::domain::auth::ServerInfo;
 use crate::domain::emote::ComposerText;
+use crate::domain::encryption::RecoveryKey;
 use crate::domain::image_pack::PackId;
 use crate::domain::invite::InviteList;
 use crate::domain::media::AttachmentPick;
@@ -192,6 +195,7 @@ pub struct AppService {
     pinned: PinnedMessages,
     verification: VerificationController,
     identity_alerts: IdentityAlerts,
+    encryption: Encryption,
     media: MediaActions,
     audio: AudioController,
     video: VideoController,
@@ -240,6 +244,7 @@ impl AppService {
             pinned: PinnedMessages::new(Arc::clone(&output), events.clone()),
             verification: VerificationController::new(Arc::clone(&output), events.clone()),
             identity_alerts: IdentityAlerts::new(Arc::clone(&output), events.clone()),
+            encryption: Encryption::new(Arc::clone(&output), events.clone()),
             media: MediaActions::new(Arc::clone(&media_files), Arc::clone(&output)),
             audio: AudioController::new(Arc::clone(&output), events.clone()),
             video: VideoController::new(Arc::clone(&output), events.clone()),
@@ -535,12 +540,18 @@ impl AppService {
             UiCommand::WithdrawVerification(user_id) => {
                 self.resolve_identity_alert(Resolution::Withdraw(user_id));
             }
-            UiCommand::SendAnyway(user_id) => {
-                self.resolve_identity_alert(Resolution::SendAnyway(user_id));
-            }
             UiCommand::AcknowledgeIdentityReset => {
                 self.resolve_identity_alert(Resolution::AcknowledgeOwnReset);
             }
+            UiCommand::OpenEncryption => self.encryption.open(),
+            UiCommand::CloseEncryption => self.encryption.close(),
+            UiCommand::ShowEncryptionOverview => self.encryption.show_overview(),
+            UiCommand::EnterRecoveryKey => self.encryption.enter_key(),
+            UiCommand::UseRecoveryKey(key) => self.use_recovery_key(key),
+            UiCommand::VerifyWithOtherSession => self.verify_with_other_session(),
+            UiCommand::SetUpRecovery => self.set_up_recovery(),
+            UiCommand::ChangeRecoveryKey => self.change_recovery_key(),
+            UiCommand::RetryEncryptionSetup => self.retry_encryption_setup(),
             UiCommand::RetryTimeline => {
                 self.retry_timeline().await;
             }
@@ -1235,6 +1246,68 @@ impl AppService {
         }
     }
 
+    fn handle_encryption(&mut self, event: EncryptionEvent) {
+        match event {
+            EncryptionEvent::Changed { session, state } => {
+                if !self.lifecycle.runs(session) {
+                    tracing::debug!("encryption state of a session that no longer runs, dropping");
+                    return;
+                }
+                self.encryption.state_changed(state);
+            }
+            EncryptionEvent::IdentitySettled { session, outcome } => {
+                if !self.lifecycle.runs(session) {
+                    tracing::debug!("identity setup of a session that no longer runs, dropping");
+                    return;
+                }
+                self.encryption.identity_settled(outcome);
+            }
+            EncryptionEvent::ActionSettled { request, outcome } => {
+                if self.held_session.running().is_none() {
+                    return;
+                }
+                self.encryption.settled(request, outcome);
+            }
+        }
+        self.raise_session_alert();
+    }
+
+    fn use_recovery_key(&mut self, key: RecoveryKey) {
+        if let Some(port) = self.port(|a| &a.encryption) {
+            self.encryption.use_key(port, key);
+        }
+    }
+
+    fn verify_with_other_session(&mut self) {
+        if let Some(port) = self.port(|a| &a.verification) {
+            self.encryption.verify_with_other_session(port);
+        }
+    }
+
+    fn set_up_recovery(&mut self) {
+        if let Some(port) = self.port(|a| &a.encryption) {
+            self.encryption.set_up_recovery(port);
+        }
+    }
+
+    fn change_recovery_key(&mut self) {
+        if let Some(port) = self.port(|a| &a.encryption) {
+            self.encryption.change_key(port);
+        }
+    }
+
+    fn retry_encryption_setup(&mut self) {
+        if let Some(port) = self.port(|a| &a.encryption) {
+            self.encryption.retry_setup(port);
+            self.raise_session_alert();
+        }
+    }
+
+    fn raise_session_alert(&mut self) {
+        self.identity_alerts
+            .session_alert_changed(self.encryption.alert());
+    }
+
     fn resolve_identity_alert(&mut self, resolution: Resolution) {
         if let Some(port) = self.port(|a| &a.identity) {
             self.identity_alerts.resolve(port, resolution);
@@ -1388,6 +1461,7 @@ impl AppService {
             AppEvent::Mentions(event) => self.handle_mentions(event),
             AppEvent::Packs(event) => self.handle_packs(event),
             AppEvent::Identity(event) => self.handle_identity(event),
+            AppEvent::Encryption(event) => self.handle_encryption(event),
             AppEvent::RoomLogGrew => self.room_log.reread(),
         }
     }
@@ -2137,12 +2211,13 @@ impl AppService {
     }
 
     async fn start_syncing(&mut self, session: u64) {
-        let Some((sync, verification, identity, lifecycle_port)) =
+        let Some((sync, verification, identity, encryption, lifecycle_port)) =
             self.held_session.running().map(|a| {
                 (
                     Arc::clone(&a.sync),
                     Arc::clone(&a.verification),
                     Arc::clone(&a.identity),
+                    Arc::clone(&a.encryption),
                     Arc::clone(&a.lifecycle),
                 )
             })
@@ -2164,6 +2239,8 @@ impl AppService {
             .spawn_listener(&mut self.background, verification, session);
         self.identity_alerts
             .spawn_own_listener(&mut self.background, identity, session);
+        self.encryption
+            .begin_session(&mut self.background, &encryption, session);
         self.set_connection(ConnectionStatus::Connecting);
         RoomDirectory::spawn_sync_pipeline(
             &mut self.background,
@@ -2182,6 +2259,7 @@ impl AppService {
             self.active_timeline.shutdown(),
             self.pinned.restart(),
             self.identity_alerts.restart(),
+            self.encryption.restart(),
             self.operations.restart(),
             self.send_lanes.restart(),
             self.media.cancel_and_drain(),
@@ -2295,6 +2373,7 @@ impl AppService {
             self.active_timeline.shutdown(),
             self.pinned.shutdown(),
             self.identity_alerts.shutdown(),
+            self.encryption.shutdown(),
             self.operations.shutdown(),
             self.send_lanes.shutdown(),
             self.media.drain(),

@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::env;
 use std::sync::{Mutex, OnceLock};
 use std::time::Duration;
@@ -8,7 +8,7 @@ use tokio::time::sleep;
 
 use super::catalog::{Flag, Scenarios};
 use super::data;
-use crate::domain::identity::{OwnIdentity, RoomAlert, SessionsOf};
+use crate::domain::identity::{OwnIdentity, RoomAlert};
 use crate::domain::member_name::NamedUser;
 use crate::domain::room::RoomId;
 use crate::domain::user_info::IdentityTrust;
@@ -17,7 +17,7 @@ const ENV_VAR: &str = "U2DM_DEMO_IDENTITY";
 
 pub const CATALOG: Scenarios = Scenarios {
     env: ENV_VAR,
-    summary: "raises identity alerts: reset identities, lost verifications and unverified sessions that hold your sends",
+    summary: "raises identity alerts: reset identities and lost verifications that hold your sends",
     combinable: true,
     flags: &[
         Flag {
@@ -31,16 +31,6 @@ pub const CATALOG: Scenarios = Scenarios {
             note: "Withdraw verification lifts the hold; a held message then needs Retry",
         },
         Flag {
-            value: "unverified-sessions",
-            effect: "Nina has sessions she never verified, so a text or poll sent where she is fails and the banner offers Send anyway",
-            note: "Send anyway sends the held messages and stops holding later ones",
-        },
-        Flag {
-            value: "own-sessions",
-            effect: "one of your own sessions is unverified, so a text or poll sent in any encrypted room fails the same way",
-            note: "each room holding a message needs its own Send anyway, as a real wedged queue does",
-        },
-        Flag {
             value: "own-reset",
             effect: "your own identity was reset on another device",
             note: "the banner shows in every room until acknowledged",
@@ -52,12 +42,12 @@ pub const CATALOG: Scenarios = Scenarios {
         },
         Flag {
             value: "acks-fail",
-            effect: "accepting, withdrawing, sending anyway and acknowledging all fail",
+            effect: "accepting, withdrawing and acknowledging all fail",
             note: "each failure is a toast, and the alert stays",
         },
         Flag {
             value: "all",
-            effect: "reset, verified-reset, unverified-sessions, own-sessions and own-reset",
+            effect: "reset, verified-reset and own-reset",
             note: "excludes slow and acks-fail",
         },
     ],
@@ -69,7 +59,6 @@ pub const CATALOG: Scenarios = Scenarios {
 
 const RESET_MEMBERS: [&str; 2] = ["@jordan:matrix.org", "@nadia:matrix.org"];
 const VERIFIED_MEMBER: &str = "@sarah:matrix.org";
-const UNVERIFIED_SESSIONS_MEMBER: &str = "@nina:matrix.org";
 const ROOM_ALERT_DELAY: Duration = Duration::from_secs(2);
 const OWN_ALERT_DELAY: Duration = Duration::from_secs(3);
 const ACTION_DELAY: Duration = Duration::from_millis(1500);
@@ -79,8 +68,6 @@ const ACTION_DELAY: Duration = Duration::from_millis(1500);
 pub struct Scenario {
     resets: bool,
     verified_reset: bool,
-    unverified_sessions: bool,
-    own_sessions: bool,
     own_reset: bool,
     slow: bool,
     pub acks_fail: bool,
@@ -102,8 +89,6 @@ fn from_env() -> Scenario {
     tracing::info!(
         resets = scenario.resets,
         verified_reset = scenario.verified_reset,
-        unverified_sessions = scenario.unverified_sessions,
-        own_sessions = scenario.own_sessions,
         own_reset = scenario.own_reset,
         slow = scenario.slow,
         acks_fail = scenario.acks_fail,
@@ -116,16 +101,12 @@ fn apply(scenario: &mut Scenario, flag: &str) {
     match flag {
         "reset" => scenario.resets = true,
         "verified-reset" => scenario.verified_reset = true,
-        "unverified-sessions" => scenario.unverified_sessions = true,
-        "own-sessions" => scenario.own_sessions = true,
         "own-reset" => scenario.own_reset = true,
         "slow" => scenario.slow = true,
         "acks-fail" => scenario.acks_fail = true,
         "all" => {
             scenario.resets = true;
             scenario.verified_reset = true;
-            scenario.unverified_sessions = true;
-            scenario.own_sessions = true;
             scenario.own_reset = true;
         }
         other => tracing::warn!("unknown {ENV_VAR} flag: {other}"),
@@ -154,9 +135,7 @@ pub async fn pause_action() {
 struct Decisions {
     accepted: HashSet<String>,
     withdrawn: HashSet<String>,
-    sent_anyway: HashSet<String>,
     own_acknowledged: bool,
-    held_by: HashMap<RoomId, String>,
 }
 
 impl Decisions {
@@ -165,24 +144,11 @@ impl Decisions {
             && !self.withdrawn.contains(VERIFIED_MEMBER)
             && data::is_member(room_id, VERIFIED_MEMBER)
     }
-
-    fn unverified_sessions_of(&self, room_id: &RoomId) -> Option<&'static str> {
-        let scenario = scenario();
-        let own = data::own_user();
-        if scenario.own_sessions && !self.sent_anyway.contains(own) {
-            return Some(own);
-        }
-        (scenario.unverified_sessions
-            && !self.sent_anyway.contains(UNVERIFIED_SESSIONS_MEMBER)
-            && data::is_member(room_id, UNVERIFIED_SESSIONS_MEMBER))
-        .then_some(UNVERIFIED_SESSIONS_MEMBER)
-    }
 }
 
 pub enum SendHold {
     Clear,
     VerificationLost,
-    UnverifiedSessions,
 }
 
 pub struct IdentityBook {
@@ -241,14 +207,6 @@ impl IdentityBook {
             if decisions.no_longer_verified(room_id) {
                 alerts.push(RoomAlert::NoLongerVerified(named(VERIFIED_MEMBER)));
             }
-            if let Some(holder) = decisions.held_by.get(room_id) {
-                let sessions = if holder == data::own_user() {
-                    SessionsOf::You(holder.clone())
-                } else {
-                    SessionsOf::Member(named(holder))
-                };
-                alerts.push(RoomAlert::UnverifiedSessions(sessions));
-            }
             alerts
         })
         .unwrap_or_default()
@@ -271,30 +229,13 @@ impl IdentityBook {
             return SendHold::Clear;
         }
         self.read(|decisions| {
-            if decisions.unverified_sessions_of(room_id).is_some() {
-                SendHold::UnverifiedSessions
-            } else if decisions.no_longer_verified(room_id) {
+            if decisions.no_longer_verified(room_id) {
                 SendHold::VerificationLost
             } else {
                 SendHold::Clear
             }
         })
         .unwrap_or(SendHold::Clear)
-    }
-
-    pub fn note_held_send(&self, room_id: &RoomId) {
-        self.decide(|decisions| {
-            if let Some(holder) = decisions.unverified_sessions_of(room_id) {
-                decisions
-                    .held_by
-                    .entry(room_id.clone())
-                    .or_insert_with(|| holder.to_owned());
-            }
-        });
-    }
-
-    pub fn release(&self, room_id: &RoomId) {
-        self.decide(|decisions| decisions.held_by.remove(room_id));
     }
 
     pub fn trust_of(&self, user_id: &str) -> Option<IdentityTrust> {
@@ -325,26 +266,6 @@ impl IdentityBook {
         }
         self.decide(|decisions| decisions.withdrawn.insert(user_id.to_owned()));
         Ok(())
-    }
-
-    pub fn send_anyway(&self, room_id: &RoomId, user_id: &str) -> Result<(), String> {
-        let released = self
-            .decide(|decisions| {
-                if decisions.held_by.get(room_id).map(String::as_str) != Some(user_id) {
-                    return false;
-                }
-                decisions.held_by.remove(room_id);
-                decisions.sent_anyway.insert(user_id.to_owned());
-                true
-            })
-            .unwrap_or_default();
-        if released {
-            Ok(())
-        } else {
-            Err(format!(
-                "no message in {room_id} is held by the sessions of {user_id}"
-            ))
-        }
     }
 
     pub fn acknowledge_own_reset(&self) {

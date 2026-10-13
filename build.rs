@@ -124,6 +124,26 @@ const ENUM_COVERAGE: &[EnumCoverage] = &[
         falls_through: &["none"],
     },
     EnumCoverage {
+        slint_enum: "EncryptionStanding",
+        branches_in: "ui/screens/chat/components/encryption.slint",
+        falls_through: &[],
+    },
+    EnumCoverage {
+        slint_enum: "RecoveryStatus",
+        branches_in: "ui/screens/chat/components/encryption.slint",
+        falls_through: &[],
+    },
+    EnumCoverage {
+        slint_enum: "EncryptionStep",
+        branches_in: "ui/screens/chat/components/encryption.slint",
+        falls_through: &[],
+    },
+    EnumCoverage {
+        slint_enum: "EncryptionActivity",
+        branches_in: "ui/screens/chat/components/encryption.slint",
+        falls_through: &["none"],
+    },
+    EnumCoverage {
         slint_enum: "PollPhase",
         branches_in: "ui/screens/chat/components/timeline/messages/poll-message.slint",
         falls_through: &[],
@@ -174,6 +194,10 @@ const ENUM_TABLES: &[(&str, &str)] = &[
     ("Moderation", "pending_moderations"),
     ("IdentityTrust", "identity_trusts"),
     ("IdentityAlertKind", "identity_alert_kinds"),
+    ("EncryptionStanding", "encryption_standings"),
+    ("RecoveryStatus", "recovery_statuses"),
+    ("EncryptionStep", "encryption_steps"),
+    ("EncryptionActivity", "encryption_activities"),
     ("MemberRowKind", "member_row_kinds"),
     ("RoomRowKind", "room_row_kinds"),
     ("RosterStatus", "roster_statuses"),
@@ -291,6 +315,11 @@ const SCENARIO_SOURCES: &[ScenarioSource] = &[
     },
     ScenarioSource {
         file: "src/adapters/demo/identity.rs",
+        arms_between: ("fn apply(scenario: &mut Scenario, flag: &str) {", "\n}"),
+        ignored: &[],
+    },
+    ScenarioSource {
+        file: "src/adapters/demo/encryption.rs",
         arms_between: ("fn apply(scenario: &mut Scenario, flag: &str) {", "\n}"),
         ignored: &[],
     },

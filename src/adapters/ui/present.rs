@@ -13,7 +13,7 @@ use super::schema::{
 };
 use crate::commands::messages::{UserMessage, UserMessageKind};
 use crate::commands::view::RoomLogView;
-use crate::domain::identity::{IdentityAlert, RoomAlert, SessionsOf};
+use crate::domain::identity::{IdentityAlert, RoomAlert, SessionAlert};
 use crate::domain::media::{AudioKind, AudioMeta, Waveform};
 use crate::domain::member_name::{MemberName, NamedUser, isolated};
 use crate::domain::message::{
@@ -398,14 +398,14 @@ pub fn identity_banner(alert: Option<&IdentityAlert>) -> IdentityBanner<'_> {
     let (kind, person) = match alert {
         None => (IdentityAlertKind::None, None),
         Some(IdentityAlert::OwnIdentityReset) => (IdentityAlertKind::OwnIdentityReset, None),
-        Some(IdentityAlert::Room(RoomAlert::UnverifiedSessions(SessionsOf::You(_)))) => {
-            (IdentityAlertKind::OwnUnverifiedSessions, None)
+        Some(IdentityAlert::Session(SessionAlert::Unverified)) => {
+            (IdentityAlertKind::SessionUnverified, None)
+        }
+        Some(IdentityAlert::Session(SessionAlert::NotSetUp)) => {
+            (IdentityAlertKind::EncryptionNotSetUp, None)
         }
         Some(IdentityAlert::Room(RoomAlert::NoLongerVerified(user))) => {
             (IdentityAlertKind::NoLongerVerified, Some(user))
-        }
-        Some(IdentityAlert::Room(RoomAlert::UnverifiedSessions(SessionsOf::Member(user)))) => {
-            (IdentityAlertKind::UnverifiedSessions, Some(user))
         }
         Some(IdentityAlert::Room(RoomAlert::IdentityReset(user))) => {
             (IdentityAlertKind::IdentityReset, Some(user))
@@ -413,7 +413,7 @@ pub fn identity_banner(alert: Option<&IdentityAlert>) -> IdentityBanner<'_> {
     };
     let user_id = match alert {
         Some(IdentityAlert::Room(alert)) => alert.user_id(),
-        Some(IdentityAlert::OwnIdentityReset) | None => "",
+        Some(IdentityAlert::OwnIdentityReset | IdentityAlert::Session(_)) | None => "",
     };
     IdentityBanner {
         kind,
@@ -502,6 +502,7 @@ pub fn verification_cancellation(reason: &VerificationCancellation) -> UserMessa
         VerificationCancellation::TimedOut => UserMessageKind::VerificationTimedOut,
         VerificationCancellation::AcceptFailed => UserMessageKind::VerificationSasAcceptFailed,
         VerificationCancellation::Declined => UserMessageKind::VerificationDeclined,
+        VerificationCancellation::Withdrawn => UserMessageKind::VerificationWithdrawn,
         VerificationCancellation::Mismatch => UserMessageKind::VerificationMismatch,
         VerificationCancellation::AcceptedElsewhere => {
             UserMessageKind::VerificationAcceptedElsewhere

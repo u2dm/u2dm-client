@@ -1,5 +1,6 @@
 use std::path::PathBuf;
 
+use super::encryption::EncryptionOutcome;
 use super::establish::EstablishedSession;
 use super::invites::Answer;
 use super::room_info::{ActionOutcome, RosterOutcome};
@@ -8,6 +9,7 @@ use super::user_info::{DmOutcome, ReadOutcome};
 use crate::commands::messages::{UserMessage, UserMessageKind};
 use crate::commands::view::LoginActivity;
 use crate::domain::auth::ServerInfo;
+use crate::domain::encryption::{AccountEncryption, IdentityOutcome};
 use crate::domain::identity::{OwnIdentity, RoomAlert};
 use crate::domain::image_pack::PackId;
 use crate::domain::media::PickedAttachment;
@@ -115,7 +117,33 @@ pub(super) enum AppEvent {
     Mentions(MentionsEvent),
     Packs(PacksEvent),
     Identity(IdentityEvent),
+    Encryption(EncryptionEvent),
     RoomLogGrew,
+}
+
+pub(super) enum EncryptionEvent {
+    Changed {
+        session: u64,
+        state: AccountEncryption,
+    },
+    IdentitySettled {
+        session: u64,
+        outcome: Option<IdentityOutcome>,
+    },
+    ActionSettled {
+        request: u64,
+        outcome: EncryptionOutcome,
+    },
+}
+
+impl EncryptionEvent {
+    fn label(&self) -> &'static str {
+        match self {
+            Self::Changed { .. } => "EncryptionChanged",
+            Self::IdentitySettled { .. } => "IdentitySetupSettled",
+            Self::ActionSettled { .. } => "EncryptionActionSettled",
+        }
+    }
 }
 
 pub(super) enum IdentityEvent {
@@ -349,6 +377,7 @@ impl AppEvent {
             Self::Mentions(event) => event.label(),
             Self::Packs(event) => event.label(),
             Self::Identity(event) => event.label(),
+            Self::Encryption(event) => event.label(),
             Self::RoomLogGrew => "RoomLogGrew",
         }
     }

@@ -46,17 +46,18 @@ use super::props::{BoolProp, IntProp, StringProp, UiProps};
 use super::router::{EditedRow, EditedText};
 use super::schema::{
     attachment_kinds, audio_kinds, body_line_fields, body_piece_fields, child_accesses,
-    connection_states, decryption_failures, deliveries, direct_chats, emoji_arts, enum_props,
+    connection_states, decryption_failures, deliveries, direct_chats, emoji_arts,
+    encryption_activities, encryption_standings, encryption_steps, enum_props,
     identity_alert_kinds, identity_trusts, invite_answers, invite_kinds, log_levels,
     log_line_fields, login_activities, login_methods, login_phases, media_failures, media_states,
     member_roles, member_row_fields, member_row_kinds, message_fields, message_kinds, model_props,
     notify_modes, pack_cell_fields, pack_origins, pack_row_fields, pack_surfaces, pack_tab_fields,
     pending_moderations, poll_answer_fields, poll_phases, preview_kinds, reaction_fields,
-    reaction_sends, reactor_fields, readers_statuses, room_fields, room_info_placements,
-    room_memberships, room_row_kinds, room_scopes, roster_statuses, send_states, service_kinds,
-    shield_reasons, shields, simple_callbacks, source_encryptions, source_statuses,
-    space_child_fields, space_fields, space_index_statuses, spoiler_states, timeline_states,
-    user_message_kinds, verification_activities, verification_phases,
+    reaction_sends, reactor_fields, readers_statuses, recovery_statuses, room_fields,
+    room_info_placements, room_memberships, room_row_kinds, room_scopes, roster_statuses,
+    send_states, service_kinds, shield_reasons, shields, simple_callbacks, source_encryptions,
+    source_statuses, space_child_fields, space_fields, space_index_statuses, spoiler_states,
+    timeline_states, user_message_kinds, verification_activities, verification_phases,
 };
 use super::session::active_models;
 use super::video::{self, millis_to_duration};
@@ -66,11 +67,12 @@ use crate::commands::effects::{Effect, VerificationActivity};
 use crate::commands::messages::{UserMessage, UserMessageKind};
 use crate::commands::ui::{TimelineVisibility, ViewportChanged};
 use crate::commands::view::{
-    AppViewState, AttachmentKind, ChildAccess, DirectChat, LoginActivity, LoginStep, PendingAnswer,
-    PendingModeration, ReadersStatus, RoomInfoPlacement, RoomScope, RosterStatus, SourceState,
-    SpaceIndexStatus,
+    AppViewState, AttachmentKind, ChildAccess, DirectChat, EncryptionActivity, EncryptionStep,
+    LoginActivity, LoginStep, PendingAnswer, PendingModeration, ReadersStatus, RoomInfoPlacement,
+    RoomScope, RosterStatus, SourceState, SpaceIndexStatus,
 };
 use crate::domain::auth::LoginMethod;
+use crate::domain::encryption::{Recovery, Standing};
 use crate::domain::image_pack::PackOrigin;
 use crate::domain::invite::InviteKind;
 use crate::domain::media::AudioKind;
@@ -246,6 +248,10 @@ invite_answers!(impl_slint_enum PendingAnswer "InviteAnswer";);
 pending_moderations!(impl_slint_enum PendingModeration "Moderation";);
 identity_trusts!(impl_slint_enum IdentityTrust "IdentityTrust";);
 identity_alert_kinds!(impl_slint_enum IdentityAlertKind "IdentityAlertKind";);
+encryption_standings!(impl_slint_enum Standing "EncryptionStanding";);
+recovery_statuses!(impl_slint_enum Recovery "RecoveryStatus";);
+encryption_steps!(impl_slint_enum EncryptionStep "EncryptionStep";);
+encryption_activities!(impl_slint_enum EncryptionActivity "EncryptionActivity";);
 preview_kinds!(impl_slint_enum MessagePreviewKind "PreviewKind";);
 audio_kinds!(impl_slint_enum AudioKind "AudioKind";);
 service_kinds!(impl_slint_enum ServiceKind "ServiceKind";);

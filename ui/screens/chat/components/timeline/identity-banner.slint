@@ -28,30 +28,30 @@ export component IdentityBanner inherits Rectangle {
                 grave: true,
             };
         }
+        if kind == IdentityAlertKind.session-unverified {
+            return {
+                title: @tr("This session isn't verified"),
+                body: @tr("Verify it with another session or your recovery key. Until then, U2DM won't send encrypted messages from it."),
+                action: @tr("Verify"),
+                action-label: @tr("Verify this session"),
+                grave: false,
+            };
+        }
+        if kind == IdentityAlertKind.encryption-not-set-up {
+            return {
+                title: @tr("Encryption isn't set up"),
+                body: @tr("U2DM couldn't create the keys that let your sessions trust each other, so it won't send encrypted messages."),
+                action: @tr("Details"),
+                action-label: @tr("Show why encryption isn't set up"),
+                grave: false,
+            };
+        }
         if kind == IdentityAlertKind.no-longer-verified {
             return {
                 title: @tr("Verification lost"),
                 body: @tr("You verified {}, but their identity has changed since, or yours has. U2DM won't send encrypted messages here until you withdraw the verification.", name),
                 action: @tr("Withdraw verification"),
                 action-label: @tr("Withdraw your verification of {}", name),
-                grave: true,
-            };
-        }
-        if kind == IdentityAlertKind.own-unverified-sessions {
-            return {
-                title: @tr("Message not sent"),
-                body: @tr("Not all of your sessions are verified, so your message is waiting. Verify them, or send anyway."),
-                action: @tr("Send anyway"),
-                action-label: @tr("Send to your unverified sessions anyway"),
-                grave: true,
-            };
-        }
-        if kind == IdentityAlertKind.unverified-sessions {
-            return {
-                title: @tr("Message not sent"),
-                body: @tr("{} has not verified all of their sessions, so your message is waiting. Ask them to, or send anyway.", name),
-                action: @tr("Send anyway"),
-                action-label: @tr("Send to the unverified sessions of {} anyway", name),
                 grave: true,
             };
         }
@@ -72,7 +72,7 @@ export component IdentityBanner inherits Rectangle {
         } else if IdentityAlertView.kind == IdentityAlertKind.identity-reset {
             Actions.accept-identity(IdentityAlertView.user-id);
         } else {
-            Actions.send-anyway(IdentityAlertView.user-id);
+            Actions.open-encryption();
         }
     }
 
