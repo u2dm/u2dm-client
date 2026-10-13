@@ -101,12 +101,30 @@ export component MessageInput inherits Rectangle {
     property <int> edit-requests: Composer.edit-requests;
 
     property <length> surface-inset: Metrics.timeline-inset;
+    property <bool> composing: root.message != "";
+    property <int> edits: field.edits;
 
     background: AppStyle.composer-gradient;
     height: field.height + root.surface-inset;
 
     changed edit-requests => {
         root.begin-edit(Composer.requested-edit, Composer.requested-edit.original);
+    }
+
+    changed room-id => {
+        root.report-activity();
+    }
+
+    changed composing => {
+        root.report-activity();
+    }
+
+    changed edits => {
+        root.report-activity();
+    }
+
+    function report-activity() {
+        Actions.composer-changed(root.room-id, root.composing, root.edits);
     }
 
     function submit() {

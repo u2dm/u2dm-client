@@ -14,6 +14,7 @@ use crate::domain::encryption::{AccountEncryption, IdentityOutcome};
 use crate::domain::identity::{OwnIdentity, RoomAlert};
 use crate::domain::image_pack::PackId;
 use crate::domain::media::PickedAttachment;
+use crate::domain::member_name::NamedUser;
 use crate::domain::message::{MessageEdit, PinnedMessage};
 use crate::domain::room::RoomId;
 use crate::domain::room_info::{Reader, RoomAbout, RosterMember};
@@ -79,6 +80,10 @@ pub(super) enum AppEvent {
     PinnedChanged {
         watch: u64,
         messages: Vec<PinnedMessage>,
+    },
+    TypistsChanged {
+        watch: u64,
+        typists: Vec<NamedUser>,
     },
     SpaceIndexPaged {
         generation: u64,
@@ -365,6 +370,7 @@ impl AppEvent {
             Self::SubmissionSettled { .. } => "SubmissionSettled",
             Self::EditUnsaved { .. } => "EditUnsaved",
             Self::PinnedChanged { .. } => "PinnedChanged",
+            Self::TypistsChanged { .. } => "TypistsChanged",
             Self::SpaceIndexPaged { .. } => "SpaceIndexPaged",
             Self::SpaceIndexAvatarsReady { .. } => "SpaceIndexAvatarsReady",
             Self::SpaceChildJoinSettled { .. } => "SpaceChildJoinSettled",

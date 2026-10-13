@@ -12,7 +12,8 @@ import { CloseWatch } from "../../../../components/close-watch.slint";
 import { TimelineState } from "../../../../enums.slint";
 import { ClickArea } from "../../../../components/a11y.slint";
 import { CopyNotifier } from "../../../../components/copier.slint";
-import { AudioView, DirectoryView, RoomView } from "../../../../views.slint";
+import { AudioView, DirectoryView, RoomView, TypingView } from "../../../../views.slint";
+import { TypingLine } from "../../../../messages.slint";
 import { Actions } from "../../../../actions.slint";
 import { LocalState, ReplySwipe, RoomMenu, RoomMenuOrigin, RoomMenuReturn, RoomSearch, Shell } from "../../../../local.slint";
 import { StatusPill } from "../../../../components/status-pill.slint";
@@ -150,6 +151,9 @@ export component TimelineView inherits Rectangle {
                     title: RoomView.selected-room-name;
                     members: RoomView.selected-room-members;
                     encrypted: RoomView.selected-room-encrypted;
+                    typing: TypingView.room-id == root.room-id
+                        ? TypingLine.text(TypingView.count, TypingView.first, TypingView.second)
+                        : "";
                 }
             }
         }

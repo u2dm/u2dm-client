@@ -18,7 +18,7 @@ use app::AppService;
 use app::input::CommandSender;
 use commands::effects::Effect;
 use commands::sync::DirectoryUpdate;
-use commands::ui::{TimelineVisibility, UiCommand, ViewportChanged};
+use commands::ui::{ComposerActivity, TimelineVisibility, UiCommand, ViewportChanged};
 use commands::view::AppViewState;
 use composition::Backend;
 use error::Result;
@@ -129,8 +129,9 @@ fn run(room_logs: Arc<RoomLogs>) -> Result<()> {
     let (dir_in_tx, dir_in_rx) = mpsc::unbounded_channel::<DirectoryUpdate>();
     let (scroll_tx, scroll_rx) = watch::channel::<ViewportChanged>(ViewportChanged::initial());
     let (visibility_tx, visibility_rx) = watch::channel(TimelineVisibility::default());
+    let (composer_tx, composer_rx) = watch::channel(ComposerActivity::default());
 
-    ui.register_callbacks(&cmd_tx, &scroll_tx, &visibility_tx)?;
+    ui.register_callbacks(&cmd_tx, &scroll_tx, &visibility_tx, &composer_tx)?;
     size_window_for_demo(&ui);
     configure_demo_audio();
 
@@ -156,7 +157,7 @@ fn run(room_logs: Arc<RoomLogs>) -> Result<()> {
     );
     let service_handle = tokio::spawn(async move {
         service
-            .run(inbox, dir_in_rx, scroll_rx, visibility_rx)
+            .run(inbox, dir_in_rx, scroll_rx, visibility_rx, composer_rx)
             .await;
     });
 

@@ -9,7 +9,7 @@ use crate::commands::view::{
     EncryptionView, IdentityAlertView, InviteView, LifecycleView, LoginStep, MentionsView,
     PackView, PaginationView, PinnedView, ReadersView, RoomInfoView, RoomLogView, RoomMenuTarget,
     RosterRow, SourceState, SpaceIndexRow, SpaceIndexView, SpaceMatch, Toast, TrackFile,
-    UnsentMessage, UpgradeView, UserInfoView, VideoView,
+    TypingView, UnsentMessage, UpgradeView, UserInfoView, VideoView,
 };
 use crate::domain::encryption::KeyStorage;
 use crate::domain::image_pack::{ImagePack, ImageUsage, PackOrigin, PackTitle};
@@ -42,6 +42,7 @@ pub struct ViewDto {
     unsent: Option<UnsentDto>,
     identity_alert: IdentityAlertDto,
     upgrade: UpgradeDto,
+    typing: TypingDto,
     encryption: EncryptionDto,
     toast: ToastDto,
     message_link: LinkDto,
@@ -67,6 +68,18 @@ struct UpgradeDto {
     successor_id: Option<String>,
     predecessor: &'static str,
     predecessor_id: Option<String>,
+}
+
+#[derive(Serialize)]
+struct TypingDto {
+    room_id: Option<String>,
+    typists: Vec<TypistDto>,
+}
+
+#[derive(Serialize)]
+struct TypistDto {
+    user_id: String,
+    shown: String,
 }
 
 #[derive(Serialize)]
@@ -485,6 +498,7 @@ pub fn view(source: &AppViewState) -> ViewDto {
         unsent: source.unsent.as_ref().map(unsent),
         identity_alert: identity_alert(&source.identity_alert),
         upgrade: upgrade(&source.upgrade),
+        typing: typing(&source.typing),
         encryption: encryption(&source.encryption),
         toast: toast(&source.toast),
         message_link: link(&source.message_link),
@@ -513,6 +527,21 @@ fn upgrade(source: &UpgradeView) -> UpgradeDto {
         successor_id: source.successor.room_id().map(ToString::to_string),
         predecessor: names::upgrade_link(&source.predecessor),
         predecessor_id: source.predecessor.room_id().map(ToString::to_string),
+    }
+}
+
+fn typing(source: &TypingView) -> TypingDto {
+    TypingDto {
+        room_id: source.room_id.as_ref().map(ToString::to_string),
+        typists: source
+            .typists
+            .users()
+            .iter()
+            .map(|user| TypistDto {
+                user_id: user.user_id.clone(),
+                shown: user.shown(),
+            })
+            .collect(),
     }
 }
 

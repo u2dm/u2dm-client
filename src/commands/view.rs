@@ -18,6 +18,7 @@ use crate::domain::room_log::RoomLog;
 use crate::domain::space_index::SpaceChild;
 use crate::domain::sync::{ConnectionStatus, ReauthReason};
 use crate::domain::timeline::{EventSource, OlderHistory};
+use crate::domain::typing::Typists;
 use crate::domain::user_info::UserProfile;
 
 #[derive(Clone, Default)]
@@ -39,6 +40,7 @@ pub struct AppViewState {
     pub unsent: Option<UnsentMessage>,
     pub identity_alert: IdentityAlertView,
     pub upgrade: UpgradeView,
+    pub typing: TypingView,
     pub encryption: EncryptionView,
     pub toast: Toast,
     pub message_link: CopiedLink,
@@ -201,6 +203,12 @@ pub struct UpgradeView {
     pub room_id: Option<RoomId>,
     pub successor: UpgradeLink,
     pub predecessor: UpgradeLink,
+}
+
+#[derive(Clone, Default, PartialEq, Eq)]
+pub struct TypingView {
+    pub room_id: Option<RoomId>,
+    pub typists: Typists,
 }
 
 #[derive(Clone, Default, PartialEq, Eq)]

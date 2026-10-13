@@ -18,6 +18,7 @@ pub mod room_search;
 pub mod space_index;
 pub mod sync;
 pub mod timeline;
+pub mod typing;
 pub mod user_info;
 pub mod verification;
 pub mod viewport;

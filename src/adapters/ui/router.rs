@@ -7,7 +7,7 @@ use super::props::send_command;
 use super::schema::{notify_modes, simple_callbacks, variant_named};
 use crate::app::input::CommandSender;
 use crate::commands::ui::{
-    MessageDraft, ReplyDraft, TimelineVisibility, UiCommand, ViewportChanged,
+    ComposerActivity, MessageDraft, ReplyDraft, TimelineVisibility, UiCommand, ViewportChanged,
 };
 use crate::domain::auth::LoginCredentials;
 use crate::domain::emote::ComposerText;
@@ -547,5 +547,21 @@ pub fn timeline_visibility(visibility_tx: &watch::Sender<TimelineVisibility>, vi
     };
     if visibility_tx.send(visibility).is_err() {
         tracing::debug!("timeline visibility receiver closed");
+    }
+}
+
+pub fn composer_changed(
+    composer_tx: &watch::Sender<ComposerActivity>,
+    room_id: String,
+    composing: bool,
+    edits: i32,
+) {
+    let activity = ComposerActivity {
+        room_id: optional_room(room_id),
+        composing,
+        edits,
+    };
+    if composer_tx.send(activity).is_err() {
+        tracing::debug!("composer activity receiver closed");
     }
 }

@@ -1,3 +1,4 @@
+import { Palette } from "std-widgets.slint";
 import { IconDisplay, IconSet } from "@lucide";
 import { AppStyle, Fonts, IconSize, Space, Weight } from "../../../theme.slint";
 
@@ -5,6 +6,7 @@ export component HeaderTitle inherits VerticalLayout {
     in property <string> title;
     in property <int> members;
     in property <bool> encrypted;
+    in property <string> typing;
 
     alignment: center;
     spacing: Space.xs;
@@ -31,7 +33,14 @@ export component HeaderTitle inherits VerticalLayout {
         }
     }
 
-    if root.members > 0: Text {
+    if root.typing != "": Text {
+        text: root.typing;
+        font-size: Fonts.body-small;
+        color: Palette.accent-background;
+        overflow: elide;
+    }
+
+    if root.typing == "" && root.members > 0: Text {
         text: @tr("{n} member" | "{n} members" % root.members);
         font-size: Fonts.body-small;
         color: AppStyle.foreground-muted;

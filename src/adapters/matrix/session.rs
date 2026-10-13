@@ -13,7 +13,8 @@ use super::image_packs::MatrixImagePacks;
 use super::media::{MatrixMedia, MediaService};
 use super::profile::PronounCache;
 use super::rooms::{
-    MatrixInvites, MatrixRoomInfo, MatrixSpaceIndex, MatrixSpaceOrder, MatrixSync, MatrixUpgrades,
+    MatrixInvites, MatrixRoomInfo, MatrixSpaceIndex, MatrixSpaceOrder, MatrixSync, MatrixTyping,
+    MatrixUpgrades,
 };
 use super::server_logout;
 use super::store::StoreLayout;
@@ -143,16 +144,19 @@ pub(super) async fn authenticate(
 ) -> AuthenticatedSession {
     media.open(&account).await;
     let matrix = Arc::new(ClientHandle {
-        client: RwLock::new(Some(client)),
+        client: RwLock::new(Some(client.clone())),
         layout,
         account,
         media,
     });
 
     let verification = Arc::new(MatrixVerification::new(Arc::clone(&matrix)));
+    let typing = Arc::new(MatrixTyping::new(Arc::clone(&matrix), &client));
     let pronouns = Arc::new(PronounCache::default());
-    let resources: Vec<Arc<dyn SessionResource>> =
-        vec![Arc::clone(&verification) as Arc<dyn SessionResource>];
+    let resources: Vec<Arc<dyn SessionResource>> = vec![
+        Arc::clone(&verification) as Arc<dyn SessionResource>,
+        Arc::clone(&typing) as Arc<dyn SessionResource>,
+    ];
 
     AuthenticatedSession {
         session,
@@ -170,6 +174,7 @@ pub(super) async fn authenticate(
         space_index: Arc::new(MatrixSpaceIndex::new(Arc::clone(&matrix))),
         invites: Arc::new(MatrixInvites::new(Arc::clone(&matrix))),
         upgrades: Arc::new(MatrixUpgrades::new(Arc::clone(&matrix))),
+        typing,
         room_info: Arc::new(MatrixRoomInfo::new(Arc::clone(&matrix))),
         user_info: Arc::new(MatrixUserInfo::new(Arc::clone(&matrix), pronouns)),
         image_packs: Arc::new(MatrixImagePacks::new(Arc::clone(&matrix))),

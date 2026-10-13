@@ -14,6 +14,7 @@ use crate::domain::encryption::{
 use crate::domain::identity::{OwnIdentity, RoomAlert};
 use crate::domain::image_pack::{ImagePack, PackId};
 use crate::domain::media::{MediaRendition, OutgoingAttachment, WaveformNeed};
+use crate::domain::member_name::NamedUser;
 use crate::domain::message::{MessageEdit, PinChange, PinnedMessage};
 use crate::domain::poll::PollDraft;
 use crate::domain::room::{NotifyMode, RoomId};
@@ -145,6 +146,7 @@ pub struct AuthenticatedSession {
     pub space_index: Arc<dyn SpaceIndexPort>,
     pub invites: Arc<dyn InvitePort>,
     pub upgrades: Arc<dyn UpgradePort>,
+    pub typing: Arc<dyn TypingPort>,
     pub room_info: Arc<dyn RoomInfoPort>,
     pub user_info: Arc<dyn UserInfoPort>,
     pub image_packs: Arc<dyn ImagePackPort>,
@@ -225,6 +227,16 @@ pub trait InvitePort: Send + Sync {
 pub trait UpgradePort: Send + Sync {
     async fn join_successor(&self, room_id: &RoomId) -> Result<()>;
     async fn join_predecessor(&self, room_id: &RoomId) -> Result<()>;
+}
+
+#[async_trait]
+pub trait TypingPort: Send + Sync {
+    async fn follow_typing(
+        &self,
+        room_id: &RoomId,
+        typists_tx: mpsc::Sender<Vec<NamedUser>>,
+    ) -> Result<()>;
+    async fn notify_typing(&self, room_id: &RoomId, typing: bool) -> Result<()>;
 }
 
 #[async_trait]

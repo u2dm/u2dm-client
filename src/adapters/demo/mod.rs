@@ -28,6 +28,7 @@ mod stickers;
 mod storage;
 mod sync;
 mod timeline;
+mod typing;
 mod upgrades;
 mod user_info;
 mod verification;

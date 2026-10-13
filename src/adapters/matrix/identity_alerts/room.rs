@@ -8,9 +8,8 @@ use matrix_sdk::ruma::{OwnedUserId, UserId};
 use matrix_sdk_base::crypto::{IdentityState, IdentityStatusChange, RoomIdentityState};
 use tokio::sync::mpsc;
 
-use crate::adapters::matrix::member_name::member_name;
+use crate::adapters::matrix::member_name::named_member;
 use crate::domain::identity::RoomAlert;
-use crate::domain::member_name::{MemberName, NamedUser};
 use crate::error::{AppError, Result};
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -138,23 +137,11 @@ fn note(changes: &mut Changes, batch: Vec<IdentityStatusChange>) {
 async fn alerts(room: &Room, changes: &Changes) -> Vec<RoomAlert> {
     let mut alerts = Vec::with_capacity(changes.len());
     for (user, change) in changes {
-        let user = named(room, user).await;
+        let user = named_member(room, user).await;
         alerts.push(match change {
             Change::NoLongerVerified => RoomAlert::NoLongerVerified(user),
             Change::Reset => RoomAlert::IdentityReset(user),
         });
     }
     alerts
-}
-
-async fn named(room: &Room, user: &UserId) -> NamedUser {
-    let name = match room.get_member_no_sync(user).await {
-        Ok(Some(member)) => member_name(room, &member).await,
-        Ok(None) => MemberName::Unset,
-        Err(e) => {
-            tracing::debug!(%user, "could not read the member's name: {e}");
-            MemberName::Unset
-        }
-    };
-    NamedUser::new(user.to_string(), name)
 }

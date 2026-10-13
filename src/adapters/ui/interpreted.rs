@@ -66,7 +66,7 @@ use super::{audio, emoji, emote, mention, router};
 use crate::app::input::CommandSender;
 use crate::commands::effects::{Effect, VerificationActivity};
 use crate::commands::messages::{UserMessage, UserMessageKind};
-use crate::commands::ui::{TimelineVisibility, ViewportChanged};
+use crate::commands::ui::{ComposerActivity, TimelineVisibility, ViewportChanged};
 use crate::commands::view::{
     AppViewState, AttachmentKind, ChildAccess, DirectChat, EncryptionActivity, EncryptionStep,
     LoginActivity, LoginStep, PendingAnswer, PendingModeration, ReadersStatus, RoomInfoPlacement,
@@ -124,6 +124,7 @@ mod names {
         pub const PLACE_EMOTE: &str = "place-emote";
         pub const SCROLL_POSITION_CHANGED: &str = "scroll-position-changed";
         pub const TIMELINE_VISIBILITY_CHANGED: &str = "timeline-visibility-changed";
+        pub const COMPOSER_CHANGED: &str = "composer-changed";
     }
 
     pub mod emoji_store {
@@ -871,6 +872,7 @@ impl SlintUiAdapter {
         cmd_tx: &CommandSender,
         scroll_tx: &watch::Sender<ViewportChanged>,
         visibility_tx: &watch::Sender<TimelineVisibility>,
+        composer_tx: &watch::Sender<ComposerActivity>,
     ) -> Result<()> {
         setup_emoji_store(&self.instance)?;
 
@@ -973,7 +975,18 @@ impl SlintUiAdapter {
                 router::timeline_visibility(&visibility_tx, bool_arg(args, 0));
                 Value::Void
             },
-        )
+        )?;
+
+        let composer_tx = composer_tx.clone();
+        bind_action(&self.instance, callback::COMPOSER_CHANGED, move |args| {
+            router::composer_changed(
+                &composer_tx,
+                string_arg(args, 0),
+                bool_arg(args, 1),
+                int_arg(args, 2).unwrap_or_default(),
+            );
+            Value::Void
+        })
     }
 
     pub fn spawn_event_handler(

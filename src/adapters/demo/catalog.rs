@@ -5,7 +5,7 @@ use std::process::ExitCode;
 use super::{
     attachments, audio, encryption, identity, invites, login, logout, message_menu, names, pinned,
     polls, reactions, receipts, richtext, room_info, shields, space_index, stickers, sync,
-    timeline, upgrades, user_info, verification, videos,
+    timeline, typing, upgrades, user_info, verification, videos,
 };
 
 pub struct Flag {
@@ -39,6 +39,7 @@ pub fn all() -> &'static [&'static Scenarios] {
         &space_index::CATALOG,
         &invites::CATALOG,
         &upgrades::CATALOG,
+        &typing::CATALOG,
         &room_info::CATALOG,
         &user_info::CATALOG,
         &identity::CATALOG,

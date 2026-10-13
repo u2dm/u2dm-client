@@ -41,7 +41,7 @@ use crate::commands::view::{
     EncryptionDialog, EncryptionStep, EncryptionView, IdentityAlertView, InviteView, LifecycleView,
     LoginStep, MentionsView, NowPlaying, PackView, PaginationView, PinnedView, ReadersView,
     RoomCard, RoomInfoView, RoomLogView, RoomMenuTarget, SourceState, SpaceIndexView, Toast,
-    TrackFile, UnsentMessage, UpgradeView, UserCard, UserInfoView, VideoView,
+    TrackFile, TypingView, UnsentMessage, UpgradeView, UserCard, UserInfoView, VideoView,
 };
 use crate::domain::encryption::KeyStorage;
 use crate::domain::invite::{Invite, InviteList};
@@ -372,6 +372,7 @@ fn apply_snapshot<B: UiBackend>(
         unsent,
         identity_alert,
         upgrade,
+        typing,
         encryption,
         toast,
         message_link,
@@ -426,18 +427,14 @@ fn apply_snapshot<B: UiBackend>(
         apply_unsent(w, unsent.as_ref());
     }
     apply_composer_banners(w, last, identity_alert, upgrade);
+    apply_typing(w, last.map(|l| &l.typing), typing);
     if last.is_none_or(|l| l.encryption != *encryption) {
         apply_encryption(w, encryption);
     }
     if last.is_none_or(|l| l.toast != *toast) {
         apply_toast(w, toast);
     }
-    if last.is_none_or(|l| l.message_link != *message_link) {
-        apply_message_link(w, message_link);
-    }
-    if last.is_none_or(|l| l.room_link != *room_link) {
-        apply_room_link(w, room_link);
-    }
+    apply_copied_links(w, last, message_link, room_link);
     if last.is_none_or(|l| l.source != *source) {
         apply_source(w, source);
     }
@@ -683,6 +680,20 @@ fn apply_quoted_message(w: &impl UiProps, quoted: QuotedMessage) {
     w.set_string(StringProp::ReadersBody, body);
     w.set_readers_service_kind(service_kind);
     w.set_string(StringProp::ReadersServiceTarget, service_target);
+}
+
+fn apply_copied_links(
+    w: &(impl UiProps + ComponentHandle),
+    last: Option<&AppViewState>,
+    message_link: &CopiedLink,
+    room_link: &CopiedLink,
+) {
+    if last.is_none_or(|l| l.message_link != *message_link) {
+        apply_message_link(w, message_link);
+    }
+    if last.is_none_or(|l| l.room_link != *room_link) {
+        apply_room_link(w, room_link);
+    }
 }
 
 fn apply_message_link(w: &(impl UiProps + ComponentHandle), link: &CopiedLink) {
@@ -1582,6 +1593,28 @@ fn apply_upgrade(w: &impl UiProps, view: &UpgradeView) {
         StringProp::UpgradePredecessorId,
         id(view.predecessor.room_id()),
     );
+}
+
+fn apply_typing(w: &impl UiProps, last: Option<&TypingView>, view: &TypingView) {
+    if last == Some(view) {
+        return;
+    }
+    let typists = view.typists.users();
+    let shown = |at: usize| {
+        typists
+            .get(at)
+            .map_or_else(SharedString::new, |user| SharedString::from(user.shown()))
+    };
+    w.set_string(
+        StringProp::TypingRoomId,
+        SharedString::from(view.room_id.as_deref().unwrap_or_default()),
+    );
+    w.set_int(
+        IntProp::TypingCount,
+        i32::try_from(typists.len()).unwrap_or(i32::MAX),
+    );
+    w.set_string(StringProp::TypingFirst, shown(0));
+    w.set_string(StringProp::TypingSecond, shown(1));
 }
 
 fn apply_encryption(w: &impl UiProps, view: &EncryptionView) {

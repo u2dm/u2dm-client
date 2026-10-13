@@ -77,6 +77,7 @@ export component ComposerField inherits Rectangle {
     out property <length> row-inset: Space.sm;
     out property <int> caret: 0;
     out property <bool> input-focused: text-input.has-focus;
+    out property <int> edits: 0;
 
     callback lead-clicked();
     callback emoji-clicked();
@@ -138,6 +139,7 @@ export component ComposerField inherits Rectangle {
     }
 
     function apply-pending-insert() {
+        root.edits += 1;
         root.text = root.pending-insert.text;
         root.caret = root.pending-insert.caret;
         text-input.set-selection-offsets(root.pending-insert.caret, root.pending-insert.caret);
@@ -239,6 +241,7 @@ export component ComposerField inherits Rectangle {
                             accessible-placeholder-text: root.placeholder;
                             text <=> root.text;
                             edited => {
+                                root.edits += 1;
                                 root.caret = self.cursor-position-byte-offset;
                                 root.keep-scroll-in-range();
                             }

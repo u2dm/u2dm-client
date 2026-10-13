@@ -7,6 +7,7 @@ use matrix_sdk::latest_events::LatestEventValue;
 use matrix_sdk::notification_settings::{
     IsEncrypted, IsOneToOne, NotificationSettings, RoomNotificationMode,
 };
+use matrix_sdk::ruma::OwnedUserId;
 use matrix_sdk::ruma::events::poll::unstable_start::SyncUnstablePollStartEvent;
 use matrix_sdk::ruma::events::room::member::MembershipState;
 use matrix_sdk::ruma::events::room::message::{Relation, RoomMessageEventContent};
@@ -16,14 +17,13 @@ use matrix_sdk::ruma::events::{
     AnyMessageLikeEventContent, AnySyncMessageLikeEvent, AnySyncStateEvent, AnySyncTimelineEvent,
     SyncMessageLikeEvent, SyncStateEvent,
 };
-use matrix_sdk::ruma::{OwnedUserId, UserId};
 use matrix_sdk::{Client, Room};
 use tracing::Instrument;
 
-use crate::adapters::matrix::member_name::member_name;
+use crate::adapters::matrix::member_name::named_member;
 use crate::adapters::matrix::permissions::room_permissions;
 use crate::adapters::matrix::preview::{self, MessagePreview};
-use crate::domain::member_name::{MemberName, NamedUser};
+use crate::domain::member_name::NamedUser;
 use crate::domain::message::{MessagePreviewKind, RichText, ServiceEvent};
 use crate::domain::room::{NotifyMode, Room as DomainRoom, RoomId, Space as DomainSpace};
 
@@ -179,7 +179,7 @@ async fn build_last_message(room: &Room, is_direct: bool) -> LastMessage {
         None
     } else {
         match &sender_id {
-            Some(sender) => Some(named_sender(room, sender).await),
+            Some(sender) => Some(named_member(room, sender).await),
             None => None,
         }
     };
@@ -192,14 +192,6 @@ async fn build_last_message(room: &Room, is_direct: bool) -> LastMessage {
         is_own,
         edited: preview.edited,
     }
-}
-
-async fn named_sender(room: &Room, user_id: &UserId) -> NamedUser {
-    let name = match room.get_member_no_sync(user_id).await {
-        Ok(Some(member)) => member_name(room, &member).await,
-        Ok(None) | Err(_) => MemberName::Unset,
-    };
-    NamedUser::new(user_id.as_str(), name)
 }
 
 fn latest_message_preview(

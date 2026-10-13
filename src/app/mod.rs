@@ -30,6 +30,7 @@ mod space_index;
 mod space_order;
 mod submissions;
 mod task_group;
+mod typing;
 mod upgrades;
 mod user_info;
 mod verification;
@@ -69,6 +70,7 @@ use space_index::{ChildTarget, JoinOutcome, ListedSpace, PageOutcome, SpaceIndex
 use submissions::Submissions;
 use task_group::TaskGroup;
 use tokio::sync::{mpsc, watch};
+use typing::Typing;
 use upgrades::{RoomUpgrades, Toward, UpgradeJoined};
 use user_info::UserInfo;
 use verification::VerificationController;
@@ -77,7 +79,9 @@ use video::VideoController;
 use crate::commands::effects::Effect;
 use crate::commands::messages::{UserMessage, UserMessageKind};
 use crate::commands::sync::DirectoryUpdate;
-use crate::commands::ui::{MessageDraft, TimelineVisibility, UiCommand, ViewportChanged};
+use crate::commands::ui::{
+    ComposerActivity, MessageDraft, TimelineVisibility, UiCommand, ViewportChanged,
+};
 use crate::commands::view::{AppViewState, LoginActivity, LoginStep, Toast};
 use crate::domain::account::AccountScope;
 use crate::domain::auth::ServerInfo;
@@ -205,6 +209,7 @@ pub struct AppService {
     space_index: SpaceIndex,
     invites: Invites,
     upgrades: RoomUpgrades,
+    typing: Typing,
     room_info: RoomInfo,
     user_info: UserInfo,
     message_actions: MessageActions,
@@ -255,6 +260,7 @@ impl AppService {
             space_index: SpaceIndex::new(Arc::clone(&output), events.clone()),
             invites: Invites::new(Arc::clone(&output), events.clone()),
             upgrades: RoomUpgrades::new(Arc::clone(&output), events.clone()),
+            typing: Typing::new(Arc::clone(&output), events.clone()),
             room_info: RoomInfo::new(Arc::clone(&output), events.clone()),
             user_info: UserInfo::new(Arc::clone(&output), events.clone()),
             message_actions: MessageActions::new(Arc::clone(&output), events.clone()),
@@ -284,6 +290,7 @@ impl AppService {
         mut dir_in_rx: mpsc::UnboundedReceiver<DirectoryUpdate>,
         mut scroll_in_rx: watch::Receiver<ViewportChanged>,
         mut visibility_in_rx: watch::Receiver<TimelineVisibility>,
+        mut composer_in_rx: watch::Receiver<ComposerActivity>,
     ) {
         if let Recovery::Blocked(message) = self.session.recover_interrupted_logins().await {
             self.block_sign_in(message);
@@ -291,6 +298,7 @@ impl AppService {
         let mut dir_done = false;
         let mut scroll_done = false;
         let mut visibility_done = false;
+        let mut composer_done = false;
         loop {
             tokio::select! {
                 maybe_input = inbox.recv() => {
@@ -332,6 +340,14 @@ impl AppService {
                     } else {
                         let visibility = *visibility_in_rx.borrow_and_update();
                         self.active_timeline.visibility_changed(visibility);
+                    }
+                }
+                changed = composer_in_rx.changed(), if !composer_done => {
+                    if changed.is_err() {
+                        composer_done = true;
+                    } else {
+                        let activity = composer_in_rx.borrow_and_update().clone();
+                        self.composer_changed(&activity);
                     }
                 }
             }
@@ -1469,6 +1485,9 @@ impl AppService {
             AppEvent::PinnedChanged { watch, messages } => {
                 self.pinned.changed(watch, messages);
             }
+            AppEvent::TypistsChanged { watch, typists } => {
+                self.typing.typists_changed(watch, typists);
+            }
             AppEvent::SpaceIndexPaged {
                 generation,
                 outcome,
@@ -2144,6 +2163,7 @@ impl AppService {
         self.sync_selected_room(Some(&room_id));
         self.follow_pinned(room_id.clone());
         self.follow_identity_alerts(room_id.clone());
+        self.follow_typing(room_id.clone());
         self.open_room(room_id, TimelineFocus::ReadPosition).await;
     }
 
@@ -2151,6 +2171,18 @@ impl AppService {
         if let Some(sync) = self.port(|a| &a.sync) {
             sync.set_selected_room(room_id);
         }
+    }
+
+    fn follow_typing(&mut self, room_id: RoomId) {
+        if let Some(typing) = self.port(|a| &a.typing) {
+            self.typing.retarget(typing, room_id);
+        }
+    }
+
+    fn composer_changed(&mut self, activity: &ComposerActivity) {
+        let port = self.port(|a| &a.typing);
+        self.typing
+            .composer_changed(port, self.selection.room.as_ref(), activity);
     }
 
     fn follow_pinned(&mut self, room_id: RoomId) {
@@ -2266,6 +2298,7 @@ impl AppService {
         self.sync_selected_room(None);
         self.pinned.clear();
         self.identity_alerts.clear();
+        self.typing.clear();
         self.refresh_upgrades();
         self.active_timeline.clear_room(generation).await;
     }
@@ -2329,6 +2362,7 @@ impl AppService {
             self.space_index.restart(),
             self.invites.restart(),
             self.upgrades.restart(),
+            self.typing.restart(),
             self.room_info.restart(),
             self.user_info.restart(),
             self.readers.restart(),
@@ -2444,6 +2478,7 @@ impl AppService {
             self.space_index.shutdown(),
             self.invites.shutdown(),
             self.upgrades.shutdown(),
+            self.typing.shutdown(),
             self.room_info.shutdown(),
             self.user_info.shutdown(),
             self.readers.shutdown(),

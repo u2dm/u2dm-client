@@ -481,3 +481,10 @@ pub enum TimelineVisibility {
     #[default]
     Hidden,
 }
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ComposerActivity {
+    pub room_id: Option<RoomId>,
+    pub composing: bool,
+    pub edits: i32,
+}

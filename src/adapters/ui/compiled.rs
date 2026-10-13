@@ -33,10 +33,11 @@ use u2dm_ui::{
     ServiceKind as UiServiceKind, SessionView, Shield as UiShield, ShieldReason as UiShieldReason,
     SourceEncryption as UiSourceEncryption, SourceStatus as UiSourceStatus, SourceView,
     SpaceChildEntry, SpaceEntry, SpaceIndexStatus as UiSpaceIndexStatus, SpaceIndexView,
-    SpoilerCover, SpoilerState as UiSpoilerState, TextSplice, TimelineState, UnsentView,
-    UpgradeLink as UiUpgradeLink, UpgradeView, UserInfoView, UserMessage as UiUserMessage,
-    UserMessageKind as UiUserMessageKind, VerificationActivity as UiVerificationActivity,
-    VerificationEmoji, VerificationPhase, VerificationView, VideoView, WindowView,
+    SpoilerCover, SpoilerState as UiSpoilerState, TextSplice, TimelineState, TypingView,
+    UnsentView, UpgradeLink as UiUpgradeLink, UpgradeView, UserInfoView,
+    UserMessage as UiUserMessage, UserMessageKind as UiUserMessageKind,
+    VerificationActivity as UiVerificationActivity, VerificationEmoji, VerificationPhase,
+    VerificationView, VideoView, WindowView,
 };
 #[cfg(feature = "demo")]
 use u2dm_ui::{Probe, RoomMenu};
@@ -91,7 +92,7 @@ use super::{audio, emoji, emote, mention, router};
 use crate::app::input::CommandSender;
 use crate::commands::effects::{Effect, VerificationActivity};
 use crate::commands::messages::{UserMessage, UserMessageKind};
-use crate::commands::ui::{TimelineVisibility, ViewportChanged};
+use crate::commands::ui::{ComposerActivity, TimelineVisibility, ViewportChanged};
 use crate::commands::view::{
     AppViewState, AttachmentKind, ChildAccess, DirectChat, EncryptionActivity, EncryptionStep,
     LoginActivity, LoginStep, PendingAnswer, PendingModeration, ReadersStatus, RoomInfoPlacement,
@@ -693,6 +694,7 @@ impl SlintUiAdapter {
         cmd_tx: &CommandSender,
         scroll_tx: &watch::Sender<ViewportChanged>,
         visibility_tx: &watch::Sender<TimelineVisibility>,
+        composer_tx: &watch::Sender<ComposerActivity>,
     ) -> Result<()> {
         setup_emoji_store(&self.window);
 
@@ -781,6 +783,11 @@ impl SlintUiAdapter {
         let visibility_tx = visibility_tx.clone();
         actions(win).on_timeline_visibility_changed(move |visible| {
             router::timeline_visibility(&visibility_tx, visible);
+        });
+
+        let composer_tx = composer_tx.clone();
+        actions(win).on_composer_changed(move |room_id, composing, edits| {
+            router::composer_changed(&composer_tx, room_id.to_string(), composing, edits);
         });
 
         Ok(())

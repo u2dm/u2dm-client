@@ -19,8 +19,8 @@ use super::encryption::{self, EncryptionBook};
 use super::identity::{self, IdentityBook, SendHold};
 use super::{
     attachments, audio, data, invites, login, logout, media, message_menu, pinned, polls,
-    reactions, receipts, room_info, source, space_index, stickers, sync, timeline, upgrades,
-    user_info, verification, videos,
+    reactions, receipts, room_info, source, space_index, stickers, sync, timeline, typing,
+    upgrades, user_info, verification, videos,
 };
 use crate::adapters::{body_emoji, video};
 use crate::domain::auth::{AuthMethod, LoginCredentials, OAuthLoginData, ServerInfo, Session};
@@ -33,7 +33,7 @@ use crate::domain::image_pack::{PackId, PackImage};
 use crate::domain::invite::Invite;
 use crate::domain::link::LauncherSafeUrl;
 use crate::domain::media::{MediaRendition, OutgoingAttachment, WaveformNeed};
-use crate::domain::member_name::MemberName;
+use crate::domain::member_name::{MemberName, NamedUser};
 use crate::domain::message::{
     CustomEmoji, EditTarget, MessageBody, MessageEdit, MessagePreviewKind, PinChange,
     PinnedMessage, ReplyInfo, RichText, SendState, TimelineMessage,
@@ -58,7 +58,7 @@ use crate::ports::matrix::{
     EncryptionPort, IdentityPort, ImagePackPort, InterruptedLogin, InvitePort, LocalDataOwnership,
     MediaPort, PackCatalog, PinnedPort, ProgressSink, RestoreOutcome, RestoreStep, RoomInfoPort,
     SessionPort, SpaceIndexPort, SpaceOrderPort, StoreAdoption, SyncPort, SyncSink, TimelinePort,
-    UpgradePort, UserInfoPort, VerificationPort,
+    TypingPort, UpgradePort, UserInfoPort, VerificationPort,
 };
 use crate::ports::media::MediaCache;
 
@@ -237,6 +237,7 @@ fn authenticated(session: Session) -> AuthenticatedSession {
     let space_index = Arc::clone(&authed);
     let invites = Arc::clone(&authed);
     let upgrades = Arc::clone(&authed);
+    let typing = Arc::clone(&authed);
     let room_info = Arc::clone(&authed);
     let user_info = Arc::clone(&authed);
     let image_packs = Arc::clone(&authed);
@@ -253,6 +254,7 @@ fn authenticated(session: Session) -> AuthenticatedSession {
         space_index,
         invites,
         upgrades,
+        typing,
         room_info,
         user_info,
         image_packs,
@@ -373,6 +375,7 @@ struct DemoAuthed {
     shared_packs: Mutex<HashMap<String, bool>>,
     identity: IdentityBook,
     encryption: EncryptionBook,
+    typing_notices: typing::NoticeClock,
 }
 
 impl DemoAuthed {
@@ -1530,6 +1533,30 @@ impl DemoAuthed {
         }
         self.remember_join(&linked);
         self.echo_join();
+        Ok(())
+    }
+}
+
+#[async_trait]
+impl TypingPort for DemoAuthed {
+    async fn follow_typing(
+        &self,
+        room_id: &RoomId,
+        typists_tx: mpsc::Sender<Vec<NamedUser>>,
+    ) -> Result<()> {
+        let typists = typing::typists_in(room_id);
+        if !typists.is_empty() {
+            typing::type_in_the_room(typists, &typists_tx).await;
+        }
+        Ok(())
+    }
+
+    async fn notify_typing(&self, room_id: &RoomId, is_typing: bool) -> Result<()> {
+        typing::pause_notice().await;
+        if typing::scenario().notices_fail {
+            return Err(unavailable("telling the room you are typing"));
+        }
+        self.typing_notices.notice(room_id, is_typing);
         Ok(())
     }
 }

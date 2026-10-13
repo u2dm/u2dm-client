@@ -56,6 +56,9 @@ macro_rules! string_props {
         UpgradeRoomId UpgradeView "UpgradeView" "room-id" set_room_id get_room_id;
         UpgradeSuccessorId UpgradeView "UpgradeView" "successor-id" set_successor_id get_successor_id;
         UpgradePredecessorId UpgradeView "UpgradeView" "predecessor-id" set_predecessor_id get_predecessor_id;
+        TypingRoomId TypingView "TypingView" "room-id" set_room_id get_room_id;
+        TypingFirst TypingView "TypingView" "first" set_first get_first;
+        TypingSecond TypingView "TypingView" "second" set_second get_second;
         SpaceIndexName SpaceIndexView "SpaceIndexView" "space-name" set_space_name get_space_name;
         RoomInfoRoomId RoomInfoView "RoomInfoView" "room-id" set_room_id get_room_id;
         RoomInfoName RoomInfoView "RoomInfoView" "name" set_name get_name;
@@ -319,6 +322,7 @@ macro_rules! int_props {
         AudioPositionMs AudioView "AudioView" "position-ms" set_position_ms get_position_ms;
         AudioDurationMs AudioView "AudioView" "duration-ms" set_duration_ms get_duration_ms;
         UnsentSubmission UnsentView "UnsentView" "submission" set_submission get_submission;
+        TypingCount TypingView "TypingView" "count" set_count get_count;
         SwipeTravel WindowView "WindowView" "swipe-travel" set_swipe_travel get_swipe_travel;
         ContextPresses WindowView "WindowView" "context-presses" set_context_presses get_context_presses;
         MessageLinkSerial RoomView "RoomView" "message-link-serial" set_message_link_serial get_message_link_serial;

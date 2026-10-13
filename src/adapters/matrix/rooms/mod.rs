@@ -6,6 +6,7 @@ mod hierarchy;
 mod info;
 mod invites;
 mod send_queue;
+mod typing;
 mod upgrades;
 
 use std::future;
@@ -35,6 +36,7 @@ pub(super) use self::hierarchy::MatrixSpaceIndex;
 pub(super) use self::info::MatrixRoomInfo;
 pub(super) use self::invites::MatrixInvites;
 use self::send_queue::SendQueueRecovery;
+pub(super) use self::typing::MatrixTyping;
 pub(super) use self::upgrades::MatrixUpgrades;
 use super::auth;
 use super::media::MediaService;

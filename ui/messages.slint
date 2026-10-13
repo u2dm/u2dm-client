@@ -534,6 +534,21 @@ export global ServiceLabel {
     }
 }
 
+export global TypingLine {
+    public pure function text(count: int, first: string, second: string) -> string {
+        if count <= 0 {
+            return "";
+        }
+        if count == 1 {
+            return @tr("{} is typing…", first);
+        }
+        if count == 2 {
+            return @tr("{} and {} are typing…", first, second);
+        }
+        return @tr("{} and {n} other is typing…" | "{} and {n} others are typing…" % (count - 1), first);
+    }
+}
+
 export global UpgradeLinks {
     public pure function successor(link: UpgradeLink) -> string {
         if link == UpgradeLink.open {
