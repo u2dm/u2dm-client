@@ -61,6 +61,8 @@ pub enum UserMessageKind {
     SpaceOrderSaveFailed,
     PackSettingFailed,
     JoinRoomFailed,
+    JoinNewRoomFailed,
+    JoinOldRoomFailed,
     DeclineInviteFailed,
     LeaveRoomFailed,
     NotifyChangeFailed,

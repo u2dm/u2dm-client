@@ -3,6 +3,7 @@ use std::collections::{BTreeMap, HashSet};
 use matrix_sdk::ruma::UInt;
 use matrix_sdk::ruma::events::poll::start::PollKind;
 use matrix_sdk::ruma::events::room::ImageInfo;
+use matrix_sdk::ruma::events::room::create::RoomCreateEventContent;
 use matrix_sdk::ruma::events::room::message::{
     AudioMessageEventContent, FileMessageEventContent, FormattedBody, ImageMessageEventContent,
     MessageFormat, MessageType, UnstableAmplitude, VideoInfo, VideoMessageEventContent,
@@ -351,6 +352,17 @@ fn room_name_from_change(change: &StateEventContentChange<RoomNameEventContent>)
     }
 }
 
+fn room_creation(change: &StateEventContentChange<RoomCreateEventContent>) -> ServiceEvent {
+    match change {
+        StateEventContentChange::Original { content, .. } if content.predecessor.is_some() => {
+            ServiceEvent::UpgradedRoomCreated
+        }
+        StateEventContentChange::Original { .. } | StateEventContentChange::Redacted(_) => {
+            ServiceEvent::RoomCreated
+        }
+    }
+}
+
 fn other_state_to_service(state: &AnyOtherStateEventContentChange) -> Option<ServiceEvent> {
     Some(match state {
         AnyOtherStateEventContentChange::RoomName(change) => ServiceEvent::RoomNameChanged {
@@ -358,7 +370,8 @@ fn other_state_to_service(state: &AnyOtherStateEventContentChange) -> Option<Ser
         },
         AnyOtherStateEventContentChange::RoomTopic(_) => ServiceEvent::RoomTopicChanged,
         AnyOtherStateEventContentChange::RoomAvatar(_) => ServiceEvent::RoomAvatarChanged,
-        AnyOtherStateEventContentChange::RoomCreate(_) => ServiceEvent::RoomCreated,
+        AnyOtherStateEventContentChange::RoomCreate(change) => room_creation(change),
+        AnyOtherStateEventContentChange::RoomTombstone(_) => ServiceEvent::RoomUpgraded,
         AnyOtherStateEventContentChange::RoomEncryption(_) => ServiceEvent::EncryptionEnabled,
         _ => return None,
     })

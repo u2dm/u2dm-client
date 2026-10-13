@@ -34,9 +34,9 @@ use u2dm_ui::{
     SourceEncryption as UiSourceEncryption, SourceStatus as UiSourceStatus, SourceView,
     SpaceChildEntry, SpaceEntry, SpaceIndexStatus as UiSpaceIndexStatus, SpaceIndexView,
     SpoilerCover, SpoilerState as UiSpoilerState, TextSplice, TimelineState, UnsentView,
-    UserInfoView, UserMessage as UiUserMessage, UserMessageKind as UiUserMessageKind,
-    VerificationActivity as UiVerificationActivity, VerificationEmoji, VerificationPhase,
-    VerificationView, VideoView, WindowView,
+    UpgradeLink as UiUpgradeLink, UpgradeView, UserInfoView, UserMessage as UiUserMessage,
+    UserMessageKind as UiUserMessageKind, VerificationActivity as UiVerificationActivity,
+    VerificationEmoji, VerificationPhase, VerificationView, VideoView, WindowView,
 };
 #[cfg(feature = "demo")]
 use u2dm_ui::{Probe, RoomMenu};
@@ -82,7 +82,7 @@ use super::schema::{
     room_info_placements, room_memberships, room_row_kinds, room_scopes, roster_statuses,
     send_states, service_kinds, shield_reasons, shields, simple_callbacks, source_encryptions,
     source_statuses, space_child_fields, space_fields, space_index_statuses, spoiler_states,
-    string_props, timeline_states, user_message_kinds, verification_activities,
+    string_props, timeline_states, upgrade_links, user_message_kinds, verification_activities,
     verification_phases,
 };
 use super::session::active_models;
@@ -95,7 +95,7 @@ use crate::commands::ui::{TimelineVisibility, ViewportChanged};
 use crate::commands::view::{
     AppViewState, AttachmentKind, ChildAccess, DirectChat, EncryptionActivity, EncryptionStep,
     LoginActivity, LoginStep, PendingAnswer, PendingModeration, ReadersStatus, RoomInfoPlacement,
-    RoomScope, RosterStatus, SourceState, SpaceIndexStatus,
+    RoomScope, RosterStatus, SourceState, SpaceIndexStatus, UpgradeLink,
 };
 use crate::domain::auth::LoginMethod;
 use crate::domain::encryption::{Recovery, Standing};
@@ -390,6 +390,7 @@ roster_statuses!(impl_slint_enum RosterStatus UiRosterStatus;);
 room_info_placements!(impl_slint_enum RoomInfoPlacement UiRoomInfoPlacement;);
 room_memberships!(impl_slint_enum RoomMembership UiRoomMembership;);
 direct_chats!(impl_slint_enum DirectChat UiDirectChat;);
+upgrade_links!(impl_slint_enum UpgradeLink UiUpgradeLink;);
 invite_kinds!(impl_slint_enum InviteKind UiInviteKind;);
 invite_answers!(impl_slint_enum PendingAnswer UiInviteAnswer;);
 pending_moderations!(impl_slint_enum PendingModeration UiModeration;);

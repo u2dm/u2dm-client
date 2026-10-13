@@ -53,6 +53,9 @@ macro_rules! string_props {
         UnsentEditPreview UnsentView "UnsentView" "edit-preview" set_edit_preview get_edit_preview;
         IdentityAlertUserId IdentityAlertView "IdentityAlertView" "user-id" set_user_id get_user_id;
         IdentityAlertName IdentityAlertView "IdentityAlertView" "name" set_name get_name;
+        UpgradeRoomId UpgradeView "UpgradeView" "room-id" set_room_id get_room_id;
+        UpgradeSuccessorId UpgradeView "UpgradeView" "successor-id" set_successor_id get_successor_id;
+        UpgradePredecessorId UpgradeView "UpgradeView" "predecessor-id" set_predecessor_id get_predecessor_id;
         SpaceIndexName SpaceIndexView "SpaceIndexView" "space-name" set_space_name get_space_name;
         RoomInfoRoomId RoomInfoView "RoomInfoView" "room-id" set_room_id get_room_id;
         RoomInfoName RoomInfoView "RoomInfoView" "name" set_name get_name;
@@ -143,6 +146,8 @@ macro_rules! simple_callbacks {
         on_close_invite "close-invite" close_invite plain CloseInvite;
         on_accept_invite "accept-invite" accept_invite room AcceptInvite;
         on_decline_invite "decline-invite" decline_invite room DeclineInvite;
+        on_join_successor "join-successor" join_successor room JoinSuccessor;
+        on_join_predecessor "join-predecessor" join_predecessor room JoinPredecessor;
         on_open_room_info "open-room-info" open_room_info room OpenRoomInfo;
         on_close_room_info "close-room-info" close_room_info plain CloseRoomInfo;
         on_show_room_info_pane "show-room-info-pane" show_room_info_pane plain ShowRoomInfoPane;
@@ -404,6 +409,10 @@ macro_rules! enum_props {
             InviteView "InviteView" "error" set_error get_error;
         IdentityAlertKind set_identity_alert_kind(IdentityAlertKind)
             IdentityAlertView "IdentityAlertView" "kind" set_kind get_kind;
+        UpgradeSuccessor set_upgrade_successor(&UpgradeLink)
+            UpgradeView "UpgradeView" "successor" set_successor get_successor;
+        UpgradePredecessor set_upgrade_predecessor(&UpgradeLink)
+            UpgradeView "UpgradeView" "predecessor" set_predecessor get_predecessor;
         SourceStatus set_source_status(&SourceState)
             SourceView "SourceView" "status" set_status get_status;
         SourceEncryption set_source_encryption(&SourceEncryption)
@@ -582,6 +591,8 @@ macro_rules! user_message_kinds {
         SpaceOrderSaveFailed      SpaceOrderSaveFailed    "space-order-save-failed";
         PackSettingFailed         PackSettingFailed       "pack-setting-failed";
         JoinRoomFailed            JoinRoomFailed          "join-room-failed";
+        JoinNewRoomFailed         JoinNewRoomFailed       "join-new-room-failed";
+        JoinOldRoomFailed         JoinOldRoomFailed       "join-old-room-failed";
         DeclineInviteFailed       DeclineInviteFailed     "decline-invite-failed";
         LeaveRoomFailed           LeaveRoomFailed         "leave-room-failed";
         NotifyChangeFailed        NotifyChangeFailed      "notify-change-failed";
@@ -832,6 +843,16 @@ macro_rules! direct_chats {
     } };
 }
 pub(crate) use direct_chats;
+
+macro_rules! upgrade_links {
+    ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
+        Hidden     Hidden  "hidden";
+        Open(_)    Open    "open";
+        Join(_)    Join    "join";
+        Joining(_) Joining "joining";
+    } };
+}
+pub(crate) use upgrade_links;
 
 macro_rules! invite_kinds {
     ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
@@ -1101,6 +1122,8 @@ macro_rules! service_kinds {
         RoomTopic          RoomTopic          "room-topic";
         RoomAvatar         RoomAvatar         "room-avatar";
         RoomCreated        RoomCreated        "room-created";
+        UpgradedRoomCreated UpgradedRoomCreated "upgraded-room-created";
+        RoomUpgraded       RoomUpgraded       "room-upgraded";
         Encryption         Encryption         "encryption";
         CallStarted        CallStarted        "call-started";
         CallNotification   CallNotification   "call-notification";

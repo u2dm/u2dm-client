@@ -93,6 +93,8 @@ fn changed_facets(before: &DomainRoom, after: &DomainRoom) -> Vec<&'static str> 
         last_message_service,
         last_message_is_own,
         last_message_edited,
+        successor,
+        predecessor,
     } = after;
     let preview_changed = before.last_message_sender != *last_message_sender
         || before.last_message_kind != *last_message_kind
@@ -123,6 +125,10 @@ fn changed_facets(before: &DomainRoom, after: &DomainRoom) -> Vec<&'static str> 
         ("notifications", before.notify != *notify),
         ("activity", before.last_activity_ts != *last_activity_ts),
         ("preview", preview_changed),
+        (
+            "upgrade",
+            before.successor != *successor || before.predecessor != *predecessor,
+        ),
     ]
     .into_iter()
     .filter_map(|(facet, changed)| changed.then_some(facet))

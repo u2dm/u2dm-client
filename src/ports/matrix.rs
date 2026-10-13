@@ -144,6 +144,7 @@ pub struct AuthenticatedSession {
     pub space_order: Arc<dyn SpaceOrderPort>,
     pub space_index: Arc<dyn SpaceIndexPort>,
     pub invites: Arc<dyn InvitePort>,
+    pub upgrades: Arc<dyn UpgradePort>,
     pub room_info: Arc<dyn RoomInfoPort>,
     pub user_info: Arc<dyn UserInfoPort>,
     pub image_packs: Arc<dyn ImagePackPort>,
@@ -218,6 +219,12 @@ pub trait SpaceIndexPort: Send + Sync {
 pub trait InvitePort: Send + Sync {
     async fn accept(&self, room_id: &RoomId) -> Result<()>;
     async fn decline(&self, room_id: &RoomId) -> Result<()>;
+}
+
+#[async_trait]
+pub trait UpgradePort: Send + Sync {
+    async fn join_successor(&self, room_id: &RoomId) -> Result<()>;
+    async fn join_predecessor(&self, room_id: &RoomId) -> Result<()>;
 }
 
 #[async_trait]

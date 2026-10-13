@@ -9,7 +9,7 @@ use crate::commands::view::{
     EncryptionView, IdentityAlertView, InviteView, LifecycleView, LoginStep, MentionsView,
     PackView, PaginationView, PinnedView, ReadersView, RoomInfoView, RoomLogView, RoomMenuTarget,
     RosterRow, SourceState, SpaceIndexRow, SpaceIndexView, SpaceMatch, Toast, TrackFile,
-    UnsentMessage, UserInfoView, VideoView,
+    UnsentMessage, UpgradeView, UserInfoView, VideoView,
 };
 use crate::domain::encryption::KeyStorage;
 use crate::domain::image_pack::{ImagePack, ImageUsage, PackOrigin, PackTitle};
@@ -41,6 +41,7 @@ pub struct ViewDto {
     audio: Option<NowPlayingDto>,
     unsent: Option<UnsentDto>,
     identity_alert: IdentityAlertDto,
+    upgrade: UpgradeDto,
     encryption: EncryptionDto,
     toast: ToastDto,
     message_link: LinkDto,
@@ -57,6 +58,15 @@ struct IdentityAlertDto {
     user_id: Option<String>,
     name: Option<String>,
     busy: bool,
+}
+
+#[derive(Serialize)]
+struct UpgradeDto {
+    room_id: Option<String>,
+    successor: &'static str,
+    successor_id: Option<String>,
+    predecessor: &'static str,
+    predecessor_id: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -203,6 +213,8 @@ struct RoomDto {
     last_message_body: String,
     last_message_is_own: bool,
     last_message_edited: bool,
+    successor: Option<String>,
+    predecessor: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -472,6 +484,7 @@ pub fn view(source: &AppViewState) -> ViewDto {
         audio: audio(&source.audio),
         unsent: source.unsent.as_ref().map(unsent),
         identity_alert: identity_alert(&source.identity_alert),
+        upgrade: upgrade(&source.upgrade),
         encryption: encryption(&source.encryption),
         toast: toast(&source.toast),
         message_link: link(&source.message_link),
@@ -490,6 +503,16 @@ fn identity_alert(source: &IdentityAlertView) -> IdentityAlertDto {
         user_id: (!banner.user_id.is_empty()).then(|| banner.user_id.to_owned()),
         name: (!banner.name.is_empty()).then_some(banner.name),
         busy: source.busy,
+    }
+}
+
+fn upgrade(source: &UpgradeView) -> UpgradeDto {
+    UpgradeDto {
+        room_id: source.room_id.as_ref().map(ToString::to_string),
+        successor: names::upgrade_link(&source.successor),
+        successor_id: source.successor.room_id().map(ToString::to_string),
+        predecessor: names::upgrade_link(&source.predecessor),
+        predecessor_id: source.predecessor.room_id().map(ToString::to_string),
     }
 }
 
@@ -714,6 +737,8 @@ fn room(source: &Room) -> RoomDto {
         last_message_body: source.last_message_body.plain.clone(),
         last_message_is_own: source.last_message_is_own,
         last_message_edited: source.last_message_edited,
+        successor: source.successor.as_ref().map(ToString::to_string),
+        predecessor: source.predecessor.as_ref().map(ToString::to_string),
     }
 }
 

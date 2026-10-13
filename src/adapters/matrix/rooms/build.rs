@@ -146,6 +146,12 @@ async fn build_room(room: &Room, settings: &NotificationSettings) -> DomainRoom 
         last_message_service: last_message.service,
         last_message_is_own: last_message.is_own,
         last_message_edited: last_message.edited,
+        successor: room
+            .successor_room()
+            .map(|successor| RoomId::new(successor.room_id.to_string())),
+        predecessor: room
+            .predecessor_room()
+            .map(|predecessor| RoomId::new(predecessor.room_id.to_string())),
     }
 }
 

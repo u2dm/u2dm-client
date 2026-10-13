@@ -19,7 +19,7 @@ use crate::commands::view::{AppViewState, SpaceHeading, SpaceMatch, Toast};
 use crate::domain::invite::{Invite, InviteList};
 use crate::domain::message::MessagePermissions;
 use crate::domain::poll::PollPermissions;
-use crate::domain::room::{Room, RoomId, RoomList, Space, UnreadFlags};
+use crate::domain::room::{Room, RoomId, RoomList, Space, UnreadFlags, without_replaced};
 use crate::domain::room_search::TitleQuery;
 use crate::domain::sync::{ConnectionStatus, SyncEvent, SyncOutcome};
 use crate::ports::matrix::{SpaceOrderPort, SyncPort, SyncSink};
@@ -235,6 +235,7 @@ enum OrderWriteStep {
 pub(super) struct RoomDirectory {
     output: Arc<dyn AppOutputPort>,
     all_rooms: RoomList,
+    listable: RoomList,
     received_invites: InviteList,
     invites: InviteList,
     spaces: Arc<[Space]>,
@@ -254,6 +255,7 @@ impl RoomDirectory {
         Self {
             output,
             all_rooms: Arc::from(Vec::new()),
+            listable: Arc::from(Vec::new()),
             received_invites: Arc::from(Vec::new()),
             invites: Arc::from(Vec::new()),
             spaces: Arc::from(Vec::new()),
@@ -277,6 +279,7 @@ impl RoomDirectory {
         if !self.connected {
             return false;
         }
+        self.listable = without_replaced(&rooms);
         self.all_rooms = rooms;
         let pending_changed = self.settle_invites();
         self.rail_dirty |= self.recompute_flags() || pending_changed;
@@ -473,6 +476,7 @@ impl RoomDirectory {
     pub(super) fn reset(&mut self) {
         self.connected = false;
         self.all_rooms = Arc::from(Vec::new());
+        self.listable = Arc::from(Vec::new());
         self.received_invites = Arc::from(Vec::new());
         self.invites = Arc::from(Vec::new());
         self.spaces = Arc::from(Vec::new());
@@ -687,7 +691,7 @@ impl RoomDirectory {
 
     fn listed_rooms(&self, sel: &Selection) -> RoomList {
         match &sel.filter {
-            RoomFilter::All if self.query.is_empty() => Arc::clone(&self.all_rooms),
+            RoomFilter::All if self.query.is_empty() => Arc::clone(&self.listable),
             RoomFilter::All => self.rooms_where(|room| self.query.matches(&room.display_name)),
             RoomFilter::Direct => {
                 self.rooms_where(|room| room.is_direct && self.query.matches(&room.display_name))
@@ -734,7 +738,7 @@ impl RoomDirectory {
     }
 
     fn joined_rooms_in(&self, space_index: usize) -> usize {
-        self.all_rooms
+        self.listable
             .iter()
             .filter(|room| self.graph.contains_room(space_index, room.id.as_ref()))
             .count()
@@ -789,7 +793,7 @@ impl RoomDirectory {
     }
 
     fn rooms_where(&self, keep: impl Fn(&Room) -> bool) -> RoomList {
-        self.all_rooms
+        self.listable
             .iter()
             .filter(|room| keep(room))
             .map(Arc::clone)
@@ -885,7 +889,7 @@ impl RoomDirectory {
     fn recompute_flags(&mut self) -> bool {
         let mut next = vec![UnreadFlags::default(); self.spaces.len()];
         let mut direct = UnreadFlags::default();
-        for room in self.all_rooms.iter() {
+        for room in self.listable.iter() {
             for &i in self.graph.ancestors_of(room.id.as_ref()) {
                 let Some(slot) = next.get_mut(i) else {
                     continue;

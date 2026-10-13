@@ -6,6 +6,7 @@ mod hierarchy;
 mod info;
 mod invites;
 mod send_queue;
+mod upgrades;
 
 use std::future;
 use std::sync::Arc;
@@ -34,6 +35,7 @@ pub(super) use self::hierarchy::MatrixSpaceIndex;
 pub(super) use self::info::MatrixRoomInfo;
 pub(super) use self::invites::MatrixInvites;
 use self::send_queue::SendQueueRecovery;
+pub(super) use self::upgrades::MatrixUpgrades;
 use super::auth;
 use super::media::MediaService;
 use super::session::ClientHandle;

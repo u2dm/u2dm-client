@@ -7,6 +7,7 @@ import { EmotePopup } from "./emote-popup.slint";
 import { MentionPopup } from "./mention-popup.slint";
 import { EditBar, ReplyBar } from "./reply-bar.slint";
 import { IdentityBanner } from "./identity-banner.slint";
+import { UpgradeBanner } from "./upgrade-banner.slint";
 import { ReplyQuote } from "./reply-quote.slint";
 import { AppStyle, Metrics, Space } from "../../../../theme.slint";
 import { LinkButton } from "../../../../components/button.slint";
@@ -14,8 +15,8 @@ import { ModalHost } from "../../../../components/overlay.slint";
 import { Interaction } from "../../../../components/a11y.slint";
 import { Actions } from "../../../../actions.slint";
 import { Composer, EditedMessage, Polls, Reactions, ReplyDraft, Shell } from "../../../../local.slint";
-import { IdentityAlertView, RoomView, UnsentView } from "../../../../views.slint";
-import { IdentityAlertKind } from "../../../../enums.slint";
+import { IdentityAlertView, RoomView, UnsentView, UpgradeView } from "../../../../views.slint";
+import { IdentityAlertKind, UpgradeLink } from "../../../../enums.slint";
 
 component UnsentBanner inherits Rectangle {
     callback restore-clicked();
@@ -86,6 +87,8 @@ export component MessageInput inherits Rectangle {
         : (root.edits-caption ? @tr("Add a caption...") : @tr("Edit the message..."));
     property <bool> is-replying: Composer.reply-event-id != "";
     property <int> settled-submission: 0;
+    property <bool> replaced: UpgradeView.successor != UpgradeLink.hidden
+        && UpgradeView.room-id == root.room-id;
     property <bool> has-unsent: UnsentView.visible
         && UnsentView.room-id == root.room-id
         && UnsentView.submission != root.settled-submission
@@ -391,6 +394,8 @@ export component MessageInput inherits Rectangle {
         }
 
         if IdentityAlertView.kind != IdentityAlertKind.none: IdentityBanner { }
+
+        if root.replaced: UpgradeBanner { }
 
         if root.has-unsent: UnsentBanner {
             restore-clicked => {

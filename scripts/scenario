@@ -71,6 +71,8 @@ scenario_env() {
     encryption-setup-refused) echo 'U2DM_DEMO_ENCRYPTION=setup-refused U2DM_DEMO_WINDOW=900x760' ;;
     invites)         echo 'U2DM_DEMO_INVITES=slow,late U2DM_DEMO_WINDOW=900x760' ;;
     invite-failures) echo 'U2DM_DEMO_INVITES=accept-fails,decline-fails,revoked U2DM_DEMO_WINDOW=900x760' ;;
+    room-upgrades)   echo 'U2DM_DEMO_UPGRADES=slow U2DM_DEMO_WINDOW=900x760' ;;
+    room-upgrade-failures) echo 'U2DM_DEMO_UPGRADES=join-fails U2DM_DEMO_WINDOW=900x760' ;;
     *) return 1 ;;
   esac
 }
@@ -358,6 +360,26 @@ scenario_steps() {
       echo 'sleep 1'
       echo '{"op":"open_invite","room_id":"!invite-climbing:demo.local"}'
       echo 'sleep 4' ;;
+    room-upgrades)
+      echo '{"op":"select_room","room_id":"!retro:demo.local"}'
+      echo 'sleep 1'
+      echo '{"op":"join_successor"}'
+      echo 'sleep 4'
+      echo '{"op":"select_room","room_id":"!retro:demo.local"}'
+      echo 'sleep 2'
+      echo '{"op":"select_room","room_id":"!frontend:demo.local"}'
+      echo 'sleep 1'
+      echo '{"op":"join_predecessor"}'
+      echo 'sleep 4' ;;
+    room-upgrade-failures)
+      echo '{"op":"select_room","room_id":"!retro:demo.local"}'
+      echo 'sleep 1'
+      echo '{"op":"join_successor"}'
+      echo 'sleep 2'
+      echo '{"op":"select_room","room_id":"!frontend:demo.local"}'
+      echo 'sleep 1'
+      echo '{"op":"join_predecessor"}'
+      echo 'sleep 2' ;;
     identity-held-sends)
       echo '{"op":"select_room","room_id":"!sarah:demo.local"}'
       echo 'sleep 2'
@@ -496,6 +518,8 @@ scenario_note() {
     encryption-setup-refused) echo 'the homeserver refuses the first cross-signing upload without a password: the banner reads encryption-not-set-up and the dialog explains it (encryption.standing)' ;;
     invites)         echo 'Leo'"'"'s chat invite arrives late and is accepted, opening the chat under DMs; Async Rust is declined; Hiking Club is accepted and opens in the rail (directory.invites, invite)' ;;
     invite-failures) echo 'an accept fails inline on its sheet, a decline with the sheet closed fails as a toast, then the open Climbing Crew sheet closes when its invite is withdrawn (invite.error, toast)' ;;
+    room-upgrades)   echo 'Retro Gaming'"'"'s banner joins the room that replaced it, slowly: the new room opens and the old one leaves the list but still opens, with Open the new room; Frontend Guild'"'"'s creation row joins the room it continues, which opens unlisted (upgrade, directory.rooms)' ;;
+    room-upgrade-failures) echo 'joining the room that replaced Retro Gaming fails as a toast, then so does joining the room Frontend Guild continues (upgrade, toast)' ;;
   esac
 }
 
@@ -519,7 +543,7 @@ names() {
     room-menu-failures room-log user-info user-info-failures user-dm user-dm-start user-dm-failures user-ignore user-moderation \
     user-moderation-failures user-tags custom-emoji spoilers message-link message-source message-pins message-pin-failures message-delete \
     message-delete-failures readers room-search room-search-open mentions room-mention display-names \
-    message-shields identity-alerts identity-held-sends invites invite-failures \
+    message-shields identity-alerts identity-held-sends invites invite-failures room-upgrades room-upgrade-failures \
     encryption-unverified encryption-recovery-key encryption-new-account encryption-setup-refused
 }
 

@@ -157,6 +157,8 @@ fn started_chat(room_id: &str, user_id: &str, now: u64) -> Room {
         last_message_service: None,
         last_message_is_own: false,
         last_message_edited: false,
+        successor: None,
+        predecessor: None,
     }
 }
 
@@ -567,6 +569,39 @@ pub fn is_member(room_id: &RoomId, user_id: &str) -> bool {
     room_members(room_id)
         .iter()
         .any(|(member, _)| member == user_id)
+}
+
+pub fn successor_of(room_id: &RoomId) -> Option<RoomId> {
+    linked_room(
+        room_id,
+        |room| room.successor.as_deref(),
+        |entry| entry.successor.as_deref(),
+    )
+}
+
+pub fn predecessor_of(room_id: &RoomId) -> Option<RoomId> {
+    linked_room(
+        room_id,
+        |room| room.predecessor.as_deref(),
+        |entry| entry.predecessor.as_deref(),
+    )
+}
+
+fn linked_room(
+    room_id: &RoomId,
+    joined: impl Fn(&RoomDto) -> Option<&str>,
+    unjoined: impl Fn(&UnjoinedDto) -> Option<&str>,
+) -> Option<RoomId> {
+    let data = data();
+    let linked = match data.rooms.iter().find(|room| room.id == room_id.as_ref()) {
+        Some(room) => joined(room),
+        None => data
+            .unjoined
+            .iter()
+            .find(|entry| entry.id == room_id.as_ref())
+            .and_then(unjoined),
+    };
+    linked.map(RoomId::new)
 }
 
 pub fn room_is_encrypted(room_id: &RoomId) -> bool {

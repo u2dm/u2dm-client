@@ -41,7 +41,7 @@ use crate::commands::view::{
     EncryptionDialog, EncryptionStep, EncryptionView, IdentityAlertView, InviteView, LifecycleView,
     LoginStep, MentionsView, NowPlaying, PackView, PaginationView, PinnedView, ReadersView,
     RoomCard, RoomInfoView, RoomLogView, RoomMenuTarget, SourceState, SpaceIndexView, Toast,
-    TrackFile, UnsentMessage, UserCard, UserInfoView, VideoView,
+    TrackFile, UnsentMessage, UpgradeView, UserCard, UserInfoView, VideoView,
 };
 use crate::domain::encryption::KeyStorage;
 use crate::domain::invite::{Invite, InviteList};
@@ -371,6 +371,7 @@ fn apply_snapshot<B: UiBackend>(
         audio,
         unsent,
         identity_alert,
+        upgrade,
         encryption,
         toast,
         message_link,
@@ -424,9 +425,7 @@ fn apply_snapshot<B: UiBackend>(
     if last.is_none_or(|l| l.unsent != *unsent) {
         apply_unsent(w, unsent.as_ref());
     }
-    if last.is_none_or(|l| l.identity_alert != *identity_alert) {
-        apply_identity_alert(w, identity_alert);
-    }
+    apply_composer_banners(w, last, identity_alert, upgrade);
     if last.is_none_or(|l| l.encryption != *encryption) {
         apply_encryption(w, encryption);
     }
@@ -1545,6 +1544,20 @@ fn apply_unsent(w: &impl UiProps, unsent: Option<&UnsentMessage>) {
     apply_unsent_edit(w, edit);
 }
 
+fn apply_composer_banners(
+    w: &impl UiProps,
+    last: Option<&AppViewState>,
+    identity_alert: &IdentityAlertView,
+    upgrade: &UpgradeView,
+) {
+    if last.is_none_or(|l| l.identity_alert != *identity_alert) {
+        apply_identity_alert(w, identity_alert);
+    }
+    if last.is_none_or(|l| l.upgrade != *upgrade) {
+        apply_upgrade(w, upgrade);
+    }
+}
+
 fn apply_identity_alert(w: &impl UiProps, view: &IdentityAlertView) {
     let banner = identity_banner(view.alert.as_ref());
     w.set_identity_alert_kind(banner.kind);
@@ -1557,6 +1570,18 @@ fn apply_identity_alert(w: &impl UiProps, view: &IdentityAlertView) {
         SharedString::from(banner.name),
     );
     w.set_bool(BoolProp::IdentityAlertBusy, view.busy);
+}
+
+fn apply_upgrade(w: &impl UiProps, view: &UpgradeView) {
+    let id = |room_id: Option<&RoomId>| SharedString::from(room_id.map_or("", |id| id.as_ref()));
+    w.set_string(StringProp::UpgradeRoomId, id(view.room_id.as_ref()));
+    w.set_upgrade_successor(&view.successor);
+    w.set_string(StringProp::UpgradeSuccessorId, id(view.successor.room_id()));
+    w.set_upgrade_predecessor(&view.predecessor);
+    w.set_string(
+        StringProp::UpgradePredecessorId,
+        id(view.predecessor.room_id()),
+    );
 }
 
 fn apply_encryption(w: &impl UiProps, view: &EncryptionView) {

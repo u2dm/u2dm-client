@@ -5,6 +5,7 @@ use super::establish::EstablishedSession;
 use super::invites::Answer;
 use super::room_info::{ActionOutcome, RosterOutcome};
 use super::space_index::{JoinOutcome, PageOutcome};
+use super::upgrades::UpgradeJoined;
 use super::user_info::{DmOutcome, ReadOutcome};
 use crate::commands::messages::{UserMessage, UserMessageKind};
 use crate::commands::view::LoginActivity;
@@ -98,6 +99,7 @@ pub(super) enum AppEvent {
         answer: Answer,
         outcome: ActionOutcome,
     },
+    UpgradeJoinSettled(UpgradeJoined),
     RoomRosterFetched {
         generation: u64,
         outcome: RosterOutcome,
@@ -367,6 +369,7 @@ impl AppEvent {
             Self::SpaceIndexAvatarsReady { .. } => "SpaceIndexAvatarsReady",
             Self::SpaceChildJoinSettled { .. } => "SpaceChildJoinSettled",
             Self::InviteAnswered { .. } => "InviteAnswered",
+            Self::UpgradeJoinSettled(_) => "UpgradeJoinSettled",
             Self::RoomRosterFetched { .. } => "RoomRosterFetched",
             Self::RoomAboutFetched { .. } => "RoomAboutFetched",
             Self::RoomInfoAvatarsReady { .. } => "RoomInfoAvatarsReady",

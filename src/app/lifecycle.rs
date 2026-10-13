@@ -220,6 +220,8 @@ pub(super) fn command_allowed(phase: AppPhase, cmd: &UiCommand) -> bool {
         | UiCommand::CloseInvite
         | UiCommand::AcceptInvite(_)
         | UiCommand::DeclineInvite(_)
+        | UiCommand::JoinSuccessor(_)
+        | UiCommand::JoinPredecessor(_)
         | UiCommand::OpenRoomInfo(_)
         | UiCommand::CloseRoomInfo
         | UiCommand::ShowRoomInfoPane

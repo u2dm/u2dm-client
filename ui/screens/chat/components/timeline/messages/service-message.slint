@@ -1,45 +1,77 @@
 import { MessageEntry } from "../../../../../types.slint";
 import { AppStyle, Fonts, Space } from "../../../../../theme.slint";
-import { ServiceLabel } from "../../../../../messages.slint";
+import { ServiceLabel, UpgradeLinks } from "../../../../../messages.slint";
+import { LinkButton } from "../../../../../components/button.slint";
+import { Actions } from "../../../../../actions.slint";
+import { ServiceKind, UpgradeLink } from "../../../../../enums.slint";
+import { DirectoryView, UpgradeView } from "../../../../../views.slint";
 import { ReaderCount, Readers } from "../delivery-mark.slint";
 
-export component ServiceMessage inherits HorizontalLayout {
+export component ServiceMessage inherits VerticalLayout {
     in property <MessageEntry> msg;
     in property <int> timeline-row;
 
-    alignment: center;
+    property <bool> links-older-room: root.msg.service-kind == ServiceKind.upgraded-room-created
+        && UpgradeView.predecessor != UpgradeLink.hidden
+        && UpgradeView.room-id == DirectoryView.selected-room-id;
+    property <bool> joining-older-room: UpgradeView.predecessor == UpgradeLink.joining;
+
     padding-top: Space.sm;
     padding-bottom: Space.sm;
+    spacing: Space.xs;
 
-    Rectangle {
-        width: content.preferred-width;
-        height: content.preferred-height;
-        border-radius: self.height / 2;
-        background: AppStyle.overlay-hover;
+    HorizontalLayout {
+        alignment: center;
 
-        content := HorizontalLayout {
-            padding-left: Space.md;
-            padding-right: Space.md;
-            padding-top: Space.sm;
-            padding-bottom: Space.sm;
-            spacing: Space.md;
+        Rectangle {
+            width: content.preferred-width;
+            height: content.preferred-height;
+            border-radius: self.height / 2;
+            background: AppStyle.overlay-hover;
 
-            Text {
-                text: ServiceLabel.label(root.msg.service-kind, root.msg.sender, root.msg.service-target);
-                font-family: Fonts.emoji;
-                font-size: Fonts.body-small;
-                color: AppStyle.foreground-strong;
-                horizontal-alignment: center;
-                vertical-alignment: center;
-                wrap: word-wrap;
+            content := HorizontalLayout {
+                padding-left: Space.md;
+                padding-right: Space.md;
+                padding-top: Space.sm;
+                padding-bottom: Space.sm;
+                spacing: Space.md;
+
+                Text {
+                    text: ServiceLabel.label(root.msg.service-kind, root.msg.sender, root.msg.service-target);
+                    font-family: Fonts.emoji;
+                    font-size: Fonts.body-small;
+                    color: AppStyle.foreground-strong;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                    wrap: word-wrap;
+                }
+
+                if Readers.counted(root.msg): ReaderCount {
+                    y: (parent.height - self.height) / 2;
+                    msg: root.msg;
+                    timeline-row: root.timeline-row;
+                    tint: AppStyle.foreground-muted;
+                    trailing-gap: 0;
+                }
             }
+        }
+    }
 
-            if Readers.counted(root.msg): ReaderCount {
-                y: (parent.height - self.height) / 2;
-                msg: root.msg;
-                timeline-row: root.timeline-row;
-                tint: AppStyle.foreground-muted;
-                trailing-gap: 0;
+    if root.links-older-room: HorizontalLayout {
+        alignment: center;
+
+        LinkButton {
+            text: UpgradeLinks.predecessor(UpgradeView.predecessor);
+            label: self.text;
+            enabled: !root.joining-older-room;
+            tint: root.joining-older-room ? AppStyle.foreground-disabled : AppStyle.link;
+            pad: 2 * Space.sm;
+            clicked => {
+                if UpgradeView.predecessor == UpgradeLink.open {
+                    Actions.select-room(UpgradeView.predecessor-id);
+                } else {
+                    Actions.join-predecessor(UpgradeView.room-id);
+                }
             }
         }
     }

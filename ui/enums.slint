@@ -95,6 +95,8 @@ export enum UserMessageKind {
     space-order-save-failed,
     pack-setting-failed,
     join-room-failed,
+    join-new-room-failed,
+    join-old-room-failed,
     decline-invite-failed,
     leave-room-failed,
     notify-change-failed,
@@ -285,6 +287,13 @@ export enum DirectChat {
     open,
     start,
     starting,
+}
+
+export enum UpgradeLink {
+    hidden,
+    open,
+    join,
+    joining,
 }
 
 export enum Moderation {
@@ -479,6 +488,8 @@ export enum ServiceKind {
     room-topic,
     room-avatar,
     room-created,
+    upgraded-room-created,
+    room-upgraded,
     encryption,
     call-started,
     call-notification,

@@ -19,7 +19,7 @@ pub fn event_source(room_id: &RoomId, message: &TimelineMessage) -> Option<Event
     let (event_type, content) = if undecryptable {
         ("m.room.encrypted", ciphertext())
     } else {
-        (event_type(&message.body), content(message))
+        (event_type(&message.body), content(room_id, message))
     };
     let mut event = json!({
         "type": event_type,
@@ -93,8 +93,9 @@ fn event_type(body: &MessageBody) -> &'static str {
     }
 }
 
-fn content(message: &TimelineMessage) -> Value {
+fn content(room_id: &RoomId, message: &TimelineMessage) -> Value {
     let mut content = body_content(&message.body);
+    link_upgrade(room_id, &message.body, &mut content);
     let mentions = if message.is_own {
         own_mentions(&message.body)
     } else {
@@ -106,6 +107,21 @@ fn content(message: &TimelineMessage) -> Value {
         fields.insert(MENTIONS_FIELD.to_owned(), mentions);
     }
     content
+}
+
+fn link_upgrade(room_id: &RoomId, body: &MessageBody, content: &mut Value) {
+    let link = match body {
+        MessageBody::Service(ServiceEvent::RoomUpgraded) => data::successor_of(room_id)
+            .map(|successor| ("replacement_room", Value::from(successor.as_ref()))),
+        MessageBody::Service(ServiceEvent::UpgradedRoomCreated) => data::predecessor_of(room_id)
+            .map(|predecessor| ("predecessor", json!({ "room_id": predecessor.as_ref() }))),
+        _ => None,
+    };
+    if let Some((field, value)) = link
+        && let Some(fields) = content.as_object_mut()
+    {
+        fields.insert(field.to_owned(), value);
+    }
 }
 
 fn body_content(body: &MessageBody) -> Value {
@@ -140,7 +156,8 @@ fn service_type(service: &ServiceEvent) -> &'static str {
         ServiceEvent::RoomNameChanged { .. } => "m.room.name",
         ServiceEvent::RoomTopicChanged => "m.room.topic",
         ServiceEvent::RoomAvatarChanged => "m.room.avatar",
-        ServiceEvent::RoomCreated => "m.room.create",
+        ServiceEvent::RoomCreated | ServiceEvent::UpgradedRoomCreated => "m.room.create",
+        ServiceEvent::RoomUpgraded => "m.room.tombstone",
         ServiceEvent::EncryptionEnabled => "m.room.encryption",
         ServiceEvent::CallStarted => "m.call.invite",
         ServiceEvent::CallNotification => "m.rtc.notification",
@@ -177,6 +194,8 @@ fn state_key<'a>(service: &ServiceEvent, sender: &'a str) -> Option<&'a str> {
         | ServiceEvent::RoomTopicChanged
         | ServiceEvent::RoomAvatarChanged
         | ServiceEvent::RoomCreated
+        | ServiceEvent::UpgradedRoomCreated
+        | ServiceEvent::RoomUpgraded
         | ServiceEvent::EncryptionEnabled => Some(""),
         ServiceEvent::Invited { .. }
         | ServiceEvent::InvitationRevoked { .. }
@@ -211,7 +230,10 @@ fn service_content(service: &ServiceEvent) -> Value {
         ServiceEvent::RoomNameChanged { name } => json!({ "name": name }),
         ServiceEvent::RoomTopicChanged => json!({ "topic": "" }),
         ServiceEvent::RoomAvatarChanged => json!({ "url": DEMO_MEDIA }),
-        ServiceEvent::RoomCreated => json!({ "room_version": "11" }),
+        ServiceEvent::RoomCreated | ServiceEvent::UpgradedRoomCreated => {
+            json!({ "room_version": "11" })
+        }
+        ServiceEvent::RoomUpgraded => json!({ "body": "This room has been replaced" }),
         ServiceEvent::EncryptionEnabled => json!({ "algorithm": MEGOLM }),
         ServiceEvent::CallStarted => {
             json!({ "call_id": "demo-call", "version": "1", "lifetime": 60_000 })

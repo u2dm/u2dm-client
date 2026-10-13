@@ -6,13 +6,13 @@ use crate::adapters::ui::schema::{
     login_activities, login_methods, login_phases, member_roles, notify_modes, pending_moderations,
     preview_kinds, readers_statuses, recovery_statuses, room_info_placements, room_memberships,
     room_scopes, roster_statuses, source_encryptions, source_statuses, space_index_statuses,
-    user_message_kinds, variant_named,
+    upgrade_links, user_message_kinds, variant_named,
 };
 use crate::commands::messages::UserMessageKind;
 use crate::commands::view::{
     AttachmentKind, ChildAccess, DirectChat, EncryptionActivity, EncryptionStep, LoginActivity,
     LoginStep, PendingAnswer, PendingModeration, ReadersStatus, RoomInfoPlacement, RoomScope,
-    RosterStatus, SourceState, SpaceIndexStatus,
+    RosterStatus, SourceState, SpaceIndexStatus, UpgradeLink,
 };
 use crate::domain::auth::LoginMethod;
 use crate::domain::encryption::{Recovery, Standing};
@@ -44,6 +44,7 @@ roster_statuses!(enum_names val roster_status RosterStatus;);
 room_info_placements!(enum_names val room_info_placement RoomInfoPlacement;);
 room_memberships!(enum_names val room_membership RoomMembership;);
 direct_chats!(enum_names val direct_chat DirectChat;);
+upgrade_links!(enum_names ref upgrade_link UpgradeLink;);
 invite_kinds!(enum_names val invite_kind InviteKind;);
 invite_answers!(enum_names val pending_answer PendingAnswer;);
 pending_moderations!(enum_names val pending_moderation PendingModeration;);

@@ -1,3 +1,4 @@
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::{fmt, ops};
 
@@ -66,6 +67,8 @@ pub struct Room {
     pub last_message_service: Option<ServiceEvent>,
     pub last_message_is_own: bool,
     pub last_message_edited: bool,
+    pub successor: Option<RoomId>,
+    pub predecessor: Option<RoomId>,
 }
 
 impl Room {
@@ -110,6 +113,50 @@ impl UnreadFlags {
 }
 
 pub type RoomList = Arc<[Arc<Room>]>;
+
+pub fn without_replaced(rooms: &RoomList) -> RoomList {
+    let successors: HashMap<&str, &str> = rooms
+        .iter()
+        .filter_map(|room| Some((room.id.as_ref(), room.successor.as_deref()?)))
+        .collect();
+    if successors.is_empty() {
+        return Arc::clone(rooms);
+    }
+    let joined: HashSet<&str> = rooms.iter().map(|room| room.id.as_ref()).collect();
+    rooms
+        .iter()
+        .filter(|room| !is_replaced(room.id.as_ref(), &successors, &joined))
+        .map(Arc::clone)
+        .collect::<Vec<Arc<Room>>>()
+        .into()
+}
+
+fn is_replaced<'a>(
+    id: &'a str,
+    successors: &HashMap<&'a str, &'a str>,
+    joined: &HashSet<&str>,
+) -> bool {
+    newest_joined_version(id, successors, joined).is_some_and(|newest| newest != id)
+}
+
+fn newest_joined_version<'a>(
+    id: &'a str,
+    successors: &HashMap<&'a str, &'a str>,
+    joined: &HashSet<&str>,
+) -> Option<&'a str> {
+    let mut newest = id;
+    let mut seen = HashSet::from([id]);
+    while let Some(&next) = successors
+        .get(newest)
+        .filter(|next| joined.contains(**next))
+    {
+        if !seen.insert(next) {
+            return None;
+        }
+        newest = next;
+    }
+    Some(newest)
+}
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Space {

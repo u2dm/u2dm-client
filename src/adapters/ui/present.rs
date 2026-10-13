@@ -467,6 +467,8 @@ pub fn service_kind(event: &ServiceEvent) -> ServiceKind {
         ServiceEvent::RoomTopicChanged => ServiceKind::RoomTopic,
         ServiceEvent::RoomAvatarChanged => ServiceKind::RoomAvatar,
         ServiceEvent::RoomCreated => ServiceKind::RoomCreated,
+        ServiceEvent::UpgradedRoomCreated => ServiceKind::UpgradedRoomCreated,
+        ServiceEvent::RoomUpgraded => ServiceKind::RoomUpgraded,
         ServiceEvent::EncryptionEnabled => ServiceKind::Encryption,
         ServiceEvent::CallStarted => ServiceKind::CallStarted,
         ServiceEvent::CallNotification => ServiceKind::CallNotification,

@@ -10,7 +10,7 @@ use crate::commands::ui::UiCommand;
 use crate::commands::view::{
     AttachmentKind, DirectChat, EncryptionActivity, EncryptionStep, LoginActivity, LoginStep,
     PendingAnswer, PendingModeration, ReadersStatus, RoomInfoPlacement, RoomScope, RosterStatus,
-    SourceState, SpaceIndexStatus,
+    SourceState, SpaceIndexStatus, UpgradeLink,
 };
 use crate::domain::auth::LoginMethod;
 use crate::domain::encryption::{Recovery, Standing};

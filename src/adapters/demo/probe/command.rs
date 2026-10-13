@@ -74,6 +74,14 @@ pub enum ProbeCommand {
     DeclineInvite {
         room_id: String,
     },
+    JoinSuccessor {
+        #[serde(default)]
+        room_id: Option<String>,
+    },
+    JoinPredecessor {
+        #[serde(default)]
+        room_id: Option<String>,
+    },
     OpenRoomInfo {
         #[serde(default)]
         room_id: Option<String>,
@@ -539,6 +547,12 @@ pub fn to_driven(command: ProbeCommand, selected: Selection<'_>) -> Result<Drive
         ProbeCommand::CloseInvite => UiCommand::CloseInvite,
         ProbeCommand::AcceptInvite { room_id } => UiCommand::AcceptInvite(RoomId::new(room_id)),
         ProbeCommand::DeclineInvite { room_id } => UiCommand::DeclineInvite(RoomId::new(room_id)),
+        ProbeCommand::JoinSuccessor { room_id } => {
+            return in_room(room_id, selected, UiCommand::JoinSuccessor);
+        }
+        ProbeCommand::JoinPredecessor { room_id } => {
+            return in_room(room_id, selected, UiCommand::JoinPredecessor);
+        }
         ProbeCommand::OpenRoomInfo { room_id } => {
             return in_room(room_id, selected, UiCommand::OpenRoomInfo);
         }

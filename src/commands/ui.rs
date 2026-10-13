@@ -55,6 +55,10 @@ pub enum UiCommand {
     AcceptInvite(RoomId),
     #[strum(to_string = "DeclineInvite({0})")]
     DeclineInvite(RoomId),
+    #[strum(to_string = "JoinSuccessor({0})")]
+    JoinSuccessor(RoomId),
+    #[strum(to_string = "JoinPredecessor({0})")]
+    JoinPredecessor(RoomId),
     #[strum(to_string = "OpenRoomInfo({0})")]
     OpenRoomInfo(RoomId),
     CloseRoomInfo,
@@ -300,6 +304,8 @@ impl UiCommand {
             | Self::OpenInvite(room_id)
             | Self::AcceptInvite(room_id)
             | Self::DeclineInvite(room_id)
+            | Self::JoinSuccessor(room_id)
+            | Self::JoinPredecessor(room_id)
             | Self::OpenRoomInfo(room_id)
             | Self::LeaveRoom(room_id)
             | Self::OpenRoomMenu(room_id)

@@ -1,4 +1,4 @@
-import { Delivery, EmojiArt, MediaFailure, PreviewKind, ServiceKind, ShieldReason, UserMessageKind } from "./enums.slint";
+import { Delivery, EmojiArt, MediaFailure, PreviewKind, ServiceKind, ShieldReason, UpgradeLink, UserMessageKind } from "./enums.slint";
 
 export global UserMessages {
     public pure function text(kind: UserMessageKind, detail: string) -> string {
@@ -109,6 +109,12 @@ export global UserMessages {
         }
         if kind == UserMessageKind.join-room-failed {
             return @tr("Could not join {}", detail);
+        }
+        if kind == UserMessageKind.join-new-room-failed {
+            return @tr("Could not join the room that replaced {}", detail);
+        }
+        if kind == UserMessageKind.join-old-room-failed {
+            return @tr("Could not join the room that {} replaced", detail);
         }
         if kind == UserMessageKind.decline-invite-failed {
             return @tr("Could not decline the invitation to {}", detail);
@@ -506,6 +512,12 @@ export global ServiceLabel {
         if kind == ServiceKind.room-created {
             return @tr("{} created the room", actor);
         }
+        if kind == ServiceKind.upgraded-room-created {
+            return @tr("{} created this room to continue an older one", actor);
+        }
+        if kind == ServiceKind.room-upgraded {
+            return @tr("{} upgraded this room", actor);
+        }
         if kind == ServiceKind.encryption {
             return @tr("{} enabled end-to-end encryption", actor);
         }
@@ -519,5 +531,33 @@ export global ServiceLabel {
             return target;
         }
         return actor;
+    }
+}
+
+export global UpgradeLinks {
+    public pure function successor(link: UpgradeLink) -> string {
+        if link == UpgradeLink.open {
+            return @tr("Open the new room");
+        }
+        if link == UpgradeLink.join {
+            return @tr("Join the new room");
+        }
+        if link == UpgradeLink.joining {
+            return @tr("Joining the new room…");
+        }
+        return "";
+    }
+
+    public pure function predecessor(link: UpgradeLink) -> string {
+        if link == UpgradeLink.open {
+            return @tr("Open the old room");
+        }
+        if link == UpgradeLink.join {
+            return @tr("Join the old room");
+        }
+        if link == UpgradeLink.joining {
+            return @tr("Joining the old room…");
+        }
+        return "";
     }
 }

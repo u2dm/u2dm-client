@@ -162,6 +162,7 @@
       "id": "!frontend:demo.local",
       "name": "Frontend Guild",
       "avatar": "frontend-guild",
+      "predecessor": "!frontend-old:demo.local",
       "members": 210,
       "days_ago": 2,
       "last_message": {
@@ -261,6 +262,19 @@
       "last_message": {
         "body": "restarted it. we do not talk about why",
         "own": true
+      }
+    },
+    {
+      "id": "!retro:demo.local",
+      "name": "Retro Gaming",
+      "topic": "Cartridges, CRTs and save files older than us",
+      "members": 57,
+      "days_ago": 8,
+      "successor": "!retro-next:demo.local",
+      "last_message": {
+        "sender": "Marcus",
+        "sender_id": "@marcus:matrix.org",
+        "body": "new room is up, the link is right there. see you all inside"
       }
     }
   ],
@@ -500,6 +514,21 @@
       "topic": "wasm-bindgen, wasm-pack and the browser",
       "alias": "#rust-wasm:demo.local",
       "members": 154
+    },
+    {
+      "id": "!frontend-old:demo.local",
+      "name": "Frontend Guild",
+      "topic": "The guild's first room, before the upgrade",
+      "avatar": "frontend-guild",
+      "members": 198,
+      "successor": "!frontend:demo.local"
+    },
+    {
+      "id": "!retro-next:demo.local",
+      "name": "Retro Gaming",
+      "topic": "Cartridges, CRTs and save files older than us",
+      "members": 31,
+      "predecessor": "!retro:demo.local"
     }
   ],
   "invites": [
@@ -1777,6 +1806,15 @@
     ],
     "!frontend:demo.local": [
       {
+        "id": "demo-frontend-svc-continued",
+        "sender": "@nadia:matrix.org",
+        "name": "Nadia",
+        "days_ago": 9,
+        "service": {
+          "kind": "upgraded-room-created"
+        }
+      },
+      {
         "id": "demo-frontend-1",
         "sender": "@jordan:matrix.org",
         "name": "Jordan",
@@ -1806,6 +1844,97 @@
         "name": "Nadia",
         "body": "shipped it 🚀",
         "days_ago": 2
+      }
+    ],
+    "!frontend-old:demo.local": [
+      {
+        "id": "demo-frontend-old-1",
+        "sender": "@jordan:matrix.org",
+        "name": "Jordan",
+        "body": "who still uses the bower config",
+        "days_ago": 12,
+        "minutes_ago": 40
+      },
+      {
+        "id": "demo-frontend-old-2",
+        "sender": "@nadia:matrix.org",
+        "name": "Nadia",
+        "body": "nobody. that is why it is still there",
+        "days_ago": 12,
+        "minutes_ago": 35
+      },
+      {
+        "id": "demo-frontend-old-3",
+        "sender": "@nadia:matrix.org",
+        "name": "Nadia",
+        "body": "upgrading the room so we get the new room version. the conversation moves over, follow the banner",
+        "days_ago": 9,
+        "minutes_ago": 5
+      },
+      {
+        "id": "demo-frontend-old-svc-upgraded",
+        "sender": "@nadia:matrix.org",
+        "name": "Nadia",
+        "days_ago": 9,
+        "service": {
+          "kind": "room-upgraded"
+        }
+      }
+    ],
+    "!retro:demo.local": [
+      {
+        "id": "demo-retro-1",
+        "sender": "@kai:matrix.org",
+        "name": "Kai",
+        "body": "found my old game boy. the battery save from 2003 is still there",
+        "days_ago": 8,
+        "minutes_ago": 50
+      },
+      {
+        "id": "demo-retro-2",
+        "sender": "@alex:matrix.org",
+        "name": "You",
+        "body": "that cartridge has outlived three of my laptops",
+        "days_ago": 8,
+        "minutes_ago": 45
+      },
+      {
+        "id": "demo-retro-3",
+        "sender": "@marcus:matrix.org",
+        "name": "Marcus",
+        "body": "new room is up, the link is right there. see you all inside",
+        "days_ago": 8,
+        "minutes_ago": 10
+      },
+      {
+        "id": "demo-retro-svc-upgraded",
+        "sender": "@marcus:matrix.org",
+        "name": "Marcus",
+        "days_ago": 8,
+        "minutes_ago": 9,
+        "service": {
+          "kind": "room-upgraded"
+        }
+      }
+    ],
+    "!retro-next:demo.local": [
+      {
+        "id": "demo-retro-next-svc-continued",
+        "sender": "@marcus:matrix.org",
+        "name": "Marcus",
+        "days_ago": 8,
+        "minutes_ago": 9,
+        "service": {
+          "kind": "upgraded-room-created"
+        }
+      },
+      {
+        "id": "demo-retro-next-1",
+        "sender": "@marcus:matrix.org",
+        "name": "Marcus",
+        "body": "welcome to the new room. same rules, fewer bugs",
+        "days_ago": 8,
+        "minutes_ago": 5
       }
     ],
     "!stickers:demo.local": [

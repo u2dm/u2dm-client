@@ -38,6 +38,7 @@ pub struct AppViewState {
     pub audio: AudioView,
     pub unsent: Option<UnsentMessage>,
     pub identity_alert: IdentityAlertView,
+    pub upgrade: UpgradeView,
     pub encryption: EncryptionView,
     pub toast: Toast,
     pub message_link: CopiedLink,
@@ -175,6 +176,31 @@ pub struct UnsentMessage {
 pub struct IdentityAlertView {
     pub alert: Option<IdentityAlert>,
     pub busy: bool,
+}
+
+#[derive(Clone, Default, PartialEq, Eq, Debug)]
+pub enum UpgradeLink {
+    #[default]
+    Hidden,
+    Open(RoomId),
+    Join(RoomId),
+    Joining(RoomId),
+}
+
+impl UpgradeLink {
+    pub fn room_id(&self) -> Option<&RoomId> {
+        match self {
+            Self::Hidden => None,
+            Self::Open(room_id) | Self::Join(room_id) | Self::Joining(room_id) => Some(room_id),
+        }
+    }
+}
+
+#[derive(Clone, Default, PartialEq, Eq)]
+pub struct UpgradeView {
+    pub room_id: Option<RoomId>,
+    pub successor: UpgradeLink,
+    pub predecessor: UpgradeLink,
 }
 
 #[derive(Clone, Default, PartialEq, Eq)]

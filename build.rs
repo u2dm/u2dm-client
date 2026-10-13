@@ -114,6 +114,11 @@ const ENUM_COVERAGE: &[EnumCoverage] = &[
         falls_through: &["hidden"],
     },
     EnumCoverage {
+        slint_enum: "UpgradeLink",
+        branches_in: "ui/messages.slint",
+        falls_through: &["hidden"],
+    },
+    EnumCoverage {
         slint_enum: "IdentityTrust",
         branches_in: "ui/screens/chat/components/user-info.slint",
         falls_through: &["unverified"],
@@ -189,6 +194,7 @@ const ENUM_TABLES: &[(&str, &str)] = &[
     ("MemberRole", "member_roles"),
     ("RoomMembership", "room_memberships"),
     ("DirectChat", "direct_chats"),
+    ("UpgradeLink", "upgrade_links"),
     ("InviteKind", "invite_kinds"),
     ("InviteAnswer", "invite_answers"),
     ("Moderation", "pending_moderations"),
@@ -300,6 +306,11 @@ const SCENARIO_SOURCES: &[ScenarioSource] = &[
     },
     ScenarioSource {
         file: "src/adapters/demo/invites.rs",
+        arms_between: ("fn apply(scenario: &mut Scenario, flag: &str) {", "\n}"),
+        ignored: &[],
+    },
+    ScenarioSource {
+        file: "src/adapters/demo/upgrades.rs",
         arms_between: ("fn apply(scenario: &mut Scenario, flag: &str) {", "\n}"),
         ignored: &[],
     },

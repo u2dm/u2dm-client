@@ -246,6 +246,10 @@ pub struct RoomDto {
     pub last_message: LastMessageDto,
     #[serde(default)]
     pub pinned: Vec<String>,
+    #[serde(default)]
+    pub successor: Option<String>,
+    #[serde(default)]
+    pub predecessor: Option<String>,
 }
 
 #[derive(Deserialize, Default)]
@@ -319,6 +323,10 @@ pub struct UnjoinedDto {
     pub rooms: Vec<String>,
     #[serde(default)]
     pub spaces: Vec<String>,
+    #[serde(default)]
+    pub successor: Option<String>,
+    #[serde(default)]
+    pub predecessor: Option<String>,
 }
 
 #[derive(Deserialize, Default, Clone, Copy)]
@@ -564,6 +572,8 @@ enum ServiceDto {
     },
     RoomAvatar,
     RoomCreated,
+    UpgradedRoomCreated,
+    RoomUpgraded,
     Encryption,
     CallStarted,
 }
@@ -591,6 +601,8 @@ impl ServiceDto {
             },
             Self::RoomAvatar => ServiceEvent::RoomAvatarChanged,
             Self::RoomCreated => ServiceEvent::RoomCreated,
+            Self::UpgradedRoomCreated => ServiceEvent::UpgradedRoomCreated,
+            Self::RoomUpgraded => ServiceEvent::RoomUpgraded,
             Self::Encryption => ServiceEvent::EncryptionEnabled,
             Self::CallStarted => ServiceEvent::CallStarted,
         }
@@ -655,6 +667,8 @@ impl RoomDto {
             last_message_service: self.last_message.service.as_ref().map(ServiceDto::to_event),
             last_message_is_own: self.last_message.own,
             last_message_edited: self.last_message.edited,
+            successor: self.successor.as_deref().map(RoomId::new),
+            predecessor: self.predecessor.as_deref().map(RoomId::new),
         }
     }
 
@@ -723,6 +737,8 @@ impl UnjoinedDto {
             last_message_service: None,
             last_message_is_own: false,
             last_message_edited: false,
+            successor: self.successor.as_deref().map(RoomId::new),
+            predecessor: self.predecessor.as_deref().map(RoomId::new),
         }
     }
 
@@ -778,6 +794,8 @@ impl InviteDto {
             last_message_service: None,
             last_message_is_own: false,
             last_message_edited: false,
+            successor: None,
+            predecessor: None,
         }
     }
 

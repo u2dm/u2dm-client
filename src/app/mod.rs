@@ -30,6 +30,7 @@ mod space_index;
 mod space_order;
 mod submissions;
 mod task_group;
+mod upgrades;
 mod user_info;
 mod verification;
 mod video;
@@ -68,6 +69,7 @@ use space_index::{ChildTarget, JoinOutcome, ListedSpace, PageOutcome, SpaceIndex
 use submissions::Submissions;
 use task_group::TaskGroup;
 use tokio::sync::{mpsc, watch};
+use upgrades::{RoomUpgrades, Toward, UpgradeJoined};
 use user_info::UserInfo;
 use verification::VerificationController;
 use video::VideoController;
@@ -202,6 +204,7 @@ pub struct AppService {
     packs: Packs,
     space_index: SpaceIndex,
     invites: Invites,
+    upgrades: RoomUpgrades,
     room_info: RoomInfo,
     user_info: UserInfo,
     message_actions: MessageActions,
@@ -251,6 +254,7 @@ impl AppService {
             packs: Packs::new(Arc::clone(&output), events.clone()),
             space_index: SpaceIndex::new(Arc::clone(&output), events.clone()),
             invites: Invites::new(Arc::clone(&output), events.clone()),
+            upgrades: RoomUpgrades::new(Arc::clone(&output), events.clone()),
             room_info: RoomInfo::new(Arc::clone(&output), events.clone()),
             user_info: UserInfo::new(Arc::clone(&output), events.clone()),
             message_actions: MessageActions::new(Arc::clone(&output), events.clone()),
@@ -461,6 +465,12 @@ impl AppService {
             }
             UiCommand::DeclineInvite(room_id) => {
                 self.answer_invite(&room_id, Answer::Decline);
+            }
+            UiCommand::JoinSuccessor(room_id) => {
+                self.join_upgrade_link(&room_id, Toward::Successor);
+            }
+            UiCommand::JoinPredecessor(room_id) => {
+                self.join_upgrade_link(&room_id, Toward::Predecessor);
             }
             UiCommand::OpenRoomInfo(room_id) => {
                 self.open_room_info(&room_id);
@@ -871,6 +881,7 @@ impl AppService {
                 self.select_room(room_id).await;
             }
             self.follow_invites().await;
+            self.follow_upgrades().await;
         }
     }
 
@@ -926,6 +937,49 @@ impl AppService {
             .invites
             .answered(room_id, name, answer, outcome, &membership);
         self.open_arrival(arrival).await;
+    }
+
+    fn join_upgrade_link(&mut self, room_id: &RoomId, toward: Toward) {
+        let Some(port) = self.port(|a| &a.upgrades) else {
+            return;
+        };
+        let membership = self.room_directory.membership(&self.selection);
+        self.upgrades
+            .join(port, toward, self.room_directory.room(room_id), &membership);
+        self.refresh_upgrades();
+    }
+
+    async fn settle_upgrade_join(&mut self, joined: UpgradeJoined) {
+        let membership = self.room_directory.membership(&self.selection);
+        let arrival = self
+            .upgrades
+            .settled(joined, &membership, self.selection.room.as_ref());
+        self.open_upgraded(arrival).await;
+    }
+
+    async fn follow_upgrades(&mut self) {
+        let membership = self.room_directory.membership(&self.selection);
+        let arrival = self
+            .upgrades
+            .follow(&membership, self.selection.room.as_ref());
+        self.open_upgraded(arrival).await;
+    }
+
+    async fn open_upgraded(&mut self, arrival: Option<RoomId>) {
+        match arrival {
+            Some(room_id) => self.select_room(room_id).await,
+            None => self.refresh_upgrades(),
+        }
+    }
+
+    fn refresh_upgrades(&mut self) {
+        let selected = self
+            .selection
+            .room
+            .as_ref()
+            .and_then(|room_id| self.room_directory.room(room_id));
+        let membership = self.room_directory.membership(&self.selection);
+        self.upgrades.refresh(selected, &membership);
     }
 
     async fn open_arrival(&mut self, arrival: Option<Arrival>) {
@@ -1439,6 +1493,9 @@ impl AppService {
             } => {
                 self.settle_invite_answer(&room_id, &name, answer, outcome)
                     .await;
+            }
+            AppEvent::UpgradeJoinSettled(joined) => {
+                self.settle_upgrade_join(joined).await;
             }
             AppEvent::RoomRosterFetched {
                 generation,
@@ -2078,6 +2135,7 @@ impl AppService {
     async fn select_room(&mut self, room_id: RoomId) {
         self.space_index.close();
         self.invites.close();
+        self.upgrades.retarget(&room_id);
         self.retarget_room_info(&room_id);
         self.user_info.close();
         self.event_source.close();
@@ -2137,6 +2195,7 @@ impl AppService {
             live: focus.is_live(),
         })
         .await;
+        self.refresh_upgrades();
         if let Some(stickers) = self.port(|a| &a.image_packs) {
             self.packs
                 .select_room(stickers, room_id.clone(), generation);
@@ -2207,6 +2266,7 @@ impl AppService {
         self.sync_selected_room(None);
         self.pinned.clear();
         self.identity_alerts.clear();
+        self.refresh_upgrades();
         self.active_timeline.clear_room(generation).await;
     }
 
@@ -2268,6 +2328,7 @@ impl AppService {
             self.packs.restart(),
             self.space_index.restart(),
             self.invites.restart(),
+            self.upgrades.restart(),
             self.room_info.restart(),
             self.user_info.restart(),
             self.readers.restart(),
@@ -2382,6 +2443,7 @@ impl AppService {
             self.packs.shutdown(),
             self.space_index.shutdown(),
             self.invites.shutdown(),
+            self.upgrades.shutdown(),
             self.room_info.shutdown(),
             self.user_info.shutdown(),
             self.readers.shutdown(),

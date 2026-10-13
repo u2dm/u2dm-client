@@ -1,0 +1,65 @@
+import { AppStyle, Fonts, Space, Stroke, Weight } from "../../../../theme.slint";
+import { LinkButton } from "../../../../components/button.slint";
+import { Actions } from "../../../../actions.slint";
+import { UpgradeLink } from "../../../../enums.slint";
+import { UpgradeLinks } from "../../../../messages.slint";
+import { UpgradeView } from "../../../../views.slint";
+
+export component UpgradeBanner inherits Rectangle {
+    property <bool> joining: UpgradeView.successor == UpgradeLink.joining;
+
+    height: layout.preferred-height;
+    background: AppStyle.overlay-subtle;
+
+    layout := HorizontalLayout {
+        padding-left: Space.lg;
+        padding-right: Space.md;
+        padding-top: Space.md;
+        padding-bottom: Space.md;
+        spacing: Space.md;
+
+        Rectangle {
+            width: Stroke.marker;
+            border-radius: self.width / 2;
+            background: AppStyle.link;
+        }
+
+        VerticalLayout {
+            horizontal-stretch: 1;
+            alignment: center;
+            spacing: Space.xs;
+
+            Text {
+                text: @tr("This room has been replaced");
+                font-size: Fonts.body-small;
+                font-weight: Weight.bold;
+                color: AppStyle.foreground-strong;
+                wrap: word-wrap;
+                accessible-live-region: AccessibleLiveness.polite;
+            }
+
+            Text {
+                text: @tr("It is no longer active. The conversation continues in a new room.");
+                font-size: Fonts.body-small;
+                color: AppStyle.overlay-foreground-muted;
+                wrap: word-wrap;
+                accessible-live-region: AccessibleLiveness.polite;
+            }
+        }
+
+        LinkButton {
+            text: UpgradeLinks.successor(UpgradeView.successor);
+            label: self.text;
+            enabled: !root.joining;
+            tint: root.joining ? AppStyle.foreground-disabled : AppStyle.link;
+            pad: 2 * Space.sm;
+            clicked => {
+                if UpgradeView.successor == UpgradeLink.open {
+                    Actions.select-room(UpgradeView.successor-id);
+                } else {
+                    Actions.join-successor(UpgradeView.room-id);
+                }
+            }
+        }
+    }
+}

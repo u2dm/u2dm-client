@@ -46,6 +46,8 @@ pub enum ServiceEvent {
     RoomTopicChanged,
     RoomAvatarChanged,
     RoomCreated,
+    UpgradedRoomCreated,
+    RoomUpgraded,
     EncryptionEnabled,
     CallStarted,
     CallNotification,

@@ -57,7 +57,8 @@ use super::schema::{
     room_info_placements, room_memberships, room_row_kinds, room_scopes, roster_statuses,
     send_states, service_kinds, shield_reasons, shields, simple_callbacks, source_encryptions,
     source_statuses, space_child_fields, space_fields, space_index_statuses, spoiler_states,
-    timeline_states, user_message_kinds, verification_activities, verification_phases,
+    timeline_states, upgrade_links, user_message_kinds, verification_activities,
+    verification_phases,
 };
 use super::session::active_models;
 use super::video::{self, millis_to_duration};
@@ -69,7 +70,7 @@ use crate::commands::ui::{TimelineVisibility, ViewportChanged};
 use crate::commands::view::{
     AppViewState, AttachmentKind, ChildAccess, DirectChat, EncryptionActivity, EncryptionStep,
     LoginActivity, LoginStep, PendingAnswer, PendingModeration, ReadersStatus, RoomInfoPlacement,
-    RoomScope, RosterStatus, SourceState, SpaceIndexStatus,
+    RoomScope, RosterStatus, SourceState, SpaceIndexStatus, UpgradeLink,
 };
 use crate::domain::auth::LoginMethod;
 use crate::domain::encryption::{Recovery, Standing};
@@ -243,6 +244,7 @@ pack_surfaces!(impl_slint_enum PackSurface "PackSurface";);
 pack_origins!(impl_slint_enum PackOrigin "PackOrigin";);
 room_memberships!(impl_slint_enum RoomMembership "RoomMembership";);
 direct_chats!(impl_slint_enum DirectChat "DirectChat";);
+upgrade_links!(impl_slint_enum UpgradeLink "UpgradeLink";);
 invite_kinds!(impl_slint_enum InviteKind "InviteKind";);
 invite_answers!(impl_slint_enum PendingAnswer "InviteAnswer";);
 pending_moderations!(impl_slint_enum PendingModeration "Moderation";);

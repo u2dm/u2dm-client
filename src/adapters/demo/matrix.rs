@@ -19,8 +19,8 @@ use super::encryption::{self, EncryptionBook};
 use super::identity::{self, IdentityBook, SendHold};
 use super::{
     attachments, audio, data, invites, login, logout, media, message_menu, pinned, polls,
-    reactions, receipts, room_info, source, space_index, stickers, sync, timeline, user_info,
-    verification, videos,
+    reactions, receipts, room_info, source, space_index, stickers, sync, timeline, upgrades,
+    user_info, verification, videos,
 };
 use crate::adapters::{body_emoji, video};
 use crate::domain::auth::{AuthMethod, LoginCredentials, OAuthLoginData, ServerInfo, Session};
@@ -58,7 +58,7 @@ use crate::ports::matrix::{
     EncryptionPort, IdentityPort, ImagePackPort, InterruptedLogin, InvitePort, LocalDataOwnership,
     MediaPort, PackCatalog, PinnedPort, ProgressSink, RestoreOutcome, RestoreStep, RoomInfoPort,
     SessionPort, SpaceIndexPort, SpaceOrderPort, StoreAdoption, SyncPort, SyncSink, TimelinePort,
-    UserInfoPort, VerificationPort,
+    UpgradePort, UserInfoPort, VerificationPort,
 };
 use crate::ports::media::MediaCache;
 
@@ -236,6 +236,7 @@ fn authenticated(session: Session) -> AuthenticatedSession {
     let space_order = Arc::clone(&authed);
     let space_index = Arc::clone(&authed);
     let invites = Arc::clone(&authed);
+    let upgrades = Arc::clone(&authed);
     let room_info = Arc::clone(&authed);
     let user_info = Arc::clone(&authed);
     let image_packs = Arc::clone(&authed);
@@ -251,6 +252,7 @@ fn authenticated(session: Session) -> AuthenticatedSession {
         space_order,
         space_index,
         invites,
+        upgrades,
         room_info,
         user_info,
         image_packs,
@@ -1496,6 +1498,37 @@ impl InvitePort for DemoAuthed {
         self.change_lists(|lists| {
             lists.overrides.declined.insert(room_id.to_string());
         });
+        self.echo_join();
+        Ok(())
+    }
+}
+
+#[async_trait]
+impl UpgradePort for DemoAuthed {
+    async fn join_successor(&self, room_id: &RoomId) -> Result<()> {
+        self.join_linked(room_id, data::successor_of(room_id)).await
+    }
+
+    async fn join_predecessor(&self, room_id: &RoomId) -> Result<()> {
+        self.join_linked(room_id, data::predecessor_of(room_id))
+            .await
+    }
+}
+
+impl DemoAuthed {
+    async fn join_linked(&self, room_id: &RoomId, linked: Option<RoomId>) -> Result<()> {
+        upgrades::pause().await;
+        if upgrades::scenario().join_fails {
+            return Err(unavailable("joining across a room upgrade"));
+        }
+        let Some(linked) = linked else {
+            return Err(AppError::Other(format!("no upgrade links {room_id}")));
+        };
+        tracing::debug!(%room_id, %linked, "demo: joining the other end of a room upgrade");
+        if upgrades::scenario().echo_lost {
+            return Ok(());
+        }
+        self.remember_join(&linked);
         self.echo_join();
         Ok(())
     }
