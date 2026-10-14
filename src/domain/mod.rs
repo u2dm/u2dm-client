@@ -11,6 +11,7 @@ pub mod member_name;
 pub mod mention;
 pub mod message;
 pub mod poll;
+pub mod push;
 pub mod room;
 pub mod room_info;
 pub mod room_log;

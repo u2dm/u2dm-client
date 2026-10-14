@@ -14,6 +14,7 @@ mod matrix;
 mod media;
 mod message_menu;
 mod names;
+pub mod notifications;
 mod pinned;
 mod polls;
 pub mod probe;
@@ -41,6 +42,7 @@ use super::ui::SlintUiAdapter;
 use crate::ports::browser::BrowserPort;
 use crate::ports::matrix::AuthPort;
 use crate::ports::media::{MediaCache, MediaFilePort};
+use crate::ports::notifier::NotifierPort;
 use crate::ports::storage::StoragePort;
 
 const WINDOW_SIZE: (f32, f32) = (860.0, 1000.0);
@@ -77,6 +79,10 @@ pub fn media_cache() -> Arc<dyn MediaCache> {
 
 pub fn browser() -> Arc<dyn BrowserPort> {
     Arc::new(browser::DemoBrowser)
+}
+
+pub fn notifier() -> Arc<dyn NotifierPort> {
+    notifications::notifier()
 }
 
 pub fn media_files() -> Arc<dyn MediaFilePort> {

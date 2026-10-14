@@ -195,6 +195,12 @@ impl ActiveTimeline {
         self.active_room_id.as_ref()
     }
 
+    pub(super) fn on_screen(&self) -> Option<&RoomId> {
+        self.active_room_id
+            .as_ref()
+            .filter(|_| self.visibility == TimelineVisibility::Visible)
+    }
+
     pub(super) fn is_current(&self, room_id: &RoomId, generation: i32) -> bool {
         self.generation == generation && self.active_room_id.as_ref() == Some(room_id)
     }

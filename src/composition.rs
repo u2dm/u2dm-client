@@ -11,11 +11,14 @@ use crate::adapters::matrix::MatrixAdapter;
 #[cfg(feature = "matrix")]
 use crate::adapters::media::DesktopMediaFiles;
 #[cfg(feature = "matrix")]
+use crate::adapters::notifier;
+#[cfg(feature = "matrix")]
 use crate::adapters::storage::SecureStorage;
 use crate::config::AppConfig;
 use crate::ports::browser::BrowserPort;
 use crate::ports::matrix::AuthPort;
 use crate::ports::media::{MediaCache, MediaFilePort};
+use crate::ports::notifier::NotifierPort;
 use crate::ports::storage::StoragePort;
 
 #[cfg(not(any(feature = "matrix", feature = "demo")))]
@@ -27,6 +30,7 @@ pub struct Backend {
     pub media_cache: Arc<dyn MediaCache>,
     pub media_files: Arc<dyn MediaFilePort>,
     pub browser: Arc<dyn BrowserPort>,
+    pub notifier: Arc<dyn NotifierPort>,
 }
 
 impl Backend {
@@ -61,6 +65,7 @@ impl Backend {
             media_cache: demo::media_cache(),
             media_files: demo::media_files(),
             browser: demo::browser(),
+            notifier: demo::notifier(),
         }
     }
 
@@ -74,6 +79,7 @@ impl Backend {
             media_cache,
             media_files: Arc::new(DesktopMediaFiles::new()),
             browser: Arc::new(DesktopBrowser::new()),
+            notifier: notifier::desktop(),
         }
     }
 }

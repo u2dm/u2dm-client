@@ -9,6 +9,7 @@ pub mod markdown;
 #[cfg(feature = "matrix")]
 pub mod matrix;
 pub mod media;
+pub mod notifier;
 pub mod private_fs;
 pub mod room_log;
 #[cfg(feature = "matrix")]

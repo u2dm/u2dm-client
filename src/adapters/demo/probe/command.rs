@@ -346,6 +346,11 @@ pub enum ProbeCommand {
         px: i32,
     },
     ContextPress,
+    ClickNotification {
+        room_id: String,
+        #[serde(default)]
+        token: Option<String>,
+    },
     OpenLink {
         url: String,
     },
@@ -367,6 +372,10 @@ pub enum Driven {
     Command(UiCommand),
     SessionLoss(SessionLoss),
     Poke(Poke),
+    NotificationClick {
+        room_id: RoomId,
+        token: Option<String>,
+    },
 }
 
 impl fmt::Display for Driven {
@@ -387,6 +396,7 @@ impl fmt::Display for Driven {
             Self::Poke(Poke::WindowFocus(focused)) => write!(f, "WindowFocus({focused})"),
             Self::Poke(Poke::SwipeTravel(px)) => write!(f, "SwipeTravel({px}px)"),
             Self::Poke(Poke::ContextPress) => f.write_str("ContextPress"),
+            Self::NotificationClick { room_id, .. } => write!(f, "ClickNotification({room_id})"),
         }
     }
 }
@@ -821,6 +831,12 @@ pub fn to_driven(command: ProbeCommand, selected: Selection<'_>) -> Result<Drive
         }
         ProbeCommand::SwipeTravel { px } => return Ok(Driven::Poke(Poke::SwipeTravel(px))),
         ProbeCommand::ContextPress => return Ok(Driven::Poke(Poke::ContextPress)),
+        ProbeCommand::ClickNotification { room_id, token } => {
+            return Ok(Driven::NotificationClick {
+                room_id: RoomId::new(room_id),
+                token,
+            });
+        }
         ProbeCommand::OpenLink { url } => {
             link_command(&url).ok_or_else(|| Rejected(format!("{url} is not a link U2DM opens")))?
         }

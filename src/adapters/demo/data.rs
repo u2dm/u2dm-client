@@ -96,6 +96,33 @@ pub struct RoomOverrides {
     pub declined: HashSet<String>,
     pub withdrawn: HashSet<String>,
     pub held_back: HashSet<String>,
+    pub arrivals: HashMap<String, Arrived>,
+}
+
+#[derive(Clone)]
+pub struct Arrived {
+    pub sender: Option<NamedUser>,
+    pub kind: MessagePreviewKind,
+    pub body: RichText,
+    pub highlight: bool,
+    pub at_ms: u64,
+}
+
+impl Arrived {
+    pub fn now(
+        sender: Option<NamedUser>,
+        kind: MessagePreviewKind,
+        body: RichText,
+        highlight: bool,
+    ) -> Self {
+        Self {
+            sender,
+            kind,
+            body,
+            highlight,
+            at_ms: now_ms(),
+        }
+    }
 }
 
 pub fn rooms_with(joined: &[RoomId], overrides: &RoomOverrides) -> Vec<Arc<Room>> {
@@ -129,6 +156,7 @@ pub fn rooms_with(joined: &[RoomId], overrides: &RoomOverrides) -> Vec<Arc<Room>
                 .map(|entry| entry.to_room(now)),
         )
         .filter(|room| !overrides.left.contains(room.id.as_ref()))
+        .map(|room| arrived_when_marked(room, &overrides.arrivals))
         .map(|room| read_when_marked(room, &overrides.read))
         .map(Arc::new)
         .collect()
@@ -189,6 +217,27 @@ fn inviter_of(entry: &InviteDto) -> Option<NamedUser> {
 
 pub fn started_chat_id(user_id: &str) -> String {
     format!("!chat-{}:{DEMO_VIA}", localpart(user_id))
+}
+
+fn arrived_when_marked(mut room: Room, arrivals: &HashMap<String, Arrived>) -> Room {
+    let Some(arrived) = arrivals.get(room.id.as_ref()) else {
+        return room;
+    };
+    room.has_activity = true;
+    room.has_unread |= match room.notify {
+        NotifyMode::AllMessages => true,
+        NotifyMode::MentionsOnly => arrived.highlight,
+        NotifyMode::Muted => false,
+    };
+    room.has_mentions |= arrived.highlight;
+    room.last_message_sender.clone_from(&arrived.sender);
+    room.last_message_kind = arrived.kind;
+    room.last_message_body = arrived.body.clone();
+    room.last_message_service = None;
+    room.last_message_is_own = false;
+    room.last_message_edited = false;
+    room.last_activity_ts = arrived.at_ms;
+    room
 }
 
 fn read_when_marked(mut room: Room, read: &HashSet<String>) -> Room {
@@ -1057,6 +1106,41 @@ pub fn sender_of(message: &TimelineMessage) -> NamedUser {
     NamedUser::new(message.sender.clone(), message.sender_name.clone())
 }
 
+pub fn newest_other_sender(room_id: &RoomId) -> Option<NamedUser> {
+    let own = own_user();
+    messages(room_id)
+        .iter()
+        .rev()
+        .find(|message| message.sender != own)
+        .map(sender_of)
+}
+
+pub fn arrived_message(sequence: u64, sender: &NamedUser, body: MessageBody) -> TimelineMessage {
+    let id = format!("demo-arrived-{sequence}");
+    TimelineMessage {
+        unique_id: id.clone(),
+        event_id: Some(id),
+        local_id: None,
+        sender: sender.user_id.clone(),
+        sender_name: sender.name.clone(),
+        sender_avatar_url: Some(sender.user_id.clone()),
+        sender_pronouns: pronouns(&sender.user_id),
+        body_emoji: BTreeMap::new(),
+        body,
+        mentions_room: false,
+        timestamp: now_ms(),
+        is_own: false,
+        reply: None,
+        edited: false,
+        editable: false,
+        is_first_unread: false,
+        send_state: SendState::Sent,
+        shield: Shield::None,
+        reactions: Vec::new(),
+        read_by: ReadBy::default(),
+    }
+}
+
 fn last_message_only(room_id: &RoomId) -> Vec<TimelineMessage> {
     let Some(dto) = data().rooms.iter().find(|room| room.id == room_id.as_ref()) else {
         return Vec::new();
@@ -1109,6 +1193,10 @@ fn synthesized_message(dto: &RoomDto, room: &Room) -> TimelineMessage {
         reactions: Vec::new(),
         read_by: ReadBy::default(),
     }
+}
+
+pub fn arrived_at() -> u64 {
+    now_ms()
 }
 
 fn now_ms() -> u64 {

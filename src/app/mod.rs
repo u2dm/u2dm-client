@@ -15,6 +15,7 @@ mod link_requests;
 mod media;
 mod mentions;
 mod message_actions;
+mod notifications;
 mod packs;
 mod pinned;
 mod polls;
@@ -56,6 +57,7 @@ use lifecycle::{Lifecycle, Settled};
 use media::MediaActions;
 use mentions::{MentionSuggestions, Suggestion};
 use message_actions::MessageActions;
+use notifications::DesktopNotifications;
 use packs::Packs;
 use pinned::{PinDirection, PinnedMessages};
 use readers::ReaderList;
@@ -80,7 +82,7 @@ use crate::commands::effects::Effect;
 use crate::commands::messages::{UserMessage, UserMessageKind};
 use crate::commands::sync::DirectoryUpdate;
 use crate::commands::ui::{
-    ComposerActivity, MessageDraft, TimelineVisibility, UiCommand, ViewportChanged,
+    ComposerActivity, MessageDraft, TimelineVisibility, UiCommand, ViewportChanged, WindowFocus,
 };
 use crate::commands::view::{AppViewState, LoginActivity, LoginStep, Toast};
 use crate::domain::account::AccountScope;
@@ -92,6 +94,7 @@ use crate::domain::invite::InviteList;
 use crate::domain::media::AttachmentPick;
 use crate::domain::message::{MessageEdit, PinChange};
 use crate::domain::poll::PollDraft;
+use crate::domain::push::PushNotice;
 use crate::domain::room::{NotifyMode, RoomId, RoomList, Space};
 use crate::domain::room_search::TitleQuery;
 use crate::domain::sync::{ConnectionStatus, ReauthReason};
@@ -210,6 +213,7 @@ pub struct AppService {
     invites: Invites,
     upgrades: RoomUpgrades,
     typing: Typing,
+    notifications: DesktopNotifications,
     room_info: RoomInfo,
     user_info: UserInfo,
     message_actions: MessageActions,
@@ -261,6 +265,7 @@ impl AppService {
             invites: Invites::new(Arc::clone(&output), events.clone()),
             upgrades: RoomUpgrades::new(Arc::clone(&output), events.clone()),
             typing: Typing::new(Arc::clone(&output), events.clone()),
+            notifications: DesktopNotifications::new(Arc::clone(&output), events.clone()),
             room_info: RoomInfo::new(Arc::clone(&output), events.clone()),
             user_info: UserInfo::new(Arc::clone(&output), events.clone()),
             message_actions: MessageActions::new(Arc::clone(&output), events.clone()),
@@ -291,6 +296,7 @@ impl AppService {
         mut scroll_in_rx: watch::Receiver<ViewportChanged>,
         mut visibility_in_rx: watch::Receiver<TimelineVisibility>,
         mut composer_in_rx: watch::Receiver<ComposerActivity>,
+        mut focus_in_rx: watch::Receiver<WindowFocus>,
     ) {
         if let Recovery::Blocked(message) = self.session.recover_interrupted_logins().await {
             self.block_sign_in(message);
@@ -299,6 +305,7 @@ impl AppService {
         let mut scroll_done = false;
         let mut visibility_done = false;
         let mut composer_done = false;
+        let mut focus_done = false;
         loop {
             tokio::select! {
                 maybe_input = inbox.recv() => {
@@ -339,7 +346,7 @@ impl AppService {
                         visibility_done = true;
                     } else {
                         let visibility = *visibility_in_rx.borrow_and_update();
-                        self.active_timeline.visibility_changed(visibility);
+                        self.timeline_visibility_changed(visibility);
                     }
                 }
                 changed = composer_in_rx.changed(), if !composer_done => {
@@ -348,6 +355,14 @@ impl AppService {
                     } else {
                         let activity = composer_in_rx.borrow_and_update().clone();
                         self.composer_changed(&activity);
+                    }
+                }
+                changed = focus_in_rx.changed(), if !focus_done => {
+                    if changed.is_err() {
+                        focus_done = true;
+                    } else {
+                        let focus = *focus_in_rx.borrow_and_update();
+                        self.notifications.focus_changed(focus);
                     }
                 }
             }
@@ -443,8 +458,8 @@ impl AppService {
             UiCommand::MoveSpace { from, to } => {
                 self.move_space(from, to);
             }
-            UiCommand::SelectRoom(room_id) => {
-                self.select_room(room_id).await;
+            opening @ (UiCommand::SelectRoom(_) | UiCommand::OpenNotification(_)) => {
+                self.open_room_from(opening).await;
             }
             UiCommand::FilterRooms(query) => {
                 self.filter_rooms(&query);
@@ -891,6 +906,7 @@ impl AppService {
         if self.room_directory.store_rooms(rooms) {
             self.refresh_selected_room().await;
             self.room_directory.emit_directory(&self.selection);
+            self.notifications.directory_changed(&self.room_directory);
             self.refresh_space_index();
             self.follow_room_info();
             if let Some(room_id) = self.user_info.follow(self.room_directory.rooms()) {
@@ -907,6 +923,7 @@ impl AppService {
         }
         if self.room_directory.store_invites(invites) {
             self.room_directory.emit_directory(&self.selection);
+            self.notifications.directory_changed(&self.room_directory);
             self.follow_invites().await;
         }
     }
@@ -921,6 +938,7 @@ impl AppService {
                 self.publish_selection();
             }
             self.room_directory.emit_directory(&self.selection);
+            self.notifications.directory_changed(&self.room_directory);
             self.follow_space_index();
             self.follow_invites().await;
         }
@@ -1488,6 +1506,7 @@ impl AppService {
             AppEvent::TypistsChanged { watch, typists } => {
                 self.typing.typists_changed(watch, typists);
             }
+            AppEvent::Notified { session, notice } => self.settle_notice(session, *notice),
             AppEvent::SpaceIndexPaged {
                 generation,
                 outcome,
@@ -2165,6 +2184,43 @@ impl AppService {
         self.follow_identity_alerts(room_id.clone());
         self.follow_typing(room_id.clone());
         self.open_room(room_id, TimelineFocus::ReadPosition).await;
+        self.notifications
+            .on_screen(self.active_timeline.on_screen());
+    }
+
+    async fn open_room_from(&mut self, opening: UiCommand) {
+        match opening {
+            UiCommand::SelectRoom(room_id) => self.select_room(room_id).await,
+            UiCommand::OpenNotification(room_id) => self.open_notification(room_id).await,
+            other => tracing::warn!(command = %other, "this command opens no room"),
+        }
+    }
+
+    async fn open_notification(&mut self, room_id: RoomId) {
+        self.notifications.on_screen(Some(&room_id));
+        if self.room_directory.invite(&room_id).is_some() {
+            self.invites.open(self.room_directory.invite(&room_id));
+            return;
+        }
+        if self.selection.room.as_ref() == Some(&room_id) {
+            return;
+        }
+        if !self.room_directory.lists(&self.selection, &room_id) {
+            self.handle_select_space(None);
+        }
+        self.select_room(room_id).await;
+    }
+
+    fn settle_notice(&mut self, session: u64, notice: PushNotice) {
+        if self.lifecycle.runs(session) {
+            self.notifications.arrived(notice, &self.room_directory);
+        }
+    }
+
+    fn timeline_visibility_changed(&mut self, visibility: TimelineVisibility) {
+        self.active_timeline.visibility_changed(visibility);
+        self.notifications
+            .on_screen(self.active_timeline.on_screen());
     }
 
     fn sync_selected_room(&self, room_id: Option<&RoomId>) {
@@ -2304,13 +2360,14 @@ impl AppService {
     }
 
     async fn start_syncing(&mut self, session: u64) {
-        let Some((sync, verification, identity, encryption, lifecycle_port)) =
+        let Some((sync, verification, identity, encryption, push, lifecycle_port)) =
             self.held_session.running().map(|a| {
                 (
                     Arc::clone(&a.sync),
                     Arc::clone(&a.verification),
                     Arc::clone(&a.identity),
                     Arc::clone(&a.encryption),
+                    Arc::clone(&a.push),
                     Arc::clone(&a.lifecycle),
                 )
             })
@@ -2334,6 +2391,8 @@ impl AppService {
             .spawn_own_listener(&mut self.background, identity, session);
         self.encryption
             .begin_session(&mut self.background, &encryption, session);
+        self.notifications
+            .spawn_listener(&mut self.background, push, session);
         self.set_connection(ConnectionStatus::Connecting);
         RoomDirectory::spawn_sync_pipeline(
             &mut self.background,
@@ -2456,6 +2515,7 @@ impl AppService {
         self.media.clear_session().await;
         self.room_directory.reset();
         self.verification.reset();
+        self.notifications.reset();
         self.selection = Selection::default();
         self.last_selected_room = None;
         self.held_session = HeldSession::None;

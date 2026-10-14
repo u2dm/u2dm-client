@@ -26,6 +26,7 @@ export global Actions {
     callback logout();
 
     callback select-room(string);
+    callback open-notification(string);
     callback select-space(string);
     callback select-direct();
     callback select-subspace(string);
@@ -113,6 +114,7 @@ export global Actions {
     callback request-media(string);
     callback scroll-position-changed(bool, int, int);
     callback timeline-visibility-changed(bool);
+    callback window-focus-changed(bool);
     callback composer-changed(string, bool, int);
     callback paginate-backwards();
     callback paginate-forwards();

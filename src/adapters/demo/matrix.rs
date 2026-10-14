@@ -18,8 +18,8 @@ use url::Url;
 use super::encryption::{self, EncryptionBook};
 use super::identity::{self, IdentityBook, SendHold};
 use super::{
-    attachments, audio, data, invites, login, logout, media, message_menu, pinned, polls,
-    reactions, receipts, room_info, source, space_index, stickers, sync, timeline, typing,
+    attachments, audio, data, invites, login, logout, media, message_menu, notifications, pinned,
+    polls, reactions, receipts, room_info, source, space_index, stickers, sync, timeline, typing,
     upgrades, user_info, verification, videos,
 };
 use crate::adapters::{body_emoji, video};
@@ -39,6 +39,7 @@ use crate::domain::message::{
     PinnedMessage, ReplyInfo, RichText, SendState, TimelineMessage,
 };
 use crate::domain::poll::{PollAction, PollDraft};
+use crate::domain::push::{NoticeContent, PushNotice, PushTweaks};
 use crate::domain::room::{NotifyMode, Room, RoomId, Space};
 use crate::domain::room_info::{Reader, RoomAbout, RosterMember};
 use crate::domain::space_index::HierarchyPage;
@@ -56,9 +57,9 @@ use crate::error::{AppError, Result};
 use crate::ports::matrix::{
     AttachmentHandoff, AuthPort, AuthenticatedSession, CleanupReport, DeviceRemoval,
     EncryptionPort, IdentityPort, ImagePackPort, InterruptedLogin, InvitePort, LocalDataOwnership,
-    MediaPort, PackCatalog, PinnedPort, ProgressSink, RestoreOutcome, RestoreStep, RoomInfoPort,
-    SessionPort, SpaceIndexPort, SpaceOrderPort, StoreAdoption, SyncPort, SyncSink, TimelinePort,
-    TypingPort, UpgradePort, UserInfoPort, VerificationPort,
+    MediaPort, PackCatalog, PinnedPort, ProgressSink, PushPort, RestoreOutcome, RestoreStep,
+    RoomInfoPort, SessionPort, SpaceIndexPort, SpaceOrderPort, StoreAdoption, SyncPort, SyncSink,
+    TimelinePort, TypingPort, UpgradePort, UserInfoPort, VerificationPort,
 };
 use crate::ports::media::MediaCache;
 
@@ -238,6 +239,7 @@ fn authenticated(session: Session) -> AuthenticatedSession {
     let invites = Arc::clone(&authed);
     let upgrades = Arc::clone(&authed);
     let typing = Arc::clone(&authed);
+    let push = Arc::clone(&authed);
     let room_info = Arc::clone(&authed);
     let user_info = Arc::clone(&authed);
     let image_packs = Arc::clone(&authed);
@@ -255,6 +257,7 @@ fn authenticated(session: Session) -> AuthenticatedSession {
         invites,
         upgrades,
         typing,
+        push,
         room_info,
         user_info,
         image_packs,
@@ -362,6 +365,7 @@ struct DemoAuthed {
     active: SharedActiveRoom,
     sent: AtomicU64,
     own_sends: Mutex<HashMap<RoomId, Vec<TimelineMessage>>>,
+    arrived: Mutex<HashMap<RoomId, Vec<TimelineMessage>>>,
     verification_tx: Mutex<Option<mpsc::UnboundedSender<VerificationEvent>>>,
     sas_started: Arc<AtomicBool>,
     outgoing_flow: AtomicBool,
@@ -381,6 +385,11 @@ struct DemoAuthed {
 impl DemoAuthed {
     fn room_history(&self, room_id: &RoomId) -> Vec<TimelineMessage> {
         let mut history = data::messages(room_id);
+        if let Ok(arrived) = self.arrived.lock()
+            && let Some(messages) = arrived.get(room_id)
+        {
+            history.extend(messages.iter().cloned());
+        }
         if let Ok(own_sends) = self.own_sends.lock()
             && let Some(sent) = own_sends.get(room_id)
         {
@@ -1348,15 +1357,133 @@ impl DemoAuthed {
     }
 
     fn hold_back_late_invites(&self) {
-        if !invites::scenario().arrives_late {
-            return;
+        if invites::scenario().arrives_late {
+            self.change_lists(|lists| {
+                lists
+                    .overrides
+                    .held_back
+                    .insert(invites::LATE_INVITE.to_owned());
+            });
         }
+        if notifications::scenario().invite {
+            self.change_lists(|lists| {
+                lists
+                    .overrides
+                    .held_back
+                    .insert(notifications::LATE_INVITE.to_owned());
+            });
+        }
+    }
+
+    fn emit_rooms(&self) {
+        if let Some(sink) = self.sync_sink() {
+            sink(SyncEvent::Rooms(current_lists(&self.lists).rooms().into()));
+        }
+    }
+
+    async fn arrive(
+        &self,
+        arrival: &notifications::Arrival,
+        notices_tx: &mpsc::Sender<PushNotice>,
+    ) -> bool {
+        let Some(room) = current_lists(&self.lists)
+            .rooms()
+            .into_iter()
+            .find(|room| room.id == arrival.room_id)
+        else {
+            tracing::debug!(room_id = %arrival.room_id, "demo: an arrival names no listed room");
+            return true;
+        };
+        let sender = data::newest_other_sender(&arrival.room_id)
+            .unwrap_or_else(|| NamedUser::unnamed(room.id.to_string()));
+        let message = data::arrived_message(
+            self.sent.fetch_add(1, Ordering::Relaxed),
+            &sender,
+            arrival.body.clone(),
+        );
+        if let Ok(mut arrived) = self.arrived.lock() {
+            arrived
+                .entry(arrival.room_id.clone())
+                .or_default()
+                .push(message);
+        }
+        let shown_sender = (!room.is_direct).then_some(sender);
+        if arrival.notifies {
+            tracing::debug!(room_id = %arrival.room_id, "demo: push rules notify an arrival");
+            let notice = PushNotice {
+                room_id: arrival.room_id.clone(),
+                room_name: room.display_name.clone(),
+                sent_at: data::arrived_at(),
+                content: NoticeContent::Message {
+                    sender: shown_sender.clone(),
+                    kind: arrival.kind,
+                    body: arrival.preview(),
+                },
+                tweaks: arrival.tweaks,
+            };
+            if notices_tx.send(notice).await.is_err() {
+                return false;
+            }
+        }
+        sleep(notifications::ROOM_ECHO_LAG).await;
+        let arrived = data::Arrived::now(
+            shown_sender,
+            arrival.kind,
+            arrival.preview(),
+            arrival.tweaks.highlight,
+        );
         self.change_lists(|lists| {
+            lists.overrides.read.remove(arrival.room_id.as_ref());
             lists
                 .overrides
-                .held_back
-                .insert(invites::LATE_INVITE.to_owned());
+                .arrivals
+                .insert(arrival.room_id.to_string(), arrived);
         });
+        self.emit_rooms();
+        true
+    }
+
+    fn read_elsewhere(&self, room_id: &RoomId) {
+        tracing::debug!(%room_id, "demo: a room is read on another device");
+        self.change_lists(|lists| {
+            lists.overrides.read.insert(room_id.to_string());
+        });
+        self.emit_rooms();
+    }
+
+    async fn release_notified_invite(&self, notices_tx: &mpsc::Sender<PushNotice>) -> bool {
+        self.change_lists(|lists| {
+            lists.overrides.held_back.remove(notifications::LATE_INVITE);
+        });
+        let lists = current_lists(&self.lists);
+        let Some(invite) = lists
+            .invites()
+            .into_iter()
+            .find(|invite| invite.id.as_ref() == notifications::LATE_INVITE)
+        else {
+            return true;
+        };
+        let notice = PushNotice {
+            room_id: invite.id.clone(),
+            room_name: invite.name.clone(),
+            sent_at: data::arrived_at(),
+            content: NoticeContent::Invite {
+                inviter: invite.inviter.clone(),
+            },
+            tweaks: PushTweaks {
+                highlight: false,
+                sound: true,
+            },
+        };
+        tracing::debug!(room_id = %invite.id, "demo: push rules notify an invite");
+        if notices_tx.send(notice).await.is_err() {
+            return false;
+        }
+        sleep(notifications::ROOM_ECHO_LAG).await;
+        if let Some(sink) = self.sync_sink() {
+            sink(SyncEvent::Invites(lists.invites().into()));
+        }
+        true
     }
 
     fn spawn_invite_changes(&self) {
@@ -1557,6 +1684,27 @@ impl TypingPort for DemoAuthed {
             return Err(unavailable("telling the room you are typing"));
         }
         self.typing_notices.notice(room_id, is_typing);
+        Ok(())
+    }
+}
+
+#[async_trait]
+impl PushPort for DemoAuthed {
+    async fn follow_notifications(&self, notices_tx: mpsc::Sender<PushNotice>) -> Result<()> {
+        for timed in notifications::script() {
+            sleep(timed.after).await;
+            let following = match timed.step {
+                notifications::Step::Arrive(arrival) => self.arrive(&arrival, &notices_tx).await,
+                notifications::Step::ReadElsewhere(room_id) => {
+                    self.read_elsewhere(&room_id);
+                    true
+                }
+                notifications::Step::Invite => self.release_notified_invite(&notices_tx).await,
+            };
+            if !following {
+                break;
+            }
+        }
         Ok(())
     }
 }

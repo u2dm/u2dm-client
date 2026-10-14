@@ -37,6 +37,7 @@ use super::fields::{
     PackRowFields, PackTabFields, PollAnswerFields, ReactionFields, ReactorFields, RoomFields,
     SpaceChildFields, SpaceFields,
 };
+use super::notices::NoticeWords;
 use super::present::{
     Delivery, IdentityAlertKind, MessageKind, PollPhase, ServiceKind, ShieldReason, VerifyStep,
 };
@@ -66,7 +67,7 @@ use super::{audio, emoji, emote, mention, router};
 use crate::app::input::CommandSender;
 use crate::commands::effects::{Effect, VerificationActivity};
 use crate::commands::messages::{UserMessage, UserMessageKind};
-use crate::commands::ui::{ComposerActivity, TimelineVisibility, ViewportChanged};
+use crate::commands::ui::{ComposerActivity, TimelineVisibility, ViewportChanged, WindowFocus};
 use crate::commands::view::{
     AppViewState, AttachmentKind, ChildAccess, DirectChat, EncryptionActivity, EncryptionStep,
     LoginActivity, LoginStep, PendingAnswer, PendingModeration, ReadersStatus, RoomInfoPlacement,
@@ -89,6 +90,9 @@ use crate::domain::user_info::{IdentityTrust, RoomMembership};
 use crate::domain::verification::VerificationEmoji as DomainVerificationEmoji;
 use crate::error::{AppError, Result};
 use crate::ports::media::MediaCache;
+use crate::ports::notifier::NotifierPort;
+
+const NOTIFICATION_TEXT: &str = "NotificationText";
 
 #[allow(dead_code)]
 mod names {
@@ -125,6 +129,7 @@ mod names {
         pub const SCROLL_POSITION_CHANGED: &str = "scroll-position-changed";
         pub const TIMELINE_VISIBILITY_CHANGED: &str = "timeline-visibility-changed";
         pub const COMPOSER_CHANGED: &str = "composer-changed";
+        pub const WINDOW_FOCUS_CHANGED: &str = "window-focus-changed";
     }
 
     pub mod emoji_store {
@@ -685,6 +690,46 @@ impl UiBackend for InterpretedBackend {
             tracing::warn!("failed to bind the spoiler reveal callback: {e}");
         }
     }
+
+    fn notification_text(window: &ComponentInstance, words: &NoticeWords<'_>) -> SharedString {
+        let (function, args) = match *words {
+            NoticeWords::Message { kind, body, sender } => (
+                "message",
+                vec![
+                    enum_value(&kind),
+                    Value::String(body.into()),
+                    Value::String(sender.into()),
+                ],
+            ),
+            NoticeWords::Service {
+                kind,
+                actor,
+                target,
+            } => (
+                "service",
+                vec![
+                    enum_value(&kind),
+                    Value::String(actor.into()),
+                    Value::String(target.into()),
+                ],
+            ),
+            NoticeWords::Invite { inviter } => ("invite", vec![Value::String(inviter.into())]),
+        };
+        match window.invoke_global(NOTIFICATION_TEXT, function, &args) {
+            Ok(Value::String(text)) => text,
+            Ok(other) => {
+                tracing::warn!(function, "the notification words came back as {other:?}");
+                SharedString::new()
+            }
+            Err(e) => {
+                tracing::warn!(
+                    function,
+                    "the notification words could not be asked for: {e}"
+                );
+                SharedString::new()
+            }
+        }
+    }
 }
 
 pub struct SlintUiAdapter {
@@ -873,6 +918,7 @@ impl SlintUiAdapter {
         scroll_tx: &watch::Sender<ViewportChanged>,
         visibility_tx: &watch::Sender<TimelineVisibility>,
         composer_tx: &watch::Sender<ComposerActivity>,
+        focus_tx: &watch::Sender<WindowFocus>,
     ) -> Result<()> {
         setup_emoji_store(&self.instance)?;
 
@@ -967,6 +1013,15 @@ impl SlintUiAdapter {
             },
         )?;
 
+        self.bind_window_watches(visibility_tx, composer_tx, focus_tx)
+    }
+
+    fn bind_window_watches(
+        &self,
+        visibility_tx: &watch::Sender<TimelineVisibility>,
+        composer_tx: &watch::Sender<ComposerActivity>,
+        focus_tx: &watch::Sender<WindowFocus>,
+    ) -> Result<()> {
         let visibility_tx = visibility_tx.clone();
         bind_action(
             &self.instance,
@@ -986,7 +1041,17 @@ impl SlintUiAdapter {
                 int_arg(args, 2).unwrap_or_default(),
             );
             Value::Void
-        })
+        })?;
+
+        let focus_tx = focus_tx.clone();
+        bind_action(
+            &self.instance,
+            callback::WINDOW_FOCUS_CHANGED,
+            move |args| {
+                router::window_focus(&focus_tx, bool_arg(args, 0));
+                Value::Void
+            },
+        )
     }
 
     pub fn spawn_event_handler(
@@ -994,12 +1059,14 @@ impl SlintUiAdapter {
         ui_rx: mpsc::Receiver<Effect>,
         view_rx: watch::Receiver<Arc<AppViewState>>,
         media_cache: Arc<dyn MediaCache>,
+        notifier: Arc<dyn NotifierPort>,
     ) {
         backend::spawn_event_handler::<InterpretedBackend>(
             &self.instance,
             ui_rx,
             view_rx,
             media_cache,
+            notifier,
         );
     }
 

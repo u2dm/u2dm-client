@@ -8,6 +8,7 @@ use super::schema::{notify_modes, simple_callbacks, variant_named};
 use crate::app::input::CommandSender;
 use crate::commands::ui::{
     ComposerActivity, MessageDraft, ReplyDraft, TimelineVisibility, UiCommand, ViewportChanged,
+    WindowFocus,
 };
 use crate::domain::auth::LoginCredentials;
 use crate::domain::emote::ComposerText;
@@ -547,6 +548,17 @@ pub fn timeline_visibility(visibility_tx: &watch::Sender<TimelineVisibility>, vi
     };
     if visibility_tx.send(visibility).is_err() {
         tracing::debug!("timeline visibility receiver closed");
+    }
+}
+
+pub fn window_focus(focus_tx: &watch::Sender<WindowFocus>, attended: bool) {
+    let focus = if attended {
+        WindowFocus::Focused
+    } else {
+        WindowFocus::Unfocused
+    };
+    if focus_tx.send(focus).is_err() {
+        tracing::debug!("window focus receiver closed");
     }
 }
 

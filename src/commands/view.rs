@@ -12,6 +12,7 @@ use crate::domain::image_pack::ImagePacks;
 use crate::domain::invite::{Invite, InviteList};
 use crate::domain::media::AudioMeta;
 use crate::domain::message::{PinnedMessage, TimelineMessage};
+use crate::domain::push::PushNotice;
 use crate::domain::room::{NotifyMode, RoomId, RoomList, Space, UnreadFlags};
 use crate::domain::room_info::{Reader, RoomAbout, RosterMember};
 use crate::domain::room_log::RoomLog;
@@ -41,6 +42,7 @@ pub struct AppViewState {
     pub identity_alert: IdentityAlertView,
     pub upgrade: UpgradeView,
     pub typing: TypingView,
+    pub notifications: NotificationsView,
     pub encryption: EncryptionView,
     pub toast: Toast,
     pub message_link: CopiedLink,
@@ -209,6 +211,25 @@ pub struct UpgradeView {
 pub struct TypingView {
     pub room_id: Option<RoomId>,
     pub typists: Typists,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ShownNotice {
+    pub serial: u64,
+    pub notice: PushNotice,
+}
+
+#[derive(Clone, PartialEq, Eq)]
+pub struct NotificationsView {
+    pub shown: Arc<[ShownNotice]>,
+}
+
+impl Default for NotificationsView {
+    fn default() -> Self {
+        Self {
+            shown: Arc::from(Vec::new()),
+        }
+    }
 }
 
 #[derive(Clone, Default, PartialEq, Eq)]
@@ -420,6 +441,7 @@ pub struct DirectoryView {
     pub listed_space: SpaceHeading,
     pub direct_flags: UnreadFlags,
     pub invites_pending: bool,
+    pub attention: usize,
 }
 
 impl Default for DirectoryView {
@@ -436,6 +458,7 @@ impl Default for DirectoryView {
             listed_space: SpaceHeading::default(),
             direct_flags: UnreadFlags::default(),
             invites_pending: false,
+            attention: 0,
         }
     }
 }

@@ -7,15 +7,16 @@ use crate::commands::ui::Draft;
 use crate::commands::view::{
     AppViewState, AttachmentView, AudioView, CardStatus, CopiedLink, DirectoryView, EncryptionStep,
     EncryptionView, IdentityAlertView, InviteView, LifecycleView, LoginStep, MentionsView,
-    PackView, PaginationView, PinnedView, ReadersView, RoomInfoView, RoomLogView, RoomMenuTarget,
-    RosterRow, SourceState, SpaceIndexRow, SpaceIndexView, SpaceMatch, Toast, TrackFile,
-    TypingView, UnsentMessage, UpgradeView, UserInfoView, VideoView,
+    NotificationsView, PackView, PaginationView, PinnedView, ReadersView, RoomInfoView,
+    RoomLogView, RoomMenuTarget, RosterRow, SourceState, SpaceIndexRow, SpaceIndexView, SpaceMatch,
+    Toast, TrackFile, TypingView, UnsentMessage, UpgradeView, UserInfoView, VideoView,
 };
 use crate::domain::encryption::KeyStorage;
 use crate::domain::image_pack::{ImagePack, ImageUsage, PackOrigin, PackTitle};
 use crate::domain::invite::Invite;
 use crate::domain::member_name::NamedUser;
 use crate::domain::message::{EditKind, PinnedMessage};
+use crate::domain::push::NoticeContent;
 use crate::domain::room::{Room, Space};
 use crate::domain::room_info::{Reader, RosterSection};
 use crate::domain::space_index::{ChildKind, JoinRule};
@@ -43,6 +44,7 @@ pub struct ViewDto {
     identity_alert: IdentityAlertDto,
     upgrade: UpgradeDto,
     typing: TypingDto,
+    notifications: Vec<NotificationDto>,
     encryption: EncryptionDto,
     toast: ToastDto,
     message_link: LinkDto,
@@ -74,6 +76,17 @@ struct UpgradeDto {
 struct TypingDto {
     room_id: Option<String>,
     typists: Vec<TypistDto>,
+}
+
+#[derive(Serialize)]
+struct NotificationDto {
+    serial: u64,
+    room_id: String,
+    room_name: String,
+    kind: &'static str,
+    sender: Option<String>,
+    highlight: bool,
+    sound: bool,
 }
 
 #[derive(Serialize)]
@@ -291,6 +304,7 @@ struct DirectoryDto {
     direct_mention: bool,
     direct_hint: bool,
     invites_pending: bool,
+    attention: usize,
     invites: Vec<InviteDto>,
     rooms: Vec<RoomDto>,
     space_matches: Vec<SpaceMatchDto>,
@@ -499,6 +513,7 @@ pub fn view(source: &AppViewState) -> ViewDto {
         identity_alert: identity_alert(&source.identity_alert),
         upgrade: upgrade(&source.upgrade),
         typing: typing(&source.typing),
+        notifications: notifications(&source.notifications),
         encryption: encryption(&source.encryption),
         toast: toast(&source.toast),
         message_link: link(&source.message_link),
@@ -543,6 +558,30 @@ fn typing(source: &TypingView) -> TypingDto {
             })
             .collect(),
     }
+}
+
+fn notifications(source: &NotificationsView) -> Vec<NotificationDto> {
+    source
+        .shown
+        .iter()
+        .map(|shown| {
+            let notice = &shown.notice;
+            let (kind, sender) = match &notice.content {
+                NoticeContent::Message { sender, .. } => ("message", sender.as_ref()),
+                NoticeContent::Service { actor, .. } => ("service", Some(actor)),
+                NoticeContent::Invite { inviter } => ("invite", inviter.as_ref()),
+            };
+            NotificationDto {
+                serial: shown.serial,
+                room_id: notice.room_id.to_string(),
+                room_name: notice.room_name.clone(),
+                kind,
+                sender: sender.map(NamedUser::shown),
+                highlight: notice.tweaks.highlight,
+                sound: notice.tweaks.sound,
+            }
+        })
+        .collect()
 }
 
 fn encryption(source: &EncryptionView) -> EncryptionDto {
@@ -810,6 +849,7 @@ fn directory(source: &DirectoryView) -> DirectoryDto {
         direct_mention: source.direct_flags.mention,
         direct_hint: source.direct_flags.hint,
         invites_pending: source.invites_pending,
+        attention: source.attention,
         invites: source.invites.iter().map(|entry| invite(entry)).collect(),
         rooms: source.rooms.iter().map(|entry| room(entry)).collect(),
         space_matches: source.space_matches.iter().map(space_match).collect(),

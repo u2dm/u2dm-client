@@ -242,6 +242,7 @@ pub(super) struct RoomDirectory {
     graph: SpaceGraph,
     flags: Vec<UnreadFlags>,
     direct_flags: UnreadFlags,
+    attention: usize,
     rail_dirty: bool,
     orders: HashMap<String, String>,
     pending_orders: HashMap<String, PendingOrder>,
@@ -262,6 +263,7 @@ impl RoomDirectory {
             graph: SpaceGraph::default(),
             flags: Vec::new(),
             direct_flags: UnreadFlags::default(),
+            attention: 0,
             rail_dirty: false,
             orders: HashMap::new(),
             pending_orders: HashMap::new(),
@@ -483,6 +485,7 @@ impl RoomDirectory {
         self.graph = SpaceGraph::default();
         self.flags.clear();
         self.direct_flags = UnreadFlags::default();
+        self.attention = 0;
         self.rail_dirty = false;
         self.orders.clear();
         self.pending_orders.clear();
@@ -689,6 +692,12 @@ impl RoomDirectory {
             .into()
     }
 
+    pub(super) fn lists(&self, sel: &Selection, room_id: &RoomId) -> bool {
+        self.listed_rooms(sel)
+            .iter()
+            .any(|room| room.id == *room_id)
+    }
+
     fn listed_rooms(&self, sel: &Selection) -> RoomList {
         match &sel.filter {
             RoomFilter::All if self.query.is_empty() => Arc::clone(&self.listable),
@@ -846,9 +855,11 @@ impl RoomDirectory {
     fn emit_rail_flags(&self) {
         let flags = self.direct_flags;
         let invites_pending = !self.invites.is_empty();
+        let attention = self.attention;
         self.output.publish(Box::new(move |view| {
             view.directory.direct_flags = flags;
             view.directory.invites_pending = invites_pending;
+            view.directory.attention = attention;
         }));
     }
 
@@ -910,9 +921,13 @@ impl RoomDirectory {
                 direct.absorb_invite();
             }
         }
-        let changed = next != self.flags || direct != self.direct_flags;
+        let attention =
+            self.listable.iter().filter(|room| room.alert()).count() + self.invites.len();
+        let changed =
+            next != self.flags || direct != self.direct_flags || attention != self.attention;
         self.flags = next;
         self.direct_flags = direct;
+        self.attention = attention;
         changed
     }
 

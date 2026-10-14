@@ -1,5 +1,6 @@
 #![allow(clippy::pub_use)]
 
+mod activation;
 mod audio;
 mod autolink;
 mod backend;
@@ -17,6 +18,7 @@ mod finger_direction;
 mod focus;
 mod mention;
 mod multiplex;
+mod notices;
 mod output;
 mod permalink;
 mod present;

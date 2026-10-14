@@ -18,6 +18,7 @@ use super::dto::{
 };
 use super::emote;
 use super::fields::{MemberRowFields, MessageFields, SpaceChildFields, SpaceFields};
+use super::notices::apply_notifications;
 use super::present::{
     VerifyStep, avatar_color_index, avatar_initials, duration_label, file_extension,
     identity_banner, message_sent_at_label, name_initials, user_initial, verification_cancellation,
@@ -268,10 +269,12 @@ pub fn dispatch_effect<B: UiBackend>(w: &B::Window, event: Effect, ctx: &UiEvent
         }
         Effect::Verification(update) => apply_verification(w, &update),
         Effect::SessionReset(view) => {
+            ctx.notifier.withdraw_all();
             let models = begin_session::<B>(w);
             let fresh = UiEventContext::<B> {
                 models: &models,
                 media: ctx.media,
+                notifier: ctx.notifier,
             };
             apply_snapshot::<B>(w, &Arc::new(*view), &fresh);
             clear_selected_room(w);
@@ -373,6 +376,7 @@ fn apply_snapshot<B: UiBackend>(
         identity_alert,
         upgrade,
         typing,
+        notifications,
         encryption,
         toast,
         message_link,
@@ -428,6 +432,7 @@ fn apply_snapshot<B: UiBackend>(
     }
     apply_composer_banners(w, last, identity_alert, upgrade);
     apply_typing(w, last.map(|l| &l.typing), typing);
+    apply_notifications::<B>(w, last, notifications, ctx.notifier);
     if last.is_none_or(|l| l.encryption != *encryption) {
         apply_encryption(w, encryption);
     }
@@ -747,6 +752,7 @@ fn apply_directory<B: UiBackend>(
         listed_space,
         direct_flags,
         invites_pending,
+        attention,
     } = directory;
 
     if last.is_none_or(|l| {
@@ -810,6 +816,12 @@ fn apply_directory<B: UiBackend>(
     }
     if last.is_none_or(|l| l.invites_pending != *invites_pending) {
         w.set_bool(BoolProp::InvitesPending, *invites_pending);
+    }
+    if last.is_none_or(|l| l.attention != *attention) {
+        w.set_int(
+            IntProp::Attention,
+            i32::try_from(*attention).unwrap_or(i32::MAX),
+        );
     }
 }
 

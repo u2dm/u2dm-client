@@ -534,6 +534,28 @@ export global ServiceLabel {
     }
 }
 
+export global NotificationText {
+    in-out property <string> open-label: @tr("Open");
+
+    public pure function message(kind: PreviewKind, body: string, sender: string) -> string {
+        if sender == "" {
+            return MessagePreview.label(kind, body);
+        }
+        return @tr("{}: {}", sender, MessagePreview.label(kind, body));
+    }
+
+    public pure function service(kind: ServiceKind, actor: string, target: string) -> string {
+        return ServiceLabel.label(kind, actor, target);
+    }
+
+    public pure function invite(inviter: string) -> string {
+        if inviter == "" {
+            return @tr("Invitation");
+        }
+        return @tr("Invited by {}", inviter);
+    }
+}
+
 export global TypingLine {
     public pure function text(count: int, first: string, second: string) -> string {
         if count <= 0 {

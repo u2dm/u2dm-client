@@ -217,7 +217,7 @@ fn latest_message_preview(
     }
 }
 
-fn preview_from_event(event: &AnySyncTimelineEvent) -> Option<MessagePreview> {
+pub(super) fn preview_from_event(event: &AnySyncTimelineEvent) -> Option<MessagePreview> {
     match event {
         AnySyncTimelineEvent::MessageLike(AnySyncMessageLikeEvent::RoomMessage(
             SyncMessageLikeEvent::Original(message),

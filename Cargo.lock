@@ -7834,8 +7834,10 @@ dependencies = [
  "unicode-normalization",
  "url",
  "wayland-client",
+ "wayland-protocols",
  "windows-native-keyring-store",
  "xdg",
+ "zbus",
  "zbus-secret-service-keyring-store",
 ]
 

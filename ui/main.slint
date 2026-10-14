@@ -41,8 +41,8 @@ import {
 } from "./views.slint";
 import { Actions } from "./actions.slint";
 import { EmojiStore } from "./emoji-store.slint";
-import { SpoilerCover } from "./messages.slint";
-import { Polls, Probe, ReplySwipe, RoomMenu, Shell } from "./local.slint";
+import { NotificationText, SpoilerCover } from "./messages.slint";
+import { Polls, Probe, ReplySwipe, RoomMenu, RoomSearch, Shell } from "./local.slint";
 import { Metrics } from "./theme.slint";
 import { LoadingScreen } from "./screens/login/loading.slint";
 import { RestorePausedScreen } from "./screens/login/restore-paused.slint";
@@ -69,10 +69,16 @@ export { LoginView, SessionView, DirectoryView, SpaceIndexView, RoomView, PackVi
 export { AttachmentView, VideoView, AudioView, UnsentView, IdentityAlertView, UpgradeView, TypingView, EncryptionView, WindowView, RoomInfoView, SourceView, RoomMenuView, RoomLogView, UserInfoView, InviteView, ReadersView, MentionsView }
 export { Actions }
 export { Probe, ReplySwipe, RoomMenu }
-export { SpoilerCover }
+export { NotificationText, SpoilerCover }
+
+export global WindowTitle {
+    in-out property <string> text: DirectoryView.attention > 0
+        ? @tr("AppWindow" => "({}) U2DM Matrix Client", DirectoryView.attention)
+        : @tr("AppWindow" => "U2DM Matrix Client");
+}
 
 export component AppWindow inherits Window {
-    title: @tr("U2DM Matrix Client");
+    title: WindowTitle.text;
     preferred-width: Metrics.window-initial-width;
     preferred-height: Metrics.window-initial-height;
     min-width: Metrics.window-min-width;
@@ -81,6 +87,21 @@ export component AppWindow inherits Window {
     in-out property <string> input-homeserver: "matrix.org";
     in-out property <string> input-username: "";
     in-out property <string> input-message: "";
+
+    property <bool> attended: WindowView.focused && !root.minimized;
+    property <int> notification-opens: WindowView.notification-opens;
+
+    changed attended => {
+        Actions.window-focus-changed(root.attended);
+    }
+
+    changed notification-opens => {
+        if LoginView.step == LoginPhase.logged-in {
+            Shell.close-overlays();
+            RoomSearch.clear();
+            Actions.open-notification(WindowView.notification-room);
+        }
+    }
 
     if LoginView.step == LoginPhase.loading: LoadingScreen { }
 

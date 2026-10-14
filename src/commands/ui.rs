@@ -36,6 +36,8 @@ pub enum UiCommand {
     },
     #[strum(to_string = "SelectRoom({0})")]
     SelectRoom(RoomId),
+    #[strum(to_string = "OpenNotification({0})")]
+    OpenNotification(RoomId),
     #[strum(to_string = "FilterRooms")]
     FilterRooms(String),
     #[strum(to_string = "OpenSpace({0})")]
@@ -298,6 +300,7 @@ impl UiCommand {
     pub fn room_id(&self) -> Option<&RoomId> {
         match self {
             Self::SelectRoom(room_id)
+            | Self::OpenNotification(room_id)
             | Self::OpenSpace(room_id)
             | Self::JoinSpaceChild(room_id)
             | Self::OpenSpaceChild(room_id)
@@ -480,6 +483,13 @@ pub enum TimelineVisibility {
     Visible,
     #[default]
     Hidden,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum WindowFocus {
+    #[default]
+    Focused,
+    Unfocused,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]

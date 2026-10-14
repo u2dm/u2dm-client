@@ -98,6 +98,9 @@ macro_rules! string_props {
         SpoilerLabel SpoilerCover "SpoilerCover" "label" set_label get_label;
         SpoilerReasonLabel SpoilerCover "SpoilerCover" "reason-label" set_reason_label get_reason_label;
         SpoilerReasonSlot SpoilerCover "SpoilerCover" "reason-slot" set_reason_slot get_reason_slot;
+        NotificationOpenLabel NotificationText "NotificationText" "open-label" set_open_label get_open_label;
+        NotificationRoom WindowView "WindowView" "notification-room" set_notification_room get_notification_room;
+        #[cfg(feature = "demo")] WindowTitleText WindowTitle "WindowTitle" "text" set_text get_text;
         #[cfg(feature = "demo")] RoomMenuKey RoomMenu "RoomMenu" "key" set_key get_key;
     } };
 }
@@ -134,6 +137,7 @@ macro_rules! simple_callbacks {
             RetryEncryptionSetup;
         on_retry_timeline "retry-timeline" retry_timeline plain RetryTimeline;
         on_select_room "select-room" select_room room SelectRoom;
+        on_open_notification "open-notification" open_notification room OpenNotification;
         on_select_space "select-space" select_space opt_room SelectSpace;
         on_select_direct "select-direct" select_direct plain SelectDirect;
         on_select_subspace "select-subspace" select_subspace opt_room SelectSubspace;
@@ -325,6 +329,8 @@ macro_rules! int_props {
         TypingCount TypingView "TypingView" "count" set_count get_count;
         SwipeTravel WindowView "WindowView" "swipe-travel" set_swipe_travel get_swipe_travel;
         ContextPresses WindowView "WindowView" "context-presses" set_context_presses get_context_presses;
+        NotificationOpens WindowView "WindowView" "notification-opens" set_notification_opens get_notification_opens;
+        Attention DirectoryView "DirectoryView" "attention" set_attention get_attention;
         MessageLinkSerial RoomView "RoomView" "message-link-serial" set_message_link_serial get_message_link_serial;
         RoomInfoMembers RoomInfoView "RoomInfoView" "members" set_members get_members;
         RoomInfoColorIndex RoomInfoView "RoomInfoView" "color-index" set_color_index get_color_index;

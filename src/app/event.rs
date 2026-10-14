@@ -16,6 +16,7 @@ use crate::domain::image_pack::PackId;
 use crate::domain::media::PickedAttachment;
 use crate::domain::member_name::NamedUser;
 use crate::domain::message::{MessageEdit, PinnedMessage};
+use crate::domain::push::PushNotice;
 use crate::domain::room::RoomId;
 use crate::domain::room_info::{Reader, RoomAbout, RosterMember};
 use crate::domain::sync::{ReauthReason, SessionLoss};
@@ -84,6 +85,10 @@ pub(super) enum AppEvent {
     TypistsChanged {
         watch: u64,
         typists: Vec<NamedUser>,
+    },
+    Notified {
+        session: u64,
+        notice: Box<PushNotice>,
     },
     SpaceIndexPaged {
         generation: u64,
@@ -371,6 +376,7 @@ impl AppEvent {
             Self::EditUnsaved { .. } => "EditUnsaved",
             Self::PinnedChanged { .. } => "PinnedChanged",
             Self::TypistsChanged { .. } => "TypistsChanged",
+            Self::Notified { .. } => "Notified",
             Self::SpaceIndexPaged { .. } => "SpaceIndexPaged",
             Self::SpaceIndexAvatarsReady { .. } => "SpaceIndexAvatarsReady",
             Self::SpaceChildJoinSettled { .. } => "SpaceChildJoinSettled",

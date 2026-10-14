@@ -33,6 +33,8 @@ export global WindowView {
     in property <bool> focused: true;
     in property <int> swipe-travel;
     in property <int> context-presses;
+    in property <string> notification-room;
+    in property <int> notification-opens;
 }
 
 export global DirectoryView {
@@ -51,6 +53,7 @@ export global DirectoryView {
     in property <bool> direct-mention;
     in property <bool> direct-hint;
     in property <bool> invites-pending;
+    in property <int> attention;
     in property <int> selected-generation;
 }
 

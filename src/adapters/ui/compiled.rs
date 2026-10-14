@@ -21,7 +21,7 @@ use u2dm_ui::{
     LogLineEntry, LoginActivity as UiLoginActivity, LoginMethodKind as UiLoginMethodKind,
     LoginPhase, LoginView, MediaFailure as UiMediaFailure, MediaState as UiMediaState, MemberEntry,
     MemberRole as UiMemberRole, MemberRowKind as UiMemberRowKind, MentionWord, MentionsView,
-    MessageEntry, MessageKind as UiMessageKind, Moderation as UiModeration,
+    MessageEntry, MessageKind as UiMessageKind, Moderation as UiModeration, NotificationText,
     NotifyMode as UiNotifyMode, PackCell, PackOrigin as UiPackOrigin, PackRow,
     PackSurface as UiPackSurface, PackTabEntry, PackView, PollAnswerEntry,
     PollPhase as UiPollPhase, PreviewKind as UiPreviewKind, ReactionEntry,
@@ -40,7 +40,7 @@ use u2dm_ui::{
     VerificationView, VideoView, WindowView,
 };
 #[cfg(feature = "demo")]
-use u2dm_ui::{Probe, RoomMenu};
+use u2dm_ui::{Probe, RoomMenu, WindowTitle};
 
 use super::backend::{
     self, Models, RECENT_SPEAKERS, UiBackend, adopted_room_key, current_edited_row,
@@ -63,6 +63,7 @@ use super::fields::{
     PackRowFields, PackTabFields, PollAnswerFields, ReactionFields, ReactorFields, RoomFields,
     SpaceChildFields, SpaceFields,
 };
+use super::notices::NoticeWords;
 use super::present::{
     Delivery, IdentityAlertKind, MessageKind, PollPhase, ServiceKind, ShieldReason, VerifyStep,
 };
@@ -92,7 +93,7 @@ use super::{audio, emoji, emote, mention, router};
 use crate::app::input::CommandSender;
 use crate::commands::effects::{Effect, VerificationActivity};
 use crate::commands::messages::{UserMessage, UserMessageKind};
-use crate::commands::ui::{ComposerActivity, TimelineVisibility, ViewportChanged};
+use crate::commands::ui::{ComposerActivity, TimelineVisibility, ViewportChanged, WindowFocus};
 use crate::commands::view::{
     AppViewState, AttachmentKind, ChildAccess, DirectChat, EncryptionActivity, EncryptionStep,
     LoginActivity, LoginStep, PendingAnswer, PendingModeration, ReadersStatus, RoomInfoPlacement,
@@ -115,6 +116,7 @@ use crate::domain::user_info::{IdentityTrust, RoomMembership};
 use crate::domain::verification::VerificationEmoji as DomainVerificationEmoji;
 use crate::error::Result;
 use crate::ports::media::MediaCache;
+use crate::ports::notifier::NotifierPort;
 
 fn actions(window: &AppWindow) -> Actions<'_> {
     window.global::<Actions>()
@@ -559,6 +561,21 @@ impl UiBackend for CompiledBackend {
     fn bind_reveal_spoilers(window: &AppWindow, reveal: impl Fn(&str) + 'static) {
         actions(window).on_reveal_spoilers(move |unique_id| reveal(&unique_id));
     }
+
+    fn notification_text(window: &AppWindow, words: &NoticeWords<'_>) -> SharedString {
+        let text = window.global::<NotificationText>();
+        match *words {
+            NoticeWords::Message { kind, body, sender } => {
+                text.invoke_message(kind.slint(), body.into(), sender.into())
+            }
+            NoticeWords::Service {
+                kind,
+                actor,
+                target,
+            } => text.invoke_service(kind.slint(), actor.into(), target.into()),
+            NoticeWords::Invite { inviter } => text.invoke_invite(inviter.into()),
+        }
+    }
 }
 
 pub struct SlintUiAdapter {
@@ -695,6 +712,7 @@ impl SlintUiAdapter {
         scroll_tx: &watch::Sender<ViewportChanged>,
         visibility_tx: &watch::Sender<TimelineVisibility>,
         composer_tx: &watch::Sender<ComposerActivity>,
+        focus_tx: &watch::Sender<WindowFocus>,
     ) -> Result<()> {
         setup_emoji_store(&self.window);
 
@@ -790,6 +808,11 @@ impl SlintUiAdapter {
             router::composer_changed(&composer_tx, room_id.to_string(), composing, edits);
         });
 
+        let focus_tx = focus_tx.clone();
+        actions(win).on_window_focus_changed(move |attended| {
+            router::window_focus(&focus_tx, attended);
+        });
+
         Ok(())
     }
 
@@ -798,8 +821,15 @@ impl SlintUiAdapter {
         ui_rx: mpsc::Receiver<Effect>,
         view_rx: watch::Receiver<Arc<AppViewState>>,
         media_cache: Arc<dyn MediaCache>,
+        notifier: Arc<dyn NotifierPort>,
     ) {
-        backend::spawn_event_handler::<CompiledBackend>(&self.window, ui_rx, view_rx, media_cache);
+        backend::spawn_event_handler::<CompiledBackend>(
+            &self.window,
+            ui_rx,
+            view_rx,
+            media_cache,
+            notifier,
+        );
     }
 
     pub fn run(&self) -> Result<()> {

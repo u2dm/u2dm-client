@@ -18,6 +18,9 @@ pub fn focus_mirror<B: UiBackend>(window: &B::Window) -> impl FnMut(&Window) + u
             mirrored.set(Some(focused));
             tracing::debug!(focused, "the window's focus changed");
             window.set_bool(BoolProp::WindowFocused, focused);
+            if focused {
+                slint_window.with_winit_window(|winit| winit.request_user_attention(None));
+            }
         }
     }
 }

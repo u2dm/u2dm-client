@@ -179,6 +179,7 @@ pub struct TimelineDump {
     pub audio: AudioDump,
     pub room_menu: RoomMenuDump,
     pub room_log: RoomLogDump,
+    pub title: String,
 }
 
 type Requester = Box<dyn Fn(oneshot::Sender<TimelineDump>) + Send + Sync>;
@@ -239,7 +240,10 @@ pub fn install_probe<B: UiBackend>(window: &B::Window) {
         let queued = weak.upgrade_in_event_loop(move |window| match poke {
             Poke::ToggleAudio => audio::toggle(&window),
             Poke::SeekAudio(position) => audio::seek(&window, position),
-            Poke::WindowFocus(focused) => window.set_bool(BoolProp::WindowFocused, focused),
+            Poke::WindowFocus(focused) => {
+                window.set_bool(BoolProp::WindowFocused, focused);
+                window.window().request_redraw();
+            }
             Poke::SwipeTravel(px) => window.set_int(IntProp::SwipeTravel, px),
             Poke::ContextPress => context_press::announce(&window),
         });
@@ -281,6 +285,7 @@ fn collect<B: UiBackend>(window: &B::Window) -> TimelineDump {
         audio: audio_view(window),
         room_menu: room_menu_view(window),
         room_log: room_log_view::<B>(window),
+        title: window.get_string(StringProp::WindowTitleText).to_string(),
     }
 }
 

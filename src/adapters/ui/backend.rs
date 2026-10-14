@@ -3,7 +3,7 @@ use std::ops::ControlFlow;
 use std::rc::Rc;
 use std::sync::Arc;
 
-use slint::{ComponentHandle, Image, Model, ModelRc, VecModel};
+use slint::{ComponentHandle, Image, Model, ModelRc, SharedString, VecModel};
 use tokio::sync::{OwnedSemaphorePermit, mpsc, watch};
 
 use super::clock::install_clock_invalidation;
@@ -25,6 +25,7 @@ use super::fields::{
     SpaceChildFields, SpaceFields,
 };
 use super::multiplex::spawn_event_multiplexer;
+use super::notices::{NoticeWords, follow_activations};
 use super::present::room_log_text;
 use super::props::{IntProp, StringProp, UiProps};
 use super::reconcile::{
@@ -48,6 +49,7 @@ use crate::domain::room_info::{Reader, RosterMember};
 use crate::domain::room_log::LogLine;
 use crate::domain::timeline::EnrichmentDelta;
 use crate::ports::media::MediaCache;
+use crate::ports::notifier::NotifierPort;
 
 pub trait UiBackend: Sized + 'static {
     type Window: ComponentHandle + UiProps + 'static;
@@ -70,6 +72,7 @@ pub trait UiBackend: Sized + 'static {
     fn attach_models(window: &Self::Window, models: &Models<Self>);
     fn bind_browse_packs(window: &Self::Window, browse: impl Fn(PackSurface, &str, i32) + 'static);
     fn bind_reveal_spoilers(window: &Self::Window, reveal: impl Fn(&str) + 'static);
+    fn notification_text(window: &Self::Window, words: &NoticeWords<'_>) -> SharedString;
 
     fn convert_message(
         message: &TimelineMessage,
@@ -169,8 +172,10 @@ pub fn spawn_event_handler<B: UiBackend>(
     ui_rx: mpsc::Receiver<Effect>,
     view_rx: watch::Receiver<Arc<AppViewState>>,
     media_cache: Arc<dyn MediaCache>,
+    notifier: Arc<dyn NotifierPort>,
 ) {
     begin_session::<B>(window);
+    follow_activations::<B>(window, notifier.as_ref());
 
     install_render_hooks::<B>(window.as_weak());
     install_clock_invalidation::<B>(Arc::clone(&media_cache));
@@ -192,7 +197,7 @@ pub fn spawn_event_handler<B: UiBackend>(
 
     let weak = window.as_weak();
     spawn_event_multiplexer(ui_rx, view_rx, media_cache, move |event, media, permit| {
-        post_effect::<B>(&weak, media, event, permit);
+        post_effect::<B>(&weak, media, Arc::clone(&notifier), event, permit);
     });
 }
 
@@ -203,11 +208,13 @@ pub fn reorder_spaces<B: UiBackend>(from: usize, to: usize) {
 pub struct UiEventContext<'a, B: UiBackend> {
     pub models: &'a Models<B>,
     pub media: &'a dyn MediaCache,
+    pub notifier: &'a dyn NotifierPort,
 }
 
 fn post_effect<B: UiBackend>(
     weak: &slint::Weak<B::Window>,
     media: Arc<dyn MediaCache>,
+    notifier: Arc<dyn NotifierPort>,
     event: Effect,
     permit: OwnedSemaphorePermit,
 ) {
@@ -216,6 +223,7 @@ fn post_effect<B: UiBackend>(
         let ctx = UiEventContext::<B> {
             models: &models,
             media: media.as_ref(),
+            notifier: notifier.as_ref(),
         };
         dispatch_effect::<B>(&w, event, &ctx);
         drop(permit);

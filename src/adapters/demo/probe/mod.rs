@@ -24,7 +24,7 @@ use tokio::time::timeout;
 use self::command::{Driven, ProbeCommand};
 use self::journal::{Journal, Selected};
 use self::output::ProbeOutput;
-use super::{catalog, data};
+use super::{catalog, data, notifications};
 use crate::adapters::ui::dump;
 use crate::app::input::CommandSender;
 use crate::commands::view::AppViewState;
@@ -231,6 +231,15 @@ async fn run_command(
                 return failure(
                     StatusCode::SERVICE_UNAVAILABLE,
                     "this build has no UI poke hook (interpreted mode)".to_owned(),
+                );
+            }
+            Ok(())
+        }
+        Driven::NotificationClick { room_id, token } => {
+            if !notifications::click(&room_id, token) {
+                return failure(
+                    StatusCode::CONFLICT,
+                    format!("no desktop notification of {room_id} is shown"),
                 );
             }
             Ok(())
