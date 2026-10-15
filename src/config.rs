@@ -4,6 +4,8 @@ use directories::ProjectDirs;
 
 use crate::error::{AppError, Result};
 
+pub const APP_ID: &str = "chat.u2dm.Client";
+
 pub struct AppConfig {
     pub data_dir: PathBuf,
     pub cache_dir: PathBuf,

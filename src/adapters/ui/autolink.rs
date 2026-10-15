@@ -3,9 +3,9 @@ use std::ops::Range;
 use url::Url;
 
 use super::permalink;
-use crate::domain::mention::{candidates, is_named_host, is_user_tag};
+use crate::domain::mention::{candidates, is_named_host, is_room_alias_tag, is_user_tag};
 
-const SCHEMES: &[&str] = &["https://", "http://", "mailto:"];
+const SCHEMES: &[&str] = &["https://", "http://", "mailto:", "matrix:"];
 const HOST_PREFIX: &str = "www.";
 const LOCAL_PART_PUNCTUATION: &[char] = &['.', '_', '%', '+', '-'];
 
@@ -33,7 +33,16 @@ fn destination(candidate: &str) -> Option<String> {
     if starts_with_ignoring_case(candidate, HOST_PREFIX) {
         return accepted(format!("https://{candidate}"), true);
     }
-    user_mention(candidate).or_else(|| mailbox(candidate))
+    room_alias(candidate)
+        .or_else(|| user_mention(candidate))
+        .or_else(|| mailbox(candidate))
+}
+
+fn room_alias(candidate: &str) -> Option<String> {
+    if !is_room_alias_tag(candidate) {
+        return None;
+    }
+    accepted(permalink::alias_link(candidate)?, false)
 }
 
 fn user_mention(candidate: &str) -> Option<String> {
@@ -68,6 +77,7 @@ fn accepted(destination: String, needs_named_host: bool) -> Option<String> {
             }
         }
         "mailto" => (),
+        "matrix" if permalink::matrix_link(&destination).is_some() => (),
         _ => return None,
     }
     Some(destination)

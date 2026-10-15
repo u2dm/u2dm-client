@@ -1,3 +1,4 @@
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use tokio::runtime::Handle;
@@ -6,6 +7,8 @@ use tokio::runtime::Handle;
 use crate::adapters::browser::DesktopBrowser;
 #[cfg(feature = "demo")]
 use crate::adapters::demo;
+#[cfg(feature = "matrix")]
+use crate::adapters::handoff::{DesktopHandoff, SilentHandoff, socket_in};
 #[cfg(feature = "matrix")]
 use crate::adapters::matrix::MatrixAdapter;
 #[cfg(feature = "matrix")]
@@ -16,7 +19,10 @@ use crate::adapters::notifier;
 use crate::adapters::storage::SecureStorage;
 use crate::config::AppConfig;
 use crate::ports::browser::BrowserPort;
+use crate::ports::handoff::HandoffPort;
 use crate::ports::matrix::AuthPort;
+#[cfg(feature = "matrix")]
+use crate::ports::matrix::LocalDataOwnership;
 use crate::ports::media::{MediaCache, MediaFilePort};
 use crate::ports::notifier::NotifierPort;
 use crate::ports::storage::StoragePort;
@@ -31,6 +37,7 @@ pub struct Backend {
     pub media_files: Arc<dyn MediaFilePort>,
     pub browser: Arc<dyn BrowserPort>,
     pub notifier: Arc<dyn NotifierPort>,
+    pub handoff: Arc<dyn HandoffPort>,
 }
 
 impl Backend {
@@ -56,6 +63,17 @@ impl Backend {
     }
 
     #[cfg(feature = "demo")]
+    pub fn handoff_socket(_cfg: &AppConfig) -> Option<PathBuf> {
+        demo::handoff_socket()
+    }
+
+    #[cfg(not(feature = "demo"))]
+    #[allow(clippy::unnecessary_wraps)]
+    pub fn handoff_socket(cfg: &AppConfig) -> Option<PathBuf> {
+        Some(socket_in(&cfg.data_dir))
+    }
+
+    #[cfg(feature = "demo")]
     fn fake() -> Self {
         tracing::info!("demo mode: serving fake rooms, spaces and timeline");
         demo::log_data_source();
@@ -66,6 +84,7 @@ impl Backend {
             media_files: demo::media_files(),
             browser: demo::browser(),
             notifier: demo::notifier(),
+            handoff: demo::handoff(),
         }
     }
 
@@ -73,6 +92,13 @@ impl Backend {
     fn production(cfg: &AppConfig, runtime: &Handle) -> Self {
         let adapter = MatrixAdapter::new(cfg.data_dir.clone(), cfg.cache_dir.clone());
         let media_cache = adapter.media_cache();
+        let handoff: Arc<dyn HandoffPort> = match adapter.local_data_ownership() {
+            LocalDataOwnership::Exclusive => {
+                Arc::new(DesktopHandoff::new(socket_in(&cfg.data_dir)))
+            }
+            LocalDataOwnership::AnotherInstance { .. }
+            | LocalDataOwnership::Undetermined { .. } => Arc::new(SilentHandoff),
+        };
         Self {
             auth: Arc::new(adapter),
             storage: Arc::new(SecureStorage::new(&cfg.data_dir, runtime)),
@@ -80,6 +106,7 @@ impl Backend {
             media_files: Arc::new(DesktopMediaFiles::new()),
             browser: Arc::new(DesktopBrowser::new()),
             notifier: notifier::desktop(),
+            handoff,
         }
     }
 }

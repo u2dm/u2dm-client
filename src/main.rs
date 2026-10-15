@@ -9,11 +9,12 @@ use std::time::Duration;
 
 #[cfg(feature = "demo")]
 use adapters::demo;
+use adapters::handoff::{self, Forwarding};
 use adapters::private_fs;
 use adapters::room_log::{self, RoomLogs};
 #[cfg(feature = "demo")]
 use adapters::ui::install_timeline_dump;
-use adapters::ui::{SlintUiAdapter, UiEventOutput};
+use adapters::ui::{SlintUiAdapter, UiEventOutput, open_external_link};
 use app::AppService;
 use app::input::CommandSender;
 use commands::effects::Effect;
@@ -22,6 +23,7 @@ use commands::ui::{ComposerActivity, TimelineVisibility, UiCommand, ViewportChan
 use commands::view::AppViewState;
 use composition::Backend;
 use error::Result;
+use ports::handoff::Handoff;
 use ports::output::AppOutputPort;
 use tokio::runtime::Runtime;
 use tokio::sync::{mpsc, watch};
@@ -34,6 +36,7 @@ use tracing_subscriber::{EnvFilter, Layer, fmt};
 const ASSERT_DEMO_ENV: &str = "U2DM_ASSERT_DEMO";
 const DEMO_SCENARIOS_FLAG: &str = "--demo-scenarios";
 const LOG_FORMAT_ENV: &str = "U2DM_LOG_FORMAT";
+const ACTIVATION_TOKEN_ENV: &str = "XDG_ACTIVATION_TOKEN";
 const UI_EVENT_CHANNEL_CAP: usize = 256;
 const SHUTDOWN_WAIT: Duration = Duration::from_secs(6);
 const SHUTDOWN_BACKSTOP: Duration = Duration::from_secs(1);
@@ -113,6 +116,10 @@ fn run(room_logs: Arc<RoomLogs>) -> Result<()> {
     slint::init_translations!(catalog_dir);
     let rt = Runtime::new()?;
     let cfg = config::AppConfig::from_env()?;
+    let link = launch_link();
+    if hands_over_to_running_instance(&cfg, link.as_deref()) {
+        return Ok(());
+    }
     tracing::info!(data_dir = %cfg.data_dir.display(), cache_dir = %cfg.cache_dir.display(), "starting U2DM");
     rt.block_on(async {
         private_fs::restrict_existing(&cfg.data_dir).await;
@@ -144,8 +151,17 @@ fn run(room_logs: Arc<RoomLogs>) -> Result<()> {
     let output: Arc<dyn AppOutputPort> = Arc::new(UiEventOutput::new(ui_tx, view_out_tx));
     let output = attach_probe(output, &ui, probe_view_rx, &cmd_tx);
 
-    ui.spawn_event_handler(ui_rx, view_out_rx, backend.media_cache, backend.notifier);
+    ui.spawn_event_handler(
+        ui_rx,
+        view_out_rx,
+        backend.media_cache,
+        backend.notifier,
+        backend.handoff.as_ref(),
+    );
     drop(cmd_tx.send(UiCommand::RestoreSession));
+    if let Some(link) = link {
+        open_external_link(&cmd_tx, link);
+    }
     let mut service = AppService::new(
         backend.auth,
         backend.storage,
@@ -174,6 +190,37 @@ fn run(room_logs: Arc<RoomLogs>) -> Result<()> {
 
     shutdown(rt, &cmd_tx, service_handle);
     ui_result
+}
+
+fn launch_link() -> Option<String> {
+    env::args_os()
+        .skip(1)
+        .map(|arg| arg.to_string_lossy().into_owned())
+        .find(|arg| !arg.starts_with('-'))
+}
+
+fn hands_over_to_running_instance(cfg: &config::AppConfig, link: Option<&str>) -> bool {
+    let Some(socket) = Backend::handoff_socket(cfg) else {
+        return false;
+    };
+    let handoff = Handoff {
+        link: link.map(ToOwned::to_owned),
+        token: env::var(ACTIVATION_TOKEN_ENV).ok(),
+    };
+    match handoff::forward(&socket, &handoff) {
+        Forwarding::Delivered => {
+            tracing::info!(
+                link = link.is_some(),
+                "handed over to the U2DM that is already running"
+            );
+            true
+        }
+        Forwarding::NoListener => false,
+        Forwarding::Failed(reason) => {
+            tracing::warn!("could not hand over to the U2DM that is already running: {reason}");
+            false
+        }
+    }
 }
 
 fn demo_scenarios_cli() -> Option<ExitCode> {

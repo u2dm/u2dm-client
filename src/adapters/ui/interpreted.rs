@@ -55,10 +55,10 @@ use super::schema::{
     notify_modes, pack_cell_fields, pack_origins, pack_row_fields, pack_surfaces, pack_tab_fields,
     pending_moderations, poll_answer_fields, poll_phases, preview_kinds, reaction_fields,
     reaction_sends, reactor_fields, readers_statuses, recovery_statuses, room_fields,
-    room_info_placements, room_memberships, room_row_kinds, room_scopes, roster_statuses,
-    send_states, service_kinds, shield_reasons, shields, simple_callbacks, source_encryptions,
-    source_statuses, space_child_fields, space_fields, space_index_statuses, spoiler_states,
-    timeline_states, upgrade_links, user_message_kinds, verification_activities,
+    room_info_placements, room_memberships, room_preview_statuses, room_row_kinds, room_scopes,
+    roster_statuses, send_states, service_kinds, shield_reasons, shields, simple_callbacks,
+    source_encryptions, source_statuses, space_child_fields, space_fields, space_index_statuses,
+    spoiler_states, timeline_states, upgrade_links, user_message_kinds, verification_activities,
     verification_phases,
 };
 use super::session::active_models;
@@ -71,7 +71,7 @@ use crate::commands::ui::{ComposerActivity, TimelineVisibility, ViewportChanged,
 use crate::commands::view::{
     AppViewState, AttachmentKind, ChildAccess, DirectChat, EncryptionActivity, EncryptionStep,
     LoginActivity, LoginStep, PendingAnswer, PendingModeration, ReadersStatus, RoomInfoPlacement,
-    RoomScope, RosterStatus, SourceState, SpaceIndexStatus, UpgradeLink,
+    RoomPreviewSheet, RoomScope, RosterStatus, SourceState, SpaceIndexStatus, UpgradeLink,
 };
 use crate::domain::auth::LoginMethod;
 use crate::domain::encryption::{Recovery, Standing};
@@ -89,6 +89,7 @@ use crate::domain::timeline::{SourceEncryption, TimelineStatus};
 use crate::domain::user_info::{IdentityTrust, RoomMembership};
 use crate::domain::verification::VerificationEmoji as DomainVerificationEmoji;
 use crate::error::{AppError, Result};
+use crate::ports::handoff::HandoffPort;
 use crate::ports::media::MediaCache;
 use crate::ports::notifier::NotifierPort;
 
@@ -236,6 +237,7 @@ poll_phases!(impl_slint_enum PollPhase "PollPhase";);
 attachment_kinds!(impl_slint_enum AttachmentKind "AttachmentKind";);
 room_scopes!(impl_slint_enum RoomScope "RoomScope";);
 space_index_statuses!(impl_slint_enum SpaceIndexStatus "SpaceIndexStatus";);
+room_preview_statuses!(impl_slint_enum RoomPreviewSheet "RoomPreviewStatus";);
 source_statuses!(impl_slint_enum SourceState "SourceStatus";);
 readers_statuses!(impl_slint_enum ReadersStatus "ReadersStatus";);
 source_encryptions!(impl_slint_enum SourceEncryption "SourceEncryption";);
@@ -560,6 +562,16 @@ impl UiProps for ComponentInstance {
         }
     }
 
+    fn apply_room_preview_avatar(&self, avatar: Option<slint::Image>) {
+        match avatar {
+            Some(img) => {
+                set_global(self, "RoomPreviewView", "avatar", Value::Image(img));
+                set_global(self, "RoomPreviewView", "has-avatar", Value::Bool(true));
+            }
+            None => set_global(self, "RoomPreviewView", "has-avatar", Value::Bool(false)),
+        }
+    }
+
     fn apply_login_messages(&self, messages: &[UserMessage]) {
         let entries: Vec<Value> = messages
             .iter()
@@ -754,6 +766,7 @@ impl SlintUiAdapter {
             let inst = def.create().map_err(|e| AppError::Ui(e.to_string()))?;
             Ok::<_, AppError>(inst)
         })?;
+        backend::identify_the_app();
         Ok(Self { instance })
     }
 
@@ -1060,6 +1073,7 @@ impl SlintUiAdapter {
         view_rx: watch::Receiver<Arc<AppViewState>>,
         media_cache: Arc<dyn MediaCache>,
         notifier: Arc<dyn NotifierPort>,
+        handoff: &dyn HandoffPort,
     ) {
         backend::spawn_event_handler::<InterpretedBackend>(
             &self.instance,
@@ -1067,6 +1081,7 @@ impl SlintUiAdapter {
             view_rx,
             media_cache,
             notifier,
+            handoff,
         );
     }
 

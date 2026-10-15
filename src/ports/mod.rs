@@ -1,4 +1,5 @@
 pub mod browser;
+pub mod handoff;
 pub mod matrix;
 pub mod media;
 pub mod notifier;

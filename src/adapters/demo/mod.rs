@@ -6,8 +6,10 @@ mod data;
 mod dto;
 mod encryption;
 mod files;
+mod handoff;
 mod identity;
 mod invites;
+mod links;
 mod login;
 mod logout;
 mod matrix;
@@ -36,10 +38,12 @@ mod verification;
 mod videos;
 
 use std::env;
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use super::ui::SlintUiAdapter;
 use crate::ports::browser::BrowserPort;
+use crate::ports::handoff::HandoffPort;
 use crate::ports::matrix::AuthPort;
 use crate::ports::media::{MediaCache, MediaFilePort};
 use crate::ports::notifier::NotifierPort;
@@ -83,6 +87,14 @@ pub fn browser() -> Arc<dyn BrowserPort> {
 
 pub fn notifier() -> Arc<dyn NotifierPort> {
     notifications::notifier()
+}
+
+pub fn handoff() -> Arc<dyn HandoffPort> {
+    handoff::port()
+}
+
+pub fn handoff_socket() -> Option<PathBuf> {
+    handoff::socket()
 }
 
 pub fn media_files() -> Arc<dyn MediaFilePort> {

@@ -1,5 +1,5 @@
 import { Delivery, LoginPhase, MessageKind, PollPhase, RoomInfoPlacement, Shield } from "./enums.slint";
-import { AttachmentView, EncryptionView, InviteView, LoginView, ReadersView, RoomInfoView, RoomLogView, RoomMenuView, RoomView, SourceView, UserInfoView, VerificationView, VideoView, WindowView } from "./views.slint";
+import { AttachmentView, EncryptionView, InviteView, LoginView, ReadersView, RoomInfoView, RoomLogView, RoomMenuView, RoomPreviewView, RoomView, SourceView, UserInfoView, VerificationView, VideoView, WindowView } from "./views.slint";
 import { Actions } from "./actions.slint";
 import { MessageEntry, ReactionEntry } from "./types.slint";
 import { MessagePreview } from "./messages.slint";
@@ -164,6 +164,8 @@ export global Shell {
         && LoginView.step == LoginPhase.logged-in;
     out property <bool> invite-open: InviteView.visible
         && LoginView.step == LoginPhase.logged-in;
+    out property <bool> room-preview-open: RoomPreviewView.visible
+        && LoginView.step == LoginPhase.logged-in;
     out property <bool> room-log-open: RoomLogView.visible
         && LoginView.step == LoginPhase.logged-in;
     out property <bool> readers-open: ReadersView.visible
@@ -177,6 +179,7 @@ export global Shell {
         || root.room-info-open
         || root.user-info-open
         || root.invite-open
+        || root.room-preview-open
         || root.source-open
         || root.room-log-open
         || root.readers-open;

@@ -18,6 +18,7 @@ use crate::domain::timeline::{
     TimelineAdvance, TimelineCommand, TimelineFocus, TimelinePatch, TimelineStatus, TimelineUpdate,
 };
 use crate::domain::viewport::ViewportController;
+use crate::error::AppError;
 use crate::ports::matrix::TimelinePort;
 use crate::ports::output::AppOutputPort;
 
@@ -126,7 +127,10 @@ impl ActiveTimeline {
                     forwarder.report_failures_until(subscribe, &mut tl_rx).await;
                 }
                 result = &mut subscribe => {
-                    if let Err(e) = result {
+                    if let Err(AppError::FocusedEventUnavailable) = result {
+                        tracing::info!("the message to open around cannot be loaded, opening the room live");
+                        forwarder.fall_back_to_live();
+                    } else if let Err(e) = result {
                         tracing::warn!("timeline subscription failed: {e}");
                         output.emit(Effect::TimelineStatus {
                             room_id: rid.clone(),
@@ -758,6 +762,14 @@ impl Forwarder {
                 status,
             })
             .await;
+    }
+
+    fn fall_back_to_live(&self) {
+        super::show_toast(
+            self.output.as_ref(),
+            Toast::Error(UserMessage::new(UserMessageKind::MessageNotFound)),
+        );
+        self.refocus(TimelineFocus::ReadPosition);
     }
 
     fn widen_search_for(&self, event_id: String) {

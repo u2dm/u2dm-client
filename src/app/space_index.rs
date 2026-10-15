@@ -9,7 +9,7 @@ use super::task_group::TaskGroup;
 use crate::commands::messages::{UserMessage, UserMessageKind};
 use crate::commands::view::{ChildAccess, SpaceIndexRow, SpaceIndexStatus, SpaceIndexView, Toast};
 use crate::domain::room::RoomId;
-use crate::domain::space_index::{HierarchyPage, JoinRule, SpaceChild};
+use crate::domain::space_index::{HierarchyPage, SpaceChild};
 use crate::ports::matrix::SpaceIndexPort;
 use crate::ports::output::AppOutputPort;
 
@@ -504,16 +504,5 @@ fn access(child: &SpaceChild, membership: &Membership<'_>, joining: bool) -> Chi
     if joining {
         return ChildAccess::Joining;
     }
-    match &child.join_rule {
-        JoinRule::Public => ChildAccess::Join,
-        JoinRule::Restricted { allowed } | JoinRule::KnockRestricted { allowed }
-            if membership.admits(allowed) =>
-        {
-            ChildAccess::Join
-        }
-        JoinRule::Restricted { .. } => ChildAccess::MembersOnly,
-        JoinRule::KnockRestricted { .. } | JoinRule::Knock => ChildAccess::Knock,
-        JoinRule::Invite => ChildAccess::InviteOnly,
-        JoinRule::Private | JoinRule::Unsupported => ChildAccess::Unavailable,
-    }
+    membership.join_access(&child.join_rule)
 }

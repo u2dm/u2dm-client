@@ -16,6 +16,8 @@ const TRAILING: &[char] = &[
 const BRACKETS: [(char, char); 3] = [('(', ')'), ('[', ']'), ('{', '}')];
 const USER_SIGIL: char = '@';
 const USER_LOCALPART_PUNCTUATION: &[char] = &['.', '_', '=', '-', '/', '+'];
+const ALIAS_SIGIL: char = '#';
+const ALIAS_LOCALPART_PUNCTUATION: &[char] = &['.', '_', '=', '-', '+'];
 const SERVER_SEPARATOR: char = ':';
 const PORT_SEPARATOR: char = ':';
 
@@ -59,6 +61,20 @@ pub fn is_user_tag(candidate: &str) -> bool {
         && localpart
             .chars()
             .all(|ch| ch.is_ascii_alphanumeric() || USER_LOCALPART_PUNCTUATION.contains(&ch))
+        && is_server_name(server)
+}
+
+pub fn is_room_alias_tag(candidate: &str) -> bool {
+    let Some((localpart, server)) = candidate
+        .strip_prefix(ALIAS_SIGIL)
+        .and_then(|rest| rest.split_once(SERVER_SEPARATOR))
+    else {
+        return false;
+    };
+    !localpart.is_empty()
+        && localpart
+            .chars()
+            .all(|ch| ch.is_ascii_alphanumeric() || ALIAS_LOCALPART_PUNCTUATION.contains(&ch))
         && is_server_name(server)
 }
 

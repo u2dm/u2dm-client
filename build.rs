@@ -186,6 +186,7 @@ const ENUM_TABLES: &[(&str, &str)] = &[
     ("AttachmentKind", "attachment_kinds"),
     ("RoomScope", "room_scopes"),
     ("SpaceIndexStatus", "space_index_statuses"),
+    ("RoomPreviewStatus", "room_preview_statuses"),
     ("SourceStatus", "source_statuses"),
     ("ReadersStatus", "readers_statuses"),
     ("SourceEncryption", "source_encryptions"),
@@ -311,6 +312,11 @@ const SCENARIO_SOURCES: &[ScenarioSource] = &[
     },
     ScenarioSource {
         file: "src/adapters/demo/upgrades.rs",
+        arms_between: ("fn apply(scenario: &mut Scenario, flag: &str) {", "\n}"),
+        ignored: &[],
+    },
+    ScenarioSource {
+        file: "src/adapters/demo/links.rs",
         arms_between: ("fn apply(scenario: &mut Scenario, flag: &str) {", "\n}"),
         ignored: &[],
     },

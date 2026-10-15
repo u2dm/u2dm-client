@@ -93,6 +93,13 @@ macro_rules! string_props {
         InviteTopic InviteView "InviteView" "topic" set_topic get_topic;
         InviteInviter InviteView "InviteView" "inviter" set_inviter get_inviter;
         InviteErrorDetail InviteView "InviteView" "error-detail" set_error_detail get_error_detail;
+        RoomPreviewAddress RoomPreviewView "RoomPreviewView" "address" set_address get_address;
+        RoomPreviewRoomId RoomPreviewView "RoomPreviewView" "room-id" set_room_id get_room_id;
+        RoomPreviewName RoomPreviewView "RoomPreviewView" "name" set_name get_name;
+        RoomPreviewInitial RoomPreviewView "RoomPreviewView" "initial" set_initial get_initial;
+        RoomPreviewAlias RoomPreviewView "RoomPreviewView" "alias" set_alias get_alias;
+        RoomPreviewTopic RoomPreviewView "RoomPreviewView" "topic" set_topic get_topic;
+        RoomPreviewErrorDetail RoomPreviewView "RoomPreviewView" "error-detail" set_error_detail get_error_detail;
         RoomLogRoomId RoomLogView "RoomLogView" "room-id" set_room_id get_room_id;
         RoomLogName RoomLogView "RoomLogView" "name" set_name get_name;
         SpoilerLabel SpoilerCover "SpoilerCover" "label" set_label get_label;
@@ -100,6 +107,7 @@ macro_rules! string_props {
         SpoilerReasonSlot SpoilerCover "SpoilerCover" "reason-slot" set_reason_slot get_reason_slot;
         NotificationOpenLabel NotificationText "NotificationText" "open-label" set_open_label get_open_label;
         NotificationRoom WindowView "WindowView" "notification-room" set_notification_room get_notification_room;
+        ExternalLink WindowView "WindowView" "external-link" set_external_link get_external_link;
         #[cfg(feature = "demo")] WindowTitleText WindowTitle "WindowTitle" "text" set_text get_text;
         #[cfg(feature = "demo")] RoomMenuKey RoomMenu "RoomMenu" "key" set_key get_key;
     } };
@@ -155,6 +163,11 @@ macro_rules! simple_callbacks {
         on_decline_invite "decline-invite" decline_invite room DeclineInvite;
         on_join_successor "join-successor" join_successor room JoinSuccessor;
         on_join_predecessor "join-predecessor" join_predecessor room JoinPredecessor;
+        on_open_room_finder "open-room-finder" open_room_finder plain OpenRoomFinder;
+        on_find_room "find-room" find_room manual_string FindRoom;
+        on_join_previewed_room "join-previewed-room" join_previewed_room pass JoinPreviewedRoom;
+        on_retry_room_preview "retry-room-preview" retry_room_preview plain RetryRoomPreview;
+        on_close_room_preview "close-room-preview" close_room_preview plain CloseRoomPreview;
         on_open_room_info "open-room-info" open_room_info room OpenRoomInfo;
         on_close_room_info "close-room-info" close_room_info plain CloseRoomInfo;
         on_show_room_info_pane "show-room-info-pane" show_room_info_pane plain ShowRoomInfoPane;
@@ -211,6 +224,7 @@ macro_rules! simple_callbacks {
         on_play_audio "play-audio" play_audio manual_string PlayAudio;
         on_close_audio "close-audio" close_audio plain CloseAudio;
         on_open_link "open-link" open_link manual_string OpenLink;
+        on_open_external_link "open-external-link" open_external_link manual_string OpenExternalLink;
         on_jump_to_event "jump-to-event" jump_to_event manual_string JumpToEvent;
         on_open_pinned "open-pinned" open_pinned manual_string OpenPinned;
         on_previous_pinned "previous-pinned" previous_pinned manual_string PreviousPinned;
@@ -246,6 +260,9 @@ macro_rules! bool_props {
         DirectHint DirectoryView "DirectoryView" "direct-hint" set_direct_hint get_direct_hint;
         InvitesPending DirectoryView "DirectoryView" "invites-pending" set_invites_pending get_invites_pending;
         InviteVisible InviteView "InviteView" "visible" set_visible get_visible;
+        RoomPreviewEntry RoomPreviewView "RoomPreviewView" "entry" set_entry get_entry;
+        RoomPreviewIsSpace RoomPreviewView "RoomPreviewView" "is-space" set_is_space get_is_space;
+        RoomPreviewOpensEvent RoomPreviewView "RoomPreviewView" "opens-event" set_opens_event get_opens_event;
         VerificationIsSelf VerificationView "VerificationView" "is-self" set_is_self get_is_self;
         TimelineRetryable RoomView "RoomView" "timeline-retryable" set_timeline_retryable get_timeline_retryable;
         TimelineDetached RoomView "RoomView" "timeline-detached" set_timeline_detached get_timeline_detached;
@@ -317,6 +334,8 @@ macro_rules! int_props {
         SelectedRoomRow DirectoryView "DirectoryView" "selected-room-row" set_selected_room_row get_selected_room_row;
         SelectedRoomHeadings DirectoryView "DirectoryView" "selected-room-headings" set_selected_room_headings get_selected_room_headings;
         InviteColorIndex InviteView "InviteView" "color-index" set_color_index get_color_index;
+        RoomPreviewColorIndex RoomPreviewView "RoomPreviewView" "color-index" set_color_index get_color_index;
+        RoomPreviewMembers RoomPreviewView "RoomPreviewView" "members" set_members get_members;
         ListedSpaceMembers DirectoryView "DirectoryView" "listed-space-members" set_listed_space_members get_listed_space_members;
         SpaceIndexPagesLanded SpaceIndexView "SpaceIndexView" "pages-landed" set_pages_landed get_pages_landed;
         AttachmentWidth AttachmentView "AttachmentView" "width" set_width get_width;
@@ -330,6 +349,7 @@ macro_rules! int_props {
         SwipeTravel WindowView "WindowView" "swipe-travel" set_swipe_travel get_swipe_travel;
         ContextPresses WindowView "WindowView" "context-presses" set_context_presses get_context_presses;
         NotificationOpens WindowView "WindowView" "notification-opens" set_notification_opens get_notification_opens;
+        ExternalLinkOpens WindowView "WindowView" "external-link-opens" set_external_link_opens get_external_link_opens;
         Attention DirectoryView "DirectoryView" "attention" set_attention get_attention;
         MessageLinkSerial RoomView "RoomView" "message-link-serial" set_message_link_serial get_message_link_serial;
         RoomInfoMembers RoomInfoView "RoomInfoView" "members" set_members get_members;
@@ -417,6 +437,12 @@ macro_rules! enum_props {
             InviteView "InviteView" "answer" set_answer get_answer;
         InviteError set_invite_error(UserMessageKind)
             InviteView "InviteView" "error" set_error get_error;
+        RoomPreviewStatus set_room_preview_status(&RoomPreviewSheet)
+            RoomPreviewView "RoomPreviewView" "status" set_status get_status;
+        RoomPreviewAccess set_room_preview_access(ChildAccess)
+            RoomPreviewView "RoomPreviewView" "access" set_access get_access;
+        RoomPreviewError set_room_preview_error(UserMessageKind)
+            RoomPreviewView "RoomPreviewView" "error" set_error get_error;
         IdentityAlertKind set_identity_alert_kind(IdentityAlertKind)
             IdentityAlertView "IdentityAlertView" "kind" set_kind get_kind;
         UpgradeSuccessor set_upgrade_successor(&UpgradeLink)
@@ -604,6 +630,9 @@ macro_rules! user_message_kinds {
         JoinNewRoomFailed         JoinNewRoomFailed       "join-new-room-failed";
         JoinOldRoomFailed         JoinOldRoomFailed       "join-old-room-failed";
         DeclineInviteFailed       DeclineInviteFailed     "decline-invite-failed";
+        RoomNotFound              RoomNotFound            "room-not-found";
+        RoomPreviewFailed         RoomPreviewFailed       "room-preview-failed";
+        RoomAddressInvalid        RoomAddressInvalid      "room-address-invalid";
         LeaveRoomFailed           LeaveRoomFailed         "leave-room-failed";
         NotifyChangeFailed        NotifyChangeFailed      "notify-change-failed";
         MarkReadFailed            MarkReadFailed          "mark-read-failed";
@@ -796,6 +825,19 @@ macro_rules! source_encryptions {
     } };
 }
 pub(crate) use source_encryptions;
+
+macro_rules! room_preview_statuses {
+    ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
+        Closed      Closed      "closed";
+        Idle        Idle        "idle";
+        Loading     Loading     "loading";
+        Loaded(_)   Loaded      "loaded";
+        Missing     Missing     "missing";
+        Unavailable Unavailable "unavailable";
+        Failed      Failed      "failed";
+    } };
+}
+pub(crate) use room_preview_statuses;
 
 macro_rules! child_accesses {
     ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*

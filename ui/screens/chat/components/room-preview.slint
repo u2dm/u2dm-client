@@ -1,0 +1,279 @@
+import { ScrollView } from "std-widgets.slint";
+import { IconSet } from "@lucide";
+
+import { AppButton } from "../../../components/button.slint";
+import { DialogCard, ModalHost } from "../../../components/overlay.slint";
+import { DotPulse } from "../../../components/dot-pulse.slint";
+import { ErrorBanner } from "../../../components/banner.slint";
+import { TextField } from "../../../components/text-field.slint";
+import { SheetCloseChip, SheetCover } from "./sheet.slint";
+import { ChildAccessText } from "./space-index.slint";
+import { AppStyle, Fonts, Metrics, Size, Space, Weight } from "../../../theme.slint";
+import { ChildAccess, RoomPreviewStatus, UserMessageKind } from "../../../enums.slint";
+import { RoomPreviewView } from "../../../views.slint";
+import { Actions } from "../../../actions.slint";
+import { MetaTip, Reactions, Shell } from "../../../local.slint";
+
+component PreviewNote inherits Text {
+    font-size: Fonts.body-small;
+    color: AppStyle.foreground-muted;
+    horizontal-alignment: center;
+    wrap: word-wrap;
+}
+
+component AddressEntry inherits VerticalLayout {
+    in-out property <string> typed;
+
+    callback submitted();
+
+    public function focus-field() {
+        field.focus-input();
+    }
+
+    padding-left: Space.xl;
+    padding-right: Space.xl;
+    padding-bottom: Space.lg;
+    spacing: Space.lg;
+
+    Text {
+        text: @tr("Join a room");
+        font-size: Fonts.title;
+        font-weight: Weight.semibold;
+    }
+
+    HorizontalLayout {
+        spacing: Space.lg;
+
+        field := TextField {
+            horizontal-stretch: 1;
+            icon: IconSet.Hash;
+            above-modal: true;
+            placeholder: @tr("#room:example.org or a link");
+            label: @tr("Room address or link");
+            text <=> root.typed;
+            accepted => {
+                root.submitted();
+            }
+        }
+
+        AppButton {
+            horizontal-stretch: 0;
+            above-modal: true;
+            text: @tr("Find");
+            icon: IconSet.Search;
+            filled: false;
+            enabled: root.typed != "";
+            busy: RoomPreviewView.status == RoomPreviewStatus.loading;
+            clicked => {
+                root.submitted();
+            }
+        }
+    }
+}
+
+component PreviewCover inherits SheetCover {
+    property <string> kind: RoomPreviewView.is-space ? @tr("Space") : "";
+    property <string> members: @tr("{n} member" | "{n} members" % RoomPreviewView.members);
+
+    avatar-size: Metrics.room-preview-avatar;
+    color-index: RoomPreviewView.color-index;
+    has-avatar: RoomPreviewView.has-avatar;
+    avatar: RoomPreviewView.avatar;
+    initial: RoomPreviewView.initial;
+    name: RoomPreviewView.name;
+
+    if RoomPreviewView.alias != "" && RoomPreviewView.alias != RoomPreviewView.name: Text {
+        text: RoomPreviewView.alias;
+        font-size: Fonts.body-small;
+        color: AppStyle.foreground-muted;
+        horizontal-alignment: center;
+        overflow: elide;
+    }
+
+    PreviewNote {
+        text: root.kind == "" ? root.members : @tr("{} · {}", root.kind, root.members);
+    }
+
+    if RoomPreviewView.topic != "": PreviewNote {
+        text: RoomPreviewView.topic;
+        font-family: Fonts.emoji;
+        max-lines: Metrics.room-preview-topic-lines;
+        overflow: elide;
+    }
+}
+
+component JoinAction inherits HorizontalLayout {
+    property <bool> joinable: RoomPreviewView.access == ChildAccess.join
+        || RoomPreviewView.access == ChildAccess.joining;
+
+    padding-left: Space.xl;
+    padding-right: Space.xl;
+    alignment: center;
+
+    if root.joinable: AppButton {
+        min-width: Metrics.index-action-min-width;
+        above-modal: true;
+        text: RoomPreviewView.access == ChildAccess.joining ? @tr("Joining") : @tr("Join");
+        icon: IconSet.LogIn;
+        busy: RoomPreviewView.access == ChildAccess.joining;
+        clicked => {
+            Shell.nav-open = false;
+            Actions.join-previewed-room(RoomPreviewView.address);
+        }
+    }
+
+    if !root.joinable: Text {
+        text: ChildAccessText.reason(RoomPreviewView.access);
+        font-size: Fonts.body;
+        color: AppStyle.foreground-muted;
+        horizontal-alignment: center;
+    }
+}
+
+component RetryAction inherits HorizontalLayout {
+    padding-left: Space.xl;
+    padding-right: Space.xl;
+    alignment: center;
+
+    AppButton {
+        above-modal: true;
+        text: @tr("Try again");
+        icon: IconSet.RotateCw;
+        filled: false;
+        clicked => {
+            Actions.retry-room-preview();
+        }
+    }
+}
+
+component Banner inherits HorizontalLayout {
+    in property <UserMessageKind> kind;
+    in property <string> detail;
+
+    padding-left: Space.xl;
+    padding-right: Space.xl;
+
+    ErrorBanner {
+        messages: [{ kind: root.kind, detail: root.detail }];
+    }
+}
+
+export component RoomPreviewDialog inherits ModalHost {
+    property <length> card-width: min(AppStyle.card-width-wide, root.width - AppStyle.card-inset);
+    property <length> card-height: min(
+        body.preferred-height,
+        root.height - AppStyle.card-inset,
+        Metrics.room-preview-max-height);
+    property <bool> entry: RoomPreviewView.entry;
+    property <RoomPreviewStatus> status: RoomPreviewView.status;
+    property <bool> clears-close-chip: !root.entry && root.status != RoomPreviewStatus.loaded;
+    property <string> typed;
+
+    function find() {
+        if root.typed == "" {
+            return;
+        }
+        Shell.nav-open = false;
+        Actions.find-room(root.typed);
+    }
+
+    dim-opacity: AppStyle.dialog-scrim;
+    label: root.entry ? @tr("Join a room") : @tr("Room preview");
+    dismissed => {
+        Actions.close-room-preview();
+    }
+    opened => {
+        Reactions.close();
+        MetaTip.clear();
+        if root.entry {
+            entry-field.focus-field();
+        }
+    }
+
+    DialogCard {
+        x: (root.width - self.width) / 2;
+        y: (root.height - self.height) / 2;
+        width: root.card-width;
+        height: root.card-height;
+        clip: true;
+
+        ScrollView {
+            width: 100%;
+            height: 100%;
+            content-width: root.card-width;
+            content-height: body.preferred-height;
+
+            body := VerticalLayout {
+                width: root.card-width;
+                padding-top: root.clears-close-chip ? Space.md + Size.md + Space.sm : Space.xl;
+                padding-bottom: Space.xl;
+
+                entry-field := AddressEntry {
+                    visible: root.entry;
+                    height: root.entry ? self.preferred-height : 0;
+                    typed <=> root.typed;
+                    submitted => {
+                        root.find();
+                    }
+                }
+
+                VerticalLayout {
+                    spacing: Space.lg;
+
+                    if root.status == RoomPreviewStatus.loading: VerticalLayout {
+                        padding-left: Space.xl;
+                        padding-right: Space.xl;
+                        spacing: Space.lg;
+
+                        HorizontalLayout {
+                            alignment: center;
+
+                            DotPulse {
+                                dot-size: Space.md;
+                            }
+                        }
+
+                        PreviewNote {
+                            text: @tr("Looking up {}…", RoomPreviewView.address);
+                        }
+                    }
+
+                    if root.status == RoomPreviewStatus.loaded: PreviewCover { }
+
+                    if root.status == RoomPreviewStatus.loaded && RoomPreviewView.opens-event: PreviewNote {
+                        text: @tr("The link points to a message in this room.");
+                    }
+
+                    if root.status == RoomPreviewStatus.unavailable: VerticalLayout {
+                        padding-left: Space.xl;
+                        padding-right: Space.xl;
+
+                        PreviewNote {
+                            text: @tr("{} can't be previewed. You may still be able to join it.", RoomPreviewView.address);
+                        }
+                    }
+
+                    if root.status == RoomPreviewStatus.loaded || root.status == RoomPreviewStatus.unavailable: JoinAction { }
+
+                    if root.status == RoomPreviewStatus.failed || root.status == RoomPreviewStatus.unavailable: RetryAction { }
+
+                    if RoomPreviewView.error != UserMessageKind.none: Banner {
+                        kind: RoomPreviewView.error;
+                        detail: RoomPreviewView.error-detail;
+                    }
+                }
+            }
+        }
+
+        SheetCloseChip {
+            x: parent.width - self.width - Space.md;
+            y: Space.md;
+            surface: AppStyle.card;
+            label: @tr("Close");
+            above-modal: true;
+            clicked => {
+                Actions.close-room-preview();
+            }
+        }
+    }
+}

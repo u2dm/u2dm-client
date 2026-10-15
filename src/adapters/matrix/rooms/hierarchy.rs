@@ -135,7 +135,7 @@ fn cached_name(client: &Client, room_id: &OwnedRoomId) -> Option<String> {
         .map(|name| name.to_string())
 }
 
-fn join_rule(summary: &JoinRuleSummary) -> JoinRule {
+pub(super) fn join_rule(summary: &JoinRuleSummary) -> JoinRule {
     match summary {
         JoinRuleSummary::Public => JoinRule::Public,
         JoinRuleSummary::Restricted(rule) => JoinRule::Restricted {

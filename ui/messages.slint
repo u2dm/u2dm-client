@@ -119,6 +119,15 @@ export global UserMessages {
         if kind == UserMessageKind.decline-invite-failed {
             return @tr("Could not decline the invitation to {}", detail);
         }
+        if kind == UserMessageKind.room-not-found {
+            return @tr("No room has the address {}", detail);
+        }
+        if kind == UserMessageKind.room-preview-failed {
+            return @tr("Could not look up {}", detail);
+        }
+        if kind == UserMessageKind.room-address-invalid {
+            return @tr("Enter a room address like #room:example.org, or a Matrix link");
+        }
         if kind == UserMessageKind.leave-room-failed {
             return @tr("Could not leave {}", detail);
         }

@@ -15,12 +15,13 @@ use super::space_order;
 use super::task_group::TaskGroup;
 use crate::commands::messages::{UserMessage, UserMessageKind};
 use crate::commands::sync::DirectoryUpdate;
-use crate::commands::view::{AppViewState, SpaceHeading, SpaceMatch, Toast};
+use crate::commands::view::{AppViewState, ChildAccess, SpaceHeading, SpaceMatch, Toast};
 use crate::domain::invite::{Invite, InviteList};
 use crate::domain::message::MessagePermissions;
 use crate::domain::poll::PollPermissions;
 use crate::domain::room::{Room, RoomId, RoomList, Space, UnreadFlags, without_replaced};
 use crate::domain::room_search::TitleQuery;
+use crate::domain::space_index::JoinRule;
 use crate::domain::sync::{ConnectionStatus, SyncEvent, SyncOutcome};
 use crate::ports::matrix::{SpaceOrderPort, SyncPort, SyncSink};
 use crate::ports::output::AppOutputPort;
@@ -83,6 +84,21 @@ impl Membership<'_> {
 
     pub(super) fn admits(&self, allowed: &[RoomId]) -> bool {
         allowed.is_empty() || allowed.iter().any(|id| self.has_joined(id))
+    }
+
+    pub(super) fn join_access(&self, rule: &JoinRule) -> ChildAccess {
+        match rule {
+            JoinRule::Public => ChildAccess::Join,
+            JoinRule::Restricted { allowed } | JoinRule::KnockRestricted { allowed }
+                if self.admits(allowed) =>
+            {
+                ChildAccess::Join
+            }
+            JoinRule::Restricted { .. } => ChildAccess::MembersOnly,
+            JoinRule::KnockRestricted { .. } | JoinRule::Knock => ChildAccess::Knock,
+            JoinRule::Invite => ChildAccess::InviteOnly,
+            JoinRule::Private | JoinRule::Unsupported => ChildAccess::Unavailable,
+        }
     }
 }
 
@@ -248,6 +264,7 @@ pub(super) struct RoomDirectory {
     pending_orders: HashMap<String, PendingOrder>,
     order_writes: Arc<OrderWrites>,
     connected: bool,
+    rooms_landed: bool,
     query: TitleQuery,
 }
 
@@ -269,6 +286,7 @@ impl RoomDirectory {
             pending_orders: HashMap::new(),
             order_writes: Arc::default(),
             connected: false,
+            rooms_landed: false,
             query: TitleQuery::default(),
         }
     }
@@ -283,6 +301,7 @@ impl RoomDirectory {
         }
         self.listable = without_replaced(&rooms);
         self.all_rooms = rooms;
+        self.rooms_landed = true;
         let pending_changed = self.settle_invites();
         self.rail_dirty |= self.recompute_flags() || pending_changed;
         true
@@ -477,6 +496,7 @@ impl RoomDirectory {
 
     pub(super) fn reset(&mut self) {
         self.connected = false;
+        self.rooms_landed = false;
         self.all_rooms = Arc::from(Vec::new());
         self.listable = Arc::from(Vec::new());
         self.received_invites = Arc::from(Vec::new());
@@ -884,6 +904,17 @@ impl RoomDirectory {
 
     pub(super) fn invite(&self, id: &str) -> Option<&Arc<Invite>> {
         self.invites.iter().find(|invite| invite.id.as_ref() == id)
+    }
+
+    pub(super) fn rooms_landed(&self) -> bool {
+        self.rooms_landed
+    }
+
+    pub(super) fn room_by_alias(&self, alias: &str) -> Option<&Room> {
+        self.all_rooms
+            .iter()
+            .find(|room| room.canonical_alias.as_deref() == Some(alias))
+            .map(|room| &**room)
     }
 
     pub(super) fn room(&self, id: &str) -> Option<&Room> {

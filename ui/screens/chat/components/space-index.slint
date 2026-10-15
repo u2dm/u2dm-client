@@ -13,7 +13,7 @@ import { SpaceIndexView } from "../../../views.slint";
 import { Actions } from "../../../actions.slint";
 import { Shell } from "../../../local.slint";
 
-global ChildAccessText {
+export global ChildAccessText {
     public pure function reason(access: ChildAccess) -> string {
         if access == ChildAccess.joined {
             return @tr("Joined");

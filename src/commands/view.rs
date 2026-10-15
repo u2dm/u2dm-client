@@ -16,6 +16,7 @@ use crate::domain::push::PushNotice;
 use crate::domain::room::{NotifyMode, RoomId, RoomList, Space, UnreadFlags};
 use crate::domain::room_info::{Reader, RoomAbout, RosterMember};
 use crate::domain::room_log::RoomLog;
+use crate::domain::room_preview::RoomPreview;
 use crate::domain::space_index::SpaceChild;
 use crate::domain::sync::{ConnectionStatus, ReauthReason};
 use crate::domain::timeline::{EventSource, OlderHistory};
@@ -29,6 +30,7 @@ pub struct AppViewState {
     pub directory: DirectoryView,
     pub space_index: SpaceIndexView,
     pub invite: InviteView,
+    pub room_preview: RoomPreviewView,
     pub room_info: RoomInfoView,
     pub room_menu: Option<RoomMenuTarget>,
     pub user_info: UserInfoView,
@@ -476,6 +478,47 @@ pub struct InviteView {
     pub invite: Option<Arc<Invite>>,
     pub answer: PendingAnswer,
     pub error: UserMessage,
+}
+
+#[derive(Clone, Default, PartialEq, Eq)]
+pub enum RoomPreviewSheet {
+    #[default]
+    Closed,
+    Idle,
+    Loading,
+    Loaded(ShownPreview),
+    Missing,
+    Unavailable,
+    Failed,
+}
+
+#[derive(Clone, PartialEq, Eq)]
+pub struct ShownPreview {
+    pub room: Arc<RoomPreview>,
+    pub opens_event: bool,
+}
+
+#[derive(Clone, PartialEq, Eq)]
+pub struct RoomPreviewView {
+    pub sheet: RoomPreviewSheet,
+    pub address: String,
+    pub entry: bool,
+    pub access: ChildAccess,
+    pub error: UserMessage,
+    pub avatars_ready: usize,
+}
+
+impl Default for RoomPreviewView {
+    fn default() -> Self {
+        Self {
+            sheet: RoomPreviewSheet::default(),
+            address: String::new(),
+            entry: false,
+            access: ChildAccess::Join,
+            error: UserMessage::default(),
+            avatars_ready: 0,
+        }
+    }
 }
 
 #[derive(Clone, Copy, Default, PartialEq, Eq)]

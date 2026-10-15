@@ -24,6 +24,7 @@ use super::fields::{
     PackRowFields, PackTabFields, PollAnswerFields, ReactionFields, ReactorFields, RoomFields,
     SpaceChildFields, SpaceFields,
 };
+use super::handoff::follow_handoffs;
 use super::multiplex::spawn_event_multiplexer;
 use super::notices::{NoticeWords, follow_activations};
 use super::present::room_log_text;
@@ -42,12 +43,14 @@ use super::spoilers::reveal_row;
 use super::window_events::install_window_events;
 use crate::commands::effects::Effect;
 use crate::commands::view::{AppViewState, RosterRow, SpaceIndexRow, SpaceMatch};
+use crate::config::APP_ID;
 use crate::domain::invite::Invite;
 use crate::domain::message::TimelineMessage;
 use crate::domain::room::{Room, RoomId, Space};
 use crate::domain::room_info::{Reader, RosterMember};
 use crate::domain::room_log::LogLine;
 use crate::domain::timeline::EnrichmentDelta;
+use crate::ports::handoff::HandoffPort;
 use crate::ports::media::MediaCache;
 use crate::ports::notifier::NotifierPort;
 
@@ -167,15 +170,23 @@ macro_rules! declare_models {
 
 model_props!(declare_models);
 
+pub fn identify_the_app() {
+    if let Err(e) = slint::set_xdg_app_id(APP_ID) {
+        tracing::warn!("the window carries no app id, so no desktop entry claims it: {e}");
+    }
+}
+
 pub fn spawn_event_handler<B: UiBackend>(
     window: &B::Window,
     ui_rx: mpsc::Receiver<Effect>,
     view_rx: watch::Receiver<Arc<AppViewState>>,
     media_cache: Arc<dyn MediaCache>,
     notifier: Arc<dyn NotifierPort>,
+    handoff: &dyn HandoffPort,
 ) {
     begin_session::<B>(window);
     follow_activations::<B>(window, notifier.as_ref());
+    follow_handoffs::<B>(window, handoff);
 
     install_render_hooks::<B>(window.as_weak());
     install_clock_invalidation::<B>(Arc::clone(&media_cache));
@@ -636,6 +647,7 @@ enum SingleAvatar {
     RoomInfo,
     UserInfo,
     Invite,
+    RoomPreview,
     User,
     AttachmentPreview,
 }
@@ -696,6 +708,9 @@ fn group_slots(slots: &[AvatarSlot]) -> AvatarTargets<'_> {
             }
             AvatarSlot::Invite => {
                 targets.singles.insert(SingleAvatar::Invite);
+            }
+            AvatarSlot::RoomPreview => {
+                targets.singles.insert(SingleAvatar::RoomPreview);
             }
             AvatarSlot::User => {
                 targets.singles.insert(SingleAvatar::User);
@@ -801,6 +816,7 @@ fn apply_avatar_ready<B: UiBackend>(
                 SingleAvatar::RoomInfo => w.apply_room_info_avatar(avatar),
                 SingleAvatar::UserInfo => w.apply_user_info_avatar(avatar),
                 SingleAvatar::Invite => w.apply_invite_avatar(avatar),
+                SingleAvatar::RoomPreview => w.apply_room_preview_avatar(avatar),
             }
         }
     }

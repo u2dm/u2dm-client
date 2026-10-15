@@ -102,7 +102,7 @@ async fn join(client: &Client, linked: &LinkedRoom) -> Result<()> {
     }
 }
 
-fn is_joined(client: &Client, room_id: &MatrixRoomId) -> bool {
+pub(super) fn is_joined(client: &Client, room_id: &MatrixRoomId) -> bool {
     client
         .get_room(room_id)
         .is_some_and(|room| room.state() == RoomState::Joined)

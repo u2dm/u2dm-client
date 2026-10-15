@@ -4,6 +4,7 @@ use super::encryption::EncryptionOutcome;
 use super::establish::EstablishedSession;
 use super::invites::Answer;
 use super::room_info::{ActionOutcome, RosterOutcome};
+use super::room_preview::JoinedRoom;
 use super::space_index::{JoinOutcome, PageOutcome};
 use super::upgrades::UpgradeJoined;
 use super::user_info::{DmOutcome, ReadOutcome};
@@ -13,12 +14,14 @@ use crate::domain::auth::ServerInfo;
 use crate::domain::encryption::{AccountEncryption, IdentityOutcome};
 use crate::domain::identity::{OwnIdentity, RoomAlert};
 use crate::domain::image_pack::PackId;
+use crate::domain::matrix_link::RoomAddress;
 use crate::domain::media::PickedAttachment;
 use crate::domain::member_name::NamedUser;
 use crate::domain::message::{MessageEdit, PinnedMessage};
 use crate::domain::push::PushNotice;
 use crate::domain::room::RoomId;
 use crate::domain::room_info::{Reader, RoomAbout, RosterMember};
+use crate::domain::room_preview::{PreviewFailure, RoomPreview};
 use crate::domain::sync::{ReauthReason, SessionLoss};
 use crate::domain::timeline::{
     AudioTrack, EventSource, MessageReaders, PaginationDirection, PaginationOutcome,
@@ -110,6 +113,7 @@ pub(super) enum AppEvent {
         outcome: ActionOutcome,
     },
     UpgradeJoinSettled(UpgradeJoined),
+    Preview(PreviewEvent),
     RoomRosterFetched {
         generation: u64,
         outcome: RosterOutcome,
@@ -131,6 +135,32 @@ pub(super) enum AppEvent {
     Identity(IdentityEvent),
     Encryption(EncryptionEvent),
     RoomLogGrew,
+}
+
+pub(super) enum PreviewEvent {
+    Landed {
+        generation: u64,
+        outcome: Result<Box<RoomPreview>, PreviewFailure>,
+    },
+    AvatarsReady {
+        generation: u64,
+        ready: usize,
+    },
+    JoinSettled {
+        room: RoomAddress,
+        name: String,
+        outcome: JoinedRoom,
+    },
+}
+
+impl PreviewEvent {
+    fn label(&self) -> &'static str {
+        match self {
+            Self::Landed { .. } => "RoomPreviewLanded",
+            Self::AvatarsReady { .. } => "RoomPreviewAvatarsReady",
+            Self::JoinSettled { .. } => "RoomLinkJoinSettled",
+        }
+    }
 }
 
 pub(super) enum EncryptionEvent {
@@ -382,6 +412,7 @@ impl AppEvent {
             Self::SpaceChildJoinSettled { .. } => "SpaceChildJoinSettled",
             Self::InviteAnswered { .. } => "InviteAnswered",
             Self::UpgradeJoinSettled(_) => "UpgradeJoinSettled",
+            Self::Preview(event) => event.label(),
             Self::RoomRosterFetched { .. } => "RoomRosterFetched",
             Self::RoomAboutFetched { .. } => "RoomAboutFetched",
             Self::RoomInfoAvatarsReady { .. } => "RoomInfoAvatarsReady",

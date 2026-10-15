@@ -5,14 +5,14 @@ use crate::adapters::ui::schema::{
     identity_alert_kinds, identity_trusts, invite_answers, invite_kinds, log_levels,
     login_activities, login_methods, login_phases, member_roles, notify_modes, pending_moderations,
     preview_kinds, readers_statuses, recovery_statuses, room_info_placements, room_memberships,
-    room_scopes, roster_statuses, source_encryptions, source_statuses, space_index_statuses,
-    upgrade_links, user_message_kinds, variant_named,
+    room_preview_statuses, room_scopes, roster_statuses, source_encryptions, source_statuses,
+    space_index_statuses, upgrade_links, user_message_kinds, variant_named,
 };
 use crate::commands::messages::UserMessageKind;
 use crate::commands::view::{
     AttachmentKind, ChildAccess, DirectChat, EncryptionActivity, EncryptionStep, LoginActivity,
-    LoginStep, PendingAnswer, PendingModeration, ReadersStatus, RoomInfoPlacement, RoomScope,
-    RosterStatus, SourceState, SpaceIndexStatus, UpgradeLink,
+    LoginStep, PendingAnswer, PendingModeration, ReadersStatus, RoomInfoPlacement,
+    RoomPreviewSheet, RoomScope, RosterStatus, SourceState, SpaceIndexStatus, UpgradeLink,
 };
 use crate::domain::auth::LoginMethod;
 use crate::domain::encryption::{Recovery, Standing};
@@ -34,6 +34,7 @@ user_message_kinds!(enum_names val user_message_kind UserMessageKind;);
 attachment_kinds!(enum_names val attachment_kind AttachmentKind;);
 room_scopes!(enum_names val room_scope RoomScope;);
 space_index_statuses!(enum_names val space_index_status SpaceIndexStatus;);
+room_preview_statuses!(enum_names ref room_preview_status RoomPreviewSheet;);
 child_accesses!(enum_names val child_access ChildAccess;);
 audio_kinds!(enum_names val audio_kind AudioKind;);
 preview_kinds!(enum_names val preview_kind MessagePreviewKind;);

@@ -8,8 +8,9 @@ use crate::commands::view::{
     AppViewState, AttachmentView, AudioView, CardStatus, CopiedLink, DirectoryView, EncryptionStep,
     EncryptionView, IdentityAlertView, InviteView, LifecycleView, LoginStep, MentionsView,
     NotificationsView, PackView, PaginationView, PinnedView, ReadersView, RoomInfoView,
-    RoomLogView, RoomMenuTarget, RosterRow, SourceState, SpaceIndexRow, SpaceIndexView, SpaceMatch,
-    Toast, TrackFile, TypingView, UnsentMessage, UpgradeView, UserInfoView, VideoView,
+    RoomLogView, RoomMenuTarget, RoomPreviewSheet, RoomPreviewView, RosterRow, SourceState,
+    SpaceIndexRow, SpaceIndexView, SpaceMatch, Toast, TrackFile, TypingView, UnsentMessage,
+    UpgradeView, UserInfoView, VideoView,
 };
 use crate::domain::encryption::KeyStorage;
 use crate::domain::image_pack::{ImagePack, ImageUsage, PackOrigin, PackTitle};
@@ -19,6 +20,7 @@ use crate::domain::message::{EditKind, PinnedMessage};
 use crate::domain::push::NoticeContent;
 use crate::domain::room::{Room, Space};
 use crate::domain::room_info::{Reader, RosterSection};
+use crate::domain::room_preview::{PreviewMembership, RoomPreview};
 use crate::domain::space_index::{ChildKind, JoinRule};
 use crate::domain::sync::{ConnectionStatus, ReauthReason};
 use crate::domain::timeline::{OlderHistory, SourceEncryption};
@@ -31,6 +33,7 @@ pub struct ViewDto {
     directory: DirectoryDto,
     space_index: SpaceIndexDto,
     invite: InviteSheetDto,
+    room_preview: RoomPreviewDto,
     room_info: RoomInfoDto,
     room_menu: Option<RoomMenuDto>,
     user_info: UserInfoDto,
@@ -286,6 +289,31 @@ struct InviteDto {
 }
 
 #[derive(Serialize)]
+struct RoomPreviewDto {
+    status: &'static str,
+    address: Option<String>,
+    entry: bool,
+    access: &'static str,
+    room: Option<PreviewedRoomDto>,
+    opens_event: bool,
+    error: MessageDto,
+    avatars_ready: usize,
+}
+
+#[derive(Serialize)]
+struct PreviewedRoomDto {
+    room_id: String,
+    name: String,
+    alias: Option<String>,
+    topic: Option<String>,
+    members: u64,
+    is_space: bool,
+    join_rule: Option<&'static str>,
+    membership: &'static str,
+    has_avatar_mxc: bool,
+}
+
+#[derive(Serialize)]
 struct InviteSheetDto {
     open: bool,
     invite: Option<InviteDto>,
@@ -500,6 +528,7 @@ pub fn view(source: &AppViewState) -> ViewDto {
         directory: directory(&source.directory),
         space_index: space_index(&source.space_index),
         invite: invite_sheet(&source.invite),
+        room_preview: room_preview(&source.room_preview),
         room_info: room_info(&source.room_info),
         room_menu: source.room_menu.as_ref().map(room_menu),
         user_info: user_info(&source.user_info),
@@ -880,6 +909,48 @@ fn invite_sheet(source: &InviteView) -> InviteSheetDto {
         invite: source.invite.as_deref().map(invite),
         answer: names::pending_answer(source.answer),
         error: message(&source.error),
+    }
+}
+
+fn room_preview(source: &RoomPreviewView) -> RoomPreviewDto {
+    let shown = match &source.sheet {
+        RoomPreviewSheet::Loaded(shown) => Some(shown),
+        RoomPreviewSheet::Closed
+        | RoomPreviewSheet::Idle
+        | RoomPreviewSheet::Loading
+        | RoomPreviewSheet::Missing
+        | RoomPreviewSheet::Unavailable
+        | RoomPreviewSheet::Failed => None,
+    };
+    RoomPreviewDto {
+        status: names::room_preview_status(&source.sheet),
+        address: (!source.address.is_empty()).then(|| source.address.clone()),
+        entry: source.entry,
+        access: names::child_access(source.access),
+        room: shown.map(|shown| previewed_room(&shown.room)),
+        opens_event: shown.is_some_and(|shown| shown.opens_event),
+        error: message(&source.error),
+        avatars_ready: source.avatars_ready,
+    }
+}
+
+fn previewed_room(source: &RoomPreview) -> PreviewedRoomDto {
+    PreviewedRoomDto {
+        room_id: source.id.to_string(),
+        name: source.name.clone(),
+        alias: source.alias.clone(),
+        topic: source.topic.clone(),
+        members: source.member_count,
+        is_space: source.is_space,
+        join_rule: source.join_rule.as_ref().map(join_rule),
+        membership: match source.membership {
+            PreviewMembership::Outsider => "outsider",
+            PreviewMembership::Joined => "joined",
+            PreviewMembership::Invited => "invited",
+            PreviewMembership::Knocked => "knocked",
+            PreviewMembership::Banned => "banned",
+        },
+        has_avatar_mxc: source.avatar_mxc.is_some(),
     }
 }
 

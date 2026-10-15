@@ -36,6 +36,7 @@ import {
     RoomLogView,
     UserInfoView,
     InviteView,
+    RoomPreviewView,
     ReadersView,
     MentionsView,
 } from "./views.slint";
@@ -59,6 +60,7 @@ import { RoomInfoDialog } from "./screens/chat/components/room-info.slint";
 import { EventSourceDialog } from "./screens/chat/components/event-source.slint";
 import { UserInfoDialog } from "./screens/chat/components/user-info.slint";
 import { InviteDialog } from "./screens/chat/components/invite.slint";
+import { RoomPreviewDialog } from "./screens/chat/components/room-preview.slint";
 import { RoomLogDialog } from "./screens/chat/components/room-log.slint";
 import { ReadersDialog } from "./screens/chat/components/readers.slint";
 
@@ -66,7 +68,7 @@ export { EmojiStore }
 export { LoginPhase, ConnectionState, TimelineState, VerificationPhase, MediaState, MediaFailure }
 export { MessageKind, PreviewKind, ServiceKind, LoginMethodKind, AudioKind }
 export { LoginView, SessionView, DirectoryView, SpaceIndexView, RoomView, PackView, VerificationView }
-export { AttachmentView, VideoView, AudioView, UnsentView, IdentityAlertView, UpgradeView, TypingView, EncryptionView, WindowView, RoomInfoView, SourceView, RoomMenuView, RoomLogView, UserInfoView, InviteView, ReadersView, MentionsView }
+export { AttachmentView, VideoView, AudioView, UnsentView, IdentityAlertView, UpgradeView, TypingView, EncryptionView, WindowView, RoomInfoView, SourceView, RoomMenuView, RoomLogView, UserInfoView, InviteView, RoomPreviewView, ReadersView, MentionsView }
 export { Actions }
 export { Probe, ReplySwipe, RoomMenu }
 export { NotificationText, SpoilerCover }
@@ -90,9 +92,18 @@ export component AppWindow inherits Window {
 
     property <bool> attended: WindowView.focused && !root.minimized;
     property <int> notification-opens: WindowView.notification-opens;
+    property <int> external-link-opens: WindowView.external-link-opens;
 
     changed attended => {
         Actions.window-focus-changed(root.attended);
+    }
+
+    changed external-link-opens => {
+        if LoginView.step == LoginPhase.logged-in {
+            Shell.close-overlays();
+            RoomSearch.clear();
+        }
+        Actions.open-external-link(WindowView.external-link);
     }
 
     changed notification-opens => {
@@ -136,6 +147,7 @@ export component AppWindow inherits Window {
     if Shell.readers-open: ReadersDialog { }
     if Shell.user-info-open: UserInfoDialog { }
     if Shell.invite-open: InviteDialog { }
+    if Shell.room-preview-open: RoomPreviewDialog { }
     if Shell.source-open: EventSourceDialog { }
     if Shell.room-log-open: RoomLogDialog { }
     if Shell.encryption-open: EncryptionDialog { }

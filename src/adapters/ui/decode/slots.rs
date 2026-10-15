@@ -62,6 +62,7 @@ pub enum AvatarSlot {
     RoomInfo,
     UserInfo,
     Invite,
+    RoomPreview,
     User,
     AttachmentPreview {
         pick: u64,

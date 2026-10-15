@@ -27,6 +27,7 @@ export global Actions {
 
     callback select-room(string);
     callback open-notification(string);
+    callback open-external-link(string);
     callback select-space(string);
     callback select-direct();
     callback select-subspace(string);
@@ -46,6 +47,11 @@ export global Actions {
     callback decline-invite(string);
     callback join-successor(string);
     callback join-predecessor(string);
+    callback open-room-finder();
+    callback find-room(string);
+    callback join-previewed-room(string);
+    callback retry-room-preview();
+    callback close-room-preview();
     callback open-room-info(string);
     callback close-room-info();
     callback show-room-info-pane();

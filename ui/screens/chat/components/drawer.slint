@@ -244,6 +244,18 @@ export component Drawer inherits Rectangle {
 
             DrawerRow {
                 x: 0;
+                y: parent.height - 3 * self.height;
+                width: 100%;
+                icon: IconSet.DoorOpen;
+                label: @tr("Join a room");
+                clicked => {
+                    root.dismiss();
+                    Actions.open-room-finder();
+                }
+            }
+
+            DrawerRow {
+                x: 0;
                 y: parent.height - 2 * self.height;
                 width: 100%;
                 icon: root.encryption-needs-you ? IconSet.ShieldAlert : IconSet.ShieldCheck;

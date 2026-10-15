@@ -3,13 +3,17 @@ use std::ops::ControlFlow;
 use std::sync::Arc;
 
 use futures_util::{Stream, StreamExt};
+use matrix_sdk::event_cache::EventCacheError;
+use matrix_sdk::paginators::PaginatorError;
+use matrix_sdk::ruma::api::error::ErrorKind;
 use matrix_sdk::ruma::events::fully_read::FullyReadEventContent;
 use matrix_sdk::ruma::{EventId, IdParseError, OwnedEventId, OwnedRoomId, UserId};
 use matrix_sdk::{Client, Room};
 use matrix_sdk_ui::eyeball_im::VectorDiff;
 use matrix_sdk_ui::timeline::{
-    EventSendState, EventTimelineItem, RoomExt as _, Timeline, TimelineEventFocusThreadMode,
-    TimelineEventItemId, TimelineFocus as SdkTimelineFocus, TimelineItem, VirtualTimelineItem,
+    Error as TimelineError, EventSendState, EventTimelineItem, RoomExt as _, Timeline,
+    TimelineEventFocusThreadMode, TimelineEventItemId, TimelineFocus as SdkTimelineFocus,
+    TimelineItem, VirtualTimelineItem,
 };
 use serde_json::{Map, Value};
 use tokio::sync::{Semaphore, mpsc};
@@ -615,7 +619,29 @@ async fn build_focused_timeline(room: &Room, target: &str) -> Result<Timeline> {
         })
         .build()
         .await
-        .map_err(|e| AppError::Other(e.to_string()))
+        .map_err(|e| focus_failure(&e))
+}
+
+fn focus_failure(error: &TimelineError) -> AppError {
+    if names_unreachable_event(error) {
+        return AppError::FocusedEventUnavailable;
+    }
+    AppError::Other(error.to_string())
+}
+
+fn names_unreachable_event(error: &TimelineError) -> bool {
+    let TimelineError::EventCacheError(EventCacheError::InitialPaginationError(paginator)) = error
+    else {
+        return false;
+    };
+    match paginator {
+        PaginatorError::EventNotFound(_) => true,
+        PaginatorError::SdkError(sdk) => matches!(
+            sdk.client_api_error_kind(),
+            Some(ErrorKind::Forbidden | ErrorKind::NotFound)
+        ),
+        PaginatorError::InvalidPreviousState { .. } => false,
+    }
 }
 
 fn spawn_reply_detail_fetches(

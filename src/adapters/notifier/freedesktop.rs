@@ -8,6 +8,7 @@ use zbus::message::Message;
 use zbus::zvariant::Value;
 use zbus::{Connection, Proxy};
 
+use crate::config::APP_ID;
 use crate::domain::room::RoomId;
 use crate::ports::notifier::{ActivationSink, DesktopNotice, NoticeActivation, NotifierPort};
 
@@ -289,6 +290,7 @@ async fn notify(
     let mut hints: HashMap<&str, Value<'_>> = HashMap::new();
     hints.insert("urgency", Value::U8(NORMAL_URGENCY));
     hints.insert("category", Value::from(CATEGORY));
+    hints.insert("desktop-entry", Value::from(APP_ID));
     if notice.sound {
         hints.insert("sound-name", Value::from(MESSAGE_SOUND));
     } else {

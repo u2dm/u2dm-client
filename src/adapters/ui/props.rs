@@ -8,9 +8,9 @@ use crate::commands::effects::VerificationActivity;
 use crate::commands::messages::{UserMessage, UserMessageKind};
 use crate::commands::ui::UiCommand;
 use crate::commands::view::{
-    AttachmentKind, DirectChat, EncryptionActivity, EncryptionStep, LoginActivity, LoginStep,
-    PendingAnswer, PendingModeration, ReadersStatus, RoomInfoPlacement, RoomScope, RosterStatus,
-    SourceState, SpaceIndexStatus, UpgradeLink,
+    AttachmentKind, ChildAccess, DirectChat, EncryptionActivity, EncryptionStep, LoginActivity,
+    LoginStep, PendingAnswer, PendingModeration, ReadersStatus, RoomInfoPlacement,
+    RoomPreviewSheet, RoomScope, RosterStatus, SourceState, SpaceIndexStatus, UpgradeLink,
 };
 use crate::domain::auth::LoginMethod;
 use crate::domain::encryption::{Recovery, Standing};
@@ -86,6 +86,7 @@ pub trait UiProps {
     fn apply_room_info_topic(&self, topic: StyledText);
     fn apply_user_info_avatar(&self, avatar: Option<Image>);
     fn apply_invite_avatar(&self, avatar: Option<Image>);
+    fn apply_room_preview_avatar(&self, avatar: Option<Image>);
     fn apply_login_messages(&self, messages: &[UserMessage]);
     fn apply_emoji_model(&self, emojis: &[DomainVerificationEmoji]);
     fn clear_emoji_model(&self);

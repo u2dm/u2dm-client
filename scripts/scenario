@@ -73,6 +73,9 @@ scenario_env() {
     invite-failures) echo 'U2DM_DEMO_INVITES=accept-fails,decline-fails,revoked U2DM_DEMO_WINDOW=900x760' ;;
     room-upgrades)   echo 'U2DM_DEMO_UPGRADES=slow U2DM_DEMO_WINDOW=900x760' ;;
     room-upgrade-failures) echo 'U2DM_DEMO_UPGRADES=join-fails U2DM_DEMO_WINDOW=900x760' ;;
+    room-links)      echo 'U2DM_DEMO_LINKS=slow U2DM_DEMO_WINDOW=900x760' ;;
+    room-finder)     echo 'U2DM_DEMO_LINKS=slow U2DM_DEMO_WINDOW=700x900' ;;
+    room-link-failures) echo 'U2DM_DEMO_LINKS=preview-fails,join-fails U2DM_DEMO_WINDOW=900x760' ;;
     typing)          echo 'U2DM_DEMO_TYPING=two U2DM_DEMO_WINDOW=900x760' ;;
     typing-names)    echo 'U2DM_DEMO_TYPING=two U2DM_DEMO_NAMES=clash U2DM_DEMO_WINDOW=900x760' ;;
     notifications)   echo 'U2DM_DEMO_NOTIFY=all U2DM_DEMO_WINDOW=900x760' ;;
@@ -385,6 +388,33 @@ scenario_steps() {
       echo 'sleep 1'
       echo '{"op":"join_predecessor"}'
       echo 'sleep 2' ;;
+    room-links)
+      echo '{"op":"open_link","url":"https://matrix.to/#/%23matrix:demo.local"}'
+      echo 'sleep 1'
+      echo '{"op":"open_room_link","room_id":"!rust:demo.local","event_id":"demo-rust-12"}'
+      echo 'sleep 2'
+      echo '{"op":"open_link","url":"matrix:r/rust-wasm:demo.local?action=join"}'
+      echo 'sleep 2'
+      echo '{"op":"join_previewed_room","address":"#rust-wasm:demo.local"}'
+      echo 'sleep 3'
+      echo '{"op":"open_link","url":"https://matrix.to/#/!matrix-core:demo.local?via=demo.local"}'
+      echo 'sleep 2' ;;
+    room-finder)
+      echo '{"op":"open_room_finder"}'
+      echo 'sleep 1'
+      echo '{"op":"find_room","address":"rust"}'
+      echo 'sleep 1'
+      echo '{"op":"find_room","address":"#matrix-dev:demo.local"}'
+      echo 'sleep 2' ;;
+    room-link-failures)
+      echo '{"op":"open_link","url":"matrix:r/rust-wasm:demo.local"}'
+      echo 'sleep 1'
+      echo '{"op":"retry_room_preview"}'
+      echo 'sleep 1'
+      echo '{"op":"join_previewed_room","address":"#rust-wasm:demo.local"}'
+      echo 'sleep 1'
+      echo '{"op":"open_link","url":"https://matrix.to/#/%23nope:demo.local"}'
+      echo 'sleep 1' ;;
     typing)
       echo '{"op":"select_room","room_id":"!rust:demo.local"}'
       echo 'sleep 2'
@@ -543,6 +573,9 @@ scenario_note() {
     invite-failures) echo 'an accept fails inline on its sheet, a decline with the sheet closed fails as a toast, then the open Climbing Crew sheet closes when its invite is withdrawn (invite.error, toast)' ;;
     room-upgrades)   echo 'Retro Gaming'"'"'s banner joins the room that replaced it, slowly: the new room opens and the old one leaves the list but still opens, with Open the new room; Frontend Guild'"'"'s creation row joins the room it continues, which opens unlisted (upgrade, directory.rooms)' ;;
     room-upgrade-failures) echo 'joining the room that replaced Retro Gaming fails as a toast, then so does joining the room Frontend Guild continues (upgrade, toast)' ;;
+    room-links)      echo 'a matrix.to alias opens Matrix HQ, a link to a message opens Rust Programming at it, a matrix: link previews WebAssembly slowly and Join opens it, and an invite-only room previews with its reason (room_preview, health.selected)' ;;
+    room-finder)     echo 'Join a room on the compact layout: rust is no address, then #matrix-dev:demo.local previews after a slow lookup (room_preview)' ;;
+    room-link-failures) echo 'a preview fails once and Try again loads it, Join fails inline, and an alias nothing names shows its error (room_preview)' ;;
     typing)          echo 'in !rust the two newest senders start typing a second after it opens, then !design shows nobody until its own two start (typing)' ;;
     typing-names)    echo 'in !linux Vera and the impostor Kai type: the header line names him with his user ID (typing)' ;;
     notifications)   echo 'with the window unfocused, every scripted arrival notifies except the muted room; !rust is read elsewhere and withdrawn, Leo'"'"'s invite notifies, and a click on Priya'"'"'s opens her chat (notifications, directory.attention, title)' ;;
@@ -572,6 +605,7 @@ names() {
     user-moderation-failures user-tags custom-emoji spoilers message-link message-source message-pins message-pin-failures message-delete \
     message-delete-failures readers room-search room-search-open mentions room-mention display-names \
     message-shields identity-alerts identity-held-sends invites invite-failures room-upgrades room-upgrade-failures \
+    room-links room-finder room-link-failures \
     typing typing-names notifications notifications-focused notifications-burst \
     encryption-unverified encryption-recovery-key encryption-new-account encryption-setup-refused
 }

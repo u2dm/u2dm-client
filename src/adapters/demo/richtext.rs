@@ -119,7 +119,8 @@ const LINKS: &[(&str, &str)] = &[
         "Docs, mail and a matrix URI.",
         "See <a href=\"https://spec.matrix.org/latest/client-server-api/\">the spec</a>, \
          mail <a href=\"mailto:nobody@example.invalid\">nobody</a>, or open \
-         <a href=\"matrix:r/demo:demo.local\">a matrix URI</a> that must be refused.",
+         <a href=\"matrix:r/rust-wasm:demo.local?action=join\">a matrix URI</a> that previews \
+         a room.",
     ),
     (
         "A link with styling inside it.",
@@ -128,7 +129,7 @@ const LINKS: &[(&str, &str)] = &[
     ),
     (
         "a refused scheme",
-        "<a href=\"matrix:r/demo:demo.local\">a refused scheme</a>",
+        "<a href=\"magnet:?xt=urn:btih:demo\">a refused scheme</a>",
     ),
     (
         "Sarah, Alex and Nadia, tagged three ways.",

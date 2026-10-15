@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Name=U2DM
+GenericName=Matrix Client
+Comment=Chat on Matrix
+Exec=u2dm %u
+Icon=chat.u2dm.Client
+Terminal=false
+Categories=Network;InstantMessaging;Chat;
+Keywords=Matrix;Chat;Messenger;
+MimeType=x-scheme-handler/matrix;
+StartupNotify=true
+StartupWMClass=chat.u2dm.Client

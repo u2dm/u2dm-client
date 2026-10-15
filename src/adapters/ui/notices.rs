@@ -4,7 +4,7 @@ use slint::winit_030::WinitWindowAccessor;
 use slint::winit_030::winit::window::UserAttentionType;
 use slint::{ComponentHandle, SharedString, Window};
 
-use super::activation::activate_with_token;
+use super::activation::raise;
 use super::backend::UiBackend;
 use super::dto::preview_line;
 use super::present::{ServiceKind, service_kind, service_target};
@@ -137,18 +137,4 @@ pub fn open_from_notification<B: UiBackend>(window: &B::Window, activation: &Not
     let opens = window.get_int(IntProp::NotificationOpens).wrapping_add(1);
     window.set_int(IntProp::NotificationOpens, opens);
     window.window().request_redraw();
-}
-
-fn raise(window: &Window, token: Option<&str>) {
-    window.set_minimized(false);
-    if token.is_some_and(|token| activate_with_token(window, token)) {
-        tracing::debug!("raised the window with the notification's activation token");
-        return;
-    }
-    window.with_winit_window(|winit| {
-        winit.focus_window();
-        if !winit.has_focus() {
-            winit.request_user_attention(Some(UserAttentionType::Informational));
-        }
-    });
 }

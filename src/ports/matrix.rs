@@ -13,6 +13,7 @@ use crate::domain::encryption::{
 };
 use crate::domain::identity::{OwnIdentity, RoomAlert};
 use crate::domain::image_pack::{ImagePack, PackId};
+use crate::domain::matrix_link::RoomAddress;
 use crate::domain::media::{MediaRendition, OutgoingAttachment, WaveformNeed};
 use crate::domain::member_name::NamedUser;
 use crate::domain::message::{MessageEdit, PinChange, PinnedMessage};
@@ -20,6 +21,7 @@ use crate::domain::poll::PollDraft;
 use crate::domain::push::PushNotice;
 use crate::domain::room::{NotifyMode, RoomId};
 use crate::domain::room_info::{Reader, RoomAbout, RosterMember};
+use crate::domain::room_preview::PreviewResult;
 use crate::domain::space_index::HierarchyPage;
 use crate::domain::sync::{SyncEvent, SyncOutcome};
 use crate::domain::timeline::{TimelineCommand, TimelineFocus, TimelineUpdate};
@@ -147,6 +149,7 @@ pub struct AuthenticatedSession {
     pub space_index: Arc<dyn SpaceIndexPort>,
     pub invites: Arc<dyn InvitePort>,
     pub upgrades: Arc<dyn UpgradePort>,
+    pub room_previews: Arc<dyn RoomPreviewPort>,
     pub typing: Arc<dyn TypingPort>,
     pub push: Arc<dyn PushPort>,
     pub room_info: Arc<dyn RoomInfoPort>,
@@ -229,6 +232,18 @@ pub trait InvitePort: Send + Sync {
 pub trait UpgradePort: Send + Sync {
     async fn join_successor(&self, room_id: &RoomId) -> Result<()>;
     async fn join_predecessor(&self, room_id: &RoomId) -> Result<()>;
+}
+
+#[async_trait]
+pub trait RoomPreviewPort: Send + Sync {
+    async fn preview(&self, room: &RoomAddress, via: &[String]) -> PreviewResult;
+    async fn join(
+        &self,
+        room: &RoomAddress,
+        known: Option<&RoomId>,
+        via: &[String],
+    ) -> Result<RoomId>;
+    async fn fetch_avatars(&self, mxcs: &[String]) -> usize;
 }
 
 #[async_trait]

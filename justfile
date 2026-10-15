@@ -35,6 +35,9 @@ scenarios:
 update-i18n:
     ./scripts/update-i18n
 
+install-desktop:
+    ./scripts/install-desktop
+
 clippy *ARGS:
     cargo clippy {{ ARGS }}
 

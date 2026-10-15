@@ -34,6 +34,9 @@ pub enum AppError {
     #[error("the attachment is not a viewable image")]
     UnviewableMedia,
 
+    #[error("the message the timeline should open around cannot be loaded")]
+    FocusedEventUnavailable,
+
     #[error("the attachment is larger than the {limit} byte upload limit")]
     AttachmentTooLarge { limit: u64 },
 

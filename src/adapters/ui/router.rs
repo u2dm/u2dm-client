@@ -15,6 +15,7 @@ use crate::domain::emote::ComposerText;
 use crate::domain::encryption::RecoveryKey;
 use crate::domain::image_pack::PackId;
 use crate::domain::link::LauncherSafeUrl;
+use crate::domain::matrix_link::MatrixLink;
 use crate::domain::media::AttachmentPick;
 use crate::domain::message::{EditKind, EditTarget, MessageEdit, TextRevision};
 use crate::domain::poll::{ChoiceMode, PollDisclosure, PollDraft};
@@ -369,10 +370,29 @@ pub fn open_link(tx: &Tx, url: String) {
 
 pub fn link_command(url: impl AsRef<str>) -> Option<UiCommand> {
     let url = url.as_ref();
-    if let Some(user_id) = permalink::linked_user(url) {
-        return Some(UiCommand::OpenUserInfo(user_id));
+    match permalink::matrix_link(url) {
+        Some(MatrixLink::User(user_id)) => Some(UiCommand::OpenUserInfo(user_id)),
+        Some(MatrixLink::Room(link)) => Some(UiCommand::OpenRoomLink(link)),
+        None => LauncherSafeUrl::message_link(url).map(|url| UiCommand::OpenLink { url }),
     }
-    LauncherSafeUrl::message_link(url).map(|url| UiCommand::OpenLink { url })
+}
+
+pub fn open_external_link(tx: &Tx, url: impl AsRef<str>) {
+    let Some(link) = permalink::matrix_link(url.as_ref()) else {
+        tracing::info!("ignoring a link from outside U2DM that names nothing in Matrix");
+        return;
+    };
+    send_command(tx, UiCommand::OpenExternalLink(link));
+}
+
+pub fn find_room(tx: &Tx, address: String) {
+    if address.trim().is_empty() {
+        return;
+    }
+    send_command(
+        tx,
+        UiCommand::FindRoom(permalink::room_address_entry(address)),
+    );
 }
 
 pub fn jump_to_event(tx: &Tx, event_id: String) {

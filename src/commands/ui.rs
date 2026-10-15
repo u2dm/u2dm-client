@@ -5,6 +5,7 @@ use crate::domain::emote::{ComposerText, Emote};
 use crate::domain::encryption::RecoveryKey;
 use crate::domain::image_pack::PackId;
 use crate::domain::link::LauncherSafeUrl;
+use crate::domain::matrix_link::{AddressEntry, MatrixLink, RoomAddress, RoomLink};
 use crate::domain::media::AttachmentPick;
 use crate::domain::message::MessageEdit;
 use crate::domain::poll::PollDraft;
@@ -61,6 +62,17 @@ pub enum UiCommand {
     JoinSuccessor(RoomId),
     #[strum(to_string = "JoinPredecessor({0})")]
     JoinPredecessor(RoomId),
+    #[strum(to_string = "OpenRoomLink")]
+    OpenRoomLink(RoomLink),
+    #[strum(to_string = "OpenExternalLink")]
+    OpenExternalLink(MatrixLink),
+    OpenRoomFinder,
+    #[strum(to_string = "FindRoom")]
+    FindRoom(AddressEntry),
+    #[strum(to_string = "JoinPreviewedRoom({0})")]
+    JoinPreviewedRoom(String),
+    RetryRoomPreview,
+    CloseRoomPreview,
     #[strum(to_string = "OpenRoomInfo({0})")]
     OpenRoomInfo(RoomId),
     CloseRoomInfo,
@@ -309,6 +321,10 @@ impl UiCommand {
             | Self::DeclineInvite(room_id)
             | Self::JoinSuccessor(room_id)
             | Self::JoinPredecessor(room_id)
+            | Self::OpenRoomLink(RoomLink {
+                room: RoomAddress::Id(room_id),
+                ..
+            })
             | Self::OpenRoomInfo(room_id)
             | Self::LeaveRoom(room_id)
             | Self::OpenRoomMenu(room_id)
@@ -343,6 +359,13 @@ impl UiCommand {
             | Self::PageSpaceIndex
             | Self::RetrySpaceIndex
             | Self::CloseInvite
+            | Self::OpenRoomLink(_)
+            | Self::OpenExternalLink(_)
+            | Self::OpenRoomFinder
+            | Self::FindRoom(_)
+            | Self::JoinPreviewedRoom(_)
+            | Self::RetryRoomPreview
+            | Self::CloseRoomPreview
             | Self::CloseRoomInfo
             | Self::ShowRoomInfoPane
             | Self::HideRoomInfoPane

@@ -24,7 +24,7 @@ use tokio::time::timeout;
 use self::command::{Driven, ProbeCommand};
 use self::journal::{Journal, Selected};
 use self::output::ProbeOutput;
-use super::{catalog, data, notifications};
+use super::{catalog, data, handoff, notifications};
 use crate::adapters::ui::dump;
 use crate::app::input::CommandSender;
 use crate::commands::view::AppViewState;
@@ -231,6 +231,15 @@ async fn run_command(
                 return failure(
                     StatusCode::SERVICE_UNAVAILABLE,
                     "this build has no UI poke hook (interpreted mode)".to_owned(),
+                );
+            }
+            Ok(())
+        }
+        Driven::HandOff(arrival) => {
+            if !handoff::hand_off(arrival) {
+                return failure(
+                    StatusCode::CONFLICT,
+                    "nothing follows hand-offs yet".to_owned(),
                 );
             }
             Ok(())

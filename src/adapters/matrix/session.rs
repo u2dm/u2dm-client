@@ -13,8 +13,8 @@ use super::image_packs::MatrixImagePacks;
 use super::media::{MatrixMedia, MediaService};
 use super::profile::PronounCache;
 use super::rooms::{
-    MatrixInvites, MatrixPush, MatrixRoomInfo, MatrixSpaceIndex, MatrixSpaceOrder, MatrixSync,
-    MatrixTyping, MatrixUpgrades,
+    MatrixInvites, MatrixPush, MatrixRoomInfo, MatrixRoomPreviews, MatrixSpaceIndex,
+    MatrixSpaceOrder, MatrixSync, MatrixTyping, MatrixUpgrades,
 };
 use super::server_logout;
 use super::store::StoreLayout;
@@ -176,6 +176,7 @@ pub(super) async fn authenticate(
         space_index: Arc::new(MatrixSpaceIndex::new(Arc::clone(&matrix))),
         invites: Arc::new(MatrixInvites::new(Arc::clone(&matrix))),
         upgrades: Arc::new(MatrixUpgrades::new(Arc::clone(&matrix))),
+        room_previews: Arc::new(MatrixRoomPreviews::new(Arc::clone(&matrix))),
         typing,
         push,
         room_info: Arc::new(MatrixRoomInfo::new(Arc::clone(&matrix))),

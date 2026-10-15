@@ -16,6 +16,7 @@ use crate::domain::message::{
 use crate::domain::poll::{Poll, PollAnswer, PollChoice, PollDisclosure, PollStatus, Voter};
 use crate::domain::room::{NotifyMode, Room, RoomId, Space};
 use crate::domain::room_info::MemberRole;
+use crate::domain::room_preview::{PreviewMembership, RoomPreview};
 use crate::domain::space_index::{ChildKind, JoinRule, SpaceChild};
 
 #[derive(Deserialize, Default)]
@@ -805,6 +806,20 @@ impl InviteDto {
 
     pub fn rich_topic(&self) -> Option<RichText> {
         self.topic.clone().map(RichText::plain)
+    }
+
+    pub fn to_preview(&self) -> RoomPreview {
+        RoomPreview {
+            id: RoomId::new(&self.id),
+            name: self.name.clone(),
+            alias: None,
+            topic: self.topic.clone(),
+            avatar_mxc: self.avatar.clone(),
+            member_count: self.joined_members(),
+            is_space: self.space,
+            join_rule: Some(JoinRule::Invite),
+            membership: PreviewMembership::Invited,
+        }
     }
 
     pub fn to_space(&self) -> Space {

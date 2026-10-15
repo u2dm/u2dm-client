@@ -2,7 +2,9 @@ use std::ffi::OsString;
 use std::fs as std_fs;
 use std::io::{self, ErrorKind};
 #[cfg(unix)]
-use std::os::unix::fs::{DirBuilderExt, MetadataExt, OpenOptionsExt, PermissionsExt};
+use std::os::unix::fs::{DirBuilderExt, FileTypeExt, MetadataExt, OpenOptionsExt, PermissionsExt};
+#[cfg(unix)]
+use std::os::unix::net::UnixListener;
 use std::path::{Path, PathBuf};
 
 #[cfg(unix)]
@@ -50,6 +52,34 @@ pub(crate) fn create_or_open_private_blocking(path: &Path) -> io::Result<std_fs:
     #[cfg(unix)]
     options.mode(OWNER_ONLY_FILE);
     options.open(path)
+}
+
+#[cfg(unix)]
+pub(crate) fn bind_private_socket(path: &Path) -> io::Result<UnixListener> {
+    let Some(dir) = path.parent() else {
+        return Err(io::Error::new(
+            ErrorKind::InvalidInput,
+            "a socket needs a directory",
+        ));
+    };
+    if !is_private_dir(dir) {
+        return Err(io::Error::new(
+            ErrorKind::PermissionDenied,
+            format!("{} is open to other users", dir.display()),
+        ));
+    }
+    match std_fs::symlink_metadata(path) {
+        Ok(metadata) if metadata.file_type().is_socket() => std_fs::remove_file(path)?,
+        Ok(_) => {
+            return Err(io::Error::new(
+                ErrorKind::AlreadyExists,
+                format!("{} is not a socket", path.display()),
+            ));
+        }
+        Err(e) if e.kind() == ErrorKind::NotFound => {}
+        Err(e) => return Err(e),
+    }
+    UnixListener::bind(path)
 }
 
 pub(crate) fn is_private_dir(path: &Path) -> bool {

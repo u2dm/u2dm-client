@@ -28,9 +28,10 @@ use u2dm_ui::{
     ReactionSend as UiReactionSend, ReactorAvatar, ReadersStatus as UiReadersStatus, ReadersView,
     RecoveryStatus as UiRecoveryStatus, ReplySwipe, RoomEntry,
     RoomInfoPlacement as UiRoomInfoPlacement, RoomInfoView, RoomLogView,
-    RoomMembership as UiRoomMembership, RoomMenuView, RoomRowKind as UiRoomRowKind,
-    RoomScope as UiRoomScope, RoomView, RosterStatus as UiRosterStatus, SendState as UiSendState,
-    ServiceKind as UiServiceKind, SessionView, Shield as UiShield, ShieldReason as UiShieldReason,
+    RoomMembership as UiRoomMembership, RoomMenuView, RoomPreviewStatus as UiRoomPreviewStatus,
+    RoomPreviewView, RoomRowKind as UiRoomRowKind, RoomScope as UiRoomScope, RoomView,
+    RosterStatus as UiRosterStatus, SendState as UiSendState, ServiceKind as UiServiceKind,
+    SessionView, Shield as UiShield, ShieldReason as UiShieldReason,
     SourceEncryption as UiSourceEncryption, SourceStatus as UiSourceStatus, SourceView,
     SpaceChildEntry, SpaceEntry, SpaceIndexStatus as UiSpaceIndexStatus, SpaceIndexView,
     SpoilerCover, SpoilerState as UiSpoilerState, TextSplice, TimelineState, TypingView,
@@ -81,11 +82,11 @@ use super::schema::{
     notify_modes, pack_cell_fields, pack_origins, pack_row_fields, pack_surfaces, pack_tab_fields,
     pending_moderations, poll_answer_fields, poll_phases, preview_kinds, reaction_fields,
     reaction_sends, reactor_fields, readers_statuses, recovery_statuses, room_fields,
-    room_info_placements, room_memberships, room_row_kinds, room_scopes, roster_statuses,
-    send_states, service_kinds, shield_reasons, shields, simple_callbacks, source_encryptions,
-    source_statuses, space_child_fields, space_fields, space_index_statuses, spoiler_states,
-    string_props, timeline_states, upgrade_links, user_message_kinds, verification_activities,
-    verification_phases,
+    room_info_placements, room_memberships, room_preview_statuses, room_row_kinds, room_scopes,
+    roster_statuses, send_states, service_kinds, shield_reasons, shields, simple_callbacks,
+    source_encryptions, source_statuses, space_child_fields, space_fields, space_index_statuses,
+    spoiler_states, string_props, timeline_states, upgrade_links, user_message_kinds,
+    verification_activities, verification_phases,
 };
 use super::session::active_models;
 use super::video::{self, millis_to_duration};
@@ -97,7 +98,7 @@ use crate::commands::ui::{ComposerActivity, TimelineVisibility, ViewportChanged,
 use crate::commands::view::{
     AppViewState, AttachmentKind, ChildAccess, DirectChat, EncryptionActivity, EncryptionStep,
     LoginActivity, LoginStep, PendingAnswer, PendingModeration, ReadersStatus, RoomInfoPlacement,
-    RoomScope, RosterStatus, SourceState, SpaceIndexStatus, UpgradeLink,
+    RoomPreviewSheet, RoomScope, RosterStatus, SourceState, SpaceIndexStatus, UpgradeLink,
 };
 use crate::domain::auth::LoginMethod;
 use crate::domain::encryption::{Recovery, Standing};
@@ -115,6 +116,7 @@ use crate::domain::timeline::{SourceEncryption, TimelineStatus};
 use crate::domain::user_info::{IdentityTrust, RoomMembership};
 use crate::domain::verification::VerificationEmoji as DomainVerificationEmoji;
 use crate::error::Result;
+use crate::ports::handoff::HandoffPort;
 use crate::ports::media::MediaCache;
 use crate::ports::notifier::NotifierPort;
 
@@ -296,6 +298,17 @@ impl UiProps for AppWindow {
         }
     }
 
+    fn apply_room_preview_avatar(&self, avatar: Option<Image>) {
+        let preview = self.global::<RoomPreviewView>();
+        match avatar {
+            Some(img) => {
+                preview.set_avatar(img);
+                preview.set_has_avatar(true);
+            }
+            None => preview.set_has_avatar(false),
+        }
+    }
+
     fn apply_login_messages(&self, messages: &[UserMessage]) {
         let entries: Vec<UiUserMessage> = messages
             .iter()
@@ -381,6 +394,7 @@ poll_phases!(impl_slint_enum PollPhase UiPollPhase;);
 attachment_kinds!(impl_slint_enum AttachmentKind UiAttachmentKind;);
 room_scopes!(impl_slint_enum RoomScope UiRoomScope;);
 space_index_statuses!(impl_slint_enum SpaceIndexStatus UiSpaceIndexStatus;);
+room_preview_statuses!(impl_slint_enum RoomPreviewSheet UiRoomPreviewStatus;);
 source_statuses!(impl_slint_enum SourceState UiSourceStatus;);
 readers_statuses!(impl_slint_enum ReadersStatus UiReadersStatus;);
 source_encryptions!(impl_slint_enum SourceEncryption UiSourceEncryption;);
@@ -585,6 +599,7 @@ pub struct SlintUiAdapter {
 impl SlintUiAdapter {
     pub fn compile(_rt: &Runtime) -> Result<Self> {
         let window = AppWindow::new()?;
+        backend::identify_the_app();
         Ok(Self { window })
     }
 
@@ -822,6 +837,7 @@ impl SlintUiAdapter {
         view_rx: watch::Receiver<Arc<AppViewState>>,
         media_cache: Arc<dyn MediaCache>,
         notifier: Arc<dyn NotifierPort>,
+        handoff: &dyn HandoffPort,
     ) {
         backend::spawn_event_handler::<CompiledBackend>(
             &self.window,
@@ -829,6 +845,7 @@ impl SlintUiAdapter {
             view_rx,
             media_cache,
             notifier,
+            handoff,
         );
     }
 

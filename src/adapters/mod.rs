@@ -4,6 +4,7 @@ pub mod browser;
 pub mod container;
 #[cfg(feature = "demo")]
 pub mod demo;
+pub mod handoff;
 pub mod instance;
 pub mod markdown;
 #[cfg(feature = "matrix")]

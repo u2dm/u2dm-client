@@ -24,6 +24,7 @@ mod recover;
 mod room_directory;
 mod room_info;
 mod room_log;
+mod room_preview;
 mod selection;
 mod send_lanes;
 mod session;
@@ -47,7 +48,8 @@ use encryption::Encryption;
 use establish::{EstablishedSession, Rollback};
 use event::{
     AppEvent, EncryptionEvent, EndReason, IdentityEvent, MentionsEvent, MessageActionEvent,
-    PacksEvent, ReadersEvent, RoomActionEvent, SessionEvent, TimelineEvent, UserInfoEvent,
+    PacksEvent, PreviewEvent, ReadersEvent, RoomActionEvent, SessionEvent, TimelineEvent,
+    UserInfoEvent,
 };
 use event_source::EventSourceViewer;
 use identity_alerts::{IdentityAlerts, Resolution};
@@ -65,6 +67,7 @@ use recover::Recovery;
 use room_directory::{RoomDirectory, RoomMeta};
 use room_info::{ActionOutcome, RoomInfo};
 use room_log::RoomLogViewer;
+use room_preview::RoomPreviews;
 use selection::Selection;
 use send_lanes::SendLanes;
 use session::{EndingSession, SessionController, SuspendedSession};
@@ -91,6 +94,7 @@ use crate::domain::emote::ComposerText;
 use crate::domain::encryption::RecoveryKey;
 use crate::domain::image_pack::PackId;
 use crate::domain::invite::InviteList;
+use crate::domain::matrix_link::{AddressEntry, MatrixLink, RoomAddress, RoomLink};
 use crate::domain::media::AttachmentPick;
 use crate::domain::message::{MessageEdit, PinChange};
 use crate::domain::poll::PollDraft;
@@ -107,6 +111,12 @@ use crate::ports::media::MediaFilePort;
 use crate::ports::output::AppOutputPort;
 use crate::ports::room_log::RoomLogPort;
 use crate::ports::storage::StoragePort;
+
+enum LinkTarget {
+    Room(RoomId),
+    Invite(RoomId),
+    Space(RoomId),
+}
 
 #[derive(PartialEq, Eq)]
 struct EmittedRoom {
@@ -212,6 +222,7 @@ pub struct AppService {
     space_index: SpaceIndex,
     invites: Invites,
     upgrades: RoomUpgrades,
+    room_previews: RoomPreviews,
     typing: Typing,
     notifications: DesktopNotifications,
     room_info: RoomInfo,
@@ -264,6 +275,7 @@ impl AppService {
             space_index: SpaceIndex::new(Arc::clone(&output), events.clone()),
             invites: Invites::new(Arc::clone(&output), events.clone()),
             upgrades: RoomUpgrades::new(Arc::clone(&output), events.clone()),
+            room_previews: RoomPreviews::new(Arc::clone(&output), events.clone()),
             typing: Typing::new(Arc::clone(&output), events.clone()),
             notifications: DesktopNotifications::new(Arc::clone(&output), events.clone()),
             room_info: RoomInfo::new(Arc::clone(&output), events.clone()),
@@ -458,7 +470,11 @@ impl AppService {
             UiCommand::MoveSpace { from, to } => {
                 self.move_space(from, to);
             }
-            opening @ (UiCommand::SelectRoom(_) | UiCommand::OpenNotification(_)) => {
+            opening @ (UiCommand::SelectRoom(_)
+            | UiCommand::OpenNotification(_)
+            | UiCommand::OpenRoomLink(_)
+            | UiCommand::OpenExternalLink(_)
+            | UiCommand::FindRoom(_)) => {
                 self.open_room_from(opening).await;
             }
             UiCommand::FilterRooms(query) => {
@@ -503,6 +519,10 @@ impl AppService {
             UiCommand::JoinPredecessor(room_id) => {
                 self.join_upgrade_link(&room_id, Toward::Predecessor);
             }
+            UiCommand::OpenRoomFinder => self.room_previews.open_entry(),
+            UiCommand::JoinPreviewedRoom(address) => self.join_previewed_room(&address),
+            UiCommand::RetryRoomPreview => self.retry_room_preview(),
+            UiCommand::CloseRoomPreview => self.room_previews.close(),
             UiCommand::OpenRoomInfo(room_id) => {
                 self.open_room_info(&room_id);
             }
@@ -914,6 +934,8 @@ impl AppService {
             }
             self.follow_invites().await;
             self.follow_upgrades().await;
+            self.follow_previews().await;
+            self.release_held_link().await;
         }
     }
 
@@ -925,6 +947,7 @@ impl AppService {
             self.room_directory.emit_directory(&self.selection);
             self.notifications.directory_changed(&self.room_directory);
             self.follow_invites().await;
+            self.follow_previews().await;
         }
     }
 
@@ -941,6 +964,7 @@ impl AppService {
             self.notifications.directory_changed(&self.room_directory);
             self.follow_space_index();
             self.follow_invites().await;
+            self.follow_previews().await;
         }
     }
 
@@ -1022,6 +1046,151 @@ impl AppService {
             Some(Arrival::Space(space_id)) => self.open_space(&space_id),
             None => {}
         }
+    }
+
+    async fn route_room_link(&mut self, link: RoomLink) {
+        tracing::info!(room = %link.room, event = ?link.event, "routing a room link");
+        if let Some(target) = self.local_target(&link.room) {
+            self.open_local(target, link.focus()).await;
+            return;
+        }
+        let Some(port) = self.port(|a| &a.room_previews) else {
+            return;
+        };
+        self.user_info.close();
+        self.event_source.close();
+        self.readers.close();
+        self.invites.close();
+        let membership = self.room_directory.membership(&self.selection);
+        self.room_previews.show(port, link, &membership);
+    }
+
+    async fn open_external_link(&mut self, link: MatrixLink) {
+        self.room_previews.hold(link);
+        self.release_held_link().await;
+    }
+
+    async fn release_held_link(&mut self) {
+        let ready = self.lifecycle.phase() == lifecycle::AppPhase::Syncing
+            && self.room_directory.rooms_landed();
+        if !ready {
+            return;
+        }
+        match self.room_previews.take_held() {
+            Some(MatrixLink::User(user_id)) => self.open_user_info(user_id),
+            Some(MatrixLink::Room(link)) => self.route_room_link(link).await,
+            None => {}
+        }
+    }
+
+    async fn find_room(&mut self, entry: AddressEntry) {
+        match entry {
+            AddressEntry::Room(link) => self.route_room_link(link).await,
+            AddressEntry::Unrecognized => self.room_previews.refuse_address(),
+        }
+    }
+
+    fn local_target(&self, room: &RoomAddress) -> Option<LinkTarget> {
+        let room_id = match room {
+            RoomAddress::Id(room_id) => room_id.clone(),
+            RoomAddress::Alias(alias) => self.room_directory.room_by_alias(alias)?.id.clone(),
+        };
+        if self.room_directory.room(&room_id).is_some() {
+            return Some(LinkTarget::Room(room_id));
+        }
+        if self.room_directory.invite(&room_id).is_some() {
+            return Some(LinkTarget::Invite(room_id));
+        }
+        self.room_directory
+            .rail_route(&room_id)
+            .map(|_| LinkTarget::Space(room_id))
+    }
+
+    async fn open_local(&mut self, target: LinkTarget, focus: TimelineFocus) {
+        match target {
+            LinkTarget::Room(room_id) => self.open_linked_room(room_id, focus).await,
+            LinkTarget::Invite(room_id) => {
+                self.room_previews.close();
+                self.invites.open(self.room_directory.invite(&room_id));
+            }
+            LinkTarget::Space(space_id) => {
+                self.room_previews.close();
+                self.open_space(&space_id);
+            }
+        }
+    }
+
+    async fn open_linked_room(&mut self, room_id: RoomId, focus: TimelineFocus) {
+        if self.selection.room.as_ref() == Some(&room_id) {
+            self.room_previews.close();
+            self.room_info.close_dialog();
+            self.user_info.close();
+            if let TimelineFocus::Event(event_id) = focus {
+                self.active_timeline.jump_to_event(event_id);
+            }
+            return;
+        }
+        if !self.room_directory.lists(&self.selection, &room_id) {
+            self.handle_select_space(None);
+        }
+        self.select_room_at(room_id, focus).await;
+    }
+
+    async fn open_previewed(&mut self, resolved: Option<RoomLink>) {
+        let Some(link) = resolved else {
+            return;
+        };
+        let Some(target) = self.local_target(&link.room) else {
+            tracing::debug!(room = %link.room, "the linked room is not listed yet");
+            return;
+        };
+        self.open_local(target, link.focus()).await;
+    }
+
+    async fn follow_previews(&mut self) {
+        let membership = self.room_directory.membership(&self.selection);
+        let resolved = self.room_previews.follow(&membership);
+        self.open_previewed(resolved).await;
+    }
+
+    fn join_previewed_room(&mut self, address: &str) {
+        let Some(port) = self.port(|a| &a.room_previews) else {
+            return;
+        };
+        let membership = self.room_directory.membership(&self.selection);
+        self.room_previews.join(port, address, &membership);
+    }
+
+    fn retry_room_preview(&mut self) {
+        if let Some(port) = self.port(|a| &a.room_previews) {
+            self.room_previews.retry(port);
+        }
+    }
+
+    async fn handle_preview(&mut self, event: PreviewEvent) {
+        let port = self.port(|a| &a.room_previews);
+        let membership = self.room_directory.membership(&self.selection);
+        let resolved = match event {
+            PreviewEvent::Landed {
+                generation,
+                outcome,
+            } => port.and_then(|port| {
+                self.room_previews
+                    .landed(port, generation, outcome, &membership)
+            }),
+            PreviewEvent::AvatarsReady { generation, ready } => {
+                self.room_previews.avatars_landed(generation, ready);
+                None
+            }
+            PreviewEvent::JoinSettled {
+                room,
+                name,
+                outcome,
+            } => self
+                .room_previews
+                .join_settled(&room, &name, outcome, &membership),
+        };
+        self.open_previewed(resolved).await;
     }
 
     fn handle_select_space(&mut self, space: Option<RoomId>) {
@@ -1535,6 +1704,7 @@ impl AppService {
             AppEvent::UpgradeJoinSettled(joined) => {
                 self.settle_upgrade_join(joined).await;
             }
+            AppEvent::Preview(event) => self.handle_preview(event).await,
             AppEvent::RoomRosterFetched {
                 generation,
                 outcome,
@@ -2171,8 +2341,14 @@ impl AppService {
     }
 
     async fn select_room(&mut self, room_id: RoomId) {
+        self.select_room_at(room_id, TimelineFocus::ReadPosition)
+            .await;
+    }
+
+    async fn select_room_at(&mut self, room_id: RoomId, focus: TimelineFocus) {
         self.space_index.close();
         self.invites.close();
+        self.room_previews.close();
         self.upgrades.retarget(&room_id);
         self.retarget_room_info(&room_id);
         self.user_info.close();
@@ -2183,7 +2359,7 @@ impl AppService {
         self.follow_pinned(room_id.clone());
         self.follow_identity_alerts(room_id.clone());
         self.follow_typing(room_id.clone());
-        self.open_room(room_id, TimelineFocus::ReadPosition).await;
+        self.open_room(room_id, focus).await;
         self.notifications
             .on_screen(self.active_timeline.on_screen());
     }
@@ -2192,6 +2368,9 @@ impl AppService {
         match opening {
             UiCommand::SelectRoom(room_id) => self.select_room(room_id).await,
             UiCommand::OpenNotification(room_id) => self.open_notification(room_id).await,
+            UiCommand::OpenRoomLink(link) => self.route_room_link(link).await,
+            UiCommand::OpenExternalLink(link) => self.open_external_link(link).await,
+            UiCommand::FindRoom(entry) => self.find_room(entry).await,
             other => tracing::warn!(command = %other, "this command opens no room"),
         }
     }
@@ -2421,6 +2600,7 @@ impl AppService {
             self.space_index.restart(),
             self.invites.restart(),
             self.upgrades.restart(),
+            self.room_previews.restart(),
             self.typing.restart(),
             self.room_info.restart(),
             self.user_info.restart(),
@@ -2538,6 +2718,7 @@ impl AppService {
             self.space_index.shutdown(),
             self.invites.shutdown(),
             self.upgrades.shutdown(),
+            self.room_previews.shutdown(),
             self.typing.shutdown(),
             self.room_info.shutdown(),
             self.user_info.shutdown(),

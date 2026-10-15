@@ -14,7 +14,7 @@ use super::decode::{AvatarSlot, load_attachment_preview, load_avatar_async, requ
 use super::dto::{
     PackArt, PackBrowse, PackRowDto, PackTabDto, QuotedMessage, audio_row_update,
     invite_avatar_path, load_room_info_avatar, load_user_info_avatar, pack_art, pack_grid,
-    preview_line, quoted_message, rich_body, user_info_pronouns,
+    preview_line, quoted_message, rich_body, room_preview_avatar_path, user_info_pronouns,
 };
 use super::emote;
 use super::fields::{MemberRowFields, MessageFields, SpaceChildFields, SpaceFields};
@@ -41,8 +41,9 @@ use crate::commands::view::{
     AppViewState, AttachmentView, AudioView, CardStatus, CopiedLink, DirectoryView,
     EncryptionDialog, EncryptionStep, EncryptionView, IdentityAlertView, InviteView, LifecycleView,
     LoginStep, MentionsView, NowPlaying, PackView, PaginationView, PinnedView, ReadersView,
-    RoomCard, RoomInfoView, RoomLogView, RoomMenuTarget, SourceState, SpaceIndexView, Toast,
-    TrackFile, TypingView, UnsentMessage, UpgradeView, UserCard, UserInfoView, VideoView,
+    RoomCard, RoomInfoView, RoomLogView, RoomMenuTarget, RoomPreviewSheet, RoomPreviewView,
+    ShownPreview, SourceState, SpaceIndexView, Toast, TrackFile, TypingView, UnsentMessage,
+    UpgradeView, UserCard, UserInfoView, VideoView,
 };
 use crate::domain::encryption::KeyStorage;
 use crate::domain::invite::{Invite, InviteList};
@@ -53,6 +54,7 @@ use crate::domain::poll::PollPermissions;
 use crate::domain::room::RoomId;
 use crate::domain::room_info::RoomAbout;
 use crate::domain::room_log::RoomLog;
+use crate::domain::room_preview::RoomPreview;
 use crate::domain::sync::ReauthReason;
 use crate::domain::timeline::{OlderHistory, SourceEncryption, TimelinePatch, TimelineStatus};
 use crate::domain::user_info::Moderation;
@@ -93,7 +95,7 @@ impl RoomCursor {
 }
 
 #[derive(Clone, Default, PartialEq, Eq)]
-pub struct InviteSheetAvatar {
+pub struct SheetAvatar {
     room_id: String,
     path: Option<PathBuf>,
 }
@@ -363,6 +365,7 @@ fn apply_snapshot<B: UiBackend>(
         directory,
         space_index,
         invite,
+        room_preview,
         room_info,
         room_menu,
         user_info,
@@ -394,6 +397,7 @@ fn apply_snapshot<B: UiBackend>(
     apply_directory::<B>(w, last.map(|l| &l.directory), directory, ctx);
     apply_space_index::<B>(w, last.map(|l| &l.space_index), space_index, ctx);
     apply_invite(w, last, invite, &directory.invites, ctx.media);
+    apply_room_preview(w, last.map(|l| &l.room_preview), room_preview, ctx.media);
     apply_room_info::<B>(w, last.map(|l| &l.room_info), room_info, ctx);
     if last.is_none_or(|l| l.room_menu != *room_menu) {
         apply_room_menu(w, room_menu.as_ref());
@@ -436,9 +440,7 @@ fn apply_snapshot<B: UiBackend>(
     if last.is_none_or(|l| l.encryption != *encryption) {
         apply_encryption(w, encryption);
     }
-    if last.is_none_or(|l| l.toast != *toast) {
-        apply_toast(w, toast);
-    }
+    apply_toast(w, last.map(|l| &l.toast), toast);
     apply_copied_links(w, last, message_link, room_link);
     if last.is_none_or(|l| l.source != *source) {
         apply_source(w, source);
@@ -894,7 +896,7 @@ fn apply_invite_card(w: &impl UiProps, invite: Option<&Invite>) {
 }
 
 fn show_invite_avatar(w: &impl UiProps, invite: Option<&Invite>, media: &dyn MediaCache) {
-    let next = InviteSheetAvatar {
+    let next = SheetAvatar {
         room_id: invite
             .map(|invite| invite.id.to_string())
             .unwrap_or_default(),
@@ -907,6 +909,94 @@ fn show_invite_avatar(w: &impl UiProps, invite: Option<&Invite>, media: &dyn Med
     let image = load_avatar_async(next.path.as_deref(), AvatarSlot::Invite);
     if image.is_some() || previous.room_id != next.room_id {
         w.apply_invite_avatar(image);
+    }
+}
+
+fn apply_room_preview(
+    w: &impl UiProps,
+    last: Option<&RoomPreviewView>,
+    view: &RoomPreviewView,
+    media: &dyn MediaCache,
+) {
+    if last == Some(view) {
+        return;
+    }
+    let RoomPreviewView {
+        sheet,
+        address,
+        entry,
+        access,
+        error,
+        avatars_ready: _,
+    } = view;
+    let shown = match sheet {
+        RoomPreviewSheet::Loaded(shown) => Some(shown),
+        RoomPreviewSheet::Closed
+        | RoomPreviewSheet::Idle
+        | RoomPreviewSheet::Loading
+        | RoomPreviewSheet::Missing
+        | RoomPreviewSheet::Unavailable
+        | RoomPreviewSheet::Failed => None,
+    };
+    if let Some(shown) = shown {
+        apply_room_preview_card(w, shown);
+    }
+    show_room_preview_avatar(w, shown.map(|shown| &*shown.room), media);
+    w.set_string(StringProp::RoomPreviewAddress, SharedString::from(address));
+    w.set_bool(BoolProp::RoomPreviewEntry, *entry);
+    w.set_room_preview_access(*access);
+    w.set_room_preview_error(error.kind);
+    w.set_string(
+        StringProp::RoomPreviewErrorDetail,
+        SharedString::from(&error.detail),
+    );
+    w.set_room_preview_status(sheet);
+}
+
+fn apply_room_preview_card(w: &impl UiProps, shown: &ShownPreview) {
+    let room = &shown.room;
+    w.set_string(
+        StringProp::RoomPreviewRoomId,
+        SharedString::from(room.id.as_ref()),
+    );
+    w.set_string(StringProp::RoomPreviewName, SharedString::from(&room.name));
+    w.set_string(
+        StringProp::RoomPreviewInitial,
+        SharedString::from(avatar_initials(&room.name)),
+    );
+    w.set_int(
+        IntProp::RoomPreviewColorIndex,
+        avatar_color_index(room.id.as_ref()),
+    );
+    w.set_string(
+        StringProp::RoomPreviewAlias,
+        SharedString::from(room.alias.as_deref().unwrap_or_default()),
+    );
+    w.set_string(
+        StringProp::RoomPreviewTopic,
+        SharedString::from(room.topic.as_deref().unwrap_or_default()),
+    );
+    w.set_int(
+        IntProp::RoomPreviewMembers,
+        i32::try_from(room.member_count).unwrap_or(i32::MAX),
+    );
+    w.set_bool(BoolProp::RoomPreviewIsSpace, room.is_space);
+    w.set_bool(BoolProp::RoomPreviewOpensEvent, shown.opens_event);
+}
+
+fn show_room_preview_avatar(w: &impl UiProps, room: Option<&RoomPreview>, media: &dyn MediaCache) {
+    let next = SheetAvatar {
+        room_id: room.map(|room| room.id.to_string()).unwrap_or_default(),
+        path: room.and_then(|room| room_preview_avatar_path(room, media)),
+    };
+    let previous =
+        with_session(|session| mem::replace(&mut session.room_preview_avatar, next.clone()));
+    if previous == next {
+        return;
+    }
+    let image = load_avatar_async(next.path.as_deref(), AvatarSlot::RoomPreview);
+    if image.is_some() || previous.room_id != next.room_id {
+        w.apply_room_preview_avatar(image);
     }
 }
 
@@ -1686,7 +1776,10 @@ fn apply_unsent_edit(w: &impl UiProps, edit: Option<&MessageEdit>) {
     );
 }
 
-fn apply_toast(w: &impl UiProps, toast: &Toast) {
+fn apply_toast(w: &impl UiProps, last: Option<&Toast>, toast: &Toast) {
+    if last == Some(toast) {
+        return;
+    }
     let (kind, detail) = match toast {
         Toast::None => (UserMessageKind::None, ""),
         Toast::Error(message) => (message.kind, message.detail.as_str()),

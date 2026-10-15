@@ -6,12 +6,12 @@ use std::ffi::c_void;
 use std::mem::ManuallyDrop;
 
 use slint::Window;
-#[cfg(target_os = "linux")]
 use slint::winit_030::WinitWindowAccessor;
 #[cfg(target_os = "linux")]
 use slint::winit_030::winit::raw_window_handle::{
     HasDisplayHandle, HasWindowHandle, RawDisplayHandle, RawWindowHandle,
 };
+use slint::winit_030::winit::window::UserAttentionType;
 #[cfg(target_os = "linux")]
 use wayland_client::backend::{Backend, ObjectId};
 #[cfg(target_os = "linux")]
@@ -51,8 +51,22 @@ struct Activation {
     global: Option<XdgActivationV1>,
 }
 
+pub fn raise(window: &Window, token: Option<&str>) {
+    window.set_minimized(false);
+    if token.is_some_and(|token| activate_with_token(window, token)) {
+        tracing::debug!("raised the window with an activation token");
+        return;
+    }
+    window.with_winit_window(|winit| {
+        winit.focus_window();
+        if !winit.has_focus() {
+            winit.request_user_attention(Some(UserAttentionType::Informational));
+        }
+    });
+}
+
 #[cfg(target_os = "linux")]
-pub fn activate_with_token(window: &Window, token: &str) -> bool {
+fn activate_with_token(window: &Window, token: &str) -> bool {
     let Some((display, surface)) = wayland_handles(window) else {
         return false;
     };
@@ -68,7 +82,7 @@ pub fn activate_with_token(window: &Window, token: &str) -> bool {
 }
 
 #[cfg(not(target_os = "linux"))]
-pub fn activate_with_token(_window: &Window, _token: &str) -> bool {
+fn activate_with_token(_window: &Window, _token: &str) -> bool {
     false
 }
 

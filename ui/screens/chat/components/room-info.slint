@@ -684,13 +684,26 @@ component RoomInfoSheet inherits Rectangle {
 }
 
 export component RoomInfoDialog inherits ModalHost {
-    property <bool> covered: Shell.user-info-open || Shell.verification-open;
+    property <bool> covered: Shell.user-info-open
+        || Shell.room-preview-open
+        || Shell.invite-open
+        || Shell.verification-open;
+
+    function refocus() {
+        if !Shell.verification-open {
+            root.focus();
+        }
+    }
 
     dim-opacity: AppStyle.dialog-scrim;
     label: @tr("Room info");
     dismissed => {
         if Shell.user-info-open {
             Actions.close-user-info();
+        } else if Shell.room-preview-open {
+            Actions.close-room-preview();
+        } else if Shell.invite-open {
+            Actions.close-invite();
         } else if !sheet.peel() {
             Actions.close-room-info();
         }
@@ -699,9 +712,21 @@ export component RoomInfoDialog inherits ModalHost {
     CloseWatch {
         open: Shell.user-info-open;
         closed => {
-            if !Shell.verification-open {
-                root.focus();
-            }
+            root.refocus();
+        }
+    }
+
+    CloseWatch {
+        open: Shell.room-preview-open;
+        closed => {
+            root.refocus();
+        }
+    }
+
+    CloseWatch {
+        open: Shell.invite-open;
+        closed => {
+            root.refocus();
         }
     }
 

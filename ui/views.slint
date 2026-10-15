@@ -10,7 +10,7 @@ import {
     VerificationEmoji,
     UserMessage,
 } from "./types.slint";
-import { AttachmentKind, AudioKind, ConnectionState, DirectChat, EncryptionActivity, EncryptionStanding, EncryptionStep, IdentityAlertKind, IdentityTrust, InviteAnswer, InviteKind, LoginActivity, LoginMethodKind, LoginPhase, MemberRole, Moderation, NotifyMode, PackSurface, PreviewKind, ReadersStatus, RecoveryStatus, RoomInfoPlacement, RoomMembership, RoomScope, RosterStatus, ServiceKind, SourceEncryption, SourceStatus, SpaceIndexStatus, TimelineState, UpgradeLink, UserMessageKind, VerificationActivity, VerificationPhase } from "./enums.slint";
+import { AttachmentKind, AudioKind, ChildAccess, ConnectionState, DirectChat, EncryptionActivity, EncryptionStanding, EncryptionStep, IdentityAlertKind, IdentityTrust, InviteAnswer, InviteKind, LoginActivity, LoginMethodKind, LoginPhase, MemberRole, Moderation, NotifyMode, PackSurface, PreviewKind, ReadersStatus, RecoveryStatus, RoomInfoPlacement, RoomMembership, RoomPreviewStatus, RoomScope, RosterStatus, ServiceKind, SourceEncryption, SourceStatus, SpaceIndexStatus, TimelineState, UpgradeLink, UserMessageKind, VerificationActivity, VerificationPhase } from "./enums.slint";
 
 export global LoginView {
     in property <LoginPhase> step: LoginPhase.loading;
@@ -35,6 +35,8 @@ export global WindowView {
     in property <int> context-presses;
     in property <string> notification-room;
     in property <int> notification-opens;
+    in property <string> external-link;
+    in property <int> external-link-opens;
 }
 
 export global DirectoryView {
@@ -155,6 +157,27 @@ export global InviteView {
     in property <string> topic;
     in property <string> inviter;
     in property <InviteAnswer> answer: InviteAnswer.none;
+    in property <UserMessageKind> error: UserMessageKind.none;
+    in property <string> error-detail;
+}
+
+export global RoomPreviewView {
+    in property <RoomPreviewStatus> status: RoomPreviewStatus.closed;
+    out property <bool> visible: root.status != RoomPreviewStatus.closed;
+    in property <bool> entry;
+    in property <string> address;
+    in property <string> room-id;
+    in property <string> name;
+    in property <string> initial;
+    in property <int> color-index;
+    in property <image> avatar;
+    in property <bool> has-avatar;
+    in property <string> alias;
+    in property <string> topic;
+    in property <int> members;
+    in property <bool> is-space;
+    in property <bool> opens-event;
+    in property <ChildAccess> access: ChildAccess.join;
     in property <UserMessageKind> error: UserMessageKind.none;
     in property <string> error-detail;
 }

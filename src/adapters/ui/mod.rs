@@ -16,6 +16,7 @@ mod emote;
 mod fields;
 mod finger_direction;
 mod focus;
+mod handoff;
 mod mention;
 mod multiplex;
 mod notices;
@@ -38,9 +39,12 @@ mod window_events;
 
 pub use output::UiEventOutput;
 #[cfg(feature = "demo")]
+pub(crate) use permalink::{matrix_link, room_address_entry};
+#[cfg(feature = "demo")]
 pub(crate) use present::{IdentityAlertKind, identity_banner};
 #[cfg(feature = "demo")]
 pub(crate) use router::link_command;
+pub(crate) use router::open_external_link;
 use slint::PlatformError;
 
 use crate::error::AppError;

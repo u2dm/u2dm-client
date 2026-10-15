@@ -26,7 +26,8 @@ use crate::domain::room::{NotifyMode, Room, RoomId, Space};
 use crate::domain::room_info::{
     MemberRole, Reader, RoomAbout, RosterMember, RosterSection, sort_roster,
 };
-use crate::domain::space_index::SpaceChild;
+use crate::domain::room_preview::{PreviewMembership, RoomPreview};
+use crate::domain::space_index::{ChildKind, SpaceChild};
 use crate::domain::user_info::{
     IdentityTrust, ModerationPowers, Pronouns, RoomMembership, UserId, UserProfile, localpart,
 };
@@ -605,6 +606,46 @@ fn space_child(data: &DemoData, id: &str, via: &[String]) -> Option<SpaceChild> 
         .iter()
         .find(|entry| entry.id == id)
         .map(|entry| entry.to_child(via))
+}
+
+pub fn alias_target(alias: &str) -> Option<RoomId> {
+    let data = data();
+    data.rooms
+        .iter()
+        .find(|room| room.alias.as_deref() == Some(alias))
+        .map(|room| RoomId::new(&room.id))
+        .or_else(|| {
+            data.unjoined
+                .iter()
+                .find(|entry| entry.alias() == Some(alias))
+                .map(|entry| RoomId::new(&entry.id))
+        })
+}
+
+pub fn room_card(room_id: &RoomId) -> Option<RoomPreview> {
+    let data = data();
+    let via = [DEMO_VIA.to_owned()];
+    if let Some(child) = space_child(data, room_id, &via) {
+        return Some(preview_of(child));
+    }
+    data.invites
+        .iter()
+        .find(|entry| entry.id == room_id.as_ref())
+        .map(InviteDto::to_preview)
+}
+
+fn preview_of(child: SpaceChild) -> RoomPreview {
+    RoomPreview {
+        is_space: matches!(child.kind, ChildKind::Space { .. }),
+        id: child.id,
+        name: child.name,
+        alias: child.alias,
+        topic: child.topic,
+        avatar_mxc: child.avatar_mxc,
+        member_count: child.member_count,
+        join_rule: Some(child.join_rule),
+        membership: PreviewMembership::Outsider,
+    }
 }
 
 pub fn is_unjoined_avatar(mxc: &str) -> bool {

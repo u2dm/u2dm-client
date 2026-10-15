@@ -193,6 +193,7 @@ impl Lifecycle {
 pub(super) fn command_allowed(phase: AppPhase, cmd: &UiCommand) -> bool {
     match cmd {
         UiCommand::Quit => true,
+        UiCommand::OpenExternalLink(_) => phase != AppPhase::Blocked,
         UiCommand::RestoreSession => matches!(phase, AppPhase::Starting | AppPhase::RestorePaused),
         UiCommand::CheckServer(_)
         | UiCommand::LoginPassword(_)
@@ -223,6 +224,12 @@ pub(super) fn command_allowed(phase: AppPhase, cmd: &UiCommand) -> bool {
         | UiCommand::DeclineInvite(_)
         | UiCommand::JoinSuccessor(_)
         | UiCommand::JoinPredecessor(_)
+        | UiCommand::OpenRoomLink(_)
+        | UiCommand::OpenRoomFinder
+        | UiCommand::FindRoom(_)
+        | UiCommand::JoinPreviewedRoom(_)
+        | UiCommand::RetryRoomPreview
+        | UiCommand::CloseRoomPreview
         | UiCommand::OpenRoomInfo(_)
         | UiCommand::CloseRoomInfo
         | UiCommand::ShowRoomInfoPane

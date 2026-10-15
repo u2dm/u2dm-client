@@ -18,9 +18,9 @@ use url::Url;
 use super::encryption::{self, EncryptionBook};
 use super::identity::{self, IdentityBook, SendHold};
 use super::{
-    attachments, audio, data, invites, login, logout, media, message_menu, notifications, pinned,
-    polls, reactions, receipts, room_info, source, space_index, stickers, sync, timeline, typing,
-    upgrades, user_info, verification, videos,
+    attachments, audio, data, invites, links, login, logout, media, message_menu, notifications,
+    pinned, polls, reactions, receipts, room_info, source, space_index, stickers, sync, timeline,
+    typing, upgrades, user_info, verification, videos,
 };
 use crate::adapters::{body_emoji, video};
 use crate::domain::auth::{AuthMethod, LoginCredentials, OAuthLoginData, ServerInfo, Session};
@@ -32,6 +32,7 @@ use crate::domain::identity::{OwnIdentity, RoomAlert};
 use crate::domain::image_pack::{PackId, PackImage};
 use crate::domain::invite::Invite;
 use crate::domain::link::LauncherSafeUrl;
+use crate::domain::matrix_link::RoomAddress;
 use crate::domain::media::{MediaRendition, OutgoingAttachment, WaveformNeed};
 use crate::domain::member_name::{MemberName, NamedUser};
 use crate::domain::message::{
@@ -42,6 +43,7 @@ use crate::domain::poll::{PollAction, PollDraft};
 use crate::domain::push::{NoticeContent, PushNotice, PushTweaks};
 use crate::domain::room::{NotifyMode, Room, RoomId, Space};
 use crate::domain::room_info::{Reader, RoomAbout, RosterMember};
+use crate::domain::room_preview::{PreviewFailure, PreviewMembership, PreviewResult};
 use crate::domain::space_index::HierarchyPage;
 use crate::domain::sync::{SyncEvent, SyncOutcome, SyncSupport};
 use crate::domain::timeline::{
@@ -58,8 +60,8 @@ use crate::ports::matrix::{
     AttachmentHandoff, AuthPort, AuthenticatedSession, CleanupReport, DeviceRemoval,
     EncryptionPort, IdentityPort, ImagePackPort, InterruptedLogin, InvitePort, LocalDataOwnership,
     MediaPort, PackCatalog, PinnedPort, ProgressSink, PushPort, RestoreOutcome, RestoreStep,
-    RoomInfoPort, SessionPort, SpaceIndexPort, SpaceOrderPort, StoreAdoption, SyncPort, SyncSink,
-    TimelinePort, TypingPort, UpgradePort, UserInfoPort, VerificationPort,
+    RoomInfoPort, RoomPreviewPort, SessionPort, SpaceIndexPort, SpaceOrderPort, StoreAdoption,
+    SyncPort, SyncSink, TimelinePort, TypingPort, UpgradePort, UserInfoPort, VerificationPort,
 };
 use crate::ports::media::MediaCache;
 
@@ -238,6 +240,7 @@ fn authenticated(session: Session) -> AuthenticatedSession {
     let space_index = Arc::clone(&authed);
     let invites = Arc::clone(&authed);
     let upgrades = Arc::clone(&authed);
+    let room_previews = Arc::clone(&authed);
     let typing = Arc::clone(&authed);
     let push = Arc::clone(&authed);
     let room_info = Arc::clone(&authed);
@@ -256,6 +259,7 @@ fn authenticated(session: Session) -> AuthenticatedSession {
         space_index,
         invites,
         upgrades,
+        room_previews,
         typing,
         push,
         room_info,
@@ -1665,6 +1669,78 @@ impl DemoAuthed {
 }
 
 #[async_trait]
+impl RoomPreviewPort for DemoAuthed {
+    async fn preview(&self, room: &RoomAddress, via: &[String]) -> PreviewResult {
+        links::pause().await;
+        tracing::debug!(%room, ?via, "demo: previewing a linked room");
+        if links::preview_fails_now(room.as_str()) {
+            return Err(PreviewFailure::Failed);
+        }
+        let room_id = match room {
+            RoomAddress::Id(room_id) => room_id.clone(),
+            RoomAddress::Alias(alias) => {
+                data::alias_target(alias).ok_or(PreviewFailure::NoSuchRoom)?
+            }
+        };
+        let membership = self.membership_of(&room_id);
+        if links::scenario().unavailable && membership == PreviewMembership::Outsider {
+            return Err(PreviewFailure::Unavailable);
+        }
+        let mut preview = data::room_card(&room_id).ok_or(PreviewFailure::Unavailable)?;
+        preview.membership = membership;
+        Ok(preview)
+    }
+
+    async fn join(
+        &self,
+        room: &RoomAddress,
+        known: Option<&RoomId>,
+        via: &[String],
+    ) -> Result<RoomId> {
+        links::pause().await;
+        if links::scenario().join_fails {
+            return Err(unavailable("joining linked rooms"));
+        }
+        let room_id = match room {
+            RoomAddress::Id(room_id) => Some(room_id.clone()),
+            RoomAddress::Alias(alias) => data::alias_target(alias),
+        }
+        .or_else(|| known.cloned())
+        .filter(|room_id| data::room_card(room_id).is_some())
+        .ok_or_else(|| AppError::Other(format!("no demo room has the address {room}")))?;
+        tracing::debug!(%room_id, ?via, "demo: joining a linked room");
+        if !links::scenario().echo_lost {
+            self.remember_join(&room_id);
+            self.echo_join();
+        }
+        Ok(room_id)
+    }
+
+    async fn fetch_avatars(&self, mxcs: &[String]) -> usize {
+        links::pause().await;
+        media::fetch_unjoined_avatars(mxcs)
+    }
+}
+
+impl DemoAuthed {
+    fn membership_of(&self, room_id: &RoomId) -> PreviewMembership {
+        let lists = current_lists(&self.lists);
+        let joined = lists.rooms().iter().any(|room| room.id == *room_id)
+            || lists
+                .spaces()
+                .iter()
+                .any(|space| space.id == room_id.as_ref());
+        if joined {
+            return PreviewMembership::Joined;
+        }
+        if lists.invites().iter().any(|invite| invite.id == *room_id) {
+            return PreviewMembership::Invited;
+        }
+        PreviewMembership::Outsider
+    }
+}
+
+#[async_trait]
 impl TypingPort for DemoAuthed {
     async fn follow_typing(
         &self,
@@ -2610,7 +2686,7 @@ fn focused_window(messages: &[TimelineMessage], target: &str) -> Result<Range<us
     let index = messages
         .iter()
         .position(|message| message.event_id.as_deref() == Some(target))
-        .ok_or_else(|| AppError::Other(format!("no demo event {target}")))?;
+        .ok_or(AppError::FocusedEventUnavailable)?;
     let start = index.saturating_sub(timeline::FOCUS_CONTEXT);
     let end = messages
         .len()

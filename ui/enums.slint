@@ -98,6 +98,9 @@ export enum UserMessageKind {
     join-new-room-failed,
     join-old-room-failed,
     decline-invite-failed,
+    room-not-found,
+    room-preview-failed,
+    room-address-invalid,
     leave-room-failed,
     notify-change-failed,
     mark-read-failed,
@@ -245,6 +248,16 @@ export enum SpaceIndexStatus {
     loading-more,
     failed,
     more-failed,
+}
+
+export enum RoomPreviewStatus {
+    closed,
+    idle,
+    loading,
+    loaded,
+    missing,
+    unavailable,
+    failed,
 }
 
 export enum ChildAccess {

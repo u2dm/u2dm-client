@@ -38,6 +38,7 @@ use crate::domain::poll::{Poll, PollAnswer};
 use crate::domain::room::{Room, Space};
 use crate::domain::room_info::{MemberRole, Reader, RosterMember};
 use crate::domain::room_log::{LogLevel, LogLine};
+use crate::domain::room_preview::RoomPreview;
 use crate::domain::space_index::{ChildKind, SpaceChild};
 use crate::domain::timeline::EnrichmentDelta;
 use crate::domain::user_info::{Pronouns, UserProfile};
@@ -1381,6 +1382,15 @@ pub fn invite_to_dto(invite: &Invite, media: &dyn MediaCache) -> RoomDto {
 pub fn invite_avatar_path(invite: &Invite, media: &dyn MediaCache) -> Option<PathBuf> {
     let mxc = invite.avatar_mxc.as_deref()?;
     if invite.is_space() {
+        media.space_avatar_path(mxc)
+    } else {
+        media.room_avatar_path(mxc)
+    }
+}
+
+pub fn room_preview_avatar_path(room: &RoomPreview, media: &dyn MediaCache) -> Option<PathBuf> {
+    let mxc = room.avatar_mxc.as_deref()?;
+    if room.is_space {
         media.space_avatar_path(mxc)
     } else {
         media.room_avatar_path(mxc)

@@ -1,0 +1,63 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$root"
+
+readonly CONFIG="src/config.rs"
+readonly ICON="assets/logo-app.svg"
+readonly SCHEME_TYPE="x-scheme-handler/matrix"
+readonly DATA_HOME="${XDG_DATA_HOME:-$HOME/.local/share}"
+readonly INSTALL_ROOT="${CARGO_INSTALL_ROOT:-${CARGO_HOME:-$HOME/.cargo}}"
+
+app_id() {
+  local id
+  id=$(sed -n 's/^pub const APP_ID: &str = "\([^"]*\)";$/\1/p' "$CONFIG")
+  if [[ -z $id ]]; then
+    echo "install-desktop found no APP_ID constant in $CONFIG" >&2
+    exit 1
+  fi
+  if [[ ! -f assets/$id.desktop ]]; then
+    echo "$CONFIG names the app $id, but there is no assets/$id.desktop" >&2
+    exit 1
+  fi
+  echo "$id"
+}
+
+require_tools() {
+  local tool missing=0
+  for tool in "cargo:rustup" "update-desktop-database:the desktop-file-utils package" "xdg-mime:the xdg-utils package"; do
+    command -v "${tool%%:*}" >/dev/null 2>&1 && continue
+    echo "install-desktop needs ${tool%%:*}, which this machine does not have: ${tool#*:}" >&2
+    missing=1
+  done
+  ((missing == 0)) || exit 1
+}
+
+install_binary() {
+  cargo install --path . --locked --root "$INSTALL_ROOT"
+}
+
+install_entry() {
+  install -d "$DATA_HOME/applications"
+  sed "s|^Exec=u2dm |Exec=\"$INSTALL_ROOT/bin/u2dm\" |" "assets/$APP_ID.desktop" \
+    >"$DATA_HOME/applications/$APP_ID.desktop"
+}
+
+install_icon() {
+  install -d "$DATA_HOME/icons/hicolor/scalable/apps"
+  install -m 644 "$ICON" "$DATA_HOME/icons/hicolor/scalable/apps/$APP_ID.svg"
+}
+
+make_default_matrix_handler() {
+  update-desktop-database "$DATA_HOME/applications"
+  xdg-mime default "$APP_ID.desktop" "$SCHEME_TYPE"
+}
+
+APP_ID=$(app_id)
+readonly APP_ID
+require_tools
+install_binary
+install_entry
+install_icon
+make_default_matrix_handler

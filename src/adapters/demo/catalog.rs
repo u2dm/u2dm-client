@@ -3,7 +3,7 @@ use std::io::{self, Write};
 use std::process::ExitCode;
 
 use super::{
-    attachments, audio, encryption, identity, invites, login, logout, message_menu, names,
+    attachments, audio, encryption, identity, invites, links, login, logout, message_menu, names,
     notifications, pinned, polls, reactions, receipts, richtext, room_info, shields, space_index,
     stickers, sync, timeline, typing, upgrades, user_info, verification, videos,
 };
@@ -39,6 +39,7 @@ pub fn all() -> &'static [&'static Scenarios] {
         &space_index::CATALOG,
         &invites::CATALOG,
         &upgrades::CATALOG,
+        &links::CATALOG,
         &typing::CATALOG,
         &notifications::CATALOG,
         &room_info::CATALOG,
@@ -52,6 +53,7 @@ pub fn all() -> &'static [&'static Scenarios] {
         &verification::CATALOG,
         &WINDOW,
         &DATA,
+        &HANDOFF,
     ]
 }
 
@@ -77,6 +79,20 @@ const DATA: Scenarios = Scenarios {
         note: "images still resolve against assets/demo",
     }],
     notes: &["a malformed fixture names the offending field and starts the app empty"],
+};
+
+const HANDOFF: Scenarios = Scenarios {
+    env: "U2DM_DEMO_HANDOFF",
+    summary: "listens on a socket at this path for links another demo launch hands over",
+    combinable: false,
+    flags: &[Flag {
+        value: "<path>",
+        effect: "a second demo launch with the same value hands its link, or nothing, to this one and exits",
+        note: "the socket's directory must be private to you (0700)",
+    }],
+    notes: &[
+        "without it a demo run neither listens nor hands over, so it never reaches a real U2DM's socket",
+    ],
 };
 
 pub fn print() -> ExitCode {

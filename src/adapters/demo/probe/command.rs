@@ -7,17 +7,19 @@ use std::time::Duration;
 use super::names;
 use crate::adapters::demo::attachments;
 use crate::adapters::ui::dump::Poke;
-use crate::adapters::ui::link_command;
+use crate::adapters::ui::{link_command, matrix_link, room_address_entry};
 use crate::commands::ui::{MessageDraft, ReplyDraft, UiCommand};
 use crate::domain::emote::{ComposerText, Emote};
 use crate::domain::encryption::RecoveryKey;
 use crate::domain::image_pack::PackId;
+use crate::domain::matrix_link::{RoomAddress, RoomLink};
 use crate::domain::media::AttachmentPick;
 use crate::domain::message::{EditKind, EditTarget, MessageEdit, TextRevision};
 use crate::domain::poll::{ChoiceMode, PollDisclosure, PollDraft};
 use crate::domain::room::RoomId;
 use crate::domain::sync::{ReauthReason, SessionLoss};
 use crate::domain::user_info::UserId;
+use crate::ports::handoff::Handoff;
 
 const PROBE_EMOTE_HEIGHT: &str = "32";
 
@@ -78,6 +80,25 @@ pub enum ProbeCommand {
         #[serde(default)]
         room_id: Option<String>,
     },
+    OpenRoomLink {
+        #[serde(default)]
+        room_id: Option<String>,
+        #[serde(default)]
+        alias: Option<String>,
+        #[serde(default)]
+        event_id: Option<String>,
+        #[serde(default)]
+        via: Vec<String>,
+    },
+    OpenRoomFinder,
+    FindRoom {
+        address: String,
+    },
+    JoinPreviewedRoom {
+        address: String,
+    },
+    RetryRoomPreview,
+    CloseRoomPreview,
     JoinPredecessor {
         #[serde(default)]
         room_id: Option<String>,
@@ -354,6 +375,15 @@ pub enum ProbeCommand {
     OpenLink {
         url: String,
     },
+    OpenExternalLink {
+        url: String,
+    },
+    HandOff {
+        #[serde(default)]
+        link: Option<String>,
+        #[serde(default)]
+        token: Option<String>,
+    },
     AcceptVerification,
     RejectVerification,
     ConfirmVerification,
@@ -376,6 +406,7 @@ pub enum Driven {
         room_id: RoomId,
         token: Option<String>,
     },
+    HandOff(Handoff),
 }
 
 impl fmt::Display for Driven {
@@ -395,6 +426,7 @@ impl fmt::Display for Driven {
             }
             Self::Poke(Poke::WindowFocus(focused)) => write!(f, "WindowFocus({focused})"),
             Self::Poke(Poke::SwipeTravel(px)) => write!(f, "SwipeTravel({px}px)"),
+            Self::HandOff(handoff) => write!(f, "HandOff(link: {})", handoff.link.is_some()),
             Self::Poke(Poke::ContextPress) => f.write_str("ContextPress"),
             Self::NotificationClick { room_id, .. } => write!(f, "ClickNotification({room_id})"),
         }
@@ -560,6 +592,32 @@ pub fn to_driven(command: ProbeCommand, selected: Selection<'_>) -> Result<Drive
         ProbeCommand::JoinSuccessor { room_id } => {
             return in_room(room_id, selected, UiCommand::JoinSuccessor);
         }
+        ProbeCommand::OpenRoomLink {
+            room_id,
+            alias,
+            event_id,
+            via,
+        } => {
+            let room = match (room_id, alias) {
+                (Some(room_id), None) => RoomAddress::Id(RoomId::new(room_id)),
+                (None, Some(alias)) => RoomAddress::Alias(alias),
+                _ => {
+                    return Err(Rejected(
+                        "open_room_link takes exactly one of room_id and alias".to_owned(),
+                    ));
+                }
+            };
+            UiCommand::OpenRoomLink(RoomLink {
+                room,
+                event: event_id,
+                via,
+            })
+        }
+        ProbeCommand::OpenRoomFinder => UiCommand::OpenRoomFinder,
+        ProbeCommand::FindRoom { address } => UiCommand::FindRoom(room_address_entry(address)),
+        ProbeCommand::JoinPreviewedRoom { address } => UiCommand::JoinPreviewedRoom(address),
+        ProbeCommand::RetryRoomPreview => UiCommand::RetryRoomPreview,
+        ProbeCommand::CloseRoomPreview => UiCommand::CloseRoomPreview,
         ProbeCommand::JoinPredecessor { room_id } => {
             return in_room(room_id, selected, UiCommand::JoinPredecessor);
         }
@@ -839,6 +897,12 @@ pub fn to_driven(command: ProbeCommand, selected: Selection<'_>) -> Result<Drive
         }
         ProbeCommand::OpenLink { url } => {
             link_command(&url).ok_or_else(|| Rejected(format!("{url} is not a link U2DM opens")))?
+        }
+        ProbeCommand::OpenExternalLink { url } => UiCommand::OpenExternalLink(
+            matrix_link(&url).ok_or_else(|| Rejected(format!("{url} is not a Matrix link")))?,
+        ),
+        ProbeCommand::HandOff { link, token } => {
+            return Ok(Driven::HandOff(Handoff { link, token }));
         }
         ProbeCommand::AcceptVerification => UiCommand::AcceptVerification,
         ProbeCommand::RejectVerification => UiCommand::RejectVerification,
