@@ -55,6 +55,7 @@ pub struct Room {
     pub is_encrypted: bool,
     pub poll_permissions: PollPermissions,
     pub message_permissions: MessagePermissions,
+    pub may_invite: bool,
     pub member_count: u64,
     pub has_unread: bool,
     pub has_mentions: bool,
@@ -158,6 +159,12 @@ fn newest_joined_version<'a>(
     Some(newest)
 }
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct SpacePowers {
+    pub invite: bool,
+    pub add_children: bool,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct Space {
     pub id: String,
@@ -167,6 +174,7 @@ pub struct Space {
     pub child_room_ids: Vec<String>,
     pub child_space_ids: Vec<String>,
     pub order: Option<String>,
+    pub powers: SpacePowers,
     pub alert: bool,
     pub mention: bool,
     pub hint: bool,

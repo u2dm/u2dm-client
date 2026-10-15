@@ -3,7 +3,7 @@ use std::time::Duration;
 
 use serde::Deserialize;
 
-use super::{media, message_menu, polls, reactions};
+use super::{create_room, invite_people, media, message_menu, polls, reactions};
 use crate::domain::auth::Session;
 use crate::domain::image_pack::{ImagePack, ImageUsage, PackId, PackImage, PackOrigin, PackTitle};
 use crate::domain::invite::{Invite, InviteKind};
@@ -656,6 +656,7 @@ impl RoomDto {
             is_encrypted: self.encrypted,
             poll_permissions: polls::permissions(),
             message_permissions: message_menu::permissions(),
+            may_invite: invite_people::may_invite(),
             member_count: self.members,
             has_unread: self.unread > 0 && notify == NotifyMode::AllMessages,
             has_mentions: self.mentions > 0,
@@ -726,6 +727,7 @@ impl UnjoinedDto {
             is_encrypted: false,
             poll_permissions: polls::permissions(),
             message_permissions: message_menu::permissions(),
+            may_invite: invite_people::may_invite(),
             member_count: self.joined_members(),
             has_unread: false,
             has_mentions: false,
@@ -752,6 +754,7 @@ impl UnjoinedDto {
             child_room_ids: self.rooms.clone(),
             child_space_ids: self.spaces.clone(),
             order: None,
+            powers: create_room::space_powers(),
             alert: false,
             mention: false,
             hint: false,
@@ -783,6 +786,7 @@ impl InviteDto {
             is_encrypted: self.encrypted,
             poll_permissions: polls::permissions(),
             message_permissions: message_menu::permissions(),
+            may_invite: invite_people::may_invite(),
             member_count: self.joined_members(),
             has_unread: false,
             has_mentions: false,
@@ -831,6 +835,7 @@ impl InviteDto {
             child_room_ids: self.rooms.clone(),
             child_space_ids: Vec::new(),
             order: None,
+            powers: create_room::space_powers(),
             alert: false,
             mention: false,
             hint: false,
@@ -910,6 +915,7 @@ impl SpaceDto {
             child_room_ids: self.rooms.clone(),
             child_space_ids: self.spaces.clone(),
             order: None,
+            powers: create_room::space_powers(),
             alert: false,
             mention: false,
             hint: false,

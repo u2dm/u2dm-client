@@ -2,15 +2,15 @@ use serde::Serialize;
 
 use super::names;
 use crate::adapters::ui::identity_banner;
-use crate::commands::messages::UserMessage;
+use crate::commands::messages::{UserMessage, UserMessageKind};
 use crate::commands::ui::Draft;
 use crate::commands::view::{
-    AppViewState, AttachmentView, AudioView, CardStatus, CopiedLink, DirectoryView, EncryptionStep,
-    EncryptionView, IdentityAlertView, InviteView, LifecycleView, LoginStep, MentionsView,
-    NotificationsView, PackView, PaginationView, PinnedView, ReadersView, RoomInfoView,
-    RoomLogView, RoomMenuTarget, RoomPreviewSheet, RoomPreviewView, RosterRow, SourceState,
-    SpaceIndexRow, SpaceIndexView, SpaceMatch, Toast, TrackFile, TypingView, UnsentMessage,
-    UpgradeView, UserInfoView, VideoView,
+    AppViewState, AttachmentView, AudioView, CardStatus, CopiedLink, CreateRoomView, DirectoryView,
+    EncryptionStep, EncryptionView, IdentityAlertView, InvitePeopleView, InviteView, InviteeRow,
+    LifecycleView, LoginStep, MentionsView, NotificationsView, PackView, PaginationView,
+    PinnedView, ReadersView, RoomInfoView, RoomLogView, RoomMenuTarget, RoomPreviewSheet,
+    RoomPreviewView, RosterRow, SourceState, SpaceIndexRow, SpaceIndexView, SpaceMatch, Toast,
+    TrackFile, TypingView, UnsentMessage, UpgradeView, UserInfoView, VideoView,
 };
 use crate::domain::encryption::KeyStorage;
 use crate::domain::image_pack::{ImagePack, ImageUsage, PackOrigin, PackTitle};
@@ -34,6 +34,8 @@ pub struct ViewDto {
     space_index: SpaceIndexDto,
     invite: InviteSheetDto,
     room_preview: RoomPreviewDto,
+    create_room: CreateRoomDto,
+    invite_people: InvitePeopleDto,
     room_info: RoomInfoDto,
     room_menu: Option<RoomMenuDto>,
     user_info: UserInfoDto,
@@ -56,6 +58,41 @@ pub struct ViewDto {
     readers: ReadersDto,
     mentions: MentionsDto,
     room_log: Option<RoomLogDto>,
+}
+
+#[derive(Serialize)]
+struct CreateRoomDto {
+    status: &'static str,
+    kind: &'static str,
+    parent: Option<String>,
+    server: String,
+    error: MessageDto,
+}
+
+#[derive(Serialize)]
+#[allow(clippy::struct_excessive_bools)]
+struct InvitePeopleDto {
+    open: bool,
+    room_id: Option<String>,
+    room_name: Option<String>,
+    is_space: bool,
+    search: &'static str,
+    limited: bool,
+    sending: bool,
+    error: MessageDto,
+    avatars_ready: usize,
+    results: Vec<InviteeDto>,
+    picked: Vec<InviteeDto>,
+}
+
+#[derive(Serialize)]
+struct InviteeDto {
+    user_id: String,
+    shown: String,
+    has_avatar_mxc: bool,
+    membership: &'static str,
+    state: &'static str,
+    failure: Option<MessageDto>,
 }
 
 #[derive(Serialize)]
@@ -173,6 +210,7 @@ struct LinkDto {
 }
 
 #[derive(Serialize)]
+#[allow(clippy::struct_excessive_bools)]
 struct RoomMenuDto {
     room_id: String,
     name: String,
@@ -180,6 +218,7 @@ struct RoomMenuDto {
     notify: &'static str,
     notify_busy: bool,
     leaving: bool,
+    may_invite: bool,
 }
 
 #[derive(Serialize)]
@@ -229,6 +268,7 @@ struct RoomDto {
     is_encrypted: bool,
     poll_permissions: PollPermissionsDto,
     message_permissions: MessagePermissionsDto,
+    may_invite: bool,
     member_count: u64,
     has_unread: bool,
     has_mentions: bool,
@@ -247,6 +287,7 @@ struct RoomDto {
 }
 
 #[derive(Serialize)]
+#[allow(clippy::struct_excessive_bools)]
 struct SpaceDto {
     id: String,
     name: String,
@@ -254,6 +295,8 @@ struct SpaceDto {
     child_room_ids: Vec<String>,
     child_space_ids: Vec<String>,
     order: Option<String>,
+    may_invite: bool,
+    may_add_children: bool,
     alert: bool,
     mention: bool,
     hint: bool,
@@ -261,8 +304,11 @@ struct SpaceDto {
 
 #[derive(Serialize)]
 struct SpaceHeadingDto {
+    id: String,
     name: String,
     member_count: u64,
+    may_invite: bool,
+    may_add_children: bool,
 }
 
 #[derive(Serialize)]
@@ -379,6 +425,7 @@ struct RoomInfoDto {
     notify: &'static str,
     notify_busy: bool,
     leaving: bool,
+    may_invite: bool,
     roster: &'static str,
     has_more: bool,
     pages_landed: i32,
@@ -529,6 +576,8 @@ pub fn view(source: &AppViewState) -> ViewDto {
         space_index: space_index(&source.space_index),
         invite: invite_sheet(&source.invite),
         room_preview: room_preview(&source.room_preview),
+        create_room: create_room(&source.create_room),
+        invite_people: invite_people(&source.invite_people),
         room_info: room_info(&source.room_info),
         room_menu: source.room_menu.as_ref().map(room_menu),
         user_info: user_info(&source.user_info),
@@ -551,6 +600,44 @@ pub fn view(source: &AppViewState) -> ViewDto {
         readers: readers(&source.readers),
         mentions: mentions(&source.mentions),
         room_log: source.room_log.as_ref().map(room_log),
+    }
+}
+
+fn create_room(source: &CreateRoomView) -> CreateRoomDto {
+    CreateRoomDto {
+        status: names::create_room_status(source.status),
+        kind: names::room_kind(source.kind),
+        parent: (!source.parent_name.is_empty()).then(|| source.parent_name.clone()),
+        server: source.server_name.clone(),
+        error: message(&source.error),
+    }
+}
+
+fn invite_people(source: &InvitePeopleView) -> InvitePeopleDto {
+    let target = source.target.as_ref();
+    InvitePeopleDto {
+        open: target.is_some(),
+        room_id: target.map(|target| target.room_id.to_string()),
+        room_name: target.map(|target| target.name.clone()),
+        is_space: target.is_some_and(|target| target.space),
+        search: names::people_search_status(source.search),
+        limited: source.limited,
+        sending: source.sending,
+        error: message(&source.error),
+        avatars_ready: source.avatars_ready,
+        results: source.results.iter().map(invitee).collect(),
+        picked: source.picked.iter().map(invitee).collect(),
+    }
+}
+
+fn invitee(source: &InviteeRow) -> InviteeDto {
+    InviteeDto {
+        user_id: source.person.user_id.to_string(),
+        shown: source.person.shown(),
+        has_avatar_mxc: source.person.avatar_mxc.is_some(),
+        membership: names::room_membership(source.person.membership),
+        state: names::invitee_state(source.state),
+        failure: (source.failure.kind != UserMessageKind::None).then(|| message(&source.failure)),
     }
 }
 
@@ -729,6 +816,7 @@ fn room_menu(source: &RoomMenuTarget) -> RoomMenuDto {
         notify: names::notify_mode(source.notify),
         notify_busy: source.notify_busy,
         leaving: source.leaving,
+        may_invite: source.may_invite,
     }
 }
 
@@ -821,6 +909,7 @@ fn room(source: &Room) -> RoomDto {
             delete_others: source.message_permissions.delete_others,
             pin: source.message_permissions.pin,
         },
+        may_invite: source.may_invite,
         member_count: source.member_count,
         has_unread: source.has_unread,
         has_mentions: source.has_mentions,
@@ -847,6 +936,8 @@ fn space(source: &Space) -> SpaceDto {
         child_room_ids: source.child_room_ids.clone(),
         child_space_ids: source.child_space_ids.clone(),
         order: source.order.clone(),
+        may_invite: source.powers.invite,
+        may_add_children: source.powers.add_children,
         alert: source.alert,
         mention: source.mention,
         hint: source.hint,
@@ -871,8 +962,11 @@ fn directory(source: &DirectoryView) -> DirectoryDto {
         space_id: source.space_id.clone(),
         subspace_id: source.subspace_id.clone(),
         listed_space: SpaceHeadingDto {
+            id: source.listed_space.id.clone(),
             name: source.listed_space.name.clone(),
             member_count: source.listed_space.member_count,
+            may_invite: source.listed_space.may_invite,
+            may_add_children: source.listed_space.may_add_children,
         },
         direct_alert: source.direct_flags.alert,
         direct_mention: source.direct_flags.mention,
@@ -984,6 +1078,7 @@ fn room_info(source: &RoomInfoView) -> RoomInfoDto {
         notify: names::notify_mode(source.notify),
         notify_busy: source.notify_busy,
         leaving: source.leaving,
+        may_invite: card.is_some_and(|card| card.may_invite),
         roster: names::roster_status(source.roster),
         has_more: source.has_more,
         pages_landed: source.pages_landed,

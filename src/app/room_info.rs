@@ -75,6 +75,7 @@ struct MenuCard {
     name: String,
     unread: bool,
     notify: NotifyMode,
+    may_invite: bool,
 }
 
 struct OpenSheet {
@@ -228,6 +229,13 @@ impl RoomInfo {
         let sheet_moved = self.follow_sheet(port, rooms);
         if echoed || menu_moved || sheet_moved {
             self.publish();
+        }
+    }
+
+    pub(super) fn members_changed(&mut self, port: Arc<dyn RoomInfoPort>, room_id: &RoomId) {
+        if self.shows(room_id) {
+            tracing::debug!(%room_id, "the room's members changed, refetching them");
+            self.refetch_roster(port);
         }
     }
 
@@ -808,6 +816,7 @@ impl RoomInfo {
                 notify,
                 notify_busy,
                 leaving: self.leaving.contains(&menu.id),
+                may_invite: menu.may_invite,
             }
         });
         self.output.publish(Box::new(move |state| {
@@ -823,6 +832,7 @@ fn menu_card_of(room: &Room) -> MenuCard {
         name: room.display_name.clone(),
         unread: room.shows_unread(),
         notify: room.notify,
+        may_invite: room.may_invite,
     }
 }
 
@@ -836,6 +846,7 @@ fn card_of(room: &Room) -> RoomCard {
         topic: room.topic.clone(),
         alias: room.canonical_alias.clone(),
         notify: room.notify,
+        may_invite: room.may_invite,
     }
 }
 

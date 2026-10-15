@@ -230,6 +230,17 @@ pub(super) fn command_allowed(phase: AppPhase, cmd: &UiCommand) -> bool {
         | UiCommand::JoinPreviewedRoom(_)
         | UiCommand::RetryRoomPreview
         | UiCommand::CloseRoomPreview
+        | UiCommand::OpenCreateRoom
+        | UiCommand::OpenCreateSpace
+        | UiCommand::CloseCreateRoom
+        | UiCommand::CreateRoom(_)
+        | UiCommand::OpenInvitePeople(_)
+        | UiCommand::CloseInvitePeople
+        | UiCommand::SearchPeople(_)
+        | UiCommand::RetryPeopleSearch
+        | UiCommand::PickInvitee(_)
+        | UiCommand::UnpickInvitee(_)
+        | UiCommand::SendInvites(_)
         | UiCommand::OpenRoomInfo(_)
         | UiCommand::CloseRoomInfo
         | UiCommand::ShowRoomInfoPane

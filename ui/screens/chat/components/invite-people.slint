@@ -1,0 +1,420 @@
+import { Palette, ScrollView } from "std-widgets.slint";
+import { IconDisplay, IconSet } from "@lucide";
+
+import { Avatar } from "../../../components/avatar.slint";
+import { ListItemArea } from "../../../components/a11y.slint";
+import { AppButton, IconButton } from "../../../components/button.slint";
+import { DotPulse } from "../../../components/dot-pulse.slint";
+import { DialogCard, ModalHost } from "../../../components/overlay.slint";
+import { RetryNotice } from "../../../components/retry-notice.slint";
+import { SearchField } from "../../../components/search-field.slint";
+import { TextField } from "../../../components/text-field.slint";
+import { SheetCloseChip } from "./sheet.slint";
+import { AppStyle, Fonts, IconSize, Metrics, Size, Space, Weight } from "../../../theme.slint";
+import { InviteeState, PeopleSearchStatus, UserMessageKind } from "../../../enums.slint";
+import { InviteeEntry } from "../../../types.slint";
+import { InvitePeopleView } from "../../../views.slint";
+import { UserMessages } from "../../../messages.slint";
+import { Actions } from "../../../actions.slint";
+import { MetaTip, Reactions } from "../../../local.slint";
+
+global InviteeStates {
+    public pure function label(state: InviteeState) -> string {
+        if state == InviteeState.picked {
+            return @tr("Picked");
+        }
+        if state == InviteeState.joined {
+            return @tr("Already in the room");
+        }
+        if state == InviteeState.invited {
+            return @tr("Already invited");
+        }
+        if state == InviteeState.banned {
+            return @tr("Banned");
+        }
+        if state == InviteeState.sending {
+            return @tr("Inviting…");
+        }
+        if state == InviteeState.failed {
+            return @tr("Not invited");
+        }
+        return "";
+    }
+
+    public pure function pickable(state: InviteeState) -> bool {
+        return state == InviteeState.available || state == InviteeState.picked;
+    }
+}
+
+component PersonLines inherits VerticalLayout {
+    in property <InviteeEntry> entry;
+    in property <string> second-line;
+    in property <bool> second-line-alarms;
+
+    horizontal-stretch: 1;
+    alignment: center;
+    spacing: Space.xs;
+
+    Text {
+        text: root.entry.name == "" ? root.entry.user-id : root.entry.name;
+        font-family: Fonts.emoji;
+        font-size: Fonts.body;
+        font-weight: Weight.semibold;
+        overflow: elide;
+        accessible-role: none;
+    }
+
+    if root.second-line != "": Text {
+        text: root.second-line;
+        font-size: Fonts.body-small;
+        color: root.second-line-alarms ? AppStyle.danger : AppStyle.foreground-muted;
+        overflow: elide;
+        accessible-role: none;
+        accessible-live-region: root.second-line-alarms
+            ? AccessibleLiveness.assertive
+            : AccessibleLiveness.off;
+    }
+}
+
+component PersonAvatar inherits Avatar {
+    in property <InviteeEntry> entry;
+
+    width: Metrics.invitee-avatar;
+    height: Metrics.invitee-avatar;
+    color-index: root.entry.color-index;
+    has-image: root.entry.has-avatar;
+    image: root.entry.avatar;
+    initial: root.entry.initial;
+}
+
+component ResultRow inherits ListItemArea {
+    in property <InviteeEntry> entry;
+    in property <bool> locked;
+
+    property <bool> picked: root.entry.state == InviteeState.picked;
+    property <string> state-label: InviteeStates.label(root.entry.state);
+
+    pure function describe(entry: InviteeEntry, state-label: string) -> string {
+        let who = entry.name == "" ? entry.user-id : @tr("{}, {}", entry.name, entry.user-id);
+        return state-label == "" ? who : @tr("{}, {}", who, state-label);
+    }
+
+    height: Metrics.invitee-row;
+    enabled: !root.locked && InviteeStates.pickable(root.entry.state);
+    above-modal: true;
+    selected: root.picked;
+    label: root.describe(root.entry, root.state-label);
+    background: root.has-hover && root.enabled ? AppStyle.overlay-hover : transparent;
+    clicked => {
+        if root.picked {
+            Actions.unpick-invitee(root.entry.user-id);
+        } else {
+            Actions.pick-invitee(root.entry.user-id);
+        }
+    }
+
+    HorizontalLayout {
+        padding-left: Space.xl;
+        padding-right: Space.xl;
+        spacing: Space.lg;
+
+        PersonAvatar {
+            cross-axis-self-alignment: center;
+            entry: root.entry;
+        }
+
+        PersonLines {
+            entry: root.entry;
+            second-line: root.entry.name == "" ? "" : root.entry.user-id;
+        }
+
+        if root.picked: IconDisplay {
+            cross-axis-self-alignment: center;
+            icon: IconSet.Check;
+            size: IconSize.sm;
+            stroke: Palette.accent-background;
+        }
+
+        if !root.picked && root.state-label != "": Text {
+            cross-axis-self-alignment: center;
+            text: root.state-label;
+            font-size: Fonts.caption;
+            color: AppStyle.foreground-muted;
+            accessible-role: none;
+        }
+    }
+}
+
+component PickedRow inherits Rectangle {
+    in property <InviteeEntry> entry;
+    in property <bool> locked;
+
+    property <bool> failed: root.entry.state == InviteeState.failed;
+
+    height: Metrics.invitee-row;
+    accessible-role: list-item;
+    accessible-label: root.failed
+        ? @tr("{}, {}", root.entry.name == "" ? root.entry.user-id : root.entry.name,
+            UserMessages.text(root.entry.failure, root.entry.failure-detail))
+        : (root.entry.name == "" ? root.entry.user-id : @tr("{}, {}", root.entry.name, root.entry.user-id));
+
+    HorizontalLayout {
+        padding-left: Space.xl;
+        padding-right: Space.xl;
+        spacing: Space.lg;
+
+        PersonAvatar {
+            cross-axis-self-alignment: center;
+            entry: root.entry;
+        }
+
+        PersonLines {
+            entry: root.entry;
+            second-line: root.failed
+                ? UserMessages.text(root.entry.failure, root.entry.failure-detail)
+                : (root.entry.name == "" ? "" : root.entry.user-id);
+            second-line-alarms: root.failed;
+        }
+
+        if root.entry.state == InviteeState.sending: DotPulse {
+            cross-axis-self-alignment: center;
+        }
+
+        if root.entry.state != InviteeState.sending: IconButton {
+            cross-axis-self-alignment: center;
+            size: Size.md;
+            icon: IconSet.X;
+            label: @tr("Remove {}", root.entry.name == "" ? root.entry.user-id : root.entry.name);
+            enabled: !root.locked;
+            above-modal: true;
+            clicked => {
+                Actions.unpick-invitee(root.entry.user-id);
+            }
+        }
+    }
+}
+
+component Note inherits Text {
+    font-size: Fonts.body-small;
+    color: AppStyle.foreground-muted;
+    horizontal-alignment: center;
+    wrap: word-wrap;
+}
+
+component SectionLabel inherits Text {
+    font-size: Fonts.caption;
+    font-weight: Weight.semibold;
+    color: AppStyle.foreground-muted;
+}
+
+export component InvitePeopleDialog inherits ModalHost {
+    property <length> card-width: min(AppStyle.card-width-wide, root.width - AppStyle.card-inset);
+    property <length> card-height: min(root.height - AppStyle.card-inset, Metrics.invite-people-max-height);
+    property <int> picked-count: InvitePeopleView.picked.length;
+    property <bool> sending: InvitePeopleView.sending;
+    property <PeopleSearchStatus> search: InvitePeopleView.search;
+    property <string> reason;
+    property <string> title: InvitePeopleView.is-space
+        ? @tr("Invite to the space {}", InvitePeopleView.room-name)
+        : @tr("Invite to {}", InvitePeopleView.room-name);
+
+    function send() {
+        if root.picked-count > 0 && !root.sending {
+            Actions.send-invites(root.reason);
+        }
+    }
+
+    dim-opacity: AppStyle.dialog-scrim;
+    light-dismiss: root.picked-count == 0;
+    label: root.title;
+    dismissed => {
+        Actions.close-invite-people();
+    }
+    opened => {
+        Reactions.close();
+        MetaTip.clear();
+        search.focus();
+    }
+
+    DialogCard {
+        x: (root.width - self.width) / 2;
+        y: (root.height - self.height) / 2;
+        width: root.card-width;
+        height: root.card-height;
+        clip: true;
+
+        VerticalLayout {
+            padding-top: Space.xl;
+            padding-bottom: Space.xl;
+            spacing: Space.lg;
+
+            HorizontalLayout {
+                padding-left: Space.xl;
+                padding-right: Space.md + Size.md + Space.sm;
+
+                Text {
+                    text: root.title;
+                    font-family: Fonts.emoji;
+                    font-size: Fonts.heading;
+                    font-weight: Weight.bold;
+                    overflow: elide;
+                }
+            }
+
+            HorizontalLayout {
+                padding-left: Space.xl;
+                padding-right: Space.xl;
+
+                search := SearchField {
+                    placeholder: @tr("Search by name or user ID");
+                    above-modal: true;
+                    enabled: !root.sending;
+                    edited(text) => {
+                        Actions.search-people(text);
+                    }
+                }
+            }
+
+            scroll := ScrollView {
+                vertical-stretch: 1;
+                content-width: self.visible-width;
+                content-height: rows.preferred-height;
+
+                rows := VerticalLayout {
+                    width: scroll.visible-width;
+                    padding-bottom: Space.md;
+                    spacing: Space.sm;
+
+                    if root.picked-count > 0: HorizontalLayout {
+                        padding-left: Space.xl;
+                        padding-right: Space.xl;
+
+                        SectionLabel {
+                            text: @tr("To invite");
+                        }
+                    }
+
+                    for entry in InvitePeopleView.picked: PickedRow {
+                        entry: entry;
+                        locked: root.sending;
+                    }
+
+                    if root.picked-count > 0 && InvitePeopleView.results.length > 0: HorizontalLayout {
+                        padding-left: Space.xl;
+                        padding-right: Space.xl;
+                        padding-top: Space.md;
+
+                        SectionLabel {
+                            text: @tr("Found");
+                        }
+                    }
+
+                    for entry in InvitePeopleView.results: ResultRow {
+                        entry: entry;
+                        locked: root.sending;
+                    }
+
+                    if root.search == PeopleSearchStatus.searching && InvitePeopleView.results.length == 0: HorizontalLayout {
+                        alignment: center;
+                        padding: Space.xl;
+
+                        DotPulse {
+                            dot-size: Space.md;
+                        }
+                    }
+
+                    if root.search == PeopleSearchStatus.idle && root.picked-count == 0: VerticalLayout {
+                        padding: Space.xl;
+
+                        Note {
+                            text: @tr("Search for people by name, or type a full user ID like @name:example.org");
+                        }
+                    }
+
+                    if root.search == PeopleSearchStatus.ready && InvitePeopleView.results.length == 0: VerticalLayout {
+                        padding: Space.xl;
+
+                        Note {
+                            text: @tr("Nobody found. Try a full user ID like @name:example.org");
+                        }
+                    }
+
+                    if root.search == PeopleSearchStatus.ready && InvitePeopleView.limited: VerticalLayout {
+                        padding-left: Space.xl;
+                        padding-right: Space.xl;
+
+                        Note {
+                            text: @tr("More people match. Keep typing to narrow the search.");
+                        }
+                    }
+
+                    if root.search == PeopleSearchStatus.failed: RetryNotice {
+                        text: UserMessages.text(InvitePeopleView.error, InvitePeopleView.error-detail);
+                        failed: true;
+                        above-modal: true;
+                        retry => {
+                            Actions.retry-people-search();
+                        }
+                    }
+                }
+            }
+
+            HorizontalLayout {
+                padding-left: Space.xl;
+                padding-right: Space.xl;
+
+                TextField {
+                    icon: IconSet.MessageSquareText;
+                    label: @tr("Message");
+                    placeholder: @tr("Add a message (optional)");
+                    enabled: !root.sending;
+                    above-modal: true;
+                    text <=> root.reason;
+                    accepted => {
+                        root.send();
+                    }
+                }
+            }
+
+            HorizontalLayout {
+                padding-left: Space.xl;
+                padding-right: Space.xl;
+                alignment: end;
+                spacing: Space.md;
+
+                AppButton {
+                    text: @tr("Cancel");
+                    filled: false;
+                    above-modal: true;
+                    clicked => {
+                        Actions.close-invite-people();
+                    }
+                }
+
+                AppButton {
+                    text: root.picked-count == 0
+                        ? @tr("Invite")
+                        : @tr("Invite {n} person" | "Invite {n} people" % root.picked-count);
+                    icon: IconSet.UserRoundPlus;
+                    enabled: root.picked-count > 0;
+                    busy: root.sending;
+                    above-modal: true;
+                    clicked => {
+                        root.send();
+                    }
+                }
+            }
+        }
+
+        SheetCloseChip {
+            x: parent.width - self.width - Space.md;
+            y: Space.md;
+            surface: AppStyle.card;
+            label: @tr("Close");
+            above-modal: true;
+            clicked => {
+                Actions.close-invite-people();
+            }
+        }
+    }
+}

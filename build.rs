@@ -173,6 +173,21 @@ const ENUM_COVERAGE: &[EnumCoverage] = &[
         branches_in: "ui/screens/chat/components/invite.slint",
         falls_through: &["none"],
     },
+    EnumCoverage {
+        slint_enum: "RoomAccess",
+        branches_in: "ui/screens/chat/components/create-room.slint",
+        falls_through: &[],
+    },
+    EnumCoverage {
+        slint_enum: "PeopleSearchStatus",
+        branches_in: "ui/screens/chat/components/invite-people.slint",
+        falls_through: &[],
+    },
+    EnumCoverage {
+        slint_enum: "InviteeState",
+        branches_in: "ui/screens/chat/components/invite-people.slint",
+        falls_through: &["available"],
+    },
 ];
 
 const SCHEMA_FILE: &str = "src/adapters/ui/schema.rs";
@@ -224,6 +239,11 @@ const ENUM_TABLES: &[(&str, &str)] = &[
     ("TimelineState", "timeline_states"),
     ("PackSurface", "pack_surfaces"),
     ("PackOrigin", "pack_origins"),
+    ("RoomKind", "room_kinds"),
+    ("RoomAccess", "room_accesses"),
+    ("CreateRoomStatus", "create_room_statuses"),
+    ("PeopleSearchStatus", "people_search_statuses"),
+    ("InviteeState", "invitee_states"),
 ];
 
 fn main() {
@@ -317,6 +337,16 @@ const SCENARIO_SOURCES: &[ScenarioSource] = &[
     },
     ScenarioSource {
         file: "src/adapters/demo/links.rs",
+        arms_between: ("fn apply(scenario: &mut Scenario, flag: &str) {", "\n}"),
+        ignored: &[],
+    },
+    ScenarioSource {
+        file: "src/adapters/demo/create_room.rs",
+        arms_between: ("fn apply(scenario: &mut Scenario, flag: &str) {", "\n}"),
+        ignored: &[],
+    },
+    ScenarioSource {
+        file: "src/adapters/demo/invite_people.rs",
         arms_between: ("fn apply(scenario: &mut Scenario, flag: &str) {", "\n}"),
         ignored: &[],
     },

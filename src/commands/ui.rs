@@ -10,6 +10,7 @@ use crate::domain::media::AttachmentPick;
 use crate::domain::message::MessageEdit;
 use crate::domain::poll::PollDraft;
 use crate::domain::room::{NotifyMode, RoomId};
+use crate::domain::room_creation::RoomDraft;
 use crate::domain::user_info::UserId;
 
 #[derive(StrumDisplay)]
@@ -73,6 +74,23 @@ pub enum UiCommand {
     JoinPreviewedRoom(String),
     RetryRoomPreview,
     CloseRoomPreview,
+    OpenCreateRoom,
+    OpenCreateSpace,
+    CloseCreateRoom,
+    #[strum(to_string = "CreateRoom")]
+    CreateRoom(RoomDraft),
+    #[strum(to_string = "OpenInvitePeople({0})")]
+    OpenInvitePeople(RoomId),
+    CloseInvitePeople,
+    #[strum(to_string = "SearchPeople")]
+    SearchPeople(String),
+    RetryPeopleSearch,
+    #[strum(to_string = "PickInvitee({0})")]
+    PickInvitee(UserId),
+    #[strum(to_string = "UnpickInvitee({0})")]
+    UnpickInvitee(UserId),
+    #[strum(to_string = "SendInvites")]
+    SendInvites(String),
     #[strum(to_string = "OpenRoomInfo({0})")]
     OpenRoomInfo(RoomId),
     CloseRoomInfo,
@@ -326,6 +344,7 @@ impl UiCommand {
                 ..
             })
             | Self::OpenRoomInfo(room_id)
+            | Self::OpenInvitePeople(room_id)
             | Self::LeaveRoom(room_id)
             | Self::OpenRoomMenu(room_id)
             | Self::MarkRoomRead(room_id)
@@ -366,6 +385,16 @@ impl UiCommand {
             | Self::JoinPreviewedRoom(_)
             | Self::RetryRoomPreview
             | Self::CloseRoomPreview
+            | Self::OpenCreateRoom
+            | Self::OpenCreateSpace
+            | Self::CloseCreateRoom
+            | Self::CreateRoom(_)
+            | Self::CloseInvitePeople
+            | Self::SearchPeople(_)
+            | Self::RetryPeopleSearch
+            | Self::PickInvitee(_)
+            | Self::UnpickInvitee(_)
+            | Self::SendInvites(_)
             | Self::CloseRoomInfo
             | Self::ShowRoomInfoPane
             | Self::HideRoomInfoPane

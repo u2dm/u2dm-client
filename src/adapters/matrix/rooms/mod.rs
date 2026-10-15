@@ -1,9 +1,11 @@
 mod avatars;
 mod build;
+mod creation;
 mod directory;
 mod health;
 mod hierarchy;
 mod info;
+mod invite_people;
 mod invites;
 mod preview;
 mod push;
@@ -32,10 +34,12 @@ use tokio::time::{Instant, sleep_until};
 use tokio_util::sync::CancellationToken;
 
 use self::avatars::AvatarFetcher;
+pub(super) use self::creation::MatrixRoomCreation;
 use self::directory::Directory;
 use self::health::{SyncHealth, endpoint_missing, session_loss};
 pub(super) use self::hierarchy::MatrixSpaceIndex;
 pub(super) use self::info::MatrixRoomInfo;
+pub(super) use self::invite_people::MatrixInvitePeople;
 pub(super) use self::invites::MatrixInvites;
 pub(super) use self::preview::MatrixRoomPreviews;
 pub(super) use self::push::MatrixPush;

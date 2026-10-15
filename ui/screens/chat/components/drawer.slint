@@ -62,6 +62,7 @@ export component Drawer inherits Rectangle {
         max(Metrics.drawer-min-width, root.width - Metrics.overlay-peek),
     );
     property <bool> accounts-expanded: false;
+    property <int> action-rows: 5;
     property <length> accounts-height: root.accounts-expanded ? Metrics.drawer-accounts-row : 0;
     property <bool> encryption-needs-you: EncryptionView.standing == EncryptionStanding.unverified
         || EncryptionView.standing == EncryptionStanding.setup-refused
@@ -242,44 +243,77 @@ export component Drawer inherits Rectangle {
                 }
             }
 
-            DrawerRow {
+            actions := Flickable {
                 x: 0;
-                y: parent.height - 3 * self.height;
+                y: accounts.y + accounts.height;
                 width: 100%;
-                icon: IconSet.DoorOpen;
-                label: @tr("Join a room");
-                clicked => {
-                    root.dismiss();
-                    Actions.open-room-finder();
-                }
-            }
+                height: parent.height - self.y;
+                content-height: max(self.height, root.action-rows * Metrics.drawer-row);
+                interactive: self.content-height > self.height;
 
-            DrawerRow {
-                x: 0;
-                y: parent.height - 2 * self.height;
-                width: 100%;
-                icon: root.encryption-needs-you ? IconSet.ShieldAlert : IconSet.ShieldCheck;
-                icon-tint: root.encryption-needs-you ? AppStyle.warning : Palette.foreground;
-                label: @tr("Encryption");
-                description: root.encryption-needs-you
-                    ? @tr("Encryption, this session needs your attention")
-                    : @tr("Encryption");
-                clicked => {
-                    root.dismiss();
-                    Actions.open-encryption();
+                DrawerRow {
+                    x: 0;
+                    y: actions.content-height - root.action-rows * self.height;
+                    width: 100%;
+                    icon: IconSet.MessageSquarePlus;
+                    label: @tr("New room");
+                    clicked => {
+                        root.dismiss();
+                        Actions.open-create-room();
+                    }
                 }
-            }
 
-            DrawerRow {
-                x: 0;
-                y: parent.height - self.height;
-                width: 100%;
-                icon: IconSet.LogOut;
-                label: @tr("Log Out");
-                tint: AppStyle.danger-muted;
-                clicked => {
-                    root.dismiss();
-                    Actions.logout();
+                DrawerRow {
+                    x: 0;
+                    y: actions.content-height - 4 * self.height;
+                    width: 100%;
+                    icon: IconSet.Grid2x2Plus;
+                    label: @tr("New space");
+                    clicked => {
+                        root.dismiss();
+                        Actions.open-create-space();
+                    }
+                }
+
+                DrawerRow {
+                    x: 0;
+                    y: actions.content-height - 3 * self.height;
+                    width: 100%;
+                    icon: IconSet.DoorOpen;
+                    label: @tr("Join a room");
+                    clicked => {
+                        root.dismiss();
+                        Actions.open-room-finder();
+                    }
+                }
+
+                DrawerRow {
+                    x: 0;
+                    y: actions.content-height - 2 * self.height;
+                    width: 100%;
+                    icon: root.encryption-needs-you ? IconSet.ShieldAlert : IconSet.ShieldCheck;
+                    icon-tint: root.encryption-needs-you ? AppStyle.warning : Palette.foreground;
+                    label: @tr("Encryption");
+                    description: root.encryption-needs-you
+                        ? @tr("Encryption, this session needs your attention")
+                        : @tr("Encryption");
+                    clicked => {
+                        root.dismiss();
+                        Actions.open-encryption();
+                    }
+                }
+
+                DrawerRow {
+                    x: 0;
+                    y: actions.content-height - self.height;
+                    width: 100%;
+                    icon: IconSet.LogOut;
+                    label: @tr("Log Out");
+                    tint: AppStyle.danger-muted;
+                    clicked => {
+                        root.dismiss();
+                        Actions.logout();
+                    }
                 }
             }
         }

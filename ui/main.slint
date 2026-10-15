@@ -37,6 +37,8 @@ import {
     UserInfoView,
     InviteView,
     RoomPreviewView,
+    CreateRoomView,
+    InvitePeopleView,
     ReadersView,
     MentionsView,
 } from "./views.slint";
@@ -61,6 +63,8 @@ import { EventSourceDialog } from "./screens/chat/components/event-source.slint"
 import { UserInfoDialog } from "./screens/chat/components/user-info.slint";
 import { InviteDialog } from "./screens/chat/components/invite.slint";
 import { RoomPreviewDialog } from "./screens/chat/components/room-preview.slint";
+import { CreateRoomDialog } from "./screens/chat/components/create-room.slint";
+import { InvitePeopleDialog } from "./screens/chat/components/invite-people.slint";
 import { RoomLogDialog } from "./screens/chat/components/room-log.slint";
 import { ReadersDialog } from "./screens/chat/components/readers.slint";
 
@@ -68,7 +72,7 @@ export { EmojiStore }
 export { LoginPhase, ConnectionState, TimelineState, VerificationPhase, MediaState, MediaFailure }
 export { MessageKind, PreviewKind, ServiceKind, LoginMethodKind, AudioKind }
 export { LoginView, SessionView, DirectoryView, SpaceIndexView, RoomView, PackView, VerificationView }
-export { AttachmentView, VideoView, AudioView, UnsentView, IdentityAlertView, UpgradeView, TypingView, EncryptionView, WindowView, RoomInfoView, SourceView, RoomMenuView, RoomLogView, UserInfoView, InviteView, RoomPreviewView, ReadersView, MentionsView }
+export { AttachmentView, VideoView, AudioView, UnsentView, IdentityAlertView, UpgradeView, TypingView, EncryptionView, WindowView, RoomInfoView, SourceView, RoomMenuView, RoomLogView, UserInfoView, InviteView, RoomPreviewView, CreateRoomView, InvitePeopleView, ReadersView, MentionsView }
 export { Actions }
 export { Probe, ReplySwipe, RoomMenu }
 export { NotificationText, SpoilerCover }
@@ -142,11 +146,13 @@ export component AppWindow inherits Window {
             Polls.stop-editing();
         }
     }
+    if Shell.create-room-open: CreateRoomDialog { }
     if Shell.video-open: VideoPlayer { }
     if Shell.room-info-open: RoomInfoDialog { }
     if Shell.readers-open: ReadersDialog { }
     if Shell.user-info-open: UserInfoDialog { }
     if Shell.invite-open: InviteDialog { }
+    if Shell.invite-people-open: InvitePeopleDialog { }
     if Shell.room-preview-open: RoomPreviewDialog { }
     if Shell.source-open: EventSourceDialog { }
     if Shell.room-log-open: RoomLogDialog { }

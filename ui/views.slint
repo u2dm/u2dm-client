@@ -1,4 +1,5 @@
 import {
+    InviteeEntry,
     LogLineEntry,
     MemberEntry,
     RoomEntry,
@@ -10,7 +11,7 @@ import {
     VerificationEmoji,
     UserMessage,
 } from "./types.slint";
-import { AttachmentKind, AudioKind, ChildAccess, ConnectionState, DirectChat, EncryptionActivity, EncryptionStanding, EncryptionStep, IdentityAlertKind, IdentityTrust, InviteAnswer, InviteKind, LoginActivity, LoginMethodKind, LoginPhase, MemberRole, Moderation, NotifyMode, PackSurface, PreviewKind, ReadersStatus, RecoveryStatus, RoomInfoPlacement, RoomMembership, RoomPreviewStatus, RoomScope, RosterStatus, ServiceKind, SourceEncryption, SourceStatus, SpaceIndexStatus, TimelineState, UpgradeLink, UserMessageKind, VerificationActivity, VerificationPhase } from "./enums.slint";
+import { AttachmentKind, AudioKind, ChildAccess, ConnectionState, CreateRoomStatus, DirectChat, EncryptionActivity, EncryptionStanding, EncryptionStep, IdentityAlertKind, IdentityTrust, InviteAnswer, InviteKind, LoginActivity, LoginMethodKind, LoginPhase, MemberRole, Moderation, NotifyMode, PackSurface, PeopleSearchStatus, PreviewKind, ReadersStatus, RecoveryStatus, RoomInfoPlacement, RoomKind, RoomMembership, RoomPreviewStatus, RoomScope, RosterStatus, ServiceKind, SourceEncryption, SourceStatus, SpaceIndexStatus, TimelineState, UpgradeLink, UserMessageKind, VerificationActivity, VerificationPhase } from "./enums.slint";
 
 export global LoginView {
     in property <LoginPhase> step: LoginPhase.loading;
@@ -49,8 +50,11 @@ export global DirectoryView {
     in property <RoomScope> room-scope: RoomScope.all;
     in property <string> selected-space-id;
     in property <string> selected-subspace-id;
+    in property <string> listed-space-id;
     in property <string> listed-space-name;
     in property <int> listed-space-members;
+    in property <bool> listed-space-may-invite;
+    in property <bool> listed-space-may-add-children;
     in property <bool> direct-alert;
     in property <bool> direct-mention;
     in property <bool> direct-hint;
@@ -117,6 +121,7 @@ export global RoomInfoView {
     in property <NotifyMode> notify: NotifyMode.all-messages;
     in property <bool> notify-busy;
     in property <bool> leaving;
+    in property <bool> may-invite;
     in property <RosterStatus> roster: RosterStatus.loading;
     in property <[MemberEntry]> rows;
     in property <bool> has-more;
@@ -141,6 +146,7 @@ export global RoomMenuView {
     in property <NotifyMode> notify: NotifyMode.all-messages;
     in property <bool> notify-busy;
     in property <bool> leaving;
+    in property <bool> may-invite;
     in property <string> link;
     in property <int> link-serial;
 }
@@ -178,6 +184,30 @@ export global RoomPreviewView {
     in property <bool> is-space;
     in property <bool> opens-event;
     in property <ChildAccess> access: ChildAccess.join;
+    in property <UserMessageKind> error: UserMessageKind.none;
+    in property <string> error-detail;
+}
+
+export global CreateRoomView {
+    in property <CreateRoomStatus> status: CreateRoomStatus.closed;
+    out property <bool> visible: root.status != CreateRoomStatus.closed;
+    in property <RoomKind> kind: RoomKind.room;
+    in property <string> parent-name;
+    in property <string> server-name;
+    in property <UserMessageKind> error: UserMessageKind.none;
+    in property <string> error-detail;
+}
+
+export global InvitePeopleView {
+    in property <bool> visible;
+    in property <string> room-id;
+    in property <string> room-name;
+    in property <bool> is-space;
+    in property <PeopleSearchStatus> search: PeopleSearchStatus.idle;
+    in property <[InviteeEntry]> results;
+    in property <[InviteeEntry]> picked;
+    in property <bool> limited;
+    in property <bool> sending;
     in property <UserMessageKind> error: UserMessageKind.none;
     in property <string> error-detail;
 }

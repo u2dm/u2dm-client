@@ -9,6 +9,7 @@ mod event;
 mod event_source;
 mod identity_alerts;
 pub mod input;
+mod invite_people;
 mod invites;
 mod lifecycle;
 mod link_requests;
@@ -21,6 +22,7 @@ mod pinned;
 mod polls;
 mod readers;
 mod recover;
+mod room_creation;
 mod room_directory;
 mod room_info;
 mod room_log;
@@ -47,13 +49,14 @@ use audio::AudioController;
 use encryption::Encryption;
 use establish::{EstablishedSession, Rollback};
 use event::{
-    AppEvent, EncryptionEvent, EndReason, IdentityEvent, MentionsEvent, MessageActionEvent,
-    PacksEvent, PreviewEvent, ReadersEvent, RoomActionEvent, SessionEvent, TimelineEvent,
-    UserInfoEvent,
+    AppEvent, CreationSettled, EncryptionEvent, EndReason, IdentityEvent, InvitePeopleEvent,
+    MentionsEvent, MessageActionEvent, PacksEvent, PreviewEvent, ReadersEvent, RoomActionEvent,
+    SessionEvent, TimelineEvent, UserInfoEvent,
 };
 use event_source::EventSourceViewer;
 use identity_alerts::{IdentityAlerts, Resolution};
 use input::{CommandSender, EventSender, Inbox, Input};
+use invite_people::InvitePeople;
 use invites::{Answer, Arrival, Invites};
 use lifecycle::{Lifecycle, Settled};
 use media::MediaActions;
@@ -64,8 +67,9 @@ use packs::Packs;
 use pinned::{PinDirection, PinnedMessages};
 use readers::ReaderList;
 use recover::Recovery;
+use room_creation::{Created, RoomCreation};
 use room_directory::{RoomDirectory, RoomMeta};
-use room_info::{ActionOutcome, RoomInfo};
+use room_info::{ActionOutcome, RoomInfo, RosterOutcome};
 use room_log::RoomLogViewer;
 use room_preview::RoomPreviews;
 use selection::Selection;
@@ -100,10 +104,11 @@ use crate::domain::message::{MessageEdit, PinChange};
 use crate::domain::poll::PollDraft;
 use crate::domain::push::PushNotice;
 use crate::domain::room::{NotifyMode, RoomId, RoomList, Space};
+use crate::domain::room_creation::{RoomDraft, RoomKind};
 use crate::domain::room_search::TitleQuery;
 use crate::domain::sync::{ConnectionStatus, ReauthReason};
 use crate::domain::timeline::{AudioTrack, FailedSend, MessageReaders, TimelineFocus};
-use crate::domain::user_info::{IgnoreChange, Moderation, UserId};
+use crate::domain::user_info::{IgnoreChange, Moderation, UserId, server_part};
 use crate::domain::verification::VerificationEvent;
 use crate::ports::browser::BrowserPort;
 use crate::ports::matrix::{AuthPort, AuthenticatedSession, CleanupReport, MediaPort};
@@ -223,6 +228,8 @@ pub struct AppService {
     invites: Invites,
     upgrades: RoomUpgrades,
     room_previews: RoomPreviews,
+    room_creation: RoomCreation,
+    invite_people: InvitePeople,
     typing: Typing,
     notifications: DesktopNotifications,
     room_info: RoomInfo,
@@ -276,6 +283,8 @@ impl AppService {
             invites: Invites::new(Arc::clone(&output), events.clone()),
             upgrades: RoomUpgrades::new(Arc::clone(&output), events.clone()),
             room_previews: RoomPreviews::new(Arc::clone(&output), events.clone()),
+            room_creation: RoomCreation::new(Arc::clone(&output), events.clone()),
+            invite_people: InvitePeople::new(Arc::clone(&output), events.clone()),
             typing: Typing::new(Arc::clone(&output), events.clone()),
             notifications: DesktopNotifications::new(Arc::clone(&output), events.clone()),
             room_info: RoomInfo::new(Arc::clone(&output), events.clone()),
@@ -523,6 +532,17 @@ impl AppService {
             UiCommand::JoinPreviewedRoom(address) => self.join_previewed_room(&address),
             UiCommand::RetryRoomPreview => self.retry_room_preview(),
             UiCommand::CloseRoomPreview => self.room_previews.close(),
+            UiCommand::OpenCreateRoom => self.open_room_creation(RoomKind::Room),
+            UiCommand::OpenCreateSpace => self.open_room_creation(RoomKind::Space),
+            UiCommand::CloseCreateRoom => self.room_creation.close(),
+            UiCommand::CreateRoom(draft) => self.create_room(&draft),
+            UiCommand::OpenInvitePeople(room_id) => self.open_invite_people(&room_id),
+            UiCommand::CloseInvitePeople => self.invite_people.close(),
+            UiCommand::SearchPeople(term) => self.search_people(&term),
+            UiCommand::RetryPeopleSearch => self.retry_people_search(),
+            UiCommand::PickInvitee(user_id) => self.invite_people.pick(&user_id),
+            UiCommand::UnpickInvitee(user_id) => self.invite_people.unpick(&user_id),
+            UiCommand::SendInvites(reason) => self.send_invites(&reason),
             UiCommand::OpenRoomInfo(room_id) => {
                 self.open_room_info(&room_id);
             }
@@ -935,6 +955,8 @@ impl AppService {
             self.follow_invites().await;
             self.follow_upgrades().await;
             self.follow_previews().await;
+            self.follow_creations().await;
+            self.follow_invite_people();
             self.release_held_link().await;
         }
     }
@@ -965,6 +987,8 @@ impl AppService {
             self.follow_space_index();
             self.follow_invites().await;
             self.follow_previews().await;
+            self.follow_creations().await;
+            self.follow_invite_people();
         }
     }
 
@@ -1191,6 +1215,99 @@ impl AppService {
                 .join_settled(&room, &name, outcome, &membership),
         };
         self.open_previewed(resolved).await;
+    }
+
+    fn open_room_creation(&mut self, kind: RoomKind) {
+        let Some(running) = self.held_session.running() else {
+            return;
+        };
+        let server = server_part(&running.session.user_id).to_owned();
+        let parent = self
+            .listed_space()
+            .filter(|space| self.room_directory.space_powers(&space.id).add_children);
+        self.room_creation.open(kind, parent, server);
+    }
+
+    fn create_room(&mut self, draft: &RoomDraft) {
+        if let Some(port) = self.port(|a| &a.room_creation) {
+            self.room_creation.create(port, draft);
+        }
+    }
+
+    async fn settle_room_creation(&mut self, settled: CreationSettled) {
+        let membership = self.room_directory.membership(&self.selection);
+        let created = self.room_creation.settled(settled, &membership);
+        self.open_created(created).await;
+    }
+
+    async fn follow_creations(&mut self) {
+        let membership = self.room_directory.membership(&self.selection);
+        let created = self.room_creation.follow(&membership);
+        self.open_created(created).await;
+    }
+
+    async fn open_created(&mut self, created: Option<Created>) {
+        let Some(created) = created else {
+            return;
+        };
+        match created.kind {
+            RoomKind::Room => {
+                self.open_linked_room(created.room_id.clone(), TimelineFocus::ReadPosition)
+                    .await;
+            }
+            RoomKind::Space => self.open_space(&created.room_id),
+        }
+        self.open_invite_people(&created.room_id);
+    }
+
+    fn open_invite_people(&mut self, room_id: &RoomId) {
+        let target = self.room_directory.invite_target(room_id);
+        self.invite_people.open(target);
+    }
+
+    fn search_people(&mut self, term: &str) {
+        if let Some(port) = self.port(|a| &a.invite_people) {
+            self.invite_people.search(port, term);
+        }
+    }
+
+    fn retry_people_search(&mut self) {
+        if let Some(port) = self.port(|a| &a.invite_people) {
+            self.invite_people.retry(port);
+        }
+    }
+
+    fn send_invites(&mut self, reason: &str) {
+        if let Some(port) = self.port(|a| &a.invite_people) {
+            self.invite_people.send(port, reason);
+        }
+    }
+
+    fn follow_invite_people(&mut self) {
+        let membership = self.room_directory.membership(&self.selection);
+        self.invite_people.follow(&membership);
+    }
+
+    fn handle_invite_people(&mut self, event: InvitePeopleEvent) {
+        let Some(port) = self.port(|a| &a.invite_people) else {
+            return;
+        };
+        match event {
+            InvitePeopleEvent::Found {
+                generation,
+                outcome,
+            } => self.invite_people.found(port, generation, outcome),
+            InvitePeopleEvent::AvatarsReady { generation, ready } => {
+                self.invite_people.avatars_landed(generation, ready);
+            }
+            InvitePeopleEvent::Sent { batch, outcomes } => {
+                if let Some(room_id) = self.invite_people.sent(batch, outcomes)
+                    && let Some(room_info) = self.port(|a| &a.room_info)
+                {
+                    self.room_info.members_changed(room_info, &room_id);
+                }
+            }
+        }
     }
 
     fn handle_select_space(&mut self, space: Option<RoomId>) {
@@ -1705,14 +1822,12 @@ impl AppService {
                 self.settle_upgrade_join(joined).await;
             }
             AppEvent::Preview(event) => self.handle_preview(event).await,
+            AppEvent::RoomCreation(settled) => self.settle_room_creation(settled).await,
+            AppEvent::InvitePeople(event) => self.handle_invite_people(event),
             AppEvent::RoomRosterFetched {
                 generation,
                 outcome,
-            } => {
-                if let Some(port) = self.port(|a| &a.room_info) {
-                    self.room_info.roster_fetched(port, generation, outcome);
-                }
-            }
+            } => self.settle_room_roster(generation, outcome),
             AppEvent::RoomAboutFetched { generation, about } => {
                 self.room_info.about_fetched(generation, about);
             }
@@ -1728,6 +1843,12 @@ impl AppService {
             AppEvent::Identity(event) => self.handle_identity(event),
             AppEvent::Encryption(event) => self.handle_encryption(event),
             AppEvent::RoomLogGrew => self.room_log.reread(),
+        }
+    }
+
+    fn settle_room_roster(&mut self, generation: u64, outcome: RosterOutcome) {
+        if let Some(port) = self.port(|a| &a.room_info) {
+            self.room_info.roster_fetched(port, generation, outcome);
         }
     }
 
@@ -2349,6 +2470,7 @@ impl AppService {
         self.space_index.close();
         self.invites.close();
         self.room_previews.close();
+        self.invite_people.close();
         self.upgrades.retarget(&room_id);
         self.retarget_room_info(&room_id);
         self.user_info.close();
@@ -2601,6 +2723,8 @@ impl AppService {
             self.invites.restart(),
             self.upgrades.restart(),
             self.room_previews.restart(),
+            self.room_creation.restart(),
+            self.invite_people.restart(),
             self.typing.restart(),
             self.room_info.restart(),
             self.user_info.restart(),
@@ -2719,6 +2843,8 @@ impl AppService {
             self.invites.shutdown(),
             self.upgrades.shutdown(),
             self.room_previews.shutdown(),
+            self.room_creation.shutdown(),
+            self.invite_people.shutdown(),
             self.typing.shutdown(),
             self.room_info.shutdown(),
             self.user_info.shutdown(),

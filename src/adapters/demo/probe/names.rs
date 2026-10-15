@@ -1,18 +1,20 @@
 use crate::adapters::ui::IdentityAlertKind;
 use crate::adapters::ui::schema::{
-    attachment_kinds, audio_kinds, child_accesses, connection_states, direct_chats,
-    encryption_activities, encryption_standings, encryption_steps, enum_names,
-    identity_alert_kinds, identity_trusts, invite_answers, invite_kinds, log_levels,
-    login_activities, login_methods, login_phases, member_roles, notify_modes, pending_moderations,
-    preview_kinds, readers_statuses, recovery_statuses, room_info_placements, room_memberships,
+    attachment_kinds, audio_kinds, child_accesses, connection_states, create_room_statuses,
+    direct_chats, encryption_activities, encryption_standings, encryption_steps, enum_names,
+    identity_alert_kinds, identity_trusts, invite_answers, invite_kinds, invitee_states,
+    log_levels, login_activities, login_methods, login_phases, member_roles, notify_modes,
+    pending_moderations, people_search_statuses, preview_kinds, readers_statuses,
+    recovery_statuses, room_accesses, room_info_placements, room_kinds, room_memberships,
     room_preview_statuses, room_scopes, roster_statuses, source_encryptions, source_statuses,
     space_index_statuses, upgrade_links, user_message_kinds, variant_named,
 };
 use crate::commands::messages::UserMessageKind;
 use crate::commands::view::{
-    AttachmentKind, ChildAccess, DirectChat, EncryptionActivity, EncryptionStep, LoginActivity,
-    LoginStep, PendingAnswer, PendingModeration, ReadersStatus, RoomInfoPlacement,
-    RoomPreviewSheet, RoomScope, RosterStatus, SourceState, SpaceIndexStatus, UpgradeLink,
+    AttachmentKind, ChildAccess, CreateRoomStatus, DirectChat, EncryptionActivity, EncryptionStep,
+    InviteeState, LoginActivity, LoginStep, PendingAnswer, PendingModeration, PeopleSearchStatus,
+    ReadersStatus, RoomInfoPlacement, RoomPreviewSheet, RoomScope, RosterStatus, SourceState,
+    SpaceIndexStatus, UpgradeLink,
 };
 use crate::domain::auth::LoginMethod;
 use crate::domain::encryption::{Recovery, Standing};
@@ -20,6 +22,7 @@ use crate::domain::invite::InviteKind;
 use crate::domain::media::AudioKind;
 use crate::domain::message::MessagePreviewKind;
 use crate::domain::room::NotifyMode;
+use crate::domain::room_creation::{RoomAccess, RoomKind};
 use crate::domain::room_info::MemberRole;
 use crate::domain::room_log::LogLevel;
 use crate::domain::sync::ConnectionStatus;
@@ -58,4 +61,11 @@ encryption_activities!(enum_names val encryption_activity EncryptionActivity;);
 source_statuses!(enum_names ref source_status SourceState;);
 source_encryptions!(enum_names ref source_encryption SourceEncryption;);
 readers_statuses!(enum_names val readers_status ReadersStatus;);
+room_kinds!(enum_names val room_kind RoomKind;);
+room_kinds!(variant_named room_kind_named RoomKind;);
+room_accesses!(enum_names val room_access RoomAccess;);
+room_accesses!(variant_named room_access_named RoomAccess;);
+create_room_statuses!(enum_names val create_room_status CreateRoomStatus;);
+people_search_statuses!(enum_names val people_search_status PeopleSearchStatus;);
+invitee_states!(enum_names val invitee_state InviteeState;);
 log_levels!(enum_names val log_level LogLevel;);

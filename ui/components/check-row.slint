@@ -2,18 +2,24 @@ import { Palette } from "std-widgets.slint";
 import { IconDisplay, IconSet } from "@lucide";
 
 import { ClickArea } from "./a11y.slint";
-import { AppStyle, Fonts, IconSize, Radius, Size, Space, Stroke } from "../theme.slint";
+import { AppStyle, Fonts, IconSize, Opacity, Radius, Size, Space, Stroke } from "../theme.slint";
 
 export component CheckRow inherits Rectangle {
     in property <string> label;
+    in property <bool> enabled: true;
     in-out property <bool> checked: false;
 
     height: Size.sm;
+    opacity: root.enabled ? 1 : Opacity.disabled;
 
     touch := ClickArea {
+        enabled: root.enabled;
         above-modal: true;
         label: root.label;
         ring-radius: Radius.sm;
+        accessible-role: checkbox;
+        accessible-checkable: true;
+        accessible-checked: root.checked;
         clicked => {
             root.checked = !root.checked;
         }

@@ -6,11 +6,12 @@ use super::dto::{
 };
 use super::present::{Delivery, MessageKind, PollPhase, ServiceKind, ShieldReason};
 use super::schema::{
-    body_line_fields, body_piece_fields, log_line_fields, member_row_fields, message_fields,
-    pack_cell_fields, pack_row_fields, pack_tab_fields, poll_answer_fields, reaction_fields,
-    reactor_fields, room_fields, space_child_fields, space_fields,
+    body_line_fields, body_piece_fields, invitee_fields, log_line_fields, member_row_fields,
+    message_fields, pack_cell_fields, pack_row_fields, pack_tab_fields, poll_answer_fields,
+    reaction_fields, reactor_fields, room_fields, space_child_fields, space_fields,
 };
-use crate::commands::view::ChildAccess;
+use crate::commands::messages::UserMessageKind;
+use crate::commands::view::{ChildAccess, InviteeState};
 use crate::domain::image_pack::PackOrigin;
 use crate::domain::invite::InviteKind;
 use crate::domain::media::AudioKind;
@@ -64,6 +65,7 @@ room_fields!(declare_fields RoomFields;);
 space_fields!(declare_fields SpaceFields;);
 space_child_fields!(declare_fields SpaceChildFields;);
 member_row_fields!(declare_fields MemberRowFields;);
+invitee_fields!(declare_fields InviteeFields;);
 log_line_fields!(declare_fields LogLineFields;);
 pack_cell_fields!(declare_fields PackCellFields;);
 pack_tab_fields!(declare_fields PackTabFields;);

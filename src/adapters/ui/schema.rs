@@ -33,6 +33,7 @@ macro_rules! string_props {
         SelectedSpaceId DirectoryView "DirectoryView" "selected-space-id" set_selected_space_id get_selected_space_id;
         SelectedSubspaceId DirectoryView "DirectoryView" "selected-subspace-id" set_selected_subspace_id get_selected_subspace_id;
         ListedSpaceName DirectoryView "DirectoryView" "listed-space-name" set_listed_space_name get_listed_space_name;
+        ListedSpaceId DirectoryView "DirectoryView" "listed-space-id" set_listed_space_id get_listed_space_id;
         AttachmentFilename AttachmentView "AttachmentView" "filename" set_filename get_filename;
         AttachmentMimetype AttachmentView "AttachmentView" "mimetype" set_mimetype get_mimetype;
         AttachmentExtension AttachmentView "AttachmentView" "extension" set_extension get_extension;
@@ -100,6 +101,12 @@ macro_rules! string_props {
         RoomPreviewAlias RoomPreviewView "RoomPreviewView" "alias" set_alias get_alias;
         RoomPreviewTopic RoomPreviewView "RoomPreviewView" "topic" set_topic get_topic;
         RoomPreviewErrorDetail RoomPreviewView "RoomPreviewView" "error-detail" set_error_detail get_error_detail;
+        CreateRoomParentName CreateRoomView "CreateRoomView" "parent-name" set_parent_name get_parent_name;
+        CreateRoomServerName CreateRoomView "CreateRoomView" "server-name" set_server_name get_server_name;
+        CreateRoomErrorDetail CreateRoomView "CreateRoomView" "error-detail" set_error_detail get_error_detail;
+        InvitePeopleRoomId InvitePeopleView "InvitePeopleView" "room-id" set_room_id get_room_id;
+        InvitePeopleRoomName InvitePeopleView "InvitePeopleView" "room-name" set_room_name get_room_name;
+        InvitePeopleErrorDetail InvitePeopleView "InvitePeopleView" "error-detail" set_error_detail get_error_detail;
         RoomLogRoomId RoomLogView "RoomLogView" "room-id" set_room_id get_room_id;
         RoomLogName RoomLogView "RoomLogView" "name" set_name get_name;
         SpoilerLabel SpoilerCover "SpoilerCover" "label" set_label get_label;
@@ -168,6 +175,20 @@ macro_rules! simple_callbacks {
         on_join_previewed_room "join-previewed-room" join_previewed_room pass JoinPreviewedRoom;
         on_retry_room_preview "retry-room-preview" retry_room_preview plain RetryRoomPreview;
         on_close_room_preview "close-room-preview" close_room_preview plain CloseRoomPreview;
+        on_open_create_room "open-create-room" open_create_room plain OpenCreateRoom;
+        on_open_create_space "open-create-space" open_create_space plain OpenCreateSpace;
+        on_close_create_room "close-create-room" close_create_room plain CloseCreateRoom;
+        on_create_room "create-room" create_room
+            request(name "name" text, topic "topic" text, address "address" text,
+                kind "kind" variant, access "access" variant, encrypted "encrypted" flag,
+                in_space "in-space" flag) CreateRoom;
+        on_open_invite_people "open-invite-people" open_invite_people room OpenInvitePeople;
+        on_close_invite_people "close-invite-people" close_invite_people plain CloseInvitePeople;
+        on_search_people "search-people" search_people pass SearchPeople;
+        on_retry_people_search "retry-people-search" retry_people_search plain RetryPeopleSearch;
+        on_pick_invitee "pick-invitee" pick_invitee user PickInvitee;
+        on_unpick_invitee "unpick-invitee" unpick_invitee user UnpickInvitee;
+        on_send_invites "send-invites" send_invites pass SendInvites;
         on_open_room_info "open-room-info" open_room_info room OpenRoomInfo;
         on_close_room_info "close-room-info" close_room_info plain CloseRoomInfo;
         on_show_room_info_pane "show-room-info-pane" show_room_info_pane plain ShowRoomInfoPane;
@@ -259,10 +280,16 @@ macro_rules! bool_props {
         DirectMention DirectoryView "DirectoryView" "direct-mention" set_direct_mention get_direct_mention;
         DirectHint DirectoryView "DirectoryView" "direct-hint" set_direct_hint get_direct_hint;
         InvitesPending DirectoryView "DirectoryView" "invites-pending" set_invites_pending get_invites_pending;
+        ListedSpaceMayInvite DirectoryView "DirectoryView" "listed-space-may-invite" set_listed_space_may_invite get_listed_space_may_invite;
+        ListedSpaceMayAddChildren DirectoryView "DirectoryView" "listed-space-may-add-children" set_listed_space_may_add_children get_listed_space_may_add_children;
         InviteVisible InviteView "InviteView" "visible" set_visible get_visible;
         RoomPreviewEntry RoomPreviewView "RoomPreviewView" "entry" set_entry get_entry;
         RoomPreviewIsSpace RoomPreviewView "RoomPreviewView" "is-space" set_is_space get_is_space;
         RoomPreviewOpensEvent RoomPreviewView "RoomPreviewView" "opens-event" set_opens_event get_opens_event;
+        InvitePeopleVisible InvitePeopleView "InvitePeopleView" "visible" set_visible get_visible;
+        InvitePeopleIsSpace InvitePeopleView "InvitePeopleView" "is-space" set_is_space get_is_space;
+        InvitePeopleLimited InvitePeopleView "InvitePeopleView" "limited" set_limited get_limited;
+        InvitePeopleSending InvitePeopleView "InvitePeopleView" "sending" set_sending get_sending;
         VerificationIsSelf VerificationView "VerificationView" "is-self" set_is_self get_is_self;
         TimelineRetryable RoomView "RoomView" "timeline-retryable" set_timeline_retryable get_timeline_retryable;
         TimelineDetached RoomView "RoomView" "timeline-detached" set_timeline_detached get_timeline_detached;
@@ -301,9 +328,11 @@ macro_rules! bool_props {
         RoomInfoNotifyBusy RoomInfoView "RoomInfoView" "notify-busy" set_notify_busy get_notify_busy;
         RoomInfoLeaving RoomInfoView "RoomInfoView" "leaving" set_leaving get_leaving;
         RoomInfoHasMore RoomInfoView "RoomInfoView" "has-more" set_has_more get_has_more;
+        RoomInfoMayInvite RoomInfoView "RoomInfoView" "may-invite" set_may_invite get_may_invite;
         RoomMenuUnread RoomMenuView "RoomMenuView" "unread" set_unread get_unread;
         RoomMenuNotifyBusy RoomMenuView "RoomMenuView" "notify-busy" set_notify_busy get_notify_busy;
         RoomMenuLeaving RoomMenuView "RoomMenuView" "leaving" set_leaving get_leaving;
+        RoomMenuMayInvite RoomMenuView "RoomMenuView" "may-invite" set_may_invite get_may_invite;
         UserInfoVisible UserInfoView "UserInfoView" "visible" set_visible get_visible;
         UserInfoIsSelf UserInfoView "UserInfoView" "is-self" set_is_self get_is_self;
         UserInfoReadFailed UserInfoView "UserInfoView" "read-failed" set_read_failed get_read_failed;
@@ -443,6 +472,16 @@ macro_rules! enum_props {
             RoomPreviewView "RoomPreviewView" "access" set_access get_access;
         RoomPreviewError set_room_preview_error(UserMessageKind)
             RoomPreviewView "RoomPreviewView" "error" set_error get_error;
+        CreateRoomStatus set_create_room_status(CreateRoomStatus)
+            CreateRoomView "CreateRoomView" "status" set_status get_status;
+        CreateRoomKind set_create_room_kind(RoomKind)
+            CreateRoomView "CreateRoomView" "kind" set_kind get_kind;
+        CreateRoomError set_create_room_error(UserMessageKind)
+            CreateRoomView "CreateRoomView" "error" set_error get_error;
+        PeopleSearchStatus set_people_search_status(PeopleSearchStatus)
+            InvitePeopleView "InvitePeopleView" "search" set_search get_search;
+        InvitePeopleError set_invite_people_error(UserMessageKind)
+            InvitePeopleView "InvitePeopleView" "error" set_error get_error;
         IdentityAlertKind set_identity_alert_kind(IdentityAlertKind)
             IdentityAlertView "IdentityAlertView" "kind" set_kind get_kind;
         UpgradeSuccessor set_upgrade_successor(&UpgradeLink)
@@ -477,6 +516,8 @@ macro_rules! model_props {
         room_members MemberRow VecModel RoomInfoView "RoomInfoView" "rows" set_rows;
         readers MemberRow VecModel ReadersView "ReadersView" "rows" set_rows;
         mentions MemberRow VecModel MentionsView "MentionsView" "rows" set_rows;
+        invitee_results Invitee VecModel InvitePeopleView "InvitePeopleView" "results" set_results;
+        invitee_picks Invitee VecModel InvitePeopleView "InvitePeopleView" "picked" set_picked;
         room_log LogLine SpliceModel RoomLogView "RoomLogView" "lines" set_lines;
     } };
 }
@@ -634,6 +675,18 @@ macro_rules! user_message_kinds {
         RoomPreviewFailed         RoomPreviewFailed       "room-preview-failed";
         RoomAddressInvalid        RoomAddressInvalid      "room-address-invalid";
         LeaveRoomFailed           LeaveRoomFailed         "leave-room-failed";
+        RoomNameMissing           RoomNameMissing         "room-name-missing";
+        RoomAddressMissing        RoomAddressMissing      "room-address-missing";
+        RoomAddressUnusable       RoomAddressUnusable     "room-address-unusable";
+        RoomAddressTaken          RoomAddressTaken        "room-address-taken";
+        RoomCreateRefused         RoomCreateRefused       "room-create-refused";
+        RoomCreateUnsupported     RoomCreateUnsupported   "room-create-unsupported";
+        RoomCreateFailed          RoomCreateFailed        "room-create-failed";
+        AddToSpaceFailed          AddToSpaceFailed        "add-to-space-failed";
+        PeopleSearchFailed        PeopleSearchFailed      "people-search-failed";
+        InviteBlocked             InviteBlocked           "invite-blocked";
+        InviteRefused             InviteRefused           "invite-refused";
+        InviteFailed              InviteFailed            "invite-failed";
         NotifyChangeFailed        NotifyChangeFailed      "notify-change-failed";
         MarkReadFailed            MarkReadFailed          "mark-read-failed";
         RoomLinkFailed            RoomLinkFailed          "room-link-failed";
@@ -1037,6 +1090,55 @@ macro_rules! room_info_placements {
 }
 pub(crate) use room_info_placements;
 
+macro_rules! room_kinds {
+    ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
+        Room  Room  "room";
+        Space Space "space";
+    } };
+}
+pub(crate) use room_kinds;
+
+macro_rules! room_accesses {
+    ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
+        InviteOnly   InviteOnly   "invite-only";
+        SpaceMembers SpaceMembers "space-members";
+        Public       Public       "public";
+    } };
+}
+pub(crate) use room_accesses;
+
+macro_rules! create_room_statuses {
+    ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
+        Closed   Closed   "closed";
+        Editing  Editing  "editing";
+        Creating Creating "creating";
+    } };
+}
+pub(crate) use create_room_statuses;
+
+macro_rules! people_search_statuses {
+    ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
+        Idle      Idle      "idle";
+        Searching Searching "searching";
+        Ready     Ready     "ready";
+        Failed    Failed    "failed";
+    } };
+}
+pub(crate) use people_search_statuses;
+
+macro_rules! invitee_states {
+    ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
+        Available Available "available";
+        Picked    Picked    "picked";
+        Joined    Joined    "joined";
+        Invited   Invited   "invited";
+        Banned    Banned    "banned";
+        Sending   Sending   "sending";
+        Failed    Failed    "failed";
+    } };
+}
+pub(crate) use invitee_states;
+
 macro_rules! log_levels {
     ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
         Error Error "error";
@@ -1393,6 +1495,21 @@ macro_rules! member_row_fields {
     } };
 }
 pub(crate) use member_row_fields;
+
+macro_rules! invitee_fields {
+    ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
+        user_id set_user_id "user-id" text;
+        name set_name "name" text;
+        initial set_initial "initial" text;
+        color_index set_color_index "color-index" int;
+        state set_state "state" enumk(InviteeState);
+        failure set_failure "failure" enumk(UserMessageKind);
+        failure_detail set_failure_detail "failure-detail" text;
+        has_avatar set_has_avatar "has-avatar" flag;
+        avatar set_avatar "avatar" image;
+    } };
+}
+pub(crate) use invitee_fields;
 
 macro_rules! log_line_fields {
     ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*

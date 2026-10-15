@@ -14,12 +14,14 @@ use crate::domain::auth::ServerInfo;
 use crate::domain::encryption::{AccountEncryption, IdentityOutcome};
 use crate::domain::identity::{OwnIdentity, RoomAlert};
 use crate::domain::image_pack::PackId;
+use crate::domain::invite_people::{InviteResult, SearchResult};
 use crate::domain::matrix_link::RoomAddress;
 use crate::domain::media::PickedAttachment;
 use crate::domain::member_name::NamedUser;
 use crate::domain::message::{MessageEdit, PinnedMessage};
 use crate::domain::push::PushNotice;
 use crate::domain::room::RoomId;
+use crate::domain::room_creation::CreateResult;
 use crate::domain::room_info::{Reader, RoomAbout, RosterMember};
 use crate::domain::room_preview::{PreviewFailure, RoomPreview};
 use crate::domain::sync::{ReauthReason, SessionLoss};
@@ -114,6 +116,8 @@ pub(super) enum AppEvent {
     },
     UpgradeJoinSettled(UpgradeJoined),
     Preview(PreviewEvent),
+    RoomCreation(CreationSettled),
+    InvitePeople(InvitePeopleEvent),
     RoomRosterFetched {
         generation: u64,
         outcome: RosterOutcome,
@@ -159,6 +163,36 @@ impl PreviewEvent {
             Self::Landed { .. } => "RoomPreviewLanded",
             Self::AvatarsReady { .. } => "RoomPreviewAvatarsReady",
             Self::JoinSettled { .. } => "RoomLinkJoinSettled",
+        }
+    }
+}
+
+pub(super) struct CreationSettled {
+    pub(super) creation: u64,
+    pub(super) outcome: CreateResult,
+}
+
+pub(super) enum InvitePeopleEvent {
+    Found {
+        generation: u64,
+        outcome: SearchResult,
+    },
+    AvatarsReady {
+        generation: u64,
+        ready: usize,
+    },
+    Sent {
+        batch: u64,
+        outcomes: Vec<(UserId, InviteResult)>,
+    },
+}
+
+impl InvitePeopleEvent {
+    fn label(&self) -> &'static str {
+        match self {
+            Self::Found { .. } => "PeopleFound",
+            Self::AvatarsReady { .. } => "InviteeAvatarsReady",
+            Self::Sent { .. } => "InvitesSent",
         }
     }
 }
@@ -413,6 +447,8 @@ impl AppEvent {
             Self::InviteAnswered { .. } => "InviteAnswered",
             Self::UpgradeJoinSettled(_) => "UpgradeJoinSettled",
             Self::Preview(event) => event.label(),
+            Self::RoomCreation(_) => "RoomCreationSettled",
+            Self::InvitePeople(event) => event.label(),
             Self::RoomRosterFetched { .. } => "RoomRosterFetched",
             Self::RoomAboutFetched { .. } => "RoomAboutFetched",
             Self::RoomInfoAvatarsReady { .. } => "RoomInfoAvatarsReady",

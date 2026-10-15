@@ -1,0 +1,73 @@
+import { Palette } from "std-widgets.slint";
+import { IconDisplay, Icon } from "@lucide";
+
+import { ClickArea } from "./a11y.slint";
+import { AppStyle, Fonts, IconSize, Metrics, Opacity, Radius, Size, Space, Stroke, Weight } from "../theme.slint";
+
+export component ChoiceRow inherits ClickArea {
+    in property <Icon> icon;
+    in property <string> text;
+    in property <string> detail;
+    in property <bool> checked;
+
+    height: Metrics.choice-row;
+    opacity: root.enabled ? 1 : Opacity.disabled;
+    border-radius: Radius.md;
+    ring-radius: Radius.md;
+    background: root.has-hover && root.enabled ? AppStyle.overlay-hover : transparent;
+    label: root.detail == "" ? root.text : @tr("{}, {}", root.text, root.detail);
+    accessible-role: radio-button;
+    accessible-checkable: true;
+    accessible-checked: root.checked;
+
+    HorizontalLayout {
+        padding-left: Space.md;
+        padding-right: Space.md;
+        spacing: Space.lg;
+
+        Rectangle {
+            cross-axis-self-alignment: center;
+            width: Size.xs;
+            height: Size.xs;
+            border-radius: self.width / 2;
+            border-width: Stroke.emphasis;
+            border-color: root.checked ? Palette.accent-background : AppStyle.foreground-faint;
+
+            if root.checked: Rectangle {
+                width: parent.width / 2;
+                height: parent.height / 2;
+                border-radius: self.width / 2;
+                background: Palette.accent-background;
+            }
+        }
+
+        IconDisplay {
+            cross-axis-self-alignment: center;
+            icon: root.icon;
+            size: IconSize.sm;
+            stroke: root.checked ? Palette.accent-background : AppStyle.foreground-muted;
+        }
+
+        VerticalLayout {
+            horizontal-stretch: 1;
+            alignment: center;
+            spacing: Space.xs;
+
+            Text {
+                text: root.text;
+                font-size: Fonts.label;
+                font-weight: Weight.semibold;
+                overflow: elide;
+                accessible-role: none;
+            }
+
+            if root.detail != "": Text {
+                text: root.detail;
+                font-size: Fonts.body-small;
+                color: AppStyle.foreground-muted;
+                overflow: elide;
+                accessible-role: none;
+            }
+        }
+    }
+}

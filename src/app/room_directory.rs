@@ -15,11 +15,15 @@ use super::space_order;
 use super::task_group::TaskGroup;
 use crate::commands::messages::{UserMessage, UserMessageKind};
 use crate::commands::sync::DirectoryUpdate;
-use crate::commands::view::{AppViewState, ChildAccess, SpaceHeading, SpaceMatch, Toast};
+use crate::commands::view::{
+    AppViewState, ChildAccess, InviteTarget, SpaceHeading, SpaceMatch, Toast,
+};
 use crate::domain::invite::{Invite, InviteList};
 use crate::domain::message::MessagePermissions;
 use crate::domain::poll::PollPermissions;
-use crate::domain::room::{Room, RoomId, RoomList, Space, UnreadFlags, without_replaced};
+use crate::domain::room::{
+    Room, RoomId, RoomList, Space, SpacePowers, UnreadFlags, without_replaced,
+};
 use crate::domain::room_search::TitleQuery;
 use crate::domain::space_index::JoinRule;
 use crate::domain::sync::{ConnectionStatus, SyncEvent, SyncOutcome};
@@ -62,6 +66,7 @@ struct RailPlace {
 pub(super) struct Membership<'a> {
     rooms: HashSet<&'a str>,
     spaces: &'a HashMap<String, usize>,
+    space_list: &'a [Space],
     rail: &'a [String],
 }
 
@@ -80,6 +85,19 @@ impl Membership<'_> {
 
     pub(super) fn has_joined(&self, id: &str) -> bool {
         self.has_room(id) || self.has_space(id)
+    }
+
+    pub(super) fn lists_child(&self, parent: &str, child: &str) -> bool {
+        self.spaces
+            .get(parent)
+            .and_then(|&i| self.space_list.get(i))
+            .is_some_and(|space| {
+                space
+                    .child_room_ids
+                    .iter()
+                    .chain(&space.child_space_ids)
+                    .any(|id| id == child)
+            })
     }
 
     pub(super) fn admits(&self, allowed: &[RoomId]) -> bool {
@@ -643,6 +661,7 @@ impl RoomDirectory {
         Membership {
             rooms: self.all_rooms.iter().map(|room| room.id.as_ref()).collect(),
             spaces: &self.graph.index,
+            space_list: &self.spaces,
             rail: sel
                 .space()
                 .and_then(|id| self.space(id))
@@ -864,8 +883,11 @@ impl RoomDirectory {
             .listed_space()
             .and_then(|id| self.space(id))
             .map(|space| SpaceHeading {
+                id: space.id.clone(),
                 name: space.name.clone(),
                 member_count: space.member_count,
+                may_invite: space.powers.invite,
+                may_add_children: space.powers.add_children,
             })
             .unwrap_or_default();
         self.output
@@ -926,6 +948,27 @@ impl RoomDirectory {
 
     fn space(&self, id: &str) -> Option<&Space> {
         self.graph.index.get(id).and_then(|&i| self.spaces.get(i))
+    }
+
+    pub(super) fn space_powers(&self, id: &str) -> SpacePowers {
+        self.space(id).map(|space| space.powers).unwrap_or_default()
+    }
+
+    pub(super) fn invite_target(&self, id: &RoomId) -> Option<InviteTarget> {
+        if let Some(room) = self.room(id).filter(|room| room.may_invite) {
+            return Some(InviteTarget {
+                room_id: id.clone(),
+                name: room.display_name.clone(),
+                space: false,
+            });
+        }
+        self.space(id)
+            .filter(|space| space.powers.invite)
+            .map(|space| InviteTarget {
+                room_id: id.clone(),
+                name: space.name.clone(),
+                space: true,
+            })
     }
 
     fn recompute_flags(&mut self) -> bool {

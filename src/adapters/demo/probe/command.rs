@@ -17,6 +17,7 @@ use crate::domain::media::AttachmentPick;
 use crate::domain::message::{EditKind, EditTarget, MessageEdit, TextRevision};
 use crate::domain::poll::{ChoiceMode, PollDisclosure, PollDraft};
 use crate::domain::room::RoomId;
+use crate::domain::room_creation::{RoomAccess, RoomDraft, RoomKind};
 use crate::domain::sync::{ReauthReason, SessionLoss};
 use crate::domain::user_info::UserId;
 use crate::ports::handoff::Handoff;
@@ -99,6 +100,43 @@ pub enum ProbeCommand {
     },
     RetryRoomPreview,
     CloseRoomPreview,
+    OpenCreateRoom,
+    OpenCreateSpace,
+    CloseCreateRoom,
+    CreateRoom {
+        name: String,
+        #[serde(default)]
+        topic: String,
+        #[serde(default = "default_room_kind")]
+        kind: String,
+        #[serde(default = "default_room_access")]
+        access: String,
+        #[serde(default)]
+        address: String,
+        #[serde(default = "encrypted_by_default")]
+        encrypted: bool,
+        #[serde(default = "in_space_by_default")]
+        in_space: bool,
+    },
+    OpenInvitePeople {
+        #[serde(default)]
+        room_id: Option<String>,
+    },
+    CloseInvitePeople,
+    SearchPeople {
+        query: String,
+    },
+    RetryPeopleSearch,
+    PickInvitee {
+        user_id: String,
+    },
+    UnpickInvitee {
+        user_id: String,
+    },
+    SendInvites {
+        #[serde(default)]
+        reason: String,
+    },
     JoinPredecessor {
         #[serde(default)]
         room_id: Option<String>,
@@ -477,6 +515,56 @@ fn person(user_id: String, command: impl FnOnce(UserId) -> UiCommand) -> Result<
     Ok(Driven::Command(command(UserId::new(user_id))))
 }
 
+struct CreateRoomOp {
+    name: String,
+    topic: String,
+    kind: String,
+    access: String,
+    address: String,
+    encrypted: bool,
+    in_space: bool,
+}
+
+fn default_room_kind() -> String {
+    names::room_kind(RoomKind::Room).to_owned()
+}
+
+fn default_room_access() -> String {
+    names::room_access(RoomAccess::InviteOnly).to_owned()
+}
+
+fn encrypted_by_default() -> bool {
+    true
+}
+
+fn in_space_by_default() -> bool {
+    true
+}
+
+fn room_draft(draft: CreateRoomOp) -> Result<UiCommand, Rejected> {
+    let kind = names::room_kind_named(&draft.kind).ok_or_else(|| {
+        Rejected(format!(
+            "{} is not a room kind; use room or space",
+            draft.kind
+        ))
+    })?;
+    let access = names::room_access_named(&draft.access).ok_or_else(|| {
+        Rejected(format!(
+            "{} is not a join rule; use invite-only, space-members or public",
+            draft.access
+        ))
+    })?;
+    Ok(UiCommand::CreateRoom(RoomDraft {
+        kind,
+        name: draft.name,
+        topic: draft.topic,
+        access,
+        address: draft.address,
+        encrypted: draft.encrypted,
+        in_space: draft.in_space,
+    }))
+}
+
 fn room_notify(
     explicit: Option<String>,
     mode: &str,
@@ -618,6 +706,37 @@ pub fn to_driven(command: ProbeCommand, selected: Selection<'_>) -> Result<Drive
         ProbeCommand::JoinPreviewedRoom { address } => UiCommand::JoinPreviewedRoom(address),
         ProbeCommand::RetryRoomPreview => UiCommand::RetryRoomPreview,
         ProbeCommand::CloseRoomPreview => UiCommand::CloseRoomPreview,
+        ProbeCommand::OpenCreateRoom => UiCommand::OpenCreateRoom,
+        ProbeCommand::OpenCreateSpace => UiCommand::OpenCreateSpace,
+        ProbeCommand::CloseCreateRoom => UiCommand::CloseCreateRoom,
+        ProbeCommand::CreateRoom {
+            name,
+            topic,
+            kind,
+            access,
+            address,
+            encrypted,
+            in_space,
+        } => room_draft(CreateRoomOp {
+            name,
+            topic,
+            kind,
+            access,
+            address,
+            encrypted,
+            in_space,
+        })?,
+        ProbeCommand::OpenInvitePeople { room_id } => {
+            return in_room(room_id, selected, UiCommand::OpenInvitePeople);
+        }
+        ProbeCommand::CloseInvitePeople => UiCommand::CloseInvitePeople,
+        ProbeCommand::SearchPeople { query } => UiCommand::SearchPeople(query),
+        ProbeCommand::RetryPeopleSearch => UiCommand::RetryPeopleSearch,
+        ProbeCommand::PickInvitee { user_id } => return person(user_id, UiCommand::PickInvitee),
+        ProbeCommand::UnpickInvitee { user_id } => {
+            return person(user_id, UiCommand::UnpickInvitee);
+        }
+        ProbeCommand::SendInvites { reason } => UiCommand::SendInvites(reason),
         ProbeCommand::JoinPredecessor { room_id } => {
             return in_room(room_id, selected, UiCommand::JoinPredecessor);
         }

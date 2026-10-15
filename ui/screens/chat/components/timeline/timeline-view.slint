@@ -296,6 +296,20 @@ export component TimelineView inherits Rectangle {
         }
 
         CloseWatch {
+            open: Shell.create-room-open;
+            closed => {
+                stage.refocus-composer();
+            }
+        }
+
+        CloseWatch {
+            open: Shell.invite-people-open;
+            closed => {
+                stage.refocus-composer();
+            }
+        }
+
+        CloseWatch {
             open: Shell.room-log-open;
             closed => {
                 stage.refocus-composer();

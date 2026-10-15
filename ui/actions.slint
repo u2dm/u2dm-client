@@ -3,6 +3,7 @@ import {
     SendMessageRequest,
     EditMessageRequest,
     SendStickerRequest,
+    CreateRoomRequest,
     SendAttachmentRequest,
     SaveFileRequest,
     VotePollRequest,
@@ -52,6 +53,17 @@ export global Actions {
     callback join-previewed-room(string);
     callback retry-room-preview();
     callback close-room-preview();
+    callback open-create-room();
+    callback open-create-space();
+    callback close-create-room();
+    callback create-room(CreateRoomRequest);
+    callback open-invite-people(string);
+    callback close-invite-people();
+    callback search-people(string);
+    callback retry-people-search();
+    callback pick-invitee(string);
+    callback unpick-invitee(string);
+    callback send-invites(string);
     callback open-room-info(string);
     callback close-room-info();
     callback show-room-info-pane();

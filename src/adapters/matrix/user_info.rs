@@ -315,7 +315,7 @@ pub(super) fn parse_user(user_id: &UserId) -> Result<OwnedUserId> {
         .map_err(|e| AppError::Other(format!("not a user id: {e}")))
 }
 
-fn membership(room: &Room, member: Option<&RoomMember>) -> RoomMembership {
+pub(super) fn membership(room: &Room, member: Option<&RoomMember>) -> RoomMembership {
     let Some(member) = member else {
         return if room.are_members_synced() {
             RoomMembership::Outside

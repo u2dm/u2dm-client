@@ -21,7 +21,7 @@ use matrix_sdk::{Client, Room};
 use tracing::Instrument;
 
 use crate::adapters::matrix::member_name::named_member;
-use crate::adapters::matrix::permissions::room_permissions;
+use crate::adapters::matrix::permissions::{room_permissions, space_powers};
 use crate::adapters::matrix::preview::{self, MessagePreview};
 use crate::domain::member_name::NamedUser;
 use crate::domain::message::{MessagePreviewKind, RichText, ServiceEvent};
@@ -123,7 +123,7 @@ async fn build_room(room: &Room, settings: &NotificationSettings) -> DomainRoom 
     let member_count = room.joined_members_count();
     let last_activity_ts: u64 = room.latest_event_timestamp().map_or(0, |ts| ts.0.into());
     let last_message = build_last_message(room, is_direct).await;
-    let (poll_permissions, message_permissions) = room_permissions(room).await;
+    let permissions = room_permissions(room).await;
     DomainRoom {
         id: RoomId::new(room.room_id().to_string()),
         display_name,
@@ -132,8 +132,9 @@ async fn build_room(room: &Room, settings: &NotificationSettings) -> DomainRoom 
         canonical_alias: room.canonical_alias().map(|alias| alias.to_string()),
         is_direct,
         is_encrypted: room.encryption_state().is_encrypted(),
-        poll_permissions,
-        message_permissions,
+        poll_permissions: permissions.polls,
+        message_permissions: permissions.messages,
+        may_invite: permissions.invite,
         member_count,
         has_unread: flags.has_unread,
         has_mentions: flags.has_mentions,
@@ -334,6 +335,7 @@ pub(super) async fn build_spaces_meta(client: &Client) -> Vec<DomainSpace> {
                 .partition(|child| space_ids.contains(child));
             let avatar_mxc = space.avatar_url().map(|mxc| mxc.to_string());
             let order = space_order(&space).await;
+            let powers = space_powers(&space).await;
             DomainSpace {
                 id: space.room_id().to_string(),
                 name,
@@ -342,6 +344,7 @@ pub(super) async fn build_spaces_meta(client: &Client) -> Vec<DomainSpace> {
                 child_room_ids,
                 child_space_ids,
                 order,
+                powers,
                 alert: false,
                 mention: false,
                 hint: false,

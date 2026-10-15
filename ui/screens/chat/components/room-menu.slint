@@ -17,6 +17,7 @@ enum RoomMenuAction {
     info,
     mark-read,
     notifications,
+    invite,
     copy-link,
     logs,
     leave,
@@ -46,6 +47,9 @@ global RoomMenuActions {
         if action == RoomMenuAction.notifications {
             return @tr("Notifications");
         }
+        if action == RoomMenuAction.invite {
+            return @tr("Invite people");
+        }
         if action == RoomMenuAction.copy-link {
             return @tr("Copy link");
         }
@@ -71,6 +75,9 @@ global RoomMenuActions {
         }
         if action == RoomMenuAction.notifications {
             return NotifyModes.icon(RoomMenuView.notify);
+        }
+        if action == RoomMenuAction.invite {
+            return IconSet.UserRoundPlus;
         }
         if action == RoomMenuAction.copy-link {
             return IconSet.Link;
@@ -152,6 +159,9 @@ component RoomMenuCard inherits MenuCard {
         }
         root.notify-index = root.offered.length;
         root.offered.push(RoomMenuAction.notifications);
+        if RoomMenuView.may-invite {
+            root.offered.push(RoomMenuAction.invite);
+        }
         root.offered.push(RoomMenuAction.copy-link);
         root.offered.push(RoomMenuAction.logs);
         if !RoomMenuView.leaving {
@@ -474,6 +484,11 @@ export component RoomMenuOverlay inherits Rectangle {
         if action == RoomMenuAction.logs {
             RoomMenu.close();
             Actions.open-room-log(id);
+            return;
+        }
+        if action == RoomMenuAction.invite {
+            RoomMenu.close();
+            Actions.open-invite-people(id);
             return;
         }
         if action == RoomMenuAction.leave {

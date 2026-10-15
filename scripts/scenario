@@ -76,6 +76,12 @@ scenario_env() {
     room-links)      echo 'U2DM_DEMO_LINKS=slow U2DM_DEMO_WINDOW=900x760' ;;
     room-finder)     echo 'U2DM_DEMO_LINKS=slow U2DM_DEMO_WINDOW=700x900' ;;
     room-link-failures) echo 'U2DM_DEMO_LINKS=preview-fails,join-fails U2DM_DEMO_WINDOW=900x760' ;;
+    create-room)     echo 'U2DM_DEMO_CREATE_ROOM=slow U2DM_DEMO_WINDOW=900x760' ;;
+    create-space)    echo 'U2DM_DEMO_WINDOW=900x760' ;;
+    create-in-space) echo 'U2DM_DEMO_CREATE_ROOM=parent-late U2DM_DEMO_WINDOW=900x760' ;;
+    create-room-failures) echo 'U2DM_DEMO_CREATE_ROOM=child-fails U2DM_DEMO_WINDOW=900x760' ;;
+    invite-people)   echo 'U2DM_DEMO_INVITE_PEOPLE=slow U2DM_DEMO_WINDOW=900x760' ;;
+    invite-people-failures) echo 'U2DM_DEMO_INVITE_PEOPLE=blocked,search-fails U2DM_DEMO_WINDOW=900x760' ;;
     typing)          echo 'U2DM_DEMO_TYPING=two U2DM_DEMO_WINDOW=900x760' ;;
     typing-names)    echo 'U2DM_DEMO_TYPING=two U2DM_DEMO_NAMES=clash U2DM_DEMO_WINDOW=900x760' ;;
     notifications)   echo 'U2DM_DEMO_NOTIFY=all U2DM_DEMO_WINDOW=900x760' ;;
@@ -406,6 +412,79 @@ scenario_steps() {
       echo 'sleep 1'
       echo '{"op":"find_room","address":"#matrix-dev:demo.local"}'
       echo 'sleep 2' ;;
+    create-room)
+      echo '{"op":"open_create_room"}'
+      echo 'sleep 1'
+      echo '{"op":"create_room","name":"Weekend hikes","topic":"Trails and meetups"}'
+      echo 'sleep 4'
+      echo '{"op":"search_people","query":"pri"}'
+      echo 'sleep 1'
+      echo '{"op":"pick_invitee","user_id":"@priya:matrix.org"}'
+      echo '{"op":"send_invites","reason":"Join us on Saturday"}'
+      echo 'sleep 2' ;;
+    create-space)
+      echo '{"op":"open_create_space"}'
+      echo 'sleep 1'
+      echo '{"op":"create_room","name":"Hiking club","kind":"space"}'
+      echo 'sleep 2'
+      echo '{"op":"close_invite_people"}'
+      echo '{"op":"open_create_room"}'
+      echo 'sleep 1'
+      echo '{"op":"create_room","name":"Trail talk","access":"space-members"}'
+      echo 'sleep 2' ;;
+    create-in-space)
+      echo '{"op":"select_space","space_id":"!space-rust:demo.local"}'
+      echo 'sleep 1'
+      echo '{"op":"open_create_room"}'
+      echo 'sleep 1'
+      echo '{"op":"create_room","name":"Embedded Rust","access":"space-members"}'
+      echo 'sleep 4' ;;
+    create-room-failures)
+      echo '{"op":"select_space","space_id":"!space-matrix:demo.local"}'
+      echo 'sleep 1'
+      echo '{"op":"open_create_room"}'
+      echo 'sleep 1'
+      echo '{"op":"create_room","name":"Lounge","access":"public","address":"matrix"}'
+      echo 'sleep 2'
+      echo '{"op":"create_room","name":"Lounge","access":"public","address":"bad name"}'
+      echo 'sleep 1'
+      echo '{"op":"create_room","name":"Lounge","access":"public","address":"lounge"}'
+      echo 'sleep 3' ;;
+    invite-people)
+      echo '{"op":"select_room","room_id":"!rust:demo.local"}'
+      echo 'sleep 1'
+      echo '{"op":"open_invite_people"}'
+      echo 'sleep 1'
+      echo '{"op":"search_people","query":"a"}'
+      echo 'sleep 3'
+      echo '{"op":"pick_invitee","user_id":"@jordan:matrix.org"}'
+      echo '{"op":"pick_invitee","user_id":"@nadia:matrix.org"}'
+      echo '{"op":"search_people","query":"@river:example.org"}'
+      echo 'sleep 3'
+      echo '{"op":"pick_invitee","user_id":"@river:example.org"}'
+      echo '{"op":"send_invites","reason":"Come help with the release"}'
+      echo 'sleep 6'
+      echo '{"op":"open_room_info"}'
+      echo 'sleep 2'
+      echo '{"op":"filter_room_members","query":"river"}'
+      echo 'sleep 1' ;;
+    invite-people-failures)
+      echo '{"op":"select_room","room_id":"!design:demo.local"}'
+      echo 'sleep 1'
+      echo '{"op":"open_invite_people"}'
+      echo 'sleep 1'
+      echo '{"op":"search_people","query":"ver"}'
+      echo 'sleep 1'
+      echo '{"op":"retry_people_search"}'
+      echo 'sleep 1'
+      echo '{"op":"pick_invitee","user_id":"@vera:matrix.org"}'
+      echo '{"op":"search_people","query":"mar"}'
+      echo 'sleep 1'
+      echo '{"op":"retry_people_search"}'
+      echo 'sleep 1'
+      echo '{"op":"pick_invitee","user_id":"@marcus:matrix.org"}'
+      echo '{"op":"send_invites"}'
+      echo 'sleep 2' ;;
     room-link-failures)
       echo '{"op":"open_link","url":"matrix:r/rust-wasm:demo.local"}'
       echo 'sleep 1'
@@ -576,6 +655,12 @@ scenario_note() {
     room-links)      echo 'a matrix.to alias opens Matrix HQ, a link to a message opens Rust Programming at it, a matrix: link previews WebAssembly slowly and Join opens it, and an invite-only room previews with its reason (room_preview, health.selected)' ;;
     room-finder)     echo 'Join a room on the compact layout: rust is no address, then #matrix-dev:demo.local previews after a slow lookup (room_preview)' ;;
     room-link-failures) echo 'a preview fails once and Try again loads it, Join fails inline, and an alias nothing names shows its error (room_preview)' ;;
+    create-room)     echo 'Weekend hikes is created slowly from New room, opens with the invite dialog over it, and Priya is invited with a message (create_room, invite_people, health.selected)' ;;
+    create-space)    echo 'Hiking club is created and selected in the rail; New room then offers it as the parent, and Trail talk opens inside it, open to its members (directory.spaces, directory.space_id)' ;;
+    create-in-space) echo 'with Rust selected, Embedded Rust is created inside it; the dialog waits until Rust lists it ~2s after the room, so the sidebar stays on Rust (create_room, directory.space_id)' ;;
+    create-room-failures) echo 'in Matrix, #matrix is taken and "bad name" is no address, both inline; Lounge is then created but cannot be added to the space, so a toast says so and it opens under All (create_room.error, toast)' ;;
+    invite-people)   echo 'in !rust, "a" finds members (marked) and outsiders slowly; Jordan, Nadia and a typed @river:example.org are invited with a message, the dialog closes, and room info, filtered to river, lists the typed ID as invited (invite_people, room_info.rows)' ;;
+    invite-people-failures) echo 'in !design every new term fails once and Retry finds it: Vera blocks invites, so her row stays with the reason while Marcus is invited (invite_people.picked, invite_people.results)' ;;
     typing)          echo 'in !rust the two newest senders start typing a second after it opens, then !design shows nobody until its own two start (typing)' ;;
     typing-names)    echo 'in !linux Vera and the impostor Kai type: the header line names him with his user ID (typing)' ;;
     notifications)   echo 'with the window unfocused, every scripted arrival notifies except the muted room; !rust is read elsewhere and withdrawn, Leo'"'"'s invite notifies, and a click on Priya'"'"'s opens her chat (notifications, directory.attention, title)' ;;
@@ -606,6 +691,7 @@ names() {
     message-delete-failures readers room-search room-search-open mentions room-mention display-names \
     message-shields identity-alerts identity-held-sends invites invite-failures room-upgrades room-upgrade-failures \
     room-links room-finder room-link-failures \
+    create-room create-space create-in-space create-room-failures invite-people invite-people-failures \
     typing typing-names notifications notifications-focused notifications-burst \
     encryption-unverified encryption-recovery-key encryption-new-account encryption-setup-refused
 }

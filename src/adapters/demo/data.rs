@@ -7,7 +7,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use super::dto::{DemoData, InviteDto, RoomDto, SpaceDto, UnjoinedDto};
 use super::names::{self, NameBook};
 use super::timeline::{self, scenario};
-use super::{media, message_menu, polls};
+use super::{invite_people, media, message_menu, polls};
 use crate::adapters::markdown::{self, Composed, RoomMentions};
 use crate::domain::auth::Session;
 use crate::domain::emote::Emote;
@@ -22,7 +22,7 @@ use crate::domain::message::{
     SendState, Shield, TimelineMessage,
 };
 use crate::domain::poll::{Poll, PollAnswer, PollDraft, PollStatus};
-use crate::domain::room::{NotifyMode, Room, RoomId, Space};
+use crate::domain::room::{NotifyMode, Room, RoomId, Space, SpacePowers};
 use crate::domain::room_info::{
     MemberRole, Reader, RoomAbout, RosterMember, RosterSection, sort_roster,
 };
@@ -98,6 +98,19 @@ pub struct RoomOverrides {
     pub withdrawn: HashSet<String>,
     pub held_back: HashSet<String>,
     pub arrivals: HashMap<String, Arrived>,
+    pub created: Vec<Created>,
+    pub created_children: HashMap<String, Vec<String>>,
+}
+
+#[derive(Clone)]
+pub struct Created {
+    pub id: String,
+    pub space: bool,
+    pub name: String,
+    pub topic: Option<String>,
+    pub alias: Option<String>,
+    pub encrypted: bool,
+    pub at_ms: u64,
 }
 
 #[derive(Clone)]
@@ -156,6 +169,13 @@ pub fn rooms_with(joined: &[RoomId], overrides: &RoomOverrides) -> Vec<Arc<Room>
                 .filter(|entry| !entry.space && was_joined(joined, &entry.id))
                 .map(|entry| entry.to_room(now)),
         )
+        .chain(
+            overrides
+                .created
+                .iter()
+                .filter(|created| !created.space)
+                .map(created_room),
+        )
         .filter(|room| !overrides.left.contains(room.id.as_ref()))
         .map(|room| arrived_when_marked(room, &overrides.arrivals))
         .map(|room| read_when_marked(room, &overrides.read))
@@ -174,6 +194,7 @@ fn started_chat(room_id: &str, user_id: &str, now: u64) -> Room {
         is_encrypted: true,
         poll_permissions: polls::permissions(),
         message_permissions: message_menu::permissions(),
+        may_invite: invite_people::may_invite(),
         member_count: 2,
         has_unread: false,
         has_mentions: false,
@@ -189,6 +210,78 @@ fn started_chat(room_id: &str, user_id: &str, now: u64) -> Room {
         successor: None,
         predecessor: None,
     }
+}
+
+fn created_room(created: &Created) -> Room {
+    Room {
+        id: RoomId::new(&created.id),
+        display_name: created.name.clone(),
+        avatar_mxc: None,
+        topic: created.topic.clone(),
+        canonical_alias: created.alias.clone(),
+        is_direct: false,
+        is_encrypted: created.encrypted,
+        poll_permissions: polls::permissions(),
+        message_permissions: message_menu::permissions(),
+        may_invite: invite_people::may_invite(),
+        member_count: 1,
+        has_unread: false,
+        has_mentions: false,
+        has_activity: false,
+        notify: NotifyMode::AllMessages,
+        last_activity_ts: created.at_ms,
+        last_message_sender: None,
+        last_message_kind: MessagePreviewKind::None,
+        last_message_body: RichText::plain(String::new()),
+        last_message_service: None,
+        last_message_is_own: false,
+        last_message_edited: false,
+        successor: None,
+        predecessor: None,
+    }
+}
+
+fn created_space(created: &Created) -> Space {
+    Space {
+        id: created.id.clone(),
+        name: created.name.clone(),
+        avatar_mxc: None,
+        member_count: 1,
+        child_room_ids: Vec::new(),
+        child_space_ids: Vec::new(),
+        order: None,
+        powers: SpacePowers {
+            invite: invite_people::may_invite(),
+            add_children: true,
+        },
+        alert: false,
+        mention: false,
+        hint: false,
+    }
+}
+
+pub fn created_room_id(serial: u64) -> String {
+    format!("!created-{serial}:{DEMO_VIA}")
+}
+
+pub fn created_about(created: &Created) -> RoomAbout {
+    RoomAbout {
+        joined_at: Some(created.at_ms),
+        link: room_link(&RoomId::new(&created.id), created.alias.as_deref()),
+        topic: created.topic.clone().map(RichText::plain),
+    }
+}
+
+pub fn alias_localparts() -> impl Iterator<Item = &'static str> {
+    let data = data();
+    data.rooms
+        .iter()
+        .filter_map(|room| room.alias.as_deref())
+        .chain(data.unjoined.iter().filter_map(UnjoinedDto::alias))
+        .filter_map(|alias| {
+            let local = alias.strip_prefix('#')?;
+            Some(local.split_once(':').map_or(local, |(local, _)| local))
+        })
 }
 
 pub fn invites_with(joined: &[RoomId], overrides: &RoomOverrides) -> Vec<Arc<Invite>> {
@@ -525,6 +618,27 @@ fn names_a_person(name: &str) -> bool {
     name != OWN_NAME_IN_TIMELINES && !name.is_empty()
 }
 
+pub fn directory_people() -> Vec<(String, String)> {
+    let mut people: Vec<(String, String)> = people_names(data()).into_iter().collect();
+    people.sort();
+    people
+}
+
+pub fn named_member(
+    user_id: &str,
+    role: MemberRole,
+    section: RosterSection,
+    avatar_of: impl Fn(&str) -> String,
+) -> RosterMember {
+    RosterMember {
+        user_id: user_id.to_owned(),
+        name: MemberName::new(person_name(user_id).as_deref(), false),
+        avatar_mxc: Some(avatar_of(user_id)),
+        role,
+        section,
+    }
+}
+
 fn people_names(data: &DemoData) -> HashMap<String, String> {
     let mut names = HashMap::new();
     for message in data.timelines.values().flatten() {
@@ -538,7 +652,7 @@ fn people_names(data: &DemoData) -> HashMap<String, String> {
     names
 }
 
-pub fn spaces_with(joined: &[RoomId]) -> Vec<Space> {
+pub fn spaces_with(joined: &[RoomId], overrides: &RoomOverrides) -> Vec<Space> {
     let data = data();
     let mut spaces: Vec<Space> = data
         .spaces
@@ -556,7 +670,19 @@ pub fn spaces_with(joined: &[RoomId]) -> Vec<Space> {
                 .filter(|entry| entry.space && was_joined(joined, &entry.id))
                 .map(InviteDto::to_space),
         )
+        .chain(
+            overrides
+                .created
+                .iter()
+                .filter(|created| created.space)
+                .map(created_space),
+        )
         .collect();
+    for space in &mut spaces {
+        if let Some(children) = overrides.created_children.get(&space.id) {
+            space.child_room_ids.extend(children.iter().cloned());
+        }
+    }
     let joined_spaces: HashSet<String> = spaces.iter().map(|space| space.id.clone()).collect();
     for space in &mut spaces {
         (space.child_space_ids, space.child_room_ids) = mem::take(&mut space.child_room_ids)
@@ -1240,7 +1366,7 @@ pub fn arrived_at() -> u64 {
     now_ms()
 }
 
-fn now_ms() -> u64 {
+pub fn now_ms() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .ok()

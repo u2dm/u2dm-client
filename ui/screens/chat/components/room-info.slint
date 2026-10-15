@@ -396,6 +396,46 @@ component TopicSection inherits VerticalLayout {
     }
 }
 
+component InvitePeopleRow inherits ClickArea {
+    height: Metrics.room-info-row;
+    label: @tr("Invite people");
+    background: root.has-hover && root.enabled ? AppStyle.overlay-hover : transparent;
+    clicked => {
+        Actions.open-invite-people(RoomInfoView.room-id);
+    }
+
+    HorizontalLayout {
+        padding-left: Space.xl;
+        padding-right: Space.xl;
+        spacing: Space.lg;
+
+        Rectangle {
+            cross-axis-self-alignment: center;
+            width: Metrics.room-info-member-avatar;
+            height: Metrics.room-info-member-avatar;
+            border-radius: self.width / 2;
+            background: AppStyle.accent-background-soft;
+
+            IconDisplay {
+                icon: IconSet.UserRoundPlus;
+                size: IconSize.sm;
+                stroke: Palette.accent-background;
+            }
+        }
+
+        Text {
+            horizontal-stretch: 1;
+            text: @tr("Invite people");
+            font-size: Fonts.body;
+            font-weight: Weight.semibold;
+            color: Palette.accent-background;
+            vertical-alignment: center;
+            overflow: elide;
+            accessible-role: none;
+        }
+    }
+}
+
 component MemberSection inherits VerticalLayout {
     in property <bool> above-modal;
     out property <length> search-top: search-row.y;
@@ -421,6 +461,10 @@ component MemberSection inherits VerticalLayout {
                 root.search-edited(text);
             }
         }
+    }
+
+    if RoomInfoView.may-invite: InvitePeopleRow {
+        above-modal: root.above-modal;
     }
 
     if RoomInfoView.roster == RosterStatus.loading: HorizontalLayout {
@@ -687,6 +731,7 @@ export component RoomInfoDialog inherits ModalHost {
     property <bool> covered: Shell.user-info-open
         || Shell.room-preview-open
         || Shell.invite-open
+        || Shell.invite-people-open
         || Shell.verification-open;
 
     function refocus() {
@@ -704,6 +749,8 @@ export component RoomInfoDialog inherits ModalHost {
             Actions.close-room-preview();
         } else if Shell.invite-open {
             Actions.close-invite();
+        } else if Shell.invite-people-open {
+            Actions.close-invite-people();
         } else if !sheet.peel() {
             Actions.close-room-info();
         }
@@ -725,6 +772,13 @@ export component RoomInfoDialog inherits ModalHost {
 
     CloseWatch {
         open: Shell.invite-open;
+        closed => {
+            root.refocus();
+        }
+    }
+
+    CloseWatch {
+        open: Shell.invite-people-open;
         closed => {
             root.refocus();
         }

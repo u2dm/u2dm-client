@@ -17,7 +17,7 @@ use super::dto::{
     preview_line, quoted_message, rich_body, room_preview_avatar_path, user_info_pronouns,
 };
 use super::emote;
-use super::fields::{MemberRowFields, MessageFields, SpaceChildFields, SpaceFields};
+use super::fields::{InviteeFields, MemberRowFields, MessageFields, SpaceChildFields, SpaceFields};
 use super::notices::apply_notifications;
 use super::present::{
     VerifyStep, avatar_color_index, avatar_initials, duration_label, file_extension,
@@ -25,8 +25,8 @@ use super::present::{
 };
 use super::props::{BoolProp, IntProp, StringProp, UiProps};
 use super::reconcile::{
-    RoomListing, RowReplacements, apply_member_rows, apply_mention_rows, apply_reader_rows,
-    apply_rooms, apply_space_children, apply_spaces, apply_timeline_patch,
+    RoomListing, RowReplacements, apply_invitee_rows, apply_member_rows, apply_mention_rows,
+    apply_reader_rows, apply_rooms, apply_space_children, apply_spaces, apply_timeline_patch,
     downloading_pack_avatars, index_pack_grid, pack_avatar_downloaded, retain_awaited_downloads,
 };
 use super::richtext::recognise_own_user;
@@ -38,12 +38,12 @@ use crate::commands::effects::{Effect, VerificationActivity, VerificationUpdate}
 use crate::commands::messages::{UserMessage, UserMessageKind};
 use crate::commands::ui::Draft;
 use crate::commands::view::{
-    AppViewState, AttachmentView, AudioView, CardStatus, CopiedLink, DirectoryView,
-    EncryptionDialog, EncryptionStep, EncryptionView, IdentityAlertView, InviteView, LifecycleView,
-    LoginStep, MentionsView, NowPlaying, PackView, PaginationView, PinnedView, ReadersView,
-    RoomCard, RoomInfoView, RoomLogView, RoomMenuTarget, RoomPreviewSheet, RoomPreviewView,
-    ShownPreview, SourceState, SpaceIndexView, Toast, TrackFile, TypingView, UnsentMessage,
-    UpgradeView, UserCard, UserInfoView, VideoView,
+    AppViewState, AttachmentView, AudioView, CardStatus, CopiedLink, CreateRoomView, DirectoryView,
+    EncryptionDialog, EncryptionStep, EncryptionView, IdentityAlertView, InvitePeopleView,
+    InviteView, LifecycleView, LoginStep, MentionsView, NowPlaying, PackView, PaginationView,
+    PinnedView, ReadersView, RoomCard, RoomInfoView, RoomLogView, RoomMenuTarget, RoomPreviewSheet,
+    RoomPreviewView, ShownPreview, SourceState, SpaceIndexView, Toast, TrackFile, TypingView,
+    UnsentMessage, UpgradeView, UserCard, UserInfoView, VideoView,
 };
 use crate::domain::encryption::KeyStorage;
 use crate::domain::invite::{Invite, InviteList};
@@ -366,6 +366,8 @@ fn apply_snapshot<B: UiBackend>(
         space_index,
         invite,
         room_preview,
+        create_room,
+        invite_people,
         room_info,
         room_menu,
         user_info,
@@ -398,6 +400,8 @@ fn apply_snapshot<B: UiBackend>(
     apply_space_index::<B>(w, last.map(|l| &l.space_index), space_index, ctx);
     apply_invite(w, last, invite, &directory.invites, ctx.media);
     apply_room_preview(w, last.map(|l| &l.room_preview), room_preview, ctx.media);
+    apply_create_room(w, last.map(|l| &l.create_room), create_room);
+    apply_invite_people::<B>(w, last.map(|l| &l.invite_people), invite_people, ctx);
     apply_room_info::<B>(w, last.map(|l| &l.room_info), room_info, ctx);
     if last.is_none_or(|l| l.room_menu != *room_menu) {
         apply_room_menu(w, room_menu.as_ref());
@@ -422,9 +426,7 @@ fn apply_snapshot<B: UiBackend>(
     }) {
         apply_packs::<B>(w, last.map(|l| &l.image_packs), stickers, ctx.media);
     }
-    if last.is_none_or(|l| l.attachment != *attachment) {
-        apply_attachment(w, attachment);
-    }
+    apply_attachment(w, last.map(|l| &l.attachment), attachment);
     if last.is_none_or(|l| l.video != *video) {
         apply_video::<B>(w, video);
     }
@@ -437,9 +439,7 @@ fn apply_snapshot<B: UiBackend>(
     apply_composer_banners(w, last, identity_alert, upgrade);
     apply_typing(w, last.map(|l| &l.typing), typing);
     apply_notifications::<B>(w, last, notifications, ctx.notifier);
-    if last.is_none_or(|l| l.encryption != *encryption) {
-        apply_encryption(w, encryption);
-    }
+    apply_encryption(w, last.map(|l| &l.encryption), encryption);
     apply_toast(w, last.map(|l| &l.toast), toast);
     apply_copied_links(w, last, message_link, room_link);
     if last.is_none_or(|l| l.source != *source) {
@@ -729,6 +729,7 @@ fn apply_room_menu(w: &(impl UiProps + ComponentHandle), menu: Option<&RoomMenuT
     w.set_room_menu_notify(menu.notify);
     w.set_bool(BoolProp::RoomMenuNotifyBusy, menu.notify_busy);
     w.set_bool(BoolProp::RoomMenuLeaving, menu.leaving);
+    w.set_bool(BoolProp::RoomMenuMayInvite, menu.may_invite);
     w.set_string(
         StringProp::RoomMenuRoomId,
         SharedString::from(menu.room_id.as_ref()),
@@ -809,6 +810,15 @@ fn apply_directory<B: UiBackend>(
         w.set_int(
             IntProp::ListedSpaceMembers,
             i32::try_from(listed_space.member_count).unwrap_or(i32::MAX),
+        );
+        w.set_string(
+            StringProp::ListedSpaceId,
+            SharedString::from(&listed_space.id),
+        );
+        w.set_bool(BoolProp::ListedSpaceMayInvite, listed_space.may_invite);
+        w.set_bool(
+            BoolProp::ListedSpaceMayAddChildren,
+            listed_space.may_add_children,
         );
     }
     if last.is_none_or(|l| l.direct_flags != *direct_flags) {
@@ -909,6 +919,103 @@ fn show_invite_avatar(w: &impl UiProps, invite: Option<&Invite>, media: &dyn Med
     let image = load_avatar_async(next.path.as_deref(), AvatarSlot::Invite);
     if image.is_some() || previous.room_id != next.room_id {
         w.apply_invite_avatar(image);
+    }
+}
+
+fn apply_create_room(w: &impl UiProps, last: Option<&CreateRoomView>, view: &CreateRoomView) {
+    if last == Some(view) {
+        return;
+    }
+    w.set_create_room_kind(view.kind);
+    w.set_string(
+        StringProp::CreateRoomParentName,
+        SharedString::from(&view.parent_name),
+    );
+    w.set_string(
+        StringProp::CreateRoomServerName,
+        SharedString::from(&view.server_name),
+    );
+    w.set_create_room_error(view.error.kind);
+    w.set_string(
+        StringProp::CreateRoomErrorDetail,
+        SharedString::from(&view.error.detail),
+    );
+    w.set_create_room_status(view.status);
+}
+
+fn apply_invite_people<B: UiBackend>(
+    w: &B::Window,
+    last: Option<&InvitePeopleView>,
+    view: &InvitePeopleView,
+    ctx: &UiEventContext<'_, B>,
+) {
+    let InvitePeopleView {
+        target,
+        search,
+        results,
+        picked,
+        limited,
+        sending,
+        error,
+        avatars_ready,
+    } = view;
+    if last.is_none_or(|l| l.target != *target) {
+        let (room_id, name) = target.as_ref().map_or_else(
+            || (SharedString::default(), SharedString::default()),
+            |target| {
+                (
+                    SharedString::from(target.room_id.as_ref()),
+                    SharedString::from(&target.name),
+                )
+            },
+        );
+        w.set_string(StringProp::InvitePeopleRoomId, room_id);
+        w.set_string(StringProp::InvitePeopleRoomName, name);
+        w.set_bool(
+            BoolProp::InvitePeopleIsSpace,
+            target.as_ref().is_some_and(|target| target.space),
+        );
+    }
+    if last.is_none_or(|l| l.search != *search) {
+        w.set_people_search_status(*search);
+    }
+    if last.is_none_or(|l| l.limited != *limited) {
+        w.set_bool(BoolProp::InvitePeopleLimited, *limited);
+    }
+    if last.is_none_or(|l| l.sending != *sending) {
+        w.set_bool(BoolProp::InvitePeopleSending, *sending);
+    }
+    if last.is_none_or(|l| l.error != *error) {
+        w.set_invite_people_error(error.kind);
+        w.set_string(
+            StringProp::InvitePeopleErrorDetail,
+            SharedString::from(&error.detail),
+        );
+    }
+    let avatars_landed = last.is_some_and(|l| l.avatars_ready != *avatars_ready);
+    for (model, rows, previous) in [
+        (
+            &ctx.models.invitee_results,
+            results,
+            last.map(|l| &l.results),
+        ),
+        (&ctx.models.invitee_picks, picked, last.map(|l| &l.picked)),
+    ] {
+        if avatars_landed || previous != Some(rows) {
+            apply_invitee_rows(
+                model,
+                rows,
+                previous
+                    .filter(|_| !avatars_landed)
+                    .map_or(&[] as &[_], |rows| rows.as_ref()),
+                ctx.media,
+                &|row| B::convert_invitee(row, ctx.media),
+                &|entry| entry.user_id(),
+            );
+        }
+    }
+    if last.is_none_or(|l| l.target.is_some() != target.is_some()) {
+        w.set_bool(BoolProp::InvitePeopleVisible, target.is_some());
     }
 }
 
@@ -1146,6 +1253,7 @@ fn apply_room_card(w: &impl UiProps, card: Option<&RoomCard>, media: &dyn MediaC
         i32::try_from(card.member_count).unwrap_or(i32::MAX),
     );
     w.set_bool(BoolProp::RoomInfoIsDirect, card.is_direct);
+    w.set_bool(BoolProp::RoomInfoMayInvite, card.may_invite);
     w.set_string(
         StringProp::RoomInfoAlias,
         SharedString::from(card.alias.as_deref().unwrap_or_default()),
@@ -1479,7 +1587,10 @@ fn apply_lifecycle(w: &impl UiProps, last: Option<&LifecycleView>, next: &Lifecy
     }
 }
 
-fn apply_attachment(w: &impl UiProps, attachment: &AttachmentView) {
+fn apply_attachment(w: &impl UiProps, last: Option<&AttachmentView>, attachment: &AttachmentView) {
+    if last == Some(attachment) {
+        return;
+    }
     let AttachmentView {
         pick,
         visible,
@@ -1719,7 +1830,10 @@ fn apply_typing(w: &impl UiProps, last: Option<&TypingView>, view: &TypingView) 
     w.set_string(StringProp::TypingSecond, shown(1));
 }
 
-fn apply_encryption(w: &impl UiProps, view: &EncryptionView) {
+fn apply_encryption(w: &impl UiProps, last: Option<&EncryptionView>, view: &EncryptionView) {
+    if last == Some(view) {
+        return;
+    }
     w.set_encryption_standing(view.standing);
     w.set_bool(BoolProp::EncryptionVerifiedSessions, view.verified_sessions);
     w.set_encryption_recovery(view.recovery);

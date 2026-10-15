@@ -1,0 +1,296 @@
+import { ScrollView } from "std-widgets.slint";
+import { IconSet } from "@lucide";
+
+import { AppButton } from "../../../components/button.slint";
+import { CheckRow } from "../../../components/check-row.slint";
+import { ChoiceRow } from "../../../components/choice-row.slint";
+import { DialogCard, ModalHost } from "../../../components/overlay.slint";
+import { ErrorBanner } from "../../../components/banner.slint";
+import { TextField } from "../../../components/text-field.slint";
+import { PickerTab } from "./timeline/picker-tab.slint";
+import { AppStyle, Fonts, Metrics, Space, Weight } from "../../../theme.slint";
+import { CreateRoomStatus, RoomAccess, RoomKind, UserMessageKind } from "../../../enums.slint";
+import { CreateRoomView } from "../../../views.slint";
+import { Actions } from "../../../actions.slint";
+import { MetaTip, Reactions, Shell } from "../../../local.slint";
+
+component KindTab inherits PickerTab {
+    in property <string> text;
+
+    horizontal-stretch: 1;
+    height: Metrics.create-room-tab;
+    label: root.text;
+    accessible-role: tab;
+    accessible-item-selected: root.selected;
+
+    Text {
+        text: root.text;
+        font-size: Fonts.label;
+        font-weight: root.selected ? Weight.semibold : Weight.regular;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+        accessible-role: none;
+    }
+}
+
+component SectionLabel inherits Text {
+    font-size: Fonts.caption;
+    font-weight: Weight.semibold;
+    color: AppStyle.foreground-muted;
+}
+
+export component CreateRoomDialog inherits ModalHost {
+    property <length> card-width: min(AppStyle.card-width-wide, root.width - AppStyle.card-inset);
+    property <length> card-height: clamp(
+        root.height - AppStyle.card-inset,
+        card-body.min-height,
+        card-body.preferred-height,
+    );
+    property <bool> creating: CreateRoomView.status == CreateRoomStatus.creating;
+    property <bool> offers-space: CreateRoomView.parent-name != "";
+    property <RoomKind> kind: CreateRoomView.kind;
+    property <bool> is-space: root.kind == RoomKind.space;
+    property <string> name;
+    property <string> topic;
+    property <string> address;
+    property <RoomAccess> access: RoomAccess.invite-only;
+    property <bool> encrypted: true;
+    property <bool> in-space: true;
+    property <bool> adds-to-space: root.offers-space && root.in-space;
+    property <string> title: root.is-space ? @tr("New space") : @tr("New room");
+
+    changed adds-to-space => {
+        if !root.adds-to-space && root.access == RoomAccess.space-members {
+            root.access = RoomAccess.invite-only;
+        }
+    }
+
+    function create() {
+        if root.creating || root.name == "" {
+            return;
+        }
+        if !root.is-space {
+            Shell.nav-open = false;
+        }
+        Actions.create-room({
+            name: root.name,
+            topic: root.topic,
+            address: root.address,
+            kind: root.kind,
+            access: root.access,
+            encrypted: root.encrypted,
+            in-space: root.adds-to-space,
+        });
+    }
+
+    dim-opacity: AppStyle.dialog-scrim;
+    light-dismiss: false;
+    label: root.title;
+    dismissed => {
+        Actions.close-create-room();
+    }
+    opened => {
+        Reactions.close();
+        MetaTip.clear();
+        name-field.focus-input();
+    }
+
+    scroll := ScrollView {
+        x: 0;
+        y: 0;
+        width: 100%;
+        height: 100%;
+        content-width: self.width;
+        content-height: max(self.height, root.card-height + AppStyle.card-inset);
+
+        DialogCard {
+            x: (root.width - self.width) / 2;
+            y: (scroll.content-height - self.height) / 2;
+            width: root.card-width;
+            height: root.card-height;
+
+            card-body := VerticalLayout {
+                padding: Space.xl;
+                spacing: Space.lg;
+
+                Text {
+                    text: root.title;
+                    font-size: Fonts.heading;
+                    font-weight: Weight.bold;
+                    overflow: elide;
+                }
+
+                HorizontalLayout {
+                    spacing: Space.sm;
+
+                    KindTab {
+                        text: @tr("Room");
+                        selected: !root.is-space;
+                        enabled: !root.creating;
+                        above-modal: true;
+                        clicked => {
+                            root.kind = RoomKind.room;
+                        }
+                    }
+
+                    KindTab {
+                        text: @tr("Space");
+                        selected: root.is-space;
+                        enabled: !root.creating;
+                        above-modal: true;
+                        clicked => {
+                            root.kind = RoomKind.space;
+                        }
+                    }
+                }
+
+                name-field := TextField {
+                    icon: root.is-space ? IconSet.LayoutGrid : IconSet.Hash;
+                    label: @tr("Name");
+                    placeholder: root.is-space ? @tr("Name the space") : @tr("Name the room");
+                    enabled: !root.creating;
+                    above-modal: true;
+                    text <=> root.name;
+                    accepted => {
+                        root.create();
+                    }
+                }
+
+                TextField {
+                    icon: IconSet.Text;
+                    label: root.is-space ? @tr("Description") : @tr("Topic");
+                    placeholder: root.is-space
+                        ? @tr("Description (optional)")
+                        : @tr("Topic (optional)");
+                    enabled: !root.creating;
+                    above-modal: true;
+                    text <=> root.topic;
+                    accepted => {
+                        root.create();
+                    }
+                }
+
+                SectionLabel {
+                    text: @tr("Who can join");
+                }
+
+                VerticalLayout {
+                    spacing: Space.xs;
+
+                    ChoiceRow {
+                        icon: IconSet.Lock;
+                        text: @tr("Only people you invite");
+                        checked: root.access == RoomAccess.invite-only;
+                        enabled: !root.creating;
+                        above-modal: true;
+                        clicked => {
+                            root.access = RoomAccess.invite-only;
+                        }
+                    }
+
+                    if root.adds-to-space: ChoiceRow {
+                        icon: IconSet.Users;
+                        text: @tr("Members of {}", CreateRoomView.parent-name);
+                        detail: @tr("They can join without an invite");
+                        checked: root.access == RoomAccess.space-members;
+                        enabled: !root.creating;
+                        above-modal: true;
+                        clicked => {
+                            root.access = RoomAccess.space-members;
+                        }
+                    }
+
+                    ChoiceRow {
+                        icon: IconSet.Globe;
+                        text: @tr("Anyone");
+                        detail: @tr("Anyone with the address or a link can join");
+                        checked: root.access == RoomAccess.public;
+                        enabled: !root.creating;
+                        above-modal: true;
+                        clicked => {
+                            root.access = RoomAccess.public;
+                        }
+                    }
+                }
+
+                if root.access == RoomAccess.public: HorizontalLayout {
+                    spacing: Space.md;
+
+                    TextField {
+                        horizontal-stretch: 1;
+                        icon: IconSet.Hash;
+                        label: @tr("Address");
+                        placeholder: @tr("address");
+                        enabled: !root.creating;
+                        above-modal: true;
+                        text <=> root.address;
+                        accepted => {
+                            root.create();
+                        }
+                    }
+
+                    Text {
+                        horizontal-stretch: 0;
+                        text: ":" + CreateRoomView.server-name;
+                        font-size: Fonts.body;
+                        color: AppStyle.foreground-muted;
+                        vertical-alignment: center;
+                        overflow: elide;
+                    }
+                }
+
+                if !root.is-space && root.access != RoomAccess.public: VerticalLayout {
+                    spacing: Space.sm;
+
+                    CheckRow {
+                        label: @tr("End-to-end encryption");
+                        enabled: !root.creating;
+                        checked <=> root.encrypted;
+                    }
+
+                    Text {
+                        text: @tr("Encryption cannot be turned off later.");
+                        font-size: Fonts.body-small;
+                        color: AppStyle.foreground-muted;
+                        wrap: word-wrap;
+                    }
+                }
+
+                if root.offers-space: CheckRow {
+                    label: @tr("Add to {}", CreateRoomView.parent-name);
+                    enabled: !root.creating;
+                    checked <=> root.in-space;
+                }
+
+                if CreateRoomView.error != UserMessageKind.none: ErrorBanner {
+                    messages: [{ kind: CreateRoomView.error, detail: CreateRoomView.error-detail }];
+                }
+
+                HorizontalLayout {
+                    alignment: end;
+                    spacing: Space.md;
+
+                    AppButton {
+                        text: @tr("Cancel");
+                        filled: false;
+                        above-modal: true;
+                        clicked => {
+                            Actions.close-create-room();
+                        }
+                    }
+
+                    AppButton {
+                        text: root.is-space ? @tr("Create space") : @tr("Create room");
+                        icon: IconSet.Plus;
+                        enabled: root.name != "";
+                        busy: root.creating;
+                        above-modal: true;
+                        clicked => {
+                            root.create();
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

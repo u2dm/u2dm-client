@@ -131,6 +131,42 @@ export global UserMessages {
         if kind == UserMessageKind.leave-room-failed {
             return @tr("Could not leave {}", detail);
         }
+        if kind == UserMessageKind.room-name-missing {
+            return @tr("Give it a name");
+        }
+        if kind == UserMessageKind.room-address-missing {
+            return @tr("A room anyone can join needs an address");
+        }
+        if kind == UserMessageKind.room-address-unusable {
+            return @tr("An address can only use letters, digits and . _ = - +");
+        }
+        if kind == UserMessageKind.room-address-taken {
+            return @tr("{} is already taken", detail);
+        }
+        if kind == UserMessageKind.room-create-refused {
+            return @tr("Your homeserver does not let you create rooms");
+        }
+        if kind == UserMessageKind.room-create-unsupported {
+            return @tr("Your homeserver cannot create a room with these settings");
+        }
+        if kind == UserMessageKind.room-create-failed {
+            return @tr("Could not create {}", detail);
+        }
+        if kind == UserMessageKind.add-to-space-failed {
+            return @tr("Created the room, but could not add it to {}", detail);
+        }
+        if kind == UserMessageKind.people-search-failed {
+            return @tr("Could not search the user directory");
+        }
+        if kind == UserMessageKind.invite-blocked {
+            return @tr("{} does not accept invites", detail);
+        }
+        if kind == UserMessageKind.invite-refused {
+            return @tr("You cannot invite {} to this room", detail);
+        }
+        if kind == UserMessageKind.invite-failed {
+            return @tr("Could not invite {}", detail);
+        }
         if kind == UserMessageKind.notify-change-failed {
             return @tr("Could not change the notifications for {}", detail);
         }

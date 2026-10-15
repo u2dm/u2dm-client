@@ -18,9 +18,9 @@ use url::Url;
 use super::encryption::{self, EncryptionBook};
 use super::identity::{self, IdentityBook, SendHold};
 use super::{
-    attachments, audio, data, invites, links, login, logout, media, message_menu, notifications,
-    pinned, polls, reactions, receipts, room_info, source, space_index, stickers, sync, timeline,
-    typing, upgrades, user_info, verification, videos,
+    attachments, audio, create_room, data, invite_people, invites, links, login, logout, media,
+    message_menu, notifications, pinned, polls, reactions, receipts, room_info, source,
+    space_index, stickers, sync, timeline, typing, upgrades, user_info, verification, videos,
 };
 use crate::adapters::{body_emoji, video};
 use crate::domain::auth::{AuthMethod, LoginCredentials, OAuthLoginData, ServerInfo, Session};
@@ -31,10 +31,15 @@ use crate::domain::encryption::{
 use crate::domain::identity::{OwnIdentity, RoomAlert};
 use crate::domain::image_pack::{PackId, PackImage};
 use crate::domain::invite::Invite;
+use crate::domain::invite_people::{
+    InviteFailure, InviteResult, PEOPLE_SEARCH_LIMIT, PeopleFound, PeopleSearchFailure, Person,
+    SearchResult,
+};
 use crate::domain::link::LauncherSafeUrl;
 use crate::domain::matrix_link::RoomAddress;
 use crate::domain::media::{MediaRendition, OutgoingAttachment, WaveformNeed};
 use crate::domain::member_name::{MemberName, NamedUser};
+use crate::domain::mention::is_user_tag;
 use crate::domain::message::{
     CustomEmoji, EditTarget, MessageBody, MessageEdit, MessagePreviewKind, PinChange,
     PinnedMessage, ReplyInfo, RichText, SendState, TimelineMessage,
@@ -42,7 +47,12 @@ use crate::domain::message::{
 use crate::domain::poll::{PollAction, PollDraft};
 use crate::domain::push::{NoticeContent, PushNotice, PushTweaks};
 use crate::domain::room::{NotifyMode, Room, RoomId, Space};
-use crate::domain::room_info::{Reader, RoomAbout, RosterMember};
+use crate::domain::room_creation::{
+    ChildLink, CreateFailure, CreateResult, CreatedRoom, JoinAccess, RoomBlueprint, RoomKind, Shape,
+};
+use crate::domain::room_info::{
+    MemberRole, Reader, RoomAbout, RosterMember, RosterSection, sort_roster,
+};
 use crate::domain::room_preview::{PreviewFailure, PreviewMembership, PreviewResult};
 use crate::domain::space_index::HierarchyPage;
 use crate::domain::sync::{SyncEvent, SyncOutcome, SyncSupport};
@@ -52,16 +62,18 @@ use crate::domain::timeline::{
     TimelineUpdate, locate_audio,
 };
 use crate::domain::user_info::{
-    GlobalProfile, IgnoreChange, Moderation, RoomMembership, UserId, UserProfile,
+    GlobalProfile, IgnoreChange, Moderation, RoomMembership, UserId, UserProfile, localpart,
+    server_part,
 };
 use crate::domain::verification::{VerificationCancellation, VerificationEvent};
 use crate::error::{AppError, Result};
 use crate::ports::matrix::{
     AttachmentHandoff, AuthPort, AuthenticatedSession, CleanupReport, DeviceRemoval,
-    EncryptionPort, IdentityPort, ImagePackPort, InterruptedLogin, InvitePort, LocalDataOwnership,
-    MediaPort, PackCatalog, PinnedPort, ProgressSink, PushPort, RestoreOutcome, RestoreStep,
-    RoomInfoPort, RoomPreviewPort, SessionPort, SpaceIndexPort, SpaceOrderPort, StoreAdoption,
-    SyncPort, SyncSink, TimelinePort, TypingPort, UpgradePort, UserInfoPort, VerificationPort,
+    EncryptionPort, IdentityPort, ImagePackPort, InterruptedLogin, InvitePeoplePort, InvitePort,
+    LocalDataOwnership, MediaPort, PackCatalog, PinnedPort, ProgressSink, PushPort, RestoreOutcome,
+    RestoreStep, RoomCreationPort, RoomInfoPort, RoomPreviewPort, SessionPort, SpaceIndexPort,
+    SpaceOrderPort, StoreAdoption, SyncPort, SyncSink, TimelinePort, TypingPort, UpgradePort,
+    UserInfoPort, VerificationPort,
 };
 use crate::ports::media::MediaCache;
 
@@ -241,6 +253,8 @@ fn authenticated(session: Session) -> AuthenticatedSession {
     let invites = Arc::clone(&authed);
     let upgrades = Arc::clone(&authed);
     let room_previews = Arc::clone(&authed);
+    let room_creation = Arc::clone(&authed);
+    let invite_people = Arc::clone(&authed);
     let typing = Arc::clone(&authed);
     let push = Arc::clone(&authed);
     let room_info = Arc::clone(&authed);
@@ -260,6 +274,8 @@ fn authenticated(session: Session) -> AuthenticatedSession {
         invites,
         upgrades,
         room_previews,
+        room_creation,
+        invite_people,
         typing,
         push,
         room_info,
@@ -292,7 +308,7 @@ impl RoomLists {
     }
 
     fn spaces(&self) -> Vec<Space> {
-        data::spaces_with(&self.joined)
+        data::spaces_with(&self.joined, &self.overrides)
     }
 
     fn invites(&self) -> Vec<Arc<Invite>> {
@@ -380,6 +396,7 @@ struct DemoAuthed {
     deleted: Arc<Mutex<HashSet<String>>>,
     ignored: Mutex<HashSet<String>>,
     memberships: Mutex<HashMap<(RoomId, String), RoomMembership>>,
+    creations: AtomicU64,
     shared_packs: Mutex<HashMap<String, bool>>,
     identity: IdentityBook,
     encryption: EncryptionBook,
@@ -1568,6 +1585,257 @@ impl DemoAuthed {
             sink(SyncEvent::Rooms(current_lists(&lists).rooms().into()));
         });
     }
+
+    fn created(&self, room_id: &RoomId) -> Option<data::Created> {
+        current_lists(&self.lists)
+            .overrides
+            .created
+            .into_iter()
+            .find(|created| created.id == room_id.as_ref())
+    }
+
+    fn address_taken(&self, wanted: &str) -> bool {
+        let created = current_lists(&self.lists).overrides.created;
+        data::alias_localparts().any(|taken| taken == wanted)
+            || created.iter().any(|created| {
+                created.alias.as_deref().is_some_and(|alias| {
+                    alias
+                        .strip_prefix('#')
+                        .and_then(|alias| alias.split_once(':'))
+                        .is_some_and(|(taken, _)| taken == wanted)
+                })
+            })
+    }
+
+    fn list_child(&self, parent: &RoomId, child: &RoomId) {
+        self.change_lists(|lists| {
+            lists
+                .overrides
+                .created_children
+                .entry(parent.to_string())
+                .or_default()
+                .push(child.to_string());
+        });
+    }
+
+    fn list_child_later(&self, parent: RoomId, child: RoomId) {
+        let Some(sink) = self.sync_sink() else {
+            return;
+        };
+        let lists = Arc::clone(&self.lists);
+        tokio::spawn(async move {
+            sleep(create_room::PARENT_LAG).await;
+            if let Ok(mut lists) = lists.lock() {
+                lists
+                    .overrides
+                    .created_children
+                    .entry(parent.to_string())
+                    .or_default()
+                    .push(child.to_string());
+            }
+            tracing::debug!(%parent, %child, "demo: the parent space lists its new child");
+            sink(SyncEvent::Spaces(current_lists(&lists).spaces().into()));
+        });
+    }
+
+    fn invited_in(&self, room_id: &RoomId) -> Vec<String> {
+        let Ok(memberships) = self.memberships.lock() else {
+            return Vec::new();
+        };
+        let mut invited: Vec<String> = memberships
+            .iter()
+            .filter(|((room, _), membership)| {
+                room == room_id && **membership == RoomMembership::Invited
+            })
+            .map(|((_, user_id), _)| user_id.clone())
+            .collect();
+        invited.sort();
+        invited
+    }
+
+    fn session_roster(&self, room_id: &RoomId) -> Vec<RosterMember> {
+        let mut roster = data::roster(room_id, room_info::member_avatar);
+        if roster.is_empty() && self.created(room_id).is_some() {
+            roster.push(data::named_member(
+                data::own_user(),
+                MemberRole::Admin,
+                RosterSection::Joined,
+                room_info::member_avatar,
+            ));
+        }
+        for user_id in self.invited_in(room_id) {
+            roster.retain(|member| member.user_id != user_id);
+            roster.push(data::named_member(
+                &user_id,
+                MemberRole::Member,
+                RosterSection::Invited,
+                room_info::member_avatar,
+            ));
+        }
+        sort_roster(&mut roster);
+        roster
+    }
+
+    fn membership_in(&self, room_id: &RoomId, user_id: &str) -> RoomMembership {
+        if let Some(membership) = self.membership_override(room_id, user_id) {
+            return membership;
+        }
+        match self
+            .session_roster(room_id)
+            .into_iter()
+            .find(|member| member.user_id == user_id)
+            .map(|member| member.section)
+        {
+            Some(RosterSection::Joined) => RoomMembership::Joined,
+            Some(RosterSection::Invited) => RoomMembership::Invited,
+            None => RoomMembership::Outside,
+        }
+    }
+
+    fn directory_person(&self, room_id: &RoomId, user_id: &str, name: Option<&str>) -> Person {
+        Person {
+            user_id: UserId::new(user_id),
+            name: MemberName::new(name, false),
+            avatar_mxc: Some(room_info::member_avatar(user_id)),
+            membership: self.membership_in(room_id, user_id),
+        }
+    }
+}
+
+#[async_trait]
+impl RoomCreationPort for DemoAuthed {
+    async fn create_room(&self, blueprint: &RoomBlueprint) -> CreateResult {
+        create_room::pause().await;
+        let scenario = create_room::scenario();
+        if scenario.refused {
+            return Err(CreateFailure::Refused);
+        }
+        if scenario.fails {
+            return Err(CreateFailure::Failed);
+        }
+        let own_server = server_part(data::own_user());
+        let alias = match blueprint.access() {
+            JoinAccess::Public(address) if self.address_taken(address.as_str()) => {
+                return Err(CreateFailure::AddressTaken);
+            }
+            JoinAccess::Public(address) => Some(address.alias_on(own_server)),
+            JoinAccess::InviteOnly | JoinAccess::SpaceMembers(_) => None,
+        };
+        let serial = self
+            .creations
+            .fetch_add(1, Ordering::Relaxed)
+            .saturating_add(1);
+        let room_id = RoomId::new(data::created_room_id(serial));
+        let child = match blueprint.parent() {
+            None => ChildLink::NotAsked,
+            Some(_) if scenario.child_fails => ChildLink::Failed,
+            Some(_) => ChildLink::Added,
+        };
+        tracing::info!(%room_id, kind = ?blueprint.kind(), ?child, "demo: creating a room");
+        if scenario.echo_lost {
+            return Ok(CreatedRoom { room_id, child });
+        }
+        let created = data::Created {
+            id: room_id.to_string(),
+            space: blueprint.kind() == RoomKind::Space,
+            name: blueprint.name().to_owned(),
+            topic: blueprint.topic().map(str::to_owned),
+            alias,
+            encrypted: matches!(blueprint.shape(), Shape::Room { encrypted: true }),
+            at_ms: data::now_ms(),
+        };
+        self.change_lists(|lists| lists.overrides.created.push(created));
+        if let (ChildLink::Added, Some(parent)) = (child, blueprint.parent()) {
+            if scenario.parent_late {
+                self.list_child_later(parent.clone(), room_id.clone());
+            } else {
+                self.list_child(parent, &room_id);
+            }
+        }
+        self.echo_join();
+        Ok(CreatedRoom { room_id, child })
+    }
+}
+
+#[async_trait]
+impl InvitePeoplePort for DemoAuthed {
+    async fn search_people(&self, room_id: &RoomId, term: &str) -> SearchResult {
+        invite_people::pause().await;
+        let term = term.trim();
+        if invite_people::scenario().rate_limited {
+            return Err(PeopleSearchFailure::RateLimited);
+        }
+        if invite_people::search_fails_now(term) {
+            return Err(PeopleSearchFailure::Failed);
+        }
+        let own = data::own_user();
+        let needle = term.to_lowercase();
+        let mut matching: Vec<(String, String)> = data::directory_people()
+            .into_iter()
+            .filter(|(user_id, name)| {
+                user_id != own
+                    && (localpart(user_id).to_lowercase().contains(&needle)
+                        || name.to_lowercase().contains(&needle))
+            })
+            .collect();
+        let limit = if invite_people::scenario().limited {
+            invite_people::LIMITED_RESULTS
+        } else {
+            usize::try_from(PEOPLE_SEARCH_LIMIT).unwrap_or(usize::MAX)
+        };
+        let limited = matching.len() > limit;
+        matching.truncate(limit);
+        let mut people: Vec<Person> = matching
+            .iter()
+            .map(|(user_id, name)| self.directory_person(room_id, user_id, Some(name)))
+            .collect();
+        if is_user_tag(term)
+            && term != own
+            && !people.iter().any(|person| person.user_id.as_ref() == term)
+        {
+            let name = data::person_name(term);
+            people.insert(0, self.directory_person(room_id, term, name.as_deref()));
+        }
+        Ok(PeopleFound { people, limited })
+    }
+
+    async fn invite(
+        &self,
+        room_id: &RoomId,
+        user_id: &UserId,
+        reason: Option<&str>,
+    ) -> InviteResult {
+        invite_people::pause().await;
+        let scenario = invite_people::scenario();
+        if !invite_people::may_invite() {
+            return Err(InviteFailure::Refused);
+        }
+        if scenario.invite_fails {
+            return Err(InviteFailure::Failed);
+        }
+        if scenario.blocks_vera && user_id.as_ref() == invite_people::BLOCKED_USER {
+            return Err(InviteFailure::Blocked);
+        }
+        if matches!(
+            self.membership_in(room_id, user_id),
+            RoomMembership::Joined | RoomMembership::Banned
+        ) {
+            return Err(InviteFailure::Refused);
+        }
+        tracing::info!(%room_id, %user_id, reason, "demo: inviting someone");
+        if let Ok(mut memberships) = self.memberships.lock() {
+            memberships.insert(
+                (room_id.clone(), user_id.to_string()),
+                RoomMembership::Invited,
+            );
+        }
+        Ok(())
+    }
+
+    async fn fetch_avatars(&self, mxcs: &[String]) -> usize {
+        room_info::pause_avatars().await;
+        media::fetch_member_avatars(mxcs)
+    }
 }
 
 #[async_trait]
@@ -1788,7 +2056,9 @@ impl PushPort for DemoAuthed {
 #[async_trait]
 impl RoomInfoPort for DemoAuthed {
     async fn about(&self, room_id: &RoomId) -> Result<RoomAbout> {
-        data::room_about(room_id).ok_or_else(|| unavailable("this room's details"))
+        data::room_about(room_id)
+            .or_else(|| self.created(room_id).as_ref().map(data::created_about))
+            .ok_or_else(|| unavailable("this room's details"))
     }
 
     async fn roster(&self, room_id: &RoomId) -> Result<Vec<RosterMember>> {
@@ -1796,7 +2066,7 @@ impl RoomInfoPort for DemoAuthed {
         if room_info::roster_fails_now(room_id) {
             return Err(unavailable("this room's member list"));
         }
-        Ok(data::roster(room_id, room_info::member_avatar))
+        Ok(self.session_roster(room_id))
     }
 
     async fn readers(&self, room_id: &RoomId, user_ids: &[String]) -> Result<Vec<Reader>> {

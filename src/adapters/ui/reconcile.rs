@@ -9,7 +9,7 @@ use super::decode::{ShownAvatar, forget_all_media_needs};
 use super::dto::{
     INVITED_HEADING_ROW, INVITES_HEADING_ROW, PackGrid, PackRowDto, ROOMS_HEADING_ROW, RoomRowKind,
     SPACES_HEADING_ROW, prefetch_space_avatar, record_invite_avatar_need, record_room_avatar_need,
-    request_member_avatar, request_mention_avatar, request_reader_avatar,
+    request_invitee_avatar, request_member_avatar, request_mention_avatar, request_reader_avatar,
     request_space_child_avatar, request_space_match_avatar,
 };
 use super::fields::RoomFields;
@@ -17,7 +17,7 @@ use super::richtext::forget_styled_bodies;
 use super::session::with_session;
 use super::splice_model::SpliceModel;
 use super::spoilers::forget_spoiler_rows;
-use crate::commands::view::{DirectoryView, RosterRow, SpaceIndexRow, SpaceMatch};
+use crate::commands::view::{DirectoryView, InviteeRow, RosterRow, SpaceIndexRow, SpaceMatch};
 use crate::domain::image_pack::PackOrigin;
 use crate::domain::invite::Invite;
 use crate::domain::message::TimelineMessage;
@@ -775,6 +775,33 @@ pub fn apply_mention_rows<T: Clone + PartialEq + 'static>(
         convert,
         get_id,
     );
+}
+
+pub fn apply_invitee_rows<T: Clone + PartialEq + 'static>(
+    model: &VecModel<T>,
+    rows: &[InviteeRow],
+    previous: &[InviteeRow],
+    media: &dyn MediaCache,
+    convert: &dyn Fn(&InviteeRow) -> T,
+    get_id: &dyn Fn(&T) -> &str,
+) {
+    for row in rows {
+        request_invitee_avatar(row, media);
+    }
+    apply_reconcile(
+        model,
+        rows,
+        previous,
+        &|row| row.person.user_id.as_ref(),
+        convert,
+        get_id,
+    );
+}
+
+impl SameItem for InviteeRow {
+    fn same_item(&self, other: &Self) -> bool {
+        self == other
+    }
 }
 
 impl SameItem for Arc<RosterMember> {

@@ -102,6 +102,18 @@ export enum UserMessageKind {
     room-preview-failed,
     room-address-invalid,
     leave-room-failed,
+    room-name-missing,
+    room-address-missing,
+    room-address-unusable,
+    room-address-taken,
+    room-create-refused,
+    room-create-unsupported,
+    room-create-failed,
+    add-to-space-failed,
+    people-search-failed,
+    invite-blocked,
+    invite-refused,
+    invite-failed,
     notify-change-failed,
     mark-read-failed,
     room-link-failed,
@@ -248,6 +260,40 @@ export enum SpaceIndexStatus {
     loading-more,
     failed,
     more-failed,
+}
+
+export enum RoomKind {
+    room,
+    space,
+}
+
+export enum RoomAccess {
+    invite-only,
+    space-members,
+    public,
+}
+
+export enum CreateRoomStatus {
+    closed,
+    editing,
+    creating,
+}
+
+export enum PeopleSearchStatus {
+    idle,
+    searching,
+    ready,
+    failed,
+}
+
+export enum InviteeState {
+    available,
+    picked,
+    joined,
+    invited,
+    banned,
+    sending,
+    failed,
 }
 
 export enum RoomPreviewStatus {

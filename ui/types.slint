@@ -1,4 +1,4 @@
-import { AudioKind, ChildAccess, DecryptionFailure, Delivery, EmojiArt, InviteKind, LogLevel, MediaFailure, MediaState, MemberRole, MemberRowKind, MessageKind, PackOrigin, PollPhase, PreviewKind, ReactionSend, RoomRowKind, SendState, ServiceKind, Shield, ShieldReason, SpoilerState, UserMessageKind } from "./enums.slint";
+import { AudioKind, ChildAccess, DecryptionFailure, Delivery, EmojiArt, InviteeState, InviteKind, LogLevel, MediaFailure, MediaState, MemberRole, MemberRowKind, MessageKind, PackOrigin, PollPhase, PreviewKind, ReactionSend, RoomAccess, RoomKind, RoomRowKind, SendState, ServiceKind, Shield, ShieldReason, SpoilerState, UserMessageKind } from "./enums.slint";
 
 export struct RoomEntry {
     id: string,
@@ -60,6 +60,18 @@ export struct MemberEntry {
     initial: string,
     color-index: int,
     role: MemberRole,
+    has-avatar: bool,
+    avatar: image,
+}
+
+export struct InviteeEntry {
+    user-id: string,
+    name: string,
+    initial: string,
+    color-index: int,
+    state: InviteeState,
+    failure: UserMessageKind,
+    failure-detail: string,
     has-avatar: bool,
     avatar: image,
 }
@@ -272,6 +284,16 @@ export struct EditMessageRequest {
     restored: bool,
     original: string,
     body: string,
+}
+
+export struct CreateRoomRequest {
+    name: string,
+    topic: string,
+    address: string,
+    kind: RoomKind,
+    access: RoomAccess,
+    encrypted: bool,
+    in-space: bool,
 }
 
 export struct SendStickerRequest {

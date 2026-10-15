@@ -13,16 +13,17 @@ use super::decode::{
     set_image_ready,
 };
 use super::dto::{
-    BodyLineDto, EmojiArt, LogLineDto, MediaFailureKind, MediaState, MemberRowDto, MessageDto,
-    PackBrowse, PackRowDto, PackSurface, PackTabDto, RoomDto, RoomRowKind, RowBody, SpaceChildDto,
-    SpaceDto, ThumbUpdate, cell_pack, decode_failure_kind, enrich_to_update, heading_to_dto,
-    invite_to_dto, log_line_to_dto, member_row_to_dto, mention_to_dto, message_to_dto,
-    reader_to_dto, room_to_dto, space_child_to_dto, space_match_to_dto, space_to_dto,
+    BodyLineDto, EmojiArt, InviteeDto, LogLineDto, MediaFailureKind, MediaState, MemberRowDto,
+    MessageDto, PackBrowse, PackRowDto, PackSurface, PackTabDto, RoomDto, RoomRowKind, RowBody,
+    SpaceChildDto, SpaceDto, ThumbUpdate, cell_pack, decode_failure_kind, enrich_to_update,
+    heading_to_dto, invite_to_dto, invitee_to_dto, log_line_to_dto, member_row_to_dto,
+    mention_to_dto, message_to_dto, reader_to_dto, room_to_dto, space_child_to_dto,
+    space_match_to_dto, space_to_dto,
 };
 use super::fields::{
-    BodyLineFields, BodyPieceFields, LogLineFields, MemberRowFields, MessageFields, PackCellFields,
-    PackRowFields, PackTabFields, PollAnswerFields, ReactionFields, ReactorFields, RoomFields,
-    SpaceChildFields, SpaceFields,
+    BodyLineFields, BodyPieceFields, InviteeFields, LogLineFields, MemberRowFields, MessageFields,
+    PackCellFields, PackRowFields, PackTabFields, PollAnswerFields, ReactionFields, ReactorFields,
+    RoomFields, SpaceChildFields, SpaceFields,
 };
 use super::handoff::follow_handoffs;
 use super::multiplex::spawn_event_multiplexer;
@@ -42,7 +43,7 @@ use super::splice_model::SpliceModel;
 use super::spoilers::reveal_row;
 use super::window_events::install_window_events;
 use crate::commands::effects::Effect;
-use crate::commands::view::{AppViewState, RosterRow, SpaceIndexRow, SpaceMatch};
+use crate::commands::view::{AppViewState, InviteeRow, RosterRow, SpaceIndexRow, SpaceMatch};
 use crate::config::APP_ID;
 use crate::domain::invite::Invite;
 use crate::domain::message::TimelineMessage;
@@ -66,6 +67,7 @@ pub trait UiBackend: Sized + 'static {
     type Space: SpaceFields<Self> + Clone + PartialEq + From<SpaceDto> + 'static;
     type SpaceChild: SpaceChildFields<Self> + Clone + PartialEq + From<SpaceChildDto> + 'static;
     type MemberRow: MemberRowFields<Self> + Clone + PartialEq + From<MemberRowDto> + 'static;
+    type Invitee: InviteeFields<Self> + Clone + PartialEq + From<InviteeDto> + 'static;
     type LogLine: LogLineFields<Self> + Clone + From<LogLineDto> + 'static;
     type PackRow: PackRowFields<Self> + Clone + From<PackRowDto> + 'static;
     type PackCell: PackCellFields<Self> + Clone + 'static;
@@ -119,6 +121,10 @@ pub trait UiBackend: Sized + 'static {
 
     fn convert_mention(member: &RosterMember, media: &dyn MediaCache) -> Self::MemberRow {
         mention_to_dto(member, media).into()
+    }
+
+    fn convert_invitee(row: &InviteeRow, media: &dyn MediaCache) -> Self::Invitee {
+        invitee_to_dto(row, media).into()
     }
 
     fn convert_log_line(line: &LogLine) -> Self::LogLine {
@@ -662,6 +668,7 @@ struct AvatarTargets<'a> {
     members: HashSet<&'a str>,
     readers: HashSet<&'a str>,
     mentions: HashSet<&'a str>,
+    invitees: HashSet<&'a str>,
     singles: HashSet<SingleAvatar>,
 }
 
@@ -696,6 +703,9 @@ fn group_slots(slots: &[AvatarSlot]) -> AvatarTargets<'_> {
             }
             AvatarSlot::Mention(user_id) => {
                 targets.mentions.insert(user_id.as_str());
+            }
+            AvatarSlot::Invitee(user_id) => {
+                targets.invitees.insert(user_id.as_str());
             }
             AvatarSlot::SelectedRoom => {
                 targets.singles.insert(SingleAvatar::SelectedRoom);
@@ -852,40 +862,29 @@ fn apply_avatar_ready<B: UiBackend>(
             },
         );
     }
-    if !targets.members.is_empty() {
-        let models = B::models();
-        patch_rows_by_id(
-            &*models.room_members,
-            &targets.members,
-            &B::MemberRow::user_id,
-            |entry| {
+    patch_person_avatars::<B>(&targets, image);
+}
+
+fn patch_person_avatars<B: UiBackend>(targets: &AvatarTargets<'_>, image: &Image) {
+    let models = B::models();
+    for (rows, ids) in [
+        (&models.room_members, &targets.members),
+        (&models.readers, &targets.readers),
+        (&models.mentions, &targets.mentions),
+    ] {
+        if !ids.is_empty() {
+            patch_rows_by_id(&**rows, ids, &B::MemberRow::user_id, |entry| {
                 entry.set_avatar(image.clone());
                 entry.set_has_avatar(true);
-            },
-        );
+            });
+        }
     }
-    if !targets.readers.is_empty() {
-        let models = B::models();
-        patch_rows_by_id(
-            &*models.readers,
-            &targets.readers,
-            &B::MemberRow::user_id,
-            |entry| {
+    if !targets.invitees.is_empty() {
+        for rows in [&models.invitee_results, &models.invitee_picks] {
+            patch_rows_by_id(&**rows, &targets.invitees, &B::Invitee::user_id, |entry| {
                 entry.set_avatar(image.clone());
                 entry.set_has_avatar(true);
-            },
-        );
-    }
-    if !targets.mentions.is_empty() {
-        let models = B::models();
-        patch_rows_by_id(
-            &*models.mentions,
-            &targets.mentions,
-            &B::MemberRow::user_id,
-            |entry| {
-                entry.set_avatar(image.clone());
-                entry.set_has_avatar(true);
-            },
-        );
+            });
+        }
     }
 }

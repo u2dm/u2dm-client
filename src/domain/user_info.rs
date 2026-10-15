@@ -187,3 +187,7 @@ pub fn localpart(user_id: &str) -> &str {
     let name = user_id.strip_prefix('@').unwrap_or(user_id);
     name.split_once(':').map_or(name, |(local, _)| local)
 }
+
+pub fn server_part(user_id: &str) -> &str {
+    user_id.split_once(':').map_or("", |(_, server)| server)
+}

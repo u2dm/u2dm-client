@@ -23,7 +23,10 @@ use super::schema::{
     pack_surfaces, room_row_kinds, spoiler_states, variant_named,
 };
 use super::spoilers::{keep_covered_body, spoilers_on};
-use crate::commands::view::{ChildAccess, RoomCard, RosterRow, SpaceIndexRow, SpaceMatch};
+use crate::commands::messages::UserMessageKind;
+use crate::commands::view::{
+    ChildAccess, InviteeRow, InviteeState, RoomCard, RosterRow, SpaceIndexRow, SpaceMatch,
+};
 use crate::domain::image_pack::{ImagePack, ImageUsage, PackId, PackImage, PackOrigin, PackTitle};
 use crate::domain::invite::{Invite, InviteKind};
 use crate::domain::media::{
@@ -571,6 +574,18 @@ pub struct MemberRowDto {
     pub initial: SharedString,
     pub color_index: i32,
     pub role: MemberRole,
+    pub avatar: Option<Image>,
+    pub has_avatar: bool,
+}
+
+pub struct InviteeDto {
+    pub user_id: SharedString,
+    pub name: SharedString,
+    pub initial: SharedString,
+    pub color_index: i32,
+    pub state: InviteeState,
+    pub failure: UserMessageKind,
+    pub failure_detail: SharedString,
     pub avatar: Option<Image>,
     pub has_avatar: bool,
 }
@@ -1585,6 +1600,38 @@ pub fn mention_to_dto(member: &RosterMember, media: &dyn MediaCache) -> MemberRo
 pub fn request_mention_avatar(member: &RosterMember, media: &dyn MediaCache) {
     let path = member_avatar_path(member, media);
     load_avatar_async(path.as_deref(), AvatarSlot::Mention(member.user_id.clone()));
+}
+
+pub fn invitee_to_dto(row: &InviteeRow, media: &dyn MediaCache) -> InviteeDto {
+    let person = &row.person;
+    let avatar = invitee_avatar_path(row, media).and_then(|path| peek_avatar(&path));
+    InviteeDto {
+        user_id: SharedString::from(person.user_id.as_ref()),
+        name: person
+            .name
+            .set()
+            .map(|name| SharedString::from(isolated(name)))
+            .unwrap_or_default(),
+        initial: SharedString::from(name_initials(&person.name, &person.user_id)),
+        color_index: avatar_color_index(&person.user_id),
+        state: row.state,
+        failure: row.failure.kind,
+        failure_detail: SharedString::from(row.failure.detail.as_str()),
+        has_avatar: avatar.is_some(),
+        avatar,
+    }
+}
+
+pub fn request_invitee_avatar(row: &InviteeRow, media: &dyn MediaCache) {
+    let path = invitee_avatar_path(row, media);
+    load_avatar_async(
+        path.as_deref(),
+        AvatarSlot::Invitee(row.person.user_id.to_string()),
+    );
+}
+
+fn invitee_avatar_path(row: &InviteeRow, media: &dyn MediaCache) -> Option<PathBuf> {
+    media.user_avatar_path(row.person.avatar_mxc.as_deref()?)
 }
 
 pub fn log_line_to_dto(line: &LogLine) -> LogLineDto {

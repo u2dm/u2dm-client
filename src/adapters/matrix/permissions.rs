@@ -5,12 +5,39 @@ use matrix_sdk::ruma::events::{MessageLikeEventType, StateEventType};
 
 use crate::domain::message::MessagePermissions;
 use crate::domain::poll::PollPermissions;
+use crate::domain::room::SpacePowers;
 use crate::domain::room_info::MemberRole;
 use crate::domain::user_info::ModerationPowers;
 
-pub(super) async fn room_permissions(room: &Room) -> (PollPermissions, MessagePermissions) {
+pub(super) struct RoomPermissions {
+    pub(super) polls: PollPermissions,
+    pub(super) messages: MessagePermissions,
+    pub(super) invite: bool,
+}
+
+pub(super) async fn room_permissions(room: &Room) -> RoomPermissions {
     let levels = room.power_levels_or_default().await;
-    (polls(room, &levels), messages(room.own_user_id(), &levels))
+    let own = room.own_user_id();
+    RoomPermissions {
+        polls: polls(room, &levels),
+        messages: messages(own, &levels),
+        invite: levels.user_can_invite(own),
+    }
+}
+
+pub(super) async fn space_powers(space: &Room) -> SpacePowers {
+    let levels = space.power_levels_or_default().await;
+    let own = space.own_user_id();
+    SpacePowers {
+        invite: levels.user_can_invite(own),
+        add_children: levels.user_can_send_state(own, StateEventType::SpaceChild),
+    }
+}
+
+pub(super) async fn may_invite(room: &Room) -> bool {
+    room.power_levels_or_default()
+        .await
+        .user_can_invite(room.own_user_id())
 }
 
 pub(super) async fn poll_permissions(room: &Room) -> PollPermissions {

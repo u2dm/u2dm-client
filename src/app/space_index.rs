@@ -15,6 +15,7 @@ use crate::ports::output::AppOutputPort;
 
 pub(super) const AVATAR_BATCH: usize = 8;
 
+#[derive(Clone)]
 pub(super) struct ListedSpace {
     pub(super) id: RoomId,
     pub(super) name: String,

@@ -10,10 +10,12 @@ use crate::domain::encryption::{KeyStorage, Recovery, RecoveryKey, Standing};
 use crate::domain::identity::IdentityAlert;
 use crate::domain::image_pack::ImagePacks;
 use crate::domain::invite::{Invite, InviteList};
+use crate::domain::invite_people::Person;
 use crate::domain::media::AudioMeta;
 use crate::domain::message::{PinnedMessage, TimelineMessage};
 use crate::domain::push::PushNotice;
 use crate::domain::room::{NotifyMode, RoomId, RoomList, Space, UnreadFlags};
+use crate::domain::room_creation::RoomKind;
 use crate::domain::room_info::{Reader, RoomAbout, RosterMember};
 use crate::domain::room_log::RoomLog;
 use crate::domain::room_preview::RoomPreview;
@@ -31,6 +33,8 @@ pub struct AppViewState {
     pub space_index: SpaceIndexView,
     pub invite: InviteView,
     pub room_preview: RoomPreviewView,
+    pub create_room: CreateRoomView,
+    pub invite_people: InvitePeopleView,
     pub room_info: RoomInfoView,
     pub room_menu: Option<RoomMenuTarget>,
     pub user_info: UserInfoView,
@@ -416,8 +420,11 @@ pub enum LoginActivity {
 
 #[derive(Clone, Default, PartialEq, Eq)]
 pub struct SpaceHeading {
+    pub id: String,
     pub name: String,
     pub member_count: u64,
+    pub may_invite: bool,
+    pub may_add_children: bool,
 }
 
 #[derive(Clone, PartialEq, Eq)]
@@ -463,6 +470,69 @@ impl Default for DirectoryView {
             attention: 0,
         }
     }
+}
+
+#[derive(Clone, Copy, Default, PartialEq, Eq, Debug)]
+pub enum CreateRoomStatus {
+    #[default]
+    Closed,
+    Editing,
+    Creating,
+}
+
+#[derive(Clone, Default, PartialEq, Eq)]
+pub struct CreateRoomView {
+    pub status: CreateRoomStatus,
+    pub kind: RoomKind,
+    pub parent_name: String,
+    pub server_name: String,
+    pub error: UserMessage,
+}
+
+#[derive(Clone, Copy, Default, PartialEq, Eq, Debug)]
+pub enum PeopleSearchStatus {
+    #[default]
+    Idle,
+    Searching,
+    Ready,
+    Failed,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum InviteeState {
+    Available,
+    Picked,
+    Joined,
+    Invited,
+    Banned,
+    Sending,
+    Failed,
+}
+
+#[derive(Clone, PartialEq, Eq)]
+pub struct InviteeRow {
+    pub person: Arc<Person>,
+    pub state: InviteeState,
+    pub failure: UserMessage,
+}
+
+#[derive(Clone, PartialEq, Eq)]
+pub struct InviteTarget {
+    pub room_id: RoomId,
+    pub name: String,
+    pub space: bool,
+}
+
+#[derive(Clone, Default, PartialEq, Eq)]
+pub struct InvitePeopleView {
+    pub target: Option<InviteTarget>,
+    pub search: PeopleSearchStatus,
+    pub results: Arc<[InviteeRow]>,
+    pub picked: Arc<[InviteeRow]>,
+    pub limited: bool,
+    pub sending: bool,
+    pub error: UserMessage,
+    pub avatars_ready: usize,
 }
 
 #[derive(Clone, Copy, Default, PartialEq, Eq, Debug)]
@@ -583,6 +653,7 @@ pub struct RoomCard {
     pub topic: Option<String>,
     pub alias: Option<String>,
     pub notify: NotifyMode,
+    pub may_invite: bool,
 }
 
 #[derive(Clone, Copy, Default, PartialEq, Eq)]
@@ -608,6 +679,7 @@ pub enum RosterRow {
 }
 
 #[derive(Clone, PartialEq, Eq)]
+#[allow(clippy::struct_excessive_bools)]
 pub struct RoomMenuTarget {
     pub room_id: RoomId,
     pub name: String,
@@ -615,6 +687,7 @@ pub struct RoomMenuTarget {
     pub notify: NotifyMode,
     pub notify_busy: bool,
     pub leaving: bool,
+    pub may_invite: bool,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]

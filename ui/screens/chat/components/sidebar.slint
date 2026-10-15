@@ -541,6 +541,12 @@ component RoomColumnHeader inherits Rectangle {
 
     property <bool> in-space: DirectoryView.room-scope == RoomScope.space;
     property <length> index-button-inset: Space.md;
+    property <length> button-pitch: Size.lg + root.index-button-inset;
+    property <bool> offers-invite: !root.collapsed && root.in-space
+        && DirectoryView.listed-space-may-invite;
+    property <bool> offers-new-room: !root.collapsed && root.in-space
+        && DirectoryView.listed-space-may-add-children;
+    property <int> space-actions: (root.offers-invite ? 1 : 0) + (root.offers-new-room ? 1 : 0);
 
     height: Metrics.header-row;
 
@@ -557,9 +563,34 @@ component RoomColumnHeader inherits Rectangle {
 
     if !root.collapsed && root.in-space: HeaderTitle {
         x: Space.lg;
-        width: parent.width - self.x - Size.lg - 2 * root.index-button-inset;
+        width: parent.width - self.x - Size.lg - 2 * root.index-button-inset
+            - root.space-actions * root.button-pitch;
         title: DirectoryView.listed-space-name;
         members: DirectoryView.listed-space-members;
+    }
+
+    if root.offers-new-room: HeaderIconButton {
+        x: parent.width - (root.offers-invite ? 3 : 2) * root.button-pitch;
+        y: (parent.height - self.height) / 2;
+        icon: IconSet.MessageSquarePlus;
+        tint: AppStyle.foreground-muted;
+        above-modal: root.above-modal;
+        label: @tr("New room in this space");
+        clicked => {
+            Actions.open-create-room();
+        }
+    }
+
+    if root.offers-invite: HeaderIconButton {
+        x: parent.width - 2 * root.button-pitch;
+        y: (parent.height - self.height) / 2;
+        icon: IconSet.UserRoundPlus;
+        tint: AppStyle.foreground-muted;
+        above-modal: root.above-modal;
+        label: @tr("Invite people to this space");
+        clicked => {
+            Actions.open-invite-people(DirectoryView.listed-space-id);
+        }
     }
 
     if root.in-space: HeaderIconButton {

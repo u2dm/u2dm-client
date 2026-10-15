@@ -8,9 +8,10 @@ use crate::commands::effects::VerificationActivity;
 use crate::commands::messages::{UserMessage, UserMessageKind};
 use crate::commands::ui::UiCommand;
 use crate::commands::view::{
-    AttachmentKind, ChildAccess, DirectChat, EncryptionActivity, EncryptionStep, LoginActivity,
-    LoginStep, PendingAnswer, PendingModeration, ReadersStatus, RoomInfoPlacement,
-    RoomPreviewSheet, RoomScope, RosterStatus, SourceState, SpaceIndexStatus, UpgradeLink,
+    AttachmentKind, ChildAccess, CreateRoomStatus, DirectChat, EncryptionActivity, EncryptionStep,
+    LoginActivity, LoginStep, PendingAnswer, PendingModeration, PeopleSearchStatus, ReadersStatus,
+    RoomInfoPlacement, RoomPreviewSheet, RoomScope, RosterStatus, SourceState, SpaceIndexStatus,
+    UpgradeLink,
 };
 use crate::domain::auth::LoginMethod;
 use crate::domain::encryption::{Recovery, Standing};
@@ -18,6 +19,7 @@ use crate::domain::invite::InviteKind;
 use crate::domain::media::AudioKind;
 use crate::domain::message::MessagePreviewKind;
 use crate::domain::room::NotifyMode;
+use crate::domain::room_creation::RoomKind;
 use crate::domain::room_info::MemberRole;
 use crate::domain::sync::ConnectionStatus;
 use crate::domain::timeline::{SourceEncryption, TimelineStatus};

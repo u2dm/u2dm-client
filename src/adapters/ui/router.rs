@@ -4,7 +4,7 @@ use super::clipboard;
 use super::emote;
 use super::permalink;
 use super::props::send_command;
-use super::schema::{notify_modes, simple_callbacks, variant_named};
+use super::schema::{notify_modes, room_accesses, room_kinds, simple_callbacks, variant_named};
 use crate::app::input::CommandSender;
 use crate::commands::ui::{
     ComposerActivity, MessageDraft, ReplyDraft, TimelineVisibility, UiCommand, ViewportChanged,
@@ -20,6 +20,7 @@ use crate::domain::media::AttachmentPick;
 use crate::domain::message::{EditKind, EditTarget, MessageEdit, TextRevision};
 use crate::domain::poll::{ChoiceMode, PollDisclosure, PollDraft};
 use crate::domain::room::{NotifyMode, RoomId};
+use crate::domain::room_creation::{RoomAccess, RoomDraft, RoomKind};
 use crate::domain::user_info::UserId;
 
 type Tx = CommandSender;
@@ -295,6 +296,38 @@ fn poll_draft(
     )
     .inspect_err(|reason| tracing::debug!(?reason, "refusing a poll draft"))
     .ok()
+}
+
+room_kinds!(variant_named room_kind_named RoomKind;);
+room_accesses!(variant_named room_access_named RoomAccess;);
+
+#[allow(clippy::too_many_arguments)]
+pub fn create_room(
+    tx: &Tx,
+    name: String,
+    topic: String,
+    address: String,
+    kind: &str,
+    access: &str,
+    encrypted: bool,
+    in_space: bool,
+) {
+    let (Some(kind), Some(access)) = (room_kind_named(kind), room_access_named(access)) else {
+        tracing::warn!(kind, access, "the create dialog sent an unknown choice");
+        return;
+    };
+    send_command(
+        tx,
+        UiCommand::CreateRoom(RoomDraft {
+            kind,
+            name,
+            topic,
+            access,
+            address,
+            encrypted,
+            in_space,
+        }),
+    );
 }
 
 pub fn send_poll(
