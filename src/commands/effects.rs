@@ -16,6 +16,7 @@ pub enum Effect {
         avatar_mxc: Option<String>,
         member_count: u64,
         encrypted: bool,
+        readable_by_anyone: bool,
         polls: PollPermissions,
         messages: MessagePermissions,
         generation: i32,

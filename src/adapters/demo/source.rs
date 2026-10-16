@@ -5,11 +5,15 @@ use crate::domain::message::{
     MessageBody, RichText, ServiceEvent, Shield, ShieldCode, TimelineMessage,
 };
 use crate::domain::room::RoomId;
+use crate::domain::room_state::{GuestAccess, HistoryVisibility};
+use crate::domain::space_index::JoinRule;
 use crate::domain::timeline::{EventSource, SourceEncryption};
 
 const DEMO_DEVICE: &str = "DEMODEVICE";
 const MEGOLM: &str = "m.megolm.v1.aes-sha2";
 const DEMO_MEDIA: &str = "mxc://demo.local/media";
+const THIRD_PARTY_TOKEN: &str = "demo-third-party-token";
+const CUSTOM_VALUE: &str = "org.example.custom";
 const MENTIONS_FIELD: &str = "m.mentions";
 const HTML_FORMAT: &str = "org.matrix.custom.html";
 
@@ -153,12 +157,26 @@ fn is_state_event(body: &MessageBody) -> bool {
 
 fn service_type(service: &ServiceEvent) -> &'static str {
     match service {
-        ServiceEvent::RoomNameChanged { .. } => "m.room.name",
+        ServiceEvent::RoomNameChanged { .. } | ServiceEvent::RoomNameRemoved => "m.room.name",
         ServiceEvent::RoomTopicChanged => "m.room.topic",
         ServiceEvent::RoomAvatarChanged => "m.room.avatar",
         ServiceEvent::RoomCreated | ServiceEvent::UpgradedRoomCreated => "m.room.create",
         ServiceEvent::RoomUpgraded => "m.room.tombstone",
         ServiceEvent::EncryptionEnabled => "m.room.encryption",
+        ServiceEvent::JoinRuleChanged(_) => "m.room.join_rules",
+        ServiceEvent::HistoryVisibilityChanged(_) => "m.room.history_visibility",
+        ServiceEvent::GuestAccessChanged(_) => "m.room.guest_access",
+        ServiceEvent::ServerAclChanged => "m.room.server_acl",
+        ServiceEvent::MainAddressSet { .. }
+        | ServiceEvent::MainAddressRemoved
+        | ServiceEvent::AlternativeAddressesChanged => "m.room.canonical_alias",
+        ServiceEvent::MessagePinned
+        | ServiceEvent::MessageUnpinned
+        | ServiceEvent::PinnedMessagesChanged => "m.room.pinned_events",
+        ServiceEvent::PowerLevelsChanged(_) => "m.room.power_levels",
+        ServiceEvent::ThirdPartyInvited { .. } | ServiceEvent::ThirdPartyInviteRevoked { .. } => {
+            "m.room.third_party_invite"
+        }
         ServiceEvent::CallStarted => "m.call.invite",
         ServiceEvent::CallNotification => "m.rtc.notification",
         ServiceEvent::Joined
@@ -172,6 +190,8 @@ fn service_type(service: &ServiceEvent) -> &'static str {
         | ServiceEvent::Unbanned { .. }
         | ServiceEvent::Knocked
         | ServiceEvent::KnockAccepted { .. }
+        | ServiceEvent::KnockRetracted
+        | ServiceEvent::KnockDenied { .. }
         | ServiceEvent::DisplayNameSet { .. }
         | ServiceEvent::DisplayNameChanged { .. }
         | ServiceEvent::DisplayNameRemoved
@@ -186,23 +206,40 @@ fn state_key<'a>(service: &ServiceEvent, sender: &'a str) -> Option<&'a str> {
         | ServiceEvent::InvitationAccepted
         | ServiceEvent::InvitationRejected
         | ServiceEvent::Knocked
+        | ServiceEvent::KnockRetracted
         | ServiceEvent::DisplayNameSet { .. }
         | ServiceEvent::DisplayNameChanged { .. }
         | ServiceEvent::DisplayNameRemoved
         | ServiceEvent::AvatarChanged => Some(sender),
         ServiceEvent::RoomNameChanged { .. }
+        | ServiceEvent::RoomNameRemoved
         | ServiceEvent::RoomTopicChanged
         | ServiceEvent::RoomAvatarChanged
         | ServiceEvent::RoomCreated
         | ServiceEvent::UpgradedRoomCreated
         | ServiceEvent::RoomUpgraded
-        | ServiceEvent::EncryptionEnabled => Some(""),
+        | ServiceEvent::EncryptionEnabled
+        | ServiceEvent::JoinRuleChanged(_)
+        | ServiceEvent::HistoryVisibilityChanged(_)
+        | ServiceEvent::GuestAccessChanged(_)
+        | ServiceEvent::ServerAclChanged
+        | ServiceEvent::MainAddressSet { .. }
+        | ServiceEvent::MainAddressRemoved
+        | ServiceEvent::AlternativeAddressesChanged
+        | ServiceEvent::MessagePinned
+        | ServiceEvent::MessageUnpinned
+        | ServiceEvent::PinnedMessagesChanged
+        | ServiceEvent::PowerLevelsChanged(_) => Some(""),
+        ServiceEvent::ThirdPartyInvited { .. } | ServiceEvent::ThirdPartyInviteRevoked { .. } => {
+            Some(THIRD_PARTY_TOKEN)
+        }
         ServiceEvent::Invited { .. }
         | ServiceEvent::InvitationRevoked { .. }
         | ServiceEvent::Kicked { .. }
         | ServiceEvent::Banned { .. }
         | ServiceEvent::Unbanned { .. }
         | ServiceEvent::KnockAccepted { .. }
+        | ServiceEvent::KnockDenied { .. }
         | ServiceEvent::CallStarted
         | ServiceEvent::CallNotification => None,
     }
@@ -217,7 +254,9 @@ fn service_content(service: &ServiceEvent) -> Value {
         | ServiceEvent::InvitationRejected
         | ServiceEvent::InvitationRevoked { .. }
         | ServiceEvent::Kicked { .. }
-        | ServiceEvent::Unbanned { .. } => json!({ "membership": "leave" }),
+        | ServiceEvent::Unbanned { .. }
+        | ServiceEvent::KnockRetracted
+        | ServiceEvent::KnockDenied { .. } => json!({ "membership": "leave" }),
         ServiceEvent::Invited { target } | ServiceEvent::KnockAccepted { target } => {
             json!({ "membership": "invite", "displayname": target.name.set() })
         }
@@ -228,6 +267,7 @@ fn service_content(service: &ServiceEvent) -> Value {
         }
         ServiceEvent::AvatarChanged => json!({ "membership": "join", "avatar_url": DEMO_MEDIA }),
         ServiceEvent::RoomNameChanged { name } => json!({ "name": name }),
+        ServiceEvent::RoomNameRemoved => json!({ "name": "" }),
         ServiceEvent::RoomTopicChanged => json!({ "topic": "" }),
         ServiceEvent::RoomAvatarChanged => json!({ "url": DEMO_MEDIA }),
         ServiceEvent::RoomCreated | ServiceEvent::UpgradedRoomCreated => {
@@ -239,6 +279,87 @@ fn service_content(service: &ServiceEvent) -> Value {
             json!({ "call_id": "demo-call", "version": "1", "lifetime": 60_000 })
         }
         ServiceEvent::CallNotification => json!({ "notification_type": "ring" }),
+        ServiceEvent::JoinRuleChanged(rule) => join_rule_content(rule),
+        ServiceEvent::HistoryVisibilityChanged(visibility) => {
+            json!({ "history_visibility": history_value(*visibility) })
+        }
+        ServiceEvent::GuestAccessChanged(access) => {
+            json!({ "guest_access": guest_access_value(*access) })
+        }
+        ServiceEvent::ServerAclChanged => {
+            json!({ "allow": ["*"], "deny": ["spam.example"], "allow_ip_literals": false })
+        }
+        ServiceEvent::MainAddressSet { alias } => json!({ "alias": alias }),
+        ServiceEvent::MainAddressRemoved | ServiceEvent::ThirdPartyInviteRevoked { .. } => {
+            json!({})
+        }
+        ServiceEvent::AlternativeAddressesChanged => {
+            json!({ "alt_aliases": ["#demo-alternative:demo.local"] })
+        }
+        ServiceEvent::MessagePinned | ServiceEvent::PinnedMessagesChanged => {
+            json!({ "pinned": ["$demo-pinned"] })
+        }
+        ServiceEvent::MessageUnpinned => json!({ "pinned": [] }),
+        ServiceEvent::PowerLevelsChanged(_) => power_levels_content(),
+        ServiceEvent::ThirdPartyInvited { name } => third_party_invite_content(name),
+    }
+}
+
+fn power_levels_content() -> Value {
+    json!({
+        "users_default": 0,
+        "events_default": 0,
+        "state_default": 50,
+        "ban": 50,
+        "kick": 50,
+        "redact": 50,
+        "invite": 0,
+    })
+}
+
+fn third_party_invite_content(name: &str) -> Value {
+    json!({
+        "display_name": name,
+        "key_validity_url": "https://identity.demo.local/_matrix/identity/v2/pubkey/isvalid",
+        "public_key": "demo-public-key",
+    })
+}
+
+fn join_rule_content(rule: &JoinRule) -> Value {
+    let (name, allowed) = match rule {
+        JoinRule::Public => ("public", None),
+        JoinRule::Invite => ("invite", None),
+        JoinRule::Knock => ("knock", None),
+        JoinRule::Private => ("private", None),
+        JoinRule::Restricted { allowed } => ("restricted", Some(allowed)),
+        JoinRule::KnockRestricted { allowed } => ("knock_restricted", Some(allowed)),
+        JoinRule::Unsupported => (CUSTOM_VALUE, None),
+    };
+    let Some(allowed) = allowed else {
+        return json!({ "join_rule": name });
+    };
+    let allow: Vec<Value> = allowed
+        .iter()
+        .map(|room| json!({ "type": "m.room_membership", "room_id": room.as_ref() }))
+        .collect();
+    json!({ "join_rule": name, "allow": allow })
+}
+
+fn history_value(visibility: HistoryVisibility) -> &'static str {
+    match visibility {
+        HistoryVisibility::WorldReadable => "world_readable",
+        HistoryVisibility::Shared => "shared",
+        HistoryVisibility::Invited => "invited",
+        HistoryVisibility::Joined => "joined",
+        HistoryVisibility::Unknown => CUSTOM_VALUE,
+    }
+}
+
+fn guest_access_value(access: GuestAccess) -> &'static str {
+    match access {
+        GuestAccess::CanJoin => "can_join",
+        GuestAccess::Forbidden => "forbidden",
+        GuestAccess::Unknown => CUSTOM_VALUE,
     }
 }
 

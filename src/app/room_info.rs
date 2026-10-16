@@ -847,6 +847,7 @@ fn card_of(room: &Room) -> RoomCard {
         alias: room.canonical_alias.clone(),
         notify: room.notify,
         may_invite: room.may_invite,
+        readable_by_anyone: room.readable_by_anyone(),
     }
 }
 

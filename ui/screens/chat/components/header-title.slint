@@ -6,6 +6,7 @@ export component HeaderTitle inherits VerticalLayout {
     in property <string> title;
     in property <int> members;
     in property <bool> encrypted;
+    in property <bool> readable-by-anyone;
     in property <string> typing;
 
     alignment: center;
@@ -30,6 +31,15 @@ export component HeaderTitle inherits VerticalLayout {
             stroke: AppStyle.foreground-muted;
             accessible-role: image;
             accessible-label: @tr("End-to-end encrypted");
+        }
+
+        if root.readable-by-anyone: IconDisplay {
+            cross-axis-self-alignment: center;
+            icon: IconSet.Globe;
+            size: IconSize.xs;
+            stroke: AppStyle.foreground-muted;
+            accessible-role: image;
+            accessible-label: @tr("Anyone can read this room");
         }
     }
 

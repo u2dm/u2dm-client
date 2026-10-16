@@ -22,6 +22,8 @@ use crate::domain::message::{
 };
 use crate::domain::poll::{Poll, PollAnswer, PollDisclosure, PollStatus};
 use crate::domain::room_log::{LogLevel, LogLine};
+use crate::domain::room_state::{GuestAccess, HistoryVisibility, PowerChange, RoleChange};
+use crate::domain::space_index::JoinRule;
 use crate::domain::verification::VerificationCancellation;
 use crate::locale::{self, LocaleRequest};
 
@@ -450,42 +452,102 @@ pub fn service_kind(event: &ServiceEvent) -> ServiceKind {
     match event {
         ServiceEvent::Joined => ServiceKind::Joined,
         ServiceEvent::Left => ServiceKind::Left,
-        ServiceEvent::Invited { .. } => ServiceKind::Invited,
+        ServiceEvent::Invited { .. } | ServiceEvent::ThirdPartyInvited { .. } => {
+            ServiceKind::Invited
+        }
         ServiceEvent::InvitationAccepted => ServiceKind::InvitationAccepted,
         ServiceEvent::InvitationRejected => ServiceKind::InvitationRejected,
-        ServiceEvent::InvitationRevoked { .. } => ServiceKind::InvitationRevoked,
+        ServiceEvent::InvitationRevoked { .. } | ServiceEvent::ThirdPartyInviteRevoked { .. } => {
+            ServiceKind::InvitationRevoked
+        }
         ServiceEvent::Kicked { .. } => ServiceKind::Kicked,
         ServiceEvent::Banned { .. } => ServiceKind::Banned,
         ServiceEvent::Unbanned { .. } => ServiceKind::Unbanned,
         ServiceEvent::Knocked => ServiceKind::Knocked,
         ServiceEvent::KnockAccepted { .. } => ServiceKind::KnockAccepted,
+        ServiceEvent::KnockRetracted => ServiceKind::KnockRetracted,
+        ServiceEvent::KnockDenied { .. } => ServiceKind::KnockDenied,
         ServiceEvent::DisplayNameSet { .. } => ServiceKind::NameSet,
         ServiceEvent::DisplayNameChanged { .. } => ServiceKind::NameChanged,
         ServiceEvent::DisplayNameRemoved => ServiceKind::NameRemoved,
         ServiceEvent::AvatarChanged => ServiceKind::AvatarChanged,
         ServiceEvent::RoomNameChanged { .. } => ServiceKind::RoomName,
+        ServiceEvent::RoomNameRemoved => ServiceKind::RoomNameRemoved,
         ServiceEvent::RoomTopicChanged => ServiceKind::RoomTopic,
         ServiceEvent::RoomAvatarChanged => ServiceKind::RoomAvatar,
         ServiceEvent::RoomCreated => ServiceKind::RoomCreated,
         ServiceEvent::UpgradedRoomCreated => ServiceKind::UpgradedRoomCreated,
         ServiceEvent::RoomUpgraded => ServiceKind::RoomUpgraded,
         ServiceEvent::EncryptionEnabled => ServiceKind::Encryption,
+        ServiceEvent::JoinRuleChanged(rule) => join_rule_kind(rule),
+        ServiceEvent::HistoryVisibilityChanged(visibility) => history_kind(*visibility),
+        ServiceEvent::GuestAccessChanged(access) => guest_access_kind(*access),
+        ServiceEvent::ServerAclChanged => ServiceKind::ServerAcl,
+        ServiceEvent::MainAddressSet { .. } => ServiceKind::MainAddress,
+        ServiceEvent::MainAddressRemoved => ServiceKind::MainAddressRemoved,
+        ServiceEvent::AlternativeAddressesChanged => ServiceKind::AltAddresses,
+        ServiceEvent::MessagePinned => ServiceKind::MessagePinned,
+        ServiceEvent::MessageUnpinned => ServiceKind::MessageUnpinned,
+        ServiceEvent::PinnedMessagesChanged => ServiceKind::PinsChanged,
+        ServiceEvent::PowerLevelsChanged(change) => power_kind(change),
         ServiceEvent::CallStarted => ServiceKind::CallStarted,
         ServiceEvent::CallNotification => ServiceKind::CallNotification,
     }
 }
 
+fn join_rule_kind(rule: &JoinRule) -> ServiceKind {
+    match rule {
+        JoinRule::Public => ServiceKind::JoinPublic,
+        JoinRule::Invite => ServiceKind::JoinInvite,
+        JoinRule::Knock => ServiceKind::JoinKnock,
+        JoinRule::Restricted { .. } => ServiceKind::JoinRestricted,
+        JoinRule::KnockRestricted { .. } => ServiceKind::JoinKnockRestricted,
+        JoinRule::Private | JoinRule::Unsupported => ServiceKind::JoinRule,
+    }
+}
+
+fn history_kind(visibility: HistoryVisibility) -> ServiceKind {
+    match visibility {
+        HistoryVisibility::WorldReadable => ServiceKind::HistoryWorldReadable,
+        HistoryVisibility::Shared => ServiceKind::HistoryShared,
+        HistoryVisibility::Invited => ServiceKind::HistoryInvited,
+        HistoryVisibility::Joined => ServiceKind::HistoryJoined,
+        HistoryVisibility::Unknown => ServiceKind::History,
+    }
+}
+
+fn guest_access_kind(access: GuestAccess) -> ServiceKind {
+    match access {
+        GuestAccess::CanJoin => ServiceKind::GuestsAllowed,
+        GuestAccess::Forbidden => ServiceKind::GuestsForbidden,
+        GuestAccess::Unknown => ServiceKind::GuestAccess,
+    }
+}
+
+fn power_kind(power: &PowerChange) -> ServiceKind {
+    match power {
+        PowerChange::Role { change, .. } => match change {
+            RoleChange::MadeAdmin => ServiceKind::MadeAdmin,
+            RoleChange::MadeModerator => ServiceKind::MadeModerator,
+            RoleChange::NoLongerAdmin => ServiceKind::NoLongerAdmin,
+            RoleChange::NoLongerModerator => ServiceKind::NoLongerModerator,
+        },
+        PowerChange::Level { .. } => ServiceKind::PowerLevel,
+        PowerChange::Levels => ServiceKind::PowerLevels,
+    }
+}
+
 pub fn service_target(event: &ServiceEvent) -> String {
+    if let Some(target) = event.target() {
+        return target.shown();
+    }
     match event {
-        ServiceEvent::Invited { target }
-        | ServiceEvent::InvitationRevoked { target }
-        | ServiceEvent::Kicked { target }
-        | ServiceEvent::Banned { target }
-        | ServiceEvent::Unbanned { target }
-        | ServiceEvent::KnockAccepted { target } => target.shown(),
         ServiceEvent::DisplayNameSet { name }
         | ServiceEvent::DisplayNameChanged { name }
-        | ServiceEvent::RoomNameChanged { name } => isolated(name),
+        | ServiceEvent::RoomNameChanged { name }
+        | ServiceEvent::MainAddressSet { alias: name }
+        | ServiceEvent::ThirdPartyInvited { name }
+        | ServiceEvent::ThirdPartyInviteRevoked { name } => isolated(name),
         _ => String::new(),
     }
 }

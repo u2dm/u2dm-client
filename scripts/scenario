@@ -72,6 +72,7 @@ scenario_env() {
     invites)         echo 'U2DM_DEMO_INVITES=slow,late U2DM_DEMO_WINDOW=900x760' ;;
     invite-failures) echo 'U2DM_DEMO_INVITES=accept-fails,decline-fails,revoked U2DM_DEMO_WINDOW=900x760' ;;
     room-upgrades)   echo 'U2DM_DEMO_UPGRADES=slow U2DM_DEMO_WINDOW=900x760' ;;
+    room-state)      echo 'U2DM_DEMO_WINDOW=900x760' ;;
     room-upgrade-failures) echo 'U2DM_DEMO_UPGRADES=join-fails U2DM_DEMO_WINDOW=900x760' ;;
     room-links)      echo 'U2DM_DEMO_LINKS=slow U2DM_DEMO_WINDOW=900x760' ;;
     room-finder)     echo 'U2DM_DEMO_LINKS=slow U2DM_DEMO_WINDOW=700x900' ;;
@@ -385,6 +386,11 @@ scenario_steps() {
       echo 'sleep 1'
       echo '{"op":"join_predecessor"}'
       echo 'sleep 4' ;;
+    room-state)
+      echo '{"op":"select_room","room_id":"!square:demo.local"}'
+      echo 'sleep 2'
+      echo '{"op":"open_room_info"}'
+      echo 'sleep 2' ;;
     room-upgrade-failures)
       echo '{"op":"select_room","room_id":"!retro:demo.local"}'
       echo 'sleep 1'
@@ -651,6 +657,7 @@ scenario_note() {
     invites)         echo 'Leo'"'"'s chat invite arrives late and is accepted, opening the chat under DMs; Async Rust is declined; Hiking Club is accepted and opens in the rail (directory.invites, invite)' ;;
     invite-failures) echo 'an accept fails inline on its sheet, a decline with the sheet closed fails as a toast, then the open Climbing Crew sheet closes when its invite is withdrawn (invite.error, toast)' ;;
     room-upgrades)   echo 'Retro Gaming'"'"'s banner joins the room that replaced it, slowly: the new room opens and the old one leaves the list but still opens, with Open the new room; Frontend Guild'"'"'s creation row joins the room it continues, which opens unlisted (upgrade, directory.rooms)' ;;
+    room-state)      echo 'Town Square shows a service row for every room-state change (join rules, history visibility, guests, server ACL, addresses, pins, power levels, knocks, third-party invites, a removed name); being world_readable and unencrypted, its header has the globe and its room info says anyone can read it (timeline service_kind, selected_room_readable_by_anyone, room_info.readable_by_anyone)' ;;
     room-upgrade-failures) echo 'joining the room that replaced Retro Gaming fails as a toast, then so does joining the room Frontend Guild continues (upgrade, toast)' ;;
     room-links)      echo 'a matrix.to alias opens Matrix HQ, a link to a message opens Rust Programming at it, a matrix: link previews WebAssembly slowly and Join opens it, and an invite-only room previews with its reason (room_preview, health.selected)' ;;
     room-finder)     echo 'Join a room on the compact layout: rust is no address, then #matrix-dev:demo.local previews after a slow lookup (room_preview)' ;;
@@ -689,7 +696,7 @@ names() {
     room-menu-failures room-log user-info user-info-failures user-dm user-dm-start user-dm-failures user-ignore user-moderation \
     user-moderation-failures user-tags custom-emoji spoilers message-link message-source message-pins message-pin-failures message-delete \
     message-delete-failures readers room-search room-search-open mentions room-mention display-names \
-    message-shields identity-alerts identity-held-sends invites invite-failures room-upgrades room-upgrade-failures \
+    message-shields identity-alerts identity-held-sends invites invite-failures room-upgrades room-upgrade-failures room-state \
     room-links room-finder room-link-failures \
     create-room create-space create-in-space create-room-failures invite-people invite-people-failures \
     typing typing-names notifications notifications-focused notifications-burst \

@@ -905,6 +905,7 @@ impl AppService {
             avatar_mxc: room.meta.avatar_mxc.clone(),
             member_count: room.meta.member_count,
             encrypted: room.meta.encrypted,
+            readable_by_anyone: room.meta.readable_by_anyone,
             polls: room.meta.polls,
             messages: room.meta.messages,
             generation: room.generation,

@@ -151,6 +151,7 @@ export component TimelineView inherits Rectangle {
                     title: RoomView.selected-room-name;
                     members: RoomView.selected-room-members;
                     encrypted: RoomView.selected-room-encrypted;
+                    readable-by-anyone: RoomView.selected-room-readable-by-anyone;
                     typing: TypingView.room-id == root.room-id
                         ? TypingLine.text(TypingView.count, TypingView.first, TypingView.second)
                         : "";

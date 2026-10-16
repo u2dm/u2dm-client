@@ -20,6 +20,7 @@ pub mod room_info;
 pub mod room_log;
 pub mod room_preview;
 pub mod room_search;
+pub mod room_state;
 pub mod space_index;
 pub mod sync;
 pub mod timeline;

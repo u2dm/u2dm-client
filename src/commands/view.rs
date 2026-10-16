@@ -654,6 +654,7 @@ pub struct RoomCard {
     pub alias: Option<String>,
     pub notify: NotifyMode,
     pub may_invite: bool,
+    pub readable_by_anyone: bool,
 }
 
 #[derive(Clone, Copy, Default, PartialEq, Eq)]

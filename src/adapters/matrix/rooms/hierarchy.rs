@@ -4,14 +4,15 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use matrix_sdk::Client;
 use matrix_sdk::ruma::api::client::space::{SpaceHierarchyRoomsChunk, get_hierarchy};
-use matrix_sdk::ruma::room::{JoinRuleSummary, RestrictedSummary, RoomType};
+use matrix_sdk::ruma::room::RoomType;
 use matrix_sdk::ruma::{IdParseError, OwnedRoomId, OwnedServerName, RoomOrAliasId, UInt};
 
 use super::build::space_child_vias;
 use crate::adapters::matrix::media::fetch_avatar_thumbnails;
+use crate::adapters::matrix::room_state::join_rule;
 use crate::adapters::matrix::session::ClientHandle;
 use crate::domain::room::RoomId;
-use crate::domain::space_index::{ChildKind, HierarchyPage, JoinRule, SpaceChild};
+use crate::domain::space_index::{ChildKind, HierarchyPage, SpaceChild};
 use crate::error::{AppError, Result};
 use crate::ports::matrix::SpaceIndexPort;
 
@@ -133,27 +134,4 @@ fn cached_name(client: &Client, room_id: &OwnedRoomId) -> Option<String> {
         .get_room(room_id)?
         .cached_display_name()
         .map(|name| name.to_string())
-}
-
-pub(super) fn join_rule(summary: &JoinRuleSummary) -> JoinRule {
-    match summary {
-        JoinRuleSummary::Public => JoinRule::Public,
-        JoinRuleSummary::Restricted(rule) => JoinRule::Restricted {
-            allowed: allowed_rooms(rule),
-        },
-        JoinRuleSummary::KnockRestricted(rule) => JoinRule::KnockRestricted {
-            allowed: allowed_rooms(rule),
-        },
-        JoinRuleSummary::Knock => JoinRule::Knock,
-        JoinRuleSummary::Invite => JoinRule::Invite,
-        JoinRuleSummary::Private => JoinRule::Private,
-        _ => JoinRule::Unsupported,
-    }
-}
-
-fn allowed_rooms(rule: &RestrictedSummary) -> Vec<RoomId> {
-    rule.allowed_room_ids
-        .iter()
-        .map(|id| RoomId::new(id.to_string()))
-        .collect()
 }

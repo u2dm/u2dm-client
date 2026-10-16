@@ -13,6 +13,7 @@ mod polls;
 mod receipts;
 mod rowless_sends;
 mod source;
+mod state_rows;
 mod subscribe;
 mod undecrypted;
 

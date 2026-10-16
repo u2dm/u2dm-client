@@ -23,6 +23,7 @@ use tracing::Instrument;
 use crate::adapters::matrix::member_name::named_member;
 use crate::adapters::matrix::permissions::{room_permissions, space_powers};
 use crate::adapters::matrix::preview::{self, MessagePreview};
+use crate::adapters::matrix::room_state::history_visibility;
 use crate::domain::member_name::NamedUser;
 use crate::domain::message::{MessagePreviewKind, RichText, ServiceEvent};
 use crate::domain::room::{NotifyMode, Room as DomainRoom, RoomId, Space as DomainSpace};
@@ -132,6 +133,7 @@ async fn build_room(room: &Room, settings: &NotificationSettings) -> DomainRoom 
         canonical_alias: room.canonical_alias().map(|alias| alias.to_string()),
         is_direct,
         is_encrypted: room.encryption_state().is_encrypted(),
+        history_visibility: history_visibility(&room.history_visibility_or_default()),
         poll_permissions: permissions.polls,
         message_permissions: permissions.messages,
         may_invite: permissions.invite,

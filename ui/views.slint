@@ -116,6 +116,7 @@ export global RoomInfoView {
     in property <styled-text> topic-styled;
     in property <bool> topic-has-links;
     in property <string> alias;
+    in property <bool> readable-by-anyone;
     in property <string> joined-on;
     in property <string> link;
     in property <NotifyMode> notify: NotifyMode.all-messages;
@@ -247,6 +248,7 @@ export global RoomView {
     in property <bool> selected-room-has-avatar;
     in property <int> selected-room-members;
     in property <bool> selected-room-encrypted;
+    in property <bool> selected-room-readable-by-anyone;
     in property <bool> may-vote: true;
     in property <bool> may-end-polls: true;
     in property <bool> may-start-polls: true;

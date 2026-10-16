@@ -5,6 +5,7 @@ use std::{fmt, ops};
 use crate::domain::member_name::NamedUser;
 use crate::domain::message::{MessagePermissions, MessagePreviewKind, RichText, ServiceEvent};
 use crate::domain::poll::PollPermissions;
+use crate::domain::room_state::HistoryVisibility;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct RoomId(String);
@@ -53,6 +54,7 @@ pub struct Room {
     pub canonical_alias: Option<String>,
     pub is_direct: bool,
     pub is_encrypted: bool,
+    pub history_visibility: HistoryVisibility,
     pub poll_permissions: PollPermissions,
     pub message_permissions: MessagePermissions,
     pub may_invite: bool,
@@ -91,6 +93,10 @@ impl Room {
 
     pub fn shows_unread(&self) -> bool {
         self.alert() || self.mention() || self.hint()
+    }
+
+    pub fn readable_by_anyone(&self) -> bool {
+        self.history_visibility == HistoryVisibility::WorldReadable && !self.is_encrypted
     }
 }
 

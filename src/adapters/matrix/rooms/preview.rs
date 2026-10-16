@@ -11,9 +11,9 @@ use matrix_sdk::ruma::{
 use matrix_sdk::{Error as SdkError, RoomState};
 use tokio::time::timeout;
 
-use super::hierarchy::join_rule;
 use super::upgrades::is_joined;
 use crate::adapters::matrix::media::fetch_avatar_thumbnails;
+use crate::adapters::matrix::room_state::join_rule;
 use crate::adapters::matrix::session::ClientHandle;
 use crate::domain::matrix_link::RoomAddress;
 use crate::domain::room::RoomId;

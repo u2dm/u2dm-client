@@ -10,6 +10,7 @@ mod member_name;
 mod permissions;
 mod preview;
 mod profile;
+mod room_state;
 mod rooms;
 mod server_logout;
 mod session;

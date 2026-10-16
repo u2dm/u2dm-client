@@ -17,7 +17,9 @@ use crate::domain::poll::{Poll, PollAnswer, PollChoice, PollDisclosure, PollStat
 use crate::domain::room::{NotifyMode, Room, RoomId, Space};
 use crate::domain::room_info::MemberRole;
 use crate::domain::room_preview::{PreviewMembership, RoomPreview};
+use crate::domain::room_state::{GuestAccess, HistoryVisibility, PowerChange, RoleChange};
 use crate::domain::space_index::{ChildKind, JoinRule, SpaceChild};
+
 
 #[derive(Deserialize, Default)]
 #[serde(deny_unknown_fields)]
@@ -232,6 +234,8 @@ pub struct RoomDto {
     #[serde(default)]
     pub encrypted: bool,
     #[serde(default)]
+    history_visibility: HistoryDto,
+    #[serde(default)]
     pub members: u64,
     #[serde(default)]
     pub unread: u64,
@@ -340,6 +344,19 @@ enum JoinRuleDto {
     Knock,
     Invite,
     Private,
+}
+
+impl JoinRuleDto {
+    fn to_rule(self, allowed: Vec<RoomId>) -> JoinRule {
+        match self {
+            Self::Public => JoinRule::Public,
+            Self::Restricted => JoinRule::Restricted { allowed },
+            Self::KnockRestricted => JoinRule::KnockRestricted { allowed },
+            Self::Knock => JoinRule::Knock,
+            Self::Invite => JoinRule::Invite,
+            Self::Private => JoinRule::Private,
+        }
+    }
 }
 
 #[derive(Deserialize)]
@@ -562,6 +579,20 @@ enum ServiceDto {
         #[serde(default)]
         target: String,
     },
+    Knocked,
+    KnockRetracted,
+    KnockDenied {
+        #[serde(default)]
+        target: String,
+    },
+    ThirdPartyInvite {
+        #[serde(default)]
+        target: String,
+    },
+    ThirdPartyRevoked {
+        #[serde(default)]
+        target: String,
+    },
     NameChanged {
         #[serde(default)]
         target: String,
@@ -571,11 +602,41 @@ enum ServiceDto {
         #[serde(default)]
         target: String,
     },
+    RoomNameRemoved,
     RoomAvatar,
     RoomCreated,
     UpgradedRoomCreated,
     RoomUpgraded,
     Encryption,
+    JoinRules {
+        rule: JoinRuleDto,
+    },
+    History {
+        visibility: HistoryDto,
+    },
+    Guests {
+        access: GuestsDto,
+    },
+    ServerAcl,
+    MainAddress {
+        #[serde(default)]
+        target: String,
+    },
+    MainAddressRemoved,
+    AltAddresses,
+    Pinned,
+    Unpinned,
+    PinsChanged,
+    Role {
+        #[serde(default)]
+        target: String,
+        change: RoleChangeDto,
+    },
+    PowerLevel {
+        #[serde(default)]
+        target: String,
+    },
+    PowerLevels,
     CallStarted,
 }
 
@@ -593,6 +654,17 @@ impl ServiceDto {
             Self::Banned { target } => ServiceEvent::Banned {
                 target: named_only(target),
             },
+            Self::Knocked => ServiceEvent::Knocked,
+            Self::KnockRetracted => ServiceEvent::KnockRetracted,
+            Self::KnockDenied { target } => ServiceEvent::KnockDenied {
+                target: named_only(target),
+            },
+            Self::ThirdPartyInvite { target } => ServiceEvent::ThirdPartyInvited {
+                name: target.clone(),
+            },
+            Self::ThirdPartyRevoked { target } => ServiceEvent::ThirdPartyInviteRevoked {
+                name: target.clone(),
+            },
             Self::NameChanged { target } => ServiceEvent::DisplayNameChanged {
                 name: target.clone(),
             },
@@ -600,12 +672,96 @@ impl ServiceDto {
             Self::RoomName { target } => ServiceEvent::RoomNameChanged {
                 name: target.clone(),
             },
+            Self::RoomNameRemoved => ServiceEvent::RoomNameRemoved,
             Self::RoomAvatar => ServiceEvent::RoomAvatarChanged,
             Self::RoomCreated => ServiceEvent::RoomCreated,
             Self::UpgradedRoomCreated => ServiceEvent::UpgradedRoomCreated,
             Self::RoomUpgraded => ServiceEvent::RoomUpgraded,
             Self::Encryption => ServiceEvent::EncryptionEnabled,
+            Self::JoinRules { rule } => ServiceEvent::JoinRuleChanged(rule.to_rule(Vec::new())),
+            Self::History { visibility } => {
+                ServiceEvent::HistoryVisibilityChanged(visibility.to_visibility())
+            }
+            Self::Guests { access } => ServiceEvent::GuestAccessChanged(access.to_access()),
+            Self::ServerAcl => ServiceEvent::ServerAclChanged,
+            Self::MainAddress { target } => ServiceEvent::MainAddressSet {
+                alias: target.clone(),
+            },
+            Self::MainAddressRemoved => ServiceEvent::MainAddressRemoved,
+            Self::AltAddresses => ServiceEvent::AlternativeAddressesChanged,
+            Self::Pinned => ServiceEvent::MessagePinned,
+            Self::Unpinned => ServiceEvent::MessageUnpinned,
+            Self::PinsChanged => ServiceEvent::PinnedMessagesChanged,
+            Self::Role { target, change } => ServiceEvent::PowerLevelsChanged(PowerChange::Role {
+                target: named_only(target),
+                change: change.to_change(),
+            }),
+            Self::PowerLevel { target } => ServiceEvent::PowerLevelsChanged(PowerChange::Level {
+                target: named_only(target),
+            }),
+            Self::PowerLevels => ServiceEvent::PowerLevelsChanged(PowerChange::Levels),
             Self::CallStarted => ServiceEvent::CallStarted,
+        }
+    }
+}
+
+#[derive(Deserialize, Default, Clone, Copy)]
+#[serde(rename_all = "snake_case")]
+enum HistoryDto {
+    WorldReadable,
+    #[default]
+    Shared,
+    Invited,
+    Joined,
+    Custom,
+}
+
+impl HistoryDto {
+    fn to_visibility(self) -> HistoryVisibility {
+        match self {
+            Self::WorldReadable => HistoryVisibility::WorldReadable,
+            Self::Shared => HistoryVisibility::Shared,
+            Self::Invited => HistoryVisibility::Invited,
+            Self::Joined => HistoryVisibility::Joined,
+            Self::Custom => HistoryVisibility::Unknown,
+        }
+    }
+}
+
+#[derive(Deserialize, Clone, Copy)]
+#[serde(rename_all = "snake_case")]
+enum GuestsDto {
+    CanJoin,
+    Forbidden,
+    Custom,
+}
+
+impl GuestsDto {
+    fn to_access(self) -> GuestAccess {
+        match self {
+            Self::CanJoin => GuestAccess::CanJoin,
+            Self::Forbidden => GuestAccess::Forbidden,
+            Self::Custom => GuestAccess::Unknown,
+        }
+    }
+}
+
+#[derive(Deserialize, Clone, Copy)]
+#[serde(rename_all = "snake_case")]
+enum RoleChangeDto {
+    MadeAdmin,
+    MadeModerator,
+    NoLongerAdmin,
+    NoLongerModerator,
+}
+
+impl RoleChangeDto {
+    fn to_change(self) -> RoleChange {
+        match self {
+            Self::MadeAdmin => RoleChange::MadeAdmin,
+            Self::MadeModerator => RoleChange::MadeModerator,
+            Self::NoLongerAdmin => RoleChange::NoLongerAdmin,
+            Self::NoLongerModerator => RoleChange::NoLongerModerator,
         }
     }
 }
@@ -654,6 +810,7 @@ impl RoomDto {
             canonical_alias: self.alias.clone(),
             is_direct: self.direct,
             is_encrypted: self.encrypted,
+            history_visibility: self.history_visibility.to_visibility(),
             poll_permissions: polls::permissions(),
             message_permissions: message_menu::permissions(),
             may_invite: invite_people::may_invite(),
@@ -689,7 +846,6 @@ impl RoomDto {
 
 impl UnjoinedDto {
     pub fn to_child(&self, via: &[String]) -> SpaceChild {
-        let allowed = || self.allowed.iter().map(RoomId::new).collect();
         SpaceChild {
             id: RoomId::new(&self.id),
             name: self.name.clone(),
@@ -697,14 +853,9 @@ impl UnjoinedDto {
             topic: self.topic.clone(),
             avatar_mxc: self.avatar.clone(),
             member_count: self.members,
-            join_rule: match self.join_rule {
-                JoinRuleDto::Public => JoinRule::Public,
-                JoinRuleDto::Restricted => JoinRule::Restricted { allowed: allowed() },
-                JoinRuleDto::KnockRestricted => JoinRule::KnockRestricted { allowed: allowed() },
-                JoinRuleDto::Knock => JoinRule::Knock,
-                JoinRuleDto::Invite => JoinRule::Invite,
-                JoinRuleDto::Private => JoinRule::Private,
-            },
+            join_rule: self
+                .join_rule
+                .to_rule(self.allowed.iter().map(RoomId::new).collect()),
             kind: if self.space {
                 ChildKind::Space {
                     children: child_count(&self.rooms, &self.spaces),
@@ -725,6 +876,7 @@ impl UnjoinedDto {
             canonical_alias: self.alias.clone(),
             is_direct: false,
             is_encrypted: false,
+            history_visibility: HistoryVisibility::default(),
             poll_permissions: polls::permissions(),
             message_permissions: message_menu::permissions(),
             may_invite: invite_people::may_invite(),
@@ -784,6 +936,7 @@ impl InviteDto {
             canonical_alias: None,
             is_direct: self.direct,
             is_encrypted: self.encrypted,
+            history_visibility: HistoryVisibility::default(),
             poll_permissions: polls::permissions(),
             message_permissions: message_menu::permissions(),
             may_invite: invite_people::may_invite(),

@@ -241,6 +241,24 @@
       }
     },
     {
+      "id": "!square:demo.local",
+      "name": "Town Square",
+      "topic": "The public front porch of the demo server: anyone can drop by, and anyone can read along",
+      "alias": "#town-square:demo.local",
+      "members": 214,
+      "history_visibility": "world_readable",
+      "roles": {
+        "@sarah:matrix.org": "admin",
+        "@kai:matrix.org": "moderator"
+      },
+      "days_ago": 4,
+      "last_message": {
+        "sender": "Sarah Chen",
+        "sender_id": "@sarah:matrix.org",
+        "body": "welcome! everything here is public, so keep secrets in the encrypted rooms"
+      }
+    },
+    {
       "id": "!music:demo.local",
       "name": "music 🎵",
       "members": 64,
@@ -1935,6 +1953,462 @@
         "body": "welcome to the new room. same rules, fewer bugs",
         "days_ago": 8,
         "minutes_ago": 5
+      }
+    ],
+    "!square:demo.local": [
+      {
+        "id": "demo-square-svc-1",
+        "sender": "@sarah:matrix.org",
+        "name": "Sarah Chen",
+        "days_ago": 4,
+        "minutes_ago": 48,
+        "service": {
+          "kind": "room-created"
+        }
+      },
+      {
+        "id": "demo-square-svc-2",
+        "sender": "@sarah:matrix.org",
+        "name": "Sarah Chen",
+        "days_ago": 4,
+        "minutes_ago": 47,
+        "service": {
+          "kind": "join-rules",
+          "rule": "invite"
+        }
+      },
+      {
+        "id": "demo-square-svc-3",
+        "sender": "@sarah:matrix.org",
+        "name": "Sarah Chen",
+        "days_ago": 4,
+        "minutes_ago": 46,
+        "service": {
+          "kind": "history",
+          "visibility": "joined"
+        }
+      },
+      {
+        "id": "demo-square-svc-4",
+        "sender": "@sarah:matrix.org",
+        "name": "Sarah Chen",
+        "days_ago": 4,
+        "minutes_ago": 45,
+        "service": {
+          "kind": "guests",
+          "access": "forbidden"
+        }
+      },
+      {
+        "id": "demo-square-svc-5",
+        "sender": "@sarah:matrix.org",
+        "name": "Sarah Chen",
+        "days_ago": 4,
+        "minutes_ago": 44,
+        "service": {
+          "kind": "role",
+          "target": "Kai",
+          "change": "made_moderator"
+        }
+      },
+      {
+        "id": "demo-square-1",
+        "sender": "@sarah:matrix.org",
+        "name": "Sarah Chen",
+        "body": "setting this up as the front porch of the server. ignore the settings noise",
+        "days_ago": 4,
+        "minutes_ago": 43
+      },
+      {
+        "id": "demo-square-svc-6",
+        "sender": "@sarah:matrix.org",
+        "name": "Sarah Chen",
+        "days_ago": 4,
+        "minutes_ago": 42,
+        "service": {
+          "kind": "join-rules",
+          "rule": "knock"
+        }
+      },
+      {
+        "id": "demo-square-svc-7",
+        "sender": "@jordan:matrix.org",
+        "name": "Jordan",
+        "days_ago": 4,
+        "minutes_ago": 41,
+        "service": {
+          "kind": "knocked"
+        }
+      },
+      {
+        "id": "demo-square-svc-8",
+        "sender": "@jordan:matrix.org",
+        "name": "Jordan",
+        "days_ago": 4,
+        "minutes_ago": 40,
+        "service": {
+          "kind": "knock-retracted"
+        }
+      },
+      {
+        "id": "demo-square-svc-9",
+        "sender": "@leo:matrix.org",
+        "name": "Leo",
+        "days_ago": 4,
+        "minutes_ago": 39,
+        "service": {
+          "kind": "knocked"
+        }
+      },
+      {
+        "id": "demo-square-svc-10",
+        "sender": "@kai:matrix.org",
+        "name": "Kai",
+        "days_ago": 4,
+        "minutes_ago": 38,
+        "service": {
+          "kind": "knock-denied",
+          "target": "Leo"
+        }
+      },
+      {
+        "id": "demo-square-svc-11",
+        "sender": "@sarah:matrix.org",
+        "name": "Sarah Chen",
+        "days_ago": 4,
+        "minutes_ago": 37,
+        "service": {
+          "kind": "third-party-invite",
+          "target": "n…@example.org"
+        }
+      },
+      {
+        "id": "demo-square-svc-12",
+        "sender": "@sarah:matrix.org",
+        "name": "Sarah Chen",
+        "days_ago": 4,
+        "minutes_ago": 36,
+        "service": {
+          "kind": "third-party-revoked",
+          "target": "n…@example.org"
+        }
+      },
+      {
+        "id": "demo-square-svc-13",
+        "sender": "@sarah:matrix.org",
+        "name": "Sarah Chen",
+        "days_ago": 4,
+        "minutes_ago": 35,
+        "service": {
+          "kind": "join-rules",
+          "rule": "restricted"
+        }
+      },
+      {
+        "id": "demo-square-svc-14",
+        "sender": "@sarah:matrix.org",
+        "name": "Sarah Chen",
+        "days_ago": 4,
+        "minutes_ago": 34,
+        "service": {
+          "kind": "join-rules",
+          "rule": "knock_restricted"
+        }
+      },
+      {
+        "id": "demo-square-svc-15",
+        "sender": "@sarah:matrix.org",
+        "name": "Sarah Chen",
+        "days_ago": 4,
+        "minutes_ago": 33,
+        "service": {
+          "kind": "join-rules",
+          "rule": "private"
+        }
+      },
+      {
+        "id": "demo-square-svc-16",
+        "sender": "@sarah:matrix.org",
+        "name": "Sarah Chen",
+        "days_ago": 4,
+        "minutes_ago": 32,
+        "service": {
+          "kind": "history",
+          "visibility": "invited"
+        }
+      },
+      {
+        "id": "demo-square-svc-17",
+        "sender": "@sarah:matrix.org",
+        "name": "Sarah Chen",
+        "days_ago": 4,
+        "minutes_ago": 31,
+        "service": {
+          "kind": "history",
+          "visibility": "shared"
+        }
+      },
+      {
+        "id": "demo-square-svc-18",
+        "sender": "@sarah:matrix.org",
+        "name": "Sarah Chen",
+        "days_ago": 4,
+        "minutes_ago": 30,
+        "service": {
+          "kind": "history",
+          "visibility": "custom"
+        }
+      },
+      {
+        "id": "demo-square-svc-19",
+        "sender": "@sarah:matrix.org",
+        "name": "Sarah Chen",
+        "days_ago": 4,
+        "minutes_ago": 29,
+        "service": {
+          "kind": "guests",
+          "access": "can_join"
+        }
+      },
+      {
+        "id": "demo-square-svc-20",
+        "sender": "@sarah:matrix.org",
+        "name": "Sarah Chen",
+        "days_ago": 4,
+        "minutes_ago": 28,
+        "service": {
+          "kind": "guests",
+          "access": "custom"
+        }
+      },
+      {
+        "id": "demo-square-svc-21",
+        "sender": "@kai:matrix.org",
+        "name": "Kai",
+        "days_ago": 4,
+        "minutes_ago": 27,
+        "service": {
+          "kind": "server-acl"
+        }
+      },
+      {
+        "id": "demo-square-svc-22",
+        "sender": "@sarah:matrix.org",
+        "name": "Sarah Chen",
+        "days_ago": 4,
+        "minutes_ago": 26,
+        "service": {
+          "kind": "main-address",
+          "target": "#square:demo.local"
+        }
+      },
+      {
+        "id": "demo-square-svc-23",
+        "sender": "@sarah:matrix.org",
+        "name": "Sarah Chen",
+        "days_ago": 4,
+        "minutes_ago": 25,
+        "service": {
+          "kind": "main-address-removed"
+        }
+      },
+      {
+        "id": "demo-square-svc-24",
+        "sender": "@sarah:matrix.org",
+        "name": "Sarah Chen",
+        "days_ago": 4,
+        "minutes_ago": 24,
+        "service": {
+          "kind": "main-address",
+          "target": "#town-square:demo.local"
+        }
+      },
+      {
+        "id": "demo-square-svc-25",
+        "sender": "@sarah:matrix.org",
+        "name": "Sarah Chen",
+        "days_ago": 4,
+        "minutes_ago": 23,
+        "service": {
+          "kind": "alt-addresses"
+        }
+      },
+      {
+        "id": "demo-square-2",
+        "sender": "@kai:matrix.org",
+        "name": "Kai",
+        "body": "pinning the house rules so nobody can say they missed them",
+        "days_ago": 4,
+        "minutes_ago": 22
+      },
+      {
+        "id": "demo-square-svc-26",
+        "sender": "@kai:matrix.org",
+        "name": "Kai",
+        "days_ago": 4,
+        "minutes_ago": 21,
+        "service": {
+          "kind": "pinned"
+        }
+      },
+      {
+        "id": "demo-square-svc-27",
+        "sender": "@kai:matrix.org",
+        "name": "Kai",
+        "days_ago": 4,
+        "minutes_ago": 20,
+        "service": {
+          "kind": "pins-changed"
+        }
+      },
+      {
+        "id": "demo-square-svc-28",
+        "sender": "@kai:matrix.org",
+        "name": "Kai",
+        "days_ago": 4,
+        "minutes_ago": 19,
+        "service": {
+          "kind": "unpinned"
+        }
+      },
+      {
+        "id": "demo-square-svc-29",
+        "sender": "@sarah:matrix.org",
+        "name": "Sarah Chen",
+        "days_ago": 4,
+        "minutes_ago": 18,
+        "service": {
+          "kind": "power-level",
+          "target": "Kai"
+        }
+      },
+      {
+        "id": "demo-square-svc-30",
+        "sender": "@sarah:matrix.org",
+        "name": "Sarah Chen",
+        "days_ago": 4,
+        "minutes_ago": 17,
+        "service": {
+          "kind": "role",
+          "target": "Kai",
+          "change": "no_longer_moderator"
+        }
+      },
+      {
+        "id": "demo-square-svc-31",
+        "sender": "@sarah:matrix.org",
+        "name": "Sarah Chen",
+        "days_ago": 4,
+        "minutes_ago": 16,
+        "service": {
+          "kind": "role",
+          "target": "Marcus",
+          "change": "made_admin"
+        }
+      },
+      {
+        "id": "demo-square-svc-32",
+        "sender": "@sarah:matrix.org",
+        "name": "Sarah Chen",
+        "days_ago": 4,
+        "minutes_ago": 15,
+        "service": {
+          "kind": "role",
+          "target": "Marcus",
+          "change": "no_longer_admin"
+        }
+      },
+      {
+        "id": "demo-square-svc-33",
+        "sender": "@sarah:matrix.org",
+        "name": "Sarah Chen",
+        "days_ago": 4,
+        "minutes_ago": 14,
+        "service": {
+          "kind": "role",
+          "target": "Kai",
+          "change": "made_moderator"
+        }
+      },
+      {
+        "id": "demo-square-svc-34",
+        "sender": "@sarah:matrix.org",
+        "name": "Sarah Chen",
+        "days_ago": 4,
+        "minutes_ago": 13,
+        "service": {
+          "kind": "power-levels"
+        }
+      },
+      {
+        "id": "demo-square-svc-35",
+        "sender": "@sarah:matrix.org",
+        "name": "Sarah Chen",
+        "days_ago": 4,
+        "minutes_ago": 12,
+        "service": {
+          "kind": "room-name",
+          "target": "Square"
+        }
+      },
+      {
+        "id": "demo-square-svc-36",
+        "sender": "@sarah:matrix.org",
+        "name": "Sarah Chen",
+        "days_ago": 4,
+        "minutes_ago": 11,
+        "service": {
+          "kind": "room-name-removed"
+        }
+      },
+      {
+        "id": "demo-square-svc-37",
+        "sender": "@sarah:matrix.org",
+        "name": "Sarah Chen",
+        "days_ago": 4,
+        "minutes_ago": 10,
+        "service": {
+          "kind": "room-name",
+          "target": "Town Square"
+        }
+      },
+      {
+        "id": "demo-square-svc-38",
+        "sender": "@sarah:matrix.org",
+        "name": "Sarah Chen",
+        "days_ago": 4,
+        "minutes_ago": 9,
+        "service": {
+          "kind": "join-rules",
+          "rule": "public"
+        }
+      },
+      {
+        "id": "demo-square-svc-39",
+        "sender": "@sarah:matrix.org",
+        "name": "Sarah Chen",
+        "days_ago": 4,
+        "minutes_ago": 8,
+        "service": {
+          "kind": "history",
+          "visibility": "world_readable"
+        }
+      },
+      {
+        "id": "demo-square-3",
+        "sender": "@marcus:matrix.org",
+        "name": "Marcus",
+        "body": "is this the room anyone can read along in? hi to whoever is lurking",
+        "days_ago": 4,
+        "minutes_ago": 7
+      },
+      {
+        "id": "demo-square-4",
+        "sender": "@sarah:matrix.org",
+        "name": "Sarah Chen",
+        "body": "welcome! everything here is public, so keep secrets in the encrypted rooms",
+        "days_ago": 4,
+        "minutes_ago": 6
       }
     ],
     "!stickers:demo.local": [

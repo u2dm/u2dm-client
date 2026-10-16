@@ -1,0 +1,25 @@
+import { Icon, IconDisplay } from "@lucide";
+
+import { AppStyle, Fonts, IconSize, Space } from "../theme.slint";
+
+export component NoticeLine inherits HorizontalLayout {
+    in property <Icon> icon;
+    in property <string> text;
+
+    spacing: Space.md;
+
+    IconDisplay {
+        y: (parent.height - self.height) / 2;
+        icon: root.icon;
+        size: IconSize.xs;
+        stroke: AppStyle.foreground-faint;
+    }
+
+    Text {
+        horizontal-stretch: 1;
+        text: root.text;
+        font-size: Fonts.caption;
+        color: AppStyle.foreground-muted;
+        wrap: word-wrap;
+    }
+}

@@ -200,6 +200,7 @@ pub fn dispatch_effect<B: UiBackend>(w: &B::Window, event: Effect, ctx: &UiEvent
             avatar_mxc,
             member_count,
             encrypted,
+            readable_by_anyone,
             polls,
             messages,
             generation,
@@ -229,6 +230,7 @@ pub fn dispatch_effect<B: UiBackend>(w: &B::Window, event: Effect, ctx: &UiEvent
                 i32::try_from(member_count).unwrap_or(i32::MAX),
             );
             w.set_bool(BoolProp::SelectedRoomEncrypted, encrypted);
+            w.set_bool(BoolProp::SelectedRoomReadableByAnyone, readable_by_anyone);
             apply_poll_permissions(w, polls);
             apply_message_permissions(w, messages);
             let (pagination, pinned) = with_session(|session| {
@@ -1254,6 +1256,7 @@ fn apply_room_card(w: &impl UiProps, card: Option<&RoomCard>, media: &dyn MediaC
     );
     w.set_bool(BoolProp::RoomInfoIsDirect, card.is_direct);
     w.set_bool(BoolProp::RoomInfoMayInvite, card.may_invite);
+    w.set_bool(BoolProp::RoomInfoReadableByAnyone, card.readable_by_anyone);
     w.set_string(
         StringProp::RoomInfoAlias,
         SharedString::from(card.alias.as_deref().unwrap_or_default()),
@@ -2049,6 +2052,7 @@ fn clear_selected_room(w: &impl UiProps) {
     w.set_int(IntProp::SelectedRoomHeadings, 0);
     w.set_int(IntProp::SelectedRoomMembers, 0);
     w.set_bool(BoolProp::SelectedRoomEncrypted, false);
+    w.set_bool(BoolProp::SelectedRoomReadableByAnyone, false);
     apply_poll_permissions(w, PollPermissions::UNRESTRICTED);
     apply_message_permissions(w, MessagePermissions::UNRESTRICTED);
     w.set_int(IntProp::AnchorIndex, NO_ANCHOR);

@@ -7,6 +7,7 @@ import { CopyFeedback } from "../../../components/copier.slint";
 import { CloseWatch } from "../../../components/close-watch.slint";
 import { DialogCard, ModalHost, PickerCard, Placement } from "../../../components/overlay.slint";
 import { ErrorBanner } from "../../../components/banner.slint";
+import { NoticeLine } from "../../../components/notice-line.slint";
 import { RetryNotice } from "../../../components/retry-notice.slint";
 import { ActionTile } from "./action-tile.slint";
 import { DetailLine } from "./detail-line.slint";
@@ -683,6 +684,11 @@ component RoomInfoSheet inherits Rectangle {
                         above-modal: root.above-modal;
                         expanded <=> root.topic-expanded;
                         selecting <=> root.topic-selecting;
+                    }
+
+                    if RoomInfoView.readable-by-anyone: NoticeLine {
+                        icon: IconSet.Globe;
+                        text: @tr("Anyone can read this room, even without joining it.");
                     }
 
                     if RoomInfoView.alias != "": DetailLine {

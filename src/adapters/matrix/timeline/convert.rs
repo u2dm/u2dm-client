@@ -1,28 +1,26 @@
 use std::collections::{BTreeMap, HashSet};
 
 use matrix_sdk::ruma::UInt;
+use matrix_sdk::ruma::events::Mentions;
 use matrix_sdk::ruma::events::poll::start::PollKind;
 use matrix_sdk::ruma::events::room::ImageInfo;
-use matrix_sdk::ruma::events::room::create::RoomCreateEventContent;
 use matrix_sdk::ruma::events::room::message::{
     AudioMessageEventContent, FileMessageEventContent, FormattedBody, ImageMessageEventContent,
     MessageFormat, MessageType, UnstableAmplitude, VideoInfo, VideoMessageEventContent,
 };
-use matrix_sdk::ruma::events::room::name::RoomNameEventContent;
 use matrix_sdk::ruma::events::sticker::StickerEventContent;
-use matrix_sdk::ruma::events::{Mentions, StateEventContentChange};
 use matrix_sdk::ruma::html::{HtmlSanitizerMode, RemoveReplyFallback, sanitize_html};
 use matrix_sdk_base::crypto::types::events::UtdCause;
 use matrix_sdk_ui::timeline::{
-    AnyOtherStateEventContentChange, EncryptedMessage, EventSendState, EventTimelineItem,
-    MemberProfileChange, MembershipChange, Message, PollState, Profile, ReactionInfo,
-    RoomMembershipChange, Sticker, TimelineDetails, TimelineEventShieldState,
-    TimelineEventShieldStateCode, TimelineItem, TimelineItemContent,
+    EncryptedMessage, EventSendState, EventTimelineItem, MemberProfileChange, MembershipChange,
+    Message, PollState, Profile, ReactionInfo, RoomMembershipChange, Sticker, TimelineDetails,
+    TimelineEventShieldState, TimelineEventShieldStateCode, TimelineItem, TimelineItemContent,
 };
 use serde::Deserialize;
 
 use super::TimelineContext;
 use super::members::{Arrived, MemberCache, Need};
+use super::state_rows::{other_state_to_service, unparsed_state};
 use crate::adapters::matrix::media::{EventMedia, file_content, thumbnail_content};
 use crate::adapters::matrix::preview;
 use crate::adapters::{body_emoji, markdown};
@@ -320,11 +318,11 @@ fn membership_to_service(change: &RoomMembershipChange) -> Option<ServiceEvent> 
         MembershipChange::Unbanned => ServiceEvent::Unbanned { target },
         MembershipChange::Knocked => ServiceEvent::Knocked,
         MembershipChange::KnockAccepted => ServiceEvent::KnockAccepted { target },
-        MembershipChange::None
-        | MembershipChange::Error
-        | MembershipChange::KnockRetracted
-        | MembershipChange::KnockDenied
-        | MembershipChange::NotImplemented => return None,
+        MembershipChange::KnockRetracted => ServiceEvent::KnockRetracted,
+        MembershipChange::KnockDenied => ServiceEvent::KnockDenied { target },
+        MembershipChange::None | MembershipChange::Error | MembershipChange::NotImplemented => {
+            return None;
+        }
     })
 }
 
@@ -343,38 +341,6 @@ fn profile_to_service(change: &MemberProfileChange) -> Option<ServiceEvent> {
         return Some(ServiceEvent::AvatarChanged);
     }
     None
-}
-
-fn room_name_from_change(change: &StateEventContentChange<RoomNameEventContent>) -> String {
-    match change {
-        StateEventContentChange::Original { content, .. } => content.name.clone(),
-        StateEventContentChange::Redacted(_) => String::new(),
-    }
-}
-
-fn room_creation(change: &StateEventContentChange<RoomCreateEventContent>) -> ServiceEvent {
-    match change {
-        StateEventContentChange::Original { content, .. } if content.predecessor.is_some() => {
-            ServiceEvent::UpgradedRoomCreated
-        }
-        StateEventContentChange::Original { .. } | StateEventContentChange::Redacted(_) => {
-            ServiceEvent::RoomCreated
-        }
-    }
-}
-
-fn other_state_to_service(state: &AnyOtherStateEventContentChange) -> Option<ServiceEvent> {
-    Some(match state {
-        AnyOtherStateEventContentChange::RoomName(change) => ServiceEvent::RoomNameChanged {
-            name: room_name_from_change(change),
-        },
-        AnyOtherStateEventContentChange::RoomTopic(_) => ServiceEvent::RoomTopicChanged,
-        AnyOtherStateEventContentChange::RoomAvatar(_) => ServiceEvent::RoomAvatarChanged,
-        AnyOtherStateEventContentChange::RoomCreate(change) => room_creation(change),
-        AnyOtherStateEventContentChange::RoomTombstone(_) => ServiceEvent::RoomUpgraded,
-        AnyOtherStateEventContentChange::RoomEncryption(_) => ServiceEvent::EncryptionEnabled,
-        _ => return None,
-    })
 }
 
 fn service_event_from_content(content: &TimelineItemContent) -> Option<ServiceEvent> {
@@ -412,9 +378,13 @@ pub(super) fn classify(content: &TimelineItemContent) -> Option<Renderable<'_>> 
     service_event_from_content(content).map(Renderable::Service)
 }
 
+fn classify_event(event: &EventTimelineItem) -> Option<Renderable<'_>> {
+    classify(event.content()).or_else(|| unparsed_state(event).map(Renderable::Service))
+}
+
 pub(super) fn renders(item: &TimelineItem) -> bool {
     item.as_event()
-        .is_some_and(|event| classify(event.content()).is_some())
+        .is_some_and(|event| classify_event(event).is_some())
 }
 
 pub(super) fn event_media(item: &TimelineItem) -> Option<EventMedia> {
@@ -807,7 +777,7 @@ pub(super) fn convert_event_item_with_uid(
     let content = event.content();
     let reply = extract_reply(content, ctx);
 
-    match classify(content) {
+    match classify_event(event) {
         Some(Renderable::Message(message)) => {
             let (body, mentions_room, edited) = match ctx.discarded.original_content(event) {
                 Some(original) => (

@@ -21,6 +21,7 @@ use crate::domain::push::NoticeContent;
 use crate::domain::room::{Room, Space};
 use crate::domain::room_info::{Reader, RosterSection};
 use crate::domain::room_preview::{PreviewMembership, RoomPreview};
+use crate::domain::room_state::HistoryVisibility;
 use crate::domain::space_index::{ChildKind, JoinRule};
 use crate::domain::sync::{ConnectionStatus, ReauthReason};
 use crate::domain::timeline::{OlderHistory, SourceEncryption};
@@ -266,6 +267,7 @@ struct RoomDto {
     name: String,
     is_direct: bool,
     is_encrypted: bool,
+    history_visibility: &'static str,
     poll_permissions: PollPermissionsDto,
     message_permissions: MessagePermissionsDto,
     may_invite: bool,
@@ -426,6 +428,7 @@ struct RoomInfoDto {
     notify_busy: bool,
     leaving: bool,
     may_invite: bool,
+    readable_by_anyone: bool,
     roster: &'static str,
     has_more: bool,
     pages_landed: i32,
@@ -899,6 +902,7 @@ fn room(source: &Room) -> RoomDto {
         name: source.display_name.clone(),
         is_direct: source.is_direct,
         is_encrypted: source.is_encrypted,
+        history_visibility: history_visibility(source.history_visibility),
         poll_permissions: PollPermissionsDto {
             vote: source.poll_permissions.vote,
             end: source.poll_permissions.end,
@@ -1079,6 +1083,7 @@ fn room_info(source: &RoomInfoView) -> RoomInfoDto {
         notify_busy: source.notify_busy,
         leaving: source.leaving,
         may_invite: card.is_some_and(|card| card.may_invite),
+        readable_by_anyone: card.is_some_and(|card| card.readable_by_anyone),
         roster: names::roster_status(source.roster),
         has_more: source.has_more,
         pages_landed: source.pages_landed,
@@ -1178,6 +1183,16 @@ fn join_rule(source: &JoinRule) -> &'static str {
         JoinRule::Invite => "invite",
         JoinRule::Private => "private",
         JoinRule::Unsupported => "unsupported",
+    }
+}
+
+fn history_visibility(source: HistoryVisibility) -> &'static str {
+    match source {
+        HistoryVisibility::WorldReadable => "world_readable",
+        HistoryVisibility::Shared => "shared",
+        HistoryVisibility::Invited => "invited",
+        HistoryVisibility::Joined => "joined",
+        HistoryVisibility::Unknown => "unknown",
     }
 }
 

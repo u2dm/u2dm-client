@@ -533,6 +533,12 @@ export global ServiceLabel {
         if kind == ServiceKind.knock-accepted {
             return @tr("{} allowed {} to join", actor, target);
         }
+        if kind == ServiceKind.knock-retracted {
+            return @tr("{} withdrew their request to join", actor);
+        }
+        if kind == ServiceKind.knock-denied {
+            return @tr("{} declined the request to join from {}", actor, target);
+        }
         if kind == ServiceKind.name-set {
             return @tr("{} set their name to {}", actor, target);
         }
@@ -547,6 +553,9 @@ export global ServiceLabel {
         }
         if kind == ServiceKind.room-name {
             return @tr("{} changed the room name to {}", actor, target);
+        }
+        if kind == ServiceKind.room-name-removed {
+            return @tr("{} removed the room name", actor);
         }
         if kind == ServiceKind.room-topic {
             return @tr("{} changed the room topic", actor);
@@ -565,6 +574,87 @@ export global ServiceLabel {
         }
         if kind == ServiceKind.encryption {
             return @tr("{} enabled end-to-end encryption", actor);
+        }
+        if kind == ServiceKind.join-public {
+            return @tr("{} made the room public", actor);
+        }
+        if kind == ServiceKind.join-invite {
+            return @tr("{} made the room invite only", actor);
+        }
+        if kind == ServiceKind.join-knock {
+            return @tr("{} let people ask to join the room", actor);
+        }
+        if kind == ServiceKind.join-restricted {
+            return @tr("{} let space members join the room", actor);
+        }
+        if kind == ServiceKind.join-knock-restricted {
+            return @tr("{} let space members join and others ask to join", actor);
+        }
+        if kind == ServiceKind.join-rule {
+            return @tr("{} changed who can join the room", actor);
+        }
+        if kind == ServiceKind.history-world-readable {
+            return @tr("{} made future room history visible to anyone", actor);
+        }
+        if kind == ServiceKind.history-shared {
+            return @tr("{} made future room history visible to all members", actor);
+        }
+        if kind == ServiceKind.history-invited {
+            return @tr("{} made future room history visible to members from when they are invited", actor);
+        }
+        if kind == ServiceKind.history-joined {
+            return @tr("{} made future room history visible to members from when they join", actor);
+        }
+        if kind == ServiceKind.history {
+            return @tr("{} changed who can see future room history", actor);
+        }
+        if kind == ServiceKind.guests-allowed {
+            return @tr("{} allowed guests to join the room", actor);
+        }
+        if kind == ServiceKind.guests-forbidden {
+            return @tr("{} stopped guests from joining the room", actor);
+        }
+        if kind == ServiceKind.guest-access {
+            return @tr("{} changed whether guests can join the room", actor);
+        }
+        if kind == ServiceKind.server-acl {
+            return @tr("{} changed which servers can take part in the room", actor);
+        }
+        if kind == ServiceKind.main-address {
+            return @tr("{} set the room's main address to {}", actor, target);
+        }
+        if kind == ServiceKind.main-address-removed {
+            return @tr("{} removed the room's main address", actor);
+        }
+        if kind == ServiceKind.alt-addresses {
+            return @tr("{} changed the room's alternative addresses", actor);
+        }
+        if kind == ServiceKind.message-pinned {
+            return @tr("{} pinned a message", actor);
+        }
+        if kind == ServiceKind.message-unpinned {
+            return @tr("{} unpinned a message", actor);
+        }
+        if kind == ServiceKind.pins-changed {
+            return @tr("{} changed the pinned messages", actor);
+        }
+        if kind == ServiceKind.made-admin {
+            return @tr("{} made {} an admin", actor, target);
+        }
+        if kind == ServiceKind.made-moderator {
+            return @tr("{} made {} a moderator", actor, target);
+        }
+        if kind == ServiceKind.no-longer-admin {
+            return @tr("{} removed {} as an admin", actor, target);
+        }
+        if kind == ServiceKind.no-longer-moderator {
+            return @tr("{} removed {} as a moderator", actor, target);
+        }
+        if kind == ServiceKind.power-level {
+            return @tr("{} changed the power level of {}", actor, target);
+        }
+        if kind == ServiceKind.power-levels {
+            return @tr("{} changed the room's power levels", actor);
         }
         if kind == ServiceKind.call-started {
             return @tr("{} started a call", actor);

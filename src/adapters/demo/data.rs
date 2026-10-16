@@ -27,6 +27,7 @@ use crate::domain::room_info::{
     MemberRole, Reader, RoomAbout, RosterMember, RosterSection, sort_roster,
 };
 use crate::domain::room_preview::{PreviewMembership, RoomPreview};
+use crate::domain::room_state::HistoryVisibility;
 use crate::domain::space_index::{ChildKind, SpaceChild};
 use crate::domain::user_info::{
     IdentityTrust, ModerationPowers, Pronouns, RoomMembership, UserId, UserProfile, localpart,
@@ -192,6 +193,7 @@ fn started_chat(room_id: &str, user_id: &str, now: u64) -> Room {
         canonical_alias: None,
         is_direct: true,
         is_encrypted: true,
+        history_visibility: HistoryVisibility::default(),
         poll_permissions: polls::permissions(),
         message_permissions: message_menu::permissions(),
         may_invite: invite_people::may_invite(),
@@ -221,6 +223,7 @@ fn created_room(created: &Created) -> Room {
         canonical_alias: created.alias.clone(),
         is_direct: false,
         is_encrypted: created.encrypted,
+        history_visibility: HistoryVisibility::default(),
         poll_permissions: polls::permissions(),
         message_permissions: message_menu::permissions(),
         may_invite: invite_people::may_invite(),

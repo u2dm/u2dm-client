@@ -1,7 +1,8 @@
-import { IconDisplay, IconSet } from "@lucide";
+import { IconSet } from "@lucide";
 
 import { ClickArea } from "../../../../components/a11y.slint";
-import { AppStyle, Fonts, IconSize, Radius, Space } from "../../../../theme.slint";
+import { NoticeLine } from "../../../../components/notice-line.slint";
+import { AppStyle, Radius, Space } from "../../../../theme.slint";
 
 export component PickerCell inherits ClickArea {
     in property <length> cell;
@@ -23,26 +24,9 @@ export component PickerCell inherits ClickArea {
     @children
 }
 
-export component UnencryptedNotice inherits HorizontalLayout {
-    in property <string> text;
-
-    spacing: Space.md;
+export component UnencryptedNotice inherits NoticeLine {
+    icon: IconSet.ShieldAlert;
     padding-left: Space.sm;
     padding-right: Space.sm;
     padding-top: Space.xs;
-
-    IconDisplay {
-        y: (parent.height - self.height) / 2;
-        icon: IconSet.ShieldAlert;
-        size: IconSize.xs;
-        stroke: AppStyle.foreground-faint;
-    }
-
-    Text {
-        horizontal-stretch: 1;
-        text: root.text;
-        font-size: Fonts.caption;
-        color: AppStyle.foreground-muted;
-        wrap: word-wrap;
-    }
 }

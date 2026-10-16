@@ -167,6 +167,7 @@ pub struct TimelineDump {
     pub selected_room_id: String,
     pub selected_room_name: String,
     pub selected_room_encrypted: bool,
+    pub selected_room_readable_by_anyone: bool,
     pub poll_permissions: PollPermissionsDump,
     pub message_permissions: MessagePermissionsDump,
     pub generation: i32,
@@ -265,6 +266,7 @@ fn collect<B: UiBackend>(window: &B::Window) -> TimelineDump {
         selected_room_id: window.get_string(StringProp::SelectedRoomId).to_string(),
         selected_room_name: window.get_string(StringProp::SelectedRoomName).to_string(),
         selected_room_encrypted: window.get_bool(BoolProp::SelectedRoomEncrypted),
+        selected_room_readable_by_anyone: window.get_bool(BoolProp::SelectedRoomReadableByAnyone),
         poll_permissions: PollPermissionsDump {
             vote: window.get_bool(BoolProp::MayVote),
             end: window.get_bool(BoolProp::MayEndPolls),

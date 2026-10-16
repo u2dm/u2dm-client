@@ -7,6 +7,8 @@ use crate::domain::media::{
 };
 use crate::domain::member_name::{MemberName, NamedUser};
 use crate::domain::poll::Poll;
+use crate::domain::room_state::{GuestAccess, HistoryVisibility, PowerChange};
+use crate::domain::space_index::JoinRule;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum MessagePreviewKind {
@@ -38,17 +40,33 @@ pub enum ServiceEvent {
     Unbanned { target: NamedUser },
     Knocked,
     KnockAccepted { target: NamedUser },
+    KnockRetracted,
+    KnockDenied { target: NamedUser },
+    ThirdPartyInvited { name: String },
+    ThirdPartyInviteRevoked { name: String },
     DisplayNameSet { name: String },
     DisplayNameChanged { name: String },
     DisplayNameRemoved,
     AvatarChanged,
     RoomNameChanged { name: String },
+    RoomNameRemoved,
     RoomTopicChanged,
     RoomAvatarChanged,
     RoomCreated,
     UpgradedRoomCreated,
     RoomUpgraded,
     EncryptionEnabled,
+    JoinRuleChanged(JoinRule),
+    HistoryVisibilityChanged(HistoryVisibility),
+    GuestAccessChanged(GuestAccess),
+    ServerAclChanged,
+    MainAddressSet { alias: String },
+    MainAddressRemoved,
+    AlternativeAddressesChanged,
+    MessagePinned,
+    MessageUnpinned,
+    PinnedMessagesChanged,
+    PowerLevelsChanged(PowerChange),
     CallStarted,
     CallNotification,
 }
@@ -177,7 +195,9 @@ impl ServiceEvent {
             | Self::Kicked { target }
             | Self::Banned { target }
             | Self::Unbanned { target }
-            | Self::KnockAccepted { target } => Some(target),
+            | Self::KnockAccepted { target }
+            | Self::KnockDenied { target } => Some(target),
+            Self::PowerLevelsChanged(change) => change.target(),
             _ => None,
         }
     }
@@ -189,7 +209,9 @@ impl ServiceEvent {
             | Self::Kicked { target }
             | Self::Banned { target }
             | Self::Unbanned { target }
-            | Self::KnockAccepted { target } => Some(target),
+            | Self::KnockAccepted { target }
+            | Self::KnockDenied { target } => Some(target),
+            Self::PowerLevelsChanged(change) => change.target_mut(),
             _ => None,
         }
     }
