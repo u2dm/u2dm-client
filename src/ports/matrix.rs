@@ -19,6 +19,7 @@ use crate::domain::media::{MediaRendition, OutgoingAttachment, WaveformNeed};
 use crate::domain::member_name::NamedUser;
 use crate::domain::message::{MessageEdit, PinChange, PinnedMessage};
 use crate::domain::poll::PollDraft;
+use crate::domain::presence::{Availability, BeaconResult, LookupResult};
 use crate::domain::push::PushNotice;
 use crate::domain::room::{NotifyMode, RoomId};
 use crate::domain::room_creation::{CreateResult, RoomBlueprint};
@@ -155,6 +156,7 @@ pub struct AuthenticatedSession {
     pub room_creation: Arc<dyn RoomCreationPort>,
     pub invite_people: Arc<dyn InvitePeoplePort>,
     pub typing: Arc<dyn TypingPort>,
+    pub presence: Arc<dyn PresencePort>,
     pub push: Arc<dyn PushPort>,
     pub room_info: Arc<dyn RoomInfoPort>,
     pub user_info: Arc<dyn UserInfoPort>,
@@ -275,6 +277,12 @@ pub trait TypingPort: Send + Sync {
         typists_tx: mpsc::Sender<Vec<NamedUser>>,
     ) -> Result<()>;
     async fn notify_typing(&self, room_id: &RoomId, typing: bool) -> Result<()>;
+}
+
+#[async_trait]
+pub trait PresencePort: Send + Sync {
+    async fn announce(&self, availability: Availability, status: Option<&str>) -> BeaconResult;
+    async fn presence_of(&self, user_id: &UserId) -> LookupResult;
 }
 
 #[async_trait]

@@ -75,6 +75,10 @@ pub(super) fn endpoint_missing(err: &SyncServiceError) -> bool {
     let Some(matrix_sdk::Error::Http(http)) = extract_sdk_error(err) else {
         return false;
     };
+    refuses_endpoint(http)
+}
+
+pub(super) fn refuses_endpoint(http: &HttpError) -> bool {
     http.as_client_api_error().is_some_and(|refusal| {
         matches!(
             refusal.status_code,

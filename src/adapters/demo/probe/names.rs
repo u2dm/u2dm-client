@@ -4,7 +4,7 @@ use crate::adapters::ui::schema::{
     direct_chats, encryption_activities, encryption_standings, encryption_steps, enum_names,
     identity_alert_kinds, identity_trusts, invite_answers, invite_kinds, invitee_states,
     log_levels, login_activities, login_methods, login_phases, member_roles, notify_modes,
-    pending_moderations, people_search_statuses, preview_kinds, readers_statuses,
+    pending_moderations, people_search_statuses, presence_lines, preview_kinds, readers_statuses,
     recovery_statuses, room_accesses, room_info_placements, room_kinds, room_memberships,
     room_preview_statuses, room_scopes, roster_statuses, source_encryptions, source_statuses,
     space_index_statuses, upgrade_links, user_message_kinds, variant_named,
@@ -21,6 +21,7 @@ use crate::domain::encryption::{Recovery, Standing};
 use crate::domain::invite::InviteKind;
 use crate::domain::media::AudioKind;
 use crate::domain::message::MessagePreviewKind;
+use crate::domain::presence::PresenceLine;
 use crate::domain::room::NotifyMode;
 use crate::domain::room_creation::{RoomAccess, RoomKind};
 use crate::domain::room_info::MemberRole;
@@ -53,6 +54,7 @@ invite_kinds!(enum_names val invite_kind InviteKind;);
 invite_answers!(enum_names val pending_answer PendingAnswer;);
 pending_moderations!(enum_names val pending_moderation PendingModeration;);
 identity_trusts!(enum_names val identity_trust IdentityTrust;);
+presence_lines!(enum_names val presence_line PresenceLine;);
 identity_alert_kinds!(enum_names val identity_alert_kind IdentityAlertKind;);
 encryption_standings!(enum_names val encryption_standing Standing;);
 recovery_statuses!(enum_names val recovery_status Recovery;);

@@ -9,11 +9,11 @@ import { CopyNotice } from "../../../../components/copy-notice.slint";
 import { AppStyle, Fonts, Glyph, Metrics, Size, Space, Stroke } from "../../../../theme.slint";
 import { HeaderIconButton } from "../../../../components/button.slint";
 import { CloseWatch } from "../../../../components/close-watch.slint";
-import { TimelineState } from "../../../../enums.slint";
+import { PresenceLine, TimelineState } from "../../../../enums.slint";
 import { ClickArea } from "../../../../components/a11y.slint";
 import { CopyNotifier } from "../../../../components/copier.slint";
-import { AudioView, DirectoryView, RoomView, TypingView } from "../../../../views.slint";
-import { TypingLine } from "../../../../messages.slint";
+import { AudioView, DirectoryView, PresenceView, RoomView, TypingView } from "../../../../views.slint";
+import { PresenceWords, TypingLine } from "../../../../messages.slint";
 import { Actions } from "../../../../actions.slint";
 import { LocalState, ReplySwipe, RoomMenu, RoomMenuOrigin, RoomMenuReturn, RoomSearch, Shell } from "../../../../local.slint";
 import { StatusPill } from "../../../../components/status-pill.slint";
@@ -155,6 +155,10 @@ export component TimelineView inherits Rectangle {
                     typing: TypingView.room-id == root.room-id
                         ? TypingLine.text(TypingView.count, TypingView.first, TypingView.second)
                         : "";
+                    presence-line: PresenceView.room-id == root.room-id
+                        ? PresenceView.partner
+                        : PresenceLine.hidden;
+                    presence: PresenceWords.text(self.presence-line, PresenceView.partner-minutes);
                 }
             }
         }

@@ -6,6 +6,7 @@ use crate::domain::member_name::NamedUser;
 use crate::domain::message::{MessagePermissions, MessagePreviewKind, RichText, ServiceEvent};
 use crate::domain::poll::PollPermissions;
 use crate::domain::room_state::HistoryVisibility;
+use crate::domain::user_info::UserId;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct RoomId(String);
@@ -53,6 +54,7 @@ pub struct Room {
     pub topic: Option<String>,
     pub canonical_alias: Option<String>,
     pub is_direct: bool,
+    pub direct_partner: Option<UserId>,
     pub is_encrypted: bool,
     pub history_visibility: HistoryVisibility,
     pub poll_permissions: PollPermissions,

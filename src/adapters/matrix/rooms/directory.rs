@@ -78,6 +78,7 @@ fn changed_facets(before: &DomainRoom, after: &DomainRoom) -> Vec<&'static str> 
         topic,
         canonical_alias,
         is_direct,
+        direct_partner,
         is_encrypted,
         history_visibility,
         poll_permissions,
@@ -113,6 +114,7 @@ fn changed_facets(before: &DomainRoom, after: &DomainRoom) -> Vec<&'static str> 
         ("topic", before.topic != *topic),
         ("alias", before.canonical_alias != *canonical_alias),
         ("direct", before.is_direct != *is_direct),
+        ("partner", before.direct_partner != *direct_partner),
         ("encryption", before.is_encrypted != *is_encrypted),
         ("history", before.history_visibility != *history_visibility),
         (

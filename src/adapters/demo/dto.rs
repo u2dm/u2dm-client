@@ -19,6 +19,7 @@ use crate::domain::room_info::MemberRole;
 use crate::domain::room_preview::{PreviewMembership, RoomPreview};
 use crate::domain::room_state::{GuestAccess, HistoryVisibility, PowerChange, RoleChange};
 use crate::domain::space_index::{ChildKind, JoinRule, SpaceChild};
+use crate::domain::user_info::UserId;
 
 
 #[derive(Deserialize, Default)]
@@ -809,6 +810,7 @@ impl RoomDto {
             topic: self.topic.clone(),
             canonical_alias: self.alias.clone(),
             is_direct: self.direct,
+            direct_partner: direct_partner(self.direct, self.avatar.as_deref()),
             is_encrypted: self.encrypted,
             history_visibility: self.history_visibility.to_visibility(),
             poll_permissions: polls::permissions(),
@@ -875,6 +877,7 @@ impl UnjoinedDto {
             topic: self.topic.clone(),
             canonical_alias: self.alias.clone(),
             is_direct: false,
+            direct_partner: None,
             is_encrypted: false,
             history_visibility: HistoryVisibility::default(),
             poll_permissions: polls::permissions(),
@@ -935,6 +938,7 @@ impl InviteDto {
             topic: self.topic.clone(),
             canonical_alias: None,
             is_direct: self.direct,
+            direct_partner: direct_partner(self.direct, self.inviter.as_deref()),
             is_encrypted: self.encrypted,
             history_visibility: HistoryVisibility::default(),
             poll_permissions: polls::permissions(),
@@ -1215,6 +1219,12 @@ impl KindDto {
             Self::None => MessagePreviewKind::None,
         }
     }
+}
+
+fn direct_partner(direct: bool, person: Option<&str>) -> Option<UserId> {
+    person
+        .filter(|user_id| direct && user_id.starts_with('@'))
+        .map(UserId::new)
 }
 
 fn ago_ms(now_ms: u64, minutes: u64, days: u64) -> u64 {

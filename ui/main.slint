@@ -29,6 +29,7 @@ import {
     IdentityAlertView,
     UpgradeView,
     TypingView,
+    PresenceView,
     EncryptionView,
     WindowView,
     SourceView,
@@ -72,7 +73,7 @@ export { EmojiStore }
 export { LoginPhase, ConnectionState, TimelineState, VerificationPhase, MediaState, MediaFailure }
 export { MessageKind, PreviewKind, ServiceKind, LoginMethodKind, AudioKind }
 export { LoginView, SessionView, DirectoryView, SpaceIndexView, RoomView, PackView, VerificationView }
-export { AttachmentView, VideoView, AudioView, UnsentView, IdentityAlertView, UpgradeView, TypingView, EncryptionView, WindowView, RoomInfoView, SourceView, RoomMenuView, RoomLogView, UserInfoView, InviteView, RoomPreviewView, CreateRoomView, InvitePeopleView, ReadersView, MentionsView }
+export { AttachmentView, VideoView, AudioView, UnsentView, IdentityAlertView, UpgradeView, TypingView, PresenceView, EncryptionView, WindowView, RoomInfoView, SourceView, RoomMenuView, RoomLogView, UserInfoView, InviteView, RoomPreviewView, CreateRoomView, InvitePeopleView, ReadersView, MentionsView }
 export { Actions }
 export { Probe, ReplySwipe, RoomMenu }
 export { NotificationText, SpoilerCover }
@@ -95,11 +96,16 @@ export component AppWindow inherits Window {
     in-out property <string> input-message: "";
 
     property <bool> attended: WindowView.focused && !root.minimized;
+    property <bool> user-active: WindowView.active;
     property <int> notification-opens: WindowView.notification-opens;
     property <int> external-link-opens: WindowView.external-link-opens;
 
     changed attended => {
         Actions.window-focus-changed(root.attended);
+    }
+
+    changed user-active => {
+        Actions.user-activity-changed(root.user-active);
     }
 
     changed external-link-opens => {

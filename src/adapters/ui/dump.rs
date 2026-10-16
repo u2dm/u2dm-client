@@ -6,6 +6,7 @@ use serde::Serialize;
 use slint::{ComponentHandle, Model};
 use tokio::sync::oneshot;
 
+use super::activity;
 use super::audio;
 use super::backend::UiBackend;
 use super::context_press;
@@ -198,6 +199,7 @@ pub enum Poke {
     ToggleAudio,
     SeekAudio(Duration),
     WindowFocus(bool),
+    UserActivity(bool),
     SwipeTravel(i32),
     ContextPress,
 }
@@ -245,6 +247,7 @@ pub fn install_probe<B: UiBackend>(window: &B::Window) {
                 window.set_bool(BoolProp::WindowFocused, focused);
                 window.window().request_redraw();
             }
+            Poke::UserActivity(active) => activity::report(&window, active),
             Poke::SwipeTravel(px) => window.set_int(IntProp::SwipeTravel, px),
             Poke::ContextPress => context_press::announce(&window),
         });

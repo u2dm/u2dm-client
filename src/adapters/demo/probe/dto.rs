@@ -8,15 +8,16 @@ use crate::commands::view::{
     AppViewState, AttachmentView, AudioView, CardStatus, CopiedLink, CreateRoomView, DirectoryView,
     EncryptionStep, EncryptionView, IdentityAlertView, InvitePeopleView, InviteView, InviteeRow,
     LifecycleView, LoginStep, MentionsView, NotificationsView, PackView, PaginationView,
-    PinnedView, ReadersView, RoomInfoView, RoomLogView, RoomMenuTarget, RoomPreviewSheet,
-    RoomPreviewView, RosterRow, SourceState, SpaceIndexRow, SpaceIndexView, SpaceMatch, Toast,
-    TrackFile, TypingView, UnsentMessage, UpgradeView, UserInfoView, VideoView,
+    PinnedView, PresenceView, ReadersView, RoomInfoView, RoomLogView, RoomMenuTarget,
+    RoomPreviewSheet, RoomPreviewView, RosterRow, SourceState, SpaceIndexRow, SpaceIndexView,
+    SpaceMatch, Toast, TrackFile, TypingView, UnsentMessage, UpgradeView, UserInfoView, VideoView,
 };
 use crate::domain::encryption::KeyStorage;
 use crate::domain::image_pack::{ImagePack, ImageUsage, PackOrigin, PackTitle};
 use crate::domain::invite::Invite;
 use crate::domain::member_name::NamedUser;
 use crate::domain::message::{EditKind, PinnedMessage};
+use crate::domain::presence::PresenceLine;
 use crate::domain::push::NoticeContent;
 use crate::domain::room::{Room, Space};
 use crate::domain::room_info::{Reader, RosterSection};
@@ -50,6 +51,7 @@ pub struct ViewDto {
     identity_alert: IdentityAlertDto,
     upgrade: UpgradeDto,
     typing: TypingDto,
+    presence: PresenceDto,
     notifications: Vec<NotificationDto>,
     encryption: EncryptionDto,
     toast: ToastDto,
@@ -134,6 +136,28 @@ struct NotificationDto {
 struct TypistDto {
     user_id: String,
     shown: String,
+}
+
+#[derive(Serialize)]
+struct PresenceDto {
+    partner: Option<PartnerPresenceDto>,
+    person: Option<PersonPresenceDto>,
+}
+
+#[derive(Serialize)]
+struct PartnerPresenceDto {
+    room_id: String,
+    user_id: String,
+    line: &'static str,
+    minutes: Option<u32>,
+}
+
+#[derive(Serialize)]
+struct PersonPresenceDto {
+    user_id: String,
+    line: &'static str,
+    minutes: Option<u32>,
+    status: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -266,6 +290,7 @@ struct RoomDto {
     id: String,
     name: String,
     is_direct: bool,
+    direct_partner: Option<String>,
     is_encrypted: bool,
     history_visibility: &'static str,
     poll_permissions: PollPermissionsDto,
@@ -594,6 +619,7 @@ pub fn view(source: &AppViewState) -> ViewDto {
         identity_alert: identity_alert(&source.identity_alert),
         upgrade: upgrade(&source.upgrade),
         typing: typing(&source.typing),
+        presence: presence(&source.presence),
         notifications: notifications(&source.notifications),
         encryption: encryption(&source.encryption),
         toast: toast(&source.toast),
@@ -676,6 +702,30 @@ fn typing(source: &TypingView) -> TypingDto {
                 shown: user.shown(),
             })
             .collect(),
+    }
+}
+
+fn presence(source: &PresenceView) -> PresenceDto {
+    PresenceDto {
+        partner: source.partner.as_ref().map(|partner| PartnerPresenceDto {
+            room_id: partner.room_id.to_string(),
+            user_id: partner.user_id.to_string(),
+            line: names::presence_line(partner.line),
+            minutes: minutes_seen(partner.line),
+        }),
+        person: source.person.as_ref().map(|person| PersonPresenceDto {
+            user_id: person.user_id.to_string(),
+            line: names::presence_line(person.line),
+            minutes: minutes_seen(person.line),
+            status: person.status.clone(),
+        }),
+    }
+}
+
+const fn minutes_seen(line: PresenceLine) -> Option<u32> {
+    match line {
+        PresenceLine::LastSeen { minutes } => Some(minutes),
+        PresenceLine::Hidden | PresenceLine::Online | PresenceLine::Away => None,
     }
 }
 
@@ -901,6 +951,7 @@ fn room(source: &Room) -> RoomDto {
         id: source.id.to_string(),
         name: source.display_name.clone(),
         is_direct: source.is_direct,
+        direct_partner: source.direct_partner.as_ref().map(ToString::to_string),
         is_encrypted: source.is_encrypted,
         history_visibility: history_visibility(source.history_visibility),
         poll_permissions: PollPermissionsDto {

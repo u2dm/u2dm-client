@@ -13,9 +13,9 @@ use super::image_packs::MatrixImagePacks;
 use super::media::{MatrixMedia, MediaService};
 use super::profile::PronounCache;
 use super::rooms::{
-    MatrixInvitePeople, MatrixInvites, MatrixPush, MatrixRoomCreation, MatrixRoomInfo,
-    MatrixRoomPreviews, MatrixSpaceIndex, MatrixSpaceOrder, MatrixSync, MatrixTyping,
-    MatrixUpgrades,
+    MatrixInvitePeople, MatrixInvites, MatrixPresence, MatrixPush, MatrixRoomCreation,
+    MatrixRoomInfo, MatrixRoomPreviews, MatrixSpaceIndex, MatrixSpaceOrder, MatrixSync,
+    MatrixTyping, MatrixUpgrades,
 };
 use super::server_logout;
 use super::store::StoreLayout;
@@ -181,6 +181,7 @@ pub(super) async fn authenticate(
         room_creation: Arc::new(MatrixRoomCreation::new(Arc::clone(&matrix))),
         invite_people: Arc::new(MatrixInvitePeople::new(Arc::clone(&matrix))),
         typing,
+        presence: Arc::new(MatrixPresence::new(Arc::clone(&matrix))),
         push,
         room_info: Arc::new(MatrixRoomInfo::new(Arc::clone(&matrix))),
         user_info: Arc::new(MatrixUserInfo::new(Arc::clone(&matrix), pronouns)),

@@ -13,6 +13,7 @@ use crate::domain::invite::{Invite, InviteList};
 use crate::domain::invite_people::Person;
 use crate::domain::media::AudioMeta;
 use crate::domain::message::{PinnedMessage, TimelineMessage};
+use crate::domain::presence::PresenceLine;
 use crate::domain::push::PushNotice;
 use crate::domain::room::{NotifyMode, RoomId, RoomList, Space, UnreadFlags};
 use crate::domain::room_creation::RoomKind;
@@ -23,7 +24,7 @@ use crate::domain::space_index::SpaceChild;
 use crate::domain::sync::{ConnectionStatus, ReauthReason};
 use crate::domain::timeline::{EventSource, OlderHistory};
 use crate::domain::typing::Typists;
-use crate::domain::user_info::UserProfile;
+use crate::domain::user_info::{UserId, UserProfile};
 
 #[derive(Clone, Default)]
 pub struct AppViewState {
@@ -48,6 +49,7 @@ pub struct AppViewState {
     pub identity_alert: IdentityAlertView,
     pub upgrade: UpgradeView,
     pub typing: TypingView,
+    pub presence: PresenceView,
     pub notifications: NotificationsView,
     pub encryption: EncryptionView,
     pub toast: Toast,
@@ -217,6 +219,26 @@ pub struct UpgradeView {
 pub struct TypingView {
     pub room_id: Option<RoomId>,
     pub typists: Typists,
+}
+
+#[derive(Clone, PartialEq, Eq)]
+pub struct PartnerPresence {
+    pub room_id: RoomId,
+    pub user_id: UserId,
+    pub line: PresenceLine,
+}
+
+#[derive(Clone, PartialEq, Eq)]
+pub struct PersonPresence {
+    pub user_id: UserId,
+    pub line: PresenceLine,
+    pub status: Option<String>,
+}
+
+#[derive(Clone, Default, PartialEq, Eq)]
+pub struct PresenceView {
+    pub partner: Option<PartnerPresence>,
+    pub person: Option<PersonPresence>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

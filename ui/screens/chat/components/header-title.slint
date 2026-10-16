@@ -1,6 +1,8 @@
 import { Palette } from "std-widgets.slint";
 import { IconDisplay, IconSet } from "@lucide";
 import { AppStyle, Fonts, IconSize, Space, Weight } from "../../../theme.slint";
+import { PresenceLine } from "../../../enums.slint";
+import { PresenceLabel } from "./presence-label.slint";
 
 export component HeaderTitle inherits VerticalLayout {
     in property <string> title;
@@ -8,6 +10,8 @@ export component HeaderTitle inherits VerticalLayout {
     in property <bool> encrypted;
     in property <bool> readable-by-anyone;
     in property <string> typing;
+    in property <string> presence;
+    in property <PresenceLine> presence-line: PresenceLine.hidden;
 
     alignment: center;
     spacing: Space.xs;
@@ -50,7 +54,12 @@ export component HeaderTitle inherits VerticalLayout {
         overflow: elide;
     }
 
-    if root.typing == "" && root.members > 0: Text {
+    if root.typing == "" && root.presence != "": PresenceLabel {
+        line: root.presence-line;
+        text: root.presence;
+    }
+
+    if root.typing == "" && root.presence == "" && root.members > 0: Text {
         text: @tr("{n} member" | "{n} members" % root.members);
         font-size: Fonts.body-small;
         color: AppStyle.foreground-muted;

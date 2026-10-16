@@ -1,4 +1,4 @@
-import { Delivery, EmojiArt, MediaFailure, PreviewKind, ServiceKind, ShieldReason, UpgradeLink, UserMessageKind } from "./enums.slint";
+import { Delivery, EmojiArt, MediaFailure, PresenceLine, PreviewKind, ServiceKind, ShieldReason, UpgradeLink, UserMessageKind } from "./enums.slint";
 
 export global UserMessages {
     public pure function text(kind: UserMessageKind, detail: string) -> string {
@@ -703,6 +703,33 @@ export global TypingLine {
             return @tr("{} and {} are typing…", first, second);
         }
         return @tr("{} and {n} other is typing…" | "{} and {n} others are typing…" % (count - 1), first);
+    }
+}
+
+export global PresenceWords {
+    public pure function text(line: PresenceLine, minutes: int) -> string {
+        if line == PresenceLine.online {
+            return @tr("Online");
+        }
+        if line == PresenceLine.away {
+            return @tr("Away");
+        }
+        if line != PresenceLine.last-seen {
+            return "";
+        }
+        if minutes < 1 {
+            return @tr("Last seen just now");
+        }
+        if minutes < 60 {
+            return @tr("Last seen {n} minute ago" | "Last seen {n} minutes ago" % minutes);
+        }
+        if minutes < 1440 {
+            return @tr("Last seen {n} hour ago" | "Last seen {n} hours ago" % floor(minutes / 60));
+        }
+        if minutes < 43200 {
+            return @tr("Last seen {n} day ago" | "Last seen {n} days ago" % floor(minutes / 1440));
+        }
+        return @tr("Last seen over a month ago");
     }
 }
 

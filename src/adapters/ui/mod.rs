@@ -1,6 +1,7 @@
 #![allow(clippy::pub_use)]
 
 mod activation;
+mod activity;
 mod audio;
 mod autolink;
 mod backend;

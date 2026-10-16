@@ -1,6 +1,7 @@
 use slint::ComponentHandle;
 use slint::winit_030::WinitWindowAccessor;
 
+use super::activity::activity_watch;
 use super::backend::UiBackend;
 use super::context_press::context_press;
 use super::focus::focus_mirror;
@@ -8,12 +9,14 @@ use super::swipe::reply_swipe;
 
 pub fn install_window_events<B: UiBackend>(window: &B::Window) {
     let mut mirror = focus_mirror::<B>(window);
+    let mut activity = activity_watch::<B>(window);
     let mut swipe = reply_swipe::<B>(window);
     let mut menu = context_press::<B>(window);
     window
         .window()
         .on_winit_window_event(move |slint_window, event| {
             mirror(slint_window);
+            activity(event);
             menu(event);
             swipe(slint_window, event)
         });

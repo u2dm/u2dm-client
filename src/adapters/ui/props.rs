@@ -18,6 +18,7 @@ use crate::domain::encryption::{Recovery, Standing};
 use crate::domain::invite::InviteKind;
 use crate::domain::media::AudioKind;
 use crate::domain::message::MessagePreviewKind;
+use crate::domain::presence::PresenceLine;
 use crate::domain::room::NotifyMode;
 use crate::domain::room_creation::RoomKind;
 use crate::domain::room_info::MemberRole;

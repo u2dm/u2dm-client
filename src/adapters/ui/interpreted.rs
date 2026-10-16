@@ -54,13 +54,13 @@ use super::schema::{
     media_failures, media_states, member_roles, member_row_fields, member_row_kinds,
     message_fields, message_kinds, model_props, notify_modes, pack_cell_fields, pack_origins,
     pack_row_fields, pack_surfaces, pack_tab_fields, pending_moderations, people_search_statuses,
-    poll_answer_fields, poll_phases, preview_kinds, reaction_fields, reaction_sends,
-    reactor_fields, readers_statuses, recovery_statuses, room_accesses, room_fields,
-    room_info_placements, room_kinds, room_memberships, room_preview_statuses, room_row_kinds,
-    room_scopes, roster_statuses, send_states, service_kinds, shield_reasons, shields,
-    simple_callbacks, source_encryptions, source_statuses, space_child_fields, space_fields,
-    space_index_statuses, spoiler_states, timeline_states, upgrade_links, user_message_kinds,
-    verification_activities, verification_phases,
+    poll_answer_fields, poll_phases, presence_lines, preview_kinds, reaction_fields,
+    reaction_sends, reactor_fields, readers_statuses, recovery_statuses, room_accesses,
+    room_fields, room_info_placements, room_kinds, room_memberships, room_preview_statuses,
+    room_row_kinds, room_scopes, roster_statuses, send_states, service_kinds, shield_reasons,
+    shields, simple_callbacks, source_encryptions, source_statuses, space_child_fields,
+    space_fields, space_index_statuses, spoiler_states, timeline_states, upgrade_links,
+    user_message_kinds, verification_activities, verification_phases,
 };
 use super::session::active_models;
 use super::video::{self, millis_to_duration};
@@ -68,7 +68,7 @@ use super::{audio, emoji, emote, mention, router};
 use crate::app::input::CommandSender;
 use crate::commands::effects::{Effect, VerificationActivity};
 use crate::commands::messages::{UserMessage, UserMessageKind};
-use crate::commands::ui::{ComposerActivity, TimelineVisibility, ViewportChanged, WindowFocus};
+use crate::commands::ui::{ComposerActivity, TimelineVisibility, ViewportChanged, WindowAttention};
 use crate::commands::view::{
     AppViewState, AttachmentKind, ChildAccess, CreateRoomStatus, DirectChat, EncryptionActivity,
     EncryptionStep, InviteeState, LoginActivity, LoginStep, PendingAnswer, PendingModeration,
@@ -83,6 +83,7 @@ use crate::domain::media::AudioKind;
 use crate::domain::message::{
     DecryptionFailure, MessagePreviewKind, ReactionSend, SendState, Shield,
 };
+use crate::domain::presence::PresenceLine;
 use crate::domain::room::NotifyMode;
 use crate::domain::room_creation::{RoomAccess, RoomKind};
 use crate::domain::room_info::MemberRole;
@@ -134,6 +135,7 @@ mod names {
         pub const TIMELINE_VISIBILITY_CHANGED: &str = "timeline-visibility-changed";
         pub const COMPOSER_CHANGED: &str = "composer-changed";
         pub const WINDOW_FOCUS_CHANGED: &str = "window-focus-changed";
+        pub const USER_ACTIVITY_CHANGED: &str = "user-activity-changed";
     }
 
     pub mod emoji_store {
@@ -260,6 +262,7 @@ invite_kinds!(impl_slint_enum InviteKind "InviteKind";);
 invite_answers!(impl_slint_enum PendingAnswer "InviteAnswer";);
 pending_moderations!(impl_slint_enum PendingModeration "Moderation";);
 identity_trusts!(impl_slint_enum IdentityTrust "IdentityTrust";);
+presence_lines!(impl_slint_enum PresenceLine "PresenceLine";);
 identity_alert_kinds!(impl_slint_enum IdentityAlertKind "IdentityAlertKind";);
 encryption_standings!(impl_slint_enum Standing "EncryptionStanding";);
 recovery_statuses!(impl_slint_enum Recovery "RecoveryStatus";);
@@ -941,7 +944,7 @@ impl SlintUiAdapter {
         scroll_tx: &watch::Sender<ViewportChanged>,
         visibility_tx: &watch::Sender<TimelineVisibility>,
         composer_tx: &watch::Sender<ComposerActivity>,
-        focus_tx: &watch::Sender<WindowFocus>,
+        attention_tx: &watch::Sender<WindowAttention>,
     ) -> Result<()> {
         setup_emoji_store(&self.instance)?;
 
@@ -1036,14 +1039,14 @@ impl SlintUiAdapter {
             },
         )?;
 
-        self.bind_window_watches(visibility_tx, composer_tx, focus_tx)
+        self.bind_window_watches(visibility_tx, composer_tx, attention_tx)
     }
 
     fn bind_window_watches(
         &self,
         visibility_tx: &watch::Sender<TimelineVisibility>,
         composer_tx: &watch::Sender<ComposerActivity>,
-        focus_tx: &watch::Sender<WindowFocus>,
+        attention_tx: &watch::Sender<WindowAttention>,
     ) -> Result<()> {
         let visibility_tx = visibility_tx.clone();
         bind_action(
@@ -1066,12 +1069,22 @@ impl SlintUiAdapter {
             Value::Void
         })?;
 
-        let focus_tx = focus_tx.clone();
+        let focus_tx = attention_tx.clone();
         bind_action(
             &self.instance,
             callback::WINDOW_FOCUS_CHANGED,
             move |args| {
                 router::window_focus(&focus_tx, bool_arg(args, 0));
+                Value::Void
+            },
+        )?;
+
+        let activity_tx = attention_tx.clone();
+        bind_action(
+            &self.instance,
+            callback::USER_ACTIVITY_CHANGED,
+            move |args| {
+                router::user_activity(&activity_tx, bool_arg(args, 0));
                 Value::Void
             },
         )

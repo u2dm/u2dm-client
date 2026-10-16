@@ -13,6 +13,7 @@ pub mod member_name;
 pub mod mention;
 pub mod message;
 pub mod poll;
+pub mod presence;
 pub mod push;
 pub mod room;
 pub mod room_creation;

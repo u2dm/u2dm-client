@@ -19,7 +19,7 @@ use super::encryption::{self, EncryptionBook};
 use super::identity::{self, IdentityBook, SendHold};
 use super::{
     attachments, audio, create_room, data, invite_people, invites, links, login, logout, media,
-    message_menu, notifications, pinned, polls, reactions, receipts, room_info, source,
+    message_menu, notifications, pinned, polls, presence, reactions, receipts, room_info, source,
     space_index, stickers, sync, timeline, typing, upgrades, user_info, verification, videos,
 };
 use crate::adapters::{body_emoji, video};
@@ -45,6 +45,7 @@ use crate::domain::message::{
     PinnedMessage, ReplyInfo, RichText, SendState, TimelineMessage,
 };
 use crate::domain::poll::{PollAction, PollDraft};
+use crate::domain::presence::{Availability, BeaconResult, LookupResult};
 use crate::domain::push::{NoticeContent, PushNotice, PushTweaks};
 use crate::domain::room::{NotifyMode, Room, RoomId, Space};
 use crate::domain::room_creation::{
@@ -70,10 +71,10 @@ use crate::error::{AppError, Result};
 use crate::ports::matrix::{
     AttachmentHandoff, AuthPort, AuthenticatedSession, CleanupReport, DeviceRemoval,
     EncryptionPort, IdentityPort, ImagePackPort, InterruptedLogin, InvitePeoplePort, InvitePort,
-    LocalDataOwnership, MediaPort, PackCatalog, PinnedPort, ProgressSink, PushPort, RestoreOutcome,
-    RestoreStep, RoomCreationPort, RoomInfoPort, RoomPreviewPort, SessionPort, SpaceIndexPort,
-    SpaceOrderPort, StoreAdoption, SyncPort, SyncSink, TimelinePort, TypingPort, UpgradePort,
-    UserInfoPort, VerificationPort,
+    LocalDataOwnership, MediaPort, PackCatalog, PinnedPort, PresencePort, ProgressSink, PushPort,
+    RestoreOutcome, RestoreStep, RoomCreationPort, RoomInfoPort, RoomPreviewPort, SessionPort,
+    SpaceIndexPort, SpaceOrderPort, StoreAdoption, SyncPort, SyncSink, TimelinePort, TypingPort,
+    UpgradePort, UserInfoPort, VerificationPort,
 };
 use crate::ports::media::MediaCache;
 
@@ -256,6 +257,7 @@ fn authenticated(session: Session) -> AuthenticatedSession {
     let room_creation = Arc::clone(&authed);
     let invite_people = Arc::clone(&authed);
     let typing = Arc::clone(&authed);
+    let presence = Arc::clone(&authed);
     let push = Arc::clone(&authed);
     let room_info = Arc::clone(&authed);
     let user_info = Arc::clone(&authed);
@@ -277,6 +279,7 @@ fn authenticated(session: Session) -> AuthenticatedSession {
         room_creation,
         invite_people,
         typing,
+        presence,
         push,
         room_info,
         user_info,
@@ -401,6 +404,7 @@ struct DemoAuthed {
     identity: IdentityBook,
     encryption: EncryptionBook,
     typing_notices: typing::NoticeClock,
+    presence: presence::PresenceBook,
 }
 
 impl DemoAuthed {
@@ -2029,6 +2033,17 @@ impl TypingPort for DemoAuthed {
         }
         self.typing_notices.notice(room_id, is_typing);
         Ok(())
+    }
+}
+
+#[async_trait]
+impl PresencePort for DemoAuthed {
+    async fn announce(&self, availability: Availability, status: Option<&str>) -> BeaconResult {
+        self.presence.announce(availability, status).await
+    }
+
+    async fn presence_of(&self, user_id: &UserId) -> LookupResult {
+        self.presence.presence_of(user_id).await
     }
 }
 

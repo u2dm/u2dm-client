@@ -124,6 +124,11 @@ const ENUM_COVERAGE: &[EnumCoverage] = &[
         falls_through: &["unverified"],
     },
     EnumCoverage {
+        slint_enum: "PresenceLine",
+        branches_in: "ui/messages.slint",
+        falls_through: &["hidden"],
+    },
+    EnumCoverage {
         slint_enum: "IdentityAlertKind",
         branches_in: "ui/screens/chat/components/timeline/identity-banner.slint",
         falls_through: &["none"],
@@ -215,6 +220,7 @@ const ENUM_TABLES: &[(&str, &str)] = &[
     ("InviteAnswer", "invite_answers"),
     ("Moderation", "pending_moderations"),
     ("IdentityTrust", "identity_trusts"),
+    ("PresenceLine", "presence_lines"),
     ("IdentityAlertKind", "identity_alert_kinds"),
     ("EncryptionStanding", "encryption_standings"),
     ("RecoveryStatus", "recovery_statuses"),
@@ -352,6 +358,11 @@ const SCENARIO_SOURCES: &[ScenarioSource] = &[
     },
     ScenarioSource {
         file: "src/adapters/demo/typing.rs",
+        arms_between: ("fn apply(scenario: &mut Scenario, flag: &str) {", "\n}"),
+        ignored: &[],
+    },
+    ScenarioSource {
+        file: "src/adapters/demo/presence.rs",
         arms_between: ("fn apply(scenario: &mut Scenario, flag: &str) {", "\n}"),
         ignored: &[],
     },

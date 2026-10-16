@@ -8,6 +8,7 @@ use matrix_sdk::notification_settings::{
     IsEncrypted, IsOneToOne, NotificationSettings, RoomNotificationMode,
 };
 use matrix_sdk::ruma::OwnedUserId;
+use matrix_sdk::ruma::events::direct::OwnedDirectUserIdentifier;
 use matrix_sdk::ruma::events::poll::unstable_start::SyncUnstablePollStartEvent;
 use matrix_sdk::ruma::events::room::member::MembershipState;
 use matrix_sdk::ruma::events::room::message::{Relation, RoomMessageEventContent};
@@ -27,6 +28,7 @@ use crate::adapters::matrix::room_state::history_visibility;
 use crate::domain::member_name::NamedUser;
 use crate::domain::message::{MessagePreviewKind, RichText, ServiceEvent};
 use crate::domain::room::{NotifyMode, Room as DomainRoom, RoomId, Space as DomainSpace};
+use crate::domain::user_info::UserId;
 
 const SEED_INFLIGHT: usize = 16;
 
@@ -132,6 +134,7 @@ async fn build_room(room: &Room, settings: &NotificationSettings) -> DomainRoom 
         topic: room.topic().filter(|topic| !topic.trim().is_empty()),
         canonical_alias: room.canonical_alias().map(|alias| alias.to_string()),
         is_direct,
+        direct_partner: direct_partner(room),
         is_encrypted: room.encryption_state().is_encrypted(),
         history_visibility: history_visibility(&room.history_visibility_or_default()),
         poll_permissions: permissions.polls,
@@ -156,6 +159,20 @@ async fn build_room(room: &Room, settings: &NotificationSettings) -> DomainRoom 
             .predecessor_room()
             .map(|predecessor| RoomId::new(predecessor.room_id.to_string())),
     }
+}
+
+fn direct_partner(room: &Room) -> Option<UserId> {
+    let own = room.own_user_id();
+    let mut partners = room
+        .direct_targets()
+        .into_iter()
+        .filter_map(OwnedDirectUserIdentifier::into_user_id)
+        .filter(|user_id| &**user_id != own);
+    let partner = partners.next()?;
+    partners
+        .next()
+        .is_none()
+        .then(|| UserId::new(partner.to_string()))
 }
 
 #[derive(Default)]

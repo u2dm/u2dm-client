@@ -544,6 +544,19 @@ pub enum WindowFocus {
     Unfocused,
 }
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum UserActivity {
+    #[default]
+    Active,
+    Idle,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct WindowAttention {
+    pub focus: WindowFocus,
+    pub activity: UserActivity,
+}
+
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ComposerActivity {
     pub room_id: Option<RoomId>,

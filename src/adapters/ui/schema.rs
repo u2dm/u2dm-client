@@ -60,6 +60,9 @@ macro_rules! string_props {
         TypingRoomId TypingView "TypingView" "room-id" set_room_id get_room_id;
         TypingFirst TypingView "TypingView" "first" set_first get_first;
         TypingSecond TypingView "TypingView" "second" set_second get_second;
+        PresenceRoomId PresenceView "PresenceView" "room-id" set_room_id get_room_id;
+        PresenceUserId PresenceView "PresenceView" "user-id" set_user_id get_user_id;
+        PresenceStatus PresenceView "PresenceView" "status" set_status get_status;
         SpaceIndexName SpaceIndexView "SpaceIndexView" "space-name" set_space_name get_space_name;
         RoomInfoRoomId RoomInfoView "RoomInfoView" "room-id" set_room_id get_room_id;
         RoomInfoName RoomInfoView "RoomInfoView" "name" set_name get_name;
@@ -323,6 +326,7 @@ macro_rules! bool_props {
         UnsentEditCaption UnsentView "UnsentView" "edit-caption" set_edit_caption get_edit_caption;
         IdentityAlertBusy IdentityAlertView "IdentityAlertView" "busy" set_busy get_busy;
         WindowFocused WindowView "WindowView" "focused" set_focused get_focused;
+        WindowActive WindowView "WindowView" "active" set_active get_active;
         ReplySwipeArmed ReplySwipe "ReplySwipe" "armed" set_armed get_armed;
         RoomInfoIsDirect RoomInfoView "RoomInfoView" "is-direct" set_is_direct get_is_direct;
         RoomInfoTopicHasLinks RoomInfoView "RoomInfoView" "topic-has-links" set_topic_has_links get_topic_has_links;
@@ -377,6 +381,8 @@ macro_rules! int_props {
         AudioDurationMs AudioView "AudioView" "duration-ms" set_duration_ms get_duration_ms;
         UnsentSubmission UnsentView "UnsentView" "submission" set_submission get_submission;
         TypingCount TypingView "TypingView" "count" set_count get_count;
+        PresencePartnerMinutes PresenceView "PresenceView" "partner-minutes" set_partner_minutes get_partner_minutes;
+        PresencePersonMinutes PresenceView "PresenceView" "person-minutes" set_person_minutes get_person_minutes;
         SwipeTravel WindowView "WindowView" "swipe-travel" set_swipe_travel get_swipe_travel;
         ContextPresses WindowView "WindowView" "context-presses" set_context_presses get_context_presses;
         NotificationOpens WindowView "WindowView" "notification-opens" set_notification_opens get_notification_opens;
@@ -462,6 +468,10 @@ macro_rules! enum_props {
             UserInfoView "UserInfoView" "moderating" set_moderating get_moderating;
         UserInfoIdentity set_user_info_identity(IdentityTrust)
             UserInfoView "UserInfoView" "identity" set_identity get_identity;
+        PresencePartner set_presence_partner(PresenceLine)
+            PresenceView "PresenceView" "partner" set_partner get_partner;
+        PresencePerson set_presence_person(PresenceLine)
+            PresenceView "PresenceView" "person" set_person get_person;
         InviteKind set_invite_kind(InviteKind)
             InviteView "InviteView" "kind" set_kind get_kind;
         InviteAnswer set_invite_answer(PendingAnswer)
@@ -978,6 +988,16 @@ macro_rules! invite_answers {
     } };
 }
 pub(crate) use invite_answers;
+
+macro_rules! presence_lines {
+    ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
+        Hidden       Hidden   "hidden";
+        Online       Online   "online";
+        Away         Away     "away";
+        LastSeen{..} LastSeen "last-seen";
+    } };
+}
+pub(crate) use presence_lines;
 
 macro_rules! identity_trusts {
     ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*

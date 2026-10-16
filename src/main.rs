@@ -19,7 +19,9 @@ use app::AppService;
 use app::input::CommandSender;
 use commands::effects::Effect;
 use commands::sync::DirectoryUpdate;
-use commands::ui::{ComposerActivity, TimelineVisibility, UiCommand, ViewportChanged, WindowFocus};
+use commands::ui::{
+    ComposerActivity, TimelineVisibility, UiCommand, ViewportChanged, WindowAttention,
+};
 use commands::view::AppViewState;
 use composition::Backend;
 use error::Result;
@@ -137,9 +139,15 @@ fn run(room_logs: Arc<RoomLogs>) -> Result<()> {
     let (scroll_tx, scroll_rx) = watch::channel::<ViewportChanged>(ViewportChanged::initial());
     let (visibility_tx, visibility_rx) = watch::channel(TimelineVisibility::default());
     let (composer_tx, composer_rx) = watch::channel(ComposerActivity::default());
-    let (focus_tx, focus_rx) = watch::channel(WindowFocus::default());
+    let (attention_tx, attention_rx) = watch::channel(WindowAttention::default());
 
-    ui.register_callbacks(&cmd_tx, &scroll_tx, &visibility_tx, &composer_tx, &focus_tx)?;
+    ui.register_callbacks(
+        &cmd_tx,
+        &scroll_tx,
+        &visibility_tx,
+        &composer_tx,
+        &attention_tx,
+    )?;
     size_window_for_demo(&ui);
     configure_demo_audio();
 
@@ -180,7 +188,7 @@ fn run(room_logs: Arc<RoomLogs>) -> Result<()> {
                 scroll_rx,
                 visibility_rx,
                 composer_rx,
-                focus_rx,
+                attention_rx,
             )
             .await;
     });

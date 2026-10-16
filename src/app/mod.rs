@@ -20,6 +20,7 @@ mod notifications;
 mod packs;
 mod pinned;
 mod polls;
+mod presence;
 mod readers;
 mod recover;
 mod room_creation;
@@ -50,8 +51,8 @@ use encryption::Encryption;
 use establish::{EstablishedSession, Rollback};
 use event::{
     AppEvent, CreationSettled, EncryptionEvent, EndReason, IdentityEvent, InvitePeopleEvent,
-    MentionsEvent, MessageActionEvent, PacksEvent, PreviewEvent, ReadersEvent, RoomActionEvent,
-    SessionEvent, TimelineEvent, UserInfoEvent,
+    MentionsEvent, MessageActionEvent, PacksEvent, PresenceEvent, PreviewEvent, ReadersEvent,
+    RoomActionEvent, SessionEvent, TimelineEvent, UserInfoEvent,
 };
 use event_source::EventSourceViewer;
 use identity_alerts::{IdentityAlerts, Resolution};
@@ -65,6 +66,7 @@ use message_actions::MessageActions;
 use notifications::DesktopNotifications;
 use packs::Packs;
 use pinned::{PinDirection, PinnedMessages};
+use presence::Presence;
 use readers::ReaderList;
 use recover::Recovery;
 use room_creation::{Created, RoomCreation};
@@ -89,7 +91,7 @@ use crate::commands::effects::Effect;
 use crate::commands::messages::{UserMessage, UserMessageKind};
 use crate::commands::sync::DirectoryUpdate;
 use crate::commands::ui::{
-    ComposerActivity, MessageDraft, TimelineVisibility, UiCommand, ViewportChanged, WindowFocus,
+    ComposerActivity, MessageDraft, TimelineVisibility, UiCommand, ViewportChanged, WindowAttention,
 };
 use crate::commands::view::{AppViewState, LoginActivity, LoginStep, Toast};
 use crate::domain::account::AccountScope;
@@ -206,6 +208,11 @@ fn warn_if_not_undone(report: &CleanupReport) {
     }
 }
 
+async fn say_goodbye_then_stop_syncing(presence: &mut Presence, background: &mut TaskGroup) {
+    presence.shutdown().await;
+    background.shutdown().await;
+}
+
 pub struct AppService {
     events: EventSender,
     dir_in_tx: mpsc::UnboundedSender<DirectoryUpdate>,
@@ -231,6 +238,7 @@ pub struct AppService {
     room_creation: RoomCreation,
     invite_people: InvitePeople,
     typing: Typing,
+    presence: Presence,
     notifications: DesktopNotifications,
     room_info: RoomInfo,
     user_info: UserInfo,
@@ -286,6 +294,7 @@ impl AppService {
             room_creation: RoomCreation::new(Arc::clone(&output), events.clone()),
             invite_people: InvitePeople::new(Arc::clone(&output), events.clone()),
             typing: Typing::new(Arc::clone(&output), events.clone()),
+            presence: Presence::new(Arc::clone(&output), events.clone()),
             notifications: DesktopNotifications::new(Arc::clone(&output), events.clone()),
             room_info: RoomInfo::new(Arc::clone(&output), events.clone()),
             user_info: UserInfo::new(Arc::clone(&output), events.clone()),
@@ -317,7 +326,7 @@ impl AppService {
         mut scroll_in_rx: watch::Receiver<ViewportChanged>,
         mut visibility_in_rx: watch::Receiver<TimelineVisibility>,
         mut composer_in_rx: watch::Receiver<ComposerActivity>,
-        mut focus_in_rx: watch::Receiver<WindowFocus>,
+        mut attention_in_rx: watch::Receiver<WindowAttention>,
     ) {
         if let Recovery::Blocked(message) = self.session.recover_interrupted_logins().await {
             self.block_sign_in(message);
@@ -326,7 +335,7 @@ impl AppService {
         let mut scroll_done = false;
         let mut visibility_done = false;
         let mut composer_done = false;
-        let mut focus_done = false;
+        let mut attention_done = false;
         loop {
             tokio::select! {
                 maybe_input = inbox.recv() => {
@@ -378,12 +387,12 @@ impl AppService {
                         self.composer_changed(&activity);
                     }
                 }
-                changed = focus_in_rx.changed(), if !focus_done => {
+                changed = attention_in_rx.changed(), if !attention_done => {
                     if changed.is_err() {
-                        focus_done = true;
+                        attention_done = true;
                     } else {
-                        let focus = *focus_in_rx.borrow_and_update();
-                        self.notifications.focus_changed(focus);
+                        let attention = *attention_in_rx.borrow_and_update();
+                        self.attention_changed(attention);
                     }
                 }
             }
@@ -592,7 +601,7 @@ impl AppService {
                 self.open_user_info(user_id);
             }
             UiCommand::CloseUserInfo => {
-                self.user_info.close();
+                self.close_user_info();
             }
             UiCommand::RetryUserInfo => {
                 self.retry_user_info();
@@ -950,6 +959,7 @@ impl AppService {
             self.notifications.directory_changed(&self.room_directory);
             self.refresh_space_index();
             self.follow_room_info();
+            self.follow_presence();
             if let Some(room_id) = self.user_info.follow(self.room_directory.rooms()) {
                 self.select_room(room_id).await;
             }
@@ -1082,7 +1092,7 @@ impl AppService {
         let Some(port) = self.port(|a| &a.room_previews) else {
             return;
         };
-        self.user_info.close();
+        self.close_user_info();
         self.event_source.close();
         self.readers.close();
         self.invites.close();
@@ -1149,7 +1159,7 @@ impl AppService {
         if self.selection.room.as_ref() == Some(&room_id) {
             self.room_previews.close();
             self.room_info.close_dialog();
-            self.user_info.close();
+            self.close_user_info();
             if let TimelineFocus::Event(event_id) = focus {
                 self.active_timeline.jump_to_event(event_id);
             }
@@ -1713,6 +1723,7 @@ impl AppService {
             self.user_info
                 .open(port, self.selection.room.clone(), user_id);
         }
+        self.follow_presence();
     }
 
     fn retry_user_info(&mut self) {
@@ -1793,6 +1804,7 @@ impl AppService {
             AppEvent::TypistsChanged { watch, typists } => {
                 self.typing.typists_changed(watch, typists);
             }
+            AppEvent::Presence(event) => self.handle_presence(event),
             AppEvent::Notified { session, notice } => self.settle_notice(session, *notice),
             AppEvent::SpaceIndexPaged {
                 generation,
@@ -2483,6 +2495,7 @@ impl AppService {
         self.follow_identity_alerts(room_id.clone());
         self.follow_typing(room_id.clone());
         self.open_room(room_id, focus).await;
+        self.follow_presence();
         self.notifications
             .on_screen(self.active_timeline.on_screen());
     }
@@ -2534,6 +2547,46 @@ impl AppService {
     fn follow_typing(&mut self, room_id: RoomId) {
         if let Some(typing) = self.port(|a| &a.typing) {
             self.typing.retarget(typing, room_id);
+        }
+    }
+
+    fn attention_changed(&mut self, attention: WindowAttention) {
+        self.notifications.focus_changed(attention.focus);
+        let port = self.port(|a| &a.presence);
+        self.presence.attention_changed(port, attention);
+    }
+
+    fn follow_presence(&mut self) {
+        let partner = self.selection.room.as_ref().and_then(|room_id| {
+            let partner = self.room_directory.room(room_id)?.direct_partner.clone()?;
+            Some((room_id.clone(), partner))
+        });
+        let person = self.user_info.person().cloned();
+        let port = self.port(|a| &a.presence);
+        self.presence.follow(port, partner, person);
+    }
+
+    fn close_user_info(&mut self) {
+        self.user_info.close();
+        self.follow_presence();
+    }
+
+    fn handle_presence(&mut self, event: PresenceEvent) {
+        match event {
+            PresenceEvent::Disabled { session } => {
+                if self.lifecycle.runs(session) {
+                    self.presence.disabled();
+                }
+            }
+            PresenceEvent::Looked {
+                watch,
+                user_id,
+                result,
+            } => {
+                if self.held_session.running().is_some() {
+                    self.presence.looked(watch, user_id, result);
+                }
+            }
         }
     }
 
@@ -2657,6 +2710,7 @@ impl AppService {
         self.pinned.clear();
         self.identity_alerts.clear();
         self.typing.clear();
+        self.follow_presence();
         self.refresh_upgrades();
         self.active_timeline.clear_room(generation).await;
     }
@@ -2705,9 +2759,23 @@ impl AppService {
         );
         self.session
             .spawn_user_avatar_fetch(&mut self.background, lifecycle_port, session);
+        self.begin_presence(session);
+    }
+
+    fn begin_presence(&mut self, session: u64) {
+        let Some((port, own)) = self.held_session.running().map(|a| {
+            (
+                Arc::clone(&a.presence),
+                UserId::new(a.session.user_id.clone()),
+            )
+        }) else {
+            return;
+        };
+        self.presence.begin_session(port, session, own);
     }
 
     async fn shutdown_all_tasks(&mut self) {
+        self.presence.restart().await;
         tokio::join!(
             self.background.shutdown(),
             self.active_timeline.shutdown(),
@@ -2744,7 +2812,9 @@ impl AppService {
         }
         match (self.held_session.ending(), reason) {
             (Some(Ending::Live(ending)), EndReason::UserLogout) => {
-                self.tear_down_session(AppViewState::signing_out()).await;
+                self.presence.sign_off();
+                self.tear_down_session(Box::new(AppViewState::signing_out()))
+                    .await;
                 self.session
                     .spawn_logout(&mut self.operations, session, ending);
             }
@@ -2753,7 +2823,8 @@ impl AppService {
                     device_id = %ending.device_id,
                     "erasing a suspended session without a homeserver logout, so the homeserver keeps this device"
                 );
-                self.tear_down_session(AppViewState::logged_out()).await;
+                self.tear_down_session(Box::new(AppViewState::logged_out()))
+                    .await;
                 let left_behind = Some(ending.device_id.clone());
                 self.session.spawn_erase_session(
                     &mut self.operations,
@@ -2764,7 +2835,8 @@ impl AppService {
                 );
             }
             (Some(Ending::Live(ending) | Ending::Detached(ending)), EndReason::Expired) => {
-                self.tear_down_session(AppViewState::logged_out()).await;
+                self.tear_down_session(Box::new(AppViewState::logged_out()))
+                    .await;
                 self.session.spawn_erase_session(
                     &mut self.operations,
                     session,
@@ -2774,7 +2846,8 @@ impl AppService {
                 );
             }
             (None, _) => {
-                self.tear_down_session(AppViewState::logged_out()).await;
+                self.tear_down_session(Box::new(AppViewState::logged_out()))
+                    .await;
                 self.lifecycle.finish_logout(session);
             }
         }
@@ -2797,7 +2870,7 @@ impl AppService {
             ?reason,
             "the homeserver refused this session's token, keeping this device and its local data"
         );
-        self.tear_down_session(AppViewState::reauthenticating(&session, reason))
+        self.tear_down_session(Box::new(AppViewState::reauthenticating(&session, reason)))
             .await;
         lifecycle_port.suspend().await;
         self.held_session = HeldSession::Suspended(Box::new(SuspendedSession {
@@ -2807,15 +2880,13 @@ impl AppService {
         }));
     }
 
-    async fn tear_down_session(&mut self, view: AppViewState) {
+    async fn tear_down_session(&mut self, view: Box<AppViewState>) {
         self.attachments.clear();
         self.submissions.forget_all();
         self.message_actions.forget();
         self.event_source.reset();
-        self.output
-            .emit(Effect::SessionReset(Box::new(view.clone())))
-            .await;
-        self.output.replace(view);
+        self.output.emit(Effect::SessionReset(view.clone())).await;
+        self.output.replace(*view);
         self.shutdown_all_tasks().await;
         self.media.clear_session().await;
         self.room_directory.reset();
@@ -2828,8 +2899,12 @@ impl AppService {
     }
 
     async fn handle_quit(&mut self) {
+        self.presence.sign_off();
         tokio::join!(
-            self.background.shutdown(),
+            Box::pin(say_goodbye_then_stop_syncing(
+                &mut self.presence,
+                &mut self.background
+            )),
             self.active_timeline.shutdown(),
             self.pinned.shutdown(),
             self.identity_alerts.shutdown(),

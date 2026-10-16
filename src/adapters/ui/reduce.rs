@@ -41,9 +41,9 @@ use crate::commands::view::{
     AppViewState, AttachmentView, AudioView, CardStatus, CopiedLink, CreateRoomView, DirectoryView,
     EncryptionDialog, EncryptionStep, EncryptionView, IdentityAlertView, InvitePeopleView,
     InviteView, LifecycleView, LoginStep, MentionsView, NowPlaying, PackView, PaginationView,
-    PinnedView, ReadersView, RoomCard, RoomInfoView, RoomLogView, RoomMenuTarget, RoomPreviewSheet,
-    RoomPreviewView, ShownPreview, SourceState, SpaceIndexView, Toast, TrackFile, TypingView,
-    UnsentMessage, UpgradeView, UserCard, UserInfoView, VideoView,
+    PinnedView, PresenceView, ReadersView, RoomCard, RoomInfoView, RoomLogView, RoomMenuTarget,
+    RoomPreviewSheet, RoomPreviewView, ShownPreview, SourceState, SpaceIndexView, Toast, TrackFile,
+    TypingView, UnsentMessage, UpgradeView, UserCard, UserInfoView, VideoView,
 };
 use crate::domain::encryption::KeyStorage;
 use crate::domain::invite::{Invite, InviteList};
@@ -51,6 +51,7 @@ use crate::domain::message::{
     EditKind, MessageEdit, MessagePermissions, MessagePreviewKind, RichText, TimelineMessage,
 };
 use crate::domain::poll::PollPermissions;
+use crate::domain::presence::PresenceLine;
 use crate::domain::room::RoomId;
 use crate::domain::room_info::RoomAbout;
 use crate::domain::room_log::RoomLog;
@@ -383,6 +384,7 @@ fn apply_snapshot<B: UiBackend>(
         identity_alert,
         upgrade,
         typing,
+        presence,
         notifications,
         encryption,
         toast,
@@ -439,7 +441,7 @@ fn apply_snapshot<B: UiBackend>(
         apply_unsent(w, unsent.as_ref());
     }
     apply_composer_banners(w, last, identity_alert, upgrade);
-    apply_typing(w, last.map(|l| &l.typing), typing);
+    apply_room_people(w, last, typing, presence);
     apply_notifications::<B>(w, last, notifications, ctx.notifier);
     apply_encryption(w, last.map(|l| &l.encryption), encryption);
     apply_toast(w, last.map(|l| &l.toast), toast);
@@ -1809,6 +1811,61 @@ fn apply_upgrade(w: &impl UiProps, view: &UpgradeView) {
         StringProp::UpgradePredecessorId,
         id(view.predecessor.room_id()),
     );
+}
+
+fn apply_room_people(
+    w: &impl UiProps,
+    last: Option<&AppViewState>,
+    typing: &TypingView,
+    presence: &PresenceView,
+) {
+    apply_typing(w, last.map(|l| &l.typing), typing);
+    apply_presence(w, last.map(|l| &l.presence), presence);
+}
+
+fn apply_presence(w: &impl UiProps, last: Option<&PresenceView>, view: &PresenceView) {
+    if last == Some(view) {
+        return;
+    }
+    let PresenceView { partner, person } = view;
+    let partner_line = partner
+        .as_ref()
+        .map_or(PresenceLine::Hidden, |partner| partner.line);
+    w.set_string(
+        StringProp::PresenceRoomId,
+        partner.as_ref().map_or_else(SharedString::new, |partner| {
+            SharedString::from(partner.room_id.as_ref())
+        }),
+    );
+    w.set_presence_partner(partner_line);
+    w.set_int(IntProp::PresencePartnerMinutes, minutes_seen(partner_line));
+    let person_line = person
+        .as_ref()
+        .map_or(PresenceLine::Hidden, |person| person.line);
+    w.set_string(
+        StringProp::PresenceUserId,
+        person.as_ref().map_or_else(SharedString::new, |person| {
+            SharedString::from(person.user_id.as_ref())
+        }),
+    );
+    w.set_presence_person(person_line);
+    w.set_int(IntProp::PresencePersonMinutes, minutes_seen(person_line));
+    w.set_string(
+        StringProp::PresenceStatus,
+        SharedString::from(
+            person
+                .as_ref()
+                .and_then(|person| person.status.as_deref())
+                .unwrap_or_default(),
+        ),
+    );
+}
+
+fn minutes_seen(line: PresenceLine) -> i32 {
+    match line {
+        PresenceLine::LastSeen { minutes } => i32::try_from(minutes).unwrap_or(i32::MAX),
+        PresenceLine::Hidden | PresenceLine::Online | PresenceLine::Away => 0,
+    }
 }
 
 fn apply_typing(w: &impl UiProps, last: Option<&TypingView>, view: &TypingView) {

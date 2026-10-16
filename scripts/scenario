@@ -85,6 +85,10 @@ scenario_env() {
     invite-people-failures) echo 'U2DM_DEMO_INVITE_PEOPLE=blocked,search-fails U2DM_DEMO_WINDOW=900x760' ;;
     typing)          echo 'U2DM_DEMO_TYPING=two U2DM_DEMO_WINDOW=900x760' ;;
     typing-names)    echo 'U2DM_DEMO_TYPING=two U2DM_DEMO_NAMES=clash U2DM_DEMO_WINDOW=900x760' ;;
+    presence)        echo 'U2DM_DEMO_PRESENCE=partners,status U2DM_DEMO_WINDOW=900x760' ;;
+    presence-idle)   echo 'U2DM_DEMO_PRESENCE=partners U2DM_DEMO_WINDOW=900x760' ;;
+    presence-off)    echo 'U2DM_DEMO_WINDOW=900x760' ;;
+    presence-refused) echo 'U2DM_DEMO_PRESENCE=refused U2DM_DEMO_WINDOW=900x760' ;;
     notifications)   echo 'U2DM_DEMO_NOTIFY=all U2DM_DEMO_WINDOW=900x760' ;;
     notifications-focused) echo 'U2DM_DEMO_NOTIFY=group,dm,mention U2DM_DEMO_WINDOW=900x760' ;;
     notifications-burst) echo 'U2DM_DEMO_NOTIFY=burst U2DM_DEMO_WINDOW=900x760' ;;
@@ -508,6 +512,25 @@ scenario_steps() {
     typing-names)
       echo '{"op":"select_room","room_id":"!linux:demo.local"}'
       echo 'sleep 2' ;;
+    presence)
+      echo '{"op":"select_room","room_id":"!priya:demo.local"}'
+      echo 'sleep 2'
+      echo '{"op":"select_room","room_id":"!sarah:demo.local"}'
+      echo 'sleep 2'
+      echo '{"op":"open_user_info","user_id":"@sarah:matrix.org"}'
+      echo 'sleep 2' ;;
+    presence-idle)
+      echo '{"op":"select_room","room_id":"!sarah:demo.local"}'
+      echo 'sleep 2'
+      echo '{"op":"user_activity","active":false}'
+      echo 'sleep 2'
+      echo '{"op":"open_user_info","user_id":"@alex:matrix.org"}'
+      echo 'sleep 2' ;;
+    presence-off|presence-refused)
+      echo '{"op":"select_room","room_id":"!sarah:demo.local"}'
+      echo 'sleep 2'
+      echo '{"op":"open_user_info","user_id":"@sarah:matrix.org"}'
+      echo 'sleep 2' ;;
     notifications)
       echo '{"op":"window_focus","focused":false}'
       echo 'sleep 15'
@@ -670,6 +693,10 @@ scenario_note() {
     invite-people-failures) echo 'in !design every new term fails once and Retry finds it: Vera blocks invites, so her row stays with the reason while Marcus is invited (invite_people.picked, invite_people.results)' ;;
     typing)          echo 'in !rust the two newest senders start typing a second after it opens, then !design shows nobody until its own two start (typing)' ;;
     typing-names)    echo 'in !linux Vera and the impostor Kai type: the header line names him with his user ID (typing)' ;;
+    presence)        echo 'Priya'"'"'s chat reads Away, then Sarah'"'"'s reads Online, and her sheet shows Online with her status (presence)' ;;
+    presence-idle)   echo 'the window goes idle, so your presence turns away: your own sheet reads Away (presence)' ;;
+    presence-off)    echo 'a server with presence off, as matrix.org: Sarah'"'"'s chat and sheet show no presence line (presence)' ;;
+    presence-refused) echo 'a server that refuses presence, as tuwunel with it off: no presence anywhere, and nothing is toasted (presence, toast)' ;;
     notifications)   echo 'with the window unfocused, every scripted arrival notifies except the muted room; !rust is read elsewhere and withdrawn, Leo'"'"'s invite notifies, and a click on Priya'"'"'s opens her chat (notifications, directory.attention, title)' ;;
     notifications-focused) echo 'the window keeps focus: arrivals light their rooms and the title count, but nothing notifies (notifications, directory.attention)' ;;
     notifications-burst) echo 'three messages in !rust a second apart: one notification, replaced twice (notifications)' ;;
@@ -699,7 +726,8 @@ names() {
     message-shields identity-alerts identity-held-sends invites invite-failures room-upgrades room-upgrade-failures room-state \
     room-links room-finder room-link-failures \
     create-room create-space create-in-space create-room-failures invite-people invite-people-failures \
-    typing typing-names notifications notifications-focused notifications-burst \
+    typing typing-names presence presence-idle presence-off presence-refused \
+    notifications notifications-focused notifications-burst \
     encryption-unverified encryption-recovery-key encryption-new-account encryption-setup-refused
 }
 
@@ -772,6 +800,7 @@ cmd_run() {
   jq -r 'if .view.source.status != "closed" then "  source \(.view.source.status) \(.view.source.event_id) encryption=\(.view.source.encryption)" else empty end' "$out/state.json"
   jq -r '[.rows[]? | select(.mentions_you) | .event_id] | if length > 0 then "  tinted rows \(join(", "))" else empty end' "$out/timeline.json"
   jq -r 'if (.view.typing.typists|length) > 0 then "  typing in \(.view.typing.room_id): \([.view.typing.typists[].shown] | join(", "))" else empty end' "$out/state.json"
+  jq -r '.view.presence | if .partner or .person then "  presence partner=\(.partner.user_id // "none"):\(.partner.line // "-") person=\(.person.user_id // "none"):\(.person.line // "-")\(if .person.status then " status=\(.person.status)" else "" end)" else empty end' "$out/state.json"
   jq -r 'if (.view.notifications|length) > 0 or .view.directory.attention > 0 then "  notifications [\([.view.notifications[] | "\(.room_id)#\(.serial)"] | join(", "))] attention=\(.view.directory.attention)" else empty end' "$out/state.json"
   jq -r 'if .title then "  title \(.title)" else empty end' "$out/timeline.json"
   jq -r 'if (.view.mentions.rows|length) > 0 or .view.mentions.offers_room then "  mentions in \(.view.mentions.room_id) room=\(.view.mentions.offers_room) rows=\([.view.mentions.rows[].user_id] | join(", "))" else empty end' "$out/state.json"

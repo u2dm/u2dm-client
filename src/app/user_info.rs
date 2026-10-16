@@ -181,6 +181,10 @@ impl UserInfo {
         self.spawn_read(port, room_id, user_id, generation);
     }
 
+    pub(super) fn person(&self) -> Option<&UserId> {
+        self.open.as_ref().map(|open| &open.user_id)
+    }
+
     pub(super) fn close(&mut self) {
         if self.open.take().is_none() {
             return;

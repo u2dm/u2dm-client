@@ -7,8 +7,8 @@ use super::props::send_command;
 use super::schema::{notify_modes, room_accesses, room_kinds, simple_callbacks, variant_named};
 use crate::app::input::CommandSender;
 use crate::commands::ui::{
-    ComposerActivity, MessageDraft, ReplyDraft, TimelineVisibility, UiCommand, ViewportChanged,
-    WindowFocus,
+    ComposerActivity, MessageDraft, ReplyDraft, TimelineVisibility, UiCommand, UserActivity,
+    ViewportChanged, WindowAttention, WindowFocus,
 };
 use crate::domain::auth::LoginCredentials;
 use crate::domain::emote::ComposerText;
@@ -604,15 +604,30 @@ pub fn timeline_visibility(visibility_tx: &watch::Sender<TimelineVisibility>, vi
     }
 }
 
-pub fn window_focus(focus_tx: &watch::Sender<WindowFocus>, attended: bool) {
+pub fn window_focus(attention_tx: &watch::Sender<WindowAttention>, attended: bool) {
     let focus = if attended {
         WindowFocus::Focused
     } else {
         WindowFocus::Unfocused
     };
-    if focus_tx.send(focus).is_err() {
-        tracing::debug!("window focus receiver closed");
-    }
+    attention_tx.send_if_modified(|attention| {
+        let changed = attention.focus != focus;
+        attention.focus = focus;
+        changed
+    });
+}
+
+pub fn user_activity(attention_tx: &watch::Sender<WindowAttention>, active: bool) {
+    let activity = if active {
+        UserActivity::Active
+    } else {
+        UserActivity::Idle
+    };
+    attention_tx.send_if_modified(|attention| {
+        let changed = attention.activity != activity;
+        attention.activity = activity;
+        changed
+    });
 }
 
 pub fn composer_changed(

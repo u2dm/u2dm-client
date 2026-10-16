@@ -23,8 +23,8 @@ pub(super) struct SendQueueRecovery {
     backoff: Duration,
 }
 
-fn retry_after(error: &matrix_sdk::Error) -> Option<Duration> {
-    let Some(ErrorKind::LimitExceeded(limit)) = error.client_api_error_kind() else {
+pub(super) fn retry_after(kind: Option<&ErrorKind>) -> Option<Duration> {
+    let Some(ErrorKind::LimitExceeded(limit)) = kind else {
         return None;
     };
     let wait = match limit.retry_after? {
@@ -60,7 +60,7 @@ impl SendQueueRecovery {
 
     pub(super) fn on_error(&mut self, failure: &SendQueueRoomError) {
         if failure.is_recoverable {
-            let delay = self.pause(retry_after(&failure.error));
+            let delay = self.pause(retry_after(failure.error.client_api_error_kind()));
             tracing::warn!(
                 room_id = %failure.room_id,
                 "send queue paused, resuming in {delay:?}: {}",

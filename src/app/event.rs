@@ -19,6 +19,7 @@ use crate::domain::matrix_link::RoomAddress;
 use crate::domain::media::PickedAttachment;
 use crate::domain::member_name::NamedUser;
 use crate::domain::message::{MessageEdit, PinnedMessage};
+use crate::domain::presence::LookupResult;
 use crate::domain::push::PushNotice;
 use crate::domain::room::RoomId;
 use crate::domain::room_creation::CreateResult;
@@ -91,6 +92,7 @@ pub(super) enum AppEvent {
         watch: u64,
         typists: Vec<NamedUser>,
     },
+    Presence(PresenceEvent),
     Notified {
         session: u64,
         notice: Box<PushNotice>,
@@ -163,6 +165,26 @@ impl PreviewEvent {
             Self::Landed { .. } => "RoomPreviewLanded",
             Self::AvatarsReady { .. } => "RoomPreviewAvatarsReady",
             Self::JoinSettled { .. } => "RoomLinkJoinSettled",
+        }
+    }
+}
+
+pub(super) enum PresenceEvent {
+    Disabled {
+        session: u64,
+    },
+    Looked {
+        watch: u64,
+        user_id: UserId,
+        result: LookupResult,
+    },
+}
+
+impl PresenceEvent {
+    fn label(&self) -> &'static str {
+        match self {
+            Self::Disabled { .. } => "PresenceDisabled",
+            Self::Looked { .. } => "PresenceLooked",
         }
     }
 }
@@ -440,6 +462,7 @@ impl AppEvent {
             Self::EditUnsaved { .. } => "EditUnsaved",
             Self::PinnedChanged { .. } => "PinnedChanged",
             Self::TypistsChanged { .. } => "TypistsChanged",
+            Self::Presence(event) => event.label(),
             Self::Notified { .. } => "Notified",
             Self::SpaceIndexPaged { .. } => "SpaceIndexPaged",
             Self::SpaceIndexAvatarsReady { .. } => "SpaceIndexAvatarsReady",

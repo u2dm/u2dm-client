@@ -9,10 +9,12 @@ import { MenuRow } from "../../../components/menu-row.slint";
 import { ActionTile } from "./action-tile.slint";
 import { DetailLine } from "./detail-line.slint";
 import { MemberRoles } from "./member-roles.slint";
+import { PresenceLabel } from "./presence-label.slint";
 import { CopyLinkTile, SheetCloseChip, SheetCover, TilePrompt, TileRow } from "./sheet.slint";
 import { AppStyle, Fonts, IconSize, Metrics, Space, Weight } from "../../../theme.slint";
-import { DirectChat, IdentityTrust, Moderation, RoomMembership, UserMessageKind } from "../../../enums.slint";
-import { UserInfoView } from "../../../views.slint";
+import { DirectChat, IdentityTrust, Moderation, PresenceLine, RoomMembership, UserMessageKind } from "../../../enums.slint";
+import { PresenceView, UserInfoView } from "../../../views.slint";
+import { PresenceWords } from "../../../messages.slint";
 import { Actions } from "../../../actions.slint";
 import { MetaTip, Reactions } from "../../../local.slint";
 
@@ -87,6 +89,10 @@ component ModerationRow inherits MenuRow {
 component ProfileCover inherits SheetCover {
     property <string> role-label: MemberRoles.label(UserInfoView.role);
     property <string> note: root.membership-note(UserInfoView.membership);
+    property <bool> presence-shown: PresenceView.user-id != "" && PresenceView.user-id == UserInfoView.user-id;
+    property <PresenceLine> presence-line: root.presence-shown ? PresenceView.person : PresenceLine.hidden;
+    property <string> presence: PresenceWords.text(root.presence-line, PresenceView.person-minutes);
+    property <string> presence-status: root.presence-shown ? PresenceView.status : "";
 
     pure function membership-note(membership: RoomMembership) -> string {
         if membership == RoomMembership.invited {
@@ -116,6 +122,20 @@ component ProfileCover inherits SheetCover {
 
     if UserInfoView.pronouns != "": Text {
         text: UserInfoView.pronouns;
+        font-size: Fonts.body-small;
+        color: AppStyle.foreground-muted;
+        horizontal-alignment: center;
+        overflow: elide;
+    }
+
+    if root.presence != "": PresenceLabel {
+        alignment: center;
+        line: root.presence-line;
+        text: root.presence;
+    }
+
+    if root.presence-status != "": Text {
+        text: root.presence-status;
         font-size: Fonts.body-small;
         color: AppStyle.foreground-muted;
         horizontal-alignment: center;
