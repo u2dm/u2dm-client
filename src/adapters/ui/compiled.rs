@@ -11,7 +11,9 @@ use tokio::runtime::Runtime;
 use tokio::sync::{mpsc, watch};
 use u2dm_ui::{
     Actions, AppWindow, AttachmentKind as UiAttachmentKind, AttachmentView,
-    AudioKind as UiAudioKind, AudioView, BodyLine, BodyPiece, ChildAccess as UiChildAccess,
+    AudioKind as UiAudioKind, AudioView, BodyLine, BodyPiece, CallMic as UiCallMic,
+    CallOffer as UiCallOffer, CallPhase as UiCallPhase, CallRefusal as UiCallRefusal,
+    CallTileEntry, CallTileState as UiCallTileState, CallView, ChildAccess as UiChildAccess,
     ConnectionState, CreateRoomStatus as UiCreateRoomStatus, CreateRoomView,
     DecryptionFailure as UiDecryptionFailure, Delivery as UiDelivery, DirectChat as UiDirectChat,
     DirectoryView, EmojiArt as UiEmojiArt, EmojiEntry, EmojiRow, EmojiStore,
@@ -29,10 +31,11 @@ use u2dm_ui::{
     PeopleSearchStatus as UiPeopleSearchStatus, PollAnswerEntry, PollPhase as UiPollPhase,
     PresenceLine as UiPresenceLine, PresenceView, PreviewKind as UiPreviewKind, ReactionEntry,
     ReactionSend as UiReactionSend, ReactorAvatar, ReadersStatus as UiReadersStatus, ReadersView,
-    RecoveryStatus as UiRecoveryStatus, ReplySwipe, RoomAccess as UiRoomAccess, RoomEntry,
-    RoomInfoPlacement as UiRoomInfoPlacement, RoomInfoView, RoomKind as UiRoomKind, RoomLogView,
-    RoomMembership as UiRoomMembership, RoomMenuView, RoomPreviewStatus as UiRoomPreviewStatus,
-    RoomPreviewView, RoomRowKind as UiRoomRowKind, RoomScope as UiRoomScope, RoomView,
+    RecoveryStatus as UiRecoveryStatus, ReplySwipe, RoomAccess as UiRoomAccess,
+    RoomCallMark as UiRoomCallMark, RoomEntry, RoomInfoPlacement as UiRoomInfoPlacement,
+    RoomInfoView, RoomKind as UiRoomKind, RoomLogView, RoomMembership as UiRoomMembership,
+    RoomMenuView, RoomPreviewStatus as UiRoomPreviewStatus, RoomPreviewView,
+    RoomRowKind as UiRoomRowKind, RoomScope as UiRoomScope, RoomView,
     RosterStatus as UiRosterStatus, SendState as UiSendState, ServiceKind as UiServiceKind,
     SessionView, Shield as UiShield, ShieldReason as UiShieldReason,
     SourceEncryption as UiSourceEncryption, SourceStatus as UiSourceStatus, SourceView,
@@ -55,17 +58,17 @@ use super::decode::{
     AvatarSlot, request_avatar, request_custom_emoji, request_media, request_pack_cell,
 };
 use super::dto::{
-    BodyLineDto, BodyPieceDto, EmojiArt, InviteeDto, LogLineDto, MediaFailureKind, MediaState,
-    MemberRowDto, MemberRowKind, MessageDto, PackCellDto, PackRowDto, PackSurface, PackTabDto,
-    PollAnswerDto, ReactionDto, ReactorAvatarDto, RoomDto, RoomRowKind, SpaceChildDto, SpaceDto,
-    SpoilerState, pack_surface_named,
+    BodyLineDto, BodyPieceDto, CallOfferMark, CallTileDto, CallTileMark, EmojiArt, InviteeDto,
+    LogLineDto, MediaFailureKind, MediaState, MemberRowDto, MemberRowKind, MessageDto, PackCellDto,
+    PackRowDto, PackSurface, PackTabDto, PollAnswerDto, ReactionDto, ReactorAvatarDto,
+    RoomCallMark, RoomDto, RoomRowKind, SpaceChildDto, SpaceDto, SpoilerState, pack_surface_named,
 };
 #[cfg(feature = "demo")]
 use super::dump;
 use super::fields::{
-    BodyLineFields, BodyPieceFields, InviteeFields, LogLineFields, MemberRowFields, MessageFields,
-    PackCellFields, PackRowFields, PackTabFields, PollAnswerFields, ReactionFields, ReactorFields,
-    RoomFields, SpaceChildFields, SpaceFields,
+    BodyLineFields, BodyPieceFields, CallTileFields, InviteeFields, LogLineFields, MemberRowFields,
+    MessageFields, PackCellFields, PackRowFields, PackTabFields, PollAnswerFields, ReactionFields,
+    ReactorFields, RoomFields, SpaceChildFields, SpaceFields,
 };
 use super::notices::NoticeWords;
 use super::present::{
@@ -76,7 +79,8 @@ use super::props::EnumProp;
 use super::props::{BoolProp, IntProp, StringProp, UiProps};
 use super::router::{EditedRow, EditedText};
 use super::schema::{
-    attachment_kinds, audio_kinds, body_line_fields, body_piece_fields, bool_props, child_accesses,
+    attachment_kinds, audio_kinds, body_line_fields, body_piece_fields, bool_props, call_mics,
+    call_offers, call_phases, call_refusals, call_tile_fields, call_tile_marks, child_accesses,
     connection_states, create_room_statuses, decryption_failures, deliveries, direct_chats,
     emoji_arts, encryption_activities, encryption_standings, encryption_steps, enum_props,
     identity_alert_kinds, identity_trusts, int_props, invite_answers, invite_kinds, invitee_fields,
@@ -86,11 +90,12 @@ use super::schema::{
     pack_row_fields, pack_surfaces, pack_tab_fields, pending_moderations, people_search_statuses,
     poll_answer_fields, poll_phases, presence_lines, preview_kinds, reaction_fields,
     reaction_sends, reactor_fields, readers_statuses, recovery_statuses, room_accesses,
-    room_fields, room_info_placements, room_kinds, room_memberships, room_preview_statuses,
-    room_row_kinds, room_scopes, roster_statuses, send_states, service_kinds, shield_reasons,
-    shields, simple_callbacks, source_encryptions, source_statuses, space_child_fields,
-    space_fields, space_index_statuses, spoiler_states, string_props, timeline_states,
-    upgrade_links, user_message_kinds, verification_activities, verification_phases,
+    room_call_marks, room_fields, room_info_placements, room_kinds, room_memberships,
+    room_preview_statuses, room_row_kinds, room_scopes, roster_statuses, send_states,
+    service_kinds, shield_reasons, shields, simple_callbacks, source_encryptions, source_statuses,
+    space_child_fields, space_fields, space_index_statuses, spoiler_states, string_props,
+    timeline_states, upgrade_links, user_message_kinds, verification_activities,
+    verification_phases,
 };
 use super::session::active_models;
 use super::video::{self, millis_to_duration};
@@ -100,10 +105,11 @@ use crate::commands::effects::{Effect, VerificationActivity};
 use crate::commands::messages::{UserMessage, UserMessageKind};
 use crate::commands::ui::{ComposerActivity, TimelineVisibility, ViewportChanged, WindowAttention};
 use crate::commands::view::{
-    AppViewState, AttachmentKind, ChildAccess, CreateRoomStatus, DirectChat, EncryptionActivity,
-    EncryptionStep, InviteeState, LoginActivity, LoginStep, PendingAnswer, PendingModeration,
-    PeopleSearchStatus, ReadersStatus, RoomInfoPlacement, RoomPreviewSheet, RoomScope,
-    RosterStatus, SourceState, SpaceIndexStatus, UpgradeLink,
+    AppViewState, AttachmentKind, CallPhase, ChildAccess, CreateRoomStatus, DirectChat,
+    EncryptionActivity, EncryptionStep, InviteeState, JoinRefusal, LoginActivity, LoginStep,
+    MicrophoneView, PendingAnswer, PendingModeration, PeopleSearchStatus, ReadersStatus,
+    RoomInfoPlacement, RoomPreviewSheet, RoomScope, RosterStatus, SourceState, SpaceIndexStatus,
+    UpgradeLink,
 };
 use crate::domain::auth::LoginMethod;
 use crate::domain::encryption::{Recovery, Standing};
@@ -284,6 +290,17 @@ impl UiProps for AppWindow {
         self.global::<RoomInfoView>().set_topic_styled(topic);
     }
 
+    fn apply_ring_avatar(&self, avatar: Option<Image>) {
+        let call = self.global::<CallView>();
+        match avatar {
+            Some(img) => {
+                call.set_ring_avatar(img);
+                call.set_ring_has_avatar(true);
+            }
+            None => call.set_ring_has_avatar(false),
+        }
+    }
+
     fn apply_user_info_avatar(&self, avatar: Option<Image>) {
         let user_info = self.global::<UserInfoView>();
         match avatar {
@@ -411,6 +428,12 @@ notify_modes!(impl_slint_enum NotifyMode UiNotifyMode;);
 member_roles!(impl_slint_enum MemberRole UiMemberRole;);
 member_row_kinds!(impl_slint_enum MemberRowKind UiMemberRowKind;);
 room_row_kinds!(impl_slint_enum RoomRowKind UiRoomRowKind;);
+room_call_marks!(impl_slint_enum RoomCallMark UiRoomCallMark;);
+call_offers!(impl_slint_enum CallOfferMark UiCallOffer;);
+call_refusals!(impl_slint_enum JoinRefusal UiCallRefusal;);
+call_phases!(impl_slint_enum CallPhase UiCallPhase;);
+call_mics!(impl_slint_enum MicrophoneView UiCallMic;);
+call_tile_marks!(impl_slint_enum CallTileMark UiCallTileState;);
 roster_statuses!(impl_slint_enum RosterStatus UiRosterStatus;);
 room_info_placements!(impl_slint_enum RoomInfoPlacement UiRoomInfoPlacement;);
 room_memberships!(impl_slint_enum RoomMembership UiRoomMembership;);
@@ -541,6 +564,7 @@ space_child_fields!(impl_entry SpaceChildDto SpaceChildFields SpaceChildEntry;);
 member_row_fields!(impl_entry MemberRowDto MemberRowFields MemberEntry;);
 invitee_fields!(impl_entry InviteeDto InviteeFields InviteeEntry;);
 log_line_fields!(impl_entry LogLineDto LogLineFields LogLineEntry;);
+call_tile_fields!(impl_entry CallTileDto CallTileFields CallTileEntry;);
 pack_cell_fields!(impl_entry PackCellDto PackCellFields PackCell;);
 pack_tab_fields!(impl_entry PackTabDto PackTabFields PackTabEntry;);
 pack_row_fields!(impl_entry PackRowDto PackRowFields PackRow;);
@@ -568,6 +592,7 @@ impl UiBackend for CompiledBackend {
     type MemberRow = MemberEntry;
     type Invitee = InviteeEntry;
     type LogLine = LogLineEntry;
+    type CallTile = CallTileEntry;
     type PackRow = PackRow;
     type PackCell = PackCell;
     type PackTab = PackTabEntry;
@@ -604,6 +629,7 @@ impl UiBackend for CompiledBackend {
                 target,
             } => text.invoke_service(kind.slint(), actor.into(), target.into()),
             NoticeWords::Invite { inviter } => text.invoke_invite(inviter.into()),
+            NoticeWords::Ring { video, caller } => text.invoke_ring(video, caller.into()),
         }
     }
 }

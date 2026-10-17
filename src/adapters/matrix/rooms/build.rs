@@ -7,17 +7,18 @@ use matrix_sdk::latest_events::LatestEventValue;
 use matrix_sdk::notification_settings::{
     IsEncrypted, IsOneToOne, NotificationSettings, RoomNotificationMode,
 };
-use matrix_sdk::ruma::OwnedUserId;
 use matrix_sdk::ruma::events::direct::OwnedDirectUserIdentifier;
 use matrix_sdk::ruma::events::poll::unstable_start::SyncUnstablePollStartEvent;
 use matrix_sdk::ruma::events::room::member::MembershipState;
 use matrix_sdk::ruma::events::room::message::{Relation, RoomMessageEventContent};
+use matrix_sdk::ruma::events::rtc::notification::CallIntent;
 use matrix_sdk::ruma::events::space::child::SpaceChildEventContent;
 use matrix_sdk::ruma::events::space_order::SpaceOrderEventContent;
 use matrix_sdk::ruma::events::{
     AnyMessageLikeEventContent, AnySyncMessageLikeEvent, AnySyncStateEvent, AnySyncTimelineEvent,
     SyncMessageLikeEvent, SyncStateEvent,
 };
+use matrix_sdk::ruma::{MilliSecondsSinceUnixEpoch, OwnedUserId};
 use matrix_sdk::{Client, Room};
 use tracing::Instrument;
 
@@ -25,12 +26,17 @@ use crate::adapters::matrix::member_name::named_member;
 use crate::adapters::matrix::permissions::{room_permissions, space_powers};
 use crate::adapters::matrix::preview::{self, MessagePreview};
 use crate::adapters::matrix::room_state::history_visibility;
+use crate::adapters::matrix::rtc::room_call;
 use crate::domain::member_name::NamedUser;
 use crate::domain::message::{MessagePreviewKind, RichText, ServiceEvent};
 use crate::domain::room::{NotifyMode, Room as DomainRoom, RoomId, Space as DomainSpace};
 use crate::domain::user_info::UserId;
 
 const SEED_INFLIGHT: usize = 16;
+
+fn now_ms() -> u64 {
+    MilliSecondsSinceUnixEpoch::now().0.into()
+}
 
 async fn room_avatar_mxc(room: &Room, is_direct: bool) -> Option<String> {
     if let Some(mxc) = room.avatar_url() {
@@ -140,6 +146,8 @@ async fn build_room(room: &Room, settings: &NotificationSettings) -> DomainRoom 
         poll_permissions: permissions.polls,
         message_permissions: permissions.messages,
         may_invite: permissions.invite,
+        may_join_calls: permissions.calls,
+        call: room_call(room, now_ms()).await,
         member_count,
         has_unread: flags.has_unread,
         has_mentions: flags.has_mentions,
@@ -254,9 +262,14 @@ pub(super) fn preview_from_event(event: &AnySyncTimelineEvent) -> Option<Message
         AnySyncTimelineEvent::MessageLike(AnySyncMessageLikeEvent::CallInvite(_)) => {
             Some(MessagePreview::service(ServiceEvent::CallStarted))
         }
-        AnySyncTimelineEvent::MessageLike(AnySyncMessageLikeEvent::RtcNotification(_)) => {
-            Some(MessagePreview::service(ServiceEvent::CallNotification))
-        }
+        AnySyncTimelineEvent::MessageLike(AnySyncMessageLikeEvent::RtcNotification(
+            notification,
+        )) => Some(MessagePreview::service(ServiceEvent::CallNotification {
+            video: notification.as_original().is_some_and(|original| {
+                matches!(original.content.call_intent, Some(CallIntent::Video))
+            }),
+            declined_by: None,
+        })),
         AnySyncTimelineEvent::State(AnySyncStateEvent::RoomMember(member))
             if matches!(member.membership(), MembershipState::Knock) =>
         {

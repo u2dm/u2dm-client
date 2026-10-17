@@ -14,6 +14,7 @@ use super::fields::{
     BodyLineFields, BodyPieceFields, LogLineFields, MessageFields, PollAnswerFields, ReactionFields,
 };
 use super::props::{BoolProp, EnumProp, IntProp, StringProp, UiProps};
+use super::ringtone;
 
 #[derive(Serialize)]
 pub struct ReactionRowDump {
@@ -164,6 +165,23 @@ pub struct RoomLogDump {
 }
 
 #[derive(Serialize)]
+#[allow(clippy::struct_excessive_bools)]
+pub struct CallDump {
+    pub card: bool,
+    pub card_room_id: String,
+    pub card_caller: String,
+    pub card_video: bool,
+    pub ringtone: Option<String>,
+    pub pill: bool,
+    pub pill_people: i32,
+    pub pill_video: bool,
+    pub band: bool,
+    pub bar: bool,
+    pub elapsed: String,
+    pub card_answerable: bool,
+}
+
+#[derive(Serialize)]
 pub struct TimelineDump {
     pub selected_room_id: String,
     pub selected_room_name: String,
@@ -181,6 +199,7 @@ pub struct TimelineDump {
     pub audio: AudioDump,
     pub room_menu: RoomMenuDump,
     pub room_log: RoomLogDump,
+    pub call: CallDump,
     pub title: String,
 }
 
@@ -290,6 +309,7 @@ fn collect<B: UiBackend>(window: &B::Window) -> TimelineDump {
         audio: audio_view(window),
         room_menu: room_menu_view(window),
         room_log: room_log_view::<B>(window),
+        call: call_view(window),
         title: window.get_string(StringProp::WindowTitleText).to_string(),
     }
 }
@@ -320,6 +340,27 @@ fn room_log_view<B: UiBackend>(window: &B::Window) -> RoomLogDump {
         dropped: window.get_int(IntProp::RoomLogDropped),
         lines_landed: window.get_int(IntProp::RoomLogLinesLanded),
         newest,
+    }
+}
+
+fn call_view(window: &impl UiProps) -> CallDump {
+    let here = window.get_string(StringProp::HereRoomId);
+    let selected = window.get_string(StringProp::SelectedRoomId);
+    let active = window.get_bool(BoolProp::ActiveVisible);
+    let in_call_room = window.get_string(StringProp::ActiveRoomId) == selected;
+    CallDump {
+        card: window.get_bool(BoolProp::RingVisible),
+        card_room_id: window.get_string(StringProp::RingRoomId).to_string(),
+        card_caller: window.get_string(StringProp::RingCaller).to_string(),
+        card_video: window.get_bool(BoolProp::RingVideo),
+        ringtone: ringtone::sounding().map(|tone| format!("{tone:?}")),
+        pill: !here.is_empty() && here == selected,
+        pill_people: window.get_int(IntProp::HerePeople),
+        pill_video: window.get_bool(BoolProp::HereVideo),
+        band: active && in_call_room,
+        bar: active && !in_call_room,
+        elapsed: window.get_string(StringProp::CallElapsed).to_string(),
+        card_answerable: window.get_bool(BoolProp::RingAnswerable),
     }
 }
 

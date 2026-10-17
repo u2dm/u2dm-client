@@ -10,6 +10,7 @@ use super::backend::{
     UiBackend, UiEventContext, apply_pack_art, apply_pack_avatar, enrich_message,
     keep_shown_enrichment,
 };
+use super::call::apply_call;
 use super::decode::{AvatarSlot, load_attachment_preview, load_avatar_async, request_pack_cell};
 use super::dto::{
     PackArt, PackBrowse, PackRowDto, PackTabDto, QuotedMessage, audio_row_update,
@@ -38,12 +39,13 @@ use crate::commands::effects::{Effect, VerificationActivity, VerificationUpdate}
 use crate::commands::messages::{UserMessage, UserMessageKind};
 use crate::commands::ui::Draft;
 use crate::commands::view::{
-    AppViewState, AttachmentView, AudioView, CardStatus, CopiedLink, CreateRoomView, DirectoryView,
-    EncryptionDialog, EncryptionStep, EncryptionView, IdentityAlertView, InvitePeopleView,
-    InviteView, LifecycleView, LoginStep, MentionsView, NowPlaying, PackView, PaginationView,
-    PinnedView, PresenceView, ReadersView, RoomCard, RoomInfoView, RoomLogView, RoomMenuTarget,
-    RoomPreviewSheet, RoomPreviewView, ShownPreview, SourceState, SpaceIndexView, Toast, TrackFile,
-    TypingView, UnsentMessage, UpgradeView, UserCard, UserInfoView, VideoView,
+    AppViewState, AttachmentView, AudioView, CallView, CardStatus, CopiedLink, CreateRoomView,
+    DirectoryView, EncryptionDialog, EncryptionStep, EncryptionView, IdentityAlertView,
+    InvitePeopleView, InviteView, LifecycleView, LoginStep, MentionsView, NotificationsView,
+    NowPlaying, PackView, PaginationView, PinnedView, PresenceView, ReadersView, RoomCard,
+    RoomInfoView, RoomLogView, RoomMenuTarget, RoomPreviewSheet, RoomPreviewView, ShownPreview,
+    SourceState, SpaceIndexView, Toast, TrackFile, TypingView, UnsentMessage, UpgradeView,
+    UserCard, UserInfoView, VideoView,
 };
 use crate::domain::encryption::KeyStorage;
 use crate::domain::invite::{Invite, InviteList};
@@ -385,6 +387,7 @@ fn apply_snapshot<B: UiBackend>(
         upgrade,
         typing,
         presence,
+        call,
         notifications,
         encryption,
         toast,
@@ -442,7 +445,7 @@ fn apply_snapshot<B: UiBackend>(
     }
     apply_composer_banners(w, last, identity_alert, upgrade);
     apply_room_people(w, last, typing, presence);
-    apply_notifications::<B>(w, last, notifications, ctx.notifier);
+    apply_notices::<B>(w, last, notifications, call, ctx);
     apply_encryption(w, last.map(|l| &l.encryption), encryption);
     apply_toast(w, last.map(|l| &l.toast), toast);
     apply_copied_links(w, last, message_link, room_link);
@@ -460,6 +463,17 @@ fn apply_snapshot<B: UiBackend>(
         );
     }
     with_session(|session| session.snapshot = Some(Arc::clone(view)));
+}
+
+fn apply_notices<B: UiBackend>(
+    w: &B::Window,
+    last: Option<&AppViewState>,
+    notifications: &NotificationsView,
+    call: &CallView,
+    ctx: &UiEventContext<'_, B>,
+) {
+    apply_notifications::<B>(w, last, notifications, ctx.notifier);
+    apply_call::<B>(w, last, call, ctx);
 }
 
 fn apply_room_log<B: UiBackend>(

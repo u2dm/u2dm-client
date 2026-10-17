@@ -1,4 +1,4 @@
-import { AudioKind, ChildAccess, DecryptionFailure, Delivery, EmojiArt, InviteeState, InviteKind, LogLevel, MediaFailure, MediaState, MemberRole, MemberRowKind, MessageKind, PackOrigin, PollPhase, PreviewKind, ReactionSend, RoomAccess, RoomKind, RoomRowKind, SendState, ServiceKind, Shield, ShieldReason, SpoilerState, UserMessageKind } from "./enums.slint";
+import { AudioKind, CallTileState, ChildAccess, DecryptionFailure, Delivery, EmojiArt, InviteeState, InviteKind, LogLevel, MediaFailure, MediaState, MemberRole, MemberRowKind, MessageKind, PackOrigin, PollPhase, PreviewKind, ReactionSend, RoomAccess, RoomCallMark, RoomKind, RoomRowKind, SendState, ServiceKind, Shield, ShieldReason, SpoilerState, UserMessageKind } from "./enums.slint";
 
 export struct RoomEntry {
     id: string,
@@ -26,6 +26,7 @@ export struct RoomEntry {
     invite-kind: InviteKind,
     inviter: string,
     inviter-id: string,
+    call: RoomCallMark,
 }
 
 export struct SpaceEntry {
@@ -82,6 +83,26 @@ export struct LogLineEntry {
     level-name: string,
     target: string,
     text: string,
+}
+
+export struct CallTileEntry {
+    member: string,
+    name: string,
+    initial: string,
+    color-index: int,
+    own: bool,
+    state: CallTileState,
+    muted: bool,
+    speaking: bool,
+}
+
+export struct StartCallRequest {
+    room-id: string,
+    video: bool,
+}
+
+export struct MicrophoneRequest {
+    on: bool,
 }
 
 export struct ReactorAvatar {

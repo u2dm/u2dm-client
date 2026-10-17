@@ -244,8 +244,12 @@ async fn run_command(
             }
             Ok(())
         }
-        Driven::NotificationClick { room_id, token } => {
-            if !notifications::click(&room_id, token) {
+        Driven::NotificationClick {
+            room_id,
+            token,
+            action,
+        } => {
+            if !notifications::click(&room_id, token, action) {
                 return failure(
                     StatusCode::CONFLICT,
                     format!("no desktop notification of {room_id} is shown"),

@@ -130,6 +130,13 @@ export global AppStyle {
     out property <color> warning: Colors.goldenrod.mix(Palette.foreground, 0.55);
     out property <color> success: Colors.mediumseagreen.mix(Palette.foreground, 0.8);
     out property <color> success-background: Colors.mediumseagreen.mix(Palette.background, 0.1);
+    out property <color> call-live: root.success;
+    out property <color> call-live-background: root.success-background;
+    out property <color> call-decline: Colors.tomato.darker(0.25);
+    out property <color> call-accept: Colors.mediumseagreen.darker(0.25);
+    out property <color> call-band: Palette.alternate-background;
+    out property <color> call-tile: root.surface-raised;
+    out property <color> call-speaking: Palette.accent-background;
 
     out property <color> status-online: Colors.mediumseagreen;
     out property <color> status-pending: Colors.goldenrod;
@@ -305,6 +312,16 @@ export global Metrics {
     out property <length> reaction-detail-height: 260px;
     out property <length> unread-dot: 12px;
     out property <length> presence-dot: 8px;
+    out property <length> incoming-call-width: 360px;
+    out property <length> incoming-call-avatar: Size.xxl;
+    out property <length> incoming-call-top: Space.xl;
+    out property <length> incoming-call-inset: Space.xl;
+    out property <length> call-band: 260px;
+    out property <length> call-bar: Size.xl;
+    out property <length> call-tile-width: 148px;
+    out property <length> call-tile-height: 112px;
+    out property <length> call-tile-avatar: 56px;
+    out property <length> call-speaking-ring: 2px;
 
     out property <length> drawer-width: 300px;
     out property <length> drawer-min-width: 240px;

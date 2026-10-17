@@ -8,6 +8,7 @@ use matrix_sdk::ruma::events::room::message::{
     AudioMessageEventContent, FileMessageEventContent, FormattedBody, ImageMessageEventContent,
     MessageFormat, MessageType, UnstableAmplitude, VideoInfo, VideoMessageEventContent,
 };
+use matrix_sdk::ruma::events::rtc::notification::CallIntent;
 use matrix_sdk::ruma::events::sticker::StickerEventContent;
 use matrix_sdk::ruma::html::{HtmlSanitizerMode, RemoveReplyFallback, sanitize_html};
 use matrix_sdk_base::crypto::types::events::UtdCause;
@@ -349,7 +350,16 @@ fn service_event_from_content(content: &TimelineItemContent) -> Option<ServiceEv
         TimelineItemContent::ProfileChange(change) => profile_to_service(change),
         TimelineItemContent::OtherState(state) => other_state_to_service(state.content()),
         TimelineItemContent::CallInvite => Some(ServiceEvent::CallStarted),
-        TimelineItemContent::RtcNotification { .. } => Some(ServiceEvent::CallNotification),
+        TimelineItemContent::RtcNotification {
+            call_intent,
+            declined_by,
+            ..
+        } => Some(ServiceEvent::CallNotification {
+            video: matches!(call_intent, Some(CallIntent::Video)),
+            declined_by: declined_by
+                .first()
+                .map(|user_id| NamedUser::unnamed(user_id.as_str())),
+        }),
         _ => None,
     }
 }

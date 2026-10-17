@@ -16,6 +16,21 @@ The color emoji font embedded in the app (`ui/fonts/Twemoji.ttf`, family
 - **Modifications:** the SVG artwork was compiled into a COLRv0 OpenType font
   with [nanoemoji](https://github.com/googlefonts/nanoemoji), and the `cmap` was subset to remove text-range codepoints (space, digits, `#`, `*`) so plain text falls back to the UI font.
 
+## libwebrtc (calls)
+
+Builds with the `calls` feature (on by default) link LiveKit's prebuilt WebRTC library,
+downloaded by the `webrtc-sys` crate's build script.
+
+- **Source:** [livekit/rust-sdks](https://github.com/livekit/rust-sdks) release `webrtc-89d790b`,
+  `webrtc-linux-x64-release.zip` (sha256
+  `b167adad5291cea0e4d66a0454d9d52d2ad714e6b0ed70f4410317d3ebde70c5`), built from Google's
+  [WebRTC](https://webrtc.googlesource.com/src).
+- **Copyright:** The WebRTC project authors, and the authors of the libraries it bundles
+  (BoringSSL, Opus, libvpx, libyuv, abseil and others).
+- **License:** BSD-3-Clause for WebRTC; each bundled library under its own license. The archive's
+  `LICENSE.md` (4089 lines) lists every one of them, and a binary distribution must ship it beside
+  the binary.
+
 ## Demo images
 
 `cargo run --features demo` shows placeholder people, spaces and photos.

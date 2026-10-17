@@ -68,7 +68,10 @@ pub enum ServiceEvent {
     PinnedMessagesChanged,
     PowerLevelsChanged(PowerChange),
     CallStarted,
-    CallNotification,
+    CallNotification {
+        video: bool,
+        declined_by: Option<NamedUser>,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -196,7 +199,11 @@ impl ServiceEvent {
             | Self::Banned { target }
             | Self::Unbanned { target }
             | Self::KnockAccepted { target }
-            | Self::KnockDenied { target } => Some(target),
+            | Self::KnockDenied { target }
+            | Self::CallNotification {
+                declined_by: Some(target),
+                ..
+            } => Some(target),
             Self::PowerLevelsChanged(change) => change.target(),
             _ => None,
         }
@@ -210,7 +217,11 @@ impl ServiceEvent {
             | Self::Banned { target }
             | Self::Unbanned { target }
             | Self::KnockAccepted { target }
-            | Self::KnockDenied { target } => Some(target),
+            | Self::KnockDenied { target }
+            | Self::CallNotification {
+                declined_by: Some(target),
+                ..
+            } => Some(target),
             Self::PowerLevelsChanged(change) => change.target_mut(),
             _ => None,
         }

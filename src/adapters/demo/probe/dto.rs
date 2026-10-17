@@ -5,13 +5,16 @@ use crate::adapters::ui::identity_banner;
 use crate::commands::messages::{UserMessage, UserMessageKind};
 use crate::commands::ui::Draft;
 use crate::commands::view::{
-    AppViewState, AttachmentView, AudioView, CardStatus, CopiedLink, CreateRoomView, DirectoryView,
-    EncryptionStep, EncryptionView, IdentityAlertView, InvitePeopleView, InviteView, InviteeRow,
-    LifecycleView, LoginStep, MentionsView, NotificationsView, PackView, PaginationView,
-    PinnedView, PresenceView, ReadersView, RoomInfoView, RoomLogView, RoomMenuTarget,
-    RoomPreviewSheet, RoomPreviewView, RosterRow, SourceState, SpaceIndexRow, SpaceIndexView,
-    SpaceMatch, Toast, TrackFile, TypingView, UnsentMessage, UpgradeView, UserInfoView, VideoView,
+    ActiveCall, AppViewState, AttachmentView, AudioView, CallPhase, CallTile, CallView,
+    CantDecrypt, CardStatus, CopiedLink, CreateRoomView, DirectoryView, EncryptionStep,
+    EncryptionView, IdentityAlertView, InvitePeopleView, InviteView, InviteeRow, JoinOffer,
+    JoinRefusal, LifecycleView, LoginStep, MentionsView, MicrophoneView, NotificationsView,
+    PackView, PaginationView, PinnedView, PresenceView, ReadersView, RoomInfoView, RoomLogView,
+    RoomMenuTarget, RoomPreviewSheet, RoomPreviewView, RosterRow, SourceState, SpaceIndexRow,
+    SpaceIndexView, SpaceMatch, TileState, Toast, TrackFile, TypingView, UnsentMessage,
+    UpgradeView, UserInfoView, VideoView,
 };
+use crate::domain::call::{CallIntent, RoomCall};
 use crate::domain::encryption::KeyStorage;
 use crate::domain::image_pack::{ImagePack, ImageUsage, PackOrigin, PackTitle};
 use crate::domain::invite::Invite;
@@ -27,6 +30,7 @@ use crate::domain::space_index::{ChildKind, JoinRule};
 use crate::domain::sync::{ConnectionStatus, ReauthReason};
 use crate::domain::timeline::{OlderHistory, SourceEncryption};
 use crate::domain::user_info::{Moderation, Pronouns};
+use crate::util::unix_now_ms;
 
 #[derive(Serialize)]
 pub struct ViewDto {
@@ -52,6 +56,7 @@ pub struct ViewDto {
     upgrade: UpgradeDto,
     typing: TypingDto,
     presence: PresenceDto,
+    call: CallDto,
     notifications: Vec<NotificationDto>,
     encryption: EncryptionDto,
     toast: ToastDto,
@@ -158,6 +163,79 @@ struct PersonPresenceDto {
     line: &'static str,
     minutes: Option<u32>,
     status: Option<String>,
+}
+
+#[derive(Serialize)]
+struct CallDto {
+    ring: Option<RingDto>,
+    here: Option<CallHereDto>,
+    offer: Option<CallOfferDto>,
+    active: Option<ActiveCallDto>,
+}
+
+#[derive(Serialize)]
+struct CallOfferDto {
+    room_id: String,
+    offer: &'static str,
+    refusal: Option<&'static str>,
+}
+
+#[derive(Serialize)]
+struct ActiveCallDto {
+    call: u64,
+    room_id: String,
+    phase: &'static str,
+    live: bool,
+    encrypted: bool,
+    video: bool,
+    microphone: &'static str,
+    tiles: Vec<CallTileDto>,
+}
+
+#[derive(Serialize)]
+struct CallTileDto {
+    member: String,
+    name: String,
+    own: bool,
+    state: &'static str,
+    muted: bool,
+    speaking: bool,
+}
+
+#[derive(Serialize)]
+#[allow(clippy::struct_excessive_bools)]
+struct RingDto {
+    serial: u64,
+    room_id: String,
+    room_name: String,
+    direct: bool,
+    caller: String,
+    caller_id: String,
+    video: bool,
+    desktop: bool,
+    answerable: bool,
+}
+
+#[derive(Serialize)]
+struct CallHereDto {
+    room_id: String,
+    people: usize,
+    video: bool,
+    joined_by_you: bool,
+}
+
+#[derive(Serialize)]
+struct RoomCallDto {
+    participants: Vec<CallParticipantDto>,
+    intent: Option<&'static str>,
+    expires_in_s: Option<u64>,
+}
+
+#[derive(Serialize)]
+struct CallParticipantDto {
+    user_id: String,
+    device_id: String,
+    name: String,
 }
 
 #[derive(Serialize)]
@@ -296,6 +374,8 @@ struct RoomDto {
     poll_permissions: PollPermissionsDto,
     message_permissions: MessagePermissionsDto,
     may_invite: bool,
+    may_join_calls: bool,
+    call: Option<RoomCallDto>,
     member_count: u64,
     has_unread: bool,
     has_mentions: bool,
@@ -620,6 +700,7 @@ pub fn view(source: &AppViewState) -> ViewDto {
         upgrade: upgrade(&source.upgrade),
         typing: typing(&source.typing),
         presence: presence(&source.presence),
+        call: call(&source.call),
         notifications: notifications(&source.notifications),
         encryption: encryption(&source.encryption),
         toast: toast(&source.toast),
@@ -726,6 +807,119 @@ const fn minutes_seen(line: PresenceLine) -> Option<u32> {
     match line {
         PresenceLine::LastSeen { minutes } => Some(minutes),
         PresenceLine::Hidden | PresenceLine::Online | PresenceLine::Away => None,
+    }
+}
+
+fn call(source: &CallView) -> CallDto {
+    CallDto {
+        ring: source.ring.as_ref().map(|ring| RingDto {
+            serial: ring.serial,
+            room_id: ring.room_id.to_string(),
+            room_name: ring.room_name.clone(),
+            direct: ring.direct,
+            caller: ring.caller.shown(),
+            caller_id: ring.caller.user_id.clone(),
+            video: ring.video,
+            desktop: ring.desktop,
+            answerable: ring.answerable,
+        }),
+        here: source.here.as_ref().map(|here| CallHereDto {
+            room_id: here.room_id.to_string(),
+            people: here.people,
+            video: here.video,
+            joined_by_you: here.joined_by_you,
+        }),
+        offer: source.offer.as_ref().map(|offer| CallOfferDto {
+            room_id: offer.room_id.to_string(),
+            offer: offer_word(offer.offer),
+            refusal: match offer.offer {
+                JoinOffer::Refused(refusal) => Some(refusal_word(refusal)),
+                JoinOffer::Start | JoinOffer::Join | JoinOffer::InCall => None,
+            },
+        }),
+        active: source.active.as_ref().map(active_call),
+    }
+}
+
+const fn offer_word(offer: JoinOffer) -> &'static str {
+    match offer {
+        JoinOffer::Start => "start",
+        JoinOffer::Join => "join",
+        JoinOffer::InCall => "in-call",
+        JoinOffer::Refused(_) => "refused",
+    }
+}
+
+const fn refusal_word(refusal: JoinRefusal) -> &'static str {
+    match refusal {
+        JoinRefusal::NotBuilt => "not-built",
+        JoinRefusal::MediaBroken => "media-broken",
+        JoinRefusal::NoServer => "no-server",
+        JoinRefusal::NotAllowed => "not-allowed",
+        JoinRefusal::SessionUnverified => "session-unverified",
+    }
+}
+
+fn active_call(active: &ActiveCall) -> ActiveCallDto {
+    ActiveCallDto {
+        call: active.call,
+        room_id: active.room_id.to_string(),
+        phase: match active.phase {
+            CallPhase::Joining => "joining",
+            CallPhase::Ringing => "ringing",
+            CallPhase::Connecting => "connecting",
+            CallPhase::Live => "live",
+            CallPhase::Reconnecting => "reconnecting",
+        },
+        live: active.live_since_ms.is_some(),
+        encrypted: active.encrypted,
+        video: active.video,
+        microphone: match active.microphone {
+            MicrophoneView::On => "on",
+            MicrophoneView::Off => "off",
+            MicrophoneView::Failed => "failed",
+        },
+        tiles: active.tiles.iter().map(call_tile).collect(),
+    }
+}
+
+fn call_tile(tile: &CallTile) -> CallTileDto {
+    CallTileDto {
+        member: tile.member.to_string(),
+        name: tile.name.shown(),
+        own: tile.own,
+        state: match tile.state {
+            TileState::Joining => "joining",
+            TileState::WaitingForKeys => "waiting-for-keys",
+            TileState::Live => "live",
+            TileState::CantDecrypt(CantDecrypt::NoKey) => "cant-decrypt",
+            TileState::CantDecrypt(CantDecrypt::NotCrossSigned) => "unverified-device",
+            TileState::Unreachable => "unreachable",
+        },
+        muted: tile.muted,
+        speaking: tile.speaking,
+    }
+}
+
+fn room_call(call: &RoomCall) -> RoomCallDto {
+    let now = unix_now_ms();
+    RoomCallDto {
+        participants: call
+            .members()
+            .iter()
+            .map(|member| CallParticipantDto {
+                user_id: member.user.user_id.clone(),
+                device_id: member.device.to_string(),
+                name: member.user.shown(),
+            })
+            .collect(),
+        intent: call.intent().map(|intent| match intent {
+            CallIntent::Voice => "voice",
+            CallIntent::Video => "video",
+        }),
+        expires_in_s: call
+            .next_expiry_ms()
+            .map(|expiry| expiry.saturating_sub(now) / 1000),
     }
 }
 
@@ -965,6 +1159,8 @@ fn room(source: &Room) -> RoomDto {
             pin: source.message_permissions.pin,
         },
         may_invite: source.may_invite,
+        may_join_calls: source.may_join_calls,
+        call: source.call.as_deref().map(room_call),
         member_count: source.member_count,
         has_unread: source.has_unread,
         has_mentions: source.has_mentions,

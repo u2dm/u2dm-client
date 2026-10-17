@@ -13,7 +13,7 @@ categories = ["network-programming"]
 members = ["crates/ui"]
 
 [features]
-default = ["video", "compiled", "matrix"]
+default = ["video", "compiled", "matrix", "calls"]
 compiled = ["u2dm-ui/codegen"]
 interpreted = ["dep:slint-interpreter", "dep:lucide-slint"]
 matrix = [
@@ -26,6 +26,7 @@ matrix = [
 ]
 demo = ["dep:axum"]
 video = ["dep:alsa", "dep:cpal", "dep:ffmpeg-next"]
+calls = ["video", "dep:livekit", "dep:rustls"]
 
 [dependencies]
 arboard = { version = "3.6.1", default-features = false, features = [
@@ -39,6 +40,7 @@ axum = { version = "0.8.9", optional = true, default-features = false, features 
     "tokio",
 ] }
 async-trait = "0.1.92"
+base64 = "0.22.1"
 chrono = { version = "0.4.45", default-features = false, features = [
     "clock",
     "unstable-locales",
@@ -59,9 +61,14 @@ image = { version = "0.25.10", default-features = false, features = [
 ] }
 infer = "0.22.0"
 keyring-core = "1.0.0"
+livekit = { version = "=0.9.5", optional = true, default-features = false, features = [
+    "native",
+    "rustls-tls-native-roots",
+] }
 lucide-slint = { version = "1.46.0", optional = true }
 matrix-sdk = { version = "0.19.0", optional = true, default-features = false, features = [
     "e2e-encryption",
+    "experimental-send-custom-to-device",
     "sqlite",
     "local-server",
     "markdown",
@@ -77,6 +84,10 @@ pulldown-cmark = { version = "0.13.1", default-features = false, features = ["ht
 pure-rust-locales = "0.8.2"
 rand = "0.10.2"
 rfd = "0.17.2"
+rustls = { version = "0.23.41", optional = true, default-features = false, features = [
+    "aws_lc_rs",
+    "std",
+] }
 ruma = { version = "0.17.0", features = [
     "events",
     "html",

@@ -1,5 +1,6 @@
 pub mod account;
 pub mod auth;
+pub mod call;
 pub mod emote;
 pub mod encryption;
 pub mod identity;

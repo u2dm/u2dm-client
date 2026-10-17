@@ -98,6 +98,13 @@ export enum UserMessageKind {
     join-new-room-failed,
     join-old-room-failed,
     decline-invite-failed,
+    call-decline-failed,
+    call-join-failed,
+    call-server-unreachable,
+    call-media-failed,
+    call-cut-off,
+    call-no-answer,
+    call-declined-there,
     room-not-found,
     room-preview-failed,
     room-address-invalid,
@@ -368,6 +375,51 @@ export enum IdentityTrust {
     no-longer-verified,
 }
 
+export enum RoomCallMark {
+    none,
+    voice,
+    video,
+}
+
+export enum CallOffer {
+    none,
+    start,
+    join,
+    in-call,
+    refused,
+}
+
+export enum CallRefusal {
+    not-built,
+    media-broken,
+    no-server,
+    not-allowed,
+    session-unverified,
+}
+
+export enum CallPhase {
+    joining,
+    ringing,
+    connecting,
+    live,
+    reconnecting,
+}
+
+export enum CallMic {
+    on,
+    off,
+    failed,
+}
+
+export enum CallTileState {
+    joining,
+    waiting-for-keys,
+    live,
+    cant-decrypt,
+    unverified-device,
+    unreachable,
+}
+
 export enum PresenceLine {
     hidden,
     online,
@@ -589,6 +641,8 @@ export enum ServiceKind {
     power-levels,
     call-started,
     call-notification,
+    call-video-notification,
+    call-declined,
 }
 
 export enum LoginMethodKind {

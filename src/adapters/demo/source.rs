@@ -151,7 +151,7 @@ fn is_state_event(body: &MessageBody) -> bool {
     matches!(
         body,
         MessageBody::Service(service)
-            if !matches!(service, ServiceEvent::CallStarted | ServiceEvent::CallNotification)
+            if !matches!(service, ServiceEvent::CallStarted | ServiceEvent::CallNotification { .. })
     )
 }
 
@@ -178,7 +178,7 @@ fn service_type(service: &ServiceEvent) -> &'static str {
             "m.room.third_party_invite"
         }
         ServiceEvent::CallStarted => "m.call.invite",
-        ServiceEvent::CallNotification => "m.rtc.notification",
+        ServiceEvent::CallNotification { .. } => "m.rtc.notification",
         ServiceEvent::Joined
         | ServiceEvent::Left
         | ServiceEvent::Invited { .. }
@@ -241,7 +241,7 @@ fn state_key<'a>(service: &ServiceEvent, sender: &'a str) -> Option<&'a str> {
         | ServiceEvent::KnockAccepted { .. }
         | ServiceEvent::KnockDenied { .. }
         | ServiceEvent::CallStarted
-        | ServiceEvent::CallNotification => None,
+        | ServiceEvent::CallNotification { .. } => None,
     }
 }
 
@@ -278,7 +278,7 @@ fn service_content(service: &ServiceEvent) -> Value {
         ServiceEvent::CallStarted => {
             json!({ "call_id": "demo-call", "version": "1", "lifetime": 60_000 })
         }
-        ServiceEvent::CallNotification => json!({ "notification_type": "ring" }),
+        ServiceEvent::CallNotification { .. } => json!({ "notification_type": "ring" }),
         ServiceEvent::JoinRuleChanged(rule) => join_rule_content(rule),
         ServiceEvent::HistoryVisibilityChanged(visibility) => {
             json!({ "history_visibility": history_value(*visibility) })

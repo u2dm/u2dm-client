@@ -19,13 +19,15 @@ use super::present::{
 };
 use super::richtext::{self, Cover, InlineContent, InlineLine, InlinePiece, RoomWord, Spoilers};
 use super::schema::{
-    define_ui_enum, define_ui_names, emoji_arts, media_failures, media_states, member_row_kinds,
-    pack_surfaces, room_row_kinds, spoiler_states, variant_named,
+    call_offers, call_tile_marks, define_ui_enum, define_ui_names, emoji_arts, media_failures,
+    media_states, member_row_kinds, pack_surfaces, room_call_marks, room_row_kinds, spoiler_states,
+    variant_named,
 };
 use super::spoilers::{keep_covered_body, spoilers_on};
 use crate::commands::messages::UserMessageKind;
 use crate::commands::view::{
-    ChildAccess, InviteeRow, InviteeState, RoomCard, RosterRow, SpaceIndexRow, SpaceMatch,
+    CallTile, CantDecrypt, ChildAccess, InviteeRow, InviteeState, JoinOffer, RoomCard, RosterRow,
+    SpaceIndexRow, SpaceMatch, TileState,
 };
 use crate::domain::image_pack::{ImagePack, ImageUsage, PackId, PackImage, PackOrigin, PackTitle};
 use crate::domain::invite::{Invite, InviteKind};
@@ -53,6 +55,9 @@ media_states!(define_ui_names MediaState;);
 media_failures!(define_ui_enum MediaFailureKind;);
 member_row_kinds!(define_ui_enum MemberRowKind;);
 room_row_kinds!(define_ui_enum RoomRowKind;);
+room_call_marks!(define_ui_enum RoomCallMark;);
+call_offers!(define_ui_enum CallOfferMark;);
+call_tile_marks!(define_ui_enum CallTileMark;);
 emoji_arts!(define_ui_enum EmojiArt;);
 spoiler_states!(define_ui_enum SpoilerState;);
 pack_surfaces!(define_ui_enum PackSurface;);
@@ -537,6 +542,7 @@ pub struct RoomDto {
     pub invite_kind: InviteKind,
     pub inviter: SharedString,
     pub inviter_id: SharedString,
+    pub call: RoomCallMark,
     pub avatar: Option<Image>,
     pub has_avatar: bool,
 }
@@ -588,6 +594,17 @@ pub struct InviteeDto {
     pub failure_detail: SharedString,
     pub avatar: Option<Image>,
     pub has_avatar: bool,
+}
+
+pub struct CallTileDto {
+    pub member: SharedString,
+    pub name: SharedString,
+    pub initial: SharedString,
+    pub color_index: i32,
+    pub own: bool,
+    pub state: CallTileMark,
+    pub muted: bool,
+    pub speaking: bool,
 }
 
 pub struct LogLineDto {
@@ -1342,6 +1359,7 @@ pub fn room_to_dto(r: &Room, media: &dyn MediaCache) -> RoomDto {
         invite_kind: InviteKind::Room,
         inviter: SharedString::new(),
         inviter_id: SharedString::new(),
+        call: call_mark(r),
         avatar: None,
         has_avatar: false,
     };
@@ -1355,6 +1373,14 @@ pub fn room_to_dto(r: &Room, media: &dyn MediaCache) -> RoomDto {
     }
 
     dto
+}
+
+fn call_mark(room: &Room) -> RoomCallMark {
+    match room.call.as_deref() {
+        None => RoomCallMark::None,
+        Some(call) if call.is_video() => RoomCallMark::Video,
+        Some(_) => RoomCallMark::Voice,
+    }
 }
 
 pub fn record_room_avatar_need(r: &Room, media: &dyn MediaCache) -> ShownAvatar {
@@ -1462,6 +1488,7 @@ fn bare_row_dto(id: &str, kind: RoomRowKind) -> RoomDto {
         invite_kind: InviteKind::Room,
         inviter: SharedString::new(),
         inviter_id: SharedString::new(),
+        call: RoomCallMark::None,
         avatar: None,
         has_avatar: false,
     }
@@ -1632,6 +1659,40 @@ pub fn request_invitee_avatar(row: &InviteeRow, media: &dyn MediaCache) {
 
 fn invitee_avatar_path(row: &InviteeRow, media: &dyn MediaCache) -> Option<PathBuf> {
     media.user_avatar_path(row.person.avatar_mxc.as_deref()?)
+}
+
+pub fn call_tile_to_dto(tile: &CallTile) -> CallTileDto {
+    CallTileDto {
+        member: SharedString::from(tile.member.to_string()),
+        name: SharedString::from(tile.name.shown()),
+        initial: SharedString::from(name_initials(&tile.name.name, &tile.name.user_id)),
+        color_index: avatar_color_index(&tile.name.user_id),
+        own: tile.own,
+        state: call_tile_mark(tile.state),
+        muted: tile.muted,
+        speaking: tile.speaking,
+    }
+}
+
+const fn call_tile_mark(state: TileState) -> CallTileMark {
+    match state {
+        TileState::Joining => CallTileMark::Joining,
+        TileState::WaitingForKeys => CallTileMark::WaitingForKeys,
+        TileState::Live => CallTileMark::Live,
+        TileState::CantDecrypt(CantDecrypt::NoKey) => CallTileMark::CantDecrypt,
+        TileState::CantDecrypt(CantDecrypt::NotCrossSigned) => CallTileMark::UnverifiedDevice,
+        TileState::Unreachable => CallTileMark::Unreachable,
+    }
+}
+
+pub const fn call_offer_mark(offer: Option<JoinOffer>) -> CallOfferMark {
+    match offer {
+        None => CallOfferMark::None,
+        Some(JoinOffer::Start) => CallOfferMark::Start,
+        Some(JoinOffer::Join) => CallOfferMark::Join,
+        Some(JoinOffer::InCall) => CallOfferMark::InCall,
+        Some(JoinOffer::Refused(_)) => CallOfferMark::Refused,
+    }
 }
 
 pub fn log_line_to_dto(line: &LogLine) -> LogLineDto {

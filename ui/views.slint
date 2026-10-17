@@ -10,8 +10,9 @@ import {
     PackTabEntry,
     VerificationEmoji,
     UserMessage,
+    CallTileEntry,
 } from "./types.slint";
-import { AttachmentKind, AudioKind, ChildAccess, ConnectionState, CreateRoomStatus, DirectChat, EncryptionActivity, EncryptionStanding, EncryptionStep, IdentityAlertKind, IdentityTrust, InviteAnswer, InviteKind, LoginActivity, LoginMethodKind, LoginPhase, MemberRole, Moderation, NotifyMode, PackSurface, PeopleSearchStatus, PresenceLine, PreviewKind, ReadersStatus, RecoveryStatus, RoomInfoPlacement, RoomKind, RoomMembership, RoomPreviewStatus, RoomScope, RosterStatus, ServiceKind, SourceEncryption, SourceStatus, SpaceIndexStatus, TimelineState, UpgradeLink, UserMessageKind, VerificationActivity, VerificationPhase } from "./enums.slint";
+import { AttachmentKind, AudioKind, CallMic, CallOffer, CallPhase, CallRefusal, ChildAccess, ConnectionState, CreateRoomStatus, DirectChat, EncryptionActivity, EncryptionStanding, EncryptionStep, IdentityAlertKind, IdentityTrust, InviteAnswer, InviteKind, LoginActivity, LoginMethodKind, LoginPhase, MemberRole, Moderation, NotifyMode, PackSurface, PeopleSearchStatus, PresenceLine, PreviewKind, ReadersStatus, RecoveryStatus, RoomInfoPlacement, RoomKind, RoomMembership, RoomPreviewStatus, RoomScope, RosterStatus, ServiceKind, SourceEncryption, SourceStatus, SpaceIndexStatus, TimelineState, UpgradeLink, UserMessageKind, VerificationActivity, VerificationPhase } from "./enums.slint";
 
 export global LoginView {
     in property <LoginPhase> step: LoginPhase.loading;
@@ -39,6 +40,9 @@ export global WindowView {
     in property <int> notification-opens;
     in property <string> external-link;
     in property <int> external-link-opens;
+    in property <string> call-room;
+    in property <int> call-declines;
+    in property <int> call-answers;
 }
 
 export global DirectoryView {
@@ -371,6 +375,36 @@ export global PresenceView {
     in property <PresenceLine> person: PresenceLine.hidden;
     in property <int> person-minutes;
     in property <string> status;
+}
+
+export global CallView {
+    in property <bool> ring-visible;
+    in property <string> ring-room-id;
+    in property <string> ring-room-name;
+    in property <string> ring-caller;
+    in property <bool> ring-video;
+    in property <bool> ring-direct;
+    in property <bool> ring-answerable;
+    in property <bool> ring-has-avatar;
+    in property <image> ring-avatar;
+    in property <string> ring-initial;
+    in property <int> ring-color-index;
+    in property <string> here-room-id;
+    in property <int> here-people;
+    in property <bool> here-video;
+    in property <bool> here-joined;
+    in property <string> offer-room-id;
+    in property <CallOffer> offer: CallOffer.none;
+    in property <CallRefusal> refusal;
+    in property <bool> active;
+    in property <string> active-room-id;
+    in property <string> active-room-name;
+    in property <bool> active-encrypted;
+    in property <bool> active-video;
+    in property <CallPhase> phase;
+    in property <CallMic> mic: CallMic.on;
+    in property <string> elapsed;
+    in property <[CallTileEntry]> tiles;
 }
 
 export global EncryptionView {

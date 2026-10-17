@@ -180,6 +180,15 @@ fn stop() {
 #[cfg(not(feature = "video"))]
 fn stop() {}
 
+#[cfg(feature = "video")]
+pub fn preferred_sound() -> Sound {
+    if SILENT_ONLY.get() {
+        Sound::Silent
+    } else {
+        Sound::Device
+    }
+}
+
 #[cfg(not(feature = "video"))]
 fn begin<W>(window: &W, _weak: &slint::Weak<W>, request: u64, _path: &Path, _start: Start)
 where
@@ -211,12 +220,7 @@ where
             tracing::debug!("the event loop is gone, dropping an audio update");
         }
     });
-    let preferred = if SILENT_ONLY.get() {
-        Sound::Silent
-    } else {
-        Sound::Device
-    };
-    let Some(playback) = audio_player::start(path, preferred, sink) else {
+    let Some(playback) = audio_player::start(path, preferred_sound(), sink) else {
         finish(window, request, AudioEnd::Failed);
         return;
     };

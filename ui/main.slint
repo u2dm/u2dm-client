@@ -30,6 +30,7 @@ import {
     UpgradeView,
     TypingView,
     PresenceView,
+    CallView,
     EncryptionView,
     WindowView,
     SourceView,
@@ -68,12 +69,13 @@ import { CreateRoomDialog } from "./screens/chat/components/create-room.slint";
 import { InvitePeopleDialog } from "./screens/chat/components/invite-people.slint";
 import { RoomLogDialog } from "./screens/chat/components/room-log.slint";
 import { ReadersDialog } from "./screens/chat/components/readers.slint";
+import { IncomingCallCard } from "./screens/chat/components/call/incoming-call.slint";
 
 export { EmojiStore }
 export { LoginPhase, ConnectionState, TimelineState, VerificationPhase, MediaState, MediaFailure }
 export { MessageKind, PreviewKind, ServiceKind, LoginMethodKind, AudioKind }
 export { LoginView, SessionView, DirectoryView, SpaceIndexView, RoomView, PackView, VerificationView }
-export { AttachmentView, VideoView, AudioView, UnsentView, IdentityAlertView, UpgradeView, TypingView, PresenceView, EncryptionView, WindowView, RoomInfoView, SourceView, RoomMenuView, RoomLogView, UserInfoView, InviteView, RoomPreviewView, CreateRoomView, InvitePeopleView, ReadersView, MentionsView }
+export { AttachmentView, VideoView, AudioView, UnsentView, IdentityAlertView, UpgradeView, TypingView, PresenceView, CallView, EncryptionView, WindowView, RoomInfoView, SourceView, RoomMenuView, RoomLogView, UserInfoView, InviteView, RoomPreviewView, CreateRoomView, InvitePeopleView, ReadersView, MentionsView }
 export { Actions }
 export { Probe, ReplySwipe, RoomMenu }
 export { NotificationText, SpoilerCover }
@@ -99,6 +101,8 @@ export component AppWindow inherits Window {
     property <bool> user-active: WindowView.active;
     property <int> notification-opens: WindowView.notification-opens;
     property <int> external-link-opens: WindowView.external-link-opens;
+    property <int> call-declines: WindowView.call-declines;
+    property <int> call-answers: WindowView.call-answers;
 
     changed attended => {
         Actions.window-focus-changed(root.attended);
@@ -114,6 +118,14 @@ export component AppWindow inherits Window {
             RoomSearch.clear();
         }
         Actions.open-external-link(WindowView.external-link);
+    }
+
+    changed call-declines => {
+        Actions.decline-call(WindowView.call-room);
+    }
+
+    changed call-answers => {
+        Actions.answer-call(WindowView.call-room);
     }
 
     changed notification-opens => {
@@ -163,6 +175,11 @@ export component AppWindow inherits Window {
     if Shell.source-open: EventSourceDialog { }
     if Shell.room-log-open: RoomLogDialog { }
     if Shell.encryption-open: EncryptionDialog { }
+    if LoginView.step == LoginPhase.logged-in && CallView.ring-visible: IncomingCallCard {
+        x: root.width - self.width - Metrics.incoming-call-inset;
+        y: Metrics.header-row + Metrics.incoming-call-top;
+        available-width: root.width;
+    }
 
     if Shell.verification-open: VerificationDialog { }
 }

@@ -7,7 +7,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use super::dto::{DemoData, InviteDto, RoomDto, SpaceDto, UnjoinedDto};
 use super::names::{self, NameBook};
 use super::timeline::{self, scenario};
-use super::{invite_people, media, message_menu, polls};
+use super::{calls, invite_people, media, message_menu, polls};
 use crate::adapters::markdown::{self, Composed, RoomMentions};
 use crate::domain::auth::Session;
 use crate::domain::emote::Emote;
@@ -180,6 +180,7 @@ pub fn rooms_with(joined: &[RoomId], overrides: &RoomOverrides) -> Vec<Arc<Room>
         .filter(|room| !overrides.left.contains(room.id.as_ref()))
         .map(|room| arrived_when_marked(room, &overrides.arrivals))
         .map(|room| read_when_marked(room, &overrides.read))
+        .map(calls::shaped)
         .map(Arc::new)
         .collect()
 }
@@ -198,6 +199,8 @@ fn started_chat(room_id: &str, user_id: &str, now: u64) -> Room {
         poll_permissions: polls::permissions(),
         message_permissions: message_menu::permissions(),
         may_invite: invite_people::may_invite(),
+        may_join_calls: true,
+        call: None,
         member_count: 2,
         has_unread: false,
         has_mentions: false,
@@ -229,6 +232,8 @@ fn created_room(created: &Created) -> Room {
         poll_permissions: polls::permissions(),
         message_permissions: message_menu::permissions(),
         may_invite: invite_people::may_invite(),
+        may_join_calls: true,
+        call: None,
         member_count: 1,
         has_unread: false,
         has_mentions: false,

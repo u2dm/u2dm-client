@@ -83,6 +83,23 @@ pub fn login_password(tx: &Tx, username: String, password: String) {
     );
 }
 
+pub fn start_call(tx: &Tx, room_id: String, video: bool) {
+    if room_id.is_empty() {
+        return;
+    }
+    send_command(
+        tx,
+        UiCommand::StartCall {
+            room_id: RoomId::new(room_id),
+            video,
+        },
+    );
+}
+
+pub fn set_microphone(tx: &Tx, on: bool) {
+    send_command(tx, UiCommand::SetMicrophone(on));
+}
+
 pub fn use_recovery_key(tx: &Tx, key: String) {
     if key.trim().is_empty() {
         return;

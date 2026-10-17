@@ -332,7 +332,7 @@ async fn run_sync_loop(
     dir.flush(client, on_sync, avatars).await;
 
     loop {
-        let flush_fut = wait_until(dir.flush_at());
+        let flush_fut = wait_until(dir.wake_at());
         let retry_fut = wait_until(avatars.due_at());
         let restart_fut = wait_until(health.restart_at());
         let resume_fut = wait_until(sends.resume_at());
@@ -348,6 +348,7 @@ async fn run_sync_loop(
                 LoopAction::Continue
             }
             () = flush_fut => {
+                dir.expire_calls();
                 dir.flush(client, on_sync, avatars).await;
                 LoopAction::Continue
             }

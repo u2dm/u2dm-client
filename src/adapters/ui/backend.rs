@@ -13,17 +13,17 @@ use super::decode::{
     set_image_ready,
 };
 use super::dto::{
-    BodyLineDto, EmojiArt, InviteeDto, LogLineDto, MediaFailureKind, MediaState, MemberRowDto,
-    MessageDto, PackBrowse, PackRowDto, PackSurface, PackTabDto, RoomDto, RoomRowKind, RowBody,
-    SpaceChildDto, SpaceDto, ThumbUpdate, cell_pack, decode_failure_kind, enrich_to_update,
-    heading_to_dto, invite_to_dto, invitee_to_dto, log_line_to_dto, member_row_to_dto,
-    mention_to_dto, message_to_dto, reader_to_dto, room_to_dto, space_child_to_dto,
-    space_match_to_dto, space_to_dto,
+    BodyLineDto, CallTileDto, EmojiArt, InviteeDto, LogLineDto, MediaFailureKind, MediaState,
+    MemberRowDto, MessageDto, PackBrowse, PackRowDto, PackSurface, PackTabDto, RoomDto,
+    RoomRowKind, RowBody, SpaceChildDto, SpaceDto, ThumbUpdate, call_tile_to_dto, cell_pack,
+    decode_failure_kind, enrich_to_update, heading_to_dto, invite_to_dto, invitee_to_dto,
+    log_line_to_dto, member_row_to_dto, mention_to_dto, message_to_dto, reader_to_dto, room_to_dto,
+    space_child_to_dto, space_match_to_dto, space_to_dto,
 };
 use super::fields::{
-    BodyLineFields, BodyPieceFields, InviteeFields, LogLineFields, MemberRowFields, MessageFields,
-    PackCellFields, PackRowFields, PackTabFields, PollAnswerFields, ReactionFields, ReactorFields,
-    RoomFields, SpaceChildFields, SpaceFields,
+    BodyLineFields, BodyPieceFields, CallTileFields, InviteeFields, LogLineFields, MemberRowFields,
+    MessageFields, PackCellFields, PackRowFields, PackTabFields, PollAnswerFields, ReactionFields,
+    ReactorFields, RoomFields, SpaceChildFields, SpaceFields,
 };
 use super::handoff::follow_handoffs;
 use super::multiplex::spawn_event_multiplexer;
@@ -43,7 +43,9 @@ use super::splice_model::SpliceModel;
 use super::spoilers::reveal_row;
 use super::window_events::install_window_events;
 use crate::commands::effects::Effect;
-use crate::commands::view::{AppViewState, InviteeRow, RosterRow, SpaceIndexRow, SpaceMatch};
+use crate::commands::view::{
+    AppViewState, CallTile, InviteeRow, RosterRow, SpaceIndexRow, SpaceMatch,
+};
 use crate::config::APP_ID;
 use crate::domain::invite::Invite;
 use crate::domain::message::TimelineMessage;
@@ -69,6 +71,7 @@ pub trait UiBackend: Sized + 'static {
     type MemberRow: MemberRowFields<Self> + Clone + PartialEq + From<MemberRowDto> + 'static;
     type Invitee: InviteeFields<Self> + Clone + PartialEq + From<InviteeDto> + 'static;
     type LogLine: LogLineFields<Self> + Clone + From<LogLineDto> + 'static;
+    type CallTile: CallTileFields<Self> + Clone + PartialEq + From<CallTileDto> + 'static;
     type PackRow: PackRowFields<Self> + Clone + From<PackRowDto> + 'static;
     type PackCell: PackCellFields<Self> + Clone + 'static;
     type PackTab: PackTabFields<Self> + Clone + From<PackTabDto> + 'static;
@@ -129,6 +132,10 @@ pub trait UiBackend: Sized + 'static {
 
     fn convert_log_line(line: &LogLine) -> Self::LogLine {
         log_line_to_dto(line).into()
+    }
+
+    fn convert_call_tile(tile: &CallTile) -> Self::CallTile {
+        call_tile_to_dto(tile).into()
     }
 
     fn with_models<R>(
@@ -654,6 +661,7 @@ enum SingleAvatar {
     UserInfo,
     Invite,
     RoomPreview,
+    Ring,
     User,
     AttachmentPreview,
 }
@@ -721,6 +729,9 @@ fn group_slots(slots: &[AvatarSlot]) -> AvatarTargets<'_> {
             }
             AvatarSlot::RoomPreview => {
                 targets.singles.insert(SingleAvatar::RoomPreview);
+            }
+            AvatarSlot::Ring => {
+                targets.singles.insert(SingleAvatar::Ring);
             }
             AvatarSlot::User => {
                 targets.singles.insert(SingleAvatar::User);
@@ -827,6 +838,7 @@ fn apply_avatar_ready<B: UiBackend>(
                 SingleAvatar::UserInfo => w.apply_user_info_avatar(avatar),
                 SingleAvatar::Invite => w.apply_invite_avatar(avatar),
                 SingleAvatar::RoomPreview => w.apply_room_preview_avatar(avatar),
+                SingleAvatar::Ring => w.apply_ring_avatar(avatar),
             }
         }
     }

@@ -12,7 +12,7 @@ import { CloseWatch } from "../../../../components/close-watch.slint";
 import { PresenceLine, TimelineState } from "../../../../enums.slint";
 import { ClickArea } from "../../../../components/a11y.slint";
 import { CopyNotifier } from "../../../../components/copier.slint";
-import { AudioView, DirectoryView, PresenceView, RoomView, TypingView } from "../../../../views.slint";
+import { AudioView, CallView, DirectoryView, PresenceView, RoomView, TypingView } from "../../../../views.slint";
 import { PresenceWords, TypingLine } from "../../../../messages.slint";
 import { Actions } from "../../../../actions.slint";
 import { LocalState, ReplySwipe, RoomMenu, RoomMenuOrigin, RoomMenuReturn, RoomSearch, Shell } from "../../../../local.slint";
@@ -22,6 +22,12 @@ import { PinnedBar } from "./pinned-bar.slint";
 import { HeaderTitle } from "../header-title.slint";
 import { Avatar } from "../../../../components/avatar.slint";
 import { RoomInfoPane } from "../room-info.slint";
+import { CallPill } from "../call/call-pill.slint";
+import { CallBand } from "../call/call-band.slint";
+import { CallBar } from "../call/call-bar.slint";
+import { CallOffer } from "../../../../enums.slint";
+import { CallWords } from "../../../../messages.slint";
+import { AppButton } from "../../../../components/button.slint";
 
 component RoomHeaderButton inherits HeaderIconButton {
     radius: root.size / 2;
@@ -45,6 +51,10 @@ export component TimelineView inherits Rectangle {
     property <bool> has-pins: RoomView.pinned-count > 0;
     property <length> pinned-height: root.has-pins ? Metrics.pinned-bar + Space.md : 0px;
     property <length> now-playing-height: AudioView.visible ? Metrics.now-playing-bar : 0px;
+    property <bool> shows-band: CallView.active && CallView.active-room-id == root.room-id;
+    property <bool> shows-bar: CallView.active && CallView.active-room-id != root.room-id;
+    property <bool> call-maximized: root.shows-band && Shell.call-maximized;
+    property <length> call-height: root.shows-band ? Metrics.call-band : root.shows-bar ? Metrics.call-bar : 0px;
     property <bool> has-room: RoomView.selected-room-name != "";
     property <bool> is-loading: RoomView.timeline-status == TimelineState.loading
         || RoomView.timeline-status == TimelineState.loading-unread
@@ -102,9 +112,19 @@ export component TimelineView inherits Rectangle {
         vertical-alignment: center;
     }
 
-    if root.has-room: Rectangle {
+    if root.has-room: room-header := Rectangle {
         property <length> menu-slot: Space.md + Size.lg + Space.lg;
         property <length> pane-slot: root.room-info-pane-fits ? Space.md + Size.lg : 0;
+        property <bool> shows-call: CallView.here-room-id == root.room-id && CallView.here-people > 0;
+        property <length> call-slot: self.shows-call ? call-pill.width + Space.md : 0;
+        property <bool> offers-here: CallView.offer-room-id == root.room-id;
+        property <bool> offers-start: self.offers-here
+            && (CallView.offer == CallOffer.start || (CallView.offer == CallOffer.refused && !self.shows-call));
+        property <bool> offers-join: self.offers-here
+            && (CallView.offer == CallOffer.join || (CallView.offer == CallOffer.refused && self.shows-call));
+        property <length> action-slot: self.offers-start
+            ? Size.lg + Space.md
+            : self.offers-join ? join-button.preferred-width + Space.md : 0;
         property <int> menu-returns: RoomMenu.focus-returns;
 
         x: 0;
@@ -121,7 +141,7 @@ export component TimelineView inherits Rectangle {
 
         ClickArea {
             x: root.compact ? root.nav-slot : 0;
-            width: parent.width - self.x - parent.menu-slot - parent.pane-slot;
+            width: parent.width - self.x - parent.menu-slot - parent.pane-slot - parent.call-slot - parent.action-slot;
             height: parent.height;
             enabled: !root.room-info-pane-shown;
             label: @tr("Room info");
@@ -160,6 +180,38 @@ export component TimelineView inherits Rectangle {
                         : PresenceLine.hidden;
                     presence: PresenceWords.text(self.presence-line, PresenceView.partner-minutes);
                 }
+            }
+        }
+
+        call-pill := CallPill {
+            x: parent.width - parent.menu-slot - parent.pane-slot - self.width;
+            y: (parent.height - self.height) / 2;
+            visible: parent.shows-call;
+        }
+
+        if room-header.offers-start: RoomHeaderButton {
+            x: room-header.width - room-header.menu-slot - room-header.pane-slot - room-header.call-slot - self.width;
+            y: (parent.height - self.height) / 2;
+            icon: IconSet.Phone;
+            enabled: CallView.offer == CallOffer.start;
+            label: CallView.offer == CallOffer.start ? @tr("Start a call") : CallWords.refusal(CallView.refusal);
+            clicked => {
+                Actions.start-call({ room-id: root.room-id, video: false });
+            }
+        }
+
+        join-button := AppButton {
+            x: parent.width - parent.menu-slot - parent.pane-slot - parent.call-slot - self.width;
+            y: (parent.height - self.height) / 2;
+            width: self.preferred-width;
+            height: self.preferred-height;
+            visible: parent.offers-join;
+            enabled: CallView.offer == CallOffer.join;
+            text: @tr("Join");
+            icon: IconSet.Phone;
+            tint: AppStyle.call-accept;
+            clicked => {
+                Actions.join-call(root.room-id);
             }
         }
 
@@ -340,15 +392,29 @@ export component TimelineView inherits Rectangle {
             y: root.header-height;
             width: parent.width;
             height: parent.height - root.header-height;
+            visible: !root.call-maximized;
             available-width: parent.width;
-            top-inset: root.pinned-height + root.now-playing-height;
+            top-inset: root.call-height + root.pinned-height + root.now-playing-height;
             bottom-inset: input.height + root.spacing;
             composer-top: parent.height - input.height;
         }
 
-        if root.has-pins: Rectangle {
+        if root.shows-band: CallBand {
             x: 0;
             y: root.header-height;
+            width: parent.width;
+            height: root.call-maximized ? parent.height - root.header-height - input.height : Metrics.call-band;
+        }
+
+        if root.shows-bar: CallBar {
+            x: 0;
+            y: root.header-height;
+            width: parent.width;
+        }
+
+        if root.has-pins && !root.call-maximized: Rectangle {
+            x: 0;
+            y: root.header-height + root.call-height;
             width: parent.width;
             height: root.pinned-height;
             background: root.background;
@@ -364,15 +430,15 @@ export component TimelineView inherits Rectangle {
 
         header-separator := Rectangle {
             x: 0;
-            y: root.header-height + root.pinned-height - self.height;
+            y: root.header-height + root.call-height + root.pinned-height - self.height;
             width: parent.width;
             height: Stroke.hairline;
             background: AppStyle.border;
         }
 
-        if AudioView.visible: NowPlayingBar {
+        if AudioView.visible && !root.call-maximized: NowPlayingBar {
             x: 0;
-            y: root.header-height + root.pinned-height;
+            y: root.header-height + root.call-height + root.pinned-height;
             width: parent.width;
         }
 

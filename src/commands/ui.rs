@@ -320,6 +320,21 @@ pub enum UiCommand {
         event_id: String,
         filename: String,
     },
+    #[strum(to_string = "DeclineCall({0})")]
+    DeclineCall(RoomId),
+    SilenceRing,
+    #[strum(to_string = "StartCall({room_id})")]
+    StartCall {
+        room_id: RoomId,
+        video: bool,
+    },
+    #[strum(to_string = "JoinCall({0})")]
+    JoinCall(RoomId),
+    #[strum(to_string = "AnswerCall({0})")]
+    AnswerCall(RoomId),
+    LeaveCall,
+    #[strum(to_string = "SetMicrophone({0})")]
+    SetMicrophone(bool),
     DismissToast,
     Logout,
     Quit,
@@ -359,7 +374,11 @@ impl UiCommand {
             | Self::SendSticker { room_id, .. }
             | Self::PaginateBackwards { room_id, .. }
             | Self::PaginateForwards { room_id, .. }
-            | Self::JumpToLatest { room_id, .. } => Some(room_id),
+            | Self::JumpToLatest { room_id, .. }
+            | Self::DeclineCall(room_id)
+            | Self::StartCall { room_id, .. }
+            | Self::JoinCall(room_id)
+            | Self::AnswerCall(room_id) => Some(room_id),
             Self::RestoreSession
             | Self::CheckServer(_)
             | Self::LoginPassword(_)
@@ -462,6 +481,9 @@ impl UiCommand {
             | Self::AudioEnded { .. }
             | Self::OpenLink { .. }
             | Self::SaveFile { .. }
+            | Self::SilenceRing
+            | Self::LeaveCall
+            | Self::SetMicrophone(_)
             | Self::DismissToast
             | Self::Logout
             | Self::Quit => None,

@@ -1,5 +1,6 @@
 use std::path::PathBuf;
 
+use super::calls::lane::LaneEvent;
 use super::encryption::EncryptionOutcome;
 use super::establish::EstablishedSession;
 use super::invites::Answer;
@@ -11,6 +12,10 @@ use super::user_info::{DmOutcome, ReadOutcome};
 use crate::commands::messages::{UserMessage, UserMessageKind};
 use crate::commands::view::LoginActivity;
 use crate::domain::auth::ServerInfo;
+use crate::domain::call::media::MediaEvent;
+use crate::domain::call::ring::{CallSignal, RingId};
+use crate::domain::call::sfu::{GrantResult, SfuId};
+use crate::domain::call::{DeviceStanding, KeySendReport, MemberKey, Transport};
 use crate::domain::encryption::{AccountEncryption, IdentityOutcome};
 use crate::domain::identity::{OwnIdentity, RoomAlert};
 use crate::domain::image_pack::PackId;
@@ -93,6 +98,7 @@ pub(super) enum AppEvent {
         typists: Vec<NamedUser>,
     },
     Presence(PresenceEvent),
+    Call(CallEvent),
     Notified {
         session: u64,
         notice: Box<PushNotice>,
@@ -185,6 +191,104 @@ impl PresenceEvent {
         match self {
             Self::Disabled { .. } => "PresenceDisabled",
             Self::Looked { .. } => "PresenceLooked",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum RingDeadline {
+    Unconfirmed,
+    Expired,
+}
+
+pub(super) enum CallEvent {
+    Signal {
+        session: u64,
+        signal: CallSignal,
+    },
+    RingWindow {
+        ring: RingId,
+        deadline: RingDeadline,
+    },
+    Declined {
+        room_id: RoomId,
+        sent: bool,
+    },
+    Transports {
+        session: u64,
+        found: Option<Vec<Transport>>,
+    },
+    Lane {
+        call: u64,
+        event: LaneEvent,
+    },
+    Media {
+        call: u64,
+        event: MediaEvent,
+    },
+    MediaFailed {
+        call: u64,
+        why: String,
+    },
+    Granted {
+        call: u64,
+        sfu: SfuId,
+        outcome: Box<GrantResult>,
+    },
+    Announced {
+        call: u64,
+        ring: Option<RingId>,
+    },
+    RingOutTimeout {
+        call: u64,
+    },
+    KeyWake {
+        call: u64,
+    },
+    KeysSent {
+        call: u64,
+        report: KeySendReport,
+    },
+    Standings {
+        call: u64,
+        standings: Vec<(MemberKey, DeviceStanding)>,
+    },
+}
+
+impl CallEvent {
+    pub(super) const fn call(&self) -> Option<u64> {
+        match self {
+            Self::Lane { call, .. }
+            | Self::Media { call, .. }
+            | Self::MediaFailed { call, .. }
+            | Self::Granted { call, .. }
+            | Self::Announced { call, .. }
+            | Self::RingOutTimeout { call }
+            | Self::KeyWake { call }
+            | Self::KeysSent { call, .. }
+            | Self::Standings { call, .. } => Some(*call),
+            Self::Signal { .. }
+            | Self::RingWindow { .. }
+            | Self::Declined { .. }
+            | Self::Transports { .. } => None,
+        }
+    }
+
+    pub(super) fn label(&self) -> &'static str {
+        match self {
+            Self::Signal { .. } => "CallSignal",
+            Self::RingWindow { .. } => "CallRingWindow",
+            Self::Declined { .. } => "CallDeclined",
+            Self::Transports { .. } => "CallTransports",
+            Self::Lane { .. } => "CallLane",
+            Self::Media { .. } => "CallMedia",
+            Self::MediaFailed { .. } => "CallMediaFailed",
+            Self::Granted { .. } => "CallGranted",
+            Self::Announced { .. } => "CallAnnounced",
+            Self::RingOutTimeout { .. } => "CallRingOutTimeout",
+            Self::KeyWake { .. } => "CallKeyWake",
+            Self::KeysSent { .. } => "CallKeysSent",
+            Self::Standings { .. } => "CallStandings",
         }
     }
 }
@@ -463,6 +567,7 @@ impl AppEvent {
             Self::PinnedChanged { .. } => "PinnedChanged",
             Self::TypistsChanged { .. } => "TypistsChanged",
             Self::Presence(event) => event.label(),
+            Self::Call(event) => event.label(),
             Self::Notified { .. } => "Notified",
             Self::SpaceIndexPaged { .. } => "SpaceIndexPaged",
             Self::SpaceIndexAvatarsReady { .. } => "SpaceIndexAvatarsReady",

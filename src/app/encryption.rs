@@ -324,6 +324,10 @@ impl Encryption {
         Standing::of(self.state.trust, self.setup)
     }
 
+    pub(super) fn is_verified(&self) -> bool {
+        self.standing() == Standing::Verified
+    }
+
     fn tried(&mut self, attempt: RecoveryAttempt) {
         let step = match attempt {
             RecoveryAttempt::Unlocked => EncryptionStep::Unlocked,

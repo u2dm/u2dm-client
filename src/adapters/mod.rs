@@ -1,11 +1,15 @@
 pub mod body_emoji;
 #[cfg(feature = "matrix")]
 pub mod browser;
+#[cfg(feature = "matrix")]
+pub mod call_media;
 pub mod container;
 #[cfg(feature = "demo")]
 pub mod demo;
 pub mod handoff;
 pub mod instance;
+#[cfg(feature = "calls")]
+pub mod livekit;
 pub mod markdown;
 #[cfg(feature = "matrix")]
 pub mod matrix;

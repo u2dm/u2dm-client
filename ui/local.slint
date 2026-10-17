@@ -147,6 +147,7 @@ export global Shell {
     in-out property <bool> attach-open: false;
     in-out property <bool> poll-open: false;
     in-out property <bool> room-info-pane-open: false;
+    in-out property <bool> call-maximized: false;
 
     out property <bool> verification-open: VerificationView.visible
         && LoginView.step == LoginPhase.logged-in;
@@ -516,6 +517,7 @@ export global LocalState {
         Composer.clear();
         Shell.close-overlays();
         Shell.room-info-pane-open = false;
+        Shell.call-maximized = false;
         RoomSearch.query = "";
         RoomSearch.opened-room = "";
         TextSelection.clear();

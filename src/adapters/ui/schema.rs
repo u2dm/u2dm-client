@@ -63,6 +63,15 @@ macro_rules! string_props {
         PresenceRoomId PresenceView "PresenceView" "room-id" set_room_id get_room_id;
         PresenceUserId PresenceView "PresenceView" "user-id" set_user_id get_user_id;
         PresenceStatus PresenceView "PresenceView" "status" set_status get_status;
+        RingRoomId CallView "CallView" "ring-room-id" set_ring_room_id get_ring_room_id;
+        RingRoomName CallView "CallView" "ring-room-name" set_ring_room_name get_ring_room_name;
+        RingCaller CallView "CallView" "ring-caller" set_ring_caller get_ring_caller;
+        RingInitial CallView "CallView" "ring-initial" set_ring_initial get_ring_initial;
+        HereRoomId CallView "CallView" "here-room-id" set_here_room_id get_here_room_id;
+        OfferRoomId CallView "CallView" "offer-room-id" set_offer_room_id get_offer_room_id;
+        ActiveRoomId CallView "CallView" "active-room-id" set_active_room_id get_active_room_id;
+        ActiveRoomName CallView "CallView" "active-room-name" set_active_room_name get_active_room_name;
+        CallElapsed CallView "CallView" "elapsed" set_elapsed get_elapsed;
         SpaceIndexName SpaceIndexView "SpaceIndexView" "space-name" set_space_name get_space_name;
         RoomInfoRoomId RoomInfoView "RoomInfoView" "room-id" set_room_id get_room_id;
         RoomInfoName RoomInfoView "RoomInfoView" "name" set_name get_name;
@@ -116,6 +125,9 @@ macro_rules! string_props {
         SpoilerReasonLabel SpoilerCover "SpoilerCover" "reason-label" set_reason_label get_reason_label;
         SpoilerReasonSlot SpoilerCover "SpoilerCover" "reason-slot" set_reason_slot get_reason_slot;
         NotificationOpenLabel NotificationText "NotificationText" "open-label" set_open_label get_open_label;
+        NotificationDeclineLabel NotificationText "NotificationText" "decline-label" set_decline_label get_decline_label;
+        NotificationAnswerLabel NotificationText "NotificationText" "answer-label" set_answer_label get_answer_label;
+        CallRoom WindowView "WindowView" "call-room" set_call_room get_call_room;
         NotificationRoom WindowView "WindowView" "notification-room" set_notification_room get_notification_room;
         ExternalLink WindowView "WindowView" "external-link" set_external_link get_external_link;
         #[cfg(feature = "demo")] WindowTitleText WindowTitle "WindowTitle" "text" set_text get_text;
@@ -154,6 +166,14 @@ macro_rules! simple_callbacks {
         on_retry_encryption_setup "retry-encryption-setup" retry_encryption_setup plain
             RetryEncryptionSetup;
         on_retry_timeline "retry-timeline" retry_timeline plain RetryTimeline;
+        on_decline_call "decline-call" decline_call room DeclineCall;
+        on_silence_ring "silence-ring" silence_ring plain SilenceRing;
+        on_start_call "start-call" start_call
+            request(room_id "room-id" text, video "video" flag) StartCall;
+        on_join_call "join-call" join_call room JoinCall;
+        on_answer_call "answer-call" answer_call room AnswerCall;
+        on_leave_call "leave-call" leave_call plain LeaveCall;
+        on_set_microphone "set-microphone" set_microphone request(on "on" flag) SetMicrophone;
         on_select_room "select-room" select_room room SelectRoom;
         on_open_notification "open-notification" open_notification room OpenNotification;
         on_select_space "select-space" select_space opt_room SelectSpace;
@@ -275,6 +295,15 @@ pub(crate) use simple_callbacks;
 macro_rules! bool_props {
     ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
         SessionRefused LoginView "LoginView" "session-refused" set_session_refused get_session_refused;
+        RingVisible CallView "CallView" "ring-visible" set_ring_visible get_ring_visible;
+        RingVideo CallView "CallView" "ring-video" set_ring_video get_ring_video;
+        RingDirect CallView "CallView" "ring-direct" set_ring_direct get_ring_direct;
+        RingAnswerable CallView "CallView" "ring-answerable" set_ring_answerable get_ring_answerable;
+        HereVideo CallView "CallView" "here-video" set_here_video get_here_video;
+        HereJoined CallView "CallView" "here-joined" set_here_joined get_here_joined;
+        ActiveVisible CallView "CallView" "active" set_active get_active;
+        ActiveEncrypted CallView "CallView" "active-encrypted" set_active_encrypted get_active_encrypted;
+        ActiveVideo CallView "CallView" "active-video" set_active_video get_active_video;
         VerificationVisible VerificationView "VerificationView" "visible" set_visible get_visible;
         EncryptionVisible EncryptionView "EncryptionView" "visible" set_visible get_visible;
         EncryptionVerifiedSessions EncryptionView "EncryptionView" "verified-sessions" set_verified_sessions get_verified_sessions;
@@ -381,6 +410,10 @@ macro_rules! int_props {
         AudioDurationMs AudioView "AudioView" "duration-ms" set_duration_ms get_duration_ms;
         UnsentSubmission UnsentView "UnsentView" "submission" set_submission get_submission;
         TypingCount TypingView "TypingView" "count" set_count get_count;
+        RingColorIndex CallView "CallView" "ring-color-index" set_ring_color_index get_ring_color_index;
+        HerePeople CallView "CallView" "here-people" set_here_people get_here_people;
+        CallDeclines WindowView "WindowView" "call-declines" set_call_declines get_call_declines;
+        CallAnswers WindowView "WindowView" "call-answers" set_call_answers get_call_answers;
         PresencePartnerMinutes PresenceView "PresenceView" "partner-minutes" set_partner_minutes get_partner_minutes;
         PresencePersonMinutes PresenceView "PresenceView" "person-minutes" set_person_minutes get_person_minutes;
         SwipeTravel WindowView "WindowView" "swipe-travel" set_swipe_travel get_swipe_travel;
@@ -512,6 +545,14 @@ macro_rules! enum_props {
             ReadersView "ReadersView" "service-kind" set_service_kind get_service_kind;
         PackSurface set_pack_surface(PackSurface)
             PackView "PackView" "surface" set_surface get_surface;
+        CallOffer set_call_offer(CallOfferMark)
+            CallView "CallView" "offer" set_offer get_offer;
+        CallRefusal set_call_refusal(JoinRefusal)
+            CallView "CallView" "refusal" set_refusal get_refusal;
+        CallPhase set_call_phase(CallPhase)
+            CallView "CallView" "phase" set_phase get_phase;
+        CallMic set_call_mic(MicrophoneView)
+            CallView "CallView" "mic" set_mic get_mic;
     } };
 }
 pub(crate) use enum_props;
@@ -531,6 +572,7 @@ macro_rules! model_props {
         invitee_results Invitee VecModel InvitePeopleView "InvitePeopleView" "results" set_results;
         invitee_picks Invitee VecModel InvitePeopleView "InvitePeopleView" "picked" set_picked;
         room_log LogLine SpliceModel RoomLogView "RoomLogView" "lines" set_lines;
+        call_tiles CallTile VecModel CallView "CallView" "tiles" set_tiles;
     } };
 }
 pub(crate) use model_props;
@@ -683,6 +725,13 @@ macro_rules! user_message_kinds {
         JoinNewRoomFailed         JoinNewRoomFailed       "join-new-room-failed";
         JoinOldRoomFailed         JoinOldRoomFailed       "join-old-room-failed";
         DeclineInviteFailed       DeclineInviteFailed     "decline-invite-failed";
+        CallDeclineFailed         CallDeclineFailed       "call-decline-failed";
+        CallJoinFailed            CallJoinFailed          "call-join-failed";
+        CallServerUnreachable     CallServerUnreachable   "call-server-unreachable";
+        CallMediaFailed           CallMediaFailed         "call-media-failed";
+        CallCutOff                CallCutOff              "call-cut-off";
+        CallNoAnswer              CallNoAnswer            "call-no-answer";
+        CallDeclinedThere         CallDeclinedThere       "call-declined-there";
         RoomNotFound              RoomNotFound            "room-not-found";
         RoomPreviewFailed         RoomPreviewFailed       "room-preview-failed";
         RoomAddressInvalid        RoomAddressInvalid      "room-address-invalid";
@@ -1094,6 +1143,69 @@ macro_rules! room_row_kinds {
 }
 pub(crate) use room_row_kinds;
 
+macro_rules! room_call_marks {
+    ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
+        None  None  "none";
+        Voice Voice "voice";
+        Video Video "video";
+    } };
+}
+pub(crate) use room_call_marks;
+
+macro_rules! call_offers {
+    ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
+        None    None    "none";
+        Start   Start   "start";
+        Join    Join    "join";
+        InCall  InCall  "in-call";
+        Refused Refused "refused";
+    } };
+}
+pub(crate) use call_offers;
+
+macro_rules! call_refusals {
+    ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
+        NotBuilt          NotBuilt          "not-built";
+        MediaBroken       MediaBroken       "media-broken";
+        NoServer          NoServer          "no-server";
+        NotAllowed        NotAllowed        "not-allowed";
+        SessionUnverified SessionUnverified "session-unverified";
+    } };
+}
+pub(crate) use call_refusals;
+
+macro_rules! call_phases {
+    ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
+        Joining      Joining      "joining";
+        Ringing      Ringing      "ringing";
+        Connecting   Connecting   "connecting";
+        Live         Live         "live";
+        Reconnecting Reconnecting "reconnecting";
+    } };
+}
+pub(crate) use call_phases;
+
+macro_rules! call_mics {
+    ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
+        On     On     "on";
+        Off    Off    "off";
+        Failed Failed "failed";
+    } };
+}
+pub(crate) use call_mics;
+
+macro_rules! call_tile_marks {
+    ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
+        Joining          Joining          "joining";
+        WaitingForKeys   WaitingForKeys   "waiting-for-keys";
+        Live             Live             "live";
+        CantDecrypt      CantDecrypt      "cant-decrypt";
+        UnverifiedDevice UnverifiedDevice "unverified-device";
+        Unreachable      Unreachable      "unreachable";
+    } };
+}
+pub(crate) use call_tile_marks;
+
 macro_rules! roster_statuses {
     ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
         Loading Loading "loading";
@@ -1333,6 +1445,8 @@ macro_rules! service_kinds {
         PowerLevels        PowerLevels        "power-levels";
         CallStarted        CallStarted        "call-started";
         CallNotification   CallNotification   "call-notification";
+        CallVideoNotification CallVideoNotification "call-video-notification";
+        CallDeclined       CallDeclined       "call-declined";
     } };
 }
 pub(crate) use service_kinds;
@@ -1497,6 +1611,7 @@ macro_rules! room_fields {
         invite_kind set_invite_kind "invite-kind" enumk(InviteKind);
         inviter set_inviter "inviter" text;
         inviter_id set_inviter_id "inviter-id" text;
+        call set_call "call" enumk(RoomCallMark);
         has_avatar set_has_avatar "has-avatar" flag;
         avatar set_avatar "avatar" image;
     } };
@@ -1562,6 +1677,20 @@ macro_rules! invitee_fields {
     } };
 }
 pub(crate) use invitee_fields;
+
+macro_rules! call_tile_fields {
+    ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
+        member set_member "member" text;
+        name set_name "name" text;
+        initial set_initial "initial" text;
+        color_index set_color_index "color-index" int;
+        own set_own "own" flag;
+        state set_state "state" enumk(CallTileMark);
+        muted set_muted "muted" flag;
+        speaking set_speaking "speaking" flag;
+    } };
+}
+pub(crate) use call_tile_fields;
 
 macro_rules! log_line_fields {
     ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*

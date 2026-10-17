@@ -1,0 +1,130 @@
+import { Palette } from "std-widgets.slint";
+import { IconDisplay, IconSet } from "@lucide";
+
+import { AppButton, IconButton } from "../../../../components/button.slint";
+import { PickerCard } from "../../../../components/overlay.slint";
+import { Avatar } from "../../../../components/avatar.slint";
+import { AppStyle, Fonts, Glyph, IconSize, Metrics, Size, Space, Weight } from "../../../../theme.slint";
+import { CallView } from "../../../../views.slint";
+import { CallWords } from "../../../../messages.slint";
+import { Actions } from "../../../../actions.slint";
+import { Shell } from "../../../../local.slint";
+
+export component IncomingCallCard inherits PickerCard {
+    in property <length> available-width;
+
+    width: min(Metrics.incoming-call-width, root.available-width - 2 * Metrics.incoming-call-inset);
+    height: card-layout.preferred-height;
+    accessible-role: groupbox;
+    accessible-label: CallWords.incoming(CallView.ring-video);
+
+    TouchArea { }
+
+    card-layout := VerticalLayout {
+        padding: Space.xl;
+        spacing: Space.xl;
+
+        HorizontalLayout {
+            spacing: Space.lg;
+
+            Avatar {
+                cross-axis-self-alignment: center;
+                width: Metrics.incoming-call-avatar;
+                height: Metrics.incoming-call-avatar;
+                color-index: CallView.ring-color-index;
+                has-image: CallView.ring-has-avatar;
+                image: CallView.ring-avatar;
+                initial: CallView.ring-initial;
+                initial-size: Glyph.lg;
+            }
+
+            VerticalLayout {
+                horizontal-stretch: 1;
+                alignment: center;
+                spacing: Space.xs;
+
+                Text {
+                    text: CallView.ring-caller;
+                    font-family: Fonts.emoji;
+                    font-size: Fonts.title;
+                    font-weight: Weight.bold;
+                    overflow: elide;
+                }
+
+                HorizontalLayout {
+                    spacing: Space.sm;
+
+                    IconDisplay {
+                        cross-axis-self-alignment: center;
+                        icon: CallView.ring-video ? IconSet.Video : IconSet.PhoneIncoming;
+                        size: IconSize.xs;
+                        stroke: AppStyle.foreground-muted;
+                    }
+
+                    Text {
+                        horizontal-stretch: 1;
+                        text: CallView.ring-direct
+                            ? CallWords.incoming(CallView.ring-video)
+                            : @tr("{} in {}", CallWords.incoming(CallView.ring-video), CallView.ring-room-name);
+                        font-family: Fonts.emoji;
+                        font-size: Fonts.body-small;
+                        color: AppStyle.foreground-muted;
+                        overflow: elide;
+                        accessible-live-region: AccessibleLiveness.assertive;
+                    }
+                }
+            }
+
+            IconButton {
+                cross-axis-self-alignment: start;
+                icon: IconSet.X;
+                size: Size.md;
+                above-modal: true;
+                label: @tr("Stop ringing");
+                clicked => {
+                    Actions.silence-ring();
+                }
+            }
+        }
+
+        HorizontalLayout {
+            spacing: Space.md;
+
+            AppButton {
+                horizontal-stretch: 1;
+                text: @tr("Decline");
+                icon: IconSet.PhoneOff;
+                tint: AppStyle.call-decline;
+                above-modal: true;
+                clicked => {
+                    Actions.decline-call(CallView.ring-room-id);
+                }
+            }
+
+            IconButton {
+                cross-axis-self-alignment: center;
+                icon: IconSet.MessageCircle;
+                size: Size.lg;
+                above-modal: true;
+                label: @tr("Open the chat");
+                clicked => {
+                    Shell.close-overlays();
+                    Actions.select-room(CallView.ring-room-id);
+                }
+            }
+
+            if CallView.ring-answerable: AppButton {
+                horizontal-stretch: 1;
+                text: @tr("Answer");
+                icon: IconSet.Phone;
+                tint: AppStyle.call-accept;
+                above-modal: true;
+                clicked => {
+                    Shell.close-overlays();
+                    Actions.select-room(CallView.ring-room-id);
+                    Actions.answer-call(CallView.ring-room-id);
+                }
+            }
+        }
+    }
+}

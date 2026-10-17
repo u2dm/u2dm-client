@@ -17,6 +17,7 @@ use super::rooms::{
     MatrixRoomInfo, MatrixRoomPreviews, MatrixSpaceIndex, MatrixSpaceOrder, MatrixSync,
     MatrixTyping, MatrixUpgrades,
 };
+use super::rtc::{MatrixCallSignals, MatrixRtcMembership};
 use super::server_logout;
 use super::store::StoreLayout;
 use super::timeline::{MatrixPinned, MatrixTimeline};
@@ -154,11 +155,13 @@ pub(super) async fn authenticate(
     let verification = Arc::new(MatrixVerification::new(Arc::clone(&matrix)));
     let typing = Arc::new(MatrixTyping::new(Arc::clone(&matrix), &client));
     let push = Arc::new(MatrixPush::new(Arc::clone(&matrix), &client).await);
+    let call_signals = Arc::new(MatrixCallSignals::new(Arc::clone(&matrix), &client));
     let pronouns = Arc::new(PronounCache::default());
     let resources: Vec<Arc<dyn SessionResource>> = vec![
         Arc::clone(&verification) as Arc<dyn SessionResource>,
         Arc::clone(&typing) as Arc<dyn SessionResource>,
         Arc::clone(&push) as Arc<dyn SessionResource>,
+        Arc::clone(&call_signals) as Arc<dyn SessionResource>,
     ];
 
     AuthenticatedSession {
@@ -182,6 +185,8 @@ pub(super) async fn authenticate(
         invite_people: Arc::new(MatrixInvitePeople::new(Arc::clone(&matrix))),
         typing,
         presence: Arc::new(MatrixPresence::new(Arc::clone(&matrix))),
+        call_signals,
+        rtc_membership: Arc::new(MatrixRtcMembership::new(Arc::clone(&matrix))),
         push,
         room_info: Arc::new(MatrixRoomInfo::new(Arc::clone(&matrix))),
         user_info: Arc::new(MatrixUserInfo::new(Arc::clone(&matrix), pronouns)),

@@ -1,6 +1,8 @@
 mod attachments;
 pub mod audio;
 mod browser;
+mod call_media;
+mod calls;
 pub mod catalog;
 mod create_room;
 mod data;
@@ -46,6 +48,7 @@ use std::sync::Arc;
 
 use super::ui::SlintUiAdapter;
 use crate::ports::browser::BrowserPort;
+use crate::ports::call::CallMediaPort;
 use crate::ports::handoff::HandoffPort;
 use crate::ports::matrix::AuthPort;
 use crate::ports::media::{MediaCache, MediaFilePort};
@@ -90,6 +93,10 @@ pub fn browser() -> Arc<dyn BrowserPort> {
 
 pub fn notifier() -> Arc<dyn NotifierPort> {
     notifications::notifier()
+}
+
+pub fn call_media() -> Arc<dyn CallMediaPort> {
+    Arc::new(call_media::DemoCallMedia)
 }
 
 pub fn handoff() -> Arc<dyn HandoffPort> {

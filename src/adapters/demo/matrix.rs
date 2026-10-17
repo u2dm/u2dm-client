@@ -15,6 +15,7 @@ use tokio::time::sleep;
 use tokio_util::sync::CancellationToken;
 use url::Url;
 
+use super::calls::{self, Step};
 use super::encryption::{self, EncryptionBook};
 use super::identity::{self, IdentityBook, SendHold};
 use super::{
@@ -24,6 +25,13 @@ use super::{
 };
 use crate::adapters::{body_emoji, video};
 use crate::domain::auth::{AuthMethod, LoginCredentials, OAuthLoginData, ServerInfo, Session};
+use crate::domain::call::identity::spellings;
+use crate::domain::call::ring::{CallSignal, OutgoingRing, RingId};
+use crate::domain::call::sfu::{GrantFailure, GrantRequest, GrantResult, SfuGrant};
+use crate::domain::call::{
+    DelayedLeave, DeviceStanding, KeySendReport, MemberKey, OutgoingKey, OwnMembership,
+    RestartResult, ScheduleFailure, ScheduleResult, Secret, SentMembership, Transport,
+};
 use crate::domain::emote::Emote;
 use crate::domain::encryption::{
     AccountEncryption, IdentityOutcome, RecoveryAttempt, RecoveryKey, RecoverySetup,
@@ -69,14 +77,17 @@ use crate::domain::user_info::{
 use crate::domain::verification::{VerificationCancellation, VerificationEvent};
 use crate::error::{AppError, Result};
 use crate::ports::matrix::{
-    AttachmentHandoff, AuthPort, AuthenticatedSession, CleanupReport, DeviceRemoval,
-    EncryptionPort, IdentityPort, ImagePackPort, InterruptedLogin, InvitePeoplePort, InvitePort,
-    LocalDataOwnership, MediaPort, PackCatalog, PinnedPort, PresencePort, ProgressSink, PushPort,
-    RestoreOutcome, RestoreStep, RoomCreationPort, RoomInfoPort, RoomPreviewPort, SessionPort,
-    SpaceIndexPort, SpaceOrderPort, StoreAdoption, SyncPort, SyncSink, TimelinePort, TypingPort,
-    UpgradePort, UserInfoPort, VerificationPort,
+    AttachmentHandoff, AuthPort, AuthenticatedSession, CallSignalPort, CleanupReport,
+    DeviceRemoval, EncryptionPort, IdentityPort, ImagePackPort, InterruptedLogin, InvitePeoplePort,
+    InvitePort, LocalDataOwnership, MediaPort, PackCatalog, PinnedPort, PresencePort, ProgressSink,
+    PushPort, RestoreOutcome, RestoreStep, RoomCreationPort, RoomInfoPort, RoomPreviewPort,
+    RtcMembershipPort, SessionPort, SpaceIndexPort, SpaceOrderPort, StoreAdoption, SyncPort,
+    SyncSink, TimelinePort, TypingPort, UpgradePort, UserInfoPort, VerificationPort,
 };
 use crate::ports::media::MediaCache;
+use crate::util::unix_now_ms;
+
+const GRANT_REFUSED: u16 = 403;
 
 pub struct DemoMatrix;
 
@@ -258,6 +269,8 @@ fn authenticated(session: Session) -> AuthenticatedSession {
     let invite_people = Arc::clone(&authed);
     let typing = Arc::clone(&authed);
     let presence = Arc::clone(&authed);
+    let call_signals = Arc::clone(&authed);
+    let rtc_membership = Arc::clone(&authed);
     let push = Arc::clone(&authed);
     let room_info = Arc::clone(&authed);
     let user_info = Arc::clone(&authed);
@@ -280,6 +293,8 @@ fn authenticated(session: Session) -> AuthenticatedSession {
         invite_people,
         typing,
         presence,
+        call_signals,
+        rtc_membership,
         push,
         room_info,
         user_info,
@@ -1301,6 +1316,7 @@ impl SyncPort for DemoAuthed {
             *sink = Some(Arc::clone(&on_sync));
         }
         self.hold_back_late_invites();
+        calls::book().begin();
         let lists = current_lists(&self.lists);
         on_sync(SyncEvent::Rooms(lists.rooms().into()));
         on_sync(SyncEvent::Invites(lists.invites().into()));
@@ -1310,6 +1326,7 @@ impl SyncPort for DemoAuthed {
         }
         on_sync(SyncEvent::Connected);
         self.spawn_invite_changes();
+        self.spawn_call_script();
         if !timeline::scenario().room_list_keeps_updating {
             cancel.cancelled().await;
             return SyncOutcome::Cancelled;
@@ -1523,6 +1540,70 @@ impl DemoAuthed {
                 overrides
                     .withdrawn
                     .insert(invites::REVOKED_INVITE.to_owned());
+            });
+        }
+    }
+
+    fn leave_call(&self, room_id: &RoomId) {
+        calls::book().leave_own(room_id.as_ref());
+        tracing::info!(%room_id, "demo: you left the call");
+        self.echo_rooms();
+    }
+
+    fn script_answer(&self, room_id: &RoomId, ring: &RingId) {
+        let shaped = calls::scenario();
+        let Some(partner) = calls::partner_of(room_id.as_ref()) else {
+            return;
+        };
+        if !(shaped.answers || shaped.declines) {
+            return;
+        }
+        let Some(sink) = self.sync_sink() else {
+            return;
+        };
+        let lists = Arc::clone(&self.lists);
+        let room_id = room_id.clone();
+        let ring = ring.clone();
+        tokio::spawn(async move {
+            sleep(calls::ANSWER_AFTER).await;
+            if shaped.answers {
+                tracing::info!(%room_id, "demo: the call is answered");
+                calls::answer_in(room_id.as_ref());
+                sink(SyncEvent::Rooms(current_lists(&lists).rooms().into()));
+                for key in calls::book().keys_from_others(room_id.as_ref()) {
+                    calls::book().signal(key).await;
+                }
+            } else {
+                tracing::info!(%room_id, "demo: the call is declined by the callee");
+                calls::book()
+                    .signal(CallSignal::Declined {
+                        room_id,
+                        ring,
+                        by: UserId::new(partner),
+                    })
+                    .await;
+            }
+        });
+    }
+
+    fn spawn_call_script(&self) {
+        let Some(sink) = self.sync_sink() else {
+            return;
+        };
+        for scripted in calls::script() {
+            let sink = Arc::clone(&sink);
+            let lists = Arc::clone(&self.lists);
+            tokio::spawn(async move {
+                sleep(scripted.after).await;
+                for step in (scripted.change)(calls::book()) {
+                    match step {
+                        Step::Rooms => {
+                            tracing::debug!("demo: a call changed");
+                            sink(SyncEvent::Rooms(current_lists(&lists).rooms().into()));
+                        }
+                        Step::Signal(signal) => calls::book().signal(signal).await,
+                    }
+                }
             });
         }
     }
@@ -2033,6 +2114,130 @@ impl TypingPort for DemoAuthed {
         }
         self.typing_notices.notice(room_id, is_typing);
         Ok(())
+    }
+}
+
+#[async_trait]
+impl CallSignalPort for DemoAuthed {
+    async fn follow_signals(&self, signals_tx: mpsc::Sender<CallSignal>) -> Result<()> {
+        calls::book().follow(signals_tx.clone());
+        signals_tx.closed().await;
+        Ok(())
+    }
+
+    async fn decline(&self, room_id: &RoomId, ring: &RingId) -> Result<()> {
+        calls::pause().await;
+        if calls::scenario().decline_fails {
+            return Err(unavailable("declining the call"));
+        }
+        tracing::info!(%room_id, %ring, "demo: the call is declined");
+        Ok(())
+    }
+
+    async fn announce_call(&self, room_id: &RoomId, ring: &OutgoingRing) -> Result<RingId> {
+        let id = RingId::new(format!("$demo-outgoing-{}", ring.sent_ms));
+        tracing::info!(%room_id, kind = ?ring.kind, membership = ring.membership_event_id, "demo: the call is announced");
+        self.script_answer(room_id, &id);
+        Ok(id)
+    }
+
+    async fn send_key(
+        &self,
+        room_id: &RoomId,
+        key: &OutgoingKey,
+        to: &[MemberKey],
+    ) -> KeySendReport {
+        tracing::info!(%room_id, index = %key.index, to = to.len(), "demo: a call key is sent");
+        KeySendReport {
+            sent: to.to_vec(),
+            withheld: Vec::new(),
+        }
+    }
+
+    async fn device_standing(&self, members: &[MemberKey]) -> Vec<(MemberKey, DeviceStanding)> {
+        let untrusted = calls::scenario().undecryptable;
+        members
+            .iter()
+            .map(|member| {
+                let standing = if untrusted && member.user == calls::UNTRUSTED {
+                    DeviceStanding::NotCrossSigned
+                } else {
+                    DeviceStanding::CrossSigned
+                };
+                (member.clone(), standing)
+            })
+            .collect()
+    }
+}
+
+#[async_trait]
+impl RtcMembershipPort for DemoAuthed {
+    async fn own_transports(&self) -> Result<Vec<Transport>> {
+        calls::pause().await;
+        if calls::scenario().no_sfu {
+            return Ok(Vec::new());
+        }
+        Ok(vec![calls::own_transport()])
+    }
+
+    async fn schedule_leave(&self, room_id: &RoomId, delay: Duration) -> ScheduleResult {
+        if calls::scenario().delayed_unsupported {
+            return Err(ScheduleFailure::Unsupported);
+        }
+        tracing::info!(%room_id, delay_ms = delay.as_millis(), "demo: the call's delayed leave is scheduled");
+        Ok(DelayedLeave {
+            room_id: room_id.clone(),
+            delay_id: Secret::new("demo-delay"),
+        })
+    }
+
+    async fn restart_leave(&self, _leave: &DelayedLeave) -> RestartResult {
+        Ok(())
+    }
+
+    async fn send_leave(&self, leave: &DelayedLeave) -> Result<()> {
+        self.leave_call(&leave.room_id);
+        Ok(())
+    }
+
+    async fn clear_membership(&self, room_id: &RoomId) -> Result<()> {
+        self.leave_call(room_id);
+        Ok(())
+    }
+
+    async fn send_membership(
+        &self,
+        room_id: &RoomId,
+        membership: &OwnMembership,
+    ) -> Result<SentMembership> {
+        calls::pause().await;
+        let first = membership.created_ms.is_none();
+        calls::book().own_join(room_id.as_ref(), membership.intent);
+        tracing::info!(%room_id, first, "demo: you joined the call");
+        self.echo_rooms();
+        if first {
+            spawn_others_keys(room_id);
+        }
+        Ok(SentMembership {
+            event_id: format!("$demo-membership-{room_id}"),
+            created_ms: membership.created_ms.unwrap_or_else(unix_now_ms),
+        })
+    }
+
+    async fn sfu_grant(&self, _room_id: &RoomId, request: &GrantRequest) -> GrantResult {
+        calls::pause().await;
+        if calls::scenario().grant_fails {
+            return Err(GrantFailure::Refused(GRANT_REFUSED));
+        }
+        let user = data::own_user();
+        let [legacy, _, _] = spellings(user, &request.device, &request.member_id);
+        Ok(SfuGrant {
+            sfu: request.target.id.clone(),
+            role: request.target.role,
+            url: calls::DEMO_LIVEKIT.to_owned(),
+            token: Secret::new("demo-token"),
+            identity: legacy,
+        })
     }
 }
 
@@ -3433,6 +3638,19 @@ fn spawn_deletion_refusal(active: SharedActiveRoom, removed: RemovedMessage) {
         )
         .await;
         drop(removed.timeline_tx.send(TimelineUpdate::DeleteFailed).await);
+    });
+}
+
+fn spawn_others_keys(room_id: &RoomId) {
+    let room_id = room_id.clone();
+    let late = calls::scenario().keys_late;
+    tokio::spawn(async move {
+        if late {
+            sleep(calls::KEYS_LATE_BY).await;
+        }
+        for key in calls::book().keys_from_others(room_id.as_ref()) {
+            calls::book().signal(key).await;
+        }
     });
 }
 

@@ -1,5 +1,6 @@
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::time::Duration;
 
 use async_trait::async_trait;
 use tokio::sync::mpsc;
@@ -7,6 +8,12 @@ use tokio_util::sync::CancellationToken;
 
 use crate::domain::account::AccountScope;
 use crate::domain::auth::{LoginCredentials, OAuthLoginData, ServerInfo, Session};
+use crate::domain::call::ring::{CallSignal, OutgoingRing, RingId};
+use crate::domain::call::sfu::{GrantRequest, GrantResult};
+use crate::domain::call::{
+    DelayedLeave, DeviceStanding, KeySendReport, MemberKey, OutgoingKey, OwnMembership,
+    RestartResult, ScheduleResult, SentMembership, Transport,
+};
 use crate::domain::emote::Emote;
 use crate::domain::encryption::{
     AccountEncryption, IdentityOutcome, RecoveryAttempt, RecoveryKey, RecoverySetup,
@@ -157,6 +164,8 @@ pub struct AuthenticatedSession {
     pub invite_people: Arc<dyn InvitePeoplePort>,
     pub typing: Arc<dyn TypingPort>,
     pub presence: Arc<dyn PresencePort>,
+    pub call_signals: Arc<dyn CallSignalPort>,
+    pub rtc_membership: Arc<dyn RtcMembershipPort>,
     pub push: Arc<dyn PushPort>,
     pub room_info: Arc<dyn RoomInfoPort>,
     pub user_info: Arc<dyn UserInfoPort>,
@@ -283,6 +292,35 @@ pub trait TypingPort: Send + Sync {
 pub trait PresencePort: Send + Sync {
     async fn announce(&self, availability: Availability, status: Option<&str>) -> BeaconResult;
     async fn presence_of(&self, user_id: &UserId) -> LookupResult;
+}
+
+#[async_trait]
+pub trait CallSignalPort: Send + Sync {
+    async fn follow_signals(&self, signals_tx: mpsc::Sender<CallSignal>) -> Result<()>;
+    async fn decline(&self, room_id: &RoomId, ring: &RingId) -> Result<()>;
+    async fn announce_call(&self, room_id: &RoomId, ring: &OutgoingRing) -> Result<RingId>;
+    async fn send_key(
+        &self,
+        room_id: &RoomId,
+        key: &OutgoingKey,
+        to: &[MemberKey],
+    ) -> KeySendReport;
+    async fn device_standing(&self, members: &[MemberKey]) -> Vec<(MemberKey, DeviceStanding)>;
+}
+
+#[async_trait]
+pub trait RtcMembershipPort: Send + Sync {
+    async fn own_transports(&self) -> Result<Vec<Transport>>;
+    async fn schedule_leave(&self, room_id: &RoomId, delay: Duration) -> ScheduleResult;
+    async fn restart_leave(&self, leave: &DelayedLeave) -> RestartResult;
+    async fn send_leave(&self, leave: &DelayedLeave) -> Result<()>;
+    async fn clear_membership(&self, room_id: &RoomId) -> Result<()>;
+    async fn send_membership(
+        &self,
+        room_id: &RoomId,
+        membership: &OwnMembership,
+    ) -> Result<SentMembership>;
+    async fn sfu_grant(&self, room_id: &RoomId, request: &GrantRequest) -> GrantResult;
 }
 
 #[async_trait]

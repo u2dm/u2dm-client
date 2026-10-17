@@ -5,6 +5,8 @@ use tokio::runtime::Handle;
 
 #[cfg(feature = "matrix")]
 use crate::adapters::browser::DesktopBrowser;
+#[cfg(feature = "matrix")]
+use crate::adapters::call_media;
 #[cfg(feature = "demo")]
 use crate::adapters::demo;
 #[cfg(feature = "matrix")]
@@ -19,6 +21,7 @@ use crate::adapters::notifier;
 use crate::adapters::storage::SecureStorage;
 use crate::config::AppConfig;
 use crate::ports::browser::BrowserPort;
+use crate::ports::call::CallMediaPort;
 use crate::ports::handoff::HandoffPort;
 use crate::ports::matrix::AuthPort;
 #[cfg(feature = "matrix")]
@@ -38,6 +41,7 @@ pub struct Backend {
     pub browser: Arc<dyn BrowserPort>,
     pub notifier: Arc<dyn NotifierPort>,
     pub handoff: Arc<dyn HandoffPort>,
+    pub call_media: Option<Arc<dyn CallMediaPort>>,
 }
 
 impl Backend {
@@ -85,6 +89,7 @@ impl Backend {
             browser: demo::browser(),
             notifier: demo::notifier(),
             handoff: demo::handoff(),
+            call_media: Some(demo::call_media()),
         }
     }
 
@@ -107,6 +112,7 @@ impl Backend {
             browser: Arc::new(DesktopBrowser::new()),
             notifier: notifier::desktop(),
             handoff,
+            call_media: call_media::production(),
         }
     }
 }

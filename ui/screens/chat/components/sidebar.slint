@@ -6,7 +6,7 @@ import { IconDisplay, IconSet } from "@lucide";
 
 import { SpaceRail } from "./space-rail.slint";
 import { SubspaceRail } from "./subspace-rail.slint";
-import { MessagePreview, ServiceLabel } from "../../../messages.slint";
+import { CallWords, MessagePreview, ServiceLabel } from "../../../messages.slint";
 import { HeaderTitle } from "./header-title.slint";
 import { Avatar } from "../../../components/avatar.slint";
 import { Interaction, ListItemArea } from "../../../components/a11y.slint";
@@ -18,7 +18,7 @@ import { RetryNotice } from "../../../components/retry-notice.slint";
 import { PillSearchField } from "../../../components/search-field.slint";
 import { ContextPress } from "./context-press.slint";
 import { AppStyle, Fonts, IconSize, Metrics, Motion, Size, Space, Stroke, Weight } from "../../../theme.slint";
-import { InviteKind, RoomRowKind, RoomScope, ServiceKind } from "../../../enums.slint";
+import { InviteKind, RoomCallMark, RoomRowKind, RoomScope, ServiceKind } from "../../../enums.slint";
 import { DirectoryView, SpaceIndexView } from "../../../views.slint";
 import { Actions } from "../../../actions.slint";
 import { RoomMenu, RoomMenuOrigin, RoomMenuReturn, RoomSearch } from "../../../local.slint";
@@ -83,6 +83,15 @@ component RoomSummary inherits VerticalLayout {
             font-weight: Weight.semibold;
             vertical-alignment: center;
             overflow: elide;
+        }
+
+        if root.entry.call != RoomCallMark.none: IconDisplay {
+            cross-axis-self-alignment: center;
+            icon: root.entry.call == RoomCallMark.video ? IconSet.Video : IconSet.Phone;
+            size: IconSize.xs;
+            stroke: AppStyle.call-live;
+            accessible-role: image;
+            accessible-label: CallWords.mark(root.entry.call);
         }
 
         if root.entry.last-message-time != "": Text {

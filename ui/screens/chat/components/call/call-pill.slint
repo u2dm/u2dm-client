@@ -1,0 +1,38 @@
+import { IconDisplay, IconSet } from "@lucide";
+
+import { AppStyle, Fonts, IconSize, Space, Weight } from "../../../../theme.slint";
+import { CallView } from "../../../../views.slint";
+import { CallWords } from "../../../../messages.slint";
+
+export component CallPill inherits Rectangle {
+    width: pill-layout.preferred-width;
+    height: pill-layout.preferred-height;
+    border-radius: self.height / 2;
+    background: AppStyle.call-live-background;
+    accessible-role: text;
+    accessible-label: CallWords.in-call(CallView.here-people);
+
+    pill-layout := HorizontalLayout {
+        padding-left: Space.lg;
+        padding-right: Space.lg;
+        padding-top: Space.sm;
+        padding-bottom: Space.sm;
+        spacing: Space.sm;
+
+        IconDisplay {
+            cross-axis-self-alignment: center;
+            icon: CallView.here-video ? IconSet.Video : IconSet.Phone;
+            size: IconSize.xs;
+            stroke: AppStyle.call-live;
+        }
+
+        Text {
+            text: CallWords.in-call(CallView.here-people);
+            font-size: Fonts.body-small;
+            font-weight: Weight.semibold;
+            color: AppStyle.call-live;
+            vertical-alignment: center;
+            accessible-role: none;
+        }
+    }
+}

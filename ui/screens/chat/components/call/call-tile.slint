@@ -1,0 +1,76 @@
+import { IconDisplay, IconSet } from "@lucide";
+
+import { Avatar } from "../../../../components/avatar.slint";
+import { CallTileEntry } from "../../../../types.slint";
+import { CallTileState } from "../../../../enums.slint";
+import { CallWords } from "../../../../messages.slint";
+import { AppStyle, Fonts, Glyph, IconSize, Metrics, Radius, Space, Weight } from "../../../../theme.slint";
+
+export component CallTileView inherits Rectangle {
+    in property <CallTileEntry> tile;
+
+    property <string> state-text: CallWords.tile(root.tile.state);
+    property <bool> troubled: root.tile.state == CallTileState.cant-decrypt
+        || root.tile.state == CallTileState.unverified-device
+        || root.tile.state == CallTileState.unreachable;
+
+    background: AppStyle.call-tile;
+    border-radius: Radius.md;
+    border-width: root.tile.speaking ? Metrics.call-speaking-ring : 0;
+    border-color: AppStyle.call-speaking;
+    accessible-role: groupbox;
+    accessible-label: root.tile.own ? @tr("You") : root.tile.name;
+    accessible-description: root.state-text;
+
+    VerticalLayout {
+        padding: Space.md;
+        spacing: Space.sm;
+        alignment: center;
+
+        HorizontalLayout {
+            alignment: center;
+
+            Avatar {
+                width: Metrics.call-tile-avatar;
+                height: Metrics.call-tile-avatar;
+                color-index: root.tile.color-index;
+                initial: root.tile.initial;
+                initial-size: Glyph.lg;
+                opacity: root.tile.state == CallTileState.live ? 1 : 0.5;
+            }
+        }
+
+        HorizontalLayout {
+            alignment: center;
+            spacing: Space.xs;
+
+            if root.tile.muted: IconDisplay {
+                cross-axis-self-alignment: center;
+                icon: IconSet.MicOff;
+                size: IconSize.xs;
+                stroke: AppStyle.foreground-muted;
+                accessible-role: image;
+                accessible-label: @tr("Muted");
+            }
+
+            Text {
+                text: root.tile.own ? @tr("You") : root.tile.name;
+                font-family: Fonts.emoji;
+                font-size: Fonts.body-small;
+                font-weight: Weight.semibold;
+                overflow: elide;
+                horizontal-alignment: center;
+                accessible-role: none;
+            }
+        }
+
+        if root.state-text != "": Text {
+            text: root.state-text;
+            font-size: Fonts.caption;
+            color: root.troubled ? AppStyle.call-decline : AppStyle.foreground-muted;
+            wrap: word-wrap;
+            horizontal-alignment: center;
+            accessible-role: none;
+        }
+    }
+}

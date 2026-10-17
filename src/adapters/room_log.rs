@@ -18,7 +18,7 @@ use crate::ports::room_log::RoomLogPort;
 
 const CAPTURE_ENV: &str = "U2DM_ROOM_LOG";
 const CAPTURED_BY_DEFAULT: &str = "u2dm=debug,matrix_sdk=debug,matrix_sdk_crypto=info,\
-                                   matrix_sdk_sqlite=info,matrix_sdk_common=info";
+                                   matrix_sdk_sqlite=info,matrix_sdk_common=info,livekit=info";
 const LINES_PER_ROOM: usize = 1500;
 const LINES_IN_ALL_ROOMS: usize = 30_000;
 const ROOM_FIELDS: [&str; 2] = ["room_id", "room"];

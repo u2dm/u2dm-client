@@ -9,21 +9,35 @@ use matrix_sdk::ruma::events::room::encryption::RoomEncryptionEventContent;
 use matrix_sdk::ruma::events::room::join_rules::{AllowRule, RoomJoinRulesEventContent};
 use matrix_sdk::ruma::events::space::child::SpaceChildEventContent;
 use matrix_sdk::ruma::events::space::parent::SpaceParentEventContent;
-use matrix_sdk::ruma::events::{AnyInitialStateEvent, InitialStateEvent};
+use matrix_sdk::ruma::events::{AnyInitialStateEvent, InitialStateEvent, TimelineEventType};
 use matrix_sdk::ruma::room::RoomType;
 use matrix_sdk::ruma::serde::Raw;
 use matrix_sdk::ruma::{Int, OwnedRoomId, OwnedServerName};
 use matrix_sdk::{Client, HttpError};
 
 use crate::adapters::matrix::permissions::space_powers;
+use crate::adapters::matrix::rtc::CALL_MEMBER_TYPE;
 use crate::adapters::matrix::session::ClientHandle;
 use crate::adapters::matrix::user_info::own_user;
 use crate::domain::room::RoomId;
 use crate::domain::room_creation::{
     ChildLink, CreateFailure, CreateResult, CreatedRoom, JoinAccess, RoomBlueprint, Shape,
 };
-use crate::domain::room_info::ADMIN_LEVEL;
+use crate::domain::room_info::{ADMIN_LEVEL, MODERATOR_LEVEL};
 use crate::ports::matrix::RoomCreationPort;
+
+const EVERYONE_LEVEL: i64 = 0;
+const ROOM_EVENT_LEVELS: [(&str, i64); 9] = [
+    ("m.room.name", MODERATOR_LEVEL),
+    ("m.room.avatar", MODERATOR_LEVEL),
+    ("m.room.canonical_alias", MODERATOR_LEVEL),
+    ("m.room.power_levels", ADMIN_LEVEL),
+    ("m.room.history_visibility", ADMIN_LEVEL),
+    ("m.room.tombstone", ADMIN_LEVEL),
+    ("m.room.server_acl", ADMIN_LEVEL),
+    ("m.room.encryption", ADMIN_LEVEL),
+    (CALL_MEMBER_TYPE, EVERYONE_LEVEL),
+];
 
 pub(in crate::adapters::matrix) struct MatrixRoomCreation {
     matrix: Arc<ClientHandle>,
@@ -104,6 +118,13 @@ fn creation_request(
         request.creation_content = Some(Raw::new(&creation)?);
         let mut levels = create_room::RoomPowerLevelsContentOverride::new();
         levels.events_default = Int::new(ADMIN_LEVEL);
+        request.power_level_content_override = Some(Raw::new(&levels)?);
+    } else {
+        let mut levels = create_room::RoomPowerLevelsContentOverride::new();
+        levels.events = ROOM_EVENT_LEVELS
+            .iter()
+            .filter_map(|(kind, level)| Some((TimelineEventType::from(*kind), Int::new(*level)?)))
+            .collect();
         request.power_level_content_override = Some(Raw::new(&levels)?);
     }
     Ok(request)

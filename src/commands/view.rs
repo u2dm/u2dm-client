@@ -6,12 +6,14 @@ use std::time::Duration;
 use super::messages::{UserMessage, UserMessageKind};
 use super::ui::Draft;
 use crate::domain::auth::{LoginMethod, Session};
+use crate::domain::call::MemberKey;
 use crate::domain::encryption::{KeyStorage, Recovery, RecoveryKey, Standing};
 use crate::domain::identity::IdentityAlert;
 use crate::domain::image_pack::ImagePacks;
 use crate::domain::invite::{Invite, InviteList};
 use crate::domain::invite_people::Person;
 use crate::domain::media::AudioMeta;
+use crate::domain::member_name::NamedUser;
 use crate::domain::message::{PinnedMessage, TimelineMessage};
 use crate::domain::presence::PresenceLine;
 use crate::domain::push::PushNotice;
@@ -50,6 +52,7 @@ pub struct AppViewState {
     pub upgrade: UpgradeView,
     pub typing: TypingView,
     pub presence: PresenceView,
+    pub call: CallView,
     pub notifications: NotificationsView,
     pub encryption: EncryptionView,
     pub toast: Toast,
@@ -239,6 +242,113 @@ pub struct PersonPresence {
 pub struct PresenceView {
     pub partner: Option<PartnerPresence>,
     pub person: Option<PersonPresence>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[allow(clippy::struct_excessive_bools)]
+pub struct RingView {
+    pub serial: u64,
+    pub room_id: RoomId,
+    pub room_name: String,
+    pub room_avatar_mxc: Option<String>,
+    pub direct: bool,
+    pub caller: NamedUser,
+    pub video: bool,
+    pub desktop: bool,
+    pub answerable: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RoomCallSummary {
+    pub room_id: RoomId,
+    pub people: usize,
+    pub video: bool,
+    pub joined_by_you: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum JoinRefusal {
+    NotBuilt,
+    MediaBroken,
+    NoServer,
+    NotAllowed,
+    SessionUnverified,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum JoinOffer {
+    Start,
+    Join,
+    InCall,
+    Refused(JoinRefusal),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OfferView {
+    pub room_id: RoomId,
+    pub offer: JoinOffer,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CallPhase {
+    Joining,
+    Ringing,
+    Connecting,
+    Live,
+    Reconnecting,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CantDecrypt {
+    NotCrossSigned,
+    NoKey,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TileState {
+    Joining,
+    WaitingForKeys,
+    Live,
+    CantDecrypt(CantDecrypt),
+    Unreachable,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CallTile {
+    pub member: MemberKey,
+    pub name: NamedUser,
+    pub own: bool,
+    pub state: TileState,
+    pub muted: bool,
+    pub speaking: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MicrophoneView {
+    On,
+    Off,
+    Failed,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ActiveCall {
+    pub call: u64,
+    pub room_id: RoomId,
+    pub room_name: String,
+    pub phase: CallPhase,
+    pub live_since_ms: Option<u64>,
+    pub encrypted: bool,
+    pub video: bool,
+    pub microphone: MicrophoneView,
+    pub tiles: Arc<[CallTile]>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct CallView {
+    pub ring: Option<RingView>,
+    pub here: Option<RoomCallSummary>,
+    pub offer: Option<OfferView>,
+    pub active: Option<ActiveCall>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

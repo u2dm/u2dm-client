@@ -13,7 +13,7 @@ use crate::commands::view::{AppViewState, NotificationsView, ShownNotice};
 use crate::domain::member_name::NamedUser;
 use crate::domain::message::MessagePreviewKind;
 use crate::domain::push::{NoticeContent, PushNotice};
-use crate::ports::notifier::{DesktopNotice, NoticeActivation, NotifierPort};
+use crate::ports::notifier::{DesktopNotice, NoticeAction, NoticeActivation, NotifierPort};
 
 pub enum NoticeWords<'a> {
     Message {
@@ -28,6 +28,10 @@ pub enum NoticeWords<'a> {
     },
     Invite {
         inviter: &'a str,
+    },
+    Ring {
+        video: bool,
+        caller: &'a str,
     },
 }
 
@@ -119,7 +123,7 @@ pub fn follow_activations<B: UiBackend>(window: &B::Window, notifier: &dyn Notif
     let weak = window.as_weak();
     notifier.on_activation(Arc::new(move |activation: NoticeActivation| {
         let queued = weak.upgrade_in_event_loop(move |window| {
-            open_from_notification::<B>(&window, &activation);
+            act_on_notification::<B>(&window, &activation);
         });
         if let Err(e) = queued {
             tracing::debug!("a notification click could not reach the event loop: {e}");
@@ -127,7 +131,38 @@ pub fn follow_activations<B: UiBackend>(window: &B::Window, notifier: &dyn Notif
     }));
 }
 
-pub fn open_from_notification<B: UiBackend>(window: &B::Window, activation: &NoticeActivation) {
+pub fn act_on_notification<B: UiBackend>(window: &B::Window, activation: &NoticeActivation) {
+    match activation.action {
+        NoticeAction::Open => open_from_notification::<B>(window, activation),
+        NoticeAction::Answer => {
+            open_from_notification::<B>(window, activation);
+            answer_from_notification(window, activation);
+        }
+        NoticeAction::Decline => decline_from_notification(window, activation),
+    }
+}
+
+fn answer_from_notification(window: &impl UiProps, activation: &NoticeActivation) {
+    tracing::debug!(room_id = %activation.key, "a ringing notification was answered");
+    window.set_string(
+        StringProp::CallRoom,
+        SharedString::from(activation.key.as_ref()),
+    );
+    let answers = window.get_int(IntProp::CallAnswers).wrapping_add(1);
+    window.set_int(IntProp::CallAnswers, answers);
+}
+
+fn decline_from_notification(window: &impl UiProps, activation: &NoticeActivation) {
+    tracing::debug!(room_id = %activation.key, "a ringing notification was declined");
+    window.set_string(
+        StringProp::CallRoom,
+        SharedString::from(activation.key.as_ref()),
+    );
+    let declines = window.get_int(IntProp::CallDeclines).wrapping_add(1);
+    window.set_int(IntProp::CallDeclines, declines);
+}
+
+fn open_from_notification<B: UiBackend>(window: &B::Window, activation: &NoticeActivation) {
     tracing::debug!(room_id = %activation.key, token = activation.token.is_some(), "a notification was clicked");
     raise(window.window(), activation.token.as_deref());
     window.set_string(

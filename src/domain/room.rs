@@ -2,6 +2,7 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::{fmt, ops};
 
+use crate::domain::call::RoomCall;
 use crate::domain::member_name::NamedUser;
 use crate::domain::message::{MessagePermissions, MessagePreviewKind, RichText, ServiceEvent};
 use crate::domain::poll::PollPermissions;
@@ -60,6 +61,8 @@ pub struct Room {
     pub poll_permissions: PollPermissions,
     pub message_permissions: MessagePermissions,
     pub may_invite: bool,
+    pub may_join_calls: bool,
+    pub call: Option<Arc<RoomCall>>,
     pub member_count: u64,
     pub has_unread: bool,
     pub has_mentions: bool,

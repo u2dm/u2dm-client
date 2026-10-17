@@ -7,7 +7,7 @@ use std::sync::Arc;
 use crate::domain::room::RoomId;
 use crate::ports::notifier::NotifierPort;
 #[cfg(not(target_os = "linux"))]
-use crate::ports::notifier::{ActivationSink, DesktopNotice};
+use crate::ports::notifier::{ActivationSink, DesktopNotice, RingNotice};
 
 #[cfg(target_os = "linux")]
 pub fn desktop() -> Arc<dyn NotifierPort> {
@@ -31,6 +31,12 @@ impl NotifierPort for SilentNotifier {
     fn withdraw(&self, _key: &RoomId) {}
 
     fn withdraw_all(&self) {}
+
+    fn ring(&self, notice: RingNotice) {
+        tracing::debug!(room_id = %notice.key, "this platform shows no ringing notification");
+    }
+
+    fn stop_ringing(&self, _key: &RoomId) {}
 
     fn on_activation(&self, _sink: ActivationSink) {}
 }

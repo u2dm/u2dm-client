@@ -176,6 +176,7 @@ fn run(room_logs: Arc<RoomLogs>) -> Result<()> {
         media_files,
         browser,
         room_logs,
+        backend.call_media,
         &cmd_tx,
         dir_in_tx,
         output,

@@ -1,6 +1,6 @@
 use slint::{Image, Rgb8Pixel, SharedPixelBuffer, SharedString, StyledText};
 
-use super::dto::PackSurface;
+use super::dto::{CallOfferMark, PackSurface};
 use super::present::{IdentityAlertKind, ServiceKind, VerifyStep};
 use super::schema::{bool_props, enum_props, int_props, string_props};
 use crate::app::input::CommandSender;
@@ -8,10 +8,10 @@ use crate::commands::effects::VerificationActivity;
 use crate::commands::messages::{UserMessage, UserMessageKind};
 use crate::commands::ui::UiCommand;
 use crate::commands::view::{
-    AttachmentKind, ChildAccess, CreateRoomStatus, DirectChat, EncryptionActivity, EncryptionStep,
-    LoginActivity, LoginStep, PendingAnswer, PendingModeration, PeopleSearchStatus, ReadersStatus,
-    RoomInfoPlacement, RoomPreviewSheet, RoomScope, RosterStatus, SourceState, SpaceIndexStatus,
-    UpgradeLink,
+    AttachmentKind, CallPhase, ChildAccess, CreateRoomStatus, DirectChat, EncryptionActivity,
+    EncryptionStep, JoinRefusal, LoginActivity, LoginStep, MicrophoneView, PendingAnswer,
+    PendingModeration, PeopleSearchStatus, ReadersStatus, RoomInfoPlacement, RoomPreviewSheet,
+    RoomScope, RosterStatus, SourceState, SpaceIndexStatus, UpgradeLink,
 };
 use crate::domain::auth::LoginMethod;
 use crate::domain::encryption::{Recovery, Standing};
@@ -90,6 +90,7 @@ pub trait UiProps {
     fn apply_user_info_avatar(&self, avatar: Option<Image>);
     fn apply_invite_avatar(&self, avatar: Option<Image>);
     fn apply_room_preview_avatar(&self, avatar: Option<Image>);
+    fn apply_ring_avatar(&self, avatar: Option<Image>);
     fn apply_login_messages(&self, messages: &[UserMessage]);
     fn apply_emoji_model(&self, emojis: &[DomainVerificationEmoji]);
     fn clear_emoji_model(&self);

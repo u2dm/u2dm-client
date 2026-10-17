@@ -21,6 +21,7 @@ use crate::domain::room_creation::{RoomAccess, RoomDraft, RoomKind};
 use crate::domain::sync::{ReauthReason, SessionLoss};
 use crate::domain::user_info::UserId;
 use crate::ports::handoff::Handoff;
+use crate::ports::notifier::NoticeAction;
 
 const PROBE_EMOTE_HEIGHT: &str = "32";
 
@@ -76,6 +77,27 @@ pub enum ProbeCommand {
     },
     DeclineInvite {
         room_id: String,
+    },
+    DeclineCall {
+        room_id: String,
+    },
+    SilenceRing,
+    StartCall {
+        #[serde(default)]
+        room_id: Option<String>,
+        #[serde(default)]
+        video: bool,
+    },
+    JoinCall {
+        #[serde(default)]
+        room_id: Option<String>,
+    },
+    AnswerCall {
+        room_id: String,
+    },
+    LeaveCall,
+    SetMicrophone {
+        on: bool,
     },
     JoinSuccessor {
         #[serde(default)]
@@ -412,6 +434,8 @@ pub enum ProbeCommand {
         room_id: String,
         #[serde(default)]
         token: Option<String>,
+        #[serde(default)]
+        action: Option<String>,
     },
     OpenLink {
         url: String,
@@ -446,6 +470,7 @@ pub enum Driven {
     NotificationClick {
         room_id: RoomId,
         token: Option<String>,
+        action: NoticeAction,
     },
     HandOff(Handoff),
 }
@@ -681,6 +706,20 @@ pub fn to_driven(command: ProbeCommand, selected: Selection<'_>) -> Result<Drive
         ProbeCommand::CloseInvite => UiCommand::CloseInvite,
         ProbeCommand::AcceptInvite { room_id } => UiCommand::AcceptInvite(RoomId::new(room_id)),
         ProbeCommand::DeclineInvite { room_id } => UiCommand::DeclineInvite(RoomId::new(room_id)),
+        ProbeCommand::DeclineCall { room_id } => UiCommand::DeclineCall(RoomId::new(room_id)),
+        ProbeCommand::SilenceRing => UiCommand::SilenceRing,
+        ProbeCommand::StartCall { room_id, video } => {
+            return in_room(room_id, selected, |room_id| UiCommand::StartCall {
+                room_id,
+                video,
+            });
+        }
+        ProbeCommand::JoinCall { room_id } => {
+            return in_room(room_id, selected, UiCommand::JoinCall);
+        }
+        ProbeCommand::AnswerCall { room_id } => UiCommand::AnswerCall(RoomId::new(room_id)),
+        ProbeCommand::LeaveCall => UiCommand::LeaveCall,
+        ProbeCommand::SetMicrophone { on } => UiCommand::SetMicrophone(on),
         ProbeCommand::JoinSuccessor { room_id } => {
             return in_room(room_id, selected, UiCommand::JoinSuccessor);
         }
@@ -1015,10 +1054,23 @@ pub fn to_driven(command: ProbeCommand, selected: Selection<'_>) -> Result<Drive
         }
         ProbeCommand::SwipeTravel { px } => return Ok(Driven::Poke(Poke::SwipeTravel(px))),
         ProbeCommand::ContextPress => return Ok(Driven::Poke(Poke::ContextPress)),
-        ProbeCommand::ClickNotification { room_id, token } => {
+        ProbeCommand::ClickNotification {
+            room_id,
+            token,
+            action,
+        } => {
+            let action = match action.as_deref() {
+                None | Some("open") => NoticeAction::Open,
+                Some("decline") => NoticeAction::Decline,
+                Some("answer") => NoticeAction::Answer,
+                Some(other) => {
+                    return Err(Rejected(format!("{other} is not a notification action")));
+                }
+            };
             return Ok(Driven::NotificationClick {
                 room_id: RoomId::new(room_id),
                 token,
+                action,
             });
         }
         ProbeCommand::OpenLink { url } => {

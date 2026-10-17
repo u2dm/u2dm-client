@@ -324,6 +324,13 @@ pub(super) fn command_allowed(phase: AppPhase, cmd: &UiCommand) -> bool {
         | UiCommand::AudioEnded { .. }
         | UiCommand::OpenLink { .. }
         | UiCommand::SaveFile { .. }
+        | UiCommand::DeclineCall(_)
+        | UiCommand::SilenceRing
+        | UiCommand::StartCall { .. }
+        | UiCommand::JoinCall(_)
+        | UiCommand::AnswerCall(_)
+        | UiCommand::LeaveCall
+        | UiCommand::SetMicrophone(_)
         | UiCommand::DismissToast => phase == AppPhase::Syncing,
     }
 }

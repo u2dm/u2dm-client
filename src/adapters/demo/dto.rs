@@ -639,6 +639,12 @@ enum ServiceDto {
     },
     PowerLevels,
     CallStarted,
+    CallNotification {
+        #[serde(default)]
+        video: bool,
+        #[serde(default)]
+        target: String,
+    },
 }
 
 impl ServiceDto {
@@ -702,6 +708,10 @@ impl ServiceDto {
             }),
             Self::PowerLevels => ServiceEvent::PowerLevelsChanged(PowerChange::Levels),
             Self::CallStarted => ServiceEvent::CallStarted,
+            Self::CallNotification { video, target } => ServiceEvent::CallNotification {
+                video: *video,
+                declined_by: (!target.is_empty()).then(|| named_only(target)),
+            },
         }
     }
 }
@@ -816,6 +826,8 @@ impl RoomDto {
             poll_permissions: polls::permissions(),
             message_permissions: message_menu::permissions(),
             may_invite: invite_people::may_invite(),
+            may_join_calls: true,
+            call: None,
             member_count: self.members,
             has_unread: self.unread > 0 && notify == NotifyMode::AllMessages,
             has_mentions: self.mentions > 0,
@@ -883,6 +895,8 @@ impl UnjoinedDto {
             poll_permissions: polls::permissions(),
             message_permissions: message_menu::permissions(),
             may_invite: invite_people::may_invite(),
+            may_join_calls: true,
+            call: None,
             member_count: self.joined_members(),
             has_unread: false,
             has_mentions: false,
@@ -944,6 +958,8 @@ impl InviteDto {
             poll_permissions: polls::permissions(),
             message_permissions: message_menu::permissions(),
             may_invite: invite_people::may_invite(),
+            may_join_calls: true,
+            call: None,
             member_count: self.joined_members(),
             has_unread: false,
             has_mentions: false,

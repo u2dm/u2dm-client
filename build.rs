@@ -24,6 +24,21 @@ struct EnumCoverage {
 
 const ENUM_COVERAGE: &[EnumCoverage] = &[
     EnumCoverage {
+        slint_enum: "CallPhase",
+        branches_in: "ui/messages.slint",
+        falls_through: &["live"],
+    },
+    EnumCoverage {
+        slint_enum: "CallTileState",
+        branches_in: "ui/messages.slint",
+        falls_through: &["live"],
+    },
+    EnumCoverage {
+        slint_enum: "CallRefusal",
+        branches_in: "ui/messages.slint",
+        falls_through: &["session-unverified"],
+    },
+    EnumCoverage {
         slint_enum: "UserMessageKind",
         branches_in: "ui/messages.slint",
         falls_through: &["none"],
@@ -228,6 +243,12 @@ const ENUM_TABLES: &[(&str, &str)] = &[
     ("EncryptionActivity", "encryption_activities"),
     ("MemberRowKind", "member_row_kinds"),
     ("RoomRowKind", "room_row_kinds"),
+    ("RoomCallMark", "room_call_marks"),
+    ("CallOffer", "call_offers"),
+    ("CallRefusal", "call_refusals"),
+    ("CallPhase", "call_phases"),
+    ("CallMic", "call_mics"),
+    ("CallTileState", "call_tile_marks"),
     ("RosterStatus", "roster_statuses"),
     ("RoomInfoPlacement", "room_info_placements"),
     ("LogLevel", "log_levels"),
@@ -363,6 +384,11 @@ const SCENARIO_SOURCES: &[ScenarioSource] = &[
     },
     ScenarioSource {
         file: "src/adapters/demo/presence.rs",
+        arms_between: ("fn apply(scenario: &mut Scenario, flag: &str) {", "\n}"),
+        ignored: &[],
+    },
+    ScenarioSource {
+        file: "src/adapters/demo/calls.rs",
         arms_between: ("fn apply(scenario: &mut Scenario, flag: &str) {", "\n}"),
         ignored: &[],
     },

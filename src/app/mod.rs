@@ -1,6 +1,7 @@
 mod active_timeline;
 mod attachments;
 mod audio;
+mod calls;
 mod conclude;
 mod credentials;
 mod encryption;
@@ -47,12 +48,13 @@ use std::sync::Arc;
 use active_timeline::ActiveTimeline;
 use attachments::Attachments;
 use audio::AudioController;
+use calls::Calls;
 use encryption::Encryption;
 use establish::{EstablishedSession, Rollback};
 use event::{
-    AppEvent, CreationSettled, EncryptionEvent, EndReason, IdentityEvent, InvitePeopleEvent,
-    MentionsEvent, MessageActionEvent, PacksEvent, PresenceEvent, PreviewEvent, ReadersEvent,
-    RoomActionEvent, SessionEvent, TimelineEvent, UserInfoEvent,
+    AppEvent, CallEvent, CreationSettled, EncryptionEvent, EndReason, IdentityEvent,
+    InvitePeopleEvent, MentionsEvent, MessageActionEvent, PacksEvent, PresenceEvent, PreviewEvent,
+    ReadersEvent, RoomActionEvent, SessionEvent, TimelineEvent, UserInfoEvent,
 };
 use event_source::EventSourceViewer;
 use identity_alerts::{IdentityAlerts, Resolution};
@@ -96,6 +98,7 @@ use crate::commands::ui::{
 use crate::commands::view::{AppViewState, LoginActivity, LoginStep, Toast};
 use crate::domain::account::AccountScope;
 use crate::domain::auth::ServerInfo;
+use crate::domain::call::DeviceId;
 use crate::domain::emote::ComposerText;
 use crate::domain::encryption::RecoveryKey;
 use crate::domain::image_pack::PackId;
@@ -113,6 +116,7 @@ use crate::domain::timeline::{AudioTrack, FailedSend, MessageReaders, TimelineFo
 use crate::domain::user_info::{IgnoreChange, Moderation, UserId, server_part};
 use crate::domain::verification::VerificationEvent;
 use crate::ports::browser::BrowserPort;
+use crate::ports::call::CallMediaPort;
 use crate::ports::matrix::{AuthPort, AuthenticatedSession, CleanupReport, MediaPort};
 use crate::ports::media::MediaFilePort;
 use crate::ports::output::AppOutputPort;
@@ -208,8 +212,12 @@ fn warn_if_not_undone(report: &CleanupReport) {
     }
 }
 
-async fn say_goodbye_then_stop_syncing(presence: &mut Presence, background: &mut TaskGroup) {
-    presence.shutdown().await;
+async fn say_goodbye_then_stop_syncing(
+    presence: &mut Presence,
+    calls: &mut Calls,
+    background: &mut TaskGroup,
+) {
+    tokio::join!(presence.shutdown(), calls.shutdown());
     background.shutdown().await;
 }
 
@@ -239,6 +247,7 @@ pub struct AppService {
     invite_people: InvitePeople,
     typing: Typing,
     presence: Presence,
+    calls: Calls,
     notifications: DesktopNotifications,
     room_info: RoomInfo,
     user_info: UserInfo,
@@ -264,6 +273,7 @@ impl AppService {
         media_files: Arc<dyn MediaFilePort>,
         browser: Arc<dyn BrowserPort>,
         room_logs: Arc<dyn RoomLogPort>,
+        call_media: Option<Arc<dyn CallMediaPort>>,
         commands: &CommandSender,
         dir_in_tx: mpsc::UnboundedSender<DirectoryUpdate>,
         output: Arc<dyn AppOutputPort>,
@@ -295,6 +305,7 @@ impl AppService {
             invite_people: InvitePeople::new(Arc::clone(&output), events.clone()),
             typing: Typing::new(Arc::clone(&output), events.clone()),
             presence: Presence::new(Arc::clone(&output), events.clone()),
+            calls: Calls::new(Arc::clone(&output), events.clone(), call_media),
             notifications: DesktopNotifications::new(Arc::clone(&output), events.clone()),
             room_info: RoomInfo::new(Arc::clone(&output), events.clone()),
             user_info: UserInfo::new(Arc::clone(&output), events.clone()),
@@ -577,6 +588,7 @@ impl AppService {
                 self.set_room_notify(&room_id, mode);
             }
             UiCommand::LeaveRoom(room_id) => {
+                self.calls.left_room(&room_id, &self.room_directory);
                 self.leave_room(&room_id);
             }
             UiCommand::OpenRoomMenu(room_id) => {
@@ -800,6 +812,15 @@ impl AppService {
             UiCommand::SaveFile { event_id, filename } => {
                 self.save_file(event_id, filename);
             }
+            cmd @ (UiCommand::DeclineCall(_)
+            | UiCommand::SilenceRing
+            | UiCommand::StartCall { .. }
+            | UiCommand::JoinCall(_)
+            | UiCommand::AnswerCall(_)
+            | UiCommand::LeaveCall
+            | UiCommand::SetMicrophone(_)) => {
+                self.handle_call_command(cmd);
+            }
             UiCommand::DismissToast => {
                 show_toast(self.output.as_ref(), Toast::None);
             }
@@ -957,6 +978,7 @@ impl AppService {
             self.refresh_selected_room().await;
             self.room_directory.emit_directory(&self.selection);
             self.notifications.directory_changed(&self.room_directory);
+            self.calls.directory_changed(&self.room_directory);
             self.refresh_space_index();
             self.follow_room_info();
             self.follow_presence();
@@ -1655,6 +1677,8 @@ impl AppService {
             }
         }
         self.raise_session_alert();
+        self.calls
+            .trust_changed(self.encryption.is_verified(), &self.room_directory);
     }
 
     fn use_recovery_key(&mut self, key: RecoveryKey) {
@@ -1805,6 +1829,7 @@ impl AppService {
                 self.typing.typists_changed(watch, typists);
             }
             AppEvent::Presence(event) => self.handle_presence(event),
+            AppEvent::Call(event) => self.handle_call(event),
             AppEvent::Notified { session, notice } => self.settle_notice(session, *notice),
             AppEvent::SpaceIndexPaged {
                 generation,
@@ -2496,6 +2521,7 @@ impl AppService {
         self.follow_typing(room_id.clone());
         self.open_room(room_id, focus).await;
         self.follow_presence();
+        self.follow_calls();
         self.notifications
             .on_screen(self.active_timeline.on_screen());
     }
@@ -2527,9 +2553,14 @@ impl AppService {
     }
 
     fn settle_notice(&mut self, session: u64, notice: PushNotice) {
-        if self.lifecycle.runs(session) {
-            self.notifications.arrived(notice, &self.room_directory);
+        if !self.lifecycle.runs(session) {
+            return;
         }
+        if notice.is_call() && self.calls.rings_in(&notice.room_id) {
+            tracing::debug!(room_id = %notice.room_id, "the room rings; its call notice shows no message notification");
+            return;
+        }
+        self.notifications.arrived(notice, &self.room_directory);
     }
 
     fn timeline_visibility_changed(&mut self, visibility: TimelineVisibility) {
@@ -2552,6 +2583,8 @@ impl AppService {
 
     fn attention_changed(&mut self, attention: WindowAttention) {
         self.notifications.focus_changed(attention.focus);
+        self.calls
+            .focus_changed(attention.focus, &self.room_directory);
         let port = self.port(|a| &a.presence);
         self.presence.attention_changed(port, attention);
     }
@@ -2564,6 +2597,62 @@ impl AppService {
         let person = self.user_info.person().cloned();
         let port = self.port(|a| &a.presence);
         self.presence.follow(port, partner, person);
+    }
+
+    fn follow_calls(&mut self) {
+        self.calls
+            .selected(self.selection.room.as_ref(), &self.room_directory);
+    }
+
+    fn handle_call(&mut self, event: CallEvent) {
+        match event {
+            CallEvent::Signal { session, signal } => {
+                if self.lifecycle.runs(session) {
+                    self.calls.signal(signal, &self.room_directory);
+                }
+            }
+            CallEvent::Transports { session, found } => {
+                if self.lifecycle.runs(session) {
+                    self.calls.transports_found(found, &self.room_directory);
+                }
+            }
+            CallEvent::RingWindow { ring, deadline } => {
+                self.calls
+                    .ring_window(&ring, deadline, &self.room_directory);
+            }
+            CallEvent::Declined { room_id, sent } => {
+                if self.held_session.running().is_some() {
+                    self.calls
+                        .decline_settled(&room_id, sent, &self.room_directory);
+                }
+            }
+            event => {
+                if event.call().is_some_and(|call| self.calls.is_current(call)) {
+                    self.calls.call_event(event, &self.room_directory);
+                } else {
+                    tracing::debug!(
+                        event = event.label(),
+                        "an event of a call that ended, dropping"
+                    );
+                }
+            }
+        }
+    }
+
+    fn handle_call_command(&mut self, cmd: UiCommand) {
+        let directory = &self.room_directory;
+        match cmd {
+            UiCommand::DeclineCall(room_id) => self.calls.decline(&room_id, directory),
+            UiCommand::SilenceRing => self.calls.silence(directory),
+            UiCommand::StartCall { room_id, video } => {
+                self.calls.start_call(&room_id, video, directory);
+            }
+            UiCommand::JoinCall(room_id) => self.calls.join_call(&room_id, directory),
+            UiCommand::AnswerCall(room_id) => self.calls.answer(&room_id, directory),
+            UiCommand::LeaveCall => self.calls.leave_call(directory),
+            UiCommand::SetMicrophone(on) => self.calls.set_microphone(on),
+            other => tracing::warn!(command = %other, "this command is not about calls"),
+        }
     }
 
     fn close_user_info(&mut self) {
@@ -2711,6 +2800,7 @@ impl AppService {
         self.identity_alerts.clear();
         self.typing.clear();
         self.follow_presence();
+        self.follow_calls();
         self.refresh_upgrades();
         self.active_timeline.clear_room(generation).await;
     }
@@ -2760,6 +2850,24 @@ impl AppService {
         self.session
             .spawn_user_avatar_fetch(&mut self.background, lifecycle_port, session);
         self.begin_presence(session);
+        self.begin_calls(session);
+    }
+
+    fn begin_calls(&mut self, session: u64) {
+        let Some((port, rtc, user, device)) = self.held_session.running().map(|a| {
+            (
+                Arc::clone(&a.call_signals),
+                Arc::clone(&a.rtc_membership),
+                UserId::new(a.session.user_id.clone()),
+                DeviceId::new(a.session.device_id.clone()),
+            )
+        }) else {
+            return;
+        };
+        self.calls
+            .begin_session(&mut self.background, port, rtc, session, user, device);
+        self.calls
+            .trust_changed(self.encryption.is_verified(), &self.room_directory);
     }
 
     fn begin_presence(&mut self, session: u64) {
@@ -2775,7 +2883,7 @@ impl AppService {
     }
 
     async fn shutdown_all_tasks(&mut self) {
-        self.presence.restart().await;
+        tokio::join!(self.presence.restart(), self.calls.restart());
         tokio::join!(
             self.background.shutdown(),
             self.active_timeline.shutdown(),
@@ -2813,6 +2921,7 @@ impl AppService {
         match (self.held_session.ending(), reason) {
             (Some(Ending::Live(ending)), EndReason::UserLogout) => {
                 self.presence.sign_off();
+                self.calls.hang_up();
                 self.tear_down_session(Box::new(AppViewState::signing_out()))
                     .await;
                 self.session
@@ -2903,6 +3012,7 @@ impl AppService {
         tokio::join!(
             Box::pin(say_goodbye_then_stop_syncing(
                 &mut self.presence,
+                &mut self.calls,
                 &mut self.background
             )),
             self.active_timeline.shutdown(),

@@ -1,0 +1,114 @@
+import { IconDisplay, IconSet } from "@lucide";
+
+import { AppButton, IconButton } from "../../../../components/button.slint";
+import { CallMic } from "../../../../enums.slint";
+import { CallWords } from "../../../../messages.slint";
+import { Actions } from "../../../../actions.slint";
+import { Shell } from "../../../../local.slint";
+import { CallView } from "../../../../views.slint";
+import { AppStyle, Fonts, IconSize, Metrics, Radius, Size, Space, Stroke, Weight } from "../../../../theme.slint";
+import { CallTileView } from "./call-tile.slint";
+
+component CallTiles inherits Flickable {
+    property <length> gap: Space.sm;
+    property <int> columns: max(1, floor((root.width + root.gap) / (Metrics.call-tile-width + root.gap)));
+    property <int> shown-columns: min(root.columns, max(1, CallView.tiles.length));
+    property <int> rows: ceil(CallView.tiles.length / root.columns);
+    property <length> row-width: root.shown-columns * Metrics.call-tile-width + (root.shown-columns - 1) * root.gap;
+
+    content-height: max(root.height, root.rows * (Metrics.call-tile-height + root.gap) - root.gap);
+    interactive: self.content-height > self.height;
+
+    for tile[i] in CallView.tiles: CallTileView {
+        x: (root.width - root.row-width) / 2 + mod(i, root.columns) * (Metrics.call-tile-width + root.gap);
+        y: floor(i / root.columns) * (Metrics.call-tile-height + root.gap);
+        width: Metrics.call-tile-width;
+        height: Metrics.call-tile-height;
+        tile: tile;
+    }
+}
+
+export component CallBand inherits Rectangle {
+    background: AppStyle.call-band;
+    accessible-role: groupbox;
+    accessible-label: @tr("Call in {}", CallView.active-room-name);
+
+    VerticalLayout {
+        padding: Space.md;
+        spacing: Space.sm;
+
+        HorizontalLayout {
+            spacing: Space.sm;
+
+            if CallView.active-encrypted: IconDisplay {
+                cross-axis-self-alignment: center;
+                icon: IconSet.Lock;
+                size: IconSize.xs;
+                stroke: AppStyle.foreground-muted;
+                accessible-role: image;
+                accessible-label: @tr("The call is end-to-end encrypted");
+            }
+
+            Text {
+                horizontal-stretch: 1;
+                text: CallWords.phase(CallView.phase, CallView.elapsed);
+                font-size: Fonts.body-small;
+                font-weight: Weight.semibold;
+                color: AppStyle.foreground-muted;
+                vertical-alignment: center;
+                overflow: elide;
+                accessible-live-region: AccessibleLiveness.polite;
+            }
+
+            IconButton {
+                size: Size.md;
+                icon: Shell.call-maximized ? IconSet.Minimize2 : IconSet.Maximize2;
+                label: Shell.call-maximized ? @tr("Show the chat") : @tr("Hide the chat");
+                clicked => {
+                    Shell.call-maximized = !Shell.call-maximized;
+                }
+            }
+        }
+
+        CallTiles {
+            vertical-stretch: 1;
+        }
+
+        HorizontalLayout {
+            alignment: center;
+            spacing: Space.lg;
+
+            IconButton {
+                size: Size.xl;
+                radius: self.size / 2;
+                icon: CallView.mic == CallMic.on ? IconSet.Mic : IconSet.MicOff;
+                tint: CallView.mic == CallMic.on ? AppStyle.foreground-strong : white;
+                fill: CallView.mic == CallMic.on ? AppStyle.call-tile : AppStyle.call-decline;
+                label: CallView.mic == CallMic.on
+                    ? @tr("Mute your microphone")
+                    : CallView.mic == CallMic.failed
+                        ? @tr("Your microphone did not start, try again")
+                        : @tr("Unmute your microphone");
+                clicked => {
+                    Actions.set-microphone({ on: CallView.mic != CallMic.on });
+                }
+            }
+
+            AppButton {
+                text: @tr("Leave");
+                icon: IconSet.PhoneOff;
+                tint: AppStyle.call-decline;
+                clicked => {
+                    Shell.call-maximized = false;
+                    Actions.leave-call();
+                }
+            }
+        }
+    }
+
+    Rectangle {
+        y: parent.height - self.height;
+        height: Stroke.hairline;
+        background: AppStyle.border;
+    }
+}

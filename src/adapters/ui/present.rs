@@ -491,7 +491,12 @@ pub fn service_kind(event: &ServiceEvent) -> ServiceKind {
         ServiceEvent::PinnedMessagesChanged => ServiceKind::PinsChanged,
         ServiceEvent::PowerLevelsChanged(change) => power_kind(change),
         ServiceEvent::CallStarted => ServiceKind::CallStarted,
-        ServiceEvent::CallNotification => ServiceKind::CallNotification,
+        ServiceEvent::CallNotification {
+            declined_by: Some(_),
+            ..
+        } => ServiceKind::CallDeclined,
+        ServiceEvent::CallNotification { video: true, .. } => ServiceKind::CallVideoNotification,
+        ServiceEvent::CallNotification { video: false, .. } => ServiceKind::CallNotification,
     }
 }
 

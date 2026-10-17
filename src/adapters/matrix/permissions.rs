@@ -13,6 +13,7 @@ pub(super) struct RoomPermissions {
     pub(super) polls: PollPermissions,
     pub(super) messages: MessagePermissions,
     pub(super) invite: bool,
+    pub(super) calls: bool,
 }
 
 pub(super) async fn room_permissions(room: &Room) -> RoomPermissions {
@@ -22,6 +23,7 @@ pub(super) async fn room_permissions(room: &Room) -> RoomPermissions {
         polls: polls(room, &levels),
         messages: messages(own, &levels),
         invite: levels.user_can_invite(own),
+        calls: levels.user_can_send_state(own, StateEventType::CallMember),
     }
 }
 

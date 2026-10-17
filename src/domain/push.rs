@@ -38,6 +38,16 @@ impl PushNotice {
         matches!(self.content, NoticeContent::Invite { .. })
     }
 
+    pub fn is_call(&self) -> bool {
+        matches!(
+            self.content,
+            NoticeContent::Service {
+                event: ServiceEvent::CallNotification { .. },
+                ..
+            }
+        )
+    }
+
     pub fn is_older_than(&self, other: &Self) -> bool {
         self.sent_at < other.sent_at
     }

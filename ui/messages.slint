@@ -1,4 +1,4 @@
-import { Delivery, EmojiArt, MediaFailure, PresenceLine, PreviewKind, ServiceKind, ShieldReason, UpgradeLink, UserMessageKind } from "./enums.slint";
+import { CallPhase, CallRefusal, CallTileState, Delivery, EmojiArt, MediaFailure, PresenceLine, PreviewKind, RoomCallMark, ServiceKind, ShieldReason, UpgradeLink, UserMessageKind } from "./enums.slint";
 
 export global UserMessages {
     public pure function text(kind: UserMessageKind, detail: string) -> string {
@@ -118,6 +118,27 @@ export global UserMessages {
         }
         if kind == UserMessageKind.decline-invite-failed {
             return @tr("Could not decline the invitation to {}", detail);
+        }
+        if kind == UserMessageKind.call-decline-failed {
+            return @tr("Could not decline the call in {}", detail);
+        }
+        if kind == UserMessageKind.call-join-failed {
+            return @tr("Could not join the call in {}", detail);
+        }
+        if kind == UserMessageKind.call-server-unreachable {
+            return @tr("Could not reach the call server for {}", detail);
+        }
+        if kind == UserMessageKind.call-media-failed {
+            return @tr("Could not start the call's audio in {}", detail);
+        }
+        if kind == UserMessageKind.call-cut-off {
+            return @tr("The call in {} was cut off", detail);
+        }
+        if kind == UserMessageKind.call-no-answer {
+            return @tr("Nobody answered the call in {}", detail);
+        }
+        if kind == UserMessageKind.call-declined-there {
+            return @tr("{} declined the call", detail);
         }
         if kind == UserMessageKind.room-not-found {
             return @tr("No room has the address {}", detail);
@@ -660,7 +681,13 @@ export global ServiceLabel {
             return @tr("{} started a call", actor);
         }
         if kind == ServiceKind.call-notification {
-            return @tr("{} is calling", actor);
+            return @tr("{} started a call", actor);
+        }
+        if kind == ServiceKind.call-video-notification {
+            return @tr("{} started a video call", actor);
+        }
+        if kind == ServiceKind.call-declined {
+            return @tr("{} called, {} declined", actor, target);
         }
         if target != "" {
             return target;
@@ -671,6 +698,15 @@ export global ServiceLabel {
 
 export global NotificationText {
     in-out property <string> open-label: @tr("Open");
+    in-out property <string> decline-label: @tr("Decline");
+    in-out property <string> answer-label: @tr("Answer");
+
+    public pure function ring(video: bool, caller: string) -> string {
+        if video {
+            return @tr("Incoming video call from {}", caller);
+        }
+        return @tr("Incoming call from {}", caller);
+    }
 
     public pure function message(kind: PreviewKind, body: string, sender: string) -> string {
         if sender == "" {
@@ -688,6 +724,80 @@ export global NotificationText {
             return @tr("Invitation");
         }
         return @tr("Invited by {}", inviter);
+    }
+}
+
+export global CallWords {
+    public pure function incoming(video: bool) -> string {
+        if video {
+            return @tr("Incoming video call");
+        }
+        return @tr("Incoming voice call");
+    }
+
+    public pure function in-call(people: int) -> string {
+        return @tr("{n} in the call" | "{n} in the call" % people);
+    }
+
+    public pure function mark(mark: RoomCallMark) -> string {
+        if mark == RoomCallMark.voice {
+            return @tr("voice call in progress");
+        }
+        if mark == RoomCallMark.video {
+            return @tr("video call in progress");
+        }
+        return "";
+    }
+
+    public pure function phase(phase: CallPhase, elapsed: string) -> string {
+        if phase == CallPhase.joining {
+            return @tr("Joining the call…");
+        }
+        if phase == CallPhase.ringing {
+            return @tr("Ringing…");
+        }
+        if phase == CallPhase.connecting {
+            return @tr("Connecting…");
+        }
+        if phase == CallPhase.reconnecting {
+            return @tr("Reconnecting…");
+        }
+        return elapsed;
+    }
+
+    public pure function tile(state: CallTileState) -> string {
+        if state == CallTileState.joining {
+            return @tr("Joining…");
+        }
+        if state == CallTileState.waiting-for-keys {
+            return @tr("Waiting for keys");
+        }
+        if state == CallTileState.cant-decrypt {
+            return @tr("Can't decrypt");
+        }
+        if state == CallTileState.unverified-device {
+            return @tr("Can't decrypt: this device isn't verified by its owner");
+        }
+        if state == CallTileState.unreachable {
+            return @tr("Can't reach their call server");
+        }
+        return "";
+    }
+
+    public pure function refusal(refusal: CallRefusal) -> string {
+        if refusal == CallRefusal.not-built {
+            return @tr("This build of U2DM can't join calls");
+        }
+        if refusal == CallRefusal.media-broken {
+            return @tr("Your microphone and speaker could not start");
+        }
+        if refusal == CallRefusal.no-server {
+            return @tr("Your homeserver has no call server");
+        }
+        if refusal == CallRefusal.not-allowed {
+            return @tr("You may not join calls in this room");
+        }
+        return @tr("Verify this session to join encrypted calls");
     }
 }
 

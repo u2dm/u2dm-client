@@ -89,6 +89,25 @@ scenario_env() {
     presence-idle)   echo 'U2DM_DEMO_PRESENCE=partners U2DM_DEMO_WINDOW=900x760' ;;
     presence-off)    echo 'U2DM_DEMO_WINDOW=900x760' ;;
     presence-refused) echo 'U2DM_DEMO_PRESENCE=refused U2DM_DEMO_WINDOW=900x760' ;;
+    calls-active)    echo 'U2DM_DEMO_CALLS=active U2DM_DEMO_WINDOW=900x760' ;;
+    call-ring)       echo 'U2DM_DEMO_CALLS=ring U2DM_DEMO_AUDIO=silent U2DM_DEMO_WINDOW=900x760' ;;
+    call-ring-ends)  echo 'U2DM_DEMO_CALLS=ring,ring-ends U2DM_DEMO_AUDIO=silent U2DM_DEMO_WINDOW=900x760' ;;
+    call-ring-elsewhere) echo 'U2DM_DEMO_CALLS=ring,answered-elsewhere U2DM_DEMO_AUDIO=silent U2DM_DEMO_WINDOW=900x760' ;;
+    call-ring-unconfirmed) echo 'U2DM_DEMO_CALLS=ring,ring-unconfirmed U2DM_DEMO_AUDIO=silent U2DM_DEMO_WINDOW=900x760' ;;
+    call-expiry)     echo 'U2DM_DEMO_CALLS=active,expiring U2DM_DEMO_WINDOW=900x760' ;;
+    call-join)       echo 'U2DM_DEMO_CALLS=active,speaking U2DM_DEMO_WINDOW=900x760' ;;
+    call-start-dm)   echo 'U2DM_DEMO_CALLS=answers U2DM_DEMO_AUDIO=silent U2DM_DEMO_WINDOW=900x760' ;;
+    call-start-dm-declined) echo 'U2DM_DEMO_CALLS=declines U2DM_DEMO_AUDIO=silent U2DM_DEMO_WINDOW=900x760' ;;
+    call-keys-late)  echo 'U2DM_DEMO_CALLS=active,keys-late U2DM_DEMO_WINDOW=900x760' ;;
+    call-undecryptable) echo 'U2DM_DEMO_CALLS=active,undecryptable U2DM_DEMO_WINDOW=900x760' ;;
+    call-no-sfu)     echo 'U2DM_DEMO_CALLS=active,no-sfu U2DM_DEMO_WINDOW=900x760' ;;
+    call-no-permission) echo 'U2DM_DEMO_CALLS=active,no-permission U2DM_DEMO_WINDOW=900x760' ;;
+    call-unverified-session) echo 'U2DM_DEMO_CALLS=active U2DM_DEMO_ENCRYPTION=unverified U2DM_DEMO_WINDOW=900x760' ;;
+    call-reconnect)  echo 'U2DM_DEMO_CALLS=active,reconnecting U2DM_DEMO_WINDOW=900x760' ;;
+    call-remote-sfu) echo 'U2DM_DEMO_CALLS=active,remote-sfu U2DM_DEMO_WINDOW=900x760' ;;
+    call-switch-rooms) echo 'U2DM_DEMO_CALLS=active U2DM_DEMO_WINDOW=900x760' ;;
+    call-compact)    echo 'U2DM_DEMO_CALLS=active U2DM_DEMO_WINDOW=420x760' ;;
+    call-crowd)      echo 'U2DM_DEMO_CALLS=active,crowd U2DM_DEMO_WINDOW=900x760' ;;
     notifications)   echo 'U2DM_DEMO_NOTIFY=all U2DM_DEMO_WINDOW=900x760' ;;
     notifications-focused) echo 'U2DM_DEMO_NOTIFY=group,dm,mention U2DM_DEMO_WINDOW=900x760' ;;
     notifications-burst) echo 'U2DM_DEMO_NOTIFY=burst U2DM_DEMO_WINDOW=900x760' ;;
@@ -531,6 +550,52 @@ scenario_steps() {
       echo 'sleep 2'
       echo '{"op":"open_user_info","user_id":"@sarah:matrix.org"}'
       echo 'sleep 2' ;;
+    calls-active)
+      echo '{"op":"select_room","room_id":"!design:demo.local"}'
+      echo 'sleep 2' ;;
+    call-ring)
+      echo 'sleep 4'
+      echo '{"op":"window_focus","focused":false}'
+      echo 'sleep 2' ;;
+    call-ring-ends)
+      echo 'sleep 13' ;;
+    call-ring-elsewhere)
+      echo 'sleep 10'
+      echo '{"op":"select_room","room_id":"!sarah:demo.local"}'
+      echo 'sleep 1' ;;
+    call-ring-unconfirmed)
+      echo 'sleep 8' ;;
+    call-expiry)
+      echo '{"op":"select_room","room_id":"!rust:demo.local"}'
+      echo 'sleep 22' ;;
+    call-join|call-keys-late|call-undecryptable|call-reconnect|call-remote-sfu|call-crowd)
+      echo '{"op":"select_room","room_id":"!design:demo.local"}'
+      echo 'sleep 2'
+      echo '{"op":"join_call"}'
+      echo 'sleep 3' ;;
+    call-start-dm|call-start-dm-declined)
+      echo '{"op":"select_room","room_id":"!sarah:demo.local"}'
+      echo 'sleep 2'
+      echo '{"op":"start_call"}'
+      echo 'sleep 5' ;;
+    call-no-sfu|call-unverified-session)
+      echo '{"op":"select_room","room_id":"!design:demo.local"}'
+      echo 'sleep 2' ;;
+    call-no-permission)
+      echo '{"op":"select_room","room_id":"!rust:demo.local"}'
+      echo 'sleep 2' ;;
+    call-switch-rooms)
+      echo '{"op":"select_room","room_id":"!design:demo.local"}'
+      echo 'sleep 2'
+      echo '{"op":"join_call"}'
+      echo 'sleep 2'
+      echo '{"op":"select_room","room_id":"!sarah:demo.local"}'
+      echo 'sleep 2' ;;
+    call-compact)
+      echo '{"op":"select_room","room_id":"!design:demo.local"}'
+      echo 'sleep 2'
+      echo '{"op":"join_call"}'
+      echo 'sleep 3' ;;
     notifications)
       echo '{"op":"window_focus","focused":false}'
       echo 'sleep 15'
@@ -697,6 +762,25 @@ scenario_note() {
     presence-idle)   echo 'the window goes idle, so your presence turns away: your own sheet reads Away (presence)' ;;
     presence-off)    echo 'a server with presence off, as matrix.org: Sarah'"'"'s chat and sheet show no presence line (presence)' ;;
     presence-refused) echo 'a server that refuses presence, as tuwunel with it off: no presence anywhere, and nothing is toasted (presence, toast)' ;;
+    calls-active)    echo 'a video call in Design Team and a voice call in Rust Programming: both rows marked, and Design Team'"'"'s header pill counts two (calls, call-ui)' ;;
+    call-ring)       echo 'Sarah rings 3 s in: the card and the ringtone, then, unfocused, the desktop ring (calls, call-ui)' ;;
+    call-ring-ends)  echo 'Sarah hangs up 8 s after ringing: the ring stops, the caller left (calls)' ;;
+    call-ring-elsewhere) echo 'your other device joins 5 s after the ring: it stops here, and her chat counts you in the call (calls)' ;;
+    call-ring-unconfirmed) echo 'a ring whose caller never shows in the call rings nothing (calls)' ;;
+    call-expiry)     echo 'Kai'"'"'s membership in Rust Programming expires 20 s in: the pill counts one (calls)' ;;
+    call-join)       echo 'join the Design Team call: the band with three live tiles, people taking turns speaking (calls, call-ui)' ;;
+    call-start-dm)   echo 'start a call in Sarah'"'"'s chat: it rings with the ringback, she answers 3 s later (calls)' ;;
+    call-start-dm-declined) echo 'start a call in Sarah'"'"'s chat: she declines, you leave and a toast says so (calls)' ;;
+    call-keys-late)  echo 'the others'"'"' keys arrive 4 s after you join: their tiles wait for keys, then go live (calls)' ;;
+    call-undecryptable) echo 'Jordan'"'"'s device is not cross-signed: his tile cannot decrypt and says why (calls, call-ui)' ;;
+    call-no-sfu)     echo 'the homeserver has no call server: Join is disabled and says so (calls, call-ui)' ;;
+    call-no-permission) echo 'you may not join calls in Rust Programming: Join is disabled and says so (calls)' ;;
+    call-unverified-session) echo 'an unverified session cannot join an encrypted call (calls, encryption)' ;;
+    call-reconnect)  echo 'the media server reconnects 5 s after joining: the band says Reconnecting, then the call is live again (call-media)' ;;
+    call-remote-sfu) echo 'Jordan publishes to another homeserver'"'"'s media server: two connections, every tile live (calls)' ;;
+    call-switch-rooms) echo 'join Design Team, then open Sarah'"'"'s chat: the call bar under the header leads back (call-ui)' ;;
+    call-compact)    echo 'a 420 px window in the call: tiles wrap in the band (call-ui)' ;;
+    call-crowd)      echo 'nine people in the Design Team call: the tile grid scrolls (call-ui)' ;;
     notifications)   echo 'with the window unfocused, every scripted arrival notifies except the muted room; !rust is read elsewhere and withdrawn, Leo'"'"'s invite notifies, and a click on Priya'"'"'s opens her chat (notifications, directory.attention, title)' ;;
     notifications-focused) echo 'the window keeps focus: arrivals light their rooms and the title count, but nothing notifies (notifications, directory.attention)' ;;
     notifications-burst) echo 'three messages in !rust a second apart: one notification, replaced twice (notifications)' ;;
@@ -727,6 +811,10 @@ names() {
     room-links room-finder room-link-failures \
     create-room create-space create-in-space create-room-failures invite-people invite-people-failures \
     typing typing-names presence presence-idle presence-off presence-refused \
+    calls-active call-ring call-ring-ends call-ring-elsewhere call-ring-unconfirmed call-expiry \
+    call-join call-start-dm call-start-dm-declined call-keys-late call-undecryptable call-no-sfu \
+    call-no-permission call-unverified-session call-reconnect call-remote-sfu call-switch-rooms \
+    call-compact call-crowd \
     notifications notifications-focused notifications-burst \
     encryption-unverified encryption-recovery-key encryption-new-account encryption-setup-refused
 }
@@ -801,6 +889,7 @@ cmd_run() {
   jq -r '[.rows[]? | select(.mentions_you) | .event_id] | if length > 0 then "  tinted rows \(join(", "))" else empty end' "$out/timeline.json"
   jq -r 'if (.view.typing.typists|length) > 0 then "  typing in \(.view.typing.room_id): \([.view.typing.typists[].shown] | join(", "))" else empty end' "$out/state.json"
   jq -r '.view.presence | if .partner or .person then "  presence partner=\(.partner.user_id // "none"):\(.partner.line // "-") person=\(.person.user_id // "none"):\(.person.line // "-")\(if .person.status then " status=\(.person.status)" else "" end)" else empty end' "$out/state.json"
+  jq -r '.view.call | if .ring or .here or .active then "  call ring=\(.ring.room_id // "none")\(if .ring.desktop then " desktop" else "" end) here=\(.here.room_id // "none"):\(.here.people // 0) active=\(.active.room_id // "none"):\(.active.phase // "-"):\((.active.tiles // []) | length)" else empty end' "$out/state.json"
   jq -r 'if (.view.notifications|length) > 0 or .view.directory.attention > 0 then "  notifications [\([.view.notifications[] | "\(.room_id)#\(.serial)"] | join(", "))] attention=\(.view.directory.attention)" else empty end' "$out/state.json"
   jq -r 'if .title then "  title \(.title)" else empty end' "$out/timeline.json"
   jq -r 'if (.view.mentions.rows|length) > 0 or .view.mentions.offers_room then "  mentions in \(.view.mentions.room_id) room=\(.view.mentions.offers_room) rows=\([.view.mentions.rows[].user_id] | join(", "))" else empty end' "$out/state.json"

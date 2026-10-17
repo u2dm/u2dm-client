@@ -9,7 +9,9 @@ use crate::adapters::notifier;
 use crate::domain::message::{DecryptionFailure, MessageBody, MessagePreviewKind, RichText};
 use crate::domain::push::PushTweaks;
 use crate::domain::room::RoomId;
-use crate::ports::notifier::{ActivationSink, DesktopNotice, NoticeActivation, NotifierPort};
+use crate::ports::notifier::{
+    ActivationSink, DesktopNotice, NoticeAction, NoticeActivation, NotifierPort, RingNotice,
+};
 
 const ENV_VAR: &str = "U2DM_DEMO_NOTIFY";
 
@@ -319,6 +321,7 @@ fn spoiler() -> Arrival {
 pub struct DemoNotifier {
     sink: Mutex<Option<ActivationSink>>,
     shown: Mutex<HashSet<RoomId>>,
+    rings: Mutex<HashSet<RoomId>>,
     desktop: Option<Arc<dyn NotifierPort>>,
 }
 
@@ -329,28 +332,36 @@ pub fn notifier() -> Arc<dyn NotifierPort> {
         Arc::new(DemoNotifier {
             sink: Mutex::new(None),
             shown: Mutex::new(HashSet::new()),
+            rings: Mutex::new(HashSet::new()),
             desktop: scenario().desktop.then(notifier::desktop),
         })
     });
     Arc::clone(notifier) as Arc<dyn NotifierPort>
 }
 
-pub fn click(room_id: &RoomId, token: Option<String>) -> bool {
+pub fn click(room_id: &RoomId, token: Option<String>, action: NoticeAction) -> bool {
     let Some(notifier) = NOTIFIER.get() else {
         return false;
     };
-    let shown = notifier
-        .shown
+    let rings = notifier
+        .rings
         .lock()
-        .is_ok_and(|shown| shown.contains(room_id));
+        .is_ok_and(|rings| rings.contains(room_id));
+    let shown = rings
+        || (action == NoticeAction::Open
+            && notifier
+                .shown
+                .lock()
+                .is_ok_and(|shown| shown.contains(room_id)));
     let sink = notifier.sink.lock().ok().and_then(|sink| sink.clone());
     let Some(sink) = sink.filter(|_| shown) else {
         return false;
     };
-    tracing::debug!(%room_id, "demo: a desktop notification is clicked");
+    tracing::debug!(%room_id, ?action, "demo: a desktop notification is clicked");
     sink(NoticeActivation {
         key: room_id.clone(),
         token,
+        action,
     });
     true
 }
@@ -388,12 +399,45 @@ impl NotifierPort for DemoNotifier {
             .shown
             .lock()
             .map(|mut shown| shown.drain().count())
-            .unwrap_or_default();
+            .unwrap_or_default()
+            + self
+                .rings
+                .lock()
+                .map(|mut rings| rings.drain().count())
+                .unwrap_or_default();
         if withdrawn > 0 {
             tracing::info!(withdrawn, "demo: every desktop notification is withdrawn");
         }
         if let Some(desktop) = &self.desktop {
             desktop.withdraw_all();
+        }
+    }
+
+    fn ring(&self, notice: RingNotice) {
+        let replaces = self
+            .rings
+            .lock()
+            .is_ok_and(|mut rings| !rings.insert(notice.key.clone()));
+        tracing::info!(
+            room_id = %notice.key,
+            summary = notice.summary,
+            body = notice.body,
+            sound = notice.sound,
+            answers = notice.answer_label.is_some(),
+            replaces,
+            "demo: a call rings"
+        );
+        if let Some(desktop) = &self.desktop {
+            desktop.ring(notice);
+        }
+    }
+
+    fn stop_ringing(&self, key: &RoomId) {
+        if self.rings.lock().is_ok_and(|mut rings| rings.remove(key)) {
+            tracing::info!(room_id = %key, "demo: the ringing stops");
+        }
+        if let Some(desktop) = &self.desktop {
+            desktop.stop_ringing(key);
         }
     }
 

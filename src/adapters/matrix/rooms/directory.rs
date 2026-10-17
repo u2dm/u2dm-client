@@ -4,7 +4,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use matrix_sdk::notification_settings::NotificationSettings;
-use matrix_sdk::ruma::{OwnedRoomId, RoomId as MatrixRoomId};
+use matrix_sdk::ruma::{MilliSecondsSinceUnixEpoch, OwnedRoomId, RoomId as MatrixRoomId};
 use matrix_sdk::sync::{JoinedRoomUpdate, RoomUpdates, State};
 use matrix_sdk::{Client, Room, RoomState};
 use matrix_sdk_base::{RoomInfoNotableUpdate, RoomInfoNotableUpdateReasons};
@@ -20,6 +20,7 @@ use crate::domain::sync::SyncEvent;
 use crate::ports::matrix::SyncSink as OnSync;
 
 const EMIT_DEBOUNCE: Duration = Duration::from_millis(50);
+const CALL_EXPIRY_SLACK_MS: u64 = 1_000;
 
 const REBUILD_REASONS: RoomInfoNotableUpdateReasons = RoomInfoNotableUpdateReasons::LATEST_EVENT
     .union(RoomInfoNotableUpdateReasons::MEMBERSHIP)
@@ -31,6 +32,10 @@ const REBUILD_REASONS: RoomInfoNotableUpdateReasons = RoomInfoNotableUpdateReaso
 enum RoomRefresh {
     Flags,
     Full,
+}
+
+fn now_ms() -> u64 {
+    MilliSecondsSinceUnixEpoch::now().0.into()
 }
 
 fn refresh_for(reasons: RoomInfoNotableUpdateReasons) -> Option<RoomRefresh> {
@@ -84,6 +89,8 @@ fn changed_facets(before: &DomainRoom, after: &DomainRoom) -> Vec<&'static str> 
         poll_permissions,
         message_permissions,
         may_invite,
+        may_join_calls,
+        call,
         member_count,
         has_unread,
         has_mentions,
@@ -126,6 +133,8 @@ fn changed_facets(before: &DomainRoom, after: &DomainRoom) -> Vec<&'static str> 
             before.message_permissions != *message_permissions,
         ),
         ("invite permission", before.may_invite != *may_invite),
+        ("call permission", before.may_join_calls != *may_join_calls),
+        ("call", before.call != *call),
         ("members", before.member_count != *member_count),
         ("unread", unread_changed),
         ("notifications", before.notify != *notify),
@@ -175,8 +184,40 @@ impl Directory {
         }
     }
 
-    pub(super) fn flush_at(&self) -> Option<Instant> {
-        self.flush_at
+    pub(super) fn wake_at(&self) -> Option<Instant> {
+        match (self.flush_at, self.call_expiry_at()) {
+            (Some(flush), Some(expiry)) => Some(flush.min(expiry)),
+            (flush, expiry) => flush.or(expiry),
+        }
+    }
+
+    fn call_expiry_at(&self) -> Option<Instant> {
+        let next = self
+            .rooms
+            .values()
+            .filter_map(|room| room.call.as_ref()?.next_expiry_ms())
+            .min()?;
+        let due = next.saturating_add(CALL_EXPIRY_SLACK_MS);
+        Some(Instant::now() + Duration::from_millis(due.saturating_sub(now_ms())))
+    }
+
+    pub(super) fn expire_calls(&mut self) {
+        let now = now_ms();
+        let expired: Vec<OwnedRoomId> = self
+            .rooms
+            .values()
+            .filter(|room| {
+                room.call
+                    .as_ref()
+                    .and_then(|call| call.next_expiry_ms())
+                    .is_some_and(|expiry| expiry <= now)
+            })
+            .filter_map(|room| MatrixRoomId::parse(room.id.as_ref()).ok())
+            .collect();
+        for room_id in expired {
+            tracing::debug!(%room_id, "a call membership expired");
+            self.mark_room(room_id, RoomRefresh::Full);
+        }
     }
 
     fn arm(&mut self) {

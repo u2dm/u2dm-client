@@ -12,6 +12,8 @@ import {
     PollAnswerEntry,
     MentionWord,
     TextSplice,
+    StartCallRequest,
+    MicrophoneRequest,
 } from "./types.slint";
 import { NotifyMode, PackSurface } from "./enums.slint";
 
@@ -133,6 +135,13 @@ export global Actions {
     callback scroll-position-changed(bool, int, int);
     callback timeline-visibility-changed(bool);
     callback window-focus-changed(bool);
+    callback decline-call(string);
+    callback silence-ring();
+    callback start-call(StartCallRequest);
+    callback join-call(string);
+    callback answer-call(string);
+    callback leave-call();
+    callback set-microphone(MicrophoneRequest);
     callback user-activity-changed(bool);
     callback composer-changed(string, bool, int);
     callback paginate-backwards();

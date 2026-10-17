@@ -1,15 +1,13 @@
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::future::{self, Future};
-use std::pin::{Pin, pin};
+use std::pin::Pin;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use async_trait::async_trait;
 use futures_util::StreamExt;
 use futures_util::stream::FuturesUnordered;
-use matrix_sdk::deserialized_responses::{
-    RawAnySyncOrStrippedTimelineEvent, TimelineEvent, TimelineEventKind,
-};
+use matrix_sdk::deserialized_responses::{RawAnySyncOrStrippedTimelineEvent, TimelineEvent};
 use matrix_sdk::ruma::events::receipt::{ReceiptThread, ReceiptType};
 use matrix_sdk::ruma::events::{AnySyncStateEvent, AnySyncTimelineEvent};
 use matrix_sdk::ruma::push::Action;
@@ -21,10 +19,10 @@ use matrix_sdk::sync::Notification;
 use matrix_sdk::{Client, Room, RoomState};
 use serde::Deserialize;
 use tokio::sync::mpsc;
-use tokio::time::timeout;
 
 use super::build::preview_from_event;
 use super::invites::build_invite;
+use crate::adapters::matrix::decrypt_wait::{self, Attempt};
 use crate::adapters::matrix::member_name::named_member;
 use crate::adapters::matrix::preview::MessagePreview;
 use crate::adapters::matrix::session::{ClientHandle, SessionResource};
@@ -36,7 +34,6 @@ use crate::ports::matrix::PushPort;
 
 const CATCH_UP_AGE: Duration = Duration::from_mins(5);
 const SEEN_PER_ROOM: usize = 64;
-const KEY_WAIT: Duration = Duration::from_secs(3);
 const ENCRYPTED_TYPE: &str = "m.room.encrypted";
 
 struct Reported {
@@ -245,39 +242,6 @@ fn tweaks_of(actions: &[Action]) -> PushTweaks {
     }
 }
 
-enum Decryption {
-    Clear(TimelineEvent),
-    KeyMissing(Option<String>),
-    Refused,
-}
-
-async fn decrypt(room: &Room, raw: &Raw<AnySyncTimelineEvent>) -> Decryption {
-    let push_context = room.push_context().await.unwrap_or_else(|e| {
-        tracing::debug!(room_id = %room.room_id(), "no push context to judge a decrypted message: {e}");
-        None
-    });
-    match room
-        .decrypt_event(raw.cast_ref_unchecked(), push_context.as_ref())
-        .await
-    {
-        Ok(event) => match &event.kind {
-            TimelineEventKind::Decrypted(_) => Decryption::Clear(event),
-            TimelineEventKind::UnableToDecrypt { utd_info, .. }
-                if utd_info.reason.is_missing_room_key() =>
-            {
-                Decryption::KeyMissing(utd_info.session_id.clone())
-            }
-            TimelineEventKind::UnableToDecrypt { .. } | TimelineEventKind::PlainText { .. } => {
-                Decryption::Refused
-            }
-        },
-        Err(e) => {
-            tracing::debug!(room_id = %room.room_id(), "a notified message could not be decrypted: {e}");
-            Decryption::Refused
-        }
-    }
-}
-
 async fn decrypt_or_wait(
     room: Room,
     raw: Raw<AnySyncTimelineEvent>,
@@ -285,40 +249,16 @@ async fn decrypt_or_wait(
     tweaks: PushTweaks,
     waiting: &mut FuturesUnordered<KeyWait>,
 ) -> Option<PushNotice> {
-    let keys = room.client().encryption().room_keys_received_stream().await;
-    let session_id = match decrypt(&room, &raw).await {
-        Decryption::Clear(event) => return clear_notice(&room, &event, &facts, tweaks).await,
-        Decryption::Refused => return encrypted_notice(&room, &facts, tweaks).await,
-        Decryption::KeyMissing(session_id) => session_id,
-    };
-    let Some(keys) = keys else {
-        return encrypted_notice(&room, &facts, tweaks).await;
+    let later = match decrypt_wait::decrypt_or_wait(&room, &raw).await {
+        Attempt::Clear(event) => return clear_notice(&room, &event, &facts, tweaks).await,
+        Attempt::Refused => return encrypted_notice(&room, &facts, tweaks).await,
+        Attempt::Later(later) => later,
     };
     tracing::debug!(room_id = %room.room_id(), event_id = %facts.event_id, "a notified message waits for its room key");
-    let room_id = room.room_id().to_owned();
     waiting.push(Box::pin(async move {
-        let mut keys = pin!(keys);
-        let landed = timeout(KEY_WAIT, async {
-            while let Some(received) = keys.next().await {
-                let Ok(infos) = received else {
-                    return;
-                };
-                if infos.iter().any(|info| {
-                    info.room_id == room_id
-                        && session_id.as_ref().is_none_or(|id| *id == info.session_id)
-                }) {
-                    return;
-                }
-            }
-        })
-        .await
-        .is_ok();
-        tracing::debug!(room_id = %room.room_id(), event_id = %facts.event_id, landed, "a notified message stopped waiting for its room key");
-        match decrypt(&room, &raw).await {
-            Decryption::Clear(event) => clear_notice(&room, &event, &facts, tweaks).await,
-            Decryption::KeyMissing(_) | Decryption::Refused => {
-                encrypted_notice(&room, &facts, tweaks).await
-            }
+        match later.await {
+            Some(event) => clear_notice(&room, &event, &facts, tweaks).await,
+            None => encrypted_notice(&room, &facts, tweaks).await,
         }
     }));
     None

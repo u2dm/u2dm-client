@@ -10,7 +10,7 @@ import { RoomInfoPlacement, RoomScope, UserMessageKind } from "../../enums.slint
 import { UserMessages } from "../../messages.slint";
 import { AppStyle, IconSize, Metrics, Radius, Size, Space } from "../../theme.slint";
 import { IconButton } from "../../components/button.slint";
-import { DirectoryView, RoomInfoView, RoomView, SpaceIndexView, WindowView } from "../../views.slint";
+import { CallView, DirectoryView, RoomInfoView, RoomView, SpaceIndexView, WindowView } from "../../views.slint";
 import { Actions } from "../../actions.slint";
 import { LocalState, RoomSearch, Shell } from "../../local.slint";
 
@@ -56,11 +56,15 @@ export component ChatScreen inherits Rectangle {
     property <bool> shows-room-list: root.compact
         && !SpaceIndexView.visible
         && (!root.has-room || Shell.nav-open);
+    property <bool> call-covers-timeline: Shell.call-maximized
+        && CallView.active
+        && CallView.active-room-id == DirectoryView.selected-room-id;
     property <bool> timeline-visible: WindowView.focused
         && !root.window-minimized
         && !root.shows-room-list
         && !SpaceIndexView.visible
-        && !Shell.modal-open;
+        && !Shell.modal-open
+        && !root.call-covers-timeline;
 
     property <length> sidebar-width: Metrics.sidebar-default;
     property <length> room-info-pane-width: Metrics.room-info-pane-default;

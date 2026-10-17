@@ -1,5 +1,6 @@
 mod attachment;
 mod auth;
+mod decrypt_wait;
 mod encryption;
 mod identity;
 mod identity_alerts;
@@ -12,6 +13,7 @@ mod preview;
 mod profile;
 mod room_state;
 mod rooms;
+mod rtc;
 mod server_logout;
 mod session;
 mod store;
