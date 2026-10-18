@@ -62,7 +62,7 @@ image = { version = "0.25.10", default-features = false, features = [
 ] }
 infer = "0.22.0"
 keyring-core = "1.0.0"
-livekit = { git = "https://github.com/drendog/rust-sdks", branch = "fix/ffmpreg_symbols_conflict", optional = true, default-features = false, features = [
+livekit = { version = "=0.9.5", optional = true, default-features = false, features = [
     "native",
     "rustls-tls-native-roots",
 ] }
