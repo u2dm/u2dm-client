@@ -519,9 +519,7 @@ fn check_generated_ui_stays_in_its_adapter() {
         trespassers.is_empty(),
         "{trespassers:?} name the `{GENERATED_UI_CRATE}` crate, which only {GENERATED_UI_ADAPTER} \
          may. The generated Slint types used to be a private module inside that adapter, so \
-         nothing else could reach them; giving them their own crate made them importable from \
-         anywhere, and a Slint type in app/ or domain/ is the boundary rule in architecture.md \
-         broken by an import."
+         nothing else could reach them."
     );
 }
 
