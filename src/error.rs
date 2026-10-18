@@ -2,6 +2,7 @@ use std::{fmt, io, result};
 
 use thiserror::Error;
 
+use crate::domain::event_size::Oversize;
 use crate::domain::link::InsecureSignInPage;
 
 #[derive(Debug, Error)]
@@ -39,6 +40,9 @@ pub enum AppError {
 
     #[error("the attachment is larger than the {limit} byte upload limit")]
     AttachmentTooLarge { limit: u64 },
+
+    #[error("the event would be {0}")]
+    EventTooLarge(Oversize),
 
     #[error("{0}")]
     Other(String),
@@ -82,6 +86,12 @@ impl From<InsecureSignInPage> for AppError {
             kind: AuthFailure::InsecureSignInPage,
             detail: refused.to_string(),
         }
+    }
+}
+
+impl From<Oversize> for AppError {
+    fn from(oversize: Oversize) -> Self {
+        Self::EventTooLarge(oversize)
     }
 }
 

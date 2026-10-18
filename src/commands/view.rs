@@ -9,6 +9,7 @@ use crate::domain::auth::{LoginMethod, Session};
 use crate::domain::call::MemberKey;
 use crate::domain::call::video::{FeedId, ScreenRefusal};
 use crate::domain::encryption::{KeyStorage, Recovery, RecoveryKey, Standing};
+use crate::domain::event_size::Oversize;
 use crate::domain::identity::IdentityAlert;
 use crate::domain::image_pack::ImagePacks;
 use crate::domain::invite::{Invite, InviteList};
@@ -186,6 +187,7 @@ pub struct UnsentMessage {
     pub submission: i32,
     pub room_id: RoomId,
     pub draft: Draft,
+    pub oversize: Option<Oversize>,
 }
 
 #[derive(Clone, Default, PartialEq, Eq)]
@@ -546,6 +548,7 @@ pub struct LifecycleView {
     pub method: LoginMethod,
     pub resolved_homeserver: String,
     pub user_id: String,
+    pub device_id: String,
     pub avatar_path: Option<PathBuf>,
 }
 

@@ -18,6 +18,7 @@ use crate::commands::sync::DirectoryUpdate;
 use crate::commands::view::{
     AppViewState, ChildAccess, InviteTarget, SpaceHeading, SpaceMatch, Toast,
 };
+use crate::domain::event_size::EventIds;
 use crate::domain::invite::{Invite, InviteList};
 use crate::domain::message::MessagePermissions;
 use crate::domain::poll::PollPermissions;
@@ -42,6 +43,7 @@ pub(super) struct RoomMeta {
     pub(super) avatar_mxc: Option<String>,
     pub(super) member_count: u64,
     pub(super) encrypted: bool,
+    pub(super) event_ids: EventIds,
     pub(super) readable_by_anyone: bool,
     pub(super) polls: PollPermissions,
     pub(super) messages: MessagePermissions,
@@ -678,6 +680,7 @@ impl RoomDirectory {
             avatar_mxc: room.avatar_mxc.clone(),
             member_count: if room.is_direct { 0 } else { room.member_count },
             encrypted: room.is_encrypted,
+            event_ids: room.event_ids,
             readable_by_anyone: room.readable_by_anyone(),
             polls: room.poll_permissions,
             messages: room.message_permissions,

@@ -8,7 +8,7 @@ use crate::commands::ui::{Draft, MessageDraft};
 use crate::commands::view::UnsentMessage;
 use crate::domain::message::MessageEdit;
 use crate::domain::room::RoomId;
-use crate::error::Result;
+use crate::error::{AppError, Result};
 use crate::ports::matrix::TimelinePort;
 use crate::ports::output::AppOutputPort;
 
@@ -102,6 +102,7 @@ impl Submissions {
                 submission: self.issued,
                 room_id: room_id.clone(),
                 draft,
+                oversize: None,
             },
             stage,
         });
@@ -119,6 +120,10 @@ impl Submissions {
         lanes.spawn(room_id, async move {
             let enqueue = match enqueue.await {
                 Ok(()) => Enqueue::Accepted,
+                Err(AppError::EventTooLarge(oversize)) => {
+                    tracing::info!(%oversize, "refused a submission over the size limit");
+                    Enqueue::Oversized(oversize)
+                }
                 Err(e) => {
                     tracing::warn!("failed to enqueue a submission: {e}");
                     Enqueue::Refused
@@ -151,6 +156,11 @@ impl Submissions {
                 .retain(|held| held.message.submission != submission),
             Enqueue::Refused => {
                 held.stage = Stage::Refused;
+                self.offer(selected);
+            }
+            Enqueue::Oversized(oversize) => {
+                held.stage = Stage::Refused;
+                held.message.oversize = Some(oversize);
                 self.offer(selected);
             }
         }

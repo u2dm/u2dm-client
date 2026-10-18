@@ -245,6 +245,9 @@ export global UserMessages {
         if kind == UserMessageKind.attachment-too-large {
             return @tr("That file is larger than this homeserver accepts (limit {})", detail);
         }
+        if kind == UserMessageKind.caption-too-long {
+            return @tr("The caption is too long. Shorten it by about {}%.", detail);
+        }
         if kind == UserMessageKind.send-attachment-failed {
             return @tr("Failed to send attachment");
         }
@@ -256,6 +259,9 @@ export global UserMessages {
         }
         if kind == UserMessageKind.poll-edit-failed {
             return @tr("Your changes to the poll couldn't be saved");
+        }
+        if kind == UserMessageKind.poll-too-long {
+            return @tr("The poll is too long. Shorten it by about {}%.", detail);
         }
         if kind == UserMessageKind.video-playback-failed {
             return @tr("This video could not be played");

@@ -6,6 +6,7 @@ pub mod call_media;
 pub mod container;
 #[cfg(feature = "demo")]
 pub mod demo;
+pub mod draft_size;
 pub mod handoff;
 pub mod instance;
 #[cfg(feature = "calls")]
@@ -15,6 +16,7 @@ pub mod markdown;
 pub mod matrix;
 pub mod media;
 pub mod notifier;
+pub mod poll_content;
 pub mod private_fs;
 pub mod room_log;
 #[cfg(feature = "matrix")]

@@ -1,7 +1,10 @@
+use matrix_sdk::ruma::RoomVersionId;
 use matrix_sdk::ruma::events::room::guest_access::GuestAccess as SdkGuestAccess;
 use matrix_sdk::ruma::events::room::history_visibility::HistoryVisibility as SdkHistoryVisibility;
 use matrix_sdk::ruma::room::{JoinRuleSummary, RestrictedSummary};
+use matrix_sdk::ruma::room_version_rules::EventIdFormatVersion;
 
+use crate::domain::event_size::EventIds;
 use crate::domain::room::RoomId;
 use crate::domain::room_state::{GuestAccess, HistoryVisibility};
 use crate::domain::space_index::JoinRule;
@@ -27,6 +30,16 @@ fn allowed_rooms(rule: &RestrictedSummary) -> Vec<RoomId> {
         .iter()
         .map(|id| RoomId::new(id.to_string()))
         .collect()
+}
+
+pub(super) fn event_ids(version: Option<&RoomVersionId>) -> EventIds {
+    match version
+        .and_then(RoomVersionId::rules)
+        .map(|rules| rules.event_id_format)
+    {
+        Some(EventIdFormatVersion::V2 | EventIdFormatVersion::V3) => EventIds::Hashed,
+        _ => EventIds::WithDomain,
+    }
 }
 
 pub(super) fn history_visibility(visibility: &SdkHistoryVisibility) -> HistoryVisibility {

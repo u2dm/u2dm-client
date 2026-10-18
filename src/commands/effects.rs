@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use super::messages::UserMessage;
 use super::view::AppViewState;
+use crate::domain::event_size::EventIds;
 use crate::domain::message::MessagePermissions;
 use crate::domain::poll::PollPermissions;
 use crate::domain::room::RoomId;
@@ -16,6 +17,7 @@ pub enum Effect {
         avatar_mxc: Option<String>,
         member_count: u64,
         encrypted: bool,
+        event_ids: EventIds,
         readable_by_anyone: bool,
         polls: PollPermissions,
         messages: MessagePermissions,

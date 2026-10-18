@@ -5,6 +5,8 @@ use super::emote;
 use super::permalink;
 use super::props::send_command;
 use super::schema::{notify_modes, room_accesses, room_kinds, simple_callbacks, variant_named};
+use super::sending::SendingContext;
+use crate::adapters::draft_size;
 use crate::app::input::CommandSender;
 use crate::commands::ui::{
     ComposerActivity, MessageDraft, ReplyDraft, TimelineVisibility, UiCommand, UserActivity,
@@ -13,6 +15,7 @@ use crate::commands::ui::{
 use crate::domain::auth::LoginCredentials;
 use crate::domain::emote::ComposerText;
 use crate::domain::encryption::RecoveryKey;
+use crate::domain::event_size::{EventSize, Oversize};
 use crate::domain::image_pack::PackId;
 use crate::domain::link::LauncherSafeUrl;
 use crate::domain::matrix_link::MatrixLink;
@@ -26,6 +29,38 @@ use crate::domain::user_info::UserId;
 type Tx = CommandSender;
 
 pub type RoomKey = Option<(RoomId, i32)>;
+
+pub enum DraftVerdict {
+    Accepted,
+    Incomplete,
+    TooLong(Oversize),
+}
+
+impl DraftVerdict {
+    pub fn accepted(&self) -> bool {
+        matches!(self, Self::Accepted)
+    }
+
+    pub fn shorten_by(&self) -> i32 {
+        match self {
+            Self::TooLong(oversize) => i32::from(oversize.shorten_by()),
+            Self::Accepted | Self::Incomplete => 0,
+        }
+    }
+}
+
+fn sent_if_it_fits(size: EventSize, send: impl FnOnce()) -> DraftVerdict {
+    match size.checked() {
+        Ok(_) => {
+            send();
+            DraftVerdict::Accepted
+        }
+        Err(oversize) => {
+            tracing::info!(%oversize, "refusing a draft too large to send");
+            DraftVerdict::TooLong(oversize)
+        }
+    }
+}
 
 fn optional_room(id: String) -> Option<RoomId> {
     (!id.is_empty()).then(|| RoomId::new(id))
@@ -72,6 +107,7 @@ macro_rules! gen_router_fns {
     };
     (@one $fn:ident manual_string $cmd:ident) => {};
     (@one $fn:ident request $cmd:ident) => {};
+    (@one $fn:ident verdict $cmd:ident) => {};
 }
 
 simple_callbacks!(gen_router_fns);
@@ -130,26 +166,35 @@ pub fn send_message(
     reply_to: String,
     reply_sender: String,
     reply_preview: String,
-) {
+) -> DraftVerdict {
     if room_id.is_empty() || body.is_empty() {
-        return;
+        return DraftVerdict::Incomplete;
     }
+    let emotes = emote::bound_in(&body);
+    let context = SendingContext::of(&room_id);
+    let size = if reply_to.is_empty() {
+        draft_size::message(&body, &emotes, &context.facts())
+    } else {
+        draft_size::reply(&body, &emotes, &reply_to, &context.facts())
+    };
     let reply = (!reply_to.is_empty()).then_some(ReplyDraft {
         event_id: reply_to,
         sender: reply_sender,
         preview: reply_preview,
     });
-    send_command(
-        tx,
-        UiCommand::SendMessage {
-            room_id: RoomId::new(room_id),
-            draft: MessageDraft {
-                emotes: emote::bound_in(&body),
-                body,
-                reply,
+    sent_if_it_fits(size, || {
+        send_command(
+            tx,
+            UiCommand::SendMessage {
+                room_id: RoomId::new(room_id),
+                draft: MessageDraft {
+                    body,
+                    reply,
+                    emotes,
+                },
             },
-        },
-    );
+        );
+    })
 }
 
 pub struct EditedRow {
@@ -164,12 +209,12 @@ pub struct EditedText {
     pub body: String,
 }
 
-pub fn edit_message(tx: &Tx, room_id: String, row: EditedRow, text: EditedText) -> bool {
+pub fn edit_message(tx: &Tx, room_id: String, row: EditedRow, text: EditedText) -> DraftVerdict {
     if room_id.is_empty() {
-        return false;
+        return DraftVerdict::Incomplete;
     }
     let Some(target) = EditTarget::of(row.event_id, row.local_id) else {
-        return false;
+        return DraftVerdict::Incomplete;
     };
     let kind = if text.caption {
         EditKind::Caption
@@ -178,23 +223,26 @@ pub fn edit_message(tx: &Tx, room_id: String, row: EditedRow, text: EditedText) 
     };
     let original = (!text.restored).then_some(text.original);
     match TextRevision::of(kind, original.as_deref(), text.body) {
-        TextRevision::Blank => false,
-        TextRevision::Unchanged => true,
+        TextRevision::Blank => DraftVerdict::Incomplete,
+        TextRevision::Unchanged => DraftVerdict::Accepted,
         TextRevision::Changed(body) => {
-            send_command(
-                tx,
-                UiCommand::EditMessage {
-                    room_id: RoomId::new(room_id),
-                    edit: MessageEdit {
-                        target,
-                        kind,
-                        emotes: emote::bound_in(&body),
-                        body,
-                        original,
+            let edit = MessageEdit {
+                target,
+                kind,
+                emotes: emote::bound_in(&body),
+                body,
+                original,
+            };
+            let size = draft_size::edit(&edit, &SendingContext::of(&room_id).facts());
+            sent_if_it_fits(size, || {
+                send_command(
+                    tx,
+                    UiCommand::EditMessage {
+                        room_id: RoomId::new(room_id),
+                        edit,
                     },
-                },
-            );
-            true
+                );
+            })
         }
     }
 }
@@ -362,21 +410,23 @@ pub fn send_poll(
     answers: Vec<String>,
     multiple: bool,
     hide_results: bool,
-) -> bool {
+) -> DraftVerdict {
     if room_id.is_empty() {
-        return false;
+        return DraftVerdict::Incomplete;
     }
     let Some(draft) = poll_draft(question, answers, multiple, hide_results) else {
-        return false;
+        return DraftVerdict::Incomplete;
     };
-    send_command(
-        tx,
-        UiCommand::SendPoll {
-            room_id: RoomId::new(room_id),
-            draft,
-        },
-    );
-    true
+    let size = draft_size::poll_start(&draft, &SendingContext::of(&room_id).facts());
+    sent_if_it_fits(size, || {
+        send_command(
+            tx,
+            UiCommand::SendPoll {
+                room_id: RoomId::new(room_id),
+                draft,
+            },
+        );
+    })
 }
 
 pub fn edit_poll(
@@ -386,15 +436,17 @@ pub fn edit_poll(
     answers: Vec<String>,
     multiple: bool,
     hide_results: bool,
-) -> bool {
+) -> DraftVerdict {
     if event_id.is_empty() {
-        return false;
+        return DraftVerdict::Incomplete;
     }
     let Some(draft) = poll_draft(question, answers, multiple, hide_results) else {
-        return false;
+        return DraftVerdict::Incomplete;
     };
-    send_command(tx, UiCommand::EditPoll { event_id, draft });
-    true
+    let size = draft_size::poll_edit(&draft, &event_id, &SendingContext::selected().facts());
+    sent_if_it_fits(size, || {
+        send_command(tx, UiCommand::EditPoll { event_id, draft });
+    })
 }
 
 pub fn open_media(tx: &Tx, event_id: String) {

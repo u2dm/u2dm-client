@@ -18,9 +18,34 @@ import { Composer, EditedMessage, Polls, Reactions, ReplyDraft, Shell } from "..
 import { IdentityAlertView, RoomView, UnsentView, UpgradeView } from "../../../../views.slint";
 import { IdentityAlertKind, UpgradeLink } from "../../../../enums.slint";
 
+component OversizeBanner inherits Rectangle {
+    in property <bool> saving;
+    in property <int> shorten-by;
+
+    height: Metrics.reply-bar;
+    background: AppStyle.danger-background;
+
+    HorizontalLayout {
+        padding-left: Space.lg;
+        padding-right: Space.md;
+        padding-top: Space.md;
+        padding-bottom: Space.md;
+
+        ReplyQuote {
+            horizontal-stretch: 1;
+            accent: AppStyle.danger;
+            liveness: AccessibleLiveness.assertive;
+            sender: root.saving ? @tr("Edit too long to save") : @tr("Too long to send");
+            preview: @tr("Shorten it by about {}%", root.shorten-by);
+        }
+    }
+}
+
 component UnsentBanner inherits Rectangle {
     callback restore-clicked();
     callback discard-clicked();
+
+    property <bool> too-long: UnsentView.shorten-by > 0;
 
     height: Metrics.reply-bar;
     background: AppStyle.danger-background;
@@ -36,10 +61,12 @@ component UnsentBanner inherits Rectangle {
             horizontal-stretch: 1;
             accent: AppStyle.danger;
             liveness: AccessibleLiveness.assertive;
-            sender: UnsentView.is-edit ? @tr("Edit not saved") : @tr("Not sent");
-            preview: UnsentView.edit-caption && UnsentView.body == ""
-                ? @tr("No caption")
-                : UnsentView.body;
+            sender: root.too-long
+                ? (UnsentView.is-edit ? @tr("Edit too long to save") : @tr("Too long to send"))
+                : (UnsentView.is-edit ? @tr("Edit not saved") : @tr("Not sent"));
+            preview: root.too-long
+                ? @tr("Shorten it by about {}%", UnsentView.shorten-by)
+                : (UnsentView.edit-caption && UnsentView.body == "" ? @tr("No caption") : UnsentView.body);
         }
 
         LinkButton {
@@ -103,6 +130,7 @@ export component MessageInput inherits Rectangle {
     property <length> surface-inset: Metrics.timeline-inset;
     property <bool> composing: root.message != "";
     property <int> edits: field.edits;
+    property <int> shorten-by: 0;
 
     background: AppStyle.composer-gradient;
     height: field.height + root.surface-inset;
@@ -119,6 +147,10 @@ export component MessageInput inherits Rectangle {
         root.report-activity();
     }
 
+    changed message => {
+        root.shorten-by = 0;
+    }
+
     changed edits => {
         root.report-activity();
     }
@@ -128,13 +160,17 @@ export component MessageInput inherits Rectangle {
     }
 
     function submit() {
-        Actions.send-message({
+        let verdict = Actions.send-message({
             room-id: root.room-id,
             body: root.message,
             reply-to: Composer.reply-event-id,
             reply-sender: Composer.reply-sender,
             reply-preview: Composer.reply-preview,
         });
+        root.shorten-by = verdict.shorten-by;
+        if !verdict.accepted {
+            return;
+        }
         field.clear();
         Composer.clear-reply();
     }
@@ -167,7 +203,7 @@ export component MessageInput inherits Rectangle {
     }
 
     function save-edit() {
-        if Actions.edit-message({
+        let verdict = Actions.edit-message({
             room-id: root.room-id,
             unique-id: Composer.edited.unique-id,
             timeline-token: Composer.edited.timeline-token,
@@ -177,7 +213,9 @@ export component MessageInput inherits Rectangle {
             restored: Composer.edited.restored,
             original: Composer.edited.original,
             body: root.message,
-        }) {
+        });
+        root.shorten-by = verdict.shorten-by;
+        if verdict.accepted {
             root.finish-edit();
         }
     }
@@ -438,6 +476,11 @@ export component MessageInput inherits Rectangle {
             cancel-clicked => {
                 Composer.clear-reply();
             }
+        }
+
+        if root.shorten-by > 0: OversizeBanner {
+            saving: Composer.editing;
+            shorten-by: root.shorten-by;
         }
     }
 }

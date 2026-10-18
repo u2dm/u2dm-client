@@ -320,6 +320,11 @@ export struct EditMessageRequest {
     body: string,
 }
 
+export struct DraftVerdict {
+    accepted: bool,
+    shorten-by: int,
+}
+
 export struct CreateRoomRequest {
     name: string,
     topic: string,

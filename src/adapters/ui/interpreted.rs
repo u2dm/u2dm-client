@@ -12,8 +12,8 @@ use tokio::runtime::Runtime;
 use tokio::sync::{mpsc, watch};
 
 use names::{
-    callback, emoji_entry, emoji_row, emoji_store, mention_word, text_splice, user_message,
-    verification_emoji,
+    callback, draft_verdict, emoji_entry, emoji_row, emoji_store, mention_word, text_splice,
+    user_message, verification_emoji,
 };
 
 use super::backend::{
@@ -44,7 +44,7 @@ use super::present::{
 #[cfg(feature = "demo")]
 use super::props::EnumProp;
 use super::props::{BoolProp, IntProp, StringProp, UiProps};
-use super::router::{EditedRow, EditedText};
+use super::router::{DraftVerdict, EditedRow, EditedText};
 use super::schema::{
     attachment_kinds, audio_kinds, body_line_fields, body_piece_fields, call_cameras, call_mics,
     call_offers, call_phases, call_refusals, call_screen_refusals, call_screens, call_tile_fields,
@@ -169,6 +169,11 @@ mod names {
     pub mod text_splice {
         pub const TEXT: &str = "text";
         pub const CARET: &str = "caret";
+    }
+
+    pub mod draft_verdict {
+        pub const ACCEPTED: &str = "accepted";
+        pub const SHORTEN_BY: &str = "shorten-by";
     }
 
     pub mod mention_word {
@@ -429,6 +434,19 @@ macro_rules! bind_interpreted_callbacks {
                 return Value::Void;
             };
             Value::from(router::$fn(&tx, $(bind_interpreted_callbacks!(@field s $name $field_kind)),*))
+        })
+    }};
+    (@one $inst:expr, $tx:ident, $lit:literal, $fn:ident,
+        verdict($($field:ident $name:literal $field_kind:ident),*)) => {{
+        let tx = $tx.clone();
+        bind_action($inst, $lit, move |args| {
+            let Some(s) = struct_arg(args, 0) else {
+                return draft_verdict_value(&DraftVerdict::Incomplete);
+            };
+            draft_verdict_value(&router::$fn(
+                &tx,
+                $(bind_interpreted_callbacks!(@field s $name $field_kind)),*
+            ))
         })
     }};
     (@unit $inst:expr, $tx:ident, $lit:literal, $fn:ident) => {{
@@ -852,7 +870,7 @@ impl SlintUiAdapter {
         let weak = self.instance.as_weak();
         bind_action(&self.instance, callback::EDIT_MESSAGE, move |args| {
             let Some(req) = struct_arg(args, 0) else {
-                return Value::Bool(false);
+                return draft_verdict_value(&DraftVerdict::Incomplete);
             };
             let row = current_edited_row::<InterpretedBackend>(
                 &weak,
@@ -863,7 +881,7 @@ impl SlintUiAdapter {
                 event_id: field(req, "event-id"),
                 local_id: field(req, "local-id"),
             });
-            Value::Bool(router::edit_message(
+            draft_verdict_value(&router::edit_message(
                 &tx,
                 field(req, "room-id"),
                 row,
@@ -1320,6 +1338,19 @@ fn setup_emoji_store(inst: &ComponentInstance) -> Result<()> {
     .map_err(|e| AppError::Ui(format!("{e:?}")))?;
 
     Ok(())
+}
+
+fn draft_verdict_value(verdict: &DraftVerdict) -> Value {
+    Value::Struct(Struct::from_iter([
+        (
+            draft_verdict::ACCEPTED.to_string(),
+            Value::Bool(verdict.accepted()),
+        ),
+        (
+            draft_verdict::SHORTEN_BY.to_string(),
+            num(verdict.shorten_by()),
+        ),
+    ]))
 }
 
 fn text_splice_value(text: String, caret: i32) -> Value {

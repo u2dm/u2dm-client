@@ -11,6 +11,7 @@ use super::{calls, invite_people, media, message_menu, polls};
 use crate::adapters::markdown::{self, Composed, RoomMentions};
 use crate::domain::auth::Session;
 use crate::domain::emote::Emote;
+use crate::domain::event_size::EventIds;
 use crate::domain::image_pack::{ImagePack, PackImage, PackOrigin};
 use crate::domain::invite::Invite;
 use crate::domain::media::{
@@ -195,6 +196,7 @@ fn started_chat(room_id: &str, user_id: &str, now: u64) -> Room {
         is_direct: true,
         direct_partner: Some(UserId::new(user_id)),
         is_encrypted: true,
+        event_ids: EventIds::Hashed,
         history_visibility: HistoryVisibility::default(),
         poll_permissions: polls::permissions(),
         message_permissions: message_menu::permissions(),
@@ -228,6 +230,7 @@ fn created_room(created: &Created) -> Room {
         is_direct: false,
         direct_partner: None,
         is_encrypted: created.encrypted,
+        event_ids: EventIds::Hashed,
         history_visibility: HistoryVisibility::default(),
         poll_permissions: polls::permissions(),
         message_permissions: message_menu::permissions(),

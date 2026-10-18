@@ -922,9 +922,10 @@ impl AppService {
             .publish(Box::new(move |view| view.connection = status));
     }
 
-    fn emit_login_success(&self, user_id: String) {
+    fn emit_login_success(&self, user_id: String, device_id: String) {
         self.output.publish(Box::new(move |view| {
             view.lifecycle.user_id = user_id;
+            view.lifecycle.device_id = device_id;
             view.lifecycle.step = LoginStep::LoggedIn;
             view.lifecycle.activity = LoginActivity::Idle;
         }));
@@ -937,6 +938,7 @@ impl AppService {
             avatar_mxc: room.meta.avatar_mxc.clone(),
             member_count: room.meta.member_count,
             encrypted: room.meta.encrypted,
+            event_ids: room.meta.event_ids,
             readable_by_anyone: room.meta.readable_by_anyone,
             polls: room.meta.polls,
             messages: room.meta.messages,
@@ -2244,9 +2246,10 @@ impl AppService {
 
     async fn activate(&mut self, capability: AuthenticatedSession, session: u64) {
         let user_id = capability.session.user_id.clone();
+        let device_id = capability.session.device_id.clone();
         tracing::info!(%user_id, "authenticated");
         self.held_session = HeldSession::Running(Box::new(capability));
-        self.emit_login_success(user_id);
+        self.emit_login_success(user_id, device_id);
         self.start_syncing(session).await;
     }
 

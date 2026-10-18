@@ -23,6 +23,8 @@ use super::{
     message_menu, notifications, pinned, polls, presence, reactions, receipts, room_info, source,
     space_index, stickers, sync, timeline, typing, upgrades, user_info, verification, videos,
 };
+use crate::adapters::draft_size::{self, MediaDraft, RoomFacts};
+use crate::adapters::markdown::RoomMentions;
 use crate::adapters::{body_emoji, video};
 use crate::domain::auth::{AuthMethod, LoginCredentials, OAuthLoginData, ServerInfo, Session};
 use crate::domain::call::identity::spellings;
@@ -36,6 +38,7 @@ use crate::domain::emote::Emote;
 use crate::domain::encryption::{
     AccountEncryption, IdentityOutcome, RecoveryAttempt, RecoveryKey, RecoverySetup,
 };
+use crate::domain::event_size::{Encryption, EventIds, EventSize};
 use crate::domain::identity::{OwnIdentity, RoomAlert};
 use crate::domain::image_pack::{PackId, PackImage};
 use crate::domain::invite::Invite;
@@ -1020,6 +1023,13 @@ impl DemoAuthed {
         }
     }
 
+    fn active_room_id(&self) -> Option<RoomId> {
+        self.active
+            .lock()
+            .ok()
+            .and_then(|guard| guard.as_ref().map(|active| active.room_id.clone()))
+    }
+
     async fn edit_poll(
         &self,
         event_id: &str,
@@ -1027,6 +1037,16 @@ impl DemoAuthed {
         timeline_tx: &mpsc::Sender<TimelineUpdate>,
     ) {
         if !polls::permissions().start {
+            refuse_poll_action(timeline_tx, PollAction::Edit).await;
+            return;
+        }
+        let measured = self.active_room_id().map(|room_id| {
+            with_room_facts(&room_id, |facts| {
+                draft_size::poll_edit(draft, event_id, facts)
+            })
+        });
+        if let Some(Err(oversize)) = measured.map(EventSize::checked) {
+            tracing::debug!(event_id, %oversize, "demo: the poll edit is over the size limit");
             refuse_poll_action(timeline_tx, PollAction::Edit).await;
             return;
         }
@@ -2606,6 +2626,7 @@ impl TimelinePort for DemoAuthed {
         if timeline::scenario().sends_are_refused {
             return Err(unavailable("sending messages"));
         }
+        with_room_facts(room_id, |facts| draft_size::message(body, emotes, facts)).checked()?;
         self.append_own_message(room_id, body, emotes, None).await;
         Ok(())
     }
@@ -2620,6 +2641,10 @@ impl TimelinePort for DemoAuthed {
         if timeline::scenario().sends_are_refused {
             return Err(unavailable("sending replies"));
         }
+        with_room_facts(room_id, |facts| {
+            draft_size::reply(body, emotes, in_reply_to, facts)
+        })
+        .checked()?;
         self.append_own_message(room_id, body, emotes, Some(in_reply_to))
             .await;
         Ok(())
@@ -2629,6 +2654,7 @@ impl TimelinePort for DemoAuthed {
         if timeline::scenario().edits_are_refused {
             return Err(unavailable("editing messages"));
         }
+        with_room_facts(room_id, |facts| draft_size::edit(edit, facts)).checked()?;
         let RevisedText {
             timeline_tx,
             row,
@@ -2662,6 +2688,7 @@ impl TimelinePort for DemoAuthed {
         if timeline::scenario().sends_are_refused {
             return Err(unavailable("sending polls"));
         }
+        with_room_facts(room_id, |facts| draft_size::poll_start(draft, facts)).checked()?;
         self.append_own_poll(room_id, draft).await;
         Ok(())
     }
@@ -2738,6 +2765,17 @@ impl TimelinePort for DemoAuthed {
                 limit: attachments::upload_limit(),
             });
         }
+        let content_type = if attachment.as_document {
+            mime::APPLICATION_OCTET_STREAM.as_ref()
+        } else {
+            attachment.picked.mimetype.as_str()
+        };
+        let media = MediaDraft {
+            attachment,
+            content_type,
+            thumbnail: false,
+        };
+        with_room_facts(room_id, |facts| draft_size::media(&media, facts)).checked()?;
         if attachments::scenario().send_fails {
             tokio::select! {
                 biased;
@@ -3670,6 +3708,18 @@ async fn demo_oauth_start() -> Result<OAuthLoginData> {
     let page = Url::parse(page).map_err(|e| AppError::Other(e.to_string()))?;
     Ok(OAuthLoginData {
         auth_url: LauncherSafeUrl::sign_in_page(page)?,
+    })
+}
+
+fn with_room_facts<T>(room_id: &RoomId, measure: impl FnOnce(&RoomFacts<'_>) -> T) -> T {
+    let session = data::session();
+    measure(&RoomFacts {
+        room_id: room_id.as_ref(),
+        sender: &session.user_id,
+        device_id: &session.device_id,
+        encryption: Encryption::when(data::room_is_encrypted(room_id)),
+        event_ids: EventIds::Hashed,
+        room_mentions: RoomMentions::when(message_menu::permissions().notify_room),
     })
 }
 

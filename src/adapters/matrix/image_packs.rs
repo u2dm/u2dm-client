@@ -27,6 +27,7 @@ use tokio::sync::Semaphore;
 use tokio::task::JoinSet;
 
 use super::session::ClientHandle;
+use super::timeline::refuse_oversized;
 use super::user_info::own_user;
 use crate::domain::image_pack::{ImagePack, ImageUsage, PackId, PackImage, PackOrigin, PackTitle};
 use crate::domain::room::RoomId;
@@ -898,13 +899,12 @@ impl ImagePackPort for MatrixImagePacks {
         in_reply_to: Option<&str>,
     ) -> Result<()> {
         let content = self.sticker_event_content(pack, shortcode, in_reply_to)?;
+        let room = self.matrix.room(room_id).await?;
+        refuse_oversized(&room, &content, STICKER_EVENT_TYPE).await?;
         let content = Raw::new(&content)
             .map_err(|e| AppError::Other(e.to_string()))?
             .cast_unchecked();
-        self.matrix
-            .room(room_id)
-            .await?
-            .send_queue()
+        room.send_queue()
             .send_raw(content, STICKER_EVENT_TYPE.to_owned())
             .await
             .map(|_handle| ())

@@ -17,6 +17,7 @@ use crate::commands::view::{
 use crate::domain::call::video::ScreenRefusal;
 use crate::domain::call::{CallIntent, RoomCall};
 use crate::domain::encryption::KeyStorage;
+use crate::domain::event_size::Oversize;
 use crate::domain::image_pack::{ImagePack, ImageUsage, PackOrigin, PackTitle};
 use crate::domain::invite::Invite;
 use crate::domain::member_name::NamedUser;
@@ -661,6 +662,7 @@ struct UnsentDto {
     edits: Option<String>,
     caption: bool,
     emotes: Vec<String>,
+    shorten_by: Option<u8>,
 }
 
 #[derive(Serialize)]
@@ -1602,6 +1604,7 @@ fn unsent(source: &UnsentMessage) -> UnsentDto {
             .iter()
             .map(|emote| emote.token.clone())
             .collect(),
+        shorten_by: source.oversize.map(Oversize::shorten_by),
     }
 }
 

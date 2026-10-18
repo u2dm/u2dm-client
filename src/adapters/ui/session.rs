@@ -10,6 +10,7 @@ use super::props::{StringProp, UiProps};
 use super::reconcile::{PackIndex, TimelineIndex};
 use super::reduce::{RoomCursor, SheetAvatar};
 use super::richtext::{CoverLabels, StyledBodies, recognise_cover_labels};
+use super::sending::SendingRoom;
 use super::spoilers::SpoilerRows;
 use crate::commands::view::AppViewState;
 
@@ -28,6 +29,7 @@ pub struct UiSession<B: UiBackend> {
     pub snapshot: Option<Arc<AppViewState>>,
     pub pack_browse: Option<PackBrowse>,
     pub emotes: EmoteBindings,
+    pub sending: Option<SendingRoom>,
     pub media: MediaSession,
     pub bodies: StyledBodies,
     pub spoilers: SpoilerRows,
@@ -45,6 +47,7 @@ impl<B: UiBackend> Default for UiSession<B> {
             snapshot: None,
             pack_browse: None,
             emotes: EmoteBindings::default(),
+            sending: None,
             media: MediaSession::default(),
             bodies: StyledBodies::default(),
             spoilers: SpoilerRows::default(),

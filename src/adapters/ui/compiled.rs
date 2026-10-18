@@ -18,12 +18,12 @@ use u2dm_ui::{
     CallView, ChildAccess as UiChildAccess, ConnectionState,
     CreateRoomStatus as UiCreateRoomStatus, CreateRoomView,
     DecryptionFailure as UiDecryptionFailure, Delivery as UiDelivery, DirectChat as UiDirectChat,
-    DirectoryView, EmojiArt as UiEmojiArt, EmojiEntry, EmojiRow, EmojiStore,
-    EncryptionActivity as UiEncryptionActivity, EncryptionStanding as UiEncryptionStanding,
-    EncryptionStep as UiEncryptionStep, EncryptionView, IdentityAlertKind as UiIdentityAlertKind,
-    IdentityAlertView, IdentityTrust as UiIdentityTrust, InviteAnswer as UiInviteAnswer,
-    InviteKind as UiInviteKind, InvitePeopleView, InviteView, InviteeEntry,
-    InviteeState as UiInviteeState, LogLevel as UiLogLevel, LogLineEntry,
+    DirectoryView, DraftVerdict as UiDraftVerdict, EmojiArt as UiEmojiArt, EmojiEntry, EmojiRow,
+    EmojiStore, EncryptionActivity as UiEncryptionActivity,
+    EncryptionStanding as UiEncryptionStanding, EncryptionStep as UiEncryptionStep, EncryptionView,
+    IdentityAlertKind as UiIdentityAlertKind, IdentityAlertView, IdentityTrust as UiIdentityTrust,
+    InviteAnswer as UiInviteAnswer, InviteKind as UiInviteKind, InvitePeopleView, InviteView,
+    InviteeEntry, InviteeState as UiInviteeState, LogLevel as UiLogLevel, LogLineEntry,
     LoginActivity as UiLoginActivity, LoginMethodKind as UiLoginMethodKind, LoginPhase, LoginView,
     MediaFailure as UiMediaFailure, MediaState as UiMediaState, MemberEntry,
     MemberRole as UiMemberRole, MemberRowKind as UiMemberRowKind, MentionWord, MentionsView,
@@ -79,7 +79,7 @@ use super::present::{
 #[cfg(feature = "demo")]
 use super::props::EnumProp;
 use super::props::{BoolProp, IntProp, StringProp, UiProps};
-use super::router::{EditedRow, EditedText};
+use super::router::{DraftVerdict, EditedRow, EditedText};
 use super::schema::{
     attachment_kinds, audio_kinds, body_line_fields, body_piece_fields, bool_props, call_cameras,
     call_mics, call_offers, call_phases, call_refusals, call_screen_refusals, call_screens,
@@ -136,6 +136,13 @@ use crate::ports::call::CallVideoPort;
 use crate::ports::handoff::HandoffPort;
 use crate::ports::media::MediaCache;
 use crate::ports::notifier::NotifierPort;
+
+fn draft_verdict(verdict: &DraftVerdict) -> UiDraftVerdict {
+    UiDraftVerdict {
+        accepted: verdict.accepted(),
+        shorten_by: verdict.shorten_by(),
+    }
+}
 
 fn actions(window: &AppWindow) -> Actions<'_> {
     window.global::<Actions>()
@@ -207,6 +214,16 @@ macro_rules! bind_compiled_callbacks {
         let tx = $tx.clone();
         actions($win).$on(move |req| {
             router::$fn(&tx, $(bind_compiled_callbacks!(@field req $field $field_kind)),*)
+        });
+    }};
+    (@one $win:ident $tx:ident $on:ident $fn:ident
+        verdict($($field:ident $name:literal $field_kind:ident),*)) => {{
+        let tx = $tx.clone();
+        actions($win).$on(move |req| {
+            draft_verdict(&router::$fn(
+                &tx,
+                $(bind_compiled_callbacks!(@field req $field $field_kind)),*
+            ))
         });
     }};
     (@unit $win:ident $tx:ident $on:ident $fn:ident) => {{
@@ -690,7 +707,7 @@ impl SlintUiAdapter {
                         event_id: req.event_id.to_string(),
                         local_id: req.local_id.to_string(),
                     });
-            router::edit_message(
+            draft_verdict(&router::edit_message(
                 &tx,
                 req.room_id.to_string(),
                 row,
@@ -700,7 +717,7 @@ impl SlintUiAdapter {
                     original: req.original.to_string(),
                     body: req.body.to_string(),
                 },
-            )
+            ))
         });
 
         actions(win).on_last_editable_row(last_editable_row::<CompiledBackend>);

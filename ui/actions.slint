@@ -2,6 +2,7 @@ import {
     LoginRequest,
     SendMessageRequest,
     EditMessageRequest,
+    DraftVerdict,
     SendStickerRequest,
     CreateRoomRequest,
     SendAttachmentRequest,
@@ -97,8 +98,8 @@ export global Actions {
     callback withdraw-verification(string);
     callback acknowledge-identity-reset();
 
-    callback send-message(SendMessageRequest);
-    callback edit-message(EditMessageRequest) -> bool;
+    callback send-message(SendMessageRequest) -> DraftVerdict;
+    callback edit-message(EditMessageRequest) -> DraftVerdict;
     callback last-editable-row() -> int;
     callback suggest-mentions(string);
     callback end-mentions();
@@ -113,8 +114,8 @@ export global Actions {
     callback pick-document(string);
     callback paste-attachment(string) -> bool;
     callback send-attachment(SendAttachmentRequest);
-    callback send-poll(SendPollRequest) -> bool;
-    callback edit-poll(EditPollRequest) -> bool;
+    callback send-poll(SendPollRequest) -> DraftVerdict;
+    callback edit-poll(EditPollRequest) -> DraftVerdict;
     pure callback poll-answer-texts([PollAnswerEntry]) -> [string];
     callback cancel-attachment();
     callback request-pack-cell(string);

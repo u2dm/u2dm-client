@@ -245,7 +245,7 @@ macro_rules! simple_callbacks {
         on_paginate_forwards "paginate-forwards" paginate_forwards room_key PaginateForwards;
         on_jump_to_latest "jump-to-latest" jump_to_latest room_key JumpToLatest;
         on_send_message "send-message" send_message
-            request(room_id "room-id" text, body "body" text, reply_to "reply-to" text,
+            verdict(room_id "room-id" text, body "body" text, reply_to "reply-to" text,
                 reply_sender "reply-sender" text, reply_preview "reply-preview" text) SendMessage;
         on_send_sticker "send-sticker" send_sticker
             request(room_id "room-id" text, pack_id "pack-id" text, shortcode "shortcode" text,
@@ -254,12 +254,12 @@ macro_rules! simple_callbacks {
             request(room_id "room-id" text, caption "caption" text, as_document "as-document" flag,
                 reply_to "reply-to" text) SendAttachment;
         on_send_poll "send-poll" send_poll
-            request(room_id "room-id" text, question "question" text, answers "answers" list,
+            verdict(room_id "room-id" text, question "question" text, answers "answers" list,
                 multiple "multiple" flag, hide_results "hide-results" flag) SendPoll;
         on_save_file "save-file" save_file
             request(event_id "event-id" text, filename "filename" text) SaveFile;
         on_edit_poll "edit-poll" edit_poll
-            request(event_id "event-id" text, question "question" text, answers "answers" list,
+            verdict(event_id "event-id" text, question "question" text, answers "answers" list,
                 multiple "multiple" flag, hide_results "hide-results" flag) EditPoll;
         on_vote_poll "vote-poll" vote_poll
             request(event_id "event-id" text, answer_id "answer-id" text) VotePoll;
@@ -411,6 +411,7 @@ macro_rules! int_props {
         AudioPositionMs AudioView "AudioView" "position-ms" set_position_ms get_position_ms;
         AudioDurationMs AudioView "AudioView" "duration-ms" set_duration_ms get_duration_ms;
         UnsentSubmission UnsentView "UnsentView" "submission" set_submission get_submission;
+        UnsentShortenBy UnsentView "UnsentView" "shorten-by" set_shorten_by get_shorten_by;
         TypingCount TypingView "TypingView" "count" set_count get_count;
         RingColorIndex CallView "CallView" "ring-color-index" set_ring_color_index get_ring_color_index;
         HerePeople CallView "CallView" "here-people" set_here_people get_here_people;
@@ -775,10 +776,12 @@ macro_rules! user_message_kinds {
         MediaNotViewable          MediaNotViewable        "media-not-viewable";
         AttachmentUnreadable      AttachmentUnreadable    "attachment-unreadable";
         AttachmentTooLarge        AttachmentTooLarge      "attachment-too-large";
+        CaptionTooLong            CaptionTooLong          "caption-too-long";
         SendAttachmentFailed      SendAttachmentFailed    "send-attachment-failed";
         PollVoteFailed            PollVoteFailed          "poll-vote-failed";
         PollEndFailed             PollEndFailed           "poll-end-failed";
         PollEditFailed            PollEditFailed          "poll-edit-failed";
+        PollTooLong               PollTooLong             "poll-too-long";
         VideoPlaybackFailed       VideoPlaybackFailed     "video-playback-failed";
         AudioPlaybackFailed       AudioPlaybackFailed     "audio-playback-failed";
         FileSaveFailed            FileSaveFailed          "file-save-failed";

@@ -25,7 +25,7 @@ use tracing::Instrument;
 use crate::adapters::matrix::member_name::named_member;
 use crate::adapters::matrix::permissions::{room_permissions, space_powers};
 use crate::adapters::matrix::preview::{self, MessagePreview};
-use crate::adapters::matrix::room_state::history_visibility;
+use crate::adapters::matrix::room_state::{event_ids, history_visibility};
 use crate::adapters::matrix::rtc::room_call;
 use crate::domain::member_name::NamedUser;
 use crate::domain::message::{MessagePreviewKind, RichText, ServiceEvent};
@@ -142,6 +142,7 @@ async fn build_room(room: &Room, settings: &NotificationSettings) -> DomainRoom 
         is_direct,
         direct_partner: direct_partner(room),
         is_encrypted: room.encryption_state().is_encrypted(),
+        event_ids: event_ids(room.version().as_ref()),
         history_visibility: history_visibility(&room.history_visibility_or_default()),
         poll_permissions: permissions.polls,
         message_permissions: permissions.messages,

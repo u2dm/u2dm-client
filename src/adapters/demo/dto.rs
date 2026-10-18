@@ -5,6 +5,7 @@ use serde::Deserialize;
 
 use super::{create_room, invite_people, media, message_menu, polls, reactions};
 use crate::domain::auth::Session;
+use crate::domain::event_size::EventIds;
 use crate::domain::image_pack::{ImagePack, ImageUsage, PackId, PackImage, PackOrigin, PackTitle};
 use crate::domain::invite::{Invite, InviteKind};
 use crate::domain::media::{AudioKind, AudioMeta, ImageMeta, VideoMeta, Waveform};
@@ -822,6 +823,7 @@ impl RoomDto {
             is_direct: self.direct,
             direct_partner: direct_partner(self.direct, self.avatar.as_deref()),
             is_encrypted: self.encrypted,
+            event_ids: EventIds::Hashed,
             history_visibility: self.history_visibility.to_visibility(),
             poll_permissions: polls::permissions(),
             message_permissions: message_menu::permissions(),
@@ -891,6 +893,7 @@ impl UnjoinedDto {
             is_direct: false,
             direct_partner: None,
             is_encrypted: false,
+            event_ids: EventIds::Hashed,
             history_visibility: HistoryVisibility::default(),
             poll_permissions: polls::permissions(),
             message_permissions: message_menu::permissions(),
@@ -954,6 +957,7 @@ impl InviteDto {
             is_direct: self.direct,
             direct_partner: direct_partner(self.direct, self.inviter.as_deref()),
             is_encrypted: self.encrypted,
+            event_ids: EventIds::Hashed,
             history_visibility: HistoryVisibility::default(),
             poll_permissions: polls::permissions(),
             message_permissions: message_menu::permissions(),

@@ -32,6 +32,7 @@ use super::reconcile::{
 };
 use super::richtext::recognise_own_user;
 use super::rows::patch_rows_by_id;
+use super::sending;
 use super::session::{begin_session, with_session};
 use super::splice_model::SpliceModel;
 use super::video;
@@ -203,6 +204,7 @@ pub fn dispatch_effect<B: UiBackend>(w: &B::Window, event: Effect, ctx: &UiEvent
             avatar_mxc,
             member_count,
             encrypted,
+            event_ids,
             readable_by_anyone,
             polls,
             messages,
@@ -210,6 +212,7 @@ pub fn dispatch_effect<B: UiBackend>(w: &B::Window, event: Effect, ctx: &UiEvent
             live,
         } => {
             emote::follow_room(id.as_ref());
+            sending::follow_room(&id, encrypted, event_ids, messages);
             if adopt_selected_generation(generation) {
                 set_focus(w, None);
             }
@@ -1567,6 +1570,7 @@ fn apply_lifecycle(w: &impl UiProps, last: Option<&LifecycleView>, next: &Lifecy
         method,
         resolved_homeserver,
         user_id,
+        device_id: _,
         avatar_path,
     } = next;
 
@@ -1763,6 +1767,12 @@ fn apply_unsent(w: &impl UiProps, unsent: Option<&UnsentMessage>) {
     w.set_int(
         IntProp::UnsentSubmission,
         unsent.map_or(0, |unsent| unsent.submission),
+    );
+    w.set_int(
+        IntProp::UnsentShortenBy,
+        unsent
+            .and_then(|unsent| unsent.oversize)
+            .map_or(0, |oversize| i32::from(oversize.shorten_by())),
     );
     w.set_string(
         StringProp::UnsentRoomId,

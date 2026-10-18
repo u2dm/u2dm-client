@@ -3,6 +3,7 @@ use std::sync::Arc;
 use std::{fmt, ops};
 
 use crate::domain::call::RoomCall;
+use crate::domain::event_size::EventIds;
 use crate::domain::member_name::NamedUser;
 use crate::domain::message::{MessagePermissions, MessagePreviewKind, RichText, ServiceEvent};
 use crate::domain::poll::PollPermissions;
@@ -57,6 +58,7 @@ pub struct Room {
     pub is_direct: bool,
     pub direct_partner: Option<UserId>,
     pub is_encrypted: bool,
+    pub event_ids: EventIds,
     pub history_visibility: HistoryVisibility,
     pub poll_permissions: PollPermissions,
     pub message_permissions: MessagePermissions,

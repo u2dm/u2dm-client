@@ -21,8 +21,9 @@ use matrix_sdk::send_queue::{LocalEcho, LocalEchoContent, SendHandle};
 use matrix_sdk_ui::timeline::EventTimelineItem;
 use tokio::time::timeout;
 
-use super::{PRE_QUEUE_LOOKUP_WAIT, composed, local_transaction, queue};
+use super::{PRE_QUEUE_LOOKUP_WAIT, composed, local_transaction, queue, refuse_oversized};
 use crate::adapters::body_emoji;
+use crate::adapters::draft_size::MESSAGE_TYPE;
 use crate::adapters::markdown::{self, Composed};
 use crate::domain::emote::Emote;
 use crate::domain::message::{EditKind, EditTarget, MessageEdit};
@@ -316,16 +317,16 @@ async fn edit_queued(room: &Room, local_id: &str, edit: &MessageEdit) -> Result<
         &composed.mentions,
     )
     .await;
-    let replaced = if matches!(msgtype, MessageType::Text(_)) {
-        let mut revised = RoomMessageEventContentWithoutRelation::new(msgtype);
-        revised.mentions = Some(mentions);
-        handle
-            .edit(revised.with_relation(queued.relates_to).into())
-            .await
+    let mut revised = RoomMessageEventContentWithoutRelation::new(msgtype);
+    revised.mentions = Some(mentions);
+    let revised = revised.with_relation(queued.relates_to);
+    refuse_oversized(room, &revised, MESSAGE_TYPE).await?;
+    let replaced = if matches!(revised.msgtype, MessageType::Text(_)) {
+        handle.edit(revised.into()).await
     } else {
         let (caption, formatted) = queued_caption(composed);
         handle
-            .edit_media_caption(caption, formatted, Some(mentions))
+            .edit_media_caption(caption, formatted, revised.mentions)
             .await
     }
     .map_err(|e| AppError::Other(e.to_string()))?;

@@ -34,6 +34,7 @@ mod ringtone;
 mod router;
 mod rows;
 pub(crate) mod schema;
+mod sending;
 mod session;
 mod splice_model;
 mod spoilers;

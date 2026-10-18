@@ -3,6 +3,7 @@ pub mod auth;
 pub mod call;
 pub mod emote;
 pub mod encryption;
+pub mod event_size;
 pub mod identity;
 pub mod image_pack;
 pub mod invite;

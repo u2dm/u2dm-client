@@ -17,6 +17,7 @@ use crate::domain::call::ring::{CallSignal, RingId};
 use crate::domain::call::sfu::{GrantResult, SfuId};
 use crate::domain::call::{DeviceStanding, KeySendReport, MemberKey, Transport};
 use crate::domain::encryption::{AccountEncryption, IdentityOutcome};
+use crate::domain::event_size::Oversize;
 use crate::domain::identity::{OwnIdentity, RoomAlert};
 use crate::domain::image_pack::PackId;
 use crate::domain::invite_people::{InviteResult, SearchResult};
@@ -548,6 +549,7 @@ impl MessageActionEvent {
 pub(super) enum Enqueue {
     Accepted,
     Refused,
+    Oversized(Oversize),
 }
 
 impl AppEvent {

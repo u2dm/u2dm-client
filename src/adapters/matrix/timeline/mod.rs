@@ -12,6 +12,7 @@ mod poll_ends;
 mod polls;
 mod receipts;
 mod rowless_sends;
+mod size_limit;
 mod source;
 mod state_rows;
 mod subscribe;
@@ -28,7 +29,7 @@ use matrix_sdk::room::reply::{EnforceThread, Reply};
 use matrix_sdk::ruma::events::room::message::{
     AddMentions, MessageType, RoomMessageEventContent, RoomMessageEventContentWithoutRelation,
 };
-use matrix_sdk::ruma::events::{AnyMessageLikeEventContent, Mentions};
+use matrix_sdk::ruma::events::{AnyMessageLikeEventContent, Mentions, MessageLikeEventContent};
 use matrix_sdk::ruma::serde::Raw;
 use matrix_sdk::ruma::{IdParseError, OwnedEventId};
 use matrix_sdk::send_queue::{LocalEchoContent, SendHandle};
@@ -50,6 +51,7 @@ use self::members::Members;
 pub(super) use self::pinned::MatrixPinned;
 use self::poll_ends::EndingPolls;
 use self::receipts::ReceiptLane;
+pub(super) use self::size_limit::refuse_oversized;
 use self::subscribe::subscribe_timeline;
 use self::undecrypted::UndecryptedResponses;
 use super::attachment;
@@ -57,7 +59,9 @@ use super::media::MediaService;
 use super::permissions::message_permissions;
 use super::profile::PronounCache;
 use super::session::ClientHandle;
+use crate::adapters::draft_size::MediaDraft;
 use crate::adapters::markdown::{self, Composed, RoomMentions};
+use crate::adapters::poll_content;
 use crate::domain::emote::Emote;
 use crate::domain::media::OutgoingAttachment;
 use crate::domain::message::MessageEdit;
@@ -243,6 +247,7 @@ async fn composed(room: &Room, text: &str, emotes: &[Emote]) -> Composed {
 }
 
 async fn queue(room: &Room, content: AnyMessageLikeEventContent) -> Result<()> {
+    refuse_oversized(room, &content, &content.event_type().to_string()).await?;
     room.send_queue()
         .send(content)
         .await
@@ -323,13 +328,22 @@ async fn queueable_attachment(
     attachment: &OutgoingAttachment,
 ) -> Result<QueueableAttachment> {
     let picked = &attachment.picked;
+    let content_type = attachment::content_type(picked, attachment.as_document);
+    size_limit::refuse_oversized_media(
+        room,
+        &MediaDraft {
+            attachment,
+            content_type: content_type.as_ref(),
+            thumbnail: attachment::thumbnail_source(picked, &content_type).is_some(),
+        },
+    )
+    .await?;
     if let Some(limit) = upload_limit(&room.client()).await
         && picked.size > limit
     {
         return Err(AppError::AttachmentTooLarge { limit });
     }
 
-    let content_type = attachment::content_type(picked, attachment.as_document);
     let mut config =
         AttachmentConfig::new().info(attachment::attachment_info(picked, &content_type));
     let mut mentions = None;
@@ -466,7 +480,7 @@ impl TimelinePort for MatrixTimeline {
             answers = draft.answers().len(),
             "queueing a poll"
         );
-        queue(&room, polls::start_content(draft)?).await
+        queue(&room, poll_content::start_content(draft)?).await
     }
 
     async fn send_attachment(
