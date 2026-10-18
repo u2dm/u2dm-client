@@ -99,6 +99,12 @@ pub enum ProbeCommand {
     SetMicrophone {
         on: bool,
     },
+    SetCamera {
+        on: bool,
+    },
+    ShareScreen {
+        on: bool,
+    },
     JoinSuccessor {
         #[serde(default)]
         room_id: Option<String>,
@@ -720,6 +726,8 @@ pub fn to_driven(command: ProbeCommand, selected: Selection<'_>) -> Result<Drive
         ProbeCommand::AnswerCall { room_id } => UiCommand::AnswerCall(RoomId::new(room_id)),
         ProbeCommand::LeaveCall => UiCommand::LeaveCall,
         ProbeCommand::SetMicrophone { on } => UiCommand::SetMicrophone(on),
+        ProbeCommand::SetCamera { on } => UiCommand::SetCamera(on),
+        ProbeCommand::ShareScreen { on } => UiCommand::ShareScreen(on),
         ProbeCommand::JoinSuccessor { room_id } => {
             return in_room(room_id, selected, UiCommand::JoinSuccessor);
         }

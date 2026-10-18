@@ -1,4 +1,4 @@
-import { CallPhase, CallRefusal, CallTileState, Delivery, EmojiArt, MediaFailure, PresenceLine, PreviewKind, RoomCallMark, ServiceKind, ShieldReason, UpgradeLink, UserMessageKind } from "./enums.slint";
+import { CallPhase, CallRefusal, CallScreen, CallScreenRefusal, CallTileState, Delivery, EmojiArt, MediaFailure, PresenceLine, PreviewKind, RoomCallMark, ServiceKind, ShieldReason, UpgradeLink, UserMessageKind } from "./enums.slint";
 
 export global UserMessages {
     public pure function text(kind: UserMessageKind, detail: string) -> string {
@@ -798,6 +798,29 @@ export global CallWords {
             return @tr("You may not join calls in this room");
         }
         return @tr("Verify this session to join encrypted calls");
+    }
+
+    public pure function share(screen: CallScreen, refusal: CallScreenRefusal) -> string {
+        if screen == CallScreen.choosing {
+            return @tr("Cancel sharing your screen");
+        }
+        if screen == CallScreen.on {
+            return @tr("Stop sharing your screen");
+        }
+        if screen == CallScreen.failed {
+            return @tr("Your screen share did not start, try again");
+        }
+        if screen == CallScreen.unavailable {
+            if refusal == CallScreenRefusal.not-wayland {
+                return @tr("Screen sharing needs a Wayland session");
+            }
+            return @tr("Screen sharing needs the desktop's screen-cast portal");
+        }
+        return @tr("Share your screen");
+    }
+
+    public pure function screen-of(name: string) -> string {
+        return @tr("{}'s screen", name);
     }
 }
 

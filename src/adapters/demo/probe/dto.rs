@@ -5,15 +5,16 @@ use crate::adapters::ui::identity_banner;
 use crate::commands::messages::{UserMessage, UserMessageKind};
 use crate::commands::ui::Draft;
 use crate::commands::view::{
-    ActiveCall, AppViewState, AttachmentView, AudioView, CallPhase, CallTile, CallView,
+    ActiveCall, AppViewState, AttachmentView, AudioView, CallPhase, CallTile, CallView, CameraView,
     CantDecrypt, CardStatus, CopiedLink, CreateRoomView, DirectoryView, EncryptionStep,
     EncryptionView, IdentityAlertView, InvitePeopleView, InviteView, InviteeRow, JoinOffer,
     JoinRefusal, LifecycleView, LoginStep, MentionsView, MicrophoneView, NotificationsView,
     PackView, PaginationView, PinnedView, PresenceView, ReadersView, RoomInfoView, RoomLogView,
-    RoomMenuTarget, RoomPreviewSheet, RoomPreviewView, RosterRow, SourceState, SpaceIndexRow,
-    SpaceIndexView, SpaceMatch, TileState, Toast, TrackFile, TypingView, UnsentMessage,
-    UpgradeView, UserInfoView, VideoView,
+    RoomMenuTarget, RoomPreviewSheet, RoomPreviewView, RosterRow, ScreenView, SourceState,
+    SpaceIndexRow, SpaceIndexView, SpaceMatch, TileKind, TileState, Toast, TrackFile, TypingView,
+    UnsentMessage, UpgradeView, UserInfoView, VideoView,
 };
+use crate::domain::call::video::ScreenRefusal;
 use crate::domain::call::{CallIntent, RoomCall};
 use crate::domain::encryption::KeyStorage;
 use crate::domain::image_pack::{ImagePack, ImageUsage, PackOrigin, PackTitle};
@@ -189,6 +190,9 @@ struct ActiveCallDto {
     encrypted: bool,
     video: bool,
     microphone: &'static str,
+    camera: &'static str,
+    screen: &'static str,
+    screen_refusal: Option<&'static str>,
     tiles: Vec<CallTileDto>,
 }
 
@@ -197,9 +201,11 @@ struct CallTileDto {
     member: String,
     name: String,
     own: bool,
+    kind: &'static str,
     state: &'static str,
     muted: bool,
     speaking: bool,
+    video: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -879,6 +885,24 @@ fn active_call(active: &ActiveCall) -> ActiveCallDto {
             MicrophoneView::Off => "off",
             MicrophoneView::Failed => "failed",
         },
+        camera: match active.camera {
+            CameraView::Off => "off",
+            CameraView::Starting => "starting",
+            CameraView::On => "on",
+            CameraView::Failed => "failed",
+        },
+        screen: match active.screen {
+            ScreenView::Off => "off",
+            ScreenView::Choosing => "choosing",
+            ScreenView::On => "on",
+            ScreenView::Failed => "failed",
+            ScreenView::Unavailable(_) => "unavailable",
+        },
+        screen_refusal: match active.screen {
+            ScreenView::Unavailable(ScreenRefusal::NotWayland) => Some("not-wayland"),
+            ScreenView::Unavailable(ScreenRefusal::NoPortal) => Some("no-portal"),
+            _ => None,
+        },
         tiles: active.tiles.iter().map(call_tile).collect(),
     }
 }
@@ -888,6 +912,10 @@ fn call_tile(tile: &CallTile) -> CallTileDto {
         member: tile.member.to_string(),
         name: tile.name.shown(),
         own: tile.own,
+        kind: match tile.kind {
+            TileKind::Person => "person",
+            TileKind::Screen => "screen",
+        },
         state: match tile.state {
             TileState::Joining => "joining",
             TileState::WaitingForKeys => "waiting-for-keys",
@@ -898,6 +926,7 @@ fn call_tile(tile: &CallTile) -> CallTileDto {
         },
         muted: tile.muted,
         speaking: tile.speaking,
+        video: tile.video.as_ref().map(ToString::to_string),
     }
 }
 

@@ -48,7 +48,7 @@ use std::sync::Arc;
 
 use super::ui::SlintUiAdapter;
 use crate::ports::browser::BrowserPort;
-use crate::ports::call::CallMediaPort;
+use crate::ports::call::{CallMediaPort, CallVideoPort};
 use crate::ports::handoff::HandoffPort;
 use crate::ports::matrix::AuthPort;
 use crate::ports::media::{MediaCache, MediaFilePort};
@@ -95,8 +95,10 @@ pub fn notifier() -> Arc<dyn NotifierPort> {
     notifications::notifier()
 }
 
-pub fn call_media() -> Arc<dyn CallMediaPort> {
-    Arc::new(call_media::DemoCallMedia)
+pub fn call_media() -> (Arc<dyn CallMediaPort>, Arc<dyn CallVideoPort>) {
+    let demo = Arc::new(call_media::DemoCallMedia::default());
+    let media: Arc<dyn CallMediaPort> = Arc::<call_media::DemoCallMedia>::clone(&demo);
+    (media, demo)
 }
 
 pub fn handoff() -> Arc<dyn HandoffPort> {

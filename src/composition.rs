@@ -21,7 +21,7 @@ use crate::adapters::notifier;
 use crate::adapters::storage::SecureStorage;
 use crate::config::AppConfig;
 use crate::ports::browser::BrowserPort;
-use crate::ports::call::CallMediaPort;
+use crate::ports::call::{CallMediaPort, CallVideoPort};
 use crate::ports::handoff::HandoffPort;
 use crate::ports::matrix::AuthPort;
 #[cfg(feature = "matrix")]
@@ -42,6 +42,7 @@ pub struct Backend {
     pub notifier: Arc<dyn NotifierPort>,
     pub handoff: Arc<dyn HandoffPort>,
     pub call_media: Option<Arc<dyn CallMediaPort>>,
+    pub call_video: Option<Arc<dyn CallVideoPort>>,
 }
 
 impl Backend {
@@ -81,6 +82,7 @@ impl Backend {
     fn fake() -> Self {
         tracing::info!("demo mode: serving fake rooms, spaces and timeline");
         demo::log_data_source();
+        let (call_media, call_video) = demo::call_media();
         Self {
             auth: demo::matrix(),
             storage: demo::storage(),
@@ -89,7 +91,8 @@ impl Backend {
             browser: demo::browser(),
             notifier: demo::notifier(),
             handoff: demo::handoff(),
-            call_media: Some(demo::call_media()),
+            call_media: Some(call_media),
+            call_video: Some(call_video),
         }
     }
 
@@ -104,6 +107,7 @@ impl Backend {
             LocalDataOwnership::AnotherInstance { .. }
             | LocalDataOwnership::Undetermined { .. } => Arc::new(SilentHandoff),
         };
+        let calls = call_media::production();
         Self {
             auth: Arc::new(adapter),
             storage: Arc::new(SecureStorage::new(&cfg.data_dir, runtime)),
@@ -112,7 +116,8 @@ impl Backend {
             browser: Arc::new(DesktopBrowser::new()),
             notifier: notifier::desktop(),
             handoff,
-            call_media: call_media::production(),
+            call_media: calls.media,
+            call_video: calls.video,
         }
     }
 }

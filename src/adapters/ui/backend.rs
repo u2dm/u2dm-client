@@ -6,6 +6,7 @@ use std::sync::Arc;
 use slint::{ComponentHandle, Image, Model, ModelRc, SharedString, VecModel};
 use tokio::sync::{OwnedSemaphorePermit, mpsc, watch};
 
+use super::call_video;
 use super::clock::install_clock_invalidation;
 use super::decode::{
     AvatarSlot, DecodeFailure, DecodeOutcome, MediaSlot, TimelineItemKey, advance_animations,
@@ -53,6 +54,7 @@ use crate::domain::room::{Room, RoomId, Space};
 use crate::domain::room_info::{Reader, RosterMember};
 use crate::domain::room_log::LogLine;
 use crate::domain::timeline::EnrichmentDelta;
+use crate::ports::call::CallVideoPort;
 use crate::ports::handoff::HandoffPort;
 use crate::ports::media::MediaCache;
 use crate::ports::notifier::NotifierPort;
@@ -80,6 +82,7 @@ pub trait UiBackend: Sized + 'static {
     fn attach_models(window: &Self::Window, models: &Models<Self>);
     fn bind_browse_packs(window: &Self::Window, browse: impl Fn(PackSurface, &str, i32) + 'static);
     fn bind_reveal_spoilers(window: &Self::Window, reveal: impl Fn(&str) + 'static);
+    fn bind_call_tile_sized(window: &Self::Window, sized: impl Fn(&str, i32, i32) + 'static);
     fn notification_text(window: &Self::Window, words: &NoticeWords<'_>) -> SharedString;
 
     fn convert_message(
@@ -196,8 +199,11 @@ pub fn spawn_event_handler<B: UiBackend>(
     media_cache: Arc<dyn MediaCache>,
     notifier: Arc<dyn NotifierPort>,
     handoff: &dyn HandoffPort,
+    call_video: Option<Arc<dyn CallVideoPort>>,
 ) {
     begin_session::<B>(window);
+    call_video::install(call_video);
+    B::bind_call_tile_sized(window, call_video::sized);
     follow_activations::<B>(window, notifier.as_ref());
     follow_handoffs::<B>(window, handoff);
 

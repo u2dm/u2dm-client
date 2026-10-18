@@ -4,8 +4,8 @@ use std::time::Duration;
 use livekit::e2ee::EncryptionType;
 use livekit::e2ee::key_provider::KeyProvider;
 use livekit::prelude::{
-    ConnectionState, Participant, RemoteParticipant, RemoteTrackPublication, Room, RoomEvent,
-    RoomOptions, TrackSource,
+    ConnectionState, Participant, RemoteParticipant, RemoteTrack, RemoteTrackPublication,
+    RemoteVideoTrack, Room, RoomEvent, RoomOptions, TrackPublication, TrackSource,
 };
 use livekit::webrtc::native::frame_cryptor::EncryptionState;
 use tokio::sync::mpsc;
@@ -14,10 +14,12 @@ use tokio::time::timeout;
 use tracing::Instrument;
 
 use super::e2ee;
+use super::feeds::{Feeds, feed_of};
 use crate::domain::call::identity::MediaIdentity;
 use crate::domain::call::keys::KeyIndex;
 use crate::domain::call::media::{Decryption, MediaEvent, SfuState};
 use crate::domain::call::sfu::{SfuGrant, SfuId, SfuRole};
+use crate::domain::call::video::VideoKind;
 
 const CONNECT_WAIT: Duration = Duration::from_secs(15);
 pub(super) const MEDIA_CLOSE_WAIT: Duration = Duration::from_secs(1);
@@ -34,6 +36,7 @@ pub(super) struct Dial<'a> {
     pub(super) grant: &'a SfuGrant,
     pub(super) encryption: Option<&'a KeyProvider>,
     pub(super) own_index: &'a OwnIndex,
+    pub(super) feeds: &'a Arc<Feeds>,
     pub(super) events_tx: &'a mpsc::UnboundedSender<MediaEvent>,
 }
 
@@ -65,6 +68,7 @@ pub(super) async fn dial(dial: Dial<'_>) -> Result<Connection, String> {
             events,
             events_tx: dial.events_tx.clone(),
             own_index: Arc::clone(dial.own_index),
+            feeds: Arc::clone(dial.feeds),
             encrypted: dial.encryption.is_some(),
         })
         .in_current_span(),
@@ -104,6 +108,7 @@ struct Pump {
     events: mpsc::UnboundedReceiver<RoomEvent>,
     events_tx: mpsc::UnboundedSender<MediaEvent>,
     own_index: OwnIndex,
+    feeds: Arc<Feeds>,
     encrypted: bool,
 }
 
@@ -140,10 +145,16 @@ impl Pump {
             RoomEvent::ParticipantConnected(participant) => self.present(&participant, true),
             RoomEvent::ParticipantDisconnected(participant) => self.present(&participant, false),
             RoomEvent::TrackSubscribed {
+                track,
                 publication,
                 participant,
-                ..
-            } => self.publication(&participant, &publication),
+            } => {
+                if self.publication(&participant, &publication)
+                    && let RemoteTrack::Video(video) = track
+                {
+                    self.video_subscribed(&participant, video, publication);
+                }
+            }
             RoomEvent::TrackUnsubscribed {
                 publication,
                 participant,
@@ -152,11 +163,7 @@ impl Pump {
             | RoomEvent::TrackUnpublished {
                 publication,
                 participant,
-            } => {
-                if publication.source() == TrackSource::Microphone {
-                    self.unheard(&participant);
-                }
-            }
+            } => self.track_gone(&participant, publication.source()),
             RoomEvent::TrackSubscriptionFailed {
                 participant, error, ..
             } => {
@@ -165,11 +172,11 @@ impl Pump {
             RoomEvent::TrackMuted {
                 participant,
                 publication,
-            } => self.muted(&participant, publication.source(), true),
+            } => self.muted(&participant, &publication, true),
             RoomEvent::TrackUnmuted {
                 participant,
                 publication,
-            } => self.muted(&participant, publication.source(), false),
+            } => self.muted(&participant, &publication, false),
             RoomEvent::ActiveSpeakersChanged { speakers } => self.emit(MediaEvent::Speaking {
                 sfu: self.sfu.clone(),
                 speakers: speakers
@@ -229,7 +236,11 @@ impl Pump {
         });
     }
 
-    fn publication(&self, participant: &RemoteParticipant, publication: &RemoteTrackPublication) {
+    fn publication(
+        &self,
+        participant: &RemoteParticipant,
+        publication: &RemoteTrackPublication,
+    ) -> bool {
         let identity = identity_of(participant);
         if self.encrypted && publication.encryption_type() == EncryptionType::None {
             tracing::warn!(sfu = %self.sfu, %identity, "refused unencrypted media in an encrypted call");
@@ -238,26 +249,83 @@ impl Pump {
                 identity,
                 state: Decryption::Failed,
             });
-            return;
+            return false;
         }
-        if publication.source() != TrackSource::Microphone {
-            return;
+        if publication.source() == TrackSource::Microphone {
+            self.emit(MediaEvent::Muted {
+                sfu: self.sfu.clone(),
+                identity,
+                muted: publication.is_muted(),
+            });
         }
-        self.emit(MediaEvent::Muted {
+        true
+    }
+
+    fn video_subscribed(
+        &self,
+        participant: &RemoteParticipant,
+        track: RemoteVideoTrack,
+        publication: RemoteTrackPublication,
+    ) {
+        let Some(kind) = video_kind(publication.source()) else {
+            return;
+        };
+        let identity = identity_of(participant);
+        let feed = feed_of(&self.sfu, &identity, kind);
+        tracing::debug!(sfu = %self.sfu, %identity, ?kind, muted = publication.is_muted(), "a call participant's video arrived");
+        let muted = publication.is_muted();
+        self.feeds.add_remote(&feed, track, publication);
+        self.emit(MediaEvent::Video {
             sfu: self.sfu.clone(),
             identity,
-            muted: publication.is_muted(),
+            kind,
+            feed: (!muted).then_some(feed),
         });
     }
 
-    fn muted(&self, participant: &Participant, source: TrackSource, muted: bool) {
-        if matches!(participant, Participant::Local(_)) || source != TrackSource::Microphone {
+    fn track_gone(&self, participant: &RemoteParticipant, source: TrackSource) {
+        if source == TrackSource::Microphone {
+            self.unheard(participant);
             return;
         }
-        self.emit(MediaEvent::Muted {
+        let Some(kind) = video_kind(source) else {
+            return;
+        };
+        let identity = identity_of(participant);
+        tracing::debug!(sfu = %self.sfu, %identity, ?kind, "a call participant's video ended");
+        self.feeds
+            .remove_remote(&feed_of(&self.sfu, &identity, kind));
+        self.emit(MediaEvent::Video {
             sfu: self.sfu.clone(),
-            identity: MediaIdentity::new(participant.identity().to_string()),
-            muted,
+            identity,
+            kind,
+            feed: None,
+        });
+    }
+
+    fn muted(&self, participant: &Participant, publication: &TrackPublication, muted: bool) {
+        if matches!(participant, Participant::Local(_)) {
+            return;
+        }
+        let identity = MediaIdentity::new(participant.identity().to_string());
+        let source = publication.source();
+        if source == TrackSource::Microphone {
+            self.emit(MediaEvent::Muted {
+                sfu: self.sfu.clone(),
+                identity,
+                muted,
+            });
+            return;
+        }
+        let Some(kind) = video_kind(source) else {
+            return;
+        };
+        let feed = feed_of(&self.sfu, &identity, kind);
+        self.emit(MediaEvent::Video {
+            sfu: self.sfu.clone(),
+            identity,
+            kind,
+            feed: (!muted).then_some(feed),
         });
     }
 
@@ -290,6 +358,14 @@ impl Pump {
         if let Some(index) = index {
             use_own_index(&self.room, index);
         }
+    }
+}
+
+const fn video_kind(source: TrackSource) -> Option<VideoKind> {
+    match source {
+        TrackSource::Camera => Some(VideoKind::Camera),
+        TrackSource::Screenshare => Some(VideoKind::Screen),
+        TrackSource::Unknown | TrackSource::Microphone | TrackSource::ScreenshareAudio => None,
     }
 }
 

@@ -54,7 +54,8 @@ export component TimelineView inherits Rectangle {
     property <bool> shows-band: CallView.active && CallView.active-room-id == root.room-id;
     property <bool> shows-bar: CallView.active && CallView.active-room-id != root.room-id;
     property <bool> call-maximized: root.shows-band && Shell.call-maximized;
-    property <length> call-height: root.shows-band ? Metrics.call-band : root.shows-bar ? Metrics.call-bar : 0px;
+    property <length> band-height: CallView.active-video ? Metrics.call-band-video : Metrics.call-band;
+    property <length> call-height: root.shows-band ? root.band-height : root.shows-bar ? Metrics.call-bar : 0px;
     property <bool> has-room: RoomView.selected-room-name != "";
     property <bool> is-loading: RoomView.timeline-status == TimelineState.loading
         || RoomView.timeline-status == TimelineState.loading-unread
@@ -403,7 +404,7 @@ export component TimelineView inherits Rectangle {
             x: 0;
             y: root.header-height;
             width: parent.width;
-            height: root.call-maximized ? parent.height - root.header-height - input.height : Metrics.call-band;
+            height: root.call-maximized ? parent.height - root.header-height - input.height : root.band-height;
         }
 
         if root.shows-bar: CallBar {

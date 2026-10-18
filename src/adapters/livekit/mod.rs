@@ -1,5 +1,8 @@
+mod camera;
 mod connection;
 mod e2ee;
+mod feeds;
+mod screen;
 mod session;
 
 use std::sync::{Arc, Mutex, Once};
@@ -7,18 +10,23 @@ use std::sync::{Arc, Mutex, Once};
 use async_trait::async_trait;
 use livekit::prelude::PlatformAudio;
 use rustls::crypto::aws_lc_rs;
+use tokio::runtime::Handle;
 use tokio::sync::mpsc;
 use tokio::task::spawn_blocking;
+use tracing::Instrument;
 
+use self::feeds::Feeds;
 use self::session::LiveKitSession;
 use crate::domain::call::media::{MediaEvent, MediaSetup};
+use crate::domain::call::video::{FeedId, FrameSize, Framing, ScreenShare};
 use crate::error::{AppError, Result};
-use crate::ports::call::{CallMediaPort, MediaSession};
+use crate::ports::call::{CallMediaPort, CallVideoPort, FrameSink, MediaSession};
 
 static TLS_PROVIDER: Once = Once::new();
 
 pub struct LiveKitMedia {
     broken: Arc<Mutex<Option<String>>>,
+    feeds: Arc<Feeds>,
 }
 
 impl LiveKitMedia {
@@ -30,7 +38,22 @@ impl LiveKitMedia {
         });
         Self {
             broken: Arc::new(Mutex::new(None)),
+            feeds: Arc::new(Feeds::default()),
         }
+    }
+}
+
+impl CallVideoPort for LiveKitMedia {
+    fn attach(&self, feed: &FeedId, wanted: FrameSize, framing: Framing, sink: FrameSink) {
+        self.feeds.attach(feed, wanted, framing, sink);
+    }
+
+    fn resize(&self, feed: &FeedId, wanted: FrameSize) {
+        self.feeds.resize(feed, wanted);
+    }
+
+    fn detach(&self, feed: &FeedId) {
+        self.feeds.detach(feed);
     }
 }
 
@@ -60,12 +83,31 @@ impl CallMediaPort for LiveKitMedia {
             }
         };
         log_devices(&audio);
+        tell_screen_refusal(events_tx.clone());
+        self.feeds.clear();
+        self.feeds.bind_runtime(Handle::current());
         Ok(Box::new(LiveKitSession::new(
             audio,
             setup.encrypted,
+            Arc::clone(&self.feeds),
             events_tx,
         )))
     }
+}
+
+fn tell_screen_refusal(events_tx: mpsc::UnboundedSender<MediaEvent>) {
+    tokio::spawn(
+        async move {
+            let Some(refusal) = screen::refusal().await else {
+                return;
+            };
+            let unavailable = MediaEvent::Screen(ScreenShare::Unavailable(refusal));
+            if events_tx.send(unavailable).is_err() {
+                tracing::debug!("the call media closed before the screen-share check ended");
+            }
+        }
+        .in_current_span(),
+    );
 }
 
 fn log_devices(audio: &PlatformAudio) {

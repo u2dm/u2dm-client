@@ -14,6 +14,8 @@ import {
     TextSplice,
     StartCallRequest,
     MicrophoneRequest,
+    CameraRequest,
+    ScreenShareRequest,
 } from "./types.slint";
 import { NotifyMode, PackSurface } from "./enums.slint";
 
@@ -142,6 +144,9 @@ export global Actions {
     callback answer-call(string);
     callback leave-call();
     callback set-microphone(MicrophoneRequest);
+    callback set-camera(CameraRequest);
+    callback share-screen(ScreenShareRequest);
+    callback call-tile-sized(string, int, int);
     callback user-activity-changed(bool);
     callback composer-changed(string, bool, int);
     callback paginate-backwards();

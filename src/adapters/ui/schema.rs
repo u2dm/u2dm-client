@@ -174,6 +174,8 @@ macro_rules! simple_callbacks {
         on_answer_call "answer-call" answer_call room AnswerCall;
         on_leave_call "leave-call" leave_call plain LeaveCall;
         on_set_microphone "set-microphone" set_microphone request(on "on" flag) SetMicrophone;
+        on_set_camera "set-camera" set_camera request(on "on" flag) SetCamera;
+        on_share_screen "share-screen" share_screen request(on "on" flag) ShareScreen;
         on_select_room "select-room" select_room room SelectRoom;
         on_open_notification "open-notification" open_notification room OpenNotification;
         on_select_space "select-space" select_space opt_room SelectSpace;
@@ -553,6 +555,12 @@ macro_rules! enum_props {
             CallView "CallView" "phase" set_phase get_phase;
         CallMic set_call_mic(MicrophoneView)
             CallView "CallView" "mic" set_mic get_mic;
+        CallCamera set_call_camera(CameraView)
+            CallView "CallView" "camera" set_camera get_camera;
+        CallScreen set_call_screen(CallScreenMark)
+            CallView "CallView" "screen" set_screen get_screen;
+        CallScreenRefusal set_call_screen_refusal(ScreenRefusal)
+            CallView "CallView" "screen-refusal" set_screen_refusal get_screen_refusal;
     } };
 }
 pub(crate) use enum_props;
@@ -1194,6 +1202,35 @@ macro_rules! call_mics {
 }
 pub(crate) use call_mics;
 
+macro_rules! call_cameras {
+    ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
+        Off      Off      "off";
+        Starting Starting "starting";
+        On       On       "on";
+        Failed   Failed   "failed";
+    } };
+}
+pub(crate) use call_cameras;
+
+macro_rules! call_screens {
+    ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
+        Off         Off         "off";
+        Choosing    Choosing    "choosing";
+        On          On          "on";
+        Failed      Failed      "failed";
+        Unavailable Unavailable "unavailable";
+    } };
+}
+pub(crate) use call_screens;
+
+macro_rules! call_screen_refusals {
+    ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
+        NotWayland NotWayland "not-wayland";
+        NoPortal   NoPortal   "no-portal";
+    } };
+}
+pub(crate) use call_screen_refusals;
+
 macro_rules! call_tile_marks {
     ($cb:ident $($pre:tt)*) => { $cb! { $($pre)*
         Joining          Joining          "joining";
@@ -1688,6 +1725,11 @@ macro_rules! call_tile_fields {
         state set_state "state" enumk(CallTileMark);
         muted set_muted "muted" flag;
         speaking set_speaking "speaking" flag;
+        feed set_feed "feed" text;
+        has_frame set_has_frame "has-frame" flag;
+        frame set_frame "frame" image;
+        mirrored set_mirrored "mirrored" flag;
+        screen set_screen "screen" flag;
     } };
 }
 pub(crate) use call_tile_fields;

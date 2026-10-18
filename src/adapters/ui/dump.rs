@@ -9,12 +9,13 @@ use tokio::sync::oneshot;
 use super::activity;
 use super::audio;
 use super::backend::UiBackend;
-use super::context_press;
 use super::fields::{
-    BodyLineFields, BodyPieceFields, LogLineFields, MessageFields, PollAnswerFields, ReactionFields,
+    BodyLineFields, BodyPieceFields, CallTileFields, LogLineFields, MessageFields,
+    PollAnswerFields, ReactionFields,
 };
 use super::props::{BoolProp, EnumProp, IntProp, StringProp, UiProps};
 use super::ringtone;
+use super::{call_video, context_press};
 
 #[derive(Serialize)]
 pub struct ReactionRowDump {
@@ -179,6 +180,17 @@ pub struct CallDump {
     pub bar: bool,
     pub elapsed: String,
     pub card_answerable: bool,
+    pub tiles: Vec<CallTileDump>,
+}
+
+#[derive(Serialize)]
+pub struct CallTileDump {
+    pub member: String,
+    pub feed: String,
+    pub has_frame: bool,
+    pub frame_serial: u64,
+    pub mirrored: bool,
+    pub screen: bool,
 }
 
 #[derive(Serialize)]
@@ -309,7 +321,7 @@ fn collect<B: UiBackend>(window: &B::Window) -> TimelineDump {
         audio: audio_view(window),
         room_menu: room_menu_view(window),
         room_log: room_log_view::<B>(window),
-        call: call_view(window),
+        call: call_view::<B>(window),
         title: window.get_string(StringProp::WindowTitleText).to_string(),
     }
 }
@@ -343,7 +355,7 @@ fn room_log_view<B: UiBackend>(window: &B::Window) -> RoomLogDump {
     }
 }
 
-fn call_view(window: &impl UiProps) -> CallDump {
+fn call_view<B: UiBackend>(window: &B::Window) -> CallDump {
     let here = window.get_string(StringProp::HereRoomId);
     let selected = window.get_string(StringProp::SelectedRoomId);
     let active = window.get_bool(BoolProp::ActiveVisible);
@@ -361,6 +373,18 @@ fn call_view(window: &impl UiProps) -> CallDump {
         bar: active && !in_call_room,
         elapsed: window.get_string(StringProp::CallElapsed).to_string(),
         card_answerable: window.get_bool(BoolProp::RingAnswerable),
+        tiles: B::models()
+            .call_tiles
+            .iter()
+            .map(|tile| CallTileDump {
+                member: tile.member().to_owned(),
+                feed: tile.feed().to_owned(),
+                has_frame: tile.has_frame(),
+                frame_serial: call_video::frames_of(tile.feed()),
+                mirrored: tile.mirrored(),
+                screen: tile.screen(),
+            })
+            .collect(),
     }
 }
 

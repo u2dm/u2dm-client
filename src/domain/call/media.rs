@@ -2,6 +2,7 @@ use std::fmt;
 
 use super::identity::MediaIdentity;
 use super::sfu::SfuId;
+use super::video::{Camera, FeedId, ScreenShare, VideoKind};
 use crate::domain::room::RoomId;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -71,4 +72,12 @@ pub enum MediaEvent {
         state: Decryption,
     },
     Microphone(Microphone),
+    Camera(Camera),
+    Screen(ScreenShare),
+    Video {
+        sfu: SfuId,
+        identity: MediaIdentity,
+        kind: VideoKind,
+        feed: Option<FeedId>,
+    },
 }

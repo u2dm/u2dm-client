@@ -331,6 +331,8 @@ pub(super) fn command_allowed(phase: AppPhase, cmd: &UiCommand) -> bool {
         | UiCommand::AnswerCall(_)
         | UiCommand::LeaveCall
         | UiCommand::SetMicrophone(_)
+        | UiCommand::SetCamera(_)
+        | UiCommand::ShareScreen(_)
         | UiCommand::DismissToast => phase == AppPhase::Syncing,
     }
 }

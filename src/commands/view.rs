@@ -7,6 +7,7 @@ use super::messages::{UserMessage, UserMessageKind};
 use super::ui::Draft;
 use crate::domain::auth::{LoginMethod, Session};
 use crate::domain::call::MemberKey;
+use crate::domain::call::video::{FeedId, ScreenRefusal};
 use crate::domain::encryption::{KeyStorage, Recovery, RecoveryKey, Standing};
 use crate::domain::identity::IdentityAlert;
 use crate::domain::image_pack::ImagePacks;
@@ -313,14 +314,22 @@ pub enum TileState {
     Unreachable,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TileKind {
+    Person,
+    Screen,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CallTile {
     pub member: MemberKey,
     pub name: NamedUser,
     pub own: bool,
+    pub kind: TileKind,
     pub state: TileState,
     pub muted: bool,
     pub speaking: bool,
+    pub video: Option<FeedId>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -328,6 +337,23 @@ pub enum MicrophoneView {
     On,
     Off,
     Failed,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CameraView {
+    Off,
+    Starting,
+    On,
+    Failed,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ScreenView {
+    Off,
+    Choosing,
+    On,
+    Failed,
+    Unavailable(ScreenRefusal),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -340,6 +366,8 @@ pub struct ActiveCall {
     pub encrypted: bool,
     pub video: bool,
     pub microphone: MicrophoneView,
+    pub camera: CameraView,
+    pub screen: ScreenView,
     pub tiles: Arc<[CallTile]>,
 }
 

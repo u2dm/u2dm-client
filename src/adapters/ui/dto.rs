@@ -19,15 +19,15 @@ use super::present::{
 };
 use super::richtext::{self, Cover, InlineContent, InlineLine, InlinePiece, RoomWord, Spoilers};
 use super::schema::{
-    call_offers, call_tile_marks, define_ui_enum, define_ui_names, emoji_arts, media_failures,
-    media_states, member_row_kinds, pack_surfaces, room_call_marks, room_row_kinds, spoiler_states,
-    variant_named,
+    call_offers, call_screens, call_tile_marks, define_ui_enum, define_ui_names, emoji_arts,
+    media_failures, media_states, member_row_kinds, pack_surfaces, room_call_marks, room_row_kinds,
+    spoiler_states, variant_named,
 };
 use super::spoilers::{keep_covered_body, spoilers_on};
 use crate::commands::messages::UserMessageKind;
 use crate::commands::view::{
     CallTile, CantDecrypt, ChildAccess, InviteeRow, InviteeState, JoinOffer, RoomCard, RosterRow,
-    SpaceIndexRow, SpaceMatch, TileState,
+    ScreenView, SpaceIndexRow, SpaceMatch, TileKind, TileState,
 };
 use crate::domain::image_pack::{ImagePack, ImageUsage, PackId, PackImage, PackOrigin, PackTitle};
 use crate::domain::invite::{Invite, InviteKind};
@@ -57,6 +57,7 @@ member_row_kinds!(define_ui_enum MemberRowKind;);
 room_row_kinds!(define_ui_enum RoomRowKind;);
 room_call_marks!(define_ui_enum RoomCallMark;);
 call_offers!(define_ui_enum CallOfferMark;);
+call_screens!(define_ui_enum CallScreenMark;);
 call_tile_marks!(define_ui_enum CallTileMark;);
 emoji_arts!(define_ui_enum EmojiArt;);
 spoiler_states!(define_ui_enum SpoilerState;);
@@ -596,6 +597,7 @@ pub struct InviteeDto {
     pub has_avatar: bool,
 }
 
+#[allow(clippy::struct_excessive_bools)]
 pub struct CallTileDto {
     pub member: SharedString,
     pub name: SharedString,
@@ -605,6 +607,11 @@ pub struct CallTileDto {
     pub state: CallTileMark,
     pub muted: bool,
     pub speaking: bool,
+    pub feed: SharedString,
+    pub has_frame: bool,
+    pub frame: Option<Image>,
+    pub mirrored: bool,
+    pub screen: bool,
 }
 
 pub struct LogLineDto {
@@ -1671,6 +1678,14 @@ pub fn call_tile_to_dto(tile: &CallTile) -> CallTileDto {
         state: call_tile_mark(tile.state),
         muted: tile.muted,
         speaking: tile.speaking,
+        feed: tile
+            .video
+            .as_ref()
+            .map_or_else(SharedString::new, |feed| SharedString::from(feed.as_ref())),
+        has_frame: false,
+        frame: None,
+        mirrored: tile.own && tile.kind == TileKind::Person,
+        screen: tile.kind == TileKind::Screen,
     }
 }
 
@@ -1682,6 +1697,16 @@ const fn call_tile_mark(state: TileState) -> CallTileMark {
         TileState::CantDecrypt(CantDecrypt::NoKey) => CallTileMark::CantDecrypt,
         TileState::CantDecrypt(CantDecrypt::NotCrossSigned) => CallTileMark::UnverifiedDevice,
         TileState::Unreachable => CallTileMark::Unreachable,
+    }
+}
+
+pub const fn call_screen_mark(screen: ScreenView) -> CallScreenMark {
+    match screen {
+        ScreenView::Off => CallScreenMark::Off,
+        ScreenView::Choosing => CallScreenMark::Choosing,
+        ScreenView::On => CallScreenMark::On,
+        ScreenView::Failed => CallScreenMark::Failed,
+        ScreenView::Unavailable(_) => CallScreenMark::Unavailable,
     }
 }
 

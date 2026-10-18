@@ -411,6 +411,26 @@ export enum CallMic {
     failed,
 }
 
+export enum CallCamera {
+    off,
+    starting,
+    on,
+    failed,
+}
+
+export enum CallScreen {
+    off,
+    choosing,
+    on,
+    failed,
+    unavailable,
+}
+
+export enum CallScreenRefusal {
+    not-wayland,
+    no-portal,
+}
+
 export enum CallTileState {
     joining,
     waiting-for-keys,

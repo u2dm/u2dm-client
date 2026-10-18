@@ -12,7 +12,7 @@ import {
     UserMessage,
     CallTileEntry,
 } from "./types.slint";
-import { AttachmentKind, AudioKind, CallMic, CallOffer, CallPhase, CallRefusal, ChildAccess, ConnectionState, CreateRoomStatus, DirectChat, EncryptionActivity, EncryptionStanding, EncryptionStep, IdentityAlertKind, IdentityTrust, InviteAnswer, InviteKind, LoginActivity, LoginMethodKind, LoginPhase, MemberRole, Moderation, NotifyMode, PackSurface, PeopleSearchStatus, PresenceLine, PreviewKind, ReadersStatus, RecoveryStatus, RoomInfoPlacement, RoomKind, RoomMembership, RoomPreviewStatus, RoomScope, RosterStatus, ServiceKind, SourceEncryption, SourceStatus, SpaceIndexStatus, TimelineState, UpgradeLink, UserMessageKind, VerificationActivity, VerificationPhase } from "./enums.slint";
+import { AttachmentKind, AudioKind, CallCamera, CallMic, CallOffer, CallPhase, CallRefusal, CallScreen, CallScreenRefusal, ChildAccess, ConnectionState, CreateRoomStatus, DirectChat, EncryptionActivity, EncryptionStanding, EncryptionStep, IdentityAlertKind, IdentityTrust, InviteAnswer, InviteKind, LoginActivity, LoginMethodKind, LoginPhase, MemberRole, Moderation, NotifyMode, PackSurface, PeopleSearchStatus, PresenceLine, PreviewKind, ReadersStatus, RecoveryStatus, RoomInfoPlacement, RoomKind, RoomMembership, RoomPreviewStatus, RoomScope, RosterStatus, ServiceKind, SourceEncryption, SourceStatus, SpaceIndexStatus, TimelineState, UpgradeLink, UserMessageKind, VerificationActivity, VerificationPhase } from "./enums.slint";
 
 export global LoginView {
     in property <LoginPhase> step: LoginPhase.loading;
@@ -403,6 +403,9 @@ export global CallView {
     in property <bool> active-video;
     in property <CallPhase> phase;
     in property <CallMic> mic: CallMic.on;
+    in property <CallCamera> camera: CallCamera.off;
+    in property <CallScreen> screen: CallScreen.off;
+    in property <CallScreenRefusal> screen-refusal;
     in property <string> elapsed;
     in property <[CallTileEntry]> tiles;
 }

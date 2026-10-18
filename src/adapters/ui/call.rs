@@ -5,15 +5,17 @@ use slint::{ComponentHandle, Model, SharedString, Timer, TimerMode};
 
 use super::backend::{UiBackend, UiEventContext};
 use super::decode::{AvatarSlot, load_avatar_async};
-use super::dto::call_offer_mark;
+use super::dto::{call_offer_mark, call_screen_mark};
 use super::notices::NoticeWords;
 use super::present::{avatar_color_index, avatar_initials};
 use super::props::{BoolProp, IntProp, StringProp, UiProps};
 use super::ringtone::{self, Tone};
-use super::{audio, video};
+use super::{audio, call_video, video};
 use crate::commands::view::{
     ActiveCall, AppViewState, CallPhase, CallView, JoinOffer, OfferView, RingView, RoomCallSummary,
+    ScreenView, TileKind,
 };
+use crate::domain::call::video::{FeedId, Framing};
 use crate::ports::media::MediaCache;
 use crate::ports::notifier::{NotifierPort, RingNotice};
 use crate::util::unix_now_ms;
@@ -71,6 +73,7 @@ fn apply_active<B: UiBackend>(w: &B::Window, last: Option<&ActiveCall>, next: Op
     let Some(active) = next else {
         w.set_bool(BoolProp::ActiveVisible, false);
         B::models().call_tiles.set_vec(Vec::new());
+        call_video::follow::<B>(w, &[]);
         stop_elapsed(w);
         ringtone::stop_if(Tone::Ringback);
         return;
@@ -88,21 +91,41 @@ fn apply_active<B: UiBackend>(w: &B::Window, last: Option<&ActiveCall>, next: Op
         SharedString::from(&active.room_name),
     );
     w.set_bool(BoolProp::ActiveEncrypted, active.encrypted);
-    w.set_bool(BoolProp::ActiveVideo, active.video);
+    let shows_video = active.video || active.tiles.iter().any(|tile| tile.video.is_some());
+    w.set_bool(BoolProp::ActiveVideo, shows_video);
     w.set_call_phase(active.phase);
     w.set_call_mic(active.microphone);
+    w.set_call_camera(active.camera);
+    w.set_call_screen(call_screen_mark(active.screen));
+    if let ScreenView::Unavailable(refusal) = active.screen {
+        w.set_call_screen_refusal(refusal);
+    }
     if last.is_none_or(|last| last.tiles != active.tiles) {
         let models = B::models();
-        let tiles: Vec<B::CallTile> = active.tiles.iter().map(B::convert_call_tile).collect();
+        let mut tiles: Vec<B::CallTile> = active.tiles.iter().map(B::convert_call_tile).collect();
+        call_video::fill::<B>(&mut tiles);
         if models.call_tiles.iter().ne(tiles.iter().cloned()) {
             models.call_tiles.set_vec(tiles);
         }
+        let feeds: Vec<(FeedId, Framing)> = active
+            .tiles
+            .iter()
+            .filter_map(|tile| Some((tile.video.clone()?, framing(tile.kind))))
+            .collect();
+        call_video::follow::<B>(w, &feeds);
     }
     if last.is_none_or(|last| last.live_since_ms != active.live_since_ms) {
         follow_elapsed(w, active.live_since_ms);
     }
     w.set_bool(BoolProp::ActiveVisible, true);
     follow_ringback(w, last.map(|last| last.phase), active.phase);
+}
+
+const fn framing(kind: TileKind) -> Framing {
+    match kind {
+        TileKind::Person => Framing::Cover,
+        TileKind::Screen => Framing::Contain,
+    }
 }
 
 fn follow_ringback<W: UiProps + ComponentHandle + 'static>(

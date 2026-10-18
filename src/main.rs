@@ -165,6 +165,7 @@ fn run(room_logs: Arc<RoomLogs>) -> Result<()> {
         backend.media_cache,
         backend.notifier,
         backend.handoff.as_ref(),
+        backend.call_video,
     );
     drop(cmd_tx.send(UiCommand::RestoreSession));
     if let Some(link) = link {

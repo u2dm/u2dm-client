@@ -818,7 +818,9 @@ impl AppService {
             | UiCommand::JoinCall(_)
             | UiCommand::AnswerCall(_)
             | UiCommand::LeaveCall
-            | UiCommand::SetMicrophone(_)) => {
+            | UiCommand::SetMicrophone(_)
+            | UiCommand::SetCamera(_)
+            | UiCommand::ShareScreen(_)) => {
                 self.handle_call_command(cmd);
             }
             UiCommand::DismissToast => {
@@ -2651,6 +2653,8 @@ impl AppService {
             UiCommand::AnswerCall(room_id) => self.calls.answer(&room_id, directory),
             UiCommand::LeaveCall => self.calls.leave_call(directory),
             UiCommand::SetMicrophone(on) => self.calls.set_microphone(on),
+            UiCommand::SetCamera(on) => self.calls.set_camera(on, directory),
+            UiCommand::ShareScreen(on) => self.calls.set_screen_share(on, directory),
             other => tracing::warn!(command = %other, "this command is not about calls"),
         }
     }

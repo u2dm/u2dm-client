@@ -1,33 +1,130 @@
 import { IconDisplay, IconSet } from "@lucide";
 
+import { Actions } from "../../../../actions.slint";
 import { Avatar } from "../../../../components/avatar.slint";
 import { CallTileEntry } from "../../../../types.slint";
-import { CallTileState } from "../../../../enums.slint";
+import { CallScreen, CallTileState } from "../../../../enums.slint";
 import { CallWords } from "../../../../messages.slint";
+import { CallView } from "../../../../views.slint";
 import { AppStyle, Fonts, Glyph, IconSize, Metrics, Radius, Space, Weight } from "../../../../theme.slint";
+
+component TileName inherits HorizontalLayout {
+    in property <CallTileEntry> tile;
+    in property <string> title;
+    in property <color> text-color: AppStyle.call-tile-text;
+
+    spacing: Space.xs;
+
+    if root.tile.muted: IconDisplay {
+        cross-axis-self-alignment: center;
+        icon: IconSet.MicOff;
+        size: IconSize.xs;
+        stroke: root.text-color;
+        accessible-role: image;
+        accessible-label: @tr("Muted");
+    }
+
+    if root.tile.screen: IconDisplay {
+        cross-axis-self-alignment: center;
+        icon: IconSet.ScreenShare;
+        size: IconSize.xs;
+        stroke: root.text-color;
+        accessible-role: none;
+    }
+
+    Text {
+        text: root.title;
+        font-family: Fonts.emoji;
+        font-size: Fonts.body-small;
+        font-weight: Weight.semibold;
+        color: root.text-color;
+        overflow: elide;
+        horizontal-alignment: center;
+        accessible-role: none;
+    }
+}
 
 export component CallTileView inherits Rectangle {
     in property <CallTileEntry> tile;
 
     property <string> state-text: CallWords.tile(root.tile.state);
+    property <string> title: root.tile.screen ? CallWords.screen-of(root.tile.name)
+        : !root.tile.own ? root.tile.name
+        : CallView.screen == CallScreen.on ? @tr("You are sharing your screen")
+        : @tr("You");
     property <bool> troubled: root.tile.state == CallTileState.cant-decrypt
         || root.tile.state == CallTileState.unverified-device
         || root.tile.state == CallTileState.unreachable;
+    property <string> feed: root.tile.feed;
+    property <bool> shows-video: root.tile.has-frame && root.tile.state == CallTileState.live;
+    property <bool> roomy: root.height >= Metrics.call-tile-roomy;
+
+    function report-size() {
+        if root.feed != "" {
+            Actions.call-tile-sized(root.feed, round(root.width / 1phx), round(root.height / 1phx));
+        }
+    }
+
+    init => {
+        root.report-size();
+    }
+    changed feed => {
+        root.report-size();
+    }
+    changed width => {
+        root.report-size();
+    }
+    changed height => {
+        root.report-size();
+    }
 
     background: AppStyle.call-tile;
     border-radius: Radius.md;
-    border-width: root.tile.speaking ? Metrics.call-speaking-ring : 0;
-    border-color: AppStyle.call-speaking;
+    clip: true;
     accessible-role: groupbox;
-    accessible-label: root.tile.own ? @tr("You") : root.tile.name;
-    accessible-description: root.state-text;
+    accessible-label: root.title;
+    accessible-description: !root.shows-video ? root.state-text : root.tile.screen ? @tr("Screen share") : @tr("Camera on");
 
-    VerticalLayout {
+    if root.shows-video: Image {
+        width: parent.width;
+        height: parent.height;
+        source: root.tile.frame;
+        image-fit: root.tile.screen ? ImageFit.contain : ImageFit.cover;
+        transform-scale-x: root.tile.mirrored ? -1 : 1;
+        accessible-role: none;
+    }
+
+    if root.shows-video: Rectangle {
+        y: parent.height - self.height;
+        height: Metrics.call-tile-caption;
+        background: AppStyle.call-caption;
+
+        TileName {
+            padding-left: Space.sm;
+            padding-right: Space.sm;
+            alignment: center;
+            tile: root.tile;
+            title: root.title;
+        }
+    }
+
+    if !root.shows-video: VerticalLayout {
         padding: Space.md;
         spacing: Space.sm;
         alignment: center;
 
-        HorizontalLayout {
+        if root.roomy && root.tile.screen: HorizontalLayout {
+            alignment: center;
+
+            IconDisplay {
+                icon: IconSet.ScreenShare;
+                size: IconSize.xl;
+                stroke: AppStyle.foreground-muted;
+                accessible-role: none;
+            }
+        }
+
+        if root.roomy && !root.tile.screen: HorizontalLayout {
             alignment: center;
 
             Avatar {
@@ -40,28 +137,10 @@ export component CallTileView inherits Rectangle {
             }
         }
 
-        HorizontalLayout {
+        TileName {
             alignment: center;
-            spacing: Space.xs;
-
-            if root.tile.muted: IconDisplay {
-                cross-axis-self-alignment: center;
-                icon: IconSet.MicOff;
-                size: IconSize.xs;
-                stroke: AppStyle.foreground-muted;
-                accessible-role: image;
-                accessible-label: @tr("Muted");
-            }
-
-            Text {
-                text: root.tile.own ? @tr("You") : root.tile.name;
-                font-family: Fonts.emoji;
-                font-size: Fonts.body-small;
-                font-weight: Weight.semibold;
-                overflow: elide;
-                horizontal-alignment: center;
-                accessible-role: none;
-            }
+            tile: root.tile;
+            title: root.title;
         }
 
         if root.state-text != "": Text {
@@ -72,5 +151,11 @@ export component CallTileView inherits Rectangle {
             horizontal-alignment: center;
             accessible-role: none;
         }
+    }
+
+    Rectangle {
+        border-radius: root.border-radius;
+        border-width: root.tile.speaking ? Metrics.call-speaking-ring : 0;
+        border-color: AppStyle.call-speaking;
     }
 }

@@ -1,21 +1,187 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
+use std::thread;
+use std::time::Duration;
 
 use async_trait::async_trait;
 use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 use tokio::time::sleep;
 
-use super::calls::{self, RECONNECT_AFTER, RECONNECT_FOR, SPEAKING_TURN, UNTRUSTED};
+use super::calls::{
+    self, PICKER_TIME, RECONNECT_AFTER, RECONNECT_FOR, SHARE_ENDS_AFTER, SPEAKING_TURN, UNTRUSTED,
+};
 use super::data;
 use crate::domain::call::identity::{MediaIdentity, spellings};
 use crate::domain::call::keys::{KeyIndex, MediaKey};
 use crate::domain::call::media::{Decryption, MediaEvent, MediaSetup, Microphone, SfuState};
 use crate::domain::call::sfu::{SfuGrant, SfuId, SfuRole};
+use crate::domain::call::video::{Camera, FeedId, FrameSize, Framing, ScreenRefusal, ScreenShare};
 use crate::domain::room::RoomId;
 use crate::error::{AppError, Result};
-use crate::ports::call::{CallMediaPort, MediaSession};
+use crate::ports::call::{CallMediaPort, CallVideoPort, FrameSink, MediaSession, VideoFrame};
 
-pub struct DemoCallMedia;
+const DEMO_FPS: u64 = 10;
+const SOURCE: FrameSize = FrameSize::new(1280, 720);
+const SCREEN_SOURCE: FrameSize = FrameSize::new(2560, 1440);
+const BAR_STEP: u64 = 6;
+const BAR_SHARE: u32 = 12;
+const WINDOW_INSET: u32 = 8;
+const TITLE_SHARE: u32 = 16;
+const DESKTOP: [u8; 3] = [0x2f, 0x3b, 0x52];
+const WINDOW: [u8; 3] = [0xf2, 0xf2, 0xee];
+const TITLE: [u8; 3] = [0x4c, 0x6e, 0xa8];
+
+#[derive(Default)]
+pub struct DemoCallMedia {
+    showing: Mutex<HashMap<FeedId, Showing>>,
+}
+
+struct Showing {
+    running: Arc<AtomicBool>,
+    wanted: Arc<Mutex<FrameSize>>,
+}
+
+impl CallVideoPort for DemoCallMedia {
+    fn attach(&self, feed: &FeedId, wanted: FrameSize, framing: Framing, sink: FrameSink) {
+        self.detach(feed);
+        let running = Arc::new(AtomicBool::new(true));
+        let size = Arc::new(Mutex::new(wanted));
+        let spawned = thread::Builder::new().name("demo-video".into()).spawn({
+            let running = Arc::clone(&running);
+            let size = Arc::clone(&size);
+            let hue = hue_of(feed);
+            move || paint(&running, &size, framing, hue, &sink)
+        });
+        if let Err(e) = spawned {
+            tracing::warn!("demo: no thread for a video: {e}");
+            return;
+        }
+        tracing::info!(%feed, ?framing, "demo: showing a video");
+        if let Ok(mut showing) = self.showing.lock() {
+            showing.insert(
+                feed.clone(),
+                Showing {
+                    running,
+                    wanted: size,
+                },
+            );
+        }
+    }
+
+    fn resize(&self, feed: &FeedId, wanted: FrameSize) {
+        if let Ok(showing) = self.showing.lock()
+            && let Some(shown) = showing.get(feed)
+            && let Ok(mut size) = shown.wanted.lock()
+        {
+            *size = wanted;
+            tracing::info!(%feed, width = wanted.width, height = wanted.height, "demo: a video is resized");
+        }
+    }
+
+    fn detach(&self, feed: &FeedId) {
+        if let Ok(mut showing) = self.showing.lock()
+            && let Some(shown) = showing.remove(feed)
+        {
+            shown.running.store(false, Ordering::Release);
+            tracing::info!(%feed, "demo: stopped showing a video");
+        }
+    }
+}
+
+fn paint(
+    running: &AtomicBool,
+    size: &Mutex<FrameSize>,
+    framing: Framing,
+    hue: [u8; 3],
+    sink: &FrameSink,
+) {
+    let mut frame_number = 0_u64;
+    let source = match framing {
+        Framing::Cover => SOURCE,
+        Framing::Contain => SCREEN_SOURCE,
+    };
+    while running.load(Ordering::Acquire) {
+        let wanted = size.lock().map_or(source, |size| *size);
+        let painted = Painted {
+            size: source.framed(wanted, framing),
+            look: match framing {
+                Framing::Cover => Look::Camera(hue),
+                Framing::Contain => Look::Screen,
+            },
+            frame_number,
+        };
+        sink(&painted);
+        frame_number = frame_number.wrapping_add(1);
+        thread::sleep(Duration::from_millis(1000 / DEMO_FPS));
+    }
+}
+
+fn hue_of(feed: &FeedId) -> [u8; 3] {
+    let sum = feed.as_ref().bytes().fold(0_u32, |sum, byte| {
+        sum.wrapping_mul(31).wrapping_add(u32::from(byte))
+    });
+    let [a, b, c, _] = sum.to_le_bytes();
+    [a | 0x40, b | 0x40, c | 0x40]
+}
+
+#[derive(Clone, Copy)]
+enum Look {
+    Camera([u8; 3]),
+    Screen,
+}
+
+struct Painted {
+    size: FrameSize,
+    look: Look,
+    frame_number: u64,
+}
+
+impl Painted {
+    fn colour_at(&self, x: u32, y: u32, bar_x: u32, bar_width: u32) -> [u8; 3] {
+        let lit = x >= bar_x && x < bar_x.saturating_add(bar_width);
+        match self.look {
+            Look::Camera(_) if lit => [u8::MAX; 3],
+            Look::Camera(hue) => hue,
+            Look::Screen => {
+                let width = self.size.width.max(1);
+                let height = self.size.height.max(1);
+                let inset_x = width / WINDOW_INSET;
+                let inset_y = height / WINDOW_INSET;
+                let inside =
+                    x >= inset_x && x < width - inset_x && y >= inset_y && y < height - inset_y;
+                let title = y < inset_y + height / TITLE_SHARE;
+                if !inside {
+                    DESKTOP
+                } else if title || lit {
+                    TITLE
+                } else {
+                    WINDOW
+                }
+            }
+        }
+    }
+}
+
+impl VideoFrame for Painted {
+    fn size(&self) -> FrameSize {
+        self.size
+    }
+
+    fn write_rgba(&self, rgba: &mut [u8]) -> bool {
+        let width = self.size.width.max(1);
+        let bar_width = (width / BAR_SHARE).max(1);
+        let bar_x =
+            u32::try_from(self.frame_number.wrapping_mul(BAR_STEP) % u64::from(width)).unwrap_or(0);
+        for (index, pixel) in rgba.chunks_exact_mut(4).enumerate() {
+            let index = u32::try_from(index).unwrap_or(0);
+            let [red, green, blue] = self.colour_at(index % width, index / width, bar_x, bar_width);
+            pixel.copy_from_slice(&[red, green, blue, u8::MAX]);
+        }
+        true
+    }
+}
 
 #[async_trait]
 impl CallMediaPort for DemoCallMedia {
@@ -29,6 +195,13 @@ impl CallMediaPort for DemoCallMedia {
         events_tx: mpsc::UnboundedSender<MediaEvent>,
     ) -> Result<Box<dyn MediaSession>> {
         tracing::info!(room_id = %setup.room_id, encrypted = setup.encrypted, "demo: the call media opens");
+        if calls::scenario().no_screen_capture {
+            tracing::info!("demo: this desktop has no screen-cast portal");
+            let unavailable = MediaEvent::Screen(ScreenShare::Unavailable(ScreenRefusal::NoPortal));
+            if events_tx.send(unavailable).is_err() {
+                tracing::debug!("demo: the app stopped listening to the call media");
+            }
+        }
         Ok(Box::new(DemoMediaSession {
             room_id: setup.room_id,
             encrypted: setup.encrypted,
@@ -36,6 +209,7 @@ impl CallMediaPort for DemoCallMedia {
             connected: HashSet::new(),
             keyed: HashSet::new(),
             tasks: Vec::new(),
+            screen: None,
         }))
     }
 }
@@ -47,6 +221,7 @@ struct DemoMediaSession {
     connected: HashSet<SfuId>,
     keyed: HashSet<MediaIdentity>,
     tasks: Vec<JoinHandle<()>>,
+    screen: Option<JoinHandle<()>>,
 }
 
 impl DemoMediaSession {
@@ -61,6 +236,41 @@ impl DemoMediaSession {
         let device = calls::own_device();
         let [legacy, _, _] = spellings(user, device, &format!("{user}:{device}"));
         legacy
+    }
+
+    fn start_screen_share(&mut self) {
+        if self
+            .screen
+            .as_ref()
+            .is_some_and(|screen| !screen.is_finished())
+        {
+            return;
+        }
+        let events_tx = self.events_tx.clone();
+        let shaped = calls::scenario();
+        self.screen = Some(tokio::spawn(async move {
+            tracing::info!("demo: the picker for your screen share opens");
+            sleep(PICKER_TIME).await;
+            if shaped.share_cancelled {
+                tracing::info!("demo: the picker is closed without a choice");
+                drop(events_tx.send(MediaEvent::Screen(ScreenShare::Off)));
+                return;
+            }
+            tracing::info!("demo: you share your screen");
+            drop(events_tx.send(MediaEvent::Screen(ScreenShare::On)));
+            if shaped.share_ends {
+                sleep(SHARE_ENDS_AFTER).await;
+                tracing::info!("demo: the desktop ends your screen share");
+                drop(events_tx.send(MediaEvent::Screen(ScreenShare::Off)));
+            }
+        }));
+    }
+
+    fn stop_screen_share(&mut self) {
+        if let Some(screen) = self.screen.take() {
+            screen.abort();
+        }
+        tracing::info!("demo: you stop sharing your screen");
     }
 
     fn spawn_reconnect(&mut self, sfu: SfuId) {
@@ -171,6 +381,31 @@ impl MediaSession for DemoMediaSession {
         }));
     }
 
+    async fn set_camera(&mut self, on: bool) {
+        calls::pause().await;
+        if !on {
+            tracing::info!(camera = "off", "demo: the camera switches");
+            return;
+        }
+        let shaped = calls::scenario();
+        let camera = match (shaped.no_camera, shaped.camera_fails) {
+            (true, _) => Camera::Failed("demo: no camera was found".into()),
+            (false, true) => Camera::Failed("demo: the camera is busy".into()),
+            (false, false) => Camera::On(FeedId::new(calls::OWN_CAMERA_FEED)),
+        };
+        tracing::info!(%camera, "demo: the camera switches");
+        self.emit(MediaEvent::Camera(camera));
+    }
+
+    async fn set_screen_share(&mut self, on: bool) {
+        calls::pause().await;
+        if on {
+            self.start_screen_share();
+        } else {
+            self.stop_screen_share();
+        }
+    }
+
     async fn set_own_key(&mut self, index: KeyIndex, _key: &MediaKey) {
         tracing::info!(%index, "demo: your call key is installed");
     }
@@ -203,7 +438,7 @@ impl MediaSession for DemoMediaSession {
 
     async fn close(self: Box<Self>) {
         tracing::info!(room_id = %self.room_id, "demo: the call media closes");
-        for task in &self.tasks {
+        for task in self.tasks.iter().chain(&self.screen) {
             task.abort();
         }
     }

@@ -108,6 +108,10 @@ scenario_env() {
     call-switch-rooms) echo 'U2DM_DEMO_CALLS=active U2DM_DEMO_WINDOW=900x760' ;;
     call-compact)    echo 'U2DM_DEMO_CALLS=active U2DM_DEMO_WINDOW=420x760' ;;
     call-crowd)      echo 'U2DM_DEMO_CALLS=active,crowd U2DM_DEMO_WINDOW=900x760' ;;
+    call-video)      echo 'U2DM_DEMO_CALLS=active,cameras U2DM_DEMO_WINDOW=900x760' ;;
+    call-camera)     echo 'U2DM_DEMO_CALLS=active U2DM_DEMO_WINDOW=900x760' ;;
+    call-screen-share) echo 'U2DM_DEMO_CALLS=active,cameras,screen-share U2DM_DEMO_WINDOW=900x760' ;;
+    call-share-screen) echo 'U2DM_DEMO_CALLS=active U2DM_DEMO_WINDOW=900x760' ;;
     notifications)   echo 'U2DM_DEMO_NOTIFY=all U2DM_DEMO_WINDOW=900x760' ;;
     notifications-focused) echo 'U2DM_DEMO_NOTIFY=group,dm,mention U2DM_DEMO_WINDOW=900x760' ;;
     notifications-burst) echo 'U2DM_DEMO_NOTIFY=burst U2DM_DEMO_WINDOW=900x760' ;;
@@ -568,11 +572,25 @@ scenario_steps() {
     call-expiry)
       echo '{"op":"select_room","room_id":"!rust:demo.local"}'
       echo 'sleep 22' ;;
-    call-join|call-keys-late|call-undecryptable|call-reconnect|call-remote-sfu|call-crowd)
+    call-join|call-keys-late|call-undecryptable|call-reconnect|call-remote-sfu|call-crowd|call-video|call-screen-share)
       echo '{"op":"select_room","room_id":"!design:demo.local"}'
       echo 'sleep 2'
       echo '{"op":"join_call"}'
       echo 'sleep 3' ;;
+    call-camera)
+      echo '{"op":"select_room","room_id":"!rust:demo.local"}'
+      echo 'sleep 2'
+      echo '{"op":"join_call"}'
+      echo 'sleep 2'
+      echo '{"op":"set_camera","on":true}'
+      echo 'sleep 2' ;;
+    call-share-screen)
+      echo '{"op":"select_room","room_id":"!rust:demo.local"}'
+      echo 'sleep 2'
+      echo '{"op":"join_call"}'
+      echo 'sleep 2'
+      echo '{"op":"share_screen","on":true}'
+      echo 'sleep 2' ;;
     call-start-dm|call-start-dm-declined)
       echo '{"op":"select_room","room_id":"!sarah:demo.local"}'
       echo 'sleep 2'
@@ -781,6 +799,10 @@ scenario_note() {
     call-switch-rooms) echo 'join Design Team, then open Sarah'"'"'s chat: the call bar under the header leads back (call-ui)' ;;
     call-compact)    echo 'a 420 px window in the call: tiles wrap in the band (call-ui)' ;;
     call-crowd)      echo 'nine people in the Design Team call: the tile grid scrolls (call-ui)' ;;
+    call-video)      echo 'the Design Team video call with everyone'"'"'s camera on: painted demo videos fill the tiles, yours mirrored (call-ui, call-media)' ;;
+    call-camera)     echo 'join the Rust Programming voice call, then switch your camera on: the band grows and your tile shows video (call-ui)' ;;
+    call-screen-share) echo 'Nadia shares her screen in the Design Team call: it takes the spotlight, fitted, and the cameras line up in the strip below (call-ui)' ;;
+    call-share-screen) echo 'join the Rust Programming call and share your screen: the share button turns to Stop, your tile says you are sharing (call-ui, call-media)' ;;
     notifications)   echo 'with the window unfocused, every scripted arrival notifies except the muted room; !rust is read elsewhere and withdrawn, Leo'"'"'s invite notifies, and a click on Priya'"'"'s opens her chat (notifications, directory.attention, title)' ;;
     notifications-focused) echo 'the window keeps focus: arrivals light their rooms and the title count, but nothing notifies (notifications, directory.attention)' ;;
     notifications-burst) echo 'three messages in !rust a second apart: one notification, replaced twice (notifications)' ;;
@@ -814,7 +836,7 @@ names() {
     calls-active call-ring call-ring-ends call-ring-elsewhere call-ring-unconfirmed call-expiry \
     call-join call-start-dm call-start-dm-declined call-keys-late call-undecryptable call-no-sfu \
     call-no-permission call-unverified-session call-reconnect call-remote-sfu call-switch-rooms \
-    call-compact call-crowd \
+    call-compact call-crowd call-video call-camera call-screen-share call-share-screen \
     notifications notifications-focused notifications-burst \
     encryption-unverified encryption-recovery-key encryption-new-account encryption-setup-refused
 }

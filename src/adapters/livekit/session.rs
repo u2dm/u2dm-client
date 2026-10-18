@@ -8,12 +8,16 @@ use livekit::options::TrackPublishOptions;
 use livekit::prelude::{LocalAudioTrack, LocalTrack, PlatformAudio, TrackSource};
 use tokio::sync::mpsc;
 
+use super::camera::{self, OwnCamera};
 use super::connection::{Connection, Dial, OwnIndex, dial, use_own_index};
 use super::e2ee;
+use super::feeds::Feeds;
+use super::screen::{self, OwnScreen};
 use crate::domain::call::identity::MediaIdentity;
 use crate::domain::call::keys::{KeyIndex, MediaKey};
 use crate::domain::call::media::{MediaEvent, Microphone, SfuState};
 use crate::domain::call::sfu::{SfuGrant, SfuId, SfuRole};
+use crate::domain::call::video::{Camera, ScreenShare};
 use crate::error::{AppError, Result};
 use crate::ports::call::MediaSession;
 
@@ -27,6 +31,10 @@ pub(super) struct LiveKitSession {
     connections: HashMap<SfuId, Connection>,
     microphone: Option<LocalAudioTrack>,
     wants_microphone: bool,
+    camera: Option<OwnCamera>,
+    wants_camera: bool,
+    screen: Option<OwnScreen>,
+    feeds: Arc<Feeds>,
     events_tx: mpsc::UnboundedSender<MediaEvent>,
 }
 
@@ -34,6 +42,7 @@ impl LiveKitSession {
     pub(super) fn new(
         audio: PlatformAudio,
         encrypted: bool,
+        feeds: Arc<Feeds>,
         events_tx: mpsc::UnboundedSender<MediaEvent>,
     ) -> Self {
         Self {
@@ -44,6 +53,10 @@ impl LiveKitSession {
             connections: HashMap::new(),
             microphone: None,
             wants_microphone: false,
+            camera: None,
+            wants_camera: false,
+            screen: None,
+            feeds,
             events_tx,
         }
     }
@@ -105,6 +118,61 @@ impl LiveKitSession {
         }
     }
 
+    async fn start_camera(&mut self) {
+        if self.camera.is_some() {
+            return;
+        }
+        let Some(room) = self
+            .publishing()
+            .map(|connection| Arc::clone(&connection.room))
+        else {
+            return;
+        };
+        match camera::start(&room, &self.feeds, &self.events_tx).await {
+            Ok(own) => {
+                self.camera = Some(own);
+                self.emit(MediaEvent::Camera(Camera::On(camera::own_feed())));
+            }
+            Err(why) => {
+                tracing::warn!("the camera did not start: {why}");
+                self.wants_camera = false;
+                self.emit(MediaEvent::Camera(Camera::Failed(why)));
+            }
+        }
+    }
+
+    async fn stop_camera(&mut self) {
+        if let Some(own) = self.camera.take() {
+            let room = self
+                .publishing()
+                .map(|connection| Arc::clone(&connection.room));
+            own.stop(room.as_deref()).await;
+        }
+    }
+
+    fn start_screen(&mut self) {
+        if self.screen.as_ref().is_some_and(OwnScreen::is_running) {
+            return;
+        }
+        let Some(room) = self
+            .publishing()
+            .map(|connection| Arc::clone(&connection.room))
+        else {
+            tracing::info!("the screen share waits for the call to connect");
+            self.emit(MediaEvent::Screen(ScreenShare::Failed(
+                "the call is not connected yet".into(),
+            )));
+            return;
+        };
+        self.screen = Some(screen::start(room, self.events_tx.clone()));
+    }
+
+    async fn stop_screen(&mut self) {
+        if let Some(screen) = self.screen.take() {
+            screen.stop().await;
+        }
+    }
+
     fn switch_microphone(&self, on: bool) {
         let Some(track) = &self.microphone else {
             return;
@@ -147,6 +215,7 @@ impl MediaSession for LiveKitSession {
             grant: &grant,
             encryption: self.keys.as_ref(),
             own_index: &self.own_index,
+            feeds: &self.feeds,
             events_tx: &self.events_tx,
         })
         .await;
@@ -167,6 +236,9 @@ impl MediaSession for LiveKitSession {
         if publishes && self.wants_microphone {
             self.publish_microphone().await;
         }
+        if publishes && self.wants_camera {
+            self.start_camera().await;
+        }
         Ok(())
     }
 
@@ -174,6 +246,7 @@ impl MediaSession for LiveKitSession {
         if let Some(connection) = self.connections.remove(sfu) {
             connection.close(sfu).await;
         }
+        self.feeds.forget_server(sfu);
     }
 
     async fn set_microphone(&mut self, on: bool) {
@@ -182,6 +255,23 @@ impl MediaSession for LiveKitSession {
             self.switch_microphone(on);
         } else if on {
             self.publish_microphone().await;
+        }
+    }
+
+    async fn set_camera(&mut self, on: bool) {
+        self.wants_camera = on;
+        if on {
+            self.start_camera().await;
+        } else {
+            self.stop_camera().await;
+        }
+    }
+
+    async fn set_screen_share(&mut self, on: bool) {
+        if on {
+            self.start_screen();
+        } else {
+            self.stop_screen().await;
         }
     }
 
@@ -219,6 +309,12 @@ impl MediaSession for LiveKitSession {
     }
 
     async fn close(mut self: Box<Self>) {
+        if let Some(screen) = self.screen.take() {
+            screen.stop().await;
+        }
+        if let Some(own) = self.camera.take() {
+            own.stop(None).await;
+        }
         let connections: Vec<(SfuId, Connection)> = self.connections.drain().collect();
         for (sfu, connection) in connections {
             connection.close(&sfu).await;
@@ -229,6 +325,7 @@ impl MediaSession for LiveKitSession {
         if let Err(e) = self.audio.stop_recording() {
             tracing::debug!("the microphone did not stop: {e}");
         }
+        self.feeds.clear();
     }
 }
 

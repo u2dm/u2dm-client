@@ -31,6 +31,8 @@ pub fn probe_audio(_path: &Path) -> Option<AudioProbe> {
 
 #[cfg(feature = "video")]
 pub mod audio_player;
+#[cfg(feature = "calls")]
+pub mod camera;
 #[cfg(feature = "video")]
 mod decoder;
 #[cfg(feature = "video")]

@@ -11,10 +11,12 @@ use tokio::runtime::Runtime;
 use tokio::sync::{mpsc, watch};
 use u2dm_ui::{
     Actions, AppWindow, AttachmentKind as UiAttachmentKind, AttachmentView,
-    AudioKind as UiAudioKind, AudioView, BodyLine, BodyPiece, CallMic as UiCallMic,
-    CallOffer as UiCallOffer, CallPhase as UiCallPhase, CallRefusal as UiCallRefusal,
-    CallTileEntry, CallTileState as UiCallTileState, CallView, ChildAccess as UiChildAccess,
-    ConnectionState, CreateRoomStatus as UiCreateRoomStatus, CreateRoomView,
+    AudioKind as UiAudioKind, AudioView, BodyLine, BodyPiece, CallCamera as UiCallCamera,
+    CallMic as UiCallMic, CallOffer as UiCallOffer, CallPhase as UiCallPhase,
+    CallRefusal as UiCallRefusal, CallScreen as UiCallScreen,
+    CallScreenRefusal as UiCallScreenRefusal, CallTileEntry, CallTileState as UiCallTileState,
+    CallView, ChildAccess as UiChildAccess, ConnectionState,
+    CreateRoomStatus as UiCreateRoomStatus, CreateRoomView,
     DecryptionFailure as UiDecryptionFailure, Delivery as UiDelivery, DirectChat as UiDirectChat,
     DirectoryView, EmojiArt as UiEmojiArt, EmojiEntry, EmojiRow, EmojiStore,
     EncryptionActivity as UiEncryptionActivity, EncryptionStanding as UiEncryptionStanding,
@@ -58,9 +60,9 @@ use super::decode::{
     AvatarSlot, request_avatar, request_custom_emoji, request_media, request_pack_cell,
 };
 use super::dto::{
-    BodyLineDto, BodyPieceDto, CallOfferMark, CallTileDto, CallTileMark, EmojiArt, InviteeDto,
-    LogLineDto, MediaFailureKind, MediaState, MemberRowDto, MemberRowKind, MessageDto, PackCellDto,
-    PackRowDto, PackSurface, PackTabDto, PollAnswerDto, ReactionDto, ReactorAvatarDto,
+    BodyLineDto, BodyPieceDto, CallOfferMark, CallScreenMark, CallTileDto, CallTileMark, EmojiArt,
+    InviteeDto, LogLineDto, MediaFailureKind, MediaState, MemberRowDto, MemberRowKind, MessageDto,
+    PackCellDto, PackRowDto, PackSurface, PackTabDto, PollAnswerDto, ReactionDto, ReactorAvatarDto,
     RoomCallMark, RoomDto, RoomRowKind, SpaceChildDto, SpaceDto, SpoilerState, pack_surface_named,
 };
 #[cfg(feature = "demo")]
@@ -79,23 +81,23 @@ use super::props::EnumProp;
 use super::props::{BoolProp, IntProp, StringProp, UiProps};
 use super::router::{EditedRow, EditedText};
 use super::schema::{
-    attachment_kinds, audio_kinds, body_line_fields, body_piece_fields, bool_props, call_mics,
-    call_offers, call_phases, call_refusals, call_tile_fields, call_tile_marks, child_accesses,
-    connection_states, create_room_statuses, decryption_failures, deliveries, direct_chats,
-    emoji_arts, encryption_activities, encryption_standings, encryption_steps, enum_props,
-    identity_alert_kinds, identity_trusts, int_props, invite_answers, invite_kinds, invitee_fields,
-    invitee_states, log_levels, log_line_fields, login_activities, login_methods, login_phases,
-    media_failures, media_states, member_roles, member_row_fields, member_row_kinds,
-    message_fields, message_kinds, model_props, notify_modes, pack_cell_fields, pack_origins,
-    pack_row_fields, pack_surfaces, pack_tab_fields, pending_moderations, people_search_statuses,
-    poll_answer_fields, poll_phases, presence_lines, preview_kinds, reaction_fields,
-    reaction_sends, reactor_fields, readers_statuses, recovery_statuses, room_accesses,
-    room_call_marks, room_fields, room_info_placements, room_kinds, room_memberships,
-    room_preview_statuses, room_row_kinds, room_scopes, roster_statuses, send_states,
-    service_kinds, shield_reasons, shields, simple_callbacks, source_encryptions, source_statuses,
-    space_child_fields, space_fields, space_index_statuses, spoiler_states, string_props,
-    timeline_states, upgrade_links, user_message_kinds, verification_activities,
-    verification_phases,
+    attachment_kinds, audio_kinds, body_line_fields, body_piece_fields, bool_props, call_cameras,
+    call_mics, call_offers, call_phases, call_refusals, call_screen_refusals, call_screens,
+    call_tile_fields, call_tile_marks, child_accesses, connection_states, create_room_statuses,
+    decryption_failures, deliveries, direct_chats, emoji_arts, encryption_activities,
+    encryption_standings, encryption_steps, enum_props, identity_alert_kinds, identity_trusts,
+    int_props, invite_answers, invite_kinds, invitee_fields, invitee_states, log_levels,
+    log_line_fields, login_activities, login_methods, login_phases, media_failures, media_states,
+    member_roles, member_row_fields, member_row_kinds, message_fields, message_kinds, model_props,
+    notify_modes, pack_cell_fields, pack_origins, pack_row_fields, pack_surfaces, pack_tab_fields,
+    pending_moderations, people_search_statuses, poll_answer_fields, poll_phases, presence_lines,
+    preview_kinds, reaction_fields, reaction_sends, reactor_fields, readers_statuses,
+    recovery_statuses, room_accesses, room_call_marks, room_fields, room_info_placements,
+    room_kinds, room_memberships, room_preview_statuses, room_row_kinds, room_scopes,
+    roster_statuses, send_states, service_kinds, shield_reasons, shields, simple_callbacks,
+    source_encryptions, source_statuses, space_child_fields, space_fields, space_index_statuses,
+    spoiler_states, string_props, timeline_states, upgrade_links, user_message_kinds,
+    verification_activities, verification_phases,
 };
 use super::session::active_models;
 use super::video::{self, millis_to_duration};
@@ -105,13 +107,14 @@ use crate::commands::effects::{Effect, VerificationActivity};
 use crate::commands::messages::{UserMessage, UserMessageKind};
 use crate::commands::ui::{ComposerActivity, TimelineVisibility, ViewportChanged, WindowAttention};
 use crate::commands::view::{
-    AppViewState, AttachmentKind, CallPhase, ChildAccess, CreateRoomStatus, DirectChat,
+    AppViewState, AttachmentKind, CallPhase, CameraView, ChildAccess, CreateRoomStatus, DirectChat,
     EncryptionActivity, EncryptionStep, InviteeState, JoinRefusal, LoginActivity, LoginStep,
     MicrophoneView, PendingAnswer, PendingModeration, PeopleSearchStatus, ReadersStatus,
     RoomInfoPlacement, RoomPreviewSheet, RoomScope, RosterStatus, SourceState, SpaceIndexStatus,
     UpgradeLink,
 };
 use crate::domain::auth::LoginMethod;
+use crate::domain::call::video::ScreenRefusal;
 use crate::domain::encryption::{Recovery, Standing};
 use crate::domain::image_pack::PackOrigin;
 use crate::domain::invite::InviteKind;
@@ -129,6 +132,7 @@ use crate::domain::timeline::{SourceEncryption, TimelineStatus};
 use crate::domain::user_info::{IdentityTrust, RoomMembership};
 use crate::domain::verification::VerificationEmoji as DomainVerificationEmoji;
 use crate::error::Result;
+use crate::ports::call::CallVideoPort;
 use crate::ports::handoff::HandoffPort;
 use crate::ports::media::MediaCache;
 use crate::ports::notifier::NotifierPort;
@@ -433,6 +437,9 @@ call_offers!(impl_slint_enum CallOfferMark UiCallOffer;);
 call_refusals!(impl_slint_enum JoinRefusal UiCallRefusal;);
 call_phases!(impl_slint_enum CallPhase UiCallPhase;);
 call_mics!(impl_slint_enum MicrophoneView UiCallMic;);
+call_cameras!(impl_slint_enum CameraView UiCallCamera;);
+call_screens!(impl_slint_enum CallScreenMark UiCallScreen;);
+call_screen_refusals!(impl_slint_enum ScreenRefusal UiCallScreenRefusal;);
 call_tile_marks!(impl_slint_enum CallTileMark UiCallTileState;);
 roster_statuses!(impl_slint_enum RosterStatus UiRosterStatus;);
 room_info_placements!(impl_slint_enum RoomInfoPlacement UiRoomInfoPlacement;);
@@ -615,6 +622,10 @@ impl UiBackend for CompiledBackend {
 
     fn bind_reveal_spoilers(window: &AppWindow, reveal: impl Fn(&str) + 'static) {
         actions(window).on_reveal_spoilers(move |unique_id| reveal(&unique_id));
+    }
+
+    fn bind_call_tile_sized(window: &AppWindow, sized: impl Fn(&str, i32, i32) + 'static) {
+        actions(window).on_call_tile_sized(move |feed, width, height| sized(&feed, width, height));
     }
 
     fn notification_text(window: &AppWindow, words: &NoticeWords<'_>) -> SharedString {
@@ -885,6 +896,7 @@ impl SlintUiAdapter {
         media_cache: Arc<dyn MediaCache>,
         notifier: Arc<dyn NotifierPort>,
         handoff: &dyn HandoffPort,
+        call_video: Option<Arc<dyn CallVideoPort>>,
     ) {
         backend::spawn_event_handler::<CompiledBackend>(
             &self.window,
@@ -893,6 +905,7 @@ impl SlintUiAdapter {
             media_cache,
             notifier,
             handoff,
+            call_video,
         );
     }
 

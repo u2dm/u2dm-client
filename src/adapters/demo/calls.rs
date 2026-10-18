@@ -13,6 +13,7 @@ use crate::domain::call::keys::{KeyIndex, MediaKey, ReceivedKey};
 use crate::domain::call::media::MediaEvent;
 use crate::domain::call::ring::{CallSignal, Ring, RingId, RingKind};
 use crate::domain::call::sfu::SfuId;
+use crate::domain::call::video::{FeedId, VideoKind};
 use crate::domain::call::{
     CallIntent, CallMember, DeviceId, FocusSelection, MemberKey, RoomCall, Transport,
 };
@@ -148,12 +149,53 @@ pub const CATALOG: Scenarios = Scenarios {
             effect: "with active: Jordan publishes to another homeserver's media server",
             note: "",
         },
+        Flag {
+            value: "cameras",
+            effect: "the people in your call have their cameras on",
+            note: "",
+        },
+        Flag {
+            value: "no-camera",
+            effect: "this computer has no camera, so turning yours on fails",
+            note: "",
+        },
+        Flag {
+            value: "camera-fails",
+            effect: "your camera is busy, so turning it on fails",
+            note: "",
+        },
+        Flag {
+            value: "screen-share",
+            effect: "with active: Nadia shares her screen in the Design Team call",
+            note: "her share takes the spotlight and the others move to the strip below it",
+        },
+        Flag {
+            value: "screen-share-ends",
+            effect: "with screen-share: Nadia stops sharing 6s after you join",
+            note: "",
+        },
+        Flag {
+            value: "no-screen-capture",
+            effect: "this desktop has no screen-cast portal, so the share button is disabled",
+            note: "",
+        },
+        Flag {
+            value: "share-cancelled",
+            effect: "the picker for your screen share is closed without a choice",
+            note: "the share goes back to off without an error",
+        },
+        Flag {
+            value: "share-ends",
+            effect: "the desktop ends your screen share 5s after it starts",
+            note: "",
+        },
     ],
     notes: &[
         "each decline logs `demo: the call is declined`",
         "call facets show in /state at .view.directory.rooms[].call",
         "joining logs `demo: you joined the call`, leaving `demo: you left the call`",
-        "the media is fake: it never opens a microphone or speaker",
+        "the media is fake: it never opens a microphone, speaker or camera; video tiles show generated pictures",
+        "sharing your screen stands in for the portal's picker with a 1s wait, then shares nothing real",
     ],
 };
 
@@ -179,6 +221,13 @@ const NINA: &str = "@nina:matrix.org";
 const PRIYA: &str = "@priya:matrix.org";
 const VERA: &str = "@vera:matrix.org";
 const MEMBER_DEVICE: &str = "DEMOCALLDEVICE";
+const CAMERA_FEED_PREFIX: &str = "demo-camera-";
+const SCREEN_FEED_PREFIX: &str = "demo-screen-";
+const SCREEN_SHARER: &str = NADIA;
+const SCREEN_SHARE_ENDS_AFTER: Duration = Duration::from_secs(6);
+pub const PICKER_TIME: Duration = Duration::from_secs(1);
+pub const SHARE_ENDS_AFTER: Duration = Duration::from_secs(5);
+pub const OWN_CAMERA_FEED: &str = "demo-own-camera";
 const OTHER_OWN_DEVICE: &str = "DEMOOTHERDEVICE";
 const DEMO_SFU: &str = "https://sfu.demo.local/livekit/jwt";
 const REMOTE_SFU: &str = "https://sfu.remote.demo/livekit/jwt";
@@ -218,6 +267,14 @@ pub struct Scenario {
     pub speaking: bool,
     crowd: bool,
     remote_sfu: bool,
+    cameras: bool,
+    pub no_camera: bool,
+    pub camera_fails: bool,
+    screen_share: bool,
+    screen_share_ends: bool,
+    pub no_screen_capture: bool,
+    pub share_cancelled: bool,
+    pub share_ends: bool,
 }
 
 pub fn scenario() -> Scenario {
@@ -263,6 +320,14 @@ fn apply(scenario: &mut Scenario, flag: &str) {
         "speaking" => scenario.speaking = true,
         "crowd" => scenario.crowd = true,
         "remote-sfu" => scenario.remote_sfu = true,
+        "cameras" => scenario.cameras = true,
+        "no-camera" => scenario.no_camera = true,
+        "camera-fails" => scenario.camera_fails = true,
+        "screen-share" => scenario.screen_share = true,
+        "screen-share-ends" => scenario.screen_share_ends = true,
+        "no-screen-capture" => scenario.no_screen_capture = true,
+        "share-cancelled" => scenario.share_cancelled = true,
+        "share-ends" => scenario.share_ends = true,
         other => tracing::warn!("unknown {ENV_VAR} flag: {other}"),
     }
 }
@@ -499,6 +564,13 @@ impl CallBook {
                         present: true,
                     },
                 );
+                if let Some(camera) = camera_news(&id, joiner, true) {
+                    send_media(&events_tx, camera);
+                }
+                if let Some(screen) = screen_news(&id, joiner, true) {
+                    send_media(&events_tx, screen);
+                    end_screen_share_later(&events_tx, &id, joiner);
+                }
             }
         }
         if let Ok(mut watchers) = self.watchers.lock() {
@@ -533,6 +605,12 @@ impl CallBook {
                     present,
                 },
             );
+            if let Some(camera) = camera_news(&id, joiner, present) {
+                send_media(&watcher.events_tx, camera);
+            }
+            if let Some(screen) = screen_news(&id, joiner, present) {
+                send_media(&watcher.events_tx, screen);
+            }
         }
     }
 
@@ -714,6 +792,46 @@ pub fn sfu_id(sfu: &str) -> Option<SfuId> {
         service_url: Some(sfu.to_owned()),
         sfu_url: None,
     })
+}
+
+fn camera_news(sfu: &SfuId, joiner: Joiner, present: bool) -> Option<MediaEvent> {
+    scenario().cameras.then(|| MediaEvent::Video {
+        sfu: sfu.clone(),
+        identity: joiner.identity(),
+        kind: VideoKind::Camera,
+        feed: present.then(|| FeedId::new(format!("{CAMERA_FEED_PREFIX}{}", joiner.user))),
+    })
+}
+
+fn screen_news(sfu: &SfuId, joiner: Joiner, present: bool) -> Option<MediaEvent> {
+    (scenario().screen_share && joiner.user == SCREEN_SHARER).then(|| MediaEvent::Video {
+        sfu: sfu.clone(),
+        identity: joiner.identity(),
+        kind: VideoKind::Screen,
+        feed: present.then(|| FeedId::new(format!("{SCREEN_FEED_PREFIX}{}", joiner.user))),
+    })
+}
+
+fn end_screen_share_later(
+    events_tx: &mpsc::UnboundedSender<MediaEvent>,
+    sfu: &SfuId,
+    joiner: Joiner,
+) {
+    if !scenario().screen_share_ends {
+        return;
+    }
+    let events_tx = events_tx.clone();
+    let ended = MediaEvent::Video {
+        sfu: sfu.clone(),
+        identity: joiner.identity(),
+        kind: VideoKind::Screen,
+        feed: None,
+    };
+    tokio::spawn(async move {
+        sleep(SCREEN_SHARE_ENDS_AFTER).await;
+        tracing::info!(user = joiner.user, "demo: a screen share ends");
+        send_media(&events_tx, ended);
+    });
 }
 
 fn send_media(events_tx: &mpsc::UnboundedSender<MediaEvent>, event: MediaEvent) {

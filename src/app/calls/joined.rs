@@ -8,7 +8,8 @@ use tracing::Span;
 
 use super::media::MediaCommand;
 use crate::commands::view::{
-    ActiveCall, CallPhase, CallTile, CantDecrypt, MicrophoneView, TileState,
+    ActiveCall, CallPhase, CallTile, CameraView, CantDecrypt, MicrophoneView, ScreenView, TileKind,
+    TileState,
 };
 use crate::domain::call::identity::{IdentityTable, MediaIdentity, member_spellings, spellings};
 use crate::domain::call::keys::{
@@ -17,6 +18,7 @@ use crate::domain::call::keys::{
 use crate::domain::call::media::{Decryption, MediaEvent, Microphone, SfuState};
 use crate::domain::call::ring::{RingId, RingKind};
 use crate::domain::call::sfu::{GrantRequest, GrantResult, SfuId, SfuRole, SfuTarget, plan};
+use crate::domain::call::video::{Camera, FeedId, ScreenRefusal, ScreenShare, VideoKind};
 use crate::domain::call::{
     CallIntent, CallMember, DeviceStanding, FocusSelection, MemberKey, OutgoingKey, SentMembership,
     Transport,
@@ -51,6 +53,25 @@ struct Heard {
     decryption: HashMap<MediaIdentity, Decryption>,
     muted: HashMap<SfuId, HashSet<MediaIdentity>>,
     speaking: HashMap<SfuId, HashSet<MediaIdentity>>,
+    video: HashMap<SfuId, HashMap<MediaIdentity, FeedId>>,
+    screens: HashMap<SfuId, HashMap<MediaIdentity, FeedId>>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum OwnCamera {
+    Off,
+    Starting,
+    On(FeedId),
+    Failed,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum OwnScreen {
+    Off,
+    Choosing,
+    On,
+    Failed,
+    Unavailable(ScreenRefusal),
 }
 
 impl Heard {
@@ -72,10 +93,48 @@ impl Heard {
             .is_some_and(|muted| muted.contains(identity))
     }
 
+    fn video_on(
+        &self,
+        sfu: &SfuId,
+        identities: &[MediaIdentity],
+        kind: VideoKind,
+    ) -> Option<FeedId> {
+        let feeds = match kind {
+            VideoKind::Camera => &self.video,
+            VideoKind::Screen => &self.screens,
+        }
+        .get(sfu)?;
+        identities
+            .iter()
+            .find_map(|identity| feeds.get(identity))
+            .cloned()
+    }
+
+    fn video_heard(
+        &mut self,
+        sfu: SfuId,
+        identity: MediaIdentity,
+        kind: VideoKind,
+        feed: Option<FeedId>,
+    ) {
+        let feeds = match kind {
+            VideoKind::Camera => &mut self.video,
+            VideoKind::Screen => &mut self.screens,
+        }
+        .entry(sfu)
+        .or_default();
+        match feed {
+            Some(feed) => feeds.insert(identity, feed),
+            None => feeds.remove(&identity),
+        };
+    }
+
     fn forget(&mut self, sfu: &SfuId) {
         self.present.remove(sfu);
         self.muted.remove(sfu);
         self.speaking.remove(sfu);
+        self.video.remove(sfu);
+        self.screens.remove(sfu);
     }
 }
 
@@ -143,6 +202,8 @@ pub(super) struct Joined {
     heard: Heard,
     standings: HashMap<MemberKey, DeviceStanding>,
     microphone: Microphone,
+    camera: OwnCamera,
+    screen: OwnScreen,
     outgoing_kind: Option<RingKind>,
     pub(super) outgoing: Option<Outgoing>,
 }
@@ -177,10 +238,15 @@ impl Joined {
             heard: Heard::default(),
             standings: HashMap::new(),
             microphone: Microphone::Off,
+            camera: OwnCamera::Off,
+            screen: OwnScreen::Off,
             outgoing_kind: joining.outgoing,
             outgoing: None,
         };
         joined.command(MediaCommand::Microphone(true));
+        if joined.intent == CallIntent::Video {
+            joined.set_camera(true);
+        }
         let mut effects = Vec::new();
         if joined.encrypted {
             let actions = joined.keys.members_changed(joined.now(), &[], fresh_key());
@@ -418,8 +484,48 @@ impl Joined {
                 self.heard.decryption.insert(identity, state);
             }
             MediaEvent::Microphone(microphone) => self.microphone = microphone,
+            MediaEvent::Camera(camera) => self.camera_reported(camera),
+            MediaEvent::Screen(screen) => self.screen_reported(screen),
+            MediaEvent::Video {
+                sfu,
+                identity,
+                kind,
+                feed,
+            } => self.heard.video_heard(sfu, identity, kind, feed),
         }
         Ok(())
+    }
+
+    fn camera_reported(&mut self, camera: Camera) {
+        self.camera = match camera {
+            Camera::On(_) if self.camera == OwnCamera::Off => return,
+            Camera::On(feed) => OwnCamera::On(feed),
+            Camera::Failed(why) => {
+                tracing::warn!(call = self.call, why, "the camera did not start");
+                OwnCamera::Failed
+            }
+        };
+    }
+
+    fn screen_reported(&mut self, screen: ScreenShare) {
+        self.screen = match screen {
+            ScreenShare::On if self.screen != OwnScreen::Choosing => return,
+            ScreenShare::On => OwnScreen::On,
+            ScreenShare::Off if matches!(self.screen, OwnScreen::Unavailable(_)) => return,
+            ScreenShare::Off => OwnScreen::Off,
+            ScreenShare::Failed(why) => {
+                tracing::warn!(call = self.call, why, "the screen share did not start");
+                OwnScreen::Failed
+            }
+            ScreenShare::Unavailable(refusal) => {
+                tracing::info!(
+                    call = self.call,
+                    ?refusal,
+                    "this desktop cannot share its screen"
+                );
+                OwnScreen::Unavailable(refusal)
+            }
+        };
     }
 
     fn sfu_state(&mut self, sfu: &SfuId, state: SfuState) -> Result<(), CallLoss> {
@@ -465,6 +571,42 @@ impl Joined {
 
     pub(super) fn set_microphone(&self, on: bool) {
         self.command(MediaCommand::Microphone(on));
+    }
+
+    pub(super) fn set_camera(&mut self, on: bool) {
+        let wanted = if on {
+            OwnCamera::Starting
+        } else {
+            OwnCamera::Off
+        };
+        if matches!(
+            (&self.camera, &wanted),
+            (OwnCamera::Off, OwnCamera::Off)
+                | (OwnCamera::Starting | OwnCamera::On(_), OwnCamera::Starting)
+        ) {
+            return;
+        }
+        tracing::info!(call = self.call, on, "switching the camera");
+        self.camera = wanted;
+        self.command(MediaCommand::Camera(on));
+    }
+
+    pub(super) fn set_screen_share(&mut self, on: bool) {
+        let unchanged = match self.screen {
+            OwnScreen::Unavailable(_) => true,
+            OwnScreen::Off | OwnScreen::Failed => !on,
+            OwnScreen::Choosing | OwnScreen::On => on,
+        };
+        if unchanged {
+            return;
+        }
+        tracing::info!(call = self.call, on, "switching the screen share");
+        self.screen = if on {
+            OwnScreen::Choosing
+        } else {
+            OwnScreen::Off
+        };
+        self.command(MediaCommand::ScreenShare(on));
     }
 
     fn apply_keys(&self, actions: Vec<KeyAction>) -> Vec<Effect> {
@@ -531,12 +673,30 @@ impl Joined {
                 Microphone::Off => MicrophoneView::Off,
                 Microphone::Failed(_) => MicrophoneView::Failed,
             },
+            camera: match self.camera {
+                OwnCamera::Off => CameraView::Off,
+                OwnCamera::Starting => CameraView::Starting,
+                OwnCamera::On(_) => CameraView::On,
+                OwnCamera::Failed => CameraView::Failed,
+            },
+            screen: match self.screen {
+                OwnScreen::Off => ScreenView::Off,
+                OwnScreen::Choosing => ScreenView::Choosing,
+                OwnScreen::On => ScreenView::On,
+                OwnScreen::Failed => ScreenView::Failed,
+                OwnScreen::Unavailable(refusal) => ScreenView::Unavailable(refusal),
+            },
             tiles: Arc::from(self.tiles()),
         }
     }
 
     fn tiles(&self) -> Vec<CallTile> {
-        let mut tiles = Vec::new();
+        let mut tiles: Vec<CallTile> = self
+            .members
+            .iter()
+            .filter(|member| MemberKey::of(member) != self.me)
+            .filter_map(|member| self.screen_tile(member))
+            .collect();
         if !self
             .members
             .iter()
@@ -564,24 +724,33 @@ impl Joined {
             Some(LinkState::Failed(_)) => TileState::Unreachable,
             _ => TileState::Joining,
         };
+        let video = match &self.camera {
+            OwnCamera::On(feed) => Some(feed.clone()),
+            OwnCamera::Off | OwnCamera::Starting | OwnCamera::Failed => None,
+        };
         CallTile {
             member: self.me.clone(),
             name,
             own: true,
+            kind: TileKind::Person,
             state,
             muted: self.microphone != Microphone::On,
             speaking,
+            video,
         }
     }
 
     fn remote_tile(&self, member: &CallMember) -> CallTile {
         let identities = member_spellings(member);
         let key = MemberKey::of(member);
-        let muted = self.publishes_to(member).is_some_and(|sfu| {
+        let publishes_to = self.publishes_to(member);
+        let muted = publishes_to.as_ref().is_some_and(|sfu| {
             identities
                 .iter()
-                .any(|identity| self.heard.is_muted_on(&sfu, identity))
+                .any(|identity| self.heard.is_muted_on(sfu, identity))
         });
+        let video =
+            publishes_to.and_then(|sfu| self.heard.video_on(&sfu, &identities, VideoKind::Camera));
         CallTile {
             state: self.remote_state(member, &key, &identities),
             muted,
@@ -591,7 +760,26 @@ impl Joined {
             member: key,
             name: member.user.clone(),
             own: false,
+            kind: TileKind::Person,
+            video,
         }
+    }
+
+    fn screen_tile(&self, member: &CallMember) -> Option<CallTile> {
+        let identities = member_spellings(member);
+        let sfu = self.publishes_to(member)?;
+        let feed = self.heard.video_on(&sfu, &identities, VideoKind::Screen)?;
+        let key = MemberKey::of(member);
+        Some(CallTile {
+            state: self.remote_state(member, &key, &identities),
+            muted: false,
+            speaking: false,
+            member: key,
+            name: member.user.clone(),
+            own: false,
+            kind: TileKind::Screen,
+            video: Some(feed),
+        })
     }
 
     fn remote_state(

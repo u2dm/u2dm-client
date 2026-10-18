@@ -684,6 +684,26 @@ impl Calls {
         }
     }
 
+    pub(super) fn set_camera(&mut self, on: bool, directory: &RoomDirectory) {
+        let Some(joined) = self.joined.as_mut() else {
+            return;
+        };
+        let span = joined.span.clone();
+        let _in_call = span.enter();
+        joined.set_camera(on);
+        self.publish(directory);
+    }
+
+    pub(super) fn set_screen_share(&mut self, on: bool, directory: &RoomDirectory) {
+        let Some(joined) = self.joined.as_mut() else {
+            return;
+        };
+        let span = joined.span.clone();
+        let _in_call = span.enter();
+        joined.set_screen_share(on);
+        self.publish(directory);
+    }
+
     pub(super) fn hang_up(&mut self) {
         if let Some(mut joined) = self.joined.take() {
             tracing::info!(call = joined.call, room_id = %joined.room_id, "hanging up");

@@ -100,6 +100,14 @@ pub fn set_microphone(tx: &Tx, on: bool) {
     send_command(tx, UiCommand::SetMicrophone(on));
 }
 
+pub fn set_camera(tx: &Tx, on: bool) {
+    send_command(tx, UiCommand::SetCamera(on));
+}
+
+pub fn share_screen(tx: &Tx, on: bool) {
+    send_command(tx, UiCommand::ShareScreen(on));
+}
+
 pub fn use_recovery_key(tx: &Tx, key: String) {
     if key.trim().is_empty() {
         return;

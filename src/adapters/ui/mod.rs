@@ -6,6 +6,7 @@ mod audio;
 mod autolink;
 mod backend;
 mod call;
+mod call_video;
 mod clipboard;
 mod clock;
 mod context_press;

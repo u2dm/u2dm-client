@@ -94,6 +94,11 @@ export struct CallTileEntry {
     state: CallTileState,
     muted: bool,
     speaking: bool,
+    feed: string,
+    has-frame: bool,
+    frame: image,
+    mirrored: bool,
+    screen: bool,
 }
 
 export struct StartCallRequest {
@@ -102,6 +107,14 @@ export struct StartCallRequest {
 }
 
 export struct MicrophoneRequest {
+    on: bool,
+}
+
+export struct CameraRequest {
+    on: bool,
+}
+
+export struct ScreenShareRequest {
     on: bool,
 }
 

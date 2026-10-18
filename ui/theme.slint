@@ -137,6 +137,10 @@ export global AppStyle {
     out property <color> call-band: Palette.alternate-background;
     out property <color> call-tile: root.surface-raised;
     out property <color> call-speaking: Palette.accent-background;
+    out property <color> call-sharing: Palette.accent-background;
+    out property <color> on-call-sharing: Palette.accent-foreground;
+    out property <color> call-tile-text: Palette.foreground;
+    out property <color> call-caption: root.overlay-media-scrim;
 
     out property <color> status-online: Colors.mediumseagreen;
     out property <color> status-pending: Colors.goldenrod;
@@ -317,11 +321,16 @@ export global Metrics {
     out property <length> incoming-call-top: Space.xl;
     out property <length> incoming-call-inset: Space.xl;
     out property <length> call-band: 260px;
+    out property <length> call-band-video: 380px;
     out property <length> call-bar: Size.xl;
-    out property <length> call-tile-width: 148px;
-    out property <length> call-tile-height: 112px;
+    out property <length> call-tile-min-width: 120px;
+    out property <length> call-tile-roomy: 96px;
+    out property <float> call-tile-aspect: 16 / 9;
+    out property <length> call-tile-caption: Size.sm;
     out property <length> call-tile-avatar: 56px;
     out property <length> call-speaking-ring: 2px;
+    out property <length> call-strip-max: 120px;
+    out property <float> call-strip-share: 0.25;
 
     out property <length> drawer-width: 300px;
     out property <length> drawer-min-width: 240px;

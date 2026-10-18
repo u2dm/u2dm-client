@@ -335,6 +335,10 @@ pub enum UiCommand {
     LeaveCall,
     #[strum(to_string = "SetMicrophone({0})")]
     SetMicrophone(bool),
+    #[strum(to_string = "SetCamera({0})")]
+    SetCamera(bool),
+    #[strum(to_string = "ShareScreen({0})")]
+    ShareScreen(bool),
     DismissToast,
     Logout,
     Quit,
@@ -484,6 +488,8 @@ impl UiCommand {
             | Self::SilenceRing
             | Self::LeaveCall
             | Self::SetMicrophone(_)
+            | Self::SetCamera(_)
+            | Self::ShareScreen(_)
             | Self::DismissToast
             | Self::Logout
             | Self::Quit => None,

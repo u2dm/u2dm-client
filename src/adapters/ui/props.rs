@@ -1,6 +1,6 @@
 use slint::{Image, Rgb8Pixel, SharedPixelBuffer, SharedString, StyledText};
 
-use super::dto::{CallOfferMark, PackSurface};
+use super::dto::{CallOfferMark, CallScreenMark, PackSurface};
 use super::present::{IdentityAlertKind, ServiceKind, VerifyStep};
 use super::schema::{bool_props, enum_props, int_props, string_props};
 use crate::app::input::CommandSender;
@@ -8,12 +8,13 @@ use crate::commands::effects::VerificationActivity;
 use crate::commands::messages::{UserMessage, UserMessageKind};
 use crate::commands::ui::UiCommand;
 use crate::commands::view::{
-    AttachmentKind, CallPhase, ChildAccess, CreateRoomStatus, DirectChat, EncryptionActivity,
-    EncryptionStep, JoinRefusal, LoginActivity, LoginStep, MicrophoneView, PendingAnswer,
-    PendingModeration, PeopleSearchStatus, ReadersStatus, RoomInfoPlacement, RoomPreviewSheet,
-    RoomScope, RosterStatus, SourceState, SpaceIndexStatus, UpgradeLink,
+    AttachmentKind, CallPhase, CameraView, ChildAccess, CreateRoomStatus, DirectChat,
+    EncryptionActivity, EncryptionStep, JoinRefusal, LoginActivity, LoginStep, MicrophoneView,
+    PendingAnswer, PendingModeration, PeopleSearchStatus, ReadersStatus, RoomInfoPlacement,
+    RoomPreviewSheet, RoomScope, RosterStatus, SourceState, SpaceIndexStatus, UpgradeLink,
 };
 use crate::domain::auth::LoginMethod;
+use crate::domain::call::video::ScreenRefusal;
 use crate::domain::encryption::{Recovery, Standing};
 use crate::domain::invite::InviteKind;
 use crate::domain::media::AudioKind;

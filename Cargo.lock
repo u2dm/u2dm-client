@@ -1047,6 +1047,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "cfg-expr"
+version = "0.20.10"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9ba9e9ec16c447027685b1f897b720e18e9a8afd00bd7332c483537e38086c9f"
+dependencies = [
+ "smallvec",
+ "target-lexicon",
+]
+
+[[package]]
 name = "cfg-if"
 version = "1.0.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1774,8 +1784,7 @@ dependencies = [
 [[package]]
 name = "device-info"
 version = "0.1.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a2ca8e71544c1b67dcdbc2699ab258828aff985e5bc8d5f6b486d90d7df2f848"
+source = "git+https://github.com/drendog/rust-sdks?branch=fix%2Fffmpreg_symbols_conflict#c6a6a02baad0d93b835eed6d0fbd6d5cc77abb14"
 dependencies = [
  "core-foundation 0.10.1",
  "jni 0.21.1",
@@ -2656,6 +2665,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "gio-sys"
+version = "0.21.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0071fe88dba8e40086c8ff9bbb62622999f49628344b1d1bf490a48a29d80f22"
+dependencies = [
+ "glib-sys",
+ "gobject-sys",
+ "libc",
+ "system-deps",
+ "windows-sys 0.61.2",
+]
+
+[[package]]
 name = "gl_generator"
 version = "0.14.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2664,6 +2686,50 @@ dependencies = [
  "khronos_api",
  "log",
  "xml-rs",
+]
+
+[[package]]
+name = "glib"
+version = "0.21.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "16de123c2e6c90ce3b573b7330de19be649080ec612033d397d72da265f1bd8b"
+dependencies = [
+ "bitflags 2.13.2",
+ "futures-channel",
+ "futures-core",
+ "futures-executor",
+ "futures-task",
+ "futures-util",
+ "gio-sys",
+ "glib-macros",
+ "glib-sys",
+ "gobject-sys",
+ "libc",
+ "memchr",
+ "smallvec",
+]
+
+[[package]]
+name = "glib-macros"
+version = "0.21.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cf59b675301228a696fe01c3073974643365080a76cc3ed5bc2cbc466ad87f17"
+dependencies = [
+ "heck",
+ "proc-macro-crate",
+ "proc-macro2",
+ "quote",
+ "syn 2.0.117",
+]
+
+[[package]]
+name = "glib-sys"
+version = "0.21.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2d95e1a3a19ae464a7286e14af9a90683c64d70c02532d88d87ce95056af3e6c"
+dependencies = [
+ "libc",
+ "system-deps",
 ]
 
 [[package]]
@@ -2785,6 +2851,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2c4ee00b289aba7a9e5306d57c2d05499b2e5dc427f84ac708bd2c090212cf3e"
 dependencies = [
  "gl_generator",
+]
+
+[[package]]
+name = "gobject-sys"
+version = "0.21.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2dca35da0d19a18f4575f3cb99fe1c9e029a2941af5662f326f738a21edaf294"
+dependencies = [
+ "glib-sys",
+ "libc",
+ "system-deps",
 ]
 
 [[package]]
@@ -4079,8 +4156,7 @@ dependencies = [
 [[package]]
 name = "libwebrtc"
 version = "0.3.52"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8718693f33f921a97c784f34fcbf085ebe68989e53bf4802f93aa8e083cf0a65"
+source = "git+https://github.com/drendog/rust-sdks?branch=fix%2Fffmpreg_symbols_conflict#c6a6a02baad0d93b835eed6d0fbd6d5cc77abb14"
 dependencies = [
  "cxx",
  "jni 0.21.1",
@@ -4148,8 +4224,7 @@ checksum = "11d3d7f243d5c5a8b9bb5d6dd2b1602c0cb0b9db1621bafc7ed66e35ff9fe092"
 [[package]]
 name = "livekit"
 version = "0.9.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b997899186e33ae91e6c87b9d3887632dd7ca5ba3fe02c0ebf0171974899571c"
+source = "git+https://github.com/drendog/rust-sdks?branch=fix%2Fffmpreg_symbols_conflict#c6a6a02baad0d93b835eed6d0fbd6d5cc77abb14"
 dependencies = [
  "bmrng",
  "bytes",
@@ -4177,8 +4252,7 @@ dependencies = [
 [[package]]
 name = "livekit-common"
 version = "0.1.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a41d06b9a8c37ad2691faabc091394101c876c2eb8ab1e61b3b021b4d5aacfd4"
+source = "git+https://github.com/drendog/rust-sdks?branch=fix%2Fffmpreg_symbols_conflict#c6a6a02baad0d93b835eed6d0fbd6d5cc77abb14"
 dependencies = [
  "livekit-protocol",
 ]
@@ -4186,8 +4260,7 @@ dependencies = [
 [[package]]
 name = "livekit-data-stream"
 version = "0.1.8"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e424524e3a8278e5a5d498e18817c017df922dae37551943e3afbf1458843e88"
+source = "git+https://github.com/drendog/rust-sdks?branch=fix%2Fffmpreg_symbols_conflict#c6a6a02baad0d93b835eed6d0fbd6d5cc77abb14"
 dependencies = [
  "async-compression",
  "bmrng",
@@ -4209,8 +4282,7 @@ dependencies = [
 [[package]]
 name = "livekit-datatrack"
 version = "0.2.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "51ea81d9e992be78a6089a2700cba7a2225bf3ebb9b821d1b9479a59537d9341"
+source = "git+https://github.com/drendog/rust-sdks?branch=fix%2Fffmpreg_symbols_conflict#c6a6a02baad0d93b835eed6d0fbd6d5cc77abb14"
 dependencies = [
  "anyhow",
  "bytes",
@@ -4228,8 +4300,7 @@ dependencies = [
 [[package]]
 name = "livekit-net"
 version = "0.1.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f9528a26c807f49d3fa6d075c01db5fd77bf32454b1e700c530fb8c670892008"
+source = "git+https://github.com/drendog/rust-sdks?branch=fix%2Fffmpreg_symbols_conflict#c6a6a02baad0d93b835eed6d0fbd6d5cc77abb14"
 dependencies = [
  "async-trait",
  "base64 0.21.7",
@@ -4248,8 +4319,7 @@ dependencies = [
 [[package]]
 name = "livekit-protocol"
 version = "0.8.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "39029b01173f266fbb60a7f546616cef882427e32452594030868df585970024"
+source = "git+https://github.com/drendog/rust-sdks?branch=fix%2Fffmpreg_symbols_conflict#c6a6a02baad0d93b835eed6d0fbd6d5cc77abb14"
 dependencies = [
  "pbjson",
  "pbjson-types",
@@ -4260,8 +4330,7 @@ dependencies = [
 [[package]]
 name = "livekit-region"
 version = "0.1.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8e94621b7d7cbb4544cd568c8e632852cc174d383055b0e77f4638eb91e43d3b"
+source = "git+https://github.com/drendog/rust-sdks?branch=fix%2Fffmpreg_symbols_conflict#c6a6a02baad0d93b835eed6d0fbd6d5cc77abb14"
 dependencies = [
  "serde",
 ]
@@ -4269,8 +4338,7 @@ dependencies = [
 [[package]]
 name = "livekit-rpc"
 version = "0.1.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d948a38a139c142aa3c42d3679b3f39d04d3e07981e4de5b16bae21b1eb50189"
+source = "git+https://github.com/drendog/rust-sdks?branch=fix%2Fffmpreg_symbols_conflict#c6a6a02baad0d93b835eed6d0fbd6d5cc77abb14"
 dependencies = [
  "livekit-common",
  "livekit-data-stream",
@@ -4286,8 +4354,7 @@ dependencies = [
 [[package]]
 name = "livekit-signaling"
 version = "0.1.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1e3867060e1f1e7073f367c218688042fc014f8b8ebd65749e411400ad9b7e3a"
+source = "git+https://github.com/drendog/rust-sdks?branch=fix%2Fffmpreg_symbols_conflict#c6a6a02baad0d93b835eed6d0fbd6d5cc77abb14"
 dependencies = [
  "base64 0.21.7",
  "device-info",
@@ -7859,6 +7926,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "system-deps"
+version = "7.0.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "396a35feb67335377e0251fcbc1092fc85c484bd4e3a7a54319399da127796e7"
+dependencies = [
+ "cfg-expr",
+ "heck",
+ "pkg-config",
+ "toml",
+ "version-compare",
+]
+
+[[package]]
 name = "taffy"
 version = "0.10.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7880,6 +7960,12 @@ dependencies = [
  "libc",
  "xattr",
 ]
+
+[[package]]
+name = "target-lexicon"
+version = "0.13.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "adb6935a6f5c20170eeceb1a3835a49e12e19d792f6dd344ccc76a985ca5a6ca"
 
 [[package]]
 name = "temp-dir"
@@ -8467,6 +8553,7 @@ dependencies = [
  "emojis",
  "ffmpeg-next",
  "futures-util",
+ "glib",
  "image",
  "infer",
  "keyring-core",
@@ -8712,6 +8799,12 @@ name = "vcpkg"
 version = "0.2.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "accd4ea62f7bb7a82fe23066fb0957d48ef677f6eeb8215f372f52e48bb32426"
+
+[[package]]
+name = "version-compare"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "03c2856837ef78f57382f06b2b8563a2f512f7185d732608fd9176cb3b8edf0e"
 
 [[package]]
 name = "version_check"
@@ -9064,8 +9157,7 @@ dependencies = [
 [[package]]
 name = "webrtc-sys"
 version = "0.3.49"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b803a52c561fbb9faaf09c1b6fc0260f337cbc1ae6f2a525f673c77eb4411022"
+source = "git+https://github.com/drendog/rust-sdks?branch=fix%2Fffmpreg_symbols_conflict#c6a6a02baad0d93b835eed6d0fbd6d5cc77abb14"
 dependencies = [
  "cc",
  "cxx",
@@ -9079,8 +9171,7 @@ dependencies = [
 [[package]]
 name = "webrtc-sys-build"
 version = "0.3.19"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0cd4f418e16f4b7ba028e6b5c70e4f532c7d2b5ca39726d42b699f3e4591ed5c"
+source = "git+https://github.com/drendog/rust-sdks?branch=fix%2Fffmpreg_symbols_conflict#c6a6a02baad0d93b835eed6d0fbd6d5cc77abb14"
 dependencies = [
  "anyhow",
  "fs2",

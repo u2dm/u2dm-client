@@ -1,7 +1,7 @@
 import { IconDisplay, IconSet } from "@lucide";
 
 import { AppButton, IconButton } from "../../../../components/button.slint";
-import { CallMic } from "../../../../enums.slint";
+import { CallCamera, CallMic, CallPhase, CallScreen } from "../../../../enums.slint";
 import { CallWords } from "../../../../messages.slint";
 import { Actions } from "../../../../actions.slint";
 import { Shell } from "../../../../local.slint";
@@ -11,19 +11,57 @@ import { CallTileView } from "./call-tile.slint";
 
 component CallTiles inherits Flickable {
     property <length> gap: Space.sm;
-    property <int> columns: max(1, floor((root.width + root.gap) / (Metrics.call-tile-width + root.gap)));
-    property <int> shown-columns: min(root.columns, max(1, CallView.tiles.length));
+    property <int> count: max(1, CallView.tiles.length);
+    property <float> aspect: Metrics.call-tile-aspect;
+    property <int> guess: clamp(
+        round(sqrt(root.count * root.width / max(1px, root.height) / root.aspect)), 1, root.count);
+    property <int> fewer: max(1, root.guess - 1);
+    property <int> more: min(root.count, root.guess + 1);
+    property <int> best: root.width-for(root.guess) >= root.width-for(root.fewer)
+        ? (root.width-for(root.guess) >= root.width-for(root.more) ? root.guess : root.more)
+        : (root.width-for(root.fewer) >= root.width-for(root.more) ? root.fewer : root.more);
+    property <bool> crowded: root.width-for(root.best) < Metrics.call-tile-min-width;
+    property <int> columns: root.crowded
+        ? clamp(floor((root.width + root.gap) / (Metrics.call-tile-min-width + root.gap)), 1, root.count)
+        : root.best;
+    property <length> tile-width: root.crowded ? min(Metrics.call-tile-min-width, root.width) : root.width-for(root.best);
+    property <length> tile-height: root.tile-width / root.aspect;
     property <int> rows: ceil(CallView.tiles.length / root.columns);
-    property <length> row-width: root.shown-columns * Metrics.call-tile-width + (root.shown-columns - 1) * root.gap;
+    property <length> grid-height: root.rows * (root.tile-height + root.gap) - root.gap;
+    property <length> row-width: min(root.columns, root.count) * root.tile-width + (min(root.columns, root.count) - 1) * root.gap;
+    property <length> top: max(0px, (root.height - root.grid-height) / 2);
+    property <int> last-row-count: CallView.tiles.length - (root.rows - 1) * root.columns;
+    property <length> last-row-indent: (root.columns - root.last-row-count) * (root.tile-width + root.gap) / 2;
+    property <bool> spotlight: CallView.tiles[0].screen;
+    property <int> strip-count: CallView.tiles.length - 1;
+    property <length> strip-height: root.strip-count > 0 ? min(Metrics.call-strip-max, root.height * Metrics.call-strip-share) : 0px;
+    property <length> strip-tile-width: root.strip-count > 0
+        ? min(root.strip-height * root.aspect, (root.width - (root.strip-count - 1) * root.gap) / root.strip-count)
+        : 0px;
+    property <length> strip-tile-height: root.strip-tile-width / root.aspect;
+    property <length> strip-left: (root.width - root.strip-count * root.strip-tile-width - max(0, root.strip-count - 1) * root.gap) / 2;
+    property <length> strip-top: root.height - root.strip-height + (root.strip-height - root.strip-tile-height) / 2;
+    property <length> spot-height: root.height - (root.strip-count > 0 ? root.strip-height + root.gap : 0px);
 
-    content-height: max(root.height, root.rows * (Metrics.call-tile-height + root.gap) - root.gap);
+    pure function width-for(columns: int) -> length {
+        min(
+            (root.width - (columns - 1) * root.gap) / columns,
+            (root.height - (ceil(root.count / columns) - 1) * root.gap) / ceil(root.count / columns) * root.aspect)
+    }
+
+    content-height: root.spotlight ? root.height : max(root.height, root.grid-height);
     interactive: self.content-height > self.height;
 
     for tile[i] in CallView.tiles: CallTileView {
-        x: (root.width - root.row-width) / 2 + mod(i, root.columns) * (Metrics.call-tile-width + root.gap);
-        y: floor(i / root.columns) * (Metrics.call-tile-height + root.gap);
-        width: Metrics.call-tile-width;
-        height: Metrics.call-tile-height;
+        x: !root.spotlight
+            ? (root.width - root.row-width) / 2 + mod(i, root.columns) * (root.tile-width + root.gap)
+                + (floor(i / root.columns) == root.rows - 1 ? root.last-row-indent : 0px)
+            : i == 0 ? 0px : root.strip-left + (i - 1) * (root.strip-tile-width + root.gap);
+        y: !root.spotlight
+            ? root.top + floor(i / root.columns) * (root.tile-height + root.gap)
+            : i == 0 ? 0px : root.strip-top;
+        width: !root.spotlight ? root.tile-width : i == 0 ? root.width : root.strip-tile-width;
+        height: !root.spotlight ? root.tile-height : i == 0 ? root.spot-height : root.strip-tile-height;
         tile: tile;
     }
 }
@@ -91,6 +129,40 @@ export component CallBand inherits Rectangle {
                         : @tr("Unmute your microphone");
                 clicked => {
                     Actions.set-microphone({ on: CallView.mic != CallMic.on });
+                }
+            }
+
+            IconButton {
+                property <bool> on: CallView.camera == CallCamera.on || CallView.camera == CallCamera.starting;
+
+                size: Size.xl;
+                radius: self.size / 2;
+                icon: self.on ? IconSet.Video : IconSet.VideoOff;
+                tint: self.on ? AppStyle.foreground-strong : white;
+                fill: self.on ? AppStyle.call-tile : AppStyle.call-decline;
+                label: self.on
+                    ? @tr("Turn your camera off")
+                    : CallView.camera == CallCamera.failed
+                        ? @tr("Your camera did not start, try again")
+                        : @tr("Turn your camera on");
+                clicked => {
+                    Actions.set-camera({ on: !self.on });
+                }
+            }
+
+            IconButton {
+                property <bool> sharing: CallView.screen == CallScreen.on || CallView.screen == CallScreen.choosing;
+
+                size: Size.xl;
+                radius: self.size / 2;
+                enabled: CallView.screen != CallScreen.unavailable
+                    && CallView.phase != CallPhase.joining && CallView.phase != CallPhase.connecting;
+                icon: self.sharing ? IconSet.ScreenShareOff : IconSet.ScreenShare;
+                tint: self.sharing ? AppStyle.on-call-sharing : AppStyle.foreground-strong;
+                fill: self.sharing ? AppStyle.call-sharing : AppStyle.call-tile;
+                label: CallWords.share(CallView.screen, CallView.screen-refusal);
+                clicked => {
+                    Actions.share-screen({ on: !self.sharing });
                 }
             }
 

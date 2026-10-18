@@ -14,6 +14,8 @@ pub(super) enum MediaCommand {
     Connect(Box<SfuGrant>),
     Disconnect(SfuId),
     Microphone(bool),
+    Camera(bool),
+    ScreenShare(bool),
     OwnKey(KeyIndex, MediaKey),
     UseOwnKey(KeyIndex),
     Key(Vec<MediaIdentity>, KeyIndex, MediaKey),
@@ -86,6 +88,8 @@ async fn apply(session: &mut dyn MediaSession, command: MediaCommand) {
         }
         MediaCommand::Disconnect(sfu) => session.disconnect(&sfu).await,
         MediaCommand::Microphone(on) => session.set_microphone(on).await,
+        MediaCommand::Camera(on) => session.set_camera(on).await,
+        MediaCommand::ScreenShare(on) => session.set_screen_share(on).await,
         MediaCommand::OwnKey(index, key) => session.set_own_key(index, &key).await,
         MediaCommand::UseOwnKey(index) => session.use_own_key(index).await,
         MediaCommand::Key(identities, index, key) => {
