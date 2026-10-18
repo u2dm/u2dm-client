@@ -117,13 +117,6 @@ pub fn own_caption(caption: RichText) -> RichText {
     }
 }
 
-pub fn merged(original: Option<&Mentions>, added: &Mentions) -> Mentions {
-    let mut merged = original.cloned().unwrap_or_default();
-    merged.user_ids.extend(added.user_ids.iter().cloned());
-    merged.room |= added.room;
-    merged
-}
-
 struct Placed<'a> {
     text: String,
     emotes: Vec<&'a Emote>,

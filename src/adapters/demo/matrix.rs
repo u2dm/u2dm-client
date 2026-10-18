@@ -561,7 +561,7 @@ impl DemoAuthed {
             mentions_room: message.mentions_room,
             edited: message.edited,
         };
-        message.mentions_room |= sent.mentions_room;
+        message.mentions_room = sent.mentions_room;
         message.edited |= edit.target.event_id().is_some();
         if !timeline::scenario().edits_fail {
             self.keep_own_edit(room_id, message);

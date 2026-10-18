@@ -11,11 +11,12 @@ use matrix_sdk::ruma::events::room::message::{
     ReplacementMetadata, RoomMessageEventContent, RoomMessageEventContentWithoutRelation,
 };
 use matrix_sdk::ruma::events::{
-    AnyMessageLikeEventContent, AnySyncMessageLikeEvent, AnySyncTimelineEvent, SyncMessageLikeEvent,
+    AnyMessageLikeEventContent, AnySyncMessageLikeEvent, AnySyncTimelineEvent, Mentions,
+    SyncMessageLikeEvent,
 };
 use matrix_sdk::ruma::html::{HtmlSanitizerMode, RemoveReplyFallback};
 use matrix_sdk::ruma::serde::Raw;
-use matrix_sdk::ruma::{EventId, OwnedEventId, UserId};
+use matrix_sdk::ruma::{EventId, OwnedEventId, OwnedUserId, UserId};
 use matrix_sdk::send_queue::{LocalEcho, LocalEchoContent, SendHandle};
 use matrix_sdk_ui::timeline::EventTimelineItem;
 use tokio::time::timeout;
@@ -46,6 +47,7 @@ async fn replacement(
     target: &EventId,
     edit: &MessageEdit,
 ) -> Result<AnyMessageLikeEventContent> {
+    let queued = queued_version(room, target).await;
     let (event, related) = match cached_with_replacements(room, target).await {
         Some(cached) => cached,
         None => fetched_with_replacements(room, target).await?,
@@ -53,20 +55,102 @@ async fn replacement(
     let original = original_message(event.raw())
         .filter(|original| original.sender == room.own_user_id())
         .ok_or_else(|| AppError::Other(format!("{target} is not a message of yours")))?;
-    let replacements = own_replacements(&related, room.own_user_id());
-    let shown = latest_version(&original, &replacements);
-    let emotes = with_target_emotes(&edit.emotes, version_html(shown));
+    let shown = queued.unwrap_or_else(|| {
+        latest_version(&original, &own_replacements(&related, room.own_user_id()))
+    });
+    let emotes = with_target_emotes(&edit.emotes, version_html(&shown.msgtype));
     let composed = composed(room, &edit.body, &emotes).await;
-    let text = edit.body.as_str();
-    let composed = &composed;
-    let previous = original.content.mentions;
-    let msgtype = revised(original.content.msgtype, text, composed)
+    let msgtype = revised(original.content.msgtype, &edit.body, &composed)
         .ok_or_else(|| AppError::Other(format!("{target} has no plain text or caption to edit")))?;
+    let mentions = resolved_mentions(
+        room,
+        replied_to(original.content.relates_to.as_ref()),
+        shown.mentions.as_ref(),
+        &composed.mentions,
+    )
+    .await;
     let mut revised = RoomMessageEventContentWithoutRelation::new(msgtype);
-    revised.mentions = Some(markdown::merged(previous.as_ref(), &composed.mentions));
+    revised.mentions = Some(mentions);
     Ok(revised
-        .make_replacement(ReplacementMetadata::new(target.to_owned(), previous))
+        .make_replacement(ReplacementMetadata::new(target.to_owned(), shown.mentions))
         .into())
+}
+
+async fn queued_version(
+    room: &Room,
+    target: &EventId,
+) -> Option<RoomMessageEventContentWithoutRelation> {
+    let (echoes, _updates) = room.send_queue().subscribe().await.ok()?;
+    echoes
+        .iter()
+        .rev()
+        .filter_map(queued_message)
+        .find_map(|(content, _handle)| match content.relates_to {
+            Some(Relation::Replacement(replacement)) if replacement.event_id == target => {
+                Some(replacement.new_content)
+            }
+            _ => None,
+        })
+}
+
+async fn resolved_mentions(
+    room: &Room,
+    replied_to: Option<&OwnedEventId>,
+    shown: Option<&Mentions>,
+    tags: &Mentions,
+) -> Mentions {
+    let mut resolved = tags.clone();
+    let Some(replied_to) = replied_to else {
+        return resolved;
+    };
+    let Some(shown) = shown.filter(|shown| !shown.user_ids.is_subset(&tags.user_ids)) else {
+        return resolved;
+    };
+    match replied_to_sender(room, replied_to).await {
+        Ok(sender) if shown.user_ids.contains(&sender) => {
+            resolved.user_ids.insert(sender);
+        }
+        Ok(_) => {}
+        Err(e) => {
+            tracing::warn!(
+                %replied_to,
+                "the edit keeps every mention of the version it replaces: {e}"
+            );
+            resolved.user_ids.extend(shown.user_ids.iter().cloned());
+        }
+    }
+    resolved
+}
+
+fn replied_to<C>(relation: Option<&Relation<C>>) -> Option<&OwnedEventId> {
+    match relation? {
+        Relation::Reply(reply) => Some(&reply.in_reply_to.event_id),
+        Relation::Thread(thread) => thread
+            .in_reply_to
+            .as_ref()
+            .map(|in_reply_to| &in_reply_to.event_id),
+        _ => None,
+    }
+}
+
+async fn replied_to_sender(room: &Room, replied_to: &EventId) -> Result<OwnedUserId> {
+    timeout(
+        PRE_QUEUE_LOOKUP_WAIT,
+        room.load_or_fetch_event(replied_to, Some(RequestConfig::short_retry())),
+    )
+    .await
+    .map_err(|_| {
+        AppError::Other(format!(
+            "the replied-to event {replied_to} did not arrive in time"
+        ))
+    })?
+    .map_err(|e| {
+        AppError::Other(format!(
+            "the replied-to event {replied_to} did not load: {e}"
+        ))
+    })?
+    .sender()
+    .ok_or_else(|| AppError::Other(format!("the replied-to event {replied_to} has no sender")))
 }
 
 async fn cached_with_replacements(
@@ -222,29 +306,27 @@ async fn edit_queued(room: &Room, local_id: &str, edit: &MessageEdit) -> Result<
         })?;
     let emotes = with_target_emotes(&edit.emotes, version_html(&queued.msgtype));
     let composed = &composed(room, &edit.body, &emotes).await;
-    let replaced = match revised(queued.msgtype, &edit.body, composed) {
-        Some(msgtype @ MessageType::Text(_)) => {
-            let mut revised = RoomMessageEventContentWithoutRelation::new(msgtype);
-            revised.mentions = Some(markdown::merged(
-                queued.mentions.as_ref(),
-                &composed.mentions,
-            ));
-            handle
-                .edit(revised.with_relation(queued.relates_to).into())
-                .await
-        }
-        Some(_) => {
-            let (caption, formatted) = queued_caption(composed);
-            let mentions = markdown::merged(queued.mentions.as_ref(), &composed.mentions);
-            handle
-                .edit_media_caption(caption, formatted, Some(mentions))
-                .await
-        }
-        None => {
-            return Err(AppError::Other(format!(
-                "{local_id} has no plain text or caption to edit"
-            )));
-        }
+    let msgtype = revised(queued.msgtype, &edit.body, composed).ok_or_else(|| {
+        AppError::Other(format!("{local_id} has no plain text or caption to edit"))
+    })?;
+    let mentions = resolved_mentions(
+        room,
+        replied_to(queued.relates_to.as_ref()),
+        queued.mentions.as_ref(),
+        &composed.mentions,
+    )
+    .await;
+    let replaced = if matches!(msgtype, MessageType::Text(_)) {
+        let mut revised = RoomMessageEventContentWithoutRelation::new(msgtype);
+        revised.mentions = Some(mentions);
+        handle
+            .edit(revised.with_relation(queued.relates_to).into())
+            .await
+    } else {
+        let (caption, formatted) = queued_caption(composed);
+        handle
+            .edit_media_caption(caption, formatted, Some(mentions))
+            .await
     }
     .map_err(|e| AppError::Other(e.to_string()))?;
     if replaced {
@@ -270,18 +352,18 @@ fn own_replacements(
         .collect()
 }
 
-fn latest_version<'a>(
-    original: &'a OriginalSyncRoomMessageEvent,
-    replacements: &'a [OriginalSyncRoomMessageEvent],
-) -> &'a MessageType {
+fn latest_version(
+    original: &OriginalSyncRoomMessageEvent,
+    replacements: &[OriginalSyncRoomMessageEvent],
+) -> RoomMessageEventContentWithoutRelation {
     replacements
         .iter()
         .max_by_key(|replacement| replacement.origin_server_ts)
         .and_then(|replacement| match &replacement.content.relates_to {
-            Some(Relation::Replacement(edit)) => Some(&edit.new_content.msgtype),
+            Some(Relation::Replacement(edit)) => Some(edit.new_content.clone()),
             _ => None,
         })
-        .unwrap_or(&original.content.msgtype)
+        .unwrap_or_else(|| original.content.clone().into())
 }
 
 fn version_html(msgtype: &MessageType) -> Option<&str> {
