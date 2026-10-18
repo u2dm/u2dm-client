@@ -15,6 +15,8 @@ const LUCIDE_LSP_LIB: &str = ".lucide/lib.slint";
 const DEMO_ASSETS_SCRIPT: &str = "scripts/gen-demo-assets.sh";
 #[cfg(feature = "demo")]
 const DEMO_DATA: &str = "assets/demo/data.json";
+#[cfg(feature = "calls")]
+const CUSTOM_WEBRTC_ENV: &str = "LK_CUSTOM_WEBRTC";
 
 struct EnumCoverage {
     slint_enum: &'static str,
@@ -295,7 +297,23 @@ fn main() {
     #[cfg(feature = "demo")]
     fetch_demo_assets();
 
+    #[cfg(feature = "calls")]
+    warn_about_prebuilt_webrtc();
+
     compile_bundled_catalogs(&bundled_catalog_root());
+}
+
+#[cfg(feature = "calls")]
+fn warn_about_prebuilt_webrtc() {
+    println!("cargo::rerun-if-env-changed={CUSTOM_WEBRTC_ENV}");
+    if env::var_os(CUSTOM_WEBRTC_ENV).is_none_or(|dir| dir.is_empty()) {
+        println!(
+            "cargo::warning={CUSTOM_WEBRTC_ENV} is not set, so calls link LiveKit's prebuilt \
+             libwebrtc, whose bundled FFmpeg takes over ffmpeg-next's calls (no MJPEG camera, \
+             broken video). Point it at a libwebrtc built with drendog/rust-sdks' build_linux.sh \
+             (call-media.md)."
+        );
+    }
 }
 
 struct ScenarioSource {
