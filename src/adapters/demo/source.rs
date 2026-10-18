@@ -1,6 +1,8 @@
 use serde_json::{Value, json};
 
 use super::data;
+use crate::domain::location::Location;
+use crate::domain::media::FileMeta;
 use crate::domain::message::{
     MessageBody, RichText, ServiceEvent, Shield, ShieldCode, TimelineMessage,
 };
@@ -93,6 +95,7 @@ fn event_type(body: &MessageBody) -> &'static str {
         | MessageBody::Video { .. }
         | MessageBody::Audio { .. }
         | MessageBody::File { .. }
+        | MessageBody::Location(_)
         | MessageBody::Unsupported { .. } => "m.room.message",
     }
 }
@@ -136,7 +139,8 @@ fn body_content(body: &MessageBody) -> Value {
         MessageBody::Image { caption, .. } => media_content("m.image", caption.as_ref()),
         MessageBody::Video { caption, .. } => media_content("m.video", caption.as_ref()),
         MessageBody::Audio { caption, .. } => media_content("m.audio", caption.as_ref()),
-        MessageBody::File { .. } => json!({ "msgtype": "m.file", "body": "file" }),
+        MessageBody::File { caption, meta } => file_content(caption.as_ref(), meta),
+        MessageBody::Location(location) => location_content(location),
         MessageBody::Sticker { alt, .. } => json!({ "body": alt }),
         MessageBody::Poll(poll) => {
             json!({ "org.matrix.msc3381.poll.start": { "question": { "body": poll.question } } })
@@ -368,7 +372,8 @@ fn own_mentions(body: &MessageBody) -> Option<Value> {
         MessageBody::Text(text) => text.composer_text(),
         MessageBody::Image { caption, .. }
         | MessageBody::Video { caption, .. }
-        | MessageBody::Audio { caption, .. } => caption.as_ref().and_then(RichText::composer_text),
+        | MessageBody::Audio { caption, .. }
+        | MessageBody::File { caption, .. } => caption.as_ref().and_then(RichText::composer_text),
         _ => None,
     }?;
     serde_json::to_value(data::own_composition(composer, &[]).mentions).ok()
@@ -399,6 +404,25 @@ fn media_content(msgtype: &str, caption: Option<&RichText>) -> Value {
         fields.insert("formatted_body".to_owned(), Value::from(html));
     }
     content
+}
+
+fn file_content(caption: Option<&RichText>, meta: &FileMeta) -> Value {
+    let mut content = media_content("m.file", caption);
+    if let Some(fields) = content.as_object_mut() {
+        if caption.is_none() {
+            fields.insert("body".to_owned(), Value::from(meta.filename.as_str()));
+        }
+        fields.insert("filename".to_owned(), Value::from(meta.filename.as_str()));
+    }
+    content
+}
+
+fn location_content(location: &Location) -> Value {
+    json!({
+        "msgtype": "m.location",
+        "body": location.description,
+        "geo_uri": location.geo_uri,
+    })
 }
 
 fn ciphertext() -> Value {

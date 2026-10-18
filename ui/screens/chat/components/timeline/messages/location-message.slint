@@ -1,0 +1,61 @@
+import { Palette } from "std-widgets.slint";
+import { IconSet } from "@lucide";
+import { MessageEntry } from "../../../../../types.slint";
+import { Interaction } from "../../../../../components/a11y.slint";
+import { Actions } from "../../../../../actions.slint";
+import { AppStyle, Fonts, IconSize, Space, Weight } from "../../../../../theme.slint";
+import { MediaButton } from "./media-button.slint";
+
+export component LocationMessage inherits HorizontalLayout {
+    in property <MessageEntry> msg;
+
+    property <bool> can-open: root.msg.map-link != "";
+
+    function open-map() {
+        Actions.open-link(root.msg.map-link);
+    }
+
+    padding-top: Space.md;
+    spacing: Space.lg;
+    alignment: start;
+
+    MediaButton {
+        cross-axis-self-alignment: center;
+        enabled: root.can-open;
+        msg: root.msg;
+        icon: IconSet.MapPin;
+        glyph-size: IconSize.lg;
+        label: @tr("Open in OpenStreetMap");
+        clicked => {
+            root.open-map();
+        }
+    }
+
+    TouchArea {
+        enabled: Interaction.actionable(root.can-open, false);
+        mouse-cursor: self.enabled ? pointer : default;
+        clicked => {
+            root.open-map();
+        }
+
+        VerticalLayout {
+            alignment: center;
+            spacing: Space.xs;
+
+            Text {
+                text: root.msg.body != "" ? root.msg.body : @tr("Location");
+                font-size: Fonts.body;
+                font-weight: Weight.semibold;
+                color: Palette.foreground;
+                wrap: word-wrap;
+            }
+
+            if root.can-open: Text {
+                text: @tr("Open in OpenStreetMap");
+                font-size: Fonts.body-small;
+                color: root.msg.is-own ? AppStyle.own-link : AppStyle.link;
+                overflow: elide;
+            }
+        }
+    }
+}

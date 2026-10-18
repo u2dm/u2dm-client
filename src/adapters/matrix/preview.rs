@@ -8,6 +8,7 @@ pub(super) struct MessagePreview {
     pub body: RichText,
     pub service: Option<ServiceEvent>,
     pub edited: bool,
+    pub server_notice: bool,
 }
 
 impl MessagePreview {
@@ -17,6 +18,7 @@ impl MessagePreview {
             body: RichText::default(),
             service: None,
             edited: false,
+            server_notice: false,
         }
     }
 
@@ -26,6 +28,7 @@ impl MessagePreview {
             body: RichText::default(),
             service: Some(event),
             edited: false,
+            server_notice: false,
         }
     }
 }
@@ -70,6 +73,7 @@ pub(super) fn from_msgtype(msgtype: &MessageType) -> MessagePreview {
         },
         service: None,
         edited: false,
+        server_notice: matches!(msgtype, MessageType::ServerNotice(_)),
     }
 }
 
@@ -79,5 +83,6 @@ pub(super) fn poll_start(content: &UnstablePollStartEventContent) -> MessagePrev
         body: RichText::plain(one_line(&content.poll_start().question.text)),
         service: None,
         edited: matches!(content, UnstablePollStartEventContent::Replacement(_)),
+        server_notice: false,
     }
 }

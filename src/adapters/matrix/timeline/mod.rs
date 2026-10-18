@@ -4,6 +4,7 @@ mod deletions;
 mod diff;
 mod edits;
 mod emoji_files;
+mod event_filter;
 mod filter;
 mod members;
 mod missing_keys;

@@ -50,6 +50,7 @@ scenario_env() {
     user-tags)       echo 'U2DM_DEMO_RICHTEXT=links,bare' ;;
     custom-emoji)    echo 'U2DM_DEMO_RICHTEXT=emoji U2DM_DEMO_WINDOW=900x1400' ;;
     spoilers)        echo 'U2DM_DEMO_RICHTEXT=spoilers U2DM_DEMO_WINDOW=900x1400' ;;
+    message-types)   echo 'U2DM_DEMO_MSGTYPES=all U2DM_DEMO_WINDOW=900x1400' ;;
     message-link)    echo 'U2DM_DEMO_MESSAGE_MENU=slow' ;;
     message-source)  echo 'U2DM_DEMO_MESSAGE_MENU=slow' ;;
     message-pins)    echo 'U2DM_DEMO_MESSAGE_MENU=slow U2DM_DEMO_PINNED=slow' ;;
@@ -260,6 +261,9 @@ scenario_steps() {
       echo 'sleep 3' ;;
     custom-emoji|spoilers)
       echo '{"op":"select_room","room_id":"!design:demo.local"}'
+      echo 'sleep 2' ;;
+    message-types)
+      echo '{"op":"select_room","room_id":"!rust:demo.local"}'
       echo 'sleep 2' ;;
     user-tags)
       echo '{"op":"select_room","room_id":"!design:demo.local"}'
@@ -746,6 +750,7 @@ scenario_note() {
     user-tags)       echo 'in !design, tags naming you are bold and tint their bubble (mentions_you), and a matrix.to user link opens the user sheet, yours and then Sarah'"'"'s, instead of the browser' ;;
     custom-emoji)    echo 'in !design, custom emoji flow among the words at text height, a wide one as wide as its image, and an emote-only body is large (emote_only, body_emoji); a missing one, and an image without data-mx-emoticon, read as their shortcodes' ;;
     spoilers)        echo 'in !design, every spoiler is a Spoiler chip carrying its reason, and the reply band, the copied text and the composer'"'"'s reply preview read the chips (spoilers, body, preview_body, reply_body); clicking a chip, or activating the row, reveals every spoiler of that message' ;;
+    message-types)   echo 'in !rust, notices in a muted ink, emotes led by "* Sarah Chen", files with their captions under the card, locations with an Open in OpenStreetMap link (none for the Mars crater), and unknown msgtypes as cards with their fallback body (message_type, body, filename, map_link, unsupported_kind)' ;;
     message-delete-failures) echo 'an own deletion comes back with the toast; a member may not delete someone else'"'"'s message' ;;
     readers)         echo 'in !rust, the 123 readers of an older message load slowly, then the 121 readers of your newest message page in fifty at a time' ;;
     room-search)     echo 'in All Rooms, "design" lists the Design Team room, then the Design space' ;;
@@ -827,7 +832,7 @@ names() {
     audio-track voice-notes delivery-marks \
     space-index polls poll-edits room-info room-leave room-info-failures room-info-pane room-menu room-menu-leave \
     room-menu-failures room-log user-info user-info-failures user-dm user-dm-start user-dm-failures user-ignore user-moderation \
-    user-moderation-failures user-tags custom-emoji spoilers message-link message-source message-pins message-pin-failures message-delete \
+    user-moderation-failures user-tags custom-emoji spoilers message-types message-link message-source message-pins message-pin-failures message-delete \
     message-delete-failures readers room-search room-search-open mentions room-mention display-names \
     message-shields identity-alerts identity-held-sends invites invite-failures room-upgrades room-upgrade-failures room-state \
     room-links room-finder room-link-failures \

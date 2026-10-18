@@ -19,6 +19,7 @@ mod logout;
 mod matrix;
 mod media;
 mod message_menu;
+mod msgtypes;
 mod names;
 pub mod notifications;
 mod pinned;

@@ -9,6 +9,7 @@ pub mod image_pack;
 pub mod invite;
 pub mod invite_people;
 pub mod link;
+pub mod location;
 pub mod matrix_link;
 pub mod media;
 pub mod member_name;

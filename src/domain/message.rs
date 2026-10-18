@@ -2,6 +2,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::hash::{DefaultHasher, Hash, Hasher};
 
 use crate::domain::emote::Emote;
+use crate::domain::location::Location;
 use crate::domain::media::{
     AudioKind, AudioMeta, ContentKey, FileMeta, ImageMeta, MediaKind, VideoMeta,
 };
@@ -151,8 +152,10 @@ pub enum MessageBody {
         meta: AudioMeta,
     },
     File {
+        caption: Option<RichText>,
         meta: FileMeta,
     },
+    Location(Location),
     Poll(Poll),
     Service(ServiceEvent),
     UnableToDecrypt(DecryptionFailure),
@@ -251,6 +254,7 @@ impl MessageBody {
                 AudioKind::Track => MessagePreviewKind::Audio,
             },
             Self::File { .. } => MessagePreviewKind::File,
+            Self::Location(_) => MessagePreviewKind::Location,
             Self::Poll(_) => MessagePreviewKind::Poll,
             Self::UnableToDecrypt(_) => MessagePreviewKind::Encrypted,
         }
@@ -261,9 +265,10 @@ impl MessageBody {
             Self::Text(text) | Self::Notice(text) | Self::Emote(text) => text.html(),
             Self::Image { caption, .. }
             | Self::Video { caption, .. }
-            | Self::Audio { caption, .. } => caption.as_ref().and_then(RichText::html),
+            | Self::Audio { caption, .. }
+            | Self::File { caption, .. } => caption.as_ref().and_then(RichText::html),
             Self::Sticker { .. }
-            | Self::File { .. }
+            | Self::Location(_)
             | Self::Poll(_)
             | Self::Service(_)
             | Self::UnableToDecrypt(_)
@@ -295,6 +300,7 @@ impl MessageBody {
             | Self::Emote(_)
             | Self::Audio { .. }
             | Self::File { .. }
+            | Self::Location(_)
             | Self::Poll(_)
             | Self::Service(_)
             | Self::UnableToDecrypt(_)
@@ -619,7 +625,8 @@ impl TimelineMessage {
             MessageBody::Text(text) => text.composer_text(),
             MessageBody::Image { caption, .. }
             | MessageBody::Video { caption, .. }
-            | MessageBody::Audio { caption, .. } => {
+            | MessageBody::Audio { caption, .. }
+            | MessageBody::File { caption, .. } => {
                 caption.as_ref().map_or(Some(""), RichText::composer_text)
             }
             _ => None,

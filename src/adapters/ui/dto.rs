@@ -13,9 +13,9 @@ use super::present::{
     Delivery, MessageKind, PollPhase, ServiceKind, ShieldReason, avatar_color_index,
     avatar_initials, decryption_failure, delivery, duration_label, file_extension, log_level_name,
     log_time_label, message_body_text, message_kind, message_sender_label, message_sent_at_label,
-    message_timestamp_label, name_initials, poll_phase, pronoun_labels, reaction_key_label,
-    reactor_labels, reader_labels, room_activity_label, sender_initial, service_kind,
-    service_target, shield_reason, unsupported_kind, voice_bars, voter_labels,
+    message_timestamp_label, name_initials, poll_phase, preview_subject, pronoun_labels,
+    reaction_key_label, reactor_labels, reader_labels, room_activity_label, sender_initial,
+    service_kind, service_target, shield_reason, unsupported_kind, voice_bars, voter_labels,
 };
 use super::richtext::{self, Cover, InlineContent, InlineLine, InlinePiece, RoomWord, Spoilers};
 use super::schema::{
@@ -499,6 +499,7 @@ pub struct MessageDto {
     pub duration: SharedString,
     pub filename: SharedString,
     pub size: SharedString,
+    pub map_link: SharedString,
     pub audio_kind: AudioKind,
     pub waveform: Vec<f32>,
     pub image_mimetype: SharedString,
@@ -888,8 +889,14 @@ fn apply_media(
     if let Some(meta) = m.body.audio() {
         apply_audio(dto, meta, media);
     }
-    if let MessageBody::File { meta } = &m.body {
+    if let MessageBody::File { meta, .. } = &m.body {
         apply_file(dto, meta);
+    }
+    if let MessageBody::Location(location) = &m.body {
+        dto.map_link = location
+            .map_link()
+            .map(SharedString::from)
+            .unwrap_or_default();
     }
     if let Some(poll) = m.body.poll() {
         apply_poll(dto, poll, m);
@@ -942,24 +949,26 @@ pub fn rich_body(text: &RichText) -> richtext::StyledBody {
         Some(html) => richtext::styled_body(
             html,
             &text.plain,
+            None,
             RoomWord::Text,
             Spoilers::Covered(Cover::Text),
         ),
-        None => richtext::plain_body(&text.plain, RoomWord::Text),
+        None => richtext::plain_body(&text.plain, None, RoomWord::Text),
     }
 }
 
 pub fn preview_line(text: &RichText) -> SharedString {
     match text.html() {
-        Some(html) => {
-            one_line(&richtext::styled_body(html, &text.plain, RoomWord::Text, REVEALABLE).plain)
-        }
+        Some(html) => one_line(
+            &richtext::styled_body(html, &text.plain, None, RoomWord::Text, REVEALABLE).plain,
+        ),
         None => one_line(&text.plain),
     }
 }
 
 pub fn message_body(message: &TimelineMessage) -> richtext::StyledBody {
-    BodyText::of(message).styled(REVEALABLE)
+    let actor = emote_actor(message);
+    BodyText::of(message, actor.as_deref()).styled(REVEALABLE)
 }
 
 pub struct RowBody {
@@ -971,14 +980,20 @@ pub struct RowBody {
 
 struct BodyText<'a> {
     body: &'a MessageBody,
+    actor: Option<&'a str>,
     room_word: RoomWord,
     emoji: &'a BTreeMap<String, CustomEmoji>,
 }
 
+fn emote_actor(message: &TimelineMessage) -> Option<String> {
+    matches!(message.body, MessageBody::Emote(_)).then(|| message_sender_label(message))
+}
+
 impl<'a> BodyText<'a> {
-    fn of(message: &'a TimelineMessage) -> Self {
+    fn of(message: &'a TimelineMessage, actor: Option<&'a str>) -> Self {
         Self {
             body: &message.body,
+            actor,
             room_word: RoomWord::when(message.mentions_room),
             emoji: &message.body_emoji,
         }
@@ -987,8 +1002,8 @@ impl<'a> BodyText<'a> {
     fn styled(&self, spoilers: Spoilers) -> richtext::StyledBody {
         let plain = message_body_text(self.body);
         match self.body.html() {
-            Some(html) => richtext::styled_body(html, plain, self.room_word, spoilers),
-            None => richtext::plain_body(plain, self.room_word),
+            Some(html) => richtext::styled_body(html, plain, self.actor, self.room_word, spoilers),
+            None => richtext::plain_body(plain, self.actor, self.room_word),
         }
     }
 
@@ -1023,11 +1038,9 @@ impl<'a> BodyText<'a> {
         if drawn.is_empty() {
             return (Vec::new(), false);
         }
-        let Some(inline) = self
-            .body
-            .html()
-            .and_then(|html| richtext::inline_body(html, self.room_word, spoilers, drawn))
-        else {
+        let Some(inline) = self.body.html().and_then(|html| {
+            richtext::inline_body(html, self.actor, self.room_word, spoilers, drawn)
+        }) else {
             return (Vec::new(), false);
         };
         let lines = inline
@@ -1042,14 +1055,16 @@ impl<'a> BodyText<'a> {
 #[derive(Clone)]
 pub struct CoveredBody {
     body: MessageBody,
+    actor: Option<String>,
     room_word: RoomWord,
     emoji: BTreeMap<String, CustomEmoji>,
 }
 
 impl CoveredBody {
-    fn of(message: &TimelineMessage) -> Self {
+    fn of(message: &TimelineMessage, actor: Option<String>) -> Self {
         Self {
             body: message.body.clone(),
+            actor,
             room_word: RoomWord::when(message.mentions_room),
             emoji: message.body_emoji.clone(),
         }
@@ -1058,6 +1073,7 @@ impl CoveredBody {
     fn text(&self) -> BodyText<'_> {
         BodyText {
             body: &self.body,
+            actor: self.actor.as_deref(),
             room_word: self.room_word,
             emoji: &self.emoji,
         }
@@ -1073,15 +1089,17 @@ fn row_body_and_preview(
     message: &TimelineMessage,
     media: &dyn MediaCache,
 ) -> (RowBody, SharedString) {
-    let text = BodyText::of(message);
+    let actor = emote_actor(message);
+    let text = BodyText::of(message, actor.as_deref());
     let spoilers = spoilers_on(&message.unique_id);
     let body = text.row_body(item, spoilers, media);
     if body.rich.has_spoilers {
-        keep_covered_body(&message.unique_id, CoveredBody::of(message));
+        keep_covered_body(&message.unique_id, CoveredBody::of(message, actor.clone()));
     }
-    let preview = match spoilers {
-        Spoilers::Shown => text.styled(REVEALABLE).plain,
-        Spoilers::Covered(_) => body.rich.plain.clone(),
+    let preview = match (preview_subject(&message.body), spoilers) {
+        (Some(subject), _) => SharedString::from(subject),
+        (None, Spoilers::Shown) => text.styled(REVEALABLE).plain,
+        (None, Spoilers::Covered(_)) => body.rich.plain.clone(),
     };
     (body, one_line(&preview))
 }
@@ -1167,7 +1185,7 @@ pub fn quoted_message(message: Option<&TimelineMessage>) -> QuotedMessage {
         sender: SharedString::from(message_sender_label(m)),
         sent_at: SharedString::from(message_sent_at_label(m.timestamp)),
         kind: m.body.preview_kind(),
-        body: message_body(m).plain,
+        body: preview_subject(&m.body).map_or_else(|| message_body(m).plain, SharedString::from),
         service_kind: service.map_or(ServiceKind::None, service_kind),
         service_target: SharedString::from(service.map(service_target).unwrap_or_default()),
     }
@@ -1240,6 +1258,7 @@ pub fn message_to_dto(m: &TimelineMessage, pinned: bool, media: &dyn MediaCache)
         duration: SharedString::new(),
         filename: SharedString::new(),
         size: SharedString::new(),
+        map_link: SharedString::new(),
         audio_kind: AudioKind::Track,
         waveform: Vec::new(),
         image_mimetype: SharedString::new(),

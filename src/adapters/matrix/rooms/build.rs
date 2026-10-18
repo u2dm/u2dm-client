@@ -27,6 +27,7 @@ use crate::adapters::matrix::permissions::{room_permissions, space_powers};
 use crate::adapters::matrix::preview::{self, MessagePreview};
 use crate::adapters::matrix::room_state::{event_ids, history_visibility};
 use crate::adapters::matrix::rtc::room_call;
+use crate::adapters::matrix::server_notices::previews_ignored_notice;
 use crate::domain::member_name::NamedUser;
 use crate::domain::message::{MessagePreviewKind, RichText, ServiceEvent};
 use crate::domain::room::{NotifyMode, Room as DomainRoom, RoomId, Space as DomainSpace};
@@ -198,6 +199,9 @@ async fn build_last_message(room: &Room, is_direct: bool) -> LastMessage {
     let Some((preview, sender_id)) = latest_message_preview(&room.latest_event()) else {
         return LastMessage::default();
     };
+    if previews_ignored_notice(room, &preview).await {
+        return LastMessage::default();
+    }
 
     let is_own = sender_id
         .as_ref()

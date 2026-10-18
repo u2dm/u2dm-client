@@ -25,6 +25,7 @@ use super::invites::build_invite;
 use crate::adapters::matrix::decrypt_wait::{self, Attempt};
 use crate::adapters::matrix::member_name::named_member;
 use crate::adapters::matrix::preview::MessagePreview;
+use crate::adapters::matrix::server_notices::previews_ignored_notice;
 use crate::adapters::matrix::session::{ClientHandle, SessionResource};
 use crate::domain::message::{MessagePreviewKind, ServiceEvent};
 use crate::domain::push::{NoticeContent, PushNotice, PushTweaks};
@@ -308,6 +309,10 @@ async fn notice_for_event(
         tracing::debug!(room_id = %room.room_id(), event_id = %facts.event_id, "a notified event has no preview");
         return None;
     };
+    if previews_ignored_notice(room, &preview).await {
+        tracing::debug!(room_id = %room.room_id(), event_id = %facts.event_id, "a server notice outside the server notices room is ignored");
+        return None;
+    }
     Some(notice(
         room,
         facts,

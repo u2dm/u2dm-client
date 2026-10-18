@@ -6,6 +6,7 @@ import { MediaPlaceholder } from "./messages/media-frame.slint";
 import { StickerMessage } from "./messages/sticker-message.slint";
 import { FileMessage } from "./messages/file-message.slint";
 import { AudioMessage } from "./messages/audio-message.slint";
+import { LocationMessage } from "./messages/location-message.slint";
 import { TextMessage } from "./messages/text-message.slint";
 import { UtdMessage } from "./messages/utd-message.slint";
 import { UnsupportedMessage } from "./messages/unsupported-message.slint";
@@ -84,7 +85,11 @@ export component MessageBody inherits VerticalLayout {
         msg: root.msg;
     }
 
-    if root.kind == MessageKind.audio && root.has-caption: TextMessage {
+    if (root.kind == MessageKind.audio || root.kind == MessageKind.file) && root.has-caption: TextMessage {
+        msg: root.msg;
+    }
+
+    if root.kind == MessageKind.location: LocationMessage {
         msg: root.msg;
     }
 

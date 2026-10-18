@@ -25,6 +25,7 @@ use super::state_rows::{other_state_to_service, unparsed_state};
 use crate::adapters::matrix::media::{EventMedia, file_content, thumbnail_content};
 use crate::adapters::matrix::preview;
 use crate::adapters::{body_emoji, markdown};
+use crate::domain::location::Location;
 use crate::domain::media::{
     AudioKind, AudioMeta, FileMeta, ImageMeta, MediaKind, VideoMeta, Waveform,
 };
@@ -616,8 +617,11 @@ fn extract_file_body(file: &FileMessageEventContent) -> MessageBody {
         (info.mimetype.clone(), info.size.map(Into::into))
     });
     MessageBody::File {
+        caption: file
+            .caption()
+            .map(|caption| rich_body(caption, file.formatted_caption())),
         meta: FileMeta {
-            filename: file.filename.clone().unwrap_or_else(|| file.body.clone()),
+            filename: file.filename().to_owned(),
             mimetype,
             size,
         },
@@ -745,6 +749,10 @@ fn authored(body: MessageBody) -> MessageBody {
             caption: caption.map(markdown::own_caption),
             meta,
         },
+        MessageBody::File { caption, meta } => MessageBody::File {
+            caption: caption.map(markdown::own_caption),
+            meta,
+        },
         other => other,
     }
 }
@@ -758,6 +766,11 @@ fn message_type_to_body(msgtype: &MessageType) -> MessageBody {
         MessageType::Video(v) => extract_video_body(v),
         MessageType::Audio(a) => extract_audio_body(a),
         MessageType::File(f) => extract_file_body(f),
+        MessageType::Location(l) => MessageBody::Location(Location {
+            description: l.body.clone(),
+            geo_uri: l.geo_uri.clone(),
+        }),
+        MessageType::ServerNotice(n) => MessageBody::Notice(RichText::plain(n.body.clone())),
         other => MessageBody::Unsupported {
             kind: other.msgtype().to_string(),
             fallback: other.body().to_string(),

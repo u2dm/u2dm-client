@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::collections::{BTreeSet, HashMap};
 use std::fmt::Write;
 use std::hash::Hash;
@@ -27,6 +28,7 @@ const EMPTY_ITEM_CONTENT: &str = "<u></u>";
 const NBSP: &str = "\u{a0}";
 const SPOILER_ATTRIBUTE: &str = "data-mx-spoiler";
 const REVEAL_LINK: &str = "";
+const EMOTE_MARK: &str = "* ";
 
 #[derive(Clone)]
 pub struct StyledBody {
@@ -117,13 +119,23 @@ impl CoverLabels {
 
 #[derive(PartialEq, Eq, Hash)]
 enum Source {
-    Formatted(String, RoomWord, Spoilers),
-    Unformatted(String, RoomWord),
+    Formatted {
+        html: String,
+        actor: Option<String>,
+        room_word: RoomWord,
+        spoilers: Spoilers,
+    },
+    Unformatted {
+        text: String,
+        actor: Option<String>,
+        room_word: RoomWord,
+    },
 }
 
 #[derive(PartialEq, Eq, Hash)]
 struct InlineSource {
     html: String,
+    actor: Option<String>,
     room_word: RoomWord,
     spoilers: Spoilers,
     drawn: BTreeSet<String>,
@@ -176,39 +188,56 @@ pub fn recognise_cover_labels(covers: CoverLabels) {
 pub fn styled_body(
     html: &str,
     plain_fallback: &str,
+    actor: Option<&str>,
     room_word: RoomWord,
     spoilers: Spoilers,
 ) -> StyledBody {
     memoised(
-        Source::Formatted(html.to_owned(), room_word, spoilers),
+        Source::Formatted {
+            html: html.to_owned(),
+            actor: actor.map(str::to_owned),
+            room_word,
+            spoilers,
+        },
         |bodies| &mut bodies.rendered,
-        |reading, _| build(html, Writer::reading_as(reading, room_word, spoilers)),
+        |reading, _| {
+            build(
+                html,
+                Writer::reading_as(reading, room_word, spoilers).acted_by(actor),
+            )
+        },
     )
-    .unwrap_or_else(|| unstyled_body(plain_fallback))
+    .unwrap_or_else(|| unstyled_body(&acted(actor, plain_fallback)))
 }
 
-pub fn plain_body(text: &str, room_word: RoomWord) -> StyledBody {
+pub fn plain_body(text: &str, actor: Option<&str>, room_word: RoomWord) -> StyledBody {
     memoised(
-        Source::Unformatted(text.to_owned(), room_word),
+        Source::Unformatted {
+            text: text.to_owned(),
+            actor: actor.map(str::to_owned),
+            room_word,
+        },
         |bodies| &mut bodies.rendered,
         |reading, _| {
             build_plain(
                 text,
-                Writer::reading_as(reading, room_word, Spoilers::Shown),
+                Writer::reading_as(reading, room_word, Spoilers::Shown).acted_by(actor),
             )
         },
     )
-    .unwrap_or_else(|| unstyled_body(text))
+    .unwrap_or_else(|| unstyled_body(&acted(actor, text)))
 }
 
 pub fn inline_body(
     html: &str,
+    actor: Option<&str>,
     room_word: RoomWord,
     spoilers: Spoilers,
     drawn: BTreeSet<String>,
 ) -> Option<InlineBody> {
     let source = InlineSource {
         html: html.to_owned(),
+        actor: actor.map(str::to_owned),
         room_word,
         spoilers,
         drawn,
@@ -217,10 +246,22 @@ pub fn inline_body(
         source,
         |bodies| &mut bodies.inline,
         |reading, source| {
-            let writer = Writer::inline_as(reading, room_word, spoilers, source.drawn.clone());
+            let writer = Writer::inline_as(reading, room_word, spoilers, source.drawn.clone())
+                .acted_by(actor);
             build_inline(html, writer)
         },
     )
+}
+
+fn emote_lead(actor: &str) -> String {
+    format!("{EMOTE_MARK}{actor} ")
+}
+
+fn acted<'a>(actor: Option<&str>, text: &'a str) -> Cow<'a, str> {
+    match actor {
+        Some(actor) => Cow::Owned(emote_lead(actor) + text),
+        None => Cow::Borrowed(text),
+    }
 }
 
 fn memoised<K: Hash + Eq, T: Clone>(
@@ -334,11 +375,12 @@ fn build_plain(text: &str, mut writer: Writer<'_>) -> Option<StyledBody> {
     if !(writer.has_links || writer.tags_room) || writer.exceeded_limits() {
         return None;
     }
+    writer.plain.push_str(text);
 
     match StyledText::from_markdown(&writer.markdown) {
         Ok(styled) => Some(StyledBody {
             styled,
-            plain: SharedString::from(text),
+            plain: SharedString::from(writer.plain.as_str()),
             has_links: writer.has_links,
             mentions_you: writer.mentions_you,
             has_spoilers: false,
@@ -527,6 +569,16 @@ impl<'own> Writer<'own> {
             }),
             ..Self::reading_as(reading, room_word, spoilers)
         }
+    }
+
+    fn acted_by(mut self, actor: Option<&str>) -> Self {
+        if let Some(actor) = actor {
+            let lead = emote_lead(actor);
+            self.push_spaced(&lead);
+            self.plain.push_str(&lead);
+            self.line = Line::MarkersOnly;
+        }
+        self
     }
 
     fn exceeded_limits(&mut self) -> bool {

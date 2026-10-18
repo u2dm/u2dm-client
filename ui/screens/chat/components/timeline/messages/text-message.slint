@@ -1,7 +1,7 @@
 import { Palette } from "std-widgets.slint";
 
 import { BodyLine, BodyPiece, MessageEntry } from "../../../../../types.slint";
-import { EmojiArt, SpoilerState } from "../../../../../enums.slint";
+import { EmojiArt, MessageKind, SpoilerState } from "../../../../../enums.slint";
 import { Actions } from "../../../../../actions.slint";
 import { TextSelection } from "../../../../../local.slint";
 import { AppStyle, Fonts, IconSize, Metrics, Space } from "../../../../../theme.slint";
@@ -11,6 +11,7 @@ component BodyPieceView inherits HorizontalLayout {
     in property <BodyPiece> piece;
     in property <length> emoji-size;
     in property <length> icon-size;
+    in property <color> text-color;
     in property <color> link-color;
 
     callback link-clicked(string);
@@ -21,7 +22,7 @@ component BodyPieceView inherits HorizontalLayout {
         text: root.piece.styled;
         default-font-family: Fonts.emoji;
         default-font-size: Fonts.body;
-        default-color: Palette.foreground;
+        default-color: root.text-color;
         link-color: root.link-color;
         link-clicked(url) => {
             root.link-clicked(url);
@@ -42,6 +43,7 @@ component InlineBody inherits VerticalLayout {
     in property <[BodyLine]> lines;
     in property <length> emoji-size;
     in property <length> icon-size;
+    in property <color> text-color;
     in property <color> link-color;
     out property <length> laid-out-height: end.y;
 
@@ -57,6 +59,7 @@ component InlineBody inherits VerticalLayout {
             piece: piece;
             emoji-size: root.emoji-size;
             icon-size: root.icon-size;
+            text-color: root.text-color;
             link-color: root.link-color;
             link-clicked(url) => {
                 root.link-clicked(url);
@@ -98,6 +101,9 @@ export component TextMessage inherits Rectangle {
     property <bool> selecting: TextSelection.holds(root.msg.unique-id);
     property <bool> inline: !root.selecting && root.msg.body-lines.length > 0;
     property <length> emoji-size: root.msg.emote-only ? Metrics.jumbo-emoji : Metrics.inline-emoji;
+    property <color> text-color: root.msg.message-type != MessageKind.notice
+        ? Palette.foreground
+        : (root.msg.is-own ? AppStyle.notice-text-own : AppStyle.notice-text);
 
     preferred-width: root.inline ? unwrapped.preferred-width + Space.sm : content.preferred-width;
     height: root.inline ? inline-body.laid-out-height : content.preferred-height;
@@ -131,6 +137,7 @@ export component TextMessage inherits Rectangle {
         lines: root.inline ? root.msg.body-lines : [];
         emoji-size: root.emoji-size;
         icon-size: root.msg.emote-only ? IconSize.lg : IconSize.xs;
+        text-color: root.text-color;
         link-color: root.msg.is-own ? AppStyle.own-link : AppStyle.link;
         link-clicked(url) => {
             root.follow-link(url);
@@ -152,7 +159,7 @@ export component TextMessage inherits Rectangle {
             text: root.msg.styled;
             default-font-family: Fonts.emoji;
             default-font-size: Fonts.body;
-            default-color: Palette.foreground;
+            default-color: root.text-color;
             link-color: root.msg.is-own ? AppStyle.own-link : AppStyle.link;
             link-clicked(url) => {
                 root.follow-link(url);
@@ -163,7 +170,7 @@ export component TextMessage inherits Rectangle {
             text: root.msg.body;
             font-family: Fonts.emoji;
             font-size: Fonts.body;
-            color: Palette.foreground;
+            color: root.text-color;
             wrap: word-wrap;
             read-only: true;
             single-line: false;

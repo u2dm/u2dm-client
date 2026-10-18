@@ -881,6 +881,7 @@ pub fn messages(room_id: &RoomId) -> Vec<TimelineMessage> {
         messages = repeated_history(&messages);
     }
     super::richtext::apply_scenario(&mut messages);
+    super::msgtypes::apply_scenario(&mut messages);
     super::reactions::apply_scenario(&mut messages);
     super::polls::apply_scenario(&mut messages);
     names::apply_scenario(room_id, &mut messages, now);
@@ -1194,6 +1195,7 @@ pub fn own_attachment(
     };
     let body = if attachment.as_document {
         MessageBody::File {
+            caption: caption(),
             meta: FileMeta {
                 filename: picked.filename.clone(),
                 mimetype: Some(picked.mimetype.clone()),
@@ -1229,6 +1231,7 @@ pub fn own_attachment(
         }
     } else {
         MessageBody::File {
+            caption: caption(),
             meta: FileMeta {
                 filename: picked.filename.clone(),
                 mimetype: Some(picked.mimetype.clone()),
@@ -1275,7 +1278,8 @@ pub fn body_preview(body: &MessageBody) -> RichText {
         | MessageBody::Video { caption, .. }
         | MessageBody::Audio { caption, .. } => caption.clone().unwrap_or_default(),
         MessageBody::Sticker { alt, .. } => RichText::plain(alt.clone()),
-        MessageBody::File { meta } => RichText::plain(meta.filename.clone()),
+        MessageBody::File { meta, .. } => RichText::plain(meta.filename.clone()),
+        MessageBody::Location(location) => RichText::plain(location.description.clone()),
         MessageBody::Poll(poll) => RichText::plain(poll.question.clone()),
         MessageBody::Service(_) | MessageBody::UnableToDecrypt(_) => RichText::default(),
         MessageBody::Unsupported { fallback, .. } => RichText::plain(fallback.clone()),

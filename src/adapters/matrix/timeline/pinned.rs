@@ -15,13 +15,14 @@ use matrix_sdk::ruma::{EventId, OwnedEventId};
 use matrix_sdk_base::{RawStateEventWithKeys, RoomInfoNotableUpdateReasons};
 use matrix_sdk_ui::eyeball_im::{Vector, VectorDiff};
 use matrix_sdk_ui::timeline::{
-    RoomExt as _, TimelineFocus as SdkTimelineFocus, TimelineItem, TimelineItemContent,
+    TimelineFocus as SdkTimelineFocus, TimelineItem, TimelineItemContent,
 };
 use tokio::sync::mpsc;
 use tokio::time::timeout;
 
 use super::PRE_QUEUE_LOOKUP_WAIT;
 use super::convert::content_preview;
+use super::event_filter::timeline_builder;
 use crate::adapters::matrix::permissions::message_permissions;
 use crate::adapters::matrix::session::ClientHandle;
 use crate::domain::message::{MessagePreviewKind, PinChange, PinnedMessage};
@@ -51,8 +52,8 @@ impl PinnedPort for MatrixPinned {
         pinned_tx: mpsc::Sender<Vec<PinnedMessage>>,
     ) -> Result<()> {
         let room = self.matrix.room(room_id).await?;
-        let timeline = room
-            .timeline_builder()
+        let timeline = timeline_builder(&room)
+            .await
             .with_focus(SdkTimelineFocus::PinnedEvents)
             .build()
             .await

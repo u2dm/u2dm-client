@@ -346,6 +346,11 @@ const SCENARIO_SOURCES: &[ScenarioSource] = &[
         ignored: &[],
     },
     ScenarioSource {
+        file: "src/adapters/demo/msgtypes.rs",
+        arms_between: ("fn apply(scenario: &mut Scenario, flag: &str) {", "\n}"),
+        ignored: &[],
+    },
+    ScenarioSource {
         file: "src/adapters/demo/stickers.rs",
         arms_between: ("fn apply(scenario: &mut Scenario, flag: &str) {", "\n}"),
         ignored: &[],

@@ -1385,6 +1385,7 @@ macro_rules! message_kinds {
         Audio       Audio       "audio";
         Sticker     Sticker     "sticker";
         File        File        "file";
+        Location    Location    "location";
         Service     Service     "service";
         Utd         Utd         "utd";
         Unsupported Unsupported "unsupported";
@@ -1546,6 +1547,7 @@ macro_rules! message_fields {
         duration set_duration "duration" text;
         filename set_filename "filename" text;
         size set_size "size" text;
+        map_link set_map_link "map-link" text;
         audio_kind set_audio_kind "audio-kind" enumk(AudioKind);
         waveform set_waveform "waveform" floats;
         has_avatar set_has_avatar "has-avatar" flag;

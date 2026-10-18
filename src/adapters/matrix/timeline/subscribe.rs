@@ -11,7 +11,7 @@ use matrix_sdk::ruma::{EventId, IdParseError, OwnedEventId, OwnedRoomId, UserId}
 use matrix_sdk::{Client, Room};
 use matrix_sdk_ui::eyeball_im::VectorDiff;
 use matrix_sdk_ui::timeline::{
-    Error as TimelineError, EventSendState, EventTimelineItem, RoomExt as _, Timeline,
+    Error as TimelineError, EventSendState, EventTimelineItem, Timeline,
     TimelineEventFocusThreadMode, TimelineEventItemId, TimelineFocus as SdkTimelineFocus,
     TimelineItem, VirtualTimelineItem,
 };
@@ -25,6 +25,7 @@ use super::convert::{event_media, involves, reacted_with};
 use super::diff::{diff_to_patch, stamp_editable_polls, stamp_read_marks};
 use super::edits::DiscardedEdits;
 use super::emoji_files::{EmojiFiles, Settled, download_emoji_files};
+use super::event_filter::timeline_builder;
 use super::filter::TimelineItems;
 use super::members::{Arrived, Batch, Members, Need, resolve_members};
 use super::missing_keys::MissingKeys;
@@ -593,7 +594,9 @@ async fn setup_timeline(
 ) -> Result<(Arc<Timeline>, PaginationOutcome)> {
     let Some(target) = focus.target() else {
         let timeline = Arc::new(
-            room.timeline()
+            timeline_builder(room)
+                .await
+                .build()
                 .await
                 .map_err(|e| AppError::Other(e.to_string()))?,
         );
@@ -609,7 +612,8 @@ async fn build_focused_timeline(room: &Room, target: &str) -> Result<Timeline> {
     let target: OwnedEventId = target
         .try_into()
         .map_err(|e: IdParseError| AppError::Other(e.to_string()))?;
-    room.timeline_builder()
+    timeline_builder(room)
+        .await
         .with_focus(SdkTimelineFocus::Event {
             target,
             num_context_events: FOCUS_CONTEXT_EVENTS,

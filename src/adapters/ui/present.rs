@@ -328,14 +328,22 @@ pub fn message_body_text(body: &MessageBody) -> &str {
         MessageBody::Text(t) | MessageBody::Notice(t) | MessageBody::Emote(t) => &t.plain,
         MessageBody::Image { caption, .. }
         | MessageBody::Video { caption, .. }
-        | MessageBody::Audio { caption, .. } => {
+        | MessageBody::Audio { caption, .. }
+        | MessageBody::File { caption, .. } => {
             caption.as_ref().map_or("", |text| text.plain.as_str())
         }
         MessageBody::Sticker { alt, .. } => alt,
-        MessageBody::File { meta, .. } => &meta.filename,
+        MessageBody::Location(location) => &location.description,
         MessageBody::Poll(poll) => &poll.question,
         MessageBody::Service(_) | MessageBody::UnableToDecrypt(_) => "",
         MessageBody::Unsupported { fallback, .. } => fallback,
+    }
+}
+
+pub fn preview_subject(body: &MessageBody) -> Option<&str> {
+    match body {
+        MessageBody::File { meta, .. } => Some(&meta.filename),
+        _ => None,
     }
 }
 
@@ -351,6 +359,7 @@ pub fn message_kind(body: &MessageBody) -> MessageKind {
         MessageBody::Audio { .. } => MessageKind::Audio,
         MessageBody::Sticker { .. } => MessageKind::Sticker,
         MessageBody::File { .. } => MessageKind::File,
+        MessageBody::Location(_) => MessageKind::Location,
         MessageBody::Poll(_) => MessageKind::Poll,
         MessageBody::Service(_) => MessageKind::Service,
         MessageBody::UnableToDecrypt(_) => MessageKind::Utd,

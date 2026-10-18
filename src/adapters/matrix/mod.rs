@@ -15,6 +15,7 @@ mod room_state;
 mod rooms;
 mod rtc;
 mod server_logout;
+mod server_notices;
 mod session;
 mod store;
 mod timeline;

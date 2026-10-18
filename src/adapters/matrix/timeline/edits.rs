@@ -224,6 +224,17 @@ fn revised(msgtype: MessageType, text: &str, composed: &Composed) -> Option<Mess
             );
             Some(MessageType::Audio(audio))
         }
+        MessageType::File(mut file)
+            if caption_is_composed(file.caption(), file.formatted_caption()) =>
+        {
+            recaption(
+                &mut file.body,
+                &mut file.filename,
+                &mut file.formatted,
+                composed,
+            );
+            Some(MessageType::File(file))
+        }
         _ => None,
     }
 }
@@ -373,6 +384,7 @@ fn version_html(msgtype: &MessageType) -> Option<&str> {
         MessageType::Image(image) => image.formatted_caption(),
         MessageType::Video(video) => video.formatted_caption(),
         MessageType::Audio(audio) => audio.formatted_caption(),
+        MessageType::File(file) => file.formatted_caption(),
         _ => None,
     }?;
     (formatted.format == MessageFormat::Html).then_some(formatted.body.as_str())
@@ -432,6 +444,10 @@ pub(super) fn replaced_text(content: &Raw<AnyMessageLikeEventContent>) -> Option
         MessageType::Audio(audio) => (
             EditKind::Caption,
             caption_form(audio.caption(), audio.formatted_caption()),
+        ),
+        MessageType::File(file) => (
+            EditKind::Caption,
+            caption_form(file.caption(), file.formatted_caption()),
         ),
         _ => return None,
     };

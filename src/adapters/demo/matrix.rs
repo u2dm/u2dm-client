@@ -386,6 +386,10 @@ fn revised_body(body: &MessageBody, text: &str, sent: RichText) -> Option<Messag
             caption: revised_caption(text, sent),
             meta: meta.clone(),
         }),
+        MessageBody::File { meta, .. } => Some(MessageBody::File {
+            caption: revised_caption(text, sent),
+            meta: meta.clone(),
+        }),
         _ => None,
     }
 }
